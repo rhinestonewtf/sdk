@@ -1,0 +1,33 @@
+{
+  "name": "@rhinestone/sdk",
+  "version": "0.0.0",
+  "description": "End-to-end chain abstraction and modularity toolkit",
+  "author": {
+    "name": "Rhinestone",
+    "url": "https://rhinestone.wtf"
+  },
+  "keywords": ["ethereum", "rhinestone", "sdk"],
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": ["dist"],
+  "homepage": "https://docs.rhinestone.wtf/",
+  "bugs": {
+    "url": "https://github.com/rhinestonewtf/sdk/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rhinestonewtf/sdk.git"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {},
+  "peerDependencies": {}
+}

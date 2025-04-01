@@ -1,0 +1,14 @@
+[
+  {
+    "name": "SDK",
+    "path": "./src/dist/index.js",
+    "limit": "70 kB",
+    "import": "*"
+  },
+  {
+    "name": "SDK (minimal surface - tree-shaking)",
+    "path": "./src/dist/index.js",
+    "limit": "15 kB",
+    "import": "{ installModule }"
+  }
+]
