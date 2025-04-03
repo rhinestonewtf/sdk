@@ -2,11 +2,17 @@ import { encodePacked, Hex } from 'viem';
 import { BundleResult, BundleStatus, getOrchestrator, getOrderBundleHash, PostOrderBundleResult, SignedMultiChainCompact } from '@rhinestone/orchestrator-sdk';
 import { MetaIntent } from '@rhinestone/orchestrator-sdk';
 
-import { getAddress, getFactoryArgs } from './account';
+import { getAddress, getDeployArgs, isDeployed, deploy } from './account';
 import { getModules } from './modules';
 import { RhinestoneAccountConfig, Transaction, ValidatorConfig } from '../types';
 
 async function sendTransactions(config: RhinestoneAccountConfig, transaction: Transaction) {
+  // Deploy if needed
+  const isAccountDeployed = await isDeployed(transaction.sourceChain, config);
+  if (!isAccountDeployed) {
+    await deploy(config.deployerAccount, transaction.sourceChain, config);
+  }
+
   const targetChain = transaction.targetChain
   const accountAddress = await getAddress(targetChain, config);
   const metaIntent: MetaIntent = {
@@ -49,7 +55,7 @@ async function sendTransactions(config: RhinestoneAccountConfig, transaction: Tr
     targetSignature: packedSig,
   };
 
-  const { factory, factoryData } = await getFactoryArgs(targetChain, config)
+  const { factory, factoryData } = await getDeployArgs(targetChain, config)
   if (!factory || !factoryData) {
     throw new Error('Factory args not available')
   }

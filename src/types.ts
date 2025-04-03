@@ -20,6 +20,7 @@ interface RhinestoneAccountConfig {
   };
   validators: ValidatorConfig[];
   rhinestoneApiKey: string;
+  deployerAccount: Account;
   provider?: {
     type: 'alchemy',
     apiKey: string;

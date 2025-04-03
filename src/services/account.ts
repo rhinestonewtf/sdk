@@ -7,10 +7,12 @@ import {
   encodeFunctionData,
   parseAbi,
   zeroAddress,
-  slice,
-  getAddress as parseAddress,
   Account,
   createWalletClient,
+  size,
+  keccak256,
+  encodePacked,
+  slice,
 } from 'viem'
 import {
   RHINESTONE_ATTESTER_ADDRESS,
@@ -18,32 +20,43 @@ import {
 import {
   getHookAddress,
   getSameChainModuleAddress,
+  getTargetModuleAddress
 } from '@rhinestone/orchestrator-sdk'
-import { getTargetModuleAddress } from '@rhinestone/orchestrator-sdk'
 
 import { RhinestoneAccountConfig } from '../types'
 import { toOwners } from './modules'
 import { getValidators } from './modules'
 
 async function getAddress(chain: Chain, config: RhinestoneAccountConfig) {
-  const { factory, factoryData } = await getFactoryArgs(chain, config)
+  const { factory, initializer } = await getDeployArgs(chain, config)
+  const saltNonce = 0n;
+  const salt = keccak256(encodePacked(['bytes32', 'uint256'], [keccak256(initializer), saltNonce]))
+  const initcode = '0x608060405234801561001057600080fd5b506040516101e63803806101e68339818101604052602081101561003357600080fd5b8101908080519060200190929190505050600073ffffffffffffffffffffffffffffffffffffffff168173ffffffffffffffffffffffffffffffffffffffff1614156100ca576040517f08c379a00000000000000000000000000000000000000000000000000000000081526004018080602001828103825260228152602001806101c46022913960400191505060405180910390fd5b806000806101000a81548173ffffffffffffffffffffffffffffffffffffffff021916908373ffffffffffffffffffffffffffffffffffffffff1602179055505060ab806101196000396000f3fe608060405273ffffffffffffffffffffffffffffffffffffffff600054167fa619486e0000000000000000000000000000000000000000000000000000000060003514156050578060005260206000f35b3660008037600080366000845af43d6000803e60008114156070573d6000fd5b3d6000f3fea264697066735822122003d1488ee65e08fa41e58e888a9865554c535f2c77126a82cb4c0f917f31441364736f6c63430007060033496e76616c69642073696e676c65746f6e20616464726573732070726f766964656400000000000000000000000029fcb43b46531bca003ddc8fcb67ffe91900c762';
+  const hash = keccak256(encodePacked(['bytes1', 'address', 'bytes32', 'bytes'], ['0xff', factory, salt, keccak256(initcode)]))
+  const address = slice(hash, 12, 32);
+  return address;
+}
+
+async function isDeployed(chain: Chain, config: RhinestoneAccountConfig) {
   const publicClient = createPublicClient({
     chain: chain,
     transport: http(),
   });
-  const result = await publicClient.call({
-    to: factory,
-    data: factoryData,
-  });
-  if (!result.data) {
-    throw new Error('Failed to get factory address')
+  const address = await getAddress(chain, config);
+  const code = await publicClient.getCode({
+    address,
+  })
+  if (!code) {
+    return false;
   }
-  const address = parseAddress(slice(result.data, 12, 32));
-  return address;
+  if (code.startsWith('0xef0100') && code.length === 48) {
+    throw new Error('EIP-7702 accounts are not yet supported');
+  }
+  return size(code) > 0;
 }
 
 async function deploy(deployer: Account, chain: Chain, config: RhinestoneAccountConfig) {
-  const { factory, factoryData } = await getFactoryArgs(chain, config);
+  const { factory, factoryData } = await getDeployArgs(chain, config);
   const publicClient = createPublicClient({
     chain: chain,
     transport: http(),
@@ -60,7 +73,7 @@ async function deploy(deployer: Account, chain: Chain, config: RhinestoneAccount
   await publicClient.waitForTransactionReceipt({ hash: tx })
 }
 
-async function getFactoryArgs(targetChain: Chain, config: RhinestoneAccountConfig) {
+async function getDeployArgs(targetChain: Chain, config: RhinestoneAccountConfig) {
   switch (config.account.type) {
     case 'safe': {
       const owners = toOwners(config).map((owner) => owner.address);
@@ -146,6 +159,7 @@ async function getFactoryArgs(targetChain: Chain, config: RhinestoneAccountConfi
         ],
       });
     
+      const singleton: Address = '0x29fcb43b46531bca003ddc8fcb67ffe91900c762';
       const proxyFactory: Address = "0x4e1dcf7ad4e460cfd30791ccc4f9c8a4f820ec67";
       const saltNonce = 0n;
       const factoryData = encodeFunctionData({
@@ -154,7 +168,7 @@ async function getFactoryArgs(targetChain: Chain, config: RhinestoneAccountConfi
         ]),
         functionName: "createProxyWithNonce",
         args: [
-          "0x29fcb43b46531bca003ddc8fcb67ffe91900c762",
+          singleton,
           initializer,
           saltNonce,
         ],
@@ -163,9 +177,11 @@ async function getFactoryArgs(targetChain: Chain, config: RhinestoneAccountConfi
       return {
         factory: proxyFactory,
         factoryData,
+        singleton,
+        initializer,
       }
     }
   }
 }
 
-export { getAddress, getFactoryArgs, deploy }
+export { getAddress, isDeployed, getDeployArgs, deploy }
