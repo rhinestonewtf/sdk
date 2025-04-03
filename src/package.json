@@ -28,6 +28,11 @@
   "publishConfig": {
     "access": "public"
   },
-  "dependencies": {},
-  "peerDependencies": {}
+  "dependencies": {
+    "@rhinestone/module-sdk": "0.2.8",
+    "@rhinestone/orchestrator-sdk": "0.2.0-rc.8"
+  },
+  "peerDependencies": {
+    "viem": "^2.20.0"
+  }
 }
