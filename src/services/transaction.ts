@@ -1,4 +1,4 @@
-import { encodePacked, Hex } from 'viem'
+import { concat, encodePacked, Hex } from 'viem'
 import {
   BundleResult,
   BundleStatus,
@@ -10,8 +10,13 @@ import {
 import { MetaIntent } from '@rhinestone/orchestrator-sdk'
 
 import { getAddress, getDeployArgs, isDeployed, deploy } from './account'
-import { getModules } from './modules'
-import { RhinestoneAccountConfig, Transaction, ValidatorConfig } from '../types'
+import { getValidator } from './modules'
+import {
+  RhinestoneAccountConfig,
+  Transaction,
+  ValidatorSet,
+  Validator,
+} from '../types'
 
 async function sendTransactions(
   config: RhinestoneAccountConfig,
@@ -46,11 +51,11 @@ async function sendTransactions(
   ]
 
   const orderBundleHash = getOrderBundleHash(orderPath[0].orderBundle)
-  const bundleSignature = await sign(config.validators[0], orderBundleHash)
-  const validatorModules = getModules(config)
+  const bundleSignature = await sign(config.validators, orderBundleHash)
+  const validatorModule = getValidator(config)
   const packedSig = encodePacked(
     ['address', 'bytes'],
-    [validatorModules[0], bundleSignature],
+    [validatorModule.address, bundleSignature],
   )
 
   const signedOrderBundle: SignedMultiChainCompact = {
@@ -93,7 +98,18 @@ async function waitForExecution(config: RhinestoneAccountConfig, id: bigint) {
   return bundleResult
 }
 
-async function sign(validator: ValidatorConfig, hash: Hex) {
+async function sign(validators: ValidatorSet, hash: Hex) {
+  if (Array.isArray(validators)) {
+    const signatures = await Promise.all(
+      validators.map((validator) => signSingle(validator, hash)),
+    )
+    return concat(signatures)
+  } else {
+    return await signSingle(validators, hash)
+  }
+}
+
+async function signSingle(validator: Validator, hash: Hex) {
   switch (validator.type) {
     case 'ecdsa': {
       const sign = validator.account.signMessage

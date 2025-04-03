@@ -11,12 +11,13 @@ interface WebauthnValidatorConfig {
   account: WebAuthnAccount
 }
 
-type ValidatorConfig = OwnableValidatorConfig | WebauthnValidatorConfig
+type Validator = OwnableValidatorConfig | WebauthnValidatorConfig
+type ValidatorSet = OwnableValidatorConfig[] | WebauthnValidatorConfig
 interface RhinestoneAccountConfig {
   account: {
     type: 'safe'
   }
-  validators: ValidatorConfig[]
+  validators: ValidatorSet
   rhinestoneApiKey: string
   deployerAccount: Account
   provider?: {
@@ -47,4 +48,4 @@ interface Transaction {
   tokenRequests: TokenRequest[]
 }
 
-export type { RhinestoneAccountConfig, Transaction, ValidatorConfig }
+export type { RhinestoneAccountConfig, Transaction, Validator, ValidatorSet }

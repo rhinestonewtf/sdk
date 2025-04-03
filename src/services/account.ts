@@ -22,7 +22,7 @@ import {
 } from '@rhinestone/orchestrator-sdk'
 
 import { RhinestoneAccountConfig } from '../types'
-import { getValidators, toOwners, RHINESTONE_ATTESTER_ADDRESS } from './modules'
+import { getValidator, toOwners, RHINESTONE_ATTESTER_ADDRESS } from './modules'
 
 async function getAddress(chain: Chain, config: RhinestoneAccountConfig) {
   const { factory, salt, initcode } = await getDeployArgs(chain, config)
@@ -82,7 +82,7 @@ async function getDeployArgs(
 ) {
   switch (config.account.type) {
     case 'safe': {
-      const owners = toOwners(config).map((owner) => owner.address)
+      const owners = toOwners(config)
       const initializer = encodeFunctionData({
         abi: parseAbi([
           'function setup(address[] calldata _owners,uint256 _threshold,address to,bytes calldata data,address fallbackHandler,address paymentToken,uint256 payment, address paymentReceiver) external',
@@ -100,10 +100,12 @@ async function getDeployArgs(
             functionName: 'addSafe7579',
             args: [
               '0x7579EE8307284F293B1927136486880611F20002',
-              getValidators(config).map((validator) => ({
-                module: validator.address,
-                initData: validator.initData,
-              })),
+              [
+                {
+                  module: getValidator(config).address,
+                  initData: getValidator(config).initData,
+                },
+              ],
               [
                 {
                   module: getSameChainModuleAddress(targetChain.id),

@@ -6,9 +6,10 @@ import {
   hexToBytes,
   keccak256,
   toHex,
+  zeroAddress,
 } from 'viem'
 
-import { RhinestoneAccountConfig, ValidatorConfig } from '../types'
+import { RhinestoneAccountConfig } from '../types'
 
 type ModuleType = 'validator' | 'executor' | 'fallback' | 'hook'
 
@@ -40,46 +41,35 @@ const WEBAUTHN_VALIDATOR_ADDRESS: Address =
   '0x2f167e55d42584f65e2e30a748f41ee75a311414'
 
 function toOwners(config: RhinestoneAccountConfig) {
-  return config.validators.map((validator) => {
-    switch (validator.type) {
-      case 'ecdsa':
-        return validator.account
-      case 'passkey':
-        // return validator.account;
-        throw new Error('Unsupported validator type')
-    }
-  })
+  const validatorSet = config.validators
+  if (Array.isArray(validatorSet)) {
+    return validatorSet.map((validator) => {
+      switch (validator.type) {
+        case 'ecdsa':
+          return validator.account.address
+      }
+    })
+  } else {
+    return [zeroAddress]
+  }
 }
 
-function getValidators(config: RhinestoneAccountConfig) {
-  function getValidator(validator: ValidatorConfig): Module {
-    switch (validator.type) {
-      case 'ecdsa':
-        return getOwnableValidator({
-          owners: [validator.account.address],
-          threshold: 1,
-        })
-      case 'passkey':
-        return getWebAuthnValidator({
-          pubKey: validator.account.publicKey,
-          authenticatorId: validator.account.id,
-        })
-    }
+function getValidator(config: RhinestoneAccountConfig) {
+  const validatorSet = config.validators
+  if (Array.isArray(validatorSet)) {
+    const ecdsaOwners = validatorSet
+      .filter((validator) => validator.type === 'ecdsa')
+      .map((validator) => validator.account.address)
+    return getOwnableValidator({
+      threshold: 1,
+      owners: ecdsaOwners,
+    })
+  } else {
+    return getWebAuthnValidator({
+      pubKey: validatorSet.account.publicKey,
+      authenticatorId: validatorSet.account.id,
+    })
   }
-
-  return config.validators.map((validator) => getValidator(validator))
-}
-
-function getModules(config: RhinestoneAccountConfig) {
-  function getModule(validator: ValidatorConfig): Address {
-    switch (validator.type) {
-      case 'ecdsa':
-        return OWNABLE_VALIDATOR_ADDRESS
-      case 'passkey':
-        return WEBAUTHN_VALIDATOR_ADDRESS
-    }
-  }
-  return config.validators.map((validator) => getModule(validator))
 }
 
 function getOwnableValidator({
@@ -175,4 +165,4 @@ function parsePublicKey(publicKey: Hex | Uint8Array): PublicKey {
   }
 }
 
-export { getValidators, getModules, toOwners, RHINESTONE_ATTESTER_ADDRESS }
+export { getValidator, toOwners, RHINESTONE_ATTESTER_ADDRESS }
