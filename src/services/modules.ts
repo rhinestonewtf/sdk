@@ -8,7 +8,7 @@ import {
   toHex,
 } from 'viem'
 
-import { RhinestoneAccountConfig } from '../types'
+import { RhinestoneAccountConfig, ValidatorConfig } from '../types'
 
 type ModuleType = 'validator' | 'executor' | 'fallback' | 'hook'
 
@@ -52,33 +52,34 @@ function toOwners(config: RhinestoneAccountConfig) {
 }
 
 function getValidators(config: RhinestoneAccountConfig) {
-  return config.validators.map((validator) => {
-    if (validator.type === 'ecdsa') {
-      return getOwnableValidator({
-        owners: [validator.account.address],
-        threshold: 1,
-      })
+  function getValidator(validator: ValidatorConfig): Module {
+    switch (validator.type) {
+      case 'ecdsa':
+        return getOwnableValidator({
+          owners: [validator.account.address],
+          threshold: 1,
+        })
+      case 'passkey':
+        return getWebAuthnValidator({
+          pubKey: validator.account.publicKey,
+          authenticatorId: validator.account.id,
+        })
     }
-    if (validator.type === 'passkey') {
-      return getWebAuthnValidator({
-        pubKey: validator.account.publicKey,
-        authenticatorId: validator.account.id,
-      })
-    }
-    throw new Error('Unsupported validator type')
-  })
+  }
+
+  return config.validators.map((validator) => getValidator(validator))
 }
 
 function getModules(config: RhinestoneAccountConfig) {
-  return config.validators.map((module) => {
-    if (module.type === 'ecdsa') {
-      return OWNABLE_VALIDATOR_ADDRESS
+  function getModule(validator: ValidatorConfig): Address {
+    switch (validator.type) {
+      case 'ecdsa':
+        return OWNABLE_VALIDATOR_ADDRESS
+      case 'passkey':
+        return WEBAUTHN_VALIDATOR_ADDRESS
     }
-    if (module.type === 'passkey') {
-      return WEBAUTHN_VALIDATOR_ADDRESS
-    }
-    throw new Error('Unsupported validator type')
-  })
+  }
+  return config.validators.map((validator) => getModule(validator))
 }
 
 function getOwnableValidator({
