@@ -1,11 +1,11 @@
-import { RhinestoneAccountConfig, Transaction } from './types'
+import { Chain } from 'viem/chains'
 
+import { RhinestoneAccountConfig, Transaction } from './types'
 import {
   sendTransactions as sendTransactionsInternal,
   waitForExecution as waitForExecutionInternal,
 } from './services/transaction'
 import { getAddress as getAddressInternal } from './services/account'
-import { Chain } from 'viem/chains'
 
 async function createRhinestoneAccount(config: RhinestoneAccountConfig) {
   const sendTransactions = async (transaction: Transaction) => {

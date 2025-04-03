@@ -41,34 +41,28 @@ const WEBAUTHN_VALIDATOR_ADDRESS: Address =
   '0x2f167e55d42584f65e2e30a748f41ee75a311414'
 
 function toOwners(config: RhinestoneAccountConfig) {
-  const validatorSet = config.validators
-  if (Array.isArray(validatorSet)) {
-    return validatorSet.map((validator) => {
-      switch (validator.type) {
-        case 'ecdsa':
-          return validator.account.address
-      }
-    })
-  } else {
-    return [zeroAddress]
+  const validatorSet = config.owners
+  switch (validatorSet.type) {
+    case 'ecdsa':
+      return validatorSet.accounts.map((account) => account.address)
+    case 'passkey':
+      return [zeroAddress]
   }
 }
 
 function getValidator(config: RhinestoneAccountConfig) {
-  const validatorSet = config.validators
-  if (Array.isArray(validatorSet)) {
-    const ecdsaOwners = validatorSet
-      .filter((validator) => validator.type === 'ecdsa')
-      .map((validator) => validator.account.address)
-    return getOwnableValidator({
-      threshold: 1,
-      owners: ecdsaOwners,
-    })
-  } else {
-    return getWebAuthnValidator({
-      pubKey: validatorSet.account.publicKey,
-      authenticatorId: validatorSet.account.id,
-    })
+  const validatorSet = config.owners
+  switch (validatorSet.type) {
+    case 'ecdsa':
+      return getOwnableValidator({
+        threshold: validatorSet.threshold ?? validatorSet.accounts.length,
+        owners: validatorSet.accounts.map((account) => account.address),
+      })
+    case 'passkey':
+      return getWebAuthnValidator({
+        pubKey: validatorSet.account.publicKey,
+        authenticatorId: validatorSet.account.id,
+      })
   }
 }
 

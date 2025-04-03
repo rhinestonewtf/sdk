@@ -3,7 +3,8 @@ import { WebAuthnAccount } from 'viem/account-abstraction'
 
 interface OwnableValidatorConfig {
   type: 'ecdsa'
-  account: Account
+  accounts: Account[]
+  threshold?: number
 }
 
 interface WebauthnValidatorConfig {
@@ -11,13 +12,12 @@ interface WebauthnValidatorConfig {
   account: WebAuthnAccount
 }
 
-type Validator = OwnableValidatorConfig | WebauthnValidatorConfig
-type ValidatorSet = OwnableValidatorConfig[] | WebauthnValidatorConfig
+type OwnerSet = OwnableValidatorConfig | WebauthnValidatorConfig
 interface RhinestoneAccountConfig {
   account: {
     type: 'safe'
   }
-  validators: ValidatorSet
+  owners: OwnerSet
   rhinestoneApiKey: string
   deployerAccount: Account
   provider?: {
@@ -48,4 +48,4 @@ interface Transaction {
   tokenRequests: TokenRequest[]
 }
 
-export type { RhinestoneAccountConfig, Transaction, Validator, ValidatorSet }
+export type { RhinestoneAccountConfig, Transaction, OwnerSet }

@@ -1,4 +1,4 @@
-import { concat, encodePacked, Hex } from 'viem'
+import { Account, concat, encodePacked, Hex } from 'viem'
 import {
   BundleResult,
   BundleStatus,
@@ -11,12 +11,8 @@ import { MetaIntent } from '@rhinestone/orchestrator-sdk'
 
 import { getAddress, getDeployArgs, isDeployed, deploy } from './account'
 import { getValidator } from './modules'
-import {
-  RhinestoneAccountConfig,
-  Transaction,
-  ValidatorSet,
-  Validator,
-} from '../types'
+import { RhinestoneAccountConfig, Transaction, OwnerSet } from '../types'
+import { WebAuthnAccount } from 'viem/account-abstraction'
 
 async function sendTransactions(
   config: RhinestoneAccountConfig,
@@ -51,7 +47,7 @@ async function sendTransactions(
   ]
 
   const orderBundleHash = getOrderBundleHash(orderPath[0].orderBundle)
-  const bundleSignature = await sign(config.validators, orderBundleHash)
+  const bundleSignature = await sign(config.owners, orderBundleHash)
   const validatorModule = getValidator(config)
   const packedSig = encodePacked(
     ['address', 'bytes'],
@@ -98,35 +94,35 @@ async function waitForExecution(config: RhinestoneAccountConfig, id: bigint) {
   return bundleResult
 }
 
-async function sign(validators: ValidatorSet, hash: Hex) {
-  if (Array.isArray(validators)) {
-    const signatures = await Promise.all(
-      validators.map((validator) => signSingle(validator, hash)),
-    )
-    return concat(signatures)
-  } else {
-    return await signSingle(validators, hash)
+async function sign(validators: OwnerSet, hash: Hex) {
+  switch (validators.type) {
+    case 'ecdsa': {
+      const signatures = await Promise.all(
+        validators.accounts.map((account) => signEcdsa(account, hash)),
+      )
+      return concat(signatures)
+    }
+    case 'passkey': {
+      return await signPasskey(validators.account, hash)
+    }
   }
 }
 
-async function signSingle(validator: Validator, hash: Hex) {
-  switch (validator.type) {
-    case 'ecdsa': {
-      const sign = validator.account.signMessage
-      if (!sign) {
-        throw new Error('Signing not supported for the account')
-      }
-      return await sign({ message: { raw: hash } })
-    }
-    case 'passkey': {
-      const sign = validator.account.signMessage
-      if (!sign) {
-        throw new Error('Signing not supported for the account')
-      }
-      const { signature } = await sign({ message: { raw: hash } })
-      return signature
-    }
+async function signEcdsa(account: Account, hash: Hex) {
+  const sign = account.signMessage
+  if (!sign) {
+    throw new Error('Signing not supported for the account')
   }
+  return await sign({ message: { raw: hash } })
+}
+
+async function signPasskey(account: WebAuthnAccount, hash: Hex) {
+  const sign = account.signMessage
+  if (!sign) {
+    throw new Error('Signing not supported for the account')
+  }
+  const { signature } = await sign({ message: { raw: hash } })
+  return signature
 }
 
 export { sendTransactions, waitForExecution }
