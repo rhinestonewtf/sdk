@@ -7,19 +7,19 @@ End-to-end chain abstraction and modularity toolkit
 ### Installation
 
 ```bash
-npm install @rhinestone/sdk
+npm install viem @rhinestone/sdk
 ```
 
 ```bash
-pnpm install @rhinestone/sdk
+pnpm install viem @rhinestone/sdk
 ```
 
 ```bash
-yarn add @rhinestone/sdk
+yarn add viem @rhinestone/sdk
 ```
 
 ```bash
-bun install @rhinestone/sdk
+bun install viem @rhinestone/sdk
 ```
 
 ### Quick Start
