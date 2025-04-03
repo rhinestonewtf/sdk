@@ -1,0 +1,55 @@
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'main'
+  pull_request:
+
+jobs:
+  build:
+    uses: 'rhinestonewtf/reusable-workflows/.github/workflows/pnpm-build.yaml@main'
+
+  test:
+    needs: ['build']
+    runs-on: 'ubuntu-latest'
+    steps:
+      - name: 'Check out the repo'
+        uses: 'actions/checkout@v4'
+
+      - uses: pnpm/action-setup@v4
+        name: Install pnpm
+        with:
+          version: 9
+          run_install: false
+
+      - name: 'Restore the cached build and the node modules'
+        if: ${{ inputs.restore-cache }}
+        uses: 'actions/cache/restore@v4'
+        with:
+          key: 'build-and-modules-${{ github.sha }}'
+          path: ${{ inputs.cache-path }}
+
+      - name: 'Install the Node.js dependencies'
+        run: 'pnpm install'
+
+      - name: 'Build'
+        run: 'pnpm build'
+
+      - name: 'Lint'
+        run: 'pnpm lint'
+
+      - name: 'Typecheck'
+        run: 'pnpm typecheck'
+
+      - name: 'Prettier'
+        run: 'pnpm prettier:check'
+
+      - name: Run tests
+        run: pnpm test
+        env:
+          ORCHESTRATOR_API_KEY: ${{ secrets.ORCHESTRATOR_API_KEY }}
+          BUNDLE_GENERATOR_PRIVATE_KEY: ${{ secrets.BUNDLE_GENERATOR_PRIVATE_KEY }}
+
+  size:
+    needs: ['build']
+    uses: 'rhinestonewtf/reusable-workflows/.github/workflows/pnpm-size.yaml@main'
