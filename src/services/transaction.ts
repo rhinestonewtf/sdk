@@ -7,7 +7,6 @@ import { getModules } from './modules';
 import { RhinestoneAccountConfig, Transaction, ValidatorConfig } from '../types';
 
 async function sendTransactions(config: RhinestoneAccountConfig, transaction: Transaction) {
-  // Deploy if needed
   const isAccountDeployed = await isDeployed(transaction.sourceChain, config);
   if (!isAccountDeployed) {
     await deploy(config.deployerAccount, transaction.sourceChain, config);

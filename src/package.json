@@ -29,7 +29,6 @@
     "access": "public"
   },
   "dependencies": {
-    "@rhinestone/module-sdk": "0.2.8",
     "@rhinestone/orchestrator-sdk": "0.2.0-rc.8"
   },
   "peerDependencies": {

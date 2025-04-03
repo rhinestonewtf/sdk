@@ -15,17 +15,13 @@ import {
   slice,
 } from 'viem'
 import {
-  RHINESTONE_ATTESTER_ADDRESS,
-} from '@rhinestone/module-sdk'
-import {
   getHookAddress,
   getSameChainModuleAddress,
   getTargetModuleAddress
 } from '@rhinestone/orchestrator-sdk'
 
 import { RhinestoneAccountConfig } from '../types'
-import { toOwners } from './modules'
-import { getValidators } from './modules'
+import { getValidators, toOwners, RHINESTONE_ATTESTER_ADDRESS } from './modules'
 
 async function getAddress(chain: Chain, config: RhinestoneAccountConfig) {
   const { factory, initializer } = await getDeployArgs(chain, config)
