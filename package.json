@@ -1,5 +1,5 @@
 {
-  "type": "module",
+  "private": true,
   "scripts": {
     "prepare": "bun run build",
     "build": "bun run clean && bun run build:esm && bun run build:types",
@@ -17,7 +17,7 @@
     "size": "size-limit"
   },
   "workspaces": [
-    "*"
+    "./*"
   ],
   "dependencies": {
     "@rhinestone/orchestrator-sdk": "0.2.0-rc.8",
