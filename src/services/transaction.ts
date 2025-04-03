@@ -1,19 +1,29 @@
-import { encodePacked, Hex } from 'viem';
-import { BundleResult, BundleStatus, getOrchestrator, getOrderBundleHash, PostOrderBundleResult, SignedMultiChainCompact } from '@rhinestone/orchestrator-sdk';
-import { MetaIntent } from '@rhinestone/orchestrator-sdk';
+import { encodePacked, Hex } from 'viem'
+import {
+  BundleResult,
+  BundleStatus,
+  getOrchestrator,
+  getOrderBundleHash,
+  PostOrderBundleResult,
+  SignedMultiChainCompact,
+} from '@rhinestone/orchestrator-sdk'
+import { MetaIntent } from '@rhinestone/orchestrator-sdk'
 
-import { getAddress, getDeployArgs, isDeployed, deploy } from './account';
-import { getModules } from './modules';
-import { RhinestoneAccountConfig, Transaction, ValidatorConfig } from '../types';
+import { getAddress, getDeployArgs, isDeployed, deploy } from './account'
+import { getModules } from './modules'
+import { RhinestoneAccountConfig, Transaction, ValidatorConfig } from '../types'
 
-async function sendTransactions(config: RhinestoneAccountConfig, transaction: Transaction) {
-  const isAccountDeployed = await isDeployed(transaction.sourceChain, config);
+async function sendTransactions(
+  config: RhinestoneAccountConfig,
+  transaction: Transaction,
+) {
+  const isAccountDeployed = await isDeployed(transaction.sourceChain, config)
   if (!isAccountDeployed) {
-    await deploy(config.deployerAccount, transaction.sourceChain, config);
+    await deploy(config.deployerAccount, transaction.sourceChain, config)
   }
 
   const targetChain = transaction.targetChain
-  const accountAddress = await getAddress(targetChain, config);
+  const accountAddress = await getAddress(targetChain, config)
   const metaIntent: MetaIntent = {
     targetChainId: targetChain.id,
     tokenTransfers: transaction.tokenRequests.map((tokenRequest) => ({
@@ -26,25 +36,22 @@ async function sendTransactions(config: RhinestoneAccountConfig, transaction: Tr
       to: call.to,
       data: call.data ?? '0x',
     })),
-  };
+  }
 
-  const orchestrator = getOrchestrator(config.rhinestoneApiKey);
-  const orderPath = await orchestrator.getOrderPath(
-    metaIntent,
-    accountAddress,
-  );
+  const orchestrator = getOrchestrator(config.rhinestoneApiKey)
+  const orderPath = await orchestrator.getOrderPath(metaIntent, accountAddress)
   orderPath[0].orderBundle.segments[0].witness.execs = [
     ...orderPath[0].injectedExecutions,
     ...metaIntent.targetExecutions,
-  ];
+  ]
 
-  const orderBundleHash = getOrderBundleHash(orderPath[0].orderBundle);
-  const bundleSignature = await sign(config.validators[0], orderBundleHash);
-  const validatorModules = getModules(config);
+  const orderBundleHash = getOrderBundleHash(orderPath[0].orderBundle)
+  const bundleSignature = await sign(config.validators[0], orderBundleHash)
+  const validatorModules = getModules(config)
   const packedSig = encodePacked(
-    ["address", "bytes"],
+    ['address', 'bytes'],
     [validatorModules[0], bundleSignature],
-  );
+  )
 
   const signedOrderBundle: SignedMultiChainCompact = {
     ...orderPath[0].orderBundle,
@@ -52,16 +59,13 @@ async function sendTransactions(config: RhinestoneAccountConfig, transaction: Tr
       packedSig,
     ),
     targetSignature: packedSig,
-  };
+  }
 
   const { factory, factoryData } = await getDeployArgs(targetChain, config)
   if (!factory || !factoryData) {
     throw new Error('Factory args not available')
   }
-  const initCode = encodePacked(
-    ["address", "bytes"],
-    [factory, factoryData],
-  );
+  const initCode = encodePacked(['address', 'bytes'], [factory, factoryData])
 
   const bundleResults: PostOrderBundleResult =
     await orchestrator.postSignedOrderBundle([
@@ -69,34 +73,37 @@ async function sendTransactions(config: RhinestoneAccountConfig, transaction: Tr
         signedOrderBundle,
         initCode,
       },
-    ]);
+    ])
 
-  return bundleResults[0].bundleId;
+  return bundleResults[0].bundleId
 }
 
 async function waitForExecution(config: RhinestoneAccountConfig, id: bigint) {
-  let bundleResult: BundleResult | null = null;
-  while (bundleResult === null || bundleResult.status === BundleStatus.PENDING) {
-    const orchestrator = getOrchestrator(config.rhinestoneApiKey);
+  let bundleResult: BundleResult | null = null
+  while (
+    bundleResult === null ||
+    bundleResult.status === BundleStatus.PENDING
+  ) {
+    const orchestrator = getOrchestrator(config.rhinestoneApiKey)
     bundleResult = await orchestrator.getBundleStatus(id)
   }
   if (bundleResult.status === BundleStatus.FAILED) {
     throw new Error('Bundle failed')
   }
-  return bundleResult;
+  return bundleResult
 }
 
 async function sign(validator: ValidatorConfig, hash: Hex) {
   switch (validator.type) {
     case 'ecdsa': {
-      const sign = validator.account.signMessage;
+      const sign = validator.account.signMessage
       if (!sign) {
         throw new Error('Signing not supported for the account')
       }
       return await sign({ message: { raw: hash } })
     }
     case 'passkey': {
-      const sign = validator.account.signMessage;
+      const sign = validator.account.signMessage
       if (!sign) {
         throw new Error('Signing not supported for the account')
       }
@@ -106,4 +113,4 @@ async function sign(validator: ValidatorConfig, hash: Hex) {
   }
 }
 
-export { sendTransactions, waitForExecution };
+export { sendTransactions, waitForExecution }

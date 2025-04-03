@@ -1,23 +1,23 @@
-import {
-  RhinestoneAccountConfig,
-  Transaction,
-} from './types';
+import { RhinestoneAccountConfig, Transaction } from './types'
 
-import { sendTransactions as sendTransactionsInternal, waitForExecution as waitForExecutionInternal } from './services/transaction';
-import { getAddress as getAddressInternal } from './services/account';
-import { Chain } from 'viem/chains';
+import {
+  sendTransactions as sendTransactionsInternal,
+  waitForExecution as waitForExecutionInternal,
+} from './services/transaction'
+import { getAddress as getAddressInternal } from './services/account'
+import { Chain } from 'viem/chains'
 
 async function createRhinestoneAccount(config: RhinestoneAccountConfig) {
   const sendTransactions = async (transaction: Transaction) => {
-    return await sendTransactionsInternal(config, transaction);
+    return await sendTransactionsInternal(config, transaction)
   }
 
-  const waitForExecution = async ({id}: { id: bigint }) => {
-    return await waitForExecutionInternal(config, id);
+  const waitForExecution = async ({ id }: { id: bigint }) => {
+    return await waitForExecutionInternal(config, id)
   }
 
   const getAddress = async (chain: Chain) => {
-    return await getAddressInternal(chain, config);
+    return await getAddressInternal(chain, config)
   }
 
   return {
@@ -28,4 +28,4 @@ async function createRhinestoneAccount(config: RhinestoneAccountConfig) {
   }
 }
 
-export { createRhinestoneAccount };
+export { createRhinestoneAccount }
