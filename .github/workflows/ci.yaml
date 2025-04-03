@@ -8,8 +8,7 @@ on:
   pull_request:
 
 jobs:
-  test:
-    needs: ['build']
+  build:
     runs-on: 'ubuntu-latest'
     steps:
       - name: 'Check out the repo'
@@ -39,6 +38,26 @@ jobs:
 
       - name: 'Prettier'
         run: 'bun run prettier:check'
+
+  test:
+    needs: ['build']
+    runs-on: 'ubuntu-latest'
+    steps:
+      - name: 'Check out the repo'
+        uses: 'actions/checkout@v4'
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: 'Restore the cached build and the node modules'
+        if: ${{ inputs.restore-cache }}
+        uses: 'actions/cache/restore@v4'
+        with:
+          key: 'build-and-modules-${{ github.sha }}'
+          path: ${{ inputs.cache-path }}
+
+      - name: 'Install the Node.js dependencies'
+        run: 'bun run install'
 
       - name: Run tests
         run: bun run test
