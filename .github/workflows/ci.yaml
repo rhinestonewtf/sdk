@@ -8,9 +8,6 @@ on:
   pull_request:
 
 jobs:
-  build:
-    uses: 'rhinestonewtf/reusable-workflows/.github/workflows/pnpm-build.yaml@main'
-
   test:
     needs: ['build']
     runs-on: 'ubuntu-latest'
@@ -18,11 +15,8 @@ jobs:
       - name: 'Check out the repo'
         uses: 'actions/checkout@v4'
 
-      - uses: pnpm/action-setup@v4
-        name: Install pnpm
-        with:
-          version: 9
-          run_install: false
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
 
       - name: 'Restore the cached build and the node modules'
         if: ${{ inputs.restore-cache }}
@@ -32,26 +26,19 @@ jobs:
           path: ${{ inputs.cache-path }}
 
       - name: 'Install the Node.js dependencies'
-        run: 'pnpm install'
+        run: 'bun run install'
 
       - name: 'Build'
-        run: 'pnpm build'
+        run: 'bun run build'
 
       - name: 'Lint'
-        run: 'pnpm lint'
+        run: 'bun run lint'
 
       - name: 'Typecheck'
-        run: 'pnpm typecheck'
+        run: 'bun run typecheck'
 
       - name: 'Prettier'
-        run: 'pnpm prettier:check'
+        run: 'bun run prettier:check'
 
       - name: Run tests
-        run: pnpm test
-        env:
-          ORCHESTRATOR_API_KEY: ${{ secrets.ORCHESTRATOR_API_KEY }}
-          BUNDLE_GENERATOR_PRIVATE_KEY: ${{ secrets.BUNDLE_GENERATOR_PRIVATE_KEY }}
-
-  size:
-    needs: ['build']
-    uses: 'rhinestonewtf/reusable-workflows/.github/workflows/pnpm-size.yaml@main'
+        run: bun run test
