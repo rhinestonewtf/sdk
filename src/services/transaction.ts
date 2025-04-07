@@ -1,38 +1,43 @@
-import { Account, concat, encodePacked, Hex } from 'viem'
+import { Account, Chain, concat, encodePacked, Hex } from 'viem'
+import { WebAuthnAccount } from 'viem/account-abstraction'
 import {
-  BundleResult,
-  BundleStatus,
+  type BundleResult,
+  type PostOrderBundleResult,
+  type MetaIntent,
+  type SignedMultiChainCompact,
+  BUNDLE_STATUS_PENDING,
+  BUNDLE_STATUS_FAILED,
   getOrchestrator,
   getOrderBundleHash,
-  PostOrderBundleResult,
-  SignedMultiChainCompact,
-} from '@rhinestone/orchestrator-sdk'
-import { MetaIntent } from '@rhinestone/orchestrator-sdk'
+} from './orchestrator'
 
 import { getAddress, getDeployArgs, isDeployed, deploy } from './account'
-import { getValidator } from './modules'
+import {
+  getValidator,
+  getWebauthnValidatorSignature,
+  isRip7212SupportedNetwork,
+} from './modules'
 import { RhinestoneAccountConfig, Transaction, OwnerSet } from '../types'
-import { WebAuthnAccount } from 'viem/account-abstraction'
 
 async function sendTransactions(
   config: RhinestoneAccountConfig,
   transaction: Transaction,
 ) {
-  const isAccountDeployed = await isDeployed(transaction.sourceChain, config)
+  const { sourceChain, targetChain, calls, tokenRequests } = transaction
+  const isAccountDeployed = await isDeployed(sourceChain, config)
   if (!isAccountDeployed) {
-    await deploy(config.deployerAccount, transaction.sourceChain, config)
+    await deploy(config.deployerAccount, sourceChain, config)
   }
 
-  const targetChain = transaction.targetChain
-  const accountAddress = await getAddress(targetChain, config)
+  const accountAddress = await getAddress(config)
   const metaIntent: MetaIntent = {
     targetChainId: targetChain.id,
-    tokenTransfers: transaction.tokenRequests.map((tokenRequest) => ({
+    tokenTransfers: tokenRequests.map((tokenRequest) => ({
       tokenAddress: tokenRequest.address,
       amount: tokenRequest.amount,
     })),
     targetAccount: accountAddress,
-    targetExecutions: transaction.calls.map((call) => ({
+    targetExecutions: calls.map((call) => ({
       value: call.value ?? 0n,
       to: call.to,
       data: call.data ?? '0x',
@@ -47,7 +52,11 @@ async function sendTransactions(
   ]
 
   const orderBundleHash = getOrderBundleHash(orderPath[0].orderBundle)
-  const bundleSignature = await sign(config.owners, orderBundleHash)
+  const bundleSignature = await sign(
+    config.owners,
+    sourceChain,
+    orderBundleHash,
+  )
   const validatorModule = getValidator(config)
   const packedSig = encodePacked(
     ['address', 'bytes'],
@@ -62,7 +71,7 @@ async function sendTransactions(
     targetSignature: packedSig,
   }
 
-  const { factory, factoryData } = await getDeployArgs(targetChain, config)
+  const { factory, factoryData } = await getDeployArgs(config)
   if (!factory || !factoryData) {
     throw new Error('Factory args not available')
   }
@@ -83,18 +92,18 @@ async function waitForExecution(config: RhinestoneAccountConfig, id: bigint) {
   let bundleResult: BundleResult | null = null
   while (
     bundleResult === null ||
-    bundleResult.status === BundleStatus.PENDING
+    bundleResult.status === BUNDLE_STATUS_PENDING
   ) {
     const orchestrator = getOrchestrator(config.rhinestoneApiKey)
     bundleResult = await orchestrator.getBundleStatus(id)
   }
-  if (bundleResult.status === BundleStatus.FAILED) {
+  if (bundleResult.status === BUNDLE_STATUS_FAILED) {
     throw new Error('Bundle failed')
   }
   return bundleResult
 }
 
-async function sign(validators: OwnerSet, hash: Hex) {
+async function sign(validators: OwnerSet, chain: Chain, hash: Hex) {
   switch (validators.type) {
     case 'ecdsa': {
       const signatures = await Promise.all(
@@ -103,7 +112,7 @@ async function sign(validators: OwnerSet, hash: Hex) {
       return concat(signatures)
     }
     case 'passkey': {
-      return await signPasskey(validators.account, hash)
+      return await signPasskey(validators.account, chain, hash)
     }
   }
 }
@@ -116,13 +125,15 @@ async function signEcdsa(account: Account, hash: Hex) {
   return await sign({ message: { raw: hash } })
 }
 
-async function signPasskey(account: WebAuthnAccount, hash: Hex) {
-  const sign = account.signMessage
-  if (!sign) {
-    throw new Error('Signing not supported for the account')
-  }
-  const { signature } = await sign({ message: { raw: hash } })
-  return signature
+async function signPasskey(account: WebAuthnAccount, chain: Chain, hash: Hex) {
+  const { webauthn, signature } = await account.sign({ hash })
+  const usePrecompiled = isRip7212SupportedNetwork(chain)
+  const encodedSignature = getWebauthnValidatorSignature({
+    webauthn,
+    signature,
+    usePrecompiled,
+  })
+  return encodedSignature
 }
 
 export { sendTransactions, waitForExecution }
