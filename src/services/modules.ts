@@ -32,6 +32,23 @@ interface WebauthnCredential {
   hook?: Address
 }
 
+interface WebAuthnData {
+  authenticatorData: Hex
+  clientDataJSON: string
+  typeIndex: number | bigint
+}
+
+interface WebauthnValidatorSignature {
+  webauthn: WebAuthnData
+  signature: WebauthnSignature | Hex | Uint8Array
+  usePrecompiled?: boolean
+}
+
+interface WebauthnSignature {
+  r: bigint
+  s: bigint
+}
+
 const SAFE_7579_LAUNCHPAD_ADDRESS: Address =
   '0x7579011aB74c46090561ea277Ba79D510c6C00ff'
 const SAFE_7579_ADAPTER_ADDRESS: Address =
@@ -153,6 +170,68 @@ function getWebAuthnValidator(webAuthnCredential: WebauthnCredential): Module {
     deInitData: '0x',
     additionalContext: '0x',
     type: 'validator',
+  }
+}
+
+export const getWebauthnValidatorSignature = ({
+  webauthn,
+  signature,
+  usePrecompiled = false,
+}: WebauthnValidatorSignature) => {
+  const { authenticatorData, clientDataJSON, typeIndex } = webauthn
+  let r: bigint
+  let s: bigint
+  if (typeof signature === 'string' || signature instanceof Uint8Array) {
+    const parsedSignature = parseSignature(signature)
+    r = parsedSignature.r
+    s = parsedSignature.s
+  } else {
+    r = signature.r
+    s = signature.s
+  }
+  return encodeAbiParameters(
+    [
+      { type: 'bytes', name: 'authenticatorData' },
+      {
+        type: 'string',
+        name: 'clientDataJSON',
+      },
+      {
+        type: 'uint256',
+        name: 'responseTypeLocation',
+      },
+      {
+        type: 'uint256',
+        name: 'r',
+      },
+      {
+        type: 'uint256',
+        name: 's',
+      },
+      {
+        type: 'bool',
+        name: 'usePrecompiled',
+      },
+    ],
+    [
+      authenticatorData,
+      clientDataJSON,
+      typeof typeIndex === 'bigint' ? typeIndex : BigInt(typeIndex),
+      r,
+      s,
+      usePrecompiled,
+    ],
+  )
+}
+
+function parseSignature(signature: Hex | Uint8Array): WebauthnSignature {
+  const bytes =
+    typeof signature === 'string' ? hexToBytes(signature) : signature
+  const r = bytes.slice(0, 32)
+  const s = bytes.slice(32, 64)
+  return {
+    r: BigInt(bytesToHex(r)),
+    s: BigInt(bytesToHex(s)),
   }
 }
 

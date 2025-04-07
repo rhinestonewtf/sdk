@@ -1,4 +1,5 @@
 import { Account, concat, encodePacked, Hex } from 'viem'
+import { WebAuthnAccount } from 'viem/account-abstraction'
 import {
   BundleResult,
   BundleStatus,
@@ -10,9 +11,8 @@ import {
 import { MetaIntent } from '@rhinestone/orchestrator-sdk'
 
 import { getAddress, getDeployArgs, isDeployed, deploy } from './account'
-import { getValidator } from './modules'
+import { getValidator, getWebauthnValidatorSignature } from './modules'
 import { RhinestoneAccountConfig, Transaction, OwnerSet } from '../types'
-import { WebAuthnAccount } from 'viem/account-abstraction'
 
 async function sendTransactions(
   config: RhinestoneAccountConfig,
@@ -117,12 +117,12 @@ async function signEcdsa(account: Account, hash: Hex) {
 }
 
 async function signPasskey(account: WebAuthnAccount, hash: Hex) {
-  const sign = account.signMessage
-  if (!sign) {
-    throw new Error('Signing not supported for the account')
-  }
-  const { signature } = await sign({ message: { raw: hash } })
-  return signature
+  const { webauthn, signature } = await account.sign({ hash })
+  const encodedSignature = getWebauthnValidatorSignature({
+    webauthn,
+    signature,
+  })
+  return encodedSignature
 }
 
 export { sendTransactions, waitForExecution }
