@@ -6,7 +6,6 @@ import {
   hexToBytes,
   keccak256,
   toHex,
-  zeroAddress,
 } from 'viem'
 
 import { RhinestoneAccountConfig } from '../types'
