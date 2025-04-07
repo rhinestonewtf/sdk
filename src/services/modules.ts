@@ -1,12 +1,23 @@
 import {
   Address,
   bytesToHex,
+  Chain,
   encodeAbiParameters,
   Hex,
   hexToBytes,
   keccak256,
   toHex,
 } from 'viem'
+import {
+  arbitrum,
+  arbitrumSepolia,
+  base,
+  baseSepolia,
+  optimism,
+  optimismSepolia,
+  polygon,
+  polygonAmoy,
+} from 'viem/chains'
 
 import { RhinestoneAccountConfig } from '../types'
 
@@ -39,9 +50,9 @@ interface WebAuthnData {
 }
 
 interface WebauthnValidatorSignature {
+  chain: Chain
   webauthn: WebAuthnData
   signature: WebauthnSignature | Hex | Uint8Array
-  usePrecompiled?: boolean
 }
 
 interface WebauthnSignature {
@@ -173,11 +184,12 @@ function getWebAuthnValidator(webAuthnCredential: WebauthnCredential): Module {
   }
 }
 
-export const getWebauthnValidatorSignature = ({
+export function getWebauthnValidatorSignature({
+  chain,
   webauthn,
   signature,
-  usePrecompiled = false,
-}: WebauthnValidatorSignature) => {
+}: WebauthnValidatorSignature) {
+  const usePrecompiled = isRip7212SupportedNetwork(chain)
   const { authenticatorData, clientDataJSON, typeIndex } = webauthn
   let r: bigint
   let s: bigint
@@ -222,6 +234,21 @@ export const getWebauthnValidatorSignature = ({
       usePrecompiled,
     ],
   )
+}
+
+function isRip7212SupportedNetwork(chain: Chain) {
+  const supportedChains: Chain[] = [
+    optimism,
+    optimismSepolia,
+    polygon,
+    polygonAmoy,
+    base,
+    baseSepolia,
+    arbitrum,
+    arbitrumSepolia,
+  ]
+
+  return supportedChains.includes(chain)
 }
 
 function parseSignature(signature: Hex | Uint8Array): WebauthnSignature {

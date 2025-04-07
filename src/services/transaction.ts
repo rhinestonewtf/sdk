@@ -1,4 +1,4 @@
-import { Account, concat, encodePacked, Hex } from 'viem'
+import { Account, Chain, concat, encodePacked, Hex } from 'viem'
 import { WebAuthnAccount } from 'viem/account-abstraction'
 import {
   type BundleResult,
@@ -19,21 +19,21 @@ async function sendTransactions(
   config: RhinestoneAccountConfig,
   transaction: Transaction,
 ) {
-  const isAccountDeployed = await isDeployed(transaction.sourceChain, config)
+  const { sourceChain, targetChain, calls, tokenRequests } = transaction
+  const isAccountDeployed = await isDeployed(sourceChain, config)
   if (!isAccountDeployed) {
-    await deploy(config.deployerAccount, transaction.sourceChain, config)
+    await deploy(config.deployerAccount, sourceChain, config)
   }
 
-  const targetChain = transaction.targetChain
   const accountAddress = await getAddress(config)
   const metaIntent: MetaIntent = {
     targetChainId: targetChain.id,
-    tokenTransfers: transaction.tokenRequests.map((tokenRequest) => ({
+    tokenTransfers: tokenRequests.map((tokenRequest) => ({
       tokenAddress: tokenRequest.address,
       amount: tokenRequest.amount,
     })),
     targetAccount: accountAddress,
-    targetExecutions: transaction.calls.map((call) => ({
+    targetExecutions: calls.map((call) => ({
       value: call.value ?? 0n,
       to: call.to,
       data: call.data ?? '0x',
@@ -48,7 +48,11 @@ async function sendTransactions(
   ]
 
   const orderBundleHash = getOrderBundleHash(orderPath[0].orderBundle)
-  const bundleSignature = await sign(config.owners, orderBundleHash)
+  const bundleSignature = await sign(
+    config.owners,
+    sourceChain,
+    orderBundleHash,
+  )
   const validatorModule = getValidator(config)
   const packedSig = encodePacked(
     ['address', 'bytes'],
@@ -95,7 +99,7 @@ async function waitForExecution(config: RhinestoneAccountConfig, id: bigint) {
   return bundleResult
 }
 
-async function sign(validators: OwnerSet, hash: Hex) {
+async function sign(validators: OwnerSet, chain: Chain, hash: Hex) {
   switch (validators.type) {
     case 'ecdsa': {
       const signatures = await Promise.all(
@@ -104,7 +108,7 @@ async function sign(validators: OwnerSet, hash: Hex) {
       return concat(signatures)
     }
     case 'passkey': {
-      return await signPasskey(validators.account, hash)
+      return await signPasskey(validators.account, chain, hash)
     }
   }
 }
@@ -117,9 +121,10 @@ async function signEcdsa(account: Account, hash: Hex) {
   return await sign({ message: { raw: hash } })
 }
 
-async function signPasskey(account: WebAuthnAccount, hash: Hex) {
+async function signPasskey(account: WebAuthnAccount, chain: Chain, hash: Hex) {
   const { webauthn, signature } = await account.sign({ hash })
   const encodedSignature = getWebauthnValidatorSignature({
+    chain,
     webauthn,
     signature,
   })
