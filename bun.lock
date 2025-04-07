@@ -3,7 +3,6 @@
   "workspaces": {
     "": {
       "dependencies": {
-        "@rhinestone/orchestrator-sdk": "0.2.0-rc.8",
         "viem": "^2.20.0",
       },
       "devDependencies": {
@@ -23,7 +22,7 @@
       "name": "@rhinestone/sdk",
       "version": "0.0.0",
       "dependencies": {
-        "@rhinestone/orchestrator-sdk": "0.2.0-rc.8",
+        "axios": "^1.7.0",
       },
       "peerDependencies": {
         "viem": "^2.20.0",
@@ -171,8 +170,6 @@
     "@nodelib/fs.stat": ["@nodelib/fs.stat@2.0.5", "", {}, "sha512-RkhPPp2zrqDAQA/2jNhnztcPAlv64XdhIp7a7454A5ovI7Bukxgt7MX7udwAu3zg1DcpPU0rz3VV1SeaqvY4+A=="],
 
     "@nodelib/fs.walk": ["@nodelib/fs.walk@1.2.8", "", { "dependencies": { "@nodelib/fs.scandir": "2.1.5", "fastq": "^1.6.0" } }, "sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg=="],
-
-    "@rhinestone/orchestrator-sdk": ["@rhinestone/orchestrator-sdk@0.2.0-rc.8", "", { "dependencies": { "axios": "^1.8.3" }, "peerDependencies": { "viem": "^2.17.8" } }, "sha512-ACGdTj06y5/2jBEB4prpddNpKKFM2XtZK9iezKBc1/I60XBEXr8iuDzacgAG+/LrQhvrnRzxX2j29I+5RZgStQ=="],
 
     "@rhinestone/sdk": ["@rhinestone/sdk@workspace:src"],
 

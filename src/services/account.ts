@@ -16,10 +16,10 @@ import {
   Hex,
 } from 'viem'
 import {
-  getHookAddress,
-  getSameChainModuleAddress,
-  getTargetModuleAddress,
-} from '@rhinestone/orchestrator-sdk'
+  HOOK_ADDRESS,
+  SAME_CHAIN_MODULE_ADDRESS,
+  TARGET_MODULE_ADDRESS,
+} from './orchestrator'
 
 import { RhinestoneAccountConfig } from '../types'
 import {
@@ -120,21 +120,21 @@ async function getDeployArgs(
               ],
               [
                 {
-                  module: getSameChainModuleAddress(targetChain.id),
+                  module: SAME_CHAIN_MODULE_ADDRESS,
                   initData: '0x',
                 },
                 {
-                  module: getTargetModuleAddress(targetChain.id),
+                  module: TARGET_MODULE_ADDRESS,
                   initData: '0x',
                 },
                 {
-                  module: getHookAddress(targetChain.id),
+                  module: HOOK_ADDRESS,
                   initData: '0x',
                 },
               ],
               [
                 {
-                  module: getTargetModuleAddress(targetChain.id),
+                  module: TARGET_MODULE_ADDRESS,
                   initData: encodeAbiParameters(
                     [
                       { name: 'selector', type: 'bytes4' },
@@ -147,7 +147,7 @@ async function getDeployArgs(
               ],
               [
                 {
-                  module: getHookAddress(targetChain.id),
+                  module: HOOK_ADDRESS,
                   initData: encodeAbiParameters(
                     [
                       { name: 'hookType', type: 'uint256' },

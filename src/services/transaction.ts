@@ -1,14 +1,15 @@
 import { Account, concat, encodePacked, Hex } from 'viem'
 import { WebAuthnAccount } from 'viem/account-abstraction'
 import {
-  BundleResult,
-  BundleStatus,
+  type BundleResult,
+  type PostOrderBundleResult,
+  type MetaIntent,
+  type SignedMultiChainCompact,
+  BUNDLE_STATUS_PENDING,
+  BUNDLE_STATUS_FAILED,
   getOrchestrator,
   getOrderBundleHash,
-  PostOrderBundleResult,
-  SignedMultiChainCompact,
-} from '@rhinestone/orchestrator-sdk'
-import { MetaIntent } from '@rhinestone/orchestrator-sdk'
+} from './orchestrator'
 
 import { getAddress, getDeployArgs, isDeployed, deploy } from './account'
 import { getValidator, getWebauthnValidatorSignature } from './modules'
@@ -83,12 +84,12 @@ async function waitForExecution(config: RhinestoneAccountConfig, id: bigint) {
   let bundleResult: BundleResult | null = null
   while (
     bundleResult === null ||
-    bundleResult.status === BundleStatus.PENDING
+    bundleResult.status === BUNDLE_STATUS_PENDING
   ) {
     const orchestrator = getOrchestrator(config.rhinestoneApiKey)
     bundleResult = await orchestrator.getBundleStatus(id)
   }
-  if (bundleResult.status === BundleStatus.FAILED) {
+  if (bundleResult.status === BUNDLE_STATUS_FAILED) {
     throw new Error('Bundle failed')
   }
   return bundleResult
