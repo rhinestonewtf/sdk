@@ -101,34 +101,21 @@ const usdc = getTokenAddress(sourceChain)
 const usdcTarget = getTokenAddress(targetChain)
 const usdcAmount = 1n
 
-const ethBalance = await publicClient.getBalance({
-  address,
+const txHash = await fundingClient.sendTransaction({
+  to: address,
+  value: parseEther('0.001'),
 })
-if (ethBalance < parseEther('0.001')) {
-  const txHash = await fundingClient.sendTransaction({
-    to: address,
-    value: parseEther('0.001'),
-  })
-  await publicClient.waitForTransactionReceipt({ hash: txHash })
-}
+await publicClient.waitForTransactionReceipt({ hash: txHash })
 
-const usdcBalance = await publicClient.readContract({
-  address: usdcSource,
-  abi: erc20Abi,
-  functionName: 'balanceOf',
-  args: [address],
+const txHash2 = await fundingClient.sendTransaction({
+  to: usdcSource,
+  data: encodeFunctionData({
+    abi: erc20Abi,
+    functionName: 'transfer',
+    args: [address, usdcAmount],
+  }),
 })
-if (usdcBalance < usdcAmount) {
-  const txHash2 = await fundingClient.sendTransaction({
-    to: usdcSource,
-    data: encodeFunctionData({
-      abi: erc20Abi,
-      functionName: 'transfer',
-      args: [address, usdcAmount],
-    }),
-  })
-  await publicClient.waitForTransactionReceipt({ hash: txHash2 })
-}
+await publicClient.waitForTransactionReceipt({ hash: txHash2 })
 
 function getTokenAddress(chain: Chain) {
   switch (chain.id) {

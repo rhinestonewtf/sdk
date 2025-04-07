@@ -1,12 +1,23 @@
 import {
   Address,
   bytesToHex,
+  Chain,
   encodeAbiParameters,
   Hex,
   hexToBytes,
   keccak256,
   toHex,
 } from 'viem'
+import {
+  arbitrum,
+  arbitrumSepolia,
+  base,
+  baseSepolia,
+  optimism,
+  optimismSepolia,
+  polygon,
+  polygonAmoy,
+} from 'viem/chains'
 
 import { RhinestoneAccountConfig } from '../types'
 
@@ -30,6 +41,23 @@ interface WebauthnCredential {
   pubKey: PublicKey | Hex | Uint8Array
   authenticatorId: string
   hook?: Address
+}
+
+interface WebAuthnData {
+  authenticatorData: Hex
+  clientDataJSON: string
+  typeIndex: number | bigint
+}
+
+interface WebauthnValidatorSignature {
+  webauthn: WebAuthnData
+  signature: WebauthnSignature | Hex | Uint8Array
+  usePrecompiled?: boolean
+}
+
+interface WebauthnSignature {
+  r: bigint
+  s: bigint
 }
 
 const SAFE_7579_LAUNCHPAD_ADDRESS: Address =
@@ -153,6 +181,83 @@ function getWebAuthnValidator(webAuthnCredential: WebauthnCredential): Module {
     deInitData: '0x',
     additionalContext: '0x',
     type: 'validator',
+  }
+}
+
+export function getWebauthnValidatorSignature({
+  webauthn,
+  signature,
+  usePrecompiled = false,
+}: WebauthnValidatorSignature) {
+  const { authenticatorData, clientDataJSON, typeIndex } = webauthn
+  let r: bigint
+  let s: bigint
+  if (typeof signature === 'string' || signature instanceof Uint8Array) {
+    const parsedSignature = parseSignature(signature)
+    r = parsedSignature.r
+    s = parsedSignature.s
+  } else {
+    r = signature.r
+    s = signature.s
+  }
+  return encodeAbiParameters(
+    [
+      { type: 'bytes', name: 'authenticatorData' },
+      {
+        type: 'string',
+        name: 'clientDataJSON',
+      },
+      {
+        type: 'uint256',
+        name: 'responseTypeLocation',
+      },
+      {
+        type: 'uint256',
+        name: 'r',
+      },
+      {
+        type: 'uint256',
+        name: 's',
+      },
+      {
+        type: 'bool',
+        name: 'usePrecompiled',
+      },
+    ],
+    [
+      authenticatorData,
+      clientDataJSON,
+      typeof typeIndex === 'bigint' ? typeIndex : BigInt(typeIndex),
+      r,
+      s,
+      usePrecompiled,
+    ],
+  )
+}
+
+export function isRip7212SupportedNetwork(chain: Chain) {
+  const supportedChains: Chain[] = [
+    optimism,
+    optimismSepolia,
+    polygon,
+    polygonAmoy,
+    base,
+    baseSepolia,
+    arbitrum,
+    arbitrumSepolia,
+  ]
+
+  return supportedChains.includes(chain)
+}
+
+function parseSignature(signature: Hex | Uint8Array): WebauthnSignature {
+  const bytes =
+    typeof signature === 'string' ? hexToBytes(signature) : signature
+  const r = bytes.slice(0, 32)
+  const s = bytes.slice(32, 64)
+  return {
+    r: BigInt(bytesToHex(r)),
+    s: BigInt(bytesToHex(s)),
   }
 }
 

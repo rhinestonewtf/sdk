@@ -16,8 +16,8 @@ async function createRhinestoneAccount(config: RhinestoneAccountConfig) {
     return await waitForExecutionInternal(config, id)
   }
 
-  const getAddress = async (chain: Chain) => {
-    return await getAddressInternal(chain, config)
+  const getAddress = async () => {
+    return await getAddressInternal(config)
   }
 
   return {
