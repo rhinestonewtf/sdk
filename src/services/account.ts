@@ -142,26 +142,7 @@ async function getDeployArgs(config: RhinestoneAccountConfig) {
                   ),
                 },
               ],
-              [
-                {
-                  module: HOOK_ADDRESS,
-                  initData: encodeAbiParameters(
-                    [
-                      { name: 'hookType', type: 'uint256' },
-                      { name: 'hookId', type: 'bytes4' },
-                      { name: 'data', type: 'bytes' },
-                    ],
-                    [
-                      0n,
-                      '0x00000000',
-                      encodeAbiParameters(
-                        [{ name: 'value', type: 'bool' }],
-                        [true],
-                      ),
-                    ],
-                  ),
-                },
-              ],
+              [],
               [RHINESTONE_ATTESTER_ADDRESS, OMNI_ACCOUNT_MOCK_ATTESTER_ADDRESS],
               1,
             ],
