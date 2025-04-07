@@ -25,7 +25,7 @@ async function sendTransactions(
   }
 
   const targetChain = transaction.targetChain
-  const accountAddress = await getAddress(targetChain, config)
+  const accountAddress = await getAddress(config)
   const metaIntent: MetaIntent = {
     targetChainId: targetChain.id,
     tokenTransfers: transaction.tokenRequests.map((tokenRequest) => ({
@@ -63,7 +63,7 @@ async function sendTransactions(
     targetSignature: packedSig,
   }
 
-  const { factory, factoryData } = await getDeployArgs(targetChain, config)
+  const { factory, factoryData } = await getDeployArgs(config)
   if (!factory || !factoryData) {
     throw new Error('Factory args not available')
   }

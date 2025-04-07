@@ -36,8 +36,8 @@ const SAFE_SINGLETON_ADDRESS: Address =
 const SAFE_PROXY_FACTORY_ADDRESS: Address =
   '0x4e1dcf7ad4e460cfd30791ccc4f9c8a4f820ec67'
 
-async function getAddress(chain: Chain, config: RhinestoneAccountConfig) {
-  const { factory, salt, hashedInitcode } = await getDeployArgs(chain, config)
+async function getAddress(config: RhinestoneAccountConfig) {
+  const { factory, salt, hashedInitcode } = await getDeployArgs(config)
   const hash = keccak256(
     encodePacked(
       ['bytes1', 'address', 'bytes32', 'bytes'],
@@ -53,7 +53,7 @@ async function isDeployed(chain: Chain, config: RhinestoneAccountConfig) {
     chain: chain,
     transport: http(),
   })
-  const address = await getAddress(chain, config)
+  const address = await getAddress(config)
   const code = await publicClient.getCode({
     address,
   })
@@ -71,7 +71,7 @@ async function deploy(
   chain: Chain,
   config: RhinestoneAccountConfig,
 ) {
-  const { factory, factoryData } = await getDeployArgs(chain, config)
+  const { factory, factoryData } = await getDeployArgs(config)
   const publicClient = createPublicClient({
     chain: chain,
     transport: http(),
@@ -88,10 +88,7 @@ async function deploy(
   await publicClient.waitForTransactionReceipt({ hash: tx })
 }
 
-async function getDeployArgs(
-  targetChain: Chain,
-  config: RhinestoneAccountConfig,
-) {
+async function getDeployArgs(config: RhinestoneAccountConfig) {
   switch (config.account.type) {
     case 'safe': {
       const owners = toOwners(config)
