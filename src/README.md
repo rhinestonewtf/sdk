@@ -74,7 +74,7 @@ const fundingClient = createWalletClient({
 
 // You can use an existing PK here
 const privateKey = generatePrivateKey()
-console.log('pk', generatePrivateKey())
+console.log('pk', privateKey)
 const account = privateKeyToAccount(privateKey)
 
 const rhinestoneAccount = await createRhinestoneAccount({
