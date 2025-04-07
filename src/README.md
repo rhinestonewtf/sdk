@@ -81,12 +81,10 @@ const rhinestoneAccount = await createRhinestoneAccount({
   account: {
     type: 'safe',
   },
-  validators: [
-    {
-      type: 'ecdsa',
-      account,
-    },
-  ],
+  owners: {
+    type: 'ecdsa',
+    accounts: [account],
+  }
   rhinestoneApiKey,
   deployerAccount: fundingAccount,
 })

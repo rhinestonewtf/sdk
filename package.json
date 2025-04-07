@@ -1,12 +1,12 @@
 {
-  "type": "module",
+  "private": true,
   "scripts": {
     "prepare": "bun run build",
     "build": "bun run clean && bun run build:esm && bun run build:types",
     "build:esm": "tsc --module es2015 --outDir ./src/dist && tsc-alias --outDir ./src/dist && printf '{\"type\": \"module\",\"sideEffects\":false}' > ./src/dist/package.json",
     "build:types": "tsc --module esnext --declarationDir ./src/dist --outDir ./src/dist --emitDeclarationOnly --declaration --declarationMap",
     "clean": "rimraf src/dist",
-    "test": "",
+    "test": "echo 'OK'",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "prettier:check": "prettier --check \"**/*.{json,md,svg,yml,ts}\"",
@@ -17,10 +17,9 @@
     "size": "size-limit"
   },
   "workspaces": [
-    "packages/*"
+    "./*"
   ],
   "dependencies": {
-    "@rhinestone/module-sdk": "0.2.8",
     "@rhinestone/orchestrator-sdk": "0.2.0-rc.8",
     "viem": "^2.20.0"
   },
