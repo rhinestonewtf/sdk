@@ -46,7 +46,7 @@ import {
   parseEther,
 } from 'viem'
 
-import { createRhinestoneAccount } from './index'
+import { createRhinestoneAccount } from '@rhinestone/sdk'
 
 const fundingPrivateKey = process.env.FUNDING_PRIVATE_KEY
 if (!fundingPrivateKey) {
