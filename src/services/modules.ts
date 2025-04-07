@@ -50,9 +50,9 @@ interface WebAuthnData {
 }
 
 interface WebauthnValidatorSignature {
-  chain: Chain
   webauthn: WebAuthnData
   signature: WebauthnSignature | Hex | Uint8Array
+  usePrecompiled?: boolean
 }
 
 interface WebauthnSignature {
@@ -185,11 +185,10 @@ function getWebAuthnValidator(webAuthnCredential: WebauthnCredential): Module {
 }
 
 export function getWebauthnValidatorSignature({
-  chain,
   webauthn,
   signature,
+  usePrecompiled = false,
 }: WebauthnValidatorSignature) {
-  const usePrecompiled = isRip7212SupportedNetwork(chain)
   const { authenticatorData, clientDataJSON, typeIndex } = webauthn
   let r: bigint
   let s: bigint
@@ -236,7 +235,7 @@ export function getWebauthnValidatorSignature({
   )
 }
 
-function isRip7212SupportedNetwork(chain: Chain) {
+export function isRip7212SupportedNetwork(chain: Chain) {
   const supportedChains: Chain[] = [
     optimism,
     optimismSepolia,

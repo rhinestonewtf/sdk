@@ -12,7 +12,11 @@ import {
 } from './orchestrator'
 
 import { getAddress, getDeployArgs, isDeployed, deploy } from './account'
-import { getValidator, getWebauthnValidatorSignature } from './modules'
+import {
+  getValidator,
+  getWebauthnValidatorSignature,
+  isRip7212SupportedNetwork,
+} from './modules'
 import { RhinestoneAccountConfig, Transaction, OwnerSet } from '../types'
 
 async function sendTransactions(
@@ -123,10 +127,11 @@ async function signEcdsa(account: Account, hash: Hex) {
 
 async function signPasskey(account: WebAuthnAccount, chain: Chain, hash: Hex) {
   const { webauthn, signature } = await account.sign({ hash })
+  const usePrecompiled = isRip7212SupportedNetwork(chain)
   const encodedSignature = getWebauthnValidatorSignature({
-    chain,
     webauthn,
     signature,
+    usePrecompiled,
   })
   return encodedSignature
 }
