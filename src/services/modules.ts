@@ -58,7 +58,7 @@ function getValidator(config: RhinestoneAccountConfig) {
   switch (ownerSet.type) {
     case 'ecdsa':
       return getOwnableValidator({
-        threshold: ownerSet.threshold ?? ownerSet.accounts.length,
+        threshold: ownerSet.threshold ?? 1,
         owners: ownerSet.accounts.map((account) => account.address),
       })
     case 'passkey':
