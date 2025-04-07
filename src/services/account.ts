@@ -22,7 +22,19 @@ import {
 } from '@rhinestone/orchestrator-sdk'
 
 import { RhinestoneAccountConfig } from '../types'
-import { getValidator, toOwners, RHINESTONE_ATTESTER_ADDRESS } from './modules'
+import {
+  getValidator,
+  toOwners,
+  SAFE_7579_LAUNCHPAD_ADDRESS,
+  SAFE_7579_ADAPTER_ADDRESS,
+  OMNI_ACCOUNT_MOCK_ATTESTER_ADDRESS,
+  RHINESTONE_ATTESTER_ADDRESS,
+} from './modules'
+
+const SAFE_SINGLETON_ADDRESS: Address =
+  '0x29fcb43b46531bca003ddc8fcb67ffe91900c762'
+const SAFE_PROXY_FACTORY_ADDRESS: Address =
+  '0x4e1dcf7ad4e460cfd30791ccc4f9c8a4f820ec67'
 
 async function getAddress(chain: Chain, config: RhinestoneAccountConfig) {
   const { factory, salt, hashedInitcode } = await getDeployArgs(chain, config)
@@ -91,7 +103,7 @@ async function getDeployArgs(
         args: [
           owners,
           BigInt(1),
-          '0x7579011aB74c46090561ea277Ba79D510c6C00ff',
+          SAFE_7579_LAUNCHPAD_ADDRESS,
           encodeFunctionData({
             abi: parseAbi([
               'struct ModuleInit {address module;bytes initData;}',
@@ -99,7 +111,7 @@ async function getDeployArgs(
             ]),
             functionName: 'addSafe7579',
             args: [
-              '0x7579EE8307284F293B1927136486880611F20002',
+              SAFE_7579_ADAPTER_ADDRESS,
               [
                 {
                   module: getValidator(config).address,
@@ -153,29 +165,24 @@ async function getDeployArgs(
                   ),
                 },
               ],
-              [
-                RHINESTONE_ATTESTER_ADDRESS,
-                '0x6D0515e8E499468DCe9583626f0cA15b887f9d03',
-              ],
+              [RHINESTONE_ATTESTER_ADDRESS, OMNI_ACCOUNT_MOCK_ATTESTER_ADDRESS],
               1,
             ],
           }),
-          '0x7579EE8307284F293B1927136486880611F20002',
+          SAFE_7579_ADAPTER_ADDRESS,
           zeroAddress,
           BigInt(0),
           zeroAddress,
         ],
       })
 
-      const singleton: Address = '0x29fcb43b46531bca003ddc8fcb67ffe91900c762'
-      const proxyFactory: Address = '0x4e1dcf7ad4e460cfd30791ccc4f9c8a4f820ec67'
       const saltNonce = 0n
       const factoryData = encodeFunctionData({
         abi: parseAbi([
           'function createProxyWithNonce(address singleton,bytes calldata initializer,uint256 saltNonce) external payable returns (address)',
         ]),
         functionName: 'createProxyWithNonce',
-        args: [singleton, initializer, saltNonce],
+        args: [SAFE_SINGLETON_ADDRESS, initializer, saltNonce],
       })
 
       const salt = keccak256(
@@ -189,7 +196,7 @@ async function getDeployArgs(
         '0xe298282cefe913ab5d282047161268a8222e4bd4ed106300c547894bbefd31ee'
 
       return {
-        factory: proxyFactory,
+        factory: SAFE_PROXY_FACTORY_ADDRESS,
         factoryData,
         salt,
         hashedInitcode,
