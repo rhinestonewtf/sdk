@@ -7,6 +7,7 @@ import {
   keccak256,
   parseAbi,
   encodePacked,
+  zeroAddress,
 } from 'viem'
 
 import { RhinestoneAccountConfig } from '../../types'
@@ -61,11 +62,8 @@ async function getDeployArgs(config: RhinestoneAccountConfig) {
             },
           ],
           {
-            module: HOOK_ADDRESS,
-            initData: encodeAbiParameters(
-              [{ name: 'value', type: 'bool' }],
-              [true],
-            ),
+            module: zeroAddress,
+            initData: '0x',
           },
           [
             {
