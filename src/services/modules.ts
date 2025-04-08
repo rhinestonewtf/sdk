@@ -70,19 +70,6 @@ const OWNABLE_VALIDATOR_ADDRESS: Address =
 const WEBAUTHN_VALIDATOR_ADDRESS: Address =
   '0x2f167e55d42584f65e2e30a748f41ee75a311414'
 
-const NO_SAFE_OWNER_ADDRESS: Address =
-  '0xbabe99e62d8bcbd3acf5ccbcfcd4f64fe75e5e72'
-
-function toOwners(config: RhinestoneAccountConfig) {
-  const ownerSet = config.owners
-  switch (ownerSet.type) {
-    case 'ecdsa':
-      return ownerSet.accounts.map((account) => account.address)
-    case 'passkey':
-      return [NO_SAFE_OWNER_ADDRESS]
-  }
-}
-
 function getValidator(config: RhinestoneAccountConfig) {
   const ownerSet = config.owners
   switch (ownerSet.type) {
@@ -271,7 +258,6 @@ function parsePublicKey(publicKey: Hex | Uint8Array): PublicKey {
 
 export {
   getValidator,
-  toOwners,
   OMNI_ACCOUNT_MOCK_ATTESTER_ADDRESS,
   RHINESTONE_ATTESTER_ADDRESS,
 }

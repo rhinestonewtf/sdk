@@ -13,7 +13,6 @@ import {
   OMNI_ACCOUNT_MOCK_ATTESTER_ADDRESS,
   RHINESTONE_ATTESTER_ADDRESS,
   getValidator,
-  toOwners,
 } from '../modules'
 import { RhinestoneAccountConfig } from '../../types'
 import {
@@ -31,9 +30,12 @@ const SAFE_SINGLETON_ADDRESS: Address =
 const SAFE_PROXY_FACTORY_ADDRESS: Address =
   '0x4e1dcf7ad4e460cfd30791ccc4f9c8a4f820ec67'
 
+const NO_SAFE_OWNER_ADDRESS: Address =
+  '0xbabe99e62d8bcbd3acf5ccbcfcd4f64fe75e5e72'
+
 async function getDeployArgs(config: RhinestoneAccountConfig) {
   {
-    const owners = toOwners(config)
+    const owners = getOwners(config)
     const initData = encodeFunctionData({
       abi: parseAbi([
         'function setup(address[] calldata _owners,uint256 _threshold,address to,bytes calldata data,address fallbackHandler,address paymentToken,uint256 payment, address paymentReceiver) external',
@@ -118,6 +120,16 @@ async function getDeployArgs(config: RhinestoneAccountConfig) {
       salt,
       hashedInitcode,
     }
+  }
+}
+
+function getOwners(config: RhinestoneAccountConfig) {
+  const ownerSet = config.owners
+  switch (ownerSet.type) {
+    case 'ecdsa':
+      return ownerSet.accounts.map((account) => account.address)
+    case 'passkey':
+      return [NO_SAFE_OWNER_ADDRESS]
   }
 }
 
