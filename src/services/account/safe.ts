@@ -36,6 +36,7 @@ const NO_SAFE_OWNER_ADDRESS: Address =
 async function getDeployArgs(config: RhinestoneAccountConfig) {
   {
     const owners = getOwners(config)
+    const threshold = getThreshold(config)
     const initData = encodeFunctionData({
       abi: parseAbi([
         'function setup(address[] calldata _owners,uint256 _threshold,address to,bytes calldata data,address fallbackHandler,address paymentToken,uint256 payment, address paymentReceiver) external',
@@ -43,7 +44,7 @@ async function getDeployArgs(config: RhinestoneAccountConfig) {
       functionName: 'setup',
       args: [
         owners,
-        BigInt(1),
+        threshold,
         SAFE_7579_LAUNCHPAD_ADDRESS,
         encodeFunctionData({
           abi: parseAbi([
@@ -130,6 +131,16 @@ function getOwners(config: RhinestoneAccountConfig) {
       return ownerSet.accounts.map((account) => account.address)
     case 'passkey':
       return [NO_SAFE_OWNER_ADDRESS]
+  }
+}
+
+function getThreshold(config: RhinestoneAccountConfig) {
+  const ownerSet = config.owners
+  switch (ownerSet.type) {
+    case 'ecdsa':
+      return ownerSet.threshold ? BigInt(ownerSet.threshold) : 1n
+    case 'passkey':
+      return 1n
   }
 }
 
