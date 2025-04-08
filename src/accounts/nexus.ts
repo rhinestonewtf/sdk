@@ -10,7 +10,7 @@ import {
   zeroAddress,
 } from 'viem'
 
-import { RhinestoneAccountConfig } from '../../types'
+import { RhinestoneAccountConfig } from '../types'
 import {
   getValidator,
   OMNI_ACCOUNT_MOCK_ATTESTER_ADDRESS,

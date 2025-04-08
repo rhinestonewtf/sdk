@@ -20,6 +20,7 @@ interface RhinestoneAccountConfig {
   owners: OwnerSet
   rhinestoneApiKey: string
   deployerAccount: Account
+  eoa?: Account
   provider?: {
     type: 'alchemy'
     apiKey: string

@@ -14,7 +14,7 @@ import {
   RHINESTONE_ATTESTER_ADDRESS,
   getValidator,
 } from '../modules'
-import { RhinestoneAccountConfig } from '../../types'
+import { RhinestoneAccountConfig } from '../types'
 import {
   HOOK_ADDRESS,
   SAME_CHAIN_MODULE_ADDRESS,

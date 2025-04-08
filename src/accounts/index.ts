@@ -10,7 +10,7 @@ import {
   slice,
 } from 'viem'
 
-import { RhinestoneAccountConfig } from '../../types'
+import { RhinestoneAccountConfig } from '../types'
 
 import { getDeployArgs as getSafeDeployArgs } from './safe'
 import { getDeployArgs as getNexusDeployArgs } from './nexus'

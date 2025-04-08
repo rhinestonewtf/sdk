@@ -11,13 +11,13 @@ import {
   getOrchestrator,
   getOrderBundleHash,
   BUNDLE_STATUS_PARTIALLY_COMPLETED,
-} from './orchestrator'
-import { getAddress, getDeployArgs, isDeployed, deploy } from './account'
+} from '../orchestrator'
+import { getAddress, getDeployArgs, isDeployed, deploy } from '../accounts'
 import {
   getValidator,
   getWebauthnValidatorSignature,
   isRip7212SupportedNetwork,
-} from './modules'
+} from '../modules'
 import { RhinestoneAccountConfig, Transaction, OwnerSet } from '../types'
 
 const POLLING_INTERVAL = 1000
