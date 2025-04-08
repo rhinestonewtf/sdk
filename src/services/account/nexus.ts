@@ -6,8 +6,9 @@ import {
   Hex,
   keccak256,
   parseAbi,
+  encodePacked,
 } from 'viem'
-import { encodePacked } from 'viem'
+
 import { RhinestoneAccountConfig } from '../../types'
 import { getValidator, RHINESTONE_ATTESTER_ADDRESS } from '../modules'
 import {

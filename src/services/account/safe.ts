@@ -1,5 +1,6 @@
 import {
   Address,
+  encodeFunctionData,
   encodeAbiParameters,
   encodePacked,
   Hex,
@@ -7,19 +8,19 @@ import {
   parseAbi,
   zeroAddress,
 } from 'viem'
-import { encodeFunctionData } from 'viem'
 
-import { getValidator, toOwners } from '../modules'
+import {
+  OMNI_ACCOUNT_MOCK_ATTESTER_ADDRESS,
+  RHINESTONE_ATTESTER_ADDRESS,
+  getValidator,
+  toOwners,
+} from '../modules'
 import { RhinestoneAccountConfig } from '../../types'
 import {
   HOOK_ADDRESS,
   SAME_CHAIN_MODULE_ADDRESS,
   TARGET_MODULE_ADDRESS,
 } from '../orchestrator'
-import {
-  OMNI_ACCOUNT_MOCK_ATTESTER_ADDRESS,
-  RHINESTONE_ATTESTER_ADDRESS,
-} from '../modules'
 
 const SAFE_7579_LAUNCHPAD_ADDRESS: Address =
   '0x7579011aB74c46090561ea277Ba79D510c6C00ff'

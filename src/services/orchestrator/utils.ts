@@ -1,4 +1,5 @@
 import {
+  Address,
   domainSeparator,
   encodeAbiParameters,
   encodePacked,
@@ -7,7 +8,6 @@ import {
   TypedDataDomain,
 } from 'viem'
 
-import { Address } from 'viem'
 import {
   BundleEvent,
   Execution,
