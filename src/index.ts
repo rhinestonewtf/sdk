@@ -1,5 +1,3 @@
-import { Chain } from 'viem/chains'
-
 import { RhinestoneAccountConfig, Transaction } from './types'
 import {
   sendTransactions as sendTransactionsInternal,
