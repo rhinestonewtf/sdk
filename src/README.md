@@ -77,7 +77,7 @@ const account = privateKeyToAccount(privateKey)
 
 const rhinestoneAccount = await createRhinestoneAccount({
   account: {
-    type: 'safe',
+    type: 'nexus',
   },
   owners: {
     type: 'ecdsa',
