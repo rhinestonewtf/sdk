@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 0.2.0
+
+### Minor Changes
+
+- a1ee520: Biconomy Nexus support
+
 ## 0.1.0
 
 ### Minor Changes
