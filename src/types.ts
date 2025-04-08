@@ -15,7 +15,7 @@ interface WebauthnValidatorConfig {
 type OwnerSet = OwnableValidatorConfig | WebauthnValidatorConfig
 interface RhinestoneAccountConfig {
   account: {
-    type: 'safe'
+    type: 'safe' | 'nexus'
   }
   owners: OwnerSet
   rhinestoneApiKey: string
