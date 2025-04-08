@@ -33,7 +33,7 @@ const SAFE_PROXY_FACTORY_ADDRESS: Address =
 async function getDeployArgs(config: RhinestoneAccountConfig) {
   {
     const owners = toOwners(config)
-    const initializer = encodeFunctionData({
+    const initData = encodeFunctionData({
       abi: parseAbi([
         'function setup(address[] calldata _owners,uint256 _threshold,address to,bytes calldata data,address fallbackHandler,address paymentToken,uint256 payment, address paymentReceiver) external',
       ]),
@@ -101,11 +101,11 @@ async function getDeployArgs(config: RhinestoneAccountConfig) {
         'function createProxyWithNonce(address singleton,bytes calldata initializer,uint256 saltNonce) external payable returns (address)',
       ]),
       functionName: 'createProxyWithNonce',
-      args: [SAFE_SINGLETON_ADDRESS, initializer, saltNonce],
+      args: [SAFE_SINGLETON_ADDRESS, initData, saltNonce],
     })
 
     const salt = keccak256(
-      encodePacked(['bytes32', 'uint256'], [keccak256(initializer), saltNonce]),
+      encodePacked(['bytes32', 'uint256'], [keccak256(initData), saltNonce]),
     )
 
     const hashedInitcode: Hex =
