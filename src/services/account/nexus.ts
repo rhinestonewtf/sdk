@@ -10,7 +10,12 @@ import {
 } from 'viem'
 
 import { RhinestoneAccountConfig } from '../../types'
-import { getValidator, RHINESTONE_ATTESTER_ADDRESS } from '../modules'
+import {
+  getValidator,
+  OMNI_ACCOUNT_MOCK_ATTESTER_ADDRESS,
+  RHINESTONE_ATTESTER_ADDRESS,
+  RHINESTONE_MODULE_REGISTRY_ADDRESS,
+} from '../modules'
 import {
   HOOK_ADDRESS,
   SAME_CHAIN_MODULE_ADDRESS,
@@ -19,13 +24,15 @@ import {
 
 const NEXUS_FACTORY_ADDRESS: Address =
   '0x000000c3A93d2c5E02Cb053AC675665b1c4217F9'
+const NEXUS_BOOTSTRAP_ADDRESS: Address =
+  '0x879fa30248eeb693dcCE3eA94a743622170a3658'
 
 async function getDeployArgs(config: RhinestoneAccountConfig) {
   const salt = keccak256('0x')
   const initData = encodeAbiParameters(
     [{ type: 'address' }, { type: 'bytes' }],
     [
-      '0x879fa30248eeb693dcCE3eA94a743622170a3658',
+      NEXUS_BOOTSTRAP_ADDRESS,
       encodeFunctionData({
         abi: parseAbi([
           'struct BootstrapConfig {address module;bytes initData;}',
@@ -69,11 +76,8 @@ async function getDeployArgs(config: RhinestoneAccountConfig) {
               ),
             },
           ],
-          '0x000000000069E2a187AEFFb852bF3cCdC95151B2',
-          [
-            RHINESTONE_ATTESTER_ADDRESS, // Rhinestone Attester
-            '0x6D0515e8E499468DCe9583626f0cA15b887f9d03', // Mock attester for omni account
-          ],
+          RHINESTONE_MODULE_REGISTRY_ADDRESS,
+          [RHINESTONE_ATTESTER_ADDRESS, OMNI_ACCOUNT_MOCK_ATTESTER_ADDRESS],
           1,
         ],
       }),
