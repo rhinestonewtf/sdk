@@ -100,7 +100,10 @@ function getOwnableValidator({
         { name: 'threshold', type: 'uint256' },
         { name: 'owners', type: 'address[]' },
       ],
-      [BigInt(threshold), owners.sort()],
+      [
+        BigInt(threshold),
+        owners.map((owner) => owner.toLowerCase() as Address).sort(),
+      ],
     ),
     deInitData: '0x',
     additionalContext: '0x',
