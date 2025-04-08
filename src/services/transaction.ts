@@ -10,6 +10,7 @@ import {
   BUNDLE_STATUS_FAILED,
   getOrchestrator,
   getOrderBundleHash,
+  BUNDLE_STATUS_PARTIALLY_COMPLETED,
 } from './orchestrator'
 import { getAddress, getDeployArgs, isDeployed, deploy } from './account'
 import {
@@ -18,6 +19,8 @@ import {
   isRip7212SupportedNetwork,
 } from './modules'
 import { RhinestoneAccountConfig, Transaction, OwnerSet } from '../types'
+
+const POLLING_INTERVAL = 1000
 
 async function sendTransactions(
   config: RhinestoneAccountConfig,
@@ -92,10 +95,12 @@ async function waitForExecution(config: RhinestoneAccountConfig, id: bigint) {
   let bundleResult: BundleResult | null = null
   while (
     bundleResult === null ||
-    bundleResult.status === BUNDLE_STATUS_PENDING
+    bundleResult.status === BUNDLE_STATUS_PENDING ||
+    bundleResult.status === BUNDLE_STATUS_PARTIALLY_COMPLETED
   ) {
     const orchestrator = getOrchestrator(config.rhinestoneApiKey)
     bundleResult = await orchestrator.getBundleStatus(id)
+    await new Promise((resolve) => setTimeout(resolve, POLLING_INTERVAL))
   }
   if (bundleResult.status === BUNDLE_STATUS_FAILED) {
     throw new Error('Bundle failed')
