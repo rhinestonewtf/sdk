@@ -25,7 +25,6 @@ import {
 } from './nexus'
 import { getBundlerClient } from './utils'
 import { is7702 } from '../utils'
-import { sepolia } from 'viem/chains'
 
 async function getDeployArgs(config: RhinestoneAccountConfig) {
   switch (config.account.type) {
