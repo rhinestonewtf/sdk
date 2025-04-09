@@ -123,11 +123,10 @@ async function sign(validators: OwnerSet, chain: Chain, hash: Hex) {
 }
 
 async function signEcdsa(account: Account, hash: Hex) {
-  const sign = account.signMessage
-  if (!sign) {
+  if (!account.signMessage) {
     throw new Error('Signing not supported for the account')
   }
-  return await sign({ message: { raw: hash } })
+  return await account.signMessage({ message: { raw: hash } })
 }
 
 async function signPasskey(account: WebAuthnAccount, chain: Chain, hash: Hex) {
