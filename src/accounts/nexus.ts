@@ -1,18 +1,30 @@
 import {
   type Address,
+  type Account,
+  type PublicClient,
+  type Hex,
   encodeAbiParameters,
   encodeFunctionData,
-  Hex,
   keccak256,
   parseAbi,
   encodePacked,
   zeroAddress,
   concat,
+  toHex,
 } from 'viem'
+import {
+  entryPoint07Address,
+  getUserOperationHash,
+  entryPoint07Abi,
+  toSmartAccount,
+} from 'viem/account-abstraction'
 
 import { RhinestoneAccountConfig } from '../types'
 import {
   getValidator,
+  MODULE_TYPE_ID_EXECUTOR,
+  MODULE_TYPE_ID_FALLBACK,
+  MODULE_TYPE_ID_VALIDATOR,
   OMNI_ACCOUNT_MOCK_ATTESTER_ADDRESS,
   RHINESTONE_ATTESTER_ADDRESS,
   RHINESTONE_MODULE_REGISTRY_ADDRESS,
@@ -22,6 +34,7 @@ import {
   SAME_CHAIN_MODULE_ADDRESS,
   TARGET_MODULE_ADDRESS,
 } from '../orchestrator'
+import { encode7579Calls, getAccountNonce } from './utils'
 
 const NEXUS_IMPLEMENTATION_ADDRESS: Address =
   '0x000000004f43c49e93c970e84001853a70923b03'
@@ -29,6 +42,8 @@ const NEXUS_FACTORY_ADDRESS: Address =
   '0x000000001D1D5004a02bAfAb9de2D6CE5b7B13de'
 const NEXUS_BOOTSTRAP_ADDRESS: Address =
   '0x00000000D3254452a909E4eeD47455Af7E27C289'
+
+const K1_MEE_VALIDATOR_ADDRESS = '0x00000000d12897ddadc2044614a9677b191a2d95'
 
 async function getDeployArgs(config: RhinestoneAccountConfig) {
   const salt = keccak256('0x')
@@ -124,7 +139,173 @@ async function getDeployArgs(config: RhinestoneAccountConfig) {
     factoryData,
     salt,
     hashedInitcode,
+    implementation: NEXUS_IMPLEMENTATION_ADDRESS,
+    initializationCallData,
   }
 }
 
-export { getDeployArgs }
+function get7702InitCalls(config: RhinestoneAccountConfig) {
+  if (!config.eoaAccount) {
+    throw new Error('EIP-7702 accounts must have an EOA account')
+  }
+
+  const validator = getValidator(config)
+  return [
+    {
+      to: config.eoaAccount.address,
+      data: encodeFunctionData({
+        abi: parseAbi([
+          'function setRegistry(address newRegistry, address[] calldata attesters, uint8 threshold)',
+        ]),
+        functionName: 'setRegistry',
+        args: [
+          RHINESTONE_MODULE_REGISTRY_ADDRESS,
+          [RHINESTONE_ATTESTER_ADDRESS, OMNI_ACCOUNT_MOCK_ATTESTER_ADDRESS],
+          1,
+        ],
+      }),
+    },
+    {
+      to: config.eoaAccount.address,
+      data: encodeFunctionData({
+        abi: parseAbi([
+          'function installModule(uint256 moduleTypeId, address module, bytes calldata initData)',
+        ]),
+        functionName: 'installModule',
+        args: [MODULE_TYPE_ID_VALIDATOR, validator.address, validator.initData],
+      }),
+    },
+    {
+      to: config.eoaAccount.address,
+      data: encodeFunctionData({
+        abi: parseAbi([
+          'function installModule(uint256 moduleTypeId, address module, bytes calldata initData)',
+        ]),
+        functionName: 'installModule',
+        args: [MODULE_TYPE_ID_EXECUTOR, SAME_CHAIN_MODULE_ADDRESS, '0x'],
+      }),
+    },
+    {
+      to: config.eoaAccount.address,
+      data: encodeFunctionData({
+        abi: parseAbi([
+          'function installModule(uint256 moduleTypeId, address module, bytes calldata initData)',
+        ]),
+        functionName: 'installModule',
+        args: [MODULE_TYPE_ID_EXECUTOR, TARGET_MODULE_ADDRESS, '0x'],
+      }),
+    },
+    {
+      to: config.eoaAccount.address,
+      data: encodeFunctionData({
+        abi: parseAbi([
+          'function installModule(uint256 moduleTypeId, address module, bytes calldata initData)',
+        ]),
+        functionName: 'installModule',
+        args: [MODULE_TYPE_ID_EXECUTOR, HOOK_ADDRESS, '0x'],
+      }),
+    },
+    {
+      to: config.eoaAccount.address,
+      data: encodeFunctionData({
+        abi: parseAbi([
+          'function installModule(uint256 moduleTypeId, address module, bytes calldata initData)',
+        ]),
+        functionName: 'installModule',
+        args: [
+          MODULE_TYPE_ID_FALLBACK,
+          TARGET_MODULE_ADDRESS,
+          encodePacked(
+            ['bytes4', 'bytes1', 'bytes'],
+            ['0x3a5be8cb', '0x00', '0x'],
+          ),
+        ],
+      }),
+    },
+  ]
+}
+
+async function get7702SmartAccount(account: Account, client: PublicClient) {
+  return await toSmartAccount({
+    client,
+    entryPoint: {
+      abi: entryPoint07Abi,
+      address: '0x0000000071727De22E5E9d8BAf0edAc6f37da032',
+      version: '0.7',
+    },
+    async decodeCalls() {
+      throw new Error('Not implemented')
+    },
+    async encodeCalls(calls) {
+      return encode7579Calls({
+        mode: {
+          type: calls.length > 1 ? 'batchcall' : 'call',
+          revertOnError: false,
+          selector: '0x',
+          context: '0x',
+        },
+        callData: calls,
+      })
+    },
+    async getAddress() {
+      return account.address
+    },
+    async getFactoryArgs() {
+      return {}
+    },
+    async getNonce(args) {
+      const TIMESTAMP_ADJUSTMENT = 16777215n // max value for size 3
+      const defaultedKey = (args?.key ?? 0n) % TIMESTAMP_ADJUSTMENT
+      const defaultedValidationMode = '0x00'
+      const key = concat([
+        toHex(defaultedKey, { size: 3 }),
+        defaultedValidationMode,
+        zeroAddress,
+      ])
+
+      const address = await this.getAddress()
+
+      return getAccountNonce(client, {
+        address,
+        entryPointAddress: entryPoint07Address,
+        key: BigInt(key),
+      })
+    },
+    async getStubSignature() {
+      const dynamicPart = K1_MEE_VALIDATOR_ADDRESS.substring(2).padEnd(40, '0')
+      return `0x0000000000000000000000000000000000000000000000000000000000000040000000000000000000000000${dynamicPart}000000000000000000000000000000000000000000000000000000000000004181d4b4981670cb18f99f0b4a66446df1bf5b204d24cfcb659bf38ba27a4359b5711649ec2423c5e1247245eba2964679b6a1dbb85c992ae40b9b00c6935b02ff1b00000000000000000000000000000000000000000000000000000000000000` as Hex
+    },
+    async signMessage() {
+      throw new Error('Not implemented')
+    },
+    async signTypedData() {
+      throw new Error('Not implemented')
+    },
+    async signUserOperation(parameters) {
+      const { chainId = client.chain?.id, ...userOperation } = parameters
+
+      if (!chainId) throw new Error('Chain id not found')
+
+      const hash = getUserOperationHash({
+        userOperation: {
+          ...userOperation,
+          sender: userOperation.sender ?? (await this.getAddress()),
+          signature: '0x',
+        },
+        entryPointAddress: entryPoint07Address,
+        entryPointVersion: '0.7',
+        chainId: chainId,
+      })
+
+      if (!account.signMessage) {
+        throw new Error('Sign message not supported by account')
+      }
+
+      return await account.signMessage({
+        message: { raw: hash as Hex },
+      })
+    },
+  })
+}
+
+export { getDeployArgs, get7702InitCalls, get7702SmartAccount }

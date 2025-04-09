@@ -3,7 +3,6 @@ import { WebAuthnAccount } from 'viem/account-abstraction'
 
 import {
   type BundleResult,
-  type PostOrderBundleResult,
   type MetaIntent,
   type SignedMultiChainCompact,
   BUNDLE_STATUS_PENDING,
@@ -12,7 +11,13 @@ import {
   getOrderBundleHash,
   BUNDLE_STATUS_PARTIALLY_COMPLETED,
 } from '../orchestrator'
-import { getAddress, getDeployArgs, isDeployed, deploy } from '../accounts'
+import {
+  getAddress,
+  isDeployed,
+  deploySource,
+  deployTarget,
+  getBundleInitCode,
+} from '../accounts'
 import {
   getValidator,
   getWebauthnValidatorSignature,
@@ -29,7 +34,7 @@ async function sendTransactions(
   const { sourceChain, targetChain, calls, tokenRequests } = transaction
   const isAccountDeployed = await isDeployed(sourceChain, config)
   if (!isAccountDeployed) {
-    await deploy(config.deployerAccount, sourceChain, config)
+    await deploySource(config.deployerAccount, sourceChain, config)
   }
 
   const accountAddress = await getAddress(config)
@@ -74,19 +79,14 @@ async function sendTransactions(
     targetSignature: packedSig,
   }
 
-  const { factory, factoryData } = await getDeployArgs(config)
-  if (!factory || !factoryData) {
-    throw new Error('Factory args not available')
-  }
-  const initCode = encodePacked(['address', 'bytes'], [factory, factoryData])
-
-  const bundleResults: PostOrderBundleResult =
-    await orchestrator.postSignedOrderBundle([
-      {
-        signedOrderBundle,
-        initCode,
-      },
-    ])
+  await deployTarget(targetChain, config)
+  const initCode = await getBundleInitCode(config)
+  const bundleResults = await orchestrator.postSignedOrderBundle([
+    {
+      signedOrderBundle,
+      initCode,
+    },
+  ])
 
   return bundleResults[0].bundleId
 }

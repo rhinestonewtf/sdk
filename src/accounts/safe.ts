@@ -120,8 +120,18 @@ async function getDeployArgs(config: RhinestoneAccountConfig) {
       factoryData,
       salt,
       hashedInitcode,
+      implementation: SAFE_SINGLETON_ADDRESS,
+      initializationCallData: null,
     }
   }
+}
+
+function get7702InitCalls(): never {
+  throw new Error('EIP-7702 is not supported for Safe accounts')
+}
+
+function get7702SmartAccount(): never {
+  throw new Error('EIP-7702 is not supported for Safe accounts')
 }
 
 function getOwners(config: RhinestoneAccountConfig) {
@@ -144,4 +154,4 @@ function getThreshold(config: RhinestoneAccountConfig) {
   }
 }
 
-export { getDeployArgs }
+export { getDeployArgs, get7702InitCalls, get7702SmartAccount }

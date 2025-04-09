@@ -8,14 +8,43 @@ import {
   keccak256,
   encodePacked,
   slice,
+  PublicClient,
 } from 'viem'
 
 import { RhinestoneAccountConfig } from '../types'
 
-import { getDeployArgs as getSafeDeployArgs } from './safe'
-import { getDeployArgs as getNexusDeployArgs } from './nexus'
+import {
+  getDeployArgs as getSafeDeployArgs,
+  get7702InitCalls as get7702SafeInitCalls,
+  get7702SmartAccount as get7702SafeAccount,
+} from './safe'
+import {
+  getDeployArgs as getNexusDeployArgs,
+  get7702InitCalls as get7702NexusInitCalls,
+  get7702SmartAccount as get7702NexusAccount,
+} from './nexus'
+import { getBundlerClient } from './utils'
+import { is7702 } from '../utils'
+import { sepolia } from 'viem/chains'
+
+async function getDeployArgs(config: RhinestoneAccountConfig) {
+  switch (config.account.type) {
+    case 'safe': {
+      return getSafeDeployArgs(config)
+    }
+    case 'nexus': {
+      return getNexusDeployArgs(config)
+    }
+  }
+}
 
 async function getAddress(config: RhinestoneAccountConfig) {
+  if (is7702(config)) {
+    if (!config.eoaAccount) {
+      throw new Error('EIP-7702 accounts must have an EOA account')
+    }
+    return config.eoaAccount.address
+  }
   const { factory, salt, hashedInitcode } = await getDeployArgs(config)
   const hash = keccak256(
     encodePacked(
@@ -45,7 +74,74 @@ async function isDeployed(chain: Chain, config: RhinestoneAccountConfig) {
   return size(code) > 0
 }
 
-async function deploy(
+async function deploySource(
+  deployer: Account,
+  chain: Chain,
+  config: RhinestoneAccountConfig,
+) {
+  if (is7702(config)) {
+    return deploy7702Self(chain, config)
+  } else {
+    return deployStandaloneSelf(deployer, chain, config)
+  }
+}
+
+async function deployTarget(chain: Chain, config: RhinestoneAccountConfig) {
+  if (is7702(config)) {
+    return deploy7702WithBundler(chain, config)
+  }
+  // No need to deploy manually outside of EIP-7702
+}
+
+async function getBundleInitCode(config: RhinestoneAccountConfig) {
+  if (is7702(config)) {
+    return undefined
+  } else {
+    const { factory, factoryData } = await getDeployArgs(config)
+    if (!factory || !factoryData) {
+      throw new Error('Factory args not available')
+    }
+    return encodePacked(['address', 'bytes'], [factory, factoryData])
+  }
+}
+
+async function deploy7702Self(chain: Chain, config: RhinestoneAccountConfig) {
+  if (!config.eoaAccount) {
+    throw new Error('EIP-7702 accounts must have an EOA account')
+  }
+
+  const { implementation, initializationCallData } = await getDeployArgs(config)
+  if (!initializationCallData) {
+    throw new Error(
+      `Initialization call data not available for ${config.account.type}`,
+    )
+  }
+
+  const publicClient = createPublicClient({
+    chain,
+    transport: http(),
+  })
+  const accountClient = createWalletClient({
+    account: config.eoaAccount,
+    chain,
+    transport: http(),
+  })
+
+  const authorization = await accountClient.signAuthorization({
+    contractAddress: implementation,
+    executor: 'self',
+  })
+
+  const hash = await accountClient.sendTransaction({
+    chain,
+    authorizationList: [authorization],
+    to: config.eoaAccount.address,
+    data: initializationCallData,
+  })
+  await publicClient.waitForTransactionReceipt({ hash })
+}
+
+async function deployStandaloneSelf(
   deployer: Account,
   chain: Chain,
   config: RhinestoneAccountConfig,
@@ -67,15 +163,91 @@ async function deploy(
   await publicClient.waitForTransactionReceipt({ hash: tx })
 }
 
-async function getDeployArgs(config: RhinestoneAccountConfig) {
+async function deploy7702WithBundler(
+  chain: Chain,
+  config: RhinestoneAccountConfig,
+) {
+  if (!config.eoaAccount) {
+    throw new Error('EIP-7702 accounts must have an EOA account')
+  }
+
+  const { implementation } = await getDeployArgs(config)
+
+  const publicClient = createPublicClient({
+    chain,
+    transport: http(),
+  })
+  const accountClient = createWalletClient({
+    account: config.eoaAccount,
+    chain,
+    transport: http(),
+  })
+  const bundlerClient = getBundlerClient(config, publicClient)
+  const fundingClient = createWalletClient({
+    account: config.deployerAccount,
+    chain,
+    transport: http(),
+  })
+
+  const authorization = await accountClient.signAuthorization({
+    chainId: publicClient.chain?.id,
+    contractAddress: implementation,
+  })
+
+  // Will be replaced by a relayer in the future
+  const authTxHash = await fundingClient.sendTransaction({
+    chain: publicClient.chain,
+    authorizationList: [authorization],
+  })
+  await publicClient.waitForTransactionReceipt({ hash: authTxHash })
+
+  // Init the account
+  const smartAccount = await get7702SmartAccount(config, publicClient)
+  const initCalls = await get7702InitCalls(config)
+  const opHash = await bundlerClient.sendUserOperation({
+    account: smartAccount,
+    calls: initCalls,
+  })
+
+  await bundlerClient.waitForUserOperationReceipt({
+    hash: opHash,
+  })
+}
+
+async function get7702InitCalls(config: RhinestoneAccountConfig) {
   switch (config.account.type) {
     case 'safe': {
-      return getSafeDeployArgs(config)
+      return get7702SafeInitCalls()
     }
     case 'nexus': {
-      return getNexusDeployArgs(config)
+      return get7702NexusInitCalls(config)
     }
   }
 }
 
-export { getAddress, isDeployed, getDeployArgs, deploy }
+async function get7702SmartAccount(
+  config: RhinestoneAccountConfig,
+  client: PublicClient,
+) {
+  if (!config.eoaAccount) {
+    throw new Error('EIP-7702 accounts must have an EOA account')
+  }
+
+  switch (config.account.type) {
+    case 'safe': {
+      return get7702SafeAccount()
+    }
+    case 'nexus': {
+      return get7702NexusAccount(config.eoaAccount, client)
+    }
+  }
+}
+
+export {
+  getDeployArgs,
+  getBundleInitCode,
+  getAddress,
+  isDeployed,
+  deploySource,
+  deployTarget,
+}
