@@ -7,7 +7,6 @@ import {
   encodeFunctionData,
   keccak256,
   parseAbi,
-  encodePacked,
   zeroAddress,
   concat,
   toHex,
@@ -20,20 +19,7 @@ import {
 } from 'viem/account-abstraction'
 
 import { RhinestoneAccountConfig } from '../types'
-import {
-  getValidator,
-  MODULE_TYPE_ID_EXECUTOR,
-  MODULE_TYPE_ID_FALLBACK,
-  MODULE_TYPE_ID_VALIDATOR,
-  OMNI_ACCOUNT_MOCK_ATTESTER_ADDRESS,
-  RHINESTONE_ATTESTER_ADDRESS,
-  RHINESTONE_MODULE_REGISTRY_ADDRESS,
-} from '../modules'
-import {
-  HOOK_ADDRESS,
-  SAME_CHAIN_MODULE_ADDRESS,
-  TARGET_MODULE_ADDRESS,
-} from '../orchestrator'
+import { getSetup as getModuleSetup } from '../modules'
 import { encode7579Calls, getAccountNonce } from './utils'
 
 const NEXUS_IMPLEMENTATION_ADDRESS: Address =
@@ -47,6 +33,7 @@ const K1_MEE_VALIDATOR_ADDRESS = '0x00000000d12897ddadc2044614a9677b191a2d95'
 
 async function getDeployArgs(config: RhinestoneAccountConfig) {
   const salt = keccak256('0x')
+  const moduleSetup = getModuleSetup(config)
   const initData = encodeAbiParameters(
     [{ type: 'address' }, { type: 'bytes' }],
     [
@@ -60,47 +47,27 @@ async function getDeployArgs(config: RhinestoneAccountConfig) {
         ]),
         functionName: 'initNexus',
         args: [
-          [
-            {
-              module: getValidator(config).address,
-              initData: getValidator(config).initData,
-            },
-          ],
-          [
-            {
-              module: SAME_CHAIN_MODULE_ADDRESS,
-              initData: '0x',
-            },
-            {
-              module: TARGET_MODULE_ADDRESS,
-              initData: '0x',
-            },
-            {
-              module: HOOK_ADDRESS,
-              initData: '0x',
-            },
-          ],
+          moduleSetup.validators.map((v) => ({
+            module: v.address,
+            initData: v.initData,
+          })),
+          moduleSetup.executors.map((e) => ({
+            module: e.address,
+            initData: e.initData,
+          })),
           {
             module: zeroAddress,
             initData: '0x',
           },
-          [
-            {
-              module: TARGET_MODULE_ADDRESS,
-              initData: encodePacked(
-                ['bytes4', 'bytes1', 'bytes'],
-                ['0x3a5be8cb', '0x00', '0x'],
-              ),
-            },
-          ],
+          moduleSetup.fallbacks.map((f) => ({
+            module: f.address,
+            initData: f.initData,
+          })),
           [],
           {
-            registry: RHINESTONE_MODULE_REGISTRY_ADDRESS,
-            attesters: [
-              RHINESTONE_ATTESTER_ADDRESS,
-              OMNI_ACCOUNT_MOCK_ATTESTER_ADDRESS,
-            ],
-            threshold: 1,
+            registry: moduleSetup.registry,
+            attesters: moduleSetup.attesters,
+            threshold: moduleSetup.threshold,
           },
         ],
       }),
@@ -149,7 +116,7 @@ function get7702InitCalls(config: RhinestoneAccountConfig) {
     throw new Error('EIP-7702 accounts must have an EOA account')
   }
 
-  const validator = getValidator(config)
+  const moduleSetup = getModuleSetup(config)
   return [
     {
       to: config.eoaAccount.address,
@@ -159,69 +126,42 @@ function get7702InitCalls(config: RhinestoneAccountConfig) {
         ]),
         functionName: 'setRegistry',
         args: [
-          RHINESTONE_MODULE_REGISTRY_ADDRESS,
-          [RHINESTONE_ATTESTER_ADDRESS, OMNI_ACCOUNT_MOCK_ATTESTER_ADDRESS],
-          1,
+          moduleSetup.registry,
+          moduleSetup.attesters,
+          moduleSetup.threshold,
         ],
       }),
     },
-    {
-      to: config.eoaAccount.address,
+    ...moduleSetup.validators.map((validator) => ({
+      to: config.eoaAccount!.address,
       data: encodeFunctionData({
         abi: parseAbi([
           'function installModule(uint256 moduleTypeId, address module, bytes calldata initData)',
         ]),
         functionName: 'installModule',
-        args: [MODULE_TYPE_ID_VALIDATOR, validator.address, validator.initData],
+        args: [validator.type, validator.address, validator.initData],
       }),
-    },
-    {
-      to: config.eoaAccount.address,
+    })),
+    ...moduleSetup.executors.map((executor) => ({
+      to: config.eoaAccount!.address,
       data: encodeFunctionData({
         abi: parseAbi([
           'function installModule(uint256 moduleTypeId, address module, bytes calldata initData)',
         ]),
         functionName: 'installModule',
-        args: [MODULE_TYPE_ID_EXECUTOR, SAME_CHAIN_MODULE_ADDRESS, '0x'],
+        args: [executor.type, executor.address, executor.initData],
       }),
-    },
-    {
-      to: config.eoaAccount.address,
+    })),
+    ...moduleSetup.fallbacks.map((fallback) => ({
+      to: config.eoaAccount!.address,
       data: encodeFunctionData({
         abi: parseAbi([
           'function installModule(uint256 moduleTypeId, address module, bytes calldata initData)',
         ]),
         functionName: 'installModule',
-        args: [MODULE_TYPE_ID_EXECUTOR, TARGET_MODULE_ADDRESS, '0x'],
+        args: [fallback.type, fallback.address, fallback.initData],
       }),
-    },
-    {
-      to: config.eoaAccount.address,
-      data: encodeFunctionData({
-        abi: parseAbi([
-          'function installModule(uint256 moduleTypeId, address module, bytes calldata initData)',
-        ]),
-        functionName: 'installModule',
-        args: [MODULE_TYPE_ID_EXECUTOR, HOOK_ADDRESS, '0x'],
-      }),
-    },
-    {
-      to: config.eoaAccount.address,
-      data: encodeFunctionData({
-        abi: parseAbi([
-          'function installModule(uint256 moduleTypeId, address module, bytes calldata initData)',
-        ]),
-        functionName: 'installModule',
-        args: [
-          MODULE_TYPE_ID_FALLBACK,
-          TARGET_MODULE_ADDRESS,
-          encodePacked(
-            ['bytes4', 'bytes1', 'bytes'],
-            ['0x3a5be8cb', '0x00', '0x'],
-          ),
-        ],
-      }),
-    },
+    })),
   ]
 }
 
@@ -230,7 +170,7 @@ async function get7702SmartAccount(account: Account, client: PublicClient) {
     client,
     entryPoint: {
       abi: entryPoint07Abi,
-      address: '0x0000000071727De22E5E9d8BAf0edAc6f37da032',
+      address: entryPoint07Address,
       version: '0.7',
     },
     async decodeCalls() {

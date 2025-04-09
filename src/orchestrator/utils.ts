@@ -16,7 +16,7 @@ import {
   TokenArrays6909,
   Witness,
 } from './types'
-import { HOOK_ADDRESS } from './consts'
+import { HOOK_ADDRESS } from '../modules'
 
 const MULTICHAIN_COMPACT_TYPEHASH =
   '0xee54591377b86e048be6b2fbd8913598a6270aed3415776321279495bf4efae5'

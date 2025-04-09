@@ -21,7 +21,11 @@ import {
 
 import { RhinestoneAccountConfig } from '../types'
 
-type ModuleType = 'validator' | 'executor' | 'fallback' | 'hook'
+type ModuleType =
+  | typeof MODULE_TYPE_ID_VALIDATOR
+  | typeof MODULE_TYPE_ID_EXECUTOR
+  | typeof MODULE_TYPE_ID_FALLBACK
+  | typeof MODULE_TYPE_ID_HOOK
 
 interface Module {
   address: Address
@@ -63,6 +67,7 @@ interface WebauthnSignature {
 const MODULE_TYPE_ID_VALIDATOR = 1n
 const MODULE_TYPE_ID_EXECUTOR = 2n
 const MODULE_TYPE_ID_FALLBACK = 3n
+const MODULE_TYPE_ID_HOOK = 4n
 
 const OMNI_ACCOUNT_MOCK_ATTESTER_ADDRESS: Address =
   '0x6D0515e8E499468DCe9583626f0cA15b887f9d03'
@@ -75,6 +80,92 @@ const OWNABLE_VALIDATOR_ADDRESS: Address =
   '0x2483DA3A338895199E5e538530213157e931Bf06'
 const WEBAUTHN_VALIDATOR_ADDRESS: Address =
   '0x2f167e55d42584f65e2e30a748f41ee75a311414'
+
+const HOOK_ADDRESS: Address = '0x0000000000f6Ed8Be424d673c63eeFF8b9267420'
+const TARGET_MODULE_ADDRESS: Address =
+  '0x0000000000E5a37279A001301A837a91b5de1D5E'
+const SAME_CHAIN_MODULE_ADDRESS: Address =
+  '0x000000000043ff16d5776c7F0f65Ec485C17Ca04'
+
+interface ModeleSetup {
+  validators: Module[]
+  executors: Module[]
+  fallbacks: Module[]
+  hooks: Module[]
+  registry: Address
+  attesters: Address[]
+  threshold: number
+}
+
+function getSetup(config: RhinestoneAccountConfig): ModeleSetup {
+  const validator = getValidator(config)
+
+  const validators: Module[] = [
+    {
+      address: validator.address,
+      initData: validator.initData,
+      deInitData: '0x',
+      additionalContext: '0x',
+      type: MODULE_TYPE_ID_VALIDATOR,
+    },
+  ]
+
+  const executors: Module[] = [
+    {
+      address: SAME_CHAIN_MODULE_ADDRESS,
+      initData: '0x',
+      deInitData: '0x',
+      additionalContext: '0x',
+      type: MODULE_TYPE_ID_EXECUTOR,
+    },
+    {
+      address: TARGET_MODULE_ADDRESS,
+      initData: '0x',
+      deInitData: '0x',
+      additionalContext: '0x',
+      type: MODULE_TYPE_ID_EXECUTOR,
+    },
+    {
+      address: HOOK_ADDRESS,
+      initData: '0x',
+      deInitData: '0x',
+      additionalContext: '0x',
+      type: MODULE_TYPE_ID_EXECUTOR,
+    },
+  ]
+
+  const fallbacks: Module[] = [
+    {
+      address: TARGET_MODULE_ADDRESS,
+      initData: encodeAbiParameters(
+        [
+          { name: 'selector', type: 'bytes4' },
+          { name: 'flags', type: 'bytes1' },
+          { name: 'data', type: 'bytes' },
+        ],
+        ['0x3a5be8cb', '0x00', '0x'],
+      ),
+      deInitData: '0x',
+      additionalContext: '0x',
+      type: MODULE_TYPE_ID_FALLBACK,
+    },
+  ]
+
+  const hooks: Module[] = []
+
+  return {
+    validators,
+    executors,
+    fallbacks,
+    hooks,
+    registry: RHINESTONE_MODULE_REGISTRY_ADDRESS,
+    attesters: [
+      RHINESTONE_ATTESTER_ADDRESS,
+      OMNI_ACCOUNT_MOCK_ATTESTER_ADDRESS,
+    ],
+    threshold: 1,
+  }
+}
 
 function getValidator(config: RhinestoneAccountConfig) {
   const ownerSet = config.owners
@@ -113,7 +204,7 @@ function getOwnableValidator({
     ),
     deInitData: '0x',
     additionalContext: '0x',
-    type: 'validator',
+    type: MODULE_TYPE_ID_VALIDATOR,
   }
 }
 
@@ -171,7 +262,7 @@ function getWebAuthnValidator(webAuthnCredential: WebauthnCredential): Module {
     ),
     deInitData: '0x',
     additionalContext: '0x',
-    type: 'validator',
+    type: MODULE_TYPE_ID_VALIDATOR,
   }
 }
 
@@ -265,12 +356,4 @@ function parsePublicKey(publicKey: Hex | Uint8Array): PublicKey {
   }
 }
 
-export {
-  getValidator,
-  OMNI_ACCOUNT_MOCK_ATTESTER_ADDRESS,
-  RHINESTONE_MODULE_REGISTRY_ADDRESS,
-  RHINESTONE_ATTESTER_ADDRESS,
-  MODULE_TYPE_ID_VALIDATOR,
-  MODULE_TYPE_ID_EXECUTOR,
-  MODULE_TYPE_ID_FALLBACK,
-}
+export { HOOK_ADDRESS, getSetup, getValidator }
