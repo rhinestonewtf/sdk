@@ -192,7 +192,7 @@ async function deploy7702WithBundler(
     contractAddress: implementation,
   })
 
-  // Will be replaced by a relayer in the future
+  // Will be replaced by a bundler in the future
   const authTxHash = await fundingClient.sendTransaction({
     chain: publicClient.chain,
     authorizationList: [authorization],
