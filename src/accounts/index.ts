@@ -68,7 +68,8 @@ async function isDeployed(chain: Chain, config: RhinestoneAccountConfig) {
     return false
   }
   if (code.startsWith('0xef0100') && code.length === 48) {
-    throw new Error('EIP-7702 accounts are not yet supported')
+    // Defensive check to ensure there's no storage conflict; can be lifted in the future
+    throw new Error('Existing EIP-7702 accounts are not yet supported')
   }
   return size(code) > 0
 }
