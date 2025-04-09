@@ -189,7 +189,6 @@ async function deploy7702WithBundler(
   })
 
   const authorization = await accountClient.signAuthorization({
-    chainId: publicClient.chain?.id,
     contractAddress: implementation,
   })
 
