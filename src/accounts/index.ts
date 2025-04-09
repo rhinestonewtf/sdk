@@ -24,7 +24,6 @@ import {
   get7702SmartAccount as get7702NexusAccount,
 } from './nexus'
 import { getBundlerClient } from './utils'
-import { is7702 } from '../utils'
 
 async function getDeployArgs(config: RhinestoneAccountConfig) {
   switch (config.account.type) {
@@ -241,6 +240,10 @@ async function get7702SmartAccount(
       return get7702NexusAccount(config.eoaAccount, client)
     }
   }
+}
+
+function is7702(config: RhinestoneAccountConfig): boolean {
+  return config.eoaAccount !== undefined
 }
 
 export {
