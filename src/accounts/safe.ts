@@ -1,7 +1,6 @@
 import {
   Address,
   encodeFunctionData,
-  encodeAbiParameters,
   encodePacked,
   Hex,
   keccak256,
@@ -9,17 +8,8 @@ import {
   zeroAddress,
 } from 'viem'
 
-import {
-  OMNI_ACCOUNT_MOCK_ATTESTER_ADDRESS,
-  RHINESTONE_ATTESTER_ADDRESS,
-  getValidator,
-} from '../modules'
-import { RhinestoneAccountConfig } from '../../types'
-import {
-  HOOK_ADDRESS,
-  SAME_CHAIN_MODULE_ADDRESS,
-  TARGET_MODULE_ADDRESS,
-} from '../orchestrator'
+import { getSetup as getModuleSetup } from '../modules'
+import { RhinestoneAccountConfig } from '../types'
 
 const SAFE_7579_LAUNCHPAD_ADDRESS: Address =
   '0x7579011aB74c46090561ea277Ba79D510c6C00ff'
@@ -37,6 +27,7 @@ async function getDeployArgs(config: RhinestoneAccountConfig) {
   {
     const owners = getOwners(config)
     const threshold = getThreshold(config)
+    const moduleSetup = getModuleSetup(config)
     const initData = encodeFunctionData({
       abi: parseAbi([
         'function setup(address[] calldata _owners,uint256 _threshold,address to,bytes calldata data,address fallbackHandler,address paymentToken,uint256 payment, address paymentReceiver) external',
@@ -54,42 +45,24 @@ async function getDeployArgs(config: RhinestoneAccountConfig) {
           functionName: 'addSafe7579',
           args: [
             SAFE_7579_ADAPTER_ADDRESS,
-            [
-              {
-                module: getValidator(config).address,
-                initData: getValidator(config).initData,
-              },
-            ],
-            [
-              {
-                module: SAME_CHAIN_MODULE_ADDRESS,
-                initData: '0x',
-              },
-              {
-                module: TARGET_MODULE_ADDRESS,
-                initData: '0x',
-              },
-              {
-                module: HOOK_ADDRESS,
-                initData: '0x',
-              },
-            ],
-            [
-              {
-                module: TARGET_MODULE_ADDRESS,
-                initData: encodeAbiParameters(
-                  [
-                    { name: 'selector', type: 'bytes4' },
-                    { name: 'flags', type: 'bytes1' },
-                    { name: 'data', type: 'bytes' },
-                  ],
-                  ['0x3a5be8cb', '0x00', '0x'],
-                ),
-              },
-            ],
-            [],
-            [RHINESTONE_ATTESTER_ADDRESS, OMNI_ACCOUNT_MOCK_ATTESTER_ADDRESS],
-            1,
+            moduleSetup.validators.map((v) => ({
+              module: v.address,
+              initData: v.initData,
+            })),
+            moduleSetup.executors.map((e) => ({
+              module: e.address,
+              initData: e.initData,
+            })),
+            moduleSetup.fallbacks.map((f) => ({
+              module: f.address,
+              initData: f.initData,
+            })),
+            moduleSetup.hooks.map((h) => ({
+              module: h.address,
+              initData: h.initData,
+            })),
+            moduleSetup.attesters,
+            moduleSetup.threshold,
           ],
         }),
         SAFE_7579_ADAPTER_ADDRESS,
@@ -120,8 +93,18 @@ async function getDeployArgs(config: RhinestoneAccountConfig) {
       factoryData,
       salt,
       hashedInitcode,
+      implementation: SAFE_SINGLETON_ADDRESS,
+      initializationCallData: null,
     }
   }
+}
+
+function get7702InitCalls(): never {
+  throw new Error('EIP-7702 is not supported for Safe accounts')
+}
+
+function get7702SmartAccount(): never {
+  throw new Error('EIP-7702 is not supported for Safe accounts')
 }
 
 function getOwners(config: RhinestoneAccountConfig) {
@@ -144,4 +127,4 @@ function getThreshold(config: RhinestoneAccountConfig) {
   }
 }
 
-export { getDeployArgs }
+export { getDeployArgs, get7702InitCalls, get7702SmartAccount }

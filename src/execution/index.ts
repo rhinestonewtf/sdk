@@ -3,21 +3,29 @@ import { WebAuthnAccount } from 'viem/account-abstraction'
 
 import {
   type BundleResult,
-  type PostOrderBundleResult,
   type MetaIntent,
   type SignedMultiChainCompact,
   BUNDLE_STATUS_PENDING,
   BUNDLE_STATUS_FAILED,
   getOrchestrator,
   getOrderBundleHash,
-} from './orchestrator'
-import { getAddress, getDeployArgs, isDeployed, deploy } from './account'
+  BUNDLE_STATUS_PARTIALLY_COMPLETED,
+} from '../orchestrator'
+import {
+  getAddress,
+  isDeployed,
+  deploySource,
+  deployTarget,
+  getBundleInitCode,
+} from '../accounts'
 import {
   getValidator,
   getWebauthnValidatorSignature,
   isRip7212SupportedNetwork,
-} from './modules'
+} from '../modules'
 import { RhinestoneAccountConfig, Transaction, OwnerSet } from '../types'
+
+const POLLING_INTERVAL = 500
 
 async function sendTransactions(
   config: RhinestoneAccountConfig,
@@ -26,7 +34,7 @@ async function sendTransactions(
   const { sourceChain, targetChain, calls, tokenRequests } = transaction
   const isAccountDeployed = await isDeployed(sourceChain, config)
   if (!isAccountDeployed) {
-    await deploy(config.deployerAccount, sourceChain, config)
+    await deploySource(config.deployerAccount, sourceChain, config)
   }
 
   const accountAddress = await getAddress(config)
@@ -71,19 +79,14 @@ async function sendTransactions(
     targetSignature: packedSig,
   }
 
-  const { factory, factoryData } = await getDeployArgs(config)
-  if (!factory || !factoryData) {
-    throw new Error('Factory args not available')
-  }
-  const initCode = encodePacked(['address', 'bytes'], [factory, factoryData])
-
-  const bundleResults: PostOrderBundleResult =
-    await orchestrator.postSignedOrderBundle([
-      {
-        signedOrderBundle,
-        initCode,
-      },
-    ])
+  await deployTarget(targetChain, config)
+  const initCode = await getBundleInitCode(config)
+  const bundleResults = await orchestrator.postSignedOrderBundle([
+    {
+      signedOrderBundle,
+      initCode,
+    },
+  ])
 
   return bundleResults[0].bundleId
 }
@@ -92,10 +95,12 @@ async function waitForExecution(config: RhinestoneAccountConfig, id: bigint) {
   let bundleResult: BundleResult | null = null
   while (
     bundleResult === null ||
-    bundleResult.status === BUNDLE_STATUS_PENDING
+    bundleResult.status === BUNDLE_STATUS_PENDING ||
+    bundleResult.status === BUNDLE_STATUS_PARTIALLY_COMPLETED
   ) {
     const orchestrator = getOrchestrator(config.rhinestoneApiKey)
     bundleResult = await orchestrator.getBundleStatus(id)
+    await new Promise((resolve) => setTimeout(resolve, POLLING_INTERVAL))
   }
   if (bundleResult.status === BUNDLE_STATUS_FAILED) {
     throw new Error('Bundle failed')
@@ -118,11 +123,10 @@ async function sign(validators: OwnerSet, chain: Chain, hash: Hex) {
 }
 
 async function signEcdsa(account: Account, hash: Hex) {
-  const sign = account.signMessage
-  if (!sign) {
+  if (!account.signMessage) {
     throw new Error('Signing not supported for the account')
   }
-  return await sign({ message: { raw: hash } })
+  return await account.signMessage({ message: { raw: hash } })
 }
 
 async function signPasskey(account: WebAuthnAccount, chain: Chain, hash: Hex) {

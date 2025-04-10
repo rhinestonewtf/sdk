@@ -22,11 +22,9 @@ yarn add viem @rhinestone/sdk
 bun install viem @rhinestone/sdk
 ```
 
-### Quick Start
+### Quickstart
 
-You'll need a Rhinestone API key, as well as an existing account with some testnet tokens.
-
-You can get some testnet USDC using a [Circle Faucet](https://faucet.circle.com). Make sure you have the testnet ETH on the source chain as well.
+You'll need a Rhinestone API key, as well as an existing account with some testnet ETH on the source chain.
 
 ## Creating a Wallet
 
@@ -79,7 +77,7 @@ const account = privateKeyToAccount(privateKey)
 
 const rhinestoneAccount = await createRhinestoneAccount({
   account: {
-    type: 'safe',
+    type: 'nexus',
   },
   owners: {
     type: 'ecdsa',
@@ -94,7 +92,7 @@ console.log(address)
 
 ## Funding the Account
 
-We will send some tokens from the funding account to the Safe account.
+We will send some ETH from the funding account to the created Safe account. The Orchestrator will use some of that ETH to deploy the account on the target chain, as well as convert it to USDC for a transfer transaction.
 
 ```ts
 const usdc = getTokenAddress(sourceChain)
@@ -106,16 +104,6 @@ const txHash = await fundingClient.sendTransaction({
   value: parseEther('0.001'),
 })
 await publicClient.waitForTransactionReceipt({ hash: txHash })
-
-const txHash2 = await fundingClient.sendTransaction({
-  to: usdcSource,
-  data: encodeFunctionData({
-    abi: erc20Abi,
-    functionName: 'transfer',
-    args: [address, usdcAmount],
-  }),
-})
-await publicClient.waitForTransactionReceipt({ hash: txHash2 })
 
 function getTokenAddress(chain: Chain) {
   switch (chain.id) {

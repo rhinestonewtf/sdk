@@ -12,6 +12,11 @@ interface WebauthnValidatorConfig {
   account: WebAuthnAccount
 }
 
+interface BundlerConfig {
+  type: 'pimlico'
+  apiKey: string
+}
+
 type OwnerSet = OwnableValidatorConfig | WebauthnValidatorConfig
 interface RhinestoneAccountConfig {
   account: {
@@ -20,14 +25,12 @@ interface RhinestoneAccountConfig {
   owners: OwnerSet
   rhinestoneApiKey: string
   deployerAccount: Account
+  eoa?: Account
   provider?: {
     type: 'alchemy'
     apiKey: string
   }
-  bundler?: {
-    type: 'pimlico'
-    apiKey: string
-  }
+  bundler?: BundlerConfig
 }
 
 interface Call {
@@ -48,4 +51,4 @@ interface Transaction {
   tokenRequests: TokenRequest[]
 }
 
-export type { RhinestoneAccountConfig, Transaction, OwnerSet }
+export type { RhinestoneAccountConfig, BundlerConfig, Transaction, OwnerSet }
