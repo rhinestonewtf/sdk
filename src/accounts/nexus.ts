@@ -112,14 +112,15 @@ async function getDeployArgs(config: RhinestoneAccountConfig) {
 }
 
 function get7702InitCalls(config: RhinestoneAccountConfig) {
-  if (!config.eoaAccount) {
+  const eoa = config.eoa
+  if (!eoa) {
     throw new Error('EIP-7702 accounts must have an EOA account')
   }
 
   const moduleSetup = getModuleSetup(config)
   return [
     {
-      to: config.eoaAccount.address,
+      to: eoa.address,
       data: encodeFunctionData({
         abi: parseAbi([
           'function setRegistry(address newRegistry, address[] calldata attesters, uint8 threshold)',
@@ -133,7 +134,7 @@ function get7702InitCalls(config: RhinestoneAccountConfig) {
       }),
     },
     ...moduleSetup.validators.map((validator) => ({
-      to: config.eoaAccount!.address,
+      to: eoa.address,
       data: encodeFunctionData({
         abi: parseAbi([
           'function installModule(uint256 moduleTypeId, address module, bytes calldata initData)',
@@ -143,7 +144,7 @@ function get7702InitCalls(config: RhinestoneAccountConfig) {
       }),
     })),
     ...moduleSetup.executors.map((executor) => ({
-      to: config.eoaAccount!.address,
+      to: eoa.address,
       data: encodeFunctionData({
         abi: parseAbi([
           'function installModule(uint256 moduleTypeId, address module, bytes calldata initData)',
@@ -153,7 +154,7 @@ function get7702InitCalls(config: RhinestoneAccountConfig) {
       }),
     })),
     ...moduleSetup.fallbacks.map((fallback) => ({
-      to: config.eoaAccount!.address,
+      to: eoa.address,
       data: encodeFunctionData({
         abi: parseAbi([
           'function installModule(uint256 moduleTypeId, address module, bytes calldata initData)',

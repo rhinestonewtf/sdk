@@ -38,10 +38,10 @@ async function getDeployArgs(config: RhinestoneAccountConfig) {
 
 async function getAddress(config: RhinestoneAccountConfig) {
   if (is7702(config)) {
-    if (!config.eoaAccount) {
+    if (!config.eoa) {
       throw new Error('EIP-7702 accounts must have an EOA account')
     }
-    return config.eoaAccount.address
+    return config.eoa.address
   }
   const { factory, salt, hashedInitcode } = await getDeployArgs(config)
   const hash = keccak256(
@@ -105,7 +105,7 @@ async function getBundleInitCode(config: RhinestoneAccountConfig) {
 }
 
 async function deploy7702Self(chain: Chain, config: RhinestoneAccountConfig) {
-  if (!config.eoaAccount) {
+  if (!config.eoa) {
     throw new Error('EIP-7702 accounts must have an EOA account')
   }
 
@@ -121,7 +121,7 @@ async function deploy7702Self(chain: Chain, config: RhinestoneAccountConfig) {
     transport: http(),
   })
   const accountClient = createWalletClient({
-    account: config.eoaAccount,
+    account: config.eoa,
     chain,
     transport: http(),
   })
@@ -134,7 +134,7 @@ async function deploy7702Self(chain: Chain, config: RhinestoneAccountConfig) {
   const hash = await accountClient.sendTransaction({
     chain,
     authorizationList: [authorization],
-    to: config.eoaAccount.address,
+    to: config.eoa.address,
     data: initializationCallData,
   })
   await publicClient.waitForTransactionReceipt({ hash })
@@ -166,7 +166,7 @@ async function deploy7702WithBundler(
   chain: Chain,
   config: RhinestoneAccountConfig,
 ) {
-  if (!config.eoaAccount) {
+  if (!config.eoa) {
     throw new Error('EIP-7702 accounts must have an EOA account')
   }
 
@@ -177,7 +177,7 @@ async function deploy7702WithBundler(
     transport: http(),
   })
   const accountClient = createWalletClient({
-    account: config.eoaAccount,
+    account: config.eoa,
     chain,
     transport: http(),
   })
@@ -227,7 +227,7 @@ async function get7702SmartAccount(
   config: RhinestoneAccountConfig,
   client: PublicClient,
 ) {
-  if (!config.eoaAccount) {
+  if (!config.eoa) {
     throw new Error('EIP-7702 accounts must have an EOA account')
   }
 
@@ -236,13 +236,13 @@ async function get7702SmartAccount(
       return get7702SafeAccount()
     }
     case 'nexus': {
-      return get7702NexusAccount(config.eoaAccount, client)
+      return get7702NexusAccount(config.eoa, client)
     }
   }
 }
 
 function is7702(config: RhinestoneAccountConfig): boolean {
-  return config.eoaAccount !== undefined
+  return config.eoa !== undefined
 }
 
 export {
