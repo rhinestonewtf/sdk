@@ -25,7 +25,7 @@ import {
 } from '../modules'
 import { RhinestoneAccountConfig, Transaction, OwnerSet } from '../types'
 
-const POLLING_INTERVAL = 1000
+const POLLING_INTERVAL = 500
 
 async function sendTransactions(
   config: RhinestoneAccountConfig,
