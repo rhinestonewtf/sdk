@@ -19,7 +19,7 @@ import {
   getBundleInitCode,
 } from '../accounts'
 import {
-  getValidator,
+  getOwnerValidator,
   getWebauthnValidatorSignature,
   isRip7212SupportedNetwork,
 } from '../modules'
@@ -65,7 +65,7 @@ async function sendTransactions(
     sourceChain,
     orderBundleHash,
   )
-  const validatorModule = getValidator(config)
+  const validatorModule = getOwnerValidator(config)
   const packedSig = encodePacked(
     ['address', 'bytes'],
     [validatorModule.address, bundleSignature],
