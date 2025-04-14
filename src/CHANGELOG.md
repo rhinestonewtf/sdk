@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 0.2.1
+
+### Patch Changes
+
+- 0d9a187: EIP-7702 support
+
 ## 0.2.0
 
 ### Minor Changes
