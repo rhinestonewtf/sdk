@@ -23,18 +23,51 @@ import {
   getWebauthnValidatorSignature,
   isRip7212SupportedNetwork,
 } from '../modules'
-import { RhinestoneAccountConfig, Transaction, OwnerSet } from '../types'
+import {
+  RhinestoneAccountConfig,
+  Transaction,
+  OwnerSet,
+  Call,
+  TokenRequest,
+} from '../types'
 
 const POLLING_INTERVAL = 500
 
-async function sendTransactions(
+async function sendTransaction(
   config: RhinestoneAccountConfig,
   transaction: Transaction,
 ) {
-  const { sourceChain, targetChain, calls, tokenRequests } = transaction
+  if ('chain' in transaction) {
+    // Same-chain transaction
+    return await sendTransactionInternal(
+      config,
+      transaction.chain,
+      transaction.chain,
+      transaction.calls,
+      transaction.tokenRequests,
+    )
+  } else {
+    // Cross-chain transaction
+    return await sendTransactionInternal(
+      config,
+      transaction.sourceChain,
+      transaction.targetChain,
+      transaction.calls,
+      transaction.tokenRequests,
+    )
+  }
+}
+
+async function sendTransactionInternal(
+  config: RhinestoneAccountConfig,
+  sourceChain: Chain,
+  targetChain: Chain,
+  calls: Call[],
+  tokenRequests: TokenRequest[],
+) {
   const isAccountDeployed = await isDeployed(sourceChain, config)
   if (!isAccountDeployed) {
-    await deploySource(config.deployerAccount, sourceChain, config)
+    await deploySource(sourceChain, config)
   }
 
   const accountAddress = await getAddress(config)
@@ -140,4 +173,4 @@ async function signPasskey(account: WebAuthnAccount, chain: Chain, hash: Hex) {
   return encodedSignature
 }
 
-export { sendTransactions, waitForExecution }
+export { sendTransaction, waitForExecution }

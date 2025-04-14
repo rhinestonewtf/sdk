@@ -73,15 +73,11 @@ async function isDeployed(chain: Chain, config: RhinestoneAccountConfig) {
   return size(code) > 0
 }
 
-async function deploySource(
-  deployer: Account,
-  chain: Chain,
-  config: RhinestoneAccountConfig,
-) {
+async function deploySource(chain: Chain, config: RhinestoneAccountConfig) {
   if (is7702(config)) {
     return deploy7702Self(chain, config)
   } else {
-    return deployStandaloneSelf(deployer, chain, config)
+    return deployStandaloneSelf(chain, config)
   }
 }
 
@@ -141,10 +137,10 @@ async function deploy7702Self(chain: Chain, config: RhinestoneAccountConfig) {
 }
 
 async function deployStandaloneSelf(
-  deployer: Account,
   chain: Chain,
   config: RhinestoneAccountConfig,
 ) {
+  const deployer = config.deployerAccount
   const { factory, factoryData } = await getDeployArgs(config)
   const publicClient = createPublicClient({
     chain: chain,

@@ -1,21 +1,21 @@
 import { RhinestoneAccountConfig, Transaction } from './types'
 import {
-  sendTransactions as sendTransactionsInternal,
+  sendTransaction as sendTransactionInternal,
   waitForExecution as waitForExecutionInternal,
 } from './execution'
 import { getAddress as getAddressInternal } from './accounts'
 
 async function createRhinestoneAccount(config: RhinestoneAccountConfig) {
-  const sendTransactions = async (transaction: Transaction) => {
-    return await sendTransactionsInternal(config, transaction)
+  function sendTransactions(transaction: Transaction) {
+    return sendTransactionInternal(config, transaction)
   }
 
-  const waitForExecution = async ({ id }: { id: bigint }) => {
-    return await waitForExecutionInternal(config, id)
+  function waitForExecution({ id }: { id: bigint }) {
+    return waitForExecutionInternal(config, id)
   }
 
-  const getAddress = async () => {
-    return await getAddressInternal(config)
+  function getAddress() {
+    return getAddressInternal(config)
   }
 
   return {

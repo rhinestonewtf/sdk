@@ -44,11 +44,26 @@ interface TokenRequest {
   amount: bigint
 }
 
-interface Transaction {
+interface SameChainTransaction {
+  chain: Chain
+  calls: Call[]
+  tokenRequests: TokenRequest[]
+}
+
+interface CrossChainTransaction {
   sourceChain: Chain
   targetChain: Chain
   calls: Call[]
   tokenRequests: TokenRequest[]
 }
 
-export type { RhinestoneAccountConfig, BundlerConfig, Transaction, OwnerSet }
+type Transaction = SameChainTransaction | CrossChainTransaction
+
+export type {
+  RhinestoneAccountConfig,
+  BundlerConfig,
+  Transaction,
+  Call,
+  TokenRequest,
+  OwnerSet,
+}
