@@ -9,19 +9,37 @@ import {
   encodePacked,
   slice,
   PublicClient,
+  Hex,
+  concat,
 } from 'viem'
+import { WebAuthnAccount } from 'viem/account-abstraction'
 
-import { RhinestoneAccountConfig } from '../types'
+import { OwnerSet, RhinestoneAccountConfig, Session } from '../types'
+import {
+  getWebauthnValidatorSignature,
+  isRip7212SupportedNetwork,
+} from '../modules'
+import {
+  getOwnerValidator,
+  getEnableSessionCall,
+  getSmartSessionValidator,
+  isSessionEnabled,
+  getPermissionId,
+} from '../modules/validators'
 
 import {
   getDeployArgs as getSafeDeployArgs,
+  getSmartAccount as getSafeSmartAccount,
   get7702InitCalls as get7702SafeInitCalls,
   get7702SmartAccount as get7702SafeAccount,
+  getSessionSmartAccount as getSafeSessionSmartAccount,
 } from './safe'
 import {
   getDeployArgs as getNexusDeployArgs,
+  getSmartAccount as getNexusSmartAccount,
   get7702InitCalls as get7702NexusInitCalls,
   get7702SmartAccount as get7702NexusAccount,
+  getSessionSmartAccount as getNexusSessionSmartAccount,
 } from './nexus'
 import { getBundlerClient } from './utils'
 
@@ -208,15 +226,118 @@ async function deploy7702WithBundler(
   })
 }
 
-async function get7702InitCalls(config: RhinestoneAccountConfig) {
+async function enableSmartSession(
+  chain: Chain,
+  config: RhinestoneAccountConfig,
+  session: Session,
+) {
+  const publicClient = createPublicClient({
+    chain,
+    transport: http(),
+  })
+  const address = await getAddress(config)
+  const isEnabled = await isSessionEnabled(
+    publicClient,
+    address,
+    getPermissionId(session),
+  )
+  if (isEnabled) {
+    return
+  }
+  const smartAccount = await getSmartAccount(config, publicClient, chain)
+  const bundlerClient = getBundlerClient(config, publicClient)
+  const enableSessionCall = await getEnableSessionCall(chain, session)
+  const opHash = await bundlerClient.sendUserOperation({
+    account: smartAccount,
+    calls: [enableSessionCall],
+  })
+  await bundlerClient.waitForUserOperationReceipt({
+    hash: opHash,
+  })
+}
+
+async function getSmartAccount(
+  config: RhinestoneAccountConfig,
+  client: PublicClient,
+  chain: Chain,
+) {
   switch (config.account.type) {
     case 'safe': {
-      return get7702SafeInitCalls()
+      return getSafeSmartAccount()
     }
     case 'nexus': {
-      return get7702NexusInitCalls(config)
+      const address = await getAddress(config)
+      const ownerValidator = getOwnerValidator(config)
+      const signFn = (hash: Hex) => sign(config.owners, chain, hash)
+      return getNexusSmartAccount(
+        client,
+        address,
+        config.owners,
+        ownerValidator.address,
+        signFn,
+      )
     }
   }
+}
+
+async function getSmartSessionSmartAccount(
+  config: RhinestoneAccountConfig,
+  client: PublicClient,
+  chain: Chain,
+  session: Session,
+) {
+  switch (config.account.type) {
+    case 'safe': {
+      return getSafeSessionSmartAccount()
+    }
+    case 'nexus': {
+      const address = await getAddress(config)
+      const smartSessionValidator = getSmartSessionValidator(config)
+      if (!smartSessionValidator) {
+        throw new Error('Smart sessions are not enabled for this account')
+      }
+      const signFn = (hash: Hex) => sign(session.owners, chain, hash)
+      return getNexusSessionSmartAccount(
+        client,
+        address,
+        session,
+        smartSessionValidator.address,
+        signFn,
+      )
+    }
+  }
+}
+
+async function sign(validators: OwnerSet, chain: Chain, hash: Hex) {
+  switch (validators.type) {
+    case 'ecdsa': {
+      const signatures = await Promise.all(
+        validators.accounts.map((account) => signEcdsa(account, hash)),
+      )
+      return concat(signatures)
+    }
+    case 'passkey': {
+      return await signPasskey(validators.account, chain, hash)
+    }
+  }
+}
+
+async function signEcdsa(account: Account, hash: Hex) {
+  if (!account.signMessage) {
+    throw new Error('Signing not supported for the account')
+  }
+  return await account.signMessage({ message: { raw: hash } })
+}
+
+async function signPasskey(account: WebAuthnAccount, chain: Chain, hash: Hex) {
+  const { webauthn, signature } = await account.sign({ hash })
+  const usePrecompiled = isRip7212SupportedNetwork(chain)
+  const encodedSignature = getWebauthnValidatorSignature({
+    webauthn,
+    signature,
+    usePrecompiled,
+  })
+  return encodedSignature
 }
 
 async function get7702SmartAccount(
@@ -237,6 +358,17 @@ async function get7702SmartAccount(
   }
 }
 
+async function get7702InitCalls(config: RhinestoneAccountConfig) {
+  switch (config.account.type) {
+    case 'safe': {
+      return get7702SafeInitCalls()
+    }
+    case 'nexus': {
+      return get7702NexusInitCalls(config)
+    }
+  }
+}
+
 function is7702(config: RhinestoneAccountConfig): boolean {
   return config.eoa !== undefined
 }
@@ -248,4 +380,7 @@ export {
   isDeployed,
   deploySource,
   deployTarget,
+  enableSmartSession,
+  getSmartSessionSmartAccount,
+  sign,
 }

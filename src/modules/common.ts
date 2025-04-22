@@ -1,6 +1,4 @@
-import { Address } from 'viem'
-
-import { Hex } from 'viem'
+import { Address, Hex } from 'viem'
 
 type ModuleType =
   | typeof MODULE_TYPE_ID_VALIDATOR

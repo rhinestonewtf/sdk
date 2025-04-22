@@ -18,12 +18,21 @@ import {
 } from 'viem/chains'
 
 import { RhinestoneAccountConfig } from '../types'
+
 import {
   Module,
   MODULE_TYPE_ID_EXECUTOR,
   MODULE_TYPE_ID_FALLBACK,
 } from './common'
-import { getOwnerValidator } from './validators'
+import {
+  OMNI_ACCOUNT_MOCK_ATTESTER_ADDRESS,
+  RHINESTONE_MODULE_REGISTRY_ADDRESS,
+  RHINESTONE_ATTESTER_ADDRESS,
+  HOOK_ADDRESS,
+  TARGET_MODULE_ADDRESS,
+  SAME_CHAIN_MODULE_ADDRESS,
+} from './omni-account'
+import { getOwnerValidator, getSmartSessionValidator } from './validators'
 
 interface WebAuthnData {
   authenticatorData: Hex
@@ -42,20 +51,6 @@ interface WebauthnSignature {
   s: bigint
 }
 
-const OMNI_ACCOUNT_MOCK_ATTESTER_ADDRESS: Address =
-  '0x6D0515e8E499468DCe9583626f0cA15b887f9d03'
-
-const RHINESTONE_MODULE_REGISTRY_ADDRESS: Address =
-  '0x000000000069e2a187aeffb852bf3ccdc95151b2'
-const RHINESTONE_ATTESTER_ADDRESS: Address =
-  '0x000000333034E9f539ce08819E12c1b8Cb29084d'
-
-const HOOK_ADDRESS: Address = '0x0000000000f6Ed8Be424d673c63eeFF8b9267420'
-const TARGET_MODULE_ADDRESS: Address =
-  '0x0000000000E5a37279A001301A837a91b5de1D5E'
-const SAME_CHAIN_MODULE_ADDRESS: Address =
-  '0x000000000043ff16d5776c7F0f65Ec485C17Ca04'
-
 interface ModeleSetup {
   validators: Module[]
   executors: Module[]
@@ -66,10 +61,14 @@ interface ModeleSetup {
   threshold: number
 }
 
-function getSetup(config: RhinestoneAccountConfig): ModeleSetup {
+async function getSetup(config: RhinestoneAccountConfig): Promise<ModeleSetup> {
   const ownerValidator = getOwnerValidator(config)
+  const smartSessionValidator = getSmartSessionValidator(config)
 
   const validators: Module[] = [ownerValidator]
+  if (smartSessionValidator) {
+    validators.push(smartSessionValidator)
+  }
 
   const executors: Module[] = [
     {
@@ -128,7 +127,7 @@ function getSetup(config: RhinestoneAccountConfig): ModeleSetup {
   }
 }
 
-export function getWebauthnValidatorSignature({
+function getWebauthnValidatorSignature({
   webauthn,
   signature,
   usePrecompiled = false,
@@ -179,7 +178,7 @@ export function getWebauthnValidatorSignature({
   )
 }
 
-export function isRip7212SupportedNetwork(chain: Chain) {
+function isRip7212SupportedNetwork(chain: Chain) {
   const supportedChains: Chain[] = [
     optimism,
     optimismSepolia,
@@ -205,4 +204,10 @@ function parseSignature(signature: Hex | Uint8Array): WebauthnSignature {
   }
 }
 
-export { HOOK_ADDRESS, getSetup, getOwnerValidator }
+export {
+  HOOK_ADDRESS,
+  getSetup,
+  getOwnerValidator,
+  getWebauthnValidatorSignature,
+  isRip7212SupportedNetwork,
+}

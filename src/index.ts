@@ -1,5 +1,6 @@
 import { RhinestoneAccountConfig, Transaction } from './types'
 import {
+  type TransactionResult,
   sendTransaction as sendTransactionInternal,
   waitForExecution as waitForExecutionInternal,
 } from './execution'
@@ -10,8 +11,8 @@ async function createRhinestoneAccount(config: RhinestoneAccountConfig) {
     return sendTransactionInternal(config, transaction)
   }
 
-  function waitForExecution({ id }: { id: bigint }) {
-    return waitForExecutionInternal(config, id)
+  function waitForExecution(result: TransactionResult) {
+    return waitForExecutionInternal(config, result)
   }
 
   function getAddress() {

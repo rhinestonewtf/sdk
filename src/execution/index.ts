@@ -1,5 +1,20 @@
-import { Account, Chain, concat, encodePacked, Hex } from 'viem'
-import { WebAuthnAccount } from 'viem/account-abstraction'
+import {
+  Address,
+  Chain,
+  createPublicClient,
+  createWalletClient,
+  encodeAbiParameters,
+  encodePacked,
+  Hex,
+  http,
+  keccak256,
+  pad,
+  toHex,
+} from 'viem'
+import {
+  entryPoint07Address,
+  getUserOperationHash,
+} from 'viem/account-abstraction'
 
 import {
   type BundleResult,
@@ -10,6 +25,7 @@ import {
   getOrchestrator,
   getOrderBundleHash,
   BUNDLE_STATUS_PARTIALLY_COMPLETED,
+  getEmptyUserOp,
 } from '../orchestrator'
 import {
   getAddress,
@@ -17,21 +33,45 @@ import {
   deploySource,
   deployTarget,
   getBundleInitCode,
+  sign,
+  getSmartSessionSmartAccount,
+  getDeployArgs,
+  enableSmartSession,
 } from '../accounts'
-import {
-  getOwnerValidator,
-  getWebauthnValidatorSignature,
-  isRip7212SupportedNetwork,
-} from '../modules'
+import { getOwnerValidator } from '../modules'
 import {
   RhinestoneAccountConfig,
   Transaction,
-  OwnerSet,
   Call,
   TokenRequest,
+  Session,
+  SignerSet,
 } from '../types'
+import { getBundlerClient } from '../accounts/utils'
+import {
+  getAccountEIP712Domain,
+  getPermissionId,
+  getSessionAllowedERC7739Content,
+} from '../modules/validators'
+import { SMART_SESSIONS_VALIDATOR_ADDRESS } from '../modules/validators'
+import { getTokenBalanceSlot } from '../orchestrator'
+import { hashMultichainCompactWithoutDomainSeparator } from '../orchestrator/utils'
 
 const POLLING_INTERVAL = 500
+
+type TransactionResult =
+  | {
+      type: 'userop'
+      hash: Hex
+      sourceChain: Chain
+      targetChain: Chain
+    }
+  | {
+      type: 'bundle'
+      id: bigint
+      sourceChain: Chain
+      targetChain: Chain
+    }
 
 async function sendTransaction(
   config: RhinestoneAccountConfig,
@@ -45,6 +85,7 @@ async function sendTransaction(
       transaction.chain,
       transaction.calls,
       transaction.tokenRequests,
+      transaction.signers,
     )
   } else {
     // Cross-chain transaction
@@ -54,6 +95,7 @@ async function sendTransaction(
       transaction.targetChain,
       transaction.calls,
       transaction.tokenRequests,
+      transaction.signers,
     )
   }
 }
@@ -64,13 +106,280 @@ async function sendTransactionInternal(
   targetChain: Chain,
   calls: Call[],
   tokenRequests: TokenRequest[],
+  signers?: SignerSet,
 ) {
   const isAccountDeployed = await isDeployed(sourceChain, config)
   if (!isAccountDeployed) {
     await deploySource(sourceChain, config)
   }
+  const withSession = signers?.type === 'session' ? signers.session : null
+  if (withSession) {
+    await enableSmartSession(sourceChain, config, withSession)
+  }
 
   const accountAddress = await getAddress(config)
+  if (withSession) {
+    // Smart sessions require a UserOp flow
+    return await sendTransactionAsUserOp(
+      config,
+      sourceChain,
+      targetChain,
+      calls,
+      tokenRequests,
+      accountAddress,
+      withSession,
+    )
+  } else {
+    return await sendTransactionAsIntent(
+      config,
+      sourceChain,
+      targetChain,
+      calls,
+      tokenRequests,
+      accountAddress,
+    )
+  }
+}
+
+async function sendTransactionAsUserOp(
+  config: RhinestoneAccountConfig,
+  sourceChain: Chain,
+  targetChain: Chain,
+  calls: Call[],
+  tokenRequests: TokenRequest[],
+  accountAddress: Address,
+  withSession: Session,
+) {
+  const publicClient = createPublicClient({
+    chain: sourceChain,
+    transport: http(),
+  })
+  const sessionAccount = await getSmartSessionSmartAccount(
+    config,
+    publicClient,
+    sourceChain,
+    withSession,
+  )
+  const bundlerClient = getBundlerClient(config, publicClient)
+  const targetPublicClient = createPublicClient({
+    chain: targetChain,
+    transport: http(),
+  })
+  const targetSessionAccount = await getSmartSessionSmartAccount(
+    config,
+    targetPublicClient,
+    targetChain,
+    withSession,
+  )
+  const targetBundlerClient = getBundlerClient(config, targetPublicClient)
+
+  if (sourceChain.id !== targetChain.id) {
+    const metaIntent: MetaIntent = {
+      targetChainId: targetChain.id,
+      tokenTransfers: tokenRequests.map((tokenRequest) => ({
+        tokenAddress: tokenRequest.address,
+        amount: tokenRequest.amount,
+      })),
+      targetAccount: accountAddress,
+      userOp: getEmptyUserOp(),
+    }
+
+    const orchestrator = getOrchestrator(config.rhinestoneApiKey)
+    const orderPath = await orchestrator.getOrderPath(
+      metaIntent,
+      accountAddress,
+    )
+    // Deploy the account on the target chain
+    const { factory, factoryData } = await getDeployArgs(config)
+    const deployerAccount = config.deployerAccount
+    const targetWalletClient = createWalletClient({
+      chain: targetChain,
+      transport: http(),
+    })
+    const targetDeployTx = await targetWalletClient.sendTransaction({
+      account: deployerAccount,
+      to: factory,
+      data: factoryData,
+    })
+    await targetPublicClient.waitForTransactionReceipt({
+      hash: targetDeployTx,
+    })
+    await enableSmartSession(targetChain, config, withSession)
+
+    const userOp = await targetBundlerClient.prepareUserOperation({
+      account: targetSessionAccount,
+      calls: [...orderPath[0].injectedExecutions, ...calls],
+      stateOverride: [
+        ...tokenRequests.map((request) => {
+          const rootBalanceSlot = getTokenBalanceSlot(
+            targetChain,
+            request.address,
+          )
+          const balanceSlot = rootBalanceSlot
+            ? keccak256(
+                encodeAbiParameters(
+                  [{ type: 'address' }, { type: 'uint256' }],
+                  [accountAddress, rootBalanceSlot],
+                ),
+              )
+            : '0x'
+          return {
+            address: request.address,
+            stateDiff: [
+              {
+                slot: balanceSlot,
+                value: pad(toHex(request.amount)),
+              },
+            ],
+          }
+        }),
+      ],
+    })
+    userOp.signature = await targetSessionAccount.signUserOperation(userOp)
+    const userOpHash = getUserOperationHash({
+      userOperation: userOp,
+      chainId: targetChain.id,
+      entryPointAddress: entryPoint07Address,
+      entryPointVersion: '0.7',
+    })
+    orderPath[0].orderBundle.segments[0].witness.userOpHash = userOpHash
+
+    const { appDomainSeparator, contentsType } =
+      await getSessionAllowedERC7739Content(sourceChain)
+
+    const orderBundleHash = getOrderBundleHash(orderPath[0].orderBundle)
+    // Create hash following ERC-7739 TypedDataSign workflow
+    const typedDataSignTypehash = keccak256(
+      encodePacked(
+        ['string'],
+        [
+          'TypedDataSign(MultichainCompact contents,string name,string version,uint256 chainId,address verifyingContract,bytes32 salt)'.concat(
+            contentsType,
+          ),
+        ],
+      ),
+    )
+
+    // Original struct hash
+    const structHash = hashMultichainCompactWithoutDomainSeparator(
+      orderPath[0].orderBundle,
+    )
+
+    const { name, version, chainId, verifyingContract, salt } =
+      await getAccountEIP712Domain(publicClient, accountAddress)
+    // Final hash according to ERC-7739
+    const hash = keccak256(
+      encodePacked(
+        ['bytes2', 'bytes32', 'bytes32'],
+        [
+          '0x1901',
+          appDomainSeparator,
+          keccak256(
+            encodeAbiParameters(
+              [
+                { name: 'a', type: 'bytes32' },
+                { name: 'b', type: 'bytes32' },
+                { name: 'c', type: 'bytes32' },
+                { name: 'd', type: 'bytes32' },
+                { name: 'e', type: 'uint256' },
+                { name: 'f', type: 'address' },
+                { name: 'g', type: 'bytes32' },
+              ],
+              [
+                typedDataSignTypehash,
+                structHash,
+                keccak256(encodePacked(['string'], [name])), // name
+                keccak256(encodePacked(['string'], [version])), // version
+                BigInt(Number(chainId)), // chainId
+                verifyingContract, // verifyingContract
+                salt, // salt
+              ],
+            ),
+          ),
+        ],
+      ),
+    )
+
+    const signature = await sign(withSession.owners, targetChain, hash)
+
+    // Format signature according to ERC-7739 spec
+    const erc7739Signature = encodePacked(
+      ['bytes', 'bytes32', 'bytes32', 'string', 'uint16'],
+      [
+        signature,
+        appDomainSeparator,
+        structHash,
+        contentsType,
+        contentsType.length,
+      ],
+    )
+
+    // Pack with permissionId for smart session
+    const wrappedSignature = encodePacked(
+      ['bytes32', 'bytes'],
+      [getPermissionId(withSession), erc7739Signature],
+    )
+
+    const packedSig = encodePacked(
+      ['address', 'bytes'],
+      [SMART_SESSIONS_VALIDATOR_ADDRESS, wrappedSignature],
+    )
+
+    const isValidSig = await publicClient.verifyMessage({
+      address: accountAddress,
+      message: orderBundleHash,
+      signature: packedSig,
+    })
+
+    if (!isValidSig) {
+      throw new Error('Invalid signature')
+    }
+
+    const signedOrderBundle: SignedMultiChainCompact = {
+      ...orderPath[0].orderBundle,
+      originSignatures: Array(orderPath[0].orderBundle.segments.length).fill(
+        packedSig,
+      ),
+      targetSignature: packedSig,
+    }
+
+    await deployTarget(targetChain, config)
+    const bundleResults = await orchestrator.postSignedOrderBundle([
+      {
+        signedOrderBundle,
+        userOp,
+      },
+    ])
+
+    return {
+      type: 'bundle',
+      id: bundleResults[0].bundleId,
+      sourceChain,
+      targetChain,
+    } as TransactionResult
+  }
+
+  await enableSmartSession(targetChain, config, withSession)
+  const hash = await bundlerClient.sendUserOperation({
+    account: sessionAccount,
+    calls,
+  })
+  return {
+    type: 'userop',
+    hash,
+    sourceChain,
+    targetChain,
+  } as TransactionResult
+}
+
+async function sendTransactionAsIntent(
+  config: RhinestoneAccountConfig,
+  sourceChain: Chain,
+  targetChain: Chain,
+  calls: Call[],
+  tokenRequests: TokenRequest[],
+  accountAddress: Address,
+) {
   const metaIntent: MetaIntent = {
     targetChainId: targetChain.id,
     tokenTransfers: tokenRequests.map((tokenRequest) => ({
@@ -121,56 +430,49 @@ async function sendTransactionInternal(
     },
   ])
 
-  return bundleResults[0].bundleId
+  return {
+    type: 'bundle',
+    id: bundleResults[0].bundleId,
+    sourceChain,
+    targetChain,
+  } as TransactionResult
 }
 
-async function waitForExecution(config: RhinestoneAccountConfig, id: bigint) {
-  let bundleResult: BundleResult | null = null
-  while (
-    bundleResult === null ||
-    bundleResult.status === BUNDLE_STATUS_PENDING ||
-    bundleResult.status === BUNDLE_STATUS_PARTIALLY_COMPLETED
-  ) {
-    const orchestrator = getOrchestrator(config.rhinestoneApiKey)
-    bundleResult = await orchestrator.getBundleStatus(id)
-    await new Promise((resolve) => setTimeout(resolve, POLLING_INTERVAL))
-  }
-  if (bundleResult.status === BUNDLE_STATUS_FAILED) {
-    throw new Error('Bundle failed')
-  }
-  return bundleResult
-}
-
-async function sign(validators: OwnerSet, chain: Chain, hash: Hex) {
-  switch (validators.type) {
-    case 'ecdsa': {
-      const signatures = await Promise.all(
-        validators.accounts.map((account) => signEcdsa(account, hash)),
-      )
-      return concat(signatures)
+async function waitForExecution(
+  config: RhinestoneAccountConfig,
+  result: TransactionResult,
+) {
+  switch (result.type) {
+    case 'bundle': {
+      let bundleResult: BundleResult | null = null
+      while (
+        bundleResult === null ||
+        bundleResult.status === BUNDLE_STATUS_PENDING ||
+        bundleResult.status === BUNDLE_STATUS_PARTIALLY_COMPLETED
+      ) {
+        const orchestrator = getOrchestrator(config.rhinestoneApiKey)
+        bundleResult = await orchestrator.getBundleStatus(result.id)
+        await new Promise((resolve) => setTimeout(resolve, POLLING_INTERVAL))
+      }
+      if (bundleResult.status === BUNDLE_STATUS_FAILED) {
+        throw new Error('Bundle failed')
+      }
+      return bundleResult
     }
-    case 'passkey': {
-      return await signPasskey(validators.account, chain, hash)
+    case 'userop': {
+      const publicClient = createPublicClient({
+        chain: result.sourceChain,
+        transport: http(),
+      })
+      // It's a UserOp hash
+      const bundlerClient = getBundlerClient(config, publicClient)
+      const receipt = await bundlerClient.waitForUserOperationReceipt({
+        hash: result.hash,
+      })
+      return receipt
     }
   }
-}
-
-async function signEcdsa(account: Account, hash: Hex) {
-  if (!account.signMessage) {
-    throw new Error('Signing not supported for the account')
-  }
-  return await account.signMessage({ message: { raw: hash } })
-}
-
-async function signPasskey(account: WebAuthnAccount, chain: Chain, hash: Hex) {
-  const { webauthn, signature } = await account.sign({ hash })
-  const usePrecompiled = isRip7212SupportedNetwork(chain)
-  const encodedSignature = getWebauthnValidatorSignature({
-    webauthn,
-    signature,
-    usePrecompiled,
-  })
-  return encodedSignature
 }
 
 export { sendTransaction, waitForExecution }
+export type { TransactionResult }
