@@ -5,12 +5,11 @@ import { UserOperation } from 'viem/account-abstraction'
 import {
   type UserTokenBalance,
   type MetaIntent,
-  type MultiChainCompact,
-  type Execution,
   type SignedMultiChainCompact,
   type PostOrderBundleResult,
   type BundleResult,
   type BundleEvent,
+  type OrderPath,
 } from './types'
 import {
   convertBigIntFields,
@@ -79,12 +78,7 @@ export class Orchestrator {
   async getOrderPath(
     intent: MetaIntent,
     userAddress: Address,
-  ): Promise<
-    {
-      orderBundle: MultiChainCompact
-      injectedExecutions: Execution[]
-    }[]
-  > {
+  ): Promise<OrderPath> {
     try {
       const response = await axios.post(
         `${this.serverUrl}/accounts/${userAddress}/bundles/path`,

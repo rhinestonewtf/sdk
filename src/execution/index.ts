@@ -36,7 +36,6 @@ import {
   sign,
   getSmartSessionSmartAccount,
   getDeployArgs,
-  getSmartAccount,
 } from '../accounts'
 import { getOwnerValidator } from '../modules'
 import {
@@ -48,16 +47,14 @@ import {
   SignerSet,
 } from '../types'
 import { getBundlerClient } from '../accounts/utils'
-import {
-  getAccountEIP712Domain,
-  getEnableSessionCall,
-  getPermissionId,
-  getSessionAllowedERC7739Content,
-  isSessionEnabled,
-} from '../modules/validators'
-import { SMART_SESSIONS_VALIDATOR_ADDRESS } from '../modules/validators'
+import { getSmartSessionValidator } from '../modules/validators'
 import { getTokenBalanceSlot } from '../orchestrator'
-import { hashMultichainCompactWithoutDomainSeparator } from '../orchestrator/utils'
+
+import {
+  enableSmartSession,
+  getSessionSignature,
+  hashErc7739,
+} from './smart-session'
 
 const POLLING_INTERVAL = 500
 
@@ -175,200 +172,139 @@ async function sendTransactionAsUserOp(
   )
   const targetBundlerClient = getBundlerClient(config, targetPublicClient)
 
-  if (sourceChain.id !== targetChain.id) {
-    const metaIntent: MetaIntent = {
-      targetChainId: targetChain.id,
-      tokenTransfers: tokenRequests.map((tokenRequest) => ({
-        tokenAddress: tokenRequest.address,
-        amount: tokenRequest.amount,
-      })),
-      targetAccount: accountAddress,
-      userOp: getEmptyUserOp(),
-    }
-
-    const orchestrator = getOrchestrator(config.rhinestoneApiKey)
-    const orderPath = await orchestrator.getOrderPath(
-      metaIntent,
-      accountAddress,
-    )
-    // Deploy the account on the target chain
-    const { factory, factoryData } = await getDeployArgs(config)
-    const deployerAccount = config.deployerAccount
-    const targetWalletClient = createWalletClient({
-      chain: targetChain,
-      transport: http(),
-    })
-    const targetDeployTx = await targetWalletClient.sendTransaction({
-      account: deployerAccount,
-      to: factory,
-      data: factoryData,
-    })
-    await targetPublicClient.waitForTransactionReceipt({
-      hash: targetDeployTx,
-    })
+  if (sourceChain.id === targetChain.id) {
     await enableSmartSession(targetChain, config, withSession)
-
-    const userOp = await targetBundlerClient.prepareUserOperation({
-      account: targetSessionAccount,
-      calls: [...orderPath[0].injectedExecutions, ...calls],
-      stateOverride: [
-        ...tokenRequests.map((request) => {
-          const rootBalanceSlot = getTokenBalanceSlot(
-            targetChain,
-            request.address,
-          )
-          const balanceSlot = rootBalanceSlot
-            ? keccak256(
-                encodeAbiParameters(
-                  [{ type: 'address' }, { type: 'uint256' }],
-                  [accountAddress, rootBalanceSlot],
-                ),
-              )
-            : '0x'
-          return {
-            address: request.address,
-            stateDiff: [
-              {
-                slot: balanceSlot,
-                value: pad(toHex(request.amount)),
-              },
-            ],
-          }
-        }),
-      ],
+    const hash = await bundlerClient.sendUserOperation({
+      account: sessionAccount,
+      calls,
     })
-    userOp.signature = await targetSessionAccount.signUserOperation(userOp)
-    const userOpHash = getUserOperationHash({
-      userOperation: userOp,
-      chainId: targetChain.id,
-      entryPointAddress: entryPoint07Address,
-      entryPointVersion: '0.7',
-    })
-    orderPath[0].orderBundle.segments[0].witness.userOpHash = userOpHash
-
-    const { appDomainSeparator, contentsType } =
-      await getSessionAllowedERC7739Content(sourceChain)
-
-    const orderBundleHash = getOrderBundleHash(orderPath[0].orderBundle)
-    // Create hash following ERC-7739 TypedDataSign workflow
-    const typedDataSignTypehash = keccak256(
-      encodePacked(
-        ['string'],
-        [
-          'TypedDataSign(MultichainCompact contents,string name,string version,uint256 chainId,address verifyingContract,bytes32 salt)'.concat(
-            contentsType,
-          ),
-        ],
-      ),
-    )
-
-    // Original struct hash
-    const structHash = hashMultichainCompactWithoutDomainSeparator(
-      orderPath[0].orderBundle,
-    )
-
-    const { name, version, chainId, verifyingContract, salt } =
-      await getAccountEIP712Domain(publicClient, accountAddress)
-    // Final hash according to ERC-7739
-    const hash = keccak256(
-      encodePacked(
-        ['bytes2', 'bytes32', 'bytes32'],
-        [
-          '0x1901',
-          appDomainSeparator,
-          keccak256(
-            encodeAbiParameters(
-              [
-                { name: 'a', type: 'bytes32' },
-                { name: 'b', type: 'bytes32' },
-                { name: 'c', type: 'bytes32' },
-                { name: 'd', type: 'bytes32' },
-                { name: 'e', type: 'uint256' },
-                { name: 'f', type: 'address' },
-                { name: 'g', type: 'bytes32' },
-              ],
-              [
-                typedDataSignTypehash,
-                structHash,
-                keccak256(encodePacked(['string'], [name])), // name
-                keccak256(encodePacked(['string'], [version])), // version
-                BigInt(Number(chainId)), // chainId
-                verifyingContract, // verifyingContract
-                salt, // salt
-              ],
-            ),
-          ),
-        ],
-      ),
-    )
-
-    const signature = await sign(withSession.owners, targetChain, hash)
-
-    // Format signature according to ERC-7739 spec
-    const erc7739Signature = encodePacked(
-      ['bytes', 'bytes32', 'bytes32', 'string', 'uint16'],
-      [
-        signature,
-        appDomainSeparator,
-        structHash,
-        contentsType,
-        contentsType.length,
-      ],
-    )
-
-    // Pack with permissionId for smart session
-    const wrappedSignature = encodePacked(
-      ['bytes32', 'bytes'],
-      [getPermissionId(withSession), erc7739Signature],
-    )
-
-    const packedSig = encodePacked(
-      ['address', 'bytes'],
-      [SMART_SESSIONS_VALIDATOR_ADDRESS, wrappedSignature],
-    )
-
-    const isValidSig = await publicClient.verifyMessage({
-      address: accountAddress,
-      message: orderBundleHash,
-      signature: packedSig,
-    })
-
-    if (!isValidSig) {
-      throw new Error('Invalid signature')
-    }
-
-    const signedOrderBundle: SignedMultiChainCompact = {
-      ...orderPath[0].orderBundle,
-      originSignatures: Array(orderPath[0].orderBundle.segments.length).fill(
-        packedSig,
-      ),
-      targetSignature: packedSig,
-    }
-
-    await deployTarget(targetChain, config)
-    const bundleResults = await orchestrator.postSignedOrderBundle([
-      {
-        signedOrderBundle,
-        userOp,
-      },
-    ])
-
     return {
-      type: 'bundle',
-      id: bundleResults[0].bundleId,
+      type: 'userop',
+      hash,
       sourceChain,
       targetChain,
     } as TransactionResult
   }
 
-  await enableSmartSession(targetChain, config, withSession)
-  const hash = await bundlerClient.sendUserOperation({
-    account: sessionAccount,
-    calls,
+  const metaIntent: MetaIntent = {
+    targetChainId: targetChain.id,
+    tokenTransfers: tokenRequests.map((tokenRequest) => ({
+      tokenAddress: tokenRequest.address,
+      amount: tokenRequest.amount,
+    })),
+    targetAccount: accountAddress,
+    userOp: getEmptyUserOp(),
+  }
+
+  const orchestrator = getOrchestrator(config.rhinestoneApiKey)
+  const orderPath = await orchestrator.getOrderPath(metaIntent, accountAddress)
+  // Deploy the account on the target chain
+  const { factory, factoryData } = await getDeployArgs(config)
+  const deployerAccount = config.deployerAccount
+  const targetWalletClient = createWalletClient({
+    chain: targetChain,
+    transport: http(),
   })
-  return {
-    type: 'userop',
+  const targetDeployTx = await targetWalletClient.sendTransaction({
+    account: deployerAccount,
+    to: factory,
+    data: factoryData,
+  })
+  await targetPublicClient.waitForTransactionReceipt({
+    hash: targetDeployTx,
+  })
+  await enableSmartSession(targetChain, config, withSession)
+
+  const userOp = await targetBundlerClient.prepareUserOperation({
+    account: targetSessionAccount,
+    calls: [...orderPath[0].injectedExecutions, ...calls],
+    stateOverride: [
+      ...tokenRequests.map((request) => {
+        const rootBalanceSlot = getTokenBalanceSlot(
+          targetChain,
+          request.address,
+        )
+        const balanceSlot = rootBalanceSlot
+          ? keccak256(
+              encodeAbiParameters(
+                [{ type: 'address' }, { type: 'uint256' }],
+                [accountAddress, rootBalanceSlot],
+              ),
+            )
+          : '0x'
+        return {
+          address: request.address,
+          stateDiff: [
+            {
+              slot: balanceSlot,
+              value: pad(toHex(request.amount)),
+            },
+          ],
+        }
+      }),
+    ],
+  })
+  userOp.signature = await targetSessionAccount.signUserOperation(userOp)
+  const userOpHash = getUserOperationHash({
+    userOperation: userOp,
+    chainId: targetChain.id,
+    entryPointAddress: entryPoint07Address,
+    entryPointVersion: '0.7',
+  })
+  orderPath[0].orderBundle.segments[0].witness.userOpHash = userOpHash
+
+  const {
     hash,
+    appDomainSeparator,
+    contentsType,
+    structHash,
+    orderBundleHash,
+  } = await hashErc7739(sourceChain, orderPath, accountAddress)
+  const signature = await sign(withSession.owners, targetChain, hash)
+  const sessionSignature = getSessionSignature(
+    signature,
+    appDomainSeparator,
+    structHash,
+    contentsType,
+    withSession,
+  )
+
+  const smartSessionValidator = getSmartSessionValidator(config)
+  if (!smartSessionValidator) {
+    throw new Error('Smart session validator not available')
+  }
+  const packedSig = encodePacked(
+    ['address', 'bytes'],
+    [smartSessionValidator.address, sessionSignature],
+  )
+  // TODO remove
+  const isValidSig = await publicClient.verifyMessage({
+    address: accountAddress,
+    message: orderBundleHash,
+    signature: packedSig,
+  })
+  if (!isValidSig) {
+    throw new Error('Invalid signature')
+  }
+  const signedOrderBundle: SignedMultiChainCompact = {
+    ...orderPath[0].orderBundle,
+    originSignatures: Array(orderPath[0].orderBundle.segments.length).fill(
+      packedSig,
+    ),
+    targetSignature: packedSig,
+  }
+
+  await deployTarget(targetChain, config)
+  const bundleResults = await orchestrator.postSignedOrderBundle([
+    {
+      signedOrderBundle,
+      userOp,
+    },
+  ])
+
+  return {
+    type: 'bundle',
+    id: bundleResults[0].bundleId,
     sourceChain,
     targetChain,
   } as TransactionResult
@@ -474,36 +410,6 @@ async function waitForExecution(
       return receipt
     }
   }
-}
-
-async function enableSmartSession(
-  chain: Chain,
-  config: RhinestoneAccountConfig,
-  session: Session,
-) {
-  const publicClient = createPublicClient({
-    chain,
-    transport: http(),
-  })
-  const address = await getAddress(config)
-  const isEnabled = await isSessionEnabled(
-    publicClient,
-    address,
-    getPermissionId(session),
-  )
-  if (isEnabled) {
-    return
-  }
-  const smartAccount = await getSmartAccount(config, publicClient, chain)
-  const bundlerClient = getBundlerClient(config, publicClient)
-  const enableSessionCall = await getEnableSessionCall(chain, session)
-  const opHash = await bundlerClient.sendUserOperation({
-    account: smartAccount,
-    calls: [enableSessionCall],
-  })
-  await bundlerClient.waitForUserOperationReceipt({
-    hash: opHash,
-  })
 }
 
 export { sendTransaction, waitForExecution }

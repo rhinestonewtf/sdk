@@ -114,6 +114,11 @@ interface MetaIntentBase {
   omniLock?: boolean
 }
 
+type OrderPath = {
+  orderBundle: MultiChainCompact
+  injectedExecutions: Execution[]
+}[]
+
 type MetaIntentEmpty = MetaIntentBase & WithoutOperation
 type MetaIntentWithUserOp = MetaIntentBase & WithUserOp
 type MetaIntentWithExecutions = MetaIntentBase & WithExecutions
@@ -217,6 +222,7 @@ export type {
   MultiChainCompact,
   SignedMultiChainCompact,
   UserTokenBalance,
+  OrderPath,
 }
 export {
   BUNDLE_STATUS_PENDING,
