@@ -36,7 +36,7 @@ import {
   sign,
   getSmartSessionSmartAccount,
   getDeployArgs,
-  enableSmartSession,
+  getSmartAccount,
 } from '../accounts'
 import { getOwnerValidator } from '../modules'
 import {
@@ -50,8 +50,10 @@ import {
 import { getBundlerClient } from '../accounts/utils'
 import {
   getAccountEIP712Domain,
+  getEnableSessionCall,
   getPermissionId,
   getSessionAllowedERC7739Content,
+  isSessionEnabled,
 } from '../modules/validators'
 import { SMART_SESSIONS_VALIDATOR_ADDRESS } from '../modules/validators'
 import { getTokenBalanceSlot } from '../orchestrator'
@@ -472,6 +474,36 @@ async function waitForExecution(
       return receipt
     }
   }
+}
+
+async function enableSmartSession(
+  chain: Chain,
+  config: RhinestoneAccountConfig,
+  session: Session,
+) {
+  const publicClient = createPublicClient({
+    chain,
+    transport: http(),
+  })
+  const address = await getAddress(config)
+  const isEnabled = await isSessionEnabled(
+    publicClient,
+    address,
+    getPermissionId(session),
+  )
+  if (isEnabled) {
+    return
+  }
+  const smartAccount = await getSmartAccount(config, publicClient, chain)
+  const bundlerClient = getBundlerClient(config, publicClient)
+  const enableSessionCall = await getEnableSessionCall(chain, session)
+  const opHash = await bundlerClient.sendUserOperation({
+    account: smartAccount,
+    calls: [enableSessionCall],
+  })
+  await bundlerClient.waitForUserOperationReceipt({
+    hash: opHash,
+  })
 }
 
 export { sendTransaction, waitForExecution }

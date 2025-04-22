@@ -21,10 +21,7 @@ import {
 } from '../modules'
 import {
   getOwnerValidator,
-  getEnableSessionCall,
   getSmartSessionValidator,
-  isSessionEnabled,
-  getPermissionId,
 } from '../modules/validators'
 
 import {
@@ -226,36 +223,6 @@ async function deploy7702WithBundler(
   })
 }
 
-async function enableSmartSession(
-  chain: Chain,
-  config: RhinestoneAccountConfig,
-  session: Session,
-) {
-  const publicClient = createPublicClient({
-    chain,
-    transport: http(),
-  })
-  const address = await getAddress(config)
-  const isEnabled = await isSessionEnabled(
-    publicClient,
-    address,
-    getPermissionId(session),
-  )
-  if (isEnabled) {
-    return
-  }
-  const smartAccount = await getSmartAccount(config, publicClient, chain)
-  const bundlerClient = getBundlerClient(config, publicClient)
-  const enableSessionCall = await getEnableSessionCall(chain, session)
-  const opHash = await bundlerClient.sendUserOperation({
-    account: smartAccount,
-    calls: [enableSessionCall],
-  })
-  await bundlerClient.waitForUserOperationReceipt({
-    hash: opHash,
-  })
-}
-
 async function getSmartAccount(
   config: RhinestoneAccountConfig,
   client: PublicClient,
@@ -380,7 +347,7 @@ export {
   isDeployed,
   deploySource,
   deployTarget,
-  enableSmartSession,
+  getSmartAccount,
   getSmartSessionSmartAccount,
   sign,
 }
