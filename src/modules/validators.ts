@@ -29,7 +29,7 @@ import {
 import { RHINESTONE_SPOKE_POOL_ADDRESS, getWethAddress } from '../orchestrator'
 
 import { Module, MODULE_TYPE_ID_VALIDATOR } from './common'
-import { abi as smartSessionAbi } from './abi/smart-sessions'
+import { enableSessionsAbi } from './abi/smart-sessions'
 import { HOOK_ADDRESS } from './omni-account'
 
 type FixedLengthArray<
@@ -165,7 +165,7 @@ async function getEnableSessionCall(chain: Chain, session: Session) {
   return {
     to: SMART_SESSIONS_VALIDATOR_ADDRESS,
     data: encodeFunctionData({
-      abi: smartSessionAbi,
+      abi: enableSessionsAbi,
       functionName: 'enableSessions',
       args: [[sessionData]],
     }),
