@@ -277,15 +277,6 @@ async function sendTransactionAsUserOp(
     ['address', 'bytes'],
     [smartSessionValidator.address, sessionSignature],
   )
-  // TODO remove
-  const isValidSig = await publicClient.verifyMessage({
-    address: accountAddress,
-    message: orderBundleHash,
-    signature: packedSig,
-  })
-  if (!isValidSig) {
-    throw new Error('Invalid signature')
-  }
   const signedOrderBundle: SignedMultiChainCompact = {
     ...orderPath[0].orderBundle,
     originSignatures: Array(orderPath[0].orderBundle.segments.length).fill(
