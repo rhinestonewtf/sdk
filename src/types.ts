@@ -55,8 +55,8 @@ interface SpendingLimitsPolicy {
 
 interface TimeFramePolicy {
   type: 'time-frame'
-  validUntil: bigint
-  validAfter: bigint
+  validUntil: number
+  validAfter: number
 }
 
 interface UsageLimitPolicy {
