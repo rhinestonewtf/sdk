@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 0.3.0
+
+### Minor Changes
+
+- 881a353: Smart sessions
+
 ## 0.2.1
 
 ### Patch Changes
