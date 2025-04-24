@@ -1,4 +1,4 @@
-import { RhinestoneAccountConfig, Transaction } from './types'
+import type { RhinestoneAccountConfig, Transaction, Session } from './types'
 import {
   type TransactionResult,
   sendTransaction as sendTransactionInternal,
@@ -28,3 +28,4 @@ async function createRhinestoneAccount(config: RhinestoneAccountConfig) {
 }
 
 export { createRhinestoneAccount }
+export type { Session }
