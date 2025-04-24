@@ -26,6 +26,7 @@ type SupportedMainnet =
   | typeof optimism.id
   | typeof polygon.id
 type SupportedChain = SupportedMainnet | SupportedTestnet
+type SupportedTokens = 'ETH' | 'WETH' | 'USDC'
 
 type BundleStatus =
   | typeof BUNDLE_STATUS_PENDING
@@ -34,6 +35,21 @@ type BundleStatus =
   | typeof BUNDLE_STATUS_COMPLETED
   | typeof BUNDLE_STATUS_FAILED
   | typeof BUNDLE_STATUS_UNKNOWN
+
+export type MappedChainTokenAccessList = {
+  chainTokens?: {
+    [chainId in SupportedChain]?: SupportedTokens[]
+  }
+}
+
+export type UnmappedChainTokenAccessList = {
+  chainIds?: SupportedChain[]
+  tokens?: SupportedTokens[]
+}
+
+export type AccountAccessList =
+  | MappedChainTokenAccessList
+  | UnmappedChainTokenAccessList
 
 type ClaimStatus = 'PENDING' | 'EXPIRED' | 'CLAIMED'
 
