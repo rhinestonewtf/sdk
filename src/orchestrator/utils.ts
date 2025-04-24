@@ -6,7 +6,11 @@ import {
   Hex,
   keccak256,
   TypedDataDomain,
+  zeroAddress,
 } from 'viem'
+import { UserOperation } from 'viem/account-abstraction'
+
+import { HOOK_ADDRESS } from '../modules'
 
 import {
   BundleEvent,
@@ -16,7 +20,6 @@ import {
   TokenArrays6909,
   Witness,
 } from './types'
-import { HOOK_ADDRESS } from '../modules'
 
 const MULTICHAIN_COMPACT_TYPEHASH =
   '0xee54591377b86e048be6b2fbd8913598a6270aed3415776321279495bf4efae5'
@@ -27,7 +30,21 @@ const WITNESS_TYPEHASH =
 const EXECUTION_TYPEHASH =
   '0xa222cbaaad3b88446c3ca031429dafb24afdbda10c5dbd9882c294762857141a'
 
-export function getOrderBundleHash(orderBundle: MultiChainCompact): Hex {
+function getEmptyUserOp(): UserOperation<'0.7'> {
+  return {
+    sender: zeroAddress,
+    nonce: 0n,
+    callData: '0x',
+    preVerificationGas: 0n,
+    maxFeePerGas: 0n,
+    maxPriorityFeePerGas: 0n,
+    verificationGasLimit: 0n,
+    callGasLimit: 0n,
+    signature: '0x',
+  }
+}
+
+function getOrderBundleHash(orderBundle: MultiChainCompact): Hex {
   const notarizedChainId = Number(orderBundle.segments[0].chainId)
   return hashMultiChainCompactWithDomainSeparator(
     orderBundle,
@@ -35,7 +52,7 @@ export function getOrderBundleHash(orderBundle: MultiChainCompact): Hex {
   )
 }
 
-export function convertBigIntFields(obj: any): any {
+function convertBigIntFields(obj: any): any {
   if (obj === null || obj === undefined) {
     return obj
   }
@@ -61,7 +78,7 @@ export function convertBigIntFields(obj: any): any {
   return obj
 }
 
-export function parseCompactResponse(response: any): MultiChainCompact {
+function parseCompactResponse(response: any): MultiChainCompact {
   return {
     sponsor: response.sponsor as Address,
     nonce: BigInt(response.nonce),
@@ -96,7 +113,7 @@ export function parseCompactResponse(response: any): MultiChainCompact {
   } as MultiChainCompact
 }
 
-export function parsePendingBundleEvent(response: any): BundleEvent {
+function parsePendingBundleEvent(response: any): BundleEvent {
   return {
     type: response.type,
     bundleId: BigInt(response.bundleId),
@@ -272,4 +289,13 @@ function hashExecution(execution: Execution) {
       ],
     ),
   )
+}
+
+export {
+  getEmptyUserOp,
+  getOrderBundleHash,
+  convertBigIntFields,
+  parseCompactResponse,
+  parsePendingBundleEvent,
+  hashMultichainCompactWithoutDomainSeparator,
 }

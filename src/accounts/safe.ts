@@ -27,7 +27,7 @@ async function getDeployArgs(config: RhinestoneAccountConfig) {
   {
     const owners = getOwners(config)
     const threshold = getThreshold(config)
-    const moduleSetup = getModuleSetup(config)
+    const moduleSetup = await getModuleSetup(config)
     const initData = encodeFunctionData({
       abi: parseAbi([
         'function setup(address[] calldata _owners,uint256 _threshold,address to,bytes calldata data,address fallbackHandler,address paymentToken,uint256 payment, address paymentReceiver) external',
@@ -99,6 +99,14 @@ async function getDeployArgs(config: RhinestoneAccountConfig) {
   }
 }
 
+async function getSmartAccount(): Promise<never> {
+  throw new Error('Not implemented')
+}
+
+async function getSessionSmartAccount(): Promise<never> {
+  throw new Error('Not implemented')
+}
+
 function get7702InitCalls(): never {
   throw new Error('EIP-7702 is not supported for Safe accounts')
 }
@@ -127,4 +135,10 @@ function getThreshold(config: RhinestoneAccountConfig) {
   }
 }
 
-export { getDeployArgs, get7702InitCalls, get7702SmartAccount }
+export {
+  getDeployArgs,
+  getSmartAccount,
+  getSessionSmartAccount,
+  get7702InitCalls,
+  get7702SmartAccount,
+}

@@ -1,1 +1,5 @@
-export const ORCHESTRATOR_URL = 'https://orchestrator.rhinestone.wtf'
+const ORCHESTRATOR_URL = 'https://orchestrator.rhinestone.wtf'
+const RHINESTONE_SPOKE_POOL_ADDRESS =
+  '0x000000000060f6e853447881951574cdd0663530'
+
+export { ORCHESTRATOR_URL, RHINESTONE_SPOKE_POOL_ADDRESS }

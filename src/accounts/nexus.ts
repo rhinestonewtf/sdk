@@ -18,8 +18,15 @@ import {
   toSmartAccount,
 } from 'viem/account-abstraction'
 
-import { RhinestoneAccountConfig } from '../types'
+import { OwnerSet, RhinestoneAccountConfig, Session } from '../types'
 import { getSetup as getModuleSetup } from '../modules'
+import {
+  encodeSmartSessionSignature,
+  getMockSinature,
+  getPermissionId,
+  SMART_SESSION_MODE_USE,
+} from '../modules/validators'
+
 import { encode7579Calls, getAccountNonce } from './utils'
 
 const NEXUS_IMPLEMENTATION_ADDRESS: Address =
@@ -33,7 +40,7 @@ const K1_MEE_VALIDATOR_ADDRESS = '0x00000000d12897ddadc2044614a9677b191a2d95'
 
 async function getDeployArgs(config: RhinestoneAccountConfig) {
   const salt = keccak256('0x')
-  const moduleSetup = getModuleSetup(config)
+  const moduleSetup = await getModuleSetup(config)
   const initData = encodeAbiParameters(
     [{ type: 'address' }, { type: 'bytes' }],
     [
@@ -111,13 +118,159 @@ async function getDeployArgs(config: RhinestoneAccountConfig) {
   }
 }
 
-function get7702InitCalls(config: RhinestoneAccountConfig) {
+async function getSmartAccount(
+  client: PublicClient,
+  address: Address,
+  owners: OwnerSet,
+  validatorAddress: Address,
+  sign: (hash: Hex) => Promise<Hex>,
+) {
+  return getBaseSmartAccount(
+    address,
+    client,
+    validatorAddress,
+    async () => {
+      return getMockSinature(owners)
+    },
+    sign,
+  )
+}
+
+async function getSessionSmartAccount(
+  client: PublicClient,
+  address: Address,
+  session: Session,
+  validatorAddress: Address,
+  sign: (hash: Hex) => Promise<Hex>,
+) {
+  return await getBaseSmartAccount(
+    address,
+    client,
+    validatorAddress,
+    async () => {
+      const dummyOpSignature = getMockSinature(session.owners)
+      return encodeSmartSessionSignature(
+        SMART_SESSION_MODE_USE,
+        getPermissionId(session),
+        dummyOpSignature,
+      )
+    },
+    async (hash) => {
+      const signature = await sign(hash)
+      return encodeSmartSessionSignature(
+        SMART_SESSION_MODE_USE,
+        getPermissionId(session),
+        signature,
+      )
+    },
+  )
+}
+
+async function get7702SmartAccount(account: Account, client: PublicClient) {
+  return await getBaseSmartAccount(
+    account.address,
+    client,
+    zeroAddress,
+    async () => {
+      const dynamicPart = K1_MEE_VALIDATOR_ADDRESS.substring(2).padEnd(40, '0')
+      return `0x0000000000000000000000000000000000000000000000000000000000000040000000000000000000000000${dynamicPart}000000000000000000000000000000000000000000000000000000000000004181d4b4981670cb18f99f0b4a66446df1bf5b204d24cfcb659bf38ba27a4359b5711649ec2423c5e1247245eba2964679b6a1dbb85c992ae40b9b00c6935b02ff1b00000000000000000000000000000000000000000000000000000000000000` as Hex
+    },
+    async (hash) => {
+      if (!account.signMessage) {
+        throw new Error('Sign message not supported by account')
+      }
+      return await account.signMessage({
+        message: { raw: hash as Hex },
+      })
+    },
+  )
+}
+
+async function getBaseSmartAccount(
+  address: Address,
+  client: PublicClient,
+  nonceValidatorAddress: Address,
+  getStubSignature: () => Promise<Hex>,
+  signUserOperation: (hash: Hex) => Promise<Hex>,
+) {
+  return await toSmartAccount({
+    client,
+    entryPoint: {
+      abi: entryPoint07Abi,
+      address: entryPoint07Address,
+      version: '0.7',
+    },
+    async decodeCalls() {
+      throw new Error('Not implemented')
+    },
+    async encodeCalls(calls) {
+      return encode7579Calls({
+        mode: {
+          type: calls.length > 1 ? 'batchcall' : 'call',
+          revertOnError: false,
+          selector: '0x',
+          context: '0x',
+        },
+        callData: calls,
+      })
+    },
+    async getAddress() {
+      return address
+    },
+    async getFactoryArgs() {
+      return {}
+    },
+    async getNonce(args) {
+      const TIMESTAMP_ADJUSTMENT = 16777215n // max value for size 3
+      const defaultedKey = (args?.key ?? 0n) % TIMESTAMP_ADJUSTMENT
+      const defaultedValidationMode = '0x00'
+      const key = concat([
+        toHex(defaultedKey, { size: 3 }),
+        defaultedValidationMode,
+        nonceValidatorAddress,
+      ])
+      return getAccountNonce(client, {
+        address,
+        entryPointAddress: entryPoint07Address,
+        key: BigInt(key),
+      })
+    },
+    async getStubSignature() {
+      return getStubSignature()
+    },
+    async signMessage() {
+      throw new Error('Not implemented')
+    },
+    async signTypedData() {
+      throw new Error('Not implemented')
+    },
+    async signUserOperation(parameters) {
+      const { chainId = client.chain?.id, ...userOperation } = parameters
+
+      if (!chainId) throw new Error('Chain id not found')
+
+      const hash = getUserOperationHash({
+        userOperation: {
+          ...userOperation,
+          sender: userOperation.sender ?? (await this.getAddress()),
+          signature: '0x',
+        },
+        entryPointAddress: entryPoint07Address,
+        entryPointVersion: '0.7',
+        chainId: chainId,
+      })
+      return await signUserOperation(hash)
+    },
+  })
+}
+
+async function get7702InitCalls(config: RhinestoneAccountConfig) {
   const eoa = config.eoa
   if (!eoa) {
     throw new Error('EIP-7702 accounts must have an EOA account')
   }
 
-  const moduleSetup = getModuleSetup(config)
+  const moduleSetup = await getModuleSetup(config)
   return [
     {
       to: eoa.address,
@@ -166,87 +319,10 @@ function get7702InitCalls(config: RhinestoneAccountConfig) {
   ]
 }
 
-async function get7702SmartAccount(account: Account, client: PublicClient) {
-  return await toSmartAccount({
-    client,
-    entryPoint: {
-      abi: entryPoint07Abi,
-      address: entryPoint07Address,
-      version: '0.7',
-    },
-    async decodeCalls() {
-      throw new Error('Not implemented')
-    },
-    async encodeCalls(calls) {
-      return encode7579Calls({
-        mode: {
-          type: calls.length > 1 ? 'batchcall' : 'call',
-          revertOnError: false,
-          selector: '0x',
-          context: '0x',
-        },
-        callData: calls,
-      })
-    },
-    async getAddress() {
-      return account.address
-    },
-    async getFactoryArgs() {
-      return {}
-    },
-    async getNonce(args) {
-      const TIMESTAMP_ADJUSTMENT = 16777215n // max value for size 3
-      const defaultedKey = (args?.key ?? 0n) % TIMESTAMP_ADJUSTMENT
-      const defaultedValidationMode = '0x00'
-      const key = concat([
-        toHex(defaultedKey, { size: 3 }),
-        defaultedValidationMode,
-        zeroAddress,
-      ])
-
-      const address = await this.getAddress()
-
-      return getAccountNonce(client, {
-        address,
-        entryPointAddress: entryPoint07Address,
-        key: BigInt(key),
-      })
-    },
-    async getStubSignature() {
-      const dynamicPart = K1_MEE_VALIDATOR_ADDRESS.substring(2).padEnd(40, '0')
-      return `0x0000000000000000000000000000000000000000000000000000000000000040000000000000000000000000${dynamicPart}000000000000000000000000000000000000000000000000000000000000004181d4b4981670cb18f99f0b4a66446df1bf5b204d24cfcb659bf38ba27a4359b5711649ec2423c5e1247245eba2964679b6a1dbb85c992ae40b9b00c6935b02ff1b00000000000000000000000000000000000000000000000000000000000000` as Hex
-    },
-    async signMessage() {
-      throw new Error('Not implemented')
-    },
-    async signTypedData() {
-      throw new Error('Not implemented')
-    },
-    async signUserOperation(parameters) {
-      const { chainId = client.chain?.id, ...userOperation } = parameters
-
-      if (!chainId) throw new Error('Chain id not found')
-
-      const hash = getUserOperationHash({
-        userOperation: {
-          ...userOperation,
-          sender: userOperation.sender ?? (await this.getAddress()),
-          signature: '0x',
-        },
-        entryPointAddress: entryPoint07Address,
-        entryPointVersion: '0.7',
-        chainId: chainId,
-      })
-
-      if (!account.signMessage) {
-        throw new Error('Sign message not supported by account')
-      }
-
-      return await account.signMessage({
-        message: { raw: hash as Hex },
-      })
-    },
-  })
+export {
+  getDeployArgs,
+  getSmartAccount,
+  getSessionSmartAccount,
+  get7702SmartAccount,
+  get7702InitCalls,
 }
-
-export { getDeployArgs, get7702InitCalls, get7702SmartAccount }

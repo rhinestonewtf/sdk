@@ -5,8 +5,6 @@ import {
   encodeAbiParameters,
   Hex,
   hexToBytes,
-  keccak256,
-  toHex,
 } from 'viem'
 import {
   arbitrum,
@@ -21,31 +19,20 @@ import {
 
 import { RhinestoneAccountConfig } from '../types'
 
-type ModuleType =
-  | typeof MODULE_TYPE_ID_VALIDATOR
-  | typeof MODULE_TYPE_ID_EXECUTOR
-  | typeof MODULE_TYPE_ID_FALLBACK
-  | typeof MODULE_TYPE_ID_HOOK
-
-interface Module {
-  address: Address
-  initData: Hex
-  deInitData: Hex
-  additionalContext: Hex
-  type: ModuleType
-}
-
-interface PublicKey {
-  prefix?: number | undefined
-  x: bigint
-  y: bigint
-}
-
-interface WebauthnCredential {
-  pubKey: PublicKey | Hex | Uint8Array
-  authenticatorId: string
-  hook?: Address
-}
+import {
+  Module,
+  MODULE_TYPE_ID_EXECUTOR,
+  MODULE_TYPE_ID_FALLBACK,
+} from './common'
+import {
+  OMNI_ACCOUNT_MOCK_ATTESTER_ADDRESS,
+  RHINESTONE_MODULE_REGISTRY_ADDRESS,
+  RHINESTONE_ATTESTER_ADDRESS,
+  HOOK_ADDRESS,
+  TARGET_MODULE_ADDRESS,
+  SAME_CHAIN_MODULE_ADDRESS,
+} from './omni-account'
+import { getOwnerValidator, getSmartSessionValidator } from './validators'
 
 interface WebAuthnData {
   authenticatorData: Hex
@@ -64,29 +51,6 @@ interface WebauthnSignature {
   s: bigint
 }
 
-const MODULE_TYPE_ID_VALIDATOR = 1n
-const MODULE_TYPE_ID_EXECUTOR = 2n
-const MODULE_TYPE_ID_FALLBACK = 3n
-const MODULE_TYPE_ID_HOOK = 4n
-
-const OMNI_ACCOUNT_MOCK_ATTESTER_ADDRESS: Address =
-  '0x6D0515e8E499468DCe9583626f0cA15b887f9d03'
-
-const RHINESTONE_MODULE_REGISTRY_ADDRESS: Address =
-  '0x000000000069e2a187aeffb852bf3ccdc95151b2'
-const RHINESTONE_ATTESTER_ADDRESS: Address =
-  '0x000000333034E9f539ce08819E12c1b8Cb29084d'
-const OWNABLE_VALIDATOR_ADDRESS: Address =
-  '0x2483DA3A338895199E5e538530213157e931Bf06'
-const WEBAUTHN_VALIDATOR_ADDRESS: Address =
-  '0x2f167e55d42584f65e2e30a748f41ee75a311414'
-
-const HOOK_ADDRESS: Address = '0x0000000000f6Ed8Be424d673c63eeFF8b9267420'
-const TARGET_MODULE_ADDRESS: Address =
-  '0x0000000000E5a37279A001301A837a91b5de1D5E'
-const SAME_CHAIN_MODULE_ADDRESS: Address =
-  '0x000000000043ff16d5776c7F0f65Ec485C17Ca04'
-
 interface ModeleSetup {
   validators: Module[]
   executors: Module[]
@@ -97,18 +61,14 @@ interface ModeleSetup {
   threshold: number
 }
 
-function getSetup(config: RhinestoneAccountConfig): ModeleSetup {
-  const validator = getValidator(config)
+async function getSetup(config: RhinestoneAccountConfig): Promise<ModeleSetup> {
+  const ownerValidator = getOwnerValidator(config)
+  const smartSessionValidator = getSmartSessionValidator(config)
 
-  const validators: Module[] = [
-    {
-      address: validator.address,
-      initData: validator.initData,
-      deInitData: '0x',
-      additionalContext: '0x',
-      type: MODULE_TYPE_ID_VALIDATOR,
-    },
-  ]
+  const validators: Module[] = [ownerValidator]
+  if (smartSessionValidator) {
+    validators.push(smartSessionValidator)
+  }
 
   const executors: Module[] = [
     {
@@ -167,106 +127,7 @@ function getSetup(config: RhinestoneAccountConfig): ModeleSetup {
   }
 }
 
-function getValidator(config: RhinestoneAccountConfig) {
-  const ownerSet = config.owners
-  switch (ownerSet.type) {
-    case 'ecdsa':
-      return getOwnableValidator({
-        threshold: ownerSet.threshold ?? 1,
-        owners: ownerSet.accounts.map((account) => account.address),
-      })
-    case 'passkey':
-      return getWebAuthnValidator({
-        pubKey: ownerSet.account.publicKey,
-        authenticatorId: ownerSet.account.id,
-      })
-  }
-}
-
-function getOwnableValidator({
-  threshold,
-  owners,
-}: {
-  threshold: number
-  owners: Address[]
-}): Module {
-  return {
-    address: OWNABLE_VALIDATOR_ADDRESS,
-    initData: encodeAbiParameters(
-      [
-        { name: 'threshold', type: 'uint256' },
-        { name: 'owners', type: 'address[]' },
-      ],
-      [
-        BigInt(threshold),
-        owners.map((owner) => owner.toLowerCase() as Address).sort(),
-      ],
-    ),
-    deInitData: '0x',
-    additionalContext: '0x',
-    type: MODULE_TYPE_ID_VALIDATOR,
-  }
-}
-
-function getWebAuthnValidator(webAuthnCredential: WebauthnCredential): Module {
-  let pubKeyX: bigint
-  let pubKeyY: bigint
-
-  // Distinguish between PublicKey and Hex / byte encoded public key
-  if (
-    typeof webAuthnCredential.pubKey === 'string' ||
-    webAuthnCredential.pubKey instanceof Uint8Array
-  ) {
-    // It's a P256Credential
-    const { x, y, prefix } = parsePublicKey(webAuthnCredential.pubKey)
-    pubKeyX = x
-    pubKeyY = y
-    if (prefix && prefix !== 4) {
-      throw new Error('Only uncompressed public keys are supported')
-    }
-  } else {
-    // It's already a PublicKey
-    pubKeyX = webAuthnCredential.pubKey.x
-    pubKeyY = webAuthnCredential.pubKey.y
-  }
-
-  return {
-    address: WEBAUTHN_VALIDATOR_ADDRESS,
-    initData: encodeAbiParameters(
-      [
-        {
-          components: [
-            {
-              name: 'pubKeyX',
-              type: 'uint256',
-            },
-            {
-              name: 'pubKeyY',
-              type: 'uint256',
-            },
-          ],
-          type: 'tuple',
-        },
-        {
-          type: 'bytes32',
-          name: 'authenticatorIdHash',
-        },
-      ],
-      [
-        {
-          pubKeyX,
-          pubKeyY,
-        },
-        keccak256(toHex(webAuthnCredential.authenticatorId)),
-      ],
-    ),
-    deInitData: '0x',
-    additionalContext: '0x',
-    type: MODULE_TYPE_ID_VALIDATOR,
-  }
-}
-
-export function getWebauthnValidatorSignature({
+function getWebauthnValidatorSignature({
   webauthn,
   signature,
   usePrecompiled = false,
@@ -317,7 +178,7 @@ export function getWebauthnValidatorSignature({
   )
 }
 
-export function isRip7212SupportedNetwork(chain: Chain) {
+function isRip7212SupportedNetwork(chain: Chain) {
   const supportedChains: Chain[] = [
     optimism,
     optimismSepolia,
@@ -343,17 +204,10 @@ function parseSignature(signature: Hex | Uint8Array): WebauthnSignature {
   }
 }
 
-function parsePublicKey(publicKey: Hex | Uint8Array): PublicKey {
-  const bytes =
-    typeof publicKey === 'string' ? hexToBytes(publicKey) : publicKey
-  const offset = bytes.length === 65 ? 1 : 0
-  const x = bytes.slice(offset, 32 + offset)
-  const y = bytes.slice(32 + offset, 64 + offset)
-  return {
-    prefix: bytes.length === 65 ? bytes[0] : undefined,
-    x: BigInt(bytesToHex(x)),
-    y: BigInt(bytesToHex(y)),
-  }
+export {
+  HOOK_ADDRESS,
+  getSetup,
+  getOwnerValidator,
+  getWebauthnValidatorSignature,
+  isRip7212SupportedNetwork,
 }
-
-export { HOOK_ADDRESS, getSetup, getValidator }

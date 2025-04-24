@@ -18,6 +18,78 @@ interface BundlerConfig {
 }
 
 type OwnerSet = OwnableValidatorConfig | WebauthnValidatorConfig
+
+interface SudoPolicy {
+  type: 'sudo'
+}
+
+interface UniversalActionPolicy {
+  type: 'universal-action'
+  valueLimitPerUse?: bigint
+  rules: [UniversalActionPolicyParamRule, ...UniversalActionPolicyParamRule[]]
+}
+
+interface UniversalActionPolicyParamRule {
+  condition: UniversalActionPolicyParamCondition
+  calldataOffset: bigint
+  usageLimit?: bigint
+  referenceValue: Hex | bigint
+}
+
+type UniversalActionPolicyParamCondition =
+  | 'equal'
+  | 'greaterThan'
+  | 'lessThan'
+  | 'greaterThanOrEqual'
+  | 'lessThanOrEqual'
+  | 'notEqual'
+  | 'inRange'
+
+interface SpendingLimitsPolicy {
+  type: 'spending-limits'
+  limits: {
+    token: Address
+    amount: bigint
+  }[]
+}
+
+interface TimeFramePolicy {
+  type: 'time-frame'
+  validUntil: bigint
+  validAfter: bigint
+}
+
+interface UsageLimitPolicy {
+  type: 'usage-limit'
+  limit: bigint
+}
+
+interface ValueLimitPolicy {
+  type: 'value-limit'
+  limit: bigint
+}
+
+type Policy =
+  | SudoPolicy
+  | UniversalActionPolicy
+  | SpendingLimitsPolicy
+  | TimeFramePolicy
+  | UsageLimitPolicy
+  | ValueLimitPolicy
+
+interface Action {
+  target: Address
+  selector: Hex
+  policies?: [Policy, ...Policy[]]
+}
+
+interface Session {
+  owners: OwnerSet
+  policies?: [Policy, ...Policy[]]
+  actions?: [Action, ...Action[]]
+  salt?: Hex
+}
+
 interface RhinestoneAccountConfig {
   account: {
     type: 'safe' | 'nexus'
@@ -25,6 +97,7 @@ interface RhinestoneAccountConfig {
   owners: OwnerSet
   rhinestoneApiKey: string
   deployerAccount: Account
+  sessions?: Session[]
   eoa?: Account
   provider?: {
     type: 'alchemy'
@@ -44,11 +117,39 @@ interface TokenRequest {
   amount: bigint
 }
 
-interface Transaction {
-  sourceChain: Chain
-  targetChain: Chain
-  calls: Call[]
-  tokenRequests: TokenRequest[]
+interface SessionSignerSet {
+  type: 'session'
+  session: Session
 }
 
-export type { RhinestoneAccountConfig, BundlerConfig, Transaction, OwnerSet }
+type SignerSet = SessionSignerSet
+
+interface BaseTransaction {
+  calls: Call[]
+  tokenRequests: TokenRequest[]
+  signers?: SignerSet
+}
+
+interface SameChainTransaction extends BaseTransaction {
+  chain: Chain
+}
+
+interface CrossChainTransaction extends BaseTransaction {
+  sourceChain: Chain
+  targetChain: Chain
+}
+
+type Transaction = SameChainTransaction | CrossChainTransaction
+
+export type {
+  RhinestoneAccountConfig,
+  BundlerConfig,
+  Transaction,
+  Call,
+  TokenRequest,
+  OwnerSet,
+  SignerSet,
+  Session,
+  Policy,
+  UniversalActionPolicyParamCondition,
+}

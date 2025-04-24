@@ -1,9 +1,10 @@
 import { OrchestratorError } from './error'
-import { ORCHESTRATOR_URL } from './consts'
+import { ORCHESTRATOR_URL, RHINESTONE_SPOKE_POOL_ADDRESS } from './consts'
 import { Orchestrator } from './client'
-import { getOrderBundleHash } from './utils'
+import { getEmptyUserOp, getOrderBundleHash } from './utils'
+import { getWethAddress, getTokenBalanceSlot } from './registry'
 
-export function getOrchestrator(
+function getOrchestrator(
   apiKey: string,
   orchestratorUrl?: string,
 ): Orchestrator {
@@ -11,4 +12,13 @@ export function getOrchestrator(
 }
 
 export * from './types'
-export { Orchestrator, OrchestratorError, getOrderBundleHash }
+export {
+  RHINESTONE_SPOKE_POOL_ADDRESS,
+  Orchestrator,
+  OrchestratorError,
+  getOrchestrator,
+  getOrderBundleHash,
+  getEmptyUserOp,
+  getWethAddress,
+  getTokenBalanceSlot,
+}

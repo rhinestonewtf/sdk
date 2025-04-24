@@ -25,16 +25,9 @@ type SupportedMainnet =
   | typeof arbitrum.id
   | typeof optimism.id
   | typeof polygon.id
-export type SupportedChain = SupportedMainnet | SupportedTestnet
+type SupportedChain = SupportedMainnet | SupportedTestnet
 
-export const BUNDLE_STATUS_PENDING = 'PENDING'
-export const BUNDLE_STATUS_FAILED = 'FAILED'
-export const BUNDLE_STATUS_EXPIRED = 'EXPIRED'
-export const BUNDLE_STATUS_PARTIALLY_COMPLETED = 'PARTIALLY_COMPLETED'
-export const BUNDLE_STATUS_COMPLETED = 'COMPLETED'
-export const BUNDLE_STATUS_UNKNOWN = 'UNKNOWN'
-
-export type BundleStatus =
+type BundleStatus =
   | typeof BUNDLE_STATUS_PENDING
   | typeof BUNDLE_STATUS_EXPIRED
   | typeof BUNDLE_STATUS_PARTIALLY_COMPLETED
@@ -52,7 +45,7 @@ interface Claim {
   claimTransactionHash?: Hex
 }
 
-export interface Execution {
+interface Execution {
   to: Address
   value: bigint
   data: Hex
@@ -71,7 +64,7 @@ type SimulationResult =
       }
     }
 
-export type PostOrderBundleResult = (
+type PostOrderBundleResult = (
   | {
       bundleId: bigint
       status: typeof BUNDLE_STATUS_PENDING
@@ -83,7 +76,7 @@ export type PostOrderBundleResult = (
     }
 )[]
 
-export interface BundleResult {
+interface BundleResult {
   status: BundleStatus
   fillTimestamp?: number
   fillTransactionHash?: Hex
@@ -121,11 +114,16 @@ interface MetaIntentBase {
   omniLock?: boolean
 }
 
-export type MetaIntentEmpty = MetaIntentBase & WithoutOperation
-export type MetaIntentWithUserOp = MetaIntentBase & WithUserOp
-export type MetaIntentWithExecutions = MetaIntentBase & WithExecutions
+type OrderPath = {
+  orderBundle: MultiChainCompact
+  injectedExecutions: Execution[]
+}[]
 
-export type MetaIntent =
+type MetaIntentEmpty = MetaIntentBase & WithoutOperation
+type MetaIntentWithUserOp = MetaIntentBase & WithUserOp
+type MetaIntentWithExecutions = MetaIntentBase & WithExecutions
+
+type MetaIntent =
   | MetaIntentEmpty
   | MetaIntentWithUserOp
   | MetaIntentWithExecutions
@@ -150,14 +148,14 @@ interface DepositEvent {
   message: Hex
 }
 
-export interface BundleEvent {
+interface BundleEvent {
   bundleId: bigint
   type: string
   targetFillPayload: ChainExecution
   acrossDepositEvents: DepositEvent[]
 }
 
-export interface Witness {
+interface Witness {
   recipient: Address
   tokenOut: [bigint, bigint][]
   depositId: bigint
@@ -168,26 +166,26 @@ export interface Witness {
   maxFeeBps: number
 }
 
-export interface Segment {
+interface Segment {
   arbiter: Address
   chainId: bigint
   idsAndAmounts: [bigint, bigint][]
   witness: Witness
 }
 
-export interface MultiChainCompact {
+interface MultiChainCompact {
   sponsor: Address
   nonce: bigint
   expires: bigint
   segments: Segment[]
 }
 
-export interface SignedMultiChainCompact extends MultiChainCompact {
+interface SignedMultiChainCompact extends MultiChainCompact {
   originSignatures: Hex[]
   targetSignature: Hex
 }
 
-export interface UserTokenBalance {
+interface UserTokenBalance {
   tokenName: string
   tokenDecimals: number
   balance: bigint
@@ -198,4 +196,39 @@ export interface UserTokenBalance {
   }[]
 }
 
-export type TokenArrays6909 = readonly (readonly [bigint, bigint])[]
+type TokenArrays6909 = readonly (readonly [bigint, bigint])[]
+
+const BUNDLE_STATUS_PENDING = 'PENDING'
+const BUNDLE_STATUS_FAILED = 'FAILED'
+const BUNDLE_STATUS_EXPIRED = 'EXPIRED'
+const BUNDLE_STATUS_PARTIALLY_COMPLETED = 'PARTIALLY_COMPLETED'
+const BUNDLE_STATUS_COMPLETED = 'COMPLETED'
+const BUNDLE_STATUS_UNKNOWN = 'UNKNOWN'
+
+export type {
+  SupportedChain,
+  BundleStatus,
+  PostOrderBundleResult,
+  MetaIntentEmpty,
+  MetaIntentWithUserOp,
+  MetaIntentWithExecutions,
+  MetaIntent,
+  TokenArrays6909,
+  Execution,
+  BundleResult,
+  BundleEvent,
+  Witness,
+  Segment,
+  MultiChainCompact,
+  SignedMultiChainCompact,
+  UserTokenBalance,
+  OrderPath,
+}
+export {
+  BUNDLE_STATUS_PENDING,
+  BUNDLE_STATUS_FAILED,
+  BUNDLE_STATUS_EXPIRED,
+  BUNDLE_STATUS_PARTIALLY_COMPLETED,
+  BUNDLE_STATUS_COMPLETED,
+  BUNDLE_STATUS_UNKNOWN,
+}

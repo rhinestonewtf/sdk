@@ -22,11 +22,11 @@ yarn add viem @rhinestone/sdk
 bun install viem @rhinestone/sdk
 ```
 
-### Quickstart
+## Quickstart
 
 You'll need a Rhinestone API key, as well as an existing account with some testnet ETH on the source chain.
 
-## Creating a Wallet
+### Creating a Wallet
 
 Let's create a single-owner Safe account:
 
@@ -90,7 +90,7 @@ const address = await rhinestoneAccount.getAddress(sourceChain)
 console.log(address)
 ```
 
-## Funding the Account
+### Funding the Account
 
 We will send some ETH from the funding account to the created Safe account. The Orchestrator will use some of that ETH to deploy the account on the target chain, as well as convert it to USDC for a transfer transaction.
 
@@ -119,7 +119,7 @@ function getTokenAddress(chain: Chain) {
 }
 ```
 
-## Sending a Cross-chain Transaction
+### Sending a Cross-chain Transaction
 
 Finally, let's make a cross-chain token transfer:
 
