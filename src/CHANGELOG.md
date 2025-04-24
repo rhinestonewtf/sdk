@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 0.4.0
+
+### Minor Changes
+
+- d224af3: Fix timestamp policy encoding
+
 ## 0.3.0
 
 ### Minor Changes
