@@ -14,7 +14,12 @@ import {
 } from 'viem'
 import { WebAuthnAccount } from 'viem/account-abstraction'
 
-import { OwnerSet, RhinestoneAccountConfig, Session } from '../types'
+import {
+  AccountProviderConfig,
+  OwnerSet,
+  RhinestoneAccountConfig,
+  Session,
+} from '../types'
 import {
   getWebauthnValidatorSignature,
   isRip7212SupportedNetwork,
@@ -41,7 +46,8 @@ import {
 import { getBundlerClient } from './utils'
 
 async function getDeployArgs(config: RhinestoneAccountConfig) {
-  switch (config.account.type) {
+  const account = getAccount(config)
+  switch (account.type) {
     case 'safe': {
       return getSafeDeployArgs(config)
     }
@@ -120,10 +126,11 @@ async function deploy7702Self(chain: Chain, config: RhinestoneAccountConfig) {
     throw new Error('EIP-7702 accounts must have an EOA account')
   }
 
+  const account = getAccount(config)
   const { implementation, initializationCallData } = await getDeployArgs(config)
   if (!initializationCallData) {
     throw new Error(
-      `Initialization call data not available for ${config.account.type}`,
+      `Initialization call data not available for ${account.type}`,
     )
   }
 
@@ -228,7 +235,8 @@ async function getSmartAccount(
   client: PublicClient,
   chain: Chain,
 ) {
-  switch (config.account.type) {
+  const account = getAccount(config)
+  switch (account.type) {
     case 'safe': {
       return getSafeSmartAccount()
     }
@@ -253,7 +261,8 @@ async function getSmartSessionSmartAccount(
   chain: Chain,
   session: Session,
 ) {
-  switch (config.account.type) {
+  const account = getAccount(config)
+  switch (account.type) {
     case 'safe': {
       return getSafeSessionSmartAccount()
     }
@@ -315,7 +324,8 @@ async function get7702SmartAccount(
     throw new Error('EIP-7702 accounts must have an EOA account')
   }
 
-  switch (config.account.type) {
+  const account = getAccount(config)
+  switch (account.type) {
     case 'safe': {
       return get7702SafeAccount()
     }
@@ -326,7 +336,8 @@ async function get7702SmartAccount(
 }
 
 async function get7702InitCalls(config: RhinestoneAccountConfig) {
-  switch (config.account.type) {
+  const account = getAccount(config)
+  switch (account.type) {
     case 'safe': {
       return get7702SafeInitCalls()
     }
@@ -338,6 +349,15 @@ async function get7702InitCalls(config: RhinestoneAccountConfig) {
 
 function is7702(config: RhinestoneAccountConfig): boolean {
   return config.eoa !== undefined
+}
+
+function getAccount(config: RhinestoneAccountConfig): AccountProviderConfig {
+  if (config.account) {
+    return config.account
+  }
+  return {
+    type: 'nexus',
+  }
 }
 
 export {
