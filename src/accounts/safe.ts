@@ -22,7 +22,7 @@ import { OwnerSet, RhinestoneAccountConfig, Session } from '../types'
 import { encode7579Calls, getAccountNonce } from './utils'
 import {
   encodeSmartSessionSignature,
-  getMockSinature,
+  getMockSignature,
   getPermissionId,
   SMART_SESSION_MODE_USE,
 } from '../modules/validators'
@@ -127,7 +127,7 @@ async function getSmartAccount(
     client,
     validatorAddress,
     async () => {
-      return getMockSinature(owners)
+      return getMockSignature(owners)
     },
     sign,
   )
@@ -145,7 +145,7 @@ async function getSessionSmartAccount(
     client,
     validatorAddress,
     async () => {
-      const dummyOpSignature = getMockSinature(session.owners)
+      const dummyOpSignature = getMockSignature(session.owners)
       return encodeSmartSessionSignature(
         SMART_SESSION_MODE_USE,
         getPermissionId(session),
