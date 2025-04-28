@@ -1,6 +1,10 @@
 import { Account, Address, Chain, Hex } from 'viem'
 import { WebAuthnAccount } from 'viem/account-abstraction'
 
+interface AccountProviderConfig {
+  type: 'safe' | 'nexus'
+}
+
 interface OwnableValidatorConfig {
   type: 'ecdsa'
   accounts: Account[]
@@ -91,9 +95,7 @@ interface Session {
 }
 
 interface RhinestoneAccountConfig {
-  account: {
-    type: 'safe' | 'nexus'
-  }
+  account?: AccountProviderConfig
   owners: OwnerSet
   rhinestoneApiKey: string
   deployerAccount: Account
@@ -143,6 +145,7 @@ type Transaction = SameChainTransaction | CrossChainTransaction
 
 export type {
   RhinestoneAccountConfig,
+  AccountProviderConfig,
   BundlerConfig,
   Transaction,
   Call,

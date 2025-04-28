@@ -133,6 +133,7 @@ interface MetaIntentBase {
 type OrderPath = {
   orderBundle: MultiChainCompact
   injectedExecutions: Execution[]
+  intentCost: OrderCost
 }[]
 
 type MetaIntentEmpty = MetaIntentBase & WithoutOperation
@@ -212,6 +213,59 @@ interface UserTokenBalance {
   }[]
 }
 
+interface UserChainBalances {
+  [chainId: number]: { [tokenAddress: Address]: bigint }
+}
+
+/// Subset of MetaIntent where up to one amount can be undefined
+interface OrderFeeInput {
+  targetChainId: number
+  targetGasUnits?: bigint
+  userOp?: {
+    callGasLimit: bigint
+    verificationGasLimit: bigint
+    preVerificationGas: bigint
+  }
+  tokenTransfers: {
+    tokenAddress: Address
+    amount?: bigint // If no amount is set, max amount of inputs will be converted
+    // NOTE: Only one token may have an unset amount
+  }[]
+  accountAccessList?: {
+    chainId: number
+    tokenAddress: Address
+  }[]
+}
+
+interface TokenFulfillmentStatus {
+  hasFulfilled: boolean
+  tokenAddress: Address
+  amountSpent: bigint
+  targetAmount: bigint
+  fee: bigint
+}
+
+interface OrderCost {
+  hasFulfilledAll: true
+  tokensSpent: UserChainBalances
+  tokensReceived: TokenFulfillmentStatus[]
+}
+
+interface InsufficientBalanceResult {
+  hasFulfilledAll: false
+  tokenShortfall: {
+    tokenAddress: Address
+    targetAmount: bigint
+    amountSpent: bigint
+    fee: bigint
+    tokenSymbol: string
+    tokenDecimals: number
+  }[]
+  totalTokenShortfallInUSD: bigint
+}
+
+type OrderCostResult = OrderCost | InsufficientBalanceResult
+
 type TokenArrays6909 = readonly (readonly [bigint, bigint])[]
 
 const BUNDLE_STATUS_PENDING = 'PENDING'
@@ -239,6 +293,12 @@ export type {
   SignedMultiChainCompact,
   UserTokenBalance,
   OrderPath,
+  UserChainBalances,
+  OrderFeeInput,
+  TokenFulfillmentStatus,
+  OrderCost,
+  InsufficientBalanceResult,
+  OrderCostResult,
 }
 export {
   BUNDLE_STATUS_PENDING,

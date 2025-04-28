@@ -38,6 +38,6 @@
     "axios": "^1.7.0"
   },
   "peerDependencies": {
-    "viem": "^2.20.0"
+    "viem": "^2.28.0"
   }
 }

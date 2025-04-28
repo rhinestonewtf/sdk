@@ -14,7 +14,12 @@ import {
 } from 'viem'
 import { WebAuthnAccount } from 'viem/account-abstraction'
 
-import { OwnerSet, RhinestoneAccountConfig, Session } from '../types'
+import {
+  AccountProviderConfig,
+  OwnerSet,
+  RhinestoneAccountConfig,
+  Session,
+} from '../types'
 import {
   getWebauthnValidatorSignature,
   isRip7212SupportedNetwork,
@@ -41,7 +46,8 @@ import {
 import { getBundlerClient } from './utils'
 
 async function getDeployArgs(config: RhinestoneAccountConfig) {
-  switch (config.account.type) {
+  const account = getAccount(config)
+  switch (account.type) {
     case 'safe': {
       return getSafeDeployArgs(config)
     }
@@ -120,10 +126,11 @@ async function deploy7702Self(chain: Chain, config: RhinestoneAccountConfig) {
     throw new Error('EIP-7702 accounts must have an EOA account')
   }
 
+  const account = getAccount(config)
   const { implementation, initializationCallData } = await getDeployArgs(config)
   if (!initializationCallData) {
     throw new Error(
-      `Initialization call data not available for ${config.account.type}`,
+      `Initialization call data not available for ${account.type}`,
     )
   }
 
@@ -193,22 +200,10 @@ async function deploy7702WithBundler(
     transport: http(),
   })
   const bundlerClient = getBundlerClient(config, publicClient)
-  const fundingClient = createWalletClient({
-    account: config.deployerAccount,
-    chain,
-    transport: http(),
-  })
 
   const authorization = await accountClient.signAuthorization({
     contractAddress: implementation,
   })
-
-  // Will be replaced by a bundler in the future
-  const authTxHash = await fundingClient.sendTransaction({
-    chain: publicClient.chain,
-    authorizationList: [authorization],
-  })
-  await publicClient.waitForTransactionReceipt({ hash: authTxHash })
 
   // Init the account
   const smartAccount = await get7702SmartAccount(config, publicClient)
@@ -216,6 +211,7 @@ async function deploy7702WithBundler(
   const opHash = await bundlerClient.sendUserOperation({
     account: smartAccount,
     calls: initCalls,
+    authorization,
   })
 
   await bundlerClient.waitForUserOperationReceipt({
@@ -228,14 +224,21 @@ async function getSmartAccount(
   client: PublicClient,
   chain: Chain,
 ) {
-  switch (config.account.type) {
+  const account = getAccount(config)
+  const address = await getAddress(config)
+  const ownerValidator = getOwnerValidator(config)
+  const signFn = (hash: Hex) => sign(config.owners, chain, hash)
+  switch (account.type) {
     case 'safe': {
-      return getSafeSmartAccount()
+      return getSafeSmartAccount(
+        client,
+        address,
+        config.owners,
+        ownerValidator.address,
+        signFn,
+      )
     }
     case 'nexus': {
-      const address = await getAddress(config)
-      const ownerValidator = getOwnerValidator(config)
-      const signFn = (hash: Hex) => sign(config.owners, chain, hash)
       return getNexusSmartAccount(
         client,
         address,
@@ -253,17 +256,25 @@ async function getSmartSessionSmartAccount(
   chain: Chain,
   session: Session,
 ) {
-  switch (config.account.type) {
+  const address = await getAddress(config)
+  const smartSessionValidator = getSmartSessionValidator(config)
+  if (!smartSessionValidator) {
+    throw new Error('Smart sessions are not enabled for this account')
+  }
+  const signFn = (hash: Hex) => sign(session.owners, chain, hash)
+
+  const account = getAccount(config)
+  switch (account.type) {
     case 'safe': {
-      return getSafeSessionSmartAccount()
+      return getSafeSessionSmartAccount(
+        client,
+        address,
+        session,
+        smartSessionValidator.address,
+        signFn,
+      )
     }
     case 'nexus': {
-      const address = await getAddress(config)
-      const smartSessionValidator = getSmartSessionValidator(config)
-      if (!smartSessionValidator) {
-        throw new Error('Smart sessions are not enabled for this account')
-      }
-      const signFn = (hash: Hex) => sign(session.owners, chain, hash)
       return getNexusSessionSmartAccount(
         client,
         address,
@@ -315,7 +326,8 @@ async function get7702SmartAccount(
     throw new Error('EIP-7702 accounts must have an EOA account')
   }
 
-  switch (config.account.type) {
+  const account = getAccount(config)
+  switch (account.type) {
     case 'safe': {
       return get7702SafeAccount()
     }
@@ -326,7 +338,8 @@ async function get7702SmartAccount(
 }
 
 async function get7702InitCalls(config: RhinestoneAccountConfig) {
-  switch (config.account.type) {
+  const account = getAccount(config)
+  switch (account.type) {
     case 'safe': {
       return get7702SafeInitCalls()
     }
@@ -338,6 +351,15 @@ async function get7702InitCalls(config: RhinestoneAccountConfig) {
 
 function is7702(config: RhinestoneAccountConfig): boolean {
   return config.eoa !== undefined
+}
+
+function getAccount(config: RhinestoneAccountConfig): AccountProviderConfig {
+  if (config.account) {
+    return config.account
+  }
+  return {
+    type: 'nexus',
+  }
 }
 
 export {

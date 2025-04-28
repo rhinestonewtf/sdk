@@ -3,7 +3,7 @@
   "workspaces": {
     "": {
       "dependencies": {
-        "viem": "^2.20.0",
+        "viem": "^2.28.0",
       },
       "devDependencies": {
         "@changesets/cli": "^2.28.1",
@@ -25,7 +25,7 @@
         "axios": "^1.7.0",
       },
       "peerDependencies": {
-        "viem": "^2.20.0",
+        "viem": "^2.28.0",
       },
     },
     "test": {
@@ -161,9 +161,9 @@
 
     "@manypkg/get-packages": ["@manypkg/get-packages@1.1.3", "", { "dependencies": { "@babel/runtime": "^7.5.5", "@changesets/types": "^4.0.1", "@manypkg/find-root": "^1.1.0", "fs-extra": "^8.1.0", "globby": "^11.0.0", "read-yaml-file": "^1.1.0" } }, "sha512-fo+QhuU3qE/2TQMQmbVMqaQ6EWbMhi4ABWP+O4AM1NqPBuy0OrApV5LO6BrrgnhtAHS2NH6RrVk9OL181tTi8A=="],
 
-    "@noble/curves": ["@noble/curves@1.8.1", "", { "dependencies": { "@noble/hashes": "1.7.1" } }, "sha512-warwspo+UYUPep0Q+vtdVB4Ugn8GGQj8iyB3gnRWsztmUHTI3S1nhdiWNsPUGL0vud7JlRRk1XEu7Lq1KGTnMQ=="],
+    "@noble/curves": ["@noble/curves@1.8.2", "", { "dependencies": { "@noble/hashes": "1.7.2" } }, "sha512-vnI7V6lFNe0tLAuJMu+2sX+FcL14TaCWy1qiczg1VwRmPrpQCdq5ESXQMqUc2tluRNf6irBXrWbl1mGN8uaU/g=="],
 
-    "@noble/hashes": ["@noble/hashes@1.7.1", "", {}, "sha512-B8XBPsn4vT/KJAGqDzbwztd+6Yte3P4V7iafm24bxgDe/mlRuK6xmWPuCNrKt2vDafZ8MfJLlchDG/vYafQEjQ=="],
+    "@noble/hashes": ["@noble/hashes@1.7.2", "", {}, "sha512-biZ0NUSxyjLLqo6KxEJ1b+C2NAx0wtDoFvCaXHGgUkeHzf3Xc1xKumFKREuT7f7DARNZ/slvYUwFG6B0f2b6hQ=="],
 
     "@nodelib/fs.scandir": ["@nodelib/fs.scandir@2.1.5", "", { "dependencies": { "@nodelib/fs.stat": "2.0.5", "run-parallel": "^1.1.9" } }, "sha512-vq24Bq3ym5HEQm2NKCr3yXDwjc7vTsEThRDnkp2DK9p1uqLR+DHurm/NOTo0KG7HYHU7eppKZj3MyqYuMBf62g=="],
 
@@ -627,7 +627,7 @@
 
     "v8-compile-cache-lib": ["v8-compile-cache-lib@3.0.1", "", {}, "sha512-wa7YjyUGfNZngI/vtK0UHAN+lgDCxBPCylVXGp0zu59Fz5aiGtNXaq3DhIov063MorB+VfufLh3JlF2KdTK3xg=="],
 
-    "viem": ["viem@2.26.0", "", { "dependencies": { "@noble/curves": "1.8.1", "@noble/hashes": "1.7.1", "@scure/bip32": "1.6.2", "@scure/bip39": "1.5.4", "abitype": "1.0.8", "isows": "1.0.6", "ox": "0.6.9", "ws": "8.18.1" }, "peerDependencies": { "typescript": ">=5.0.4" }, "optionalPeers": ["typescript"] }, "sha512-Osht20EySRAcfMhCGAJaWuaREXM7y9vDloLvUTXuAfFq7JNGM5+o1wsE4LXw1KpRBrBliIAJjM+c2wMtMEvlCQ=="],
+    "viem": ["viem@2.28.0", "", { "dependencies": { "@noble/curves": "1.8.2", "@noble/hashes": "1.7.2", "@scure/bip32": "1.6.2", "@scure/bip39": "1.5.4", "abitype": "1.0.8", "isows": "1.0.6", "ox": "0.6.9", "ws": "8.18.1" }, "peerDependencies": { "typescript": ">=5.0.4" }, "optionalPeers": ["typescript"] }, "sha512-Z4W5O1pe+6pirYTFm451FcZmfGAUxUWt2L/eWC+YfTF28j/8rd7q6MBAi05lMN4KhLJjhN0s5YGIPB+kf1L20g=="],
 
     "which": ["which@2.0.2", "", { "dependencies": { "isexe": "^2.0.0" }, "bin": { "node-which": "./bin/node-which" } }, "sha512-BLI3Tl1TW3Pvl70l3yq3Y64i+awpwXqsGBYWkkqMtnbXgrMD+yj7rhW0kuEDxzJaYXGjEW5ogapKNMEKNMjibA=="],
 
@@ -673,6 +673,12 @@
 
     "@manypkg/get-packages/fs-extra": ["fs-extra@8.1.0", "", { "dependencies": { "graceful-fs": "^4.2.0", "jsonfile": "^4.0.0", "universalify": "^0.1.0" } }, "sha512-yhlQgA6mnOJUKOsRUFsgJdQCvkKhcz8tlZG5HBQfReYZy46OwLcY+Zia0mtdHsOo9y/hP+CxMN0TU9QxoOtG4g=="],
 
+    "@scure/bip32/@noble/curves": ["@noble/curves@1.8.1", "", { "dependencies": { "@noble/hashes": "1.7.1" } }, "sha512-warwspo+UYUPep0Q+vtdVB4Ugn8GGQj8iyB3gnRWsztmUHTI3S1nhdiWNsPUGL0vud7JlRRk1XEu7Lq1KGTnMQ=="],
+
+    "@scure/bip32/@noble/hashes": ["@noble/hashes@1.7.1", "", {}, "sha512-B8XBPsn4vT/KJAGqDzbwztd+6Yte3P4V7iafm24bxgDe/mlRuK6xmWPuCNrKt2vDafZ8MfJLlchDG/vYafQEjQ=="],
+
+    "@scure/bip39/@noble/hashes": ["@noble/hashes@1.7.1", "", {}, "sha512-B8XBPsn4vT/KJAGqDzbwztd+6Yte3P4V7iafm24bxgDe/mlRuK6xmWPuCNrKt2vDafZ8MfJLlchDG/vYafQEjQ=="],
+
     "anymatch/picomatch": ["picomatch@2.3.1", "", {}, "sha512-JU3teHTNjmE2VCGFzuY8EXzCDVwEqB2a8fsIvwaStHhAWJEeVd1o1QD80CU6+ZdEXXSLbSsuLwJjkCBWqRQUVA=="],
 
     "esbuild-visualizer/open": ["open@8.4.2", "", { "dependencies": { "define-lazy-prop": "^2.0.0", "is-docker": "^2.1.1", "is-wsl": "^2.2.0" } }, "sha512-7x81NCL719oNbsq/3mh+hVrAWmFuEYUqrq/Iw3kUzH8ReypT9QQ0BLoJS7/G9k6N81XjW4qHWtjWwe/9eLy1EQ=="],
@@ -686,6 +692,10 @@
     "is-inside-container/is-docker": ["is-docker@3.0.0", "", { "bin": { "is-docker": "cli.js" } }, "sha512-eljcgEDlEns/7AXFosB5K/2nCM4P7FQPkGc/DWLy5rmFEWvZayGrik1d9/QIY5nJ4f9YsVvBkA6kJpHn9rISdQ=="],
 
     "micromatch/picomatch": ["picomatch@2.3.1", "", {}, "sha512-JU3teHTNjmE2VCGFzuY8EXzCDVwEqB2a8fsIvwaStHhAWJEeVd1o1QD80CU6+ZdEXXSLbSsuLwJjkCBWqRQUVA=="],
+
+    "ox/@noble/curves": ["@noble/curves@1.8.1", "", { "dependencies": { "@noble/hashes": "1.7.1" } }, "sha512-warwspo+UYUPep0Q+vtdVB4Ugn8GGQj8iyB3gnRWsztmUHTI3S1nhdiWNsPUGL0vud7JlRRk1XEu7Lq1KGTnMQ=="],
+
+    "ox/@noble/hashes": ["@noble/hashes@1.7.1", "", {}, "sha512-B8XBPsn4vT/KJAGqDzbwztd+6Yte3P4V7iafm24bxgDe/mlRuK6xmWPuCNrKt2vDafZ8MfJLlchDG/vYafQEjQ=="],
 
     "p-locate/p-limit": ["p-limit@3.1.0", "", { "dependencies": { "yocto-queue": "^0.1.0" } }, "sha512-TYOanM3wGwNGsZN2cVTYPArw454xnXj5qmWF1bEoAc4+cU/ol7GVh7odevjp1FNHduHc3KZMcFduxU5Xc6uJRQ=="],
 

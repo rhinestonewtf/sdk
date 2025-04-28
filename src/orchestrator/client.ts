@@ -10,11 +10,15 @@ import {
   type BundleResult,
   type BundleEvent,
   type OrderPath,
+  type OrderCostResult,
+  type OrderFeeInput,
 } from './types'
 import {
   convertBigIntFields,
   parseCompactResponse,
   parsePendingBundleEvent,
+  parseOrderCostResult,
+  parseOrderCost,
 } from './utils'
 import { OrchestratorError } from './error'
 
@@ -75,6 +79,30 @@ export class Orchestrator {
     }
   }
 
+  async getIntentCost(
+    intent: MetaIntent | OrderFeeInput,
+    userAddress: Address,
+  ): Promise<OrderCostResult> {
+    try {
+      const response = await axios.post(
+        `${this.serverUrl}/accounts/${userAddress}/bundles/cost`,
+        {
+          ...convertBigIntFields(intent),
+        },
+        {
+          headers: {
+            'x-api-key': this.apiKey,
+          },
+        },
+      )
+
+      return parseOrderCostResult(response.data)
+    } catch (error: any) {
+      this.parseError(error)
+      throw new Error(error)
+    }
+  }
+
   async getOrderPath(
     intent: MetaIntent,
     userAddress: Address,
@@ -101,6 +129,7 @@ export class Orchestrator {
               value: BigInt(exec.value),
             }
           }),
+          intentCost: parseOrderCost(orderPath.intentCost),
         }
       })
     } catch (error: any) {
