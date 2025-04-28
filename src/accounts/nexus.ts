@@ -1,24 +1,20 @@
+import type { Account, Address, Hex, PublicClient } from 'viem'
 import {
-  type Address,
-  type Account,
-  type PublicClient,
-  type Hex,
+  concat,
   encodeAbiParameters,
   encodeFunctionData,
   keccak256,
   parseAbi,
-  zeroAddress,
-  concat,
   toHex,
+  zeroAddress,
 } from 'viem'
 import {
+  entryPoint07Abi,
   entryPoint07Address,
   getUserOperationHash,
-  entryPoint07Abi,
   toSmartAccount,
 } from 'viem/account-abstraction'
 
-import { OwnerSet, RhinestoneAccountConfig, Session } from '../types'
 import { getSetup as getModuleSetup } from '../modules'
 import {
   encodeSmartSessionSignature,
@@ -26,6 +22,7 @@ import {
   getPermissionId,
   SMART_SESSION_MODE_USE,
 } from '../modules/validators'
+import { OwnerSet, RhinestoneAccountConfig, Session } from '../types'
 
 import { encode7579Calls, getAccountNonce } from './utils'
 

@@ -73,7 +73,7 @@ function convertBigIntFields(obj: any): any {
   if (typeof obj === 'object') {
     const result: any = {}
     for (const key in obj) {
-      if (Object.prototype.hasOwnProperty.call(obj, key)) {
+      if (Object.hasOwn(obj, key)) {
         result[key] = convertBigIntFields(obj[key])
       }
     }

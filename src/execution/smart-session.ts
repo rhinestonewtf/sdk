@@ -1,29 +1,26 @@
 import {
+  Address,
   Chain,
-  http,
   createPublicClient,
+  encodeAbiParameters,
   encodePacked,
   Hex,
+  http,
   keccak256,
-  encodeAbiParameters,
-  Address,
 } from 'viem'
 
-import { getSmartAccount, getAddress } from '../accounts'
+import { getAddress, getSmartAccount } from '../accounts'
 import { getBundlerClient } from '../accounts/utils'
 import {
-  getPermissionId,
-  isSessionEnabled,
-  getSessionAllowedERC7739Content,
   getAccountEIP712Domain,
   getEnableSessionCall,
+  getPermissionId,
+  getSessionAllowedERC7739Content,
+  isSessionEnabled,
 } from '../modules/validators'
-import { RhinestoneAccountConfig, Session } from '../types'
 import { OrderPath } from '../orchestrator'
-import {
-  getOrderBundleHash,
-  hashMultichainCompactWithoutDomainSeparator,
-} from '../orchestrator/utils'
+import { hashMultichainCompactWithoutDomainSeparator } from '../orchestrator/utils'
+import { RhinestoneAccountConfig, Session } from '../types'
 
 async function enableSmartSession(
   chain: Chain,
@@ -67,7 +64,6 @@ async function hashErc7739(
 
   const { appDomainSeparator, contentsType } =
     await getSessionAllowedERC7739Content(sourceChain)
-  const orderBundleHash = getOrderBundleHash(orderPath[0].orderBundle)
   // Create hash following ERC-7739 TypedDataSign workflow
   const typedDataSignTypehash = keccak256(
     encodePacked(
@@ -123,7 +119,6 @@ async function hashErc7739(
     appDomainSeparator,
     contentsType,
     structHash,
-    orderBundleHash,
   }
 }
 

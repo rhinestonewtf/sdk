@@ -1,10 +1,10 @@
-import type { RhinestoneAccountConfig, Transaction, Session } from './types'
+import { getAddress as getAddressInternal } from './accounts'
+import type { TransactionResult } from './execution'
 import {
-  type TransactionResult,
   sendTransaction as sendTransactionInternal,
   waitForExecution as waitForExecutionInternal,
 } from './execution'
-import { getAddress as getAddressInternal } from './accounts'
+import type { RhinestoneAccountConfig, Session, Transaction } from './types'
 
 async function createRhinestoneAccount(config: RhinestoneAccountConfig) {
   function sendTransactions(transaction: Transaction) {

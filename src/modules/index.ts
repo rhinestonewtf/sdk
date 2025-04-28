@@ -20,17 +20,17 @@ import {
 import { RhinestoneAccountConfig } from '../types'
 
 import {
-  Module,
   MODULE_TYPE_ID_EXECUTOR,
   MODULE_TYPE_ID_FALLBACK,
+  Module,
 } from './common'
 import {
-  OMNI_ACCOUNT_MOCK_ATTESTER_ADDRESS,
-  RHINESTONE_MODULE_REGISTRY_ADDRESS,
-  RHINESTONE_ATTESTER_ADDRESS,
   HOOK_ADDRESS,
-  TARGET_MODULE_ADDRESS,
+  OMNI_ACCOUNT_MOCK_ATTESTER_ADDRESS,
+  RHINESTONE_ATTESTER_ADDRESS,
+  RHINESTONE_MODULE_REGISTRY_ADDRESS,
   SAME_CHAIN_MODULE_ADDRESS,
+  TARGET_MODULE_ADDRESS,
 } from './omni-account'
 import { getOwnerValidator, getSmartSessionValidator } from './validators'
 

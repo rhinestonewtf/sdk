@@ -7,29 +7,29 @@ import {
   encodePacked,
   Hex,
   http,
+  isHex,
   keccak256,
-  parseAbi,
   PublicClient,
+  padHex,
+  parseAbi,
   toHex,
   zeroHash,
-  isHex,
-  padHex,
 } from 'viem'
 
+import {
+  getWethAddress,
+  RHINESTONE_SPOKE_POOL_ADDRESS,
+} from '../../orchestrator'
 import {
   Policy,
   RhinestoneAccountConfig,
   Session,
   UniversalActionPolicyParamCondition,
 } from '../../types'
-import {
-  RHINESTONE_SPOKE_POOL_ADDRESS,
-  getWethAddress,
-} from '../../orchestrator'
-
-import { Module, MODULE_TYPE_ID_VALIDATOR } from '../common'
 import { enableSessionsAbi } from '../abi/smart-sessions'
+import { MODULE_TYPE_ID_VALIDATOR, Module } from '../common'
 import { HOOK_ADDRESS } from '../omni-account'
+
 import { getValidator } from './core'
 
 type FixedLengthArray<

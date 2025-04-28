@@ -1,26 +1,26 @@
 import axios from 'axios'
-import { Address, Hex, concat } from 'viem'
+import { Address, concat, Hex } from 'viem'
 import { UserOperation } from 'viem/account-abstraction'
 
+import { OrchestratorError } from './error'
 import {
-  type UserTokenBalance,
-  type MetaIntent,
-  type SignedMultiChainCompact,
-  type PostOrderBundleResult,
-  type BundleResult,
   type BundleEvent,
-  type OrderPath,
+  type BundleResult,
+  type MetaIntent,
   type OrderCostResult,
   type OrderFeeInput,
+  type OrderPath,
+  type PostOrderBundleResult,
+  type SignedMultiChainCompact,
+  type UserTokenBalance,
 } from './types'
 import {
   convertBigIntFields,
   parseCompactResponse,
-  parsePendingBundleEvent,
-  parseOrderCostResult,
   parseOrderCost,
+  parseOrderCostResult,
+  parsePendingBundleEvent,
 } from './utils'
-import { OrchestratorError } from './error'
 
 export class Orchestrator {
   private serverUrl: string
@@ -295,7 +295,7 @@ export class Orchestrator {
         message: error.response.data.errors[0].message,
         context,
         errorType,
-        traceId: context['traceId'],
+        traceId: context.traceId,
       })
     }
   }

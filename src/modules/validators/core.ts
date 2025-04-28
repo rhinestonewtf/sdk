@@ -11,7 +11,7 @@ import {
 
 import { OwnerSet, RhinestoneAccountConfig } from '../../types'
 
-import { Module, MODULE_TYPE_ID_VALIDATOR } from '../common'
+import { MODULE_TYPE_ID_VALIDATOR, Module } from '../common'
 
 interface PublicKey {
   prefix?: number | undefined

@@ -5,8 +5,8 @@ import {
   encodePacked,
   Hex,
   keccak256,
-  parseAbi,
   PublicClient,
+  parseAbi,
   zeroAddress,
 } from 'viem'
 import {
@@ -17,15 +17,15 @@ import {
 } from 'viem/account-abstraction'
 
 import { getSetup as getModuleSetup } from '../modules'
-import { OwnerSet, RhinestoneAccountConfig, Session } from '../types'
-
-import { encode7579Calls, getAccountNonce } from './utils'
 import {
   encodeSmartSessionSignature,
   getMockSignature,
   getPermissionId,
   SMART_SESSION_MODE_USE,
 } from '../modules/validators'
+import { OwnerSet, RhinestoneAccountConfig, Session } from '../types'
+
+import { encode7579Calls, getAccountNonce } from './utils'
 
 const SAFE_7579_LAUNCHPAD_ADDRESS: Address =
   '0x7579011aB74c46090561ea277Ba79D510c6C00ff'
