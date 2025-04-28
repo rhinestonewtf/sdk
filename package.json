@@ -6,7 +6,7 @@
     "build:esm": "tsc --module es2015 --outDir ./src/dist && tsc-alias --outDir ./src/dist && printf '{\"type\": \"module\",\"sideEffects\":false}' > ./src/dist/package.json",
     "build:types": "tsc --module esnext --declarationDir ./src/dist --outDir ./src/dist --emitDeclarationOnly --declaration --declarationMap",
     "clean": "rimraf src/dist",
-    "test": "echo 'OK'",
+    "test": "vitest",
     "check": "biome check",
     "typecheck": "tsc --noEmit",
     "changeset": "changeset",
