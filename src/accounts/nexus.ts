@@ -35,9 +35,9 @@ const NEXUS_BOOTSTRAP_ADDRESS: Address =
 
 const K1_MEE_VALIDATOR_ADDRESS = '0x00000000d12897ddadc2044614a9677b191a2d95'
 
-async function getDeployArgs(config: RhinestoneAccountConfig) {
+function getDeployArgs(config: RhinestoneAccountConfig) {
   const salt = keccak256('0x')
-  const moduleSetup = await getModuleSetup(config)
+  const moduleSetup = getModuleSetup(config)
   const initData = encodeAbiParameters(
     [{ type: 'address' }, { type: 'bytes' }],
     [

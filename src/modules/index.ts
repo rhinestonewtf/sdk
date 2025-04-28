@@ -64,7 +64,7 @@ interface ModeleSetup {
   threshold: number
 }
 
-async function getSetup(config: RhinestoneAccountConfig): Promise<ModeleSetup> {
+function getSetup(config: RhinestoneAccountConfig): ModeleSetup {
   const ownerValidator = getOwnerValidator(config)
   const smartSessionValidator = getSmartSessionValidator(config)
 

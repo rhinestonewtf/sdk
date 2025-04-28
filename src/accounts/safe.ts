@@ -39,11 +39,11 @@ const SAFE_PROXY_FACTORY_ADDRESS: Address =
 const NO_SAFE_OWNER_ADDRESS: Address =
   '0xbabe99e62d8bcbd3acf5ccbcfcd4f64fe75e5e72'
 
-async function getDeployArgs(config: RhinestoneAccountConfig) {
+function getDeployArgs(config: RhinestoneAccountConfig) {
   {
     const owners = getOwners(config)
     const threshold = getThreshold(config)
-    const moduleSetup = await getModuleSetup(config)
+    const moduleSetup = getModuleSetup(config)
     const initData = encodeFunctionData({
       abi: parseAbi([
         'function setup(address[] calldata _owners,uint256 _threshold,address to,bytes calldata data,address fallbackHandler,address paymentToken,uint256 payment, address paymentReceiver) external',

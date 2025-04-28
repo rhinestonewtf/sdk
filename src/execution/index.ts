@@ -201,7 +201,7 @@ async function sendTransactionAsUserOp(
   const orchestrator = getOrchestrator(config.rhinestoneApiKey)
   const orderPath = await orchestrator.getOrderPath(metaIntent, accountAddress)
   // Deploy the account on the target chain
-  const { factory, factoryData } = await getDeployArgs(config)
+  const { factory, factoryData } = getDeployArgs(config)
   const deployerAccount = config.deployerAccount
   const targetWalletClient = createWalletClient({
     chain: targetChain,
@@ -348,7 +348,7 @@ async function sendTransactionAsIntent(
   }
 
   await deployTarget(targetChain, config)
-  const initCode = await getBundleInitCode(config)
+  const initCode = getBundleInitCode(config)
   const bundleResults = await orchestrator.postSignedOrderBundle([
     {
       signedOrderBundle,
