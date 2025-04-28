@@ -236,14 +236,20 @@ async function getSmartAccount(
   chain: Chain,
 ) {
   const account = getAccount(config)
+  const address = await getAddress(config)
+  const ownerValidator = getOwnerValidator(config)
+  const signFn = (hash: Hex) => sign(config.owners, chain, hash)
   switch (account.type) {
     case 'safe': {
-      return getSafeSmartAccount()
+      return getSafeSmartAccount(
+        client,
+        address,
+        config.owners,
+        ownerValidator.address,
+        signFn,
+      )
     }
     case 'nexus': {
-      const address = await getAddress(config)
-      const ownerValidator = getOwnerValidator(config)
-      const signFn = (hash: Hex) => sign(config.owners, chain, hash)
       return getNexusSmartAccount(
         client,
         address,
@@ -261,18 +267,25 @@ async function getSmartSessionSmartAccount(
   chain: Chain,
   session: Session,
 ) {
+  const address = await getAddress(config)
+  const smartSessionValidator = getSmartSessionValidator(config)
+  if (!smartSessionValidator) {
+    throw new Error('Smart sessions are not enabled for this account')
+  }
+  const signFn = (hash: Hex) => sign(session.owners, chain, hash)
+
   const account = getAccount(config)
   switch (account.type) {
     case 'safe': {
-      return getSafeSessionSmartAccount()
+      return getSafeSessionSmartAccount(
+        client,
+        address,
+        session,
+        smartSessionValidator.address,
+        signFn,
+      )
     }
     case 'nexus': {
-      const address = await getAddress(config)
-      const smartSessionValidator = getSmartSessionValidator(config)
-      if (!smartSessionValidator) {
-        throw new Error('Smart sessions are not enabled for this account')
-      }
-      const signFn = (hash: Hex) => sign(session.owners, chain, hash)
       return getNexusSessionSmartAccount(
         client,
         address,

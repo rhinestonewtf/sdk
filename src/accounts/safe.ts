@@ -1,15 +1,31 @@
 import {
   Address,
+  concat,
   encodeFunctionData,
   encodePacked,
   Hex,
   keccak256,
   parseAbi,
+  PublicClient,
   zeroAddress,
 } from 'viem'
+import {
+  entryPoint07Abi,
+  entryPoint07Address,
+  getUserOperationHash,
+  toSmartAccount,
+} from 'viem/account-abstraction'
 
 import { getSetup as getModuleSetup } from '../modules'
-import { RhinestoneAccountConfig } from '../types'
+import { OwnerSet, RhinestoneAccountConfig, Session } from '../types'
+
+import { encode7579Calls, getAccountNonce } from './utils'
+import {
+  encodeSmartSessionSignature,
+  getMockSinature,
+  getPermissionId,
+  SMART_SESSION_MODE_USE,
+} from '../modules/validators'
 
 const SAFE_7579_LAUNCHPAD_ADDRESS: Address =
   '0x7579011aB74c46090561ea277Ba79D510c6C00ff'
@@ -99,19 +115,131 @@ async function getDeployArgs(config: RhinestoneAccountConfig) {
   }
 }
 
-async function getSmartAccount(): Promise<never> {
-  throw new Error('Not implemented')
+async function getSmartAccount(
+  client: PublicClient,
+  address: Address,
+  owners: OwnerSet,
+  validatorAddress: Address,
+  sign: (hash: Hex) => Promise<Hex>,
+) {
+  return getBaseSmartAccount(
+    address,
+    client,
+    validatorAddress,
+    async () => {
+      return getMockSinature(owners)
+    },
+    sign,
+  )
 }
 
-async function getSessionSmartAccount(): Promise<never> {
-  throw new Error('Not implemented')
+async function getSessionSmartAccount(
+  client: PublicClient,
+  address: Address,
+  session: Session,
+  validatorAddress: Address,
+  sign: (hash: Hex) => Promise<Hex>,
+) {
+  return await getBaseSmartAccount(
+    address,
+    client,
+    validatorAddress,
+    async () => {
+      const dummyOpSignature = getMockSinature(session.owners)
+      return encodeSmartSessionSignature(
+        SMART_SESSION_MODE_USE,
+        getPermissionId(session),
+        dummyOpSignature,
+      )
+    },
+    async (hash) => {
+      const signature = await sign(hash)
+      return encodeSmartSessionSignature(
+        SMART_SESSION_MODE_USE,
+        getPermissionId(session),
+        signature,
+      )
+    },
+  )
 }
 
-function get7702InitCalls(): never {
-  throw new Error('EIP-7702 is not supported for Safe accounts')
+async function getBaseSmartAccount(
+  address: Address,
+  client: PublicClient,
+  validatorAddress: Address,
+  getStubSignature: () => Promise<Hex>,
+  signUserOperation: (hash: Hex) => Promise<Hex>,
+) {
+  return await toSmartAccount({
+    client,
+    entryPoint: {
+      abi: entryPoint07Abi,
+      address: entryPoint07Address,
+      version: '0.7',
+    },
+    async decodeCalls() {
+      throw new Error('Not implemented')
+    },
+    async encodeCalls(calls) {
+      return encode7579Calls({
+        mode: {
+          type: calls.length > 1 ? 'batchcall' : 'call',
+          revertOnError: false,
+          selector: '0x',
+          context: '0x',
+        },
+        callData: calls,
+      })
+    },
+    async getAddress() {
+      return address
+    },
+    async getFactoryArgs() {
+      return {}
+    },
+    async getNonce() {
+      const key = concat([validatorAddress, '0x00000000'])
+      const nonce = await getAccountNonce(client, {
+        address,
+        entryPointAddress: entryPoint07Address,
+        key: BigInt(key),
+      })
+      return nonce
+    },
+    async getStubSignature() {
+      return getStubSignature()
+    },
+    async signMessage() {
+      throw new Error('Not implemented')
+    },
+    async signTypedData() {
+      throw new Error('Not implemented')
+    },
+    async signUserOperation(parameters) {
+      const { chainId = client.chain?.id, ...userOperation } = parameters
+
+      if (!chainId) throw new Error('Chain id not found')
+
+      const hash = getUserOperationHash({
+        userOperation: {
+          ...userOperation,
+          sender: userOperation.sender ?? (await this.getAddress()),
+          signature: '0x',
+        },
+        entryPointAddress: entryPoint07Address,
+        entryPointVersion: '0.7',
+        chainId: chainId,
+      })
+      return await signUserOperation(hash)
+    },
+  })
 }
 
 function get7702SmartAccount(): never {
+  throw new Error('EIP-7702 is not supported for Safe accounts')
+}
+
+function get7702InitCalls(): never {
   throw new Error('EIP-7702 is not supported for Safe accounts')
 }
 
