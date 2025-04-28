@@ -123,7 +123,7 @@ async function getSetup(config: RhinestoneAccountConfig): Promise<ModeleSetup> {
           { name: 'flags', type: 'bytes1' },
           { name: 'data', type: 'bytes' },
         ],
-        ['0x84b0196e', '0x00', '0x'],
+        ['0x84b0196e', '0xfe', '0x'],
       ),
       deInitData: '0x',
       additionalContext: '0x',
