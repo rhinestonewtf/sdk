@@ -34,6 +34,9 @@ import {
 } from './omni-account'
 import { getOwnerValidator, getSmartSessionValidator } from './validators'
 
+const SMART_SESSION_COMPATIBILITY_FALLBACK_ADDRESS: Address =
+  '0x12cae64c42f362e7d5a847c2d33388373f629177'
+
 interface WebAuthnData {
   authenticatorData: Hex
   clientDataJSON: string
@@ -110,6 +113,23 @@ async function getSetup(config: RhinestoneAccountConfig): Promise<ModeleSetup> {
       type: MODULE_TYPE_ID_FALLBACK,
     },
   ]
+
+  if (config.account && config.account.type === 'safe') {
+    fallbacks.push({
+      address: SMART_SESSION_COMPATIBILITY_FALLBACK_ADDRESS,
+      initData: encodeAbiParameters(
+        [
+          { name: 'selector', type: 'bytes4' },
+          { name: 'flags', type: 'bytes1' },
+          { name: 'data', type: 'bytes' },
+        ],
+        ['0x84b0196e', '0x00', '0x'],
+      ),
+      deInitData: '0x',
+      additionalContext: '0x',
+      type: MODULE_TYPE_ID_FALLBACK,
+    })
+  }
 
   const hooks: Module[] = []
 
