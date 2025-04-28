@@ -200,22 +200,10 @@ async function deploy7702WithBundler(
     transport: http(),
   })
   const bundlerClient = getBundlerClient(config, publicClient)
-  const fundingClient = createWalletClient({
-    account: config.deployerAccount,
-    chain,
-    transport: http(),
-  })
 
   const authorization = await accountClient.signAuthorization({
     contractAddress: implementation,
   })
-
-  // Will be replaced by a bundler in the future
-  const authTxHash = await fundingClient.sendTransaction({
-    chain: publicClient.chain,
-    authorizationList: [authorization],
-  })
-  await publicClient.waitForTransactionReceipt({ hash: authTxHash })
 
   // Init the account
   const smartAccount = await get7702SmartAccount(config, publicClient)
@@ -223,6 +211,7 @@ async function deploy7702WithBundler(
   const opHash = await bundlerClient.sendUserOperation({
     account: smartAccount,
     calls: initCalls,
+    authorization,
   })
 
   await bundlerClient.waitForUserOperationReceipt({
