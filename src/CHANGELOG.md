@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 0.4.1
+
+### Patch Changes
+
+- 38b337f: Smart session support for Safe7579 accounts.
+
 ## 0.4.0
 
 ### Minor Changes
