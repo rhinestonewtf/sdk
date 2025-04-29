@@ -43,8 +43,8 @@ jobs:
         with:
           commit: 'chore: release'
           title: 'Release'
-          publish: bun run change:publish
-          version: bun run change:version
+          publish: bun run changeset:release
+          version: bun run changeset:version
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
