@@ -24,7 +24,7 @@ jobs:
           key: 'build-and-modules-${{ github.sha }}'
           path: ${{ inputs.cache-path }}
 
-      - name: Install the Node.js dependencies
+      - name: Install the npm dependencies
         run: bun install
 
       - name: Build
@@ -53,7 +53,7 @@ jobs:
           key: 'build-and-modules-${{ github.sha }}'
           path: ${{ inputs.cache-path }}
 
-      - name: Install the Node.js dependencies
+      - name: Install the npm dependencies
         run: bun install
 
       - name: Run tests
