@@ -1,25 +1,19 @@
 import {
   Account,
   Chain,
-  createPublicClient,
-  http,
-  createWalletClient,
-  size,
-  keccak256,
-  encodePacked,
-  slice,
-  PublicClient,
-  Hex,
   concat,
+  createPublicClient,
+  createWalletClient,
+  encodePacked,
+  Hex,
+  http,
+  keccak256,
+  PublicClient,
+  size,
+  slice,
 } from 'viem'
 import { WebAuthnAccount } from 'viem/account-abstraction'
 
-import {
-  AccountProviderConfig,
-  OwnerSet,
-  RhinestoneAccountConfig,
-  Session,
-} from '../types'
 import {
   getWebauthnValidatorSignature,
   isRip7212SupportedNetwork,
@@ -28,24 +22,30 @@ import {
   getOwnerValidator,
   getSmartSessionValidator,
 } from '../modules/validators'
+import {
+  AccountProviderConfig,
+  OwnerSet,
+  RhinestoneAccountConfig,
+  Session,
+} from '../types'
 
 import {
-  getDeployArgs as getSafeDeployArgs,
-  getSmartAccount as getSafeSmartAccount,
-  get7702InitCalls as get7702SafeInitCalls,
-  get7702SmartAccount as get7702SafeAccount,
-  getSessionSmartAccount as getSafeSessionSmartAccount,
-} from './safe'
-import {
-  getDeployArgs as getNexusDeployArgs,
-  getSmartAccount as getNexusSmartAccount,
-  get7702InitCalls as get7702NexusInitCalls,
   get7702SmartAccount as get7702NexusAccount,
+  get7702InitCalls as get7702NexusInitCalls,
+  getDeployArgs as getNexusDeployArgs,
   getSessionSmartAccount as getNexusSessionSmartAccount,
+  getSmartAccount as getNexusSmartAccount,
 } from './nexus'
+import {
+  get7702SmartAccount as get7702SafeAccount,
+  get7702InitCalls as get7702SafeInitCalls,
+  getDeployArgs as getSafeDeployArgs,
+  getSessionSmartAccount as getSafeSessionSmartAccount,
+  getSmartAccount as getSafeSmartAccount,
+} from './safe'
 import { getBundlerClient } from './utils'
 
-async function getDeployArgs(config: RhinestoneAccountConfig) {
+function getDeployArgs(config: RhinestoneAccountConfig) {
   const account = getAccount(config)
   switch (account.type) {
     case 'safe': {
@@ -57,14 +57,14 @@ async function getDeployArgs(config: RhinestoneAccountConfig) {
   }
 }
 
-async function getAddress(config: RhinestoneAccountConfig) {
+function getAddress(config: RhinestoneAccountConfig) {
   if (is7702(config)) {
     if (!config.eoa) {
       throw new Error('EIP-7702 accounts must have an EOA account')
     }
     return config.eoa.address
   }
-  const { factory, salt, hashedInitcode } = await getDeployArgs(config)
+  const { factory, salt, hashedInitcode } = getDeployArgs(config)
   const hash = keccak256(
     encodePacked(
       ['bytes1', 'address', 'bytes32', 'bytes'],
@@ -80,7 +80,7 @@ async function isDeployed(chain: Chain, config: RhinestoneAccountConfig) {
     chain: chain,
     transport: http(),
   })
-  const address = await getAddress(config)
+  const address = getAddress(config)
   const code = await publicClient.getCode({
     address,
   })
@@ -109,11 +109,11 @@ async function deployTarget(chain: Chain, config: RhinestoneAccountConfig) {
   // No need to deploy manually outside of EIP-7702
 }
 
-async function getBundleInitCode(config: RhinestoneAccountConfig) {
+function getBundleInitCode(config: RhinestoneAccountConfig) {
   if (is7702(config)) {
     return undefined
   } else {
-    const { factory, factoryData } = await getDeployArgs(config)
+    const { factory, factoryData } = getDeployArgs(config)
     if (!factory || !factoryData) {
       throw new Error('Factory args not available')
     }
@@ -127,7 +127,7 @@ async function deploy7702Self(chain: Chain, config: RhinestoneAccountConfig) {
   }
 
   const account = getAccount(config)
-  const { implementation, initializationCallData } = await getDeployArgs(config)
+  const { implementation, initializationCallData } = getDeployArgs(config)
   if (!initializationCallData) {
     throw new Error(
       `Initialization call data not available for ${account.type}`,
@@ -163,7 +163,7 @@ async function deployStandaloneSelf(
   config: RhinestoneAccountConfig,
 ) {
   const deployer = config.deployerAccount
-  const { factory, factoryData } = await getDeployArgs(config)
+  const { factory, factoryData } = getDeployArgs(config)
   const publicClient = createPublicClient({
     chain: chain,
     transport: http(),
@@ -188,7 +188,7 @@ async function deploy7702WithBundler(
     throw new Error('EIP-7702 accounts must have an EOA account')
   }
 
-  const { implementation } = await getDeployArgs(config)
+  const { implementation } = getDeployArgs(config)
 
   const publicClient = createPublicClient({
     chain,
@@ -225,7 +225,7 @@ async function getSmartAccount(
   chain: Chain,
 ) {
   const account = getAccount(config)
-  const address = await getAddress(config)
+  const address = getAddress(config)
   const ownerValidator = getOwnerValidator(config)
   const signFn = (hash: Hex) => sign(config.owners, chain, hash)
   switch (account.type) {
@@ -256,7 +256,7 @@ async function getSmartSessionSmartAccount(
   chain: Chain,
   session: Session,
 ) {
-  const address = await getAddress(config)
+  const address = getAddress(config)
   const smartSessionValidator = getSmartSessionValidator(config)
   if (!smartSessionValidator) {
     throw new Error('Smart sessions are not enabled for this account')

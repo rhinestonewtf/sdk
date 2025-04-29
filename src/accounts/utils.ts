@@ -1,7 +1,5 @@
+import type { Address, Client, Hex } from 'viem'
 import {
-  type Address,
-  type Hex,
-  type Client,
   concatHex,
   encodeAbiParameters,
   encodeFunctionData,
@@ -10,9 +8,9 @@ import {
   toBytes,
   toHex,
 } from 'viem'
+import { createBundlerClient } from 'viem/account-abstraction'
 import { readContract } from 'viem/actions'
 import { getAction } from 'viem/utils'
-import { createBundlerClient } from 'viem/account-abstraction'
 
 import { BundlerConfig, RhinestoneAccountConfig } from '../types'
 

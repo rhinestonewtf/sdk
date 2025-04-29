@@ -5,8 +5,8 @@ import {
   encodePacked,
   Hex,
   keccak256,
-  parseAbi,
   PublicClient,
+  parseAbi,
   zeroAddress,
 } from 'viem'
 import {
@@ -17,15 +17,15 @@ import {
 } from 'viem/account-abstraction'
 
 import { getSetup as getModuleSetup } from '../modules'
-import { OwnerSet, RhinestoneAccountConfig, Session } from '../types'
-
-import { encode7579Calls, getAccountNonce } from './utils'
 import {
   encodeSmartSessionSignature,
   getMockSignature,
   getPermissionId,
   SMART_SESSION_MODE_USE,
 } from '../modules/validators'
+import { OwnerSet, RhinestoneAccountConfig, Session } from '../types'
+
+import { encode7579Calls, getAccountNonce } from './utils'
 
 const SAFE_7579_LAUNCHPAD_ADDRESS: Address =
   '0x7579011aB74c46090561ea277Ba79D510c6C00ff'
@@ -39,11 +39,11 @@ const SAFE_PROXY_FACTORY_ADDRESS: Address =
 const NO_SAFE_OWNER_ADDRESS: Address =
   '0xbabe99e62d8bcbd3acf5ccbcfcd4f64fe75e5e72'
 
-async function getDeployArgs(config: RhinestoneAccountConfig) {
+function getDeployArgs(config: RhinestoneAccountConfig) {
   {
     const owners = getOwners(config)
     const threshold = getThreshold(config)
-    const moduleSetup = await getModuleSetup(config)
+    const moduleSetup = getModuleSetup(config)
     const initData = encodeFunctionData({
       abi: parseAbi([
         'function setup(address[] calldata _owners,uint256 _threshold,address to,bytes calldata data,address fallbackHandler,address paymentToken,uint256 payment, address paymentReceiver) external',

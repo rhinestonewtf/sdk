@@ -17,38 +17,40 @@ import {
 } from 'viem/account-abstraction'
 
 import {
-  type BundleResult,
-  type MetaIntent,
-  type SignedMultiChainCompact,
-  BUNDLE_STATUS_PENDING,
-  BUNDLE_STATUS_FAILED,
-  getOrchestrator,
-  getOrderBundleHash,
-  BUNDLE_STATUS_PARTIALLY_COMPLETED,
-  getEmptyUserOp,
-} from '../orchestrator'
-import {
-  getAddress,
-  isDeployed,
   deploySource,
   deployTarget,
+  getAddress,
   getBundleInitCode,
-  sign,
-  getSmartSessionSmartAccount,
   getDeployArgs,
+  getSmartSessionSmartAccount,
+  isDeployed,
+  sign,
 } from '../accounts'
+import { getBundlerClient } from '../accounts/utils'
 import { getOwnerValidator } from '../modules'
+import { getSmartSessionValidator } from '../modules/validators'
+import type {
+  BundleResult,
+  MetaIntent,
+  SignedMultiChainCompact,
+} from '../orchestrator'
 import {
-  RhinestoneAccountConfig,
-  Transaction,
+  BUNDLE_STATUS_FAILED,
+  BUNDLE_STATUS_PARTIALLY_COMPLETED,
+  BUNDLE_STATUS_PENDING,
+  getEmptyUserOp,
+  getOrchestrator,
+  getOrderBundleHash,
+  getTokenBalanceSlot,
+} from '../orchestrator'
+import {
   Call,
-  TokenRequest,
+  RhinestoneAccountConfig,
   Session,
   SignerSet,
+  TokenRequest,
+  Transaction,
 } from '../types'
-import { getBundlerClient } from '../accounts/utils'
-import { getSmartSessionValidator } from '../modules/validators'
-import { getTokenBalanceSlot } from '../orchestrator'
 
 import {
   enableSmartSession,
@@ -116,7 +118,7 @@ async function sendTransactionInternal(
     await enableSmartSession(sourceChain, config, withSession)
   }
 
-  const accountAddress = await getAddress(config)
+  const accountAddress = getAddress(config)
   if (withSession) {
     // Smart sessions require a UserOp flow
     return await sendTransactionAsUserOp(
@@ -199,7 +201,7 @@ async function sendTransactionAsUserOp(
   const orchestrator = getOrchestrator(config.rhinestoneApiKey)
   const orderPath = await orchestrator.getOrderPath(metaIntent, accountAddress)
   // Deploy the account on the target chain
-  const { factory, factoryData } = await getDeployArgs(config)
+  const { factory, factoryData } = getDeployArgs(config)
   const deployerAccount = config.deployerAccount
   const targetWalletClient = createWalletClient({
     chain: targetChain,
@@ -253,13 +255,8 @@ async function sendTransactionAsUserOp(
   })
   orderPath[0].orderBundle.segments[0].witness.userOpHash = userOpHash
 
-  const {
-    hash,
-    appDomainSeparator,
-    contentsType,
-    structHash,
-    orderBundleHash,
-  } = await hashErc7739(sourceChain, orderPath, accountAddress)
+  const { hash, appDomainSeparator, contentsType, structHash } =
+    await hashErc7739(sourceChain, orderPath, accountAddress)
   const signature = await sign(withSession.owners, targetChain, hash)
   const sessionSignature = getSessionSignature(
     signature,
@@ -351,7 +348,7 @@ async function sendTransactionAsIntent(
   }
 
   await deployTarget(targetChain, config)
-  const initCode = await getBundleInitCode(config)
+  const initCode = getBundleInitCode(config)
   const bundleResults = await orchestrator.postSignedOrderBundle([
     {
       signedOrderBundle,
