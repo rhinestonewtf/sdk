@@ -18,6 +18,9 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
 
+      - name: Install the Node.js dependencies
+        run: bun install
+
       - name: Build all
         run: bun run build
 
