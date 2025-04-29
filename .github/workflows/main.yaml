@@ -39,7 +39,7 @@ jobs:
         uses: oven-sh/setup-bun@v2
 
       - name: Install the npm dependencies
-        run: bun install
+        run: bun install --frozen-lockfile
 
       - name: Create Release Pull Request or Publish
         uses: changesets/action@v1
