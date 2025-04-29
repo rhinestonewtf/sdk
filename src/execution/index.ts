@@ -118,7 +118,7 @@ async function sendTransactionInternal(
     await enableSmartSession(sourceChain, config, withSession)
   }
 
-  const accountAddress = await getAddress(config)
+  const accountAddress = getAddress(config)
   if (withSession) {
     // Smart sessions require a UserOp flow
     return await sendTransactionAsUserOp(
