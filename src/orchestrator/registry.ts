@@ -50,6 +50,44 @@ function getWethAddress(chain: Chain) {
   }
 }
 
+function getUsdcAddress(chain: Chain) {
+  switch (chain.id) {
+    case mainnet.id: {
+      return '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'
+    }
+    case sepolia.id: {
+      return '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238'
+    }
+    case base.id: {
+      return '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
+    }
+    case baseSepolia.id: {
+      return '0x036CbD53842c5426634e7929541eC2318f3dCF7e'
+    }
+    case arbitrum.id: {
+      return '0xaf88d065e77c8cC2239327C5EDb3A432268e5831'
+    }
+    case arbitrumSepolia.id: {
+      return '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d'
+    }
+    case optimism.id: {
+      return '0x0b2c639c533813f4aa9d7837caf62653d097ff85'
+    }
+    case optimismSepolia.id: {
+      return '0x5fd84259d66Cd46123540766Be93DFE6D43130D7'
+    }
+    case polygon.id: {
+      return '0x3c499c542cef5e3811e1192ce70d8cc03d5c3359'
+    }
+    case polygonAmoy.id: {
+      return '0x41e94eb019c0762f9bfcf9fb1e58725bfb0e7582'
+    }
+    default: {
+      throw new Error(`Unsupported chain ${chain.id}`)
+    }
+  }
+}
+
 function getTokenBalanceSlot(
   chain: Chain,
   tokenAddress: Address,
@@ -204,4 +242,60 @@ function getTokenBalanceSlot(
   )
 }
 
-export { getTokenBalanceSlot, getWethAddress }
+function getHookAddress() {
+  return '0x0000000000f6Ed8Be424d673c63eeFF8b9267420'
+}
+
+function getSameChainModuleAddress() {
+  return '0x000000000043ff16d5776c7F0f65Ec485C17Ca04'
+}
+
+function getTargetModuleAddress() {
+  return '0x0000000000E5a37279A001301A837a91b5de1D5E'
+}
+
+function getTokenAddress(tokenSymbol: string, chainId: number): Address {
+  if (tokenSymbol === 'ETH') {
+    return zeroAddress
+  }
+  const chain = getChainById(chainId)
+  if (!chain) {
+    throw new Error(`Unsupported chain ${chainId}`)
+  }
+  if (tokenSymbol === 'WETH') {
+    return getWethAddress(chain)
+  }
+  if (tokenSymbol === 'USDC') {
+    return getUsdcAddress(chain)
+  }
+  throw new Error(`Unsupported token symbol ${tokenSymbol}`)
+}
+
+function getChainById(chainId: number) {
+  const supportedChains: Chain[] = [
+    mainnet,
+    sepolia,
+    base,
+    baseSepolia,
+    arbitrum,
+    arbitrumSepolia,
+    optimism,
+    optimismSepolia,
+    polygon,
+    polygonAmoy,
+  ]
+  for (const chain of supportedChains) {
+    if (chain.id === chainId) {
+      return chain
+    }
+  }
+}
+
+export {
+  getTokenAddress,
+  getTokenBalanceSlot,
+  getWethAddress,
+  getHookAddress,
+  getSameChainModuleAddress,
+  getTargetModuleAddress,
+}
