@@ -400,5 +400,21 @@ async function waitForExecution(
   }
 }
 
-export { sendTransaction, waitForExecution }
+async function getMaxSpendableAmount(
+  config: RhinestoneAccountConfig,
+  chain: Chain,
+  tokenAddress: Address,
+  gasUnits: bigint,
+): Promise<bigint> {
+  const address = getAddress(config)
+  const orchestrator = getOrchestrator(config.rhinestoneApiKey)
+  return orchestrator.getMaxTokenAmount(
+    address,
+    chain.id,
+    tokenAddress,
+    gasUnits,
+  )
+}
+
+export { sendTransaction, waitForExecution, getMaxSpendableAmount }
 export type { TransactionResult }
