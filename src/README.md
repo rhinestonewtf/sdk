@@ -124,7 +124,7 @@ function getTokenAddress(chain: Chain) {
 Finally, let's make a cross-chain token transfer:
 
 ```ts
-const bundleId = await rhinestoneAccount.sendTransactions({
+const bundleId = await rhinestoneAccount.sendTransaction({
   sourceChain,
   targetChain,
   calls: [
