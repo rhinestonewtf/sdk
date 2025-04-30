@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 0.4.2
+
+### Patch Changes
+
+- ed82f25: Expose Orchestrator service and utilities
+
 ## 0.4.1
 
 ### Patch Changes
