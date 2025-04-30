@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 0.4.3
+
+### Patch Changes
+
+- 221e20f: Add "max spendable token amount" util
+
 ## 0.4.2
 
 ### Patch Changes
