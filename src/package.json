@@ -1,6 +1,6 @@
 {
   "name": "@rhinestone/sdk",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "End-to-end chain abstraction and modularity toolkit",
   "author": {
     "name": "Rhinestone",
