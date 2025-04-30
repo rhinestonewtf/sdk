@@ -64,14 +64,14 @@ type TransactionResult =
   | {
       type: 'userop'
       hash: Hex
-      sourceChain: Chain
-      targetChain: Chain
+      sourceChain: number
+      targetChain: number
     }
   | {
       type: 'bundle'
       id: bigint
-      sourceChain: Chain
-      targetChain: Chain
+      sourceChain: number
+      targetChain: number
     }
 
 async function sendTransaction(
@@ -183,8 +183,8 @@ async function sendTransactionAsUserOp(
     return {
       type: 'userop',
       hash,
-      sourceChain,
-      targetChain,
+      sourceChain: sourceChain.id,
+      targetChain: targetChain.id,
     } as TransactionResult
   }
 
@@ -293,8 +293,8 @@ async function sendTransactionAsUserOp(
   return {
     type: 'bundle',
     id: bundleResults[0].bundleId,
-    sourceChain,
-    targetChain,
+    sourceChain: sourceChain.id,
+    targetChain: targetChain.id,
   } as TransactionResult
 }
 
@@ -359,8 +359,8 @@ async function sendTransactionAsIntent(
   return {
     type: 'bundle',
     id: bundleResults[0].bundleId,
-    sourceChain,
-    targetChain,
+    sourceChain: sourceChain.id,
+    targetChain: targetChain.id,
   } as TransactionResult
 }
 
