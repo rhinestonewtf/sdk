@@ -390,7 +390,6 @@ async function waitForExecution(
         chain: result.sourceChain,
         transport: http(),
       })
-      // It's a UserOp hash
       const bundlerClient = getBundlerClient(config, publicClient)
       const receipt = await bundlerClient.waitForUserOperationReceipt({
         hash: result.hash,
