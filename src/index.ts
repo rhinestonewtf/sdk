@@ -46,7 +46,7 @@ async function createRhinestoneAccount(config: RhinestoneAccountConfig) {
    * @param chain Target chain
    * @param tokenAddress Token address (on the target chain)
    * @param gasUnits Gas cost estimate for the transaction execution
-   * @returns Maximum spendable amount, in absolute units
+   * @returns Maximum spendable amount in absolute units
    */
   function getMaxSpendableAmount(
     chain: Chain,
