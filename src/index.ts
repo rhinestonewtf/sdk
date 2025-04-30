@@ -1,6 +1,8 @@
+import { Address, Chain } from 'viem'
 import { getAddress as getAddressInternal } from './accounts'
 import type { TransactionResult } from './execution'
 import {
+  getMaxSpendableAmount as getMaxSpendableAmountInternal,
   sendTransaction as sendTransactionInternal,
   waitForExecution as waitForExecutionInternal,
 } from './execution'
@@ -35,8 +37,23 @@ async function createRhinestoneAccount(config: RhinestoneAccountConfig) {
    * Get account address
    * @returns Address of the smart account
    */
-  function getAddress(): string {
+  function getAddress() {
     return getAddressInternal(config)
+  }
+
+  /**
+   * Get the maximum spendable token amount on the target chain
+   * @param chain Target chain
+   * @param tokenAddress Token address (on the target chain)
+   * @param gasUnits Gas cost estimate for the transaction execution
+   * @returns Maximum spendable amount, in absolute units
+   */
+  function getMaxSpendableAmount(
+    chain: Chain,
+    tokenAddress: Address,
+    gasUnits: bigint,
+  ) {
+    return getMaxSpendableAmountInternal(config, chain, tokenAddress, gasUnits)
   }
 
   return {
@@ -44,6 +61,7 @@ async function createRhinestoneAccount(config: RhinestoneAccountConfig) {
     sendTransactions,
     waitForExecution,
     getAddress,
+    getMaxSpendableAmount,
   }
 }
 

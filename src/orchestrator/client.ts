@@ -79,6 +79,43 @@ export class Orchestrator {
     }
   }
 
+  async getMaxTokenAmount(
+    userAddress: Address,
+    targetChainId: number,
+    targetTokenAddress: Address,
+    targetGasUnits: bigint,
+  ): Promise<bigint> {
+    const intentCost = await this.getIntentCost(
+      {
+        targetChainId,
+        targetGasUnits,
+        tokenTransfers: [
+          {
+            tokenAddress: targetTokenAddress,
+          },
+        ],
+      },
+      userAddress,
+    )
+    if (!intentCost.hasFulfilledAll) {
+      return 0n
+    }
+    const tokenReceived = intentCost.tokensReceived.find(
+      (token) =>
+        token.tokenAddress.toLowerCase() === targetTokenAddress.toLowerCase(),
+    )
+    if (!tokenReceived) {
+      return 0n
+    }
+    const tokenAmount = tokenReceived.targetAmount
+    if (tokenAmount < 0n) {
+      throw new Error(
+        `Balance not available. Make sure the account is deployed`,
+      )
+    }
+    return tokenReceived.targetAmount
+  }
+
   async getIntentCost(
     intent: MetaIntent | OrderFeeInput,
     userAddress: Address,
