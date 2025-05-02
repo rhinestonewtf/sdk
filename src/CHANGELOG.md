@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 0.5.2
+
+### Patch Changes
+
+- 1eeab87: Fix types
+
 ## 0.5.1
 
 ### Patch Changes
