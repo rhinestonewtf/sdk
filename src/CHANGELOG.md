@@ -1,5 +1,16 @@
 # @rhinestone/sdk
 
+## 0.5.0
+
+### Minor Changes
+
+- 83f1548: Return chain IDs instead of viem chain objects in the transaction result
+- 83f1548: Rename `sendTransactions` → `sendTransaction`
+
+### Patch Changes
+
+- 83f1548: Allow deploys via ERC-4337 bundler
+
 ## 0.4.3
 
 ### Patch Changes
