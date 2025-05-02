@@ -12,6 +12,7 @@ import {
 import type {
   BundleResult,
   BundleStatus,
+  Execution,
   MetaIntent,
   MultiChainCompact,
   OrderPath,
@@ -37,6 +38,7 @@ function getOrchestrator(
 }
 
 export type {
+  Execution,
   BundleStatus,
   BundleResult,
   MetaIntent,
