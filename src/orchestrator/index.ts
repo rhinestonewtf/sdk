@@ -11,7 +11,9 @@ import {
 } from './registry'
 import type {
   BundleResult,
+  BundleStatus,
   MetaIntent,
+  MultiChainCompact,
   OrderPath,
   PostOrderBundleResult,
   SignedMultiChainCompact,
@@ -31,8 +33,10 @@ function getOrchestrator(
 }
 
 export type {
+  BundleStatus,
   BundleResult,
   MetaIntent,
+  MultiChainCompact,
   OrderPath,
   SignedMultiChainCompact,
   PostOrderBundleResult,

@@ -6,7 +6,20 @@ import {
   sendTransaction as sendTransactionInternal,
   waitForExecution as waitForExecutionInternal,
 } from './execution'
-import type { RhinestoneAccountConfig, Session, Transaction } from './types'
+import type {
+  BundleStatus,
+  MetaIntent,
+  MultiChainCompact,
+  PostOrderBundleResult,
+  SignedMultiChainCompact,
+} from './orchestrator'
+import type {
+  Call,
+  Execution,
+  RhinestoneAccountConfig,
+  Session,
+  Transaction,
+} from './types'
 
 /**
  * Initialize a Rhinestone account
@@ -66,4 +79,13 @@ async function createRhinestoneAccount(config: RhinestoneAccountConfig) {
 }
 
 export { createRhinestoneAccount }
-export type { Session }
+export type {
+  BundleStatus,
+  Session,
+  Call,
+  Execution,
+  MetaIntent,
+  MultiChainCompact,
+  PostOrderBundleResult,
+  SignedMultiChainCompact,
+}

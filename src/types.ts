@@ -114,6 +114,11 @@ interface Call {
   value?: bigint
 }
 
+/**
+ * @deprecated Use the `Call` type instead.
+ */
+type Execution = Call
+
 interface TokenRequest {
   address: Address
   amount: bigint
@@ -149,6 +154,7 @@ export type {
   BundlerConfig,
   Transaction,
   Call,
+  Execution,
   TokenRequest,
   OwnerSet,
   SignerSet,
