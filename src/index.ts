@@ -20,7 +20,7 @@ async function createRhinestoneAccount(config: RhinestoneAccountConfig) {
    * @param transaction Transaction to send
    * @returns transaction result object (a bundle ID or a UserOp hash)
    */
-  function sendTransactions(transaction: Transaction) {
+  function sendTransaction(transaction: Transaction) {
     return sendTransactionInternal(config, transaction)
   }
 
@@ -58,7 +58,7 @@ async function createRhinestoneAccount(config: RhinestoneAccountConfig) {
 
   return {
     config,
-    sendTransactions,
+    sendTransaction,
     waitForExecution,
     getAddress,
     getMaxSpendableAmount,

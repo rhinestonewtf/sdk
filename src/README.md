@@ -84,7 +84,10 @@ const rhinestoneAccount = await createRhinestoneAccount({
     accounts: [account],
   }
   rhinestoneApiKey,
+  // Optional, used to deploy the account on the source chain
   deployerAccount: fundingAccount,
+  // Alternatively, you can use an ERC-4337 bundler to deploy
+  // bundler: { … }
 })
 const address = await rhinestoneAccount.getAddress(sourceChain)
 console.log(address)
@@ -124,7 +127,7 @@ function getTokenAddress(chain: Chain) {
 Finally, let's make a cross-chain token transfer:
 
 ```ts
-const bundleId = await rhinestoneAccount.sendTransactions({
+const bundleId = await rhinestoneAccount.sendTransaction({
   sourceChain,
   targetChain,
   calls: [
@@ -150,6 +153,76 @@ console.log('id', bundleId)
 const bundleResult = await rhinestoneAccount.waitForExecution({ id: bundleId })
 console.log('status', bundleResult.status)
 ```
+
+### Using Smart Sessions
+
+First, define a session you want to use:
+
+```ts
+const session: Session = {
+  owners: {
+    type: 'ecdsa',
+    accounts: [sessionOwner],
+  },
+  actions: [
+    {
+      target: wethAddress,
+      selector: toFunctionSelector(
+        getAbiItem({
+          abi: wethAbi,
+          name: 'deposit',
+        }),
+      ),
+    },
+    {
+      target: wethAddress,
+      selector: toFunctionSelector(
+        getAbiItem({
+          abi: wethAbi,
+          name: 'transfer',
+        }),
+      ),
+      policies: [
+        {
+          type: 'universal-action',
+          rules: [
+            {
+              condition: 'equal',
+              calldataOffset: 0n,
+              referenceValue: '0xd8da6bf26964af9d7eed9e03e53415d37aa96045',
+            },
+          ],
+        },
+      ],
+    },
+  ],
+}
+```
+
+During account initialization, provide the session you've just created. Make sure to also provide a bundler configuration.
+
+```ts
+const rhinestoneAccount = await createRhinestoneAccount({
+  // …
+  sessions: [session],
+  bundler: {
+    // …
+  }
+})
+```
+
+When making a transaction, specify the `signers` object to sign it with the session key:
+
+```ts
+const transactionResult = await rhinestoneAccount.sendTransaction({
+  // …
+  signers: {
+    type: 'session',
+    session: session,
+  },
+})
+```
+
 
 ## Contributing
 

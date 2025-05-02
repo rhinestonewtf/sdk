@@ -2,7 +2,6 @@ import {
   Address,
   Chain,
   createPublicClient,
-  createWalletClient,
   encodeAbiParameters,
   encodePacked,
   Hex,
@@ -21,7 +20,6 @@ import {
   deployTarget,
   getAddress,
   getBundleInitCode,
-  getDeployArgs,
   getSmartSessionSmartAccount,
   isDeployed,
   sign,
@@ -35,14 +33,15 @@ import type {
   SignedMultiChainCompact,
 } from '../orchestrator'
 import {
+  BUNDLE_STATUS_COMPLETED,
   BUNDLE_STATUS_FAILED,
-  BUNDLE_STATUS_PARTIALLY_COMPLETED,
-  BUNDLE_STATUS_PENDING,
+  BUNDLE_STATUS_FILLED,
   getEmptyUserOp,
   getOrchestrator,
   getOrderBundleHash,
   getTokenBalanceSlot,
 } from '../orchestrator'
+import { getChainById } from '../orchestrator/registry'
 import {
   Call,
   RhinestoneAccountConfig,
@@ -51,7 +50,6 @@ import {
   TokenRequest,
   Transaction,
 } from '../types'
-
 import {
   enableSmartSession,
   getSessionSignature,
@@ -64,14 +62,14 @@ type TransactionResult =
   | {
       type: 'userop'
       hash: Hex
-      sourceChain: Chain
-      targetChain: Chain
+      sourceChain: number
+      targetChain: number
     }
   | {
       type: 'bundle'
       id: bigint
-      sourceChain: Chain
-      targetChain: Chain
+      sourceChain: number
+      targetChain: number
     }
 
 async function sendTransaction(
@@ -113,13 +111,10 @@ async function sendTransactionInternal(
   if (!isAccountDeployed) {
     await deploySource(sourceChain, config)
   }
+  const accountAddress = getAddress(config)
   const withSession = signers?.type === 'session' ? signers.session : null
   if (withSession) {
     await enableSmartSession(sourceChain, config, withSession)
-  }
-
-  const accountAddress = getAddress(config)
-  if (withSession) {
     // Smart sessions require a UserOp flow
     return await sendTransactionAsUserOp(
       config,
@@ -183,8 +178,8 @@ async function sendTransactionAsUserOp(
     return {
       type: 'userop',
       hash,
-      sourceChain,
-      targetChain,
+      sourceChain: sourceChain.id,
+      targetChain: targetChain.id,
     } as TransactionResult
   }
 
@@ -201,20 +196,7 @@ async function sendTransactionAsUserOp(
   const orchestrator = getOrchestrator(config.rhinestoneApiKey)
   const orderPath = await orchestrator.getOrderPath(metaIntent, accountAddress)
   // Deploy the account on the target chain
-  const { factory, factoryData } = getDeployArgs(config)
-  const deployerAccount = config.deployerAccount
-  const targetWalletClient = createWalletClient({
-    chain: targetChain,
-    transport: http(),
-  })
-  const targetDeployTx = await targetWalletClient.sendTransaction({
-    account: deployerAccount,
-    to: factory,
-    data: factoryData,
-  })
-  await targetPublicClient.waitForTransactionReceipt({
-    hash: targetDeployTx,
-  })
+  await deployTarget(targetChain, config, true)
   await enableSmartSession(targetChain, config, withSession)
 
   const userOp = await targetBundlerClient.prepareUserOperation({
@@ -282,7 +264,6 @@ async function sendTransactionAsUserOp(
     targetSignature: packedSig,
   }
 
-  await deployTarget(targetChain, config)
   const bundleResults = await orchestrator.postSignedOrderBundle([
     {
       signedOrderBundle,
@@ -293,8 +274,8 @@ async function sendTransactionAsUserOp(
   return {
     type: 'bundle',
     id: bundleResults[0].bundleId,
-    sourceChain,
-    targetChain,
+    sourceChain: sourceChain.id,
+    targetChain: targetChain.id,
   } as TransactionResult
 }
 
@@ -347,7 +328,7 @@ async function sendTransactionAsIntent(
     targetSignature: packedSig,
   }
 
-  await deployTarget(targetChain, config)
+  await deployTarget(targetChain, config, false)
   const initCode = getBundleInitCode(config)
   const bundleResults = await orchestrator.postSignedOrderBundle([
     {
@@ -359,8 +340,8 @@ async function sendTransactionAsIntent(
   return {
     type: 'bundle',
     id: bundleResults[0].bundleId,
-    sourceChain,
-    targetChain,
+    sourceChain: sourceChain.id,
+    targetChain: targetChain.id,
   } as TransactionResult
 }
 
@@ -373,8 +354,9 @@ async function waitForExecution(
       let bundleResult: BundleResult | null = null
       while (
         bundleResult === null ||
-        bundleResult.status === BUNDLE_STATUS_PENDING ||
-        bundleResult.status === BUNDLE_STATUS_PARTIALLY_COMPLETED
+        (bundleResult.status !== BUNDLE_STATUS_FAILED &&
+          bundleResult.status !== BUNDLE_STATUS_COMPLETED &&
+          bundleResult.status !== BUNDLE_STATUS_FILLED)
       ) {
         const orchestrator = getOrchestrator(config.rhinestoneApiKey)
         bundleResult = await orchestrator.getBundleStatus(result.id)
@@ -386,11 +368,11 @@ async function waitForExecution(
       return bundleResult
     }
     case 'userop': {
+      const sourceChain = getChainById(result.sourceChain)
       const publicClient = createPublicClient({
-        chain: result.sourceChain,
+        chain: sourceChain,
         transport: http(),
       })
-      // It's a UserOp hash
       const bundlerClient = getBundlerClient(config, publicClient)
       const receipt = await bundlerClient.waitForUserOperationReceipt({
         hash: result.hash,
