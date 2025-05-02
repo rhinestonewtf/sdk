@@ -298,4 +298,5 @@ export {
   getHookAddress,
   getSameChainModuleAddress,
   getTargetModuleAddress,
+  getChainById,
 }

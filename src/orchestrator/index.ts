@@ -17,9 +17,9 @@ import type {
   SignedMultiChainCompact,
 } from './types'
 import {
+  BUNDLE_STATUS_COMPLETED,
   BUNDLE_STATUS_FAILED,
-  BUNDLE_STATUS_PARTIALLY_COMPLETED,
-  BUNDLE_STATUS_PENDING,
+  BUNDLE_STATUS_FILLED,
 } from './types'
 import { getEmptyUserOp, getOrderBundleHash } from './utils'
 
@@ -38,9 +38,9 @@ export type {
   PostOrderBundleResult,
 }
 export {
+  BUNDLE_STATUS_COMPLETED,
+  BUNDLE_STATUS_FILLED,
   BUNDLE_STATUS_FAILED,
-  BUNDLE_STATUS_PARTIALLY_COMPLETED,
-  BUNDLE_STATUS_PENDING,
   RHINESTONE_SPOKE_POOL_ADDRESS,
   Orchestrator,
   OrchestratorError,

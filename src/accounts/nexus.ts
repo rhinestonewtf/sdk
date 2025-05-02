@@ -261,13 +261,13 @@ async function getBaseSmartAccount(
   })
 }
 
-async function get7702InitCalls(config: RhinestoneAccountConfig) {
+function get7702InitCalls(config: RhinestoneAccountConfig) {
   const eoa = config.eoa
   if (!eoa) {
     throw new Error('EIP-7702 accounts must have an EOA account')
   }
 
-  const moduleSetup = await getModuleSetup(config)
+  const moduleSetup = getModuleSetup(config)
   return [
     {
       to: eoa.address,

@@ -98,7 +98,7 @@ interface RhinestoneAccountConfig {
   account?: AccountProviderConfig
   owners: OwnerSet
   rhinestoneApiKey: string
-  deployerAccount: Account
+  deployerAccount?: Account
   sessions?: Session[]
   eoa?: Account
   provider?: {

@@ -11,9 +11,9 @@ import {
   PublicClient,
   size,
   slice,
+  zeroHash,
 } from 'viem'
 import { WebAuthnAccount } from 'viem/account-abstraction'
-
 import {
   getWebauthnValidatorSignature,
   isRip7212SupportedNetwork,
@@ -28,7 +28,6 @@ import {
   RhinestoneAccountConfig,
   Session,
 } from '../types'
-
 import {
   get7702SmartAccount as get7702NexusAccount,
   get7702InitCalls as get7702NexusInitCalls,
@@ -98,15 +97,36 @@ async function deploySource(chain: Chain, config: RhinestoneAccountConfig) {
   if (is7702(config)) {
     return deploy7702Self(chain, config)
   } else {
-    return deployStandaloneSelf(chain, config)
+    return deployStandalone(chain, config)
   }
 }
 
-async function deployTarget(chain: Chain, config: RhinestoneAccountConfig) {
+async function deployTarget(
+  chain: Chain,
+  config: RhinestoneAccountConfig,
+  asUserOp: boolean,
+) {
   if (is7702(config)) {
     return deploy7702WithBundler(chain, config)
   }
-  // No need to deploy manually outside of EIP-7702
+  if (asUserOp) {
+    return deployStandalone(chain, config)
+  }
+  // No need to deploy manually for the intent flow
+}
+
+async function deployStandalone(chain: Chain, config: RhinestoneAccountConfig) {
+  const deployer = config.deployerAccount
+  const bundler = config.bundler
+  if (deployer) {
+    return deployStandaloneWithEoa(chain, config, deployer)
+  } else if (bundler) {
+    return deployStandaloneWithBundler(chain, config)
+  } else {
+    throw new Error(
+      'Unable to deploy the account. Provide a deployer account or a bundler config',
+    )
+  }
 }
 
 function getBundleInitCode(config: RhinestoneAccountConfig) {
@@ -158,11 +178,11 @@ async function deploy7702Self(chain: Chain, config: RhinestoneAccountConfig) {
   await publicClient.waitForTransactionReceipt({ hash })
 }
 
-async function deployStandaloneSelf(
+async function deployStandaloneWithEoa(
   chain: Chain,
   config: RhinestoneAccountConfig,
+  deployer: Account,
 ) {
-  const deployer = config.deployerAccount
   const { factory, factoryData } = getDeployArgs(config)
   const publicClient = createPublicClient({
     chain: chain,
@@ -178,6 +198,34 @@ async function deployStandaloneSelf(
     data: factoryData,
   })
   await publicClient.waitForTransactionReceipt({ hash: tx })
+}
+
+async function deployStandaloneWithBundler(
+  chain: Chain,
+  config: RhinestoneAccountConfig,
+) {
+  const publicClient = createPublicClient({
+    chain,
+    transport: http(),
+  })
+  const bundlerClient = getBundlerClient(config, publicClient)
+  const smartAccount = await getSmartAccount(config, publicClient, chain)
+  const { factory, factoryData } = getDeployArgs(config)
+  const opHash = await bundlerClient.sendUserOperation({
+    account: smartAccount,
+    factory,
+    factoryData,
+    calls: [
+      {
+        to: zeroHash,
+        value: 0n,
+        data: '0x',
+      },
+    ],
+  })
+  await bundlerClient.waitForUserOperationReceipt({
+    hash: opHash,
+  })
 }
 
 async function deploy7702WithBundler(
