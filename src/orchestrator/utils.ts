@@ -13,6 +13,13 @@ import { UserOperation } from 'viem/account-abstraction'
 import { HOOK_ADDRESS } from '../modules'
 
 import {
+  BUNDLE_STATUS_COMPLETED,
+  BUNDLE_STATUS_EXPIRED,
+  BUNDLE_STATUS_FAILED,
+  BUNDLE_STATUS_FILLED,
+  BUNDLE_STATUS_PARTIALLY_COMPLETED,
+  BUNDLE_STATUS_PENDING,
+  BUNDLE_STATUS_UNKNOWN,
   BundleEvent,
   Execution,
   InsufficientBalanceResult,
@@ -34,6 +41,16 @@ const WITNESS_TYPEHASH =
   '0x78e29a727cef567e7d6dddf5bf7eedf0c84af60d4a57512c586c787aae731629'
 const EXECUTION_TYPEHASH =
   '0xa222cbaaad3b88446c3ca031429dafb24afdbda10c5dbd9882c294762857141a'
+
+enum BundleStatusEnum {
+  PENDING = BUNDLE_STATUS_PENDING,
+  EXPIRED = BUNDLE_STATUS_EXPIRED,
+  PARTIALLY_COMPLETED = BUNDLE_STATUS_PARTIALLY_COMPLETED,
+  COMPLETED = BUNDLE_STATUS_COMPLETED,
+  FILLED = BUNDLE_STATUS_FILLED,
+  FAILED = BUNDLE_STATUS_FAILED,
+  UNKNOWN = BUNDLE_STATUS_UNKNOWN,
+}
 
 function getEmptyUserOp(): UserOperation<'0.7'> {
   return {
@@ -389,6 +406,7 @@ function hashExecution(execution: Execution) {
 }
 
 export {
+  BundleStatusEnum,
   getEmptyUserOp,
   getOrderBundleHash,
   convertBigIntFields,

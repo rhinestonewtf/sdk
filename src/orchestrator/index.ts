@@ -11,7 +11,6 @@ import {
 } from './registry'
 import type {
   BundleResult,
-  BundleStatus,
   Execution,
   MetaIntent,
   MultiChainCompact,
@@ -28,7 +27,7 @@ import {
   BUNDLE_STATUS_PENDING,
   BUNDLE_STATUS_UNKNOWN,
 } from './types'
-import { getEmptyUserOp, getOrderBundleHash } from './utils'
+import { BundleStatusEnum, getEmptyUserOp, getOrderBundleHash } from './utils'
 
 function getOrchestrator(
   apiKey: string,
@@ -39,7 +38,6 @@ function getOrchestrator(
 
 export type {
   Execution,
-  BundleStatus,
   BundleResult,
   MetaIntent,
   MultiChainCompact,
@@ -48,6 +46,7 @@ export type {
   PostOrderBundleResult,
 }
 export {
+  BundleStatusEnum as BundleStatus,
   BUNDLE_STATUS_PENDING,
   BUNDLE_STATUS_EXPIRED,
   BUNDLE_STATUS_PARTIALLY_COMPLETED,
