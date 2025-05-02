@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 0.6.0
+
+### Minor Changes
+
+- 1c8a6d4: Export BundleStatus enum from the orchestrator.
+
 ## 0.5.4
 
 ### Patch Changes
