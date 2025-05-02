@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 0.5.3
+
+### Patch Changes
+
+- b92f390: Add missing bundle status values
+
 ## 0.5.2
 
 ### Patch Changes
