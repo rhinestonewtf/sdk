@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 0.5.4
+
+### Patch Changes
+
+- 1eae19b: Add missing export for Orchestrator
+
 ## 0.5.3
 
 ### Patch Changes
