@@ -242,15 +242,15 @@ function getTokenBalanceSlot(
   )
 }
 
-function getHookAddress(): Address {
+function getHookAddress(_chainId?: number): Address {
   return '0x0000000000f6Ed8Be424d673c63eeFF8b9267420'
 }
 
-function getSameChainModuleAddress(): Address {
+function getSameChainModuleAddress(_chainId?: number): Address {
   return '0x000000000043ff16d5776c7F0f65Ec485C17Ca04'
 }
 
-function getTargetModuleAddress(): Address {
+function getTargetModuleAddress(_chainId?: number): Address {
   return '0x0000000000E5a37279A001301A837a91b5de1D5E'
 }
 
