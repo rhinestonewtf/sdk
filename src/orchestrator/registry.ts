@@ -255,7 +255,7 @@ function getTargetModuleAddress(_chainId?: number): Address {
 }
 
 function getRhinestoneSpokePoolAddress(_chainId?: number): Address {
-  return '0x000000000060f6e853447881951574CDd0663530';
+  return '0x000000000060f6e853447881951574CDd0663530'
 }
 
 function getTokenAddress(tokenSymbol: string, chainId: number): Address {
