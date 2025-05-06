@@ -17,11 +17,18 @@
   "exports": {
     ".": {
       "types": "./dist/src/index.d.ts",
+      "require": "./dist/src/index.js",
       "import": "./dist/src/index.js"
     },
     "./orchestrator": {
       "types": "./dist/src/orchestrator/index.d.ts",
+      "require": "./dist/src/orchestrator/index.js",
       "import": "./dist/src/orchestrator/index.js"
+    },
+    "./dist/src/orchestrator": {
+      "import": "./dist/src/orchestrator/index.mjs",
+      "require": "./dist/src/orchestrator/index.js",
+      "types": "./dist/src/orchestrator/index.d.ts"
     }
   },
   "files": [
