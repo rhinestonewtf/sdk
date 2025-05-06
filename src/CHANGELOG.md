@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 0.6.1
+
+### Patch Changes
+
+- 7c2e4d3: Export `dist/src/orchestrator` subpackage
+
 ## 0.6.0
 
 ### Minor Changes
