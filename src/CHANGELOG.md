@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 0.6.4
+
+### Patch Changes
+
+- 7c6427e: Export `getTokenSymbol` util
+
 ## 0.6.3
 
 ### Patch Changes
