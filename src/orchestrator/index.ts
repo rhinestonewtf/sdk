@@ -8,6 +8,7 @@ import {
   getTargetModuleAddress,
   getTokenAddress,
   getTokenBalanceSlot,
+  getTokenSymbol,
   getWethAddress,
 } from './registry'
 import type {
@@ -63,6 +64,7 @@ export {
   getEmptyUserOp,
   getWethAddress,
   getTokenBalanceSlot,
+  getTokenSymbol,
   getHookAddress,
   getSameChainModuleAddress,
   getTargetModuleAddress,
