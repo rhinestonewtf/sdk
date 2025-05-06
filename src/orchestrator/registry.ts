@@ -254,6 +254,10 @@ function getTargetModuleAddress(_chainId?: number): Address {
   return '0x0000000000E5a37279A001301A837a91b5de1D5E'
 }
 
+function getRhinestoneSpokePoolAddress(_chainId?: number): Address {
+  return '0x000000000060f6e853447881951574CDd0663530';
+}
+
 function getTokenAddress(tokenSymbol: string, chainId: number): Address {
   if (tokenSymbol === 'ETH') {
     return zeroAddress
@@ -298,5 +302,6 @@ export {
   getHookAddress,
   getSameChainModuleAddress,
   getTargetModuleAddress,
+  getRhinestoneSpokePoolAddress,
   getChainById,
 }

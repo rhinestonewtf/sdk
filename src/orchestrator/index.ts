@@ -3,6 +3,7 @@ import { ORCHESTRATOR_URL, RHINESTONE_SPOKE_POOL_ADDRESS } from './consts'
 import { OrchestratorError } from './error'
 import {
   getHookAddress,
+  getRhinestoneSpokePoolAddress,
   getSameChainModuleAddress,
   getTargetModuleAddress,
   getTokenAddress,
@@ -65,5 +66,6 @@ export {
   getHookAddress,
   getSameChainModuleAddress,
   getTargetModuleAddress,
+  getRhinestoneSpokePoolAddress,
   getTokenAddress,
 }
