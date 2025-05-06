@@ -266,7 +266,9 @@ function getTokenSymbol(tokenAddress: Address, chainId: number): string {
       return symbol
     }
   }
-  throw new Error(`Unsupported token address ${tokenAddress} for chain ${chainId}`)
+  throw new Error(
+    `Unsupported token address ${tokenAddress} for chain ${chainId}`,
+  )
 }
 
 function getTokenAddress(tokenSymbol: string, chainId: number): Address {
