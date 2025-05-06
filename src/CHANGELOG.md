@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 0.6.3
+
+### Patch Changes
+
+- be4870a: Add `getTokenSymbol` util
+
 ## 0.6.2
 
 ### Patch Changes
