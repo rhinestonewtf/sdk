@@ -258,6 +258,17 @@ function getRhinestoneSpokePoolAddress(_chainId?: number): Address {
   return '0x000000000060f6e853447881951574CDd0663530'
 }
 
+function getTokenSymbol(tokenAddress: Address, chainId: number): string {
+  const knownSymbols: string[] = ['ETH', 'WETH', 'USDC']
+  for (const symbol of knownSymbols) {
+    const address = getTokenAddress(symbol, chainId)
+    if (address.toLowerCase() === tokenAddress.toLowerCase()) {
+      return symbol
+    }
+  }
+  throw new Error(`Unsupported token address ${tokenAddress} for chain ${chainId}`)
+}
+
 function getTokenAddress(tokenSymbol: string, chainId: number): Address {
   if (tokenSymbol === 'ETH') {
     return zeroAddress
@@ -296,6 +307,7 @@ function getChainById(chainId: number) {
 }
 
 export {
+  getTokenSymbol,
   getTokenAddress,
   getTokenBalanceSlot,
   getWethAddress,
