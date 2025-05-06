@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 0.6.2
+
+### Patch Changes
+
+- ef5d38a: Add `getRhinestoneSpokePoolAddress` method
+
 ## 0.6.1
 
 ### Patch Changes
