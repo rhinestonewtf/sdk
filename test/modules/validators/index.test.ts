@@ -13,10 +13,9 @@ import {
     getAccountEIP712Domain,
     isSessionEnabled,
     getSessionAllowedERC7739Content,
-} from './index'
+} from '../../../src/modules/validators'
 
-// Import the mocked functions from the source files
-import { getMockSignature as coreMockSignature, getOwnerValidator as coreOwnerValidator } from './core'
+import { getMockSignature as coreMockSignature, getOwnerValidator as coreOwnerValidator } from '../../../src/modules/validators/core'
 import {
     encodeSmartSessionSignature as smartSessionsEncodeSignature,
     getAccountEIP712Domain as smartSessionsGetDomain,
@@ -28,15 +27,14 @@ import {
     SMART_SESSION_MODE_USE as SMART_SESSION_MODE_USE_ORIGINAL,
     SMART_SESSION_MODE_ENABLE as SMART_SESSION_MODE_ENABLE_ORIGINAL,
     SMART_SESSIONS_VALIDATOR_ADDRESS as SMART_SESSIONS_VALIDATOR_ADDRESS_ORIGINAL,
-} from './smart-sessions'
+} from '../../../src/modules/validators/smart-sessions'
 
-// Mock the source modules
-vi.mock('./core', () => ({
+vi.mock('../../../src/modules/validators/core', () => ({
     getMockSignature: vi.fn(),
     getOwnerValidator: vi.fn(),
 }))
 
-vi.mock('./smart-sessions', () => ({
+vi.mock('../../../src/modules/validators/smart-sessions', () => ({
     encodeSmartSessionSignature: vi.fn(),
     getAccountEIP712Domain: vi.fn(),
     getEnableSessionCall: vi.fn(),
@@ -61,127 +59,100 @@ describe('Validators Index Tests', () => {
 
     describe('Function Exports', () => {
         it('should export getOwnerValidator from core', () => {
-            // Mock the core function
             const mockArgs = { type: 'test' }
             const mockResult = { result: 'test' }
             coreMockSignature.mockReturnValue(mockResult)
 
-            // Call the exported function
             const result = getMockSignature(mockArgs)
 
-            // Verify it calls the core function
             expect(coreMockSignature).toHaveBeenCalledWith(mockArgs)
             expect(result).toBe(mockResult)
         })
 
         it('should export getMockSignature from core', () => {
-            // Mock the core function
             const mockArgs = { type: 'test' }
             const mockResult = { result: 'test' }
             coreOwnerValidator.mockReturnValue(mockResult)
 
-            // Call the exported function
             const result = getOwnerValidator(mockArgs)
 
-            // Verify it calls the core function
             expect(coreOwnerValidator).toHaveBeenCalledWith(mockArgs)
             expect(result).toBe(mockResult)
         })
 
         it('should export getSmartSessionValidator from smart-sessions', () => {
-            // Mock the smart-sessions function
             const mockArgs = { type: 'test' }
             const mockResult = { result: 'test' }
             smartSessionsGetValidator.mockReturnValue(mockResult)
 
-            // Call the exported function
             const result = getSmartSessionValidator(mockArgs)
 
-            // Verify it calls the smart-sessions function
             expect(smartSessionsGetValidator).toHaveBeenCalledWith(mockArgs)
             expect(result).toBe(mockResult)
         })
 
         it('should export getEnableSessionCall from smart-sessions', () => {
-            // Mock the smart-sessions function
             const mockArgs = { type: 'test' }
             const mockResult = { result: 'test' }
             smartSessionsEnableCall.mockReturnValue(mockResult)
 
-            // Call the exported function
             const result = getEnableSessionCall(mockArgs)
 
-            // Verify it calls the smart-sessions function
             expect(smartSessionsEnableCall).toHaveBeenCalledWith(mockArgs)
             expect(result).toBe(mockResult)
         })
 
         it('should export encodeSmartSessionSignature from smart-sessions', () => {
-            // Mock the smart-sessions function
             const mockArgs = { type: 'test' }
             const mockResult = { result: 'test' }
             smartSessionsEncodeSignature.mockReturnValue(mockResult)
 
-            // Call the exported function
             const result = encodeSmartSessionSignature(mockArgs)
 
-            // Verify it calls the smart-sessions function
             expect(smartSessionsEncodeSignature).toHaveBeenCalledWith(mockArgs)
             expect(result).toBe(mockResult)
         })
 
         it('should export getPermissionId from smart-sessions', () => {
-            // Mock the smart-sessions function
             const mockArgs = { type: 'test' }
             const mockResult = { result: 'test' }
             smartSessionsGetPermissionId.mockReturnValue(mockResult)
 
-            // Call the exported function
             const result = getPermissionId(mockArgs)
 
-            // Verify it calls the smart-sessions function
             expect(smartSessionsGetPermissionId).toHaveBeenCalledWith(mockArgs)
             expect(result).toBe(mockResult)
         })
 
         it('should export getAccountEIP712Domain from smart-sessions', () => {
-            // Mock the smart-sessions function
             const mockArgs = { type: 'test' }
             const mockResult = { result: 'test' }
             smartSessionsGetDomain.mockReturnValue(mockResult)
 
-            // Call the exported function
             const result = getAccountEIP712Domain(mockArgs)
 
-            // Verify it calls the smart-sessions function
             expect(smartSessionsGetDomain).toHaveBeenCalledWith(mockArgs)
             expect(result).toBe(mockResult)
         })
 
         it('should export isSessionEnabled from smart-sessions', () => {
-            // Mock the smart-sessions function
             const mockArgs = { type: 'test' }
             const mockResult = { result: 'test' }
             smartSessionsIsEnabled.mockReturnValue(mockResult)
 
-            // Call the exported function
             const result = isSessionEnabled(mockArgs)
 
-            // Verify it calls the smart-sessions function
             expect(smartSessionsIsEnabled).toHaveBeenCalledWith(mockArgs)
             expect(result).toBe(mockResult)
         })
 
         it('should export getSessionAllowedERC7739Content from smart-sessions', () => {
-            // Mock the smart-sessions function
             const mockArgs = { type: 'test' }
             const mockResult = { result: 'test' }
             smartSessionsGetContent.mockReturnValue(mockResult)
 
-            // Call the exported function
             const result = getSessionAllowedERC7739Content(mockArgs)
 
-            // Verify it calls the smart-sessions function
             expect(smartSessionsGetContent).toHaveBeenCalledWith(mockArgs)
             expect(result).toBe(mockResult)
         })
