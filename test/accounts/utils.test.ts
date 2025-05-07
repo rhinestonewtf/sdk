@@ -16,8 +16,8 @@ import { createBundlerClient } from 'viem/account-abstraction'
 import { readContract } from 'viem/actions'
 import { getAction } from 'viem/utils'
 
-import { encode7579Calls, getAccountNonce, getBundlerClient } from './utils'
-import { BundlerConfig, RhinestoneAccountConfig } from '../types'
+import { encode7579Calls, getAccountNonce, getBundlerClient } from '../../src/accounts/utils'
+import { BundlerConfig, RhinestoneAccountConfig } from '../../src/types'
 
 vi.mock('viem', async () => {
     const actual = await vi.importActual('viem')

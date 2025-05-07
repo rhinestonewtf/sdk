@@ -421,3 +421,17 @@ export {
   getSmartSessionSmartAccount,
   sign,
 }
+
+export const exportedForTesting = {
+  deploy7702Self,
+  deployStandalone,
+  deployStandaloneWithEoa,
+  deployStandaloneWithBundler,
+  deploy7702WithBundler,
+  get7702SmartAccount,
+  get7702InitCalls,
+  signPasskey,
+  signEcdsa,
+  getAccount,
+  is7702,
+}

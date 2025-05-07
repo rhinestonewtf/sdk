@@ -25,16 +25,16 @@ import {
     getSessionSmartAccount,
     get7702SmartAccount,
     get7702InitCalls,
-} from './safe'
+} from '../../src/accounts/safe'
 
-import { getSetup as getModuleSetup } from '../modules'
+import { getSetup as getModuleSetup } from '../../src/modules'
 import {
     encodeSmartSessionSignature,
     getMockSignature,
     getPermissionId,
     SMART_SESSION_MODE_USE,
-} from '../modules/validators'
-import { encode7579Calls, getAccountNonce } from './utils'
+} from '../../src/modules/validators'
+import { encode7579Calls, getAccountNonce } from '../../src/accounts/utils'
 
 vi.mock('viem', async () => {
     const actual = await vi.importActual('viem')
@@ -55,18 +55,18 @@ vi.mock('viem/account-abstraction', () => ({
     toSmartAccount: vi.fn(),
 }))
 
-vi.mock('../modules', () => ({
+vi.mock('../../src/modules', () => ({
     getSetup: vi.fn(),
 }))
 
-vi.mock('../modules/validators', () => ({
+vi.mock('../../src/modules/validators', () => ({
     encodeSmartSessionSignature: vi.fn(),
     getMockSignature: vi.fn(),
     getPermissionId: vi.fn(),
     SMART_SESSION_MODE_USE: '0x01',
 }))
 
-vi.mock('./utils', () => ({
+vi.mock('../../src/accounts/utils', () => ({
     encode7579Calls: vi.fn(),
     getAccountNonce: vi.fn(),
 }))

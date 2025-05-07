@@ -1,6 +1,6 @@
 // @ts-nocheck - Ignoring type errors in tests due to mocking
-import { getAddress, isDeployed, getBundleInitCode, getSmartAccount, getSmartSessionSmartAccount, sign, exportedForTesting } from './index'
-import { getDeployArgs, deploySource, deployTarget } from './index'
+import { getAddress, isDeployed, getBundleInitCode, getSmartAccount, getSmartSessionSmartAccount, sign, exportedForTesting } from '../../src/accounts/index'
+import { getDeployArgs, deploySource, deployTarget } from '../../src/accounts/index'
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest'
 import {
     Chain,
@@ -19,25 +19,25 @@ import {
 import {
     getWebauthnValidatorSignature,
     isRip7212SupportedNetwork,
-} from '../modules'
+} from '../../src/modules'
 import {
     getOwnerValidator,
     getSmartSessionValidator,
-} from '../modules/validators'
+} from '../../src/modules/validators'
 import {
     get7702SmartAccount as get7702NexusAccount,
     get7702InitCalls as get7702NexusInitCalls,
     getDeployArgs as getNexusDeployArgs,
     getSessionSmartAccount as getNexusSessionSmartAccount,
     getSmartAccount as getNexusSmartAccount,
-} from './nexus'
+} from '../../src/accounts/nexus'
 import {
     get7702SmartAccount as get7702SafeAccount,
     get7702InitCalls as get7702SafeInitCalls,
     getDeployArgs as getSafeDeployArgs,
     getSessionSmartAccount as getSafeSessionSmartAccount,
     getSmartAccount as getSafeSmartAccount,
-} from './safe'
+} from '../../src/accounts/safe'
 
 
 vi.mock('viem', async () => {
@@ -57,8 +57,8 @@ vi.mock('viem', async () => {
   }
 })
 
-vi.mock('./safe', async () => ({
-    ...vi.importActual('./safe'),
+vi.mock('../../src/accounts/safe', async () => ({
+    ...vi.importActual('../../src/accounts/safe'),
     get7702SmartAccount: vi.fn(),
     get7702InitCalls: vi.fn(),
     getDeployArgs: vi.fn(),
@@ -66,8 +66,8 @@ vi.mock('./safe', async () => ({
     getSmartAccount: vi.fn(),
 }))
 
-vi.mock('./nexus', async () => ({
-    ...vi.importActual('./nexus'),
+vi.mock('../../src/accounts/nexus', async () => ({
+    ...vi.importActual('../../src/accounts/nexus'),
     get7702SmartAccount: vi.fn(),
     get7702InitCalls: vi.fn(),
     getDeployArgs: vi.fn(),
@@ -75,18 +75,18 @@ vi.mock('./nexus', async () => ({
     getSmartAccount: vi.fn(),
 }))
 
-import { getBundlerClient } from './utils'
+import { getBundlerClient } from '../../src/accounts/utils'
 
-vi.mock('./utils', () => ({
+vi.mock('../../src/accounts/utils', () => ({
     getBundlerClient: vi.fn(),
 }))
 
-vi.mock('../modules/validators', () => ({
+vi.mock('../../src/modules/validators', () => ({
     getOwnerValidator: vi.fn(),
     getSmartSessionValidator: vi.fn(),
 }))
 
-vi.mock('../modules', () => ({
+vi.mock('../../src/modules', () => ({
     getWebauthnValidatorSignature: vi.fn(),
     isRip7212SupportedNetwork: vi.fn(),
 }))
