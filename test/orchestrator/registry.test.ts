@@ -22,7 +22,7 @@ import {
     getSameChainModuleAddress,
     getTargetModuleAddress,
     getChainById,
-} from './registry'
+} from '../../src/orchestrator/registry'
 
 vi.mock('viem', () => ({
     zeroAddress: '0x0000000000000000000000000000000000000000',

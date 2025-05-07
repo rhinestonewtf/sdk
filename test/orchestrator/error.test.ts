@@ -1,6 +1,6 @@
 // @ts-nocheck - Ignoring type errors in tests due to mocking
 import { vi, describe, it, expect } from 'vitest'
-import { OrchestratorError } from './error'
+import { OrchestratorError } from '../../src/orchestrator/error'
 
 describe('OrchestratorError Tests', () => {
     describe('constructor', () => {

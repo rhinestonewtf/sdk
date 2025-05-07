@@ -3,7 +3,7 @@ import { vi, describe, it, expect } from 'vitest'
 import {
     ORCHESTRATOR_URL,
     RHINESTONE_SPOKE_POOL_ADDRESS,
-} from './consts'
+} from '../../src/orchestrator/consts'
 
 describe('Orchestrator Constants Tests', () => {
     describe('ORCHESTRATOR_URL', () => {

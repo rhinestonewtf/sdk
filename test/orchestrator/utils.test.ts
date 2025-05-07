@@ -12,7 +12,7 @@ import {
 } from 'viem'
 import { UserOperation } from 'viem/account-abstraction'
 
-import { HOOK_ADDRESS } from '../modules'
+import { HOOK_ADDRESS } from '../../src/modules/'
 
 import {
     BundleStatusEnum,
@@ -26,7 +26,7 @@ import {
     parseOrderCost,
     parseInsufficientBalanceResult,
     parseOrderCostResult,
-} from './utils'
+} from '../../src/orchestrator/utils'
 
 vi.mock('viem', () => ({
     domainSeparator: vi.fn(),
@@ -36,7 +36,7 @@ vi.mock('viem', () => ({
     zeroAddress: '0x0000000000000000000000000000000000000000',
 }))
 
-vi.mock('../modules', () => ({
+vi.mock('../../src/modules/', () => ({
     HOOK_ADDRESS: '0x0000000000f6Ed8Be424d673c63eeFF8b9267420',
 }))
 

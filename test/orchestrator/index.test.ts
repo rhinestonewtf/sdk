@@ -1,9 +1,9 @@
 // @ts-nocheck - Ignoring type errors in tests due to mocking
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 
-import { Orchestrator } from './client'
-import { ORCHESTRATOR_URL, RHINESTONE_SPOKE_POOL_ADDRESS } from './consts'
-import { OrchestratorError } from './error'
+import { Orchestrator } from '../../src/orchestrator/client'
+import { ORCHESTRATOR_URL, RHINESTONE_SPOKE_POOL_ADDRESS } from '../../src/orchestrator/consts'
+import { OrchestratorError } from '../../src/orchestrator/error'
 import {
     getHookAddress,
     getSameChainModuleAddress,
@@ -11,25 +11,25 @@ import {
     getTokenAddress,
     getTokenBalanceSlot,
     getWethAddress,
-} from './registry'
+} from '../../src/orchestrator/registry'
 import {
     BundleStatusEnum,
     getEmptyUserOp,
     getOrderBundleHash,
-} from './utils'
+} from '../../src/orchestrator/utils'
 
-import { getOrchestrator } from './index'
+import { getOrchestrator } from '../../src/orchestrator'
 
-vi.mock('./client', () => ({
+vi.mock('../../src/orchestrator/client', () => ({
     Orchestrator: vi.fn(),
 }))
 
-vi.mock('./consts', () => ({
+vi.mock('../../src/orchestrator/consts', () => ({
     ORCHESTRATOR_URL: 'https://test-url.com',
     RHINESTONE_SPOKE_POOL_ADDRESS: '0xspokePoolAddress',
 }))
 
-vi.mock('./registry', () => ({
+vi.mock('../../src/orchestrator/registry', () => ({
     getHookAddress: vi.fn(),
     getSameChainModuleAddress: vi.fn(),
     getTargetModuleAddress: vi.fn(),
@@ -38,7 +38,7 @@ vi.mock('./registry', () => ({
     getWethAddress: vi.fn(),
 }))
 
-vi.mock('./utils', () => ({
+vi.mock('../../src/orchestrator/utils', () => ({
     BundleStatusEnum: {
         PENDING: 'pending',
         EXPIRED: 'expired',
