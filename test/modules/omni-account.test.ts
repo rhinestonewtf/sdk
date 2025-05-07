@@ -7,7 +7,7 @@ import {
     HOOK_ADDRESS,
     TARGET_MODULE_ADDRESS,
     SAME_CHAIN_MODULE_ADDRESS,
-} from './omni-account'
+} from '../../src/modules/omni-account'
 
 describe('Omni Account Tests', () => {
     describe('Address Constants', () => {
@@ -29,8 +29,7 @@ describe('Omni Account Tests', () => {
                 TARGET_MODULE_ADDRESS,
                 SAME_CHAIN_MODULE_ADDRESS,
             ]
-            
-            // Check that all addresses match the Ethereum address format
+
             addresses.forEach(address => {
                 expect(address).toMatch(/^0x[a-fA-F0-9]{40}$/)
             })

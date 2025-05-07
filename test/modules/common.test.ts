@@ -1,11 +1,11 @@
-// @ts-nocheck - Ignoring type errors in tests due to mocking
+
 import { vi, describe, it, expect } from 'vitest'
 import {
     MODULE_TYPE_ID_VALIDATOR,
     MODULE_TYPE_ID_EXECUTOR,
     MODULE_TYPE_ID_FALLBACK,
     MODULE_TYPE_ID_HOOK,
-} from './common'
+} from '../../src/modules/common'
 
 describe('Module Common Tests', () => {
     describe('Module Type Constants', () => {
@@ -24,7 +24,6 @@ describe('Module Common Tests', () => {
                 MODULE_TYPE_ID_HOOK,
             ]
             
-            // Check that all values are unique
             const uniqueModuleTypes = new Set(moduleTypes)
             expect(uniqueModuleTypes.size).toBe(moduleTypes.length)
         })
