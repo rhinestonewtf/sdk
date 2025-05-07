@@ -11,23 +11,23 @@ import {
     keccak256,
 } from 'viem'
 
-import { getAddress, getSmartAccount } from '../accounts'
-import { getBundlerClient } from '../accounts/utils'
+import { getAddress, getSmartAccount } from '../../src/accounts'
+import { getBundlerClient } from '../../src/accounts/utils'
 import {
     getAccountEIP712Domain,
     getEnableSessionCall,
     getPermissionId,
     getSessionAllowedERC7739Content,
     isSessionEnabled,
-} from '../modules/validators'
-import { hashMultichainCompactWithoutDomainSeparator } from '../orchestrator/utils'
-import { Session } from '../types'
+} from '../../src/modules/validators'
+import { hashMultichainCompactWithoutDomainSeparator } from '../../src/orchestrator/utils'
+import { Session } from '../../src/types'
 
 import {
     enableSmartSession,
     hashErc7739,
     getSessionSignature,
-} from './smart-session'
+} from '../../src/execution/smart-session'
 
 vi.mock('viem', () => ({
     createPublicClient: vi.fn(),
@@ -37,16 +37,16 @@ vi.mock('viem', () => ({
     keccak256: vi.fn(),
 }))
 
-vi.mock('../accounts', () => ({
+vi.mock('../../src/accounts', () => ({
     getAddress: vi.fn(),
     getSmartAccount: vi.fn(),
 }))
 
-vi.mock('../accounts/utils', () => ({
+vi.mock('../../src/accounts/utils', () => ({
     getBundlerClient: vi.fn(),
 }))
 
-vi.mock('../modules/validators', () => ({
+vi.mock('../../src/modules/validators', () => ({
     getAccountEIP712Domain: vi.fn(),
     getEnableSessionCall: vi.fn(),
     getPermissionId: vi.fn(),
@@ -54,7 +54,7 @@ vi.mock('../modules/validators', () => ({
     isSessionEnabled: vi.fn(),
 }))
 
-vi.mock('../orchestrator/utils', () => ({
+vi.mock('../../src/orchestrator/utils', () => ({
     hashMultichainCompactWithoutDomainSeparator: vi.fn(),
 }))
 

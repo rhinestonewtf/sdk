@@ -22,7 +22,7 @@ import {
     waitForExecution,
     getMaxSpendableAmount,
     TransactionResult,
-} from './index'
+} from '../../src/execution'
 
 import {
     deploySource,
@@ -32,10 +32,10 @@ import {
     getSmartSessionSmartAccount,
     isDeployed,
     sign,
-} from '../accounts'
-import { getBundlerClient } from '../accounts/utils'
-import { getOwnerValidator } from '../modules'
-import { getSmartSessionValidator } from '../modules/validators'
+} from '../../src/accounts'
+import { getBundlerClient } from '../../src/accounts/utils'
+import { getOwnerValidator } from '../../src/modules'
+import { getSmartSessionValidator } from '../../src/modules/validators'
 import {
     BUNDLE_STATUS_COMPLETED,
     BUNDLE_STATUS_FAILED,
@@ -44,13 +44,13 @@ import {
     getOrchestrator,
     getOrderBundleHash,
     getTokenBalanceSlot,
-} from '../orchestrator'
-import { getChainById } from '../orchestrator/registry'
+} from '../../src/orchestrator'
+import { getChainById } from '../../src/orchestrator/registry'
 import {
     enableSmartSession,
     getSessionSignature,
     hashErc7739,
-} from './smart-session'
+} from '../../src/execution/smart-session'
 
 vi.mock('viem', () => ({
     createPublicClient: vi.fn(),
@@ -67,7 +67,7 @@ vi.mock('viem/account-abstraction', () => ({
     getUserOperationHash: vi.fn(),
 }))
 
-vi.mock('../accounts', () => ({
+vi.mock('../../src/accounts', () => ({
     deploySource: vi.fn(),
     deployTarget: vi.fn(),
     getAddress: vi.fn(),
@@ -77,19 +77,19 @@ vi.mock('../accounts', () => ({
     sign: vi.fn(),
 }))
 
-vi.mock('../accounts/utils', () => ({
+vi.mock('../../src/accounts/utils', () => ({
     getBundlerClient: vi.fn(),
 }))
 
-vi.mock('../modules', () => ({
+vi.mock('../../src/modules', () => ({
     getOwnerValidator: vi.fn(),
 }))
 
-vi.mock('../modules/validators', () => ({
+vi.mock('../../src/modules/validators', () => ({
     getSmartSessionValidator: vi.fn(),
 }))
 
-vi.mock('../orchestrator', () => ({
+vi.mock('../../src/orchestrator', () => ({
     BUNDLE_STATUS_COMPLETED: 'completed',
     BUNDLE_STATUS_FAILED: 'failed',
     BUNDLE_STATUS_FILLED: 'filled',
@@ -99,11 +99,11 @@ vi.mock('../orchestrator', () => ({
     getTokenBalanceSlot: vi.fn(),
 }))
 
-vi.mock('../orchestrator/registry', () => ({
+vi.mock('../../src/orchestrator/registry', () => ({
     getChainById: vi.fn(),
 }))
 
-vi.mock('./smart-session', () => ({
+vi.mock('../../src/execution/smart-session', () => ({
     enableSmartSession: vi.fn(),
     getSessionSignature: vi.fn(),
     hashErc7739: vi.fn(),
