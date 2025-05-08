@@ -14,27 +14,28 @@ jobs:
       - name: Check out the repo
         uses: 'actions/checkout@v4'
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-
-      - name: Restore the cached build and the node modules
-        if: ${{ inputs.restore-cache }}
-        uses: 'actions/cache/restore@v4'
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
         with:
-          key: 'build-and-modules-${{ github.sha }}'
-          path: ${{ inputs.cache-path }}
+          version: 9.15.3
 
-      - name: Install the npm dependencies
-        run: bun install
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install
 
       - name: Build
-        run: bun run build
+        run: pnpm run build
 
       - name: Check
-        run: bun run check
+        run: pnpm run check
 
       - name: Typecheck
-        run: bun run typecheck
+        run: pnpm run typecheck
 
   test:
     needs: ['build']
@@ -43,18 +44,19 @@ jobs:
       - name: Check out the repo
         uses: 'actions/checkout@v4'
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-
-      - name: 'Restore the cached build and the node modules'
-        if: ${{ inputs.restore-cache }}
-        uses: 'actions/cache/restore@v4'
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
         with:
-          key: 'build-and-modules-${{ github.sha }}'
-          path: ${{ inputs.cache-path }}
+          version: 9.15.3
 
-      - name: Install the npm dependencies
-        run: bun install
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install
 
       - name: Run tests
-        run: bun run test
+        run: pnpm test
