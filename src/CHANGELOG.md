@@ -1,5 +1,15 @@
 # @rhinestone/sdk
 
+## 0.7.0
+
+### Minor Changes
+
+- b293aab: Change `getTokenBalanceSlot` function signature
+
+### Patch Changes
+
+- b293aab: Fix ESM build import paths
+
 ## 0.6.4
 
 ### Patch Changes
