@@ -39,7 +39,7 @@ import {
   getEmptyUserOp,
   getOrchestrator,
   getOrderBundleHash,
-  getTokenBalanceSlot,
+  getTokenRootBalanceSlot,
 } from '../orchestrator'
 import { getChainById } from '../orchestrator/registry'
 import {
@@ -204,7 +204,7 @@ async function sendTransactionAsUserOp(
     calls: [...orderPath[0].injectedExecutions, ...calls],
     stateOverride: [
       ...tokenRequests.map((request) => {
-        const rootBalanceSlot = getTokenBalanceSlot(
+        const rootBalanceSlot = getTokenRootBalanceSlot(
           targetChain,
           request.address,
         )

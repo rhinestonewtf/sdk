@@ -8,6 +8,7 @@ import {
   getTargetModuleAddress,
   getTokenAddress,
   getTokenBalanceSlot,
+  getTokenRootBalanceSlot,
   getTokenSymbol,
   getWethAddress,
 } from './registry'
@@ -64,6 +65,7 @@ export {
   getEmptyUserOp,
   getWethAddress,
   getTokenBalanceSlot,
+  getTokenRootBalanceSlot,
   getTokenSymbol,
   getHookAddress,
   getSameChainModuleAddress,
