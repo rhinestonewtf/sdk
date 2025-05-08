@@ -208,15 +208,14 @@ function getBundlerClient(config: RhinestoneAccountConfig, client: Client) {
   }
 
   const { bundler } = config
-  if (!bundler) {
-    throw new Error('Bundler is required')
-  }
   const chainId = client.chain?.id
   if (!chainId) {
     throw new Error('Chain id is required')
   }
 
-  const endpoint = getBundlerEndpoint(bundler, chainId)
+  const endpoint = bundler
+    ? getBundlerEndpoint(bundler, chainId)
+    : `https://public.pimlico.io/v2/${chainId}/rpc`
   return createBundlerClient({
     client,
     transport: http(endpoint),

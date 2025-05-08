@@ -337,6 +337,14 @@ function getChainById(chainId: number) {
   }
 }
 
+function isTestnet(chainId: number) {
+  const chain = getChainById(chainId)
+  if (!chain) {
+    throw new Error(`Chain not supported: ${chainId}`)
+  }
+  return chain.testnet ?? false
+}
+
 export {
   getTokenSymbol,
   getTokenAddress,
@@ -348,4 +356,5 @@ export {
   getTargetModuleAddress,
   getRhinestoneSpokePoolAddress,
   getChainById,
+  isTestnet,
 }

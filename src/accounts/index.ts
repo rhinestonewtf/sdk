@@ -117,16 +117,10 @@ async function deployTarget(
 
 async function deployStandalone(chain: Chain, config: RhinestoneAccountConfig) {
   const deployer = config.deployerAccount
-  const bundler = config.bundler
   if (deployer) {
     return deployStandaloneWithEoa(chain, config, deployer)
-  } else if (bundler) {
-    return deployStandaloneWithBundler(chain, config)
-  } else {
-    throw new Error(
-      'Unable to deploy the account. Provide a deployer account or a bundler config',
-    )
   }
+  return deployStandaloneWithBundler(chain, config)
 }
 
 function getBundleInitCode(config: RhinestoneAccountConfig) {
