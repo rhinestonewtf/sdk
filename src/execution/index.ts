@@ -39,9 +39,13 @@ import {
   getEmptyUserOp,
   getOrchestrator,
   getOrderBundleHash,
-  getTokenBalanceSlot,
+  getTokenRootBalanceSlot,
 } from '../orchestrator'
-import { getChainById } from '../orchestrator/registry'
+import {
+  DEV_ORCHESTRATOR_URL,
+  PROD_ORCHESTRATOR_URL,
+} from '../orchestrator/consts'
+import { getChainById, isTestnet } from '../orchestrator/registry'
 import {
   Call,
   RhinestoneAccountConfig,
@@ -193,7 +197,10 @@ async function sendTransactionAsUserOp(
     userOp: getEmptyUserOp(),
   }
 
-  const orchestrator = getOrchestrator(config.rhinestoneApiKey)
+  const orchestrator = getOrchestratorByChain(
+    targetChain.id,
+    config.rhinestoneApiKey,
+  )
   const orderPath = await orchestrator.getOrderPath(metaIntent, accountAddress)
   // Deploy the account on the target chain
   await deployTarget(targetChain, config, true)
@@ -204,7 +211,7 @@ async function sendTransactionAsUserOp(
     calls: [...orderPath[0].injectedExecutions, ...calls],
     stateOverride: [
       ...tokenRequests.map((request) => {
-        const rootBalanceSlot = getTokenBalanceSlot(
+        const rootBalanceSlot = getTokenRootBalanceSlot(
           targetChain,
           request.address,
         )
@@ -301,7 +308,10 @@ async function sendTransactionAsIntent(
     })),
   }
 
-  const orchestrator = getOrchestrator(config.rhinestoneApiKey)
+  const orchestrator = getOrchestratorByChain(
+    targetChain.id,
+    config.rhinestoneApiKey,
+  )
   const orderPath = await orchestrator.getOrderPath(metaIntent, accountAddress)
   orderPath[0].orderBundle.segments[0].witness.execs = [
     ...orderPath[0].injectedExecutions,
@@ -358,7 +368,10 @@ async function waitForExecution(
           bundleResult.status !== BUNDLE_STATUS_COMPLETED &&
           bundleResult.status !== BUNDLE_STATUS_FILLED)
       ) {
-        const orchestrator = getOrchestrator(config.rhinestoneApiKey)
+        const orchestrator = getOrchestratorByChain(
+          result.targetChain,
+          config.rhinestoneApiKey,
+        )
         bundleResult = await orchestrator.getBundleStatus(result.id)
         await new Promise((resolve) => setTimeout(resolve, POLLING_INTERVAL))
       }
@@ -389,13 +402,20 @@ async function getMaxSpendableAmount(
   gasUnits: bigint,
 ): Promise<bigint> {
   const address = getAddress(config)
-  const orchestrator = getOrchestrator(config.rhinestoneApiKey)
+  const orchestrator = getOrchestratorByChain(chain.id, config.rhinestoneApiKey)
   return orchestrator.getMaxTokenAmount(
     address,
     chain.id,
     tokenAddress,
     gasUnits,
   )
+}
+
+function getOrchestratorByChain(chainId: number, apiKey: string) {
+  const orchestratorUrl = isTestnet(chainId)
+    ? DEV_ORCHESTRATOR_URL
+    : PROD_ORCHESTRATOR_URL
+  return getOrchestrator(apiKey, orchestratorUrl)
 }
 
 export { sendTransaction, waitForExecution, getMaxSpendableAmount }

@@ -1,6 +1,6 @@
 {
   "name": "@rhinestone/sdk",
-  "version": "0.6.4",
+  "version": "0.7.1",
   "description": "End-to-end chain abstraction and modularity toolkit",
   "author": {
     "name": "Rhinestone",
@@ -24,11 +24,6 @@
       "types": "./dist/src/orchestrator/index.d.ts",
       "require": "./dist/src/orchestrator/index.js",
       "import": "./dist/src/orchestrator/index.js"
-    },
-    "./dist/src/orchestrator": {
-      "import": "./dist/src/orchestrator/index.mjs",
-      "require": "./dist/src/orchestrator/index.js",
-      "types": "./dist/src/orchestrator/index.d.ts"
     }
   },
   "files": [

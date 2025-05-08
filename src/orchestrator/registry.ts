@@ -1,4 +1,11 @@
-import { Address, Chain, zeroAddress } from 'viem'
+import {
+  Address,
+  Chain,
+  encodeAbiParameters,
+  Hex,
+  keccak256,
+  zeroAddress,
+} from 'viem'
 import {
   arbitrum,
   arbitrumSepolia,
@@ -88,7 +95,7 @@ function getUsdcAddress(chain: Chain) {
   }
 }
 
-function getTokenBalanceSlot(
+function getTokenRootBalanceSlot(
   chain: Chain,
   tokenAddress: Address,
 ): bigint | null {
@@ -242,6 +249,28 @@ function getTokenBalanceSlot(
   )
 }
 
+function getTokenBalanceSlot(
+  tokenSymbol: string,
+  chainId: number,
+  accountAddress: Address,
+): Hex {
+  const tokenAddress = getTokenAddress(tokenSymbol, chainId)
+  const chain = getChainById(chainId)
+  if (!chain) {
+    throw new Error(`Unsupported chain: ${chainId}`)
+  }
+  const rootBalanceSlot = getTokenRootBalanceSlot(chain, tokenAddress)
+  const balanceSlot = rootBalanceSlot
+    ? keccak256(
+        encodeAbiParameters(
+          [{ type: 'address' }, { type: 'uint256' }],
+          [accountAddress, rootBalanceSlot],
+        ),
+      )
+    : '0x'
+  return balanceSlot
+}
+
 function getHookAddress(_chainId?: number): Address {
   return '0x0000000000f6Ed8Be424d673c63eeFF8b9267420'
 }
@@ -308,9 +337,18 @@ function getChainById(chainId: number) {
   }
 }
 
+function isTestnet(chainId: number) {
+  const chain = getChainById(chainId)
+  if (!chain) {
+    throw new Error(`Chain not supported: ${chainId}`)
+  }
+  return chain.testnet ?? false
+}
+
 export {
   getTokenSymbol,
   getTokenAddress,
+  getTokenRootBalanceSlot,
   getTokenBalanceSlot,
   getWethAddress,
   getHookAddress,
@@ -318,4 +356,5 @@ export {
   getTargetModuleAddress,
   getRhinestoneSpokePoolAddress,
   getChainById,
+  isTestnet,
 }

@@ -1,5 +1,5 @@
 import { Orchestrator } from './client'
-import { ORCHESTRATOR_URL, RHINESTONE_SPOKE_POOL_ADDRESS } from './consts'
+import { PROD_ORCHESTRATOR_URL, RHINESTONE_SPOKE_POOL_ADDRESS } from './consts'
 import { OrchestratorError } from './error'
 import {
   getHookAddress,
@@ -8,6 +8,7 @@ import {
   getTargetModuleAddress,
   getTokenAddress,
   getTokenBalanceSlot,
+  getTokenRootBalanceSlot,
   getTokenSymbol,
   getWethAddress,
 } from './registry'
@@ -35,7 +36,7 @@ function getOrchestrator(
   apiKey: string,
   orchestratorUrl?: string,
 ): Orchestrator {
-  return new Orchestrator(orchestratorUrl ?? ORCHESTRATOR_URL, apiKey)
+  return new Orchestrator(orchestratorUrl ?? PROD_ORCHESTRATOR_URL, apiKey)
 }
 
 export type {
@@ -64,6 +65,7 @@ export {
   getEmptyUserOp,
   getWethAddress,
   getTokenBalanceSlot,
+  getTokenRootBalanceSlot,
   getTokenSymbol,
   getHookAddress,
   getSameChainModuleAddress,

@@ -1,9 +1,10 @@
 {
   "private": true,
   "scripts": {
+    "prepare": "bun run build",
     "prebuild": "pnpm run test",
-    "build": "pnpm run clean && pnpm run build:esm && pnpm run build:types",
-    "build:esm": "tsc --module es2015 --outDir ./src/dist && tsc-alias --outDir ./src/dist && printf '{\"type\": \"module\",\"sideEffects\":false}' > ./src/dist/package.json",
+    "build": "bun run clean && bun run build:esm && bun run build:types",
+    "build:esm": "tsc --module es2020 --outDir ./src/dist && bunx tsc-esm-fix --target=\"./src/dist\"",
     "build:types": "tsc --module esnext --declarationDir ./src/dist --outDir ./src/dist --emitDeclarationOnly --declaration --declarationMap",
     "clean": "rimraf src/dist",
     "test": "pnpm vitest run",
@@ -34,6 +35,7 @@
     "size-limit": "^11.2.0",
     "ts-node": "^10.9.2",
     "tsc-alias": "^1.8.13",
+    "tsc-esm-fix": "^3.1.2",
     "typescript": "^5.8.2",
     "vitest": "^3.1.2"
   }
