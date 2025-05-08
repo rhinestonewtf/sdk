@@ -1,5 +1,12 @@
 # @rhinestone/sdk
 
+## 0.7.1
+
+### Patch Changes
+
+- 19d3202: - Use public Pimlico bundler endpoint by default
+  - Use dev orchestrator instance for testnet transactions
+
 ## 0.7.0
 
 ### Minor Changes
