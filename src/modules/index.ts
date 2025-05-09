@@ -114,21 +114,24 @@ function getSetup(config: RhinestoneAccountConfig): ModeleSetup {
     },
   ]
 
-  if (config.account && config.account.type === 'safe') {
-    fallbacks.push({
-      address: SMART_SESSION_COMPATIBILITY_FALLBACK_ADDRESS,
-      initData: encodeAbiParameters(
-        [
-          { name: 'selector', type: 'bytes4' },
-          { name: 'flags', type: 'bytes1' },
-          { name: 'data', type: 'bytes' },
-        ],
-        ['0x84b0196e', '0xfe', '0x'],
-      ),
-      deInitData: '0x',
-      additionalContext: '0x',
-      type: MODULE_TYPE_ID_FALLBACK,
-    })
+  // Some accounts (e.g. Safe) need a fallback method to support smart sessions
+  if (config.sessions) {
+    if (config.account && config.account.type === 'safe') {
+      fallbacks.push({
+        address: SMART_SESSION_COMPATIBILITY_FALLBACK_ADDRESS,
+        initData: encodeAbiParameters(
+          [
+            { name: 'selector', type: 'bytes4' },
+            { name: 'flags', type: 'bytes1' },
+            { name: 'data', type: 'bytes' },
+          ],
+          ['0x84b0196e', '0xfe', '0x'],
+        ),
+        deInitData: '0x',
+        additionalContext: '0x',
+        type: MODULE_TYPE_ID_FALLBACK,
+      })
+    }
   }
 
   const hooks: Module[] = []
