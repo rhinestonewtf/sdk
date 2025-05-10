@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 0.7.2
+
+### Patch Changes
+
+- 656c85d: Don't install the smart session compatibility module by default
+
 ## 0.7.1
 
 ### Patch Changes
