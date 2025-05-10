@@ -1,14 +1,21 @@
 // @ts-nocheck - Ignoring type errors in tests due to mocking
 import { vi, describe, it, expect } from 'vitest'
 import {
-    ORCHESTRATOR_URL,
+    PROD_ORCHESTRATOR_URL,
+    DEV_ORCHESTRATOR_URL,
     RHINESTONE_SPOKE_POOL_ADDRESS,
 } from '../../src/orchestrator/consts'
 
 describe('Orchestrator Constants Tests', () => {
-    describe('ORCHESTRATOR_URL', () => {
+    describe('PROD_ORCHESTRATOR_URL', () => {
         it('should be a valid URL', () => {
-            expect(ORCHESTRATOR_URL).toMatch(/^https?:\/\//)
+            expect(PROD_ORCHESTRATOR_URL).toMatch(/^https?:\/\//)
+        })
+    })
+
+    describe('DEV_ORCHESTRATOR_URL', () => {
+        it('should be a valid URL', () => {
+            expect(DEV_ORCHESTRATOR_URL).toMatch(/^https?:\/\//)
         })
     })
 

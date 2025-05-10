@@ -268,11 +268,26 @@ describe('Account Utils Tests', () => {
             expect(result).toBe('bundlerClient')
         })
 
-        it('should throw an error if bundler is not provided', () => {
-            const mockConfig = {} as RhinestoneAccountConfig
-            const mockClient = {} as Client
+        it('should use default Pimlico endpoint if bundler is not provided', () => {
+            vi.mocked(http).mockReturnValue('httpTransport' as any)
+            vi.mocked(createBundlerClient).mockReturnValue('bundlerClient' as any)
 
-            expect(() => getBundlerClient(mockConfig, mockClient)).toThrow('Bundler is required')
+            const mockConfig = {} as RhinestoneAccountConfig
+            const mockClient = {
+                chain: {
+                    id: 1,
+                },
+            } as Client
+
+            const result = getBundlerClient(mockConfig, mockClient)
+
+            expect(http).toHaveBeenCalledWith('https://public.pimlico.io/v2/1/rpc')
+            expect(createBundlerClient).toHaveBeenCalledWith({
+                client: mockClient,
+                transport: 'httpTransport',
+                paymaster: true,
+            })
+            expect(result).toBe('bundlerClient')
         })
 
         it('should throw an error if chain id is not available', () => {

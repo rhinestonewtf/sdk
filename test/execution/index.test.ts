@@ -97,10 +97,12 @@ vi.mock('../../src/orchestrator', () => ({
     getOrchestrator: vi.fn(),
     getOrderBundleHash: vi.fn(),
     getTokenBalanceSlot: vi.fn(),
+    getTokenRootBalanceSlot: vi.fn(),
 }))
 
 vi.mock('../../src/orchestrator/registry', () => ({
     getChainById: vi.fn(),
+    isTestnet: vi.fn().mockReturnValue(false),
 }))
 
 vi.mock('../../src/execution/smart-session', () => ({
@@ -204,7 +206,7 @@ describe('Execution Tests', () => {
 
             expect(isDeployed).toHaveBeenCalledWith(mockSourceChain, mockConfig)
             expect(getAddress).toHaveBeenCalledWith(mockConfig)
-            expect(getOrchestrator).toHaveBeenCalledWith('test-api-key')
+            expect(getOrchestrator).toHaveBeenCalledWith('test-api-key', expect.any(String))
             expect(mockOrchestrator.getOrderPath).toHaveBeenCalled()
             expect(sign).toHaveBeenCalledWith(mockConfig.owners, mockSourceChain, '0xorderBundleHash')
             expect(getOwnerValidator).toHaveBeenCalledWith(mockConfig)
@@ -234,7 +236,7 @@ describe('Execution Tests', () => {
 
             expect(isDeployed).toHaveBeenCalledWith(mockSourceChain, mockConfig)
             expect(getAddress).toHaveBeenCalledWith(mockConfig)
-            expect(getOrchestrator).toHaveBeenCalledWith('test-api-key')
+            expect(getOrchestrator).toHaveBeenCalledWith('test-api-key', expect.any(String))
             expect(mockOrchestrator.getOrderPath).toHaveBeenCalled()
             expect(sign).toHaveBeenCalledWith(mockConfig.owners, mockSourceChain, '0xorderBundleHash')
             expect(getOwnerValidator).toHaveBeenCalledWith(mockConfig)
@@ -389,7 +391,7 @@ describe('Execution Tests', () => {
 
             const bundleResult = await waitForExecution(mockConfig, result)
 
-            expect(getOrchestrator).toHaveBeenCalledWith('test-api-key')
+            expect(getOrchestrator).toHaveBeenCalledWith('test-api-key', expect.any(String))
             expect(mockOrchestrator.getBundleStatus).toHaveBeenCalledWith(123n)
             expect(bundleResult).toEqual({ status: BUNDLE_STATUS_COMPLETED, data: 'success' })
         })
@@ -442,7 +444,7 @@ describe('Execution Tests', () => {
             )
 
             expect(getAddress).toHaveBeenCalledWith(mockConfig)
-            expect(getOrchestrator).toHaveBeenCalledWith('test-api-key')
+            expect(getOrchestrator).toHaveBeenCalledWith('test-api-key', expect.any(String))
             expect(mockOrchestrator.getMaxTokenAmount).toHaveBeenCalledWith(
                 mockAccountAddress,
                 1,

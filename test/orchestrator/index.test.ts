@@ -2,7 +2,7 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 
 import { Orchestrator } from '../../src/orchestrator/client'
-import { ORCHESTRATOR_URL, RHINESTONE_SPOKE_POOL_ADDRESS } from '../../src/orchestrator/consts'
+import { PROD_ORCHESTRATOR_URL, RHINESTONE_SPOKE_POOL_ADDRESS } from '../../src/orchestrator/consts'
 import { OrchestratorError } from '../../src/orchestrator/error'
 import {
     getHookAddress,
@@ -10,6 +10,9 @@ import {
     getTargetModuleAddress,
     getTokenAddress,
     getTokenBalanceSlot,
+    getTokenRootBalanceSlot,
+    getTokenSymbol,
+    getRhinestoneSpokePoolAddress,
     getWethAddress,
 } from '../../src/orchestrator/registry'
 import {
@@ -25,7 +28,7 @@ vi.mock('../../src/orchestrator/client', () => ({
 }))
 
 vi.mock('../../src/orchestrator/consts', () => ({
-    ORCHESTRATOR_URL: 'https://test-url.com',
+    PROD_ORCHESTRATOR_URL: 'https://test-url.com',
     RHINESTONE_SPOKE_POOL_ADDRESS: '0xspokePoolAddress',
 }))
 
@@ -35,6 +38,9 @@ vi.mock('../../src/orchestrator/registry', () => ({
     getTargetModuleAddress: vi.fn(),
     getTokenAddress: vi.fn(),
     getTokenBalanceSlot: vi.fn(),
+    getTokenRootBalanceSlot: vi.fn(),
+    getTokenSymbol: vi.fn(),
+    getRhinestoneSpokePoolAddress: vi.fn(),
     getWethAddress: vi.fn(),
 }))
 
@@ -64,7 +70,7 @@ describe('Orchestrator Index Tests', () => {
 
             const result = getOrchestrator('test-api-key')
 
-            expect(Orchestrator).toHaveBeenCalledWith(ORCHESTRATOR_URL, 'test-api-key')
+            expect(Orchestrator).toHaveBeenCalledWith(PROD_ORCHESTRATOR_URL, 'test-api-key')
             expect(result).toBe(mockOrchestrator)
         })
 
@@ -85,6 +91,9 @@ describe('Orchestrator Index Tests', () => {
             expect(BundleStatusEnum).toBeDefined()
             expect(getEmptyUserOp).toBeDefined()
             expect(getOrderBundleHash).toBeDefined()
+            expect(getTokenRootBalanceSlot).toBeDefined()
+            expect(getTokenSymbol).toBeDefined()
+            expect(getRhinestoneSpokePoolAddress).toBeDefined()
         })
     })
 })
