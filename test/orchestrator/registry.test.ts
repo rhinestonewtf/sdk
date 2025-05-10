@@ -1,6 +1,6 @@
 // @ts-nocheck - Ignoring type errors in tests due to mocking
 import { vi, describe, it, expect, beforeEach } from 'vitest'
-import { Address, Chain, zeroAddress } from 'viem'
+import { Address, Chain, Hex, encodeAbiParameters, keccak256, zeroAddress } from 'viem'
 import {
     arbitrum,
     arbitrumSepolia,
@@ -17,28 +17,34 @@ import {
 import {
     getTokenAddress,
     getTokenBalanceSlot,
+    getTokenRootBalanceSlot,
+    getTokenSymbol,
     getWethAddress,
     getHookAddress,
     getSameChainModuleAddress,
     getTargetModuleAddress,
     getChainById,
+    getRhinestoneSpokePoolAddress,
+    isTestnet,
 } from '../../src/orchestrator/registry'
 
 vi.mock('viem', () => ({
     zeroAddress: '0x0000000000000000000000000000000000000000',
+    encodeAbiParameters: vi.fn(),
+    keccak256: vi.fn(),
 }))
 
 vi.mock('viem/chains', () => ({
     mainnet: { id: 1 },
-    sepolia: { id: 11155111 },
+    sepolia: { id: 11155111, testnet: true },
     base: { id: 8453 },
-    baseSepolia: { id: 84532 },
+    baseSepolia: { id: 84532, testnet: true },
     arbitrum: { id: 42161 },
-    arbitrumSepolia: { id: 421614 },
+    arbitrumSepolia: { id: 421614, testnet: true },
     optimism: { id: 10 },
-    optimismSepolia: { id: 11155420 },
+    optimismSepolia: { id: 11155420, testnet: true },
     polygon: { id: 137 },
-    polygonAmoy: { id: 80002 },
+    polygonAmoy: { id: 80002, testnet: true },
 }))
 
 describe('Registry Tests', () => {
@@ -70,25 +76,62 @@ describe('Registry Tests', () => {
     })
 
     describe('getTokenBalanceSlot', () => {
-        it('should return null for ETH (zero address) on mainnet', () => {
-            const result = getTokenBalanceSlot(mainnet, zeroAddress)
-            expect(result).toBeNull()
+        const testAccount = '0x1234567890123456789012345678901234567890'
+
+        beforeEach(() => {
+            // Mock the keccak256 and encodeAbiParameters functions
+            vi.mocked(keccak256).mockReturnValue('0xmocked-keccak-hash')
+            vi.mocked(encodeAbiParameters).mockReturnValue('0xmocked-encoded-params')
         })
 
-        it('should return the correct slot for USDC on mainnet', () => {
-            const result = getTokenBalanceSlot(mainnet, '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48')
-            expect(result).toBe(9n)
+        it('should return the correct balance slot for ETH on mainnet', () => {
+            const result = getTokenBalanceSlot('ETH', 1, testAccount)
+            expect(result).toBe('0x')
         })
 
-        it('should return the correct slot for WETH on mainnet', () => {
-            const result = getTokenBalanceSlot(mainnet, '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2')
-            expect(result).toBe(3n)
+        it('should return the correct balance slot for USDC on mainnet', () => {
+            // Setup mocks for the specific token
+            vi.mocked(encodeAbiParameters).mockImplementationOnce((types, values) => {
+                expect(types).toEqual([{ type: 'address' }, { type: 'uint256' }])
+                expect(values[0]).toBe(testAccount)
+                expect(values[1]).toBe(9n)
+                return '0xencoded-usdc-params'
+            })
+            vi.mocked(keccak256).mockImplementationOnce((value) => {
+                expect(value).toBe('0xencoded-usdc-params')
+                return '0xusdc-hash'
+            })
+
+            const result = getTokenBalanceSlot('USDC', 1, testAccount)
+            expect(result).toBe('0xusdc-hash')
         })
 
-        it('should throw an error for unsupported token addresses', () => {
-            const unsupportedToken = '0x1234567890123456789012345678901234567890'
-            expect(() => getTokenBalanceSlot(mainnet, unsupportedToken)).toThrow(
-                `Unsupported token address ${unsupportedToken} for chain ${mainnet.id}`
+        it('should return the correct balance slot for WETH on mainnet', () => {
+            // Setup mocks for the specific token
+            vi.mocked(encodeAbiParameters).mockImplementationOnce((types, values) => {
+                expect(types).toEqual([{ type: 'address' }, { type: 'uint256' }])
+                expect(values[0]).toBe(testAccount)
+                expect(values[1]).toBe(3n)
+                return '0xencoded-weth-params'
+            })
+            vi.mocked(keccak256).mockImplementationOnce((value) => {
+                expect(value).toBe('0xencoded-weth-params')
+                return '0xweth-hash'
+            })
+
+            const result = getTokenBalanceSlot('WETH', 1, testAccount)
+            expect(result).toBe('0xweth-hash')
+        })
+
+        it('should throw an error for unsupported token symbols', () => {
+            expect(() => getTokenBalanceSlot('UNKNOWN', 1, testAccount)).toThrow(
+                'Unsupported token symbol UNKNOWN'
+            )
+        })
+
+        it('should throw an error for unsupported chains', () => {
+            expect(() => getTokenBalanceSlot('ETH', 999, testAccount)).toThrow(
+                'Unsupported chain: 999'
             )
         })
     })
@@ -166,6 +209,83 @@ describe('Registry Tests', () => {
         it('should return undefined for unsupported chain IDs', () => {
             const result = getChainById(999)
             expect(result).toBeUndefined()
+        })
+    })
+
+    describe('getTokenRootBalanceSlot', () => {
+        it('should return null for ETH (zero address) on mainnet', () => {
+            const result = getTokenRootBalanceSlot(mainnet, zeroAddress)
+            expect(result).toBeNull()
+        })
+
+        it('should return the correct slot for USDC on mainnet', () => {
+            const result = getTokenRootBalanceSlot(mainnet, '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48')
+            expect(result).toBe(9n)
+        })
+
+        it('should return the correct slot for WETH on mainnet', () => {
+            const result = getTokenRootBalanceSlot(mainnet, '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2')
+            expect(result).toBe(3n)
+        })
+
+        it('should throw an error for unsupported token addresses', () => {
+            const unsupportedToken = '0x1234567890123456789012345678901234567890'
+            expect(() => getTokenRootBalanceSlot(mainnet, unsupportedToken)).toThrow(
+                `Unsupported token address ${unsupportedToken} for chain ${mainnet.id}`
+            )
+        })
+    })
+
+    describe('getTokenSymbol', () => {
+        it('should return the correct symbol for ETH address', () => {
+            const result = getTokenSymbol(zeroAddress, 1)
+            expect(result).toBe('ETH')
+        })
+
+        it('should return the correct symbol for WETH address on mainnet', () => {
+            const result = getTokenSymbol('0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', 1)
+            expect(result).toBe('WETH')
+        })
+
+        it('should return the correct symbol for USDC address on mainnet', () => {
+            const result = getTokenSymbol('0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', 1)
+            expect(result).toBe('USDC')
+        })
+
+        it('should throw an error for unsupported token addresses', () => {
+            const unsupportedToken = '0x1234567890123456789012345678901234567890'
+            expect(() => getTokenSymbol(unsupportedToken, 1)).toThrow(
+                `Unsupported token address ${unsupportedToken} for chain 1`
+            )
+        })
+    })
+
+    describe('getRhinestoneSpokePoolAddress', () => {
+        it('should return the correct spoke pool address', () => {
+            const result = getRhinestoneSpokePoolAddress()
+            expect(result).toBe('0x000000000060f6e853447881951574CDd0663530')
+        })
+
+        it('should return the same address regardless of chain ID', () => {
+            const result1 = getRhinestoneSpokePoolAddress(1)
+            const result2 = getRhinestoneSpokePoolAddress(2)
+            expect(result1).toBe(result2)
+        })
+    })
+
+    describe('isTestnet', () => {
+        it('should return false for mainnet', () => {
+            const result = isTestnet(1)
+            expect(result).toBe(false)
+        })
+
+        it('should return true for sepolia', () => {
+            const result = isTestnet(11155111)
+            expect(result).toBe(true)
+        })
+
+        it('should throw an error for unsupported chains', () => {
+            expect(() => isTestnet(999)).toThrow('Chain not supported: 999')
         })
     })
 })
