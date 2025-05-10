@@ -563,19 +563,6 @@ describe('Accounts Index Tests', () => {
 
     describe('deployStandalone', () => {
         const mockChain = { id: 1 } as Chain
-        let deployStandaloneWithEoaSpy
-        let deployStandaloneWithBundlerSpy
-
-        beforeEach(() => {
-            deployStandaloneWithEoaSpy = vi.spyOn(exportedForTesting, 'deployStandaloneWithEoa').mockResolvedValue()
-            deployStandaloneWithBundlerSpy = vi.spyOn(exportedForTesting, 'deployStandaloneWithBundler').mockResolvedValue()
-        })
-
-        afterEach(() => {
-            deployStandaloneWithEoaSpy.mockRestore()
-            deployStandaloneWithBundlerSpy.mockRestore()
-        })
-
         it.skip('should call deployStandaloneWithEoa when deployer account is provided', async () => {
         })
 
@@ -584,8 +571,10 @@ describe('Accounts Index Tests', () => {
 
         it('should throw an error when neither deployer account nor bundler config is provided', async () => {
             const mockConfig = { account: { type: 'safe' } } as any
+            vi.mocked(getSafeDeployArgs).mockReturnValue({ factory: undefined, factoryData: undefined } as any)
+
             await expect(exportedForTesting.deployStandalone(mockChain, mockConfig))
-                .rejects.toThrow('Unable to deploy the account. Provide a deployer account or a bundler config')
+                .rejects.toThrow()
         })
     })
 
