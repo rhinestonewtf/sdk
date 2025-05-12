@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 0.7.3
+
+### Patch Changes
+
+- eb0fd7f: Reduce bundle size from 3.5MB to 200KB
+
 ## 0.7.2
 
 ### Patch Changes
