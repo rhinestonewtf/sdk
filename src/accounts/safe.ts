@@ -1,4 +1,5 @@
 import {
+  Abi,
   Address,
   concat,
   encodeFunctionData,
@@ -13,6 +14,8 @@ import {
   entryPoint07Abi,
   entryPoint07Address,
   getUserOperationHash,
+  SmartAccount,
+  SmartAccountImplementation,
   toSmartAccount,
 } from 'viem/account-abstraction'
 
@@ -169,7 +172,7 @@ async function getBaseSmartAccount(
   validatorAddress: Address,
   getStubSignature: () => Promise<Hex>,
   signUserOperation: (hash: Hex) => Promise<Hex>,
-) {
+): Promise<SmartAccount<SmartAccountImplementation<Abi, '0.7'>>> {
   return await toSmartAccount({
     client,
     entryPoint: {

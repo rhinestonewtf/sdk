@@ -1,4 +1,4 @@
-import type { Account, Address, Hex, PublicClient } from 'viem'
+import type { Abi, Account, Address, Hex, PublicClient } from 'viem'
 import {
   concat,
   encodeAbiParameters,
@@ -12,6 +12,8 @@ import {
   entryPoint07Abi,
   entryPoint07Address,
   getUserOperationHash,
+  SmartAccount,
+  SmartAccountImplementation,
   toSmartAccount,
 } from 'viem/account-abstraction'
 
@@ -189,7 +191,7 @@ async function getBaseSmartAccount(
   nonceValidatorAddress: Address,
   getStubSignature: () => Promise<Hex>,
   signUserOperation: (hash: Hex) => Promise<Hex>,
-) {
+): Promise<SmartAccount<SmartAccountImplementation<Abi, '0.7'>>> {
   return await toSmartAccount({
     client,
     entryPoint: {
