@@ -401,9 +401,9 @@ async function waitForExecution(
       return bundleResult
     }
     case 'userop': {
-      const sourceChain = getChainById(result.sourceChain)
+      const targetChain = getChainById(result.targetChain)
       const publicClient = createPublicClient({
-        chain: sourceChain,
+        chain: targetChain,
         transport: http(),
       })
       const bundlerClient = getBundlerClient(config, publicClient)
