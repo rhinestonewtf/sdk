@@ -120,14 +120,18 @@ interface WithoutOperation {
   targetExecutions?: never
 }
 
+type LockMode = 'HOOK' | 'COMPACT'
+
 interface MetaIntentBase {
-  targetChainId: number
-  tokenTransfers: TokenTransfer[]
   targetAccount: Address
+  targetChainId: number
+  targetGasUnits?: bigint
+  tokenTransfers: TokenTransfer[]
   accountAccessList?: {
     chainId: number
     tokenAddress: Address
   }[]
+  lockMode?: LockMode
   omniLock?: boolean
 }
 

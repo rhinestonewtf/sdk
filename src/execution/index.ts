@@ -88,6 +88,7 @@ async function sendTransaction(
       transaction.chain,
       transaction.chain,
       transaction.calls,
+      transaction.gasLimit,
       transaction.tokenRequests,
       transaction.signers,
     )
@@ -98,6 +99,7 @@ async function sendTransaction(
       transaction.sourceChain,
       transaction.targetChain,
       transaction.calls,
+      transaction.gasLimit,
       transaction.tokenRequests,
       transaction.signers,
     )
@@ -109,6 +111,7 @@ async function sendTransactionInternal(
   sourceChain: Chain | undefined,
   targetChain: Chain,
   calls: Call[],
+  gasLimit: bigint | undefined,
   initialTokenRequests: TokenRequest[],
   signers?: SignerSet,
 ) {
@@ -145,6 +148,7 @@ async function sendTransactionInternal(
       sourceChain,
       targetChain,
       calls,
+      gasLimit,
       tokenRequests,
       accountAddress,
       withSession,
@@ -155,6 +159,7 @@ async function sendTransactionInternal(
       sourceChain,
       targetChain,
       calls,
+      gasLimit,
       tokenRequests,
       accountAddress,
     )
@@ -166,6 +171,7 @@ async function sendTransactionAsUserOp(
   sourceChain: Chain,
   targetChain: Chain,
   calls: Call[],
+  gasLimit: bigint | undefined,
   tokenRequests: TokenRequest[],
   accountAddress: Address,
   withSession: Session,
@@ -214,6 +220,7 @@ async function sendTransactionAsUserOp(
       amount: tokenRequest.amount,
     })),
     targetAccount: accountAddress,
+    targetGasUnits: gasLimit,
     userOp: getEmptyUserOp(),
   }
 
@@ -311,6 +318,7 @@ async function sendTransactionAsIntent(
   sourceChain: Chain | undefined,
   targetChain: Chain,
   calls: Call[],
+  gasLimit: bigint | undefined,
   tokenRequests: TokenRequest[],
   accountAddress: Address,
 ) {
@@ -326,6 +334,7 @@ async function sendTransactionAsIntent(
       to: call.to,
       data: call.data ?? '0x',
     })),
+    targetGasUnits: gasLimit,
   }
 
   const orchestrator = getOrchestratorByChain(

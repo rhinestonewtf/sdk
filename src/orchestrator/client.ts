@@ -117,7 +117,7 @@ export class Orchestrator {
   }
 
   async getIntentCost(
-    intent: MetaIntent | OrderFeeInput,
+    intent: OrderFeeInput,
     userAddress: Address,
   ): Promise<OrderCostResult> {
     try {

@@ -134,6 +134,7 @@ type SignerSet = SessionSignerSet
 interface BaseTransaction {
   calls: Call[]
   tokenRequests: TokenRequest[]
+  gasLimit?: bigint
   signers?: SignerSet
 }
 
