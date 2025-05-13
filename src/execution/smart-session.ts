@@ -31,7 +31,7 @@ async function enableSmartSession(
     chain,
     transport: http(),
   })
-  const address = await getAddress(config)
+  const address = getAddress(config)
   const isEnabled = await isSessionEnabled(
     publicClient,
     address,
