@@ -9,6 +9,7 @@ import {
   keccak256,
   pad,
   toHex,
+  zeroAddress,
 } from 'viem'
 import {
   entryPoint07Address,
@@ -72,7 +73,7 @@ type TransactionResult =
   | {
       type: 'bundle'
       id: bigint
-      sourceChain: number
+      sourceChain?: number
       targetChain: number
     }
 
@@ -105,15 +106,17 @@ async function sendTransaction(
 
 async function sendTransactionInternal(
   config: RhinestoneAccountConfig,
-  sourceChain: Chain,
+  sourceChain: Chain | undefined,
   targetChain: Chain,
   calls: Call[],
   initialTokenRequests: TokenRequest[],
   signers?: SignerSet,
 ) {
-  const isAccountDeployed = await isDeployed(sourceChain, config)
-  if (!isAccountDeployed) {
-    await deploySource(sourceChain, config)
+  if (sourceChain) {
+    const isAccountDeployed = await isDeployed(sourceChain, config)
+    if (!isAccountDeployed) {
+      await deploySource(sourceChain, config)
+    }
   }
   const accountAddress = getAddress(config)
   const withSession = signers?.type === 'session' ? signers.session : null
@@ -130,6 +133,11 @@ async function sendTransactionInternal(
       : initialTokenRequests
 
   if (withSession) {
+    if (!sourceChain) {
+      throw new Error(
+        `Specifying source chain is required when using smart sessions`,
+      )
+    }
     await enableSmartSession(sourceChain, config, withSession)
     // Smart sessions require a UserOp flow
     return await sendTransactionAsUserOp(
@@ -300,7 +308,7 @@ async function sendTransactionAsUserOp(
 
 async function sendTransactionAsIntent(
   config: RhinestoneAccountConfig,
-  sourceChain: Chain,
+  sourceChain: Chain | undefined,
   targetChain: Chain,
   calls: Call[],
   tokenRequests: TokenRequest[],
@@ -333,7 +341,7 @@ async function sendTransactionAsIntent(
   const orderBundleHash = getOrderBundleHash(orderPath[0].orderBundle)
   const bundleSignature = await sign(
     config.owners,
-    sourceChain,
+    sourceChain || targetChain,
     orderBundleHash,
   )
   const validatorModule = getOwnerValidator(config)
@@ -362,7 +370,7 @@ async function sendTransactionAsIntent(
   return {
     type: 'bundle',
     id: bundleResults[0].bundleId,
-    sourceChain: sourceChain.id,
+    sourceChain: sourceChain?.id,
     targetChain: targetChain.id,
   } as TransactionResult
 }

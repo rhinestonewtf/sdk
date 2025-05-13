@@ -142,7 +142,7 @@ interface SameChainTransaction extends BaseTransaction {
 }
 
 interface CrossChainTransaction extends BaseTransaction {
-  sourceChain: Chain
+  sourceChain?: Chain
   targetChain: Chain
 }
 
