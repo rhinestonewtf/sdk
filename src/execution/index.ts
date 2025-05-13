@@ -108,7 +108,7 @@ async function sendTransactionInternal(
   sourceChain: Chain,
   targetChain: Chain,
   calls: Call[],
-  tokenRequests: TokenRequest[],
+  initialTokenRequests: TokenRequest[],
   signers?: SignerSet,
 ) {
   const isAccountDeployed = await isDeployed(sourceChain, config)
@@ -117,6 +117,18 @@ async function sendTransactionInternal(
   }
   const accountAddress = getAddress(config)
   const withSession = signers?.type === 'session' ? signers.session : null
+
+  // Across requires passing some value to repay the solvers
+  const tokenRequests =
+    initialTokenRequests.length === 0
+      ? [
+          {
+            address: zeroAddress,
+            amount: 1n,
+          },
+        ]
+      : initialTokenRequests
+
   if (withSession) {
     await enableSmartSession(sourceChain, config, withSession)
     // Smart sessions require a UserOp flow
