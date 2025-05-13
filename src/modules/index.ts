@@ -1,9 +1,9 @@
 import {
-  Address,
+  type Address,
   bytesToHex,
-  Chain,
+  type Chain,
   encodeAbiParameters,
-  Hex,
+  type Hex,
   hexToBytes,
 } from 'viem'
 import {
@@ -17,12 +17,12 @@ import {
   polygonAmoy,
 } from 'viem/chains'
 
-import { RhinestoneAccountConfig } from '../types'
+import type { RhinestoneAccountConfig } from '../types'
 
 import {
   MODULE_TYPE_ID_EXECUTOR,
   MODULE_TYPE_ID_FALLBACK,
-  Module,
+  type Module,
 } from './common'
 import {
   HOOK_ADDRESS,

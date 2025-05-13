@@ -1,17 +1,17 @@
 import {
-  Address,
+  type Address,
   bytesToHex,
   concat,
   encodeAbiParameters,
-  Hex,
+  type Hex,
   hexToBytes,
   keccak256,
   toHex,
 } from 'viem'
 
-import { OwnerSet, RhinestoneAccountConfig } from '../../types'
+import type { OwnerSet, RhinestoneAccountConfig } from '../../types'
 
-import { MODULE_TYPE_ID_VALIDATOR, Module } from '../common'
+import { MODULE_TYPE_ID_VALIDATOR, type Module } from '../common'
 
 interface PublicKey {
   prefix?: number | undefined
