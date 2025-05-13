@@ -1,6 +1,6 @@
-import { Address, Hex } from 'viem'
+import type { Address, Hex } from 'viem'
 import type { UserOperation } from 'viem/account-abstraction'
-import {
+import type {
   arbitrum,
   arbitrumSepolia,
   base,

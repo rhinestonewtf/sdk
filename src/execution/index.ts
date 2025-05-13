@@ -1,10 +1,10 @@
 import {
-  Address,
-  Chain,
+  type Address,
+  type Chain,
   createPublicClient,
   encodeAbiParameters,
   encodePacked,
-  Hex,
+  type Hex,
   http,
   keccak256,
   pad,
@@ -46,7 +46,7 @@ import {
   PROD_ORCHESTRATOR_URL,
 } from '../orchestrator/consts'
 import { getChainById, isTestnet } from '../orchestrator/registry'
-import {
+import type {
   Call,
   RhinestoneAccountConfig,
   Session,

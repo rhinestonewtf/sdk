@@ -1,14 +1,14 @@
 import {
-  Address,
+  type Address,
   domainSeparator,
   encodeAbiParameters,
   encodePacked,
-  Hex,
+  type Hex,
   keccak256,
-  TypedDataDomain,
+  type TypedDataDomain,
   zeroAddress,
 } from 'viem'
-import { UserOperation } from 'viem/account-abstraction'
+import type { UserOperation } from 'viem/account-abstraction'
 
 import { HOOK_ADDRESS } from '../modules'
 
@@ -17,21 +17,21 @@ import {
   BUNDLE_STATUS_EXPIRED,
   BUNDLE_STATUS_FAILED,
   BUNDLE_STATUS_FILLED,
-  BUNDLE_STATUS_PRECONFIRMED,
   BUNDLE_STATUS_PARTIALLY_COMPLETED,
   BUNDLE_STATUS_PENDING,
+  BUNDLE_STATUS_PRECONFIRMED,
   BUNDLE_STATUS_UNKNOWN,
-  BundleEvent,
-  Execution,
-  InsufficientBalanceResult,
-  MultiChainCompact,
-  OrderCost,
-  OrderCostResult,
-  Segment,
-  TokenArrays6909,
-  TokenFulfillmentStatus,
-  UserChainBalances,
-  Witness,
+  type BundleEvent,
+  type Execution,
+  type InsufficientBalanceResult,
+  type MultiChainCompact,
+  type OrderCost,
+  type OrderCostResult,
+  type Segment,
+  type TokenArrays6909,
+  type TokenFulfillmentStatus,
+  type UserChainBalances,
+  type Witness,
 } from './types'
 
 const MULTICHAIN_COMPACT_TYPEHASH =

@@ -1,19 +1,19 @@
 import {
-  Account,
-  Chain,
+  type Account,
+  type Chain,
   concat,
   createPublicClient,
   createWalletClient,
   encodePacked,
-  Hex,
+  type Hex,
   http,
   keccak256,
-  PublicClient,
+  type PublicClient,
   size,
   slice,
   zeroHash,
 } from 'viem'
-import { WebAuthnAccount } from 'viem/account-abstraction'
+import type { WebAuthnAccount } from 'viem/account-abstraction'
 import {
   getWebauthnValidatorSignature,
   isRip7212SupportedNetwork,
@@ -22,7 +22,7 @@ import {
   getOwnerValidator,
   getSmartSessionValidator,
 } from '../modules/validators'
-import {
+import type {
   AccountProviderConfig,
   OwnerSet,
   RhinestoneAccountConfig,
