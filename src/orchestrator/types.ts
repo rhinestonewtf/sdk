@@ -1,6 +1,6 @@
-import { Address, Hex } from 'viem'
+import type { Address, Hex } from 'viem'
 import type { UserOperation } from 'viem/account-abstraction'
-import {
+import type {
   arbitrum,
   arbitrumSepolia,
   base,
@@ -279,6 +279,7 @@ const BUNDLE_STATUS_EXPIRED = 'EXPIRED'
 const BUNDLE_STATUS_PARTIALLY_COMPLETED = 'PARTIALLY_COMPLETED'
 const BUNDLE_STATUS_COMPLETED = 'COMPLETED'
 const BUNDLE_STATUS_FILLED = 'FILLED'
+const BUNDLE_STATUS_PRECONFIRMED = 'PRECONFIRMED'
 const BUNDLE_STATUS_UNKNOWN = 'UNKNOWN'
 
 export type {
@@ -313,5 +314,6 @@ export {
   BUNDLE_STATUS_PARTIALLY_COMPLETED,
   BUNDLE_STATUS_COMPLETED,
   BUNDLE_STATUS_FILLED,
+  BUNDLE_STATUS_PRECONFIRMED,
   BUNDLE_STATUS_UNKNOWN,
 }

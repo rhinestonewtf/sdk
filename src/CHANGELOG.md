@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 0.7.4
+
+### Patch Changes
+
+- e86fc28: Adds new "preconfirmed" status for bundles
+
 ## 0.7.3
 
 ### Patch Changes

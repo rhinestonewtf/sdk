@@ -12,7 +12,7 @@ import { createBundlerClient } from 'viem/account-abstraction'
 import { readContract } from 'viem/actions'
 import { getAction } from 'viem/utils'
 
-import { BundlerConfig, RhinestoneAccountConfig } from '../types'
+import type { BundlerConfig, RhinestoneAccountConfig } from '../types'
 
 type CallType = 'call' | 'delegatecall' | 'batchcall'
 

@@ -1,10 +1,10 @@
 import {
-  Address,
-  Chain,
+  type Address,
+  type Chain,
   createPublicClient,
   encodeAbiParameters,
   encodePacked,
-  Hex,
+  type Hex,
   http,
   keccak256,
 } from 'viem'
@@ -18,9 +18,9 @@ import {
   getSessionAllowedERC7739Content,
   isSessionEnabled,
 } from '../modules/validators'
-import { OrderPath } from '../orchestrator'
+import type { OrderPath } from '../orchestrator'
 import { hashMultichainCompactWithoutDomainSeparator } from '../orchestrator/utils'
-import { RhinestoneAccountConfig, Session } from '../types'
+import type { RhinestoneAccountConfig, Session } from '../types'
 
 async function enableSmartSession(
   chain: Chain,

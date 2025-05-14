@@ -1,5 +1,5 @@
-import { Account, Address, Chain, Hex } from 'viem'
-import { WebAuthnAccount } from 'viem/account-abstraction'
+import type { Account, Address, Chain, Hex } from 'viem'
+import type { WebAuthnAccount } from 'viem/account-abstraction'
 
 interface AccountProviderConfig {
   type: 'safe' | 'nexus'
