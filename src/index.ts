@@ -3,6 +3,7 @@ import { getAddress as getAddressInternal } from './accounts'
 import type { TransactionResult } from './execution'
 import {
   getMaxSpendableAmount as getMaxSpendableAmountInternal,
+  getPortfolio as getPortfolioInternal,
   sendTransaction as sendTransactionInternal,
   waitForExecution as waitForExecutionInternal,
 } from './execution'
@@ -55,6 +56,15 @@ async function createRhinestoneAccount(config: RhinestoneAccountConfig) {
   }
 
   /**
+   * Get account portfolio
+   * @param onTestnets Whether to query the testnet balances (default is `false`)
+   * @returns Account balances
+   */
+  function getPortfolio(onTestnets = false) {
+    return getPortfolioInternal(config, onTestnets)
+  }
+
+  /**
    * Get the maximum spendable token amount on the target chain
    * @param chain Target chain
    * @param tokenAddress Token address (on the target chain)
@@ -74,6 +84,7 @@ async function createRhinestoneAccount(config: RhinestoneAccountConfig) {
     sendTransaction,
     waitForExecution,
     getAddress,
+    getPortfolio,
     getMaxSpendableAmount,
   }
 }

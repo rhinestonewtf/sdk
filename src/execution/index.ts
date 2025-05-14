@@ -15,6 +15,7 @@ import {
   entryPoint07Address,
   getUserOperationHash,
 } from 'viem/account-abstraction'
+import { mainnet, sepolia } from 'viem/chains'
 
 import {
   deploySource,
@@ -440,6 +441,16 @@ async function getMaxSpendableAmount(
   )
 }
 
+async function getPortfolio(
+  config: RhinestoneAccountConfig,
+  onTestnets: boolean,
+) {
+  const address = getAddress(config)
+  const chainId = onTestnets ? sepolia.id : mainnet.id
+  const orchestrator = getOrchestratorByChain(chainId, config.rhinestoneApiKey)
+  return orchestrator.getPortfolio(address)
+}
+
 function getOrchestratorByChain(chainId: number, apiKey: string) {
   const orchestratorUrl = isTestnet(chainId)
     ? DEV_ORCHESTRATOR_URL
@@ -447,5 +458,10 @@ function getOrchestratorByChain(chainId: number, apiKey: string) {
   return getOrchestrator(apiKey, orchestratorUrl)
 }
 
-export { sendTransaction, waitForExecution, getMaxSpendableAmount }
+export {
+  sendTransaction,
+  waitForExecution,
+  getMaxSpendableAmount,
+  getPortfolio,
+}
 export type { TransactionResult }
