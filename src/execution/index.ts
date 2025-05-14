@@ -38,6 +38,7 @@ import {
   BUNDLE_STATUS_COMPLETED,
   BUNDLE_STATUS_FAILED,
   BUNDLE_STATUS_FILLED,
+  BUNDLE_STATUS_PRECONFIRMED,
   getEmptyUserOp,
   getOrchestrator,
   getOrderBundleHash,
@@ -396,6 +397,7 @@ async function waitForExecution(
         bundleResult === null ||
         (bundleResult.status !== BUNDLE_STATUS_FAILED &&
           bundleResult.status !== BUNDLE_STATUS_COMPLETED &&
+          bundleResult.status !== BUNDLE_STATUS_PRECONFIRMED &&
           bundleResult.status !== BUNDLE_STATUS_FILLED)
       ) {
         const orchestrator = getOrchestratorByChain(
