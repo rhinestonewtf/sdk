@@ -49,6 +49,7 @@ import {
   PROD_ORCHESTRATOR_URL,
 } from '../orchestrator/consts'
 import { getChainById, isTestnet } from '../orchestrator/registry'
+import { BundleStatus } from '../orchestrator/types'
 import type {
   Call,
   RhinestoneAccountConfig,
@@ -389,16 +390,23 @@ async function sendTransactionAsIntent(
 async function waitForExecution(
   config: RhinestoneAccountConfig,
   result: TransactionResult,
+  acceptsPreconfirmations: boolean,
 ) {
+  const validStatuses: BundleStatus[] = [
+    BUNDLE_STATUS_FAILED,
+    BUNDLE_STATUS_COMPLETED,
+    BUNDLE_STATUS_FILLED,
+  ]
+  if (acceptsPreconfirmations) {
+    validStatuses.push(BUNDLE_STATUS_PRECONFIRMED)
+  }
+
   switch (result.type) {
     case 'bundle': {
       let bundleResult: BundleResult | null = null
       while (
         bundleResult === null ||
-        (bundleResult.status !== BUNDLE_STATUS_FAILED &&
-          bundleResult.status !== BUNDLE_STATUS_COMPLETED &&
-          bundleResult.status !== BUNDLE_STATUS_PRECONFIRMED &&
-          bundleResult.status !== BUNDLE_STATUS_FILLED)
+        validStatuses.includes(bundleResult.status)
       ) {
         const orchestrator = getOrchestratorByChain(
           result.targetChain,

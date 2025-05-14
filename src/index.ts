@@ -41,10 +41,14 @@ async function createRhinestoneAccount(config: RhinestoneAccountConfig) {
   /**
    * Wait for the transaction execution onchain
    * @param result transaction result object
+   * @param acceptsPreconfirmations whether to accept preconfirmations from relayers before the transaction lands onchain (enabled by default)
    * @returns bundle result or a UserOp receipt
    */
-  function waitForExecution(result: TransactionResult) {
-    return waitForExecutionInternal(config, result)
+  function waitForExecution(
+    result: TransactionResult,
+    acceptsPreconfirmations = true,
+  ) {
+    return waitForExecutionInternal(config, result, acceptsPreconfirmations)
   }
 
   /**
