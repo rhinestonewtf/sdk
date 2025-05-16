@@ -214,6 +214,7 @@ async function getSmartSessionData(
     sessionValidatorInitData: sessionValidator.initData,
     salt: session.salt ?? zeroHash,
     userOpPolicies,
+    // Using the fallback action by default (any transaction will pass)
     actions: (
       session.actions || [
         {

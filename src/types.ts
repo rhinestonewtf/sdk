@@ -134,6 +134,7 @@ type SignerSet = SessionSignerSet
 interface BaseTransaction {
   calls: Call[]
   tokenRequests: TokenRequest[]
+  gasLimit?: bigint
   signers?: SignerSet
 }
 
@@ -142,7 +143,7 @@ interface SameChainTransaction extends BaseTransaction {
 }
 
 interface CrossChainTransaction extends BaseTransaction {
-  sourceChain: Chain
+  sourceChain?: Chain
   targetChain: Chain
 }
 

@@ -9,11 +9,13 @@ import {
   keccak256,
   pad,
   toHex,
+  zeroAddress,
 } from 'viem'
 import {
   entryPoint07Address,
   getUserOperationHash,
 } from 'viem/account-abstraction'
+import { mainnet, sepolia } from 'viem/chains'
 
 import {
   deploySource,
@@ -36,6 +38,7 @@ import {
   BUNDLE_STATUS_COMPLETED,
   BUNDLE_STATUS_FAILED,
   BUNDLE_STATUS_FILLED,
+  BUNDLE_STATUS_PRECONFIRMED,
   getEmptyUserOp,
   getOrchestrator,
   getOrderBundleHash,
@@ -46,6 +49,7 @@ import {
   PROD_ORCHESTRATOR_URL,
 } from '../orchestrator/consts'
 import { getChainById, isTestnet } from '../orchestrator/registry'
+import { BundleStatus } from '../orchestrator/types'
 import type {
   Call,
   RhinestoneAccountConfig,
@@ -72,7 +76,7 @@ type TransactionResult =
   | {
       type: 'bundle'
       id: bigint
-      sourceChain: number
+      sourceChain?: number
       targetChain: number
     }
 
@@ -87,6 +91,7 @@ async function sendTransaction(
       transaction.chain,
       transaction.chain,
       transaction.calls,
+      transaction.gasLimit,
       transaction.tokenRequests,
       transaction.signers,
     )
@@ -97,6 +102,7 @@ async function sendTransaction(
       transaction.sourceChain,
       transaction.targetChain,
       transaction.calls,
+      transaction.gasLimit,
       transaction.tokenRequests,
       transaction.signers,
     )
@@ -105,19 +111,39 @@ async function sendTransaction(
 
 async function sendTransactionInternal(
   config: RhinestoneAccountConfig,
-  sourceChain: Chain,
+  sourceChain: Chain | undefined,
   targetChain: Chain,
   calls: Call[],
-  tokenRequests: TokenRequest[],
+  gasLimit: bigint | undefined,
+  initialTokenRequests: TokenRequest[],
   signers?: SignerSet,
 ) {
-  const isAccountDeployed = await isDeployed(sourceChain, config)
-  if (!isAccountDeployed) {
-    await deploySource(sourceChain, config)
+  if (sourceChain) {
+    const isAccountDeployed = await isDeployed(sourceChain, config)
+    if (!isAccountDeployed) {
+      await deploySource(sourceChain, config)
+    }
   }
   const accountAddress = getAddress(config)
   const withSession = signers?.type === 'session' ? signers.session : null
+
+  // Across requires passing some value to repay the solvers
+  const tokenRequests =
+    initialTokenRequests.length === 0
+      ? [
+          {
+            address: zeroAddress,
+            amount: 1n,
+          },
+        ]
+      : initialTokenRequests
+
   if (withSession) {
+    if (!sourceChain) {
+      throw new Error(
+        `Specifying source chain is required when using smart sessions`,
+      )
+    }
     await enableSmartSession(sourceChain, config, withSession)
     // Smart sessions require a UserOp flow
     return await sendTransactionAsUserOp(
@@ -125,6 +151,7 @@ async function sendTransactionInternal(
       sourceChain,
       targetChain,
       calls,
+      gasLimit,
       tokenRequests,
       accountAddress,
       withSession,
@@ -135,6 +162,7 @@ async function sendTransactionInternal(
       sourceChain,
       targetChain,
       calls,
+      gasLimit,
       tokenRequests,
       accountAddress,
     )
@@ -146,6 +174,7 @@ async function sendTransactionAsUserOp(
   sourceChain: Chain,
   targetChain: Chain,
   calls: Call[],
+  gasLimit: bigint | undefined,
   tokenRequests: TokenRequest[],
   accountAddress: Address,
   withSession: Session,
@@ -194,6 +223,7 @@ async function sendTransactionAsUserOp(
       amount: tokenRequest.amount,
     })),
     targetAccount: accountAddress,
+    targetGasUnits: gasLimit,
     userOp: getEmptyUserOp(),
   }
 
@@ -288,9 +318,10 @@ async function sendTransactionAsUserOp(
 
 async function sendTransactionAsIntent(
   config: RhinestoneAccountConfig,
-  sourceChain: Chain,
+  sourceChain: Chain | undefined,
   targetChain: Chain,
   calls: Call[],
+  gasLimit: bigint | undefined,
   tokenRequests: TokenRequest[],
   accountAddress: Address,
 ) {
@@ -306,6 +337,7 @@ async function sendTransactionAsIntent(
       to: call.to,
       data: call.data ?? '0x',
     })),
+    targetGasUnits: gasLimit,
   }
 
   const orchestrator = getOrchestratorByChain(
@@ -321,7 +353,7 @@ async function sendTransactionAsIntent(
   const orderBundleHash = getOrderBundleHash(orderPath[0].orderBundle)
   const bundleSignature = await sign(
     config.owners,
-    sourceChain,
+    sourceChain || targetChain,
     orderBundleHash,
   )
   const validatorModule = getOwnerValidator(config)
@@ -350,7 +382,7 @@ async function sendTransactionAsIntent(
   return {
     type: 'bundle',
     id: bundleResults[0].bundleId,
-    sourceChain: sourceChain.id,
+    sourceChain: sourceChain?.id,
     targetChain: targetChain.id,
   } as TransactionResult
 }
@@ -358,15 +390,23 @@ async function sendTransactionAsIntent(
 async function waitForExecution(
   config: RhinestoneAccountConfig,
   result: TransactionResult,
+  acceptsPreconfirmations: boolean,
 ) {
+  const validStatuses: BundleStatus[] = [
+    BUNDLE_STATUS_FAILED,
+    BUNDLE_STATUS_COMPLETED,
+    BUNDLE_STATUS_FILLED,
+  ]
+  if (acceptsPreconfirmations) {
+    validStatuses.push(BUNDLE_STATUS_PRECONFIRMED)
+  }
+
   switch (result.type) {
     case 'bundle': {
       let bundleResult: BundleResult | null = null
       while (
         bundleResult === null ||
-        (bundleResult.status !== BUNDLE_STATUS_FAILED &&
-          bundleResult.status !== BUNDLE_STATUS_COMPLETED &&
-          bundleResult.status !== BUNDLE_STATUS_FILLED)
+        validStatuses.includes(bundleResult.status)
       ) {
         const orchestrator = getOrchestratorByChain(
           result.targetChain,
@@ -381,9 +421,9 @@ async function waitForExecution(
       return bundleResult
     }
     case 'userop': {
-      const sourceChain = getChainById(result.sourceChain)
+      const targetChain = getChainById(result.targetChain)
       const publicClient = createPublicClient({
-        chain: sourceChain,
+        chain: targetChain,
         transport: http(),
       })
       const bundlerClient = getBundlerClient(config, publicClient)
@@ -411,6 +451,16 @@ async function getMaxSpendableAmount(
   )
 }
 
+async function getPortfolio(
+  config: RhinestoneAccountConfig,
+  onTestnets: boolean,
+) {
+  const address = getAddress(config)
+  const chainId = onTestnets ? sepolia.id : mainnet.id
+  const orchestrator = getOrchestratorByChain(chainId, config.rhinestoneApiKey)
+  return orchestrator.getPortfolio(address)
+}
+
 function getOrchestratorByChain(chainId: number, apiKey: string) {
   const orchestratorUrl = isTestnet(chainId)
     ? DEV_ORCHESTRATOR_URL
@@ -418,5 +468,10 @@ function getOrchestratorByChain(chainId: number, apiKey: string) {
   return getOrchestrator(apiKey, orchestratorUrl)
 }
 
-export { sendTransaction, waitForExecution, getMaxSpendableAmount }
+export {
+  sendTransaction,
+  waitForExecution,
+  getMaxSpendableAmount,
+  getPortfolio,
+}
 export type { TransactionResult }

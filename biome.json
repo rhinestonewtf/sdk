@@ -22,7 +22,8 @@
         "noDelete": "off"
       },
       "style": {
-        "noNonNullAssertion": "off"
+        "noNonNullAssertion": "off",
+        "useConsistentArrayType": "error"
       },
       "suspicious": {
         "noArrayIndexKey": "off",

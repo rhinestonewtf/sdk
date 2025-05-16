@@ -34,6 +34,7 @@ type BundleStatus =
   | typeof BUNDLE_STATUS_PARTIALLY_COMPLETED
   | typeof BUNDLE_STATUS_COMPLETED
   | typeof BUNDLE_STATUS_FILLED
+  | typeof BUNDLE_STATUS_PRECONFIRMED
   | typeof BUNDLE_STATUS_FAILED
   | typeof BUNDLE_STATUS_UNKNOWN
 
@@ -120,14 +121,18 @@ interface WithoutOperation {
   targetExecutions?: never
 }
 
+type LockMode = 'HOOK' | 'COMPACT'
+
 interface MetaIntentBase {
-  targetChainId: number
-  tokenTransfers: TokenTransfer[]
   targetAccount: Address
+  targetChainId: number
+  targetGasUnits?: bigint
+  tokenTransfers: TokenTransfer[]
   accountAccessList?: {
     chainId: number
     tokenAddress: Address
   }[]
+  lockMode?: LockMode
   omniLock?: boolean
 }
 
