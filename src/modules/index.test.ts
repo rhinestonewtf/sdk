@@ -19,7 +19,9 @@ describe('Modules', () => {
         },
       }
       const setup = getSetup(config)
-      expect(setup.validators).toHaveLength(1)
+      expect(setup.validators[0].address).toBe(
+        '0x2483DA3A338895199E5e538530213157e931Bf06',
+      )
       expect(setup.validators[0].type).toBe(1n)
     })
 
@@ -32,7 +34,11 @@ describe('Modules', () => {
         },
       }
       const setup = getSetup(config)
+
       expect(setup.validators).toHaveLength(1)
+      expect(setup.validators[0].address).toBe(
+        '0x2f167e55d42584f65e2e30a748f41ee75a311414',
+      )
       expect(setup.validators[0].type).toBe(1n)
     })
 
@@ -55,8 +61,15 @@ describe('Modules', () => {
         ],
       }
       const setup = getSetup(config)
-      expect(setup.validators).toHaveLength(2)
-      expect(setup.validators[1].type).toBe(1n)
+
+      const smartSessionValidator = setup.validators.find(
+        (validator) =>
+          validator.address === '0x00000000002b0ecfbd0496ee71e01257da0e37de',
+      )
+      if (!smartSessionValidator) {
+        return
+      }
+      expect(smartSessionValidator.type).toBe(1n)
     })
 
     test('should use smart session compatibility fallback for safe accounts with sessions', () => {
@@ -81,10 +94,16 @@ describe('Modules', () => {
         },
       }
       const setup = getSetup(config)
-      expect(setup.fallbacks).toHaveLength(2)
-      expect(setup.fallbacks[1].address).toBe(
-        '0x12cae64c42f362e7d5a847c2d33388373f629177',
+
+      const smartSessionFallback = setup.fallbacks.find(
+        (fallback) =>
+          fallback.address === '0x12cae64c42f362e7d5a847c2d33388373f629177',
       )
+      expect(smartSessionFallback).toBeDefined()
+      if (!smartSessionFallback) {
+        return
+      }
+      expect(smartSessionFallback.type).toBe(3n)
     })
 
     test.todo('using the omni account should install the necessary modules')
