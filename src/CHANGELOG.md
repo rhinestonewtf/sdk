@@ -1,5 +1,34 @@
 # @rhinestone/sdk
 
+## 0.7.5
+
+### Patch Changes
+
+- 5a063c7: Improvements:
+
+  - default value for `tokenRequests` (1 unit of ether)
+  - make `sourceChain` optional (when possible)
+  - executor flow: custom `gasLimit`
+  - add portfolio util to `rhinestoneAccount`
+  - add an optional `acceptsPreconfirmations` param to `waitForExecution`
+
+  Bug fixes:
+
+  - user op flow: fix `maxPriorityFeePerGas` (arbitrum sepolia)
+  - make sure the statuses are handled properly when waiting for a bundle result
+
+## 0.7.4
+
+### Patch Changes
+
+- e86fc28: Adds new "preconfirmed" status for bundles
+
+## 0.7.3
+
+### Patch Changes
+
+- eb0fd7f: Reduce bundle size from 3.5MB to 200KB
+
 ## 0.7.2
 
 ### Patch Changes

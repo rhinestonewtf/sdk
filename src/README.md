@@ -28,9 +28,10 @@ You'll need a Rhinestone API key, as well as an existing account with some testn
 
 ### Creating a Wallet
 
-Let's create a single-owner Safe account:
+Let's create a smart account with a single owner:
 
 ```ts
+import { createRhinestoneAccount } from '@rhinestone/sdk'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import { baseSepolia, arbitrumSepolia, optimismSepolia } from 'viem/chains'
 import {
@@ -43,8 +44,6 @@ import {
   http,
   parseEther,
 } from 'viem'
-
-import { createRhinestoneAccount } from '@rhinestone/sdk'
 
 const fundingPrivateKey = process.env.FUNDING_PRIVATE_KEY
 if (!fundingPrivateKey) {
@@ -59,67 +58,43 @@ if (!rhinestoneApiKey) {
 const sourceChain = baseSepolia
 const targetChain = arbitrumSepolia
 
-const fundingAccount = privateKeyToAccount(fundingPrivateKey as Hex)
-const publicClient = createPublicClient({
-  chain: sourceChain,
-  transport: http(),
-})
-const fundingClient = createWalletClient({
-  account: fundingAccount,
-  chain: sourceChain,
-  transport: http(),
-})
-
 // You can use an existing PK here
 const privateKey = generatePrivateKey()
-console.log('pk', privateKey)
+console.log(`Owner private key: ${privateKey}`)
 const account = privateKeyToAccount(privateKey)
 
 const rhinestoneAccount = await createRhinestoneAccount({
-  account: {
-    type: 'nexus',
-  },
   owners: {
     type: 'ecdsa',
     accounts: [account],
   }
   rhinestoneApiKey,
-  // Optional, used to deploy the account on the source chain
-  deployerAccount: fundingAccount,
-  // Alternatively, you can use an ERC-4337 bundler to deploy
-  // bundler: { … }
 })
-const address = await rhinestoneAccount.getAddress(sourceChain)
-console.log(address)
+const address = await rhinestoneAccount.getAddress()
+console.log(`Smart account address: ${address}`)
 ```
 
 ### Funding the Account
 
-We will send some ETH from the funding account to the created Safe account. The Orchestrator will use some of that ETH to deploy the account on the target chain, as well as convert it to USDC for a transfer transaction.
+We will send some ETH from the funding account to the created smart account. The Orchestrator will use some of that ETH to deploy the account on the target chain, as well as to convert it to USDC for a transfer transaction.
 
 ```ts
-const usdc = getTokenAddress(sourceChain)
-const usdcTarget = getTokenAddress(targetChain)
-const usdcAmount = 1n
+const publicClient = createPublicClient({
+  chain: sourceChain,
+  transport: http(),
+});
+const fundingAccount = privateKeyToAccount(fundingPrivateKey as Hex);
+const fundingClient = createWalletClient({
+  account: fundingAccount,
+  chain: sourceChain,
+  transport: http(),
+});
 
 const txHash = await fundingClient.sendTransaction({
   to: address,
   value: parseEther('0.001'),
-})
-await publicClient.waitForTransactionReceipt({ hash: txHash })
-
-function getTokenAddress(chain: Chain) {
-  switch (chain.id) {
-    case baseSepolia.id:
-      return '0x036cbd53842c5426634e7929541ec2318f3dcf7e'
-    case arbitrumSepolia.id:
-      return '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d'
-    case optimismSepolia.id:
-      return '0x5fd84259d66Cd46123540766Be93DFE6D43130D7'
-    default:
-      throw new Error('Unsupported chain')
-  }
-}
+});
+await publicClient.waitForTransactionReceipt({ hash: txHash });
 ```
 
 ### Sending a Cross-chain Transaction
@@ -127,7 +102,10 @@ function getTokenAddress(chain: Chain) {
 Finally, let's make a cross-chain token transfer:
 
 ```ts
-const bundleId = await rhinestoneAccount.sendTransaction({
+const usdcTarget = '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d';
+const usdcAmount = 1n;
+
+const transaction = await rhinestoneAccount.sendTransaction({
   sourceChain,
   targetChain,
   calls: [
@@ -147,12 +125,14 @@ const bundleId = await rhinestoneAccount.sendTransaction({
       amount: usdcAmount,
     },
   ],
-})
-console.log('id', bundleId)
+});
+console.log('Transaction', transaction);
 
-const bundleResult = await rhinestoneAccount.waitForExecution({ id: bundleId })
-console.log('status', bundleResult.status)
+const transactionResult = await rhinestoneAccount.waitForExecution(transaction);
+console.log('Result', transactionResult);
 ```
+
+After running that, you will get a smart account deployed on both Base Sepolia and Arbitrum Sepolia, and make a cross-chain USDC transfer.
 
 ### Using Smart Sessions
 
@@ -207,7 +187,7 @@ const rhinestoneAccount = await createRhinestoneAccount({
   sessions: [session],
   bundler: {
     // …
-  }
+  },
 })
 ```
 
@@ -222,7 +202,6 @@ const transactionResult = await rhinestoneAccount.sendTransaction({
   },
 })
 ```
-
 
 ## Contributing
 

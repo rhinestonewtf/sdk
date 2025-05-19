@@ -1,15 +1,15 @@
 import {
-  Address,
-  Chain,
+  type Address,
+  type Chain,
   createPublicClient,
   encodeAbiParameters,
   encodeFunctionData,
   encodePacked,
-  Hex,
+  type Hex,
   http,
   isHex,
   keccak256,
-  PublicClient,
+  type PublicClient,
   padHex,
   parseAbi,
   toHex,
@@ -20,14 +20,14 @@ import {
   getWethAddress,
   RHINESTONE_SPOKE_POOL_ADDRESS,
 } from '../../orchestrator'
-import {
+import type {
   Policy,
   RhinestoneAccountConfig,
   Session,
   UniversalActionPolicyParamCondition,
 } from '../../types'
 import { enableSessionsAbi } from '../abi/smart-sessions'
-import { MODULE_TYPE_ID_VALIDATOR, Module } from '../common'
+import { MODULE_TYPE_ID_VALIDATOR, type Module } from '../common'
 import { HOOK_ADDRESS } from '../omni-account'
 
 import { getValidator } from './core'
@@ -214,6 +214,7 @@ async function getSmartSessionData(
     sessionValidatorInitData: sessionValidator.initData,
     salt: session.salt ?? zeroHash,
     userOpPolicies,
+    // Using the fallback action by default (any transaction will pass)
     actions: (
       session.actions || [
         {

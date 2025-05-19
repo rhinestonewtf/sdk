@@ -1,4 +1,4 @@
-import { Address } from 'viem'
+import type { Address } from 'viem'
 
 const OMNI_ACCOUNT_MOCK_ATTESTER_ADDRESS: Address =
   '0x6D0515e8E499468DCe9583626f0cA15b887f9d03'

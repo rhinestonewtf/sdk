@@ -1,11 +1,12 @@
 import {
-  Address,
+  type Abi,
+  type Address,
   concat,
   encodeFunctionData,
   encodePacked,
-  Hex,
+  type Hex,
   keccak256,
-  PublicClient,
+  type PublicClient,
   parseAbi,
   zeroAddress,
 } from 'viem'
@@ -13,6 +14,8 @@ import {
   entryPoint07Abi,
   entryPoint07Address,
   getUserOperationHash,
+  type SmartAccount,
+  type SmartAccountImplementation,
   toSmartAccount,
 } from 'viem/account-abstraction'
 
@@ -23,7 +26,7 @@ import {
   getPermissionId,
   SMART_SESSION_MODE_USE,
 } from '../modules/validators'
-import { OwnerSet, RhinestoneAccountConfig, Session } from '../types'
+import type { OwnerSet, RhinestoneAccountConfig, Session } from '../types'
 
 import { encode7579Calls, getAccountNonce } from './utils'
 
@@ -169,7 +172,7 @@ async function getBaseSmartAccount(
   validatorAddress: Address,
   getStubSignature: () => Promise<Hex>,
   signUserOperation: (hash: Hex) => Promise<Hex>,
-) {
+): Promise<SmartAccount<SmartAccountImplementation<Abi, '0.7'>>> {
   return await toSmartAccount({
     client,
     entryPoint: {

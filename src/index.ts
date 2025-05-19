@@ -1,8 +1,9 @@
-import { Address, Chain } from 'viem'
+import type { Address, Chain } from 'viem'
 import { getAddress as getAddressInternal } from './accounts'
 import type { TransactionResult } from './execution'
 import {
   getMaxSpendableAmount as getMaxSpendableAmountInternal,
+  getPortfolio as getPortfolioInternal,
   sendTransaction as sendTransactionInternal,
   waitForExecution as waitForExecutionInternal,
 } from './execution'
@@ -40,10 +41,14 @@ async function createRhinestoneAccount(config: RhinestoneAccountConfig) {
   /**
    * Wait for the transaction execution onchain
    * @param result transaction result object
+   * @param acceptsPreconfirmations whether to accept preconfirmations from relayers before the transaction lands onchain (enabled by default)
    * @returns bundle result or a UserOp receipt
    */
-  function waitForExecution(result: TransactionResult) {
-    return waitForExecutionInternal(config, result)
+  function waitForExecution(
+    result: TransactionResult,
+    acceptsPreconfirmations = true,
+  ) {
+    return waitForExecutionInternal(config, result, acceptsPreconfirmations)
   }
 
   /**
@@ -52,6 +57,15 @@ async function createRhinestoneAccount(config: RhinestoneAccountConfig) {
    */
   function getAddress() {
     return getAddressInternal(config)
+  }
+
+  /**
+   * Get account portfolio
+   * @param onTestnets Whether to query the testnet balances (default is `false`)
+   * @returns Account balances
+   */
+  function getPortfolio(onTestnets = false) {
+    return getPortfolioInternal(config, onTestnets)
   }
 
   /**
@@ -74,6 +88,7 @@ async function createRhinestoneAccount(config: RhinestoneAccountConfig) {
     sendTransaction,
     waitForExecution,
     getAddress,
+    getPortfolio,
     getMaxSpendableAmount,
   }
 }

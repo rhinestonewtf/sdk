@@ -12,7 +12,7 @@ import { createBundlerClient } from 'viem/account-abstraction'
 import { readContract } from 'viem/actions'
 import { getAction } from 'viem/utils'
 
-import { BundlerConfig, RhinestoneAccountConfig } from '../types'
+import type { BundlerConfig, RhinestoneAccountConfig } from '../types'
 
 type CallType = 'call' | 'delegatecall' | 'batchcall'
 
@@ -36,6 +36,25 @@ interface GetAccountNonceParams {
   address: Address
   entryPointAddress: Address
   key?: bigint
+}
+
+interface UserOperationGasPriceResponse {
+  jsonrpc: '2.0'
+  id: 1
+  result: {
+    slow: {
+      maxFeePerGas: Hex
+      maxPriorityFeePerGas: Hex
+    }
+    standard: {
+      maxFeePerGas: Hex
+      maxPriorityFeePerGas: Hex
+    }
+    fast: {
+      maxFeePerGas: Hex
+      maxPriorityFeePerGas: Hex
+    }
+  }
 }
 
 function parseCallType(callType: CallType) {
@@ -220,7 +239,33 @@ function getBundlerClient(config: RhinestoneAccountConfig, client: Client) {
     client,
     transport: http(endpoint),
     paymaster: true,
+    userOperation: {
+      estimateFeesPerGas: () => getGasPriceEstimate(endpoint),
+    },
   })
+}
+
+async function getGasPriceEstimate(bundlerUrl: string) {
+  const response = await fetch(bundlerUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: Date.now(),
+      // TODO do not rely on vendor-specific methods
+      method: 'pimlico_getUserOperationGasPrice',
+      params: [],
+    }),
+  })
+
+  const json = (await response.json()) as UserOperationGasPriceResponse
+
+  return {
+    maxFeePerGas: BigInt(json.result.fast.maxFeePerGas),
+    maxPriorityFeePerGas: BigInt(json.result.fast.maxPriorityFeePerGas),
+  }
 }
 
 export { encode7579Calls, getAccountNonce, getBundlerClient }

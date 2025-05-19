@@ -23,7 +23,7 @@
       },
       "style": {
         "noNonNullAssertion": "off",
-        "useShorthandArrayType": "error"
+        "useConsistentArrayType": "error"
       },
       "suspicious": {
         "noArrayIndexKey": "off",
