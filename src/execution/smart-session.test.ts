@@ -40,7 +40,8 @@ describe('Smart Session', () => {
         }),
       }
     })
-    ;(createPublicClient as any).mockImplementation((_: any) => {
+    const client = createPublicClient as any
+    client.mockImplementation((_: any) => {
       return {
         readContract: (params: ReadContractParameters) => {
           if (params.functionName === 'DOMAIN_SEPARATOR') {
