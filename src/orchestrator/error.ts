@@ -33,3 +33,7 @@ export class OrchestratorError extends Error {
     return this._traceId
   }
 }
+
+export function isOrchestratorError(error: Error): error is OrchestratorError {
+  return error instanceof OrchestratorError
+}

@@ -345,6 +345,19 @@ function isTestnet(chainId: number) {
   return chain.testnet ?? false
 }
 
+function isTokenAddressSupported(address: Address, chainId: number): boolean {
+  const chain = getChainById(chainId)
+  if (!chain) {
+    throw new Error(`Chain not supported: ${chainId}`)
+  }
+  try {
+    getTokenSymbol(address, chainId)
+    return true
+  } catch {
+    return false
+  }
+}
+
 export {
   getTokenSymbol,
   getTokenAddress,
@@ -357,4 +370,5 @@ export {
   getRhinestoneSpokePoolAddress,
   getChainById,
   isTestnet,
+  isTokenAddressSupported,
 }

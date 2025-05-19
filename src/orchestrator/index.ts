@@ -1,6 +1,6 @@
 import { Orchestrator } from './client'
 import { PROD_ORCHESTRATOR_URL, RHINESTONE_SPOKE_POOL_ADDRESS } from './consts'
-import { OrchestratorError } from './error'
+import { isOrchestratorError, OrchestratorError } from './error'
 import {
   getHookAddress,
   getRhinestoneSpokePoolAddress,
@@ -11,6 +11,7 @@ import {
   getTokenRootBalanceSlot,
   getTokenSymbol,
   getWethAddress,
+  isTokenAddressSupported,
 } from './registry'
 import type {
   BundleResult,
@@ -74,4 +75,6 @@ export {
   getTargetModuleAddress,
   getRhinestoneSpokePoolAddress,
   getTokenAddress,
+  isOrchestratorError,
+  isTokenAddressSupported,
 }
