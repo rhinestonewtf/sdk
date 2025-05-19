@@ -1,5 +1,10 @@
 import { describe, expect, test } from 'vitest'
-import { accountA, accountB, passkeyAccount } from '../../test/consts'
+import {
+  accountA,
+  accountB,
+  MOCK_API_KEY,
+  passkeyAccount,
+} from '../../test/consts'
 import { getDeployArgs } from './safe'
 
 describe('Accounts: Safe', () => {
@@ -17,7 +22,7 @@ describe('Accounts: Safe', () => {
           type: 'ecdsa',
           accounts: [accountA, accountB],
         },
-        rhinestoneApiKey: 'MOCK_KEY',
+        rhinestoneApiKey: MOCK_API_KEY,
       })
 
       expect(factory).toEqual('0x4e1dcf7ad4e460cfd30791ccc4f9c8a4f820ec67')
@@ -49,7 +54,7 @@ describe('Accounts: Safe', () => {
           type: 'passkey',
           account: passkeyAccount,
         },
-        rhinestoneApiKey: 'MOCK_KEY',
+        rhinestoneApiKey: MOCK_API_KEY,
       })
 
       expect(factory).toEqual('0x4e1dcf7ad4e460cfd30791ccc4f9c8a4f820ec67')

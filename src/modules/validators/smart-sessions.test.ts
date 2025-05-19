@@ -8,7 +8,7 @@ import {
 } from 'viem'
 import { mainnet } from 'viem/chains'
 import { describe, expect, test, vi } from 'vitest'
-import { accountA, accountB } from '../../../test/consts'
+import { accountA, accountB, MOCK_API_KEY } from '../../../test/consts'
 import { enableSessionsAbi } from '../abi/smart-sessions'
 import { MODULE_TYPE_ID_VALIDATOR } from '../common'
 import {
@@ -58,7 +58,7 @@ describe('Smart Sessions', () => {
             type: 'ecdsa',
             accounts: [accountA],
           },
-          rhinestoneApiKey: 'TEST_KEY',
+          rhinestoneApiKey: MOCK_API_KEY,
         }),
       ).toBeNull()
     })
@@ -70,7 +70,7 @@ describe('Smart Sessions', () => {
             type: 'ecdsa',
             accounts: [accountA],
           },
-          rhinestoneApiKey: 'TEST_KEY',
+          rhinestoneApiKey: MOCK_API_KEY,
           sessions: [],
         }),
       ).not.toBeNull()
@@ -82,7 +82,7 @@ describe('Smart Sessions', () => {
           type: 'ecdsa',
           accounts: [accountA],
         },
-        rhinestoneApiKey: 'TEST_KEY',
+        rhinestoneApiKey: MOCK_API_KEY,
         sessions: [
           {
             owners: {

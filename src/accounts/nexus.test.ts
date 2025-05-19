@@ -1,5 +1,10 @@
 import { describe, expect, test } from 'vitest'
-import { accountA, accountB, passkeyAccount } from '../../test/consts'
+import {
+  accountA,
+  accountB,
+  MOCK_API_KEY,
+  passkeyAccount,
+} from '../../test/consts'
 import { getDeployArgs } from './nexus'
 
 describe('Accounts: Nexus', () => {
@@ -17,7 +22,7 @@ describe('Accounts: Nexus', () => {
           type: 'ecdsa',
           accounts: [accountA, accountB],
         },
-        rhinestoneApiKey: 'MOCK_KEY',
+        rhinestoneApiKey: MOCK_API_KEY,
       })
 
       expect(factory).toEqual('0x000000001D1D5004a02bAfAb9de2D6CE5b7B13de')
@@ -51,7 +56,7 @@ describe('Accounts: Nexus', () => {
           type: 'passkey',
           account: passkeyAccount,
         },
-        rhinestoneApiKey: 'MOCK_KEY',
+        rhinestoneApiKey: MOCK_API_KEY,
       })
 
       expect(factory).toEqual('0x000000001D1D5004a02bAfAb9de2D6CE5b7B13de')
