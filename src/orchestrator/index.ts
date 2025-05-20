@@ -19,9 +19,13 @@ import type {
   Execution,
   MetaIntent,
   MultiChainCompact,
+  OrderCost,
+  OrderCostResult,
+  OrderFeeInput,
   OrderPath,
   PostOrderBundleResult,
   SignedMultiChainCompact,
+  UserTokenBalance,
 } from './types'
 import {
   BUNDLE_STATUS_COMPLETED,
@@ -55,6 +59,10 @@ export type {
   OrderPath,
   SignedMultiChainCompact,
   PostOrderBundleResult,
+  OrderCost,
+  OrderCostResult,
+  OrderFeeInput,
+  UserTokenBalance,
 }
 export {
   BundleStatusEnum as BundleStatus,
