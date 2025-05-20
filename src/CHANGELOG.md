@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 0.7.6
+
+### Patch Changes
+
+- 410af4a: Add `isTokenAddressSupported` orchestrator utility
+
 ## 0.7.5
 
 ### Patch Changes
