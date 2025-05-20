@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 0.7.7
+
+### Patch Changes
+
+- 0892b1e: Add `applyInjectedExecutions` and `getSupportedTokens` orchestrator utils
+
 ## 0.7.6
 
 ### Patch Changes
