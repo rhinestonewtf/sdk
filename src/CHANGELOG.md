@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 0.7.8
+
+### Patch Changes
+
+- 8cdc036: Export `OrderCost`, `OrderCostResult`, `OrderFeeInput`, `UserTokenBalance` orchestrator types.
+
 ## 0.7.7
 
 ### Patch Changes
