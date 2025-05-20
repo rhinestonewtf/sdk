@@ -42,12 +42,12 @@ interface SessionData {
   sessionValidator: Address
   sessionValidatorInitData: Hex
   salt: Hex
-  userOpPolicies: UserOpPolicy[]
+  userOpPolicies: readonly UserOpPolicy[]
   erc7739Policies: {
-    allowedERC7739Content: AllowedERC7739Content[]
-    erc1271Policies: ERC1271Policy[]
+    allowedERC7739Content: readonly AllowedERC7739Content[]
+    erc1271Policies: readonly ERC1271Policy[]
   }
-  actions: ActionData[]
+  actions: readonly ActionData[]
   permitERC4337Paymaster: boolean
 }
 
@@ -63,13 +63,13 @@ interface ERC1271Policy {
 
 interface AllowedERC7739Content {
   appDomainSeparator: Hex
-  contentName: string[]
+  contentName: readonly string[]
 }
 
 interface ActionData {
   actionTarget: Address
   actionTargetSelector: Hex
-  actionPolicies: PolicyData[]
+  actionPolicies: readonly PolicyData[]
 }
 
 interface PolicyData {
@@ -224,7 +224,7 @@ async function getSmartSessionData(
       ]
     )
       .map((action) => {
-        const actionPolicies = (
+        const actionPolicies: readonly PolicyData[] = (
           action.policies || [
             {
               type: 'sudo',
@@ -585,3 +585,4 @@ export {
   isSessionEnabled,
   getSessionAllowedERC7739Content,
 }
+export type { SessionData }

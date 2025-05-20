@@ -162,10 +162,4 @@ function parsePublicKey(publicKey: Hex | Uint8Array): PublicKey {
   }
 }
 
-export {
-  getOwnerValidator,
-  getValidator,
-  getOwnableValidator,
-  getWebAuthnValidator,
-  getMockSignature,
-}
+export { getOwnerValidator, getValidator, getMockSignature }
