@@ -274,6 +274,13 @@ type OrderCostResult = OrderCost | InsufficientBalanceResult
 
 type TokenArrays6909 = readonly (readonly [bigint, bigint])[]
 
+interface TokenConfig {
+  symbol: string
+  address: Address
+  decimals: number
+  balanceSlot: (address: Address) => Hex
+}
+
 const BUNDLE_STATUS_PENDING = 'PENDING'
 const BUNDLE_STATUS_FAILED = 'FAILED'
 const BUNDLE_STATUS_EXPIRED = 'EXPIRED'
@@ -307,6 +314,7 @@ export type {
   OrderCost,
   InsufficientBalanceResult,
   OrderCostResult,
+  TokenConfig,
 }
 export {
   BUNDLE_STATUS_PENDING,

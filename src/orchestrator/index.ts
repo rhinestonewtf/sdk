@@ -5,6 +5,7 @@ import {
   getHookAddress,
   getRhinestoneSpokePoolAddress,
   getSameChainModuleAddress,
+  getSupportedTokens,
   getTargetModuleAddress,
   getTokenAddress,
   getTokenBalanceSlot,
@@ -32,7 +33,12 @@ import {
   BUNDLE_STATUS_PRECONFIRMED,
   BUNDLE_STATUS_UNKNOWN,
 } from './types'
-import { BundleStatusEnum, getEmptyUserOp, getOrderBundleHash } from './utils'
+import {
+  applyInjectedExecutions,
+  BundleStatusEnum,
+  getEmptyUserOp,
+  getOrderBundleHash,
+} from './utils'
 
 function getOrchestrator(
   apiKey: string,
@@ -75,6 +81,8 @@ export {
   getTargetModuleAddress,
   getRhinestoneSpokePoolAddress,
   getTokenAddress,
+  getSupportedTokens,
   isOrchestratorError,
   isTokenAddressSupported,
+  applyInjectedExecutions,
 }

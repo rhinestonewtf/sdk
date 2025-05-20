@@ -407,6 +407,19 @@ function hashExecution(execution: Execution) {
   )
 }
 
+function applyInjectedExecutions(orderPath: {
+  orderBundle: MultiChainCompact
+  injectedExecutions: Execution[]
+}): MultiChainCompact {
+  if (orderPath.injectedExecutions.length > 0) {
+    orderPath.orderBundle.segments[0].witness.execs =
+      orderPath.injectedExecutions.concat(
+        orderPath.orderBundle.segments[0].witness.execs,
+      )
+  }
+  return orderPath.orderBundle
+}
+
 export {
   BundleStatusEnum,
   getEmptyUserOp,
@@ -419,4 +432,5 @@ export {
   parseOrderCost,
   parseInsufficientBalanceResult,
   parseOrderCostResult,
+  applyInjectedExecutions,
 }

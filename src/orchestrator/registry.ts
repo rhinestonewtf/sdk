@@ -19,6 +19,8 @@ import {
   sepolia,
 } from 'viem/chains'
 
+import { TokenConfig } from './types'
+
 function getWethAddress(chain: Chain) {
   switch (chain.id) {
     case mainnet.id: {
@@ -288,7 +290,7 @@ function getRhinestoneSpokePoolAddress(_chainId?: number): Address {
 }
 
 function getTokenSymbol(tokenAddress: Address, chainId: number): string {
-  const knownSymbols: string[] = ['ETH', 'WETH', 'USDC']
+  const knownSymbols = getKnownSymbols()
   for (const symbol of knownSymbols) {
     const address = getTokenAddress(symbol, chainId)
     if (address.toLowerCase() === tokenAddress.toLowerCase()) {
@@ -358,6 +360,42 @@ function isTokenAddressSupported(address: Address, chainId: number): boolean {
   }
 }
 
+function getSupportedTokens(chainId: number): TokenConfig[] {
+  const chain = getChainById(chainId)
+  if (!chain) {
+    throw new Error(`Chain not supported: ${chainId}`)
+  }
+
+  const knownSymbols = getKnownSymbols()
+  return knownSymbols.map((symbol) => {
+    const decimals = getTokenDecimals(symbol)
+    const address = getTokenAddress(symbol, chainId)
+    return {
+      symbol,
+      address,
+      decimals,
+      balanceSlot: (accountAddress: Address) =>
+        getTokenBalanceSlot(symbol, chainId, accountAddress),
+    }
+  })
+}
+
+function getKnownSymbols(): string[] {
+  return ['ETH', 'WETH', 'USDC']
+}
+
+function getTokenDecimals(symbol: string): number {
+  switch (symbol) {
+    case 'ETH':
+    case 'WETH':
+      return 18
+    case 'USDC':
+      return 6
+    default:
+      throw new Error(`Symbol not supported: ${symbol}`)
+  }
+}
+
 export {
   getTokenSymbol,
   getTokenAddress,
@@ -369,6 +407,7 @@ export {
   getTargetModuleAddress,
   getRhinestoneSpokePoolAddress,
   getChainById,
+  getSupportedTokens,
   isTestnet,
   isTokenAddressSupported,
 }
