@@ -39,6 +39,7 @@ import {
   BUNDLE_STATUS_FAILED,
   BUNDLE_STATUS_FILLED,
   BUNDLE_STATUS_PRECONFIRMED,
+  BUNDLE_STATUS_UNKNOWN,
   getEmptyUserOp,
   getOrchestrator,
   getOrderBundleHash,
@@ -392,22 +393,19 @@ async function waitForExecution(
   result: TransactionResult,
   acceptsPreconfirmations: boolean,
 ) {
-  const validStatuses: BundleStatus[] = [
+  const validStatuses: Set<BundleStatus> = new Set([
     BUNDLE_STATUS_FAILED,
     BUNDLE_STATUS_COMPLETED,
     BUNDLE_STATUS_FILLED,
-  ]
+  ])
   if (acceptsPreconfirmations) {
-    validStatuses.push(BUNDLE_STATUS_PRECONFIRMED)
+    validStatuses.add(BUNDLE_STATUS_PRECONFIRMED)
   }
 
   switch (result.type) {
     case 'bundle': {
-      let bundleResult: BundleResult | null = null
-      while (
-        bundleResult === null ||
-        validStatuses.includes(bundleResult.status)
-      ) {
+      let bundleResult: BundleResult = { status: BUNDLE_STATUS_UNKNOWN, claims: [] }
+      while (!validStatuses.has(bundleResult.status)) {
         const orchestrator = getOrchestratorByChain(
           result.targetChain,
           config.rhinestoneApiKey,
