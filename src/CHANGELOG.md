@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 0.7.10
+
+### Patch Changes
+
+- 0feea4b: Fix incorrect condition in `waitForExecution`
+
 ## 0.7.9
 
 ### Patch Changes
