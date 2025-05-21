@@ -24,6 +24,11 @@
       "types": "./dist/src/orchestrator/index.d.ts",
       "require": "./dist/src/orchestrator/index.js",
       "import": "./dist/src/orchestrator/index.js"
+    },
+    "./dist/cjs/orchestrator": {
+      "types": "./dist/cjs/orchestrator/index.d.ts",
+      "require": "./dist/cjs/orchestrator/index.js",
+      "import": "./dist/cjs/orchestrator/index.js"
     }
   },
   "files": [

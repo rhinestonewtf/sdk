@@ -2,9 +2,10 @@
   "private": true,
   "scripts": {
     "prepare": "bun run build",
-    "build": "bun run clean && bun run build:esm && bun run build:types",
+    "build": "bun run clean && bun run build:esm && bun run build:types && bun run build:orchestrator",
     "build:esm": "tsc --module es2020 --outDir ./src/dist && bunx tsc-esm-fix --target=\"./src/dist\"",
     "build:types": "tsc --module esnext --declarationDir ./src/dist --outDir ./src/dist --emitDeclarationOnly --declaration --declarationMap",
+    "build:orchestrator": "tsc --project tsconfig.orchestrator.json  --outDir ./src/dist/cjs",
     "clean": "rimraf src/dist",
     "test": "vitest",
     "check": "biome check",
