@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 0.7.9
+
+### Patch Changes
+
+- a01c5dc: CJS build for Orchestrator utilities
+
 ## 0.7.8
 
 ### Patch Changes
