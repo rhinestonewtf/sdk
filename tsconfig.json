@@ -12,7 +12,7 @@
     "outDir": "./src/dist",
     "declaration": true,
     "declarationMap": true,
-    "sourceMap": false,
+    "sourceMap": false
   },
   "include": ["src"],
   "exclude": ["src/examples", "src/dist"]
