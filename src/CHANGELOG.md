@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 0.8.0
+
+### Minor Changes
+
+- 2a01beb: Switch to CJS
+
 ## 0.7.10
 
 ### Patch Changes
