@@ -1,5 +1,5 @@
-const PROD_ORCHESTRATOR_URL = 'https://orchestrator.rhinestone.wtf'
-const DEV_ORCHESTRATOR_URL = 'https://dev.orchestrator.rhinestone.wtf'
+const PROD_ORCHESTRATOR_URL = 'https://orchestrator.rhinestone.dev'
+const DEV_ORCHESTRATOR_URL = 'https://dev.orchestrator.rhinestone.dev'
 const RHINESTONE_SPOKE_POOL_ADDRESS =
   '0x000000000060f6e853447881951574cdd0663530'
 
