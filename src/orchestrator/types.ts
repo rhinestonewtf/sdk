@@ -26,7 +26,8 @@ type SupportedMainnet =
   | typeof optimism.id
   | typeof polygon.id
 type SupportedChain = SupportedMainnet | SupportedTestnet
-type SupportedTokens = 'ETH' | 'WETH' | 'USDC'
+type SupportedTokenSymbol = 'ETH' | 'WETH' | 'USDC'
+type SupportedToken = SupportedTokenSymbol | Address
 
 type BundleStatus =
   | typeof BUNDLE_STATUS_PENDING
@@ -45,13 +46,13 @@ type AccountAccessListLegacy = {
 
 type MappedChainTokenAccessList = {
   chainTokens?: {
-    [chainId in SupportedChain]?: SupportedTokens[]
+    [chainId in SupportedChain]?: SupportedToken[]
   }
 }
 
 type UnmappedChainTokenAccessList = {
   chainIds?: SupportedChain[]
-  tokens?: SupportedTokens[]
+  tokens?: SupportedToken[]
 }
 
 type AccountAccessList =
