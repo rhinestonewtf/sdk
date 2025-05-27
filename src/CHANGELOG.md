@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 0.8.1
+
+### Patch Changes
+
+- c034b30: Use account access list for source chain
+
 ## 0.8.0
 
 ### Minor Changes
