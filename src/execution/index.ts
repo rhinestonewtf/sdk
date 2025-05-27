@@ -49,7 +49,7 @@ import {
   PROD_ORCHESTRATOR_URL,
 } from '../orchestrator/consts'
 import { getChainById, isTestnet } from '../orchestrator/registry'
-import { BundleStatus } from '../orchestrator/types'
+import { BundleStatus, SupportedChain } from '../orchestrator/types'
 import type {
   Call,
   RhinestoneAccountConfig,
@@ -325,6 +325,11 @@ async function sendTransactionAsIntent(
   tokenRequests: TokenRequest[],
   accountAddress: Address,
 ) {
+  const accountAccessList = sourceChain
+    ? {
+        chainIds: [sourceChain.id as SupportedChain],
+      }
+    : undefined
   const metaIntent: MetaIntent = {
     targetChainId: targetChain.id,
     tokenTransfers: tokenRequests.map((tokenRequest) => ({
@@ -338,6 +343,7 @@ async function sendTransactionAsIntent(
       data: call.data ?? '0x',
     })),
     targetGasUnits: gasLimit,
+    accountAccessList,
   }
 
   const orchestrator = getOrchestratorByChain(

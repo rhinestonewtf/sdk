@@ -26,7 +26,8 @@ type SupportedMainnet =
   | typeof optimism.id
   | typeof polygon.id
 type SupportedChain = SupportedMainnet | SupportedTestnet
-type SupportedTokens = 'ETH' | 'WETH' | 'USDC'
+type SupportedTokenSymbol = 'ETH' | 'WETH' | 'USDC'
+type SupportedToken = SupportedTokenSymbol | Address
 
 type BundleStatus =
   | typeof BUNDLE_STATUS_PENDING
@@ -38,18 +39,24 @@ type BundleStatus =
   | typeof BUNDLE_STATUS_FAILED
   | typeof BUNDLE_STATUS_UNKNOWN
 
-export type MappedChainTokenAccessList = {
+type AccountAccessListLegacy = {
+  chainId: number
+  tokenAddress: Address
+}[]
+
+type MappedChainTokenAccessList = {
   chainTokens?: {
-    [chainId in SupportedChain]?: SupportedTokens[]
+    [chainId in SupportedChain]?: SupportedToken[]
   }
 }
 
-export type UnmappedChainTokenAccessList = {
+type UnmappedChainTokenAccessList = {
   chainIds?: SupportedChain[]
-  tokens?: SupportedTokens[]
+  tokens?: SupportedToken[]
 }
 
-export type AccountAccessList =
+type AccountAccessList =
+  | AccountAccessListLegacy
   | MappedChainTokenAccessList
   | UnmappedChainTokenAccessList
 
@@ -128,10 +135,7 @@ interface MetaIntentBase {
   targetChainId: number
   targetGasUnits?: bigint
   tokenTransfers: TokenTransfer[]
-  accountAccessList?: {
-    chainId: number
-    tokenAddress: Address
-  }[]
+  accountAccessList?: AccountAccessList
   lockMode?: LockMode
   omniLock?: boolean
 }
@@ -237,10 +241,7 @@ interface OrderFeeInput {
     amount?: bigint // If no amount is set, max amount of inputs will be converted
     // NOTE: Only one token may have an unset amount
   }[]
-  accountAccessList?: {
-    chainId: number
-    tokenAddress: Address
-  }[]
+  accountAccessList?: AccountAccessList
 }
 
 interface TokenFulfillmentStatus {
@@ -291,6 +292,7 @@ const BUNDLE_STATUS_PRECONFIRMED = 'PRECONFIRMED'
 const BUNDLE_STATUS_UNKNOWN = 'UNKNOWN'
 
 export type {
+  AccountAccessList,
   SupportedChain,
   BundleStatus,
   PostOrderBundleResult,
