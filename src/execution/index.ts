@@ -325,9 +325,11 @@ async function sendTransactionAsIntent(
   tokenRequests: TokenRequest[],
   accountAddress: Address,
 ) {
-  const accountAccessList = sourceChain ? {
-    chainIds: [sourceChain.id as SupportedChain],
-  } : undefined
+  const accountAccessList = sourceChain
+    ? {
+        chainIds: [sourceChain.id as SupportedChain],
+      }
+    : undefined
   const metaIntent: MetaIntent = {
     targetChainId: targetChain.id,
     tokenTransfers: tokenRequests.map((tokenRequest) => ({
