@@ -38,18 +38,24 @@ type BundleStatus =
   | typeof BUNDLE_STATUS_FAILED
   | typeof BUNDLE_STATUS_UNKNOWN
 
-export type MappedChainTokenAccessList = {
+type AccountAccessListLegacy = {
+  chainId: number
+  tokenAddress: Address
+}[]
+
+type MappedChainTokenAccessList = {
   chainTokens?: {
     [chainId in SupportedChain]?: SupportedTokens[]
   }
 }
 
-export type UnmappedChainTokenAccessList = {
+type UnmappedChainTokenAccessList = {
   chainIds?: SupportedChain[]
   tokens?: SupportedTokens[]
 }
 
-export type AccountAccessList =
+type AccountAccessList =
+  | AccountAccessListLegacy
   | MappedChainTokenAccessList
   | UnmappedChainTokenAccessList
 
@@ -128,10 +134,7 @@ interface MetaIntentBase {
   targetChainId: number
   targetGasUnits?: bigint
   tokenTransfers: TokenTransfer[]
-  accountAccessList?: {
-    chainId: number
-    tokenAddress: Address
-  }[]
+  accountAccessList?: AccountAccessList
   lockMode?: LockMode
   omniLock?: boolean
 }
@@ -237,10 +240,7 @@ interface OrderFeeInput {
     amount?: bigint // If no amount is set, max amount of inputs will be converted
     // NOTE: Only one token may have an unset amount
   }[]
-  accountAccessList?: {
-    chainId: number
-    tokenAddress: Address
-  }[]
+  accountAccessList?: AccountAccessList
 }
 
 interface TokenFulfillmentStatus {
@@ -291,6 +291,7 @@ const BUNDLE_STATUS_PRECONFIRMED = 'PRECONFIRMED'
 const BUNDLE_STATUS_UNKNOWN = 'UNKNOWN'
 
 export type {
+  AccountAccessList,
   SupportedChain,
   BundleStatus,
   PostOrderBundleResult,
