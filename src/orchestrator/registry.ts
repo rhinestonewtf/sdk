@@ -303,13 +303,10 @@ function getTokenSymbol(tokenAddress: Address, chainId: number): string {
 }
 
 function getTokenAddress(tokenSymbol: string, chainId: number): Address {
-  if (chainId === 1 && tokenSymbol === 'POL') {
-    throw new Error(`Chain ${chainId} does not allow for POL to be used`)
-  }
   if (chainId === 137 && tokenSymbol === 'ETH') {
     throw new Error(`Chain ${chainId} does not allow for ETH to be used`)
   }
-  if (tokenSymbol === 'ETH' || tokenSymbol === 'POL') {
+  if (tokenSymbol === 'ETH') {
     return zeroAddress
   }
   const chain = getChainById(chainId)
