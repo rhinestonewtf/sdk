@@ -399,6 +399,12 @@ function getTokenDecimals(symbol: string): number {
   }
 }
 
+function getDefaultAccountAccessList() {
+  return {
+    chainIds: [mainnet.id, base.id, arbitrum.id, optimism.id],
+  }
+}
+
 export {
   getTokenSymbol,
   getTokenAddress,
@@ -413,4 +419,5 @@ export {
   getSupportedTokens,
   isTestnet,
   isTokenAddressSupported,
+  getDefaultAccountAccessList,
 }
