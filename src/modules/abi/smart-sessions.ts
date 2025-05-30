@@ -124,6 +124,6 @@ const enableSessionsAbi = [
     ],
     stateMutability: 'nonpayable',
   },
-]
+] as const
 
 export { enableSessionsAbi }
