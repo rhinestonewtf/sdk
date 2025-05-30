@@ -16,6 +16,7 @@
     "./*"
   ],
   "dependencies": {
+    "prool": "^0.0.24",
     "viem": "^2.28.0"
   },
   "devDependencies": {
