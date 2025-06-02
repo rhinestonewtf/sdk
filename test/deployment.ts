@@ -35,10 +35,6 @@ const SAME_CHAIN_MODULE_ADDRESS: Address =
 
 export function runDeploymentTests() {
   describe('Account Deployment', () => {
-    beforeAll(async () => {
-      await anvil.start()
-    })
-
     describe('Source Chain', () => {
       it(
         'should deploy an account using an EOA',
