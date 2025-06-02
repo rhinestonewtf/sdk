@@ -15,7 +15,7 @@ import { Address, createPublicClient, http } from 'viem'
 import { generatePrivateKey } from 'viem/accounts'
 import { privateKeyToAccount } from 'viem/accounts'
 import { base } from 'viem/chains'
-import { beforeAll, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
 import './utils/polyfill'
 import { createRhinestoneAccount } from '../src'
