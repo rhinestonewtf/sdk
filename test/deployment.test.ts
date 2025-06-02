@@ -12,18 +12,17 @@ await anvil.start()
 setupOrchestratorMock()
 setupViemMock(anvil, deployerAccount)
 
-import { describe, it, expect } from 'vitest'
+import { Address, createPublicClient, http } from 'viem'
 import { generatePrivateKey } from 'viem/accounts'
 import { privateKeyToAccount } from 'viem/accounts'
 import { base } from 'viem/chains'
-import { Address, http } from 'viem'
-import { createPublicClient } from 'viem'
+import { describe, expect, it } from 'vitest'
 
 import './utils/polyfill'
-import { getAnvil } from './utils/anvil'
-import { ownbleValidatorAbi } from './abi/validators'
-import { biconomyImplementationAbi } from './abi/biconomy'
 import { createRhinestoneAccount } from '../src'
+import { biconomyImplementationAbi } from './abi/biconomy'
+import { ownbleValidatorAbi } from './abi/validators'
+import { getAnvil } from './utils/anvil'
 import { getForkUrl } from './utils/utils'
 
 const SENTINEL_ADDRESS: Address = '0x0000000000000000000000000000000000000001'

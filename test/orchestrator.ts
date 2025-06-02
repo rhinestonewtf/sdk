@@ -1,5 +1,6 @@
-import { vi } from 'vitest'
 import { Address, zeroAddress } from 'viem'
+import { vi } from 'vitest'
+
 import { MetaIntent, OrderPath } from '../src/orchestrator'
 
 export function createOrchestratorMock() {

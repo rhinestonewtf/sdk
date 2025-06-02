@@ -12,15 +12,16 @@ await anvil.start()
 setupOrchestratorMock()
 setupViemMock(anvil, deployerAccount)
 
-import { describe, it, expect } from 'vitest'
+import { createPublicClient, http, parseEther } from 'viem'
 import { generatePrivateKey } from 'viem/accounts'
 import { privateKeyToAccount } from 'viem/accounts'
 import { base } from 'viem/chains'
-import { createPublicClient, http, parseEther } from 'viem'
+import { describe, expect, it } from 'vitest'
+
+import { createRhinestoneAccount } from '../src'
 
 import './utils/polyfill'
 import { getAnvil } from './utils/anvil'
-import { createRhinestoneAccount } from '../src'
 import { getForkUrl } from './utils/utils'
 
 describe('Bundles', () => {
