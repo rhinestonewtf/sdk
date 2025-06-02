@@ -13,10 +13,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out the repo
-        uses: 'actions/checkout@v4'
+        uses: "actions/checkout@v4"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
+
+      - name: Set up Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly-2564718bbbddb59cd07fc3b9ffc775dff548c558
 
       - name: Install the npm dependencies
         run: bun install
@@ -35,7 +40,7 @@ jobs:
     needs: [build-and-test]
     steps:
       - name: Check out the repo
-        uses: 'actions/checkout@v4'
+        uses: "actions/checkout@v4"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -46,8 +51,8 @@ jobs:
       - name: Create Release Pull Request or Publish
         uses: changesets/action@v1
         with:
-          commit: 'chore: release'
-          title: 'Release'
+          commit: "chore: release"
+          title: "Release"
           publish: bun run changeset:release
           version: bun run changeset:version
         env:
