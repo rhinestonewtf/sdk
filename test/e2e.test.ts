@@ -16,12 +16,11 @@ import { base } from 'viem/chains'
 import { beforeAll, describe } from 'vitest'
 
 import './utils/polyfill'
+
+import { runBundlesTestCases } from './bundles'
+import { runDeploymentTestCases } from './deployment'
 import { getAnvil } from './utils/anvil'
 import { getForkUrl } from './utils/utils'
-
-// Import the test cases without their own setup
-import { runDeploymentTestCases } from './deployment'
-import { runBundlesTestCases } from './bundles'
 
 describe.sequential('E2E Tests', () => {
   beforeAll(async () => {
