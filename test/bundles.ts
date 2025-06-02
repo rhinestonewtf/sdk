@@ -15,7 +15,7 @@ import { createPublicClient, http, parseEther } from 'viem'
 import { generatePrivateKey } from 'viem/accounts'
 import { privateKeyToAccount } from 'viem/accounts'
 import { base } from 'viem/chains'
-import { beforeAll, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
 import { createRhinestoneAccount } from '../src'
 
