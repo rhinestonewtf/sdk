@@ -60,7 +60,7 @@ const targetChain = arbitrumSepolia
 
 // You can use an existing PK here
 const privateKey = generatePrivateKey()
-console.log(`Owner private key: ${privateKey}`)
+console.info(`Owner private key: ${privateKey}`)
 const account = privateKeyToAccount(privateKey)
 
 const rhinestoneAccount = await createRhinestoneAccount({
@@ -71,7 +71,7 @@ const rhinestoneAccount = await createRhinestoneAccount({
   rhinestoneApiKey,
 })
 const address = await rhinestoneAccount.getAddress()
-console.log(`Smart account address: ${address}`)
+console.info(`Smart account address: ${address}`)
 ```
 
 ### Funding the Account
@@ -126,10 +126,10 @@ const transaction = await rhinestoneAccount.sendTransaction({
     },
   ],
 });
-console.log('Transaction', transaction);
+console.info('Transaction', transaction);
 
 const transactionResult = await rhinestoneAccount.waitForExecution(transaction);
-console.log('Result', transactionResult);
+console.info('Result', transactionResult);
 ```
 
 After running that, you will get a smart account deployed on both Base Sepolia and Arbitrum Sepolia, and make a cross-chain USDC transfer.
