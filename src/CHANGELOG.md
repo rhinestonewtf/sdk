@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 0.8.2
+
+### Patch Changes
+
+- 568ee10: Disallow Polygon|ETH usage
+
 ## 0.8.1
 
 ### Patch Changes
