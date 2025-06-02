@@ -12,20 +12,11 @@ await anvil.start()
 setupOrchestratorMock()
 setupViemMock(anvil, deployerAccount)
 
-import { describe, it, beforeAll, vi, expect } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { generatePrivateKey } from 'viem/accounts'
 import { privateKeyToAccount } from 'viem/accounts'
 import { base } from 'viem/chains'
-import {
-  Address,
-  createWalletClient,
-  GetCodeParameters,
-  GetStorageAtParameters,
-  http,
-  ReadContractParameters,
-  SendTransactionParameters,
-  WaitForTransactionReceiptParameters,
-} from 'viem'
+import { Address, http } from 'viem'
 import { createPublicClient } from 'viem'
 
 import './utils/polyfill'
