@@ -1,15 +1,15 @@
-import { vi } from 'vitest'
 import {
-  createWalletClient,
+  Account,
   createPublicClient,
+  createWalletClient,
   GetBalanceParameters,
   GetCodeParameters,
   GetStorageAtParameters,
   ReadContractParameters,
   SendTransactionParameters,
   WaitForTransactionReceiptParameters,
-  Account,
 } from 'viem'
+import { vi } from 'vitest'
 
 async function setupViemMock(anvil: any, deployerAccount: Account) {
   vi.mock('viem', async (importOriginal) => {
