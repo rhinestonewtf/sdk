@@ -1,3 +1,17 @@
+import { setupOrchestratorMock } from './orchestrator'
+import { setupViemMock } from './utils/viem'
+
+const deployerPrivateKey =
+  '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80'
+const deployerAccount = privateKeyToAccount(deployerPrivateKey)
+
+const sourceChain = base
+const anvil = getAnvil(sourceChain, getForkUrl(sourceChain))
+await anvil.start()
+
+setupOrchestratorMock()
+setupViemMock(anvil, deployerAccount)
+
 import { describe, it, beforeAll, vi, expect } from 'vitest'
 import { generatePrivateKey } from 'viem/accounts'
 import { privateKeyToAccount } from 'viem/accounts'
@@ -18,7 +32,6 @@ import './utils/polyfill'
 import { getAnvil } from './utils/anvil'
 import { ownbleValidatorAbi } from './abi/validators'
 import { biconomyImplementationAbi } from './abi/biconomy'
-import { setupOrchestratorMock } from './orchestrator'
 import { createRhinestoneAccount } from '../src'
 import { getForkUrl } from './utils/utils'
 
@@ -31,68 +44,8 @@ const TARGET_MODULE_ADDRESS: Address =
 const SAME_CHAIN_MODULE_ADDRESS: Address =
   '0x000000000043ff16d5776c7F0f65Ec485C17Ca04'
 
-setupOrchestratorMock()
-
-const sourceChain = base
-
-const deployerPrivateKey =
-  '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80'
-const deployerAccount = privateKeyToAccount(deployerPrivateKey)
-
 describe('Account Deployment', () => {
   describe('Source Chain', () => {
-    let anvil: ReturnType<typeof getAnvil>
-
-    beforeAll(async () => {
-      anvil = getAnvil(sourceChain, getForkUrl(sourceChain))
-      await anvil.start()
-    })
-
-    vi.mock('viem', async (importOriginal) => {
-      const actual = await importOriginal()
-
-      return {
-        // @ts-ignore
-        ...actual,
-        createPublicClient: vi.fn(),
-        createWalletClient: vi.fn(),
-      }
-    })
-    const publicClient = createPublicClient as any
-    publicClient.mockImplementation((_: any) => {
-      return {
-        getCode: (params: GetCodeParameters) => {
-          const client = anvil.getPublicClient()
-          return client.getCode(params)
-        },
-        getStorageAt: (params: GetStorageAtParameters) => {
-          const client = anvil.getPublicClient()
-          return client.getStorageAt(params)
-        },
-        readContract: (params: ReadContractParameters) => {
-          const client = anvil.getPublicClient()
-          return client.readContract(params)
-        },
-        waitForTransactionReceipt: async (
-          params: WaitForTransactionReceiptParameters,
-        ) => {
-          const client = anvil.getPublicClient()
-          const receipt = await client.waitForTransactionReceipt(params)
-          return receipt
-        },
-      }
-    })
-
-    const walletClient = createWalletClient as any
-    walletClient.mockImplementation((_: any) => {
-      return {
-        sendTransaction: (params: SendTransactionParameters) => {
-          const client = anvil.getWalletClient(deployerAccount)
-          return client.sendTransaction(params)
-        },
-      }
-    })
-
     it('should deploy an account using an EOA', async () => {
       const ownerPrivateKey = generatePrivateKey()
       const ownerAccount = privateKeyToAccount(ownerPrivateKey)

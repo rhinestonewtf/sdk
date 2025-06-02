@@ -2,7 +2,7 @@ import { vi } from 'vitest'
 import { Address, zeroAddress } from 'viem'
 import { MetaIntent, OrderPath } from '../src/orchestrator'
 
-export const createOrchestratorMock = () => {
+export function createOrchestratorMock() {
   const mockOrchestrator = {
     getPortfolio: vi.fn().mockResolvedValue([]),
     getMaxTokenAmount: vi.fn().mockResolvedValue(1000000n),
@@ -104,7 +104,7 @@ export const createOrchestratorMock = () => {
 }
 
 // Setup the mock for the orchestrator module
-export const setupOrchestratorMock = () => {
+export function setupOrchestratorMock() {
   vi.mock('../src/orchestrator', async (importOriginal) => {
     const actual = await importOriginal()
 
