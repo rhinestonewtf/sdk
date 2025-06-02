@@ -48,7 +48,11 @@ import {
   DEV_ORCHESTRATOR_URL,
   PROD_ORCHESTRATOR_URL,
 } from '../orchestrator/consts'
-import { getChainById, isTestnet } from '../orchestrator/registry'
+import {
+  getChainById,
+  getDefaultAccountAccessList,
+  isTestnet,
+} from '../orchestrator/registry'
 import { BundleStatus, SupportedChain } from '../orchestrator/types'
 import type {
   Call,
@@ -216,6 +220,12 @@ async function sendTransactionAsUserOp(
     } as TransactionResult
   }
 
+  const accountAccessList = sourceChain
+    ? {
+        chainIds: [sourceChain.id as SupportedChain],
+      }
+    : getDefaultAccountAccessList()
+
   const metaIntent: MetaIntent = {
     targetChainId: targetChain.id,
     tokenTransfers: tokenRequests.map((tokenRequest) => ({
@@ -225,6 +235,7 @@ async function sendTransactionAsUserOp(
     targetAccount: accountAddress,
     targetGasUnits: gasLimit,
     userOp: getEmptyUserOp(),
+    accountAccessList,
   }
 
   const orchestrator = getOrchestratorByChain(
@@ -329,7 +340,8 @@ async function sendTransactionAsIntent(
     ? {
         chainIds: [sourceChain.id as SupportedChain],
       }
-    : undefined
+    : getDefaultAccountAccessList()
+
   const metaIntent: MetaIntent = {
     targetChainId: targetChain.id,
     tokenTransfers: tokenRequests.map((tokenRequest) => ({
@@ -461,7 +473,7 @@ async function getPortfolio(
   const address = getAddress(config)
   const chainId = onTestnets ? sepolia.id : mainnet.id
   const orchestrator = getOrchestratorByChain(chainId, config.rhinestoneApiKey)
-  return orchestrator.getPortfolio(address)
+  return orchestrator.getPortfolio(address, getDefaultAccountAccessList())
 }
 
 function getOrchestratorByChain(chainId: number, apiKey: string) {
