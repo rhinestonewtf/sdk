@@ -141,6 +141,9 @@ describe('Smart Session', () => {
                   },
                 ],
               },
+              tokenPrices: {},
+              gasPrices: {},
+              opGasParams: {}
             },
           ],
           '0x306651f0849c673fdd047e02b12876c3f3a0ea7f',

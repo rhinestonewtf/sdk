@@ -312,10 +312,19 @@ async function sendTransactionAsUserOp(
     targetSignature: packedSig,
   }
 
+  const { 
+    tokenPrices,
+    gasPrices,
+    opGasParams
+  } = orderPath[0]
+
   const bundleResults = await orchestrator.postSignedOrderBundle([
     {
       signedOrderBundle,
       userOp,
+      tokenPrices,
+      gasPrices,
+      opGasParams
     },
   ])
 
@@ -388,12 +397,21 @@ async function sendTransactionAsIntent(
     targetSignature: packedSig,
   }
 
+  const { 
+    tokenPrices, 
+    gasPrices, 
+    opGasParams 
+  } = orderPath[0]
+
   await deployTarget(targetChain, config, false)
   const initCode = getBundleInitCode(config)
   const bundleResults = await orchestrator.postSignedOrderBundle([
     {
       signedOrderBundle,
       initCode,
+      tokenPrices,
+      gasPrices,
+      opGasParams
     },
   ])
 
