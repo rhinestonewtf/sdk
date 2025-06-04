@@ -180,7 +180,7 @@ export class Orchestrator {
 
   async postSignedOrderBundle(
     signedOrderBundles: {
-      signedOrderBundle: SignedMultiChainCompact,
+      signedOrderBundle: SignedMultiChainCompact
       initCode?: Hex
       userOp?: UserOperation
     }[],

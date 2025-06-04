@@ -205,9 +205,9 @@ interface MultiChainCompact {
   nonce: bigint
   expires: bigint
   segments: Segment[]
-  tokenPrices: object
-  gasPrices: object
-  opGasParams: object
+  tokenPrices: TokenPrices
+  gasPrices: GasPrices
+  opGasParams: OPNetworkParams
 }
 
 interface SignedMultiChainCompact extends MultiChainCompact {
@@ -316,16 +316,18 @@ export type GasPrices = {
   [key in MainnetNetwork | TestnetNetwork]?: bigint
 }
 
-export type OPNetworkParams = {
-  [key in MainnetNetwork | TestnetNetwork]?: {
-    l1BaseFee: bigint
-    l1BlobBaseFee: bigint
-    baseFeeScalar: bigint
-    blobFeeScalar: bigint
-  }
-} | { 
-  estimatedCalldataSize: number 
-}
+export type OPNetworkParams =
+  | {
+      [key in MainnetNetwork | TestnetNetwork]?: {
+        l1BaseFee: bigint
+        l1BlobBaseFee: bigint
+        baseFeeScalar: bigint
+        blobFeeScalar: bigint
+      }
+    }
+  | {
+      estimatedCalldataSize: number
+    }
 
 const BUNDLE_STATUS_PENDING = 'PENDING'
 const BUNDLE_STATUS_FAILED = 'FAILED'

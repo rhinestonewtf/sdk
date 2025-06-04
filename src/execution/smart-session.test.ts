@@ -105,7 +105,7 @@ describe('Smart Session', () => {
                 ],
                 tokenPrices: {},
                 gasPrices: {},
-                opGasParams: {}
+                opGasParams: {},
               },
               injectedExecutions: [
                 {

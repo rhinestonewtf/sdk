@@ -136,7 +136,7 @@ function parseCompactResponse(response: any): MultiChainCompact {
     }),
     tokenPrices: response.tokenPrices,
     gasPrices: response.gasPrices,
-    opGasParams: response.opGasParams
+    opGasParams: response.opGasParams,
   } as MultiChainCompact
 }
 
