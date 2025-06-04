@@ -144,9 +144,6 @@ type OrderPath = {
   orderBundle: MultiChainCompact
   injectedExecutions: Execution[]
   intentCost: OrderCost
-  tokenPrices: TokenPrices
-  gasPrices: GasPrices
-  opGasParams: OPNetworkParams
 }[]
 
 type MetaIntentEmpty = MetaIntentBase & WithoutOperation
@@ -208,6 +205,9 @@ interface MultiChainCompact {
   nonce: bigint
   expires: bigint
   segments: Segment[]
+  tokenPrices: object
+  gasPrices: object
+  opGasParams: object
 }
 
 interface SignedMultiChainCompact extends MultiChainCompact {
