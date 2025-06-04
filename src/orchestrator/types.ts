@@ -144,6 +144,9 @@ type OrderPath = {
   orderBundle: MultiChainCompact
   injectedExecutions: Execution[]
   intentCost: OrderCost
+  tokenPrices: TokenPrices
+  gasPrices: GasPrices
+  opGasParams: OPNetworkParams
 }[]
 
 type MetaIntentEmpty = MetaIntentBase & WithoutOperation
@@ -280,6 +283,48 @@ interface TokenConfig {
   address: Address
   decimals: number
   balanceSlot: (address: Address) => Hex
+}
+
+export enum MainnetNetwork {
+  ETHEREUM = 1,
+  OPTIMISM = 10,
+  POLYGON = 137,
+  BASE = 8453,
+  ARBITRUM = 42161,
+}
+
+export enum TestnetNetwork {
+  POLYGON_AMOY = 80002,
+  BASE_SEPOLIA = 84532,
+  ARBITRUM_SEPOLIA = 421614,
+  ETHEREUM_SEPOLIA = 11155111,
+  OPTIMISM_SEPOLIA = 11155420,
+}
+
+export enum TokenSymbol {
+  ETH = 'ETH',
+  WETH = 'WETH',
+  USDC = 'USDC',
+  POL = 'POL',
+}
+
+export type TokenPrices = {
+  [key in TokenSymbol]?: number
+}
+
+export type GasPrices = {
+  [key in MainnetNetwork | TestnetNetwork]?: bigint
+}
+
+export type OPNetworkParams = {
+  [key in MainnetNetwork | TestnetNetwork]?: {
+    l1BaseFee: bigint
+    l1BlobBaseFee: bigint
+    baseFeeScalar: bigint
+    blobFeeScalar: bigint
+  }
+} | { 
+  estimatedCalldataSize: number 
 }
 
 const BUNDLE_STATUS_PENDING = 'PENDING'

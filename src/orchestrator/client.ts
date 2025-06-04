@@ -6,12 +6,15 @@ import { OrchestratorError } from './error'
 import type {
   BundleEvent,
   BundleResult,
+  GasPrices,
   MetaIntent,
+  OPNetworkParams,
   OrderCostResult,
   OrderFeeInput,
   OrderPath,
   PostOrderBundleResult,
   SignedMultiChainCompact,
+  TokenPrices,
   UserTokenBalance,
 } from './types'
 import {
@@ -167,6 +170,9 @@ export class Orchestrator {
             }
           }),
           intentCost: parseOrderCost(orderPath.intentCost),
+          tokenPrices: orderPath.tokenPrices,
+          gasPrices: orderPath.gasPrices,
+          opGasParams: orderPath.opGasParams
         }
       })
     } catch (error: any) {
@@ -177,7 +183,10 @@ export class Orchestrator {
 
   async postSignedOrderBundle(
     signedOrderBundles: {
-      signedOrderBundle: SignedMultiChainCompact
+      signedOrderBundle: SignedMultiChainCompact,
+      tokenPrices: TokenPrices,
+      gasPrices: GasPrices,
+      opGasParams: OPNetworkParams,
       initCode?: Hex
       userOp?: UserOperation
     }[],
@@ -186,6 +195,9 @@ export class Orchestrator {
       const bundles = signedOrderBundles.map(
         (signedOrderBundle: {
           signedOrderBundle: SignedMultiChainCompact
+          tokenPrices: TokenPrices
+          gasPrices: GasPrices
+          opGasParams: OPNetworkParams
           initCode?: Hex
           userOp?: UserOperation
         }) => {
@@ -197,6 +209,9 @@ export class Orchestrator {
             userOp: signedOrderBundle.userOp
               ? convertBigIntFields(signedOrderBundle.userOp)
               : undefined,
+            tokenPrices: signedOrderBundle.tokenPrices,
+            gasPrices: signedOrderBundle.gasPrices,
+            opGasParams: signedOrderBundle.opGasParams,
           }
         },
       )
