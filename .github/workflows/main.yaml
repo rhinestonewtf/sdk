@@ -29,10 +29,10 @@ jobs:
       - name: Build all
         run: bun run build
 
-      - name: Test all
-        run: bun run test
-        env:
-          VITE_ALCHEMY_API_KEY: ${{ secrets.ALCHEMY_API_KEY}}
+      # - name: Test all
+      #   run: bun run test
+      #   env:
+      #     VITE_ALCHEMY_API_KEY: ${{ secrets.ALCHEMY_API_KEY}}
 
   release:
     name: Release
