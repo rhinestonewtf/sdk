@@ -25,6 +25,8 @@ type SupportedMainnet =
   | typeof arbitrum.id
   | typeof optimism.id
   | typeof polygon.id
+type SupportedOPStackMainnet = typeof optimism.id | typeof base.id
+type SupportedOPStackTestnet = typeof optimismSepolia.id | typeof baseSepolia.id
 type SupportedChain = SupportedMainnet | SupportedTestnet
 type SupportedTokenSymbol = 'ETH' | 'WETH' | 'USDC'
 type SupportedToken = SupportedTokenSymbol | Address
@@ -285,40 +287,17 @@ interface TokenConfig {
   balanceSlot: (address: Address) => Hex
 }
 
-export enum MainnetNetwork {
-  ETHEREUM = 1,
-  OPTIMISM = 10,
-  POLYGON = 137,
-  BASE = 8453,
-  ARBITRUM = 42161,
-}
-
-export enum TestnetNetwork {
-  POLYGON_AMOY = 80002,
-  BASE_SEPOLIA = 84532,
-  ARBITRUM_SEPOLIA = 421614,
-  ETHEREUM_SEPOLIA = 11155111,
-  OPTIMISM_SEPOLIA = 11155420,
-}
-
-export enum TokenSymbol {
-  ETH = 'ETH',
-  WETH = 'WETH',
-  USDC = 'USDC',
-  POL = 'POL',
-}
-
 export type TokenPrices = {
-  [key in TokenSymbol]?: number
+  [key in SupportedTokenSymbol]?: number
 }
 
 export type GasPrices = {
-  [key in MainnetNetwork | TestnetNetwork]?: bigint
+  [key in SupportedMainnet | SupportedTestnet]?: bigint
 }
 
 export type OPNetworkParams =
   | {
-      [key in MainnetNetwork | TestnetNetwork]?: {
+      [key in SupportedOPStackMainnet | SupportedOPStackTestnet]?: {
         l1BaseFee: bigint
         l1BlobBaseFee: bigint
         baseFeeScalar: bigint
