@@ -15,7 +15,7 @@ import {
   prepareTransaction as prepareTransactionInternal,
   signTransaction as signTransactionInternal,
   submitTransaction as submitTransactionInternal,
-} from './execution/modular'
+} from './execution/utils'
 import type {
   BundleStatus,
   MetaIntent,

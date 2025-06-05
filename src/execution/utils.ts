@@ -12,6 +12,12 @@ import {
   zeroAddress,
 } from 'viem'
 import {
+  entryPoint07Address,
+  getUserOperationHash,
+  UserOperation,
+} from 'viem/account-abstraction'
+
+import {
   Call,
   RhinestoneAccountConfig,
   Session,
@@ -19,6 +25,7 @@ import {
   Transaction,
 } from '../types'
 import {
+  deployTarget,
   getAddress,
   getBundleInitCode,
   getSmartSessionSmartAccount,
@@ -44,18 +51,27 @@ import {
   DEV_ORCHESTRATOR_URL,
   PROD_ORCHESTRATOR_URL,
 } from '../orchestrator/consts'
-import { getSessionSignature, hashErc7739 } from './smart-session'
-import {
-  entryPoint07Address,
-  getUserOperationHash,
-  UserOperation,
-} from 'viem/account-abstraction'
 import { getBundlerClient } from '../accounts/utils'
 import {
   getOwnerValidator,
   getSmartSessionValidator,
 } from '../modules/validators'
-import type { TransactionResult } from '.'
+
+import { getSessionSignature, hashErc7739 } from './smart-session'
+
+type TransactionResult =
+  | {
+      type: 'userop'
+      hash: Hex
+      sourceChain: number
+      targetChain: number
+    }
+  | {
+      type: 'bundle'
+      id: bigint
+      sourceChain?: number
+      targetChain: number
+    }
 
 interface BundleData {
   hash: Hex
@@ -207,77 +223,29 @@ async function prepareTransactionAsUserOp(
   accountAddress: Address,
   withSession: Session,
 ) {
-  const targetPublicClient = createPublicClient({
-    chain: targetChain,
-    transport: http(),
-  })
-  const targetSessionAccount = await getSmartSessionSmartAccount(
-    config,
-    targetPublicClient,
-    targetChain,
-    withSession,
-  )
-  const targetBundlerClient = getBundlerClient(config, targetPublicClient)
-
   if (sourceChain.id === targetChain.id) {
     throw new Error(
       'Source and target chains cannot be the same when using user operations',
     )
   }
 
-  const accountAccessList = sourceChain
-    ? {
-        chainIds: [sourceChain.id as SupportedChain],
-      }
-    : getDefaultAccountAccessList()
-
-  const metaIntent: MetaIntent = {
-    targetChainId: targetChain.id,
-    tokenTransfers: tokenRequests.map((tokenRequest) => ({
-      tokenAddress: tokenRequest.address,
-      amount: tokenRequest.amount,
-    })),
-    targetAccount: accountAddress,
-    targetGasUnits: gasLimit,
-    userOp: getEmptyUserOp(),
-    accountAccessList,
-  }
-
-  const orchestrator = getOrchestratorByChain(
-    targetChain.id,
+  const orderPath = await getUserOpOrderPath(
+    sourceChain,
+    targetChain,
+    tokenRequests,
+    accountAddress,
+    gasLimit,
     config.rhinestoneApiKey,
   )
-  const orderPath = await orchestrator.getOrderPath(metaIntent, accountAddress)
-
-  const userOp = await targetBundlerClient.prepareUserOperation({
-    account: targetSessionAccount,
-    calls: [...orderPath[0].injectedExecutions, ...calls],
-    stateOverride: [
-      ...tokenRequests.map((request) => {
-        const rootBalanceSlot = getTokenRootBalanceSlot(
-          targetChain,
-          request.address,
-        )
-        const balanceSlot = rootBalanceSlot
-          ? keccak256(
-              encodeAbiParameters(
-                [{ type: 'address' }, { type: 'uint256' }],
-                [accountAddress, rootBalanceSlot],
-              ),
-            )
-          : '0x'
-        return {
-          address: request.address,
-          stateDiff: [
-            {
-              slot: balanceSlot,
-              value: pad(toHex(request.amount)),
-            },
-          ],
-        }
-      }),
-    ],
-  })
+  const userOp = await getUserOp(
+    config,
+    targetChain,
+    withSession,
+    orderPath,
+    calls,
+    tokenRequests,
+    accountAddress,
+  )
 
   const hash = getUserOperationHash({
     userOperation: userOp,
@@ -485,5 +453,141 @@ function getOrchestratorByChain(chainId: number, apiKey: string) {
   return getOrchestrator(apiKey, orchestratorUrl)
 }
 
-export { prepareTransaction, signTransaction, submitTransaction }
-export type { BundleData }
+async function getUserOpOrderPath(
+  sourceChain: Chain,
+  targetChain: Chain,
+  tokenRequests: TokenRequest[],
+  accountAddress: Address,
+  gasLimit: bigint | undefined,
+  rhinestoneApiKey: string,
+) {
+  const accountAccessList = sourceChain
+    ? {
+        chainIds: [sourceChain.id as SupportedChain],
+      }
+    : getDefaultAccountAccessList()
+
+  const metaIntent: MetaIntent = {
+    targetChainId: targetChain.id,
+    tokenTransfers: tokenRequests.map((tokenRequest) => ({
+      tokenAddress: tokenRequest.address,
+      amount: tokenRequest.amount,
+    })),
+    targetAccount: accountAddress,
+    targetGasUnits: gasLimit,
+    userOp: getEmptyUserOp(),
+    accountAccessList,
+  }
+
+  const orchestrator = getOrchestratorByChain(targetChain.id, rhinestoneApiKey)
+  const orderPath = await orchestrator.getOrderPath(metaIntent, accountAddress)
+  return orderPath
+}
+
+async function getUserOp(
+  config: RhinestoneAccountConfig,
+  targetChain: Chain,
+  withSession: Session,
+  orderPath: OrderPath,
+  calls: Call[],
+  tokenRequests: TokenRequest[],
+  accountAddress: Address,
+) {
+  const targetPublicClient = createPublicClient({
+    chain: targetChain,
+    transport: http(),
+  })
+  const targetSessionAccount = await getSmartSessionSmartAccount(
+    config,
+    targetPublicClient,
+    targetChain,
+    withSession,
+  )
+  const targetBundlerClient = getBundlerClient(config, targetPublicClient)
+
+  return await targetBundlerClient.prepareUserOperation({
+    account: targetSessionAccount,
+    calls: [...orderPath[0].injectedExecutions, ...calls],
+    stateOverride: [
+      ...tokenRequests.map((request) => {
+        const rootBalanceSlot = getTokenRootBalanceSlot(
+          targetChain,
+          request.address,
+        )
+        const balanceSlot = rootBalanceSlot
+          ? keccak256(
+              encodeAbiParameters(
+                [{ type: 'address' }, { type: 'uint256' }],
+                [accountAddress, rootBalanceSlot],
+              ),
+            )
+          : '0x'
+        return {
+          address: request.address,
+          stateDiff: [
+            {
+              slot: balanceSlot,
+              value: pad(toHex(request.amount)),
+            },
+          ],
+        }
+      }),
+    ],
+  })
+}
+
+async function submitIntentInternal(
+  config: RhinestoneAccountConfig,
+  sourceChain: Chain | undefined,
+  targetChain: Chain,
+  orderPath: OrderPath,
+  bundleSignature: Hex,
+  deploy: boolean,
+) {
+  const validatorModule = getOwnerValidator(config)
+  const packedSig = encodePacked(
+    ['address', 'bytes'],
+    [validatorModule.address, bundleSignature],
+  )
+  const signedOrderBundle: SignedMultiChainCompact = {
+    ...orderPath[0].orderBundle,
+    originSignatures: Array(orderPath[0].orderBundle.segments.length).fill(
+      packedSig,
+    ),
+    targetSignature: packedSig,
+  }
+  if (deploy) {
+    await deployTarget(targetChain, config, false)
+  }
+  const initCode = getBundleInitCode(config)
+  const orchestrator = getOrchestratorByChain(
+    targetChain.id,
+    config.rhinestoneApiKey,
+  )
+  const bundleResults = await orchestrator.postSignedOrderBundle([
+    {
+      signedOrderBundle,
+      initCode,
+    },
+  ])
+  return {
+    type: 'bundle',
+    id: bundleResults[0].bundleId,
+    sourceChain: sourceChain?.id,
+    targetChain: targetChain.id,
+  } as TransactionResult
+}
+
+export {
+  prepareTransaction,
+  signTransaction,
+  submitTransaction,
+  getOrchestratorByChain,
+  getUserOpOrderPath,
+  getUserOp,
+  signUserOp,
+  submitUserOp,
+  prepareTransactionAsIntent,
+  submitIntentInternal,
+}
+export type { BundleData, TransactionResult }
