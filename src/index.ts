@@ -1,5 +1,8 @@
-import type { Address, Chain } from 'viem'
-import { getAddress as getAddressInternal } from './accounts'
+import type { Address, Chain, Hex } from 'viem'
+import {
+  deploy as deployInternal,
+  getAddress as getAddressInternal,
+} from './accounts'
 import type { TransactionResult } from './execution'
 import {
   getMaxSpendableAmount as getMaxSpendableAmountInternal,
@@ -7,6 +10,12 @@ import {
   sendTransaction as sendTransactionInternal,
   waitForExecution as waitForExecutionInternal,
 } from './execution'
+import {
+  BundleData,
+  prepareTransaction as prepareTransactionInternal,
+  signTransaction as signTransactionInternal,
+  submitTransaction as submitTransactionInternal,
+} from './execution/modular'
 import type {
   BundleStatus,
   MetaIntent,
@@ -29,6 +38,26 @@ import type {
  * @returns account
  */
 async function createRhinestoneAccount(config: RhinestoneAccountConfig) {
+  function deploy(chain: Chain, session?: Session) {
+    return deployInternal(config, chain, session)
+  }
+
+  function prepareTransaction(transaction: Transaction) {
+    return prepareTransactionInternal(config, transaction)
+  }
+
+  function signTransaction(transaction: Transaction, bundleData: BundleData) {
+    return signTransactionInternal(config, transaction, bundleData)
+  }
+
+  function submitTransaction(
+    transaction: Transaction,
+    bundleData: BundleData,
+    signature: Hex,
+  ) {
+    return submitTransactionInternal(config, transaction, bundleData, signature)
+  }
+
   /**
    * Sign and send a transaction
    * @param transaction Transaction to send
@@ -85,6 +114,10 @@ async function createRhinestoneAccount(config: RhinestoneAccountConfig) {
 
   return {
     config,
+    deploy,
+    prepareTransaction,
+    signTransaction,
+    submitTransaction,
     sendTransaction,
     waitForExecution,
     getAddress,

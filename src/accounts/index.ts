@@ -43,6 +43,7 @@ import {
   getSmartAccount as getSafeSmartAccount,
 } from './safe'
 import { getBundlerClient } from './utils'
+import { enableSmartSession } from '../execution/smart-session'
 
 function getDeployArgs(config: RhinestoneAccountConfig) {
   const account = getAccount(config)
@@ -91,6 +92,17 @@ async function isDeployed(chain: Chain, config: RhinestoneAccountConfig) {
     throw new Error('Existing EIP-7702 accounts are not yet supported')
   }
   return size(code) > 0
+}
+
+async function deploy(
+  config: RhinestoneAccountConfig,
+  chain: Chain,
+  session?: Session,
+) {
+  await deploySource(chain, config)
+  if (session) {
+    await enableSmartSession(chain, config, session)
+  }
 }
 
 async function deploySource(chain: Chain, config: RhinestoneAccountConfig) {
@@ -409,6 +421,7 @@ export {
   getBundleInitCode,
   getAddress,
   isDeployed,
+  deploy,
   deploySource,
   deployTarget,
   getSmartAccount,

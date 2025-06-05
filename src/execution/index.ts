@@ -67,6 +67,7 @@ import {
   getSessionSignature,
   hashErc7739,
 } from './smart-session'
+import type { BundleData } from './modular'
 
 const POLLING_INTERVAL = 500
 
@@ -489,4 +490,4 @@ export {
   getMaxSpendableAmount,
   getPortfolio,
 }
-export type { TransactionResult }
+export type { BundleData, TransactionResult }
