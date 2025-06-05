@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 0.8.3
+
+### Patch Changes
+
+- c198a38: Fix export paths
+
 ## 0.8.2
 
 ### Patch Changes
