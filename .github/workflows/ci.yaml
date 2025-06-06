@@ -48,8 +48,6 @@ jobs:
 
       - name: Set up Foundry
         uses: foundry-rs/foundry-toolchain@v1
-        with:
-          version: nightly-2564718bbbddb59cd07fc3b9ffc775dff548c558
 
       - name: Install the npm dependencies
         run: bun install
