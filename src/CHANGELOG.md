@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 0.9.0
+
+### Minor Changes
+
+- 07bab17: Pass tokenPrices, gasPrices and opGasParams on POST /bundles
+
 ## 0.8.3
 
 ### Patch Changes
