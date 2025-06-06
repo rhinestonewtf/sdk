@@ -54,6 +54,9 @@ jobs:
       - name: Install the npm dependencies
         run: bun install
 
+      - name: Clean
+        run: bun run clean
+
       - name: Run tests
         run: bun run test
         env:
