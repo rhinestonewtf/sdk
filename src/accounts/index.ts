@@ -14,6 +14,7 @@ import {
   zeroHash,
 } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
+import { enableSmartSession } from '../execution/smart-session'
 import {
   getWebauthnValidatorSignature,
   isRip7212SupportedNetwork,
@@ -43,7 +44,6 @@ import {
   getSmartAccount as getSafeSmartAccount,
 } from './safe'
 import { getBundlerClient } from './utils'
-import { enableSmartSession } from '../execution/smart-session'
 
 function getDeployArgs(config: RhinestoneAccountConfig) {
   const account = getAccount(config)

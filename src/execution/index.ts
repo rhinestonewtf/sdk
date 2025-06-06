@@ -2,14 +2,9 @@ import {
   type Address,
   type Chain,
   createPublicClient,
-  type Hex,
   http,
   zeroAddress,
 } from 'viem'
-import {
-  entryPoint07Address,
-  getUserOperationHash,
-} from 'viem/account-abstraction'
 import { mainnet, sepolia } from 'viem/chains'
 
 import {
@@ -41,7 +36,7 @@ import type {
   TokenRequest,
   Transaction,
 } from '../types'
-
+import { enableSmartSession } from './smart-session'
 import type { BundleData, TransactionResult } from './utils'
 import {
   getOrchestratorByChain,
@@ -52,11 +47,6 @@ import {
   submitIntentInternal,
   submitUserOp,
 } from './utils'
-import {
-  enableSmartSession,
-  getSessionSignature,
-  hashErc7739,
-} from './smart-session'
 
 const POLLING_INTERVAL = 500
 

@@ -16,14 +16,6 @@ import {
   getUserOperationHash,
   UserOperation,
 } from 'viem/account-abstraction'
-
-import {
-  Call,
-  RhinestoneAccountConfig,
-  Session,
-  TokenRequest,
-  Transaction,
-} from '../types'
 import {
   deployTarget,
   getAddress,
@@ -31,17 +23,11 @@ import {
   getSmartSessionSmartAccount,
   sign,
 } from '../accounts'
+import { getBundlerClient } from '../accounts/utils'
 import {
-  MetaIntent,
-  OrderPath,
-  SignedMultiChainCompact,
-  SupportedChain,
-} from '../orchestrator/types'
-import {
-  getDefaultAccountAccessList,
-  getTokenRootBalanceSlot,
-  isTestnet,
-} from '../orchestrator/registry'
+  getOwnerValidator,
+  getSmartSessionValidator,
+} from '../modules/validators'
 import {
   getEmptyUserOp,
   getOrchestrator,
@@ -51,11 +37,24 @@ import {
   DEV_ORCHESTRATOR_URL,
   PROD_ORCHESTRATOR_URL,
 } from '../orchestrator/consts'
-import { getBundlerClient } from '../accounts/utils'
 import {
-  getOwnerValidator,
-  getSmartSessionValidator,
-} from '../modules/validators'
+  getDefaultAccountAccessList,
+  getTokenRootBalanceSlot,
+  isTestnet,
+} from '../orchestrator/registry'
+import {
+  MetaIntent,
+  OrderPath,
+  SignedMultiChainCompact,
+  SupportedChain,
+} from '../orchestrator/types'
+import {
+  Call,
+  RhinestoneAccountConfig,
+  Session,
+  TokenRequest,
+  Transaction,
+} from '../types'
 
 import { getSessionSignature, hashErc7739 } from './smart-session'
 
