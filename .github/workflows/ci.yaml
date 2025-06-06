@@ -51,15 +51,11 @@ jobs:
         with:
           version: nightly-2564718bbbddb59cd07fc3b9ffc775dff548c558
 
-      - name: "Restore the cached build and the node modules"
-        if: ${{ inputs.restore-cache }}
-        uses: "actions/cache/restore@v4"
-        with:
-          key: "build-and-modules-${{ github.sha }}"
-          path: ${{ inputs.cache-path }}
-
       - name: Install the npm dependencies
         run: bun install
+
+      - name: Clean
+        run: bun run clean
 
       - name: Run tests
         run: bun run test

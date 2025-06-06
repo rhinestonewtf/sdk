@@ -1,7 +1,7 @@
 import { Address, zeroAddress } from 'viem'
 import { vi } from 'vitest'
 
-import { MetaIntent, OrderPath } from '../src/orchestrator'
+import type { MetaIntent, OrderPath } from '../src/orchestrator'
 
 export function createOrchestratorMock() {
   const mockOrchestrator = {
@@ -59,6 +59,9 @@ export function createOrchestratorMock() {
                 },
               },
             ],
+            tokenPrices: [],
+            gasPrices: [],
+            opGasParams: {},
           },
           intentCost: {
             hasFulfilledAll: true,
