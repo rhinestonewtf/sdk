@@ -134,6 +134,9 @@ function parseCompactResponse(response: any): MultiChainCompact {
         },
       } as Segment
     }),
+    tokenPrices: response.tokenPrices,
+    gasPrices: response.gasPrices,
+    opGasParams: response.opGasParams,
   } as MultiChainCompact
 }
 

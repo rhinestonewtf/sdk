@@ -25,6 +25,8 @@ type SupportedMainnet =
   | typeof arbitrum.id
   | typeof optimism.id
   | typeof polygon.id
+type SupportedOPStackMainnet = typeof optimism.id | typeof base.id
+type SupportedOPStackTestnet = typeof optimismSepolia.id | typeof baseSepolia.id
 type SupportedChain = SupportedMainnet | SupportedTestnet
 type SupportedTokenSymbol = 'ETH' | 'WETH' | 'USDC'
 type SupportedToken = SupportedTokenSymbol | Address
@@ -205,6 +207,9 @@ interface MultiChainCompact {
   nonce: bigint
   expires: bigint
   segments: Segment[]
+  tokenPrices: TokenPrices
+  gasPrices: GasPrices
+  opGasParams: OPNetworkParams
 }
 
 interface SignedMultiChainCompact extends MultiChainCompact {
@@ -281,6 +286,27 @@ interface TokenConfig {
   decimals: number
   balanceSlot: (address: Address) => Hex
 }
+
+export type TokenPrices = {
+  [key in SupportedTokenSymbol]?: number
+}
+
+export type GasPrices = {
+  [key in SupportedMainnet | SupportedTestnet]?: bigint
+}
+
+export type OPNetworkParams =
+  | {
+      [key in SupportedOPStackMainnet | SupportedOPStackTestnet]?: {
+        l1BaseFee: bigint
+        l1BlobBaseFee: bigint
+        baseFeeScalar: bigint
+        blobFeeScalar: bigint
+      }
+    }
+  | {
+      estimatedCalldataSize: number
+    }
 
 const BUNDLE_STATUS_PENDING = 'PENDING'
 const BUNDLE_STATUS_FAILED = 'FAILED'
