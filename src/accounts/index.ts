@@ -178,19 +178,23 @@ async function deployStandaloneWithEoa(
   deployer: Account,
 ) {
   const { factory, factoryData } = getDeployArgs(config)
+  console.log('deployStandaloneWithEoa 1')
   const publicClient = createPublicClient({
     chain: chain,
     transport: http(),
   })
+  console.log('deployStandaloneWithEoa 2', publicClient)
   const client = createWalletClient({
     account: deployer,
     chain: chain,
     transport: http(),
   })
+  console.log('deployStandaloneWithEoa 3', client)
   const tx = await client.sendTransaction({
     to: factory,
     data: factoryData,
   })
+  console.log('deployStandaloneWithEoa 4', tx)
   await publicClient.waitForTransactionReceipt({ hash: tx })
 }
 
