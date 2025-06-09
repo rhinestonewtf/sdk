@@ -78,29 +78,24 @@ interface BundleData {
   userOp?: UserOperation
 }
 
+interface PreparedTransactionData {
+  bundleData: BundleData
+  transaction: Transaction
+}
+
+interface SignedTransactionData extends PreparedTransactionData {
+  signature: Hex
+}
+
 async function prepareTransaction(
   config: RhinestoneAccountConfig,
   transaction: Transaction,
-) {
-  const sourceChain =
-    'chain' in transaction ? transaction.chain : transaction.sourceChain
-  const targetChain =
-    'chain' in transaction ? transaction.chain : transaction.targetChain
-  const initialTokenRequests = transaction.tokenRequests
-  const withSession =
-    transaction.signers?.type === 'session' ? transaction.signers.session : null
+): Promise<PreparedTransactionData> {
+  const { sourceChain, targetChain, tokenRequests, withSession } =
+    getTransactionParams(transaction)
   const accountAddress = getAddress(config)
 
-  // Across requires passing some value to repay the solvers
-  const tokenRequests =
-    initialTokenRequests.length === 0
-      ? [
-          {
-            address: zeroAddress,
-            amount: 1n,
-          },
-        ]
-      : initialTokenRequests
+  let bundleData: BundleData
 
   if (withSession) {
     if (!sourceChain) {
@@ -109,7 +104,7 @@ async function prepareTransaction(
       )
     }
     // Smart sessions require a UserOp flow
-    return await prepareTransactionAsUserOp(
+    bundleData = await prepareTransactionAsUserOp(
       config,
       sourceChain,
       targetChain,
@@ -120,7 +115,7 @@ async function prepareTransaction(
       withSession,
     )
   } else {
-    return await prepareTransactionAsIntent(
+    bundleData = await prepareTransactionAsIntent(
       config,
       sourceChain,
       targetChain,
@@ -130,20 +125,24 @@ async function prepareTransaction(
       accountAddress,
     )
   }
+
+  return {
+    bundleData,
+    transaction,
+  }
 }
 
 async function signTransaction(
   config: RhinestoneAccountConfig,
-  transaction: Transaction,
-  bundleData: BundleData,
-) {
-  const sourceChain =
-    'chain' in transaction ? transaction.chain : transaction.sourceChain
-  const targetChain =
-    'chain' in transaction ? transaction.chain : transaction.targetChain
-  const withSession =
-    transaction.signers?.type === 'session' ? transaction.signers.session : null
+  preparedTransaction: PreparedTransactionData,
+): Promise<SignedTransactionData> {
+  const { sourceChain, targetChain, withSession } = getTransactionParams(
+    preparedTransaction.transaction,
+  )
+  const bundleData = preparedTransaction.bundleData
   const accountAddress = getAddress(config)
+
+  let signature: Hex
 
   if (withSession) {
     if (!sourceChain) {
@@ -156,7 +155,7 @@ async function signTransaction(
       throw new Error(`User operation is required when using smart sessions`)
     }
     // Smart sessions require a UserOp flow
-    return await signUserOp(
+    signature = await signUserOp(
       config,
       sourceChain,
       targetChain,
@@ -166,22 +165,29 @@ async function signTransaction(
       bundleData.orderPath,
     )
   } else {
-    return await signIntent(config, sourceChain, targetChain, bundleData.hash)
+    signature = await signIntent(
+      config,
+      sourceChain,
+      targetChain,
+      bundleData.hash,
+    )
+  }
+
+  return {
+    bundleData,
+    transaction: preparedTransaction.transaction,
+    signature,
   }
 }
 
 async function submitTransaction(
   config: RhinestoneAccountConfig,
-  transaction: Transaction,
-  bundleData: BundleData,
-  signature: Hex,
-) {
-  const sourceChain =
-    'chain' in transaction ? transaction.chain : transaction.sourceChain
-  const targetChain =
-    'chain' in transaction ? transaction.chain : transaction.targetChain
-  const withSession =
-    transaction.signers?.type === 'session' ? transaction.signers.session : null
+  signedTransaction: SignedTransactionData,
+): Promise<TransactionResult> {
+  const { bundleData, transaction, signature } = signedTransaction
+  const { sourceChain, targetChain, withSession } =
+    getTransactionParams(transaction)
+
   if (withSession) {
     if (!sourceChain) {
       throw new Error(
@@ -209,6 +215,34 @@ async function submitTransaction(
       bundleData.orderPath,
       signature,
     )
+  }
+}
+
+function getTransactionParams(transaction: Transaction) {
+  const sourceChain =
+    'chain' in transaction ? transaction.chain : transaction.sourceChain
+  const targetChain =
+    'chain' in transaction ? transaction.chain : transaction.targetChain
+  const initialTokenRequests = transaction.tokenRequests
+  const withSession =
+    transaction.signers?.type === 'session' ? transaction.signers.session : null
+
+  // Across requires passing some value to repay the solvers
+  const tokenRequests =
+    initialTokenRequests.length === 0
+      ? [
+          {
+            address: zeroAddress,
+            amount: 1n,
+          },
+        ]
+      : initialTokenRequests
+
+  return {
+    sourceChain,
+    targetChain,
+    tokenRequests,
+    withSession,
   }
 }
 
@@ -589,4 +623,9 @@ export {
   prepareTransactionAsIntent,
   submitIntentInternal,
 }
-export type { BundleData, TransactionResult }
+export type {
+  BundleData,
+  TransactionResult,
+  PreparedTransactionData,
+  SignedTransactionData,
+}

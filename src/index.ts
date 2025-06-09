@@ -12,6 +12,8 @@ import {
 } from './execution'
 import {
   BundleData,
+  PreparedTransactionData,
+  SignedTransactionData,
   prepareTransaction as prepareTransactionInternal,
   signTransaction as signTransactionInternal,
   submitTransaction as submitTransactionInternal,
@@ -46,16 +48,12 @@ async function createRhinestoneAccount(config: RhinestoneAccountConfig) {
     return prepareTransactionInternal(config, transaction)
   }
 
-  function signTransaction(transaction: Transaction, bundleData: BundleData) {
-    return signTransactionInternal(config, transaction, bundleData)
+  function signTransaction(preparedTransaction: PreparedTransactionData) {
+    return signTransactionInternal(config, preparedTransaction)
   }
 
-  function submitTransaction(
-    transaction: Transaction,
-    bundleData: BundleData,
-    signature: Hex,
-  ) {
-    return submitTransactionInternal(config, transaction, bundleData, signature)
+  function submitTransaction(signedTransaction: SignedTransactionData) {
+    return submitTransactionInternal(config, signedTransaction)
   }
 
   /**
@@ -136,4 +134,8 @@ export type {
   MultiChainCompact,
   PostOrderBundleResult,
   SignedMultiChainCompact,
+  BundleData,
+  PreparedTransactionData,
+  SignedTransactionData,
+  TransactionResult,
 }
