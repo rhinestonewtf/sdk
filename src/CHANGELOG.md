@@ -1,5 +1,16 @@
 # @rhinestone/sdk
 
+## 0.10.0
+
+### Minor Changes
+
+- 262a06d: Expose low-level APIs:
+
+  - deploy
+  - prepareTransaction
+  - signTransaction
+  - submitTransaction
+
 ## 0.9.0
 
 ### Minor Changes
