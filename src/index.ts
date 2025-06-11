@@ -1,5 +1,8 @@
 import type { Address, Chain } from 'viem'
-import { getAddress as getAddressInternal } from './accounts'
+import {
+  deploy as deployInternal,
+  getAddress as getAddressInternal,
+} from './accounts'
 import type { TransactionResult } from './execution'
 import {
   getMaxSpendableAmount as getMaxSpendableAmountInternal,
@@ -7,6 +10,14 @@ import {
   sendTransaction as sendTransactionInternal,
   waitForExecution as waitForExecutionInternal,
 } from './execution'
+import {
+  BundleData,
+  PreparedTransactionData,
+  prepareTransaction as prepareTransactionInternal,
+  SignedTransactionData,
+  signTransaction as signTransactionInternal,
+  submitTransaction as submitTransactionInternal,
+} from './execution/utils'
 import type {
   BundleStatus,
   MetaIntent,
@@ -29,6 +40,22 @@ import type {
  * @returns account
  */
 async function createRhinestoneAccount(config: RhinestoneAccountConfig) {
+  function deploy(chain: Chain, session?: Session) {
+    return deployInternal(config, chain, session)
+  }
+
+  function prepareTransaction(transaction: Transaction) {
+    return prepareTransactionInternal(config, transaction)
+  }
+
+  function signTransaction(preparedTransaction: PreparedTransactionData) {
+    return signTransactionInternal(config, preparedTransaction)
+  }
+
+  function submitTransaction(signedTransaction: SignedTransactionData) {
+    return submitTransactionInternal(config, signedTransaction)
+  }
+
   /**
    * Sign and send a transaction
    * @param transaction Transaction to send
@@ -85,6 +112,10 @@ async function createRhinestoneAccount(config: RhinestoneAccountConfig) {
 
   return {
     config,
+    deploy,
+    prepareTransaction,
+    signTransaction,
+    submitTransaction,
     sendTransaction,
     waitForExecution,
     getAddress,
@@ -103,4 +134,8 @@ export type {
   MultiChainCompact,
   PostOrderBundleResult,
   SignedMultiChainCompact,
+  BundleData,
+  PreparedTransactionData,
+  SignedTransactionData,
+  TransactionResult,
 }
