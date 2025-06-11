@@ -1,6 +1,7 @@
 import {
   type Address,
   type Chain,
+  concat,
   createPublicClient,
   encodeAbiParameters,
   encodePacked,
@@ -8,6 +9,8 @@ import {
   http,
   keccak256,
   pad,
+  size,
+  slice,
   toHex,
   zeroAddress,
 } from 'viem'
@@ -368,24 +371,120 @@ async function sendTransactionAsIntent(
     ...metaIntent.targetExecutions,
   ]
 
+  console.dir(orderPath, { depth: null })
+
   const orderBundleHash = getOrderBundleHash(orderPath[0].orderBundle)
-  const bundleSignature = await sign(
+  // const bundleSignature = await sign(
+  //   config.owners,
+  //   sourceChain || targetChain,
+  //   orderBundleHash,
+  // )
+
+  const domainSeparatorTypehash =
+    '0x47e79534a245952e8b16893a336b85a3d9ea9fa8c573f3d803afb92a79469218'
+  const sourceDomainSeparator = keccak256(
+    encodeAbiParameters(
+      [{ type: 'bytes32' }, { type: 'uint256' }, { type: 'address' }],
+      [domainSeparatorTypehash, BigInt(sourceChain?.id || 0), accountAddress],
+    ),
+  )
+  const targetDomainSeparator = keccak256(
+    encodeAbiParameters(
+      [{ type: 'bytes32' }, { type: 'uint256' }, { type: 'address' }],
+      [domainSeparatorTypehash, BigInt(targetChain.id), accountAddress],
+    ),
+  )
+  // console.log(
+  //   'domainHash',
+  //   keccak256(
+  //     encodeAbiParameters(
+  //       [{ type: 'bytes32' }, { type: 'uint256' }, { type: 'address' }],
+  //       [
+  //         domainSeparatorTypehash,
+  //         BigInt(10),
+  //         '0xcBB4aC0F0457761779E8C040023e45C468A70896',
+  //       ],
+  //     ),
+  //   ),
+  // )
+  const safeMsgTypeHash =
+    '0x60b3cbf8b4a223d68d641b3b6ddf9a298e7f33710cf3d3a9d1146b5a6150fbca'
+  const sourceMessageData = encodePacked(
+    ['bytes1', 'bytes1', 'bytes32', 'bytes32'],
+    [
+      '0x19',
+      '0x01',
+      sourceDomainSeparator,
+      keccak256(
+        encodeAbiParameters(
+          [{ type: 'bytes32' }, { type: 'bytes32' }],
+          [safeMsgTypeHash, keccak256(orderBundleHash)],
+        ),
+      ),
+    ],
+  )
+  const targetMessageData = encodePacked(
+    ['bytes1', 'bytes1', 'bytes32', 'bytes32'],
+    [
+      '0x19',
+      '0x01',
+      targetDomainSeparator,
+      keccak256(
+        encodeAbiParameters(
+          [{ type: 'bytes32' }, { type: 'bytes32' }],
+          [safeMsgTypeHash, keccak256(orderBundleHash)],
+        ),
+      ),
+    ],
+  )
+  const sourceMessageHash = keccak256(sourceMessageData)
+  const targetMessageHash = keccak256(targetMessageData)
+  const sourceBundleSignature = await sign(
     config.owners,
+    // sourceChain || targetChain,
     sourceChain || targetChain,
-    orderBundleHash,
+    sourceMessageHash,
   )
-  const validatorModule = getOwnerValidator(config)
-  const packedSig = encodePacked(
+  const targetBundleSignature = await sign(
+    config.owners,
+    // sourceChain || targetChain,
+    targetChain,
+    targetMessageHash,
+  )
+  const safeSourceSignature = toSafeSignature(sourceBundleSignature)
+  const safeTargetSignature = toSafeSignature(targetBundleSignature)
+
+  // const validatorModule = getOwnerValidator(config)
+  // const packedSig = encodePacked(
+  //   ['address', 'bytes'],
+  //   [validatorModule.address, bundleSignature],
+  // )
+  const sourcePackedSig = encodePacked(
     ['address', 'bytes'],
-    [validatorModule.address, bundleSignature],
+    [zeroAddress, safeSourceSignature],
   )
+  const targetPackedSig = encodePacked(
+    ['address', 'bytes'],
+    [zeroAddress, safeTargetSignature],
+  )
+  console.log('sig', {
+    orderBundleHash,
+    sourceMessageData,
+    sourceMessageHash,
+    sourceBundleSignature,
+    safeSourceSignature,
+    targetMessageData,
+    targetMessageHash,
+    targetBundleSignature,
+    safeTargetSignature,
+  })
 
   const signedOrderBundle: SignedMultiChainCompact = {
     ...orderPath[0].orderBundle,
     originSignatures: Array(orderPath[0].orderBundle.segments.length).fill(
-      packedSig,
+      sourcePackedSig,
     ),
-    targetSignature: packedSig,
+    targetSignature: targetPackedSig,
   }
 
   await deployTarget(targetChain, config, false)
@@ -403,6 +502,23 @@ async function sendTransactionAsIntent(
     sourceChain: sourceChain?.id,
     targetChain: targetChain.id,
   } as TransactionResult
+}
+
+function toSafeSignature(concatenatedSignature: Hex) {
+  const signatureCount = size(concatenatedSignature) / 65
+  const signatures = Array.from({ length: signatureCount }, () => '0x' as Hex)
+  for (let i = 0; i < signatureCount; i++) {
+    const originalSignature = slice(concatenatedSignature, i * 65, (i + 1) * 65)
+    const r = slice(originalSignature, 0, 32)
+    const s = slice(originalSignature, 32, 64)
+    const originalV = slice(originalSignature, 64, 65)
+    const v =
+      originalV === '0x1c' ? '0x20' : originalV === '0x1b' ? '0x1f' : originalV
+    const signature = concat([r, s, v])
+    signatures[i] = signature
+  }
+  signatures.sort()
+  return concat(signatures)
 }
 
 async function waitForExecution(
