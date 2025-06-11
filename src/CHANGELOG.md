@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 0.10.1
+
+### Patch Changes
+
+- f611ebe: Add support for USDT
+
 ## 0.10.0
 
 ### Minor Changes
