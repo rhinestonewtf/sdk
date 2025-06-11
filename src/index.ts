@@ -1,4 +1,4 @@
-import type { Address, Chain, Hex } from 'viem'
+import type { Address, Chain } from 'viem'
 import {
   deploy as deployInternal,
   getAddress as getAddressInternal,
@@ -13,8 +13,8 @@ import {
 import {
   BundleData,
   PreparedTransactionData,
-  SignedTransactionData,
   prepareTransaction as prepareTransactionInternal,
+  SignedTransactionData,
   signTransaction as signTransactionInternal,
   submitTransaction as submitTransactionInternal,
 } from './execution/utils'
