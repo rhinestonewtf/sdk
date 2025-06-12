@@ -2,7 +2,7 @@ import type { Account, Address, Chain, Hex } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
 
 interface AccountProviderConfig {
-  type: 'safe' | 'nexus'
+  type: 'safe' | 'nexus' | 'kernel'
 }
 
 interface OwnableValidatorConfig {
