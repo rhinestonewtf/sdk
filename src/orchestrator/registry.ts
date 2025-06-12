@@ -102,32 +102,17 @@ function getUsdtAddress(chain: Chain) {
     case mainnet.id: {
       return '0xdAC17F958D2ee523a2206206994597C13D831ec7'
     }
-    case sepolia.id: {
-      return '0xaA8E23Fb1079EA71e0a56f48a2aA51851D8433D0'
-    }
     case base.id: {
-      return '0x2d1aDB45Bb1d7D2556c6558aDb76CFD4F9F4ed16'
-    }
-    case baseSepolia.id: {
-      return '0xd7e9C75C6C05FdE929cAc19bb887892de78819B7'
+      return '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2'
     }
     case arbitrum.id: {
       return '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9'
     }
-    case arbitrumSepolia.id: {
-      return '0xe5B6C29411B3Ad31c3613Bba0145293fC9957256'
-    }
     case optimism.id: {
       return '0x94b008aa00579c1307b0ef2c499ad98a8ce58e58'
     }
-    case optimismSepolia.id: {
-      return '0x4bA3A5ab2EC0C9C45F153374fbcb05a1526c4a01'
-    }
     case polygon.id: {
       return '0xc2132D05D31c914a87C6611C10748AEb04B58e8F'
-    }
-    case polygonAmoy.id: {
-      return '0x079862edc450F5f3A6f3A358757eFfF0139A059f'
     }
     default: {
       throw new Error(`Unsupported chain ${chain.id}`)
@@ -172,10 +157,6 @@ function getTokenRootBalanceSlot(
       if (tokenAddress === '0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14') {
         return 3n
       }
-      // USDT
-      if (tokenAddress === '0xaA8E23Fb1079EA71e0a56f48a2aA51851D8433D0') {
-        return 0n
-      }
       break
     }
     case base.id: {
@@ -192,8 +173,8 @@ function getTokenRootBalanceSlot(
         return 3n
       }
       // USDT
-      if (tokenAddress === '0x2d1aDB45Bb1d7D2556c6558aDb76CFD4F9F4ed16') {
-        return 0n
+      if (tokenAddress === '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2') {
+        return 51n
       }
       break
     }
@@ -209,10 +190,6 @@ function getTokenRootBalanceSlot(
       // WETH
       if (tokenAddress === '0x4200000000000000000000000000000000000006') {
         return 3n
-      }
-      // USDT
-      if (tokenAddress === '0xd7e9C75C6C05FdE929cAc19bb887892de78819B7') {
-        return 0n
       }
       break
     }
@@ -246,10 +223,6 @@ function getTokenRootBalanceSlot(
       }
       // WETH
       if (tokenAddress === '0x980B62Da83eFf3D4576C647993b0c1D7faf17c73') {
-        return 51n
-      }
-      // USDT
-      if (tokenAddress === '0xe5B6C29411B3Ad31c3613Bba0145293fC9957256') {
         return 51n
       }
       break
@@ -286,10 +259,6 @@ function getTokenRootBalanceSlot(
       if (tokenAddress === '0x4200000000000000000000000000000000000006') {
         return 3n
       }
-      // USDT
-      if (tokenAddress === '0x4bA3A5ab2EC0C9C45F153374fbcb05a1526c4a01') {
-        return 0n
-      }
       break
     }
     case polygon.id: {
@@ -315,10 +284,6 @@ function getTokenRootBalanceSlot(
       // WETH
       if (tokenAddress === '0x52eF3d68BaB452a294342DC3e5f464d7f610f72E') {
         return 3n
-      }
-      // USDT
-      if (tokenAddress === '0x079862edc450F5f3A6f3A358757eFfF0139A059f') {
-        return 0n
       }
       break
     }
