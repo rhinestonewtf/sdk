@@ -3,7 +3,6 @@ import {
   type Chain,
   createPublicClient,
   encodeAbiParameters,
-  encodePacked,
   type Hex,
   http,
   keccak256,
@@ -22,9 +21,9 @@ import {
   deployTarget,
   getAddress,
   getBundleInitCode,
+  getPackedSignature,
   getSmartSessionSmartAccount,
   isDeployed,
-  sign,
 } from '../accounts'
 import { getBundlerClient } from '../accounts/utils'
 import { getOwnerValidator } from '../modules'
@@ -287,23 +286,31 @@ async function sendTransactionAsUserOp(
 
   const { hash, appDomainSeparator, contentsType, structHash } =
     await hashErc7739(sourceChain, orderPath, accountAddress)
-  const signature = await sign(withSession.owners, targetChain, hash)
-  const sessionSignature = getSessionSignature(
-    signature,
-    appDomainSeparator,
-    structHash,
-    contentsType,
-    withSession,
-  )
 
   const smartSessionValidator = getSmartSessionValidator(config)
   if (!smartSessionValidator) {
     throw new Error('Smart session validator not available')
   }
-  const packedSig = encodePacked(
-    ['address', 'bytes'],
-    [smartSessionValidator.address, sessionSignature],
+
+  const packedSig = await getPackedSignature(
+    config,
+    config.owners,
+    targetChain,
+    {
+      address: smartSessionValidator.address,
+      isRoot: false,
+    },
+    hash,
+    (signature) =>
+      getSessionSignature(
+        signature,
+        appDomainSeparator,
+        structHash,
+        contentsType,
+        withSession,
+      ),
   )
+
   const signedOrderBundle: SignedMultiChainCompact = {
     ...orderPath[0].orderBundle,
     originSignatures: Array(orderPath[0].orderBundle.segments.length).fill(
@@ -369,15 +376,16 @@ async function sendTransactionAsIntent(
   ]
 
   const orderBundleHash = getOrderBundleHash(orderPath[0].orderBundle)
-  const bundleSignature = await sign(
+  const validatorModule = getOwnerValidator(config)
+  const packedSig = await getPackedSignature(
+    config,
     config.owners,
     sourceChain || targetChain,
+    {
+      address: validatorModule.address,
+      isRoot: true,
+    },
     orderBundleHash,
-  )
-  const validatorModule = getOwnerValidator(config)
-  const packedSig = encodePacked(
-    ['address', 'bytes'],
-    [validatorModule.address, bundleSignature],
   )
 
   const signedOrderBundle: SignedMultiChainCompact = {
