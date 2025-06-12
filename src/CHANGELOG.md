@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 0.10.2
+
+### Patch Changes
+
+- 238b12b: Fix: remove support for USDT on testnets
+
 ## 0.10.1
 
 ### Patch Changes
