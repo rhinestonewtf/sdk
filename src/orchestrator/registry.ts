@@ -17,6 +17,7 @@ import {
   polygon,
   polygonAmoy,
   sepolia,
+  zksync,
 } from 'viem/chains'
 
 import { TokenConfig } from './types'
@@ -52,6 +53,9 @@ function getWethAddress(chain: Chain) {
     }
     case polygonAmoy.id: {
       return '0x52eF3d68BaB452a294342DC3e5f464d7f610f72E'
+    }
+    case zksync.id: {
+      return '0x5aea5775959fbc2557cc8789bc1bf90a239d9a91'
     }
     default: {
       throw new Error(`Unsupported chain ${chain.id}`)
@@ -91,6 +95,9 @@ function getUsdcAddress(chain: Chain) {
     case polygonAmoy.id: {
       return '0x41e94eb019c0762f9bfcf9fb1e58725bfb0e7582'
     }
+    case zksync.id: {
+      return '0x3355df6d4c9c3035724fd0e3914de96a5a83aaf4'
+    }
     default: {
       throw new Error(`Unsupported chain ${chain.id}`)
     }
@@ -113,6 +120,9 @@ function getUsdtAddress(chain: Chain) {
     }
     case polygon.id: {
       return '0xc2132D05D31c914a87C6611C10748AEb04B58e8F'
+    }
+    case zksync.id: {
+      return '0x493257fD37EDB34451f62EDf8D2a0C418852bA4C'
     }
     default: {
       throw new Error(`Unsupported chain ${chain.id}`)
@@ -284,6 +294,25 @@ function getTokenRootBalanceSlot(
       // WETH
       if (tokenAddress === '0x52eF3d68BaB452a294342DC3e5f464d7f610f72E') {
         return 3n
+      }
+      break
+    }
+    case zksync.id: {
+      // ETH
+      if (tokenAddress === zeroAddress) {
+        return null
+      }
+      // USDC
+      if (tokenAddress === '0x3355df6d4c9c3035724fd0e3914de96a5a83aaf4') {
+        return 9n
+      }
+      // WETH
+      if (tokenAddress === '0x5aea5775959fbc2557cc8789bc1bf90a239d9a91') {
+        return 3n
+      }
+      // USDT
+      if (tokenAddress === '0x493257fD37EDB34451f62EDf8D2a0C418852bA4C') {
+        return 2n
       }
       break
     }
