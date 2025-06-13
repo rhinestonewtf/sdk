@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 0.10.3
+
+### Patch Changes
+
+- 6d175c4: add zksync to supported chains
+
 ## 0.10.2
 
 ### Patch Changes
