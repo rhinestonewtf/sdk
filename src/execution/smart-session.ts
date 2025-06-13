@@ -3,6 +3,7 @@ import {
   type Chain,
   createPublicClient,
   encodeAbiParameters,
+  encodeFunctionData,
   encodePacked,
   type Hex,
   http,
@@ -11,6 +12,7 @@ import {
 
 import { getAddress, getSmartAccount } from '../accounts'
 import { getBundlerClient } from '../accounts/utils'
+import { getSetup } from '../modules'
 import {
   getAccountEIP712Domain,
   getEnableSessionCall,
@@ -27,6 +29,7 @@ async function enableSmartSession(
   config: RhinestoneAccountConfig,
   session: Session,
 ) {
+  const moduleSetup = getSetup(config)
   const publicClient = createPublicClient({
     chain,
     transport: http(),
@@ -42,10 +45,34 @@ async function enableSmartSession(
   }
   const smartAccount = await getSmartAccount(config, publicClient, chain)
   const bundlerClient = getBundlerClient(config, publicClient)
+  const trustRhinestoneCall = {
+    to: '0x000000000069e2a187aeffb852bf3ccdc95151b2' as Address,
+    data: encodeFunctionData({
+      abi: [
+        {
+          name: 'trustAttesters',
+          type: 'function',
+          inputs: [
+            {
+              name: 'threshold',
+              type: 'uint8',
+            },
+            {
+              name: 'attesters',
+              type: 'address[]',
+            },
+          ],
+          outputs: [],
+        },
+      ],
+      functionName: 'trustAttesters',
+      args: [moduleSetup.threshold, moduleSetup.attesters],
+    }),
+  }
   const enableSessionCall = await getEnableSessionCall(chain, session)
   const opHash = await bundlerClient.sendUserOperation({
     account: smartAccount,
-    calls: [enableSessionCall],
+    calls: [trustRhinestoneCall, enableSessionCall],
   })
   await bundlerClient.waitForUserOperationReceipt({
     hash: opHash,

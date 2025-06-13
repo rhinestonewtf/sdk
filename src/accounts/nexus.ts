@@ -343,13 +343,6 @@ async function getPackedSignature(
     ['address', 'bytes'],
     [validator.address, transformSignature(signature)],
   )
-  console.log('getPackedSignature', {
-    hash,
-    validator,
-    signature,
-    transformSignature: transformSignature(signature),
-    packedSig,
-  })
   return packedSig
 }
 

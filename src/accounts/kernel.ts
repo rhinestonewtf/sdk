@@ -177,7 +177,8 @@ async function getPackedSignature(
   transformSignature: (signature: Hex) => Hex = (signature) => signature,
 ) {
   const vId = validator.isRoot ? '0x00' : concat(['0x01', validator.address])
-  const signature = await signFn(wrapMessageHash(hash, accountAddress))
+  // const signature = await signFn(wrapMessageHash(hash, accountAddress))
+  const signature = await signFn(hash)
   const magicValueSigReplayable = keccak256(
     toHex('kernel.replayable.signature'),
   )
@@ -186,14 +187,6 @@ async function getPackedSignature(
     magicValueSigReplayable,
     transformSignature(signature),
   ])
-  console.log('getPackedSignature', {
-    hash,
-    validator,
-    accountAddress,
-    signature,
-    transformSignature: transformSignature(signature),
-    packedSig,
-  })
   return packedSig
 }
 
@@ -266,6 +259,15 @@ async function getSessionSmartAccount(
     },
     async (hash) => {
       const signature = await sign(hash)
+      console.log('session validator signature', signature)
+      console.log(
+        'session signature',
+        encodeSmartSessionSignature(
+          SMART_SESSION_MODE_USE,
+          getPermissionId(session),
+          signature,
+        ),
+      )
       return encodeSmartSessionSignature(
         SMART_SESSION_MODE_USE,
         getPermissionId(session),

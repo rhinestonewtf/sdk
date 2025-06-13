@@ -294,7 +294,7 @@ async function sendTransactionAsUserOp(
 
   const packedSig = await getPackedSignature(
     config,
-    config.owners,
+    withSession.owners,
     targetChain,
     {
       address: smartSessionValidator.address,
