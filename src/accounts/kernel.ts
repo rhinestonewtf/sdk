@@ -260,15 +260,6 @@ async function getSessionSmartAccount(
     },
     async (hash) => {
       const signature = await sign(hash)
-      console.log('session validator signature', signature)
-      console.log(
-        'session signature',
-        encodeSmartSessionSignature(
-          SMART_SESSION_MODE_USE,
-          getPermissionId(session),
-          signature,
-        ),
-      )
       return encodeSmartSessionSignature(
         SMART_SESSION_MODE_USE,
         getPermissionId(session),

@@ -330,7 +330,6 @@ async function getSmartSessionSmartAccount(
     throw new Error('Smart sessions are not enabled for this account')
   }
   const signFn = (hash: Hex) => sign(session.owners, chain, hash)
-  console.log('session owners', session.owners)
 
   const account = getAccount(config)
   switch (account.type) {
