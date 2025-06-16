@@ -1,6 +1,5 @@
 import {
   type Account,
-  type Address,
   type Chain,
   concat,
   createPublicClient,
@@ -28,6 +27,15 @@ import type {
   RhinestoneAccountConfig,
   Session,
 } from '../types'
+import {
+  get7702SmartAccount as get7702KernelAccount,
+  get7702InitCalls as get7702KernelInitCalls,
+  getAddress as getKernelAddress,
+  getDeployArgs as getKernelDeployArgs,
+  getPackedSignature as getKernelPackedSignature,
+  getSessionSmartAccount as getKernelSessionSmartAccount,
+  getSmartAccount as getKernelSmartAccount,
+} from './kernel'
 import {
   get7702SmartAccount as get7702NexusAccount,
   get7702InitCalls as get7702NexusInitCalls,
@@ -57,6 +65,9 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
     case 'nexus': {
       return getNexusDeployArgs(config)
     }
+    case 'kernel': {
+      return getKernelDeployArgs(config)
+    }
   }
 }
 
@@ -75,6 +86,9 @@ function getAddress(config: RhinestoneAccountConfig) {
     case 'nexus': {
       return getNexusAddress(config)
     }
+    case 'kernel': {
+      return getKernelAddress(config)
+    }
   }
 }
 
@@ -89,6 +103,7 @@ async function getPackedSignature(
 ) {
   const signFn = (hash: Hex) => sign(owners, chain, hash)
   const account = getAccount(config)
+  const address = getAddress(config)
   switch (account.type) {
     case 'safe': {
       return getSafePackedSignature(signFn, hash, validator, transformSignature)
@@ -98,6 +113,15 @@ async function getPackedSignature(
         signFn,
         hash,
         validator,
+        transformSignature,
+      )
+    }
+    case 'kernel': {
+      return getKernelPackedSignature(
+        signFn,
+        hash,
+        validator,
+        address,
         transformSignature,
       )
     }
@@ -330,6 +354,15 @@ async function getSmartAccount(
         signFn,
       )
     }
+    case 'kernel': {
+      return getKernelSmartAccount(
+        client,
+        address,
+        config.owners,
+        ownerValidator.address,
+        signFn,
+      )
+    }
   }
 }
 
@@ -359,6 +392,15 @@ async function getSmartSessionSmartAccount(
     }
     case 'nexus': {
       return getNexusSessionSmartAccount(
+        client,
+        address,
+        session,
+        smartSessionValidator.address,
+        signFn,
+      )
+    }
+    case 'kernel': {
+      return getKernelSessionSmartAccount(
         client,
         address,
         session,
@@ -417,6 +459,9 @@ async function get7702SmartAccount(
     case 'nexus': {
       return get7702NexusAccount(config.eoa, client)
     }
+    case 'kernel': {
+      return get7702KernelAccount()
+    }
   }
 }
 
@@ -428,6 +473,9 @@ async function get7702InitCalls(config: RhinestoneAccountConfig) {
     }
     case 'nexus': {
       return get7702NexusInitCalls(config)
+    }
+    case 'kernel': {
+      return get7702KernelInitCalls()
     }
   }
 }
