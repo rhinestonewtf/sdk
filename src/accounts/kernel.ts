@@ -177,8 +177,9 @@ async function getPackedSignature(
   transformSignature: (signature: Hex) => Hex = (signature) => signature,
 ) {
   const vId = validator.isRoot ? '0x00' : concat(['0x01', validator.address])
-  // const signature = await signFn(wrapMessageHash(hash, accountAddress))
-  const signature = await signFn(hash)
+  const signature = validator.isRoot
+    ? await signFn(wrapMessageHash(hash, accountAddress))
+    : await signFn(hash)
   const magicValueSigReplayable = keccak256(
     toHex('kernel.replayable.signature'),
   )
