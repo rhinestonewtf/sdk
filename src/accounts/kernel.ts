@@ -45,6 +45,11 @@ const KERNEL_IMPLEMENTATION_ADDRESS: Address =
 const KERNEL_FACTORY_ADDRESS: Address =
   '0x2577507b78c2008ff367261cb6285d44ba5ef2e9'
 
+const KERNEL_BYTECODE =
+  '0x603d3d8160223d3973d6cedde84be40893d153be9d467cd6ad37875b2860095155f3363d3d373d3d363d7f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc545af43d6000803e6038573d6000fd5b3d6000f3'
+
+const KERNEL_VERSION = '0.3.3'
+
 function getDeployArgs(config: RhinestoneAccountConfig) {
   const salt = zeroHash
   const moduleSetup = getModuleSetup(config)
@@ -155,8 +160,7 @@ function getAddress(config: RhinestoneAccountConfig) {
   return getContractAddress({
     from: KERNEL_FACTORY_ADDRESS,
     opcode: 'CREATE2',
-    bytecode:
-      '0x603d3d8160223d3973d6cedde84be40893d153be9d467cd6ad37875b2860095155f3363d3d373d3d363d7f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc545af43d6000803e6038573d6000fd5b3d6000f3',
+    bytecode: KERNEL_BYTECODE,
     salt: actualSalt,
   })
 }
@@ -195,7 +199,7 @@ function wrapMessageHash(messageHash: Hex, accountAddress: Hex): Hex {
   const _domainSeparator = domainSeparator({
     domain: {
       name: 'Kernel',
-      version: '0.3.3',
+      version: KERNEL_VERSION,
       chainId: 0,
       verifyingContract: accountAddress,
     },
