@@ -192,7 +192,6 @@ async function getPackedSignature(
 }
 
 function wrapMessageHash(messageHash: Hex, accountAddress: Hex): Hex {
-  // Create domain separator using viem's built-in function
   const _domainSeparator = domainSeparator({
     domain: {
       name: 'Kernel',
@@ -201,8 +200,6 @@ function wrapMessageHash(messageHash: Hex, accountAddress: Hex): Hex {
       verifyingContract: accountAddress,
     },
   })
-
-  // For Kernel V3, create the wrapped message hash
   const kernelTypeHash = keccak256(stringToHex('Kernel(bytes32 hash)'))
   const wrappedMessageHash = keccak256(
     encodeAbiParameters(
@@ -210,12 +207,9 @@ function wrapMessageHash(messageHash: Hex, accountAddress: Hex): Hex {
       [kernelTypeHash, messageHash],
     ),
   )
-
-  // Create final EIP-712 digest
   const digest = keccak256(
     concatHex(['0x1901', _domainSeparator, wrappedMessageHash]),
   )
-
   return digest
 }
 
