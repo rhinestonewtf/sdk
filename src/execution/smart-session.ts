@@ -11,6 +11,7 @@ import {
 
 import { getAddress, getSmartAccount } from '../accounts'
 import { getBundlerClient } from '../accounts/utils'
+import { getTrustAttesterCall, getTrustedAttesters } from '../modules'
 import {
   getAccountEIP712Domain,
   getEnableSessionCall,
@@ -32,6 +33,7 @@ async function enableSmartSession(
     transport: http(),
   })
   const address = getAddress(config)
+
   const isEnabled = await isSessionEnabled(
     publicClient,
     address,
@@ -40,12 +42,19 @@ async function enableSmartSession(
   if (isEnabled) {
     return
   }
+  const enableSessionCall = await getEnableSessionCall(chain, session)
+
+  const trustedAttesters = await getTrustedAttesters(publicClient, address)
+  const trustAttesterCall =
+    trustedAttesters.length === 0 ? getTrustAttesterCall(config) : undefined
+
   const smartAccount = await getSmartAccount(config, publicClient, chain)
   const bundlerClient = getBundlerClient(config, publicClient)
-  const enableSessionCall = await getEnableSessionCall(chain, session)
   const opHash = await bundlerClient.sendUserOperation({
     account: smartAccount,
-    calls: [enableSessionCall],
+    calls: trustAttesterCall
+      ? [trustAttesterCall, enableSessionCall]
+      : [enableSessionCall],
   })
   await bundlerClient.waitForUserOperationReceipt({
     hash: opHash,
