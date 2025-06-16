@@ -3,7 +3,6 @@ import {
   Chain,
   createPublicClient,
   encodeAbiParameters,
-  encodePacked,
   Hex,
   http,
   keccak256,
@@ -20,8 +19,8 @@ import {
   deployTarget,
   getAddress,
   getBundleInitCode,
+  getPackedSignature,
   getSmartSessionSmartAccount,
-  sign,
 } from '../accounts'
 import { getBundlerClient } from '../accounts/utils'
 import {
@@ -349,12 +348,17 @@ async function signIntent(
   targetChain: Chain,
   bundleHash: Hex,
 ) {
-  const signature = await sign(
+  const validatorModule = getOwnerValidator(config)
+  const signature = await getPackedSignature(
+    config,
     config.owners,
     sourceChain || targetChain,
+    {
+      address: validatorModule.address,
+      isRoot: true,
+    },
     bundleHash,
   )
-
   return signature
 }
 
@@ -367,6 +371,11 @@ async function signUserOp(
   userOp: UserOperation,
   orderPath: OrderPath,
 ) {
+  const smartSessionValidator = getSmartSessionValidator(config)
+  if (!smartSessionValidator) {
+    throw new Error('Smart session validator not available')
+  }
+
   const targetPublicClient = createPublicClient({
     chain: targetChain,
     transport: http(),
@@ -388,16 +397,28 @@ async function signUserOp(
   orderPath[0].orderBundle.segments[0].witness.userOpHash = userOpHash
   const { hash, appDomainSeparator, contentsType, structHash } =
     await hashErc7739(sourceChain, orderPath, accountAddress)
-  const signature = await sign(withSession.owners, targetChain, hash)
-  const sessionSignature = getSessionSignature(
-    signature,
-    appDomainSeparator,
-    structHash,
-    contentsType,
-    withSession,
+
+  const signature = await getPackedSignature(
+    config,
+    withSession.owners,
+    targetChain,
+    {
+      address: smartSessionValidator.address,
+      isRoot: false,
+    },
+    hash,
+    (signature) => {
+      return getSessionSignature(
+        signature,
+        appDomainSeparator,
+        structHash,
+        contentsType,
+        withSession,
+      )
+    },
   )
 
-  return sessionSignature
+  return signature
 }
 
 async function submitUserOp(
@@ -406,22 +427,14 @@ async function submitUserOp(
   targetChain: Chain,
   userOp: UserOperation,
   orderPath: OrderPath,
-  sessionSignature: Hex,
+  signature: Hex,
 ) {
-  const smartSessionValidator = getSmartSessionValidator(config)
-  if (!smartSessionValidator) {
-    throw new Error('Smart session validator not available')
-  }
-  const packedSig = encodePacked(
-    ['address', 'bytes'],
-    [smartSessionValidator.address, sessionSignature],
-  )
   const signedOrderBundle: SignedMultiChainCompact = {
     ...orderPath[0].orderBundle,
     originSignatures: Array(orderPath[0].orderBundle.segments.length).fill(
-      packedSig,
+      signature,
     ),
-    targetSignature: packedSig,
+    targetSignature: signature,
   }
   const orchestrator = getOrchestratorByChain(
     targetChain.id,
@@ -446,37 +459,16 @@ async function submitIntent(
   sourceChain: Chain | undefined,
   targetChain: Chain,
   orderPath: OrderPath,
-  bundleSignature: Hex,
+  signature: Hex,
 ) {
-  const validatorModule = getOwnerValidator(config)
-  const packedSig = encodePacked(
-    ['address', 'bytes'],
-    [validatorModule.address, bundleSignature],
+  return submitIntentInternal(
+    config,
+    sourceChain,
+    targetChain,
+    orderPath,
+    signature,
+    false,
   )
-  const signedOrderBundle: SignedMultiChainCompact = {
-    ...orderPath[0].orderBundle,
-    originSignatures: Array(orderPath[0].orderBundle.segments.length).fill(
-      packedSig,
-    ),
-    targetSignature: packedSig,
-  }
-  const initCode = getBundleInitCode(config)
-  const orchestrator = getOrchestratorByChain(
-    targetChain.id,
-    config.rhinestoneApiKey,
-  )
-  const bundleResults = await orchestrator.postSignedOrderBundle([
-    {
-      signedOrderBundle,
-      initCode,
-    },
-  ])
-  return {
-    type: 'bundle',
-    id: bundleResults[0].bundleId,
-    sourceChain: sourceChain?.id,
-    targetChain: targetChain.id,
-  } as TransactionResult
 }
 
 function getOrchestratorByChain(chainId: number, apiKey: string) {
@@ -574,20 +566,15 @@ async function submitIntentInternal(
   sourceChain: Chain | undefined,
   targetChain: Chain,
   orderPath: OrderPath,
-  bundleSignature: Hex,
+  signature: Hex,
   deploy: boolean,
 ) {
-  const validatorModule = getOwnerValidator(config)
-  const packedSig = encodePacked(
-    ['address', 'bytes'],
-    [validatorModule.address, bundleSignature],
-  )
   const signedOrderBundle: SignedMultiChainCompact = {
     ...orderPath[0].orderBundle,
     originSignatures: Array(orderPath[0].orderBundle.segments.length).fill(
-      packedSig,
+      signature,
     ),
-    targetSignature: packedSig,
+    targetSignature: signature,
   }
   if (deploy) {
     await deployTarget(targetChain, config, false)
@@ -618,6 +605,7 @@ export {
   getOrchestratorByChain,
   getUserOpOrderPath,
   getUserOp,
+  signIntent,
   signUserOp,
   submitUserOp,
   prepareTransactionAsIntent,

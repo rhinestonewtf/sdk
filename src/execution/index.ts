@@ -13,7 +13,6 @@ import {
   getAddress,
   getSmartSessionSmartAccount,
   isDeployed,
-  sign,
 } from '../accounts'
 import { getBundlerClient } from '../accounts/utils'
 import type { BundleResult } from '../orchestrator'
@@ -43,6 +42,7 @@ import {
   getUserOp,
   getUserOpOrderPath,
   prepareTransactionAsIntent,
+  signIntent,
   signUserOp,
   submitIntentInternal,
   submitUserOp,
@@ -195,7 +195,7 @@ async function sendTransactionAsUserOp(
     tokenRequests,
     accountAddress,
   )
-  const sessionSignature = await signUserOp(
+  const signature = await signUserOp(
     config,
     sourceChain,
     targetChain,
@@ -210,7 +210,7 @@ async function sendTransactionAsUserOp(
     targetChain,
     userOp,
     orderPath,
-    sessionSignature,
+    signature,
   )
 }
 
@@ -232,9 +232,10 @@ async function sendTransactionAsIntent(
     tokenRequests,
     accountAddress,
   )
-  const bundleSignature = await sign(
-    config.owners,
-    sourceChain || targetChain,
+  const signature = await signIntent(
+    config,
+    sourceChain,
+    targetChain,
     orderBundleHash,
   )
   return await submitIntentInternal(
@@ -242,7 +243,7 @@ async function sendTransactionAsIntent(
     sourceChain,
     targetChain,
     orderPath,
-    bundleSignature,
+    signature,
     true,
   )
 }
