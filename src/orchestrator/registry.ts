@@ -409,6 +409,7 @@ function getChainById(chainId: number) {
     optimismSepolia,
     polygon,
     polygonAmoy,
+    zksync,
   ]
   for (const chain of supportedChains) {
     if (chain.id === chainId) {
