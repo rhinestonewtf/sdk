@@ -7,10 +7,8 @@ import {
   encodePacked,
   type Hex,
   http,
-  keccak256,
   type PublicClient,
   size,
-  slice,
   zeroHash,
 } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
@@ -30,20 +28,33 @@ import type {
   Session,
 } from '../types'
 import {
+  get7702SmartAccount as get7702KernelAccount,
+  get7702InitCalls as get7702KernelInitCalls,
+  getAddress as getKernelAddress,
+  getDeployArgs as getKernelDeployArgs,
+  getPackedSignature as getKernelPackedSignature,
+  getSessionSmartAccount as getKernelSessionSmartAccount,
+  getSmartAccount as getKernelSmartAccount,
+} from './kernel'
+import {
   get7702SmartAccount as get7702NexusAccount,
   get7702InitCalls as get7702NexusInitCalls,
+  getAddress as getNexusAddress,
   getDeployArgs as getNexusDeployArgs,
+  getPackedSignature as getNexusPackedSignature,
   getSessionSmartAccount as getNexusSessionSmartAccount,
   getSmartAccount as getNexusSmartAccount,
 } from './nexus'
 import {
   get7702SmartAccount as get7702SafeAccount,
   get7702InitCalls as get7702SafeInitCalls,
+  getAddress as getSafeAddress,
   getDeployArgs as getSafeDeployArgs,
+  getPackedSignature as getSafePackedSignature,
   getSessionSmartAccount as getSafeSessionSmartAccount,
   getSmartAccount as getSafeSmartAccount,
 } from './safe'
-import { getBundlerClient } from './utils'
+import { getBundlerClient, ValidatorConfig } from './utils'
 
 function getDeployArgs(config: RhinestoneAccountConfig) {
   const account = getAccount(config)
@@ -53,6 +64,9 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
     }
     case 'nexus': {
       return getNexusDeployArgs(config)
+    }
+    case 'kernel': {
+      return getKernelDeployArgs(config)
     }
   }
 }
@@ -64,15 +78,54 @@ function getAddress(config: RhinestoneAccountConfig) {
     }
     return config.eoa.address
   }
-  const { factory, salt, hashedInitcode } = getDeployArgs(config)
-  const hash = keccak256(
-    encodePacked(
-      ['bytes1', 'address', 'bytes32', 'bytes'],
-      ['0xff', factory, salt, hashedInitcode],
-    ),
-  )
-  const address = slice(hash, 12, 32)
-  return address
+  const account = getAccount(config)
+  switch (account.type) {
+    case 'safe': {
+      return getSafeAddress(config)
+    }
+    case 'nexus': {
+      return getNexusAddress(config)
+    }
+    case 'kernel': {
+      return getKernelAddress(config)
+    }
+  }
+}
+
+// Signs and packs a signature to be EIP-1271 compatibleAdd commentMore actions
+async function getPackedSignature(
+  config: RhinestoneAccountConfig,
+  owners: OwnerSet,
+  chain: Chain,
+  validator: ValidatorConfig,
+  hash: Hex,
+  transformSignature: (signature: Hex) => Hex = (signature) => signature,
+) {
+  const signFn = (hash: Hex) => sign(owners, chain, hash)
+  const account = getAccount(config)
+  const address = getAddress(config)
+  switch (account.type) {
+    case 'safe': {
+      return getSafePackedSignature(signFn, hash, validator, transformSignature)
+    }
+    case 'nexus': {
+      return getNexusPackedSignature(
+        signFn,
+        hash,
+        validator,
+        transformSignature,
+      )
+    }
+    case 'kernel': {
+      return getKernelPackedSignature(
+        signFn,
+        hash,
+        validator,
+        address,
+        transformSignature,
+      )
+    }
+  }
 }
 
 async function isDeployed(chain: Chain, config: RhinestoneAccountConfig) {
@@ -301,6 +354,15 @@ async function getSmartAccount(
         signFn,
       )
     }
+    case 'kernel': {
+      return getKernelSmartAccount(
+        client,
+        address,
+        config.owners,
+        ownerValidator.address,
+        signFn,
+      )
+    }
   }
 }
 
@@ -330,6 +392,15 @@ async function getSmartSessionSmartAccount(
     }
     case 'nexus': {
       return getNexusSessionSmartAccount(
+        client,
+        address,
+        session,
+        smartSessionValidator.address,
+        signFn,
+      )
+    }
+    case 'kernel': {
+      return getKernelSessionSmartAccount(
         client,
         address,
         session,
@@ -388,6 +459,9 @@ async function get7702SmartAccount(
     case 'nexus': {
       return get7702NexusAccount(config.eoa, client)
     }
+    case 'kernel': {
+      return get7702KernelAccount()
+    }
   }
 }
 
@@ -399,6 +473,9 @@ async function get7702InitCalls(config: RhinestoneAccountConfig) {
     }
     case 'nexus': {
       return get7702NexusInitCalls(config)
+    }
+    case 'kernel': {
+      return get7702KernelInitCalls()
     }
   }
 }
@@ -426,5 +503,6 @@ export {
   deployTarget,
   getSmartAccount,
   getSmartSessionSmartAccount,
+  getPackedSignature,
   sign,
 }

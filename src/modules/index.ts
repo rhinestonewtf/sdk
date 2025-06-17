@@ -32,6 +32,7 @@ import {
   SAME_CHAIN_MODULE_ADDRESS,
   TARGET_MODULE_ADDRESS,
 } from './omni-account'
+import { getTrustAttesterCall, getTrustedAttesters } from './registry'
 import { getOwnerValidator, getSmartSessionValidator } from './validators'
 
 const SMART_SESSION_COMPATIBILITY_FALLBACK_ADDRESS: Address =
@@ -230,6 +231,8 @@ function parseSignature(signature: Hex | Uint8Array): WebauthnSignature {
 export {
   HOOK_ADDRESS,
   getSetup,
+  getTrustAttesterCall,
+  getTrustedAttesters,
   getOwnerValidator,
   getWebauthnValidatorSignature,
   isRip7212SupportedNetwork,

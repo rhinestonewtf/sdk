@@ -8,6 +8,7 @@ import {
   keccak256,
   type PublicClient,
   parseAbi,
+  slice,
   zeroAddress,
 } from 'viem'
 import {
@@ -28,7 +29,7 @@ import {
 } from '../modules/validators'
 import type { OwnerSet, RhinestoneAccountConfig, Session } from '../types'
 
-import { encode7579Calls, getAccountNonce } from './utils'
+import { encode7579Calls, getAccountNonce, ValidatorConfig } from './utils'
 
 const SAFE_7579_LAUNCHPAD_ADDRESS: Address =
   '0x7579011aB74c46090561ea277Ba79D510c6C00ff'
@@ -104,18 +105,43 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
       encodePacked(['bytes32', 'uint256'], [keccak256(initData), saltNonce]),
     )
 
-    const hashedInitcode: Hex =
-      '0xe298282cefe913ab5d282047161268a8222e4bd4ed106300c547894bbefd31ee'
-
     return {
       factory: SAFE_PROXY_FACTORY_ADDRESS,
       factoryData,
       salt,
-      hashedInitcode,
       implementation: SAFE_SINGLETON_ADDRESS,
       initializationCallData: null,
     }
   }
+}
+
+function getAddress(config: RhinestoneAccountConfig) {
+  const hashedInitcode: Hex =
+    '0xe298282cefe913ab5d282047161268a8222e4bd4ed106300c547894bbefd31ee'
+
+  const { factory, salt } = getDeployArgs(config)
+  const hash = keccak256(
+    encodePacked(
+      ['bytes1', 'address', 'bytes32', 'bytes'],
+      ['0xff', factory, salt, hashedInitcode],
+    ),
+  )
+  const address = slice(hash, 12, 32)
+  return address
+}
+
+async function getPackedSignature(
+  signFn: (message: Hex) => Promise<Hex>,
+  hash: Hex,
+  validator: ValidatorConfig,
+  transformSignature: (signature: Hex) => Hex = (signature) => signature,
+) {
+  const signature = await signFn(hash)
+  const packedSig = encodePacked(
+    ['address', 'bytes'],
+    [validator.address, transformSignature(signature)],
+  )
+  return packedSig
 }
 
 async function getSmartAccount(
@@ -267,6 +293,8 @@ function getThreshold(config: RhinestoneAccountConfig) {
 }
 
 export {
+  getAddress,
+  getPackedSignature,
   getDeployArgs,
   getSmartAccount,
   getSessionSmartAccount,
