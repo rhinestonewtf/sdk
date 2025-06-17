@@ -7,7 +7,15 @@ import {
   MOCK_API_KEY,
   passkeyAccount,
 } from '../../test/consts'
-import { getAddress, getDeployArgs, getPackedSignature } from './nexus'
+import { MODULE_TYPE_ID_VALIDATOR } from '../modules/common'
+import {
+  getAddress,
+  getDeployArgs,
+  getInstallData,
+  getPackedSignature,
+} from './nexus'
+
+const MOCK_MODULE_ADDRESS = '0x28de6501fa86f2e6cd0b33c3aabdaeb4a1b93f3f'
 
 describe('Accounts: Nexus', () => {
   describe('Deploy Args', () => {
@@ -94,6 +102,22 @@ describe('Accounts: Nexus', () => {
       })
 
       expect(address).toEqual('0x75851281e7af9b9ebaf42abacce566d2a26c0cd7')
+    })
+  })
+
+  describe('Get Install Data', () => {
+    test('Module', () => {
+      const installData = getInstallData({
+        address: MOCK_MODULE_ADDRESS,
+        initData: '0xabcd',
+        type: MODULE_TYPE_ID_VALIDATOR,
+        deInitData: '0x0000',
+        additionalContext: '0x0000',
+      })
+
+      expect(installData).toEqual(
+        '0x9517e29f000000000000000000000000000000000000000000000000000000000000000100000000000000000000000028de6501fa86f2e6cd0b33c3aabdaeb4a1b93f3f00000000000000000000000000000000000000000000000000000000000000600000000000000000000000000000000000000000000000000000000000000002abcd000000000000000000000000000000000000000000000000000000000000',
+      )
     })
   })
 
