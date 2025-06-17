@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 0.11.0
+
+### Minor Changes
+
+- f84da0d: Kernel V3 support
+
 ## 0.10.3
 
 ### Patch Changes
