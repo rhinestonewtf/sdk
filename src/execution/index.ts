@@ -42,6 +42,7 @@ import {
   getOrchestratorByChain,
   getUserOp,
   getUserOpOrderPath,
+  getValidatorAccount,
   prepareTransactionAsIntent,
   signIntent,
   signUserOp,
@@ -96,8 +97,6 @@ async function sendTransactionInternal(
     }
   }
   const accountAddress = getAddress(config)
-  const withGuardians = signers?.type === 'guardians' ? signers : null
-  const withSession = signers?.type === 'session' ? signers.session : null
 
   // Across requires passing some value to repay the solvers
   const tokenRequests =
@@ -110,12 +109,13 @@ async function sendTransactionInternal(
         ]
       : initialTokenRequests
 
-  if (withSession || withGuardians) {
+  if (signers) {
     if (!sourceChain) {
       throw new Error(
         `Specifying source chain is required when using smart sessions or guardians`,
       )
     }
+    const withSession = signers?.type === 'session' ? signers.session : null
     if (withSession) {
       await enableSmartSession(sourceChain, config, withSession)
     }
@@ -151,30 +151,22 @@ async function sendTransactionAsUserOp(
   gasLimit: bigint | undefined,
   tokenRequests: TokenRequest[],
   accountAddress: Address,
-  signers: SignerSet | undefined,
+  signers: SignerSet,
 ) {
   const withSession = signers?.type === 'session' ? signers.session : null
-  const withGuardians = signers?.type === 'guardians' ? signers : null
 
   const publicClient = createPublicClient({
     chain: sourceChain,
     transport: http(),
   })
-  const account = withSession
-    ? await getSmartSessionSmartAccount(
-        config,
-        publicClient,
-        sourceChain,
-        withSession,
-      )
-    : withGuardians
-      ? await getGuardianSmartAccount(config, publicClient, sourceChain, {
-          type: 'ecdsa',
-          accounts: withGuardians.guardians,
-        })
-      : null
-  if (!account) {
-    throw new Error('No account found')
+  const validatorAccount = await getValidatorAccount(
+    config,
+    signers,
+    publicClient,
+    sourceChain,
+  )
+  if (!validatorAccount) {
+    throw new Error('No validator account found')
   }
 
   const bundlerClient = getBundlerClient(config, publicClient)
@@ -183,7 +175,7 @@ async function sendTransactionAsUserOp(
       await enableSmartSession(targetChain, config, withSession)
     }
     const hash = await bundlerClient.sendUserOperation({
-      account,
+      account: validatorAccount,
       calls,
     })
     return {

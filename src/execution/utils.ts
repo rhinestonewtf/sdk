@@ -374,13 +374,7 @@ async function signUserOp(
   userOp: UserOperation,
   orderPath: OrderPath,
 ) {
-  const withSession = signers?.type === 'session' ? signers.session : null
-  const withGuardians = signers?.type === 'guardians' ? signers : null
-  const validator = withSession
-    ? getSmartSessionValidator(config)
-    : withGuardians
-      ? getSocialRecoveryValidator(withGuardians.guardians)
-      : undefined
+  const validator = getValidator(config, signers)
   if (!validator) {
     throw new Error('Validator not available')
   }
@@ -389,19 +383,12 @@ async function signUserOp(
     chain: targetChain,
     transport: http(),
   })
-  const targetAccount = withSession
-    ? await getSmartSessionSmartAccount(
-        config,
-        targetPublicClient,
-        targetChain,
-        withSession,
-      )
-    : withGuardians
-      ? await getGuardianSmartAccount(config, targetPublicClient, targetChain, {
-          type: 'ecdsa',
-          accounts: withGuardians.guardians,
-        })
-      : null
+  const targetAccount = await getValidatorAccount(
+    config,
+    signers,
+    targetPublicClient,
+    targetChain,
+  )
   if (!targetAccount) {
     throw new Error('No account found')
   }
@@ -417,14 +404,7 @@ async function signUserOp(
   const { hash, appDomainSeparator, contentsType, structHash } =
     await hashErc7739(sourceChain, orderPath, accountAddress)
 
-  const owners = withSession
-    ? withSession.owners
-    : withGuardians
-      ? ({
-          type: 'ecdsa',
-          accounts: withGuardians.guardians,
-        } as OwnableValidatorConfig)
-      : undefined
+  const owners = getOwners(signers)
   if (!owners) {
     throw new Error('No owners found')
   }
@@ -438,13 +418,14 @@ async function signUserOp(
     },
     hash,
     (signature) => {
-      return withSession
+      const sessionData = signers?.type === 'session' ? signers.session : null
+      return sessionData
         ? getSessionSignature(
             signature,
             appDomainSeparator,
             structHash,
             contentsType,
-            withSession,
+            sessionData,
           )
         : signature
     },
@@ -550,26 +531,16 @@ async function getUserOp(
   tokenRequests: TokenRequest[],
   accountAddress: Address,
 ) {
-  const withSession = signers?.type === 'session' ? signers.session : null
-  const withGuardians = signers?.type === 'guardians' ? signers : null
-
   const targetPublicClient = createPublicClient({
     chain: targetChain,
     transport: http(),
   })
-  const targetAccount = withSession
-    ? await getSmartSessionSmartAccount(
-        config,
-        targetPublicClient,
-        targetChain,
-        withSession,
-      )
-    : withGuardians
-      ? await getGuardianSmartAccount(config, targetPublicClient, targetChain, {
-          type: 'ecdsa',
-          accounts: withGuardians.guardians,
-        })
-      : null
+  const targetAccount = await getValidatorAccount(
+    config,
+    signers,
+    targetPublicClient,
+    targetChain,
+  )
   if (!targetAccount) {
     throw new Error('No account found')
   }
@@ -643,6 +614,74 @@ async function submitIntentInternal(
   } as TransactionResult
 }
 
+async function getValidatorAccount(
+  config: RhinestoneAccountConfig,
+  signers: SignerSet | undefined,
+  publicClient: any,
+  chain: Chain,
+) {
+  if (!signers) {
+    return undefined
+  }
+
+  const withSession = signers.type === 'session' ? signers.session : null
+  const withGuardians = signers.type === 'guardians' ? signers : null
+
+  return withSession
+    ? await getSmartSessionSmartAccount(
+        config,
+        publicClient,
+        chain,
+        withSession,
+      )
+    : withGuardians
+      ? await getGuardianSmartAccount(config, publicClient, chain, {
+          type: 'ecdsa',
+          accounts: withGuardians.guardians,
+        })
+      : null
+}
+
+function getValidator(
+  config: RhinestoneAccountConfig,
+  signers: SignerSet | undefined,
+) {
+  if (!signers) {
+    return undefined
+  }
+
+  const withSession = signers.type === 'session' ? signers.session : null
+  const withGuardians = signers.type === 'guardians' ? signers : null
+
+  return withSession
+    ? getSmartSessionValidator(config)
+    : withGuardians
+      ? getSocialRecoveryValidator(withGuardians.guardians)
+      : undefined
+}
+
+function getOwners(
+  signers: SignerSet | undefined,
+): OwnableValidatorConfig | undefined {
+  if (!signers) {
+    return undefined
+  }
+
+  const withSession = signers.type === 'session' ? signers.session : null
+  const withGuardians = signers.type === 'guardians' ? signers : null
+
+  return withSession
+    ? withSession.owners.type === 'ecdsa'
+      ? withSession.owners
+      : undefined
+    : withGuardians
+      ? ({
+          type: 'ecdsa',
+          accounts: withGuardians.guardians,
+        } as OwnableValidatorConfig)
+      : undefined
+}
+
 export {
   prepareTransaction,
   signTransaction,
@@ -655,6 +694,7 @@ export {
   submitUserOp,
   prepareTransactionAsIntent,
   submitIntentInternal,
+  getValidatorAccount,
 }
 export type {
   BundleData,
