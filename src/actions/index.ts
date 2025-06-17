@@ -1,5 +1,4 @@
 import {
-  Account,
   Address,
   Chain,
   createPublicClient,
@@ -12,7 +11,7 @@ import {
   getSocialRecoveryValidator,
   OWNABLE_VALIDATOR_ADDRESS,
 } from '../modules/validators/core'
-import { Call, OwnableValidatorConfig, OwnerSet } from '../types'
+import { Call, OwnableValidatorConfig, OwnerSet, Recovery } from '../types'
 
 function setUpRecovery({
   rhinestoneAccount,
@@ -20,9 +19,7 @@ function setUpRecovery({
   threshold = 1,
 }: {
   rhinestoneAccount: RhinestoneAccount
-  guardians: Account[]
-  threshold?: number
-}) {
+} & Recovery) {
   const module = getSocialRecoveryValidator(guardians, threshold)
   const calls = getModuleInstallationCalls(rhinestoneAccount.config, module)
   return calls
