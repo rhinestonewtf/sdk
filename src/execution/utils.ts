@@ -19,6 +19,7 @@ import {
   deployTarget,
   getAddress,
   getBundleInitCode,
+  getGuardianSmartAccount,
   getPackedSignature,
   getSmartSessionSmartAccount,
 } from '../accounts'
@@ -27,6 +28,7 @@ import {
   getOwnerValidator,
   getSmartSessionValidator,
 } from '../modules/validators'
+import { getSocialRecoveryValidator } from '../modules/validators/core'
 import {
   getEmptyUserOp,
   getOrchestrator,
@@ -49,12 +51,12 @@ import {
 } from '../orchestrator/types'
 import {
   Call,
+  OwnableValidatorConfig,
   RhinestoneAccountConfig,
-  Session,
+  SignerSet,
   TokenRequest,
   Transaction,
 } from '../types'
-
 import { getSessionSignature, hashErc7739 } from './smart-session'
 
 type TransactionResult =
@@ -90,16 +92,16 @@ async function prepareTransaction(
   config: RhinestoneAccountConfig,
   transaction: Transaction,
 ): Promise<PreparedTransactionData> {
-  const { sourceChain, targetChain, tokenRequests, withSession } =
+  const { sourceChain, targetChain, tokenRequests, signers } =
     getTransactionParams(transaction)
   const accountAddress = getAddress(config)
 
   let bundleData: BundleData
 
-  if (withSession) {
+  if (signers) {
     if (!sourceChain) {
       throw new Error(
-        `Specifying source chain is required when using smart sessions`,
+        `Specifying source chain is required when using smart sessions or guardians`,
       )
     }
     // Smart sessions require a UserOp flow
@@ -111,7 +113,7 @@ async function prepareTransaction(
       transaction.gasLimit,
       tokenRequests,
       accountAddress,
-      withSession,
+      signers,
     )
   } else {
     bundleData = await prepareTransactionAsIntent(
@@ -135,9 +137,10 @@ async function signTransaction(
   config: RhinestoneAccountConfig,
   preparedTransaction: PreparedTransactionData,
 ): Promise<SignedTransactionData> {
-  const { sourceChain, targetChain, withSession } = getTransactionParams(
+  const { sourceChain, targetChain, signers } = getTransactionParams(
     preparedTransaction.transaction,
   )
+  const withSession = signers?.type === 'session' ? signers.session : null
   const bundleData = preparedTransaction.bundleData
   const accountAddress = getAddress(config)
 
@@ -159,7 +162,7 @@ async function signTransaction(
       sourceChain,
       targetChain,
       accountAddress,
-      withSession,
+      signers,
       userOp,
       bundleData.orderPath,
     )
@@ -184,8 +187,9 @@ async function submitTransaction(
   signedTransaction: SignedTransactionData,
 ): Promise<TransactionResult> {
   const { bundleData, transaction, signature } = signedTransaction
-  const { sourceChain, targetChain, withSession } =
+  const { sourceChain, targetChain, signers } =
     getTransactionParams(transaction)
+  const withSession = signers?.type === 'session' ? signers.session : null
 
   if (withSession) {
     if (!sourceChain) {
@@ -223,8 +227,7 @@ function getTransactionParams(transaction: Transaction) {
   const targetChain =
     'chain' in transaction ? transaction.chain : transaction.targetChain
   const initialTokenRequests = transaction.tokenRequests
-  const withSession =
-    transaction.signers?.type === 'session' ? transaction.signers.session : null
+  const signers = transaction.signers
 
   // Across requires passing some value to repay the solvers
   const tokenRequests =
@@ -241,7 +244,7 @@ function getTransactionParams(transaction: Transaction) {
     sourceChain,
     targetChain,
     tokenRequests,
-    withSession,
+    signers,
   }
 }
 
@@ -253,7 +256,7 @@ async function prepareTransactionAsUserOp(
   gasLimit: bigint | undefined,
   tokenRequests: TokenRequest[],
   accountAddress: Address,
-  withSession: Session,
+  signers: SignerSet | undefined,
 ) {
   if (sourceChain.id === targetChain.id) {
     throw new Error(
@@ -272,7 +275,7 @@ async function prepareTransactionAsUserOp(
   const userOp = await getUserOp(
     config,
     targetChain,
-    withSession,
+    signers,
     orderPath,
     calls,
     tokenRequests,
@@ -367,27 +370,43 @@ async function signUserOp(
   sourceChain: Chain,
   targetChain: Chain,
   accountAddress: Address,
-  withSession: Session,
+  signers: SignerSet | undefined,
   userOp: UserOperation,
   orderPath: OrderPath,
 ) {
-  const smartSessionValidator = getSmartSessionValidator(config)
-  if (!smartSessionValidator) {
-    throw new Error('Smart session validator not available')
+  const withSession = signers?.type === 'session' ? signers.session : null
+  const withGuardians = signers?.type === 'guardians' ? signers : null
+  const validator = withSession
+    ? getSmartSessionValidator(config)
+    : withGuardians
+      ? getSocialRecoveryValidator(withGuardians.guardians)
+      : undefined
+  if (!validator) {
+    throw new Error('Validator not available')
   }
 
   const targetPublicClient = createPublicClient({
     chain: targetChain,
     transport: http(),
   })
-  const targetSessionAccount = await getSmartSessionSmartAccount(
-    config,
-    targetPublicClient,
-    targetChain,
-    withSession,
-  )
+  const targetAccount = withSession
+    ? await getSmartSessionSmartAccount(
+        config,
+        targetPublicClient,
+        targetChain,
+        withSession,
+      )
+    : withGuardians
+      ? await getGuardianSmartAccount(config, targetPublicClient, targetChain, {
+          type: 'ecdsa',
+          accounts: withGuardians.guardians,
+        })
+      : null
+  if (!targetAccount) {
+    throw new Error('No account found')
+  }
 
-  userOp.signature = await targetSessionAccount.signUserOperation(userOp)
+  userOp.signature = await targetAccount.signUserOperation(userOp)
   const userOpHash = getUserOperationHash({
     userOperation: userOp,
     chainId: targetChain.id,
@@ -398,23 +417,36 @@ async function signUserOp(
   const { hash, appDomainSeparator, contentsType, structHash } =
     await hashErc7739(sourceChain, orderPath, accountAddress)
 
+  const owners = withSession
+    ? withSession.owners
+    : withGuardians
+      ? ({
+          type: 'ecdsa',
+          accounts: withGuardians.guardians,
+        } as OwnableValidatorConfig)
+      : undefined
+  if (!owners) {
+    throw new Error('No owners found')
+  }
   const signature = await getPackedSignature(
     config,
-    withSession.owners,
+    owners,
     targetChain,
     {
-      address: smartSessionValidator.address,
+      address: validator.address,
       isRoot: false,
     },
     hash,
     (signature) => {
-      return getSessionSignature(
-        signature,
-        appDomainSeparator,
-        structHash,
-        contentsType,
-        withSession,
-      )
+      return withSession
+        ? getSessionSignature(
+            signature,
+            appDomainSeparator,
+            structHash,
+            contentsType,
+            withSession,
+          )
+        : signature
     },
   )
 
@@ -512,26 +544,39 @@ async function getUserOpOrderPath(
 async function getUserOp(
   config: RhinestoneAccountConfig,
   targetChain: Chain,
-  withSession: Session,
+  signers: SignerSet | undefined,
   orderPath: OrderPath,
   calls: Call[],
   tokenRequests: TokenRequest[],
   accountAddress: Address,
 ) {
+  const withSession = signers?.type === 'session' ? signers.session : null
+  const withGuardians = signers?.type === 'guardians' ? signers : null
+
   const targetPublicClient = createPublicClient({
     chain: targetChain,
     transport: http(),
   })
-  const targetSessionAccount = await getSmartSessionSmartAccount(
-    config,
-    targetPublicClient,
-    targetChain,
-    withSession,
-  )
+  const targetAccount = withSession
+    ? await getSmartSessionSmartAccount(
+        config,
+        targetPublicClient,
+        targetChain,
+        withSession,
+      )
+    : withGuardians
+      ? await getGuardianSmartAccount(config, targetPublicClient, targetChain, {
+          type: 'ecdsa',
+          accounts: withGuardians.guardians,
+        })
+      : null
+  if (!targetAccount) {
+    throw new Error('No account found')
+  }
   const targetBundlerClient = getBundlerClient(config, targetPublicClient)
 
   return await targetBundlerClient.prepareUserOperation({
-    account: targetSessionAccount,
+    account: targetAccount,
     calls: [...orderPath[0].injectedExecutions, ...calls],
     stateOverride: [
       ...tokenRequests.map((request) => {

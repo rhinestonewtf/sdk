@@ -11,6 +11,7 @@ import {
   deploySource,
   deployTarget,
   getAddress,
+  getGuardianSmartAccount,
   getSmartSessionSmartAccount,
   isDeployed,
 } from '../accounts'
@@ -95,6 +96,7 @@ async function sendTransactionInternal(
     }
   }
   const accountAddress = getAddress(config)
+  const withGuardians = signers?.type === 'guardians' ? signers : null
   const withSession = signers?.type === 'session' ? signers.session : null
 
   // Across requires passing some value to repay the solvers
@@ -108,13 +110,15 @@ async function sendTransactionInternal(
         ]
       : initialTokenRequests
 
-  if (withSession) {
+  if (withSession || withGuardians) {
     if (!sourceChain) {
       throw new Error(
-        `Specifying source chain is required when using smart sessions`,
+        `Specifying source chain is required when using smart sessions or guardians`,
       )
     }
-    await enableSmartSession(sourceChain, config, withSession)
+    if (withSession) {
+      await enableSmartSession(sourceChain, config, withSession)
+    }
     // Smart sessions require a UserOp flow
     return await sendTransactionAsUserOp(
       config,
@@ -124,7 +128,7 @@ async function sendTransactionInternal(
       gasLimit,
       tokenRequests,
       accountAddress,
-      withSession,
+      signers,
     )
   } else {
     return await sendTransactionAsIntent(
@@ -147,24 +151,39 @@ async function sendTransactionAsUserOp(
   gasLimit: bigint | undefined,
   tokenRequests: TokenRequest[],
   accountAddress: Address,
-  withSession: Session,
+  signers: SignerSet | undefined,
 ) {
+  const withSession = signers?.type === 'session' ? signers.session : null
+  const withGuardians = signers?.type === 'guardians' ? signers : null
+
   const publicClient = createPublicClient({
     chain: sourceChain,
     transport: http(),
   })
-  const sessionAccount = await getSmartSessionSmartAccount(
-    config,
-    publicClient,
-    sourceChain,
-    withSession,
-  )
-  const bundlerClient = getBundlerClient(config, publicClient)
+  const account = withSession
+    ? await getSmartSessionSmartAccount(
+        config,
+        publicClient,
+        sourceChain,
+        withSession,
+      )
+    : withGuardians
+      ? await getGuardianSmartAccount(config, publicClient, sourceChain, {
+          type: 'ecdsa',
+          accounts: withGuardians.guardians,
+        })
+      : null
+  if (!account) {
+    throw new Error('No account found')
+  }
 
+  const bundlerClient = getBundlerClient(config, publicClient)
   if (sourceChain.id === targetChain.id) {
-    await enableSmartSession(targetChain, config, withSession)
+    if (withSession) {
+      await enableSmartSession(targetChain, config, withSession)
+    }
     const hash = await bundlerClient.sendUserOperation({
-      account: sessionAccount,
+      account,
       calls,
     })
     return {
@@ -184,12 +203,14 @@ async function sendTransactionAsUserOp(
   )
   // Deploy the account on the target chain
   await deployTarget(targetChain, config, true)
-  await enableSmartSession(targetChain, config, withSession)
+  if (withSession) {
+    await enableSmartSession(targetChain, config, withSession)
+  }
 
   const userOp = await getUserOp(
     config,
     targetChain,
-    withSession,
+    signers,
     orderPath,
     calls,
     tokenRequests,
@@ -200,7 +221,7 @@ async function sendTransactionAsUserOp(
     sourceChain,
     targetChain,
     accountAddress,
-    withSession,
+    signers,
     userOp,
     orderPath,
   )

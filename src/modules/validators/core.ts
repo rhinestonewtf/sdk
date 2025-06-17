@@ -1,4 +1,5 @@
 import {
+  Account,
   type Address,
   bytesToHex,
   concat,
@@ -29,6 +30,8 @@ const OWNABLE_VALIDATOR_ADDRESS: Address =
   '0x2483DA3A338895199E5e538530213157e931Bf06'
 const WEBAUTHN_VALIDATOR_ADDRESS: Address =
   '0x2f167e55d42584f65e2e30a748f41ee75a311414'
+const SOCIAL_RECOVERY_VALIDATOR_ADDRESS: Address =
+  '0xA04D053b3C8021e8D5bF641816c42dAA75D8b597'
 
 const ECDSA_MOCK_SIGNATURE =
   '0x81d4b4981670cb18f99f0b4a66446df1bf5b204d24cfcb659bf38ba27a4359b5711649ec2423c5e1247245eba2964679b6a1dbb85c992ae40b9b00c6935b02ff1b'
@@ -149,6 +152,33 @@ function getWebAuthnValidator(webAuthnCredential: WebauthnCredential): Module {
   }
 }
 
+function getSocialRecoveryValidator(
+  guardians: Account[],
+  threshold = 1,
+): Module {
+  const guardianAddresses = guardians.map((guardian) => guardian.address)
+  guardianAddresses.sort()
+  return {
+    type: MODULE_TYPE_ID_VALIDATOR,
+    address: SOCIAL_RECOVERY_VALIDATOR_ADDRESS,
+    initData: encodeAbiParameters(
+      [
+        {
+          type: 'uint256',
+          name: 'threshold',
+        },
+        {
+          type: 'address[]',
+          name: 'guardians',
+        },
+      ],
+      [BigInt(threshold), guardianAddresses],
+    ),
+    deInitData: '0x',
+    additionalContext: '0x',
+  }
+}
+
 function parsePublicKey(publicKey: Hex | Uint8Array): PublicKey {
   const bytes =
     typeof publicKey === 'string' ? hexToBytes(publicKey) : publicKey
@@ -162,4 +192,9 @@ function parsePublicKey(publicKey: Hex | Uint8Array): PublicKey {
   }
 }
 
-export { getOwnerValidator, getValidator, getMockSignature }
+export {
+  getOwnerValidator,
+  getSocialRecoveryValidator,
+  getValidator,
+  getMockSignature,
+}
