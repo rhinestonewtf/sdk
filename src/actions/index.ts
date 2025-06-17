@@ -6,39 +6,33 @@ import {
   encodeFunctionData,
   http,
 } from 'viem'
-import { getAddress, getModuleInstallationCalls } from '../accounts'
+import { RhinestoneAccount } from '..'
+import { getModuleInstallationCalls } from '../accounts'
 import {
   getSocialRecoveryValidator,
   OWNABLE_VALIDATOR_ADDRESS,
 } from '../modules/validators/core'
-import {
-  Call,
-  OwnableValidatorConfig,
-  OwnerSet,
-  RhinestoneAccountConfig,
-} from '../types'
+import { Call, OwnableValidatorConfig, OwnerSet } from '../types'
 
-// TODO convert to a lazyly executed function and remove the need for the config
 function setUpRecovery({
-  config,
-  accounts,
+  rhinestoneAccount,
+  guardians,
   threshold = 1,
 }: {
-  config: RhinestoneAccountConfig
-  accounts: Account[]
+  rhinestoneAccount: RhinestoneAccount
+  guardians: Account[]
   threshold?: number
 }) {
-  const module = getSocialRecoveryValidator(accounts, threshold)
-  const calls = getModuleInstallationCalls(config, module)
+  const module = getSocialRecoveryValidator(guardians, threshold)
+  const calls = getModuleInstallationCalls(rhinestoneAccount.config, module)
   return calls
 }
 
 async function recover(
-  config: RhinestoneAccountConfig,
+  address: Address,
   newOwners: OwnerSet,
   chain: Chain,
 ): Promise<Call[]> {
-  const address = getAddress(config)
   switch (newOwners.type) {
     case 'ecdsa': {
       return recoverEcdsaOwnership(address, newOwners, chain)
