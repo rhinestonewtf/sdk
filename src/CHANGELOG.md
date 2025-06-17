@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 0.11.1
+
+### Patch Changes
+
+- b075665: add zksync to chains
+
 ## 0.11.0
 
 ### Minor Changes
