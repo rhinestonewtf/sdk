@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 0.11.2
+
+### Patch Changes
+
+- 8a04205: Add Social Recovery (guardians) support
+
 ## 0.11.1
 
 ### Patch Changes
