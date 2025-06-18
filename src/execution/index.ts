@@ -29,6 +29,7 @@ import {
 import { BundleStatus } from '../orchestrator/types'
 import type {
   Call,
+  OwnerSet,
   RhinestoneAccountConfig,
   Session,
   SignerSet,
@@ -88,14 +89,16 @@ async function sendTransactionInternal(
   initialTokenRequests: TokenRequest[],
   signers?: SignerSet,
 ) {
-  if (sourceChain) {
-    const isAccountDeployed = await isDeployed(sourceChain, config)
+  // if source chain is provided, check if account is deployed on that chain.
+  // if source chain is not provided, it's a same chain transaction -> check if account is deployed on target chain (sourceChain === targetChain)
+  const fromChain = sourceChain ?? targetChain
+  if (fromChain) {
+    const isAccountDeployed = await isDeployed(fromChain, config)
     if (!isAccountDeployed) {
       await deploySource(sourceChain, config)
     }
   }
   const accountAddress = getAddress(config)
-  const withSession = signers?.type === 'session' ? signers.session : null
 
   // Across requires passing some value to repay the solvers
   const tokenRequests =
@@ -108,13 +111,13 @@ async function sendTransactionInternal(
         ]
       : initialTokenRequests
 
-  if (withSession) {
+  if (signers?.type === 'session') {
     if (!sourceChain) {
       throw new Error(
         `Specifying source chain is required when using smart sessions`,
       )
     }
-    await enableSmartSession(sourceChain, config, withSession)
+    await enableSmartSession(sourceChain, config, signers.session)
     // Smart sessions require a UserOp flow
     return await sendTransactionAsUserOp(
       config,
@@ -124,7 +127,7 @@ async function sendTransactionInternal(
       gasLimit,
       tokenRequests,
       accountAddress,
-      withSession,
+      signers.session,
     )
   } else {
     return await sendTransactionAsIntent(
@@ -135,6 +138,7 @@ async function sendTransactionInternal(
       gasLimit,
       tokenRequests,
       accountAddress,
+      signers,
     )
   }
 }
@@ -222,6 +226,7 @@ async function sendTransactionAsIntent(
   gasLimit: bigint | undefined,
   tokenRequests: TokenRequest[],
   accountAddress: Address,
+  signers?: OwnerSet,
 ) {
   const { orderPath, hash: orderBundleHash } = await prepareTransactionAsIntent(
     config,
@@ -237,6 +242,7 @@ async function sendTransactionAsIntent(
     sourceChain,
     targetChain,
     orderBundleHash,
+    signers
   )
   return await submitIntentInternal(
     config,

@@ -129,7 +129,7 @@ interface SessionSignerSet {
   session: Session
 }
 
-type SignerSet = SessionSignerSet
+type SignerSet = SessionSignerSet | OwnerSet
 
 interface BaseTransaction {
   calls: Call[]

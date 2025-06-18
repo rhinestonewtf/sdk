@@ -49,6 +49,7 @@ import {
 } from '../orchestrator/types'
 import {
   Call,
+  OwnerSet,
   RhinestoneAccountConfig,
   Session,
   TokenRequest,
@@ -164,11 +165,15 @@ async function signTransaction(
       bundleData.orderPath,
     )
   } else {
+    const withSigners = preparedTransaction.transaction.signers?.type !== 'session'
+      ? preparedTransaction.transaction.signers
+      : undefined
     signature = await signIntent(
       config,
       sourceChain,
       targetChain,
       bundleData.hash,
+      withSigners
     )
   }
 
@@ -347,11 +352,12 @@ async function signIntent(
   sourceChain: Chain | undefined,
   targetChain: Chain,
   bundleHash: Hex,
+  signers?: OwnerSet | undefined,
 ) {
   const validatorModule = getOwnerValidator(config)
   const signature = await getPackedSignature(
     config,
-    config.owners,
+    signers || config.owners,
     sourceChain || targetChain,
     {
       address: validatorModule.address,
