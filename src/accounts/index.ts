@@ -17,12 +17,15 @@ import {
   getWebauthnValidatorSignature,
   isRip7212SupportedNetwork,
 } from '../modules'
+import { Module } from '../modules/common'
 import {
   getOwnerValidator,
   getSmartSessionValidator,
 } from '../modules/validators'
+import { getSocialRecoveryValidator } from '../modules/validators/core'
 import type {
   AccountProviderConfig,
+  Call,
   OwnerSet,
   RhinestoneAccountConfig,
   Session,
@@ -32,6 +35,8 @@ import {
   get7702InitCalls as get7702KernelInitCalls,
   getAddress as getKernelAddress,
   getDeployArgs as getKernelDeployArgs,
+  getGuardianSmartAccount as getKernelGuardianSmartAccount,
+  getInstallData as getKernelInstallData,
   getPackedSignature as getKernelPackedSignature,
   getSessionSmartAccount as getKernelSessionSmartAccount,
   getSmartAccount as getKernelSmartAccount,
@@ -41,6 +46,8 @@ import {
   get7702InitCalls as get7702NexusInitCalls,
   getAddress as getNexusAddress,
   getDeployArgs as getNexusDeployArgs,
+  getGuardianSmartAccount as getNexusGuardianSmartAccount,
+  getInstallData as getNexusInstallData,
   getPackedSignature as getNexusPackedSignature,
   getSessionSmartAccount as getNexusSessionSmartAccount,
   getSmartAccount as getNexusSmartAccount,
@@ -50,6 +57,8 @@ import {
   get7702InitCalls as get7702SafeInitCalls,
   getAddress as getSafeAddress,
   getDeployArgs as getSafeDeployArgs,
+  getGuardianSmartAccount as getSafeGuardianSmartAccount,
+  getInstallData as getSafeInstallData,
   getPackedSignature as getSafePackedSignature,
   getSessionSmartAccount as getSafeSessionSmartAccount,
   getSmartAccount as getSafeSmartAccount,
@@ -69,6 +78,34 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
       return getKernelDeployArgs(config)
     }
   }
+}
+
+function getModuleInstallationCalls(
+  config: RhinestoneAccountConfig,
+  module: Module,
+): Call[] {
+  const address = getAddress(config)
+
+  function getInstallData() {
+    const account = getAccount(config)
+    switch (account.type) {
+      case 'safe': {
+        return [getSafeInstallData(module)]
+      }
+      case 'nexus': {
+        return [getNexusInstallData(module)]
+      }
+      case 'kernel': {
+        return getKernelInstallData(module)
+      }
+    }
+  }
+
+  const installData = getInstallData()
+  return installData.map((data) => ({
+    to: address,
+    data,
+  }))
 }
 
 function getAddress(config: RhinestoneAccountConfig) {
@@ -411,6 +448,52 @@ async function getSmartSessionSmartAccount(
   }
 }
 
+async function getGuardianSmartAccount(
+  config: RhinestoneAccountConfig,
+  client: PublicClient,
+  chain: Chain,
+  guardians: OwnerSet,
+) {
+  const address = getAddress(config)
+  const accounts = guardians.type === 'ecdsa' ? guardians.accounts : []
+  const socialRecoveryValidator = getSocialRecoveryValidator(accounts)
+  if (!socialRecoveryValidator) {
+    throw new Error('Social recovery is not enabled for this account')
+  }
+  const signFn = (hash: Hex) => sign(guardians, chain, hash)
+
+  const account = getAccount(config)
+  switch (account.type) {
+    case 'safe': {
+      return getSafeGuardianSmartAccount(
+        client,
+        address,
+        guardians,
+        socialRecoveryValidator.address,
+        signFn,
+      )
+    }
+    case 'nexus': {
+      return getNexusGuardianSmartAccount(
+        client,
+        address,
+        guardians,
+        socialRecoveryValidator.address,
+        signFn,
+      )
+    }
+    case 'kernel': {
+      return getKernelGuardianSmartAccount(
+        client,
+        address,
+        guardians,
+        socialRecoveryValidator.address,
+        signFn,
+      )
+    }
+  }
+}
+
 async function sign(validators: OwnerSet, chain: Chain, hash: Hex) {
   switch (validators.type) {
     case 'ecdsa': {
@@ -494,6 +577,7 @@ function getAccount(config: RhinestoneAccountConfig): AccountProviderConfig {
 }
 
 export {
+  getModuleInstallationCalls,
   getDeployArgs,
   getBundleInitCode,
   getAddress,
@@ -503,6 +587,7 @@ export {
   deployTarget,
   getSmartAccount,
   getSmartSessionSmartAccount,
+  getGuardianSmartAccount,
   getPackedSignature,
   sign,
 }

@@ -10,6 +10,9 @@ const accountB: Account = privateKeyToAccount(
 const accountC: Account = privateKeyToAccount(
   '0xb63c74af219a3949cf95f5e3a3d20b0137425de053bb03e5cc0f46fe0d19f22f',
 )
+const accountD: Account = privateKeyToAccount(
+  '0xa4aba81871b7b51fff56bfe441ea7f9a4879dd4bc8ce8c15fdb06dc92e63d1d7',
+)
 const passkeyAccount: WebAuthnAccount = toWebAuthnAccount({
   credential: {
     id: '9IwX9n6cn-l9SzqFzfQXvDHRuTM',
@@ -20,4 +23,4 @@ const passkeyAccount: WebAuthnAccount = toWebAuthnAccount({
 
 const MOCK_API_KEY = 'MOCK_KEY'
 
-export { accountA, accountB, accountC, passkeyAccount, MOCK_API_KEY }
+export { accountA, accountB, accountC, accountD, passkeyAccount, MOCK_API_KEY }

@@ -11,6 +11,7 @@ import {
   deploySource,
   deployTarget,
   getAddress,
+  getGuardianSmartAccount,
   getSmartSessionSmartAccount,
   isDeployed,
 } from '../accounts'
@@ -41,6 +42,7 @@ import {
   getOrchestratorByChain,
   getUserOp,
   getUserOpOrderPath,
+  getValidatorAccount,
   prepareTransactionAsIntent,
   signIntent,
   signUserOp,
@@ -95,7 +97,6 @@ async function sendTransactionInternal(
     }
   }
   const accountAddress = getAddress(config)
-  const withSession = signers?.type === 'session' ? signers.session : null
 
   // Across requires passing some value to repay the solvers
   const tokenRequests =
@@ -108,13 +109,16 @@ async function sendTransactionInternal(
         ]
       : initialTokenRequests
 
-  if (withSession) {
+  if (signers) {
     if (!sourceChain) {
       throw new Error(
-        `Specifying source chain is required when using smart sessions`,
+        `Specifying source chain is required when using smart sessions or guardians`,
       )
     }
-    await enableSmartSession(sourceChain, config, withSession)
+    const withSession = signers?.type === 'session' ? signers.session : null
+    if (withSession) {
+      await enableSmartSession(sourceChain, config, withSession)
+    }
     // Smart sessions require a UserOp flow
     return await sendTransactionAsUserOp(
       config,
@@ -124,7 +128,7 @@ async function sendTransactionInternal(
       gasLimit,
       tokenRequests,
       accountAddress,
-      withSession,
+      signers,
     )
   } else {
     return await sendTransactionAsIntent(
@@ -147,24 +151,31 @@ async function sendTransactionAsUserOp(
   gasLimit: bigint | undefined,
   tokenRequests: TokenRequest[],
   accountAddress: Address,
-  withSession: Session,
+  signers: SignerSet,
 ) {
+  const withSession = signers?.type === 'session' ? signers.session : null
+
   const publicClient = createPublicClient({
     chain: sourceChain,
     transport: http(),
   })
-  const sessionAccount = await getSmartSessionSmartAccount(
+  const validatorAccount = await getValidatorAccount(
     config,
+    signers,
     publicClient,
     sourceChain,
-    withSession,
   )
-  const bundlerClient = getBundlerClient(config, publicClient)
+  if (!validatorAccount) {
+    throw new Error('No validator account found')
+  }
 
+  const bundlerClient = getBundlerClient(config, publicClient)
   if (sourceChain.id === targetChain.id) {
-    await enableSmartSession(targetChain, config, withSession)
+    if (withSession) {
+      await enableSmartSession(targetChain, config, withSession)
+    }
     const hash = await bundlerClient.sendUserOperation({
-      account: sessionAccount,
+      account: validatorAccount,
       calls,
     })
     return {
@@ -184,12 +195,14 @@ async function sendTransactionAsUserOp(
   )
   // Deploy the account on the target chain
   await deployTarget(targetChain, config, true)
-  await enableSmartSession(targetChain, config, withSession)
+  if (withSession) {
+    await enableSmartSession(targetChain, config, withSession)
+  }
 
   const userOp = await getUserOp(
     config,
     targetChain,
-    withSession,
+    signers,
     orderPath,
     calls,
     tokenRequests,
@@ -200,7 +213,7 @@ async function sendTransactionAsUserOp(
     sourceChain,
     targetChain,
     accountAddress,
-    withSession,
+    signers,
     userOp,
     orderPath,
   )

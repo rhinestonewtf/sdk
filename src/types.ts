@@ -94,12 +94,18 @@ interface Session {
   salt?: Hex
 }
 
+interface Recovery {
+  guardians: Account[]
+  threshold?: number
+}
+
 interface RhinestoneAccountConfig {
   account?: AccountProviderConfig
   owners: OwnerSet
   rhinestoneApiKey: string
   deployerAccount?: Account
   sessions?: Session[]
+  recovery?: Recovery
   eoa?: Account
   provider?: {
     type: 'alchemy'
@@ -129,7 +135,12 @@ interface SessionSignerSet {
   session: Session
 }
 
-type SignerSet = SessionSignerSet
+interface GuardiansSignerSet {
+  type: 'guardians'
+  guardians: Account[]
+}
+
+type SignerSet = SessionSignerSet | GuardiansSignerSet
 
 interface BaseTransaction {
   calls: Call[]
@@ -158,8 +169,11 @@ export type {
   Execution,
   TokenRequest,
   OwnerSet,
+  OwnableValidatorConfig,
+  WebauthnValidatorConfig,
   SignerSet,
   Session,
+  Recovery,
   Policy,
   UniversalActionPolicyParamCondition,
 }

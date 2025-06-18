@@ -1,5 +1,6 @@
 import {
   type Abi,
+  Account,
   type Address,
   concat,
   encodeFunctionData,
@@ -21,6 +22,7 @@ import {
 } from 'viem/account-abstraction'
 
 import { getSetup as getModuleSetup } from '../modules'
+import { Module } from '../modules/common'
 import {
   encodeSmartSessionSignature,
   getMockSignature,
@@ -28,7 +30,6 @@ import {
   SMART_SESSION_MODE_USE,
 } from '../modules/validators'
 import type { OwnerSet, RhinestoneAccountConfig, Session } from '../types'
-
 import { encode7579Calls, getAccountNonce, ValidatorConfig } from './utils'
 
 const SAFE_7579_LAUNCHPAD_ADDRESS: Address =
@@ -130,6 +131,35 @@ function getAddress(config: RhinestoneAccountConfig) {
   return address
 }
 
+function getInstallData(module: Module) {
+  return encodeFunctionData({
+    abi: [
+      {
+        type: 'function',
+        name: 'installModule',
+        inputs: [
+          {
+            type: 'uint256',
+            name: 'moduleTypeId',
+          },
+          {
+            type: 'address',
+            name: 'module',
+          },
+          {
+            type: 'bytes',
+            name: 'initData',
+          },
+        ],
+        outputs: [],
+        stateMutability: 'nonpayable',
+      },
+    ],
+    functionName: 'installModule',
+    args: [module.type, module.address, module.initData],
+  })
+}
+
 async function getPackedSignature(
   signFn: (message: Hex) => Promise<Hex>,
   hash: Hex,
@@ -188,6 +218,26 @@ async function getSessionSmartAccount(
         getPermissionId(session),
         signature,
       )
+    },
+  )
+}
+
+async function getGuardianSmartAccount(
+  client: PublicClient,
+  address: Address,
+  guardians: OwnerSet,
+  validatorAddress: Address,
+  sign: (hash: Hex) => Promise<Hex>,
+) {
+  return await getBaseSmartAccount(
+    address,
+    client,
+    validatorAddress,
+    async () => {
+      return getMockSignature(guardians)
+    },
+    async (hash) => {
+      return await sign(hash)
     },
   )
 }
@@ -293,11 +343,13 @@ function getThreshold(config: RhinestoneAccountConfig) {
 }
 
 export {
+  getInstallData,
   getAddress,
   getPackedSignature,
   getDeployArgs,
   getSmartAccount,
   getSessionSmartAccount,
+  getGuardianSmartAccount,
   get7702InitCalls,
   get7702SmartAccount,
 }

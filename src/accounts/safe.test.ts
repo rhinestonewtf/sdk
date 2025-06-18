@@ -7,8 +7,15 @@ import {
   MOCK_API_KEY,
   passkeyAccount,
 } from '../../test/consts'
+import { MODULE_TYPE_ID_VALIDATOR } from '../modules/common'
+import {
+  getAddress,
+  getDeployArgs,
+  getInstallData,
+  getPackedSignature,
+} from './safe'
 
-import { getAddress, getDeployArgs, getPackedSignature } from './safe'
+const MOCK_MODULE_ADDRESS = '0x28de6501fa86f2e6cd0b33c3aabdaeb4a1b93f3f'
 
 describe('Accounts: Safe', () => {
   describe('Deploy Args', () => {
@@ -92,6 +99,22 @@ describe('Accounts: Safe', () => {
       })
 
       expect(address).toEqual('0x033e622d8626b225cad07bcab182d1a09f514f70')
+    })
+  })
+
+  describe('Get Install Data', () => {
+    test('Module', () => {
+      const installData = getInstallData({
+        address: MOCK_MODULE_ADDRESS,
+        initData: '0xabcd',
+        type: MODULE_TYPE_ID_VALIDATOR,
+        deInitData: '0x0000',
+        additionalContext: '0x0000',
+      })
+
+      expect(installData).toEqual(
+        '0x9517e29f000000000000000000000000000000000000000000000000000000000000000100000000000000000000000028de6501fa86f2e6cd0b33c3aabdaeb4a1b93f3f00000000000000000000000000000000000000000000000000000000000000600000000000000000000000000000000000000000000000000000000000000002abcd000000000000000000000000000000000000000000000000000000000000',
+      )
     })
   })
 

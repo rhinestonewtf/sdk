@@ -28,6 +28,13 @@ import {
 
 import { getSetup as getModuleSetup } from '../modules'
 import {
+  MODULE_TYPE_ID_EXECUTOR,
+  MODULE_TYPE_ID_FALLBACK,
+  MODULE_TYPE_ID_HOOK,
+  MODULE_TYPE_ID_VALIDATOR,
+  Module,
+} from '../modules/common'
+import {
   encodeSmartSessionSignature,
   getMockSignature,
   getPermissionId,
@@ -59,80 +66,22 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
   const validatorData = moduleSetup.validators[0].initData
   const hookData = '0x'
 
-  const hookInstalled = '0x0000000000000000000000000000000000000001'
+  // Install modules via init config
   const spareValidators = moduleSetup.validators.slice(1)
   const initConfig: Hex[] = []
-  // Install spare validators
   for (const module of spareValidators) {
-    const data = encodeAbiParameters(
-      [{ type: 'bytes' }, { type: 'bytes' }, { type: 'bytes' }],
-      [module.initData, '0x', '0x'],
-    )
-    const initData = concat([hookInstalled, data])
-    initConfig.push(
-      encodeFunctionData({
-        abi: parseAbi(['function installModule(uint256,address,bytes)']),
-        functionName: 'installModule',
-        args: [module.type, module.address, initData],
-      }),
-    )
-    const validatorId = concat(['0x01', module.address])
-    initConfig.push(
-      encodeFunctionData({
-        abi: parseAbi(['function grantAccess(bytes21,bytes4,bool)']),
-        functionName: 'grantAccess',
-        args: [validatorId, '0xe9ae5c53', true],
-      }),
-    )
+    initConfig.push(...getInstallData(module))
   }
-  // Install executors
   for (const module of moduleSetup.executors) {
-    const data = encodeAbiParameters(
-      [{ type: 'bytes' }, { type: 'bytes' }],
-      [module.initData, '0x'],
-    )
-    const initData = concat([zeroAddress, data])
-    initConfig.push(
-      encodeFunctionData({
-        abi: parseAbi(['function installModule(uint256,address,bytes)']),
-        functionName: 'installModule',
-        args: [module.type, module.address, initData],
-      }),
-    )
+    initConfig.push(...getInstallData(module))
   }
-  // Install fallbacks
   for (const module of moduleSetup.fallbacks) {
-    const [selector, flags, selectorData] = decodeAbiParameters(
-      [
-        { name: 'selector', type: 'bytes4' },
-        { name: 'flags', type: 'bytes1' },
-        { name: 'data', type: 'bytes' },
-      ],
-      module.initData,
-    )
-    const data = encodeAbiParameters(
-      [{ type: 'bytes' }, { type: 'bytes' }],
-      [concat([flags, selectorData]), '0x'],
-    )
-    const initData = concat([selector, hookInstalled, data])
-    initConfig.push(
-      encodeFunctionData({
-        abi: parseAbi(['function installModule(uint256,address,bytes)']),
-        functionName: 'installModule',
-        args: [module.type, module.address, initData],
-      }),
-    )
+    initConfig.push(...getInstallData(module))
   }
-  // Install hooks
   for (const module of moduleSetup.hooks) {
-    initConfig.push(
-      encodeFunctionData({
-        abi: parseAbi(['function installModule(uint256,address,bytes)']),
-        functionName: 'installModule',
-        args: [module.type, module.address, module.initData],
-      }),
-    )
+    initConfig.push(...getInstallData(module))
   }
+
   const initializationCallData = encodeFunctionData({
     abi: parseAbi(['function initialize(bytes21,address,bytes,bytes,bytes[])']),
     functionName: 'initialize',
@@ -163,6 +112,78 @@ function getAddress(config: RhinestoneAccountConfig) {
     bytecode: KERNEL_BYTECODE,
     salt: actualSalt,
   })
+}
+
+function getInstallData(module: Module): Hex[] {
+  const HOOK_INSTALLED_ADDRESS = '0x0000000000000000000000000000000000000001'
+
+  switch (module.type) {
+    case MODULE_TYPE_ID_VALIDATOR: {
+      const data = encodeAbiParameters(
+        [{ type: 'bytes' }, { type: 'bytes' }, { type: 'bytes' }],
+        [module.initData, '0x', '0x'],
+      )
+      const initData = concat([HOOK_INSTALLED_ADDRESS, data])
+      const validatorId = concat(['0x01', module.address])
+      return [
+        encodeFunctionData({
+          abi: parseAbi(['function installModule(uint256,address,bytes)']),
+          functionName: 'installModule',
+          args: [module.type, module.address, initData],
+        }),
+        encodeFunctionData({
+          abi: parseAbi(['function grantAccess(bytes21,bytes4,bool)']),
+          functionName: 'grantAccess',
+          args: [validatorId, '0xe9ae5c53', true],
+        }),
+      ]
+    }
+    case MODULE_TYPE_ID_EXECUTOR: {
+      const data = encodeAbiParameters(
+        [{ type: 'bytes' }, { type: 'bytes' }],
+        [module.initData, '0x'],
+      )
+      const initData = concat([zeroAddress, data])
+      return [
+        encodeFunctionData({
+          abi: parseAbi(['function installModule(uint256,address,bytes)']),
+          functionName: 'installModule',
+          args: [module.type, module.address, initData],
+        }),
+      ]
+    }
+    case MODULE_TYPE_ID_FALLBACK: {
+      const [selector, flags, selectorData] = decodeAbiParameters(
+        [
+          { name: 'selector', type: 'bytes4' },
+          { name: 'flags', type: 'bytes1' },
+          { name: 'data', type: 'bytes' },
+        ],
+        module.initData,
+      )
+      const data = encodeAbiParameters(
+        [{ type: 'bytes' }, { type: 'bytes' }],
+        [concat([flags, selectorData]), '0x'],
+      )
+      const initData = concat([selector, HOOK_INSTALLED_ADDRESS, data])
+      return [
+        encodeFunctionData({
+          abi: parseAbi(['function installModule(uint256,address,bytes)']),
+          functionName: 'installModule',
+          args: [module.type, module.address, initData],
+        }),
+      ]
+    }
+    case MODULE_TYPE_ID_HOOK: {
+      return [
+        encodeFunctionData({
+          abi: parseAbi(['function installModule(uint256,address,bytes)']),
+          functionName: 'installModule',
+          args: [module.type, module.address, module.initData],
+        }),
+      ]
+    }
+  }
 }
 
 function get7702InitCalls(): never {
@@ -267,6 +288,27 @@ async function getSessionSmartAccount(
   )
 }
 
+async function getGuardianSmartAccount(
+  client: PublicClient,
+  address: Address,
+  guardians: OwnerSet,
+  validatorAddress: Address,
+  sign: (hash: Hex) => Promise<Hex>,
+) {
+  return await getBaseSmartAccount(
+    address,
+    client,
+    validatorAddress,
+    'validator',
+    async () => {
+      return getMockSignature(guardians)
+    },
+    async (hash) => {
+      return await sign(hash)
+    },
+  )
+}
+
 async function getBaseSmartAccount(
   address: Address,
   client: PublicClient,
@@ -345,10 +387,12 @@ async function getBaseSmartAccount(
 }
 
 export {
+  getInstallData,
   getAddress,
   getDeployArgs,
   getSmartAccount,
   getSessionSmartAccount,
+  getGuardianSmartAccount,
   get7702InitCalls,
   get7702SmartAccount,
   getPackedSignature,
