@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 0.11.3
+
+### Patch Changes
+
+- 034c36e: Add missing action exports
+
 ## 0.11.2
 
 ### Patch Changes
