@@ -32,7 +32,9 @@ import {
   SAME_CHAIN_MODULE_ADDRESS,
   TARGET_MODULE_ADDRESS,
 } from './omni-account'
+import { getTrustAttesterCall, getTrustedAttesters } from './registry'
 import { getOwnerValidator, getSmartSessionValidator } from './validators'
+import { getSocialRecoveryValidator } from './validators/core'
 
 const SMART_SESSION_COMPATIBILITY_FALLBACK_ADDRESS: Address =
   '0x12cae64c42f362e7d5a847c2d33388373f629177'
@@ -71,6 +73,13 @@ function getSetup(config: RhinestoneAccountConfig): ModeleSetup {
   const validators: Module[] = [ownerValidator]
   if (smartSessionValidator) {
     validators.push(smartSessionValidator)
+  }
+  if (config.recovery) {
+    const socialRecoveryValidator = getSocialRecoveryValidator(
+      config.recovery.guardians,
+      config.recovery.threshold,
+    )
+    validators.push(socialRecoveryValidator)
   }
 
   const executors: Module[] = [
@@ -230,6 +239,8 @@ function parseSignature(signature: Hex | Uint8Array): WebauthnSignature {
 export {
   HOOK_ADDRESS,
   getSetup,
+  getTrustAttesterCall,
+  getTrustedAttesters,
   getOwnerValidator,
   getWebauthnValidatorSignature,
   isRip7212SupportedNetwork,

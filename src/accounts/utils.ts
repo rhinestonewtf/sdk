@@ -16,6 +16,11 @@ import type { BundlerConfig, RhinestoneAccountConfig } from '../types'
 
 type CallType = 'call' | 'delegatecall' | 'batchcall'
 
+interface ValidatorConfig {
+  address: Address
+  isRoot: boolean
+}
+
 interface ExecutionMode<callType extends CallType> {
   type: callType
   revertOnError?: boolean
@@ -269,3 +274,4 @@ async function getGasPriceEstimate(bundlerUrl: string) {
 }
 
 export { encode7579Calls, getAccountNonce, getBundlerClient }
+export type { ValidatorConfig }

@@ -1,11 +1,21 @@
+import { Address } from 'viem'
 import { describe, expect, test } from 'vitest'
+
 import {
   accountA,
   accountB,
   MOCK_API_KEY,
   passkeyAccount,
 } from '../../test/consts'
-import { getDeployArgs } from './safe'
+import { MODULE_TYPE_ID_VALIDATOR } from '../modules/common'
+import {
+  getAddress,
+  getDeployArgs,
+  getInstallData,
+  getPackedSignature,
+} from './safe'
+
+const MOCK_MODULE_ADDRESS = '0x28de6501fa86f2e6cd0b33c3aabdaeb4a1b93f3f'
 
 describe('Accounts: Safe', () => {
   describe('Deploy Args', () => {
@@ -14,7 +24,6 @@ describe('Accounts: Safe', () => {
         factory,
         factoryData,
         salt,
-        hashedInitcode,
         implementation,
         initializationCallData,
       } = getDeployArgs({
@@ -32,9 +41,6 @@ describe('Accounts: Safe', () => {
       expect(salt).toEqual(
         '0x90fef481a644e27fec02dc6b8365bf9a7354b19d9aa4f749b4a706cc0b11af99',
       )
-      expect(hashedInitcode).toEqual(
-        '0xe298282cefe913ab5d282047161268a8222e4bd4ed106300c547894bbefd31ee',
-      )
       expect(implementation).toEqual(
         '0x29fcb43b46531bca003ddc8fcb67ffe91900c762',
       )
@@ -46,7 +52,6 @@ describe('Accounts: Safe', () => {
         factory,
         factoryData,
         salt,
-        hashedInitcode,
         implementation,
         initializationCallData,
       } = getDeployArgs({
@@ -64,13 +69,72 @@ describe('Accounts: Safe', () => {
       expect(salt).toEqual(
         '0xdbd211aaf7a8d731e9c157757bd788e574950b04aa1a9ccc031dbb7f47db21e6',
       )
-      expect(hashedInitcode).toEqual(
-        '0xe298282cefe913ab5d282047161268a8222e4bd4ed106300c547894bbefd31ee',
-      )
       expect(implementation).toEqual(
         '0x29fcb43b46531bca003ddc8fcb67ffe91900c762',
       )
       expect(initializationCallData).toEqual(null)
+    })
+  })
+
+  describe('Get Address', () => {
+    test('ECDSA owners', () => {
+      const address = getAddress({
+        owners: {
+          type: 'ecdsa',
+          accounts: [accountA, accountB],
+        },
+        rhinestoneApiKey: MOCK_API_KEY,
+      })
+
+      expect(address).toEqual('0x32f9effe4a9f057cb0571430c66c04eb43b35407')
+    })
+
+    test('Passkey owner', () => {
+      const address = getAddress({
+        owners: {
+          type: 'passkey',
+          account: passkeyAccount,
+        },
+        rhinestoneApiKey: MOCK_API_KEY,
+      })
+
+      expect(address).toEqual('0x033e622d8626b225cad07bcab182d1a09f514f70')
+    })
+  })
+
+  describe('Get Install Data', () => {
+    test('Module', () => {
+      const installData = getInstallData({
+        address: MOCK_MODULE_ADDRESS,
+        initData: '0xabcd',
+        type: MODULE_TYPE_ID_VALIDATOR,
+        deInitData: '0x0000',
+        additionalContext: '0x0000',
+      })
+
+      expect(installData).toEqual(
+        '0x9517e29f000000000000000000000000000000000000000000000000000000000000000100000000000000000000000028de6501fa86f2e6cd0b33c3aabdaeb4a1b93f3f00000000000000000000000000000000000000000000000000000000000000600000000000000000000000000000000000000000000000000000000000000002abcd000000000000000000000000000000000000000000000000000000000000',
+      )
+    })
+  })
+
+  describe('Get Packed Signature', () => {
+    test('Mock signature', async () => {
+      const hash = '0xabcd'
+      const mockSignature = '0x1234'
+      const validator = {
+        address: '0xe35b75e5ec3c04e9cefa8e581fbee859f56edeb4' as Address,
+        isRoot: true,
+      }
+      const signature = await getPackedSignature(
+        async (_) => mockSignature,
+        hash,
+        validator,
+      )
+
+      expect(signature).toEqual(
+        '0xe35b75e5ec3c04e9cefa8e581fbee859f56edeb41234',
+      )
     })
   })
 })

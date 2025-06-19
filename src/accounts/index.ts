@@ -7,42 +7,63 @@ import {
   encodePacked,
   type Hex,
   http,
-  keccak256,
   type PublicClient,
   size,
-  slice,
   zeroHash,
 } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
+import { enableSmartSession } from '../execution/smart-session'
 import {
   getWebauthnValidatorSignature,
   isRip7212SupportedNetwork,
 } from '../modules'
+import { Module } from '../modules/common'
 import {
   getOwnerValidator,
   getSmartSessionValidator,
 } from '../modules/validators'
+import { getSocialRecoveryValidator } from '../modules/validators/core'
 import type {
   AccountProviderConfig,
+  Call,
   OwnerSet,
   RhinestoneAccountConfig,
   Session,
 } from '../types'
 import {
+  get7702SmartAccount as get7702KernelAccount,
+  get7702InitCalls as get7702KernelInitCalls,
+  getAddress as getKernelAddress,
+  getDeployArgs as getKernelDeployArgs,
+  getGuardianSmartAccount as getKernelGuardianSmartAccount,
+  getInstallData as getKernelInstallData,
+  getPackedSignature as getKernelPackedSignature,
+  getSessionSmartAccount as getKernelSessionSmartAccount,
+  getSmartAccount as getKernelSmartAccount,
+} from './kernel'
+import {
   get7702SmartAccount as get7702NexusAccount,
   get7702InitCalls as get7702NexusInitCalls,
+  getAddress as getNexusAddress,
   getDeployArgs as getNexusDeployArgs,
+  getGuardianSmartAccount as getNexusGuardianSmartAccount,
+  getInstallData as getNexusInstallData,
+  getPackedSignature as getNexusPackedSignature,
   getSessionSmartAccount as getNexusSessionSmartAccount,
   getSmartAccount as getNexusSmartAccount,
 } from './nexus'
 import {
   get7702SmartAccount as get7702SafeAccount,
   get7702InitCalls as get7702SafeInitCalls,
+  getAddress as getSafeAddress,
   getDeployArgs as getSafeDeployArgs,
+  getGuardianSmartAccount as getSafeGuardianSmartAccount,
+  getInstallData as getSafeInstallData,
+  getPackedSignature as getSafePackedSignature,
   getSessionSmartAccount as getSafeSessionSmartAccount,
   getSmartAccount as getSafeSmartAccount,
 } from './safe'
-import { getBundlerClient } from './utils'
+import { getBundlerClient, ValidatorConfig } from './utils'
 
 function getDeployArgs(config: RhinestoneAccountConfig) {
   const account = getAccount(config)
@@ -53,7 +74,38 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
     case 'nexus': {
       return getNexusDeployArgs(config)
     }
+    case 'kernel': {
+      return getKernelDeployArgs(config)
+    }
   }
+}
+
+function getModuleInstallationCalls(
+  config: RhinestoneAccountConfig,
+  module: Module,
+): Call[] {
+  const address = getAddress(config)
+
+  function getInstallData() {
+    const account = getAccount(config)
+    switch (account.type) {
+      case 'safe': {
+        return [getSafeInstallData(module)]
+      }
+      case 'nexus': {
+        return [getNexusInstallData(module)]
+      }
+      case 'kernel': {
+        return getKernelInstallData(module)
+      }
+    }
+  }
+
+  const installData = getInstallData()
+  return installData.map((data) => ({
+    to: address,
+    data,
+  }))
 }
 
 function getAddress(config: RhinestoneAccountConfig) {
@@ -63,15 +115,54 @@ function getAddress(config: RhinestoneAccountConfig) {
     }
     return config.eoa.address
   }
-  const { factory, salt, hashedInitcode } = getDeployArgs(config)
-  const hash = keccak256(
-    encodePacked(
-      ['bytes1', 'address', 'bytes32', 'bytes'],
-      ['0xff', factory, salt, hashedInitcode],
-    ),
-  )
-  const address = slice(hash, 12, 32)
-  return address
+  const account = getAccount(config)
+  switch (account.type) {
+    case 'safe': {
+      return getSafeAddress(config)
+    }
+    case 'nexus': {
+      return getNexusAddress(config)
+    }
+    case 'kernel': {
+      return getKernelAddress(config)
+    }
+  }
+}
+
+// Signs and packs a signature to be EIP-1271 compatibleAdd commentMore actions
+async function getPackedSignature(
+  config: RhinestoneAccountConfig,
+  owners: OwnerSet,
+  chain: Chain,
+  validator: ValidatorConfig,
+  hash: Hex,
+  transformSignature: (signature: Hex) => Hex = (signature) => signature,
+) {
+  const signFn = (hash: Hex) => sign(owners, chain, hash)
+  const account = getAccount(config)
+  const address = getAddress(config)
+  switch (account.type) {
+    case 'safe': {
+      return getSafePackedSignature(signFn, hash, validator, transformSignature)
+    }
+    case 'nexus': {
+      return getNexusPackedSignature(
+        signFn,
+        hash,
+        validator,
+        transformSignature,
+      )
+    }
+    case 'kernel': {
+      return getKernelPackedSignature(
+        signFn,
+        hash,
+        validator,
+        address,
+        transformSignature,
+      )
+    }
+  }
 }
 
 async function isDeployed(chain: Chain, config: RhinestoneAccountConfig) {
@@ -91,6 +182,17 @@ async function isDeployed(chain: Chain, config: RhinestoneAccountConfig) {
     throw new Error('Existing EIP-7702 accounts are not yet supported')
   }
   return size(code) > 0
+}
+
+async function deploy(
+  config: RhinestoneAccountConfig,
+  chain: Chain,
+  session?: Session,
+) {
+  await deploySource(chain, config)
+  if (session) {
+    await enableSmartSession(chain, config, session)
+  }
 }
 
 async function deploySource(chain: Chain, config: RhinestoneAccountConfig) {
@@ -289,6 +391,15 @@ async function getSmartAccount(
         signFn,
       )
     }
+    case 'kernel': {
+      return getKernelSmartAccount(
+        client,
+        address,
+        config.owners,
+        ownerValidator.address,
+        signFn,
+      )
+    }
   }
 }
 
@@ -322,6 +433,61 @@ async function getSmartSessionSmartAccount(
         address,
         session,
         smartSessionValidator.address,
+        signFn,
+      )
+    }
+    case 'kernel': {
+      return getKernelSessionSmartAccount(
+        client,
+        address,
+        session,
+        smartSessionValidator.address,
+        signFn,
+      )
+    }
+  }
+}
+
+async function getGuardianSmartAccount(
+  config: RhinestoneAccountConfig,
+  client: PublicClient,
+  chain: Chain,
+  guardians: OwnerSet,
+) {
+  const address = getAddress(config)
+  const accounts = guardians.type === 'ecdsa' ? guardians.accounts : []
+  const socialRecoveryValidator = getSocialRecoveryValidator(accounts)
+  if (!socialRecoveryValidator) {
+    throw new Error('Social recovery is not enabled for this account')
+  }
+  const signFn = (hash: Hex) => sign(guardians, chain, hash)
+
+  const account = getAccount(config)
+  switch (account.type) {
+    case 'safe': {
+      return getSafeGuardianSmartAccount(
+        client,
+        address,
+        guardians,
+        socialRecoveryValidator.address,
+        signFn,
+      )
+    }
+    case 'nexus': {
+      return getNexusGuardianSmartAccount(
+        client,
+        address,
+        guardians,
+        socialRecoveryValidator.address,
+        signFn,
+      )
+    }
+    case 'kernel': {
+      return getKernelGuardianSmartAccount(
+        client,
+        address,
+        guardians,
+        socialRecoveryValidator.address,
         signFn,
       )
     }
@@ -376,6 +542,9 @@ async function get7702SmartAccount(
     case 'nexus': {
       return get7702NexusAccount(config.eoa, client)
     }
+    case 'kernel': {
+      return get7702KernelAccount()
+    }
   }
 }
 
@@ -387,6 +556,9 @@ async function get7702InitCalls(config: RhinestoneAccountConfig) {
     }
     case 'nexus': {
       return get7702NexusInitCalls(config)
+    }
+    case 'kernel': {
+      return get7702KernelInitCalls()
     }
   }
 }
@@ -405,13 +577,17 @@ function getAccount(config: RhinestoneAccountConfig): AccountProviderConfig {
 }
 
 export {
+  getModuleInstallationCalls,
   getDeployArgs,
   getBundleInitCode,
   getAddress,
   isDeployed,
+  deploy,
   deploySource,
   deployTarget,
   getSmartAccount,
   getSmartSessionSmartAccount,
+  getGuardianSmartAccount,
+  getPackedSignature,
   sign,
 }

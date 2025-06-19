@@ -1,5 +1,6 @@
 import {
   type Abi,
+  Account,
   type Address,
   concat,
   encodeFunctionData,
@@ -8,6 +9,7 @@ import {
   keccak256,
   type PublicClient,
   parseAbi,
+  slice,
   zeroAddress,
 } from 'viem'
 import {
@@ -20,6 +22,7 @@ import {
 } from 'viem/account-abstraction'
 
 import { getSetup as getModuleSetup } from '../modules'
+import { Module } from '../modules/common'
 import {
   encodeSmartSessionSignature,
   getMockSignature,
@@ -27,8 +30,7 @@ import {
   SMART_SESSION_MODE_USE,
 } from '../modules/validators'
 import type { OwnerSet, RhinestoneAccountConfig, Session } from '../types'
-
-import { encode7579Calls, getAccountNonce } from './utils'
+import { encode7579Calls, getAccountNonce, ValidatorConfig } from './utils'
 
 const SAFE_7579_LAUNCHPAD_ADDRESS: Address =
   '0x7579011aB74c46090561ea277Ba79D510c6C00ff'
@@ -104,18 +106,72 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
       encodePacked(['bytes32', 'uint256'], [keccak256(initData), saltNonce]),
     )
 
-    const hashedInitcode: Hex =
-      '0xe298282cefe913ab5d282047161268a8222e4bd4ed106300c547894bbefd31ee'
-
     return {
       factory: SAFE_PROXY_FACTORY_ADDRESS,
       factoryData,
       salt,
-      hashedInitcode,
       implementation: SAFE_SINGLETON_ADDRESS,
       initializationCallData: null,
     }
   }
+}
+
+function getAddress(config: RhinestoneAccountConfig) {
+  const hashedInitcode: Hex =
+    '0xe298282cefe913ab5d282047161268a8222e4bd4ed106300c547894bbefd31ee'
+
+  const { factory, salt } = getDeployArgs(config)
+  const hash = keccak256(
+    encodePacked(
+      ['bytes1', 'address', 'bytes32', 'bytes'],
+      ['0xff', factory, salt, hashedInitcode],
+    ),
+  )
+  const address = slice(hash, 12, 32)
+  return address
+}
+
+function getInstallData(module: Module) {
+  return encodeFunctionData({
+    abi: [
+      {
+        type: 'function',
+        name: 'installModule',
+        inputs: [
+          {
+            type: 'uint256',
+            name: 'moduleTypeId',
+          },
+          {
+            type: 'address',
+            name: 'module',
+          },
+          {
+            type: 'bytes',
+            name: 'initData',
+          },
+        ],
+        outputs: [],
+        stateMutability: 'nonpayable',
+      },
+    ],
+    functionName: 'installModule',
+    args: [module.type, module.address, module.initData],
+  })
+}
+
+async function getPackedSignature(
+  signFn: (message: Hex) => Promise<Hex>,
+  hash: Hex,
+  validator: ValidatorConfig,
+  transformSignature: (signature: Hex) => Hex = (signature) => signature,
+) {
+  const signature = await signFn(hash)
+  const packedSig = encodePacked(
+    ['address', 'bytes'],
+    [validator.address, transformSignature(signature)],
+  )
+  return packedSig
 }
 
 async function getSmartAccount(
@@ -162,6 +218,26 @@ async function getSessionSmartAccount(
         getPermissionId(session),
         signature,
       )
+    },
+  )
+}
+
+async function getGuardianSmartAccount(
+  client: PublicClient,
+  address: Address,
+  guardians: OwnerSet,
+  validatorAddress: Address,
+  sign: (hash: Hex) => Promise<Hex>,
+) {
+  return await getBaseSmartAccount(
+    address,
+    client,
+    validatorAddress,
+    async () => {
+      return getMockSignature(guardians)
+    },
+    async (hash) => {
+      return await sign(hash)
     },
   )
 }
@@ -267,9 +343,13 @@ function getThreshold(config: RhinestoneAccountConfig) {
 }
 
 export {
+  getInstallData,
+  getAddress,
+  getPackedSignature,
   getDeployArgs,
   getSmartAccount,
   getSessionSmartAccount,
+  getGuardianSmartAccount,
   get7702InitCalls,
   get7702SmartAccount,
 }

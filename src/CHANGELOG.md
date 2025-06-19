@@ -1,5 +1,52 @@
 # @rhinestone/sdk
 
+## 0.11.2
+
+### Patch Changes
+
+- 8a04205: Add Social Recovery (guardians) support
+
+## 0.11.1
+
+### Patch Changes
+
+- b075665: add zksync to chains
+
+## 0.11.0
+
+### Minor Changes
+
+- f84da0d: Kernel V3 support
+
+## 0.10.3
+
+### Patch Changes
+
+- 6d175c4: add zksync to supported chains
+
+## 0.10.2
+
+### Patch Changes
+
+- 238b12b: Fix: remove support for USDT on testnets
+
+## 0.10.1
+
+### Patch Changes
+
+- f611ebe: Add support for USDT
+
+## 0.10.0
+
+### Minor Changes
+
+- 262a06d: Expose low-level APIs:
+
+  - deploy
+  - prepareTransaction
+  - signTransaction
+  - submitTransaction
+
 ## 0.9.0
 
 ### Minor Changes

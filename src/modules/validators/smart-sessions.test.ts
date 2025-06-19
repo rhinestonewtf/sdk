@@ -1,7 +1,6 @@
 import {
   createPublicClient,
   decodeFunctionData,
-  http,
   isAddress,
   isHex,
   ReadContractParameters,

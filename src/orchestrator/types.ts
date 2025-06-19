@@ -11,6 +11,7 @@ import type {
   polygon,
   polygonAmoy,
   sepolia,
+  zksync,
 } from 'viem/chains'
 
 type SupportedTestnet =
@@ -25,10 +26,11 @@ type SupportedMainnet =
   | typeof arbitrum.id
   | typeof optimism.id
   | typeof polygon.id
+  | typeof zksync.id
 type SupportedOPStackMainnet = typeof optimism.id | typeof base.id
 type SupportedOPStackTestnet = typeof optimismSepolia.id | typeof baseSepolia.id
 type SupportedChain = SupportedMainnet | SupportedTestnet
-type SupportedTokenSymbol = 'ETH' | 'WETH' | 'USDC'
+type SupportedTokenSymbol = 'ETH' | 'WETH' | 'USDC' | 'USDT'
 type SupportedToken = SupportedTokenSymbol | Address
 
 type BundleStatus =

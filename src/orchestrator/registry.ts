@@ -17,6 +17,7 @@ import {
   polygon,
   polygonAmoy,
   sepolia,
+  zksync,
 } from 'viem/chains'
 
 import { TokenConfig } from './types'
@@ -52,6 +53,9 @@ function getWethAddress(chain: Chain) {
     }
     case polygonAmoy.id: {
       return '0x52eF3d68BaB452a294342DC3e5f464d7f610f72E'
+    }
+    case zksync.id: {
+      return '0x5aea5775959fbc2557cc8789bc1bf90a239d9a91'
     }
     default: {
       throw new Error(`Unsupported chain ${chain.id}`)
@@ -91,6 +95,35 @@ function getUsdcAddress(chain: Chain) {
     case polygonAmoy.id: {
       return '0x41e94eb019c0762f9bfcf9fb1e58725bfb0e7582'
     }
+    case zksync.id: {
+      return '0x3355df6d4c9c3035724fd0e3914de96a5a83aaf4'
+    }
+    default: {
+      throw new Error(`Unsupported chain ${chain.id}`)
+    }
+  }
+}
+
+function getUsdtAddress(chain: Chain) {
+  switch (chain.id) {
+    case mainnet.id: {
+      return '0xdAC17F958D2ee523a2206206994597C13D831ec7'
+    }
+    case base.id: {
+      return '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2'
+    }
+    case arbitrum.id: {
+      return '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9'
+    }
+    case optimism.id: {
+      return '0x94b008aa00579c1307b0ef2c499ad98a8ce58e58'
+    }
+    case polygon.id: {
+      return '0xc2132D05D31c914a87C6611C10748AEb04B58e8F'
+    }
+    case zksync.id: {
+      return '0x493257fD37EDB34451f62EDf8D2a0C418852bA4C'
+    }
     default: {
       throw new Error(`Unsupported chain ${chain.id}`)
     }
@@ -114,6 +147,10 @@ function getTokenRootBalanceSlot(
       // WETH
       if (tokenAddress === '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2') {
         return 3n
+      }
+      // USDT
+      if (tokenAddress === '0xdAC17F958D2ee523a2206206994597C13D831ec7') {
+        return 2n
       }
       break
     }
@@ -145,6 +182,10 @@ function getTokenRootBalanceSlot(
       if (tokenAddress === '0x4200000000000000000000000000000000000006') {
         return 3n
       }
+      // USDT
+      if (tokenAddress === '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2') {
+        return 51n
+      }
       break
     }
     case baseSepolia.id: {
@@ -173,6 +214,10 @@ function getTokenRootBalanceSlot(
       }
       // WETH
       if (tokenAddress === '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1') {
+        return 51n
+      }
+      // USDT
+      if (tokenAddress === '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9') {
         return 51n
       }
       break
@@ -205,6 +250,10 @@ function getTokenRootBalanceSlot(
       if (tokenAddress === '0x4200000000000000000000000000000000000006') {
         return 3n
       }
+      // USDT
+      if (tokenAddress === '0x94b008aa00579c1307b0ef2c499ad98a8ce58e58') {
+        return 0n
+      }
       break
     }
     case optimismSepolia.id: {
@@ -231,6 +280,10 @@ function getTokenRootBalanceSlot(
       if (tokenAddress === '0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619') {
         return 3n
       }
+      // USDT
+      if (tokenAddress === '0xc2132D05D31c914a87C6611C10748AEb04B58e8F') {
+        return 0n
+      }
       break
     }
     case polygonAmoy.id: {
@@ -241,6 +294,25 @@ function getTokenRootBalanceSlot(
       // WETH
       if (tokenAddress === '0x52eF3d68BaB452a294342DC3e5f464d7f610f72E') {
         return 3n
+      }
+      break
+    }
+    case zksync.id: {
+      // ETH
+      if (tokenAddress === zeroAddress) {
+        return null
+      }
+      // USDC
+      if (tokenAddress === '0x3355df6d4c9c3035724fd0e3914de96a5a83aaf4') {
+        return 9n
+      }
+      // WETH
+      if (tokenAddress === '0x5aea5775959fbc2557cc8789bc1bf90a239d9a91') {
+        return 3n
+      }
+      // USDT
+      if (tokenAddress === '0x493257fD37EDB34451f62EDf8D2a0C418852bA4C') {
+        return 2n
       }
       break
     }
@@ -319,6 +391,9 @@ function getTokenAddress(tokenSymbol: string, chainId: number): Address {
   if (tokenSymbol === 'USDC') {
     return getUsdcAddress(chain)
   }
+  if (tokenSymbol === 'USDT') {
+    return getUsdtAddress(chain)
+  }
   throw new Error(`Unsupported token symbol ${tokenSymbol}`)
 }
 
@@ -334,6 +409,7 @@ function getChainById(chainId: number) {
     optimismSepolia,
     polygon,
     polygonAmoy,
+    zksync,
   ]
   for (const chain of supportedChains) {
     if (chain.id === chainId) {
@@ -384,7 +460,7 @@ function getSupportedTokens(chainId: number): TokenConfig[] {
 }
 
 function getKnownSymbols(): string[] {
-  return ['ETH', 'WETH', 'USDC']
+  return ['ETH', 'WETH', 'USDC', 'USDT']
 }
 
 function getTokenDecimals(symbol: string): number {
@@ -393,6 +469,7 @@ function getTokenDecimals(symbol: string): number {
     case 'WETH':
       return 18
     case 'USDC':
+    case 'USDT':
       return 6
     default:
       throw new Error(`Symbol not supported: ${symbol}`)
