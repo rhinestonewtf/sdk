@@ -7,14 +7,7 @@ import {
 } from 'viem'
 import { mainnet, sepolia } from 'viem/chains'
 
-import {
-  deploySource,
-  deployTarget,
-  getAddress,
-  getGuardianSmartAccount,
-  getSmartSessionSmartAccount,
-  isDeployed,
-} from '../accounts'
+import { deploySource, deployTarget, getAddress, isDeployed } from '../accounts'
 import { getBundlerClient } from '../accounts/utils'
 import type { BundleResult } from '../orchestrator'
 import {
@@ -31,7 +24,6 @@ import { BundleStatus } from '../orchestrator/types'
 import type {
   Call,
   RhinestoneAccountConfig,
-  Session,
   SignerSet,
   TokenRequest,
   Transaction,

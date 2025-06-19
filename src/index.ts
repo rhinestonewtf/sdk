@@ -4,6 +4,13 @@ import {
   deploy as deployInternal,
   getAddress as getAddressInternal,
 } from './accounts'
+import {
+  addOwner,
+  recover,
+  removeOwner,
+  setThreshold,
+  setUpRecovery,
+} from './actions'
 import type { TransactionResult } from './execution'
 import {
   getMaxSpendableAmount as getMaxSpendableAmountInternal,
@@ -155,7 +162,14 @@ async function createRhinestoneAccount(
   }
 }
 
-export { createRhinestoneAccount }
+export {
+  createRhinestoneAccount,
+  addOwner,
+  recover,
+  removeOwner,
+  setThreshold,
+  setUpRecovery,
+}
 export type {
   RhinestoneAccount,
   BundleStatus,
