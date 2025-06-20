@@ -60,17 +60,17 @@ import { getSessionSignature, hashErc7739 } from './smart-session'
 
 type TransactionResult =
   | {
-      type: 'userop'
-      hash: Hex
-      sourceChain: number
-      targetChain: number
-    }
+    type: 'userop'
+    hash: Hex
+    sourceChain: number
+    targetChain: number
+  }
   | {
-      type: 'bundle'
-      id: bigint
-      sourceChain?: number
-      targetChain: number
-    }
+    type: 'bundle'
+    id: bigint
+    sourceChain?: number
+    targetChain: number
+  }
 
 interface BundleData {
   hash: Hex
@@ -235,11 +235,11 @@ function getTransactionParams(transaction: Transaction) {
   const tokenRequests =
     initialTokenRequests.length === 0
       ? [
-          {
-            address: zeroAddress,
-            amount: 1n,
-          },
-        ]
+        {
+          address: zeroAddress,
+          amount: 1n,
+        },
+      ]
       : initialTokenRequests
 
   return {
@@ -309,8 +309,8 @@ async function prepareTransactionAsIntent(
 ) {
   const accountAccessList = sourceChain
     ? {
-        chainIds: [sourceChain.id as SupportedChain],
-      }
+      chainIds: [sourceChain.id as SupportedChain],
+    }
     : getDefaultAccountAccessList()
 
   const metaIntent: MetaIntent = {
@@ -354,10 +354,11 @@ async function signIntent(
   bundleHash: Hex,
   signers?: OwnerSet | undefined,
 ) {
-  const validatorModule = getOwnerValidator(config)
+  const owners = signers || config.owners
+  const validatorModule = getOwnerValidator(owners)
   const signature = await getPackedSignature(
     config,
-    signers || config.owners,
+    owners,
     sourceChain || targetChain,
     {
       address: validatorModule.address,
@@ -494,8 +495,8 @@ async function getUserOpOrderPath(
 ) {
   const accountAccessList = sourceChain
     ? {
-        chainIds: [sourceChain.id as SupportedChain],
-      }
+      chainIds: [sourceChain.id as SupportedChain],
+    }
     : getDefaultAccountAccessList()
 
   const metaIntent: MetaIntent = {
@@ -547,11 +548,11 @@ async function getUserOp(
         )
         const balanceSlot = rootBalanceSlot
           ? keccak256(
-              encodeAbiParameters(
-                [{ type: 'address' }, { type: 'uint256' }],
-                [accountAddress, rootBalanceSlot],
-              ),
-            )
+            encodeAbiParameters(
+              [{ type: 'address' }, { type: 'uint256' }],
+              [accountAddress, rootBalanceSlot],
+            ),
+          )
           : '0x'
         return {
           address: request.address,
