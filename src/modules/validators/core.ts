@@ -195,7 +195,10 @@ function parsePublicKey(publicKey: Hex | Uint8Array): PublicKey {
 export {
   OWNABLE_VALIDATOR_ADDRESS,
   getOwnerValidator,
+  getOwnableValidator,
+  getWebAuthnValidator,
   getSocialRecoveryValidator,
   getValidator,
   getMockSignature,
 }
+export type { WebauthnCredential }

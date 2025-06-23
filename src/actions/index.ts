@@ -5,11 +5,18 @@ import {
   encodeFunctionData,
   http,
 } from 'viem'
+
 import { RhinestoneAccount } from '..'
-import { getModuleInstallationCalls } from '../accounts'
 import {
+  getModuleInstallationCalls,
+  getModuleUninstallationCalls,
+} from '../accounts'
+import {
+  getOwnableValidator,
   getSocialRecoveryValidator,
+  getWebAuthnValidator,
   OWNABLE_VALIDATOR_ADDRESS,
+  WebauthnCredential,
 } from '../modules/validators/core'
 import { Call, OwnableValidatorConfig, OwnerSet, Recovery } from '../types'
 
@@ -38,6 +45,65 @@ async function recover(
       throw new Error('Passkey ownership recovery is not yet supported')
     }
   }
+}
+
+function installOwnableValidator({
+  rhinestoneAccount,
+  owners,
+  threshold = 1,
+}: {
+  rhinestoneAccount: RhinestoneAccount
+  owners: Address[]
+  threshold?: number
+}) {
+  const module = getOwnableValidator({
+    threshold,
+    owners,
+  })
+  const calls = getModuleInstallationCalls(rhinestoneAccount.config, module)
+  return calls
+}
+
+function installWebAuthnValidator({
+  rhinestoneAccount,
+  pubKey,
+  authenticatorId,
+  hook,
+}: {
+  rhinestoneAccount: RhinestoneAccount
+} & WebauthnCredential) {
+  const module = getWebAuthnValidator({ pubKey, authenticatorId, hook })
+  const calls = getModuleInstallationCalls(rhinestoneAccount.config, module)
+  return calls
+}
+
+function uninstallOwnableValidator({
+  rhinestoneAccount,
+}: {
+  rhinestoneAccount: RhinestoneAccount
+}) {
+  const module = getOwnableValidator({
+    threshold: 1,
+    owners: [],
+  })
+  const calls = getModuleUninstallationCalls(rhinestoneAccount.config, module)
+  return calls
+}
+
+function uninstallWebAuthnValidator({
+  rhinestoneAccount,
+}: {
+  rhinestoneAccount: RhinestoneAccount
+}) {
+  const module = getWebAuthnValidator({
+    // Mocked values
+    pubKey:
+      '0x580a9af0569ad3905b26a703201b358aa0904236642ebe79b22a19d00d3737637d46f725a5427ae45a9569259bf67e1e16b187d7b3ad1ed70138c4f0409677d1',
+    authenticatorId: '0x',
+    hook: '0x',
+  })
+  const calls = getModuleUninstallationCalls(rhinestoneAccount.config, module)
+  return calls
 }
 
 function addOwner(owner: Address): Call {
@@ -201,4 +267,14 @@ async function recoverEcdsaOwnership(
   return calls
 }
 
-export { addOwner, removeOwner, setThreshold, recover, setUpRecovery }
+export {
+  installOwnableValidator,
+  installWebAuthnValidator,
+  uninstallOwnableValidator,
+  uninstallWebAuthnValidator,
+  addOwner,
+  removeOwner,
+  setThreshold,
+  recover,
+  setUpRecovery,
+}

@@ -6,10 +6,14 @@ import {
 } from './accounts'
 import {
   addOwner,
+  installOwnableValidator,
+  installWebAuthnValidator,
   recover,
   removeOwner,
   setThreshold,
   setUpRecovery,
+  uninstallOwnableValidator,
+  uninstallWebAuthnValidator,
 } from './actions'
 import type { TransactionResult } from './execution'
 import {
@@ -165,10 +169,14 @@ async function createRhinestoneAccount(
 export {
   createRhinestoneAccount,
   addOwner,
+  installOwnableValidator,
+  installWebAuthnValidator,
   recover,
   removeOwner,
   setThreshold,
   setUpRecovery,
+  uninstallOwnableValidator,
+  uninstallWebAuthnValidator,
 }
 export type {
   RhinestoneAccount,
