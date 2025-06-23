@@ -12,14 +12,14 @@ import {
 import { createRhinestoneAccount } from '..'
 import {
   addOwner,
-  installOwnableValidator,
-  installWebAuthnValidator,
+  changeThreshold,
+  disableEcdsa,
+  disablePasskeys,
+  enableEcdsa,
+  enablePasskeys,
   recover,
   removeOwner,
-  setThreshold,
   setUpRecovery,
-  uninstallOwnableValidator,
-  uninstallWebAuthnValidator,
 } from '.'
 
 const MOCK_OWNER_A = '0xd1aefebdceefc094f1805b241fa5e6db63a9181a'
@@ -49,7 +49,7 @@ describe('Actions', () => {
 
     test('1/1 Owners', () => {
       expect(
-        installOwnableValidator({
+        enableEcdsa({
           rhinestoneAccount,
           owners: [MOCK_OWNER_A],
         }),
@@ -63,7 +63,7 @@ describe('Actions', () => {
 
     test('1/N Owners', () => {
       expect(
-        installOwnableValidator({
+        enableEcdsa({
           rhinestoneAccount,
           owners: [MOCK_OWNER_A, MOCK_OWNER_B],
         }),
@@ -77,7 +77,7 @@ describe('Actions', () => {
 
     test('M/N Owners', () => {
       expect(
-        installOwnableValidator({
+        enableEcdsa({
           rhinestoneAccount,
           owners: [MOCK_OWNER_A, MOCK_OWNER_B, MOCK_OWNER_C],
           threshold: 2,
@@ -102,7 +102,7 @@ describe('Actions', () => {
 
     test('', () => {
       expect(
-        installWebAuthnValidator({
+        enablePasskeys({
           rhinestoneAccount,
           pubKey: passkeyAccount.publicKey,
           authenticatorId: passkeyAccount.id,
@@ -127,7 +127,7 @@ describe('Actions', () => {
 
     test('', () => {
       expect(
-        uninstallOwnableValidator({
+        disableEcdsa({
           rhinestoneAccount,
         }),
       ).toEqual([
@@ -150,7 +150,7 @@ describe('Actions', () => {
 
     test('', () => {
       expect(
-        uninstallWebAuthnValidator({
+        disablePasskeys({
           rhinestoneAccount,
         }),
       ).toEqual([
@@ -182,7 +182,7 @@ describe('Actions', () => {
 
   describe('Set Threshold', () => {
     test('', () => {
-      expect(setThreshold(1n)).toEqual({
+      expect(changeThreshold(1)).toEqual({
         to: '0x2483DA3A338895199E5e538530213157e931Bf06',
         data: '0x960bfe040000000000000000000000000000000000000000000000000000000000000001',
       })

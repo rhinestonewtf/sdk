@@ -47,7 +47,7 @@ async function recover(
   }
 }
 
-function installOwnableValidator({
+function enableEcdsa({
   rhinestoneAccount,
   owners,
   threshold = 1,
@@ -64,7 +64,7 @@ function installOwnableValidator({
   return calls
 }
 
-function installWebAuthnValidator({
+function enablePasskeys({
   rhinestoneAccount,
   pubKey,
   authenticatorId,
@@ -77,7 +77,7 @@ function installWebAuthnValidator({
   return calls
 }
 
-function uninstallOwnableValidator({
+function disableEcdsa({
   rhinestoneAccount,
 }: {
   rhinestoneAccount: RhinestoneAccount
@@ -90,7 +90,7 @@ function uninstallOwnableValidator({
   return calls
 }
 
-function uninstallWebAuthnValidator({
+function disablePasskeys({
   rhinestoneAccount,
 }: {
   rhinestoneAccount: RhinestoneAccount
@@ -147,7 +147,7 @@ function removeOwner(prevOwner: Address, ownerToRemove: Address): Call {
   }
 }
 
-function setThreshold(newThreshold: bigint): Call {
+function changeThreshold(newThreshold: number): Call {
   return {
     to: OWNABLE_VALIDATOR_ADDRESS,
     data: encodeFunctionData({
@@ -163,7 +163,7 @@ function setThreshold(newThreshold: bigint): Call {
         },
       ],
       functionName: 'setThreshold',
-      args: [newThreshold],
+      args: [BigInt(newThreshold)],
     }),
   }
 }
@@ -239,11 +239,11 @@ async function recoverEcdsaOwnership(
   const newOwnerAddresses = newOwners.accounts
     .map((account) => account.address.toLowerCase() as Address)
     .sort()
-  const newThreshold = BigInt(newOwners.threshold ?? 1)
+  const newThreshold = newOwners.threshold ?? 1
 
   // Check if threshold needs to be updated
-  if (existingThreshold !== newThreshold) {
-    calls.push(setThreshold(newThreshold))
+  if (Number(existingThreshold) !== newThreshold) {
+    calls.push(changeThreshold(newThreshold))
   }
 
   const ownersToAdd = newOwnerAddresses.filter(
@@ -278,13 +278,13 @@ async function recoverEcdsaOwnership(
 }
 
 export {
-  installOwnableValidator,
-  installWebAuthnValidator,
-  uninstallOwnableValidator,
-  uninstallWebAuthnValidator,
+  enableEcdsa,
+  enablePasskeys,
+  disableEcdsa,
+  disablePasskeys,
   addOwner,
   removeOwner,
-  setThreshold,
+  changeThreshold,
   recover,
   setUpRecovery,
 }
