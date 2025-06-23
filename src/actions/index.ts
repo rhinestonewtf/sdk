@@ -179,46 +179,56 @@ async function recoverEcdsaOwnership(
   })
 
   // Read the existing config
-  const [existingOwners, existingThreshold] = await Promise.all([
-    publicClient.readContract({
-      address: OWNABLE_VALIDATOR_ADDRESS,
-      abi: [
-        {
-          inputs: [
-            { internalType: 'address', name: 'account', type: 'address' },
-          ],
-          name: 'getOwners',
-          outputs: [
-            {
-              internalType: 'address[]',
-              name: 'ownersArray',
-              type: 'address[]',
-            },
-          ],
-          stateMutability: 'view',
-          type: 'function',
-        },
-      ],
-      functionName: 'getOwners',
-      args: [address],
-    }) as Promise<Address[]>,
-    publicClient.readContract({
-      address: OWNABLE_VALIDATOR_ADDRESS,
-      abi: [
-        {
-          inputs: [
-            { internalType: 'address', name: 'account', type: 'address' },
-          ],
-          name: 'threshold',
-          outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
-          stateMutability: 'view',
-          type: 'function',
-        },
-      ],
-      functionName: 'threshold',
-      args: [address],
-    }) as Promise<bigint>,
-  ])
+  const results = await publicClient.multicall({
+    contracts: [
+      {
+        address: OWNABLE_VALIDATOR_ADDRESS,
+        abi: [
+          {
+            inputs: [
+              { internalType: 'address', name: 'account', type: 'address' },
+            ],
+            name: 'getOwners',
+            outputs: [
+              {
+                internalType: 'address[]',
+                name: 'ownersArray',
+                type: 'address[]',
+              },
+            ],
+            stateMutability: 'view',
+            type: 'function',
+          },
+        ],
+        functionName: 'getOwners',
+        args: [address],
+      },
+      {
+        address: OWNABLE_VALIDATOR_ADDRESS,
+        abi: [
+          {
+            inputs: [
+              { internalType: 'address', name: 'account', type: 'address' },
+            ],
+            name: 'threshold',
+            outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+            stateMutability: 'view',
+            type: 'function',
+          },
+        ],
+        functionName: 'threshold',
+        args: [address],
+      },
+    ],
+  })
+  const existingOwnersResult = results[0]
+  const existingThresholdResult = results[1]
+  if (existingOwnersResult.error || existingThresholdResult.error) {
+    throw new Error('Failed to read existing owners or threshold')
+  }
+  const existingOwners = existingOwnersResult.result
+  const existingThreshold = existingThresholdResult.result
+
   const normalizedExistingOwners = existingOwners.map(
     (owner) => owner.toLowerCase() as Address,
   )
