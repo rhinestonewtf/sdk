@@ -232,6 +232,7 @@ describe('Actions', () => {
   describe('Recover', () => {
     const mockPublicClient = {
       readContract: vi.fn(),
+      multicall: vi.fn(),
     }
 
     beforeEach(() => {
@@ -242,9 +243,10 @@ describe('Actions', () => {
 
     test('1/1 Owners - Single owner to different single owner', async () => {
       // Initial state
-      mockPublicClient.readContract
-        .mockResolvedValueOnce([accountA.address.toLowerCase()])
-        .mockResolvedValueOnce(1n)
+      mockPublicClient.multicall.mockResolvedValueOnce([
+        { result: [accountA.address.toLowerCase()], status: 'success' },
+        { result: 1n, status: 'success' },
+      ])
 
       const newOwners = {
         type: 'ecdsa' as const,
@@ -258,7 +260,7 @@ describe('Actions', () => {
         base as Chain,
       )
 
-      expect(mockPublicClient.readContract).toHaveBeenCalledTimes(2)
+      expect(mockPublicClient.multicall).toHaveBeenCalledTimes(1)
       expect(result).toEqual([
         {
           to: '0x2483DA3A338895199E5e538530213157e931Bf06',
@@ -273,13 +275,17 @@ describe('Actions', () => {
 
     test('1/N Owners - Single owner to multiple owners', async () => {
       // Initial state
-      mockPublicClient.readContract
-        .mockResolvedValueOnce([
-          accountA.address.toLowerCase(),
-          accountB.address.toLowerCase(),
-          accountC.address.toLowerCase(),
-        ])
-        .mockResolvedValueOnce(1n)
+      mockPublicClient.multicall.mockResolvedValueOnce([
+        {
+          result: [
+            accountA.address.toLowerCase(),
+            accountB.address.toLowerCase(),
+            accountC.address.toLowerCase(),
+          ],
+          status: 'success',
+        },
+        { result: 1n, status: 'success' },
+      ])
 
       const newOwners = {
         type: 'ecdsa' as const,
@@ -293,7 +299,7 @@ describe('Actions', () => {
         base as Chain,
       )
 
-      expect(mockPublicClient.readContract).toHaveBeenCalledTimes(2)
+      expect(mockPublicClient.multicall).toHaveBeenCalledTimes(1)
       expect(result).toEqual([
         {
           to: '0x2483DA3A338895199E5e538530213157e931Bf06',
@@ -308,13 +314,17 @@ describe('Actions', () => {
 
     test('M/N Owners - Multiple owners to different multiple owners', async () => {
       // Initial state
-      mockPublicClient.readContract
-        .mockResolvedValueOnce([
-          accountA.address.toLowerCase(),
-          accountB.address.toLowerCase(),
-          accountC.address.toLowerCase(),
-        ])
-        .mockResolvedValueOnce(2n)
+      mockPublicClient.multicall.mockResolvedValueOnce([
+        {
+          result: [
+            accountA.address.toLowerCase(),
+            accountB.address.toLowerCase(),
+            accountC.address.toLowerCase(),
+          ],
+          status: 'success',
+        },
+        { result: 2n, status: 'success' },
+      ])
 
       const newOwners = {
         type: 'ecdsa' as const,
@@ -328,7 +338,7 @@ describe('Actions', () => {
         base as Chain,
       )
 
-      expect(mockPublicClient.readContract).toHaveBeenCalledTimes(2)
+      expect(mockPublicClient.multicall).toHaveBeenCalledTimes(1)
       expect(result).toEqual([
         {
           to: '0x2483DA3A338895199E5e538530213157e931Bf06',
