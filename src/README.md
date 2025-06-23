@@ -203,6 +203,12 @@ const transactionResult = await rhinestoneAccount.sendTransaction({
 })
 ```
 
+## Migrating from Orchestrator SDK
+
+To migrate from the [Orchestrator SDK](https://github.com/rhinestonewtf/orchestrator-sdk), replace all imports of `@rhinestone/orchestrator-sdk` with `@rhinestone/sdk/orchestrator`.
+
+Let us know if you encounter any issues!
+
 ## Contributing
 
 For feature or change requests, feel free to open a PR, start a discussion or get in touch with us.
