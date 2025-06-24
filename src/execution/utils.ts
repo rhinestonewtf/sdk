@@ -28,7 +28,11 @@ import {
   getOwnerValidator,
   getSmartSessionValidator,
 } from '../modules/validators'
-import { getSocialRecoveryValidator } from '../modules/validators/core'
+import {
+  getOwnableValidator,
+  getSocialRecoveryValidator,
+  getWebAuthnValidator,
+} from '../modules/validators/core'
 import {
   getEmptyUserOp,
   getOrchestrator,
@@ -51,7 +55,7 @@ import {
 } from '../orchestrator/types'
 import {
   Call,
-  OwnableValidatorConfig,
+  OwnerSet,
   RhinestoneAccountConfig,
   SignerSet,
   TokenRequest,
@@ -350,15 +354,26 @@ async function signIntent(
   sourceChain: Chain | undefined,
   targetChain: Chain,
   bundleHash: Hex,
+  signers?: SignerSet,
 ) {
-  const validatorModule = getOwnerValidator(config)
+  const validator = getValidator(config, signers)
+  if (!validator) {
+    throw new Error('Validator not available')
+  }
+  const ownerValidator = getOwnerValidator(config)
+  const isRoot = validator.address === ownerValidator.address
+
+  const owners = getOwners(config, signers)
+  if (!owners) {
+    throw new Error('No owners found')
+  }
   const signature = await getPackedSignature(
     config,
-    config.owners,
+    owners,
     sourceChain || targetChain,
     {
-      address: validatorModule.address,
-      isRoot: true,
+      address: validator.address,
+      isRoot,
     },
     bundleHash,
   )
@@ -404,7 +419,7 @@ async function signUserOp(
   const { hash, appDomainSeparator, contentsType, structHash } =
     await hashErc7739(sourceChain, orderPath, accountAddress)
 
-  const owners = getOwners(signers)
+  const owners = getOwners(config, signers)
   if (!owners) {
     throw new Error('No owners found')
   }
@@ -647,39 +662,87 @@ function getValidator(
   signers: SignerSet | undefined,
 ) {
   if (!signers) {
-    return undefined
+    return getOwnerValidator(config)
   }
 
-  const withSession = signers.type === 'session' ? signers.session : null
-  const withGuardians = signers.type === 'guardians' ? signers : null
+  // Owners
+  const withOwner = signers.type === 'owner' ? signers : null
+  if (withOwner) {
+    // ECDSA
+    if (withOwner.kind === 'ecdsa') {
+      return getOwnableValidator({
+        threshold: 1,
+        owners: withOwner.accounts.map((account) => account.address),
+      })
+    }
+    // Passkeys (WebAuthn)
+    if (withOwner.kind === 'passkey') {
+      const passkeyAccount = withOwner.account
+      return getWebAuthnValidator({
+        pubKey: passkeyAccount.publicKey,
+        authenticatorId: passkeyAccount.id,
+      })
+    }
+  }
 
-  return withSession
-    ? getSmartSessionValidator(config)
-    : withGuardians
-      ? getSocialRecoveryValidator(withGuardians.guardians)
-      : undefined
+  // Smart sessions
+  const withSession = signers.type === 'session' ? signers.session : null
+  if (withSession) {
+    return getSmartSessionValidator(config)
+  }
+
+  // Guardians (social recovery)
+  const withGuardians = signers.type === 'guardians' ? signers : null
+  if (withGuardians) {
+    return getSocialRecoveryValidator(withGuardians.guardians)
+  }
+  // Fallback
+  return undefined
 }
 
 function getOwners(
+  config: RhinestoneAccountConfig,
   signers: SignerSet | undefined,
-): OwnableValidatorConfig | undefined {
+): OwnerSet | undefined {
   if (!signers) {
-    return undefined
+    return config.owners
   }
 
-  const withSession = signers.type === 'session' ? signers.session : null
-  const withGuardians = signers.type === 'guardians' ? signers : null
+  // Owners
+  const withOwner = signers.type === 'owner' ? signers : null
+  if (withOwner) {
+    // ECDSA
+    if (withOwner.kind === 'ecdsa') {
+      return {
+        type: 'ecdsa',
+        accounts: withOwner.accounts,
+      }
+    }
+    // Passkeys (WebAuthn)
+    if (withOwner.kind === 'passkey') {
+      return {
+        type: 'passkey',
+        account: withOwner.account,
+      }
+    }
+  }
 
-  return withSession
-    ? withSession.owners.type === 'ecdsa'
-      ? withSession.owners
-      : undefined
-    : withGuardians
-      ? ({
-          type: 'ecdsa',
-          accounts: withGuardians.guardians,
-        } as OwnableValidatorConfig)
-      : undefined
+  // Smart sessions
+  const withSession = signers.type === 'session' ? signers.session : null
+  if (withSession) {
+    return withSession.owners
+  }
+
+  // Guardians (social recovery)
+  const withGuardians = signers.type === 'guardians' ? signers : null
+  if (withGuardians) {
+    return {
+      type: 'ecdsa',
+      accounts: withGuardians.guardians,
+    }
+  }
+
+  return undefined
 }
 
 export {

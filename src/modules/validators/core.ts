@@ -23,7 +23,6 @@ interface PublicKey {
 interface WebauthnCredential {
   pubKey: PublicKey | Hex | Uint8Array
   authenticatorId: string
-  hook?: Address
 }
 
 const OWNABLE_VALIDATOR_ADDRESS: Address =
@@ -195,7 +194,10 @@ function parsePublicKey(publicKey: Hex | Uint8Array): PublicKey {
 export {
   OWNABLE_VALIDATOR_ADDRESS,
   getOwnerValidator,
+  getOwnableValidator,
+  getWebAuthnValidator,
   getSocialRecoveryValidator,
   getValidator,
   getMockSignature,
 }
+export type { WebauthnCredential }

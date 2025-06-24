@@ -130,6 +130,18 @@ interface TokenRequest {
   amount: bigint
 }
 
+type OwnerSignerSet =
+  | {
+      type: 'owner'
+      kind: 'ecdsa'
+      accounts: Account[]
+    }
+  | {
+      type: 'owner'
+      kind: 'passkey'
+      account: WebAuthnAccount
+    }
+
 interface SessionSignerSet {
   type: 'session'
   session: Session
@@ -140,7 +152,7 @@ interface GuardiansSignerSet {
   guardians: Account[]
 }
 
-type SignerSet = SessionSignerSet | GuardiansSignerSet
+type SignerSet = OwnerSignerSet | SessionSignerSet | GuardiansSignerSet
 
 interface BaseTransaction {
   calls: Call[]

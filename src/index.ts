@@ -6,9 +6,13 @@ import {
 } from './accounts'
 import {
   addOwner,
+  changeThreshold,
+  disableEcdsa,
+  disablePasskeys,
+  enableEcdsa,
+  enablePasskeys,
   recover,
   removeOwner,
-  setThreshold,
   setUpRecovery,
 } from './actions'
 import type { TransactionResult } from './execution'
@@ -165,9 +169,13 @@ async function createRhinestoneAccount(
 export {
   createRhinestoneAccount,
   addOwner,
+  changeThreshold,
+  disableEcdsa,
+  disablePasskeys,
+  enableEcdsa,
+  enablePasskeys,
   recover,
   removeOwner,
-  setThreshold,
   setUpRecovery,
 }
 export type {

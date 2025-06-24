@@ -5,11 +5,18 @@ import {
   encodeFunctionData,
   http,
 } from 'viem'
+
 import { RhinestoneAccount } from '..'
-import { getModuleInstallationCalls } from '../accounts'
 import {
+  getModuleInstallationCalls,
+  getModuleUninstallationCalls,
+} from '../accounts'
+import {
+  getOwnableValidator,
   getSocialRecoveryValidator,
+  getWebAuthnValidator,
   OWNABLE_VALIDATOR_ADDRESS,
+  WebauthnCredential,
 } from '../modules/validators/core'
 import { Call, OwnableValidatorConfig, OwnerSet, Recovery } from '../types'
 
@@ -38,6 +45,63 @@ async function recover(
       throw new Error('Passkey ownership recovery is not yet supported')
     }
   }
+}
+
+function enableEcdsa({
+  rhinestoneAccount,
+  owners,
+  threshold = 1,
+}: {
+  rhinestoneAccount: RhinestoneAccount
+  owners: Address[]
+  threshold?: number
+}) {
+  const module = getOwnableValidator({
+    threshold,
+    owners,
+  })
+  const calls = getModuleInstallationCalls(rhinestoneAccount.config, module)
+  return calls
+}
+
+function enablePasskeys({
+  rhinestoneAccount,
+  pubKey,
+  authenticatorId,
+}: {
+  rhinestoneAccount: RhinestoneAccount
+} & WebauthnCredential) {
+  const module = getWebAuthnValidator({ pubKey, authenticatorId })
+  const calls = getModuleInstallationCalls(rhinestoneAccount.config, module)
+  return calls
+}
+
+function disableEcdsa({
+  rhinestoneAccount,
+}: {
+  rhinestoneAccount: RhinestoneAccount
+}) {
+  const module = getOwnableValidator({
+    threshold: 1,
+    owners: [],
+  })
+  const calls = getModuleUninstallationCalls(rhinestoneAccount.config, module)
+  return calls
+}
+
+function disablePasskeys({
+  rhinestoneAccount,
+}: {
+  rhinestoneAccount: RhinestoneAccount
+}) {
+  const module = getWebAuthnValidator({
+    // Mocked values
+    pubKey:
+      '0x580a9af0569ad3905b26a703201b358aa0904236642ebe79b22a19d00d3737637d46f725a5427ae45a9569259bf67e1e16b187d7b3ad1ed70138c4f0409677d1',
+    authenticatorId: '0x',
+  })
+  const calls = getModuleUninstallationCalls(rhinestoneAccount.config, module)
+  return calls
 }
 
 function addOwner(owner: Address): Call {
@@ -81,7 +145,7 @@ function removeOwner(prevOwner: Address, ownerToRemove: Address): Call {
   }
 }
 
-function setThreshold(newThreshold: bigint): Call {
+function changeThreshold(newThreshold: number): Call {
   return {
     to: OWNABLE_VALIDATOR_ADDRESS,
     data: encodeFunctionData({
@@ -97,7 +161,7 @@ function setThreshold(newThreshold: bigint): Call {
         },
       ],
       functionName: 'setThreshold',
-      args: [newThreshold],
+      args: [BigInt(newThreshold)],
     }),
   }
 }
@@ -113,46 +177,56 @@ async function recoverEcdsaOwnership(
   })
 
   // Read the existing config
-  const [existingOwners, existingThreshold] = await Promise.all([
-    publicClient.readContract({
-      address: OWNABLE_VALIDATOR_ADDRESS,
-      abi: [
-        {
-          inputs: [
-            { internalType: 'address', name: 'account', type: 'address' },
-          ],
-          name: 'getOwners',
-          outputs: [
-            {
-              internalType: 'address[]',
-              name: 'ownersArray',
-              type: 'address[]',
-            },
-          ],
-          stateMutability: 'view',
-          type: 'function',
-        },
-      ],
-      functionName: 'getOwners',
-      args: [address],
-    }) as Promise<Address[]>,
-    publicClient.readContract({
-      address: OWNABLE_VALIDATOR_ADDRESS,
-      abi: [
-        {
-          inputs: [
-            { internalType: 'address', name: 'account', type: 'address' },
-          ],
-          name: 'threshold',
-          outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
-          stateMutability: 'view',
-          type: 'function',
-        },
-      ],
-      functionName: 'threshold',
-      args: [address],
-    }) as Promise<bigint>,
-  ])
+  const results = await publicClient.multicall({
+    contracts: [
+      {
+        address: OWNABLE_VALIDATOR_ADDRESS,
+        abi: [
+          {
+            inputs: [
+              { internalType: 'address', name: 'account', type: 'address' },
+            ],
+            name: 'getOwners',
+            outputs: [
+              {
+                internalType: 'address[]',
+                name: 'ownersArray',
+                type: 'address[]',
+              },
+            ],
+            stateMutability: 'view',
+            type: 'function',
+          },
+        ],
+        functionName: 'getOwners',
+        args: [address],
+      },
+      {
+        address: OWNABLE_VALIDATOR_ADDRESS,
+        abi: [
+          {
+            inputs: [
+              { internalType: 'address', name: 'account', type: 'address' },
+            ],
+            name: 'threshold',
+            outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+            stateMutability: 'view',
+            type: 'function',
+          },
+        ],
+        functionName: 'threshold',
+        args: [address],
+      },
+    ],
+  })
+  const existingOwnersResult = results[0]
+  const existingThresholdResult = results[1]
+  if (existingOwnersResult.error || existingThresholdResult.error) {
+    throw new Error('Failed to read existing owners or threshold')
+  }
+  const existingOwners = existingOwnersResult.result
+  const existingThreshold = existingThresholdResult.result
+
   const normalizedExistingOwners = existingOwners.map(
     (owner) => owner.toLowerCase() as Address,
   )
@@ -163,11 +237,11 @@ async function recoverEcdsaOwnership(
   const newOwnerAddresses = newOwners.accounts
     .map((account) => account.address.toLowerCase() as Address)
     .sort()
-  const newThreshold = BigInt(newOwners.threshold ?? 1)
+  const newThreshold = newOwners.threshold ?? 1
 
   // Check if threshold needs to be updated
-  if (existingThreshold !== newThreshold) {
-    calls.push(setThreshold(newThreshold))
+  if (Number(existingThreshold) !== newThreshold) {
+    calls.push(changeThreshold(newThreshold))
   }
 
   const ownersToAdd = newOwnerAddresses.filter(
@@ -201,4 +275,14 @@ async function recoverEcdsaOwnership(
   return calls
 }
 
-export { addOwner, removeOwner, setThreshold, recover, setUpRecovery }
+export {
+  enableEcdsa,
+  enablePasskeys,
+  disableEcdsa,
+  disablePasskeys,
+  addOwner,
+  removeOwner,
+  changeThreshold,
+  recover,
+  setUpRecovery,
+}

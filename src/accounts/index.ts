@@ -4,6 +4,7 @@ import {
   concat,
   createPublicClient,
   createWalletClient,
+  encodeFunctionData,
   encodePacked,
   type Hex,
   http,
@@ -106,6 +107,40 @@ function getModuleInstallationCalls(
     to: address,
     data,
   }))
+}
+
+function getModuleUninstallationCalls(
+  config: RhinestoneAccountConfig,
+  module: Module,
+): Call[] {
+  const address = getAddress(config)
+  const data = encodeFunctionData({
+    abi: [
+      {
+        type: 'function',
+        name: 'uninstallModule',
+        inputs: [
+          {
+            type: 'uint256',
+            name: 'moduleTypeId',
+          },
+          {
+            type: 'address',
+            name: 'module',
+          },
+          {
+            type: 'bytes',
+            name: 'deInitData',
+          },
+        ],
+        outputs: [],
+        stateMutability: 'nonpayable',
+      },
+    ],
+    functionName: 'uninstallModule',
+    args: [module.type, module.address, module.deInitData],
+  })
+  return [{ to: address, data }]
 }
 
 function getAddress(config: RhinestoneAccountConfig) {
@@ -578,6 +613,7 @@ function getAccount(config: RhinestoneAccountConfig): AccountProviderConfig {
 
 export {
   getModuleInstallationCalls,
+  getModuleUninstallationCalls,
   getDeployArgs,
   getBundleInitCode,
   getAddress,
