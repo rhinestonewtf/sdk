@@ -23,7 +23,6 @@ interface PublicKey {
 interface WebauthnCredential {
   pubKey: PublicKey | Hex | Uint8Array
   authenticatorId: string
-  hook?: Address
 }
 
 const OWNABLE_VALIDATOR_ADDRESS: Address =

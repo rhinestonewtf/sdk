@@ -68,11 +68,10 @@ function enablePasskeys({
   rhinestoneAccount,
   pubKey,
   authenticatorId,
-  hook,
 }: {
   rhinestoneAccount: RhinestoneAccount
 } & WebauthnCredential) {
-  const module = getWebAuthnValidator({ pubKey, authenticatorId, hook })
+  const module = getWebAuthnValidator({ pubKey, authenticatorId })
   const calls = getModuleInstallationCalls(rhinestoneAccount.config, module)
   return calls
 }
@@ -100,7 +99,6 @@ function disablePasskeys({
     pubKey:
       '0x580a9af0569ad3905b26a703201b358aa0904236642ebe79b22a19d00d3737637d46f725a5427ae45a9569259bf67e1e16b187d7b3ad1ed70138c4f0409677d1',
     authenticatorId: '0x',
-    hook: '0x',
   })
   const calls = getModuleUninstallationCalls(rhinestoneAccount.config, module)
   return calls
