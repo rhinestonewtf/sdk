@@ -9,6 +9,7 @@ import {
   pad,
   toHex,
   zeroAddress,
+  zeroHash,
 } from 'viem'
 import {
   entryPoint07Address,
@@ -79,7 +80,7 @@ type TransactionResult =
 
 interface BundleData {
   hash: Hex
-  orderPath: OrderPath
+  orderPath?: OrderPath
   userOp?: UserOperation
 }
 
@@ -211,15 +212,19 @@ async function submitTransaction(
       sourceChain,
       targetChain,
       userOp,
-      bundleData.orderPath,
       signature,
+      bundleData.orderPath,
     )
   } else {
+    const orderPath = bundleData.orderPath
+    if (!orderPath) {
+      throw new Error('Order path is required when using intents')
+    }
     return await submitIntent(
       config,
       sourceChain,
       targetChain,
-      bundleData.orderPath,
+      orderPath,
       signature,
     )
   }
@@ -263,9 +268,34 @@ async function prepareTransactionAsUserOp(
   signers: SignerSet | undefined,
 ) {
   if (sourceChain.id === targetChain.id) {
-    throw new Error(
-      'Source and target chains cannot be the same when using user operations',
+    const chain = sourceChain
+    const publicClient = createPublicClient({
+      chain,
+      transport: http(),
+    })
+    const validatorAccount = await getValidatorAccount(
+      config,
+      signers,
+      publicClient,
+      chain,
     )
+    if (!validatorAccount) {
+      throw new Error('No validator account found')
+    }
+    const bundlerClient = getBundlerClient(config, publicClient)
+    const userOp = await bundlerClient.prepareUserOperation({
+      account: validatorAccount,
+      calls,
+    })
+    return {
+      userOp,
+      hash: getUserOperationHash({
+        userOperation: userOp,
+        chainId: chain.id,
+        entryPointAddress: entryPoint07Address,
+        entryPointVersion: '0.7',
+      }),
+    } as BundleData
   }
 
   const orderPath = await getUserOpOrderPath(
@@ -387,7 +417,7 @@ async function signUserOp(
   accountAddress: Address,
   signers: SignerSet | undefined,
   userOp: UserOperation,
-  orderPath: OrderPath,
+  orderPath?: OrderPath,
 ) {
   const validator = getValidator(config, signers)
   if (!validator) {
@@ -409,6 +439,9 @@ async function signUserOp(
   }
 
   userOp.signature = await targetAccount.signUserOperation(userOp)
+  if (!orderPath) {
+    return userOp.signature
+  }
   const userOpHash = getUserOperationHash({
     userOperation: userOp,
     chainId: targetChain.id,
@@ -454,9 +487,49 @@ async function submitUserOp(
   sourceChain: Chain,
   targetChain: Chain,
   userOp: UserOperation,
-  orderPath: OrderPath,
   signature: Hex,
+  orderPath?: OrderPath,
 ) {
+  if (!orderPath) {
+    const publicClient = createPublicClient({
+      chain: sourceChain,
+      transport: http(),
+    })
+    const bundlerClient = getBundlerClient(config, publicClient)
+    const hash = await bundlerClient.request({
+      method: 'eth_sendUserOperation',
+      params: [
+        {
+          sender: userOp.sender,
+          nonce: toHex(userOp.nonce),
+          factory: userOp.factory,
+          factoryData: userOp.factoryData,
+          callData: userOp.callData,
+          callGasLimit: toHex(userOp.callGasLimit),
+          verificationGasLimit: toHex(userOp.verificationGasLimit),
+          preVerificationGas: toHex(userOp.preVerificationGas),
+          maxPriorityFeePerGas: toHex(userOp.maxPriorityFeePerGas),
+          maxFeePerGas: toHex(userOp.maxFeePerGas),
+          paymaster: userOp.paymaster,
+          paymasterVerificationGasLimit: userOp.paymasterVerificationGasLimit
+            ? toHex(userOp.paymasterVerificationGasLimit)
+            : undefined,
+          paymasterPostOpGasLimit: userOp.paymasterPostOpGasLimit
+            ? toHex(userOp.paymasterPostOpGasLimit)
+            : undefined,
+          paymasterData: userOp.paymasterData,
+          signature,
+        },
+        entryPoint07Address,
+      ],
+    })
+    return {
+      type: 'userop',
+      hash,
+      sourceChain: sourceChain.id,
+      targetChain: targetChain.id,
+    } as TransactionResult
+  }
   const signedOrderBundle: SignedMultiChainCompact = {
     ...orderPath[0].orderBundle,
     originSignatures: Array(orderPath[0].orderBundle.segments.length).fill(
@@ -577,7 +650,7 @@ async function getUserOp(
                 [accountAddress, rootBalanceSlot],
               ),
             )
-          : '0x'
+          : zeroHash
         return {
           address: request.address,
           stateDiff: [

@@ -216,8 +216,8 @@ async function sendTransactionAsUserOp(
     sourceChain,
     targetChain,
     userOp,
-    orderPath,
     signature,
+    orderPath,
   )
 }
 
@@ -240,6 +240,9 @@ async function sendTransactionAsIntent(
     tokenRequests,
     accountAddress,
   )
+  if (!orderPath) {
+    throw new Error('Order path is required when using intents')
+  }
   const signature = await signIntent(
     config,
     sourceChain,
