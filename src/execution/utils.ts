@@ -313,7 +313,7 @@ async function prepareTransactionAsIntent(
     ? {
         chainIds: [sourceChain.id as SupportedChain],
       }
-    : getDefaultAccountAccessList()
+    : undefined
 
   const metaIntent: MetaIntent = {
     targetChainId: targetChain.id,
@@ -518,7 +518,7 @@ async function getUserOpOrderPath(
     ? {
         chainIds: [sourceChain.id as SupportedChain],
       }
-    : getDefaultAccountAccessList()
+    : undefined
 
   const metaIntent: MetaIntent = {
     targetChainId: targetChain.id,
