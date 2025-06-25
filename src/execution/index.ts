@@ -325,7 +325,7 @@ async function getPortfolio(
   const address = getAddress(config)
   const chainId = onTestnets ? sepolia.id : mainnet.id
   const orchestrator = getOrchestratorByChain(chainId, config.rhinestoneApiKey)
-  return orchestrator.getPortfolio(address, getDefaultAccountAccessList())
+  return orchestrator.getPortfolio(address)
 }
 
 export {
