@@ -514,6 +514,12 @@ async function getUserOpOrderPath(
   gasLimit: bigint | undefined,
   rhinestoneApiKey: string,
 ) {
+  const accountAccessList = sourceChain
+    ? {
+        chainIds: [sourceChain.id as SupportedChain],
+      }
+    : undefined
+
   const metaIntent: MetaIntent = {
     targetChainId: targetChain.id,
     tokenTransfers: tokenRequests.map((tokenRequest) => ({
@@ -523,6 +529,7 @@ async function getUserOpOrderPath(
     targetAccount: accountAddress,
     targetGasUnits: gasLimit,
     userOp: getEmptyUserOp(),
+    accountAccessList,
   }
 
   const orchestrator = getOrchestratorByChain(targetChain.id, rhinestoneApiKey)
