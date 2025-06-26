@@ -87,7 +87,6 @@ interface RhinestoneAccount {
     sessionIndex: number,
     signature?: Hex,
   ) => Promise<SessionDetails>
-  // areAttestersTrusted, getOwners, getValidators
   areAttestersTrusted: (chain: Chain) => Promise<boolean>
   getOwners: (chain: Chain) => Promise<{
     accounts: Address[]
