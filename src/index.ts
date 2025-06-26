@@ -15,6 +15,7 @@ import {
   recover,
   removeOwner,
   setUpRecovery,
+  trustAttester,
 } from './actions'
 import type { TransactionResult } from './execution'
 import {
@@ -197,6 +198,7 @@ export {
   removeOwner,
   setUpRecovery,
   encodeSmartSessionSignature,
+  trustAttester,
 }
 export type {
   RhinestoneAccount,
