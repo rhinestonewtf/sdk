@@ -60,7 +60,7 @@ async function getSessionDetails(
     sessionIndex,
     accountAddress,
   )
-  const chain = sessions[0].chain
+  const chain = sessions[sessionIndex].chain
   if (!chain) {
     throw new Error('Session chain is required')
   }
