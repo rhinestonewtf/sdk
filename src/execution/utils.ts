@@ -712,7 +712,7 @@ async function getValidatorAccount(
     return undefined
   }
 
-  const withSession = signers.type === 'session' ? signers.session : null
+  const withSession = signers.type === 'session' ? signers : null
   const withGuardians = signers.type === 'guardians' ? signers : null
 
   return withSession
@@ -720,7 +720,8 @@ async function getValidatorAccount(
         config,
         publicClient,
         chain,
-        withSession,
+        withSession.session,
+        withSession.enableData || null,
       )
     : withGuardians
       ? await getGuardianSmartAccount(config, publicClient, chain, {

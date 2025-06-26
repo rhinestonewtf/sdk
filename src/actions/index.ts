@@ -20,6 +20,8 @@ import {
 } from '../modules/validators/core'
 import { Call, OwnableValidatorConfig, OwnerSet, Recovery } from '../types'
 
+import { encodeSmartSessionSignature } from './smart-session'
+
 function setUpRecovery({
   rhinestoneAccount,
   guardians,
@@ -285,4 +287,5 @@ export {
   changeThreshold,
   recover,
   setUpRecovery,
+  encodeSmartSessionSignature,
 }

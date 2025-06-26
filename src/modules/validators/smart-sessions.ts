@@ -1,3 +1,4 @@
+import { LibZip } from 'solady'
 import {
   type Address,
   type Chain,
@@ -15,12 +16,12 @@ import {
   toHex,
   zeroHash,
 } from 'viem'
-
 import {
   getWethAddress,
   RHINESTONE_SPOKE_POOL_ADDRESS,
 } from '../../orchestrator'
 import type {
+  AccountType,
   Policy,
   RhinestoneAccountConfig,
   Session,
@@ -29,7 +30,6 @@ import type {
 import { enableSessionsAbi } from '../abi/smart-sessions'
 import { MODULE_TYPE_ID_VALIDATOR, type Module } from '../common'
 import { HOOK_ADDRESS } from '../omni-account'
-
 import { getValidator } from './core'
 
 type FixedLengthArray<
@@ -67,8 +67,8 @@ interface AllowedERC7739Content {
 }
 
 interface ActionData {
-  actionTarget: Address
   actionTargetSelector: Hex
+  actionTarget: Address
   actionPolicies: readonly PolicyData[]
 }
 
@@ -92,6 +92,56 @@ type SmartSessionModeType =
   | typeof SMART_SESSION_MODE_USE
   | typeof SMART_SESSION_MODE_ENABLE
   | typeof SMART_SESSION_MODE_UNSAFE_ENABLE
+
+interface ChainDigest {
+  chainId: bigint
+  sessionDigest: Hex
+}
+
+interface SignedPermissions {
+  permitGenericPolicy: boolean
+  permitAdminAccess: boolean
+  ignoreSecurityAttestations: boolean
+  permitERC4337Paymaster: boolean
+  userOpPolicies: readonly PolicyData[]
+  erc7739Policies: ERC7739Data
+  actions: readonly ActionData[]
+}
+
+interface SignedSession {
+  account: Address
+  permissions: SignedPermissions
+  sessionValidator: Address
+  sessionValidatorInitData: Hex
+  salt: Hex
+  smartSession: Address
+  nonce: bigint
+}
+
+interface ChainSession {
+  chainId: bigint
+  session: SignedSession
+}
+
+interface ERC7739Data {
+  allowedERC7739Content: readonly ERC7739Context[]
+  erc1271Policies: readonly PolicyData[]
+}
+
+interface ERC7739Context {
+  appDomainSeparator: Hex
+  contentName: readonly string[]
+}
+
+interface EnableSessionData {
+  permissionId: Hex
+  accountType: AccountType
+  chainDigestIndex: number
+  hashesAndChainIds: ChainDigest[]
+  sessionToEnable: SessionData
+  signature: Hex
+  validator: Address
+}
 
 const SMART_SESSIONS_VALIDATOR_ADDRESS: Address =
   '0x00000000002b0ecfbd0496ee71e01257da0e37de'
@@ -123,6 +173,18 @@ const ACTION_CONDITION_LESS_THAN_OR_EQUAL = 4
 const ACTION_CONDITION_NOT_EQUAL = 5
 const ACTION_CONDITION_IN_RANGE = 6
 
+async function getSessionData(chain: Chain, session: Session) {
+  const { appDomainSeparator, contentsType } =
+    await getSessionAllowedERC7739Content(chain)
+  const allowedERC7739Content = [
+    {
+      appDomainSeparator,
+      contentName: [contentsType],
+    },
+  ]
+  return getSmartSessionData(chain, session, allowedERC7739Content)
+}
+
 async function getEnableSessionCall(chain: Chain, session: Session) {
   const { appDomainSeparator, contentsType } =
     await getSessionAllowedERC7739Content(chain)
@@ -132,11 +194,7 @@ async function getEnableSessionCall(chain: Chain, session: Session) {
       contentName: [contentsType],
     },
   ]
-  const sessionData = await getSmartSessionData(
-    chain,
-    session,
-    allowedERC7739Content,
-  )
+  const sessionData = getSmartSessionData(chain, session, allowedERC7739Content)
   return {
     to: SMART_SESSIONS_VALIDATOR_ADDRESS,
     data: encodeFunctionData({
@@ -192,7 +250,7 @@ async function getSessionAllowedERC7739Content(chain: Chain) {
   }
 }
 
-async function getSmartSessionData(
+function getSmartSessionData(
   chain: Chain,
   session: Session,
   allowedERC7739Content: AllowedERC7739Content[],
@@ -477,6 +535,7 @@ function encodeSmartSessionSignature(
   mode: SmartSessionModeType,
   permissionId: Hex,
   signature: Hex,
+  enableSessionData?: EnableSessionData,
 ) {
   switch (mode) {
     case SMART_SESSION_MODE_USE:
@@ -486,10 +545,183 @@ function encodeSmartSessionSignature(
       )
     case SMART_SESSION_MODE_ENABLE:
     case SMART_SESSION_MODE_UNSAFE_ENABLE:
-      throw new Error('Enable mode not implemented')
+      if (!enableSessionData) {
+        throw new Error('enableSession is required for ENABLE mode')
+      }
+      return encodePacked(
+        ['bytes1', 'bytes'],
+        [
+          mode,
+          LibZip.flzCompress(
+            encodeEnableSessionSignature(enableSessionData, signature),
+          ) as Hex,
+        ],
+      )
     default:
       throw new Error(`Unknown mode ${mode}`)
   }
+}
+
+function encodeEnableSessionSignature(
+  enableSessionData: EnableSessionData,
+  signature: Hex,
+) {
+  return encodeAbiParameters(
+    [
+      {
+        components: [
+          {
+            type: 'uint8',
+            name: 'chainDigestIndex',
+          },
+          {
+            type: 'tuple[]',
+            components: [
+              {
+                internalType: 'uint64',
+                name: 'chainId',
+                type: 'uint64',
+              },
+              {
+                internalType: 'bytes32',
+                name: 'sessionDigest',
+                type: 'bytes32',
+              },
+            ],
+            name: 'hashesAndChainIds',
+          },
+          {
+            components: [
+              {
+                internalType: 'contract ISessionValidator',
+                name: 'sessionValidator',
+                type: 'address',
+              },
+              {
+                internalType: 'bytes',
+                name: 'sessionValidatorInitData',
+                type: 'bytes',
+              },
+              { internalType: 'bytes32', name: 'salt', type: 'bytes32' },
+              {
+                components: [
+                  { internalType: 'address', name: 'policy', type: 'address' },
+                  { internalType: 'bytes', name: 'initData', type: 'bytes' },
+                ],
+                internalType: 'struct PolicyData[]',
+                name: 'userOpPolicies',
+                type: 'tuple[]',
+              },
+              {
+                components: [
+                  {
+                    components: [
+                      {
+                        internalType: 'bytes32',
+                        name: 'appDomainSeparator',
+                        type: 'bytes32',
+                      },
+                      {
+                        internalType: 'string[]',
+                        name: 'contentName',
+                        type: 'string[]',
+                      },
+                    ],
+                    internalType: 'struct ERC7739Context[]',
+                    name: 'allowedERC7739Content',
+                    type: 'tuple[]',
+                  },
+
+                  {
+                    components: [
+                      {
+                        internalType: 'address',
+                        name: 'policy',
+                        type: 'address',
+                      },
+                      {
+                        internalType: 'bytes',
+                        name: 'initData',
+                        type: 'bytes',
+                      },
+                    ],
+                    internalType: 'struct PolicyData[]',
+                    name: 'erc1271Policies',
+                    type: 'tuple[]',
+                  },
+                ],
+                internalType: 'struct ERC7739Data',
+                name: 'erc7739Policies',
+                type: 'tuple',
+              },
+              {
+                components: [
+                  {
+                    internalType: 'bytes4',
+                    name: 'actionTargetSelector',
+                    type: 'bytes4',
+                  },
+                  {
+                    internalType: 'address',
+                    name: 'actionTarget',
+                    type: 'address',
+                  },
+                  {
+                    components: [
+                      {
+                        internalType: 'address',
+                        name: 'policy',
+                        type: 'address',
+                      },
+                      {
+                        internalType: 'bytes',
+                        name: 'initData',
+                        type: 'bytes',
+                      },
+                    ],
+                    internalType: 'struct PolicyData[]',
+                    name: 'actionPolicies',
+                    type: 'tuple[]',
+                  },
+                ],
+                internalType: 'struct ActionData[]',
+                name: 'actions',
+                type: 'tuple[]',
+              },
+              {
+                internalType: 'bool',
+                name: 'permitERC4337Paymaster',
+                type: 'bool',
+              },
+            ],
+            internalType: 'struct Session',
+            name: 'sessionToEnable',
+            type: 'tuple',
+          },
+          {
+            type: 'bytes',
+            name: 'permissionEnableSig',
+          },
+        ],
+        internalType: 'struct EnableSession',
+        name: 'enableSession',
+        type: 'tuple',
+      },
+      {
+        type: 'bytes',
+        name: 'signature',
+      },
+    ],
+    [
+      {
+        chainDigestIndex: enableSessionData.chainDigestIndex,
+        hashesAndChainIds: enableSessionData.hashesAndChainIds,
+        sessionToEnable: enableSessionData.sessionToEnable,
+        permissionEnableSig: enableSessionData.signature,
+      },
+      signature,
+    ],
+  )
 }
 
 function getPermissionId(session: Session) {
@@ -577,6 +809,7 @@ export {
   SMART_SESSION_MODE_USE,
   SMART_SESSION_MODE_ENABLE,
   SMART_SESSIONS_VALIDATOR_ADDRESS,
+  getSessionData,
   getSmartSessionValidator,
   getEnableSessionCall,
   encodeSmartSessionSignature,
@@ -585,4 +818,10 @@ export {
   isSessionEnabled,
   getSessionAllowedERC7739Content,
 }
-export type { SessionData }
+export type {
+  EnableSessionData,
+  ChainSession,
+  ChainDigest,
+  SessionData,
+  SmartSessionModeType,
+}

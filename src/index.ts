@@ -1,4 +1,4 @@
-import type { Address, Chain } from 'viem'
+import type { Address, Chain, Hex } from 'viem'
 import { UserOperationReceipt } from 'viem/account-abstraction'
 import {
   deploy as deployInternal,
@@ -11,6 +11,7 @@ import {
   disablePasskeys,
   enableEcdsa,
   enablePasskeys,
+  encodeSmartSessionSignature,
   recover,
   removeOwner,
   setUpRecovery,
@@ -22,6 +23,10 @@ import {
   sendTransaction as sendTransactionInternal,
   waitForExecution as waitForExecutionInternal,
 } from './execution'
+import {
+  getSessionDetails as getSessionDetailsInternal,
+  SessionDetails,
+} from './execution/smart-session'
 import {
   BundleData,
   PreparedTransactionData,
@@ -71,6 +76,11 @@ interface RhinestoneAccount {
     tokenAddress: Address,
     gasUnits: bigint,
   ) => Promise<bigint>
+  getSessionDetails: (
+    sessions: Session[],
+    sessionIndex: number,
+    signature?: Hex,
+  ) => Promise<SessionDetails>
 }
 
 /**
@@ -152,6 +162,14 @@ async function createRhinestoneAccount(
     return getMaxSpendableAmountInternal(config, chain, tokenAddress, gasUnits)
   }
 
+  function getSessionDetails(
+    sessions: Session[],
+    sessionIndex: number,
+    signature?: Hex,
+  ) {
+    return getSessionDetailsInternal(config, sessions, sessionIndex, signature)
+  }
+
   return {
     config,
     deploy,
@@ -163,6 +181,7 @@ async function createRhinestoneAccount(
     getAddress,
     getPortfolio,
     getMaxSpendableAmount,
+    getSessionDetails,
   }
 }
 
@@ -177,6 +196,7 @@ export {
   recover,
   removeOwner,
   setUpRecovery,
+  encodeSmartSessionSignature,
 }
 export type {
   RhinestoneAccount,
