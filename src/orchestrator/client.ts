@@ -48,7 +48,7 @@ export class Orchestrator {
         `${this.serverUrl}/accounts/${userAddress}/portfolio`,
         {
           params: {
-            chainIds: filter?.chainIds,
+            chainIds: filter?.chainIds?.join(','),
             tokens: filter?.tokens
               ? Object.entries(filter.tokens)
                   .map(([chainId, tokens]) =>

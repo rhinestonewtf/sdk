@@ -42,11 +42,7 @@ import {
   DEV_ORCHESTRATOR_URL,
   PROD_ORCHESTRATOR_URL,
 } from '../orchestrator/consts'
-import {
-  getDefaultAccountAccessList,
-  getTokenRootBalanceSlot,
-  isTestnet,
-} from '../orchestrator/registry'
+import { getTokenRootBalanceSlot, isTestnet } from '../orchestrator/registry'
 import {
   MetaIntent,
   OrderPath,

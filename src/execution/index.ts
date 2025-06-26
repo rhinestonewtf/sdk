@@ -16,10 +16,7 @@ import {
   BUNDLE_STATUS_FILLED,
   BUNDLE_STATUS_PRECONFIRMED,
 } from '../orchestrator'
-import {
-  getChainById,
-  getDefaultAccountAccessList,
-} from '../orchestrator/registry'
+import { getChainById } from '../orchestrator/registry'
 import { BundleStatus } from '../orchestrator/types'
 import type {
   Call,

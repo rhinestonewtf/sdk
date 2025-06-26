@@ -476,9 +476,11 @@ function getTokenDecimals(symbol: string): number {
   }
 }
 
-function getDefaultAccountAccessList() {
+function getDefaultAccountAccessList(onTestnets?: boolean) {
   return {
-    chainIds: [mainnet.id, base.id, arbitrum.id, optimism.id],
+    chainIds: onTestnets
+      ? [sepolia.id, baseSepolia.id, arbitrumSepolia.id, optimismSepolia.id]
+      : [mainnet.id, base.id, arbitrum.id, optimism.id],
   }
 }
 
