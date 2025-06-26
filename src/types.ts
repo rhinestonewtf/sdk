@@ -24,6 +24,11 @@ interface BundlerConfig {
   apiKey: string
 }
 
+interface PaymasterConfig {
+  type: 'pimlico'
+  apiKey: string
+}
+
 type OwnerSet = OwnableValidatorConfig | WebauthnValidatorConfig
 
 interface SudoPolicy {
@@ -116,6 +121,7 @@ interface RhinestoneAccountConfig {
     apiKey: string
   }
   bundler?: BundlerConfig
+  paymaster?: PaymasterConfig
 }
 
 interface Call {
@@ -182,6 +188,7 @@ export type {
   RhinestoneAccountConfig,
   AccountProviderConfig,
   BundlerConfig,
+  PaymasterConfig,
   Transaction,
   Call,
   Execution,
