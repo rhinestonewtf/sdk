@@ -193,6 +193,7 @@ function parsePublicKey(publicKey: Hex | Uint8Array): PublicKey {
 
 export {
   OWNABLE_VALIDATOR_ADDRESS,
+  WEBAUTHN_VALIDATOR_ADDRESS,
   getOwnerValidator,
   getOwnableValidator,
   getWebAuthnValidator,

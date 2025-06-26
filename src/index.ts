@@ -36,6 +36,11 @@ import {
   signTransaction as signTransactionInternal,
   submitTransaction as submitTransactionInternal,
 } from './execution/utils'
+import {
+  areAttestersTrusted as areAttestersTrustedInternal,
+  getOwners as getOwnersInternal,
+  getValidators as getValidatorsInternal,
+} from './modules'
 import type {
   BundleResult,
   BundleStatus,
@@ -82,6 +87,13 @@ interface RhinestoneAccount {
     sessionIndex: number,
     signature?: Hex,
   ) => Promise<SessionDetails>
+  // areAttestersTrusted, getOwners, getValidators
+  areAttestersTrusted: (chain: Chain) => Promise<boolean>
+  getOwners: (chain: Chain) => Promise<{
+    accounts: Address[]
+    threshold: number
+  } | null>
+  getValidators: (chain: Chain) => Promise<Address[]>
 }
 
 /**
@@ -171,6 +183,22 @@ async function createRhinestoneAccount(
     return getSessionDetailsInternal(config, sessions, sessionIndex, signature)
   }
 
+  function areAttestersTrusted(chain: Chain) {
+    const account = getAddress()
+    return areAttestersTrustedInternal(account, chain)
+  }
+
+  function getOwners(chain: Chain) {
+    const account = getAddress()
+    return getOwnersInternal(account, chain)
+  }
+
+  function getValidators(chain: Chain) {
+    const accountType = config.account?.type || 'nexus'
+    const account = getAddress()
+    return getValidatorsInternal(accountType, account, chain)
+  }
+
   return {
     config,
     deploy,
@@ -183,6 +211,9 @@ async function createRhinestoneAccount(
     getPortfolio,
     getMaxSpendableAmount,
     getSessionDetails,
+    areAttestersTrusted,
+    getOwners,
+    getValidators,
   }
 }
 
