@@ -1,5 +1,18 @@
 # @rhinestone/sdk
 
+## 0.12.3
+
+### Patch Changes
+
+- 38e4bd7: Adds account state read functions:
+
+  - `getValidators`
+  - `getOwners`
+  - `areAttestersTrusted`
+
+- e697296: Multi-chain session keys
+- ec2a7d1: Make paymaster use optional
+
 ## 0.12.2
 
 ### Patch Changes
