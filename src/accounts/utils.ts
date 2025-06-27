@@ -8,11 +8,18 @@ import {
   toBytes,
   toHex,
 } from 'viem'
-import { createBundlerClient } from 'viem/account-abstraction'
+import {
+  createBundlerClient,
+  createPaymasterClient,
+} from 'viem/account-abstraction'
 import { readContract } from 'viem/actions'
 import { getAction } from 'viem/utils'
 
-import type { BundlerConfig, RhinestoneAccountConfig } from '../types'
+import type {
+  BundlerConfig,
+  PaymasterConfig,
+  RhinestoneAccountConfig,
+} from '../types'
 
 type CallType = 'call' | 'delegatecall' | 'batchcall'
 
@@ -231,7 +238,14 @@ function getBundlerClient(config: RhinestoneAccountConfig, client: Client) {
     }
   }
 
-  const { bundler } = config
+  function getPaymasterEndpoint(config: PaymasterConfig, chainId: number) {
+    switch (config.type) {
+      case 'pimlico':
+        return `https://api.pimlico.io/v2/${chainId}/rpc?apikey=${config.apiKey}`
+    }
+  }
+
+  const { bundler, paymaster } = config
   const chainId = client.chain?.id
   if (!chainId) {
     throw new Error('Chain id is required')
@@ -240,10 +254,17 @@ function getBundlerClient(config: RhinestoneAccountConfig, client: Client) {
   const endpoint = bundler
     ? getBundlerEndpoint(bundler, chainId)
     : `https://public.pimlico.io/v2/${chainId}/rpc`
+  const paymasterEndpoint = paymaster
+    ? getPaymasterEndpoint(paymaster, chainId)
+    : undefined
   return createBundlerClient({
     client,
     transport: http(endpoint),
-    paymaster: true,
+    paymaster: paymasterEndpoint
+      ? createPaymasterClient({
+          transport: http(paymasterEndpoint),
+        })
+      : undefined,
     userOperation: {
       estimateFeesPerGas: () => getGasPriceEstimate(endpoint),
     },
