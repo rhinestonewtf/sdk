@@ -1,6 +1,5 @@
 import {
   type Abi,
-  Account,
   type Address,
   concat,
   encodeFunctionData,
@@ -27,8 +26,10 @@ import {
   encodeSmartSessionSignature,
   getMockSignature,
   getPermissionId,
+  SMART_SESSION_MODE_ENABLE,
   SMART_SESSION_MODE_USE,
 } from '../modules/validators'
+import { EnableSessionData } from '../modules/validators/smart-sessions'
 import type { OwnerSet, RhinestoneAccountConfig, Session } from '../types'
 import { encode7579Calls, getAccountNonce, ValidatorConfig } from './utils'
 
@@ -197,6 +198,7 @@ async function getSessionSmartAccount(
   address: Address,
   session: Session,
   validatorAddress: Address,
+  enableData: EnableSessionData | null,
   sign: (hash: Hex) => Promise<Hex>,
 ) {
   return await getBaseSmartAccount(
@@ -205,6 +207,15 @@ async function getSessionSmartAccount(
     validatorAddress,
     async () => {
       const dummyOpSignature = getMockSignature(session.owners)
+
+      if (enableData) {
+        return encodeSmartSessionSignature(
+          SMART_SESSION_MODE_ENABLE,
+          getPermissionId(session),
+          dummyOpSignature,
+          enableData,
+        )
+      }
       return encodeSmartSessionSignature(
         SMART_SESSION_MODE_USE,
         getPermissionId(session),
@@ -213,6 +224,15 @@ async function getSessionSmartAccount(
     },
     async (hash) => {
       const signature = await sign(hash)
+
+      if (enableData) {
+        return encodeSmartSessionSignature(
+          SMART_SESSION_MODE_ENABLE,
+          getPermissionId(session),
+          signature,
+          enableData,
+        )
+      }
       return encodeSmartSessionSignature(
         SMART_SESSION_MODE_USE,
         getPermissionId(session),
