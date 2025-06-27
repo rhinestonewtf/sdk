@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 0.12.2
+
+### Patch Changes
+
+- a551259: Fix portfolio endpoint request encoding
+
 ## 0.12.1
 
 ### Patch Changes
