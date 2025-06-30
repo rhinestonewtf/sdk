@@ -25,13 +25,11 @@ jobs:
 
       - name: Pack SDK
         run: |
-          # Temporarily remove symlink to avoid npm pack issues
-          rm -f README.md
-          cd src
-          npm pack --pack-destination ../
-          cd ../
-          # Restore symlink
-          ln -s ./src/README.md README.md
+          # Create a clean workspace for packing
+          mkdir -p /tmp/sdk-pack
+          cp -r src/* /tmp/sdk-pack/
+          cd /tmp/sdk-pack
+          npm pack --pack-destination $GITHUB_WORKSPACE/
 
       - name: Test ${{ matrix.environment }} integration
         run: |
