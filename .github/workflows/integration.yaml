@@ -36,14 +36,16 @@ jobs:
           case "${{ matrix.environment }}" in
             "node-cjs")
               echo "Testing Node CommonJS integration..."
-              mkdir -p integration-test/node-cjs
-              cd integration-test/node-cjs
+              
+              # Create test directory completely outside the repo
+              mkdir -p /tmp/integration-test/node-cjs
+              cd /tmp/integration-test/node-cjs
               
               # Initialize basic Node project
               npm init -y
               
-              # Install the packed SDK
-              npm install ../../rhinestone-sdk-*.tgz
+              # Install the packed SDK using absolute path
+              npm install $GITHUB_WORKSPACE/rhinestone-sdk-*.tgz
               
               # Create test script
               cat > index.js << 'EOF'
