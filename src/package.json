@@ -46,7 +46,8 @@
     "access": "public"
   },
   "dependencies": {
-    "axios": "^1.7.0"
+    "axios": "^1.7.0",
+    "solady": "^0.1.21"
   },
   "peerDependencies": {
     "viem": "^2.28.0"
