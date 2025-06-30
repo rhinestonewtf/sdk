@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 0.12.5
+
+### Patch Changes
+
+- e4ea79d: Fix `solady` import
+
 ## 0.12.4
 
 ### Patch Changes
