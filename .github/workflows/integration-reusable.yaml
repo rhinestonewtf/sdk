@@ -115,6 +115,9 @@ jobs:
               npx create-expo-app --template blank-typescript RhinestoneSDKTest
               cd RhinestoneSDKTest
               
+              # Install web dependencies for React Native
+              npx expo install react-dom react-native-web @expo/metro-runtime
+              
               # Install the packed SDK using absolute path
               npm install $GITHUB_WORKSPACE/rhinestone-sdk-*.tgz
               
