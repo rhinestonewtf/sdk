@@ -35,10 +35,15 @@ jobs:
       - name: Build all
         run: bun run build
 
+  integration-tests:
+    name: Integration Tests
+    needs: [build-and-test]
+    uses: ./.github/workflows/integration-reusable.yaml
+
   release:
     name: Release
     runs-on: ubuntu-latest
-    needs: [build-and-test]
+    needs: [build-and-test, integration-tests]
     steps:
       - name: Check out the repo
         uses: "actions/checkout@v4"
