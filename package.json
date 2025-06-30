@@ -16,7 +16,6 @@
     "./*"
   ],
   "dependencies": {
-    "solady": "^0.1.21",
     "viem": "^2.28.0"
   },
   "devDependencies": {
