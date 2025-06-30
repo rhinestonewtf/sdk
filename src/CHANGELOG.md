@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 0.12.6
+
+### Patch Changes
+
+- c584325: Fix `exports` path
+
 ## 0.12.5
 
 ### Patch Changes
