@@ -25,7 +25,7 @@
       "import": "./dist/src/orchestrator/index.js",
       "require": "./dist/src/orchestrator/index.js"
     },
-    "./dist/orchestrator": {
+    "./dist/src/orchestrator": {
       "types": "./dist/src/orchestrator/index.d.ts",
       "require": "./dist/src/orchestrator/index.js",
       "import": "./dist/src/orchestrator/index.js"
