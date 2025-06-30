@@ -99,7 +99,8 @@ async function prepareTransaction(
 
   let bundleData: BundleData
 
-  if (signers) {
+  const asUserOp = signers?.type === 'guardians' || signers?.type === 'session'
+  if (asUserOp) {
     if (!sourceChain) {
       throw new Error(
         `Specifying source chain is required when using smart sessions or guardians`,
