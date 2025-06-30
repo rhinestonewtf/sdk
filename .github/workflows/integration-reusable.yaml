@@ -10,8 +10,9 @@ jobs:
     strategy:
       matrix:
         environment: ["node-cjs", "node-esm", "react-native"]
-    
+
     steps:
+      # Setup and Build
       - name: Check out the repo
         uses: actions/checkout@v4
 
@@ -24,6 +25,7 @@ jobs:
       - name: Build SDK
         run: bun run build
 
+      # Package SDK for Testing
       - name: Pack SDK
         run: |
           # Create a clean workspace for packing
@@ -32,156 +34,6 @@ jobs:
           cd /tmp/sdk-pack
           npm pack --pack-destination $GITHUB_WORKSPACE/
 
+      # Run Integration Tests
       - name: Test ${{ matrix.environment }} integration
-        run: |
-          case "${{ matrix.environment }}" in
-            "node-cjs")
-              echo "Testing Node CommonJS integration..."
-              
-              # Create test directory completely outside the repo
-              mkdir -p /tmp/integration-test/node-cjs
-              cd /tmp/integration-test/node-cjs
-              
-              # Initialize basic Node project
-              npm init -y
-              
-              # Install the packed SDK using absolute path
-              npm install $GITHUB_WORKSPACE/rhinestone-sdk-*.tgz
-              
-              # Create test script
-              cat > index.js << 'EOF'
-          const sdk = require('@rhinestone/sdk');
-          console.log('✓ SDK imported successfully');
-          
-          // Basic smoke test - just try to access main exports
-          if (typeof sdk === 'object' && sdk !== null) {
-            console.log('✓ SDK is an object');
-          } else {
-            console.error('✗ SDK import failed - not an object');
-            process.exit(1);
-          }
-          
-          console.log('✓ Node CommonJS integration test passed');
-          EOF
-              
-              # Run the test
-              node index.js
-              ;;
-            "node-esm")
-              echo "Testing Node ESM integration..."
-              
-              # Create test directory completely outside the repo
-              mkdir -p /tmp/integration-test/node-esm
-              cd /tmp/integration-test/node-esm
-              
-              # Initialize basic Node project with ESM
-              npm init -y
-              # Set package type to module for ESM
-              npm pkg set type=module
-              
-              # Install the packed SDK using absolute path
-              npm install $GITHUB_WORKSPACE/rhinestone-sdk-*.tgz
-              
-              # Create test script
-              cat > index.js << 'EOF'
-          import sdk from '@rhinestone/sdk';
-          console.log('✓ SDK imported successfully');
-          
-          // Basic smoke test - just try to access main exports
-          if (typeof sdk === 'object' && sdk !== null) {
-            console.log('✓ SDK is an object');
-          } else {
-            console.error('✗ SDK import failed - not an object');
-            process.exit(1);
-          }
-          
-          console.log('✓ Node ESM integration test passed');
-          EOF
-              
-              # Run the test
-              node index.js
-              ;;
-            "react-native")
-              echo "Testing React Native integration..."
-              
-              # Create test directory completely outside the repo
-              mkdir -p /tmp/integration-test/react-native
-              cd /tmp/integration-test/react-native
-              
-              # Install Expo CLI globally
-              npm install -g @expo/cli
-              
-              # Create new Expo project with web support
-              npx create-expo-app --template blank-typescript RhinestoneSDKTest
-              cd RhinestoneSDKTest
-              
-              # Install web dependencies for React Native
-              npx expo install react-dom react-native-web @expo/metro-runtime
-              
-              # Install the packed SDK using absolute path
-              npm install $GITHUB_WORKSPACE/rhinestone-sdk-*.tgz
-              
-              # Create test component
-              cat > App.tsx << 'EOF'
-          import React from 'react';
-          import { StyleSheet, Text, View } from 'react-native';
-          import sdk from '@rhinestone/sdk';
-          
-          export default function App() {
-            const [testResult, setTestResult] = React.useState<string>('Testing...');
-            
-            React.useEffect(() => {
-              try {
-                console.log('✓ SDK imported successfully');
-                
-                // Basic smoke test - just try to access main exports
-                if (typeof sdk === 'object' && sdk !== null) {
-                  console.log('✓ SDK is an object');
-                  setTestResult('✓ React Native integration test passed');
-                } else {
-                  console.error('✗ SDK import failed - not an object');
-                  setTestResult('✗ React Native integration test failed');
-                }
-              } catch (error) {
-                console.error('✗ SDK import failed:', error);
-                setTestResult('✗ React Native integration test failed');
-              }
-            }, []);
-            
-            return (
-              <View style={styles.container}>
-                <Text>{testResult}</Text>
-              </View>
-            );
-          }
-          
-          const styles = StyleSheet.create({
-            container: {
-              flex: 1,
-              backgroundColor: '#fff',
-              alignItems: 'center',
-              justifyContent: 'center',
-            },
-          });
-          EOF
-              
-              # Create a simple Node.js test to verify the SDK can be imported in a React Native context
-              cat > test-import.js << 'EOF'
-          const sdk = require('@rhinestone/sdk');
-          console.log('✓ SDK imported successfully in React Native project');
-          
-          // Basic smoke test - just try to access main exports
-          if (typeof sdk === 'object' && sdk !== null) {
-            console.log('✓ SDK is an object');
-          } else {
-            console.error('✗ SDK import failed - not an object');
-            process.exit(1);
-          }
-          
-          console.log('✓ React Native integration test passed');
-          EOF
-              
-              # Run the import test
-              node test-import.js
-              ;;
-          esac
+        run: ./.github/scripts/test-${{ matrix.environment }}.sh
