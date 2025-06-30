@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 0.12.4
+
+### Patch Changes
+
+- d95819b: Handle custom signers in `prepareTransaction`
+
 ## 0.12.3
 
 ### Patch Changes
