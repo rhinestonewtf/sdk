@@ -38,6 +38,7 @@ import {
 import type { OrderPath } from '../orchestrator'
 import { hashMultichainCompactWithoutDomainSeparator } from '../orchestrator/utils'
 import type { AccountType, RhinestoneAccountConfig, Session } from '../types'
+import { SessionChainRequiredError } from './error'
 
 interface SessionDetails {
   permissionEnableHash: Hex
@@ -62,7 +63,7 @@ async function getSessionDetails(
   )
   const chain = sessions[sessionIndex].chain
   if (!chain) {
-    throw new Error('Session chain is required')
+    throw new SessionChainRequiredError()
   }
   const validator: ValidatorConfig = {
     address: sessionDetails.enableSessionData.validator,
@@ -98,7 +99,7 @@ async function getEnableSessionDetails(
 
     const sessionChain = session.chain
     if (!sessionChain) {
-      throw new Error('Session chain is required')
+      throw new SessionChainRequiredError()
     }
 
     const sessionNonce = await getSessionNonce(
@@ -149,7 +150,7 @@ async function getEnableSessionDetails(
   const sessionToEnable = sessions[sessionIndex || 0]
   const sessionChain = sessionToEnable.chain
   if (!sessionChain) {
-    throw new Error('Session chain is required')
+    throw new SessionChainRequiredError()
   }
   const sessionData = await getSessionData(sessionChain, sessionToEnable)
 

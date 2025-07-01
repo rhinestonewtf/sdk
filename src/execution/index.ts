@@ -25,6 +25,15 @@ import type {
   TokenRequest,
   Transaction,
 } from '../types'
+import {
+  BundleFailedError,
+  ExecutionError,
+  isExecutionError,
+  OrderPathRequiredForIntentsError,
+  SessionChainRequiredError,
+  SourceChainRequiredForSmartSessionsError,
+  UserOperationRequiredForSmartSessionsError,
+} from './error'
 import { enableSmartSession } from './smart-session'
 import type { BundleData, TransactionResult } from './utils'
 import {
@@ -101,9 +110,7 @@ async function sendTransactionInternal(
   const asUserOp = signers?.type === 'guardians' || signers?.type === 'session'
   if (asUserOp) {
     if (!sourceChain) {
-      throw new Error(
-        `Specifying source chain is required when using smart sessions or guardians`,
-      )
+      throw new SourceChainRequiredForSmartSessionsError()
     }
     const withSession = signers?.type === 'session' ? signers.session : null
     if (withSession) {
@@ -238,7 +245,7 @@ async function sendTransactionAsIntent(
     accountAddress,
   )
   if (!orderPath) {
-    throw new Error('Order path is required when using intents')
+    throw new OrderPathRequiredForIntentsError()
   }
   const signature = await signIntent(
     config,
@@ -283,7 +290,7 @@ async function waitForExecution(
         await new Promise((resolve) => setTimeout(resolve, POLLING_INTERVAL))
       }
       if (bundleResult.status === BUNDLE_STATUS_FAILED) {
-        throw new Error('Bundle failed')
+        throw new BundleFailedError()
       }
       return bundleResult
     }
@@ -333,5 +340,13 @@ export {
   waitForExecution,
   getMaxSpendableAmount,
   getPortfolio,
+  // Errors
+  isExecutionError,
+  BundleFailedError,
+  ExecutionError,
+  SourceChainRequiredForSmartSessionsError,
+  UserOperationRequiredForSmartSessionsError,
+  OrderPathRequiredForIntentsError,
+  SessionChainRequiredError,
 }
 export type { BundleData, TransactionResult }

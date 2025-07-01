@@ -28,9 +28,16 @@ import {
 } from './actions'
 import type { TransactionResult } from './execution'
 import {
+  BundleFailedError,
+  ExecutionError,
   getMaxSpendableAmount as getMaxSpendableAmountInternal,
   getPortfolio as getPortfolioInternal,
+  isExecutionError,
+  OrderPathRequiredForIntentsError,
+  SessionChainRequiredError,
+  SourceChainRequiredForSmartSessionsError,
   sendTransaction as sendTransactionInternal,
+  UserOperationRequiredForSmartSessionsError,
   waitForExecution as waitForExecutionInternal,
 } from './execution'
 import {
@@ -263,6 +270,14 @@ export {
   SigningNotSupportedForAccountError,
   SignMessageNotSupportedByAccountError,
   Eip7702NotSupportedForAccountError,
+  // Execution errors
+  isExecutionError,
+  BundleFailedError,
+  ExecutionError,
+  SourceChainRequiredForSmartSessionsError,
+  UserOperationRequiredForSmartSessionsError,
+  OrderPathRequiredForIntentsError,
+  SessionChainRequiredError,
   // Orchestrator errors
   isOrchestratorError,
   AuthenticationRequiredError,
