@@ -2,7 +2,20 @@ import axios from 'axios'
 import { type Address, concat, type Hex } from 'viem'
 import type { UserOperation } from 'viem/account-abstraction'
 
-import { OrchestratorError } from './error'
+import {
+  AuthenticationRequiredError,
+  InsufficientBalanceError,
+  InvalidApiKeyError,
+  InvalidBundleSignatureError,
+  NoPathFoundError,
+  OnlyOneTargetTokenAmountCanBeUnsetError,
+  OrchestratorError,
+  OrderBundleNotFoundError,
+  TokenNotSupportedError,
+  UnsupportedChainError,
+  UnsupportedChainIdError,
+  UnsupportedTokenError,
+} from './error'
 import type {
   BundleEvent,
   BundleResult,
@@ -327,16 +340,75 @@ export class Orchestrator {
             )
           }
           context = { ...context, ...err.context }
+
+          const message = err.message
+          const finalErrorParams = {
+            context: { ...context, traceId },
+            errorType,
+            traceId,
+          }
+
+          if (message === 'Insufficient balance') {
+            throw new InsufficientBalanceError(finalErrorParams)
+          } else if (message === 'Unsupported chain id') {
+            throw new UnsupportedChainIdError(finalErrorParams)
+          } else if (message.startsWith('Unsupported chain ')) {
+            const chainIdMatch = message.match(/Unsupported chain (\d+)/)
+            if (chainIdMatch) {
+              const chainId = parseInt(chainIdMatch[1], 10)
+              throw new UnsupportedChainError(chainId, finalErrorParams)
+            }
+            throw new UnsupportedChainIdError(finalErrorParams)
+          } else if (
+            message.includes('Unsupported token') &&
+            message.includes('for chain')
+          ) {
+            const tokenMatch = message.match(
+              /Unsupported token (\w+) for chain (\d+)/,
+            )
+            if (tokenMatch) {
+              const tokenSymbol = tokenMatch[1]
+              const chainId = parseInt(tokenMatch[2], 10)
+              throw new UnsupportedTokenError(
+                tokenSymbol,
+                chainId,
+                finalErrorParams,
+              )
+            }
+            throw new OrchestratorError({ message, ...finalErrorParams })
+          } else if (message.includes('not supported on chain')) {
+            const tokenMatch = message.match(
+              /Token (.+) not supported on chain (\d+)/,
+            )
+            if (tokenMatch) {
+              const tokenAddress = tokenMatch[1]
+              const chainId = parseInt(tokenMatch[2], 10)
+              throw new TokenNotSupportedError(
+                tokenAddress,
+                chainId,
+                finalErrorParams,
+              )
+            }
+            throw new OrchestratorError({ message, ...finalErrorParams })
+          } else if (message === 'Authentication is required') {
+            throw new AuthenticationRequiredError(finalErrorParams)
+          } else if (message === 'Invalid API key') {
+            throw new InvalidApiKeyError(finalErrorParams)
+          } else if (message === 'Invalid bundle signature') {
+            throw new InvalidBundleSignatureError(finalErrorParams)
+          } else if (message === 'Only one target token amount can be unset') {
+            throw new OnlyOneTargetTokenAmountCanBeUnsetError(finalErrorParams)
+          } else if (message === 'No Path Found') {
+            throw new NoPathFoundError(finalErrorParams)
+          } else if (message === 'Order bundle not found') {
+            throw new OrderBundleNotFoundError(finalErrorParams)
+          } else {
+            throw new OrchestratorError({ message, ...finalErrorParams })
+          }
         }
       } else {
         console.error(error)
       }
-      throw new OrchestratorError({
-        message: error.response.data.errors[0].message,
-        context,
-        errorType,
-        traceId: context.traceId,
-      })
     }
   }
 }

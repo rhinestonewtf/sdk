@@ -1,6 +1,20 @@
 import { Orchestrator } from './client'
 import { PROD_ORCHESTRATOR_URL, RHINESTONE_SPOKE_POOL_ADDRESS } from './consts'
-import { isOrchestratorError, OrchestratorError } from './error'
+import {
+  AuthenticationRequiredError,
+  InsufficientBalanceError,
+  InvalidApiKeyError,
+  InvalidBundleSignatureError,
+  isOrchestratorError,
+  NoPathFoundError,
+  OnlyOneTargetTokenAmountCanBeUnsetError,
+  OrchestratorError,
+  OrderBundleNotFoundError,
+  TokenNotSupportedError,
+  UnsupportedChainError,
+  UnsupportedChainIdError,
+  UnsupportedTokenError,
+} from './error'
 import {
   getHookAddress,
   getRhinestoneSpokePoolAddress,
@@ -76,7 +90,18 @@ export {
   BUNDLE_STATUS_UNKNOWN,
   RHINESTONE_SPOKE_POOL_ADDRESS,
   Orchestrator,
+  AuthenticationRequiredError,
+  InsufficientBalanceError,
+  InvalidApiKeyError,
+  InvalidBundleSignatureError,
+  NoPathFoundError,
+  OnlyOneTargetTokenAmountCanBeUnsetError,
   OrchestratorError,
+  OrderBundleNotFoundError,
+  TokenNotSupportedError,
+  UnsupportedChainError,
+  UnsupportedChainIdError,
+  UnsupportedTokenError,
   getOrchestrator,
   getOrderBundleHash,
   getEmptyUserOp,

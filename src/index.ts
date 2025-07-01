@@ -41,7 +41,7 @@ import {
   getOwners as getOwnersInternal,
   getValidators as getValidatorsInternal,
 } from './modules'
-import type {
+import {
   BundleResult,
   BundleStatus,
   MetaIntent,
@@ -49,6 +49,21 @@ import type {
   PostOrderBundleResult,
   SignedMultiChainCompact,
   UserTokenBalance,
+} from './orchestrator'
+import {
+  AuthenticationRequiredError,
+  InsufficientBalanceError,
+  InvalidApiKeyError,
+  InvalidBundleSignatureError,
+  isOrchestratorError,
+  NoPathFoundError,
+  OnlyOneTargetTokenAmountCanBeUnsetError,
+  OrchestratorError,
+  OrderBundleNotFoundError,
+  TokenNotSupportedError,
+  UnsupportedChainError,
+  UnsupportedChainIdError,
+  UnsupportedTokenError,
 } from './orchestrator'
 import type {
   Call,
@@ -229,6 +244,19 @@ export {
   setUpRecovery,
   encodeSmartSessionSignature,
   trustAttester,
+  isOrchestratorError,
+  AuthenticationRequiredError,
+  InsufficientBalanceError,
+  InvalidApiKeyError,
+  InvalidBundleSignatureError,
+  NoPathFoundError,
+  OnlyOneTargetTokenAmountCanBeUnsetError,
+  OrchestratorError,
+  OrderBundleNotFoundError,
+  TokenNotSupportedError,
+  UnsupportedChainError,
+  UnsupportedChainIdError,
+  UnsupportedTokenError,
 }
 export type {
   RhinestoneAccount,
