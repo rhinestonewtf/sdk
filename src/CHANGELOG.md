@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 0.12.7
+
+### Patch Changes
+
+- a438baf: Custom type-safe errors
+
 ## 0.12.6
 
 ### Patch Changes
