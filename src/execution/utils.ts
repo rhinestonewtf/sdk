@@ -58,12 +58,12 @@ import {
   TokenRequest,
   Transaction,
 } from '../types'
-import { getSessionSignature, hashErc7739 } from './smart-session'
 import {
+  OrderPathRequiredForIntentsError,
   SourceChainRequiredForSmartSessionsError,
   UserOperationRequiredForSmartSessionsError,
-  OrderPathRequiredForIntentsError,
 } from './error'
+import { getSessionSignature, hashErc7739 } from './smart-session'
 
 type TransactionResult =
   | {

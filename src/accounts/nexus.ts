@@ -30,11 +30,11 @@ import {
 } from '../modules/validators'
 import { EnableSessionData } from '../modules/validators/smart-sessions'
 import type { OwnerSet, RhinestoneAccountConfig, Session } from '../types'
-import { encode7579Calls, getAccountNonce, ValidatorConfig } from './utils'
 import {
   Eip7702AccountMustHaveEoaError,
   SignMessageNotSupportedByAccountError,
 } from './error'
+import { encode7579Calls, getAccountNonce, ValidatorConfig } from './utils'
 
 const NEXUS_IMPLEMENTATION_ADDRESS: Address =
   '0x000000004f43c49e93c970e84001853a70923b03'

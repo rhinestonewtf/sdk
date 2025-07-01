@@ -43,8 +43,8 @@ import {
 } from '../modules/validators'
 import { EnableSessionData } from '../modules/validators/smart-sessions'
 import { OwnerSet, RhinestoneAccountConfig, Session } from '../types'
-import { encode7579Calls, getAccountNonce, ValidatorConfig } from './utils'
 import { Eip7702NotSupportedForAccountError } from './error'
+import { encode7579Calls, getAccountNonce, ValidatorConfig } from './utils'
 
 type ValidatorType = 'root' | 'validator'
 
