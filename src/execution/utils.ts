@@ -58,6 +58,11 @@ import {
   TokenRequest,
   Transaction,
 } from '../types'
+import {
+  OrderPathRequiredForIntentsError,
+  SourceChainRequiredForSmartSessionsError,
+  UserOperationRequiredForSmartSessionsError,
+} from './error'
 import { getSessionSignature, hashErc7739 } from './smart-session'
 
 type TransactionResult =
@@ -102,9 +107,7 @@ async function prepareTransaction(
   const asUserOp = signers?.type === 'guardians' || signers?.type === 'session'
   if (asUserOp) {
     if (!sourceChain) {
-      throw new Error(
-        `Specifying source chain is required when using smart sessions or guardians`,
-      )
+      throw new SourceChainRequiredForSmartSessionsError()
     }
     // Smart sessions require a UserOp flow
     bundleData = await prepareTransactionAsUserOp(
@@ -150,13 +153,11 @@ async function signTransaction(
 
   if (withSession) {
     if (!sourceChain) {
-      throw new Error(
-        `Specifying source chain is required when using smart sessions`,
-      )
+      throw new SourceChainRequiredForSmartSessionsError()
     }
     const userOp = bundleData.userOp
     if (!userOp) {
-      throw new Error(`User operation is required when using smart sessions`)
+      throw new UserOperationRequiredForSmartSessionsError()
     }
     // Smart sessions require a UserOp flow
     signature = await signUserOp(
@@ -195,13 +196,11 @@ async function submitTransaction(
 
   if (withSession) {
     if (!sourceChain) {
-      throw new Error(
-        `Specifying source chain is required when using smart sessions`,
-      )
+      throw new SourceChainRequiredForSmartSessionsError()
     }
     const userOp = bundleData.userOp
     if (!userOp) {
-      throw new Error(`User operation is required when using smart sessions`)
+      throw new UserOperationRequiredForSmartSessionsError()
     }
     // Smart sessions require a UserOp flow
     return await submitUserOp(
@@ -215,7 +214,7 @@ async function submitTransaction(
   } else {
     const orderPath = bundleData.orderPath
     if (!orderPath) {
-      throw new Error('Order path is required when using intents')
+      throw new OrderPathRequiredForIntentsError()
     }
     return await submitIntent(
       config,

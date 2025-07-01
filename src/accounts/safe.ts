@@ -31,6 +31,7 @@ import {
 } from '../modules/validators'
 import { EnableSessionData } from '../modules/validators/smart-sessions'
 import type { OwnerSet, RhinestoneAccountConfig, Session } from '../types'
+import { Eip7702NotSupportedForAccountError } from './error'
 import { encode7579Calls, getAccountNonce, ValidatorConfig } from './utils'
 
 const SAFE_7579_LAUNCHPAD_ADDRESS: Address =
@@ -335,11 +336,11 @@ async function getBaseSmartAccount(
 }
 
 function get7702SmartAccount(): never {
-  throw new Error('EIP-7702 is not supported for Safe accounts')
+  throw new Eip7702NotSupportedForAccountError('safe')
 }
 
 function get7702InitCalls(): never {
-  throw new Error('EIP-7702 is not supported for Safe accounts')
+  throw new Eip7702NotSupportedForAccountError('safe')
 }
 
 function getOwners(config: RhinestoneAccountConfig) {

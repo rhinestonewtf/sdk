@@ -1,8 +1,17 @@
 import type { Address, Chain, Hex } from 'viem'
 import { UserOperationReceipt } from 'viem/account-abstraction'
 import {
+  AccountError,
   deploy as deployInternal,
+  Eip7702AccountMustHaveEoaError,
+  Eip7702NotSupportedForAccountError,
+  ExistingEip7702AccountsNotSupportedError,
+  FactoryArgsNotAvailableError,
   getAddress as getAddressInternal,
+  isAccountError,
+  SigningNotSupportedForAccountError,
+  SignMessageNotSupportedByAccountError,
+  SmartSessionsNotEnabledError,
 } from './accounts'
 import {
   addOwner,
@@ -19,9 +28,16 @@ import {
 } from './actions'
 import type { TransactionResult } from './execution'
 import {
+  BundleFailedError,
+  ExecutionError,
   getMaxSpendableAmount as getMaxSpendableAmountInternal,
   getPortfolio as getPortfolioInternal,
+  isExecutionError,
+  OrderPathRequiredForIntentsError,
+  SessionChainRequiredError,
+  SourceChainRequiredForSmartSessionsError,
   sendTransaction as sendTransactionInternal,
+  UserOperationRequiredForSmartSessionsError,
   waitForExecution as waitForExecutionInternal,
 } from './execution'
 import {
@@ -41,7 +57,7 @@ import {
   getOwners as getOwnersInternal,
   getValidators as getValidatorsInternal,
 } from './modules'
-import type {
+import {
   BundleResult,
   BundleStatus,
   MetaIntent,
@@ -49,6 +65,21 @@ import type {
   PostOrderBundleResult,
   SignedMultiChainCompact,
   UserTokenBalance,
+} from './orchestrator'
+import {
+  AuthenticationRequiredError,
+  InsufficientBalanceError,
+  InvalidApiKeyError,
+  InvalidBundleSignatureError,
+  isOrchestratorError,
+  NoPathFoundError,
+  OnlyOneTargetTokenAmountCanBeUnsetError,
+  OrchestratorError,
+  OrderBundleNotFoundError,
+  TokenNotSupportedError,
+  UnsupportedChainError,
+  UnsupportedChainIdError,
+  UnsupportedTokenError,
 } from './orchestrator'
 import type {
   Call,
@@ -229,6 +260,38 @@ export {
   setUpRecovery,
   encodeSmartSessionSignature,
   trustAttester,
+  // Account errors
+  isAccountError,
+  AccountError,
+  Eip7702AccountMustHaveEoaError,
+  ExistingEip7702AccountsNotSupportedError,
+  FactoryArgsNotAvailableError,
+  SmartSessionsNotEnabledError,
+  SigningNotSupportedForAccountError,
+  SignMessageNotSupportedByAccountError,
+  Eip7702NotSupportedForAccountError,
+  // Execution errors
+  isExecutionError,
+  BundleFailedError,
+  ExecutionError,
+  SourceChainRequiredForSmartSessionsError,
+  UserOperationRequiredForSmartSessionsError,
+  OrderPathRequiredForIntentsError,
+  SessionChainRequiredError,
+  // Orchestrator errors
+  isOrchestratorError,
+  AuthenticationRequiredError,
+  InsufficientBalanceError,
+  InvalidApiKeyError,
+  InvalidBundleSignatureError,
+  NoPathFoundError,
+  OnlyOneTargetTokenAmountCanBeUnsetError,
+  OrchestratorError,
+  OrderBundleNotFoundError,
+  TokenNotSupportedError,
+  UnsupportedChainError,
+  UnsupportedChainIdError,
+  UnsupportedTokenError,
 }
 export type {
   RhinestoneAccount,

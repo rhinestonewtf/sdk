@@ -33,6 +33,17 @@ import type {
   Session,
 } from '../types'
 import {
+  AccountError,
+  Eip7702AccountMustHaveEoaError,
+  Eip7702NotSupportedForAccountError,
+  ExistingEip7702AccountsNotSupportedError,
+  FactoryArgsNotAvailableError,
+  isAccountError,
+  SigningNotSupportedForAccountError,
+  SignMessageNotSupportedByAccountError,
+  SmartSessionsNotEnabledError,
+} from './error'
+import {
   get7702SmartAccount as get7702KernelAccount,
   get7702InitCalls as get7702KernelInitCalls,
   getAddress as getKernelAddress,
@@ -147,7 +158,7 @@ function getModuleUninstallationCalls(
 function getAddress(config: RhinestoneAccountConfig) {
   if (is7702(config)) {
     if (!config.eoa) {
-      throw new Error('EIP-7702 accounts must have an EOA account')
+      throw new Eip7702AccountMustHaveEoaError()
     }
     return config.eoa.address
   }
@@ -215,7 +226,7 @@ async function isDeployed(chain: Chain, config: RhinestoneAccountConfig) {
   }
   if (code.startsWith('0xef0100') && code.length === 48) {
     // Defensive check to ensure there's no storage conflict; can be lifted in the future
-    throw new Error('Existing EIP-7702 accounts are not yet supported')
+    throw new ExistingEip7702AccountsNotSupportedError()
   }
   return size(code) > 0
 }
@@ -267,7 +278,7 @@ function getBundleInitCode(config: RhinestoneAccountConfig) {
   } else {
     const { factory, factoryData } = getDeployArgs(config)
     if (!factory || !factoryData) {
-      throw new Error('Factory args not available')
+      throw new FactoryArgsNotAvailableError()
     }
     return encodePacked(['address', 'bytes'], [factory, factoryData])
   }
@@ -275,7 +286,7 @@ function getBundleInitCode(config: RhinestoneAccountConfig) {
 
 async function deploy7702Self(chain: Chain, config: RhinestoneAccountConfig) {
   if (!config.eoa) {
-    throw new Error('EIP-7702 accounts must have an EOA account')
+    throw new Eip7702AccountMustHaveEoaError()
   }
 
   const account = getAccountProvider(config)
@@ -365,7 +376,7 @@ async function deploy7702WithBundler(
   config: RhinestoneAccountConfig,
 ) {
   if (!config.eoa) {
-    throw new Error('EIP-7702 accounts must have an EOA account')
+    throw new Eip7702AccountMustHaveEoaError()
   }
 
   const { implementation } = getDeployArgs(config)
@@ -449,7 +460,7 @@ async function getSmartSessionSmartAccount(
   const address = getAddress(config)
   const smartSessionValidator = getSmartSessionValidator(config)
   if (!smartSessionValidator) {
-    throw new Error('Smart sessions are not enabled for this account')
+    throw new SmartSessionsNotEnabledError()
   }
   const signFn = (hash: Hex) => sign(session.owners, chain, hash)
 
@@ -498,7 +509,7 @@ async function getGuardianSmartAccount(
   const accounts = guardians.type === 'ecdsa' ? guardians.accounts : []
   const socialRecoveryValidator = getSocialRecoveryValidator(accounts)
   if (!socialRecoveryValidator) {
-    throw new Error('Social recovery is not enabled for this account')
+    throw new Error('Social recovery is not available')
   }
   const signFn = (hash: Hex) => sign(guardians, chain, hash)
 
@@ -550,7 +561,7 @@ async function sign(validators: OwnerSet, chain: Chain, hash: Hex) {
 
 async function signEcdsa(account: Account, hash: Hex) {
   if (!account.signMessage) {
-    throw new Error('Signing not supported for the account')
+    throw new SigningNotSupportedForAccountError()
   }
   return await account.signMessage({ message: { raw: hash } })
 }
@@ -571,7 +582,7 @@ async function get7702SmartAccount(
   client: PublicClient,
 ) {
   if (!config.eoa) {
-    throw new Error('EIP-7702 accounts must have an EOA account')
+    throw new Eip7702AccountMustHaveEoaError()
   }
 
   const account = getAccountProvider(config)
@@ -634,4 +645,14 @@ export {
   getGuardianSmartAccount,
   getPackedSignature,
   sign,
+  // Errors
+  isAccountError,
+  AccountError,
+  Eip7702AccountMustHaveEoaError,
+  ExistingEip7702AccountsNotSupportedError,
+  FactoryArgsNotAvailableError,
+  SmartSessionsNotEnabledError,
+  SigningNotSupportedForAccountError,
+  SignMessageNotSupportedByAccountError,
+  Eip7702NotSupportedForAccountError,
 }
