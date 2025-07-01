@@ -44,6 +44,7 @@ import {
 import { EnableSessionData } from '../modules/validators/smart-sessions'
 import { OwnerSet, RhinestoneAccountConfig, Session } from '../types'
 import { encode7579Calls, getAccountNonce, ValidatorConfig } from './utils'
+import { Eip7702NotSupportedForAccountError } from './error'
 
 type ValidatorType = 'root' | 'validator'
 
@@ -189,11 +190,11 @@ function getInstallData(module: Module): Hex[] {
 }
 
 function get7702InitCalls(): never {
-  throw new Error('EIP-7702 is not yet supported for Kernel accounts')
+  throw new Eip7702NotSupportedForAccountError('kernel')
 }
 
 function get7702SmartAccount(): never {
-  throw new Error('EIP-7702 is not yet supported for Kernel accounts')
+  throw new Eip7702NotSupportedForAccountError('kernel')
 }
 
 async function getPackedSignature(

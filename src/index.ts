@@ -1,8 +1,17 @@
 import type { Address, Chain, Hex } from 'viem'
 import { UserOperationReceipt } from 'viem/account-abstraction'
 import {
+  AccountError,
   deploy as deployInternal,
+  Eip7702AccountMustHaveEoaError,
+  Eip7702NotSupportedForAccountError,
+  ExistingEip7702AccountsNotSupportedError,
+  FactoryArgsNotAvailableError,
   getAddress as getAddressInternal,
+  isAccountError,
+  SigningNotSupportedForAccountError,
+  SignMessageNotSupportedByAccountError,
+  SmartSessionsNotEnabledError,
 } from './accounts'
 import {
   addOwner,
@@ -244,6 +253,17 @@ export {
   setUpRecovery,
   encodeSmartSessionSignature,
   trustAttester,
+  // Account errors
+  isAccountError,
+  AccountError,
+  Eip7702AccountMustHaveEoaError,
+  ExistingEip7702AccountsNotSupportedError,
+  FactoryArgsNotAvailableError,
+  SmartSessionsNotEnabledError,
+  SigningNotSupportedForAccountError,
+  SignMessageNotSupportedByAccountError,
+  Eip7702NotSupportedForAccountError,
+  // Orchestrator errors
   isOrchestratorError,
   AuthenticationRequiredError,
   InsufficientBalanceError,

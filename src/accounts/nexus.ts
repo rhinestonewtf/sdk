@@ -31,6 +31,10 @@ import {
 import { EnableSessionData } from '../modules/validators/smart-sessions'
 import type { OwnerSet, RhinestoneAccountConfig, Session } from '../types'
 import { encode7579Calls, getAccountNonce, ValidatorConfig } from './utils'
+import {
+  Eip7702AccountMustHaveEoaError,
+  SignMessageNotSupportedByAccountError,
+} from './error'
 
 const NEXUS_IMPLEMENTATION_ADDRESS: Address =
   '0x000000004f43c49e93c970e84001853a70923b03'
@@ -276,7 +280,7 @@ async function get7702SmartAccount(account: Account, client: PublicClient) {
     },
     async (hash) => {
       if (!account.signMessage) {
-        throw new Error('Sign message not supported by account')
+        throw new SignMessageNotSupportedByAccountError()
       }
       return await account.signMessage({
         message: { raw: hash as Hex },
@@ -366,7 +370,7 @@ async function getBaseSmartAccount(
 function get7702InitCalls(config: RhinestoneAccountConfig) {
   const eoa = config.eoa
   if (!eoa) {
-    throw new Error('EIP-7702 accounts must have an EOA account')
+    throw new Eip7702AccountMustHaveEoaError()
   }
 
   const moduleSetup = getModuleSetup(config)
