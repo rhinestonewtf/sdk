@@ -1,0 +1,8 @@
+{
+  "mode": "pre",
+  "tag": "alpha",
+  "initialVersions": {
+    "@rhinestone/sdk": "0.12.7"
+  },
+  "changesets": []
+}
