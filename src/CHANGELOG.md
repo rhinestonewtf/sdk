@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.0-alpha.2
+
+### Patch Changes
+
+- 50774b2: ERC20 deposits for TheCompact
+
 ## 1.0.0-alpha.1
 
 ### Patch Changes
