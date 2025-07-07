@@ -1,4 +1,4 @@
-import { Address, encodeFunctionData, Hex } from 'viem'
+import { Address, encodeFunctionData, erc20Abi, Hex } from 'viem'
 import { Call } from '../types'
 
 type ResetPeriod =
@@ -41,6 +41,49 @@ function getDepositEtherCall(account: Address, value: bigint): Call {
   }
 }
 
+function getDepositErc20Call(
+  account: Address,
+  tokenAddress: Address,
+  amount: bigint,
+): Call {
+  return {
+    to: COMPACT_ADDRESS,
+    data: encodeFunctionData({
+      abi: [
+        {
+          type: 'function',
+          name: 'depositERC20',
+          inputs: [
+            {
+              name: 'token',
+              type: 'address',
+              internalType: 'address',
+            },
+            { name: 'lockTag', type: 'bytes12', internalType: 'bytes12' },
+            { name: 'amount', type: 'uint256', internalType: 'uint256' },
+            { name: 'recipient', type: 'address', internalType: 'address' },
+          ],
+          outputs: [{ name: 'id', type: 'uint256', internalType: 'uint256' }],
+          stateMutability: 'nonpayable',
+        },
+      ],
+      functionName: 'depositERC20',
+      args: [tokenAddress, lockTag(), amount, account],
+    }),
+  }
+}
+
+function getApproveErc20Call(tokenAddress: Address, amount: bigint): Call {
+  return {
+    to: tokenAddress,
+    data: encodeFunctionData({
+      abi: erc20Abi,
+      functionName: 'approve',
+      args: [COMPACT_ADDRESS, amount],
+    }),
+  }
+}
+
 function toCompactFlag(allocator: Address): number {
   const addrBytes = Buffer.from(allocator.slice(2), 'hex')
   let leadingZeroNibbles = 0
@@ -75,4 +118,9 @@ function lockTag(): Hex {
   return `0x${hex}` as const
 }
 
-export { getDepositEtherCall }
+export {
+  COMPACT_ADDRESS,
+  getDepositEtherCall,
+  getDepositErc20Call,
+  getApproveErc20Call,
+}

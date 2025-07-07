@@ -2,6 +2,7 @@ import {
   type Address,
   type Chain,
   createPublicClient,
+  erc20Abi,
   http,
   zeroAddress,
 } from 'viem'
@@ -24,7 +25,12 @@ import type {
   TokenRequest,
   Transaction,
 } from '../types'
-import { getDepositEtherCall } from './compact'
+import {
+  COMPACT_ADDRESS,
+  getApproveErc20Call,
+  getDepositErc20Call,
+  getDepositEtherCall,
+} from './compact'
 import {
   ExecutionError,
   IntentFailedError,
@@ -282,18 +288,46 @@ async function getPortfolio(
   return orchestrator.getPortfolio(address)
 }
 
-async function depositEther(
+async function deposit(
   config: RhinestoneAccountConfig,
   chain: Chain,
-  value: bigint,
+  amount: bigint,
+  tokenAddress?: Address,
 ) {
+  async function getCalls(address: Address): Promise<Call[]> {
+    if (!tokenAddress || tokenAddress === zeroAddress) {
+      // ETH deposit
+      return [getDepositEtherCall(address, amount)]
+    } else {
+      // ERC20 deposit
+      const publicClient = createPublicClient({
+        chain,
+        transport: http(),
+      })
+      const allowance = await publicClient.readContract({
+        address: tokenAddress,
+        abi: erc20Abi,
+        functionName: 'allowance',
+        args: [address, COMPACT_ADDRESS],
+      })
+      const calls: Call[] = []
+      if (allowance < amount) {
+        calls.push(getApproveErc20Call(tokenAddress, amount))
+      }
+      calls.push(getDepositErc20Call(address, tokenAddress, amount))
+      return calls
+    }
+  }
+
   const address = getAddress(config)
   const owners = config.owners
+  const calls = await getCalls(address)
+
   return await sendTransactionAsUserOp(
     config,
     chain,
     chain,
-    [getDepositEtherCall(address, value)],
+    calls,
     owners.type === 'ecdsa'
       ? {
           type: 'owner',
@@ -313,7 +347,7 @@ export {
   waitForExecution,
   getMaxSpendableAmount,
   getPortfolio,
-  depositEther,
+  deposit,
   // Errors
   isExecutionError,
   IntentFailedError,
