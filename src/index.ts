@@ -66,9 +66,9 @@ import {
   IntentOpStatus,
   IntentResult,
   IntentRoute,
+  Portfolio,
   SettlementSystem,
   SignedIntentOp,
-  UserTokenBalance,
 } from './orchestrator'
 import {
   AuthenticationRequiredError,
@@ -111,7 +111,7 @@ interface RhinestoneAccount {
     acceptsPreconfirmations?: boolean,
   ) => Promise<IntentOpStatus | UserOperationReceipt>
   getAddress: () => Address
-  getPortfolio: (onTestnets?: boolean) => Promise<UserTokenBalance[]>
+  getPortfolio: (onTestnets?: boolean) => Promise<Portfolio>
   getMaxSpendableAmount: (
     chain: Chain,
     tokenAddress: Address,
@@ -321,5 +321,5 @@ export type {
   IntentRoute,
   SettlementSystem,
   SignedIntentOp,
-  UserTokenBalance,
+  Portfolio,
 }

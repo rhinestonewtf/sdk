@@ -35,11 +35,11 @@ import type {
   IntentOpStatus,
   IntentResult,
   IntentRoute,
+  Portfolio,
   SettlementSystem,
   SignedIntentOp,
   SupportedChain,
   TokenConfig,
-  UserTokenBalance,
 } from './types'
 import {
   INTENT_STATUS_COMPLETED,
@@ -71,7 +71,7 @@ export type {
   SignedIntentOp,
   SupportedChain,
   TokenConfig,
-  UserTokenBalance,
+  Portfolio,
 }
 export {
   INTENT_STATUS_PENDING,
