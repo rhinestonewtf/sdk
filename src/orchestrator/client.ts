@@ -1,42 +1,29 @@
 import axios from 'axios'
-import { type Address, concat, type Hex } from 'viem'
-import type { UserOperation } from 'viem/account-abstraction'
-
+import { type Address, concat } from 'viem'
 import {
   AuthenticationRequiredError,
   InsufficientBalanceError,
+  IntentNotFoundError,
   InvalidApiKeyError,
-  InvalidBundleSignatureError,
+  InvalidIntentSignatureError,
   NoPathFoundError,
   OnlyOneTargetTokenAmountCanBeUnsetError,
   OrchestratorError,
-  OrderBundleNotFoundError,
   TokenNotSupportedError,
   UnsupportedChainError,
   UnsupportedChainIdError,
   UnsupportedTokenError,
 } from './error'
 import type {
-  BundleEvent,
-  BundleResult,
-  GasPrices,
-  MetaIntent,
-  OPNetworkParams,
-  OrderCostResult,
-  OrderFeeInput,
-  OrderPath,
-  PostOrderBundleResult,
-  SignedMultiChainCompact,
-  TokenPrices,
+  IntentCost,
+  IntentInput,
+  IntentOpStatus,
+  IntentResult,
+  IntentRoute,
+  SignedIntentOp,
   UserTokenBalance,
 } from './types'
-import {
-  convertBigIntFields,
-  parseCompactResponse,
-  parseOrderCost,
-  parseOrderCostResult,
-  parsePendingBundleEvent,
-} from './utils'
+import { convertBigIntFields } from './utils'
 
 export class Orchestrator {
   private serverUrl: string
@@ -97,198 +84,108 @@ export class Orchestrator {
 
   async getMaxTokenAmount(
     userAddress: Address,
-    targetChainId: number,
-    targetTokenAddress: Address,
-    targetGasUnits: bigint,
+    destinationChainId: number,
+    destinationTokenAddress: Address,
+    destinationGasUnits: bigint,
   ): Promise<bigint> {
-    const intentCost = await this.getIntentCost(
-      {
-        targetChainId,
-        targetGasUnits,
-        tokenTransfers: [
-          {
-            tokenAddress: targetTokenAddress,
-          },
-        ],
+    const intentCost = await this.getIntentCost({
+      account: userAddress,
+      destinationExecutions: [],
+      destinationChainId,
+      destinationGasUnits,
+      tokenTransfers: [
+        {
+          tokenAddress: destinationTokenAddress,
+        },
+      ],
+      smartAccount: {
+        accountType: 'ERC7579',
       },
-      userAddress,
-    )
+    })
     if (!intentCost.hasFulfilledAll) {
       return 0n
     }
     const tokenReceived = intentCost.tokensReceived.find(
       (token) =>
-        token.tokenAddress.toLowerCase() === targetTokenAddress.toLowerCase(),
+        token.tokenAddress.toLowerCase() ===
+        destinationTokenAddress.toLowerCase(),
     )
     if (!tokenReceived) {
       return 0n
     }
-    const tokenAmount = tokenReceived.targetAmount
+    const tokenAmount = tokenReceived.destinationAmount
     if (tokenAmount < 0n) {
       throw new Error(
         `Balance not available. Make sure the account is deployed`,
       )
     }
-    return tokenReceived.targetAmount
+    return tokenReceived.destinationAmount
   }
 
-  async getIntentCost(
-    intent: OrderFeeInput,
-    userAddress: Address,
-  ): Promise<OrderCostResult> {
-    try {
-      const response = await axios.post(
-        `${this.serverUrl}/accounts/${userAddress}/bundles/cost`,
-        {
-          ...convertBigIntFields(intent),
-        },
-        {
-          headers: {
-            'x-api-key': this.apiKey,
-          },
-        },
-      )
-
-      return parseOrderCostResult(response.data)
-    } catch (error: any) {
-      this.parseError(error)
-      throw new Error(error)
-    }
-  }
-
-  async getOrderPath(
-    intent: MetaIntent,
-    userAddress: Address,
-  ): Promise<OrderPath> {
-    try {
-      const response = await axios.post(
-        `${this.serverUrl}/accounts/${userAddress}/bundles/path`,
-        {
-          ...convertBigIntFields(intent),
-        },
-        {
-          headers: {
-            'x-api-key': this.apiKey,
-          },
-        },
-      )
-
-      return response.data.orderBundles.map((orderPath: any) => {
-        return {
-          orderBundle: parseCompactResponse(orderPath.orderBundle),
-          injectedExecutions: orderPath.injectedExecutions.map((exec: any) => {
-            return {
-              ...exec,
-              value: BigInt(exec.value),
-            }
-          }),
-          intentCost: parseOrderCost(orderPath.intentCost),
-        }
-      })
-    } catch (error: any) {
-      this.parseError(error)
-      throw new Error(error)
-    }
-  }
-
-  async postSignedOrderBundle(
-    signedOrderBundles: {
-      signedOrderBundle: SignedMultiChainCompact
-      initCode?: Hex
-      userOp?: UserOperation
-    }[],
-  ): Promise<PostOrderBundleResult> {
-    try {
-      const bundles = signedOrderBundles.map(
-        (signedOrderBundle: {
-          signedOrderBundle: SignedMultiChainCompact
-          initCode?: Hex
-          userOp?: UserOperation
-        }) => {
-          return {
-            signedOrderBundle: convertBigIntFields(
-              signedOrderBundle.signedOrderBundle,
-            ),
-            initCode: signedOrderBundle.initCode,
-            userOp: signedOrderBundle.userOp
-              ? convertBigIntFields(signedOrderBundle.userOp)
-              : undefined,
-          }
-        },
-      )
-      const response = await axios.post(
-        `${this.serverUrl}/bundles`,
-        {
-          bundles,
-        },
-        {
-          headers: {
-            'x-api-key': this.apiKey,
-          },
-        },
-      )
-
-      return response.data.bundleResults.map((bundleResult: any) => {
-        return {
-          ...bundleResult,
-          bundleId: BigInt(bundleResult.bundleId),
-        }
-      })
-    } catch (error) {
-      this.parseError(error)
-      throw new Error('Failed to post order bundle')
-    }
-  }
-
-  async getBundleStatus(bundleId: bigint): Promise<BundleResult> {
-    try {
-      const response = await axios.get(
-        `${this.serverUrl}/bundles/${bundleId.toString()}`,
-        {
-          headers: {
-            'x-api-key': this.apiKey,
-          },
-        },
-      )
-
-      response.data.claims = response.data.claims.map((claim: any) => {
-        return {
-          ...claim,
-          depositId: BigInt(claim.depositId),
-        }
-      })
-
-      return response.data
-    } catch (error) {
-      this.parseError(error)
-      throw new Error('Failed to get bundle status')
-    }
-  }
-
-  async getPendingBundles(
-    count: number = 20,
-    offset: number = 0,
-  ): Promise<{ pendingBundles: BundleEvent[]; nextOffset?: number }> {
-    try {
-      const response = await axios.get(`${this.serverUrl}/bundles/events`, {
-        params: {
-          count,
-          offset,
-        },
+  async getIntentCost(input: IntentInput): Promise<IntentCost> {
+    const response = await axios.post(
+      `${this.serverUrl}/intents/cost`,
+      {
+        ...convertBigIntFields({
+          ...input,
+          tokenTransfers: input.tokenTransfers.map((transfer) => ({
+            tokenAddress: transfer.tokenAddress,
+          })),
+        }),
+      },
+      {
         headers: {
           'x-api-key': this.apiKey,
         },
-      })
-      const { events: pendingBundles, nextOffset } = response.data
+      },
+    )
 
-      return {
-        pendingBundles: pendingBundles.map(parsePendingBundleEvent),
-        nextOffset,
-      }
-    } catch (error) {
-      this.parseError(error)
-      throw new Error('Failed to get pending bundles')
-    }
+    return response.data
+  }
+
+  async getIntentRoute(input: IntentInput): Promise<IntentRoute> {
+    const response = await axios.post(
+      `${this.serverUrl}/intents/route`,
+      {
+        ...convertBigIntFields(input),
+      },
+      {
+        headers: {
+          'x-api-key': this.apiKey,
+        },
+      },
+    )
+
+    return response.data
+  }
+
+  async submitIntent(signedIntentOp: SignedIntentOp): Promise<IntentResult> {
+    const response = await axios.post(
+      `${this.serverUrl}/intent-operations`,
+      {
+        signedIntentOp: convertBigIntFields(signedIntentOp),
+      },
+      {
+        headers: {
+          'x-api-key': this.apiKey,
+        },
+      },
+    )
+
+    return response.data
+  }
+
+  async getIntentOpStatus(intentId: bigint): Promise<IntentOpStatus> {
+    const response = await axios.get(
+      `${this.serverUrl}/intent-operation/${intentId.toString()}/status`,
+      {
+        headers: {
+          'x-api-key': this.apiKey,
+        },
+      },
+    )
+
+    return response.data
   }
 
   private parseError(error: any) {
@@ -395,13 +292,13 @@ export class Orchestrator {
           } else if (message === 'Invalid API key') {
             throw new InvalidApiKeyError(finalErrorParams)
           } else if (message === 'Invalid bundle signature') {
-            throw new InvalidBundleSignatureError(finalErrorParams)
+            throw new InvalidIntentSignatureError(finalErrorParams)
           } else if (message === 'Only one target token amount can be unset') {
             throw new OnlyOneTargetTokenAmountCanBeUnsetError(finalErrorParams)
           } else if (message === 'No Path Found') {
             throw new NoPathFoundError(finalErrorParams)
           } else if (message === 'Order bundle not found') {
-            throw new OrderBundleNotFoundError(finalErrorParams)
+            throw new IntentNotFoundError(finalErrorParams)
           } else {
             throw new OrchestratorError({ message, ...finalErrorParams })
           }

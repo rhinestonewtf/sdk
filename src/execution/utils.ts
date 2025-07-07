@@ -2,14 +2,10 @@ import {
   Address,
   Chain,
   createPublicClient,
-  encodeAbiParameters,
   Hex,
   http,
-  keccak256,
-  pad,
   toHex,
   zeroAddress,
-  zeroHash,
 } from 'viem'
 import {
   entryPoint07Address,
@@ -19,9 +15,9 @@ import {
 import {
   deployTarget,
   getAddress,
-  getBundleInitCode,
   getGuardianSmartAccount,
   getPackedSignature,
+  getSmartAccount,
   getSmartSessionSmartAccount,
 } from '../accounts'
 import { getBundlerClient } from '../accounts/utils'
@@ -35,21 +31,20 @@ import {
   getWebAuthnValidator,
 } from '../modules/validators/core'
 import {
-  getEmptyUserOp,
+  getIntentOpHash,
   getOrchestrator,
-  getOrderBundleHash,
+  IntentInput,
+  IntentOp,
+  IntentRoute,
+  ParsedIntentOp,
+  SupportedChain,
 } from '../orchestrator'
 import {
   DEV_ORCHESTRATOR_URL,
   PROD_ORCHESTRATOR_URL,
 } from '../orchestrator/consts'
-import { getTokenRootBalanceSlot, isTestnet } from '../orchestrator/registry'
-import {
-  MetaIntent,
-  OrderPath,
-  SignedMultiChainCompact,
-  SupportedChain,
-} from '../orchestrator/types'
+import { isTestnet } from '../orchestrator/registry'
+import { parseCompactResponse } from '../orchestrator/utils'
 import {
   Call,
   OwnerSet,
@@ -61,9 +56,9 @@ import {
 import {
   OrderPathRequiredForIntentsError,
   SourceChainRequiredForSmartSessionsError,
+  SourceTargetChainMismatchError,
   UserOperationRequiredForSmartSessionsError,
 } from './error'
-import { getSessionSignature, hashErc7739 } from './smart-session'
 
 type TransactionResult =
   | {
@@ -73,20 +68,26 @@ type TransactionResult =
       targetChain: number
     }
   | {
-      type: 'bundle'
+      type: 'intent'
       id: bigint
       sourceChain?: number
       targetChain: number
     }
 
-interface BundleData {
+interface IntentData {
+  type: 'intent'
   hash: Hex
-  orderPath?: OrderPath
-  userOp?: UserOperation
+  intentRoute: IntentRoute
+}
+
+interface UserOpData {
+  type: 'userop'
+  hash: Hex
+  userOp: UserOperation
 }
 
 interface PreparedTransactionData {
-  bundleData: BundleData
+  data: IntentData | UserOpData
   transaction: Transaction
 }
 
@@ -102,26 +103,25 @@ async function prepareTransaction(
     getTransactionParams(transaction)
   const accountAddress = getAddress(config)
 
-  let bundleData: BundleData
+  let data: IntentData | UserOpData
 
   const asUserOp = signers?.type === 'guardians' || signers?.type === 'session'
   if (asUserOp) {
     if (!sourceChain) {
       throw new SourceChainRequiredForSmartSessionsError()
     }
+    if (sourceChain.id !== targetChain.id) {
+      throw new SourceTargetChainMismatchError()
+    }
     // Smart sessions require a UserOp flow
-    bundleData = await prepareTransactionAsUserOp(
+    data = await prepareTransactionAsUserOp(
       config,
       sourceChain,
-      targetChain,
       transaction.calls,
-      transaction.gasLimit,
-      tokenRequests,
-      accountAddress,
       signers,
     )
   } else {
-    bundleData = await prepareTransactionAsIntent(
+    data = await prepareTransactionAsIntent(
       config,
       sourceChain,
       targetChain,
@@ -133,7 +133,7 @@ async function prepareTransaction(
   }
 
   return {
-    bundleData,
+    data,
     transaction,
   }
 }
@@ -145,41 +145,24 @@ async function signTransaction(
   const { sourceChain, targetChain, signers } = getTransactionParams(
     preparedTransaction.transaction,
   )
-  const withSession = signers?.type === 'session' ? signers.session : null
-  const bundleData = preparedTransaction.bundleData
-  const accountAddress = getAddress(config)
+  const data = preparedTransaction.data
+  const asUserOp = data.type === 'userop'
 
   let signature: Hex
-
-  if (withSession) {
-    if (!sourceChain) {
-      throw new SourceChainRequiredForSmartSessionsError()
-    }
-    const userOp = bundleData.userOp
+  if (asUserOp) {
+    const chain = sourceChain ?? targetChain
+    const userOp = data.userOp
     if (!userOp) {
       throw new UserOperationRequiredForSmartSessionsError()
     }
     // Smart sessions require a UserOp flow
-    signature = await signUserOp(
-      config,
-      sourceChain,
-      targetChain,
-      accountAddress,
-      signers,
-      userOp,
-      bundleData.orderPath,
-    )
+    signature = await signUserOp(config, chain, signers, userOp)
   } else {
-    signature = await signIntent(
-      config,
-      sourceChain,
-      targetChain,
-      bundleData.hash,
-    )
+    signature = await signIntent(config, sourceChain, targetChain, data.hash)
   }
 
   return {
-    bundleData,
+    data,
     transaction: preparedTransaction.transaction,
     signature,
   }
@@ -189,38 +172,29 @@ async function submitTransaction(
   config: RhinestoneAccountConfig,
   signedTransaction: SignedTransactionData,
 ): Promise<TransactionResult> {
-  const { bundleData, transaction, signature } = signedTransaction
-  const { sourceChain, targetChain, signers } =
-    getTransactionParams(transaction)
-  const withSession = signers?.type === 'session' ? signers.session : null
+  const { data, transaction, signature } = signedTransaction
+  const { sourceChain, targetChain } = getTransactionParams(transaction)
 
-  if (withSession) {
-    if (!sourceChain) {
-      throw new SourceChainRequiredForSmartSessionsError()
-    }
-    const userOp = bundleData.userOp
+  const asUserOp = data.type === 'userop'
+
+  if (asUserOp) {
+    const chain = sourceChain ?? targetChain
+    const userOp = data.userOp
     if (!userOp) {
       throw new UserOperationRequiredForSmartSessionsError()
     }
     // Smart sessions require a UserOp flow
-    return await submitUserOp(
-      config,
-      sourceChain,
-      targetChain,
-      userOp,
-      signature,
-      bundleData.orderPath,
-    )
+    return await submitUserOp(config, chain, userOp, signature)
   } else {
-    const orderPath = bundleData.orderPath
-    if (!orderPath) {
+    const intentOp = data.intentRoute.intentOp
+    if (!intentOp) {
       throw new OrderPathRequiredForIntentsError()
     }
     return await submitIntent(
       config,
       sourceChain,
       targetChain,
-      orderPath,
+      intentOp,
       signature,
     )
   }
@@ -255,75 +229,38 @@ function getTransactionParams(transaction: Transaction) {
 
 async function prepareTransactionAsUserOp(
   config: RhinestoneAccountConfig,
-  sourceChain: Chain,
-  targetChain: Chain,
+  chain: Chain,
   calls: Call[],
-  gasLimit: bigint | undefined,
-  tokenRequests: TokenRequest[],
-  accountAddress: Address,
   signers: SignerSet | undefined,
 ) {
-  if (sourceChain.id === targetChain.id) {
-    const chain = sourceChain
-    const publicClient = createPublicClient({
-      chain,
-      transport: http(),
-    })
-    const validatorAccount = await getValidatorAccount(
-      config,
-      signers,
-      publicClient,
-      chain,
-    )
-    if (!validatorAccount) {
-      throw new Error('No validator account found')
-    }
-    const bundlerClient = getBundlerClient(config, publicClient)
-    const userOp = await bundlerClient.prepareUserOperation({
-      account: validatorAccount,
-      calls,
-    })
-    return {
-      userOp,
-      hash: getUserOperationHash({
-        userOperation: userOp,
-        chainId: chain.id,
-        entryPointAddress: entryPoint07Address,
-        entryPointVersion: '0.7',
-      }),
-    } as BundleData
-  }
-
-  const orderPath = await getUserOpOrderPath(
-    sourceChain,
-    targetChain,
-    tokenRequests,
-    accountAddress,
-    gasLimit,
-    config.rhinestoneApiKey,
-  )
-  const userOp = await getUserOp(
-    config,
-    targetChain,
-    signers,
-    orderPath,
-    calls,
-    tokenRequests,
-    accountAddress,
-  )
-
-  const hash = getUserOperationHash({
-    userOperation: userOp,
-    entryPointAddress: entryPoint07Address,
-    entryPointVersion: '0.7',
-    chainId: targetChain.id,
+  const publicClient = createPublicClient({
+    chain,
+    transport: http(),
   })
-
+  const validatorAccount = await getValidatorAccount(
+    config,
+    signers,
+    publicClient,
+    chain,
+  )
+  if (!validatorAccount) {
+    throw new Error('No validator account found')
+  }
+  const bundlerClient = getBundlerClient(config, publicClient)
+  const userOp = await bundlerClient.prepareUserOperation({
+    account: validatorAccount,
+    calls,
+  })
   return {
-    orderPath,
+    type: 'userop',
     userOp,
-    hash,
-  } as BundleData
+    hash: getUserOperationHash({
+      userOperation: userOp,
+      chainId: chain.id,
+      entryPointAddress: entryPoint07Address,
+      entryPointVersion: '0.7',
+    }),
+  } as UserOpData
 }
 
 async function prepareTransactionAsIntent(
@@ -341,45 +278,44 @@ async function prepareTransactionAsIntent(
       }
     : undefined
 
-  const metaIntent: MetaIntent = {
-    targetChainId: targetChain.id,
+  const metaIntent: IntentInput = {
+    destinationChainId: targetChain.id,
     tokenTransfers: tokenRequests.map((tokenRequest) => ({
       tokenAddress: tokenRequest.address,
       amount: tokenRequest.amount,
     })),
-    targetAccount: accountAddress,
-    targetExecutions: calls.map((call) => ({
+    account: accountAddress,
+    destinationExecutions: calls.map((call) => ({
       value: call.value ?? 0n,
       to: call.to,
       data: call.data ?? '0x',
     })),
-    targetGasUnits: gasLimit,
+    destinationGasUnits: gasLimit,
     accountAccessList,
+    smartAccount: {
+      accountType: 'ERC7579',
+    },
   }
 
   const orchestrator = getOrchestratorByChain(
     targetChain.id,
     config.rhinestoneApiKey,
   )
-  const orderPath = await orchestrator.getOrderPath(metaIntent, accountAddress)
-  orderPath[0].orderBundle.segments[0].witness.execs = [
-    ...orderPath[0].injectedExecutions,
-    ...metaIntent.targetExecutions,
-  ]
-
-  const orderBundleHash = getOrderBundleHash(orderPath[0].orderBundle)
+  const intentRoute = await orchestrator.getIntentRoute(metaIntent)
+  const intentHash = getIntentOpHash(intentRoute.intentOp)
 
   return {
-    orderPath,
-    hash: orderBundleHash,
-  } as BundleData
+    type: 'intent',
+    intentRoute,
+    hash: intentHash,
+  } as IntentData
 }
 
 async function signIntent(
   config: RhinestoneAccountConfig,
   sourceChain: Chain | undefined,
   targetChain: Chain,
-  bundleHash: Hex,
+  intentHash: Hex,
   signers?: SignerSet,
 ) {
   const validator = getValidator(config, signers)
@@ -401,153 +337,82 @@ async function signIntent(
       address: validator.address,
       isRoot,
     },
-    bundleHash,
+    intentHash,
   )
   return signature
 }
 
 async function signUserOp(
   config: RhinestoneAccountConfig,
-  sourceChain: Chain,
-  targetChain: Chain,
-  accountAddress: Address,
+  chain: Chain,
   signers: SignerSet | undefined,
   userOp: UserOperation,
-  orderPath?: OrderPath,
 ) {
   const validator = getValidator(config, signers)
   if (!validator) {
     throw new Error('Validator not available')
   }
 
-  const targetPublicClient = createPublicClient({
-    chain: targetChain,
+  const publicClient = createPublicClient({
+    chain,
     transport: http(),
   })
-  const targetAccount = await getValidatorAccount(
+  const account = await getValidatorAccount(
     config,
     signers,
-    targetPublicClient,
-    targetChain,
+    publicClient,
+    chain,
   )
-  if (!targetAccount) {
+  if (!account) {
     throw new Error('No account found')
   }
 
-  userOp.signature = await targetAccount.signUserOperation(userOp)
-  if (!orderPath) {
-    return userOp.signature
-  }
-  const userOpHash = getUserOperationHash({
-    userOperation: userOp,
-    chainId: targetChain.id,
-    entryPointAddress: entryPoint07Address,
-    entryPointVersion: '0.7',
-  })
-  orderPath[0].orderBundle.segments[0].witness.userOpHash = userOpHash
-  const { hash, appDomainSeparator, contentsType, structHash } =
-    await hashErc7739(sourceChain, orderPath, accountAddress)
-
-  const owners = getOwners(config, signers)
-  if (!owners) {
-    throw new Error('No owners found')
-  }
-  const signature = await getPackedSignature(
-    config,
-    owners,
-    targetChain,
-    {
-      address: validator.address,
-      isRoot: false,
-    },
-    hash,
-    (signature) => {
-      const sessionData = signers?.type === 'session' ? signers.session : null
-      return sessionData
-        ? getSessionSignature(
-            signature,
-            appDomainSeparator,
-            structHash,
-            contentsType,
-            sessionData,
-          )
-        : signature
-    },
-  )
-
-  return signature
+  return await account.signUserOperation(userOp)
 }
 
 async function submitUserOp(
   config: RhinestoneAccountConfig,
-  sourceChain: Chain,
-  targetChain: Chain,
+  chain: Chain,
   userOp: UserOperation,
   signature: Hex,
-  orderPath?: OrderPath,
 ) {
-  if (!orderPath) {
-    const publicClient = createPublicClient({
-      chain: sourceChain,
-      transport: http(),
-    })
-    const bundlerClient = getBundlerClient(config, publicClient)
-    const hash = await bundlerClient.request({
-      method: 'eth_sendUserOperation',
-      params: [
-        {
-          sender: userOp.sender,
-          nonce: toHex(userOp.nonce),
-          factory: userOp.factory,
-          factoryData: userOp.factoryData,
-          callData: userOp.callData,
-          callGasLimit: toHex(userOp.callGasLimit),
-          verificationGasLimit: toHex(userOp.verificationGasLimit),
-          preVerificationGas: toHex(userOp.preVerificationGas),
-          maxPriorityFeePerGas: toHex(userOp.maxPriorityFeePerGas),
-          maxFeePerGas: toHex(userOp.maxFeePerGas),
-          paymaster: userOp.paymaster,
-          paymasterVerificationGasLimit: userOp.paymasterVerificationGasLimit
-            ? toHex(userOp.paymasterVerificationGasLimit)
-            : undefined,
-          paymasterPostOpGasLimit: userOp.paymasterPostOpGasLimit
-            ? toHex(userOp.paymasterPostOpGasLimit)
-            : undefined,
-          paymasterData: userOp.paymasterData,
-          signature,
-        },
-        entryPoint07Address,
-      ],
-    })
-    return {
-      type: 'userop',
-      hash,
-      sourceChain: sourceChain.id,
-      targetChain: targetChain.id,
-    } as TransactionResult
-  }
-  const signedOrderBundle: SignedMultiChainCompact = {
-    ...orderPath[0].orderBundle,
-    originSignatures: Array(orderPath[0].orderBundle.segments.length).fill(
-      signature,
-    ),
-    targetSignature: signature,
-  }
-  const orchestrator = getOrchestratorByChain(
-    targetChain.id,
-    config.rhinestoneApiKey,
-  )
-  const bundleResults = await orchestrator.postSignedOrderBundle([
-    {
-      signedOrderBundle,
-      userOp,
-    },
-  ])
+  const publicClient = createPublicClient({
+    chain,
+    transport: http(),
+  })
+  const bundlerClient = getBundlerClient(config, publicClient)
+  const hash = await bundlerClient.request({
+    method: 'eth_sendUserOperation',
+    params: [
+      {
+        sender: userOp.sender,
+        nonce: toHex(userOp.nonce),
+        factory: userOp.factory,
+        factoryData: userOp.factoryData,
+        callData: userOp.callData,
+        callGasLimit: toHex(userOp.callGasLimit),
+        verificationGasLimit: toHex(userOp.verificationGasLimit),
+        preVerificationGas: toHex(userOp.preVerificationGas),
+        maxPriorityFeePerGas: toHex(userOp.maxPriorityFeePerGas),
+        maxFeePerGas: toHex(userOp.maxFeePerGas),
+        paymaster: userOp.paymaster,
+        paymasterVerificationGasLimit: userOp.paymasterVerificationGasLimit
+          ? toHex(userOp.paymasterVerificationGasLimit)
+          : undefined,
+        paymasterPostOpGasLimit: userOp.paymasterPostOpGasLimit
+          ? toHex(userOp.paymasterPostOpGasLimit)
+          : undefined,
+        paymasterData: userOp.paymasterData,
+        signature,
+      },
+      entryPoint07Address,
+    ],
+  })
   return {
-    type: 'bundle',
-    id: bundleResults[0].bundleId,
-    sourceChain: sourceChain.id,
-    targetChain: targetChain.id,
+    type: 'userop',
+    hash,
+    sourceChain: chain.id,
+    targetChain: chain.id,
   } as TransactionResult
 }
 
@@ -555,14 +420,15 @@ async function submitIntent(
   config: RhinestoneAccountConfig,
   sourceChain: Chain | undefined,
   targetChain: Chain,
-  orderPath: OrderPath,
+  intentOp: IntentOp,
   signature: Hex,
 ) {
+  const parsedIntentOp = parseCompactResponse(intentOp)
   return submitIntentInternal(
     config,
     sourceChain,
     targetChain,
-    orderPath,
+    parsedIntentOp,
     signature,
     false,
   )
@@ -575,124 +441,30 @@ function getOrchestratorByChain(chainId: number, apiKey: string) {
   return getOrchestrator(apiKey, orchestratorUrl)
 }
 
-async function getUserOpOrderPath(
-  sourceChain: Chain,
-  targetChain: Chain,
-  tokenRequests: TokenRequest[],
-  accountAddress: Address,
-  gasLimit: bigint | undefined,
-  rhinestoneApiKey: string,
-) {
-  const accountAccessList = sourceChain
-    ? {
-        chainIds: [sourceChain.id as SupportedChain],
-      }
-    : undefined
-
-  const metaIntent: MetaIntent = {
-    targetChainId: targetChain.id,
-    tokenTransfers: tokenRequests.map((tokenRequest) => ({
-      tokenAddress: tokenRequest.address,
-      amount: tokenRequest.amount,
-    })),
-    targetAccount: accountAddress,
-    targetGasUnits: gasLimit,
-    userOp: getEmptyUserOp(),
-    accountAccessList,
-  }
-
-  const orchestrator = getOrchestratorByChain(targetChain.id, rhinestoneApiKey)
-  const orderPath = await orchestrator.getOrderPath(metaIntent, accountAddress)
-  return orderPath
-}
-
-async function getUserOp(
-  config: RhinestoneAccountConfig,
-  targetChain: Chain,
-  signers: SignerSet | undefined,
-  orderPath: OrderPath,
-  calls: Call[],
-  tokenRequests: TokenRequest[],
-  accountAddress: Address,
-) {
-  const targetPublicClient = createPublicClient({
-    chain: targetChain,
-    transport: http(),
-  })
-  const targetAccount = await getValidatorAccount(
-    config,
-    signers,
-    targetPublicClient,
-    targetChain,
-  )
-  if (!targetAccount) {
-    throw new Error('No account found')
-  }
-  const targetBundlerClient = getBundlerClient(config, targetPublicClient)
-
-  return await targetBundlerClient.prepareUserOperation({
-    account: targetAccount,
-    calls: [...orderPath[0].injectedExecutions, ...calls],
-    stateOverride: [
-      ...tokenRequests.map((request) => {
-        const rootBalanceSlot = getTokenRootBalanceSlot(
-          targetChain,
-          request.address,
-        )
-        const balanceSlot = rootBalanceSlot
-          ? keccak256(
-              encodeAbiParameters(
-                [{ type: 'address' }, { type: 'uint256' }],
-                [accountAddress, rootBalanceSlot],
-              ),
-            )
-          : zeroHash
-        return {
-          address: request.address,
-          stateDiff: [
-            {
-              slot: balanceSlot,
-              value: pad(toHex(request.amount)),
-            },
-          ],
-        }
-      }),
-    ],
-  })
-}
-
 async function submitIntentInternal(
   config: RhinestoneAccountConfig,
   sourceChain: Chain | undefined,
   targetChain: Chain,
-  orderPath: OrderPath,
+  intentOp: ParsedIntentOp,
   signature: Hex,
   deploy: boolean,
 ) {
-  const signedOrderBundle: SignedMultiChainCompact = {
-    ...orderPath[0].orderBundle,
-    originSignatures: Array(orderPath[0].orderBundle.segments.length).fill(
-      signature,
-    ),
-    targetSignature: signature,
+  const signedIntentOp = {
+    ...intentOp,
+    originSignatures: Array(intentOp.elements.length).fill(signature),
+    destinationSignature: signature,
   }
   if (deploy) {
     await deployTarget(targetChain, config, false)
   }
-  const initCode = getBundleInitCode(config)
   const orchestrator = getOrchestratorByChain(
     targetChain.id,
     config.rhinestoneApiKey,
   )
-  const bundleResults = await orchestrator.postSignedOrderBundle([
-    {
-      signedOrderBundle,
-      initCode,
-    },
-  ])
+  const intentResults = await orchestrator.submitIntent(signedIntentOp)
   return {
-    type: 'bundle',
-    id: bundleResults[0].bundleId,
+    type: 'intent',
+    id: BigInt(intentResults.result.id),
     sourceChain: sourceChain?.id,
     targetChain: targetChain.id,
   } as TransactionResult
@@ -706,6 +478,12 @@ async function getValidatorAccount(
 ) {
   if (!signers) {
     return undefined
+  }
+
+  // Owners
+  const withOwner = signers.type === 'owner' ? signers : null
+  if (withOwner) {
+    return getSmartAccount(config, publicClient, chain)
   }
 
   const withSession = signers.type === 'session' ? signers : null
@@ -820,17 +598,13 @@ export {
   signTransaction,
   submitTransaction,
   getOrchestratorByChain,
-  getUserOpOrderPath,
-  getUserOp,
   signIntent,
-  signUserOp,
-  submitUserOp,
   prepareTransactionAsIntent,
   submitIntentInternal,
   getValidatorAccount,
 }
 export type {
-  BundleData,
+  IntentData,
   TransactionResult,
   PreparedTransactionData,
   SignedTransactionData,

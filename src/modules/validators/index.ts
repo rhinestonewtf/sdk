@@ -1,10 +1,8 @@
 import { getMockSignature, getOwnerValidator } from './core'
 import {
   encodeSmartSessionSignature,
-  getAccountEIP712Domain,
   getEnableSessionCall,
   getPermissionId,
-  getSessionAllowedERC7739Content,
   getSmartSessionValidator,
   isSessionEnabled,
   SMART_SESSION_MODE_ENABLE,
@@ -22,7 +20,5 @@ export {
   encodeSmartSessionSignature,
   getPermissionId,
   getMockSignature,
-  getAccountEIP712Domain,
   isSessionEnabled,
-  getSessionAllowedERC7739Content,
 }
