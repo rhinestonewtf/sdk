@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.0-alpha.1
+
+### Patch Changes
+
+- e4dc710: Fix portfolio
+
 ## 1.0.0-alpha.0
 
 ### Major Changes
