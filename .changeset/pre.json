@@ -4,5 +4,7 @@
   "initialVersions": {
     "@rhinestone/sdk": "0.12.7"
   },
-  "changesets": []
+  "changesets": [
+    "common-toys-rush"
+  ]
 }

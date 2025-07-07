@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.0-alpha.0
+
+### Major Changes
+
+- 036f989: The Compact support
+
 ## 0.12.7
 
 ### Patch Changes
