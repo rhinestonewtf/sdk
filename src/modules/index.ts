@@ -26,14 +26,15 @@ import {
 } from './common'
 import {
   HOOK_ADDRESS,
-  OMNI_ACCOUNT_MOCK_ATTESTER_ADDRESS,
-  RHINESTONE_ATTESTER_ADDRESS,
+  INTENT_EXECUTOR_ADDRESS,
   RHINESTONE_MODULE_REGISTRY_ADDRESS,
-  SAME_CHAIN_MODULE_ADDRESS,
-  TARGET_MODULE_ADDRESS,
 } from './omni-account'
 import { areAttestersTrusted, getOwners, getValidators } from './read'
-import { getTrustAttesterCall, getTrustedAttesters } from './registry'
+import {
+  getAttesters,
+  getTrustAttesterCall,
+  getTrustedAttesters,
+} from './registry'
 import { getOwnerValidator, getSmartSessionValidator } from './validators'
 import { getSocialRecoveryValidator } from './validators/core'
 
@@ -85,21 +86,7 @@ function getSetup(config: RhinestoneAccountConfig): ModeleSetup {
 
   const executors: Module[] = [
     {
-      address: SAME_CHAIN_MODULE_ADDRESS,
-      initData: '0x',
-      deInitData: '0x',
-      additionalContext: '0x',
-      type: MODULE_TYPE_ID_EXECUTOR,
-    },
-    {
-      address: TARGET_MODULE_ADDRESS,
-      initData: '0x',
-      deInitData: '0x',
-      additionalContext: '0x',
-      type: MODULE_TYPE_ID_EXECUTOR,
-    },
-    {
-      address: HOOK_ADDRESS,
+      address: INTENT_EXECUTOR_ADDRESS,
       initData: '0x',
       deInitData: '0x',
       additionalContext: '0x',
@@ -107,22 +94,7 @@ function getSetup(config: RhinestoneAccountConfig): ModeleSetup {
     },
   ]
 
-  const fallbacks: Module[] = [
-    {
-      address: TARGET_MODULE_ADDRESS,
-      initData: encodeAbiParameters(
-        [
-          { name: 'selector', type: 'bytes4' },
-          { name: 'flags', type: 'bytes1' },
-          { name: 'data', type: 'bytes' },
-        ],
-        ['0x3a5be8cb', '0x00', '0x'],
-      ),
-      deInitData: '0x',
-      additionalContext: '0x',
-      type: MODULE_TYPE_ID_FALLBACK,
-    },
-  ]
+  const fallbacks: Module[] = []
 
   // Some accounts (e.g. Safe) need a fallback method to support smart sessions
   if (config.sessions) {
@@ -236,16 +208,6 @@ function parseSignature(signature: Hex | Uint8Array): WebauthnSignature {
   }
 }
 
-function getAttesters(): {
-  list: Address[]
-  threshold: number
-} {
-  return {
-    list: [RHINESTONE_ATTESTER_ADDRESS, OMNI_ACCOUNT_MOCK_ATTESTER_ADDRESS],
-    threshold: 1,
-  }
-}
-
 export {
   HOOK_ADDRESS,
   getSetup,
@@ -253,7 +215,6 @@ export {
   getTrustedAttesters,
   getOwnerValidator,
   getWebauthnValidatorSignature,
-  getAttesters,
   areAttestersTrusted,
   getOwners,
   getValidators,

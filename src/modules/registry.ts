@@ -2,7 +2,21 @@ import { Address, encodeFunctionData, PublicClient } from 'viem'
 
 import { RhinestoneAccountConfig } from '../types'
 import { getSetup } from '.'
-import { RHINESTONE_MODULE_REGISTRY_ADDRESS } from './omni-account'
+import {
+  OMNI_ACCOUNT_MOCK_ATTESTER_ADDRESS,
+  RHINESTONE_ATTESTER_ADDRESS,
+  RHINESTONE_MODULE_REGISTRY_ADDRESS,
+} from './omni-account'
+
+function getAttesters(): {
+  list: Address[]
+  threshold: number
+} {
+  return {
+    list: [RHINESTONE_ATTESTER_ADDRESS, OMNI_ACCOUNT_MOCK_ATTESTER_ADDRESS],
+    threshold: 1,
+  }
+}
 
 function getTrustAttesterCall(config: RhinestoneAccountConfig) {
   const moduleSetup = getSetup(config)
@@ -62,4 +76,4 @@ async function getTrustedAttesters(
   })
 }
 
-export { getTrustAttesterCall, getTrustedAttesters }
+export { getTrustAttesterCall, getTrustedAttesters, getAttesters }

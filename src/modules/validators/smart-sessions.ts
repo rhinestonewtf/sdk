@@ -751,60 +751,6 @@ function getPermissionId(session: Session) {
   )
 }
 
-async function getAccountEIP712Domain(client: PublicClient, account: Address) {
-  const data = await client.readContract({
-    address: account,
-    abi: [
-      {
-        type: 'function',
-        name: 'eip712Domain',
-        inputs: [],
-        outputs: [
-          {
-            type: 'bytes1',
-            name: 'fields,',
-          },
-          {
-            type: 'string',
-            name: 'name',
-          },
-          {
-            type: 'string',
-            name: 'version',
-          },
-          {
-            type: 'uint256',
-            name: 'chainId',
-          },
-          {
-            type: 'address',
-            name: 'verifyingContract',
-          },
-          {
-            type: 'bytes32',
-            name: 'salt',
-          },
-          {
-            type: 'uint256[]',
-            name: 'extensions',
-          },
-        ],
-        stateMutability: 'view',
-        constant: true,
-      },
-    ],
-    functionName: 'eip712Domain',
-    args: [],
-  })
-  return {
-    name: data[1],
-    version: data[2],
-    chainId: data[3],
-    verifyingContract: data[4],
-    salt: data[5],
-  }
-}
-
 export {
   SMART_SESSION_MODE_USE,
   SMART_SESSION_MODE_ENABLE,
@@ -814,9 +760,7 @@ export {
   getEnableSessionCall,
   encodeSmartSessionSignature,
   getPermissionId,
-  getAccountEIP712Domain,
   isSessionEnabled,
-  getSessionAllowedERC7739Content,
 }
 export type {
   EnableSessionData,

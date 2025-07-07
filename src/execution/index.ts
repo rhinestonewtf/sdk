@@ -7,17 +7,17 @@ import {
 } from 'viem'
 import { mainnet, sepolia } from 'viem/chains'
 
-import { deploySource, deployTarget, getAddress, isDeployed } from '../accounts'
+import { deploySource, getAddress, isDeployed } from '../accounts'
 import { getBundlerClient } from '../accounts/utils'
-import type { BundleResult } from '../orchestrator'
+import type { IntentOpStatus } from '../orchestrator'
 import {
-  BUNDLE_STATUS_COMPLETED,
-  BUNDLE_STATUS_FAILED,
-  BUNDLE_STATUS_FILLED,
-  BUNDLE_STATUS_PRECONFIRMED,
+  INTENT_STATUS_COMPLETED,
+  INTENT_STATUS_FAILED,
+  INTENT_STATUS_FILLED,
+  INTENT_STATUS_PRECONFIRMED,
 } from '../orchestrator'
 import { getChainById } from '../orchestrator/registry'
-import { BundleStatus } from '../orchestrator/types'
+import { parseCompactResponse } from '../orchestrator/utils'
 import type {
   Call,
   RhinestoneAccountConfig,
@@ -26,26 +26,23 @@ import type {
   Transaction,
 } from '../types'
 import {
-  BundleFailedError,
   ExecutionError,
+  IntentFailedError,
   isExecutionError,
   OrderPathRequiredForIntentsError,
   SessionChainRequiredError,
   SourceChainRequiredForSmartSessionsError,
+  SourceTargetChainMismatchError,
   UserOperationRequiredForSmartSessionsError,
 } from './error'
 import { enableSmartSession } from './smart-session'
-import type { BundleData, TransactionResult } from './utils'
+import type { IntentData, TransactionResult } from './utils'
 import {
   getOrchestratorByChain,
-  getUserOp,
-  getUserOpOrderPath,
   getValidatorAccount,
   prepareTransactionAsIntent,
   signIntent,
-  signUserOp,
   submitIntentInternal,
-  submitUserOp,
 } from './utils'
 
 const POLLING_INTERVAL = 500
@@ -122,9 +119,6 @@ async function sendTransactionInternal(
       sourceChain,
       targetChain,
       calls,
-      gasLimit,
-      tokenRequests,
-      accountAddress,
       signers,
     )
   } else {
@@ -146,13 +140,9 @@ async function sendTransactionAsUserOp(
   sourceChain: Chain,
   targetChain: Chain,
   calls: Call[],
-  gasLimit: bigint | undefined,
-  tokenRequests: TokenRequest[],
-  accountAddress: Address,
   signers: SignerSet,
 ) {
   const withSession = signers?.type === 'session' ? signers.session : null
-
   const publicClient = createPublicClient({
     chain: sourceChain,
     transport: http(),
@@ -166,63 +156,20 @@ async function sendTransactionAsUserOp(
   if (!validatorAccount) {
     throw new Error('No validator account found')
   }
-
   const bundlerClient = getBundlerClient(config, publicClient)
-  if (sourceChain.id === targetChain.id) {
-    if (withSession) {
-      await enableSmartSession(targetChain, config, withSession)
-    }
-    const hash = await bundlerClient.sendUserOperation({
-      account: validatorAccount,
-      calls,
-    })
-    return {
-      type: 'userop',
-      hash,
-      sourceChain: sourceChain.id,
-      targetChain: targetChain.id,
-    } as TransactionResult
-  }
-  const orderPath = await getUserOpOrderPath(
-    sourceChain,
-    targetChain,
-    tokenRequests,
-    accountAddress,
-    gasLimit,
-    config.rhinestoneApiKey,
-  )
-  // Deploy the account on the target chain
-  await deployTarget(targetChain, config, true)
   if (withSession) {
     await enableSmartSession(targetChain, config, withSession)
   }
-
-  const userOp = await getUserOp(
-    config,
-    targetChain,
-    signers,
-    orderPath,
+  const hash = await bundlerClient.sendUserOperation({
+    account: validatorAccount,
     calls,
-    tokenRequests,
-    accountAddress,
-  )
-  const signature = await signUserOp(
-    config,
-    sourceChain,
-    targetChain,
-    accountAddress,
-    signers,
-    userOp,
-    orderPath,
-  )
-  return await submitUserOp(
-    config,
-    sourceChain,
-    targetChain,
-    userOp,
-    signature,
-    orderPath,
-  )
+  })
+  return {
+    type: 'userop',
+    hash,
+    sourceChain: sourceChain.id,
+    targetChain: targetChain.id,
+  } as TransactionResult
 }
 
 async function sendTransactionAsIntent(
@@ -235,7 +182,7 @@ async function sendTransactionAsIntent(
   accountAddress: Address,
   signers?: SignerSet,
 ) {
-  const { orderPath, hash: orderBundleHash } = await prepareTransactionAsIntent(
+  const { intentRoute, hash: intentHash } = await prepareTransactionAsIntent(
     config,
     sourceChain,
     targetChain,
@@ -244,21 +191,22 @@ async function sendTransactionAsIntent(
     tokenRequests,
     accountAddress,
   )
-  if (!orderPath) {
+  if (!intentRoute) {
     throw new OrderPathRequiredForIntentsError()
   }
   const signature = await signIntent(
     config,
     sourceChain,
     targetChain,
-    orderBundleHash,
+    intentHash,
     signers,
   )
+  const parsedIntentOp = parseCompactResponse(intentRoute.intentOp)
   return await submitIntentInternal(
     config,
     sourceChain,
     targetChain,
-    orderPath,
+    parsedIntentOp,
     signature,
     true,
   )
@@ -269,30 +217,30 @@ async function waitForExecution(
   result: TransactionResult,
   acceptsPreconfirmations: boolean,
 ) {
-  const validStatuses: Set<BundleStatus> = new Set([
-    BUNDLE_STATUS_FAILED,
-    BUNDLE_STATUS_COMPLETED,
-    BUNDLE_STATUS_FILLED,
+  const validStatuses: Set<IntentOpStatus['status']> = new Set([
+    INTENT_STATUS_FAILED,
+    INTENT_STATUS_COMPLETED,
+    INTENT_STATUS_FILLED,
   ])
   if (acceptsPreconfirmations) {
-    validStatuses.add(BUNDLE_STATUS_PRECONFIRMED)
+    validStatuses.add(INTENT_STATUS_PRECONFIRMED)
   }
 
   switch (result.type) {
-    case 'bundle': {
-      let bundleResult: BundleResult | null = null
-      while (bundleResult === null || !validStatuses.has(bundleResult.status)) {
+    case 'intent': {
+      let intentStatus: IntentOpStatus | null = null
+      while (intentStatus === null || !validStatuses.has(intentStatus.status)) {
         const orchestrator = getOrchestratorByChain(
           result.targetChain,
           config.rhinestoneApiKey,
         )
-        bundleResult = await orchestrator.getBundleStatus(result.id)
+        intentStatus = await orchestrator.getIntentOpStatus(result.id)
         await new Promise((resolve) => setTimeout(resolve, POLLING_INTERVAL))
       }
-      if (bundleResult.status === BUNDLE_STATUS_FAILED) {
-        throw new BundleFailedError()
+      if (intentStatus.status === INTENT_STATUS_FAILED) {
+        throw new IntentFailedError()
       }
-      return bundleResult
+      return intentStatus
     }
     case 'userop': {
       const targetChain = getChainById(result.targetChain)
@@ -342,11 +290,12 @@ export {
   getPortfolio,
   // Errors
   isExecutionError,
-  BundleFailedError,
+  IntentFailedError,
   ExecutionError,
   SourceChainRequiredForSmartSessionsError,
+  SourceTargetChainMismatchError,
   UserOperationRequiredForSmartSessionsError,
   OrderPathRequiredForIntentsError,
   SessionChainRequiredError,
 }
-export type { BundleData, TransactionResult }
+export type { IntentData, TransactionResult }

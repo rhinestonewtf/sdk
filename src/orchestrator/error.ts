@@ -124,14 +124,14 @@ class InvalidApiKeyError extends OrchestratorError {
   }
 }
 
-class InvalidBundleSignatureError extends OrchestratorError {
+class InvalidIntentSignatureError extends OrchestratorError {
   constructor(params?: {
     context?: any
     errorType?: string
     traceId?: string
   }) {
     super({
-      message: 'Invalid bundle signature',
+      message: 'Invalid intent signature',
       ...params,
     })
   }
@@ -163,14 +163,14 @@ class NoPathFoundError extends OrchestratorError {
   }
 }
 
-class OrderBundleNotFoundError extends OrchestratorError {
+class IntentNotFoundError extends OrchestratorError {
   constructor(params?: {
     context?: any
     errorType?: string
     traceId?: string
   }) {
     super({
-      message: 'Order bundle not found',
+      message: 'Intent not found',
       ...params,
     })
   }
@@ -190,8 +190,8 @@ export {
   TokenNotSupportedError,
   AuthenticationRequiredError,
   InvalidApiKeyError,
-  InvalidBundleSignatureError,
+  InvalidIntentSignatureError,
   OnlyOneTargetTokenAmountCanBeUnsetError,
   NoPathFoundError,
-  OrderBundleNotFoundError,
+  IntentNotFoundError,
 }

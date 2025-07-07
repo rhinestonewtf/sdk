@@ -28,14 +28,15 @@ import {
 } from './actions'
 import type { TransactionResult } from './execution'
 import {
-  BundleFailedError,
   ExecutionError,
   getMaxSpendableAmount as getMaxSpendableAmountInternal,
   getPortfolio as getPortfolioInternal,
+  IntentFailedError,
   isExecutionError,
   OrderPathRequiredForIntentsError,
   SessionChainRequiredError,
   SourceChainRequiredForSmartSessionsError,
+  SourceTargetChainMismatchError,
   sendTransaction as sendTransactionInternal,
   UserOperationRequiredForSmartSessionsError,
   waitForExecution as waitForExecutionInternal,
@@ -45,7 +46,7 @@ import {
   SessionDetails,
 } from './execution/smart-session'
 import {
-  BundleData,
+  IntentData,
   PreparedTransactionData,
   prepareTransaction as prepareTransactionInternal,
   SignedTransactionData,
@@ -58,24 +59,27 @@ import {
   getValidators as getValidatorsInternal,
 } from './modules'
 import {
-  BundleResult,
-  BundleStatus,
-  MetaIntent,
-  MultiChainCompact,
-  PostOrderBundleResult,
-  SignedMultiChainCompact,
+  IntentCost,
+  IntentInput,
+  IntentOp,
+  IntentOpStatus,
+  IntentResult,
+  IntentRoute,
+  ParsedIntentOp,
+  SettlementSystem,
+  SignedIntentOp,
   UserTokenBalance,
 } from './orchestrator'
 import {
   AuthenticationRequiredError,
   InsufficientBalanceError,
+  IntentNotFoundError,
   InvalidApiKeyError,
-  InvalidBundleSignatureError,
+  InvalidIntentSignatureError,
   isOrchestratorError,
   NoPathFoundError,
   OnlyOneTargetTokenAmountCanBeUnsetError,
   OrchestratorError,
-  OrderBundleNotFoundError,
   TokenNotSupportedError,
   UnsupportedChainError,
   UnsupportedChainIdError,
@@ -105,7 +109,7 @@ interface RhinestoneAccount {
   waitForExecution: (
     result: TransactionResult,
     acceptsPreconfirmations?: boolean,
-  ) => Promise<BundleResult | UserOperationReceipt>
+  ) => Promise<IntentOpStatus | UserOperationReceipt>
   getAddress: () => Address
   getPortfolio: (onTestnets?: boolean) => Promise<UserTokenBalance[]>
   getMaxSpendableAmount: (
@@ -154,7 +158,7 @@ async function createRhinestoneAccount(
   /**
    * Sign and send a transaction
    * @param transaction Transaction to send
-   * @returns transaction result object (a bundle ID or a UserOp hash)
+   * @returns transaction result object (an intent ID or a UserOp hash)
    */
   function sendTransaction(transaction: Transaction) {
     return sendTransactionInternal(config, transaction)
@@ -164,7 +168,7 @@ async function createRhinestoneAccount(
    * Wait for the transaction execution onchain
    * @param result transaction result object
    * @param acceptsPreconfirmations whether to accept preconfirmations from relayers before the transaction lands onchain (enabled by default)
-   * @returns bundle result or a UserOp receipt
+   * @returns intent result or a UserOp receipt
    */
   function waitForExecution(
     result: TransactionResult,
@@ -272,9 +276,10 @@ export {
   Eip7702NotSupportedForAccountError,
   // Execution errors
   isExecutionError,
-  BundleFailedError,
+  IntentFailedError,
   ExecutionError,
   SourceChainRequiredForSmartSessionsError,
+  SourceTargetChainMismatchError,
   UserOperationRequiredForSmartSessionsError,
   OrderPathRequiredForIntentsError,
   SessionChainRequiredError,
@@ -283,11 +288,11 @@ export {
   AuthenticationRequiredError,
   InsufficientBalanceError,
   InvalidApiKeyError,
-  InvalidBundleSignatureError,
+  InvalidIntentSignatureError,
   NoPathFoundError,
   OnlyOneTargetTokenAmountCanBeUnsetError,
   OrchestratorError,
-  OrderBundleNotFoundError,
+  IntentNotFoundError,
   TokenNotSupportedError,
   UnsupportedChainError,
   UnsupportedChainIdError,
@@ -295,16 +300,21 @@ export {
 }
 export type {
   RhinestoneAccount,
-  BundleStatus,
   Session,
   Call,
   Execution,
-  MetaIntent,
-  MultiChainCompact,
-  PostOrderBundleResult,
-  SignedMultiChainCompact,
-  BundleData,
+  IntentData,
   PreparedTransactionData,
   SignedTransactionData,
   TransactionResult,
+  IntentCost,
+  IntentInput,
+  IntentOp,
+  IntentOpStatus,
+  IntentResult,
+  IntentRoute,
+  ParsedIntentOp,
+  SettlementSystem,
+  SignedIntentOp,
+  UserTokenBalance,
 }

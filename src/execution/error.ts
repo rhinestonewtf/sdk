@@ -47,6 +47,20 @@ class SourceChainRequiredForSmartSessionsError extends ExecutionError {
   }
 }
 
+class SourceTargetChainMismatchError extends ExecutionError {
+  constructor(params?: {
+    context?: any
+    errorType?: string
+    traceId?: string
+  }) {
+    super({
+      message:
+        'Source and target chain must be the same when using user operations',
+      ...params,
+    })
+  }
+}
+
 class UserOperationRequiredForSmartSessionsError extends ExecutionError {
   constructor(params?: {
     context?: any
@@ -87,14 +101,14 @@ class SessionChainRequiredError extends ExecutionError {
   }
 }
 
-class BundleFailedError extends ExecutionError {
+class IntentFailedError extends ExecutionError {
   constructor(params?: {
     context?: any
     errorType?: string
     traceId?: string
   }) {
     super({
-      message: 'Bundle failed',
+      message: 'Intent failed',
       ...params,
     })
   }
@@ -108,8 +122,9 @@ export {
   isExecutionError,
   ExecutionError,
   SourceChainRequiredForSmartSessionsError,
+  SourceTargetChainMismatchError,
   UserOperationRequiredForSmartSessionsError,
   OrderPathRequiredForIntentsError,
   SessionChainRequiredError,
-  BundleFailedError,
+  IntentFailedError,
 }

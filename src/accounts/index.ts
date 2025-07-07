@@ -5,7 +5,6 @@ import {
   createPublicClient,
   createWalletClient,
   encodeFunctionData,
-  encodePacked,
   type Hex,
   http,
   type PublicClient,
@@ -270,18 +269,6 @@ async function deployStandalone(chain: Chain, config: RhinestoneAccountConfig) {
     return deployStandaloneWithEoa(chain, config, deployer)
   }
   return deployStandaloneWithBundler(chain, config)
-}
-
-function getBundleInitCode(config: RhinestoneAccountConfig) {
-  if (is7702(config)) {
-    return undefined
-  } else {
-    const { factory, factoryData } = getDeployArgs(config)
-    if (!factory || !factoryData) {
-      throw new FactoryArgsNotAvailableError()
-    }
-    return encodePacked(['address', 'bytes'], [factory, factoryData])
-  }
 }
 
 async function deploy7702Self(chain: Chain, config: RhinestoneAccountConfig) {
@@ -632,8 +619,6 @@ function getAccountProvider(
 export {
   getModuleInstallationCalls,
   getModuleUninstallationCalls,
-  getDeployArgs,
-  getBundleInitCode,
   getAddress,
   getAccountProvider,
   isDeployed,
@@ -644,7 +629,6 @@ export {
   getSmartSessionSmartAccount,
   getGuardianSmartAccount,
   getPackedSignature,
-  sign,
   // Errors
   isAccountError,
   AccountError,
