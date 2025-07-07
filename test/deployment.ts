@@ -11,7 +11,7 @@ const anvil = getAnvil(sourceChain, getForkUrl(sourceChain))
 setupOrchestratorMock()
 setupViemMock(anvil, deployerAccount)
 
-import { Address, createPublicClient, http } from 'viem'
+import { Address, createPublicClient, http, zeroAddress } from 'viem'
 import { generatePrivateKey } from 'viem/accounts'
 import { privateKeyToAccount } from 'viem/accounts'
 import { base } from 'viem/chains'
@@ -27,11 +27,8 @@ import { getForkUrl } from './utils/utils'
 const SENTINEL_ADDRESS: Address = '0x0000000000000000000000000000000000000001'
 const OWNABLE_VALIDATOR_ADDRESS: Address =
   '0x2483DA3A338895199E5e538530213157e931Bf06'
-const HOOK_ADDRESS: Address = '0x0000000000f6Ed8Be424d673c63eeFF8b9267420'
-const TARGET_MODULE_ADDRESS: Address =
-  '0x0000000000E5a37279A001301A837a91b5de1D5E'
-const SAME_CHAIN_MODULE_ADDRESS: Address =
-  '0x000000000043ff16d5776c7F0f65Ec485C17Ca04'
+const INTENT_EXECUTOR_ADDRESS: Address =
+  '0x0530Ff05cf0F7e44db6F33Fc2D10C2838e38ec79'
 
 export function runDeploymentTests() {
   describe('Account Deployment', () => {
@@ -134,18 +131,14 @@ export function runDeploymentTests() {
           const executors = executorList[0].filter(
             (validator) => validator !== SENTINEL_ADDRESS,
           )
-          expect(executors).toEqual([
-            HOOK_ADDRESS,
-            TARGET_MODULE_ADDRESS,
-            SAME_CHAIN_MODULE_ADDRESS,
-          ])
+          expect(executors).toEqual([INTENT_EXECUTOR_ADDRESS])
           const fallbackHandler = await publicClient.readContract({
             address: rhinestoneAccount.getAddress(),
             abi: biconomyImplementationAbi,
             functionName: 'getFallbackHandlerBySelector',
             args: ['0x3a5be8cb'],
           })
-          expect(fallbackHandler[1]).toEqual(TARGET_MODULE_ADDRESS)
+          expect(fallbackHandler[1]).toEqual(zeroAddress)
         },
       )
     })
@@ -253,18 +246,14 @@ export function runDeploymentTestCases() {
           const executors = executorList[0].filter(
             (validator) => validator !== SENTINEL_ADDRESS,
           )
-          expect(executors).toEqual([
-            HOOK_ADDRESS,
-            TARGET_MODULE_ADDRESS,
-            SAME_CHAIN_MODULE_ADDRESS,
-          ])
+          expect(executors).toEqual([INTENT_EXECUTOR_ADDRESS])
           const fallbackHandler = await publicClient.readContract({
             address: rhinestoneAccount.getAddress(),
             abi: biconomyImplementationAbi,
             functionName: 'getFallbackHandlerBySelector',
             args: ['0x3a5be8cb'],
           })
-          expect(fallbackHandler[1]).toEqual(TARGET_MODULE_ADDRESS)
+          expect(fallbackHandler[1]).toEqual(zeroAddress)
         },
       )
     })
