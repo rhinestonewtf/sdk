@@ -490,7 +490,7 @@ function createFixedArray<T, N extends number>(
   length: N,
   getValue: (index: number) => T,
 ): FixedLengthArray<T, N> {
-  return Array.from({ length }, (_, i) => getValue(i)) as any
+  return Array.from({ length }, (_, i) => getValue(i)) as FixedLengthArray<T, N>
 }
 
 async function isSessionEnabled(

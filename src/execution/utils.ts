@@ -4,6 +4,7 @@ import {
   createPublicClient,
   Hex,
   http,
+  PublicClient,
   toHex,
   zeroAddress,
 } from 'viem'
@@ -470,7 +471,7 @@ async function submitIntentInternal(
 async function getValidatorAccount(
   config: RhinestoneAccountConfig,
   signers: SignerSet | undefined,
-  publicClient: any,
+  publicClient: PublicClient,
   chain: Chain,
 ) {
   if (!signers) {

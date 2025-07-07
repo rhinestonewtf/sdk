@@ -77,10 +77,10 @@ function getIntentOpHash(intentOp: IntentOp) {
       sponsor: intentOp.sponsor,
       nonce: BigInt(intentOp.nonce),
       expires: BigInt(intentOp.expires),
-      elements: intentOp.elements.map((element: any) => ({
+      elements: intentOp.elements.map((element) => ({
         arbiter: element.arbiter,
         chainId: BigInt(element.chainId),
-        commitments: element.idsAndAmounts.map((token: any) => ({
+        commitments: element.idsAndAmounts.map((token) => ({
           lockTag: slice(toHex(BigInt(token[0])), 0, 12),
           token: slice(toHex(BigInt(token[0])), 12, 32),
           amount: BigInt(token[1]),
@@ -88,20 +88,20 @@ function getIntentOpHash(intentOp: IntentOp) {
         mandate: {
           target: {
             recipient: element.mandate.recipient,
-            tokenOut: element.mandate.tokenOut.map((token: any) => ({
+            tokenOut: element.mandate.tokenOut.map((token) => ({
               token: slice(toHex(BigInt(token[0])), 12, 32),
               amount: BigInt(token[1]),
             })),
-            targetChain: element.mandate.destinationChainId,
-            fillExpiry: element.mandate.fillDeadline,
+            targetChain: BigInt(element.mandate.destinationChainId),
+            fillExpiry: BigInt(element.mandate.fillDeadline),
             claimProofer: claimProofer,
           },
-          originOps: element.mandate.preClaimOps.map((op: any) => ({
+          originOps: element.mandate.preClaimOps.map((op) => ({
             to: op.to,
-            value: op.value,
+            value: BigInt(op.value),
             data: op.data,
           })),
-          destOps: element.mandate.destinationOps.map((op: any) => ({
+          destOps: element.mandate.destinationOps.map((op) => ({
             to: op.to,
             value: BigInt(op.value),
             data: op.data,

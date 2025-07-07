@@ -33,6 +33,9 @@ type SupportedChain = SupportedMainnet | SupportedTestnet
 type SupportedTokenSymbol = 'ETH' | 'WETH' | 'USDC' | 'USDT'
 type SupportedToken = SupportedTokenSymbol | Address
 
+type DeployedAccountStatus = 'ERC7579'
+type AccountStatus = 'NOT_DEPLOYED' | DeployedAccountStatus
+
 const INTENT_STATUS_PENDING = 'PENDING'
 const INTENT_STATUS_FAILED = 'FAILED'
 const INTENT_STATUS_EXPIRED = 'EXPIRED'
@@ -89,16 +92,24 @@ interface Execution {
   data: Hex
 }
 
-interface UserTokenBalance {
-  tokenName: string
-  tokenDecimals: number
-  balance: bigint
-  tokenChainBalance: {
-    chainId: number
-    tokenAddress: Address
-    balance: bigint
-  }[]
+interface PortfolioToken {
+  symbol: string
+  decimals: number
+  balances: {
+    locked: bigint
+    unlocked: bigint
+  }
+  chains: [
+    {
+      chain: number
+      address: Address
+      locked: bigint
+      unlocked: bigint
+    },
+  ]
 }
+
+type Portfolio = PortfolioToken[]
 
 interface IntentInput {
   account: Address
@@ -111,7 +122,7 @@ interface IntentInput {
   }[]
   accountAccessList?: AccountAccessList
   smartAccount: {
-    accountType: 'ERC7579'
+    accountType: DeployedAccountStatus
   }
 }
 
@@ -138,33 +149,31 @@ interface IntentCost {
   }
 }
 
+interface IntentOpElement {
+  arbiter: Address
+  chainId: string
+  idsAndAmounts: [[string, string]]
+  beforeFill: boolean
+  smartAccountStatus: DeployedAccountStatus
+  mandate: {
+    recipient: Address
+    tokenOut: [[string, string]]
+    destinationChainId: string
+    fillDeadline: string
+    destinationOps: Execution[]
+    preClaimOps: Execution[]
+    qualifier: {
+      settlementSystem: SettlementSystem
+      encodedVal: Hex
+    }
+  }
+}
+
 interface IntentOp {
   sponsor: Address
   nonce: string
   expires: string
-  elements: {
-    arbiter: Address
-    chainId: string
-    idsAndAmounts: [[string, string]]
-    beforeFill: boolean
-    smartAccountStatus: 'ERC7579'
-    mandate: {
-      recipient: Address
-      tokenOut: [[string, string]]
-      destinationChainId: string
-      fillDeadline: string
-      destinationOps: {
-        to: Address
-        value: string
-        data: Hex
-      }[]
-      preClaimOps: []
-      qualifier: {
-        settlementSystem: SettlementSystem
-        encodedVal: Hex
-      }
-    }
-  }[]
+  elements: IntentOpElement[]
   serverSignature: string
   signedMetadata: {
     quotes: unknown
@@ -242,20 +251,45 @@ interface UserOpStatus {
   receipt: UserOperationReceipt
 }
 
+interface PortfolioTokenChainResponse {
+  chainId: number
+  accountStatus: AccountStatus
+  tokenAddress: Address
+  balance: {
+    locked: string
+    unlocked: string
+  }
+}
+
+interface PortfolioTokenResponse {
+  tokenName: 'ETH'
+  tokenDecimals: 18
+  balance: {
+    locked: string
+    unlocked: string
+  }
+  tokenChainBalance: PortfolioTokenChainResponse[]
+}
+
+type PortfolioResponse = PortfolioTokenResponse[]
+
 export type {
   TokenConfig,
   SupportedChain,
-  UserTokenBalance,
   SettlementSystem,
   IntentInput,
   IntentCost,
   IntentRoute,
   IntentOp,
-  // ParsedIntentOp,
+  IntentOpElement,
   SignedIntentOp,
   IntentOpStatus,
   UserOpStatus,
   IntentResult,
+  PortfolioTokenResponse,
+  PortfolioResponse,
+  Portfolio,
+  PortfolioToken,
 }
 export {
   INTENT_STATUS_PENDING,

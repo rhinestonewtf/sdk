@@ -20,8 +20,10 @@ import type {
   IntentOpStatus,
   IntentResult,
   IntentRoute,
+  Portfolio,
+  PortfolioResponse,
+  PortfolioTokenResponse,
   SignedIntentOp,
-  UserTokenBalance,
 } from './types'
 import { convertBigIntFields } from './utils'
 
@@ -42,7 +44,7 @@ export class Orchestrator {
         [chainId: number]: Address[]
       }
     },
-  ): Promise<UserTokenBalance[]> {
+  ): Promise<Portfolio> {
     try {
       const response = await axios.get(
         `${this.serverUrl}/accounts/${userAddress}/portfolio`,
@@ -62,20 +64,31 @@ export class Orchestrator {
           },
         },
       )
-      return response.data.portfolio.map((balance: any) => {
-        return {
-          ...balance,
-          balance: BigInt(balance.balance),
-          tokenChainBalance: balance.tokenChainBalance.map(
-            (chainBalance: any) => {
-              return {
-                ...chainBalance,
-                balance: BigInt(chainBalance.balance),
-              }
-            },
-          ),
-        }
-      })
+      const portfolioResponse = response.data.portfolio as PortfolioResponse
+      const portfolio: Portfolio = portfolioResponse.map((tokenResponse) => ({
+        symbol: tokenResponse.tokenName,
+        decimals: tokenResponse.tokenDecimals,
+        balances: {
+          locked: BigInt(tokenResponse.balance.locked),
+          unlocked: BigInt(tokenResponse.balance.unlocked),
+        },
+        chains: tokenResponse.tokenChainBalance.map((chainBalance) => ({
+          chain: chainBalance.chainId,
+          address: chainBalance.tokenAddress,
+          locked: BigInt(chainBalance.balance.locked),
+          unlocked: BigInt(chainBalance.balance.unlocked),
+        })) as [
+          {
+            isAccountDeployed: boolean
+            chain: number
+            address: Address
+            locked: bigint
+            unlocked: bigint
+          },
+        ],
+      }))
+
+      return portfolio
     } catch (error) {
       this.parseError(error)
       throw new Error('Failed to get portfolio')
