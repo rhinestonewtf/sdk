@@ -36,7 +36,6 @@ import {
   IntentInput,
   IntentOp,
   IntentRoute,
-  ParsedIntentOp,
   SupportedChain,
 } from '../orchestrator'
 import {
@@ -44,7 +43,6 @@ import {
   PROD_ORCHESTRATOR_URL,
 } from '../orchestrator/consts'
 import { isTestnet } from '../orchestrator/registry'
-import { parseCompactResponse } from '../orchestrator/utils'
 import {
   Call,
   OwnerSet,
@@ -423,12 +421,11 @@ async function submitIntent(
   intentOp: IntentOp,
   signature: Hex,
 ) {
-  const parsedIntentOp = parseCompactResponse(intentOp)
   return submitIntentInternal(
     config,
     sourceChain,
     targetChain,
-    parsedIntentOp,
+    intentOp,
     signature,
     false,
   )
@@ -445,7 +442,7 @@ async function submitIntentInternal(
   config: RhinestoneAccountConfig,
   sourceChain: Chain | undefined,
   targetChain: Chain,
-  intentOp: ParsedIntentOp,
+  intentOp: IntentOp,
   signature: Hex,
   deploy: boolean,
 ) {

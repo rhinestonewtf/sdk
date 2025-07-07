@@ -196,53 +196,7 @@ interface IntentResult {
   }
 }
 
-interface ParsedIntentOp {
-  sponsor: Address
-  nonce: bigint
-  expires: bigint
-  elements: {
-    arbiter: Address
-    chainId: bigint
-    idsAndAmounts: [[bigint, bigint]]
-    beforeFill: boolean
-    smartAccountStatus: unknown
-    mandate: {
-      recipient: Address
-      tokenOut: [[bigint, bigint]]
-      destinationChainId: bigint
-      fillDeadline: string
-      destinationOps: {
-        to: Address
-        value: bigint
-        data: Hex
-      }[]
-      preClaimOps: []
-      qualifier: {
-        settlementSystem: SettlementSystem
-        encodedVal: Hex
-      }
-    }
-  }[]
-  serverSignature: string
-  signedMetadata: {
-    quotes: unknown
-    tokenPrices: Record<string, number>
-    opGasParams: Record<
-      string,
-      {
-        l1BaseFee: string
-        l1BlobBaseFee: string
-        baseFeeScalar: string
-        blobFeeScalar: string
-      }
-    > & {
-      estimatedCalldataSize: number
-    }
-    gasPrices: Record<string, string>
-  }
-}
-
-type SignedIntentOp = ParsedIntentOp & {
+type SignedIntentOp = IntentOp & {
   originSignatures: Hex[]
   destinationSignature: Hex
 }
@@ -297,7 +251,7 @@ export type {
   IntentCost,
   IntentRoute,
   IntentOp,
-  ParsedIntentOp,
+  // ParsedIntentOp,
   SignedIntentOp,
   IntentOpStatus,
   UserOpStatus,

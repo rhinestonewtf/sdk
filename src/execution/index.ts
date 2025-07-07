@@ -17,7 +17,6 @@ import {
   INTENT_STATUS_PRECONFIRMED,
 } from '../orchestrator'
 import { getChainById } from '../orchestrator/registry'
-import { parseCompactResponse } from '../orchestrator/utils'
 import type {
   Call,
   RhinestoneAccountConfig,
@@ -202,12 +201,11 @@ async function sendTransactionAsIntent(
     intentHash,
     signers,
   )
-  const parsedIntentOp = parseCompactResponse(intentRoute.intentOp)
   return await submitIntentInternal(
     config,
     sourceChain,
     targetChain,
-    parsedIntentOp,
+    intentRoute.intentOp,
     signature,
     true,
   )

@@ -8,7 +8,7 @@ import {
   zeroAddress,
 } from 'viem'
 
-import type { IntentOp, ParsedIntentOp, SettlementSystem } from './types'
+import type { IntentOp, SettlementSystem } from './types'
 
 function getClaimProofer(settlementSystem: SettlementSystem): Address {
   switch (settlementSystem) {
@@ -139,42 +139,4 @@ function convertBigIntFields(obj: any): any {
   return obj
 }
 
-function parseCompactResponse(response: IntentOp): ParsedIntentOp {
-  return {
-    sponsor: response.sponsor as Address,
-    nonce: BigInt(response.nonce),
-    expires: BigInt(response.expires),
-    elements: response.elements.map((element: any) => {
-      return {
-        arbiter: element.arbiter as Address,
-        chainId: BigInt(element.chainId),
-        idsAndAmounts: element.idsAndAmounts.map((idsAndAmount: any) => {
-          return [BigInt(idsAndAmount[0]), BigInt(idsAndAmount[1])]
-        }),
-        beforeFill: element.beforeFill,
-        smartAccountStatus: element.smartAccountStatus,
-        mandate: {
-          recipient: element.mandate.recipient as Address,
-          tokenOut: element.mandate.tokenOut.map((tokenOut: any) => {
-            return [BigInt(tokenOut[0]), BigInt(tokenOut[1])]
-          }),
-          destinationChainId: BigInt(element.mandate.destinationChainId),
-          fillDeadline: element.mandate.fillDeadline,
-          destinationOps: element.mandate.destinationOps.map((exec: any) => {
-            return {
-              to: exec.to as Address,
-              value: BigInt(exec.value),
-              data: exec.data as Hex,
-            }
-          }),
-          preClaimOps: [],
-          qualifier: element.mandate.qualifier,
-        },
-      }
-    }),
-    serverSignature: response.serverSignature,
-    signedMetadata: response.signedMetadata,
-  }
-}
-
-export { getIntentOpHash, convertBigIntFields, parseCompactResponse }
+export { getIntentOpHash, convertBigIntFields }
