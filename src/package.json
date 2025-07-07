@@ -19,16 +19,6 @@
       "types": "./dist/src/index.d.ts",
       "import": "./dist/src/index.js",
       "require": "./dist/src/index.js"
-    },
-    "./orchestrator": {
-      "types": "./dist/src/orchestrator/index.d.ts",
-      "import": "./dist/src/orchestrator/index.js",
-      "require": "./dist/src/orchestrator/index.js"
-    },
-    "./dist/src/orchestrator": {
-      "types": "./dist/src/orchestrator/index.d.ts",
-      "require": "./dist/src/orchestrator/index.js",
-      "import": "./dist/src/orchestrator/index.js"
     }
   },
   "files": [
