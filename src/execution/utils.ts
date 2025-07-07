@@ -31,13 +31,13 @@ import {
   getWebAuthnValidator,
 } from '../modules/validators/core'
 import {
+  getIntentOpHash,
   getOrchestrator,
   IntentInput,
   IntentOp,
   IntentRoute,
   ParsedIntentOp,
   SupportedChain,
-  toSignatureHash,
 } from '../orchestrator'
 import {
   DEV_ORCHESTRATOR_URL,
@@ -302,7 +302,7 @@ async function prepareTransactionAsIntent(
     config.rhinestoneApiKey,
   )
   const intentRoute = await orchestrator.getIntentRoute(metaIntent)
-  const intentHash = toSignatureHash(intentRoute.intentOp)
+  const intentHash = getIntentOpHash(intentRoute.intentOp)
 
   return {
     type: 'intent',

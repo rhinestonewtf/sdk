@@ -52,7 +52,7 @@ import {
   INTENT_STATUS_PRECONFIRMED,
   INTENT_STATUS_UNKNOWN,
 } from './types'
-import { toSignatureHash } from './utils'
+import { getIntentOpHash } from './utils'
 
 function getOrchestrator(
   apiKey: string,
@@ -99,7 +99,7 @@ export {
   UnsupportedChainIdError,
   UnsupportedTokenError,
   getOrchestrator,
-  toSignatureHash,
+  getIntentOpHash,
   getWethAddress,
   getTokenBalanceSlot,
   getTokenRootBalanceSlot,

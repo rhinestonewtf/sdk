@@ -19,7 +19,7 @@ function getClaimProofer(settlementSystem: SettlementSystem): Address {
   }
 }
 
-function toSignatureHash(intentOp: IntentOp) {
+function getIntentOpHash(intentOp: IntentOp) {
   const notarizedChainElement = intentOp.elements[0]
   const settlementSystem =
     notarizedChainElement.mandate.qualifier.settlementSystem
@@ -177,4 +177,4 @@ function parseCompactResponse(response: IntentOp): ParsedIntentOp {
   }
 }
 
-export { toSignatureHash, convertBigIntFields, parseCompactResponse }
+export { getIntentOpHash, convertBigIntFields, parseCompactResponse }
