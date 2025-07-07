@@ -25,6 +25,7 @@ import type {
   TokenRequest,
   Transaction,
 } from '../types'
+import { getDepositEtherCall } from './compact'
 import {
   ExecutionError,
   IntentFailedError,
@@ -283,11 +284,38 @@ async function getPortfolio(
   return orchestrator.getPortfolio(address)
 }
 
+async function depositEther(
+  config: RhinestoneAccountConfig,
+  chain: Chain,
+  value: bigint,
+) {
+  const address = getAddress(config)
+  const owners = config.owners
+  return await sendTransactionAsUserOp(
+    config,
+    chain,
+    chain,
+    [getDepositEtherCall(address, value)],
+    owners.type === 'ecdsa'
+      ? {
+          type: 'owner',
+          kind: 'ecdsa',
+          accounts: owners.accounts,
+        }
+      : {
+          type: 'owner',
+          kind: 'passkey',
+          account: owners.account,
+        },
+  )
+}
+
 export {
   sendTransaction,
   waitForExecution,
   getMaxSpendableAmount,
   getPortfolio,
+  depositEther,
   // Errors
   isExecutionError,
   IntentFailedError,

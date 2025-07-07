@@ -17,6 +17,7 @@ import {
   getAddress,
   getGuardianSmartAccount,
   getPackedSignature,
+  getSmartAccount,
   getSmartSessionSmartAccount,
 } from '../accounts'
 import { getBundlerClient } from '../accounts/utils'
@@ -477,6 +478,12 @@ async function getValidatorAccount(
 ) {
   if (!signers) {
     return undefined
+  }
+
+  // Owners
+  const withOwner = signers.type === 'owner' ? signers : null
+  if (withOwner) {
+    return getSmartAccount(config, publicClient, chain)
   }
 
   const withSession = signers.type === 'session' ? signers : null

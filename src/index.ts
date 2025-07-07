@@ -28,6 +28,7 @@ import {
 } from './actions'
 import type { TransactionResult } from './execution'
 import {
+  depositEther as depositEtherInternal,
   ExecutionError,
   getMaxSpendableAmount as getMaxSpendableAmountInternal,
   getPortfolio as getPortfolioInternal,
@@ -128,6 +129,7 @@ interface RhinestoneAccount {
     threshold: number
   } | null>
   getValidators: (chain: Chain) => Promise<Address[]>
+  depositEther: (chain: Chain, value: bigint) => Promise<TransactionResult>
 }
 
 /**
@@ -233,6 +235,10 @@ async function createRhinestoneAccount(
     return getValidatorsInternal(accountType, account, chain)
   }
 
+  async function depositEther(chain: Chain, value: bigint) {
+    return depositEtherInternal(config, chain, value)
+  }
+
   return {
     config,
     deploy,
@@ -248,6 +254,7 @@ async function createRhinestoneAccount(
     areAttestersTrusted,
     getOwners,
     getValidators,
+    depositEther,
   }
 }
 
