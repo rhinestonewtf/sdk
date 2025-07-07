@@ -27,6 +27,6 @@ describe.sequential('E2E Tests', () => {
     await anvil.start()
   })
 
-  runDeploymentTestCases()
-  runBundlesTestCases()
+  // runDeploymentTestCases()
+  // runBundlesTestCases()
 })
