@@ -214,7 +214,6 @@ interface TokenConfig {
   symbol: string
   address: Address
   decimals: number
-  balanceSlot: (address: Address) => Hex
 }
 
 export type TokenPrices = {
