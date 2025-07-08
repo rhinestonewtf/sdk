@@ -209,7 +209,7 @@ function getTransactionParams(transaction: Transaction) {
 
   // Across requires passing some value to repay the solvers
   const tokenRequests =
-    initialTokenRequests.length === 0
+    !initialTokenRequests || initialTokenRequests.length === 0
       ? [
           {
             address: zeroAddress,

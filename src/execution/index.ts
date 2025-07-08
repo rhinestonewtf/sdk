@@ -89,7 +89,7 @@ async function sendTransactionInternal(
   targetChain: Chain,
   callInputs: CallInput[],
   gasLimit: bigint | undefined,
-  initialTokenRequests: TokenRequest[],
+  initialTokenRequests?: TokenRequest[],
   signers?: SignerSet,
 ) {
   if (sourceChain) {
@@ -102,7 +102,7 @@ async function sendTransactionInternal(
 
   // Across requires passing some value to repay the solvers
   const tokenRequests =
-    initialTokenRequests.length === 0
+    !initialTokenRequests || initialTokenRequests.length === 0
       ? [
           {
             address: zeroAddress,
