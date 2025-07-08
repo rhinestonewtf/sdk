@@ -124,19 +124,22 @@ interface RhinestoneAccountConfig {
   paymaster?: PaymasterConfig
 }
 
-interface Call {
-  to: Address
+type TokenSymbol = 'ETH' | 'WETH' | 'USDC' | 'USDT'
+
+interface CallInput {
+  to: Address | TokenSymbol
   data?: Hex
   value?: bigint
 }
 
-/**
- * @deprecated Use the `Call` type instead.
- */
-type Execution = Call
+interface Call {
+  to: Address
+  data: Hex
+  value: bigint
+}
 
 interface TokenRequest {
-  address: Address
+  address: Address | TokenSymbol
   amount: bigint
 }
 
@@ -166,7 +169,7 @@ interface GuardiansSignerSet {
 type SignerSet = OwnerSignerSet | SessionSignerSet | GuardiansSignerSet
 
 interface BaseTransaction {
-  calls: Call[]
+  calls: CallInput[]
   tokenRequests: TokenRequest[]
   gasLimit?: bigint
   signers?: SignerSet
@@ -190,8 +193,9 @@ export type {
   BundlerConfig,
   PaymasterConfig,
   Transaction,
+  TokenSymbol,
+  CallInput,
   Call,
-  Execution,
   TokenRequest,
   OwnerSet,
   OwnableValidatorConfig,

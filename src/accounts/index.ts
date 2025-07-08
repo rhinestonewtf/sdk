@@ -116,6 +116,7 @@ function getModuleInstallationCalls(
   const installData = getInstallData()
   return installData.map((data) => ({
     to: address,
+    value: 0n,
     data,
   }))
 }
@@ -151,7 +152,7 @@ function getModuleUninstallationCalls(
     functionName: 'uninstallModule',
     args: [module.type, module.address, module.deInitData],
   })
-  return [{ to: address, data }]
+  return [{ to: address, data, value: 0n }]
 }
 
 function getAddress(config: RhinestoneAccountConfig) {

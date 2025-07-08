@@ -48,6 +48,7 @@ function getDepositErc20Call(
 ): Call {
   return {
     to: COMPACT_ADDRESS,
+    value: 0n,
     data: encodeFunctionData({
       abi: [
         {
@@ -76,6 +77,7 @@ function getDepositErc20Call(
 function getApproveErc20Call(tokenAddress: Address, amount: bigint): Call {
   return {
     to: tokenAddress,
+    value: 0n,
     data: encodeFunctionData({
       abi: erc20Abi,
       functionName: 'approve',

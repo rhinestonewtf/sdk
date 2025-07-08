@@ -85,7 +85,6 @@ import {
 } from './orchestrator'
 import type {
   Call,
-  Execution,
   RhinestoneAccountConfig,
   Session,
   Transaction,
@@ -310,7 +309,6 @@ export type {
   RhinestoneAccount,
   Session,
   Call,
-  Execution,
   IntentData,
   PreparedTransactionData,
   SignedTransactionData,

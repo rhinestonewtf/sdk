@@ -1,4 +1,4 @@
-import { type Address, type Chain, zeroAddress } from 'viem'
+import { type Address, type Chain, isAddress, zeroAddress } from 'viem'
 import {
   arbitrum,
   arbitrumSepolia,
@@ -12,6 +12,7 @@ import {
   sepolia,
   zksync,
 } from 'viem/chains'
+import type { TokenSymbol } from '../types'
 import registryData from './registry.json'
 import type { TokenConfig } from './types'
 
@@ -83,7 +84,7 @@ function getTokenSymbol(tokenAddress: Address, chainId: number): string {
   return token.symbol
 }
 
-function getTokenAddress(tokenSymbol: string, chainId: number): Address {
+function getTokenAddress(tokenSymbol: TokenSymbol, chainId: number): Address {
   if (chainId === 137 && tokenSymbol === 'ETH') {
     throw new Error(`Chain ${chainId} does not allow for ETH to be used`)
   }
@@ -164,6 +165,16 @@ function getDefaultAccountAccessList(onTestnets?: boolean) {
   }
 }
 
+function resolveTokenAddress(
+  token: TokenSymbol | Address,
+  chainId: number,
+): Address {
+  if (isAddress(token)) {
+    return token
+  }
+  return getTokenAddress(token, chainId)
+}
+
 export {
   getTokenSymbol,
   getTokenAddress,
@@ -174,6 +185,7 @@ export {
   isTestnet,
   isTokenAddressSupported,
   getDefaultAccountAccessList,
+  resolveTokenAddress,
 }
 
 // Export types for external use

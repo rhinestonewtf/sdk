@@ -110,6 +110,7 @@ function disablePasskeys({
 function addOwner(owner: Address): Call {
   return {
     to: OWNABLE_VALIDATOR_ADDRESS,
+    value: 0n,
     data: encodeFunctionData({
       abi: [
         {
@@ -129,6 +130,7 @@ function addOwner(owner: Address): Call {
 function removeOwner(prevOwner: Address, ownerToRemove: Address): Call {
   return {
     to: OWNABLE_VALIDATOR_ADDRESS,
+    value: 0n,
     data: encodeFunctionData({
       abi: [
         {
@@ -151,6 +153,7 @@ function removeOwner(prevOwner: Address, ownerToRemove: Address): Call {
 function changeThreshold(newThreshold: number): Call {
   return {
     to: OWNABLE_VALIDATOR_ADDRESS,
+    value: 0n,
     data: encodeFunctionData({
       abi: [
         {
