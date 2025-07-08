@@ -1,5 +1,5 @@
 import {
-  Account,
+  type Account,
   type Address,
   bytesToHex,
   concat,

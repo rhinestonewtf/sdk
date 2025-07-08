@@ -13,7 +13,7 @@ import {
   zksync,
 } from 'viem/chains'
 import registryData from './registry.json'
-import { TokenConfig } from './types'
+import type { TokenConfig } from './types'
 
 interface TokenEntry {
   symbol: string

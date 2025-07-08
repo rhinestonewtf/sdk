@@ -1,4 +1,4 @@
-import { Address, keccak256 } from 'viem'
+import { type Address, keccak256 } from 'viem'
 import { describe, expect, test } from 'vitest'
 
 import {

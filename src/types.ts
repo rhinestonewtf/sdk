@@ -1,6 +1,6 @@
 import type { Account, Address, Chain, Hex } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
-import { EnableSessionData } from './modules/validators/smart-sessions'
+import type { EnableSessionData } from './modules/validators/smart-sessions'
 
 type AccountType = 'safe' | 'nexus' | 'kernel'
 

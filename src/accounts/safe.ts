@@ -21,7 +21,7 @@ import {
 } from 'viem/account-abstraction'
 
 import { getSetup as getModuleSetup } from '../modules'
-import { Module } from '../modules/common'
+import type { Module } from '../modules/common'
 import {
   encodeSmartSessionSignature,
   getMockSignature,
@@ -29,10 +29,10 @@ import {
   SMART_SESSION_MODE_ENABLE,
   SMART_SESSION_MODE_USE,
 } from '../modules/validators'
-import { EnableSessionData } from '../modules/validators/smart-sessions'
+import type { EnableSessionData } from '../modules/validators/smart-sessions'
 import type { OwnerSet, RhinestoneAccountConfig, Session } from '../types'
 import { Eip7702NotSupportedForAccountError } from './error'
-import { encode7579Calls, getAccountNonce, ValidatorConfig } from './utils'
+import { encode7579Calls, getAccountNonce, type ValidatorConfig } from './utils'
 
 const SAFE_7579_LAUNCHPAD_ADDRESS: Address =
   '0x7579011aB74c46090561ea277Ba79D510c6C00ff'

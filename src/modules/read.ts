@@ -1,5 +1,11 @@
-import { Address, Chain, createPublicClient, getAddress, http } from 'viem'
-import { AccountType } from '../types'
+import {
+  type Address,
+  type Chain,
+  createPublicClient,
+  getAddress,
+  http,
+} from 'viem'
+import type { AccountType } from '../types'
 import { RHINESTONE_MODULE_REGISTRY_ADDRESS } from './omni-account'
 import { getAttesters } from './registry'
 import { OWNABLE_VALIDATOR_ADDRESS } from './validators/core'

@@ -1,5 +1,5 @@
-import { Address, encodeFunctionData, erc20Abi, Hex } from 'viem'
-import { Call } from '../types'
+import { type Address, encodeFunctionData, erc20Abi, type Hex } from 'viem'
+import type { Call } from '../types'
 
 type ResetPeriod =
   | 0 // OneSecond
@@ -104,7 +104,7 @@ function toCompactFlag(allocator: Address): number {
 
 function usingAllocatorId(allocator: Address = ALLOCATOR_ADDRESS): bigint {
   const compactFlag = BigInt(toCompactFlag(allocator))
-  const last88Bits = BigInt('0x' + allocator.slice(-22)) // Extract last 88 bits (11 bytes * 2 hex chars per byte)
+  const last88Bits = BigInt(`0x${allocator.slice(-22)}`) // Extract last 88 bits (11 bytes * 2 hex chars per byte)
   return (compactFlag << 88n) | last88Bits
 }
 

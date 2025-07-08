@@ -1,13 +1,13 @@
 import {
-  Account,
+  type Account,
   createPublicClient,
   createWalletClient,
-  GetBalanceParameters,
-  GetCodeParameters,
-  GetStorageAtParameters,
-  ReadContractParameters,
-  SendTransactionParameters,
-  WaitForTransactionReceiptParameters,
+  type GetBalanceParameters,
+  type GetCodeParameters,
+  type GetStorageAtParameters,
+  type ReadContractParameters,
+  type SendTransactionParameters,
+  type WaitForTransactionReceiptParameters,
 } from 'viem'
 import { vi } from 'vitest'
 

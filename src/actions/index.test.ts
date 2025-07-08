@@ -1,4 +1,4 @@
-import { Address, Chain, createPublicClient } from 'viem'
+import { type Address, type Chain, createPublicClient } from 'viem'
 import { base } from 'viem/chains'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import {

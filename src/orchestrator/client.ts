@@ -22,7 +22,6 @@ import type {
   IntentRoute,
   Portfolio,
   PortfolioResponse,
-  PortfolioTokenResponse,
   SignedIntentOp,
 } from './types'
 import { convertBigIntFields } from './utils'

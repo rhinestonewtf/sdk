@@ -1,5 +1,5 @@
 import type { Address, Hex } from 'viem'
-import { UserOperationReceipt } from 'viem/account-abstraction'
+import type { UserOperationReceipt } from 'viem/account-abstraction'
 import type {
   arbitrum,
   arbitrumSepolia,

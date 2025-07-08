@@ -11,9 +11,8 @@ const anvil = getAnvil(sourceChain, getForkUrl(sourceChain))
 setupOrchestratorMock()
 setupViemMock(anvil, deployerAccount)
 
-import { Address, createPublicClient, http, zeroAddress } from 'viem'
-import { generatePrivateKey } from 'viem/accounts'
-import { privateKeyToAccount } from 'viem/accounts'
+import { type Address, createPublicClient, http, zeroAddress } from 'viem'
+import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import { base } from 'viem/chains'
 import { describe, expect, it } from 'vitest'
 
