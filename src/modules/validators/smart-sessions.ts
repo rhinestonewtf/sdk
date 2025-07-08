@@ -7,7 +7,6 @@ import {
   encodeFunctionData,
   encodePacked,
   type Hex,
-  http,
   isHex,
   keccak256,
   type PublicClient,
@@ -16,6 +15,7 @@ import {
   toHex,
   zeroHash,
 } from 'viem'
+import { createTransport } from '../../accounts/utils'
 import {
   getWethAddress,
   RHINESTONE_SPOKE_POOL_ADDRESS,
@@ -23,6 +23,7 @@ import {
 import type {
   AccountType,
   Policy,
+  ProviderConfig,
   RhinestoneAccountConfig,
   Session,
   UniversalActionPolicyParamCondition,
@@ -173,9 +174,13 @@ const ACTION_CONDITION_LESS_THAN_OR_EQUAL = 4
 const ACTION_CONDITION_NOT_EQUAL = 5
 const ACTION_CONDITION_IN_RANGE = 6
 
-async function getSessionData(chain: Chain, session: Session) {
+async function getSessionData(
+  chain: Chain,
+  session: Session,
+  provider?: ProviderConfig,
+) {
   const { appDomainSeparator, contentsType } =
-    await getSessionAllowedERC7739Content(chain)
+    await getSessionAllowedERC7739Content(chain, provider)
   const allowedERC7739Content = [
     {
       appDomainSeparator,
@@ -185,9 +190,13 @@ async function getSessionData(chain: Chain, session: Session) {
   return getSmartSessionData(chain, session, allowedERC7739Content)
 }
 
-async function getEnableSessionCall(chain: Chain, session: Session) {
+async function getEnableSessionCall(
+  chain: Chain,
+  session: Session,
+  provider?: ProviderConfig,
+) {
   const { appDomainSeparator, contentsType } =
-    await getSessionAllowedERC7739Content(chain)
+    await getSessionAllowedERC7739Content(chain, provider)
   const allowedERC7739Content = [
     {
       appDomainSeparator,
@@ -232,10 +241,13 @@ function getOmniAccountActions(chain: Chain): ActionData[] {
   return omniActions
 }
 
-async function getSessionAllowedERC7739Content(chain: Chain) {
+async function getSessionAllowedERC7739Content(
+  chain: Chain,
+  provider?: ProviderConfig,
+) {
   const publicClient = createPublicClient({
     chain,
-    transport: http(),
+    transport: createTransport(chain, provider),
   })
   const appDomainSeparator = await publicClient.readContract({
     address: HOOK_ADDRESS,

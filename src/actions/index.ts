@@ -3,7 +3,6 @@ import {
   type Chain,
   createPublicClient,
   encodeFunctionData,
-  http,
 } from 'viem'
 
 import type { RhinestoneAccount } from '..'
@@ -11,6 +10,7 @@ import {
   getModuleInstallationCalls,
   getModuleUninstallationCalls,
 } from '../accounts'
+import { createTransport } from '../accounts/utils'
 import {
   getOwnableValidator,
   getSocialRecoveryValidator,
@@ -18,7 +18,13 @@ import {
   OWNABLE_VALIDATOR_ADDRESS,
   type WebauthnCredential,
 } from '../modules/validators/core'
-import type { Call, OwnableValidatorConfig, OwnerSet, Recovery } from '../types'
+import type {
+  Call,
+  OwnableValidatorConfig,
+  OwnerSet,
+  ProviderConfig,
+  Recovery,
+} from '../types'
 
 import { trustAttester } from './registry'
 import { encodeSmartSessionSignature } from './smart-session'
@@ -39,10 +45,11 @@ async function recover(
   address: Address,
   newOwners: OwnerSet,
   chain: Chain,
+  provider?: ProviderConfig,
 ): Promise<Call[]> {
   switch (newOwners.type) {
     case 'ecdsa': {
-      return recoverEcdsaOwnership(address, newOwners, chain)
+      return recoverEcdsaOwnership(address, newOwners, chain, provider)
     }
     case 'passkey': {
       throw new Error('Passkey ownership recovery is not yet supported')
@@ -176,10 +183,11 @@ async function recoverEcdsaOwnership(
   address: Address,
   newOwners: OwnableValidatorConfig,
   chain: Chain,
+  provider?: ProviderConfig,
 ): Promise<Call[]> {
   const publicClient = createPublicClient({
     chain,
-    transport: http(),
+    transport: createTransport(chain, provider),
   })
 
   // Read the existing config

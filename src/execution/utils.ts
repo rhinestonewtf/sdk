@@ -3,7 +3,6 @@ import {
   type Chain,
   createPublicClient,
   type Hex,
-  http,
   type PublicClient,
   toHex,
   zeroAddress,
@@ -21,7 +20,7 @@ import {
   getSmartAccount,
   getSmartSessionSmartAccount,
 } from '../accounts'
-import { getBundlerClient } from '../accounts/utils'
+import { createTransport, getBundlerClient } from '../accounts/utils'
 import {
   getOwnerValidator,
   getSmartSessionValidator,
@@ -235,7 +234,7 @@ async function prepareTransactionAsUserOp(
 ) {
   const publicClient = createPublicClient({
     chain,
-    transport: http(),
+    transport: createTransport(chain, config.provider),
   })
   const validatorAccount = await getValidatorAccount(
     config,
@@ -353,7 +352,7 @@ async function signUserOp(
 
   const publicClient = createPublicClient({
     chain,
-    transport: http(),
+    transport: createTransport(chain, config.provider),
   })
   const account = await getValidatorAccount(
     config,
@@ -376,7 +375,7 @@ async function submitUserOp(
 ) {
   const publicClient = createPublicClient({
     chain,
-    transport: http(),
+    transport: createTransport(chain, config.provider),
   })
   const bundlerClient = getBundlerClient(config, publicClient)
   const hash = await bundlerClient.request({

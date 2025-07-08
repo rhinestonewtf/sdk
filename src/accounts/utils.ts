@@ -1,4 +1,4 @@
-import type { Address, Client, Hex } from 'viem'
+import type { Address, Chain, Client, Hex, Transport } from 'viem'
 import {
   concatHex,
   encodeAbiParameters,
@@ -13,11 +13,25 @@ import {
   createPaymasterClient,
 } from 'viem/account-abstraction'
 import { readContract } from 'viem/actions'
+import {
+  arbitrum,
+  arbitrumSepolia,
+  base,
+  baseSepolia,
+  mainnet,
+  optimism,
+  optimismSepolia,
+  polygon,
+  polygonAmoy,
+  sepolia,
+  zksync,
+} from 'viem/chains'
 import { getAction } from 'viem/utils'
-
+import type { SupportedChain } from '../orchestrator'
 import type {
   BundlerConfig,
   PaymasterConfig,
+  ProviderConfig,
   RhinestoneAccountConfig,
 } from '../types'
 
@@ -294,5 +308,46 @@ async function getGasPriceEstimate(bundlerUrl: string) {
   }
 }
 
-export { encode7579Calls, getAccountNonce, getBundlerClient }
+function createTransport(chain: Chain, provider?: ProviderConfig): Transport {
+  if (!provider) {
+    return http()
+  }
+
+  switch (provider.type) {
+    case 'alchemy': {
+      const alchemyNetwork = getAlchemyNetworkName(chain.id as SupportedChain)
+      const jsonRpcEndpoint = `https://${alchemyNetwork}.g.alchemy.com/v2/${provider.apiKey}`
+      return http(jsonRpcEndpoint)
+    }
+  }
+}
+
+function getAlchemyNetworkName(chainId: SupportedChain): string {
+  switch (chainId) {
+    case mainnet.id:
+      return 'eth-mainnet'
+    case sepolia.id:
+      return 'eth-sepolia'
+    case polygon.id:
+      return 'polygon-mainnet'
+    case polygonAmoy.id:
+      return 'polygon-amoy'
+    case optimism.id:
+      return 'opt-mainnet'
+    case optimismSepolia.id:
+      return 'opt-sepolia'
+    case arbitrum.id:
+      return 'arb-mainnet'
+    case arbitrumSepolia.id:
+      return 'arb-sepolia'
+    case base.id:
+      return 'base-mainnet'
+    case baseSepolia.id:
+      return 'base-sepolia'
+    case zksync.id:
+      return 'zksync-mainnet'
+  }
+}
+
+export { encode7579Calls, getAccountNonce, getBundlerClient, createTransport }
 export type { ValidatorConfig }

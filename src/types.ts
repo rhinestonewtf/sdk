@@ -19,6 +19,11 @@ interface WebauthnValidatorConfig {
   account: WebAuthnAccount
 }
 
+interface ProviderConfig {
+  type: 'alchemy'
+  apiKey: string
+}
+
 interface BundlerConfig {
   type: 'pimlico'
   apiKey: string
@@ -116,10 +121,7 @@ interface RhinestoneAccountConfig {
   sessions?: Session[]
   recovery?: Recovery
   eoa?: Account
-  provider?: {
-    type: 'alchemy'
-    apiKey: string
-  }
+  provider?: ProviderConfig
   bundler?: BundlerConfig
   paymaster?: PaymasterConfig
 }
@@ -190,6 +192,7 @@ export type {
   AccountType,
   RhinestoneAccountConfig,
   AccountProviderConfig,
+  ProviderConfig,
   BundlerConfig,
   PaymasterConfig,
   Transaction,

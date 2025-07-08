@@ -1,11 +1,6 @@
-import {
-  type Address,
-  type Chain,
-  createPublicClient,
-  getAddress,
-  http,
-} from 'viem'
-import type { AccountType } from '../types'
+import { type Address, type Chain, createPublicClient, getAddress } from 'viem'
+import { createTransport } from '../accounts/utils'
+import type { AccountType, ProviderConfig } from '../types'
 import { RHINESTONE_MODULE_REGISTRY_ADDRESS } from './omni-account'
 import { getAttesters } from './registry'
 import { OWNABLE_VALIDATOR_ADDRESS } from './validators/core'
@@ -14,10 +9,11 @@ async function getValidators(
   accountType: AccountType,
   account: Address,
   chain: Chain,
+  provider?: ProviderConfig,
 ): Promise<Address[]> {
   const publicClient = createPublicClient({
     chain,
-    transport: http(),
+    transport: createTransport(chain, provider),
   })
   switch (accountType) {
     case 'safe':
@@ -64,13 +60,14 @@ async function getValidators(
 async function getOwners(
   account: Address,
   chain: Chain,
+  provider?: ProviderConfig,
 ): Promise<{
   accounts: Address[]
   threshold: number
 } | null> {
   const publicClient = createPublicClient({
     chain,
-    transport: http(),
+    transport: createTransport(chain, provider),
   })
   const moduleAddress = OWNABLE_VALIDATOR_ADDRESS
   const [ownerResult, thresholdResult] = await publicClient.multicall({
@@ -138,11 +135,12 @@ async function getOwners(
 async function areAttestersTrusted(
   account: Address,
   chain: Chain,
+  provider?: ProviderConfig,
 ): Promise<boolean> {
   const { list: requiredAttesters } = getAttesters()
   const publicClient = createPublicClient({
     chain,
-    transport: http(),
+    transport: createTransport(chain, provider),
   })
   const trustedAttesters = await publicClient.readContract({
     abi: [
