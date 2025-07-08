@@ -1,12 +1,12 @@
 import {
-  Address,
-  Chain,
+  type Address,
+  type Chain,
   createPublicClient,
   encodeFunctionData,
   http,
 } from 'viem'
 
-import { RhinestoneAccount } from '..'
+import type { RhinestoneAccount } from '..'
 import {
   getModuleInstallationCalls,
   getModuleUninstallationCalls,
@@ -16,9 +16,9 @@ import {
   getSocialRecoveryValidator,
   getWebAuthnValidator,
   OWNABLE_VALIDATOR_ADDRESS,
-  WebauthnCredential,
+  type WebauthnCredential,
 } from '../modules/validators/core'
-import { Call, OwnableValidatorConfig, OwnerSet, Recovery } from '../types'
+import type { Call, OwnableValidatorConfig, OwnerSet, Recovery } from '../types'
 
 import { trustAttester } from './registry'
 import { encodeSmartSessionSignature } from './smart-session'
@@ -110,6 +110,7 @@ function disablePasskeys({
 function addOwner(owner: Address): Call {
   return {
     to: OWNABLE_VALIDATOR_ADDRESS,
+    value: 0n,
     data: encodeFunctionData({
       abi: [
         {
@@ -129,6 +130,7 @@ function addOwner(owner: Address): Call {
 function removeOwner(prevOwner: Address, ownerToRemove: Address): Call {
   return {
     to: OWNABLE_VALIDATOR_ADDRESS,
+    value: 0n,
     data: encodeFunctionData({
       abi: [
         {
@@ -151,6 +153,7 @@ function removeOwner(prevOwner: Address, ownerToRemove: Address): Call {
 function changeThreshold(newThreshold: number): Call {
   return {
     to: OWNABLE_VALIDATOR_ADDRESS,
+    value: 0n,
     data: encodeFunctionData({
       abi: [
         {

@@ -3,7 +3,7 @@ import {
   decodeFunctionData,
   isAddress,
   isHex,
-  ReadContractParameters,
+  type ReadContractParameters,
 } from 'viem'
 import { mainnet } from 'viem/chains'
 import { describe, expect, test, vi } from 'vitest'
@@ -15,7 +15,7 @@ import {
   getEnableSessionCall,
   getPermissionId,
   getSmartSessionValidator,
-  SessionData,
+  type SessionData,
   SMART_SESSION_MODE_USE,
 } from './smart-sessions'
 

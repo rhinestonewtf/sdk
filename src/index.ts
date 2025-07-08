@@ -1,5 +1,5 @@
 import type { Address, Chain, Hex } from 'viem'
-import { UserOperationReceipt } from 'viem/account-abstraction'
+import type { UserOperationReceipt } from 'viem/account-abstraction'
 import {
   AccountError,
   deploy as deployInternal,
@@ -44,13 +44,13 @@ import {
 } from './execution'
 import {
   getSessionDetails as getSessionDetailsInternal,
-  SessionDetails,
+  type SessionDetails,
 } from './execution/smart-session'
 import {
-  IntentData,
-  PreparedTransactionData,
+  type IntentData,
+  type PreparedTransactionData,
   prepareTransaction as prepareTransactionInternal,
-  SignedTransactionData,
+  type SignedTransactionData,
   signTransaction as signTransactionInternal,
   submitTransaction as submitTransactionInternal,
 } from './execution/utils'
@@ -60,26 +60,24 @@ import {
   getValidators as getValidatorsInternal,
 } from './modules'
 import {
-  IntentCost,
-  IntentInput,
-  IntentOp,
-  IntentOpStatus,
-  IntentResult,
-  IntentRoute,
-  Portfolio,
-  SettlementSystem,
-  SignedIntentOp,
-} from './orchestrator'
-import {
   AuthenticationRequiredError,
   InsufficientBalanceError,
+  type IntentCost,
+  type IntentInput,
   IntentNotFoundError,
+  type IntentOp,
+  type IntentOpStatus,
+  type IntentResult,
+  type IntentRoute,
   InvalidApiKeyError,
   InvalidIntentSignatureError,
   isOrchestratorError,
   NoPathFoundError,
   OnlyOneTargetTokenAmountCanBeUnsetError,
   OrchestratorError,
+  type Portfolio,
+  type SettlementSystem,
+  type SignedIntentOp,
   TokenNotSupportedError,
   UnsupportedChainError,
   UnsupportedChainIdError,
@@ -87,7 +85,6 @@ import {
 } from './orchestrator'
 import type {
   Call,
-  Execution,
   RhinestoneAccountConfig,
   Session,
   Transaction,
@@ -312,7 +309,6 @@ export type {
   RhinestoneAccount,
   Session,
   Call,
-  Execution,
   IntentData,
   PreparedTransactionData,
   SignedTransactionData,

@@ -38,12 +38,16 @@ jobs:
   integration-tests:
     name: Integration Tests
     needs: [build-and-test]
+    # Only run integration tests when a release PR (created by changesets) is merged to main
+    if: |
+      github.event.head_commit.author.name == 'github-actions[bot]' && 
+       contains(github.event.head_commit.message, 'chore: release')
     uses: ./.github/workflows/integration-reusable.yaml
 
   release:
     name: Release
     runs-on: ubuntu-latest
-    needs: [build-and-test, integration-tests]
+    needs: [build-and-test]
     steps:
       - name: Check out the repo
         uses: "actions/checkout@v4"

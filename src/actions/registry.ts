@@ -1,4 +1,4 @@
-import { RhinestoneAccount } from '..'
+import type { RhinestoneAccount } from '..'
 import { getTrustAttesterCall } from '../modules'
 
 function trustAttester(account: RhinestoneAccount) {

@@ -1,6 +1,5 @@
 import {
   type Address,
-  type Hex,
   hashTypedData,
   keccak256,
   slice,

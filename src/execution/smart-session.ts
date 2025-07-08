@@ -7,7 +7,7 @@ import {
   type Hex,
   http,
   keccak256,
-  PublicClient,
+  type PublicClient,
 } from 'viem'
 import {
   getAccountProvider,
@@ -15,7 +15,7 @@ import {
   getPackedSignature,
   getSmartAccount,
 } from '../accounts'
-import { getBundlerClient, ValidatorConfig } from '../accounts/utils'
+import { getBundlerClient, type ValidatorConfig } from '../accounts/utils'
 import { getTrustAttesterCall, getTrustedAttesters } from '../modules'
 import {
   getEnableSessionCall,
@@ -25,12 +25,12 @@ import {
   SMART_SESSIONS_VALIDATOR_ADDRESS,
 } from '../modules/validators'
 import {
-  ChainDigest,
-  ChainSession,
-  EnableSessionData,
+  type ChainDigest,
+  type ChainSession,
+  type EnableSessionData,
   getSessionData,
-  SessionData,
-  SmartSessionModeType,
+  type SessionData,
+  type SmartSessionModeType,
 } from '../modules/validators/smart-sessions'
 import type { AccountType, RhinestoneAccountConfig, Session } from '../types'
 import { SessionChainRequiredError } from './error'

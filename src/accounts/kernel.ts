@@ -1,6 +1,6 @@
 import {
-  Abi,
-  Address,
+  type Abi,
+  type Address,
   concat,
   concatHex,
   decodeAbiParameters,
@@ -8,9 +8,9 @@ import {
   encodeAbiParameters,
   encodeFunctionData,
   getContractAddress,
-  Hex,
+  type Hex,
   keccak256,
-  PublicClient,
+  type PublicClient,
   parseAbi,
   stringToHex,
   toHex,
@@ -21,8 +21,8 @@ import {
   entryPoint07Abi,
   entryPoint07Address,
   getUserOperationHash,
-  SmartAccount,
-  SmartAccountImplementation,
+  type SmartAccount,
+  type SmartAccountImplementation,
   toSmartAccount,
 } from 'viem/account-abstraction'
 
@@ -32,7 +32,7 @@ import {
   MODULE_TYPE_ID_FALLBACK,
   MODULE_TYPE_ID_HOOK,
   MODULE_TYPE_ID_VALIDATOR,
-  Module,
+  type Module,
 } from '../modules/common'
 import {
   encodeSmartSessionSignature,
@@ -41,10 +41,10 @@ import {
   SMART_SESSION_MODE_ENABLE,
   SMART_SESSION_MODE_USE,
 } from '../modules/validators'
-import { EnableSessionData } from '../modules/validators/smart-sessions'
-import { OwnerSet, RhinestoneAccountConfig, Session } from '../types'
+import type { EnableSessionData } from '../modules/validators/smart-sessions'
+import type { OwnerSet, RhinestoneAccountConfig, Session } from '../types'
 import { Eip7702NotSupportedForAccountError } from './error'
-import { encode7579Calls, getAccountNonce, ValidatorConfig } from './utils'
+import { encode7579Calls, getAccountNonce, type ValidatorConfig } from './utils'
 
 type ValidatorType = 'root' | 'validator'
 

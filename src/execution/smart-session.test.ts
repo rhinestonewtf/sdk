@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from 'vitest'
+import { describe, expect, test } from 'vitest'
 import { getMultichainDigest } from './smart-session'
 
 describe('Smart Session', () => {
