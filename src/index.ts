@@ -13,6 +13,7 @@ import {
   SignMessageNotSupportedByAccountError,
   SmartSessionsNotEnabledError,
 } from './accounts'
+import { createTransport } from './accounts/utils'
 import {
   addOwner,
   changeThreshold,
@@ -221,18 +222,18 @@ async function createRhinestoneAccount(
 
   function areAttestersTrusted(chain: Chain) {
     const account = getAddress()
-    return areAttestersTrustedInternal(account, chain)
+    return areAttestersTrustedInternal(account, chain, config.provider)
   }
 
   function getOwners(chain: Chain) {
     const account = getAddress()
-    return getOwnersInternal(account, chain)
+    return getOwnersInternal(account, chain, config.provider)
   }
 
   function getValidators(chain: Chain) {
     const accountType = config.account?.type || 'nexus'
     const account = getAddress()
-    return getValidatorsInternal(accountType, account, chain)
+    return getValidatorsInternal(accountType, account, chain, config.provider)
   }
 
   async function deposit(chain: Chain, amount: bigint, tokenAddress?: Address) {
@@ -260,6 +261,7 @@ async function createRhinestoneAccount(
 
 export {
   createRhinestoneAccount,
+  createTransport,
   addOwner,
   changeThreshold,
   disableEcdsa,

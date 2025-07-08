@@ -6,7 +6,6 @@ import {
   createWalletClient,
   encodeFunctionData,
   type Hex,
-  http,
   type PublicClient,
   size,
   zeroHash,
@@ -75,7 +74,11 @@ import {
   getSessionSmartAccount as getSafeSessionSmartAccount,
   getSmartAccount as getSafeSmartAccount,
 } from './safe'
-import { getBundlerClient, type ValidatorConfig } from './utils'
+import {
+  createTransport,
+  getBundlerClient,
+  type ValidatorConfig,
+} from './utils'
 
 function getDeployArgs(config: RhinestoneAccountConfig) {
   const account = getAccountProvider(config)
@@ -215,7 +218,7 @@ async function getPackedSignature(
 async function isDeployed(chain: Chain, config: RhinestoneAccountConfig) {
   const publicClient = createPublicClient({
     chain: chain,
-    transport: http(),
+    transport: createTransport(chain, config.provider),
   })
   const address = getAddress(config)
   const code = await publicClient.getCode({
@@ -287,12 +290,12 @@ async function deploy7702Self(chain: Chain, config: RhinestoneAccountConfig) {
 
   const publicClient = createPublicClient({
     chain,
-    transport: http(),
+    transport: createTransport(chain, config.provider),
   })
   const accountClient = createWalletClient({
     account: config.eoa,
     chain,
-    transport: http(),
+    transport: createTransport(chain, config.provider),
   })
 
   const authorization = await accountClient.signAuthorization({
@@ -317,12 +320,12 @@ async function deployStandaloneWithEoa(
   const { factory, factoryData } = getDeployArgs(config)
   const publicClient = createPublicClient({
     chain: chain,
-    transport: http(),
+    transport: createTransport(chain, config.provider),
   })
   const client = createWalletClient({
     account: deployer,
     chain: chain,
-    transport: http(),
+    transport: createTransport(chain, config.provider),
   })
   const tx = await client.sendTransaction({
     to: factory,
@@ -337,7 +340,7 @@ async function deployStandaloneWithBundler(
 ) {
   const publicClient = createPublicClient({
     chain,
-    transport: http(),
+    transport: createTransport(chain, config.provider),
   })
   const bundlerClient = getBundlerClient(config, publicClient)
   const smartAccount = await getSmartAccount(config, publicClient, chain)
@@ -371,12 +374,12 @@ async function deploy7702WithBundler(
 
   const publicClient = createPublicClient({
     chain,
-    transport: http(),
+    transport: createTransport(chain, config.provider),
   })
   const accountClient = createWalletClient({
     account: config.eoa,
     chain,
-    transport: http(),
+    transport: createTransport(chain, config.provider),
   })
   const bundlerClient = getBundlerClient(config, publicClient)
 

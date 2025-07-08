@@ -5,7 +5,6 @@ import {
   createPublicClient,
   encodePacked,
   type Hex,
-  http,
   keccak256,
   type PublicClient,
 } from 'viem'
@@ -15,7 +14,11 @@ import {
   getPackedSignature,
   getSmartAccount,
 } from '../accounts'
-import { getBundlerClient, type ValidatorConfig } from '../accounts/utils'
+import {
+  createTransport,
+  getBundlerClient,
+  type ValidatorConfig,
+} from '../accounts/utils'
 import { getTrustAttesterCall, getTrustedAttesters } from '../modules'
 import {
   getEnableSessionCall,
@@ -32,7 +35,12 @@ import {
   type SessionData,
   type SmartSessionModeType,
 } from '../modules/validators/smart-sessions'
-import type { AccountType, RhinestoneAccountConfig, Session } from '../types'
+import type {
+  AccountType,
+  ProviderConfig,
+  RhinestoneAccountConfig,
+  Session,
+} from '../types'
 import { SessionChainRequiredError } from './error'
 
 interface SessionDetails {
@@ -55,6 +63,7 @@ async function getSessionDetails(
     sessions,
     sessionIndex,
     accountAddress,
+    config.provider,
   )
   const chain = sessions[sessionIndex].chain
   if (!chain) {
@@ -81,21 +90,22 @@ async function getEnableSessionDetails(
   sessions: Session[],
   sessionIndex: number,
   accountAddress: Address,
+  provider?: ProviderConfig,
 ) {
   const chainDigests: ChainDigest[] = []
   const chainSessions: ChainSession[] = []
   for (const session of sessions) {
     const permissionId = getPermissionId(session)
 
-    const publicClient = createPublicClient({
-      chain: session.chain,
-      transport: http(),
-    })
-
     const sessionChain = session.chain
     if (!sessionChain) {
       throw new SessionChainRequiredError()
     }
+
+    const publicClient = createPublicClient({
+      chain: sessionChain,
+      transport: createTransport(sessionChain, provider),
+    })
 
     const sessionNonce = await getSessionNonce(
       publicClient,
@@ -103,7 +113,7 @@ async function getEnableSessionDetails(
       permissionId,
     )
 
-    const sessionData = await getSessionData(sessionChain, session)
+    const sessionData = await getSessionData(sessionChain, session, provider)
 
     const sessionDigest = await getSessionDigest(
       publicClient,
@@ -147,7 +157,11 @@ async function getEnableSessionDetails(
   if (!sessionChain) {
     throw new SessionChainRequiredError()
   }
-  const sessionData = await getSessionData(sessionChain, sessionToEnable)
+  const sessionData = await getSessionData(
+    sessionChain,
+    sessionToEnable,
+    provider,
+  )
 
   return {
     permissionEnableHash,
@@ -381,7 +395,7 @@ async function enableSmartSession(
 ) {
   const publicClient = createPublicClient({
     chain,
-    transport: http(),
+    transport: createTransport(chain, config.provider),
   })
   const address = getAddress(config)
 
@@ -393,7 +407,11 @@ async function enableSmartSession(
   if (isEnabled) {
     return
   }
-  const enableSessionCall = await getEnableSessionCall(chain, session)
+  const enableSessionCall = await getEnableSessionCall(
+    chain,
+    session,
+    config.provider,
+  )
 
   const trustedAttesters = await getTrustedAttesters(publicClient, address)
   const trustAttesterCall =
