@@ -25,12 +25,12 @@ interface ProviderConfig {
 }
 
 interface BundlerConfig {
-  type: 'pimlico'
+  type: 'pimlico' | 'biconomy'
   apiKey: string
 }
 
 interface PaymasterConfig {
-  type: 'pimlico'
+  type: 'pimlico' | 'biconomy'
   apiKey: string
 }
 

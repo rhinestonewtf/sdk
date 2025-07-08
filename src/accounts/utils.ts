@@ -249,6 +249,8 @@ function getBundlerClient(config: RhinestoneAccountConfig, client: Client) {
     switch (config.type) {
       case 'pimlico':
         return `https://api.pimlico.io/v2/${chainId}/rpc?apikey=${config.apiKey}`
+      case 'biconomy':
+        return `https://bundler.biconomy.io/api/v3/${chainId}/${config.apiKey}`
     }
   }
 
@@ -256,6 +258,8 @@ function getBundlerClient(config: RhinestoneAccountConfig, client: Client) {
     switch (config.type) {
       case 'pimlico':
         return `https://api.pimlico.io/v2/${chainId}/rpc?apikey=${config.apiKey}`
+      case 'biconomy':
+        return `https://paymaster.biconomy.io/api/v2/${chainId}/${config.apiKey}`
     }
   }
 
