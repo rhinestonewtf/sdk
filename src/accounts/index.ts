@@ -3,14 +3,14 @@ import {
   type Chain,
   concat,
   createPublicClient,
-  createWalletClient,
   encodeFunctionData,
   type Hex,
   type PublicClient,
   size,
-  zeroHash,
+  zeroAddress,
 } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
+import { sendTransaction } from '../execution'
 import { enableSmartSession } from '../execution/smart-session'
 import {
   getWebauthnValidatorSignature,
@@ -42,8 +42,6 @@ import {
   SmartSessionsNotEnabledError,
 } from './error'
 import {
-  get7702SmartAccount as get7702KernelAccount,
-  get7702InitCalls as get7702KernelInitCalls,
   getAddress as getKernelAddress,
   getDeployArgs as getKernelDeployArgs,
   getGuardianSmartAccount as getKernelGuardianSmartAccount,
@@ -53,8 +51,6 @@ import {
   getSmartAccount as getKernelSmartAccount,
 } from './kernel'
 import {
-  get7702SmartAccount as get7702NexusAccount,
-  get7702InitCalls as get7702NexusInitCalls,
   getAddress as getNexusAddress,
   getDeployArgs as getNexusDeployArgs,
   getGuardianSmartAccount as getNexusGuardianSmartAccount,
@@ -64,8 +60,6 @@ import {
   getSmartAccount as getNexusSmartAccount,
 } from './nexus'
 import {
-  get7702SmartAccount as get7702SafeAccount,
-  get7702InitCalls as get7702SafeInitCalls,
   getAddress as getSafeAddress,
   getDeployArgs as getSafeDeployArgs,
   getGuardianSmartAccount as getSafeGuardianSmartAccount,
@@ -74,11 +68,7 @@ import {
   getSessionSmartAccount as getSafeSessionSmartAccount,
   getSmartAccount as getSafeSmartAccount,
 } from './safe'
-import {
-  createTransport,
-  getBundlerClient,
-  type ValidatorConfig,
-} from './utils'
+import { createTransport, type ValidatorConfig } from './utils'
 
 function getDeployArgs(config: RhinestoneAccountConfig) {
   const account = getAccountProvider(config)
@@ -282,162 +272,6 @@ async function deployWithIntent(chain: Chain, config: RhinestoneAccountConfig) {
   })
 }
 
-async function deploySource(chain: Chain, config: RhinestoneAccountConfig) {
-  if (is7702(config)) {
-    return deploy7702Self(chain, config)
-  } else {
-    return deployStandalone(chain, config)
-  }
-}
-
-async function deployTarget(
-  chain: Chain,
-  config: RhinestoneAccountConfig,
-  asUserOp: boolean,
-) {
-  if (is7702(config)) {
-    return deploy7702WithBundler(chain, config)
-  }
-  if (asUserOp) {
-    return deployStandalone(chain, config)
-  }
-  // No need to deploy manually for the intent flow
-}
-
-async function deployStandalone(chain: Chain, config: RhinestoneAccountConfig) {
-  const deployer = config.deployerAccount
-  if (deployer) {
-    return deployStandaloneWithEoa(chain, config, deployer)
-  }
-  return deployStandaloneWithBundler(chain, config)
-}
-
-async function deploy7702Self(chain: Chain, config: RhinestoneAccountConfig) {
-  if (!config.eoa) {
-    throw new Eip7702AccountMustHaveEoaError()
-  }
-
-  const account = getAccountProvider(config)
-  const { implementation, initializationCallData } = getDeployArgs(config)
-  if (!initializationCallData) {
-    throw new Error(
-      `Initialization call data not available for ${account.type}`,
-    )
-  }
-
-  const publicClient = createPublicClient({
-    chain,
-    transport: createTransport(chain, config.provider),
-  })
-  const accountClient = createWalletClient({
-    account: config.eoa,
-    chain,
-    transport: createTransport(chain, config.provider),
-  })
-
-  const authorization = await accountClient.signAuthorization({
-    contractAddress: implementation,
-    executor: 'self',
-  })
-
-  const hash = await accountClient.sendTransaction({
-    chain,
-    authorizationList: [authorization],
-    to: config.eoa.address,
-    data: initializationCallData,
-  })
-  await publicClient.waitForTransactionReceipt({ hash })
-}
-
-async function deployStandaloneWithEoa(
-  chain: Chain,
-  config: RhinestoneAccountConfig,
-  deployer: Account,
-) {
-  const { factory, factoryData } = getDeployArgs(config)
-  const publicClient = createPublicClient({
-    chain: chain,
-    transport: createTransport(chain, config.provider),
-  })
-  const client = createWalletClient({
-    account: deployer,
-    chain: chain,
-    transport: createTransport(chain, config.provider),
-  })
-  const tx = await client.sendTransaction({
-    to: factory,
-    data: factoryData,
-  })
-  await publicClient.waitForTransactionReceipt({ hash: tx })
-}
-
-async function deployStandaloneWithBundler(
-  chain: Chain,
-  config: RhinestoneAccountConfig,
-) {
-  const publicClient = createPublicClient({
-    chain,
-    transport: createTransport(chain, config.provider),
-  })
-  const bundlerClient = getBundlerClient(config, publicClient)
-  const smartAccount = await getSmartAccount(config, publicClient, chain)
-  const { factory, factoryData } = getDeployArgs(config)
-  const opHash = await bundlerClient.sendUserOperation({
-    account: smartAccount,
-    factory,
-    factoryData,
-    calls: [
-      {
-        to: zeroHash,
-        value: 0n,
-        data: '0x',
-      },
-    ],
-  })
-  await bundlerClient.waitForUserOperationReceipt({
-    hash: opHash,
-  })
-}
-
-async function deploy7702WithBundler(
-  chain: Chain,
-  config: RhinestoneAccountConfig,
-) {
-  if (!config.eoa) {
-    throw new Eip7702AccountMustHaveEoaError()
-  }
-
-  const { implementation } = getDeployArgs(config)
-
-  const publicClient = createPublicClient({
-    chain,
-    transport: createTransport(chain, config.provider),
-  })
-  const accountClient = createWalletClient({
-    account: config.eoa,
-    chain,
-    transport: createTransport(chain, config.provider),
-  })
-  const bundlerClient = getBundlerClient(config, publicClient)
-
-  const authorization = await accountClient.signAuthorization({
-    contractAddress: implementation,
-  })
-
-  // Init the account
-  const smartAccount = await get7702SmartAccount(config, publicClient)
-  const initCalls = await get7702InitCalls(config)
-  const opHash = await bundlerClient.sendUserOperation({
-    account: smartAccount,
-    calls: initCalls,
-    authorization,
-  })
-
-  await bundlerClient.waitForUserOperationReceipt({
-    hash: opHash,
-  })
-}
-
 async function getSmartAccount(
   config: RhinestoneAccountConfig,
   client: PublicClient,
@@ -605,43 +439,6 @@ async function signPasskey(account: WebAuthnAccount, chain: Chain, hash: Hex) {
   return encodedSignature
 }
 
-async function get7702SmartAccount(
-  config: RhinestoneAccountConfig,
-  client: PublicClient,
-) {
-  if (!config.eoa) {
-    throw new Eip7702AccountMustHaveEoaError()
-  }
-
-  const account = getAccountProvider(config)
-  switch (account.type) {
-    case 'safe': {
-      return get7702SafeAccount()
-    }
-    case 'nexus': {
-      return get7702NexusAccount(config.eoa, client)
-    }
-    case 'kernel': {
-      return get7702KernelAccount()
-    }
-  }
-}
-
-async function get7702InitCalls(config: RhinestoneAccountConfig) {
-  const account = getAccountProvider(config)
-  switch (account.type) {
-    case 'safe': {
-      return get7702SafeInitCalls()
-    }
-    case 'nexus': {
-      return get7702NexusInitCalls(config)
-    }
-    case 'kernel': {
-      return get7702KernelInitCalls()
-    }
-  }
-}
-
 function is7702(config: RhinestoneAccountConfig): boolean {
   return config.eoa !== undefined
 }
@@ -665,8 +462,6 @@ export {
   getInitCode,
   isDeployed,
   deploy,
-  deploySource,
-  deployTarget,
   getSmartAccount,
   getSmartSessionSmartAccount,
   getGuardianSmartAccount,

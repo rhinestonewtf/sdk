@@ -13,7 +13,6 @@ import {
   type UserOperation,
 } from 'viem/account-abstraction'
 import {
-  deployTarget,
   getAddress,
   getGuardianSmartAccount,
   getInitCode,
@@ -441,7 +440,6 @@ async function submitIntent(
     targetChain,
     intentOp,
     signature,
-    false,
   )
 }
 
@@ -458,15 +456,11 @@ async function submitIntentInternal(
   targetChain: Chain,
   intentOp: IntentOp,
   signature: Hex,
-  deploy: boolean,
 ) {
   const signedIntentOp = {
     ...intentOp,
     originSignatures: Array(intentOp.elements.length).fill(signature),
     destinationSignature: signature,
-  }
-  if (deploy) {
-    await deployTarget(targetChain, config, false)
   }
   const orchestrator = getOrchestratorByChain(
     targetChain.id,
