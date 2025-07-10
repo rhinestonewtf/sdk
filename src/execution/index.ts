@@ -7,7 +7,7 @@ import {
 } from 'viem'
 import { mainnet, sepolia } from 'viem/chains'
 
-import { getAddress } from '../accounts'
+import { deploy, getAddress } from '../accounts'
 import { createTransport, getBundlerClient } from '../accounts/utils'
 import type { IntentOpStatus } from '../orchestrator'
 import {
@@ -92,12 +92,6 @@ async function sendTransactionInternal(
   initialTokenRequests?: TokenRequest[],
   signers?: SignerSet,
 ) {
-  // if (sourceChain) {
-  //   const isAccountDeployed = await isDeployed(sourceChain, config)
-  //   if (!isAccountDeployed) {
-  //     await deploySource(sourceChain, config)
-  //   }
-  // }
   const accountAddress = getAddress(config)
 
   // Across requires passing some value to repay the solvers
@@ -149,6 +143,8 @@ async function sendTransactionAsUserOp(
   callInputs: CallInput[],
   signers: SignerSet,
 ) {
+  // Make sure the account is deployed
+  await deploy(config, sourceChain)
   const withSession = signers?.type === 'session' ? signers.session : null
   const publicClient = createPublicClient({
     chain: sourceChain,
