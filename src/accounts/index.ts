@@ -254,10 +254,32 @@ async function deploy(
   chain: Chain,
   session?: Session,
 ) {
-  await deploySource(chain, config)
+  await deployWithIntent(chain, config)
   if (session) {
     await enableSmartSession(chain, config, session)
   }
+}
+
+async function deployWithIntent(chain: Chain, config: RhinestoneAccountConfig) {
+  const publicClient = createPublicClient({
+    chain,
+    transport: createTransport(chain, config.provider),
+  })
+  const address = getAddress(config)
+  const code = await publicClient.getCode({ address })
+  if (code) {
+    // Already deployed
+    return
+  }
+  await sendTransaction(config, {
+    targetChain: chain,
+    calls: [
+      {
+        to: zeroAddress,
+        data: '0x',
+      },
+    ],
+  })
 }
 
 async function deploySource(chain: Chain, config: RhinestoneAccountConfig) {
