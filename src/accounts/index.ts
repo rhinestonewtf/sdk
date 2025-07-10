@@ -95,6 +95,21 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
   }
 }
 
+function getInitCode(config: RhinestoneAccountConfig) {
+  if (is7702(config)) {
+    return undefined
+  } else {
+    const { factory, factoryData } = getDeployArgs(config)
+    if (!factory || !factoryData) {
+      throw new FactoryArgsNotAvailableError()
+    }
+    return {
+      factory,
+      factoryData,
+    }
+  }
+}
+
 function getModuleInstallationCalls(
   config: RhinestoneAccountConfig,
   module: Module,
@@ -625,6 +640,7 @@ export {
   getModuleUninstallationCalls,
   getAddress,
   getAccountProvider,
+  getInitCode,
   isDeployed,
   deploy,
   deploySource,

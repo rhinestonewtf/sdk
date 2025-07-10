@@ -16,6 +16,7 @@ import {
   deployTarget,
   getAddress,
   getGuardianSmartAccount,
+  getInitCode,
   getPackedSignature,
   getSmartAccount,
   getSmartSessionSmartAccount,
@@ -272,6 +273,7 @@ async function prepareTransactionAsIntent(
   tokenRequests: TokenRequest[],
   accountAddress: Address,
 ) {
+  const initCode = getInitCode(config)
   const calls = parseCalls(callInputs, targetChain.id)
   const accountAccessList = sourceChain
     ? {
@@ -285,13 +287,26 @@ async function prepareTransactionAsIntent(
       tokenAddress: resolveTokenAddress(tokenRequest.address, targetChain.id),
       amount: tokenRequest.amount,
     })),
-    account: accountAddress,
+    account: {
+      address: accountAddress,
+      accountType: 'ERC7579',
+      setupOps: initCode
+        ? [
+            {
+              to: initCode.factory,
+              data: initCode.factoryData,
+            },
+          ]
+        : [
+            {
+              to: zeroAddress,
+              data: '0x',
+            },
+          ],
+    },
     destinationExecutions: calls,
     destinationGasUnits: gasLimit,
     accountAccessList,
-    smartAccount: {
-      accountType: 'ERC7579',
-    },
   }
 
   const orchestrator = getOrchestratorByChain(

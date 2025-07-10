@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { type Address, concat } from 'viem'
+import { type Address, concat, zeroAddress } from 'viem'
 import {
   AuthenticationRequiredError,
   InsufficientBalanceError,
@@ -101,7 +101,16 @@ export class Orchestrator {
     destinationGasUnits: bigint,
   ): Promise<bigint> {
     const intentCost = await this.getIntentCost({
-      account: userAddress,
+      account: {
+        address: userAddress,
+        accountType: 'ERC7579',
+        setupOps: [
+          {
+            to: zeroAddress,
+            data: '0x',
+          },
+        ],
+      },
       destinationExecutions: [],
       destinationChainId,
       destinationGasUnits,
@@ -110,9 +119,6 @@ export class Orchestrator {
           tokenAddress: destinationTokenAddress,
         },
       ],
-      smartAccount: {
-        accountType: 'ERC7579',
-      },
     })
     if (!intentCost.hasFulfilledAll) {
       return 0n
@@ -135,69 +141,89 @@ export class Orchestrator {
   }
 
   async getIntentCost(input: IntentInput): Promise<IntentCost> {
-    const response = await axios.post(
-      `${this.serverUrl}/intents/cost`,
-      {
-        ...convertBigIntFields({
-          ...input,
-          tokenTransfers: input.tokenTransfers.map((transfer) => ({
-            tokenAddress: transfer.tokenAddress,
-          })),
-        }),
-      },
-      {
-        headers: {
-          'x-api-key': this.apiKey,
+    try {
+      const response = await axios.post(
+        `${this.serverUrl}/intents/cost`,
+        {
+          ...convertBigIntFields({
+            ...input,
+            tokenTransfers: input.tokenTransfers.map((transfer) => ({
+              tokenAddress: transfer.tokenAddress,
+            })),
+          }),
         },
-      },
-    )
+        {
+          headers: {
+            'x-api-key': this.apiKey,
+          },
+        },
+      )
 
-    return response.data
+      return response.data
+    } catch (error) {
+      this.parseError(error)
+      throw new Error('Failed to get intent cost')
+    }
   }
 
   async getIntentRoute(input: IntentInput): Promise<IntentRoute> {
-    const response = await axios.post(
-      `${this.serverUrl}/intents/route`,
-      {
-        ...convertBigIntFields(input),
-      },
-      {
-        headers: {
-          'x-api-key': this.apiKey,
+    try {
+      const response = await axios.post(
+        `${this.serverUrl}/intents/route`,
+        {
+          ...convertBigIntFields(input),
         },
-      },
-    )
+        {
+          headers: {
+            'x-api-key': this.apiKey,
+          },
+        },
+      )
 
-    return response.data
+      return response.data
+    } catch (error) {
+      this.parseError(error)
+      throw new Error('Failed to get intent route')
+    }
   }
 
   async submitIntent(signedIntentOp: SignedIntentOp): Promise<IntentResult> {
-    const response = await axios.post(
-      `${this.serverUrl}/intent-operations`,
-      {
-        signedIntentOp: convertBigIntFields(signedIntentOp),
-      },
-      {
-        headers: {
-          'x-api-key': this.apiKey,
+    try {
+      const response = await axios.post(
+        `${this.serverUrl}/intent-operations`,
+        {
+          signedIntentOp: convertBigIntFields(signedIntentOp),
         },
-      },
-    )
+        {
+          headers: {
+            'x-api-key': this.apiKey,
+          },
+        },
+      )
 
-    return response.data
+      return response.data
+    } catch (error) {
+      this.parseError(error)
+      throw new Error('Failed to submit intent')
+    }
   }
 
   async getIntentOpStatus(intentId: bigint): Promise<IntentOpStatus> {
-    const response = await axios.get(
-      `${this.serverUrl}/intent-operation/${intentId.toString()}/status`,
-      {
-        headers: {
-          'x-api-key': this.apiKey,
+    try {
+      const response = await axios.get(
+        `${this.serverUrl}/intent-operation/${intentId.toString()}/status`,
+        {
+          headers: {
+            'x-api-key': this.apiKey,
+          },
         },
-      },
-    )
+      )
 
-    return response.data
+      return response.data
+    } catch (error) {
+      this.parseError(error)
+      throw new Error('Failed to get intent op status')
+    }
   }
 
   private parseError(error: any) {
