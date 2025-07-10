@@ -2,4 +2,4 @@
 "@rhinestone/sdk": patch
 ---
 
-Account deployments on the destination chain
+Intent-based account deployments
