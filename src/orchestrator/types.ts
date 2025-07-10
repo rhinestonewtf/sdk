@@ -112,7 +112,14 @@ interface PortfolioToken {
 type Portfolio = PortfolioToken[]
 
 interface IntentInput {
-  account: Address
+  account: {
+    address: Address
+    accountType: DeployedAccountStatus
+    setupOps: {
+      to: Address
+      data: Hex
+    }[]
+  }
   destinationChainId: number
   destinationExecutions: Execution[]
   destinationGasUnits?: bigint
@@ -121,9 +128,6 @@ interface IntentInput {
     amount?: bigint
   }[]
   accountAccessList?: AccountAccessList
-  smartAccount: {
-    accountType: DeployedAccountStatus
-  }
 }
 
 type SettlementSystem = 'SAME_CHAIN' | 'ACROSS'
