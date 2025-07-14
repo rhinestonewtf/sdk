@@ -3,13 +3,12 @@ import {
   type Chain,
   createPublicClient,
   erc20Abi,
-  http,
   zeroAddress,
 } from 'viem'
 import { mainnet, sepolia } from 'viem/chains'
 
 import { deploySource, getAddress, isDeployed } from '../accounts'
-import { getBundlerClient } from '../accounts/utils'
+import { createTransport, getBundlerClient } from '../accounts/utils'
 import type { IntentOpStatus } from '../orchestrator'
 import {
   INTENT_STATUS_COMPLETED,
@@ -90,7 +89,7 @@ async function sendTransactionInternal(
   targetChain: Chain,
   callInputs: CallInput[],
   gasLimit: bigint | undefined,
-  initialTokenRequests: TokenRequest[],
+  initialTokenRequests?: TokenRequest[],
   signers?: SignerSet,
 ) {
   if (sourceChain) {
@@ -103,7 +102,7 @@ async function sendTransactionInternal(
 
   // Across requires passing some value to repay the solvers
   const tokenRequests =
-    initialTokenRequests.length === 0
+    !initialTokenRequests || initialTokenRequests.length === 0
       ? [
           {
             address: zeroAddress,
@@ -153,7 +152,7 @@ async function sendTransactionAsUserOp(
   const withSession = signers?.type === 'session' ? signers.session : null
   const publicClient = createPublicClient({
     chain: sourceChain,
-    transport: http(),
+    transport: createTransport(sourceChain, config.provider),
   })
   const validatorAccount = await getValidatorAccount(
     config,
@@ -252,9 +251,12 @@ async function waitForExecution(
     }
     case 'userop': {
       const targetChain = getChainById(result.targetChain)
+      if (!targetChain) {
+        throw new Error(`Unsupported chain ID: ${result.targetChain}`)
+      }
       const publicClient = createPublicClient({
         chain: targetChain,
-        transport: http(),
+        transport: createTransport(targetChain, config.provider),
       })
       const bundlerClient = getBundlerClient(config, publicClient)
       const receipt = await bundlerClient.waitForUserOperationReceipt({
@@ -305,7 +307,7 @@ async function deposit(
       // ERC20 deposit
       const publicClient = createPublicClient({
         chain,
-        transport: http(),
+        transport: createTransport(chain, config.provider),
       })
       const allowance = await publicClient.readContract({
         address: tokenAddress,

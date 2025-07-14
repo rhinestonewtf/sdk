@@ -19,13 +19,18 @@ interface WebauthnValidatorConfig {
   account: WebAuthnAccount
 }
 
+interface ProviderConfig {
+  type: 'alchemy'
+  apiKey: string
+}
+
 interface BundlerConfig {
-  type: 'pimlico'
+  type: 'pimlico' | 'biconomy'
   apiKey: string
 }
 
 interface PaymasterConfig {
-  type: 'pimlico'
+  type: 'pimlico' | 'biconomy'
   apiKey: string
 }
 
@@ -116,10 +121,7 @@ interface RhinestoneAccountConfig {
   sessions?: Session[]
   recovery?: Recovery
   eoa?: Account
-  provider?: {
-    type: 'alchemy'
-    apiKey: string
-  }
+  provider?: ProviderConfig
   bundler?: BundlerConfig
   paymaster?: PaymasterConfig
 }
@@ -170,7 +172,7 @@ type SignerSet = OwnerSignerSet | SessionSignerSet | GuardiansSignerSet
 
 interface BaseTransaction {
   calls: CallInput[]
-  tokenRequests: TokenRequest[]
+  tokenRequests?: TokenRequest[]
   gasLimit?: bigint
   signers?: SignerSet
 }
@@ -190,6 +192,7 @@ export type {
   AccountType,
   RhinestoneAccountConfig,
   AccountProviderConfig,
+  ProviderConfig,
   BundlerConfig,
   PaymasterConfig,
   Transaction,
