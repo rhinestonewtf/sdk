@@ -1,5 +1,5 @@
 import type { Address, Hex } from 'viem'
-import { UserOperationReceipt } from 'viem/account-abstraction'
+import type { UserOperationReceipt } from 'viem/account-abstraction'
 import type {
   arbitrum,
   arbitrumSepolia,
@@ -214,7 +214,6 @@ interface TokenConfig {
   symbol: string
   address: Address
   decimals: number
-  balanceSlot: (address: Address) => Hex
 }
 
 export type TokenPrices = {

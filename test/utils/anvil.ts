@@ -1,8 +1,8 @@
 import { createServer } from 'prool'
 import { anvil } from 'prool/instances'
 import {
-  Account,
-  Chain,
+  type Account,
+  type Chain,
   createClient,
   http,
   publicActions,

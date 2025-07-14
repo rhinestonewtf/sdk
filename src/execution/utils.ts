@@ -1,17 +1,17 @@
 import {
-  Address,
-  Chain,
+  type Address,
+  type Chain,
   createPublicClient,
-  Hex,
+  type Hex,
   http,
-  PublicClient,
+  type PublicClient,
   toHex,
   zeroAddress,
 } from 'viem'
 import {
   entryPoint07Address,
   getUserOperationHash,
-  UserOperation,
+  type UserOperation,
 } from 'viem/account-abstraction'
 import {
   deployTarget,
@@ -34,18 +34,19 @@ import {
 import {
   getIntentOpHash,
   getOrchestrator,
-  IntentInput,
-  IntentOp,
-  IntentRoute,
-  SupportedChain,
+  type IntentInput,
+  type IntentOp,
+  type IntentRoute,
+  type SupportedChain,
 } from '../orchestrator'
 import {
   DEV_ORCHESTRATOR_URL,
   PROD_ORCHESTRATOR_URL,
 } from '../orchestrator/consts'
-import { isTestnet } from '../orchestrator/registry'
-import {
+import { isTestnet, resolveTokenAddress } from '../orchestrator/registry'
+import type {
   Call,
+  CallInput,
   OwnerSet,
   RhinestoneAccountConfig,
   SignerSet,
@@ -229,7 +230,7 @@ function getTransactionParams(transaction: Transaction) {
 async function prepareTransactionAsUserOp(
   config: RhinestoneAccountConfig,
   chain: Chain,
-  calls: Call[],
+  callInputs: CallInput[],
   signers: SignerSet | undefined,
 ) {
   const publicClient = createPublicClient({
@@ -246,6 +247,7 @@ async function prepareTransactionAsUserOp(
     throw new Error('No validator account found')
   }
   const bundlerClient = getBundlerClient(config, publicClient)
+  const calls = parseCalls(callInputs, chain.id)
   const userOp = await bundlerClient.prepareUserOperation({
     account: validatorAccount,
     calls,
@@ -266,11 +268,12 @@ async function prepareTransactionAsIntent(
   config: RhinestoneAccountConfig,
   sourceChain: Chain | undefined,
   targetChain: Chain,
-  calls: Call[],
+  callInputs: CallInput[],
   gasLimit: bigint | undefined,
   tokenRequests: TokenRequest[],
   accountAddress: Address,
 ) {
+  const calls = parseCalls(callInputs, targetChain.id)
   const accountAccessList = sourceChain
     ? {
         chainIds: [sourceChain.id as SupportedChain],
@@ -280,15 +283,11 @@ async function prepareTransactionAsIntent(
   const metaIntent: IntentInput = {
     destinationChainId: targetChain.id,
     tokenTransfers: tokenRequests.map((tokenRequest) => ({
-      tokenAddress: tokenRequest.address,
+      tokenAddress: resolveTokenAddress(tokenRequest.address, targetChain.id),
       amount: tokenRequest.amount,
     })),
     account: accountAddress,
-    destinationExecutions: calls.map((call) => ({
-      value: call.value ?? 0n,
-      to: call.to,
-      data: call.data ?? '0x',
-    })),
+    destinationExecutions: calls,
     destinationGasUnits: gasLimit,
     accountAccessList,
     smartAccount: {
@@ -591,6 +590,14 @@ function getOwners(
   return undefined
 }
 
+function parseCalls(calls: CallInput[], chainId: number): Call[] {
+  return calls.map((call) => ({
+    data: call.data ?? '0x',
+    value: call.value ?? 0n,
+    to: resolveTokenAddress(call.to, chainId),
+  }))
+}
+
 export {
   prepareTransaction,
   signTransaction,
@@ -600,6 +607,7 @@ export {
   prepareTransactionAsIntent,
   submitIntentInternal,
   getValidatorAccount,
+  parseCalls,
 }
 export type {
   IntentData,

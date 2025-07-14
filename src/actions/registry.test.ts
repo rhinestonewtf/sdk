@@ -1,7 +1,5 @@
 import { describe, expect, test } from 'vitest'
-
-import { MOCK_API_KEY } from '../../test/consts'
-import { accountA } from '../../test/consts'
+import { accountA, MOCK_API_KEY } from '../../test/consts'
 import { createRhinestoneAccount } from '..'
 
 import { trustAttester } from './registry'

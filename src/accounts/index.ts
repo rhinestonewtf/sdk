@@ -17,13 +17,13 @@ import {
   getWebauthnValidatorSignature,
   isRip7212SupportedNetwork,
 } from '../modules'
-import { Module } from '../modules/common'
+import type { Module } from '../modules/common'
 import {
   getOwnerValidator,
   getSmartSessionValidator,
 } from '../modules/validators'
 import { getSocialRecoveryValidator } from '../modules/validators/core'
-import { EnableSessionData } from '../modules/validators/smart-sessions'
+import type { EnableSessionData } from '../modules/validators/smart-sessions'
 import type {
   AccountProviderConfig,
   Call,
@@ -75,7 +75,7 @@ import {
   getSessionSmartAccount as getSafeSessionSmartAccount,
   getSmartAccount as getSafeSmartAccount,
 } from './safe'
-import { getBundlerClient, ValidatorConfig } from './utils'
+import { getBundlerClient, type ValidatorConfig } from './utils'
 
 function getDeployArgs(config: RhinestoneAccountConfig) {
   const account = getAccountProvider(config)
@@ -116,6 +116,7 @@ function getModuleInstallationCalls(
   const installData = getInstallData()
   return installData.map((data) => ({
     to: address,
+    value: 0n,
     data,
   }))
 }
@@ -151,7 +152,7 @@ function getModuleUninstallationCalls(
     functionName: 'uninstallModule',
     args: [module.type, module.address, module.deInitData],
   })
-  return [{ to: address, data }]
+  return [{ to: address, data, value: 0n }]
 }
 
 function getAddress(config: RhinestoneAccountConfig) {

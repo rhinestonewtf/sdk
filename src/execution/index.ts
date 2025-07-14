@@ -20,6 +20,7 @@ import {
 import { getChainById } from '../orchestrator/registry'
 import type {
   Call,
+  CallInput,
   RhinestoneAccountConfig,
   SignerSet,
   TokenRequest,
@@ -46,6 +47,7 @@ import type { IntentData, TransactionResult } from './utils'
 import {
   getOrchestratorByChain,
   getValidatorAccount,
+  parseCalls,
   prepareTransactionAsIntent,
   signIntent,
   submitIntentInternal,
@@ -86,7 +88,7 @@ async function sendTransactionInternal(
   config: RhinestoneAccountConfig,
   sourceChain: Chain | undefined,
   targetChain: Chain,
-  calls: Call[],
+  callInputs: CallInput[],
   gasLimit: bigint | undefined,
   initialTokenRequests: TokenRequest[],
   signers?: SignerSet,
@@ -124,7 +126,7 @@ async function sendTransactionInternal(
       config,
       sourceChain,
       targetChain,
-      calls,
+      callInputs,
       signers,
     )
   } else {
@@ -132,7 +134,7 @@ async function sendTransactionInternal(
       config,
       sourceChain,
       targetChain,
-      calls,
+      callInputs,
       gasLimit,
       tokenRequests,
       accountAddress,
@@ -145,7 +147,7 @@ async function sendTransactionAsUserOp(
   config: RhinestoneAccountConfig,
   sourceChain: Chain,
   targetChain: Chain,
-  calls: Call[],
+  callInputs: CallInput[],
   signers: SignerSet,
 ) {
   const withSession = signers?.type === 'session' ? signers.session : null
@@ -166,6 +168,7 @@ async function sendTransactionAsUserOp(
   if (withSession) {
     await enableSmartSession(targetChain, config, withSession)
   }
+  const calls = parseCalls(callInputs, targetChain.id)
   const hash = await bundlerClient.sendUserOperation({
     account: validatorAccount,
     calls,
@@ -182,7 +185,7 @@ async function sendTransactionAsIntent(
   config: RhinestoneAccountConfig,
   sourceChain: Chain | undefined,
   targetChain: Chain,
-  calls: Call[],
+  callInputs: CallInput[],
   gasLimit: bigint | undefined,
   tokenRequests: TokenRequest[],
   accountAddress: Address,
@@ -192,7 +195,7 @@ async function sendTransactionAsIntent(
     config,
     sourceChain,
     targetChain,
-    calls,
+    callInputs,
     gasLimit,
     tokenRequests,
     accountAddress,

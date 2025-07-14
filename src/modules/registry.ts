@@ -1,6 +1,6 @@
-import { Address, encodeFunctionData, PublicClient } from 'viem'
+import { type Address, encodeFunctionData, type PublicClient } from 'viem'
 
-import { RhinestoneAccountConfig } from '../types'
+import type { RhinestoneAccountConfig } from '../types'
 import { getSetup } from '.'
 import {
   OMNI_ACCOUNT_MOCK_ATTESTER_ADDRESS,
