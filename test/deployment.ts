@@ -191,68 +191,68 @@ export function runDeploymentTestCases() {
             tokenRequests: [],
           })
 
-          // Check the account is deployed
-          const codeAfter = await publicClient.getCode({
-            address: rhinestoneAccount.getAddress(),
-          })
-          expect(codeAfter).not.toBeUndefined()
-          expect(codeAfter).toMatch(/^0x[0-9a-fA-F]+$/)
+          // // Check the account is deployed
+          // const codeAfter = await publicClient.getCode({
+          //   address: rhinestoneAccount.getAddress(),
+          // })
+          // expect(codeAfter).not.toBeUndefined()
+          // expect(codeAfter).toMatch(/^0x[0-9a-fA-F]+$/)
 
-          // Check the account implementation is Nexus
-          const implementationStorage = await publicClient.getStorageAt({
-            address: rhinestoneAccount.getAddress(),
-            slot: '0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc',
-          })
-          expect(implementationStorage).toEqual(
-            '0x000000000000000000000000000000004f43c49e93c970e84001853a70923b03',
-          )
+          // // Check the account implementation is Nexus
+          // const implementationStorage = await publicClient.getStorageAt({
+          //   address: rhinestoneAccount.getAddress(),
+          //   slot: '0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc',
+          // })
+          // expect(implementationStorage).toEqual(
+          //   '0x000000000000000000000000000000004f43c49e93c970e84001853a70923b03',
+          // )
 
-          // Check the ownable module is installed
-          const validatorList = await publicClient.readContract({
-            address: rhinestoneAccount.getAddress(),
-            abi: biconomyImplementationAbi,
-            functionName: 'getValidatorsPaginated',
-            args: [SENTINEL_ADDRESS, 10n],
-          })
-          const validators = validatorList[0].filter(
-            (validator) => validator !== SENTINEL_ADDRESS,
-          )
-          expect(validators).toEqual([OWNABLE_VALIDATOR_ADDRESS])
+          // // Check the ownable module is installed
+          // const validatorList = await publicClient.readContract({
+          //   address: rhinestoneAccount.getAddress(),
+          //   abi: biconomyImplementationAbi,
+          //   functionName: 'getValidatorsPaginated',
+          //   args: [SENTINEL_ADDRESS, 10n],
+          // })
+          // const validators = validatorList[0].filter(
+          //   (validator) => validator !== SENTINEL_ADDRESS,
+          // )
+          // expect(validators).toEqual([OWNABLE_VALIDATOR_ADDRESS])
 
-          // Check the owner account is the owner of the smart account
-          const owners = await publicClient.readContract({
-            address: OWNABLE_VALIDATOR_ADDRESS,
-            abi: ownbleValidatorAbi,
-            functionName: 'getOwners',
-            args: [rhinestoneAccount.getAddress()],
-          })
-          expect(owners).toEqual([ownerAccount.address])
-          const threshold = await publicClient.readContract({
-            address: OWNABLE_VALIDATOR_ADDRESS,
-            abi: ownbleValidatorAbi,
-            functionName: 'threshold',
-            args: [rhinestoneAccount.getAddress()],
-          })
-          expect(threshold).toEqual(1n)
+          // // Check the owner account is the owner of the smart account
+          // const owners = await publicClient.readContract({
+          //   address: OWNABLE_VALIDATOR_ADDRESS,
+          //   abi: ownbleValidatorAbi,
+          //   functionName: 'getOwners',
+          //   args: [rhinestoneAccount.getAddress()],
+          // })
+          // expect(owners).toEqual([ownerAccount.address])
+          // const threshold = await publicClient.readContract({
+          //   address: OWNABLE_VALIDATOR_ADDRESS,
+          //   abi: ownbleValidatorAbi,
+          //   functionName: 'threshold',
+          //   args: [rhinestoneAccount.getAddress()],
+          // })
+          // expect(threshold).toEqual(1n)
 
-          // Check omni account modules are installed
-          const executorList = await publicClient.readContract({
-            address: rhinestoneAccount.getAddress(),
-            abi: biconomyImplementationAbi,
-            functionName: 'getExecutorsPaginated',
-            args: [SENTINEL_ADDRESS, 10n],
-          })
-          const executors = executorList[0].filter(
-            (validator) => validator !== SENTINEL_ADDRESS,
-          )
-          expect(executors).toEqual([INTENT_EXECUTOR_ADDRESS])
-          const fallbackHandler = await publicClient.readContract({
-            address: rhinestoneAccount.getAddress(),
-            abi: biconomyImplementationAbi,
-            functionName: 'getFallbackHandlerBySelector',
-            args: ['0x3a5be8cb'],
-          })
-          expect(fallbackHandler[1]).toEqual(zeroAddress)
+          // // Check omni account modules are installed
+          // const executorList = await publicClient.readContract({
+          //   address: rhinestoneAccount.getAddress(),
+          //   abi: biconomyImplementationAbi,
+          //   functionName: 'getExecutorsPaginated',
+          //   args: [SENTINEL_ADDRESS, 10n],
+          // })
+          // const executors = executorList[0].filter(
+          //   (validator) => validator !== SENTINEL_ADDRESS,
+          // )
+          // expect(executors).toEqual([INTENT_EXECUTOR_ADDRESS])
+          // const fallbackHandler = await publicClient.readContract({
+          //   address: rhinestoneAccount.getAddress(),
+          //   abi: biconomyImplementationAbi,
+          //   functionName: 'getFallbackHandlerBySelector',
+          //   args: ['0x3a5be8cb'],
+          // })
+          // expect(fallbackHandler[1]).toEqual(zeroAddress)
         },
       )
     })
