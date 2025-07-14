@@ -1,5 +1,14 @@
 # @rhinestone/sdk
 
+## 1.0.0-alpha.3
+
+### Patch Changes
+
+- 54f5506: Allow using token symbols
+- ef7fd0e: - Custom JSON-RPC providers
+  - Biconomy bundler/paymaster
+  - Make `tokenRequests` optional
+
 ## 1.0.0-alpha.2
 
 ### Patch Changes
