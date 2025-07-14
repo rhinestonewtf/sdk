@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.0-alpha.4
+
+### Patch Changes
+
+- 18566eb: Intent-based account deployments
+
 ## 1.0.0-alpha.3
 
 ### Patch Changes
