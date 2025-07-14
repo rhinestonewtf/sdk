@@ -43,7 +43,6 @@ import {
 } from '../modules/validators'
 import type { EnableSessionData } from '../modules/validators/smart-sessions'
 import type { OwnerSet, RhinestoneAccountConfig, Session } from '../types'
-import { Eip7702NotSupportedForAccountError } from './error'
 import { encode7579Calls, getAccountNonce, type ValidatorConfig } from './utils'
 
 type ValidatorType = 'root' | 'validator'
@@ -187,14 +186,6 @@ function getInstallData(module: Module): Hex[] {
       ]
     }
   }
-}
-
-function get7702InitCalls(): never {
-  throw new Eip7702NotSupportedForAccountError('kernel')
-}
-
-function get7702SmartAccount(): never {
-  throw new Eip7702NotSupportedForAccountError('kernel')
 }
 
 async function getPackedSignature(
@@ -415,7 +406,5 @@ export {
   getSmartAccount,
   getSessionSmartAccount,
   getGuardianSmartAccount,
-  get7702InitCalls,
-  get7702SmartAccount,
   getPackedSignature,
 }

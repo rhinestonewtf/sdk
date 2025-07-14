@@ -13,9 +13,9 @@ import {
   type UserOperation,
 } from 'viem/account-abstraction'
 import {
-  deployTarget,
   getAddress,
   getGuardianSmartAccount,
+  getInitCode,
   getPackedSignature,
   getSmartAccount,
   getSmartSessionSmartAccount,
@@ -272,6 +272,7 @@ async function prepareTransactionAsIntent(
   tokenRequests: TokenRequest[],
   accountAddress: Address,
 ) {
+  const initCode = getInitCode(config)
   const calls = parseCalls(callInputs, targetChain.id)
   const accountAccessList = sourceChain
     ? {
@@ -285,13 +286,26 @@ async function prepareTransactionAsIntent(
       tokenAddress: resolveTokenAddress(tokenRequest.address, targetChain.id),
       amount: tokenRequest.amount,
     })),
-    account: accountAddress,
+    account: {
+      address: accountAddress,
+      accountType: 'ERC7579',
+      setupOps: initCode
+        ? [
+            {
+              to: initCode.factory,
+              data: initCode.factoryData,
+            },
+          ]
+        : [
+            {
+              to: zeroAddress,
+              data: '0x',
+            },
+          ],
+    },
     destinationExecutions: calls,
     destinationGasUnits: gasLimit,
     accountAccessList,
-    smartAccount: {
-      accountType: 'ERC7579',
-    },
   }
 
   const orchestrator = getOrchestratorByChain(
@@ -426,7 +440,6 @@ async function submitIntent(
     targetChain,
     intentOp,
     signature,
-    false,
   )
 }
 
@@ -443,15 +456,11 @@ async function submitIntentInternal(
   targetChain: Chain,
   intentOp: IntentOp,
   signature: Hex,
-  deploy: boolean,
 ) {
   const signedIntentOp = {
     ...intentOp,
     originSignatures: Array(intentOp.elements.length).fill(signature),
     destinationSignature: signature,
-  }
-  if (deploy) {
-    await deployTarget(targetChain, config, false)
   }
   const orchestrator = getOrchestratorByChain(
     targetChain.id,
