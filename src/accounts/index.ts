@@ -469,7 +469,7 @@ async function sign(signers: SignerSet, chain: Chain, hash: Hex): Promise<Hex> {
                 const validatorModule = getValidator(validator)
                 return {
                   packedValidatorAndId: concat([
-                    pad(toHex(index), {
+                    pad(toHex(validator.id), {
                       size: 12,
                     }),
                     validatorModule.address,
@@ -554,7 +554,24 @@ function convertOwnerSetToSignerSet(owners: OwnerSet): SignerSet {
       return {
         type: 'owner',
         kind: 'multi-factor',
-        validators: owners.validators,
+        validators: owners.validators.map((validator, index) => {
+          switch (validator.type) {
+            case 'ecdsa': {
+              return {
+                type: 'ecdsa',
+                id: index,
+                accounts: validator.accounts,
+              }
+            }
+            case 'passkey': {
+              return {
+                type: 'passkey',
+                id: index,
+                account: validator.account,
+              }
+            }
+          }
+        }),
       }
     }
   }

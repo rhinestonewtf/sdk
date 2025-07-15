@@ -341,8 +341,7 @@ function setSubValidator(
   id: Hex | number,
   validator: OwnableValidatorConfig | WebauthnValidatorConfig,
 ): Call {
-  const validatorId =
-    typeof id === 'number' ? padHex(toHex(id), { size: 12 }) : id
+  const validatorId = padHex(toHex(id), { size: 12 })
   const validatorModule = getValidator(validator)
   return {
     to: MULTI_FACTOR_VALIDATOR_ADDRESS,
@@ -378,8 +377,7 @@ function removeSubValidator(
   id: Hex | number,
   validator: OwnableValidatorConfig | WebauthnValidatorConfig,
 ): Call {
-  const validatorId =
-    typeof id === 'number' ? padHex(toHex(id), { size: 12 }) : id
+  const validatorId = padHex(toHex(id), { size: 12 })
   const validatorModule = getValidator(validator)
   return {
     to: MULTI_FACTOR_VALIDATOR_ADDRESS,
@@ -388,7 +386,7 @@ function removeSubValidator(
       abi: [
         {
           type: 'function',
-          name: 'setValidator',
+          name: 'removeValidator',
           inputs: [
             {
               type: 'address',

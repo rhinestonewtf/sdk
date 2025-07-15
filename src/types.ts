@@ -171,10 +171,12 @@ type OwnerSignerSet =
       validators: (
         | {
             type: 'ecdsa'
+            id: number | Hex
             accounts: Account[]
           }
         | {
             type: 'passkey'
+            id: number | Hex
             account: WebAuthnAccount
           }
       )[]
