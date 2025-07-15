@@ -47,7 +47,6 @@ import { isTestnet, resolveTokenAddress } from '../orchestrator/registry'
 import type {
   Call,
   CallInput,
-  OwnerSet,
   RhinestoneAccountConfig,
   SignerSet,
   TokenRequest,
@@ -343,13 +342,9 @@ async function signIntent(
   const ownerValidator = getOwnerValidator(config)
   const isRoot = validator.address === ownerValidator.address
 
-  const owners = getOwners(config, signers)
-  if (!owners) {
-    throw new Error('No owners found')
-  }
   const signature = await getPackedSignature(
     config,
-    owners,
+    signers,
     sourceChain || targetChain,
     {
       address: validator.address,
@@ -561,58 +556,6 @@ function getValidator(
     return getSocialRecoveryValidator(withGuardians.guardians)
   }
   // Fallback
-  return undefined
-}
-
-function getOwners(
-  config: RhinestoneAccountConfig,
-  signers: SignerSet | undefined,
-): OwnerSet | undefined {
-  if (!signers) {
-    return config.owners
-  }
-
-  // Owners
-  const withOwner = signers.type === 'owner' ? signers : null
-  if (withOwner) {
-    // ECDSA
-    if (withOwner.kind === 'ecdsa') {
-      return {
-        type: 'ecdsa',
-        accounts: withOwner.accounts,
-      }
-    }
-    // Passkeys (WebAuthn)
-    if (withOwner.kind === 'passkey') {
-      return {
-        type: 'passkey',
-        account: withOwner.account,
-      }
-    }
-    // Multi-factor
-    if (withOwner.kind === 'multi-factor') {
-      return {
-        type: 'multi-factor',
-        validators: withOwner.validators,
-      }
-    }
-  }
-
-  // Smart sessions
-  const withSession = signers.type === 'session' ? signers.session : null
-  if (withSession) {
-    return withSession.owners
-  }
-
-  // Guardians (social recovery)
-  const withGuardians = signers.type === 'guardians' ? signers : null
-  if (withGuardians) {
-    return {
-      type: 'ecdsa',
-      accounts: withGuardians.guardians,
-    }
-  }
-
   return undefined
 }
 

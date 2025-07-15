@@ -77,7 +77,7 @@ async function getSessionDetails(
     signature ??
     (await getPackedSignature(
       config,
-      config.owners,
+      undefined,
       chain,
       validator,
       sessionDetails.permissionEnableHash,
