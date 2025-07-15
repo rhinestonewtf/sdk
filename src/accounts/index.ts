@@ -3,10 +3,13 @@ import {
   type Chain,
   concat,
   createPublicClient,
+  encodeAbiParameters,
   encodeFunctionData,
   type Hex,
   type PublicClient,
+  pad,
   size,
+  toHex,
   zeroAddress,
 } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
@@ -21,7 +24,10 @@ import {
   getOwnerValidator,
   getSmartSessionValidator,
 } from '../modules/validators'
-import { getSocialRecoveryValidator } from '../modules/validators/core'
+import {
+  getSocialRecoveryValidator,
+  getValidator,
+} from '../modules/validators/core'
 import type { EnableSessionData } from '../modules/validators/smart-sessions'
 import type {
   AccountProviderConfig,
@@ -407,7 +413,11 @@ async function getGuardianSmartAccount(
   }
 }
 
-async function sign(validators: OwnerSet, chain: Chain, hash: Hex) {
+async function sign(
+  validators: OwnerSet,
+  chain: Chain,
+  hash: Hex,
+): Promise<Hex> {
   switch (validators.type) {
     case 'ecdsa': {
       const signatures = await Promise.all(
@@ -417,6 +427,47 @@ async function sign(validators: OwnerSet, chain: Chain, hash: Hex) {
     }
     case 'passkey': {
       return await signPasskey(validators.account, chain, hash)
+    }
+    case 'multi-factor': {
+      const signatures = await Promise.all(
+        validators.validators.map(async (validator) => {
+          if (validator === null) {
+            return '0x'
+          }
+          return await sign(validator, chain, hash)
+        }),
+      )
+      const data = encodeAbiParameters(
+        [
+          {
+            components: [
+              {
+                internalType: 'bytes32',
+                name: 'packedValidatorAndId',
+                type: 'bytes32',
+              },
+              { internalType: 'bytes', name: 'data', type: 'bytes' },
+            ],
+            name: 'validators',
+            type: 'tuple[]',
+          },
+        ],
+        [
+          validators.validators.map((validator, index) => {
+            const validatorModule = getValidator(validator)
+            return {
+              packedValidatorAndId: concat([
+                pad(toHex(index), {
+                  size: 12,
+                }),
+                validatorModule.address,
+              ]),
+              data: signatures[index],
+            }
+          }),
+        ],
+      )
+      return data
     }
   }
 }

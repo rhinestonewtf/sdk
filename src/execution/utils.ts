@@ -26,6 +26,7 @@ import {
   getSmartSessionValidator,
 } from '../modules/validators'
 import {
+  getMultiFactorValidator,
   getOwnableValidator,
   getSocialRecoveryValidator,
   getWebAuthnValidator,
@@ -157,7 +158,13 @@ async function signTransaction(
     // Smart sessions require a UserOp flow
     signature = await signUserOp(config, chain, signers, userOp)
   } else {
-    signature = await signIntent(config, sourceChain, targetChain, data.hash)
+    signature = await signIntent(
+      config,
+      sourceChain,
+      targetChain,
+      data.hash,
+      signers,
+    )
   }
 
   return {
@@ -523,10 +530,10 @@ function getValidator(
   if (withOwner) {
     // ECDSA
     if (withOwner.kind === 'ecdsa') {
-      return getOwnableValidator({
-        threshold: 1,
-        owners: withOwner.accounts.map((account) => account.address),
-      })
+      return getOwnableValidator(
+        1,
+        withOwner.accounts.map((account) => account.address),
+      )
     }
     // Passkeys (WebAuthn)
     if (withOwner.kind === 'passkey') {
@@ -535,6 +542,10 @@ function getValidator(
         pubKey: passkeyAccount.publicKey,
         authenticatorId: passkeyAccount.id,
       })
+    }
+    // Multi-factor
+    if (withOwner.kind === 'multi-factor') {
+      return getMultiFactorValidator(1, withOwner.validators)
     }
   }
 
@@ -576,6 +587,13 @@ function getOwners(
       return {
         type: 'passkey',
         account: withOwner.account,
+      }
+    }
+    // Multi-factor
+    if (withOwner.kind === 'multi-factor') {
+      return {
+        type: 'multi-factor',
+        validators: withOwner.validators,
       }
     }
   }

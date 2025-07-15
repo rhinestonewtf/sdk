@@ -3,6 +3,9 @@ import {
   type Chain,
   createPublicClient,
   encodeFunctionData,
+  type Hex,
+  padHex,
+  toHex,
 } from 'viem'
 
 import type { RhinestoneAccount } from '..'
@@ -12,9 +15,12 @@ import {
 } from '../accounts'
 import { createTransport } from '../accounts/utils'
 import {
+  getMultiFactorValidator,
   getOwnableValidator,
   getSocialRecoveryValidator,
+  getValidator,
   getWebAuthnValidator,
+  MULTI_FACTOR_VALIDATOR_ADDRESS,
   OWNABLE_VALIDATOR_ADDRESS,
   type WebauthnCredential,
 } from '../modules/validators/core'
@@ -24,6 +30,7 @@ import type {
   OwnerSet,
   ProviderConfig,
   Recovery,
+  WebauthnValidatorConfig,
 } from '../types'
 
 import { trustAttester } from './registry'
@@ -54,6 +61,9 @@ async function recover(
     case 'passkey': {
       throw new Error('Passkey ownership recovery is not yet supported')
     }
+    case 'multi-factor': {
+      throw new Error('Multi-factor ownership recovery is not yet supported')
+    }
   }
 }
 
@@ -66,10 +76,7 @@ function enableEcdsa({
   owners: Address[]
   threshold?: number
 }) {
-  const module = getOwnableValidator({
-    threshold,
-    owners,
-  })
+  const module = getOwnableValidator(threshold, owners)
   const calls = getModuleInstallationCalls(rhinestoneAccount.config, module)
   return calls
 }
@@ -91,10 +98,7 @@ function disableEcdsa({
 }: {
   rhinestoneAccount: RhinestoneAccount
 }) {
-  const module = getOwnableValidator({
-    threshold: 1,
-    owners: [],
-  })
+  const module = getOwnableValidator(1, [])
   const calls = getModuleUninstallationCalls(rhinestoneAccount.config, module)
   return calls
 }
@@ -289,6 +293,120 @@ async function recoverEcdsaOwnership(
   return calls
 }
 
+function enableMultiFactor({
+  rhinestoneAccount,
+  validators,
+  threshold = 1,
+}: {
+  rhinestoneAccount: RhinestoneAccount
+  validators: (OwnableValidatorConfig | WebauthnValidatorConfig | null)[]
+  threshold?: number
+}) {
+  const module = getMultiFactorValidator(threshold, validators)
+  const calls = getModuleInstallationCalls(rhinestoneAccount.config, module)
+  return calls
+}
+
+function disableMultiFactor({
+  rhinestoneAccount,
+}: {
+  rhinestoneAccount: RhinestoneAccount
+}) {
+  const module = getMultiFactorValidator(1, [])
+  const calls = getModuleUninstallationCalls(rhinestoneAccount.config, module)
+  return calls
+}
+
+function changeMultiFactorThreshold(newThreshold: number): Call {
+  return {
+    to: MULTI_FACTOR_VALIDATOR_ADDRESS,
+    value: 0n,
+    data: encodeFunctionData({
+      abi: [
+        {
+          inputs: [{ internalType: 'uint8', name: 'threshold', type: 'uint8' }],
+          name: 'setThreshold',
+          outputs: [],
+          stateMutability: 'nonpayable',
+          type: 'function',
+        },
+      ],
+      functionName: 'setThreshold',
+      args: [newThreshold],
+    }),
+  }
+}
+
+function setSubValidator(
+  id: Hex | number,
+  validator: OwnableValidatorConfig | WebauthnValidatorConfig,
+): Call {
+  const validatorId =
+    typeof id === 'number' ? padHex(toHex(id), { size: 12 }) : id
+  const validatorModule = getValidator(validator)
+  return {
+    to: MULTI_FACTOR_VALIDATOR_ADDRESS,
+    value: 0n,
+    data: encodeFunctionData({
+      abi: [
+        {
+          type: 'function',
+          name: 'setValidator',
+          inputs: [
+            {
+              type: 'address',
+              name: 'validatorAddress',
+            },
+            {
+              type: 'bytes12',
+              name: 'validatorId',
+            },
+            {
+              type: 'bytes',
+              name: 'newValidatorData',
+            },
+          ],
+        },
+      ],
+      functionName: 'setValidator',
+      args: [validatorModule.address, validatorId, validatorModule.initData],
+    }),
+  }
+}
+
+function removeSubValidator(
+  id: Hex | number,
+  validator: OwnableValidatorConfig | WebauthnValidatorConfig,
+): Call {
+  const validatorId =
+    typeof id === 'number' ? padHex(toHex(id), { size: 12 }) : id
+  const validatorModule = getValidator(validator)
+  return {
+    to: MULTI_FACTOR_VALIDATOR_ADDRESS,
+    value: 0n,
+    data: encodeFunctionData({
+      abi: [
+        {
+          type: 'function',
+          name: 'setValidator',
+          inputs: [
+            {
+              type: 'address',
+              name: 'validatorAddress',
+            },
+            {
+              type: 'bytes12',
+              name: 'validatorId',
+            },
+          ],
+        },
+      ],
+      functionName: 'removeValidator',
+      args: [validatorModule.address, validatorId],
+    }),
+  }
+}
+
 export {
   enableEcdsa,
   enablePasskeys,
@@ -301,4 +419,9 @@ export {
   setUpRecovery,
   encodeSmartSessionSignature,
   trustAttester,
+  enableMultiFactor,
+  disableMultiFactor,
+  changeMultiFactorThreshold,
+  setSubValidator,
+  removeSubValidator,
 }
