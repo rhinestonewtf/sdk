@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.0-alpha.5
+
+### Patch Changes
+
+- f6456f0: Multi-factor validator
+
 ## 1.0.0-alpha.4
 
 ### Patch Changes
