@@ -126,7 +126,6 @@ interface RhinestoneAccountConfig {
   account?: AccountProviderConfig
   owners: OwnerSet
   rhinestoneApiKey: string
-  deployerAccount?: Account
   sessions?: Session[]
   recovery?: Recovery
   eoa?: Account

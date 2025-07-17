@@ -11,7 +11,7 @@ import {
 } from 'viem'
 import { vi } from 'vitest'
 
-async function setupViemMock(anvil: any, deployerAccount: Account) {
+async function setupViemMock(anvil: any, funderAccount: Account) {
   vi.mock('viem', async (importOriginal) => {
     const actual = await importOriginal()
 
@@ -56,7 +56,7 @@ async function setupViemMock(anvil: any, deployerAccount: Account) {
   walletClient.mockImplementation((_: any) => {
     return {
       sendTransaction: (params: SendTransactionParameters) => {
-        const client = anvil.getWalletClient(deployerAccount)
+        const client = anvil.getWalletClient(funderAccount)
         return client.sendTransaction(params)
       },
     }
