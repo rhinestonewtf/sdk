@@ -93,7 +93,6 @@ async function sendTransactionInternal(
       : initialTokenRequests
 
   const asUserOp = signers?.type === 'guardians' || signers?.type === 'session'
-  // const asUserOp = true
   if (asUserOp) {
     if (!sourceChain) {
       throw new SourceChainRequiredForSmartSessionsError()
