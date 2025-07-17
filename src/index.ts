@@ -16,20 +16,24 @@ import {
 import { createTransport } from './accounts/utils'
 import {
   addOwner,
+  changeMultiFactorThreshold,
   changeThreshold,
   disableEcdsa,
+  disableMultiFactor,
   disablePasskeys,
   enableEcdsa,
+  enableMultiFactor,
   enablePasskeys,
   encodeSmartSessionSignature,
   recover,
   removeOwner,
+  removeSubValidator,
+  setSubValidator,
   setUpRecovery,
   trustAttester,
 } from './actions'
 import type { TransactionResult } from './execution'
 import {
-  deposit as depositInternal,
   ExecutionError,
   getMaxSpendableAmount as getMaxSpendableAmountInternal,
   getPortfolio as getPortfolioInternal,
@@ -126,11 +130,6 @@ interface RhinestoneAccount {
     threshold: number
   } | null>
   getValidators: (chain: Chain) => Promise<Address[]>
-  deposit: (
-    chain: Chain,
-    amount: bigint,
-    tokenAddress?: Address,
-  ) => Promise<TransactionResult>
 }
 
 /**
@@ -236,10 +235,6 @@ async function createRhinestoneAccount(
     return getValidatorsInternal(accountType, account, chain, config.provider)
   }
 
-  async function deposit(chain: Chain, amount: bigint, tokenAddress?: Address) {
-    return depositInternal(config, chain, amount, tokenAddress)
-  }
-
   return {
     config,
     deploy,
@@ -255,23 +250,28 @@ async function createRhinestoneAccount(
     areAttestersTrusted,
     getOwners,
     getValidators,
-    deposit,
   }
 }
 
 export {
   createRhinestoneAccount,
   createTransport,
+  // Actions
   addOwner,
+  changeMultiFactorThreshold,
   changeThreshold,
   disableEcdsa,
+  disableMultiFactor,
   disablePasskeys,
   enableEcdsa,
+  enableMultiFactor,
   enablePasskeys,
+  encodeSmartSessionSignature,
   recover,
   removeOwner,
+  removeSubValidator,
+  setSubValidator,
   setUpRecovery,
-  encodeSmartSessionSignature,
   trustAttester,
   // Account errors
   isAccountError,

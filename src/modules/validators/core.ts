@@ -4,13 +4,20 @@ import {
   bytesToHex,
   concat,
   encodeAbiParameters,
+  encodePacked,
   type Hex,
   hexToBytes,
   keccak256,
+  pad,
   toHex,
 } from 'viem'
 
-import type { OwnerSet, RhinestoneAccountConfig } from '../../types'
+import type {
+  OwnableValidatorConfig,
+  OwnerSet,
+  RhinestoneAccountConfig,
+  WebauthnValidatorConfig,
+} from '../../types'
 
 import { MODULE_TYPE_ID_VALIDATOR, type Module } from '../common'
 
@@ -31,6 +38,8 @@ const WEBAUTHN_VALIDATOR_ADDRESS: Address =
   '0x2f167e55d42584f65e2e30a748f41ee75a311414'
 const SOCIAL_RECOVERY_VALIDATOR_ADDRESS: Address =
   '0xA04D053b3C8021e8D5bF641816c42dAA75D8b597'
+const MULTI_FACTOR_VALIDATOR_ADDRESS: Address =
+  '0xf6bDf42c9BE18cEcA5C06c42A43DAf7FBbe7896b'
 
 const ECDSA_MOCK_SIGNATURE =
   '0x81d4b4981670cb18f99f0b4a66446df1bf5b204d24cfcb659bf38ba27a4359b5711649ec2423c5e1247245eba2964679b6a1dbb85c992ae40b9b00c6935b02ff1b'
@@ -50,31 +59,67 @@ function getMockSignature(ownerSet: OwnerSet): Hex {
     }
     case 'passkey':
       return WEBAUTHN_MOCK_SIGNATURE
+    case 'multi-factor': {
+      const mockValidators: {
+        packedValidatorAndId: Hex
+        data: Hex
+      }[] = ownerSet.validators.map((validator, index) => {
+        const validatorModule = getValidator(validator)
+        const signature = getMockSignature(validator)
+        return {
+          packedValidatorAndId: encodePacked(
+            ['bytes12', 'address'],
+            [
+              pad(toHex(index), {
+                size: 12,
+              }),
+              validatorModule.address,
+            ],
+          ),
+          data: signature,
+        }
+      })
+
+      return encodeAbiParameters(
+        [
+          {
+            components: [
+              {
+                internalType: 'bytes32',
+                name: 'packedValidatorAndId',
+                type: 'bytes32',
+              },
+              { internalType: 'bytes', name: 'data', type: 'bytes' },
+            ],
+            name: 'validators',
+            type: 'tuple[]',
+          },
+        ],
+        [mockValidators],
+      )
+    }
   }
 }
 
 function getValidator(owners: OwnerSet) {
   switch (owners.type) {
     case 'ecdsa':
-      return getOwnableValidator({
-        threshold: owners.threshold ?? 1,
-        owners: owners.accounts.map((account) => account.address),
-      })
+      return getOwnableValidator(
+        owners.threshold ?? 1,
+        owners.accounts.map((account) => account.address),
+      )
     case 'passkey':
       return getWebAuthnValidator({
         pubKey: owners.account.publicKey,
         authenticatorId: owners.account.id,
       })
+    case 'multi-factor': {
+      return getMultiFactorValidator(owners.threshold ?? 1, owners.validators)
+    }
   }
 }
 
-function getOwnableValidator({
-  threshold,
-  owners,
-}: {
-  threshold: number
-  owners: Address[]
-}): Module {
+function getOwnableValidator(threshold: number, owners: Address[]): Module {
   return {
     address: OWNABLE_VALIDATOR_ADDRESS,
     initData: encodeAbiParameters(
@@ -151,6 +196,59 @@ function getWebAuthnValidator(webAuthnCredential: WebauthnCredential): Module {
   }
 }
 
+function getMultiFactorValidator(
+  threshold: number,
+  validators: (OwnableValidatorConfig | WebauthnValidatorConfig | null)[],
+): Module {
+  return {
+    address: MULTI_FACTOR_VALIDATOR_ADDRESS,
+    initData: encodePacked(
+      ['uint8', 'bytes'],
+      [
+        threshold,
+        encodeAbiParameters(
+          [
+            {
+              components: [
+                {
+                  internalType: 'bytes32',
+                  name: 'packedValidatorAndId',
+                  type: 'bytes32',
+                },
+                { internalType: 'bytes', name: 'data', type: 'bytes' },
+              ],
+              name: 'validators',
+              type: 'tuple[]',
+            },
+          ],
+          [
+            validators
+              .map((validator, index) => {
+                if (validator === null) {
+                  return null
+                }
+                const validatorModule = getValidator(validator)
+                return {
+                  packedValidatorAndId: concat([
+                    pad(toHex(index), {
+                      size: 12,
+                    }),
+                    validatorModule.address,
+                  ]),
+                  data: validatorModule.initData,
+                }
+              })
+              .filter((validator) => validator !== null),
+          ],
+        ),
+      ],
+    ),
+    deInitData: '0x',
+    additionalContext: '0x',
+    type: MODULE_TYPE_ID_VALIDATOR,
+  }
+}
+
 function getSocialRecoveryValidator(
   guardians: Account[],
   threshold = 1,
@@ -194,9 +292,11 @@ function parsePublicKey(publicKey: Hex | Uint8Array): PublicKey {
 export {
   OWNABLE_VALIDATOR_ADDRESS,
   WEBAUTHN_VALIDATOR_ADDRESS,
+  MULTI_FACTOR_VALIDATOR_ADDRESS,
   getOwnerValidator,
   getOwnableValidator,
   getWebAuthnValidator,
+  getMultiFactorValidator,
   getSocialRecoveryValidator,
   getValidator,
   getMockSignature,

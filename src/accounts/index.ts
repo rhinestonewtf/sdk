@@ -3,10 +3,13 @@ import {
   type Chain,
   concat,
   createPublicClient,
+  encodeAbiParameters,
   encodeFunctionData,
   type Hex,
   type PublicClient,
+  pad,
   size,
+  toHex,
   zeroAddress,
 } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
@@ -21,7 +24,10 @@ import {
   getOwnerValidator,
   getSmartSessionValidator,
 } from '../modules/validators'
-import { getSocialRecoveryValidator } from '../modules/validators/core'
+import {
+  getSocialRecoveryValidator,
+  getValidator,
+} from '../modules/validators/core'
 import type { EnableSessionData } from '../modules/validators/smart-sessions'
 import type {
   AccountProviderConfig,
@@ -29,6 +35,7 @@ import type {
   OwnerSet,
   RhinestoneAccountConfig,
   Session,
+  SignerSet,
 } from '../types'
 import {
   AccountError,
@@ -184,16 +191,17 @@ function getAddress(config: RhinestoneAccountConfig) {
   }
 }
 
-// Signs and packs a signature to be EIP-1271 compatibleAdd commentMore actions
+// Signs and packs a signature to be EIP-1271 compatible
 async function getPackedSignature(
   config: RhinestoneAccountConfig,
-  owners: OwnerSet,
+  signers: SignerSet | undefined,
   chain: Chain,
   validator: ValidatorConfig,
   hash: Hex,
   transformSignature: (signature: Hex) => Hex = (signature) => signature,
 ) {
-  const signFn = (hash: Hex) => sign(owners, chain, hash)
+  signers = signers ?? convertOwnerSetToSignerSet(config.owners)
+  const signFn = (hash: Hex) => sign(signers, chain, hash)
   const account = getAccountProvider(config)
   const address = getAddress(config)
   switch (account.type) {
@@ -280,7 +288,8 @@ async function getSmartAccount(
   const account = getAccountProvider(config)
   const address = getAddress(config)
   const ownerValidator = getOwnerValidator(config)
-  const signFn = (hash: Hex) => sign(config.owners, chain, hash)
+  const signers: SignerSet = convertOwnerSetToSignerSet(config.owners)
+  const signFn = (hash: Hex) => sign(signers, chain, hash)
   switch (account.type) {
     case 'safe': {
       return getSafeSmartAccount(
@@ -324,7 +333,12 @@ async function getSmartSessionSmartAccount(
   if (!smartSessionValidator) {
     throw new SmartSessionsNotEnabledError()
   }
-  const signFn = (hash: Hex) => sign(session.owners, chain, hash)
+  const signers: SignerSet = {
+    type: 'session',
+    session,
+    enableData: enableData || undefined,
+  }
+  const signFn = (hash: Hex) => sign(signers, chain, hash)
 
   const account = getAccountProvider(config)
   switch (account.type) {
@@ -373,7 +387,11 @@ async function getGuardianSmartAccount(
   if (!socialRecoveryValidator) {
     throw new Error('Social recovery is not available')
   }
-  const signFn = (hash: Hex) => sign(guardians, chain, hash)
+  const signers: SignerSet = {
+    type: 'guardians',
+    guardians: accounts,
+  }
+  const signFn = (hash: Hex) => sign(signers, chain, hash)
 
   const account = getAccountProvider(config)
   switch (account.type) {
@@ -407,16 +425,78 @@ async function getGuardianSmartAccount(
   }
 }
 
-async function sign(validators: OwnerSet, chain: Chain, hash: Hex) {
-  switch (validators.type) {
-    case 'ecdsa': {
+async function sign(signers: SignerSet, chain: Chain, hash: Hex): Promise<Hex> {
+  switch (signers.type) {
+    case 'owner': {
+      switch (signers.kind) {
+        case 'ecdsa': {
+          const signatures = await Promise.all(
+            signers.accounts.map((account) => signEcdsa(account, hash)),
+          )
+          return concat(signatures)
+        }
+        case 'passkey': {
+          return await signPasskey(signers.account, chain, hash)
+        }
+        case 'multi-factor': {
+          const signatures = await Promise.all(
+            signers.validators.map(async (validator) => {
+              if (validator === null) {
+                return '0x'
+              }
+              const validatorSigners: SignerSet =
+                convertOwnerSetToSignerSet(validator)
+              return sign(validatorSigners, chain, hash)
+            }),
+          )
+          const data = encodeAbiParameters(
+            [
+              {
+                components: [
+                  {
+                    internalType: 'bytes32',
+                    name: 'packedValidatorAndId',
+                    type: 'bytes32',
+                  },
+                  { internalType: 'bytes', name: 'data', type: 'bytes' },
+                ],
+                name: 'validators',
+                type: 'tuple[]',
+              },
+            ],
+            [
+              signers.validators.map((validator, index) => {
+                const validatorModule = getValidator(validator)
+                return {
+                  packedValidatorAndId: concat([
+                    pad(toHex(validator.id), {
+                      size: 12,
+                    }),
+                    validatorModule.address,
+                  ]),
+                  data: signatures[index],
+                }
+              }),
+            ],
+          )
+          return data
+        }
+        default: {
+          throw new Error('Unsupported owner kind')
+        }
+      }
+    }
+    case 'session': {
+      const sessionSigners: SignerSet = convertOwnerSetToSignerSet(
+        signers.session.owners,
+      )
+      return sign(sessionSigners, chain, hash)
+    }
+    case 'guardians': {
       const signatures = await Promise.all(
-        validators.accounts.map((account) => signEcdsa(account, hash)),
+        signers.guardians.map((account) => signEcdsa(account, hash)),
       )
       return concat(signatures)
-    }
-    case 'passkey': {
-      return await signPasskey(validators.account, chain, hash)
     }
   }
 }
@@ -451,6 +531,49 @@ function getAccountProvider(
   }
   return {
     type: 'nexus',
+  }
+}
+
+function convertOwnerSetToSignerSet(owners: OwnerSet): SignerSet {
+  switch (owners.type) {
+    case 'ecdsa': {
+      return {
+        type: 'owner',
+        kind: 'ecdsa',
+        accounts: owners.accounts,
+      }
+    }
+    case 'passkey': {
+      return {
+        type: 'owner',
+        kind: 'passkey',
+        account: owners.account,
+      }
+    }
+    case 'multi-factor': {
+      return {
+        type: 'owner',
+        kind: 'multi-factor',
+        validators: owners.validators.map((validator, index) => {
+          switch (validator.type) {
+            case 'ecdsa': {
+              return {
+                type: 'ecdsa',
+                id: index,
+                accounts: validator.accounts,
+              }
+            }
+            case 'passkey': {
+              return {
+                type: 'passkey',
+                id: index,
+                account: validator.account,
+              }
+            }
+          }
+        }),
+      }
+    }
   }
 }
 

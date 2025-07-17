@@ -1,10 +1,4 @@
-import {
-  type Address,
-  type Chain,
-  createPublicClient,
-  erc20Abi,
-  zeroAddress,
-} from 'viem'
+import { type Address, type Chain, createPublicClient, zeroAddress } from 'viem'
 import { mainnet, sepolia } from 'viem/chains'
 
 import { deploy, getAddress } from '../accounts'
@@ -18,19 +12,12 @@ import {
 } from '../orchestrator'
 import { getChainById } from '../orchestrator/registry'
 import type {
-  Call,
   CallInput,
   RhinestoneAccountConfig,
   SignerSet,
   TokenRequest,
   Transaction,
 } from '../types'
-import {
-  COMPACT_ADDRESS,
-  getApproveErc20Call,
-  getDepositErc20Call,
-  getDepositEtherCall,
-} from './compact'
 import {
   ExecutionError,
   IntentFailedError,
@@ -106,6 +93,7 @@ async function sendTransactionInternal(
       : initialTokenRequests
 
   const asUserOp = signers?.type === 'guardians' || signers?.type === 'session'
+  // const asUserOp = true
   if (asUserOp) {
     if (!sourceChain) {
       throw new SourceChainRequiredForSmartSessionsError()
@@ -288,66 +276,11 @@ async function getPortfolio(
   return orchestrator.getPortfolio(address)
 }
 
-async function deposit(
-  config: RhinestoneAccountConfig,
-  chain: Chain,
-  amount: bigint,
-  tokenAddress?: Address,
-) {
-  async function getCalls(address: Address): Promise<Call[]> {
-    if (!tokenAddress || tokenAddress === zeroAddress) {
-      // ETH deposit
-      return [getDepositEtherCall(address, amount)]
-    } else {
-      // ERC20 deposit
-      const publicClient = createPublicClient({
-        chain,
-        transport: createTransport(chain, config.provider),
-      })
-      const allowance = await publicClient.readContract({
-        address: tokenAddress,
-        abi: erc20Abi,
-        functionName: 'allowance',
-        args: [address, COMPACT_ADDRESS],
-      })
-      const calls: Call[] = []
-      if (allowance < amount) {
-        calls.push(getApproveErc20Call(tokenAddress, amount))
-      }
-      calls.push(getDepositErc20Call(address, tokenAddress, amount))
-      return calls
-    }
-  }
-
-  const address = getAddress(config)
-  const owners = config.owners
-  const calls = await getCalls(address)
-
-  return await sendTransactionAsUserOp(
-    config,
-    chain,
-    chain,
-    calls,
-    owners.type === 'ecdsa'
-      ? {
-          type: 'owner',
-          kind: 'ecdsa',
-          accounts: owners.accounts,
-        }
-      : {
-          type: 'owner',
-          kind: 'passkey',
-          account: owners.account,
-        },
-  )
-}
-
 export {
   sendTransaction,
   waitForExecution,
   getMaxSpendableAmount,
   getPortfolio,
-  deposit,
   // Errors
   isExecutionError,
   IntentFailedError,

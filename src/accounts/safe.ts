@@ -341,6 +341,8 @@ function getOwners(config: RhinestoneAccountConfig) {
       return ownerSet.accounts.map((account) => account.address)
     case 'passkey':
       return [NO_SAFE_OWNER_ADDRESS]
+    case 'multi-factor':
+      return [NO_SAFE_OWNER_ADDRESS]
   }
 }
 
@@ -350,6 +352,8 @@ function getThreshold(config: RhinestoneAccountConfig) {
     case 'ecdsa':
       return ownerSet.threshold ? BigInt(ownerSet.threshold) : 1n
     case 'passkey':
+      return 1n
+    case 'multi-factor':
       return 1n
   }
 }

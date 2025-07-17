@@ -19,6 +19,12 @@ interface WebauthnValidatorConfig {
   account: WebAuthnAccount
 }
 
+interface MultiFactorValidatorConfig {
+  type: 'multi-factor'
+  validators: (OwnableValidatorConfig | WebauthnValidatorConfig)[]
+  threshold?: number
+}
+
 interface ProviderConfig {
   type: 'alchemy'
   apiKey: string
@@ -34,7 +40,10 @@ interface PaymasterConfig {
   apiKey: string
 }
 
-type OwnerSet = OwnableValidatorConfig | WebauthnValidatorConfig
+type OwnerSet =
+  | OwnableValidatorConfig
+  | WebauthnValidatorConfig
+  | MultiFactorValidatorConfig
 
 interface SudoPolicy {
   type: 'sudo'
@@ -156,6 +165,22 @@ type OwnerSignerSet =
       kind: 'passkey'
       account: WebAuthnAccount
     }
+  | {
+      type: 'owner'
+      kind: 'multi-factor'
+      validators: (
+        | {
+            type: 'ecdsa'
+            id: number | Hex
+            accounts: Account[]
+          }
+        | {
+            type: 'passkey'
+            id: number | Hex
+            account: WebAuthnAccount
+          }
+      )[]
+    }
 
 interface SessionSignerSet {
   type: 'session'
@@ -203,6 +228,7 @@ export type {
   OwnerSet,
   OwnableValidatorConfig,
   WebauthnValidatorConfig,
+  MultiFactorValidatorConfig,
   SignerSet,
   Session,
   Recovery,
