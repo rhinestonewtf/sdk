@@ -1,0 +1,345 @@
+import type { Abi, Address, Hex, PublicClient } from 'viem'
+import {
+  concat,
+  encodeAbiParameters,
+  encodeFunctionData,
+  encodePacked,
+  keccak256,
+  parseAbi,
+  slice,
+  toHex,
+  zeroAddress,
+  zeroHash,
+} from 'viem'
+import {
+  entryPoint07Abi,
+  entryPoint07Address,
+  getUserOperationHash,
+  type SmartAccount,
+  type SmartAccountImplementation,
+  toSmartAccount,
+} from 'viem/account-abstraction'
+
+import { getSetup as getModuleSetup } from '../modules'
+import type { Module } from '../modules/common'
+import {
+  encodeSmartSessionSignature,
+  getMockSignature,
+  getPermissionId,
+  SMART_SESSION_MODE_ENABLE,
+  SMART_SESSION_MODE_USE,
+} from '../modules/validators'
+import type { EnableSessionData } from '../modules/validators/smart-sessions'
+import type { OwnerSet, RhinestoneAccountConfig, Session } from '../types'
+import { encode7579Calls, getAccountNonce, type ValidatorConfig } from './utils'
+
+const IMPLEMENTATION_ADDRESS: Address =
+  '0x000000b8f5f723a680d3d7ee624fe0bc84a6e05a'
+const FACTORY_ADDRESS: Address = '0x0000003B3E7b530b4f981aE80d9350392Defef90'
+const BOOTSTRAP_ADDRESS: Address = '0x000000552A5fAe3Db7a8F3917C435448F49BA6a9'
+
+const CREATION_CODE =
+  '0x608060405261029d803803806100148161018c565b92833981016040828203126101885781516001600160a01b03811692909190838303610188576020810151906001600160401b03821161018857019281601f8501121561018857835161006e610069826101c5565b61018c565b9481865260208601936020838301011161018857815f926020809301865e8601015260017f754fd8b321c4649cb777ae6fdce7e89e9cceaa31a4f639795c7807eb7f1a27005d823b15610176577f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc80546001600160a01b031916821790557fbc7cd75a20ee27fd9adebab32041f755214dbc6bffa90cc0225b39da2e5c2d3b5f80a282511561015e575f8091610146945190845af43d15610156573d91610137610069846101c5565b9283523d5f602085013e6101e0565b505b604051605e908161023f8239f35b6060916101e0565b50505034156101485763b398979f60e01b5f5260045ffd5b634c9c8ce360e01b5f5260045260245ffd5b5f80fd5b6040519190601f01601f191682016001600160401b038111838210176101b157604052565b634e487b7160e01b5f52604160045260245ffd5b6001600160401b0381116101b157601f01601f191660200190565b9061020457508051156101f557805190602001fd5b63d6bda27560e01b5f5260045ffd5b81511580610235575b610215575090565b639996b31560e01b5f9081526001600160a01b0391909116600452602490fd5b50803b1561020d56fe60806040523615605c575f8073ffffffffffffffffffffffffffffffffffffffff7f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc5416368280378136915af43d5f803e156058573d5ff35b3d5ffd5b00'
+
+function getDeployArgs(config: RhinestoneAccountConfig) {
+  const salt: Hex = zeroHash
+  const moduleSetup = getModuleSetup(config)
+  const initData = encodeAbiParameters(
+    [{ type: 'address' }, { type: 'bytes' }],
+    [
+      BOOTSTRAP_ADDRESS,
+      encodeFunctionData({
+        abi: parseAbi([
+          'struct BootstrapConfig {address module;bytes initData;}',
+          'struct BootstrapPreValidationHookConfig {uint256 hookType;address module;bytes data;}',
+          'function init(BootstrapConfig[] calldata validators,BootstrapConfig[] calldata executors,BootstrapConfig calldata hook,BootstrapConfig[] calldata fallbacks,BootstrapPreValidationHookConfig[] calldata preValidationHooks) external',
+        ]),
+        functionName: 'init',
+        args: [
+          moduleSetup.validators.map((v) => ({
+            module: v.address,
+            initData: v.initData,
+          })),
+          moduleSetup.executors.map((e) => ({
+            module: e.address,
+            initData: e.initData,
+          })),
+          {
+            module: zeroAddress,
+            initData: '0x',
+          },
+          moduleSetup.fallbacks.map((f) => ({
+            module: f.address,
+            initData: f.initData,
+          })),
+          [],
+        ],
+      }),
+    ],
+  )
+  const factoryData = encodeFunctionData({
+    abi: parseAbi(['function createAccount(bytes,bytes32)']),
+    functionName: 'createAccount',
+    args: [initData, salt],
+  })
+
+  const initializationCallData = encodeFunctionData({
+    abi: parseAbi(['function initializeAccount(bytes)']),
+    functionName: 'initializeAccount',
+    args: [initData],
+  })
+
+  return {
+    factory: FACTORY_ADDRESS,
+    factoryData,
+    salt,
+    implementation: IMPLEMENTATION_ADDRESS,
+    initializationCallData,
+  }
+}
+
+function getAddress(config: RhinestoneAccountConfig) {
+  const { factory, salt, initializationCallData } = getDeployArgs(config)
+
+  const accountInitData = encodeAbiParameters(
+    [
+      {
+        name: 'address',
+        type: 'address',
+      },
+      {
+        name: 'calldata',
+        type: 'bytes',
+      },
+    ],
+    [IMPLEMENTATION_ADDRESS, initializationCallData],
+  )
+  const hashedInitcode: Hex = keccak256(
+    concat([CREATION_CODE, accountInitData]),
+  )
+
+  const hash = keccak256(
+    encodePacked(
+      ['bytes1', 'address', 'bytes32', 'bytes'],
+      ['0xff', factory, salt, hashedInitcode],
+    ),
+  )
+  const address = slice(hash, 12, 32)
+  return address
+}
+
+function getInstallData(module: Module) {
+  return encodeFunctionData({
+    abi: [
+      {
+        type: 'function',
+        name: 'installModule',
+        inputs: [
+          {
+            type: 'uint256',
+            name: 'moduleTypeId',
+          },
+          {
+            type: 'address',
+            name: 'module',
+          },
+          {
+            type: 'bytes',
+            name: 'initData',
+          },
+        ],
+        outputs: [],
+        stateMutability: 'nonpayable',
+      },
+    ],
+    functionName: 'installModule',
+    args: [module.type, module.address, module.initData],
+  })
+}
+
+async function getPackedSignature(
+  signFn: (message: Hex) => Promise<Hex>,
+  hash: Hex,
+  validator: ValidatorConfig,
+  transformSignature: (signature: Hex) => Hex = (signature) => signature,
+) {
+  const signature = await signFn(hash)
+  const packedSig = encodePacked(
+    ['address', 'bytes'],
+    [validator.address, transformSignature(signature)],
+  )
+  return packedSig
+}
+
+async function getSmartAccount(
+  client: PublicClient,
+  address: Address,
+  owners: OwnerSet,
+  validatorAddress: Address,
+  sign: (hash: Hex) => Promise<Hex>,
+) {
+  return getBaseSmartAccount(
+    address,
+    client,
+    validatorAddress,
+    async () => {
+      return getMockSignature(owners)
+    },
+    sign,
+  )
+}
+
+async function getSessionSmartAccount(
+  client: PublicClient,
+  address: Address,
+  session: Session,
+  validatorAddress: Address,
+  enableData: EnableSessionData | null,
+  sign: (hash: Hex) => Promise<Hex>,
+) {
+  return await getBaseSmartAccount(
+    address,
+    client,
+    validatorAddress,
+    async () => {
+      const dummyOpSignature = getMockSignature(session.owners)
+      if (enableData) {
+        return encodeSmartSessionSignature(
+          SMART_SESSION_MODE_ENABLE,
+          getPermissionId(session),
+          dummyOpSignature,
+          enableData,
+        )
+      }
+      return encodeSmartSessionSignature(
+        SMART_SESSION_MODE_USE,
+        getPermissionId(session),
+        dummyOpSignature,
+      )
+    },
+    async (hash) => {
+      const signature = await sign(hash)
+      if (enableData) {
+        return encodeSmartSessionSignature(
+          SMART_SESSION_MODE_ENABLE,
+          getPermissionId(session),
+          signature,
+          enableData,
+        )
+      }
+      return encodeSmartSessionSignature(
+        SMART_SESSION_MODE_USE,
+        getPermissionId(session),
+        signature,
+      )
+    },
+  )
+}
+
+async function getGuardianSmartAccount(
+  client: PublicClient,
+  address: Address,
+  guardians: OwnerSet,
+  validatorAddress: Address,
+  sign: (hash: Hex) => Promise<Hex>,
+) {
+  return await getBaseSmartAccount(
+    address,
+    client,
+    validatorAddress,
+    async () => {
+      return getMockSignature(guardians)
+    },
+    async (hash) => {
+      return await sign(hash)
+    },
+  )
+}
+
+async function getBaseSmartAccount(
+  address: Address,
+  client: PublicClient,
+  nonceValidatorAddress: Address,
+  getStubSignature: () => Promise<Hex>,
+  signUserOperation: (hash: Hex) => Promise<Hex>,
+): Promise<SmartAccount<SmartAccountImplementation<Abi, '0.7'>>> {
+  return await toSmartAccount({
+    client,
+    entryPoint: {
+      abi: entryPoint07Abi,
+      address: entryPoint07Address,
+      version: '0.7',
+    },
+    async decodeCalls() {
+      throw new Error('Not implemented')
+    },
+    async encodeCalls(calls) {
+      return encode7579Calls({
+        mode: {
+          type: calls.length > 1 ? 'batchcall' : 'call',
+          revertOnError: false,
+          selector: '0x',
+          context: '0x',
+        },
+        callData: calls,
+      })
+    },
+    async getAddress() {
+      return address
+    },
+    async getFactoryArgs() {
+      return {}
+    },
+    async getNonce(args) {
+      const TIMESTAMP_ADJUSTMENT = 16777215n // max value for size 3
+      const defaultedKey = (args?.key ?? 0n) % TIMESTAMP_ADJUSTMENT
+      const defaultedValidationMode = '0x00'
+      const key = concat([
+        toHex(defaultedKey, { size: 3 }),
+        defaultedValidationMode,
+        nonceValidatorAddress,
+      ])
+      return getAccountNonce(client, {
+        address,
+        entryPointAddress: entryPoint07Address,
+        key: BigInt(key),
+      })
+    },
+    async getStubSignature() {
+      return getStubSignature()
+    },
+    async signMessage() {
+      throw new Error('Not implemented')
+    },
+    async signTypedData() {
+      throw new Error('Not implemented')
+    },
+    async signUserOperation(parameters) {
+      const { chainId = client.chain?.id, ...userOperation } = parameters
+
+      if (!chainId) throw new Error('Chain id not found')
+
+      const hash = getUserOperationHash({
+        userOperation: {
+          ...userOperation,
+          sender: userOperation.sender ?? (await this.getAddress()),
+          signature: '0x',
+        },
+        entryPointAddress: entryPoint07Address,
+        entryPointVersion: '0.7',
+        chainId: chainId,
+      })
+      return await signUserOperation(hash)
+    },
+  })
+}
+
+export {
+  getInstallData,
+  getAddress,
+  getPackedSignature,
+  getDeployArgs,
+  getSmartAccount,
+  getSessionSmartAccount,
+  getGuardianSmartAccount,
+}
