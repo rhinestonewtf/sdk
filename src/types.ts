@@ -206,7 +206,7 @@ interface SameChainTransaction extends BaseTransaction {
 }
 
 interface CrossChainTransaction extends BaseTransaction {
-  sourceChain?: Chain
+  sourceChains?: Chain[]
   targetChain: Chain
 }
 

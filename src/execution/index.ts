@@ -24,8 +24,7 @@ import {
   isExecutionError,
   OrderPathRequiredForIntentsError,
   SessionChainRequiredError,
-  SourceChainRequiredForSmartSessionsError,
-  SourceTargetChainMismatchError,
+  SourceChainsNotAvailableForUserOpFlowError,
   UserOperationRequiredForSmartSessionsError,
 } from './error'
 import { enableSmartSession } from './smart-session'
@@ -49,7 +48,7 @@ async function sendTransaction(
     // Same-chain transaction
     return await sendTransactionInternal(
       config,
-      transaction.chain,
+      [transaction.chain],
       transaction.chain,
       transaction.calls,
       transaction.gasLimit,
@@ -60,7 +59,7 @@ async function sendTransaction(
     // Cross-chain transaction
     return await sendTransactionInternal(
       config,
-      transaction.sourceChain,
+      transaction.sourceChains || [],
       transaction.targetChain,
       transaction.calls,
       transaction.gasLimit,
@@ -72,7 +71,7 @@ async function sendTransaction(
 
 async function sendTransactionInternal(
   config: RhinestoneAccountConfig,
-  sourceChain: Chain | undefined,
+  sourceChains: Chain[],
   targetChain: Chain,
   callInputs: CallInput[],
   gasLimit: bigint | undefined,
@@ -95,17 +94,13 @@ async function sendTransactionInternal(
   const asUserOp = signers?.type === 'guardians' || signers?.type === 'session'
   // const asUserOp = true
   if (asUserOp) {
-    if (!sourceChain) {
-      throw new SourceChainRequiredForSmartSessionsError()
-    }
     const withSession = signers?.type === 'session' ? signers.session : null
     if (withSession) {
-      await enableSmartSession(sourceChain, config, withSession)
+      await enableSmartSession(targetChain, config, withSession)
     }
     // Smart sessions require a UserOp flow
     return await sendTransactionAsUserOp(
       config,
-      sourceChain,
       targetChain,
       callInputs,
       signers,
@@ -113,7 +108,7 @@ async function sendTransactionInternal(
   } else {
     return await sendTransactionAsIntent(
       config,
-      sourceChain,
+      sourceChains,
       targetChain,
       callInputs,
       gasLimit,
@@ -126,32 +121,31 @@ async function sendTransactionInternal(
 
 async function sendTransactionAsUserOp(
   config: RhinestoneAccountConfig,
-  sourceChain: Chain,
-  targetChain: Chain,
+  chain: Chain,
   callInputs: CallInput[],
   signers: SignerSet,
 ) {
   // Make sure the account is deployed
-  await deploy(config, sourceChain)
+  await deploy(config, chain)
   const withSession = signers?.type === 'session' ? signers.session : null
   const publicClient = createPublicClient({
-    chain: sourceChain,
-    transport: createTransport(sourceChain, config.provider),
+    chain,
+    transport: createTransport(chain, config.provider),
   })
   const validatorAccount = await getValidatorAccount(
     config,
     signers,
     publicClient,
-    sourceChain,
+    chain,
   )
   if (!validatorAccount) {
     throw new Error('No validator account found')
   }
   const bundlerClient = getBundlerClient(config, publicClient)
   if (withSession) {
-    await enableSmartSession(targetChain, config, withSession)
+    await enableSmartSession(chain, config, withSession)
   }
-  const calls = parseCalls(callInputs, targetChain.id)
+  const calls = parseCalls(callInputs, chain.id)
   const hash = await bundlerClient.sendUserOperation({
     account: validatorAccount,
     calls,
@@ -159,14 +153,13 @@ async function sendTransactionAsUserOp(
   return {
     type: 'userop',
     hash,
-    sourceChain: sourceChain.id,
-    targetChain: targetChain.id,
+    chain: chain.id,
   } as TransactionResult
 }
 
 async function sendTransactionAsIntent(
   config: RhinestoneAccountConfig,
-  sourceChain: Chain | undefined,
+  sourceChains: Chain[],
   targetChain: Chain,
   callInputs: CallInput[],
   gasLimit: bigint | undefined,
@@ -176,7 +169,7 @@ async function sendTransactionAsIntent(
 ) {
   const { intentRoute, hash: intentHash } = await prepareTransactionAsIntent(
     config,
-    sourceChain,
+    sourceChains,
     targetChain,
     callInputs,
     gasLimit,
@@ -186,16 +179,10 @@ async function sendTransactionAsIntent(
   if (!intentRoute) {
     throw new OrderPathRequiredForIntentsError()
   }
-  const signature = await signIntent(
-    config,
-    sourceChain,
-    targetChain,
-    intentHash,
-    signers,
-  )
+  const signature = await signIntent(config, targetChain, intentHash, signers)
   return await submitIntentInternal(
     config,
-    sourceChain,
+    sourceChains,
     targetChain,
     intentRoute.intentOp,
     signature,
@@ -233,9 +220,9 @@ async function waitForExecution(
       return intentStatus
     }
     case 'userop': {
-      const targetChain = getChainById(result.targetChain)
+      const targetChain = getChainById(result.chain)
       if (!targetChain) {
-        throw new Error(`Unsupported chain ID: ${result.targetChain}`)
+        throw new Error(`Unsupported chain ID: ${result.chain}`)
       }
       const publicClient = createPublicClient({
         chain: targetChain,
@@ -285,8 +272,7 @@ export {
   isExecutionError,
   IntentFailedError,
   ExecutionError,
-  SourceChainRequiredForSmartSessionsError,
-  SourceTargetChainMismatchError,
+  SourceChainsNotAvailableForUserOpFlowError,
   UserOperationRequiredForSmartSessionsError,
   OrderPathRequiredForIntentsError,
   SessionChainRequiredError,

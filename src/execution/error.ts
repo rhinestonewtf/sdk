@@ -34,28 +34,14 @@ class ExecutionError extends Error {
   }
 }
 
-class SourceChainRequiredForSmartSessionsError extends ExecutionError {
+class SourceChainsNotAvailableForUserOpFlowError extends ExecutionError {
   constructor(params?: {
     context?: any
     errorType?: string
     traceId?: string
   }) {
     super({
-      message: 'Specifying source chain is required when using smart sessions',
-      ...params,
-    })
-  }
-}
-
-class SourceTargetChainMismatchError extends ExecutionError {
-  constructor(params?: {
-    context?: any
-    errorType?: string
-    traceId?: string
-  }) {
-    super({
-      message:
-        'Source and target chain must be the same when using user operations',
+      message: "Can't specify the source chains when using user operations",
       ...params,
     })
   }
@@ -121,8 +107,7 @@ function isExecutionError(error: Error): error is ExecutionError {
 export {
   isExecutionError,
   ExecutionError,
-  SourceChainRequiredForSmartSessionsError,
-  SourceTargetChainMismatchError,
+  SourceChainsNotAvailableForUserOpFlowError,
   UserOperationRequiredForSmartSessionsError,
   OrderPathRequiredForIntentsError,
   SessionChainRequiredError,
