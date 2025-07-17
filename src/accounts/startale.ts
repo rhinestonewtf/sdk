@@ -1,4 +1,4 @@
-import type { Abi, Address, Hex, PublicClient } from 'viem'
+import type { Address, Hex, PublicClient } from 'viem'
 import {
   concat,
   encodeAbiParameters,
@@ -7,31 +7,22 @@ import {
   keccak256,
   parseAbi,
   slice,
-  toHex,
   zeroAddress,
   zeroHash,
 } from 'viem'
-import {
-  entryPoint07Abi,
-  entryPoint07Address,
-  getUserOperationHash,
-  type SmartAccount,
-  type SmartAccountImplementation,
-  toSmartAccount,
-} from 'viem/account-abstraction'
 
 import { getSetup as getModuleSetup } from '../modules'
 import type { Module } from '../modules/common'
-import {
-  encodeSmartSessionSignature,
-  getMockSignature,
-  getPermissionId,
-  SMART_SESSION_MODE_ENABLE,
-  SMART_SESSION_MODE_USE,
-} from '../modules/validators'
 import type { EnableSessionData } from '../modules/validators/smart-sessions'
 import type { OwnerSet, RhinestoneAccountConfig, Session } from '../types'
-import { encode7579Calls, getAccountNonce, type ValidatorConfig } from './utils'
+import {
+  getGuardianSmartAccount as getNexusGuardianSmartAccount,
+  getInstallData as getNexusInstallData,
+  getPackedSignature as getNexusPackedSignature,
+  getSessionSmartAccount as getNexusSessionSmartAccount,
+  getSmartAccount as getNexusSmartAccount,
+} from './nexus'
+import type { ValidatorConfig } from './utils'
 
 const IMPLEMENTATION_ADDRESS: Address =
   '0x000000b8f5f723a680d3d7ee624fe0bc84a6e05a'
@@ -129,32 +120,7 @@ function getAddress(config: RhinestoneAccountConfig) {
 }
 
 function getInstallData(module: Module) {
-  return encodeFunctionData({
-    abi: [
-      {
-        type: 'function',
-        name: 'installModule',
-        inputs: [
-          {
-            type: 'uint256',
-            name: 'moduleTypeId',
-          },
-          {
-            type: 'address',
-            name: 'module',
-          },
-          {
-            type: 'bytes',
-            name: 'initData',
-          },
-        ],
-        outputs: [],
-        stateMutability: 'nonpayable',
-      },
-    ],
-    functionName: 'installModule',
-    args: [module.type, module.address, module.initData],
-  })
+  return getNexusInstallData(module)
 }
 
 async function getPackedSignature(
@@ -163,12 +129,7 @@ async function getPackedSignature(
   validator: ValidatorConfig,
   transformSignature: (signature: Hex) => Hex = (signature) => signature,
 ) {
-  const signature = await signFn(hash)
-  const packedSig = encodePacked(
-    ['address', 'bytes'],
-    [validator.address, transformSignature(signature)],
-  )
-  return packedSig
+  return getNexusPackedSignature(signFn, hash, validator, transformSignature)
 }
 
 async function getSmartAccount(
@@ -178,15 +139,7 @@ async function getSmartAccount(
   validatorAddress: Address,
   sign: (hash: Hex) => Promise<Hex>,
 ) {
-  return getBaseSmartAccount(
-    address,
-    client,
-    validatorAddress,
-    async () => {
-      return getMockSignature(owners)
-    },
-    sign,
-  )
+  return getNexusSmartAccount(client, address, owners, validatorAddress, sign)
 }
 
 async function getSessionSmartAccount(
@@ -197,42 +150,13 @@ async function getSessionSmartAccount(
   enableData: EnableSessionData | null,
   sign: (hash: Hex) => Promise<Hex>,
 ) {
-  return await getBaseSmartAccount(
-    address,
+  return getNexusSessionSmartAccount(
     client,
+    address,
+    session,
     validatorAddress,
-    async () => {
-      const dummyOpSignature = getMockSignature(session.owners)
-      if (enableData) {
-        return encodeSmartSessionSignature(
-          SMART_SESSION_MODE_ENABLE,
-          getPermissionId(session),
-          dummyOpSignature,
-          enableData,
-        )
-      }
-      return encodeSmartSessionSignature(
-        SMART_SESSION_MODE_USE,
-        getPermissionId(session),
-        dummyOpSignature,
-      )
-    },
-    async (hash) => {
-      const signature = await sign(hash)
-      if (enableData) {
-        return encodeSmartSessionSignature(
-          SMART_SESSION_MODE_ENABLE,
-          getPermissionId(session),
-          signature,
-          enableData,
-        )
-      }
-      return encodeSmartSessionSignature(
-        SMART_SESSION_MODE_USE,
-        getPermissionId(session),
-        signature,
-      )
-    },
+    enableData,
+    sign,
   )
 }
 
@@ -243,95 +167,13 @@ async function getGuardianSmartAccount(
   validatorAddress: Address,
   sign: (hash: Hex) => Promise<Hex>,
 ) {
-  return await getBaseSmartAccount(
+  return getNexusGuardianSmartAccount(
+    client,
     address,
-    client,
+    guardians,
     validatorAddress,
-    async () => {
-      return getMockSignature(guardians)
-    },
-    async (hash) => {
-      return await sign(hash)
-    },
+    sign,
   )
-}
-
-async function getBaseSmartAccount(
-  address: Address,
-  client: PublicClient,
-  nonceValidatorAddress: Address,
-  getStubSignature: () => Promise<Hex>,
-  signUserOperation: (hash: Hex) => Promise<Hex>,
-): Promise<SmartAccount<SmartAccountImplementation<Abi, '0.7'>>> {
-  return await toSmartAccount({
-    client,
-    entryPoint: {
-      abi: entryPoint07Abi,
-      address: entryPoint07Address,
-      version: '0.7',
-    },
-    async decodeCalls() {
-      throw new Error('Not implemented')
-    },
-    async encodeCalls(calls) {
-      return encode7579Calls({
-        mode: {
-          type: calls.length > 1 ? 'batchcall' : 'call',
-          revertOnError: false,
-          selector: '0x',
-          context: '0x',
-        },
-        callData: calls,
-      })
-    },
-    async getAddress() {
-      return address
-    },
-    async getFactoryArgs() {
-      return {}
-    },
-    async getNonce(args) {
-      const TIMESTAMP_ADJUSTMENT = 16777215n // max value for size 3
-      const defaultedKey = (args?.key ?? 0n) % TIMESTAMP_ADJUSTMENT
-      const defaultedValidationMode = '0x00'
-      const key = concat([
-        toHex(defaultedKey, { size: 3 }),
-        defaultedValidationMode,
-        nonceValidatorAddress,
-      ])
-      return getAccountNonce(client, {
-        address,
-        entryPointAddress: entryPoint07Address,
-        key: BigInt(key),
-      })
-    },
-    async getStubSignature() {
-      return getStubSignature()
-    },
-    async signMessage() {
-      throw new Error('Not implemented')
-    },
-    async signTypedData() {
-      throw new Error('Not implemented')
-    },
-    async signUserOperation(parameters) {
-      const { chainId = client.chain?.id, ...userOperation } = parameters
-
-      if (!chainId) throw new Error('Chain id not found')
-
-      const hash = getUserOperationHash({
-        userOperation: {
-          ...userOperation,
-          sender: userOperation.sender ?? (await this.getAddress()),
-          signature: '0x',
-        },
-        entryPointAddress: entryPoint07Address,
-        entryPointVersion: '0.7',
-        chainId: chainId,
-      })
-      return await signUserOperation(hash)
-    },
-  })
 }
 
 export {
