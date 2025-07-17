@@ -40,8 +40,8 @@ import {
   type SupportedChain,
 } from '../orchestrator'
 import {
-  DEV_ORCHESTRATOR_URL,
   PROD_ORCHESTRATOR_URL,
+  STAGING_ORCHESTRATOR_URL,
 } from '../orchestrator/consts'
 import { isTestnet, resolveTokenAddress } from '../orchestrator/registry'
 import type {
@@ -435,7 +435,7 @@ async function submitIntent(
 
 function getOrchestratorByChain(chainId: number, apiKey: string) {
   const orchestratorUrl = isTestnet(chainId)
-    ? DEV_ORCHESTRATOR_URL
+    ? STAGING_ORCHESTRATOR_URL
     : PROD_ORCHESTRATOR_URL
   return getOrchestrator(apiKey, orchestratorUrl)
 }
