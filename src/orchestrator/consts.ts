@@ -1,4 +1,4 @@
-const PROD_ORCHESTRATOR_URL = 'https://dev.v1.orchestrator.rhinestone.dev'
+const PROD_ORCHESTRATOR_URL = 'https://v1.orchestrator.rhinestone.dev'
 const STAGING_ORCHESTRATOR_URL =
   'https://staging.v1.orchestrator.rhinestone.dev'
 const RHINESTONE_SPOKE_POOL_ADDRESS =
