@@ -1,15 +1,15 @@
 import { setupOrchestratorMock } from './orchestrator'
 import { setupViemMock } from './utils/viem'
 
-const deployerPrivateKey =
+const funderPrivateKey =
   '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80'
-const deployerAccount = privateKeyToAccount(deployerPrivateKey)
+const funderAccount = privateKeyToAccount(funderPrivateKey)
 
 const sourceChain = base
 const anvil = getAnvil(sourceChain, getForkUrl(sourceChain))
 
 setupOrchestratorMock()
-setupViemMock(anvil, deployerAccount)
+setupViemMock(anvil, funderAccount)
 
 import { createPublicClient, http, parseEther } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
@@ -46,7 +46,6 @@ export function runBundlesTestCases() {
               accounts: [ownerAccount],
             },
             rhinestoneApiKey,
-            deployerAccount,
           })
 
           // Create a proper publicClient instance
@@ -56,7 +55,7 @@ export function runBundlesTestCases() {
           })
 
           // Fund the account
-          const client = anvil.getWalletClient(deployerAccount)
+          const client = anvil.getWalletClient(funderAccount)
           await client.sendTransaction({
             to: rhinestoneAccount.getAddress(),
             value: parseEther('1'),

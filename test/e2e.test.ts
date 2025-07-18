@@ -1,15 +1,15 @@
 import { setupOrchestratorMock } from './orchestrator'
 import { setupViemMock } from './utils/viem'
 
-const deployerPrivateKey =
+const funderPrivateKey =
   '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80'
-const deployerAccount = privateKeyToAccount(deployerPrivateKey)
+const funderAccount = privateKeyToAccount(funderPrivateKey)
 
 const sourceChain = base
 const anvil = getAnvil(sourceChain, getForkUrl(sourceChain))
 
 setupOrchestratorMock()
-setupViemMock(anvil, deployerAccount)
+setupViemMock(anvil, funderAccount)
 
 import { privateKeyToAccount } from 'viem/accounts'
 import { base } from 'viem/chains'
