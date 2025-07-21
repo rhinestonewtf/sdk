@@ -126,7 +126,6 @@ interface RhinestoneAccountConfig {
   account?: AccountProviderConfig
   owners: OwnerSet
   rhinestoneApiKey: string
-  deployerAccount?: Account
   sessions?: Session[]
   recovery?: Recovery
   eoa?: Account
@@ -207,7 +206,7 @@ interface SameChainTransaction extends BaseTransaction {
 }
 
 interface CrossChainTransaction extends BaseTransaction {
-  sourceChain?: Chain
+  sourceChains?: Chain[]
   targetChain: Chain
 }
 

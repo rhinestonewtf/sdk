@@ -258,7 +258,16 @@ export class Orchestrator {
       }
       let context: any = {}
       if (error.response.data) {
-        const { errors, traceId } = error.response.data
+        const { errors, traceId, message } = error.response.data
+        if (message) {
+          const mainErrorParams = {
+            context: { traceId },
+            errorType,
+            traceId,
+          }
+          this.parseErrorMessage(message, mainErrorParams)
+        }
+
         for (const err of errors) {
           let errorMessage = `Rhinestone Error: ${err.message}`
           if (errorType) {
@@ -283,67 +292,63 @@ export class Orchestrator {
             traceId,
           }
 
-          if (message === 'Insufficient balance') {
-            throw new InsufficientBalanceError(finalErrorParams)
-          } else if (message === 'Unsupported chain id') {
-            throw new UnsupportedChainIdError(finalErrorParams)
-          } else if (message.startsWith('Unsupported chain ')) {
-            const chainIdMatch = message.match(/Unsupported chain (\d+)/)
-            if (chainIdMatch) {
-              const chainId = parseInt(chainIdMatch[1], 10)
-              throw new UnsupportedChainError(chainId, finalErrorParams)
-            }
-            throw new UnsupportedChainIdError(finalErrorParams)
-          } else if (
-            message.includes('Unsupported token') &&
-            message.includes('for chain')
-          ) {
-            const tokenMatch = message.match(
-              /Unsupported token (\w+) for chain (\d+)/,
-            )
-            if (tokenMatch) {
-              const tokenSymbol = tokenMatch[1]
-              const chainId = parseInt(tokenMatch[2], 10)
-              throw new UnsupportedTokenError(
-                tokenSymbol,
-                chainId,
-                finalErrorParams,
-              )
-            }
-            throw new OrchestratorError({ message, ...finalErrorParams })
-          } else if (message.includes('not supported on chain')) {
-            const tokenMatch = message.match(
-              /Token (.+) not supported on chain (\d+)/,
-            )
-            if (tokenMatch) {
-              const tokenAddress = tokenMatch[1]
-              const chainId = parseInt(tokenMatch[2], 10)
-              throw new TokenNotSupportedError(
-                tokenAddress,
-                chainId,
-                finalErrorParams,
-              )
-            }
-            throw new OrchestratorError({ message, ...finalErrorParams })
-          } else if (message === 'Authentication is required') {
-            throw new AuthenticationRequiredError(finalErrorParams)
-          } else if (message === 'Invalid API key') {
-            throw new InvalidApiKeyError(finalErrorParams)
-          } else if (message === 'Invalid bundle signature') {
-            throw new InvalidIntentSignatureError(finalErrorParams)
-          } else if (message === 'Only one target token amount can be unset') {
-            throw new OnlyOneTargetTokenAmountCanBeUnsetError(finalErrorParams)
-          } else if (message === 'No Path Found') {
-            throw new NoPathFoundError(finalErrorParams)
-          } else if (message === 'Order bundle not found') {
-            throw new IntentNotFoundError(finalErrorParams)
-          } else {
-            throw new OrchestratorError({ message, ...finalErrorParams })
-          }
+          this.parseErrorMessage(message, finalErrorParams)
         }
       } else {
         console.error(error)
       }
+    }
+  }
+
+  private parseErrorMessage(message: string, errorParams: any) {
+    if (message === 'Insufficient balance') {
+      throw new InsufficientBalanceError(errorParams)
+    } else if (message === 'Unsupported chain id') {
+      throw new UnsupportedChainIdError(errorParams)
+    } else if (message.startsWith('Unsupported chain ')) {
+      const chainIdMatch = message.match(/Unsupported chain (\d+)/)
+      if (chainIdMatch) {
+        const chainId = parseInt(chainIdMatch[1], 10)
+        throw new UnsupportedChainError(chainId, errorParams)
+      }
+      throw new UnsupportedChainIdError(errorParams)
+    } else if (
+      message.includes('Unsupported token') &&
+      message.includes('for chain')
+    ) {
+      const tokenMatch = message.match(
+        /Unsupported token (\w+) for chain (\d+)/,
+      )
+      if (tokenMatch) {
+        const tokenSymbol = tokenMatch[1]
+        const chainId = parseInt(tokenMatch[2], 10)
+        throw new UnsupportedTokenError(tokenSymbol, chainId, errorParams)
+      }
+      throw new OrchestratorError({ message, ...errorParams })
+    } else if (message.includes('not supported on chain')) {
+      const tokenMatch = message.match(
+        /Token (.+) not supported on chain (\d+)/,
+      )
+      if (tokenMatch) {
+        const tokenAddress = tokenMatch[1]
+        const chainId = parseInt(tokenMatch[2], 10)
+        throw new TokenNotSupportedError(tokenAddress, chainId, errorParams)
+      }
+      throw new OrchestratorError({ message, ...errorParams })
+    } else if (message === 'Authentication is required') {
+      throw new AuthenticationRequiredError(errorParams)
+    } else if (message === 'Invalid API key') {
+      throw new InvalidApiKeyError(errorParams)
+    } else if (message === 'Invalid bundle signature') {
+      throw new InvalidIntentSignatureError(errorParams)
+    } else if (message === 'Only one target token amount can be unset') {
+      throw new OnlyOneTargetTokenAmountCanBeUnsetError(errorParams)
+    } else if (message === 'No Path Found') {
+      throw new NoPathFoundError(errorParams)
+    } else if (message === 'Order bundle not found') {
+      throw new IntentNotFoundError(errorParams)
+    } else {
+      throw new OrchestratorError({ message, ...errorParams })
     }
   }
 }
