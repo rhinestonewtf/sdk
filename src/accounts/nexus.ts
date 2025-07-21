@@ -66,7 +66,6 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
         abi: parseAbi([
           'struct BootstrapConfig {address module;bytes initData;}',
           'struct BootstrapPreValidationHookConfig {uint256 hookType;address module;bytes data;}',
-          'struct RegistryConfig {address registry;address[] attesters;uint8 threshold;}',
           'function initNexusWithDefaultValidatorAndOtherModulesNoRegistry(bytes calldata defaultValidatorInitData,BootstrapConfig[] calldata validators,BootstrapConfig[] calldata executors,BootstrapConfig calldata hook,BootstrapConfig[] calldata fallbacks,BootstrapPreValidationHookConfig[] calldata preValidationHooks) external',
         ]),
         functionName: 'initNexusWithDefaultValidatorAndOtherModulesNoRegistry',
