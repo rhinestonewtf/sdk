@@ -12,7 +12,7 @@ import type { IntentOp, SettlementSystem } from './types'
 function getClaimProofer(settlementSystem: SettlementSystem): Address {
   switch (settlementSystem) {
     case 'ACROSS':
-      return '0x1990c54b361C42e23E90d60Eb84071b50b04bE4a'
+      return '0x1636b30481Db91Bbc5818e65d3962838BdCd5569'
     case 'SAME_CHAIN':
       return zeroAddress
   }
@@ -28,7 +28,7 @@ function getIntentOpHash(intentOp: IntentOp) {
       name: 'The Compact',
       version: '1',
       chainId: BigInt(notarizedChainElement.chainId),
-      verifyingContract: '0xa2E6C7Ba8613E1534dCB990e7e4962216C0a5d58',
+      verifyingContract: '0xAbd3388A633758D0Bae01Efb885EF1e87BD519a6',
     },
     types: {
       MultichainCompact: [

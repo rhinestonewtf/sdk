@@ -34,9 +34,9 @@ import type { OwnerSet, RhinestoneAccountConfig, Session } from '../types'
 import { encode7579Calls, getAccountNonce, type ValidatorConfig } from './utils'
 
 const SAFE_7579_LAUNCHPAD_ADDRESS: Address =
-  '0x7579011aB74c46090561ea277Ba79D510c6C00ff'
+  '0x75798463024Bda64D83c94A64Bc7D7eaB41300eF'
 const SAFE_7579_ADAPTER_ADDRESS: Address =
-  '0x7579ee8307284f293b1927136486880611f20002'
+  '0x7579f2AD53b01c3D8779Fe17928e0D48885B0003'
 const SAFE_SINGLETON_ADDRESS: Address =
   '0x29fcb43b46531bca003ddc8fcb67ffe91900c762'
 const SAFE_PROXY_FACTORY_ADDRESS: Address =
@@ -50,6 +50,12 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
     const owners = getOwners(config)
     const threshold = getThreshold(config)
     const moduleSetup = getModuleSetup(config)
+    const modules = [
+      ...moduleSetup.validators,
+      ...moduleSetup.executors,
+      ...moduleSetup.fallbacks,
+      ...moduleSetup.hooks,
+    ]
     const initData = encodeFunctionData({
       abi: parseAbi([
         'function setup(address[] calldata _owners,uint256 _threshold,address to,bytes calldata data,address fallbackHandler,address paymentToken,uint256 payment, address paymentReceiver) external',
@@ -61,27 +67,16 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
         SAFE_7579_LAUNCHPAD_ADDRESS,
         encodeFunctionData({
           abi: parseAbi([
-            'struct ModuleInit {address module;bytes initData;}',
-            'function addSafe7579(address safe7579,ModuleInit[] calldata validators,ModuleInit[] calldata executors,ModuleInit[] calldata fallbacks, ModuleInit[] calldata hooks,address[] calldata attesters,uint8 threshold) external',
+            'struct ModuleInit {address module;bytes initData;uint256 moduleType}',
+            'function addSafe7579(address safe7579,ModuleInit[] calldata modules,address[] calldata attesters,uint8 threshold) external',
           ]),
           functionName: 'addSafe7579',
           args: [
             SAFE_7579_ADAPTER_ADDRESS,
-            moduleSetup.validators.map((v) => ({
-              module: v.address,
-              initData: v.initData,
-            })),
-            moduleSetup.executors.map((e) => ({
-              module: e.address,
-              initData: e.initData,
-            })),
-            moduleSetup.fallbacks.map((f) => ({
-              module: f.address,
-              initData: f.initData,
-            })),
-            moduleSetup.hooks.map((h) => ({
-              module: h.address,
-              initData: h.initData,
+            modules.map((m) => ({
+              module: m.address,
+              initData: m.initData,
+              moduleType: m.type,
             })),
             moduleSetup.attesters,
             moduleSetup.threshold,
