@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.0-alpha.7
+
+### Patch Changes
+
+- 1d76bad: Use latest contracts
+
 ## 1.0.0-alpha.6
 
 ### Patch Changes
