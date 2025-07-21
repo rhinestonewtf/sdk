@@ -67,10 +67,9 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
           'struct BootstrapConfig {address module;bytes initData;}',
           'struct BootstrapPreValidationHookConfig {uint256 hookType;address module;bytes data;}',
           'struct RegistryConfig {address registry;address[] attesters;uint8 threshold;}',
-          'function initNexus(BootstrapConfig[] calldata validators,BootstrapConfig[] calldata executors,BootstrapConfig calldata hook,BootstrapConfig[] calldata fallbacks,BootstrapPreValidationHookConfig[] calldata preValidationHooks,RegistryConfig registryConfig) external',
-          'function initNexusWithDefaultValidatorAndOtherModules(bytes calldata defaultValidatorInitData,BootstrapConfig[] calldata validators,BootstrapConfig[] calldata executors,BootstrapConfig calldata hook,BootstrapConfig[] calldata fallbacks,BootstrapPreValidationHookConfig[] calldata preValidationHooks,RegistryConfig registryConfig) external',
+          'function initNexusWithDefaultValidatorAndOtherModulesNoRegistry(bytes calldata defaultValidatorInitData,BootstrapConfig[] calldata validators,BootstrapConfig[] calldata executors,BootstrapConfig calldata hook,BootstrapConfig[] calldata fallbacks,BootstrapPreValidationHookConfig[] calldata preValidationHooks) external',
         ]),
-        functionName: 'initNexusWithDefaultValidatorAndOtherModules',
+        functionName: 'initNexusWithDefaultValidatorAndOtherModulesNoRegistry',
         args: [
           defaultValidatorInitData,
           validators.map((v) => ({
@@ -90,11 +89,6 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
             initData: f.initData,
           })),
           [],
-          {
-            registry: moduleSetup.registry,
-            attesters: moduleSetup.attesters,
-            threshold: moduleSetup.threshold,
-          },
         ],
       }),
     ],

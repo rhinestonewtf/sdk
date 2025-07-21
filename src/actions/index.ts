@@ -33,7 +33,6 @@ import type {
   WebauthnValidatorConfig,
 } from '../types'
 
-import { trustAttester } from './registry'
 import { encodeSmartSessionSignature } from './smart-session'
 
 function setUpRecovery({
@@ -416,7 +415,6 @@ export {
   recover,
   setUpRecovery,
   encodeSmartSessionSignature,
-  trustAttester,
   enableMultiFactor,
   disableMultiFactor,
   changeMultiFactorThreshold,
