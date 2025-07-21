@@ -1,8 +1,6 @@
 import { type Address, type Chain, createPublicClient, getAddress } from 'viem'
 import { createTransport } from '../accounts/utils'
 import type { AccountType, ProviderConfig } from '../types'
-import { RHINESTONE_MODULE_REGISTRY_ADDRESS } from './omni-account'
-import { getAttesters } from './registry'
 import { OWNABLE_VALIDATOR_ADDRESS } from './validators/core'
 
 async function getValidators(
@@ -132,41 +130,4 @@ async function getOwners(
   }
 }
 
-async function areAttestersTrusted(
-  account: Address,
-  chain: Chain,
-  provider?: ProviderConfig,
-): Promise<boolean> {
-  const { list: requiredAttesters } = getAttesters()
-  const publicClient = createPublicClient({
-    chain,
-    transport: createTransport(chain, provider),
-  })
-  const trustedAttesters = await publicClient.readContract({
-    abi: [
-      {
-        type: 'function',
-        name: 'findTrustedAttesters',
-        inputs: [
-          {
-            type: 'address',
-            name: 'smartAccount',
-          },
-        ],
-        outputs: [
-          {
-            type: 'address[]',
-          },
-        ],
-      },
-    ],
-    functionName: 'findTrustedAttesters',
-    address: RHINESTONE_MODULE_REGISTRY_ADDRESS,
-    args: [account],
-  })
-  return requiredAttesters.every((attester) =>
-    (trustedAttesters as Address[]).includes(getAddress(attester)),
-  )
-}
-
-export { getValidators, getOwners, areAttestersTrusted }
+export { getValidators, getOwners }

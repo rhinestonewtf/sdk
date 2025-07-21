@@ -30,7 +30,6 @@ import {
   removeSubValidator,
   setSubValidator,
   setUpRecovery,
-  trustAttester,
 } from './actions'
 import type { TransactionResult } from './execution'
 import {
@@ -59,7 +58,6 @@ import {
   submitTransaction as submitTransactionInternal,
 } from './execution/utils'
 import {
-  areAttestersTrusted as areAttestersTrustedInternal,
   getOwners as getOwnersInternal,
   getValidators as getValidatorsInternal,
 } from './modules'
@@ -123,7 +121,6 @@ interface RhinestoneAccount {
     sessionIndex: number,
     signature?: Hex,
   ) => Promise<SessionDetails>
-  areAttestersTrusted: (chain: Chain) => Promise<boolean>
   getOwners: (chain: Chain) => Promise<{
     accounts: Address[]
     threshold: number
@@ -218,11 +215,6 @@ async function createRhinestoneAccount(
     return getSessionDetailsInternal(config, sessions, sessionIndex, signature)
   }
 
-  function areAttestersTrusted(chain: Chain) {
-    const account = getAddress()
-    return areAttestersTrustedInternal(account, chain, config.provider)
-  }
-
   function getOwners(chain: Chain) {
     const account = getAddress()
     return getOwnersInternal(account, chain, config.provider)
@@ -246,7 +238,6 @@ async function createRhinestoneAccount(
     getPortfolio,
     getMaxSpendableAmount,
     getSessionDetails,
-    areAttestersTrusted,
     getOwners,
     getValidators,
   }
@@ -271,7 +262,6 @@ export {
   removeSubValidator,
   setSubValidator,
   setUpRecovery,
-  trustAttester,
   // Account errors
   isAccountError,
   AccountError,
