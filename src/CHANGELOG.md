@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.0-alpha.8
+
+### Patch Changes
+
+- 8e767ba: add soneium
+
 ## 1.0.0-alpha.7
 
 ### Patch Changes
