@@ -1,5 +1,38 @@
 # @rhinestone/sdk
 
+## 1.0.0-alpha.7
+
+### Patch Changes
+
+- 1d76bad: Use latest contracts
+
+## 1.0.0-alpha.6
+
+### Patch Changes
+
+- 43429c6: Multi source chain
+
+## 1.0.0-alpha.5
+
+### Patch Changes
+
+- f6456f0: Multi-factor validator
+
+## 1.0.0-alpha.4
+
+### Patch Changes
+
+- 18566eb: Intent-based account deployments
+
+## 1.0.0-alpha.3
+
+### Patch Changes
+
+- 54f5506: Allow using token symbols
+- ef7fd0e: - Custom JSON-RPC providers
+  - Biconomy bundler/paymaster
+  - Make `tokenRequests` optional
+
 ## 1.0.0-alpha.2
 
 ### Patch Changes

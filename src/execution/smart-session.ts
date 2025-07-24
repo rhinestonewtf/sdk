@@ -19,7 +19,6 @@ import {
   getBundlerClient,
   type ValidatorConfig,
 } from '../accounts/utils'
-import { getTrustAttesterCall, getTrustedAttesters } from '../modules'
 import {
   getEnableSessionCall,
   getPermissionId,
@@ -413,17 +412,11 @@ async function enableSmartSession(
     config.provider,
   )
 
-  const trustedAttesters = await getTrustedAttesters(publicClient, address)
-  const trustAttesterCall =
-    trustedAttesters.length === 0 ? getTrustAttesterCall(config) : undefined
-
   const smartAccount = await getSmartAccount(config, publicClient, chain)
   const bundlerClient = getBundlerClient(config, publicClient)
   const opHash = await bundlerClient.sendUserOperation({
     account: smartAccount,
-    calls: trustAttesterCall
-      ? [trustAttesterCall, enableSessionCall]
-      : [enableSessionCall],
+    calls: [enableSessionCall],
   })
   await bundlerClient.waitForUserOperationReceipt({
     hash: opHash,

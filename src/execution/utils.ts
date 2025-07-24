@@ -40,8 +40,8 @@ import {
   type SupportedChain,
 } from '../orchestrator'
 import {
-  DEV_ORCHESTRATOR_URL,
   PROD_ORCHESTRATOR_URL,
+  STAGING_ORCHESTRATOR_URL,
 } from '../orchestrator/consts'
 import { isTestnet, resolveTokenAddress } from '../orchestrator/registry'
 import type {
@@ -54,8 +54,7 @@ import type {
 } from '../types'
 import {
   OrderPathRequiredForIntentsError,
-  SourceChainRequiredForSmartSessionsError,
-  SourceTargetChainMismatchError,
+  SourceChainsNotAvailableForUserOpFlowError,
   UserOperationRequiredForSmartSessionsError,
 } from './error'
 
@@ -63,8 +62,7 @@ type TransactionResult =
   | {
       type: 'userop'
       hash: Hex
-      sourceChain: number
-      targetChain: number
+      chain: number
     }
   | {
       type: 'intent'
@@ -98,7 +96,7 @@ async function prepareTransaction(
   config: RhinestoneAccountConfig,
   transaction: Transaction,
 ): Promise<PreparedTransactionData> {
-  const { sourceChain, targetChain, tokenRequests, signers } =
+  const { sourceChains, targetChain, tokenRequests, signers } =
     getTransactionParams(transaction)
   const accountAddress = getAddress(config)
 
@@ -106,23 +104,20 @@ async function prepareTransaction(
 
   const asUserOp = signers?.type === 'guardians' || signers?.type === 'session'
   if (asUserOp) {
-    if (!sourceChain) {
-      throw new SourceChainRequiredForSmartSessionsError()
-    }
-    if (sourceChain.id !== targetChain.id) {
-      throw new SourceTargetChainMismatchError()
+    if (sourceChains && sourceChains.length > 0) {
+      throw new SourceChainsNotAvailableForUserOpFlowError()
     }
     // Smart sessions require a UserOp flow
     data = await prepareTransactionAsUserOp(
       config,
-      sourceChain,
+      targetChain,
       transaction.calls,
       signers,
     )
   } else {
     data = await prepareTransactionAsIntent(
       config,
-      sourceChain,
+      sourceChains,
       targetChain,
       transaction.calls,
       transaction.gasLimit,
@@ -141,7 +136,7 @@ async function signTransaction(
   config: RhinestoneAccountConfig,
   preparedTransaction: PreparedTransactionData,
 ): Promise<SignedTransactionData> {
-  const { sourceChain, targetChain, signers } = getTransactionParams(
+  const { targetChain, signers } = getTransactionParams(
     preparedTransaction.transaction,
   )
   const data = preparedTransaction.data
@@ -149,7 +144,7 @@ async function signTransaction(
 
   let signature: Hex
   if (asUserOp) {
-    const chain = sourceChain ?? targetChain
+    const chain = targetChain
     const userOp = data.userOp
     if (!userOp) {
       throw new UserOperationRequiredForSmartSessionsError()
@@ -157,13 +152,7 @@ async function signTransaction(
     // Smart sessions require a UserOp flow
     signature = await signUserOp(config, chain, signers, userOp)
   } else {
-    signature = await signIntent(
-      config,
-      sourceChain,
-      targetChain,
-      data.hash,
-      signers,
-    )
+    signature = await signIntent(config, targetChain, data.hash, signers)
   }
 
   return {
@@ -178,12 +167,12 @@ async function submitTransaction(
   signedTransaction: SignedTransactionData,
 ): Promise<TransactionResult> {
   const { data, transaction, signature } = signedTransaction
-  const { sourceChain, targetChain } = getTransactionParams(transaction)
+  const { sourceChains, targetChain } = getTransactionParams(transaction)
 
   const asUserOp = data.type === 'userop'
 
   if (asUserOp) {
-    const chain = sourceChain ?? targetChain
+    const chain = targetChain
     const userOp = data.userOp
     if (!userOp) {
       throw new UserOperationRequiredForSmartSessionsError()
@@ -197,7 +186,7 @@ async function submitTransaction(
     }
     return await submitIntent(
       config,
-      sourceChain,
+      sourceChains,
       targetChain,
       intentOp,
       signature,
@@ -206,8 +195,8 @@ async function submitTransaction(
 }
 
 function getTransactionParams(transaction: Transaction) {
-  const sourceChain =
-    'chain' in transaction ? transaction.chain : transaction.sourceChain
+  const sourceChains =
+    'chain' in transaction ? [transaction.chain] : transaction.sourceChains
   const targetChain =
     'chain' in transaction ? transaction.chain : transaction.targetChain
   const initialTokenRequests = transaction.tokenRequests
@@ -225,7 +214,7 @@ function getTransactionParams(transaction: Transaction) {
       : initialTokenRequests
 
   return {
-    sourceChain,
+    sourceChains,
     targetChain,
     tokenRequests,
     signers,
@@ -271,7 +260,7 @@ async function prepareTransactionAsUserOp(
 
 async function prepareTransactionAsIntent(
   config: RhinestoneAccountConfig,
-  sourceChain: Chain | undefined,
+  sourceChains: Chain[] | undefined,
   targetChain: Chain,
   callInputs: CallInput[],
   gasLimit: bigint | undefined,
@@ -280,11 +269,12 @@ async function prepareTransactionAsIntent(
 ) {
   const initCode = getInitCode(config)
   const calls = parseCalls(callInputs, targetChain.id)
-  const accountAccessList = sourceChain
-    ? {
-        chainIds: [sourceChain.id as SupportedChain],
-      }
-    : undefined
+  const accountAccessList =
+    sourceChains && sourceChains.length > 0
+      ? {
+          chainIds: sourceChains.map((chain) => chain.id as SupportedChain),
+        }
+      : undefined
 
   const metaIntent: IntentInput = {
     destinationChainId: targetChain.id,
@@ -330,7 +320,6 @@ async function prepareTransactionAsIntent(
 
 async function signIntent(
   config: RhinestoneAccountConfig,
-  sourceChain: Chain | undefined,
   targetChain: Chain,
   intentHash: Hex,
   signers?: SignerSet,
@@ -345,7 +334,7 @@ async function signIntent(
   const signature = await getPackedSignature(
     config,
     signers,
-    sourceChain || targetChain,
+    targetChain,
     {
       address: validator.address,
       isRoot,
@@ -424,21 +413,20 @@ async function submitUserOp(
   return {
     type: 'userop',
     hash,
-    sourceChain: chain.id,
-    targetChain: chain.id,
+    chain: chain.id,
   } as TransactionResult
 }
 
 async function submitIntent(
   config: RhinestoneAccountConfig,
-  sourceChain: Chain | undefined,
+  sourceChains: Chain[] | undefined,
   targetChain: Chain,
   intentOp: IntentOp,
   signature: Hex,
 ) {
   return submitIntentInternal(
     config,
-    sourceChain,
+    sourceChains,
     targetChain,
     intentOp,
     signature,
@@ -447,14 +435,14 @@ async function submitIntent(
 
 function getOrchestratorByChain(chainId: number, apiKey: string) {
   const orchestratorUrl = isTestnet(chainId)
-    ? DEV_ORCHESTRATOR_URL
+    ? STAGING_ORCHESTRATOR_URL
     : PROD_ORCHESTRATOR_URL
   return getOrchestrator(apiKey, orchestratorUrl)
 }
 
 async function submitIntentInternal(
   config: RhinestoneAccountConfig,
-  sourceChain: Chain | undefined,
+  sourceChains: Chain[] | undefined,
   targetChain: Chain,
   intentOp: IntentOp,
   signature: Hex,
@@ -472,7 +460,7 @@ async function submitIntentInternal(
   return {
     type: 'intent',
     id: BigInt(intentResults.result.id),
-    sourceChain: sourceChain?.id,
+    sourceChains: sourceChains?.map((chain) => chain.id),
     targetChain: targetChain.id,
   } as TransactionResult
 }

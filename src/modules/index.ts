@@ -24,17 +24,8 @@ import {
   MODULE_TYPE_ID_FALLBACK,
   type Module,
 } from './common'
-import {
-  HOOK_ADDRESS,
-  INTENT_EXECUTOR_ADDRESS,
-  RHINESTONE_MODULE_REGISTRY_ADDRESS,
-} from './omni-account'
-import { areAttestersTrusted, getOwners, getValidators } from './read'
-import {
-  getAttesters,
-  getTrustAttesterCall,
-  getTrustedAttesters,
-} from './registry'
+import { HOOK_ADDRESS, INTENT_EXECUTOR_ADDRESS } from './omni-account'
+import { getOwners, getValidators } from './read'
 import { getOwnerValidator, getSmartSessionValidator } from './validators'
 import { getSocialRecoveryValidator } from './validators/core'
 
@@ -63,9 +54,6 @@ interface ModeleSetup {
   executors: Module[]
   fallbacks: Module[]
   hooks: Module[]
-  registry: Address
-  attesters: Address[]
-  threshold: number
 }
 
 function getSetup(config: RhinestoneAccountConfig): ModeleSetup {
@@ -118,16 +106,11 @@ function getSetup(config: RhinestoneAccountConfig): ModeleSetup {
 
   const hooks: Module[] = []
 
-  const attesters = getAttesters()
-
   return {
     validators,
     executors,
     fallbacks,
     hooks,
-    registry: RHINESTONE_MODULE_REGISTRY_ADDRESS,
-    attesters: attesters.list,
-    threshold: attesters.threshold,
   }
 }
 
@@ -211,11 +194,8 @@ function parseSignature(signature: Hex | Uint8Array): WebauthnSignature {
 export {
   HOOK_ADDRESS,
   getSetup,
-  getTrustAttesterCall,
-  getTrustedAttesters,
   getOwnerValidator,
   getWebauthnValidatorSignature,
-  areAttestersTrusted,
   getOwners,
   getValidators,
   isRip7212SupportedNetwork,

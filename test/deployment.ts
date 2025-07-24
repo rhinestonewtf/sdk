@@ -1,15 +1,15 @@
 import { setupOrchestratorMock } from './orchestrator'
 import { setupViemMock } from './utils/viem'
 
-const deployerPrivateKey =
+const funderPrivateKey =
   '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80'
-const deployerAccount = privateKeyToAccount(deployerPrivateKey)
+const funderAccount = privateKeyToAccount(funderPrivateKey)
 
 const sourceChain = base
 const anvil = getAnvil(sourceChain, getForkUrl(sourceChain))
 
 setupOrchestratorMock()
-setupViemMock(anvil, deployerAccount)
+setupViemMock(anvil, funderAccount)
 
 import { type Address, createPublicClient, http, zeroAddress } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
@@ -25,9 +25,9 @@ import { getForkUrl } from './utils/utils'
 
 const SENTINEL_ADDRESS: Address = '0x0000000000000000000000000000000000000001'
 const OWNABLE_VALIDATOR_ADDRESS: Address =
-  '0x2483DA3A338895199E5e538530213157e931Bf06'
+  '0x0000000000E9E6E96Bcaa3c113187CdB7E38AED9'
 const INTENT_EXECUTOR_ADDRESS: Address =
-  '0x0530Ff05cf0F7e44db6F33Fc2D10C2838e38ec79'
+  '0x00000000005aD9ce1f5035FD62CA96CEf16AdAAF'
 
 export function runDeploymentTests() {
   describe('Account Deployment', () => {
@@ -51,7 +51,6 @@ export function runDeploymentTests() {
               accounts: [ownerAccount],
             },
             rhinestoneApiKey,
-            deployerAccount,
           })
 
           // Check the account is not yet deployed
@@ -166,7 +165,6 @@ export function runDeploymentTestCases() {
               accounts: [ownerAccount],
             },
             rhinestoneApiKey,
-            deployerAccount,
           })
 
           // Check the account is not yet deployed
