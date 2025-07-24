@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.0-alpha.9
+
+### Minor Changes
+
+- b7b5faa: Support Startale account
+
 ## 1.0.0-alpha.8
 
 ### Patch Changes
