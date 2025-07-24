@@ -177,10 +177,11 @@ async function getPackedSignature(
   hash: Hex,
   validator: ValidatorConfig,
   transformSignature: (signature: Hex) => Hex = (signature) => signature,
+  defaultValidatorAddress: Address = NEXUS_DEFAULT_VALIDATOR_ADDRESS,
 ) {
   const signature = await signFn(hash)
   const validatorAddress =
-    validator.address === NEXUS_DEFAULT_VALIDATOR_ADDRESS
+    validator.address === defaultValidatorAddress
       ? zeroAddress
       : validator.address
   const packedSig = encodePacked(
@@ -196,6 +197,7 @@ async function getSmartAccount(
   owners: OwnerSet,
   validatorAddress: Address,
   sign: (hash: Hex) => Promise<Hex>,
+  defaultValidatorAddress: Address = NEXUS_DEFAULT_VALIDATOR_ADDRESS,
 ) {
   return getBaseSmartAccount(
     address,
@@ -205,6 +207,7 @@ async function getSmartAccount(
       return getMockSignature(owners)
     },
     sign,
+    defaultValidatorAddress,
   )
 }
 
@@ -215,6 +218,7 @@ async function getSessionSmartAccount(
   validatorAddress: Address,
   enableData: EnableSessionData | null,
   sign: (hash: Hex) => Promise<Hex>,
+  defaultValidatorAddress: Address = NEXUS_DEFAULT_VALIDATOR_ADDRESS,
 ) {
   return await getBaseSmartAccount(
     address,
@@ -252,6 +256,7 @@ async function getSessionSmartAccount(
         signature,
       )
     },
+    defaultValidatorAddress,
   )
 }
 
@@ -261,6 +266,7 @@ async function getGuardianSmartAccount(
   guardians: OwnerSet,
   validatorAddress: Address,
   sign: (hash: Hex) => Promise<Hex>,
+  defaultValidatorAddress: Address = NEXUS_DEFAULT_VALIDATOR_ADDRESS,
 ) {
   return await getBaseSmartAccount(
     address,
@@ -272,6 +278,7 @@ async function getGuardianSmartAccount(
     async (hash) => {
       return await sign(hash)
     },
+    defaultValidatorAddress,
   )
 }
 
@@ -281,6 +288,7 @@ async function getBaseSmartAccount(
   nonceValidatorAddress: Address,
   getStubSignature: () => Promise<Hex>,
   signUserOperation: (hash: Hex) => Promise<Hex>,
+  defaultValidatorAddress: Address,
 ): Promise<SmartAccount<SmartAccountImplementation<Abi, '0.7'>>> {
   return await toSmartAccount({
     client,
@@ -311,7 +319,7 @@ async function getBaseSmartAccount(
     },
     async getNonce(args) {
       const validatorAddress =
-        nonceValidatorAddress === NEXUS_DEFAULT_VALIDATOR_ADDRESS
+        nonceValidatorAddress === defaultValidatorAddress
           ? zeroAddress
           : nonceValidatorAddress
       const TIMESTAMP_ADJUSTMENT = 16777215n // max value for size 3
