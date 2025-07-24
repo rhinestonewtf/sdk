@@ -14,7 +14,6 @@ import {
   optimism,
   optimismSepolia,
   polygon,
-  polygonAmoy,
 } from 'viem/chains'
 
 import type { RhinestoneAccountConfig } from '../types'
@@ -170,7 +169,6 @@ function isRip7212SupportedNetwork(chain: Chain) {
     optimism,
     optimismSepolia,
     polygon,
-    polygonAmoy,
     base,
     baseSepolia,
     arbitrum,

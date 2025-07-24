@@ -8,8 +8,8 @@ import {
   optimism,
   optimismSepolia,
   polygon,
-  polygonAmoy,
   sepolia,
+  soneium,
   zksync,
 } from 'viem/chains'
 import type { TokenSymbol } from '../types'
@@ -116,8 +116,8 @@ function getChainById(chainId: number): Chain | undefined {
     optimism,
     optimismSepolia,
     polygon,
-    polygonAmoy,
     zksync,
+    soneium,
   ]
   return supportedChains.find((chain) => chain.id === chainId)
 }

@@ -1,17 +1,17 @@
 import type { Address, Hex } from 'viem'
 import type { UserOperationReceipt } from 'viem/account-abstraction'
-import type {
-  arbitrum,
-  arbitrumSepolia,
-  base,
-  baseSepolia,
-  mainnet,
-  optimism,
-  optimismSepolia,
-  polygon,
-  polygonAmoy,
-  sepolia,
-  zksync,
+import {
+  soneium,
+  type arbitrum,
+  type arbitrumSepolia,
+  type base,
+  type baseSepolia,
+  type mainnet,
+  type optimism,
+  type optimismSepolia,
+  type polygon,
+  type sepolia,
+  type zksync,
 } from 'viem/chains'
 
 type SupportedTestnet =
@@ -19,7 +19,6 @@ type SupportedTestnet =
   | typeof baseSepolia.id
   | typeof arbitrumSepolia.id
   | typeof optimismSepolia.id
-  | typeof polygonAmoy.id
 type SupportedMainnet =
   | typeof mainnet.id
   | typeof base.id
@@ -27,7 +26,11 @@ type SupportedMainnet =
   | typeof optimism.id
   | typeof polygon.id
   | typeof zksync.id
-type SupportedOPStackMainnet = typeof optimism.id | typeof base.id
+  | typeof soneium.id
+type SupportedOPStackMainnet =
+  | typeof optimism.id
+  | typeof base.id
+  | typeof soneium.id
 type SupportedOPStackTestnet = typeof optimismSepolia.id | typeof baseSepolia.id
 type SupportedChain = SupportedMainnet | SupportedTestnet
 type SupportedTokenSymbol = 'ETH' | 'WETH' | 'USDC' | 'USDT'

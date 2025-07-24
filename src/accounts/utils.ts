@@ -22,8 +22,8 @@ import {
   optimism,
   optimismSepolia,
   polygon,
-  polygonAmoy,
   sepolia,
+  soneium,
   zksync,
 } from 'viem/chains'
 import { getAction } from 'viem/utils'
@@ -334,8 +334,6 @@ function getAlchemyNetworkName(chainId: SupportedChain): string {
       return 'eth-sepolia'
     case polygon.id:
       return 'polygon-mainnet'
-    case polygonAmoy.id:
-      return 'polygon-amoy'
     case optimism.id:
       return 'opt-mainnet'
     case optimismSepolia.id:
@@ -350,6 +348,8 @@ function getAlchemyNetworkName(chainId: SupportedChain): string {
       return 'base-sepolia'
     case zksync.id:
       return 'zksync-mainnet'
+    case soneium.id:
+      return 'soneium-mainnet'
   }
 }
 

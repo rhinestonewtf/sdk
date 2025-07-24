@@ -209,6 +209,39 @@
       }
     ]
   },
+  "1868": {
+    "name": "Soneium",
+    "contracts": {
+      "spokepool": "0x3baD7AD0728f9917d1Bf08af5782dCbD516cDd96",
+      "hook": "0x0000000000f6Ed8Be424d673c63eeFF8b9267420",
+      "originModule": "0x0000000000AFc904aE9860D9c4B96D7c529c58b8",
+      "targetModule": "0x0000000000E5a37279A001301A837a91b5de1D5E",
+      "sameChainModule": "0x000000000043ff16d5776c7F0f65Ec485C17Ca04"
+    },
+    "tokens": [
+      {
+        "symbol": "ETH",
+        "address": "0x0000000000000000000000000000000000000000",
+        "decimals": 18,
+        "balanceSlot": null,
+        "approvalSlot": null
+      },
+      {
+        "symbol": "USDC",
+        "address": "0xbA9986D2381edf1DA03B0B9c1f8b00dc4AacC369",
+        "decimals": 6,
+        "balanceSlot": 9,
+        "approvalSlot": 10
+      },
+      {
+        "symbol": "WETH",
+        "address": "0x4200000000000000000000000000000000000006",
+        "decimals": 18,
+        "balanceSlot": 3,
+        "approvalSlot": 4
+      }
+    ]
+  },
   "84532": {
     "name": "Base-sepolia",
     "contracts": {
@@ -326,30 +359,6 @@
         "address": "0x4200000000000000000000000000000000000006",
         "decimals": 18,
         "balanceSlot": 3
-      }
-    ]
-  },
-  "80002": {
-    "name": "Polygon-amoy",
-    "contracts": {
-      "spokepool": "0x20038b572633E45F3aB5b1a46CB85D0D241b80D8",
-      "hook": "0x7e571edd525ecda47bd79605304a8d2037f68a1b",
-      "originModule": "0x0000000000AFc904aE9860D9c4B96D7c529c58b8",
-      "targetModule": "0x0000000000E5a37279A001301A837a91b5de1D5E",
-      "sameChainModule": "0x000000000043ff16d5776c7F0f65Ec485C17Ca04"
-    },
-    "tokens": [
-      {
-        "symbol": "USDC",
-        "address": "0x41e94eb019c0762f9bfcf9fb1e58725bfb0e7582",
-        "decimals": 6,
-        "balanceSlot": 9
-      },
-      {
-        "symbol": "WETH",
-        "address": "0x0fd664166aa92639f4ec5774d09ea74a4da5a704",
-        "decimals": 18,
-        "balanceSlot": null
       }
     ]
   }
