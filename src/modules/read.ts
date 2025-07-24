@@ -1,4 +1,4 @@
-import { type Address, type Chain, createPublicClient, getAddress } from 'viem'
+import { type Address, type Chain, createPublicClient } from 'viem'
 import { createTransport } from '../accounts/utils'
 import type { AccountType, ProviderConfig } from '../types'
 import { OWNABLE_VALIDATOR_ADDRESS } from './validators/core'

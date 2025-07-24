@@ -1,17 +1,17 @@
 import type { Address, Hex } from 'viem'
 import type { UserOperationReceipt } from 'viem/account-abstraction'
-import {
+import type {
+  arbitrum,
+  arbitrumSepolia,
+  base,
+  baseSepolia,
+  mainnet,
+  optimism,
+  optimismSepolia,
+  polygon,
+  sepolia,
   soneium,
-  type arbitrum,
-  type arbitrumSepolia,
-  type base,
-  type baseSepolia,
-  type mainnet,
-  type optimism,
-  type optimismSepolia,
-  type polygon,
-  type sepolia,
-  type zksync,
+  zksync,
 } from 'viem/chains'
 
 type SupportedTestnet =
