@@ -4,6 +4,7 @@ import {
   createPublicClient,
   type Hex,
   type PublicClient,
+  type SignedAuthorizationList,
   toHex,
   zeroAddress,
 } from 'viem'
@@ -14,6 +15,7 @@ import {
 } from 'viem/account-abstraction'
 import {
   getAddress,
+  getEip7702InitData,
   getGuardianSmartAccount,
   getInitCode,
   getPackedSignature,
@@ -37,6 +39,7 @@ import {
   type IntentInput,
   type IntentOp,
   type IntentRoute,
+  type SignedIntentOp,
   type SupportedChain,
 } from '../orchestrator'
 import {
@@ -165,6 +168,7 @@ async function signTransaction(
 async function submitTransaction(
   config: RhinestoneAccountConfig,
   signedTransaction: SignedTransactionData,
+  authorizations?: SignedAuthorizationList,
 ): Promise<TransactionResult> {
   const { data, transaction, signature } = signedTransaction
   const { sourceChains, targetChain } = getTransactionParams(transaction)
@@ -190,6 +194,7 @@ async function submitTransaction(
       targetChain,
       intentOp,
       signature,
+      authorizations,
     )
   }
 }
@@ -267,7 +272,6 @@ async function prepareTransactionAsIntent(
   tokenRequests: TokenRequest[],
   accountAddress: Address,
 ) {
-  const initCode = getInitCode(config)
   const calls = parseCalls(callInputs, targetChain.id)
   const accountAccessList =
     sourceChains && sourceChains.length > 0
@@ -276,6 +280,24 @@ async function prepareTransactionAsIntent(
         }
       : undefined
 
+  const initCode = getInitCode(config)
+  const { initData: eip7702InitData, contract: eip7702Contract } =
+    await getEip7702InitData(config)
+  const setupOps = config.eoa
+    ? [
+        {
+          to: accountAddress,
+          data: eip7702InitData,
+        },
+      ]
+    : initCode
+      ? [
+          {
+            to: initCode.factory,
+            data: initCode.factoryData,
+          },
+        ]
+      : []
   const metaIntent: IntentInput = {
     destinationChainId: targetChain.id,
     tokenTransfers: tokenRequests.map((tokenRequest) => ({
@@ -285,19 +307,12 @@ async function prepareTransactionAsIntent(
     account: {
       address: accountAddress,
       accountType: 'ERC7579',
-      setupOps: initCode
-        ? [
-            {
-              to: initCode.factory,
-              data: initCode.factoryData,
-            },
-          ]
-        : [
-            {
-              to: zeroAddress,
-              data: '0x',
-            },
-          ],
+      setupOps,
+      delegations: {
+        0: {
+          contract: eip7702Contract,
+        },
+      },
     },
     destinationExecutions: calls,
     destinationGasUnits: gasLimit,
@@ -423,6 +438,7 @@ async function submitIntent(
   targetChain: Chain,
   intentOp: IntentOp,
   signature: Hex,
+  authorizations?: SignedAuthorizationList,
 ) {
   return submitIntentInternal(
     config,
@@ -430,6 +446,7 @@ async function submitIntent(
     targetChain,
     intentOp,
     signature,
+    authorizations,
   )
 }
 
@@ -446,11 +463,20 @@ async function submitIntentInternal(
   targetChain: Chain,
   intentOp: IntentOp,
   signature: Hex,
+  authorizations?: SignedAuthorizationList,
 ) {
-  const signedIntentOp = {
+  const signedIntentOp: SignedIntentOp = {
     ...intentOp,
     originSignatures: Array(intentOp.elements.length).fill(signature),
     destinationSignature: signature,
+    signedAuthorizations: authorizations?.map((authorization) => ({
+      chainId: authorization.chainId,
+      address: authorization.address,
+      nonce: authorization.nonce,
+      yParity: authorization.yParity ?? 0,
+      r: authorization.r,
+      s: authorization.s,
+    })),
   }
   const orchestrator = getOrchestratorByChain(
     targetChain.id,

@@ -110,6 +110,7 @@ export class Orchestrator {
             data: '0x',
           },
         ],
+        delegations: {},
       },
       destinationExecutions: [],
       destinationChainId,

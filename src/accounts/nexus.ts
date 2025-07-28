@@ -36,9 +36,9 @@ import { encode7579Calls, getAccountNonce, type ValidatorConfig } from './utils'
 const NEXUS_DEFAULT_VALIDATOR_ADDRESS: Address = OWNABLE_VALIDATOR_ADDRESS
 
 const NEXUS_IMPLEMENTATION_ADDRESS: Address =
-  '0x00000000006a1bF4cBa18564Ecc916c3Cf768111'
+  '0xb25556b8F5D202864147DD2052a9BFcb24461fD9'
 const NEXUS_FACTORY_ADDRESS: Address =
-  '0x0000000000e70c5ebEBdEc2457508f6d1709bF55'
+  '0x08a196f94eDc4998f1C5359F5eaD9B7364357C5d'
 const NEXUS_BOOTSTRAP_ADDRESS: Address =
   '0x00000000001Cf4667Bfd7be8f67D01d63938784b'
 
@@ -110,6 +110,7 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
     salt,
     implementation: NEXUS_IMPLEMENTATION_ADDRESS,
     initializationCallData,
+    initData,
   }
 }
 
@@ -357,6 +358,80 @@ async function getBaseSmartAccount(
   })
 }
 
+async function get7702InitData(
+  config: RhinestoneAccountConfig,
+  initSignature?: Hex,
+) {
+  function getEncodedData(initData: Hex): Hex {
+    const chainIds = [0n]
+    const chainIdIndex = 0n
+    const chainIdsLength = 1n
+    const encodedData = encodePacked(
+      ['uint256', 'uint256', 'uint256', 'bytes'],
+      [chainIdIndex, chainIdsLength, chainIds[0], initData],
+    )
+    return encodedData
+  }
+
+  const eoa = config.eoa
+  if (!eoa) {
+    throw new Error('EOA is required for 7702')
+  }
+  if (!eoa.signTypedData) {
+    throw new Error('EOA must support `signTypedData`')
+  }
+
+  const { initData } = getDeployArgs(config)
+  const encodedData = getEncodedData(initData)
+
+  const signature =
+    initSignature ??
+    (await eoa.signTypedData({
+      domain: {
+        name: 'Nexus',
+        version: '1.2.0',
+      },
+      types: {
+        Initialize: [
+          { name: 'nexus', type: 'address' },
+          { name: 'chainIds', type: 'uint256[]' },
+          { name: 'initData', type: 'bytes' },
+        ],
+      },
+      primaryType: 'Initialize',
+      message: {
+        nexus: NEXUS_IMPLEMENTATION_ADDRESS,
+        chainIds: [0n],
+        initData,
+      },
+    }))
+
+  const accountFullData = concat([signature, encodedData])
+  const accountInitCallData = encodeFunctionData({
+    abi: [
+      {
+        type: 'function',
+        inputs: [
+          {
+            type: 'bytes',
+            name: 'initData',
+          },
+        ],
+        outputs: [],
+        stateMutability: 'nonpayable',
+        name: 'initializeAccount',
+      },
+    ],
+    functionName: 'initializeAccount',
+    args: [accountFullData],
+  })
+
+  return {
+    initData: accountInitCallData,
+    contract: NEXUS_IMPLEMENTATION_ADDRESS,
+  }
+}
+
 export {
   getInstallData,
   getAddress,
@@ -365,4 +440,5 @@ export {
   getSmartAccount,
   getSessionSmartAccount,
   getGuardianSmartAccount,
+  get7702InitData,
 }

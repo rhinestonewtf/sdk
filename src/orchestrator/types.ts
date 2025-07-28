@@ -119,6 +119,12 @@ interface IntentInput {
       to: Address
       data: Hex
     }[]
+    delegations: Record<
+      number,
+      {
+        contract: Address
+      }
+    >
   }
   destinationChainId: number
   destinationExecutions: Execution[]
@@ -212,6 +218,14 @@ interface IntentResult {
 type SignedIntentOp = IntentOp & {
   originSignatures: Hex[]
   destinationSignature: Hex
+  signedAuthorizations?: readonly {
+    chainId: number
+    address: Address
+    nonce: number
+    yParity: number
+    r: Hex
+    s: Hex
+  }[]
 }
 
 interface TokenConfig {
