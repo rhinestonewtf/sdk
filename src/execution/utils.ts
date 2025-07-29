@@ -168,7 +168,7 @@ async function signTransaction(
 async function submitTransaction(
   config: RhinestoneAccountConfig,
   signedTransaction: SignedTransactionData,
-  authorizations?: SignedAuthorizationList,
+  authorizations: SignedAuthorizationList,
 ): Promise<TransactionResult> {
   const { data, transaction, signature } = signedTransaction
   const { sourceChains, targetChain } = getTransactionParams(transaction)
@@ -438,7 +438,7 @@ async function submitIntent(
   targetChain: Chain,
   intentOp: IntentOp,
   signature: Hex,
-  authorizations?: SignedAuthorizationList,
+  authorizations: SignedAuthorizationList,
 ) {
   return submitIntentInternal(
     config,
@@ -463,13 +463,13 @@ async function submitIntentInternal(
   targetChain: Chain,
   intentOp: IntentOp,
   signature: Hex,
-  authorizations?: SignedAuthorizationList,
+  authorizations: SignedAuthorizationList,
 ) {
   const signedIntentOp: SignedIntentOp = {
     ...intentOp,
     originSignatures: Array(intentOp.elements.length).fill(signature),
     destinationSignature: signature,
-    signedAuthorizations: authorizations?.map((authorization) => ({
+    signedAuthorizations: authorizations.map((authorization) => ({
       chainId: authorization.chainId,
       address: authorization.address,
       nonce: authorization.nonce,

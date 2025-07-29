@@ -1,4 +1,4 @@
-import type { Address, Chain, Hex } from 'viem'
+import type { Address, Chain, Hex, SignedAuthorizationList } from 'viem'
 import type { UserOperationReceipt } from 'viem/account-abstraction'
 import {
   AccountError,
@@ -103,6 +103,7 @@ interface RhinestoneAccount {
   ) => Promise<SignedTransactionData>
   submitTransaction: (
     signedTransaction: SignedTransactionData,
+    authorizations?: SignedAuthorizationList,
   ) => Promise<TransactionResult>
   sendTransaction: (transaction: Transaction) => Promise<TransactionResult>
   waitForExecution: (
@@ -149,8 +150,15 @@ async function createRhinestoneAccount(
     return signTransactionInternal(config, preparedTransaction)
   }
 
-  function submitTransaction(signedTransaction: SignedTransactionData) {
-    return submitTransactionInternal(config, signedTransaction)
+  function submitTransaction(
+    signedTransaction: SignedTransactionData,
+    authorizations?: SignedAuthorizationList,
+  ) {
+    return submitTransactionInternal(
+      config,
+      signedTransaction,
+      authorizations ?? [],
+    )
   }
 
   /**
