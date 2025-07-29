@@ -12,6 +12,7 @@ import {
   SigningNotSupportedForAccountError,
   SignMessageNotSupportedByAccountError,
   SmartSessionsNotEnabledError,
+  signEip7702InitData as signEip7702InitDataInternal,
 } from './accounts'
 import { createTransport } from './accounts/utils'
 import {
@@ -50,7 +51,6 @@ import {
   type SessionDetails,
 } from './execution/smart-session'
 import {
-  getEip7702InitData as getEip7702InitDataInternal,
   type IntentData,
   type PreparedTransactionData,
   prepareTransaction as prepareTransactionInternal,
@@ -97,7 +97,7 @@ import type {
 interface RhinestoneAccount {
   config: RhinestoneAccountConfig
   deploy: (chain: Chain, session?: Session) => Promise<void>
-  getEip7702InitData: () => Promise<Hex>
+  signEip7702InitData: () => Promise<Hex>
   prepareTransaction: (
     transaction: Transaction,
   ) => Promise<PreparedTransactionData>
@@ -148,8 +148,8 @@ async function createRhinestoneAccount(
     return deployInternal(config, chain, session)
   }
 
-  function getEip7702InitData() {
-    return getEip7702InitDataInternal(config)
+  function signEip7702InitData() {
+    return signEip7702InitDataInternal(config)
   }
 
   function prepareTransaction(transaction: Transaction) {
@@ -251,7 +251,7 @@ async function createRhinestoneAccount(
   return {
     config,
     deploy,
-    getEip7702InitData,
+    signEip7702InitData,
     prepareTransaction,
     signTransaction,
     signAuthorizations,

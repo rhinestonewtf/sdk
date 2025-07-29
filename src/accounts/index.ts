@@ -61,12 +61,12 @@ import {
   getAddress as getNexusAddress,
   getDeployArgs as getNexusDeployArgs,
   getEip7702InitCall as getNexusEip7702InitCall,
-  getEip7702InitData as getNexusEip7702InitData,
   getGuardianSmartAccount as getNexusGuardianSmartAccount,
   getInstallData as getNexusInstallData,
   getPackedSignature as getNexusPackedSignature,
   getSessionSmartAccount as getNexusSessionSmartAccount,
   getSmartAccount as getNexusSmartAccount,
+  signEip7702InitData as signNexusEip7702InitData,
 } from './nexus'
 import {
   getAddress as getSafeAddress,
@@ -109,11 +109,15 @@ function getInitCode(config: RhinestoneAccountConfig) {
   }
 }
 
-async function getEip7702InitData(config: RhinestoneAccountConfig) {
+async function signEip7702InitData(config: RhinestoneAccountConfig) {
+  const eoa = config.eoa
+  if (!eoa) {
+    throw new Eip7702AccountMustHaveEoaError()
+  }
   const account = getAccountProvider(config)
   switch (account.type) {
     case 'nexus': {
-      return await getNexusEip7702InitData(config)
+      return await signNexusEip7702InitData(config, eoa)
     }
     case 'safe':
     case 'kernel': {
@@ -614,7 +618,7 @@ export {
   getAddress,
   getAccountProvider,
   getInitCode,
-  getEip7702InitData,
+  signEip7702InitData,
   getEip7702InitCall,
   isDeployed,
   deploy,

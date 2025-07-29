@@ -1,4 +1,4 @@
-import type { Abi, Address, Hex, PublicClient } from 'viem'
+import type { Abi, Account, Address, Hex, PublicClient } from 'viem'
 import {
   concat,
   encodeAbiParameters,
@@ -31,6 +31,7 @@ import {
 import { OWNABLE_VALIDATOR_ADDRESS } from '../modules/validators/core'
 import type { EnableSessionData } from '../modules/validators/smart-sessions'
 import type { OwnerSet, RhinestoneAccountConfig, Session } from '../types'
+import { SigningNotSupportedForAccountError } from './error'
 import { encode7579Calls, getAccountNonce, type ValidatorConfig } from './utils'
 
 const NEXUS_DEFAULT_VALIDATOR_ADDRESS: Address = OWNABLE_VALIDATOR_ADDRESS
@@ -358,9 +359,34 @@ async function getBaseSmartAccount(
   })
 }
 
-async function getEip7702InitData(config: RhinestoneAccountConfig) {
+async function signEip7702InitData(
+  config: RhinestoneAccountConfig,
+  eoa: Account,
+) {
   const { initData } = getDeployArgs(config)
-  return initData
+  if (!eoa.signTypedData) {
+    throw new SigningNotSupportedForAccountError()
+  }
+  const signature = await eoa.signTypedData({
+    domain: {
+      name: 'Nexus',
+      version: '1.2.0',
+    },
+    types: {
+      Initialize: [
+        { name: 'nexus', type: 'address' },
+        { name: 'chainIds', type: 'uint256[]' },
+        { name: 'initData', type: 'bytes' },
+      ],
+    },
+    primaryType: 'Initialize',
+    message: {
+      nexus: NEXUS_IMPLEMENTATION_ADDRESS,
+      chainIds: [0n],
+      initData,
+    },
+  })
+  return signature
 }
 
 async function getEip7702InitCall(
@@ -414,6 +440,6 @@ export {
   getSmartAccount,
   getSessionSmartAccount,
   getGuardianSmartAccount,
-  getEip7702InitData,
+  signEip7702InitData,
   getEip7702InitCall,
 }

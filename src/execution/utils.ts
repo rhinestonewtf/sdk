@@ -18,7 +18,6 @@ import {
   type UserOperation,
 } from 'viem/account-abstraction'
 import {
-  getEip7702InitData as getAccountEip7702InitData,
   getAddress,
   getEip7702InitCall,
   getGuardianSmartAccount,
@@ -102,10 +101,6 @@ interface PreparedTransactionData {
 
 interface SignedTransactionData extends PreparedTransactionData {
   signature: Hex
-}
-
-function getEip7702InitData(config: RhinestoneAccountConfig) {
-  return getAccountEip7702InitData(config)
 }
 
 async function prepareTransaction(
@@ -686,7 +681,6 @@ async function getSetupOperationsAndDelegations(
 }
 
 export {
-  getEip7702InitData,
   prepareTransaction,
   signTransaction,
   signAuthorizations,
