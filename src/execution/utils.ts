@@ -1,9 +1,13 @@
 import {
   type Address,
   type Chain,
+  concat,
   createPublicClient,
+  createWalletClient,
   type Hex,
   type PublicClient,
+  publicActions,
+  type SignedAuthorization,
   type SignedAuthorizationList,
   toHex,
   zeroAddress,
@@ -47,7 +51,11 @@ import {
   PROD_ORCHESTRATOR_URL,
   STAGING_ORCHESTRATOR_URL,
 } from '../orchestrator/consts'
-import { isTestnet, resolveTokenAddress } from '../orchestrator/registry'
+import {
+  getChainById,
+  isTestnet,
+  resolveTokenAddress,
+} from '../orchestrator/registry'
 import type {
   Call,
   CallInput,
@@ -174,6 +182,50 @@ async function signTransaction(
     transaction: preparedTransaction.transaction,
     signature,
   }
+}
+
+async function signAuthorizations(
+  config: RhinestoneAccountConfig,
+  preparedTransaction: PreparedTransactionData,
+) {
+  const eoa = config.eoa
+  if (!eoa) {
+    throw new Error('EIP-7702 initialization is required for EOA accounts')
+  }
+
+  const accountAddress = getAddress(config)
+  const requiredDelegations =
+    preparedTransaction.data.type === 'intent'
+      ? preparedTransaction.data.intentRoute.intentOp.signedMetadata.account
+          .requiredDelegations || {}
+      : {}
+  const authorizations: SignedAuthorization[] = []
+  for (const chainId in requiredDelegations) {
+    const delegation = requiredDelegations[chainId]
+    const chain = getChainById(Number(chainId))
+    if (!chain) {
+      throw new Error(`Chain not supported: ${chainId}`)
+    }
+    const walletClient = createWalletClient({
+      chain,
+      account: eoa,
+      transport: createTransport(chain, config.provider),
+    }).extend(publicActions)
+    const code = await walletClient.getCode({
+      address: accountAddress,
+    })
+    const isDelegated =
+      code === concat(['0xef0100', delegation.contract.toLowerCase() as Hex])
+    if (isDelegated) {
+      continue
+    }
+    const authorization = await walletClient.signAuthorization({
+      contractAddress: delegation.contract,
+      chainId: Number(chainId),
+    })
+    authorizations.push(authorization)
+  }
+  return authorizations
 }
 
 async function submitTransaction(
@@ -637,6 +689,7 @@ export {
   getEip7702InitData,
   prepareTransaction,
   signTransaction,
+  signAuthorizations,
   submitTransaction,
   getOrchestratorByChain,
   signIntent,

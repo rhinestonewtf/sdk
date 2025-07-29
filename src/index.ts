@@ -55,6 +55,7 @@ import {
   type PreparedTransactionData,
   prepareTransaction as prepareTransactionInternal,
   type SignedTransactionData,
+  signAuthorizations as signAuthorizationsInternal,
   signTransaction as signTransactionInternal,
   submitTransaction as submitTransactionInternal,
 } from './execution/utils'
@@ -103,6 +104,9 @@ interface RhinestoneAccount {
   signTransaction: (
     preparedTransaction: PreparedTransactionData,
   ) => Promise<SignedTransactionData>
+  signAuthorizations: (
+    preparedTransaction: PreparedTransactionData,
+  ) => Promise<SignedAuthorizationList>
   submitTransaction: (
     signedTransaction: SignedTransactionData,
     authorizations?: SignedAuthorizationList,
@@ -154,6 +158,10 @@ async function createRhinestoneAccount(
 
   function signTransaction(preparedTransaction: PreparedTransactionData) {
     return signTransactionInternal(config, preparedTransaction)
+  }
+
+  function signAuthorizations(preparedTransaction: PreparedTransactionData) {
+    return signAuthorizationsInternal(config, preparedTransaction)
   }
 
   function submitTransaction(
@@ -246,6 +254,7 @@ async function createRhinestoneAccount(
     getEip7702InitData,
     prepareTransaction,
     signTransaction,
+    signAuthorizations,
     submitTransaction,
     sendTransaction,
     waitForExecution,
