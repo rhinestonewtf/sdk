@@ -58,9 +58,10 @@ import {
   getSmartAccount as getKernelSmartAccount,
 } from './kernel'
 import {
-  get7702InitData as getNexus7702InitData,
   getAddress as getNexusAddress,
   getDeployArgs as getNexusDeployArgs,
+  getEip7702InitCall as getNexusEip7702InitCall,
+  getEip7702InitData as getNexusEip7702InitData,
   getGuardianSmartAccount as getNexusGuardianSmartAccount,
   getInstallData as getNexusInstallData,
   getPackedSignature as getNexusPackedSignature,
@@ -112,7 +113,23 @@ async function getEip7702InitData(config: RhinestoneAccountConfig) {
   const account = getAccountProvider(config)
   switch (account.type) {
     case 'nexus': {
-      return await getNexus7702InitData(config)
+      return await getNexusEip7702InitData(config)
+    }
+    case 'safe':
+    case 'kernel': {
+      throw new Error(`7702 is not supported for account type ${account.type}`)
+    }
+  }
+}
+
+async function getEip7702InitCall(
+  config: RhinestoneAccountConfig,
+  signature: Hex,
+) {
+  const account = getAccountProvider(config)
+  switch (account.type) {
+    case 'nexus': {
+      return await getNexusEip7702InitCall(config, signature)
     }
     case 'safe':
     case 'kernel': {
@@ -598,6 +615,7 @@ export {
   getAccountProvider,
   getInitCode,
   getEip7702InitData,
+  getEip7702InitCall,
   isDeployed,
   deploy,
   getSmartAccount,

@@ -358,9 +358,14 @@ async function getBaseSmartAccount(
   })
 }
 
-async function get7702InitData(
+async function getEip7702InitData(config: RhinestoneAccountConfig) {
+  const { initData } = getDeployArgs(config)
+  return initData
+}
+
+async function getEip7702InitCall(
   config: RhinestoneAccountConfig,
-  initSignature?: Hex,
+  signature: Hex,
 ) {
   function getEncodedData(initData: Hex): Hex {
     const chainIds = [0n]
@@ -373,39 +378,8 @@ async function get7702InitData(
     return encodedData
   }
 
-  const eoa = config.eoa
-  if (!eoa) {
-    throw new Error('EOA is required for 7702')
-  }
-  if (!eoa.signTypedData) {
-    throw new Error('EOA must support `signTypedData`')
-  }
-
   const { initData } = getDeployArgs(config)
   const encodedData = getEncodedData(initData)
-
-  const signature =
-    initSignature ??
-    (await eoa.signTypedData({
-      domain: {
-        name: 'Nexus',
-        version: '1.2.0',
-      },
-      types: {
-        Initialize: [
-          { name: 'nexus', type: 'address' },
-          { name: 'chainIds', type: 'uint256[]' },
-          { name: 'initData', type: 'bytes' },
-        ],
-      },
-      primaryType: 'Initialize',
-      message: {
-        nexus: NEXUS_IMPLEMENTATION_ADDRESS,
-        chainIds: [0n],
-        initData,
-      },
-    }))
-
   const accountFullData = concat([signature, encodedData])
   const accountInitCallData = encodeFunctionData({
     abi: [
@@ -440,5 +414,6 @@ export {
   getSmartAccount,
   getSessionSmartAccount,
   getGuardianSmartAccount,
-  get7702InitData,
+  getEip7702InitData,
+  getEip7702InitCall,
 }

@@ -50,6 +50,7 @@ import {
   type SessionDetails,
 } from './execution/smart-session'
 import {
+  getEip7702InitData as getEip7702InitDataInternal,
   type IntentData,
   type PreparedTransactionData,
   prepareTransaction as prepareTransactionInternal,
@@ -95,6 +96,7 @@ import type {
 interface RhinestoneAccount {
   config: RhinestoneAccountConfig
   deploy: (chain: Chain, session?: Session) => Promise<void>
+  getEip7702InitData: () => Promise<Hex>
   prepareTransaction: (
     transaction: Transaction,
   ) => Promise<PreparedTransactionData>
@@ -140,6 +142,10 @@ async function createRhinestoneAccount(
 ): Promise<RhinestoneAccount> {
   function deploy(chain: Chain, session?: Session) {
     return deployInternal(config, chain, session)
+  }
+
+  function getEip7702InitData() {
+    return getEip7702InitDataInternal(config)
   }
 
   function prepareTransaction(transaction: Transaction) {
@@ -237,6 +243,7 @@ async function createRhinestoneAccount(
   return {
     config,
     deploy,
+    getEip7702InitData,
     prepareTransaction,
     signTransaction,
     submitTransaction,

@@ -199,6 +199,7 @@ interface BaseTransaction {
   tokenRequests?: TokenRequest[]
   gasLimit?: bigint
   signers?: SignerSet
+  eip7702InitSignature?: Hex
 }
 
 interface SameChainTransaction extends BaseTransaction {
