@@ -95,6 +95,20 @@ interface Execution {
   data: Hex
 }
 
+type SettlementLayer = 'SAME_CHAIN' | 'ACROSS' | 'ECO'
+
+interface IntentOptions {
+  topupCompact: boolean
+  sponsorSettings?: SponsorSettings
+  settlementLayers?: SettlementLayer[]
+}
+
+interface SponsorSettings {
+  gasSponsored: boolean
+  bridgeFeesSponsored: boolean
+  swapFeesSponsored: boolean
+}
+
 interface PortfolioToken {
   symbol: string
   decimals: number
@@ -131,6 +145,7 @@ interface IntentInput {
     amount?: bigint
   }[]
   accountAccessList?: AccountAccessList
+  options?: IntentOptions
 }
 
 type SettlementSystem = 'SAME_CHAIN' | 'ACROSS'

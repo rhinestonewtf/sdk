@@ -96,7 +96,7 @@ async function prepareTransaction(
   config: RhinestoneAccountConfig,
   transaction: Transaction,
 ): Promise<PreparedTransactionData> {
-  const { sourceChains, targetChain, tokenRequests, signers } =
+  const { sourceChains, targetChain, tokenRequests, signers, sponsored } =
     getTransactionParams(transaction)
   const accountAddress = getAddress(config)
 
@@ -123,6 +123,7 @@ async function prepareTransaction(
       transaction.gasLimit,
       tokenRequests,
       accountAddress,
+      sponsored ?? false,
     )
   }
 
@@ -201,6 +202,7 @@ function getTransactionParams(transaction: Transaction) {
     'chain' in transaction ? transaction.chain : transaction.targetChain
   const initialTokenRequests = transaction.tokenRequests
   const signers = transaction.signers
+  const sponsored = transaction.sponsored
 
   // Across requires passing some value to repay the solvers
   const tokenRequests =
@@ -218,6 +220,7 @@ function getTransactionParams(transaction: Transaction) {
     targetChain,
     tokenRequests,
     signers,
+    sponsored,
   }
 }
 
@@ -266,6 +269,7 @@ async function prepareTransactionAsIntent(
   gasLimit: bigint | undefined,
   tokenRequests: TokenRequest[],
   accountAddress: Address,
+  isSponsored: boolean,
 ) {
   const initCode = getInitCode(config)
   const calls = parseCalls(callInputs, targetChain.id)
@@ -302,6 +306,14 @@ async function prepareTransactionAsIntent(
     destinationExecutions: calls,
     destinationGasUnits: gasLimit,
     accountAccessList,
+    options: {
+      topupCompact: false,
+      sponsorSettings: {
+        gasSponsored: isSponsored,
+        bridgeFeesSponsored: isSponsored,
+        swapFeesSponsored: isSponsored,
+      },
+    },
   }
 
   const orchestrator = getOrchestratorByChain(
