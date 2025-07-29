@@ -54,6 +54,7 @@ async function sendTransaction(
       transaction.gasLimit,
       transaction.tokenRequests,
       transaction.signers,
+      transaction.sponsored,
     )
   } else {
     // Cross-chain transaction
@@ -65,6 +66,7 @@ async function sendTransaction(
       transaction.gasLimit,
       transaction.tokenRequests,
       transaction.signers,
+      transaction.sponsored,
     )
   }
 }
@@ -77,6 +79,7 @@ async function sendTransactionInternal(
   gasLimit: bigint | undefined,
   initialTokenRequests?: TokenRequest[],
   signers?: SignerSet,
+  sponsored?: boolean,
 ) {
   const accountAddress = getAddress(config)
 
@@ -114,6 +117,7 @@ async function sendTransactionInternal(
       tokenRequests,
       accountAddress,
       signers,
+      sponsored,
     )
   }
 }
@@ -165,6 +169,7 @@ async function sendTransactionAsIntent(
   tokenRequests: TokenRequest[],
   accountAddress: Address,
   signers?: SignerSet,
+  sponsored?: boolean,
 ) {
   const { intentRoute, hash: intentHash } = await prepareTransactionAsIntent(
     config,
@@ -174,6 +179,7 @@ async function sendTransactionAsIntent(
     gasLimit,
     tokenRequests,
     accountAddress,
+    sponsored ?? false,
   )
   if (!intentRoute) {
     throw new OrderPathRequiredForIntentsError()
