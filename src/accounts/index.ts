@@ -132,7 +132,8 @@ async function signEip7702InitData(config: RhinestoneAccountConfig) {
       return await signNexusEip7702InitData(config, eoa)
     }
     case 'safe':
-    case 'kernel': {
+    case 'kernel':
+    case 'startale': {
       throw new Error(`7702 is not supported for account type ${account.type}`)
     }
   }
@@ -148,7 +149,8 @@ async function getEip7702InitCall(
       return await getNexusEip7702InitCall(config, signature)
     }
     case 'safe':
-    case 'kernel': {
+    case 'kernel':
+    case 'startale': {
       throw new Error(`7702 is not supported for account type ${account.type}`)
     }
   }
