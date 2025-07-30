@@ -34,7 +34,6 @@ import {
   getValidatorAccount,
   parseCalls,
   prepareTransactionAsIntent,
-  signAuthorizations,
   signAuthorizationsInternal,
   signIntent,
   submitIntentInternal,
