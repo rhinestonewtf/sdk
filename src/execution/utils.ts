@@ -183,16 +183,22 @@ async function signAuthorizations(
   config: RhinestoneAccountConfig,
   preparedTransaction: PreparedTransactionData,
 ) {
+  return await signAuthorizationsInternal(config, preparedTransaction.data)
+}
+
+async function signAuthorizationsInternal(
+  config: RhinestoneAccountConfig,
+  data: IntentData | UserOpData,
+) {
   const eoa = config.eoa
   if (!eoa) {
     throw new Error('EIP-7702 initialization is required for EOA accounts')
   }
-
   const accountAddress = getAddress(config)
   const requiredDelegations =
-    preparedTransaction.data.type === 'intent'
-      ? preparedTransaction.data.intentRoute.intentOp.signedMetadata.account
-          .requiredDelegations || {}
+    data.type === 'intent'
+      ? data.intentRoute.intentOp.signedMetadata.account.requiredDelegations ||
+        {}
       : {}
   const authorizations: SignedAuthorization[] = []
   for (const chainId in requiredDelegations) {
@@ -684,6 +690,7 @@ export {
   prepareTransaction,
   signTransaction,
   signAuthorizations,
+  signAuthorizationsInternal,
   submitTransaction,
   getOrchestratorByChain,
   signIntent,

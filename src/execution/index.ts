@@ -34,6 +34,8 @@ import {
   getValidatorAccount,
   parseCalls,
   prepareTransactionAsIntent,
+  signAuthorizations,
+  signAuthorizationsInternal,
   signIntent,
   submitIntentInternal,
 } from './utils'
@@ -180,12 +182,18 @@ async function sendTransactionAsIntent(
     throw new OrderPathRequiredForIntentsError()
   }
   const signature = await signIntent(config, targetChain, intentHash, signers)
+  const authorizations = await signAuthorizationsInternal(config, {
+    type: 'intent',
+    intentRoute,
+    hash: intentHash,
+  })
   return await submitIntentInternal(
     config,
     sourceChains,
     targetChain,
     intentRoute.intentOp,
     signature,
+    authorizations,
   )
 }
 
