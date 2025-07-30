@@ -180,11 +180,13 @@ async function sendTransactionAsIntent(
     throw new OrderPathRequiredForIntentsError()
   }
   const signature = await signIntent(config, targetChain, intentHash, signers)
-  const authorizations = await signAuthorizationsInternal(config, {
-    type: 'intent',
-    intentRoute,
-    hash: intentHash,
-  })
+  const authorizations = config.eoa
+    ? await signAuthorizationsInternal(config, {
+        type: 'intent',
+        intentRoute,
+        hash: intentHash,
+      })
+    : []
   return await submitIntentInternal(
     config,
     sourceChains,
