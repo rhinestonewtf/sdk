@@ -93,7 +93,6 @@ async function sendTransactionInternal(
       : initialTokenRequests
 
   const asUserOp = signers?.type === 'guardians' || signers?.type === 'session'
-  // const asUserOp = true
   if (asUserOp) {
     const withSession = signers?.type === 'session' ? signers.session : null
     if (withSession) {

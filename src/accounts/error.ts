@@ -139,6 +139,8 @@ function getAccountName(account: AccountType) {
       return 'Kernel'
     case 'nexus':
       return 'Nexus'
+    case 'startale':
+      return 'Startale'
   }
 }
 

@@ -1,5 +1,23 @@
 # @rhinestone/sdk
 
+## 1.0.0-alpha.9
+
+### Minor Changes
+
+- b7b5faa: Support Startale account
+
+## 1.0.0-alpha.8
+
+### Patch Changes
+
+- 8e767ba: add soneium
+
+## 1.0.0-alpha.7
+
+### Patch Changes
+
+- 1d76bad: Use latest contracts
+
 ## 1.0.0-alpha.6
 
 ### Patch Changes

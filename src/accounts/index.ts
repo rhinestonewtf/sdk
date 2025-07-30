@@ -77,6 +77,15 @@ import {
   getSessionSmartAccount as getSafeSessionSmartAccount,
   getSmartAccount as getSafeSmartAccount,
 } from './safe'
+import {
+  getAddress as getStartaleAddress,
+  getDeployArgs as getStartaleDeployArgs,
+  getGuardianSmartAccount as getStartaleGuardianSmartAccount,
+  getInstallData as getStartaleInstallData,
+  getPackedSignature as getStartalePackedSignature,
+  getSessionSmartAccount as getStartaleSessionSmartAccount,
+  getSmartAccount as getStartaleSmartAccount,
+} from './startale'
 import { createTransport, type ValidatorConfig } from './utils'
 
 function getDeployArgs(config: RhinestoneAccountConfig) {
@@ -90,6 +99,9 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
     }
     case 'kernel': {
       return getKernelDeployArgs(config)
+    }
+    case 'startale': {
+      return getStartaleDeployArgs(config)
     }
   }
 }
@@ -160,6 +172,9 @@ function getModuleInstallationCalls(
       case 'kernel': {
         return getKernelInstallData(module)
       }
+      case 'startale': {
+        return [getStartaleInstallData(module)]
+      }
     }
   }
 
@@ -223,6 +238,9 @@ function getAddress(config: RhinestoneAccountConfig) {
     case 'kernel': {
       return getKernelAddress(config)
     }
+    case 'startale': {
+      return getStartaleAddress(config)
+    }
   }
 }
 
@@ -257,6 +275,14 @@ async function getPackedSignature(
         hash,
         validator,
         address,
+        transformSignature,
+      )
+    }
+    case 'startale': {
+      return getStartalePackedSignature(
+        signFn,
+        hash,
+        validator,
         transformSignature,
       )
     }
@@ -353,6 +379,15 @@ async function getSmartAccount(
         signFn,
       )
     }
+    case 'startale': {
+      return getStartaleSmartAccount(
+        client,
+        address,
+        config.owners,
+        ownerValidator.address,
+        signFn,
+      )
+    }
   }
 }
 
@@ -407,6 +442,16 @@ async function getSmartSessionSmartAccount(
         signFn,
       )
     }
+    case 'startale': {
+      return getStartaleSessionSmartAccount(
+        client,
+        address,
+        session,
+        smartSessionValidator.address,
+        enableData,
+        signFn,
+      )
+    }
   }
 }
 
@@ -450,6 +495,15 @@ async function getGuardianSmartAccount(
     }
     case 'kernel': {
       return getKernelGuardianSmartAccount(
+        client,
+        address,
+        guardians,
+        socialRecoveryValidator.address,
+        signFn,
+      )
+    }
+    case 'startale': {
+      return getStartaleGuardianSmartAccount(
         client,
         address,
         guardians,
