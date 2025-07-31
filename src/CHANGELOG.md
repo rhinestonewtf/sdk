@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.0-alpha.11
+
+### Patch Changes
+
+- 9719915: Fee sponsorship
+
 ## 1.0.0-alpha.10
 
 ### Patch Changes
