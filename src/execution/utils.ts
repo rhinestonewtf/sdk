@@ -1,9 +1,14 @@
 import {
   type Address,
   type Chain,
+  concat,
   createPublicClient,
+  createWalletClient,
   type Hex,
   type PublicClient,
+  publicActions,
+  type SignedAuthorization,
+  type SignedAuthorizationList,
   toHex,
   zeroAddress,
 } from 'viem'
@@ -14,6 +19,7 @@ import {
 } from 'viem/account-abstraction'
 import {
   getAddress,
+  getEip7702InitCall,
   getGuardianSmartAccount,
   getInitCode,
   getPackedSignature,
@@ -37,13 +43,18 @@ import {
   type IntentInput,
   type IntentOp,
   type IntentRoute,
+  type SignedIntentOp,
   type SupportedChain,
 } from '../orchestrator'
 import {
   PROD_ORCHESTRATOR_URL,
   STAGING_ORCHESTRATOR_URL,
 } from '../orchestrator/consts'
-import { isTestnet, resolveTokenAddress } from '../orchestrator/registry'
+import {
+  getChainById,
+  isTestnet,
+  resolveTokenAddress,
+} from '../orchestrator/registry'
 import type {
   Call,
   CallInput,
@@ -96,8 +107,14 @@ async function prepareTransaction(
   config: RhinestoneAccountConfig,
   transaction: Transaction,
 ): Promise<PreparedTransactionData> {
-  const { sourceChains, targetChain, tokenRequests, signers, sponsored } =
-    getTransactionParams(transaction)
+  const {
+    sourceChains,
+    targetChain,
+    tokenRequests,
+    signers,
+    sponsored,
+    eip7702InitSignature,
+  } = getTransactionParams(transaction)
   const accountAddress = getAddress(config)
 
   let data: IntentData | UserOpData
@@ -124,6 +141,7 @@ async function prepareTransaction(
       tokenRequests,
       accountAddress,
       sponsored ?? false,
+      eip7702InitSignature,
     )
   }
 
@@ -163,9 +181,60 @@ async function signTransaction(
   }
 }
 
+async function signAuthorizations(
+  config: RhinestoneAccountConfig,
+  preparedTransaction: PreparedTransactionData,
+) {
+  return await signAuthorizationsInternal(config, preparedTransaction.data)
+}
+
+async function signAuthorizationsInternal(
+  config: RhinestoneAccountConfig,
+  data: IntentData | UserOpData,
+) {
+  const eoa = config.eoa
+  if (!eoa) {
+    throw new Error('EIP-7702 initialization is required for EOA accounts')
+  }
+  const accountAddress = getAddress(config)
+  const requiredDelegations =
+    data.type === 'intent'
+      ? data.intentRoute.intentOp.signedMetadata.account.requiredDelegations ||
+        {}
+      : {}
+  const authorizations: SignedAuthorization[] = []
+  for (const chainId in requiredDelegations) {
+    const delegation = requiredDelegations[chainId]
+    const chain = getChainById(Number(chainId))
+    if (!chain) {
+      throw new Error(`Chain not supported: ${chainId}`)
+    }
+    const walletClient = createWalletClient({
+      chain,
+      account: eoa,
+      transport: createTransport(chain, config.provider),
+    }).extend(publicActions)
+    const code = await walletClient.getCode({
+      address: accountAddress,
+    })
+    const isDelegated =
+      code === concat(['0xef0100', delegation.contract.toLowerCase() as Hex])
+    if (isDelegated) {
+      continue
+    }
+    const authorization = await walletClient.signAuthorization({
+      contractAddress: delegation.contract,
+      chainId: Number(chainId),
+    })
+    authorizations.push(authorization)
+  }
+  return authorizations
+}
+
 async function submitTransaction(
   config: RhinestoneAccountConfig,
   signedTransaction: SignedTransactionData,
+  authorizations: SignedAuthorizationList,
 ): Promise<TransactionResult> {
   const { data, transaction, signature } = signedTransaction
   const { sourceChains, targetChain } = getTransactionParams(transaction)
@@ -191,6 +260,7 @@ async function submitTransaction(
       targetChain,
       intentOp,
       signature,
+      authorizations,
     )
   }
 }
@@ -202,6 +272,7 @@ function getTransactionParams(transaction: Transaction) {
     'chain' in transaction ? transaction.chain : transaction.targetChain
   const initialTokenRequests = transaction.tokenRequests
   const signers = transaction.signers
+  const eip7702InitSignature = transaction.eip7702InitSignature
   const sponsored = transaction.sponsored
 
   // Across requires passing some value to repay the solvers
@@ -221,6 +292,7 @@ function getTransactionParams(transaction: Transaction) {
     tokenRequests,
     signers,
     sponsored,
+    eip7702InitSignature,
   }
 }
 
@@ -270,8 +342,8 @@ async function prepareTransactionAsIntent(
   tokenRequests: TokenRequest[],
   accountAddress: Address,
   isSponsored: boolean,
+  eip7702InitSignature?: Hex,
 ) {
-  const initCode = getInitCode(config)
   const calls = parseCalls(callInputs, targetChain.id)
   const accountAccessList =
     sourceChains && sourceChains.length > 0
@@ -279,6 +351,12 @@ async function prepareTransactionAsIntent(
           chainIds: sourceChains.map((chain) => chain.id as SupportedChain),
         }
       : undefined
+
+  const { setupOps, delegations } = await getSetupOperationsAndDelegations(
+    config,
+    accountAddress,
+    eip7702InitSignature,
+  )
 
   const metaIntent: IntentInput = {
     destinationChainId: targetChain.id,
@@ -289,19 +367,8 @@ async function prepareTransactionAsIntent(
     account: {
       address: accountAddress,
       accountType: 'ERC7579',
-      setupOps: initCode
-        ? [
-            {
-              to: initCode.factory,
-              data: initCode.factoryData,
-            },
-          ]
-        : [
-            {
-              to: zeroAddress,
-              data: '0x',
-            },
-          ],
+      setupOps,
+      delegations,
     },
     destinationExecutions: calls,
     destinationGasUnits: gasLimit,
@@ -435,6 +502,7 @@ async function submitIntent(
   targetChain: Chain,
   intentOp: IntentOp,
   signature: Hex,
+  authorizations: SignedAuthorizationList,
 ) {
   return submitIntentInternal(
     config,
@@ -442,6 +510,7 @@ async function submitIntent(
     targetChain,
     intentOp,
     signature,
+    authorizations,
   )
 }
 
@@ -458,11 +527,23 @@ async function submitIntentInternal(
   targetChain: Chain,
   intentOp: IntentOp,
   signature: Hex,
+  authorizations: SignedAuthorizationList,
 ) {
-  const signedIntentOp = {
+  const signedIntentOp: SignedIntentOp = {
     ...intentOp,
     originSignatures: Array(intentOp.elements.length).fill(signature),
     destinationSignature: signature,
+    signedAuthorizations:
+      authorizations.length > 0
+        ? authorizations.map((authorization) => ({
+            chainId: authorization.chainId,
+            address: authorization.address,
+            nonce: authorization.nonce,
+            yParity: authorization.yParity ?? 0,
+            r: authorization.r,
+            s: authorization.s,
+          }))
+        : undefined,
   }
   const orchestrator = getOrchestratorByChain(
     targetChain.id,
@@ -567,9 +648,60 @@ function parseCalls(calls: CallInput[], chainId: number): Call[] {
   }))
 }
 
+async function getSetupOperationsAndDelegations(
+  config: RhinestoneAccountConfig,
+  accountAddress: Address,
+  eip7702InitSignature?: Hex,
+) {
+  const initCode = getInitCode(config)
+
+  if (config.eoa) {
+    // EIP-7702 initialization is only needed for EOA accounts
+    if (!eip7702InitSignature || eip7702InitSignature === '0x') {
+      throw new Error(
+        'EIP-7702 initialization signature is required for EOA accounts',
+      )
+    }
+
+    const { initData: eip7702InitData, contract: eip7702Contract } =
+      await getEip7702InitCall(config, eip7702InitSignature)
+
+    return {
+      setupOps: [
+        {
+          to: accountAddress,
+          data: eip7702InitData,
+        },
+      ],
+      delegations: {
+        0: {
+          contract: eip7702Contract,
+        },
+      },
+    }
+  } else if (initCode) {
+    // Contract account with init code
+    return {
+      setupOps: [
+        {
+          to: initCode.factory,
+          data: initCode.factoryData,
+        },
+      ],
+    }
+  } else {
+    // Already deployed contract account
+    return {
+      setupOps: [],
+    }
+  }
+}
+
 export {
   prepareTransaction,
   signTransaction,
+  signAuthorizations,
+  signAuthorizationsInternal,
   submitTransaction,
   getOrchestratorByChain,
   signIntent,

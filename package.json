@@ -1,7 +1,6 @@
 {
   "private": true,
   "scripts": {
-    "prepare": "bun run build",
     "build": "bun run clean && tsc",
     "clean": "rimraf src/dist",
     "test": "vitest",

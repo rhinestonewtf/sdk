@@ -1,4 +1,4 @@
-import type { Abi, Address, Hex, PublicClient } from 'viem'
+import type { Abi, Account, Address, Hex, PublicClient } from 'viem'
 import {
   concat,
   encodeAbiParameters,
@@ -31,14 +31,15 @@ import {
 import { OWNABLE_VALIDATOR_ADDRESS } from '../modules/validators/core'
 import type { EnableSessionData } from '../modules/validators/smart-sessions'
 import type { OwnerSet, RhinestoneAccountConfig, Session } from '../types'
+import { SigningNotSupportedForAccountError } from './error'
 import { encode7579Calls, getAccountNonce, type ValidatorConfig } from './utils'
 
 const NEXUS_DEFAULT_VALIDATOR_ADDRESS: Address = OWNABLE_VALIDATOR_ADDRESS
 
 const NEXUS_IMPLEMENTATION_ADDRESS: Address =
-  '0x00000000006a1bF4cBa18564Ecc916c3Cf768111'
+  '0x0000000000Fb742636364B5ca9B6D2ebbC63FB5D'
 const NEXUS_FACTORY_ADDRESS: Address =
-  '0x0000000000e70c5ebEBdEc2457508f6d1709bF55'
+  '0x0000000000751F0a4816c34fB95ccbD463878361'
 const NEXUS_BOOTSTRAP_ADDRESS: Address =
   '0x00000000001Cf4667Bfd7be8f67D01d63938784b'
 
@@ -110,6 +111,7 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
     salt,
     implementation: NEXUS_IMPLEMENTATION_ADDRESS,
     initializationCallData,
+    initData,
   }
 }
 
@@ -365,6 +367,79 @@ async function getBaseSmartAccount(
   })
 }
 
+async function signEip7702InitData(
+  config: RhinestoneAccountConfig,
+  eoa: Account,
+) {
+  const { initData } = getDeployArgs(config)
+  if (!eoa.signTypedData) {
+    throw new SigningNotSupportedForAccountError()
+  }
+  const signature = await eoa.signTypedData({
+    domain: {
+      name: 'Nexus',
+      version: '1.2.0',
+    },
+    types: {
+      Initialize: [
+        { name: 'nexus', type: 'address' },
+        { name: 'chainIds', type: 'uint256[]' },
+        { name: 'initData', type: 'bytes' },
+      ],
+    },
+    primaryType: 'Initialize',
+    message: {
+      nexus: NEXUS_IMPLEMENTATION_ADDRESS,
+      chainIds: [0n],
+      initData,
+    },
+  })
+  return signature
+}
+
+async function getEip7702InitCall(
+  config: RhinestoneAccountConfig,
+  signature: Hex,
+) {
+  function getEncodedData(initData: Hex): Hex {
+    const chainIds = [0n]
+    const chainIdIndex = 0n
+    const chainIdsLength = 1n
+    const encodedData = encodePacked(
+      ['uint256', 'uint256', 'uint256', 'bytes'],
+      [chainIdIndex, chainIdsLength, chainIds[0], initData],
+    )
+    return encodedData
+  }
+
+  const { initData } = getDeployArgs(config)
+  const encodedData = getEncodedData(initData)
+  const accountFullData = concat([signature, encodedData])
+  const accountInitCallData = encodeFunctionData({
+    abi: [
+      {
+        type: 'function',
+        inputs: [
+          {
+            type: 'bytes',
+            name: 'initData',
+          },
+        ],
+        outputs: [],
+        stateMutability: 'nonpayable',
+        name: 'initializeAccount',
+      },
+    ],
+    functionName: 'initializeAccount',
+    args: [accountFullData],
+  })
+
+  return {
+    initData: accountInitCallData,
+    contract: NEXUS_IMPLEMENTATION_ADDRESS,
+  }
+}
+
 export {
   getInstallData,
   getAddress,
@@ -373,4 +448,6 @@ export {
   getSmartAccount,
   getSessionSmartAccount,
   getGuardianSmartAccount,
+  signEip7702InitData,
+  getEip7702InitCall,
 }

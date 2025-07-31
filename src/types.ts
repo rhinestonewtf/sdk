@@ -200,6 +200,7 @@ interface BaseTransaction {
   gasLimit?: bigint
   signers?: SignerSet
   sponsored?: boolean
+  eip7702InitSignature?: Hex
 }
 
 interface SameChainTransaction extends BaseTransaction {

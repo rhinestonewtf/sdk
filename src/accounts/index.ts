@@ -60,11 +60,13 @@ import {
 import {
   getAddress as getNexusAddress,
   getDeployArgs as getNexusDeployArgs,
+  getEip7702InitCall as getNexusEip7702InitCall,
   getGuardianSmartAccount as getNexusGuardianSmartAccount,
   getInstallData as getNexusInstallData,
   getPackedSignature as getNexusPackedSignature,
   getSessionSmartAccount as getNexusSessionSmartAccount,
   getSmartAccount as getNexusSmartAccount,
+  signEip7702InitData as signNexusEip7702InitData,
 } from './nexus'
 import {
   getAddress as getSafeAddress,
@@ -115,6 +117,41 @@ function getInitCode(config: RhinestoneAccountConfig) {
     return {
       factory,
       factoryData,
+    }
+  }
+}
+
+async function signEip7702InitData(config: RhinestoneAccountConfig) {
+  const eoa = config.eoa
+  if (!eoa) {
+    throw new Eip7702AccountMustHaveEoaError()
+  }
+  const account = getAccountProvider(config)
+  switch (account.type) {
+    case 'nexus': {
+      return await signNexusEip7702InitData(config, eoa)
+    }
+    case 'safe':
+    case 'kernel':
+    case 'startale': {
+      throw new Error(`7702 is not supported for account type ${account.type}`)
+    }
+  }
+}
+
+async function getEip7702InitCall(
+  config: RhinestoneAccountConfig,
+  signature: Hex,
+) {
+  const account = getAccountProvider(config)
+  switch (account.type) {
+    case 'nexus': {
+      return await getNexusEip7702InitCall(config, signature)
+    }
+    case 'safe':
+    case 'kernel':
+    case 'startale': {
+      throw new Error(`7702 is not supported for account type ${account.type}`)
     }
   }
 }
@@ -637,6 +674,8 @@ export {
   getAddress,
   getAccountProvider,
   getInitCode,
+  signEip7702InitData,
+  getEip7702InitCall,
   isDeployed,
   deploy,
   getSmartAccount,

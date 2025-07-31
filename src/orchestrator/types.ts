@@ -36,8 +36,8 @@ type SupportedChain = SupportedMainnet | SupportedTestnet
 type SupportedTokenSymbol = 'ETH' | 'WETH' | 'USDC' | 'USDT'
 type SupportedToken = SupportedTokenSymbol | Address
 
-type DeployedAccountStatus = 'ERC7579'
-type AccountStatus = 'NOT_DEPLOYED' | DeployedAccountStatus
+type SmartAccountType = 'GENERIC' | 'ERC7579'
+type AccountStatus = 'NOT_DEPLOYED' | SmartAccountType
 
 const INTENT_STATUS_PENDING = 'PENDING'
 const INTENT_STATUS_FAILED = 'FAILED'
@@ -131,11 +131,17 @@ type Portfolio = PortfolioToken[]
 interface IntentInput {
   account: {
     address: Address
-    accountType: DeployedAccountStatus
+    accountType: SmartAccountType
     setupOps: {
       to: Address
       data: Hex
     }[]
+    delegations?: Record<
+      number,
+      {
+        contract: Address
+      }
+    >
   }
   destinationChainId: number
   destinationExecutions: Execution[]
@@ -176,7 +182,7 @@ interface IntentOpElement {
   chainId: string
   idsAndAmounts: [[string, string]]
   beforeFill: boolean
-  smartAccountStatus: DeployedAccountStatus
+  smartAccountStatus: SmartAccountType
   mandate: {
     recipient: Address
     tokenOut: [[string, string]]
@@ -198,7 +204,7 @@ interface IntentOp {
   elements: IntentOpElement[]
   serverSignature: string
   signedMetadata: {
-    quotes: unknown
+    quotes: Record<Address, unknown[]>
     tokenPrices: Record<string, number>
     opGasParams: Record<
       string,
@@ -212,9 +218,54 @@ interface IntentOp {
       estimatedCalldataSize: number
     }
     gasPrices: Record<string, string>
+    account: AccountWithContext
   }
 }
 
+interface Account {
+  address: Address
+  accountType: SmartAccountType
+  setupOps: Pick<Execution, 'to' | 'data'>[]
+  delegations?: Delegations
+  emissaryConfig?: EmissarySetupConfig
+}
+
+type AccountWithContext = Omit<Account, 'delegations'> & {
+  accountContext: { [chainId: number]: AccountStatus }
+  requiredDelegations?: Delegations
+}
+
+interface Delegation {
+  contract: Address
+}
+
+type Delegations = Record<number, Delegation>
+
+interface EmissarySetupConfig {
+  configId: number
+  validatorAddress: Address
+  emissaryAddress: Address
+  emissaryConfig: EmissaryConfig
+  emissaryEnable: EmissaryEnable
+}
+
+interface EmissaryConfig {
+  configId: number
+  allocator: Address
+  scope: number
+  resetPeriod: number
+  validator: Address
+  validatorConfig: Hex
+}
+
+interface EmissaryEnable {
+  allocatorSig: Hex
+  userSig: Hex
+  expires: bigint
+  nonce: bigint
+  allChainIds: bigint[]
+  chainIndex: bigint
+}
 interface IntentRoute {
   intentOp: IntentOp
   intentCost: IntentCost
@@ -230,6 +281,14 @@ interface IntentResult {
 type SignedIntentOp = IntentOp & {
   originSignatures: Hex[]
   destinationSignature: Hex
+  signedAuthorizations?: readonly {
+    chainId: number
+    address: Address
+    nonce: number
+    yParity: number
+    r: Hex
+    s: Hex
+  }[]
 }
 
 interface TokenConfig {
