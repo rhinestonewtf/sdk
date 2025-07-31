@@ -19,15 +19,12 @@ import {
 import type {
   BundleEvent,
   BundleResult,
-  GasPrices,
   MetaIntent,
-  OPNetworkParams,
   OrderCostResult,
   OrderFeeInput,
   OrderPath,
   PostOrderBundleResult,
   SignedMultiChainCompact,
-  TokenPrices,
   UserTokenBalance,
 } from './types'
 import {
