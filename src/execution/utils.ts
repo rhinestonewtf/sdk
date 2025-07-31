@@ -112,6 +112,7 @@ async function prepareTransaction(
     targetChain,
     tokenRequests,
     signers,
+    sponsored,
     eip7702InitSignature,
   } = getTransactionParams(transaction)
   const accountAddress = getAddress(config)
@@ -139,6 +140,7 @@ async function prepareTransaction(
       transaction.gasLimit,
       tokenRequests,
       accountAddress,
+      sponsored ?? false,
       eip7702InitSignature,
     )
   }
@@ -271,6 +273,7 @@ function getTransactionParams(transaction: Transaction) {
   const initialTokenRequests = transaction.tokenRequests
   const signers = transaction.signers
   const eip7702InitSignature = transaction.eip7702InitSignature
+  const sponsored = transaction.sponsored
 
   // Across requires passing some value to repay the solvers
   const tokenRequests =
@@ -288,6 +291,7 @@ function getTransactionParams(transaction: Transaction) {
     targetChain,
     tokenRequests,
     signers,
+    sponsored,
     eip7702InitSignature,
   }
 }
@@ -337,6 +341,7 @@ async function prepareTransactionAsIntent(
   gasLimit: bigint | undefined,
   tokenRequests: TokenRequest[],
   accountAddress: Address,
+  isSponsored: boolean,
   eip7702InitSignature?: Hex,
 ) {
   const calls = parseCalls(callInputs, targetChain.id)
@@ -368,6 +373,14 @@ async function prepareTransactionAsIntent(
     destinationExecutions: calls,
     destinationGasUnits: gasLimit,
     accountAccessList,
+    options: {
+      topupCompact: false,
+      sponsorSettings: {
+        gasSponsored: isSponsored,
+        bridgeFeesSponsored: isSponsored,
+        swapFeesSponsored: isSponsored,
+      },
+    },
   }
 
   const orchestrator = getOrchestratorByChain(

@@ -199,6 +199,7 @@ interface BaseTransaction {
   tokenRequests?: TokenRequest[]
   gasLimit?: bigint
   signers?: SignerSet
+  sponsored?: boolean
   eip7702InitSignature?: Hex
 }
 
