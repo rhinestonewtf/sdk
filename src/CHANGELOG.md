@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.0-alpha.10
+
+### Patch Changes
+
+- 5bd056d: 7702 delegations
+
 ## 1.0.0-alpha.9
 
 ### Minor Changes
