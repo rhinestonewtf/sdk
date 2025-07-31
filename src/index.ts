@@ -1,4 +1,4 @@
-import type { Address, Chain, Hex } from 'viem'
+import type { Address, Chain, Hex, SignedAuthorizationList } from 'viem'
 import type { UserOperationReceipt } from 'viem/account-abstraction'
 import {
   AccountError,
@@ -12,6 +12,7 @@ import {
   SigningNotSupportedForAccountError,
   SignMessageNotSupportedByAccountError,
   SmartSessionsNotEnabledError,
+  signEip7702InitData as signEip7702InitDataInternal,
 } from './accounts'
 import { createTransport } from './accounts/utils'
 import {
@@ -54,6 +55,7 @@ import {
   type PreparedTransactionData,
   prepareTransaction as prepareTransactionInternal,
   type SignedTransactionData,
+  signAuthorizations as signAuthorizationsInternal,
   signTransaction as signTransactionInternal,
   submitTransaction as submitTransactionInternal,
 } from './execution/utils'
@@ -95,14 +97,19 @@ import type {
 interface RhinestoneAccount {
   config: RhinestoneAccountConfig
   deploy: (chain: Chain, session?: Session) => Promise<void>
+  signEip7702InitData: () => Promise<Hex>
   prepareTransaction: (
     transaction: Transaction,
   ) => Promise<PreparedTransactionData>
   signTransaction: (
     preparedTransaction: PreparedTransactionData,
   ) => Promise<SignedTransactionData>
+  signAuthorizations: (
+    preparedTransaction: PreparedTransactionData,
+  ) => Promise<SignedAuthorizationList>
   submitTransaction: (
     signedTransaction: SignedTransactionData,
+    authorizations?: SignedAuthorizationList,
   ) => Promise<TransactionResult>
   sendTransaction: (transaction: Transaction) => Promise<TransactionResult>
   waitForExecution: (
@@ -141,6 +148,10 @@ async function createRhinestoneAccount(
     return deployInternal(config, chain, session)
   }
 
+  function signEip7702InitData() {
+    return signEip7702InitDataInternal(config)
+  }
+
   function prepareTransaction(transaction: Transaction) {
     return prepareTransactionInternal(config, transaction)
   }
@@ -149,8 +160,19 @@ async function createRhinestoneAccount(
     return signTransactionInternal(config, preparedTransaction)
   }
 
-  function submitTransaction(signedTransaction: SignedTransactionData) {
-    return submitTransactionInternal(config, signedTransaction)
+  function signAuthorizations(preparedTransaction: PreparedTransactionData) {
+    return signAuthorizationsInternal(config, preparedTransaction)
+  }
+
+  function submitTransaction(
+    signedTransaction: SignedTransactionData,
+    authorizations?: SignedAuthorizationList,
+  ) {
+    return submitTransactionInternal(
+      config,
+      signedTransaction,
+      authorizations ?? [],
+    )
   }
 
   /**
@@ -229,8 +251,10 @@ async function createRhinestoneAccount(
   return {
     config,
     deploy,
+    signEip7702InitData,
     prepareTransaction,
     signTransaction,
+    signAuthorizations,
     submitTransaction,
     sendTransaction,
     waitForExecution,
