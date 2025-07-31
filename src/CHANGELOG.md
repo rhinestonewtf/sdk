@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 0.12.8
+
+### Patch Changes
+
+- fd9d430: Provide default `tokenTransfers` value
+
 ## 0.12.7
 
 ### Patch Changes
