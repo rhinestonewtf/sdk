@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { type Address, concat, type Hex } from 'viem'
+import { type Address, concat, type Hex, zeroAddress } from 'viem'
 import type { UserOperation } from 'viem/account-abstraction'
 
 import {
@@ -19,15 +19,12 @@ import {
 import type {
   BundleEvent,
   BundleResult,
-  GasPrices,
   MetaIntent,
-  OPNetworkParams,
   OrderCostResult,
   OrderFeeInput,
   OrderPath,
   PostOrderBundleResult,
   SignedMultiChainCompact,
-  TokenPrices,
   UserTokenBalance,
 } from './types'
 import {
@@ -137,6 +134,19 @@ export class Orchestrator {
     userAddress: Address,
   ): Promise<OrderCostResult> {
     try {
+      // Provide default value for token transfers
+      const initialTokenRequests = intent.tokenTransfers ?? []
+      const tokenRequests =
+        initialTokenRequests.length === 0
+          ? [
+              {
+                tokenAddress: zeroAddress,
+                amount: 1n,
+              },
+            ]
+          : initialTokenRequests
+      intent.tokenTransfers = tokenRequests
+
       const response = await axios.post(
         `${this.serverUrl}/accounts/${userAddress}/bundles/cost`,
         {
@@ -161,6 +171,19 @@ export class Orchestrator {
     userAddress: Address,
   ): Promise<OrderPath> {
     try {
+      // Provide default value for token transfers
+      const initialTokenRequests = intent.tokenTransfers ?? []
+      const tokenRequests =
+        initialTokenRequests.length === 0
+          ? [
+              {
+                tokenAddress: zeroAddress,
+                amount: 1n,
+              },
+            ]
+          : initialTokenRequests
+      intent.tokenTransfers = tokenRequests
+
       const response = await axios.post(
         `${this.serverUrl}/accounts/${userAddress}/bundles/path`,
         {

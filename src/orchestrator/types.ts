@@ -138,7 +138,7 @@ interface MetaIntentBase {
   targetAccount: Address
   targetChainId: number
   targetGasUnits?: bigint
-  tokenTransfers: TokenTransfer[]
+  tokenTransfers?: TokenTransfer[]
   accountAccessList?: AccountAccessList
   lockMode?: LockMode
   omniLock?: boolean
@@ -243,7 +243,7 @@ interface OrderFeeInput {
     verificationGasLimit: bigint
     preVerificationGas: bigint
   }
-  tokenTransfers: {
+  tokenTransfers?: {
     tokenAddress: Address
     amount?: bigint // If no amount is set, max amount of inputs will be converted
     // NOTE: Only one token may have an unset amount
