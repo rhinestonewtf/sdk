@@ -675,13 +675,11 @@ async function getSetupOperationsAndDelegations(
           data: initCode.factoryData,
         },
       ],
-      delegations: {} as Record<number, { contract: Address }>,
     }
   } else {
     // Already deployed contract account
     return {
       setupOps: [],
-      delegations: {} as Record<number, { contract: Address }>,
     }
   }
 }

@@ -122,7 +122,7 @@ interface IntentInput {
       to: Address
       data: Hex
     }[]
-    delegations: Record<
+    delegations?: Record<
       number,
       {
         contract: Address
