@@ -10,7 +10,7 @@ import {
   type TypedData,
   zeroAddress,
 } from 'viem'
-import { sendTransaction } from '../execution'
+import { sendTransaction, waitForExecution } from '../execution'
 import { enableSmartSession } from '../execution/smart-session'
 import type { Module } from '../modules/common'
 import {
@@ -364,7 +364,7 @@ async function deployWithIntent(chain: Chain, config: RhinestoneAccountConfig) {
     // Already deployed
     return
   }
-  await sendTransaction(config, {
+  const result = await sendTransaction(config, {
     targetChain: chain,
     calls: [
       {
@@ -373,6 +373,7 @@ async function deployWithIntent(chain: Chain, config: RhinestoneAccountConfig) {
       },
     ],
   })
+  await waitForExecution(config, result, true)
 }
 
 async function getSmartAccount(
