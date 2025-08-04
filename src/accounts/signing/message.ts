@@ -1,6 +1,5 @@
 import {
   type Account,
-  type Chain,
   concat,
   encodeAbiParameters,
   type Hex,
@@ -17,7 +16,11 @@ import type { SignerSet } from '../../types'
 import { SigningNotSupportedForAccountError } from '../error'
 import { convertOwnerSetToSignerSet } from './common'
 
-async function sign(signers: SignerSet, chain: Chain, hash: Hex): Promise<Hex> {
+async function sign(
+  signers: SignerSet,
+  chainId: number,
+  hash: Hex,
+): Promise<Hex> {
   switch (signers.type) {
     case 'owner': {
       switch (signers.kind) {
@@ -28,7 +31,7 @@ async function sign(signers: SignerSet, chain: Chain, hash: Hex): Promise<Hex> {
           return concat(signatures)
         }
         case 'passkey': {
-          return await signPasskey(signers.account, chain, hash)
+          return await signPasskey(signers.account, chainId, hash)
         }
         case 'multi-factor': {
           const signatures = await Promise.all(
@@ -38,7 +41,7 @@ async function sign(signers: SignerSet, chain: Chain, hash: Hex): Promise<Hex> {
               }
               const validatorSigners: SignerSet =
                 convertOwnerSetToSignerSet(validator)
-              return sign(validatorSigners, chain, hash)
+              return sign(validatorSigners, chainId, hash)
             }),
           )
           const data = encodeAbiParameters(
@@ -82,7 +85,7 @@ async function sign(signers: SignerSet, chain: Chain, hash: Hex): Promise<Hex> {
       const sessionSigners: SignerSet = convertOwnerSetToSignerSet(
         signers.session.owners,
       )
-      return sign(sessionSigners, chain, hash)
+      return sign(sessionSigners, chainId, hash)
     }
     case 'guardians': {
       const signatures = await Promise.all(
@@ -100,9 +103,13 @@ async function signEcdsa(account: Account, hash: Hex) {
   return await account.signMessage({ message: { raw: hash } })
 }
 
-async function signPasskey(account: WebAuthnAccount, chain: Chain, hash: Hex) {
+async function signPasskey(
+  account: WebAuthnAccount,
+  chainId: number,
+  hash: Hex,
+) {
   const { webauthn, signature } = await account.sign({ hash })
-  const usePrecompiled = isRip7212SupportedNetwork(chain)
+  const usePrecompiled = isRip7212SupportedNetwork(chainId)
   const encodedSignature = getWebauthnValidatorSignature({
     webauthn,
     signature,

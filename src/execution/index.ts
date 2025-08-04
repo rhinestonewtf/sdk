@@ -19,6 +19,7 @@ import type {
   Transaction,
 } from '../types'
 import {
+  ChainNotSupportedError,
   ExecutionError,
   IntentFailedError,
   isExecutionError,
@@ -74,8 +75,8 @@ async function sendTransaction(
 
 async function sendTransactionInternal(
   config: RhinestoneAccountConfig,
-  sourceChains: Chain[],
-  targetChain: Chain,
+  sourceChainIds: number[] | undefined,
+  targetChainId: number,
   callInputs: CallInput[],
   gasLimit: bigint | undefined,
   initialTokenRequests?: TokenRequest[],
@@ -99,20 +100,20 @@ async function sendTransactionInternal(
   if (asUserOp) {
     const withSession = signers?.type === 'session' ? signers.session : null
     if (withSession) {
-      await enableSmartSession(targetChain, config, withSession)
+      await enableSmartSession(targetChainId, config, withSession)
     }
     // Smart sessions require a UserOp flow
     return await sendTransactionAsUserOp(
       config,
-      targetChain,
+      targetChainId,
       callInputs,
       signers,
     )
   } else {
     return await sendTransactionAsIntent(
       config,
-      sourceChains,
-      targetChain,
+      sourceChainIds,
+      targetChainId,
       callInputs,
       gasLimit,
       tokenRequests,
@@ -125,12 +126,16 @@ async function sendTransactionInternal(
 
 async function sendTransactionAsUserOp(
   config: RhinestoneAccountConfig,
-  chain: Chain,
+  chainId: number,
   callInputs: CallInput[],
   signers: SignerSet,
 ) {
+  const chain = getChainById(chainId)
+  if (!chain) {
+    throw new ChainNotSupportedError(chainId)
+  }
   // Make sure the account is deployed
-  await deploy(config, chain)
+  await deploy(config, chainId)
   const withSession = signers?.type === 'session' ? signers.session : null
   const publicClient = createPublicClient({
     chain,
@@ -147,9 +152,9 @@ async function sendTransactionAsUserOp(
   }
   const bundlerClient = getBundlerClient(config, publicClient)
   if (withSession) {
-    await enableSmartSession(chain, config, withSession)
+    await enableSmartSession(chainId, config, withSession)
   }
-  const calls = parseCalls(callInputs, chain.id)
+  const calls = parseCalls(callInputs, chainId)
   const hash = await bundlerClient.sendUserOperation({
     account: validatorAccount,
     calls,
@@ -157,14 +162,14 @@ async function sendTransactionAsUserOp(
   return {
     type: 'userop',
     hash,
-    chain: chain.id,
+    chain: chainId,
   } as TransactionResult
 }
 
 async function sendTransactionAsIntent(
   config: RhinestoneAccountConfig,
-  sourceChains: Chain[],
-  targetChain: Chain,
+  sourceChainIds: number[] | undefined,
+  targetChainId: number,
   callInputs: CallInput[],
   gasLimit: bigint | undefined,
   tokenRequests: TokenRequest[],
@@ -174,8 +179,8 @@ async function sendTransactionAsIntent(
 ) {
   const { intentRoute, hash: intentHash } = await prepareTransactionAsIntent(
     config,
-    sourceChains,
-    targetChain,
+    sourceChainIds,
+    targetChainId,
     callInputs,
     gasLimit,
     tokenRequests,
@@ -185,7 +190,7 @@ async function sendTransactionAsIntent(
   if (!intentRoute) {
     throw new OrderPathRequiredForIntentsError()
   }
-  const signature = await signIntent(config, targetChain, intentHash, signers)
+  const signature = await signIntent(config, targetChainId, intentHash, signers)
   const authorizations = config.eoa
     ? await signAuthorizationsInternal(config, {
         type: 'intent',
@@ -195,8 +200,8 @@ async function sendTransactionAsIntent(
     : []
   return await submitIntentInternal(
     config,
-    sourceChains,
-    targetChain,
+    sourceChainIds,
+    targetChainId,
     intentRoute.intentOp,
     signature,
     authorizations,
@@ -236,7 +241,7 @@ async function waitForExecution(
     case 'userop': {
       const targetChain = getChainById(result.chain)
       if (!targetChain) {
-        throw new Error(`Unsupported chain ID: ${result.chain}`)
+        throw new ChainNotSupportedError(result.chain)
       }
       const publicClient = createPublicClient({
         chain: targetChain,

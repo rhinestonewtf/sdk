@@ -19,6 +19,7 @@ import {
 } from '../modules/validators'
 import { getSocialRecoveryValidator } from '../modules/validators/core'
 import type { EnableSessionData } from '../modules/validators/smart-sessions'
+import { getChainById } from '../orchestrator/registry'
 import type {
   AccountProviderConfig,
   Call,
@@ -128,7 +129,7 @@ async function signEip7702InitData(config: RhinestoneAccountConfig) {
     case 'safe':
     case 'kernel':
     case 'startale': {
-      throw new Error(`7702 is not supported for account type ${account.type}`)
+      throw new Eip7702NotSupportedForAccountError(account.type)
     }
   }
 }
@@ -145,7 +146,7 @@ async function getEip7702InitCall(
     case 'safe':
     case 'kernel':
     case 'startale': {
-      throw new Error(`7702 is not supported for account type ${account.type}`)
+      throw new Eip7702NotSupportedForAccountError(account.type)
     }
   }
 }
@@ -244,13 +245,13 @@ function getAddress(config: RhinestoneAccountConfig) {
 async function getPackedSignature(
   config: RhinestoneAccountConfig,
   signers: SignerSet | undefined,
-  chain: Chain,
+  chainId: number,
   validator: ValidatorConfig,
   hash: Hex,
   transformSignature: (signature: Hex) => Hex = (signature) => signature,
 ) {
   signers = signers ?? convertOwnerSetToSignerSet(config.owners)
-  const signFn = (hash: Hex) => signMessage(signers, chain, hash)
+  const signFn = (hash: Hex) => signMessage(signers, chainId, hash)
   const account = getAccountProvider(config)
   const address = getAddress(config)
   switch (account.type) {
@@ -282,7 +283,7 @@ async function getTypedDataPackedSignature<
 >(
   config: RhinestoneAccountConfig,
   signers: SignerSet | undefined,
-  chain: Chain,
+  chainId: number,
   validator: ValidatorConfig,
   parameters: HashTypedDataParameters<typedData, primaryType>,
   transformSignature: (signature: Hex) => Hex = (signature) => signature,
@@ -290,7 +291,7 @@ async function getTypedDataPackedSignature<
   signers = signers ?? convertOwnerSetToSignerSet(config.owners)
   const signFn = (
     parameters: HashTypedDataParameters<typedData, primaryType>,
-  ) => signTypedData(signers, chain, parameters)
+  ) => signTypedData(signers, chainId, parameters)
   const account = getAccountProvider(config)
   switch (account.type) {
     case 'safe': {
@@ -310,7 +311,7 @@ async function getTypedDataPackedSignature<
       // https://github.com/zerodevapp/kernel/blob/dev/src/core/ValidationManager.sol#L444
       // Using blind signing over the wrapped hash as a fallback
       const address = getAddress(config)
-      const signMessageFn = (hash: Hex) => signMessage(signers, chain, hash)
+      const signMessageFn = (hash: Hex) => signMessage(signers, chainId, hash)
       const signature = await signMessageFn(
         wrapKernelMessageHash(hashTypedData(parameters), address),
       )
@@ -344,16 +345,23 @@ async function isDeployed(chain: Chain, config: RhinestoneAccountConfig) {
 
 async function deploy(
   config: RhinestoneAccountConfig,
-  chain: Chain,
+  chainId: number,
   session?: Session,
 ) {
-  await deployWithIntent(chain, config)
+  await deployWithIntent(chainId, config)
   if (session) {
-    await enableSmartSession(chain, config, session)
+    await enableSmartSession(chainId, config, session)
   }
 }
 
-async function deployWithIntent(chain: Chain, config: RhinestoneAccountConfig) {
+async function deployWithIntent(
+  chainId: number,
+  config: RhinestoneAccountConfig,
+) {
+  const chain = getChainById(chainId)
+  if (!chain) {
+    throw new Error(`Unsupported chain ${chainId}`)
+  }
   const publicClient = createPublicClient({
     chain,
     transport: createTransport(chain, config.provider),
@@ -365,7 +373,7 @@ async function deployWithIntent(chain: Chain, config: RhinestoneAccountConfig) {
     return
   }
   const result = await sendTransaction(config, {
-    targetChain: chain,
+    targetChain: chain.id,
     calls: [
       {
         to: zeroAddress,
@@ -379,13 +387,13 @@ async function deployWithIntent(chain: Chain, config: RhinestoneAccountConfig) {
 async function getSmartAccount(
   config: RhinestoneAccountConfig,
   client: PublicClient,
-  chain: Chain,
+  chainId: number,
 ) {
   const account = getAccountProvider(config)
   const address = getAddress(config)
   const ownerValidator = getOwnerValidator(config)
   const signers: SignerSet = convertOwnerSetToSignerSet(config.owners)
-  const signFn = (hash: Hex) => signMessage(signers, chain, hash)
+  const signFn = (hash: Hex) => signMessage(signers, chainId, hash)
   switch (account.type) {
     case 'safe': {
       return getSafeSmartAccount(
@@ -429,7 +437,7 @@ async function getSmartAccount(
 async function getSmartSessionSmartAccount(
   config: RhinestoneAccountConfig,
   client: PublicClient,
-  chain: Chain,
+  chainId: number,
   session: Session,
   enableData: EnableSessionData | null,
 ) {
@@ -443,7 +451,7 @@ async function getSmartSessionSmartAccount(
     session,
     enableData: enableData || undefined,
   }
-  const signFn = (hash: Hex) => signMessage(signers, chain, hash)
+  const signFn = (hash: Hex) => signMessage(signers, chainId, hash)
 
   const account = getAccountProvider(config)
   switch (account.type) {
@@ -493,7 +501,7 @@ async function getSmartSessionSmartAccount(
 async function getGuardianSmartAccount(
   config: RhinestoneAccountConfig,
   client: PublicClient,
-  chain: Chain,
+  chainId: number,
   guardians: OwnerSet,
 ) {
   const address = getAddress(config)
@@ -506,7 +514,7 @@ async function getGuardianSmartAccount(
     type: 'guardians',
     guardians: accounts,
   }
-  const signFn = (hash: Hex) => signMessage(signers, chain, hash)
+  const signFn = (hash: Hex) => signMessage(signers, chainId, hash)
 
   const account = getAccountProvider(config)
   switch (account.type) {

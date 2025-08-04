@@ -164,7 +164,7 @@ function getWebauthnValidatorSignature({
   )
 }
 
-function isRip7212SupportedNetwork(chain: Chain) {
+function isRip7212SupportedNetwork(chainId: number) {
   const supportedChains: Chain[] = [
     optimism,
     optimismSepolia,
@@ -175,7 +175,7 @@ function isRip7212SupportedNetwork(chain: Chain) {
     arbitrumSepolia,
   ]
 
-  return supportedChains.includes(chain)
+  return supportedChains.some((chain) => chain.id === chainId)
 }
 
 function parseSignature(signature: Hex | Uint8Array): WebauthnSignature {

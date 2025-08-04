@@ -377,7 +377,9 @@ async function getBaseSmartAccount(
     async signUserOperation(parameters) {
       const { chainId = client.chain?.id, ...userOperation } = parameters
 
-      if (!chainId) throw new Error('Chain id not found')
+      if (!chainId) {
+        throw new Error('Chain id not found')
+      }
 
       const hash = getUserOperationHash({
         userOperation: {

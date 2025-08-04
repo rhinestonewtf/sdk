@@ -1,6 +1,5 @@
 import {
   type Account,
-  type Chain,
   concat,
   encodeAbiParameters,
   type HashTypedDataParameters,
@@ -24,7 +23,7 @@ async function sign<
   primaryType extends keyof typedData | 'EIP712Domain' = keyof typedData,
 >(
   signers: SignerSet,
-  chain: Chain,
+  chainId: number,
   parameters: HashTypedDataParameters<typedData, primaryType>,
 ): Promise<Hex> {
   switch (signers.type) {
@@ -37,7 +36,7 @@ async function sign<
           return concat(signatures)
         }
         case 'passkey': {
-          return await signPasskey(signers.account, chain, parameters)
+          return await signPasskey(signers.account, chainId, parameters)
         }
         case 'multi-factor': {
           const signatures = await Promise.all(
@@ -47,7 +46,7 @@ async function sign<
               }
               const validatorSigners: SignerSet =
                 convertOwnerSetToSignerSet(validator)
-              return sign(validatorSigners, chain, parameters)
+              return sign(validatorSigners, chainId, parameters)
             }),
           )
           const data = encodeAbiParameters(
@@ -91,7 +90,7 @@ async function sign<
       const sessionSigners: SignerSet = convertOwnerSetToSignerSet(
         signers.session.owners,
       )
-      return sign<typedData, primaryType>(sessionSigners, chain, parameters)
+      return sign<typedData, primaryType>(sessionSigners, chainId, parameters)
     }
     case 'guardians': {
       const signatures = await Promise.all(
@@ -120,11 +119,11 @@ async function signPasskey<
   primaryType extends keyof typedData | 'EIP712Domain' = keyof typedData,
 >(
   account: WebAuthnAccount,
-  chain: Chain,
+  chainId: number,
   parameters: HashTypedDataParameters<typedData, primaryType>,
 ) {
   const { webauthn, signature } = await account.signTypedData(parameters)
-  const usePrecompiled = isRip7212SupportedNetwork(chain)
+  const usePrecompiled = isRip7212SupportedNetwork(chainId)
   const encodedSignature = getWebauthnValidatorSignature({
     webauthn,
     signature,

@@ -65,7 +65,7 @@ export function runDeploymentTests() {
           expect(codeBefore).toBeUndefined()
 
           await rhinestoneAccount.sendTransaction({
-            chain: sourceChain,
+            chain: sourceChain.id,
             calls: [
               {
                 to: ownerAccount.address,
@@ -179,7 +179,7 @@ export function runDeploymentTestCases() {
           expect(codeBefore).toBeUndefined()
 
           await rhinestoneAccount.sendTransaction({
-            chain: sourceChain,
+            chain: sourceChain.id,
             calls: [
               {
                 to: ownerAccount.address,

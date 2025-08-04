@@ -100,6 +100,14 @@ class IntentFailedError extends ExecutionError {
   }
 }
 
+class ChainNotSupportedError extends ExecutionError {
+  constructor(chainId: number) {
+    super({
+      message: `Chain ${chainId} not supported`,
+    })
+  }
+}
+
 function isExecutionError(error: Error): error is ExecutionError {
   return error instanceof ExecutionError
 }
@@ -112,4 +120,5 @@ export {
   OrderPathRequiredForIntentsError,
   SessionChainRequiredError,
   IntentFailedError,
+  ChainNotSupportedError,
 }
