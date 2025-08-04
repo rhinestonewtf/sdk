@@ -168,26 +168,59 @@ interface RhinestoneAccount {
 async function createRhinestoneAccount(
   config: RhinestoneAccountConfig,
 ): Promise<RhinestoneAccount> {
+  /**
+   * Deploys the account on a given chain
+   * @param chain Chain to deploy the account on
+   * @param session Session to deploy the account on (optional)
+   */
   function deploy(chain: Chain, session?: Session) {
     return deployInternal(config, chain, session)
   }
 
+  /**
+   * Prepare and sign the EIP-7702 account initialization data
+   * @returns init data signature
+   */
   function signEip7702InitData() {
     return signEip7702InitDataInternal(config)
   }
 
+  /**
+   * Prepare a transaction data
+   * @param transaction Transaction to prepare
+   * @returns prepared transaction data
+   */
   function prepareTransaction(transaction: Transaction) {
     return prepareTransactionInternal(config, transaction)
   }
 
+  /**
+   * Sign a transaction
+   * @param preparedTransaction Prepared transaction data
+   * @returns signed transaction data
+   * @see {@link prepareTransaction} to prepare the transaction data for signing
+   */
   function signTransaction(preparedTransaction: PreparedTransactionData) {
     return signTransactionInternal(config, preparedTransaction)
   }
 
+  /**
+   * Sign the required EIP-7702 authorizations for a transaction
+   * @param preparedTransaction Prepared transaction data
+   * @returns signed authorizations
+   * @see {@link prepareTransaction} to prepare the transaction data for signing
+   */
   function signAuthorizations(preparedTransaction: PreparedTransactionData) {
     return signAuthorizationsInternal(config, preparedTransaction)
   }
 
+  /**
+   * Sign a message (EIP-191)
+   * @param message Message to sign
+   * @param chain Chain to sign the message on
+   * @param signers Signers to use for signing
+   * @returns signature
+   */
   function signMessage(
     message: SignableMessage,
     chain: Chain,
@@ -196,6 +229,13 @@ async function createRhinestoneAccount(
     return signMessageInternal(config, message, chain, signers)
   }
 
+  /**
+   * Sign a typed data (EIP-712)
+   * @param parameters Typed data parameters
+   * @param chain Chain to sign the typed data on
+   * @param signers Signers to use for signing
+   * @returns signature
+   */
   function signTypedData<
     typedData extends TypedData | Record<string, unknown> = TypedData,
     primaryType extends keyof typedData | 'EIP712Domain' = keyof typedData,
@@ -212,6 +252,14 @@ async function createRhinestoneAccount(
     )
   }
 
+  /**
+   * Submit a transaction
+   * @param signedTransaction Signed transaction data
+   * @param authorizations EIP-7702 authorizations to submit (optional)
+   * @returns transaction result object (an intent ID or a UserOp hash)
+   * @see {@link signTransaction} to sign the transaction data
+   * @see {@link signAuthorizations} to sign the required EIP-7702 authorizations
+   */
   function submitTransaction(
     signedTransaction: SignedTransactionData,
     authorizations?: SignedAuthorizationList,
@@ -277,23 +325,33 @@ async function createRhinestoneAccount(
     return getMaxSpendableAmountInternal(config, chain, tokenAddress, gasUnits)
   }
 
+  /**
+   * Get account owners (ECDSA)
+   * @param chain Chain to get the owners on
+   * @returns Account owners
+   */
+  function getOwners(chain: Chain) {
+    const account = getAddress()
+    return getOwnersInternal(account, chain, config.provider)
+  }
+
+  /**
+   * Get account validator modules
+   * @param chain Chain to get the validators on
+   * @returns List of account validators
+   */
+  function getValidators(chain: Chain) {
+    const accountType = config.account?.type || 'nexus'
+    const account = getAddress()
+    return getValidatorsInternal(accountType, account, chain, config.provider)
+  }
+
   function getSessionDetails(
     sessions: Session[],
     sessionIndex: number,
     signature?: Hex,
   ) {
     return getSessionDetailsInternal(config, sessions, sessionIndex, signature)
-  }
-
-  function getOwners(chain: Chain) {
-    const account = getAddress()
-    return getOwnersInternal(account, chain, config.provider)
-  }
-
-  function getValidators(chain: Chain) {
-    const accountType = config.account?.type || 'nexus'
-    const account = getAddress()
-    return getValidatorsInternal(accountType, account, chain, config.provider)
   }
 
   return {
