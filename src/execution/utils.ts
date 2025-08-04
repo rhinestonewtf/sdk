@@ -83,7 +83,7 @@ type TransactionResult =
   | {
       type: 'intent'
       id: bigint
-      sourceChain?: number
+      sourceChains?: number[]
       targetChain: number
     }
 
