@@ -22,7 +22,6 @@ import {
   SmartSessionsNotEnabledError,
   signEip7702InitData as signEip7702InitDataInternal,
 } from './accounts'
-import { createTransport } from './accounts/utils'
 import {
   addOwner,
   changeMultiFactorThreshold,
@@ -377,7 +376,6 @@ async function createRhinestoneAccount(
 
 export {
   createRhinestoneAccount,
-  createTransport,
   // Actions
   addOwner,
   changeMultiFactorThreshold,
