@@ -36,6 +36,13 @@ import { encode7579Calls, getAccountNonce, type ValidatorConfig } from './utils'
 
 const NEXUS_DEFAULT_VALIDATOR_ADDRESS: Address = OWNABLE_VALIDATOR_ADDRESS
 
+// FIXME switch the addresses
+// const NEXUS_IMPLEMENTATION_ADDRESS: Address =
+//   '0x55cc6609fDb3620ABeABf4dB020abfc469494778'
+// const NEXUS_FACTORY_ADDRESS: Address =
+//   '0xFF4454d15707a6f6BF01540796040f9E1646322C'
+// const NEXUS_BOOTSTRAP_ADDRESS: Address =
+//   '0x40E89A87C56A340c9257350dEDf4B89a3FcCCcD3'
 const NEXUS_IMPLEMENTATION_ADDRESS: Address =
   '0x0000000000Fb742636364B5ca9B6D2ebbC63FB5D'
 const NEXUS_FACTORY_ADDRESS: Address =
@@ -174,14 +181,12 @@ function getInstallData(module: Module) {
   })
 }
 
-async function getPackedSignature(
-  signFn: (message: Hex) => Promise<Hex>,
-  hash: Hex,
+async function packSignature(
+  signature: Hex,
   validator: ValidatorConfig,
   transformSignature: (signature: Hex) => Hex = (signature) => signature,
   defaultValidatorAddress: Address = NEXUS_DEFAULT_VALIDATOR_ADDRESS,
 ) {
-  const signature = await signFn(hash)
   const validatorAddress =
     validator.address === defaultValidatorAddress
       ? zeroAddress
@@ -443,7 +448,7 @@ async function getEip7702InitCall(
 export {
   getInstallData,
   getAddress,
-  getPackedSignature,
+  packSignature,
   getDeployArgs,
   getSmartAccount,
   getSessionSmartAccount,

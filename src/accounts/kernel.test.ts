@@ -1,4 +1,4 @@
-import { type Address, keccak256 } from 'viem'
+import type { Address } from 'viem'
 import { describe, expect, test } from 'vitest'
 
 import {
@@ -12,7 +12,7 @@ import {
   getAddress,
   getDeployArgs,
   getInstallData,
-  getPackedSignature,
+  packSignature,
 } from './kernel'
 
 const MOCK_MODULE_ADDRESS = '0x28de6501fa86f2e6cd0b33c3aabdaeb4a1b93f3f'
@@ -126,19 +126,12 @@ describe('Accounts: Kernel', () => {
   describe('Get Packed Signature', () => {
     describe('Mock signature', () => {
       test('Root validator', async () => {
-        const hash = keccak256('0xabcd')
         const mockSignature = '0x1234'
-        const accountAddress = '0xa80ed905adbd7cba128aaf64a1fa33a530b9b0aa'
         const validator = {
           address: '0xe35b75e5ec3c04e9cefa8e581fbee859f56edeb4' as Address,
           isRoot: true,
         }
-        const signature = await getPackedSignature(
-          async (_) => mockSignature,
-          hash,
-          validator,
-          accountAddress,
-        )
+        const signature = await packSignature(mockSignature, validator)
 
         expect(signature).toEqual(
           '0x000555ad2729e8da1777a4e5020806f8bf7601c3db6bfe402f410a34958363a95a1234',
@@ -146,19 +139,12 @@ describe('Accounts: Kernel', () => {
       })
 
       test('Non-root validator', async () => {
-        const hash = keccak256('0xabcd')
         const mockSignature = '0x1234'
-        const accountAddress = '0xa80ed905adbd7cba128aaf64a1fa33a530b9b0aa'
         const validator = {
           address: '0xe35b75e5ec3c04e9cefa8e581fbee859f56edeb4' as Address,
           isRoot: false,
         }
-        const signature = await getPackedSignature(
-          async (_) => mockSignature,
-          hash,
-          validator,
-          accountAddress,
-        )
+        const signature = await packSignature(mockSignature, validator)
 
         expect(signature).toEqual(
           '0x01e35b75e5ec3c04e9cefa8e581fbee859f56edeb40555ad2729e8da1777a4e5020806f8bf7601c3db6bfe402f410a34958363a95a1234',

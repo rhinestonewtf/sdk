@@ -12,7 +12,7 @@ import {
   getAddress,
   getDeployArgs,
   getInstallData,
-  getPackedSignature,
+  packSignature,
 } from './nexus'
 
 const MOCK_MODULE_ADDRESS = '0x28de6501fa86f2e6cd0b33c3aabdaeb4a1b93f3f'
@@ -123,17 +123,12 @@ describe('Accounts: Nexus', () => {
 
   describe('Get Packed Signature', () => {
     test('Mock signature', async () => {
-      const hash = '0xabcd'
       const mockSignature = '0x1234'
       const validator = {
         address: '0xe35b75e5ec3c04e9cefa8e581fbee859f56edeb4' as Address,
         isRoot: true,
       }
-      const signature = await getPackedSignature(
-        async (_) => mockSignature,
-        hash,
-        validator,
-      )
+      const signature = await packSignature(mockSignature, validator)
 
       expect(signature).toEqual(
         '0xe35b75e5ec3c04e9cefa8e581fbee859f56edeb41234',

@@ -32,6 +32,9 @@ interface WebauthnCredential {
   authenticatorId: string
 }
 
+// FIXME switch the address
+// const OWNABLE_VALIDATOR_ADDRESS: Address =
+//   '0x20C008719Ba9D8aA14C7d07D122cd5E965aA8da5'
 const OWNABLE_VALIDATOR_ADDRESS: Address =
   '0x0000000000E9E6E96Bcaa3c113187CdB7E38AED9'
 const WEBAUTHN_VALIDATOR_ADDRESS: Address =

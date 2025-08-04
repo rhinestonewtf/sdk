@@ -4,11 +4,15 @@ import {
   concat,
   createPublicClient,
   createWalletClient,
+  type HashTypedDataParameters,
   type Hex,
+  hashMessage,
   type PublicClient,
   publicActions,
+  type SignableMessage,
   type SignedAuthorization,
   type SignedAuthorizationList,
+  type TypedData,
   toHex,
   zeroAddress,
 } from 'viem'
@@ -25,6 +29,7 @@ import {
   getPackedSignature,
   getSmartAccount,
   getSmartSessionSmartAccount,
+  getTypedDataPackedSignature,
 } from '../accounts'
 import { createTransport, getBundlerClient } from '../accounts/utils'
 import {
@@ -186,6 +191,62 @@ async function signAuthorizations(
   preparedTransaction: PreparedTransactionData,
 ) {
   return await signAuthorizationsInternal(config, preparedTransaction.data)
+}
+
+async function signMessage(
+  config: RhinestoneAccountConfig,
+  message: SignableMessage,
+  chain: Chain,
+  signers: SignerSet | undefined,
+) {
+  const validator = getValidator(config, signers)
+  if (!validator) {
+    throw new Error('Validator not available')
+  }
+  const ownerValidator = getOwnerValidator(config)
+  const isRoot = validator.address === ownerValidator.address
+
+  const hash = hashMessage(message)
+  const signature = await getPackedSignature(
+    config,
+    signers,
+    chain,
+    {
+      address: validator.address,
+      isRoot,
+    },
+    hash,
+  )
+  return signature
+}
+
+async function signTypedData<
+  typedData extends TypedData | Record<string, unknown> = TypedData,
+  primaryType extends keyof typedData | 'EIP712Domain' = keyof typedData,
+>(
+  config: RhinestoneAccountConfig,
+  parameters: HashTypedDataParameters<typedData, primaryType>,
+  chain: Chain,
+  signers: SignerSet | undefined,
+) {
+  const validator = getValidator(config, signers)
+  if (!validator) {
+    throw new Error('Validator not available')
+  }
+  const ownerValidator = getOwnerValidator(config)
+  const isRoot = validator.address === ownerValidator.address
+
+  const signature = await getTypedDataPackedSignature(
+    config,
+    signers,
+    chain,
+    {
+      address: validator.address,
+      isRoot,
+    },
+    parameters,
+  )
+  return signature
 }
 
 async function signAuthorizationsInternal(
@@ -702,6 +763,8 @@ export {
   signTransaction,
   signAuthorizations,
   signAuthorizationsInternal,
+  signMessage,
+  signTypedData,
   submitTransaction,
   getOrchestratorByChain,
   signIntent,

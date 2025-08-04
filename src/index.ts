@@ -1,4 +1,12 @@
-import type { Address, Chain, Hex, SignedAuthorizationList } from 'viem'
+import type {
+  Address,
+  Chain,
+  HashTypedDataParameters,
+  Hex,
+  SignableMessage,
+  SignedAuthorizationList,
+  TypedData,
+} from 'viem'
 import type { UserOperationReceipt } from 'viem/account-abstraction'
 import {
   AccountError,
@@ -56,7 +64,9 @@ import {
   prepareTransaction as prepareTransactionInternal,
   type SignedTransactionData,
   signAuthorizations as signAuthorizationsInternal,
+  signMessage as signMessageInternal,
   signTransaction as signTransactionInternal,
+  signTypedData as signTypedDataInternal,
   submitTransaction as submitTransactionInternal,
 } from './execution/utils'
 import {
@@ -91,6 +101,7 @@ import type {
   Call,
   RhinestoneAccountConfig,
   Session,
+  SignerSet,
   Transaction,
 } from './types'
 
@@ -107,6 +118,19 @@ interface RhinestoneAccount {
   signAuthorizations: (
     preparedTransaction: PreparedTransactionData,
   ) => Promise<SignedAuthorizationList>
+  signMessage: (
+    message: SignableMessage,
+    chain: Chain,
+    signers: SignerSet | undefined,
+  ) => Promise<Hex>
+  signTypedData: <
+    typedData extends TypedData | Record<string, unknown> = TypedData,
+    primaryType extends keyof typedData | 'EIP712Domain' = keyof typedData,
+  >(
+    parameters: HashTypedDataParameters<typedData, primaryType>,
+    chain: Chain,
+    signers: SignerSet | undefined,
+  ) => Promise<Hex>
   submitTransaction: (
     signedTransaction: SignedTransactionData,
     authorizations?: SignedAuthorizationList,
@@ -162,6 +186,30 @@ async function createRhinestoneAccount(
 
   function signAuthorizations(preparedTransaction: PreparedTransactionData) {
     return signAuthorizationsInternal(config, preparedTransaction)
+  }
+
+  function signMessage(
+    message: SignableMessage,
+    chain: Chain,
+    signers: SignerSet | undefined,
+  ) {
+    return signMessageInternal(config, message, chain, signers)
+  }
+
+  function signTypedData<
+    typedData extends TypedData | Record<string, unknown> = TypedData,
+    primaryType extends keyof typedData | 'EIP712Domain' = keyof typedData,
+  >(
+    parameters: HashTypedDataParameters<typedData, primaryType>,
+    chain: Chain,
+    signers: SignerSet | undefined,
+  ) {
+    return signTypedDataInternal<typedData, primaryType>(
+      config,
+      parameters,
+      chain,
+      signers,
+    )
   }
 
   function submitTransaction(
@@ -255,6 +303,8 @@ async function createRhinestoneAccount(
     prepareTransaction,
     signTransaction,
     signAuthorizations,
+    signMessage,
+    signTypedData,
     submitTransaction,
     sendTransaction,
     waitForExecution,
