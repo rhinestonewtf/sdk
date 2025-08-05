@@ -1,5 +1,4 @@
 import {
-  type Chain,
   createPublicClient,
   encodeFunctionData,
   type HashTypedDataParameters,
@@ -11,6 +10,7 @@ import {
   zeroAddress,
 } from 'viem'
 import { sendTransaction, waitForExecution } from '../execution'
+import { ChainNotSupportedError } from '../execution/error'
 import { enableSmartSession } from '../execution/smart-session'
 import type { Module } from '../modules/common'
 import {
@@ -264,9 +264,7 @@ async function getPackedSignature(
       return packNexusSignature(signature, validator, transformSignature)
     }
     case 'kernel': {
-      const signature = validator.isRoot
-        ? await signFn(wrapKernelMessageHash(hash, address))
-        : await signFn(hash)
+      const signature = await signFn(wrapKernelMessageHash(hash, address))
       return packKernelSignature(signature, validator, transformSignature)
     }
     case 'startale': {
@@ -303,13 +301,6 @@ async function getTypedDataPackedSignature<
       return packNexusSignature(signature, validator, transformSignature)
     }
     case 'kernel': {
-      if (validator.isRoot) {
-        const signature = await signFn(parameters)
-        return packKernelSignature(signature, validator, transformSignature)
-      }
-      // Kernel wraps the hash for non-root validators
-      // https://github.com/zerodevapp/kernel/blob/dev/src/core/ValidationManager.sol#L444
-      // Using blind signing over the wrapped hash as a fallback
       const address = getAddress(config)
       const signMessageFn = (hash: Hex) => signMessage(signers, chainId, hash)
       const signature = await signMessageFn(
@@ -324,7 +315,11 @@ async function getTypedDataPackedSignature<
   }
 }
 
-async function isDeployed(chain: Chain, config: RhinestoneAccountConfig) {
+async function isDeployed(config: RhinestoneAccountConfig, chainId: number) {
+  const chain = getChainById(chainId)
+  if (!chain) {
+    throw new ChainNotSupportedError(chainId)
+  }
   const publicClient = createPublicClient({
     chain: chain,
     transport: createTransport(chain, config.provider),
