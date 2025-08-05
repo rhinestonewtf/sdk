@@ -4,7 +4,6 @@ import {
   concat,
   createPublicClient,
   createWalletClient,
-  encodeAbiParameters,
   type HashTypedDataParameters,
   type Hex,
   hashMessage,
@@ -25,7 +24,6 @@ import {
   type UserOperation,
 } from 'viem/account-abstraction'
 import {
-  FactoryArgsNotAvailableError,
   getAddress,
   getEip7702InitCall,
   getGuardianSmartAccount,
@@ -34,7 +32,7 @@ import {
   getSmartAccount,
   getSmartSessionSmartAccount,
   getTypedDataPackedSignature,
-  isDeployed,
+  toErc6492Signature,
 } from '../accounts'
 import { createTransport, getBundlerClient } from '../accounts/utils'
 import {
@@ -226,29 +224,7 @@ async function signMessage(
     },
     hash,
   )
-  const deployed = await isDeployed(config, chain)
-  if (deployed) {
-    return signature
-  }
-  // Account is not deployed, use ERC-6492
-  const initCode = getInitCode(config)
-  if (!initCode) {
-    throw new FactoryArgsNotAvailableError()
-  }
-  const { factory, factoryData } = initCode
-  const magicBytes =
-    '0x6492649264926492649264926492649264926492649264926492649264926492'
-  return concat([
-    encodeAbiParameters(
-      [
-        { name: 'create2Factory', type: 'address' },
-        { name: 'factoryCalldata', type: 'bytes' },
-        { name: 'originalERC1271Signature', type: 'bytes' },
-      ],
-      [factory, factoryData, signature],
-    ),
-    magicBytes,
-  ])
+  return await toErc6492Signature(config, signature, chain)
 }
 
 async function signTypedData<
@@ -277,29 +253,7 @@ async function signTypedData<
     },
     parameters,
   )
-  const deployed = await isDeployed(config, chain)
-  if (deployed) {
-    return signature
-  }
-  // Account is not deployed, use ERC-6492
-  const initCode = getInitCode(config)
-  if (!initCode) {
-    throw new FactoryArgsNotAvailableError()
-  }
-  const { factory, factoryData } = initCode
-  const magicBytes =
-    '0x6492649264926492649264926492649264926492649264926492649264926492'
-  return concat([
-    encodeAbiParameters(
-      [
-        { name: 'create2Factory', type: 'address' },
-        { name: 'factoryCalldata', type: 'bytes' },
-        { name: 'originalERC1271Signature', type: 'bytes' },
-      ],
-      [factory, factoryData, signature],
-    ),
-    magicBytes,
-  ])
+  return await toErc6492Signature(config, signature, chain)
 }
 
 async function signAuthorizationsInternal(

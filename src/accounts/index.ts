@@ -1,6 +1,8 @@
 import {
   type Chain,
+  concat,
   createPublicClient,
+  encodeAbiParameters,
   encodeFunctionData,
   type HashTypedDataParameters,
   type Hex,
@@ -367,6 +369,36 @@ async function deployWithIntent(chain: Chain, config: RhinestoneAccountConfig) {
   await waitForExecution(config, result, true)
 }
 
+async function toErc6492Signature(
+  config: RhinestoneAccountConfig,
+  signature: Hex,
+  chain: Chain,
+): Promise<Hex> {
+  const deployed = await isDeployed(config, chain)
+  if (deployed) {
+    return signature
+  }
+  // Account is not deployed, use ERC-6492
+  const initCode = getInitCode(config)
+  if (!initCode) {
+    throw new FactoryArgsNotAvailableError()
+  }
+  const { factory, factoryData } = initCode
+  const magicBytes =
+    '0x6492649264926492649264926492649264926492649264926492649264926492'
+  return concat([
+    encodeAbiParameters(
+      [
+        { name: 'create2Factory', type: 'address' },
+        { name: 'factoryCalldata', type: 'bytes' },
+        { name: 'originalERC1271Signature', type: 'bytes' },
+      ],
+      [factory, factoryData, signature],
+    ),
+    magicBytes,
+  ])
+}
+
 async function getSmartAccount(
   config: RhinestoneAccountConfig,
   client: PublicClient,
@@ -565,6 +597,7 @@ export {
   getEip7702InitCall,
   isDeployed,
   deploy,
+  toErc6492Signature,
   getSmartAccount,
   getSmartSessionSmartAccount,
   getGuardianSmartAccount,
