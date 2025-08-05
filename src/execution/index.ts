@@ -177,7 +177,7 @@ async function sendTransactionAsIntent(
   signers?: SignerSet,
   sponsored?: boolean,
 ) {
-  const { intentRoute, hash: intentHash } = await prepareTransactionAsIntent(
+  const { intentRoute } = await prepareTransactionAsIntent(
     config,
     sourceChainIds,
     targetChainId,
@@ -190,12 +190,16 @@ async function sendTransactionAsIntent(
   if (!intentRoute) {
     throw new OrderPathRequiredForIntentsError()
   }
-  const signature = await signIntent(config, targetChainId, intentHash, signers)
+  const signature = await signIntent(
+    config,
+    targetChainId,
+    intentRoute.intentOp,
+    signers,
+  )
   const authorizations = config.eoa
     ? await signAuthorizationsInternal(config, {
         type: 'intent',
         intentRoute,
-        hash: intentHash,
       })
     : []
   return await submitIntentInternal(
