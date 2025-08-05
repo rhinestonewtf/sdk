@@ -4,6 +4,7 @@ import {
   encodeAbiParameters,
   type Hex,
   pad,
+  parseSignature,
   toHex,
 } from 'viem'
 import type { WebAuthnAccount } from 'viem/_types/account-abstraction'
@@ -100,7 +101,18 @@ async function signEcdsa(account: Account, hash: Hex) {
   if (!account.signMessage) {
     throw new SigningNotSupportedForAccountError()
   }
-  return await account.signMessage({ message: { raw: hash } })
+  const originalSignature = await account.signMessage({
+    message: { raw: hash },
+  })
+  // Manually tweak the `v` value to trigger the message prefixing onchain
+  // https://github.com/rhinestonewtf/checknsignatures/blob/main/src/CheckNSignatures.sol#L53-L61
+  const { r, s, v } = parseSignature(originalSignature)
+  if (!v) {
+    throw new Error('Invalid signature')
+  }
+  const newV = v + 4n
+  const newSignature = concat([r, s, toHex(newV)])
+  return newSignature
 }
 
 async function signPasskey(
