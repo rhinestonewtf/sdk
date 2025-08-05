@@ -68,7 +68,7 @@ export function runBundlesTestCases() {
           expect(balanceBefore).toEqual(parseEther('1'))
 
           await rhinestoneAccount.sendTransaction({
-            chain: sourceChain.id,
+            chain: sourceChain,
             calls: [
               {
                 to: receiverAccount.address,

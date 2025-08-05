@@ -1,5 +1,6 @@
 import {
   type Address,
+  type Chain,
   concat,
   createPublicClient,
   encodePacked,
@@ -33,14 +34,13 @@ import {
   type SessionData,
   type SmartSessionModeType,
 } from '../modules/validators/smart-sessions'
-import { getChainById } from '../orchestrator/registry'
 import type {
   AccountType,
   ProviderConfig,
   RhinestoneAccountConfig,
   Session,
 } from '../types'
-import { ChainNotSupportedError, SessionChainRequiredError } from './error'
+import { SessionChainRequiredError } from './error'
 
 interface SessionDetails {
   permissionEnableHash: Hex
@@ -77,7 +77,7 @@ async function getSessionDetails(
     (await getPackedSignature(
       config,
       undefined,
-      chain.id,
+      chain,
       validator,
       sessionDetails.permissionEnableHash,
     ))
@@ -388,14 +388,10 @@ async function getSessionDigest(
 }
 
 async function enableSmartSession(
-  chainId: number,
+  chain: Chain,
   config: RhinestoneAccountConfig,
   session: Session,
 ) {
-  const chain = getChainById(chainId)
-  if (!chain) {
-    throw new ChainNotSupportedError(chainId)
-  }
   const publicClient = createPublicClient({
     chain,
     transport: createTransport(chain, config.provider),
@@ -416,7 +412,7 @@ async function enableSmartSession(
     config.provider,
   )
 
-  const smartAccount = await getSmartAccount(config, publicClient, chainId)
+  const smartAccount = await getSmartAccount(config, publicClient, chain)
   const bundlerClient = getBundlerClient(config, publicClient)
   const opHash = await bundlerClient.sendUserOperation({
     account: smartAccount,

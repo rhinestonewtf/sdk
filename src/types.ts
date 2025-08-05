@@ -204,12 +204,12 @@ interface BaseTransaction {
 }
 
 interface SameChainTransaction extends BaseTransaction {
-  chain: number
+  chain: Chain
 }
 
 interface CrossChainTransaction extends BaseTransaction {
-  sourceChains?: number[]
-  targetChain: number
+  sourceChains?: Chain[]
+  targetChain: Chain
 }
 
 type Transaction = SameChainTransaction | CrossChainTransaction

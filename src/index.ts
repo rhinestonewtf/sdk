@@ -106,7 +106,7 @@ import type {
 
 interface RhinestoneAccount {
   config: RhinestoneAccountConfig
-  deploy: (chainId: number, session?: Session) => Promise<void>
+  deploy: (chain: Chain, session?: Session) => Promise<void>
   signEip7702InitData: () => Promise<Hex>
   prepareTransaction: (
     transaction: Transaction,
@@ -119,7 +119,7 @@ interface RhinestoneAccount {
   ) => Promise<SignedAuthorizationList>
   signMessage: (
     message: SignableMessage,
-    chainId: number,
+    chain: Chain,
     signers: SignerSet | undefined,
   ) => Promise<Hex>
   signTypedData: <
@@ -127,7 +127,7 @@ interface RhinestoneAccount {
     primaryType extends keyof typedData | 'EIP712Domain' = keyof typedData,
   >(
     parameters: HashTypedDataParameters<typedData, primaryType>,
-    chainId: number,
+    chain: Chain,
     signers: SignerSet | undefined,
   ) => Promise<Hex>
   submitTransaction: (
@@ -172,8 +172,8 @@ async function createRhinestoneAccount(
    * @param chain Chain to deploy the account on
    * @param session Session to deploy the account on (optional)
    */
-  function deploy(chainId: number, session?: Session) {
-    return deployInternal(config, chainId, session)
+  function deploy(chain: Chain, session?: Session) {
+    return deployInternal(config, chain, session)
   }
 
   /**
@@ -222,10 +222,10 @@ async function createRhinestoneAccount(
    */
   function signMessage(
     message: SignableMessage,
-    chainId: number,
+    chain: Chain,
     signers: SignerSet | undefined,
   ) {
-    return signMessageInternal(config, message, chainId, signers)
+    return signMessageInternal(config, message, chain, signers)
   }
 
   /**
@@ -240,13 +240,13 @@ async function createRhinestoneAccount(
     primaryType extends keyof typedData | 'EIP712Domain' = keyof typedData,
   >(
     parameters: HashTypedDataParameters<typedData, primaryType>,
-    chainId: number,
+    chain: Chain,
     signers: SignerSet | undefined,
   ) {
     return signTypedDataInternal<typedData, primaryType>(
       config,
       parameters,
-      chainId,
+      chain,
       signers,
     )
   }

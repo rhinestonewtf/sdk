@@ -1,5 +1,6 @@
 import {
   type Account,
+  type Chain,
   concat,
   encodeAbiParameters,
   type Hex,
@@ -17,11 +18,7 @@ import type { SignerSet } from '../../types'
 import { SigningNotSupportedForAccountError } from '../error'
 import { convertOwnerSetToSignerSet } from './common'
 
-async function sign(
-  signers: SignerSet,
-  chainId: number,
-  hash: Hex,
-): Promise<Hex> {
+async function sign(signers: SignerSet, chain: Chain, hash: Hex): Promise<Hex> {
   switch (signers.type) {
     case 'owner': {
       switch (signers.kind) {
@@ -32,7 +29,7 @@ async function sign(
           return concat(signatures)
         }
         case 'passkey': {
-          return await signPasskey(signers.account, chainId, hash)
+          return await signPasskey(signers.account, chain, hash)
         }
         case 'multi-factor': {
           const signatures = await Promise.all(
@@ -42,7 +39,7 @@ async function sign(
               }
               const validatorSigners: SignerSet =
                 convertOwnerSetToSignerSet(validator)
-              return sign(validatorSigners, chainId, hash)
+              return sign(validatorSigners, chain, hash)
             }),
           )
           const data = encodeAbiParameters(
@@ -86,7 +83,7 @@ async function sign(
       const sessionSigners: SignerSet = convertOwnerSetToSignerSet(
         signers.session.owners,
       )
-      return sign(sessionSigners, chainId, hash)
+      return sign(sessionSigners, chain, hash)
     }
     case 'guardians': {
       const signatures = await Promise.all(
@@ -115,13 +112,9 @@ async function signEcdsa(account: Account, hash: Hex) {
   return newSignature
 }
 
-async function signPasskey(
-  account: WebAuthnAccount,
-  chainId: number,
-  hash: Hex,
-) {
+async function signPasskey(account: WebAuthnAccount, chain: Chain, hash: Hex) {
   const { webauthn, signature } = await account.sign({ hash })
-  const usePrecompiled = isRip7212SupportedNetwork(chainId)
+  const usePrecompiled = isRip7212SupportedNetwork(chain)
   const encodedSignature = getWebauthnValidatorSignature({
     webauthn,
     signature,

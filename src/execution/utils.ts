@@ -74,7 +74,6 @@ import type {
   Transaction,
 } from '../types'
 import {
-  ChainNotSupportedError,
   OrderPathRequiredForIntentsError,
   SourceChainsNotAvailableForUserOpFlowError,
   UserOperationRequiredForSmartSessionsError,
@@ -206,7 +205,7 @@ async function signAuthorizations(
 async function signMessage(
   config: RhinestoneAccountConfig,
   message: SignableMessage,
-  chainId: number,
+  chain: Chain,
   signers: SignerSet | undefined,
 ) {
   const validator = getValidator(config, signers)
@@ -220,14 +219,14 @@ async function signMessage(
   const signature = await getPackedSignature(
     config,
     signers,
-    chainId,
+    chain,
     {
       address: validator.address,
       isRoot,
     },
     hash,
   )
-  const deployed = await isDeployed(config, chainId)
+  const deployed = await isDeployed(config, chain)
   if (deployed) {
     return signature
   }
@@ -258,7 +257,7 @@ async function signTypedData<
 >(
   config: RhinestoneAccountConfig,
   parameters: HashTypedDataParameters<typedData, primaryType>,
-  chainId: number,
+  chain: Chain,
   signers: SignerSet | undefined,
 ) {
   const validator = getValidator(config, signers)
@@ -271,14 +270,14 @@ async function signTypedData<
   const signature = await getTypedDataPackedSignature(
     config,
     signers,
-    chainId,
+    chain,
     {
       address: validator.address,
       isRoot,
     },
     parameters,
   )
-  const deployed = await isDeployed(config, chainId)
+  const deployed = await isDeployed(config, chain)
   if (deployed) {
     return signature
   }
@@ -318,12 +317,11 @@ async function signAuthorizationsInternal(
         {}
       : {}
   const authorizations: SignedAuthorization[] = []
-  for (const chainIdString in requiredDelegations) {
-    const chainId = Number(chainIdString)
+  for (const chainId in requiredDelegations) {
     const delegation = requiredDelegations[chainId]
-    const chain = getChainById(chainId)
+    const chain = getChainById(Number(chainId))
     if (!chain) {
-      throw new ChainNotSupportedError(chainId)
+      throw new Error(`Chain not supported: ${chainId}`)
     }
     const walletClient = createWalletClient({
       chain,
@@ -414,14 +412,10 @@ function getTransactionParams(transaction: Transaction) {
 
 async function prepareTransactionAsUserOp(
   config: RhinestoneAccountConfig,
-  chainId: number,
+  chain: Chain,
   callInputs: CallInput[],
   signers: SignerSet | undefined,
 ) {
-  const chain = getChainById(chainId)
-  if (!chain) {
-    throw new ChainNotSupportedError(chainId)
-  }
   const publicClient = createPublicClient({
     chain,
     transport: createTransport(chain, config.provider),
@@ -436,7 +430,7 @@ async function prepareTransactionAsUserOp(
     throw new Error('No validator account found')
   }
   const bundlerClient = getBundlerClient(config, publicClient)
-  const calls = parseCalls(callInputs, chainId)
+  const calls = parseCalls(callInputs, chain.id)
   const userOp = await bundlerClient.prepareUserOperation({
     account: validatorAccount,
     calls,
@@ -446,7 +440,7 @@ async function prepareTransactionAsUserOp(
     userOp,
     hash: getUserOperationHash({
       userOperation: userOp,
-      chainId,
+      chainId: chain.id,
       entryPointAddress: entryPoint07Address,
       entryPointVersion: '0.7',
     }),
@@ -455,8 +449,8 @@ async function prepareTransactionAsUserOp(
 
 async function prepareTransactionAsIntent(
   config: RhinestoneAccountConfig,
-  sourceChainIds: number[] | undefined,
-  targetChainId: number,
+  sourceChains: Chain[] | undefined,
+  targetChain: Chain,
   callInputs: CallInput[],
   gasLimit: bigint | undefined,
   tokenRequests: TokenRequest[],
@@ -464,11 +458,11 @@ async function prepareTransactionAsIntent(
   isSponsored: boolean,
   eip7702InitSignature?: Hex,
 ) {
-  const calls = parseCalls(callInputs, targetChainId)
+  const calls = parseCalls(callInputs, targetChain.id)
   const accountAccessList =
-    sourceChainIds && sourceChainIds.length > 0
+    sourceChains && sourceChains.length > 0
       ? {
-          chainIds: sourceChainIds.map((chainId) => chainId as SupportedChain),
+          chainIds: sourceChains.map((chain) => chain.id as SupportedChain),
         }
       : undefined
 
@@ -479,9 +473,9 @@ async function prepareTransactionAsIntent(
   )
 
   const metaIntent: IntentInput = {
-    destinationChainId: targetChainId,
+    destinationChainId: targetChain.id,
     tokenTransfers: tokenRequests.map((tokenRequest) => ({
-      tokenAddress: resolveTokenAddress(tokenRequest.address, targetChainId),
+      tokenAddress: resolveTokenAddress(tokenRequest.address, targetChain.id),
       amount: tokenRequest.amount,
     })),
     account: {
@@ -504,7 +498,7 @@ async function prepareTransactionAsIntent(
   }
 
   const orchestrator = getOrchestratorByChain(
-    targetChainId,
+    targetChain.id,
     config.rhinestoneApiKey,
   )
   const intentRoute = await orchestrator.getIntentRoute(metaIntent)
@@ -517,7 +511,7 @@ async function prepareTransactionAsIntent(
 
 async function signIntent(
   config: RhinestoneAccountConfig,
-  targetChainId: number,
+  targetChain: Chain,
   intentOp: IntentOp,
   signers?: SignerSet,
 ) {
@@ -535,7 +529,7 @@ async function signIntent(
   const signature = await getTypedDataPackedSignature(
     config,
     signers,
-    targetChainId,
+    targetChain,
     {
       address: validator.address,
       isRoot,
@@ -642,14 +636,10 @@ function getClaimProofer(settlementSystem: SettlementSystem): Address {
 
 async function signUserOp(
   config: RhinestoneAccountConfig,
-  chainId: number,
+  chain: Chain,
   signers: SignerSet | undefined,
   userOp: UserOperation,
 ) {
-  const chain = getChainById(chainId)
-  if (!chain) {
-    throw new ChainNotSupportedError(chainId)
-  }
   const validator = getValidator(config, signers)
   if (!validator) {
     throw new Error('Validator not available')
@@ -674,14 +664,10 @@ async function signUserOp(
 
 async function submitUserOp(
   config: RhinestoneAccountConfig,
-  chainId: number,
+  chain: Chain,
   userOp: UserOperation,
   signature: Hex,
 ) {
-  const chain = getChainById(chainId)
-  if (!chain) {
-    throw new ChainNotSupportedError(chainId)
-  }
   const publicClient = createPublicClient({
     chain,
     transport: createTransport(chain, config.provider),
@@ -723,16 +709,16 @@ async function submitUserOp(
 
 async function submitIntent(
   config: RhinestoneAccountConfig,
-  sourceChainIds: number[] | undefined,
-  targetChainId: number,
+  sourceChains: Chain[] | undefined,
+  targetChain: Chain,
   intentOp: IntentOp,
   signature: Hex,
   authorizations: SignedAuthorizationList,
 ) {
   return submitIntentInternal(
     config,
-    sourceChainIds,
-    targetChainId,
+    sourceChains,
+    targetChain,
     intentOp,
     signature,
     authorizations,
@@ -748,8 +734,8 @@ function getOrchestratorByChain(chainId: number, apiKey: string) {
 
 async function submitIntentInternal(
   config: RhinestoneAccountConfig,
-  sourceChainIds: number[] | undefined,
-  targetChainId: number,
+  sourceChains: Chain[] | undefined,
+  targetChain: Chain,
   intentOp: IntentOp,
   signature: Hex,
   authorizations: SignedAuthorizationList,
@@ -771,15 +757,15 @@ async function submitIntentInternal(
         : undefined,
   }
   const orchestrator = getOrchestratorByChain(
-    targetChainId,
+    targetChain.id,
     config.rhinestoneApiKey,
   )
   const intentResults = await orchestrator.submitIntent(signedIntentOp)
   return {
     type: 'intent',
     id: BigInt(intentResults.result.id),
-    sourceChains: sourceChainIds,
-    targetChain: targetChainId,
+    sourceChains: sourceChains?.map((chain) => chain.id),
+    targetChain: targetChain.id,
   } as TransactionResult
 }
 
@@ -796,7 +782,7 @@ async function getValidatorAccount(
   // Owners
   const withOwner = signers.type === 'owner' ? signers : null
   if (withOwner) {
-    return getSmartAccount(config, publicClient, chain.id)
+    return getSmartAccount(config, publicClient, chain)
   }
 
   const withSession = signers.type === 'session' ? signers : null
@@ -806,12 +792,12 @@ async function getValidatorAccount(
     ? await getSmartSessionSmartAccount(
         config,
         publicClient,
-        chain.id,
+        chain,
         withSession.session,
         withSession.enableData || null,
       )
     : withGuardians
-      ? await getGuardianSmartAccount(config, publicClient, chain.id, {
+      ? await getGuardianSmartAccount(config, publicClient, chain, {
           type: 'ecdsa',
           accounts: withGuardians.guardians,
         })
