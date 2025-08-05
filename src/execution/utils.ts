@@ -4,6 +4,7 @@ import {
   concat,
   createPublicClient,
   createWalletClient,
+  encodeAbiParameters,
   type HashTypedDataParameters,
   type Hex,
   hashMessage,
@@ -24,6 +25,7 @@ import {
   type UserOperation,
 } from 'viem/account-abstraction'
 import {
+  FactoryArgsNotAvailableError,
   getAddress,
   getEip7702InitCall,
   getGuardianSmartAccount,
@@ -32,6 +34,7 @@ import {
   getSmartAccount,
   getSmartSessionSmartAccount,
   getTypedDataPackedSignature,
+  isDeployed,
 } from '../accounts'
 import { createTransport, getBundlerClient } from '../accounts/utils'
 import {
@@ -224,7 +227,29 @@ async function signMessage(
     },
     hash,
   )
-  return signature
+  const deployed = await isDeployed(config, chainId)
+  if (deployed) {
+    return signature
+  }
+  // Account is not deployed, use ERC-6492
+  const initCode = getInitCode(config)
+  if (!initCode) {
+    throw new FactoryArgsNotAvailableError()
+  }
+  const { factory, factoryData } = initCode
+  const magicBytes =
+    '0x6492649264926492649264926492649264926492649264926492649264926492'
+  return concat([
+    encodeAbiParameters(
+      [
+        { name: 'create2Factory', type: 'address' },
+        { name: 'factoryCalldata', type: 'bytes' },
+        { name: 'originalERC1271Signature', type: 'bytes' },
+      ],
+      [factory, factoryData, signature],
+    ),
+    magicBytes,
+  ])
 }
 
 async function signTypedData<
@@ -253,7 +278,29 @@ async function signTypedData<
     },
     parameters,
   )
-  return signature
+  const deployed = await isDeployed(config, chainId)
+  if (deployed) {
+    return signature
+  }
+  // Account is not deployed, use ERC-6492
+  const initCode = getInitCode(config)
+  if (!initCode) {
+    throw new FactoryArgsNotAvailableError()
+  }
+  const { factory, factoryData } = initCode
+  const magicBytes =
+    '0x6492649264926492649264926492649264926492649264926492649264926492'
+  return concat([
+    encodeAbiParameters(
+      [
+        { name: 'create2Factory', type: 'address' },
+        { name: 'factoryCalldata', type: 'bytes' },
+        { name: 'originalERC1271Signature', type: 'bytes' },
+      ],
+      [factory, factoryData, signature],
+    ),
+    magicBytes,
+  ])
 }
 
 async function signAuthorizationsInternal(
