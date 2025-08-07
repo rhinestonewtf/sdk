@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.0-alpha.12
+
+### Patch Changes
+
+- 109f624: Account signing utilities for message and typed data signing
+
 ## 1.0.0-alpha.11
 
 ### Patch Changes
