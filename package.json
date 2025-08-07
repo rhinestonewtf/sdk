@@ -12,7 +12,7 @@
     "size": "size-limit"
   },
   "workspaces": [
-    "./*"
+    "./src"
   ],
   "dependencies": {
     "viem": "^2.28.0"

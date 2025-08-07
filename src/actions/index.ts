@@ -35,6 +35,13 @@ import type {
 
 import { encodeSmartSessionSignature } from './smart-session'
 
+/**
+ * Set up social recovery
+ * @param rhinestoneAccount Account to set up social recovery on
+ * @param guardians Guardians to use for recovery
+ * @param threshold Threshold for the guardians
+ * @returns Calls to set up social recovery
+ */
 function setUpRecovery({
   rhinestoneAccount,
   guardians,
@@ -47,6 +54,14 @@ function setUpRecovery({
   return calls
 }
 
+/**
+ * Recover an account's ownership
+ * @param address Account address
+ * @param newOwners New owners
+ * @param chain Chain to recover ownership on
+ * @param provider Provider to use for the recovery
+ * @returns Calls to recover ownership
+ */
 async function recover(
   address: Address,
   newOwners: OwnerSet,
@@ -66,6 +81,13 @@ async function recover(
   }
 }
 
+/**
+ * Enable ECDSA authentication
+ * @param rhinestoneAccount Account to enable ECDSA authentication on
+ * @param owners Owners to use for authentication
+ * @param threshold Threshold for the owners
+ * @returns Calls to enable ECDSA authentication
+ */
 function enableEcdsa({
   rhinestoneAccount,
   owners,
@@ -80,6 +102,13 @@ function enableEcdsa({
   return calls
 }
 
+/**
+ * Enable passkeys authentication
+ * @param rhinestoneAccount Account to enable passkeys authentication on
+ * @param pubKey Public key for the passkey
+ * @param authenticatorId Authenticator ID for the passkey
+ * @returns Calls to enable passkeys authentication
+ */
 function enablePasskeys({
   rhinestoneAccount,
   pubKey,
@@ -92,6 +121,11 @@ function enablePasskeys({
   return calls
 }
 
+/**
+ * Disable ECDSA authentication
+ * @param rhinestoneAccount Account to disable ECDSA authentication on
+ * @returns Calls to disable ECDSA authentication
+ */
 function disableEcdsa({
   rhinestoneAccount,
 }: {
@@ -102,6 +136,11 @@ function disableEcdsa({
   return calls
 }
 
+/**
+ * Disable passkeys (WebAuthn) authentication
+ * @param rhinestoneAccount Account to disable passkeys authentication on
+ * @returns Calls to disable passkeys authentication
+ */
 function disablePasskeys({
   rhinestoneAccount,
 }: {
@@ -117,6 +156,11 @@ function disablePasskeys({
   return calls
 }
 
+/**
+ * Add an ECDSA owner
+ * @param owner Owner address
+ * @returns Call to add the owner
+ */
 function addOwner(owner: Address): Call {
   return {
     to: OWNABLE_VALIDATOR_ADDRESS,
@@ -137,6 +181,12 @@ function addOwner(owner: Address): Call {
   }
 }
 
+/**
+ * Remove an ECDSA owner
+ * @param prevOwner Previous owner address
+ * @param ownerToRemove Owner to remove
+ * @returns Call to remove the owner
+ */
 function removeOwner(prevOwner: Address, ownerToRemove: Address): Call {
   return {
     to: OWNABLE_VALIDATOR_ADDRESS,
@@ -160,6 +210,11 @@ function removeOwner(prevOwner: Address, ownerToRemove: Address): Call {
   }
 }
 
+/**
+ * Change an account's signer threshold (ECDSA)
+ * @param newThreshold New threshold
+ * @returns Call to change the threshold
+ */
 function changeThreshold(newThreshold: number): Call {
   return {
     to: OWNABLE_VALIDATOR_ADDRESS,
@@ -182,6 +237,14 @@ function changeThreshold(newThreshold: number): Call {
   }
 }
 
+/**
+ * Recover an account's ownership (ECDSA)
+ * @param address Account address
+ * @param newOwners New owners
+ * @param chain Chain to recover ownership on
+ * @param provider Provider to use for the recovery
+ * @returns Calls to recover ownership
+ */
 async function recoverEcdsaOwnership(
   address: Address,
   newOwners: OwnableValidatorConfig,
@@ -292,6 +355,13 @@ async function recoverEcdsaOwnership(
   return calls
 }
 
+/**
+ * Enable multi-factor authentication
+ * @param rhinestoneAccount Account to enable multi-factor authentication on
+ * @param validators List of validators to use
+ * @param threshold Threshold for the validators
+ * @returns Calls to enable multi-factor authentication
+ */
 function enableMultiFactor({
   rhinestoneAccount,
   validators,
@@ -306,6 +376,11 @@ function enableMultiFactor({
   return calls
 }
 
+/**
+ * Disable multi-factor authentication
+ * @param rhinestoneAccount Account to disable multi-factor authentication on
+ * @returns Calls to disable multi-factor authentication
+ */
 function disableMultiFactor({
   rhinestoneAccount,
 }: {
@@ -316,6 +391,11 @@ function disableMultiFactor({
   return calls
 }
 
+/**
+ * Change the multi-factor threshold
+ * @param newThreshold New threshold
+ * @returns Call to change the threshold
+ */
 function changeMultiFactorThreshold(newThreshold: number): Call {
   return {
     to: MULTI_FACTOR_VALIDATOR_ADDRESS,
@@ -336,6 +416,12 @@ function changeMultiFactorThreshold(newThreshold: number): Call {
   }
 }
 
+/**
+ * Set a sub-validator (multi-factor)
+ * @param id Validator ID
+ * @param validator Validator module
+ * @returns Call to set the sub-validator
+ */
 function setSubValidator(
   id: Hex | number,
   validator: OwnableValidatorConfig | WebauthnValidatorConfig,
@@ -372,6 +458,12 @@ function setSubValidator(
   }
 }
 
+/**
+ * Remove a sub-validator (multi-factor)
+ * @param id Validator ID
+ * @param validator Validator module
+ * @returns Call to remove the sub-validator
+ */
 function removeSubValidator(
   id: Hex | number,
   validator: OwnableValidatorConfig | WebauthnValidatorConfig,

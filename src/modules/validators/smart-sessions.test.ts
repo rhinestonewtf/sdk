@@ -30,7 +30,7 @@ describe('Smart Sessions', () => {
           },
         }),
       ).toBe(
-        '0x4ad46f8661acf29090a7635877ff94953e0ea05b0583d32de3839acc49739182',
+        '0xf24845e5da40837f1dc8f1d6ce3d2fd64e96b35e9c9eccf614ed2c4e3be70e9f',
       )
     })
 
@@ -44,7 +44,7 @@ describe('Smart Sessions', () => {
           salt: '0x97340e1cfff3319c76ef22b2bc9d3231071d550125d68c9d4a8972823f166320',
         }),
       ).toBe(
-        '0xb1adc169088099c6830120c63cde8d2c7e1b9a82857b35c0527dc2e37ce3e7bd',
+        '0xee8658aa7297fb41dc2658545e3c99eb2173085b4c982b9ab3802af86b3adf54',
       )
     })
   })
@@ -282,7 +282,7 @@ describe('Smart Sessions', () => {
   describe('Encode Smart Session Signature', () => {
     test('use mode', () => {
       const permissionId =
-        '0x4ad46f8661acf29090a7635877ff94953e0ea05b0583d32de3839acc49739182'
+        '0xf24845e5da40837f1dc8f1d6ce3d2fd64e96b35e9c9eccf614ed2c4e3be70e9f'
       const signature = '0xabcdef'
       const sessionSignature = encodeSmartSessionSignature(
         SMART_SESSION_MODE_USE,
@@ -291,7 +291,7 @@ describe('Smart Sessions', () => {
       )
 
       expect(sessionSignature).toEqual(
-        '0x004ad46f8661acf29090a7635877ff94953e0ea05b0583d32de3839acc49739182abcdef',
+        '0x00f24845e5da40837f1dc8f1d6ce3d2fd64e96b35e9c9eccf614ed2c4e3be70e9fabcdef',
       )
     })
   })

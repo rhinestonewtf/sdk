@@ -31,11 +31,11 @@ export default function App() {
   
   React.useEffect(() => {
     try {
-      console.log('✓ SDK imported successfully');
+      console.info('✓ SDK imported successfully');
       
       // Basic smoke test - just try to access main exports
       if (typeof sdk === 'object' && sdk !== null) {
-        console.log('✓ SDK is an object');
+        console.info('✓ SDK is an object');
         setTestResult('✓ React Native integration test passed');
       } else {
         console.error('✗ SDK import failed - not an object');
@@ -67,17 +67,17 @@ EOF
 # Create a simple Node.js test to verify the SDK can be imported in a React Native context
 cat > test-import.js << 'EOF'
 const sdk = require('@rhinestone/sdk');
-console.log('✓ SDK imported successfully in React Native project');
+console.info('✓ SDK imported successfully in React Native project');
 
 // Basic smoke test - just try to access main exports
 if (typeof sdk === 'object' && sdk !== null) {
-  console.log('✓ SDK is an object');
+  console.info('✓ SDK is an object');
 } else {
   console.error('✗ SDK import failed - not an object');
   process.exit(1);
 }
 
-console.log('✓ React Native integration test passed');
+console.info('✓ React Native integration test passed');
 EOF
 
 # Run the import test
