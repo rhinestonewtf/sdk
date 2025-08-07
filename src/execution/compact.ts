@@ -6,9 +6,8 @@ import {
   keccak256,
   slice,
   toHex,
-  zeroAddress,
 } from 'viem'
-import type { IntentOp, SettlementSystem } from '../orchestrator/types'
+import type { IntentOp } from '../orchestrator/types'
 import type { Call } from '../types'
 
 type ResetPeriod =
@@ -160,7 +159,6 @@ const COMPACT_TYPED_DATA_TYPES = {
     { name: 'tokenOut', type: 'Token[]' },
     { name: 'targetChain', type: 'uint256' },
     { name: 'fillExpiry', type: 'uint256' },
-    { name: 'claimProofer', type: 'address' },
   ],
   Token: [
     { name: 'token', type: 'address' },
@@ -174,17 +172,12 @@ const COMPACT_TYPED_DATA_TYPES = {
 } as const
 
 function getIntentData(intentOp: IntentOp) {
-  const notarizedChainElement = intentOp.elements[0]
-  const settlementSystem =
-    notarizedChainElement.mandate.qualifier.settlementSystem
-  const claimProofer = getClaimProofer(settlementSystem)
-
   const typedData = {
     domain: {
       name: 'The Compact',
       version: '1',
-      chainId: BigInt(notarizedChainElement.chainId),
-      verifyingContract: '0xAbd3388A633758D0Bae01Efb885EF1e87BD519a6',
+      chainId: BigInt(intentOp.elements[0].chainId),
+      verifyingContract: '0x73d2dc0c21fca4ec1601895d50df7f5624f07d3f',
     },
     types: COMPACT_TYPED_DATA_TYPES,
     primaryType: 'MultichainCompact',
@@ -209,7 +202,6 @@ function getIntentData(intentOp: IntentOp) {
             })),
             targetChain: BigInt(element.mandate.destinationChainId),
             fillExpiry: BigInt(element.mandate.fillDeadline),
-            claimProofer: claimProofer,
           },
           originOps: element.mandate.preClaimOps.map((op) => ({
             to: op.to,
@@ -228,15 +220,6 @@ function getIntentData(intentOp: IntentOp) {
   } as const
 
   return typedData
-}
-
-function getClaimProofer(settlementSystem: SettlementSystem): Address {
-  switch (settlementSystem) {
-    case 'ACROSS':
-      return '0x1636b30481Db91Bbc5818e65d3962838BdCd5569'
-    case 'SAME_CHAIN':
-      return zeroAddress
-  }
 }
 
 export {
