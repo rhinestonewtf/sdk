@@ -6,6 +6,7 @@ import {
   encodePacked,
   keccak256,
   parseAbi,
+  size,
   slice,
   toHex,
   zeroAddress,
@@ -59,11 +60,8 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
   const validators = moduleSetup.validators.filter(
     (v) => v.address !== NEXUS_DEFAULT_VALIDATOR_ADDRESS,
   )
-  const initData = encodeAbiParameters(
-    [{ type: 'address' }, { type: 'bytes' }],
-    [
-      NEXUS_BOOTSTRAP_ADDRESS,
-      encodeFunctionData({
+  const bootstrapData = size(defaultValidatorInitData)
+    ? encodeFunctionData({
         abi: parseAbi([
           'struct BootstrapConfig {address module;bytes initData;}',
           'struct BootstrapPreValidationHookConfig {uint256 hookType;address module;bytes data;}',
@@ -90,8 +88,37 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
           })),
           [],
         ],
-      }),
-    ],
+      })
+    : encodeFunctionData({
+        abi: parseAbi([
+          'struct BootstrapConfig {address module;bytes initData;}',
+          'struct BootstrapPreValidationHookConfig {uint256 hookType;address module;bytes data;}',
+          'function initNexusNoRegistry(BootstrapConfig[] calldata validators,BootstrapConfig[] calldata executors,BootstrapConfig calldata hook,BootstrapConfig[] calldata fallbacks,BootstrapPreValidationHookConfig[] calldata preValidationHooks) external',
+        ]),
+        functionName: 'initNexusNoRegistry',
+        args: [
+          validators.map((v) => ({
+            module: v.address,
+            initData: v.initData,
+          })),
+          moduleSetup.executors.map((e) => ({
+            module: e.address,
+            initData: e.initData,
+          })),
+          {
+            module: zeroAddress,
+            initData: '0x',
+          },
+          moduleSetup.fallbacks.map((f) => ({
+            module: f.address,
+            initData: f.initData,
+          })),
+          [],
+        ],
+      })
+  const initData = encodeAbiParameters(
+    [{ type: 'address' }, { type: 'bytes' }],
+    [NEXUS_BOOTSTRAP_ADDRESS, bootstrapData],
   )
   const factoryData = encodeFunctionData({
     abi: parseAbi(['function createAccount(bytes,bytes32)']),
