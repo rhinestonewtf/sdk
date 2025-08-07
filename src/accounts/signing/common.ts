@@ -204,7 +204,7 @@ async function signWithOwners<T>(
       return encodeAbiParameters(
         [
           {
-            type: 'bytes[]',
+            type: 'bytes32[]',
             name: 'credIds',
           },
           {
