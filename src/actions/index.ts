@@ -22,6 +22,7 @@ import {
   getWebAuthnValidator,
   MULTI_FACTOR_VALIDATOR_ADDRESS,
   OWNABLE_VALIDATOR_ADDRESS,
+  WEBAUTHN_VALIDATOR_ADDRESS,
   type WebauthnCredential,
 } from '../modules/validators/core'
 import type {
@@ -220,6 +221,100 @@ function removeOwner(prevOwner: Address, ownerToRemove: Address): Call {
 function changeThreshold(newThreshold: number): Call {
   return {
     to: OWNABLE_VALIDATOR_ADDRESS,
+    value: 0n,
+    data: encodeFunctionData({
+      abi: [
+        {
+          inputs: [
+            { internalType: 'uint256', name: '_threshold', type: 'uint256' },
+          ],
+          name: 'setThreshold',
+          outputs: [],
+          stateMutability: 'nonpayable',
+          type: 'function',
+        },
+      ],
+      functionName: 'setThreshold',
+      args: [BigInt(newThreshold)],
+    }),
+  }
+}
+
+/**
+ * Add a passkey owner
+ * @param pubKeyX Public key X
+ * @param pubKeyY Public key Y
+ * @param requireUserVerification Whether to require user verification
+ * @returns Call to add the passkey owner
+ */
+function addPasskeyOwner(
+  pubKeyX: bigint,
+  pubKeyY: bigint,
+  requireUserVerification: boolean,
+): Call {
+  return {
+    to: WEBAUTHN_VALIDATOR_ADDRESS,
+    value: 0n,
+    data: encodeFunctionData({
+      abi: [
+        {
+          inputs: [
+            { name: 'pubKeyX', type: 'uint256' },
+            { name: 'pubKeyY', type: 'uint256' },
+            {
+              name: 'requireUserVerification',
+              type: 'bool',
+            },
+          ],
+          name: 'addCredential',
+          outputs: [],
+          stateMutability: 'nonpayable',
+          type: 'function',
+        },
+      ],
+      functionName: 'addCredential',
+      args: [pubKeyX, pubKeyY, requireUserVerification],
+    }),
+  }
+}
+
+/**
+ * Remove a passkey owner
+ * @param pubKeyX Public key X
+ * @param pubKeyY Public key Y
+ * @returns Call to remove the passkey owner
+ */
+function removePasskeyOwner(pubKeyX: bigint, pubKeyY: bigint): Call {
+  return {
+    to: WEBAUTHN_VALIDATOR_ADDRESS,
+    value: 0n,
+    data: encodeFunctionData({
+      abi: [
+        {
+          inputs: [
+            { name: 'pubKeyX', type: 'uint256' },
+            { name: 'pubKeyY', type: 'uint256' },
+          ],
+          name: 'removeCredential',
+          outputs: [],
+          stateMutability: 'nonpayable',
+          type: 'function',
+        },
+      ],
+      functionName: 'removeCredential',
+      args: [pubKeyX, pubKeyY],
+    }),
+  }
+}
+
+/**
+ * Change an account's signer threshold (passkey)
+ * @param newThreshold New threshold
+ * @returns Call to change the threshold
+ */
+function changePasskeyThreshold(newThreshold: number): Call {
+  return {
+    to: WEBAUTHN_VALIDATOR_ADDRESS,
     value: 0n,
     data: encodeFunctionData({
       abi: [
@@ -506,6 +601,9 @@ export {
   addOwner,
   removeOwner,
   changeThreshold,
+  addPasskeyOwner,
+  removePasskeyOwner,
+  changePasskeyThreshold,
   recover,
   setUpRecovery,
   encodeSmartSessionSignature,

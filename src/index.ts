@@ -24,7 +24,9 @@ import {
 } from './accounts'
 import {
   addOwner,
+  addPasskeyOwner,
   changeMultiFactorThreshold,
+  changePasskeyThreshold,
   changeThreshold,
   disableEcdsa,
   disableMultiFactor,
@@ -35,6 +37,7 @@ import {
   encodeSmartSessionSignature,
   recover,
   removeOwner,
+  removePasskeyOwner,
   removeSubValidator,
   setSubValidator,
   setUpRecovery,
@@ -378,8 +381,10 @@ export {
   createRhinestoneAccount,
   // Actions
   addOwner,
+  addPasskeyOwner,
   changeMultiFactorThreshold,
   changeThreshold,
+  changePasskeyThreshold,
   disableEcdsa,
   disableMultiFactor,
   disablePasskeys,
@@ -389,6 +394,7 @@ export {
   encodeSmartSessionSignature,
   recover,
   removeOwner,
+  removePasskeyOwner,
   removeSubValidator,
   setSubValidator,
   setUpRecovery,
