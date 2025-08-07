@@ -186,9 +186,10 @@ async function signWithOwners<T>(
         ),
       )
       const usePrecompile = isRip7212SupportedNetwork(chain)
-      const credIds = signatures.map((signature) => {
-        const { r, s } = parseSignature(signature.signature)
-        return generateCredentialId(r, s, address)
+      const credIds = signers.accounts.map((account) => {
+        const publicKey = account.publicKey
+        const { x, y } = parsePublicKey(publicKey)
+        return generateCredentialId(x, y, address)
       })
       const webAuthns = signatures.map((signature) => {
         const { r, s } = parseSignature(signature.signature)
@@ -251,6 +252,21 @@ async function signWithOwners<T>(
     default: {
       throw new Error('Unsupported owner kind')
     }
+  }
+}
+
+function parsePublicKey(publicKey: Hex | Uint8Array): {
+  x: bigint
+  y: bigint
+} {
+  const bytes =
+    typeof publicKey === 'string' ? hexToBytes(publicKey) : publicKey
+  const offset = bytes.length === 65 ? 1 : 0
+  const x = bytes.slice(offset, 32 + offset)
+  const y = bytes.slice(32 + offset, 64 + offset)
+  return {
+    x: BigInt(bytesToHex(x)),
+    y: BigInt(bytesToHex(y)),
   }
 }
 
