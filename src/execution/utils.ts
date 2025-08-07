@@ -130,6 +130,7 @@ async function prepareTransaction(
       targetChain,
       transaction.calls,
       signers,
+      transaction.gasLimit,
     )
   } else {
     data = await prepareTransactionAsIntent(
@@ -274,6 +275,7 @@ function getTransactionParams(transaction: Transaction) {
   const signers = transaction.signers
   const eip7702InitSignature = transaction.eip7702InitSignature
   const sponsored = transaction.sponsored
+  const gasLimit = transaction.gasLimit
 
   // Across requires passing some value to repay the solvers
   const tokenRequests =
@@ -293,6 +295,7 @@ function getTransactionParams(transaction: Transaction) {
     signers,
     sponsored,
     eip7702InitSignature,
+    gasLimit,
   }
 }
 
@@ -301,6 +304,7 @@ async function prepareTransactionAsUserOp(
   chain: Chain,
   callInputs: CallInput[],
   signers: SignerSet | undefined,
+  gasLimit: bigint | undefined,
 ) {
   const publicClient = createPublicClient({
     chain,
@@ -320,6 +324,7 @@ async function prepareTransactionAsUserOp(
   const userOp = await bundlerClient.prepareUserOperation({
     account: validatorAccount,
     calls,
+    callGasLimit: gasLimit,
   })
   return {
     type: 'userop',

@@ -21,6 +21,7 @@ import {
   getValidator,
   getWebAuthnValidator,
   MULTI_FACTOR_VALIDATOR_ADDRESS,
+  OWNABLE_V0_VALIDATOR_ADDRESS,
   OWNABLE_VALIDATOR_ADDRESS,
   type WebauthnCredential,
 } from '../modules/validators/core'
@@ -56,6 +57,9 @@ async function recover(
   switch (newOwners.type) {
     case 'ecdsa': {
       return recoverEcdsaOwnership(address, newOwners, chain, provider)
+    }
+    case 'ecdsa-v0': {
+      return recoverEcdsaOwnership(address, newOwners, chain, provider, OWNABLE_V0_VALIDATOR_ADDRESS)
     }
     case 'passkey': {
       throw new Error('Passkey ownership recovery is not yet supported')
@@ -187,6 +191,7 @@ async function recoverEcdsaOwnership(
   newOwners: OwnableValidatorConfig,
   chain: Chain,
   provider?: ProviderConfig,
+  validatorAddress?: Address,
 ): Promise<Call[]> {
   const publicClient = createPublicClient({
     chain,
@@ -197,7 +202,7 @@ async function recoverEcdsaOwnership(
   const results = await publicClient.multicall({
     contracts: [
       {
-        address: OWNABLE_VALIDATOR_ADDRESS,
+        address: validatorAddress ?? OWNABLE_VALIDATOR_ADDRESS,
         abi: [
           {
             inputs: [
@@ -219,7 +224,7 @@ async function recoverEcdsaOwnership(
         args: [address],
       },
       {
-        address: OWNABLE_VALIDATOR_ADDRESS,
+        address: validatorAddress ?? OWNABLE_VALIDATOR_ADDRESS,
         abi: [
           {
             inputs: [

@@ -86,6 +86,14 @@ import {
   getSessionSmartAccount as getStartaleSessionSmartAccount,
   getSmartAccount as getStartaleSmartAccount,
 } from './startale'
+import {
+  getDeployArgs as getCustomDeployArgs,
+  getInstallData as getCustomInstallData,
+  getAddress as getCustomAddress,
+  getPackedSignature as getCustomPackedSignature,
+  getSmartAccount as getCustomSmartAccount,
+  getSessionSmartAccount as getCustomSessionSmartAccount,
+} from './custom'
 import { createTransport, type ValidatorConfig } from './utils'
 
 function getDeployArgs(config: RhinestoneAccountConfig) {
@@ -102,6 +110,9 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
     }
     case 'startale': {
       return getStartaleDeployArgs(config)
+    }
+    case 'custom': {
+      return getCustomDeployArgs(config)
     }
   }
 }
@@ -136,6 +147,9 @@ async function signEip7702InitData(config: RhinestoneAccountConfig) {
     case 'startale': {
       throw new Error(`7702 is not supported for account type ${account.type}`)
     }
+    case 'custom': {
+      throw new Error('7702 is not supported for custom account')
+    }
   }
 }
 
@@ -152,6 +166,9 @@ async function getEip7702InitCall(
     case 'kernel':
     case 'startale': {
       throw new Error(`7702 is not supported for account type ${account.type}`)
+    }
+    case 'custom': {
+      throw new Error('7702 is not supported for custom account')
     }
   }
 }
@@ -176,6 +193,9 @@ function getModuleInstallationCalls(
       }
       case 'startale': {
         return [getStartaleInstallData(module)]
+      }
+      case 'custom': {
+        return getCustomInstallData(config, module)
       }
     }
   }
@@ -243,6 +263,9 @@ function getAddress(config: RhinestoneAccountConfig) {
     case 'startale': {
       return getStartaleAddress(config)
     }
+    case 'custom': {
+      return getCustomAddress(config)
+    }
   }
 }
 
@@ -282,6 +305,15 @@ async function getPackedSignature(
     }
     case 'startale': {
       return getStartalePackedSignature(
+        signFn,
+        hash,
+        validator,
+        transformSignature,
+      )
+    }
+    case 'custom': {
+      return getCustomPackedSignature(
+        config,
         signFn,
         hash,
         validator,
@@ -390,6 +422,16 @@ async function getSmartAccount(
         signFn,
       )
     }
+    case 'custom': {
+      return getCustomSmartAccount(
+        config,
+        client,
+        address,
+        config.owners,
+        ownerValidator.address,
+        signFn,
+      )
+    }
   }
 }
 
@@ -446,6 +488,17 @@ async function getSmartSessionSmartAccount(
     }
     case 'startale': {
       return getStartaleSessionSmartAccount(
+        client,
+        address,
+        session,
+        smartSessionValidator.address,
+        enableData,
+        signFn,
+      )
+    }
+    case 'custom': {
+      return getCustomSessionSmartAccount(
+        config,
         client,
         address,
         session,
@@ -520,7 +573,8 @@ async function sign(signers: SignerSet, chain: Chain, hash: Hex): Promise<Hex> {
   switch (signers.type) {
     case 'owner': {
       switch (signers.kind) {
-        case 'ecdsa': {
+        case 'ecdsa':
+        case 'ecdsa-v0': {
           const signatures = await Promise.all(
             signers.accounts.map((account) => signEcdsa(account, hash)),
           )
@@ -627,7 +681,8 @@ function getAccountProvider(
 
 function convertOwnerSetToSignerSet(owners: OwnerSet): SignerSet {
   switch (owners.type) {
-    case 'ecdsa': {
+    case 'ecdsa':
+    case 'ecdsa-v0': {
       return {
         type: 'owner',
         kind: 'ecdsa',
@@ -647,9 +702,10 @@ function convertOwnerSetToSignerSet(owners: OwnerSet): SignerSet {
         kind: 'multi-factor',
         validators: owners.validators.map((validator, index) => {
           switch (validator.type) {
-            case 'ecdsa': {
+            case 'ecdsa':
+            case 'ecdsa-v0': {
               return {
-                type: 'ecdsa',
+                type: validator.type,
                 id: index,
                 accounts: validator.accounts,
               }

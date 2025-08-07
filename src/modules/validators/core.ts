@@ -41,6 +41,9 @@ const SOCIAL_RECOVERY_VALIDATOR_ADDRESS: Address =
 const MULTI_FACTOR_VALIDATOR_ADDRESS: Address =
   '0xf6bDf42c9BE18cEcA5C06c42A43DAf7FBbe7896b'
 
+const OWNABLE_V0_VALIDATOR_ADDRESS: Address =
+  '0x2483DA3A338895199E5e538530213157e931Bf06'
+
 const ECDSA_MOCK_SIGNATURE =
   '0x81d4b4981670cb18f99f0b4a66446df1bf5b204d24cfcb659bf38ba27a4359b5711649ec2423c5e1247245eba2964679b6a1dbb85c992ae40b9b00c6935b02ff1b'
 const WEBAUTHN_MOCK_SIGNATURE =
@@ -52,7 +55,8 @@ function getOwnerValidator(config: RhinestoneAccountConfig) {
 
 function getMockSignature(ownerSet: OwnerSet): Hex {
   switch (ownerSet.type) {
-    case 'ecdsa': {
+    case 'ecdsa':
+    case 'ecdsa-v0': {
       const owners = ownerSet.accounts.map((account) => account.address)
       const signatures = owners.map(() => ECDSA_MOCK_SIGNATURE as Hex)
       return concat(signatures)
@@ -108,6 +112,12 @@ function getValidator(owners: OwnerSet) {
         owners.threshold ?? 1,
         owners.accounts.map((account) => account.address),
       )
+    case 'ecdsa-v0':
+      return getOwnableValidator(
+        owners.threshold ?? 1,
+        owners.accounts.map((account) => account.address),
+        OWNABLE_V0_VALIDATOR_ADDRESS,
+      )
     case 'passkey':
       return getWebAuthnValidator({
         pubKey: owners.account.publicKey,
@@ -119,9 +129,9 @@ function getValidator(owners: OwnerSet) {
   }
 }
 
-function getOwnableValidator(threshold: number, owners: Address[]): Module {
+function getOwnableValidator(threshold: number, owners: Address[], address?: Address): Module {
   return {
-    address: OWNABLE_VALIDATOR_ADDRESS,
+    address: address ?? OWNABLE_VALIDATOR_ADDRESS,
     initData: encodeAbiParameters(
       [
         { name: 'threshold', type: 'uint256' },
@@ -293,6 +303,7 @@ export {
   OWNABLE_VALIDATOR_ADDRESS,
   WEBAUTHN_VALIDATOR_ADDRESS,
   MULTI_FACTOR_VALIDATOR_ADDRESS,
+  OWNABLE_V0_VALIDATOR_ADDRESS,
   getOwnerValidator,
   getOwnableValidator,
   getWebAuthnValidator,

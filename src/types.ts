@@ -1,15 +1,32 @@
 import type { Account, Address, Chain, Hex } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
 import type { EnableSessionData } from './modules/validators/smart-sessions'
+import { Module } from './modules/common'
+import { ValidatorConfig } from './accounts/utils'
 
-type AccountType = 'safe' | 'nexus' | 'kernel' | 'startale'
+type AccountType = 'safe' | 'nexus' | 'kernel' | 'startale' | 'custom'
 
 interface AccountProviderConfig {
   type: AccountType
+  custom?: CustomAccountProviderConfig
+}
+
+interface CustomAccountProviderConfig {
+  getDeployArgs: () => {
+    factory: Address
+    factoryData: Hex
+  }
+  getInstallData: (module: Module) => Hex[]
+  getAddress: () => Address
+  getPackedSignature: (signFn: (message: Hex) => Promise<Hex>, hash: Hex, validator: ValidatorConfig, transformSignature: (signature: Hex) => Hex) => Promise<Hex>,
+  getSessionStubSignature: (session: Session, enableData: EnableSessionData | null) => Promise<Hex>,
+  signSessionUserOperation: (session: Session, enableData: EnableSessionData | null, hash: Hex) => Promise<Hex>,
+  getStubSignature: () => Promise<Hex>,
+  sign: (hash: Hex) => Promise<Hex>,
 }
 
 interface OwnableValidatorConfig {
-  type: 'ecdsa'
+  type: 'ecdsa' | 'ecdsa-v0'
   accounts: Account[]
   threshold?: number
 }
@@ -156,7 +173,7 @@ interface TokenRequest {
 type OwnerSignerSet =
   | {
       type: 'owner'
-      kind: 'ecdsa'
+      kind: 'ecdsa' | 'ecdsa-v0'
       accounts: Account[]
     }
   | {
@@ -169,7 +186,7 @@ type OwnerSignerSet =
       kind: 'multi-factor'
       validators: (
         | {
-            type: 'ecdsa'
+            type: 'ecdsa' | 'ecdsa-v0'
             id: number | Hex
             accounts: Account[]
           }
