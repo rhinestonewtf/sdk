@@ -28,7 +28,7 @@ describe('Accounts', () => {
         },
         rhinestoneApiKey: MOCK_API_KEY,
       })
-      expect(address).toEqual('0x98c586f7083263489a1d76e88895597af7fb1106')
+      expect(address).toEqual('0xac56fbf33ed87c3c5494caf92421fc9093747453')
     })
   })
 
