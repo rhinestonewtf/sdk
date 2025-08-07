@@ -12,7 +12,7 @@ import {
   pad,
   toHex,
 } from 'viem'
-import type { WebAuthnAccount } from 'viem/_types/account-abstraction'
+import type { WebAuthnAccount } from 'viem/account-abstraction'
 import { isRip7212SupportedNetwork } from '../../modules'
 import { getValidator } from '../../modules/validators/core'
 import type { OwnerSet, SignerSet } from '../../types'

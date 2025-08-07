@@ -7,7 +7,7 @@ import {
   parseSignature,
   toHex,
 } from 'viem'
-import type { WebAuthnAccount } from 'viem/_types/account-abstraction'
+import type { WebAuthnAccount } from 'viem/account-abstraction'
 import type { SignerSet } from '../../types'
 import { SigningNotSupportedForAccountError } from '../error'
 import {
