@@ -1,11 +1,4 @@
-import {
-  type Address,
-  bytesToHex,
-  type Chain,
-  encodeAbiParameters,
-  type Hex,
-  hexToBytes,
-} from 'viem'
+import { type Address, type Chain, encodeAbiParameters } from 'viem'
 import {
   arbitrum,
   arbitrumSepolia,
@@ -34,23 +27,6 @@ import { getSocialRecoveryValidator } from './validators/core'
 
 const SMART_SESSION_COMPATIBILITY_FALLBACK_ADDRESS: Address =
   '0x12cae64c42f362e7d5a847c2d33388373f629177'
-
-interface WebAuthnData {
-  authenticatorData: Hex
-  clientDataJSON: string
-  typeIndex: number | bigint
-}
-
-interface WebauthnValidatorSignature {
-  webauthn: WebAuthnData
-  signature: WebauthnSignature | Hex | Uint8Array
-  usePrecompiled?: boolean
-}
-
-interface WebauthnSignature {
-  r: bigint
-  s: bigint
-}
 
 interface ModeleSetup {
   validators: Module[]
@@ -120,57 +96,6 @@ function getSetup(config: RhinestoneAccountConfig): ModeleSetup {
   }
 }
 
-function getWebauthnValidatorSignature({
-  webauthn,
-  signature,
-  usePrecompiled = false,
-}: WebauthnValidatorSignature) {
-  const { authenticatorData, clientDataJSON, typeIndex } = webauthn
-  let r: bigint
-  let s: bigint
-  if (typeof signature === 'string' || signature instanceof Uint8Array) {
-    const parsedSignature = parseSignature(signature)
-    r = parsedSignature.r
-    s = parsedSignature.s
-  } else {
-    r = signature.r
-    s = signature.s
-  }
-  return encodeAbiParameters(
-    [
-      { type: 'bytes', name: 'authenticatorData' },
-      {
-        type: 'string',
-        name: 'clientDataJSON',
-      },
-      {
-        type: 'uint256',
-        name: 'responseTypeLocation',
-      },
-      {
-        type: 'uint256',
-        name: 'r',
-      },
-      {
-        type: 'uint256',
-        name: 's',
-      },
-      {
-        type: 'bool',
-        name: 'usePrecompiled',
-      },
-    ],
-    [
-      authenticatorData,
-      clientDataJSON,
-      typeof typeIndex === 'bigint' ? typeIndex : BigInt(typeIndex),
-      r,
-      s,
-      usePrecompiled,
-    ],
-  )
-}
-
 function isRip7212SupportedNetwork(chain: Chain) {
   const supportedChains: Chain[] = [
     optimism,
@@ -184,22 +109,10 @@ function isRip7212SupportedNetwork(chain: Chain) {
   return supportedChains.includes(chain)
 }
 
-function parseSignature(signature: Hex | Uint8Array): WebauthnSignature {
-  const bytes =
-    typeof signature === 'string' ? hexToBytes(signature) : signature
-  const r = bytes.slice(0, 32)
-  const s = bytes.slice(32, 64)
-  return {
-    r: BigInt(bytesToHex(r)),
-    s: BigInt(bytesToHex(s)),
-  }
-}
-
 export {
   HOOK_ADDRESS,
   getSetup,
   getOwnerValidator,
-  getWebauthnValidatorSignature,
   getOwners,
   getValidators,
   isRip7212SupportedNetwork,
