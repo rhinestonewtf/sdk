@@ -133,6 +133,11 @@ interface RhinestoneAccountConfig {
   provider?: ProviderConfig
   bundler?: BundlerConfig
   paymaster?: PaymasterConfig
+  /**
+   * @internal
+   * For internal testing only - do not use
+   */
+  useDev?: boolean
 }
 
 type TokenSymbol = 'ETH' | 'WETH' | 'USDC' | 'USDT'

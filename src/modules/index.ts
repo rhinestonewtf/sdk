@@ -23,7 +23,11 @@ import {
   MODULE_TYPE_ID_FALLBACK,
   type Module,
 } from './common'
-import { HOOK_ADDRESS, INTENT_EXECUTOR_ADDRESS } from './omni-account'
+import {
+  HOOK_ADDRESS,
+  INTENT_EXECUTOR_ADDRESS,
+  INTENT_EXECUTOR_ADDRESS_DEV,
+} from './omni-account'
 import { getOwners, getValidators } from './read'
 import { getOwnerValidator, getSmartSessionValidator } from './validators'
 import { getSocialRecoveryValidator } from './validators/core'
@@ -71,9 +75,12 @@ function getSetup(config: RhinestoneAccountConfig): ModeleSetup {
     validators.push(socialRecoveryValidator)
   }
 
+  const intentExecutorAddress = config.useDev
+    ? INTENT_EXECUTOR_ADDRESS_DEV
+    : INTENT_EXECUTOR_ADDRESS
   const executors: Module[] = [
     {
-      address: INTENT_EXECUTOR_ADDRESS,
+      address: intentExecutorAddress,
       initData: '0x',
       deInitData: '0x',
       additionalContext: '0x',
@@ -174,7 +181,6 @@ function isRip7212SupportedNetwork(chain: Chain) {
     arbitrum,
     arbitrumSepolia,
   ]
-
   return supportedChains.includes(chain)
 }
 

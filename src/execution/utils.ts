@@ -52,6 +52,7 @@ import {
   type SupportedChain,
 } from '../orchestrator'
 import {
+  DEV_ORCHESTRATOR_URL,
   PROD_ORCHESTRATOR_URL,
   STAGING_ORCHESTRATOR_URL,
 } from '../orchestrator/consts'
@@ -452,6 +453,7 @@ async function prepareTransactionAsIntent(
   const orchestrator = getOrchestratorByChain(
     targetChain.id,
     config.rhinestoneApiKey,
+    config.useDev,
   )
   const intentRoute = await orchestrator.getIntentRoute(metaIntent)
 
@@ -579,10 +581,17 @@ async function submitIntent(
   )
 }
 
-function getOrchestratorByChain(chainId: number, apiKey: string) {
-  const orchestratorUrl = isTestnet(chainId)
-    ? STAGING_ORCHESTRATOR_URL
-    : PROD_ORCHESTRATOR_URL
+function getOrchestratorByChain(
+  chainId: number,
+  apiKey: string,
+  useDev: boolean | undefined,
+) {
+  const orchestratorUrl =
+    (useDev ?? false)
+      ? DEV_ORCHESTRATOR_URL
+      : isTestnet(chainId)
+        ? STAGING_ORCHESTRATOR_URL
+        : PROD_ORCHESTRATOR_URL
   return getOrchestrator(apiKey, orchestratorUrl)
 }
 
@@ -613,6 +622,7 @@ async function submitIntentInternal(
   const orchestrator = getOrchestratorByChain(
     targetChain.id,
     config.rhinestoneApiKey,
+    config.useDev,
   )
   const intentResults = await orchestrator.submitIntent(signedIntentOp)
   return {
