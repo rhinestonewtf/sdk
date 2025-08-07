@@ -5,6 +5,7 @@ import {
   encodeAbiParameters,
   type Hex,
   hexToBytes,
+  zeroAddress,
 } from 'viem'
 import {
   arbitrum,
@@ -26,7 +27,11 @@ import {
 import { HOOK_ADDRESS, INTENT_EXECUTOR_ADDRESS } from './omni-account'
 import { getOwners, getValidators } from './read'
 import { getOwnerValidator, getSmartSessionValidator } from './validators'
-import { getSocialRecoveryValidator } from './validators/core'
+import {
+  getOwnableValidator,
+  getSocialRecoveryValidator,
+  OWNABLE_VALIDATOR_ADDRESS,
+} from './validators/core'
 
 const SMART_SESSION_COMPATIBILITY_FALLBACK_ADDRESS: Address =
   '0x12cae64c42f362e7d5a847c2d33388373f629177'
@@ -34,7 +39,8 @@ const SMART_SESSION_COMPATIBILITY_FALLBACK_ADDRESS: Address =
 interface WebAuthnData {
   authenticatorData: Hex
   clientDataJSON: string
-  typeIndex: number | bigint
+  challengeIndex: number
+  typeIndex: bigint
 }
 
 interface WebauthnValidatorSignature {
@@ -60,6 +66,15 @@ function getSetup(config: RhinestoneAccountConfig): ModeleSetup {
   const smartSessionValidator = getSmartSessionValidator(config)
 
   const validators: Module[] = [ownerValidator]
+  // For Nexus, we need to initialize the ownable validator either way
+  if (!config.account || config.account.type === 'nexus') {
+    if (ownerValidator.address !== OWNABLE_VALIDATOR_ADDRESS) {
+      validators.push(
+        getOwnableValidator(1, ['0x0000000000000000000000000000000000000002']),
+      )
+    }
+  }
+  console.log('getSetup 4', validators)
   if (smartSessionValidator) {
     validators.push(smartSessionValidator)
   }
@@ -164,6 +179,22 @@ function getWebauthnValidatorSignature({
   )
 }
 
+function getWebauthAuth(webauthn: WebAuthnData, signature: Hex) {
+  const { authenticatorData, clientDataJSON, challengeIndex, typeIndex } =
+    webauthn
+  const parsedSignature = parseSignature(signature)
+  const r = parsedSignature.r
+  const s = parsedSignature.s
+  return {
+    authenticatorData,
+    clientDataJSON,
+    challengeIndex,
+    typeIndex,
+    r,
+    s,
+  }
+}
+
 function isRip7212SupportedNetwork(chain: Chain) {
   const supportedChains: Chain[] = [
     optimism,
@@ -194,6 +225,7 @@ export {
   getSetup,
   getOwnerValidator,
   getWebauthnValidatorSignature,
+  getWebauthAuth,
   getOwners,
   getValidators,
   isRip7212SupportedNetwork,

@@ -30,7 +30,7 @@ describe('Modules', () => {
         rhinestoneApiKey: MOCK_API_KEY,
         owners: {
           type: 'passkey' as const,
-          account: passkeyAccount,
+          accounts: [passkeyAccount],
         },
       }
       const setup = getSetup(config)
@@ -117,6 +117,7 @@ describe('Modules', () => {
             '0x49960de5880e8c687434170f6476605b8fe4aeb9a28632c7995cf3ba831d97631d00000000',
           clientDataJSON:
             '{"type":"webauthn.get","challenge":"tbxXNFS9X_4Byr1cMwqKrIGB-_30a0QhZ6y7ucM0BOE","origin":"http://localhost:3000","crossOrigin":false, "other_keys_can_be_added_here":"do not compare clientDataJSON against a template. See https://goo.gl/yabPex"}',
+          challengeIndex: 0,
           typeIndex:
             44941127272049826721201904734628716258498742255959991581049806490182030242267n,
         },

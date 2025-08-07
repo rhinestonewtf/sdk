@@ -1,11 +1,15 @@
 import {
   type Account,
+  type Address,
+  bytesToHex,
   type Chain,
   concat,
   createPublicClient,
   encodeAbiParameters,
   encodeFunctionData,
   type Hex,
+  hexToBytes,
+  keccak256,
   type PublicClient,
   pad,
   size,
@@ -15,10 +19,7 @@ import {
 import type { WebAuthnAccount } from 'viem/account-abstraction'
 import { sendTransaction } from '../execution'
 import { enableSmartSession } from '../execution/smart-session'
-import {
-  getWebauthnValidatorSignature,
-  isRip7212SupportedNetwork,
-} from '../modules'
+import { isRip7212SupportedNetwork } from '../modules'
 import type { Module } from '../modules/common'
 import {
   getOwnerValidator,
@@ -219,7 +220,7 @@ async function getPackedSignature(
   transformSignature: (signature: Hex) => Hex = (signature) => signature,
 ) {
   signers = signers ?? convertOwnerSetToSignerSet(config.owners)
-  const signFn = (hash: Hex) => sign(signers, chain, hash)
+  const signFn = (hash: Hex) => sign(signers, chain, address, hash)
   const account = getAccountProvider(config)
   const address = getAddress(config)
   switch (account.type) {
@@ -315,7 +316,7 @@ async function getSmartAccount(
   const address = getAddress(config)
   const ownerValidator = getOwnerValidator(config)
   const signers: SignerSet = convertOwnerSetToSignerSet(config.owners)
-  const signFn = (hash: Hex) => sign(signers, chain, hash)
+  const signFn = (hash: Hex) => sign(signers, chain, address, hash)
   switch (account.type) {
     case 'safe': {
       return getSafeSmartAccount(
@@ -373,7 +374,7 @@ async function getSmartSessionSmartAccount(
     session,
     enableData: enableData || undefined,
   }
-  const signFn = (hash: Hex) => sign(signers, chain, hash)
+  const signFn = (hash: Hex) => sign(signers, chain, address, hash)
 
   const account = getAccountProvider(config)
   switch (account.type) {
@@ -436,7 +437,7 @@ async function getGuardianSmartAccount(
     type: 'guardians',
     guardians: accounts,
   }
-  const signFn = (hash: Hex) => sign(signers, chain, hash)
+  const signFn = (hash: Hex) => sign(signers, chain, address, hash)
 
   const account = getAccountProvider(config)
   switch (account.type) {
@@ -479,7 +480,12 @@ async function getGuardianSmartAccount(
   }
 }
 
-async function sign(signers: SignerSet, chain: Chain, hash: Hex): Promise<Hex> {
+async function sign(
+  signers: SignerSet,
+  chain: Chain,
+  account: Address,
+  hash: Hex,
+): Promise<Hex> {
   switch (signers.type) {
     case 'owner': {
       switch (signers.kind) {
@@ -490,7 +496,57 @@ async function sign(signers: SignerSet, chain: Chain, hash: Hex): Promise<Hex> {
           return concat(signatures)
         }
         case 'passkey': {
-          return await signPasskey(signers.account, chain, hash)
+          const signatures = await Promise.all(
+            signers.accounts.map((passkeyAccount) =>
+              signPasskey(passkeyAccount, account, hash),
+            ),
+          )
+          const usePrecompile = isRip7212SupportedNetwork(chain)
+          const credIds = signatures.map((signature) => signature.credId)
+          const webAuthns = signatures.map((signature) => signature.webAuthn)
+          return encodeAbiParameters(
+            [
+              {
+                type: 'bytes[]',
+                name: 'credIds',
+              },
+              {
+                type: 'bool',
+                name: 'usePrecompile',
+              },
+              {
+                type: 'tuple[]',
+                name: 'webAuthns',
+                components: [
+                  {
+                    type: 'bytes',
+                    name: 'authenticatorData',
+                  },
+                  {
+                    type: 'string',
+                    name: 'clientDataJSON',
+                  },
+                  {
+                    type: 'uint256',
+                    name: 'challengeIndex',
+                  },
+                  {
+                    type: 'uint256',
+                    name: 'typeIndex',
+                  },
+                  {
+                    type: 'uint256',
+                    name: 'r',
+                  },
+                  {
+                    type: 'uint256',
+                    name: 's',
+                  },
+                ],
+              },
+            ],
+            [credIds, usePrecompile, webAuthns],
+          )
         }
         case 'multi-factor': {
           const signatures = await Promise.all(
@@ -500,7 +556,7 @@ async function sign(signers: SignerSet, chain: Chain, hash: Hex): Promise<Hex> {
               }
               const validatorSigners: SignerSet =
                 convertOwnerSetToSignerSet(validator)
-              return sign(validatorSigners, chain, hash)
+              return sign(validatorSigners, chain, account, hash)
             }),
           )
           const data = encodeAbiParameters(
@@ -544,7 +600,7 @@ async function sign(signers: SignerSet, chain: Chain, hash: Hex): Promise<Hex> {
       const sessionSigners: SignerSet = convertOwnerSetToSignerSet(
         signers.session.owners,
       )
-      return sign(sessionSigners, chain, hash)
+      return sign(sessionSigners, chain, account, hash)
     }
     case 'guardians': {
       const signatures = await Promise.all(
@@ -562,15 +618,81 @@ async function signEcdsa(account: Account, hash: Hex) {
   return await account.signMessage({ message: { raw: hash } })
 }
 
-async function signPasskey(account: WebAuthnAccount, chain: Chain, hash: Hex) {
+async function signPasskey(
+  account: WebAuthnAccount,
+  address: Address,
+  hash: Hex,
+) {
+  function parsePublicKey(publicKey: Hex | Uint8Array): {
+    x: bigint
+    y: bigint
+  } {
+    const bytes =
+      typeof publicKey === 'string' ? hexToBytes(publicKey) : publicKey
+    const offset = bytes.length === 65 ? 1 : 0
+    const x = bytes.slice(offset, 32 + offset)
+    const y = bytes.slice(32 + offset, 64 + offset)
+    return {
+      x: BigInt(bytesToHex(x)),
+      y: BigInt(bytesToHex(y)),
+    }
+  }
+
+  function parseSignature(signature: Hex | Uint8Array): {
+    r: bigint
+    s: bigint
+  } {
+    const bytes =
+      typeof signature === 'string' ? hexToBytes(signature) : signature
+    const r = bytes.slice(0, 32)
+    const s = bytes.slice(32, 64)
+    return {
+      r: BigInt(bytesToHex(r)),
+      s: BigInt(bytesToHex(s)),
+    }
+  }
+
+  function generateCredentialId(
+    pubKeyX: bigint,
+    pubKeyY: bigint,
+    account: Address,
+  ) {
+    return keccak256(
+      encodeAbiParameters(
+        [
+          {
+            type: 'uint256',
+          },
+          {
+            type: 'uint256',
+          },
+          {
+            type: 'address',
+          },
+        ],
+        [pubKeyX, pubKeyY, account],
+      ),
+    )
+  }
+
   const { webauthn, signature } = await account.sign({ hash })
-  const usePrecompiled = isRip7212SupportedNetwork(chain)
-  const encodedSignature = getWebauthnValidatorSignature({
-    webauthn,
-    signature,
-    usePrecompiled,
-  })
-  return encodedSignature
+  const parsedPublicKey = parsePublicKey(account.publicKey)
+  const parsedSignature = parseSignature(signature)
+  const r = parsedSignature.r
+  const s = parsedSignature.s
+  const webAuthn = {
+    authenticatorData: webauthn.authenticatorData,
+    clientDataJSON: webauthn.clientDataJSON,
+    challengeIndex: BigInt(webauthn.challengeIndex),
+    typeIndex: BigInt(webauthn.typeIndex),
+    r,
+    s,
+  }
+
+  return {
+    credId: generateCredentialId(parsedPublicKey.x, parsedPublicKey.y, address),
+    webAuthn,
+  }
 }
 
 function is7702(config: RhinestoneAccountConfig): boolean {
@@ -601,7 +723,7 @@ function convertOwnerSetToSignerSet(owners: OwnerSet): SignerSet {
       return {
         type: 'owner',
         kind: 'passkey',
-        account: owners.account,
+        accounts: owners.accounts,
       }
     }
     case 'multi-factor': {
@@ -621,7 +743,7 @@ function convertOwnerSetToSignerSet(owners: OwnerSet): SignerSet {
               return {
                 type: 'passkey',
                 id: index,
-                account: validator.account,
+                accounts: validator.accounts,
               }
             }
           }

@@ -59,7 +59,7 @@ describe('Accounts: Nexus', () => {
       } = getDeployArgs({
         owners: {
           type: 'passkey',
-          account: passkeyAccount,
+          accounts: [passkeyAccount],
         },
         rhinestoneApiKey: MOCK_API_KEY,
       })
@@ -96,7 +96,7 @@ describe('Accounts: Nexus', () => {
       const address = getAddress({
         owners: {
           type: 'passkey',
-          account: passkeyAccount,
+          accounts: [passkeyAccount],
         },
         rhinestoneApiKey: MOCK_API_KEY,
       })

@@ -24,7 +24,7 @@ describe('Accounts', () => {
       const address = getAddress({
         owners: {
           type: 'passkey',
-          account: passkeyAccount,
+          accounts: [passkeyAccount],
         },
         rhinestoneApiKey: MOCK_API_KEY,
       })

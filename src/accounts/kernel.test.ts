@@ -59,7 +59,7 @@ describe('Accounts: Kernel', () => {
       } = getDeployArgs({
         owners: {
           type: 'passkey',
-          account: passkeyAccount,
+          accounts: [passkeyAccount],
         },
         rhinestoneApiKey: MOCK_API_KEY,
       })
@@ -97,7 +97,7 @@ describe('Accounts: Kernel', () => {
       const address = getAddress({
         owners: {
           type: 'passkey',
-          account: passkeyAccount,
+          accounts: [passkeyAccount],
         },
         rhinestoneApiKey: MOCK_API_KEY,
       })

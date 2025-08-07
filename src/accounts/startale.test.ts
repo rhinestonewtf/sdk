@@ -65,7 +65,7 @@ describe('Accounts: Startale', () => {
         },
         owners: {
           type: 'passkey',
-          account: passkeyAccount,
+          accounts: [passkeyAccount],
         },
         rhinestoneApiKey: MOCK_API_KEY,
       })
@@ -108,7 +108,7 @@ describe('Accounts: Startale', () => {
         },
         owners: {
           type: 'passkey',
-          account: passkeyAccount,
+          accounts: [passkeyAccount],
         },
         rhinestoneApiKey: MOCK_API_KEY,
       })

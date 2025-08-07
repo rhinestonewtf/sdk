@@ -61,7 +61,7 @@ describe('Validators Core', () => {
     test('Passkey', () => {
       const validator = getValidator({
         type: 'passkey',
-        account: passkeyAccount,
+        accounts: [passkeyAccount],
       })
       expect(validator.type).toEqual(MODULE_TYPE_ID_VALIDATOR)
       expect(isAddress(validator.address)).toEqual(true)
@@ -94,7 +94,7 @@ describe('Validators Core', () => {
     test('Passkey', () => {
       const signature = getMockSignature({
         type: 'passkey',
-        account: passkeyAccount,
+        accounts: [passkeyAccount],
       })
 
       // Should have the proper schema
