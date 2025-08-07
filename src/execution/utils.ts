@@ -678,11 +678,13 @@ function getValidator(
     }
     // Passkeys (WebAuthn)
     if (withOwner.kind === 'passkey') {
-      const passkeyAccount = withOwner.account
-      return getWebAuthnValidator({
-        pubKey: passkeyAccount.publicKey,
-        authenticatorId: passkeyAccount.id,
-      })
+      return getWebAuthnValidator(
+        1,
+        withOwner.accounts.map((account) => ({
+          pubKey: account.publicKey,
+          authenticatorId: account.id,
+        })),
+      )
     }
     // Multi-factor
     if (withOwner.kind === 'multi-factor') {

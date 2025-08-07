@@ -24,11 +24,11 @@ describe('Accounts', () => {
       const address = getAddress({
         owners: {
           type: 'passkey',
-          account: passkeyAccount,
+          accounts: [passkeyAccount],
         },
         rhinestoneApiKey: MOCK_API_KEY,
       })
-      expect(address).toEqual('0x82a8a51443c2b8608001bdc4ff5bb31f69e8ed14')
+      expect(address).toEqual('0x98c586f7083263489a1d76e88895597af7fb1106')
     })
   })
 

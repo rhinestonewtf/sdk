@@ -1,5 +1,6 @@
 import {
   type Account,
+  type Address,
   type Chain,
   concat,
   type Hex,
@@ -7,10 +8,6 @@ import {
   toHex,
 } from 'viem'
 import type { WebAuthnAccount } from 'viem/_types/account-abstraction'
-import {
-  getWebauthnValidatorSignature,
-  isRip7212SupportedNetwork,
-} from '../../modules'
 import type { SignerSet } from '../../types'
 import { SigningNotSupportedForAccountError } from '../error'
 import {
@@ -20,18 +17,30 @@ import {
   signWithSession,
 } from './common'
 
-async function sign(signers: SignerSet, chain: Chain, hash: Hex): Promise<Hex> {
+async function sign(
+  signers: SignerSet,
+  chain: Chain,
+  address: Address,
+  hash: Hex,
+): Promise<Hex> {
   const signingFunctions: SigningFunctions<Hex> = {
     signEcdsa: (account, hash) => signEcdsa(account, hash),
-    signPasskey: (account, chain, hash) => signPasskey(account, chain, hash),
+    signPasskey: (account, hash) => signPasskey(account, hash),
   }
 
   switch (signers.type) {
     case 'owner': {
-      return signWithOwners(signers, chain, hash, signingFunctions, sign)
+      return signWithOwners(
+        signers,
+        chain,
+        address,
+        hash,
+        signingFunctions,
+        sign,
+      )
     }
     case 'session': {
-      return signWithSession(signers, chain, hash, sign)
+      return signWithSession(signers, chain, address, hash, sign)
     }
     case 'guardians': {
       return signWithGuardians(signers, hash, signingFunctions)
@@ -57,15 +66,12 @@ async function signEcdsa(account: Account, hash: Hex) {
   return newSignature
 }
 
-async function signPasskey(account: WebAuthnAccount, chain: Chain, hash: Hex) {
+async function signPasskey(account: WebAuthnAccount, hash: Hex) {
   const { webauthn, signature } = await account.sign({ hash })
-  const usePrecompiled = isRip7212SupportedNetwork(chain)
-  const encodedSignature = getWebauthnValidatorSignature({
+  return {
     webauthn,
     signature,
-    usePrecompiled,
-  })
-  return encodedSignature
+  }
 }
 
 export { sign }

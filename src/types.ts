@@ -16,7 +16,8 @@ interface OwnableValidatorConfig {
 
 interface WebauthnValidatorConfig {
   type: 'passkey'
-  account: WebAuthnAccount
+  accounts: WebAuthnAccount[]
+  threshold?: number
 }
 
 interface MultiFactorValidatorConfig {
@@ -162,7 +163,7 @@ type OwnerSignerSet =
   | {
       type: 'owner'
       kind: 'passkey'
-      account: WebAuthnAccount
+      accounts: WebAuthnAccount[]
     }
   | {
       type: 'owner'
@@ -176,7 +177,7 @@ type OwnerSignerSet =
         | {
             type: 'passkey'
             id: number | Hex
-            account: WebAuthnAccount
+            accounts: WebAuthnAccount[]
           }
       )[]
     }

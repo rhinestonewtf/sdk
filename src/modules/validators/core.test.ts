@@ -61,7 +61,7 @@ describe('Validators Core', () => {
     test('Passkey', () => {
       const validator = getValidator({
         type: 'passkey',
-        account: passkeyAccount,
+        accounts: [passkeyAccount],
       })
       expect(validator.type).toEqual(MODULE_TYPE_ID_VALIDATOR)
       expect(isAddress(validator.address)).toEqual(true)
@@ -69,7 +69,7 @@ describe('Validators Core', () => {
         '0x0000000000578c4cB0e472a5462da43C495C3F33',
       )
       expect(validator.initData).toEqual(
-        '0x580a9af0569ad3905b26a703201b358aa0904236642ebe79b22a19d00d3737637d46f725a5427ae45a9569259bf67e1e16b187d7b3ad1ed70138c4f0409677d19c9a01073b202db2ed56e604ad11db557d8c3ad75181619597f21b830f2da82a',
+        '0x000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000001580a9af0569ad3905b26a703201b358aa0904236642ebe79b22a19d00d3737637d46f725a5427ae45a9569259bf67e1e16b187d7b3ad1ed70138c4f0409677d10000000000000000000000000000000000000000000000000000000000000000',
       )
     })
   })
@@ -94,7 +94,7 @@ describe('Validators Core', () => {
     test('Passkey', () => {
       const signature = getMockSignature({
         type: 'passkey',
-        account: passkeyAccount,
+        accounts: [passkeyAccount],
       })
 
       // Should have the proper schema

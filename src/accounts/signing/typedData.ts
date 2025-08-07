@@ -1,15 +1,12 @@
 import type {
   Account,
+  Address,
   Chain,
   HashTypedDataParameters,
   Hex,
   TypedData,
 } from 'viem'
 import type { WebAuthnAccount } from 'viem/_types/account-abstraction'
-import {
-  getWebauthnValidatorSignature,
-  isRip7212SupportedNetwork,
-} from '../../modules'
 import type { SignerSet } from '../../types'
 import { SigningNotSupportedForAccountError } from '../error'
 import {
@@ -25,22 +22,29 @@ async function sign<
 >(
   signers: SignerSet,
   chain: Chain,
+  address: Address,
   parameters: HashTypedDataParameters<typedData, primaryType>,
 ): Promise<Hex> {
   const signingFunctions: SigningFunctions<
     HashTypedDataParameters<typedData, primaryType>
   > = {
     signEcdsa: (account, params) => signEcdsa(account, params),
-    signPasskey: (account, chain, params) =>
-      signPasskey(account, chain, params),
+    signPasskey: (account, params) => signPasskey(account, params),
   }
 
   switch (signers.type) {
     case 'owner': {
-      return signWithOwners(signers, chain, parameters, signingFunctions, sign)
+      return signWithOwners(
+        signers,
+        chain,
+        address,
+        parameters,
+        signingFunctions,
+        sign,
+      )
     }
     case 'session': {
-      return signWithSession(signers, chain, parameters, sign)
+      return signWithSession(signers, chain, address, parameters, sign)
     }
     case 'guardians': {
       return signWithGuardians(signers, parameters, signingFunctions)
@@ -66,17 +70,13 @@ async function signPasskey<
   primaryType extends keyof typedData | 'EIP712Domain' = keyof typedData,
 >(
   account: WebAuthnAccount,
-  chain: Chain,
   parameters: HashTypedDataParameters<typedData, primaryType>,
 ) {
   const { webauthn, signature } = await account.signTypedData(parameters)
-  const usePrecompiled = isRip7212SupportedNetwork(chain)
-  const encodedSignature = getWebauthnValidatorSignature({
+  return {
     webauthn,
     signature,
-    usePrecompiled,
-  })
-  return encodedSignature
+  }
 }
 
 export { sign }

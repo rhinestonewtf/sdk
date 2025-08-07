@@ -30,7 +30,7 @@ describe('Modules', () => {
         rhinestoneApiKey: MOCK_API_KEY,
         owners: {
           type: 'passkey' as const,
-          account: passkeyAccount,
+          accounts: [passkeyAccount],
         },
       }
       const setup = getSetup(config)

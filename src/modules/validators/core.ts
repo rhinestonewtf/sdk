@@ -7,7 +7,6 @@ import {
   encodePacked,
   type Hex,
   hexToBytes,
-  keccak256,
   pad,
   toHex,
 } from 'viem'
@@ -109,10 +108,13 @@ function getValidator(owners: OwnerSet) {
         owners.accounts.map((account) => account.address),
       )
     case 'passkey':
-      return getWebAuthnValidator({
-        pubKey: owners.account.publicKey,
-        authenticatorId: owners.account.id,
-      })
+      return getWebAuthnValidator(
+        owners.threshold ?? 1,
+        owners.accounts.map((account) => ({
+          pubKey: account.publicKey,
+          authenticatorId: account.id,
+        })),
+      )
     case 'multi-factor': {
       return getMultiFactorValidator(owners.threshold ?? 1, owners.validators)
     }
@@ -138,33 +140,40 @@ function getOwnableValidator(threshold: number, owners: Address[]): Module {
   }
 }
 
-function getWebAuthnValidator(webAuthnCredential: WebauthnCredential): Module {
-  let pubKeyX: bigint
-  let pubKeyY: bigint
-
-  // Distinguish between PublicKey and Hex / byte encoded public key
-  if (
-    typeof webAuthnCredential.pubKey === 'string' ||
-    webAuthnCredential.pubKey instanceof Uint8Array
-  ) {
-    // It's a P256Credential
-    const { x, y, prefix } = parsePublicKey(webAuthnCredential.pubKey)
-    pubKeyX = x
-    pubKeyY = y
-    if (prefix && prefix !== 4) {
-      throw new Error('Only uncompressed public keys are supported')
+function getWebAuthnValidator(
+  threshold: number,
+  webAuthnCredentials: WebauthnCredential[],
+): Module {
+  function getPublicKey(webAuthnCredential: WebauthnCredential): PublicKey {
+    if (
+      typeof webAuthnCredential.pubKey === 'string' ||
+      webAuthnCredential.pubKey instanceof Uint8Array
+    ) {
+      // It's a P256Credential
+      const { x, y, prefix } = parsePublicKey(webAuthnCredential.pubKey)
+      if (prefix && prefix !== 4) {
+        throw new Error('Only uncompressed public keys are supported')
+      }
+      return {
+        x,
+        y,
+      }
+    } else {
+      // It's already a PublicKey
+      return webAuthnCredential.pubKey
     }
-  } else {
-    // It's already a PublicKey
-    pubKeyX = webAuthnCredential.pubKey.x
-    pubKeyY = webAuthnCredential.pubKey.y
   }
+
+  const publicKeys = webAuthnCredentials.map(getPublicKey)
 
   return {
     address: WEBAUTHN_VALIDATOR_ADDRESS,
     initData: encodeAbiParameters(
       [
+        { name: 'threshold', type: 'uint256' },
         {
+          name: 'credentials',
+          type: 'tuple[]',
           components: [
             {
               name: 'pubKeyX',
@@ -174,20 +183,20 @@ function getWebAuthnValidator(webAuthnCredential: WebauthnCredential): Module {
               name: 'pubKeyY',
               type: 'uint256',
             },
+            {
+              name: 'requireUV',
+              type: 'bool',
+            },
           ],
-          type: 'tuple',
-        },
-        {
-          type: 'bytes32',
-          name: 'authenticatorIdHash',
         },
       ],
       [
-        {
-          pubKeyX,
-          pubKeyY,
-        },
-        keccak256(toHex(webAuthnCredential.authenticatorId)),
+        BigInt(threshold),
+        publicKeys.map((publicKey) => ({
+          pubKeyX: publicKey.x,
+          pubKeyY: publicKey.y,
+          requireUV: false,
+        })),
       ],
     ),
     deInitData: '0x',
