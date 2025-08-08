@@ -7,7 +7,6 @@ import {
   encodePacked,
   type Hex,
   hexToBytes,
-  keccak256,
   pad,
   toHex,
 } from 'viem'
@@ -33,7 +32,7 @@ interface WebauthnCredential {
 }
 
 const OWNABLE_VALIDATOR_ADDRESS: Address =
-  '0x20C008719Ba9D8aA14C7d07D122cd5E965aA8da5'
+  '0x000000000013fdB5234E4E3162a810F54d9f7E98'
 const WEBAUTHN_VALIDATOR_ADDRESS: Address =
   '0x0000000000578c4cB0e472a5462da43C495C3F33'
 const SOCIAL_RECOVERY_VALIDATOR_ADDRESS: Address =
@@ -44,7 +43,7 @@ const MULTI_FACTOR_VALIDATOR_ADDRESS: Address =
 const ECDSA_MOCK_SIGNATURE =
   '0x81d4b4981670cb18f99f0b4a66446df1bf5b204d24cfcb659bf38ba27a4359b5711649ec2423c5e1247245eba2964679b6a1dbb85c992ae40b9b00c6935b02ff1b'
 const WEBAUTHN_MOCK_SIGNATURE =
-  '0x00000000000000000000000000000000000000000000000000000000000000c000000000000000000000000000000000000000000000000000000000000001200000000000000000000000000000000000000000000000000000000000000001635bc6d0f68ff895cae8a288ecf7542a6a9cd555df784b73e1e2ea7e9104b1db15e9015d280cb19527881c625fee43fd3a405d5b0d199a8c8e6589a7381209e40000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002549960de5880e8c687434170f6476605b8fe4aeb9a28632c7995cf3ba831d97631d0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000f47b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a22746278584e465339585f3442797231634d77714b724947422d5f3330613051685a36793775634d30424f45222c226f726967696e223a22687474703a2f2f6c6f63616c686f73743a33303030222c2263726f73734f726967696e223a66616c73652c20226f746865725f6b6579735f63616e5f62655f61646465645f68657265223a22646f206e6f7420636f6d7061726520636c69656e74446174614a534f4e20616761696e737420612074656d706c6174652e205365652068747470733a2f2f676f6f2e676c2f796162506578227d000000000000000000000000'
+  '0x0000000000000000000000000000000000000000000000000000000000000060000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000001b9b86eb98fda3ed4d797d9e690588dfadf17b329a76a47cec935bebf92d7ddc80000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000120000000000000000000000000000000000000000000000000000000000000001700000000000000000000000000000000000000000000000000000000000000019b2e9410bb6850f9f660a03d609d5a844fb96bcdc87a15139b03ee22c70f469100d2b865a215c3bf786387064effa8fcedcb1d625b5148f8a1236d5e3ff11acf000000000000000000000000000000000000000000000000000000000000002549960de5880e8c687434170f6476605b8fe4aeb9a28632c7995cf3ba831d9763050000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000867b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a22396a4546696a75684557724d34534f572d7443684a625545484550343456636a634a2d42716f3166544d38222c226f726967696e223a22687474703a2f2f6c6f63616c686f73743a38303830222c2263726f73734f726967696e223a66616c73657d0000000000000000000000000000000000000000000000000000'
 
 function getOwnerValidator(config: RhinestoneAccountConfig) {
   return getValidator(config.owners)
@@ -109,10 +108,13 @@ function getValidator(owners: OwnerSet) {
         owners.accounts.map((account) => account.address),
       )
     case 'passkey':
-      return getWebAuthnValidator({
-        pubKey: owners.account.publicKey,
-        authenticatorId: owners.account.id,
-      })
+      return getWebAuthnValidator(
+        owners.threshold ?? 1,
+        owners.accounts.map((account) => ({
+          pubKey: account.publicKey,
+          authenticatorId: account.id,
+        })),
+      )
     case 'multi-factor': {
       return getMultiFactorValidator(owners.threshold ?? 1, owners.validators)
     }
@@ -138,33 +140,40 @@ function getOwnableValidator(threshold: number, owners: Address[]): Module {
   }
 }
 
-function getWebAuthnValidator(webAuthnCredential: WebauthnCredential): Module {
-  let pubKeyX: bigint
-  let pubKeyY: bigint
-
-  // Distinguish between PublicKey and Hex / byte encoded public key
-  if (
-    typeof webAuthnCredential.pubKey === 'string' ||
-    webAuthnCredential.pubKey instanceof Uint8Array
-  ) {
-    // It's a P256Credential
-    const { x, y, prefix } = parsePublicKey(webAuthnCredential.pubKey)
-    pubKeyX = x
-    pubKeyY = y
-    if (prefix && prefix !== 4) {
-      throw new Error('Only uncompressed public keys are supported')
+function getWebAuthnValidator(
+  threshold: number,
+  webAuthnCredentials: WebauthnCredential[],
+): Module {
+  function getPublicKey(webAuthnCredential: WebauthnCredential): PublicKey {
+    if (
+      typeof webAuthnCredential.pubKey === 'string' ||
+      webAuthnCredential.pubKey instanceof Uint8Array
+    ) {
+      // It's a P256Credential
+      const { x, y, prefix } = parsePublicKey(webAuthnCredential.pubKey)
+      if (prefix && prefix !== 4) {
+        throw new Error('Only uncompressed public keys are supported')
+      }
+      return {
+        x,
+        y,
+      }
+    } else {
+      // It's already a PublicKey
+      return webAuthnCredential.pubKey
     }
-  } else {
-    // It's already a PublicKey
-    pubKeyX = webAuthnCredential.pubKey.x
-    pubKeyY = webAuthnCredential.pubKey.y
   }
+
+  const publicKeys = webAuthnCredentials.map(getPublicKey)
 
   return {
     address: WEBAUTHN_VALIDATOR_ADDRESS,
     initData: encodeAbiParameters(
       [
+        { name: 'threshold', type: 'uint256' },
         {
+          name: 'credentials',
+          type: 'tuple[]',
           components: [
             {
               name: 'pubKeyX',
@@ -174,20 +183,20 @@ function getWebAuthnValidator(webAuthnCredential: WebauthnCredential): Module {
               name: 'pubKeyY',
               type: 'uint256',
             },
+            {
+              name: 'requireUV',
+              type: 'bool',
+            },
           ],
-          type: 'tuple',
-        },
-        {
-          type: 'bytes32',
-          name: 'authenticatorIdHash',
         },
       ],
       [
-        {
-          pubKeyX,
-          pubKeyY,
-        },
-        keccak256(toHex(webAuthnCredential.authenticatorId)),
+        BigInt(threshold),
+        publicKeys.map((publicKey) => ({
+          pubKeyX: publicKey.x,
+          pubKeyY: publicKey.y,
+          requireUV: false,
+        })),
       ],
     ),
     deInitData: '0x',

@@ -16,7 +16,8 @@ interface OwnableValidatorConfig {
 
 interface WebauthnValidatorConfig {
   type: 'passkey'
-  account: WebAuthnAccount
+  accounts: WebAuthnAccount[]
+  threshold?: number
 }
 
 interface MultiFactorValidatorConfig {
@@ -132,6 +133,11 @@ interface RhinestoneAccountConfig {
   provider?: ProviderConfig
   bundler?: BundlerConfig
   paymaster?: PaymasterConfig
+  /**
+   * @internal
+   * For internal testing only - do not use
+   */
+  useDev?: boolean
 }
 
 type TokenSymbol = 'ETH' | 'WETH' | 'USDC' | 'USDT'
@@ -162,7 +168,7 @@ type OwnerSignerSet =
   | {
       type: 'owner'
       kind: 'passkey'
-      account: WebAuthnAccount
+      accounts: WebAuthnAccount[]
     }
   | {
       type: 'owner'
@@ -176,7 +182,7 @@ type OwnerSignerSet =
         | {
             type: 'passkey'
             id: number | Hex
-            account: WebAuthnAccount
+            accounts: WebAuthnAccount[]
           }
       )[]
     }

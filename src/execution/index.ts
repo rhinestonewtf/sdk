@@ -228,6 +228,7 @@ async function waitForExecution(
         const orchestrator = getOrchestratorByChain(
           result.targetChain,
           config.rhinestoneApiKey,
+          config.useDev,
         )
         intentStatus = await orchestrator.getIntentOpStatus(result.id)
         await new Promise((resolve) => setTimeout(resolve, POLLING_INTERVAL))
@@ -262,7 +263,11 @@ async function getMaxSpendableAmount(
   gasUnits: bigint,
 ): Promise<bigint> {
   const address = getAddress(config)
-  const orchestrator = getOrchestratorByChain(chain.id, config.rhinestoneApiKey)
+  const orchestrator = getOrchestratorByChain(
+    chain.id,
+    config.rhinestoneApiKey,
+    config.useDev,
+  )
   return orchestrator.getMaxTokenAmount(
     address,
     chain.id,
@@ -277,7 +282,11 @@ async function getPortfolio(
 ) {
   const address = getAddress(config)
   const chainId = onTestnets ? sepolia.id : mainnet.id
-  const orchestrator = getOrchestratorByChain(chainId, config.rhinestoneApiKey)
+  const orchestrator = getOrchestratorByChain(
+    chainId,
+    config.rhinestoneApiKey,
+    config.useDev,
+  )
   return orchestrator.getPortfolio(address)
 }
 
