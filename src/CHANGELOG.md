@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.0-alpha.15
+
+### Patch Changes
+
+- f12656f: Passkey multisig
+
 ## 1.0.0-alpha.14
 
 ### Patch Changes
