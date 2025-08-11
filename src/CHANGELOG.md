@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.0-alpha.14
+
+### Patch Changes
+
+- cf08197: Make Rhinestone API key optional (staging only)
+
 ## 1.0.0-alpha.13
 
 ### Patch Changes
