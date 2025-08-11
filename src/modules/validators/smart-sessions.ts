@@ -475,10 +475,10 @@ function getPolicyData(policy: Policy): PolicyData {
       return {
         policy: TIME_FRAME_POLICY_ADDRESS,
         initData: encodePacked(
-          ['uint128', 'uint128'],
+          ['uint48', 'uint48'],
           [
-            BigInt(policy.validUntil) / 1000n,
-            BigInt(policy.validAfter) / 1000n,
+            Math.floor(policy.validUntil / 1000),
+            Math.floor(policy.validAfter / 1000),
           ],
         ),
       }

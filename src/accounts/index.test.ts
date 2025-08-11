@@ -18,17 +18,17 @@ describe('Accounts', () => {
         },
         rhinestoneApiKey: MOCK_API_KEY,
       })
-      expect(address).toEqual('0xa32fa78416f6c68ce4f75f702e07849a269feffb')
+      expect(address).toEqual('0x0681de31e060b384f0b08a3bac99e9bdff302474')
     })
     test('Safe, passkey owner with a session', () => {
       const address = getAddress({
         owners: {
           type: 'passkey',
-          account: passkeyAccount,
+          accounts: [passkeyAccount],
         },
         rhinestoneApiKey: MOCK_API_KEY,
       })
-      expect(address).toEqual('0xfbda4e576b2a300cd1b7e8748c9a7577ab3a503e')
+      expect(address).toEqual('0x894b88c04b4de6abddce81e8bdc91927e37d6ced')
     })
   })
 

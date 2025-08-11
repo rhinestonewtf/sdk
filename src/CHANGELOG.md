@@ -1,5 +1,29 @@
 # @rhinestone/sdk
 
+## 1.0.0-alpha.15
+
+### Patch Changes
+
+- f12656f: Passkey multisig
+
+## 1.0.0-alpha.14
+
+### Patch Changes
+
+- cf08197: Make Rhinestone API key optional (staging only)
+
+## 1.0.0-alpha.13
+
+### Patch Changes
+
+- a6b1718: Export the registry methods getSupportedTokens and getTokenAddress
+
+## 1.0.0-alpha.12
+
+### Patch Changes
+
+- 109f624: Account signing utilities for message and typed data signing
+
 ## 1.0.0-alpha.11
 
 ### Patch Changes

@@ -1,33 +1,25 @@
 import {
-  type Account,
   type Chain,
   concat,
   createPublicClient,
   encodeAbiParameters,
   encodeFunctionData,
+  type HashTypedDataParameters,
   type Hex,
+  hashTypedData,
   type PublicClient,
-  pad,
   size,
-  toHex,
+  type TypedData,
   zeroAddress,
 } from 'viem'
-import type { WebAuthnAccount } from 'viem/account-abstraction'
-import { sendTransaction } from '../execution'
+import { sendTransaction, waitForExecution } from '../execution'
 import { enableSmartSession } from '../execution/smart-session'
-import {
-  getWebauthnValidatorSignature,
-  isRip7212SupportedNetwork,
-} from '../modules'
 import type { Module } from '../modules/common'
 import {
   getOwnerValidator,
   getSmartSessionValidator,
 } from '../modules/validators'
-import {
-  getSocialRecoveryValidator,
-  getValidator,
-} from '../modules/validators/core'
+import { getSocialRecoveryValidator } from '../modules/validators/core'
 import type { EnableSessionData } from '../modules/validators/smart-sessions'
 import type {
   AccountProviderConfig,
@@ -53,9 +45,10 @@ import {
   getDeployArgs as getKernelDeployArgs,
   getGuardianSmartAccount as getKernelGuardianSmartAccount,
   getInstallData as getKernelInstallData,
-  getPackedSignature as getKernelPackedSignature,
   getSessionSmartAccount as getKernelSessionSmartAccount,
   getSmartAccount as getKernelSmartAccount,
+  packSignature as packKernelSignature,
+  wrapMessageHash as wrapKernelMessageHash,
 } from './kernel'
 import {
   getAddress as getNexusAddress,
@@ -63,9 +56,9 @@ import {
   getEip7702InitCall as getNexusEip7702InitCall,
   getGuardianSmartAccount as getNexusGuardianSmartAccount,
   getInstallData as getNexusInstallData,
-  getPackedSignature as getNexusPackedSignature,
   getSessionSmartAccount as getNexusSessionSmartAccount,
   getSmartAccount as getNexusSmartAccount,
+  packSignature as packNexusSignature,
   signEip7702InitData as signNexusEip7702InitData,
 } from './nexus'
 import {
@@ -73,18 +66,21 @@ import {
   getDeployArgs as getSafeDeployArgs,
   getGuardianSmartAccount as getSafeGuardianSmartAccount,
   getInstallData as getSafeInstallData,
-  getPackedSignature as getSafePackedSignature,
   getSessionSmartAccount as getSafeSessionSmartAccount,
   getSmartAccount as getSafeSmartAccount,
+  packSignature as packSafeSignature,
 } from './safe'
+import { convertOwnerSetToSignerSet } from './signing/common'
+import { sign as signMessage } from './signing/message'
+import { sign as signTypedData } from './signing/typedData'
 import {
   getAddress as getStartaleAddress,
   getDeployArgs as getStartaleDeployArgs,
   getGuardianSmartAccount as getStartaleGuardianSmartAccount,
   getInstallData as getStartaleInstallData,
-  getPackedSignature as getStartalePackedSignature,
   getSessionSmartAccount as getStartaleSessionSmartAccount,
   getSmartAccount as getStartaleSmartAccount,
+  packSignature as packStartaleSignature,
 } from './startale'
 import {
   getDeployArgs as getCustomDeployArgs,
@@ -279,43 +275,31 @@ async function getPackedSignature(
   transformSignature: (signature: Hex) => Hex = (signature) => signature,
 ) {
   signers = signers ?? convertOwnerSetToSignerSet(config.owners)
-  const signFn = (hash: Hex) => sign(signers, chain, hash)
+  const signFn = (hash: Hex) => signMessage(signers, chain, address, hash)
   const account = getAccountProvider(config)
   const address = getAddress(config)
   switch (account.type) {
     case 'safe': {
-      return getSafePackedSignature(signFn, hash, validator, transformSignature)
+      const signature = await signFn(hash)
+      return packSafeSignature(signature, validator, transformSignature)
     }
     case 'nexus': {
-      return getNexusPackedSignature(
-        signFn,
-        hash,
-        validator,
-        transformSignature,
-      )
+      const signature = await signFn(hash)
+      return packNexusSignature(signature, validator, transformSignature)
     }
     case 'kernel': {
-      return getKernelPackedSignature(
-        signFn,
-        hash,
-        validator,
-        address,
-        transformSignature,
-      )
+      const signature = await signFn(wrapKernelMessageHash(hash, address))
+      return packKernelSignature(signature, validator, transformSignature)
     }
     case 'startale': {
-      return getStartalePackedSignature(
-        signFn,
-        hash,
-        validator,
-        transformSignature,
-      )
+      const signature = await signFn(hash)
+      return packStartaleSignature(signature, validator, transformSignature)
     }
     case 'custom': {
+      const signature = await signFn(hash)
       return getCustomPackedSignature(
         config,
-        signFn,
-        hash,
+        signature,
         validator,
         transformSignature,
       )
@@ -323,7 +307,59 @@ async function getPackedSignature(
   }
 }
 
-async function isDeployed(chain: Chain, config: RhinestoneAccountConfig) {
+// Signs and packs a signature to be EIP-1271 compatible
+async function getTypedDataPackedSignature<
+  typedData extends TypedData | Record<string, unknown> = TypedData,
+  primaryType extends keyof typedData | 'EIP712Domain' = keyof typedData,
+>(
+  config: RhinestoneAccountConfig,
+  signers: SignerSet | undefined,
+  chain: Chain,
+  validator: ValidatorConfig,
+  parameters: HashTypedDataParameters<typedData, primaryType>,
+  transformSignature: (signature: Hex) => Hex = (signature) => signature,
+) {
+  const address = getAddress(config)
+  signers = signers ?? convertOwnerSetToSignerSet(config.owners)
+  const signFn = (
+    parameters: HashTypedDataParameters<typedData, primaryType>,
+  ) => signTypedData(signers, chain, address, parameters)
+  const account = getAccountProvider(config)
+  switch (account.type) {
+    case 'safe': {
+      const signature = await signFn(parameters)
+      return packSafeSignature(signature, validator, transformSignature)
+    }
+    case 'custom': {
+      const signature = await signFn(parameters)
+      return getCustomPackedSignature(
+        config,
+        signature,
+        validator,
+        transformSignature,
+      )
+    }
+    case 'nexus': {
+      const signature = await signFn(parameters)
+      return packNexusSignature(signature, validator, transformSignature)
+    }
+    case 'kernel': {
+      const address = getAddress(config)
+      const signMessageFn = (hash: Hex) =>
+        signMessage(signers, chain, address, hash)
+      const signature = await signMessageFn(
+        wrapKernelMessageHash(hashTypedData(parameters), address),
+      )
+      return packKernelSignature(signature, validator, transformSignature)
+    }
+    case 'startale': {
+      const signature = await signFn(parameters)
+      return packStartaleSignature(signature, validator, transformSignature)
+    }
+  }
+}
+
+async function isDeployed(config: RhinestoneAccountConfig, chain: Chain) {
   const publicClient = createPublicClient({
     chain: chain,
     transport: createTransport(chain, config.provider),
@@ -364,7 +400,7 @@ async function deployWithIntent(chain: Chain, config: RhinestoneAccountConfig) {
     // Already deployed
     return
   }
-  await sendTransaction(config, {
+  const result = await sendTransaction(config, {
     targetChain: chain,
     calls: [
       {
@@ -373,6 +409,37 @@ async function deployWithIntent(chain: Chain, config: RhinestoneAccountConfig) {
       },
     ],
   })
+  await waitForExecution(config, result, true)
+}
+
+async function toErc6492Signature(
+  config: RhinestoneAccountConfig,
+  signature: Hex,
+  chain: Chain,
+): Promise<Hex> {
+  const deployed = await isDeployed(config, chain)
+  if (deployed) {
+    return signature
+  }
+  // Account is not deployed, use ERC-6492
+  const initCode = getInitCode(config)
+  if (!initCode) {
+    throw new FactoryArgsNotAvailableError()
+  }
+  const { factory, factoryData } = initCode
+  const magicBytes =
+    '0x6492649264926492649264926492649264926492649264926492649264926492'
+  return concat([
+    encodeAbiParameters(
+      [
+        { name: 'create2Factory', type: 'address' },
+        { name: 'factoryCalldata', type: 'bytes' },
+        { name: 'originalERC1271Signature', type: 'bytes' },
+      ],
+      [factory, factoryData, signature],
+    ),
+    magicBytes,
+  ])
 }
 
 async function getSmartAccount(
@@ -384,7 +451,7 @@ async function getSmartAccount(
   const address = getAddress(config)
   const ownerValidator = getOwnerValidator(config)
   const signers: SignerSet = convertOwnerSetToSignerSet(config.owners)
-  const signFn = (hash: Hex) => sign(signers, chain, hash)
+  const signFn = (hash: Hex) => signMessage(signers, chain, address, hash)
   switch (account.type) {
     case 'safe': {
       return getSafeSmartAccount(
@@ -452,7 +519,7 @@ async function getSmartSessionSmartAccount(
     session,
     enableData: enableData || undefined,
   }
-  const signFn = (hash: Hex) => sign(signers, chain, hash)
+  const signFn = (hash: Hex) => signMessage(signers, chain, address, hash)
 
   const account = getAccountProvider(config)
   switch (account.type) {
@@ -526,7 +593,7 @@ async function getGuardianSmartAccount(
     type: 'guardians',
     guardians: accounts,
   }
-  const signFn = (hash: Hex) => sign(signers, chain, hash)
+  const signFn = (hash: Hex) => signMessage(signers, chain, address, hash)
 
   const account = getAccountProvider(config)
   switch (account.type) {
@@ -569,101 +636,6 @@ async function getGuardianSmartAccount(
   }
 }
 
-async function sign(signers: SignerSet, chain: Chain, hash: Hex): Promise<Hex> {
-  switch (signers.type) {
-    case 'owner': {
-      switch (signers.kind) {
-        case 'ecdsa':
-        case 'ecdsa-v0': {
-          const signatures = await Promise.all(
-            signers.accounts.map((account) => signEcdsa(account, hash)),
-          )
-          return concat(signatures)
-        }
-        case 'passkey': {
-          return await signPasskey(signers.account, chain, hash)
-        }
-        case 'multi-factor': {
-          const signatures = await Promise.all(
-            signers.validators.map(async (validator) => {
-              if (validator === null) {
-                return '0x'
-              }
-              const validatorSigners: SignerSet =
-                convertOwnerSetToSignerSet(validator)
-              return sign(validatorSigners, chain, hash)
-            }),
-          )
-          const data = encodeAbiParameters(
-            [
-              {
-                components: [
-                  {
-                    internalType: 'bytes32',
-                    name: 'packedValidatorAndId',
-                    type: 'bytes32',
-                  },
-                  { internalType: 'bytes', name: 'data', type: 'bytes' },
-                ],
-                name: 'validators',
-                type: 'tuple[]',
-              },
-            ],
-            [
-              signers.validators.map((validator, index) => {
-                const validatorModule = getValidator(validator)
-                return {
-                  packedValidatorAndId: concat([
-                    pad(toHex(validator.id), {
-                      size: 12,
-                    }),
-                    validatorModule.address,
-                  ]),
-                  data: signatures[index],
-                }
-              }),
-            ],
-          )
-          return data
-        }
-        default: {
-          throw new Error('Unsupported owner kind')
-        }
-      }
-    }
-    case 'session': {
-      const sessionSigners: SignerSet = convertOwnerSetToSignerSet(
-        signers.session.owners,
-      )
-      return sign(sessionSigners, chain, hash)
-    }
-    case 'guardians': {
-      const signatures = await Promise.all(
-        signers.guardians.map((account) => signEcdsa(account, hash)),
-      )
-      return concat(signatures)
-    }
-  }
-}
-
-async function signEcdsa(account: Account, hash: Hex) {
-  if (!account.signMessage) {
-    throw new SigningNotSupportedForAccountError()
-  }
-  return await account.signMessage({ message: { raw: hash } })
-}
-
-async function signPasskey(account: WebAuthnAccount, chain: Chain, hash: Hex) {
-  const { webauthn, signature } = await account.sign({ hash })
-  const usePrecompiled = isRip7212SupportedNetwork(chain)
-  const encodedSignature = getWebauthnValidatorSignature({
-    webauthn,
-    signature,
-    usePrecompiled,
-  })
-  return encodedSignature
-}
-
 function is7702(config: RhinestoneAccountConfig): boolean {
   return config.eoa !== undefined
 }
@@ -679,51 +651,6 @@ function getAccountProvider(
   }
 }
 
-function convertOwnerSetToSignerSet(owners: OwnerSet): SignerSet {
-  switch (owners.type) {
-    case 'ecdsa':
-    case 'ecdsa-v0': {
-      return {
-        type: 'owner',
-        kind: 'ecdsa',
-        accounts: owners.accounts,
-      }
-    }
-    case 'passkey': {
-      return {
-        type: 'owner',
-        kind: 'passkey',
-        account: owners.account,
-      }
-    }
-    case 'multi-factor': {
-      return {
-        type: 'owner',
-        kind: 'multi-factor',
-        validators: owners.validators.map((validator, index) => {
-          switch (validator.type) {
-            case 'ecdsa':
-            case 'ecdsa-v0': {
-              return {
-                type: validator.type,
-                id: index,
-                accounts: validator.accounts,
-              }
-            }
-            case 'passkey': {
-              return {
-                type: 'passkey',
-                id: index,
-                account: validator.account,
-              }
-            }
-          }
-        }),
-      }
-    }
-  }
-}
-
 export {
   getModuleInstallationCalls,
   getModuleUninstallationCalls,
@@ -734,10 +661,12 @@ export {
   getEip7702InitCall,
   isDeployed,
   deploy,
+  toErc6492Signature,
   getSmartAccount,
   getSmartSessionSmartAccount,
   getGuardianSmartAccount,
   getPackedSignature,
+  getTypedDataPackedSignature,
   // Errors
   isAccountError,
   AccountError,

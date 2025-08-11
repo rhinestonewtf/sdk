@@ -18,7 +18,7 @@ interface CustomAccountProviderConfig {
   }
   getInstallData: (module: Module) => Hex[]
   getAddress: () => Address
-  getPackedSignature: (signFn: (message: Hex) => Promise<Hex>, hash: Hex, validator: ValidatorConfig, transformSignature: (signature: Hex) => Hex) => Promise<Hex>,
+  getPackedSignature: (signature: Hex, validator: ValidatorConfig, transformSignature: (signature: Hex) => Hex) => Promise<Hex>,
   getSessionStubSignature: (session: Session, enableData: EnableSessionData | null) => Promise<Hex>,
   signSessionUserOperation: (session: Session, enableData: EnableSessionData | null, hash: Hex) => Promise<Hex>,
   getStubSignature: () => Promise<Hex>,
@@ -33,7 +33,8 @@ interface OwnableValidatorConfig {
 
 interface WebauthnValidatorConfig {
   type: 'passkey'
-  account: WebAuthnAccount
+  accounts: WebAuthnAccount[]
+  threshold?: number
 }
 
 interface MultiFactorValidatorConfig {
@@ -142,13 +143,18 @@ interface Recovery {
 interface RhinestoneAccountConfig {
   account?: AccountProviderConfig
   owners: OwnerSet
-  rhinestoneApiKey: string
+  rhinestoneApiKey?: string
   sessions?: Session[]
   recovery?: Recovery
   eoa?: Account
   provider?: ProviderConfig
   bundler?: BundlerConfig
   paymaster?: PaymasterConfig
+  /**
+   * @internal
+   * For internal testing only - do not use
+   */
+  useDev?: boolean
 }
 
 type TokenSymbol = 'ETH' | 'WETH' | 'USDC' | 'USDT'
@@ -179,7 +185,7 @@ type OwnerSignerSet =
   | {
       type: 'owner'
       kind: 'passkey'
-      account: WebAuthnAccount
+      accounts: WebAuthnAccount[]
     }
   | {
       type: 'owner'
@@ -193,7 +199,7 @@ type OwnerSignerSet =
         | {
             type: 'passkey'
             id: number | Hex
-            account: WebAuthnAccount
+            accounts: WebAuthnAccount[]
           }
       )[]
     }

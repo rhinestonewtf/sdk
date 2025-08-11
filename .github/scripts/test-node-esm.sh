@@ -18,17 +18,17 @@ npm install $GITHUB_WORKSPACE/rhinestone-sdk-*.tgz
 # Create test script
 cat > index.js << 'EOF'
 import sdk from '@rhinestone/sdk';
-console.log('✓ SDK imported successfully');
+console.info('✓ SDK imported successfully');
 
 // Basic smoke test - just try to access main exports
 if (typeof sdk === 'object' && sdk !== null) {
-  console.log('✓ SDK is an object');
+  console.info('✓ SDK is an object');
 } else {
   console.error('✗ SDK import failed - not an object');
   process.exit(1);
 }
 
-console.log('✓ Node ESM integration test passed');
+console.info('✓ Node ESM integration test passed');
 EOF
 
 # Run the test

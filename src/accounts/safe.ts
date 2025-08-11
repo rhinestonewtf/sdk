@@ -156,18 +156,15 @@ function getInstallData(module: Module) {
   })
 }
 
-async function getPackedSignature(
-  signFn: (message: Hex) => Promise<Hex>,
-  hash: Hex,
+async function packSignature(
+  signature: Hex,
   validator: ValidatorConfig,
   transformSignature: (signature: Hex) => Hex = (signature) => signature,
 ) {
-  const signature = await signFn(hash)
-  const packedSig = encodePacked(
+  return encodePacked(
     ['address', 'bytes'],
     [validator.address, transformSignature(signature)],
   )
-  return packedSig
 }
 
 async function getSmartAccount(
@@ -358,7 +355,7 @@ function getThreshold(config: RhinestoneAccountConfig) {
 export {
   getInstallData,
   getAddress,
-  getPackedSignature,
+  packSignature,
   getDeployArgs,
   getSmartAccount,
   getSessionSmartAccount,

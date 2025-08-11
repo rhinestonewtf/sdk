@@ -32,8 +32,7 @@ function getAddress(config: RhinestoneAccountConfig): Address {
 
 async function getPackedSignature(
   config: RhinestoneAccountConfig,
-  signFn: (message: Hex) => Promise<Hex>,
-  hash: Hex,
+  signature: Hex,
   validator: ValidatorConfig,
   transformSignature: (signature: Hex) => Hex = (signature) => signature,
 ) {
@@ -41,7 +40,7 @@ async function getPackedSignature(
     throw new Error('Account provider not found')
   }
 
-  return config.account.custom.getPackedSignature(signFn, hash, validator, transformSignature)
+  return config.account.custom.getPackedSignature(signature, validator, transformSignature)
 }
 
 async function getSessionSmartAccount(

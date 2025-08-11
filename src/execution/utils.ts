@@ -4,11 +4,15 @@ import {
   concat,
   createPublicClient,
   createWalletClient,
+  type HashTypedDataParameters,
   type Hex,
+  hashMessage,
   type PublicClient,
   publicActions,
+  type SignableMessage,
   type SignedAuthorization,
   type SignedAuthorizationList,
+  type TypedData,
   toHex,
   zeroAddress,
 } from 'viem'
@@ -25,6 +29,8 @@ import {
   getPackedSignature,
   getSmartAccount,
   getSmartSessionSmartAccount,
+  getTypedDataPackedSignature,
+  toErc6492Signature,
 } from '../accounts'
 import { createTransport, getBundlerClient } from '../accounts/utils'
 import {
@@ -38,7 +44,6 @@ import {
   getWebAuthnValidator,
 } from '../modules/validators/core'
 import {
-  getIntentOpHash,
   getOrchestrator,
   type IntentInput,
   type IntentOp,
@@ -47,6 +52,7 @@ import {
   type SupportedChain,
 } from '../orchestrator'
 import {
+  DEV_ORCHESTRATOR_URL,
   PROD_ORCHESTRATOR_URL,
   STAGING_ORCHESTRATOR_URL,
 } from '../orchestrator/consts'
@@ -63,6 +69,7 @@ import type {
   TokenRequest,
   Transaction,
 } from '../types'
+import { getIntentData } from './compact'
 import {
   OrderPathRequiredForIntentsError,
   SourceChainsNotAvailableForUserOpFlowError,
@@ -78,13 +85,12 @@ type TransactionResult =
   | {
       type: 'intent'
       id: bigint
-      sourceChain?: number
+      sourceChains?: number[]
       targetChain: number
     }
 
 interface IntentData {
   type: 'intent'
-  hash: Hex
   intentRoute: IntentRoute
 }
 
@@ -172,7 +178,12 @@ async function signTransaction(
     // Smart sessions require a UserOp flow
     signature = await signUserOp(config, chain, signers, userOp)
   } else {
-    signature = await signIntent(config, targetChain, data.hash, signers)
+    signature = await signIntent(
+      config,
+      targetChain,
+      data.intentRoute.intentOp,
+      signers,
+    )
   }
 
   return {
@@ -187,6 +198,62 @@ async function signAuthorizations(
   preparedTransaction: PreparedTransactionData,
 ) {
   return await signAuthorizationsInternal(config, preparedTransaction.data)
+}
+
+async function signMessage(
+  config: RhinestoneAccountConfig,
+  message: SignableMessage,
+  chain: Chain,
+  signers: SignerSet | undefined,
+) {
+  const validator = getValidator(config, signers)
+  if (!validator) {
+    throw new Error('Validator not available')
+  }
+  const ownerValidator = getOwnerValidator(config)
+  const isRoot = validator.address === ownerValidator.address
+
+  const hash = hashMessage(message)
+  const signature = await getPackedSignature(
+    config,
+    signers,
+    chain,
+    {
+      address: validator.address,
+      isRoot,
+    },
+    hash,
+  )
+  return await toErc6492Signature(config, signature, chain)
+}
+
+async function signTypedData<
+  typedData extends TypedData | Record<string, unknown> = TypedData,
+  primaryType extends keyof typedData | 'EIP712Domain' = keyof typedData,
+>(
+  config: RhinestoneAccountConfig,
+  parameters: HashTypedDataParameters<typedData, primaryType>,
+  chain: Chain,
+  signers: SignerSet | undefined,
+) {
+  const validator = getValidator(config, signers)
+  if (!validator) {
+    throw new Error('Validator not available')
+  }
+  const ownerValidator = getOwnerValidator(config)
+  const isRoot = validator.address === ownerValidator.address
+
+  const signature = await getTypedDataPackedSignature(
+    config,
+    signers,
+    chain,
+    {
+      address: validator.address,
+      isRoot,
+    },
+    parameters,
+  )
+  return await toErc6492Signature(config, signature, chain)
 }
 
 async function signAuthorizationsInternal(
@@ -391,21 +458,20 @@ async function prepareTransactionAsIntent(
   const orchestrator = getOrchestratorByChain(
     targetChain.id,
     config.rhinestoneApiKey,
+    config.useDev,
   )
   const intentRoute = await orchestrator.getIntentRoute(metaIntent)
-  const intentHash = getIntentOpHash(intentRoute.intentOp)
 
   return {
     type: 'intent',
     intentRoute,
-    hash: intentHash,
   } as IntentData
 }
 
 async function signIntent(
   config: RhinestoneAccountConfig,
   targetChain: Chain,
-  intentHash: Hex,
+  intentOp: IntentOp,
   signers?: SignerSet,
 ) {
   const validator = getValidator(config, signers)
@@ -415,7 +481,8 @@ async function signIntent(
   const ownerValidator = getOwnerValidator(config)
   const isRoot = validator.address === ownerValidator.address
 
-  const signature = await getPackedSignature(
+  const typedData = getIntentData(intentOp)
+  const signature = await getTypedDataPackedSignature(
     config,
     signers,
     targetChain,
@@ -423,7 +490,7 @@ async function signIntent(
       address: validator.address,
       isRoot,
     },
-    intentHash,
+    typedData,
   )
   return signature
 }
@@ -519,10 +586,17 @@ async function submitIntent(
   )
 }
 
-function getOrchestratorByChain(chainId: number, apiKey: string) {
-  const orchestratorUrl = isTestnet(chainId)
-    ? STAGING_ORCHESTRATOR_URL
-    : PROD_ORCHESTRATOR_URL
+function getOrchestratorByChain(
+  chainId: number,
+  apiKey: string | undefined,
+  useDev: boolean | undefined,
+) {
+  const orchestratorUrl =
+    (useDev ?? false)
+      ? DEV_ORCHESTRATOR_URL
+      : isTestnet(chainId)
+        ? STAGING_ORCHESTRATOR_URL
+        : PROD_ORCHESTRATOR_URL
   return getOrchestrator(apiKey, orchestratorUrl)
 }
 
@@ -553,6 +627,7 @@ async function submitIntentInternal(
   const orchestrator = getOrchestratorByChain(
     targetChain.id,
     config.rhinestoneApiKey,
+    config.useDev,
   )
   const intentResults = await orchestrator.submitIntent(signedIntentOp)
   return {
@@ -618,11 +693,13 @@ function getValidator(
     }
     // Passkeys (WebAuthn)
     if (withOwner.kind === 'passkey') {
-      const passkeyAccount = withOwner.account
-      return getWebAuthnValidator({
-        pubKey: passkeyAccount.publicKey,
-        authenticatorId: passkeyAccount.id,
-      })
+      return getWebAuthnValidator(
+        1,
+        withOwner.accounts.map((account) => ({
+          pubKey: account.publicKey,
+          authenticatorId: account.id,
+        })),
+      )
     }
     // Multi-factor
     if (withOwner.kind === 'multi-factor') {
@@ -707,6 +784,8 @@ export {
   signTransaction,
   signAuthorizations,
   signAuthorizationsInternal,
+  signMessage,
+  signTypedData,
   submitTransaction,
   getOrchestratorByChain,
   signIntent,

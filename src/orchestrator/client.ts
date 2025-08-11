@@ -28,9 +28,9 @@ import { convertBigIntFields } from './utils'
 
 export class Orchestrator {
   private serverUrl: string
-  private apiKey: string
+  private apiKey?: string
 
-  constructor(serverUrl: string, apiKey: string) {
+  constructor(serverUrl: string, apiKey?: string) {
     this.serverUrl = serverUrl
     this.apiKey = apiKey
   }

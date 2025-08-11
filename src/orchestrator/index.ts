@@ -45,10 +45,9 @@ import {
   INTENT_STATUS_PRECONFIRMED,
   INTENT_STATUS_UNKNOWN,
 } from './types'
-import { getIntentOpHash } from './utils'
 
 function getOrchestrator(
-  apiKey: string,
+  apiKey?: string,
   orchestratorUrl?: string,
 ): Orchestrator {
   return new Orchestrator(orchestratorUrl ?? PROD_ORCHESTRATOR_URL, apiKey)
@@ -91,7 +90,6 @@ export {
   UnsupportedChainIdError,
   UnsupportedTokenError,
   getOrchestrator,
-  getIntentOpHash,
   getWethAddress,
   getTokenSymbol,
   getTokenAddress,

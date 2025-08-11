@@ -188,17 +188,12 @@ function getInstallData(module: Module): Hex[] {
   }
 }
 
-async function getPackedSignature(
-  signFn: (message: Hex) => Promise<Hex>,
-  hash: Hex,
+async function packSignature(
+  signature: Hex,
   validator: ValidatorConfig,
-  accountAddress: Address,
   transformSignature: (signature: Hex) => Hex = (signature) => signature,
 ) {
   const vId = validator.isRoot ? '0x00' : concat(['0x01', validator.address])
-  const signature = validator.isRoot
-    ? await signFn(wrapMessageHash(hash, accountAddress))
-    : await signFn(hash)
   const magicValueSigReplayable = keccak256(
     toHex('kernel.replayable.signature'),
   )
@@ -406,5 +401,6 @@ export {
   getSmartAccount,
   getSessionSmartAccount,
   getGuardianSmartAccount,
-  getPackedSignature,
+  packSignature,
+  wrapMessageHash,
 }

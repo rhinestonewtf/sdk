@@ -17,9 +17,9 @@ import type { OwnerSet, RhinestoneAccountConfig, Session } from '../types'
 import {
   getGuardianSmartAccount as getNexusGuardianSmartAccount,
   getInstallData as getNexusInstallData,
-  getPackedSignature as getNexusPackedSignature,
   getSessionSmartAccount as getNexusSessionSmartAccount,
   getSmartAccount as getNexusSmartAccount,
+  packSignature as packNexusSignature,
 } from './nexus'
 import type { ValidatorConfig } from './utils'
 
@@ -125,15 +125,13 @@ function getInstallData(module: Module) {
   return getNexusInstallData(module)
 }
 
-async function getPackedSignature(
-  signFn: (message: Hex) => Promise<Hex>,
-  hash: Hex,
+async function packSignature(
+  signature: Hex,
   validator: ValidatorConfig,
   transformSignature: (signature: Hex) => Hex = (signature) => signature,
 ) {
-  return getNexusPackedSignature(
-    signFn,
-    hash,
+  return packNexusSignature(
+    signature,
     validator,
     transformSignature,
     K1_DEFAULT_VALIDATOR_ADDRESS,
@@ -196,7 +194,7 @@ async function getGuardianSmartAccount(
 export {
   getInstallData,
   getAddress,
-  getPackedSignature,
+  packSignature,
   getDeployArgs,
   getSmartAccount,
   getSessionSmartAccount,
