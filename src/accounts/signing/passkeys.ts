@@ -80,6 +80,15 @@ function packSignature(
     s: bigint
   }[],
 ): Hex {
+  // Sort both `credIds` and `webAuthns` by credIds
+  const credIdsAndWebAuthns = credIds.map((credId, index) => ({
+    credId,
+    webAuthn: webAuthns[index],
+  }))
+  credIdsAndWebAuthns.sort((a, b) => a.credId.localeCompare(b.credId))
+  credIds = credIdsAndWebAuthns.map(({ credId }) => credId)
+  webAuthns = credIdsAndWebAuthns.map(({ webAuthn }) => webAuthn)
+  // Encode
   return encodeAbiParameters(
     [
       {
