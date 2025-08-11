@@ -474,34 +474,20 @@ async function recoverPasskeyOwnership(
     transport: createTransport(chain, provider),
   })
 
-  // Execute multicall to get threshold and all credential details
-  const results = await publicClient.multicall({
-    contracts: [
+  const existingThreshold = await publicClient.readContract({
+    address: WEBAUTHN_VALIDATOR_ADDRESS,
+    abi: [
       {
-        address: WEBAUTHN_VALIDATOR_ADDRESS,
-        abi: [
-          {
-            inputs: [
-              { internalType: 'address', name: 'account', type: 'address' },
-            ],
-            name: 'threshold',
-            outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
-            stateMutability: 'view',
-            type: 'function',
-          },
-        ],
-        functionName: 'threshold',
-        args: [address],
+        inputs: [{ internalType: 'address', name: 'account', type: 'address' }],
+        name: 'threshold',
+        outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+        stateMutability: 'view',
+        type: 'function',
       },
     ],
+    functionName: 'threshold',
+    args: [address],
   })
-
-  // Extract threshold result
-  const existingThresholdResult = results[0]
-  if (existingThresholdResult.error) {
-    throw new Error('Failed to read existing threshold')
-  }
-  const existingThreshold = existingThresholdResult.result as bigint
 
   const calls: Call[] = []
 
