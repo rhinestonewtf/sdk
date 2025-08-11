@@ -22,6 +22,7 @@ import {
   getWebAuthnValidator,
   MULTI_FACTOR_VALIDATOR_ADDRESS,
   OWNABLE_VALIDATOR_ADDRESS,
+  WEBAUTHN_VALIDATOR_ADDRESS,
   type WebauthnCredential,
 } from '../modules/validators/core'
 import type {
@@ -61,6 +62,7 @@ function setUpRecovery({
  * @param chain Chain to recover ownership on
  * @param provider Provider to use for the recovery
  * @returns Calls to recover ownership
+ * @deprecated Use `recoverEcdsaOwnership` or `recoverPasskeyOwnership` instead
  */
 async function recover(
   address: Address,
@@ -116,7 +118,7 @@ function enablePasskeys({
 }: {
   rhinestoneAccount: RhinestoneAccount
 } & WebauthnCredential) {
-  const module = getWebAuthnValidator({ pubKey, authenticatorId })
+  const module = getWebAuthnValidator(1, [{ pubKey, authenticatorId }])
   const calls = getModuleInstallationCalls(rhinestoneAccount.config, module)
   return calls
 }
@@ -146,12 +148,14 @@ function disablePasskeys({
 }: {
   rhinestoneAccount: RhinestoneAccount
 }) {
-  const module = getWebAuthnValidator({
-    // Mocked values
-    pubKey:
-      '0x580a9af0569ad3905b26a703201b358aa0904236642ebe79b22a19d00d3737637d46f725a5427ae45a9569259bf67e1e16b187d7b3ad1ed70138c4f0409677d1',
-    authenticatorId: '0x',
-  })
+  const module = getWebAuthnValidator(1, [
+    {
+      // Mocked values
+      pubKey:
+        '0x580a9af0569ad3905b26a703201b358aa0904236642ebe79b22a19d00d3737637d46f725a5427ae45a9569259bf67e1e16b187d7b3ad1ed70138c4f0409677d1',
+      authenticatorId: '0x',
+    },
+  ])
   const calls = getModuleUninstallationCalls(rhinestoneAccount.config, module)
   return calls
 }
@@ -218,6 +222,100 @@ function removeOwner(prevOwner: Address, ownerToRemove: Address): Call {
 function changeThreshold(newThreshold: number): Call {
   return {
     to: OWNABLE_VALIDATOR_ADDRESS,
+    value: 0n,
+    data: encodeFunctionData({
+      abi: [
+        {
+          inputs: [
+            { internalType: 'uint256', name: '_threshold', type: 'uint256' },
+          ],
+          name: 'setThreshold',
+          outputs: [],
+          stateMutability: 'nonpayable',
+          type: 'function',
+        },
+      ],
+      functionName: 'setThreshold',
+      args: [BigInt(newThreshold)],
+    }),
+  }
+}
+
+/**
+ * Add a passkey owner
+ * @param pubKeyX Public key X
+ * @param pubKeyY Public key Y
+ * @param requireUserVerification Whether to require user verification
+ * @returns Call to add the passkey owner
+ */
+function addPasskeyOwner(
+  pubKeyX: bigint,
+  pubKeyY: bigint,
+  requireUserVerification: boolean,
+): Call {
+  return {
+    to: WEBAUTHN_VALIDATOR_ADDRESS,
+    value: 0n,
+    data: encodeFunctionData({
+      abi: [
+        {
+          inputs: [
+            { name: 'pubKeyX', type: 'uint256' },
+            { name: 'pubKeyY', type: 'uint256' },
+            {
+              name: 'requireUserVerification',
+              type: 'bool',
+            },
+          ],
+          name: 'addCredential',
+          outputs: [],
+          stateMutability: 'nonpayable',
+          type: 'function',
+        },
+      ],
+      functionName: 'addCredential',
+      args: [pubKeyX, pubKeyY, requireUserVerification],
+    }),
+  }
+}
+
+/**
+ * Remove a passkey owner
+ * @param pubKeyX Public key X
+ * @param pubKeyY Public key Y
+ * @returns Call to remove the passkey owner
+ */
+function removePasskeyOwner(pubKeyX: bigint, pubKeyY: bigint): Call {
+  return {
+    to: WEBAUTHN_VALIDATOR_ADDRESS,
+    value: 0n,
+    data: encodeFunctionData({
+      abi: [
+        {
+          inputs: [
+            { name: 'pubKeyX', type: 'uint256' },
+            { name: 'pubKeyY', type: 'uint256' },
+          ],
+          name: 'removeCredential',
+          outputs: [],
+          stateMutability: 'nonpayable',
+          type: 'function',
+        },
+      ],
+      functionName: 'removeCredential',
+      args: [pubKeyX, pubKeyY],
+    }),
+  }
+}
+
+/**
+ * Change an account's signer threshold (passkey)
+ * @param newThreshold New threshold
+ * @returns Call to change the threshold
+ */
+function changePasskeyThreshold(newThreshold: number): Call {
+  return {
+    to: WEBAUTHN_VALIDATOR_ADDRESS,
     value: 0n,
     data: encodeFunctionData({
       abi: [
@@ -350,6 +448,112 @@ async function recoverEcdsaOwnership(
     }
     calls.push(removeOwner(prevOwner, ownerToRemove))
     currentOwners = currentOwners.filter((owner) => owner !== ownerToRemove)
+  }
+
+  return calls
+}
+
+/**
+ * Recover an account's ownership (Passkey)
+ * @param address Account address
+ * @param oldCredentials Old credentials to be replaced (with pubKeyX, pubKeyY)
+ * @param newOwners New passkey owners
+ * @param chain Chain to recover ownership on
+ * @param provider Provider to use for the recovery
+ * @returns Calls to recover ownership
+ */
+async function recoverPasskeyOwnership(
+  address: Address,
+  oldCredentials: { pubKeyX: bigint; pubKeyY: bigint }[],
+  newOwners: WebauthnValidatorConfig,
+  chain: Chain,
+  provider?: ProviderConfig,
+): Promise<Call[]> {
+  const publicClient = createPublicClient({
+    chain,
+    transport: createTransport(chain, provider),
+  })
+
+  const existingThreshold = await publicClient.readContract({
+    address: WEBAUTHN_VALIDATOR_ADDRESS,
+    abi: [
+      {
+        inputs: [{ internalType: 'address', name: 'account', type: 'address' }],
+        name: 'threshold',
+        outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+        stateMutability: 'view',
+        type: 'function',
+      },
+    ],
+    functionName: 'threshold',
+    args: [address],
+  })
+
+  const calls: Call[] = []
+
+  // Convert new owners config to credentials and threshold
+  const newCredentials = newOwners.accounts.map((account) => {
+    const publicKey = account.publicKey
+    // Parse the public key hex string to extract x and y coordinates
+    const publicKeyBytes = publicKey.startsWith('0x')
+      ? publicKey.slice(2)
+      : publicKey
+
+    // The public key is 64 bytes: 32 bytes for x, 32 bytes for y
+    const x = BigInt(`0x${publicKeyBytes.slice(0, 64)}`)
+    const y = BigInt(`0x${publicKeyBytes.slice(64, 128)}`)
+
+    return {
+      pubKeyX: x,
+      pubKeyY: y,
+      requireUV: false, // Default to false for now
+    }
+  })
+  const newThreshold = newOwners.threshold ?? 1
+
+  // Check if threshold needs to be updated
+  if (Number(existingThreshold) !== newThreshold) {
+    calls.push(changePasskeyThreshold(newThreshold))
+  }
+
+  // Compare existing and new credentials to determine what to add/remove
+  const existingCredentialKeys = oldCredentials.map(
+    (cred) => `${cred.pubKeyX.toString()}-${cred.pubKeyY.toString()}`,
+  )
+  const newCredentialKeys = newCredentials.map(
+    (cred) => `${cred.pubKeyX.toString()}-${cred.pubKeyY.toString()}`,
+  )
+
+  // Find credentials to add (new ones not in existing)
+  const credentialsToAdd = newCredentials.filter(
+    (cred) =>
+      !existingCredentialKeys.includes(
+        `${cred.pubKeyX.toString()}-${cred.pubKeyY.toString()}`,
+      ),
+  )
+
+  // Find credentials to remove (existing ones not in new)
+  const credentialsToRemove = oldCredentials.filter(
+    (cred) =>
+      !newCredentialKeys.includes(
+        `${cred.pubKeyX.toString()}-${cred.pubKeyY.toString()}`,
+      ),
+  )
+
+  // Remove old credentials first (important for security in recovery scenarios)
+  for (const credential of credentialsToRemove) {
+    calls.push(removePasskeyOwner(credential.pubKeyX, credential.pubKeyY))
+  }
+
+  // Then add new credentials
+  for (const credential of credentialsToAdd) {
+    calls.push(
+      addPasskeyOwner(
+        credential.pubKeyX,
+        credential.pubKeyY,
+        credential.requireUV,
+      ),
+    )
   }
 
   return calls
@@ -504,7 +708,12 @@ export {
   addOwner,
   removeOwner,
   changeThreshold,
+  addPasskeyOwner,
+  removePasskeyOwner,
+  changePasskeyThreshold,
   recover,
+  recoverEcdsaOwnership,
+  recoverPasskeyOwnership,
   setUpRecovery,
   encodeSmartSessionSignature,
   enableMultiFactor,

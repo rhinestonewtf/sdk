@@ -1,5 +1,7 @@
+import type { WebAuthnP256 } from 'ox'
 import {
   type Account,
+  type Address,
   type Chain,
   concat,
   encodeAbiParameters,
@@ -7,9 +9,16 @@ import {
   pad,
   toHex,
 } from 'viem'
-import type { WebAuthnAccount } from 'viem/_types/account-abstraction'
+import type { WebAuthnAccount } from 'viem/account-abstraction'
+import { isRip7212SupportedNetwork } from '../../modules'
 import { getValidator } from '../../modules/validators/core'
 import type { OwnerSet, SignerSet } from '../../types'
+import {
+  generateCredentialId,
+  packSignature as packPasskeySignature,
+  parsePublicKey,
+  parseSignature,
+} from './passkeys'
 
 function convertOwnerSetToSignerSet(owners: OwnerSet): SignerSet {
   switch (owners.type) {
@@ -24,7 +33,7 @@ function convertOwnerSetToSignerSet(owners: OwnerSet): SignerSet {
       return {
         type: 'owner',
         kind: 'passkey',
-        account: owners.account,
+        accounts: owners.accounts,
       }
     }
     case 'multi-factor': {
@@ -44,7 +53,7 @@ function convertOwnerSetToSignerSet(owners: OwnerSet): SignerSet {
               return {
                 type: 'passkey',
                 id: index,
-                account: validator.account,
+                accounts: validator.accounts,
               }
             }
           }
@@ -58,16 +67,24 @@ type SigningFunctions<T> = {
   signEcdsa: (account: Account, params: T) => Promise<Hex>
   signPasskey: (
     account: WebAuthnAccount,
-    chain: Chain,
     params: T,
-  ) => Promise<Hex>
+  ) => Promise<{
+    webauthn: WebAuthnP256.SignMetadata
+    signature: Hex
+  }>
 }
 
 async function signWithMultiFactorAuth<T>(
   signers: SignerSet & { type: 'owner'; kind: 'multi-factor' },
   chain: Chain,
+  address: Address,
   params: T,
-  signMain: (signers: SignerSet, chain: Chain, params: T) => Promise<Hex>,
+  signMain: (
+    signers: SignerSet,
+    chain: Chain,
+    address: Address,
+    params: T,
+  ) => Promise<Hex>,
 ): Promise<Hex> {
   const signatures = await Promise.all(
     signers.validators.map(async (validator) => {
@@ -75,7 +92,7 @@ async function signWithMultiFactorAuth<T>(
         return '0x'
       }
       const validatorSigners: SignerSet = convertOwnerSetToSignerSet(validator)
-      return signMain(validatorSigners, chain, params)
+      return signMain(validatorSigners, chain, address, params)
     }),
   )
 
@@ -115,13 +132,19 @@ async function signWithMultiFactorAuth<T>(
 async function signWithSession<T>(
   signers: SignerSet & { type: 'session' },
   chain: Chain,
+  address: Address,
   params: T,
-  signMain: (signers: SignerSet, chain: Chain, params: T) => Promise<Hex>,
+  signMain: (
+    signers: SignerSet,
+    chain: Chain,
+    address: Address,
+    params: T,
+  ) => Promise<Hex>,
 ): Promise<Hex> {
   const sessionSigners: SignerSet = convertOwnerSetToSignerSet(
     signers.session.owners,
   )
-  return signMain(sessionSigners, chain, params)
+  return signMain(sessionSigners, chain, address, params)
 }
 
 async function signWithGuardians<T>(
@@ -140,9 +163,15 @@ async function signWithGuardians<T>(
 async function signWithOwners<T>(
   signers: SignerSet & { type: 'owner' },
   chain: Chain,
+  address: Address,
   params: T,
   signingFunctions: SigningFunctions<T>,
-  signMain: (signers: SignerSet, chain: Chain, params: T) => Promise<Hex>,
+  signMain: (
+    signers: SignerSet,
+    chain: Chain,
+    address: Address,
+    params: T,
+  ) => Promise<Hex>,
 ): Promise<Hex> {
   switch (signers.kind) {
     case 'ecdsa': {
@@ -154,10 +183,32 @@ async function signWithOwners<T>(
       return concat(signatures)
     }
     case 'passkey': {
-      return await signingFunctions.signPasskey(signers.account, chain, params)
+      const signatures = await Promise.all(
+        signers.accounts.map((account) =>
+          signingFunctions.signPasskey(account, params),
+        ),
+      )
+      const usePrecompile = isRip7212SupportedNetwork(chain)
+      const credIds = signers.accounts.map((account) => {
+        const publicKey = account.publicKey
+        const { x, y } = parsePublicKey(publicKey)
+        return generateCredentialId(x, y, address)
+      })
+      const webAuthns = signatures.map((signature) => {
+        const { r, s } = parseSignature(signature.signature)
+        return {
+          authenticatorData: signature.webauthn.authenticatorData,
+          clientDataJSON: signature.webauthn.clientDataJSON,
+          challengeIndex: BigInt(signature.webauthn.challengeIndex),
+          typeIndex: BigInt(signature.webauthn.typeIndex),
+          r,
+          s,
+        }
+      })
+      return packPasskeySignature(credIds, usePrecompile, webAuthns)
     }
     case 'multi-factor': {
-      return signWithMultiFactorAuth(signers, chain, params, signMain)
+      return signWithMultiFactorAuth(signers, chain, address, params, signMain)
     }
     default: {
       throw new Error('Unsupported owner kind')
