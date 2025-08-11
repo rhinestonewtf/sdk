@@ -583,7 +583,7 @@ async function submitIntent(
 
 function getOrchestratorByChain(
   chainId: number,
-  apiKey: string,
+  apiKey: string | undefined,
   useDev: boolean | undefined,
 ) {
   const orchestratorUrl =

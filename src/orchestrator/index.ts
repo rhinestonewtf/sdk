@@ -47,7 +47,7 @@ import {
 } from './types'
 
 function getOrchestrator(
-  apiKey: string,
+  apiKey?: string,
   orchestratorUrl?: string,
 ): Orchestrator {
   return new Orchestrator(orchestratorUrl ?? PROD_ORCHESTRATOR_URL, apiKey)

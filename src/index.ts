@@ -79,6 +79,8 @@ import {
 } from './modules'
 import {
   AuthenticationRequiredError,
+  getSupportedTokens,
+  getTokenAddress,
   InsufficientBalanceError,
   type IntentCost,
   type IntentInput,
@@ -434,6 +436,9 @@ export {
   UnsupportedChainError,
   UnsupportedChainIdError,
   UnsupportedTokenError,
+  // Registry functions
+  getSupportedTokens,
+  getTokenAddress,
 }
 export type {
   RhinestoneAccount,
