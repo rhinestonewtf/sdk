@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.0-alpha.13
+
+### Patch Changes
+
+- a6b1718: Export the registry methods getSupportedTokens and getTokenAddress
+
 ## 1.0.0-alpha.12
 
 ### Patch Changes
