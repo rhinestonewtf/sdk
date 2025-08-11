@@ -579,7 +579,7 @@ async function submitIntent(
   )
 }
 
-function getOrchestratorByChain(chainId: number, apiKey: string) {
+function getOrchestratorByChain(chainId: number, apiKey?: string) {
   const orchestratorUrl = isTestnet(chainId)
     ? STAGING_ORCHESTRATOR_URL
     : PROD_ORCHESTRATOR_URL
