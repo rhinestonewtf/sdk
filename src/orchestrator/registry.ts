@@ -1,3 +1,4 @@
+import { type ChainEntry, chains } from '@rhinestone/shared-configs'
 import { type Address, type Chain, isAddress, zeroAddress } from 'viem'
 import {
   arbitrum,
@@ -13,33 +14,14 @@ import {
   zksync,
 } from 'viem/chains'
 import type { TokenSymbol } from '../types'
-import chainRegistry from './chains.json'
 import type { SupportedChain, TokenConfig } from './types'
 
-interface TokenEntry {
-  symbol: string
-  address: Address
-  decimals: number
-  balanceSlot: number | null
-}
-
-interface ChainEntry {
-  name: string
-  tokens: TokenEntry[]
-}
-
-interface ChainRegistry {
-  [chainId: string]: ChainEntry
-}
-
-const registry: ChainRegistry = chainRegistry as ChainRegistry
-
 function getSupportedChainIds(): number[] {
-  return Object.keys(registry).map((chainId) => parseInt(chainId, 10))
+  return Object.keys(chains).map((chainId) => parseInt(chainId, 10))
 }
 
 function getChainEntry(chainId: number): ChainEntry | undefined {
-  return registry[chainId.toString()]
+  return chains[chainId.toString()]
 }
 
 function getWethAddress(chain: Chain): Address {
@@ -97,7 +79,7 @@ function getTokenAddress(tokenSymbol: TokenSymbol, chainId: number): Address {
 }
 
 function isChainIdSupported(chainId: number): chainId is SupportedChain {
-  return Object.keys(registry).includes(chainId.toString())
+  return Object.keys(chains).includes(chainId.toString())
 }
 
 function getChainById(chainId: number): Chain {
