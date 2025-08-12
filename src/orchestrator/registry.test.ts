@@ -98,12 +98,14 @@ describe('Registry', () => {
   describe('getChainById', () => {
     test('returns correct chain for supported ID', () => {
       const chain = getChainById(mainnet.id)
-      expect(chain?.id).toBe(mainnet.id)
-      expect(chain?.name).toBe(mainnet.name)
+      expect(chain.id).toBe(mainnet.id)
+      expect(chain.name).toBe(mainnet.name)
     })
 
-    test('returns undefined for unsupported chain', () => {
-      expect(getChainById(UNSUPPORTED_CHAIN_ID)).toBeUndefined()
+    test('throws error for unsupported chain', () => {
+      expect(() => getChainById(UNSUPPORTED_CHAIN_ID)).toThrow(
+        `Chain not supported: ${UNSUPPORTED_CHAIN_ID}`,
+      )
     })
   })
 

@@ -13,8 +13,8 @@ import {
   zksync,
 } from 'viem/chains'
 import type { TokenSymbol } from '../types'
-import registryData from './registry.json'
-import type { TokenConfig } from './types'
+import chainRegistry from './chains.json'
+import type { SupportedChain, TokenConfig } from './types'
 
 interface TokenEntry {
   symbol: string
@@ -23,25 +23,16 @@ interface TokenEntry {
   balanceSlot: number | null
 }
 
-interface ChainContracts {
-  spokepool: Address
-  hook: Address
-  originModule: Address
-  targetModule: Address
-  sameChainModule: Address
-}
-
 interface ChainEntry {
   name: string
-  contracts: ChainContracts
   tokens: TokenEntry[]
 }
 
-interface Registry {
+interface ChainRegistry {
   [chainId: string]: ChainEntry
 }
 
-const registry: Registry = registryData as Registry
+const registry: ChainRegistry = chainRegistry as ChainRegistry
 
 function getSupportedChainIds(): number[] {
   return Object.keys(registry).map((chainId) => parseInt(chainId, 10))
@@ -105,28 +96,33 @@ function getTokenAddress(tokenSymbol: TokenSymbol, chainId: number): Address {
   return token.address
 }
 
-function getChainById(chainId: number): Chain | undefined {
-  const supportedChains: Chain[] = [
-    mainnet,
-    sepolia,
-    base,
-    baseSepolia,
-    arbitrum,
-    arbitrumSepolia,
-    optimism,
-    optimismSepolia,
-    polygon,
-    zksync,
-    soneium,
-  ]
-  return supportedChains.find((chain) => chain.id === chainId)
+function isChainIdSupported(chainId: number): chainId is SupportedChain {
+  return Object.keys(registry).includes(chainId.toString())
+}
+
+function getChainById(chainId: number): Chain {
+  const chains: Record<SupportedChain, Chain> = {
+    [mainnet.id]: mainnet,
+    [sepolia.id]: sepolia,
+    [base.id]: base,
+    [baseSepolia.id]: baseSepolia,
+    [arbitrum.id]: arbitrum,
+    [arbitrumSepolia.id]: arbitrumSepolia,
+    [optimism.id]: optimism,
+    [optimismSepolia.id]: optimismSepolia,
+    [polygon.id]: polygon,
+    [zksync.id]: zksync,
+    [soneium.id]: soneium,
+  }
+
+  if (!isChainIdSupported(chainId)) {
+    throw new Error(`Chain not supported: ${chainId}`)
+  }
+  return chains[chainId]
 }
 
 function isTestnet(chainId: number): boolean {
   const chain = getChainById(chainId)
-  if (!chain) {
-    throw new Error(`Chain not supported: ${chainId}`)
-  }
   return chain.testnet ?? false
 }
 
@@ -187,6 +183,3 @@ export {
   getDefaultAccountAccessList,
   resolveTokenAddress,
 }
-
-// Export types for external use
-export type { TokenEntry, ChainContracts, ChainEntry, Registry }

@@ -1,13 +1,6 @@
 {
   "1": {
     "name": "Ethereum",
-    "contracts": {
-      "spokepool": "0x5c7BCd6E7De5423a257D81B442095A1a6ced35C5",
-      "hook": "0x0000000000f6Ed8Be424d673c63eeFF8b9267420",
-      "originModule": "0x0000000000AFc904aE9860D9c4B96D7c529c58b8",
-      "targetModule": "0x0000000000E5a37279A001301A837a91b5de1D5E",
-      "sameChainModule": "0x000000000043ff16d5776c7F0f65Ec485C17Ca04"
-    },
     "tokens": [
       {
         "symbol": "ETH",
@@ -37,13 +30,6 @@
   },
   "10": {
     "name": "Optimism",
-    "contracts": {
-      "spokepool": "0x20038b572633E45F3aB5b1a46CB85D0D241b80D8",
-      "hook": "0x0000000000f6Ed8Be424d673c63eeFF8b9267420",
-      "originModule": "0x0000000000AFc904aE9860D9c4B96D7c529c58b8",
-      "targetModule": "0x0000000000E5a37279A001301A837a91b5de1D5E",
-      "sameChainModule": "0x000000000043ff16d5776c7F0f65Ec485C17Ca04"
-    },
     "tokens": [
       {
         "symbol": "ETH",
@@ -73,13 +59,6 @@
   },
   "8453": {
     "name": "Base",
-    "contracts": {
-      "spokepool": "0x20038b572633E45F3aB5b1a46CB85D0D241b80D8",
-      "hook": "0x0000000000f6Ed8Be424d673c63eeFF8b9267420",
-      "originModule": "0x0000000000AFc904aE9860D9c4B96D7c529c58b8",
-      "targetModule": "0x0000000000E5a37279A001301A837a91b5de1D5E",
-      "sameChainModule": "0x000000000043ff16d5776c7F0f65Ec485C17Ca04"
-    },
     "tokens": [
       {
         "symbol": "ETH",
@@ -109,13 +88,6 @@
   },
   "42161": {
     "name": "Arbitrum",
-    "contracts": {
-      "spokepool": "0x35F36B0ebfFe06Dc29e3d11ae8b335d3Af4D014A",
-      "hook": "0x0000000000f6Ed8Be424d673c63eeFF8b9267420",
-      "originModule": "0x0000000000AFc904aE9860D9c4B96D7c529c58b8",
-      "targetModule": "0x0000000000E5a37279A001301A837a91b5de1D5E",
-      "sameChainModule": "0x000000000043ff16d5776c7F0f65Ec485C17Ca04"
-    },
     "tokens": [
       {
         "symbol": "ETH",
@@ -145,13 +117,6 @@
   },
   "137": {
     "name": "Polygon",
-    "contracts": {
-      "spokepool": "0x35F36B0ebfFe06Dc29e3d11ae8b335d3Af4D014A",
-      "hook": "0x0000000000f6Ed8Be424d673c63eeFF8b9267420",
-      "originModule": "0x0000000000AFc904aE9860D9c4B96D7c529c58b8",
-      "targetModule": "0x0000000000E5a37279A001301A837a91b5de1D5E",
-      "sameChainModule": "0x000000000043ff16d5776c7F0f65Ec485C17Ca04"
-    },
     "tokens": [
       {
         "symbol": "USDC",
@@ -175,13 +140,6 @@
   },
   "324": {
     "name": "ZkSync Era",
-    "contracts": {
-      "spokepool": "0x35F36B0ebfFe06Dc29e3d11ae8b335d3Af4D014A",
-      "hook": "0x0000000000f6Ed8Be424d673c63eeFF8b9267420",
-      "originModule": "0x0000000000AFc904aE9860D9c4B96D7c529c58b8",
-      "targetModule": "0x0000000000E5a37279A001301A837a91b5de1D5E",
-      "sameChainModule": "0x000000000043ff16d5776c7F0f65Ec485C17Ca04"
-    },
     "tokens": [
       {
         "symbol": "ETH",
@@ -211,13 +169,6 @@
   },
   "1868": {
     "name": "Soneium",
-    "contracts": {
-      "spokepool": "0x3baD7AD0728f9917d1Bf08af5782dCbD516cDd96",
-      "hook": "0x0000000000f6Ed8Be424d673c63eeFF8b9267420",
-      "originModule": "0x0000000000AFc904aE9860D9c4B96D7c529c58b8",
-      "targetModule": "0x0000000000E5a37279A001301A837a91b5de1D5E",
-      "sameChainModule": "0x000000000043ff16d5776c7F0f65Ec485C17Ca04"
-    },
     "tokens": [
       {
         "symbol": "ETH",
@@ -244,13 +195,6 @@
   },
   "84532": {
     "name": "Base-sepolia",
-    "contracts": {
-      "spokepool": "0x20038b572633E45F3aB5b1a46CB85D0D241b80D8",
-      "hook": "0x0000000000f6Ed8Be424d673c63eeFF8b9267420",
-      "originModule": "0x0000000000AFc904aE9860D9c4B96D7c529c58b8",
-      "targetModule": "0x0000000000E5a37279A001301A837a91b5de1D5E",
-      "sameChainModule": "0x000000000043ff16d5776c7F0f65Ec485C17Ca04"
-    },
     "tokens": [
       {
         "symbol": "ETH",
@@ -274,13 +218,6 @@
   },
   "421614": {
     "name": "Arbitrum-sepolia",
-    "contracts": {
-      "spokepool": "0xAE6B1f4aA87e0F73DADb10B9CA4F8531BfaFAD19",
-      "hook": "0x0000000000f6Ed8Be424d673c63eeFF8b9267420",
-      "originModule": "0x0000000000AFc904aE9860D9c4B96D7c529c58b8",
-      "targetModule": "0x0000000000E5a37279A001301A837a91b5de1D5E",
-      "sameChainModule": "0x000000000043ff16d5776c7F0f65Ec485C17Ca04"
-    },
     "tokens": [
       {
         "symbol": "ETH",
@@ -304,13 +241,6 @@
   },
   "11155111": {
     "name": "Ethereum-sepolia",
-    "contracts": {
-      "spokepool": "0x2171A3C4592d5Ae06E0257728aB4E88E575f4cF3",
-      "hook": "0x0000000000f6Ed8Be424d673c63eeFF8b9267420",
-      "originModule": "0x0000000000AFc904aE9860D9c4B96D7c529c58b8",
-      "targetModule": "0x0000000000E5a37279A001301A837a91b5de1D5E",
-      "sameChainModule": "0x000000000043ff16d5776c7F0f65Ec485C17Ca04"
-    },
     "tokens": [
       {
         "symbol": "ETH",
@@ -334,13 +264,6 @@
   },
   "11155420": {
     "name": "Optimism-sepolia",
-    "contracts": {
-      "spokepool": "0x20038b572633E45F3aB5b1a46CB85D0D241b80D8",
-      "hook": "0x0000000000f6Ed8Be424d673c63eeFF8b9267420",
-      "originModule": "0x0000000000AFc904aE9860D9c4B96D7c529c58b8",
-      "targetModule": "0x0000000000E5a37279A001301A837a91b5de1D5E",
-      "sameChainModule": "0x000000000043ff16d5776c7F0f65Ec485C17Ca04"
-    },
     "tokens": [
       {
         "symbol": "ETH",
