@@ -11,7 +11,6 @@ import {
   polygon,
   sepolia,
   soneium,
-  zksync,
 } from 'viem/chains'
 import type { TokenSymbol } from '../types'
 import type { SupportedChain, TokenConfig } from './types'
@@ -93,7 +92,6 @@ function getChainById(chainId: number): Chain {
     [optimism.id]: optimism,
     [optimismSepolia.id]: optimismSepolia,
     [polygon.id]: polygon,
-    [zksync.id]: zksync,
     [soneium.id]: soneium,
   }
 
