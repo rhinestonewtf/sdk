@@ -1,38 +1,13 @@
+import type {
+  SupportedChain,
+  SupportedMainnet,
+  SupportedOPStackMainnet,
+  SupportedOPStackTestnet,
+  SupportedTestnet,
+} from '@rhinestone/shared-configs'
 import type { Address, Hex } from 'viem'
 import type { UserOperationReceipt } from 'viem/account-abstraction'
-import type {
-  arbitrum,
-  arbitrumSepolia,
-  base,
-  baseSepolia,
-  mainnet,
-  optimism,
-  optimismSepolia,
-  polygon,
-  sepolia,
-  soneium,
-  zksync,
-} from 'viem/chains'
 
-type SupportedTestnet =
-  | typeof sepolia.id
-  | typeof baseSepolia.id
-  | typeof arbitrumSepolia.id
-  | typeof optimismSepolia.id
-type SupportedMainnet =
-  | typeof mainnet.id
-  | typeof base.id
-  | typeof arbitrum.id
-  | typeof optimism.id
-  | typeof polygon.id
-  | typeof zksync.id
-  | typeof soneium.id
-type SupportedOPStackMainnet =
-  | typeof optimism.id
-  | typeof base.id
-  | typeof soneium.id
-type SupportedOPStackTestnet = typeof optimismSepolia.id | typeof baseSepolia.id
-type SupportedChain = SupportedMainnet | SupportedTestnet
 type SupportedTokenSymbol = 'ETH' | 'WETH' | 'USDC' | 'USDT'
 type SupportedToken = SupportedTokenSymbol | Address
 

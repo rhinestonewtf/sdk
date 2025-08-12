@@ -240,9 +240,6 @@ async function waitForExecution(
     }
     case 'userop': {
       const targetChain = getChainById(result.chain)
-      if (!targetChain) {
-        throw new Error(`Unsupported chain ID: ${result.chain}`)
-      }
       const publicClient = createPublicClient({
         chain: targetChain,
         transport: createTransport(targetChain, config.provider),
