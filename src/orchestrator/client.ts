@@ -209,6 +209,27 @@ export class Orchestrator {
     }
   }
 
+  async simulateIntent(signedIntentOp: SignedIntentOp): Promise<IntentResult> {
+    try {
+      const response = await axios.post(
+        `${this.serverUrl}/intent-operations/simulate`,
+        {
+          signedIntentOp: convertBigIntFields(signedIntentOp),
+        },
+        {
+          headers: {
+            'x-api-key': this.apiKey,
+          },
+        },
+      )
+
+      return response.data
+    } catch (error) {
+      this.parseError(error)
+      throw new Error('Failed to simulate intent')
+    }
+  }
+
   async getIntentOpStatus(intentId: bigint): Promise<IntentOpStatus> {
     try {
       const response = await axios.get(
