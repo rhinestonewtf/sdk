@@ -678,7 +678,7 @@ async function submitIntentInternal(
 
 async function simulateIntentInternal(
   config: RhinestoneAccountConfig,
-  sourceChains: Chain[] | undefined,
+  _sourceChains: Chain[] | undefined,
   targetChain: Chain,
   intentOp: IntentOp,
   signature: Hex,
@@ -708,7 +708,6 @@ async function simulateIntentInternal(
   const simulationResults = await orchestrator.simulateIntent(signedIntentOp)
   return simulationResults
 }
-
 
 async function getValidatorAccount(
   config: RhinestoneAccountConfig,

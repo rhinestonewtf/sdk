@@ -71,8 +71,8 @@ import {
   signMessage as signMessageInternal,
   signTransaction as signTransactionInternal,
   signTypedData as signTypedDataInternal,
-  submitTransaction as submitTransactionInternal,
   simulateTransaction as simulateTransactionInternal,
+  submitTransaction as submitTransactionInternal,
 } from './execution/utils'
 import {
   getOwners as getOwnersInternal,
