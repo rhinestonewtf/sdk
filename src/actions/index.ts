@@ -76,7 +76,13 @@ async function recover(
       return recoverEcdsaOwnership(address, newOwners, chain, provider)
     }
     case 'ecdsa-v0': {
-      return recoverEcdsaOwnership(address, newOwners, chain, provider, OWNABLE_V0_VALIDATOR_ADDRESS)
+      return recoverEcdsaOwnership(
+        address,
+        newOwners,
+        chain,
+        provider,
+        OWNABLE_V0_VALIDATOR_ADDRESS,
+      )
     }
     case 'passkey': {
       throw new Error('Passkey ownership recovery is not yet supported')

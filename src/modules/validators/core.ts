@@ -131,7 +131,11 @@ function getValidator(owners: OwnerSet) {
   }
 }
 
-function getOwnableValidator(threshold: number, owners: Address[], address?: Address): Module {
+function getOwnableValidator(
+  threshold: number,
+  owners: Address[],
+  address?: Address,
+): Module {
   return {
     address: address ?? OWNABLE_VALIDATOR_ADDRESS,
     initData: encodeAbiParameters(

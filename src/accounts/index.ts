@@ -30,6 +30,14 @@ import type {
   SignerSet,
 } from '../types'
 import {
+  getAddress as getCustomAddress,
+  getDeployArgs as getCustomDeployArgs,
+  getInstallData as getCustomInstallData,
+  getPackedSignature as getCustomPackedSignature,
+  getSessionSmartAccount as getCustomSessionSmartAccount,
+  getSmartAccount as getCustomSmartAccount,
+} from './custom'
+import {
   AccountError,
   Eip7702AccountMustHaveEoaError,
   Eip7702NotSupportedForAccountError,
@@ -82,14 +90,6 @@ import {
   getSmartAccount as getStartaleSmartAccount,
   packSignature as packStartaleSignature,
 } from './startale'
-import {
-  getDeployArgs as getCustomDeployArgs,
-  getInstallData as getCustomInstallData,
-  getAddress as getCustomAddress,
-  getPackedSignature as getCustomPackedSignature,
-  getSmartAccount as getCustomSmartAccount,
-  getSessionSmartAccount as getCustomSessionSmartAccount,
-} from './custom'
 import { createTransport, type ValidatorConfig } from './utils'
 
 function getDeployArgs(config: RhinestoneAccountConfig) {
@@ -494,7 +494,6 @@ async function getSmartAccount(
         config,
         client,
         address,
-        config.owners,
         ownerValidator.address,
         signFn,
       )
@@ -571,7 +570,6 @@ async function getSmartSessionSmartAccount(
         session,
         smartSessionValidator.address,
         enableData,
-        signFn,
       )
     }
   }

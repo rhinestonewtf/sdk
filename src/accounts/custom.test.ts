@@ -1,23 +1,23 @@
+import { createPublicClient, http } from 'viem'
+import { toCoinbaseSmartAccount } from 'viem/account-abstraction'
+import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
+import { mainnet } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
-import { createPublicClient, http } from 'viem';
-import { mainnet } from 'viem/chains';
-import { toCoinbaseSmartAccount } from 'viem/account-abstraction';
-import { createRhinestoneAccount } from '..';
-import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
+import { createRhinestoneAccount } from '..'
 
 describe('Custom Accounts', () => {
   describe('Coinbase, account', async () => {
     const client = createPublicClient({
       chain: mainnet,
       transport: http(),
-    });
+    })
 
-    const owner = privateKeyToAccount(generatePrivateKey());
+    const owner = privateKeyToAccount(generatePrivateKey())
 
     const coinbaseAccount = await toCoinbaseSmartAccount({
       client,
       owners: [owner],
-    });
+    })
 
     test('Coinbase, getAddress', async () => {
       const account = await createRhinestoneAccount({
@@ -28,40 +28,40 @@ describe('Custom Accounts', () => {
               return {
                 factory: '0x',
                 factoryData: '0x',
-              };
+              }
             },
             getInstallData: () => {
-              return [];
+              return []
             },
             getAddress: () => {
-              return coinbaseAccount.address;
+              return coinbaseAccount.address
             },
             getPackedSignature: async () => {
-              return '0x';
+              throw new Error('Not implemented')
             },
-            getSessionStubSignature: async (session, enableData) => {
-              return `0x`;
+            getSessionStubSignature: async () => {
+              throw new Error('Not implemented')
             },
-            signSessionUserOperation: async (session, enableData, hash) => {
-              return `0x`;
+            signSessionUserOperation: async () => {
+              throw new Error('Not implemented')
             },
             getStubSignature: async () => {
-              return coinbaseAccount.getStubSignature();
+              return coinbaseAccount.getStubSignature()
             },
-            sign: async (hash) => {
-              return '0x';
-            }
-          }
+            sign: async () => {
+              throw new Error('Not implemented')
+            },
+          },
         },
         owners: {
           type: 'ecdsa-v0',
           accounts: [owner],
           threshold: 1,
         },
-        rhinestoneApiKey: ''
-      });
+        rhinestoneApiKey: '',
+      })
 
-      expect(account.getAddress()).toEqual(coinbaseAccount.address);
+      expect(account.getAddress()).toEqual(coinbaseAccount.address)
     })
   })
 })

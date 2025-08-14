@@ -1,8 +1,8 @@
 import type { Account, Address, Chain, Hex } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
+import type { ValidatorConfig } from './accounts/utils'
+import type { Module } from './modules/common'
 import type { EnableSessionData } from './modules/validators/smart-sessions'
-import { Module } from './modules/common'
-import { ValidatorConfig } from './accounts/utils'
 
 type AccountType = 'safe' | 'nexus' | 'kernel' | 'startale' | 'custom'
 
@@ -18,11 +18,22 @@ interface CustomAccountProviderConfig {
   }
   getInstallData: (module: Module) => Hex[]
   getAddress: () => Address
-  getPackedSignature: (signature: Hex, validator: ValidatorConfig, transformSignature: (signature: Hex) => Hex) => Promise<Hex>,
-  getSessionStubSignature: (session: Session, enableData: EnableSessionData | null) => Promise<Hex>,
-  signSessionUserOperation: (session: Session, enableData: EnableSessionData | null, hash: Hex) => Promise<Hex>,
-  getStubSignature: () => Promise<Hex>,
-  sign: (hash: Hex) => Promise<Hex>,
+  getPackedSignature: (
+    signature: Hex,
+    validator: ValidatorConfig,
+    transformSignature: (signature: Hex) => Hex,
+  ) => Promise<Hex>
+  getSessionStubSignature: (
+    session: Session,
+    enableData: EnableSessionData | null,
+  ) => Promise<Hex>
+  signSessionUserOperation: (
+    session: Session,
+    enableData: EnableSessionData | null,
+    hash: Hex,
+  ) => Promise<Hex>
+  getStubSignature: () => Promise<Hex>
+  sign: (hash: Hex) => Promise<Hex>
 }
 
 interface OwnableValidatorConfig {

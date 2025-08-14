@@ -1,10 +1,22 @@
-import { Address, PublicClient, Hex, Abi, concat } from 'viem'
-import { SmartAccount, SmartAccountImplementation, entryPoint07Abi, entryPoint07Address, getUserOperationHash } from 'viem/account-abstraction'
-import { toSmartAccount } from 'viem/account-abstraction'
-import { encode7579Calls, getAccountNonce, ValidatorConfig } from "./utils"
-import { EnableSessionData } from '../modules/validators/smart-sessions'
-import { OwnerSet, RhinestoneAccountConfig, Session } from '../types'
-import { Module } from '../modules/common'
+import {
+  type Abi,
+  type Address,
+  concat,
+  type Hex,
+  type PublicClient,
+} from 'viem'
+import {
+  entryPoint07Abi,
+  entryPoint07Address,
+  getUserOperationHash,
+  type SmartAccount,
+  type SmartAccountImplementation,
+  toSmartAccount,
+} from 'viem/account-abstraction'
+import type { Module } from '../modules/common'
+import type { EnableSessionData } from '../modules/validators/smart-sessions'
+import type { RhinestoneAccountConfig, Session } from '../types'
+import { encode7579Calls, getAccountNonce, type ValidatorConfig } from './utils'
 
 function getDeployArgs(config: RhinestoneAccountConfig) {
   if (!config.account || !config.account.custom) {
@@ -14,12 +26,15 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
   return config.account.custom.getDeployArgs()
 }
 
-function getInstallData(config: RhinestoneAccountConfig, module: Module): Hex[] {
+function getInstallData(
+  config: RhinestoneAccountConfig,
+  module: Module,
+): Hex[] {
   if (!config.account || !config.account.custom) {
     throw new Error('Account provider not found')
   }
 
-  return config.account.custom.getInstallData(module);
+  return config.account.custom.getInstallData(module)
 }
 
 function getAddress(config: RhinestoneAccountConfig): Address {
@@ -40,7 +55,11 @@ async function getPackedSignature(
     throw new Error('Account provider not found')
   }
 
-  return config.account.custom.getPackedSignature(signature, validator, transformSignature)
+  return config.account.custom.getPackedSignature(
+    signature,
+    validator,
+    transformSignature,
+  )
 }
 
 async function getSessionSmartAccount(
@@ -50,7 +69,6 @@ async function getSessionSmartAccount(
   session: Session,
   validatorAddress: Address,
   enableData: EnableSessionData | null,
-  sign: (hash: Hex) => Promise<Hex>,
 ) {
   return await getBaseSmartAccount(
     address,
@@ -68,7 +86,11 @@ async function getSessionSmartAccount(
         throw new Error('Account provider not found')
       }
 
-      return config.account.custom.signSessionUserOperation(session, enableData, hash)
+      return config.account.custom.signSessionUserOperation(
+        session,
+        enableData,
+        hash,
+      )
     },
   )
 }
@@ -149,7 +171,6 @@ async function getSmartAccount(
   config: RhinestoneAccountConfig,
   client: PublicClient,
   address: Address,
-  owners: OwnerSet,
   validatorAddress: Address,
   sign: (hash: Hex) => Promise<Hex>,
 ) {
