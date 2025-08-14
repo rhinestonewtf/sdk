@@ -638,15 +638,12 @@ async function simulateIntent(
   )
 }
 
-async function submitIntentInternal(
-  config: RhinestoneAccountConfig,
-  sourceChains: Chain[] | undefined,
-  targetChain: Chain,
+function createSignedIntentOp(
   intentOp: IntentOp,
   signature: Hex,
   authorizations: SignedAuthorizationList,
-) {
-  const signedIntentOp: SignedIntentOp = {
+): SignedIntentOp {
+  return {
     ...intentOp,
     originSignatures: Array(intentOp.elements.length).fill(signature),
     destinationSignature: signature,
@@ -662,6 +659,17 @@ async function submitIntentInternal(
           }))
         : undefined,
   }
+}
+
+async function submitIntentInternal(
+  config: RhinestoneAccountConfig,
+  sourceChains: Chain[] | undefined,
+  targetChain: Chain,
+  intentOp: IntentOp,
+  signature: Hex,
+  authorizations: SignedAuthorizationList,
+) {
+  const signedIntentOp = createSignedIntentOp(intentOp, signature, authorizations)
   const orchestrator = getOrchestratorByChain(
     targetChain.id,
     config.rhinestoneApiKey,
@@ -684,22 +692,7 @@ async function simulateIntentInternal(
   signature: Hex,
   authorizations: SignedAuthorizationList,
 ) {
-  const signedIntentOp: SignedIntentOp = {
-    ...intentOp,
-    originSignatures: Array(intentOp.elements.length).fill(signature),
-    destinationSignature: signature,
-    signedAuthorizations:
-      authorizations.length > 0
-        ? authorizations.map((authorization) => ({
-            chainId: authorization.chainId,
-            address: authorization.address,
-            nonce: authorization.nonce,
-            yParity: authorization.yParity ?? 0,
-            r: authorization.r,
-            s: authorization.s,
-          }))
-        : undefined,
-  }
+  const signedIntentOp = createSignedIntentOp(intentOp, signature, authorizations)
   const orchestrator = getOrchestratorByChain(
     targetChain.id,
     config.rhinestoneApiKey,

@@ -287,8 +287,7 @@ async function createRhinestoneAccount(
    * @param signedTransaction Signed transaction data
    * @param authorizations EIP-7702 authorizations to simulate (optional)
    * @returns simulation result
-   * @see {@link signTransaction} to sign the transaction data
-   * @see {@link signAuthorizations} to sign the required EIP-7702 authorizations
+   * @see {@link sendTransaction} to send the transaction
    */
   function simulateTransaction(
     signedTransaction: SignedTransactionData,
