@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.0-alpha.16
+
+### Patch Changes
+
+- 29ccb04: Custom accounts support
+
 ## 1.0.0-alpha.15
 
 ### Patch Changes
