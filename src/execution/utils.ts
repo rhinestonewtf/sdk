@@ -669,7 +669,11 @@ async function submitIntentInternal(
   signature: Hex,
   authorizations: SignedAuthorizationList,
 ) {
-  const signedIntentOp = createSignedIntentOp(intentOp, signature, authorizations)
+  const signedIntentOp = createSignedIntentOp(
+    intentOp,
+    signature,
+    authorizations,
+  )
   const orchestrator = getOrchestratorByChain(
     targetChain.id,
     config.rhinestoneApiKey,
@@ -692,7 +696,11 @@ async function simulateIntentInternal(
   signature: Hex,
   authorizations: SignedAuthorizationList,
 ) {
-  const signedIntentOp = createSignedIntentOp(intentOp, signature, authorizations)
+  const signedIntentOp = createSignedIntentOp(
+    intentOp,
+    signature,
+    authorizations,
+  )
   const orchestrator = getOrchestratorByChain(
     targetChain.id,
     config.rhinestoneApiKey,
