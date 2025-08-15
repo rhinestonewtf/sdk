@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.0-alpha.17
+
+### Patch Changes
+
+- ec215ed: Add transaction simulation method
+
 ## 1.0.0-alpha.16
 
 ### Patch Changes
