@@ -71,6 +71,7 @@ import {
   signMessage as signMessageInternal,
   signTransaction as signTransactionInternal,
   signTypedData as signTypedDataInternal,
+  simulateTransaction as simulateTransactionInternal,
   submitTransaction as submitTransactionInternal,
 } from './execution/utils'
 import {
@@ -141,6 +142,10 @@ interface RhinestoneAccount {
     signedTransaction: SignedTransactionData,
     authorizations?: SignedAuthorizationList,
   ) => Promise<TransactionResult>
+  simulateTransaction: (
+    signedTransaction: SignedTransactionData,
+    authorizations?: SignedAuthorizationList,
+  ) => Promise<IntentResult>
   sendTransaction: (transaction: Transaction) => Promise<TransactionResult>
   waitForExecution: (
     result: TransactionResult,
@@ -278,6 +283,24 @@ async function createRhinestoneAccount(
   }
 
   /**
+   * Simulate a transaction
+   * @param signedTransaction Signed transaction data
+   * @param authorizations EIP-7702 authorizations to simulate (optional)
+   * @returns simulation result
+   * @see {@link sendTransaction} to send the transaction
+   */
+  function simulateTransaction(
+    signedTransaction: SignedTransactionData,
+    authorizations?: SignedAuthorizationList,
+  ) {
+    return simulateTransactionInternal(
+      config,
+      signedTransaction,
+      authorizations ?? [],
+    )
+  }
+
+  /**
    * Sign and send a transaction
    * @param transaction Transaction to send
    * @returns transaction result object (an intent ID or a UserOp hash)
@@ -370,6 +393,7 @@ async function createRhinestoneAccount(
     signMessage,
     signTypedData,
     submitTransaction,
+    simulateTransaction,
     sendTransaction,
     waitForExecution,
     getAddress,

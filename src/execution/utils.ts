@@ -330,6 +330,34 @@ async function submitTransaction(
   }
 }
 
+async function simulateTransaction(
+  config: RhinestoneAccountConfig,
+  signedTransaction: SignedTransactionData,
+  authorizations: SignedAuthorizationList,
+) {
+  const { data, transaction, signature } = signedTransaction
+  const { sourceChains, targetChain } = getTransactionParams(transaction)
+
+  const asUserOp = data.type === 'userop'
+
+  if (asUserOp) {
+    throw new Error('Simulation not supported for UserOp transactions')
+  } else {
+    const intentOp = data.intentRoute.intentOp
+    if (!intentOp) {
+      throw new OrderPathRequiredForIntentsError()
+    }
+    return await simulateIntent(
+      config,
+      sourceChains,
+      targetChain,
+      intentOp,
+      signature,
+      authorizations,
+    )
+  }
+}
+
 function getTransactionParams(transaction: Transaction) {
   const sourceChains =
     'chain' in transaction ? [transaction.chain] : transaction.sourceChains
@@ -597,7 +625,7 @@ function getOrchestratorByChain(
   return getOrchestrator(apiKey, orchestratorUrl)
 }
 
-async function submitIntentInternal(
+async function simulateIntent(
   config: RhinestoneAccountConfig,
   sourceChains: Chain[] | undefined,
   targetChain: Chain,
@@ -605,7 +633,22 @@ async function submitIntentInternal(
   signature: Hex,
   authorizations: SignedAuthorizationList,
 ) {
-  const signedIntentOp: SignedIntentOp = {
+  return simulateIntentInternal(
+    config,
+    sourceChains,
+    targetChain,
+    intentOp,
+    signature,
+    authorizations,
+  )
+}
+
+function createSignedIntentOp(
+  intentOp: IntentOp,
+  signature: Hex,
+  authorizations: SignedAuthorizationList,
+): SignedIntentOp {
+  return {
     ...intentOp,
     originSignatures: Array(intentOp.elements.length).fill(signature),
     destinationSignature: signature,
@@ -621,6 +664,21 @@ async function submitIntentInternal(
           }))
         : undefined,
   }
+}
+
+async function submitIntentInternal(
+  config: RhinestoneAccountConfig,
+  sourceChains: Chain[] | undefined,
+  targetChain: Chain,
+  intentOp: IntentOp,
+  signature: Hex,
+  authorizations: SignedAuthorizationList,
+) {
+  const signedIntentOp = createSignedIntentOp(
+    intentOp,
+    signature,
+    authorizations,
+  )
   const orchestrator = getOrchestratorByChain(
     targetChain.id,
     config.rhinestoneApiKey,
@@ -633,6 +691,28 @@ async function submitIntentInternal(
     sourceChains: sourceChains?.map((chain) => chain.id),
     targetChain: targetChain.id,
   } as TransactionResult
+}
+
+async function simulateIntentInternal(
+  config: RhinestoneAccountConfig,
+  _sourceChains: Chain[] | undefined,
+  targetChain: Chain,
+  intentOp: IntentOp,
+  signature: Hex,
+  authorizations: SignedAuthorizationList,
+) {
+  const signedIntentOp = createSignedIntentOp(
+    intentOp,
+    signature,
+    authorizations,
+  )
+  const orchestrator = getOrchestratorByChain(
+    targetChain.id,
+    config.rhinestoneApiKey,
+    config.useDev,
+  )
+  const simulationResults = await orchestrator.simulateIntent(signedIntentOp)
+  return simulationResults
 }
 
 async function getValidatorAccount(
@@ -784,10 +864,12 @@ export {
   signMessage,
   signTypedData,
   submitTransaction,
+  simulateTransaction,
   getOrchestratorByChain,
   signIntent,
   prepareTransactionAsIntent,
   submitIntentInternal,
+  simulateIntentInternal,
   getValidatorAccount,
   parseCalls,
 }
