@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.0-alpha.18
+
+### Patch Changes
+
+- 6750bdf: Move `@rhinestone/shared-configs` into package deps
+
 ## 1.0.0-alpha.17
 
 ### Patch Changes
