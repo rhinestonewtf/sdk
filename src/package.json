@@ -36,6 +36,7 @@
     "access": "public"
   },
   "dependencies": {
+    "@rhinestone/shared-configs": "1.1.2",
     "axios": "^1.7.0",
     "solady": "^0.1.21"
   },
