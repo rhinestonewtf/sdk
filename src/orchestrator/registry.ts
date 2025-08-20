@@ -11,6 +11,7 @@ import {
   polygon,
   sepolia,
   soneium,
+  sonic,
 } from 'viem/chains'
 import type { TokenSymbol } from '../types'
 import type { SupportedChain, TokenConfig } from './types'
@@ -57,8 +58,11 @@ function getTokenSymbol(tokenAddress: Address, chainId: number): string {
 }
 
 function getTokenAddress(tokenSymbol: TokenSymbol, chainId: number): Address {
-  if (chainId === 137 && tokenSymbol === 'ETH') {
+  if (chainId === polygon.id && tokenSymbol === 'ETH') {
     throw new Error(`Chain ${chainId} does not allow for ETH to be used`)
+  }
+  if (chainId === sonic.id && tokenSymbol !== 'USDC') {
+    throw new Error(`Chain ${chainId} only has USDC available`)
   }
   if (tokenSymbol === 'ETH') {
     return zeroAddress
@@ -93,6 +97,7 @@ function getChainById(chainId: number): Chain {
     [optimismSepolia.id]: optimismSepolia,
     [polygon.id]: polygon,
     [soneium.id]: soneium,
+    [sonic.id]: sonic,
   }
 
   if (!isChainIdSupported(chainId)) {
