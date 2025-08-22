@@ -28,6 +28,8 @@ import type {
   Session,
   UniversalActionPolicyParamCondition,
 } from '../../types'
+import type { MultiChainClaimPolicyConfig } from '../policies/multi-chain-claim'
+import { encodeMultiChainClaimPolicy } from '../policies/multi-chain-claim'
 import { enableSessionsAbi } from '../abi/smart-sessions'
 import { MODULE_TYPE_ID_VALIDATOR, type Module } from '../common'
 import { HOOK_ADDRESS } from '../omni-account'
@@ -146,6 +148,9 @@ interface EnableSessionData {
 
 const SMART_SESSIONS_VALIDATOR_ADDRESS: Address =
   '0x00000000002b0ecfbd0496ee71e01257da0e37de'
+// Deployed SmartSessionEmissary (Base)
+const SMART_SESSION_EMISSARY_ADDRESS: Address =
+  '0xBCb2a252593F5e6e15a6715475fc6E3096AD72Ac'
 
 const SMART_SESSION_MODE_USE = '0x00'
 const SMART_SESSION_MODE_ENABLE = '0x01'
@@ -495,6 +500,18 @@ function getPolicyData(policy: Policy): PolicyData {
         initData: encodeAbiParameters([{ type: 'uint256' }], [policy.limit]),
       }
     }
+    // @ts-expect-error internal extension: MultiChain claim policy is not in the exported Policy union yet
+    case 'multi-chain-claim': {
+      const mcPolicy = policy as unknown as {
+        type: 'multi-chain-claim'
+        policyAddress: Address
+        config: MultiChainClaimPolicyConfig
+      }
+      return {
+        policy: mcPolicy.policyAddress,
+        initData: encodeMultiChainClaimPolicy(mcPolicy.config),
+      }
+    }
   }
 }
 
@@ -767,6 +784,7 @@ export {
   SMART_SESSION_MODE_USE,
   SMART_SESSION_MODE_ENABLE,
   SMART_SESSIONS_VALIDATOR_ADDRESS,
+  SMART_SESSION_EMISSARY_ADDRESS,
   getSessionData,
   getSmartSessionValidator,
   getEnableSessionCall,
