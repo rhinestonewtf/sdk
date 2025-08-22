@@ -152,4 +152,72 @@ export function setupOrchestratorMock() {
       getOrchestrator: vi.fn().mockReturnValue(createOrchestratorMock()),
     }
   })
+
+  vi.mock('../src/orchestrator/client', async () => {
+    return {
+      Orchestrator: class {
+        constructor(_url: string, _apiKey?: string) {}
+        getPortfolio = vi.fn().mockResolvedValue([])
+        getMaxTokenAmount = vi.fn().mockResolvedValue(1000000n)
+        getIntentCost = vi.fn().mockResolvedValue({
+          hasFulfilledAll: true,
+          tokensReceived: [],
+          tokensSpent: {},
+        })
+        getIntentRoute = vi.fn().mockResolvedValue({
+          intentOp: {
+            sponsor: '0x7a07d9cc408dd92165900c302d31d914d26b3827',
+            nonce:
+              '5155984005891081751907744166694346796440695583636245585396069902646285172736',
+            expires: '1783443744',
+            elements: [
+              {
+                smartAccountStatus: 'ERC7579',
+                arbiter: '0x306ba68E347D83E6171389E80E0B7Be978a5303A',
+                chainId: '8453',
+                idsAndAmounts: [[
+                  '21854126412662723981022530371960153272591467524068739237857809954054699231507',
+                  '4296',
+                ]],
+                beforeFill: true,
+                mandate: {
+                  recipient: '0x7a07d9cc408dd92165900c302d31d914d26b3827',
+                  tokenOut: [[
+                    '21854126412662723981022530371211081521698004233493962776526716101293957447680',
+                    '3',
+                  ]],
+                  destinationChainId: '8453',
+                  fillDeadline: '1751908044',
+                  destinationOps: [
+                    { to: '0xd8da6bf26964af9d7eed9e03e53415d37aa96045', value: '3', data: '0x' },
+                  ],
+                  preClaimOps: [],
+                  qualifier: { settlementSystem: 'SAME_CHAIN', encodedVal: '0x' },
+                },
+              },
+            ],
+            serverSignature:
+              'd48ef04a5c0a0e2df550dfb0f6217b0fac3290f6466be85a9661090d8c5ac566',
+            signedMetadata: {
+              quotes: {},
+              tokenPrices: {},
+              opGasParams: { '8453': { l1BaseFee: '0', l1BlobBaseFee: '0', baseFeeScalar: '1', blobFeeScalar: '1' }, estimatedCalldataSize: 0 },
+              gasPrices: { '8453': '0' },
+              smartAccount: { accountType: 'ERC7579' },
+            },
+          },
+          intentCost: {
+            hasFulfilledAll: true,
+            tokensReceived: [],
+            tokensSpent: {},
+          },
+        })
+        submitIntent = vi.fn().mockResolvedValue({
+          result: { id: '1', status: 'PENDING' },
+        })
+        simulateIntent = vi.fn().mockResolvedValue({ result: { status: 'SIMULATED' } })
+        getIntentOpStatus = vi.fn().mockResolvedValue({ status: 'COMPLETED', claims: [] })
+      },
+    }
+  })
 }

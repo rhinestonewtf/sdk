@@ -23,7 +23,13 @@ import {
 } from './omni-account'
 import { getOwners, getValidators } from './read'
 import { getOwnerValidator, getSmartSessionValidator } from './validators'
+import { SMART_SESSION_EMISSARY_ADDRESS } from './validators/smart-sessions'
 import { getSocialRecoveryValidator } from './validators/core'
+import {
+  encodeMultiChainClaimPolicy,
+  type MultiChainClaimPolicyConfig,
+  createMultiChainClaimErc1271Policy,
+} from './policies/multi-chain-claim'
 
 const SMART_SESSION_COMPATIBILITY_FALLBACK_ADDRESS: Address =
   '0x12cae64c42f362e7d5a847c2d33388373f629177'
@@ -116,4 +122,10 @@ export {
   getOwners,
   getValidators,
   isRip7212SupportedNetwork,
+  SMART_SESSION_EMISSARY_ADDRESS,
+  // MultiChainClaimPolicy helpers
+  encodeMultiChainClaimPolicy,
+  createMultiChainClaimErc1271Policy,
 }
+
+export type { MultiChainClaimPolicyConfig }

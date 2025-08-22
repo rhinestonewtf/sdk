@@ -119,6 +119,18 @@ function usingAllocatorId(allocator: Address = ALLOCATOR_ADDRESS): bigint {
   return (compactFlag << 88n) | last88Bits
 }
 
+function computeLockTag(
+  allocator: Address,
+  scope: Scope,
+  resetPeriod: ResetPeriod,
+): Hex {
+  const allocatorId = usingAllocatorId(allocator)
+  const tagBig =
+    (BigInt(scope) << 255n) | (BigInt(resetPeriod) << 252n) | (allocatorId << 160n)
+  const hex = tagBig.toString(16).slice(0, 24)
+  return `0x${hex}` as const
+}
+
 function lockTag(): Hex {
   const allocatorId = usingAllocatorId(ALLOCATOR_ADDRESS)
   const tagBig =
@@ -127,6 +139,29 @@ function lockTag(): Hex {
     (allocatorId << 160n)
   const hex = tagBig.toString(16).slice(0, 24)
   return `0x${hex}` as const
+}
+
+function getAssignEmissaryCall(lockTag: Hex, emissary: Address): Call {
+  return {
+    to: COMPACT_ADDRESS,
+    value: 0n,
+    data: encodeFunctionData({
+      abi: [
+        {
+          type: 'function',
+          name: 'assignEmissary',
+          inputs: [
+            { name: 'lockTag', type: 'bytes12', internalType: 'bytes12' },
+            { name: 'emissary', type: 'address', internalType: 'address' },
+          ],
+          outputs: [],
+          stateMutability: 'nonpayable',
+        },
+      ],
+      functionName: 'assignEmissary',
+      args: [lockTag, emissary],
+    }),
+  }
 }
 
 // Define the typed data structure as const to preserve type safety
@@ -227,5 +262,7 @@ export {
   getDepositEtherCall,
   getDepositErc20Call,
   getApproveErc20Call,
+  computeLockTag,
+  getAssignEmissaryCall,
   getIntentData,
 }
