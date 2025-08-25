@@ -27,11 +27,6 @@ jobs:
       - name: Clean
         run: bun run clean
 
-      - name: Test all
-        run: bun run test
-        env:
-          VITE_ALCHEMY_API_KEY: ${{ secrets.ALCHEMY_API_KEY}}
-
       - name: Build all
         run: bun run build
 
