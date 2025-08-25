@@ -1,4 +1,8 @@
-import { type ChainEntry, chainRegistry, chains } from '@rhinestone/shared-configs'
+import {
+  type ChainEntry,
+  chainRegistry,
+  chains,
+} from '@rhinestone/shared-configs'
 import { type Address, type Chain, isAddress, zeroAddress } from 'viem'
 import {
   arbitrum,
