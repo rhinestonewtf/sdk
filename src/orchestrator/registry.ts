@@ -1,4 +1,4 @@
-import { type ChainEntry, chains } from '@rhinestone/shared-configs'
+import { type ChainEntry, chainRegistry, chains } from '@rhinestone/shared-configs'
 import { type Address, type Chain, isAddress, zeroAddress } from 'viem'
 import {
   arbitrum,
@@ -21,7 +21,7 @@ function getSupportedChainIds(): number[] {
 }
 
 function getChainEntry(chainId: number): ChainEntry | undefined {
-  return chains[chainId.toString()]
+  return chainRegistry[chainId.toString()]
 }
 
 function getWethAddress(chain: Chain): Address {
