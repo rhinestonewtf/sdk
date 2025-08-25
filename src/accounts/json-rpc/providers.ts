@@ -1,4 +1,4 @@
-import { providers } from '@rhinestone/shared-configs'
+import { providerRegistry as providers } from '@rhinestone/shared-configs'
 
 import type { SupportedChain } from '../../orchestrator'
 

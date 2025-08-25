@@ -1,0 +1,384 @@
+{
+  "1": {
+    "name": "Ethereum",
+    "contracts": {
+      "spokepool": "0x5c7BCd6E7De5423a257D81B442095A1a6ced35C5",
+      "hook": "0x0000000000f6Ed8Be424d673c63eeFF8b9267420",
+      "originModule": "0x0000000000AFc904aE9860D9c4B96D7c529c58b8",
+      "targetModule": "0x0000000000E5a37279A001301A837a91b5de1D5E",
+      "sameChainModule": "0x000000000043ff16d5776c7F0f65Ec485C17Ca04"
+    },
+    "tokens": [
+      {
+        "symbol": "ETH",
+        "address": "0x0000000000000000000000000000000000000000",
+        "decimals": 18,
+        "balanceSlot": null
+      },
+      {
+        "symbol": "USDC",
+        "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        "decimals": 6,
+        "balanceSlot": 9
+      },
+      {
+        "symbol": "USDT",
+        "address": "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+        "decimals": 6,
+        "balanceSlot": 2
+      },
+      {
+        "symbol": "WETH",
+        "address": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+        "decimals": 18,
+        "balanceSlot": 3
+      }
+    ]
+  },
+  "10": {
+    "name": "Optimism",
+    "contracts": {
+      "spokepool": "0x20038b572633E45F3aB5b1a46CB85D0D241b80D8",
+      "hook": "0x0000000000f6Ed8Be424d673c63eeFF8b9267420",
+      "originModule": "0x0000000000AFc904aE9860D9c4B96D7c529c58b8",
+      "targetModule": "0x0000000000E5a37279A001301A837a91b5de1D5E",
+      "sameChainModule": "0x000000000043ff16d5776c7F0f65Ec485C17Ca04"
+    },
+    "tokens": [
+      {
+        "symbol": "ETH",
+        "address": "0x0000000000000000000000000000000000000000",
+        "decimals": 18,
+        "balanceSlot": null
+      },
+      {
+        "symbol": "USDC",
+        "address": "0x0b2c639c533813f4aa9d7837caf62653d097ff85",
+        "decimals": 6,
+        "balanceSlot": 9
+      },
+      {
+        "symbol": "USDT",
+        "address": "0x94b008aa00579c1307b0ef2c499ad98a8ce58e58",
+        "decimals": 6,
+        "balanceSlot": 0
+      },
+      {
+        "symbol": "WETH",
+        "address": "0x4200000000000000000000000000000000000006",
+        "decimals": 18,
+        "balanceSlot": 3
+      }
+    ]
+  },
+  "8453": {
+    "name": "Base",
+    "contracts": {
+      "spokepool": "0x20038b572633E45F3aB5b1a46CB85D0D241b80D8",
+      "hook": "0x0000000000f6Ed8Be424d673c63eeFF8b9267420",
+      "originModule": "0x0000000000AFc904aE9860D9c4B96D7c529c58b8",
+      "targetModule": "0x0000000000E5a37279A001301A837a91b5de1D5E",
+      "sameChainModule": "0x000000000043ff16d5776c7F0f65Ec485C17Ca04"
+    },
+    "tokens": [
+      {
+        "symbol": "ETH",
+        "address": "0x0000000000000000000000000000000000000000",
+        "decimals": 18,
+        "balanceSlot": null
+      },
+      {
+        "symbol": "USDC",
+        "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "decimals": 6,
+        "balanceSlot": 9
+      },
+      {
+        "symbol": "USDT",
+        "address": "0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2",
+        "decimals": 6,
+        "balanceSlot": 51
+      },
+      {
+        "symbol": "WETH",
+        "address": "0x4200000000000000000000000000000000000006",
+        "decimals": 18,
+        "balanceSlot": 3
+      }
+    ]
+  },
+  "42161": {
+    "name": "Arbitrum",
+    "contracts": {
+      "spokepool": "0x35F36B0ebfFe06Dc29e3d11ae8b335d3Af4D014A",
+      "hook": "0x0000000000f6Ed8Be424d673c63eeFF8b9267420",
+      "originModule": "0x0000000000AFc904aE9860D9c4B96D7c529c58b8",
+      "targetModule": "0x0000000000E5a37279A001301A837a91b5de1D5E",
+      "sameChainModule": "0x000000000043ff16d5776c7F0f65Ec485C17Ca04"
+    },
+    "tokens": [
+      {
+        "symbol": "ETH",
+        "address": "0x0000000000000000000000000000000000000000",
+        "decimals": 18,
+        "balanceSlot": null
+      },
+      {
+        "symbol": "USDC",
+        "address": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+        "decimals": 6,
+        "balanceSlot": 9
+      },
+      {
+        "symbol": "USDT",
+        "address": "0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9",
+        "decimals": 6,
+        "balanceSlot": 51
+      },
+      {
+        "symbol": "WETH",
+        "address": "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1",
+        "decimals": 18,
+        "balanceSlot": 51
+      }
+    ]
+  },
+  "137": {
+    "name": "Polygon",
+    "contracts": {
+      "spokepool": "0x35F36B0ebfFe06Dc29e3d11ae8b335d3Af4D014A",
+      "hook": "0x0000000000f6Ed8Be424d673c63eeFF8b9267420",
+      "originModule": "0x0000000000AFc904aE9860D9c4B96D7c529c58b8",
+      "targetModule": "0x0000000000E5a37279A001301A837a91b5de1D5E",
+      "sameChainModule": "0x000000000043ff16d5776c7F0f65Ec485C17Ca04"
+    },
+    "tokens": [
+      {
+        "symbol": "USDC",
+        "address": "0x3c499c542cef5e3811e1192ce70d8cc03d5c3359",
+        "decimals": 6,
+        "balanceSlot": 9
+      },
+      {
+        "symbol": "USDT",
+        "address": "0xc2132D05D31c914a87C6611C10748AEb04B58e8F",
+        "decimals": 6,
+        "balanceSlot": 0
+      },
+      {
+        "symbol": "WETH",
+        "address": "0x7ceb23fd6bc0add59e62ac25578270cff1b9f619",
+        "decimals": 18,
+        "balanceSlot": 3
+      }
+    ]
+  },
+  "146": {
+    "name": "Sonic",
+    "contracts": {
+      "spokepool": "0x3baD7AD0728f9917d1Bf08af5782dCbD516cDd96",
+      "hook": "0x0000000000f6Ed8Be424d673c63eeFF8b9267420",
+      "originModule": "0x0000000000AFc904aE9860D9c4B96D7c529c58b8",
+      "targetModule": "0x0000000000E5a37279A001301A837a91b5de1D5E",
+      "sameChainModule": "0x000000000043ff16d5776c7F0f65Ec485C17Ca04"
+    },
+    "tokens": [
+      {
+        "symbol": "USDC",
+        "address": "0x29219dd400f2Bf60E5a23d13Be72B486D4038894",
+        "decimals": 6,
+        "balanceSlot": 9,
+        "approvalSlot": 10
+      }
+    ]
+  },
+  "324": {
+    "name": "ZkSync Era",
+    "contracts": {
+      "spokepool": "0x35F36B0ebfFe06Dc29e3d11ae8b335d3Af4D014A",
+      "hook": "0x0000000000f6Ed8Be424d673c63eeFF8b9267420",
+      "originModule": "0x0000000000AFc904aE9860D9c4B96D7c529c58b8",
+      "targetModule": "0x0000000000E5a37279A001301A837a91b5de1D5E",
+      "sameChainModule": "0x000000000043ff16d5776c7F0f65Ec485C17Ca04"
+    },
+    "tokens": [
+      {
+        "symbol": "ETH",
+        "address": "0x0000000000000000000000000000000000000000",
+        "decimals": 18,
+        "balanceSlot": null
+      },
+      {
+        "symbol": "USDC",
+        "address": "0x3355df6D4c9C3035724Fd0e3914dE96A5a83aaf4",
+        "decimals": 6,
+        "balanceSlot": 9
+      },
+      {
+        "symbol": "USDT",
+        "address": "0x493257fD37EDB34451f62EDf8D2a0C418852bA4C",
+        "decimals": 6,
+        "balanceSlot": 2
+      },
+      {
+        "symbol": "WETH",
+        "address": "0x5AEa5775959fBC2557Cc8789bC1bf90A239D9a91",
+        "decimals": 18,
+        "balanceSlot": 3
+      }
+    ]
+  },
+  "1868": {
+    "name": "Soneium",
+    "contracts": {
+      "spokepool": "0x3baD7AD0728f9917d1Bf08af5782dCbD516cDd96",
+      "hook": "0x0000000000f6Ed8Be424d673c63eeFF8b9267420",
+      "originModule": "0x0000000000AFc904aE9860D9c4B96D7c529c58b8",
+      "targetModule": "0x0000000000E5a37279A001301A837a91b5de1D5E",
+      "sameChainModule": "0x000000000043ff16d5776c7F0f65Ec485C17Ca04"
+    },
+    "tokens": [
+      {
+        "symbol": "ETH",
+        "address": "0x0000000000000000000000000000000000000000",
+        "decimals": 18,
+        "balanceSlot": null,
+        "approvalSlot": null
+      },
+      {
+        "symbol": "USDC",
+        "address": "0xbA9986D2381edf1DA03B0B9c1f8b00dc4AacC369",
+        "decimals": 6,
+        "balanceSlot": 9,
+        "approvalSlot": 10
+      },
+      {
+        "symbol": "WETH",
+        "address": "0x4200000000000000000000000000000000000006",
+        "decimals": 18,
+        "balanceSlot": 3,
+        "approvalSlot": 4
+      }
+    ]
+  },
+  "84532": {
+    "name": "Base-sepolia",
+    "contracts": {
+      "spokepool": "0x20038b572633E45F3aB5b1a46CB85D0D241b80D8",
+      "hook": "0x0000000000f6Ed8Be424d673c63eeFF8b9267420",
+      "originModule": "0x0000000000AFc904aE9860D9c4B96D7c529c58b8",
+      "targetModule": "0x0000000000E5a37279A001301A837a91b5de1D5E",
+      "sameChainModule": "0x000000000043ff16d5776c7F0f65Ec485C17Ca04"
+    },
+    "tokens": [
+      {
+        "symbol": "ETH",
+        "address": "0x0000000000000000000000000000000000000000",
+        "decimals": 18,
+        "balanceSlot": null
+      },
+      {
+        "symbol": "USDC",
+        "address": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+        "decimals": 6,
+        "balanceSlot": 9
+      },
+      {
+        "symbol": "WETH",
+        "address": "0x4200000000000000000000000000000000000006",
+        "decimals": 18,
+        "balanceSlot": 3
+      }
+    ]
+  },
+  "421614": {
+    "name": "Arbitrum-sepolia",
+    "contracts": {
+      "spokepool": "0xAE6B1f4aA87e0F73DADb10B9CA4F8531BfaFAD19",
+      "hook": "0x0000000000f6Ed8Be424d673c63eeFF8b9267420",
+      "originModule": "0x0000000000AFc904aE9860D9c4B96D7c529c58b8",
+      "targetModule": "0x0000000000E5a37279A001301A837a91b5de1D5E",
+      "sameChainModule": "0x000000000043ff16d5776c7F0f65Ec485C17Ca04"
+    },
+    "tokens": [
+      {
+        "symbol": "ETH",
+        "address": "0x0000000000000000000000000000000000000000",
+        "decimals": 18,
+        "balanceSlot": null
+      },
+      {
+        "symbol": "USDC",
+        "address": "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d",
+        "decimals": 6,
+        "balanceSlot": 9
+      },
+      {
+        "symbol": "WETH",
+        "address": "0x980B62Da83eFf3D4576C647993b0c1D7faf17c73",
+        "decimals": 18,
+        "balanceSlot": 51
+      }
+    ]
+  },
+  "11155111": {
+    "name": "Ethereum-sepolia",
+    "contracts": {
+      "spokepool": "0x2171A3C4592d5Ae06E0257728aB4E88E575f4cF3",
+      "hook": "0x0000000000f6Ed8Be424d673c63eeFF8b9267420",
+      "originModule": "0x0000000000AFc904aE9860D9c4B96D7c529c58b8",
+      "targetModule": "0x0000000000E5a37279A001301A837a91b5de1D5E",
+      "sameChainModule": "0x000000000043ff16d5776c7F0f65Ec485C17Ca04"
+    },
+    "tokens": [
+      {
+        "symbol": "ETH",
+        "address": "0x0000000000000000000000000000000000000000",
+        "decimals": 18,
+        "balanceSlot": null
+      },
+      {
+        "symbol": "USDC",
+        "address": "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
+        "decimals": 6,
+        "balanceSlot": 9
+      },
+      {
+        "symbol": "WETH",
+        "address": "0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14",
+        "decimals": 18,
+        "balanceSlot": 3
+      }
+    ]
+  },
+  "11155420": {
+    "name": "Optimism-sepolia",
+    "contracts": {
+      "spokepool": "0x20038b572633E45F3aB5b1a46CB85D0D241b80D8",
+      "hook": "0x0000000000f6Ed8Be424d673c63eeFF8b9267420",
+      "originModule": "0x0000000000AFc904aE9860D9c4B96D7c529c58b8",
+      "targetModule": "0x0000000000E5a37279A001301A837a91b5de1D5E",
+      "sameChainModule": "0x000000000043ff16d5776c7F0f65Ec485C17Ca04"
+    },
+    "tokens": [
+      {
+        "symbol": "ETH",
+        "address": "0x0000000000000000000000000000000000000000",
+        "decimals": 18,
+        "balanceSlot": null
+      },
+      {
+        "symbol": "USDC",
+        "address": "0x5fd84259d66Cd46123540766Be93DFE6D43130D7",
+        "decimals": 6,
+        "balanceSlot": 9
+      },
+      {
+        "symbol": "WETH",
+        "address": "0x4200000000000000000000000000000000000006",
+        "decimals": 18,
+        "balanceSlot": 3
+      }
+    ]
+  }
+}

@@ -1,4 +1,8 @@
-import { type ChainEntry, chains } from '@rhinestone/shared-configs'
+import {
+  type ChainEntry,
+  chainRegistry,
+  chains,
+} from '@rhinestone/shared-configs'
 import { type Address, type Chain, isAddress, zeroAddress } from 'viem'
 import {
   arbitrum,
@@ -11,16 +15,17 @@ import {
   polygon,
   sepolia,
   soneium,
+  sonic,
 } from 'viem/chains'
 import type { TokenSymbol } from '../types'
 import type { SupportedChain, TokenConfig } from './types'
 
 function getSupportedChainIds(): number[] {
-  return Object.keys(chains).map((chainId) => parseInt(chainId, 10))
+  return chains.map((chain) => chain.id)
 }
 
 function getChainEntry(chainId: number): ChainEntry | undefined {
-  return chains[chainId.toString()]
+  return chainRegistry[chainId.toString()]
 }
 
 function getWethAddress(chain: Chain): Address {
@@ -57,8 +62,11 @@ function getTokenSymbol(tokenAddress: Address, chainId: number): string {
 }
 
 function getTokenAddress(tokenSymbol: TokenSymbol, chainId: number): Address {
-  if (chainId === 137 && tokenSymbol === 'ETH') {
+  if (chainId === polygon.id && tokenSymbol === 'ETH') {
     throw new Error(`Chain ${chainId} does not allow for ETH to be used`)
+  }
+  if (chainId === sonic.id && tokenSymbol !== 'USDC') {
+    throw new Error(`Chain ${chainId} only has USDC available`)
   }
   if (tokenSymbol === 'ETH') {
     return zeroAddress
@@ -78,7 +86,8 @@ function getTokenAddress(tokenSymbol: TokenSymbol, chainId: number): Address {
 }
 
 function isChainIdSupported(chainId: number): chainId is SupportedChain {
-  return Object.keys(chains).includes(chainId.toString())
+  const chainIds = chains.map((chain) => chain.id) as number[]
+  return chainIds.includes(chainId)
 }
 
 function getChainById(chainId: number): Chain {
@@ -93,6 +102,7 @@ function getChainById(chainId: number): Chain {
     [optimismSepolia.id]: optimismSepolia,
     [polygon.id]: polygon,
     [soneium.id]: soneium,
+    [sonic.id]: sonic,
   }
 
   if (!isChainIdSupported(chainId)) {
