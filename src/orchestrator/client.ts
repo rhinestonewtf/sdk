@@ -169,7 +169,6 @@ export class Orchestrator {
 
   async getIntentRoute(input: IntentInput): Promise<IntentRoute> {
     try {
-      console.log(input)
       const response = await axios.post(
         `${this.serverUrl}/intents/route`,
         {
