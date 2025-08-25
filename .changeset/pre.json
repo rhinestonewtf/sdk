@@ -5,6 +5,7 @@
     "@rhinestone/sdk": "0.12.7"
   },
   "changesets": [
+    "bright-clowns-clap",
     "common-toys-rush",
     "easy-carrots-live",
     "eleven-plants-float",

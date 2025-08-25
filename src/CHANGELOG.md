@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.0-alpha.19
+
+### Patch Changes
+
+- 0bb2c42: Fix API request in `getMaxTokenAmount`
+
 ## 1.0.0-alpha.18
 
 ### Patch Changes
