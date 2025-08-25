@@ -2,6 +2,7 @@ import {
   encodeAbiParameters,
   encodeFunctionData,
   encodePacked,
+  size,
   keccak256,
   padHex,
   toHex,
@@ -123,6 +124,13 @@ const smartSessionEmissaryAbi = [
     stateMutability: 'nonpayable',
   },
 ] as const
+
+// ----------------------
+// Emissary modes
+// ----------------------
+
+// Matches ModeLib.EmissaryMode.EMISSARY_SMART_SESSION (0x03)
+const EMISSARY_MODE_SMART_SESSION = '0x03'
 
 // ----------------------
 // Types
@@ -402,3 +410,32 @@ export type {
 }
 
 export { getSmartSessionEmissarySetConfigCall }
+
+// ----------------------
+// Emissary claim helpers (SmartSession mode)
+// ----------------------
+
+/**
+ * Encode emissaryData for SmartSessionEmissary.verifyClaim in SmartSession mode.
+ * Layout (abi.encodePacked):
+ * - bytes1 mode = 0x03 (EMISSARY_SMART_SESSION)
+ * - bytes32 permissionId
+ * - uint256 offsetToPolicyData (bytes) measured from start of emissaryData AFTER the mode byte
+ * - bytes sessionValidatorSignature
+ * - bytes policyData (MultiChainClaimPolicy runtime data)
+ */
+function encodeSmartSessionEmissaryClaimSignature(
+  permissionId: Hex,
+  sessionValidatorSignature: Hex,
+  policyData: Hex = '0x',
+) {
+  const sigLen = BigInt(size(sessionValidatorSignature))
+  // Offset counts bytes after the "mode" byte; we place [permissionId (32) | offset (32)] before the sig
+  const offsetToPolicy = sigLen + 64n
+  return encodePacked(
+    ['bytes1', 'bytes32', 'uint256', 'bytes', 'bytes'],
+    [EMISSARY_MODE_SMART_SESSION, permissionId, offsetToPolicy, sessionValidatorSignature, policyData],
+  )
+}
+
+export { EMISSARY_MODE_SMART_SESSION, encodeSmartSessionEmissaryClaimSignature }

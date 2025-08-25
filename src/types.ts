@@ -138,12 +138,20 @@ interface Action {
   policies?: [Policy, ...Policy[]]
 }
 
+// ERC1271 policy entry to be enforced during claim verification (e.g., MultiChainClaimPolicy)
+interface Erc1271PolicyEntry {
+  policy: Address
+  initData: Hex
+}
+
 interface Session {
   owners: OwnerSet
   policies?: [Policy, ...Policy[]]
   actions?: [Action, ...Action[]]
   salt?: Hex
   chain?: Chain
+  // Optional ERC1271 policies applied to 7739 content validation (e.g., multi-chain-claim)
+  erc1271Policies?: readonly Erc1271PolicyEntry[]
 }
 
 interface Recovery {
@@ -266,6 +274,7 @@ export type {
   MultiFactorValidatorConfig,
   SignerSet,
   Session,
+  Erc1271PolicyEntry,
   Recovery,
   Policy,
   UniversalActionPolicyParamCondition,

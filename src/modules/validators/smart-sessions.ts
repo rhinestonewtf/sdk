@@ -27,6 +27,7 @@ import type {
   RhinestoneAccountConfig,
   Session,
   UniversalActionPolicyParamCondition,
+  Erc1271PolicyEntry,
 } from '../../types'
 import type { MultiChainClaimPolicyConfig } from '../policies/multi-chain-claim'
 import { encodeMultiChainClaimPolicy } from '../policies/multi-chain-claim'
@@ -317,7 +318,10 @@ function getSmartSessionData(
       .concat(omniActions),
     erc7739Policies: {
       allowedERC7739Content,
-      erc1271Policies: [getPolicyData({ type: 'sudo' })],
+      erc1271Policies:
+        (session.erc1271Policies as readonly Erc1271PolicyEntry[] | undefined)?.map(
+          (p) => ({ policy: p.policy, initData: p.initData }),
+        ) ?? [getPolicyData({ type: 'sudo' })],
     },
     permitERC4337Paymaster: true,
   } as SessionData
