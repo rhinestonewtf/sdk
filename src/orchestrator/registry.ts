@@ -21,7 +21,7 @@ import type { TokenSymbol } from '../types'
 import type { SupportedChain, TokenConfig } from './types'
 
 function getSupportedChainIds(): number[] {
-  return Object.keys(chains).map((chainId) => parseInt(chainId, 10))
+  return chains.map((chain) => chain.id)
 }
 
 function getChainEntry(chainId: number): ChainEntry | undefined {
@@ -86,7 +86,8 @@ function getTokenAddress(tokenSymbol: TokenSymbol, chainId: number): Address {
 }
 
 function isChainIdSupported(chainId: number): chainId is SupportedChain {
-  return Object.keys(chains).includes(chainId.toString())
+  const chainIds = chains.map(chain => chain.id) as number[]
+  return chainIds.includes(chainId)
 }
 
 function getChainById(chainId: number): Chain {
