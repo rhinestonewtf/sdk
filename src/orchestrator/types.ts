@@ -126,7 +126,7 @@ interface IntentInput {
     amount?: bigint
   }[]
   accountAccessList?: AccountAccessList
-  options?: IntentOptions
+  options: IntentOptions
 }
 
 type SettlementSystem = 'SAME_CHAIN' | 'ACROSS'

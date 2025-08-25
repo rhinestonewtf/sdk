@@ -110,7 +110,6 @@ export class Orchestrator {
             data: '0x',
           },
         ],
-        delegations: {},
       },
       destinationExecutions: [],
       destinationChainId,
@@ -120,6 +119,9 @@ export class Orchestrator {
           tokenAddress: destinationTokenAddress,
         },
       ],
+      options: {
+        topupCompact: false,
+      },
     })
     if (!intentCost.hasFulfilledAll) {
       return 0n
