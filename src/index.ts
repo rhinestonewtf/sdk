@@ -470,6 +470,8 @@ export {
 }
 // MultiChainClaimPolicy helpers
 export { encodeMultiChainClaimPolicy, createMultiChainClaimErc1271Policy }
+export { encodeSmartSessionEmissaryData } from './actions/index'
+export { SMART_SESSION_EMISSARY_ADDRESS as SMART_SESSION_EMISSARY } from './modules/constants'
 export type {
   RhinestoneAccount,
   Session,

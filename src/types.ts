@@ -131,6 +131,13 @@ type Policy =
   | TimeFramePolicy
   | UsageLimitPolicy
   | ValueLimitPolicy
+  // Internal extension for emissary integration
+  | {
+      type: 'multi-chain-claim'
+      mode?: number
+      policyAddress?: Address
+      // Optional richer config for tokenIn/out/qualification handled by encoder
+    }
 
 interface Action {
   target: Address

@@ -3,6 +3,7 @@ import {
   type Chain,
   createPublicClient,
   encodeFunctionData,
+  encodePacked,
   type Hex,
   padHex,
   toHex,
@@ -711,6 +712,21 @@ function removeSubValidator(
   }
 }
 
+const EMISSARY_SMART_SESSION = '0x03'
+
+function encodeSmartSessionEmissaryData(
+  permissionId: Hex,
+  sessionValidatorSignature: Hex,
+  policyData: Hex = '0x',
+): Hex {
+  const sigLen = BigInt((sessionValidatorSignature.length - 2) / 2)
+  const offsetToPolicy = 64n + sigLen
+  return encodePacked(
+    ['bytes1', 'bytes32', 'uint256', 'bytes', 'bytes'],
+    [EMISSARY_SMART_SESSION, permissionId, offsetToPolicy, sessionValidatorSignature, policyData],
+  )
+}
+
 export {
   enableEcdsa,
   enablePasskeys,
@@ -732,4 +748,5 @@ export {
   changeMultiFactorThreshold,
   setSubValidator,
   removeSubValidator,
+  encodeSmartSessionEmissaryData,
 }

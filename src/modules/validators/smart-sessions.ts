@@ -31,6 +31,7 @@ import type {
 } from '../../types'
 import type { MultiChainClaimPolicyConfig } from '../policies/multi-chain-claim'
 import { encodeMultiChainClaimPolicy } from '../policies/multi-chain-claim'
+import { MULTI_CHAIN_CLAIM_POLICY_ADDRESS } from '../constants'
 import { enableSessionsAbi } from '../abi/smart-sessions'
 import { MODULE_TYPE_ID_VALIDATOR, type Module } from '../common'
 import { HOOK_ADDRESS } from '../omni-account'
@@ -504,16 +505,19 @@ function getPolicyData(policy: Policy): PolicyData {
         initData: encodeAbiParameters([{ type: 'uint256' }], [policy.limit]),
       }
     }
-    // @ts-expect-error internal extension: MultiChain claim policy is not in the exported Policy union yet
     case 'multi-chain-claim': {
       const mcPolicy = policy as unknown as {
         type: 'multi-chain-claim'
-        policyAddress: Address
-        config: MultiChainClaimPolicyConfig
+        policyAddress?: Address
+        mode?: number
+        config?: MultiChainClaimPolicyConfig
       }
       return {
-        policy: mcPolicy.policyAddress,
-        initData: encodeMultiChainClaimPolicy(mcPolicy.config),
+        policy: mcPolicy.policyAddress ?? MULTI_CHAIN_CLAIM_POLICY_ADDRESS,
+        initData: mcPolicy.config
+          ? encodeMultiChainClaimPolicy(mcPolicy.config)
+          : // fallback: simple bitmap-only encoding if mode provided
+            encodePacked(['uint8'], [mcPolicy.mode ?? 0]),
       }
     }
   }
