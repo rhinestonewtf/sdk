@@ -86,7 +86,7 @@ function getTokenAddress(tokenSymbol: TokenSymbol, chainId: number): Address {
 }
 
 function isChainIdSupported(chainId: number): chainId is SupportedChain {
-  const chainIds = chains.map(chain => chain.id) as number[]
+  const chainIds = chains.map((chain) => chain.id) as number[]
   return chainIds.includes(chainId)
 }
 
