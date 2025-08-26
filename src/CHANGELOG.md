@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.0-alpha.20
+
+### Patch Changes
+
+- 9e034b8: Take sponsorship into account in `getMaxSpendableAmount`
+
 ## 1.0.0-alpha.19
 
 ### Patch Changes
