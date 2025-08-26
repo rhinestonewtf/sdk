@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.0-alpha.21
+
+### Minor Changes
+
+- 6602670: Add Sonic support
+
 ## 1.0.0-alpha.20
 
 ### Patch Changes
