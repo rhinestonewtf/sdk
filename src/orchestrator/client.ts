@@ -99,6 +99,7 @@ export class Orchestrator {
     destinationChainId: number,
     destinationTokenAddress: Address,
     destinationGasUnits: bigint,
+    sponsored: boolean,
   ): Promise<bigint> {
     const intentCost = await this.getIntentCost({
       account: {
@@ -121,6 +122,11 @@ export class Orchestrator {
       ],
       options: {
         topupCompact: false,
+        sponsorSettings: {
+          gasSponsored: sponsored,
+          bridgeFeesSponsored: sponsored,
+          swapFeesSponsored: sponsored,
+        },
       },
     })
     if (!intentCost.hasFulfilledAll) {
@@ -140,7 +146,11 @@ export class Orchestrator {
         `Balance not available. Make sure the account is deployed`,
       )
     }
-    return tokenReceived.destinationAmount
+    // `sponsorSettings` is not taken into account in the API response for now
+    // As a workaround, we use the `amountSpent` if the transaction is sponsored
+    return sponsored
+      ? tokenReceived.amountSpent
+      : tokenReceived.destinationAmount
   }
 
   async getIntentCost(input: IntentInput): Promise<IntentCost> {
@@ -148,12 +158,7 @@ export class Orchestrator {
       const response = await axios.post(
         `${this.serverUrl}/intents/cost`,
         {
-          ...convertBigIntFields({
-            ...input,
-            tokenTransfers: input.tokenTransfers.map((transfer) => ({
-              tokenAddress: transfer.tokenAddress,
-            })),
-          }),
+          ...convertBigIntFields(input),
         },
         {
           headers: {

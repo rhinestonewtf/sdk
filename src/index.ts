@@ -157,6 +157,7 @@ interface RhinestoneAccount {
     chain: Chain,
     tokenAddress: Address,
     gasUnits: bigint,
+    sponsored?: boolean,
   ) => Promise<bigint>
   getSessionDetails: (
     sessions: Session[],
@@ -350,8 +351,15 @@ async function createRhinestoneAccount(
     chain: Chain,
     tokenAddress: Address,
     gasUnits: bigint,
+    sponsored: boolean = false,
   ) {
-    return getMaxSpendableAmountInternal(config, chain, tokenAddress, gasUnits)
+    return getMaxSpendableAmountInternal(
+      config,
+      chain,
+      tokenAddress,
+      gasUnits,
+      sponsored,
+    )
   }
 
   /**
