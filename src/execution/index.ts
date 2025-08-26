@@ -258,6 +258,7 @@ async function getMaxSpendableAmount(
   chain: Chain,
   tokenAddress: Address,
   gasUnits: bigint,
+  sponsored: boolean = false,
 ): Promise<bigint> {
   const address = getAddress(config)
   const orchestrator = getOrchestratorByChain(
@@ -270,6 +271,7 @@ async function getMaxSpendableAmount(
     chain.id,
     tokenAddress,
     gasUnits,
+    sponsored,
   )
 }
 
