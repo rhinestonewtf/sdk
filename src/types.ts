@@ -163,9 +163,9 @@ interface RhinestoneAccountConfig {
   paymaster?: PaymasterConfig
   /**
    * @internal
-   * For internal testing only - do not use
+   * Optional orchestrator URL override for internal testing - do not use
    */
-  useDev?: boolean
+  orchestratorUrl?: string
 }
 
 type TokenSymbol = 'ETH' | 'WETH' | 'USDC' | 'USDT'
