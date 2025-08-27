@@ -26,6 +26,7 @@ import {
 } from './common'
 import {
   HOOK_ADDRESS,
+  INTENT_EXECUTOR_ADDRESS,
   OMNI_ACCOUNT_MOCK_ATTESTER_ADDRESS,
   RHINESTONE_ATTESTER_ADDRESS,
   RHINESTONE_MODULE_REGISTRY_ADDRESS,
@@ -100,6 +101,14 @@ function getSetup(config: RhinestoneAccountConfig): ModeleSetup {
     },
     {
       address: HOOK_ADDRESS,
+      initData: '0x',
+      deInitData: '0x',
+      additionalContext: '0x',
+      type: MODULE_TYPE_ID_EXECUTOR,
+    },
+    // For V1 compatibility
+    {
+      address: INTENT_EXECUTOR_ADDRESS,
       initData: '0x',
       deInitData: '0x',
       additionalContext: '0x',
