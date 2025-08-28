@@ -54,6 +54,11 @@ async function getSessionDetails(
   signature?: Hex,
 ): Promise<SessionDetails> {
   const account = getAccountProvider(config)
+  if (account.type === 'custom') {
+    throw new Error(
+      'Custom account does not support cross-chain smart sessions',
+    )
+  }
   const accountAddress = getAddress(config)
   const sessionDetails = await getEnableSessionDetails(
     account.type,

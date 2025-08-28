@@ -18,13 +18,13 @@ import {
   getWebauthnValidatorSignature,
   isRip7212SupportedNetwork,
 } from '../modules'
-import { Module } from '../modules/common'
+import type { Module } from '../modules/common'
 import {
   getOwnerValidator,
   getSmartSessionValidator,
 } from '../modules/validators'
 import { getSocialRecoveryValidator } from '../modules/validators/core'
-import { EnableSessionData } from '../modules/validators/smart-sessions'
+import type { EnableSessionData } from '../modules/validators/smart-sessions'
 import type {
   AccountProviderConfig,
   Call,
@@ -32,6 +32,15 @@ import type {
   RhinestoneAccountConfig,
   Session,
 } from '../types'
+import {
+  get7702InitCalls as getCustom7702InitCalls,
+  getAddress as getCustomAddress,
+  getDeployArgs as getCustomDeployArgs,
+  getInstallData as getCustomInstallData,
+  getPackedSignature as getCustomPackedSignature,
+  getSessionSmartAccount as getCustomSessionSmartAccount,
+  getSmartAccount as getCustomSmartAccount,
+} from './custom'
 import {
   AccountError,
   Eip7702AccountMustHaveEoaError,
@@ -76,7 +85,7 @@ import {
   getSessionSmartAccount as getSafeSessionSmartAccount,
   getSmartAccount as getSafeSmartAccount,
 } from './safe'
-import { getBundlerClient, ValidatorConfig } from './utils'
+import { getBundlerClient, type ValidatorConfig } from './utils'
 
 function getDeployArgs(config: RhinestoneAccountConfig) {
   const account = getAccountProvider(config)
@@ -89,6 +98,9 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
     }
     case 'kernel': {
       return getKernelDeployArgs(config)
+    }
+    case 'custom': {
+      return getCustomDeployArgs(config)
     }
   }
 }
@@ -110,6 +122,9 @@ function getModuleInstallationCalls(
       }
       case 'kernel': {
         return getKernelInstallData(module)
+      }
+      case 'custom': {
+        return getCustomInstallData(config, module)
       }
     }
   }
@@ -173,6 +188,9 @@ function getAddress(config: RhinestoneAccountConfig) {
     case 'kernel': {
       return getKernelAddress(config)
     }
+    case 'custom': {
+      return getCustomAddress(config)
+    }
   }
 }
 
@@ -206,6 +224,15 @@ async function getPackedSignature(
         hash,
         validator,
         address,
+        transformSignature,
+      )
+    }
+    case 'custom': {
+      return getCustomPackedSignature(
+        config,
+        signFn,
+        hash,
+        validator,
         transformSignature,
       )
     }
@@ -447,6 +474,15 @@ async function getSmartAccount(
         signFn,
       )
     }
+    case 'custom': {
+      return getCustomSmartAccount(
+        config,
+        client,
+        address,
+        ownerValidator.address,
+        signFn,
+      )
+    }
   }
 }
 
@@ -496,6 +532,16 @@ async function getSmartSessionSmartAccount(
         signFn,
       )
     }
+    case 'custom': {
+      return getCustomSessionSmartAccount(
+        config,
+        client,
+        address,
+        session,
+        smartSessionValidator.address,
+        enableData,
+      )
+    }
   }
 }
 
@@ -541,6 +587,9 @@ async function getGuardianSmartAccount(
         socialRecoveryValidator.address,
         signFn,
       )
+    }
+    case 'custom': {
+      throw new Error('Custom account does not support guardians')
     }
   }
 }
@@ -610,6 +659,9 @@ async function get7702InitCalls(config: RhinestoneAccountConfig) {
     }
     case 'kernel': {
       return get7702KernelInitCalls()
+    }
+    case 'custom': {
+      return getCustom7702InitCalls(config)
     }
   }
 }
