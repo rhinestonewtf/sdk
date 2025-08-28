@@ -60,6 +60,7 @@ import {
   isTestnet,
   resolveTokenAddress,
 } from '../orchestrator/registry'
+import type { SettlementLayer } from '../orchestrator/types'
 import type {
   Call,
   CallInput,
@@ -119,6 +120,7 @@ async function prepareTransaction(
     signers,
     sponsored,
     eip7702InitSignature,
+    settlementLayers,
   } = getTransactionParams(transaction)
   const accountAddress = getAddress(config)
 
@@ -148,6 +150,7 @@ async function prepareTransaction(
       accountAddress,
       sponsored ?? false,
       eip7702InitSignature,
+      settlementLayers,
     )
   }
 
@@ -367,6 +370,7 @@ function getTransactionParams(transaction: Transaction) {
   const eip7702InitSignature = transaction.eip7702InitSignature
   const sponsored = transaction.sponsored
   const gasLimit = transaction.gasLimit
+  const settlementLayers = transaction.settlementLayers
 
   // Across requires passing some value to repay the solvers
   const tokenRequests =
@@ -387,6 +391,7 @@ function getTransactionParams(transaction: Transaction) {
     sponsored,
     eip7702InitSignature,
     gasLimit,
+    settlementLayers,
   }
 }
 
@@ -439,6 +444,7 @@ async function prepareTransactionAsIntent(
   accountAddress: Address,
   isSponsored: boolean,
   eip7702InitSignature?: Hex,
+  settlementLayers?: SettlementLayer[],
 ) {
   const calls = parseCalls(callInputs, targetChain.id)
   const accountAccessList =
@@ -476,6 +482,7 @@ async function prepareTransactionAsIntent(
         bridgeFeesSponsored: isSponsored,
         swapFeesSponsored: isSponsored,
       },
+      settlementLayers,
     },
   }
 
