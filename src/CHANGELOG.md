@@ -1,5 +1,12 @@
 # @rhinestone/sdk
 
+## 0.13.0
+
+### Minor Changes
+
+- 2267d56: Install intent executor module.
+- 4976e8e: Custom accounts
+
 ## 0.12.8
 
 ### Patch Changes
