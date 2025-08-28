@@ -58,28 +58,26 @@ import {
   getValidators as getValidatorsInternal,
 } from './modules'
 import {
+  AuthenticationRequiredError,
   BundleResult,
   BundleStatus,
-  MetaIntent,
-  MultiChainCompact,
-  PostOrderBundleResult,
-  SignedMultiChainCompact,
-  UserTokenBalance,
-} from './orchestrator'
-import {
-  AuthenticationRequiredError,
   InsufficientBalanceError,
   InvalidApiKeyError,
   InvalidBundleSignatureError,
   isOrchestratorError,
+  MetaIntent,
+  MultiChainCompact,
   NoPathFoundError,
   OnlyOneTargetTokenAmountCanBeUnsetError,
   OrchestratorError,
   OrderBundleNotFoundError,
+  PostOrderBundleResult,
+  SignedMultiChainCompact,
   TokenNotSupportedError,
   UnsupportedChainError,
   UnsupportedChainIdError,
   UnsupportedTokenError,
+  UserTokenBalance,
 } from './orchestrator'
 import type {
   Call,
@@ -225,6 +223,9 @@ async function createRhinestoneAccount(
 
   function getValidators(chain: Chain) {
     const accountType = config.account?.type || 'nexus'
+    if (accountType === 'custom') {
+      throw new Error('Validator fetching is not supported for custom accounts')
+    }
     const account = getAddress()
     return getValidatorsInternal(accountType, account, chain)
   }
