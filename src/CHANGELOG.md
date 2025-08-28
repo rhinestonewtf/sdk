@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.0-alpha.23
+
+### Patch Changes
+
+- 6107c7e: allow for settlement layer selection
+
 ## 1.0.0-alpha.22
 
 ### Patch Changes
