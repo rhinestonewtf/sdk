@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.0-alpha.22
+
+### Patch Changes
+
+- 436daea: Add optional orchestratorUrl parameter for internal testing
+
 ## 1.0.0-alpha.21
 
 ### Minor Changes
