@@ -70,7 +70,7 @@ interface Execution {
   data: Hex
 }
 
-export type SettlementLayer = 'SAME_CHAIN' | 'ACROSS' | 'ECO'
+export type SettlementLayer = 'SAME_CHAIN' | 'ACROSS' | 'ECO' | 'RELAY'
 
 interface IntentOptions {
   topupCompact: boolean
@@ -129,7 +129,7 @@ interface IntentInput {
   options: IntentOptions
 }
 
-type SettlementSystem = 'SAME_CHAIN' | 'ACROSS'
+type SettlementSystem = 'SAME_CHAIN' | 'ACROSS' | 'RELAY'
 
 interface IntentCost {
   hasFulfilledAll: boolean
