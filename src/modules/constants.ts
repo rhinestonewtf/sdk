@@ -1,0 +1,19 @@
+import type { Address } from 'viem'
+
+const SMART_SESSION_EMISSARY_ADDRESS: Address =
+  '0xBCb2a252593F5e6e15a6715475fc6E3096AD72Ac'
+const MULTI_CHAIN_CLAIM_POLICY_ADDRESS: Address =
+  '0x1cE11C94456574403306b85202D7357EdeD7fB09'
+
+const MultiChainClaimPolicyMode = {
+  SUDO: 0,
+  CHECK_HAS_EXECUTIONS: 1,
+  CHECK_TOKEN_IN: 8,
+  CHECK_TOKEN_OUT: 16,
+} as const
+
+export {
+  SMART_SESSION_EMISSARY_ADDRESS,
+  MULTI_CHAIN_CLAIM_POLICY_ADDRESS,
+  MultiChainClaimPolicyMode,
+}

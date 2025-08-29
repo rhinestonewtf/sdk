@@ -83,6 +83,40 @@ function getDepositErc20Call(
   }
 }
 
+function getDepositErc20CallWithLockTag(
+  account: Address,
+  tokenAddress: Address,
+  amount: bigint,
+  tag: Hex,
+): Call {
+  return {
+    to: COMPACT_ADDRESS,
+    value: 0n,
+    data: encodeFunctionData({
+      abi: [
+        {
+          type: 'function',
+          name: 'depositERC20',
+          inputs: [
+            {
+              name: 'token',
+              type: 'address',
+              internalType: 'address',
+            },
+            { name: 'lockTag', type: 'bytes12', internalType: 'bytes12' },
+            { name: 'amount', type: 'uint256', internalType: 'uint256' },
+            { name: 'recipient', type: 'address', internalType: 'address' },
+          ],
+          outputs: [{ name: 'id', type: 'uint256', internalType: 'uint256' }],
+          stateMutability: 'nonpayable',
+        },
+      ],
+      functionName: 'depositERC20',
+      args: [tokenAddress, tag, amount, account],
+    }),
+  }
+}
+
 function getApproveErc20Call(tokenAddress: Address, amount: bigint): Call {
   return {
     to: tokenAddress,
@@ -119,14 +153,55 @@ function usingAllocatorId(allocator: Address = ALLOCATOR_ADDRESS): bigint {
   return (compactFlag << 88n) | last88Bits
 }
 
-function lockTag(): Hex {
-  const allocatorId = usingAllocatorId(ALLOCATOR_ADDRESS)
+function computeLockTag(
+  allocator: Address,
+  scope: Scope,
+  resetPeriod: ResetPeriod,
+): Hex {
+  const allocatorId = usingAllocatorId(allocator)
   const tagBig =
-    (BigInt(DEFAULT_SCOPE) << 255n) |
-    (BigInt(DEFAULT_RESET_PERIOD) << 252n) |
-    (allocatorId << 160n)
-  const hex = tagBig.toString(16).slice(0, 24)
-  return `0x${hex}` as const
+    (BigInt(scope) << 255n) | (BigInt(resetPeriod) << 252n) | (allocatorId << 160n)
+  // Build full 32-byte value, then take the first 12 bytes (big-endian)
+  const hex32 = toHex(tagBig, { size: 32 })
+  return (`0x${hex32.slice(2, 2 + 24)}`) as Hex
+}
+
+function computeLockTagFromAllocatorId(
+  allocatorId: bigint,
+  scope: Scope,
+  resetPeriod: ResetPeriod,
+): Hex {
+  const tagBig =
+    (BigInt(scope) << 255n) | (BigInt(resetPeriod) << 252n) | (allocatorId << 160n)
+  const hex32 = toHex(tagBig, { size: 32 })
+  return (`0x${hex32.slice(2, 2 + 24)}`) as Hex
+}
+
+function lockTag(): Hex {
+  return computeLockTag(ALLOCATOR_ADDRESS, DEFAULT_SCOPE, DEFAULT_RESET_PERIOD)
+}
+
+function getAssignEmissaryCall(lockTag: Hex, emissary: Address): Call {
+  return {
+    to: COMPACT_ADDRESS,
+    value: 0n,
+    data: encodeFunctionData({
+      abi: [
+        {
+          type: 'function',
+          name: 'assignEmissary',
+          inputs: [
+            { name: 'lockTag', type: 'bytes12', internalType: 'bytes12' },
+            { name: 'emissary', type: 'address', internalType: 'address' },
+          ],
+          outputs: [],
+          stateMutability: 'nonpayable',
+        },
+      ],
+      functionName: 'assignEmissary',
+      args: [lockTag, emissary],
+    }),
+  }
 }
 
 // Define the typed data structure as const to preserve type safety
@@ -224,8 +299,13 @@ function getIntentData(intentOp: IntentOp) {
 
 export {
   COMPACT_ADDRESS,
+  ALLOCATOR_ADDRESS,
   getDepositEtherCall,
   getDepositErc20Call,
+  getDepositErc20CallWithLockTag,
   getApproveErc20Call,
+  computeLockTag,
+  computeLockTagFromAllocatorId,
+  getAssignEmissaryCall,
   getIntentData,
 }

@@ -27,7 +27,11 @@ import type {
   RhinestoneAccountConfig,
   Session,
   UniversalActionPolicyParamCondition,
+  Erc1271PolicyEntry,
 } from '../../types'
+import type { MultiChainClaimPolicyConfig } from '../policies/multi-chain-claim'
+import { encodeMultiChainClaimPolicy } from '../policies/multi-chain-claim'
+import { MULTI_CHAIN_CLAIM_POLICY_ADDRESS } from '../constants'
 import { enableSessionsAbi } from '../abi/smart-sessions'
 import { MODULE_TYPE_ID_VALIDATOR, type Module } from '../common'
 import { HOOK_ADDRESS } from '../omni-account'
@@ -146,6 +150,9 @@ interface EnableSessionData {
 
 const SMART_SESSIONS_VALIDATOR_ADDRESS: Address =
   '0x00000000002b0ecfbd0496ee71e01257da0e37de'
+// Deployed SmartSessionEmissary (Base)
+const SMART_SESSION_EMISSARY_ADDRESS: Address =
+  '0xBCb2a252593F5e6e15a6715475fc6E3096AD72Ac'
 
 const SMART_SESSION_MODE_USE = '0x00'
 const SMART_SESSION_MODE_ENABLE = '0x01'
@@ -312,7 +319,10 @@ function getSmartSessionData(
       .concat(omniActions),
     erc7739Policies: {
       allowedERC7739Content,
-      erc1271Policies: [getPolicyData({ type: 'sudo' })],
+      erc1271Policies:
+        (session.erc1271Policies as readonly Erc1271PolicyEntry[] | undefined)?.map(
+          (p) => ({ policy: p.policy, initData: p.initData }),
+        ) ?? [getPolicyData({ type: 'sudo' })],
     },
     permitERC4337Paymaster: true,
   } as SessionData
@@ -493,6 +503,21 @@ function getPolicyData(policy: Policy): PolicyData {
       return {
         policy: VALUE_LIMIT_POLICY_ADDRESS,
         initData: encodeAbiParameters([{ type: 'uint256' }], [policy.limit]),
+      }
+    }
+    case 'multi-chain-claim': {
+      const mcPolicy = policy as unknown as {
+        type: 'multi-chain-claim'
+        policyAddress?: Address
+        mode?: number
+        config?: MultiChainClaimPolicyConfig
+      }
+      return {
+        policy: mcPolicy.policyAddress ?? MULTI_CHAIN_CLAIM_POLICY_ADDRESS,
+        initData: mcPolicy.config
+          ? encodeMultiChainClaimPolicy(mcPolicy.config)
+          : // fallback: simple bitmap-only encoding if mode provided
+            encodePacked(['uint8'], [mcPolicy.mode ?? 0]),
       }
     }
   }
@@ -767,6 +792,7 @@ export {
   SMART_SESSION_MODE_USE,
   SMART_SESSION_MODE_ENABLE,
   SMART_SESSIONS_VALIDATOR_ADDRESS,
+  SMART_SESSION_EMISSARY_ADDRESS,
   getSessionData,
   getSmartSessionValidator,
   getEnableSessionCall,

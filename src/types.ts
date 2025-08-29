@@ -132,11 +132,24 @@ type Policy =
   | TimeFramePolicy
   | UsageLimitPolicy
   | ValueLimitPolicy
+  // Internal extension for emissary integration
+  | {
+      type: 'multi-chain-claim'
+      mode?: number
+      policyAddress?: Address
+      // Optional richer config for tokenIn/out/qualification handled by encoder
+    }
 
 interface Action {
   target: Address
   selector: Hex
   policies?: [Policy, ...Policy[]]
+}
+
+// ERC1271 policy entry to be enforced during claim verification (e.g., MultiChainClaimPolicy)
+interface Erc1271PolicyEntry {
+  policy: Address
+  initData: Hex
 }
 
 interface Session {
@@ -145,6 +158,8 @@ interface Session {
   actions?: [Action, ...Action[]]
   salt?: Hex
   chain?: Chain
+  // Optional ERC1271 policies applied to 7739 content validation (e.g., multi-chain-claim)
+  erc1271Policies?: readonly Erc1271PolicyEntry[]
 }
 
 interface Recovery {
@@ -268,6 +283,7 @@ export type {
   MultiFactorValidatorConfig,
   SignerSet,
   Session,
+  Erc1271PolicyEntry,
   Recovery,
   Policy,
   UniversalActionPolicyParamCondition,
