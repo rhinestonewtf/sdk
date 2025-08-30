@@ -17,6 +17,7 @@ import {
   polygon,
   polygonAmoy,
   sepolia,
+  sonic,
   zksync,
 } from 'viem/chains'
 
@@ -410,6 +411,7 @@ function getChainById(chainId: number) {
     polygon,
     polygonAmoy,
     zksync,
+    sonic,
   ]
   for (const chain of supportedChains) {
     if (chain.id === chainId) {

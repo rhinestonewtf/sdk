@@ -14,6 +14,7 @@ import {
 } from 'viem/account-abstraction'
 import { readContract } from 'viem/actions'
 import { getAction } from 'viem/utils'
+import { createTransport } from './json-rpc'
 
 import type {
   BundlerConfig,
@@ -294,5 +295,5 @@ async function getGasPriceEstimate(bundlerUrl: string) {
   }
 }
 
-export { encode7579Calls, getAccountNonce, getBundlerClient }
+export { encode7579Calls, getAccountNonce, getBundlerClient, createTransport }
 export type { ValidatorConfig }
