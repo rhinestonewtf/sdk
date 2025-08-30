@@ -8,7 +8,7 @@ import {
 import { mainnet, sepolia } from 'viem/chains'
 
 import { deploySource, deployTarget, getAddress, isDeployed } from '../accounts'
-import { getBundlerClient } from '../accounts/utils'
+import { createTransport, getBundlerClient } from '../accounts/utils'
 import type { BundleResult } from '../orchestrator'
 import {
   BUNDLE_STATUS_COMPLETED,
@@ -155,7 +155,7 @@ async function sendTransactionAsUserOp(
 
   const publicClient = createPublicClient({
     chain: sourceChain,
-    transport: http(),
+    transport: createTransport(sourceChain, config.provider),
   })
   const validatorAccount = await getValidatorAccount(
     config,
@@ -298,7 +298,7 @@ async function waitForExecution(
       const targetChain = getChainById(result.targetChain)
       const publicClient = createPublicClient({
         chain: targetChain,
-        transport: http(),
+        transport: createTransport(targetChain!, config.provider),
       })
       const bundlerClient = getBundlerClient(config, publicClient)
       const receipt = await bundlerClient.waitForUserOperationReceipt({

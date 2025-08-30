@@ -12,6 +12,7 @@ import type {
   polygonAmoy,
   sepolia,
   zksync,
+  sonic
 } from 'viem/chains'
 
 type SupportedTestnet =
@@ -27,6 +28,7 @@ type SupportedMainnet =
   | typeof optimism.id
   | typeof polygon.id
   | typeof zksync.id
+  | typeof sonic.id
 type SupportedOPStackMainnet = typeof optimism.id | typeof base.id
 type SupportedOPStackTestnet = typeof optimismSepolia.id | typeof baseSepolia.id
 type SupportedChain = SupportedMainnet | SupportedTestnet

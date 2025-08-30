@@ -222,6 +222,11 @@ interface CrossChainTransaction extends BaseTransaction {
 
 type Transaction = SameChainTransaction | CrossChainTransaction
 
+interface ProviderConfig {
+  type: 'alchemy'
+  apiKey: string
+}
+
 export type {
   AccountType,
   RhinestoneAccountConfig,
@@ -240,4 +245,5 @@ export type {
   Recovery,
   Policy,
   UniversalActionPolicyParamCondition,
+  ProviderConfig,
 }
