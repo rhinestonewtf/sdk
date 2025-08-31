@@ -11,8 +11,8 @@ import type {
   polygon,
   polygonAmoy,
   sepolia,
+  sonic,
   zksync,
-  sonic
 } from 'viem/chains'
 
 type SupportedTestnet =

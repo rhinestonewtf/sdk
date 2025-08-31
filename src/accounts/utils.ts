@@ -14,13 +14,13 @@ import {
 } from 'viem/account-abstraction'
 import { readContract } from 'viem/actions'
 import { getAction } from 'viem/utils'
-import { createTransport } from './json-rpc'
-
 import type {
   BundlerConfig,
   PaymasterConfig,
   RhinestoneAccountConfig,
 } from '../types'
+import { createTransport } from './json-rpc'
+
 
 type CallType = 'call' | 'delegatecall' | 'batchcall'
 

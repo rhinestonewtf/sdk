@@ -1,7 +1,7 @@
 import { type Chain, http, type Transport } from 'viem'
 import type { SupportedChain } from '../../orchestrator/types'
 import type { ProviderConfig } from '../../types'
-import { getAlchemyUrl } from './providers';
+import { getAlchemyUrl } from './providers'
 
 function createTransport(chain: Chain, provider?: ProviderConfig): Transport {
   if (!provider) {
