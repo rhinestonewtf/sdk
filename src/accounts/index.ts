@@ -457,6 +457,29 @@ async function setup(
   return true
 }
 
+async function deployWithIntent(chain: Chain, config: RhinestoneAccountConfig) {
+  const publicClient = createPublicClient({
+    chain,
+    transport: createTransport(chain, config.provider),
+  })
+  const address = getAddress(config)
+  const code = await publicClient.getCode({ address })
+  if (code) {
+    // Already deployed
+    return
+  }
+  const result = await sendTransaction(config, {
+    targetChain: chain,
+    calls: [
+      {
+        to: zeroAddress,
+        data: '0x',
+      },
+    ],
+  })
+  await waitForExecution(config, result, true)
+}
+
 async function deployWithBundler(
   chain: Chain,
   config: RhinestoneAccountConfig,
@@ -483,29 +506,6 @@ async function deployWithBundler(
   await bundlerClient.waitForUserOperationReceipt({
     hash: opHash,
   })
-}
-
-async function deployWithIntent(chain: Chain, config: RhinestoneAccountConfig) {
-  const publicClient = createPublicClient({
-    chain,
-    transport: createTransport(chain, config.provider),
-  })
-  const address = getAddress(config)
-  const code = await publicClient.getCode({ address })
-  if (code) {
-    // Already deployed
-    return
-  }
-  const result = await sendTransaction(config, {
-    targetChain: chain,
-    calls: [
-      {
-        to: zeroAddress,
-        data: '0x',
-      },
-    ],
-  })
-  await waitForExecution(config, result, true)
 }
 
 async function toErc6492Signature(
