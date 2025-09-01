@@ -21,7 +21,6 @@ import type {
 } from '../types'
 import { createTransport } from './json-rpc'
 
-
 type CallType = 'call' | 'delegatecall' | 'batchcall'
 
 interface ValidatorConfig {

@@ -1,7 +1,7 @@
 import { SupportedChain } from '../../orchestrator/types'
 
-const url_template = 'https://{{chain_param}}.g.alchemy.com/v2/${ALCHEMY_API_KEY}';
-const chain_mapping: Record<SupportedChain, string> = {
+function getAlchemyUrl(chainId: SupportedChain, apiKey: string): string {
+  const chainMapping: Record<SupportedChain, string> = {
     1: 'eth-mainnet',
     10: 'opt-mainnet',
     137: 'polygon-mainnet',
@@ -14,17 +14,14 @@ const chain_mapping: Record<SupportedChain, string> = {
     42161: 'arb-mainnet',
     146: 'sonic-mainnet',
     80002: 'polygon-amoy',
-}
+  }
 
-function getAlchemyUrl(chainId: SupportedChain, apiKey: string): string {
-  const urlTemplate = url_template
-  const chainParam = chain_mapping[chainId]
+  const chainParam = chainMapping[chainId]
   if (!chainParam) {
     throw new Error(`Unsupported chain: ${chainId}`)
   }
+  const urlTemplate = `https://${chainParam}.g.alchemy.com/v2/${apiKey}`
   return urlTemplate
-    .replace('{{chain_param}}', chainParam)
-    .replace('\$\{ALCHEMY_API_KEY\}', apiKey)
 }
 
 export { getAlchemyUrl }
