@@ -563,7 +563,7 @@ async function getIntentSignature(
 }
 
 function supportsEip712(validator: Module) {
-  switch (validator.address) {
+  switch (validator.address.toLowerCase()) {
     case '0x0000000000e9e6e96bcaa3c113187cdb7e38aed9': // Ownable Validator V1-beta
     case '0x2483da3a338895199e5e538530213157e931bf06': // Ownable Validator V0
       return false
