@@ -27,7 +27,7 @@ const MOCK_OWNER_B = '0xeddfcb50d18f6d3d51c4f7cbca5ed6bdebc59817'
 const MOCK_OWNER_C = '0xb31e76f19defe76edc4b7eceeb4b0a2d6ddaca39'
 const MOCK_ACCOUNT_ADDRESS = '0x1234567890123456789012345678901234567890'
 
-const accountAddress = '0x36c03e7d593f7b2c6b06fc18b5f4e9a4a29c99b0'
+const accountAddress = '0x36C03e7D593F7B2C6b06fC18B5f4E9a4A29C99b0'
 
 // Mock viem
 vi.mock('viem', async (importOriginal) => {

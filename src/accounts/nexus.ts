@@ -5,10 +5,10 @@ import {
   encodeAbiParameters,
   encodeFunctionData,
   encodePacked,
+  getContractAddress,
   keccak256,
   parseAbi,
   size,
-  slice,
   toHex,
   zeroAddress,
 } from 'viem'
@@ -222,15 +222,12 @@ function getAddress(config: RhinestoneAccountConfig) {
           [implementation, initializationCallData],
         )
       : '0x'
-  const hashedInitcode: Hex = keccak256(concat([creationCode, accountInitData]))
-
-  const hash = keccak256(
-    encodePacked(
-      ['bytes1', 'address', 'bytes32', 'bytes'],
-      ['0xff', factory, salt, hashedInitcode],
-    ),
-  )
-  const address = slice(hash, 12, 32)
+  const address = getContractAddress({
+    opcode: 'CREATE2',
+    from: factory,
+    salt,
+    bytecode: concat([creationCode, accountInitData]),
+  })
   return address
 }
 

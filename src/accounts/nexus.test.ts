@@ -111,7 +111,7 @@ describe('Accounts: Nexus', () => {
         },
         rhinestoneApiKey: MOCK_API_KEY,
       })
-      expect(address).toEqual('0x0681de31e060b384f0b08a3bac99e9bdff302474')
+      expect(address).toEqual('0x0681de31e060b384F0b08A3bAC99E9bDFf302474')
     })
 
     test('Passkey owner', () => {
@@ -123,7 +123,7 @@ describe('Accounts: Nexus', () => {
         rhinestoneApiKey: MOCK_API_KEY,
       })
 
-      expect(address).toEqual('0x894b88c04b4de6abddce81e8bdc91927e37d6ced')
+      expect(address).toEqual('0x894b88C04B4DE6AbDdcE81E8bdc91927E37d6ceD')
     })
 
     test('Existing account', () => {
@@ -142,7 +142,7 @@ describe('Accounts: Nexus', () => {
         },
       })
 
-      expect(address).toEqual('0xbecba00993a919ffd35064a777e94643014a19aa')
+      expect(address).toEqual('0xBecba00993a919FfD35064a777E94643014A19Aa')
     })
   })
 
