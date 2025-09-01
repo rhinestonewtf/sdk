@@ -200,7 +200,7 @@ async function createRhinestoneAccount(
   /**
    * Sets up the existing account on a given chain
    * by installing the missing modules (if any).
-   * @param chain Chain to deploy the account on
+   * @param chain Chain to set up the account on
    */
   function setup(chain: Chain) {
     return setupInternal(config, chain)
