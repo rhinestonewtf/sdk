@@ -1,5 +1,12 @@
 # @rhinestone/sdk
 
+## 0.13.1
+
+### Patch Changes
+
+- 6e190c9: - Custom JSON-RPC providers (Alchemy)
+  - Sonic support
+
 ## 0.13.0
 
 ### Minor Changes
