@@ -97,7 +97,7 @@ describe('Modules', () => {
 
       const smartSessionFallback = setup.fallbacks.find(
         (fallback) =>
-          fallback.address === '0x12cae64c42f362e7d5a847c2d33388373f629177',
+          fallback.address === '0x000000000052e9685932845660777DF43C2dC496',
       )
       expect(smartSessionFallback).toBeDefined()
       if (!smartSessionFallback) {

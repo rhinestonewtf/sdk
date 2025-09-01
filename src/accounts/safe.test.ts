@@ -86,7 +86,7 @@ describe('Accounts: Safe', () => {
         rhinestoneApiKey: MOCK_API_KEY,
       })
 
-      expect(address).toEqual('0x3a249204d37245504d4ab37ff88f574b222a6349')
+      expect(address).toEqual('0x3a249204D37245504d4aB37FF88f574B222a6349')
     })
 
     test('Passkey owner', () => {
@@ -98,7 +98,7 @@ describe('Accounts: Safe', () => {
         rhinestoneApiKey: MOCK_API_KEY,
       })
 
-      expect(address).toEqual('0xe86e416045645e1ca4360d5dc396e4c513277c31')
+      expect(address).toEqual('0xE86e416045645E1Ca4360D5DC396E4c513277C31')
     })
   })
 
