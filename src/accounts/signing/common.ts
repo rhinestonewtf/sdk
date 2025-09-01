@@ -28,6 +28,7 @@ function convertOwnerSetToSignerSet(owners: OwnerSet): SignerSet {
         type: 'owner',
         kind: 'ecdsa',
         accounts: owners.accounts,
+        module: owners.module,
       }
     }
     case 'passkey': {
@@ -35,6 +36,7 @@ function convertOwnerSetToSignerSet(owners: OwnerSet): SignerSet {
         type: 'owner',
         kind: 'passkey',
         accounts: owners.accounts,
+        module: owners.module,
       }
     }
     case 'multi-factor': {
@@ -48,6 +50,7 @@ function convertOwnerSetToSignerSet(owners: OwnerSet): SignerSet {
                 type: 'ecdsa',
                 id: index,
                 accounts: validator.accounts,
+                module: validator.module,
               }
             }
             case 'passkey': {
@@ -55,6 +58,7 @@ function convertOwnerSetToSignerSet(owners: OwnerSet): SignerSet {
                 type: 'passkey',
                 id: index,
                 accounts: validator.accounts,
+                module: validator.module,
               }
             }
           }
