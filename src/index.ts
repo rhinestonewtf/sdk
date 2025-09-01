@@ -24,6 +24,7 @@ import {
   setup as setupInternal,
   signEip7702InitData as signEip7702InitDataInternal,
 } from './accounts'
+import { walletClientToAccount } from './accounts/walletClient'
 import {
   addOwner,
   addPasskeyOwner,
@@ -46,7 +47,6 @@ import {
   setSubValidator,
   setUpRecovery,
 } from './actions'
-import type { TransactionResult } from './execution'
 import {
   ExecutionError,
   getMaxSpendableAmount as getMaxSpendableAmountInternal,
@@ -57,6 +57,7 @@ import {
   SessionChainRequiredError,
   SourceChainsNotAvailableForUserOpFlowError,
   sendTransaction as sendTransactionInternal,
+  type TransactionResult,
   UserOperationRequiredForSmartSessionsError,
   waitForExecution as waitForExecutionInternal,
 } from './execution'
@@ -73,6 +74,7 @@ import {
   signMessage as signMessageInternal,
   signTransaction as signTransactionInternal,
   signTypedData as signTypedDataInternal,
+  simulateTransaction as simulateTransactionInternal,
   submitTransaction as submitTransactionInternal,
 } from './execution/utils'
 import {
@@ -144,6 +146,10 @@ interface RhinestoneAccount {
     signedTransaction: SignedTransactionData,
     authorizations?: SignedAuthorizationList,
   ) => Promise<TransactionResult>
+  simulateTransaction: (
+    signedTransaction: SignedTransactionData,
+    authorizations?: SignedAuthorizationList,
+  ) => Promise<IntentResult>
   sendTransaction: (transaction: Transaction) => Promise<TransactionResult>
   waitForExecution: (
     result: TransactionResult,
@@ -155,6 +161,7 @@ interface RhinestoneAccount {
     chain: Chain,
     tokenAddress: Address,
     gasUnits: bigint,
+    sponsored?: boolean,
   ) => Promise<bigint>
   getSessionDetails: (
     sessions: Session[],
@@ -294,6 +301,24 @@ async function createRhinestoneAccount(
   }
 
   /**
+   * Simulate a transaction
+   * @param signedTransaction Signed transaction data
+   * @param authorizations EIP-7702 authorizations to simulate (optional)
+   * @returns simulation result
+   * @see {@link sendTransaction} to send the transaction
+   */
+  function simulateTransaction(
+    signedTransaction: SignedTransactionData,
+    authorizations?: SignedAuthorizationList,
+  ) {
+    return simulateTransactionInternal(
+      config,
+      signedTransaction,
+      authorizations ?? [],
+    )
+  }
+
+  /**
    * Sign and send a transaction
    * @param transaction Transaction to send
    * @returns transaction result object (an intent ID or a UserOp hash)
@@ -343,8 +368,15 @@ async function createRhinestoneAccount(
     chain: Chain,
     tokenAddress: Address,
     gasUnits: bigint,
+    sponsored: boolean = false,
   ) {
-    return getMaxSpendableAmountInternal(config, chain, tokenAddress, gasUnits)
+    return getMaxSpendableAmountInternal(
+      config,
+      chain,
+      tokenAddress,
+      gasUnits,
+      sponsored,
+    )
   }
 
   /**
@@ -387,6 +419,7 @@ async function createRhinestoneAccount(
     signMessage,
     signTypedData,
     submitTransaction,
+    simulateTransaction,
     sendTransaction,
     waitForExecution,
     getAddress,
@@ -400,6 +433,8 @@ async function createRhinestoneAccount(
 
 export {
   createRhinestoneAccount,
+  // Helpers
+  walletClientToAccount,
   // Actions
   addOwner,
   addPasskeyOwner,

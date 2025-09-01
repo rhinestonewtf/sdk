@@ -99,6 +99,7 @@ export class Orchestrator {
     destinationChainId: number,
     destinationTokenAddress: Address,
     destinationGasUnits: bigint,
+    sponsored: boolean,
   ): Promise<bigint> {
     const intentCost = await this.getIntentCost({
       account: {
@@ -110,7 +111,6 @@ export class Orchestrator {
             data: '0x',
           },
         ],
-        delegations: {},
       },
       destinationExecutions: [],
       destinationChainId,
@@ -120,6 +120,14 @@ export class Orchestrator {
           tokenAddress: destinationTokenAddress,
         },
       ],
+      options: {
+        topupCompact: false,
+        sponsorSettings: {
+          gasSponsored: sponsored,
+          bridgeFeesSponsored: sponsored,
+          swapFeesSponsored: sponsored,
+        },
+      },
     })
     if (!intentCost.hasFulfilledAll) {
       return 0n
@@ -138,7 +146,11 @@ export class Orchestrator {
         `Balance not available. Make sure the account is deployed`,
       )
     }
-    return tokenReceived.destinationAmount
+    // `sponsorSettings` is not taken into account in the API response for now
+    // As a workaround, we use the `amountSpent` if the transaction is sponsored
+    return sponsored
+      ? tokenReceived.amountSpent
+      : tokenReceived.destinationAmount
   }
 
   async getIntentCost(input: IntentInput): Promise<IntentCost> {
@@ -146,12 +158,7 @@ export class Orchestrator {
       const response = await axios.post(
         `${this.serverUrl}/intents/cost`,
         {
-          ...convertBigIntFields({
-            ...input,
-            tokenTransfers: input.tokenTransfers.map((transfer) => ({
-              tokenAddress: transfer.tokenAddress,
-            })),
-          }),
+          ...convertBigIntFields(input),
         },
         {
           headers: {
@@ -206,6 +213,27 @@ export class Orchestrator {
     } catch (error) {
       this.parseError(error)
       throw new Error('Failed to submit intent')
+    }
+  }
+
+  async simulateIntent(signedIntentOp: SignedIntentOp): Promise<IntentResult> {
+    try {
+      const response = await axios.post(
+        `${this.serverUrl}/intent-operations/simulate`,
+        {
+          signedIntentOp: convertBigIntFields(signedIntentOp),
+        },
+        {
+          headers: {
+            'x-api-key': this.apiKey,
+          },
+        },
+      )
+
+      return response.data
+    } catch (error) {
+      this.parseError(error)
+      throw new Error('Failed to simulate intent')
     }
   }
 

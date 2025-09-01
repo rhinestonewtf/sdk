@@ -1,8 +1,11 @@
 import type { Account, Address, Chain, Hex } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
+import type { ValidatorConfig } from './accounts/utils'
+import type { Module } from './modules/common'
 import type { EnableSessionData } from './modules/validators/smart-sessions'
+import type { SettlementLayer } from './orchestrator/types'
 
-type AccountType = 'safe' | 'nexus' | 'kernel' | 'startale'
+type AccountType = 'safe' | 'nexus' | 'kernel' | 'startale' | 'custom'
 
 interface SafeAccount {
   type: 'safe'
@@ -24,14 +27,41 @@ interface StartaleAccount {
   type: 'startale'
 }
 
+interface CustomAccount {
+  type: 'custom'
+  getDeployArgs: () => {
+    factory: Address
+    factoryData: Hex
+  }
+  getInstallData: (module: Module) => Hex[]
+  getAddress: () => Address
+  getPackedSignature: (
+    signature: Hex,
+    validator: ValidatorConfig,
+    transformSignature: (signature: Hex) => Hex,
+  ) => Promise<Hex>
+  getSessionStubSignature: (
+    session: Session,
+    enableData: EnableSessionData | null,
+  ) => Promise<Hex>
+  signSessionUserOperation: (
+    session: Session,
+    enableData: EnableSessionData | null,
+    hash: Hex,
+  ) => Promise<Hex>
+  getStubSignature: () => Promise<Hex>
+  sign: (hash: Hex) => Promise<Hex>
+}
+
 type AccountProviderConfig =
   | SafeAccount
   | NexusAccount
   | KernelAccount
   | StartaleAccount
+  | CustomAccount
 
 interface OwnableValidatorConfig {
-  type: 'ecdsa'
+  type: 'ecdsa' | 'ecdsa-v0'
   accounts: Account[]
   threshold?: number
   module?: Address
@@ -166,9 +196,9 @@ interface RhinestoneAccountConfig {
   paymaster?: PaymasterConfig
   /**
    * @internal
-   * For internal testing only - do not use
+   * Optional orchestrator URL override for internal testing - do not use
    */
-  useDev?: boolean
+  orchestratorUrl?: string
 }
 
 type TokenSymbol = 'ETH' | 'WETH' | 'USDC' | 'USDT'
@@ -193,7 +223,7 @@ interface TokenRequest {
 type OwnerSignerSet =
   | {
       type: 'owner'
-      kind: 'ecdsa'
+      kind: 'ecdsa' | 'ecdsa-v0'
       accounts: Account[]
       module?: Address
     }
@@ -208,7 +238,7 @@ type OwnerSignerSet =
       kind: 'multi-factor'
       validators: (
         | {
-            type: 'ecdsa'
+            type: 'ecdsa' | 'ecdsa-v0'
             id: number | Hex
             accounts: Account[]
           }
@@ -241,6 +271,7 @@ interface BaseTransaction {
   signers?: SignerSet
   sponsored?: boolean
   eip7702InitSignature?: Hex
+  settlementLayers?: SettlementLayer[]
 }
 
 interface SameChainTransaction extends BaseTransaction {
