@@ -4,26 +4,51 @@ import type { EnableSessionData } from './modules/validators/smart-sessions'
 
 type AccountType = 'safe' | 'nexus' | 'kernel' | 'startale'
 
-interface AccountProviderConfig {
-  type: AccountType
+interface SafeAccount {
+  type: 'safe'
+  version?: '1.4.1'
+  adapter?: '1.0.0' | '2.0.0'
 }
+
+interface NexusAccount {
+  type: 'nexus'
+  version?: '1.0.2' | '1.2.0' | 'rhinestone-1.0.0-beta' | 'rhinestone-1.0.0'
+}
+
+interface KernelAccount {
+  type: 'kernel'
+  version?: '3.1' | '3.2' | '3.3'
+}
+
+interface StartaleAccount {
+  type: 'startale'
+}
+
+type AccountProviderConfig =
+  | SafeAccount
+  | NexusAccount
+  | KernelAccount
+  | StartaleAccount
 
 interface OwnableValidatorConfig {
   type: 'ecdsa'
   accounts: Account[]
   threshold?: number
+  module?: Address
 }
 
 interface WebauthnValidatorConfig {
   type: 'passkey'
   accounts: WebAuthnAccount[]
   threshold?: number
+  module?: Address
 }
 
 interface MultiFactorValidatorConfig {
   type: 'multi-factor'
   validators: (OwnableValidatorConfig | WebauthnValidatorConfig)[]
   threshold?: number
+  module?: Address
 }
 
 interface ProviderConfig {
@@ -130,6 +155,12 @@ interface RhinestoneAccountConfig {
   sessions?: Session[]
   recovery?: Recovery
   eoa?: Account
+  initData?: {
+    address: Address
+    factory: Address
+    factoryData: Hex
+    intentExecutorInstalled: boolean
+  }
   provider?: ProviderConfig
   bundler?: BundlerConfig
   paymaster?: PaymasterConfig
@@ -164,11 +195,13 @@ type OwnerSignerSet =
       type: 'owner'
       kind: 'ecdsa'
       accounts: Account[]
+      module?: Address
     }
   | {
       type: 'owner'
       kind: 'passkey'
       accounts: WebAuthnAccount[]
+      module?: Address
     }
   | {
       type: 'owner'
@@ -185,6 +218,7 @@ type OwnerSignerSet =
             accounts: WebAuthnAccount[]
           }
       )[]
+      module?: Address
     }
 
 interface SessionSignerSet {

@@ -10,6 +10,7 @@ import type {
 import type { UserOperationReceipt } from 'viem/account-abstraction'
 import {
   AccountError,
+  checkAddress,
   deploy as deployInternal,
   Eip7702AccountMustHaveEoaError,
   Eip7702NotSupportedForAccountError,
@@ -20,6 +21,7 @@ import {
   SigningNotSupportedForAccountError,
   SignMessageNotSupportedByAccountError,
   SmartSessionsNotEnabledError,
+  setup as setupInternal,
   signEip7702InitData as signEip7702InitDataInternal,
 } from './accounts'
 import {
@@ -113,7 +115,8 @@ import type {
 
 interface RhinestoneAccount {
   config: RhinestoneAccountConfig
-  deploy: (chain: Chain, session?: Session) => Promise<void>
+  deploy: (chain: Chain, session?: Session) => Promise<boolean>
+  setup: (chain: Chain) => Promise<boolean>
   signEip7702InitData: () => Promise<Hex>
   prepareTransaction: (
     transaction: Transaction,
@@ -174,6 +177,10 @@ interface RhinestoneAccount {
 async function createRhinestoneAccount(
   config: RhinestoneAccountConfig,
 ): Promise<RhinestoneAccount> {
+  // Sanity check for existing (externally created) accounts
+  // Ensures we decode the initdata correctly
+  checkAddress(config)
+
   /**
    * Deploys the account on a given chain
    * @param chain Chain to deploy the account on
@@ -181,6 +188,15 @@ async function createRhinestoneAccount(
    */
   function deploy(chain: Chain, session?: Session) {
     return deployInternal(config, chain, session)
+  }
+
+  /**
+   * Sets up the existing account on a given chain
+   * by installing the missing modules (if any).
+   * @param chain Chain to deploy the account on
+   */
+  function setup(chain: Chain) {
+    return setupInternal(config, chain)
   }
 
   /**
@@ -363,6 +379,7 @@ async function createRhinestoneAccount(
   return {
     config,
     deploy,
+    setup,
     signEip7702InitData,
     prepareTransaction,
     signTransaction,

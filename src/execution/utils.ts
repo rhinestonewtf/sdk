@@ -7,6 +7,7 @@ import {
   type HashTypedDataParameters,
   type Hex,
   hashMessage,
+  hashTypedData,
   type PublicClient,
   publicActions,
   type SignableMessage,
@@ -30,9 +31,11 @@ import {
   getSmartAccount,
   getSmartSessionSmartAccount,
   getTypedDataPackedSignature,
+  isDeployed,
   toErc6492Signature,
 } from '../accounts'
 import { createTransport, getBundlerClient } from '../accounts/utils'
+import type { Module } from '../modules/common'
 import {
   getOwnerValidator,
   getSmartSessionValidator,
@@ -418,6 +421,7 @@ async function prepareTransactionAsIntent(
 
   const { setupOps, delegations } = await getSetupOperationsAndDelegations(
     config,
+    targetChain,
     accountAddress,
     eip7702InitSignature,
   )
@@ -472,9 +476,41 @@ async function signIntent(
   }
   const ownerValidator = getOwnerValidator(config)
   const isRoot = validator.address === ownerValidator.address
+  const signature = await getIntentSignature(
+    config,
+    intentOp,
+    signers,
+    targetChain,
+    validator,
+    isRoot,
+  )
+  return signature
+}
 
+async function getIntentSignature(
+  config: RhinestoneAccountConfig,
+  intentOp: IntentOp,
+  signers: SignerSet | undefined,
+  targetChain: Chain,
+  validator: Module,
+  isRoot: boolean,
+) {
   const typedData = getIntentData(intentOp)
-  const signature = await getTypedDataPackedSignature(
+  if (supportsEip712(validator)) {
+    const signature = await getTypedDataPackedSignature(
+      config,
+      signers,
+      targetChain,
+      {
+        address: validator.address,
+        isRoot,
+      },
+      typedData,
+    )
+    return signature
+  }
+  const hash = hashTypedData(typedData)
+  const signature = await getPackedSignature(
     config,
     signers,
     targetChain,
@@ -482,9 +518,19 @@ async function signIntent(
       address: validator.address,
       isRoot,
     },
-    typedData,
+    hash,
   )
   return signature
+}
+
+function supportsEip712(validator: Module) {
+  switch (validator.address) {
+    case '0x0000000000e9e6e96bcaa3c113187cdb7e38aed9': // Ownable Validator V1-beta
+    case '0x2483da3a338895199e5e538530213157e931bf06': // Ownable Validator V0
+      return false
+    default:
+      return true
+  }
 }
 
 async function signUserOp(
@@ -637,7 +683,7 @@ async function getValidatorAccount(
   chain: Chain,
 ) {
   if (!signers) {
-    return undefined
+    return getSmartAccount(config, publicClient, chain)
   }
 
   // Owners
@@ -724,6 +770,7 @@ function parseCalls(calls: CallInput[], chainId: number): Call[] {
 
 async function getSetupOperationsAndDelegations(
   config: RhinestoneAccountConfig,
+  chain: Chain,
   accountAddress: Address,
   eip7702InitSignature?: Hex,
 ) {
@@ -754,6 +801,12 @@ async function getSetupOperationsAndDelegations(
       },
     }
   } else if (initCode) {
+    const isAccountDeployed = await isDeployed(config, chain)
+    if (isAccountDeployed) {
+      return {
+        setupOps: [],
+      }
+    }
     // Contract account with init code
     return {
       setupOps: [

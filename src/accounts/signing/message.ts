@@ -24,7 +24,7 @@ async function sign(
   hash: Hex,
 ): Promise<Hex> {
   const signingFunctions: SigningFunctions<Hex> = {
-    signEcdsa: (account, hash) => signEcdsa(account, hash),
+    signEcdsa: (account, hash, updateV) => signEcdsa(account, hash, updateV),
     signPasskey: (account, hash) => signPasskey(account, hash),
   }
 
@@ -48,7 +48,7 @@ async function sign(
   }
 }
 
-async function signEcdsa(account: Account, hash: Hex) {
+async function signEcdsa(account: Account, hash: Hex, updateV: boolean) {
   if (!account.signMessage) {
     throw new SigningNotSupportedForAccountError()
   }
@@ -61,7 +61,7 @@ async function signEcdsa(account: Account, hash: Hex) {
   if (!v) {
     throw new Error('Invalid signature')
   }
-  const newV = v + 4n
+  const newV = updateV ? v + 4n : v
   const newSignature = concat([r, s, toHex(newV)])
   return newSignature
 }

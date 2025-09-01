@@ -45,31 +45,22 @@ async function sendTransaction(
   config: RhinestoneAccountConfig,
   transaction: Transaction,
 ) {
-  if ('chain' in transaction) {
-    // Same-chain transaction
-    return await sendTransactionInternal(
-      config,
-      [transaction.chain],
-      transaction.chain,
-      transaction.calls,
-      transaction.gasLimit,
-      transaction.tokenRequests,
-      transaction.signers,
-      transaction.sponsored,
-    )
-  } else {
-    // Cross-chain transaction
-    return await sendTransactionInternal(
-      config,
-      transaction.sourceChains || [],
-      transaction.targetChain,
-      transaction.calls,
-      transaction.gasLimit,
-      transaction.tokenRequests,
-      transaction.signers,
-      transaction.sponsored,
-    )
-  }
+  const sourceChains =
+    'chain' in transaction
+      ? [transaction.chain]
+      : transaction.sourceChains || []
+  const targetChain =
+    'chain' in transaction ? transaction.chain : transaction.targetChain
+  return await sendTransactionInternal(
+    config,
+    sourceChains,
+    targetChain,
+    transaction.calls,
+    transaction.gasLimit,
+    transaction.tokenRequests,
+    transaction.signers,
+    transaction.sponsored,
+  )
 }
 
 async function sendTransactionInternal(
@@ -81,6 +72,7 @@ async function sendTransactionInternal(
   initialTokenRequests?: TokenRequest[],
   signers?: SignerSet,
   sponsored?: boolean,
+  asUserOp?: boolean,
 ) {
   const accountAddress = getAddress(config)
 
@@ -95,8 +87,9 @@ async function sendTransactionInternal(
         ]
       : initialTokenRequests
 
-  const asUserOp = signers?.type === 'guardians' || signers?.type === 'session'
-  if (asUserOp) {
+  const sendAsUserOp =
+    asUserOp || signers?.type === 'guardians' || signers?.type === 'session'
+  if (sendAsUserOp) {
     const withSession = signers?.type === 'session' ? signers.session : null
     if (withSession) {
       await enableSmartSession(targetChain, config, withSession)
@@ -127,7 +120,7 @@ async function sendTransactionAsUserOp(
   config: RhinestoneAccountConfig,
   chain: Chain,
   callInputs: CallInput[],
-  signers: SignerSet,
+  signers?: SignerSet,
 ) {
   // Make sure the account is deployed
   await deploy(config, chain)
@@ -289,6 +282,7 @@ async function getPortfolio(
 
 export {
   sendTransaction,
+  sendTransactionInternal,
   waitForExecution,
   getMaxSpendableAmount,
   getPortfolio,

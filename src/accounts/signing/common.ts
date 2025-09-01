@@ -16,6 +16,7 @@ import type { OwnerSet, SignerSet } from '../../types'
 import {
   generateCredentialId,
   packSignature as packPasskeySignature,
+  packSignatureV0 as packPasskeySignatureV0,
   parsePublicKey,
   parseSignature,
 } from './passkeys'
@@ -64,7 +65,7 @@ function convertOwnerSetToSignerSet(owners: OwnerSet): SignerSet {
 }
 
 type SigningFunctions<T> = {
-  signEcdsa: (account: Account, params: T) => Promise<Hex>
+  signEcdsa: (account: Account, params: T, updateV: boolean) => Promise<Hex>
   signPasskey: (
     account: WebAuthnAccount,
     params: T,
@@ -154,7 +155,7 @@ async function signWithGuardians<T>(
 ): Promise<Hex> {
   const signatures = await Promise.all(
     signers.guardians.map((account) =>
-      signingFunctions.signEcdsa(account, params),
+      signingFunctions.signEcdsa(account, params, false),
     ),
   )
   return concat(signatures)
@@ -175,9 +176,14 @@ async function signWithOwners<T>(
 ): Promise<Hex> {
   switch (signers.kind) {
     case 'ecdsa': {
+      // Ownable validator uses `v` value to determine which validation mode to use
+      const updateV =
+        !signers.module ||
+        signers.module?.toLowerCase() ===
+          '0x000000000013fdb5234e4e3162a810f54d9f7e98'
       const signatures = await Promise.all(
         signers.accounts.map((account) =>
-          signingFunctions.signEcdsa(account, params),
+          signingFunctions.signEcdsa(account, params, updateV),
         ),
       )
       return concat(signatures)
@@ -205,6 +211,13 @@ async function signWithOwners<T>(
           s,
         }
       })
+      // Legacy WebAuthn validator
+      if (
+        signers.module?.toLowerCase() ===
+        '0x0000000000578c4cb0e472a5462da43c495c3f33'
+      ) {
+        return packPasskeySignatureV0(webAuthns[0], usePrecompile)
+      }
       return packPasskeySignature(credIds, usePrecompile, webAuthns)
     }
     case 'multi-factor': {

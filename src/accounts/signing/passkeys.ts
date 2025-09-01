@@ -134,5 +134,58 @@ function packSignature(
   )
 }
 
-export { parsePublicKey, parseSignature, generateCredentialId, packSignature }
+function packSignatureV0(
+  webauthn: {
+    authenticatorData: Hex
+    clientDataJSON: string
+    typeIndex: number | bigint
+    r: bigint
+    s: bigint
+  },
+  usePrecompiled: boolean,
+) {
+  return encodeAbiParameters(
+    [
+      { type: 'bytes', name: 'authenticatorData' },
+      {
+        type: 'string',
+        name: 'clientDataJSON',
+      },
+      {
+        type: 'uint256',
+        name: 'responseTypeLocation',
+      },
+      {
+        type: 'uint256',
+        name: 'r',
+      },
+      {
+        type: 'uint256',
+        name: 's',
+      },
+      {
+        type: 'bool',
+        name: 'usePrecompiled',
+      },
+    ],
+    [
+      webauthn.authenticatorData,
+      webauthn.clientDataJSON,
+      typeof webauthn.typeIndex === 'bigint'
+        ? webauthn.typeIndex
+        : BigInt(webauthn.typeIndex),
+      webauthn.r,
+      webauthn.s,
+      usePrecompiled,
+    ],
+  )
+}
+
+export {
+  parsePublicKey,
+  parseSignature,
+  generateCredentialId,
+  packSignature,
+  packSignatureV0,
+}
 export type { WebAuthnSignature }

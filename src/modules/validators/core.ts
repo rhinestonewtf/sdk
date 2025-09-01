@@ -106,6 +106,7 @@ function getValidator(owners: OwnerSet) {
       return getOwnableValidator(
         owners.threshold ?? 1,
         owners.accounts.map((account) => account.address),
+        owners.module,
       )
     case 'passkey':
       return getWebAuthnValidator(
@@ -121,9 +122,13 @@ function getValidator(owners: OwnerSet) {
   }
 }
 
-function getOwnableValidator(threshold: number, owners: Address[]): Module {
+function getOwnableValidator(
+  threshold: number,
+  owners: Address[],
+  address?: Address,
+): Module {
   return {
-    address: OWNABLE_VALIDATOR_ADDRESS,
+    address: address ?? OWNABLE_VALIDATOR_ADDRESS,
     initData: encodeAbiParameters(
       [
         { name: 'threshold', type: 'uint256' },
@@ -143,6 +148,7 @@ function getOwnableValidator(threshold: number, owners: Address[]): Module {
 function getWebAuthnValidator(
   threshold: number,
   webAuthnCredentials: WebauthnCredential[],
+  address?: Address,
 ): Module {
   function getPublicKey(webAuthnCredential: WebauthnCredential): PublicKey {
     if (
@@ -167,7 +173,7 @@ function getWebAuthnValidator(
   const publicKeys = webAuthnCredentials.map(getPublicKey)
 
   return {
-    address: WEBAUTHN_VALIDATOR_ADDRESS,
+    address: address ?? WEBAUTHN_VALIDATOR_ADDRESS,
     initData: encodeAbiParameters(
       [
         { name: 'threshold', type: 'uint256' },

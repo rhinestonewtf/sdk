@@ -1,6 +1,7 @@
 import type { Abi, Account, Address, Hex, PublicClient } from 'viem'
 import {
   concat,
+  decodeFunctionData,
   encodeAbiParameters,
   encodeFunctionData,
   encodePacked,
@@ -48,6 +49,60 @@ const NEXUS_CREATION_CODE =
   '0x60806040526102aa803803806100148161018c565b92833981016040828203126101885781516001600160a01b03811692909190838303610188576020810151906001600160401b03821161018857019281601f8501121561018857835161006e610069826101c5565b61018c565b9481865260208601936020838301011161018857815f926020809301865e8601015260017f90b772c2cb8a51aa7a8a65fc23543c6d022d5b3f8e2b92eed79fba7eef8293005d823b15610176577f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc80546001600160a01b031916821790557fbc7cd75a20ee27fd9adebab32041f755214dbc6bffa90cc0225b39da2e5c2d3b5f80a282511561015e575f8091610146945190845af43d15610156573d91610137610069846101c5565b9283523d5f602085013e6101e0565b505b604051606b908161023f8239f35b6060916101e0565b50505034156101485763b398979f60e01b5f5260045ffd5b634c9c8ce360e01b5f5260045260245ffd5b5f80fd5b6040519190601f01601f191682016001600160401b038111838210176101b157604052565b634e487b7160e01b5f52604160045260245ffd5b6001600160401b0381116101b157601f01601f191660200190565b9061020457508051156101f557805190602001fd5b63d6bda27560e01b5f5260045ffd5b81511580610235575b610215575090565b639996b31560e01b5f9081526001600160a01b0391909116600452602490fd5b50803b1561020d56fe60806040523615605c575f8073ffffffffffffffffffffffffffffffffffffffff7f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc5416368280378136915af43d5f803e156058573d5ff35b3d5ffd5b00fea164736f6c634300081b000a'
 
 function getDeployArgs(config: RhinestoneAccountConfig) {
+  if (config.initData) {
+    const factoryData = decodeFunctionData({
+      abi: parseAbi([
+        'function createAccount(address eoaOwner,uint256 index,address[] attesters,uint8 threshold)',
+      ]),
+      data: config.initData.factoryData,
+    })
+    if (factoryData.functionName !== 'createAccount') {
+      throw new Error('Invalid factory data')
+    }
+    const owner = factoryData.args[0]
+    const index = factoryData.args[1]
+    const attesters = factoryData.args[2]
+    const threshold = factoryData.args[3]
+    const salt = keccak256(
+      encodePacked(
+        ['address', 'uint256', 'address[]', 'uint8'],
+        [owner, index, attesters, threshold],
+      ),
+    )
+    const implementation =
+      config.initData.factory === NEXUS_FACTORY_ADDRESS
+        ? NEXUS_IMPLEMENTATION_ADDRESS
+        : '0x000000039dfcad030719b07296710f045f0558f7'
+
+    const nexusBootstrapData = '0x00000008c901d8871b6f6942de0b5d9ccf3873d3'
+    const k1Validator = '0x00000004171351c442b202678c48d8ab5b321e8f'
+    const registry = zeroAddress
+    const bootstrapData = encodeFunctionData({
+      abi: parseAbi([
+        'function initNexusWithSingleValidator(address validator,bytes data,address registry,address[] attesters,uint8 threshold)',
+      ]),
+      functionName: 'initNexusWithSingleValidator',
+      args: [k1Validator, owner, registry, attesters, threshold],
+    })
+    const initData = encodeAbiParameters(
+      [{ type: 'address' }, { type: 'bytes' }],
+      [nexusBootstrapData, bootstrapData],
+    )
+    const initializationCallData = encodeFunctionData({
+      abi: parseAbi(['function initializeAccount(bytes)']),
+      functionName: 'initializeAccount',
+      args: [initData],
+    })
+
+    return {
+      salt,
+      factory: config.initData.factory,
+      factoryData: config.initData.factoryData,
+      implementation,
+      initData,
+      initializationCallData,
+    }
+  }
   const salt = keccak256('0x')
   const moduleSetup = getModuleSetup(config)
   // Filter out the default validator
@@ -143,24 +198,31 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
 }
 
 function getAddress(config: RhinestoneAccountConfig) {
-  const { factory, salt, initializationCallData } = getDeployArgs(config)
+  const { factory, salt, initializationCallData, implementation } =
+    getDeployArgs(config)
 
-  const accountInitData = encodeAbiParameters(
-    [
-      {
-        name: 'address',
-        type: 'address',
-      },
-      {
-        name: 'calldata',
-        type: 'bytes',
-      },
-    ],
-    [NEXUS_IMPLEMENTATION_ADDRESS, initializationCallData],
-  )
-  const hashedInitcode: Hex = keccak256(
-    concat([NEXUS_CREATION_CODE, accountInitData]),
-  )
+  const creationCode =
+    factory === NEXUS_FACTORY_ADDRESS
+      ? NEXUS_CREATION_CODE
+      : '0x603d3d8160223d3973000000039dfcad030719b07296710f045f0558f760095155f3363d3d373d3d363d7f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc545af43d6000803e6038573d6000fd5b3d6000f3'
+
+  const accountInitData =
+    factory === NEXUS_FACTORY_ADDRESS
+      ? encodeAbiParameters(
+          [
+            {
+              name: 'address',
+              type: 'address',
+            },
+            {
+              name: 'calldata',
+              type: 'bytes',
+            },
+          ],
+          [implementation, initializationCallData],
+        )
+      : '0x'
+  const hashedInitcode: Hex = keccak256(concat([creationCode, accountInitData]))
 
   const hash = keccak256(
     encodePacked(
@@ -199,6 +261,29 @@ function getInstallData(module: Module) {
     functionName: 'installModule',
     args: [module.type, module.address, module.initData],
   })
+}
+
+function getDefaultValidatorAddress(
+  version:
+    | '1.0.2'
+    | '1.2.0'
+    | 'rhinestone-1.0.0-beta'
+    | 'rhinestone-1.0.0'
+    | undefined,
+): Address {
+  if (!version) {
+    return NEXUS_DEFAULT_VALIDATOR_ADDRESS
+  }
+  switch (version) {
+    case '1.0.2':
+      return '0x0000002D6DB27c52E3C11c1Cf24072004AC75cBa'
+    case '1.2.0':
+      return '0x00000000d12897ddadc2044614a9677b191a2d95'
+    case 'rhinestone-1.0.0-beta':
+      return '0x0000000000e9e6e96bcaa3c113187cdb7e38aed9'
+    case 'rhinestone-1.0.0':
+      return NEXUS_DEFAULT_VALIDATOR_ADDRESS
+  }
 }
 
 async function packSignature(
@@ -381,7 +466,7 @@ async function getBaseSmartAccount(
         userOperation: {
           ...userOperation,
           sender: userOperation.sender ?? (await this.getAddress()),
-          signature: '0x',
+          signature: '0x' as Hex,
         },
         entryPointAddress: entryPoint07Address,
         entryPointVersion: '0.7',
@@ -468,6 +553,7 @@ async function getEip7702InitCall(
 export {
   getInstallData,
   getAddress,
+  getDefaultValidatorAddress,
   packSignature,
   getDeployArgs,
   getSmartAccount,
