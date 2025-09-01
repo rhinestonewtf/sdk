@@ -14,12 +14,12 @@ import {
 } from 'viem/account-abstraction'
 import { readContract } from 'viem/actions'
 import { getAction } from 'viem/utils'
-
 import type {
   BundlerConfig,
   PaymasterConfig,
   RhinestoneAccountConfig,
 } from '../types'
+import { createTransport } from './json-rpc'
 
 type CallType = 'call' | 'delegatecall' | 'batchcall'
 
@@ -294,5 +294,5 @@ async function getGasPriceEstimate(bundlerUrl: string) {
   }
 }
 
-export { encode7579Calls, getAccountNonce, getBundlerClient }
+export { encode7579Calls, getAccountNonce, getBundlerClient, createTransport }
 export type { ValidatorConfig }
