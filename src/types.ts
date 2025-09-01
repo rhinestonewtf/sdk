@@ -1,7 +1,5 @@
 import type { Account, Address, Chain, Hex } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
-import type { ValidatorConfig } from './accounts/utils'
-import type { Module } from './modules/common'
 import type { EnableSessionData } from './modules/validators/smart-sessions'
 import type { SettlementLayer } from './orchestrator/types'
 
@@ -27,38 +25,11 @@ interface StartaleAccount {
   type: 'startale'
 }
 
-interface CustomAccount {
-  type: 'custom'
-  getDeployArgs: () => {
-    factory: Address
-    factoryData: Hex
-  }
-  getInstallData: (module: Module) => Hex[]
-  getAddress: () => Address
-  getPackedSignature: (
-    signature: Hex,
-    validator: ValidatorConfig,
-    transformSignature: (signature: Hex) => Hex,
-  ) => Promise<Hex>
-  getSessionStubSignature: (
-    session: Session,
-    enableData: EnableSessionData | null,
-  ) => Promise<Hex>
-  signSessionUserOperation: (
-    session: Session,
-    enableData: EnableSessionData | null,
-    hash: Hex,
-  ) => Promise<Hex>
-  getStubSignature: () => Promise<Hex>
-  sign: (hash: Hex) => Promise<Hex>
-}
-
 type AccountProviderConfig =
   | SafeAccount
   | NexusAccount
   | KernelAccount
   | StartaleAccount
-  | CustomAccount
 
 interface OwnableValidatorConfig {
   type: 'ecdsa' | 'ecdsa-v0'

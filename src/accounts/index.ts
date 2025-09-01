@@ -35,14 +35,6 @@ import type {
   SignerSet,
 } from '../types'
 import {
-  getAddress as getCustomAddress,
-  getDeployArgs as getCustomDeployArgs,
-  getInstallData as getCustomInstallData,
-  getPackedSignature as getCustomPackedSignature,
-  getSessionSmartAccount as getCustomSessionSmartAccount,
-  getSmartAccount as getCustomSmartAccount,
-} from './custom'
-import {
   AccountError,
   Eip7702AccountMustHaveEoaError,
   Eip7702NotSupportedForAccountError,
@@ -117,9 +109,6 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
     case 'startale': {
       return getStartaleDeployArgs(config)
     }
-    case 'custom': {
-      return getCustomDeployArgs(config)
-    }
   }
 }
 
@@ -155,9 +144,6 @@ async function signEip7702InitData(config: RhinestoneAccountConfig) {
     case 'startale': {
       throw new Error(`7702 is not supported for account type ${account.type}`)
     }
-    case 'custom': {
-      throw new Error('7702 is not supported for custom account')
-    }
   }
 }
 
@@ -174,9 +160,6 @@ async function getEip7702InitCall(
     case 'kernel':
     case 'startale': {
       throw new Error(`7702 is not supported for account type ${account.type}`)
-    }
-    case 'custom': {
-      throw new Error('7702 is not supported for custom account')
     }
   }
 }
@@ -201,9 +184,6 @@ function getModuleInstallationCalls(
       }
       case 'startale': {
         return [getStartaleInstallData(module)]
-      }
-      case 'custom': {
-        return getCustomInstallData(config, module)
       }
     }
   }
@@ -271,9 +251,6 @@ function getAddress(config: RhinestoneAccountConfig) {
     case 'startale': {
       return getStartaleAddress(config)
     }
-    case 'custom': {
-      return getCustomAddress(config)
-    }
   }
 }
 
@@ -324,15 +301,6 @@ async function getPackedSignature(
       const signature = await signFn(hash)
       return packStartaleSignature(signature, validator, transformSignature)
     }
-    case 'custom': {
-      const signature = await signFn(hash)
-      return getCustomPackedSignature(
-        config,
-        signature,
-        validator,
-        transformSignature,
-      )
-    }
   }
 }
 
@@ -358,15 +326,6 @@ async function getTypedDataPackedSignature<
     case 'safe': {
       const signature = await signFn(parameters)
       return packSafeSignature(signature, validator, transformSignature)
-    }
-    case 'custom': {
-      const signature = await signFn(parameters)
-      return getCustomPackedSignature(
-        config,
-        signature,
-        validator,
-        transformSignature,
-      )
     }
     case 'nexus': {
       const signature = await signFn(parameters)
@@ -639,15 +598,6 @@ async function getSmartAccount(
         signFn,
       )
     }
-    case 'custom': {
-      return getCustomSmartAccount(
-        config,
-        client,
-        address,
-        ownerValidator.address,
-        signFn,
-      )
-    }
   }
 }
 
@@ -714,16 +664,6 @@ async function getSmartSessionSmartAccount(
         smartSessionValidator.address,
         enableData,
         signFn,
-      )
-    }
-    case 'custom': {
-      return getCustomSessionSmartAccount(
-        config,
-        client,
-        address,
-        session,
-        smartSessionValidator.address,
-        enableData,
       )
     }
   }
