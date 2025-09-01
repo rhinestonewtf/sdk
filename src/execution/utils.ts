@@ -52,7 +52,6 @@ import {
   type SupportedChain,
 } from '../orchestrator'
 import {
-  DEV_ORCHESTRATOR_URL,
   PROD_ORCHESTRATOR_URL,
   STAGING_ORCHESTRATOR_URL,
 } from '../orchestrator/consts'
@@ -61,6 +60,7 @@ import {
   isTestnet,
   resolveTokenAddress,
 } from '../orchestrator/registry'
+import type { SettlementLayer } from '../orchestrator/types'
 import type {
   Call,
   CallInput,
@@ -120,6 +120,7 @@ async function prepareTransaction(
     signers,
     sponsored,
     eip7702InitSignature,
+    settlementLayers,
   } = getTransactionParams(transaction)
   const accountAddress = getAddress(config)
 
@@ -149,6 +150,7 @@ async function prepareTransaction(
       accountAddress,
       sponsored ?? false,
       eip7702InitSignature,
+      settlementLayers,
     )
   }
 
@@ -368,6 +370,7 @@ function getTransactionParams(transaction: Transaction) {
   const eip7702InitSignature = transaction.eip7702InitSignature
   const sponsored = transaction.sponsored
   const gasLimit = transaction.gasLimit
+  const settlementLayers = transaction.settlementLayers
 
   // Across requires passing some value to repay the solvers
   const tokenRequests =
@@ -388,6 +391,7 @@ function getTransactionParams(transaction: Transaction) {
     sponsored,
     eip7702InitSignature,
     gasLimit,
+    settlementLayers,
   }
 }
 
@@ -440,6 +444,7 @@ async function prepareTransactionAsIntent(
   accountAddress: Address,
   isSponsored: boolean,
   eip7702InitSignature?: Hex,
+  settlementLayers?: SettlementLayer[],
 ) {
   const calls = parseCalls(callInputs, targetChain.id)
   const accountAccessList =
@@ -477,13 +482,14 @@ async function prepareTransactionAsIntent(
         bridgeFeesSponsored: isSponsored,
         swapFeesSponsored: isSponsored,
       },
+      settlementLayers,
     },
   }
 
   const orchestrator = getOrchestratorByChain(
     targetChain.id,
     config.rhinestoneApiKey,
-    config.useDev,
+    config.orchestratorUrl,
   )
   const intentRoute = await orchestrator.getIntentRoute(metaIntent)
 
@@ -614,15 +620,16 @@ async function submitIntent(
 function getOrchestratorByChain(
   chainId: number,
   apiKey: string | undefined,
-  useDev: boolean | undefined,
+  orchestratorUrl?: string,
 ) {
-  const orchestratorUrl =
-    (useDev ?? false)
-      ? DEV_ORCHESTRATOR_URL
-      : isTestnet(chainId)
-        ? STAGING_ORCHESTRATOR_URL
-        : PROD_ORCHESTRATOR_URL
-  return getOrchestrator(apiKey, orchestratorUrl)
+  if (orchestratorUrl) {
+    return getOrchestrator(apiKey, orchestratorUrl)
+  }
+
+  const defaultOrchestratorUrl = isTestnet(chainId)
+    ? STAGING_ORCHESTRATOR_URL
+    : PROD_ORCHESTRATOR_URL
+  return getOrchestrator(apiKey, defaultOrchestratorUrl)
 }
 
 async function simulateIntent(
@@ -682,7 +689,7 @@ async function submitIntentInternal(
   const orchestrator = getOrchestratorByChain(
     targetChain.id,
     config.rhinestoneApiKey,
-    config.useDev,
+    config.orchestratorUrl,
   )
   const intentResults = await orchestrator.submitIntent(signedIntentOp)
   return {
@@ -709,7 +716,7 @@ async function simulateIntentInternal(
   const orchestrator = getOrchestratorByChain(
     targetChain.id,
     config.rhinestoneApiKey,
-    config.useDev,
+    config.orchestratorUrl,
   )
   const simulationResults = await orchestrator.simulateIntent(signedIntentOp)
   return simulationResults

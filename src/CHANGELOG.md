@@ -1,5 +1,47 @@
 # @rhinestone/sdk
 
+## 1.0.0-alpha.25
+
+### Patch Changes
+
+- 82f6851: Add relay types
+
+## 1.0.0-alpha.24
+
+### Patch Changes
+
+- 12b4d87: Add signer conversion helpers methods
+
+## 1.0.0-alpha.23
+
+### Patch Changes
+
+- 6107c7e: allow for settlement layer selection
+
+## 1.0.0-alpha.22
+
+### Patch Changes
+
+- 436daea: Add optional orchestratorUrl parameter for internal testing
+
+## 1.0.0-alpha.21
+
+### Minor Changes
+
+- 6602670: Add Sonic support
+
+## 1.0.0-alpha.20
+
+### Patch Changes
+
+- 9e034b8: Take sponsorship into account in `getMaxSpendableAmount`
+
+## 1.0.0-alpha.19
+
+### Patch Changes
+
+- 0bb2c42: Fix API request in `getMaxTokenAmount`
+
 ## 1.0.0-alpha.18
 
 ### Patch Changes

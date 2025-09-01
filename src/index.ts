@@ -22,6 +22,7 @@ import {
   SmartSessionsNotEnabledError,
   signEip7702InitData as signEip7702InitDataInternal,
 } from './accounts'
+import { walletClientToAccount } from './accounts/walletClient'
 import {
   addOwner,
   addPasskeyOwner,
@@ -44,7 +45,6 @@ import {
   setSubValidator,
   setUpRecovery,
 } from './actions'
-import type { TransactionResult } from './execution'
 import {
   ExecutionError,
   getMaxSpendableAmount as getMaxSpendableAmountInternal,
@@ -55,6 +55,7 @@ import {
   SessionChainRequiredError,
   SourceChainsNotAvailableForUserOpFlowError,
   sendTransaction as sendTransactionInternal,
+  type TransactionResult,
   UserOperationRequiredForSmartSessionsError,
   waitForExecution as waitForExecutionInternal,
 } from './execution'
@@ -161,6 +162,7 @@ interface RhinestoneAccount {
     chain: Chain,
     tokenAddress: Address,
     gasUnits: bigint,
+    sponsored?: boolean,
   ) => Promise<bigint>
   getSessionDetails: (
     sessions: Session[],
@@ -354,8 +356,15 @@ async function createRhinestoneAccount(
     chain: Chain,
     tokenAddress: Address,
     gasUnits: bigint,
+    sponsored: boolean = false,
   ) {
-    return getMaxSpendableAmountInternal(config, chain, tokenAddress, gasUnits)
+    return getMaxSpendableAmountInternal(
+      config,
+      chain,
+      tokenAddress,
+      gasUnits,
+      sponsored,
+    )
   }
 
   /**
@@ -411,6 +420,8 @@ async function createRhinestoneAccount(
 
 export {
   createRhinestoneAccount,
+  // Helpers
+  walletClientToAccount,
   // Actions
   addOwner,
   addPasskeyOwner,

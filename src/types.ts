@@ -3,6 +3,7 @@ import type { WebAuthnAccount } from 'viem/account-abstraction'
 import type { ValidatorConfig } from './accounts/utils'
 import type { Module } from './modules/common'
 import type { EnableSessionData } from './modules/validators/smart-sessions'
+import type { SettlementLayer } from './orchestrator/types'
 
 type AccountType = 'safe' | 'nexus' | 'kernel' | 'startale' | 'custom'
 
@@ -178,9 +179,9 @@ interface RhinestoneAccountConfig {
   paymaster?: PaymasterConfig
   /**
    * @internal
-   * For internal testing only - do not use
+   * Optional orchestrator URL override for internal testing - do not use
    */
-  useDev?: boolean
+  orchestratorUrl?: string
 }
 
 type TokenSymbol = 'ETH' | 'WETH' | 'USDC' | 'USDT'
@@ -250,6 +251,7 @@ interface BaseTransaction {
   signers?: SignerSet
   sponsored?: boolean
   eip7702InitSignature?: Hex
+  settlementLayers?: SettlementLayer[]
 }
 
 interface SameChainTransaction extends BaseTransaction {

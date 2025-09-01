@@ -11,6 +11,7 @@ import {
   INTENT_STATUS_PRECONFIRMED,
 } from '../orchestrator'
 import { getChainById } from '../orchestrator/registry'
+import type { SettlementLayer } from '../orchestrator/types'
 import type {
   CallInput,
   RhinestoneAccountConfig,
@@ -56,6 +57,7 @@ async function sendTransaction(
       transaction.tokenRequests,
       transaction.signers,
       transaction.sponsored,
+      transaction.settlementLayers,
     )
   } else {
     // Cross-chain transaction
@@ -68,6 +70,7 @@ async function sendTransaction(
       transaction.tokenRequests,
       transaction.signers,
       transaction.sponsored,
+      transaction.settlementLayers,
     )
   }
 }
@@ -81,6 +84,7 @@ async function sendTransactionInternal(
   initialTokenRequests?: TokenRequest[],
   signers?: SignerSet,
   sponsored?: boolean,
+  settlementLayers?: SettlementLayer[],
 ) {
   const accountAddress = getAddress(config)
 
@@ -119,6 +123,7 @@ async function sendTransactionInternal(
       accountAddress,
       signers,
       sponsored,
+      settlementLayers,
     )
   }
 }
@@ -171,6 +176,7 @@ async function sendTransactionAsIntent(
   accountAddress: Address,
   signers?: SignerSet,
   sponsored?: boolean,
+  settlementLayers?: SettlementLayer[],
 ) {
   const { intentRoute } = await prepareTransactionAsIntent(
     config,
@@ -181,6 +187,8 @@ async function sendTransactionAsIntent(
     tokenRequests,
     accountAddress,
     sponsored ?? false,
+    undefined,
+    settlementLayers,
   )
   if (!intentRoute) {
     throw new OrderPathRequiredForIntentsError()
@@ -228,7 +236,7 @@ async function waitForExecution(
         const orchestrator = getOrchestratorByChain(
           result.targetChain,
           config.rhinestoneApiKey,
-          config.useDev,
+          config.orchestratorUrl,
         )
         intentStatus = await orchestrator.getIntentOpStatus(result.id)
         await new Promise((resolve) => setTimeout(resolve, POLLING_INTERVAL))
@@ -258,18 +266,20 @@ async function getMaxSpendableAmount(
   chain: Chain,
   tokenAddress: Address,
   gasUnits: bigint,
+  sponsored: boolean = false,
 ): Promise<bigint> {
   const address = getAddress(config)
   const orchestrator = getOrchestratorByChain(
     chain.id,
     config.rhinestoneApiKey,
-    config.useDev,
+    config.orchestratorUrl,
   )
   return orchestrator.getMaxTokenAmount(
     address,
     chain.id,
     tokenAddress,
     gasUnits,
+    sponsored,
   )
 }
 
@@ -282,7 +292,7 @@ async function getPortfolio(
   const orchestrator = getOrchestratorByChain(
     chainId,
     config.rhinestoneApiKey,
-    config.useDev,
+    config.orchestratorUrl,
   )
   return orchestrator.getPortfolio(address)
 }
