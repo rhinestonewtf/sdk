@@ -54,8 +54,7 @@ function getOwnerValidator(config: RhinestoneAccountConfig) {
 
 function getMockSignature(ownerSet: OwnerSet): Hex {
   switch (ownerSet.type) {
-    case 'ecdsa':
-    case 'ecdsa-v0': {
+    case 'ecdsa': {
       const owners = ownerSet.accounts.map((account) => account.address)
       const signatures = owners.map(() => ECDSA_MOCK_SIGNATURE as Hex)
       return concat(signatures)
@@ -111,12 +110,6 @@ function getValidator(owners: OwnerSet) {
         owners.threshold ?? 1,
         owners.accounts.map((account) => account.address),
         owners.module,
-      )
-    case 'ecdsa-v0':
-      return getOwnableValidator(
-        owners.threshold ?? 1,
-        owners.accounts.map((account) => account.address),
-        OWNABLE_V0_VALIDATOR_ADDRESS,
       )
     case 'passkey':
       return getWebAuthnValidator(

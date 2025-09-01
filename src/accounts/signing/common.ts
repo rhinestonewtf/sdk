@@ -31,13 +31,6 @@ function convertOwnerSetToSignerSet(owners: OwnerSet): SignerSet {
         module: owners.module,
       }
     }
-    case 'ecdsa-v0': {
-      return {
-        type: 'owner',
-        kind: 'ecdsa-v0',
-        accounts: owners.accounts,
-      }
-    }
     case 'passkey': {
       return {
         type: 'owner',
@@ -52,8 +45,7 @@ function convertOwnerSetToSignerSet(owners: OwnerSet): SignerSet {
         kind: 'multi-factor',
         validators: owners.validators.map((validator, index) => {
           switch (validator.type) {
-            case 'ecdsa':
-            case 'ecdsa-v0': {
+            case 'ecdsa': {
               return {
                 type: validator.type,
                 id: index,
@@ -187,8 +179,7 @@ async function signWithOwners<T>(
   ) => Promise<Hex>,
 ): Promise<Hex> {
   switch (signers.kind) {
-    case 'ecdsa':
-    case 'ecdsa-v0': {
+    case 'ecdsa': {
       // Ownable validator uses `v` value to determine which validation mode to use
       const updateV =
         !signers.module ||

@@ -32,7 +32,7 @@ type AccountProviderConfig =
   | StartaleAccount
 
 interface OwnableValidatorConfig {
-  type: 'ecdsa' | 'ecdsa-v0'
+  type: 'ecdsa'
   accounts: Account[]
   threshold?: number
   module?: Address
@@ -194,7 +194,7 @@ interface TokenRequest {
 type OwnerSignerSet =
   | {
       type: 'owner'
-      kind: 'ecdsa' | 'ecdsa-v0'
+      kind: 'ecdsa'
       accounts: Account[]
       module?: Address
     }
@@ -209,7 +209,7 @@ type OwnerSignerSet =
       kind: 'multi-factor'
       validators: (
         | {
-            type: 'ecdsa' | 'ecdsa-v0'
+            type: 'ecdsa'
             id: number | Hex
             accounts: Account[]
           }
