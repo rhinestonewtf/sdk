@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.0-alpha.24
+
+### Patch Changes
+
+- 12b4d87: Add signer conversion helpers methods
+
 ## 1.0.0-alpha.23
 
 ### Patch Changes
