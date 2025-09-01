@@ -20,7 +20,7 @@ describe('Modules', () => {
       }
       const setup = getSetup(config)
       expect(setup.validators[0].address).toBe(
-        '0x000000000013fdB5234E4E3162a810F54d9f7E98',
+        '0x000000000013fdb5234e4e3162a810f54d9f7e98',
       )
       expect(setup.validators[0].type).toBe(1n)
     })
@@ -37,7 +37,7 @@ describe('Modules', () => {
 
       expect(setup.validators).toHaveLength(1)
       expect(setup.validators[0].address).toBe(
-        '0x0000000000578c4cB0e472a5462da43C495C3F33',
+        '0x0000000000578c4cb0e472a5462da43c495c3f33',
       )
       expect(setup.validators[0].type).toBe(1n)
     })

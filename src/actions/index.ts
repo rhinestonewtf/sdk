@@ -21,7 +21,6 @@ import {
   getValidator,
   getWebAuthnValidator,
   MULTI_FACTOR_VALIDATOR_ADDRESS,
-  OWNABLE_V0_VALIDATOR_ADDRESS,
   OWNABLE_VALIDATOR_ADDRESS,
   WEBAUTHN_VALIDATOR_ADDRESS,
   type WebauthnCredential,

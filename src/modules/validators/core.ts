@@ -32,16 +32,21 @@ interface WebauthnCredential {
 }
 
 const OWNABLE_VALIDATOR_ADDRESS: Address =
-  '0x000000000013fdB5234E4E3162a810F54d9f7E98'
+  '0x000000000013fdb5234e4e3162a810f54d9f7e98'
 const WEBAUTHN_VALIDATOR_ADDRESS: Address =
-  '0x0000000000578c4cB0e472a5462da43C495C3F33'
+  '0x0000000000578c4cb0e472a5462da43c495c3f33'
 const SOCIAL_RECOVERY_VALIDATOR_ADDRESS: Address =
-  '0xA04D053b3C8021e8D5bF641816c42dAA75D8b597'
+  '0xa04d053b3c8021e8d5bf641816c42daa75d8b597'
 const MULTI_FACTOR_VALIDATOR_ADDRESS: Address =
-  '0xf6bDf42c9BE18cEcA5C06c42A43DAf7FBbe7896b'
+  '0xf6bdf42c9be18ceca5c06c42a43daf7fbbe7896b'
 
+// Legacy
 const OWNABLE_V0_VALIDATOR_ADDRESS: Address =
-  '0x2483DA3A338895199E5e538530213157e931Bf06'
+  '0x2483da3a338895199e5e538530213157e931bf06'
+const OWNABLE_BETA_VALIDATOR_ADDRESS: Address =
+  '0x0000000000e9e6e96bcaa3c113187cdb7e38aed9'
+const WEBAUTHN_V0_VALIDATOR_ADDRESS: Address =
+  '0x0000000000578c4cb0e472a5462da43c495c3f33'
 
 const ECDSA_MOCK_SIGNATURE =
   '0x81d4b4981670cb18f99f0b4a66446df1bf5b204d24cfcb659bf38ba27a4359b5711649ec2423c5e1247245eba2964679b6a1dbb85c992ae40b9b00c6935b02ff1b'
@@ -307,11 +312,21 @@ function parsePublicKey(publicKey: Hex | Uint8Array): PublicKey {
   }
 }
 
+function supportsEip712(validator: Module) {
+  switch (validator.address.toLowerCase()) {
+    case OWNABLE_BETA_VALIDATOR_ADDRESS: // Ownable Validator V1-beta
+    case OWNABLE_V0_VALIDATOR_ADDRESS: // Ownable Validator V0
+      return false
+    default:
+      return true
+  }
+}
+
 export {
   OWNABLE_VALIDATOR_ADDRESS,
   WEBAUTHN_VALIDATOR_ADDRESS,
   MULTI_FACTOR_VALIDATOR_ADDRESS,
-  OWNABLE_V0_VALIDATOR_ADDRESS,
+  WEBAUTHN_V0_VALIDATOR_ADDRESS,
   getOwnerValidator,
   getOwnableValidator,
   getWebAuthnValidator,
@@ -319,5 +334,6 @@ export {
   getSocialRecoveryValidator,
   getValidator,
   getMockSignature,
+  supportsEip712,
 }
 export type { WebauthnCredential }

@@ -11,7 +11,11 @@ import {
 } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
 import { isRip7212SupportedNetwork } from '../../modules'
-import { getValidator } from '../../modules/validators/core'
+import {
+  getValidator,
+  OWNABLE_VALIDATOR_ADDRESS,
+  WEBAUTHN_V0_VALIDATOR_ADDRESS,
+} from '../../modules/validators/core'
 import type { OwnerSet, SignerSet } from '../../types'
 import {
   generateCredentialId,
@@ -183,8 +187,7 @@ async function signWithOwners<T>(
       // Ownable validator uses `v` value to determine which validation mode to use
       const updateV =
         !signers.module ||
-        signers.module?.toLowerCase() ===
-          '0x000000000013fdb5234e4e3162a810f54d9f7e98'
+        signers.module?.toLowerCase() === OWNABLE_VALIDATOR_ADDRESS
       const signatures = await Promise.all(
         signers.accounts.map((account) =>
           signingFunctions.signEcdsa(account, params, updateV),
@@ -215,11 +218,7 @@ async function signWithOwners<T>(
           s,
         }
       })
-      // Legacy WebAuthn validator
-      if (
-        signers.module?.toLowerCase() ===
-        '0x0000000000578c4cb0e472a5462da43c495c3f33'
-      ) {
+      if (signers.module?.toLowerCase() === WEBAUTHN_V0_VALIDATOR_ADDRESS) {
         return packPasskeySignatureV0(webAuthns[0], usePrecompile)
       }
       return packPasskeySignature(credIds, usePrecompile, webAuthns)
