@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.0-alpha.25
+
+### Patch Changes
+
+- 82f6851: Add relay types
+
 ## 1.0.0-alpha.24
 
 ### Patch Changes
