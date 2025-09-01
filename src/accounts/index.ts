@@ -450,18 +450,9 @@ async function setup(
   const hasIntentExecutor = modulesToInstall.every(
     (module) => module.address !== intentExecutor.address,
   )
-  const result = await sendTransactionInternal(
-    config,
-    [chain],
-    chain,
-    calls,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    !hasIntentExecutor,
-  )
+  const result = await sendTransactionInternal(config, [chain], chain, calls, {
+    asUserOp: !hasIntentExecutor,
+  })
   await waitForExecution(config, result, true)
   return true
 }

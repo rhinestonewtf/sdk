@@ -52,16 +52,26 @@ async function sendTransaction(
       : transaction.sourceChains || []
   const targetChain =
     'chain' in transaction ? transaction.chain : transaction.targetChain
+  const {
+    calls,
+    gasLimit,
+    tokenRequests,
+    signers,
+    sponsored,
+    settlementLayers,
+  } = transaction
   return await sendTransactionInternal(
     config,
     sourceChains,
     targetChain,
-    transaction.calls,
-    transaction.gasLimit,
-    transaction.tokenRequests,
-    transaction.signers,
-    transaction.sponsored,
-    transaction.settlementLayers,
+    calls,
+    {
+      gasLimit,
+      initialTokenRequests: tokenRequests,
+      signers,
+      sponsored,
+      settlementLayers,
+    },
   )
 }
 
@@ -70,30 +80,35 @@ async function sendTransactionInternal(
   sourceChains: Chain[],
   targetChain: Chain,
   callInputs: CallInput[],
-  gasLimit: bigint | undefined,
-  initialTokenRequests?: TokenRequest[],
-  signers?: SignerSet,
-  sponsored?: boolean,
-  settlementLayers?: SettlementLayer[],
-  asUserOp?: boolean,
+  options: {
+    gasLimit?: bigint
+    initialTokenRequests?: TokenRequest[]
+    signers?: SignerSet
+    sponsored?: boolean
+    settlementLayers?: SettlementLayer[]
+    asUserOp?: boolean
+  },
 ) {
   const accountAddress = getAddress(config)
 
   // Across requires passing some value to repay the solvers
   const tokenRequests =
-    !initialTokenRequests || initialTokenRequests.length === 0
+    !options.initialTokenRequests || options.initialTokenRequests.length === 0
       ? [
           {
             address: zeroAddress,
             amount: 1n,
           },
         ]
-      : initialTokenRequests
+      : options.initialTokenRequests
 
   const sendAsUserOp =
-    asUserOp || signers?.type === 'guardians' || signers?.type === 'session'
+    options.asUserOp ||
+    options.signers?.type === 'guardians' ||
+    options.signers?.type === 'session'
   if (sendAsUserOp) {
-    const withSession = signers?.type === 'session' ? signers.session : null
+    const withSession =
+      options.signers?.type === 'session' ? options.signers.session : null
     if (withSession) {
       await enableSmartSession(targetChain, config, withSession)
     }
@@ -102,7 +117,7 @@ async function sendTransactionInternal(
       config,
       targetChain,
       callInputs,
-      signers,
+      options.signers,
     )
   } else {
     return await sendTransactionAsIntent(
@@ -110,12 +125,12 @@ async function sendTransactionInternal(
       sourceChains,
       targetChain,
       callInputs,
-      gasLimit,
+      options.gasLimit,
       tokenRequests,
       accountAddress,
-      signers,
-      sponsored,
-      settlementLayers,
+      options.signers,
+      options.sponsored,
+      options.settlementLayers,
     )
   }
 }
