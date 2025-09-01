@@ -500,6 +500,7 @@ async function setup(
     undefined,
     undefined,
     undefined,
+    undefined,
     !hasIntentExecutor,
   )
   await waitForExecution(config, result, true)
