@@ -45,6 +45,8 @@ const NEXUS_FACTORY_ADDRESS: Address =
 const NEXUS_BOOTSTRAP_ADDRESS: Address =
   '0x00000000006eFb61D8c9546FF1B500de3f244EA7'
 
+const NEXUS_IMPLEMENTATION_1_0_0: Address =
+  '0x000000039dfcad030719b07296710f045f0558f7'
 const NEXUS_BOOTSTRAP_1_0_0: Address =
   '0x00000008c901d8871b6f6942de0b5d9ccf3873d3'
 const NEXUS_K1_VALIDATOR: Address = '0x00000004171351c442b202678c48d8ab5b321e8f'
@@ -76,7 +78,7 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
     const implementation =
       config.initData.factory === NEXUS_FACTORY_ADDRESS
         ? NEXUS_IMPLEMENTATION_ADDRESS
-        : '0x000000039dfcad030719b07296710f045f0558f7'
+        : NEXUS_IMPLEMENTATION_1_0_0
 
     const registry = zeroAddress
     const bootstrapData = encodeFunctionData({
