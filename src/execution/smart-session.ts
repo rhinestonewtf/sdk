@@ -19,10 +19,13 @@ import {
   getBundlerClient,
   type ValidatorConfig,
 } from '../accounts/utils'
+import { enableSessionsEmissaryAbi } from '../modules/abi/smart-sessions-emissary'
 import {
-  getEnableSessionCall,
+  getEnableEmissarySessionCall,
+  getOwnerValidator,
   getPermissionId,
   isSessionEnabled,
+  SMART_SESSION_EMISSARY_ADDRESS,
   SMART_SESSION_MODE_ENABLE,
   SMART_SESSIONS_VALIDATOR_ADDRESS,
 } from '../modules/validators'
@@ -30,6 +33,7 @@ import {
   type ChainDigest,
   type ChainSession,
   type EnableSessionData,
+  getEnableSessionCall,
   getSessionData,
   type SessionData,
   type SmartSessionModeType,
@@ -47,6 +51,20 @@ interface SessionDetails {
   mode: SmartSessionModeType
   hashesAndChainIds: ChainDigest[]
   enableSessionData: EnableSessionData
+}
+
+function computeLockTag(
+  allocator: Address,
+  scope: number,
+  resetPeriod: number,
+): Hex {
+  const addr = BigInt(allocator)
+  const compactFlag = addr >> 184n // upper 8 bits
+  const last88 = addr & ((1n << 88n) - 1n)
+  const allocatorId = (compactFlag << 88n) | last88
+  const lockTagBig =
+    (BigInt(scope) << 95n) | (BigInt(resetPeriod) << 92n) | allocatorId
+  return `0x${lockTagBig.toString(16).padStart(24, '0')}` as Hex
 }
 
 async function getSessionDetails(
@@ -406,21 +424,156 @@ async function enableSmartSession(
   if (isEnabled) {
     return
   }
-  const enableSessionCall = await getEnableSessionCall(
-    chain,
-    session,
-    config.provider,
-  )
 
-  const smartAccount = await getSmartAccount(config, publicClient, chain)
-  const bundlerClient = getBundlerClient(config, publicClient)
-  const opHash = await bundlerClient.sendUserOperation({
-    account: smartAccount,
-    calls: [enableSessionCall],
-  })
-  await bundlerClient.waitForUserOperationReceipt({
-    hash: opHash,
-  })
+  // check if this is an emissary session
+  if (session.emissary) {
+    // Prepare emissary session enablement with proper signatures
+    try {
+      const details = await getSessionDetails(config, [session], 0)
+      const { enableSessionData } = details
+
+      // compute lockTag (scope(1) + resetPeriod(3) + allocatorId(92))
+      const scope = Number(session.emissary.scope)
+      const resetPeriod = Number(session.emissary.resetPeriod)
+      const allocator = session.emissary.allocator
+      const lockTag = computeLockTag(allocator, scope, resetPeriod)
+
+      // fetch sessionDigest from Emissary (uses internal nonce)
+      const emissaryClient = createPublicClient({
+        chain,
+        transport: createTransport(chain, config.provider),
+      })
+
+      const sessionDigest = (await emissaryClient.readContract({
+        address: SMART_SESSION_EMISSARY_ADDRESS,
+        abi: enableSessionsEmissaryAbi,
+        functionName: 'getSessionDigest',
+        args: [
+          address,
+          {
+            sessionValidator:
+              enableSessionData.sessionToEnable.sessionValidator,
+            sessionValidatorInitData:
+              enableSessionData.sessionToEnable.sessionValidatorInitData,
+            salt: enableSessionData.sessionToEnable.salt,
+            erc1271Policies:
+              enableSessionData.sessionToEnable.erc7739Policies
+                ?.erc1271Policies || [],
+            actions: enableSessionData.sessionToEnable.actions || [],
+          } as any,
+          lockTag,
+          BigInt(Math.floor(Date.now() / 1000) + 3600),
+          SMART_SESSION_EMISSARY_ADDRESS,
+        ],
+      })) as Hex
+
+      // userSig: pack as ERC-1271 account signature using the owner validator
+      const ownerValidator = getOwnerValidator(config)
+      const userSig = (await getPackedSignature(
+        config,
+        undefined,
+        chain,
+        { address: ownerValidator.address, isRoot: true },
+        sessionDigest,
+      )) as Hex
+
+      // allocatorSig from provider (contract allocator)
+      let allocatorSig: Hex = '0x'
+      if (config.allocatorSigProvider) {
+        const multichainDigest = getMultichainDigest([
+          {
+            chainId: BigInt(chain.id),
+            sessionDigest,
+          },
+        ])
+        allocatorSig = await config.allocatorSigProvider({
+          digest: multichainDigest,
+          chainId: chain.id,
+          emissary: SMART_SESSIONS_VALIDATOR_ADDRESS,
+          account: address,
+          lockTag,
+          expires: BigInt(Math.floor(Date.now() / 1000) + 3600),
+          sender: SMART_SESSIONS_VALIDATOR_ADDRESS,
+        })
+      }
+
+      // Enable emissary session with proper signatures
+      const enableEmissaryCall = await getEnableEmissarySessionCall(
+        chain,
+        session,
+        address,
+        config.provider,
+        {
+          allocatorSig,
+          userSig,
+          expires: BigInt(Math.floor(Date.now() / 1000) + 3600),
+          nonce: 0n,
+          allChainIds: [BigInt(chain.id)],
+          chainIndex: 0n,
+          session: {
+            chainDigestIndex: 0,
+            hashesAndChainIds: [
+              {
+                chainId: BigInt(chain.id),
+                sessionDigest,
+              },
+            ],
+            sessionToEnable: enableSessionData.sessionToEnable,
+          } as any,
+        },
+      )
+
+      const smartAccount = await getSmartAccount(config, publicClient, chain)
+      const bundlerClient = getBundlerClient(config, publicClient)
+
+      const opHash = await bundlerClient.sendUserOperation({
+        account: smartAccount,
+        calls: [enableEmissaryCall],
+      })
+      await bundlerClient.waitForUserOperationReceipt({ hash: opHash })
+      return
+    } catch (error) {
+      console.log(
+        '⚠️ Emissary session enablement failed, falling back to simple version:',
+        error,
+      )
+      // Fallback to simple version without signatures
+    }
+
+    // Fallback: Enable emissary session without signatures (may revert if signatures required)
+    const enableEmissaryCall = await getEnableEmissarySessionCall(
+      chain,
+      session,
+      address,
+      config.provider,
+    )
+
+    const smartAccount = await getSmartAccount(config, publicClient, chain)
+    const bundlerClient = getBundlerClient(config, publicClient)
+
+    const opHash = await bundlerClient.sendUserOperation({
+      account: smartAccount,
+      calls: [enableEmissaryCall],
+    })
+    await bundlerClient.waitForUserOperationReceipt({ hash: opHash })
+    return
+  } else {
+    // Standard smart session enablement
+    const enableSessionCall = await getEnableSessionCall(
+      chain,
+      session,
+      config.provider,
+    )
+
+    const smartAccount = await getSmartAccount(config, publicClient, chain)
+    const bundlerClient = getBundlerClient(config, publicClient)
+
+    const opHash = await bundlerClient.sendUserOperation({
+      account: smartAccount,
+      calls: [enableSessionCall],
+    })
+    await bundlerClient.waitForUserOperationReceipt({ hash: opHash })
+  }
 }
 
 export { enableSmartSession, getSessionDetails, getMultichainDigest }

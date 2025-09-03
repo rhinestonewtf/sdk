@@ -162,6 +162,16 @@ interface RhinestoneAccountConfig {
   provider?: ProviderConfig
   bundler?: BundlerConfig
   paymaster?: PaymasterConfig
+  /** Optional: provider that returns allocatorSig for Emissary digest (contract allocator). */
+  allocatorSigProvider?: (args: {
+    digest: Hex
+    chainId: number
+    emissary: Address
+    account: Address
+    lockTag: Hex
+    expires: bigint
+    sender: Address
+  }) => Promise<Hex>
   /**
    * @internal
    * Optional orchestrator URL override for internal testing - do not use
@@ -229,6 +239,47 @@ interface GuardiansSignerSet {
 
 type SignerSet = OwnerSignerSet | SessionSignerSet | GuardiansSignerSet
 
+interface Session {
+  owners: OwnerSet
+  policies?: [Policy, ...Policy[]]
+  actions?: [Action, ...Action[]]
+  salt?: Hex
+  chain?: Chain
+  emissary?: {
+    configId: number
+    allocator: Address
+    scope: number
+    resetPeriod: number
+    validator: Address
+    validatorConfig: Hex
+    /**
+     * Optional private key for the allocator EOA to sign emissary enable payloads.
+     * If provided, the SDK will generate allocatorSig automatically.
+     */
+    allocatorPrivateKey?: Hex
+  }
+}
+
+// Add emissary-specific types
+interface SmartSessionEmissaryConfig {
+  configId: number
+  allocator: Address
+  scope: number
+  resetPeriod: number
+  validator: Address
+  validatorConfig: Hex
+}
+
+interface SmartSessionEmissaryEnable {
+  session?: EnableSessionData & { permissionEnableSig: Hex }
+  allocatorSig: Hex
+  userSig: Hex
+  expires: bigint
+  nonce: bigint
+  allChainIds: bigint[]
+  chainIndex: bigint
+}
+
 interface BaseTransaction {
   calls: CallInput[]
   tokenRequests?: TokenRequest[]
@@ -271,4 +322,6 @@ export type {
   Recovery,
   Policy,
   UniversalActionPolicyParamCondition,
+  SmartSessionEmissaryConfig,
+  SmartSessionEmissaryEnable,
 }
