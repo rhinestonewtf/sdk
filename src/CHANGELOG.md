@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.0-alpha.26
+
+### Patch Changes
+
+- 359d07f: Existing accounts support ("Bring your own account")
+
 ## 1.0.0-alpha.25
 
 ### Patch Changes
