@@ -4,14 +4,13 @@ import {
   concat,
   createPublicClient,
   createWalletClient,
-  custom,
   encodeFunctionData,
   encodePacked,
   type Hex,
   http,
   type PublicClient,
   size,
-  type TransportConfig,
+  type Transport,
   zeroHash,
 } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
@@ -273,7 +272,7 @@ async function deploy(
 
 async function deploySource(chain: Chain, config: RhinestoneAccountConfig) {
   if (is7702(config)) {
-    return deploy7702Self(chain, config)
+    return deploy7702WithBundler(chain, config)
   } else {
     return deployStandalone(chain, config)
   }
@@ -311,47 +310,6 @@ function getBundleInitCode(config: RhinestoneAccountConfig) {
     }
     return encodePacked(['address', 'bytes'], [factory, factoryData])
   }
-}
-
-async function deploy7702Self(chain: Chain, config: RhinestoneAccountConfig) {
-  if (!config.eoa) {
-    throw new Eip7702AccountMustHaveEoaError()
-  }
-
-  const account = getAccountProvider(config)
-  const { implementation, initializationCallData } = getDeployArgs(config)
-  if (!initializationCallData) {
-    throw new Error(
-      `Initialization call data not available for ${account.type}`,
-    )
-  }
-
-  const publicClient = createPublicClient({
-    chain,
-    transport: http(),
-  })
-  const customTransport =
-    'transport' in config.eoa ? config.eoa.transport : undefined
-  const accountClient = createWalletClient({
-    account: config.eoa,
-    chain,
-    transport: customTransport
-      ? custom(customTransport as TransportConfig)
-      : http(),
-  })
-
-  const authorization = await accountClient.signAuthorization({
-    contractAddress: implementation,
-    executor: 'self',
-  })
-
-  const hash = await accountClient.sendTransaction({
-    chain,
-    authorizationList: [authorization],
-    to: config.eoa.address,
-    data: initializationCallData,
-  })
-  await publicClient.waitForTransactionReceipt({ hash })
 }
 
 async function deployStandaloneWithEoa(
@@ -418,10 +376,12 @@ async function deploy7702WithBundler(
     chain,
     transport: http(),
   })
+  const customTransport =
+    'transport' in config.eoa ? config.eoa.transport : undefined
   const accountClient = createWalletClient({
     account: config.eoa,
     chain,
-    transport: http(),
+    transport: customTransport ? (customTransport as Transport) : http(),
   })
   const bundlerClient = getBundlerClient(config, publicClient)
 
