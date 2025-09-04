@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 0.13.4
+
+### Patch Changes
+
+- 32408ec: Check if already deployed in `deploy`
+
 ## 0.13.3
 
 ### Patch Changes
