@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 0.13.5
+
+### Patch Changes
+
+- 638860f: Remove 7702 "already delegated" check in `isDeployed`
+
 ## 0.13.4
 
 ### Patch Changes
