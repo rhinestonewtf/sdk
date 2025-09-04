@@ -1,58 +1,55 @@
 import type { Account, Address, Chain, Hex } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
-import type { ValidatorConfig } from './accounts/utils'
-import type { Module } from './modules/common'
 import type { EnableSessionData } from './modules/validators/smart-sessions'
 import type { SettlementLayer } from './orchestrator/types'
 
 type AccountType = 'safe' | 'nexus' | 'kernel' | 'startale' | 'custom'
 
-interface AccountProviderConfig {
-  type: AccountType
-  custom?: CustomAccountProviderConfig
+interface SafeAccount {
+  type: 'safe'
+  version?: '1.4.1'
+  adapter?: '1.0.0' | '2.0.0'
 }
 
-interface CustomAccountProviderConfig {
-  getDeployArgs: () => {
-    factory: Address
-    factoryData: Hex
-  }
-  getInstallData: (module: Module) => Hex[]
-  getAddress: () => Address
-  getPackedSignature: (
-    signature: Hex,
-    validator: ValidatorConfig,
-    transformSignature: (signature: Hex) => Hex,
-  ) => Promise<Hex>
-  getSessionStubSignature: (
-    session: Session,
-    enableData: EnableSessionData | null,
-  ) => Promise<Hex>
-  signSessionUserOperation: (
-    session: Session,
-    enableData: EnableSessionData | null,
-    hash: Hex,
-  ) => Promise<Hex>
-  getStubSignature: () => Promise<Hex>
-  sign: (hash: Hex) => Promise<Hex>
+interface NexusAccount {
+  type: 'nexus'
+  version?: '1.0.2' | '1.2.0' | 'rhinestone-1.0.0-beta' | 'rhinestone-1.0.0'
 }
+
+interface KernelAccount {
+  type: 'kernel'
+  version?: '3.1' | '3.2' | '3.3'
+}
+
+interface StartaleAccount {
+  type: 'startale'
+}
+
+type AccountProviderConfig =
+  | SafeAccount
+  | NexusAccount
+  | KernelAccount
+  | StartaleAccount
 
 interface OwnableValidatorConfig {
-  type: 'ecdsa' | 'ecdsa-v0'
+  type: 'ecdsa'
   accounts: Account[]
   threshold?: number
+  module?: Address
 }
 
 interface WebauthnValidatorConfig {
   type: 'passkey'
   accounts: WebAuthnAccount[]
   threshold?: number
+  module?: Address
 }
 
 interface MultiFactorValidatorConfig {
   type: 'multi-factor'
   validators: (OwnableValidatorConfig | WebauthnValidatorConfig)[]
   threshold?: number
+  module?: Address
 }
 
 interface ProviderConfig {
@@ -159,6 +156,12 @@ interface RhinestoneAccountConfig {
   sessions?: Session[]
   recovery?: Recovery
   eoa?: Account
+  initData?: {
+    address: Address
+    factory: Address
+    factoryData: Hex
+    intentExecutorInstalled: boolean
+  }
   provider?: ProviderConfig
   bundler?: BundlerConfig
   paymaster?: PaymasterConfig
@@ -191,20 +194,22 @@ interface TokenRequest {
 type OwnerSignerSet =
   | {
       type: 'owner'
-      kind: 'ecdsa' | 'ecdsa-v0'
+      kind: 'ecdsa'
       accounts: Account[]
+      module?: Address
     }
   | {
       type: 'owner'
       kind: 'passkey'
       accounts: WebAuthnAccount[]
+      module?: Address
     }
   | {
       type: 'owner'
       kind: 'multi-factor'
       validators: (
         | {
-            type: 'ecdsa' | 'ecdsa-v0'
+            type: 'ecdsa'
             id: number | Hex
             accounts: Account[]
           }
@@ -214,6 +219,7 @@ type OwnerSignerSet =
             accounts: WebAuthnAccount[]
           }
       )[]
+      module?: Address
     }
 
 interface SessionSignerSet {

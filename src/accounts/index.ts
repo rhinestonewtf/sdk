@@ -12,8 +12,13 @@ import {
   type TypedData,
   zeroAddress,
 } from 'viem'
-import { sendTransaction, waitForExecution } from '../execution'
+import {
+  sendTransaction,
+  sendTransactionInternal,
+  waitForExecution,
+} from '../execution'
 import { enableSmartSession } from '../execution/smart-session'
+import { getIntentExecutor, getSetup } from '../modules'
 import type { Module } from '../modules/common'
 import {
   getOwnerValidator,
@@ -29,14 +34,6 @@ import type {
   Session,
   SignerSet,
 } from '../types'
-import {
-  getAddress as getCustomAddress,
-  getDeployArgs as getCustomDeployArgs,
-  getInstallData as getCustomInstallData,
-  getPackedSignature as getCustomPackedSignature,
-  getSessionSmartAccount as getCustomSessionSmartAccount,
-  getSmartAccount as getCustomSmartAccount,
-} from './custom'
 import {
   AccountError,
   Eip7702AccountMustHaveEoaError,
@@ -60,6 +57,7 @@ import {
 } from './kernel'
 import {
   getAddress as getNexusAddress,
+  getDefaultValidatorAddress as getNexusDefaultValidatorAddress,
   getDeployArgs as getNexusDeployArgs,
   getEip7702InitCall as getNexusEip7702InitCall,
   getGuardianSmartAccount as getNexusGuardianSmartAccount,
@@ -90,7 +88,11 @@ import {
   getSmartAccount as getStartaleSmartAccount,
   packSignature as packStartaleSignature,
 } from './startale'
-import { createTransport, type ValidatorConfig } from './utils'
+import {
+  createTransport,
+  getBundlerClient,
+  type ValidatorConfig,
+} from './utils'
 
 function getDeployArgs(config: RhinestoneAccountConfig) {
   const account = getAccountProvider(config)
@@ -107,15 +109,14 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
     case 'startale': {
       return getStartaleDeployArgs(config)
     }
-    case 'custom': {
-      return getCustomDeployArgs(config)
-    }
   }
 }
 
 function getInitCode(config: RhinestoneAccountConfig) {
   if (is7702(config)) {
     return undefined
+  } else if (config.initData) {
+    return config.initData
   } else {
     const { factory, factoryData } = getDeployArgs(config)
     if (!factory || !factoryData) {
@@ -143,9 +144,6 @@ async function signEip7702InitData(config: RhinestoneAccountConfig) {
     case 'startale': {
       throw new Error(`7702 is not supported for account type ${account.type}`)
     }
-    case 'custom': {
-      throw new Error('7702 is not supported for custom account')
-    }
   }
 }
 
@@ -162,9 +160,6 @@ async function getEip7702InitCall(
     case 'kernel':
     case 'startale': {
       throw new Error(`7702 is not supported for account type ${account.type}`)
-    }
-    case 'custom': {
-      throw new Error('7702 is not supported for custom account')
     }
   }
 }
@@ -189,9 +184,6 @@ function getModuleInstallationCalls(
       }
       case 'startale': {
         return [getStartaleInstallData(module)]
-      }
-      case 'custom': {
-        return getCustomInstallData(config, module)
       }
     }
   }
@@ -259,10 +251,16 @@ function getAddress(config: RhinestoneAccountConfig) {
     case 'startale': {
       return getStartaleAddress(config)
     }
-    case 'custom': {
-      return getCustomAddress(config)
-    }
   }
+}
+
+function checkAddress(config: RhinestoneAccountConfig) {
+  if (!config.initData) {
+    return true
+  }
+  return (
+    config.initData.address.toLowerCase() === getAddress(config).toLowerCase()
+  )
 }
 
 // Signs and packs a signature to be EIP-1271 compatible
@@ -285,7 +283,15 @@ async function getPackedSignature(
     }
     case 'nexus': {
       const signature = await signFn(hash)
-      return packNexusSignature(signature, validator, transformSignature)
+      const defaultValidatorAddress = getNexusDefaultValidatorAddress(
+        account.version,
+      )
+      return packNexusSignature(
+        signature,
+        validator,
+        transformSignature,
+        defaultValidatorAddress,
+      )
     }
     case 'kernel': {
       const signature = await signFn(wrapKernelMessageHash(hash, address))
@@ -294,15 +300,6 @@ async function getPackedSignature(
     case 'startale': {
       const signature = await signFn(hash)
       return packStartaleSignature(signature, validator, transformSignature)
-    }
-    case 'custom': {
-      const signature = await signFn(hash)
-      return getCustomPackedSignature(
-        config,
-        signature,
-        validator,
-        transformSignature,
-      )
     }
   }
 }
@@ -330,18 +327,17 @@ async function getTypedDataPackedSignature<
       const signature = await signFn(parameters)
       return packSafeSignature(signature, validator, transformSignature)
     }
-    case 'custom': {
+    case 'nexus': {
       const signature = await signFn(parameters)
-      return getCustomPackedSignature(
-        config,
+      const defaultValidatorAddress = getNexusDefaultValidatorAddress(
+        account.version,
+      )
+      return packNexusSignature(
         signature,
         validator,
         transformSignature,
+        defaultValidatorAddress,
       )
-    }
-    case 'nexus': {
-      const signature = await signFn(parameters)
-      return packNexusSignature(signature, validator, transformSignature)
     }
     case 'kernel': {
       const address = getAddress(config)
@@ -382,11 +378,83 @@ async function deploy(
   config: RhinestoneAccountConfig,
   chain: Chain,
   session?: Session,
-) {
-  await deployWithIntent(chain, config)
+): Promise<boolean> {
+  const deployed = await isDeployed(config, chain)
+  if (deployed) {
+    return false
+  }
+  const asUserOp = config.initData && !config.initData.intentExecutorInstalled
+  if (asUserOp) {
+    await deployWithBundler(chain, config)
+  } else {
+    await deployWithIntent(chain, config)
+  }
   if (session) {
     await enableSmartSession(chain, config, session)
   }
+  return true
+}
+
+// Installs the missing modules
+// Checks if the provided modules are already installed
+// Useful for existing (already deployed) accounts
+async function setup(
+  config: RhinestoneAccountConfig,
+  chain: Chain,
+): Promise<boolean> {
+  const modules = getSetup(config)
+  const publicClient = createPublicClient({
+    chain,
+    transport: createTransport(chain, config.provider),
+  })
+  const address = getAddress(config)
+  const allModules = [
+    ...modules.validators,
+    ...modules.executors,
+    ...modules.fallbacks,
+    ...modules.hooks,
+  ]
+  // Check if the modules are already installed
+  const installedResults = await publicClient.multicall({
+    contracts: allModules.map((module) => ({
+      address: address,
+      abi: [
+        {
+          type: 'function',
+          name: 'isModuleInstalled',
+          inputs: [
+            { type: 'uint256', name: 'moduleTypeId' },
+            { type: 'address', name: 'module' },
+            { type: 'bytes', name: 'additionalContext' },
+          ],
+          outputs: [{ type: 'bool', name: 'isInstalled' }],
+          stateMutability: 'view',
+        },
+      ] as const,
+      functionName: 'isModuleInstalled',
+      args: [module.type, module.address, module.additionalContext],
+    })),
+  })
+  const isInstalled = installedResults.map((result) => result.result)
+  const modulesToInstall = allModules.filter((_, index) => !isInstalled[index])
+  if (modulesToInstall.length === 0) {
+    // Nothing to install
+    return false
+  }
+  const calls = []
+  for (const module of modulesToInstall) {
+    calls.push(...getModuleInstallationCalls(config, module))
+  }
+  // Select the transaction infra layer based on the intent executor status
+  const intentExecutor = getIntentExecutor(config)
+  const hasIntentExecutor = modulesToInstall.every(
+    (module) => module.address !== intentExecutor.address,
+  )
+  const result = await sendTransactionInternal(config, [chain], chain, calls, {
+    asUserOp: !hasIntentExecutor,
+  })
+  await waitForExecution(config, result, true)
+  return true
 }
 
 async function deployWithIntent(chain: Chain, config: RhinestoneAccountConfig) {
@@ -410,6 +478,34 @@ async function deployWithIntent(chain: Chain, config: RhinestoneAccountConfig) {
     ],
   })
   await waitForExecution(config, result, true)
+}
+
+async function deployWithBundler(
+  chain: Chain,
+  config: RhinestoneAccountConfig,
+) {
+  const publicClient = createPublicClient({
+    chain,
+    transport: createTransport(chain, config.provider),
+  })
+  const bundlerClient = getBundlerClient(config, publicClient)
+  const smartAccount = await getSmartAccount(config, publicClient, chain)
+  const { factory, factoryData } = getDeployArgs(config)
+  const opHash = await bundlerClient.sendUserOperation({
+    account: smartAccount,
+    factory,
+    factoryData,
+    calls: [
+      {
+        to: zeroAddress,
+        value: 0n,
+        data: '0x',
+      },
+    ],
+  })
+  await bundlerClient.waitForUserOperationReceipt({
+    hash: opHash,
+  })
 }
 
 async function toErc6492Signature(
@@ -463,12 +559,16 @@ async function getSmartAccount(
       )
     }
     case 'nexus': {
+      const defaultValidatorAddress = getNexusDefaultValidatorAddress(
+        account.version,
+      )
       return getNexusSmartAccount(
         client,
         address,
         config.owners,
         ownerValidator.address,
         signFn,
+        defaultValidatorAddress,
       )
     }
     case 'kernel': {
@@ -485,15 +585,6 @@ async function getSmartAccount(
         client,
         address,
         config.owners,
-        ownerValidator.address,
-        signFn,
-      )
-    }
-    case 'custom': {
-      return getCustomSmartAccount(
-        config,
-        client,
-        address,
         ownerValidator.address,
         signFn,
       )
@@ -533,6 +624,9 @@ async function getSmartSessionSmartAccount(
       )
     }
     case 'nexus': {
+      const defaultValidatorAddress = getNexusDefaultValidatorAddress(
+        account.version,
+      )
       return getNexusSessionSmartAccount(
         client,
         address,
@@ -540,6 +634,7 @@ async function getSmartSessionSmartAccount(
         smartSessionValidator.address,
         enableData,
         signFn,
+        defaultValidatorAddress,
       )
     }
     case 'kernel': {
@@ -560,16 +655,6 @@ async function getSmartSessionSmartAccount(
         smartSessionValidator.address,
         enableData,
         signFn,
-      )
-    }
-    case 'custom': {
-      return getCustomSessionSmartAccount(
-        config,
-        client,
-        address,
-        session,
-        smartSessionValidator.address,
-        enableData,
       )
     }
   }
@@ -605,12 +690,16 @@ async function getGuardianSmartAccount(
       )
     }
     case 'nexus': {
+      const defaultValidatorAddress = getNexusDefaultValidatorAddress(
+        account.version,
+      )
       return getNexusGuardianSmartAccount(
         client,
         address,
         guardians,
         socialRecoveryValidator.address,
         signFn,
+        defaultValidatorAddress,
       )
     }
     case 'kernel': {
@@ -653,12 +742,14 @@ export {
   getModuleInstallationCalls,
   getModuleUninstallationCalls,
   getAddress,
+  checkAddress,
   getAccountProvider,
   getInitCode,
   signEip7702InitData,
   getEip7702InitCall,
   isDeployed,
   deploy,
+  setup,
   toErc6492Signature,
   getSmartAccount,
   getSmartSessionSmartAccount,

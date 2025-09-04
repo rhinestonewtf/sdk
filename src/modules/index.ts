@@ -26,7 +26,7 @@ import { getOwnerValidator, getSmartSessionValidator } from './validators'
 import { getSocialRecoveryValidator } from './validators/core'
 
 const SMART_SESSION_COMPATIBILITY_FALLBACK_ADDRESS: Address =
-  '0x12cae64c42f362e7d5a847c2d33388373f629177'
+  '0x000000000052e9685932845660777DF43C2dC496'
 
 interface ModeleSetup {
   validators: Module[]
@@ -51,18 +51,8 @@ function getSetup(config: RhinestoneAccountConfig): ModeleSetup {
     validators.push(socialRecoveryValidator)
   }
 
-  const intentExecutorAddress = config.orchestratorUrl
-    ? INTENT_EXECUTOR_ADDRESS_DEV
-    : INTENT_EXECUTOR_ADDRESS
-  const executors: Module[] = [
-    {
-      address: intentExecutorAddress,
-      initData: '0x',
-      deInitData: '0x',
-      additionalContext: '0x',
-      type: MODULE_TYPE_ID_EXECUTOR,
-    },
-  ]
+  const intentExecutor = getIntentExecutor(config)
+  const executors: Module[] = [intentExecutor]
 
   const fallbacks: Module[] = []
 
@@ -96,6 +86,19 @@ function getSetup(config: RhinestoneAccountConfig): ModeleSetup {
   }
 }
 
+function getIntentExecutor(config: RhinestoneAccountConfig): Module {
+  const intentExecutorAddress = config.orchestratorUrl
+    ? INTENT_EXECUTOR_ADDRESS_DEV
+    : INTENT_EXECUTOR_ADDRESS
+  return {
+    address: intentExecutorAddress,
+    initData: '0x',
+    deInitData: '0x',
+    additionalContext: '0x',
+    type: MODULE_TYPE_ID_EXECUTOR,
+  }
+}
+
 function isRip7212SupportedNetwork(chain: Chain) {
   const supportedChains: Chain[] = [
     optimism,
@@ -114,6 +117,7 @@ export {
   getSetup,
   getOwnerValidator,
   getOwners,
+  getIntentExecutor,
   getValidators,
   isRip7212SupportedNetwork,
 }

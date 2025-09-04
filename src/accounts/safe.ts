@@ -2,13 +2,16 @@ import {
   type Abi,
   type Address,
   concat,
+  decodeFunctionData,
+  encodeAbiParameters,
   encodeFunctionData,
   encodePacked,
+  getContractAddress,
   type Hex,
   keccak256,
   type PublicClient,
   parseAbi,
-  slice,
+  parseAbiParameters,
   zeroAddress,
 } from 'viem'
 import {
@@ -44,86 +47,112 @@ const SAFE_PROXY_FACTORY_ADDRESS: Address =
 
 const NO_SAFE_OWNER_ADDRESS: Address =
   '0xbabe99e62d8bcbd3acf5ccbcfcd4f64fe75e5e72'
+const SAFE_PROXY_INIT_CODE =
+  '0x608060405234801561001057600080fd5b506040516101e63803806101e68339818101604052602081101561003357600080fd5b8101908080519060200190929190505050600073ffffffffffffffffffffffffffffffffffffffff168173ffffffffffffffffffffffffffffffffffffffff1614156100ca576040517f08c379a00000000000000000000000000000000000000000000000000000000081526004018080602001828103825260228152602001806101c46022913960400191505060405180910390fd5b806000806101000a81548173ffffffffffffffffffffffffffffffffffffffff021916908373ffffffffffffffffffffffffffffffffffffffff1602179055505060ab806101196000396000f3fe608060405273ffffffffffffffffffffffffffffffffffffffff600054167fa619486e0000000000000000000000000000000000000000000000000000000060003514156050578060005260206000f35b3660008037600080366000845af43d6000803e60008114156070573d6000fd5b3d6000f3fea264697066735822122003d1488ee65e08fa41e58e888a9865554c535f2c77126a82cb4c0f917f31441364736f6c63430007060033496e76616c69642073696e676c65746f6e20616464726573732070726f7669646564'
 
 function getDeployArgs(config: RhinestoneAccountConfig) {
-  {
-    const owners = getOwners(config)
-    const threshold = getThreshold(config)
-    const moduleSetup = getModuleSetup(config)
-    const modules = [
-      ...moduleSetup.validators,
-      ...moduleSetup.executors,
-      ...moduleSetup.fallbacks,
-      ...moduleSetup.hooks,
-    ]
-    const initData = encodeFunctionData({
-      abi: parseAbi([
-        'function setup(address[] calldata _owners,uint256 _threshold,address to,bytes calldata data,address fallbackHandler,address paymentToken,uint256 payment, address paymentReceiver) external',
-      ]),
-      functionName: 'setup',
-      args: [
-        owners,
-        threshold,
-        SAFE_7579_LAUNCHPAD_ADDRESS,
-        encodeFunctionData({
-          abi: parseAbi([
-            'struct ModuleInit {address module;bytes initData;uint256 moduleType}',
-            'function addSafe7579(address safe7579,ModuleInit[] calldata modules,address[] calldata attesters,uint8 threshold) external',
-          ]),
-          functionName: 'addSafe7579',
-          args: [
-            SAFE_7579_ADAPTER_ADDRESS,
-            modules.map((m) => ({
-              module: m.address,
-              initData: m.initData,
-              moduleType: m.type,
-            })),
-            [],
-            0,
-          ],
-        }),
-        SAFE_7579_ADAPTER_ADDRESS,
-        zeroAddress,
-        BigInt(0),
-        zeroAddress,
-      ],
-    })
-
-    const saltNonce = 0n
-    const factoryData = encodeFunctionData({
+  if (config.initData) {
+    const factoryData = decodeFunctionData({
       abi: parseAbi([
         'function createProxyWithNonce(address singleton,bytes calldata initializer,uint256 saltNonce) external payable returns (address)',
       ]),
-      functionName: 'createProxyWithNonce',
-      args: [SAFE_SINGLETON_ADDRESS, initData, saltNonce],
+      data: config.initData.factoryData,
     })
-
+    if (factoryData.functionName !== 'createProxyWithNonce') {
+      throw new Error('Invalid factory data')
+    }
+    const implementation = factoryData.args[0]
+    const initData = factoryData.args[1]
+    const saltNonce = factoryData.args[2]
     const salt = keccak256(
       encodePacked(['bytes32', 'uint256'], [keccak256(initData), saltNonce]),
     )
 
     return {
-      factory: SAFE_PROXY_FACTORY_ADDRESS,
-      factoryData,
+      factory: config.initData.factory,
+      factoryData: config.initData.factoryData,
       salt,
-      implementation: SAFE_SINGLETON_ADDRESS,
+      implementation,
       initializationCallData: null,
     }
+  }
+
+  const owners = getOwners(config)
+  const threshold = getThreshold(config)
+  const moduleSetup = getModuleSetup(config)
+  const modules = [
+    ...moduleSetup.validators,
+    ...moduleSetup.executors,
+    ...moduleSetup.fallbacks,
+    ...moduleSetup.hooks,
+  ]
+  const initData = encodeFunctionData({
+    abi: parseAbi([
+      'function setup(address[] calldata _owners,uint256 _threshold,address to,bytes calldata data,address fallbackHandler,address paymentToken,uint256 payment, address paymentReceiver) external',
+    ]),
+    functionName: 'setup',
+    args: [
+      owners,
+      threshold,
+      SAFE_7579_LAUNCHPAD_ADDRESS,
+      encodeFunctionData({
+        abi: parseAbi([
+          'struct ModuleInit {address module;bytes initData;uint256 moduleType}',
+          'function addSafe7579(address safe7579,ModuleInit[] calldata modules,address[] calldata attesters,uint8 threshold) external',
+        ]),
+        functionName: 'addSafe7579',
+        args: [
+          SAFE_7579_ADAPTER_ADDRESS,
+          modules.map((m) => ({
+            module: m.address,
+            initData: m.initData,
+            moduleType: m.type,
+          })),
+          [],
+          0,
+        ],
+      }),
+      SAFE_7579_ADAPTER_ADDRESS,
+      zeroAddress,
+      BigInt(0),
+      zeroAddress,
+    ],
+  })
+
+  const saltNonce = 0n
+  const factoryData = encodeFunctionData({
+    abi: parseAbi([
+      'function createProxyWithNonce(address singleton,bytes calldata initializer,uint256 saltNonce) external payable returns (address)',
+    ]),
+    functionName: 'createProxyWithNonce',
+    args: [SAFE_SINGLETON_ADDRESS, initData, saltNonce],
+  })
+
+  const salt = keccak256(
+    encodePacked(['bytes32', 'uint256'], [keccak256(initData), saltNonce]),
+  )
+
+  return {
+    factory: SAFE_PROXY_FACTORY_ADDRESS,
+    factoryData,
+    salt,
+    implementation: SAFE_SINGLETON_ADDRESS,
+    initializationCallData: null,
   }
 }
 
 function getAddress(config: RhinestoneAccountConfig) {
-  const hashedInitcode: Hex =
-    '0xe298282cefe913ab5d282047161268a8222e4bd4ed106300c547894bbefd31ee'
-
-  const { factory, salt } = getDeployArgs(config)
-  const hash = keccak256(
-    encodePacked(
-      ['bytes1', 'address', 'bytes32', 'bytes'],
-      ['0xff', factory, salt, hashedInitcode],
-    ),
+  const { factory, implementation, salt } = getDeployArgs(config)
+  const constructorArgs = encodeAbiParameters(
+    parseAbiParameters('address singleton'),
+    [implementation],
   )
-  const address = slice(hash, 12, 32)
+  const address = getContractAddress({
+    opcode: 'CREATE2',
+    from: factory,
+    salt,
+    bytecode: concat([SAFE_PROXY_INIT_CODE, constructorArgs]),
+  })
   return address
 }
 
@@ -330,7 +359,6 @@ function getOwners(config: RhinestoneAccountConfig) {
   const ownerSet = config.owners
   switch (ownerSet.type) {
     case 'ecdsa':
-    case 'ecdsa-v0':
       return ownerSet.accounts.map((account) => account.address)
     case 'passkey':
       return [NO_SAFE_OWNER_ADDRESS]
@@ -343,7 +371,6 @@ function getThreshold(config: RhinestoneAccountConfig) {
   const ownerSet = config.owners
   switch (ownerSet.type) {
     case 'ecdsa':
-    case 'ecdsa-v0':
       return ownerSet.threshold ? BigInt(ownerSet.threshold) : 1n
     case 'passkey':
       return 1n

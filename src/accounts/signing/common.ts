@@ -11,11 +11,16 @@ import {
 } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
 import { isRip7212SupportedNetwork } from '../../modules'
-import { getValidator } from '../../modules/validators/core'
+import {
+  getValidator,
+  OWNABLE_VALIDATOR_ADDRESS,
+  WEBAUTHN_V0_VALIDATOR_ADDRESS,
+} from '../../modules/validators/core'
 import type { OwnerSet, SignerSet } from '../../types'
 import {
   generateCredentialId,
   packSignature as packPasskeySignature,
+  packSignatureV0 as packPasskeySignatureV0,
   parsePublicKey,
   parseSignature,
 } from './passkeys'
@@ -27,13 +32,7 @@ function convertOwnerSetToSignerSet(owners: OwnerSet): SignerSet {
         type: 'owner',
         kind: 'ecdsa',
         accounts: owners.accounts,
-      }
-    }
-    case 'ecdsa-v0': {
-      return {
-        type: 'owner',
-        kind: 'ecdsa-v0',
-        accounts: owners.accounts,
+        module: owners.module,
       }
     }
     case 'passkey': {
@@ -41,6 +40,7 @@ function convertOwnerSetToSignerSet(owners: OwnerSet): SignerSet {
         type: 'owner',
         kind: 'passkey',
         accounts: owners.accounts,
+        module: owners.module,
       }
     }
     case 'multi-factor': {
@@ -49,12 +49,12 @@ function convertOwnerSetToSignerSet(owners: OwnerSet): SignerSet {
         kind: 'multi-factor',
         validators: owners.validators.map((validator, index) => {
           switch (validator.type) {
-            case 'ecdsa':
-            case 'ecdsa-v0': {
+            case 'ecdsa': {
               return {
                 type: validator.type,
                 id: index,
                 accounts: validator.accounts,
+                module: validator.module,
               }
             }
             case 'passkey': {
@@ -62,6 +62,7 @@ function convertOwnerSetToSignerSet(owners: OwnerSet): SignerSet {
                 type: 'passkey',
                 id: index,
                 accounts: validator.accounts,
+                module: validator.module,
               }
             }
           }
@@ -72,7 +73,7 @@ function convertOwnerSetToSignerSet(owners: OwnerSet): SignerSet {
 }
 
 type SigningFunctions<T> = {
-  signEcdsa: (account: Account, params: T) => Promise<Hex>
+  signEcdsa: (account: Account, params: T, updateV: boolean) => Promise<Hex>
   signPasskey: (
     account: WebAuthnAccount,
     params: T,
@@ -162,7 +163,7 @@ async function signWithGuardians<T>(
 ): Promise<Hex> {
   const signatures = await Promise.all(
     signers.guardians.map((account) =>
-      signingFunctions.signEcdsa(account, params),
+      signingFunctions.signEcdsa(account, params, false),
     ),
   )
   return concat(signatures)
@@ -182,11 +183,14 @@ async function signWithOwners<T>(
   ) => Promise<Hex>,
 ): Promise<Hex> {
   switch (signers.kind) {
-    case 'ecdsa':
-    case 'ecdsa-v0': {
+    case 'ecdsa': {
+      // Ownable validator uses `v` value to determine which validation mode to use
+      const updateV =
+        !signers.module ||
+        signers.module?.toLowerCase() === OWNABLE_VALIDATOR_ADDRESS
       const signatures = await Promise.all(
         signers.accounts.map((account) =>
-          signingFunctions.signEcdsa(account, params),
+          signingFunctions.signEcdsa(account, params, updateV),
         ),
       )
       return concat(signatures)
@@ -214,6 +218,9 @@ async function signWithOwners<T>(
           s,
         }
       })
+      if (signers.module?.toLowerCase() === WEBAUTHN_V0_VALIDATOR_ADDRESS) {
+        return packPasskeySignatureV0(webAuthns[0], usePrecompile)
+      }
       return packPasskeySignature(credIds, usePrecompile, webAuthns)
     }
     case 'multi-factor': {

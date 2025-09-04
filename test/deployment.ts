@@ -25,9 +25,9 @@ import { getForkUrl } from './utils/utils'
 
 const SENTINEL_ADDRESS: Address = '0x0000000000000000000000000000000000000001'
 const OWNABLE_VALIDATOR_ADDRESS: Address =
-  '0x000000000013fdB5234E4E3162a810F54d9f7E98'
+  '0x000000000013fdb5234e4e3162a810f54d9f7e98'
 const INTENT_EXECUTOR_ADDRESS: Address =
-  '0x00000000005aD9ce1f5035FD62CA96CEf16AdAAF'
+  '0x00000000005ad9ce1f5035fd62ca96cef16adaaf'
 
 export function runDeploymentTests() {
   describe('Account Deployment', () => {

@@ -27,7 +27,7 @@ const MOCK_OWNER_B = '0xeddfcb50d18f6d3d51c4f7cbca5ed6bdebc59817'
 const MOCK_OWNER_C = '0xb31e76f19defe76edc4b7eceeb4b0a2d6ddaca39'
 const MOCK_ACCOUNT_ADDRESS = '0x1234567890123456789012345678901234567890'
 
-const accountAddress = '0x36c03e7d593f7b2c6b06fc18b5f4e9a4a29c99b0'
+const accountAddress = '0x36C03e7D593F7B2C6b06fC18B5f4E9a4A29C99b0'
 
 // Mock viem
 vi.mock('viem', async (importOriginal) => {
@@ -173,7 +173,7 @@ describe('Actions', () => {
   describe('Add Owner', () => {
     test('', () => {
       expect(addOwner(MOCK_OWNER_A)).toEqual({
-        to: '0x000000000013fdB5234E4E3162a810F54d9f7E98',
+        to: '0x000000000013fdb5234e4e3162a810f54d9f7e98',
         value: 0n,
         data: '0x7065cb48000000000000000000000000d1aefebdceefc094f1805b241fa5e6db63a9181a',
       })
@@ -183,7 +183,7 @@ describe('Actions', () => {
   describe('Remove Owner', () => {
     test('', () => {
       expect(removeOwner(MOCK_OWNER_A, MOCK_OWNER_B)).toEqual({
-        to: '0x000000000013fdB5234E4E3162a810F54d9f7E98',
+        to: '0x000000000013fdb5234e4e3162a810f54d9f7e98',
         value: 0n,
         data: '0xfbe5ce0a000000000000000000000000d1aefebdceefc094f1805b241fa5e6db63a9181a000000000000000000000000eddfcb50d18f6d3d51c4f7cbca5ed6bdebc59817',
       })
@@ -193,7 +193,7 @@ describe('Actions', () => {
   describe('Set Threshold', () => {
     test('', () => {
       expect(changeThreshold(1)).toEqual({
-        to: '0x000000000013fdB5234E4E3162a810F54d9f7E98',
+        to: '0x000000000013fdb5234e4e3162a810f54d9f7e98',
         value: 0n,
         data: '0x960bfe040000000000000000000000000000000000000000000000000000000000000001',
       })
@@ -276,12 +276,12 @@ describe('Actions', () => {
       expect(mockPublicClient.multicall).toHaveBeenCalledTimes(1)
       expect(result).toEqual([
         {
-          to: '0x000000000013fdB5234E4E3162a810F54d9f7E98',
+          to: '0x000000000013fdb5234e4e3162a810f54d9f7e98',
           value: 0n,
           data: '0x7065cb480000000000000000000000006092086a3dc0020cd604a68fcf5d430007d51bb7',
         },
         {
-          to: '0x000000000013fdB5234E4E3162a810F54d9f7E98',
+          to: '0x000000000013fdb5234e4e3162a810f54d9f7e98',
           value: 0n,
           data: '0xfbe5ce0a0000000000000000000000006092086a3dc0020cd604a68fcf5d430007d51bb7000000000000000000000000f6c02c78ded62973b43bfa523b247da099486936',
         },
@@ -317,12 +317,12 @@ describe('Actions', () => {
       expect(mockPublicClient.multicall).toHaveBeenCalledTimes(1)
       expect(result).toEqual([
         {
-          to: '0x000000000013fdB5234E4E3162a810F54d9f7E98',
+          to: '0x000000000013fdb5234e4e3162a810f54d9f7e98',
           value: 0n,
           data: '0x7065cb48000000000000000000000000c5587d912c862252599b61926adaef316ba06da0',
         },
         {
-          to: '0x000000000013fdB5234E4E3162a810F54d9f7E98',
+          to: '0x000000000013fdb5234e4e3162a810f54d9f7e98',
           value: 0n,
           data: '0xfbe5ce0a000000000000000000000000c5587d912c862252599b61926adaef316ba06da0000000000000000000000000f6c02c78ded62973b43bfa523b247da099486936',
         },
@@ -358,17 +358,17 @@ describe('Actions', () => {
       expect(mockPublicClient.multicall).toHaveBeenCalledTimes(1)
       expect(result).toEqual([
         {
-          to: '0x000000000013fdB5234E4E3162a810F54d9f7E98',
+          to: '0x000000000013fdb5234e4e3162a810f54d9f7e98',
           value: 0n,
           data: '0x7065cb48000000000000000000000000c5587d912c862252599b61926adaef316ba06da0',
         },
         {
-          to: '0x000000000013fdB5234E4E3162a810F54d9f7E98',
+          to: '0x000000000013fdb5234e4e3162a810f54d9f7e98',
           value: 0n,
           data: '0xfbe5ce0a000000000000000000000000c5587d912c862252599b61926adaef316ba06da0000000000000000000000000f6c02c78ded62973b43bfa523b247da099486936',
         },
         {
-          to: '0x000000000013fdB5234E4E3162a810F54d9f7E98',
+          to: '0x000000000013fdb5234e4e3162a810f54d9f7e98',
           value: 0n,
           data: '0xfbe5ce0a0000000000000000000000006092086a3dc0020cd604a68fcf5d430007d51bb7000000000000000000000000c27b7578151c5ef713c62c65db09763d57ac3596',
         },
