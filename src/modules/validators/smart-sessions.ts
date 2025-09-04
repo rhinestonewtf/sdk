@@ -26,9 +26,12 @@ import type {
   ProviderConfig,
   RhinestoneAccountConfig,
   Session,
+  SmartSessionEmissaryConfig,
+  SmartSessionEmissaryEnable,
   UniversalActionPolicyParamCondition,
 } from '../../types'
 import { enableSessionsAbi } from '../abi/smart-sessions'
+import { enableSessionsEmissaryAbi } from '../abi/smart-sessions-emissary'
 import { MODULE_TYPE_ID_VALIDATOR, type Module } from '../common'
 import { HOOK_ADDRESS } from '../omni-account'
 import { getValidator } from './core'
@@ -50,6 +53,7 @@ interface SessionData {
   }
   actions: readonly ActionData[]
   permitERC4337Paymaster: boolean
+  emissaryConfig: SmartSessionEmissaryConfig
 }
 
 interface UserOpPolicy {
@@ -146,6 +150,8 @@ interface EnableSessionData {
 
 const SMART_SESSIONS_VALIDATOR_ADDRESS: Address =
   '0x00000000002b0ecfbd0496ee71e01257da0e37de'
+const SMART_SESSION_EMISSARY_ADDRESS: Address =
+  '0xBCb2a252593F5e6e15a6715475fc6E3096AD72Ac'
 
 const SMART_SESSION_MODE_USE = '0x00'
 const SMART_SESSION_MODE_ENABLE = '0x01'
@@ -210,6 +216,74 @@ async function getEnableSessionCall(
       abi: enableSessionsAbi,
       functionName: 'enableSessions',
       args: [[sessionData]],
+    }),
+  }
+}
+
+async function getEnableEmissarySessionCall(
+  chain: Chain,
+  session: Session,
+  accountAddress: Address,
+  provider?: ProviderConfig,
+  _overrideEnable?: SmartSessionEmissaryEnable,
+  _sessionDigest?: Hex,
+) {
+  const { appDomainSeparator, contentsType } =
+    await getSessionAllowedERC7739Content(chain, provider)
+  const allowedERC7739Content = [
+    {
+      appDomainSeparator,
+      contentName: [contentsType],
+    },
+  ]
+  const _sessionData = getSmartSessionData(
+    chain,
+    session,
+    allowedERC7739Content,
+  )
+
+  // Simple emissary session enablement - just call setConfig with basic data
+  const permissionId = getPermissionId(session)
+
+  const configArgs = {
+    sender: SMART_SESSIONS_VALIDATOR_ADDRESS,
+    scope: session.emissary ? Number(session.emissary.scope) : 0,
+    resetPeriod: session.emissary ? Number(session.emissary.resetPeriod) : 2,
+    allocator:
+      session.emissary?.allocator ||
+      '0x0000000000000000000000000000000000000000',
+    permissionId,
+  }
+
+  const enableArgs = {
+    allocatorSig: '0x' as const, // Empty for now
+    userSig: '0x' as const, // Empty for now
+    expires: BigInt(Math.floor(Date.now() / 1000) + 3600),
+    session: {
+      chainDigestIndex: 0,
+      hashesAndChainIds: [
+        {
+          chainId: BigInt(chain.id),
+          sessionDigest:
+            '0x0000000000000000000000000000000000000000000000000000000000000000' as const,
+        },
+      ],
+      sessionToEnable: {
+        sessionValidator: '0x000000000013fdB5234E4E3162a810F54d9f7E98' as const,
+        sessionValidatorInitData: '0x' as const,
+        salt: '0x0000000000000000000000000000000000000000000000000000000000000000' as const,
+        erc1271Policies: [],
+        actions: [],
+      },
+    },
+  }
+
+  return {
+    to: SMART_SESSION_EMISSARY_ADDRESS,
+    data: encodeFunctionData({
+      abi: enableSessionsEmissaryAbi,
+      functionName: 'setConfig',
+      args: [accountAddress, configArgs, enableArgs],
     }),
   }
 }
@@ -279,12 +353,36 @@ function getSmartSessionData(
   ).map((policy) => {
     return getPolicyData(policy)
   })
+
+  // Add emissary support
+  let emissaryConfig: SmartSessionEmissaryConfig
+  if (session.emissary) {
+    emissaryConfig = {
+      configId: session.emissary.configId,
+      allocator: session.emissary.allocator,
+      scope: session.emissary.scope,
+      resetPeriod: session.emissary.resetPeriod,
+      validator: session.emissary.validator,
+      validatorConfig: session.emissary.validatorConfig,
+    }
+  } else {
+    // Provide default emissary config when not present
+    // todo: update it to use the allocator address and config
+    emissaryConfig = {
+      configId: 0,
+      allocator: '0x0000000000000000000000000000000000000000',
+      scope: 0,
+      resetPeriod: 0,
+      validator: '0x0000000000000000000000000000000000000000',
+      validatorConfig: '0x',
+    }
+  }
+
   return {
     sessionValidator: sessionValidator.address,
     sessionValidatorInitData: sessionValidator.initData,
     salt: session.salt ?? zeroHash,
     userOpPolicies,
-    // Using the fallback action by default (any transaction will pass)
     actions: (
       session.actions || [
         {
@@ -315,6 +413,7 @@ function getSmartSessionData(
       erc1271Policies: [getPolicyData({ type: 'sudo' })],
     },
     permitERC4337Paymaster: true,
+    emissaryConfig, // Add emissary config
   } as SessionData
 }
 
@@ -767,9 +866,11 @@ export {
   SMART_SESSION_MODE_USE,
   SMART_SESSION_MODE_ENABLE,
   SMART_SESSIONS_VALIDATOR_ADDRESS,
+  SMART_SESSION_EMISSARY_ADDRESS,
   getSessionData,
   getSmartSessionValidator,
   getEnableSessionCall,
+  getEnableEmissarySessionCall,
   encodeSmartSessionSignature,
   getPermissionId,
   isSessionEnabled,
