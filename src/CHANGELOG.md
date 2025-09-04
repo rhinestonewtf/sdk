@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 0.13.2
+
+### Patch Changes
+
+- 1297180: Use custom transport (provider) for EOA if available
+
 ## 0.13.1
 
 ### Patch Changes
