@@ -107,6 +107,10 @@ import {
   UnsupportedChainIdError,
   UnsupportedTokenError,
 } from './orchestrator'
+import {
+  createMultiChainClaimErc1271Policy,
+  encodeMultiChainClaimPolicy,
+} from './modules'
 import type {
   Call,
   RhinestoneAccountConfig,
@@ -492,6 +496,10 @@ export {
   getSupportedTokens,
   getTokenAddress,
 }
+// MultiChainClaimPolicy helpers
+export { encodeMultiChainClaimPolicy, createMultiChainClaimErc1271Policy }
+export { encodeSmartSessionEmissaryData } from './actions/index'
+export { SMART_SESSION_EMISSARY_ADDRESS as SMART_SESSION_EMISSARY } from './modules/constants'
 export type {
   RhinestoneAccount,
   Session,
