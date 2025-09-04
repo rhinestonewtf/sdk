@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 0.13.3
+
+### Patch Changes
+
+- f30fb4f: Use bundler to init 7702 accounts
+
 ## 0.13.2
 
 ### Patch Changes
