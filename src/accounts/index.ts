@@ -264,6 +264,10 @@ async function deploy(
   chain: Chain,
   session?: Session,
 ) {
+  const deployed = await isDeployed(chain, config)
+  if (deployed) {
+    return
+  }
   await deploySource(chain, config)
   if (session) {
     await enableSmartSession(chain, config, session)
