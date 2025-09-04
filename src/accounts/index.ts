@@ -252,10 +252,11 @@ async function isDeployed(chain: Chain, config: RhinestoneAccountConfig) {
   if (!code) {
     return false
   }
-  if (code.startsWith('0xef0100') && code.length === 48) {
-    // Defensive check to ensure there's no storage conflict; can be lifted in the future
-    throw new ExistingEip7702AccountsNotSupportedError()
-  }
+  // Removed for now to prevent this from blocking the deployment flow
+  // if (code.startsWith('0xef0100') && code.length === 48) {
+  //   // Defensive check to ensure there's no storage conflict; can be lifted in the future
+  //   throw new ExistingEip7702AccountsNotSupportedError()
+  // }
   return size(code) > 0
 }
 
@@ -264,10 +265,6 @@ async function deploy(
   chain: Chain,
   session?: Session,
 ) {
-  const deployed = await isDeployed(chain, config)
-  if (deployed) {
-    return
-  }
   await deploySource(chain, config)
   if (session) {
     await enableSmartSession(chain, config, session)
@@ -275,6 +272,10 @@ async function deploy(
 }
 
 async function deploySource(chain: Chain, config: RhinestoneAccountConfig) {
+  const deployed = await isDeployed(chain, config)
+  if (deployed) {
+    return
+  }
   if (is7702(config)) {
     return deploy7702WithBundler(chain, config)
   } else {
@@ -287,6 +288,10 @@ async function deployTarget(
   config: RhinestoneAccountConfig,
   asUserOp: boolean,
 ) {
+  const deployed = await isDeployed(chain, config)
+  if (deployed) {
+    return
+  }
   if (is7702(config)) {
     return deploy7702WithBundler(chain, config)
   }
