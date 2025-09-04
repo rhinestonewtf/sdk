@@ -4,12 +4,14 @@ import {
   concat,
   createPublicClient,
   createWalletClient,
+  custom,
   encodeFunctionData,
   encodePacked,
   type Hex,
   http,
   type PublicClient,
   size,
+  type TransportConfig,
   zeroHash,
 } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
@@ -328,10 +330,14 @@ async function deploy7702Self(chain: Chain, config: RhinestoneAccountConfig) {
     chain,
     transport: http(),
   })
+  const customTransport =
+    'transport' in config.eoa ? config.eoa.transport : undefined
   const accountClient = createWalletClient({
     account: config.eoa,
     chain,
-    transport: http(),
+    transport: customTransport
+      ? custom(customTransport as TransportConfig)
+      : http(),
   })
 
   const authorization = await accountClient.signAuthorization({
