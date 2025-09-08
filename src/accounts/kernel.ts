@@ -29,10 +29,14 @@ import {
 
 import { getSetup as getModuleSetup } from '../modules'
 import {
+  MODULE_TYPE_EXECUTOR,
+  MODULE_TYPE_FALLBACK,
+  MODULE_TYPE_HOOK,
   MODULE_TYPE_ID_EXECUTOR,
   MODULE_TYPE_ID_FALLBACK,
   MODULE_TYPE_ID_HOOK,
   MODULE_TYPE_ID_VALIDATOR,
+  MODULE_TYPE_VALIDATOR,
   type Module,
 } from '../modules/common'
 import {
@@ -150,7 +154,7 @@ function getInstallData(module: Module): Hex[] {
   const HOOK_INSTALLED_ADDRESS = '0x0000000000000000000000000000000000000001'
 
   switch (module.type) {
-    case MODULE_TYPE_ID_VALIDATOR: {
+    case MODULE_TYPE_VALIDATOR: {
       const data = encodeAbiParameters(
         [{ type: 'bytes' }, { type: 'bytes' }, { type: 'bytes' }],
         [module.initData, '0x', '0x'],
@@ -161,7 +165,7 @@ function getInstallData(module: Module): Hex[] {
         encodeFunctionData({
           abi: parseAbi(['function installModule(uint256,address,bytes)']),
           functionName: 'installModule',
-          args: [module.type, module.address, initData],
+          args: [MODULE_TYPE_ID_VALIDATOR, module.address, initData],
         }),
         encodeFunctionData({
           abi: parseAbi(['function grantAccess(bytes21,bytes4,bool)']),
@@ -170,7 +174,7 @@ function getInstallData(module: Module): Hex[] {
         }),
       ]
     }
-    case MODULE_TYPE_ID_EXECUTOR: {
+    case MODULE_TYPE_EXECUTOR: {
       const data = encodeAbiParameters(
         [{ type: 'bytes' }, { type: 'bytes' }],
         [module.initData, '0x'],
@@ -180,11 +184,11 @@ function getInstallData(module: Module): Hex[] {
         encodeFunctionData({
           abi: parseAbi(['function installModule(uint256,address,bytes)']),
           functionName: 'installModule',
-          args: [module.type, module.address, initData],
+          args: [MODULE_TYPE_ID_EXECUTOR, module.address, initData],
         }),
       ]
     }
-    case MODULE_TYPE_ID_FALLBACK: {
+    case MODULE_TYPE_FALLBACK: {
       const [selector, flags, selectorData] = decodeAbiParameters(
         [
           { name: 'selector', type: 'bytes4' },
@@ -202,16 +206,16 @@ function getInstallData(module: Module): Hex[] {
         encodeFunctionData({
           abi: parseAbi(['function installModule(uint256,address,bytes)']),
           functionName: 'installModule',
-          args: [module.type, module.address, initData],
+          args: [MODULE_TYPE_ID_FALLBACK, module.address, initData],
         }),
       ]
     }
-    case MODULE_TYPE_ID_HOOK: {
+    case MODULE_TYPE_HOOK: {
       return [
         encodeFunctionData({
           abi: parseAbi(['function installModule(uint256,address,bytes)']),
           functionName: 'installModule',
-          args: [module.type, module.address, module.initData],
+          args: [MODULE_TYPE_ID_HOOK, module.address, module.initData],
         }),
       ]
     }

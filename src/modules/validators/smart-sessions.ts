@@ -29,7 +29,7 @@ import type {
   UniversalActionPolicyParamCondition,
 } from '../../types'
 import { enableSessionsAbi } from '../abi/smart-sessions'
-import { MODULE_TYPE_ID_VALIDATOR, type Module } from '../common'
+import { MODULE_TYPE_VALIDATOR, type Module } from '../common'
 import { HOOK_ADDRESS } from '../omni-account'
 import { getValidator } from './core'
 
@@ -329,7 +329,7 @@ function getSmartSessionValidator(
     initData: '0x',
     deInitData: '0x',
     additionalContext: '0x',
-    type: MODULE_TYPE_ID_VALIDATOR,
+    type: MODULE_TYPE_VALIDATOR,
   }
 }
 

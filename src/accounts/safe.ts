@@ -24,7 +24,7 @@ import {
 } from 'viem/account-abstraction'
 
 import { getSetup as getModuleSetup } from '../modules'
-import type { Module } from '../modules/common'
+import { type Module, toModuleTypeId } from '../modules/common'
 import {
   encodeSmartSessionSignature,
   getMockSignature,
@@ -181,7 +181,7 @@ function getInstallData(module: Module) {
       },
     ],
     functionName: 'installModule',
-    args: [module.type, module.address, module.initData],
+    args: [toModuleTypeId(module.type), module.address, module.initData],
   })
 }
 

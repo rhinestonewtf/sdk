@@ -14,6 +14,7 @@ import {
   getModuleUninstallationCalls,
 } from '../accounts'
 import { createTransport } from '../accounts/utils'
+import type { Module } from '../modules/common'
 import {
   getMultiFactorValidator,
   getOwnableValidator,
@@ -33,8 +34,41 @@ import type {
   Recovery,
   WebauthnValidatorConfig,
 } from '../types'
-
 import { encodeSmartSessionSignature } from './smart-session'
+
+/**
+ * Install a custom module
+ * @param rhinestoneAccount Account to install the module on
+ * @param module Module to install
+ * @returns Calls to install the module
+ */
+function installModule({
+  rhinestoneAccount,
+  module,
+}: {
+  rhinestoneAccount: RhinestoneAccount
+  module: Module
+}) {
+  const calls = getModuleInstallationCalls(rhinestoneAccount.config, module)
+  return calls
+}
+
+/**
+ * Uninstall a custom module
+ * @param rhinestoneAccount Account to uninstall the module on
+ * @param module Module to uninstall
+ * @returns Calls to uninstall the module
+ */
+function uninstallModule({
+  rhinestoneAccount,
+  module,
+}: {
+  rhinestoneAccount: RhinestoneAccount
+  module: Module
+}) {
+  const calls = getModuleUninstallationCalls(rhinestoneAccount.config, module)
+  return calls
+}
 
 /**
  * Set up social recovery
@@ -701,6 +735,8 @@ function removeSubValidator(
 }
 
 export {
+  installModule,
+  uninstallModule,
   enableEcdsa,
   enablePasskeys,
   disableEcdsa,
