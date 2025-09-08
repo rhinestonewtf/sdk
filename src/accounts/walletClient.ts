@@ -7,6 +7,7 @@ import type {
   TypedDataDefinition,
   WalletClient,
 } from 'viem'
+import { WalletClientNoConnectedAccountError } from './error'
 
 /**
  * Adapts a Viem/Wagmi WalletClient into an Account-like signer that the SDK can consume.
@@ -15,9 +16,7 @@ import type {
 export function walletClientToAccount(walletClient: WalletClient): Account {
   const address = walletClient.account?.address as Address | undefined
   if (!address) {
-    throw new Error(
-      'WalletClient is missing a default account. Ensure the wallet is connected and the client has an account.',
-    )
+    throw new WalletClientNoConnectedAccountError()
   }
 
   const account = {

@@ -44,6 +44,7 @@ import {
 } from '../modules/validators'
 import type { EnableSessionData } from '../modules/validators/smart-sessions'
 import type { OwnerSet, RhinestoneAccountConfig, Session } from '../types'
+import { AccountConfigurationNotSupportedError } from './error'
 import { encode7579Calls, getAccountNonce, type ValidatorConfig } from './utils'
 
 type ValidatorType = 'root' | 'validator'
@@ -69,7 +70,10 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
       data: config.initData.factoryData,
     })
     if (factoryData.functionName !== 'deployWithFactory') {
-      throw new Error('Invalid factory data')
+      throw new AccountConfigurationNotSupportedError(
+        'Invalid factory data',
+        'kernel',
+      )
     }
     const factory = factoryData.args[0]
     const createData = factoryData.args[1]
@@ -79,7 +83,10 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
         ? KERNEL_IMPLEMENTATION_ADDRESS
         : zeroAddress
     if (implementation === zeroAddress) {
-      throw new Error('Unsupported Kernel implementation')
+      throw new AccountConfigurationNotSupportedError(
+        'Unsupported Kernel implementation',
+        'kernel',
+      )
     }
 
     return {

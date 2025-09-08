@@ -90,7 +90,7 @@ export class Orchestrator {
       return portfolio
     } catch (error) {
       this.parseError(error)
-      throw new Error('Failed to get portfolio')
+      throw new OrchestratorError({ message: 'Failed to get portfolio' })
     }
   }
 
@@ -170,7 +170,7 @@ export class Orchestrator {
       return response.data
     } catch (error) {
       this.parseError(error)
-      throw new Error('Failed to get intent cost')
+      throw new OrchestratorError({ message: 'Failed to get intent cost' })
     }
   }
 
@@ -191,7 +191,7 @@ export class Orchestrator {
       return response.data
     } catch (error) {
       this.parseError(error)
-      throw new Error('Failed to get intent route')
+      throw new OrchestratorError({ message: 'Failed to get intent route' })
     }
   }
 
@@ -212,7 +212,7 @@ export class Orchestrator {
       return response.data
     } catch (error) {
       this.parseError(error)
-      throw new Error('Failed to submit intent')
+      throw new OrchestratorError({ message: 'Failed to submit intent' })
     }
   }
 
@@ -233,7 +233,7 @@ export class Orchestrator {
       return response.data
     } catch (error) {
       this.parseError(error)
-      throw new Error('Failed to simulate intent')
+      throw new OrchestratorError({ message: 'Failed to simulate intent' })
     }
   }
 
@@ -251,7 +251,7 @@ export class Orchestrator {
       return response.data
     } catch (error) {
       this.parseError(error)
-      throw new Error('Failed to get intent op status')
+      throw new OrchestratorError({ message: 'Failed to get intent op status' })
     }
   }
 

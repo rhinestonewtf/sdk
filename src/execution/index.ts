@@ -25,6 +25,7 @@ import {
   isExecutionError,
   OrderPathRequiredForIntentsError,
   SessionChainRequiredError,
+  SimulationNotSupportedForUserOpFlowError,
   SourceChainsNotAvailableForUserOpFlowError,
   UserOperationRequiredForSmartSessionsError,
 } from './error'
@@ -312,11 +313,12 @@ export {
   getPortfolio,
   // Errors
   isExecutionError,
-  IntentFailedError,
   ExecutionError,
-  SourceChainsNotAvailableForUserOpFlowError,
-  UserOperationRequiredForSmartSessionsError,
+  IntentFailedError,
   OrderPathRequiredForIntentsError,
   SessionChainRequiredError,
+  SimulationNotSupportedForUserOpFlowError,
+  SourceChainsNotAvailableForUserOpFlowError,
+  UserOperationRequiredForSmartSessionsError,
 }
 export type { IntentData, TransactionResult }

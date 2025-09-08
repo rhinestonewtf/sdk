@@ -87,6 +87,19 @@ class SessionChainRequiredError extends ExecutionError {
   }
 }
 
+class SimulationNotSupportedForUserOpFlowError extends ExecutionError {
+  constructor(params?: {
+    context?: any
+    errorType?: string
+    traceId?: string
+  }) {
+    super({
+      message: 'Simulation not supported for user operation flow',
+      ...params,
+    })
+  }
+}
+
 class IntentFailedError extends ExecutionError {
   constructor(params?: {
     context?: any
@@ -112,4 +125,5 @@ export {
   OrderPathRequiredForIntentsError,
   SessionChainRequiredError,
   IntentFailedError,
+  SimulationNotSupportedForUserOpFlowError,
 }

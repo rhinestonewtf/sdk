@@ -18,6 +18,7 @@ import {
   sonic,
 } from 'viem/chains'
 import type { TokenSymbol } from '../types'
+import { UnsupportedChainError, UnsupportedTokenError } from './error'
 import type { SupportedChain, TokenConfig } from './types'
 
 function getSupportedChainIds(): number[] {
@@ -31,12 +32,12 @@ function getChainEntry(chainId: number): ChainEntry | undefined {
 function getWethAddress(chain: Chain): Address {
   const chainEntry = getChainEntry(chain.id)
   if (!chainEntry) {
-    throw new Error(`Unsupported chain ${chain.id}`)
+    throw new UnsupportedChainError(chain.id)
   }
 
   const wethToken = chainEntry.tokens.find((token) => token.symbol === 'WETH')
   if (!wethToken) {
-    throw new Error(`WETH not found for chain ${chain.id}`)
+    throw new UnsupportedTokenError('WETH', chain.id)
   }
 
   return wethToken.address
@@ -45,7 +46,7 @@ function getWethAddress(chain: Chain): Address {
 function getTokenSymbol(tokenAddress: Address, chainId: number): string {
   const chainEntry = getChainEntry(chainId)
   if (!chainEntry) {
-    throw new Error(`Unsupported chain ${chainId}`)
+    throw new UnsupportedChainError(chainId)
   }
 
   const token = chainEntry.tokens.find(
@@ -53,9 +54,7 @@ function getTokenSymbol(tokenAddress: Address, chainId: number): string {
   )
 
   if (!token) {
-    throw new Error(
-      `Unsupported token address ${tokenAddress} for chain ${chainId}`,
-    )
+    throw new UnsupportedTokenError(tokenAddress, chainId)
   }
 
   return token.symbol
@@ -63,10 +62,10 @@ function getTokenSymbol(tokenAddress: Address, chainId: number): string {
 
 function getTokenAddress(tokenSymbol: TokenSymbol, chainId: number): Address {
   if (chainId === polygon.id && tokenSymbol === 'ETH') {
-    throw new Error(`Chain ${chainId} does not allow for ETH to be used`)
+    throw new UnsupportedTokenError(tokenSymbol, chainId)
   }
   if (chainId === sonic.id && tokenSymbol !== 'USDC') {
-    throw new Error(`Chain ${chainId} only has USDC available`)
+    throw new UnsupportedTokenError(tokenSymbol, chainId)
   }
   if (tokenSymbol === 'ETH') {
     return zeroAddress
@@ -74,12 +73,12 @@ function getTokenAddress(tokenSymbol: TokenSymbol, chainId: number): Address {
 
   const chainEntry = getChainEntry(chainId)
   if (!chainEntry) {
-    throw new Error(`Unsupported chain ${chainId}`)
+    throw new UnsupportedChainError(chainId)
   }
 
   const token = chainEntry.tokens.find((t) => t.symbol === tokenSymbol)
   if (!token) {
-    throw new Error(`Unsupported token symbol ${tokenSymbol}`)
+    throw new UnsupportedTokenError(tokenSymbol, chainId)
   }
 
   return token.address
@@ -106,7 +105,7 @@ function getChainById(chainId: number): Chain {
   }
 
   if (!isChainIdSupported(chainId)) {
-    throw new Error(`Chain not supported: ${chainId}`)
+    throw new UnsupportedChainError(chainId)
   }
   return chains[chainId]
 }
@@ -130,7 +129,7 @@ function isTokenAddressSupported(address: Address, chainId: number): boolean {
 function getSupportedTokens(chainId: number): TokenConfig[] {
   const chainEntry = getChainEntry(chainId)
   if (!chainEntry) {
-    throw new Error(`Chain not supported: ${chainId}`)
+    throw new UnsupportedChainError(chainId)
   }
 
   return chainEntry.tokens
