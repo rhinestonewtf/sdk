@@ -39,6 +39,7 @@ import {
   enableMultiFactor,
   enablePasskeys,
   encodeSmartSessionSignature,
+  installModule,
   recover,
   recoverEcdsaOwnership,
   recoverPasskeyOwnership,
@@ -47,6 +48,7 @@ import {
   removeSubValidator,
   setSubValidator,
   setUpRecovery,
+  uninstallModule,
 } from './actions'
 import {
   ExecutionError,
@@ -450,6 +452,7 @@ export {
   enableMultiFactor,
   enablePasskeys,
   encodeSmartSessionSignature,
+  installModule,
   recover,
   recoverEcdsaOwnership,
   recoverPasskeyOwnership,
@@ -458,6 +461,7 @@ export {
   removeSubValidator,
   setSubValidator,
   setUpRecovery,
+  uninstallModule,
   // Account errors
   isAccountError,
   AccountError,
