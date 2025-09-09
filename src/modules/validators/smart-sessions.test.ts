@@ -9,7 +9,7 @@ import { mainnet } from 'viem/chains'
 import { describe, expect, test, vi } from 'vitest'
 import { accountA, accountB, MOCK_API_KEY } from '../../../test/consts'
 import { enableSessionsAbi } from '../abi/smart-sessions'
-import { MODULE_TYPE_ID_VALIDATOR } from '../common'
+import { MODULE_TYPE_VALIDATOR } from '../common'
 import {
   encodeSmartSessionSignature,
   getEnableSessionCall,
@@ -92,7 +92,7 @@ describe('Smart Sessions', () => {
         ],
       })
       expect(validator).not.toBeNull()
-      expect(validator?.type).toEqual(MODULE_TYPE_ID_VALIDATOR)
+      expect(validator?.type).toEqual(MODULE_TYPE_VALIDATOR)
       expect(validator && isAddress(validator.address)).toEqual(true)
     })
   })
