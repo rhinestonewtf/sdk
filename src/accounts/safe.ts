@@ -157,7 +157,7 @@ function getAddress(config: RhinestoneAccountConfig) {
 }
 
 function getInstallData(module: Module) {
-  const a = encodeFunctionData({
+  return encodeFunctionData({
     abi: [
       {
         type: 'function',
@@ -183,7 +183,6 @@ function getInstallData(module: Module) {
     functionName: 'installModule',
     args: [module.type, module.address, module.initData],
   })
-  return a
 }
 
 async function packSignature(
