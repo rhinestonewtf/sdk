@@ -191,6 +191,12 @@ interface TokenRequest {
   amount: bigint
 }
 
+type SourceAssetInput =
+  | (Address | TokenSymbol)[]
+  | {
+      [chainId in number]?: (Address | TokenSymbol)[]
+    }
+
 type OwnerSignerSet =
   | {
       type: 'owner'
@@ -242,6 +248,7 @@ interface BaseTransaction {
   signers?: SignerSet
   sponsored?: boolean
   eip7702InitSignature?: Hex
+  sourceAssets?: SourceAssetInput
   settlementLayers?: SettlementLayer[]
 }
 
@@ -268,6 +275,7 @@ export type {
   CallInput,
   Call,
   TokenRequest,
+  SourceAssetInput,
   OwnerSet,
   OwnableValidatorConfig,
   WebauthnValidatorConfig,

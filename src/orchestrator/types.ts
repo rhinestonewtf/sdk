@@ -345,6 +345,8 @@ export type {
   PortfolioResponse,
   Portfolio,
   PortfolioToken,
+  MappedChainTokenAccessList,
+  UnmappedChainTokenAccessList,
 }
 export {
   INTENT_STATUS_PENDING,

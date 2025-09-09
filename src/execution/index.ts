@@ -16,6 +16,7 @@ import type {
   CallInput,
   RhinestoneAccountConfig,
   SignerSet,
+  SourceAssetInput,
   TokenRequest,
   Transaction,
 } from '../types'
@@ -60,6 +61,7 @@ async function sendTransaction(
     signers,
     sponsored,
     settlementLayers,
+    sourceAssets,
   } = transaction
   return await sendTransactionInternal(
     config,
@@ -72,6 +74,7 @@ async function sendTransaction(
       signers,
       sponsored,
       settlementLayers,
+      sourceAssets,
     },
   )
 }
@@ -87,6 +90,7 @@ async function sendTransactionInternal(
     signers?: SignerSet
     sponsored?: boolean
     settlementLayers?: SettlementLayer[]
+    sourceAssets?: SourceAssetInput
     asUserOp?: boolean
   },
 ) {
@@ -132,6 +136,7 @@ async function sendTransactionInternal(
       options.signers,
       options.sponsored,
       options.settlementLayers,
+      options.sourceAssets,
     )
   }
 }
@@ -185,6 +190,7 @@ async function sendTransactionAsIntent(
   signers?: SignerSet,
   sponsored?: boolean,
   settlementLayers?: SettlementLayer[],
+  sourceAssets?: SourceAssetInput,
 ) {
   const { intentRoute } = await prepareTransactionAsIntent(
     config,
@@ -197,6 +203,7 @@ async function sendTransactionAsIntent(
     sponsored ?? false,
     undefined,
     settlementLayers,
+    sourceAssets,
   )
   if (!intentRoute) {
     throw new OrderPathRequiredForIntentsError()
