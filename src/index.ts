@@ -9,6 +9,7 @@ import type {
 } from 'viem'
 import type { UserOperationReceipt } from 'viem/account-abstraction'
 import {
+  AccountConfigurationNotSupportedError,
   AccountError,
   checkAddress,
   deploy as deployInternal,
@@ -19,10 +20,10 @@ import {
   getAddress as getAddressInternal,
   isAccountError,
   SigningNotSupportedForAccountError,
-  SignMessageNotSupportedByAccountError,
   SmartSessionsNotEnabledError,
   setup as setupInternal,
   signEip7702InitData as signEip7702InitDataInternal,
+  WalletClientNoConnectedAccountError,
 } from './accounts'
 import { walletClientToAccount } from './accounts/walletClient'
 import {
@@ -55,6 +56,7 @@ import {
   isExecutionError,
   OrderPathRequiredForIntentsError,
   SessionChainRequiredError,
+  SimulationNotSupportedForUserOpFlowError,
   SourceChainsNotAvailableForUserOpFlowError,
   sendTransaction as sendTransactionInternal,
   type TransactionResult,
@@ -459,21 +461,23 @@ export {
   // Account errors
   isAccountError,
   AccountError,
+  AccountConfigurationNotSupportedError,
   Eip7702AccountMustHaveEoaError,
   ExistingEip7702AccountsNotSupportedError,
   FactoryArgsNotAvailableError,
   SmartSessionsNotEnabledError,
   SigningNotSupportedForAccountError,
-  SignMessageNotSupportedByAccountError,
   Eip7702NotSupportedForAccountError,
+  WalletClientNoConnectedAccountError,
   // Execution errors
   isExecutionError,
-  IntentFailedError,
   ExecutionError,
-  SourceChainsNotAvailableForUserOpFlowError,
-  UserOperationRequiredForSmartSessionsError,
+  IntentFailedError,
   OrderPathRequiredForIntentsError,
   SessionChainRequiredError,
+  SimulationNotSupportedForUserOpFlowError,
+  SourceChainsNotAvailableForUserOpFlowError,
+  UserOperationRequiredForSmartSessionsError,
   // Orchestrator errors
   isOrchestratorError,
   AuthenticationRequiredError,

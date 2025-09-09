@@ -35,6 +35,7 @@ import type {
   SignerSet,
 } from '../types'
 import {
+  AccountConfigurationNotSupportedError,
   AccountError,
   Eip7702AccountMustHaveEoaError,
   Eip7702NotSupportedForAccountError,
@@ -42,8 +43,8 @@ import {
   FactoryArgsNotAvailableError,
   isAccountError,
   SigningNotSupportedForAccountError,
-  SignMessageNotSupportedByAccountError,
   SmartSessionsNotEnabledError,
+  WalletClientNoConnectedAccountError,
 } from './error'
 import {
   getAddress as getKernelAddress,
@@ -142,7 +143,7 @@ async function signEip7702InitData(config: RhinestoneAccountConfig) {
     case 'safe':
     case 'kernel':
     case 'startale': {
-      throw new Error(`7702 is not supported for account type ${account.type}`)
+      throw new Eip7702NotSupportedForAccountError(account.type)
     }
   }
 }
@@ -159,7 +160,7 @@ async function getEip7702InitCall(
     case 'safe':
     case 'kernel':
     case 'startale': {
-      throw new Error(`7702 is not supported for account type ${account.type}`)
+      throw new Eip7702NotSupportedForAccountError(account.type)
     }
   }
 }
@@ -759,11 +760,12 @@ export {
   // Errors
   isAccountError,
   AccountError,
+  AccountConfigurationNotSupportedError,
   Eip7702AccountMustHaveEoaError,
+  Eip7702NotSupportedForAccountError,
   ExistingEip7702AccountsNotSupportedError,
   FactoryArgsNotAvailableError,
-  SmartSessionsNotEnabledError,
   SigningNotSupportedForAccountError,
-  SignMessageNotSupportedByAccountError,
-  Eip7702NotSupportedForAccountError,
+  SmartSessionsNotEnabledError,
+  WalletClientNoConnectedAccountError,
 }

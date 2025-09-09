@@ -76,6 +76,7 @@ import type {
 import { getIntentData } from './compact'
 import {
   OrderPathRequiredForIntentsError,
+  SimulationNotSupportedForUserOpFlowError,
   SourceChainsNotAvailableForUserOpFlowError,
   UserOperationRequiredForSmartSessionsError,
 } from './error'
@@ -347,7 +348,7 @@ async function simulateTransaction(
   const asUserOp = data.type === 'userop'
 
   if (asUserOp) {
-    throw new Error('Simulation not supported for UserOp transactions')
+    throw new SimulationNotSupportedForUserOpFlowError()
   } else {
     const intentOp = data.intentRoute.intentOp
     if (!intentOp) {

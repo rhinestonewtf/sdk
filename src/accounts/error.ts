@@ -101,19 +101,6 @@ class SigningNotSupportedForAccountError extends AccountError {
   }
 }
 
-class SignMessageNotSupportedByAccountError extends AccountError {
-  constructor(params?: {
-    context?: any
-    errorType?: string
-    traceId?: string
-  }) {
-    super({
-      message: 'Sign message not supported by account',
-      ...params,
-    })
-  }
-}
-
 class Eip7702NotSupportedForAccountError extends AccountError {
   constructor(
     account: AccountType,
@@ -122,6 +109,37 @@ class Eip7702NotSupportedForAccountError extends AccountError {
     const accountName = getAccountName(account)
     super({
       message: `EIP-7702 is not supported for ${accountName} accounts`,
+      ...params,
+    })
+  }
+}
+
+class AccountConfigurationNotSupportedError extends AccountError {
+  constructor(
+    message: string,
+    account: AccountType,
+    params?: {
+      context?: any
+      errorType?: string
+      traceId?: string
+    },
+  ) {
+    super({
+      message: `Account configuration for ${getAccountName(account)} account is not supported: ${message}`,
+      ...params,
+    })
+  }
+}
+
+class WalletClientNoConnectedAccountError extends AccountError {
+  constructor(params?: {
+    context?: any
+    errorType?: string
+    traceId?: string
+  }) {
+    super({
+      message:
+        'WalletClient is missing a default account. Ensure the wallet is connected and the client has an account.',
       ...params,
     })
   }
@@ -152,6 +170,7 @@ export {
   FactoryArgsNotAvailableError,
   SmartSessionsNotEnabledError,
   SigningNotSupportedForAccountError,
-  SignMessageNotSupportedByAccountError,
   Eip7702NotSupportedForAccountError,
+  AccountConfigurationNotSupportedError,
+  WalletClientNoConnectedAccountError,
 }

@@ -33,7 +33,10 @@ import {
 import { OWNABLE_VALIDATOR_ADDRESS } from '../modules/validators/core'
 import type { EnableSessionData } from '../modules/validators/smart-sessions'
 import type { OwnerSet, RhinestoneAccountConfig, Session } from '../types'
-import { SigningNotSupportedForAccountError } from './error'
+import {
+  AccountConfigurationNotSupportedError,
+  SigningNotSupportedForAccountError,
+} from './error'
 import { encode7579Calls, getAccountNonce, type ValidatorConfig } from './utils'
 
 const NEXUS_DEFAULT_VALIDATOR_ADDRESS: Address = OWNABLE_VALIDATOR_ADDRESS
@@ -63,7 +66,10 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
       data: config.initData.factoryData,
     })
     if (factoryData.functionName !== 'createAccount') {
-      throw new Error('Invalid factory data')
+      throw new AccountConfigurationNotSupportedError(
+        'Invalid factory data',
+        'nexus',
+      )
     }
     const owner = factoryData.args[0]
     const index = factoryData.args[1]
