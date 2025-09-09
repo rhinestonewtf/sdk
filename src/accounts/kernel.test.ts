@@ -7,7 +7,7 @@ import {
   MOCK_API_KEY,
   passkeyAccount,
 } from '../../test/consts'
-import { MODULE_TYPE_VALIDATOR } from '../modules/common'
+import { MODULE_TYPE_ID_VALIDATOR } from '../modules/common'
 import {
   getAddress,
   getDeployArgs,
@@ -152,7 +152,7 @@ describe('Accounts: Kernel', () => {
       const installData = getInstallData({
         address: MOCK_MODULE_ADDRESS,
         initData: '0xabcd',
-        type: MODULE_TYPE_VALIDATOR,
+        type: MODULE_TYPE_ID_VALIDATOR,
         deInitData: '0x0000',
         additionalContext: '0x0000',
       })

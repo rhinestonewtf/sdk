@@ -24,7 +24,7 @@ import {
 } from 'viem/account-abstraction'
 
 import { getSetup as getModuleSetup } from '../modules'
-import { type Module, toModuleTypeId } from '../modules/common'
+import type { Module } from '../modules/common'
 import {
   encodeSmartSessionSignature,
   getMockSignature,
@@ -106,7 +106,7 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
           modules.map((m) => ({
             module: m.address,
             initData: m.initData,
-            moduleType: toModuleTypeId(m.type),
+            moduleType: m.type,
           })),
           [],
           0,
@@ -181,7 +181,7 @@ function getInstallData(module: Module) {
       },
     ],
     functionName: 'installModule',
-    args: [toModuleTypeId(module.type), module.address, module.initData],
+    args: [module.type, module.address, module.initData],
   })
   return a
 }

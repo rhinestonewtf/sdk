@@ -18,7 +18,7 @@ import type {
   WebauthnValidatorConfig,
 } from '../../types'
 
-import { MODULE_TYPE_VALIDATOR, type Module } from '../common'
+import { MODULE_TYPE_ID_VALIDATOR, type Module } from '../common'
 
 interface PublicKey {
   prefix?: number | undefined
@@ -149,7 +149,7 @@ function getOwnableValidator(
     ),
     deInitData: '0x',
     additionalContext: '0x',
-    type: MODULE_TYPE_VALIDATOR,
+    type: MODULE_TYPE_ID_VALIDATOR,
   }
 }
 
@@ -215,7 +215,7 @@ function getWebAuthnValidator(
     ),
     deInitData: '0x',
     additionalContext: '0x',
-    type: MODULE_TYPE_VALIDATOR,
+    type: MODULE_TYPE_ID_VALIDATOR,
   }
 }
 
@@ -268,7 +268,7 @@ function getMultiFactorValidator(
     ),
     deInitData: '0x',
     additionalContext: '0x',
-    type: MODULE_TYPE_VALIDATOR,
+    type: MODULE_TYPE_ID_VALIDATOR,
   }
 }
 
@@ -279,7 +279,7 @@ function getSocialRecoveryValidator(
   const guardianAddresses = guardians.map((guardian) => guardian.address)
   guardianAddresses.sort()
   return {
-    type: MODULE_TYPE_VALIDATOR,
+    type: MODULE_TYPE_ID_VALIDATOR,
     address: SOCIAL_RECOVERY_VALIDATOR_ADDRESS,
     initData: encodeAbiParameters(
       [

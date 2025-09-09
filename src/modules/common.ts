@@ -17,7 +17,7 @@ interface Module {
   initData: Hex
   deInitData: Hex
   additionalContext: Hex
-  type: ModuleType
+  type: ModuleTypeId
 }
 
 const MODULE_TYPE_ID_VALIDATOR = 1n

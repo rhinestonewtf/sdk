@@ -12,8 +12,8 @@ import {
 import type { RhinestoneAccountConfig } from '../types'
 
 import {
-  MODULE_TYPE_EXECUTOR,
-  MODULE_TYPE_FALLBACK,
+  MODULE_TYPE_ID_EXECUTOR,
+  MODULE_TYPE_ID_FALLBACK,
   type Module,
 } from './common'
 import {
@@ -71,7 +71,7 @@ function getSetup(config: RhinestoneAccountConfig): ModeleSetup {
         ),
         deInitData: '0x',
         additionalContext: '0x',
-        type: MODULE_TYPE_FALLBACK,
+        type: MODULE_TYPE_ID_FALLBACK,
       })
     }
   }
@@ -95,7 +95,7 @@ function getIntentExecutor(config: RhinestoneAccountConfig): Module {
     initData: '0x',
     deInitData: '0x',
     additionalContext: '0x',
-    type: MODULE_TYPE_EXECUTOR,
+    type: MODULE_TYPE_ID_EXECUTOR,
   }
 }
 

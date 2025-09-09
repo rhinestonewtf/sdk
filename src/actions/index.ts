@@ -14,7 +14,7 @@ import {
   getModuleUninstallationCalls,
 } from '../accounts'
 import { createTransport } from '../accounts/utils'
-import type { Module } from '../modules/common'
+import { type Module, type ModuleType, toModuleTypeId } from '../modules/common'
 import {
   getMultiFactorValidator,
   getOwnableValidator,
@@ -36,6 +36,14 @@ import type {
 } from '../types'
 import { encodeSmartSessionSignature } from './smart-session'
 
+interface ModuleInput {
+  type: ModuleType
+  address: Address
+  initData?: Hex
+  deInitData?: Hex
+  additionalContext?: Hex
+}
+
 /**
  * Install a custom module
  * @param rhinestoneAccount Account to install the module on
@@ -47,9 +55,10 @@ function installModule({
   module,
 }: {
   rhinestoneAccount: RhinestoneAccount
-  module: Module
+  module: ModuleInput
 }) {
-  const calls = getModuleInstallationCalls(rhinestoneAccount.config, module)
+  const moduleData: Module = getModuleData(module)
+  const calls = getModuleInstallationCalls(rhinestoneAccount.config, moduleData)
   return calls
 }
 
@@ -64,9 +73,13 @@ function uninstallModule({
   module,
 }: {
   rhinestoneAccount: RhinestoneAccount
-  module: Module
+  module: ModuleInput
 }) {
-  const calls = getModuleUninstallationCalls(rhinestoneAccount.config, module)
+  const moduleData: Module = getModuleData(module)
+  const calls = getModuleUninstallationCalls(
+    rhinestoneAccount.config,
+    moduleData,
+  )
   return calls
 }
 
@@ -731,6 +744,16 @@ function removeSubValidator(
       functionName: 'removeValidator',
       args: [validatorModule.address, validatorId],
     }),
+  }
+}
+
+function getModuleData(module: ModuleInput): Module {
+  return {
+    type: toModuleTypeId(module.type),
+    address: module.address,
+    initData: module.initData ?? '0x',
+    deInitData: module.deInitData ?? '0x',
+    additionalContext: module.additionalContext ?? '0x',
   }
 }
 

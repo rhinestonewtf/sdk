@@ -29,14 +29,10 @@ import {
 
 import { getSetup as getModuleSetup } from '../modules'
 import {
-  MODULE_TYPE_EXECUTOR,
-  MODULE_TYPE_FALLBACK,
-  MODULE_TYPE_HOOK,
   MODULE_TYPE_ID_EXECUTOR,
   MODULE_TYPE_ID_FALLBACK,
   MODULE_TYPE_ID_HOOK,
   MODULE_TYPE_ID_VALIDATOR,
-  MODULE_TYPE_VALIDATOR,
   type Module,
 } from '../modules/common'
 import {
@@ -154,7 +150,7 @@ function getInstallData(module: Module): Hex[] {
   const HOOK_INSTALLED_ADDRESS = '0x0000000000000000000000000000000000000001'
 
   switch (module.type) {
-    case MODULE_TYPE_VALIDATOR: {
+    case MODULE_TYPE_ID_VALIDATOR: {
       const data = encodeAbiParameters(
         [{ type: 'bytes' }, { type: 'bytes' }, { type: 'bytes' }],
         [module.initData, '0x', '0x'],
@@ -174,7 +170,7 @@ function getInstallData(module: Module): Hex[] {
         }),
       ]
     }
-    case MODULE_TYPE_EXECUTOR: {
+    case MODULE_TYPE_ID_EXECUTOR: {
       const data = encodeAbiParameters(
         [{ type: 'bytes' }, { type: 'bytes' }],
         [module.initData, '0x'],
@@ -188,7 +184,7 @@ function getInstallData(module: Module): Hex[] {
         }),
       ]
     }
-    case MODULE_TYPE_FALLBACK: {
+    case MODULE_TYPE_ID_FALLBACK: {
       const [selector, flags, selectorData] = decodeAbiParameters(
         [
           { name: 'selector', type: 'bytes4' },
@@ -210,7 +206,7 @@ function getInstallData(module: Module): Hex[] {
         }),
       ]
     }
-    case MODULE_TYPE_HOOK: {
+    case MODULE_TYPE_ID_HOOK: {
       return [
         encodeFunctionData({
           abi: parseAbi(['function installModule(uint256,address,bytes)']),

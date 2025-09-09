@@ -19,7 +19,7 @@ import {
 } from '../execution'
 import { enableSmartSession } from '../execution/smart-session'
 import { getIntentExecutor, getSetup } from '../modules'
-import { type Module, toModuleTypeId } from '../modules/common'
+import type { Module } from '../modules/common'
 import {
   getOwnerValidator,
   getSmartSessionValidator,
@@ -225,7 +225,7 @@ function getModuleUninstallationCalls(
       },
     ],
     functionName: 'uninstallModule',
-    args: [toModuleTypeId(module.type), module.address, module.deInitData],
+    args: [module.type, module.address, module.deInitData],
   })
   return [{ to: address, data, value: 0n }]
 }
