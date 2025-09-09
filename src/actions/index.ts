@@ -57,7 +57,7 @@ function installModule({
   rhinestoneAccount: RhinestoneAccount
   module: ModuleInput
 }) {
-  const moduleData: Module = getModuleData(module)
+  const moduleData: Module = getModule(module)
   const calls = getModuleInstallationCalls(rhinestoneAccount.config, moduleData)
   return calls
 }
@@ -75,7 +75,7 @@ function uninstallModule({
   rhinestoneAccount: RhinestoneAccount
   module: ModuleInput
 }) {
-  const moduleData: Module = getModuleData(module)
+  const moduleData: Module = getModule(module)
   const calls = getModuleUninstallationCalls(
     rhinestoneAccount.config,
     moduleData,
@@ -747,7 +747,7 @@ function removeSubValidator(
   }
 }
 
-function getModuleData(module: ModuleInput): Module {
+function getModule(module: ModuleInput): Module {
   return {
     type: toModuleTypeId(module.type),
     address: module.address,
