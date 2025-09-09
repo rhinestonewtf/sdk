@@ -28,10 +28,13 @@ import type {
   Session,
   SmartSessionEmissaryConfig,
   SmartSessionEmissaryEnable,
+  EnableSession,
+  SessionStruct,
+  PolicyData as PolicyDataType,
+  ActionData as ActionDataType,
   UniversalActionPolicyParamCondition,
 } from '../../types'
 import { enableSessionsAbi } from '../abi/smart-sessions'
-import { enableSessionsEmissaryAbi } from '../abi/smart-sessions-emissary'
 import { MODULE_TYPE_ID_VALIDATOR, type Module } from '../common'
 import { HOOK_ADDRESS } from '../omni-account'
 import { getValidator } from './core'
@@ -51,9 +54,8 @@ interface SessionData {
     allowedERC7739Content: readonly AllowedERC7739Content[]
     erc1271Policies: readonly ERC1271Policy[]
   }
-  actions: readonly ActionData[]
+  actions: readonly LocalActionData[]
   permitERC4337Paymaster: boolean
-  emissaryConfig: SmartSessionEmissaryConfig
 }
 
 interface UserOpPolicy {
@@ -71,7 +73,8 @@ interface AllowedERC7739Content {
   contentName: readonly string[]
 }
 
-interface ActionData {
+// Using ActionData from types.ts, renamed local one to avoid conflict
+interface LocalActionData {
   actionTargetSelector: Hex
   actionTarget: Address
   actionPolicies: readonly PolicyData[]
@@ -110,7 +113,7 @@ interface SignedPermissions {
   permitERC4337Paymaster: boolean
   userOpPolicies: readonly PolicyData[]
   erc7739Policies: ERC7739Data
-  actions: readonly ActionData[]
+  actions: readonly LocalActionData[]
 }
 
 interface SignedSession {
@@ -151,11 +154,295 @@ interface EnableSessionData {
 const SMART_SESSIONS_VALIDATOR_ADDRESS: Address =
   '0x00000000002b0ecfbd0496ee71e01257da0e37de'
 const SMART_SESSION_EMISSARY_ADDRESS: Address =
-  '0xBCb2a252593F5e6e15a6715475fc6E3096AD72Ac'
+  '0x56A75A49F8663a80e70BFdA8ab0681421B08B754'
 
 const SMART_SESSION_MODE_USE = '0x00'
 const SMART_SESSION_MODE_ENABLE = '0x01'
 const SMART_SESSION_MODE_UNSAFE_ENABLE = '0x02'
+
+// Default session expiry duration (1 hour in seconds)
+const DEFAULT_SESSION_EXPIRY_DURATION = 3600
+
+// ABI for Smart Session Emissary functions
+const SMART_SESSION_EMISSARY_ABI = [
+  {
+    type: 'function',
+    name: 'getSessionDigest',
+    inputs: [
+      {
+        name: 'account',
+        type: 'address',
+        internalType: 'address',
+      },
+      {
+        name: 'session',
+        type: 'tuple',
+        internalType: 'struct Session',
+        components: [
+          {
+            name: 'sessionValidator',
+            type: 'address',
+            internalType: 'contract ISessionValidator',
+          },
+          {
+            name: 'sessionValidatorInitData',
+            type: 'bytes',
+            internalType: 'bytes',
+          },
+          {
+            name: 'salt',
+            type: 'bytes32',
+            internalType: 'bytes32',
+          },
+          {
+            name: 'erc1271Policies',
+            type: 'tuple[]',
+            internalType: 'struct PolicyData[]',
+            components: [
+              {
+                name: 'policy',
+                type: 'address',
+                internalType: 'address',
+              },
+              {
+                name: 'initData',
+                type: 'bytes',
+                internalType: 'bytes',
+              },
+            ],
+          },
+          {
+            name: 'actions',
+            type: 'tuple[]',
+            internalType: 'struct ActionData[]',
+            components: [
+              {
+                name: 'actionTargetSelector',
+                type: 'bytes4',
+                internalType: 'bytes4',
+              },
+              {
+                name: 'actionTarget',
+                type: 'address',
+                internalType: 'address',
+              },
+              {
+                name: 'actionPolicies',
+                type: 'tuple[]',
+                internalType: 'struct PolicyData[]',
+                components: [
+                  {
+                    name: 'policy',
+                    type: 'address',
+                    internalType: 'address',
+                  },
+                  {
+                    name: 'initData',
+                    type: 'bytes',
+                    internalType: 'bytes',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        name: 'lockTag',
+        type: 'bytes12',
+        internalType: 'bytes12',
+      },
+      {
+        name: 'expires',
+        type: 'uint256',
+        internalType: 'uint256',
+      },
+      {
+        name: 'sender',
+        type: 'address',
+        internalType: 'address',
+      },
+    ],
+    outputs: [
+      {
+        name: '',
+        type: 'bytes32',
+        internalType: 'bytes32',
+      },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'setConfig',
+    inputs: [
+      {
+        name: 'account',
+        type: 'address',
+        internalType: 'address',
+      },
+      {
+        name: 'config',
+        type: 'tuple',
+        internalType: 'struct SmartSessionEmissaryConfig',
+        components: [
+          {
+            name: 'sender',
+            type: 'address',
+            internalType: 'address',
+          },
+          {
+            name: 'scope',
+            type: 'uint8',
+            internalType: 'enum Scope',
+          },
+          {
+            name: 'resetPeriod',
+            type: 'uint8',
+            internalType: 'enum ResetPeriod',
+          },
+          {
+            name: 'allocator',
+            type: 'address',
+            internalType: 'address',
+          },
+          {
+            name: 'permissionId',
+            type: 'bytes32',
+            internalType: 'PermissionId',
+          },
+        ],
+      },
+      {
+        name: 'enableData',
+        type: 'tuple',
+        internalType: 'struct SmartSessionEmissaryEnable',
+        components: [
+          {
+            name: 'allocatorSig',
+            type: 'bytes',
+            internalType: 'bytes',
+          },
+          {
+            name: 'userSig',
+            type: 'bytes',
+            internalType: 'bytes',
+          },
+          {
+            name: 'expires',
+            type: 'uint256',
+            internalType: 'uint256',
+          },
+          {
+            name: 'session',
+            type: 'tuple',
+            internalType: 'struct EnableSession',
+            components: [
+              {
+                name: 'chainDigestIndex',
+                type: 'uint8',
+                internalType: 'uint8',
+              },
+              {
+                name: 'hashesAndChainIds',
+                type: 'tuple[]',
+                internalType: 'struct ChainDigest[]',
+                components: [
+                  {
+                    name: 'chainId',
+                    type: 'uint64',
+                    internalType: 'uint64',
+                  },
+                  {
+                    name: 'sessionDigest',
+                    type: 'bytes32',
+                    internalType: 'bytes32',
+                  },
+                ],
+              },
+              {
+                name: 'sessionToEnable',
+                type: 'tuple',
+                internalType: 'struct Session',
+                components: [
+                  {
+                    name: 'sessionValidator',
+                    type: 'address',
+                    internalType: 'contract ISessionValidator',
+                  },
+                  {
+                    name: 'sessionValidatorInitData',
+                    type: 'bytes',
+                    internalType: 'bytes',
+                  },
+                  {
+                    name: 'salt',
+                    type: 'bytes32',
+                    internalType: 'bytes32',
+                  },
+                  {
+                    name: 'erc1271Policies',
+                    type: 'tuple[]',
+                    internalType: 'struct PolicyData[]',
+                    components: [
+                      {
+                        name: 'policy',
+                        type: 'address',
+                        internalType: 'address',
+                      },
+                      {
+                        name: 'initData',
+                        type: 'bytes',
+                        internalType: 'bytes',
+                      },
+                    ],
+                  },
+                  {
+                    name: 'actions',
+                    type: 'tuple[]',
+                    internalType: 'struct ActionData[]',
+                    components: [
+                      {
+                        name: 'actionTargetSelector',
+                        type: 'bytes4',
+                        internalType: 'bytes4',
+                      },
+                      {
+                        name: 'actionTarget',
+                        type: 'address',
+                        internalType: 'address',
+                      },
+                      {
+                        name: 'actionPolicies',
+                        type: 'tuple[]',
+                        internalType: 'struct PolicyData[]',
+                        components: [
+                          {
+                            name: 'policy',
+                            type: 'address',
+                            internalType: 'address',
+                          },
+                          {
+                            name: 'initData',
+                            type: 'bytes',
+                            internalType: 'bytes',
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+] as const
+
 const SPENDING_LIMITS_POLICY_ADDRESS: Address =
   '0x00000088D48cF102A8Cdb0137A9b173f957c6343'
 const TIME_FRAME_POLICY_ADDRESS: Address =
@@ -225,8 +512,8 @@ async function getEnableEmissarySessionCall(
   session: Session,
   accountAddress: Address,
   provider?: ProviderConfig,
-  _overrideEnable?: SmartSessionEmissaryEnable,
-  _sessionDigest?: Hex,
+  overrideEnable?: Partial<SmartSessionEmissaryEnable>,
+  sessionDigest?: Hex,
 ) {
   const { appDomainSeparator, contentsType } =
     await getSessionAllowedERC7739Content(chain, provider)
@@ -236,16 +523,17 @@ async function getEnableEmissarySessionCall(
       contentName: [contentsType],
     },
   ]
-  const _sessionData = getSmartSessionData(
+  const sessionData = getSmartSessionData(
     chain,
     session,
     allowedERC7739Content,
   )
 
-  // Simple emissary session enablement - just call setConfig with basic data
+  // Get the permission ID for this session
   const permissionId = getPermissionId(session)
 
-  const configArgs = {
+  // Prepare the SmartSessionEmissaryConfig according to contract
+  const config: SmartSessionEmissaryConfig = {
     sender: SMART_SESSIONS_VALIDATOR_ADDRESS,
     scope: session.emissary ? Number(session.emissary.scope) : 0,
     resetPeriod: session.emissary ? Number(session.emissary.resetPeriod) : 2,
@@ -255,42 +543,58 @@ async function getEnableEmissarySessionCall(
     permissionId,
   }
 
-  const enableArgs = {
-    allocatorSig: '0x' as const, // Empty for now
-    userSig: '0x' as const, // Empty for now
-    expires: BigInt(Math.floor(Date.now() / 1000) + 3600),
-    session: {
-      chainDigestIndex: 0,
-      hashesAndChainIds: [
-        {
-          chainId: BigInt(chain.id),
-          sessionDigest:
-            '0x0000000000000000000000000000000000000000000000000000000000000000' as const,
-        },
-      ],
-      sessionToEnable: {
-        sessionValidator: '0x000000000013fdB5234E4E3162a810F54d9f7E98' as const,
-        sessionValidatorInitData: '0x' as const,
-        salt: '0x0000000000000000000000000000000000000000000000000000000000000000' as const,
-        erc1271Policies: [],
-        actions: [],
+  // Convert sessionData to SessionStruct format
+  const sessionStruct: SessionStruct = {
+    sessionValidator: sessionData.sessionValidator,
+    sessionValidatorInitData: sessionData.sessionValidatorInitData,
+    salt: sessionData.salt,
+    erc1271Policies: sessionData.erc7739Policies.erc1271Policies.map((policy: PolicyData) => ({
+      policy: policy.policy,
+      initData: policy.initData,
+    })) as PolicyDataType[],
+    actions: sessionData.actions.map((action: LocalActionData) => ({
+      actionTargetSelector: action.actionTargetSelector,
+      actionTarget: action.actionTarget,
+      actionPolicies: action.actionPolicies.map((policy: PolicyData) => ({
+        policy: policy.policy,
+        initData: policy.initData,
+      })) as PolicyDataType[],
+    })) as ActionDataType[],
+  }
+
+  // Prepare the EnableSession structure
+  const enableSession: EnableSession = {
+    chainDigestIndex: 0,
+    hashesAndChainIds: [
+      {
+        chainId: BigInt(chain.id),
+        sessionDigest: sessionDigest || '0x0000000000000000000000000000000000000000000000000000000000000000',
       },
-    },
+    ],
+    sessionToEnable: sessionStruct,
+  }
+
+  // Prepare the SmartSessionEmissaryEnable according to contract
+  const enableData: SmartSessionEmissaryEnable = {
+    allocatorSig: overrideEnable?.allocatorSig || '0x',
+    userSig: overrideEnable?.userSig || '0x',
+    expires: overrideEnable?.expires || BigInt(Math.floor(Date.now() / 1000) + DEFAULT_SESSION_EXPIRY_DURATION),
+    session: enableSession,
   }
 
   return {
     to: SMART_SESSION_EMISSARY_ADDRESS,
     data: encodeFunctionData({
-      abi: enableSessionsEmissaryAbi,
+      abi: SMART_SESSION_EMISSARY_ABI,
       functionName: 'setConfig',
-      args: [accountAddress, configArgs, enableArgs],
+      args: [accountAddress, config, enableData],
     }),
   }
 }
 
-function getOmniAccountActions(chain: Chain): ActionData[] {
+function getOmniAccountActions(chain: Chain): LocalActionData[] {
   const wethAddress = getWethAddress(chain)
-  const omniActions: ActionData[] = [
+  const omniActions: LocalActionData[] = [
     {
       actionTarget: RHINESTONE_SPOKE_POOL_ADDRESS,
       actionTargetSelector: '0xa2418864', // injected execution
@@ -354,30 +658,6 @@ function getSmartSessionData(
     return getPolicyData(policy)
   })
 
-  // Add emissary support
-  let emissaryConfig: SmartSessionEmissaryConfig
-  if (session.emissary) {
-    emissaryConfig = {
-      configId: session.emissary.configId,
-      allocator: session.emissary.allocator,
-      scope: session.emissary.scope,
-      resetPeriod: session.emissary.resetPeriod,
-      validator: session.emissary.validator,
-      validatorConfig: session.emissary.validatorConfig,
-    }
-  } else {
-    // Provide default emissary config when not present
-    // todo: update it to use the allocator address and config
-    emissaryConfig = {
-      configId: 0,
-      allocator: '0x0000000000000000000000000000000000000000',
-      scope: 0,
-      resetPeriod: 0,
-      validator: '0x0000000000000000000000000000000000000000',
-      validatorConfig: '0x',
-    }
-  }
-
   return {
     sessionValidator: sessionValidator.address,
     sessionValidatorInitData: sessionValidator.initData,
@@ -413,7 +693,6 @@ function getSmartSessionData(
       erc1271Policies: [getPolicyData({ type: 'sudo' })],
     },
     permitERC4337Paymaster: true,
-    emissaryConfig, // Add emissary config
   } as SessionData
 }
 
@@ -867,6 +1146,8 @@ export {
   SMART_SESSION_MODE_ENABLE,
   SMART_SESSIONS_VALIDATOR_ADDRESS,
   SMART_SESSION_EMISSARY_ADDRESS,
+  SMART_SESSION_EMISSARY_ABI,
+  DEFAULT_SESSION_EXPIRY_DURATION,
   getSessionData,
   getSmartSessionValidator,
   getEnableSessionCall,

@@ -260,24 +260,50 @@ interface Session {
   }
 }
 
-// Add emissary-specific types
+// Add emissary-specific types - Updated to match contract exactly
 interface SmartSessionEmissaryConfig {
-  configId: number
-  allocator: Address
+  sender: Address
   scope: number
   resetPeriod: number
-  validator: Address
-  validatorConfig: Hex
+  allocator: Address
+  permissionId: Hex // bytes32
 }
 
 interface SmartSessionEmissaryEnable {
-  session?: EnableSessionData & { permissionEnableSig: Hex }
   allocatorSig: Hex
   userSig: Hex
   expires: bigint
-  nonce: bigint
-  allChainIds: bigint[]
-  chainIndex: bigint
+  session: EnableSession
+}
+
+interface EnableSession {
+  chainDigestIndex: number
+  hashesAndChainIds: ChainDigest[]
+  sessionToEnable: SessionStruct
+}
+
+interface ChainDigest {
+  chainId: bigint
+  sessionDigest: Hex
+}
+
+interface PolicyData {
+  policy: Address
+  initData: Hex
+}
+
+interface ActionData {
+  actionTargetSelector: Hex // bytes4
+  actionTarget: Address
+  actionPolicies: PolicyData[]
+}
+
+interface SessionStruct {
+  sessionValidator: Address
+  sessionValidatorInitData: Hex
+  salt: Hex
+  erc1271Policies: PolicyData[]
+  actions: ActionData[]
 }
 
 interface BaseTransaction {
@@ -324,4 +350,9 @@ export type {
   UniversalActionPolicyParamCondition,
   SmartSessionEmissaryConfig,
   SmartSessionEmissaryEnable,
+  EnableSession,
+  ChainDigest,
+  SessionStruct,
+  PolicyData,
+  ActionData,
 }

@@ -19,15 +19,16 @@ import {
   getBundlerClient,
   type ValidatorConfig,
 } from '../accounts/utils'
-import { enableSessionsEmissaryAbi } from '../modules/abi/smart-sessions-emissary'
 import {
   getEnableEmissarySessionCall,
   getOwnerValidator,
   getPermissionId,
   isSessionEnabled,
   SMART_SESSION_EMISSARY_ADDRESS,
+  SMART_SESSION_EMISSARY_ABI,
   SMART_SESSION_MODE_ENABLE,
   SMART_SESSIONS_VALIDATOR_ADDRESS,
+  DEFAULT_SESSION_EXPIRY_DURATION,
 } from '../modules/validators'
 import {
   type ChainDigest,
@@ -43,6 +44,11 @@ import type {
   ProviderConfig,
   RhinestoneAccountConfig,
   Session,
+  SmartSessionEmissaryEnable,
+  EnableSession,
+  SessionStruct,
+  PolicyData,
+  ActionData,
 } from '../types'
 import { SessionChainRequiredError } from './error'
 
@@ -427,7 +433,6 @@ async function enableSmartSession(
 
   // check if this is an emissary session
   if (session.emissary) {
-    // Prepare emissary session enablement with proper signatures
     try {
       const details = await getSessionDetails(config, [session], 0)
       const { enableSessionData } = details
@@ -446,7 +451,7 @@ async function enableSmartSession(
 
       const sessionDigest = (await emissaryClient.readContract({
         address: SMART_SESSION_EMISSARY_ADDRESS,
-        abi: enableSessionsEmissaryAbi,
+        abi: SMART_SESSION_EMISSARY_ABI,
         functionName: 'getSessionDigest',
         args: [
           address,
@@ -462,7 +467,7 @@ async function enableSmartSession(
             actions: enableSessionData.sessionToEnable.actions || [],
           } as any,
           lockTag,
-          BigInt(Math.floor(Date.now() / 1000) + 3600),
+          BigInt(Math.floor(Date.now() / 1000) + DEFAULT_SESSION_EXPIRY_DURATION),
           SMART_SESSION_EMISSARY_ADDRESS,
         ],
       })) as Hex
@@ -492,9 +497,47 @@ async function enableSmartSession(
           emissary: SMART_SESSIONS_VALIDATOR_ADDRESS,
           account: address,
           lockTag,
-          expires: BigInt(Math.floor(Date.now() / 1000) + 3600),
+          expires: BigInt(Math.floor(Date.now() / 1000) + DEFAULT_SESSION_EXPIRY_DURATION),
           sender: SMART_SESSIONS_VALIDATOR_ADDRESS,
         })
+      }
+
+      // convert enableSessionData to proper SessionStruct format
+      const sessionStruct: SessionStruct = {
+        sessionValidator: enableSessionData.sessionToEnable.sessionValidator,
+        sessionValidatorInitData: enableSessionData.sessionToEnable.sessionValidatorInitData,
+        salt: enableSessionData.sessionToEnable.salt,
+        erc1271Policies: (enableSessionData.sessionToEnable.erc7739Policies?.erc1271Policies || []).map((policy: any) => ({
+          policy: policy.policy,
+          initData: policy.initData,
+        })) as PolicyData[],
+        actions: (enableSessionData.sessionToEnable.actions || []).map((action: any) => ({
+          actionTargetSelector: action.actionTargetSelector,
+          actionTarget: action.actionTarget,
+          actionPolicies: action.actionPolicies.map((policy: any) => ({
+            policy: policy.policy,
+            initData: policy.initData,
+          })) as PolicyData[],
+        })) as ActionData[],
+      }
+
+      const enableSession: EnableSession = {
+        chainDigestIndex: 0,
+        hashesAndChainIds: [
+          {
+            chainId: BigInt(chain.id),
+            sessionDigest,
+          },
+        ],
+        sessionToEnable: sessionStruct,
+      }
+
+      // create SmartSessionEmissaryEnable structure
+      const emissaryEnable: Partial<SmartSessionEmissaryEnable> = {
+        allocatorSig,
+        userSig,
+        expires: BigInt(Math.floor(Date.now() / 1000) + DEFAULT_SESSION_EXPIRY_DURATION),
+        session: enableSession,
       }
 
       // Enable emissary session with proper signatures
@@ -503,24 +546,8 @@ async function enableSmartSession(
         session,
         address,
         config.provider,
-        {
-          allocatorSig,
-          userSig,
-          expires: BigInt(Math.floor(Date.now() / 1000) + 3600),
-          nonce: 0n,
-          allChainIds: [BigInt(chain.id)],
-          chainIndex: 0n,
-          session: {
-            chainDigestIndex: 0,
-            hashesAndChainIds: [
-              {
-                chainId: BigInt(chain.id),
-                sessionDigest,
-              },
-            ],
-            sessionToEnable: enableSessionData.sessionToEnable,
-          } as any,
-        },
+        emissaryEnable,
+        sessionDigest,
       )
 
       const smartAccount = await getSmartAccount(config, publicClient, chain)
@@ -534,7 +561,7 @@ async function enableSmartSession(
       return
     } catch (error) {
       console.log(
-        '⚠️ Emissary session enablement failed, falling back to simple version:',
+        'Emissary session enablement failed, falling back to simple version:',
         error,
       )
       // Fallback to simple version without signatures
