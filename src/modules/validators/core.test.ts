@@ -6,7 +6,7 @@ import {
   accountC,
   passkeyAccount,
 } from '../../../test/consts'
-import { MODULE_TYPE_VALIDATOR } from '../common'
+import { MODULE_TYPE_ID_VALIDATOR } from '../common'
 import { getMockSignature, getValidator } from './core'
 
 describe('Validators Core', () => {
@@ -17,7 +17,7 @@ describe('Validators Core', () => {
         accounts: [accountA],
       })
 
-      expect(validator.type).toEqual(MODULE_TYPE_VALIDATOR)
+      expect(validator.type).toEqual(MODULE_TYPE_ID_VALIDATOR)
       expect(isAddress(validator.address)).toEqual(true)
       expect(validator.address).toEqual(
         '0x000000000013fdb5234e4e3162a810f54d9f7e98',
@@ -32,7 +32,7 @@ describe('Validators Core', () => {
         type: 'ecdsa',
         accounts: [accountA, accountB],
       })
-      expect(validator.type).toEqual(MODULE_TYPE_VALIDATOR)
+      expect(validator.type).toEqual(MODULE_TYPE_ID_VALIDATOR)
       expect(isAddress(validator.address)).toEqual(true)
       expect(validator.address).toEqual(
         '0x000000000013fdb5234e4e3162a810f54d9f7e98',
@@ -48,7 +48,7 @@ describe('Validators Core', () => {
         accounts: [accountA, accountB, accountC],
         threshold: 2,
       })
-      expect(validator.type).toEqual(MODULE_TYPE_VALIDATOR)
+      expect(validator.type).toEqual(MODULE_TYPE_ID_VALIDATOR)
       expect(isAddress(validator.address)).toEqual(true)
       expect(validator.address).toEqual(
         '0x000000000013fdb5234e4e3162a810f54d9f7e98',
@@ -63,7 +63,7 @@ describe('Validators Core', () => {
         type: 'passkey',
         accounts: [passkeyAccount],
       })
-      expect(validator.type).toEqual(MODULE_TYPE_VALIDATOR)
+      expect(validator.type).toEqual(MODULE_TYPE_ID_VALIDATOR)
       expect(isAddress(validator.address)).toEqual(true)
       expect(validator.address).toEqual(
         '0x0000000000578c4cb0e472a5462da43c495c3f33',
