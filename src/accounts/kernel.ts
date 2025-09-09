@@ -161,7 +161,7 @@ function getInstallData(module: Module): Hex[] {
         encodeFunctionData({
           abi: parseAbi(['function installModule(uint256,address,bytes)']),
           functionName: 'installModule',
-          args: [MODULE_TYPE_ID_VALIDATOR, module.address, initData],
+          args: [module.type, module.address, initData],
         }),
         encodeFunctionData({
           abi: parseAbi(['function grantAccess(bytes21,bytes4,bool)']),
@@ -180,7 +180,7 @@ function getInstallData(module: Module): Hex[] {
         encodeFunctionData({
           abi: parseAbi(['function installModule(uint256,address,bytes)']),
           functionName: 'installModule',
-          args: [MODULE_TYPE_ID_EXECUTOR, module.address, initData],
+          args: [module.type, module.address, initData],
         }),
       ]
     }
@@ -202,7 +202,7 @@ function getInstallData(module: Module): Hex[] {
         encodeFunctionData({
           abi: parseAbi(['function installModule(uint256,address,bytes)']),
           functionName: 'installModule',
-          args: [MODULE_TYPE_ID_FALLBACK, module.address, initData],
+          args: [module.type, module.address, initData],
         }),
       ]
     }
@@ -211,7 +211,7 @@ function getInstallData(module: Module): Hex[] {
         encodeFunctionData({
           abi: parseAbi(['function installModule(uint256,address,bytes)']),
           functionName: 'installModule',
-          args: [MODULE_TYPE_ID_HOOK, module.address, module.initData],
+          args: [module.type, module.address, module.initData],
         }),
       ]
     }
