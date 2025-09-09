@@ -106,7 +106,7 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
           modules.map((m) => ({
             module: m.address,
             initData: m.initData,
-            moduleType: m.type,
+            moduleType: toModuleTypeId(m.type),
           })),
           [],
           0,
@@ -157,7 +157,7 @@ function getAddress(config: RhinestoneAccountConfig) {
 }
 
 function getInstallData(module: Module) {
-  return encodeFunctionData({
+  const a = encodeFunctionData({
     abi: [
       {
         type: 'function',
@@ -183,6 +183,7 @@ function getInstallData(module: Module) {
     functionName: 'installModule',
     args: [toModuleTypeId(module.type), module.address, module.initData],
   })
+  return a
 }
 
 async function packSignature(
