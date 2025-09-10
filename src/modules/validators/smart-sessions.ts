@@ -167,113 +167,6 @@ const DEFAULT_SESSION_EXPIRY_DURATION = 3600
 const SMART_SESSION_EMISSARY_ABI = [
   {
     type: 'function',
-    name: 'getSessionDigest',
-    inputs: [
-      {
-        name: 'account',
-        type: 'address',
-        internalType: 'address',
-      },
-      {
-        name: 'session',
-        type: 'tuple',
-        internalType: 'struct Session',
-        components: [
-          {
-            name: 'sessionValidator',
-            type: 'address',
-            internalType: 'contract ISessionValidator',
-          },
-          {
-            name: 'sessionValidatorInitData',
-            type: 'bytes',
-            internalType: 'bytes',
-          },
-          {
-            name: 'salt',
-            type: 'bytes32',
-            internalType: 'bytes32',
-          },
-          {
-            name: 'erc1271Policies',
-            type: 'tuple[]',
-            internalType: 'struct PolicyData[]',
-            components: [
-              {
-                name: 'policy',
-                type: 'address',
-                internalType: 'address',
-              },
-              {
-                name: 'initData',
-                type: 'bytes',
-                internalType: 'bytes',
-              },
-            ],
-          },
-          {
-            name: 'actions',
-            type: 'tuple[]',
-            internalType: 'struct ActionData[]',
-            components: [
-              {
-                name: 'actionTargetSelector',
-                type: 'bytes4',
-                internalType: 'bytes4',
-              },
-              {
-                name: 'actionTarget',
-                type: 'address',
-                internalType: 'address',
-              },
-              {
-                name: 'actionPolicies',
-                type: 'tuple[]',
-                internalType: 'struct PolicyData[]',
-                components: [
-                  {
-                    name: 'policy',
-                    type: 'address',
-                    internalType: 'address',
-                  },
-                  {
-                    name: 'initData',
-                    type: 'bytes',
-                    internalType: 'bytes',
-                  },
-                ],
-              },
-            ],
-          },
-        ],
-      },
-      {
-        name: 'lockTag',
-        type: 'bytes12',
-        internalType: 'bytes12',
-      },
-      {
-        name: 'expires',
-        type: 'uint256',
-        internalType: 'uint256',
-      },
-      {
-        name: 'sender',
-        type: 'address',
-        internalType: 'address',
-      },
-    ],
-    outputs: [
-      {
-        name: '',
-        type: 'bytes32',
-        internalType: 'bytes32',
-      },
-    ],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
     name: 'setConfig',
     inputs: [
       {
@@ -441,6 +334,40 @@ const SMART_SESSION_EMISSARY_ABI = [
     outputs: [],
     stateMutability: 'nonpayable',
   },
+  {
+    type: 'function',
+    name: 'isSessionEnabled',
+    inputs: [
+      {
+        name: 'sender',
+        type: 'address',
+        internalType: 'address',
+      },
+      {
+        name: 'account',
+        type: 'address',
+        internalType: 'address',
+      },
+      {
+        name: 'lockTag',
+        type: 'bytes12',
+        internalType: 'bytes12',
+      },
+      {
+        name: 'permissionId',
+        type: 'bytes32',
+        internalType: 'PermissionId',
+      },
+    ],
+    outputs: [
+      {
+        name: '',
+        type: 'bool',
+        internalType: 'bool',
+      },
+    ],
+    stateMutability: 'view',
+  },
 ] as const
 
 const SPENDING_LIMITS_POLICY_ADDRESS: Address =
@@ -514,6 +441,7 @@ async function getEnableEmissarySessionCall(
   provider?: ProviderConfig,
   overrideEnable?: Partial<SmartSessionEmissaryEnable>,
   sessionDigest?: Hex,
+  isFirstTimeSetup?: boolean,
 ) {
   const { appDomainSeparator, contentsType } =
     await getSessionAllowedERC7739Content(chain, provider)
@@ -575,8 +503,10 @@ async function getEnableEmissarySessionCall(
   }
 
   // Prepare the SmartSessionEmissaryEnable according to contract
+  // For first-time setup, allocatorSig should be empty (0x)
+  // For updates, allocatorSig should be provided
   const enableData: SmartSessionEmissaryEnable = {
-    allocatorSig: overrideEnable?.allocatorSig || '0x',
+    allocatorSig: (isFirstTimeSetup === false && overrideEnable?.allocatorSig) ? overrideEnable.allocatorSig : '0x',
     userSig: overrideEnable?.userSig || '0x',
     expires: overrideEnable?.expires || BigInt(Math.floor(Date.now() / 1000) + DEFAULT_SESSION_EXPIRY_DURATION),
     session: enableSession,

@@ -34,8 +34,10 @@ import {
 } from '../accounts'
 import { createTransport, getBundlerClient } from '../accounts/utils'
 import {
+  DEFAULT_SESSION_EXPIRY_DURATION,
   getOwnerValidator,
   getSmartSessionValidator,
+  SMART_SESSION_EMISSARY_ADDRESS,
 } from '../modules/validators'
 import {
   getMultiFactorValidator,
@@ -460,6 +462,37 @@ async function prepareTransactionAsIntent(
     eip7702InitSignature,
   )
 
+  // create emissary config if exists
+  let emissaryConfig = undefined
+  if (config.sessions && config.sessions.length > 0) {
+    const emissarySession = config.sessions.find(session => session.emissary)
+    if (emissarySession && emissarySession.emissary) {
+      // const permissionId = getPermissionId(emissarySession)
+
+      // create emissary config structure for orchestrator
+      emissaryConfig = {
+        configId: emissarySession.emissary.configId,
+        validatorAddress: emissarySession.emissary.validator,
+        emissaryAddress: emissarySession.emissary.emissaryAddress || SMART_SESSION_EMISSARY_ADDRESS,
+        emissaryEnable: {
+          allocatorSig: '0x' as Hex,
+          userSig: '0x' as Hex,
+          expires: BigInt(Math.floor(Date.now() / 1000) + DEFAULT_SESSION_EXPIRY_DURATION),
+          nonce: 0n,
+          allChainIds: [BigInt(targetChain.id)],
+          chainIndex: 0n,
+        },
+        emissaryConfig: {
+          allocator: emissarySession.emissary.allocator,
+          scope: emissarySession.emissary.scope,
+          resetPeriod: emissarySession.emissary.resetPeriod,
+          validator: emissarySession.emissary.validator,
+          validatorConfig: emissarySession.emissary.validatorConfig,
+        }
+      }
+    }
+  }
+
   const metaIntent: IntentInput = {
     destinationChainId: targetChain.id,
     tokenTransfers: tokenRequests.map((tokenRequest) => ({
@@ -471,6 +504,7 @@ async function prepareTransactionAsIntent(
       accountType: 'ERC7579',
       setupOps,
       delegations,
+      ...(emissaryConfig && { emissaryConfig }),
     },
     destinationExecutions: calls,
     destinationGasUnits: gasLimit,

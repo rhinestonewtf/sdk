@@ -253,6 +253,10 @@ interface Session {
     validator: Address
     validatorConfig: Hex
     /**
+     * Optional emissary contract address. If not provided, uses default from SDK.
+     */
+    emissaryAddress?: Address
+    /**
      * Optional private key for the allocator EOA to sign emissary enable payloads.
      * If provided, the SDK will generate allocatorSig automatically.
      */
