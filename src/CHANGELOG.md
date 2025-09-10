@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.0-alpha.29
+
+### Patch Changes
+
+- 865142b: Add `isDeployed` utility
+
 ## 1.0.0-alpha.28
 
 ### Patch Changes
