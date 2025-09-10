@@ -18,6 +18,7 @@ import type {
   SignerSet,
   SourceAssetInput,
   TokenRequest,
+  TokenSymbol,
   Transaction,
 } from '../types'
 import {
@@ -63,6 +64,7 @@ async function sendTransaction(
     sponsored,
     settlementLayers,
     sourceAssets,
+    feeAsset,
   } = transaction
   return await sendTransactionInternal(
     config,
@@ -76,6 +78,7 @@ async function sendTransaction(
       sponsored,
       settlementLayers,
       sourceAssets,
+      feeAsset,
     },
   )
 }
@@ -93,6 +96,7 @@ async function sendTransactionInternal(
     settlementLayers?: SettlementLayer[]
     sourceAssets?: SourceAssetInput
     asUserOp?: boolean
+    feeAsset?: Address | TokenSymbol
   },
 ) {
   const accountAddress = getAddress(config)
@@ -132,6 +136,7 @@ async function sendTransactionInternal(
       options.sponsored,
       options.settlementLayers,
       options.sourceAssets,
+      options.feeAsset,
     )
   }
 }
@@ -186,6 +191,7 @@ async function sendTransactionAsIntent(
   sponsored?: boolean,
   settlementLayers?: SettlementLayer[],
   sourceAssets?: SourceAssetInput,
+  feeAsset?: Address | TokenSymbol,
 ) {
   const { intentRoute } = await prepareTransactionAsIntent(
     config,
@@ -199,6 +205,7 @@ async function sendTransactionAsIntent(
     undefined,
     settlementLayers,
     sourceAssets,
+    feeAsset,
   )
   if (!intentRoute) {
     throw new OrderPathRequiredForIntentsError()

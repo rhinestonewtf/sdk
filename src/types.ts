@@ -249,6 +249,7 @@ interface BaseTransaction {
   sponsored?: boolean
   eip7702InitSignature?: Hex
   sourceAssets?: SourceAssetInput
+  feeAsset?: Address | TokenSymbol
   settlementLayers?: SettlementLayer[]
 }
 

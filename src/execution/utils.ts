@@ -76,6 +76,7 @@ import type {
   SignerSet,
   SourceAssetInput,
   TokenRequest,
+  TokenSymbol,
   Transaction,
 } from '../types'
 import { getIntentData } from './compact'
@@ -132,6 +133,7 @@ async function prepareTransaction(
     eip7702InitSignature,
     settlementLayers,
     sourceAssets,
+    feeAsset,
   } = getTransactionParams(transaction)
   const accountAddress = getAddress(config)
 
@@ -163,6 +165,7 @@ async function prepareTransaction(
       eip7702InitSignature,
       settlementLayers,
       sourceAssets,
+      feeAsset,
     )
   }
 
@@ -384,6 +387,7 @@ function getTransactionParams(transaction: Transaction) {
   const gasLimit = transaction.gasLimit
   const settlementLayers = transaction.settlementLayers
   const sourceAssets = transaction.sourceAssets
+  const feeAsset = transaction.feeAsset
 
   const tokenRequests = getTokenRequests(
     sourceChains || [],
@@ -401,6 +405,7 @@ function getTransactionParams(transaction: Transaction) {
     gasLimit,
     settlementLayers,
     sourceAssets,
+    feeAsset,
   }
 }
 
@@ -473,9 +478,10 @@ async function prepareTransactionAsIntent(
   tokenRequests: TokenRequest[],
   accountAddress: Address,
   isSponsored: boolean,
-  eip7702InitSignature?: Hex,
-  settlementLayers?: SettlementLayer[],
-  sourceAssets?: SourceAssetInput,
+  eip7702InitSignature: Hex | undefined,
+  settlementLayers: SettlementLayer[] | undefined,
+  sourceAssets: SourceAssetInput | undefined,
+  feeAsset: Address | TokenSymbol | undefined,
 ) {
   const calls = parseCalls(callInputs, targetChain.id)
   const accountAccessList = createAccountAccessList(sourceChains, sourceAssets)
@@ -504,6 +510,7 @@ async function prepareTransactionAsIntent(
     accountAccessList,
     options: {
       topupCompact: false,
+      feeToken: feeAsset,
       sponsorSettings: {
         gasSponsored: isSponsored,
         bridgeFeesSponsored: isSponsored,
