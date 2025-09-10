@@ -1,4 +1,4 @@
-import { type Address, type Chain, createPublicClient, zeroAddress } from 'viem'
+import { type Address, type Chain, createPublicClient } from 'viem'
 import { mainnet, sepolia } from 'viem/chains'
 
 import { deploy, getAddress } from '../accounts'
@@ -34,6 +34,7 @@ import { enableSmartSession } from './smart-session'
 import type { IntentData, TransactionResult } from './utils'
 import {
   getOrchestratorByChain,
+  getTokenRequests,
   getValidatorAccount,
   parseCalls,
   prepareTransactionAsIntent,
@@ -95,17 +96,11 @@ async function sendTransactionInternal(
   },
 ) {
   const accountAddress = getAddress(config)
-
-  // Across requires passing some value to repay the solvers
-  const tokenRequests =
-    !options.initialTokenRequests || options.initialTokenRequests.length === 0
-      ? [
-          {
-            address: zeroAddress,
-            amount: 1n,
-          },
-        ]
-      : options.initialTokenRequests
+  const tokenRequests = getTokenRequests(
+    sourceChains,
+    targetChain,
+    options.initialTokenRequests,
+  )
 
   const sendAsUserOp =
     options.asUserOp ||

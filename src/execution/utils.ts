@@ -385,16 +385,11 @@ function getTransactionParams(transaction: Transaction) {
   const settlementLayers = transaction.settlementLayers
   const sourceAssets = transaction.sourceAssets
 
-  // Across requires passing some value to repay the solvers
-  const tokenRequests =
-    !initialTokenRequests || initialTokenRequests.length === 0
-      ? [
-          {
-            address: zeroAddress,
-            amount: 1n,
-          },
-        ]
-      : initialTokenRequests
+  const tokenRequests = getTokenRequests(
+    sourceChains || [],
+    targetChain,
+    initialTokenRequests,
+  )
 
   return {
     sourceChains,
@@ -407,6 +402,27 @@ function getTransactionParams(transaction: Transaction) {
     settlementLayers,
     sourceAssets,
   }
+}
+
+function getTokenRequests(
+  sourceChains: Chain[],
+  targetChain: Chain,
+  initialTokenRequests: TokenRequest[] | undefined,
+) {
+  // Across requires passing some value to repay the solvers
+  const defaultTokenRequest = {
+    address: zeroAddress,
+    amount: 1n,
+  }
+  const isSameChain =
+    sourceChains.length === 1 && sourceChains[0].id === targetChain.id
+  const tokenRequests =
+    !initialTokenRequests || initialTokenRequests.length === 0
+      ? isSameChain
+        ? []
+        : [defaultTokenRequest]
+      : initialTokenRequests
+  return tokenRequests
 }
 
 async function prepareTransactionAsUserOp(
@@ -946,6 +962,7 @@ export {
   simulateIntentInternal,
   getValidatorAccount,
   parseCalls,
+  getTokenRequests,
 }
 export type {
   IntentData,
