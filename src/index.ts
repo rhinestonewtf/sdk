@@ -19,6 +19,7 @@ import {
   FactoryArgsNotAvailableError,
   getAddress as getAddressInternal,
   isAccountError,
+  isDeployed as isDeployedInternal,
   SigningNotSupportedForAccountError,
   SmartSessionsNotEnabledError,
   setup as setupInternal,
@@ -122,6 +123,7 @@ import type {
 interface RhinestoneAccount {
   config: RhinestoneAccountConfig
   deploy: (chain: Chain, session?: Session) => Promise<boolean>
+  isDeployed: (chain: Chain) => Promise<boolean>
   setup: (chain: Chain) => Promise<boolean>
   signEip7702InitData: () => Promise<Hex>
   prepareTransaction: (
@@ -199,6 +201,15 @@ async function createRhinestoneAccount(
    */
   function deploy(chain: Chain, session?: Session) {
     return deployInternal(config, chain, session)
+  }
+
+  /**
+   * Checks if the account is deployed on a given chain
+   * @param chain Chain to check if the account is deployed on
+   * @returns true if the account is deployed, false otherwise
+   */
+  function isDeployed(chain: Chain) {
+    return isDeployedInternal(config, chain)
   }
 
   /**
@@ -415,6 +426,7 @@ async function createRhinestoneAccount(
   return {
     config,
     deploy,
+    isDeployed,
     setup,
     signEip7702InitData,
     prepareTransaction,
