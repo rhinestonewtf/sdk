@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.0-alpha.28
+
+### Patch Changes
+
+- d39b2ba: Expose missing types
+
 ## 1.0.0-alpha.27
 
 ### Patch Changes
