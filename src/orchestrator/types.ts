@@ -117,6 +117,7 @@ interface IntentInput {
         contract: Address
       }
     >
+    emissaryConfig?: EmissarySetupConfig
   }
   destinationChainId: number
   destinationExecutions: Execution[]
@@ -220,12 +221,11 @@ interface EmissarySetupConfig {
   configId: number
   validatorAddress: Address
   emissaryAddress: Address
-  emissaryConfig: EmissaryConfig
   emissaryEnable: EmissaryEnable
+  emissaryConfig: EmissarySettingsConfig
 }
 
-interface EmissaryConfig {
-  configId: number
+interface EmissarySettingsConfig {
   allocator: Address
   scope: number
   resetPeriod: number

@@ -20,7 +20,6 @@ import {
   type ValidatorConfig,
 } from '../accounts/utils'
 import {
-  getEnableSessionCall,
   getPermissionId,
   isSessionEnabled,
   SMART_SESSION_MODE_ENABLE,
@@ -30,6 +29,7 @@ import {
   type ChainDigest,
   type ChainSession,
   type EnableSessionData,
+  getEnableSessionCall,
   getSessionData,
   type SessionData,
   type SmartSessionModeType,
@@ -48,6 +48,7 @@ interface SessionDetails {
   hashesAndChainIds: ChainDigest[]
   enableSessionData: EnableSessionData
 }
+
 
 async function getSessionDetails(
   config: RhinestoneAccountConfig,
@@ -406,6 +407,14 @@ async function enableSmartSession(
   if (isEnabled) {
     return
   }
+
+  // For emissary sessions, the orchestrator handles the setConfig call
+  // The SDK just needs to provide the session configuration
+  if (session.emissary) {
+    return
+  }
+
+  // Standard smart session enablement
   const enableSessionCall = await getEnableSessionCall(
     chain,
     session,
@@ -414,14 +423,14 @@ async function enableSmartSession(
 
   const smartAccount = await getSmartAccount(config, publicClient, chain)
   const bundlerClient = getBundlerClient(config, publicClient)
+
   const opHash = await bundlerClient.sendUserOperation({
     account: smartAccount,
     calls: [enableSessionCall],
   })
-  await bundlerClient.waitForUserOperationReceipt({
-    hash: opHash,
-  })
+  await bundlerClient.waitForUserOperationReceipt({ hash: opHash })
 }
+
 
 export { enableSmartSession, getSessionDetails, getMultichainDigest }
 export type { SessionDetails }

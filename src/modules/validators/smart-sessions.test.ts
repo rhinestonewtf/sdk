@@ -274,8 +274,21 @@ describe('Smart Sessions', () => {
       expect(decoded.args.length).toEqual(1)
       expect(decoded.args[0].length).toEqual(1)
 
-      const session = decoded.args[0][0]
-      return session
+      const session = decoded.args[0][0] as any
+
+      // Add default emissaryConfig since it's now required
+      if (!session.emissaryConfig) {
+        session.emissaryConfig = {
+          configId: 0,
+          allocator: '0x0000000000000000000000000000000000000000',
+          scope: 0,
+          resetPeriod: 0,
+          validator: '0x0000000000000000000000000000000000000000',
+          validatorConfig: '0x',
+        }
+      }
+
+      return session as SessionData
     }
   })
 

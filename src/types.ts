@@ -165,6 +165,16 @@ interface RhinestoneAccountConfig {
   provider?: ProviderConfig
   bundler?: BundlerConfig
   paymaster?: PaymasterConfig
+  /** Optional: provider that returns allocatorSig for Emissary digest (contract allocator). */
+  allocatorSigProvider?: (args: {
+    digest: Hex
+    chainId: number
+    emissary: Address
+    account: Address
+    lockTag: Hex
+    expires: bigint
+    sender: Address
+  }) => Promise<Hex>
   /**
    * @internal
    * Optional orchestrator URL override for internal testing - do not use
@@ -235,6 +245,77 @@ interface GuardiansSignerSet {
 
 type SignerSet = OwnerSignerSet | SessionSignerSet | GuardiansSignerSet
 
+interface Session {
+  owners: OwnerSet
+  policies?: [Policy, ...Policy[]]
+  actions?: [Action, ...Action[]]
+  salt?: Hex
+  chain?: Chain
+  emissary?: {
+    configId: number
+    allocator: Address
+    scope: number
+    resetPeriod: number
+    validator: Address
+    validatorConfig: Hex
+    /**
+     * Optional emissary contract address. If not provided, uses default from SDK.
+     */
+    emissaryAddress?: Address
+    /**
+     * Optional private key for the allocator EOA to sign emissary enable payloads.
+     * If provided, the SDK will generate allocatorSig automatically.
+     */
+    allocatorPrivateKey?: Hex
+  }
+}
+
+// Add emissary-specific types - Updated to match contract exactly
+interface SmartSessionEmissaryConfig {
+  sender: Address
+  scope: number
+  resetPeriod: number
+  allocator: Address
+  permissionId: Hex // bytes32
+}
+
+interface SmartSessionEmissaryEnable {
+  allocatorSig: Hex
+  userSig: Hex
+  expires: bigint
+  session: EnableSession
+}
+
+interface EnableSession {
+  chainDigestIndex: number
+  hashesAndChainIds: ChainDigest[]
+  sessionToEnable: SessionStruct
+}
+
+interface ChainDigest {
+  chainId: bigint
+  sessionDigest: Hex
+}
+
+interface PolicyData {
+  policy: Address
+  initData: Hex
+}
+
+interface ActionData {
+  actionTargetSelector: Hex // bytes4
+  actionTarget: Address
+  actionPolicies: PolicyData[]
+}
+
+interface SessionStruct {
+  sessionValidator: Address
+  sessionValidatorInitData: Hex
+  salt: Hex
+  erc1271Policies: PolicyData[]
+  actions: ActionData[]
+}
+
 interface BaseTransaction {
   calls: CallInput[]
   tokenRequests?: TokenRequest[]
@@ -277,4 +358,11 @@ export type {
   Recovery,
   Policy,
   UniversalActionPolicyParamCondition,
+  SmartSessionEmissaryConfig,
+  SmartSessionEmissaryEnable,
+  EnableSession,
+  ChainDigest,
+  SessionStruct,
+  PolicyData,
+  ActionData,
 }
