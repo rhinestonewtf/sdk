@@ -171,7 +171,7 @@ const COMPACT_TYPED_DATA_TYPES = {
   ],
 } as const
 
-function getIntentData(intentOp: IntentOp) {
+function getCompactTypedData(intentOp: IntentOp) {
   const typedData = {
     domain: {
       name: 'The Compact',
@@ -213,7 +213,7 @@ function getIntentData(intentOp: IntentOp) {
             value: BigInt(op.value),
             data: op.data,
           })),
-          q: keccak256(element.mandate.qualifier?.encodedVal ?? '0x'),
+          q: keccak256(element.mandate.qualifier.encodedVal),
         },
       })),
     },
@@ -227,5 +227,5 @@ export {
   getDepositEtherCall,
   getDepositErc20Call,
   getApproveErc20Call,
-  getIntentData,
+  getCompactTypedData,
 }

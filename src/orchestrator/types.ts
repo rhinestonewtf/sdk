@@ -152,24 +152,36 @@ interface IntentCost {
   }
 }
 
+interface IntentOpElementMandate {
+  recipient: Address
+  tokenOut: [[string, string]]
+  destinationChainId: string
+  fillDeadline: string
+  destinationOps: Execution[]
+  preClaimOps: Execution[]
+  qualifier: {
+    settlementContext: {
+      settlementLayer: SettlementLayer
+      usingJIT: boolean
+      using7579: boolean
+    }
+    encodedVal: Hex
+  }
+}
+
 interface IntentOpElement {
   arbiter: Address
   chainId: string
   idsAndAmounts: [[string, string]]
   beforeFill: boolean
-  smartAccountStatus: SmartAccountType
-  mandate: {
-    recipient: Address
-    tokenOut: [[string, string]]
-    destinationChainId: string
-    fillDeadline: string
-    destinationOps: Execution[]
-    preClaimOps: Execution[]
-    qualifier: {
-      settlementSystem: SettlementSystem
-      encodedVal: Hex
-    }
+  smartAccountStatus: {
+    accountType: 'smartAccount'
+    isDeployed: boolean
+    isERC7579: boolean
+    erc7579AccountType: string
+    erc7579AccountVersion: string
   }
+  mandate: IntentOpElementMandate
 }
 
 interface IntentOp {
@@ -337,6 +349,7 @@ export type {
   IntentRoute,
   IntentOp,
   IntentOpElement,
+  IntentOpElementMandate,
   SignedIntentOp,
   IntentOpStatus,
   UserOpStatus,
