@@ -8,12 +8,8 @@ interface TokenPermissions {
 
 const PERMIT2_ADDRESS = '0x000000000022D473030F116dDEE9F6B43aC78BA3'
 
-function asSanitizedAddress(accountValue: bigint): string {
-  return `0x${(accountValue & ((1n << 160n) - 1n)).toString(16).padStart(40, '0')}`
-}
-
 function toToken(id: bigint): Address {
-  return asSanitizedAddress(id) as Address
+  return `0x${(id & ((1n << 160n) - 1n)).toString(16).padStart(40, '0')}`
 }
 
 function getTypedData(intentOp: IntentOp) {
