@@ -73,13 +73,14 @@ import type {
   TokenRequest,
   Transaction,
 } from '../types'
-import { getIntentData } from './compact'
+import { getCompactTypedData } from './compact'
 import {
   OrderPathRequiredForIntentsError,
   SimulationNotSupportedForUserOpFlowError,
   SourceChainsNotAvailableForUserOpFlowError,
   UserOperationRequiredForSmartSessionsError,
 } from './error'
+import { getTypedData as getPermit2TypedData } from './permit2'
 
 type TransactionResult =
   | {
@@ -536,9 +537,81 @@ async function getIntentSignature(
   validator: Module,
   isRoot: boolean,
 ) {
-  const typedData = getIntentData(intentOp)
+  const withJitFlow = intentOp.elements.some(
+    (element) => element.mandate.qualifier.settlementContext?.usingJIT,
+  )
+
+  if (withJitFlow) {
+    return await getPermit2Signature(
+      config,
+      intentOp,
+      signers,
+      targetChain,
+      validator,
+      isRoot,
+    )
+  }
+  return await getCompactSignature(
+    config,
+    intentOp,
+    signers,
+    targetChain,
+    validator,
+    isRoot,
+  )
+}
+
+async function getPermit2Signature(
+  config: RhinestoneAccountConfig,
+  intentOp: IntentOp,
+  signers: SignerSet | undefined,
+  targetChain: Chain,
+  validator: Module,
+  isRoot: boolean,
+) {
+  const typedData = getPermit2TypedData(intentOp)
+  return await signIntentTypedData(
+    config,
+    signers,
+    targetChain,
+    validator,
+    isRoot,
+    typedData,
+  )
+}
+
+async function getCompactSignature(
+  config: RhinestoneAccountConfig,
+  intentOp: IntentOp,
+  signers: SignerSet | undefined,
+  targetChain: Chain,
+  validator: Module,
+  isRoot: boolean,
+) {
+  const typedData = getCompactTypedData(intentOp)
+  return await signIntentTypedData(
+    config,
+    signers,
+    targetChain,
+    validator,
+    isRoot,
+    typedData,
+  )
+}
+
+async function signIntentTypedData<
+  typedData extends TypedData | Record<string, unknown> = TypedData,
+  primaryType extends keyof typedData | 'EIP712Domain' = keyof typedData,
+>(
+  config: RhinestoneAccountConfig,
+  signers: SignerSet | undefined,
+  targetChain: Chain,
+  validator: Module,
+  isRoot: boolean,
+  parameters: HashTypedDataParameters<typedData, primaryType>,
+) {
   if (supportsEip712(validator)) {
-    const signature = await getTypedDataPackedSignature(
+    return await getTypedDataPackedSignature(
       config,
       signers,
       targetChain,
@@ -546,12 +619,11 @@ async function getIntentSignature(
         address: validator.address,
         isRoot,
       },
-      typedData,
+      parameters,
     )
-    return signature
   }
-  const hash = hashTypedData(typedData)
-  const signature = await getPackedSignature(
+  const hash = hashTypedData(parameters)
+  return await getPackedSignature(
     config,
     signers,
     targetChain,
@@ -561,7 +633,6 @@ async function getIntentSignature(
     },
     hash,
   )
-  return signature
 }
 
 async function signUserOp(
