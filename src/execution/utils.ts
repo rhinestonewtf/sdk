@@ -127,6 +127,7 @@ async function prepareTransaction(
     sponsored,
     eip7702InitSignature,
     settlementLayers,
+    lockFunds,
   } = getTransactionParams(transaction)
   const accountAddress = getAddress(config)
 
@@ -157,6 +158,7 @@ async function prepareTransaction(
       sponsored ?? false,
       eip7702InitSignature,
       settlementLayers,
+      lockFunds,
     )
   }
 
@@ -377,6 +379,7 @@ function getTransactionParams(transaction: Transaction) {
   const sponsored = transaction.sponsored
   const gasLimit = transaction.gasLimit
   const settlementLayers = transaction.settlementLayers
+  const lockFunds = transaction.lockFunds
 
   // Across requires passing some value to repay the solvers
   const tokenRequests =
@@ -398,6 +401,7 @@ function getTransactionParams(transaction: Transaction) {
     eip7702InitSignature,
     gasLimit,
     settlementLayers,
+    lockFunds,
   }
 }
 
@@ -451,6 +455,7 @@ async function prepareTransactionAsIntent(
   isSponsored: boolean,
   eip7702InitSignature?: Hex,
   settlementLayers?: SettlementLayer[],
+  lockFunds?: boolean,
 ) {
   const calls = parseCalls(callInputs, targetChain.id)
   const accountAccessList =
@@ -483,7 +488,7 @@ async function prepareTransactionAsIntent(
     destinationGasUnits: gasLimit,
     accountAccessList,
     options: {
-      topupCompact: false,
+      topupCompact: lockFunds ?? false,
       sponsorSettings: {
         gasSponsored: isSponsored,
         bridgeFeesSponsored: isSponsored,

@@ -243,6 +243,7 @@ interface BaseTransaction {
   sponsored?: boolean
   eip7702InitSignature?: Hex
   settlementLayers?: SettlementLayer[]
+  lockFunds?: boolean
 }
 
 interface SameChainTransaction extends BaseTransaction {

@@ -88,6 +88,7 @@ async function sendTransactionInternal(
     sponsored?: boolean
     settlementLayers?: SettlementLayer[]
     asUserOp?: boolean
+    lockFunds?: boolean
   },
 ) {
   const accountAddress = getAddress(config)
@@ -132,6 +133,7 @@ async function sendTransactionInternal(
       options.signers,
       options.sponsored,
       options.settlementLayers,
+      options.lockFunds,
     )
   }
 }
@@ -185,6 +187,7 @@ async function sendTransactionAsIntent(
   signers?: SignerSet,
   sponsored?: boolean,
   settlementLayers?: SettlementLayer[],
+  lockFunds?: boolean,
 ) {
   const { intentRoute } = await prepareTransactionAsIntent(
     config,
@@ -197,6 +200,7 @@ async function sendTransactionAsIntent(
     sponsored ?? false,
     undefined,
     settlementLayers,
+    lockFunds,
   )
   if (!intentRoute) {
     throw new OrderPathRequiredForIntentsError()
