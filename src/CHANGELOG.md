@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.0-alpha.30
+
+### Patch Changes
+
+- 912ee8a: Permit2 signing
+
 ## 1.0.0-alpha.29
 
 ### Patch Changes
