@@ -393,6 +393,7 @@ function getTransactionParams(transaction: Transaction) {
     sourceChains || [],
     targetChain,
     initialTokenRequests,
+    settlementLayers,
   )
 
   return {
@@ -413,6 +414,7 @@ function getTokenRequests(
   sourceChains: Chain[],
   targetChain: Chain,
   initialTokenRequests: TokenRequest[] | undefined,
+  settlementLayers: SettlementLayer[] | undefined,
 ) {
   // Across requires passing some value to repay the solvers
   const defaultTokenRequest = {
@@ -420,7 +422,8 @@ function getTokenRequests(
     amount: 1n,
   }
   const isSameChain =
-    sourceChains.length === 1 && sourceChains[0].id === targetChain.id
+    (settlementLayers?.length === 1 && settlementLayers[0] === 'SAME_CHAIN') ||
+    (sourceChains.length === 1 && sourceChains[0].id === targetChain.id)
   const tokenRequests =
     !initialTokenRequests || initialTokenRequests.length === 0
       ? isSameChain

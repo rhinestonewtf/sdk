@@ -104,6 +104,7 @@ async function sendTransactionInternal(
     sourceChains,
     targetChain,
     options.initialTokenRequests,
+    options.settlementLayers,
   )
 
   const sendAsUserOp =
