@@ -488,7 +488,7 @@ async function submitUserOp(
 ) {
   if (!orderPath) {
     const publicClient = createPublicClient({
-      chain: sourceChain,
+      chain: targetChain,
       transport: http(),
     })
     const bundlerClient = getBundlerClient(config, publicClient)
