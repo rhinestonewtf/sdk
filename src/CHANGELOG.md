@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 0.13.6
+
+### Patch Changes
+
+- 8f86641: Use target chain in `submitUserOp`
+
 ## 0.13.5
 
 ### Patch Changes
