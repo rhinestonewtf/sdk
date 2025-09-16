@@ -8,6 +8,7 @@ import {
   type Hex,
   hashMessage,
   hashTypedData,
+  isAddress,
   type PublicClient,
   publicActions,
   type SignableMessage,
@@ -60,6 +61,7 @@ import {
 } from '../orchestrator/consts'
 import {
   getChainById,
+  getTokenAddress,
   isTestnet,
   resolveTokenAddress,
 } from '../orchestrator/registry'
@@ -416,6 +418,12 @@ function getTokenRequests(
   initialTokenRequests: TokenRequest[] | undefined,
   settlementLayers: SettlementLayer[] | undefined,
 ) {
+  if (initialTokenRequests) {
+    validateTokenSymbols(
+      targetChain,
+      initialTokenRequests.map((tokenRequest) => tokenRequest.address),
+    )
+  }
   // Across requires passing some value to repay the solvers
   const defaultTokenRequest = {
     address: zeroAddress,
@@ -952,6 +960,30 @@ async function getSetupOperationsAndDelegations(
     // Already deployed contract account
     return {
       setupOps: [],
+    }
+  }
+}
+
+function validateTokenSymbols(
+  chain: Chain,
+  tokenAddressOrSymbols: (Address | TokenSymbol)[],
+) {
+  function validateTokenSymbol(
+    chain: Chain,
+    addressOrSymbol: Address | TokenSymbol,
+  ) {
+    // Address
+    if (isAddress(addressOrSymbol)) {
+      return true
+    }
+    // Token symbol
+    const address = getTokenAddress(addressOrSymbol, chain.id)
+    return isAddress(address)
+  }
+
+  for (const addressOrSymbol of tokenAddressOrSymbols) {
+    if (!validateTokenSymbol(chain, addressOrSymbol)) {
+      throw new Error(`Invalid token symbol: ${addressOrSymbol}`)
     }
   }
 }
