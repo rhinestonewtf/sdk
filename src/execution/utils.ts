@@ -973,12 +973,12 @@ function validateTokenSymbols(
     addressOrSymbol: Address | TokenSymbol,
   ) {
     // Address
-    if (isAddress(addressOrSymbol)) {
+    if (isAddress(addressOrSymbol, { strict: false })) {
       return true
     }
     // Token symbol
     const address = getTokenAddress(addressOrSymbol, chain.id)
-    return isAddress(address)
+    return isAddress(address, { strict: false })
   }
 
   for (const addressOrSymbol of tokenAddressOrSymbols) {
