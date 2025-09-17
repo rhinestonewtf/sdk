@@ -225,10 +225,10 @@ function getCompactTypedData(intentOp: IntentOp) {
 
 function getCompactDigest(
   intentOp: IntentOp,
-  options: {
+  _options: {
     usingJIT?: boolean
     using7579?: boolean
-  } = {}
+  } = {},
 ): Hex {
   const typedData = getCompactTypedData(intentOp)
   return hashTypedData(typedData)

@@ -24,15 +24,14 @@ import {
 } from 'viem/account-abstraction'
 import {
   getAddress,
-  getEip7702InitCall,
   getGuardianSmartAccount,
   getInitCode,
   getPackedSignature,
-  signEip7702InitData,
   getSmartAccount,
   getSmartSessionSmartAccount,
   getTypedDataPackedSignature,
   isDeployed,
+  signEip7702InitData,
   toErc6492Signature,
 } from '../accounts'
 import { createTransport, getBundlerClient } from '../accounts/utils'
@@ -74,7 +73,7 @@ import type {
   TokenRequest,
   Transaction,
 } from '../types'
-import { getCompactTypedData, getCompactDigest } from './compact'
+import { getCompactDigest, getCompactTypedData } from './compact'
 import {
   OrderPathRequiredForIntentsError,
   SimulationNotSupportedForUserOpFlowError,
@@ -291,7 +290,9 @@ async function signAuthorizationsInternal(
         eoaAccount = config.owners.accounts[0]
       } else if (config.owners.type === 'multi-factor') {
         // for multi-factor, get the first ECDSA account
-        const ecdsaValidator = config.owners.validators.find(v => v.type === 'ecdsa')
+        const ecdsaValidator = config.owners.validators.find(
+          (v) => v.type === 'ecdsa',
+        )
         if (ecdsaValidator) {
           eoaAccount = ecdsaValidator.accounts[0]
         }
@@ -592,7 +593,7 @@ async function getIntentSignature(
 async function getEOASignature(
   config: RhinestoneAccountConfig,
   intentOp: IntentOp,
-  targetChain: Chain,
+  _targetChain: Chain,
 ) {
   if (!config.eoa) {
     throw new Error('EOA account is required for EOA signature')
@@ -974,7 +975,7 @@ async function getSetupOperationsAndDelegations(
   config: RhinestoneAccountConfig,
   chain: Chain,
   accountAddress: Address,
-  eip7702InitSignature?: Hex,
+  _eip7702InitSignature?: Hex,
 ): Promise<{
   setupOps: { to: Address; data: Hex }[]
   delegations?: Record<number, { contract: Address }>
@@ -982,7 +983,8 @@ async function getSetupOperationsAndDelegations(
   const initCode = getInitCode(config)
 
   if (config.eoa) {
-    const PERMIT2_ADDRESS = '0x000000000022D473030F116dDEE9F6B43aC78BA3' as Address
+    const PERMIT2_ADDRESS =
+      '0x000000000022D473030F116dDEE9F6B43aC78BA3' as Address
     return {
       setupOps: [],
       delegations: {

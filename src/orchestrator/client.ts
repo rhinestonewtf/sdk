@@ -174,7 +174,10 @@ export class Orchestrator {
     }
   }
 
-  async getIntentRoute(input: IntentInput, sigType?: 'eoa' | 'smart-account'): Promise<IntentRoute> {
+  async getIntentRoute(
+    input: IntentInput,
+    sigType?: 'eoa' | 'smart-account',
+  ): Promise<IntentRoute> {
     try {
       const requestBody: any = {
         ...convertBigIntFields(input),
