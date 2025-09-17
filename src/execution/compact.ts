@@ -3,6 +3,7 @@ import {
   encodeFunctionData,
   erc20Abi,
   type Hex,
+  hashTypedData,
   keccak256,
   slice,
   toHex,
@@ -222,10 +223,22 @@ function getCompactTypedData(intentOp: IntentOp) {
   return typedData
 }
 
+function getCompactDigest(
+  intentOp: IntentOp,
+  options: {
+    usingJIT?: boolean
+    using7579?: boolean
+  } = {}
+): Hex {
+  const typedData = getCompactTypedData(intentOp)
+  return hashTypedData(typedData)
+}
+
 export {
   COMPACT_ADDRESS,
   getDepositEtherCall,
   getDepositErc20Call,
   getApproveErc20Call,
   getCompactTypedData,
+  getCompactDigest,
 }

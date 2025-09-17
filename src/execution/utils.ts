@@ -28,6 +28,7 @@ import {
   getGuardianSmartAccount,
   getInitCode,
   getPackedSignature,
+  signEip7702InitData,
   getSmartAccount,
   getSmartSessionSmartAccount,
   getTypedDataPackedSignature,
@@ -73,7 +74,7 @@ import type {
   TokenRequest,
   Transaction,
 } from '../types'
-import { getCompactTypedData } from './compact'
+import { getCompactTypedData, getCompactDigest } from './compact'
 import {
   OrderPathRequiredForIntentsError,
   SimulationNotSupportedForUserOpFlowError,
@@ -268,10 +269,10 @@ async function signAuthorizationsInternal(
   config: RhinestoneAccountConfig,
   data: IntentData | UserOpData,
 ) {
-  const eoa = config.eoa
-  if (!eoa) {
-    throw new Error('EIP-7702 initialization is required for EOA accounts')
+  if (config.eoa) {
+    return []
   }
+
   const accountAddress = getAddress(config)
   const requiredDelegations =
     data.type === 'intent'
@@ -282,9 +283,27 @@ async function signAuthorizationsInternal(
   for (const chainId in requiredDelegations) {
     const delegation = requiredDelegations[chainId]
     const chain = getChainById(Number(chainId))
+
+    let eoaAccount: any = config.eoa
+    if (!eoaAccount) {
+      // get EOA account from owners
+      if (config.owners.type === 'ecdsa') {
+        eoaAccount = config.owners.accounts[0]
+      } else if (config.owners.type === 'multi-factor') {
+        // for multi-factor, get the first ECDSA account
+        const ecdsaValidator = config.owners.validators.find(v => v.type === 'ecdsa')
+        if (ecdsaValidator) {
+          eoaAccount = ecdsaValidator.accounts[0]
+        }
+      }
+    }
+    if (!eoaAccount) {
+      throw new Error('No EOA account available for signing authorizations')
+    }
+
     const walletClient = createWalletClient({
       chain,
-      account: eoa,
+      account: eoaAccount,
       transport: createTransport(chain, config.provider),
     }).extend(publicActions)
     const code = await walletClient.getCode({
@@ -298,6 +317,7 @@ async function signAuthorizationsInternal(
     const authorization = await walletClient.signAuthorization({
       contractAddress: delegation.contract,
       chainId: Number(chainId),
+      account: accountAddress,
     })
     authorizations.push(authorization)
   }
@@ -457,10 +477,13 @@ async function prepareTransactionAsIntent(
     sourceChains && sourceChains.length > 0
       ? {
           chainIds: sourceChains.map((chain) => chain.id as SupportedChain),
+          exclude: {
+            chainIds: [],
+          },
         }
       : undefined
 
-  const { setupOps, delegations } = await getSetupOperationsAndDelegations(
+  const { setupOps, delegations = {} } = await getSetupOperationsAndDelegations(
     config,
     targetChain,
     accountAddress,
@@ -475,7 +498,7 @@ async function prepareTransactionAsIntent(
     })),
     account: {
       address: accountAddress,
-      accountType: 'ERC7579',
+      accountType: config.eoa ? 'EOA' : 'ERC7579',
       setupOps,
       delegations,
     },
@@ -498,7 +521,8 @@ async function prepareTransactionAsIntent(
     config.rhinestoneApiKey,
     config.orchestratorUrl,
   )
-  const intentRoute = await orchestrator.getIntentRoute(metaIntent)
+  const sigType = config.eoa ? 'eoa' : 'smart-account'
+  const intentRoute = await orchestrator.getIntentRoute(metaIntent, sigType)
 
   return {
     type: 'intent',
@@ -512,6 +536,10 @@ async function signIntent(
   intentOp: IntentOp,
   signers?: SignerSet,
 ) {
+  if (config.eoa) {
+    return await getEOASignature(config, intentOp, targetChain)
+  }
+
   const validator = getValidator(config, signers)
   if (!validator) {
     throw new Error('Validator not available')
@@ -559,6 +587,25 @@ async function getIntentSignature(
     validator,
     isRoot,
   )
+}
+
+async function getEOASignature(
+  config: RhinestoneAccountConfig,
+  intentOp: IntentOp,
+  targetChain: Chain,
+) {
+  if (!config.eoa) {
+    throw new Error('EOA account is required for EOA signature')
+  }
+
+  // eoa permit2: use jit flow with compact digest
+  const digest = getCompactDigest(intentOp, {
+    usingJIT: true,
+    using7579: false,
+  })
+
+  const signature = await (config.eoa as any).sign({ hash: digest })
+  return signature
 }
 
 async function getPermit2Signature(
@@ -928,30 +975,19 @@ async function getSetupOperationsAndDelegations(
   chain: Chain,
   accountAddress: Address,
   eip7702InitSignature?: Hex,
-) {
+): Promise<{
+  setupOps: { to: Address; data: Hex }[]
+  delegations?: Record<number, { contract: Address }>
+}> {
   const initCode = getInitCode(config)
 
   if (config.eoa) {
-    // EIP-7702 initialization is only needed for EOA accounts
-    if (!eip7702InitSignature || eip7702InitSignature === '0x') {
-      throw new Error(
-        'EIP-7702 initialization signature is required for EOA accounts',
-      )
-    }
-
-    const { initData: eip7702InitData, contract: eip7702Contract } =
-      await getEip7702InitCall(config, eip7702InitSignature)
-
+    const PERMIT2_ADDRESS = '0x000000000022D473030F116dDEE9F6B43aC78BA3' as Address
     return {
-      setupOps: [
-        {
-          to: accountAddress,
-          data: eip7702InitData,
-        },
-      ],
+      setupOps: [],
       delegations: {
         0: {
-          contract: eip7702Contract,
+          contract: PERMIT2_ADDRESS,
         },
       },
     }
@@ -972,9 +1008,21 @@ async function getSetupOperationsAndDelegations(
       ],
     }
   } else {
-    // Already deployed contract account
+    // EIP-7702 account
+    const isAccountDeployed = await isDeployed(config, chain)
+    if (isAccountDeployed) {
+      return {
+        setupOps: [],
+      }
+    }
+    const eip7702InitSignature = await signEip7702InitData(config)
     return {
-      setupOps: [],
+      setupOps: [
+        {
+          to: accountAddress,
+          data: eip7702InitSignature,
+        },
+      ],
     }
   }
 }

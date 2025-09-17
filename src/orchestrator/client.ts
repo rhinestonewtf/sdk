@@ -174,13 +174,19 @@ export class Orchestrator {
     }
   }
 
-  async getIntentRoute(input: IntentInput): Promise<IntentRoute> {
+  async getIntentRoute(input: IntentInput, sigType?: 'eoa' | 'smart-account'): Promise<IntentRoute> {
     try {
+      const requestBody: any = {
+        ...convertBigIntFields(input),
+      }
+
+      if (sigType) {
+        requestBody.sigType = sigType
+      }
+
       const response = await axios.post(
         `${this.serverUrl}/intents/route`,
-        {
-          ...convertBigIntFields(input),
-        },
+        requestBody,
         {
           headers: {
             'x-api-key': this.apiKey,
@@ -197,11 +203,13 @@ export class Orchestrator {
 
   async submitIntent(signedIntentOp: SignedIntentOp): Promise<IntentResult> {
     try {
+      const requestBody = {
+        signedIntentOp: convertBigIntFields(signedIntentOp),
+      }
+
       const response = await axios.post(
         `${this.serverUrl}/intent-operations`,
-        {
-          signedIntentOp: convertBigIntFields(signedIntentOp),
-        },
+        requestBody,
         {
           headers: {
             'x-api-key': this.apiKey,
