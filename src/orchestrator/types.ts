@@ -74,6 +74,7 @@ export type SettlementLayer = 'SAME_CHAIN' | 'ACROSS' | 'ECO' | 'RELAY'
 
 interface IntentOptions {
   topupCompact: boolean
+  feeToken?: Address | SupportedTokenSymbol
   sponsorSettings?: SponsorSettings
   settlementLayers?: SettlementLayer[]
 }
@@ -358,6 +359,8 @@ export type {
   PortfolioResponse,
   Portfolio,
   PortfolioToken,
+  MappedChainTokenAccessList,
+  UnmappedChainTokenAccessList,
 }
 export {
   INTENT_STATUS_PENDING,
