@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.0-alpha.32
+
+### Patch Changes
+
+- 883706c: Resource locking
+
 ## 1.0.0-alpha.31
 
 ### Patch Changes
