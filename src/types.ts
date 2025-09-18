@@ -251,6 +251,7 @@ interface BaseTransaction {
   sourceAssets?: SourceAssetInput
   feeAsset?: Address | TokenSymbol
   settlementLayers?: SettlementLayer[]
+  lockFunds?: boolean
 }
 
 interface SameChainTransaction extends BaseTransaction {

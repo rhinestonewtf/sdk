@@ -1,11 +1,13 @@
 import {
   type Address,
+  concat,
   encodeFunctionData,
   erc20Abi,
   type Hex,
   keccak256,
   slice,
   toHex,
+  zeroAddress,
 } from 'viem'
 import type { IntentOp } from '../orchestrator/types'
 import type { Call } from '../types'
@@ -22,12 +24,12 @@ type ResetPeriod =
 
 type Scope = 0 | 1 // Multichain | ChainSpecific
 
-const COMPACT_ADDRESS = '0xa2E6C7Ba8613E1534dCB990e7e4962216C0a5d58'
-const ALLOCATOR_ADDRESS = '0x9Ef7519F90C9B6828650Ff4913d663BB1f688507'
-const DEFAULT_RESET_PERIOD: ResetPeriod = 3
+const COMPACT_ADDRESS = '0x73d2dc0c21fca4ec1601895d50df7f5624f07d3f'
+const ALLOCATOR_ADDRESS = '0xd93ed1dd9f1f0b523e4d77233809dc2ee22928c6'
+const DEFAULT_RESET_PERIOD: ResetPeriod = 6
 const DEFAULT_SCOPE: Scope = 0
 
-function getDepositEtherCall(account: Address, value: bigint): Call {
+function depositEther(account: Address, value: bigint): Call {
   return {
     to: COMPACT_ADDRESS,
     data: encodeFunctionData({
@@ -39,7 +41,7 @@ function getDepositEtherCall(account: Address, value: bigint): Call {
             { name: 'lockTag', type: 'bytes12', internalType: 'bytes12' },
             { name: 'recipient', type: 'address', internalType: 'address' },
           ],
-          outputs: [{ name: '', type: 'uint256', internalType: 'uint256' }],
+          outputs: [{ name: 'id', type: 'uint256', internalType: 'uint256' }],
           stateMutability: 'payable',
         },
       ],
@@ -50,7 +52,22 @@ function getDepositEtherCall(account: Address, value: bigint): Call {
   }
 }
 
-function getDepositErc20Call(
+function enableEtherWithdrawal(): Call {
+  const id = concat([lockTag(), zeroAddress])
+  return enableForcedWithdrawal(BigInt(id))
+}
+
+function disableEtherWithdrawal(): Call {
+  const id = concat([lockTag(), zeroAddress])
+  return disableForcedWithdrawal(BigInt(id))
+}
+
+function withdrawEther(account: Address, value: bigint): Call {
+  const id = concat([lockTag(), zeroAddress])
+  return forcedWithdrawal(BigInt(id), account, value)
+}
+
+function depositErc20(
   account: Address,
   tokenAddress: Address,
   amount: bigint,
@@ -83,7 +100,94 @@ function getDepositErc20Call(
   }
 }
 
-function getApproveErc20Call(tokenAddress: Address, amount: bigint): Call {
+function enableErc20Withdrawal(tokenAddress: Address): Call {
+  const id = concat([lockTag(), tokenAddress])
+  return enableForcedWithdrawal(BigInt(id))
+}
+
+function disableErc20Withdrawal(tokenAddress: Address): Call {
+  const id = concat([lockTag(), tokenAddress])
+  return disableForcedWithdrawal(BigInt(id))
+}
+
+function withdrawErc20(
+  account: Address,
+  tokenAddress: Address,
+  amount: bigint,
+): Call {
+  const id = concat([lockTag(), tokenAddress])
+  return forcedWithdrawal(BigInt(id), account, amount)
+}
+
+function enableForcedWithdrawal(id: bigint): Call {
+  return {
+    to: COMPACT_ADDRESS,
+    data: encodeFunctionData({
+      abi: [
+        {
+          type: 'function',
+          name: 'enableForcedWithdrawal',
+          inputs: [{ name: 'id', type: 'uint256', internalType: 'uint256' }],
+          outputs: [{ name: '', type: 'uint256', internalType: 'uint256' }],
+          stateMutability: 'nonpayable',
+        },
+      ],
+      functionName: 'enableForcedWithdrawal',
+      args: [id],
+    }),
+    value: 0n,
+  }
+}
+
+function disableForcedWithdrawal(id: bigint): Call {
+  return {
+    to: COMPACT_ADDRESS,
+    data: encodeFunctionData({
+      abi: [
+        {
+          type: 'function',
+          name: 'disableForcedWithdrawal',
+          inputs: [{ name: 'id', type: 'uint256', internalType: 'uint256' }],
+          outputs: [{ name: '', type: 'uint256', internalType: 'uint256' }],
+          stateMutability: 'nonpayable',
+        },
+      ],
+      functionName: 'disableForcedWithdrawal',
+      args: [id],
+    }),
+    value: 0n,
+  }
+}
+
+function forcedWithdrawal(
+  id: bigint,
+  recipient: Address,
+  amount: bigint,
+): Call {
+  return {
+    to: COMPACT_ADDRESS,
+    data: encodeFunctionData({
+      abi: [
+        {
+          type: 'function',
+          name: 'forcedWithdrawal',
+          inputs: [
+            { name: 'id', type: 'uint256', internalType: 'uint256' },
+            { name: 'recipient', type: 'address', internalType: 'address' },
+            { name: 'amount', type: 'uint256', internalType: 'uint256' },
+          ],
+          outputs: [{ name: '', type: 'bool', internalType: 'bool' }],
+          stateMutability: 'nonpayable',
+        },
+      ],
+      functionName: 'forcedWithdrawal',
+      args: [id, recipient, amount],
+    }),
+    value: 0n,
+  }
+}
+
+function approveErc20(tokenAddress: Address, amount: bigint): Call {
   return {
     to: tokenAddress,
     value: 0n,
@@ -224,8 +328,14 @@ function getCompactTypedData(intentOp: IntentOp) {
 
 export {
   COMPACT_ADDRESS,
-  getDepositEtherCall,
-  getDepositErc20Call,
-  getApproveErc20Call,
+  depositEther,
+  enableEtherWithdrawal,
+  disableEtherWithdrawal,
+  withdrawEther,
+  depositErc20,
+  enableErc20Withdrawal,
+  disableErc20Withdrawal,
+  withdrawErc20,
+  approveErc20,
   getCompactTypedData,
 }

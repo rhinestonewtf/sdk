@@ -137,6 +137,7 @@ async function prepareTransaction(
     settlementLayers,
     sourceAssets,
     feeAsset,
+    lockFunds,
   } = getTransactionParams(transaction)
   const accountAddress = getAddress(config)
 
@@ -169,6 +170,7 @@ async function prepareTransaction(
       settlementLayers,
       sourceAssets,
       feeAsset,
+      lockFunds,
     )
   }
 
@@ -391,6 +393,7 @@ function getTransactionParams(transaction: Transaction) {
   const settlementLayers = transaction.settlementLayers
   const sourceAssets = transaction.sourceAssets
   const feeAsset = transaction.feeAsset
+  const lockFunds = transaction.lockFunds
 
   const tokenRequests = getTokenRequests(
     sourceChains || [],
@@ -410,6 +413,7 @@ function getTransactionParams(transaction: Transaction) {
     settlementLayers,
     sourceAssets,
     feeAsset,
+    lockFunds,
   }
 }
 
@@ -494,6 +498,7 @@ async function prepareTransactionAsIntent(
   settlementLayers: SettlementLayer[] | undefined,
   sourceAssets: SourceAssetInput | undefined,
   feeAsset: Address | TokenSymbol | undefined,
+  lockFunds?: boolean,
 ) {
   const calls = parseCalls(callInputs, targetChain.id)
   const accountAccessList = createAccountAccessList(sourceChains, sourceAssets)
@@ -521,7 +526,7 @@ async function prepareTransactionAsIntent(
     destinationGasUnits: gasLimit,
     accountAccessList,
     options: {
-      topupCompact: false,
+      topupCompact: lockFunds ?? false,
       feeToken: feeAsset,
       sponsorSettings: {
         gasSponsored: isSponsored,

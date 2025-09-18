@@ -96,6 +96,7 @@ async function sendTransactionInternal(
     settlementLayers?: SettlementLayer[]
     sourceAssets?: SourceAssetInput
     asUserOp?: boolean
+    lockFunds?: boolean
     feeAsset?: Address | TokenSymbol
   },
 ) {
@@ -138,6 +139,7 @@ async function sendTransactionInternal(
       options.settlementLayers,
       options.sourceAssets,
       options.feeAsset,
+      options.lockFunds,
     )
   }
 }
@@ -193,6 +195,7 @@ async function sendTransactionAsIntent(
   settlementLayers?: SettlementLayer[],
   sourceAssets?: SourceAssetInput,
   feeAsset?: Address | TokenSymbol,
+  lockFunds?: boolean,
 ) {
   const { intentRoute } = await prepareTransactionAsIntent(
     config,
@@ -207,6 +210,7 @@ async function sendTransactionAsIntent(
     settlementLayers,
     sourceAssets,
     feeAsset,
+    lockFunds,
   )
   if (!intentRoute) {
     throw new OrderPathRequiredForIntentsError()
