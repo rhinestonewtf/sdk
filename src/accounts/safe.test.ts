@@ -1,12 +1,7 @@
 import type { Address } from 'viem'
 import { describe, expect, test } from 'vitest'
 
-import {
-  accountA,
-  accountB,
-  MOCK_API_KEY,
-  passkeyAccount,
-} from '../../test/consts'
+import { accountA, accountB, passkeyAccount } from '../../test/consts'
 import { MODULE_TYPE_ID_VALIDATOR } from '../modules/common'
 import {
   getAddress,
@@ -31,7 +26,6 @@ describe('Accounts: Safe', () => {
           type: 'ecdsa',
           accounts: [accountA, accountB],
         },
-        rhinestoneApiKey: MOCK_API_KEY,
       })
 
       expect(factory).toEqual('0x4e1dcf7ad4e460cfd30791ccc4f9c8a4f820ec67')
@@ -59,7 +53,6 @@ describe('Accounts: Safe', () => {
           type: 'passkey',
           accounts: [passkeyAccount],
         },
-        rhinestoneApiKey: MOCK_API_KEY,
       })
 
       expect(factory).toEqual('0x4e1dcf7ad4e460cfd30791ccc4f9c8a4f820ec67')
@@ -81,7 +74,6 @@ describe('Accounts: Safe', () => {
           type: 'ecdsa',
           accounts: [accountA, accountB],
         },
-        rhinestoneApiKey: MOCK_API_KEY,
         initData: {
           factory: '0x4e1dcf7ad4e460cfd30791ccc4f9c8a4f820ec67',
           factoryData:
@@ -105,7 +97,6 @@ describe('Accounts: Safe', () => {
           type: 'ecdsa',
           accounts: [accountA, accountB],
         },
-        rhinestoneApiKey: MOCK_API_KEY,
       })
 
       expect(address).toEqual('0x3a249204D37245504d4aB37FF88f574B222a6349')
@@ -117,7 +108,6 @@ describe('Accounts: Safe', () => {
           type: 'passkey',
           accounts: [passkeyAccount],
         },
-        rhinestoneApiKey: MOCK_API_KEY,
       })
 
       expect(address).toEqual('0xE86e416045645E1Ca4360D5DC396E4c513277C31')
@@ -129,7 +119,6 @@ describe('Accounts: Safe', () => {
           type: 'ecdsa',
           accounts: [accountA, accountB],
         },
-        rhinestoneApiKey: MOCK_API_KEY,
         initData: {
           factory: '0x4e1dcf7ad4e460cfd30791ccc4f9c8a4f820ec67',
           factoryData:

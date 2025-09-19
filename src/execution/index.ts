@@ -15,6 +15,7 @@ import type { SettlementLayer } from '../orchestrator/types'
 import type {
   CallInput,
   RhinestoneAccountConfig,
+  RhinestoneConfig,
   SignerSet,
   SourceAssetInput,
   TokenRequest,
@@ -238,7 +239,7 @@ async function sendTransactionAsIntent(
 }
 
 async function waitForExecution(
-  config: RhinestoneAccountConfig,
+  config: RhinestoneConfig,
   result: TransactionResult,
   acceptsPreconfirmations: boolean,
 ) {
@@ -257,8 +258,8 @@ async function waitForExecution(
       while (intentStatus === null || !validStatuses.has(intentStatus.status)) {
         const orchestrator = getOrchestratorByChain(
           result.targetChain,
-          config.rhinestoneApiKey,
-          config.orchestratorUrl,
+          config.apiKey,
+          config.endpointUrl,
         )
         intentStatus = await orchestrator.getIntentOpStatus(result.id)
         await new Promise((resolve) => setTimeout(resolve, POLLING_INTERVAL))
@@ -284,7 +285,7 @@ async function waitForExecution(
 }
 
 async function getMaxSpendableAmount(
-  config: RhinestoneAccountConfig,
+  config: RhinestoneConfig,
   chain: Chain,
   tokenAddress: Address,
   gasUnits: bigint,
@@ -293,8 +294,8 @@ async function getMaxSpendableAmount(
   const address = getAddress(config)
   const orchestrator = getOrchestratorByChain(
     chain.id,
-    config.rhinestoneApiKey,
-    config.orchestratorUrl,
+    config.apiKey,
+    config.endpointUrl,
   )
   return orchestrator.getMaxTokenAmount(
     address,
@@ -305,16 +306,13 @@ async function getMaxSpendableAmount(
   )
 }
 
-async function getPortfolio(
-  config: RhinestoneAccountConfig,
-  onTestnets: boolean,
-) {
+async function getPortfolio(config: RhinestoneConfig, onTestnets: boolean) {
   const address = getAddress(config)
   const chainId = onTestnets ? sepolia.id : mainnet.id
   const orchestrator = getOrchestratorByChain(
     chainId,
-    config.rhinestoneApiKey,
-    config.orchestratorUrl,
+    config.apiKey,
+    config.endpointUrl,
   )
   return orchestrator.getPortfolio(address)
 }

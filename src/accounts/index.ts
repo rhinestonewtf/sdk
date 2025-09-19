@@ -31,6 +31,7 @@ import type {
   Call,
   OwnerSet,
   RhinestoneAccountConfig,
+  RhinestoneConfig,
   Session,
   SignerSet,
 } from '../types'
@@ -376,7 +377,7 @@ async function isDeployed(config: RhinestoneAccountConfig, chain: Chain) {
 }
 
 async function deploy(
-  config: RhinestoneAccountConfig,
+  config: RhinestoneConfig,
   chain: Chain,
   session?: Session,
 ): Promise<boolean> {
@@ -399,10 +400,7 @@ async function deploy(
 // Installs the missing modules
 // Checks if the provided modules are already installed
 // Useful for existing (already deployed) accounts
-async function setup(
-  config: RhinestoneAccountConfig,
-  chain: Chain,
-): Promise<boolean> {
+async function setup(config: RhinestoneConfig, chain: Chain): Promise<boolean> {
   const modules = getSetup(config)
   const publicClient = createPublicClient({
     chain,

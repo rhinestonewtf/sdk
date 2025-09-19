@@ -152,7 +152,6 @@ interface Recovery {
 interface RhinestoneAccountConfig {
   account?: AccountProviderConfig
   owners: OwnerSet
-  rhinestoneApiKey?: string
   sessions?: Session[]
   recovery?: Recovery
   eoa?: Account
@@ -165,12 +164,18 @@ interface RhinestoneAccountConfig {
   provider?: ProviderConfig
   bundler?: BundlerConfig
   paymaster?: PaymasterConfig
+}
+
+interface RhinestoneSDKConfig {
+  apiKey?: string
   /**
    * @internal
    * Optional orchestrator URL override for internal testing - do not use
    */
-  orchestratorUrl?: string
+  endpointUrl?: string
 }
+
+type RhinestoneConfig = RhinestoneAccountConfig & RhinestoneSDKConfig
 
 type TokenSymbol = 'ETH' | 'WETH' | 'USDC' | 'USDT'
 
@@ -268,6 +273,8 @@ type Transaction = SameChainTransaction | CrossChainTransaction
 export type {
   AccountType,
   RhinestoneAccountConfig,
+  RhinestoneSDKConfig,
+  RhinestoneConfig,
   AccountProviderConfig,
   ProviderConfig,
   BundlerConfig,

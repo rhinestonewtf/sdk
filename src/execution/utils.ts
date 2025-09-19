@@ -75,6 +75,7 @@ import type {
   Call,
   CallInput,
   RhinestoneAccountConfig,
+  RhinestoneConfig,
   SignerSet,
   SourceAssetInput,
   TokenRequest,
@@ -486,7 +487,7 @@ async function prepareTransactionAsUserOp(
 }
 
 async function prepareTransactionAsIntent(
-  config: RhinestoneAccountConfig,
+  config: RhinestoneConfig,
   sourceChains: Chain[] | undefined,
   targetChain: Chain,
   callInputs: CallInput[],
@@ -539,8 +540,8 @@ async function prepareTransactionAsIntent(
 
   const orchestrator = getOrchestratorByChain(
     targetChain.id,
-    config.rhinestoneApiKey,
-    config.orchestratorUrl,
+    config.apiKey,
+    config.endpointUrl,
   )
   const intentRoute = await orchestrator.getIntentRoute(metaIntent)
 
@@ -827,7 +828,7 @@ function createSignedIntentOp(
 }
 
 async function submitIntentInternal(
-  config: RhinestoneAccountConfig,
+  config: RhinestoneConfig,
   sourceChains: Chain[] | undefined,
   targetChain: Chain,
   intentOp: IntentOp,
@@ -841,8 +842,8 @@ async function submitIntentInternal(
   )
   const orchestrator = getOrchestratorByChain(
     targetChain.id,
-    config.rhinestoneApiKey,
-    config.orchestratorUrl,
+    config.apiKey,
+    config.endpointUrl,
   )
   const intentResults = await orchestrator.submitIntent(signedIntentOp)
   return {
@@ -854,7 +855,7 @@ async function submitIntentInternal(
 }
 
 async function simulateIntentInternal(
-  config: RhinestoneAccountConfig,
+  config: RhinestoneConfig,
   _sourceChains: Chain[] | undefined,
   targetChain: Chain,
   intentOp: IntentOp,
@@ -868,8 +869,8 @@ async function simulateIntentInternal(
   )
   const orchestrator = getOrchestratorByChain(
     targetChain.id,
-    config.rhinestoneApiKey,
-    config.orchestratorUrl,
+    config.apiKey,
+    config.endpointUrl,
   )
   const simulationResults = await orchestrator.simulateIntent(signedIntentOp)
   return simulationResults

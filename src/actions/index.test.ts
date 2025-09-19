@@ -6,10 +6,9 @@ import {
   accountB,
   accountC,
   accountD,
-  MOCK_API_KEY,
   passkeyAccount,
 } from '../../test/consts'
-import { createRhinestoneAccount } from '..'
+import { RhinestoneSDK } from '..'
 import {
   addOwner,
   changeThreshold,
@@ -41,12 +40,12 @@ vi.mock('viem', async (importOriginal) => {
 
 describe('Actions', () => {
   describe('Install Ownable Validator', async () => {
-    const rhinestoneAccount = await createRhinestoneAccount({
+    const rhinestone = new RhinestoneSDK()
+    const rhinestoneAccount = await rhinestone.createAccount({
       owners: {
         type: 'ecdsa',
         accounts: [accountA],
       },
-      rhinestoneApiKey: MOCK_API_KEY,
     })
 
     test('1/1 Owners', () => {
@@ -97,12 +96,12 @@ describe('Actions', () => {
   })
 
   describe('Install WebAuthn Validator', async () => {
-    const rhinestoneAccount = await createRhinestoneAccount({
+    const rhinestone = new RhinestoneSDK()
+    const rhinestoneAccount = await rhinestone.createAccount({
       owners: {
         type: 'ecdsa',
         accounts: [accountA],
       },
-      rhinestoneApiKey: MOCK_API_KEY,
     })
 
     test('', () => {
@@ -123,12 +122,12 @@ describe('Actions', () => {
   })
 
   describe('Uninstall Ownable Validator', async () => {
-    const rhinestoneAccount = await createRhinestoneAccount({
+    const rhinestone = new RhinestoneSDK()
+    const rhinestoneAccount = await rhinestone.createAccount({
       owners: {
         type: 'ecdsa',
         accounts: [accountA],
       },
-      rhinestoneApiKey: MOCK_API_KEY,
     })
 
     test('', () => {
@@ -147,12 +146,12 @@ describe('Actions', () => {
   })
 
   describe('Uninstall WebAuthn Validator', async () => {
-    const rhinestoneAccount = await createRhinestoneAccount({
+    const rhinestone = new RhinestoneSDK()
+    const rhinestoneAccount = await rhinestone.createAccount({
       owners: {
         type: 'ecdsa',
         accounts: [accountA],
       },
-      rhinestoneApiKey: MOCK_API_KEY,
     })
 
     test('', () => {
@@ -201,12 +200,12 @@ describe('Actions', () => {
   })
 
   describe('Set Up Recovery', async () => {
-    const rhinestoneAccount = await createRhinestoneAccount({
+    const rhinestone = new RhinestoneSDK()
+    const rhinestoneAccount = await rhinestone.createAccount({
       owners: {
         type: 'ecdsa',
         accounts: [accountA],
       },
-      rhinestoneApiKey: MOCK_API_KEY,
     })
 
     test('Single Guardian', () => {

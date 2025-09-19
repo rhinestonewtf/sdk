@@ -9,7 +9,7 @@ import {
   polygon,
 } from 'viem/chains'
 
-import type { RhinestoneAccountConfig } from '../types'
+import type { RhinestoneAccountConfig, RhinestoneConfig } from '../types'
 
 import {
   MODULE_TYPE_ID_EXECUTOR,
@@ -86,8 +86,8 @@ function getSetup(config: RhinestoneAccountConfig): ModeleSetup {
   }
 }
 
-function getIntentExecutor(config: RhinestoneAccountConfig): Module {
-  const intentExecutorAddress = config.orchestratorUrl
+function getIntentExecutor(config: RhinestoneConfig): Module {
+  const intentExecutorAddress = config.endpointUrl
     ? INTENT_EXECUTOR_ADDRESS_DEV
     : INTENT_EXECUTOR_ADDRESS
   return {

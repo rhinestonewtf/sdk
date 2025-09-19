@@ -1,10 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import {
-  accountA,
-  accountB,
-  MOCK_API_KEY,
-  passkeyAccount,
-} from '../../test/consts'
+import { accountA, accountB, passkeyAccount } from '../../test/consts'
 import { MODULE_TYPE_ID_FALLBACK, MODULE_TYPE_ID_VALIDATOR } from './common'
 import { getSetup } from './index'
 
@@ -12,7 +7,6 @@ describe('Modules', () => {
   describe('Setup', () => {
     test('should use ownable validator for ECDSA owners', () => {
       const config = {
-        rhinestoneApiKey: MOCK_API_KEY,
         owners: {
           type: 'ecdsa' as const,
           accounts: [accountA],
@@ -28,7 +22,6 @@ describe('Modules', () => {
 
     test('should use webauthn validator for passkey owners', () => {
       const config = {
-        rhinestoneApiKey: MOCK_API_KEY,
         owners: {
           type: 'passkey' as const,
           accounts: [passkeyAccount],
@@ -45,7 +38,6 @@ describe('Modules', () => {
 
     test('should use smart session validator when sessions are enabled', () => {
       const config = {
-        rhinestoneApiKey: MOCK_API_KEY,
         owners: {
           type: 'ecdsa' as const,
           accounts: [accountA],
@@ -75,7 +67,6 @@ describe('Modules', () => {
 
     test('should use smart session compatibility fallback for safe accounts with sessions', () => {
       const config = {
-        rhinestoneApiKey: MOCK_API_KEY,
         owners: {
           type: 'ecdsa' as const,
           accounts: [accountA],

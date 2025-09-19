@@ -136,6 +136,7 @@ import type {
   ProviderConfig,
   Recovery,
   RhinestoneAccountConfig,
+  RhinestoneConfig,
   Session,
   SignerSet,
   TokenRequest,
@@ -213,7 +214,7 @@ interface RhinestoneAccount {
  * @returns account
  */
 async function createRhinestoneAccount(
-  config: RhinestoneAccountConfig,
+  config: RhinestoneConfig,
 ): Promise<RhinestoneAccount> {
   // Sanity check for existing (externally created) accounts
   // Ensures we decode the initdata correctly
@@ -472,8 +473,27 @@ async function createRhinestoneAccount(
   }
 }
 
+class RhinestoneSDK {
+  private apiKey?: string
+  private endpointUrl?: string
+
+  constructor(options?: { apiKey?: string; endpointUrl?: string }) {
+    this.apiKey = options?.apiKey
+    this.endpointUrl = options?.endpointUrl
+  }
+
+  createAccount(config: RhinestoneAccountConfig) {
+    const rhinestoneConfig: RhinestoneConfig = {
+      ...config,
+      apiKey: this.apiKey,
+      endpointUrl: this.endpointUrl,
+    }
+    return createRhinestoneAccount(rhinestoneConfig)
+  }
+}
+
 export {
-  createRhinestoneAccount,
+  RhinestoneSDK,
   // Helpers
   walletClientToAccount,
   // Actions
