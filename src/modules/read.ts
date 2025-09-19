@@ -51,6 +51,10 @@ async function getValidators(
       })
       return (validators as [Address[], Address])[0]
     }
+    case 'eoa':
+    case 'eip7702-eoa': {
+      return []
+    }
     case 'kernel': {
       throw new Error('Kernel not supported')
     }

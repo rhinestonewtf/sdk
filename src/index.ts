@@ -73,9 +73,11 @@ import {
   disableEtherWithdrawal,
   enableErc20Withdrawal,
   enableEtherWithdrawal,
+  getCompactDigest,
   withdrawErc20,
   withdrawEther,
 } from './execution/compact'
+import { checkERC20Allowance, getPermit2Address } from './execution/permit2'
 import {
   getSessionDetails as getSessionDetailsInternal,
   type SessionDetails,
@@ -544,6 +546,11 @@ export {
   // Registry functions
   getSupportedTokens,
   getTokenAddress,
+  // Permit2 helpers
+  checkERC20Allowance,
+  getPermit2Address,
+  // Compact helpers
+  getCompactDigest,
 }
 export type {
   RhinestoneAccount,

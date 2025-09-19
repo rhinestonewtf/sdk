@@ -4,6 +4,7 @@ import {
   encodeFunctionData,
   erc20Abi,
   type Hex,
+  hashTypedData,
   keccak256,
   slice,
   toHex,
@@ -326,6 +327,16 @@ function getCompactTypedData(intentOp: IntentOp) {
   return typedData
 }
 
+/**
+ * Get the compact digest for signing
+ * @param intentOp The intent operation
+ * @returns The digest hash
+ */
+function getCompactDigest(intentOp: IntentOp): Hex {
+  const typedData = getCompactTypedData(intentOp)
+  return hashTypedData(typedData)
+}
+
 export {
   COMPACT_ADDRESS,
   depositEther,
@@ -338,4 +349,5 @@ export {
   withdrawErc20,
   approveErc20,
   getCompactTypedData,
+  getCompactDigest,
 }

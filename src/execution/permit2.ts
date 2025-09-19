@@ -104,4 +104,52 @@ function getTypedData(intentOp: IntentOp) {
   return typedData
 }
 
-export { getTypedData }
+/**
+ * Check ERC20 allowance for a given owner, spender, and token
+ * @param owner The owner of the tokens
+ * @param spender The spender address (usually Permit2)
+ * @param tokenAddress The token contract address
+ * @param publicClient The viem public client for reading contract data
+ * @returns The allowance amount
+ */
+async function checkERC20Allowance(
+  owner: Address,
+  spender: Address,
+  tokenAddress: Address,
+  publicClient: any, // Using any to avoid viem import issues
+): Promise<bigint> {
+  try {
+    const allowance = await publicClient.readContract({
+      address: tokenAddress,
+      abi: [
+        {
+          name: 'allowance',
+          type: 'function',
+          stateMutability: 'view',
+          inputs: [
+            { name: 'owner', type: 'address' },
+            { name: 'spender', type: 'address' },
+          ],
+          outputs: [{ name: '', type: 'uint256' }],
+        },
+      ],
+      functionName: 'allowance',
+      args: [owner, spender],
+    })
+
+    return BigInt(allowance.toString())
+  } catch (error) {
+    console.error('Error checking ERC20 allowance:', error)
+    throw new Error('Failed to check ERC20 allowance')
+  }
+}
+
+/**
+ * Get the Permit2 contract address
+ * @returns The Permit2 contract address
+ */
+function getPermit2Address(): Address {
+  return PERMIT2_ADDRESS as Address
+}
+
+export { getTypedData, checkERC20Allowance, getPermit2Address }
