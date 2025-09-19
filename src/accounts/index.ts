@@ -1,4 +1,5 @@
 import {
+  type Address,
   type Chain,
   concat,
   createPublicClient,
@@ -110,6 +111,10 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
     case 'startale': {
       return getStartaleDeployArgs(config)
     }
+    case 'eoa':
+    case 'eip7702-eoa': {
+      throw new Error('EOA accounts do not have deploy args')
+    }
   }
 }
 
@@ -130,7 +135,9 @@ function getInitCode(config: RhinestoneAccountConfig) {
   }
 }
 
-async function signEip7702InitData(config: RhinestoneAccountConfig) {
+async function signEip7702InitData(
+  config: RhinestoneAccountConfig,
+): Promise<Hex> {
   const eoa = config.eoa
   if (!eoa) {
     throw new Eip7702AccountMustHaveEoaError()
@@ -139,6 +146,12 @@ async function signEip7702InitData(config: RhinestoneAccountConfig) {
   switch (account.type) {
     case 'nexus': {
       return await signNexusEip7702InitData(config, eoa)
+    }
+    case 'eip7702-eoa': {
+      throw new Eip7702NotSupportedForAccountError(account.type)
+    }
+    case 'eoa': {
+      throw new Eip7702NotSupportedForAccountError(account.type)
     }
     case 'safe':
     case 'kernel':
@@ -186,6 +199,10 @@ function getModuleInstallationCalls(
       case 'startale': {
         return [getStartaleInstallData(module)]
       }
+      case 'eoa':
+      case 'eip7702-eoa': {
+        throw new Error('EOA accounts do not support module installation')
+      }
     }
   }
 
@@ -231,7 +248,7 @@ function getModuleUninstallationCalls(
   return [{ to: address, data, value: 0n }]
 }
 
-function getAddress(config: RhinestoneAccountConfig) {
+function getAddress(config: RhinestoneAccountConfig): Address {
   if (is7702(config)) {
     if (!config.eoa) {
       throw new Eip7702AccountMustHaveEoaError()
@@ -251,6 +268,22 @@ function getAddress(config: RhinestoneAccountConfig) {
     }
     case 'startale': {
       return getStartaleAddress(config)
+    }
+    case 'eoa': {
+      if (!config.eoa) {
+        throw new AccountError({
+          message: 'EOA account must have an EOA configured',
+        })
+      }
+      return config.eoa.address
+    }
+    case 'eip7702-eoa': {
+      if (!config.eoa) {
+        throw new AccountError({
+          message: 'EIP7702 EOA account must have an EOA configured',
+        })
+      }
+      return config.eoa.address
     }
   }
 }
@@ -357,6 +390,12 @@ async function getTypedDataPackedSignature<
 }
 
 async function isDeployed(config: RhinestoneAccountConfig, chain: Chain) {
+  const account = getAccountProvider(config)
+
+  if (account.type === 'eoa' || account.type === 'eip7702-eoa') {
+    return true
+  }
+
   const publicClient = createPublicClient({
     chain: chain,
     transport: createTransport(chain, config.provider),
@@ -380,6 +419,12 @@ async function deploy(
   chain: Chain,
   session?: Session,
 ): Promise<boolean> {
+  const account = getAccountProvider(config)
+
+  if (account.type === 'eoa' || account.type === 'eip7702-eoa') {
+    return false
+  }
+
   const deployed = await isDeployed(config, chain)
   if (deployed) {
     return false
@@ -403,6 +448,12 @@ async function setup(
   config: RhinestoneAccountConfig,
   chain: Chain,
 ): Promise<boolean> {
+  const account = getAccountProvider(config)
+
+  if (account.type === 'eoa' || account.type === 'eip7702-eoa') {
+    return false
+  }
+
   const modules = getSetup(config)
   const publicClient = createPublicClient({
     chain,
@@ -725,7 +776,8 @@ async function getGuardianSmartAccount(
 }
 
 function is7702(config: RhinestoneAccountConfig): boolean {
-  return config.eoa !== undefined
+  const account = getAccountProvider(config)
+  return account.type === 'eip7702-eoa' || config.eoa !== undefined
 }
 
 function getAccountProvider(

@@ -327,13 +327,12 @@ function getCompactTypedData(intentOp: IntentOp) {
   return typedData
 }
 
-function getCompactDigest(
-  intentOp: IntentOp,
-  _options: {
-    usingJIT?: boolean
-    using7579?: boolean
-  } = {},
-): Hex {
+/**
+ * Get the compact digest for signing
+ * @param intentOp The intent operation
+ * @returns The digest hash
+ */
+function getCompactDigest(intentOp: IntentOp): Hex {
   const typedData = getCompactTypedData(intentOp)
   return hashTypedData(typedData)
 }

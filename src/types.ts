@@ -3,7 +3,14 @@ import type { WebAuthnAccount } from 'viem/account-abstraction'
 import type { EnableSessionData } from './modules/validators/smart-sessions'
 import type { SettlementLayer } from './orchestrator/types'
 
-type AccountType = 'safe' | 'nexus' | 'kernel' | 'startale' | 'custom'
+type AccountType =
+  | 'safe'
+  | 'nexus'
+  | 'kernel'
+  | 'startale'
+  | 'custom'
+  | 'eoa'
+  | 'eip7702-eoa'
 
 interface SafeAccount {
   type: 'safe'
@@ -25,11 +32,21 @@ interface StartaleAccount {
   type: 'startale'
 }
 
+interface EoaAccount {
+  type: 'eoa'
+}
+
+interface Eip7702EoaAccount {
+  type: 'eip7702-eoa'
+}
+
 type AccountProviderConfig =
   | SafeAccount
   | NexusAccount
   | KernelAccount
   | StartaleAccount
+  | EoaAccount
+  | Eip7702EoaAccount
 
 interface OwnableValidatorConfig {
   type: 'ecdsa'
@@ -265,6 +282,72 @@ interface CrossChainTransaction extends BaseTransaction {
 
 type Transaction = SameChainTransaction | CrossChainTransaction
 
+interface TokenTransfer {
+  tokenAddress: Address
+  amount: bigint
+}
+
+interface AccountAccessList {
+  chainIds: number[]
+  exclude?: {
+    chainIds: number[]
+  }
+}
+
+interface DestinationExecution {
+  to: Address
+  value: bigint
+  data: Hex
+}
+
+interface MetaIntentAccount {
+  address: Address
+  accountType: 'EOA' | 'EIP7702-EOA' | 'GENERIC' | 'ERC7579'
+  setupOps: {
+    to: Address
+    data: Hex
+  }[]
+}
+
+interface MetaIntent {
+  destinationChainId: number
+  tokenTransfers: TokenTransfer[]
+  account: MetaIntentAccount
+  accountAccessList: AccountAccessList
+  destinationExecutions: DestinationExecution[]
+}
+
+interface BundleElement {
+  arbiter: Address
+  chainId: string
+  idsAndAmounts: [string, string][]
+  beforeFill: boolean
+  mandate: {
+    recipient: Address
+    tokenOut: [string, string][]
+    destinationChainId: string
+    fillDeadline: string
+    destinationOps: DestinationExecution[]
+    preClaimOps: DestinationExecution[]
+    qualifier: {
+      encodedVal: Hex
+    }
+  }
+}
+
+interface BundleWithMetadata {
+  sponsor: Address
+  nonce: string
+  expires: string
+  elements: BundleElement[]
+  serverSignature: string
+}
+
+interface SignedBundleWithMetadata extends BundleWithMetadata {
+  originSignatures: Hex[]
+  destinationSignature: Hex
+}
+
 export type {
   AccountType,
   RhinestoneAccountConfig,
@@ -287,4 +370,12 @@ export type {
   Recovery,
   Policy,
   UniversalActionPolicyParamCondition,
+  MetaIntent,
+  MetaIntentAccount,
+  TokenTransfer,
+  AccountAccessList,
+  DestinationExecution,
+  BundleWithMetadata,
+  SignedBundleWithMetadata,
+  BundleElement,
 }

@@ -25,6 +25,7 @@ import {
 } from 'viem/account-abstraction'
 import {
   getAddress,
+  getEip7702InitCall,
   getGuardianSmartAccount,
   getInitCode,
   getPackedSignature,
@@ -32,7 +33,6 @@ import {
   getSmartSessionSmartAccount,
   getTypedDataPackedSignature,
   isDeployed,
-  signEip7702InitData,
   toErc6492Signature,
 } from '../accounts'
 import { createTransport, getBundlerClient } from '../accounts/utils'
@@ -81,7 +81,7 @@ import type {
   TokenSymbol,
   Transaction,
 } from '../types'
-import { getCompactDigest, getCompactTypedData } from './compact'
+import { getCompactTypedData } from './compact'
 import {
   OrderPathRequiredForIntentsError,
   SimulationNotSupportedForUserOpFlowError,
@@ -282,10 +282,10 @@ async function signAuthorizationsInternal(
   config: RhinestoneAccountConfig,
   data: IntentData | UserOpData,
 ) {
-  if (config.eoa) {
-    return []
+  const eoa = config.eoa
+  if (!eoa) {
+    throw new Error('EIP-7702 initialization is required for EOA accounts')
   }
-
   const accountAddress = getAddress(config)
   const requiredDelegations =
     data.type === 'intent'
@@ -296,29 +296,9 @@ async function signAuthorizationsInternal(
   for (const chainId in requiredDelegations) {
     const delegation = requiredDelegations[chainId]
     const chain = getChainById(Number(chainId))
-
-    let eoaAccount: any = config.eoa
-    if (!eoaAccount) {
-      // get EOA account from owners
-      if (config.owners.type === 'ecdsa') {
-        eoaAccount = config.owners.accounts[0]
-      } else if (config.owners.type === 'multi-factor') {
-        // for multi-factor, get the first ECDSA account
-        const ecdsaValidator = config.owners.validators.find(
-          (v) => v.type === 'ecdsa',
-        )
-        if (ecdsaValidator) {
-          eoaAccount = ecdsaValidator.accounts[0]
-        }
-      }
-    }
-    if (!eoaAccount) {
-      throw new Error('No EOA account available for signing authorizations')
-    }
-
     const walletClient = createWalletClient({
       chain,
-      account: eoaAccount,
+      account: eoa,
       transport: createTransport(chain, config.provider),
     }).extend(publicActions)
     const code = await walletClient.getCode({
@@ -332,7 +312,6 @@ async function signAuthorizationsInternal(
     const authorization = await walletClient.signAuthorization({
       contractAddress: delegation.contract,
       chainId: Number(chainId),
-      account: accountAddress,
     })
     authorizations.push(authorization)
   }
@@ -524,7 +503,7 @@ async function prepareTransactionAsIntent(
   const calls = parseCalls(callInputs, targetChain.id)
   const accountAccessList = createAccountAccessList(sourceChains, sourceAssets)
 
-  const { setupOps, delegations = {} } = await getSetupOperationsAndDelegations(
+  const { setupOps, delegations } = await getSetupOperationsAndDelegations(
     config,
     targetChain,
     accountAddress,
@@ -539,7 +518,7 @@ async function prepareTransactionAsIntent(
     })),
     account: {
       address: accountAddress,
-      accountType: config.eoa ? 'EOA' : 'ERC7579',
+      accountType: 'ERC7579',
       setupOps,
       delegations,
     },
@@ -563,8 +542,7 @@ async function prepareTransactionAsIntent(
     config.rhinestoneApiKey,
     config.orchestratorUrl,
   )
-  const sigType = config.eoa ? 'eoa' : 'smart-account'
-  const intentRoute = await orchestrator.getIntentRoute(metaIntent, sigType)
+  const intentRoute = await orchestrator.getIntentRoute(metaIntent)
 
   return {
     type: 'intent',
@@ -578,10 +556,6 @@ async function signIntent(
   intentOp: IntentOp,
   signers?: SignerSet,
 ) {
-  if (config.eoa) {
-    return await getEOASignature(config, intentOp, targetChain)
-  }
-
   const validator = getValidator(config, signers)
   if (!validator) {
     throw new Error('Validator not available')
@@ -629,25 +603,6 @@ async function getIntentSignature(
     validator,
     isRoot,
   )
-}
-
-async function getEOASignature(
-  config: RhinestoneAccountConfig,
-  intentOp: IntentOp,
-  _targetChain: Chain,
-) {
-  if (!config.eoa) {
-    throw new Error('EOA account is required for EOA signature')
-  }
-
-  // eoa permit2: use jit flow with compact digest
-  const digest = getCompactDigest(intentOp, {
-    usingJIT: true,
-    using7579: false,
-  })
-
-  const signature = await (config.eoa as any).sign({ hash: digest })
-  return signature
 }
 
 async function getPermit2Signature(
@@ -1033,21 +988,31 @@ async function getSetupOperationsAndDelegations(
   config: RhinestoneAccountConfig,
   chain: Chain,
   accountAddress: Address,
-  _eip7702InitSignature?: Hex,
-): Promise<{
-  setupOps: { to: Address; data: Hex }[]
-  delegations?: Record<number, { contract: Address }>
-}> {
+  eip7702InitSignature?: Hex,
+) {
   const initCode = getInitCode(config)
 
   if (config.eoa) {
-    const PERMIT2_ADDRESS =
-      '0x000000000022D473030F116dDEE9F6B43aC78BA3' as Address
+    // EIP-7702 initialization is only needed for EOA accounts
+    if (!eip7702InitSignature || eip7702InitSignature === '0x') {
+      throw new Error(
+        'EIP-7702 initialization signature is required for EOA accounts',
+      )
+    }
+
+    const { initData: eip7702InitData, contract: eip7702Contract } =
+      await getEip7702InitCall(config, eip7702InitSignature)
+
     return {
-      setupOps: [],
+      setupOps: [
+        {
+          to: accountAddress,
+          data: eip7702InitData,
+        },
+      ],
       delegations: {
         0: {
-          contract: PERMIT2_ADDRESS,
+          contract: eip7702Contract,
         },
       },
     }
@@ -1068,21 +1033,9 @@ async function getSetupOperationsAndDelegations(
       ],
     }
   } else {
-    // EIP-7702 account
-    const isAccountDeployed = await isDeployed(config, chain)
-    if (isAccountDeployed) {
-      return {
-        setupOps: [],
-      }
-    }
-    const eip7702InitSignature = await signEip7702InitData(config)
+    // Already deployed contract account
     return {
-      setupOps: [
-        {
-          to: accountAddress,
-          data: eip7702InitSignature,
-        },
-      ],
+      setupOps: [],
     }
   }
 }
