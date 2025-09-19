@@ -37,7 +37,7 @@ describe('Modules', () => {
 
       expect(setup.validators).toHaveLength(1)
       expect(setup.validators[0].address).toBe(
-        '0x2f167e55d42584f65e2e30a748f41ee75a311414',
+        '0x7ab16ff354acb328452f1d445b3ddee9a91e9e69',
       )
       expect(setup.validators[0].type).toBe(1n)
     })

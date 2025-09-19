@@ -66,7 +66,7 @@ describe('Validators Core', () => {
       expect(validator.type).toEqual(MODULE_TYPE_ID_VALIDATOR)
       expect(isAddress(validator.address)).toEqual(true)
       expect(validator.address).toEqual(
-        '0x2f167e55d42584f65e2e30a748f41ee75a311414',
+        '0x7ab16ff354acb328452f1d445b3ddee9a91e9e69',
       )
       expect(validator.initData).toEqual(
         '0x580a9af0569ad3905b26a703201b358aa0904236642ebe79b22a19d00d3737637d46f725a5427ae45a9569259bf67e1e16b187d7b3ad1ed70138c4f0409677d19c9a01073b202db2ed56e604ad11db557d8c3ad75181619597f21b830f2da82a',
