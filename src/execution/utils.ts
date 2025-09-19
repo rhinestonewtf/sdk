@@ -8,6 +8,7 @@ import {
   type Hex,
   hashMessage,
   hashTypedData,
+  isAddress,
   type PublicClient,
   publicActions,
   type SignableMessage,
@@ -53,7 +54,6 @@ import {
   type IntentOp,
   type IntentRoute,
   type SignedIntentOp,
-  type SupportedChain,
 } from '../orchestrator'
 import {
   PROD_ORCHESTRATOR_URL,
@@ -61,16 +61,24 @@ import {
 } from '../orchestrator/consts'
 import {
   getChainById,
+  getTokenAddress,
   isTestnet,
   resolveTokenAddress,
 } from '../orchestrator/registry'
-import type { SettlementLayer } from '../orchestrator/types'
+import type {
+  MappedChainTokenAccessList,
+  SettlementLayer,
+  SupportedChain,
+  UnmappedChainTokenAccessList,
+} from '../orchestrator/types'
 import type {
   Call,
   CallInput,
   RhinestoneAccountConfig,
   SignerSet,
+  SourceAssetInput,
   TokenRequest,
+  TokenSymbol,
   Transaction,
 } from '../types'
 import { getCompactDigest, getCompactTypedData } from './compact'
@@ -127,6 +135,9 @@ async function prepareTransaction(
     sponsored,
     eip7702InitSignature,
     settlementLayers,
+    sourceAssets,
+    feeAsset,
+    lockFunds,
   } = getTransactionParams(transaction)
   const accountAddress = getAddress(config)
 
@@ -157,6 +168,9 @@ async function prepareTransaction(
       sponsored ?? false,
       eip7702InitSignature,
       settlementLayers,
+      sourceAssets,
+      feeAsset,
+      lockFunds,
     )
   }
 
@@ -398,17 +412,16 @@ function getTransactionParams(transaction: Transaction) {
   const sponsored = transaction.sponsored
   const gasLimit = transaction.gasLimit
   const settlementLayers = transaction.settlementLayers
+  const sourceAssets = transaction.sourceAssets
+  const feeAsset = transaction.feeAsset
+  const lockFunds = transaction.lockFunds
 
-  // Across requires passing some value to repay the solvers
-  const tokenRequests =
-    !initialTokenRequests || initialTokenRequests.length === 0
-      ? [
-          {
-            address: zeroAddress,
-            amount: 1n,
-          },
-        ]
-      : initialTokenRequests
+  const tokenRequests = getTokenRequests(
+    sourceChains || [],
+    targetChain,
+    initialTokenRequests,
+    settlementLayers,
+  )
 
   return {
     sourceChains,
@@ -419,7 +432,39 @@ function getTransactionParams(transaction: Transaction) {
     eip7702InitSignature,
     gasLimit,
     settlementLayers,
+    sourceAssets,
+    feeAsset,
+    lockFunds,
   }
+}
+
+function getTokenRequests(
+  sourceChains: Chain[],
+  targetChain: Chain,
+  initialTokenRequests: TokenRequest[] | undefined,
+  settlementLayers: SettlementLayer[] | undefined,
+) {
+  if (initialTokenRequests) {
+    validateTokenSymbols(
+      targetChain,
+      initialTokenRequests.map((tokenRequest) => tokenRequest.address),
+    )
+  }
+  // Across requires passing some value to repay the solvers
+  const defaultTokenRequest = {
+    address: zeroAddress,
+    amount: 1n,
+  }
+  const isSameChain =
+    (settlementLayers?.length === 1 && settlementLayers[0] === 'SAME_CHAIN') ||
+    (sourceChains.length === 1 && sourceChains[0].id === targetChain.id)
+  const tokenRequests =
+    !initialTokenRequests || initialTokenRequests.length === 0
+      ? isSameChain
+        ? []
+        : [defaultTokenRequest]
+      : initialTokenRequests
+  return tokenRequests
 }
 
 async function prepareTransactionAsUserOp(
@@ -470,19 +515,14 @@ async function prepareTransactionAsIntent(
   tokenRequests: TokenRequest[],
   accountAddress: Address,
   isSponsored: boolean,
-  eip7702InitSignature?: Hex,
-  settlementLayers?: SettlementLayer[],
+  eip7702InitSignature: Hex | undefined,
+  settlementLayers: SettlementLayer[] | undefined,
+  sourceAssets: SourceAssetInput | undefined,
+  feeAsset: Address | TokenSymbol | undefined,
+  lockFunds?: boolean,
 ) {
   const calls = parseCalls(callInputs, targetChain.id)
-  const accountAccessList =
-    sourceChains && sourceChains.length > 0
-      ? {
-          chainIds: sourceChains.map((chain) => chain.id as SupportedChain),
-          exclude: {
-            chainIds: [],
-          },
-        }
-      : undefined
+  const accountAccessList = createAccountAccessList(sourceChains, sourceAssets)
 
   const { setupOps, delegations = {} } = await getSetupOperationsAndDelegations(
     config,
@@ -507,7 +547,8 @@ async function prepareTransactionAsIntent(
     destinationGasUnits: gasLimit,
     accountAccessList,
     options: {
-      topupCompact: false,
+      topupCompact: lockFunds ?? false,
+      feeToken: feeAsset,
       sponsorSettings: {
         gasSponsored: isSponsored,
         bridgeFeesSponsored: isSponsored,
@@ -971,6 +1012,23 @@ function parseCalls(calls: CallInput[], chainId: number): Call[] {
   }))
 }
 
+function createAccountAccessList(
+  sourceChains: Chain[] | undefined,
+  sourceAssets: SourceAssetInput | undefined,
+): MappedChainTokenAccessList | UnmappedChainTokenAccessList | undefined {
+  if (!sourceChains && !sourceAssets) return undefined
+  const chainIds = sourceChains?.map((chain) => chain.id as SupportedChain)
+  if (!sourceAssets) {
+    return { chainIds }
+  }
+  if (Array.isArray(sourceAssets)) {
+    return chainIds
+      ? { chainIds, tokens: sourceAssets }
+      : { tokens: sourceAssets }
+  }
+  return { chainTokens: sourceAssets }
+}
+
 async function getSetupOperationsAndDelegations(
   config: RhinestoneAccountConfig,
   chain: Chain,
@@ -1029,6 +1087,30 @@ async function getSetupOperationsAndDelegations(
   }
 }
 
+function validateTokenSymbols(
+  chain: Chain,
+  tokenAddressOrSymbols: (Address | TokenSymbol)[],
+) {
+  function validateTokenSymbol(
+    chain: Chain,
+    addressOrSymbol: Address | TokenSymbol,
+  ) {
+    // Address
+    if (isAddress(addressOrSymbol, { strict: false })) {
+      return true
+    }
+    // Token symbol
+    const address = getTokenAddress(addressOrSymbol, chain.id)
+    return isAddress(address, { strict: false })
+  }
+
+  for (const addressOrSymbol of tokenAddressOrSymbols) {
+    if (!validateTokenSymbol(chain, addressOrSymbol)) {
+      throw new Error(`Invalid token symbol: ${addressOrSymbol}`)
+    }
+  }
+}
+
 export {
   prepareTransaction,
   signTransaction,
@@ -1045,6 +1127,7 @@ export {
   simulateIntentInternal,
   getValidatorAccount,
   parseCalls,
+  getTokenRequests,
 }
 export type {
   IntentData,

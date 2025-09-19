@@ -67,6 +67,16 @@ import {
   waitForExecution as waitForExecutionInternal,
 } from './execution'
 import {
+  depositErc20,
+  depositEther,
+  disableErc20Withdrawal,
+  disableEtherWithdrawal,
+  enableErc20Withdrawal,
+  enableEtherWithdrawal,
+  withdrawErc20,
+  withdrawEther,
+} from './execution/compact'
+import {
   getSessionDetails as getSessionDetailsInternal,
   type SessionDetails,
 } from './execution/smart-session'
@@ -489,6 +499,14 @@ export {
   setSubValidator,
   setUpRecovery,
   uninstallModule,
+  depositErc20,
+  depositEther,
+  disableErc20Withdrawal,
+  disableEtherWithdrawal,
+  enableErc20Withdrawal,
+  enableEtherWithdrawal,
+  withdrawErc20,
+  withdrawEther,
   // Account errors
   isAccountError,
   AccountError,

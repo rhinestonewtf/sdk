@@ -1,4 +1,4 @@
-import { type Address, type Chain, createPublicClient, zeroAddress } from 'viem'
+import { type Address, type Chain, createPublicClient } from 'viem'
 import { mainnet, sepolia } from 'viem/chains'
 
 import { deploy, getAddress } from '../accounts'
@@ -16,7 +16,9 @@ import type {
   CallInput,
   RhinestoneAccountConfig,
   SignerSet,
+  SourceAssetInput,
   TokenRequest,
+  TokenSymbol,
   Transaction,
 } from '../types'
 import {
@@ -33,6 +35,7 @@ import { enableSmartSession } from './smart-session'
 import type { IntentData, TransactionResult } from './utils'
 import {
   getOrchestratorByChain,
+  getTokenRequests,
   getValidatorAccount,
   parseCalls,
   prepareTransactionAsIntent,
@@ -60,6 +63,8 @@ async function sendTransaction(
     signers,
     sponsored,
     settlementLayers,
+    sourceAssets,
+    feeAsset,
   } = transaction
   return await sendTransactionInternal(
     config,
@@ -72,6 +77,8 @@ async function sendTransaction(
       signers,
       sponsored,
       settlementLayers,
+      sourceAssets,
+      feeAsset,
     },
   )
 }
@@ -87,21 +94,19 @@ async function sendTransactionInternal(
     signers?: SignerSet
     sponsored?: boolean
     settlementLayers?: SettlementLayer[]
+    sourceAssets?: SourceAssetInput
     asUserOp?: boolean
+    lockFunds?: boolean
+    feeAsset?: Address | TokenSymbol
   },
 ) {
   const accountAddress = getAddress(config)
-
-  // Across requires passing some value to repay the solvers
-  const tokenRequests =
-    !options.initialTokenRequests || options.initialTokenRequests.length === 0
-      ? [
-          {
-            address: zeroAddress,
-            amount: 1n,
-          },
-        ]
-      : options.initialTokenRequests
+  const tokenRequests = getTokenRequests(
+    sourceChains,
+    targetChain,
+    options.initialTokenRequests,
+    options.settlementLayers,
+  )
 
   const sendAsUserOp =
     options.asUserOp ||
@@ -132,6 +137,9 @@ async function sendTransactionInternal(
       options.signers,
       options.sponsored,
       options.settlementLayers,
+      options.sourceAssets,
+      options.feeAsset,
+      options.lockFunds,
     )
   }
 }
@@ -185,6 +193,9 @@ async function sendTransactionAsIntent(
   signers?: SignerSet,
   sponsored?: boolean,
   settlementLayers?: SettlementLayer[],
+  sourceAssets?: SourceAssetInput,
+  feeAsset?: Address | TokenSymbol,
+  lockFunds?: boolean,
 ) {
   const { intentRoute } = await prepareTransactionAsIntent(
     config,
@@ -197,6 +208,9 @@ async function sendTransactionAsIntent(
     sponsored ?? false,
     undefined,
     settlementLayers,
+    sourceAssets,
+    feeAsset,
+    lockFunds,
   )
   if (!intentRoute) {
     throw new OrderPathRequiredForIntentsError()
