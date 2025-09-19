@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 0.14.0
+
+### Minor Changes
+
+- 835fb40: Update WebAuthn validator
+
 ## 0.13.5
 
 ### Patch Changes
