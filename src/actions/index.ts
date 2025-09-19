@@ -1,11 +1,11 @@
 import type { Address, Hex } from 'viem'
 
-import type { RhinestoneAccount } from '..'
 import {
   getModuleInstallationCalls,
   getModuleUninstallationCalls,
 } from '../accounts'
 import { type Module, type ModuleType, toModuleTypeId } from '../modules/common'
+import type { LazyCallInput } from '../types'
 
 interface ModuleInput {
   type: ModuleType
@@ -17,41 +17,30 @@ interface ModuleInput {
 
 /**
  * Install a custom module
- * @param rhinestoneAccount Account to install the module on
  * @param module Module to install
  * @returns Calls to install the module
  */
-function installModule({
-  rhinestoneAccount,
-  module,
-}: {
-  rhinestoneAccount: RhinestoneAccount
-  module: ModuleInput
-}) {
+function installModule({ module }: { module: ModuleInput }): LazyCallInput {
   const moduleData: Module = getModule(module)
-  const calls = getModuleInstallationCalls(rhinestoneAccount.config, moduleData)
-  return calls
+  return {
+    async resolve({ config }) {
+      return getModuleInstallationCalls(config, moduleData)
+    },
+  }
 }
 
 /**
  * Uninstall a custom module
- * @param rhinestoneAccount Account to uninstall the module on
  * @param module Module to uninstall
  * @returns Calls to uninstall the module
  */
-function uninstallModule({
-  rhinestoneAccount,
-  module,
-}: {
-  rhinestoneAccount: RhinestoneAccount
-  module: ModuleInput
-}) {
+function uninstallModule({ module }: { module: ModuleInput }): LazyCallInput {
   const moduleData: Module = getModule(module)
-  const calls = getModuleUninstallationCalls(
-    rhinestoneAccount.config,
-    moduleData,
-  )
-  return calls
+  return {
+    async resolve({ config }) {
+      return getModuleUninstallationCalls(config, moduleData)
+    },
+  }
 }
 
 function getModule(module: ModuleInput): Module {

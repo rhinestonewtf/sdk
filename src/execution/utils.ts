@@ -73,6 +73,7 @@ import type {
 } from '../orchestrator/types'
 import type {
   Call,
+  CalldataInput,
   CallInput,
   RhinestoneAccountConfig,
   RhinestoneConfig,
@@ -153,7 +154,12 @@ async function prepareTransaction(
     data = await prepareTransactionAsUserOp(
       config,
       targetChain,
-      transaction.calls,
+      await resolveCallIntents(
+        transaction.calls,
+        config,
+        targetChain,
+        accountAddress,
+      ),
       signers,
       transaction.gasLimit,
     )
@@ -162,7 +168,12 @@ async function prepareTransaction(
       config,
       sourceChains,
       targetChain,
-      transaction.calls,
+      await resolveCallIntents(
+        transaction.calls,
+        config,
+        targetChain,
+        accountAddress,
+      ),
       transaction.gasLimit,
       tokenRequests,
       accountAddress,
@@ -179,6 +190,35 @@ async function prepareTransaction(
     data,
     transaction,
   }
+}
+
+async function resolveCallIntents(
+  intents: CallInput[],
+  config: RhinestoneAccountConfig,
+  chain: Chain,
+  accountAddress: Address,
+): Promise<CalldataInput[]> {
+  const resolved: CalldataInput[] = []
+  for (const intent of intents) {
+    const maybe = intent as unknown as {
+      resolve?: (ctx: {
+        config: RhinestoneAccountConfig
+        chain: Chain
+        accountAddress: Address
+      }) => Promise<CalldataInput | CalldataInput[]>
+    }
+    if (maybe && typeof maybe.resolve === 'function') {
+      const result = await maybe.resolve({ config, chain, accountAddress })
+      if (Array.isArray(result)) {
+        resolved.push(...result)
+      } else if (result) {
+        resolved.push(result)
+      }
+    } else {
+      resolved.push(intent as CalldataInput)
+    }
+  }
+  return resolved
 }
 
 async function signTransaction(
@@ -450,7 +490,7 @@ function getTokenRequests(
 async function prepareTransactionAsUserOp(
   config: RhinestoneAccountConfig,
   chain: Chain,
-  callInputs: CallInput[],
+  callInputs: CalldataInput[],
   signers: SignerSet | undefined,
   gasLimit: bigint | undefined,
 ) {
@@ -490,7 +530,7 @@ async function prepareTransactionAsIntent(
   config: RhinestoneConfig,
   sourceChains: Chain[] | undefined,
   targetChain: Chain,
-  callInputs: CallInput[],
+  callInputs: CalldataInput[],
   gasLimit: bigint | undefined,
   tokenRequests: TokenRequest[],
   accountAddress: Address,
@@ -960,7 +1000,7 @@ function getValidator(
   return undefined
 }
 
-function parseCalls(calls: CallInput[], chainId: number): Call[] {
+function parseCalls(calls: CalldataInput[], chainId: number): Call[] {
   return calls.map((call) => ({
     data: call.data ?? '0x',
     value: call.value ?? 0n,
@@ -1082,6 +1122,7 @@ export {
   getValidatorAccount,
   parseCalls,
   getTokenRequests,
+  resolveCallIntents,
 }
 export type {
   IntentData,

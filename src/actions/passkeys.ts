@@ -1,5 +1,4 @@
 import { encodeFunctionData } from 'viem'
-import type { RhinestoneAccount } from '..'
 import {
   getModuleInstallationCalls,
   getModuleUninstallationCalls,
@@ -9,37 +8,31 @@ import {
   WEBAUTHN_VALIDATOR_ADDRESS,
   type WebauthnCredential,
 } from '../modules/validators/core'
-import type { Call } from '../types'
+import type { CalldataInput, LazyCallInput } from '../types'
 
 /**
  * Enable passkeys authentication
- * @param rhinestoneAccount Account to enable passkeys authentication on
  * @param pubKey Public key for the passkey
  * @param authenticatorId Authenticator ID for the passkey
  * @returns Calls to enable passkeys authentication
  */
 function enable({
-  rhinestoneAccount,
   pubKey,
   authenticatorId,
-}: {
-  rhinestoneAccount: RhinestoneAccount
-} & WebauthnCredential) {
+}: WebauthnCredential): LazyCallInput {
   const module = getWebAuthnValidator(1, [{ pubKey, authenticatorId }])
-  const calls = getModuleInstallationCalls(rhinestoneAccount.config, module)
-  return calls
+  return {
+    async resolve({ config }) {
+      return getModuleInstallationCalls(config, module)
+    },
+  }
 }
 
 /**
  * Disable passkeys (WebAuthn) authentication
- * @param rhinestoneAccount Account to disable passkeys authentication on
  * @returns Calls to disable passkeys authentication
  */
-function disable({
-  rhinestoneAccount,
-}: {
-  rhinestoneAccount: RhinestoneAccount
-}) {
+function disable(): LazyCallInput {
   const module = getWebAuthnValidator(1, [
     {
       // Mocked values
@@ -48,8 +41,11 @@ function disable({
       authenticatorId: '0x',
     },
   ])
-  const calls = getModuleUninstallationCalls(rhinestoneAccount.config, module)
-  return calls
+  return {
+    async resolve({ config }) {
+      return getModuleUninstallationCalls(config, module)
+    },
+  }
 }
 
 /**
@@ -63,7 +59,7 @@ function addOwner(
   pubKeyX: bigint,
   pubKeyY: bigint,
   requireUserVerification: boolean,
-): Call {
+): CalldataInput {
   return {
     to: WEBAUTHN_VALIDATOR_ADDRESS,
     value: 0n,
@@ -96,7 +92,7 @@ function addOwner(
  * @param pubKeyY Public key Y
  * @returns Call to remove the passkey owner
  */
-function removeOwner(pubKeyX: bigint, pubKeyY: bigint): Call {
+function removeOwner(pubKeyX: bigint, pubKeyY: bigint): CalldataInput {
   return {
     to: WEBAUTHN_VALIDATOR_ADDRESS,
     value: 0n,
@@ -124,7 +120,7 @@ function removeOwner(pubKeyX: bigint, pubKeyY: bigint): Call {
  * @param newThreshold New threshold
  * @returns Call to change the threshold
  */
-function changeThreshold(newThreshold: number): Call {
+function changeThreshold(newThreshold: number): CalldataInput {
   return {
     to: WEBAUTHN_VALIDATOR_ADDRESS,
     value: 0n,

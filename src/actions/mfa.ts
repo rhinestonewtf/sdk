@@ -1,5 +1,4 @@
 import { encodeFunctionData, type Hex, padHex, toHex } from 'viem'
-import type { RhinestoneAccount } from '..'
 import {
   getModuleInstallationCalls,
   getModuleUninstallationCalls,
@@ -10,30 +9,31 @@ import {
   MULTI_FACTOR_VALIDATOR_ADDRESS,
 } from '../modules/validators/core'
 import type {
-  Call,
+  CalldataInput,
+  LazyCallInput,
   OwnableValidatorConfig,
   WebauthnValidatorConfig,
 } from '../types'
 
 /**
  * Enable multi-factor authentication
- * @param rhinestoneAccount Account to enable multi-factor authentication on
  * @param validators List of validators to use
  * @param threshold Threshold for the validators
  * @returns Calls to enable multi-factor authentication
  */
 function enable({
-  rhinestoneAccount,
   validators,
   threshold = 1,
 }: {
-  rhinestoneAccount: RhinestoneAccount
   validators: (OwnableValidatorConfig | WebauthnValidatorConfig | null)[]
   threshold?: number
-}) {
+}): LazyCallInput {
   const module = getMultiFactorValidator(threshold, validators)
-  const calls = getModuleInstallationCalls(rhinestoneAccount.config, module)
-  return calls
+  return {
+    async resolve({ config }) {
+      return getModuleInstallationCalls(config, module)
+    },
+  }
 }
 
 /**
@@ -41,7 +41,7 @@ function enable({
  * @param newThreshold New threshold
  * @returns Call to change the threshold
  */
-function changeThreshold(newThreshold: number): Call {
+function changeThreshold(newThreshold: number): CalldataInput {
   return {
     to: MULTI_FACTOR_VALIDATOR_ADDRESS,
     value: 0n,
@@ -66,14 +66,13 @@ function changeThreshold(newThreshold: number): Call {
  * @param rhinestoneAccount Account to disable multi-factor authentication on
  * @returns Calls to disable multi-factor authentication
  */
-function disable({
-  rhinestoneAccount,
-}: {
-  rhinestoneAccount: RhinestoneAccount
-}) {
+function disable(): LazyCallInput {
   const module = getMultiFactorValidator(1, [])
-  const calls = getModuleUninstallationCalls(rhinestoneAccount.config, module)
-  return calls
+  return {
+    async resolve({ config }) {
+      return getModuleUninstallationCalls(config, module)
+    },
+  }
 }
 
 /**
@@ -85,7 +84,7 @@ function disable({
 function setSubValidator(
   id: Hex | number,
   validator: OwnableValidatorConfig | WebauthnValidatorConfig,
-): Call {
+): CalldataInput {
   const validatorId = padHex(toHex(id), { size: 12 })
   const validatorModule = getValidator(validator)
   return {
@@ -127,7 +126,7 @@ function setSubValidator(
 function removeSubValidator(
   id: Hex | number,
   validator: OwnableValidatorConfig | WebauthnValidatorConfig,
-): Call {
+): CalldataInput {
   const validatorId = padHex(toHex(id), { size: 12 })
   const validatorModule = getValidator(validator)
   return {

@@ -179,11 +179,25 @@ type RhinestoneConfig = RhinestoneAccountConfig & RhinestoneSDKConfig
 
 type TokenSymbol = 'ETH' | 'WETH' | 'USDC' | 'USDT'
 
-interface CallInput {
+interface CalldataInput {
   to: Address | TokenSymbol
   data?: Hex
   value?: bigint
 }
+
+interface CallResolveContext {
+  config: RhinestoneAccountConfig
+  chain: Chain
+  accountAddress: Address
+}
+
+interface LazyCallInput {
+  resolve: (
+    context: CallResolveContext,
+  ) => Promise<CalldataInput | CalldataInput[]>
+}
+
+type CallInput = CalldataInput | LazyCallInput
 
 interface Call {
   to: Address
@@ -281,7 +295,10 @@ export type {
   PaymasterConfig,
   Transaction,
   TokenSymbol,
+  CalldataInput,
+  LazyCallInput,
   CallInput,
+  CallResolveContext,
   Call,
   TokenRequest,
   SourceAssetInput,

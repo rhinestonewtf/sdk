@@ -13,6 +13,7 @@ import {
 import { getChainById } from '../orchestrator/registry'
 import type { SettlementLayer } from '../orchestrator/types'
 import type {
+  CalldataInput,
   CallInput,
   RhinestoneAccountConfig,
   RhinestoneConfig,
@@ -40,6 +41,7 @@ import {
   getValidatorAccount,
   parseCalls,
   prepareTransactionAsIntent,
+  resolveCallIntents,
   signAuthorizationsInternal,
   signIntent,
   submitIntentInternal,
@@ -102,6 +104,12 @@ async function sendTransactionInternal(
   },
 ) {
   const accountAddress = getAddress(config)
+  const resolvedCalls = await resolveCallIntents(
+    callInputs,
+    config,
+    targetChain,
+    accountAddress,
+  )
   const tokenRequests = getTokenRequests(
     sourceChains,
     targetChain,
@@ -123,7 +131,7 @@ async function sendTransactionInternal(
     return await sendTransactionAsUserOp(
       config,
       targetChain,
-      callInputs,
+      resolvedCalls,
       options.signers,
     )
   } else {
@@ -131,7 +139,7 @@ async function sendTransactionInternal(
       config,
       sourceChains,
       targetChain,
-      callInputs,
+      resolvedCalls,
       options.gasLimit,
       tokenRequests,
       accountAddress,
@@ -148,7 +156,7 @@ async function sendTransactionInternal(
 async function sendTransactionAsUserOp(
   config: RhinestoneAccountConfig,
   chain: Chain,
-  callInputs: CallInput[],
+  callInputs: CalldataInput[],
   signers?: SignerSet,
 ) {
   // Make sure the account is deployed
@@ -187,7 +195,7 @@ async function sendTransactionAsIntent(
   config: RhinestoneAccountConfig,
   sourceChains: Chain[],
   targetChain: Chain,
-  callInputs: CallInput[],
+  callInputs: CalldataInput[],
   gasLimit: bigint | undefined,
   tokenRequests: TokenRequest[],
   accountAddress: Address,

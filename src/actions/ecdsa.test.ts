@@ -1,6 +1,8 @@
+import { base } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 import { accountA } from '../../test/consts'
 import { RhinestoneSDK } from '..'
+import { resolveCallIntents } from '../execution/utils'
 import {
   addOwner,
   changeThreshold,
@@ -24,13 +26,18 @@ describe('ECDSA Actions', () => {
       },
     })
 
-    test('1/1 Owners', () => {
-      expect(
-        enableEcdsa({
-          rhinestoneAccount,
-          owners: [MOCK_OWNER_A],
-        }),
-      ).toEqual([
+    test('1/1 Owners', async () => {
+      const calls = await resolveCallIntents(
+        [
+          enableEcdsa({
+            owners: [MOCK_OWNER_A],
+          }),
+        ],
+        rhinestoneAccount.config,
+        base,
+        accountAddress as any,
+      )
+      expect(calls).toEqual([
         {
           to: accountAddress,
           value: 0n,
@@ -39,13 +46,18 @@ describe('ECDSA Actions', () => {
       ])
     })
 
-    test('1/N Owners', () => {
-      expect(
-        enableEcdsa({
-          rhinestoneAccount,
-          owners: [MOCK_OWNER_A, MOCK_OWNER_B],
-        }),
-      ).toEqual([
+    test('1/N Owners', async () => {
+      const calls = await resolveCallIntents(
+        [
+          enableEcdsa({
+            owners: [MOCK_OWNER_A, MOCK_OWNER_B],
+          }),
+        ],
+        rhinestoneAccount.config,
+        base,
+        accountAddress as any,
+      )
+      expect(calls).toEqual([
         {
           to: accountAddress,
           value: 0n,
@@ -54,14 +66,19 @@ describe('ECDSA Actions', () => {
       ])
     })
 
-    test('M/N Owners', () => {
-      expect(
-        enableEcdsa({
-          rhinestoneAccount,
-          owners: [MOCK_OWNER_A, MOCK_OWNER_B, MOCK_OWNER_C],
-          threshold: 2,
-        }),
-      ).toEqual([
+    test('M/N Owners', async () => {
+      const calls = await resolveCallIntents(
+        [
+          enableEcdsa({
+            owners: [MOCK_OWNER_A, MOCK_OWNER_B, MOCK_OWNER_C],
+            threshold: 2,
+          }),
+        ],
+        rhinestoneAccount.config,
+        base,
+        accountAddress as any,
+      )
+      expect(calls).toEqual([
         {
           to: accountAddress,
           value: 0n,
@@ -80,12 +97,14 @@ describe('ECDSA Actions', () => {
       },
     })
 
-    test('', () => {
-      expect(
-        disableEcdsa({
-          rhinestoneAccount,
-        }),
-      ).toEqual([
+    test('', async () => {
+      const calls = await resolveCallIntents(
+        [disableEcdsa()],
+        rhinestoneAccount.config,
+        base,
+        accountAddress as any,
+      )
+      expect(calls).toEqual([
         {
           to: accountAddress,
           value: 0n,

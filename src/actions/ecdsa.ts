@@ -1,5 +1,4 @@
 import { type Address, encodeFunctionData } from 'viem'
-import type { RhinestoneAccount } from '..'
 import {
   getModuleInstallationCalls,
   getModuleUninstallationCalls,
@@ -8,42 +7,40 @@ import {
   getOwnableValidator,
   OWNABLE_VALIDATOR_ADDRESS,
 } from '../modules/validators/core'
-import type { Call } from '../types'
+import type { CalldataInput, LazyCallInput } from '../types'
 
 /**
  * Enable ECDSA authentication
- * @param rhinestoneAccount Account to enable ECDSA authentication on
  * @param owners Owners to use for authentication
  * @param threshold Threshold for the owners
  * @returns Calls to enable ECDSA authentication
  */
 function enable({
-  rhinestoneAccount,
   owners,
   threshold = 1,
 }: {
-  rhinestoneAccount: RhinestoneAccount
   owners: Address[]
   threshold?: number
-}) {
+}): LazyCallInput {
   const module = getOwnableValidator(threshold, owners)
-  const calls = getModuleInstallationCalls(rhinestoneAccount.config, module)
-  return calls
+  return {
+    async resolve({ config }) {
+      return getModuleInstallationCalls(config, module)
+    },
+  }
 }
 
 /**
  * Disable ECDSA authentication
- * @param rhinestoneAccount Account to disable ECDSA authentication on
  * @returns Calls to disable ECDSA authentication
  */
-function disable({
-  rhinestoneAccount,
-}: {
-  rhinestoneAccount: RhinestoneAccount
-}) {
+function disable(): LazyCallInput {
   const module = getOwnableValidator(1, [])
-  const calls = getModuleUninstallationCalls(rhinestoneAccount.config, module)
-  return calls
+  return {
+    async resolve({ config }) {
+      return getModuleUninstallationCalls(config, module)
+    },
+  }
 }
 
 /**
@@ -51,7 +48,7 @@ function disable({
  * @param owner Owner address
  * @returns Call to add the owner
  */
-function addOwner(owner: Address): Call {
+function addOwner(owner: Address): CalldataInput {
   return {
     to: OWNABLE_VALIDATOR_ADDRESS,
     value: 0n,
@@ -77,7 +74,10 @@ function addOwner(owner: Address): Call {
  * @param ownerToRemove Owner to remove
  * @returns Call to remove the owner
  */
-function removeOwner(prevOwner: Address, ownerToRemove: Address): Call {
+function removeOwner(
+  prevOwner: Address,
+  ownerToRemove: Address,
+): CalldataInput {
   return {
     to: OWNABLE_VALIDATOR_ADDRESS,
     value: 0n,
@@ -105,7 +105,7 @@ function removeOwner(prevOwner: Address, ownerToRemove: Address): Call {
  * @param newThreshold New threshold
  * @returns Call to change the threshold
  */
-function changeThreshold(newThreshold: number): Call {
+function changeThreshold(newThreshold: number): CalldataInput {
   return {
     to: OWNABLE_VALIDATOR_ADDRESS,
     value: 0n,

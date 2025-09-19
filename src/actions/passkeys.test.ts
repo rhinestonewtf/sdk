@@ -1,6 +1,8 @@
+import { base } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 import { accountA, passkeyAccount } from '../../test/consts'
 import { RhinestoneSDK } from '..'
+import { resolveCallIntents } from '../execution/utils'
 import {
   disable as disablePasskeys,
   enable as enablePasskeys,
@@ -18,14 +20,19 @@ describe('Passkeys Actions', () => {
       },
     })
 
-    test('', () => {
-      expect(
-        enablePasskeys({
-          rhinestoneAccount,
-          pubKey: passkeyAccount.publicKey,
-          authenticatorId: passkeyAccount.id,
-        }),
-      ).toEqual([
+    test('', async () => {
+      const calls = await resolveCallIntents(
+        [
+          enablePasskeys({
+            pubKey: passkeyAccount.publicKey,
+            authenticatorId: passkeyAccount.id,
+          }),
+        ],
+        rhinestoneAccount.config,
+        base,
+        accountAddress as any,
+      )
+      expect(calls).toEqual([
         {
           to: accountAddress,
           value: 0n,
@@ -44,12 +51,14 @@ describe('Passkeys Actions', () => {
       },
     })
 
-    test('', () => {
-      expect(
-        disablePasskeys({
-          rhinestoneAccount,
-        }),
-      ).toEqual([
+    test('', async () => {
+      const calls = await resolveCallIntents(
+        [disablePasskeys()],
+        rhinestoneAccount.config,
+        base,
+        accountAddress as any,
+      )
+      expect(calls).toEqual([
         {
           to: accountAddress,
           value: 0n,

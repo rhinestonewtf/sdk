@@ -1,14 +1,13 @@
-import { type Address, type Chain, createPublicClient } from 'viem'
+import { createPublicClient } from 'viem'
 import { base } from 'viem/chains'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { accountA, accountB, accountC, accountD } from '../../test/consts'
 import { RhinestoneSDK } from '..'
+import { resolveCallIntents } from '../execution/utils'
 import {
   recoverEcdsaOwnership as recover,
   enable as setUpRecovery,
 } from './recovery'
-
-const MOCK_ACCOUNT_ADDRESS = '0x1234567890123456789012345678901234567890'
 
 const accountAddress = '0x36C03e7D593F7B2C6b06fC18B5f4E9a4A29C99b0'
 
@@ -32,14 +31,19 @@ describe('Recovery Actions', () => {
       },
     })
 
-    test('Single Guardian', () => {
-      expect(
-        setUpRecovery({
-          rhinestoneAccount,
-          guardians: [accountB],
-          threshold: 1,
-        }),
-      ).toEqual([
+    test('Single Guardian', async () => {
+      const calls = await resolveCallIntents(
+        [
+          setUpRecovery({
+            guardians: [accountB],
+            threshold: 1,
+          }),
+        ],
+        rhinestoneAccount.config,
+        base,
+        accountAddress as any,
+      )
+      expect(calls).toEqual([
         {
           to: accountAddress,
           value: 0n,
@@ -48,14 +52,19 @@ describe('Recovery Actions', () => {
       ])
     })
 
-    test('Guardian Multi-Sig', () => {
-      expect(
-        setUpRecovery({
-          rhinestoneAccount,
-          guardians: [accountB, accountC, accountD],
-          threshold: 2,
-        }),
-      ).toEqual([
+    test('Guardian Multi-Sig', async () => {
+      const calls = await resolveCallIntents(
+        [
+          setUpRecovery({
+            guardians: [accountB, accountC, accountD],
+            threshold: 2,
+          }),
+        ],
+        rhinestoneAccount.config,
+        base,
+        accountAddress as any,
+      )
+      expect(calls).toEqual([
         {
           to: accountAddress,
           value: 0n,
@@ -66,6 +75,14 @@ describe('Recovery Actions', () => {
   })
 
   describe('Recover', () => {
+    const rhinestone = new RhinestoneSDK()
+    const accountPromise = rhinestone.createAccount({
+      owners: {
+        type: 'ecdsa',
+        accounts: [accountA],
+      },
+    })
+
     const mockPublicClient = {
       readContract: vi.fn(),
       multicall: vi.fn(),
@@ -78,6 +95,7 @@ describe('Recovery Actions', () => {
     })
 
     test('1/1 Owners - Single owner to different single owner', async () => {
+      const rhinestoneAccount = await accountPromise
       // Initial state
       mockPublicClient.multicall.mockResolvedValueOnce([
         { result: [accountA.address.toLowerCase()], status: 'success' },
@@ -90,10 +108,11 @@ describe('Recovery Actions', () => {
         threshold: 1,
       }
 
-      const result = await recover(
-        MOCK_ACCOUNT_ADDRESS as Address,
-        newOwners,
-        base as Chain,
+      const result = await resolveCallIntents(
+        [recover(newOwners)],
+        rhinestoneAccount.config,
+        base,
+        accountAddress as any,
       )
 
       expect(mockPublicClient.multicall).toHaveBeenCalledTimes(1)
@@ -112,6 +131,7 @@ describe('Recovery Actions', () => {
     })
 
     test('1/N Owners - Single owner to multiple owners', async () => {
+      const rhinestoneAccount = await accountPromise
       // Initial state
       mockPublicClient.multicall.mockResolvedValueOnce([
         {
@@ -131,10 +151,11 @@ describe('Recovery Actions', () => {
         threshold: 1,
       }
 
-      const result = await recover(
-        MOCK_ACCOUNT_ADDRESS as Address,
-        newOwners,
-        base as Chain,
+      const result = await resolveCallIntents(
+        [recover(newOwners)],
+        rhinestoneAccount.config,
+        base,
+        accountAddress as any,
       )
 
       expect(mockPublicClient.multicall).toHaveBeenCalledTimes(1)
@@ -153,6 +174,7 @@ describe('Recovery Actions', () => {
     })
 
     test('M/N Owners - Multiple owners to different multiple owners', async () => {
+      const rhinestoneAccount = await accountPromise
       // Initial state
       mockPublicClient.multicall.mockResolvedValueOnce([
         {
@@ -172,10 +194,11 @@ describe('Recovery Actions', () => {
         threshold: 2,
       }
 
-      const result = await recover(
-        MOCK_ACCOUNT_ADDRESS as Address,
-        newOwners,
-        base as Chain,
+      const result = await resolveCallIntents(
+        [recover(newOwners)],
+        rhinestoneAccount.config,
+        base,
+        accountAddress as any,
       )
 
       expect(mockPublicClient.multicall).toHaveBeenCalledTimes(1)
