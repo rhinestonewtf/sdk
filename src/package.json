@@ -19,6 +19,41 @@
       "types": "./dist/src/index.d.ts",
       "import": "./dist/src/index.js",
       "require": "./dist/src/index.js"
+    },
+    "./actions": {
+      "types": "./dist/src/actions/index.d.ts",
+      "import": "./dist/src/actions/index.js",
+      "require": "./dist/src/actions/index.js"
+    },
+    "./actions/compact": {
+      "types": "./dist/src/actions/compact.d.ts",
+      "import": "./dist/src/actions/compact.js",
+      "require": "./dist/src/actions/compact.js"
+    },
+    "./actions/ecdsa": {
+      "types": "./dist/src/actions/ecdsa.d.ts",
+      "import": "./dist/src/actions/ecdsa.js",
+      "require": "./dist/src/actions/ecdsa.js"
+    },
+    "./actions/mfa": {
+      "types": "./dist/src/actions/mfa.d.ts",
+      "import": "./dist/src/actions/mfa.js",
+      "require": "./dist/src/actions/mfa.js"
+    },
+    "./actions/passkeys": {
+      "types": "./dist/src/actions/passkeys.d.ts",
+      "import": "./dist/src/actions/passkeys.js",
+      "require": "./dist/src/actions/passkeys.js"
+    },
+    "./actions/recovery": {
+      "types": "./dist/src/actions/recovery.d.ts",
+      "import": "./dist/src/actions/recovery.js",
+      "require": "./dist/src/actions/recovery.js"
+    },
+    "./errors": {
+      "types": "./dist/src/errors/index.d.ts",
+      "import": "./dist/src/errors/index.js",
+      "require": "./dist/src/errors/index.js"
     }
   },
   "files": [
