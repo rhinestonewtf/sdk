@@ -37,7 +37,7 @@ import {
 import type {
   AccountType,
   ProviderConfig,
-  RhinestoneAccountConfig,
+  RhinestoneConfig,
   Session,
 } from '../types'
 import { SessionChainRequiredError } from './error'
@@ -50,7 +50,7 @@ interface SessionDetails {
 }
 
 async function getSessionDetails(
-  config: RhinestoneAccountConfig,
+  config: RhinestoneConfig,
   sessions: Session[],
   sessionIndex: number,
   signature?: Hex,
@@ -389,7 +389,7 @@ async function getSessionDigest(
 
 async function enableSmartSession(
   chain: Chain,
-  config: RhinestoneAccountConfig,
+  config: RhinestoneConfig,
   session: Session,
 ) {
   const publicClient = createPublicClient({

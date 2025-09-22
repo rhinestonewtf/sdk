@@ -485,10 +485,22 @@ async function createRhinestoneAccount(
 class RhinestoneSDK {
   private apiKey?: string
   private endpointUrl?: string
+  private provider?: ProviderConfig
+  private bundler?: BundlerConfig
+  private paymaster?: PaymasterConfig
 
-  constructor(options?: { apiKey?: string; endpointUrl?: string }) {
+  constructor(options?: {
+    apiKey?: string
+    endpointUrl?: string
+    provider?: ProviderConfig
+    bundler?: BundlerConfig
+    paymaster?: PaymasterConfig
+  }) {
     this.apiKey = options?.apiKey
     this.endpointUrl = options?.endpointUrl
+    this.provider = options?.provider
+    this.bundler = options?.bundler
+    this.paymaster = options?.paymaster
   }
 
   createAccount(config: RhinestoneAccountConfig) {
@@ -496,6 +508,9 @@ class RhinestoneSDK {
       ...config,
       apiKey: this.apiKey,
       endpointUrl: this.endpointUrl,
+      provider: this.provider,
+      bundler: this.bundler,
+      paymaster: this.paymaster,
     }
     return createRhinestoneAccount(rhinestoneConfig)
   }

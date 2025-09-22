@@ -161,13 +161,13 @@ interface RhinestoneAccountConfig {
     factoryData: Hex
     intentExecutorInstalled: boolean
   }
-  provider?: ProviderConfig
-  bundler?: BundlerConfig
-  paymaster?: PaymasterConfig
 }
 
 interface RhinestoneSDKConfig {
   apiKey?: string
+  provider?: ProviderConfig
+  bundler?: BundlerConfig
+  paymaster?: PaymasterConfig
   /**
    * @internal
    * Optional orchestrator URL override for internal testing - do not use
@@ -186,7 +186,7 @@ interface CalldataInput {
 }
 
 interface CallResolveContext {
-  config: RhinestoneAccountConfig
+  config: RhinestoneConfig
   chain: Chain
   accountAddress: Address
 }

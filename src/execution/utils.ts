@@ -75,7 +75,6 @@ import type {
   Call,
   CalldataInput,
   CallInput,
-  RhinestoneAccountConfig,
   RhinestoneConfig,
   SignerSet,
   SourceAssetInput,
@@ -124,7 +123,7 @@ interface SignedUserOperationData extends PreparedUserOperationData {
 }
 
 async function prepareTransaction(
-  config: RhinestoneAccountConfig,
+  config: RhinestoneConfig,
   transaction: Transaction,
 ): Promise<PreparedTransactionData> {
   const {
@@ -174,7 +173,7 @@ async function prepareTransaction(
 }
 
 async function prepareUserOperation(
-  config: RhinestoneAccountConfig,
+  config: RhinestoneConfig,
   transaction: UserOperationTransaction,
 ): Promise<PreparedUserOperationData> {
   const chain = transaction.chain
@@ -196,7 +195,7 @@ async function prepareUserOperation(
 
 async function resolveCallIntents(
   intents: CallInput[],
-  config: RhinestoneAccountConfig,
+  config: RhinestoneConfig,
   chain: Chain,
   accountAddress: Address,
 ): Promise<CalldataInput[]> {
@@ -204,7 +203,7 @@ async function resolveCallIntents(
   for (const intent of intents) {
     const maybe = intent as unknown as {
       resolve?: (ctx: {
-        config: RhinestoneAccountConfig
+        config: RhinestoneConfig
         chain: Chain
         accountAddress: Address
       }) => Promise<CalldataInput | CalldataInput[]>
@@ -224,7 +223,7 @@ async function resolveCallIntents(
 }
 
 async function signTransaction(
-  config: RhinestoneAccountConfig,
+  config: RhinestoneConfig,
   preparedTransaction: PreparedTransactionData,
 ): Promise<SignedTransactionData> {
   const { targetChain, signers } = getTransactionParams(
@@ -246,7 +245,7 @@ async function signTransaction(
 }
 
 async function signUserOperation(
-  config: RhinestoneAccountConfig,
+  config: RhinestoneConfig,
   preparedUserOperation: PreparedUserOperationData,
 ): Promise<SignedUserOperationData> {
   const chain = preparedUserOperation.transaction.chain
@@ -263,7 +262,7 @@ async function signUserOperation(
 }
 
 async function signAuthorizations(
-  config: RhinestoneAccountConfig,
+  config: RhinestoneConfig,
   preparedTransaction: PreparedTransactionData,
 ) {
   return await signAuthorizationsInternal(
@@ -273,7 +272,7 @@ async function signAuthorizations(
 }
 
 async function signMessage(
-  config: RhinestoneAccountConfig,
+  config: RhinestoneConfig,
   message: SignableMessage,
   chain: Chain,
   signers: SignerSet | undefined,
@@ -303,7 +302,7 @@ async function signTypedData<
   typedData extends TypedData | Record<string, unknown> = TypedData,
   primaryType extends keyof typedData | 'EIP712Domain' = keyof typedData,
 >(
-  config: RhinestoneAccountConfig,
+  config: RhinestoneConfig,
   parameters: HashTypedDataParameters<typedData, primaryType>,
   chain: Chain,
   signers: SignerSet | undefined,
@@ -329,7 +328,7 @@ async function signTypedData<
 }
 
 async function signAuthorizationsInternal(
-  config: RhinestoneAccountConfig,
+  config: RhinestoneConfig,
   data: IntentRoute | UserOperation,
 ) {
   const eoa = config.eoa
@@ -368,7 +367,7 @@ async function signAuthorizationsInternal(
 }
 
 async function submitTransaction(
-  config: RhinestoneAccountConfig,
+  config: RhinestoneConfig,
   signedTransaction: SignedTransactionData,
   authorizations: SignedAuthorizationList,
 ): Promise<TransactionResult> {
@@ -386,7 +385,7 @@ async function submitTransaction(
 }
 
 async function submitUserOperation(
-  config: RhinestoneAccountConfig,
+  config: RhinestoneConfig,
   signedUserOperation: SignedUserOperationData,
 ) {
   const chain = signedUserOperation.transaction.chain
@@ -397,7 +396,7 @@ async function submitUserOperation(
 }
 
 async function simulateTransaction(
-  config: RhinestoneAccountConfig,
+  config: RhinestoneConfig,
   signedTransaction: SignedTransactionData,
   authorizations: SignedAuthorizationList,
 ) {
@@ -484,7 +483,7 @@ function getTokenRequests(
 }
 
 async function prepareTransactionAsUserOp(
-  config: RhinestoneAccountConfig,
+  config: RhinestoneConfig,
   chain: Chain,
   callInputs: CalldataInput[],
   signers: SignerSet | undefined,
@@ -583,7 +582,7 @@ async function prepareTransactionAsIntent(
 }
 
 async function signIntent(
-  config: RhinestoneAccountConfig,
+  config: RhinestoneConfig,
   targetChain: Chain,
   intentOp: IntentOp,
   signers?: SignerSet,
@@ -606,7 +605,7 @@ async function signIntent(
 }
 
 async function getIntentSignature(
-  config: RhinestoneAccountConfig,
+  config: RhinestoneConfig,
   intentOp: IntentOp,
   signers: SignerSet | undefined,
   targetChain: Chain,
@@ -638,7 +637,7 @@ async function getIntentSignature(
 }
 
 async function getPermit2Signature(
-  config: RhinestoneAccountConfig,
+  config: RhinestoneConfig,
   intentOp: IntentOp,
   signers: SignerSet | undefined,
   targetChain: Chain,
@@ -657,7 +656,7 @@ async function getPermit2Signature(
 }
 
 async function getCompactSignature(
-  config: RhinestoneAccountConfig,
+  config: RhinestoneConfig,
   intentOp: IntentOp,
   signers: SignerSet | undefined,
   targetChain: Chain,
@@ -679,7 +678,7 @@ async function signIntentTypedData<
   typedData extends TypedData | Record<string, unknown> = TypedData,
   primaryType extends keyof typedData | 'EIP712Domain' = keyof typedData,
 >(
-  config: RhinestoneAccountConfig,
+  config: RhinestoneConfig,
   signers: SignerSet | undefined,
   targetChain: Chain,
   validator: Module,
@@ -712,7 +711,7 @@ async function signIntentTypedData<
 }
 
 async function signUserOp(
-  config: RhinestoneAccountConfig,
+  config: RhinestoneConfig,
   chain: Chain,
   signers: SignerSet | undefined,
   userOp: UserOperation,
@@ -740,7 +739,7 @@ async function signUserOp(
 }
 
 async function submitUserOp(
-  config: RhinestoneAccountConfig,
+  config: RhinestoneConfig,
   chain: Chain,
   userOp: UserOperation,
   signature: Hex,
@@ -785,7 +784,7 @@ async function submitUserOp(
 }
 
 async function submitIntent(
-  config: RhinestoneAccountConfig,
+  config: RhinestoneConfig,
   sourceChains: Chain[] | undefined,
   targetChain: Chain,
   intentOp: IntentOp,
@@ -818,7 +817,7 @@ function getOrchestratorByChain(
 }
 
 async function simulateIntent(
-  config: RhinestoneAccountConfig,
+  config: RhinestoneConfig,
   sourceChains: Chain[] | undefined,
   targetChain: Chain,
   intentOp: IntentOp,
@@ -908,7 +907,7 @@ async function simulateIntentInternal(
 }
 
 async function getValidatorAccount(
-  config: RhinestoneAccountConfig,
+  config: RhinestoneConfig,
   signers: SignerSet | undefined,
   publicClient: PublicClient,
   chain: Chain,
@@ -943,7 +942,7 @@ async function getValidatorAccount(
 }
 
 function getValidator(
-  config: RhinestoneAccountConfig,
+  config: RhinestoneConfig,
   signers: SignerSet | undefined,
 ) {
   if (!signers) {
@@ -1017,7 +1016,7 @@ function createAccountAccessList(
 }
 
 async function getSetupOperationsAndDelegations(
-  config: RhinestoneAccountConfig,
+  config: RhinestoneConfig,
   chain: Chain,
   accountAddress: Address,
   eip7702InitSignature?: Hex,

@@ -125,7 +125,7 @@ async function sendUserOperation(
 }
 
 async function sendTransactionInternal(
-  config: RhinestoneAccountConfig,
+  config: RhinestoneConfig,
   sourceChains: Chain[],
   targetChain: Chain,
   callInputs: CallInput[],
@@ -178,7 +178,7 @@ async function sendTransactionInternal(
 }
 
 async function sendUserOperationInternal(
-  config: RhinestoneAccountConfig,
+  config: RhinestoneConfig,
   chain: Chain,
   callInputs: CalldataInput[],
   signers?: SignerSet,
