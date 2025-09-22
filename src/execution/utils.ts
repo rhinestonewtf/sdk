@@ -81,7 +81,7 @@ import type {
   TokenSymbol,
   Transaction,
 } from '../types'
-import { getCompactTypedData } from './compact'
+import { getCompactDigest, getCompactTypedData } from './compact'
 import {
   OrderPathRequiredForIntentsError,
   SimulationNotSupportedForUserOpFlowError,
@@ -510,6 +510,20 @@ async function prepareTransactionAsIntent(
     eip7702InitSignature,
   )
 
+  const getAccountType = (
+    config: RhinestoneAccountConfig,
+  ): 'EOA' | 'EIP7702-EOA' | 'ERC7579' => {
+    if (config.account?.type === 'eoa') {
+      return 'EOA'
+    } else if (config.account?.type === 'eip7702-eoa') {
+      return 'EIP7702-EOA'
+    } else {
+      return 'ERC7579'
+    }
+  }
+
+  const accountType = getAccountType(config)
+
   const metaIntent: IntentInput = {
     destinationChainId: targetChain.id,
     tokenTransfers: tokenRequests.map((tokenRequest) => ({
@@ -518,7 +532,7 @@ async function prepareTransactionAsIntent(
     })),
     account: {
       address: accountAddress,
-      accountType: 'ERC7579',
+      accountType: accountType,
       setupOps,
       delegations,
     },
@@ -556,6 +570,19 @@ async function signIntent(
   intentOp: IntentOp,
   signers?: SignerSet,
 ) {
+  if (
+    config.account?.type === 'eoa' ||
+    config.account?.type === 'eip7702-eoa'
+  ) {
+    if (!config.eoa?.sign) {
+      throw new Error('EOA account must have an EOA configured')
+    }
+
+    const digest = getCompactDigest(intentOp)
+    const signature = await config.eoa.sign({ hash: digest })
+    return signature
+  }
+
   const validator = getValidator(config, signers)
   if (!validator) {
     throw new Error('Validator not available')
@@ -992,7 +1019,11 @@ async function getSetupOperationsAndDelegations(
 ) {
   const initCode = getInitCode(config)
 
-  if (config.eoa) {
+  if (config.account?.type === 'eoa') {
+    return {
+      setupOps: [],
+    }
+  } else if (config.account?.type === 'eip7702-eoa' || config.eoa) {
     // EIP-7702 initialization is only needed for EOA accounts
     if (!eip7702InitSignature || eip7702InitSignature === '0x') {
       throw new Error(

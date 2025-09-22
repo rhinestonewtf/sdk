@@ -158,13 +158,16 @@ async function signEip7702InitData(
     case 'startale': {
       throw new Eip7702NotSupportedForAccountError(account.type)
     }
+    default: {
+      throw new Eip7702NotSupportedForAccountError((account as any).type)
+    }
   }
 }
 
 async function getEip7702InitCall(
   config: RhinestoneAccountConfig,
   signature: Hex,
-) {
+): Promise<{ initData: Hex; contract: Address }> {
   const account = getAccountProvider(config)
   switch (account.type) {
     case 'nexus': {
@@ -174,6 +177,9 @@ async function getEip7702InitCall(
     case 'kernel':
     case 'startale': {
       throw new Eip7702NotSupportedForAccountError(account.type)
+    }
+    default: {
+      throw new Eip7702NotSupportedForAccountError((account as any).type)
     }
   }
 }
@@ -305,7 +311,7 @@ async function getPackedSignature(
   validator: ValidatorConfig,
   hash: Hex,
   transformSignature: (signature: Hex) => Hex = (signature) => signature,
-) {
+): Promise<Hex> {
   signers = signers ?? convertOwnerSetToSignerSet(config.owners)
   const signFn = (hash: Hex) => signMessage(signers, chain, address, hash)
   const account = getAccountProvider(config)
@@ -335,6 +341,9 @@ async function getPackedSignature(
       const signature = await signFn(hash)
       return packStartaleSignature(signature, validator, transformSignature)
     }
+    default: {
+      throw new Error(`Unsupported account type: ${(account as any).type}`)
+    }
   }
 }
 
@@ -349,7 +358,7 @@ async function getTypedDataPackedSignature<
   validator: ValidatorConfig,
   parameters: HashTypedDataParameters<typedData, primaryType>,
   transformSignature: (signature: Hex) => Hex = (signature) => signature,
-) {
+): Promise<Hex> {
   const address = getAddress(config)
   signers = signers ?? convertOwnerSetToSignerSet(config.owners)
   const signFn = (
@@ -385,6 +394,9 @@ async function getTypedDataPackedSignature<
     case 'startale': {
       const signature = await signFn(parameters)
       return packStartaleSignature(signature, validator, transformSignature)
+    }
+    default: {
+      throw new Error(`Unsupported account type: ${(account as any).type}`)
     }
   }
 }
