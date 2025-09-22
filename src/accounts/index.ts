@@ -15,6 +15,9 @@ import {
 import {
   sendTransaction,
   sendTransactionInternal,
+  sendUserOperationInternal,
+  type TransactionResult,
+  type UserOperationResult,
   waitForExecution,
 } from '../execution'
 import { enableSmartSession } from '../execution/smart-session'
@@ -275,7 +278,8 @@ async function getPackedSignature(
   transformSignature: (signature: Hex) => Hex = (signature) => signature,
 ) {
   signers = signers ?? convertOwnerSetToSignerSet(config.owners)
-  const signFn = (hash: Hex) => signMessage(signers, chain, address, hash)
+  const signFn = (hash: Hex) =>
+    signMessage(signers, chain, address, hash, false)
   const account = getAccountProvider(config)
   const address = getAddress(config)
   switch (account.type) {
@@ -344,7 +348,7 @@ async function getTypedDataPackedSignature<
     case 'kernel': {
       const address = getAddress(config)
       const signMessageFn = (hash: Hex) =>
-        signMessage(signers, chain, address, hash)
+        signMessage(signers, chain, address, hash, false)
       const signature = await signMessageFn(
         wrapKernelMessageHash(hashTypedData(parameters), address),
       )
@@ -449,9 +453,12 @@ async function setup(config: RhinestoneConfig, chain: Chain): Promise<boolean> {
   const hasIntentExecutor = modulesToInstall.every(
     (module) => module.address !== intentExecutor.address,
   )
-  const result = await sendTransactionInternal(config, [chain], chain, calls, {
-    asUserOp: !hasIntentExecutor,
-  })
+  let result: TransactionResult | UserOperationResult
+  if (hasIntentExecutor) {
+    result = await sendTransactionInternal(config, [chain], chain, calls, {})
+  } else {
+    result = await sendUserOperationInternal(config, chain, calls)
+  }
   await waitForExecution(config, result, true)
   return true
 }
@@ -546,7 +553,7 @@ async function getSmartAccount(
   const address = getAddress(config)
   const ownerValidator = getOwnerValidator(config)
   const signers: SignerSet = convertOwnerSetToSignerSet(config.owners)
-  const signFn = (hash: Hex) => signMessage(signers, chain, address, hash)
+  const signFn = (hash: Hex) => signMessage(signers, chain, address, hash, true)
   switch (account.type) {
     case 'safe': {
       return getSafeSmartAccount(
@@ -608,7 +615,7 @@ async function getSmartSessionSmartAccount(
     session,
     enableData: enableData || undefined,
   }
-  const signFn = (hash: Hex) => signMessage(signers, chain, address, hash)
+  const signFn = (hash: Hex) => signMessage(signers, chain, address, hash, true)
 
   const account = getAccountProvider(config)
   switch (account.type) {
@@ -675,7 +682,7 @@ async function getGuardianSmartAccount(
     type: 'guardians',
     guardians: accounts,
   }
-  const signFn = (hash: Hex) => signMessage(signers, chain, address, hash)
+  const signFn = (hash: Hex) => signMessage(signers, chain, address, hash, true)
 
   const account = getAccountProvider(config)
   switch (account.type) {

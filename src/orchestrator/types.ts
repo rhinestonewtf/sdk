@@ -6,7 +6,6 @@ import type {
   SupportedTestnet,
 } from '@rhinestone/shared-configs'
 import type { Address, Hex } from 'viem'
-import type { UserOperationReceipt } from 'viem/account-abstraction'
 
 type SupportedTokenSymbol = 'ETH' | 'WETH' | 'USDC' | 'USDT'
 type SupportedToken = SupportedTokenSymbol | Address
@@ -314,11 +313,6 @@ interface IntentOpStatus {
   claims: Claim[]
 }
 
-interface UserOpStatus {
-  type: 'userop'
-  receipt: UserOperationReceipt
-}
-
 interface PortfolioTokenChainResponse {
   chainId: number
   accountStatus: AccountStatus
@@ -353,7 +347,6 @@ export type {
   IntentOpElementMandate,
   SignedIntentOp,
   IntentOpStatus,
-  UserOpStatus,
   IntentResult,
   PortfolioTokenResponse,
   PortfolioResponse,

@@ -16,9 +16,7 @@ import {
   isExecutionError,
   OrderPathRequiredForIntentsError,
   SessionChainRequiredError,
-  SimulationNotSupportedForUserOpFlowError,
-  SourceChainsNotAvailableForUserOpFlowError,
-  UserOperationRequiredForSmartSessionsError,
+  SignerNotSupportedError,
 } from '../execution'
 import {
   AuthenticationRequiredError,
@@ -54,9 +52,7 @@ export {
   IntentFailedError,
   OrderPathRequiredForIntentsError,
   SessionChainRequiredError,
-  SimulationNotSupportedForUserOpFlowError,
-  SourceChainsNotAvailableForUserOpFlowError,
-  UserOperationRequiredForSmartSessionsError,
+  SignerNotSupportedError,
   // Orchestrator
   isOrchestratorError,
   AuthenticationRequiredError,

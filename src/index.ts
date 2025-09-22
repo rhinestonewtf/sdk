@@ -22,7 +22,10 @@ import {
   getMaxSpendableAmount as getMaxSpendableAmountInternal,
   getPortfolio as getPortfolioInternal,
   sendTransaction as sendTransactionInternal,
+  sendUserOperation as sendUserOperationInternal,
   type TransactionResult,
+  type TransactionStatus,
+  type UserOperationResult,
   waitForExecution as waitForExecutionInternal,
 } from './execution'
 import {
@@ -30,16 +33,21 @@ import {
   type SessionDetails,
 } from './execution/smart-session'
 import {
-  type IntentData,
+  type IntentRoute,
   type PreparedTransactionData,
+  type PreparedUserOperationData,
   prepareTransaction as prepareTransactionInternal,
+  prepareUserOperation as prepareUserOperationInternal,
   type SignedTransactionData,
+  type SignedUserOperationData,
   signAuthorizations as signAuthorizationsInternal,
   signMessage as signMessageInternal,
   signTransaction as signTransactionInternal,
   signTypedData as signTypedDataInternal,
+  signUserOperation as signUserOperationInternal,
   simulateTransaction as simulateTransactionInternal,
   submitTransaction as submitTransactionInternal,
+  submitUserOperation as submitUserOperationInternal,
 } from './execution/utils'
 import {
   getOwners as getOwnersInternal,
@@ -53,7 +61,6 @@ import {
   type IntentOp,
   type IntentOpStatus,
   type IntentResult,
-  type IntentRoute,
   type Portfolio,
   type SettlementSystem,
   type SignedIntentOp,
@@ -79,6 +86,7 @@ import type {
   TokenSymbol,
   Transaction,
   UniversalActionPolicyParamCondition,
+  UserOperationTransaction,
   WebauthnValidatorConfig,
 } from './types'
 
@@ -119,10 +127,26 @@ interface RhinestoneAccount {
     authorizations?: SignedAuthorizationList,
   ) => Promise<IntentResult>
   sendTransaction: (transaction: Transaction) => Promise<TransactionResult>
-  waitForExecution: (
+  prepareUserOperation: (
+    transaction: UserOperationTransaction,
+  ) => Promise<PreparedUserOperationData>
+  signUserOperation: (
+    preparedUserOperation: PreparedUserOperationData,
+  ) => Promise<SignedUserOperationData>
+  submitUserOperation: (
+    signedUserOperation: SignedUserOperationData,
+  ) => Promise<UserOperationResult>
+  sendUserOperation: (
+    transaction: UserOperationTransaction,
+  ) => Promise<UserOperationResult>
+  waitForExecution(
     result: TransactionResult,
     acceptsPreconfirmations?: boolean,
-  ) => Promise<IntentOpStatus | UserOperationReceipt>
+  ): Promise<TransactionStatus>
+  waitForExecution(
+    result: UserOperationResult,
+    acceptsPreconfirmations?: boolean,
+  ): Promise<UserOperationReceipt>
   getAddress: () => Address
   getPortfolio: (onTestnets?: boolean) => Promise<Portfolio>
   getMaxSpendableAmount: (
@@ -262,7 +286,7 @@ async function createRhinestoneAccount(
    * Submit a transaction
    * @param signedTransaction Signed transaction data
    * @param authorizations EIP-7702 authorizations to submit (optional)
-   * @returns transaction result object (an intent ID or a UserOp hash)
+   * @returns transaction result object (a UserOp hash)
    * @see {@link signTransaction} to sign the transaction data
    * @see {@link signAuthorizations} to sign the required EIP-7702 authorizations
    */
@@ -275,6 +299,34 @@ async function createRhinestoneAccount(
       signedTransaction,
       authorizations ?? [],
     )
+  }
+
+  /**
+   * Prepare a user operation data
+   * @param transaction User operation to prepare
+   * @returns prepared user operation data
+   */
+  function prepareUserOperation(transaction: UserOperationTransaction) {
+    return prepareUserOperationInternal(config, transaction)
+  }
+
+  /**
+   * Sign a user operation
+   * @param preparedUserOperation Prepared user operation data
+   * @returns signed user operation data
+   * @see {@link prepareUserOperation} to prepare the user operation data for signing
+   */
+  function signUserOperation(preparedUserOperation: PreparedUserOperationData) {
+    return signUserOperationInternal(config, preparedUserOperation)
+  }
+  /**
+   * Submit a transaction
+   * @param signedTransaction Signed transaction data
+   * @returns transaction result object (a UserOp hash)
+   * @see {@link signUserOperation} to sign the user operation data
+   */
+  function submitUserOperation(signedUserOperation: SignedUserOperationData) {
+    return submitUserOperationInternal(config, signedUserOperation)
   }
 
   /**
@@ -298,10 +350,19 @@ async function createRhinestoneAccount(
   /**
    * Sign and send a transaction
    * @param transaction Transaction to send
-   * @returns transaction result object (an intent ID or a UserOp hash)
+   * @returns transaction result object (an intent ID)
    */
   function sendTransaction(transaction: Transaction) {
     return sendTransactionInternal(config, transaction)
+  }
+
+  /**
+   * Sign and send a user operation
+   * @param transaction User operation to send
+   * @returns user operation result object (a UserOp hash)
+   */
+  function sendUserOperation(transaction: UserOperationTransaction) {
+    return sendUserOperationInternal(config, transaction)
   }
 
   /**
@@ -312,6 +373,14 @@ async function createRhinestoneAccount(
    */
   function waitForExecution(
     result: TransactionResult,
+    acceptsPreconfirmations?: boolean,
+  ): Promise<TransactionStatus>
+  function waitForExecution(
+    result: UserOperationResult,
+    acceptsPreconfirmations?: boolean,
+  ): Promise<UserOperationReceipt>
+  function waitForExecution(
+    result: TransactionResult | UserOperationResult,
     acceptsPreconfirmations = true,
   ) {
     return waitForExecutionInternal(config, result, acceptsPreconfirmations)
@@ -398,7 +467,11 @@ async function createRhinestoneAccount(
     signTypedData,
     submitTransaction,
     simulateTransaction,
+    prepareUserOperation,
+    signUserOperation,
+    submitUserOperation,
     sendTransaction,
+    sendUserOperation,
     waitForExecution,
     getAddress,
     getPortfolio,
@@ -458,15 +531,16 @@ export type {
   Recovery,
   Policy,
   UniversalActionPolicyParamCondition,
-  IntentData,
   PreparedTransactionData,
   SignedTransactionData,
   TransactionResult,
+  PreparedUserOperationData,
+  SignedUserOperationData,
+  UserOperationResult,
   IntentCost,
   IntentInput,
   IntentOp,
   IntentOpStatus,
-  IntentResult,
   IntentRoute,
   SettlementSystem,
   SignedIntentOp,

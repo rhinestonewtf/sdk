@@ -282,6 +282,13 @@ interface CrossChainTransaction extends BaseTransaction {
   targetChain: Chain
 }
 
+interface UserOperationTransaction {
+  calls: CallInput[]
+  gasLimit?: bigint
+  signers?: SignerSet
+  chain: Chain
+}
+
 type Transaction = SameChainTransaction | CrossChainTransaction
 
 export type {
@@ -294,6 +301,7 @@ export type {
   BundlerConfig,
   PaymasterConfig,
   Transaction,
+  UserOperationTransaction,
   TokenSymbol,
   CalldataInput,
   LazyCallInput,

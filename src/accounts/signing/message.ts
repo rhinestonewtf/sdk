@@ -22,6 +22,7 @@ async function sign(
   chain: Chain,
   address: Address,
   hash: Hex,
+  isUserOpHash: boolean,
 ): Promise<Hex> {
   const signingFunctions: SigningFunctions<Hex> = {
     signEcdsa: (account, hash, updateV) => signEcdsa(account, hash, updateV),
@@ -36,11 +37,12 @@ async function sign(
         address,
         hash,
         signingFunctions,
+        isUserOpHash,
         sign,
       )
     }
     case 'session': {
-      return signWithSession(signers, chain, address, hash, sign)
+      return signWithSession(signers, chain, address, hash, isUserOpHash, sign)
     }
     case 'guardians': {
       return signWithGuardians(signers, hash, signingFunctions)

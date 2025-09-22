@@ -82,46 +82,44 @@ import type {
   TokenRequest,
   TokenSymbol,
   Transaction,
+  UserOperationTransaction,
 } from '../types'
 import { getCompactTypedData } from './compact'
 import {
   OrderPathRequiredForIntentsError,
-  SimulationNotSupportedForUserOpFlowError,
-  SourceChainsNotAvailableForUserOpFlowError,
-  UserOperationRequiredForSmartSessionsError,
+  SignerNotSupportedError,
 } from './error'
 import { getTypedData as getPermit2TypedData } from './permit2'
 
-type TransactionResult =
-  | {
-      type: 'userop'
-      hash: Hex
-      chain: number
-    }
-  | {
-      type: 'intent'
-      id: bigint
-      sourceChains?: number[]
-      targetChain: number
-    }
-
-interface IntentData {
-  type: 'intent'
-  intentRoute: IntentRoute
-}
-
-interface UserOpData {
+interface UserOperationResult {
   type: 'userop'
   hash: Hex
-  userOp: UserOperation
+  chain: number
+}
+
+interface TransactionResult {
+  type: 'intent'
+  id: bigint
+  sourceChains?: number[]
+  targetChain: number
 }
 
 interface PreparedTransactionData {
-  data: IntentData | UserOpData
+  intentRoute: IntentRoute
   transaction: Transaction
 }
 
+interface PreparedUserOperationData {
+  userOperation: UserOperation
+  hash: Hex
+  transaction: UserOperationTransaction
+}
+
 interface SignedTransactionData extends PreparedTransactionData {
+  signature: Hex
+}
+
+interface SignedUserOperationData extends PreparedUserOperationData {
   signature: Hex
 }
 
@@ -143,51 +141,55 @@ async function prepareTransaction(
   } = getTransactionParams(transaction)
   const accountAddress = getAddress(config)
 
-  let data: IntentData | UserOpData
-
-  const asUserOp = signers?.type === 'guardians' || signers?.type === 'session'
-  if (asUserOp) {
-    if (sourceChains && sourceChains.length > 0) {
-      throw new SourceChainsNotAvailableForUserOpFlowError()
-    }
-    // Smart sessions require a UserOp flow
-    data = await prepareTransactionAsUserOp(
-      config,
-      targetChain,
-      await resolveCallIntents(
-        transaction.calls,
-        config,
-        targetChain,
-        accountAddress,
-      ),
-      signers,
-      transaction.gasLimit,
-    )
-  } else {
-    data = await prepareTransactionAsIntent(
-      config,
-      sourceChains,
-      targetChain,
-      await resolveCallIntents(
-        transaction.calls,
-        config,
-        targetChain,
-        accountAddress,
-      ),
-      transaction.gasLimit,
-      tokenRequests,
-      accountAddress,
-      sponsored ?? false,
-      eip7702InitSignature,
-      settlementLayers,
-      sourceAssets,
-      feeAsset,
-      lockFunds,
-    )
+  const isUserOpSigner =
+    signers?.type === 'guardians' || signers?.type === 'session'
+  if (isUserOpSigner) {
+    throw new SignerNotSupportedError()
   }
+  const intentRoute = await prepareTransactionAsIntent(
+    config,
+    sourceChains,
+    targetChain,
+    await resolveCallIntents(
+      transaction.calls,
+      config,
+      targetChain,
+      accountAddress,
+    ),
+    transaction.gasLimit,
+    tokenRequests,
+    accountAddress,
+    sponsored ?? false,
+    eip7702InitSignature,
+    settlementLayers,
+    sourceAssets,
+    feeAsset,
+    lockFunds,
+  )
 
   return {
-    data,
+    intentRoute,
+    transaction,
+  }
+}
+
+async function prepareUserOperation(
+  config: RhinestoneAccountConfig,
+  transaction: UserOperationTransaction,
+): Promise<PreparedUserOperationData> {
+  const chain = transaction.chain
+  const signers = transaction.signers
+  const accountAddress = getAddress(config)
+  const data = await prepareTransactionAsUserOp(
+    config,
+    chain,
+    await resolveCallIntents(transaction.calls, config, chain, accountAddress),
+    signers,
+    transaction.gasLimit,
+  )
+  return {
+    userOperation: data.userOp,
+    hash: data.hash,
     transaction,
   }
 }
@@ -228,30 +230,34 @@ async function signTransaction(
   const { targetChain, signers } = getTransactionParams(
     preparedTransaction.transaction,
   )
-  const data = preparedTransaction.data
-  const asUserOp = data.type === 'userop'
-
-  let signature: Hex
-  if (asUserOp) {
-    const chain = targetChain
-    const userOp = data.userOp
-    if (!userOp) {
-      throw new UserOperationRequiredForSmartSessionsError()
-    }
-    // Smart sessions require a UserOp flow
-    signature = await signUserOp(config, chain, signers, userOp)
-  } else {
-    signature = await signIntent(
-      config,
-      targetChain,
-      data.intentRoute.intentOp,
-      signers,
-    )
-  }
+  const intentRoute = preparedTransaction.intentRoute
+  const signature = await signIntent(
+    config,
+    targetChain,
+    intentRoute.intentOp,
+    signers,
+  )
 
   return {
-    data,
+    intentRoute,
     transaction: preparedTransaction.transaction,
+    signature,
+  }
+}
+
+async function signUserOperation(
+  config: RhinestoneAccountConfig,
+  preparedUserOperation: PreparedUserOperationData,
+): Promise<SignedUserOperationData> {
+  const chain = preparedUserOperation.transaction.chain
+  const userOp = preparedUserOperation.userOperation
+  const signers = preparedUserOperation.transaction.signers
+  // Smart sessions require a UserOp flow
+  const signature = await signUserOp(config, chain, signers, userOp)
+  return {
+    userOperation: preparedUserOperation.userOperation,
+    hash: preparedUserOperation.hash,
+    transaction: preparedUserOperation.transaction,
     signature,
   }
 }
@@ -260,7 +266,10 @@ async function signAuthorizations(
   config: RhinestoneAccountConfig,
   preparedTransaction: PreparedTransactionData,
 ) {
-  return await signAuthorizationsInternal(config, preparedTransaction.data)
+  return await signAuthorizationsInternal(
+    config,
+    preparedTransaction.intentRoute,
+  )
 }
 
 async function signMessage(
@@ -321,7 +330,7 @@ async function signTypedData<
 
 async function signAuthorizationsInternal(
   config: RhinestoneAccountConfig,
-  data: IntentData | UserOpData,
+  data: IntentRoute | UserOperation,
 ) {
   const eoa = config.eoa
   if (!eoa) {
@@ -329,9 +338,8 @@ async function signAuthorizationsInternal(
   }
   const accountAddress = getAddress(config)
   const requiredDelegations =
-    data.type === 'intent'
-      ? data.intentRoute.intentOp.signedMetadata.account.requiredDelegations ||
-        {}
+    'intentOp' in data
+      ? data.intentOp.signedMetadata.account.requiredDelegations || {}
       : {}
   const authorizations: SignedAuthorization[] = []
   for (const chainId in requiredDelegations) {
@@ -364,33 +372,28 @@ async function submitTransaction(
   signedTransaction: SignedTransactionData,
   authorizations: SignedAuthorizationList,
 ): Promise<TransactionResult> {
-  const { data, transaction, signature } = signedTransaction
+  const { intentRoute, transaction, signature } = signedTransaction
   const { sourceChains, targetChain } = getTransactionParams(transaction)
+  const intentOp = intentRoute.intentOp
+  return await submitIntent(
+    config,
+    sourceChains,
+    targetChain,
+    intentOp,
+    signature,
+    authorizations,
+  )
+}
 
-  const asUserOp = data.type === 'userop'
-
-  if (asUserOp) {
-    const chain = targetChain
-    const userOp = data.userOp
-    if (!userOp) {
-      throw new UserOperationRequiredForSmartSessionsError()
-    }
-    // Smart sessions require a UserOp flow
-    return await submitUserOp(config, chain, userOp, signature)
-  } else {
-    const intentOp = data.intentRoute.intentOp
-    if (!intentOp) {
-      throw new OrderPathRequiredForIntentsError()
-    }
-    return await submitIntent(
-      config,
-      sourceChains,
-      targetChain,
-      intentOp,
-      signature,
-      authorizations,
-    )
-  }
+async function submitUserOperation(
+  config: RhinestoneAccountConfig,
+  signedUserOperation: SignedUserOperationData,
+) {
+  const chain = signedUserOperation.transaction.chain
+  const userOp = signedUserOperation.userOperation
+  const signature = signedUserOperation.signature
+  // Smart sessions require a UserOp flow
+  return await submitUserOp(config, chain, userOp, signature)
 }
 
 async function simulateTransaction(
@@ -398,27 +401,20 @@ async function simulateTransaction(
   signedTransaction: SignedTransactionData,
   authorizations: SignedAuthorizationList,
 ) {
-  const { data, transaction, signature } = signedTransaction
+  const { intentRoute, transaction, signature } = signedTransaction
   const { sourceChains, targetChain } = getTransactionParams(transaction)
-
-  const asUserOp = data.type === 'userop'
-
-  if (asUserOp) {
-    throw new SimulationNotSupportedForUserOpFlowError()
-  } else {
-    const intentOp = data.intentRoute.intentOp
-    if (!intentOp) {
-      throw new OrderPathRequiredForIntentsError()
-    }
-    return await simulateIntent(
-      config,
-      sourceChains,
-      targetChain,
-      intentOp,
-      signature,
-      authorizations,
-    )
+  const intentOp = intentRoute.intentOp
+  if (!intentOp) {
+    throw new OrderPathRequiredForIntentsError()
   }
+  return await simulateIntent(
+    config,
+    sourceChains,
+    targetChain,
+    intentOp,
+    signature,
+    authorizations,
+  )
 }
 
 function getTransactionParams(transaction: Transaction) {
@@ -515,7 +511,6 @@ async function prepareTransactionAsUserOp(
     callGasLimit: gasLimit,
   })
   return {
-    type: 'userop',
     userOp,
     hash: getUserOperationHash({
       userOperation: userOp,
@@ -523,7 +518,7 @@ async function prepareTransactionAsUserOp(
       entryPointAddress: entryPoint07Address,
       entryPointVersion: '0.7',
     }),
-  } as UserOpData
+  }
 }
 
 async function prepareTransactionAsIntent(
@@ -584,11 +579,7 @@ async function prepareTransactionAsIntent(
     config.endpointUrl,
   )
   const intentRoute = await orchestrator.getIntentRoute(metaIntent)
-
-  return {
-    type: 'intent',
-    intentRoute,
-  } as IntentData
+  return intentRoute
 }
 
 async function signIntent(
@@ -790,7 +781,7 @@ async function submitUserOp(
     type: 'userop',
     hash,
     chain: chain.id,
-  } as TransactionResult
+  } as UserOperationResult
 }
 
 async function submitIntent(
@@ -1114,6 +1105,9 @@ export {
   signTypedData,
   submitTransaction,
   simulateTransaction,
+  prepareUserOperation,
+  signUserOperation,
+  submitUserOperation,
   getOrchestratorByChain,
   signIntent,
   prepareTransactionAsIntent,
@@ -1125,8 +1119,11 @@ export {
   resolveCallIntents,
 }
 export type {
-  IntentData,
+  IntentRoute,
   TransactionResult,
   PreparedTransactionData,
+  PreparedUserOperationData,
   SignedTransactionData,
+  SignedUserOperationData,
+  UserOperationResult,
 }

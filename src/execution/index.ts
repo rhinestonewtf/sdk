@@ -1,6 +1,6 @@
-import { type Address, type Chain, createPublicClient } from 'viem'
+import { type Address, type Chain, createPublicClient, type Hex } from 'viem'
+import type { UserOperationReceipt } from 'viem/_types/account-abstraction'
 import { mainnet, sepolia } from 'viem/chains'
-
 import { deploy, getAddress } from '../accounts'
 import { createTransport, getBundlerClient } from '../accounts/utils'
 import type { IntentOpStatus } from '../orchestrator'
@@ -22,6 +22,7 @@ import type {
   TokenRequest,
   TokenSymbol,
   Transaction,
+  UserOperationTransaction,
 } from '../types'
 import {
   ExecutionError,
@@ -29,12 +30,10 @@ import {
   isExecutionError,
   OrderPathRequiredForIntentsError,
   SessionChainRequiredError,
-  SimulationNotSupportedForUserOpFlowError,
-  SourceChainsNotAvailableForUserOpFlowError,
-  UserOperationRequiredForSmartSessionsError,
+  SignerNotSupportedError,
 } from './error'
 import { enableSmartSession } from './smart-session'
-import type { IntentData, TransactionResult } from './utils'
+import type { TransactionResult, UserOperationResult } from './utils'
 import {
   getOrchestratorByChain,
   getTokenRequests,
@@ -48,6 +47,15 @@ import {
 } from './utils'
 
 const POLLING_INTERVAL = 500
+
+interface TransactionStatus {
+  fill: {
+    hash: Hex | undefined
+  }
+  claims: {
+    hash: Hex | undefined
+  }[]
+}
 
 async function sendTransaction(
   config: RhinestoneAccountConfig,
@@ -69,6 +77,11 @@ async function sendTransaction(
     sourceAssets,
     feeAsset,
   } = transaction
+  const isUserOpSigner =
+    signers?.type === 'guardians' || signers?.type === 'session'
+  if (isUserOpSigner) {
+    throw new SignerNotSupportedError()
+  }
   return await sendTransactionInternal(
     config,
     sourceChains,
@@ -86,6 +99,31 @@ async function sendTransaction(
   )
 }
 
+async function sendUserOperation(
+  config: RhinestoneAccountConfig,
+  transaction: UserOperationTransaction,
+) {
+  const accountAddress = getAddress(config)
+  const resolvedCalls = await resolveCallIntents(
+    transaction.calls,
+    config,
+    transaction.chain,
+    accountAddress,
+  )
+  const userOpSigner =
+    transaction.signers?.type === 'session' ? transaction.signers.session : null
+  if (userOpSigner) {
+    await enableSmartSession(transaction.chain, config, userOpSigner)
+  }
+  // Smart sessions require a UserOp flow
+  return await sendUserOperationInternal(
+    config,
+    transaction.chain,
+    resolvedCalls,
+    transaction.signers,
+  )
+}
+
 async function sendTransactionInternal(
   config: RhinestoneAccountConfig,
   sourceChains: Chain[],
@@ -98,7 +136,6 @@ async function sendTransactionInternal(
     sponsored?: boolean
     settlementLayers?: SettlementLayer[]
     sourceAssets?: SourceAssetInput
-    asUserOp?: boolean
     lockFunds?: boolean
     feeAsset?: Address | TokenSymbol
   },
@@ -118,22 +155,9 @@ async function sendTransactionInternal(
   )
 
   const sendAsUserOp =
-    options.asUserOp ||
-    options.signers?.type === 'guardians' ||
-    options.signers?.type === 'session'
+    options.signers?.type === 'guardians' || options.signers?.type === 'session'
   if (sendAsUserOp) {
-    const withSession =
-      options.signers?.type === 'session' ? options.signers.session : null
-    if (withSession) {
-      await enableSmartSession(targetChain, config, withSession)
-    }
-    // Smart sessions require a UserOp flow
-    return await sendTransactionAsUserOp(
-      config,
-      targetChain,
-      resolvedCalls,
-      options.signers,
-    )
+    throw new SignerNotSupportedError()
   } else {
     return await sendTransactionAsIntent(
       config,
@@ -153,7 +177,7 @@ async function sendTransactionInternal(
   }
 }
 
-async function sendTransactionAsUserOp(
+async function sendUserOperationInternal(
   config: RhinestoneAccountConfig,
   chain: Chain,
   callInputs: CalldataInput[],
@@ -188,7 +212,7 @@ async function sendTransactionAsUserOp(
     type: 'userop',
     hash,
     chain: chain.id,
-  } as TransactionResult
+  } as UserOperationResult
 }
 
 async function sendTransactionAsIntent(
@@ -206,7 +230,7 @@ async function sendTransactionAsIntent(
   feeAsset?: Address | TokenSymbol,
   lockFunds?: boolean,
 ) {
-  const { intentRoute } = await prepareTransactionAsIntent(
+  const intentRoute = await prepareTransactionAsIntent(
     config,
     sourceChains,
     targetChain,
@@ -231,10 +255,7 @@ async function sendTransactionAsIntent(
     signers,
   )
   const authorizations = config.eoa
-    ? await signAuthorizationsInternal(config, {
-        type: 'intent',
-        intentRoute,
-      })
+    ? await signAuthorizationsInternal(config, intentRoute)
     : []
   return await submitIntentInternal(
     config,
@@ -248,9 +269,9 @@ async function sendTransactionAsIntent(
 
 async function waitForExecution(
   config: RhinestoneConfig,
-  result: TransactionResult,
+  result: TransactionResult | UserOperationResult,
   acceptsPreconfirmations: boolean,
-) {
+): Promise<TransactionStatus | UserOperationReceipt> {
   const validStatuses: Set<IntentOpStatus['status']> = new Set([
     INTENT_STATUS_FAILED,
     INTENT_STATUS_COMPLETED,
@@ -275,7 +296,14 @@ async function waitForExecution(
       if (intentStatus.status === INTENT_STATUS_FAILED) {
         throw new IntentFailedError()
       }
-      return intentStatus
+      return {
+        fill: {
+          hash: intentStatus.fillTransactionHash,
+        },
+        claims: intentStatus.claims.map((claim) => ({
+          hash: claim.claimTransactionHash,
+        })),
+      }
     }
     case 'userop': {
       const targetChain = getChainById(result.chain)
@@ -328,6 +356,8 @@ async function getPortfolio(config: RhinestoneConfig, onTestnets: boolean) {
 export {
   sendTransaction,
   sendTransactionInternal,
+  sendUserOperation,
+  sendUserOperationInternal,
   waitForExecution,
   getMaxSpendableAmount,
   getPortfolio,
@@ -337,8 +367,6 @@ export {
   IntentFailedError,
   OrderPathRequiredForIntentsError,
   SessionChainRequiredError,
-  SimulationNotSupportedForUserOpFlowError,
-  SourceChainsNotAvailableForUserOpFlowError,
-  UserOperationRequiredForSmartSessionsError,
+  SignerNotSupportedError,
 }
-export type { IntentData, TransactionResult }
+export type { TransactionStatus, TransactionResult, UserOperationResult }
