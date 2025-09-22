@@ -226,6 +226,11 @@ async function createRhinestoneAccount(
   // Ensures we decode the initdata correctly
   checkAddress(config)
 
+  // Validate that owners field is provided for non-EOA accounts
+  if (config.account?.type !== 'eoa' && !config.owners) {
+    throw new Error('Owners field is required for smart accounts')
+  }
+
   /**
    * Deploys the account on a given chain
    * @param chain Chain to deploy the account on

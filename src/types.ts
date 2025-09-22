@@ -168,7 +168,7 @@ interface Recovery {
 
 interface RhinestoneAccountConfig {
   account?: AccountProviderConfig
-  owners: OwnerSet
+  owners?: OwnerSet
   rhinestoneApiKey?: string
   sessions?: Session[]
   recovery?: Recovery

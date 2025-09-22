@@ -312,7 +312,13 @@ async function getPackedSignature(
   hash: Hex,
   transformSignature: (signature: Hex) => Hex = (signature) => signature,
 ): Promise<Hex> {
-  signers = signers ?? convertOwnerSetToSignerSet(config.owners)
+  if (config.account?.type === 'eoa') {
+    throw new Error(
+      'signMessageWithValidator is not supported for EOA accounts',
+    )
+  }
+
+  signers = signers ?? convertOwnerSetToSignerSet(config.owners!)
   const signFn = (hash: Hex) => signMessage(signers, chain, address, hash)
   const account = getAccountProvider(config)
   const address = getAddress(config)
@@ -359,8 +365,15 @@ async function getTypedDataPackedSignature<
   parameters: HashTypedDataParameters<typedData, primaryType>,
   transformSignature: (signature: Hex) => Hex = (signature) => signature,
 ): Promise<Hex> {
+  // EOA accounts don't use this signing method
+  if (config.account?.type === 'eoa') {
+    throw new Error(
+      'signTypedDataWithValidator is not supported for EOA accounts',
+    )
+  }
+
   const address = getAddress(config)
-  signers = signers ?? convertOwnerSetToSignerSet(config.owners)
+  signers = signers ?? convertOwnerSetToSignerSet(config.owners!)
   const signFn = (
     parameters: HashTypedDataParameters<typedData, primaryType>,
   ) => signTypedData(signers, chain, address, parameters)
@@ -607,6 +620,15 @@ async function getSmartAccount(
   client: PublicClient,
   chain: Chain,
 ) {
+  // EOA accounts don't need smart account functionality
+  if (config.account?.type === 'eoa') {
+    throw new Error('getSmartAccount is not supported for EOA accounts')
+  }
+
+  if (!config.owners) {
+    throw new Error('Owners field is required for smart accounts')
+  }
+
   const account = getAccountProvider(config)
   const address = getAddress(config)
   const ownerValidator = getOwnerValidator(config)

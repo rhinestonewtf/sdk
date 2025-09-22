@@ -360,6 +360,9 @@ async function getBaseSmartAccount(
 }
 
 function getOwners(config: RhinestoneAccountConfig) {
+  if (!config.owners) {
+    throw new Error('Owners field is required for smart accounts')
+  }
   const ownerSet = config.owners
   switch (ownerSet.type) {
     case 'ecdsa':
@@ -372,6 +375,9 @@ function getOwners(config: RhinestoneAccountConfig) {
 }
 
 function getThreshold(config: RhinestoneAccountConfig) {
+  if (!config.owners) {
+    throw new Error('Owners field is required for smart accounts')
+  }
   const ownerSet = config.owners
   switch (ownerSet.type) {
     case 'ecdsa':
