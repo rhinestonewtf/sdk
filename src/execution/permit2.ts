@@ -1,7 +1,7 @@
 import { type Address, type Chain, createPublicClient, keccak256 } from 'viem'
 import { createTransport } from '../accounts/utils'
 import type { IntentOp } from '../orchestrator/types'
-import type { ProviderConfig } from '../types'
+import type { RhinestoneAccountConfig } from '../types'
 
 interface TokenPermissions {
   token: Address
@@ -106,26 +106,13 @@ function getTypedData(intentOp: IntentOp) {
   return typedData
 }
 
-/**
- * Check ERC20 allowance for a given owner and token (using Permit2 as spender)
- * @param owner The owner of the tokens
- * @param tokenAddress The token contract address
- * @param chain The chain to check the allowance on
- * @param provider The provider configuration
- * @returns The allowance amount
- */
-async function checkERC20Allowance(
+async function checkERC20AllowanceDirect(
   owner: Address,
+  spender: Address,
   tokenAddress: Address,
-  chain: Chain,
-  provider: ProviderConfig,
+  publicClient: any,
 ): Promise<bigint> {
   try {
-    const publicClient = createPublicClient({
-      chain,
-      transport: createTransport(chain, provider),
-    })
-
     const allowance = await publicClient.readContract({
       address: tokenAddress,
       abi: [
@@ -141,10 +128,39 @@ async function checkERC20Allowance(
         },
       ],
       functionName: 'allowance',
-      args: [owner, PERMIT2_ADDRESS],
+      args: [owner, spender],
     })
 
     return BigInt(allowance.toString())
+  } catch (error) {
+    console.error('Error checking ERC20 allowance:', error)
+    throw new Error('Failed to check ERC20 allowance')
+  }
+}
+
+async function checkERC20Allowance(
+  tokenAddress: Address,
+  chain: Chain,
+  config: RhinestoneAccountConfig,
+): Promise<bigint> {
+  try {
+    const publicClient = createPublicClient({
+      chain,
+      transport: createTransport(chain, config.provider),
+    })
+
+    // Get the account owner from the config
+    const owner = config.eoa?.address
+    if (!owner) {
+      throw new Error('No EOA address found in account config')
+    }
+
+    return await checkERC20AllowanceDirect(
+      owner,
+      PERMIT2_ADDRESS,
+      tokenAddress,
+      publicClient,
+    )
   } catch (error) {
     console.error('Error checking ERC20 allowance:', error)
     throw new Error('Failed to check ERC20 allowance')
@@ -159,4 +175,9 @@ function getPermit2Address(): Address {
   return PERMIT2_ADDRESS as Address
 }
 
-export { getTypedData, checkERC20Allowance, getPermit2Address }
+export {
+  getTypedData,
+  checkERC20Allowance,
+  checkERC20AllowanceDirect,
+  getPermit2Address,
+}
