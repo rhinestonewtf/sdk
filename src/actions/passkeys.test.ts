@@ -30,7 +30,7 @@ describe('Passkeys Actions', () => {
         ],
         rhinestoneAccount.config,
         base,
-        accountAddress as any,
+        accountAddress,
       )
       expect(calls).toEqual([
         {
@@ -56,7 +56,7 @@ describe('Passkeys Actions', () => {
         [disablePasskeys()],
         rhinestoneAccount.config,
         base,
-        accountAddress as any,
+        accountAddress,
       )
       expect(calls).toEqual([
         {

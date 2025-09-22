@@ -1,4 +1,4 @@
-import { zeroAddress } from 'viem'
+import { Chain, zeroAddress } from 'viem'
 import { base, baseSepolia, mainnet, sepolia } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 import {
@@ -88,7 +88,7 @@ describe('Registry', () => {
       const unsupportedChain = {
         id: UNSUPPORTED_CHAIN_ID,
         name: 'Unsupported',
-      } as any
+      } as Chain
       expect(() => getWethAddress(unsupportedChain)).toThrow(
         `Unsupported chain ${UNSUPPORTED_CHAIN_ID}`,
       )

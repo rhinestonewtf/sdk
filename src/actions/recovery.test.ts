@@ -41,7 +41,7 @@ describe('Recovery Actions', () => {
         ],
         rhinestoneAccount.config,
         base,
-        accountAddress as any,
+        accountAddress,
       )
       expect(calls).toEqual([
         {
@@ -62,7 +62,7 @@ describe('Recovery Actions', () => {
         ],
         rhinestoneAccount.config,
         base,
-        accountAddress as any,
+        accountAddress,
       )
       expect(calls).toEqual([
         {
@@ -112,7 +112,7 @@ describe('Recovery Actions', () => {
         [recover(newOwners)],
         rhinestoneAccount.config,
         base,
-        accountAddress as any,
+        accountAddress,
       )
 
       expect(mockPublicClient.multicall).toHaveBeenCalledTimes(1)
@@ -155,7 +155,7 @@ describe('Recovery Actions', () => {
         [recover(newOwners)],
         rhinestoneAccount.config,
         base,
-        accountAddress as any,
+        accountAddress,
       )
 
       expect(mockPublicClient.multicall).toHaveBeenCalledTimes(1)

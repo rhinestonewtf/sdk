@@ -35,7 +35,7 @@ describe('ECDSA Actions', () => {
         ],
         rhinestoneAccount.config,
         base,
-        accountAddress as any,
+        accountAddress,
       )
       expect(calls).toEqual([
         {
@@ -55,7 +55,7 @@ describe('ECDSA Actions', () => {
         ],
         rhinestoneAccount.config,
         base,
-        accountAddress as any,
+        accountAddress,
       )
       expect(calls).toEqual([
         {
@@ -76,7 +76,7 @@ describe('ECDSA Actions', () => {
         ],
         rhinestoneAccount.config,
         base,
-        accountAddress as any,
+        accountAddress,
       )
       expect(calls).toEqual([
         {
@@ -102,7 +102,7 @@ describe('ECDSA Actions', () => {
         [disableEcdsa()],
         rhinestoneAccount.config,
         base,
-        accountAddress as any,
+        accountAddress,
       )
       expect(calls).toEqual([
         {
@@ -126,7 +126,7 @@ describe('ECDSA Actions', () => {
 
   describe('Remove Owner', () => {
     test('', () => {
-      expect(removeOwner(MOCK_OWNER_A as any, MOCK_OWNER_B as any)).toEqual({
+      expect(removeOwner(MOCK_OWNER_A, MOCK_OWNER_B)).toEqual({
         to: '0x000000000013fdb5234e4e3162a810f54d9f7e98',
         value: 0n,
         data: '0xfbe5ce0a000000000000000000000000d1aefebdceefc094f1805b241fa5e6db63a9181a000000000000000000000000eddfcb50d18f6d3d51c4f7cbca5ed6bdebc59817',
