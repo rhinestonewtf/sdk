@@ -1,4 +1,4 @@
-import { Chain, zeroAddress } from 'viem'
+import { type Chain, zeroAddress } from 'viem'
 import { base, baseSepolia, mainnet, sepolia } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 import {
