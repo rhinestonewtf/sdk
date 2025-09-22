@@ -40,7 +40,7 @@ import {
   getValidatorAccount,
   parseCalls,
   prepareTransactionAsIntent,
-  resolveCallIntents,
+  resolveCallInputs,
   signAuthorizationsInternal,
   signIntent,
   submitIntentInternal,
@@ -104,7 +104,7 @@ async function sendUserOperation(
   transaction: UserOperationTransaction,
 ) {
   const accountAddress = getAddress(config)
-  const resolvedCalls = await resolveCallIntents(
+  const resolvedCalls = await resolveCallInputs(
     transaction.calls,
     config,
     transaction.chain,
@@ -141,7 +141,7 @@ async function sendTransactionInternal(
   },
 ) {
   const accountAddress = getAddress(config)
-  const resolvedCalls = await resolveCallIntents(
+  const resolvedCalls = await resolveCallInputs(
     callInputs,
     config,
     targetChain,

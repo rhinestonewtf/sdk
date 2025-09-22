@@ -3,7 +3,7 @@ import { base } from 'viem/chains'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { accountA, accountB, accountC, accountD } from '../../test/consts'
 import { RhinestoneSDK } from '..'
-import { resolveCallIntents } from '../execution/utils'
+import { resolveCallInputs } from '../execution/utils'
 import {
   recoverEcdsaOwnership as recover,
   enable as setUpRecovery,
@@ -32,7 +32,7 @@ describe('Recovery Actions', () => {
     })
 
     test('Single Guardian', async () => {
-      const calls = await resolveCallIntents(
+      const calls = await resolveCallInputs(
         [
           setUpRecovery({
             guardians: [accountB],
@@ -53,7 +53,7 @@ describe('Recovery Actions', () => {
     })
 
     test('Guardian Multi-Sig', async () => {
-      const calls = await resolveCallIntents(
+      const calls = await resolveCallInputs(
         [
           setUpRecovery({
             guardians: [accountB, accountC, accountD],
@@ -108,7 +108,7 @@ describe('Recovery Actions', () => {
         threshold: 1,
       }
 
-      const result = await resolveCallIntents(
+      const result = await resolveCallInputs(
         [recover(newOwners)],
         rhinestoneAccount.config,
         base,
@@ -151,7 +151,7 @@ describe('Recovery Actions', () => {
         threshold: 1,
       }
 
-      const result = await resolveCallIntents(
+      const result = await resolveCallInputs(
         [recover(newOwners)],
         rhinestoneAccount.config,
         base,
@@ -194,7 +194,7 @@ describe('Recovery Actions', () => {
         threshold: 2,
       }
 
-      const result = await resolveCallIntents(
+      const result = await resolveCallInputs(
         [recover(newOwners)],
         rhinestoneAccount.config,
         base,

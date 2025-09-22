@@ -149,7 +149,7 @@ async function prepareTransaction(
     config,
     sourceChains,
     targetChain,
-    await resolveCallIntents(
+    await resolveCallInputs(
       transaction.calls,
       config,
       targetChain,
@@ -182,7 +182,7 @@ async function prepareUserOperation(
   const data = await prepareTransactionAsUserOp(
     config,
     chain,
-    await resolveCallIntents(transaction.calls, config, chain, accountAddress),
+    await resolveCallInputs(transaction.calls, config, chain, accountAddress),
     signers,
     transaction.gasLimit,
   )
@@ -193,23 +193,16 @@ async function prepareUserOperation(
   }
 }
 
-async function resolveCallIntents(
-  intents: CallInput[],
+async function resolveCallInputs(
+  inputs: CallInput[],
   config: RhinestoneConfig,
   chain: Chain,
   accountAddress: Address,
 ): Promise<CalldataInput[]> {
   const resolved: CalldataInput[] = []
-  for (const intent of intents) {
-    const maybe = intent as unknown as {
-      resolve?: (ctx: {
-        config: RhinestoneConfig
-        chain: Chain
-        accountAddress: Address
-      }) => Promise<CalldataInput | CalldataInput[]>
-    }
-    if (maybe && typeof maybe.resolve === 'function') {
-      const result = await maybe.resolve({ config, chain, accountAddress })
+  for (const intent of inputs) {
+    if ('resolve' in intent) {
+      const result = await intent.resolve({ config, chain, accountAddress })
       if (Array.isArray(result)) {
         resolved.push(...result)
       } else if (result) {
@@ -1115,7 +1108,7 @@ export {
   getValidatorAccount,
   parseCalls,
   getTokenRequests,
-  resolveCallIntents,
+  resolveCallInputs,
 }
 export type {
   IntentRoute,

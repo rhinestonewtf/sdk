@@ -2,7 +2,7 @@ import { base } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 import { accountA } from '../../test/consts'
 import { RhinestoneSDK } from '..'
-import { resolveCallIntents } from '../execution/utils'
+import { resolveCallInputs } from '../execution/utils'
 import {
   addOwner,
   changeThreshold,
@@ -27,7 +27,7 @@ describe('ECDSA Actions', () => {
     })
 
     test('1/1 Owners', async () => {
-      const calls = await resolveCallIntents(
+      const calls = await resolveCallInputs(
         [
           enableEcdsa({
             owners: [MOCK_OWNER_A],
@@ -47,7 +47,7 @@ describe('ECDSA Actions', () => {
     })
 
     test('1/N Owners', async () => {
-      const calls = await resolveCallIntents(
+      const calls = await resolveCallInputs(
         [
           enableEcdsa({
             owners: [MOCK_OWNER_A, MOCK_OWNER_B],
@@ -67,7 +67,7 @@ describe('ECDSA Actions', () => {
     })
 
     test('M/N Owners', async () => {
-      const calls = await resolveCallIntents(
+      const calls = await resolveCallInputs(
         [
           enableEcdsa({
             owners: [MOCK_OWNER_A, MOCK_OWNER_B, MOCK_OWNER_C],
@@ -98,7 +98,7 @@ describe('ECDSA Actions', () => {
     })
 
     test('', async () => {
-      const calls = await resolveCallIntents(
+      const calls = await resolveCallInputs(
         [disableEcdsa()],
         rhinestoneAccount.config,
         base,

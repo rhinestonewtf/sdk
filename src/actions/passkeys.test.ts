@@ -2,7 +2,7 @@ import { base } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 import { accountA, passkeyAccount } from '../../test/consts'
 import { RhinestoneSDK } from '..'
-import { resolveCallIntents } from '../execution/utils'
+import { resolveCallInputs } from '../execution/utils'
 import {
   disable as disablePasskeys,
   enable as enablePasskeys,
@@ -21,7 +21,7 @@ describe('Passkeys Actions', () => {
     })
 
     test('', async () => {
-      const calls = await resolveCallIntents(
+      const calls = await resolveCallInputs(
         [
           enablePasskeys({
             pubKey: passkeyAccount.publicKey,
@@ -52,7 +52,7 @@ describe('Passkeys Actions', () => {
     })
 
     test('', async () => {
-      const calls = await resolveCallIntents(
+      const calls = await resolveCallInputs(
         [disablePasskeys()],
         rhinestoneAccount.config,
         base,
