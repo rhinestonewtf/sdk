@@ -1,5 +1,7 @@
-import { type Address, keccak256 } from 'viem'
+import { type Address, type Chain, createPublicClient, keccak256 } from 'viem'
+import { createTransport } from '../accounts/utils'
 import type { IntentOp } from '../orchestrator/types'
+import type { ProviderConfig } from '../types'
 
 interface TokenPermissions {
   token: Address
@@ -105,20 +107,25 @@ function getTypedData(intentOp: IntentOp) {
 }
 
 /**
- * Check ERC20 allowance for a given owner, spender, and token
+ * Check ERC20 allowance for a given owner and token (using Permit2 as spender)
  * @param owner The owner of the tokens
- * @param spender The spender address (usually Permit2)
  * @param tokenAddress The token contract address
- * @param publicClient The viem public client for reading contract data
+ * @param chain The chain to check the allowance on
+ * @param provider The provider configuration
  * @returns The allowance amount
  */
 async function checkERC20Allowance(
   owner: Address,
-  spender: Address,
   tokenAddress: Address,
-  publicClient: any, // Using any to avoid viem import issues
+  chain: Chain,
+  provider: ProviderConfig,
 ): Promise<bigint> {
   try {
+    const publicClient = createPublicClient({
+      chain,
+      transport: createTransport(chain, provider),
+    })
+
     const allowance = await publicClient.readContract({
       address: tokenAddress,
       abi: [
@@ -134,7 +141,7 @@ async function checkERC20Allowance(
         },
       ],
       functionName: 'allowance',
-      args: [owner, spender],
+      args: [owner, PERMIT2_ADDRESS],
     })
 
     return BigInt(allowance.toString())

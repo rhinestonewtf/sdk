@@ -11,8 +11,8 @@ import type { UserOperationReceipt } from 'viem/account-abstraction'
 type SupportedTokenSymbol = 'ETH' | 'WETH' | 'USDC' | 'USDT'
 type SupportedToken = SupportedTokenSymbol | Address
 
-type SmartAccountType = 'GENERIC' | 'ERC7579' | 'EOA' | 'EIP7702-EOA'
-type AccountStatus = 'NOT_DEPLOYED' | SmartAccountType
+type AccountType = 'GENERIC' | 'ERC7579' | 'EOA' | 'EIP7702-EOA'
+type AccountStatus = 'NOT_DEPLOYED' | AccountType
 
 const INTENT_STATUS_PENDING = 'PENDING'
 const INTENT_STATUS_FAILED = 'FAILED'
@@ -107,7 +107,7 @@ type Portfolio = PortfolioToken[]
 interface IntentInput {
   account: {
     address: Address
-    accountType: SmartAccountType
+    accountType: AccountType
     setupOps: {
       to: Address
       data: Hex
@@ -212,7 +212,7 @@ interface IntentOp {
 
 interface Account {
   address: Address
-  accountType: SmartAccountType
+  accountType: AccountType
   setupOps: Pick<Execution, 'to' | 'data'>[]
   delegations?: Delegations
   emissaryConfig?: EmissarySetupConfig

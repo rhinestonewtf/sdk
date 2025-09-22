@@ -570,10 +570,7 @@ async function signIntent(
   intentOp: IntentOp,
   signers?: SignerSet,
 ) {
-  if (
-    config.account?.type === 'eoa' ||
-    config.account?.type === 'eip7702-eoa'
-  ) {
+  if (config.account?.type === 'eoa') {
     if (!config.eoa?.sign) {
       throw new Error('EOA account must have an EOA configured')
     }

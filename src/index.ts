@@ -77,7 +77,10 @@ import {
   withdrawErc20,
   withdrawEther,
 } from './execution/compact'
-import { checkERC20Allowance, getPermit2Address } from './execution/permit2'
+import {
+  checkERC20Allowance as checkERC20AllowanceInternal,
+  getPermit2Address,
+} from './execution/permit2'
 import {
   getSessionDetails as getSessionDetailsInternal,
   type SessionDetails,
@@ -206,6 +209,11 @@ interface RhinestoneAccount {
     threshold: number
   } | null>
   getValidators: (chain: Chain) => Promise<Address[]>
+  checkERC20Allowance: (
+    owner: Address,
+    tokenAddress: Address,
+    chain: Chain,
+  ) => Promise<bigint>
 }
 
 /**
@@ -450,6 +458,29 @@ async function createRhinestoneAccount(
     return getSessionDetailsInternal(config, sessions, sessionIndex, signature)
   }
 
+  /**
+   * Check ERC20 allowance for a given owner and token (using Permit2 as spender)
+   * @param owner The owner of the tokens
+   * @param tokenAddress The token contract address
+   * @param chain The chain to check the allowance on
+   * @returns The allowance amount
+   */
+  function checkERC20Allowance(
+    owner: Address,
+    tokenAddress: Address,
+    chain: Chain,
+  ) {
+    if (!config.provider) {
+      throw new Error('Provider configuration is required')
+    }
+    return checkERC20AllowanceInternal(
+      owner,
+      tokenAddress,
+      chain,
+      config.provider,
+    )
+  }
+
   return {
     config,
     deploy,
@@ -471,6 +502,7 @@ async function createRhinestoneAccount(
     getSessionDetails,
     getOwners,
     getValidators,
+    checkERC20Allowance,
   }
 }
 
@@ -547,7 +579,6 @@ export {
   getSupportedTokens,
   getTokenAddress,
   // Permit2 helpers
-  checkERC20Allowance,
   getPermit2Address,
   // Compact helpers
   getCompactDigest,
