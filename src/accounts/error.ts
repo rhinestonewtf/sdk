@@ -182,6 +182,19 @@ class EoaSigningMethodNotConfiguredError extends AccountError {
   }
 }
 
+class OwnersFieldRequiredError extends AccountError {
+  constructor(params?: {
+    context?: any
+    errorType?: string
+    traceId?: string
+  }) {
+    super({
+      message: 'Owners field is required for smart accounts',
+      ...params,
+    })
+  }
+}
+
 function isAccountError(error: Error): error is AccountError {
   return error instanceof AccountError
 }
@@ -215,4 +228,5 @@ export {
   ModuleInstallationNotSupportedError,
   EoaSigningNotSupportedError,
   EoaSigningMethodNotConfiguredError,
+  OwnersFieldRequiredError,
 }

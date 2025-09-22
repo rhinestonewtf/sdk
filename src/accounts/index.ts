@@ -46,6 +46,7 @@ import {
   FactoryArgsNotAvailableError,
   isAccountError,
   ModuleInstallationNotSupportedError,
+  OwnersFieldRequiredError,
   SigningNotSupportedForAccountError,
   SmartSessionsNotEnabledError,
   WalletClientNoConnectedAccountError,
@@ -619,7 +620,7 @@ async function getSmartAccount(
   }
 
   if (!config.owners) {
-    throw new Error('Owners field is required for smart accounts')
+    throw new OwnersFieldRequiredError()
   }
 
   const account = getAccountProvider(config)
@@ -848,6 +849,7 @@ export {
   ExistingEip7702AccountsNotSupportedError,
   FactoryArgsNotAvailableError,
   ModuleInstallationNotSupportedError,
+  OwnersFieldRequiredError,
   SigningNotSupportedForAccountError,
   SmartSessionsNotEnabledError,
   WalletClientNoConnectedAccountError,

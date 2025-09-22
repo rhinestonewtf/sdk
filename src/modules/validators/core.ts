@@ -11,6 +11,7 @@ import {
   toHex,
 } from 'viem'
 
+import { OwnersFieldRequiredError } from '../../accounts/error'
 import type {
   OwnableValidatorConfig,
   OwnerSet,
@@ -55,7 +56,7 @@ const WEBAUTHN_MOCK_SIGNATURE =
 
 function getOwnerValidator(config: RhinestoneAccountConfig) {
   if (!config.owners) {
-    throw new Error('Owners field is required for smart accounts')
+    throw new OwnersFieldRequiredError()
   }
   return getValidator(config.owners)
 }

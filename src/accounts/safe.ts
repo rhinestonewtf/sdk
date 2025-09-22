@@ -34,7 +34,10 @@ import {
 } from '../modules/validators'
 import type { EnableSessionData } from '../modules/validators/smart-sessions'
 import type { OwnerSet, RhinestoneAccountConfig, Session } from '../types'
-import { AccountConfigurationNotSupportedError } from './error'
+import {
+  AccountConfigurationNotSupportedError,
+  OwnersFieldRequiredError,
+} from './error'
 import { encode7579Calls, getAccountNonce, type ValidatorConfig } from './utils'
 
 const SAFE_7579_LAUNCHPAD_ADDRESS: Address =
@@ -361,7 +364,7 @@ async function getBaseSmartAccount(
 
 function getOwners(config: RhinestoneAccountConfig) {
   if (!config.owners) {
-    throw new Error('Owners field is required for smart accounts')
+    throw new OwnersFieldRequiredError()
   }
   const ownerSet = config.owners
   switch (ownerSet.type) {
@@ -376,7 +379,7 @@ function getOwners(config: RhinestoneAccountConfig) {
 
 function getThreshold(config: RhinestoneAccountConfig) {
   if (!config.owners) {
-    throw new Error('Owners field is required for smart accounts')
+    throw new OwnersFieldRequiredError()
   }
   const ownerSet = config.owners
   switch (ownerSet.type) {

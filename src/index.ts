@@ -20,6 +20,7 @@ import {
   getAddress as getAddressInternal,
   isAccountError,
   isDeployed as isDeployedInternal,
+  OwnersFieldRequiredError,
   SigningNotSupportedForAccountError,
   SmartSessionsNotEnabledError,
   setup as setupInternal,
@@ -228,7 +229,7 @@ async function createRhinestoneAccount(
 
   // Validate that owners field is provided for non-EOA accounts
   if (config.account?.type !== 'eoa' && !config.owners) {
-    throw new Error('Owners field is required for smart accounts')
+    throw new OwnersFieldRequiredError()
   }
 
   /**
