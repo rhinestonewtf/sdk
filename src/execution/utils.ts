@@ -24,6 +24,7 @@ import {
   type UserOperation,
 } from 'viem/account-abstraction'
 import {
+  EoaSigningMethodNotConfiguredError,
   getAddress,
   getEip7702InitCall,
   getGuardianSmartAccount,
@@ -32,6 +33,7 @@ import {
   getSmartAccount,
   getSmartSessionSmartAccount,
   getTypedDataPackedSignature,
+  is7702,
   isDeployed,
   toErc6492Signature,
 } from '../accounts'
@@ -512,11 +514,9 @@ async function prepareTransactionAsIntent(
 
   const getAccountType = (
     config: RhinestoneAccountConfig,
-  ): 'EOA' | 'EIP7702-EOA' | 'ERC7579' => {
+  ): 'EOA' | 'ERC7579' => {
     if (config.account?.type === 'eoa') {
       return 'EOA'
-    } else if (config.account?.type === 'eip7702-eoa') {
-      return 'EIP7702-EOA'
     } else {
       return 'ERC7579'
     }
@@ -571,12 +571,12 @@ async function signIntent(
   signers?: SignerSet,
 ) {
   if (config.account?.type === 'eoa') {
-    if (!config.eoa?.sign) {
-      throw new Error('EOA account must have an EOA configured')
+    if (!config.eoa?.signTypedData) {
+      throw new EoaSigningMethodNotConfiguredError('signTypedData')
     }
 
-    const digest = getCompactDigest(intentOp)
-    const signature = await config.eoa.sign({ hash: digest })
+    const typedData = getCompactTypedData(intentOp)
+    const signature = await config.eoa.signTypedData(typedData)
     return signature
   }
 
@@ -1020,7 +1020,7 @@ async function getSetupOperationsAndDelegations(
     return {
       setupOps: [],
     }
-  } else if (config.account?.type === 'eip7702-eoa' || config.eoa) {
+  } else if (is7702(config)) {
     // EIP-7702 initialization is only needed for EOA accounts
     if (!eip7702InitSignature || eip7702InitSignature === '0x') {
       throw new Error(

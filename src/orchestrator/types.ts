@@ -11,7 +11,7 @@ import type { UserOperationReceipt } from 'viem/account-abstraction'
 type SupportedTokenSymbol = 'ETH' | 'WETH' | 'USDC' | 'USDT'
 type SupportedToken = SupportedTokenSymbol | Address
 
-type AccountType = 'GENERIC' | 'ERC7579' | 'EOA' | 'EIP7702-EOA'
+type AccountType = 'GENERIC' | 'ERC7579' | 'EOA'
 type AccountStatus = 'NOT_DEPLOYED' | AccountType
 
 const INTENT_STATUS_PENDING = 'PENDING'

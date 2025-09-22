@@ -145,6 +145,43 @@ class WalletClientNoConnectedAccountError extends AccountError {
   }
 }
 
+class ModuleInstallationNotSupportedError extends AccountError {
+  constructor(
+    account: AccountType,
+    params?: { context?: any; errorType?: string; traceId?: string },
+  ) {
+    const accountName = getAccountName(account)
+    super({
+      message: `Module installation is not supported for ${accountName} accounts`,
+      ...params,
+    })
+  }
+}
+
+class EoaSigningNotSupportedError extends AccountError {
+  constructor(
+    method: string,
+    params?: { context?: any; errorType?: string; traceId?: string },
+  ) {
+    super({
+      message: `EOA account provider does not support ${method} signing`,
+      ...params,
+    })
+  }
+}
+
+class EoaSigningMethodNotConfiguredError extends AccountError {
+  constructor(
+    method: string,
+    params?: { context?: any; errorType?: string; traceId?: string },
+  ) {
+    super({
+      message: `EOA account provider must have ${method} method configured`,
+      ...params,
+    })
+  }
+}
+
 function isAccountError(error: Error): error is AccountError {
   return error instanceof AccountError
 }
@@ -159,6 +196,8 @@ function getAccountName(account: AccountType) {
       return 'Nexus'
     case 'startale':
       return 'Startale'
+    case 'eoa':
+      return 'EOA'
   }
 }
 
@@ -173,4 +212,7 @@ export {
   Eip7702NotSupportedForAccountError,
   AccountConfigurationNotSupportedError,
   WalletClientNoConnectedAccountError,
+  ModuleInstallationNotSupportedError,
+  EoaSigningNotSupportedError,
+  EoaSigningMethodNotConfiguredError,
 }

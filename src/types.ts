@@ -10,7 +10,6 @@ type AccountType =
   | 'startale'
   | 'custom'
   | 'eoa'
-  | 'eip7702-eoa'
 
 interface SafeAccount {
   type: 'safe'
@@ -36,17 +35,12 @@ interface EoaAccount {
   type: 'eoa'
 }
 
-interface Eip7702EoaAccount {
-  type: 'eip7702-eoa'
-}
-
 type AccountProviderConfig =
   | SafeAccount
   | NexusAccount
   | KernelAccount
   | StartaleAccount
   | EoaAccount
-  | Eip7702EoaAccount
 
 interface OwnableValidatorConfig {
   type: 'ecdsa'

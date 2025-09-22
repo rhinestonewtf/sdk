@@ -51,8 +51,7 @@ async function getValidators(
       })
       return (validators as [Address[], Address])[0]
     }
-    case 'eoa':
-    case 'eip7702-eoa': {
+    case 'eoa': {
       return []
     }
     case 'kernel': {

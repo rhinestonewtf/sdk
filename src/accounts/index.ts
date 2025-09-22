@@ -40,9 +40,12 @@ import {
   AccountError,
   Eip7702AccountMustHaveEoaError,
   Eip7702NotSupportedForAccountError,
+  EoaSigningMethodNotConfiguredError,
+  EoaSigningNotSupportedError,
   ExistingEip7702AccountsNotSupportedError,
   FactoryArgsNotAvailableError,
   isAccountError,
+  ModuleInstallationNotSupportedError,
   SigningNotSupportedForAccountError,
   SmartSessionsNotEnabledError,
   WalletClientNoConnectedAccountError,
@@ -111,8 +114,7 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
     case 'startale': {
       return getStartaleDeployArgs(config)
     }
-    case 'eoa':
-    case 'eip7702-eoa': {
+    case 'eoa': {
       throw new Error('EOA accounts do not have deploy args')
     }
   }
@@ -120,6 +122,8 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
 
 function getInitCode(config: RhinestoneAccountConfig) {
   if (is7702(config)) {
+    return undefined
+  } else if (config.account?.type === 'eoa') {
     return undefined
   } else if (config.initData) {
     return config.initData
@@ -146,9 +150,6 @@ async function signEip7702InitData(
   switch (account.type) {
     case 'nexus': {
       return await signNexusEip7702InitData(config, eoa)
-    }
-    case 'eip7702-eoa': {
-      throw new Eip7702NotSupportedForAccountError(account.type)
     }
     case 'eoa': {
       throw new Eip7702NotSupportedForAccountError(account.type)
@@ -205,9 +206,8 @@ function getModuleInstallationCalls(
       case 'startale': {
         return [getStartaleInstallData(module)]
       }
-      case 'eoa':
-      case 'eip7702-eoa': {
-        throw new Error('EOA accounts do not support module installation')
+      case 'eoa': {
+        throw new ModuleInstallationNotSupportedError(account.type)
       }
     }
   }
@@ -283,14 +283,6 @@ function getAddress(config: RhinestoneAccountConfig): Address {
       }
       return config.eoa.address
     }
-    case 'eip7702-eoa': {
-      if (!config.eoa) {
-        throw new AccountError({
-          message: 'EIP7702 EOA account must have an EOA configured',
-        })
-      }
-      return config.eoa.address
-    }
   }
 }
 
@@ -313,9 +305,10 @@ async function getPackedSignature(
   transformSignature: (signature: Hex) => Hex = (signature) => signature,
 ): Promise<Hex> {
   if (config.account?.type === 'eoa') {
-    throw new Error(
-      'signMessageWithValidator is not supported for EOA accounts',
-    )
+    if (!config.eoa?.signMessage) {
+      throw new EoaSigningMethodNotConfiguredError('signMessage')
+    }
+    return config.eoa.signMessage({ message: hash })
   }
 
   signers = signers ?? convertOwnerSetToSignerSet(config.owners!)
@@ -365,11 +358,11 @@ async function getTypedDataPackedSignature<
   parameters: HashTypedDataParameters<typedData, primaryType>,
   transformSignature: (signature: Hex) => Hex = (signature) => signature,
 ): Promise<Hex> {
-  // EOA accounts don't use this signing method
   if (config.account?.type === 'eoa') {
-    throw new Error(
-      'signTypedDataWithValidator is not supported for EOA accounts',
-    )
+    if (!config.eoa?.signTypedData) {
+      throw new EoaSigningMethodNotConfiguredError('signTypedData')
+    }
+    return config.eoa.signTypedData(parameters)
   }
 
   const address = getAddress(config)
@@ -417,7 +410,7 @@ async function getTypedDataPackedSignature<
 async function isDeployed(config: RhinestoneAccountConfig, chain: Chain) {
   const account = getAccountProvider(config)
 
-  if (account.type === 'eoa' || account.type === 'eip7702-eoa') {
+  if (account.type === 'eoa') {
     return true
   }
 
@@ -446,7 +439,7 @@ async function deploy(
 ): Promise<boolean> {
   const account = getAccountProvider(config)
 
-  if (account.type === 'eoa' || account.type === 'eip7702-eoa') {
+  if (account.type === 'eoa') {
     return false
   }
 
@@ -475,7 +468,7 @@ async function setup(
 ): Promise<boolean> {
   const account = getAccountProvider(config)
 
-  if (account.type === 'eoa' || account.type === 'eip7702-eoa') {
+  if (account.type === 'eoa') {
     return false
   }
 
@@ -811,7 +804,7 @@ async function getGuardianSmartAccount(
 
 function is7702(config: RhinestoneAccountConfig): boolean {
   const account = getAccountProvider(config)
-  return account.type === 'eip7702-eoa' || config.eoa !== undefined
+  return account.type !== 'eoa' && config.eoa !== undefined
 }
 
 function getAccountProvider(
@@ -834,6 +827,7 @@ export {
   getInitCode,
   signEip7702InitData,
   getEip7702InitCall,
+  is7702,
   isDeployed,
   deploy,
   setup,
@@ -849,8 +843,11 @@ export {
   AccountConfigurationNotSupportedError,
   Eip7702AccountMustHaveEoaError,
   Eip7702NotSupportedForAccountError,
+  EoaSigningMethodNotConfiguredError,
+  EoaSigningNotSupportedError,
   ExistingEip7702AccountsNotSupportedError,
   FactoryArgsNotAvailableError,
+  ModuleInstallationNotSupportedError,
   SigningNotSupportedForAccountError,
   SmartSessionsNotEnabledError,
   WalletClientNoConnectedAccountError,
