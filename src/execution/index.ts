@@ -51,9 +51,11 @@ const POLLING_INTERVAL = 500
 interface TransactionStatus {
   fill: {
     hash: Hex | undefined
+    chainId: number
   }
   claims: {
     hash: Hex | undefined
+    chainId: number
   }[]
 }
 
@@ -299,9 +301,11 @@ async function waitForExecution(
       return {
         fill: {
           hash: intentStatus.fillTransactionHash,
+          chainId: result.targetChain,
         },
         claims: intentStatus.claims.map((claim) => ({
           hash: claim.claimTransactionHash,
+          chainId: claim.chainId,
         })),
       }
     }
