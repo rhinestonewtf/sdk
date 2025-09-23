@@ -16,11 +16,8 @@ import type { CalldataInput, LazyCallInput } from '../types'
  * @param authenticatorId Authenticator ID for the passkey
  * @returns Calls to enable passkeys authentication
  */
-function enable({
-  pubKey,
-  authenticatorId,
-}: WebauthnCredential): LazyCallInput {
-  const module = getWebAuthnValidator(1, [{ pubKey, authenticatorId }])
+function enable(credential: WebauthnCredential): LazyCallInput {
+  const module = getWebAuthnValidator(1, [credential])
   return {
     async resolve({ config }) {
       return getModuleInstallationCalls(config, module)

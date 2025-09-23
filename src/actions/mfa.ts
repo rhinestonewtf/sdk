@@ -21,13 +21,10 @@ import type {
  * @param threshold Threshold for the validators
  * @returns Calls to enable multi-factor authentication
  */
-function enable({
-  validators,
+function enable(
+  validators: (OwnableValidatorConfig | WebauthnValidatorConfig | null)[],
   threshold = 1,
-}: {
-  validators: (OwnableValidatorConfig | WebauthnValidatorConfig | null)[]
-  threshold?: number
-}): LazyCallInput {
+): LazyCallInput {
   const module = getMultiFactorValidator(threshold, validators)
   return {
     async resolve({ config }) {

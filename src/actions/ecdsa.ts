@@ -15,13 +15,7 @@ import type { CalldataInput, LazyCallInput } from '../types'
  * @param threshold Threshold for the owners
  * @returns Calls to enable ECDSA authentication
  */
-function enable({
-  owners,
-  threshold = 1,
-}: {
-  owners: Address[]
-  threshold?: number
-}): LazyCallInput {
+function enable(owners: Address[], threshold = 1): LazyCallInput {
   const module = getOwnableValidator(threshold, owners)
   return {
     async resolve({ config }) {

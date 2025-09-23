@@ -20,7 +20,7 @@ interface ModuleInput {
  * @param module Module to install
  * @returns Calls to install the module
  */
-function installModule({ module }: { module: ModuleInput }): LazyCallInput {
+function installModule(module: ModuleInput): LazyCallInput {
   const moduleData: Module = getModule(module)
   return {
     async resolve({ config }) {
@@ -34,7 +34,7 @@ function installModule({ module }: { module: ModuleInput }): LazyCallInput {
  * @param module Module to uninstall
  * @returns Calls to uninstall the module
  */
-function uninstallModule({ module }: { module: ModuleInput }): LazyCallInput {
+function uninstallModule(module: ModuleInput): LazyCallInput {
   const moduleData: Module = getModule(module)
   return {
     async resolve({ config }) {
