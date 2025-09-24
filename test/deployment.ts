@@ -17,7 +17,7 @@ import { base } from 'viem/chains'
 import { describe, expect, it } from 'vitest'
 
 import './utils/polyfill'
-import { createRhinestoneAccount } from '../src'
+import { RhinestoneSDK } from '../src'
 import { biconomyImplementationAbi } from './abi/biconomy'
 import { ownbleValidatorAbi } from './abi/validators'
 import { getAnvil } from './utils/anvil'
@@ -40,9 +40,8 @@ export function runDeploymentTests() {
         async () => {
           const ownerPrivateKey = generatePrivateKey()
           const ownerAccount = privateKeyToAccount(ownerPrivateKey)
-          const rhinestoneApiKey = 'MOCK_KEY'
-
-          const rhinestoneAccount = await createRhinestoneAccount({
+          const rhinestone = new RhinestoneSDK()
+          const rhinestoneAccount = await rhinestone.createAccount({
             account: {
               type: 'nexus',
             },
@@ -50,7 +49,6 @@ export function runDeploymentTests() {
               type: 'ecdsa',
               accounts: [ownerAccount],
             },
-            rhinestoneApiKey,
           })
 
           // Check the account is not yet deployed
@@ -154,9 +152,9 @@ export function runDeploymentTestCases() {
         async () => {
           const ownerPrivateKey = generatePrivateKey()
           const ownerAccount = privateKeyToAccount(ownerPrivateKey)
-          const rhinestoneApiKey = 'MOCK_KEY'
 
-          const rhinestoneAccount = await createRhinestoneAccount({
+          const rhinestone = new RhinestoneSDK()
+          const rhinestoneAccount = await rhinestone.createAccount({
             account: {
               type: 'nexus',
             },
@@ -164,7 +162,6 @@ export function runDeploymentTestCases() {
               type: 'ecdsa',
               accounts: [ownerAccount],
             },
-            rhinestoneApiKey,
           })
 
           // Check the account is not yet deployed

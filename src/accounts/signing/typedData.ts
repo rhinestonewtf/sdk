@@ -40,11 +40,12 @@ async function sign<
         address,
         parameters,
         signingFunctions,
+        false,
         sign,
       )
     }
     case 'session': {
-      return signWithSession(signers, chain, address, parameters, sign)
+      return signWithSession(signers, chain, address, parameters, false, sign)
     }
     case 'guardians': {
       return signWithGuardians(signers, parameters, signingFunctions)

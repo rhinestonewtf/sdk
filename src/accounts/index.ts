@@ -16,6 +16,9 @@ import {
 import {
   sendTransaction,
   sendTransactionInternal,
+  sendUserOperationInternal,
+  type TransactionResult,
+  type UserOperationResult,
   waitForExecution,
 } from '../execution'
 import { enableSmartSession } from '../execution/smart-session'
@@ -31,7 +34,7 @@ import type {
   AccountProviderConfig,
   Call,
   OwnerSet,
-  RhinestoneAccountConfig,
+  RhinestoneConfig,
   Session,
   SignerSet,
 } from '../types'
@@ -100,7 +103,7 @@ import {
   type ValidatorConfig,
 } from './utils'
 
-function getDeployArgs(config: RhinestoneAccountConfig) {
+function getDeployArgs(config: RhinestoneConfig) {
   const account = getAccountProvider(config)
   switch (account.type) {
     case 'safe': {
@@ -121,7 +124,7 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
   }
 }
 
-function getInitCode(config: RhinestoneAccountConfig) {
+function getInitCode(config: RhinestoneConfig) {
   if (is7702(config)) {
     return undefined
   } else if (config.account?.type === 'eoa') {
@@ -140,9 +143,7 @@ function getInitCode(config: RhinestoneAccountConfig) {
   }
 }
 
-async function signEip7702InitData(
-  config: RhinestoneAccountConfig,
-): Promise<Hex> {
+async function signEip7702InitData(config: RhinestoneConfig) {
   const eoa = config.eoa
   if (!eoa) {
     throw new Eip7702AccountMustHaveEoaError()
@@ -166,10 +167,7 @@ async function signEip7702InitData(
   }
 }
 
-async function getEip7702InitCall(
-  config: RhinestoneAccountConfig,
-  signature: Hex,
-): Promise<{ initData: Hex; contract: Address }> {
+async function getEip7702InitCall(config: RhinestoneConfig, signature: Hex) {
   const account = getAccountProvider(config)
   switch (account.type) {
     case 'nexus': {
@@ -187,7 +185,7 @@ async function getEip7702InitCall(
 }
 
 function getModuleInstallationCalls(
-  config: RhinestoneAccountConfig,
+  config: RhinestoneConfig,
   module: Module,
 ): Call[] {
   const address = getAddress(config)
@@ -222,7 +220,7 @@ function getModuleInstallationCalls(
 }
 
 function getModuleUninstallationCalls(
-  config: RhinestoneAccountConfig,
+  config: RhinestoneConfig,
   module: Module,
 ): Call[] {
   const address = getAddress(config)
@@ -255,7 +253,7 @@ function getModuleUninstallationCalls(
   return [{ to: address, data, value: 0n }]
 }
 
-function getAddress(config: RhinestoneAccountConfig): Address {
+function getAddress(config: RhinestoneConfig) {
   if (is7702(config)) {
     if (!config.eoa) {
       throw new Eip7702AccountMustHaveEoaError()
@@ -287,7 +285,7 @@ function getAddress(config: RhinestoneAccountConfig): Address {
   }
 }
 
-function checkAddress(config: RhinestoneAccountConfig) {
+function checkAddress(config: RhinestoneConfig) {
   if (!config.initData) {
     return true
   }
@@ -298,7 +296,7 @@ function checkAddress(config: RhinestoneAccountConfig) {
 
 // Signs and packs a signature to be EIP-1271 compatible
 async function getPackedSignature(
-  config: RhinestoneAccountConfig,
+  config: RhinestoneConfig,
   signers: SignerSet | undefined,
   chain: Chain,
   validator: ValidatorConfig,
@@ -313,7 +311,8 @@ async function getPackedSignature(
   }
 
   signers = signers ?? convertOwnerSetToSignerSet(config.owners!)
-  const signFn = (hash: Hex) => signMessage(signers, chain, address, hash)
+  const signFn = (hash: Hex) =>
+    signMessage(signers, chain, address, hash, false)
   const account = getAccountProvider(config)
   const address = getAddress(config)
   switch (account.type) {
@@ -352,7 +351,7 @@ async function getTypedDataPackedSignature<
   typedData extends TypedData | Record<string, unknown> = TypedData,
   primaryType extends keyof typedData | 'EIP712Domain' = keyof typedData,
 >(
-  config: RhinestoneAccountConfig,
+  config: RhinestoneConfig,
   signers: SignerSet | undefined,
   chain: Chain,
   validator: ValidatorConfig,
@@ -392,7 +391,7 @@ async function getTypedDataPackedSignature<
     case 'kernel': {
       const address = getAddress(config)
       const signMessageFn = (hash: Hex) =>
-        signMessage(signers, chain, address, hash)
+        signMessage(signers, chain, address, hash, false)
       const signature = await signMessageFn(
         wrapKernelMessageHash(hashTypedData(parameters), address),
       )
@@ -408,7 +407,7 @@ async function getTypedDataPackedSignature<
   }
 }
 
-async function isDeployed(config: RhinestoneAccountConfig, chain: Chain) {
+async function isDeployed(config: RhinestoneConfig, chain: Chain) {
   const account = getAccountProvider(config)
 
   if (account.type === 'eoa') {
@@ -434,7 +433,7 @@ async function isDeployed(config: RhinestoneAccountConfig, chain: Chain) {
 }
 
 async function deploy(
-  config: RhinestoneAccountConfig,
+  config: RhinestoneConfig,
   chain: Chain,
   session?: Session,
 ): Promise<boolean> {
@@ -463,10 +462,7 @@ async function deploy(
 // Installs the missing modules
 // Checks if the provided modules are already installed
 // Useful for existing (already deployed) accounts
-async function setup(
-  config: RhinestoneAccountConfig,
-  chain: Chain,
-): Promise<boolean> {
+async function setup(config: RhinestoneConfig, chain: Chain): Promise<boolean> {
   const account = getAccountProvider(config)
 
   if (account.type === 'eoa') {
@@ -521,14 +517,17 @@ async function setup(
   const hasIntentExecutor = modulesToInstall.every(
     (module) => module.address !== intentExecutor.address,
   )
-  const result = await sendTransactionInternal(config, [chain], chain, calls, {
-    asUserOp: !hasIntentExecutor,
-  })
+  let result: TransactionResult | UserOperationResult
+  if (hasIntentExecutor) {
+    result = await sendTransactionInternal(config, [chain], chain, calls, {})
+  } else {
+    result = await sendUserOperationInternal(config, chain, calls)
+  }
   await waitForExecution(config, result, true)
   return true
 }
 
-async function deployWithIntent(chain: Chain, config: RhinestoneAccountConfig) {
+async function deployWithIntent(chain: Chain, config: RhinestoneConfig) {
   const publicClient = createPublicClient({
     chain,
     transport: createTransport(chain, config.provider),
@@ -551,10 +550,7 @@ async function deployWithIntent(chain: Chain, config: RhinestoneAccountConfig) {
   await waitForExecution(config, result, true)
 }
 
-async function deployWithBundler(
-  chain: Chain,
-  config: RhinestoneAccountConfig,
-) {
+async function deployWithBundler(chain: Chain, config: RhinestoneConfig) {
   const publicClient = createPublicClient({
     chain,
     transport: createTransport(chain, config.provider),
@@ -580,7 +576,7 @@ async function deployWithBundler(
 }
 
 async function toErc6492Signature(
-  config: RhinestoneAccountConfig,
+  config: RhinestoneConfig,
   signature: Hex,
   chain: Chain,
 ): Promise<Hex> {
@@ -610,7 +606,7 @@ async function toErc6492Signature(
 }
 
 async function getSmartAccount(
-  config: RhinestoneAccountConfig,
+  config: RhinestoneConfig,
   client: PublicClient,
   chain: Chain,
 ) {
@@ -627,7 +623,7 @@ async function getSmartAccount(
   const address = getAddress(config)
   const ownerValidator = getOwnerValidator(config)
   const signers: SignerSet = convertOwnerSetToSignerSet(config.owners)
-  const signFn = (hash: Hex) => signMessage(signers, chain, address, hash)
+  const signFn = (hash: Hex) => signMessage(signers, chain, address, hash, true)
   switch (account.type) {
     case 'safe': {
       return getSafeSmartAccount(
@@ -673,7 +669,7 @@ async function getSmartAccount(
 }
 
 async function getSmartSessionSmartAccount(
-  config: RhinestoneAccountConfig,
+  config: RhinestoneConfig,
   client: PublicClient,
   chain: Chain,
   session: Session,
@@ -689,7 +685,7 @@ async function getSmartSessionSmartAccount(
     session,
     enableData: enableData || undefined,
   }
-  const signFn = (hash: Hex) => signMessage(signers, chain, address, hash)
+  const signFn = (hash: Hex) => signMessage(signers, chain, address, hash, true)
 
   const account = getAccountProvider(config)
   switch (account.type) {
@@ -741,7 +737,7 @@ async function getSmartSessionSmartAccount(
 }
 
 async function getGuardianSmartAccount(
-  config: RhinestoneAccountConfig,
+  config: RhinestoneConfig,
   client: PublicClient,
   chain: Chain,
   guardians: OwnerSet,
@@ -756,7 +752,7 @@ async function getGuardianSmartAccount(
     type: 'guardians',
     guardians: accounts,
   }
-  const signFn = (hash: Hex) => signMessage(signers, chain, address, hash)
+  const signFn = (hash: Hex) => signMessage(signers, chain, address, hash, true)
 
   const account = getAccountProvider(config)
   switch (account.type) {
@@ -803,14 +799,12 @@ async function getGuardianSmartAccount(
   }
 }
 
-function is7702(config: RhinestoneAccountConfig): boolean {
+function is7702(config: RhinestoneConfig): boolean {
   const account = getAccountProvider(config)
   return account.type !== 'eoa' && config.eoa !== undefined
 }
 
-function getAccountProvider(
-  config: RhinestoneAccountConfig,
-): AccountProviderConfig {
+function getAccountProvider(config: RhinestoneConfig): AccountProviderConfig {
   if (config.account) {
     return config.account
   }

@@ -1,10 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import {
-  accountA,
-  accountB,
-  MOCK_API_KEY,
-  passkeyAccount,
-} from '../../test/consts'
+import { accountA, accountB, passkeyAccount } from '../../test/consts'
 import { getAddress } from '.'
 
 describe('Accounts', () => {
@@ -16,7 +11,6 @@ describe('Accounts', () => {
           accounts: [accountA, accountB],
           threshold: 1,
         },
-        rhinestoneApiKey: MOCK_API_KEY,
       })
       expect(address).toEqual('0x0681de31e060b384F0b08A3bAC99E9bDFf302474')
     })
@@ -26,7 +20,6 @@ describe('Accounts', () => {
           type: 'passkey',
           accounts: [passkeyAccount],
         },
-        rhinestoneApiKey: MOCK_API_KEY,
       })
       expect(address).toEqual('0x894b88C04B4DE6AbDdcE81E8bdc91927E37d6ceD')
     })

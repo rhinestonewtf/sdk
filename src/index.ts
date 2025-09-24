@@ -9,75 +9,29 @@ import type {
 } from 'viem'
 import type { UserOperationReceipt } from 'viem/account-abstraction'
 import {
-  AccountConfigurationNotSupportedError,
-  AccountError,
   checkAddress,
   deploy as deployInternal,
-  Eip7702AccountMustHaveEoaError,
-  Eip7702NotSupportedForAccountError,
-  ExistingEip7702AccountsNotSupportedError,
-  FactoryArgsNotAvailableError,
   getAddress as getAddressInternal,
-  isAccountError,
   isDeployed as isDeployedInternal,
   OwnersFieldRequiredError,
   SigningNotSupportedForAccountError,
   SmartSessionsNotEnabledError,
   setup as setupInternal,
   signEip7702InitData as signEip7702InitDataInternal,
-  WalletClientNoConnectedAccountError,
 } from './accounts'
 import { walletClientToAccount } from './accounts/walletClient'
+import { encodeSmartSessionSignature } from './actions/smart-session'
 import {
-  addOwner,
-  addPasskeyOwner,
-  changeMultiFactorThreshold,
-  changePasskeyThreshold,
-  changeThreshold,
-  disableEcdsa,
-  disableMultiFactor,
-  disablePasskeys,
-  enableEcdsa,
-  enableMultiFactor,
-  enablePasskeys,
-  encodeSmartSessionSignature,
-  installModule,
-  recover,
-  recoverEcdsaOwnership,
-  recoverPasskeyOwnership,
-  removeOwner,
-  removePasskeyOwner,
-  removeSubValidator,
-  setSubValidator,
-  setUpRecovery,
-  uninstallModule,
-} from './actions'
-import {
-  ExecutionError,
   getMaxSpendableAmount as getMaxSpendableAmountInternal,
   getPortfolio as getPortfolioInternal,
-  IntentFailedError,
-  isExecutionError,
-  OrderPathRequiredForIntentsError,
-  SessionChainRequiredError,
-  SimulationNotSupportedForUserOpFlowError,
-  SourceChainsNotAvailableForUserOpFlowError,
   sendTransaction as sendTransactionInternal,
+  sendUserOperation as sendUserOperationInternal,
   type TransactionResult,
-  UserOperationRequiredForSmartSessionsError,
+  type TransactionStatus,
+  type UserOperationResult,
   waitForExecution as waitForExecutionInternal,
 } from './execution'
-import {
-  depositErc20,
-  depositEther,
-  disableErc20Withdrawal,
-  disableEtherWithdrawal,
-  enableErc20Withdrawal,
-  enableEtherWithdrawal,
-  getCompactDigest,
-  withdrawErc20,
-  withdrawEther,
-} from './execution/compact'
+import { getCompactDigest } from './execution/compact'
 import {
   type BatchPermit2Result,
   checkERC20AllowanceDirect,
@@ -93,46 +47,37 @@ import {
   type SessionDetails,
 } from './execution/smart-session'
 import {
-  type IntentData,
+  type IntentRoute,
   type PreparedTransactionData,
+  type PreparedUserOperationData,
   prepareTransaction as prepareTransactionInternal,
+  prepareUserOperation as prepareUserOperationInternal,
   type SignedTransactionData,
+  type SignedUserOperationData,
   signAuthorizations as signAuthorizationsInternal,
   signMessage as signMessageInternal,
   signTransaction as signTransactionInternal,
   signTypedData as signTypedDataInternal,
+  signUserOperation as signUserOperationInternal,
   simulateTransaction as simulateTransactionInternal,
   submitTransaction as submitTransactionInternal,
+  submitUserOperation as submitUserOperationInternal,
 } from './execution/utils'
 import {
   getOwners as getOwnersInternal,
   getValidators as getValidatorsInternal,
 } from './modules'
 import {
-  AuthenticationRequiredError,
   getSupportedTokens,
   getTokenAddress,
-  InsufficientBalanceError,
   type IntentCost,
   type IntentInput,
-  IntentNotFoundError,
   type IntentOp,
   type IntentOpStatus,
   type IntentResult,
-  type IntentRoute,
-  InvalidApiKeyError,
-  InvalidIntentSignatureError,
-  isOrchestratorError,
-  NoPathFoundError,
-  OnlyOneTargetTokenAmountCanBeUnsetError,
-  OrchestratorError,
   type Portfolio,
   type SettlementSystem,
   type SignedIntentOp,
-  TokenNotSupportedError,
-  UnsupportedChainError,
-  UnsupportedChainIdError,
-  UnsupportedTokenError,
 } from './orchestrator'
 import type {
   AccountProviderConfig,
@@ -148,12 +93,14 @@ import type {
   ProviderConfig,
   Recovery,
   RhinestoneAccountConfig,
+  RhinestoneConfig,
   Session,
   SignerSet,
   TokenRequest,
   TokenSymbol,
   Transaction,
   UniversalActionPolicyParamCondition,
+  UserOperationTransaction,
   WebauthnValidatorConfig,
 } from './types'
 
@@ -194,10 +141,26 @@ interface RhinestoneAccount {
     authorizations?: SignedAuthorizationList,
   ) => Promise<IntentResult>
   sendTransaction: (transaction: Transaction) => Promise<TransactionResult>
-  waitForExecution: (
+  prepareUserOperation: (
+    transaction: UserOperationTransaction,
+  ) => Promise<PreparedUserOperationData>
+  signUserOperation: (
+    preparedUserOperation: PreparedUserOperationData,
+  ) => Promise<SignedUserOperationData>
+  submitUserOperation: (
+    signedUserOperation: SignedUserOperationData,
+  ) => Promise<UserOperationResult>
+  sendUserOperation: (
+    transaction: UserOperationTransaction,
+  ) => Promise<UserOperationResult>
+  waitForExecution(
     result: TransactionResult,
     acceptsPreconfirmations?: boolean,
-  ) => Promise<IntentOpStatus | UserOperationReceipt>
+  ): Promise<TransactionStatus>
+  waitForExecution(
+    result: UserOperationResult,
+    acceptsPreconfirmations?: boolean,
+  ): Promise<UserOperationReceipt>
   getAddress: () => Address
   getPortfolio: (onTestnets?: boolean) => Promise<Portfolio>
   getMaxSpendableAmount: (
@@ -226,7 +189,7 @@ interface RhinestoneAccount {
  * @returns account
  */
 async function createRhinestoneAccount(
-  config: RhinestoneAccountConfig,
+  config: RhinestoneConfig,
 ): Promise<RhinestoneAccount> {
   // Sanity check for existing (externally created) accounts
   // Ensures we decode the initdata correctly
@@ -343,7 +306,7 @@ async function createRhinestoneAccount(
    * Submit a transaction
    * @param signedTransaction Signed transaction data
    * @param authorizations EIP-7702 authorizations to submit (optional)
-   * @returns transaction result object (an intent ID or a UserOp hash)
+   * @returns transaction result object (a UserOp hash)
    * @see {@link signTransaction} to sign the transaction data
    * @see {@link signAuthorizations} to sign the required EIP-7702 authorizations
    */
@@ -356,6 +319,34 @@ async function createRhinestoneAccount(
       signedTransaction,
       authorizations ?? [],
     )
+  }
+
+  /**
+   * Prepare a user operation data
+   * @param transaction User operation to prepare
+   * @returns prepared user operation data
+   */
+  function prepareUserOperation(transaction: UserOperationTransaction) {
+    return prepareUserOperationInternal(config, transaction)
+  }
+
+  /**
+   * Sign a user operation
+   * @param preparedUserOperation Prepared user operation data
+   * @returns signed user operation data
+   * @see {@link prepareUserOperation} to prepare the user operation data for signing
+   */
+  function signUserOperation(preparedUserOperation: PreparedUserOperationData) {
+    return signUserOperationInternal(config, preparedUserOperation)
+  }
+  /**
+   * Submit a transaction
+   * @param signedTransaction Signed transaction data
+   * @returns transaction result object (a UserOp hash)
+   * @see {@link signUserOperation} to sign the user operation data
+   */
+  function submitUserOperation(signedUserOperation: SignedUserOperationData) {
+    return submitUserOperationInternal(config, signedUserOperation)
   }
 
   /**
@@ -379,10 +370,19 @@ async function createRhinestoneAccount(
   /**
    * Sign and send a transaction
    * @param transaction Transaction to send
-   * @returns transaction result object (an intent ID or a UserOp hash)
+   * @returns transaction result object (an intent ID)
    */
   function sendTransaction(transaction: Transaction) {
     return sendTransactionInternal(config, transaction)
+  }
+
+  /**
+   * Sign and send a user operation
+   * @param transaction User operation to send
+   * @returns user operation result object (a UserOp hash)
+   */
+  function sendUserOperation(transaction: UserOperationTransaction) {
+    return sendUserOperationInternal(config, transaction)
   }
 
   /**
@@ -393,6 +393,14 @@ async function createRhinestoneAccount(
    */
   function waitForExecution(
     result: TransactionResult,
+    acceptsPreconfirmations?: boolean,
+  ): Promise<TransactionStatus>
+  function waitForExecution(
+    result: UserOperationResult,
+    acceptsPreconfirmations?: boolean,
+  ): Promise<UserOperationReceipt>
+  function waitForExecution(
+    result: TransactionResult | UserOperationResult,
     acceptsPreconfirmations = true,
   ) {
     return waitForExecutionInternal(config, result, acceptsPreconfirmations)
@@ -492,7 +500,11 @@ async function createRhinestoneAccount(
     signTypedData,
     submitTransaction,
     simulateTransaction,
+    prepareUserOperation,
+    signUserOperation,
+    submitUserOperation,
     sendTransaction,
+    sendUserOperation,
     waitForExecution,
     getAddress,
     getPortfolio,
@@ -504,75 +516,44 @@ async function createRhinestoneAccount(
   }
 }
 
+class RhinestoneSDK {
+  private apiKey?: string
+  private endpointUrl?: string
+  private provider?: ProviderConfig
+  private bundler?: BundlerConfig
+  private paymaster?: PaymasterConfig
+
+  constructor(options?: {
+    apiKey?: string
+    endpointUrl?: string
+    provider?: ProviderConfig
+    bundler?: BundlerConfig
+    paymaster?: PaymasterConfig
+  }) {
+    this.apiKey = options?.apiKey
+    this.endpointUrl = options?.endpointUrl
+    this.provider = options?.provider
+    this.bundler = options?.bundler
+    this.paymaster = options?.paymaster
+  }
+
+  createAccount(config: RhinestoneAccountConfig) {
+    const rhinestoneConfig: RhinestoneConfig = {
+      ...config,
+      apiKey: this.apiKey,
+      endpointUrl: this.endpointUrl,
+      provider: this.provider,
+      bundler: this.bundler,
+      paymaster: this.paymaster,
+    }
+    return createRhinestoneAccount(rhinestoneConfig)
+  }
+}
+
 export {
-  createRhinestoneAccount,
-  // Helpers
+  RhinestoneSDK,
   walletClientToAccount,
-  // Actions
-  addOwner,
-  addPasskeyOwner,
-  changeMultiFactorThreshold,
-  changeThreshold,
-  changePasskeyThreshold,
-  disableEcdsa,
-  disableMultiFactor,
-  disablePasskeys,
-  enableEcdsa,
-  enableMultiFactor,
-  enablePasskeys,
   encodeSmartSessionSignature,
-  installModule,
-  recover,
-  recoverEcdsaOwnership,
-  recoverPasskeyOwnership,
-  removeOwner,
-  removePasskeyOwner,
-  removeSubValidator,
-  setSubValidator,
-  setUpRecovery,
-  uninstallModule,
-  depositErc20,
-  depositEther,
-  disableErc20Withdrawal,
-  disableEtherWithdrawal,
-  enableErc20Withdrawal,
-  enableEtherWithdrawal,
-  withdrawErc20,
-  withdrawEther,
-  // Account errors
-  isAccountError,
-  AccountError,
-  AccountConfigurationNotSupportedError,
-  Eip7702AccountMustHaveEoaError,
-  ExistingEip7702AccountsNotSupportedError,
-  FactoryArgsNotAvailableError,
-  SmartSessionsNotEnabledError,
-  SigningNotSupportedForAccountError,
-  Eip7702NotSupportedForAccountError,
-  WalletClientNoConnectedAccountError,
-  // Execution errors
-  isExecutionError,
-  ExecutionError,
-  IntentFailedError,
-  OrderPathRequiredForIntentsError,
-  SessionChainRequiredError,
-  SimulationNotSupportedForUserOpFlowError,
-  SourceChainsNotAvailableForUserOpFlowError,
-  UserOperationRequiredForSmartSessionsError,
-  // Orchestrator errors
-  isOrchestratorError,
-  AuthenticationRequiredError,
-  InsufficientBalanceError,
-  InvalidApiKeyError,
-  InvalidIntentSignatureError,
-  NoPathFoundError,
-  OnlyOneTargetTokenAmountCanBeUnsetError,
-  OrchestratorError,
-  IntentNotFoundError,
-  TokenNotSupportedError,
-  UnsupportedChainError,
-  UnsupportedChainIdError,
-  UnsupportedTokenError,
   // Registry functions
   getSupportedTokens,
   getTokenAddress,
@@ -607,15 +588,16 @@ export type {
   Recovery,
   Policy,
   UniversalActionPolicyParamCondition,
-  IntentData,
   PreparedTransactionData,
   SignedTransactionData,
   TransactionResult,
+  PreparedUserOperationData,
+  SignedUserOperationData,
+  UserOperationResult,
   IntentCost,
   IntentInput,
   IntentOp,
   IntentOpStatus,
-  IntentResult,
   IntentRoute,
   SettlementSystem,
   SignedIntentOp,

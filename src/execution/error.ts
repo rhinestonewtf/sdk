@@ -34,27 +34,15 @@ class ExecutionError extends Error {
   }
 }
 
-class SourceChainsNotAvailableForUserOpFlowError extends ExecutionError {
+class SignerNotSupportedError extends ExecutionError {
   constructor(params?: {
     context?: any
     errorType?: string
     traceId?: string
   }) {
     super({
-      message: "Can't specify the source chains when using user operations",
-      ...params,
-    })
-  }
-}
-
-class UserOperationRequiredForSmartSessionsError extends ExecutionError {
-  constructor(params?: {
-    context?: any
-    errorType?: string
-    traceId?: string
-  }) {
-    super({
-      message: 'User operation is required when using smart sessions',
+      message:
+        'Sending a transaction is not supported for this type of signers. Use user operations instead.',
       ...params,
     })
   }
@@ -87,19 +75,6 @@ class SessionChainRequiredError extends ExecutionError {
   }
 }
 
-class SimulationNotSupportedForUserOpFlowError extends ExecutionError {
-  constructor(params?: {
-    context?: any
-    errorType?: string
-    traceId?: string
-  }) {
-    super({
-      message: 'Simulation not supported for user operation flow',
-      ...params,
-    })
-  }
-}
-
 class IntentFailedError extends ExecutionError {
   constructor(params?: {
     context?: any
@@ -120,10 +95,8 @@ function isExecutionError(error: Error): error is ExecutionError {
 export {
   isExecutionError,
   ExecutionError,
-  SourceChainsNotAvailableForUserOpFlowError,
-  UserOperationRequiredForSmartSessionsError,
   OrderPathRequiredForIntentsError,
   SessionChainRequiredError,
   IntentFailedError,
-  SimulationNotSupportedForUserOpFlowError,
+  SignerNotSupportedError,
 }
