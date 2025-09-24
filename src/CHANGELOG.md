@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.0-alpha.35
+
+### Patch Changes
+
+- 859a46d: Provide CJS exports for subpackages
+
 ## 1.0.0-alpha.34
 
 ### Patch Changes
