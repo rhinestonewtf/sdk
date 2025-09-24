@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.0-alpha.34
+
+### Patch Changes
+
+- e21d83c: Update dependencies
+
 ## 1.0.0-alpha.33
 
 ### Patch Changes
