@@ -96,14 +96,4 @@ function getCompactTypedData(intentOp: IntentOp) {
   return typedData
 }
 
-/**
- * Get the compact digest for signing
- * @param intentOp The intent operation
- * @returns The digest hash
- */
-function getCompactDigest(intentOp: IntentOp): Hex {
-  const typedData = getCompactTypedData(intentOp)
-  return hashTypedData(typedData)
-}
-
-export { COMPACT_ADDRESS, getCompactTypedData, getCompactDigest }
+export { COMPACT_ADDRESS, getCompactTypedData }

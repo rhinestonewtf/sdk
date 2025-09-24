@@ -31,7 +31,6 @@ import {
   type UserOperationResult,
   waitForExecution as waitForExecutionInternal,
 } from './execution'
-import { getCompactDigest } from './execution/compact'
 import {
   type BatchPermit2Result,
   checkERC20AllowanceDirect,
@@ -563,8 +562,6 @@ export {
   // Multi-chain permit2 signing
   signPermit2Batch,
   signPermit2Sequential,
-  // Compact helpers
-  getCompactDigest,
 }
 export type {
   RhinestoneAccount,
