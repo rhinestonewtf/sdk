@@ -83,7 +83,7 @@ import type {
   TokenSymbol,
   Transaction,
 } from '../types'
-import { getCompactDigest, getCompactTypedData } from './compact'
+import { getCompactTypedData } from './compact'
 import {
   OrderPathRequiredForIntentsError,
   SimulationNotSupportedForUserOpFlowError,
