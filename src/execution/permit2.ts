@@ -7,7 +7,7 @@ import {
 } from 'viem'
 import { createTransport } from '../accounts/utils'
 import type { IntentOp } from '../orchestrator/types'
-import type { RhinestoneAccountConfig } from '../types'
+import type { RhinestoneConfig } from '../types'
 import type {
   BatchPermit2Result,
   MultiChainPermit2Config,
@@ -148,7 +148,7 @@ async function checkERC20AllowanceDirect(
 async function checkERC20Allowance(
   tokenAddress: Address,
   chain: Chain,
-  config: RhinestoneAccountConfig,
+  config: RhinestoneConfig,
 ): Promise<bigint> {
   try {
     const publicClient = createPublicClient({

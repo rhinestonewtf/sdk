@@ -540,9 +540,7 @@ async function prepareTransactionAsIntent(
     eip7702InitSignature,
   )
 
-  const getAccountType = (
-    config: RhinestoneAccountConfig,
-  ): 'EOA' | 'ERC7579' => {
+  const getAccountType = (config: RhinestoneConfig): 'EOA' | 'ERC7579' => {
     if (config.account?.type === 'eoa') {
       return 'EOA'
     } else {

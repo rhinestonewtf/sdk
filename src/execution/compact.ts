@@ -1,4 +1,4 @@
-import { hashTypedData, Hex, keccak256, slice, toHex } from 'viem'
+import { keccak256, slice, toHex } from 'viem'
 import type { IntentOp } from '../orchestrator/types'
 
 const COMPACT_ADDRESS = '0x73d2dc0c21fca4ec1601895d50df7f5624f07d3f'

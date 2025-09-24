@@ -14,8 +14,6 @@ import {
   getAddress as getAddressInternal,
   isDeployed as isDeployedInternal,
   OwnersFieldRequiredError,
-  SigningNotSupportedForAccountError,
-  SmartSessionsNotEnabledError,
   setup as setupInternal,
   signEip7702InitData as signEip7702InitDataInternal,
 } from './accounts'
