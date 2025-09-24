@@ -101,8 +101,8 @@ describe('Recovery Actions', () => {
       const result = await recover(
         accountAddress,
         newOwners,
-        rhinestoneAccount.config,
         base,
+        rhinestoneAccount.config,
       )
 
       expect(mockPublicClient.multicall).toHaveBeenCalledTimes(1)
@@ -144,8 +144,8 @@ describe('Recovery Actions', () => {
       const result = await recover(
         accountAddress,
         newOwners,
-        rhinestoneAccount.config,
         base,
+        rhinestoneAccount.config,
       )
 
       expect(mockPublicClient.multicall).toHaveBeenCalledTimes(1)
@@ -187,8 +187,8 @@ describe('Recovery Actions', () => {
       const result = await recover(
         accountAddress,
         newOwners,
-        rhinestoneAccount.config,
         base,
+        rhinestoneAccount.config,
       )
 
       expect(mockPublicClient.multicall).toHaveBeenCalledTimes(1)
