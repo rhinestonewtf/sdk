@@ -1,5 +1,14 @@
 # @rhinestone/sdk
 
+## 1.0.0-alpha.33
+
+### Patch Changes
+
+- ae93ddc: - Introduce `RhinestoneSDK` an entry point
+  - Move action utilities into separate subpackages
+  - Make actions lazily executed
+  - Split the intent and userop flows
+
 ## 1.0.0-alpha.32
 
 ### Patch Changes
