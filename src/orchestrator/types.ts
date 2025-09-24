@@ -167,6 +167,8 @@ interface IntentOpElementMandate {
     }
     encodedVal: Hex
   }
+  v: number
+  minGas: bigint
 }
 
 interface IntentOpElement {

@@ -58,6 +58,8 @@ function getTypedData(intentOp: IntentOp) {
       ],
       Mandate: [
         { name: 'target', type: 'Target' },
+        { name: 'v', type: 'uint8' },
+        { name: 'minGas', type: 'uint128' },
         { name: 'originOps', type: 'Op[]' },
         { name: 'destOps', type: 'Op[]' },
         { name: 'q', type: 'bytes32' },
@@ -86,6 +88,8 @@ function getTypedData(intentOp: IntentOp) {
           targetChain: BigInt(mandate.destinationChainId),
           fillExpiry: BigInt(mandate.fillDeadline),
         },
+        v: mandate.v,
+        minGas: mandate.minGas,
         originOps: mandate.preClaimOps.map((op) => ({
           to: op.to,
           value: BigInt(op.value),
