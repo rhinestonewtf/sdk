@@ -33,12 +33,7 @@ describe('Recovery Actions', () => {
 
     test('Single Guardian', async () => {
       const calls = await resolveCallInputs(
-        [
-          setUpRecovery({
-            guardians: [accountB],
-            threshold: 1,
-          }),
-        ],
+        [setUpRecovery([accountB], 1)],
         rhinestoneAccount.config,
         base,
         accountAddress,
@@ -54,12 +49,7 @@ describe('Recovery Actions', () => {
 
     test('Guardian Multi-Sig', async () => {
       const calls = await resolveCallInputs(
-        [
-          setUpRecovery({
-            guardians: [accountB, accountC, accountD],
-            threshold: 2,
-          }),
-        ],
+        [setUpRecovery([accountB, accountC, accountD], 2)],
         rhinestoneAccount.config,
         base,
         accountAddress,
@@ -108,8 +98,8 @@ describe('Recovery Actions', () => {
         threshold: 1,
       }
 
-      const result = await resolveCallInputs(
-        [recover(newOwners)],
+      const result = await recover(
+        newOwners,
         rhinestoneAccount.config,
         base,
         accountAddress,
@@ -151,8 +141,8 @@ describe('Recovery Actions', () => {
         threshold: 1,
       }
 
-      const result = await resolveCallInputs(
-        [recover(newOwners)],
+      const result = await recover(
+        newOwners,
         rhinestoneAccount.config,
         base,
         accountAddress,
@@ -194,11 +184,11 @@ describe('Recovery Actions', () => {
         threshold: 2,
       }
 
-      const result = await resolveCallInputs(
-        [recover(newOwners)],
+      const result = await recover(
+        newOwners,
         rhinestoneAccount.config,
         base,
-        accountAddress as any,
+        accountAddress,
       )
 
       expect(mockPublicClient.multicall).toHaveBeenCalledTimes(1)
