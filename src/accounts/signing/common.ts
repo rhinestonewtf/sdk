@@ -88,11 +88,13 @@ async function signWithMultiFactorAuth<T>(
   chain: Chain,
   address: Address,
   params: T,
+  isUserOpHash: boolean,
   signMain: (
     signers: SignerSet,
     chain: Chain,
     address: Address,
     params: T,
+    isUserOpHash: boolean,
   ) => Promise<Hex>,
 ): Promise<Hex> {
   const signatures = await Promise.all(
@@ -101,7 +103,7 @@ async function signWithMultiFactorAuth<T>(
         return '0x'
       }
       const validatorSigners: SignerSet = convertOwnerSetToSignerSet(validator)
-      return signMain(validatorSigners, chain, address, params)
+      return signMain(validatorSigners, chain, address, params, isUserOpHash)
     }),
   )
 
@@ -143,17 +145,19 @@ async function signWithSession<T>(
   chain: Chain,
   address: Address,
   params: T,
+  isUserOpHash: boolean,
   signMain: (
     signers: SignerSet,
     chain: Chain,
     address: Address,
     params: T,
+    isUserOpHash: boolean,
   ) => Promise<Hex>,
 ): Promise<Hex> {
   const sessionSigners: SignerSet = convertOwnerSetToSignerSet(
     signers.session.owners,
   )
-  return signMain(sessionSigners, chain, address, params)
+  return signMain(sessionSigners, chain, address, params, isUserOpHash)
 }
 
 async function signWithGuardians<T>(
@@ -175,19 +179,23 @@ async function signWithOwners<T>(
   address: Address,
   params: T,
   signingFunctions: SigningFunctions<T>,
+  isUserOpHash: boolean,
   signMain: (
     signers: SignerSet,
     chain: Chain,
     address: Address,
     params: T,
+    isUserOpHash: boolean,
   ) => Promise<Hex>,
 ): Promise<Hex> {
   switch (signers.kind) {
     case 'ecdsa': {
       // Ownable validator uses `v` value to determine which validation mode to use
+      // This is not needed for UserOps
       const updateV =
-        !signers.module ||
-        signers.module?.toLowerCase() === OWNABLE_VALIDATOR_ADDRESS
+        (!signers.module ||
+          signers.module?.toLowerCase() === OWNABLE_VALIDATOR_ADDRESS) &&
+        !isUserOpHash
       const signatures = await Promise.all(
         signers.accounts.map((account) =>
           signingFunctions.signEcdsa(account, params, updateV),
@@ -224,7 +232,14 @@ async function signWithOwners<T>(
       return packPasskeySignature(credIds, usePrecompile, webAuthns)
     }
     case 'multi-factor': {
-      return signWithMultiFactorAuth(signers, chain, address, params, signMain)
+      return signWithMultiFactorAuth(
+        signers,
+        chain,
+        address,
+        params,
+        isUserOpHash,
+        signMain,
+      )
     }
     default: {
       throw new Error('Unsupported owner kind')

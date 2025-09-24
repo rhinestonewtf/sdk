@@ -152,7 +152,6 @@ interface Recovery {
 interface RhinestoneAccountConfig {
   account?: AccountProviderConfig
   owners: OwnerSet
-  rhinestoneApiKey?: string
   sessions?: Session[]
   recovery?: Recovery
   eoa?: Account
@@ -162,6 +161,10 @@ interface RhinestoneAccountConfig {
     factoryData: Hex
     intentExecutorInstalled: boolean
   }
+}
+
+interface RhinestoneSDKConfig {
+  apiKey?: string
   provider?: ProviderConfig
   bundler?: BundlerConfig
   paymaster?: PaymasterConfig
@@ -169,16 +172,32 @@ interface RhinestoneAccountConfig {
    * @internal
    * Optional orchestrator URL override for internal testing - do not use
    */
-  orchestratorUrl?: string
+  endpointUrl?: string
 }
+
+type RhinestoneConfig = RhinestoneAccountConfig & RhinestoneSDKConfig
 
 type TokenSymbol = 'ETH' | 'WETH' | 'USDC' | 'USDT'
 
-interface CallInput {
+interface CalldataInput {
   to: Address | TokenSymbol
   data?: Hex
   value?: bigint
 }
+
+interface CallResolveContext {
+  config: RhinestoneConfig
+  chain: Chain
+  accountAddress: Address
+}
+
+interface LazyCallInput {
+  resolve: (
+    context: CallResolveContext,
+  ) => Promise<CalldataInput | CalldataInput[]>
+}
+
+type CallInput = CalldataInput | LazyCallInput
 
 interface Call {
   to: Address
@@ -263,18 +282,31 @@ interface CrossChainTransaction extends BaseTransaction {
   targetChain: Chain
 }
 
+interface UserOperationTransaction {
+  calls: CallInput[]
+  gasLimit?: bigint
+  signers?: SignerSet
+  chain: Chain
+}
+
 type Transaction = SameChainTransaction | CrossChainTransaction
 
 export type {
   AccountType,
   RhinestoneAccountConfig,
+  RhinestoneSDKConfig,
+  RhinestoneConfig,
   AccountProviderConfig,
   ProviderConfig,
   BundlerConfig,
   PaymasterConfig,
   Transaction,
+  UserOperationTransaction,
   TokenSymbol,
+  CalldataInput,
+  LazyCallInput,
   CallInput,
+  CallResolveContext,
   Call,
   TokenRequest,
   SourceAssetInput,

@@ -1,12 +1,7 @@
 import type { Address } from 'viem'
 import { describe, expect, test } from 'vitest'
 
-import {
-  accountA,
-  accountB,
-  MOCK_API_KEY,
-  passkeyAccount,
-} from '../../test/consts'
+import { accountA, accountB, passkeyAccount } from '../../test/consts'
 import { MODULE_TYPE_ID_VALIDATOR } from '../modules/common'
 import {
   getAddress,
@@ -31,7 +26,6 @@ describe('Accounts: Nexus', () => {
           type: 'ecdsa',
           accounts: [accountA, accountB],
         },
-        rhinestoneApiKey: MOCK_API_KEY,
       })
 
       expect(factory).toEqual('0x0000000000679A258c64d2F20F310e12B64b7375')
@@ -61,7 +55,6 @@ describe('Accounts: Nexus', () => {
           type: 'passkey',
           accounts: [passkeyAccount],
         },
-        rhinestoneApiKey: MOCK_API_KEY,
       })
 
       expect(factory).toEqual('0x0000000000679A258c64d2F20F310e12B64b7375')
@@ -85,7 +78,6 @@ describe('Accounts: Nexus', () => {
           type: 'ecdsa',
           accounts: [accountA, accountB],
         },
-        rhinestoneApiKey: MOCK_API_KEY,
         initData: {
           address: '0xBecba00993a919FfD35064a777E94643014A19Aa',
           factory: '0x00000bb19a3579F4D779215dEf97AFbd0e30DB55',
@@ -109,7 +101,6 @@ describe('Accounts: Nexus', () => {
           type: 'ecdsa',
           accounts: [accountA, accountB],
         },
-        rhinestoneApiKey: MOCK_API_KEY,
       })
       expect(address).toEqual('0x0681de31e060b384F0b08A3bAC99E9bDFf302474')
     })
@@ -120,7 +111,6 @@ describe('Accounts: Nexus', () => {
           type: 'passkey',
           accounts: [passkeyAccount],
         },
-        rhinestoneApiKey: MOCK_API_KEY,
       })
 
       expect(address).toEqual('0x894b88C04B4DE6AbDdcE81E8bdc91927E37d6ceD')
@@ -132,7 +122,6 @@ describe('Accounts: Nexus', () => {
           type: 'ecdsa',
           accounts: [accountA, accountB],
         },
-        rhinestoneApiKey: MOCK_API_KEY,
         initData: {
           address: '0xBecba00993a919FfD35064a777E94643014A19Aa',
           factory: '0x00000bb19a3579F4D779215dEf97AFbd0e30DB55',

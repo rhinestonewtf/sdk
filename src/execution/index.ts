@@ -1,6 +1,6 @@
-import { type Address, type Chain, createPublicClient } from 'viem'
+import { type Address, type Chain, createPublicClient, type Hex } from 'viem'
+import type { UserOperationReceipt } from 'viem/_types/account-abstraction'
 import { mainnet, sepolia } from 'viem/chains'
-
 import { deploy, getAddress } from '../accounts'
 import { createTransport, getBundlerClient } from '../accounts/utils'
 import type { IntentOpStatus } from '../orchestrator'
@@ -13,13 +13,16 @@ import {
 import { getChainById } from '../orchestrator/registry'
 import type { SettlementLayer } from '../orchestrator/types'
 import type {
+  CalldataInput,
   CallInput,
   RhinestoneAccountConfig,
+  RhinestoneConfig,
   SignerSet,
   SourceAssetInput,
   TokenRequest,
   TokenSymbol,
   Transaction,
+  UserOperationTransaction,
 } from '../types'
 import {
   ExecutionError,
@@ -27,24 +30,34 @@ import {
   isExecutionError,
   OrderPathRequiredForIntentsError,
   SessionChainRequiredError,
-  SimulationNotSupportedForUserOpFlowError,
-  SourceChainsNotAvailableForUserOpFlowError,
-  UserOperationRequiredForSmartSessionsError,
+  SignerNotSupportedError,
 } from './error'
 import { enableSmartSession } from './smart-session'
-import type { IntentData, TransactionResult } from './utils'
+import type { TransactionResult, UserOperationResult } from './utils'
 import {
   getOrchestratorByChain,
   getTokenRequests,
   getValidatorAccount,
   parseCalls,
   prepareTransactionAsIntent,
+  resolveCallInputs,
   signAuthorizationsInternal,
   signIntent,
   submitIntentInternal,
 } from './utils'
 
 const POLLING_INTERVAL = 500
+
+interface TransactionStatus {
+  fill: {
+    hash: Hex | undefined
+    chainId: number
+  }
+  claims: {
+    hash: Hex | undefined
+    chainId: number
+  }[]
+}
 
 async function sendTransaction(
   config: RhinestoneAccountConfig,
@@ -66,6 +79,11 @@ async function sendTransaction(
     sourceAssets,
     feeAsset,
   } = transaction
+  const isUserOpSigner =
+    signers?.type === 'guardians' || signers?.type === 'session'
+  if (isUserOpSigner) {
+    throw new SignerNotSupportedError()
+  }
   return await sendTransactionInternal(
     config,
     sourceChains,
@@ -83,8 +101,33 @@ async function sendTransaction(
   )
 }
 
-async function sendTransactionInternal(
+async function sendUserOperation(
   config: RhinestoneAccountConfig,
+  transaction: UserOperationTransaction,
+) {
+  const accountAddress = getAddress(config)
+  const resolvedCalls = await resolveCallInputs(
+    transaction.calls,
+    config,
+    transaction.chain,
+    accountAddress,
+  )
+  const userOpSigner =
+    transaction.signers?.type === 'session' ? transaction.signers.session : null
+  if (userOpSigner) {
+    await enableSmartSession(transaction.chain, config, userOpSigner)
+  }
+  // Smart sessions require a UserOp flow
+  return await sendUserOperationInternal(
+    config,
+    transaction.chain,
+    resolvedCalls,
+    transaction.signers,
+  )
+}
+
+async function sendTransactionInternal(
+  config: RhinestoneConfig,
   sourceChains: Chain[],
   targetChain: Chain,
   callInputs: CallInput[],
@@ -95,12 +138,17 @@ async function sendTransactionInternal(
     sponsored?: boolean
     settlementLayers?: SettlementLayer[]
     sourceAssets?: SourceAssetInput
-    asUserOp?: boolean
     lockFunds?: boolean
     feeAsset?: Address | TokenSymbol
   },
 ) {
   const accountAddress = getAddress(config)
+  const resolvedCalls = await resolveCallInputs(
+    callInputs,
+    config,
+    targetChain,
+    accountAddress,
+  )
   const tokenRequests = getTokenRequests(
     sourceChains,
     targetChain,
@@ -109,28 +157,15 @@ async function sendTransactionInternal(
   )
 
   const sendAsUserOp =
-    options.asUserOp ||
-    options.signers?.type === 'guardians' ||
-    options.signers?.type === 'session'
+    options.signers?.type === 'guardians' || options.signers?.type === 'session'
   if (sendAsUserOp) {
-    const withSession =
-      options.signers?.type === 'session' ? options.signers.session : null
-    if (withSession) {
-      await enableSmartSession(targetChain, config, withSession)
-    }
-    // Smart sessions require a UserOp flow
-    return await sendTransactionAsUserOp(
-      config,
-      targetChain,
-      callInputs,
-      options.signers,
-    )
+    throw new SignerNotSupportedError()
   } else {
     return await sendTransactionAsIntent(
       config,
       sourceChains,
       targetChain,
-      callInputs,
+      resolvedCalls,
       options.gasLimit,
       tokenRequests,
       accountAddress,
@@ -144,10 +179,10 @@ async function sendTransactionInternal(
   }
 }
 
-async function sendTransactionAsUserOp(
-  config: RhinestoneAccountConfig,
+async function sendUserOperationInternal(
+  config: RhinestoneConfig,
   chain: Chain,
-  callInputs: CallInput[],
+  callInputs: CalldataInput[],
   signers?: SignerSet,
 ) {
   // Make sure the account is deployed
@@ -179,14 +214,14 @@ async function sendTransactionAsUserOp(
     type: 'userop',
     hash,
     chain: chain.id,
-  } as TransactionResult
+  } as UserOperationResult
 }
 
 async function sendTransactionAsIntent(
   config: RhinestoneAccountConfig,
   sourceChains: Chain[],
   targetChain: Chain,
-  callInputs: CallInput[],
+  callInputs: CalldataInput[],
   gasLimit: bigint | undefined,
   tokenRequests: TokenRequest[],
   accountAddress: Address,
@@ -197,7 +232,7 @@ async function sendTransactionAsIntent(
   feeAsset?: Address | TokenSymbol,
   lockFunds?: boolean,
 ) {
-  const { intentRoute } = await prepareTransactionAsIntent(
+  const intentRoute = await prepareTransactionAsIntent(
     config,
     sourceChains,
     targetChain,
@@ -222,10 +257,7 @@ async function sendTransactionAsIntent(
     signers,
   )
   const authorizations = config.eoa
-    ? await signAuthorizationsInternal(config, {
-        type: 'intent',
-        intentRoute,
-      })
+    ? await signAuthorizationsInternal(config, intentRoute)
     : []
   return await submitIntentInternal(
     config,
@@ -238,10 +270,10 @@ async function sendTransactionAsIntent(
 }
 
 async function waitForExecution(
-  config: RhinestoneAccountConfig,
-  result: TransactionResult,
+  config: RhinestoneConfig,
+  result: TransactionResult | UserOperationResult,
   acceptsPreconfirmations: boolean,
-) {
+): Promise<TransactionStatus | UserOperationReceipt> {
   const validStatuses: Set<IntentOpStatus['status']> = new Set([
     INTENT_STATUS_FAILED,
     INTENT_STATUS_COMPLETED,
@@ -257,8 +289,8 @@ async function waitForExecution(
       while (intentStatus === null || !validStatuses.has(intentStatus.status)) {
         const orchestrator = getOrchestratorByChain(
           result.targetChain,
-          config.rhinestoneApiKey,
-          config.orchestratorUrl,
+          config.apiKey,
+          config.endpointUrl,
         )
         intentStatus = await orchestrator.getIntentOpStatus(result.id)
         await new Promise((resolve) => setTimeout(resolve, POLLING_INTERVAL))
@@ -266,7 +298,16 @@ async function waitForExecution(
       if (intentStatus.status === INTENT_STATUS_FAILED) {
         throw new IntentFailedError()
       }
-      return intentStatus
+      return {
+        fill: {
+          hash: intentStatus.fillTransactionHash,
+          chainId: result.targetChain,
+        },
+        claims: intentStatus.claims.map((claim) => ({
+          hash: claim.claimTransactionHash,
+          chainId: claim.chainId,
+        })),
+      }
     }
     case 'userop': {
       const targetChain = getChainById(result.chain)
@@ -284,7 +325,7 @@ async function waitForExecution(
 }
 
 async function getMaxSpendableAmount(
-  config: RhinestoneAccountConfig,
+  config: RhinestoneConfig,
   chain: Chain,
   tokenAddress: Address,
   gasUnits: bigint,
@@ -293,8 +334,8 @@ async function getMaxSpendableAmount(
   const address = getAddress(config)
   const orchestrator = getOrchestratorByChain(
     chain.id,
-    config.rhinestoneApiKey,
-    config.orchestratorUrl,
+    config.apiKey,
+    config.endpointUrl,
   )
   return orchestrator.getMaxTokenAmount(
     address,
@@ -305,16 +346,13 @@ async function getMaxSpendableAmount(
   )
 }
 
-async function getPortfolio(
-  config: RhinestoneAccountConfig,
-  onTestnets: boolean,
-) {
+async function getPortfolio(config: RhinestoneConfig, onTestnets: boolean) {
   const address = getAddress(config)
   const chainId = onTestnets ? sepolia.id : mainnet.id
   const orchestrator = getOrchestratorByChain(
     chainId,
-    config.rhinestoneApiKey,
-    config.orchestratorUrl,
+    config.apiKey,
+    config.endpointUrl,
   )
   return orchestrator.getPortfolio(address)
 }
@@ -322,6 +360,8 @@ async function getPortfolio(
 export {
   sendTransaction,
   sendTransactionInternal,
+  sendUserOperation,
+  sendUserOperationInternal,
   waitForExecution,
   getMaxSpendableAmount,
   getPortfolio,
@@ -331,8 +371,6 @@ export {
   IntentFailedError,
   OrderPathRequiredForIntentsError,
   SessionChainRequiredError,
-  SimulationNotSupportedForUserOpFlowError,
-  SourceChainsNotAvailableForUserOpFlowError,
-  UserOperationRequiredForSmartSessionsError,
+  SignerNotSupportedError,
 }
-export type { IntentData, TransactionResult }
+export type { TransactionStatus, TransactionResult, UserOperationResult }

@@ -14,11 +14,7 @@ import {
 } from 'viem/account-abstraction'
 import { readContract } from 'viem/actions'
 import { getAction } from 'viem/utils'
-import type {
-  BundlerConfig,
-  PaymasterConfig,
-  RhinestoneAccountConfig,
-} from '../types'
+import type { BundlerConfig, PaymasterConfig, RhinestoneConfig } from '../types'
 import { createTransport } from './json-rpc'
 
 type CallType = 'call' | 'delegatecall' | 'batchcall'
@@ -230,7 +226,7 @@ async function getAccountNonce(
   })
 }
 
-function getBundlerClient(config: RhinestoneAccountConfig, client: Client) {
+function getBundlerClient(config: RhinestoneConfig, client: Client) {
   function getBundlerEndpoint(config: BundlerConfig, chainId: number) {
     switch (config.type) {
       case 'pimlico':

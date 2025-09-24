@@ -1,12 +1,7 @@
 import type { Address } from 'viem'
 import { describe, expect, test } from 'vitest'
 
-import {
-  accountA,
-  accountB,
-  MOCK_API_KEY,
-  passkeyAccount,
-} from '../../test/consts'
+import { accountA, accountB, passkeyAccount } from '../../test/consts'
 import { MODULE_TYPE_ID_VALIDATOR } from '../modules/common'
 import {
   getAddress,
@@ -31,7 +26,6 @@ describe('Accounts: Kernel', () => {
           type: 'ecdsa',
           accounts: [accountA, accountB],
         },
-        rhinestoneApiKey: MOCK_API_KEY,
       })
 
       expect(factory).toEqual('0xd703aae79538628d27099b8c4f621be4ccd142d5')
@@ -61,7 +55,6 @@ describe('Accounts: Kernel', () => {
           type: 'passkey',
           accounts: [passkeyAccount],
         },
-        rhinestoneApiKey: MOCK_API_KEY,
       })
 
       expect(factory).toEqual('0xd703aae79538628d27099b8c4f621be4ccd142d5')
@@ -85,7 +78,6 @@ describe('Accounts: Kernel', () => {
           type: 'ecdsa',
           accounts: [accountA, accountB],
         },
-        rhinestoneApiKey: MOCK_API_KEY,
         initData: {
           address: '0x86c4b9c9eA5df80D4e080e285015Cda47A503B51',
           factory: '0xd703aaE79538628d27099B8c4f621bE4CCd142d5',
@@ -109,7 +101,6 @@ describe('Accounts: Kernel', () => {
           type: 'ecdsa',
           accounts: [accountA, accountB],
         },
-        rhinestoneApiKey: MOCK_API_KEY,
       })
 
       expect(address).toEqual('0xC3733a544f5246a25405c7446e4D0C6b5762B22e')
@@ -121,7 +112,6 @@ describe('Accounts: Kernel', () => {
           type: 'passkey',
           accounts: [passkeyAccount],
         },
-        rhinestoneApiKey: MOCK_API_KEY,
       })
 
       expect(address).toEqual('0xE48268B1C69528366d8eFaC5DB6fA947a7B52E55')
@@ -133,7 +123,6 @@ describe('Accounts: Kernel', () => {
           type: 'ecdsa',
           accounts: [accountA, accountB],
         },
-        rhinestoneApiKey: MOCK_API_KEY,
         initData: {
           address: '0x86c4b9c9eA5df80D4e080e285015Cda47A503B51',
           factory: '0xd703aaE79538628d27099B8c4f621bE4CCd142d5',
