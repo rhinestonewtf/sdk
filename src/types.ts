@@ -3,7 +3,7 @@ import type { WebAuthnAccount } from 'viem/account-abstraction'
 import type { EnableSessionData } from './modules/validators/smart-sessions'
 import type { SettlementLayer } from './orchestrator/types'
 
-type AccountType = 'safe' | 'nexus' | 'kernel' | 'startale' | 'custom'
+type AccountType = 'safe' | 'nexus' | 'kernel' | 'startale' | 'custom' | 'eoa'
 
 interface SafeAccount {
   type: 'safe'
@@ -25,11 +25,16 @@ interface StartaleAccount {
   type: 'startale'
 }
 
+interface EoaAccount {
+  type: 'eoa'
+}
+
 type AccountProviderConfig =
   | SafeAccount
   | NexusAccount
   | KernelAccount
   | StartaleAccount
+  | EoaAccount
 
 interface OwnableValidatorConfig {
   type: 'ecdsa'
@@ -151,7 +156,7 @@ interface Recovery {
 
 interface RhinestoneAccountConfig {
   account?: AccountProviderConfig
-  owners: OwnerSet
+  owners?: OwnerSet
   sessions?: Session[]
   recovery?: Recovery
   eoa?: Account

@@ -1,5 +1,6 @@
-import { keccak256, slice, toHex } from 'viem'
+import { type Hex, hashTypedData, keccak256, slice, toHex } from 'viem'
 import type { IntentOp } from '../orchestrator/types'
+import { getTypedData as getPermit2TypedData } from './permit2'
 
 const COMPACT_ADDRESS = '0x73d2dc0c21fca4ec1601895d50df7f5624f07d3f'
 
@@ -79,8 +80,8 @@ function getCompactTypedData(intentOp: IntentOp) {
             targetChain: BigInt(element.mandate.destinationChainId),
             fillExpiry: BigInt(element.mandate.fillDeadline),
           },
-          v: element.mandate.v,
-          minGas: element.mandate.minGas,
+          v: element.mandate.v || 0,
+          minGas: BigInt(element.mandate.minGas || '0'),
           originOps: element.mandate.preClaimOps.map((op) => ({
             to: op.to,
             value: BigInt(op.value),
@@ -100,4 +101,29 @@ function getCompactTypedData(intentOp: IntentOp) {
   return typedData
 }
 
-export { COMPACT_ADDRESS, getCompactTypedData }
+/**
+ * Get the compact digest for signing
+ * @param intentOp The intent operation
+ * @returns The digest hash
+ */
+function getCompactDigest(intentOp: IntentOp): Hex {
+  const typedData = getCompactTypedData(intentOp)
+  return hashTypedData(typedData)
+}
+
+/**
+ * Get the Permit2 digest for signing
+ * @param intentOp The intent operation
+ * @returns The digest hash
+ */
+function getPermit2Digest(intentOp: IntentOp): Hex {
+  const typedData = getPermit2TypedData(intentOp)
+  return hashTypedData(typedData)
+}
+
+export {
+  COMPACT_ADDRESS,
+  getCompactTypedData,
+  getCompactDigest,
+  getPermit2Digest,
+}

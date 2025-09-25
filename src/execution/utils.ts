@@ -24,6 +24,7 @@ import {
   type UserOperation,
 } from 'viem/account-abstraction'
 import {
+  EoaSigningMethodNotConfiguredError,
   getAddress,
   getEip7702InitCall,
   getGuardianSmartAccount,
@@ -32,6 +33,7 @@ import {
   getSmartAccount,
   getSmartSessionSmartAccount,
   getTypedDataPackedSignature,
+  is7702,
   isDeployed,
   toErc6492Signature,
 } from '../accounts'
@@ -83,7 +85,7 @@ import type {
   Transaction,
   UserOperationTransaction,
 } from '../types'
-import { getCompactTypedData } from './compact'
+import { getCompactTypedData, getPermit2Digest } from './compact'
 import {
   OrderPathRequiredForIntentsError,
   SignerNotSupportedError,
@@ -538,6 +540,16 @@ async function prepareTransactionAsIntent(
     eip7702InitSignature,
   )
 
+  const getAccountType = (config: RhinestoneConfig): 'EOA' | 'ERC7579' => {
+    if (config.account?.type === 'eoa') {
+      return 'EOA'
+    } else {
+      return 'ERC7579'
+    }
+  }
+
+  const accountType = getAccountType(config)
+
   const metaIntent: IntentInput = {
     destinationChainId: targetChain.id,
     tokenTransfers: tokenRequests.map((tokenRequest) => ({
@@ -546,7 +558,7 @@ async function prepareTransactionAsIntent(
     })),
     account: {
       address: accountAddress,
-      accountType: 'ERC7579',
+      accountType: accountType,
       setupOps,
       delegations,
     },
@@ -580,6 +592,28 @@ async function signIntent(
   intentOp: IntentOp,
   signers?: SignerSet,
 ) {
+  if (config.account?.type === 'eoa') {
+    let signature: Hex
+    let digest: Hex | undefined
+    if (config.eoa?.signTypedData) {
+      const typedData = getPermit2TypedData(intentOp)
+      signature = await config.eoa.signTypedData(typedData)
+    } else if (config.eoa?.sign) {
+      digest = getPermit2Digest(intentOp)
+      signature = await (config.eoa as any).sign({ hash: digest })
+    } else if (config.eoa?.signMessage) {
+      digest = getPermit2Digest(intentOp)
+      signature = await (config.eoa as any).signMessage({
+        message: { raw: digest },
+      })
+    } else {
+      throw new EoaSigningMethodNotConfiguredError(
+        'signTypedData, sign, or signMessage',
+      )
+    }
+    return signature
+  }
+
   const validator = getValidator(config, signers)
   if (!validator) {
     throw new Error('Validator not available')
@@ -1016,7 +1050,11 @@ async function getSetupOperationsAndDelegations(
 ) {
   const initCode = getInitCode(config)
 
-  if (config.eoa) {
+  if (config.account?.type === 'eoa') {
+    return {
+      setupOps: [],
+    }
+  } else if (is7702(config)) {
     // EIP-7702 initialization is only needed for EOA accounts
     if (!eip7702InitSignature || eip7702InitSignature === '0x') {
       throw new Error(

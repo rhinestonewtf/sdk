@@ -13,6 +13,7 @@ import {
   deploy as deployInternal,
   getAddress as getAddressInternal,
   isDeployed as isDeployedInternal,
+  OwnersFieldRequiredError,
   setup as setupInternal,
   signEip7702InitData as signEip7702InitDataInternal,
 } from './accounts'
@@ -28,6 +29,16 @@ import {
   type UserOperationResult,
   waitForExecution as waitForExecutionInternal,
 } from './execution'
+import {
+  type BatchPermit2Result,
+  checkERC20AllowanceDirect,
+  checkERC20Allowance as checkERC20AllowanceInternal,
+  getPermit2Address,
+  type MultiChainPermit2Config,
+  type MultiChainPermit2Result,
+  signPermit2Batch,
+  signPermit2Sequential,
+} from './execution/permit2'
 import {
   getSessionDetails as getSessionDetailsInternal,
   type SessionDetails,
@@ -165,6 +176,7 @@ interface RhinestoneAccount {
     threshold: number
   } | null>
   getValidators: (chain: Chain) => Promise<Address[]>
+  checkERC20Allowance: (tokenAddress: Address, chain: Chain) => Promise<bigint>
 }
 
 /**
@@ -179,6 +191,11 @@ async function createRhinestoneAccount(
   // Sanity check for existing (externally created) accounts
   // Ensures we decode the initdata correctly
   checkAddress(config)
+
+  // Validate that owners field is provided for non-EOA accounts
+  if (config.account?.type !== 'eoa' && !config.owners) {
+    throw new OwnersFieldRequiredError()
+  }
 
   /**
    * Deploys the account on a given chain
@@ -454,6 +471,19 @@ async function createRhinestoneAccount(
     return getSessionDetailsInternal(config, sessions, sessionIndex, signature)
   }
 
+  /**
+   * Check ERC20 allowance for the account owner and token (using Permit2 as spender)
+   * @param tokenAddress The token contract address
+   * @param chain The chain to check the allowance on
+   * @returns The allowance amount
+   */
+  function checkERC20Allowance(tokenAddress: Address, chain: Chain) {
+    if (!config.provider) {
+      throw new Error('Provider configuration is required')
+    }
+    return checkERC20AllowanceInternal(tokenAddress, chain, config)
+  }
+
   return {
     config,
     deploy,
@@ -479,6 +509,7 @@ async function createRhinestoneAccount(
     getSessionDetails,
     getOwners,
     getValidators,
+    checkERC20Allowance,
   }
 }
 
@@ -523,6 +554,12 @@ export {
   // Registry functions
   getSupportedTokens,
   getTokenAddress,
+  // Permit2 helpers
+  checkERC20AllowanceDirect,
+  getPermit2Address,
+  // Multi-chain permit2 signing
+  signPermit2Batch,
+  signPermit2Sequential,
 }
 export type {
   RhinestoneAccount,
@@ -560,4 +597,8 @@ export type {
   SettlementSystem,
   SignedIntentOp,
   Portfolio,
+  // Multi-chain permit2 types
+  MultiChainPermit2Config,
+  MultiChainPermit2Result,
+  BatchPermit2Result,
 }

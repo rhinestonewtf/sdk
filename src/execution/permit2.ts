@@ -1,10 +1,19 @@
-import { type Address, keccak256 } from 'viem'
+import {
+  type Address,
+  type Chain,
+  createPublicClient,
+  type Hex,
+  keccak256,
+} from 'viem'
+import { createTransport } from '../accounts/utils'
 import type { IntentOp } from '../orchestrator/types'
-
-interface TokenPermissions {
-  token: Address
-  amount: bigint
-}
+import type { RhinestoneConfig } from '../types'
+import type {
+  BatchPermit2Result,
+  MultiChainPermit2Config,
+  MultiChainPermit2Result,
+  TokenPermissions,
+} from './types'
 
 const PERMIT2_ADDRESS = '0x000000000022D473030F116dDEE9F6B43aC78BA3'
 
@@ -88,8 +97,8 @@ function getTypedData(intentOp: IntentOp) {
           targetChain: BigInt(mandate.destinationChainId),
           fillExpiry: BigInt(mandate.fillDeadline),
         },
-        v: mandate.v,
-        minGas: mandate.minGas,
+        v: mandate.v || 0,
+        minGas: BigInt(mandate.minGas || '0'),
         originOps: mandate.preClaimOps.map((op) => ({
           to: op.to,
           value: BigInt(op.value),
@@ -108,4 +117,238 @@ function getTypedData(intentOp: IntentOp) {
   return typedData
 }
 
-export { getTypedData }
+async function checkERC20AllowanceDirect(
+  owner: Address,
+  spender: Address,
+  tokenAddress: Address,
+  publicClient: any,
+): Promise<bigint> {
+  try {
+    const allowance = await publicClient.readContract({
+      address: tokenAddress,
+      abi: [
+        {
+          name: 'allowance',
+          type: 'function',
+          stateMutability: 'view',
+          inputs: [
+            { name: 'owner', type: 'address' },
+            { name: 'spender', type: 'address' },
+          ],
+          outputs: [{ name: '', type: 'uint256' }],
+        },
+      ],
+      functionName: 'allowance',
+      args: [owner, spender],
+    })
+
+    return BigInt(allowance.toString())
+  } catch (error) {
+    console.error('Error checking ERC20 allowance:', error)
+    throw new Error('Failed to check ERC20 allowance')
+  }
+}
+
+async function checkERC20Allowance(
+  tokenAddress: Address,
+  chain: Chain,
+  config: RhinestoneConfig,
+): Promise<bigint> {
+  try {
+    const publicClient = createPublicClient({
+      chain,
+      transport: createTransport(chain, config.provider),
+    })
+
+    // Get the account owner from the config
+    const owner = config.eoa?.address
+    if (!owner) {
+      throw new Error('No EOA address found in account config')
+    }
+
+    return await checkERC20AllowanceDirect(
+      owner,
+      PERMIT2_ADDRESS,
+      tokenAddress,
+      publicClient,
+    )
+  } catch (error) {
+    console.error('Error checking ERC20 allowance:', error)
+    throw new Error('Failed to check ERC20 allowance')
+  }
+}
+
+/**
+ * Get the Permit2 contract address
+ * @returns The Permit2 contract address
+ */
+function getPermit2Address(): Address {
+  return PERMIT2_ADDRESS as Address
+}
+
+/**
+ * Signs permit2 calls across multiple chains using batch approach.
+ * Collects all signatures first, then returns them all at once.
+ *
+ * This approach is efficient for backend signers but may be memory-intensive
+ * for frontend applications with many chains.
+ *
+ * @param configs - Array of permit2 signing configurations for different chains
+ * @returns Promise<BatchPermit2Result> - All signatures collected
+ */
+async function signPermit2Batch(
+  configs: MultiChainPermit2Config[],
+): Promise<BatchPermit2Result> {
+  const results: MultiChainPermit2Result[] = []
+  let successfulSignatures = 0
+  let failedSignatures = 0
+
+  // Process all signing operations in parallel
+  const signingPromises = configs.map(async (config) => {
+    try {
+      // Get typed data for this chain
+      const typedData = getTypedData(config.intentOp)
+
+      // Sign with EOA account
+      if (!config.eoaAccount.signTypedData) {
+        throw new Error('EOA account does not support typed data signing')
+      }
+
+      const signature = await config.eoaAccount.signTypedData(typedData)
+
+      const result: MultiChainPermit2Result = {
+        chainId: config.chain.id,
+        signature,
+        success: true,
+      }
+
+      successfulSignatures++
+      return result
+    } catch (error) {
+      const result: MultiChainPermit2Result = {
+        chainId: config.chain.id,
+        signature: '0x' as Hex,
+        success: false,
+        error: error instanceof Error ? error : new Error(String(error)),
+      }
+
+      failedSignatures++
+      return result
+    }
+  })
+
+  // Wait for all signing operations to complete
+  const signingResults = await Promise.allSettled(signingPromises)
+
+  // Process results
+  for (const result of signingResults) {
+    if (result.status === 'fulfilled') {
+      results.push(result.value)
+    } else {
+      // This shouldn't happen since we catch errors in the promise
+      failedSignatures++
+      results.push({
+        chainId: 0,
+        signature: '0x' as Hex,
+        success: false,
+        error: result.reason,
+      })
+    }
+  }
+
+  return {
+    results,
+    totalChains: configs.length,
+    successfulSignatures,
+    failedSignatures,
+    allSuccessful: failedSignatures === 0,
+  }
+}
+
+/**
+ * Signs permit2 calls across multiple chains sequentially.
+ * Signs one by one, useful for frontend applications to avoid memory issues.
+ *
+ * This approach is more memory-efficient for frontend applications but slower
+ * due to sequential processing.
+ *
+ * @param configs - Array of permit2 signing configurations for different chains
+ * @param onProgress - Optional callback for progress updates
+ * @returns Promise<BatchPermit2Result> - All signatures collected
+ */
+async function signPermit2Sequential(
+  configs: MultiChainPermit2Config[],
+  onProgress?: (
+    completed: number,
+    total: number,
+    current: MultiChainPermit2Result,
+  ) => void,
+): Promise<BatchPermit2Result> {
+  const results: MultiChainPermit2Result[] = []
+  let successfulSignatures = 0
+  let failedSignatures = 0
+
+  // Process signing operations sequentially
+  for (let i = 0; i < configs.length; i++) {
+    const config = configs[i]
+
+    try {
+      // Get typed data for this chain
+      const typedData = getTypedData(config.intentOp)
+
+      // Sign with EOA account
+      if (!config.eoaAccount.signTypedData) {
+        throw new Error('EOA account does not support typed data signing')
+      }
+
+      const signature = await config.eoaAccount.signTypedData(typedData)
+
+      const result: MultiChainPermit2Result = {
+        chainId: config.chain.id,
+        signature,
+        success: true,
+      }
+
+      results.push(result)
+      successfulSignatures++
+
+      // Call progress callback if provided
+      onProgress?.(i + 1, configs.length, result)
+    } catch (error) {
+      const result: MultiChainPermit2Result = {
+        chainId: config.chain.id,
+        signature: '0x' as Hex,
+        success: false,
+        error: error instanceof Error ? error : new Error(String(error)),
+      }
+
+      results.push(result)
+      failedSignatures++
+
+      // Call progress callback if provided
+      onProgress?.(i + 1, configs.length, result)
+    }
+  }
+
+  return {
+    results,
+    totalChains: configs.length,
+    successfulSignatures,
+    failedSignatures,
+    allSuccessful: failedSignatures === 0,
+  }
+}
+
+export {
+  getTypedData,
+  checkERC20Allowance,
+  checkERC20AllowanceDirect,
+  getPermit2Address,
+  // Multi-chain permit2 signing methods
+  signPermit2Batch,
+  signPermit2Sequential,
+  // Types
+  type MultiChainPermit2Config,
+  type MultiChainPermit2Result,
+  type BatchPermit2Result,
+}
