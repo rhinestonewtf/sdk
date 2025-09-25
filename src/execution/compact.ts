@@ -1,4 +1,4 @@
-import { keccak256, slice, toHex, hashTypedData, type Hex } from 'viem'
+import { type Hex, hashTypedData, keccak256, slice, toHex } from 'viem'
 import type { IntentOp } from '../orchestrator/types'
 import { getTypedData as getPermit2TypedData } from './permit2'
 
