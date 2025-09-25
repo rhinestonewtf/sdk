@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.0-alpha.37
+
+### Patch Changes
+
+- a10ed68: Add EOA support
+
 ## 1.0.0-alpha.36
 
 ### Patch Changes
