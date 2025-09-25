@@ -159,8 +159,6 @@ interface IntentOpElementMandate {
   fillDeadline: string
   destinationOps: Execution[]
   preClaimOps: Execution[]
-  minGas: bigint
-  v: number
   qualifier: {
     settlementContext: {
       settlementLayer: SettlementLayer
