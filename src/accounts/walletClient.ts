@@ -40,10 +40,11 @@ export function walletClientToAccount(walletClient: WalletClient): Account {
         typedData,
         primaryType
       >
-      return (walletClient as any).signTypedData({
+      const signature = (walletClient as any).signTypedData({
         account: address,
         ...def,
       })
+      return signature
     },
     // Raw transaction signing (not currently used by the SDK paths, but provided for completeness)
     async signTransaction(transaction: any): Promise<Hex> {

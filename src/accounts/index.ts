@@ -303,10 +303,7 @@ async function getPackedSignature(
   transformSignature: (signature: Hex) => Hex = (signature) => signature,
 ): Promise<Hex> {
   if (config.account?.type === 'eoa') {
-    if (!config.eoa?.signMessage) {
-      throw new EoaSigningMethodNotConfiguredError('signMessage')
-    }
-    return config.eoa.signMessage({ message: hash })
+    throw new EoaSigningNotSupportedError('packed signatures')
   }
 
   signers = signers ?? convertOwnerSetToSignerSet(config.owners!)
@@ -358,10 +355,7 @@ async function getTypedDataPackedSignature<
   transformSignature: (signature: Hex) => Hex = (signature) => signature,
 ): Promise<Hex> {
   if (config.account?.type === 'eoa') {
-    if (!config.eoa?.signTypedData) {
-      throw new EoaSigningMethodNotConfiguredError('signTypedData')
-    }
-    return config.eoa.signTypedData(parameters)
+    throw new EoaSigningNotSupportedError('packed signatures')
   }
 
   const address = getAddress(config)

@@ -85,7 +85,7 @@ import type {
   Transaction,
   UserOperationTransaction,
 } from '../types'
-import { getCompactTypedData } from './compact'
+import { getCompactTypedData, getPermit2Digest } from './compact'
 import {
   OrderPathRequiredForIntentsError,
   SignerNotSupportedError,
@@ -593,12 +593,24 @@ async function signIntent(
   signers?: SignerSet,
 ) {
   if (config.account?.type === 'eoa') {
-    if (!config.eoa?.signTypedData) {
-      throw new EoaSigningMethodNotConfiguredError('signTypedData')
+    let signature: Hex
+    let digest: Hex | undefined
+    if (config.eoa?.signTypedData) {
+      const typedData = getPermit2TypedData(intentOp)
+      signature = await config.eoa.signTypedData(typedData)
+    } else if (config.eoa?.sign) {
+      digest = getPermit2Digest(intentOp)
+      signature = await (config.eoa as any).sign({ hash: digest })
+    } else if (config.eoa?.signMessage) {
+      digest = getPermit2Digest(intentOp)
+      signature = await (config.eoa as any).signMessage({
+        message: { raw: digest },
+      })
+    } else {
+      throw new EoaSigningMethodNotConfiguredError(
+        'signTypedData, sign, or signMessage',
+      )
     }
-
-    const typedData = getCompactTypedData(intentOp)
-    const signature = await config.eoa.signTypedData(typedData)
     return signature
   }
 
