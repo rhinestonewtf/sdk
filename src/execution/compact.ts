@@ -24,6 +24,8 @@ const COMPACT_TYPED_DATA_TYPES = {
   ],
   Mandate: [
     { name: 'target', type: 'Target' },
+    { name: 'v', type: 'uint8' },
+    { name: 'minGas', type: 'uint128' },
     { name: 'originOps', type: 'Op[]' },
     { name: 'destOps', type: 'Op[]' },
     { name: 'q', type: 'bytes32' },
@@ -77,6 +79,8 @@ function getCompactTypedData(intentOp: IntentOp) {
             targetChain: BigInt(element.mandate.destinationChainId),
             fillExpiry: BigInt(element.mandate.fillDeadline),
           },
+          v: element.mandate.v,
+          minGas: element.mandate.minGas,
           originOps: element.mandate.preClaimOps.map((op) => ({
             to: op.to,
             value: BigInt(op.value),
