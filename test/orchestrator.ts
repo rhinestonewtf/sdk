@@ -59,6 +59,8 @@ export function createOrchestratorMock() {
                   data: '0x',
                 },
               ],
+              v: 27,
+              minGas: 1000000000000000000n,
               preClaimOps: [],
               qualifier: {
                 settlementSystem: 'SAME_CHAIN',
