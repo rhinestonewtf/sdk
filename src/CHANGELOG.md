@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.0-alpha.36
+
+### Patch Changes
+
+- 94605e9: updated 712 types
+
 ## 1.0.0-alpha.35
 
 ### Patch Changes
