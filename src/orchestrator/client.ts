@@ -195,12 +195,21 @@ export class Orchestrator {
     }
   }
 
-  async submitIntent(signedIntentOp: SignedIntentOp): Promise<IntentResult> {
+  async submitIntent(
+    signedIntentOpUnformatted: SignedIntentOp,
+    dryRun: boolean,
+  ): Promise<IntentResult> {
     try {
+      const signedIntentOp = convertBigIntFields(signedIntentOpUnformatted)
+      if (dryRun) {
+        signedIntentOp.options = {
+          dryRun: true,
+        }
+      }
       const response = await axios.post(
         `${this.serverUrl}/intent-operations`,
         {
-          signedIntentOp: convertBigIntFields(signedIntentOp),
+          signedIntentOp,
         },
         {
           headers: {
@@ -213,27 +222,6 @@ export class Orchestrator {
     } catch (error) {
       this.parseError(error)
       throw new OrchestratorError({ message: 'Failed to submit intent' })
-    }
-  }
-
-  async simulateIntent(signedIntentOp: SignedIntentOp): Promise<IntentResult> {
-    try {
-      const response = await axios.post(
-        `${this.serverUrl}/intent-operations/simulate`,
-        {
-          signedIntentOp: convertBigIntFields(signedIntentOp),
-        },
-        {
-          headers: {
-            'x-api-key': this.apiKey,
-          },
-        },
-      )
-
-      return response.data
-    } catch (error) {
-      this.parseError(error)
-      throw new OrchestratorError({ message: 'Failed to simulate intent' })
     }
   }
 
@@ -251,7 +239,9 @@ export class Orchestrator {
       return response.data
     } catch (error) {
       this.parseError(error)
-      throw new OrchestratorError({ message: 'Failed to get intent op status' })
+      throw new OrchestratorError({
+        message: 'Failed to get intent op status',
+      })
     }
   }
 

@@ -86,10 +86,7 @@ import type {
   UserOperationTransaction,
 } from '../types'
 import { getCompactTypedData, getPermit2Digest } from './compact'
-import {
-  OrderPathRequiredForIntentsError,
-  SignerNotSupportedError,
-} from './error'
+import { SignerNotSupportedError } from './error'
 import { getTypedData as getPermit2TypedData } from './permit2'
 
 interface UserOperationResult {
@@ -365,6 +362,7 @@ async function submitTransaction(
   config: RhinestoneConfig,
   signedTransaction: SignedTransactionData,
   authorizations: SignedAuthorizationList,
+  dryRun: boolean = false,
 ): Promise<TransactionResult> {
   const { intentRoute, transaction, signature } = signedTransaction
   const { sourceChains, targetChain } = getTransactionParams(transaction)
@@ -376,6 +374,7 @@ async function submitTransaction(
     intentOp,
     signature,
     authorizations,
+    dryRun,
   )
 }
 
@@ -388,27 +387,6 @@ async function submitUserOperation(
   const signature = signedUserOperation.signature
   // Smart sessions require a UserOp flow
   return await submitUserOp(config, chain, userOp, signature)
-}
-
-async function simulateTransaction(
-  config: RhinestoneConfig,
-  signedTransaction: SignedTransactionData,
-  authorizations: SignedAuthorizationList,
-) {
-  const { intentRoute, transaction, signature } = signedTransaction
-  const { sourceChains, targetChain } = getTransactionParams(transaction)
-  const intentOp = intentRoute.intentOp
-  if (!intentOp) {
-    throw new OrderPathRequiredForIntentsError()
-  }
-  return await simulateIntent(
-    config,
-    sourceChains,
-    targetChain,
-    intentOp,
-    signature,
-    authorizations,
-  )
 }
 
 function getTransactionParams(transaction: Transaction) {
@@ -817,6 +795,7 @@ async function submitIntent(
   intentOp: IntentOp,
   signature: Hex,
   authorizations: SignedAuthorizationList,
+  dryRun: boolean,
 ) {
   return submitIntentInternal(
     config,
@@ -825,6 +804,7 @@ async function submitIntent(
     intentOp,
     signature,
     authorizations,
+    dryRun,
   )
 }
 
@@ -841,24 +821,6 @@ function getOrchestratorByChain(
     ? STAGING_ORCHESTRATOR_URL
     : PROD_ORCHESTRATOR_URL
   return getOrchestrator(apiKey, defaultOrchestratorUrl)
-}
-
-async function simulateIntent(
-  config: RhinestoneConfig,
-  sourceChains: Chain[] | undefined,
-  targetChain: Chain,
-  intentOp: IntentOp,
-  signature: Hex,
-  authorizations: SignedAuthorizationList,
-) {
-  return simulateIntentInternal(
-    config,
-    sourceChains,
-    targetChain,
-    intentOp,
-    signature,
-    authorizations,
-  )
 }
 
 function createSignedIntentOp(
@@ -891,6 +853,7 @@ async function submitIntentInternal(
   intentOp: IntentOp,
   signature: Hex,
   authorizations: SignedAuthorizationList,
+  dryRun: boolean,
 ) {
   const signedIntentOp = createSignedIntentOp(
     intentOp,
@@ -902,35 +865,13 @@ async function submitIntentInternal(
     config.apiKey,
     config.endpointUrl,
   )
-  const intentResults = await orchestrator.submitIntent(signedIntentOp)
+  const intentResults = await orchestrator.submitIntent(signedIntentOp, dryRun)
   return {
     type: 'intent',
     id: BigInt(intentResults.result.id),
     sourceChains: sourceChains?.map((chain) => chain.id),
     targetChain: targetChain.id,
   } as TransactionResult
-}
-
-async function simulateIntentInternal(
-  config: RhinestoneConfig,
-  _sourceChains: Chain[] | undefined,
-  targetChain: Chain,
-  intentOp: IntentOp,
-  signature: Hex,
-  authorizations: SignedAuthorizationList,
-) {
-  const signedIntentOp = createSignedIntentOp(
-    intentOp,
-    signature,
-    authorizations,
-  )
-  const orchestrator = getOrchestratorByChain(
-    targetChain.id,
-    config.apiKey,
-    config.endpointUrl,
-  )
-  const simulationResults = await orchestrator.simulateIntent(signedIntentOp)
-  return simulationResults
 }
 
 async function getValidatorAccount(
@@ -1134,7 +1075,6 @@ export {
   signMessage,
   signTypedData,
   submitTransaction,
-  simulateTransaction,
   prepareUserOperation,
   signUserOperation,
   submitUserOperation,
@@ -1142,7 +1082,6 @@ export {
   signIntent,
   prepareTransactionAsIntent,
   submitIntentInternal,
-  simulateIntentInternal,
   getValidatorAccount,
   parseCalls,
   getTokenRequests,

@@ -78,6 +78,7 @@ async function sendTransaction(
     settlementLayers,
     sourceAssets,
     feeAsset,
+    dryRun,
   } = transaction
   const isUserOpSigner =
     signers?.type === 'guardians' || signers?.type === 'session'
@@ -97,6 +98,7 @@ async function sendTransaction(
       settlementLayers,
       sourceAssets,
       feeAsset,
+      dryRun,
     },
   )
 }
@@ -140,6 +142,7 @@ async function sendTransactionInternal(
     sourceAssets?: SourceAssetInput
     lockFunds?: boolean
     feeAsset?: Address | TokenSymbol
+    dryRun?: boolean
   },
 ) {
   const accountAddress = getAddress(config)
@@ -169,6 +172,7 @@ async function sendTransactionInternal(
       options.gasLimit,
       tokenRequests,
       accountAddress,
+      options.dryRun,
       options.signers,
       options.sponsored,
       options.settlementLayers,
@@ -225,6 +229,7 @@ async function sendTransactionAsIntent(
   gasLimit: bigint | undefined,
   tokenRequests: TokenRequest[],
   accountAddress: Address,
+  dryRun: boolean = false,
   signers?: SignerSet,
   sponsored?: boolean,
   settlementLayers?: SettlementLayer[],
@@ -266,6 +271,7 @@ async function sendTransactionAsIntent(
     intentRoute.intentOp,
     signature,
     authorizations,
+    dryRun,
   )
 }
 
