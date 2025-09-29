@@ -56,7 +56,6 @@ import {
   signTransaction as signTransactionInternal,
   signTypedData as signTypedDataInternal,
   signUserOperation as signUserOperationInternal,
-  simulateTransaction as simulateTransactionInternal,
   submitTransaction as submitTransactionInternal,
   submitUserOperation as submitUserOperationInternal,
 } from './execution/utils'
@@ -71,7 +70,6 @@ import {
   type IntentInput,
   type IntentOp,
   type IntentOpStatus,
-  type IntentResult,
   type Portfolio,
   type SettlementSystem,
   type SignedIntentOp,
@@ -133,10 +131,6 @@ interface RhinestoneAccount {
     signedTransaction: SignedTransactionData,
     authorizations?: SignedAuthorizationList,
   ) => Promise<TransactionResult>
-  simulateTransaction: (
-    signedTransaction: SignedTransactionData,
-    authorizations?: SignedAuthorizationList,
-  ) => Promise<IntentResult>
   sendTransaction: (transaction: Transaction) => Promise<TransactionResult>
   prepareUserOperation: (
     transaction: UserOperationTransaction,
@@ -306,15 +300,18 @@ async function createRhinestoneAccount(
    * @returns transaction result object (a UserOp hash)
    * @see {@link signTransaction} to sign the transaction data
    * @see {@link signAuthorizations} to sign the required EIP-7702 authorizations
+   * @see {@link dryRun} true when intent is not executed onchain (internal use only)
    */
   function submitTransaction(
     signedTransaction: SignedTransactionData,
     authorizations?: SignedAuthorizationList,
+    dryRun?: boolean,
   ) {
     return submitTransactionInternal(
       config,
       signedTransaction,
       authorizations ?? [],
+      dryRun,
     )
   }
 
@@ -344,24 +341,6 @@ async function createRhinestoneAccount(
    */
   function submitUserOperation(signedUserOperation: SignedUserOperationData) {
     return submitUserOperationInternal(config, signedUserOperation)
-  }
-
-  /**
-   * Simulate a transaction
-   * @param signedTransaction Signed transaction data
-   * @param authorizations EIP-7702 authorizations to simulate (optional)
-   * @returns simulation result
-   * @see {@link sendTransaction} to send the transaction
-   */
-  function simulateTransaction(
-    signedTransaction: SignedTransactionData,
-    authorizations?: SignedAuthorizationList,
-  ) {
-    return simulateTransactionInternal(
-      config,
-      signedTransaction,
-      authorizations ?? [],
-    )
   }
 
   /**
@@ -496,7 +475,6 @@ async function createRhinestoneAccount(
     signMessage,
     signTypedData,
     submitTransaction,
-    simulateTransaction,
     prepareUserOperation,
     signUserOperation,
     submitUserOperation,
