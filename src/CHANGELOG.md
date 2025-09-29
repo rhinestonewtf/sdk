@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.0-beta.38
+
+### Patch Changes
+
+- 8fa26d7: add dry run flag (internal use only)
+
 ## 1.0.0-alpha.37
 
 ### Patch Changes
