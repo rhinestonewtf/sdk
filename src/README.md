@@ -26,12 +26,37 @@ bun install viem @rhinestone/sdk
 
 You'll need a Rhinestone API key, as well as an existing account with some testnet ETH on the source chain.
 
+### SDK Initialization
+
+To initialize the SDK with your configuration:
+
+```ts
+import { RhinestoneSDK } from '@rhinestone/sdk'
+
+const sdk = new RhinestoneSDK({
+  apiKey: 'your-rhinestone-api-key',
+  // Optional: Provider configuration
+  provider: {
+    type: 'alchemy',
+    apiKey: 'your-alchemy-api-key',
+  },
+  // Optional: Bundler configuration
+  bundler: {
+    // the bundler settings
+  },
+  // Optional: Paymaster configuration
+  paymaster: {
+    // the paymaster settings
+  },
+})
+```
+
 ### Creating a Wallet
 
 Let's create a smart account with a single owner:
 
 ```ts
-import { createRhinestoneAccount } from '@rhinestone/sdk'
+import { RhinestoneSDK } from '@rhinestone/sdk'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import { baseSepolia, arbitrumSepolia, optimismSepolia } from 'viem/chains'
 import {
@@ -63,12 +88,17 @@ const privateKey = generatePrivateKey()
 console.info(`Owner private key: ${privateKey}`)
 const account = privateKeyToAccount(privateKey)
 
-const rhinestoneAccount = await createRhinestoneAccount({
+// Initialize the SDK
+const sdk = new RhinestoneSDK({
+  apiKey: rhinestoneApiKey,
+})
+
+// Create the Rhinestone account
+const rhinestoneAccount = await sdk.createAccount({
   owners: {
     type: 'ecdsa',
     accounts: [account],
-  }
-  rhinestoneApiKey,
+  },
 })
 const address = await rhinestoneAccount.getAddress()
 console.info(`Smart account address: ${address}`)
@@ -182,12 +212,20 @@ const session: Session = {
 During account initialization, provide the session you've just created. Make sure to also provide a bundler configuration.
 
 ```ts
-const rhinestoneAccount = await createRhinestoneAccount({
-  // …
-  sessions: [session],
+// Initialize the SDK with bundler configuration
+const sdk = new RhinestoneSDK({
+  apiKey: rhinestoneApiKey,
   bundler: {
-    // …
+    // bundler configuration
   },
+})
+
+const rhinestoneAccount = await sdk.createAccount({
+  owners: {
+    type: 'ecdsa',
+    accounts: [account],
+  },
+  sessions: [session],
 })
 ```
 
