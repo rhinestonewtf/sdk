@@ -1,5 +1,12 @@
 # @rhinestone/sdk
 
+## 1.0.0-beta.39
+
+### Patch Changes
+
+- 7e879d3: Remove `axios` dependency
+- 233c8bf: fix: always send setup ops
+
 ## 1.0.0-beta.38
 
 ### Patch Changes
