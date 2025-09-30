@@ -34,7 +34,6 @@ import {
   getSmartSessionSmartAccount,
   getTypedDataPackedSignature,
   is7702,
-  isDeployed,
   toErc6492Signature,
 } from '../accounts'
 import { createTransport, getBundlerClient } from '../accounts/utils'
@@ -513,7 +512,6 @@ async function prepareTransactionAsIntent(
 
   const { setupOps, delegations } = await getSetupOperationsAndDelegations(
     config,
-    targetChain,
     accountAddress,
     eip7702InitSignature,
   )
@@ -985,7 +983,6 @@ function createAccountAccessList(
 
 async function getSetupOperationsAndDelegations(
   config: RhinestoneConfig,
-  chain: Chain,
   accountAddress: Address,
   eip7702InitSignature?: Hex,
 ) {
@@ -1020,12 +1017,6 @@ async function getSetupOperationsAndDelegations(
       },
     }
   } else if (initCode) {
-    const isAccountDeployed = await isDeployed(config, chain)
-    if (isAccountDeployed) {
-      return {
-        setupOps: [],
-      }
-    }
     // Contract account with init code
     return {
       setupOps: [
