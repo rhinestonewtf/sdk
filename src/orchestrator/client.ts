@@ -1,5 +1,4 @@
-import axios from 'axios'
-import { type Address, concat, zeroAddress } from 'viem'
+import { type Address, zeroAddress } from 'viem'
 import {
   AuthenticationRequiredError,
   InsufficientBalanceError,
@@ -44,54 +43,50 @@ export class Orchestrator {
       }
     },
   ): Promise<Portfolio> {
-    try {
-      const response = await axios.get(
-        `${this.serverUrl}/accounts/${userAddress}/portfolio`,
-        {
-          params: {
-            chainIds: filter?.chainIds?.join(','),
-            tokens: filter?.tokens
-              ? Object.entries(filter.tokens)
-                  .map(([chainId, tokens]) =>
-                    tokens.map((token) => `${chainId}:${token}`),
-                  )
-                  .reduce(concat, [])
-              : undefined,
-          },
-          headers: {
-            'x-api-key': this.apiKey,
-          },
-        },
-      )
-      const portfolioResponse = response.data.portfolio as PortfolioResponse
-      const portfolio: Portfolio = portfolioResponse.map((tokenResponse) => ({
-        symbol: tokenResponse.tokenName,
-        decimals: tokenResponse.tokenDecimals,
-        balances: {
-          locked: BigInt(tokenResponse.balance.locked),
-          unlocked: BigInt(tokenResponse.balance.unlocked),
-        },
-        chains: tokenResponse.tokenChainBalance.map((chainBalance) => ({
-          chain: chainBalance.chainId,
-          address: chainBalance.tokenAddress,
-          locked: BigInt(chainBalance.balance.locked),
-          unlocked: BigInt(chainBalance.balance.unlocked),
-        })) as [
-          {
-            isAccountDeployed: boolean
-            chain: number
-            address: Address
-            locked: bigint
-            unlocked: bigint
-          },
-        ],
-      }))
-
-      return portfolio
-    } catch (error) {
-      this.parseError(error)
-      throw new OrchestratorError({ message: 'Failed to get portfolio' })
+    const params = new URLSearchParams()
+    if (filter?.chainIds) {
+      params.set('chainIds', filter.chainIds.join(','))
     }
+    if (filter?.tokens) {
+      params.set(
+        'tokens',
+        Object.entries(filter.tokens)
+          .flatMap(([chainId, tokens]) =>
+            tokens.map((token) => `${chainId}:${token}`),
+          )
+          .join(','),
+      )
+    }
+    const url = new URL(`${this.serverUrl}/accounts/${userAddress}/portfolio`)
+    url.search = params.toString()
+    const json = await this.fetch(url.toString(), {
+      headers: this.getHeaders(),
+    })
+    const portfolioResponse = json.portfolio as PortfolioResponse
+    const portfolio: Portfolio = portfolioResponse.map((tokenResponse) => ({
+      symbol: tokenResponse.tokenName,
+      decimals: tokenResponse.tokenDecimals,
+      balances: {
+        locked: BigInt(tokenResponse.balance.locked),
+        unlocked: BigInt(tokenResponse.balance.unlocked),
+      },
+      chains: tokenResponse.tokenChainBalance.map((chainBalance) => ({
+        chain: chainBalance.chainId,
+        address: chainBalance.tokenAddress,
+        locked: BigInt(chainBalance.balance.locked),
+        unlocked: BigInt(chainBalance.balance.unlocked),
+      })) as [
+        {
+          isAccountDeployed: boolean
+          chain: number
+          address: Address
+          locked: bigint
+          unlocked: bigint
+        },
+      ],
+    }))
+
+    return portfolio
   }
 
   async getMaxTokenAmount(
@@ -154,95 +149,72 @@ export class Orchestrator {
   }
 
   async getIntentCost(input: IntentInput): Promise<IntentCost> {
-    try {
-      const response = await axios.post(
-        `${this.serverUrl}/intents/cost`,
-        {
-          ...convertBigIntFields(input),
-        },
-        {
-          headers: {
-            'x-api-key': this.apiKey,
-          },
-        },
-      )
-
-      return response.data
-    } catch (error) {
-      this.parseError(error)
-      throw new OrchestratorError({ message: 'Failed to get intent cost' })
-    }
+    return await this.fetch(`${this.serverUrl}/intents/cost`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify(convertBigIntFields(input)),
+    })
   }
 
   async getIntentRoute(input: IntentInput): Promise<IntentRoute> {
-    try {
-      const response = await axios.post(
-        `${this.serverUrl}/intents/route`,
-        {
-          ...convertBigIntFields(input),
-        },
-        {
-          headers: {
-            'x-api-key': this.apiKey,
-          },
-        },
-      )
-
-      return response.data
-    } catch (error) {
-      this.parseError(error)
-      throw new OrchestratorError({ message: 'Failed to get intent route' })
-    }
+    return await this.fetch(`${this.serverUrl}/intents/route`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify(convertBigIntFields(input)),
+    })
   }
 
   async submitIntent(
     signedIntentOpUnformatted: SignedIntentOp,
     dryRun: boolean,
   ): Promise<IntentResult> {
-    try {
-      const signedIntentOp = convertBigIntFields(signedIntentOpUnformatted)
-      if (dryRun) {
-        signedIntentOp.options = {
-          dryRun: true,
-        }
+    const signedIntentOp = convertBigIntFields(signedIntentOpUnformatted)
+    if (dryRun) {
+      signedIntentOp.options = {
+        dryRun: true,
       }
-      const response = await axios.post(
-        `${this.serverUrl}/intent-operations`,
-        {
-          signedIntentOp,
-        },
-        {
-          headers: {
-            'x-api-key': this.apiKey,
-          },
-        },
-      )
-
-      return response.data
-    } catch (error) {
-      this.parseError(error)
-      throw new OrchestratorError({ message: 'Failed to submit intent' })
     }
+    return await this.fetch(`${this.serverUrl}/intent-operations`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({
+        signedIntentOp,
+      }),
+    })
   }
 
   async getIntentOpStatus(intentId: bigint): Promise<IntentOpStatus> {
-    try {
-      const response = await axios.get(
-        `${this.serverUrl}/intent-operation/${intentId.toString()}/status`,
-        {
-          headers: {
-            'x-api-key': this.apiKey,
-          },
-        },
-      )
+    return await this.fetch(
+      `${this.serverUrl}/intent-operation/${intentId.toString()}/status`,
+      {
+        headers: this.getHeaders(),
+      },
+    )
+  }
 
-      return response.data
-    } catch (error) {
-      this.parseError(error)
-      throw new OrchestratorError({
-        message: 'Failed to get intent op status',
+  private getHeaders(): HeadersInit {
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+    }
+    if (this.apiKey) {
+      headers['x-api-key'] = this.apiKey
+    }
+    return headers
+  }
+
+  private async fetch(url: string, options?: RequestInit): Promise<any> {
+    const response = await fetch(url, options)
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      this.parseError({
+        response: {
+          status: response.status,
+          data: errorData,
+        },
       })
     }
+    return response.json()
   }
 
   private parseError(error: any) {
