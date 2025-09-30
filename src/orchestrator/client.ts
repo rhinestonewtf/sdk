@@ -248,45 +248,33 @@ export class Orchestrator {
         }
       }
       let context: any = {}
-      if (error.response.data) {
-        const { errors, traceId, message } = error.response.data
-        if (message) {
-          const mainErrorParams = {
-            context: { traceId },
-            errorType,
-            traceId,
-          }
-          this.parseErrorMessage(message, mainErrorParams)
+      if (!error.response.data) {
+        return
+      }
+      const { errors, traceId, message } = error.response.data
+      if (message) {
+        const mainErrorParams = {
+          context: { traceId },
+          errorType,
+          traceId,
+        }
+        this.parseErrorMessage(message, mainErrorParams)
+      }
+
+      for (const err of errors) {
+        if (traceId) {
+          context.traceId = traceId
+        }
+        context = { ...context, ...err.context }
+
+        const message = err.message
+        const finalErrorParams = {
+          context: { ...context, traceId },
+          errorType,
+          traceId,
         }
 
-        for (const err of errors) {
-          let errorMessage = `Rhinestone Error: ${err.message}`
-          if (errorType) {
-            errorMessage += ` (${errorType})`
-          }
-          if (traceId) {
-            errorMessage += ` [Trace ID: ${traceId}]`
-            context.traceId = traceId
-          }
-          console.error(errorMessage)
-          if (err.context) {
-            console.error(
-              `Context: ${JSON.stringify(err.context, undefined, 4)}`,
-            )
-          }
-          context = { ...context, ...err.context }
-
-          const message = err.message
-          const finalErrorParams = {
-            context: { ...context, traceId },
-            errorType,
-            traceId,
-          }
-
-          this.parseErrorMessage(message, finalErrorParams)
-        }
-      } else {
-        console.error(error)
+        this.parseErrorMessage(message, finalErrorParams)
       }
     }
   }
