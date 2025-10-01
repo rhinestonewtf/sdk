@@ -428,7 +428,10 @@ async function isDeployed(config: RhinestoneConfig, chain: Chain) {
 async function deploy(
   config: RhinestoneConfig,
   chain: Chain,
-  session?: Session,
+  params: {
+    session?: Session
+    sponsored?: boolean
+  },
 ): Promise<boolean> {
   const account = getAccountProvider(config)
 
@@ -444,10 +447,10 @@ async function deploy(
   if (asUserOp) {
     await deployWithBundler(chain, config)
   } else {
-    await deployWithIntent(chain, config)
+    await deployWithIntent(chain, config, params.sponsored)
   }
-  if (session) {
-    await enableSmartSession(chain, config, session)
+  if (params.session) {
+    await enableSmartSession(chain, config, params.session)
   }
   return true
 }
@@ -520,7 +523,11 @@ async function setup(config: RhinestoneConfig, chain: Chain): Promise<boolean> {
   return true
 }
 
-async function deployWithIntent(chain: Chain, config: RhinestoneConfig) {
+async function deployWithIntent(
+  chain: Chain,
+  config: RhinestoneConfig,
+  sponsored?: boolean,
+) {
   const publicClient = createPublicClient({
     chain,
     transport: createTransport(chain, config.provider),
@@ -532,6 +539,7 @@ async function deployWithIntent(chain: Chain, config: RhinestoneConfig) {
     return
   }
   const result = await sendTransaction(config, {
+    sourceChains: [chain],
     targetChain: chain,
     calls: [
       {
@@ -539,6 +547,7 @@ async function deployWithIntent(chain: Chain, config: RhinestoneConfig) {
         data: '0x',
       },
     ],
+    sponsored,
   })
   await waitForExecution(config, result, true)
 }
