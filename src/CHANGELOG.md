@@ -1,5 +1,13 @@
 # @rhinestone/sdk
 
+## 0.15.0
+
+### Minor Changes
+
+- f59d7ee: - Don't use module registry for Nexus Bootstrap
+  - Let skip the omni account (V0) modules installation using `withOmniAccount`
+  - Update Nexus deployments
+
 ## 0.14.0
 
 ### Minor Changes
