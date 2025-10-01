@@ -121,8 +121,9 @@ function getSetup(config: RhinestoneAccountConfig): ModeleSetup {
     })
   }
 
-  const fallbacks: Module[] = [
-    {
+  const fallbacks: Module[] = []
+  if (config.withOmniAccount !== false) {
+    fallbacks.push({
       address: TARGET_MODULE_ADDRESS,
       initData: encodeAbiParameters(
         [
@@ -135,8 +136,8 @@ function getSetup(config: RhinestoneAccountConfig): ModeleSetup {
       deInitData: '0x',
       additionalContext: '0x',
       type: MODULE_TYPE_ID_FALLBACK,
-    },
-  ]
+    })
+  }
 
   // Some accounts (e.g. Safe) need a fallback method to support smart sessions
   if (config.sessions) {
