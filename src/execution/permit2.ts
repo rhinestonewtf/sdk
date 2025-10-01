@@ -6,7 +6,7 @@ import {
   keccak256,
 } from 'viem'
 import { createTransport } from '../accounts/utils'
-import type { IntentOp } from '../orchestrator/types'
+import type { IntentOpElement } from '../orchestrator/types'
 import type { RhinestoneConfig } from '../types'
 import type {
   BatchPermit2Result,
@@ -21,8 +21,11 @@ function toToken(id: bigint): Address {
   return `0x${(id & ((1n << 160n) - 1n)).toString(16).padStart(40, '0')}`
 }
 
-function getTypedData(intentOp: IntentOp) {
-  const element = intentOp.elements[0]
+function getTypedData(
+  element: IntentOpElement,
+  nonce: bigint,
+  expires: bigint,
+) {
   const tokens = element.idsAndAmounts.map(([id, amount]) => [
     BigInt(id),
     BigInt(amount),
@@ -42,7 +45,7 @@ function getTypedData(intentOp: IntentOp) {
   const typedData = {
     domain: {
       name: 'Permit2',
-      chainId: Number(intentOp.elements[0].chainId),
+      chainId: Number(element.chainId),
       verifyingContract: PERMIT2_ADDRESS,
     },
     types: {
@@ -85,8 +88,8 @@ function getTypedData(intentOp: IntentOp) {
     message: {
       permitted: tokenPermissions,
       spender: spender,
-      nonce: BigInt(intentOp.nonce),
-      deadline: BigInt(intentOp.expires),
+      nonce: nonce,
+      deadline: expires,
       mandate: {
         target: {
           recipient: mandate.recipient,
@@ -207,7 +210,12 @@ async function signPermit2Batch(
   const signingPromises = configs.map(async (config) => {
     try {
       // Get typed data for this chain
-      const typedData = getTypedData(config.intentOp)
+      // TODO
+      const typedData = getTypedData(
+        config.intentOp.elements[0],
+        BigInt(config.intentOp.nonce),
+        BigInt(config.intentOp.expires),
+      )
 
       // Sign with EOA account
       if (!config.eoaAccount.signTypedData) {
@@ -294,7 +302,12 @@ async function signPermit2Sequential(
 
     try {
       // Get typed data for this chain
-      const typedData = getTypedData(config.intentOp)
+      // TODO
+      const typedData = getTypedData(
+        config.intentOp.elements[0],
+        BigInt(config.intentOp.nonce),
+        BigInt(config.intentOp.expires),
+      )
 
       // Sign with EOA account
       if (!config.eoaAccount.signTypedData) {

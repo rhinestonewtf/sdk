@@ -1,5 +1,5 @@
 import { type Hex, hashTypedData, keccak256, slice, toHex } from 'viem'
-import type { IntentOp } from '../orchestrator/types'
+import type { IntentOp, IntentOpElement } from '../orchestrator/types'
 import { getTypedData as getPermit2TypedData } from './permit2'
 
 const COMPACT_ADDRESS = '0x73d2dc0c21fca4ec1601895d50df7f5624f07d3f'
@@ -116,8 +116,12 @@ function getCompactDigest(intentOp: IntentOp): Hex {
  * @param intentOp The intent operation
  * @returns The digest hash
  */
-function getPermit2Digest(intentOp: IntentOp): Hex {
-  const typedData = getPermit2TypedData(intentOp)
+function getPermit2Digest(
+  element: IntentOpElement,
+  nonce: bigint,
+  expires: bigint,
+): Hex {
+  const typedData = getPermit2TypedData(element, nonce, expires)
   return hashTypedData(typedData)
 }
 
