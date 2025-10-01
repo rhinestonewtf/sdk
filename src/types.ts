@@ -155,6 +155,7 @@ interface RhinestoneAccountConfig {
   sessions?: Session[]
   recovery?: Recovery
   eoa?: Account
+  withOmniAccount?: boolean
   provider?: {
     type: 'alchemy'
     apiKey: string

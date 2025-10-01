@@ -84,37 +84,42 @@ function getSetup(config: RhinestoneAccountConfig): ModeleSetup {
     validators.push(socialRecoveryValidator)
   }
 
-  const executors: Module[] = [
-    {
-      address: SAME_CHAIN_MODULE_ADDRESS,
-      initData: '0x',
-      deInitData: '0x',
-      additionalContext: '0x',
-      type: MODULE_TYPE_ID_EXECUTOR,
-    },
-    {
-      address: TARGET_MODULE_ADDRESS,
-      initData: '0x',
-      deInitData: '0x',
-      additionalContext: '0x',
-      type: MODULE_TYPE_ID_EXECUTOR,
-    },
-    {
-      address: HOOK_ADDRESS,
-      initData: '0x',
-      deInitData: '0x',
-      additionalContext: '0x',
-      type: MODULE_TYPE_ID_EXECUTOR,
-    },
+  const executors: Module[] = []
+  if (config.withOmniAccount !== false) {
+    executors.push(
+      ...([
+        {
+          address: SAME_CHAIN_MODULE_ADDRESS,
+          initData: '0x',
+          deInitData: '0x',
+          additionalContext: '0x',
+          type: MODULE_TYPE_ID_EXECUTOR,
+        },
+        {
+          address: TARGET_MODULE_ADDRESS,
+          initData: '0x',
+          deInitData: '0x',
+          additionalContext: '0x',
+          type: MODULE_TYPE_ID_EXECUTOR,
+        },
+        {
+          address: HOOK_ADDRESS,
+          initData: '0x',
+          deInitData: '0x',
+          additionalContext: '0x',
+          type: MODULE_TYPE_ID_EXECUTOR,
+        },
+      ] as const),
+    )
     // For V1 compatibility
-    {
+    executors.push({
       address: INTENT_EXECUTOR_ADDRESS,
       initData: '0x',
       deInitData: '0x',
       additionalContext: '0x',
       type: MODULE_TYPE_ID_EXECUTOR,
-    },
-  ]
+    })
+  }
 
   const fallbacks: Module[] = [
     {
