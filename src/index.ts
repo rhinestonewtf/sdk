@@ -22,6 +22,8 @@ import { encodeSmartSessionSignature } from './actions/smart-session'
 import {
   getMaxSpendableAmount as getMaxSpendableAmountInternal,
   getPortfolio as getPortfolioInternal,
+  requestWithdrawal as requestWithdrawalInternal,
+  requestWithdrawals as requestWithdrawalsInternal,
   sendTransaction as sendTransactionInternal,
   sendUserOperation as sendUserOperationInternal,
   type TransactionResult,
@@ -158,6 +160,18 @@ interface RhinestoneAccount {
     result: UserOperationResult,
     acceptsPreconfirmations?: boolean,
   ): Promise<UserOperationReceipt>
+  requestWithdrawal: (
+    chain: Chain,
+    tokenAddress: Address,
+    amount: bigint,
+  ) => Promise<unknown>
+  requestWithdrawals: (
+    chain: Chain,
+    tokens: {
+      address: Address
+      amount: bigint
+    }[],
+  ) => Promise<unknown>
   getAddress: () => Address
   getPortfolio: (onTestnets?: boolean) => Promise<Portfolio>
   getMaxSpendableAmount: (
@@ -394,6 +408,24 @@ async function createRhinestoneAccount(
     return waitForExecutionInternal(config, result, acceptsPreconfirmations)
   }
 
+  function requestWithdrawal(
+    chain: Chain,
+    tokenAddress: Address,
+    amount: bigint,
+  ) {
+    return requestWithdrawalInternal(config, chain, tokenAddress, amount)
+  }
+
+  function requestWithdrawals(
+    chain: Chain,
+    tokens: {
+      address: Address
+      amount: bigint
+    }[],
+  ) {
+    return requestWithdrawalsInternal(config, chain, tokens)
+  }
+
   /**
    * Get account address
    * @returns Address of the smart account
@@ -493,6 +525,8 @@ async function createRhinestoneAccount(
     sendTransaction,
     sendUserOperation,
     waitForExecution,
+    requestWithdrawal,
+    requestWithdrawals,
     getAddress,
     getPortfolio,
     getMaxSpendableAmount,

@@ -21,7 +21,7 @@ type ResetPeriod =
 
 type Scope = 0 | 1 // Multichain | ChainSpecific
 
-const ALLOCATOR_ADDRESS = '0xd93ed1dd9f1f0b523e4d77233809dc2ee22928c6'
+const ALLOCATOR_ADDRESS = '0x064d52ee04da194f26c8faf7b5e455c842fa70db'
 const DEFAULT_RESET_PERIOD: ResetPeriod = 6
 const DEFAULT_SCOPE: Scope = 0
 

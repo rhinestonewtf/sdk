@@ -192,6 +192,48 @@ export class Orchestrator {
     )
   }
 
+  async requestWithdrawal(
+    accountAddress: Address,
+    chainId: number,
+    tokenAddress: Address,
+    amount: bigint,
+  ): Promise<unknown> {
+    return await this.fetch(`${this.serverUrl}/withdrawals`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({
+        account: accountAddress,
+        chainId,
+        tokenAddress,
+        amount: amount.toString(),
+        recipient: accountAddress,
+      }),
+    })
+  }
+
+  async requestWithdrawals(
+    accountAddress: Address,
+    chainId: number,
+    tokens: {
+      address: Address
+      amount: bigint
+    }[],
+  ): Promise<unknown> {
+    return await this.fetch(`${this.serverUrl}/withdrawals`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({
+        account: accountAddress,
+        chainId,
+        transfers: tokens.map((token) => ({
+          tokenAddress: token.address,
+          amount: token.amount.toString(),
+          recipient: accountAddress,
+        })),
+      }),
+    })
+  }
+
   private getHeaders(): HeadersInit {
     const headers: HeadersInit = {
       'Content-Type': 'application/json',

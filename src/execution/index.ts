@@ -79,6 +79,7 @@ async function sendTransaction(
     sourceAssets,
     feeAsset,
     dryRun,
+    lockFunds,
   } = transaction
   const isUserOpSigner =
     signers?.type === 'guardians' || signers?.type === 'session'
@@ -99,6 +100,7 @@ async function sendTransaction(
       sourceAssets,
       feeAsset,
       dryRun,
+      lockFunds,
     },
   )
 }
@@ -330,6 +332,38 @@ async function waitForExecution(
   }
 }
 
+async function requestWithdrawal(
+  config: RhinestoneConfig,
+  chain: Chain,
+  tokenAddress: Address,
+  amount: bigint,
+): Promise<unknown> {
+  const address = getAddress(config)
+  const orchestrator = getOrchestratorByChain(
+    chain.id,
+    config.apiKey,
+    config.endpointUrl,
+  )
+  return orchestrator.requestWithdrawal(address, chain.id, tokenAddress, amount)
+}
+
+async function requestWithdrawals(
+  config: RhinestoneConfig,
+  chain: Chain,
+  tokens: {
+    address: Address
+    amount: bigint
+  }[],
+): Promise<unknown> {
+  const address = getAddress(config)
+  const orchestrator = getOrchestratorByChain(
+    chain.id,
+    config.apiKey,
+    config.endpointUrl,
+  )
+  return orchestrator.requestWithdrawals(address, chain.id, tokens)
+}
+
 async function getMaxSpendableAmount(
   config: RhinestoneConfig,
   chain: Chain,
@@ -369,6 +403,8 @@ export {
   sendUserOperation,
   sendUserOperationInternal,
   waitForExecution,
+  requestWithdrawal,
+  requestWithdrawals,
   getMaxSpendableAmount,
   getPortfolio,
   // Errors
