@@ -37,6 +37,7 @@ import {
   toErc6492Signature,
 } from '../accounts'
 import { createTransport, getBundlerClient } from '../accounts/utils'
+import { getIntentExecutor } from '../modules'
 import type { Module } from '../modules/common'
 import {
   getOwnerValidator,
@@ -86,6 +87,7 @@ import type {
 } from '../types'
 import { getCompactTypedData, getPermit2Digest } from './compact'
 import { SignerNotSupportedError } from './error'
+import { getTypedData as getMultiChainOpsTypedData } from './multiChainOps'
 import { getTypedData as getPermit2TypedData } from './permit2'
 
 interface UserOperationResult {
@@ -641,6 +643,25 @@ async function getIntentSignature(
   const withJitFlow = intentOp.elements.some(
     (element) => element.mandate.qualifier.settlementContext?.usingJIT,
   )
+  const withMultiChainOps = intentOp.elements.some(
+    (element) =>
+      element.mandate.qualifier.settlementContext.settlementLayer ===
+      'INTENT_EXECUTOR',
+  )
+  if (withMultiChainOps) {
+    const signature = await getMultiChainOpsSignature(
+      config,
+      intentOp,
+      signers,
+      targetChain,
+      validator,
+      isRoot,
+    )
+    return {
+      originSignatures: Array(intentOp.elements.length).fill(signature),
+      destinationSignature: signature,
+    }
+  }
 
   if (withJitFlow) {
     return await getPermit2Signatures(
@@ -664,6 +685,32 @@ async function getIntentSignature(
     originSignatures: Array(intentOp.elements.length).fill(signature),
     destinationSignature: signature,
   }
+}
+
+async function getMultiChainOpsSignature(
+  config: RhinestoneConfig,
+  intentOp: IntentOp,
+  signers: SignerSet | undefined,
+  targetChain: Chain,
+  validator: Module,
+  isRoot: boolean,
+) {
+  const address = getAddress(config)
+  const intentExecutor = getIntentExecutor(config)
+  const typedData = getMultiChainOpsTypedData(
+    address,
+    intentExecutor.address,
+    intentOp,
+  )
+  const signature = await signIntentTypedData(
+    config,
+    signers,
+    targetChain,
+    validator,
+    isRoot,
+    typedData,
+  )
+  return signature
 }
 
 async function getPermit2Signatures(
