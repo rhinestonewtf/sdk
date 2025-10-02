@@ -206,11 +206,24 @@ export class Orchestrator {
     const response = await fetch(url, options)
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
+      let errorData: any = {}
+      try {
+        errorData = await response.json()
+      } catch {
+        try {
+          const text = await response.text()
+          errorData = { message: text }
+        } catch {}
+      }
+      const retryAfterHeader =
+        response.headers?.get?.('retry-after') || undefined
       this.parseError({
         response: {
           status: response.status,
           data: errorData,
+          headers: {
+            retryAfter: retryAfterHeader,
+          },
         },
       })
     }
@@ -219,62 +232,115 @@ export class Orchestrator {
 
   private parseError(error: any) {
     if (error.response) {
-      let errorType: string | undefined
-      if (error.response.status) {
-        switch (error.response.status) {
-          case 400:
-            errorType = 'Bad Request'
-            break
-          case 401:
-            errorType = 'Unauthorized'
-            break
-          case 403:
-            errorType = 'Forbidden'
-            break
-          case 404:
-            errorType = 'Not Found'
-            break
-          case 409:
-            errorType = 'Conflict'
-            break
-          case 422:
-            errorType = 'Unprocessable Entity'
-            break
-          case 500:
-            errorType = 'Internal Server Error'
-            break
-          default:
-            errorType = 'Unknown'
-        }
+      const status: number | undefined = error.response.status
+      const { headers } = error.response
+      const { errors = [], traceId, message } = error.response.data || {}
+
+      let errorType: string = 'Unknown'
+      switch (status) {
+        case 400:
+          errorType = 'Bad Request'
+          break
+        case 401:
+          errorType = 'Unauthorized'
+          break
+        case 403:
+          errorType = 'Forbidden'
+          break
+        case 404:
+          errorType = 'Not Found'
+          break
+        case 409:
+          errorType = 'Conflict'
+          break
+        case 422:
+          errorType = 'Unprocessable Entity'
+          break
+        case 429:
+          errorType = 'Too Many Requests'
+          break
+        case 500:
+          errorType = 'Internal Server Error'
+          break
+        case 503:
+          errorType = 'Service Unavailable'
+          break
+        default:
+          errorType = 'Unknown'
       }
-      let context: any = {}
-      if (!error.response.data) {
-        return
+
+      const baseParams = {
+        context: { traceId },
+        errorType,
+        traceId,
+        statusCode: status,
       }
-      const { errors, traceId, message } = error.response.data
+
+      if (status === 422) {
+        // zod / json schema validation errors
+        const context = { traceId, errors }
+        throw new (require('./error').SchemaValidationError)({
+          ...baseParams,
+          context,
+          message: (message as string) || 'Schema validation error',
+        })
+      }
+      if (status === 429) {
+        const retryAfter = headers?.retryAfter
+        const context = { traceId, retryAfter }
+        throw new (require('./error').RateLimitedError)({
+          ...baseParams,
+          context,
+        })
+      }
+      if (status === 503) {
+        throw new (require('./error').ServiceUnavailableError)(baseParams)
+      }
+
       if (message) {
-        const mainErrorParams = {
-          context: { traceId },
-          errorType,
-          traceId,
-        }
-        this.parseErrorMessage(message, mainErrorParams)
+        this.parseErrorMessage(message as string, baseParams)
       }
 
       for (const err of errors) {
-        if (traceId) {
-          context.traceId = traceId
+        const mergedParams = {
+          ...baseParams,
+          context: { ...err.context, traceId },
         }
-        context = { ...context, ...err.context }
+        this.parseErrorMessage(err.message, mergedParams)
+      }
 
-        const message = err.message
-        const finalErrorParams = {
-          context: { ...context, traceId },
-          errorType,
-          traceId,
-        }
-
-        this.parseErrorMessage(message, finalErrorParams)
+      const errMod = require('./error')
+      switch (status) {
+        case 400:
+          throw new errMod.BadRequestError(baseParams)
+        case 401:
+          if (message === 'Authentication is required') {
+            throw new errMod.AuthenticationRequiredError(baseParams)
+          }
+          throw new errMod.UnauthorizedError(baseParams)
+        case 403:
+          throw new errMod.ForbiddenError(baseParams)
+        case 404:
+          throw new errMod.ResourceNotFoundError(baseParams)
+        case 409:
+          throw new errMod.ConflictError(baseParams)
+        case 500:
+          if (errors && errors.length > 0) {
+            const mergedParams = {
+              ...baseParams,
+              context: { ...errors[0].context, traceId },
+            }
+            throw new errMod.OrchestratorError({
+              ...mergedParams,
+              message: errors[0].message || 'Internal Server Error',
+            })
+          }
+          throw new errMod.InternalServerError(baseParams)
+        default:
+          throw new errMod.OrchestratorError({
+            ...baseParams,
+            message: (message as string) || errorType,
+          })
       }
     }
   }
