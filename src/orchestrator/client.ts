@@ -1,8 +1,12 @@
 import { type Address, zeroAddress } from 'viem'
 import {
   AuthenticationRequiredError,
+  BadRequestError,
+  BodyParserError,
+  ForbiddenError,
   InsufficientBalanceError,
   IntentNotFoundError,
+  InternalServerError,
   InvalidApiKeyError,
   InvalidIntentSignatureError,
   NoPathFoundError,
@@ -348,7 +352,10 @@ export class Orchestrator {
   private parseErrorMessage(message: string, errorParams: any) {
     if (message === 'Insufficient balance') {
       throw new InsufficientBalanceError(errorParams)
-    } else if (message === 'Unsupported chain id') {
+    } else if (
+      message === 'Unsupported chain id' ||
+      message === 'Unsupported chain ids'
+    ) {
       throw new UnsupportedChainIdError(errorParams)
     } else if (message.startsWith('Unsupported chain ')) {
       const chainIdMatch = message.match(/Unsupported chain (\d+)/)
@@ -370,6 +377,9 @@ export class Orchestrator {
         throw new UnsupportedTokenError(tokenSymbol, chainId, errorParams)
       }
       throw new OrchestratorError({ message, ...errorParams })
+    } else if (message === 'Unsupported token addresses') {
+      // generic unsupported tokens without specific symbol/chain context
+      throw new BadRequestError({ message, ...errorParams })
     } else if (message.includes('not supported on chain')) {
       const tokenMatch = message.match(
         /Token (.+) not supported on chain (\d+)/,
@@ -384,12 +394,45 @@ export class Orchestrator {
       throw new AuthenticationRequiredError(errorParams)
     } else if (message === 'Invalid API key') {
       throw new InvalidApiKeyError(errorParams)
+    } else if (message === 'Insufficient permissions') {
+      throw new ForbiddenError(errorParams)
     } else if (message === 'Invalid bundle signature') {
       throw new InvalidIntentSignatureError(errorParams)
-    } else if (message === 'Only one target token amount can be unset') {
+    } else if (message === 'Invalid checksum signature') {
+      throw new InvalidIntentSignatureError(errorParams)
+    } else if (
+      message === 'Only one target token amount can be unset' ||
+      message === 'Only one max-out transfer is allowed'
+    ) {
       throw new OnlyOneTargetTokenAmountCanBeUnsetError(errorParams)
-    } else if (message === 'No Path Found') {
+    } else if (
+      message === 'No valid settlement plan found for the given transfers' ||
+      message === 'No valid transfers sent for settlement quotes' ||
+      message === 'No Path Found'
+    ) {
       throw new NoPathFoundError(errorParams)
+    } else if (
+      message === 'Emissary is not enabled' ||
+      message === 'Emissary is not the expected address'
+    ) {
+      throw new ForbiddenError(errorParams)
+    } else if (
+      message.includes('No such intent with nonce') ||
+      message === 'Order bundle not found'
+    ) {
+      throw new IntentNotFoundError(errorParams)
+    } else if (
+      message === 'Could not retrieve a valid quote from any aggregator'
+    ) {
+      throw new NoPathFoundError(errorParams)
+    } else if (message === 'No aggregators available for swap') {
+      throw new InternalServerError(errorParams)
+    } else if (
+      message === 'entity.parse.failed' ||
+      message === 'entity.too.large' ||
+      message === 'encoding.unsupported'
+    ) {
+      throw new BodyParserError({ message, ...errorParams })
     } else if (message === 'Order bundle not found') {
       throw new IntentNotFoundError(errorParams)
     } else {
