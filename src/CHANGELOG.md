@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 0.16.0
+
+### Minor Changes
+
+- Update Nexus address
+
 ## 0.15.1
 
 ### Patch Changes
