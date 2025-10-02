@@ -37,7 +37,7 @@ import {
 import { encode7579Calls, getAccountNonce, ValidatorConfig } from './utils'
 
 const NEXUS_IMPLEMENTATION_ADDRESS: Address =
-  '0x336e837510fc77A74c64A610AC65Df23cb41C344'
+  '0xA2A2eC652cD1d06545FCc8E5DD8cc5911267A27F'
 const NEXUS_FACTORY_ADDRESS: Address =
   '0x000000001D1D5004a02bAfAb9de2D6CE5b7B13de'
 const NEXUS_BOOTSTRAP_ADDRESS: Address =
