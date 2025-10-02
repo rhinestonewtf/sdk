@@ -209,24 +209,26 @@ async function signPermit2Batch(
   // Process all signing operations in parallel
   const signingPromises = configs.map(async (config) => {
     try {
-      // Get typed data for this chain
-      // TODO
-      const typedData = getTypedData(
-        config.intentOp.elements[0],
-        BigInt(config.intentOp.nonce),
-        BigInt(config.intentOp.expires),
-      )
-
-      // Sign with EOA account
+      // sign each element individually for this chain sequentially to preserve order
       if (!config.eoaAccount.signTypedData) {
         throw new Error('EOA account does not support typed data signing')
       }
 
-      const signature = await config.eoaAccount.signTypedData(typedData)
+      const originSignatures: Hex[] = []
+      for (const element of config.intentOp.elements) {
+        const typedData = getTypedData(
+          element,
+          BigInt(config.intentOp.nonce),
+          BigInt(config.intentOp.expires),
+        )
+        const sig = await config.eoaAccount.signTypedData(typedData)
+        originSignatures.push(sig)
+      }
 
       const result: MultiChainPermit2Result = {
         chainId: config.chain.id,
-        signature,
+        originSignatures,
+        destinationSignature: originSignatures[0] ?? ('0x' as Hex),
         success: true,
       }
 
@@ -235,7 +237,8 @@ async function signPermit2Batch(
     } catch (error) {
       const result: MultiChainPermit2Result = {
         chainId: config.chain.id,
-        signature: '0x' as Hex,
+        originSignatures: [],
+        destinationSignature: '0x' as Hex,
         success: false,
         error: error instanceof Error ? error : new Error(String(error)),
       }
@@ -248,7 +251,6 @@ async function signPermit2Batch(
   // Wait for all signing operations to complete
   const signingResults = await Promise.allSettled(signingPromises)
 
-  // Process results
   for (const result of signingResults) {
     if (result.status === 'fulfilled') {
       results.push(result.value)
@@ -257,7 +259,8 @@ async function signPermit2Batch(
       failedSignatures++
       results.push({
         chainId: 0,
-        signature: '0x' as Hex,
+        originSignatures: [],
+        destinationSignature: '0x' as Hex,
         success: false,
         error: result.reason,
       })
@@ -301,24 +304,26 @@ async function signPermit2Sequential(
     const config = configs[i]
 
     try {
-      // Get typed data for this chain
-      // TODO
-      const typedData = getTypedData(
-        config.intentOp.elements[0],
-        BigInt(config.intentOp.nonce),
-        BigInt(config.intentOp.expires),
-      )
-
-      // Sign with EOA account
+      // sign each element for this chain sequentially to preserve order
       if (!config.eoaAccount.signTypedData) {
         throw new Error('EOA account does not support typed data signing')
       }
 
-      const signature = await config.eoaAccount.signTypedData(typedData)
+      const originSignatures: Hex[] = []
+      for (const element of config.intentOp.elements) {
+        const typedData = getTypedData(
+          element,
+          BigInt(config.intentOp.nonce),
+          BigInt(config.intentOp.expires),
+        )
+        const sig = await config.eoaAccount.signTypedData(typedData)
+        originSignatures.push(sig)
+      }
 
       const result: MultiChainPermit2Result = {
         chainId: config.chain.id,
-        signature,
+        originSignatures,
+        destinationSignature: originSignatures[0] ?? ('0x' as Hex),
         success: true,
       }
 
@@ -330,7 +335,8 @@ async function signPermit2Sequential(
     } catch (error) {
       const result: MultiChainPermit2Result = {
         chainId: config.chain.id,
-        signature: '0x' as Hex,
+        originSignatures: [],
+        destinationSignature: '0x' as Hex,
         success: false,
         error: error instanceof Error ? error : new Error(String(error)),
       }

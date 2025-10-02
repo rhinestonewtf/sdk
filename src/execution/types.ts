@@ -20,7 +20,8 @@ interface MultiChainPermit2Config {
  */
 interface MultiChainPermit2Result {
   chainId: number
-  signature: Hex
+  originSignatures: Hex[]
+  destinationSignature: Hex
   success: boolean
   error?: Error
 }
