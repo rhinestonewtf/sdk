@@ -428,7 +428,7 @@ async function isDeployed(config: RhinestoneConfig, chain: Chain) {
 async function deploy(
   config: RhinestoneConfig,
   chain: Chain,
-  params: {
+  params?: {
     session?: Session
     sponsored?: boolean
   },
@@ -447,9 +447,9 @@ async function deploy(
   if (asUserOp) {
     await deployWithBundler(chain, config)
   } else {
-    await deployWithIntent(chain, config, params.sponsored)
+    await deployWithIntent(chain, config, params?.sponsored)
   }
-  if (params.session) {
+  if (params?.session) {
     await enableSmartSession(chain, config, params.session)
   }
   return true

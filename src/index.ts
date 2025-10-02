@@ -103,7 +103,7 @@ interface RhinestoneAccount {
   config: RhinestoneAccountConfig
   deploy: (
     chain: Chain,
-    params: {
+    params?: {
       session?: Session
       sponsored?: boolean
     },
@@ -204,7 +204,7 @@ async function createRhinestoneAccount(
    */
   function deploy(
     chain: Chain,
-    params: {
+    params?: {
       session?: Session
       sponsored?: boolean
     },
