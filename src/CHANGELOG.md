@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.0-beta.40
+
+### Patch Changes
+
+- 7ca0cc2: Enhance error handling
+
 ## 1.0.0-beta.39
 
 ### Patch Changes
