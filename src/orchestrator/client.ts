@@ -3,6 +3,7 @@ import {
   AuthenticationRequiredError,
   BadRequestError,
   BodyParserError,
+  ConflictError,
   ForbiddenError,
   InsufficientBalanceError,
   IntentNotFoundError,
@@ -12,7 +13,12 @@ import {
   NoPathFoundError,
   OnlyOneTargetTokenAmountCanBeUnsetError,
   OrchestratorError,
+  RateLimitedError,
+  ResourceNotFoundError,
+  SchemaValidationError,
+  ServiceUnavailableError,
   TokenNotSupportedError,
+  UnauthorizedError,
   UnsupportedChainError,
   UnsupportedChainIdError,
   UnsupportedTokenError,
@@ -283,7 +289,7 @@ export class Orchestrator {
       if (status === 422) {
         // zod / json schema validation errors
         const context = { traceId, errors }
-        throw new (require('./error').SchemaValidationError)({
+        throw new SchemaValidationError({
           ...baseParams,
           context,
           message: (message as string) || 'Schema validation error',
@@ -292,13 +298,13 @@ export class Orchestrator {
       if (status === 429) {
         const retryAfter = headers?.retryAfter
         const context = { traceId, retryAfter }
-        throw new (require('./error').RateLimitedError)({
+        throw new RateLimitedError({
           ...baseParams,
           context,
         })
       }
       if (status === 503) {
-        throw new (require('./error').ServiceUnavailableError)(baseParams)
+        throw new ServiceUnavailableError(baseParams)
       }
 
       if (message) {
@@ -313,35 +319,34 @@ export class Orchestrator {
         this.parseErrorMessage(err.message, mergedParams)
       }
 
-      const errMod = require('./error')
       switch (status) {
         case 400:
-          throw new errMod.BadRequestError(baseParams)
+          throw new BadRequestError(baseParams)
         case 401:
           if (message === 'Authentication is required') {
-            throw new errMod.AuthenticationRequiredError(baseParams)
+            throw new AuthenticationRequiredError(baseParams)
           }
-          throw new errMod.UnauthorizedError(baseParams)
+          throw new UnauthorizedError(baseParams)
         case 403:
-          throw new errMod.ForbiddenError(baseParams)
+          throw new ForbiddenError(baseParams)
         case 404:
-          throw new errMod.ResourceNotFoundError(baseParams)
+          throw new ResourceNotFoundError(baseParams)
         case 409:
-          throw new errMod.ConflictError(baseParams)
+          throw new ConflictError(baseParams)
         case 500:
           if (errors && errors.length > 0) {
             const mergedParams = {
               ...baseParams,
               context: { ...errors[0].context, traceId },
             }
-            throw new errMod.OrchestratorError({
+            throw new OrchestratorError({
               ...mergedParams,
               message: errors[0].message || 'Internal Server Error',
             })
           }
-          throw new errMod.InternalServerError(baseParams)
+          throw new InternalServerError(baseParams)
         default:
-          throw new errMod.OrchestratorError({
+          throw new OrchestratorError({
             ...baseParams,
             message: (message as string) || errorType,
           })
