@@ -433,8 +433,6 @@ export class Orchestrator {
       message === 'encoding.unsupported'
     ) {
       throw new BodyParserError({ message, ...errorParams })
-    } else if (message === 'Order bundle not found') {
-      throw new IntentNotFoundError(errorParams)
     } else {
       throw new OrchestratorError({ message, ...errorParams })
     }
