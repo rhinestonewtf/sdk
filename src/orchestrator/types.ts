@@ -1,4 +1,5 @@
 import type {
+  SettlementLayer as CrossChainSettlementLayer,
   SupportedChain,
   SupportedMainnet,
   SupportedOPStackMainnet,
@@ -11,7 +12,6 @@ type SupportedTokenSymbol = 'ETH' | 'WETH' | 'USDC' | 'USDT'
 type SupportedToken = SupportedTokenSymbol | Address
 
 type AccountType = 'GENERIC' | 'ERC7579' | 'EOA'
-type AccountStatus = 'NOT_DEPLOYED' | AccountType
 
 const INTENT_STATUS_PENDING = 'PENDING'
 const INTENT_STATUS_FAILED = 'FAILED'
@@ -65,11 +65,11 @@ interface Claim {
 
 interface Execution {
   to: Address
-  value: bigint
+  value: string
   data: Hex
 }
 
-export type SettlementLayer = 'SAME_CHAIN' | 'ACROSS' | 'ECO' | 'RELAY'
+type SettlementLayer = 'SAME_CHAIN' | CrossChainSettlementLayer
 
 interface IntentOptions {
   topupCompact: boolean
@@ -129,24 +129,27 @@ interface IntentInput {
   options: IntentOptions
 }
 
-type SettlementSystem = 'SAME_CHAIN' | 'ACROSS' | 'RELAY'
-
 interface IntentCost {
   hasFulfilledAll: boolean
   tokensReceived: [
     {
       tokenAddress: Address
       hasFulfilled: boolean
-      amountSpent: bigint
-      destinationAmount: bigint
-      fee: bigint
+      amountSpent: string
+      destinationAmount: string
+      fee: string
     },
   ]
+  sponsorFee: {
+    relayer: number
+    protocol: number
+  }
   tokensSpent: {
-    [chainId: number]: {
+    [chainId: string]: {
       [tokenAddress: Address]: {
         locked: string
         unlocked: string
+        version: number
       }
     }
   }
@@ -168,21 +171,16 @@ interface IntentOpElementMandate {
     encodedVal: Hex
   }
   v: number
-  minGas: bigint
+  minGas: string
 }
 
 interface IntentOpElement {
   arbiter: Address
   chainId: string
   idsAndAmounts: [[string, string]]
+  spendTokens: [[string, string]]
   beforeFill: boolean
-  smartAccountStatus: {
-    accountType: 'smartAccount'
-    isDeployed: boolean
-    isERC7579: boolean
-    erc7579AccountType: string
-    erc7579AccountVersion: string
-  }
+  smartAccountStatus: AccountContext
   mandate: IntentOpElementMandate
 }
 
@@ -193,6 +191,7 @@ interface IntentOp {
   elements: IntentOpElement[]
   serverSignature: string
   signedMetadata: {
+    fees: unknown
     quotes: Record<Address, unknown[]>
     tokenPrices: Record<string, number>
     opGasParams: Record<
@@ -211,6 +210,14 @@ interface IntentOp {
   }
 }
 
+interface AccountContext {
+  accountType: 'smartAccount'
+  isDeployed: boolean
+  isERC7579: boolean
+  erc7579AccountType: string
+  erc7579AccountVersion: string
+}
+
 interface Account {
   address: Address
   accountType: AccountType
@@ -220,7 +227,7 @@ interface Account {
 }
 
 type AccountWithContext = Omit<Account, 'delegations'> & {
-  accountContext: { [chainId: number]: AccountStatus }
+  accountContext: { [chainId: number]: AccountContext }
   requiredDelegations?: Delegations
 }
 
@@ -308,16 +315,16 @@ export type OPNetworkParams =
     }
 
 interface IntentOpStatus {
-  type: 'intent'
   status: IntentStatus
+  claims: Claim[]
+  destinationChainId: number
+  userAddress: Address
   fillTimestamp?: number
   fillTransactionHash?: Hex
-  claims: Claim[]
 }
 
 interface PortfolioTokenChainResponse {
   chainId: number
-  accountStatus: AccountStatus
   tokenAddress: Address
   balance: {
     locked: string
@@ -326,8 +333,8 @@ interface PortfolioTokenChainResponse {
 }
 
 interface PortfolioTokenResponse {
-  tokenName: 'ETH'
-  tokenDecimals: 18
+  tokenName: string
+  tokenDecimals: number
   balance: {
     locked: string
     unlocked: string
@@ -340,7 +347,7 @@ type PortfolioResponse = PortfolioTokenResponse[]
 export type {
   TokenConfig,
   SupportedChain,
-  SettlementSystem,
+  SettlementLayer,
   IntentInput,
   IntentCost,
   IntentRoute,
