@@ -255,7 +255,7 @@ async function sendTransactionAsIntent(
   if (!intentRoute) {
     throw new OrderPathRequiredForIntentsError()
   }
-  const signature = await signIntent(
+  const { originSignatures, destinationSignature } = await signIntent(
     config,
     targetChain,
     intentRoute.intentOp,
@@ -269,7 +269,8 @@ async function sendTransactionAsIntent(
     sourceChains,
     targetChain,
     intentRoute.intentOp,
-    signature,
+    originSignatures,
+    destinationSignature,
     authorizations,
     dryRun,
   )

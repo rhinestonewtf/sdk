@@ -113,7 +113,8 @@ interface PreparedUserOperationData {
 }
 
 interface SignedTransactionData extends PreparedTransactionData {
-  signature: Hex
+  originSignatures: Hex[]
+  destinationSignature: Hex
 }
 
 interface SignedUserOperationData extends PreparedUserOperationData {
@@ -221,7 +222,7 @@ async function signTransaction(
     preparedTransaction.transaction,
   )
   const intentRoute = preparedTransaction.intentRoute
-  const signature = await signIntent(
+  const { originSignatures, destinationSignature } = await signIntent(
     config,
     targetChain,
     intentRoute.intentOp,
@@ -231,7 +232,8 @@ async function signTransaction(
   return {
     intentRoute,
     transaction: preparedTransaction.transaction,
-    signature,
+    originSignatures,
+    destinationSignature,
   }
 }
 
@@ -363,7 +365,8 @@ async function submitTransaction(
   authorizations: SignedAuthorizationList,
   dryRun: boolean = false,
 ): Promise<TransactionResult> {
-  const { intentRoute, transaction, signature } = signedTransaction
+  const { intentRoute, transaction, originSignatures, destinationSignature } =
+    signedTransaction
   const { sourceChains, targetChain } = getTransactionParams(transaction)
   const intentOp = intentRoute.intentOp
   return await submitIntent(
@@ -371,7 +374,8 @@ async function submitTransaction(
     sourceChains,
     targetChain,
     intentOp,
-    signature,
+    originSignatures,
+    destinationSignature,
     authorizations,
     dryRun,
   )
@@ -569,25 +573,44 @@ async function signIntent(
   signers?: SignerSet,
 ) {
   if (config.account?.type === 'eoa') {
-    let signature: Hex
-    let digest: Hex | undefined
-    if (config.eoa?.signTypedData) {
-      const typedData = getPermit2TypedData(intentOp)
-      signature = await config.eoa.signTypedData(typedData)
-    } else if (config.eoa?.sign) {
-      digest = getPermit2Digest(intentOp)
-      signature = await (config.eoa as any).sign({ hash: digest })
-    } else if (config.eoa?.signMessage) {
-      digest = getPermit2Digest(intentOp)
-      signature = await (config.eoa as any).signMessage({
-        message: { raw: digest },
-      })
-    } else {
-      throw new EoaSigningMethodNotConfiguredError(
-        'signTypedData, sign, or signMessage',
-      )
+    const originSignatures: Hex[] = []
+    for (const element of intentOp.elements) {
+      let digest: Hex | undefined
+      if (config.eoa?.signTypedData) {
+        const typedData = getPermit2TypedData(
+          element,
+          BigInt(intentOp.nonce),
+          BigInt(intentOp.expires),
+        )
+        originSignatures.push(await config.eoa.signTypedData(typedData))
+      } else if (config.eoa?.sign) {
+        digest = getPermit2Digest(
+          element,
+          BigInt(intentOp.nonce),
+          BigInt(intentOp.expires),
+        )
+        originSignatures.push(await (config.eoa as any).sign({ hash: digest }))
+      } else if (config.eoa?.signMessage) {
+        digest = getPermit2Digest(
+          element,
+          BigInt(intentOp.nonce),
+          BigInt(intentOp.expires),
+        )
+        originSignatures.push(
+          await (config.eoa as any).signMessage({
+            message: { raw: digest },
+          }),
+        )
+      } else {
+        throw new EoaSigningMethodNotConfiguredError(
+          'signTypedData, sign, or signMessage',
+        )
+      }
     }
-    return signature
+    return {
+      originSignatures,
+      destinationSignature: originSignatures[0],
+    }
   }
 
   const validator = getValidator(config, signers)
@@ -596,7 +619,7 @@ async function signIntent(
   }
   const ownerValidator = getOwnerValidator(config)
   const isRoot = validator.address === ownerValidator.address
-  const signature = await getIntentSignature(
+  const signatures = await getIntentSignature(
     config,
     intentOp,
     signers,
@@ -604,7 +627,7 @@ async function signIntent(
     validator,
     isRoot,
   )
-  return signature
+  return signatures
 }
 
 async function getIntentSignature(
@@ -620,7 +643,7 @@ async function getIntentSignature(
   )
 
   if (withJitFlow) {
-    return await getPermit2Signature(
+    return await getPermit2Signatures(
       config,
       intentOp,
       signers,
@@ -629,7 +652,7 @@ async function getIntentSignature(
       isRoot,
     )
   }
-  return await getCompactSignature(
+  const signature = await getCompactSignature(
     config,
     intentOp,
     signers,
@@ -637,9 +660,13 @@ async function getIntentSignature(
     validator,
     isRoot,
   )
+  return {
+    originSignatures: Array(intentOp.elements.length).fill(signature),
+    destinationSignature: signature,
+  }
 }
 
-async function getPermit2Signature(
+async function getPermit2Signatures(
   config: RhinestoneConfig,
   intentOp: IntentOp,
   signers: SignerSet | undefined,
@@ -647,15 +674,27 @@ async function getPermit2Signature(
   validator: Module,
   isRoot: boolean,
 ) {
-  const typedData = getPermit2TypedData(intentOp)
-  return await signIntentTypedData(
-    config,
-    signers,
-    targetChain,
-    validator,
-    isRoot,
-    typedData,
-  )
+  const originSignatures: Hex[] = []
+  for (const element of intentOp.elements) {
+    const typedData = getPermit2TypedData(
+      element,
+      BigInt(intentOp.nonce),
+      BigInt(intentOp.expires),
+    )
+    const signature = await signIntentTypedData(
+      config,
+      signers,
+      targetChain,
+      validator,
+      isRoot,
+      typedData,
+    )
+    originSignatures.push(signature)
+  }
+  return {
+    originSignatures,
+    destinationSignature: originSignatures[0],
+  }
 }
 
 async function getCompactSignature(
@@ -791,7 +830,8 @@ async function submitIntent(
   sourceChains: Chain[] | undefined,
   targetChain: Chain,
   intentOp: IntentOp,
-  signature: Hex,
+  originSignatures: Hex[],
+  destinationSignature: Hex,
   authorizations: SignedAuthorizationList,
   dryRun: boolean,
 ) {
@@ -800,7 +840,8 @@ async function submitIntent(
     sourceChains,
     targetChain,
     intentOp,
-    signature,
+    originSignatures,
+    destinationSignature,
     authorizations,
     dryRun,
   )
@@ -823,13 +864,14 @@ function getOrchestratorByChain(
 
 function createSignedIntentOp(
   intentOp: IntentOp,
-  signature: Hex,
+  originSignatures: Hex[],
+  destinationSignature: Hex,
   authorizations: SignedAuthorizationList,
 ): SignedIntentOp {
   return {
     ...intentOp,
-    originSignatures: Array(intentOp.elements.length).fill(signature),
-    destinationSignature: signature,
+    originSignatures,
+    destinationSignature,
     signedAuthorizations:
       authorizations.length > 0
         ? authorizations.map((authorization) => ({
@@ -849,13 +891,15 @@ async function submitIntentInternal(
   sourceChains: Chain[] | undefined,
   targetChain: Chain,
   intentOp: IntentOp,
-  signature: Hex,
+  originSignatures: Hex[],
+  destinationSignature: Hex,
   authorizations: SignedAuthorizationList,
   dryRun: boolean,
 ) {
   const signedIntentOp = createSignedIntentOp(
     intentOp,
-    signature,
+    originSignatures,
+    destinationSignature,
     authorizations,
   )
   const orchestrator = getOrchestratorByChain(
