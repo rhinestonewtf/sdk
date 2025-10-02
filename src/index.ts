@@ -13,6 +13,7 @@ import {
   SignMessageNotSupportedByAccountError,
   SmartSessionsNotEnabledError,
 } from './accounts'
+import { walletClientToAccount } from './accounts/walletClient'
 import {
   addOwner,
   changeThreshold,
@@ -250,6 +251,7 @@ async function createRhinestoneAccount(
 
 export {
   createRhinestoneAccount,
+  walletClientToAccount,
   addOwner,
   changeThreshold,
   disableEcdsa,
