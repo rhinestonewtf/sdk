@@ -16,7 +16,7 @@ import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import { base } from 'viem/chains'
 import { describe, expect, it } from 'vitest'
 
-import { RhinestoneSDK } from '../src'
+import { RhinestoneSDK } from '../src/index'
 
 import './utils/polyfill'
 import { getAnvil } from './utils/anvil'
