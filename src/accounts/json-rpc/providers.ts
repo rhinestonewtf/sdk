@@ -14,6 +14,7 @@ function getAlchemyUrl(chainId: SupportedChain, apiKey: string): string {
     42161: 'arb-mainnet',
     146: 'sonic-mainnet',
     80002: 'polygon-amoy',
+    9745: 'plasma-mainnet',
   }
 
   const chainParam = chainMapping[chainId]

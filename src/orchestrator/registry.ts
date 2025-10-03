@@ -19,6 +19,7 @@ import {
   sepolia,
   sonic,
   zksync,
+  plasma
 } from 'viem/chains'
 
 import { TokenConfig } from './types'
@@ -412,6 +413,7 @@ function getChainById(chainId: number) {
     polygonAmoy,
     zksync,
     sonic,
+    plasma,
   ]
   for (const chain of supportedChains) {
     if (chain.id === chainId) {
