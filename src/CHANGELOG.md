@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 0.16.1
+
+### Patch Changes
+
+- Add wallet client to account helper
+
 ## 0.16.0
 
 ### Minor Changes
