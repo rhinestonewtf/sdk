@@ -69,7 +69,12 @@ interface Execution {
   data: Hex
 }
 
-export type SettlementLayer = 'SAME_CHAIN' | 'ACROSS' | 'ECO' | 'RELAY'
+export type SettlementLayer =
+  | 'SAME_CHAIN'
+  | 'ACROSS'
+  | 'ECO'
+  | 'RELAY'
+  | 'INTENT_EXECUTOR'
 
 interface IntentOptions {
   topupCompact: boolean
