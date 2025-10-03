@@ -114,6 +114,20 @@ class SignMessageNotSupportedByAccountError extends AccountError {
   }
 }
 
+class WalletClientNoConnectedAccountError extends AccountError {
+  constructor(params?: {
+    context?: any
+    errorType?: string
+    traceId?: string
+  }) {
+    super({
+      message:
+        'WalletClient is missing a default account. Ensure the wallet is connected and the client has an account.',
+      ...params,
+    })
+  }
+}
+
 class Eip7702NotSupportedForAccountError extends AccountError {
   constructor(
     account: AccountType,
@@ -152,4 +166,5 @@ export {
   SigningNotSupportedForAccountError,
   SignMessageNotSupportedByAccountError,
   Eip7702NotSupportedForAccountError,
+  WalletClientNoConnectedAccountError,
 }
