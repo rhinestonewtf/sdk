@@ -8,12 +8,12 @@ import type {
   mainnet,
   optimism,
   optimismSepolia,
+  plasma,
   polygon,
   polygonAmoy,
   sepolia,
   sonic,
   zksync,
-  plasma,
 } from 'viem/chains'
 
 type SupportedTestnet =

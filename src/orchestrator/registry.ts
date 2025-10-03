@@ -14,12 +14,12 @@ import {
   mainnet,
   optimism,
   optimismSepolia,
+  plasma,
   polygon,
   polygonAmoy,
   sepolia,
   sonic,
   zksync,
-  plasma
 } from 'viem/chains'
 
 import { TokenConfig } from './types'
