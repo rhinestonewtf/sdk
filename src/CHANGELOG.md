@@ -1,5 +1,12 @@
 # @rhinestone/sdk
 
+## 1.0.0-beta.41
+
+### Patch Changes
+
+- d03fe29: Standalone intents
+- af1de6b: remove status endpoint
+
 ## 1.0.0-beta.40
 
 ### Patch Changes
