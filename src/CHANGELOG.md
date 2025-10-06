@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.0-beta.42
+
+### Patch Changes
+
+- dea6f57: update compact address
+
 ## 1.0.0-beta.41
 
 ### Patch Changes
