@@ -8,6 +8,7 @@ import type {
   mainnet,
   optimism,
   optimismSepolia,
+  plasma,
   polygon,
   polygonAmoy,
   sepolia,
@@ -29,6 +30,7 @@ type SupportedMainnet =
   | typeof polygon.id
   | typeof zksync.id
   | typeof sonic.id
+  | typeof plasma.id
 type SupportedOPStackMainnet = typeof optimism.id | typeof base.id
 type SupportedOPStackTestnet = typeof optimismSepolia.id | typeof baseSepolia.id
 type SupportedChain = SupportedMainnet | SupportedTestnet

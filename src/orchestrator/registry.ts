@@ -14,6 +14,7 @@ import {
   mainnet,
   optimism,
   optimismSepolia,
+  plasma,
   polygon,
   polygonAmoy,
   sepolia,
@@ -412,6 +413,7 @@ function getChainById(chainId: number) {
     polygonAmoy,
     zksync,
     sonic,
+    plasma,
   ]
   for (const chain of supportedChains) {
     if (chain.id === chainId) {
