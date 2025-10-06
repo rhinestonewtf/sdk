@@ -195,7 +195,7 @@ export class Orchestrator {
 
   async getIntentOpStatus(intentId: bigint): Promise<IntentOpStatus> {
     return await this.fetch(
-      `${this.serverUrl}/intent-operation/${intentId.toString()}/status`,
+      `${this.serverUrl}/intent-operation/${intentId.toString()}`,
       {
         headers: this.getHeaders(),
       },
