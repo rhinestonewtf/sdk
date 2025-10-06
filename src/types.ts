@@ -3,7 +3,7 @@ import type { WebAuthnAccount } from 'viem/account-abstraction'
 import type { EnableSessionData } from './modules/validators/smart-sessions'
 import type { SettlementLayer } from './orchestrator/types'
 
-type AccountType = 'safe' | 'nexus' | 'kernel' | 'startale' | 'custom'
+type AccountType = 'safe' | 'nexus' | 'kernel' | 'startale'
 
 interface SafeAccount {
   type: 'safe'

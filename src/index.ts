@@ -17,6 +17,7 @@ import {
   Eip7702NotSupportedForAccountError,
   ExistingEip7702AccountsNotSupportedError,
   FactoryArgsNotAvailableError,
+  getAccountProvider,
   getAddress as getAddressInternal,
   isAccountError,
   SigningNotSupportedForAccountError,
@@ -414,7 +415,7 @@ async function createRhinestoneAccount(
    * @returns List of account validators
    */
   function getValidators(chain: Chain) {
-    const accountType = config.account?.type || 'nexus'
+    const accountType = getAccountProvider(config).type
     const account = getAddress()
     return getValidatorsInternal(accountType, account, chain, config.provider)
   }

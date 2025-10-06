@@ -38,9 +38,6 @@ export function runBundlesTestCases() {
           const rhinestoneApiKey = 'MOCK_KEY'
 
           const rhinestoneAccount = await createRhinestoneAccount({
-            account: {
-              type: 'nexus',
-            },
             owners: {
               type: 'ecdsa',
               accounts: [ownerAccount],

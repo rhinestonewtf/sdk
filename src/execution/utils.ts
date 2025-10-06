@@ -133,8 +133,13 @@ async function prepareTransaction(
 
   const asUserOp = signers?.type === 'guardians' || signers?.type === 'session'
   if (asUserOp) {
-    if (sourceChains && sourceChains.length > 0) {
-      throw new SourceChainsNotAvailableForUserOpFlowError()
+    if (sourceChains) {
+      if (sourceChains.length > 1) {
+        throw new SourceChainsNotAvailableForUserOpFlowError()
+      }
+      if (sourceChains[0].id !== targetChain.id) {
+        throw new SourceChainsNotAvailableForUserOpFlowError()
+      }
     }
     // Smart sessions require a UserOp flow
     data = await prepareTransactionAsUserOp(
