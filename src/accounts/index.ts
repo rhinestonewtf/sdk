@@ -69,6 +69,15 @@ import {
   signEip7702InitData as signNexusEip7702InitData,
 } from './nexus'
 import {
+  getAddress as getPassportAddress,
+  getDeployArgs as getPassportDeployArgs,
+  getGuardianSmartAccount as getPassportGuardianSmartAccount,
+  getInstallData as getPassportInstallData,
+  getSessionSmartAccount as getPassportSessionSmartAccount,
+  getSmartAccount as getPassportSmartAccount,
+  packSignature as packPassportSignature,
+} from './passport'
+import {
   getAddress as getSafeAddress,
   getDeployArgs as getSafeDeployArgs,
   getGuardianSmartAccount as getSafeGuardianSmartAccount,
@@ -110,6 +119,9 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
     case 'startale': {
       return getStartaleDeployArgs(config)
     }
+    case 'passport': {
+      return getPassportDeployArgs(config)
+    }
   }
 }
 
@@ -142,6 +154,7 @@ async function signEip7702InitData(config: RhinestoneAccountConfig) {
     }
     case 'safe':
     case 'kernel':
+    case 'passport':
     case 'startale': {
       throw new Eip7702NotSupportedForAccountError(account.type)
     }
@@ -159,6 +172,7 @@ async function getEip7702InitCall(
     }
     case 'safe':
     case 'kernel':
+    case 'passport':
     case 'startale': {
       throw new Eip7702NotSupportedForAccountError(account.type)
     }
@@ -185,6 +199,9 @@ function getModuleInstallationCalls(
       }
       case 'startale': {
         return [getStartaleInstallData(module)]
+      }
+      case 'passport': {
+        return [getPassportInstallData(module)]
       }
     }
   }
@@ -252,6 +269,9 @@ function getAddress(config: RhinestoneAccountConfig) {
     case 'startale': {
       return getStartaleAddress(config)
     }
+    case 'passport': {
+      return getPassportAddress(config)
+    }
   }
 }
 
@@ -301,6 +321,10 @@ async function getPackedSignature(
     case 'startale': {
       const signature = await signFn(hash)
       return packStartaleSignature(signature, validator, transformSignature)
+    }
+    case 'passport': {
+      const signature = await signFn(hash)
+      return packPassportSignature(signature, validator, transformSignature)
     }
   }
 }
@@ -352,6 +376,10 @@ async function getTypedDataPackedSignature<
     case 'startale': {
       const signature = await signFn(parameters)
       return packStartaleSignature(signature, validator, transformSignature)
+    }
+    case 'passport': {
+      const signature = await signFn(parameters)
+      return packPassportSignature(signature, validator, transformSignature)
     }
   }
 }
@@ -590,6 +618,15 @@ async function getSmartAccount(
         signFn,
       )
     }
+    case 'passport': {
+      return getPassportSmartAccount(
+        client,
+        address,
+        config.owners,
+        ownerValidator.address,
+        signFn,
+      )
+    }
   }
 }
 
@@ -658,6 +695,16 @@ async function getSmartSessionSmartAccount(
         signFn,
       )
     }
+    case 'passport': {
+      return getPassportSessionSmartAccount(
+        client,
+        address,
+        session,
+        smartSessionValidator.address,
+        enableData,
+        signFn,
+      )
+    }
   }
 }
 
@@ -714,6 +761,15 @@ async function getGuardianSmartAccount(
     }
     case 'startale': {
       return getStartaleGuardianSmartAccount(
+        client,
+        address,
+        guardians,
+        socialRecoveryValidator.address,
+        signFn,
+      )
+    }
+    case 'passport': {
+      return getPassportGuardianSmartAccount(
         client,
         address,
         guardians,

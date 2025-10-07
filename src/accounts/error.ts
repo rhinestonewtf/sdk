@@ -149,7 +149,7 @@ function isAccountError(error: Error): error is AccountError {
   return error instanceof AccountError
 }
 
-function getAccountName(account: AccountType) {
+function getAccountName(account: AccountType): string {
   switch (account) {
     case 'safe':
       return 'Safe'
@@ -159,6 +159,8 @@ function getAccountName(account: AccountType) {
       return 'Nexus'
     case 'startale':
       return 'Startale'
+    case 'passport':
+      return 'Passport'
   }
 }
 

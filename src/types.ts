@@ -3,7 +3,7 @@ import type { WebAuthnAccount } from 'viem/account-abstraction'
 import type { EnableSessionData } from './modules/validators/smart-sessions'
 import type { SettlementLayer } from './orchestrator/types'
 
-type AccountType = 'safe' | 'nexus' | 'kernel' | 'startale'
+type AccountType = 'safe' | 'nexus' | 'kernel' | 'startale' | 'passport'
 
 interface SafeAccount {
   type: 'safe'
@@ -25,11 +25,16 @@ interface StartaleAccount {
   type: 'startale'
 }
 
+interface PassportAccount {
+  type: 'passport'
+}
+
 type AccountProviderConfig =
   | SafeAccount
   | NexusAccount
   | KernelAccount
   | StartaleAccount
+  | PassportAccount
 
 interface OwnableValidatorConfig {
   type: 'ecdsa'
