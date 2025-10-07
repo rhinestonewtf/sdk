@@ -42,9 +42,6 @@ export function runDeploymentTests() {
           const ownerAccount = privateKeyToAccount(ownerPrivateKey)
           const rhinestone = new RhinestoneSDK()
           const rhinestoneAccount = await rhinestone.createAccount({
-            account: {
-              type: 'nexus',
-            },
             owners: {
               type: 'ecdsa',
               accounts: [ownerAccount],
@@ -155,9 +152,6 @@ export function runDeploymentTestCases() {
 
           const rhinestone = new RhinestoneSDK()
           const rhinestoneAccount = await rhinestone.createAccount({
-            account: {
-              type: 'nexus',
-            },
             owners: {
               type: 'ecdsa',
               accounts: [ownerAccount],

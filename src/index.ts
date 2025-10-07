@@ -11,6 +11,7 @@ import type { UserOperationReceipt } from 'viem/account-abstraction'
 import {
   checkAddress,
   deploy as deployInternal,
+  getAccountProvider,
   getAddress as getAddressInternal,
   isDeployed as isDeployedInternal,
   OwnersFieldRequiredError,
@@ -443,7 +444,7 @@ async function createRhinestoneAccount(
    * @returns List of account validators
    */
   function getValidators(chain: Chain) {
-    const accountType = config.account?.type || 'nexus'
+    const accountType = getAccountProvider(config).type
     const account = getAddress()
     return getValidatorsInternal(accountType, account, chain, config.provider)
   }
