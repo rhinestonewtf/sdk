@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.0-beta.43
+
+### Patch Changes
+
+- 9d09cc9: fix validation error
+
 ## 1.0.0-beta.42
 
 ### Patch Changes
