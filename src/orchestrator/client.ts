@@ -15,7 +15,6 @@ import {
   OrchestratorError,
   RateLimitedError,
   ResourceNotFoundError,
-  SchemaValidationError,
   ServiceUnavailableError,
   TokenNotSupportedError,
   UnauthorizedError,
@@ -286,15 +285,6 @@ export class Orchestrator {
         statusCode: status,
       }
 
-      if (status === 422) {
-        // zod / json schema validation errors
-        const context = { traceId, errors }
-        throw new SchemaValidationError({
-          ...baseParams,
-          context,
-          message: (message as string) || 'Schema validation error',
-        })
-      }
       if (status === 429) {
         const retryAfter = headers?.retryAfter
         const context = { traceId, retryAfter }
@@ -321,7 +311,11 @@ export class Orchestrator {
 
       switch (status) {
         case 400:
-          throw new BadRequestError(baseParams)
+          throw new BadRequestError({
+            ...baseParams,
+            context: { traceId, errors },
+            message: message as string,
+          })
         case 401:
           if (message === 'Authentication is required') {
             throw new AuthenticationRequiredError(baseParams)
