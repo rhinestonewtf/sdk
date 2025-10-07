@@ -101,7 +101,10 @@ import type {
 
 interface RhinestoneAccount {
   config: RhinestoneAccountConfig
-  deploy: (chain: Chain, session?: Session) => Promise<boolean>
+  deploy: (
+    chain: Chain,
+    params?: { session?: Session; sponsored?: boolean },
+  ) => Promise<boolean>
   isDeployed: (chain: Chain) => Promise<boolean>
   setup: (chain: Chain) => Promise<boolean>
   signEip7702InitData: () => Promise<Hex>
@@ -196,8 +199,11 @@ async function createRhinestoneAccount(
    * @param chain Chain to deploy the account on
    * @param session Session to deploy the account on (optional)
    */
-  function deploy(chain: Chain, session?: Session) {
-    return deployInternal(config, chain, session)
+  function deploy(
+    chain: Chain,
+    params?: { session?: Session; sponsored?: boolean },
+  ) {
+    return deployInternal(config, chain, params)
   }
 
   /**
