@@ -544,7 +544,11 @@ async function prepareTransactionAsIntent(
       setupOps,
       delegations,
     },
-    destinationExecutions: calls,
+    destinationExecutions: calls.map((call) => ({
+      to: call.to,
+      value: call.value.toString(),
+      data: call.data,
+    })),
     destinationGasUnits: gasLimit,
     accountAccessList,
     options: {

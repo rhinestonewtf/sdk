@@ -71,7 +71,7 @@ import {
   type IntentOp,
   type IntentOpStatus,
   type Portfolio,
-  type SettlementSystem,
+  type SettlementLayer,
   type SignedIntentOp,
 } from './orchestrator'
 import type {
@@ -578,7 +578,7 @@ export type {
   IntentOp,
   IntentOpStatus,
   IntentRoute,
-  SettlementSystem,
+  SettlementLayer,
   SignedIntentOp,
   Portfolio,
   // Multi-chain permit2 types
