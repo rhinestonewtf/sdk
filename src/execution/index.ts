@@ -33,6 +33,8 @@ import {
   SignerNotSupportedError,
 } from './error'
 import { enableSmartSession } from './smart-session'
+import { isRateLimited, isRetryable } from '../orchestrator'
+import { IntentStatusTimeoutError } from './error'
 import type { TransactionResult, UserOperationResult } from './utils'
 import {
   getOrchestratorByChain,
@@ -46,7 +48,12 @@ import {
   submitIntentInternal,
 } from './utils'
 
-const POLLING_INTERVAL = 500
+const POLL_INITIAL_MS = 500
+const POLL_SLOW_AFTER_MS = 5000
+const POLL_SLOW_MS = 2000
+const POLL_MAX_WAIT_MS = 180000
+const POLL_ERROR_BACKOFF_MS = 1000
+const POLL_ERROR_BACKOFF_MAX_MS = 10000
 
 interface TransactionStatus {
   fill: {
@@ -293,14 +300,61 @@ async function waitForExecution(
   switch (result.type) {
     case 'intent': {
       let intentStatus: IntentOpStatus | null = null
+      const startTs = Date.now()
+      let nextDelayMs = POLL_INITIAL_MS
+      let errorBackoffMs = POLL_ERROR_BACKOFF_MS
       while (intentStatus === null || !validStatuses.has(intentStatus.status)) {
+        const now = Date.now()
+        if (now - startTs >= POLL_MAX_WAIT_MS) {
+          throw new IntentStatusTimeoutError({
+            context: { waitedMs: now - startTs },
+          })
+        }
         const orchestrator = getOrchestratorByChain(
           result.targetChain,
           config.apiKey,
           config.endpointUrl,
         )
-        intentStatus = await orchestrator.getIntentOpStatus(result.id)
-        await new Promise((resolve) => setTimeout(resolve, POLLING_INTERVAL))
+        try {
+          intentStatus = await orchestrator.getIntentOpStatus(result.id)
+          // reset error backoff on success
+          errorBackoffMs = POLL_ERROR_BACKOFF_MS
+          const elapsed = Date.now() - startTs
+          nextDelayMs = elapsed >= POLL_SLOW_AFTER_MS ? POLL_SLOW_MS : POLL_INITIAL_MS
+          await new Promise((resolve) => setTimeout(resolve, nextDelayMs))
+        } catch (err) {
+          if (isRateLimited(err)) {
+            const retryAfter = (err as any)?.context?.retryAfter as
+              | string
+              | undefined
+            let retryMs = nextDelayMs
+            if (retryAfter) {
+              const parsed = Number(retryAfter)
+              if (!Number.isNaN(parsed)) {
+                retryMs = Math.max(parsed * 1000, nextDelayMs)
+              } else {
+                const asDate = Date.parse(retryAfter)
+                if (!Number.isNaN(asDate)) {
+                  retryMs = Math.max(asDate - Date.now(), nextDelayMs)
+                }
+              }
+            } else {
+              retryMs = Math.max(POLL_SLOW_MS, nextDelayMs)
+            }
+            await new Promise((resolve) => setTimeout(resolve, retryMs))
+            continue
+          }
+          if (isRetryable(err)) {
+            const backoff = Math.min(errorBackoffMs, POLL_ERROR_BACKOFF_MAX_MS)
+            errorBackoffMs = Math.min(
+              errorBackoffMs * 2,
+              POLL_ERROR_BACKOFF_MAX_MS,
+            )
+            await new Promise((resolve) => setTimeout(resolve, backoff))
+            continue
+          }
+          throw err
+        }
       }
       if (intentStatus.status === INTENT_STATUS_FAILED) {
         throw new IntentFailedError()
@@ -376,6 +430,7 @@ export {
   isExecutionError,
   ExecutionError,
   IntentFailedError,
+  IntentStatusTimeoutError,
   OrderPathRequiredForIntentsError,
   SessionChainRequiredError,
   SignerNotSupportedError,

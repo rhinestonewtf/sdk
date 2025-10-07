@@ -88,6 +88,19 @@ class IntentFailedError extends ExecutionError {
   }
 }
 
+class IntentStatusTimeoutError extends ExecutionError {
+  constructor(params?: {
+    context?: any
+    errorType?: string
+    traceId?: string
+  }) {
+    super({
+      message: 'Intent status polling timed out',
+      ...params,
+    })
+  }
+}
+
 function isExecutionError(error: Error): error is ExecutionError {
   return error instanceof ExecutionError
 }
@@ -98,5 +111,6 @@ export {
   OrderPathRequiredForIntentsError,
   SessionChainRequiredError,
   IntentFailedError,
+  IntentStatusTimeoutError,
   SignerNotSupportedError,
 }
