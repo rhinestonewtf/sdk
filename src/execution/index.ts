@@ -9,6 +9,8 @@ import {
   INTENT_STATUS_FAILED,
   INTENT_STATUS_FILLED,
   INTENT_STATUS_PRECONFIRMED,
+  isRateLimited,
+  isRetryable,
 } from '../orchestrator'
 import { getChainById } from '../orchestrator/registry'
 import type { SettlementLayer } from '../orchestrator/types'
@@ -27,14 +29,13 @@ import type {
 import {
   ExecutionError,
   IntentFailedError,
+  IntentStatusTimeoutError,
   isExecutionError,
   OrderPathRequiredForIntentsError,
   SessionChainRequiredError,
   SignerNotSupportedError,
 } from './error'
 import { enableSmartSession } from './smart-session'
-import { isRateLimited, isRetryable } from '../orchestrator'
-import { IntentStatusTimeoutError } from './error'
 import type { TransactionResult, UserOperationResult } from './utils'
 import {
   getOrchestratorByChain,
@@ -320,7 +321,8 @@ async function waitForExecution(
           // reset error backoff on success
           errorBackoffMs = POLL_ERROR_BACKOFF_MS
           const elapsed = Date.now() - startTs
-          nextDelayMs = elapsed >= POLL_SLOW_AFTER_MS ? POLL_SLOW_MS : POLL_INITIAL_MS
+          nextDelayMs =
+            elapsed >= POLL_SLOW_AFTER_MS ? POLL_SLOW_MS : POLL_INITIAL_MS
           await new Promise((resolve) => setTimeout(resolve, nextDelayMs))
         } catch (err) {
           if (isRateLimited(err)) {
