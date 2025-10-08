@@ -1,5 +1,70 @@
 # @rhinestone/sdk
 
+## 1.0.0
+
+### Major Changes
+
+- 036f989: The Compact support
+
+### Minor Changes
+
+- 6602670: Add Sonic support
+- b7b5faa: Support Startale account
+
+### Patch Changes
+
+- 0bb2c42: Fix API request in `getMaxTokenAmount`
+- 9e034b8: Take sponsorship into account in `getMaxSpendableAmount`
+- dea6f57: update compact address
+- e4dc710: Fix portfolio
+- d03fe29: Standalone intents
+- 43429c6: Multi source chain
+- a6b1718: Export the registry methods getSupportedTokens and getTokenAddress
+- 7ca0cc2: Enhance error handling
+- ae93ddc: - Introduce `RhinestoneSDK` an entry point
+  - Move action utilities into separate subpackages
+  - Make actions lazily executed
+  - Split the intent and userop flows
+- 883706c: Resource locking
+- 7e879d3: Remove `axios` dependency
+- 233c8bf: fix: always send setup ops
+- 12b4d87: Add signer conversion helpers methods
+- e21d83c: Update dependencies
+- 82f6851: Add relay types
+- 6107c7e: allow for settlement layer selection
+- 533c84f: - Selecting source assets (per chain or globally) by setting `sourceAssets`
+  - Don't pass the default token request when using same-chain settlement
+  - Choosing a fee token by setting `feeAsset`
+- d39b2ba: Expose missing types
+- 5bd056d: 7702 delegations
+- 9b1fa4f: Custon accounts
+- 865142b: Add `isDeployed` utility
+- 18566eb: Intent-based account deployments
+- 359d07f: Existing accounts support ("Bring your own account")
+- 912ee8a: Permit2 signing
+- 436daea: Add optional orchestratorUrl parameter for internal testing
+- 54f5506: Allow using token symbols
+- 9d09cc9: fix validation error
+- 1d76bad: Use latest contracts
+- ec215ed: Add transaction simulation method
+- 8e767ba: add soneium
+- 859a46d: Provide CJS exports for subpackages
+- 8fa26d7: add dry run flag (internal use only)
+- 29ccb04: Custom accounts support
+- 6750bdf: Move `@rhinestone/shared-configs` into package deps
+- 9719915: Fee sponsorship
+- 50774b2: ERC20 deposits for TheCompact
+- 109f624: Account signing utilities for message and typed data signing
+- f12656f: Passkey multisig
+- f6456f0: Multi-factor validator
+- 94605e9: updated 712 types
+- a10ed68: Add EOA support
+- ef7fd0e: - Custom JSON-RPC providers
+  - Biconomy bundler/paymaster
+  - Make `tokenRequests` optional
+- cf08197: Make Rhinestone API key optional (staging only)
+- af1de6b: remove status endpoint
+
 ## 1.0.0-beta.43
 
 ### Patch Changes
