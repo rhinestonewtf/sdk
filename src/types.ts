@@ -277,6 +277,12 @@ interface BaseTransaction {
   settlementLayers?: SettlementLayer[]
   lockFunds?: boolean
   dryRun?: boolean
+  experimental_accountOverride?: {
+    setupOps?: {
+      to: Address
+      data: Hex
+    }[]
+  }
 }
 
 interface SameChainTransaction extends BaseTransaction {
