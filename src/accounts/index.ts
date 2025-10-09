@@ -78,6 +78,7 @@ import {
 } from './nexus'
 import {
   getAddress as getPassportAddress,
+  getSessionSmartAccount as getPassportSessionSmartAccount,
   packSignature as packPassportSignature,
 } from './passport'
 import {
@@ -747,6 +748,16 @@ async function getSmartSessionSmartAccount(
     }
     case 'kernel': {
       return getKernelSessionSmartAccount(
+        client,
+        address,
+        session,
+        smartSessionValidator.address,
+        enableData,
+        signFn,
+      )
+    }
+    case 'passport': {
+      return getPassportSessionSmartAccount(
         client,
         address,
         session,
