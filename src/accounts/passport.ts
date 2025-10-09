@@ -19,6 +19,43 @@ const PASSPORT_FACTORY_ADDRESS: Address =
 const PASSPORT_MAIN_MODULE: Address =
   '0x0d1Bf2f4Ab334324665aeb8d481fF92CdE289439'
 
+function getAddress(config: RhinestoneAccountConfig) {
+  const owners = config.owners
+  if (!owners) {
+    throw new Error('Owners are required for passport')
+  }
+  if (owners.type !== 'ecdsa') {
+    throw new Error('Only ecdsa owners are supported for passport')
+  }
+  const ownerAccounts = owners.accounts.map((owner) => ({
+    weight: 1,
+    account: owner,
+  }))
+  const salt = encodeImageHash(owners.threshold ?? 1, ownerAccounts)
+
+  const accountInitData = padHex(PASSPORT_MAIN_MODULE, { size: 32 })
+  const address = getContractAddress({
+    opcode: 'CREATE2',
+    from: PASSPORT_FACTORY_ADDRESS,
+    salt,
+    bytecode: concat([CREATION_CODE, accountInitData]),
+  })
+  return address
+}
+
+async function packSignature(
+  signature: Hex,
+  validator: ValidatorConfig,
+  transformSignature: (signature: Hex) => Hex = (signature) => signature,
+) {
+  const validatorAddress = validator.address
+  const packedSig = encodePacked(
+    ['address', 'bytes'],
+    [validatorAddress, transformSignature(signature)],
+  )
+  return packedSig
+}
+
 function compareAddr(a: Address, b: Address) {
   return a.toLowerCase() < b.toLowerCase() ? -1 : 1
 }
@@ -55,43 +92,6 @@ function encodeImageHash(
   }
 
   return imageHash
-}
-
-function getAddress(config: RhinestoneAccountConfig) {
-  const owners = config.owners
-  if (!owners) {
-    throw new Error('Owners are required for passport')
-  }
-  if (owners.type !== 'ecdsa') {
-    throw new Error('Only ecdsa owners are supported for passport')
-  }
-  const ownerAccounts = owners.accounts.map((owner) => ({
-    weight: 1,
-    account: owner,
-  }))
-  const salt = encodeImageHash(1, ownerAccounts)
-
-  const accountInitData = padHex(PASSPORT_MAIN_MODULE, { size: 32 })
-  const address = getContractAddress({
-    opcode: 'CREATE2',
-    from: PASSPORT_FACTORY_ADDRESS,
-    salt,
-    bytecode: concat([CREATION_CODE, accountInitData]),
-  })
-  return address
-}
-
-async function packSignature(
-  signature: Hex,
-  validator: ValidatorConfig,
-  transformSignature: (signature: Hex) => Hex = (signature) => signature,
-) {
-  const validatorAddress = validator.address
-  const packedSig = encodePacked(
-    ['address', 'bytes'],
-    [validatorAddress, transformSignature(signature)],
-  )
-  return packedSig
 }
 
 export { getAddress, packSignature }
