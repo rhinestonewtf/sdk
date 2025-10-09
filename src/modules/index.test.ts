@@ -57,7 +57,7 @@ describe('Modules', () => {
 
       const smartSessionValidator = setup.validators.find(
         (validator) =>
-          validator.address === '0x00000000002b0ecfbd0496ee71e01257da0e37de',
+          validator.address === '0x00000000008bdaba73cd9815d79069c247eb4bda',
       )
       if (!smartSessionValidator) {
         return

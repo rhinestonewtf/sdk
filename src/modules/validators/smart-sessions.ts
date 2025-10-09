@@ -145,7 +145,7 @@ interface EnableSessionData {
 }
 
 const SMART_SESSIONS_VALIDATOR_ADDRESS: Address =
-  '0x00000000002b0ecfbd0496ee71e01257da0e37de'
+  '0x00000000008bdaba73cd9815d79069c247eb4bda'
 
 const SMART_SESSION_MODE_USE = '0x00'
 const SMART_SESSION_MODE_ENABLE = '0x01'
