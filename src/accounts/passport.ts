@@ -56,10 +56,6 @@ async function packSignature(
   return packedSig
 }
 
-function compareAddr(a: Address, b: Address) {
-  return a.toLowerCase() < b.toLowerCase() ? -1 : 1
-}
-
 function encodeImageHash(
   threshold: number,
   accounts: {
@@ -68,7 +64,7 @@ function encodeImageHash(
   }[],
 ) {
   const sorted = accounts.sort((a, b) =>
-    compareAddr(a.account.address, b.account.address),
+    a.account.address.toLowerCase() < b.account.address.toLowerCase() ? -1 : 1,
   )
   let imageHash = encodePacked(['uint256'], [BigInt(threshold)])
 
