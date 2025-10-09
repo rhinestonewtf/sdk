@@ -3,7 +3,7 @@ import type { IntentOp } from '../orchestrator'
 
 interface Op {
   to: Address
-  value: bigint
+  value: string
   data: Hex
 }
 
