@@ -55,6 +55,11 @@
       "import": "./dist/src/errors/index.js",
       "require": "./dist/src/errors/index.js"
     },
+    "./utils": {
+      "types": "./dist/src/utils/index.d.ts",
+      "import": "./dist/src/utils/index.js",
+      "require": "./dist/src/utils/index.js"
+    },
     "./dist/src/actions": {
       "types": "./dist/src/actions/index.d.ts",
       "import": "./dist/src/actions/index.js",
@@ -89,6 +94,11 @@
       "types": "./dist/src/errors/index.d.ts",
       "import": "./dist/src/errors/index.js",
       "require": "./dist/src/errors/index.js"
+    },
+    "./dist/src/utils": {
+      "types": "./dist/src/utils/index.d.ts",
+      "import": "./dist/src/utils/index.js",
+      "require": "./dist/src/utils/index.js"
     }
   },
   "files": [

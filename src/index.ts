@@ -11,6 +11,7 @@ import type { UserOperationReceipt } from 'viem/account-abstraction'
 import {
   checkAddress,
   deploy as deployInternal,
+  getAccountProvider,
   getAddress as getAddressInternal,
   isDeployed as isDeployedInternal,
   OwnersFieldRequiredError,
@@ -71,7 +72,7 @@ import {
   type IntentOp,
   type IntentOpStatus,
   type Portfolio,
-  type SettlementSystem,
+  type SettlementLayer,
   type SignedIntentOp,
 } from './orchestrator'
 import type {
@@ -101,7 +102,10 @@ import type {
 
 interface RhinestoneAccount {
   config: RhinestoneAccountConfig
-  deploy: (chain: Chain, session?: Session) => Promise<boolean>
+  deploy: (
+    chain: Chain,
+    params?: { session?: Session; sponsored?: boolean },
+  ) => Promise<boolean>
   isDeployed: (chain: Chain) => Promise<boolean>
   setup: (chain: Chain) => Promise<boolean>
   signEip7702InitData: () => Promise<Hex>
@@ -196,8 +200,11 @@ async function createRhinestoneAccount(
    * @param chain Chain to deploy the account on
    * @param session Session to deploy the account on (optional)
    */
-  function deploy(chain: Chain, session?: Session) {
-    return deployInternal(config, chain, session)
+  function deploy(
+    chain: Chain,
+    params?: { session?: Session; sponsored?: boolean },
+  ) {
+    return deployInternal(config, chain, params)
   }
 
   /**
@@ -437,7 +444,7 @@ async function createRhinestoneAccount(
    * @returns List of account validators
    */
   function getValidators(chain: Chain) {
-    const accountType = config.account?.type || 'nexus'
+    const accountType = getAccountProvider(config).type
     const account = getAddress()
     return getValidatorsInternal(accountType, account, chain, config.provider)
   }
@@ -572,7 +579,7 @@ export type {
   IntentOp,
   IntentOpStatus,
   IntentRoute,
-  SettlementSystem,
+  SettlementLayer,
   SignedIntentOp,
   Portfolio,
   // Multi-chain permit2 types

@@ -14,10 +14,10 @@ async function getValidators(
     transport: createTransport(chain, provider),
   })
   switch (accountType) {
-    case 'custom':
     case 'safe':
     case 'startale':
-    case 'nexus': {
+    case 'nexus':
+    case 'passport': {
       const validators = await publicClient.readContract({
         abi: [
           {

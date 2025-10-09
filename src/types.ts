@@ -3,7 +3,7 @@ import type { WebAuthnAccount } from 'viem/account-abstraction'
 import type { EnableSessionData } from './modules/validators/smart-sessions'
 import type { SettlementLayer } from './orchestrator/types'
 
-type AccountType = 'safe' | 'nexus' | 'kernel' | 'startale' | 'custom' | 'eoa'
+type AccountType = 'safe' | 'nexus' | 'kernel' | 'startale' | 'passport' | 'eoa'
 
 interface SafeAccount {
   type: 'safe'
@@ -25,6 +25,10 @@ interface StartaleAccount {
   type: 'startale'
 }
 
+interface PassportAccount {
+  type: 'passport'
+}
+
 interface EoaAccount {
   type: 'eoa'
 }
@@ -34,6 +38,7 @@ type AccountProviderConfig =
   | NexusAccount
   | KernelAccount
   | StartaleAccount
+  | PassportAccount
   | EoaAccount
 
 interface OwnableValidatorConfig {
@@ -277,6 +282,12 @@ interface BaseTransaction {
   settlementLayers?: SettlementLayer[]
   lockFunds?: boolean
   dryRun?: boolean
+  experimental_accountOverride?: {
+    setupOps?: {
+      to: Address
+      data: Hex
+    }[]
+  }
 }
 
 interface SameChainTransaction extends BaseTransaction {

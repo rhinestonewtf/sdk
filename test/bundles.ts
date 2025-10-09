@@ -38,9 +38,6 @@ export function runBundlesTestCases() {
 
           const rhinestone = new RhinestoneSDK()
           const rhinestoneAccount = await rhinestone.createAccount({
-            account: {
-              type: 'nexus',
-            },
             owners: {
               type: 'ecdsa',
               accounts: [ownerAccount],

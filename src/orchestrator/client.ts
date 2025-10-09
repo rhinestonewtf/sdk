@@ -145,7 +145,7 @@ export class Orchestrator {
       return 0n
     }
     const tokenAmount = tokenReceived.destinationAmount
-    if (tokenAmount < 0n) {
+    if (BigInt(tokenAmount) < 0n) {
       throw new Error(
         `Balance not available. Make sure the account is deployed`,
       )
@@ -153,8 +153,8 @@ export class Orchestrator {
     // `sponsorSettings` is not taken into account in the API response for now
     // As a workaround, we use the `amountSpent` if the transaction is sponsored
     return sponsored
-      ? tokenReceived.amountSpent
-      : tokenReceived.destinationAmount
+      ? BigInt(tokenReceived.amountSpent)
+      : BigInt(tokenReceived.destinationAmount)
   }
 
   async getIntentCost(input: IntentInput): Promise<IntentCost> {

@@ -138,6 +138,7 @@ async function prepareTransaction(
     sourceAssets,
     feeAsset,
     lockFunds,
+    account,
   } = getTransactionParams(transaction)
   const accountAddress = getAddress(config)
 
@@ -165,6 +166,7 @@ async function prepareTransaction(
     sourceAssets,
     feeAsset,
     lockFunds,
+    account,
   )
 
   return {
@@ -408,6 +410,7 @@ function getTransactionParams(transaction: Transaction) {
   const sourceAssets = transaction.sourceAssets
   const feeAsset = transaction.feeAsset
   const lockFunds = transaction.lockFunds
+  const account = transaction.experimental_accountOverride
 
   const tokenRequests = getTokenRequests(
     sourceChains || [],
@@ -428,6 +431,7 @@ function getTransactionParams(transaction: Transaction) {
     sourceAssets,
     feeAsset,
     lockFunds,
+    account,
   }
 }
 
@@ -512,6 +516,12 @@ async function prepareTransactionAsIntent(
   sourceAssets: SourceAssetInput | undefined,
   feeAsset: Address | TokenSymbol | undefined,
   lockFunds?: boolean,
+  account?: {
+    setupOps?: {
+      to: Address
+      data: Hex
+    }[]
+  },
 ) {
   const calls = parseCalls(callInputs, targetChain.id)
   const accountAccessList = createAccountAccessList(sourceChains, sourceAssets)
@@ -541,10 +551,14 @@ async function prepareTransactionAsIntent(
     account: {
       address: accountAddress,
       accountType: accountType,
-      setupOps,
+      setupOps: account?.setupOps ?? setupOps,
       delegations,
     },
-    destinationExecutions: calls,
+    destinationExecutions: calls.map((call) => ({
+      to: call.to,
+      value: call.value.toString(),
+      data: call.data,
+    })),
     destinationGasUnits: gasLimit,
     accountAccessList,
     options: {
