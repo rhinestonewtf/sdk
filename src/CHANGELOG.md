@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.1
+
+### Patch Changes
+
+- 501591f: Minimal Passport account support
+
 ## 1.0.0
 
 ### Major Changes
