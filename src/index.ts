@@ -19,7 +19,6 @@ import {
   signEip7702InitData as signEip7702InitDataInternal,
 } from './accounts'
 import { walletClientToAccount } from './accounts/walletClient'
-import { encodeSmartSessionSignature } from './actions/smart-session'
 import {
   getMaxSpendableAmount as getMaxSpendableAmountInternal,
   getPortfolio as getPortfolioInternal,
@@ -535,7 +534,6 @@ class RhinestoneSDK {
 export {
   RhinestoneSDK,
   walletClientToAccount,
-  encodeSmartSessionSignature,
   // Registry functions
   getSupportedTokens,
   getTokenAddress,
