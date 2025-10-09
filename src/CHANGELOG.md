@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.2
+
+### Patch Changes
+
+- 3a6b21e: Enhance intent status polling logic
+
 ## 1.0.1
 
 ### Patch Changes
