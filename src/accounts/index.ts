@@ -221,7 +221,7 @@ function getModuleInstallationCalls(
         return [getStartaleInstallData(module)]
       }
       case 'passport': {
-        throw new Error('Passport accounts not supported')
+        throw new ModuleInstallationNotSupportedError(account.type)
       }
       case 'eoa': {
         throw new ModuleInstallationNotSupportedError(account.type)
