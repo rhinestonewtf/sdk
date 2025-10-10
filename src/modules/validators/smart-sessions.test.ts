@@ -125,7 +125,7 @@ describe('Smart Sessions', () => {
     const FALLBACK_SELECTOR = '0x00000001'
 
     test('default', async () => {
-      const call = await getEnableSessionCall(mainnet, {
+      const call = await getEnableSessionCall({
         owners: {
           type: 'ecdsa',
           accounts: [accountA],
@@ -144,7 +144,7 @@ describe('Smart Sessions', () => {
     })
 
     test('with action', async () => {
-      const call = await getEnableSessionCall(mainnet, {
+      const call = await getEnableSessionCall({
         owners: {
           type: 'ecdsa',
           accounts: [accountA],
@@ -177,7 +177,7 @@ describe('Smart Sessions', () => {
     })
 
     test('with policy', async () => {
-      const call = await getEnableSessionCall(mainnet, {
+      const call = await getEnableSessionCall({
         owners: {
           type: 'ecdsa',
           accounts: [accountA],
@@ -209,7 +209,7 @@ describe('Smart Sessions', () => {
     })
 
     test('with action policy', async () => {
-      const call = await getEnableSessionCall(mainnet, {
+      const call = await getEnableSessionCall({
         owners: {
           type: 'ecdsa',
           accounts: [accountA],
