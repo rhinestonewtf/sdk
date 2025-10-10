@@ -145,7 +145,7 @@ interface EnableSessionData {
 }
 
 const SMART_SESSIONS_VALIDATOR_ADDRESS: Address =
-  '0x00000000002b0ecfbd0496ee71e01257da0e37de'
+  '0x00000000008bdaba73cd9815d79069c247eb4bda'
 
 const SMART_SESSION_MODE_USE = '0x00'
 const SMART_SESSION_MODE_ENABLE = '0x01'
@@ -174,36 +174,12 @@ const ACTION_CONDITION_LESS_THAN_OR_EQUAL = 4
 const ACTION_CONDITION_NOT_EQUAL = 5
 const ACTION_CONDITION_IN_RANGE = 6
 
-async function getSessionData(
-  chain: Chain,
-  session: Session,
-  provider?: ProviderConfig,
-) {
-  const { appDomainSeparator, contentsType } =
-    await getSessionAllowedERC7739Content(chain, provider)
-  const allowedERC7739Content = [
-    {
-      appDomainSeparator,
-      contentName: [contentsType],
-    },
-  ]
-  return getSmartSessionData(chain, session, allowedERC7739Content)
+async function getSessionData(session: Session) {
+  return getSmartSessionData(session)
 }
 
-async function getEnableSessionCall(
-  chain: Chain,
-  session: Session,
-  provider?: ProviderConfig,
-) {
-  const { appDomainSeparator, contentsType } =
-    await getSessionAllowedERC7739Content(chain, provider)
-  const allowedERC7739Content = [
-    {
-      appDomainSeparator,
-      contentName: [contentsType],
-    },
-  ]
-  const sessionData = getSmartSessionData(chain, session, allowedERC7739Content)
+async function getEnableSessionCall(session: Session) {
+  const sessionData = getSmartSessionData(session)
   return {
     to: SMART_SESSIONS_VALIDATOR_ADDRESS,
     data: encodeFunctionData({
@@ -214,61 +190,7 @@ async function getEnableSessionCall(
   }
 }
 
-function getOmniAccountActions(chain: Chain): ActionData[] {
-  const wethAddress = getWethAddress(chain)
-  const omniActions: ActionData[] = [
-    {
-      actionTarget: RHINESTONE_SPOKE_POOL_ADDRESS,
-      actionTargetSelector: '0xa2418864', // injected execution
-      actionPolicies: [getPolicyData({ type: 'sudo' })],
-    },
-    {
-      actionTarget: HOOK_ADDRESS,
-      actionTargetSelector: '0x27c777a9', // injected execution
-      actionPolicies: [getPolicyData({ type: 'sudo' })],
-    },
-    {
-      actionTarget: wethAddress,
-      actionTargetSelector: '0xd0e30db0', // deposit
-      actionPolicies: [getPolicyData({ type: 'sudo' })],
-    },
-    {
-      actionTarget: wethAddress,
-      actionTargetSelector: '0x2e1a7d4d', // widthdraw
-      actionPolicies: [getPolicyData({ type: 'sudo' })],
-    },
-  ]
-  return omniActions
-}
-
-async function getSessionAllowedERC7739Content(
-  chain: Chain,
-  provider?: ProviderConfig,
-) {
-  const publicClient = createPublicClient({
-    chain,
-    transport: createTransport(chain, provider),
-  })
-  const appDomainSeparator = await publicClient.readContract({
-    address: HOOK_ADDRESS,
-    abi: parseAbi(['function DOMAIN_SEPARATOR() view returns (bytes32)']),
-    functionName: 'DOMAIN_SEPARATOR',
-  })
-  const contentsType =
-    'MultichainCompact(address sponsor,uint256 nonce,uint256 expires,Segment[] segments)Segment(address arbiter,uint256 chainId,uint256[2][] idsAndAmounts,Witness witness)Witness(address recipient,uint256[2][] tokenOut,uint256 depositId,uint256 targetChain,uint32 fillDeadline,XchainExec[] execs,bytes32 userOpHash,uint32 maxFeeBps)XchainExec(address to,uint256 value,bytes data)'
-  return {
-    appDomainSeparator,
-    contentsType,
-  }
-}
-
-function getSmartSessionData(
-  chain: Chain,
-  session: Session,
-  allowedERC7739Content: AllowedERC7739Content[],
-) {
-  const omniActions = getOmniAccountActions(chain)
-
+function getSmartSessionData(session: Session) {
   const sessionValidator = getValidator(session.owners)
   const userOpPolicies = (
     session.policies || [
@@ -292,27 +214,25 @@ function getSmartSessionData(
           selector: SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
         },
       ]
-    )
-      .map((action) => {
-        const actionPolicies: readonly PolicyData[] = (
-          action.policies || [
-            {
-              type: 'sudo',
-            },
-          ]
-        ).map((policy) => {
-          return getPolicyData(policy)
-        })
-        return {
-          actionTargetSelector: action.selector,
-          actionTarget: action.target,
-          actionPolicies,
-        }
+    ).map((action) => {
+      const actionPolicies: readonly PolicyData[] = (
+        action.policies || [
+          {
+            type: 'sudo',
+          },
+        ]
+      ).map((policy) => {
+        return getPolicyData(policy)
       })
-      .concat(omniActions),
+      return {
+        actionTargetSelector: action.selector,
+        actionTarget: action.target,
+        actionPolicies,
+      }
+    }),
     erc7739Policies: {
-      allowedERC7739Content,
-      erc1271Policies: [getPolicyData({ type: 'sudo' })],
+      allowedERC7739Content: [],
+      erc1271Policies: [],
     },
     permitERC4337Paymaster: true,
   } as SessionData

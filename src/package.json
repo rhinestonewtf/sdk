@@ -45,6 +45,11 @@
       "import": "./dist/src/actions/passkeys.js",
       "require": "./dist/src/actions/passkeys.js"
     },
+    "./actions/smart-sessions": {
+      "types": "./dist/src/actions/smart-sessions.d.ts",
+      "import": "./dist/src/actions/smart-sessions.js",
+      "require": "./dist/src/actions/smart-sessions.js"
+    },
     "./actions/recovery": {
       "types": "./dist/src/actions/recovery.d.ts",
       "import": "./dist/src/actions/recovery.js",
@@ -84,6 +89,11 @@
       "types": "./dist/src/actions/passkeys.d.ts",
       "import": "./dist/src/actions/passkeys.js",
       "require": "./dist/src/actions/passkeys.js"
+    },
+    "./dist/src/actions/smart-sessions": {
+      "types": "./dist/src/actions/smart-sessions.d.ts",
+      "import": "./dist/src/actions/smart-sessions.js",
+      "require": "./dist/src/actions/smart-sessions.js"
     },
     "./dist/src/actions/recovery": {
       "types": "./dist/src/actions/recovery.d.ts",
