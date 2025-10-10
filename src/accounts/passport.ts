@@ -2,6 +2,7 @@ import type { Abi, Account, Address, Hex, PublicClient } from 'viem'
 import {
   concat,
   encodeAbiParameters,
+  encodeFunctionData,
   encodePacked,
   getContractAddress,
   keccak256,
@@ -16,6 +17,7 @@ import {
   SmartAccountImplementation,
   toSmartAccount,
 } from 'viem/account-abstraction'
+import { Module } from '../modules/common'
 import {
   encodeSmartSessionSignature,
   getMockSignature,
@@ -235,4 +237,33 @@ function encodeImageHash(
   return imageHash
 }
 
-export { getAddress, packSignature, getSessionSmartAccount }
+function getInstallData(module: Module) {
+  return encodeFunctionData({
+    abi: [
+      {
+        type: 'function',
+        name: 'installModule',
+        inputs: [
+          {
+            type: 'uint256',
+            name: 'moduleTypeId',
+          },
+          {
+            type: 'address',
+            name: 'module',
+          },
+          {
+            type: 'bytes',
+            name: 'initData',
+          },
+        ],
+        outputs: [],
+        stateMutability: 'nonpayable',
+      },
+    ],
+    functionName: 'installModule',
+    args: [module.type, module.address, module.initData],
+  })
+}
+
+export { getAddress, packSignature, getSessionSmartAccount, getInstallData }

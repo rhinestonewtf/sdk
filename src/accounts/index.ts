@@ -78,6 +78,7 @@ import {
 } from './nexus'
 import {
   getAddress as getPassportAddress,
+  getInstallData as getPassportInstallData,
   getSessionSmartAccount as getPassportSessionSmartAccount,
   packSignature as packPassportSignature,
 } from './passport'
@@ -222,7 +223,7 @@ function getModuleInstallationCalls(
         return [getStartaleInstallData(module)]
       }
       case 'passport': {
-        throw new ModuleInstallationNotSupportedError(account.type)
+        return [getPassportInstallData(module)]
       }
       case 'eoa': {
         throw new ModuleInstallationNotSupportedError(account.type)
