@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.4
+
+### Patch Changes
+
+- 1b68dba: Fix default chains in `getPortfolio`
+
 ## 1.0.3
 
 ### Patch Changes
