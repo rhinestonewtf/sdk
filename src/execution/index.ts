@@ -1,6 +1,6 @@
 import { type Address, type Chain, createPublicClient, type Hex } from 'viem'
 import type { UserOperationReceipt } from 'viem/_types/account-abstraction'
-import { mainnet, sepolia } from 'viem/chains'
+import { base, baseSepolia } from 'viem/chains'
 import { deploy, getAddress } from '../accounts'
 import { createTransport, getBundlerClient } from '../accounts/utils'
 import type { IntentOpStatus } from '../orchestrator'
@@ -411,7 +411,7 @@ async function getMaxSpendableAmount(
 
 async function getPortfolio(config: RhinestoneConfig, onTestnets: boolean) {
   const address = getAddress(config)
-  const chainId = onTestnets ? sepolia.id : mainnet.id
+  const chainId = onTestnets ? baseSepolia.id : base.id
   const orchestrator = getOrchestratorByChain(
     chainId,
     config.apiKey,
