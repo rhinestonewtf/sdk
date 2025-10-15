@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.5
+
+### Patch Changes
+
+- 096d98f: Allow token symbols for `getMaxSpendableAmount`
+
 ## 1.0.4
 
 ### Patch Changes
