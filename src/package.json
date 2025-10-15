@@ -127,6 +127,7 @@
   },
   "dependencies": {
     "@rhinestone/shared-configs": "^1.4.4",
+    "ox": "^0.9.11",
     "solady": "^0.1.21"
   },
   "peerDependencies": {
