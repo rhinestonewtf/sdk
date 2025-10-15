@@ -421,6 +421,17 @@ async function getPortfolio(config: RhinestoneConfig, onTestnets: boolean) {
   return orchestrator.getPortfolio(address)
 }
 
+async function getIntentStatus(
+  apiKey: string | undefined,
+  endpointUrl: string | undefined,
+  intentId: bigint,
+) {
+  const environment = BigInt(intentId.toString().slice(0, 1))
+  const chainId = environment === 4n ? base.id : baseSepolia.id
+  const orchestrator = getOrchestratorByChain(chainId, apiKey, endpointUrl)
+  return orchestrator.getIntentOpStatus(intentId)
+}
+
 export {
   sendTransaction,
   sendTransactionInternal,
@@ -429,6 +440,7 @@ export {
   waitForExecution,
   getMaxSpendableAmount,
   getPortfolio,
+  getIntentStatus,
   // Errors
   isExecutionError,
   ExecutionError,

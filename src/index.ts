@@ -20,6 +20,7 @@ import {
 } from './accounts'
 import { walletClientToAccount } from './accounts/walletClient'
 import {
+  getIntentStatus as getIntentStatusInternal,
   getMaxSpendableAmount as getMaxSpendableAmountInternal,
   getPortfolio as getPortfolioInternal,
   sendTransaction as sendTransactionInternal,
@@ -528,6 +529,10 @@ class RhinestoneSDK {
       paymaster: this.paymaster,
     }
     return createRhinestoneAccount(rhinestoneConfig)
+  }
+
+  getIntentStatus(intentId: bigint) {
+    return getIntentStatusInternal(this.apiKey, this.endpointUrl, intentId)
   }
 }
 
