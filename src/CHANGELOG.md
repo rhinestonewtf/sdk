@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.6
+
+### Patch Changes
+
+- 668d926: Add "get intent status" utility
+
 ## 1.0.5
 
 ### Patch Changes
