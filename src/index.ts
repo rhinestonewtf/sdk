@@ -159,7 +159,7 @@ interface RhinestoneAccount {
   getPortfolio: (onTestnets?: boolean) => Promise<Portfolio>
   getMaxSpendableAmount: (
     chain: Chain,
-    tokenAddress: Address,
+    tokenAddress: Address | TokenSymbol,
     gasUnits: bigint,
     sponsored?: boolean,
   ) => Promise<bigint>
@@ -408,20 +408,20 @@ async function createRhinestoneAccount(
   /**
    * Get the maximum spendable token amount on the target chain
    * @param chain Target chain
-   * @param tokenAddress Token address (on the target chain)
+   * @param token Token address (on the target chain)
    * @param gasUnits Gas cost estimate for the transaction execution
    * @returns Maximum spendable amount in absolute units
    */
   function getMaxSpendableAmount(
     chain: Chain,
-    tokenAddress: Address,
+    token: Address | TokenSymbol,
     gasUnits: bigint,
     sponsored: boolean = false,
   ) {
     return getMaxSpendableAmountInternal(
       config,
       chain,
-      tokenAddress,
+      token,
       gasUnits,
       sponsored,
     )

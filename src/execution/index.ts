@@ -12,7 +12,7 @@ import {
   isRateLimited,
   isRetryable,
 } from '../orchestrator'
-import { getChainById } from '../orchestrator/registry'
+import { getChainById, resolveTokenAddress } from '../orchestrator/registry'
 import type { SettlementLayer } from '../orchestrator/types'
 import type {
   CalldataInput,
@@ -390,7 +390,7 @@ async function waitForExecution(
 async function getMaxSpendableAmount(
   config: RhinestoneConfig,
   chain: Chain,
-  tokenAddress: Address,
+  token: Address | TokenSymbol,
   gasUnits: bigint,
   sponsored: boolean = false,
 ): Promise<bigint> {
@@ -400,6 +400,7 @@ async function getMaxSpendableAmount(
     config.apiKey,
     config.endpointUrl,
   )
+  const tokenAddress = resolveTokenAddress(token, chain.id)
   return orchestrator.getMaxTokenAmount(
     address,
     chain.id,
