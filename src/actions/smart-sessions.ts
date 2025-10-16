@@ -1,10 +1,10 @@
-import { type Hex } from 'viem'
+import type { Hex } from 'viem'
 import type { SessionDetails } from '../execution/smart-session'
 import {
   encodeSmartSessionSignature as encodeSmartSessionSignatureInternal,
   getEnableSessionCall,
 } from '../modules/validators/smart-sessions'
-import { Session } from '../types'
+import type { Session } from '../types'
 
 /**
  * Enable a smart session
