@@ -8,8 +8,9 @@ import {
   optimismSepolia,
   polygon,
 } from 'viem/chains'
-import { PROD_ORCHESTRATOR_URL } from '../orchestrator/consts'
+
 import type { RhinestoneAccountConfig, RhinestoneConfig } from '../types'
+
 import {
   MODULE_TYPE_ID_EXECUTOR,
   MODULE_TYPE_ID_FALLBACK,
@@ -87,9 +88,9 @@ function getSetup(config: RhinestoneAccountConfig): ModeleSetup {
 
 function getIntentExecutor(config: RhinestoneConfig): Module {
   const intentExecutorAddress =
-    config.endpointUrl === PROD_ORCHESTRATOR_URL
-      ? INTENT_EXECUTOR_ADDRESS
-      : INTENT_EXECUTOR_ADDRESS_DEV
+    config.useDevContracts === true
+      ? INTENT_EXECUTOR_ADDRESS_DEV
+      : INTENT_EXECUTOR_ADDRESS
   return {
     address: intentExecutorAddress,
     initData: '0x',
