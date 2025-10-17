@@ -1,8 +1,6 @@
 import { LibZip } from 'solady'
 import {
   type Address,
-  type Chain,
-  createPublicClient,
   encodeAbiParameters,
   encodeFunctionData,
   encodePacked,
@@ -11,26 +9,18 @@ import {
   keccak256,
   type PublicClient,
   padHex,
-  parseAbi,
   toHex,
   zeroHash,
 } from 'viem'
-import { createTransport } from '../../accounts/utils'
-import {
-  getWethAddress,
-  RHINESTONE_SPOKE_POOL_ADDRESS,
-} from '../../orchestrator'
 import type {
   AccountType,
   Policy,
-  ProviderConfig,
   RhinestoneAccountConfig,
   Session,
   UniversalActionPolicyParamCondition,
 } from '../../types'
 import { enableSessionsAbi } from '../abi/smart-sessions'
 import { MODULE_TYPE_ID_VALIDATOR, type Module } from '../common'
-import { HOOK_ADDRESS } from '../omni-account'
 import { getValidator } from './core'
 
 type FixedLengthArray<

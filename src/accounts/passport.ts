@@ -13,23 +13,23 @@ import {
   entryPoint07Abi,
   entryPoint07Address,
   getUserOperationHash,
-  SmartAccount,
-  SmartAccountImplementation,
+  type SmartAccount,
+  type SmartAccountImplementation,
   toSmartAccount,
 } from 'viem/account-abstraction'
-import { Module } from '../modules/common'
+import type { Module } from '../modules/common'
 import {
   encodeSmartSessionSignature,
   getMockSignature,
 } from '../modules/validators'
 import {
-  EnableSessionData,
+  type EnableSessionData,
   getPermissionId,
   SMART_SESSION_MODE_ENABLE,
   SMART_SESSION_MODE_USE,
 } from '../modules/validators/smart-sessions'
 import type { RhinestoneAccountConfig, Session } from '../types'
-import { encode7579Calls, getAccountNonce, ValidatorConfig } from './utils'
+import { encode7579Calls, getAccountNonce, type ValidatorConfig } from './utils'
 
 const CREATION_CODE =
   '0x6054600f3d396034805130553df3fe63906111273d3560e01c14602b57363d3d373d3d3d3d369030545af43d82803e156027573d90f35b3d90fd5b30543d5260203df3'

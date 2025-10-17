@@ -5,7 +5,6 @@ import {
   isHex,
   type ReadContractParameters,
 } from 'viem'
-import { mainnet } from 'viem/chains'
 import { describe, expect, test, vi } from 'vitest'
 import { accountA, accountB } from '../../../test/consts'
 import { enableSessionsAbi } from '../abi/smart-sessions'

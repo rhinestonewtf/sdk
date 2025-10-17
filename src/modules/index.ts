@@ -87,9 +87,10 @@ function getSetup(config: RhinestoneAccountConfig): ModeleSetup {
 }
 
 function getIntentExecutor(config: RhinestoneConfig): Module {
-  const intentExecutorAddress = config.endpointUrl
-    ? INTENT_EXECUTOR_ADDRESS_DEV
-    : INTENT_EXECUTOR_ADDRESS
+  const intentExecutorAddress =
+    config.useDevContracts === true
+      ? INTENT_EXECUTOR_ADDRESS_DEV
+      : INTENT_EXECUTOR_ADDRESS
   return {
     address: intentExecutorAddress,
     initData: '0x',
