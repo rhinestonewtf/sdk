@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.7
+
+### Patch Changes
+
+- 33bc2b5: Fix the intent executor logic for correct counterfactual generation
+
 ## 1.0.6
 
 ### Patch Changes
