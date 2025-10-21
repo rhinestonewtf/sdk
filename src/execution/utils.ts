@@ -87,8 +87,8 @@ import type {
 } from '../types'
 import { getCompactTypedData, getPermit2Digest } from './compact'
 import { SignerNotSupportedError } from './error'
-import { getTypedData as getMultiChainOpsTypedData } from './multiChainOps'
 import { getTypedData as getPermit2TypedData } from './permit2'
+import { getTypedData as getSingleChainOpsTypedData } from './singleChainOps'
 
 interface UserOperationResult {
   type: 'userop'
@@ -657,13 +657,13 @@ async function getIntentSignature(
   const withJitFlow = intentOp.elements.some(
     (element) => element.mandate.qualifier.settlementContext?.usingJIT,
   )
-  const withMultiChainOps = intentOp.elements.some(
+  const withIntentExecutorOps = intentOp.elements.some(
     (element) =>
       element.mandate.qualifier.settlementContext.settlementLayer ===
       'INTENT_EXECUTOR',
   )
-  if (withMultiChainOps) {
-    const signature = await getMultiChainOpsSignature(
+  if (withIntentExecutorOps) {
+    const signature = await getSingleChainOpsSignature(
       config,
       intentOp,
       signers,
@@ -701,7 +701,7 @@ async function getIntentSignature(
   }
 }
 
-async function getMultiChainOpsSignature(
+async function getSingleChainOpsSignature(
   config: RhinestoneConfig,
   intentOp: IntentOp,
   signers: SignerSet | undefined,
@@ -711,7 +711,7 @@ async function getMultiChainOpsSignature(
 ) {
   const address = getAddress(config)
   const intentExecutor = getIntentExecutor(config)
-  const typedData = getMultiChainOpsTypedData(
+  const typedData = getSingleChainOpsTypedData(
     address,
     intentExecutor.address,
     intentOp,

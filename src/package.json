@@ -1,6 +1,6 @@
 {
   "name": "@rhinestone/sdk",
-  "version": "1.0.3",
+  "version": "1.0.7",
   "description": "End-to-end chain abstraction and modularity toolkit",
   "author": {
     "name": "Rhinestone",
@@ -127,6 +127,7 @@
   },
   "dependencies": {
     "@rhinestone/shared-configs": "^1.4.4",
+    "ox": "^0.9.11",
     "solady": "^0.1.26"
   },
   "peerDependencies": {

@@ -1,6 +1,6 @@
 import { type Address, type Chain, createPublicClient, type Hex } from 'viem'
 import type { UserOperationReceipt } from 'viem/_types/account-abstraction'
-import { mainnet, sepolia } from 'viem/chains'
+import { base, baseSepolia } from 'viem/chains'
 import { deploy, getAddress } from '../accounts'
 import { createTransport, getBundlerClient } from '../accounts/utils'
 import type { IntentOpStatus } from '../orchestrator'
@@ -12,7 +12,7 @@ import {
   isRateLimited,
   isRetryable,
 } from '../orchestrator'
-import { getChainById } from '../orchestrator/registry'
+import { getChainById, resolveTokenAddress } from '../orchestrator/registry'
 import type { SettlementLayer } from '../orchestrator/types'
 import type {
   CalldataInput,
@@ -390,7 +390,7 @@ async function waitForExecution(
 async function getMaxSpendableAmount(
   config: RhinestoneConfig,
   chain: Chain,
-  tokenAddress: Address,
+  token: Address | TokenSymbol,
   gasUnits: bigint,
   sponsored: boolean = false,
 ): Promise<bigint> {
@@ -400,6 +400,7 @@ async function getMaxSpendableAmount(
     config.apiKey,
     config.endpointUrl,
   )
+  const tokenAddress = resolveTokenAddress(token, chain.id)
   return orchestrator.getMaxTokenAmount(
     address,
     chain.id,
@@ -411,13 +412,24 @@ async function getMaxSpendableAmount(
 
 async function getPortfolio(config: RhinestoneConfig, onTestnets: boolean) {
   const address = getAddress(config)
-  const chainId = onTestnets ? sepolia.id : mainnet.id
+  const chainId = onTestnets ? baseSepolia.id : base.id
   const orchestrator = getOrchestratorByChain(
     chainId,
     config.apiKey,
     config.endpointUrl,
   )
   return orchestrator.getPortfolio(address)
+}
+
+async function getIntentStatus(
+  apiKey: string | undefined,
+  endpointUrl: string | undefined,
+  intentId: bigint,
+) {
+  const environment = BigInt(intentId.toString().slice(0, 1))
+  const chainId = environment === 4n ? base.id : baseSepolia.id
+  const orchestrator = getOrchestratorByChain(chainId, apiKey, endpointUrl)
+  return orchestrator.getIntentOpStatus(intentId)
 }
 
 export {
@@ -428,6 +440,7 @@ export {
   waitForExecution,
   getMaxSpendableAmount,
   getPortfolio,
+  getIntentStatus,
   // Errors
   isExecutionError,
   ExecutionError,

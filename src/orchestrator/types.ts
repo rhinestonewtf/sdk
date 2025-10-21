@@ -63,7 +63,7 @@ interface Claim {
   claimTransactionHash?: Hex
 }
 
-interface Execution {
+export interface Execution {
   to: Address
   value: string
   data: Hex

@@ -183,6 +183,11 @@ interface RhinestoneSDKConfig {
    * Optional orchestrator URL override for internal testing - do not use
    */
   endpointUrl?: string
+  /**
+   * @internal
+   * Optional intent executor address override for internal testing - do not use
+   */
+  useDevContracts?: boolean
 }
 
 type RhinestoneConfig = RhinestoneAccountConfig & RhinestoneSDKConfig

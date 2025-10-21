@@ -1,5 +1,29 @@
 # @rhinestone/sdk
 
+## 1.0.7
+
+### Patch Changes
+
+- 33bc2b5: Fix the intent executor logic for correct counterfactual generation
+
+## 1.0.6
+
+### Patch Changes
+
+- 668d926: Add "get intent status" utility
+
+## 1.0.5
+
+### Patch Changes
+
+- 096d98f: Allow token symbols for `getMaxSpendableAmount`
+
+## 1.0.4
+
+### Patch Changes
+
+- 1b68dba: Fix default chains in `getPortfolio`
+
 ## 1.0.3
 
 ### Patch Changes

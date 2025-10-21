@@ -1,43 +1,25 @@
-import type { Address, Hex } from 'viem'
+import type { Address } from 'viem'
 import type { IntentOp } from '../orchestrator'
-
-interface Op {
-  to: Address
-  value: string
-  data: Hex
-}
-
-interface ChainOps {
-  chainId: bigint
-  nonce: bigint
-  ops: Op[]
-}
+import type { Execution } from '../orchestrator/types'
 
 function getTypedData(
   account: Address,
   intentExecutorAddress: Address,
   intentOp: IntentOp,
 ) {
-  const ops = intentOp.elements[0].mandate.destinationOps
-  const chainOps: ChainOps = {
-    chainId: BigInt(intentOp.elements[0].chainId),
-    nonce: BigInt(intentOp.nonce),
-    ops,
-  }
+  const element = intentOp.elements[0]
+  const ops: Execution[] = element.mandate.destinationOps
 
   return {
     domain: {
       name: 'IntentExecutor',
       version: 'v0.0.1',
+      chainId: Number(element.mandate.destinationChainId),
       verifyingContract: intentExecutorAddress,
     },
     types: {
-      MultiChainOps: [
+      SingleChainOps: [
         { name: 'account', type: 'address' },
-        { name: 'ops', type: 'ChainOps[]' },
-      ],
-      ChainOps: [
-        { name: 'chainId', type: 'uint256' },
         { name: 'nonce', type: 'uint256' },
         { name: 'ops', type: 'Op[]' },
       ],
@@ -47,10 +29,11 @@ function getTypedData(
         { name: 'data', type: 'bytes' },
       ],
     },
-    primaryType: 'MultiChainOps' as const,
+    primaryType: 'SingleChainOps' as const,
     message: {
       account,
-      ops: [chainOps],
+      nonce: intentOp.nonce,
+      ops,
     },
   }
 }
