@@ -127,7 +127,7 @@
   },
   "dependencies": {
     "@rhinestone/shared-configs": "^1.4.4",
-    "solady": "^0.1.21"
+    "solady": "^0.1.26"
   },
   "peerDependencies": {
     "viem": "^2.28.0"
