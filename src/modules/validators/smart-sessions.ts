@@ -1,8 +1,6 @@
 import { LibZip } from 'solady'
 import {
   type Address,
-  type Chain,
-  createPublicClient,
   encodeAbiParameters,
   encodeFunctionData,
   encodePacked,
@@ -11,26 +9,17 @@ import {
   keccak256,
   type PublicClient,
   padHex,
-  parseAbi,
   toHex,
   zeroHash,
 } from 'viem'
-import { createTransport } from '../../accounts/utils'
-import {
-  getWethAddress,
-  RHINESTONE_SPOKE_POOL_ADDRESS,
-} from '../../orchestrator'
 import type {
-  AccountType,
   Policy,
-  ProviderConfig,
   RhinestoneAccountConfig,
   Session,
   UniversalActionPolicyParamCondition,
 } from '../../types'
 import { enableSessionsAbi } from '../abi/smart-sessions'
 import { MODULE_TYPE_ID_VALIDATOR, type Module } from '../common'
-import { HOOK_ADDRESS } from '../omni-account'
 import { getValidator } from './core'
 
 type FixedLengthArray<
@@ -135,13 +124,10 @@ interface ERC7739Context {
 }
 
 interface EnableSessionData {
-  permissionId: Hex
-  accountType: AccountType
   chainDigestIndex: number
   hashesAndChainIds: ChainDigest[]
   sessionToEnable: SessionData
   signature: Hex
-  validator: Address
 }
 
 const SMART_SESSIONS_VALIDATOR_ADDRESS: Address =
@@ -165,6 +151,8 @@ const VALUE_LIMIT_POLICY_ADDRESS: Address =
 const SMART_SESSIONS_FALLBACK_TARGET_FLAG: Address =
   '0x0000000000000000000000000000000000000001'
 const SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG: Hex = '0x00000001'
+const SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG_PERMITTED_TO_CALL_SMARTSESSION: Hex =
+  '0x00000002'
 
 const ACTION_CONDITION_EQUAL = 0
 const ACTION_CONDITION_GREATER_THAN = 1
@@ -173,10 +161,6 @@ const ACTION_CONDITION_GREATER_THAN_OR_EQUAL = 3
 const ACTION_CONDITION_LESS_THAN_OR_EQUAL = 4
 const ACTION_CONDITION_NOT_EQUAL = 5
 const ACTION_CONDITION_IN_RANGE = 6
-
-async function getSessionData(session: Session) {
-  return getSmartSessionData(session)
-}
 
 async function getEnableSessionCall(session: Session) {
   const sessionData = getSmartSessionData(session)
@@ -687,7 +671,10 @@ export {
   SMART_SESSION_MODE_USE,
   SMART_SESSION_MODE_ENABLE,
   SMART_SESSIONS_VALIDATOR_ADDRESS,
-  getSessionData,
+  SMART_SESSIONS_FALLBACK_TARGET_FLAG,
+  SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
+  SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG_PERMITTED_TO_CALL_SMARTSESSION,
+  getSmartSessionData,
   getSmartSessionValidator,
   getEnableSessionCall,
   encodeSmartSessionSignature,

@@ -42,7 +42,7 @@ async function sign(
       )
     }
     case 'session': {
-      return signWithSession(signers, chain, address, hash, isUserOpHash, sign)
+      return signWithSession(signers, chain, address, hash, false, sign)
     }
     case 'guardians': {
       return signWithGuardians(signers, hash, signingFunctions)
