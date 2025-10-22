@@ -144,6 +144,7 @@ async function sendTransactionInternal(
   options: {
     gasLimit?: bigint
     initialTokenRequests?: TokenRequest[]
+    recipient?: Address
     signers?: SignerSet
     sponsored?: boolean
     settlementLayers?: SettlementLayer[]
@@ -179,6 +180,7 @@ async function sendTransactionInternal(
       resolvedCalls,
       options.gasLimit,
       tokenRequests,
+      options.recipient,
       accountAddress,
       options.dryRun,
       options.signers,
@@ -236,6 +238,7 @@ async function sendTransactionAsIntent(
   callInputs: CalldataInput[],
   gasLimit: bigint | undefined,
   tokenRequests: TokenRequest[],
+  recipient: Address | undefined,
   accountAddress: Address,
   dryRun: boolean = false,
   signers?: SignerSet,
@@ -252,6 +255,7 @@ async function sendTransactionAsIntent(
     callInputs,
     gasLimit,
     tokenRequests,
+    recipient,
     accountAddress,
     sponsored ?? false,
     undefined,

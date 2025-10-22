@@ -278,6 +278,7 @@ type SignerSet = OwnerSignerSet | SessionSignerSet | GuardiansSignerSet
 interface BaseTransaction {
   calls: CallInput[]
   tokenRequests?: TokenRequest[]
+  recipient?: Address
   gasLimit?: bigint
   signers?: SignerSet
   sponsored?: boolean

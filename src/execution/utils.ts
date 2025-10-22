@@ -139,6 +139,7 @@ async function prepareTransaction(
     feeAsset,
     lockFunds,
     account,
+    recipient,
   } = getTransactionParams(transaction)
   const accountAddress = getAddress(config)
 
@@ -159,6 +160,7 @@ async function prepareTransaction(
     ),
     transaction.gasLimit,
     tokenRequests,
+    recipient,
     accountAddress,
     sponsored ?? false,
     eip7702InitSignature,
@@ -411,6 +413,7 @@ function getTransactionParams(transaction: Transaction) {
   const feeAsset = transaction.feeAsset
   const lockFunds = transaction.lockFunds
   const account = transaction.experimental_accountOverride
+  const recipient = transaction.recipient
 
   const tokenRequests = getTokenRequests(
     sourceChains || [],
@@ -432,6 +435,7 @@ function getTransactionParams(transaction: Transaction) {
     feeAsset,
     lockFunds,
     account,
+    recipient,
   }
 }
 
@@ -509,6 +513,7 @@ async function prepareTransactionAsIntent(
   callInputs: CalldataInput[],
   gasLimit: bigint | undefined,
   tokenRequests: TokenRequest[],
+  recipient: Address | undefined,
   accountAddress: Address,
   isSponsored: boolean,
   eip7702InitSignature: Hex | undefined,
@@ -548,6 +553,7 @@ async function prepareTransactionAsIntent(
       tokenAddress: resolveTokenAddress(tokenRequest.address, targetChain.id),
       amount: tokenRequest.amount,
     })),
+    recipient,
     account: {
       address: accountAddress,
       accountType: accountType,

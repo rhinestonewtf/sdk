@@ -128,6 +128,7 @@ interface IntentInput {
     tokenAddress: Address
     amount?: bigint
   }[]
+  recipient?: Address
   accountAccessList?: AccountAccessList
   options: IntentOptions
 }
