@@ -42,12 +42,12 @@ import {
   getTokenRequests,
   prepareTransactionAsIntent,
   prepareUserOperation as prepareUserOperationUtil,
-  signUserOperation as signUserOperationUtil,
-  submitUserOperation as submitUserOperationUtil,
   resolveCallInputs,
   signAuthorizationsInternal,
   signIntent,
+  signUserOperation as signUserOperationUtil,
   submitIntentInternal,
+  submitUserOperation as submitUserOperationUtil,
 } from './utils'
 
 const POLL_INITIAL_MS = 500
