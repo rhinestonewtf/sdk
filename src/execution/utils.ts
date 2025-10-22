@@ -485,11 +485,23 @@ async function prepareTransactionAsUserOp(
     throw new Error('No validator account found')
   }
   const bundlerClient = getBundlerClient(config, publicClient)
+  const accountAddress = getAddress(config)
+  const balance = await publicClient.getBalance({ address: accountAddress })
+  const shouldOverrideBalance = signers?.type === 'session' && balance === 0n
+  const stateOverride = shouldOverrideBalance
+    ? [
+        {
+          address: accountAddress,
+          balance: 100n * 10n ** 18n,
+        },
+      ]
+    : undefined
   const calls = parseCalls(callInputs, chain.id)
   const userOp = await bundlerClient.prepareUserOperation({
     account: validatorAccount,
     calls,
     callGasLimit: gasLimit,
+    stateOverride,
   })
   return {
     userOp,
