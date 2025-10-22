@@ -405,10 +405,32 @@ async function enableSmartSession(
   const enableSessionCall = await getEnableSessionCall(session)
 
   const smartAccount = await getSmartAccount(config, publicClient, chain)
+  if (!smartAccount) {
+    throw new Error('No account found')
+  }
   const bundlerClient = getBundlerClient(config, publicClient)
-  const opHash = await bundlerClient.sendUserOperation({
+  // Provide a balance override to avoid simulation failures on zero-balance accounts (first enable only)
+  const onChainBalance = await publicClient.getBalance({ address })
+  const stateOverride =
+    onChainBalance === 0n
+      ? [
+          {
+            address,
+            balance: 100n * 10n ** 18n,
+          },
+        ]
+      : undefined
+  const prepared = await bundlerClient.prepareUserOperation({
     account: smartAccount,
     calls: [enableSessionCall],
+    stateOverride,
+  })
+  const signature = await smartAccount.signUserOperation(prepared)
+  const { account: _omit, ...preparedWithoutAccount } = prepared as any
+  const opHash = await bundlerClient.sendUserOperation({
+    account: smartAccount,
+    ...preparedWithoutAccount,
+    signature,
   })
   await bundlerClient.waitForUserOperationReceipt({
     hash: opHash,

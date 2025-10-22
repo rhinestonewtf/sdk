@@ -40,13 +40,14 @@ import type { TransactionResult, UserOperationResult } from './utils'
 import {
   getOrchestratorByChain,
   getTokenRequests,
-  getValidatorAccount,
-  parseCalls,
   prepareTransactionAsIntent,
+  prepareUserOperation as prepareUserOperationUtil,
   resolveCallInputs,
   signAuthorizationsInternal,
   signIntent,
+  signUserOperation as signUserOperationUtil,
   submitIntentInternal,
+  submitUserOperation as submitUserOperationUtil,
 } from './utils'
 
 const POLL_INITIAL_MS = 500
@@ -200,33 +201,18 @@ async function sendUserOperationInternal(
   // Make sure the account is deployed
   await deploy(config, chain)
   const withSession = signers?.type === 'session' ? signers.session : null
-  const publicClient = createPublicClient({
-    chain,
-    transport: createTransport(chain, config.provider),
-  })
-  const validatorAccount = await getValidatorAccount(
-    config,
-    signers,
-    publicClient,
-    chain,
-  )
-  if (!validatorAccount) {
-    throw new Error('No validator account found')
-  }
-  const bundlerClient = getBundlerClient(config, publicClient)
   if (withSession) {
     await enableSmartSession(chain, config, withSession)
   }
-  const calls = parseCalls(callInputs, chain.id)
-  const hash = await bundlerClient.sendUserOperation({
-    account: validatorAccount,
-    calls,
+  // Prepare, sign and submit the UserOp explicitly so we can inject state overrides during simulation
+  const prepared = await prepareUserOperationUtil(config, {
+    chain,
+    calls: callInputs,
+    signers,
   })
-  return {
-    type: 'userop',
-    hash,
-    chain: chain.id,
-  } as UserOperationResult
+  const signed = await signUserOperationUtil(config, prepared)
+  const result = await submitUserOperationUtil(config, signed)
+  return result
 }
 
 async function sendTransactionAsIntent(
