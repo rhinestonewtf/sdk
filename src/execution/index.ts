@@ -425,11 +425,26 @@ async function getIntentStatus(
   apiKey: string | undefined,
   endpointUrl: string | undefined,
   intentId: bigint,
-) {
+): Promise<
+  TransactionStatus & {
+    status: IntentOpStatus['status']
+  }
+> {
   const environment = BigInt(intentId.toString().slice(0, 1))
   const chainId = environment === 4n ? base.id : baseSepolia.id
   const orchestrator = getOrchestratorByChain(chainId, apiKey, endpointUrl)
-  return orchestrator.getIntentOpStatus(intentId)
+  const internalStatus = await orchestrator.getIntentOpStatus(intentId)
+  return {
+    status: internalStatus.status,
+    fill: {
+      hash: internalStatus.fillTransactionHash,
+      chainId: chainId,
+    },
+    claims: internalStatus.claims.map((claim) => ({
+      hash: claim.claimTransactionHash,
+      chainId: claim.chainId,
+    })),
+  }
 }
 
 export {
