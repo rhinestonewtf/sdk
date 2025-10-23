@@ -4,17 +4,13 @@ import {
   concat,
   createPublicClient,
   createWalletClient,
-  domainSeparator,
-  encodeAbiParameters,
   encodePacked,
   type HashTypedDataParameters,
   type Hex,
   hashMessage,
-  hashStruct,
   hashTypedData,
   http,
   isAddress,
-  keccak256,
   type PublicClient,
   publicActions,
   type SignableMessage,
@@ -30,6 +26,7 @@ import {
   getUserOperationHash,
   type UserOperation,
 } from 'viem/account-abstraction'
+import { wrapTypedDataSignature } from 'viem/experimental/erc7739'
 import {
   EoaSigningMethodNotConfiguredError,
   getAddress,
@@ -90,7 +87,6 @@ import type {
   CalldataInput,
   CallInput,
   RhinestoneConfig,
-  Session,
   SignerSet,
   SourceAssetInput,
   TokenRequest,
@@ -364,112 +360,53 @@ async function signTypedDataWithSession<
     chain: chain,
     transport: http(),
   })
-
   const accountAddress = getAddress(config)
-  const appDomainSeparator = domainSeparator({
-    domain: parameters.domain as TypedDataDomain,
-  })
-  const contentsType = encodeType({
-    primaryType: parameters.primaryType,
-    types: parameters.types as TypedData,
-  })
-  // Create hash following ERC-7739 TypedDataSign workflow
-  const typedDataSignTypehash = keccak256(
-    encodePacked(
-      ['string'],
-      [
-        `TypedDataSign(${parameters.primaryType} contents,string name,string version,uint256 chainId,address verifyingContract,bytes32 salt)`.concat(
-          contentsType,
-        ),
-      ],
-    ),
-  )
-  // Original struct hash
-  const structHash = hashStruct({
-    data: parameters.message as Record<string, unknown>,
-    primaryType: parameters.primaryType,
-    types: parameters.types as TypedData,
-  })
+
   const { name, version, chainId, verifyingContract, salt } =
     await getAccountEIP712Domain(publicClient, accountAddress)
-
-  const hash = keccak256(
-    encodePacked(
-      ['bytes2', 'bytes32', 'bytes32'],
-      [
-        '0x1901',
-        appDomainSeparator,
-        keccak256(
-          encodeAbiParameters(
-            [
-              { name: 'typedDataSignTypehash', type: 'bytes32' },
-              { name: 'structHash', type: 'bytes32' },
-              { name: 'name', type: 'bytes32' },
-              { name: 'version', type: 'bytes32' },
-              { name: 'chainId', type: 'uint256' },
-              { name: 'verifyingContract', type: 'address' },
-              { name: 'salt', type: 'bytes32' },
-            ],
-            [
-              typedDataSignTypehash,
-              structHash,
-              keccak256(encodePacked(['string'], [name])),
-              keccak256(encodePacked(['string'], [version])),
-              BigInt(Number(chainId)),
-              verifyingContract,
-              salt,
-            ],
-          ),
-        ),
-      ],
-    ),
-  )
-
-  const signature = await getPackedSignature(
+  const signature = await getTypedDataPackedSignature(
     config,
     signers,
     chain,
     validator,
-    hash,
+    {
+      domain: parameters.domain as TypedDataDomain,
+      primaryType: 'TypedDataSign',
+      types: {
+        ...(parameters.types as TypedData),
+        TypedDataSign: [
+          { name: 'contents', type: parameters.primaryType },
+          { name: 'name', type: 'string' },
+          { name: 'version', type: 'string' },
+          { name: 'chainId', type: 'uint256' },
+          { name: 'verifyingContract', type: 'address' },
+          { name: 'salt', type: 'bytes32' },
+        ],
+      },
+      message: {
+        contents: parameters.message as Record<string, unknown>,
+        name: name,
+        version: version,
+        chainId: chainId,
+        verifyingContract: verifyingContract,
+        salt: salt,
+      },
+    },
     (signature) => {
-      const sessionData = signers?.type === 'session' ? signers.session : null
-      return sessionData
-        ? getSessionSignature(
-            signature,
-            appDomainSeparator,
-            structHash,
-            contentsType,
-            sessionData,
-          )
-        : signature
+      const erc7739Signature = wrapTypedDataSignature({
+        domain: parameters.domain as TypedDataDomain,
+        primaryType: parameters.primaryType,
+        types: parameters.types as TypedData,
+        message: parameters.message as Record<string, unknown>,
+        signature,
+      })
+      return encodePacked(
+        ['bytes32', 'bytes'],
+        [getPermissionId(signers.session), erc7739Signature],
+      )
     },
   )
   return await toErc6492Signature(config, signature, chain)
-}
-
-function getSessionSignature(
-  signature: Hex,
-  appDomainSeparator: Hex,
-  structHash: Hex,
-  contentsType: string,
-  withSession: Session,
-) {
-  const erc7739Signature = encodePacked(
-    ['bytes', 'bytes32', 'bytes32', 'string', 'uint16'],
-    [
-      signature,
-      appDomainSeparator,
-      structHash,
-      contentsType,
-      contentsType.length,
-    ],
-  )
-  // Pack with permissionId for smart session
-  const wrappedSignature = encodePacked(
-    ['bytes32', 'bytes'],
-    [getPermissionId(withSession), erc7739Signature],
-  )
-  return wrappedSignature
 }
 
 async function signAuthorizationsInternal(
@@ -1261,43 +1198,6 @@ async function getAccountEIP712Domain(client: PublicClient, account: Address) {
     verifyingContract: data[4],
     salt: data[5],
   }
-}
-
-function encodeType(value: { primaryType: string; types: TypedData }): string {
-  const { primaryType, types } = value
-
-  let result = ''
-  const unsortedDeps = findTypeDependencies({ primaryType, types })
-  unsortedDeps.delete(primaryType)
-
-  const deps = [primaryType, ...Array.from(unsortedDeps).sort()]
-  for (const type of deps) {
-    result += `${type}(${(types[type] ?? [])
-      .map(({ name, type: t }) => `${t} ${name}`)
-      .join(',')})`
-  }
-
-  return result
-}
-
-function findTypeDependencies(
-  value: {
-    primaryType: string
-    types: TypedData
-  },
-  results: Set<string> = new Set(),
-): Set<string> {
-  const { primaryType: primaryType_, types } = value
-  const match = primaryType_.match(/^\w*/u)
-  const primaryType = match?.[0]!
-  if (results.has(primaryType) || types[primaryType] === undefined)
-    return results
-
-  results.add(primaryType)
-
-  for (const field of types[primaryType])
-    findTypeDependencies({ primaryType: field.type, types }, results)
-  return results
 }
 
 function parseCalls(calls: CalldataInput[], chainId: number): Call[] {
