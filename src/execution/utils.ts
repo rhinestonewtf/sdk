@@ -68,6 +68,7 @@ import {
   resolveTokenAddress,
 } from '../orchestrator/registry'
 import type {
+  Account,
   MappedChainTokenAccessList,
   SettlementLayer,
   SupportedChain,
@@ -513,7 +514,7 @@ async function prepareTransactionAsIntent(
   callInputs: CalldataInput[],
   gasLimit: bigint | undefined,
   tokenRequests: TokenRequest[],
-  recipient: Address | undefined,
+  recipient: Account | undefined,
   accountAddress: Address,
   isSponsored: boolean,
   eip7702InitSignature: Hex | undefined,

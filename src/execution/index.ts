@@ -13,7 +13,7 @@ import {
   isRetryable,
 } from '../orchestrator'
 import { getChainById, resolveTokenAddress } from '../orchestrator/registry'
-import type { SettlementLayer } from '../orchestrator/types'
+import type { Account, SettlementLayer } from '../orchestrator/types'
 import type {
   CalldataInput,
   CallInput,
@@ -144,7 +144,7 @@ async function sendTransactionInternal(
   options: {
     gasLimit?: bigint
     initialTokenRequests?: TokenRequest[]
-    recipient?: Address
+    recipient?: Account
     signers?: SignerSet
     sponsored?: boolean
     settlementLayers?: SettlementLayer[]
@@ -238,7 +238,7 @@ async function sendTransactionAsIntent(
   callInputs: CalldataInput[],
   gasLimit: bigint | undefined,
   tokenRequests: TokenRequest[],
-  recipient: Address | undefined,
+  recipient: Account | undefined,
   accountAddress: Address,
   dryRun: boolean = false,
   signers?: SignerSet,

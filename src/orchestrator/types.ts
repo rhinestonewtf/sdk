@@ -107,20 +107,7 @@ interface PortfolioToken {
 type Portfolio = PortfolioToken[]
 
 interface IntentInput {
-  account: {
-    address: Address
-    accountType: AccountType
-    setupOps: {
-      to: Address
-      data: Hex
-    }[]
-    delegations?: Record<
-      number,
-      {
-        contract: Address
-      }
-    >
-  }
+  account: Account
   destinationChainId: number
   destinationExecutions: Execution[]
   destinationGasUnits?: bigint
@@ -128,7 +115,7 @@ interface IntentInput {
     tokenAddress: Address
     amount?: bigint
   }[]
-  recipient?: Address
+  recipient?: Account
   accountAccessList?: AccountAccessList
   options: IntentOptions
 }
@@ -222,7 +209,7 @@ interface AccountContext {
   erc7579AccountVersion: string
 }
 
-interface Account {
+export interface Account {
   address: Address
   accountType: AccountType
   setupOps: Pick<Execution, 'to' | 'data'>[]
