@@ -167,6 +167,7 @@ interface RhinestoneAccount {
   getSessionDetails: (
     sessions: Session[],
     sessionIndex: number,
+    initialNonces?: bigint[],
     signature?: Hex,
   ) => Promise<SessionDetails>
   getOwners: (chain: Chain) => Promise<{
@@ -452,9 +453,16 @@ async function createRhinestoneAccount(
   function getSessionDetails(
     sessions: Session[],
     sessionIndex: number,
+    initialNonces?: bigint[],
     signature?: Hex,
   ) {
-    return getSessionDetailsInternal(config, sessions, sessionIndex, signature)
+    return getSessionDetailsInternal(
+      config,
+      sessions,
+      sessionIndex,
+      initialNonces,
+      signature,
+    )
   }
 
   /**

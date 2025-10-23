@@ -27,7 +27,7 @@
       "dependencies": {
         "@rhinestone/shared-configs": "^1.4.4",
         "ox": "^0.9.11",
-        "solady": "^0.1.21",
+        "solady": "^0.1.26"
       },
       "peerDependencies": {
         "viem": "^2.28.0",
@@ -595,7 +595,7 @@
 
     "slash": ["slash@3.0.0", "", {}, "sha512-g9Q1haeby36OSStwb4ntCGGGaKsaVSjQ68fBxoQcutl5fS1vuY18H3wSt3jFyFtrkx+Kz0V1G85A4MyAdDMi2Q=="],
 
-    "solady": ["solady@0.1.21", "", {}, "sha512-Pq3UYSwWFBXc+NwsBfOcTwHGbKuaLBLKI78jikBSmvq5h4CArYRp/MYsBKNjP/Zwr8eOGUO3HFKP87F94zMgIw=="],
+    "solady": ["solady@0.1.26", "", {}, "sha512-dhGr/ptJFdea/1KE6xgqgwEdbMhUiSfRc6A+jLeltPe16zyt9qtED3PElIBVRnzEmUO5aZTjKVAr6SlqXBBcIw=="],
 
     "source-map-js": ["source-map-js@1.2.1", "", {}, "sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA=="],
 
