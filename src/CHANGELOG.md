@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.9
+
+### Patch Changes
+
+- 81e7007: add wrapParaAccount 0/1 v-byte signer
+
 ## 1.0.8
 
 ### Patch Changes
