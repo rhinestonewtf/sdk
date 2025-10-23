@@ -80,6 +80,9 @@ export function walletClientToAccount(walletClient: WalletClient): Account {
  *     accounts: [wrappedAccount],
  *   },
  * })
+ *
+ * // Also works for EIP-7702 (signAuthorization uses original 0/1 v-byte)
+ * const authorization = await wrappedAccount.signAuthorization?.({ ... })
  * ```
  */
 export function wrapParaAccount(
@@ -97,7 +100,7 @@ export function wrapParaAccount(
 
   return {
     ...viemAccount,
-    // Override signMessage to adjust v-byte
+    // Override signMessage to adjust v-byte for smart wallet compatibility
     signMessage: async ({ message }: { message: SignableMessage }) => {
       if (!viemAccount.signMessage) {
         throw new Error('Account does not support signMessage')
@@ -105,7 +108,7 @@ export function wrapParaAccount(
       const originalSignature = await viemAccount.signMessage({ message })
       return adjustVByte(originalSignature)
     },
-    // Override signTypedData to adjust v-byte
+    // Override signTypedData to adjust v-byte for smart wallet compatibility
     signTypedData: async <
       const TTypedData extends TypedData | Record<string, unknown>,
       TPrimaryType extends keyof TTypedData | 'EIP712Domain' = keyof TTypedData,
@@ -118,6 +121,10 @@ export function wrapParaAccount(
       const originalSignature = await viemAccount.signTypedData(typedData)
       return adjustVByte(originalSignature)
     },
+    // Keep signAuthorization as is for EIP-7702
+    signAuthorization: viemAccount.signAuthorization
+      ? viemAccount.signAuthorization.bind(viemAccount)
+      : undefined,
   } as Account
 }
 
