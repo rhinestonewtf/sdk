@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.10
+
+### Patch Changes
+
+- 8425d5c: Implement clear signing for session enablement
+
 ## 1.0.9
 
 ### Patch Changes
