@@ -4,17 +4,24 @@ import {
   concat,
   createPublicClient,
   createWalletClient,
+  domainSeparator,
+  encodeAbiParameters,
+  encodePacked,
   type HashTypedDataParameters,
   type Hex,
   hashMessage,
+  hashStruct,
   hashTypedData,
+  http,
   isAddress,
+  keccak256,
   type PublicClient,
   publicActions,
   type SignableMessage,
   type SignedAuthorization,
   type SignedAuthorizationList,
   type TypedData,
+  type TypedDataDomain,
   toHex,
   zeroAddress,
 } from 'viem'
@@ -36,11 +43,16 @@ import {
   is7702,
   toErc6492Signature,
 } from '../accounts'
-import { createTransport, getBundlerClient } from '../accounts/utils'
+import {
+  createTransport,
+  getBundlerClient,
+  type ValidatorConfig,
+} from '../accounts/utils'
 import { getIntentExecutor } from '../modules'
 import type { Module } from '../modules/common'
 import {
   getOwnerValidator,
+  getPermissionId,
   getSmartSessionValidator,
 } from '../modules/validators'
 import {
@@ -78,6 +90,7 @@ import type {
   CalldataInput,
   CallInput,
   RhinestoneConfig,
+  Session,
   SignerSet,
   SourceAssetInput,
   TokenRequest,
@@ -311,6 +324,19 @@ async function signTypedData<
   const ownerValidator = getOwnerValidator(config)
   const isRoot = validator.address === ownerValidator.address
 
+  if (signers?.type === 'session') {
+    return await signTypedDataWithSession(
+      config,
+      chain,
+      {
+        address: validator.address,
+        isRoot,
+      },
+      signers,
+      parameters,
+    )
+  }
+
   const signature = await getTypedDataPackedSignature(
     config,
     signers,
@@ -322,6 +348,128 @@ async function signTypedData<
     parameters,
   )
   return await toErc6492Signature(config, signature, chain)
+}
+
+async function signTypedDataWithSession<
+  typedData extends TypedData | Record<string, unknown> = TypedData,
+  primaryType extends keyof typedData | 'EIP712Domain' = keyof typedData,
+>(
+  config: RhinestoneConfig,
+  chain: Chain,
+  validator: ValidatorConfig,
+  signers: SignerSet & { type: 'session' },
+  parameters: HashTypedDataParameters<typedData, primaryType>,
+) {
+  const publicClient = createPublicClient({
+    chain: chain,
+    transport: http(),
+  })
+
+  const accountAddress = getAddress(config)
+  const appDomainSeparator = domainSeparator({
+    domain: parameters.domain as TypedDataDomain,
+  })
+  const contentsType = encodeType({
+    primaryType: parameters.primaryType,
+    types: parameters.types as TypedData,
+  })
+  // Create hash following ERC-7739 TypedDataSign workflow
+  const typedDataSignTypehash = keccak256(
+    encodePacked(
+      ['string'],
+      [
+        `TypedDataSign(${parameters.primaryType} contents,string name,string version,uint256 chainId,address verifyingContract,bytes32 salt)`.concat(
+          contentsType,
+        ),
+      ],
+    ),
+  )
+  // Original struct hash
+  const structHash = hashStruct({
+    data: parameters.message as Record<string, unknown>,
+    primaryType: parameters.primaryType,
+    types: parameters.types as TypedData,
+  })
+  const { name, version, chainId, verifyingContract, salt } =
+    await getAccountEIP712Domain(publicClient, accountAddress)
+
+  const hash = keccak256(
+    encodePacked(
+      ['bytes2', 'bytes32', 'bytes32'],
+      [
+        '0x1901',
+        appDomainSeparator,
+        keccak256(
+          encodeAbiParameters(
+            [
+              { name: 'typedDataSignTypehash', type: 'bytes32' },
+              { name: 'structHash', type: 'bytes32' },
+              { name: 'name', type: 'bytes32' },
+              { name: 'version', type: 'bytes32' },
+              { name: 'chainId', type: 'uint256' },
+              { name: 'verifyingContract', type: 'address' },
+              { name: 'salt', type: 'bytes32' },
+            ],
+            [
+              typedDataSignTypehash,
+              structHash,
+              keccak256(encodePacked(['string'], [name])),
+              keccak256(encodePacked(['string'], [version])),
+              BigInt(Number(chainId)),
+              verifyingContract,
+              salt,
+            ],
+          ),
+        ),
+      ],
+    ),
+  )
+
+  const signature = await getPackedSignature(
+    config,
+    signers,
+    chain,
+    validator,
+    hash,
+    (signature) => {
+      const sessionData = signers?.type === 'session' ? signers.session : null
+      return sessionData
+        ? getSessionSignature(
+            signature,
+            appDomainSeparator,
+            structHash,
+            contentsType,
+            sessionData,
+          )
+        : signature
+    },
+  )
+  return await toErc6492Signature(config, signature, chain)
+}
+
+function getSessionSignature(
+  signature: Hex,
+  appDomainSeparator: Hex,
+  structHash: Hex,
+  contentsType: string,
+  withSession: Session,
+) {
+  const erc7739Signature = encodePacked(
+    ['bytes', 'bytes32', 'bytes32', 'string', 'uint16'],
+    [
+      signature,
+      appDomainSeparator,
+      structHash,
+      contentsType,
+      contentsType.length,
+    ],
+  )
+  // Pack with permissionId for smart session
+  const wrappedSignature = encodePacked(
+    ['bytes32', 'bytes'],
+    [getPermissionId(withSession), erc7739Signature],
+  )
+  return wrappedSignature
 }
 
 async function signAuthorizationsInternal(
@@ -1059,6 +1207,97 @@ function getValidator(
   }
   // Fallback
   return undefined
+}
+
+async function getAccountEIP712Domain(client: PublicClient, account: Address) {
+  const data = await client.readContract({
+    address: account,
+    abi: [
+      {
+        type: 'function',
+        name: 'eip712Domain',
+        inputs: [],
+        outputs: [
+          {
+            type: 'bytes1',
+            name: 'fields,',
+          },
+          {
+            type: 'string',
+            name: 'name',
+          },
+          {
+            type: 'string',
+            name: 'version',
+          },
+          {
+            type: 'uint256',
+            name: 'chainId',
+          },
+          {
+            type: 'address',
+            name: 'verifyingContract',
+          },
+          {
+            type: 'bytes32',
+            name: 'salt',
+          },
+          {
+            type: 'uint256[]',
+            name: 'extensions',
+          },
+        ],
+        stateMutability: 'view',
+        constant: true,
+      },
+    ],
+    functionName: 'eip712Domain',
+    args: [],
+  })
+  return {
+    name: data[1],
+    version: data[2],
+    chainId: data[3],
+    verifyingContract: data[4],
+    salt: data[5],
+  }
+}
+
+function encodeType(value: { primaryType: string; types: TypedData }): string {
+  const { primaryType, types } = value
+
+  let result = ''
+  const unsortedDeps = findTypeDependencies({ primaryType, types })
+  unsortedDeps.delete(primaryType)
+
+  const deps = [primaryType, ...Array.from(unsortedDeps).sort()]
+  for (const type of deps) {
+    result += `${type}(${(types[type] ?? [])
+      .map(({ name, type: t }) => `${t} ${name}`)
+      .join(',')})`
+  }
+
+  return result
+}
+
+function findTypeDependencies(
+  value: {
+    primaryType: string
+    types: TypedData
+  },
+  results: Set<string> = new Set(),
+): Set<string> {
+  const { primaryType: primaryType_, types } = value
+  const match = primaryType_.match(/^\w*/u)
+  const primaryType = match?.[0]!
+  if (results.has(primaryType) || types[primaryType] === undefined)
+    return results
+
+  results.add(primaryType)
+
+  for (const field of types[primaryType])
+    findTypeDependencies({ primaryType: field.type, types }, results)
+  return results
 }
 
 function parseCalls(calls: CalldataInput[], chainId: number): Call[] {

@@ -148,10 +148,17 @@ interface Action {
 
 interface Session {
   owners: OwnerSet
+  chain?: Chain
   policies?: [Policy, ...Policy[]]
   actions?: [Action, ...Action[]]
+  erc1271?: {
+    allowedContent: {
+      appDomainSeparator: string
+      contentName: string[]
+    }[]
+    policies?: [Policy, ...Policy[]]
+  }
   salt?: Hex
-  chain?: Chain
 }
 
 interface Recovery {
