@@ -151,9 +151,9 @@ interface Session {
   chain?: Chain
   policies?: [Policy, ...Policy[]]
   actions?: [Action, ...Action[]]
-  erc1271?: {
+  signing?: {
     allowedContent: {
-      appDomainSeparator: string
+      domainSeparator: string
       contentName: string[]
     }[]
     policies?: [Policy, ...Policy[]]

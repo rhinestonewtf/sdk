@@ -212,11 +212,16 @@ function getSmartSessionData(session: Session) {
         actionPolicies,
       }
     }),
-    erc7739Policies: session.erc1271
+    erc7739Policies: session.signing
       ? {
-          allowedERC7739Content: session.erc1271.allowedContent,
+          allowedERC7739Content: session.signing.allowedContent.map(
+            (content) => ({
+              appDomainSeparator: content.domainSeparator,
+              contentName: content.contentName,
+            }),
+          ),
           erc1271Policies: (
-            session.erc1271.policies || [
+            session.signing.policies || [
               {
                 type: 'sudo',
               },
