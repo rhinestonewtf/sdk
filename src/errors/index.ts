@@ -1,6 +1,7 @@
 import {
   AccountConfigurationNotSupportedError,
   AccountError,
+  Eip712DomainNotAvailableError,
   Eip7702AccountMustHaveEoaError,
   Eip7702NotSupportedForAccountError,
   ExistingEip7702AccountsNotSupportedError,
@@ -54,6 +55,7 @@ export {
   isAccountError,
   AccountError,
   AccountConfigurationNotSupportedError,
+  Eip712DomainNotAvailableError,
   Eip7702AccountMustHaveEoaError,
   ExistingEip7702AccountsNotSupportedError,
   FactoryArgsNotAvailableError,

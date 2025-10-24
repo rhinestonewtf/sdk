@@ -1,6 +1,7 @@
 import {
   type Abi,
   type Address,
+  Chain,
   concat,
   concatHex,
   decodeAbiParameters,
@@ -44,7 +45,10 @@ import {
 } from '../modules/validators'
 import type { EnableSessionData } from '../modules/validators/smart-sessions'
 import type { OwnerSet, RhinestoneAccountConfig, Session } from '../types'
-import { AccountConfigurationNotSupportedError } from './error'
+import {
+  AccountConfigurationNotSupportedError,
+  Eip712DomainNotAvailableError,
+} from './error'
 import { encode7579Calls, getAccountNonce, type ValidatorConfig } from './utils'
 
 type ValidatorType = 'root' | 'validator'
@@ -151,6 +155,21 @@ function getAddress(config: RhinestoneAccountConfig) {
     bytecode: KERNEL_BYTECODE,
     salt: actualSalt,
   })
+}
+
+function getEip712Domain(config: RhinestoneAccountConfig, chain: Chain) {
+  if (config.initData) {
+    throw new Eip712DomainNotAvailableError(
+      'Existing Kernel accounts are not yet supported',
+    )
+  }
+  return {
+    name: 'Kernel',
+    version: KERNEL_VERSION,
+    chainId: chain.id,
+    verifyingContract: getAddress(config),
+    salt: zeroHash,
+  }
 }
 
 function getInstallData(module: Module): Hex[] {
@@ -432,6 +451,7 @@ async function getBaseSmartAccount(
 }
 
 export {
+  getEip712Domain,
   getInstallData,
   getAddress,
   getDeployArgs,

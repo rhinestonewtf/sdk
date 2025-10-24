@@ -30,6 +30,7 @@ import { wrapTypedDataSignature } from 'viem/experimental/erc7739'
 import {
   EoaSigningMethodNotConfiguredError,
   getAddress,
+  getEip712Domain,
   getEip7702InitCall,
   getGuardianSmartAccount,
   getInitCode,
@@ -356,14 +357,10 @@ async function signTypedDataWithSession<
   signers: SignerSet & { type: 'session' },
   parameters: HashTypedDataParameters<typedData, primaryType>,
 ) {
-  const publicClient = createPublicClient({
-    chain: chain,
-    transport: http(),
-  })
-  const accountAddress = getAddress(config)
-
-  const { name, version, chainId, verifyingContract, salt } =
-    await getAccountEIP712Domain(publicClient, accountAddress)
+  const { name, version, chainId, verifyingContract, salt } = getEip712Domain(
+    config,
+    chain,
+  )
   const signature = await getTypedDataPackedSignature(
     config,
     signers,
@@ -385,11 +382,11 @@ async function signTypedDataWithSession<
       },
       message: {
         contents: parameters.message as Record<string, unknown>,
-        name: name,
-        version: version,
-        chainId: chainId,
-        verifyingContract: verifyingContract,
-        salt: salt,
+        name,
+        version,
+        chainId,
+        verifyingContract,
+        salt,
       },
     },
     (signature) => {
@@ -1144,60 +1141,6 @@ function getValidator(
   }
   // Fallback
   return undefined
-}
-
-async function getAccountEIP712Domain(client: PublicClient, account: Address) {
-  const data = await client.readContract({
-    address: account,
-    abi: [
-      {
-        type: 'function',
-        name: 'eip712Domain',
-        inputs: [],
-        outputs: [
-          {
-            type: 'bytes1',
-            name: 'fields,',
-          },
-          {
-            type: 'string',
-            name: 'name',
-          },
-          {
-            type: 'string',
-            name: 'version',
-          },
-          {
-            type: 'uint256',
-            name: 'chainId',
-          },
-          {
-            type: 'address',
-            name: 'verifyingContract',
-          },
-          {
-            type: 'bytes32',
-            name: 'salt',
-          },
-          {
-            type: 'uint256[]',
-            name: 'extensions',
-          },
-        ],
-        stateMutability: 'view',
-        constant: true,
-      },
-    ],
-    functionName: 'eip712Domain',
-    args: [],
-  })
-  return {
-    name: data[1],
-    version: data[2],
-    chainId: data[3],
-    verifyingContract: data[4],
-    salt: data[5],
-  }
 }
 
 function parseCalls(calls: CalldataInput[], chainId: number): Call[] {

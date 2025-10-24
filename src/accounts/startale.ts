@@ -1,4 +1,4 @@
-import type { Address, Hex, PublicClient } from 'viem'
+import type { Address, Chain, Hex, PublicClient } from 'viem'
 import {
   concat,
   encodeAbiParameters,
@@ -14,6 +14,7 @@ import { getSetup as getModuleSetup } from '../modules'
 import type { Module } from '../modules/common'
 import type { EnableSessionData } from '../modules/validators/smart-sessions'
 import type { OwnerSet, RhinestoneAccountConfig, Session } from '../types'
+import { Eip712DomainNotAvailableError } from './error'
 import {
   getGuardianSmartAccount as getNexusGuardianSmartAccount,
   getInstallData as getNexusInstallData,
@@ -25,6 +26,7 @@ import type { ValidatorConfig } from './utils'
 
 const K1_DEFAULT_VALIDATOR_ADDRESS: Address =
   '0x00000072f286204bb934ed49d8969e86f7dec7b1'
+const STARTALE_VERSION = '1.0.0'
 
 const IMPLEMENTATION_ADDRESS: Address =
   '0x000000b8f5f723a680d3d7ee624fe0bc84a6e05a'
@@ -121,6 +123,21 @@ function getAddress(config: RhinestoneAccountConfig) {
   return address
 }
 
+function getEip712Domain(config: RhinestoneAccountConfig, chain: Chain) {
+  if (config.initData) {
+    throw new Eip712DomainNotAvailableError(
+      'Existing Startale accounts are not yet supported',
+    )
+  }
+  return {
+    name: 'Startale',
+    version: STARTALE_VERSION,
+    chainId: chain.id,
+    verifyingContract: getAddress(config),
+    salt: zeroHash,
+  }
+}
+
 function getInstallData(module: Module) {
   return getNexusInstallData(module)
 }
@@ -192,6 +209,7 @@ async function getGuardianSmartAccount(
 }
 
 export {
+  getEip712Domain,
   getInstallData,
   getAddress,
   packSignature,

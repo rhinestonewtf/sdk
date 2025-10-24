@@ -1,6 +1,7 @@
 import {
   type Abi,
   type Address,
+  Chain,
   concat,
   decodeFunctionData,
   encodeAbiParameters,
@@ -13,6 +14,7 @@ import {
   parseAbi,
   parseAbiParameters,
   zeroAddress,
+  zeroHash,
 } from 'viem'
 import {
   entryPoint07Abi,
@@ -36,6 +38,7 @@ import type { EnableSessionData } from '../modules/validators/smart-sessions'
 import type { OwnerSet, RhinestoneAccountConfig, Session } from '../types'
 import {
   AccountConfigurationNotSupportedError,
+  Eip712DomainNotAvailableError,
   OwnersFieldRequiredError,
 } from './error'
 import { encode7579Calls, getAccountNonce, type ValidatorConfig } from './utils'
@@ -161,6 +164,21 @@ function getAddress(config: RhinestoneAccountConfig) {
     bytecode: concat([SAFE_PROXY_INIT_CODE, constructorArgs]),
   })
   return address
+}
+
+function getEip712Domain(config: RhinestoneAccountConfig, chain: Chain) {
+  if (config.initData) {
+    throw new Eip712DomainNotAvailableError(
+      'Existing Safe-7579 accounts are not yet supported',
+    )
+  }
+  return {
+    name: 'rhinestone safe7579',
+    version: 'v1.0.0',
+    chainId: chain.id,
+    verifyingContract: getAddress(config),
+    salt: zeroHash,
+  }
 }
 
 function getInstallData(module: Module) {
@@ -393,6 +411,7 @@ function getThreshold(config: RhinestoneAccountConfig) {
 }
 
 export {
+  getEip712Domain,
   getInstallData,
   getAddress,
   packSignature,

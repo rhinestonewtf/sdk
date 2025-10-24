@@ -1,4 +1,4 @@
-import type { Abi, Account, Address, Hex, PublicClient } from 'viem'
+import type { Abi, Account, Address, Chain, Hex, PublicClient } from 'viem'
 import {
   concat,
   decodeFunctionData,
@@ -11,6 +11,7 @@ import {
   size,
   toHex,
   zeroAddress,
+  zeroHash,
 } from 'viem'
 import {
   entryPoint07Abi,
@@ -35,11 +36,13 @@ import type { EnableSessionData } from '../modules/validators/smart-sessions'
 import type { OwnerSet, RhinestoneAccountConfig, Session } from '../types'
 import {
   AccountConfigurationNotSupportedError,
+  Eip712DomainNotAvailableError,
   SigningNotSupportedForAccountError,
 } from './error'
 import { encode7579Calls, getAccountNonce, type ValidatorConfig } from './utils'
 
 const NEXUS_DEFAULT_VALIDATOR_ADDRESS: Address = OWNABLE_VALIDATOR_ADDRESS
+const NEXUS_VERSION = '1.2.0'
 
 const NEXUS_IMPLEMENTATION_ADDRESS: Address =
   '0x000000000032dDC454C3BDcba80484Ad5A798705'
@@ -239,6 +242,21 @@ function getAddress(config: RhinestoneAccountConfig) {
     bytecode: concat([creationCode, accountInitData]),
   })
   return address
+}
+
+function getEip712Domain(config: RhinestoneAccountConfig, chain: Chain) {
+  if (config.initData) {
+    throw new Eip712DomainNotAvailableError(
+      'Existing Nexus accounts are not yet supported',
+    )
+  }
+  return {
+    name: 'Nexus',
+    version: NEXUS_VERSION,
+    chainId: chain.id,
+    verifyingContract: getAddress(config),
+    salt: zeroHash,
+  }
 }
 
 function getInstallData(module: Module) {
@@ -495,7 +513,7 @@ async function signEip7702InitData(
   const signature = await eoa.signTypedData({
     domain: {
       name: 'Nexus',
-      version: '1.2.0',
+      version: NEXUS_VERSION,
     },
     types: {
       Initialize: [
@@ -558,6 +576,7 @@ async function getEip7702InitCall(
 }
 
 export {
+  getEip712Domain,
   getInstallData,
   getAddress,
   getDefaultValidatorAddress,
