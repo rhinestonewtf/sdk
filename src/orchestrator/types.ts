@@ -198,6 +198,7 @@ interface IntentOp {
     }
     gasPrices: Record<string, string>
     account: AccountWithContext
+    recipient?: AccountWithContext
   }
 }
 
