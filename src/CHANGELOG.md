@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.12
+
+### Patch Changes
+
+- 9788afb: ERC-7739 policies for session keys
+
 ## 1.0.11
 
 ### Patch Changes
