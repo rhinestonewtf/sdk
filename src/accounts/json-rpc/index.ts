@@ -1,7 +1,7 @@
 import { type Chain, http, type Transport } from 'viem'
 import type { SupportedChain } from '../../orchestrator'
 import type { ProviderConfig } from '../../types'
-import { getAlchemyUrl } from './providers'
+import { getAlchemyUrl, getCustomUrl } from './providers'
 
 function createTransport(chain: Chain, provider?: ProviderConfig): Transport {
   if (!provider) {
@@ -15,6 +15,10 @@ function createTransport(chain: Chain, provider?: ProviderConfig): Transport {
         provider.apiKey,
       )
       return http(alchemyUrl)
+    }
+    case 'custom': {
+      const customUrl = getCustomUrl(chain.id, provider.urls)
+      return http(customUrl)
     }
   }
 }

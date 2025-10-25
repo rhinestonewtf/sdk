@@ -62,10 +62,15 @@ interface MultiFactorValidatorConfig {
   module?: Address
 }
 
-interface ProviderConfig {
-  type: 'alchemy'
-  apiKey: string
-}
+type ProviderConfig =
+  | {
+      type: 'alchemy'
+      apiKey: string
+    }
+  | {
+      type: 'custom'
+      urls: Record<number, string>
+    }
 
 interface BundlerConfig {
   type: 'pimlico' | 'biconomy'
