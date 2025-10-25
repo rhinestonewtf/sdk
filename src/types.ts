@@ -153,10 +153,17 @@ interface Action {
 
 interface Session {
   owners: OwnerSet
+  chain?: Chain
   policies?: [Policy, ...Policy[]]
   actions?: [Action, ...Action[]]
+  signing?: {
+    allowedContent: {
+      domainSeparator: string
+      contentName: string[]
+    }[]
+    policies?: [Policy, ...Policy[]]
+  }
   salt?: Hex
-  chain?: Chain
 }
 
 interface Recovery {

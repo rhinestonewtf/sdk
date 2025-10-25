@@ -195,6 +195,14 @@ class OwnersFieldRequiredError extends AccountError {
   }
 }
 
+class Eip712DomainNotAvailableError extends AccountError {
+  constructor(message: string) {
+    super({
+      message,
+    })
+  }
+}
+
 function isAccountError(error: Error): error is AccountError {
   return error instanceof AccountError
 }
@@ -217,6 +225,7 @@ function getAccountName(account: AccountType) {
 export {
   isAccountError,
   AccountError,
+  Eip712DomainNotAvailableError,
   Eip7702AccountMustHaveEoaError,
   ExistingEip7702AccountsNotSupportedError,
   FactoryArgsNotAvailableError,

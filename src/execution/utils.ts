@@ -4,10 +4,12 @@ import {
   concat,
   createPublicClient,
   createWalletClient,
+  encodePacked,
   type HashTypedDataParameters,
   type Hex,
   hashMessage,
   hashTypedData,
+  http,
   isAddress,
   type PublicClient,
   publicActions,
@@ -15,6 +17,7 @@ import {
   type SignedAuthorization,
   type SignedAuthorizationList,
   type TypedData,
+  type TypedDataDomain,
   toHex,
   zeroAddress,
 } from 'viem'
@@ -23,9 +26,11 @@ import {
   getUserOperationHash,
   type UserOperation,
 } from 'viem/account-abstraction'
+import { wrapTypedDataSignature } from 'viem/experimental/erc7739'
 import {
   EoaSigningMethodNotConfiguredError,
   getAddress,
+  getEip712Domain,
   getEip7702InitCall,
   getGuardianSmartAccount,
   getInitCode,
@@ -36,11 +41,16 @@ import {
   is7702,
   toErc6492Signature,
 } from '../accounts'
-import { createTransport, getBundlerClient } from '../accounts/utils'
+import {
+  createTransport,
+  getBundlerClient,
+  type ValidatorConfig,
+} from '../accounts/utils'
 import { getIntentExecutor } from '../modules'
 import type { Module } from '../modules/common'
 import {
   getOwnerValidator,
+  getPermissionId,
   getSmartSessionValidator,
 } from '../modules/validators'
 import {
@@ -311,6 +321,19 @@ async function signTypedData<
   const ownerValidator = getOwnerValidator(config)
   const isRoot = validator.address === ownerValidator.address
 
+  if (signers?.type === 'session') {
+    return await signTypedDataWithSession(
+      config,
+      chain,
+      {
+        address: validator.address,
+        isRoot,
+      },
+      signers,
+      parameters,
+    )
+  }
+
   const signature = await getTypedDataPackedSignature(
     config,
     signers,
@@ -320,6 +343,65 @@ async function signTypedData<
       isRoot,
     },
     parameters,
+  )
+  return await toErc6492Signature(config, signature, chain)
+}
+
+async function signTypedDataWithSession<
+  typedData extends TypedData | Record<string, unknown> = TypedData,
+  primaryType extends keyof typedData | 'EIP712Domain' = keyof typedData,
+>(
+  config: RhinestoneConfig,
+  chain: Chain,
+  validator: ValidatorConfig,
+  signers: SignerSet & { type: 'session' },
+  parameters: HashTypedDataParameters<typedData, primaryType>,
+) {
+  const { name, version, chainId, verifyingContract, salt } = getEip712Domain(
+    config,
+    chain,
+  )
+  const signature = await getTypedDataPackedSignature(
+    config,
+    signers,
+    chain,
+    validator,
+    {
+      domain: parameters.domain as TypedDataDomain,
+      primaryType: 'TypedDataSign',
+      types: {
+        ...(parameters.types as TypedData),
+        TypedDataSign: [
+          { name: 'contents', type: parameters.primaryType },
+          { name: 'name', type: 'string' },
+          { name: 'version', type: 'string' },
+          { name: 'chainId', type: 'uint256' },
+          { name: 'verifyingContract', type: 'address' },
+          { name: 'salt', type: 'bytes32' },
+        ],
+      },
+      message: {
+        contents: parameters.message as Record<string, unknown>,
+        name,
+        version,
+        chainId,
+        verifyingContract,
+        salt,
+      },
+    },
+    (signature) => {
+      const erc7739Signature = wrapTypedDataSignature({
+        domain: parameters.domain as TypedDataDomain,
+        primaryType: parameters.primaryType,
+        types: parameters.types as TypedData,
+        message: parameters.message as Record<string, unknown>,
+        signature,
+      })
+      return encodePacked(
+        ['bytes32', 'bytes'],
+        [getPermissionId(signers.session), erc7739Signature],
+      )
+    },
   )
   return await toErc6492Signature(config, signature, chain)
 }

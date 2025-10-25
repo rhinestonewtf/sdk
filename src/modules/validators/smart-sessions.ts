@@ -205,19 +205,33 @@ function getSmartSessionData(session: Session) {
             type: 'sudo',
           },
         ]
-      ).map((policy) => {
-        return getPolicyData(policy)
-      })
+      ).map((policy) => getPolicyData(policy))
       return {
         actionTargetSelector: action.selector,
         actionTarget: action.target,
         actionPolicies,
       }
     }),
-    erc7739Policies: {
-      allowedERC7739Content: [],
-      erc1271Policies: [],
-    },
+    erc7739Policies: session.signing
+      ? {
+          allowedERC7739Content: session.signing.allowedContent.map(
+            (content) => ({
+              appDomainSeparator: content.domainSeparator,
+              contentName: content.contentName,
+            }),
+          ),
+          erc1271Policies: (
+            session.signing.policies || [
+              {
+                type: 'sudo',
+              },
+            ]
+          ).map((policy) => getPolicyData(policy)),
+        }
+      : {
+          allowedERC7739Content: [],
+          erc1271Policies: [],
+        },
     permitERC4337Paymaster: true,
   } as SessionData
 }

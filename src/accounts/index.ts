@@ -41,6 +41,7 @@ import type {
 import {
   AccountConfigurationNotSupportedError,
   AccountError,
+  Eip712DomainNotAvailableError,
   Eip7702AccountMustHaveEoaError,
   Eip7702NotSupportedForAccountError,
   EoaSigningMethodNotConfiguredError,
@@ -57,6 +58,7 @@ import {
 import {
   getAddress as getKernelAddress,
   getDeployArgs as getKernelDeployArgs,
+  getEip712Domain as getKernelEip712Domain,
   getGuardianSmartAccount as getKernelGuardianSmartAccount,
   getInstallData as getKernelInstallData,
   getSessionSmartAccount as getKernelSessionSmartAccount,
@@ -68,6 +70,7 @@ import {
   getAddress as getNexusAddress,
   getDefaultValidatorAddress as getNexusDefaultValidatorAddress,
   getDeployArgs as getNexusDeployArgs,
+  getEip712Domain as getNexusEip712Domain,
   getEip7702InitCall as getNexusEip7702InitCall,
   getGuardianSmartAccount as getNexusGuardianSmartAccount,
   getInstallData as getNexusInstallData,
@@ -85,6 +88,7 @@ import {
 import {
   getAddress as getSafeAddress,
   getDeployArgs as getSafeDeployArgs,
+  getEip712Domain as getSafeEip712Domain,
   getGuardianSmartAccount as getSafeGuardianSmartAccount,
   getInstallData as getSafeInstallData,
   getSessionSmartAccount as getSafeSessionSmartAccount,
@@ -97,6 +101,7 @@ import { sign as signTypedData } from './signing/typedData'
 import {
   getAddress as getStartaleAddress,
   getDeployArgs as getStartaleDeployArgs,
+  getEip712Domain as getStartaleEip712Domain,
   getGuardianSmartAccount as getStartaleGuardianSmartAccount,
   getInstallData as getStartaleInstallData,
   getSessionSmartAccount as getStartaleSessionSmartAccount,
@@ -197,6 +202,34 @@ async function getEip7702InitCall(config: RhinestoneConfig, signature: Hex) {
     }
     default: {
       throw new Eip7702NotSupportedForAccountError((account as any).type)
+    }
+  }
+}
+
+function getEip712Domain(config: RhinestoneConfig, chain: Chain) {
+  const account = getAccountProvider(config)
+  switch (account.type) {
+    case 'nexus': {
+      return getNexusEip712Domain(config, chain)
+    }
+    case 'safe': {
+      return getSafeEip712Domain(config, chain)
+    }
+    case 'kernel': {
+      return getKernelEip712Domain(config, chain)
+    }
+    case 'startale': {
+      return getStartaleEip712Domain(config, chain)
+    }
+    case 'eoa': {
+      throw new Eip712DomainNotAvailableError(
+        'EOA accounts do not have an EIP-712 domain',
+      )
+    }
+    default: {
+      throw new Eip712DomainNotAvailableError(
+        `Account type ${(account as any).type} not yet supported`,
+      )
     }
   }
 }
@@ -858,6 +891,7 @@ function getAccountProvider(config: RhinestoneConfig): AccountProviderConfig {
 }
 
 export {
+  getEip712Domain,
   getModuleInstallationCalls,
   getModuleUninstallationCalls,
   getAddress,
@@ -880,6 +914,7 @@ export {
   isAccountError,
   AccountError,
   AccountConfigurationNotSupportedError,
+  Eip712DomainNotAvailableError,
   Eip7702AccountMustHaveEoaError,
   Eip7702NotSupportedForAccountError,
   EoaSigningMethodNotConfiguredError,
