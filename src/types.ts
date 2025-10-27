@@ -1,7 +1,10 @@
 import type { Account, Address, Chain, Hex } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
 import type { EnableSessionData } from './modules/validators/smart-sessions'
-import type { SettlementLayer } from './orchestrator/types'
+import type {
+  Account as OrchestratorAccount,
+  SettlementLayer,
+} from './orchestrator/types'
 
 type AccountType = 'safe' | 'nexus' | 'kernel' | 'startale' | 'passport' | 'eoa'
 
@@ -290,6 +293,7 @@ type SignerSet = OwnerSignerSet | SessionSignerSet | GuardiansSignerSet
 interface BaseTransaction {
   calls: CallInput[]
   tokenRequests?: TokenRequest[]
+  recipient?: OrchestratorAccount
   gasLimit?: bigint
   signers?: SignerSet
   sponsored?: boolean
