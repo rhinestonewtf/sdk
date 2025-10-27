@@ -9,7 +9,6 @@ import {
   type Hex,
   hashMessage,
   hashTypedData,
-  http,
   isAddress,
   type PublicClient,
   publicActions,
