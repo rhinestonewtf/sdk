@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.13
+
+### Patch Changes
+
+- a678eaa: add optional recipient
+
 ## 1.0.12
 
 ### Patch Changes
