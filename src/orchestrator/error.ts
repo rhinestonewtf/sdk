@@ -1,3 +1,21 @@
+import { Address, Hex } from 'viem'
+
+interface Simulation {
+  success: boolean
+  call: {
+    chainId: number
+    to: Address
+    data: Hex
+    value: string
+  }
+  details: {
+    stateOverride: unknown[]
+    blockNumber: string
+    relayer: string
+    simulationUrl: string
+  }
+}
+
 class OrchestratorError extends Error {
   private readonly _message: string
   private readonly _context: any
@@ -364,6 +382,22 @@ class BodyParserError extends OrchestratorError {
   }
 }
 
+class SimulationFailedError extends OrchestratorError {
+  constructor(params?: {
+    message?: string
+    context?: any
+    errorType?: string
+    traceId?: string
+    statusCode?: number
+    simulations?: Simulation[]
+  }) {
+    super({
+      message: params?.message || 'Simulation failed',
+      ...params,
+    })
+  }
+}
+
 function isOrchestratorError(error: Error): error is OrchestratorError {
   return error instanceof OrchestratorError
 }
@@ -421,4 +455,5 @@ export {
   UnprocessableEntityError,
   InternalServerError,
   BodyParserError,
+  SimulationFailedError,
 }

@@ -16,6 +16,7 @@ import {
   RateLimitedError,
   ResourceNotFoundError,
   ServiceUnavailableError,
+  SimulationFailedError,
   TokenNotSupportedError,
   UnauthorizedError,
   UnsupportedChainError,
@@ -432,7 +433,18 @@ export class Orchestrator {
       message === 'encoding.unsupported'
     ) {
       throw new BodyParserError({ message, ...errorParams })
+    } else if (message === 'Bundle simulation failed') {
+      const simulations = errorParams.context.error.simulations
+      const { traceId, errorType, statusCode } = errorParams
+      throw new SimulationFailedError({
+        message,
+        context: { simulations },
+        errorType,
+        traceId,
+        statusCode,
+      })
     } else {
+      console.log('[abc] orch error', message)
       throw new OrchestratorError({ message, ...errorParams })
     }
   }
