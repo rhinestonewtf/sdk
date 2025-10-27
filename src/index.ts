@@ -134,6 +134,7 @@ interface RhinestoneAccount {
   submitTransaction: (
     signedTransaction: SignedTransactionData,
     authorizations?: SignedAuthorizationList,
+    dryRun?: boolean,
   ) => Promise<TransactionResult>
   sendTransaction: (transaction: Transaction) => Promise<TransactionResult>
   prepareUserOperation: (
