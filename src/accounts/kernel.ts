@@ -1,7 +1,7 @@
 import {
   type Abi,
   type Address,
-  Chain,
+  type Chain,
   concat,
   concatHex,
   decodeAbiParameters,
