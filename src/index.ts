@@ -65,6 +65,8 @@ import {
   getValidators as getValidatorsInternal,
 } from './modules'
 import {
+  type ApprovalRequired,
+  getAllSupportedChainsAndTokens,
   getSupportedTokens,
   getTokenAddress,
   type IntentCost,
@@ -74,6 +76,8 @@ import {
   type Portfolio,
   type SettlementLayer,
   type SignedIntentOp,
+  type TokenRequirements,
+  type WrapRequired,
 } from './orchestrator'
 import type {
   AccountProviderConfig,
@@ -552,6 +556,7 @@ export {
   // Registry functions
   getSupportedTokens,
   getTokenAddress,
+  getAllSupportedChainsAndTokens,
   // Permit2 helpers
   checkERC20AllowanceDirect,
   getPermit2Address,
@@ -595,6 +600,9 @@ export type {
   SettlementLayer,
   SignedIntentOp,
   Portfolio,
+  TokenRequirements,
+  WrapRequired,
+  ApprovalRequired,
   // Multi-chain permit2 types
   MultiChainPermit2Config,
   MultiChainPermit2Result,

@@ -158,6 +158,7 @@ interface IntentOpElementMandate {
       settlementLayer: SettlementLayer
       usingJIT: boolean
       using7579: boolean
+      requestId?: Hex
     }
     encodedVal: Hex
   }
@@ -171,7 +172,7 @@ interface IntentOpElement {
   idsAndAmounts: [[string, string]]
   spendTokens: [[string, string]]
   beforeFill: boolean
-  smartAccountStatus: AccountContext
+  smartAccountStatus?: AccountContext
   mandate: IntentOpElementMandate
 }
 
@@ -202,13 +203,17 @@ interface IntentOp {
   }
 }
 
-interface AccountContext {
-  accountType: 'smartAccount'
-  isDeployed: boolean
-  isERC7579: boolean
-  erc7579AccountType: string
-  erc7579AccountVersion: string
-}
+type AccountContext =
+  | {
+      accountType: 'smartAccount'
+      isDeployed: boolean
+      isERC7579: boolean
+      erc7579AccountType: string
+      erc7579AccountVersion: string
+    }
+  | {
+      accountType: 'EOA'
+    }
 
 export interface Account {
   address: Address
@@ -254,9 +259,28 @@ interface EmissaryEnable {
   allChainIds: bigint[]
   chainIndex: bigint
 }
+
+interface WrapRequired {
+  type: 'wrap'
+  amount: bigint
+}
+
+interface ApprovalRequired {
+  type: 'approval'
+  amount: bigint
+  spender: Address
+}
+
+type TokenRequirements = {
+  [chainId: number]: {
+    [tokenAddress: Address]: ApprovalRequired | WrapRequired
+  }
+}
+
 interface IntentRoute {
   intentOp: IntentOp
   intentCost: IntentCost
+  tokenRequirements?: TokenRequirements
 }
 
 interface IntentResult {
@@ -355,6 +379,9 @@ export type {
   PortfolioToken,
   MappedChainTokenAccessList,
   UnmappedChainTokenAccessList,
+  TokenRequirements,
+  WrapRequired,
+  ApprovalRequired,
 }
 export {
   INTENT_STATUS_PENDING,

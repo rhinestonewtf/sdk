@@ -31,6 +31,7 @@ import {
   UnsupportedTokenError,
 } from './error'
 import {
+  getAllSupportedChainsAndTokens,
   getSupportedTokens,
   getTokenAddress,
   getTokenSymbol,
@@ -38,6 +39,7 @@ import {
   isTokenAddressSupported,
 } from './registry'
 import type {
+  ApprovalRequired,
   IntentCost,
   IntentInput,
   IntentOp,
@@ -49,6 +51,8 @@ import type {
   SignedIntentOp,
   SupportedChain,
   TokenConfig,
+  TokenRequirements,
+  WrapRequired,
 } from './types'
 import {
   INTENT_STATUS_COMPLETED,
@@ -80,6 +84,9 @@ export type {
   SupportedChain,
   TokenConfig,
   Portfolio,
+  TokenRequirements,
+  WrapRequired,
+  ApprovalRequired,
 }
 export {
   INTENT_STATUS_PENDING,
@@ -120,6 +127,7 @@ export {
   getTokenSymbol,
   getTokenAddress,
   getSupportedTokens,
+  getAllSupportedChainsAndTokens,
   isOrchestratorError,
   isRetryable,
   isAuthError,

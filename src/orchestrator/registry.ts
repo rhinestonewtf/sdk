@@ -160,6 +160,17 @@ function resolveTokenAddress(
   return getTokenAddress(token, chainId)
 }
 
+function getAllSupportedChainsAndTokens(): {
+  chainId: number
+  tokens: TokenConfig[]
+}[] {
+  const supportedChainIds = getSupportedChainIds()
+  return supportedChainIds.map((chainId) => ({
+    chainId,
+    tokens: getSupportedTokens(chainId),
+  }))
+}
+
 export {
   getTokenSymbol,
   getTokenAddress,
@@ -171,4 +182,5 @@ export {
   isTokenAddressSupported,
   getDefaultAccountAccessList,
   resolveTokenAddress,
+  getAllSupportedChainsAndTokens,
 }
