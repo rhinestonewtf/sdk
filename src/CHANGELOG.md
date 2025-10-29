@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.14
+
+### Patch Changes
+
+- 5e4fc1c: Add eoa response types and getAllSupportedChainsAndTokens function
+
 ## 1.0.13
 
 ### Patch Changes
