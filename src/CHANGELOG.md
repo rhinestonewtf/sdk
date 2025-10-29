@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.15
+
+### Patch Changes
+
+- 700ca58: Fix add recipient parameter in sendTransaction
+
 ## 1.0.14
 
 ### Patch Changes
