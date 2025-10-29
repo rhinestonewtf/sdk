@@ -81,6 +81,7 @@ async function sendTransaction(
     calls,
     gasLimit,
     tokenRequests,
+    recipient,
     signers,
     sponsored,
     settlementLayers,
@@ -101,6 +102,7 @@ async function sendTransaction(
     {
       gasLimit,
       initialTokenRequests: tokenRequests,
+      recipient,
       signers,
       sponsored,
       settlementLayers,
