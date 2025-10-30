@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.16
+
+### Patch Changes
+
+- a89112e: Expose "simulation failed" error
+
 ## 1.0.15
 
 ### Patch Changes
