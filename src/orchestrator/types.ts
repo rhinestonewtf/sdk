@@ -74,6 +74,12 @@ type SettlementLayer =
   | 'INTENT_EXECUTOR'
   | CrossChainSettlementLayer
 
+export enum FundingMethod {
+  COMPACT = 'COMPACT',
+  PERMIT2 = 'PERMIT2',
+  NO_FUNDING = 'NO_FUNDING',
+}
+
 interface IntentOptions {
   topupCompact: boolean
   feeToken?: Address | SupportedTokenSymbol
@@ -156,7 +162,7 @@ interface IntentOpElementMandate {
   qualifier: {
     settlementContext: {
       settlementLayer: SettlementLayer
-      usingJIT: boolean
+      fundingMethod: FundingMethod
       using7579: boolean
       requestId?: Hex
     }
