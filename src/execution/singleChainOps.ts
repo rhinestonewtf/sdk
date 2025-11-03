@@ -1,13 +1,12 @@
 import type { Address } from 'viem'
-import type { IntentOp } from '../orchestrator'
-import type { Execution } from '../orchestrator/types'
+import type { Execution, IntentOpElement } from '../orchestrator/types'
 
 function getTypedData(
   account: Address,
   intentExecutorAddress: Address,
-  intentOp: IntentOp,
+  element: IntentOpElement,
+  nonce: bigint,
 ) {
-  const element = intentOp.elements[0]
   const ops: Execution[] = element.mandate.destinationOps
 
   return {
@@ -32,7 +31,7 @@ function getTypedData(
     primaryType: 'SingleChainOps' as const,
     message: {
       account,
-      nonce: intentOp.nonce,
+      nonce,
       ops,
     },
   }

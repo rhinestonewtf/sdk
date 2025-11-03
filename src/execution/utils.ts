@@ -712,9 +712,10 @@ async function signIntent(
         )
       }
     }
+    const destinationSignature = originSignatures.at(-1) as Hex
     return {
       originSignatures,
-      destinationSignature: originSignatures[0],
+      destinationSignature,
     }
   }
 
@@ -732,7 +733,10 @@ async function signIntent(
     validator,
     isRoot,
   )
-  return signatures
+  return {
+    originSignatures: signatures.originSignatures,
+    destinationSignature: signatures.destinationSignature,
+  }
 }
 
 async function getIntentSignature(
@@ -762,10 +766,7 @@ async function getIntentSignature(
       validator,
       isRoot,
     )
-    return {
-      originSignatures: Array(intentOp.elements.length).fill(signature),
-      destinationSignature: signature,
-    }
+    return signature
   }
 
   if (withPermit2) {
@@ -802,20 +803,29 @@ async function getSingleChainOpsSignature(
 ) {
   const address = getAddress(config)
   const intentExecutor = getIntentExecutor(config)
-  const typedData = getSingleChainOpsTypedData(
-    address,
-    intentExecutor.address,
-    intentOp,
-  )
-  const signature = await signIntentTypedData(
-    config,
-    signers,
-    targetChain,
-    validator,
-    isRoot,
-    typedData,
-  )
-  return signature
+  const originSignatures: Hex[] = []
+  for (const element of intentOp.elements) {
+    const typedData = getSingleChainOpsTypedData(
+      address,
+      intentExecutor.address,
+      element,
+      BigInt(intentOp.nonce),
+    )
+    const signature = await signIntentTypedData(
+      config,
+      signers,
+      targetChain,
+      validator,
+      isRoot,
+      typedData,
+    )
+    originSignatures.push(signature)
+  }
+  const destinationSignature = originSignatures.at(-1) as Hex
+  return {
+    originSignatures,
+    destinationSignature,
+  }
 }
 
 async function getPermit2Signatures(
@@ -843,9 +853,10 @@ async function getPermit2Signatures(
     )
     originSignatures.push(signature)
   }
+  const destinationSignature = originSignatures.at(-1) as Hex
   return {
     originSignatures,
-    destinationSignature: originSignatures[0],
+    destinationSignature,
   }
 }
 
