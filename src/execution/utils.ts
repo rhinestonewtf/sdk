@@ -76,12 +76,13 @@ import {
   isTestnet,
   resolveTokenAddress,
 } from '../orchestrator/registry'
-import type {
-  Account,
-  MappedChainTokenAccessList,
-  SettlementLayer,
-  SupportedChain,
-  UnmappedChainTokenAccessList,
+import {
+  type Account,
+  FundingMethod,
+  type MappedChainTokenAccessList,
+  type SettlementLayer,
+  type SupportedChain,
+  type UnmappedChainTokenAccessList,
 } from '../orchestrator/types'
 import type {
   Call,
@@ -742,8 +743,10 @@ async function getIntentSignature(
   validator: Module,
   isRoot: boolean,
 ) {
-  const withJitFlow = intentOp.elements.some(
-    (element) => element.mandate.qualifier.settlementContext?.usingJIT,
+  const withPermit2 = intentOp.elements.some(
+    (element) =>
+      element.mandate.qualifier.settlementContext?.fundingMethod ===
+      FundingMethod.PERMIT2,
   )
   const withIntentExecutorOps = intentOp.elements.some(
     (element) =>
@@ -765,7 +768,7 @@ async function getIntentSignature(
     }
   }
 
-  if (withJitFlow) {
+  if (withPermit2) {
     return await getPermit2Signatures(
       config,
       intentOp,

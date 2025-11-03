@@ -65,7 +65,7 @@ export function createOrchestratorMock() {
               qualifier: {
                 settlementContext: {
                   settlementLayer: 'SAME_CHAIN',
-                  usingJIT: false,
+                  fundingMethod: 'COMPACT',
                   using7579: false,
                 },
                 encodedVal: '0x',
