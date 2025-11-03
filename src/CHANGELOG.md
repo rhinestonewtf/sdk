@@ -1,5 +1,12 @@
 # @rhinestone/sdk
 
+## 1.0.17
+
+### Patch Changes
+
+- e7eaa9c: use funding method field
+- c680345: Fix signing for multi-chain intents
+
 ## 1.0.16
 
 ### Patch Changes
