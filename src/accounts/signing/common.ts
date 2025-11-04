@@ -35,6 +35,14 @@ function convertOwnerSetToSignerSet(owners: OwnerSet): SignerSet {
         module: owners.module,
       }
     }
+    case 'ens': {
+      return {
+        type: 'owner',
+        kind: 'ecdsa',
+        accounts: owners.accounts,
+        module: owners.module,
+      }
+    }
     case 'passkey': {
       return {
         type: 'owner',
@@ -57,6 +65,14 @@ function convertOwnerSetToSignerSet(owners: OwnerSet): SignerSet {
                 module: validator.module,
               }
             }
+            case 'ens': {
+              return {
+                type: 'ecdsa',
+                id: index,
+                accounts: validator.accounts,
+                module: validator.module,
+              }
+            }
             case 'passkey': {
               return {
                 type: 'passkey',
@@ -64,6 +80,11 @@ function convertOwnerSetToSignerSet(owners: OwnerSet): SignerSet {
                 accounts: validator.accounts,
                 module: validator.module,
               }
+            }
+            default: {
+              throw new Error(
+                `Unsupported validator type: ${(validator as any).type}`,
+              )
             }
           }
         }),

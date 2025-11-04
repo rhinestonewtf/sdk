@@ -1,4 +1,4 @@
-import { Address, Hex } from 'viem'
+import type { Address, Hex } from 'viem'
 
 interface Simulation {
   success: boolean
