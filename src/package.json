@@ -126,7 +126,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@rhinestone/shared-configs": "^1.4.14",
+    "@rhinestone/shared-configs": "^1.4.16",
     "ox": "^0.9.11",
     "solady": "^0.1.26"
   },
