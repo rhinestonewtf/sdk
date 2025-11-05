@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.18
+
+### Patch Changes
+
+- baa581f: Add ens ownable validator support
+
 ## 1.0.17
 
 ### Patch Changes
