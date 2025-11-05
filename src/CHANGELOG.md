@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.19
+
+### Patch Changes
+
+- 39b930a: update latest chains
+
 ## 1.0.18
 
 ### Patch Changes
