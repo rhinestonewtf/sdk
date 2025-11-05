@@ -387,7 +387,6 @@ function getOwners(config: RhinestoneAccountConfig) {
   const ownerSet = config.owners
   switch (ownerSet.type) {
     case 'ecdsa':
-      return ownerSet.accounts.map((account) => account.address)
     case 'ens':
       return ownerSet.accounts.map((account) => account.address)
     case 'passkey':
