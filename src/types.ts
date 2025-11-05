@@ -51,6 +51,14 @@ interface OwnableValidatorConfig {
   module?: Address
 }
 
+interface ENSValidatorConfig {
+  type: 'ens'
+  accounts: Account[]
+  threshold?: number
+  ownerExpirations: number[]
+  module?: Address
+}
+
 interface WebauthnValidatorConfig {
   type: 'passkey'
   accounts: WebAuthnAccount[]
@@ -60,7 +68,11 @@ interface WebauthnValidatorConfig {
 
 interface MultiFactorValidatorConfig {
   type: 'multi-factor'
-  validators: (OwnableValidatorConfig | WebauthnValidatorConfig)[]
+  validators: (
+    | OwnableValidatorConfig
+    | ENSValidatorConfig
+    | WebauthnValidatorConfig
+  )[]
   threshold?: number
   module?: Address
 }
@@ -87,6 +99,7 @@ interface PaymasterConfig {
 
 type OwnerSet =
   | OwnableValidatorConfig
+  | ENSValidatorConfig
   | WebauthnValidatorConfig
   | MultiFactorValidatorConfig
 
@@ -350,6 +363,7 @@ export type {
   SourceAssetInput,
   OwnerSet,
   OwnableValidatorConfig,
+  ENSValidatorConfig,
   WebauthnValidatorConfig,
   MultiFactorValidatorConfig,
   SignerSet,

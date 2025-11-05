@@ -7,12 +7,14 @@ import {
   encodePacked,
   type Hex,
   hexToBytes,
+  maxUint48,
   pad,
   toHex,
 } from 'viem'
 
 import { OwnersFieldRequiredError } from '../../accounts/error'
 import type {
+  ENSValidatorConfig,
   OwnableValidatorConfig,
   OwnerSet,
   RhinestoneAccountConfig,
@@ -34,6 +36,8 @@ interface WebauthnCredential {
 
 const OWNABLE_VALIDATOR_ADDRESS: Address =
   '0x000000000013fdb5234e4e3162a810f54d9f7e98'
+const ENS_VALIDATOR_ADDRESS: Address =
+  '0xdc38f07b060374b6480c4bf06231e7d10955bca4'
 const WEBAUTHN_VALIDATOR_ADDRESS: Address =
   '0x0000000000578c4cb0e472a5462da43c495c3f33'
 const SOCIAL_RECOVERY_VALIDATOR_ADDRESS: Address =
@@ -63,7 +67,9 @@ function getOwnerValidator(config: RhinestoneAccountConfig) {
 
 function getMockSignature(ownerSet: OwnerSet): Hex {
   switch (ownerSet.type) {
-    case 'ecdsa': {
+    case 'ecdsa':
+    case 'ens': {
+      // ENS validator uses same mock signature format as ECDSA for UserOps
       const owners = ownerSet.accounts.map((account) => account.address)
       const signatures = owners.map(() => ECDSA_MOCK_SIGNATURE as Hex)
       return concat(signatures)
@@ -120,6 +126,13 @@ function getValidator(owners: OwnerSet) {
         owners.accounts.map((account) => account.address),
         owners.module,
       )
+    case 'ens':
+      return getENSValidator(
+        owners.threshold ?? 1,
+        owners.accounts.map((account) => account.address),
+        owners.ownerExpirations,
+        owners.module,
+      )
     case 'passkey':
       return getWebAuthnValidator(
         owners.threshold ?? 1,
@@ -151,6 +164,51 @@ function getOwnableValidator(
         owners.map((owner) => owner.toLowerCase() as Address).sort(),
       ],
     ),
+    deInitData: '0x',
+    additionalContext: '0x',
+    type: MODULE_TYPE_ID_VALIDATOR,
+  }
+}
+
+function getENSValidator(
+  threshold: number,
+  owners: Address[],
+  ownerExpirations: number[],
+  address?: Address,
+): Module {
+  // format: (uint256 threshold, Owner[] owners)
+  // where Owner is a tuple of (address addr, uint48 expiration)
+
+  const ownerPairs = owners.map((owner, index) => ({
+    addr: owner.toLowerCase() as Address,
+    expiration: ownerExpirations[index] ?? maxUint48,
+  }))
+
+  // Sort by address to match ENS validator's expectations
+  const sortedPairs = ownerPairs.sort((a, b) => a.addr.localeCompare(b.addr))
+
+  const ownersWithExpiration = sortedPairs
+
+  const initData = encodeAbiParameters(
+    [
+      { name: 'threshold', type: 'uint256' },
+      {
+        name: 'owners',
+        type: 'tuple[]',
+        components: [
+          { name: 'addr', type: 'address' },
+          { name: 'expiration', type: 'uint48' },
+        ],
+      },
+    ],
+    [BigInt(threshold), ownersWithExpiration],
+  )
+
+  const moduleAddress = address ?? ENS_VALIDATOR_ADDRESS
+
+  return {
+    address: moduleAddress,
+    initData,
     deInitData: '0x',
     additionalContext: '0x',
     type: MODULE_TYPE_ID_VALIDATOR,
@@ -225,7 +283,12 @@ function getWebAuthnValidator(
 
 function getMultiFactorValidator(
   threshold: number,
-  validators: (OwnableValidatorConfig | WebauthnValidatorConfig | null)[],
+  validators: (
+    | OwnableValidatorConfig
+    | ENSValidatorConfig
+    | WebauthnValidatorConfig
+    | null
+  )[],
 ): Module {
   return {
     address: MULTI_FACTOR_VALIDATOR_ADDRESS,
@@ -328,11 +391,13 @@ function supportsEip712(validator: Module) {
 
 export {
   OWNABLE_VALIDATOR_ADDRESS,
+  ENS_VALIDATOR_ADDRESS,
   WEBAUTHN_VALIDATOR_ADDRESS,
   MULTI_FACTOR_VALIDATOR_ADDRESS,
   WEBAUTHN_V0_VALIDATOR_ADDRESS,
   getOwnerValidator,
   getOwnableValidator,
+  getENSValidator,
   getWebAuthnValidator,
   getMultiFactorValidator,
   getSocialRecoveryValidator,
