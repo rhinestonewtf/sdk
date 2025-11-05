@@ -4,22 +4,10 @@ import {
   chains,
 } from '@rhinestone/shared-configs'
 import { type Address, type Chain, isAddress, zeroAddress } from 'viem'
-import {
-  arbitrum,
-  arbitrumSepolia,
-  base,
-  baseSepolia,
-  mainnet,
-  optimism,
-  optimismSepolia,
-  polygon,
-  sepolia,
-  soneium,
-  sonic,
-} from 'viem/chains'
+import { polygon, sonic } from 'viem/chains'
 import type { TokenSymbol } from '../types'
 import { UnsupportedChainError, UnsupportedTokenError } from './error'
-import type { SupportedChain, TokenConfig } from './types'
+import type { TokenConfig } from './types'
 
 function getSupportedChainIds(): number[] {
   return chains.map((chain) => chain.id)
@@ -84,13 +72,8 @@ function getTokenAddress(tokenSymbol: TokenSymbol, chainId: number): Address {
   return token.address
 }
 
-function isChainIdSupported(chainId: number): chainId is SupportedChain {
-  const chainIds = chains.map((chain) => chain.id) as number[]
-  return chainIds.includes(chainId)
-}
-
 function getChainById(chainId: number): Chain {
-  const chain = chains.find((chain) => chain.id == chainId)
+  const chain = chains.find((chain) => chain.id === chainId)
   if (!chain) {
     throw new UnsupportedChainError(chainId)
   }
