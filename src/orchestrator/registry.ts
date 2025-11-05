@@ -90,24 +90,11 @@ function isChainIdSupported(chainId: number): chainId is SupportedChain {
 }
 
 function getChainById(chainId: number): Chain {
-  const chains: Record<SupportedChain, Chain> = {
-    [mainnet.id]: mainnet,
-    [sepolia.id]: sepolia,
-    [base.id]: base,
-    [baseSepolia.id]: baseSepolia,
-    [arbitrum.id]: arbitrum,
-    [arbitrumSepolia.id]: arbitrumSepolia,
-    [optimism.id]: optimism,
-    [optimismSepolia.id]: optimismSepolia,
-    [polygon.id]: polygon,
-    [soneium.id]: soneium,
-    [sonic.id]: sonic,
-  }
-
-  if (!isChainIdSupported(chainId)) {
+  const chain = chains.find((chain) => chain.id == chainId)
+  if (!chain) {
     throw new UnsupportedChainError(chainId)
   }
-  return chains[chainId]
+  return chain
 }
 
 function isTestnet(chainId: number): boolean {
