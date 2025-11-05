@@ -1,5 +1,5 @@
 import { type Chain, zeroAddress } from 'viem'
-import { base, baseSepolia, mainnet, sepolia } from 'viem/chains'
+import { arbitrum, base, baseSepolia, sepolia } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 import {
   getChainById,
@@ -25,7 +25,7 @@ const TOKEN_SYMBOLS = {
 } as const
 
 const TOKEN_ADDRESSES = {
-  ETHEREUM_USDC: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+  ARBTRUM_USDC: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
   BASE_WETH: '0x4200000000000000000000000000000000000006',
 } as const
 
@@ -35,7 +35,7 @@ describe('Registry', () => {
   describe('getSupportedChainIds', () => {
     test('returns supported chain IDs', () => {
       const chainIds = getSupportedChainIds()
-      expect(chainIds).toContain(mainnet.id)
+      expect(chainIds).toContain(arbitrum.id)
       expect(chainIds).toContain(base.id)
       expect(chainIds).toContain(sepolia.id)
     })
@@ -49,26 +49,26 @@ describe('Registry', () => {
 
   describe('getTokenSymbol', () => {
     test('returns correct symbol for supported token', () => {
-      const symbol = getTokenSymbol(TOKEN_ADDRESSES.ETHEREUM_USDC, mainnet.id)
+      const symbol = getTokenSymbol(TOKEN_ADDRESSES.ARBTRUM_USDC, arbitrum.id)
       expect(symbol).toBe(TOKEN_SYMBOLS.USDC)
     })
 
     test('throws error for unsupported chain', () => {
       expect(() =>
-        getTokenSymbol(TOKEN_ADDRESSES.ETHEREUM_USDC, UNSUPPORTED_CHAIN_ID),
+        getTokenSymbol(TOKEN_ADDRESSES.ARBTRUM_USDC, UNSUPPORTED_CHAIN_ID),
       ).toThrow(`Unsupported chain ${UNSUPPORTED_CHAIN_ID}`)
     })
   })
 
   describe('getTokenAddress', () => {
     test('returns zero address for ETH', () => {
-      const address = getTokenAddress(TOKEN_SYMBOLS.ETH, mainnet.id)
+      const address = getTokenAddress(TOKEN_SYMBOLS.ETH, arbitrum.id)
       expect(address).toBe(zeroAddress)
     })
 
     test('returns correct address for token symbol', () => {
-      const address = getTokenAddress(TOKEN_SYMBOLS.USDC, mainnet.id)
-      expect(address).toBe(TOKEN_ADDRESSES.ETHEREUM_USDC)
+      const address = getTokenAddress(TOKEN_SYMBOLS.USDC, arbitrum.id)
+      expect(address).toBe(TOKEN_ADDRESSES.ARBTRUM_USDC)
     })
 
     test('throws error for unsupported chain', () => {
@@ -97,9 +97,9 @@ describe('Registry', () => {
 
   describe('getChainById', () => {
     test('returns correct chain for supported ID', () => {
-      const chain = getChainById(mainnet.id)
-      expect(chain.id).toBe(mainnet.id)
-      expect(chain.name).toBe(mainnet.name)
+      const chain = getChainById(arbitrum.id)
+      expect(chain.id).toBe(arbitrum.id)
+      expect(chain.name).toBe(arbitrum.name)
     })
 
     test('throws error for unsupported chain', () => {
@@ -110,8 +110,8 @@ describe('Registry', () => {
   })
 
   describe('isTestnet', () => {
-    test('returns false for mainnet', () => {
-      expect(isTestnet(mainnet.id)).toBe(false)
+    test('returns false for arbitrum', () => {
+      expect(isTestnet(arbitrum.id)).toBe(false)
     })
 
     test('returns true for testnet', () => {
@@ -128,19 +128,19 @@ describe('Registry', () => {
   describe('isTokenAddressSupported', () => {
     test('returns true for supported token', () => {
       const isSupported = isTokenAddressSupported(
-        TOKEN_ADDRESSES.ETHEREUM_USDC,
-        mainnet.id,
+        TOKEN_ADDRESSES.ARBTRUM_USDC,
+        arbitrum.id,
       )
       expect(isSupported).toBe(true)
     })
 
     test('returns false for unsupported token or chain', () => {
       expect(
-        isTokenAddressSupported(UNSUPPORTED_TOKEN_ADDRESS, mainnet.id),
+        isTokenAddressSupported(UNSUPPORTED_TOKEN_ADDRESS, arbitrum.id),
       ).toBe(false)
       expect(
         isTokenAddressSupported(
-          TOKEN_ADDRESSES.ETHEREUM_USDC,
+          TOKEN_ADDRESSES.ARBTRUM_USDC,
           UNSUPPORTED_CHAIN_ID,
         ),
       ).toBe(false)
@@ -149,7 +149,7 @@ describe('Registry', () => {
 
   describe('getSupportedTokens', () => {
     test('returns tokens for supported chain', () => {
-      const tokens = getSupportedTokens(mainnet.id)
+      const tokens = getSupportedTokens(arbitrum.id)
       expect(tokens.length).toBeGreaterThan(0)
       expect(tokens.find((t) => t.symbol === TOKEN_SYMBOLS.USDC)).toBeDefined()
     })
@@ -163,27 +163,27 @@ describe('Registry', () => {
 
   describe('getDefaultAccountAccessList', () => {
     test('filters chains by testnet status', () => {
-      const mainnetList = getDefaultAccountAccessList(false)
+      const arbitrumList = getDefaultAccountAccessList(false)
       const testnetList = getDefaultAccountAccessList(true)
 
-      expect(mainnetList.chainIds).toContain(mainnet.id)
-      expect(mainnetList.chainIds).not.toContain(sepolia.id)
+      expect(arbitrumList.chainIds).toContain(arbitrum.id)
+      expect(arbitrumList.chainIds).not.toContain(sepolia.id)
 
       expect(testnetList.chainIds).toContain(sepolia.id)
-      expect(testnetList.chainIds).not.toContain(mainnet.id)
+      expect(testnetList.chainIds).not.toContain(arbitrum.id)
     })
   })
 
   describe('resolveTokenAddress', () => {
     test('returns address as-is when given valid address', () => {
-      const address = TOKEN_ADDRESSES.ETHEREUM_USDC
-      const result = resolveTokenAddress(address, mainnet.id)
+      const address = TOKEN_ADDRESSES.ARBTRUM_USDC
+      const result = resolveTokenAddress(address, arbitrum.id)
       expect(result).toBe(address)
     })
 
     test('resolves token symbol to address', () => {
-      const result = resolveTokenAddress(TOKEN_SYMBOLS.USDC, mainnet.id)
-      expect(result).toBe(TOKEN_ADDRESSES.ETHEREUM_USDC)
+      const result = resolveTokenAddress(TOKEN_SYMBOLS.USDC, arbitrum.id)
+      expect(result).toBe(TOKEN_ADDRESSES.ARBTRUM_USDC)
     })
 
     test('throw error for unsupported token', () => {

@@ -1,4 +1,4 @@
-import { mainnet, polygon, sepolia } from 'viem/chains'
+import { arbitrum, polygon, sepolia } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 import { getAlchemyUrl, getCustomUrl } from './providers'
 
@@ -7,8 +7,8 @@ describe('Providers', () => {
     test('Network', () => {
       const mockApiKey = '123'
 
-      expect(getAlchemyUrl(mainnet.id, mockApiKey)).toBe(
-        'https://eth-mainnet.g.alchemy.com/v2/123',
+      expect(getAlchemyUrl(arbitrum.id, mockApiKey)).toBe(
+        'https://arb-mainnet.g.alchemy.com/v2/123',
       )
       expect(getAlchemyUrl(sepolia.id, mockApiKey)).toBe(
         'https://eth-sepolia.g.alchemy.com/v2/123',
@@ -22,11 +22,11 @@ describe('Providers', () => {
   describe('Custom', () => {
     test('Returns URL for configured chain', () => {
       const urls = {
-        [mainnet.id]: 'https://my-rpc.example.com/mainnet',
+        [arbitrum.id]: 'https://my-rpc.example.com/mainnet',
         [sepolia.id]: 'https://my-rpc.example.com/sepolia',
       }
 
-      expect(getCustomUrl(mainnet.id, urls)).toBe(
+      expect(getCustomUrl(arbitrum.id, urls)).toBe(
         'https://my-rpc.example.com/mainnet',
       )
       expect(getCustomUrl(sepolia.id, urls)).toBe(
@@ -36,7 +36,7 @@ describe('Providers', () => {
 
     test('Throws error when chain not configured', () => {
       const urls = {
-        [mainnet.id]: 'https://my-rpc.example.com/mainnet',
+        [arbitrum.id]: 'https://my-rpc.example.com/mainnet',
       }
 
       expect(() => getCustomUrl(sepolia.id, urls)).toThrow(
@@ -46,18 +46,18 @@ describe('Providers', () => {
 
     test('Accepts HTTP URLs', () => {
       const urls = {
-        [mainnet.id]: 'http://localhost:8545',
+        [arbitrum.id]: 'http://localhost:8545',
       }
 
-      expect(getCustomUrl(mainnet.id, urls)).toBe('http://localhost:8545')
+      expect(getCustomUrl(arbitrum.id, urls)).toBe('http://localhost:8545')
     })
 
     test('Accepts HTTPS URLs', () => {
       const urls = {
-        [mainnet.id]: 'https://my-rpc.example.com',
+        [arbitrum.id]: 'https://my-rpc.example.com',
       }
 
-      expect(getCustomUrl(mainnet.id, urls)).toBe('https://my-rpc.example.com')
+      expect(getCustomUrl(arbitrum.id, urls)).toBe('https://my-rpc.example.com')
     })
   })
 })
