@@ -404,9 +404,7 @@ function getThreshold(config: RhinestoneAccountConfig) {
   const ownerSet = config.owners
   switch (ownerSet.type) {
     case 'ecdsa':
-      return ownerSet.threshold ? BigInt(ownerSet.threshold) : 1n
     case 'ens':
-      // ENS validator uses the same threshold logic as ECDSA
       return ownerSet.threshold ? BigInt(ownerSet.threshold) : 1n
     case 'passkey':
       return 1n

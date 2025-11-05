@@ -12,6 +12,7 @@ import {
 import type { WebAuthnAccount } from 'viem/account-abstraction'
 import { isRip7212SupportedNetwork } from '../../modules'
 import {
+  ENS_VALIDATOR_ADDRESS,
   getValidator,
   OWNABLE_VALIDATOR_ADDRESS,
   WEBAUTHN_V0_VALIDATOR_ADDRESS,
@@ -32,7 +33,7 @@ function convertOwnerSetToSignerSet(owners: OwnerSet): SignerSet {
         type: 'owner',
         kind: 'ecdsa',
         accounts: owners.accounts,
-        module: owners.module,
+        module: owners.module ?? OWNABLE_VALIDATOR_ADDRESS,
       }
     }
     case 'ens': {
@@ -40,7 +41,7 @@ function convertOwnerSetToSignerSet(owners: OwnerSet): SignerSet {
         type: 'owner',
         kind: 'ecdsa',
         accounts: owners.accounts,
-        module: owners.module,
+        module: owners.module ?? ENS_VALIDATOR_ADDRESS,
       }
     }
     case 'passkey': {
@@ -62,7 +63,7 @@ function convertOwnerSetToSignerSet(owners: OwnerSet): SignerSet {
                 type: validator.type,
                 id: index,
                 accounts: validator.accounts,
-                module: validator.module,
+                module: validator.module ?? OWNABLE_VALIDATOR_ADDRESS,
               }
             }
             case 'ens': {
@@ -70,7 +71,7 @@ function convertOwnerSetToSignerSet(owners: OwnerSet): SignerSet {
                 type: 'ecdsa',
                 id: index,
                 accounts: validator.accounts,
-                module: validator.module,
+                module: validator.module ?? ENS_VALIDATOR_ADDRESS,
               }
             }
             case 'passkey': {
@@ -212,11 +213,15 @@ async function signWithOwners<T>(
   switch (signers.kind) {
     case 'ecdsa': {
       // Ownable validator uses `v` value to determine which validation mode to use
+      // ENS validator (based on Ownable) also uses the same signature format
       // This is not needed for UserOps
-      const updateV =
-        (!signers.module ||
-          signers.module?.toLowerCase() === OWNABLE_VALIDATOR_ADDRESS) &&
-        !isUserOpHash
+      const isOwnableOrENS =
+        !signers.module ||
+        signers.module?.toLowerCase() === OWNABLE_VALIDATOR_ADDRESS ||
+        signers.module?.toLowerCase() === ENS_VALIDATOR_ADDRESS
+
+      const updateV = isOwnableOrENS && !isUserOpHash
+
       const signatures = await Promise.all(
         signers.accounts.map((account) =>
           signingFunctions.signEcdsa(account, params, updateV),

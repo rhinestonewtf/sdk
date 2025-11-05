@@ -1127,10 +1127,8 @@ function getValidator(
   if (withOwner) {
     // ECDSA
     if (withOwner.kind === 'ecdsa') {
-      return getOwnableValidator(
-        1,
-        withOwner.accounts.map((account) => account.address),
-      )
+      // Use the configured owner validator (e.g., ENS) rather than forcing Ownable
+      return getOwnerValidator(config)
     }
     // Passkeys (WebAuthn)
     if (withOwner.kind === 'passkey') {
