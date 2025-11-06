@@ -13,6 +13,7 @@ import {
   deploy as deployInternal,
   getAccountProvider,
   getAddress as getAddressInternal,
+  getInitCode,
   isDeployed as isDeployedInternal,
   OwnersFieldRequiredError,
   setup as setupInternal,
@@ -553,6 +554,7 @@ export {
   RhinestoneSDK,
   walletClientToAccount,
   wrapParaAccount,
+  getInitCode,
   // Registry functions
   getSupportedTokens,
   getTokenAddress,
