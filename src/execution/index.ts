@@ -50,7 +50,7 @@ import {
 } from './utils'
 
 const POLL_INITIAL_MS = 500
-const POLL_SLOW_AFTER_MS = 5000
+const POLL_SLOW_AFTER_MS = 15000
 const POLL_SLOW_MS = 2000
 const POLL_MAX_WAIT_MS = 180000
 const POLL_ERROR_BACKOFF_MS = 1000
