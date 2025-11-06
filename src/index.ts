@@ -17,6 +17,7 @@ import {
   OwnersFieldRequiredError,
   setup as setupInternal,
   signEip7702InitData as signEip7702InitDataInternal,
+  getInitCode,
 } from './accounts'
 import { walletClientToAccount, wrapParaAccount } from './accounts/walletClient'
 import {
@@ -553,6 +554,7 @@ export {
   RhinestoneSDK,
   walletClientToAccount,
   wrapParaAccount,
+  getInitCode,
   // Registry functions
   getSupportedTokens,
   getTokenAddress,
