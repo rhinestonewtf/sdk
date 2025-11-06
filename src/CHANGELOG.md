@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.20
+
+### Patch Changes
+
+- dd1134b: export getInitCode
+
 ## 1.0.19
 
 ### Patch Changes
