@@ -54,7 +54,6 @@ import {
 } from '../modules/validators'
 import {
   getMultiFactorValidator,
-  getOwnableValidator,
   getSocialRecoveryValidator,
   getWebAuthnValidator,
   supportsEip712,

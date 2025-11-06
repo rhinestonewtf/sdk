@@ -13,11 +13,11 @@ import {
   deploy as deployInternal,
   getAccountProvider,
   getAddress as getAddressInternal,
+  getInitCode,
   isDeployed as isDeployedInternal,
   OwnersFieldRequiredError,
   setup as setupInternal,
   signEip7702InitData as signEip7702InitDataInternal,
-  getInitCode,
 } from './accounts'
 import { walletClientToAccount, wrapParaAccount } from './accounts/walletClient'
 import {
