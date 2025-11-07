@@ -1,5 +1,12 @@
 # @rhinestone/sdk
 
+## 1.0.21
+
+### Patch Changes
+
+- ee9287f: increase initial polling duration
+- 10f974f: Fix typing with useDevContracts
+
 ## 1.0.20
 
 ### Patch Changes
