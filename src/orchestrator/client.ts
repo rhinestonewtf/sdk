@@ -120,7 +120,7 @@ export class Orchestrator {
       destinationExecutions: [],
       destinationChainId,
       destinationGasUnits,
-      tokenTransfers: [
+      tokenRequests: [
         {
           tokenAddress: destinationTokenAddress,
         },
@@ -435,6 +435,7 @@ export class Orchestrator {
       throw new BodyParserError({ message, ...errorParams })
     } else if (message === 'Bundle simulation failed') {
       const simulations = errorParams.context.error.simulations
+      console.dir(simulations, { depth: null })
       const { traceId, errorType, statusCode, context } = errorParams
       throw new SimulationFailedError({
         message,

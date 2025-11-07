@@ -115,7 +115,7 @@ interface IntentInput {
   destinationChainId: number
   destinationExecutions: Execution[]
   destinationGasUnits?: bigint
-  tokenTransfers: {
+  tokenRequests: {
     tokenAddress: Address
     amount?: bigint
   }[]

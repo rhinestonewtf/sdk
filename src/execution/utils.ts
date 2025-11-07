@@ -631,7 +631,7 @@ async function prepareTransactionAsIntent(
 
   const metaIntent: IntentInput = {
     destinationChainId: targetChain.id,
-    tokenTransfers: tokenRequests.map((tokenRequest) => ({
+    tokenRequests: tokenRequests.map((tokenRequest) => ({
       tokenAddress: resolveTokenAddress(tokenRequest.address, targetChain.id),
       amount: tokenRequest.amount,
     })),
@@ -666,7 +666,11 @@ async function prepareTransactionAsIntent(
     config.apiKey,
     config.endpointUrl,
   )
+  console.log('metaIntent')
+  console.dir(metaIntent, { depth: null })
   const intentRoute = await orchestrator.getIntentRoute(metaIntent)
+  console.log('intentRoute')
+  console.dir(intentRoute, { depth: null })
   return intentRoute
 }
 
