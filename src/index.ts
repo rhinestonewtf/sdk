@@ -94,6 +94,7 @@ import type {
   ProviderConfig,
   Recovery,
   RhinestoneAccountConfig,
+  RhinestoneSDKConfig,
   RhinestoneConfig,
   Session,
   SignerSet,
@@ -518,19 +519,15 @@ class RhinestoneSDK {
   private provider?: ProviderConfig
   private bundler?: BundlerConfig
   private paymaster?: PaymasterConfig
+  private useDevContracts?: boolean
 
-  constructor(options?: {
-    apiKey?: string
-    endpointUrl?: string
-    provider?: ProviderConfig
-    bundler?: BundlerConfig
-    paymaster?: PaymasterConfig
-  }) {
+  constructor(options?: RhinestoneSDKConfig) {
     this.apiKey = options?.apiKey
     this.endpointUrl = options?.endpointUrl
     this.provider = options?.provider
     this.bundler = options?.bundler
     this.paymaster = options?.paymaster
+    this.useDevContracts = options?.useDevContracts
   }
 
   createAccount(config: RhinestoneAccountConfig) {
@@ -541,6 +538,7 @@ class RhinestoneSDK {
       provider: this.provider,
       bundler: this.bundler,
       paymaster: this.paymaster,
+      useDevContracts: this.useDevContracts,
     }
     return createRhinestoneAccount(rhinestoneConfig)
   }
