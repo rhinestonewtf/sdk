@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.22
+
+### Patch Changes
+
+- 7a736ca: Fix API request params: rename `tokenTransfers` → `tokenRequests`
+
 ## 1.0.21
 
 ### Patch Changes
