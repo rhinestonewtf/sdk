@@ -120,7 +120,7 @@ export class Orchestrator {
       destinationExecutions: [],
       destinationChainId,
       destinationGasUnits,
-      tokenTransfers: [
+      tokenRequests: [
         {
           tokenAddress: destinationTokenAddress,
         },

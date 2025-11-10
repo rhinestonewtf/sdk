@@ -631,7 +631,7 @@ async function prepareTransactionAsIntent(
 
   const metaIntent: IntentInput = {
     destinationChainId: targetChain.id,
-    tokenTransfers: tokenRequests.map((tokenRequest) => ({
+    tokenRequests: tokenRequests.map((tokenRequest) => ({
       tokenAddress: resolveTokenAddress(tokenRequest.address, targetChain.id),
       amount: tokenRequest.amount,
     })),
