@@ -75,18 +75,18 @@ import {
   isTestnet,
   resolveTokenAddress,
 } from '../orchestrator/registry'
-import {
-  type Account,
-  FundingMethod,
-  type MappedChainTokenAccessList,
-  type SettlementLayer,
-  type SupportedChain,
-  type UnmappedChainTokenAccessList,
+import type {
+  MappedChainTokenAccessList,
+  SettlementLayer,
+  SupportedChain,
+  UnmappedChainTokenAccessList,
 } from '../orchestrator/types'
 import type {
+  AccountProviderConfig,
   Call,
   CalldataInput,
   CallInput,
+  RhinestoneAccountConfig,
   RhinestoneConfig,
   SignerSet,
   SourceAssetInput,
@@ -152,6 +152,7 @@ async function prepareTransaction(
     recipient,
   } = getTransactionParams(transaction)
   const accountAddress = getAddress(config)
+  // const recipientAddress = recipient ? getAddress(recipient) : undefined
 
   const isUserOpSigner =
     signers?.type === 'guardians' || signers?.type === 'session'
@@ -595,20 +596,22 @@ async function prepareTransactionAsIntent(
   callInputs: CalldataInput[],
   gasLimit: bigint | undefined,
   tokenRequests: TokenRequest[],
-  recipient: Account | undefined,
+  recipient: RhinestoneAccountConfig | undefined,
   accountAddress: Address,
   isSponsored: boolean,
   eip7702InitSignature: Hex | undefined,
   settlementLayers: SettlementLayer[] | undefined,
   sourceAssets: SourceAssetInput | undefined,
   feeAsset: Address | TokenSymbol | undefined,
-  lockFunds?: boolean,
-  account?: {
-    setupOps?: {
-      to: Address
-      data: Hex
-    }[]
-  },
+  lockFunds: boolean | undefined,
+  account:
+    | {
+        setupOps?: {
+          to: Address
+          data: Hex
+        }[]
+      }
+    | undefined,
 ) {
   const calls = parseCalls(callInputs, targetChain.id)
   const accountAccessList = createAccountAccessList(sourceChains, sourceAssets)
@@ -619,23 +622,48 @@ async function prepareTransactionAsIntent(
     eip7702InitSignature,
   )
 
-  const getAccountType = (config: RhinestoneConfig): 'EOA' | 'ERC7579' => {
-    if (config.account?.type === 'eoa') {
+  function getAccountType(
+    accountConfig: AccountProviderConfig | undefined,
+  ): 'EOA' | 'ERC7579' {
+    if (accountConfig?.type === 'eoa') {
       return 'EOA'
     } else {
       return 'ERC7579'
     }
   }
 
-  const accountType = getAccountType(config)
+  const accountType = getAccountType(config.account)
 
+  const recipientAddress = recipient ? getAddress(recipient) : undefined
+  const recipientAccountType = recipient
+    ? getAccountType(recipient.account)
+    : undefined
+  const { setupOps: recipientSetupOps, delegations: recipientDelegations } =
+    recipient && recipientAddress
+      ? await getSetupOperationsAndDelegations(
+          recipient,
+          recipientAddress,
+          eip7702InitSignature,
+        )
+      : {
+          setupOps: [],
+          delegations: {},
+        }
   const metaIntent: IntentInput = {
     destinationChainId: targetChain.id,
     tokenRequests: tokenRequests.map((tokenRequest) => ({
       tokenAddress: resolveTokenAddress(tokenRequest.address, targetChain.id),
       amount: tokenRequest.amount,
     })),
-    recipient,
+    recipient:
+      recipientAddress && recipientAccountType
+        ? {
+            address: recipientAddress,
+            accountType: recipientAccountType,
+            setupOps: recipientSetupOps,
+            delegations: recipientDelegations,
+          }
+        : undefined,
     account: {
       address: accountAddress,
       accountType: accountType,
@@ -748,8 +776,7 @@ async function getIntentSignature(
 ) {
   const withPermit2 = intentOp.elements.some(
     (element) =>
-      element.mandate.qualifier.settlementContext?.fundingMethod ===
-      FundingMethod.PERMIT2,
+      element.mandate.qualifier.settlementContext?.fundingMethod === 'PERMIT2',
   )
   const withIntentExecutorOps = intentOp.elements.some(
     (element) =>
