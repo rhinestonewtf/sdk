@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.23
+
+### Patch Changes
+
+- 96d883d: Clean up logs
+
 ## 1.0.22
 
 ### Patch Changes
