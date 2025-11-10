@@ -209,12 +209,15 @@ async function prepareUserOperation(
 }
 
 async function resolveCallInputs(
-  inputs: CallInput[],
+  inputs: CallInput[] | undefined,
   config: RhinestoneConfig,
   chain: Chain,
   accountAddress: Address,
 ): Promise<CalldataInput[]> {
   const resolved: CalldataInput[] = []
+  if (!inputs) {
+    return resolved
+  }
   for (const intent of inputs) {
     if ('resolve' in intent) {
       const result = await intent.resolve({ config, chain, accountAddress })
