@@ -129,7 +129,8 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
     ],
   })
 
-  const saltNonce = 0n
+  const account = config.account
+  const saltNonce = account?.type === 'safe' ? (account.nonce ?? 0n) : 0n
   const factoryData = encodeFunctionData({
     abi: parseAbi([
       'function createProxyWithNonce(address singleton,bytes calldata initializer,uint256 saltNonce) external payable returns (address)',

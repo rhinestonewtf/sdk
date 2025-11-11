@@ -12,20 +12,24 @@ interface SafeAccount {
   type: 'safe'
   version?: '1.4.1'
   adapter?: '1.0.0' | '2.0.0'
+  nonce?: bigint
 }
 
 interface NexusAccount {
   type: 'nexus'
   version?: '1.0.2' | '1.2.0' | 'rhinestone-1.0.0-beta' | 'rhinestone-1.0.0'
+  salt?: Hex
 }
 
 interface KernelAccount {
   type: 'kernel'
   version?: '3.1' | '3.2' | '3.3'
+  salt?: Hex
 }
 
 interface StartaleAccount {
   type: 'startale'
+  salt?: Hex
 }
 
 interface PassportAccount {

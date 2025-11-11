@@ -116,7 +116,10 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
       initializationCallData,
     }
   }
-  const salt = keccak256('0x')
+  const account = config.account
+  const defaultSalt = keccak256('0x')
+  const salt =
+    account?.type === 'nexus' ? (account.salt ?? defaultSalt) : defaultSalt
   const moduleSetup = getModuleSetup(config)
   // Filter out the default validator
   const defaultValidator = moduleSetup.validators.find(
