@@ -77,6 +77,7 @@ import {
 } from '../orchestrator/registry'
 import type {
   MappedChainTokenAccessList,
+  Account as OrchestratorAccount,
   SettlementLayer,
   SupportedChain,
   UnmappedChainTokenAccessList,
@@ -634,21 +635,7 @@ async function prepareTransactionAsIntent(
 
   function getRecipient(
     recipient: RhinestoneAccountConfig | Address | undefined,
-  ): {
-    address: Address
-    accountType: 'EOA' | 'ERC7579'
-    setupOps: {
-      to: Address
-      data: Hex
-    }[]
-    delegations:
-      | {
-          [chainId: number]: {
-            contract: Address
-          }
-        }
-      | undefined
-  } {
+  ): OrchestratorAccount | undefined {
     if (typeof recipient === 'string') {
       // Passed as an address, assume it's an EOA
       return {
@@ -674,7 +661,7 @@ async function prepareTransactionAsIntent(
             delegations: {},
           }
     if (!recipientAddress || !recipientAccountType) {
-      throw new Error('Invalid recipient')
+      return undefined
     }
     return {
       address: recipientAddress,

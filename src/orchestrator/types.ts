@@ -361,6 +361,7 @@ interface PortfolioTokenResponse {
 type PortfolioResponse = PortfolioTokenResponse[]
 
 export type {
+  Account,
   TokenConfig,
   SupportedChain,
   SettlementLayer,
