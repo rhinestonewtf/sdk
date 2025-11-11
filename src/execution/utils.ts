@@ -596,7 +596,7 @@ async function prepareTransactionAsIntent(
   callInputs: CalldataInput[],
   gasLimit: bigint | undefined,
   tokenRequests: TokenRequest[],
-  recipient: RhinestoneAccountConfig | undefined,
+  recipient: RhinestoneAccountConfig | Address | undefined,
   accountAddress: Address,
   isSponsored: boolean,
   eip7702InitSignature: Hex | undefined,
@@ -632,38 +632,67 @@ async function prepareTransactionAsIntent(
     }
   }
 
+  async function getRecipient(
+    recipient: RhinestoneAccountConfig | Address | undefined,
+  ): Promise<{
+    address: Address
+    accountType: 'EOA' | 'ERC7579'
+    setupOps: {
+      to: Address
+      data: Hex
+    }[]
+    delegations:
+      | {
+          [chainId: number]: {
+            contract: Address
+          }
+        }
+      | undefined
+  }> {
+    if (typeof recipient === 'string') {
+      // Passed as an address, assume it's an EOA
+      return {
+        address: recipient,
+        accountType: 'EOA',
+        setupOps: [],
+        delegations: undefined,
+      }
+    }
+    const recipientAddress = recipient ? getAddress(recipient) : undefined
+    const recipientAccountType = recipient
+      ? getAccountType(recipient.account)
+      : undefined
+    const { setupOps: recipientSetupOps, delegations: recipientDelegations } =
+      recipient && recipientAddress
+        ? await getSetupOperationsAndDelegations(
+            recipient,
+            recipientAddress,
+            eip7702InitSignature,
+          )
+        : {
+            setupOps: [],
+            delegations: {},
+          }
+    if (!recipientAddress || !recipientAccountType) {
+      throw new Error('Invalid recipient')
+    }
+    return {
+      address: recipientAddress,
+      accountType: recipientAccountType,
+      setupOps: recipientSetupOps,
+      delegations: recipientDelegations,
+    }
+  }
+
   const accountType = getAccountType(config.account)
 
-  const recipientAddress = recipient ? getAddress(recipient) : undefined
-  const recipientAccountType = recipient
-    ? getAccountType(recipient.account)
-    : undefined
-  const { setupOps: recipientSetupOps, delegations: recipientDelegations } =
-    recipient && recipientAddress
-      ? await getSetupOperationsAndDelegations(
-          recipient,
-          recipientAddress,
-          eip7702InitSignature,
-        )
-      : {
-          setupOps: [],
-          delegations: {},
-        }
   const metaIntent: IntentInput = {
     destinationChainId: targetChain.id,
     tokenRequests: tokenRequests.map((tokenRequest) => ({
       tokenAddress: resolveTokenAddress(tokenRequest.address, targetChain.id),
       amount: tokenRequest.amount,
     })),
-    recipient:
-      recipientAddress && recipientAccountType
-        ? {
-            address: recipientAddress,
-            accountType: recipientAccountType,
-            setupOps: recipientSetupOps,
-            delegations: recipientDelegations,
-          }
-        : undefined,
+    recipient: await getRecipient(recipient),
     account: {
       address: accountAddress,
       accountType: accountType,

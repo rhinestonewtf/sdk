@@ -146,7 +146,7 @@ async function sendTransactionInternal(
   options: {
     gasLimit?: bigint
     initialTokenRequests?: TokenRequest[]
-    recipient?: RhinestoneAccountConfig
+    recipient?: RhinestoneAccountConfig | Address
     signers?: SignerSet
     sponsored?: boolean
     settlementLayers?: SettlementLayer[]
@@ -240,7 +240,7 @@ async function sendTransactionAsIntent(
   callInputs: CalldataInput[],
   gasLimit: bigint | undefined,
   tokenRequests: TokenRequest[],
-  recipient: RhinestoneAccountConfig | undefined,
+  recipient: RhinestoneAccountConfig | Address | undefined,
   accountAddress: Address,
   dryRun: boolean = false,
   signers?: SignerSet,
