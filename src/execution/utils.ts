@@ -153,7 +153,6 @@ async function prepareTransaction(
     recipient,
   } = getTransactionParams(transaction)
   const accountAddress = getAddress(config)
-  // const recipientAddress = recipient ? getAddress(recipient) : undefined
 
   const isUserOpSigner =
     signers?.type === 'guardians' || signers?.type === 'session'
