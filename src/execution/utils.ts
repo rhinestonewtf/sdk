@@ -596,7 +596,7 @@ async function prepareTransactionAsIntent(
   callInputs: CalldataInput[],
   gasLimit: bigint | undefined,
   tokenRequests: TokenRequest[],
-  recipient: RhinestoneAccountConfig | Address | undefined,
+  recipientInput: RhinestoneAccountConfig | Address | undefined,
   accountAddress: Address,
   isSponsored: boolean,
   eip7702InitSignature: Hex | undefined,
@@ -616,7 +616,7 @@ async function prepareTransactionAsIntent(
   const calls = parseCalls(callInputs, targetChain.id)
   const accountAccessList = createAccountAccessList(sourceChains, sourceAssets)
 
-  const { setupOps, delegations } = await getSetupOperationsAndDelegations(
+  const { setupOps, delegations } = getSetupOperationsAndDelegations(
     config,
     accountAddress,
     eip7702InitSignature,
@@ -632,9 +632,9 @@ async function prepareTransactionAsIntent(
     }
   }
 
-  async function getRecipient(
+  function getRecipient(
     recipient: RhinestoneAccountConfig | Address | undefined,
-  ): Promise<{
+  ): {
     address: Address
     accountType: 'EOA' | 'ERC7579'
     setupOps: {
@@ -648,7 +648,7 @@ async function prepareTransactionAsIntent(
           }
         }
       | undefined
-  }> {
+  } {
     if (typeof recipient === 'string') {
       // Passed as an address, assume it's an EOA
       return {
@@ -664,7 +664,7 @@ async function prepareTransactionAsIntent(
       : undefined
     const { setupOps: recipientSetupOps, delegations: recipientDelegations } =
       recipient && recipientAddress
-        ? await getSetupOperationsAndDelegations(
+        ? getSetupOperationsAndDelegations(
             recipient,
             recipientAddress,
             eip7702InitSignature,
@@ -685,6 +685,7 @@ async function prepareTransactionAsIntent(
   }
 
   const accountType = getAccountType(config.account)
+  const recipient = getRecipient(recipientInput)
 
   const metaIntent: IntentInput = {
     destinationChainId: targetChain.id,
@@ -692,7 +693,7 @@ async function prepareTransactionAsIntent(
       tokenAddress: resolveTokenAddress(tokenRequest.address, targetChain.id),
       amount: tokenRequest.amount,
     })),
-    recipient: await getRecipient(recipient),
+    recipient,
     account: {
       address: accountAddress,
       accountType: accountType,
@@ -1241,7 +1242,7 @@ function createAccountAccessList(
   return { chainTokens: sourceAssets }
 }
 
-async function getSetupOperationsAndDelegations(
+function getSetupOperationsAndDelegations(
   config: RhinestoneConfig,
   accountAddress: Address,
   eip7702InitSignature?: Hex,
@@ -1261,7 +1262,7 @@ async function getSetupOperationsAndDelegations(
     }
 
     const { initData: eip7702InitData, contract: eip7702Contract } =
-      await getEip7702InitCall(config, eip7702InitSignature)
+      getEip7702InitCall(config, eip7702InitSignature)
 
     return {
       setupOps: [

@@ -532,10 +532,7 @@ async function signEip7702InitData(
   return signature
 }
 
-async function getEip7702InitCall(
-  config: RhinestoneAccountConfig,
-  signature: Hex,
-) {
+function getEip7702InitCall(config: RhinestoneAccountConfig, signature: Hex) {
   function getEncodedData(initData: Hex): Hex {
     const chainIds = [0n]
     const chainIdIndex = 0n

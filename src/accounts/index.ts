@@ -189,11 +189,11 @@ async function signEip7702InitData(config: RhinestoneConfig) {
   }
 }
 
-async function getEip7702InitCall(config: RhinestoneConfig, signature: Hex) {
+function getEip7702InitCall(config: RhinestoneConfig, signature: Hex) {
   const account = getAccountProvider(config)
   switch (account.type) {
     case 'nexus': {
-      return await getNexusEip7702InitCall(config, signature)
+      return getNexusEip7702InitCall(config, signature)
     }
     case 'safe':
     case 'kernel':
