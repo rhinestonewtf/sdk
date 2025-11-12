@@ -3,6 +3,7 @@
   "workspaces": {
     "": {
       "dependencies": {
+        "permissionless": "^0.3.0",
         "viem": "^2.28.0",
       },
       "devDependencies": {
@@ -23,7 +24,7 @@
     },
     "src": {
       "name": "@rhinestone/sdk",
-      "version": "1.0.18",
+      "version": "1.0.23",
       "dependencies": {
         "@rhinestone/shared-configs": "^1.4.17",
         "ox": "^0.9.11",
@@ -534,6 +535,8 @@
     "pathe": ["pathe@2.0.3", "", {}, "sha512-WUjGcAqP1gQacoQe+OBJsFA7Ld4DyXuUIjZ5cc75cLHvJ7dtNsTugphxIADwspS+AraAUePCKrSVtPLFj/F88w=="],
 
     "pathval": ["pathval@2.0.0", "", {}, "sha512-vE7JKRyES09KiunauX7nd2Q9/L7lhok4smP9RZTDeD4MVs72Dp2qNFVz39Nz5a0FVEW0BJR6C0DYrq6unoziZA=="],
+
+    "permissionless": ["permissionless@0.3.0", "", { "peerDependencies": { "ox": "^0.8.0", "viem": "^2.28.1" }, "optionalPeers": ["ox"] }, "sha512-qVk7VxLZ4prMrgMH7jnGZ513hXehiWzq344+ZmTYY/bbWVuuqZyvFACIrbdA/frZYYKBTsg3gEeR6KwUSwWsTA=="],
 
     "picocolors": ["picocolors@1.1.1", "", {}, "sha512-xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA=="],
 

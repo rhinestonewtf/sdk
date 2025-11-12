@@ -78,6 +78,14 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
       encodePacked(['bytes32', 'uint256'], [keccak256(initData), saltNonce]),
     )
 
+    console.log('getDeployArgs 1', {
+      factory: config.initData.factory,
+      factoryData: config.initData.factoryData,
+      salt,
+      implementation,
+      initializationCallData: null,
+    })
+
     return {
       factory: config.initData.factory,
       factoryData: config.initData.factoryData,
@@ -87,6 +95,40 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
     }
   }
 
+  const initData = getInitData(config)
+
+  const account = config.account
+  const saltNonce = account?.type === 'safe' ? (account.nonce ?? 0n) : 0n
+  const factoryData = encodeFunctionData({
+    abi: parseAbi([
+      'function createProxyWithNonce(address singleton,bytes calldata initializer,uint256 saltNonce) external payable returns (address)',
+    ]),
+    functionName: 'createProxyWithNonce',
+    args: [SAFE_SINGLETON_ADDRESS, initData, saltNonce],
+  })
+
+  const salt = keccak256(
+    encodePacked(['bytes32', 'uint256'], [keccak256(initData), saltNonce]),
+  )
+
+  console.log('getDeployArgs 2', {
+    factory: SAFE_PROXY_FACTORY_ADDRESS,
+    factoryData,
+    salt,
+    implementation: SAFE_SINGLETON_ADDRESS,
+    initializationCallData: null,
+  })
+
+  return {
+    factory: SAFE_PROXY_FACTORY_ADDRESS,
+    factoryData,
+    salt,
+    implementation: SAFE_SINGLETON_ADDRESS,
+    initializationCallData: null,
+  }
+}
+
+function getInitData(config: RhinestoneAccountConfig) {
   const owners = getOwners(config)
   const threshold = getThreshold(config)
   const moduleSetup = getModuleSetup(config)
@@ -96,7 +138,7 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
     ...moduleSetup.fallbacks,
     ...moduleSetup.hooks,
   ]
-  const initData = encodeFunctionData({
+  return encodeFunctionData({
     abi: parseAbi([
       'function setup(address[] calldata _owners,uint256 _threshold,address to,bytes calldata data,address fallbackHandler,address paymentToken,uint256 payment, address paymentReceiver) external',
     ]),
@@ -128,28 +170,6 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
       zeroAddress,
     ],
   })
-
-  const account = config.account
-  const saltNonce = account?.type === 'safe' ? (account.nonce ?? 0n) : 0n
-  const factoryData = encodeFunctionData({
-    abi: parseAbi([
-      'function createProxyWithNonce(address singleton,bytes calldata initializer,uint256 saltNonce) external payable returns (address)',
-    ]),
-    functionName: 'createProxyWithNonce',
-    args: [SAFE_SINGLETON_ADDRESS, initData, saltNonce],
-  })
-
-  const salt = keccak256(
-    encodePacked(['bytes32', 'uint256'], [keccak256(initData), saltNonce]),
-  )
-
-  return {
-    factory: SAFE_PROXY_FACTORY_ADDRESS,
-    factoryData,
-    salt,
-    implementation: SAFE_SINGLETON_ADDRESS,
-    initializationCallData: null,
-  }
 }
 
 function getAddress(config: RhinestoneAccountConfig) {
@@ -422,4 +442,5 @@ export {
   getSmartAccount,
   getSessionSmartAccount,
   getGuardianSmartAccount,
+  getInitData,
 }
