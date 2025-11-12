@@ -43,7 +43,7 @@ const CREATION_CODE =
 
 function getDeployArgs(config: RhinestoneAccountConfig) {
   const account = config.account
-  const salt = (account as StartaleAccount).salt ?? zeroHash
+  const salt = (account as StartaleAccount)?.salt ?? zeroHash
   const moduleSetup = getModuleSetup(config)
   const initData = encodeAbiParameters(
     [{ type: 'address' }, { type: 'bytes' }],

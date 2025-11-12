@@ -123,7 +123,7 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
   }
   const account = config.account
   const defaultSalt = keccak256('0x')
-  const salt = (account as NexusAccount).salt ?? defaultSalt
+  const salt = (account as NexusAccount)?.salt ?? defaultSalt
   const moduleSetup = getModuleSetup(config)
   // Filter out the default validator
   const defaultValidator = moduleSetup.validators.find(

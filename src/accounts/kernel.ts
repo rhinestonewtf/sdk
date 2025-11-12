@@ -107,7 +107,7 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
     }
   }
   const account = config.account
-  const salt = (account as KernelAccount).salt ?? zeroHash
+  const salt = (account as KernelAccount)?.salt ?? zeroHash
   const moduleSetup = getModuleSetup(config)
 
   const rootValidator = concat(['0x01', moduleSetup.validators[0].address])
