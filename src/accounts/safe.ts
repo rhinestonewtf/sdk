@@ -78,14 +78,6 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
       encodePacked(['bytes32', 'uint256'], [keccak256(initData), saltNonce]),
     )
 
-    console.log('getDeployArgs 1', {
-      factory: config.initData.factory,
-      factoryData: config.initData.factoryData,
-      salt,
-      implementation,
-      initializationCallData: null,
-    })
-
     return {
       factory: config.initData.factory,
       factoryData: config.initData.factoryData,
@@ -110,14 +102,6 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
   const salt = keccak256(
     encodePacked(['bytes32', 'uint256'], [keccak256(initData), saltNonce]),
   )
-
-  console.log('getDeployArgs 2', {
-    factory: SAFE_PROXY_FACTORY_ADDRESS,
-    factoryData,
-    salt,
-    implementation: SAFE_SINGLETON_ADDRESS,
-    initializationCallData: null,
-  })
 
   return {
     factory: SAFE_PROXY_FACTORY_ADDRESS,
