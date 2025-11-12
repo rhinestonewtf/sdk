@@ -44,7 +44,12 @@ import {
   SMART_SESSION_MODE_USE,
 } from '../modules/validators'
 import type { EnableSessionData } from '../modules/validators/smart-sessions'
-import type { OwnerSet, RhinestoneAccountConfig, Session } from '../types'
+import type {
+  KernelAccount,
+  OwnerSet,
+  RhinestoneAccountConfig,
+  Session,
+} from '../types'
 import {
   AccountConfigurationNotSupportedError,
   Eip712DomainNotAvailableError,
@@ -102,8 +107,7 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
     }
   }
   const account = config.account
-  const salt =
-    account?.type === 'kernel' ? (account.salt ?? zeroHash) : zeroHash
+  const salt = (account as KernelAccount).salt ?? zeroHash
   const moduleSetup = getModuleSetup(config)
 
   const rootValidator = concat(['0x01', moduleSetup.validators[0].address])

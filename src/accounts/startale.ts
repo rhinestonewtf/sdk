@@ -13,7 +13,12 @@ import {
 import { getSetup as getModuleSetup } from '../modules'
 import type { Module } from '../modules/common'
 import type { EnableSessionData } from '../modules/validators/smart-sessions'
-import type { OwnerSet, RhinestoneAccountConfig, Session } from '../types'
+import type {
+  OwnerSet,
+  RhinestoneAccountConfig,
+  Session,
+  StartaleAccount,
+} from '../types'
 import { Eip712DomainNotAvailableError } from './error'
 import {
   getGuardianSmartAccount as getNexusGuardianSmartAccount,
@@ -38,8 +43,7 @@ const CREATION_CODE =
 
 function getDeployArgs(config: RhinestoneAccountConfig) {
   const account = config.account
-  const salt =
-    account?.type === 'startale' ? (account.salt ?? zeroHash) : zeroHash
+  const salt = (account as StartaleAccount).salt ?? zeroHash
   const moduleSetup = getModuleSetup(config)
   const initData = encodeAbiParameters(
     [{ type: 'address' }, { type: 'bytes' }],

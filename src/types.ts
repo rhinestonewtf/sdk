@@ -348,6 +348,12 @@ type Transaction = SameChainTransaction | CrossChainTransaction
 
 export type {
   AccountType,
+  SafeAccount,
+  NexusAccount,
+  KernelAccount,
+  StartaleAccount,
+  PassportAccount,
+  EoaAccount,
   RhinestoneAccountConfig,
   RhinestoneSDKConfig,
   RhinestoneConfig,

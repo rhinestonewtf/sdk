@@ -35,7 +35,12 @@ import {
   SMART_SESSION_MODE_USE,
 } from '../modules/validators'
 import type { EnableSessionData } from '../modules/validators/smart-sessions'
-import type { OwnerSet, RhinestoneAccountConfig, Session } from '../types'
+import type {
+  OwnerSet,
+  RhinestoneAccountConfig,
+  SafeAccount,
+  Session,
+} from '../types'
 import {
   AccountConfigurationNotSupportedError,
   Eip712DomainNotAvailableError,
@@ -90,7 +95,7 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
   const initData = getInitData(config)
 
   const account = config.account
-  const saltNonce = account?.type === 'safe' ? (account.nonce ?? 0n) : 0n
+  const saltNonce = (account as SafeAccount).nonce ?? 0n
   const factoryData = encodeFunctionData({
     abi: parseAbi([
       'function createProxyWithNonce(address singleton,bytes calldata initializer,uint256 saltNonce) external payable returns (address)',
