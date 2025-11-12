@@ -48,6 +48,19 @@ class SignerNotSupportedError extends ExecutionError {
   }
 }
 
+class CallsNotSupportedError extends ExecutionError {
+  constructor(params?: {
+    context?: any
+    errorType?: string
+    traceId?: string
+  }) {
+    super({
+      message: 'Target chain calls are not supported for this account type',
+      ...params,
+    })
+  }
+}
+
 class OrderPathRequiredForIntentsError extends ExecutionError {
   constructor(params?: {
     context?: any
@@ -109,6 +122,7 @@ export {
   isExecutionError,
   ExecutionError,
   OrderPathRequiredForIntentsError,
+  CallsNotSupportedError,
   SessionChainRequiredError,
   IntentFailedError,
   IntentStatusTimeoutError,

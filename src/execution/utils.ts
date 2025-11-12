@@ -96,7 +96,7 @@ import type {
   UserOperationTransaction,
 } from '../types'
 import { getCompactTypedData, getPermit2Digest } from './compact'
-import { SignerNotSupportedError } from './error'
+import { CallsNotSupportedError, SignerNotSupportedError } from './error'
 import { getTypedData as getPermit2TypedData } from './permit2'
 import { getTypedData as getSingleChainOpsTypedData } from './singleChainOps'
 
@@ -209,12 +209,15 @@ async function prepareUserOperation(
 }
 
 async function resolveCallInputs(
-  inputs: CallInput[],
+  inputs: CallInput[] | undefined,
   config: RhinestoneConfig,
   chain: Chain,
   accountAddress: Address,
 ): Promise<CalldataInput[]> {
   const resolved: CalldataInput[] = []
+  if (!inputs) {
+    return resolved
+  }
   for (const intent of inputs) {
     if ('resolve' in intent) {
       const result = await intent.resolve({ config, chain, accountAddress })
@@ -610,6 +613,11 @@ async function prepareTransactionAsIntent(
     }[]
   },
 ) {
+  if (config.account?.type === 'eoa') {
+    if (callInputs.length > 0) {
+      throw new CallsNotSupportedError()
+    }
+  }
   const calls = parseCalls(callInputs, targetChain.id)
   const accountAccessList = createAccountAccessList(sourceChains, sourceAssets)
 

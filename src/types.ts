@@ -308,7 +308,7 @@ interface GuardiansSignerSet {
 type SignerSet = OwnerSignerSet | SessionSignerSet | GuardiansSignerSet
 
 interface BaseTransaction {
-  calls: CallInput[]
+  calls?: CallInput[]
   tokenRequests?: TokenRequest[]
   recipient?: OrchestratorAccount
   gasLimit?: bigint
