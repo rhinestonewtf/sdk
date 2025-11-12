@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.25
+
+### Patch Changes
+
+- 59a798a: Add helper to get `initData` for Rhinestone accounts
+
 ## 1.0.24
 
 ### Patch Changes
