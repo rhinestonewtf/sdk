@@ -1,10 +1,9 @@
 name: CI
 
 on:
-  workflow_dispatch:
   push:
     branches:
-      - "main"
+      - main
   pull_request:
 
 jobs:
@@ -16,13 +15,6 @@ jobs:
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
-
-      - name: Restore the cached build and the node modules
-        if: ${{ inputs.restore-cache }}
-        uses: "actions/cache/restore@v4"
-        with:
-          key: "build-and-modules-${{ github.sha }}"
-          path: ${{ inputs.cache-path }}
 
       - name: Install the npm dependencies
         run: bun install
