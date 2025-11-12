@@ -1,5 +1,13 @@
 # @rhinestone/sdk
 
+## 1.0.24
+
+### Patch Changes
+
+- ecb9ab8: Disallow EOA executions (calls)
+- e77a12b: Account nonces
+- 26eca68: Update `recipient` param
+
 ## 1.0.23
 
 ### Patch Changes
