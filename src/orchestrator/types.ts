@@ -61,7 +61,7 @@ interface Claim {
   claimTransactionHash?: Hex
 }
 
-export interface Execution {
+interface Execution {
   to: Address
   value: string
   data: Hex
@@ -72,11 +72,7 @@ type SettlementLayer =
   | 'INTENT_EXECUTOR'
   | CrossChainSettlementLayer
 
-export enum FundingMethod {
-  COMPACT = 'COMPACT',
-  PERMIT2 = 'PERMIT2',
-  NO_FUNDING = 'NO_FUNDING',
-}
+type FundingMethod = 'COMPACT' | 'PERMIT2' | 'NO_FUNDING'
 
 interface IntentOptions {
   topupCompact: boolean
@@ -219,7 +215,7 @@ type AccountContext =
       accountType: 'EOA'
     }
 
-export interface Account {
+interface Account {
   address: Address
   accountType: AccountType
   setupOps: Pick<Execution, 'to' | 'data'>[]
@@ -365,6 +361,7 @@ interface PortfolioTokenResponse {
 type PortfolioResponse = PortfolioTokenResponse[]
 
 export type {
+  Account,
   TokenConfig,
   SupportedChain,
   SettlementLayer,
@@ -381,6 +378,7 @@ export type {
   PortfolioResponse,
   Portfolio,
   PortfolioToken,
+  Execution,
   MappedChainTokenAccessList,
   UnmappedChainTokenAccessList,
   TokenRequirements,

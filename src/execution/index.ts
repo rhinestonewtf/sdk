@@ -13,7 +13,7 @@ import {
   isRetryable,
 } from '../orchestrator'
 import { getChainById, resolveTokenAddress } from '../orchestrator/registry'
-import type { Account, SettlementLayer } from '../orchestrator/types'
+import type { SettlementLayer } from '../orchestrator/types'
 import type {
   CalldataInput,
   CallInput,
@@ -87,7 +87,6 @@ async function sendTransaction(
     settlementLayers,
     sourceAssets,
     feeAsset,
-    dryRun,
   } = transaction
   const isUserOpSigner =
     signers?.type === 'guardians' || signers?.type === 'session'
@@ -104,7 +103,6 @@ async function sendTransaction(
     settlementLayers,
     sourceAssets,
     feeAsset,
-    dryRun,
   })
 }
 
@@ -141,14 +139,13 @@ async function sendTransactionInternal(
     callInputs?: CallInput[]
     gasLimit?: bigint
     initialTokenRequests?: TokenRequest[]
-    recipient?: Account
+    recipient?: RhinestoneAccountConfig | Address
     signers?: SignerSet
     sponsored?: boolean
     settlementLayers?: SettlementLayer[]
     sourceAssets?: SourceAssetInput
     lockFunds?: boolean
     feeAsset?: Address | TokenSymbol
-    dryRun?: boolean
   },
 ) {
   const accountAddress = getAddress(config)
@@ -179,7 +176,6 @@ async function sendTransactionInternal(
       tokenRequests,
       options.recipient,
       accountAddress,
-      options.dryRun,
       options.signers,
       options.sponsored,
       options.settlementLayers,
@@ -235,9 +231,8 @@ async function sendTransactionAsIntent(
   callInputs: CalldataInput[],
   gasLimit: bigint | undefined,
   tokenRequests: TokenRequest[],
-  recipient: Account | undefined,
+  recipient: RhinestoneAccountConfig | Address | undefined,
   accountAddress: Address,
-  dryRun: boolean = false,
   signers?: SignerSet,
   sponsored?: boolean,
   settlementLayers?: SettlementLayer[],
@@ -260,6 +255,7 @@ async function sendTransactionAsIntent(
     sourceAssets,
     feeAsset,
     lockFunds,
+    undefined,
   )
   if (!intentRoute) {
     throw new OrderPathRequiredForIntentsError()
@@ -281,7 +277,7 @@ async function sendTransactionAsIntent(
     originSignatures,
     destinationSignature,
     authorizations,
-    dryRun,
+    false,
   )
 }
 

@@ -30,9 +30,9 @@
         "noAssignInExpressions": "off",
         "noConfusingVoidType": "off",
         "noConsole": {
-          "level": "off",
+          "level": "warn",
           "options": {
-            "allow": ["error"]
+            "allow": ["error", "info"]
           }
         },
         "noExplicitAny": "off",

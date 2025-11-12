@@ -75,18 +75,19 @@ import {
   isTestnet,
   resolveTokenAddress,
 } from '../orchestrator/registry'
-import {
-  type Account,
-  FundingMethod,
-  type MappedChainTokenAccessList,
-  type SettlementLayer,
-  type SupportedChain,
-  type UnmappedChainTokenAccessList,
+import type {
+  MappedChainTokenAccessList,
+  Account as OrchestratorAccount,
+  SettlementLayer,
+  SupportedChain,
+  UnmappedChainTokenAccessList,
 } from '../orchestrator/types'
 import type {
+  AccountProviderConfig,
   Call,
   CalldataInput,
   CallInput,
+  RhinestoneAccountConfig,
   RhinestoneConfig,
   SignerSet,
   SourceAssetInput,
@@ -598,20 +599,22 @@ async function prepareTransactionAsIntent(
   callInputs: CalldataInput[],
   gasLimit: bigint | undefined,
   tokenRequests: TokenRequest[],
-  recipient: Account | undefined,
+  recipientInput: RhinestoneAccountConfig | Address | undefined,
   accountAddress: Address,
   isSponsored: boolean,
   eip7702InitSignature: Hex | undefined,
   settlementLayers: SettlementLayer[] | undefined,
   sourceAssets: SourceAssetInput | undefined,
   feeAsset: Address | TokenSymbol | undefined,
-  lockFunds?: boolean,
-  account?: {
-    setupOps?: {
-      to: Address
-      data: Hex
-    }[]
-  },
+  lockFunds: boolean | undefined,
+  account:
+    | {
+        setupOps?: {
+          to: Address
+          data: Hex
+        }[]
+      }
+    | undefined,
 ) {
   if (config.account?.type === 'eoa') {
     if (callInputs.length > 0) {
@@ -621,21 +624,62 @@ async function prepareTransactionAsIntent(
   const calls = parseCalls(callInputs, targetChain.id)
   const accountAccessList = createAccountAccessList(sourceChains, sourceAssets)
 
-  const { setupOps, delegations } = await getSetupOperationsAndDelegations(
+  const { setupOps, delegations } = getSetupOperationsAndDelegations(
     config,
     accountAddress,
     eip7702InitSignature,
   )
 
-  const getAccountType = (config: RhinestoneConfig): 'EOA' | 'ERC7579' => {
-    if (config.account?.type === 'eoa') {
+  function getAccountType(
+    accountConfig: AccountProviderConfig | undefined,
+  ): 'EOA' | 'ERC7579' {
+    if (accountConfig?.type === 'eoa') {
       return 'EOA'
     } else {
       return 'ERC7579'
     }
   }
 
-  const accountType = getAccountType(config)
+  function getRecipient(
+    recipient: RhinestoneAccountConfig | Address | undefined,
+  ): OrchestratorAccount | undefined {
+    if (typeof recipient === 'string') {
+      // Passed as an address, assume it's an EOA
+      return {
+        address: recipient,
+        accountType: 'EOA',
+        setupOps: [],
+        delegations: undefined,
+      }
+    }
+    const recipientAddress = recipient ? getAddress(recipient) : undefined
+    const recipientAccountType = recipient
+      ? getAccountType(recipient.account)
+      : undefined
+    const { setupOps: recipientSetupOps, delegations: recipientDelegations } =
+      recipient && recipientAddress
+        ? getSetupOperationsAndDelegations(
+            recipient,
+            recipientAddress,
+            eip7702InitSignature,
+          )
+        : {
+            setupOps: [],
+            delegations: {},
+          }
+    if (!recipientAddress || !recipientAccountType) {
+      return undefined
+    }
+    return {
+      address: recipientAddress,
+      accountType: recipientAccountType,
+      setupOps: recipientSetupOps,
+      delegations: recipientDelegations,
+    }
+  }
+
+  const accountType = getAccountType(config.account)
+  const recipient = getRecipient(recipientInput)
 
   const metaIntent: IntentInput = {
     destinationChainId: targetChain.id,
@@ -756,8 +800,7 @@ async function getIntentSignature(
 ) {
   const withPermit2 = intentOp.elements.some(
     (element) =>
-      element.mandate.qualifier.settlementContext?.fundingMethod ===
-      FundingMethod.PERMIT2,
+      element.mandate.qualifier.settlementContext?.fundingMethod === 'PERMIT2',
   )
   const withIntentExecutorOps = intentOp.elements.some(
     (element) =>
@@ -1193,7 +1236,7 @@ function createAccountAccessList(
   return { chainTokens: sourceAssets }
 }
 
-async function getSetupOperationsAndDelegations(
+function getSetupOperationsAndDelegations(
   config: RhinestoneConfig,
   accountAddress: Address,
   eip7702InitSignature?: Hex,
@@ -1213,7 +1256,7 @@ async function getSetupOperationsAndDelegations(
     }
 
     const { initData: eip7702InitData, contract: eip7702Contract } =
-      await getEip7702InitCall(config, eip7702InitSignature)
+      getEip7702InitCall(config, eip7702InitSignature)
 
     return {
       setupOps: [
