@@ -1,19 +1,9 @@
-import type { Address, Hex } from 'viem'
-
 import {
   getModuleInstallationCalls,
   getModuleUninstallationCalls,
 } from '../accounts'
-import { type Module, type ModuleType, toModuleTypeId } from '../modules/common'
-import type { LazyCallInput } from '../types'
-
-interface ModuleInput {
-  type: ModuleType
-  address: Address
-  initData?: Hex
-  deInitData?: Hex
-  additionalContext?: Hex
-}
+import { type Module, toModuleTypeId } from '../modules/common'
+import type { LazyCallInput, ModuleInput } from '../types'
 
 /**
  * Install a custom module

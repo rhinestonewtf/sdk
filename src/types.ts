@@ -1,5 +1,6 @@
 import type { Account, Address, Chain, Hex } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
+import type { ModuleType } from './modules/common'
 import type { EnableSessionData } from './modules/validators/smart-sessions'
 import type { SettlementLayer } from './orchestrator/types'
 
@@ -188,12 +189,21 @@ interface Recovery {
   threshold?: number
 }
 
+interface ModuleInput {
+  type: ModuleType
+  address: Address
+  initData?: Hex
+  deInitData?: Hex
+  additionalContext?: Hex
+}
+
 interface RhinestoneAccountConfig {
   account?: AccountProviderConfig
   owners?: OwnerSet
   sessions?: Session[]
   recovery?: Recovery
   eoa?: Account
+  modules?: ModuleInput[]
   initData?: {
     address: Address
     factory: Address
@@ -375,6 +385,7 @@ export type {
   SignerSet,
   Session,
   Recovery,
+  ModuleInput,
   Policy,
   UniversalActionPolicyParamCondition,
 }

@@ -1,4 +1,5 @@
 import type { Address, Hex } from 'viem'
+import type { ModuleInput } from '../types'
 
 type ModuleTypeId =
   | typeof MODULE_TYPE_ID_VALIDATOR
@@ -43,6 +44,16 @@ function toModuleTypeId(type: ModuleType): ModuleTypeId {
   }
 }
 
+function getModule(module: ModuleInput): Module {
+  return {
+    type: toModuleTypeId(module.type),
+    address: module.address,
+    initData: module.initData ?? '0x',
+    deInitData: module.deInitData ?? '0x',
+    additionalContext: module.additionalContext ?? '0x',
+  }
+}
+
 export {
   MODULE_TYPE_ID_VALIDATOR,
   MODULE_TYPE_ID_EXECUTOR,
@@ -53,5 +64,6 @@ export {
   MODULE_TYPE_FALLBACK,
   MODULE_TYPE_HOOK,
   toModuleTypeId,
+  getModule,
 }
 export type { Module, ModuleType, ModuleTypeId }

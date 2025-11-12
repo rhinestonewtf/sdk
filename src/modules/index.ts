@@ -12,8 +12,13 @@ import {
 import type { RhinestoneAccountConfig, RhinestoneConfig } from '../types'
 
 import {
+  getModule,
+  MODULE_TYPE_EXECUTOR,
+  MODULE_TYPE_FALLBACK,
+  MODULE_TYPE_HOOK,
   MODULE_TYPE_ID_EXECUTOR,
   MODULE_TYPE_ID_FALLBACK,
+  MODULE_TYPE_VALIDATOR,
   type Module,
 } from './common'
 import {
@@ -77,6 +82,29 @@ function getSetup(config: RhinestoneAccountConfig): ModeleSetup {
   }
 
   const hooks: Module[] = []
+
+  if (config.modules) {
+    validators.push(
+      ...config.modules
+        .filter((m) => m.type === MODULE_TYPE_VALIDATOR)
+        .map((m) => getModule(m)),
+    )
+    executors.push(
+      ...config.modules
+        .filter((m) => m.type === MODULE_TYPE_EXECUTOR)
+        .map((m) => getModule(m)),
+    )
+    fallbacks.push(
+      ...config.modules
+        .filter((m) => m.type === MODULE_TYPE_FALLBACK)
+        .map((m) => getModule(m)),
+    )
+    hooks.push(
+      ...config.modules
+        .filter((m) => m.type === MODULE_TYPE_HOOK)
+        .map((m) => getModule(m)),
+    )
+  }
 
   return {
     validators,
