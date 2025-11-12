@@ -580,7 +580,9 @@ async function setup(config: RhinestoneConfig, chain: Chain): Promise<boolean> {
   )
   let result: TransactionResult | UserOperationResult
   if (hasIntentExecutor) {
-    result = await sendTransactionInternal(config, [chain], chain, calls, {})
+    result = await sendTransactionInternal(config, [chain], chain, {
+      callInputs: calls,
+    })
   } else {
     result = await sendUserOperationInternal(config, chain, calls)
   }
@@ -606,12 +608,7 @@ async function deployWithIntent(
   const result = await sendTransaction(config, {
     sourceChains: [chain],
     targetChain: chain,
-    calls: [
-      {
-        to: zeroAddress,
-        data: '0x',
-      },
-    ],
+    calls: [],
     sponsored,
   })
   await waitForExecution(config, result, true)

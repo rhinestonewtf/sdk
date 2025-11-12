@@ -93,22 +93,17 @@ async function sendTransaction(
   if (isUserOpSigner) {
     throw new SignerNotSupportedError()
   }
-  return await sendTransactionInternal(
-    config,
-    sourceChains,
-    targetChain,
-    calls,
-    {
-      gasLimit,
-      initialTokenRequests: tokenRequests,
-      recipient,
-      signers,
-      sponsored,
-      settlementLayers,
-      sourceAssets,
-      feeAsset,
-    },
-  )
+  return await sendTransactionInternal(config, sourceChains, targetChain, {
+    callInputs: calls,
+    gasLimit,
+    initialTokenRequests: tokenRequests,
+    recipient,
+    signers,
+    sponsored,
+    settlementLayers,
+    sourceAssets,
+    feeAsset,
+  })
 }
 
 async function sendUserOperation(
@@ -140,8 +135,8 @@ async function sendTransactionInternal(
   config: RhinestoneConfig,
   sourceChains: Chain[],
   targetChain: Chain,
-  callInputs: CallInput[],
   options: {
+    callInputs?: CallInput[]
     gasLimit?: bigint
     initialTokenRequests?: TokenRequest[]
     recipient?: RhinestoneAccountConfig | Address
@@ -155,7 +150,7 @@ async function sendTransactionInternal(
 ) {
   const accountAddress = getAddress(config)
   const resolvedCalls = await resolveCallInputs(
-    callInputs,
+    options.callInputs,
     config,
     targetChain,
     accountAddress,
