@@ -385,6 +385,7 @@ export type {
   SignerSet,
   Session,
   Recovery,
+  ModuleType,
   ModuleInput,
   Policy,
   UniversalActionPolicyParamCondition,
