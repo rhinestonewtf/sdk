@@ -1,5 +1,12 @@
 # @rhinestone/sdk
 
+## 1.0.26
+
+### Patch Changes
+
+- fc66314: Custom modules for account deployment
+- 59ca158: Set minimal `viem` version to `2.38.0`
+
 ## 1.0.25
 
 ### Patch Changes
