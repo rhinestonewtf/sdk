@@ -75,10 +75,14 @@ function isTestnet(chainId: number): boolean {
 }
 
 function isTokenAddressSupported(address: Address, chainId: number): boolean {
-  const supportedTokens = getSupportedTokens(chainId)
-  return supportedTokens.some(
-    (token) => token.address.toLowerCase() === address.toLowerCase(),
-  )
+  const chainEntry = getChainEntry(chainId)
+  if (!chainEntry) {
+    return false
+  }
+
+  return chainEntry.tokens
+    .filter((token) => token.supportsMultichain)
+    .some((token) => token.address.toLowerCase() === address.toLowerCase())
 }
 
 function getSupportedTokens(chainId: number): TokenConfig[] {
