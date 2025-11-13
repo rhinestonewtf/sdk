@@ -1,11 +1,12 @@
-name: Integration Tests (Reusable)
+name: Integration Tests
 
 on:
-  workflow_call:
+  pull_request:
+    branches:
+      - main
 
 jobs:
-  integration-tests:
-    name: Integration Tests
+  test:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -27,12 +28,8 @@ jobs:
 
       # Package SDK for Testing
       - name: Pack SDK
-        run: |
-          # Create a clean workspace for packing
-          mkdir -p /tmp/sdk-pack
-          cp -r src/* /tmp/sdk-pack/
-          cd /tmp/sdk-pack
-          npm pack --pack-destination $GITHUB_WORKSPACE/
+        working-directory: src
+        run: bunx npm pack --pack-destination $GITHUB_WORKSPACE/
 
       # Run Integration Tests
       - name: Test ${{ matrix.environment }} integration
