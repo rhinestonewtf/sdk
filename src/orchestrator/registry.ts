@@ -3,8 +3,7 @@ import {
   chainRegistry,
   chains,
 } from '@rhinestone/shared-configs'
-import { type Address, type Chain, isAddress, zeroAddress } from 'viem'
-import { polygon, sonic } from 'viem/chains'
+import { type Address, type Chain, isAddress } from 'viem'
 import type { TokenSymbol } from '../types'
 import { UnsupportedChainError, UnsupportedTokenError } from './error'
 import type { TokenConfig } from './types'
@@ -49,16 +48,6 @@ function getTokenSymbol(tokenAddress: Address, chainId: number): string {
 }
 
 function getTokenAddress(tokenSymbol: TokenSymbol, chainId: number): Address {
-  if (chainId === polygon.id && tokenSymbol === 'ETH') {
-    throw new UnsupportedTokenError(tokenSymbol, chainId)
-  }
-  if (chainId === sonic.id && tokenSymbol !== 'USDC') {
-    throw new UnsupportedTokenError(tokenSymbol, chainId)
-  }
-  if (tokenSymbol === 'ETH') {
-    return zeroAddress
-  }
-
   const chainEntry = getChainEntry(chainId)
   if (!chainEntry) {
     throw new UnsupportedChainError(chainId)
@@ -86,12 +75,8 @@ function isTestnet(chainId: number): boolean {
 }
 
 function isTokenAddressSupported(address: Address, chainId: number): boolean {
-  const chainEntry = getChainEntry(chainId)
-  if (!chainEntry) {
-    return false
-  }
-
-  return chainEntry.tokens.some(
+  const supportedTokens = getSupportedTokens(chainId)
+  return supportedTokens.some(
     (token) => token.address.toLowerCase() === address.toLowerCase(),
   )
 }
@@ -102,7 +87,7 @@ function getSupportedTokens(chainId: number): TokenConfig[] {
     throw new UnsupportedChainError(chainId)
   }
 
-  return chainEntry.tokens
+  return chainEntry.tokens.filter((token) => token.supportsMultichain)
 }
 
 function getDefaultAccountAccessList(onTestnets?: boolean) {
