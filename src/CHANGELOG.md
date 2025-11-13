@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.27
+
+### Patch Changes
+
+- f541d77: simplify supported tokens
+
 ## 1.0.26
 
 ### Patch Changes
