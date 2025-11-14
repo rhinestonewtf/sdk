@@ -2,6 +2,7 @@ import type { Address } from 'viem'
 import { describe, expect, test } from 'vitest'
 
 import { accountA, accountB, passkeyAccount } from '../../test/consts'
+import { assertNotNull } from '../../test/utils/utils'
 import { MODULE_TYPE_ID_VALIDATOR } from '../modules/common'
 import {
   getAddress,
@@ -15,18 +16,20 @@ const MOCK_MODULE_ADDRESS = '0x28de6501fa86f2e6cd0b33c3aabdaeb4a1b93f3f'
 describe('Accounts: Nexus', () => {
   describe('Deploy Args', () => {
     test('ECDSA owners', () => {
+      const deployArgs = getDeployArgs({
+        owners: {
+          type: 'ecdsa',
+          accounts: [accountA, accountB],
+        },
+      })
+      assertNotNull(deployArgs)
       const {
         factory,
         factoryData,
         salt,
         implementation,
         initializationCallData,
-      } = getDeployArgs({
-        owners: {
-          type: 'ecdsa',
-          accounts: [accountA, accountB],
-        },
-      })
+      } = deployArgs
 
       expect(factory).toEqual('0x0000000000679A258c64d2F20F310e12B64b7375')
       expect(factoryData).toEqual(
@@ -44,18 +47,20 @@ describe('Accounts: Nexus', () => {
     })
 
     test('Passkey owner', () => {
+      const deployArgs = getDeployArgs({
+        owners: {
+          type: 'passkey',
+          accounts: [passkeyAccount],
+        },
+      })
+      assertNotNull(deployArgs)
       const {
         factory,
         factoryData,
         salt,
         implementation,
         initializationCallData,
-      } = getDeployArgs({
-        owners: {
-          type: 'passkey',
-          accounts: [passkeyAccount],
-        },
-      })
+      } = deployArgs
 
       expect(factory).toEqual('0x0000000000679A258c64d2F20F310e12B64b7375')
       expect(factoryData).toEqual(
@@ -73,7 +78,7 @@ describe('Accounts: Nexus', () => {
     })
 
     test('Existing account', () => {
-      const { factory, factoryData } = getDeployArgs({
+      const deployArgs = getDeployArgs({
         owners: {
           type: 'ecdsa',
           accounts: [accountA, accountB],
@@ -86,6 +91,8 @@ describe('Accounts: Nexus', () => {
           intentExecutorInstalled: false,
         },
       })
+      assertNotNull(deployArgs)
+      const { factory, factoryData } = deployArgs
 
       expect(factory).toEqual('0x00000bb19a3579F4D779215dEf97AFbd0e30DB55')
       expect(factoryData).toEqual(

@@ -72,6 +72,9 @@ const KERNEL_VERSION = '0.3.3'
 
 function getDeployArgs(config: RhinestoneAccountConfig) {
   if (config.initData) {
+    if (!('factory' in config.initData)) {
+      return null
+    }
     const factoryData = decodeFunctionData({
       abi: parseAbi([
         'function deployWithFactory(address factory,bytes createData,bytes32 salt)',
@@ -153,7 +156,11 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
 }
 
 function getAddress(config: RhinestoneAccountConfig) {
-  const { salt, initializationCallData } = getDeployArgs(config)
+  const deployArgs = getDeployArgs(config)
+  if (!deployArgs) {
+    throw new Error('Cannot derive address: deploy args not available')
+  }
+  const { salt, initializationCallData } = deployArgs
   const actualSalt = keccak256(concat([initializationCallData, salt]))
   return getContractAddress({
     from: KERNEL_FACTORY_ADDRESS,

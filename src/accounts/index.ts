@@ -154,10 +154,11 @@ function getInitCode(config: RhinestoneConfig) {
   } else if (config.initData) {
     return config.initData
   } else {
-    const { factory, factoryData } = getDeployArgs(config)
-    if (!factory || !factoryData) {
+    const deployArgs = getDeployArgs(config)
+    if (!deployArgs) {
       throw new FactoryArgsNotAvailableError()
     }
+    const { factory, factoryData } = deployArgs
     return {
       factory,
       factoryData,
@@ -499,7 +500,10 @@ async function deploy(
   },
 ): Promise<boolean> {
   const account = getAccountProvider(config)
-
+  const deployArgs = getDeployArgs(config)
+  if (!deployArgs) {
+    throw new FactoryArgsNotAvailableError()
+  }
   if (account.type === 'eoa') {
     return false
   }
@@ -508,7 +512,11 @@ async function deploy(
   if (deployed) {
     return false
   }
-  const asUserOp = config.initData && !config.initData.intentExecutorInstalled
+  const intentExecutorInstalled =
+    'intentExecutorInstalled' in deployArgs
+      ? deployArgs.intentExecutorInstalled
+      : false
+  const asUserOp = config.initData && !intentExecutorInstalled
   if (asUserOp) {
     await deployWithBundler(chain, config)
   } else {
@@ -621,7 +629,11 @@ async function deployWithBundler(chain: Chain, config: RhinestoneConfig) {
   })
   const bundlerClient = getBundlerClient(config, publicClient)
   const smartAccount = await getSmartAccount(config, publicClient, chain)
-  const { factory, factoryData } = getDeployArgs(config)
+  const deployArgs = getDeployArgs(config)
+  if (!deployArgs) {
+    throw new FactoryArgsNotAvailableError()
+  }
+  const { factory, factoryData } = deployArgs
   const opHash = await bundlerClient.sendUserOperation({
     account: smartAccount,
     factory,
@@ -653,7 +665,11 @@ async function toErc6492Signature(
   if (!initCode) {
     throw new FactoryArgsNotAvailableError()
   }
-  const { factory, factoryData } = initCode
+  const deployArgs = getDeployArgs(config)
+  if (!deployArgs) {
+    throw new FactoryArgsNotAvailableError()
+  }
+  const { factory, factoryData } = deployArgs
   const magicBytes =
     '0x6492649264926492649264926492649264926492649264926492649264926492'
   return concat([

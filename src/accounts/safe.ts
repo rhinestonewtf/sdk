@@ -64,6 +64,9 @@ const SAFE_PROXY_INIT_CODE =
 
 function getDeployArgs(config: RhinestoneAccountConfig) {
   if (config.initData) {
+    if (!('factory' in config.initData)) {
+      return null
+    }
     const factoryData = decodeFunctionData({
       abi: parseAbi([
         'function createProxyWithNonce(address singleton,bytes calldata initializer,uint256 saltNonce) external payable returns (address)',
@@ -158,7 +161,11 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
 }
 
 function getAddress(config: RhinestoneAccountConfig) {
-  const { factory, implementation, salt } = getDeployArgs(config)
+  const deployArgs = getDeployArgs(config)
+  if (!deployArgs) {
+    throw new Error('Cannot derive address: deploy args not available')
+  }
+  const { factory, implementation, salt } = deployArgs
   const constructorArgs = encodeAbiParameters(
     parseAbiParameters('address singleton'),
     [implementation],
