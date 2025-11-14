@@ -28,6 +28,7 @@ import {
 import { wrapTypedDataSignature } from 'viem/experimental/erc7739'
 import {
   EoaSigningMethodNotConfiguredError,
+  FactoryArgsNotAvailableError,
   getAddress,
   getEip712Domain,
   getEip7702InitCall,
@@ -1272,8 +1273,11 @@ function getSetupOperationsAndDelegations(
       },
     }
   } else if (initCode) {
-    const to = 'factory' in initCode ? initCode.factory : '0x'
-    const data = 'factory' in initCode ? initCode.factoryData : '0x'
+    const to = 'factory' in initCode ? initCode.factory : undefined
+    const data = 'factory' in initCode ? initCode.factoryData : undefined
+    if (!to || !data) {
+      throw new FactoryArgsNotAvailableError()
+    }
     // Contract account with init code
     return {
       setupOps: [
