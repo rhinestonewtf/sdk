@@ -14,10 +14,6 @@ function getForkUrl(chain: Chain) {
   throw new Error(`Unsupported chain: ${chain.id}`)
 }
 
-/**
- * Type assertion helper that narrows a value from `T | null` to `T` after asserting it's not null.
- * Uses TypeScript's assertion signatures to enable type narrowing without additional checks.
- */
 function assertNotNull<T>(value: T | null): asserts value is T {
   expect(value).not.toBeNull()
 }
