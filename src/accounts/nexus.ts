@@ -67,6 +67,9 @@ const NEXUS_CREATION_CODE =
 
 function getDeployArgs(config: RhinestoneAccountConfig) {
   if (config.initData) {
+    if (!('factory' in config.initData)) {
+      return null
+    }
     const factoryData = decodeFunctionData({
       abi: parseAbi([
         'function createAccount(address eoaOwner,uint256 index,address[] attesters,uint8 threshold)',
@@ -218,8 +221,14 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
 }
 
 function getAddress(config: RhinestoneAccountConfig) {
-  const { factory, salt, initializationCallData, implementation } =
-    getDeployArgs(config)
+  const deployArgs = getDeployArgs(config)
+  if (!deployArgs) {
+    if (config.initData?.address) {
+      return config.initData.address
+    }
+    throw new Error('Cannot derive address: deploy args not available')
+  }
+  const { factory, salt, initializationCallData, implementation } = deployArgs
 
   const creationCode =
     factory === NEXUS_FACTORY_ADDRESS
@@ -513,7 +522,11 @@ async function signEip7702InitData(
   config: RhinestoneAccountConfig,
   eoa: Account,
 ) {
-  const { initData } = getDeployArgs(config)
+  const deployArgs = getDeployArgs(config)
+  if (!deployArgs) {
+    throw new Error('Cannot sign EIP-7702 init data: deploy args not available')
+  }
+  const { initData } = deployArgs
   if (!eoa.signTypedData) {
     throw new SigningNotSupportedForAccountError()
   }
@@ -551,7 +564,11 @@ function getEip7702InitCall(config: RhinestoneAccountConfig, signature: Hex) {
     return encodedData
   }
 
-  const { initData } = getDeployArgs(config)
+  const deployArgs = getDeployArgs(config)
+  if (!deployArgs) {
+    throw new Error('Cannot get EIP-7702 init call: deploy args not available')
+  }
+  const { initData } = deployArgs
   const encodedData = getEncodedData(initData)
   const accountFullData = concat([signature, encodedData])
   const accountInitCallData = encodeFunctionData({

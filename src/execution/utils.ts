@@ -1272,12 +1272,14 @@ function getSetupOperationsAndDelegations(
       },
     }
   } else if (initCode) {
+    const to = 'factory' in initCode ? initCode.factory : '0x'
+    const data = 'factory' in initCode ? initCode.factoryData : '0x'
     // Contract account with init code
     return {
       setupOps: [
         {
-          to: initCode.factory,
-          data: initCode.factoryData,
+          to,
+          data,
         },
       ],
     }
