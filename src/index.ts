@@ -19,6 +19,7 @@ import {
   signEip7702InitData as signEip7702InitDataInternal,
 } from './accounts'
 import { walletClientToAccount, wrapParaAccount } from './accounts/walletClient'
+import { deployAccountsForOwners } from './actions/deployment'
 import {
   getIntentStatus as getIntentStatusInternal,
   getMaxSpendableAmount as getMaxSpendableAmountInternal,
@@ -549,6 +550,8 @@ class RhinestoneSDK {
 
 export {
   RhinestoneSDK,
+  createRhinestoneAccount,
+  deployAccountsForOwners,
   walletClientToAccount,
   wrapParaAccount,
   // Registry functions
