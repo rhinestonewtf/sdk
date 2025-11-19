@@ -1,8 +1,9 @@
 import type { Chain } from 'viem'
-
 import { base } from 'viem/chains'
+import { expect } from 'vitest'
 
 function getForkUrl(chain: Chain) {
+  // @ts-ignore
   const alchemyApiKey = import.meta.env.VITE_ALCHEMY_API_KEY
   if (!alchemyApiKey) {
     throw new Error('VITE_ALCHEMY_API_KEY is not set')
@@ -13,4 +14,8 @@ function getForkUrl(chain: Chain) {
   throw new Error(`Unsupported chain: ${chain.id}`)
 }
 
-export { getForkUrl }
+function assertNotNull<T>(value: T | null): asserts value is T {
+  expect(value).not.toBeNull()
+}
+
+export { getForkUrl, assertNotNull }

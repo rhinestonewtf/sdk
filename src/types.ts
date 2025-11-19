@@ -204,12 +204,16 @@ interface RhinestoneAccountConfig {
   recovery?: Recovery
   eoa?: Account
   modules?: ModuleInput[]
-  initData?: {
-    address: Address
-    factory: Address
-    factoryData: Hex
-    intentExecutorInstalled: boolean
-  }
+  initData?:
+    | {
+        address: Address
+        factory: Address
+        factoryData: Hex
+        intentExecutorInstalled: boolean
+      }
+    | {
+        address: Address
+      }
 }
 
 interface RhinestoneSDKConfig {

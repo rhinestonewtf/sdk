@@ -6,23 +6,33 @@ import type { AccountProviderConfig, OwnerSet } from '../types'
 function experimental_getRhinestoneInitData(config: {
   account?: AccountProviderConfig
   owners?: OwnerSet
-}): {
-  address: Address
-  factory: Address
-  factoryData: Hex
-  intentExecutorInstalled: boolean
-} {
+}):
+  | {
+      address: Address
+      factory: Address
+      factoryData: Hex
+      intentExecutorInstalled: boolean
+    }
+  | {
+      address: Address
+    } {
   const initCode = getInitCode(config)
   if (!initCode) {
     throw new Error('Init code not available')
   }
-  const { factory, factoryData } = initCode
   const address = getAddress(config)
-  return {
-    address,
-    factory,
-    factoryData,
-    intentExecutorInstalled: true,
+  if ('factory' in initCode) {
+    const { factory, factoryData } = initCode
+    return {
+      address,
+      factory,
+      factoryData,
+      intentExecutorInstalled: true,
+    }
+  } else {
+    return {
+      address,
+    }
   }
 }
 
