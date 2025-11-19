@@ -362,6 +362,7 @@ type PortfolioResponse = PortfolioTokenResponse[]
 
 export type {
   Account,
+  AccountType,
   TokenConfig,
   SupportedChain,
   SettlementLayer,
