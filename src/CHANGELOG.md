@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.29
+
+### Patch Changes
+
+- a27b03a: Add support for deployAccountsForOwners
+
 ## 1.0.28
 
 ### Patch Changes
