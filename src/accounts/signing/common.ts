@@ -4,6 +4,8 @@ import {
   type Address,
   type Chain,
   concat,
+  createWalletClient,
+  custom,
   encodeAbiParameters,
   type Hex,
   pad,
@@ -210,6 +212,29 @@ async function signWithOwners<T>(
     isUserOpHash: boolean,
   ) => Promise<Hex>,
 ): Promise<Hex> {
+  async function signEcdsWithChain(
+    account: Account,
+    params: T,
+    updateV: boolean,
+    chain: Chain,
+  ): Promise<Hex> {
+    const client = account.client
+    const transport = client?.transport
+    if (transport) {
+      // Switch chain
+      const walletClient = createWalletClient({
+        chain,
+        transport: custom(transport),
+        account,
+      })
+      await walletClient.switchChain({
+        id: chain.id,
+      })
+    }
+    // Sign
+    return signingFunctions.signEcdsa(account, params, updateV)
+  }
+
   switch (signers.kind) {
     case 'ecdsa': {
       // Ownable validator uses `v` value to determine which validation mode to use
@@ -224,7 +249,7 @@ async function signWithOwners<T>(
 
       const signatures = await Promise.all(
         signers.accounts.map((account) =>
-          signingFunctions.signEcdsa(account, params, updateV),
+          signEcdsWithChain(account, params, updateV, chain),
         ),
       )
       return concat(signatures)

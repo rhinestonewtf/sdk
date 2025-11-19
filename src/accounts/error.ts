@@ -62,6 +62,19 @@ class ExistingEip7702AccountsNotSupportedError extends AccountError {
   }
 }
 
+class EoaAccountMustHaveAccountError extends AccountError {
+  constructor(params?: {
+    context?: any
+    errorType?: string
+    traceId?: string
+  }) {
+    super({
+      message: 'EOA accounts must have a signer `account` provided',
+      ...params,
+    })
+  }
+}
+
 class FactoryArgsNotAvailableError extends AccountError {
   constructor(params?: {
     context?: any
@@ -228,6 +241,7 @@ export {
   Eip712DomainNotAvailableError,
   Eip7702AccountMustHaveEoaError,
   ExistingEip7702AccountsNotSupportedError,
+  EoaAccountMustHaveAccountError,
   FactoryArgsNotAvailableError,
   SmartSessionsNotEnabledError,
   SigningNotSupportedForAccountError,
