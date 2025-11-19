@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.30
+
+### Patch Changes
+
+- 5e7d4f5: Account deployment action
+
 ## 1.0.29
 
 ### Patch Changes
