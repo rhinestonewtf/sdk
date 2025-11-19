@@ -11,6 +11,7 @@ import type { UserOperationReceipt } from 'viem/account-abstraction'
 import {
   checkAddress,
   deploy as deployInternal,
+  FactoryArgsNotAvailableError,
   getAccountProvider,
   getAddress as getAddressInternal,
   getInitCode,
@@ -115,11 +116,11 @@ interface RhinestoneAccount {
   ) => Promise<boolean>
   isDeployed: (chain: Chain) => Promise<boolean>
   setup: (chain: Chain) => Promise<boolean>
-  signEip7702InitData: () => Promise<Hex>
   getInitData(): {
     factory: Address
     factoryData: Hex
   }
+  signEip7702InitData: () => Promise<Hex>
   prepareTransaction: (
     transaction: Transaction,
   ) => Promise<PreparedTransactionData>
@@ -236,6 +237,27 @@ async function createRhinestoneAccount(
    */
   function setup(chain: Chain) {
     return setupInternal(config, chain)
+  }
+
+  /**
+   * Get the account initialization data. Used for deploying the account onchain.
+   * @returns factory address and factory data
+   */
+  function getInitData(): {
+    factory: Address
+    factoryData: Hex
+  } {
+    const initData = getInitCode(config)
+    if (!initData) {
+      throw new FactoryArgsNotAvailableError()
+    }
+    if (!('factory' in initData)) {
+      throw new FactoryArgsNotAvailableError()
+    }
+    return {
+      factory: initData.factory,
+      factoryData: initData.factoryData,
+    }
   }
 
   /**
@@ -488,23 +510,6 @@ async function createRhinestoneAccount(
       throw new Error('Provider configuration is required')
     }
     return checkERC20AllowanceInternal(tokenAddress, chain, config)
-  }
-
-  function getInitData(): {
-    factory: Address
-    factoryData: Hex
-  } {
-    const initData = getInitCode(config)
-    if (!initData) {
-      throw new Error('Init data not available')
-    }
-    if (!('factory' in initData)) {
-      throw new Error('Init data not available')
-    }
-    return {
-      factory: initData.factory,
-      factoryData: initData.factoryData,
-    }
   }
 
   return {

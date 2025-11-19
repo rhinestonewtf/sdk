@@ -51,7 +51,6 @@ function deploy(account: RhinestoneAccount): LazyCallInput {
       return {
         to: initData.factory,
         data: initData.factoryData,
-        value: 0n,
       }
     },
   }
