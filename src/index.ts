@@ -11,8 +11,10 @@ import type { UserOperationReceipt } from 'viem/account-abstraction'
 import {
   checkAddress,
   deploy as deployInternal,
+  FactoryArgsNotAvailableError,
   getAccountProvider,
   getAddress as getAddressInternal,
+  getInitCode,
   isDeployed as isDeployedInternal,
   OwnersFieldRequiredError,
   setup as setupInternal,
@@ -114,6 +116,10 @@ interface RhinestoneAccount {
   ) => Promise<boolean>
   isDeployed: (chain: Chain) => Promise<boolean>
   setup: (chain: Chain) => Promise<boolean>
+  getInitData(): {
+    factory: Address
+    factoryData: Hex
+  }
   signEip7702InitData: () => Promise<Hex>
   prepareTransaction: (
     transaction: Transaction,
@@ -231,6 +237,27 @@ async function createRhinestoneAccount(
    */
   function setup(chain: Chain) {
     return setupInternal(config, chain)
+  }
+
+  /**
+   * Get the account initialization data. Used for deploying the account onchain.
+   * @returns factory address and factory data
+   */
+  function getInitData(): {
+    factory: Address
+    factoryData: Hex
+  } {
+    const initData = getInitCode(config)
+    if (!initData) {
+      throw new FactoryArgsNotAvailableError()
+    }
+    if (!('factory' in initData)) {
+      throw new FactoryArgsNotAvailableError()
+    }
+    return {
+      factory: initData.factory,
+      factoryData: initData.factoryData,
+    }
   }
 
   /**
@@ -510,6 +537,7 @@ async function createRhinestoneAccount(
     getOwners,
     getValidators,
     checkERC20Allowance,
+    getInitData,
   }
 }
 

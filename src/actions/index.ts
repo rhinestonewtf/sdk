@@ -2,6 +2,7 @@ import {
   getModuleInstallationCalls,
   getModuleUninstallationCalls,
 } from '../accounts'
+import type { RhinestoneAccount } from '../index'
 import { type Module, toModuleTypeId } from '../modules/common'
 import type { LazyCallInput, ModuleInput } from '../types'
 
@@ -43,4 +44,16 @@ function getModule(module: ModuleInput): Module {
   }
 }
 
-export { installModule, uninstallModule }
+function deploy(account: RhinestoneAccount): LazyCallInput {
+  const initData = account.getInitData()
+  return {
+    async resolve() {
+      return {
+        to: initData.factory,
+        data: initData.factoryData,
+      }
+    },
+  }
+}
+
+export { installModule, uninstallModule, deploy }
