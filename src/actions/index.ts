@@ -1,8 +1,8 @@
-import type { RhinestoneAccount } from '..'
 import {
   getModuleInstallationCalls,
   getModuleUninstallationCalls,
 } from '../accounts'
+import type { RhinestoneAccount } from '../index'
 import { type Module, toModuleTypeId } from '../modules/common'
 import type { LazyCallInput, ModuleInput } from '../types'
 
