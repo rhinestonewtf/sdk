@@ -13,6 +13,7 @@ import {
   deploy as deployInternal,
   getAccountProvider,
   getAddress as getAddressInternal,
+  getInitCode,
   isDeployed as isDeployedInternal,
   OwnersFieldRequiredError,
   setup as setupInternal,
@@ -115,6 +116,10 @@ interface RhinestoneAccount {
   isDeployed: (chain: Chain) => Promise<boolean>
   setup: (chain: Chain) => Promise<boolean>
   signEip7702InitData: () => Promise<Hex>
+  getInitData(): {
+    factory: Address
+    factoryData: Hex
+  }
   prepareTransaction: (
     transaction: Transaction,
   ) => Promise<PreparedTransactionData>
@@ -485,6 +490,23 @@ async function createRhinestoneAccount(
     return checkERC20AllowanceInternal(tokenAddress, chain, config)
   }
 
+  function getInitData(): {
+    factory: Address
+    factoryData: Hex
+  } {
+    const initData = getInitCode(config)
+    if (!initData) {
+      throw new Error('Init data not available')
+    }
+    if (!('factory' in initData)) {
+      throw new Error('Init data not available')
+    }
+    return {
+      factory: initData.factory,
+      factoryData: initData.factoryData,
+    }
+  }
+
   return {
     config,
     deploy,
@@ -510,6 +532,7 @@ async function createRhinestoneAccount(
     getOwners,
     getValidators,
     checkERC20Allowance,
+    getInitData,
   }
 }
 
