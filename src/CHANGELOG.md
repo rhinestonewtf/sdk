@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.28
+
+### Patch Changes
+
+- 1140dbd: Allow initiate existing accounts with address only
+
 ## 1.0.27
 
 ### Patch Changes
