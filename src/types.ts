@@ -318,13 +318,21 @@ interface GuardiansSignerSet {
 
 type SignerSet = OwnerSignerSet | SessionSignerSet | GuardiansSignerSet
 
+type Sponsorship =
+  | boolean
+  | {
+      gas: boolean
+      bridging: boolean
+      swaps: boolean
+    }
+
 interface BaseTransaction {
   calls?: CallInput[]
   tokenRequests?: TokenRequest[]
   recipient?: RhinestoneAccountConfig | Address
   gasLimit?: bigint
   signers?: SignerSet
-  sponsored?: boolean
+  sponsored?: Sponsorship
   eip7702InitSignature?: Hex
   sourceAssets?: SourceAssetInput
   feeAsset?: Address | TokenSymbol
@@ -379,6 +387,7 @@ export type {
   CallInput,
   CallResolveContext,
   Call,
+  Sponsorship,
   TokenRequest,
   SourceAssetInput,
   OwnerSet,
