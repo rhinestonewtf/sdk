@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.31
+
+### Patch Changes
+
+- 53c915e: Fix error in `toViewOnlyAccount` util
+
 ## 1.0.30
 
 ### Patch Changes
