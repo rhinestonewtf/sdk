@@ -1,4 +1,5 @@
-import type { Address, Hex } from 'viem'
+import type { Account, Address, Hex } from 'viem'
+import { toAccount } from 'viem/accounts'
 import { getAddress, getInitCode } from '../accounts'
 import { getSetup as experimental_getModuleSetup } from '../modules'
 import type { AccountProviderConfig, OwnerSet } from '../types'
@@ -36,4 +37,24 @@ function experimental_getRhinestoneInitData(config: {
   }
 }
 
-export { experimental_getModuleSetup, experimental_getRhinestoneInitData }
+function toViewOnlyAccount(address: Address): Account {
+  const errorMessage = 'Signing is not supported for view-only accounts'
+  return toAccount({
+    address,
+    signMessage: async () => {
+      throw new Error(errorMessage)
+    },
+    signTypedData: async () => {
+      throw new Error(errorMessage)
+    },
+    signTransaction: async () => {
+      throw new Error(errorMessage)
+    },
+  })
+}
+
+export {
+  experimental_getModuleSetup,
+  experimental_getRhinestoneInitData,
+  toViewOnlyAccount,
+}

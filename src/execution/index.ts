@@ -21,6 +21,7 @@ import type {
   RhinestoneConfig,
   SignerSet,
   SourceAssetInput,
+  Sponsorship,
   TokenRequest,
   TokenSymbol,
   Transaction,
@@ -142,7 +143,7 @@ async function sendTransactionInternal(
     initialTokenRequests?: TokenRequest[]
     recipient?: RhinestoneAccountConfig | Address
     signers?: SignerSet
-    sponsored?: boolean
+    sponsored?: Sponsorship
     settlementLayers?: SettlementLayer[]
     sourceAssets?: SourceAssetInput
     lockFunds?: boolean
@@ -233,7 +234,7 @@ async function sendTransactionAsIntent(
   tokenRequests: TokenRequest[],
   recipient: RhinestoneAccountConfig | Address | undefined,
   signers?: SignerSet,
-  sponsored?: boolean,
+  sponsored?: Sponsorship,
   settlementLayers?: SettlementLayer[],
   sourceAssets?: SourceAssetInput,
   feeAsset?: Address | TokenSymbol,
