@@ -27,6 +27,7 @@ import {
 } from 'viem/account-abstraction'
 import { wrapTypedDataSignature } from 'viem/experimental/erc7739'
 import {
+  EoaAccountMustHaveAccountError,
   EoaSigningMethodNotConfiguredError,
   FactoryArgsNotAvailableError,
   getAddress,
@@ -734,38 +735,21 @@ async function signIntent(
   signers?: SignerSet,
 ) {
   if (config.account?.type === 'eoa') {
+    const eoa = config.eoa
+    if (!eoa) {
+      throw new EoaAccountMustHaveAccountError()
+    }
     const originSignatures: Hex[] = []
     for (const element of intentOp.elements) {
-      let digest: Hex | undefined
-      if (config.eoa?.signTypedData) {
+      if (eoa.signTypedData) {
         const typedData = getPermit2TypedData(
           element,
           BigInt(intentOp.nonce),
           BigInt(intentOp.expires),
         )
-        originSignatures.push(await config.eoa.signTypedData(typedData))
-      } else if (config.eoa?.sign) {
-        digest = getPermit2Digest(
-          element,
-          BigInt(intentOp.nonce),
-          BigInt(intentOp.expires),
-        )
-        originSignatures.push(await (config.eoa as any).sign({ hash: digest }))
-      } else if (config.eoa?.signMessage) {
-        digest = getPermit2Digest(
-          element,
-          BigInt(intentOp.nonce),
-          BigInt(intentOp.expires),
-        )
-        originSignatures.push(
-          await (config.eoa as any).signMessage({
-            message: { raw: digest },
-          }),
-        )
+        originSignatures.push(await eoa.signTypedData(typedData))
       } else {
-        throw new EoaSigningMethodNotConfiguredError(
-          'signTypedData, sign, or signMessage',
-        )
+        throw new EoaSigningMethodNotConfiguredError('signTypedData')
       }
     }
     const destinationSignature = originSignatures.at(-1) as Hex

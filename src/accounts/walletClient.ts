@@ -54,6 +54,9 @@ export function walletClientToAccount(walletClient: WalletClient): Account {
         ...transaction,
       })
     },
+    // Preserve reference to the wallet client
+    // This can be helpful to e.g. get the client's transport
+    client: walletClient,
   } as unknown as Account
 
   return account
@@ -125,6 +128,9 @@ export function wrapParaAccount(
     signAuthorization: viemAccount.signAuthorization
       ? viemAccount.signAuthorization.bind(viemAccount)
       : undefined,
+    // Preserve reference to the wallet client
+    // This can be helpful to e.g. get the client's transport
+    client: viemAccount.client,
   } as Account
 }
 
