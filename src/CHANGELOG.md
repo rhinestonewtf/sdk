@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.32
+
+### Patch Changes
+
+- d42a5ac: Sponsorship types
+
 ## 1.0.31
 
 ### Patch Changes
