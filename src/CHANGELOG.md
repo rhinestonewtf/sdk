@@ -1,5 +1,12 @@
 # @rhinestone/sdk
 
+## 1.0.33
+
+### Patch Changes
+
+- 93723a5: Switch chains during signing
+- b93ce99: Fix “max amount” estimation for undeployed accounts
+
 ## 1.0.32
 
 ### Patch Changes
