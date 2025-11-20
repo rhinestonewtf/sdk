@@ -92,6 +92,7 @@ import type {
   RhinestoneConfig,
   SignerSet,
   SourceAssetInput,
+  Sponsorship,
   TokenRequest,
   TokenSymbol,
   Transaction,
@@ -174,7 +175,7 @@ async function prepareTransaction(
     tokenRequests,
     recipient,
     accountAddress,
-    sponsored ?? false,
+    sponsored,
     eip7702InitSignature,
     settlementLayers,
     sourceAssets,
@@ -602,7 +603,7 @@ async function prepareTransactionAsIntent(
   tokenRequests: TokenRequest[],
   recipientInput: RhinestoneAccountConfig | Address | undefined,
   accountAddress: Address,
-  isSponsored: boolean,
+  sponsored: Sponsorship | undefined,
   eip7702InitSignature: Hex | undefined,
   settlementLayers: SettlementLayer[] | undefined,
   sourceAssets: SourceAssetInput | undefined,
@@ -705,11 +706,19 @@ async function prepareTransactionAsIntent(
     options: {
       topupCompact: lockFunds ?? false,
       feeToken: feeAsset,
-      sponsorSettings: {
-        gasSponsored: isSponsored,
-        bridgeFeesSponsored: isSponsored,
-        swapFeesSponsored: isSponsored,
-      },
+      sponsorSettings: sponsored
+        ? typeof sponsored === 'object'
+          ? {
+              gasSponsored: sponsored.gas,
+              bridgeFeesSponsored: sponsored.bridging,
+              swapFeesSponsored: sponsored.swaps,
+            }
+          : {
+              gasSponsored: sponsored,
+              bridgeFeesSponsored: sponsored,
+              swapFeesSponsored: sponsored,
+            }
+        : undefined,
       settlementLayers,
     },
   }
