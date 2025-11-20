@@ -38,19 +38,17 @@ function experimental_getRhinestoneInitData(config: {
 }
 
 function toViewOnlyAccount(address: Address): Account {
-  const signingError = new Error(
-    'Signing is not supported for view-only accounts',
-  )
+  const errorMessage = 'Signing is not supported for view-only accounts'
   return toAccount({
     address,
     signMessage: async () => {
-      throw signingError
+      throw new Error(errorMessage)
     },
     signTypedData: async () => {
-      throw signingError
+      throw new Error(errorMessage)
     },
     signTransaction: async () => {
-      throw signingError
+      throw new Error(errorMessage)
     },
   })
 }
