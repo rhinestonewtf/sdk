@@ -39,6 +39,7 @@ import {
 import { enableSmartSession } from './smart-session'
 import type { TransactionResult, UserOperationResult } from './utils'
 import {
+  getIntentAccount,
   getOrchestratorByChain,
   getTokenRequests,
   getValidatorAccount,
@@ -176,7 +177,6 @@ async function sendTransactionInternal(
       options.gasLimit,
       tokenRequests,
       options.recipient,
-      accountAddress,
       options.signers,
       options.sponsored,
       options.settlementLayers,
@@ -233,7 +233,6 @@ async function sendTransactionAsIntent(
   gasLimit: bigint | undefined,
   tokenRequests: TokenRequest[],
   recipient: RhinestoneAccountConfig | Address | undefined,
-  accountAddress: Address,
   signers?: SignerSet,
   sponsored?: Sponsorship,
   settlementLayers?: SettlementLayer[],
@@ -249,7 +248,6 @@ async function sendTransactionAsIntent(
     gasLimit,
     tokenRequests,
     recipient,
-    accountAddress,
     sponsored ?? false,
     undefined,
     settlementLayers,
@@ -392,15 +390,15 @@ async function getMaxSpendableAmount(
   gasUnits: bigint,
   sponsored: boolean = false,
 ): Promise<bigint> {
-  const address = getAddress(config)
   const orchestrator = getOrchestratorByChain(
     chain.id,
     config.apiKey,
     config.endpointUrl,
   )
   const tokenAddress = resolveTokenAddress(token, chain.id)
+  const account = getIntentAccount(config, undefined, undefined)
   return orchestrator.getMaxTokenAmount(
-    address,
+    account,
     chain.id,
     tokenAddress,
     gasUnits,
