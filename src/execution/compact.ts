@@ -80,8 +80,8 @@ function getCompactTypedData(intentOp: IntentOp) {
             targetChain: BigInt(element.mandate.destinationChainId),
             fillExpiry: BigInt(element.mandate.fillDeadline),
           },
-          v: element.mandate.v || 0,
-          minGas: BigInt(element.mandate.minGas || '0'),
+          v: element.mandate.v,
+          minGas: BigInt(element.mandate.minGas),
           originOps: element.mandate.preClaimOps.map((op) => ({
             to: op.to,
             value: BigInt(op.value),
