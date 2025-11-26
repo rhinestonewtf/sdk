@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.34
+
+### Patch Changes
+
+- 7f171c7: Use intent's `element` chain instead of `target` for EIP-712 signing
+
 ## 1.0.33
 
 ### Patch Changes
