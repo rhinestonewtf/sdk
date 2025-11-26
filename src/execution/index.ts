@@ -261,7 +261,6 @@ async function sendTransactionAsIntent(
   }
   const { originSignatures, destinationSignature } = await signIntent(
     config,
-    targetChain,
     intentRoute.intentOp,
     signers,
   )
