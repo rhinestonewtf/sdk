@@ -240,13 +240,10 @@ async function signTransaction(
   config: RhinestoneConfig,
   preparedTransaction: PreparedTransactionData,
 ): Promise<SignedTransactionData> {
-  const { targetChain, signers } = getTransactionParams(
-    preparedTransaction.transaction,
-  )
+  const { signers } = getTransactionParams(preparedTransaction.transaction)
   const intentRoute = preparedTransaction.intentRoute
   const { originSignatures, destinationSignature } = await signIntent(
     config,
-    targetChain,
     intentRoute.intentOp,
     signers,
   )
@@ -730,7 +727,6 @@ async function prepareTransactionAsIntent(
 
 async function signIntent(
   config: RhinestoneConfig,
-  targetChain: Chain,
   intentOp: IntentOp,
   signers?: SignerSet,
 ) {
@@ -769,7 +765,6 @@ async function signIntent(
     config,
     intentOp,
     signers,
-    targetChain,
     validator,
     isRoot,
   )
@@ -783,7 +778,6 @@ async function getIntentSignature(
   config: RhinestoneConfig,
   intentOp: IntentOp,
   signers: SignerSet | undefined,
-  targetChain: Chain,
   validator: Module,
   isRoot: boolean,
 ) {
@@ -801,7 +795,6 @@ async function getIntentSignature(
       config,
       intentOp,
       signers,
-      targetChain,
       validator,
       isRoot,
     )
@@ -813,7 +806,6 @@ async function getIntentSignature(
       config,
       intentOp,
       signers,
-      targetChain,
       validator,
       isRoot,
     )
@@ -822,7 +814,6 @@ async function getIntentSignature(
     config,
     intentOp,
     signers,
-    targetChain,
     validator,
     isRoot,
   )
@@ -836,7 +827,6 @@ async function getSingleChainOpsSignature(
   config: RhinestoneConfig,
   intentOp: IntentOp,
   signers: SignerSet | undefined,
-  targetChain: Chain,
   validator: Module,
   isRoot: boolean,
 ) {
@@ -850,13 +840,14 @@ async function getSingleChainOpsSignature(
       element,
       BigInt(intentOp.nonce),
     )
+    const chain = getChainById(typedData.domain.chainId)
     const signature = await signIntentTypedData(
       config,
       signers,
-      targetChain,
       validator,
       isRoot,
       typedData,
+      chain,
     )
     originSignatures.push(signature)
   }
@@ -871,7 +862,6 @@ async function getPermit2Signatures(
   config: RhinestoneConfig,
   intentOp: IntentOp,
   signers: SignerSet | undefined,
-  targetChain: Chain,
   validator: Module,
   isRoot: boolean,
 ) {
@@ -882,13 +872,14 @@ async function getPermit2Signatures(
       BigInt(intentOp.nonce),
       BigInt(intentOp.expires),
     )
+    const chain = getChainById(typedData.domain.chainId)
     const signature = await signIntentTypedData(
       config,
       signers,
-      targetChain,
       validator,
       isRoot,
       typedData,
+      chain,
     )
     originSignatures.push(signature)
   }
@@ -903,18 +894,18 @@ async function getCompactSignature(
   config: RhinestoneConfig,
   intentOp: IntentOp,
   signers: SignerSet | undefined,
-  targetChain: Chain,
   validator: Module,
   isRoot: boolean,
 ) {
   const typedData = getCompactTypedData(intentOp)
+  const chain = getChainById(typedData.domain.chainId)
   return await signIntentTypedData(
     config,
     signers,
-    targetChain,
     validator,
     isRoot,
     typedData,
+    chain,
   )
 }
 
@@ -924,16 +915,16 @@ async function signIntentTypedData<
 >(
   config: RhinestoneConfig,
   signers: SignerSet | undefined,
-  targetChain: Chain,
   validator: Module,
   isRoot: boolean,
   parameters: HashTypedDataParameters<typedData, primaryType>,
+  chain: Chain,
 ) {
   if (supportsEip712(validator)) {
     return await getTypedDataPackedSignature(
       config,
       signers,
-      targetChain,
+      chain,
       {
         address: validator.address,
         isRoot,
@@ -945,7 +936,7 @@ async function signIntentTypedData<
   return await getPackedSignature(
     config,
     signers,
-    targetChain,
+    chain,
     {
       address: validator.address,
       isRoot,
