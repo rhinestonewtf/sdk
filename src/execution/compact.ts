@@ -53,7 +53,7 @@ function getCompactTypedData(intentOp: IntentOp) {
     domain: {
       name: 'The Compact',
       version: '1',
-      chainId: BigInt(intentOp.elements[0].chainId),
+      chainId: Number(intentOp.elements[0].chainId),
       verifyingContract: '0x73d2dc0c21fca4ec1601895d50df7f5624f07d3f',
     },
     types: COMPACT_TYPED_DATA_TYPES,
