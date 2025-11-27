@@ -100,8 +100,8 @@ function getTypedData(
           targetChain: BigInt(mandate.destinationChainId),
           fillExpiry: BigInt(mandate.fillDeadline),
         },
-        v: mandate.v || 0,
-        minGas: BigInt(mandate.minGas || '0'),
+        v: mandate.v,
+        minGas: BigInt(mandate.minGas),
         originOps: mandate.preClaimOps.map((op) => ({
           to: op.to,
           value: BigInt(op.value),

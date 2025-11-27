@@ -1,6 +1,13 @@
 import type { Address, Hex } from 'viem'
 import type { ModuleInput } from '../types'
 
+interface ModeleSetup {
+  validators: Module[]
+  executors: Module[]
+  fallbacks: Module[]
+  hooks: Module[]
+}
+
 type ModuleTypeId =
   | typeof MODULE_TYPE_ID_VALIDATOR
   | typeof MODULE_TYPE_ID_EXECUTOR
@@ -66,4 +73,4 @@ export {
   toModuleTypeId,
   getModule,
 }
-export type { Module, ModuleType, ModuleTypeId }
+export type { Module, ModeleSetup, ModuleType, ModuleTypeId }
