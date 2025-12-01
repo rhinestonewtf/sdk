@@ -74,9 +74,7 @@ async function sendTransaction(
   transaction: Transaction,
 ) {
   const sourceChains =
-    'chain' in transaction
-      ? [transaction.chain]
-      : transaction.sourceChains || []
+    'chain' in transaction ? [transaction.chain] : transaction.sourceChains
   const targetChain =
     'chain' in transaction ? transaction.chain : transaction.targetChain
   const {
@@ -135,7 +133,7 @@ async function sendUserOperation(
 
 async function sendTransactionInternal(
   config: RhinestoneConfig,
-  sourceChains: Chain[],
+  sourceChains: Chain[] | undefined,
   targetChain: Chain,
   options: {
     callInputs?: CallInput[]
@@ -227,7 +225,7 @@ async function sendUserOperationInternal(
 
 async function sendTransactionAsIntent(
   config: RhinestoneAccountConfig,
-  sourceChains: Chain[],
+  sourceChains: Chain[] | undefined,
   targetChain: Chain,
   callInputs: CalldataInput[],
   gasLimit: bigint | undefined,

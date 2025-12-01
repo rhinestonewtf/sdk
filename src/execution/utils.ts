@@ -525,7 +525,7 @@ function getTransactionParams(transaction: Transaction) {
 }
 
 function getTokenRequests(
-  sourceChains: Chain[],
+  sourceChains: Chain[] | undefined,
   targetChain: Chain,
   initialTokenRequests: TokenRequest[] | undefined,
   settlementLayers: SettlementLayer[] | undefined,
@@ -543,7 +543,9 @@ function getTokenRequests(
   }
   const isSameChain =
     (settlementLayers?.length === 1 && settlementLayers[0] === 'SAME_CHAIN') ||
-    (sourceChains.length === 1 && sourceChains[0].id === targetChain.id)
+    (sourceChains &&
+      sourceChains.length === 1 &&
+      sourceChains[0].id === targetChain.id)
   const tokenRequests =
     !initialTokenRequests || initialTokenRequests.length === 0
       ? isSameChain
