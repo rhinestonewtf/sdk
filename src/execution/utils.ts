@@ -99,7 +99,7 @@ import type {
   Transaction,
   UserOperationTransaction,
 } from '../types'
-import { getCompactTypedData, getPermit2Digest } from './compact'
+import { getCompactTypedData } from './compact'
 import { CallsNotSupportedError, SignerNotSupportedError } from './error'
 import { getTypedData as getPermit2TypedData } from './permit2'
 import { getTypedData as getSingleChainOpsTypedData } from './singleChainOps'
