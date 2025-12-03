@@ -72,6 +72,7 @@ import {
   getAllSupportedChainsAndTokens,
   getSupportedTokens,
   getTokenAddress,
+  getTokenDecimals,
   type IntentCost,
   type IntentInput,
   type IntentOp,
@@ -585,6 +586,7 @@ export {
   // Registry functions
   getSupportedTokens,
   getTokenAddress,
+  getTokenDecimals,
   getAllSupportedChainsAndTokens,
   // Permit2 helpers
   checkERC20AllowanceDirect,
