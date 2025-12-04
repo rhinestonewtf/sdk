@@ -1,5 +1,12 @@
 # @rhinestone/sdk
 
+## 1.0.35
+
+### Patch Changes
+
+- 75b6919: Allow module address overrides for smart sessions
+- 734b0fc: Add utility to deploy V0-compatible accounts
+
 ## 1.0.34
 
 ### Patch Changes
