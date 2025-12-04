@@ -239,11 +239,15 @@ function getSmartSessionData(session: Session) {
 function getSmartSessionValidator(
   config: RhinestoneAccountConfig,
 ): Module | null {
-  if (!config.sessions) {
+  if (!config.experimental_sessions) {
+    return null
+  }
+  const { enabled, module } = config.experimental_sessions
+  if (!enabled) {
     return null
   }
   return {
-    address: SMART_SESSIONS_VALIDATOR_ADDRESS,
+    address: module ?? SMART_SESSIONS_VALIDATOR_ADDRESS,
     initData: '0x',
     deInitData: '0x',
     additionalContext: '0x',

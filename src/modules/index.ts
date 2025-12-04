@@ -54,10 +54,12 @@ function getSetup(config: RhinestoneAccountConfig): ModeleSetup {
   const fallbacks: Module[] = []
 
   // Some accounts (e.g. Safe) need a fallback method to support smart sessions
-  if (config.sessions) {
-    if (config.account && config.account.type === 'safe') {
+  if (config.experimental_sessions) {
+    const { enabled, compatibilityFallback } = config.experimental_sessions
+    if (enabled && config.account && config.account.type === 'safe') {
       fallbacks.push({
-        address: SMART_SESSION_COMPATIBILITY_FALLBACK_ADDRESS,
+        address:
+          compatibilityFallback ?? SMART_SESSION_COMPATIBILITY_FALLBACK_ADDRESS,
         initData: encodeAbiParameters(
           [
             { name: 'selector', type: 'bytes4' },

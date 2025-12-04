@@ -67,7 +67,9 @@ describe('Smart Sessions', () => {
             type: 'ecdsa',
             accounts: [accountA],
           },
-          sessions: [],
+          experimental_sessions: {
+            enabled: true,
+          },
         }),
       ).not.toBeNull()
     })
@@ -78,14 +80,9 @@ describe('Smart Sessions', () => {
           type: 'ecdsa',
           accounts: [accountA],
         },
-        sessions: [
-          {
-            owners: {
-              type: 'ecdsa',
-              accounts: [accountA],
-            },
-          },
-        ],
+        experimental_sessions: {
+          enabled: true,
+        },
       })
       expect(validator).not.toBeNull()
       expect(validator?.type).toEqual(MODULE_TYPE_ID_VALIDATOR)
