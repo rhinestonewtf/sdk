@@ -94,6 +94,7 @@ import {
   getInstallData as getSafeInstallData,
   getSessionSmartAccount as getSafeSessionSmartAccount,
   getSmartAccount as getSafeSmartAccount,
+  getV0DeployArgs as getSafeV0DeployArgs,
   packSignature as packSafeSignature,
 } from './safe'
 import { convertOwnerSetToSignerSet } from './signing/common'
@@ -147,6 +148,18 @@ function getDeployArgs(config: RhinestoneConfig) {
   }
 }
 
+function getV0DeployArgs(config: RhinestoneConfig) {
+  const account = getAccountProvider(config)
+  switch (account.type) {
+    case 'safe': {
+      return getSafeV0DeployArgs(config)
+    }
+    default: {
+      throw new Error(`Unsupported account type: ${account.type}`)
+    }
+  }
+}
+
 function getInitCode(config: RhinestoneConfig) {
   if (is7702(config)) {
     return undefined
@@ -156,6 +169,26 @@ function getInitCode(config: RhinestoneConfig) {
     return config.initData
   } else {
     const deployArgs = getDeployArgs(config)
+    if (!deployArgs) {
+      throw new FactoryArgsNotAvailableError()
+    }
+    const { factory, factoryData } = deployArgs
+    return {
+      factory,
+      factoryData,
+    }
+  }
+}
+
+function getV0InitCode(config: RhinestoneConfig) {
+  if (is7702(config)) {
+    return undefined
+  } else if (config.account?.type === 'eoa') {
+    return undefined
+  } else if (config.initData) {
+    return config.initData
+  } else {
+    const deployArgs = getV0DeployArgs(config)
     if (!deployArgs) {
       throw new FactoryArgsNotAvailableError()
     }
@@ -912,6 +945,7 @@ export {
   checkAddress,
   getAccountProvider,
   getInitCode,
+  getV0InitCode,
   signEip7702InitData,
   getEip7702InitCall,
   is7702,

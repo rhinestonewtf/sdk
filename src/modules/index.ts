@@ -10,7 +10,10 @@ import {
 } from 'viem/chains'
 
 import type { RhinestoneAccountConfig, RhinestoneConfig } from '../types'
-
+import {
+  INTENT_EXECUTOR_ADDRESS,
+  INTENT_EXECUTOR_ADDRESS_DEV,
+} from './chain-abstraction'
 import {
   getModule,
   MODULE_TYPE_EXECUTOR,
@@ -19,26 +22,15 @@ import {
   MODULE_TYPE_ID_EXECUTOR,
   MODULE_TYPE_ID_FALLBACK,
   MODULE_TYPE_VALIDATOR,
+  type ModeleSetup,
   type Module,
 } from './common'
-import {
-  HOOK_ADDRESS,
-  INTENT_EXECUTOR_ADDRESS,
-  INTENT_EXECUTOR_ADDRESS_DEV,
-} from './omni-account'
 import { getOwners, getValidators } from './read'
 import { getOwnerValidator, getSmartSessionValidator } from './validators'
 import { getSocialRecoveryValidator } from './validators/core'
 
 const SMART_SESSION_COMPATIBILITY_FALLBACK_ADDRESS: Address =
   '0x000000000052e9685932845660777DF43C2dC496'
-
-interface ModeleSetup {
-  validators: Module[]
-  executors: Module[]
-  fallbacks: Module[]
-  hooks: Module[]
-}
 
 function getSetup(config: RhinestoneAccountConfig): ModeleSetup {
   const ownerValidator = getOwnerValidator(config)
@@ -142,7 +134,6 @@ function isRip7212SupportedNetwork(chain: Chain) {
 }
 
 export {
-  HOOK_ADDRESS,
   getSetup,
   getOwnerValidator,
   getOwners,
