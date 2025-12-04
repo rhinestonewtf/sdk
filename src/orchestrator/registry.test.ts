@@ -7,6 +7,7 @@ import {
   getSupportedChainIds,
   getSupportedTokens,
   getTokenAddress,
+  getTokenDecimals,
   getTokenSymbol,
   getWethAddress,
   isTestnet,
@@ -74,6 +75,24 @@ describe('Registry', () => {
     test('throws error for unsupported chain', () => {
       expect(() =>
         getTokenAddress(TOKEN_SYMBOLS.USDC, UNSUPPORTED_CHAIN_ID),
+      ).toThrow(`Unsupported chain ${UNSUPPORTED_CHAIN_ID}`)
+    })
+  })
+
+  describe('getTokenDecimals', () => {
+    test('returns 18 for ETH', () => {
+      const address = getTokenDecimals(TOKEN_SYMBOLS.ETH, arbitrum.id)
+      expect(address).toBe(18)
+    })
+
+    test('returns correct decimals for token symbol', () => {
+      const address = getTokenDecimals(TOKEN_SYMBOLS.USDC, arbitrum.id)
+      expect(address).toBe(6)
+    })
+
+    test('throws error for unsupported chain', () => {
+      expect(() =>
+        getTokenDecimals(TOKEN_SYMBOLS.USDC, UNSUPPORTED_CHAIN_ID),
       ).toThrow(`Unsupported chain ${UNSUPPORTED_CHAIN_ID}`)
     })
   })

@@ -61,6 +61,20 @@ function getTokenAddress(tokenSymbol: TokenSymbol, chainId: number): Address {
   return token.address
 }
 
+function getTokenDecimals(tokenSymbol: TokenSymbol, chainId: number): number {
+  const chainEntry = getChainEntry(chainId)
+  if (!chainEntry) {
+    throw new UnsupportedChainError(chainId)
+  }
+
+  const token = chainEntry.tokens.find((t) => t.symbol === tokenSymbol)
+  if (!token) {
+    throw new UnsupportedTokenError(tokenSymbol, chainId)
+  }
+
+  return token.decimals
+}
+
 function getChainById(chainId: number): Chain {
   const chain = chains.find((chain) => chain.id === chainId)
   if (!chain) {
@@ -133,6 +147,7 @@ function getAllSupportedChainsAndTokens(): {
 export {
   getTokenSymbol,
   getTokenAddress,
+  getTokenDecimals,
   getWethAddress,
   getChainById,
   getSupportedTokens,
