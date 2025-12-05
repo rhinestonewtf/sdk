@@ -20,6 +20,9 @@ function createTransport(chain: Chain, provider?: ProviderConfig): Transport {
       const customUrl = getCustomUrl(chain.id, provider.urls)
       return http(customUrl)
     }
+    case 'factory': {
+      return provider.getTransport(chain.id)
+    }
   }
 }
 
