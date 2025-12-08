@@ -75,6 +75,7 @@ import {
   getChainById,
   getTokenAddress,
   isTestnet,
+  isTokenAddressSupported,
   resolveTokenAddress,
 } from '../orchestrator/registry'
 import type {
@@ -497,6 +498,7 @@ function getTransactionParams(transaction: Transaction) {
   const sourceAssets = transaction.sourceAssets
   const feeAsset = transaction.feeAsset
   const lockFunds = transaction.lockFunds
+  const allowArbitraryTokens = transaction.allowArbitraryTokens
   const account = transaction.experimental_accountOverride
   const recipient = transaction.recipient
 
@@ -505,6 +507,7 @@ function getTransactionParams(transaction: Transaction) {
     targetChain,
     initialTokenRequests,
     settlementLayers,
+    allowArbitraryTokens,
   )
 
   return {
@@ -529,11 +532,13 @@ function getTokenRequests(
   targetChain: Chain,
   initialTokenRequests: TokenRequest[] | undefined,
   settlementLayers: SettlementLayer[] | undefined,
+  allowArbitraryTokens = false,
 ) {
   if (initialTokenRequests) {
     validateTokenSymbols(
       targetChain,
       initialTokenRequests.map((tokenRequest) => tokenRequest.address),
+      allowArbitraryTokens,
     )
   }
   // Across requires passing some value to repay the solvers
@@ -1279,6 +1284,7 @@ function getSetupOperationsAndDelegations(
 function validateTokenSymbols(
   chain: Chain,
   tokenAddressOrSymbols: (Address | TokenSymbol)[],
+  allowArbitraryTokens = false,
 ) {
   function validateTokenSymbol(
     chain: Chain,
@@ -1286,7 +1292,10 @@ function validateTokenSymbols(
   ) {
     // Address
     if (isAddress(addressOrSymbol, { strict: false })) {
-      return true
+      if (allowArbitraryTokens) {
+        return true
+      }
+      return isTokenAddressSupported(addressOrSymbol, chain.id)
     }
     // Token symbol
     const address = getTokenAddress(addressOrSymbol, chain.id)

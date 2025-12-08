@@ -342,6 +342,7 @@ interface BaseTransaction {
   feeAsset?: Address | TokenSymbol
   settlementLayers?: SettlementLayer[]
   lockFunds?: boolean
+  allowArbitraryTokens?: boolean
   experimental_accountOverride?: {
     setupOps?: {
       to: Address
