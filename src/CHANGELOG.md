@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.36
+
+### Patch Changes
+
+- 4d9900f: Expose more modules
+
 ## 1.0.35
 
 ### Patch Changes
