@@ -200,7 +200,11 @@ interface ModuleInput {
 interface RhinestoneAccountConfig {
   account?: AccountProviderConfig
   owners?: OwnerSet
-  sessions?: Session[]
+  experimental_sessions?: {
+    enabled: boolean
+    module?: Address
+    compatibilityFallback?: Address
+  }
   recovery?: Recovery
   eoa?: Account
   modules?: ModuleInput[]

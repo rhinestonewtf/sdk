@@ -72,15 +72,9 @@ describe('Modules', () => {
           accounts: [accountA],
           threshold: 1,
         },
-        sessions: [
-          {
-            owners: {
-              type: 'ecdsa' as const,
-              accounts: [accountB],
-              threshold: 1,
-            },
-          },
-        ],
+        experimental_sessions: {
+          enabled: true,
+        },
         account: {
           type: 'safe' as const,
         },

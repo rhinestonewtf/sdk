@@ -1,6 +1,6 @@
 {
   "name": "@rhinestone/sdk",
-  "version": "1.0.34",
+  "version": "1.0.36",
   "description": "End-to-end chain abstraction and modularity toolkit",
   "author": {
     "name": "Rhinestone",
@@ -109,6 +109,31 @@
       "types": "./dist/src/utils/index.d.ts",
       "import": "./dist/src/utils/index.js",
       "require": "./dist/src/utils/index.js"
+    },
+    "./dist/src/orchestrator": {
+      "types": "./dist/src/orchestrator/index.d.ts",
+      "import": "./dist/src/orchestrator/index.js",
+      "require": "./dist/src/orchestrator/index.js"
+    },
+    "./dist/src/orchestrator/types": {
+      "types": "./dist/src/orchestrator/types.d.ts",
+      "import": "./dist/src/orchestrator/types.js",
+      "require": "./dist/src/orchestrator/types.js"
+    },
+    "./dist/src/execution/compact": {
+      "types": "./dist/src/execution/compact.d.ts",
+      "import": "./dist/src/execution/compact.js",
+      "require": "./dist/src/execution/compact.js"
+    },
+    "./dist/src/execution/permit2": {
+      "types": "./dist/src/execution/permit2.d.ts",
+      "import": "./dist/src/execution/permit2.js",
+      "require": "./dist/src/execution/permit2.js"
+    },
+    "./dist/src/execution/singleChainOps": {
+      "types": "./dist/src/execution/singleChainOps.d.ts",
+      "import": "./dist/src/execution/singleChainOps.js",
+      "require": "./dist/src/execution/singleChainOps.js"
     }
   },
   "files": [

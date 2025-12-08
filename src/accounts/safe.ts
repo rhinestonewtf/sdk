@@ -28,6 +28,10 @@ import {
 import { getSetup as getModuleSetup } from '../modules'
 import type { Module } from '../modules/common'
 import {
+  getV0Attesters,
+  getV0Setup as getV0ModuleSetup,
+} from '../modules/legacy'
+import {
   encodeSmartSessionSignature,
   getMockSignature,
   getPermissionId,
@@ -48,10 +52,14 @@ import {
 } from './error'
 import { encode7579Calls, getAccountNonce, type ValidatorConfig } from './utils'
 
-const SAFE_7579_LAUNCHPAD_ADDRESS: Address =
+const SAFE_7579_LAUNCHPAD_V2_ADDRESS: Address =
   '0x75798463024Bda64D83c94A64Bc7D7eaB41300eF'
-const SAFE_7579_ADAPTER_ADDRESS: Address =
+const SAFE_7579_ADAPTER_V2_ADDRESS: Address =
   '0x7579f2AD53b01c3D8779Fe17928e0D48885B0003'
+const SAFE_7579_LAUNCHPAD_V1_ADDRESS: Address =
+  '0x7579011aB74c46090561ea277Ba79D510c6C00ff'
+const SAFE_7579_ADAPTER_V1_ADDRESS: Address =
+  '0x7579ee8307284f293b1927136486880611f20002'
 const SAFE_SINGLETON_ADDRESS: Address =
   '0x29fcb43b46531bca003ddc8fcb67ffe91900c762'
 const SAFE_PROXY_FACTORY_ADDRESS: Address =
@@ -104,6 +112,25 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
     ...moduleSetup.fallbacks,
     ...moduleSetup.hooks,
   ]
+  const adapter = SAFE_7579_ADAPTER_V2_ADDRESS
+  const launchpad = SAFE_7579_LAUNCHPAD_V2_ADDRESS
+  const calldata = encodeFunctionData({
+    abi: parseAbi([
+      'struct ModuleInit {address module;bytes initData;uint256 moduleType}',
+      'function addSafe7579(address safe7579,ModuleInit[] calldata modules,address[] calldata attesters,uint8 threshold) external',
+    ]),
+    functionName: 'addSafe7579',
+    args: [
+      adapter,
+      modules.map((m) => ({
+        module: m.address,
+        initData: m.initData,
+        moduleType: m.type,
+      })),
+      [],
+      0,
+    ],
+  })
   const initData = encodeFunctionData({
     abi: parseAbi([
       'function setup(address[] calldata _owners,uint256 _threshold,address to,bytes calldata data,address fallbackHandler,address paymentToken,uint256 payment, address paymentReceiver) external',
@@ -112,25 +139,91 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
     args: [
       owners,
       threshold,
-      SAFE_7579_LAUNCHPAD_ADDRESS,
-      encodeFunctionData({
-        abi: parseAbi([
-          'struct ModuleInit {address module;bytes initData;uint256 moduleType}',
-          'function addSafe7579(address safe7579,ModuleInit[] calldata modules,address[] calldata attesters,uint8 threshold) external',
-        ]),
-        functionName: 'addSafe7579',
-        args: [
-          SAFE_7579_ADAPTER_ADDRESS,
-          modules.map((m) => ({
-            module: m.address,
-            initData: m.initData,
-            moduleType: m.type,
-          })),
-          [],
-          0,
-        ],
-      }),
-      SAFE_7579_ADAPTER_ADDRESS,
+      launchpad,
+      calldata,
+      adapter,
+      zeroAddress,
+      BigInt(0),
+      zeroAddress,
+    ],
+  })
+
+  const account = config.account
+  const saltNonce = (account as SafeAccount)?.nonce ?? 0n
+  const factoryData = encodeFunctionData({
+    abi: parseAbi([
+      'function createProxyWithNonce(address singleton,bytes calldata initializer,uint256 saltNonce) external payable returns (address)',
+    ]),
+    functionName: 'createProxyWithNonce',
+    args: [SAFE_SINGLETON_ADDRESS, initData, saltNonce],
+  })
+
+  const salt = keccak256(
+    encodePacked(['bytes32', 'uint256'], [keccak256(initData), saltNonce]),
+  )
+
+  return {
+    factory: SAFE_PROXY_FACTORY_ADDRESS,
+    factoryData,
+    salt,
+    implementation: SAFE_SINGLETON_ADDRESS,
+    initializationCallData: null,
+  }
+}
+
+function getV0DeployArgs(config: RhinestoneAccountConfig) {
+  if (config.initData) {
+    throw new AccountConfigurationNotSupportedError(
+      'Custom V0 accounts are not supported',
+      'safe',
+    )
+  }
+
+  const owners = getOwners(config)
+  const threshold = getThreshold(config)
+  const attesters = getV0Attesters()
+  const moduleSetup = getV0ModuleSetup(config)
+  const adapter = SAFE_7579_ADAPTER_V1_ADDRESS
+  const launchpad = SAFE_7579_LAUNCHPAD_V1_ADDRESS
+  const calldata = encodeFunctionData({
+    abi: parseAbi([
+      'struct ModuleInit {address module;bytes initData;}',
+      'function addSafe7579(address safe7579,ModuleInit[] calldata validators,ModuleInit[] calldata executors,ModuleInit[] calldata fallbacks, ModuleInit[] calldata hooks,address[] calldata attesters,uint8 threshold) external',
+    ]),
+    functionName: 'addSafe7579',
+    args: [
+      adapter,
+      moduleSetup.validators.map((v) => ({
+        module: v.address,
+        initData: v.initData,
+      })),
+      moduleSetup.executors.map((e) => ({
+        module: e.address,
+        initData: e.initData,
+      })),
+      moduleSetup.fallbacks.map((f) => ({
+        module: f.address,
+        initData: f.initData,
+      })),
+      moduleSetup.hooks.map((h) => ({
+        module: h.address,
+        initData: h.initData,
+      })),
+      attesters.addresses,
+      attesters.threshold,
+    ],
+  })
+  const initData = encodeFunctionData({
+    abi: parseAbi([
+      'function setup(address[] calldata _owners,uint256 _threshold,address to,bytes calldata data,address fallbackHandler,address paymentToken,uint256 payment, address paymentReceiver) external',
+    ]),
+    functionName: 'setup',
+    args: [
+      owners,
+      threshold,
+      launchpad,
+      calldata,
+      adapter,
       zeroAddress,
       BigInt(0),
       zeroAddress,
@@ -431,6 +524,7 @@ export {
   getAddress,
   packSignature,
   getDeployArgs,
+  getV0DeployArgs,
   getSmartAccount,
   getSessionSmartAccount,
   getGuardianSmartAccount,

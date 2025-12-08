@@ -1,8 +1,34 @@
 import type { Account, Address, Hex } from 'viem'
 import { toAccount } from 'viem/accounts'
-import { getAddress, getInitCode } from '../accounts'
+import { getAddress, getInitCode, getV0InitCode } from '../accounts'
 import { getSetup as experimental_getModuleSetup } from '../modules'
 import type { AccountProviderConfig, OwnerSet } from '../types'
+
+function experimental_getV0InitData(config: {
+  account?: AccountProviderConfig
+  owners?: OwnerSet
+}): {
+  address: Address
+  factory: Address
+  factoryData: Hex
+  intentExecutorInstalled: boolean
+} {
+  const initCode = getV0InitCode(config)
+  if (!initCode) {
+    throw new Error('Init code not available')
+  }
+  if (!('factory' in initCode)) {
+    throw new Error('Factory not available')
+  }
+  const { factory, factoryData } = initCode
+  const address = getAddress(config)
+  return {
+    address,
+    factory,
+    factoryData,
+    intentExecutorInstalled: true,
+  }
+}
 
 function experimental_getRhinestoneInitData(config: {
   account?: AccountProviderConfig
@@ -54,6 +80,7 @@ function toViewOnlyAccount(address: Address): Account {
 }
 
 export {
+  experimental_getV0InitData,
   experimental_getModuleSetup,
   experimental_getRhinestoneInitData,
   toViewOnlyAccount,
