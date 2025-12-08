@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.37
+
+### Patch Changes
+
+- e9b8795: add token decimals helper
+
 ## 1.0.36
 
 ### Patch Changes
