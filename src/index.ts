@@ -127,9 +127,7 @@ interface RhinestoneAccount {
   prepareTransaction: (
     transaction: Transaction,
   ) => Promise<PreparedTransactionData>
-  getTransactionMessages: (
-    preparedTransaction: PreparedTransactionData,
-  ) => {
+  getTransactionMessages: (preparedTransaction: PreparedTransactionData) => {
     origin: TypedDataDefinition[]
     destination: TypedDataDefinition
   }
@@ -291,7 +289,9 @@ async function createRhinestoneAccount(
    * @param preparedTransaction Prepared transaction data
    * @see {@link prepareTransaction} to prepare the transaction data for signing
    */
-  function getTransactionMessages(preparedTransaction: PreparedTransactionData) {
+  function getTransactionMessages(
+    preparedTransaction: PreparedTransactionData,
+  ) {
     return getTransactionMessagesInternal(config, preparedTransaction)
   }
 
