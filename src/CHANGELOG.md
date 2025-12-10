@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.38
+
+### Patch Changes
+
+- ca31bf8: add gnosis and sonic
+
 ## 1.0.37
 
 ### Patch Changes
