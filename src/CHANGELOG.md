@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.39
+
+### Patch Changes
+
+- 144256a: Add `getTransactionMessages` to expose the typed data signed by the user.
+
 ## 1.0.38
 
 ### Patch Changes
