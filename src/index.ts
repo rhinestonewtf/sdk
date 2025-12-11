@@ -6,6 +6,7 @@ import type {
   SignableMessage,
   SignedAuthorizationList,
   TypedData,
+  TypedDataDefinition,
 } from 'viem'
 import type { UserOperationReceipt } from 'viem/account-abstraction'
 import {
@@ -48,6 +49,7 @@ import {
   type SessionDetails,
 } from './execution/smart-session'
 import {
+  getTransactionMessages as getTransactionMessagesInternal,
   type IntentRoute,
   type PreparedTransactionData,
   type PreparedUserOperationData,
@@ -125,6 +127,10 @@ interface RhinestoneAccount {
   prepareTransaction: (
     transaction: Transaction,
   ) => Promise<PreparedTransactionData>
+  getTransactionMessages: (preparedTransaction: PreparedTransactionData) => {
+    origin: TypedDataDefinition[]
+    destination: TypedDataDefinition
+  }
   signTransaction: (
     preparedTransaction: PreparedTransactionData,
   ) => Promise<SignedTransactionData>
@@ -276,6 +282,17 @@ async function createRhinestoneAccount(
    */
   function prepareTransaction(transaction: Transaction) {
     return prepareTransactionInternal(config, transaction)
+  }
+
+  /**
+   * Get the transaction typed data message to sign
+   * @param preparedTransaction Prepared transaction data
+   * @see {@link prepareTransaction} to prepare the transaction data for signing
+   */
+  function getTransactionMessages(
+    preparedTransaction: PreparedTransactionData,
+  ) {
+    return getTransactionMessagesInternal(config, preparedTransaction)
   }
 
   /**
@@ -520,6 +537,7 @@ async function createRhinestoneAccount(
     setup,
     signEip7702InitData,
     prepareTransaction,
+    getTransactionMessages,
     signTransaction,
     signAuthorizations,
     signMessage,

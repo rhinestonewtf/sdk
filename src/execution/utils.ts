@@ -16,6 +16,7 @@ import {
   type SignedAuthorization,
   type SignedAuthorizationList,
   type TypedData,
+  type TypedDataDefinition,
   type TypedDataDomain,
   toHex,
   zeroAddress,
@@ -234,6 +235,16 @@ async function resolveCallInputs(
     }
   }
   return resolved
+}
+
+function getTransactionMessages(
+  config: RhinestoneConfig,
+  preparedTransaction: PreparedTransactionData,
+): {
+  origin: TypedDataDefinition[]
+  destination: TypedDataDefinition
+} {
+  return getIntentMessages(config, preparedTransaction.intentRoute.intentOp)
 }
 
 async function signTransaction(
@@ -732,20 +743,17 @@ async function signIntent(
   intentOp: IntentOp,
   signers?: SignerSet,
 ) {
+  const { origin } = getIntentMessages(config, intentOp)
   if (config.account?.type === 'eoa') {
     const eoa = config.eoa
     if (!eoa) {
       throw new EoaAccountMustHaveAccountError()
     }
     const originSignatures: Hex[] = []
-    for (const element of intentOp.elements) {
+    for (const typedData of origin) {
       if (eoa.signTypedData) {
-        const typedData = getPermit2TypedData(
-          element,
-          BigInt(intentOp.nonce),
-          BigInt(intentOp.expires),
-        )
-        originSignatures.push(await eoa.signTypedData(typedData))
+        const signature = await eoa.signTypedData(typedData)
+        originSignatures.push(signature)
       } else {
         throw new EoaSigningMethodNotConfiguredError('signTypedData')
       }
@@ -763,152 +771,67 @@ async function signIntent(
   }
   const ownerValidator = getOwnerValidator(config)
   const isRoot = validator.address === ownerValidator.address
-  const signatures = await getIntentSignature(
-    config,
-    intentOp,
-    signers,
-    validator,
-    isRoot,
-  )
+
+  const originSignatures: Hex[] = []
+  for (const typedData of origin) {
+    const chain = getChainById(typedData.domain?.chainId as number)
+    const signature = await signIntentTypedData(
+      config,
+      signers,
+      validator,
+      isRoot,
+      typedData,
+      chain,
+    )
+    originSignatures.push(signature)
+  }
+  const destinationSignature = originSignatures.at(-1) as Hex
   return {
-    originSignatures: signatures.originSignatures,
-    destinationSignature: signatures.destinationSignature,
+    originSignatures,
+    destinationSignature,
   }
 }
 
-async function getIntentSignature(
-  config: RhinestoneConfig,
-  intentOp: IntentOp,
-  signers: SignerSet | undefined,
-  validator: Module,
-  isRoot: boolean,
-) {
+function getIntentMessages(config: RhinestoneConfig, intentOp: IntentOp) {
+  const address = getAddress(config)
+  const intentExecutor = getIntentExecutor(config)
+
   const withPermit2 = intentOp.elements.some(
     (element) =>
-      element.mandate.qualifier.settlementContext?.fundingMethod === 'PERMIT2',
+      element.mandate.qualifier.settlementContext.fundingMethod === 'PERMIT2',
   )
   const withIntentExecutorOps = intentOp.elements.some(
     (element) =>
       element.mandate.qualifier.settlementContext.settlementLayer ===
       'INTENT_EXECUTOR',
   )
-  if (withIntentExecutorOps) {
-    const signature = await getSingleChainOpsSignature(
-      config,
-      intentOp,
-      signers,
-      validator,
-      isRoot,
-    )
-    return signature
-  }
-
-  if (withPermit2) {
-    return await getPermit2Signatures(
-      config,
-      intentOp,
-      signers,
-      validator,
-      isRoot,
-    )
-  }
-  const signature = await getCompactSignature(
-    config,
-    intentOp,
-    signers,
-    validator,
-    isRoot,
-  )
-  return {
-    originSignatures: Array(intentOp.elements.length).fill(signature),
-    destinationSignature: signature,
-  }
-}
-
-async function getSingleChainOpsSignature(
-  config: RhinestoneConfig,
-  intentOp: IntentOp,
-  signers: SignerSet | undefined,
-  validator: Module,
-  isRoot: boolean,
-) {
-  const address = getAddress(config)
-  const intentExecutor = getIntentExecutor(config)
-  const originSignatures: Hex[] = []
+  const origin: TypedDataDefinition[] = []
   for (const element of intentOp.elements) {
-    const typedData = getSingleChainOpsTypedData(
-      address,
-      intentExecutor.address,
-      element,
-      BigInt(intentOp.nonce),
-    )
-    const chain = getChainById(typedData.domain.chainId)
-    const signature = await signIntentTypedData(
-      config,
-      signers,
-      validator,
-      isRoot,
-      typedData,
-      chain,
-    )
-    originSignatures.push(signature)
+    if (withIntentExecutorOps) {
+      const typedData = getSingleChainOpsTypedData(
+        address,
+        intentExecutor.address,
+        element,
+        BigInt(intentOp.nonce),
+      )
+      origin.push(typedData)
+    } else if (withPermit2) {
+      const typedData = getPermit2TypedData(
+        element,
+        BigInt(intentOp.nonce),
+        BigInt(intentOp.expires),
+      )
+      origin.push(typedData)
+    } else {
+      const typedData = getCompactTypedData(intentOp)
+      origin.push(typedData)
+    }
   }
-  const destinationSignature = originSignatures.at(-1) as Hex
+  const destination = origin.at(-1) as TypedDataDefinition
   return {
-    originSignatures,
-    destinationSignature,
+    origin,
+    destination,
   }
-}
-
-async function getPermit2Signatures(
-  config: RhinestoneConfig,
-  intentOp: IntentOp,
-  signers: SignerSet | undefined,
-  validator: Module,
-  isRoot: boolean,
-) {
-  const originSignatures: Hex[] = []
-  for (const element of intentOp.elements) {
-    const typedData = getPermit2TypedData(
-      element,
-      BigInt(intentOp.nonce),
-      BigInt(intentOp.expires),
-    )
-    const chain = getChainById(typedData.domain.chainId)
-    const signature = await signIntentTypedData(
-      config,
-      signers,
-      validator,
-      isRoot,
-      typedData,
-      chain,
-    )
-    originSignatures.push(signature)
-  }
-  const destinationSignature = originSignatures.at(-1) as Hex
-  return {
-    originSignatures,
-    destinationSignature,
-  }
-}
-
-async function getCompactSignature(
-  config: RhinestoneConfig,
-  intentOp: IntentOp,
-  signers: SignerSet | undefined,
-  validator: Module,
-  isRoot: boolean,
-) {
-  const typedData = getCompactTypedData(intentOp)
-  const chain = getChainById(typedData.domain.chainId)
-  return await signIntentTypedData(
-    config,
-    signers,
-    validator,
-    isRoot,
-    typedData,
-    chain,
-  )
 }
 
 async function signIntentTypedData<
@@ -1302,6 +1225,7 @@ function validateTokenSymbols(
 
 export {
   prepareTransaction,
+  getTransactionMessages,
   signTransaction,
   signAuthorizations,
   signAuthorizationsInternal,
