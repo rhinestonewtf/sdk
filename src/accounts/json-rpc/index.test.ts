@@ -1,6 +1,6 @@
+import { http } from 'viem'
 import { base, mainnet } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
-
 import { createTransport } from './index'
 
 describe('JSON-RPC', () => {
@@ -21,6 +21,16 @@ describe('JSON-RPC', () => {
         },
       })
       expect(transport).toBeDefined()
+    })
+
+    test('Factory', () => {
+      const viemTransport = http('https://my-rpc.example.com')
+      const transport = createTransport(mainnet, {
+        type: 'factory',
+        getTransport: (_chainId: number) => viemTransport,
+      })
+      expect(transport).toBeDefined()
+      expect(transport).toBe(viemTransport)
     })
 
     test('Custom throws error when URL not configured for chain', () => {
