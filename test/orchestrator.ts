@@ -1,3 +1,4 @@
+import { zeroHash } from 'viem'
 import { vi } from 'vitest'
 
 export function createOrchestratorMock() {
@@ -52,16 +53,18 @@ export function createOrchestratorMock() {
               ],
               destinationChainId: '8453',
               fillDeadline: '1751908044',
-              destinationOps: [
-                {
-                  to: '0xd8da6bf26964af9d7eed9e03e53415d37aa96045',
-                  value: '3',
-                  data: '0x',
-                },
-              ],
-              v: 27,
+              destinationOps: {
+                vt: '0x0203000000000000000000000000000000000000000000000000000000000000',
+                ops: [
+                  {
+                    to: '0xd8da6bf26964af9d7eed9e03e53415d37aa96045',
+                    value: '3',
+                    data: '0x',
+                  },
+                ],
+              },
               minGas: 1000000000000000000n,
-              preClaimOps: [],
+              preClaimOps: { vt: zeroHash, ops: [] },
               qualifier: {
                 settlementContext: {
                   settlementLayer: 'SAME_CHAIN',
