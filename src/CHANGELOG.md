@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.40
+
+### Patch Changes
+
+- f391e91: Support existing Nexus accounts created with SDK V1
+
 ## 1.0.39
 
 ### Patch Changes
