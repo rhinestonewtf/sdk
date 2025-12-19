@@ -45,10 +45,6 @@ import {
   signPermit2Sequential,
 } from './execution/permit2'
 import {
-  getSessionDetails as getSessionDetailsInternal,
-  type SessionDetails,
-} from './execution/smart-session'
-import {
   getTransactionMessages as getTransactionMessagesInternal,
   type IntentRoute,
   type PreparedTransactionData,
@@ -66,6 +62,7 @@ import {
   submitUserOperation as submitUserOperationInternal,
 } from './execution/utils'
 import {
+  experimental_getSessionDetails,
   getOwners as getOwnersInternal,
   getValidators as getValidatorsInternal,
 } from './modules'
@@ -184,12 +181,12 @@ interface RhinestoneAccount {
     gasUnits: bigint,
     sponsored?: boolean,
   ) => Promise<bigint>
-  getSessionDetails: (
-    sessions: Session[],
-    sessionIndex: number,
-    initialNonces?: bigint[],
-    signature?: Hex,
-  ) => Promise<SessionDetails>
+  // getSessionDetails: (
+  //   sessions: Session[],
+  //   sessionIndex: number,
+  //   initialNonces?: bigint[],
+  //   signature?: Hex,
+  // ) => Promise<SessionDetails>
   getOwners: (chain: Chain) => Promise<{
     accounts: Address[]
     threshold: number
@@ -502,20 +499,20 @@ async function createRhinestoneAccount(
     return getValidatorsInternal(accountType, account, chain, config.provider)
   }
 
-  function getSessionDetails(
-    sessions: Session[],
-    sessionIndex: number,
-    initialNonces?: bigint[],
-    signature?: Hex,
-  ) {
-    return getSessionDetailsInternal(
-      config,
-      sessions,
-      sessionIndex,
-      initialNonces,
-      signature,
-    )
-  }
+  // function getSessionDetails(
+  //   sessions: Session[],
+  //   sessionIndex: number,
+  //   initialNonces?: bigint[],
+  //   signature?: Hex,
+  // ) {
+  //   return getSessionDetailsInternal(
+  //     config,
+  //     sessions,
+  //     sessionIndex,
+  //     initialNonces,
+  //     signature,
+  //   )
+  // }
 
   /**
    * Check ERC20 allowance for the account owner and token (using Permit2 as spender)
@@ -552,7 +549,6 @@ async function createRhinestoneAccount(
     getAddress,
     getPortfolio,
     getMaxSpendableAmount,
-    getSessionDetails,
     getOwners,
     getValidators,
     checkERC20Allowance,
@@ -612,6 +608,8 @@ export {
   // Multi-chain permit2 signing
   signPermit2Batch,
   signPermit2Sequential,
+  // Smart sessions
+  experimental_getSessionDetails,
 }
 export type {
   RhinestoneAccount,

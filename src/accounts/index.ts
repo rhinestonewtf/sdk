@@ -21,21 +21,15 @@ import {
   type UserOperationResult,
   waitForExecution,
 } from '../execution'
-import { enableSmartSession } from '../execution/smart-session'
 import { getIntentExecutor, getSetup } from '../modules'
 import type { Module } from '../modules/common'
-import {
-  getOwnerValidator,
-  getSmartSessionValidator,
-} from '../modules/validators'
+import { getOwnerValidator } from '../modules/validators'
 import { getSocialRecoveryValidator } from '../modules/validators/core'
-import type { EnableSessionData } from '../modules/validators/smart-sessions'
 import type {
   AccountProviderConfig,
   Call,
   OwnerSet,
   RhinestoneConfig,
-  Session,
   SignerSet,
 } from '../types'
 import {
@@ -62,7 +56,6 @@ import {
   getEip712Domain as getKernelEip712Domain,
   getGuardianSmartAccount as getKernelGuardianSmartAccount,
   getInstallData as getKernelInstallData,
-  getSessionSmartAccount as getKernelSessionSmartAccount,
   getSmartAccount as getKernelSmartAccount,
   packSignature as packKernelSignature,
   wrapMessageHash as wrapKernelMessageHash,
@@ -75,7 +68,6 @@ import {
   getEip7702InitCall as getNexusEip7702InitCall,
   getGuardianSmartAccount as getNexusGuardianSmartAccount,
   getInstallData as getNexusInstallData,
-  getSessionSmartAccount as getNexusSessionSmartAccount,
   getSmartAccount as getNexusSmartAccount,
   packSignature as packNexusSignature,
   signEip7702InitData as signNexusEip7702InitData,
@@ -83,7 +75,6 @@ import {
 import {
   getAddress as getPassportAddress,
   getInstallData as getPassportInstallData,
-  getSessionSmartAccount as getPassportSessionSmartAccount,
   packSignature as packPassportSignature,
 } from './passport'
 import {
@@ -92,7 +83,6 @@ import {
   getEip712Domain as getSafeEip712Domain,
   getGuardianSmartAccount as getSafeGuardianSmartAccount,
   getInstallData as getSafeInstallData,
-  getSessionSmartAccount as getSafeSessionSmartAccount,
   getSmartAccount as getSafeSmartAccount,
   getV0DeployArgs as getSafeV0DeployArgs,
   packSignature as packSafeSignature,
@@ -106,7 +96,6 @@ import {
   getEip712Domain as getStartaleEip712Domain,
   getGuardianSmartAccount as getStartaleGuardianSmartAccount,
   getInstallData as getStartaleInstallData,
-  getSessionSmartAccount as getStartaleSessionSmartAccount,
   getSmartAccount as getStartaleSmartAccount,
   packSignature as packStartaleSignature,
 } from './startale'
@@ -529,7 +518,6 @@ async function deploy(
   config: RhinestoneConfig,
   chain: Chain,
   params?: {
-    session?: Session
     sponsored?: boolean
   },
 ): Promise<boolean> {
@@ -555,9 +543,6 @@ async function deploy(
     await deployWithBundler(chain, config)
   } else {
     await deployWithIntent(chain, config, params?.sponsored ?? false)
-  }
-  if (params?.session) {
-    await enableSmartSession(chain, config, params.session)
   }
   return true
 }
@@ -782,84 +767,6 @@ async function getSmartAccount(
   }
 }
 
-async function getSmartSessionSmartAccount(
-  config: RhinestoneConfig,
-  client: PublicClient,
-  chain: Chain,
-  session: Session,
-  enableData: EnableSessionData | null,
-) {
-  const address = getAddress(config)
-  const smartSessionValidator = getSmartSessionValidator(config)
-  if (!smartSessionValidator) {
-    throw new SmartSessionsNotEnabledError()
-  }
-  const signers: SignerSet = {
-    type: 'session',
-    session,
-    enableData: enableData || undefined,
-  }
-  const signFn = (hash: Hex) => signMessage(signers, chain, address, hash, true)
-
-  const account = getAccountProvider(config)
-  switch (account.type) {
-    case 'safe': {
-      return getSafeSessionSmartAccount(
-        client,
-        address,
-        session,
-        smartSessionValidator.address,
-        enableData,
-        signFn,
-      )
-    }
-    case 'nexus': {
-      const defaultValidatorAddress = getNexusDefaultValidatorAddress(
-        account.version,
-      )
-      return getNexusSessionSmartAccount(
-        client,
-        address,
-        session,
-        smartSessionValidator.address,
-        enableData,
-        signFn,
-        defaultValidatorAddress,
-      )
-    }
-    case 'kernel': {
-      return getKernelSessionSmartAccount(
-        client,
-        address,
-        session,
-        smartSessionValidator.address,
-        enableData,
-        signFn,
-      )
-    }
-    case 'passport': {
-      return getPassportSessionSmartAccount(
-        client,
-        address,
-        session,
-        smartSessionValidator.address,
-        enableData,
-        signFn,
-      )
-    }
-    case 'startale': {
-      return getStartaleSessionSmartAccount(
-        client,
-        address,
-        session,
-        smartSessionValidator.address,
-        enableData,
-        signFn,
-      )
-    }
-  }
-}
-
 async function getGuardianSmartAccount(
   config: RhinestoneConfig,
   client: PublicClient,
@@ -954,7 +861,6 @@ export {
   setup,
   toErc6492Signature,
   getSmartAccount,
-  getSmartSessionSmartAccount,
   getGuardianSmartAccount,
   getPackedSignature,
   getTypedDataPackedSignature,

@@ -22,6 +22,7 @@ import type {
 } from '../../types'
 
 import { MODULE_TYPE_ID_VALIDATOR, type Module } from '../common'
+import { SMART_SESSION_EMISSARY_ADDRESS } from './smart-sessions'
 
 interface PublicKey {
   prefix?: number | undefined
@@ -383,6 +384,7 @@ function supportsEip712(validator: Module) {
   switch (validator.address.toLowerCase()) {
     case OWNABLE_BETA_VALIDATOR_ADDRESS: // Ownable Validator V1-beta
     case OWNABLE_V0_VALIDATOR_ADDRESS: // Ownable Validator V0
+    case SMART_SESSION_EMISSARY_ADDRESS: // Smart Sessions (signatures are bound to account)
       return false
     default:
       return true

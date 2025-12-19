@@ -38,7 +38,6 @@ import {
   getInitCode,
   getPackedSignature,
   getSmartAccount,
-  getSmartSessionSmartAccount,
   getTypedDataPackedSignature,
   is7702,
   toErc6492Signature,
@@ -158,8 +157,7 @@ async function prepareTransaction(
   } = getTransactionParams(transaction)
   const accountAddress = getAddress(config)
 
-  const isUserOpSigner =
-    signers?.type === 'guardians' || signers?.type === 'session'
+  const isUserOpSigner = signers?.type === 'guardians'
   if (isUserOpSigner) {
     throw new SignerNotSupportedError()
   }
@@ -337,7 +335,7 @@ async function signTypedData<
   const ownerValidator = getOwnerValidator(config)
   const isRoot = validator.address === ownerValidator.address
 
-  if (signers?.type === 'session') {
+  if (signers?.type === 'experimental_session') {
     return await signTypedDataWithSession(
       config,
       chain,
@@ -370,7 +368,7 @@ async function signTypedDataWithSession<
   config: RhinestoneConfig,
   chain: Chain,
   validator: ValidatorConfig,
-  signers: SignerSet & { type: 'session' },
+  signers: SignerSet & { type: 'experimental_session' },
   parameters: HashTypedDataParameters<typedData, primaryType>,
 ) {
   const { name, version, chainId, verifyingContract, salt } = getEip712Domain(
@@ -1046,23 +1044,15 @@ async function getValidatorAccount(
     return getSmartAccount(config, publicClient, chain)
   }
 
-  const withSession = signers.type === 'session' ? signers : null
+  // const withSession = signers.type === 'session' ? signers : null
   const withGuardians = signers.type === 'guardians' ? signers : null
 
-  return withSession
-    ? await getSmartSessionSmartAccount(
-        config,
-        publicClient,
-        chain,
-        withSession.session,
-        withSession.enableData || null,
-      )
-    : withGuardians
-      ? await getGuardianSmartAccount(config, publicClient, chain, {
-          type: 'ecdsa',
-          accounts: withGuardians.guardians,
-        })
-      : null
+  return withGuardians
+    ? await getGuardianSmartAccount(config, publicClient, chain, {
+        type: 'ecdsa',
+        accounts: withGuardians.guardians,
+      })
+    : null
 }
 
 function getValidator(
@@ -1098,7 +1088,8 @@ function getValidator(
   }
 
   // Smart sessions
-  const withSession = signers.type === 'session' ? signers.session : null
+  const withSession =
+    signers.type === 'experimental_session' ? signers.session : null
   if (withSession) {
     return getSmartSessionValidator(config)
   }

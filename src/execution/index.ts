@@ -36,7 +36,6 @@ import {
   SessionChainRequiredError,
   SignerNotSupportedError,
 } from './error'
-import { enableSmartSession } from './smart-session'
 import type { TransactionResult, UserOperationResult } from './utils'
 import {
   getIntentAccount,
@@ -88,8 +87,7 @@ async function sendTransaction(
     sourceAssets,
     feeAsset,
   } = transaction
-  const isUserOpSigner =
-    signers?.type === 'guardians' || signers?.type === 'session'
+  const isUserOpSigner = signers?.type === 'guardians'
   if (isUserOpSigner) {
     throw new SignerNotSupportedError()
   }
@@ -117,11 +115,11 @@ async function sendUserOperation(
     transaction.chain,
     accountAddress,
   )
-  const userOpSigner =
-    transaction.signers?.type === 'session' ? transaction.signers.session : null
-  if (userOpSigner) {
-    await enableSmartSession(transaction.chain, config, userOpSigner)
-  }
+  // const userOpSigner =
+  //   transaction.signers?.type === 'session' ? transaction.signers.session : null
+  // if (userOpSigner) {
+  //   await enableSmartSession(transaction.chain, config, userOpSigner)
+  // }
   // Smart sessions require a UserOp flow
   return await sendUserOperationInternal(
     config,
@@ -163,7 +161,8 @@ async function sendTransactionInternal(
   )
 
   const sendAsUserOp =
-    options.signers?.type === 'guardians' || options.signers?.type === 'session'
+    options.signers?.type === 'guardians' ||
+    options.signers?.type === 'experimental_session'
   if (sendAsUserOp) {
     throw new SignerNotSupportedError()
   } else {
@@ -193,7 +192,7 @@ async function sendUserOperationInternal(
 ) {
   // Make sure the account is deployed
   await deploy(config, chain)
-  const withSession = signers?.type === 'session' ? signers.session : null
+  // const withSession = signers?.type === 'session' ? signers.session : null
   const publicClient = createPublicClient({
     chain,
     transport: createTransport(chain, config.provider),
@@ -208,9 +207,9 @@ async function sendUserOperationInternal(
     throw new Error('No validator account found')
   }
   const bundlerClient = getBundlerClient(config, publicClient)
-  if (withSession) {
-    await enableSmartSession(chain, config, withSession)
-  }
+  // if (withSession) {
+  //   await enableSmartSession(chain, config, withSession)
+  // }
   const calls = parseCalls(callInputs, chain.id)
   const hash = await bundlerClient.sendUserOperation({
     account: validatorAccount,

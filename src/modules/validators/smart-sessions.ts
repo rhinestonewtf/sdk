@@ -1,32 +1,22 @@
-import { LibZip } from 'solady'
 import {
   type Address,
+  createPublicClient,
   encodeAbiParameters,
   encodeFunctionData,
-  encodePacked,
   type Hex,
-  isHex,
+  hashStruct,
+  http,
   keccak256,
-  type PublicClient,
+  maxUint256,
   padHex,
-  toHex,
+  type TypedDataDefinition,
+  zeroAddress,
   zeroHash,
 } from 'viem'
-import type {
-  Policy,
-  RhinestoneAccountConfig,
-  Session,
-  UniversalActionPolicyParamCondition,
-} from '../../types'
-import { enableSessionsAbi } from '../abi/smart-sessions'
+import type { RhinestoneAccountConfig, Session } from '../../types'
+import smartSessionEmissaryAbi from '../abi/smart-session-emissary'
 import { MODULE_TYPE_ID_VALIDATOR, type Module } from '../common'
 import { getValidator } from './core'
-
-type FixedLengthArray<
-  T,
-  N extends number,
-  A extends T[] = [],
-> = A['length'] extends N ? A : FixedLengthArray<T, N, [...A, T]>
 
 interface SessionData {
   sessionValidator: Address
@@ -65,17 +55,6 @@ interface ActionData {
 interface PolicyData {
   policy: Address
   initData: Hex
-}
-
-interface ActionParamRule {
-  condition: number
-  offset: bigint
-  isLimited: boolean
-  ref: Hex
-  usage: {
-    limit: bigint
-    used: bigint
-  }
 }
 
 type SmartSessionModeType =
@@ -130,536 +109,231 @@ interface EnableSessionData {
   signature: Hex
 }
 
-const SMART_SESSIONS_VALIDATOR_ADDRESS: Address =
-  '0x00000000008bdaba73cd9815d79069c247eb4bda'
+const types = {
+  PolicyData: [
+    { name: 'policy', type: 'address' },
+    { name: 'initData', type: 'bytes' },
+  ],
+  ActionData: [
+    { name: 'actionTargetSelector', type: 'bytes4' },
+    { name: 'actionTarget', type: 'address' },
+    { name: 'actionPolicies', type: 'PolicyData[]' },
+  ],
+  ERC7739Context: [
+    { name: 'appDomainSeparator', type: 'bytes32' },
+    { name: 'contentName', type: 'string[]' },
+  ],
+  ERC7739Data: [
+    { name: 'allowedERC7739Content', type: 'ERC7739Context[]' },
+    { name: 'erc1271Policies', type: 'PolicyData[]' },
+  ],
+  LockTagData: [
+    { name: 'lockTag', type: 'bytes12' },
+    { name: 'claimPolicies', type: 'PolicyData[]' },
+  ],
+  SignedPermissions: [
+    { name: 'actions', type: 'ActionData[]' },
+    { name: 'erc7739Policies', type: 'ERC7739Data' },
+    { name: 'lockTagPolicies', type: 'LockTagData' },
+    { name: 'permitGenericPolicy', type: 'bool' },
+  ],
+  SignedSession: [
+    { name: 'account', type: 'address' },
+    { name: 'expires', type: 'uint256' },
+    { name: 'nonce', type: 'uint256' },
+    { name: 'permissions', type: 'SignedPermissions' },
+    { name: 'salt', type: 'bytes32' },
+    { name: 'sessionValidator', type: 'address' },
+    { name: 'sessionValidatorInitData', type: 'bytes' },
+    { name: 'smartSessionEmissary', type: 'address' },
+  ],
+  ChainSession: [
+    { name: 'chainId', type: 'uint64' },
+    { name: 'session', type: 'SignedSession' },
+  ],
+  MultiChainSession: [{ name: 'sessionsAndChainIds', type: 'ChainSession[]' }],
+} as const
+
+const SMART_SESSION_EMISSARY_ADDRESS: Address =
+  '0x4411abbbede0215626284d0385dd55b4303012b7'
 
 const SMART_SESSION_MODE_USE = '0x00'
 const SMART_SESSION_MODE_ENABLE = '0x01'
 const SMART_SESSION_MODE_UNSAFE_ENABLE = '0x02'
-const SPENDING_LIMITS_POLICY_ADDRESS: Address =
-  '0x00000088D48cF102A8Cdb0137A9b173f957c6343'
-const TIME_FRAME_POLICY_ADDRESS: Address =
-  '0x8177451511dE0577b911C254E9551D981C26dc72'
 const SUDO_POLICY_ADDRESS: Address =
   '0x0000003111cD8e92337C100F22B7A9dbf8DEE301'
-const UNIVERSAL_ACTION_POLICY_ADDRESS: Address =
-  '0x0000006DDA6c463511C4e9B05CFc34C1247fCF1F'
-const USAGE_LIMIT_POLICY_ADDRESS: Address =
-  '0x1F34eF8311345A3A4a4566aF321b313052F51493'
-const VALUE_LIMIT_POLICY_ADDRESS: Address =
-  '0x730DA93267E7E513e932301B47F2ac7D062abC83'
 const SMART_SESSIONS_FALLBACK_TARGET_FLAG: Address =
   '0x0000000000000000000000000000000000000001'
 const SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG: Hex = '0x00000001'
 const SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG_PERMITTED_TO_CALL_SMARTSESSION: Hex =
   '0x00000002'
 
-const ACTION_CONDITION_EQUAL = 0
-const ACTION_CONDITION_GREATER_THAN = 1
-const ACTION_CONDITION_LESS_THAN = 2
-const ACTION_CONDITION_GREATER_THAN_OR_EQUAL = 3
-const ACTION_CONDITION_LESS_THAN_OR_EQUAL = 4
-const ACTION_CONDITION_NOT_EQUAL = 5
-const ACTION_CONDITION_IN_RANGE = 6
+const SCOPE_MULTICHAIN = 0
+const RESET_PERIOD_ONE_WEEK = 6
 
-async function getEnableSessionCall(session: Session) {
-  const sessionData = getSmartSessionData(session)
-  return {
-    to: SMART_SESSIONS_VALIDATOR_ADDRESS,
-    data: encodeFunctionData({
-      abi: enableSessionsAbi,
-      functionName: 'enableSessions',
-      args: [[sessionData]],
-    }),
-  }
-}
-
-function getSmartSessionData(session: Session) {
-  const sessionValidator = getValidator(session.owners)
-  const userOpPolicies = (
-    session.policies || [
-      {
-        type: 'sudo',
-      },
-    ]
-  ).map((policy) => {
-    return getPolicyData(policy)
-  })
-  return {
-    sessionValidator: sessionValidator.address,
-    sessionValidatorInitData: sessionValidator.initData,
-    salt: session.salt ?? zeroHash,
-    userOpPolicies,
-    // Using the fallback action by default (any transaction will pass)
-    actions: (
-      session.actions || [
-        {
-          target: SMART_SESSIONS_FALLBACK_TARGET_FLAG,
-          selector: SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
-        },
-      ]
-    ).map((action) => {
-      const actionPolicies: readonly PolicyData[] = (
-        action.policies || [
-          {
-            type: 'sudo',
-          },
-        ]
-      ).map((policy) => getPolicyData(policy))
-      return {
-        actionTargetSelector: action.selector,
-        actionTarget: action.target,
-        actionPolicies,
-      }
-    }),
-    erc7739Policies: session.signing
-      ? {
-          allowedERC7739Content: session.signing.allowedContent.map(
-            (content) => ({
-              appDomainSeparator: content.domainSeparator,
-              contentName: content.contentName,
-            }),
-          ),
-          erc1271Policies: (
-            session.signing.policies || [
-              {
-                type: 'sudo',
-              },
-            ]
-          ).map((policy) => getPolicyData(policy)),
-        }
-      : {
-          allowedERC7739Content: [],
-          erc1271Policies: [],
-        },
-    permitERC4337Paymaster: true,
-  } as SessionData
-}
-
-function getSmartSessionValidator(
-  config: RhinestoneAccountConfig,
-): Module | null {
-  if (!config.experimental_sessions) {
-    return null
-  }
-  const { enabled, module } = config.experimental_sessions
-  if (!enabled) {
-    return null
-  }
-  return {
-    address: module ?? SMART_SESSIONS_VALIDATOR_ADDRESS,
-    initData: '0x',
-    deInitData: '0x',
-    additionalContext: '0x',
-    type: MODULE_TYPE_ID_VALIDATOR,
-  }
-}
-
-function getPolicyData(policy: Policy): PolicyData {
-  switch (policy.type) {
-    case 'sudo':
-      return {
-        policy: SUDO_POLICY_ADDRESS,
-        initData: '0x',
-      }
-    case 'universal-action': {
-      function getCondition(condition: UniversalActionPolicyParamCondition) {
-        switch (condition) {
-          case 'equal':
-            return ACTION_CONDITION_EQUAL
-          case 'greaterThan':
-            return ACTION_CONDITION_GREATER_THAN
-          case 'lessThan':
-            return ACTION_CONDITION_LESS_THAN
-          case 'greaterThanOrEqual':
-            return ACTION_CONDITION_GREATER_THAN_OR_EQUAL
-          case 'lessThanOrEqual':
-            return ACTION_CONDITION_LESS_THAN_OR_EQUAL
-          case 'notEqual':
-            return ACTION_CONDITION_NOT_EQUAL
-          case 'inRange':
-            return ACTION_CONDITION_IN_RANGE
-        }
-      }
-
-      const MAX_RULES = 16
-      const rules = createFixedArray<ActionParamRule, typeof MAX_RULES>(
-        MAX_RULES,
-        () => ({
-          condition: ACTION_CONDITION_EQUAL,
-          offset: 0n,
-          isLimited: false,
-          ref: zeroHash,
-          usage: { limit: 0n, used: 0n },
-        }),
-      )
-      for (let i = 0; i < policy.rules.length; i++) {
-        const rule = policy.rules[i]
-        const ref = isHex(rule.referenceValue)
-          ? padHex(rule.referenceValue)
-          : toHex(rule.referenceValue, { size: 32 })
-        rules[i] = {
-          condition: getCondition(rule.condition),
-          offset: rule.calldataOffset,
-          isLimited: rule.usageLimit !== undefined,
-          ref,
-          usage: {
-            limit: rule.usageLimit ? rule.usageLimit : 0n,
-            used: 0n,
-          },
-        }
-      }
-      return {
-        policy: UNIVERSAL_ACTION_POLICY_ADDRESS,
-        initData: encodeAbiParameters(
-          [
-            {
-              components: [
-                {
-                  name: 'valueLimitPerUse',
-                  type: 'uint256',
-                },
-                {
-                  components: [
-                    {
-                      name: 'length',
-                      type: 'uint256',
-                    },
-                    {
-                      components: [
-                        {
-                          name: 'condition',
-                          type: 'uint8',
-                        },
-                        {
-                          name: 'offset',
-                          type: 'uint64',
-                        },
-                        {
-                          name: 'isLimited',
-                          type: 'bool',
-                        },
-                        {
-                          name: 'ref',
-                          type: 'bytes32',
-                        },
-                        {
-                          components: [
-                            {
-                              name: 'limit',
-                              type: 'uint256',
-                            },
-                            {
-                              name: 'used',
-                              type: 'uint256',
-                            },
-                          ],
-                          name: 'usage',
-                          type: 'tuple',
-                        },
-                      ],
-                      name: 'rules',
-                      type: 'tuple[16]',
-                    },
-                  ],
-                  name: 'paramRules',
-                  type: 'tuple',
-                },
-              ],
-              name: 'ActionConfig',
-              type: 'tuple',
-            },
-          ],
-          [
-            {
-              valueLimitPerUse: policy.valueLimitPerUse ?? 0n,
-              paramRules: {
-                length: BigInt(policy.rules.length),
-                rules: rules,
-              },
-            },
-          ],
-        ),
-      }
-    }
-    case 'spending-limits': {
-      const tokens = policy.limits.map(({ token }) => token)
-      const limits = policy.limits.map(({ amount }) => amount)
-      return {
-        policy: SPENDING_LIMITS_POLICY_ADDRESS,
-        initData: encodeAbiParameters(
-          [{ type: 'address[]' }, { type: 'uint256[]' }],
-          [tokens, limits],
-        ),
-      }
-    }
-    case 'time-frame': {
-      return {
-        policy: TIME_FRAME_POLICY_ADDRESS,
-        initData: encodePacked(
-          ['uint48', 'uint48'],
-          [
-            Math.floor(policy.validUntil / 1000),
-            Math.floor(policy.validAfter / 1000),
-          ],
-        ),
-      }
-    }
-    case 'usage-limit': {
-      return {
-        policy: USAGE_LIMIT_POLICY_ADDRESS,
-        initData: encodePacked(['uint128'], [policy.limit]),
-      }
-    }
-    case 'value-limit': {
-      return {
-        policy: VALUE_LIMIT_POLICY_ADDRESS,
-        initData: encodeAbiParameters([{ type: 'uint256' }], [policy.limit]),
-      }
-    }
-  }
-}
-
-function createFixedArray<T, N extends number>(
-  length: N,
-  getValue: (index: number) => T,
-): FixedLengthArray<T, N> {
-  return Array.from({ length }, (_, i) => getValue(i)) as FixedLengthArray<T, N>
-}
-
-async function isSessionEnabled(
-  client: PublicClient,
-  address: Address,
-  permissionId: Hex,
+async function experimental_getSessionDetails(
+  account: Address,
+  session: Session,
 ) {
-  return await client.readContract({
-    address: SMART_SESSIONS_VALIDATOR_ADDRESS,
+  const lockTag = padHex('0x', { size: 12 })
+  const publicClient = createPublicClient({
+    chain: session.chain,
+    transport: http(),
+  })
+  const nonce = await publicClient.readContract({
+    address: SMART_SESSION_EMISSARY_ADDRESS,
     abi: [
       {
-        inputs: [
-          {
-            internalType: 'PermissionId',
-            name: 'permissionId',
-            type: 'bytes32',
-          },
-          {
-            internalType: 'address',
-            name: 'account',
-            type: 'address',
-          },
-        ],
-        name: 'isPermissionEnabled',
-        outputs: [
-          {
-            internalType: 'bool',
-            name: '',
-            type: 'bool',
-          },
-        ],
-        stateMutability: 'view',
         type: 'function',
+        name: 'getNonce',
+        inputs: [
+          { name: 'sponsor', type: 'address', internalType: 'address' },
+          { name: 'lockTag', type: 'bytes12', internalType: 'bytes12' },
+        ],
+        outputs: [{ name: '', type: 'uint256', internalType: 'uint256' }],
+        stateMutability: 'view',
       },
     ],
-    functionName: 'isPermissionEnabled',
-    args: [permissionId, address],
+    functionName: 'getNonce',
+    args: [account, lockTag],
   })
-}
+  const sessionNonces = [nonce]
+  const sessionData = getSessionData(session)
+  const sessionDatas = [sessionData]
+  const signedSessions = sessionDatas.map((session, index) => ({
+    account,
+    permissions: {
+      permitGenericPolicy: session.actions.some(
+        (action) =>
+          action.actionTarget === SMART_SESSIONS_FALLBACK_TARGET_FLAG &&
+          action.actionTargetSelector ===
+            SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
+      ),
+      lockTagPolicies: {
+        lockTag,
+        claimPolicies: session.claimPolicies,
+      },
+      erc7739Policies: {
+        allowedERC7739Content:
+          session.erc7739Policies.allowedERC7739Content.map((content) => ({
+            contentName: content.contentNames,
+            appDomainSeparator: content.appDomainSeparator,
+          })),
+        erc1271Policies: session.erc7739Policies.erc1271Policies,
+      },
+      actions: session.actions,
+    },
+    sessionValidator: session.sessionValidator,
+    sessionValidatorInitData: session.sessionValidatorInitData,
+    salt: session.salt,
+    smartSessionEmissary: SMART_SESSION_EMISSARY_ADDRESS,
+    expires: maxUint256,
+    nonce: sessionNonces[index],
+  }))
+  const chains = [session.chain]
+  const chainDigests = signedSessions.map((session, index) => ({
+    chainId: BigInt(chains[index].id),
+    sessionDigest: hashStruct({
+      types: types,
+      primaryType: 'SignedSession',
+      data: session,
+    }),
+  }))
+  const hashesAndChainIds = chainDigests.map((chainDigest) => ({
+    chainId: BigInt(chainDigest.chainId),
+    sessionDigest: chainDigest.sessionDigest,
+  }))
 
-function encodeSmartSessionSignature(
-  mode: SmartSessionModeType,
-  permissionId: Hex,
-  signature: Hex,
-  enableSessionData?: EnableSessionData,
-) {
-  switch (mode) {
-    case SMART_SESSION_MODE_USE:
-      return encodePacked(
-        ['bytes1', 'bytes32', 'bytes'],
-        [mode, permissionId, signature],
-      )
-    case SMART_SESSION_MODE_ENABLE:
-    case SMART_SESSION_MODE_UNSAFE_ENABLE:
-      if (!enableSessionData) {
-        throw new Error('enableSession is required for ENABLE mode')
-      }
-      return encodePacked(
-        ['bytes1', 'bytes'],
-        [
-          mode,
-          LibZip.flzCompress(
-            encodeEnableSessionSignature(enableSessionData, signature),
-          ) as Hex,
-        ],
-      )
-    default:
-      throw new Error(`Unknown mode ${mode}`)
+  const typedData: TypedDataDefinition<typeof types, 'MultiChainSession'> = {
+    domain: {
+      name: 'SmartSessionEmissary',
+      version: '1.0.0',
+    },
+    types: types,
+    primaryType: 'MultiChainSession',
+    message: {
+      sessionsAndChainIds: signedSessions.map((session, index) => ({
+        chainId: BigInt(chains[index].id),
+        session,
+      })),
+    },
+  }
+
+  return {
+    nonces: sessionNonces,
+    hashesAndChainIds,
+    typedData,
   }
 }
 
-function encodeEnableSessionSignature(
-  enableSessionData: EnableSessionData,
-  signature: Hex,
+async function getEnableSessionCall(
+  account: Address,
+  session: Session,
+  enableSessionSignature: Hex,
+  hashesAndChainIds: {
+    chainId: bigint
+    sessionDigest: Hex
+  }[],
 ) {
-  return encodeAbiParameters(
-    [
-      {
-        components: [
-          {
-            type: 'uint8',
-            name: 'chainDigestIndex',
+  const sessionData = getSessionData(session)
+  const permissionId = getPermissionId(session)
+  return {
+    to: SMART_SESSION_EMISSARY_ADDRESS,
+    data: encodeFunctionData({
+      abi: smartSessionEmissaryAbi,
+      functionName: 'setConfig',
+      args: [
+        account,
+        {
+          scope: SCOPE_MULTICHAIN,
+          resetPeriod: RESET_PERIOD_ONE_WEEK,
+          allocator: zeroAddress,
+          permissionId,
+        },
+        {
+          allocatorSig: zeroHash,
+          userSig: enableSessionSignature,
+          expires: maxUint256,
+          session: {
+            chainDigestIndex: 0,
+            hashesAndChainIds,
+            sessionToEnable: sessionData,
           },
-          {
-            type: 'tuple[]',
-            components: [
-              {
-                internalType: 'uint64',
-                name: 'chainId',
-                type: 'uint64',
-              },
-              {
-                internalType: 'bytes32',
-                name: 'sessionDigest',
-                type: 'bytes32',
-              },
-            ],
-            name: 'hashesAndChainIds',
-          },
-          {
-            components: [
-              {
-                internalType: 'contract ISessionValidator',
-                name: 'sessionValidator',
-                type: 'address',
-              },
-              {
-                internalType: 'bytes',
-                name: 'sessionValidatorInitData',
-                type: 'bytes',
-              },
-              { internalType: 'bytes32', name: 'salt', type: 'bytes32' },
-              {
-                components: [
-                  { internalType: 'address', name: 'policy', type: 'address' },
-                  { internalType: 'bytes', name: 'initData', type: 'bytes' },
-                ],
-                internalType: 'struct PolicyData[]',
-                name: 'userOpPolicies',
-                type: 'tuple[]',
-              },
-              {
-                components: [
-                  {
-                    components: [
-                      {
-                        internalType: 'bytes32',
-                        name: 'appDomainSeparator',
-                        type: 'bytes32',
-                      },
-                      {
-                        internalType: 'string[]',
-                        name: 'contentName',
-                        type: 'string[]',
-                      },
-                    ],
-                    internalType: 'struct ERC7739Context[]',
-                    name: 'allowedERC7739Content',
-                    type: 'tuple[]',
-                  },
+        },
+      ],
+    }),
+  }
+}
 
-                  {
-                    components: [
-                      {
-                        internalType: 'address',
-                        name: 'policy',
-                        type: 'address',
-                      },
-                      {
-                        internalType: 'bytes',
-                        name: 'initData',
-                        type: 'bytes',
-                      },
-                    ],
-                    internalType: 'struct PolicyData[]',
-                    name: 'erc1271Policies',
-                    type: 'tuple[]',
-                  },
-                ],
-                internalType: 'struct ERC7739Data',
-                name: 'erc7739Policies',
-                type: 'tuple',
-              },
-              {
-                components: [
-                  {
-                    internalType: 'bytes4',
-                    name: 'actionTargetSelector',
-                    type: 'bytes4',
-                  },
-                  {
-                    internalType: 'address',
-                    name: 'actionTarget',
-                    type: 'address',
-                  },
-                  {
-                    components: [
-                      {
-                        internalType: 'address',
-                        name: 'policy',
-                        type: 'address',
-                      },
-                      {
-                        internalType: 'bytes',
-                        name: 'initData',
-                        type: 'bytes',
-                      },
-                    ],
-                    internalType: 'struct PolicyData[]',
-                    name: 'actionPolicies',
-                    type: 'tuple[]',
-                  },
-                ],
-                internalType: 'struct ActionData[]',
-                name: 'actions',
-                type: 'tuple[]',
-              },
-              {
-                internalType: 'bool',
-                name: 'permitERC4337Paymaster',
-                type: 'bool',
-              },
-            ],
-            internalType: 'struct Session',
-            name: 'sessionToEnable',
-            type: 'tuple',
-          },
-          {
-            type: 'bytes',
-            name: 'permissionEnableSig',
-          },
-        ],
-        internalType: 'struct EnableSession',
-        name: 'enableSession',
-        type: 'tuple',
-      },
+function getSessionData(session: Session) {
+  const validator = getValidator(session.owners)
+  const allowedContent = [
+    {
+      contentNames: [''],
+      appDomainSeparator: zeroHash,
+    },
+  ]
+  const erc7739Data = {
+    allowedERC7739Content: allowedContent,
+    erc1271Policies: [
       {
-        type: 'bytes',
-        name: 'signature',
+        policy: SUDO_POLICY_ADDRESS,
+        initData: '0x' as Hex,
       },
     ],
-    [
-      {
-        chainDigestIndex: enableSessionData.chainDigestIndex,
-        hashesAndChainIds: enableSessionData.hashesAndChainIds,
-        sessionToEnable: enableSessionData.sessionToEnable,
-        permissionEnableSig: enableSessionData.signature,
-      },
-      signature,
-    ],
-  )
+  }
+  return {
+    sessionValidator: validator.address,
+    salt: zeroHash,
+    sessionValidatorInitData: validator.initData,
+    erc7739Policies: erc7739Data,
+    actions: [] as ActionData[],
+    claimPolicies: [] as PolicyData[],
+  }
 }
 
 function getPermissionId(session: Session) {
-  const sessionValidator = getValidator(session.owners)
+  const sessionData = getSessionData(session)
   return keccak256(
     encodeAbiParameters(
       [
@@ -677,27 +351,43 @@ function getPermissionId(session: Session) {
         },
       ],
       [
-        sessionValidator.address,
-        sessionValidator.initData,
-        session.salt ?? zeroHash,
+        sessionData.sessionValidator,
+        sessionData.sessionValidatorInitData,
+        sessionData.salt,
       ],
     ),
   )
 }
 
+function getSmartSessionValidator(
+  config: RhinestoneAccountConfig,
+): Module | null {
+  if (!config.experimental_sessions) {
+    return null
+  }
+  const { enabled, module } = config.experimental_sessions
+  if (!enabled) {
+    return null
+  }
+  return {
+    address: module ?? SMART_SESSION_EMISSARY_ADDRESS,
+    initData: '0x',
+    deInitData: '0x',
+    additionalContext: '0x',
+    type: MODULE_TYPE_ID_VALIDATOR,
+  }
+}
+
 export {
-  SMART_SESSION_MODE_USE,
-  SMART_SESSION_MODE_ENABLE,
-  SMART_SESSIONS_VALIDATOR_ADDRESS,
+  SMART_SESSION_EMISSARY_ADDRESS,
   SMART_SESSIONS_FALLBACK_TARGET_FLAG,
   SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
   SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG_PERMITTED_TO_CALL_SMARTSESSION,
-  getSmartSessionData,
-  getSmartSessionValidator,
+  getSessionData,
   getEnableSessionCall,
-  encodeSmartSessionSignature,
   getPermissionId,
-  isSessionEnabled,
+  getSmartSessionValidator,
+  experimental_getSessionDetails,
 }
 export type {
   EnableSessionData,

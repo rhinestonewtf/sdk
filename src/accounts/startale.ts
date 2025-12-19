@@ -12,18 +12,15 @@ import {
 } from 'viem'
 import { getSetup as getModuleSetup } from '../modules'
 import type { Module } from '../modules/common'
-import type { EnableSessionData } from '../modules/validators/smart-sessions'
 import type {
   OwnerSet,
   RhinestoneAccountConfig,
-  Session,
   StartaleAccount,
 } from '../types'
 import { Eip712DomainNotAvailableError } from './error'
 import {
   getGuardianSmartAccount as getNexusGuardianSmartAccount,
   getInstallData as getNexusInstallData,
-  getSessionSmartAccount as getNexusSessionSmartAccount,
   getSmartAccount as getNexusSmartAccount,
   packSignature as packNexusSignature,
 } from './nexus'
@@ -178,25 +175,6 @@ async function getSmartAccount(
   )
 }
 
-async function getSessionSmartAccount(
-  client: PublicClient,
-  address: Address,
-  session: Session,
-  validatorAddress: Address,
-  enableData: EnableSessionData | null,
-  sign: (hash: Hex) => Promise<Hex>,
-) {
-  return getNexusSessionSmartAccount(
-    client,
-    address,
-    session,
-    validatorAddress,
-    enableData,
-    sign,
-    K1_DEFAULT_VALIDATOR_ADDRESS,
-  )
-}
-
 async function getGuardianSmartAccount(
   client: PublicClient,
   address: Address,
@@ -221,6 +199,5 @@ export {
   packSignature,
   getDeployArgs,
   getSmartAccount,
-  getSessionSmartAccount,
   getGuardianSmartAccount,
 }

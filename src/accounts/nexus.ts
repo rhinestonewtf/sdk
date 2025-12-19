@@ -24,21 +24,9 @@ import {
 
 import { getSetup as getModuleSetup } from '../modules'
 import type { Module } from '../modules/common'
-import {
-  encodeSmartSessionSignature,
-  getMockSignature,
-  getPermissionId,
-  SMART_SESSION_MODE_ENABLE,
-  SMART_SESSION_MODE_USE,
-} from '../modules/validators'
+import { getMockSignature } from '../modules/validators'
 import { OWNABLE_VALIDATOR_ADDRESS } from '../modules/validators/core'
-import type { EnableSessionData } from '../modules/validators/smart-sessions'
-import type {
-  NexusAccount,
-  OwnerSet,
-  RhinestoneAccountConfig,
-  Session,
-} from '../types'
+import type { NexusAccount, OwnerSet, RhinestoneAccountConfig } from '../types'
 import {
   AccountConfigurationNotSupportedError,
   Eip712DomainNotAvailableError,
@@ -364,55 +352,6 @@ async function getSmartAccount(
   )
 }
 
-async function getSessionSmartAccount(
-  client: PublicClient,
-  address: Address,
-  session: Session,
-  validatorAddress: Address,
-  enableData: EnableSessionData | null,
-  sign: (hash: Hex) => Promise<Hex>,
-  defaultValidatorAddress: Address = NEXUS_DEFAULT_VALIDATOR_ADDRESS,
-) {
-  return await getBaseSmartAccount(
-    address,
-    client,
-    validatorAddress,
-    async () => {
-      const dummyOpSignature = getMockSignature(session.owners)
-      if (enableData) {
-        return encodeSmartSessionSignature(
-          SMART_SESSION_MODE_ENABLE,
-          getPermissionId(session),
-          dummyOpSignature,
-          enableData,
-        )
-      }
-      return encodeSmartSessionSignature(
-        SMART_SESSION_MODE_USE,
-        getPermissionId(session),
-        dummyOpSignature,
-      )
-    },
-    async (hash) => {
-      const signature = await sign(hash)
-      if (enableData) {
-        return encodeSmartSessionSignature(
-          SMART_SESSION_MODE_ENABLE,
-          getPermissionId(session),
-          signature,
-          enableData,
-        )
-      }
-      return encodeSmartSessionSignature(
-        SMART_SESSION_MODE_USE,
-        getPermissionId(session),
-        signature,
-      )
-    },
-    defaultValidatorAddress,
-  )
-}
-
 async function getGuardianSmartAccount(
   client: PublicClient,
   address: Address,
@@ -604,7 +543,6 @@ export {
   packSignature,
   getDeployArgs,
   getSmartAccount,
-  getSessionSmartAccount,
   getGuardianSmartAccount,
   signEip7702InitData,
   getEip7702InitCall,
