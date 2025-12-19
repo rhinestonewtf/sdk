@@ -28,7 +28,7 @@ import {
 import { getOwners, getValidators } from './read'
 import { getOwnerValidator, getSmartSessionValidator } from './validators'
 import { getSocialRecoveryValidator } from './validators/core'
-import { experimental_getSessionDetails } from './validators/smart-sessions'
+import { getSessionDetails } from './validators/smart-sessions'
 
 const SMART_SESSION_COMPATIBILITY_FALLBACK_ADDRESS: Address =
   '0x000000000052e9685932845660777DF43C2dC496'
@@ -143,5 +143,5 @@ export {
   getIntentExecutor,
   getValidators,
   isRip7212SupportedNetwork,
-  experimental_getSessionDetails,
+  getSessionDetails,
 }

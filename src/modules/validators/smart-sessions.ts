@@ -109,6 +109,12 @@ interface EnableSessionData {
   signature: Hex
 }
 
+interface SessionDetails {
+  nonces: bigint[]
+  hashesAndChainIds: ChainDigest[]
+  data: TypedDataDefinition<typeof types, 'MultiChainSession'>
+}
+
 const types = {
   PolicyData: [
     { name: 'policy', type: 'address' },
@@ -171,10 +177,10 @@ const SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG_PERMITTED_TO_CALL_SMARTSESSIO
 const SCOPE_MULTICHAIN = 0
 const RESET_PERIOD_ONE_WEEK = 6
 
-async function experimental_getSessionDetails(
+async function getSessionDetails(
   account: Address,
   session: Session,
-) {
+): Promise<SessionDetails> {
   const lockTag = padHex('0x', { size: 12 })
   const publicClient = createPublicClient({
     chain: session.chain,
@@ -244,7 +250,7 @@ async function experimental_getSessionDetails(
     sessionDigest: chainDigest.sessionDigest,
   }))
 
-  const typedData: TypedDataDefinition<typeof types, 'MultiChainSession'> = {
+  const data: TypedDataDefinition<typeof types, 'MultiChainSession'> = {
     domain: {
       name: 'SmartSessionEmissary',
       version: '1.0.0',
@@ -262,7 +268,7 @@ async function experimental_getSessionDetails(
   return {
     nonces: sessionNonces,
     hashesAndChainIds,
-    typedData,
+    data,
   }
 }
 
@@ -387,7 +393,7 @@ export {
   getEnableSessionCall,
   getPermissionId,
   getSmartSessionValidator,
-  experimental_getSessionDetails,
+  getSessionDetails,
 }
 export type {
   EnableSessionData,
@@ -395,4 +401,5 @@ export type {
   ChainDigest,
   SessionData,
   SmartSessionModeType,
+  SessionDetails,
 }
