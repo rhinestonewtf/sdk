@@ -1,4 +1,4 @@
-import type { Address, Client, Hex } from 'viem'
+import type { Address, Client, Hex, Transport } from 'viem'
 import {
   concatHex,
   encodeAbiParameters,
@@ -227,21 +227,33 @@ async function getAccountNonce(
 }
 
 function getBundlerClient(config: RhinestoneConfig, client: Client) {
-  function getBundlerEndpoint(config: BundlerConfig, chainId: number) {
+  function getBundlerTransport(config: BundlerConfig, chainId: number) {
     switch (config.type) {
       case 'pimlico':
-        return `https://api.pimlico.io/v2/${chainId}/rpc?apikey=${config.apiKey}`
+        return http(
+          `https://api.pimlico.io/v2/${chainId}/rpc?apikey=${config.apiKey}`,
+        )
       case 'biconomy':
-        return `https://bundler.biconomy.io/api/v3/${chainId}/${config.apiKey}`
+        return http(
+          `https://bundler.biconomy.io/api/v3/${chainId}/${config.apiKey}`,
+        )
+      case 'factory':
+        return config.getTransport(chainId)
     }
   }
 
-  function getPaymasterEndpoint(config: PaymasterConfig, chainId: number) {
+  function getPaymasterTransport(config: PaymasterConfig, chainId: number) {
     switch (config.type) {
       case 'pimlico':
-        return `https://api.pimlico.io/v2/${chainId}/rpc?apikey=${config.apiKey}`
+        return http(
+          `https://api.pimlico.io/v2/${chainId}/rpc?apikey=${config.apiKey}`,
+        )
       case 'biconomy':
-        return `https://paymaster.biconomy.io/api/v2/${chainId}/${config.apiKey}`
+        return http(
+          `https://paymaster.biconomy.io/api/v2/${chainId}/${config.apiKey}`,
+        )
+      case 'factory':
+        return config.getTransport(chainId)
     }
   }
 
@@ -251,42 +263,31 @@ function getBundlerClient(config: RhinestoneConfig, client: Client) {
     throw new Error('Chain id is required')
   }
 
-  const endpoint = bundler
-    ? getBundlerEndpoint(bundler, chainId)
-    : `https://public.pimlico.io/v2/${chainId}/rpc`
-  const paymasterEndpoint = paymaster
-    ? getPaymasterEndpoint(paymaster, chainId)
+  const transport = bundler
+    ? getBundlerTransport(bundler, chainId)
+    : http(`https://public.pimlico.io/v2/${chainId}/rpc`)
+  const paymasterTransport = paymaster
+    ? getPaymasterTransport(paymaster, chainId)
     : undefined
   return createBundlerClient({
     client,
-    transport: http(endpoint),
-    paymaster: paymasterEndpoint
+    transport: transport,
+    paymaster: paymasterTransport
       ? createPaymasterClient({
-          transport: http(paymasterEndpoint),
+          transport: paymasterTransport,
         })
       : undefined,
     userOperation: {
-      estimateFeesPerGas: () => getGasPriceEstimate(endpoint),
+      estimateFeesPerGas: () => getGasPriceEstimate(transport),
     },
   })
 }
 
-async function getGasPriceEstimate(bundlerUrl: string) {
-  const response = await fetch(bundlerUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      id: Date.now(),
-      // TODO do not rely on vendor-specific methods
-      method: 'pimlico_getUserOperationGasPrice',
-      params: [],
-    }),
-  })
-
-  const json = (await response.json()) as UserOperationGasPriceResponse
+async function getGasPriceEstimate(bundlerTransport: Transport) {
+  const json = (await bundlerTransport({}).request({
+    method: 'pimlico_getUserOperationGasPrice',
+    params: [],
+  })) as UserOperationGasPriceResponse
 
   return {
     maxFeePerGas: BigInt(json.result.fast.maxFeePerGas),

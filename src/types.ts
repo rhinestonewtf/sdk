@@ -1,4 +1,4 @@
-import type { Account, Address, Chain, Hex } from 'viem'
+import type { Account, Address, Chain, Hex, Transport } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
 import type { ModuleType } from './modules/common'
 import type { EnableSessionData } from './modules/validators/smart-sessions'
@@ -88,16 +88,30 @@ type ProviderConfig =
       type: 'custom'
       urls: Record<number, string>
     }
+  | {
+      type: 'factory'
+      getTransport: (chainId: number) => Transport
+    }
 
-interface BundlerConfig {
-  type: 'pimlico' | 'biconomy'
-  apiKey: string
-}
+type BundlerConfig =
+  | {
+      type: 'pimlico' | 'biconomy'
+      apiKey: string
+    }
+  | {
+      type: 'factory'
+      getTransport: (chainId: number) => Transport
+    }
 
-interface PaymasterConfig {
-  type: 'pimlico' | 'biconomy'
-  apiKey: string
-}
+type PaymasterConfig =
+  | {
+      type: 'pimlico' | 'biconomy'
+      apiKey: string
+    }
+  | {
+      type: 'factory'
+      getTransport: (chainId: number) => Transport
+    }
 
 type OwnerSet =
   | OwnableValidatorConfig
