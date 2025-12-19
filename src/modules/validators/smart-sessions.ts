@@ -22,18 +22,12 @@ interface SessionData {
   sessionValidator: Address
   sessionValidatorInitData: Hex
   salt: Hex
-  userOpPolicies: readonly UserOpPolicy[]
   erc7739Policies: {
     allowedERC7739Content: readonly AllowedERC7739Content[]
     erc1271Policies: readonly ERC1271Policy[]
   }
   actions: readonly ActionData[]
-  permitERC4337Paymaster: boolean
-}
-
-interface UserOpPolicy {
-  policy: Address
-  initData: Hex
+  claimPolicies: readonly PolicyData[]
 }
 
 interface ERC1271Policy {
@@ -43,7 +37,7 @@ interface ERC1271Policy {
 
 interface AllowedERC7739Content {
   appDomainSeparator: Hex
-  contentName: readonly string[]
+  contentNames: readonly string[]
 }
 
 interface ActionData {
@@ -100,13 +94,6 @@ interface ERC7739Data {
 interface ERC7739Context {
   appDomainSeparator: Hex
   contentName: readonly string[]
-}
-
-interface EnableSessionData {
-  chainDigestIndex: number
-  hashesAndChainIds: ChainDigest[]
-  sessionToEnable: SessionData
-  signature: Hex
 }
 
 interface SessionDetails {
@@ -179,64 +166,17 @@ const RESET_PERIOD_ONE_WEEK = 6
 
 async function getSessionDetails(
   account: Address,
-  session: Session,
+  sessions: Session[],
 ): Promise<SessionDetails> {
   const lockTag = padHex('0x', { size: 12 })
-  const publicClient = createPublicClient({
-    chain: session.chain,
-    transport: http(),
-  })
-  const nonce = await publicClient.readContract({
-    address: SMART_SESSION_EMISSARY_ADDRESS,
-    abi: [
-      {
-        type: 'function',
-        name: 'getNonce',
-        inputs: [
-          { name: 'sponsor', type: 'address', internalType: 'address' },
-          { name: 'lockTag', type: 'bytes12', internalType: 'bytes12' },
-        ],
-        outputs: [{ name: '', type: 'uint256', internalType: 'uint256' }],
-        stateMutability: 'view',
-      },
-    ],
-    functionName: 'getNonce',
-    args: [account, lockTag],
-  })
-  const sessionNonces = [nonce]
-  const sessionData = getSessionData(session)
-  const sessionDatas = [sessionData]
-  const signedSessions = sessionDatas.map((session, index) => ({
-    account,
-    permissions: {
-      permitGenericPolicy: session.actions.some(
-        (action) =>
-          action.actionTarget === SMART_SESSIONS_FALLBACK_TARGET_FLAG &&
-          action.actionTargetSelector ===
-            SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
-      ),
-      lockTagPolicies: {
-        lockTag,
-        claimPolicies: session.claimPolicies,
-      },
-      erc7739Policies: {
-        allowedERC7739Content:
-          session.erc7739Policies.allowedERC7739Content.map((content) => ({
-            contentName: content.contentNames,
-            appDomainSeparator: content.appDomainSeparator,
-          })),
-        erc1271Policies: session.erc7739Policies.erc1271Policies,
-      },
-      actions: session.actions,
-    },
-    sessionValidator: session.sessionValidator,
-    sessionValidatorInitData: session.sessionValidatorInitData,
-    salt: session.salt,
-    smartSessionEmissary: SMART_SESSION_EMISSARY_ADDRESS,
-    expires: maxUint256,
-    nonce: sessionNonces[index],
-  }))
-  const chains = [session.chain]
+  const sessionNonces = await Promise.all(
+    sessions.map((session) => getSessionNonce(account, session, lockTag)),
+  )
+  const sessionDatas = sessions.map((session) => getSessionData(session))
+  const signedSessions = sessionDatas.map((session, index) =>
+    getSignedSession(account, lockTag, session, sessionNonces[index]),
+  )
+  const chains = sessions.map((session) => session.chain)
   const chainDigests = signedSessions.map((session, index) => ({
     chainId: BigInt(chains[index].id),
     sessionDigest: hashStruct({
@@ -272,6 +212,73 @@ async function getSessionDetails(
   }
 }
 
+async function getSessionNonce(
+  account: Address,
+  session: Session,
+  lockTag: Hex,
+): Promise<bigint> {
+  const publicClient = createPublicClient({
+    chain: session.chain,
+    transport: http(),
+  })
+  const nonce = await publicClient.readContract({
+    address: SMART_SESSION_EMISSARY_ADDRESS,
+    abi: [
+      {
+        type: 'function',
+        name: 'getNonce',
+        inputs: [
+          { name: 'sponsor', type: 'address', internalType: 'address' },
+          { name: 'lockTag', type: 'bytes12', internalType: 'bytes12' },
+        ],
+        outputs: [{ name: '', type: 'uint256', internalType: 'uint256' }],
+        stateMutability: 'view',
+      },
+    ],
+    functionName: 'getNonce',
+    args: [account, lockTag],
+  })
+  return nonce
+}
+
+function getSignedSession(
+  account: Address,
+  lockTag: Hex,
+  session: SessionData,
+  nonce: bigint,
+) {
+  return {
+    account,
+    permissions: {
+      permitGenericPolicy: session.actions.some(
+        (action) =>
+          action.actionTarget === SMART_SESSIONS_FALLBACK_TARGET_FLAG &&
+          action.actionTargetSelector ===
+            SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
+      ),
+      lockTagPolicies: {
+        lockTag,
+        claimPolicies: session.claimPolicies,
+      },
+      erc7739Policies: {
+        allowedERC7739Content:
+          session.erc7739Policies.allowedERC7739Content.map((content) => ({
+            contentName: content.contentNames,
+            appDomainSeparator: content.appDomainSeparator,
+          })),
+        erc1271Policies: session.erc7739Policies.erc1271Policies,
+      },
+      actions: session.actions,
+    },
+    sessionValidator: session.sessionValidator,
+    sessionValidatorInitData: session.sessionValidatorInitData,
+    salt: session.salt,
+    smartSessionEmissary: SMART_SESSION_EMISSARY_ADDRESS,
+    expires: maxUint256,
+    nonce,
+  }
+}
+
 async function getEnableSessionCall(
   account: Address,
   session: Session,
@@ -280,6 +287,7 @@ async function getEnableSessionCall(
     chainId: bigint
     sessionDigest: Hex
   }[],
+  sessionToEnableIndex: number,
 ) {
   const sessionData = getSessionData(session)
   const permissionId = getPermissionId(session)
@@ -301,7 +309,7 @@ async function getEnableSessionCall(
           userSig: enableSessionSignature,
           expires: maxUint256,
           session: {
-            chainDigestIndex: 0,
+            chainDigestIndex: sessionToEnableIndex,
             hashesAndChainIds,
             sessionToEnable: sessionData,
           },
@@ -311,7 +319,7 @@ async function getEnableSessionCall(
   }
 }
 
-function getSessionData(session: Session) {
+function getSessionData(session: Session): SessionData {
   const validator = getValidator(session.owners)
   const allowedContent = [
     {
@@ -333,8 +341,8 @@ function getSessionData(session: Session) {
     salt: zeroHash,
     sessionValidatorInitData: validator.initData,
     erc7739Policies: erc7739Data,
-    actions: [] as ActionData[],
-    claimPolicies: [] as PolicyData[],
+    actions: [],
+    claimPolicies: [],
   }
 }
 
@@ -396,7 +404,6 @@ export {
   getSessionDetails,
 }
 export type {
-  EnableSessionData,
   ChainSession,
   ChainDigest,
   SessionData,

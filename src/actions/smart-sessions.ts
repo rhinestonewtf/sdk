@@ -14,6 +14,7 @@ function experimental_enableSession(
     chainId: bigint
     sessionDigest: Hex
   }[],
+  sessionToEnableIndex: number,
 ): LazyCallInput {
   return {
     async resolve({ accountAddress, chain }) {
@@ -25,6 +26,7 @@ function experimental_enableSession(
         },
         enableSessionSignature,
         hashesAndChainIds,
+        sessionToEnableIndex,
       )
     },
   }

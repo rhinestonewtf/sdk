@@ -1,7 +1,6 @@
 import type { Account, Address, Chain, Hex } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
 import type { ModuleType } from './modules/common'
-import type { EnableSessionData } from './modules/validators/smart-sessions'
 import type { SettlementLayer } from './orchestrator/types'
 
 type AccountType = 'safe' | 'nexus' | 'kernel' | 'startale' | 'passport' | 'eoa'
@@ -308,7 +307,6 @@ type OwnerSignerSet =
 interface SessionSignerSet {
   type: 'experimental_session'
   session: Session
-  enableData?: EnableSessionData
 }
 
 interface GuardiansSignerSet {

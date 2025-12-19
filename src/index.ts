@@ -182,7 +182,9 @@ interface RhinestoneAccount {
     gasUnits: bigint,
     sponsored?: boolean,
   ) => Promise<bigint>
-  experimental_getSessionDetails: (session: Session) => Promise<SessionDetails>
+  experimental_getSessionDetails: (
+    sessions: Session[],
+  ) => Promise<SessionDetails>
   getOwners: (chain: Chain) => Promise<{
     accounts: Address[]
     threshold: number
@@ -495,9 +497,9 @@ async function createRhinestoneAccount(
     return getValidatorsInternal(accountType, account, chain, config.provider)
   }
 
-  function experimental_getSessionDetails(session: Session) {
+  function experimental_getSessionDetails(sessions: Session[]) {
     const account = getAddress()
-    return getSessionDetailsInternal(account, session)
+    return getSessionDetailsInternal(account, sessions)
   }
 
   /**
