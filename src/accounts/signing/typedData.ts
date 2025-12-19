@@ -13,7 +13,6 @@ import {
   type SigningFunctions,
   signWithGuardians,
   signWithOwners,
-  signWithSession,
 } from './common'
 
 async function sign<
@@ -44,11 +43,11 @@ async function sign<
         sign,
       )
     }
-    case 'session': {
-      return signWithSession(signers, chain, address, parameters, false, sign)
-    }
     case 'guardians': {
       return signWithGuardians(signers, parameters, signingFunctions)
+    }
+    case 'experimental_session': {
+      throw new Error('Not supported')
     }
   }
 }

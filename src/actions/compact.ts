@@ -247,4 +247,5 @@ export {
   disableErc20Withdrawal,
   withdrawErc20,
   approveErc20,
+  lockTag,
 }

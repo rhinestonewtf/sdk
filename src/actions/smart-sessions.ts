@@ -1,17 +1,35 @@
+import type { Hex } from 'viem'
 import { getEnableSessionCall } from '../modules/validators/smart-sessions'
-import type { Session } from '../types'
+import type { LazyCallInput, SessionInput } from '../types'
 
 /**
  * Enable a smart session
  * @param session session to enable
  * @returns Calls to enable the smart session
  */
-function enableSession(session: Session) {
+function experimental_enableSession(
+  session: SessionInput,
+  enableSessionSignature: Hex,
+  hashesAndChainIds: {
+    chainId: bigint
+    sessionDigest: Hex
+  }[],
+  sessionToEnableIndex: number,
+): LazyCallInput {
   return {
-    async resolve() {
-      return getEnableSessionCall(session)
+    async resolve({ accountAddress, chain }) {
+      return getEnableSessionCall(
+        accountAddress,
+        {
+          ...session,
+          chain,
+        },
+        enableSessionSignature,
+        hashesAndChainIds,
+        sessionToEnableIndex,
+      )
     },
   }
 }
 
-export { enableSession }
+export { experimental_enableSession }
