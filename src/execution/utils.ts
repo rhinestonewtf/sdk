@@ -1044,7 +1044,6 @@ async function getValidatorAccount(
     return getSmartAccount(config, publicClient, chain)
   }
 
-  // const withSession = signers.type === 'session' ? signers : null
   const withGuardians = signers.type === 'guardians' ? signers : null
 
   return withGuardians
