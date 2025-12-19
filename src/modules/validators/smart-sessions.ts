@@ -8,11 +8,11 @@ import {
   http,
   keccak256,
   maxUint256,
-  padHex,
   type TypedDataDefinition,
   zeroAddress,
   zeroHash,
 } from 'viem'
+import { lockTag as getLockTag } from '../../actions/compact'
 import type { RhinestoneAccountConfig, Session } from '../../types'
 import smartSessionEmissaryAbi from '../abi/smart-session-emissary'
 import { MODULE_TYPE_ID_VALIDATOR, type Module } from '../common'
@@ -168,7 +168,7 @@ async function getSessionDetails(
   account: Address,
   sessions: Session[],
 ): Promise<SessionDetails> {
-  const lockTag = padHex('0x', { size: 12 })
+  const lockTag = getLockTag()
   const sessionNonces = await Promise.all(
     sessions.map((session) => getSessionNonce(account, session, lockTag)),
   )
