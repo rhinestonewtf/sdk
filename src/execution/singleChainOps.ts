@@ -1,4 +1,4 @@
-import { type Address, zeroAddress } from 'viem'
+import type { Address } from 'viem'
 import type { IntentOpElement } from '../orchestrator/types'
 
 function getTypedData(
@@ -40,11 +40,7 @@ function getTypedData(
       account,
       nonce,
       op: element.mandate.destinationOps,
-      // todo
-      gasRefund: {
-        token: zeroAddress,
-        exchangeRate: 0n,
-      },
+      gasRefund: element.mandate.qualifier.settlementContext.gasRefund!,
     },
   }
 }
