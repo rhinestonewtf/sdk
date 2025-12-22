@@ -183,6 +183,11 @@ interface IntentOpElementMandate {
       fundingMethod: FundingMethod
       using7579: boolean
       requestId?: Hex
+      subsidizedAmount?: string
+      gasRefund?: {
+        token: Address
+        amount: bigint
+      }
     }
     encodedVal: Hex
   }
