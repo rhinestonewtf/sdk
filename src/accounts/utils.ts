@@ -265,7 +265,6 @@ function getBundlerClient(config: RhinestoneConfig, client: Client) {
     ? getPaymasterEndpoint(paymaster, chainId)
     : undefined
 
-  // For custom bundlers, skip vendor-specific gas estimation and let the bundler client handle it
   const isCustomBundler = bundler?.type === 'custom'
 
   return createBundlerClient({
