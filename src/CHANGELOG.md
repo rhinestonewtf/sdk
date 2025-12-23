@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.41
+
+### Patch Changes
+
+- 6e0f02c: Allow bundler and paymaster config to support custom types
+
 ## 1.0.40
 
 ### Patch Changes
