@@ -702,11 +702,7 @@ async function prepareTransactionAsIntent(
     })),
     recipient,
     account: intentAccount,
-    destinationExecutions: calls.map((call) => ({
-      to: call.to,
-      value: call.value.toString(),
-      data: call.data,
-    })),
+    destinationExecutions: calls,
     destinationGasUnits: gasLimit,
     accountAccessList,
     options: {

@@ -63,7 +63,7 @@ interface Claim {
 
 interface Execution {
   to: Address
-  value: string
+  value: bigint
   data: Hex
 }
 
@@ -146,13 +146,18 @@ interface IntentCost {
   }
 }
 
+export interface Op {
+  vt: Hex
+  ops: Execution[]
+}
+
 interface IntentOpElementMandate {
   recipient: Address
   tokenOut: [[string, string]]
   destinationChainId: string
   fillDeadline: string
-  destinationOps: Execution[]
-  preClaimOps: Execution[]
+  destinationOps: Op
+  preClaimOps: Op
   qualifier: {
     settlementContext: {
       settlementLayer: SettlementLayer
@@ -162,7 +167,6 @@ interface IntentOpElementMandate {
     }
     encodedVal: Hex
   }
-  v: number
   minGas: string
 }
 

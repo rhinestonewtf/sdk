@@ -25,10 +25,9 @@ const COMPACT_TYPED_DATA_TYPES = {
   ],
   Mandate: [
     { name: 'target', type: 'Target' },
-    { name: 'v', type: 'uint8' },
     { name: 'minGas', type: 'uint128' },
-    { name: 'originOps', type: 'Op[]' },
-    { name: 'destOps', type: 'Op[]' },
+    { name: 'originOps', type: 'Op' },
+    { name: 'destOps', type: 'Op' },
     { name: 'q', type: 'bytes32' },
   ],
   Target: [
@@ -42,6 +41,10 @@ const COMPACT_TYPED_DATA_TYPES = {
     { name: 'amount', type: 'uint256' },
   ],
   Op: [
+    { name: 'vt', type: 'bytes32' },
+    { name: 'ops', type: 'Ops[]' },
+  ],
+  Ops: [
     { name: 'to', type: 'address' },
     { name: 'value', type: 'uint256' },
     { name: 'data', type: 'bytes' },
@@ -80,18 +83,9 @@ function getCompactTypedData(intentOp: IntentOp) {
             targetChain: BigInt(element.mandate.destinationChainId),
             fillExpiry: BigInt(element.mandate.fillDeadline),
           },
-          v: element.mandate.v,
           minGas: BigInt(element.mandate.minGas),
-          originOps: element.mandate.preClaimOps.map((op) => ({
-            to: op.to,
-            value: BigInt(op.value),
-            data: op.data,
-          })),
-          destOps: element.mandate.destinationOps.map((op) => ({
-            to: op.to,
-            value: BigInt(op.value),
-            data: op.data,
-          })),
+          originOps: element.mandate.preClaimOps,
+          destOps: element.mandate.destinationOps,
           q: keccak256(element.mandate.qualifier.encodedVal),
         },
       })),
