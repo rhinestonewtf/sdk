@@ -227,21 +227,28 @@ async function getAccountNonce(
 }
 
 function getBundlerClient(config: RhinestoneConfig, client: Client) {
-  function getBundlerEndpoint(config: BundlerConfig, chainId: number) {
+  function getBundlerEndpoint(config: BundlerConfig, chainId: number): string {
     switch (config.type) {
       case 'pimlico':
         return `https://api.pimlico.io/v2/${chainId}/rpc?apikey=${config.apiKey}`
       case 'biconomy':
         return `https://bundler.biconomy.io/api/v3/${chainId}/${config.apiKey}`
+      case 'custom':
+        return typeof config.url === 'string' ? config.url : config.url[chainId]
     }
   }
 
-  function getPaymasterEndpoint(config: PaymasterConfig, chainId: number) {
+  function getPaymasterEndpoint(
+    config: PaymasterConfig,
+    chainId: number,
+  ): string {
     switch (config.type) {
       case 'pimlico':
         return `https://api.pimlico.io/v2/${chainId}/rpc?apikey=${config.apiKey}`
       case 'biconomy':
         return `https://paymaster.biconomy.io/api/v2/${chainId}/${config.apiKey}`
+      case 'custom':
+        return typeof config.url === 'string' ? config.url : config.url[chainId]
     }
   }
 
@@ -257,6 +264,10 @@ function getBundlerClient(config: RhinestoneConfig, client: Client) {
   const paymasterEndpoint = paymaster
     ? getPaymasterEndpoint(paymaster, chainId)
     : undefined
+
+  // For custom bundlers, skip vendor-specific gas estimation and let the bundler client handle it
+  const isCustomBundler = bundler?.type === 'custom'
+
   return createBundlerClient({
     client,
     transport: http(endpoint),
@@ -265,9 +276,11 @@ function getBundlerClient(config: RhinestoneConfig, client: Client) {
           transport: http(paymasterEndpoint),
         })
       : undefined,
-    userOperation: {
-      estimateFeesPerGas: () => getGasPriceEstimate(endpoint),
-    },
+    userOperation: isCustomBundler
+      ? undefined
+      : {
+          estimateFeesPerGas: () => getGasPriceEstimate(endpoint),
+        },
   })
 }
 

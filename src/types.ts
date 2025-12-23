@@ -89,15 +89,25 @@ type ProviderConfig =
       urls: Record<number, string>
     }
 
-interface BundlerConfig {
-  type: 'pimlico' | 'biconomy'
-  apiKey: string
-}
+type BundlerConfig =
+  | {
+      type: 'pimlico' | 'biconomy'
+      apiKey: string
+    }
+  | {
+      type: 'custom'
+      url: string | Record<number, string>
+    }
 
-interface PaymasterConfig {
-  type: 'pimlico' | 'biconomy'
-  apiKey: string
-}
+type PaymasterConfig =
+  | {
+      type: 'pimlico' | 'biconomy'
+      apiKey: string
+    }
+  | {
+      type: 'custom'
+      url: string | Record<number, string>
+    }
 
 type OwnerSet =
   | OwnableValidatorConfig
