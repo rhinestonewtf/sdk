@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.42
+
+### Patch Changes
+
+- 40f87b7: Custom bundler send transaction condition
+
 ## 1.0.41
 
 ### Patch Changes
