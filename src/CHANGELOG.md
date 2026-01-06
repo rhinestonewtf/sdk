@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.1.0
+
+### Minor Changes
+
+- c394ecb: Preliminary support for smart session emissary module (unscoped session keys for cross-chain intents).
+
 ## 1.0.43
 
 ### Patch Changes
