@@ -130,7 +130,7 @@ export class Orchestrator {
           bridgeFeesSponsored: sponsored,
           swapFeesSponsored: sponsored,
         },
-        sigMode: SIG_MODE_ERC1271_EMISSARY_EXECUTION,
+        signatureMode: SIG_MODE_ERC1271_EMISSARY_EXECUTION,
       },
     })
     if (!intentCost.hasFulfilledAll) {

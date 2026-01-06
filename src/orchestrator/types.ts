@@ -82,7 +82,7 @@ const SIG_MODE_EMISSARY_EXECUTION = 4
 const SIG_MODE_EMISSARY_EXECUTION_ERC1271 = 5
 const SIG_MODE_ERC1271_EMISSARY_EXECUTION = 6
 
-type SigMode =
+type SignatureMode =
   | typeof SIG_MODE_EMISSARY
   | typeof SIG_MODE_ERC1271
   | typeof SIG_MODE_EMISSARY_ERC1271
@@ -96,7 +96,7 @@ interface IntentOptions {
   feeToken?: Address | SupportedTokenSymbol
   sponsorSettings?: SponsorSettings
   settlementLayers?: SettlementLayer[]
-  sigMode?: SigMode
+  signatureMode?: SignatureMode
 }
 
 interface SponsorSettings {
