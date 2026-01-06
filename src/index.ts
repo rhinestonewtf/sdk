@@ -45,10 +45,6 @@ import {
   signPermit2Sequential,
 } from './execution/permit2'
 import {
-  getSessionDetails as getSessionDetailsInternal,
-  type SessionDetails,
-} from './execution/smart-session'
-import {
   getTransactionMessages as getTransactionMessagesInternal,
   type IntentRoute,
   type PreparedTransactionData,
@@ -67,8 +63,10 @@ import {
 } from './execution/utils'
 import {
   getOwners as getOwnersInternal,
+  getSessionDetails as getSessionDetailsInternal,
   getValidators as getValidatorsInternal,
 } from './modules'
+import type { SessionDetails } from './modules/validators/smart-sessions'
 import {
   type ApprovalRequired,
   getAllSupportedChainsAndTokens,
@@ -184,11 +182,8 @@ interface RhinestoneAccount {
     gasUnits: bigint,
     sponsored?: boolean,
   ) => Promise<bigint>
-  getSessionDetails: (
+  experimental_getSessionDetails: (
     sessions: Session[],
-    sessionIndex: number,
-    initialNonces?: bigint[],
-    signature?: Hex,
   ) => Promise<SessionDetails>
   getOwners: (chain: Chain) => Promise<{
     accounts: Address[]
@@ -502,19 +497,9 @@ async function createRhinestoneAccount(
     return getValidatorsInternal(accountType, account, chain, config.provider)
   }
 
-  function getSessionDetails(
-    sessions: Session[],
-    sessionIndex: number,
-    initialNonces?: bigint[],
-    signature?: Hex,
-  ) {
-    return getSessionDetailsInternal(
-      config,
-      sessions,
-      sessionIndex,
-      initialNonces,
-      signature,
-    )
+  function experimental_getSessionDetails(sessions: Session[]) {
+    const account = getAddress()
+    return getSessionDetailsInternal(account, sessions)
   }
 
   /**
@@ -552,9 +537,9 @@ async function createRhinestoneAccount(
     getAddress,
     getPortfolio,
     getMaxSpendableAmount,
-    getSessionDetails,
     getOwners,
     getValidators,
+    experimental_getSessionDetails,
     checkERC20Allowance,
     getInitData,
   }

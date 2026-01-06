@@ -1,7 +1,6 @@
 import type { Account, Address, Chain, Hex } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
 import type { ModuleType } from './modules/common'
-import type { EnableSessionData } from './modules/validators/smart-sessions'
 import type { SettlementLayer } from './orchestrator/types'
 
 type AccountType = 'safe' | 'nexus' | 'kernel' | 'startale' | 'passport' | 'eoa'
@@ -179,19 +178,15 @@ interface Action {
   policies?: [Policy, ...Policy[]]
 }
 
+interface SessionInput {
+  owners: OwnerSet
+  actions: Action[]
+}
+
 interface Session {
   owners: OwnerSet
-  chain?: Chain
-  policies?: [Policy, ...Policy[]]
-  actions?: [Action, ...Action[]]
-  signing?: {
-    allowedContent: {
-      domainSeparator: string
-      contentName: string[]
-    }[]
-    policies?: [Policy, ...Policy[]]
-  }
-  salt?: Hex
+  chain: Chain
+  actions: Action[]
 }
 
 interface Recovery {
@@ -320,9 +315,8 @@ type OwnerSignerSet =
     }
 
 interface SessionSignerSet {
-  type: 'session'
+  type: 'experimental_session'
   session: Session
-  enableData?: EnableSessionData
 }
 
 interface GuardiansSignerSet {
@@ -410,6 +404,7 @@ export type {
   WebauthnValidatorConfig,
   MultiFactorValidatorConfig,
   SignerSet,
+  SessionInput,
   Session,
   Recovery,
   ModuleType,
