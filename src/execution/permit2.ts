@@ -63,17 +63,20 @@ function getTypedData(
         { name: 'targetChain', type: 'uint256' },
         { name: 'fillExpiry', type: 'uint256' },
       ],
-      Op: [
+      Ops: [
         { name: 'to', type: 'address' },
         { name: 'value', type: 'uint256' },
         { name: 'data', type: 'bytes' },
       ],
+      Op: [
+        { name: 'vt', type: 'bytes32' },
+        { name: 'ops', type: 'Ops[]' },
+      ],
       Mandate: [
         { name: 'target', type: 'Target' },
-        { name: 'v', type: 'uint8' },
         { name: 'minGas', type: 'uint128' },
-        { name: 'originOps', type: 'Op[]' },
-        { name: 'destOps', type: 'Op[]' },
+        { name: 'originOps', type: 'Op' },
+        { name: 'destOps', type: 'Op' },
         { name: 'q', type: 'bytes32' },
       ],
       PermitBatchWitnessTransferFrom: [
@@ -100,18 +103,9 @@ function getTypedData(
           targetChain: BigInt(mandate.destinationChainId),
           fillExpiry: BigInt(mandate.fillDeadline),
         },
-        v: mandate.v,
         minGas: BigInt(mandate.minGas),
-        originOps: mandate.preClaimOps.map((op) => ({
-          to: op.to,
-          value: BigInt(op.value),
-          data: op.data,
-        })),
-        destOps: mandate.destinationOps.map((op) => ({
-          to: op.to,
-          value: BigInt(op.value),
-          data: op.data,
-        })),
+        originOps: mandate.preClaimOps,
+        destOps: mandate.destinationOps,
         q: keccak256(mandate.qualifier.encodedVal),
       },
     },

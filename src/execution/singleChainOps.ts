@@ -1,5 +1,5 @@
-import type { Address } from 'viem'
-import type { Execution, IntentOpElement } from '../orchestrator/types'
+import { type Address, zeroAddress } from 'viem'
+import type { IntentOpElement } from '../orchestrator/types'
 
 function getTypedData(
   account: Address,
@@ -7,8 +7,6 @@ function getTypedData(
   element: IntentOpElement,
   nonce: bigint,
 ) {
-  const ops: Execution[] = element.mandate.destinationOps
-
   return {
     domain: {
       name: 'IntentExecutor',
@@ -20,9 +18,18 @@ function getTypedData(
       SingleChainOps: [
         { name: 'account', type: 'address' },
         { name: 'nonce', type: 'uint256' },
-        { name: 'ops', type: 'Op[]' },
+        { name: 'op', type: 'Op' },
+        { name: 'gasRefund', type: 'GasRefund' },
       ],
       Op: [
+        { name: 'vt', type: 'bytes32' },
+        { name: 'ops', type: 'Ops[]' },
+      ],
+      GasRefund: [
+        { name: 'token', type: 'address' },
+        { name: 'exchangeRate', type: 'uint256' },
+      ],
+      Ops: [
         { name: 'to', type: 'address' },
         { name: 'value', type: 'uint256' },
         { name: 'data', type: 'bytes' },
@@ -32,7 +39,12 @@ function getTypedData(
     message: {
       account,
       nonce,
-      ops,
+      op: element.mandate.destinationOps,
+      // todo
+      gasRefund: {
+        token: zeroAddress,
+        exchangeRate: 0n,
+      },
     },
   }
 }
