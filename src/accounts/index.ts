@@ -550,7 +550,11 @@ async function deploy(
     'intentExecutorInstalled' in deployArgs
       ? deployArgs.intentExecutorInstalled
       : false
-  const asUserOp = config.initData && !intentExecutorInstalled
+  // Use bundler directly when:
+  // (account has initData and intent executor is not installed) || (custom bundler is configured)
+  const useCustomBundler = config.bundler?.type === 'custom'
+  const asUserOp =
+    (config.initData && !intentExecutorInstalled) || useCustomBundler
   if (asUserOp) {
     await deployWithBundler(chain, config)
   } else {
