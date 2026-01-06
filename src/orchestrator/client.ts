@@ -33,7 +33,7 @@ import {
   type IntentRoute,
   type Portfolio,
   type PortfolioResponse,
-  SIG_MODE_ERC1271_EMISSARY_EXECUTION,
+  SIG_MODE_EMISSARY_EXECUTION_ERC1271,
   type SignedIntentOp,
 } from './types'
 import { convertBigIntFields } from './utils'
@@ -130,7 +130,7 @@ export class Orchestrator {
           bridgeFeesSponsored: sponsored,
           swapFeesSponsored: sponsored,
         },
-        signatureMode: SIG_MODE_ERC1271_EMISSARY_EXECUTION,
+        signatureMode: SIG_MODE_EMISSARY_EXECUTION_ERC1271,
       },
     })
     if (!intentCost.hasFulfilledAll) {
