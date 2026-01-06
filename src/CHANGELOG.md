@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.0.43
+
+### Patch Changes
+
+- f163a3c: contract remediation changes
+
 ## 1.0.42
 
 ### Patch Changes
