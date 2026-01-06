@@ -23,17 +23,18 @@ import {
   UnsupportedChainIdError,
   UnsupportedTokenError,
 } from './error'
-import type {
-  AccountType,
-  Execution,
-  IntentCost,
-  IntentInput,
-  IntentOpStatus,
-  IntentResult,
-  IntentRoute,
-  Portfolio,
-  PortfolioResponse,
-  SignedIntentOp,
+import {
+  type AccountType,
+  type Execution,
+  type IntentCost,
+  type IntentInput,
+  type IntentOpStatus,
+  type IntentResult,
+  type IntentRoute,
+  type Portfolio,
+  type PortfolioResponse,
+  SIG_MODE_ERC1271_EMISSARY_EXECUTION,
+  type SignedIntentOp,
 } from './types'
 import { convertBigIntFields } from './utils'
 
@@ -129,6 +130,7 @@ export class Orchestrator {
           bridgeFeesSponsored: sponsored,
           swapFeesSponsored: sponsored,
         },
+        sigMode: SIG_MODE_ERC1271_EMISSARY_EXECUTION,
       },
     })
     if (!intentCost.hasFulfilledAll) {
