@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.1.1
+
+### Patch Changes
+
+- 01e44d3: Enable calls for EOAs
+
 ## 1.1.0
 
 ### Minor Changes
