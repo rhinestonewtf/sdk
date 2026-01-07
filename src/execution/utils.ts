@@ -100,7 +100,7 @@ import type {
   UserOperationTransaction,
 } from '../types'
 import { getCompactTypedData } from './compact'
-import { CallsNotSupportedError, SignerNotSupportedError } from './error'
+import { SignerNotSupportedError } from './error'
 import { getTypedData as getPermit2TypedData } from './permit2'
 import { getTypedData as getSingleChainOpsTypedData } from './singleChainOps'
 
@@ -663,11 +663,6 @@ async function prepareTransactionAsIntent(
       }
     | undefined,
 ) {
-  if (config.account?.type === 'eoa') {
-    if (callInputs.length > 0) {
-      throw new CallsNotSupportedError()
-    }
-  }
   const calls = parseCalls(callInputs, targetChain.id)
   const accountAccessList = createAccountAccessList(sourceChains, sourceAssets)
 
