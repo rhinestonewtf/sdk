@@ -77,12 +77,14 @@ import {
   isTestnet,
   resolveTokenAddress,
 } from '../orchestrator/registry'
-import type {
-  MappedChainTokenAccessList,
-  Account as OrchestratorAccount,
-  SettlementLayer,
-  SupportedChain,
-  UnmappedChainTokenAccessList,
+import {
+  type MappedChainTokenAccessList,
+  type Account as OrchestratorAccount,
+  type OriginSignature,
+  type SettlementLayer,
+  SIG_MODE_EMISSARY_EXECUTION_ERC1271,
+  type SupportedChain,
+  type UnmappedChainTokenAccessList,
 } from '../orchestrator/types'
 import type {
   AccountProviderConfig,
@@ -129,7 +131,7 @@ interface PreparedUserOperationData {
 }
 
 interface SignedTransactionData extends PreparedTransactionData {
-  originSignatures: Hex[]
+  originSignatures: OriginSignature[]
   destinationSignature: Hex
 }
 
@@ -767,7 +769,7 @@ async function signIntent(
   const ownerValidator = getOwnerValidator(config)
   const isRoot = validator.address === ownerValidator.address
 
-  const originSignatures: Hex[] = []
+  const originSignatures: OriginSignature[] = []
   for (const typedData of origin) {
     const chain = getChainById(typedData.domain?.chainId as number)
     const signature = await signIntentTypedData(
@@ -780,7 +782,11 @@ async function signIntent(
     )
     originSignatures.push(signature)
   }
-  const destinationSignature = originSignatures.at(-1) as Hex
+  const lastOriginSignature = originSignatures.at(-1)
+  const destinationSignature =
+    typeof lastOriginSignature === 'object'
+      ? lastOriginSignature.notarizedClaimSig
+      : (lastOriginSignature ?? '0x')
   return {
     originSignatures,
     destinationSignature,
@@ -943,7 +949,7 @@ async function submitIntent(
   sourceChains: Chain[] | undefined,
   targetChain: Chain,
   intentOp: IntentOp,
-  originSignatures: Hex[],
+  originSignatures: OriginSignature[],
   destinationSignature: Hex,
   authorizations: SignedAuthorizationList,
   dryRun: boolean,
@@ -977,7 +983,7 @@ function getOrchestratorByChain(
 
 function createSignedIntentOp(
   intentOp: IntentOp,
-  originSignatures: Hex[],
+  originSignatures: OriginSignature[],
   destinationSignature: Hex,
   authorizations: SignedAuthorizationList,
 ): SignedIntentOp {
@@ -1004,7 +1010,7 @@ async function submitIntentInternal(
   sourceChains: Chain[] | undefined,
   targetChain: Chain,
   intentOp: IntentOp,
-  originSignatures: Hex[],
+  originSignatures: OriginSignature[],
   destinationSignature: Hex,
   authorizations: SignedAuthorizationList,
   dryRun: boolean,
