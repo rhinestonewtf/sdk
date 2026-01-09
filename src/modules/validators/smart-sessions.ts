@@ -297,7 +297,7 @@ async function getEnableSessionCall(
         {
           scope: SCOPE_MULTICHAIN,
           resetPeriod: RESET_PERIOD_ONE_WEEK,
-          allocator: zeroAddress,
+          allocator: ALLOCATOR_ADDRESS,
           permissionId,
         },
         {
