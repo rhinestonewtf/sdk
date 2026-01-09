@@ -238,6 +238,7 @@ function lockTag(): Hex {
 }
 
 export {
+  ALLOCATOR_ADDRESS,
   depositEther,
   enableEtherWithdrawal,
   disableEtherWithdrawal,
