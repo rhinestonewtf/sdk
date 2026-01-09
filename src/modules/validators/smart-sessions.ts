@@ -177,17 +177,13 @@ async function getSessionDetails(
     getSignedSession(account, lockTag, session, sessionNonces[index]),
   )
   const chains = sessions.map((session) => session.chain)
-  const chainDigests = signedSessions.map((session, index) => ({
+  const hashesAndChainIds = signedSessions.map((session, index) => ({
     chainId: BigInt(chains[index].id),
     sessionDigest: hashStruct({
-      types: types,
+      types,
       primaryType: 'SignedSession',
       data: session,
     }),
-  }))
-  const hashesAndChainIds = chainDigests.map((chainDigest) => ({
-    chainId: BigInt(chainDigest.chainId),
-    sessionDigest: chainDigest.sessionDigest,
   }))
 
   const data: TypedDataDefinition<typeof types, 'MultiChainSession'> = {
