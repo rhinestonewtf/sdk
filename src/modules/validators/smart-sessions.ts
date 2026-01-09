@@ -3,20 +3,34 @@ import {
   createPublicClient,
   encodeAbiParameters,
   encodeFunctionData,
+  encodePacked,
   type Hex,
   hashStruct,
   http,
+  isHex,
   keccak256,
   maxUint256,
+  padHex,
   type TypedDataDefinition,
-  zeroAddress,
+  toHex,
   zeroHash,
 } from 'viem'
-import { lockTag as getLockTag } from '../../actions/compact'
-import type { RhinestoneAccountConfig, Session } from '../../types'
+import { ALLOCATOR_ADDRESS, lockTag as getLockTag } from '../../actions/compact'
+import type {
+  Policy,
+  RhinestoneAccountConfig,
+  Session,
+  UniversalActionPolicyParamCondition,
+} from '../../types'
 import smartSessionEmissaryAbi from '../abi/smart-session-emissary'
 import { MODULE_TYPE_ID_VALIDATOR, type Module } from '../common'
 import { getValidator } from './core'
+
+type FixedLengthArray<
+  T,
+  N extends number,
+  A extends T[] = [],
+> = A['length'] extends N ? A : FixedLengthArray<T, N, [...A, T]>
 
 interface SessionData {
   sessionValidator: Address
@@ -51,10 +65,20 @@ interface PolicyData {
   initData: Hex
 }
 
+interface ActionParamRule {
+  condition: number
+  offset: bigint
+  isLimited: boolean
+  ref: Hex
+  usage: {
+    limit: bigint
+    used: bigint
+  }
+}
+
 type SmartSessionModeType =
   | typeof SMART_SESSION_MODE_USE
   | typeof SMART_SESSION_MODE_ENABLE
-  | typeof SMART_SESSION_MODE_UNSAFE_ENABLE
 
 interface ChainDigest {
   chainId: bigint
@@ -150,16 +174,34 @@ const types = {
 const SMART_SESSION_EMISSARY_ADDRESS: Address =
   '0x7fbfc460d7750a4845d861740faa28b9612f9c08'
 
-const SMART_SESSION_MODE_USE = '0x00'
-const SMART_SESSION_MODE_ENABLE = '0x01'
-const SMART_SESSION_MODE_UNSAFE_ENABLE = '0x02'
-const SUDO_POLICY_ADDRESS: Address =
-  '0x0000003111cD8e92337C100F22B7A9dbf8DEE301'
+const SMART_SESSION_MODE_USE = 0
+const SMART_SESSION_MODE_ENABLE = 1
 const SMART_SESSIONS_FALLBACK_TARGET_FLAG: Address =
   '0x0000000000000000000000000000000000000001'
 const SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG: Hex = '0x00000001'
 const SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG_PERMITTED_TO_CALL_SMARTSESSION: Hex =
   '0x00000002'
+
+const SPENDING_LIMITS_POLICY_ADDRESS: Address =
+  '0x00000088d48cf102a8cdb0137a9b173f957c6343'
+const TIME_FRAME_POLICY_ADDRESS: Address =
+  '0x8177451511de0577b911c254e9551d981c26dc72'
+const SUDO_POLICY_ADDRESS: Address =
+  '0x0000003111cd8e92337c100f22b7a9dbf8dee301'
+const UNIVERSAL_ACTION_POLICY_ADDRESS: Address =
+  '0x0000006dda6c463511c4e9b05cfc34c1247fcf1f'
+const USAGE_LIMIT_POLICY_ADDRESS: Address =
+  '0x1f34ef8311345a3a4a4566af321b313052f51493'
+const VALUE_LIMIT_POLICY_ADDRESS: Address =
+  '0x730da93267e7e513e932301b47f2ac7d062abc83'
+
+const ACTION_CONDITION_EQUAL = 0
+const ACTION_CONDITION_GREATER_THAN = 1
+const ACTION_CONDITION_LESS_THAN = 2
+const ACTION_CONDITION_GREATER_THAN_OR_EQUAL = 3
+const ACTION_CONDITION_LESS_THAN_OR_EQUAL = 4
+const ACTION_CONDITION_NOT_EQUAL = 5
+const ACTION_CONDITION_IN_RANGE = 6
 
 const SCOPE_MULTICHAIN = 0
 const RESET_PERIOD_ONE_WEEK = 6
@@ -337,7 +379,12 @@ function getSessionData(session: Session): SessionData {
     salt: zeroHash,
     sessionValidatorInitData: validator.initData,
     erc7739Policies: erc7739Data,
-    actions: [],
+    actions: session.actions.map((action) => ({
+      actionTargetSelector: action.selector,
+      actionTarget: action.target,
+      actionPolicies:
+        action.policies?.map((policy) => getPolicyData(policy)) ?? [],
+    })),
     claimPolicies: [],
   }
 }
@@ -369,6 +416,171 @@ function getPermissionId(session: Session) {
   )
 }
 
+function getPolicyData(policy: Policy): PolicyData {
+  switch (policy.type) {
+    case 'sudo':
+      return {
+        policy: SUDO_POLICY_ADDRESS,
+        initData: '0x',
+      }
+    case 'universal-action': {
+      function getCondition(condition: UniversalActionPolicyParamCondition) {
+        switch (condition) {
+          case 'equal':
+            return ACTION_CONDITION_EQUAL
+          case 'greaterThan':
+            return ACTION_CONDITION_GREATER_THAN
+          case 'lessThan':
+            return ACTION_CONDITION_LESS_THAN
+          case 'greaterThanOrEqual':
+            return ACTION_CONDITION_GREATER_THAN_OR_EQUAL
+          case 'lessThanOrEqual':
+            return ACTION_CONDITION_LESS_THAN_OR_EQUAL
+          case 'notEqual':
+            return ACTION_CONDITION_NOT_EQUAL
+          case 'inRange':
+            return ACTION_CONDITION_IN_RANGE
+        }
+      }
+
+      const MAX_RULES = 16
+      const rules = createFixedArray<ActionParamRule, typeof MAX_RULES>(
+        MAX_RULES,
+        () => ({
+          condition: ACTION_CONDITION_EQUAL,
+          offset: 0n,
+          isLimited: false,
+          ref: zeroHash,
+          usage: { limit: 0n, used: 0n },
+        }),
+      )
+      for (let i = 0; i < policy.rules.length; i++) {
+        const rule = policy.rules[i]
+        const ref = isHex(rule.referenceValue)
+          ? padHex(rule.referenceValue)
+          : toHex(rule.referenceValue, { size: 32 })
+        rules[i] = {
+          condition: getCondition(rule.condition),
+          offset: rule.calldataOffset,
+          isLimited: rule.usageLimit !== undefined,
+          ref,
+          usage: {
+            limit: rule.usageLimit ? rule.usageLimit : 0n,
+            used: 0n,
+          },
+        }
+      }
+      return {
+        policy: UNIVERSAL_ACTION_POLICY_ADDRESS,
+        initData: encodeAbiParameters(
+          [
+            {
+              components: [
+                {
+                  name: 'valueLimitPerUse',
+                  type: 'uint256',
+                },
+                {
+                  components: [
+                    {
+                      name: 'length',
+                      type: 'uint256',
+                    },
+                    {
+                      components: [
+                        {
+                          name: 'condition',
+                          type: 'uint8',
+                        },
+                        {
+                          name: 'offset',
+                          type: 'uint64',
+                        },
+                        {
+                          name: 'isLimited',
+                          type: 'bool',
+                        },
+                        {
+                          name: 'ref',
+                          type: 'bytes32',
+                        },
+                        {
+                          components: [
+                            {
+                              name: 'limit',
+                              type: 'uint256',
+                            },
+                            {
+                              name: 'used',
+                              type: 'uint256',
+                            },
+                          ],
+                          name: 'usage',
+                          type: 'tuple',
+                        },
+                      ],
+                      name: 'rules',
+                      type: 'tuple[16]',
+                    },
+                  ],
+                  name: 'paramRules',
+                  type: 'tuple',
+                },
+              ],
+              name: 'ActionConfig',
+              type: 'tuple',
+            },
+          ],
+          [
+            {
+              valueLimitPerUse: policy.valueLimitPerUse ?? 0n,
+              paramRules: {
+                length: BigInt(policy.rules.length),
+                rules: rules,
+              },
+            },
+          ],
+        ),
+      }
+    }
+    case 'spending-limits': {
+      const tokens = policy.limits.map(({ token }) => token)
+      const limits = policy.limits.map(({ amount }) => amount)
+      return {
+        policy: SPENDING_LIMITS_POLICY_ADDRESS,
+        initData: encodeAbiParameters(
+          [{ type: 'address[]' }, { type: 'uint256[]' }],
+          [tokens, limits],
+        ),
+      }
+    }
+    case 'time-frame': {
+      return {
+        policy: TIME_FRAME_POLICY_ADDRESS,
+        initData: encodePacked(
+          ['uint48', 'uint48'],
+          [
+            Math.floor(policy.validUntil / 1000),
+            Math.floor(policy.validAfter / 1000),
+          ],
+        ),
+      }
+    }
+    case 'usage-limit': {
+      return {
+        policy: USAGE_LIMIT_POLICY_ADDRESS,
+        initData: encodePacked(['uint128'], [policy.limit]),
+      }
+    }
+    case 'value-limit': {
+      return {
+        policy: VALUE_LIMIT_POLICY_ADDRESS,
+        initData: encodeAbiParameters([{ type: 'uint256' }], [policy.limit]),
+      }
+    }
+  }
+}
+
 function getSmartSessionValidator(
   config: RhinestoneAccountConfig,
 ): Module | null {
@@ -386,6 +598,13 @@ function getSmartSessionValidator(
     additionalContext: '0x',
     type: MODULE_TYPE_ID_VALIDATOR,
   }
+}
+
+function createFixedArray<T, N extends number>(
+  length: N,
+  getValue: (index: number) => T,
+): FixedLengthArray<T, N> {
+  return Array.from({ length }, (_, i) => getValue(i)) as FixedLengthArray<T, N>
 }
 
 export {
