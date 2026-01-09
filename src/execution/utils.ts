@@ -720,6 +720,7 @@ async function prepareTransactionAsIntent(
             }
         : undefined,
       settlementLayers,
+      signatureMode: SIG_MODE_EMISSARY_EXECUTION_ERC1271,
     },
   }
 
