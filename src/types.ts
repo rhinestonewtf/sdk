@@ -314,9 +314,20 @@ type OwnerSignerSet =
       module?: Address
     }
 
+interface SessionEnableData {
+  userSignature: Hex
+  hashesAndChainIds: {
+    chainId: bigint
+    sessionDigest: Hex
+  }[]
+  sessionToEnableIndex: number
+}
+
 interface SessionSignerSet {
   type: 'experimental_session'
   session: Session
+  verifyExecutions?: boolean
+  enableData?: SessionEnableData
 }
 
 interface GuardiansSignerSet {
