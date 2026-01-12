@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.1.2
+
+### Patch Changes
+
+- 3932774: Override default signature mode
+
 ## 1.1.1
 
 ### Patch Changes
