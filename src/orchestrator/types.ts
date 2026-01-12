@@ -74,11 +74,29 @@ type SettlementLayer =
 
 type FundingMethod = 'COMPACT' | 'PERMIT2' | 'NO_FUNDING'
 
+const SIG_MODE_EMISSARY = 0
+const SIG_MODE_ERC1271 = 1
+const SIG_MODE_EMISSARY_ERC1271 = 2
+const SIG_MODE_ERC1271_EMISSARY = 3
+const SIG_MODE_EMISSARY_EXECUTION = 4
+const SIG_MODE_EMISSARY_EXECUTION_ERC1271 = 5
+const SIG_MODE_ERC1271_EMISSARY_EXECUTION = 6
+
+type SignatureMode =
+  | typeof SIG_MODE_EMISSARY
+  | typeof SIG_MODE_ERC1271
+  | typeof SIG_MODE_EMISSARY_ERC1271
+  | typeof SIG_MODE_ERC1271_EMISSARY
+  | typeof SIG_MODE_EMISSARY_EXECUTION
+  | typeof SIG_MODE_EMISSARY_EXECUTION_ERC1271
+  | typeof SIG_MODE_ERC1271_EMISSARY_EXECUTION
+
 interface IntentOptions {
   topupCompact: boolean
   feeToken?: Address | SupportedTokenSymbol
   sponsorSettings?: SponsorSettings
   settlementLayers?: SettlementLayer[]
+  signatureMode?: SignatureMode
 }
 
 interface SponsorSettings {
@@ -398,4 +416,11 @@ export {
   INTENT_STATUS_COMPLETED,
   INTENT_STATUS_FILLED,
   INTENT_STATUS_PRECONFIRMED,
+  SIG_MODE_EMISSARY,
+  SIG_MODE_ERC1271,
+  SIG_MODE_EMISSARY_ERC1271,
+  SIG_MODE_ERC1271_EMISSARY,
+  SIG_MODE_EMISSARY_EXECUTION,
+  SIG_MODE_EMISSARY_EXECUTION_ERC1271,
+  SIG_MODE_ERC1271_EMISSARY_EXECUTION,
 }
