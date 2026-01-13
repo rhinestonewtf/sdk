@@ -82,8 +82,8 @@ import {
   type AccountAccessList,
   type Account as OrchestratorAccount,
   type OriginSignature,
-  SettlementLayer,
-  SIG_MODE_EMISSARY_EXECUTION_ERC1271
+  type SettlementLayer,
+  SIG_MODE_EMISSARY_EXECUTION_ERC1271,
   type SupportedChain,
 } from '../orchestrator/types'
 import type {
