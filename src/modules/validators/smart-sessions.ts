@@ -374,17 +374,31 @@ function getSessionData(session: Session): SessionData {
       },
     ],
   }
+  const sudoAction = {
+    actionTargetSelector: SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
+    actionTarget: SMART_SESSIONS_FALLBACK_TARGET_FLAG,
+    actionPolicies: [
+      {
+        policy: SUDO_POLICY_ADDRESS,
+        initData: '0x' as Hex,
+      },
+    ],
+  }
+  const actions = session.actions
+    ? session.actions.map((action) => ({
+        actionTargetSelector:
+          action.selector ?? SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
+        actionTarget: action.target ?? SMART_SESSIONS_FALLBACK_TARGET_FLAG,
+        actionPolicies:
+          action.policies?.map((policy) => getPolicyData(policy)) ?? [],
+      }))
+    : [sudoAction]
   return {
     sessionValidator: validator.address,
     salt: zeroHash,
     sessionValidatorInitData: validator.initData,
     erc7739Policies: erc7739Data,
-    actions: session.actions.map((action) => ({
-      actionTargetSelector: action.selector,
-      actionTarget: action.target,
-      actionPolicies:
-        action.policies?.map((policy) => getPolicyData(policy)) ?? [],
-    })),
+    actions,
     claimPolicies: [],
   }
 }

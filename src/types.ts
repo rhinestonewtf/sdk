@@ -173,20 +173,20 @@ type Policy =
   | ValueLimitPolicy
 
 interface Action {
-  target: Address
-  selector: Hex
+  target?: Address
+  selector?: Hex
   policies?: [Policy, ...Policy[]]
 }
 
 interface SessionInput {
   owners: OwnerSet
-  actions: Action[]
+  actions?: Action[]
 }
 
 interface Session {
   owners: OwnerSet
   chain: Chain
-  actions: Action[]
+  actions?: Action[]
 }
 
 interface Recovery {
