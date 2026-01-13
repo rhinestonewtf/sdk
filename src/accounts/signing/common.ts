@@ -7,8 +7,11 @@ import {
   createWalletClient,
   custom,
   encodeAbiParameters,
+  encodePacked,
   type Hex,
+  hashMessage,
   pad,
+  padHex,
   toHex,
 } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
@@ -181,17 +184,16 @@ async function signWithSession(
   const sessionSigners: SignerSet = convertOwnerSetToSignerSet(
     signers.session.owners,
   )
-  const digest = signers.verifyExecutions
+  const signedHash = signers.verifyExecutions
     ? hash
-    : encodeAbiParameters(
-        [{ type: 'address' }, { type: 'bytes32' }],
-        [address, hash],
-      )
+    : hashMessage({
+        raw: encodePacked(['bytes32', 'bytes32'], [padHex(address), hash]),
+      })
   const validatorSignature = await signMain(
     sessionSigners,
     chain,
     address,
-    digest,
+    signedHash,
     false,
   )
   return packSmartSessionSignature(signers, validatorSignature)

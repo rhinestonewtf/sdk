@@ -884,7 +884,7 @@ async function signIntentTypedData<
         ? {
             type: 'experimental_session',
             session: signers.session,
-            verifyExecutions: signers.verifyExecutions,
+            verifyExecutions: true,
             enableData: signers.enableData,
           }
         : signers,
