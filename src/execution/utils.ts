@@ -79,22 +79,23 @@ import {
   resolveTokenAddress,
 } from '../orchestrator/registry'
 import {
-  type MappedChainTokenAccessList,
+  type AccountAccessList,
   type Account as OrchestratorAccount,
   type OriginSignature,
-  type SettlementLayer,
-  SIG_MODE_EMISSARY_EXECUTION_ERC1271,
+  SettlementLayer,
+  SIG_MODE_EMISSARY_EXECUTION_ERC1271
   type SupportedChain,
-  type UnmappedChainTokenAccessList,
 } from '../orchestrator/types'
 import type {
   AccountProviderConfig,
   Call,
   CalldataInput,
   CallInput,
+  ExactInputConfig,
   RhinestoneAccountConfig,
   RhinestoneConfig,
   SignerSet,
+  SimpleTokenList,
   SourceAssetInput,
   Sponsorship,
   TokenRequest,
@@ -103,7 +104,7 @@ import type {
   UserOperationTransaction,
 } from '../types'
 import { getCompactTypedData } from './compact'
-import { CallsNotSupportedError, SignerNotSupportedError } from './error'
+import { SignerNotSupportedError } from './error'
 import { getTypedData as getPermit2TypedData } from './permit2'
 import { getTypedData as getSingleChainOpsTypedData } from './singleChainOps'
 
@@ -666,11 +667,6 @@ async function prepareTransactionAsIntent(
       }
     | undefined,
 ) {
-  if (config.account?.type === 'eoa') {
-    if (callInputs.length > 0) {
-      throw new CallsNotSupportedError()
-    }
-  }
   const calls = parseCalls(callInputs, targetChain.id)
   const accountAccessList = createAccountAccessList(sourceChains, sourceAssets)
 
@@ -1158,17 +1154,23 @@ function parseCalls(calls: CalldataInput[], chainId: number): Call[] {
 function createAccountAccessList(
   sourceChains: Chain[] | undefined,
   sourceAssets: SourceAssetInput | undefined,
-): MappedChainTokenAccessList | UnmappedChainTokenAccessList | undefined {
+): AccountAccessList | undefined {
   if (!sourceChains && !sourceAssets) return undefined
+
   const chainIds = sourceChains?.map((chain) => chain.id as SupportedChain)
-  if (!sourceAssets) {
-    return { chainIds }
-  }
+
+  if (!sourceAssets) return { chainIds }
   if (Array.isArray(sourceAssets)) {
+    const isExactConfig =
+      sourceAssets.length > 0 && typeof sourceAssets[0] !== 'string'
+
+    if (isExactConfig) return sourceAssets as ExactInputConfig[]
+
     return chainIds
-      ? { chainIds, tokens: sourceAssets }
-      : { tokens: sourceAssets }
+      ? { chainIds, tokens: sourceAssets as SimpleTokenList }
+      : { tokens: sourceAssets as SimpleTokenList }
   }
+
   return { chainTokens: sourceAssets }
 }
 

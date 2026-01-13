@@ -277,11 +277,17 @@ interface TokenRequest {
   amount: bigint
 }
 
-type SourceAssetInput =
-  | (Address | TokenSymbol)[]
-  | {
-      [chainId in number]?: (Address | TokenSymbol)[]
-    }
+export type SimpleTokenList = (Address | TokenSymbol)[]
+
+export type ChainTokenMap = Record<number, SimpleTokenList>
+
+export type ExactInputConfig = {
+  chainId: number
+  tokenAddress: Address
+  amount?: bigint
+}
+
+type SourceAssetInput = SimpleTokenList | ChainTokenMap | ExactInputConfig[]
 
 type OwnerSignerSet =
   | {

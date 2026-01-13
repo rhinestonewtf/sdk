@@ -1,5 +1,23 @@
 # @rhinestone/sdk
 
+## 1.1.3
+
+### Patch Changes
+
+- 88fec05: Update yeet shared config
+
+## 1.1.2
+
+### Patch Changes
+
+- 3932774: Override default signature mode
+
+## 1.1.1
+
+### Patch Changes
+
+- 01e44d3: Enable calls for EOAs
+
 ## 1.1.0
 
 ### Minor Changes
