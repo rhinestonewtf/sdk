@@ -35,6 +35,7 @@ import {
   getEip712Domain,
   getEip1271Signature,
   getEip7702InitCall,
+  getEmissarySignature,
   getGuardianSmartAccount,
   getInitCode,
   getSmartAccount,
@@ -859,6 +860,44 @@ async function signIntentTypedData<
     )
   }
   const hash = hashTypedData(parameters)
+  if (signers?.type === 'experimental_session' && signers.verifyExecutions) {
+    const eip1271Signature = await getEip1271Signature(
+      config,
+      signers.type === 'experimental_session'
+        ? {
+            type: 'experimental_session',
+            session: signers.session,
+            verifyExecutions: false,
+            enableData: signers.enableData,
+          }
+        : signers,
+      chain,
+      {
+        address: validator.address,
+        isRoot,
+      },
+      hash,
+    )
+    const emissarySignature = await getEmissarySignature(
+      config,
+      signers.type === 'experimental_session'
+        ? {
+            type: 'experimental_session',
+            session: signers.session,
+            verifyExecutions: signers.verifyExecutions,
+            enableData: signers.enableData,
+          }
+        : signers,
+      chain,
+      hash,
+    )
+    // FIXME should be the other way around; pending onchain fix
+    return {
+      preClaimSig: eip1271Signature,
+      notarizedClaimSig: emissarySignature,
+    }
+  }
+
   return await getEip1271Signature(
     config,
     signers,

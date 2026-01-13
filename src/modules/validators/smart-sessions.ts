@@ -1,3 +1,4 @@
+import { LibZip } from 'solady'
 import {
   type Address,
   createPublicClient,
@@ -11,15 +12,21 @@ import {
   keccak256,
   maxUint256,
   padHex,
+  size,
   type TypedDataDefinition,
   toHex,
   zeroHash,
 } from 'viem'
 import { ALLOCATOR_ADDRESS, lockTag as getLockTag } from '../../actions/compact'
+import {
+  RESET_PERIOD_ONE_WEEK,
+  SCOPE_MULTICHAIN,
+} from '../../execution/compact'
 import type {
   Policy,
   RhinestoneAccountConfig,
   Session,
+  SignerSet,
   UniversalActionPolicyParamCondition,
 } from '../../types'
 import smartSessionEmissaryAbi from '../abi/smart-session-emissary'
@@ -174,8 +181,8 @@ const types = {
 const SMART_SESSION_EMISSARY_ADDRESS: Address =
   '0x7fbfc460d7750a4845d861740faa28b9612f9c08'
 
-const SMART_SESSION_MODE_USE = 0
-const SMART_SESSION_MODE_ENABLE = 1
+const SMART_SESSION_MODE_USE = '0x00'
+const SMART_SESSION_MODE_ENABLE = '0x01'
 const SMART_SESSIONS_FALLBACK_TARGET_FLAG: Address =
   '0x0000000000000000000000000000000000000001'
 const SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG: Hex = '0x00000001'
@@ -203,8 +210,167 @@ const ACTION_CONDITION_LESS_THAN_OR_EQUAL = 4
 const ACTION_CONDITION_NOT_EQUAL = 5
 const ACTION_CONDITION_IN_RANGE = 6
 
-const SCOPE_MULTICHAIN = 0
-const RESET_PERIOD_ONE_WEEK = 6
+function packSignature(
+  signers: SignerSet & { type: 'experimental_session' },
+  validatorSignature: Hex,
+): Hex {
+  const session = signers.session
+  const permissionId = getPermissionId(session)
+  if (signers.verifyExecutions) {
+    const smartSessionMode = signers.enableData
+      ? SMART_SESSION_MODE_ENABLE
+      : SMART_SESSION_MODE_USE
+    const permissionId = getPermissionId(signers.session)
+    const sessionData = getSessionData(signers.session)
+
+    const packedSignature = signers.enableData
+      ? (LibZip.flzCompress(
+          encodeAbiParameters(
+            [
+              {
+                type: 'tuple',
+                name: 'enableData',
+                components: [
+                  { type: 'bytes', name: 'allocatorSig' },
+                  { type: 'bytes', name: 'userSig' },
+                  { type: 'uint256', name: 'expires' },
+                  {
+                    type: 'tuple',
+                    name: 'enableSession',
+                    components: [
+                      {
+                        type: 'uint8',
+                        name: 'chainDigestIndex',
+                      },
+                      {
+                        type: 'tuple[]',
+                        name: 'hashesAndChainIds',
+                        components: [
+                          { type: 'uint64', name: 'chainId' },
+                          { type: 'bytes32', name: 'sessionDigest' },
+                        ],
+                      },
+                      {
+                        type: 'tuple',
+                        name: 'session',
+                        components: [
+                          { type: 'address', name: 'sessionValidator' },
+                          { type: 'bytes', name: 'sessionValidatorInitData' },
+                          { type: 'bytes32', name: 'salt' },
+                          {
+                            type: 'tuple[]',
+                            name: 'actions',
+                            components: [
+                              { type: 'bytes4', name: 'actionTargetSelector' },
+                              { type: 'address', name: 'actionTarget' },
+                              {
+                                type: 'tuple[]',
+                                name: 'actionPolicies',
+                                components: [
+                                  { type: 'address', name: 'policy' },
+                                  { type: 'bytes', name: 'initData' },
+                                ],
+                              },
+                            ],
+                          },
+                          {
+                            type: 'tuple[]',
+                            name: 'claimPolicies',
+                            components: [
+                              { type: 'address', name: 'policy' },
+                              { type: 'bytes', name: 'initData' },
+                            ],
+                          },
+                          {
+                            type: 'tuple',
+                            name: 'erc7739Policies',
+                            components: [
+                              {
+                                type: 'tuple[]',
+                                name: 'allowedERC7739Content',
+                                components: [
+                                  {
+                                    type: 'bytes32',
+                                    name: 'appDomainSeparator',
+                                  },
+                                  { type: 'string[]', name: 'contentNames' },
+                                ],
+                              },
+                              {
+                                type: 'tuple[]',
+                                name: 'erc1271Policies',
+                                components: [
+                                  { type: 'address', name: 'policy' },
+                                  { type: 'bytes', name: 'initData' },
+                                ],
+                              },
+                            ],
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+              {
+                type: 'tuple',
+                name: 'config',
+                components: [
+                  { type: 'uint8', name: 'scope' },
+                  { type: 'uint8', name: 'resetPeriod' },
+                  { type: 'address', name: 'allocator' },
+                  { type: 'bytes32', name: 'permissionId' },
+                ],
+              },
+              { type: 'bytes' },
+            ],
+            [
+              {
+                allocatorSig: zeroHash,
+                userSig: signers.enableData.userSignature,
+                expires: maxUint256,
+                enableSession: {
+                  chainDigestIndex: signers.enableData.sessionToEnableIndex,
+                  hashesAndChainIds: signers.enableData.hashesAndChainIds,
+                  session: sessionData,
+                },
+              },
+              {
+                scope: SCOPE_MULTICHAIN,
+                resetPeriod: RESET_PERIOD_ONE_WEEK,
+                allocator: ALLOCATOR_ADDRESS,
+                permissionId: getPermissionId(signers.session),
+              },
+              validatorSignature,
+            ],
+          ),
+        ) as Hex)
+      : validatorSignature
+    return signers.enableData
+      ? encodePacked(['bytes1', 'bytes'], [smartSessionMode, packedSignature])
+      : encodePacked(
+          ['bytes1', 'bytes32', 'bytes'],
+          [smartSessionMode, permissionId, packedSignature],
+        )
+  } else {
+    const SIGNATURE_IS_VALID_SIG_1271 = '0x00'
+    const policyDataOffset = BigInt(64 + size(validatorSignature))
+    const mode = SIGNATURE_IS_VALID_SIG_1271
+    const policySpecificData = '0x'
+    const signature = encodePacked(
+      ['bytes1', 'bytes32', 'uint256', 'bytes', 'bytes'],
+      [
+        mode,
+        permissionId,
+        policyDataOffset,
+        validatorSignature,
+        policySpecificData,
+      ],
+    )
+
+    return signature
+  }
+}
 
 async function getSessionDetails(
   account: Address,
@@ -626,6 +792,7 @@ export {
   SMART_SESSIONS_FALLBACK_TARGET_FLAG,
   SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
   SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG_PERMITTED_TO_CALL_SMARTSESSION,
+  packSignature,
   getSessionData,
   getEnableSessionCall,
   getPermissionId,

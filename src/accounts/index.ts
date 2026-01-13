@@ -427,6 +427,26 @@ async function getEip1271Signature(
   }
 }
 
+// Signs and packs a signature to be used by the emissary validator
+async function getEmissarySignature(
+  config: RhinestoneConfig,
+  signers: SignerSet | undefined,
+  chain: Chain,
+  hash: Hex,
+  transformSignature: (signature: Hex) => Hex = (signature) => signature,
+): Promise<Hex> {
+  if (config.account?.type === 'eoa') {
+    throw new EoaSigningNotSupportedError('packed signatures')
+  }
+  signers = signers ?? convertOwnerSetToSignerSet(config.owners!)
+  const address = getAddress(config)
+
+  const signFn = (hash: Hex) =>
+    signMessage(signers, chain, address, hash, false)
+  const signature = await signFn(hash)
+  return transformSignature(signature)
+}
+
 // Signs and packs a signature to be EIP-1271 compatible
 async function getTypedDataPackedSignature<
   typedData extends TypedData | Record<string, unknown> = TypedData,
@@ -866,7 +886,8 @@ export {
   toErc6492Signature,
   getSmartAccount,
   getGuardianSmartAccount,
-  getPackedSignature,
+  getEip1271Signature,
+  getEmissarySignature,
   getTypedDataPackedSignature,
   // Errors
   isAccountError,

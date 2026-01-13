@@ -7,10 +7,8 @@ import {
   createWalletClient,
   custom,
   encodeAbiParameters,
-  encodePacked,
   type Hex,
   pad,
-  size,
   toHex,
 } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
@@ -21,7 +19,7 @@ import {
   OWNABLE_VALIDATOR_ADDRESS,
   WEBAUTHN_V0_VALIDATOR_ADDRESS,
 } from '../../modules/validators/core'
-import { getPermissionId } from '../../modules/validators/smart-sessions'
+import { packSignature as packSmartSessionSignature } from '../../modules/validators/smart-sessions'
 import type { OwnerSet, SignerSet } from '../../types'
 import {
   generateCredentialId,
@@ -183,36 +181,20 @@ async function signWithSession(
   const sessionSigners: SignerSet = convertOwnerSetToSignerSet(
     signers.session.owners,
   )
-  const session = signers.session
-  const digest = encodeAbiParameters(
-    [{ type: 'address' }, { type: 'bytes32' }],
-    [address, hash],
-  )
-  const SIGNATURE_IS_VALID_SIG_1271 = '0x00'
+  const digest = signers.verifyExecutions
+    ? hash
+    : encodeAbiParameters(
+        [{ type: 'address' }, { type: 'bytes32' }],
+        [address, hash],
+      )
   const validatorSignature = await signMain(
     sessionSigners,
     chain,
     address,
     digest,
-    true,
+    false,
   )
-
-  const policyDataOffset = BigInt(64 + size(validatorSignature))
-  const mode = SIGNATURE_IS_VALID_SIG_1271
-  const permissionId = getPermissionId(session)
-  const policySpecificData = '0x'
-  const signature = encodePacked(
-    ['bytes1', 'bytes32', 'uint256', 'bytes', 'bytes'],
-    [
-      mode,
-      permissionId,
-      policyDataOffset,
-      validatorSignature,
-      policySpecificData,
-    ],
-  )
-
-  return signature
+  return packSmartSessionSignature(signers, validatorSignature)
 }
 
 async function signWithGuardians<T>(

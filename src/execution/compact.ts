@@ -2,6 +2,9 @@ import { type Hex, hashTypedData, keccak256, slice, toHex } from 'viem'
 import type { IntentOp, IntentOpElement } from '../orchestrator/types'
 import { getTypedData as getPermit2TypedData } from './permit2'
 
+const SCOPE_MULTICHAIN = 0
+const RESET_PERIOD_ONE_WEEK = 6
+
 const COMPACT_ADDRESS = '0x00000000000000171ede64904551eeDF3C6C9788'
 
 // Define the typed data structure as const to preserve type safety
@@ -120,6 +123,8 @@ function getPermit2Digest(
 }
 
 export {
+  SCOPE_MULTICHAIN,
+  RESET_PERIOD_ONE_WEEK,
   COMPACT_ADDRESS,
   getCompactTypedData,
   getCompactDigest,
