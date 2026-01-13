@@ -15,9 +15,9 @@ import {
   size,
   type TypedDataDefinition,
   toHex,
+  zeroAddress,
   zeroHash,
 } from 'viem'
-import { ALLOCATOR_ADDRESS, lockTag as getLockTag } from '../../actions/compact'
 import {
   RESET_PERIOD_ONE_WEEK,
   SCOPE_MULTICHAIN,
@@ -338,7 +338,7 @@ function packSignature(
               {
                 scope: SCOPE_MULTICHAIN,
                 resetPeriod: RESET_PERIOD_ONE_WEEK,
-                allocator: ALLOCATOR_ADDRESS,
+                allocator: zeroAddress,
                 permissionId: getPermissionId(signers.session),
               },
               validatorSignature,
@@ -376,7 +376,7 @@ async function getSessionDetails(
   account: Address,
   sessions: Session[],
 ): Promise<SessionDetails> {
-  const lockTag = getLockTag()
+  const lockTag = '0x000000000000000000000000'
   const sessionNonces = await Promise.all(
     sessions.map((session) => getSessionNonce(account, session, lockTag)),
   )
@@ -505,7 +505,7 @@ async function getEnableSessionCall(
         {
           scope: SCOPE_MULTICHAIN,
           resetPeriod: RESET_PERIOD_ONE_WEEK,
-          allocator: ALLOCATOR_ADDRESS,
+          allocator: zeroAddress,
           permissionId,
         },
         {
