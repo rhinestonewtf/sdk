@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.1.3
+
+### Patch Changes
+
+- 88fec05: Update yeet shared config
+
 ## 1.1.2
 
 ### Patch Changes
