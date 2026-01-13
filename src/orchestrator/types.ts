@@ -33,6 +33,7 @@ type IntentStatus =
 type AccountAccessListLegacy = {
   chainId: number
   tokenAddress: Address
+  amount?: bigint
 }[]
 
 type MappedChainTokenAccessList = {
@@ -402,6 +403,7 @@ export type {
   Portfolio,
   PortfolioToken,
   Execution,
+  AccountAccessList,
   MappedChainTokenAccessList,
   UnmappedChainTokenAccessList,
   TokenRequirements,

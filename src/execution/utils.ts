@@ -78,20 +78,21 @@ import {
   resolveTokenAddress,
 } from '../orchestrator/registry'
 import type {
-  MappedChainTokenAccessList,
+  AccountAccessList,
   Account as OrchestratorAccount,
   SettlementLayer,
   SupportedChain,
-  UnmappedChainTokenAccessList,
 } from '../orchestrator/types'
 import type {
   AccountProviderConfig,
   Call,
   CalldataInput,
   CallInput,
+  ExactInputConfig,
   RhinestoneAccountConfig,
   RhinestoneConfig,
   SignerSet,
+  SimpleTokenList,
   SourceAssetInput,
   Sponsorship,
   TokenRequest,
@@ -1108,17 +1109,23 @@ function parseCalls(calls: CalldataInput[], chainId: number): Call[] {
 function createAccountAccessList(
   sourceChains: Chain[] | undefined,
   sourceAssets: SourceAssetInput | undefined,
-): MappedChainTokenAccessList | UnmappedChainTokenAccessList | undefined {
+): AccountAccessList | undefined {
   if (!sourceChains && !sourceAssets) return undefined
+
   const chainIds = sourceChains?.map((chain) => chain.id as SupportedChain)
-  if (!sourceAssets) {
-    return { chainIds }
-  }
+
+  if (!sourceAssets) return { chainIds }
   if (Array.isArray(sourceAssets)) {
+    const isExactConfig =
+      sourceAssets.length > 0 && typeof sourceAssets[0] !== 'string'
+
+    if (isExactConfig) return sourceAssets as ExactInputConfig[]
+
     return chainIds
-      ? { chainIds, tokens: sourceAssets }
-      : { tokens: sourceAssets }
+      ? { chainIds, tokens: sourceAssets as SimpleTokenList }
+      : { tokens: sourceAssets as SimpleTokenList }
   }
+
   return { chainTokens: sourceAssets }
 }
 
