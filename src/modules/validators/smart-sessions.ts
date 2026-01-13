@@ -179,7 +179,7 @@ const types = {
 } as const
 
 const SMART_SESSION_EMISSARY_ADDRESS: Address =
-  '0x7fbfc460d7750a4845d861740faa28b9612f9c08'
+  '0xeda7f519ed2333f5f04e99293c0bf9a652adc93f'
 
 const SMART_SESSION_MODE_USE = '0x00'
 const SMART_SESSION_MODE_ENABLE = '0x01'
@@ -397,7 +397,7 @@ async function getSessionDetails(
   const data: TypedDataDefinition<typeof types, 'MultiChainSession'> = {
     domain: {
       name: 'SmartSessionEmissary',
-      version: '1.0.0',
+      version: '1',
     },
     types: types,
     primaryType: 'MultiChainSession',
