@@ -375,7 +375,7 @@ function checkAddress(config: RhinestoneConfig) {
 }
 
 // Signs and packs a signature to be EIP-1271 compatible
-async function getPackedSignature(
+async function getEip1271Signature(
   config: RhinestoneConfig,
   signers: SignerSet | undefined,
   chain: Chain,

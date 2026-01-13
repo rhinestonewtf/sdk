@@ -33,10 +33,10 @@ import {
   FactoryArgsNotAvailableError,
   getAddress,
   getEip712Domain,
+  getEip1271Signature,
   getEip7702InitCall,
   getGuardianSmartAccount,
   getInitCode,
-  getPackedSignature,
   getSmartAccount,
   getTypedDataPackedSignature,
   is7702,
@@ -308,7 +308,7 @@ async function signMessage(
   const isRoot = validator.address === ownerValidator.address
 
   const hash = hashMessage(message)
-  const signature = await getPackedSignature(
+  const signature = await getEip1271Signature(
     config,
     signers,
     chain,
@@ -859,7 +859,7 @@ async function signIntentTypedData<
     )
   }
   const hash = hashTypedData(parameters)
-  return await getPackedSignature(
+  return await getEip1271Signature(
     config,
     signers,
     chain,
