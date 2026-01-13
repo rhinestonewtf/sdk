@@ -891,10 +891,9 @@ async function signIntentTypedData<
       chain,
       hash,
     )
-    // FIXME should be the other way around; pending onchain fix
     return {
-      preClaimSig: eip1271Signature,
-      notarizedClaimSig: emissarySignature,
+      preClaimSig: emissarySignature,
+      notarizedClaimSig: eip1271Signature,
     }
   }
 
