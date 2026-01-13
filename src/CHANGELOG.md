@@ -1,5 +1,15 @@
 # @rhinestone/sdk
 
+## 1.2.0
+
+### Minor Changes
+
+- 26b2b3e: Enable exact input on access list
+
+### Patch Changes
+
+- eb6b4e8: Enable sessions via signature
+
 ## 1.1.3
 
 ### Patch Changes
