@@ -313,8 +313,10 @@ interface IntentResult {
   }
 }
 
+type OriginSignature = Hex | { notarizedClaimSig: Hex; preClaimSig: Hex }
+
 type SignedIntentOp = IntentOp & {
-  originSignatures: Hex[]
+  originSignatures: OriginSignature[]
   destinationSignature: Hex
   signedAuthorizations?: readonly {
     chainId: number
@@ -406,6 +408,7 @@ export type {
   AccountAccessList,
   MappedChainTokenAccessList,
   UnmappedChainTokenAccessList,
+  OriginSignature,
   TokenRequirements,
   WrapRequired,
   ApprovalRequired,

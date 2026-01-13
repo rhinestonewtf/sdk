@@ -21,7 +21,7 @@ type ResetPeriod =
 
 type Scope = 0 | 1 // Multichain | ChainSpecific
 
-const ALLOCATOR_ADDRESS = '0xd93ed1dd9f1f0b523e4d77233809dc2ee22928c6'
+const ALLOCATOR_ADDRESS = '0xc7732071e3a1be6cfce6d13bb05699a31a457679'
 const DEFAULT_RESET_PERIOD: ResetPeriod = 6
 const DEFAULT_SCOPE: Scope = 0
 
@@ -238,6 +238,7 @@ function lockTag(): Hex {
 }
 
 export {
+  ALLOCATOR_ADDRESS,
   depositEther,
   enableEtherWithdrawal,
   disableEtherWithdrawal,

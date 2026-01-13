@@ -173,20 +173,20 @@ type Policy =
   | ValueLimitPolicy
 
 interface Action {
-  target: Address
-  selector: Hex
+  target?: Address
+  selector?: Hex
   policies?: [Policy, ...Policy[]]
 }
 
 interface SessionInput {
   owners: OwnerSet
-  actions: Action[]
+  actions?: Action[]
 }
 
 interface Session {
   owners: OwnerSet
   chain: Chain
-  actions: Action[]
+  actions?: Action[]
 }
 
 interface Recovery {
@@ -320,9 +320,20 @@ type OwnerSignerSet =
       module?: Address
     }
 
+interface SessionEnableData {
+  userSignature: Hex
+  hashesAndChainIds: {
+    chainId: bigint
+    sessionDigest: Hex
+  }[]
+  sessionToEnableIndex: number
+}
+
 interface SessionSignerSet {
   type: 'experimental_session'
   session: Session
+  verifyExecutions?: boolean
+  enableData?: SessionEnableData
 }
 
 interface GuardiansSignerSet {
