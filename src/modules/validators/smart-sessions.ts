@@ -555,8 +555,14 @@ function getSessionData(session: Session): SessionData {
         actionTargetSelector:
           action.selector ?? SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
         actionTarget: action.target ?? SMART_SESSIONS_FALLBACK_TARGET_FLAG,
-        actionPolicies:
-          action.policies?.map((policy) => getPolicyData(policy)) ?? [],
+        actionPolicies: action.policies?.map((policy) =>
+          getPolicyData(policy),
+        ) ?? [
+          {
+            policy: SUDO_POLICY_ADDRESS,
+            initData: '0x' as Hex,
+          },
+        ],
       }))
     : [sudoAction]
   return {
