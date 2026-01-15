@@ -18,10 +18,12 @@ import {
   zeroAddress,
   zeroHash,
 } from 'viem'
+import { mainnet } from 'viem/chains'
 import {
   RESET_PERIOD_ONE_WEEK,
   SCOPE_MULTICHAIN,
 } from '../../execution/compact'
+import { signTypedData } from '../../execution/utils'
 import type {
   Policy,
   RhinestoneAccountConfig,
@@ -31,7 +33,7 @@ import type {
 } from '../../types'
 import smartSessionEmissaryAbi from '../abi/smart-session-emissary'
 import { MODULE_TYPE_ID_VALIDATOR, type Module } from '../common'
-import { getValidator } from './core'
+import { getValidator, SMART_SESSION_EMISSARY_ADDRESS } from './core'
 
 type FixedLengthArray<
   T,
@@ -177,9 +179,6 @@ const types = {
   ],
   MultiChainSession: [{ name: 'sessionsAndChainIds', type: 'ChainSession[]' }],
 } as const
-
-const SMART_SESSION_EMISSARY_ADDRESS: Address =
-  '0xeda7f519ed2333f5f04e99293c0bf9a652adc93f'
 
 const SMART_SESSION_MODE_USE = '0x00'
 const SMART_SESSION_MODE_ENABLE = '0x01'
@@ -414,6 +413,15 @@ async function getSessionDetails(
     hashesAndChainIds,
     data,
   }
+}
+
+async function signEnableSession(
+  config: RhinestoneAccountConfig,
+  details: SessionDetails,
+): Promise<Hex> {
+  return signTypedData(config, details.data, mainnet, undefined, {
+    skipErc6492: true,
+  })
 }
 
 async function getSessionNonce(
@@ -804,6 +812,7 @@ export {
   getPermissionId,
   getSmartSessionValidator,
   getSessionDetails,
+  signEnableSession,
 }
 export type {
   ChainSession,

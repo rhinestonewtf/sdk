@@ -22,7 +22,9 @@ import type {
 } from '../../types'
 
 import { MODULE_TYPE_ID_VALIDATOR, type Module } from '../common'
-import { SMART_SESSION_EMISSARY_ADDRESS } from './smart-sessions'
+
+const SMART_SESSION_EMISSARY_ADDRESS: Address =
+  '0xeda7f519ed2333f5f04e99293c0bf9a652adc93f'
 
 interface PublicKey {
   prefix?: number | undefined
@@ -397,6 +399,7 @@ export {
   WEBAUTHN_VALIDATOR_ADDRESS,
   MULTI_FACTOR_VALIDATOR_ADDRESS,
   WEBAUTHN_V0_VALIDATOR_ADDRESS,
+  SMART_SESSION_EMISSARY_ADDRESS,
   getOwnerValidator,
   getOwnableValidator,
   getENSValidator,

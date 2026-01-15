@@ -1,5 +1,12 @@
 # @rhinestone/sdk
 
+## 1.2.1
+
+### Patch Changes
+
+- 64c0fc0: Fix signature mode for non-"smart session" flows
+- 6c7813c: Fix session data signing for undeployed accounts
+
 ## 1.2.0
 
 ### Minor Changes
