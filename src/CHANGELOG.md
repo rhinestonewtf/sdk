@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.2.2
+
+### Patch Changes
+
+- 895d168: Allow single token request with no amount
+
 ## 1.2.1
 
 ### Patch Changes

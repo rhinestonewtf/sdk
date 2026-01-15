@@ -272,18 +272,27 @@ interface Call {
   value: bigint
 }
 
-interface TokenRequest {
+interface TokenRequestWithAmount {
   address: Address | TokenSymbol
   amount: bigint
 }
+
+interface TokenRequestWithoutAmount {
+  address: Address | TokenSymbol
+  amount?: undefined
+}
+
+type TokenRequest = TokenRequestWithAmount | TokenRequestWithoutAmount
+
+type TokenRequests = [TokenRequestWithoutAmount] | TokenRequestWithAmount[]
 
 export type SimpleTokenList = (Address | TokenSymbol)[]
 
 export type ChainTokenMap = Record<number, SimpleTokenList>
 
 export type ExactInputConfig = {
-  chainId: number
-  tokenAddress: Address
+  chain: Chain
+  address: Address | TokenSymbol
   amount?: bigint
 }
 
@@ -353,7 +362,7 @@ type Sponsorship =
 
 interface BaseTransaction {
   calls?: CallInput[]
-  tokenRequests?: TokenRequest[]
+  tokenRequests?: TokenRequests
   recipient?: RhinestoneAccountConfig | Address
   gasLimit?: bigint
   signers?: SignerSet
@@ -414,6 +423,7 @@ export type {
   Call,
   Sponsorship,
   TokenRequest,
+  TokenRequests,
   SourceAssetInput,
   OwnerSet,
   OwnableValidatorConfig,
