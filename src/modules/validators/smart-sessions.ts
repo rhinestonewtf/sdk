@@ -33,7 +33,7 @@ import type {
 } from '../../types'
 import smartSessionEmissaryAbi from '../abi/smart-session-emissary'
 import { MODULE_TYPE_ID_VALIDATOR, type Module } from '../common'
-import { getValidator } from './core'
+import { getValidator, SMART_SESSION_EMISSARY_ADDRESS } from './core'
 
 type FixedLengthArray<
   T,
@@ -179,9 +179,6 @@ const types = {
   ],
   MultiChainSession: [{ name: 'sessionsAndChainIds', type: 'ChainSession[]' }],
 } as const
-
-const SMART_SESSION_EMISSARY_ADDRESS: Address =
-  '0xeda7f519ed2333f5f04e99293c0bf9a652adc93f'
 
 const SMART_SESSION_MODE_USE = '0x00'
 const SMART_SESSION_MODE_ENABLE = '0x01'
