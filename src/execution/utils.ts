@@ -331,6 +331,9 @@ async function signTypedData<
   parameters: HashTypedDataParameters<typedData, primaryType>,
   chain: Chain,
   signers: SignerSet | undefined,
+  options?: {
+    skipErc6492?: boolean
+  },
 ) {
   const validator = getValidator(config, signers)
   if (!validator) {
@@ -362,7 +365,10 @@ async function signTypedData<
     },
     parameters,
   )
-  return await toErc6492Signature(config, signature, chain)
+  if (!options?.skipErc6492) {
+    return await toErc6492Signature(config, signature, chain)
+  }
+  return signature
 }
 
 async function signTypedDataWithSession<
