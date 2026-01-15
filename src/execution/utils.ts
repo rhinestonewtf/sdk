@@ -1177,7 +1177,16 @@ function createAccountAccessList(
     const isExactConfig =
       sourceAssets.length > 0 && typeof sourceAssets[0] !== 'string'
 
-    if (isExactConfig) return sourceAssets as ExactInputConfig[]
+    if (isExactConfig) {
+      const resolvedConfigs = (sourceAssets as ExactInputConfig[]).map(
+        (config) => ({
+          chainId: config.chain.id,
+          tokenAddress: resolveTokenAddress(config.address, config.chain.id),
+          amount: config.amount,
+        }),
+      )
+      return resolvedConfigs
+    }
 
     return chainIds
       ? { chainIds, tokens: sourceAssets as SimpleTokenList }

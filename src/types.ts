@@ -293,8 +293,8 @@ export type SimpleTokenList = (Address | TokenSymbol)[]
 export type ChainTokenMap = Record<number, SimpleTokenList>
 
 export type ExactInputConfig = {
-  chainId: number
-  tokenAddress: Address
+  chain: Chain
+  address: Address | TokenSymbol
   amount?: bigint
 }
 
