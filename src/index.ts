@@ -65,6 +65,7 @@ import {
   getOwners as getOwnersInternal,
   getSessionDetails as getSessionDetailsInternal,
   getValidators as getValidatorsInternal,
+  signEnableSession as signEnableSessionInternal,
 } from './modules'
 import type { SessionDetails } from './modules/validators/smart-sessions'
 import {
@@ -185,6 +186,7 @@ interface RhinestoneAccount {
   experimental_getSessionDetails: (
     sessions: Session[],
   ) => Promise<SessionDetails>
+  experimental_signEnableSession: (details: SessionDetails) => Promise<Hex>
   getOwners: (chain: Chain) => Promise<{
     accounts: Address[]
     threshold: number
@@ -502,6 +504,10 @@ async function createRhinestoneAccount(
     return getSessionDetailsInternal(account, sessions)
   }
 
+  function experimental_signEnableSession(details: SessionDetails) {
+    return signEnableSessionInternal(config, details)
+  }
+
   /**
    * Check ERC20 allowance for the account owner and token (using Permit2 as spender)
    * @param tokenAddress The token contract address
@@ -540,6 +546,7 @@ async function createRhinestoneAccount(
     getOwners,
     getValidators,
     experimental_getSessionDetails,
+    experimental_signEnableSession,
     checkERC20Allowance,
     getInitData,
   }

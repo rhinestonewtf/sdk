@@ -18,10 +18,12 @@ import {
   zeroAddress,
   zeroHash,
 } from 'viem'
+import { mainnet } from 'viem/chains'
 import {
   RESET_PERIOD_ONE_WEEK,
   SCOPE_MULTICHAIN,
 } from '../../execution/compact'
+import { signTypedData } from '../../execution/utils'
 import type {
   Policy,
   RhinestoneAccountConfig,
@@ -416,6 +418,15 @@ async function getSessionDetails(
   }
 }
 
+async function signEnableSession(
+  config: RhinestoneAccountConfig,
+  details: SessionDetails,
+): Promise<Hex> {
+  return signTypedData(config, details.data, mainnet, undefined, {
+    skipErc6492: true,
+  })
+}
+
 async function getSessionNonce(
   account: Address,
   session: Session,
@@ -798,6 +809,7 @@ export {
   getPermissionId,
   getSmartSessionValidator,
   getSessionDetails,
+  signEnableSession,
 }
 export type {
   ChainSession,
