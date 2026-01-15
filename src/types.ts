@@ -284,9 +284,7 @@ interface TokenRequestWithoutAmount {
 
 type TokenRequest = TokenRequestWithAmount | TokenRequestWithoutAmount
 
-type TokenRequests =
-  | [TokenRequestWithoutAmount]
-  | TokenRequestWithAmount[]
+type TokenRequests = [TokenRequestWithoutAmount] | TokenRequestWithAmount[]
 
 export type SimpleTokenList = (Address | TokenSymbol)[]
 
