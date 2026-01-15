@@ -84,6 +84,7 @@ import {
   type OriginSignature,
   type SettlementLayer,
   SIG_MODE_EMISSARY_EXECUTION_ERC1271,
+  SIG_MODE_ERC1271_EMISSARY,
   type SupportedChain,
 } from '../orchestrator/types'
 import type {
@@ -185,6 +186,7 @@ async function prepareTransaction(
     feeAsset,
     lockFunds,
     account,
+    signers,
   )
 
   return {
@@ -672,6 +674,7 @@ async function prepareTransactionAsIntent(
         }[]
       }
     | undefined,
+  signers: SignerSet | undefined,
 ) {
   const calls = parseCalls(callInputs, targetChain.id)
   const accountAccessList = createAccountAccessList(sourceChains, sourceAssets)
@@ -696,6 +699,10 @@ async function prepareTransactionAsIntent(
 
   const intentAccount = getIntentAccount(config, eip7702InitSignature, account)
   const recipient = getRecipient(recipientInput)
+  const signatureMode =
+    signers?.type === 'experimental_session'
+      ? SIG_MODE_EMISSARY_EXECUTION_ERC1271
+      : SIG_MODE_ERC1271_EMISSARY
 
   const metaIntent: IntentInput = {
     destinationChainId: targetChain.id,
@@ -725,7 +732,7 @@ async function prepareTransactionAsIntent(
             }
         : undefined,
       settlementLayers,
-      signatureMode: SIG_MODE_EMISSARY_EXECUTION_ERC1271,
+      signatureMode,
     },
   }
 
