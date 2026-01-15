@@ -242,6 +242,7 @@ async function sendTransactionAsIntent(
     feeAsset,
     lockFunds,
     undefined,
+    signers,
   )
   if (!intentRoute) {
     throw new OrderPathRequiredForIntentsError()
