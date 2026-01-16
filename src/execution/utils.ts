@@ -430,7 +430,7 @@ async function signTypedDataWithSession<
       })
       return encodePacked(
         ['bytes32', 'bytes'],
-        [getPermissionId(signers.target.session), erc7739Signature],
+        [getPermissionId(signers.session), erc7739Signature],
       )
     },
   )
@@ -788,9 +788,21 @@ async function signIntent(
   const originSignatures: OriginSignature[] = []
   for (const typedData of origin) {
     const chain = getChainById(typedData.domain?.chainId as number)
+    const matchesTargetChain = chain.id === targetChain.id
+    const originSigners =
+      signers?.type === 'experimental_session'
+        ? ({
+            type: 'experimental_session',
+            session: signers.session,
+            verifyExecutions: matchesTargetChain
+              ? signers.verifyExecutions
+              : false,
+            enableData: matchesTargetChain ? signers.enableData : undefined,
+          } as SignerSet & { type: 'experimental_session' })
+        : signers
     const signature = await signIntentTypedData(
       config,
-      signers,
+      originSigners,
       validator,
       isRoot,
       typedData,
@@ -798,23 +810,51 @@ async function signIntent(
     )
     originSignatures.push(signature)
   }
-  const destinationChain = getChainById(targetChain.id)
-  const destinationSignatures = await signIntentTypedData(
+
+  const destinationSignature = await getDestinationSignature(
     config,
     signers,
     validator,
     isRoot,
+    targetChain,
     destination,
-    destinationChain,
+    originSignatures,
   )
-  const destinationSignature =
-    typeof destinationSignatures === 'object'
-      ? destinationSignatures.preClaimSig
-      : (destinationSignatures ?? '0x')
+
   return {
     originSignatures,
     destinationSignature,
   }
+}
+
+async function getDestinationSignature(
+  config: RhinestoneConfig,
+  signers: SignerSet | undefined,
+  validator: Module,
+  isRoot: boolean,
+  targetChain: Chain,
+  destination: TypedDataDefinition,
+  originSignatures: OriginSignature[],
+): Promise<Hex> {
+  if (signers?.type === 'experimental_session') {
+    const destinationChain = getChainById(targetChain.id)
+    const destinationSignatures = await signIntentTypedData(
+      config,
+      signers,
+      validator,
+      isRoot,
+      destination,
+      destinationChain,
+    )
+    return typeof destinationSignatures === 'object'
+      ? destinationSignatures.preClaimSig
+      : (destinationSignatures ?? '0x')
+  }
+
+  const lastOriginSignature = originSignatures.at(-1)
+  return typeof lastOriginSignature === 'object'
+    ? lastOriginSignature.notarizedClaimSig
+    : (lastOriginSignature ?? '0x')
 }
 
 function getIntentMessages(config: RhinestoneConfig, intentOp: IntentOp) {
@@ -884,25 +924,23 @@ async function signIntentTypedData<
   }
   const hash = hashTypedData(parameters)
   if (signers?.type === 'experimental_session') {
-    const sourceSessionData = signers.source.find(
-      (source) => source.session.chain.id === chain.id,
-    )
-    const targetSessionData =
-      signers.target.session.chain.id === chain.id ? signers.target : undefined
-    const sessionData = targetSessionData ?? sourceSessionData
-    if (!sessionData) {
-      throw new Error('Session data not available for this chain')
-    }
-    if (sessionData.verifyExecutions) {
+    // const sourceSessionData = signers.source.find(
+    //   (source) => source.session.chain.id === chain.id,
+    // )
+    // const targetSessionData = signers.target
+    // const sessionData = signers
+    // if (!sessionData) {
+    //   throw new Error('Session data not available for this chain')
+    // }
+    if (signers.verifyExecutions) {
       const eip1271Signature = await getEip1271Signature(
         config,
         signers.type === 'experimental_session'
           ? {
               type: 'experimental_session',
-              kind: 'single',
-              session: sessionData.session,
+              session: signers.session,
               verifyExecutions: false,
-              enableData: sessionData.enableData,
+              enableData: signers.enableData,
             }
           : signers,
         chain,
@@ -917,10 +955,9 @@ async function signIntentTypedData<
         signers.type === 'experimental_session'
           ? {
               type: 'experimental_session',
-              kind: 'single',
-              session: sessionData.session,
+              session: signers.session,
               verifyExecutions: true,
-              enableData: sessionData.enableData,
+              enableData: signers.enableData,
             }
           : signers,
         chain,
@@ -936,8 +973,7 @@ async function signIntentTypedData<
         signers.type === 'experimental_session'
           ? {
               type: 'experimental_session',
-              kind: 'single',
-              session: sessionData.session,
+              session: signers.session,
             }
           : signers,
         chain,
