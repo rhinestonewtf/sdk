@@ -257,9 +257,14 @@ async function signTransaction(
 ): Promise<SignedTransactionData> {
   const { signers } = getTransactionParams(preparedTransaction.transaction)
   const intentRoute = preparedTransaction.intentRoute
+  const targetChain =
+    'targetChain' in preparedTransaction.transaction
+      ? preparedTransaction.transaction.targetChain
+      : preparedTransaction.transaction.chain
   const { originSignatures, destinationSignature } = await signIntent(
     config,
     intentRoute.intentOp,
+    targetChain,
     signers,
   )
 
@@ -425,7 +430,7 @@ async function signTypedDataWithSession<
       })
       return encodePacked(
         ['bytes32', 'bytes'],
-        [getPermissionId(signers.session), erc7739Signature],
+        [getPermissionId(signers.target.session), erc7739Signature],
       )
     },
   )
@@ -748,9 +753,10 @@ async function prepareTransactionAsIntent(
 async function signIntent(
   config: RhinestoneConfig,
   intentOp: IntentOp,
+  targetChain: Chain,
   signers?: SignerSet,
 ) {
-  const { origin } = getIntentMessages(config, intentOp)
+  const { origin, destination } = getIntentMessages(config, intentOp)
   if (config.account?.type === 'eoa') {
     const eoa = config.eoa
     if (!eoa) {
@@ -792,11 +798,19 @@ async function signIntent(
     )
     originSignatures.push(signature)
   }
-  const lastOriginSignature = originSignatures.at(-1)
+  const destinationChain = getChainById(targetChain.id)
+  const destinationSignatures = await signIntentTypedData(
+    config,
+    signers,
+    validator,
+    isRoot,
+    destination,
+    destinationChain,
+  )
   const destinationSignature =
-    typeof lastOriginSignature === 'object'
-      ? lastOriginSignature.notarizedClaimSig
-      : (lastOriginSignature ?? '0x')
+    typeof destinationSignatures === 'object'
+      ? destinationSignatures.preClaimSig
+      : (destinationSignatures ?? '0x')
   return {
     originSignatures,
     destinationSignature,
@@ -869,40 +883,70 @@ async function signIntentTypedData<
     )
   }
   const hash = hashTypedData(parameters)
-  if (signers?.type === 'experimental_session' && signers.verifyExecutions) {
-    const eip1271Signature = await getEip1271Signature(
-      config,
-      signers.type === 'experimental_session'
-        ? {
-            type: 'experimental_session',
-            session: signers.session,
-            verifyExecutions: false,
-            enableData: signers.enableData,
-          }
-        : signers,
-      chain,
-      {
-        address: validator.address,
-        isRoot,
-      },
-      hash,
+  if (signers?.type === 'experimental_session') {
+    const sourceSessionData = signers.source.find(
+      (source) => source.session.chain.id === chain.id,
     )
-    const emissarySignature = await getEmissarySignature(
-      config,
-      signers.type === 'experimental_session'
-        ? {
-            type: 'experimental_session',
-            session: signers.session,
-            verifyExecutions: true,
-            enableData: signers.enableData,
-          }
-        : signers,
-      chain,
-      hash,
-    )
-    return {
-      preClaimSig: emissarySignature,
-      notarizedClaimSig: eip1271Signature,
+    const targetSessionData =
+      signers.target.session.chain.id === chain.id ? signers.target : undefined
+    const sessionData = targetSessionData ?? sourceSessionData
+    if (!sessionData) {
+      throw new Error('Session data not available for this chain')
+    }
+    if (sessionData.verifyExecutions) {
+      const eip1271Signature = await getEip1271Signature(
+        config,
+        signers.type === 'experimental_session'
+          ? {
+              type: 'experimental_session',
+              kind: 'single',
+              session: sessionData.session,
+              verifyExecutions: false,
+              enableData: sessionData.enableData,
+            }
+          : signers,
+        chain,
+        {
+          address: validator.address,
+          isRoot,
+        },
+        hash,
+      )
+      const emissarySignature = await getEmissarySignature(
+        config,
+        signers.type === 'experimental_session'
+          ? {
+              type: 'experimental_session',
+              kind: 'single',
+              session: sessionData.session,
+              verifyExecutions: true,
+              enableData: sessionData.enableData,
+            }
+          : signers,
+        chain,
+        hash,
+      )
+      return {
+        preClaimSig: emissarySignature,
+        notarizedClaimSig: eip1271Signature,
+      }
+    } else {
+      return await getEip1271Signature(
+        config,
+        signers.type === 'experimental_session'
+          ? {
+              type: 'experimental_session',
+              kind: 'single',
+              session: sessionData.session,
+            }
+          : signers,
+        chain,
+        {
+          address: validator.address,
+          isRoot,
+        },
+        hash,
+      )
     }
   }
 
@@ -1141,8 +1185,7 @@ function getValidator(
   }
 
   // Smart sessions
-  const withSession =
-    signers.type === 'experimental_session' ? signers.session : null
+  const withSession = signers.type === 'experimental_session'
   if (withSession) {
     return getSmartSessionValidator(config)
   }

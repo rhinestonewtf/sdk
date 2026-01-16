@@ -338,8 +338,24 @@ interface SessionEnableData {
   sessionToEnableIndex: number
 }
 
-interface SessionSignerSet {
+type SessionSignerSet = {
   type: 'experimental_session'
+  kind: 'full'
+  source: {
+    session: Session
+    verifyExecutions?: boolean
+    enableData?: SessionEnableData
+  }[]
+  target: {
+    session: Session
+    verifyExecutions?: boolean
+    enableData?: SessionEnableData
+  }
+}
+
+type SingleSessionSignerSet = {
+  type: 'experimental_session'
+  kind: 'single'
   session: Session
   verifyExecutions?: boolean
   enableData?: SessionEnableData
@@ -432,6 +448,8 @@ export type {
   MultiFactorValidatorConfig,
   SignerSet,
   SessionInput,
+  SessionEnableData,
+  SingleSessionSignerSet,
   Session,
   Recovery,
   ModuleType,

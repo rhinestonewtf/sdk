@@ -31,6 +31,7 @@ import type {
   OwnerSet,
   RhinestoneConfig,
   SignerSet,
+  SingleSessionSignerSet,
 } from '../types'
 import {
   AccountConfigurationNotSupportedError,
@@ -377,7 +378,7 @@ function checkAddress(config: RhinestoneConfig) {
 // Signs and packs a signature to be EIP-1271 compatible
 async function getEip1271Signature(
   config: RhinestoneConfig,
-  signers: SignerSet | undefined,
+  signers: SignerSet | SingleSessionSignerSet | undefined,
   chain: Chain,
   validator: ValidatorConfig,
   hash: Hex,
@@ -430,7 +431,7 @@ async function getEip1271Signature(
 // Signs and packs a signature to be used by the emissary validator
 async function getEmissarySignature(
   config: RhinestoneConfig,
-  signers: SignerSet | undefined,
+  signers: SignerSet | SingleSessionSignerSet | undefined,
   chain: Chain,
   hash: Hex,
   transformSignature: (signature: Hex) => Hex = (signature) => signature,

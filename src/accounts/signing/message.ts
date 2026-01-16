@@ -8,7 +8,7 @@ import {
   toHex,
 } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
-import type { SignerSet } from '../../types'
+import type { SignerSet, SingleSessionSignerSet } from '../../types'
 import { SigningNotSupportedForAccountError } from '../error'
 import {
   type SigningFunctions,
@@ -18,7 +18,7 @@ import {
 } from './common'
 
 async function sign(
-  signers: SignerSet,
+  signers: SignerSet | SingleSessionSignerSet,
   chain: Chain,
   address: Address,
   hash: Hex,
@@ -42,7 +42,13 @@ async function sign(
       )
     }
     case 'experimental_session': {
-      return signWithSession(signers, chain, address, hash, sign)
+      return signWithSession(
+        signers as SingleSessionSignerSet,
+        chain,
+        address,
+        hash,
+        sign,
+      )
     }
     case 'guardians': {
       return signWithGuardians(signers, hash, signingFunctions)

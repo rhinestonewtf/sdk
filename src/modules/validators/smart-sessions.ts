@@ -28,7 +28,7 @@ import type {
   Policy,
   RhinestoneAccountConfig,
   Session,
-  SignerSet,
+  SingleSessionSignerSet,
   UniversalActionPolicyParamCondition,
 } from '../../types'
 import smartSessionEmissaryAbi from '../abi/smart-session-emissary'
@@ -210,16 +210,14 @@ const ACTION_CONDITION_NOT_EQUAL = 5
 const ACTION_CONDITION_IN_RANGE = 6
 
 function packSignature(
-  signers: SignerSet & { type: 'experimental_session' },
+  signers: SingleSessionSignerSet,
   validatorSignature: Hex,
 ): Hex {
-  const session = signers.session
-  const permissionId = getPermissionId(session)
+  const permissionId = getPermissionId(signers.session)
   if (signers.verifyExecutions) {
     const smartSessionMode = signers.enableData
       ? SMART_SESSION_MODE_ENABLE
       : SMART_SESSION_MODE_USE
-    const permissionId = getPermissionId(signers.session)
     const sessionData = getSessionData(signers.session)
 
     const packedSignature = signers.enableData
