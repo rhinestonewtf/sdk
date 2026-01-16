@@ -924,14 +924,6 @@ async function signIntentTypedData<
   }
   const hash = hashTypedData(parameters)
   if (signers?.type === 'experimental_session') {
-    // const sourceSessionData = signers.source.find(
-    //   (source) => source.session.chain.id === chain.id,
-    // )
-    // const targetSessionData = signers.target
-    // const sessionData = signers
-    // if (!sessionData) {
-    //   throw new Error('Session data not available for this chain')
-    // }
     if (signers.verifyExecutions) {
       const eip1271Signature = await getEip1271Signature(
         config,
