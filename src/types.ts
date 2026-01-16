@@ -338,7 +338,7 @@ interface SessionEnableData {
   sessionToEnableIndex: number
 }
 
-type SessionSignerSet = {
+interface SessionSignerSet {
   type: 'experimental_session'
   session: Session
   verifyExecutions?: boolean
