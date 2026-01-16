@@ -219,7 +219,6 @@ function packSignature(
     const smartSessionMode = signers.enableData
       ? SMART_SESSION_MODE_ENABLE
       : SMART_SESSION_MODE_USE
-    const permissionId = getPermissionId(signers.session)
     const sessionData = getSessionData(signers.session)
 
     const packedSignature = signers.enableData
