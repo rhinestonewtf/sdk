@@ -788,6 +788,8 @@ async function signIntent(
   const originSignatures: OriginSignature[] = []
   for (const typedData of origin) {
     const chain = getChainById(typedData.domain?.chainId as number)
+    // For same chain transactions, we need to modify the origin signers
+    // Specifically, we need to remove the enable data in this case
     const matchesTargetChain = chain.id === targetChain.id
     const originSigners =
       signers?.type === 'experimental_session'
@@ -796,7 +798,7 @@ async function signIntent(
             session: signers.session,
             verifyExecutions: matchesTargetChain
               ? signers.verifyExecutions
-              : false,
+              : undefined,
             enableData: matchesTargetChain ? signers.enableData : undefined,
           } as SignerSet & { type: 'experimental_session' })
         : signers
@@ -836,6 +838,7 @@ async function getDestinationSignature(
   destination: TypedDataDefinition,
   originSignatures: OriginSignature[],
 ): Promise<Hex> {
+  // For smart sessions, we need to provide a separate destination signature for the target chain
   if (signers?.type === 'experimental_session') {
     const destinationChain = getChainById(targetChain.id)
     const destinationSignatures = await signIntentTypedData(
@@ -923,58 +926,40 @@ async function signIntentTypedData<
     )
   }
   const hash = hashTypedData(parameters)
-  if (signers?.type === 'experimental_session') {
-    if (signers.verifyExecutions) {
-      const eip1271Signature = await getEip1271Signature(
-        config,
-        signers.type === 'experimental_session'
-          ? {
-              type: 'experimental_session',
-              session: signers.session,
-              verifyExecutions: false,
-              enableData: signers.enableData,
-            }
-          : signers,
-        chain,
-        {
-          address: validator.address,
-          isRoot,
-        },
-        hash,
-      )
-      const emissarySignature = await getEmissarySignature(
-        config,
-        signers.type === 'experimental_session'
-          ? {
-              type: 'experimental_session',
-              session: signers.session,
-              verifyExecutions: true,
-              enableData: signers.enableData,
-            }
-          : signers,
-        chain,
-        hash,
-      )
-      return {
-        preClaimSig: emissarySignature,
-        notarizedClaimSig: eip1271Signature,
-      }
-    } else {
-      return await getEip1271Signature(
-        config,
-        signers.type === 'experimental_session'
-          ? {
-              type: 'experimental_session',
-              session: signers.session,
-            }
-          : signers,
-        chain,
-        {
-          address: validator.address,
-          isRoot,
-        },
-        hash,
-      )
+  if (signers?.type === 'experimental_session' && signers.verifyExecutions) {
+    const eip1271Signature = await getEip1271Signature(
+      config,
+      signers.type === 'experimental_session'
+        ? {
+            type: 'experimental_session',
+            session: signers.session,
+            verifyExecutions: false,
+            enableData: signers.enableData,
+          }
+        : signers,
+      chain,
+      {
+        address: validator.address,
+        isRoot,
+      },
+      hash,
+    )
+    const emissarySignature = await getEmissarySignature(
+      config,
+      signers.type === 'experimental_session'
+        ? {
+            type: 'experimental_session',
+            session: signers.session,
+            verifyExecutions: true,
+            enableData: signers.enableData,
+          }
+        : signers,
+      chain,
+      hash,
+    )
+    return {
+      preClaimSig: emissarySignature,
+      notarizedClaimSig: eip1271Signature,
     }
   }
 
