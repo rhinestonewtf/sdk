@@ -213,7 +213,8 @@ function packSignature(
   signers: SignerSet & { type: 'experimental_session' },
   validatorSignature: Hex,
 ): Hex {
-  const permissionId = getPermissionId(signers.session)
+  const session = signers.session
+  const permissionId = getPermissionId(session)
   if (signers.verifyExecutions) {
     const smartSessionMode = signers.enableData
       ? SMART_SESSION_MODE_ENABLE
