@@ -77,6 +77,7 @@ class SessionChainRequiredError extends ExecutionError {
 
 class IntentFailedError extends ExecutionError {
   constructor(params?: {
+    intentId?: string
     context?: any
     errorType?: string
     traceId?: string

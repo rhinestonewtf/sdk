@@ -342,7 +342,9 @@ async function waitForExecution(
         }
       }
       if (intentStatus.status === INTENT_STATUS_FAILED) {
-        throw new IntentFailedError()
+        throw new IntentFailedError({
+          intentId: result.id.toString(),
+        })
       }
       return {
         fill: {
