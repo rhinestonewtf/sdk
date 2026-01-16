@@ -856,7 +856,7 @@ async function getDestinationSignature(
 
   const lastOriginSignature = originSignatures.at(-1)
   return typeof lastOriginSignature === 'object'
-    ? lastOriginSignature.notarizedClaimSig
+    ? lastOriginSignature.preClaimSig
     : (lastOriginSignature ?? '0x')
 }
 
