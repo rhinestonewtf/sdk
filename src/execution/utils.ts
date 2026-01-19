@@ -257,9 +257,14 @@ async function signTransaction(
 ): Promise<SignedTransactionData> {
   const { signers } = getTransactionParams(preparedTransaction.transaction)
   const intentRoute = preparedTransaction.intentRoute
+  const targetChain =
+    'targetChain' in preparedTransaction.transaction
+      ? preparedTransaction.transaction.targetChain
+      : preparedTransaction.transaction.chain
   const { originSignatures, destinationSignature } = await signIntent(
     config,
     intentRoute.intentOp,
+    targetChain,
     signers,
   )
 
@@ -748,9 +753,10 @@ async function prepareTransactionAsIntent(
 async function signIntent(
   config: RhinestoneConfig,
   intentOp: IntentOp,
+  targetChain: Chain,
   signers?: SignerSet,
 ) {
-  const { origin } = getIntentMessages(config, intentOp)
+  const { origin, destination } = getIntentMessages(config, intentOp)
   if (config.account?.type === 'eoa') {
     const eoa = config.eoa
     if (!eoa) {
@@ -782,9 +788,23 @@ async function signIntent(
   const originSignatures: OriginSignature[] = []
   for (const typedData of origin) {
     const chain = getChainById(typedData.domain?.chainId as number)
+    // For same chain transactions, we need to modify the origin signers
+    // Specifically, we need to remove the enable data in this case
+    const matchesTargetChain = chain.id === targetChain.id
+    const originSigners =
+      signers?.type === 'experimental_session'
+        ? ({
+            type: 'experimental_session',
+            session: signers.session,
+            verifyExecutions: matchesTargetChain
+              ? signers.verifyExecutions
+              : undefined,
+            enableData: matchesTargetChain ? signers.enableData : undefined,
+          } as SignerSet & { type: 'experimental_session' })
+        : signers
     const signature = await signIntentTypedData(
       config,
-      signers,
+      originSigners,
       validator,
       isRoot,
       typedData,
@@ -792,15 +812,52 @@ async function signIntent(
     )
     originSignatures.push(signature)
   }
-  const lastOriginSignature = originSignatures.at(-1)
-  const destinationSignature =
-    typeof lastOriginSignature === 'object'
-      ? lastOriginSignature.notarizedClaimSig
-      : (lastOriginSignature ?? '0x')
+
+  const destinationSignature = await getDestinationSignature(
+    config,
+    signers,
+    validator,
+    isRoot,
+    targetChain,
+    destination,
+    originSignatures,
+  )
+
   return {
     originSignatures,
     destinationSignature,
   }
+}
+
+async function getDestinationSignature(
+  config: RhinestoneConfig,
+  signers: SignerSet | undefined,
+  validator: Module,
+  isRoot: boolean,
+  targetChain: Chain,
+  destination: TypedDataDefinition,
+  originSignatures: OriginSignature[],
+): Promise<Hex> {
+  // For smart sessions, we need to provide a separate destination signature for the target chain
+  if (signers?.type === 'experimental_session') {
+    const destinationChain = getChainById(targetChain.id)
+    const destinationSignatures = await signIntentTypedData(
+      config,
+      signers,
+      validator,
+      isRoot,
+      destination,
+      destinationChain,
+    )
+    return typeof destinationSignatures === 'object'
+      ? destinationSignatures.preClaimSig
+      : (destinationSignatures ?? '0x')
+  }
+
+  const lastOriginSignature = originSignatures.at(-1)
+  return typeof lastOriginSignature === 'object'
+    ? lastOriginSignature.preClaimSig
+    : (lastOriginSignature ?? '0x')
 }
 
 function getIntentMessages(config: RhinestoneConfig, intentOp: IntentOp) {
@@ -1141,8 +1198,7 @@ function getValidator(
   }
 
   // Smart sessions
-  const withSession =
-    signers.type === 'experimental_session' ? signers.session : null
+  const withSession = signers.type === 'experimental_session'
   if (withSession) {
     return getSmartSessionValidator(config)
   }

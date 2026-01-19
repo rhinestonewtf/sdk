@@ -432,6 +432,7 @@ export type {
   MultiFactorValidatorConfig,
   SignerSet,
   SessionInput,
+  SessionEnableData,
   Session,
   Recovery,
   ModuleType,

@@ -250,6 +250,7 @@ async function sendTransactionAsIntent(
   const { originSignatures, destinationSignature } = await signIntent(
     config,
     intentRoute.intentOp,
+    targetChain,
     signers,
   )
   const authorizations = config.eoa
