@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.2.3
+
+### Patch Changes
+
+- f492c7d: Fix enabling smart sessions with a signature when making a cross-chain transaction
+
 ## 1.2.2
 
 ### Patch Changes
