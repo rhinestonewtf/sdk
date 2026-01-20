@@ -343,8 +343,11 @@ async function waitForExecution(
         }
       }
       if (intentStatus.status === INTENT_STATUS_FAILED) {
+        const intentId = result.id.toString()
         throw new IntentFailedError({
-          intentId: result.id.toString(),
+          context: {
+            intentId,
+          },
         })
       }
       return {
