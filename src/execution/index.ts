@@ -292,7 +292,9 @@ async function waitForExecution(
         const now = Date.now()
         if (now - startTs >= POLL_MAX_WAIT_MS) {
           throw new IntentStatusTimeoutError({
-            context: { waitedMs: now - startTs },
+            context: {
+              intentId: result.id.toString(),
+            },
           })
         }
         const orchestrator = getOrchestratorByChain(
