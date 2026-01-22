@@ -284,6 +284,16 @@ function getWebAuthnValidator(
   }
 }
 
+function getSmartSessionValidator(): Module {
+  return {
+    address: SMART_SESSION_EMISSARY_ADDRESS,
+    initData: '0x',
+    deInitData: '0x',
+    additionalContext: '0x',
+    type: MODULE_TYPE_ID_VALIDATOR,
+  }
+}
+
 function getMultiFactorValidator(
   threshold: number,
   validators: (
@@ -404,6 +414,7 @@ export {
   getOwnableValidator,
   getENSValidator,
   getWebAuthnValidator,
+  getSmartSessionValidator,
   getMultiFactorValidator,
   getSocialRecoveryValidator,
   getValidator,
