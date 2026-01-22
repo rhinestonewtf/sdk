@@ -12,7 +12,7 @@ import {
   isRateLimited,
   isRetryable,
 } from '../orchestrator'
-import { getChainById, resolveTokenAddress } from '../orchestrator/registry'
+import { getChainById } from '../orchestrator/registry'
 import type { SettlementLayer } from '../orchestrator/types'
 import type {
   CalldataInput,
@@ -38,7 +38,6 @@ import {
 } from './error'
 import type { TransactionResult, UserOperationResult } from './utils'
 import {
-  getIntentAccount,
   getOrchestratorByChain,
   getTokenRequests,
   getValidatorAccount,
@@ -378,29 +377,6 @@ async function waitForExecution(
   }
 }
 
-async function getMaxSpendableAmount(
-  config: RhinestoneConfig,
-  chain: Chain,
-  token: Address | TokenSymbol,
-  gasUnits: bigint,
-  sponsored: boolean = false,
-): Promise<bigint> {
-  const orchestrator = getOrchestratorByChain(
-    chain.id,
-    config.apiKey,
-    config.endpointUrl,
-  )
-  const tokenAddress = resolveTokenAddress(token, chain.id)
-  const account = getIntentAccount(config, undefined, undefined)
-  return orchestrator.getMaxTokenAmount(
-    account,
-    chain.id,
-    tokenAddress,
-    gasUnits,
-    sponsored,
-  )
-}
-
 async function getPortfolio(config: RhinestoneConfig, onTestnets: boolean) {
   const address = getAddress(config)
   const chainId = onTestnets ? baseSepolia.id : base.id
@@ -444,7 +420,6 @@ export {
   sendUserOperation,
   sendUserOperationInternal,
   waitForExecution,
-  getMaxSpendableAmount,
   getPortfolio,
   getIntentStatus,
   // Errors

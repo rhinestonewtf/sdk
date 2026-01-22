@@ -25,7 +25,6 @@ import { walletClientToAccount, wrapParaAccount } from './accounts/walletClient'
 import { deployAccountsForOwners } from './actions/deployment'
 import {
   getIntentStatus as getIntentStatusInternal,
-  getMaxSpendableAmount as getMaxSpendableAmountInternal,
   getPortfolio as getPortfolioInternal,
   sendTransaction as sendTransactionInternal,
   sendUserOperation as sendUserOperationInternal,
@@ -77,7 +76,6 @@ import {
   getSupportedTokens,
   getTokenAddress,
   getTokenDecimals,
-  type IntentCost,
   type IntentInput,
   type IntentOp,
   type IntentOpStatus,
@@ -180,12 +178,6 @@ interface RhinestoneAccount {
   ): Promise<UserOperationReceipt>
   getAddress: () => Address
   getPortfolio: (onTestnets?: boolean) => Promise<Portfolio>
-  getMaxSpendableAmount: (
-    chain: Chain,
-    tokenAddress: Address | TokenSymbol,
-    gasUnits: bigint,
-    sponsored?: boolean,
-  ) => Promise<bigint>
   experimental_getSessionDetails: (
     sessions: Session[],
   ) => Promise<SessionDetails>
@@ -461,28 +453,6 @@ async function createRhinestoneAccount(
   }
 
   /**
-   * Get the maximum spendable token amount on the target chain
-   * @param chain Target chain
-   * @param token Token address (on the target chain)
-   * @param gasUnits Gas cost estimate for the transaction execution
-   * @returns Maximum spendable amount in absolute units
-   */
-  function getMaxSpendableAmount(
-    chain: Chain,
-    token: Address | TokenSymbol,
-    gasUnits: bigint,
-    sponsored: boolean = false,
-  ) {
-    return getMaxSpendableAmountInternal(
-      config,
-      chain,
-      token,
-      gasUnits,
-      sponsored,
-    )
-  }
-
-  /**
    * Get account owners (ECDSA)
    * @param chain Chain to get the owners on
    * @returns Account owners
@@ -551,7 +521,6 @@ async function createRhinestoneAccount(
     waitForExecution,
     getAddress,
     getPortfolio,
-    getMaxSpendableAmount,
     getOwners,
     getValidators,
     experimental_getSessionDetails,
@@ -643,7 +612,6 @@ export type {
   PreparedUserOperationData,
   SignedUserOperationData,
   UserOperationResult,
-  IntentCost,
   IntentInput,
   IntentOp,
   IntentOpStatus,

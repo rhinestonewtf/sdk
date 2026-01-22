@@ -24,9 +24,6 @@ import {
   UnsupportedTokenError,
 } from './error'
 import type {
-  AccountType,
-  Execution,
-  IntentCost,
   IntentInput,
   IntentOpStatus,
   IntentResult,
@@ -99,66 +96,6 @@ export class Orchestrator {
     }))
 
     return portfolio
-  }
-
-  async getMaxTokenAmount(
-    account: {
-      address: Address
-      accountType: AccountType
-      setupOps: Pick<Execution, 'to' | 'data'>[]
-    },
-    destinationChainId: number,
-    destinationTokenAddress: Address,
-    destinationGasUnits: bigint,
-    sponsored: boolean,
-  ): Promise<bigint> {
-    const intentCost = await this.getIntentCost({
-      account,
-      destinationExecutions: [],
-      destinationChainId,
-      destinationGasUnits,
-      tokenRequests: [
-        {
-          tokenAddress: destinationTokenAddress,
-        },
-      ],
-      options: {
-        topupCompact: false,
-        sponsorSettings: {
-          gasSponsored: sponsored,
-          bridgeFeesSponsored: sponsored,
-          swapFeesSponsored: sponsored,
-        },
-      },
-    })
-    if (!intentCost.hasFulfilledAll) {
-      return 0n
-    }
-    const tokenReceived = intentCost.tokensReceived.find(
-      (token) =>
-        token.tokenAddress.toLowerCase() ===
-        destinationTokenAddress.toLowerCase(),
-    )
-    if (!tokenReceived) {
-      return 0n
-    }
-    const tokenAmount = tokenReceived.destinationAmount
-    if (BigInt(tokenAmount) < 0n) {
-      return 0n
-    }
-    // `sponsorSettings` is not taken into account in the API response for now
-    // As a workaround, we use the `amountSpent` if the transaction is sponsored
-    return sponsored
-      ? BigInt(tokenReceived.amountSpent)
-      : BigInt(tokenReceived.destinationAmount)
-  }
-
-  async getIntentCost(input: IntentInput): Promise<IntentCost> {
-    return await this.fetch(`${this.serverUrl}/intents/cost`, {
-      method: 'POST',
-      headers: this.getHeaders(),
-      body: JSON.stringify(convertBigIntFields(input)),
-    })
   }
 
   async getIntentRoute(input: IntentInput): Promise<IntentRoute> {
