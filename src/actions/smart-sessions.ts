@@ -1,6 +1,45 @@
 import type { Hex } from 'viem'
-import { getEnableSessionCall } from '../modules/validators/smart-sessions'
+import {
+  getModuleInstallationCalls,
+  getModuleUninstallationCalls,
+} from '../accounts'
+import {
+  getEnableSessionCall,
+  getSmartSessionValidator,
+} from '../modules/validators/smart-sessions'
 import type { LazyCallInput, SessionInput } from '../types'
+
+/**
+ * Enable smart sessions
+ * @returns Calls to enable smart sessions
+ */
+function experimental_enable(): LazyCallInput {
+  return {
+    async resolve({ config }) {
+      const module = getSmartSessionValidator(config)
+      if (!module) {
+        return []
+      }
+      return getModuleInstallationCalls(config, module)
+    },
+  }
+}
+
+/**
+ * Disable smart sessions
+ * @returns Calls to disable smart sessions
+ */
+function experimental_disable(): LazyCallInput {
+  return {
+    async resolve({ config }) {
+      const module = getSmartSessionValidator(config)
+      if (!module) {
+        return []
+      }
+      return getModuleUninstallationCalls(config, module)
+    },
+  }
+}
 
 /**
  * Enable a smart session
@@ -32,4 +71,4 @@ function experimental_enableSession(
   }
 }
 
-export { experimental_enableSession }
+export { experimental_disable, experimental_enable, experimental_enableSession }

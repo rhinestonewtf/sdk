@@ -19,6 +19,7 @@ import {
   zeroHash,
 } from 'viem'
 import { mainnet } from 'viem/chains'
+import { createTransport } from '../../accounts/utils'
 import {
   RESET_PERIOD_ONE_WEEK,
   SCOPE_MULTICHAIN,
@@ -26,6 +27,7 @@ import {
 import { signTypedData } from '../../execution/utils'
 import type {
   Policy,
+  ProviderConfig,
   RhinestoneAccountConfig,
   Session,
   SignerSet,
@@ -412,6 +414,35 @@ async function getSessionDetails(
     hashesAndChainIds,
     data,
   }
+}
+
+async function isSessionEnabled(
+  account: Address,
+  provider: ProviderConfig | undefined,
+  session: Session,
+): Promise<boolean> {
+  const publicClient = createPublicClient({
+    chain: session.chain,
+    transport: createTransport(session.chain, provider),
+  })
+  const isEnabled = await publicClient.readContract({
+    address: SMART_SESSION_EMISSARY_ADDRESS,
+    abi: [
+      {
+        type: 'function',
+        name: 'isPermissionEnabled',
+        inputs: [
+          { name: 'account', type: 'address' },
+          { name: 'permissionId', type: 'bytes32' },
+        ],
+        outputs: [{ name: 'isEnabled', type: 'bool' }],
+        stateMutability: 'view',
+      },
+    ],
+    functionName: 'isPermissionEnabled',
+    args: [account, getPermissionId(session)],
+  })
+  return isEnabled
 }
 
 async function signEnableSession(
@@ -811,6 +842,7 @@ export {
   getPermissionId,
   getSmartSessionValidator,
   getSessionDetails,
+  isSessionEnabled,
   signEnableSession,
 }
 export type {

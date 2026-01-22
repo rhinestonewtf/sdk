@@ -24,7 +24,7 @@ import type {
 import { MODULE_TYPE_ID_VALIDATOR, type Module } from '../common'
 
 const SMART_SESSION_EMISSARY_ADDRESS: Address =
-  '0xeda7f519ed2333f5f04e99293c0bf9a652adc93f'
+  '0xad568b3f825a8d5ffc06dd3253526b64d810ae89'
 
 interface PublicKey {
   prefix?: number | undefined

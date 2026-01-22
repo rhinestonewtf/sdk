@@ -67,7 +67,10 @@ import {
   getValidators as getValidatorsInternal,
   signEnableSession as signEnableSessionInternal,
 } from './modules'
-import type { SessionDetails } from './modules/validators/smart-sessions'
+import {
+  isSessionEnabled as isSessionEnabledInternal,
+  type SessionDetails,
+} from './modules/validators/smart-sessions'
 import {
   type ApprovalRequired,
   getAllSupportedChainsAndTokens,
@@ -186,6 +189,7 @@ interface RhinestoneAccount {
   experimental_getSessionDetails: (
     sessions: Session[],
   ) => Promise<SessionDetails>
+  experimental_isSessionEnabled: (session: Session) => Promise<boolean>
   experimental_signEnableSession: (details: SessionDetails) => Promise<Hex>
   getOwners: (chain: Chain) => Promise<{
     accounts: Address[]
@@ -504,6 +508,11 @@ async function createRhinestoneAccount(
     return getSessionDetailsInternal(account, sessions)
   }
 
+  function experimental_isSessionEnabled(session: Session) {
+    const account = getAddress()
+    return isSessionEnabledInternal(account, config.provider, session)
+  }
+
   function experimental_signEnableSession(details: SessionDetails) {
     return signEnableSessionInternal(config, details)
   }
@@ -546,6 +555,7 @@ async function createRhinestoneAccount(
     getOwners,
     getValidators,
     experimental_getSessionDetails,
+    experimental_isSessionEnabled,
     experimental_signEnableSession,
     checkERC20Allowance,
     getInitData,
