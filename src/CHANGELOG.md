@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.2.4
+
+### Patch Changes
+
+- 38965d0: Add SSX module actions and experimental `isSessionEnabled` function
+
 ## 1.2.3
 
 ### Patch Changes
