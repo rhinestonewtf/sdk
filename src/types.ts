@@ -183,10 +183,8 @@ interface SessionInput {
   actions?: Action[]
 }
 
-interface Session {
-  owners: OwnerSet
+interface Session extends SessionInput {
   chain: Chain
-  actions?: Action[]
 }
 
 interface Recovery {
