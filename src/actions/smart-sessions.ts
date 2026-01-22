@@ -3,8 +3,10 @@ import {
   getModuleInstallationCalls,
   getModuleUninstallationCalls,
 } from '../accounts'
-import { getSmartSessionValidator } from '../modules/validators/core'
-import { getEnableSessionCall } from '../modules/validators/smart-sessions'
+import {
+  getEnableSessionCall,
+  getSmartSessionValidator,
+} from '../modules/validators/smart-sessions'
 import type { LazyCallInput, SessionInput } from '../types'
 
 /**
@@ -14,7 +16,11 @@ import type { LazyCallInput, SessionInput } from '../types'
 function experimental_enable(): LazyCallInput {
   return {
     async resolve({ config }) {
-      return getModuleInstallationCalls(config, getSmartSessionValidator())
+      const module = getSmartSessionValidator(config)
+      if (!module) {
+        return []
+      }
+      return getModuleInstallationCalls(config, module)
     },
   }
 }
@@ -26,7 +32,11 @@ function experimental_enable(): LazyCallInput {
 function experimental_disable(): LazyCallInput {
   return {
     async resolve({ config }) {
-      return getModuleUninstallationCalls(config, getSmartSessionValidator())
+      const module = getSmartSessionValidator(config)
+      if (!module) {
+        return []
+      }
+      return getModuleUninstallationCalls(config, module)
     },
   }
 }
