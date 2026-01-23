@@ -527,10 +527,6 @@ async function isDeployed(config: RhinestoneConfig, chain: Chain) {
   if (!code) {
     return false
   }
-  if (code.startsWith('0xef0100') && code.length === 48) {
-    // Defensive check to ensure there's no storage conflict; can be lifted in the future
-    throw new ExistingEip7702AccountsNotSupportedError()
-  }
   return size(code) > 0
 }
 
