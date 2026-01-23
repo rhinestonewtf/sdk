@@ -1,5 +1,12 @@
 # @rhinestone/sdk
 
+## 1.2.5
+
+### Patch Changes
+
+- 8be0ba1: Remove 7702 defensive check from isDeployed function
+- 292c270: Remove cost endpoint and max amount util from SDK
+
 ## 1.2.4
 
 ### Patch Changes
