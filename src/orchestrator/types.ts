@@ -355,6 +355,16 @@ export type OPNetworkParams =
       estimatedCalldataSize: number
     }
 
+interface SplitIntentsInput {
+  chainId: number
+  tokens: Record<Address, bigint>
+  settlementLayers?: SettlementLayer[]
+}
+
+interface SplitIntentsResult {
+  intents: Record<Address, bigint>[]
+}
+
 interface IntentOpStatus {
   status: IntentStatus
   claims: Claim[]
@@ -400,6 +410,8 @@ export type {
   SignedIntentOp,
   IntentOpStatus,
   IntentResult,
+  SplitIntentsInput,
+  SplitIntentsResult,
   PortfolioTokenResponse,
   PortfolioResponse,
   Portfolio,

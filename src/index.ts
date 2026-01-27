@@ -28,6 +28,7 @@ import {
   getPortfolio as getPortfolioInternal,
   sendTransaction as sendTransactionInternal,
   sendUserOperation as sendUserOperationInternal,
+  splitIntents as splitIntentsInternal,
   type TransactionResult,
   type TransactionStatus,
   type UserOperationResult,
@@ -76,12 +77,15 @@ import {
   getSupportedTokens,
   getTokenAddress,
   getTokenDecimals,
+  InsufficientLiquidityError,
   type IntentInput,
   type IntentOp,
   type IntentOpStatus,
   type Portfolio,
   type SettlementLayer,
   type SignedIntentOp,
+  type SplitIntentsInput,
+  type SplitIntentsResult,
   type TokenRequirements,
   type WrapRequired,
 } from './orchestrator'
@@ -564,6 +568,10 @@ class RhinestoneSDK {
   getIntentStatus(intentId: bigint) {
     return getIntentStatusInternal(this.apiKey, this.endpointUrl, intentId)
   }
+
+  splitIntents(input: SplitIntentsInput) {
+    return splitIntentsInternal(this.apiKey, this.endpointUrl, input)
+  }
 }
 
 export {
@@ -577,6 +585,8 @@ export {
   getTokenAddress,
   getTokenDecimals,
   getAllSupportedChainsAndTokens,
+  // Orchestrator errors
+  InsufficientLiquidityError,
   // Permit2 helpers
   checkERC20AllowanceDirect,
   getPermit2Address,
@@ -618,6 +628,8 @@ export type {
   IntentRoute,
   SettlementLayer,
   SignedIntentOp,
+  SplitIntentsInput,
+  SplitIntentsResult,
   Portfolio,
   TokenRequirements,
   WrapRequired,

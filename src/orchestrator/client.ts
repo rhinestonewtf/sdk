@@ -6,6 +6,7 @@ import {
   ConflictError,
   ForbiddenError,
   InsufficientBalanceError,
+  InsufficientLiquidityError,
   IntentNotFoundError,
   InternalServerError,
   InvalidApiKeyError,
@@ -31,8 +32,21 @@ import type {
   Portfolio,
   PortfolioResponse,
   SignedIntentOp,
+  SplitIntentsInput,
+  SplitIntentsResult,
 } from './types'
 import { convertBigIntFields } from './utils'
+
+function parseTokenAmountsRecord(
+  record: Record<string, string>,
+): Record<Address, bigint> {
+  return Object.fromEntries(
+    Object.entries(record).map(([addr, amount]) => [
+      addr as Address,
+      BigInt(amount),
+    ]),
+  ) as Record<Address, bigint>
+}
 
 export class Orchestrator {
   private serverUrl: string
@@ -104,6 +118,59 @@ export class Orchestrator {
       headers: this.getHeaders(),
       body: JSON.stringify(convertBigIntFields(input)),
     })
+  }
+
+  async splitIntents(input: SplitIntentsInput): Promise<SplitIntentsResult> {
+    const response = await fetch(`${this.serverUrl}/intents/split`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify(convertBigIntFields(input)),
+    })
+
+    if (response.ok) {
+      const json = await response.json()
+      return {
+        intents: (json.intents as Record<string, string>[]).map(
+          parseTokenAmountsRecord,
+        ),
+      }
+    }
+
+    let errorData: any = {}
+    try {
+      errorData = await response.json()
+    } catch {
+      try {
+        const text = await response.text()
+        errorData = { message: text }
+      } catch {}
+    }
+
+    if (
+      response.status === 422 &&
+      errorData.error === 'INSUFFICIENT_LIQUIDITY'
+    ) {
+      throw new InsufficientLiquidityError({
+        availableIntents: (
+          errorData.availableIntents as Record<string, string>[]
+        ).map(parseTokenAmountsRecord),
+        unfillable: parseTokenAmountsRecord(errorData.unfillable),
+        traceId: errorData.traceId,
+        statusCode: 422,
+      })
+    }
+
+    const retryAfterHeader = response.headers?.get?.('retry-after') || undefined
+    this.parseError({
+      response: {
+        status: response.status,
+        data: errorData,
+        headers: {
+          retryAfter: retryAfterHeader,
+        },
+      },
+    })
+    throw new OrchestratorError({ message: 'Unexpected error' })
   }
 
   async submitIntent(
