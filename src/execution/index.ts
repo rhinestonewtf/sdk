@@ -420,7 +420,7 @@ async function splitIntents(
   input: SplitIntentsInput,
 ) {
   const orchestrator = getOrchestratorByChain(
-    input.chainId,
+    input.chain.id,
     apiKey,
     endpointUrl,
   )

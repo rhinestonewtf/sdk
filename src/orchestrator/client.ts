@@ -124,7 +124,13 @@ export class Orchestrator {
     const response = await fetch(`${this.serverUrl}/intents/split`, {
       method: 'POST',
       headers: this.getHeaders(),
-      body: JSON.stringify(convertBigIntFields(input)),
+      body: JSON.stringify(
+        convertBigIntFields({
+          chainId: input.chain.id,
+          tokens: input.tokens,
+          settlementLayers: input.settlementLayers,
+        }),
+      ),
     })
 
     if (response.ok) {
@@ -160,14 +166,11 @@ export class Orchestrator {
       })
     }
 
-    const retryAfterHeader = response.headers?.get?.('retry-after') || undefined
     this.parseError({
       response: {
         status: response.status,
         data: errorData,
-        headers: {
-          retryAfter: retryAfterHeader,
-        },
+        headers: {},
       },
     })
     throw new OrchestratorError({ message: 'Unexpected error' })

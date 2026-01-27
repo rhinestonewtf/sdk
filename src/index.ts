@@ -77,7 +77,6 @@ import {
   getSupportedTokens,
   getTokenAddress,
   getTokenDecimals,
-  InsufficientLiquidityError,
   type IntentInput,
   type IntentOp,
   type IntentOpStatus,
@@ -585,8 +584,6 @@ export {
   getTokenAddress,
   getTokenDecimals,
   getAllSupportedChainsAndTokens,
-  // Orchestrator errors
-  InsufficientLiquidityError,
   // Permit2 helpers
   checkERC20AllowanceDirect,
   getPermit2Address,

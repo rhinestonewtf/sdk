@@ -6,7 +6,7 @@ import type {
   SupportedOPStackTestnet,
   SupportedTestnet,
 } from '@rhinestone/shared-configs'
-import type { Address, Hex } from 'viem'
+import type { Address, Chain, Hex } from 'viem'
 
 type SupportedTokenSymbol = 'ETH' | 'WETH' | 'USDC' | 'USDT'
 type SupportedToken = SupportedTokenSymbol | Address
@@ -356,7 +356,7 @@ export type OPNetworkParams =
     }
 
 interface SplitIntentsInput {
-  chainId: number
+  chain: Chain
   tokens: Record<Address, bigint>
   settlementLayers?: SettlementLayer[]
 }
