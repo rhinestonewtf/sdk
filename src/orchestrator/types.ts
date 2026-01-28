@@ -6,7 +6,7 @@ import type {
   SupportedOPStackTestnet,
   SupportedTestnet,
 } from '@rhinestone/shared-configs'
-import type { Address, Hex } from 'viem'
+import type { Address, Chain, Hex } from 'viem'
 
 type SupportedTokenSymbol = 'ETH' | 'WETH' | 'USDC' | 'USDT'
 type SupportedToken = SupportedTokenSymbol | Address
@@ -355,6 +355,16 @@ export type OPNetworkParams =
       estimatedCalldataSize: number
     }
 
+interface SplitIntentsInput {
+  chain: Chain
+  tokens: Record<Address, bigint>
+  settlementLayers?: SettlementLayer[]
+}
+
+interface SplitIntentsResult {
+  intents: Record<Address, bigint>[]
+}
+
 interface IntentOpStatus {
   status: IntentStatus
   claims: Claim[]
@@ -400,6 +410,8 @@ export type {
   SignedIntentOp,
   IntentOpStatus,
   IntentResult,
+  SplitIntentsInput,
+  SplitIntentsResult,
   PortfolioTokenResponse,
   PortfolioResponse,
   Portfolio,

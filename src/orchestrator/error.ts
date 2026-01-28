@@ -398,6 +398,28 @@ class SimulationFailedError extends OrchestratorError {
   }
 }
 
+class InsufficientLiquidityError extends OrchestratorError {
+  readonly availableIntents: Record<string, bigint>[]
+  readonly unfillable: Record<string, bigint>
+
+  constructor(params: {
+    availableIntents: Record<string, bigint>[]
+    unfillable: Record<string, bigint>
+    traceId?: string
+    statusCode?: number
+  }) {
+    super({
+      message:
+        'Insufficient liquidity to fill the requested amounts. Partial splits available.',
+      statusCode: params.statusCode ?? 422,
+      traceId: params.traceId,
+      errorType: 'Unprocessable Entity',
+    })
+    this.availableIntents = params.availableIntents
+    this.unfillable = params.unfillable
+  }
+}
+
 function isOrchestratorError(error: Error): error is OrchestratorError {
   return error instanceof OrchestratorError
 }
@@ -433,6 +455,7 @@ export {
   isValidationError,
   isRateLimited,
   OrchestratorError,
+  InsufficientLiquidityError,
   InsufficientBalanceError,
   UnsupportedChainIdError,
   UnsupportedChainError,
