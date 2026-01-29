@@ -186,7 +186,8 @@ interface IntentOpElementMandate {
       subsidizedAmount?: string
       gasRefund?: {
         token: Address
-        amount: bigint
+        exchangeRate: bigint
+        overhead: bigint
       }
     }
     encodedVal: Hex
