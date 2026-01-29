@@ -59,6 +59,11 @@ describe('Registry', () => {
         getTokenSymbol(TOKEN_ADDRESSES.ARBTRUM_USDC, UNSUPPORTED_CHAIN_ID),
       ).toThrow(`Unsupported chain ${UNSUPPORTED_CHAIN_ID}`)
     })
+
+    test('returns undefined for unsupported token on supported chain', () => {
+      const symbol = getTokenSymbol(UNSUPPORTED_TOKEN_ADDRESS, arbitrum.id)
+      expect(symbol).toBeUndefined()
+    })
   })
 
   describe('getTokenAddress', () => {
