@@ -30,7 +30,10 @@ function getWethAddress(chain: Chain): Address {
   return wethToken.address
 }
 
-function getTokenSymbol(tokenAddress: Address, chainId: number): string {
+function getTokenSymbol(
+  tokenAddress: Address,
+  chainId: number,
+): string | undefined {
   const chainEntry = getChainEntry(chainId)
   if (!chainEntry) {
     throw new UnsupportedChainError(chainId)
@@ -40,11 +43,7 @@ function getTokenSymbol(tokenAddress: Address, chainId: number): string {
     (t) => t.address.toLowerCase() === tokenAddress.toLowerCase(),
   )
 
-  if (!token) {
-    throw new UnsupportedTokenError(tokenAddress, chainId)
-  }
-
-  return token.symbol
+  return token?.symbol
 }
 
 function getTokenAddress(tokenSymbol: TokenSymbol, chainId: number): Address {
