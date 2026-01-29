@@ -15,7 +15,7 @@
     "./src"
   ],
   "dependencies": {
-    "viem": "^2.38.0"
+    "viem": "^2.40.1"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.1.0",
