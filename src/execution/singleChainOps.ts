@@ -28,6 +28,7 @@ function getTypedData(
       GasRefund: [
         { name: 'token', type: 'address' },
         { name: 'exchangeRate', type: 'uint256' },
+        { name: 'overhead', type: 'uint256' },
       ],
       Ops: [
         { name: 'to', type: 'address' },
@@ -40,10 +41,10 @@ function getTypedData(
       account,
       nonce,
       op: element.mandate.destinationOps,
-      // todo
-      gasRefund: {
+      gasRefund: element.mandate.qualifier.settlementContext.gasRefund ?? {
         token: zeroAddress,
         exchangeRate: 0n,
+        overhead: 0n,
       },
     },
   }
