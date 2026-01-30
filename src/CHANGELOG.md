@@ -1,5 +1,13 @@
 # @rhinestone/sdk
 
+## 1.2.7
+
+### Patch Changes
+
+- 03bbe2b: Allow arbitrary tokens as origin assets
+- ba76c90: add split intents function
+- 496f3c0: bump viem dependency to 2.40.1
+
 ## 1.2.6
 
 ### Patch Changes
