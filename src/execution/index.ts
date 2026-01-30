@@ -246,11 +246,25 @@ async function sendTransactionAsIntent(
   if (!intentRoute) {
     throw new OrderPathRequiredForIntentsError()
   }
+  console.log('sendTransactionAsIntent 1')
   const { originSignatures, destinationSignature } = await signIntent(
     config,
     intentRoute.intentOp,
     targetChain,
     signers,
+  )
+  // TODO only do this for SSX execution
+  const targetExecutionIntentOp = {
+    ...intentRoute.intentOp,
+    nonce: intentRoute.intentOp.targetExecutionNonce,
+  }
+  console.log('sendTransactionAsIntent 2')
+  const { destinationSignature: targetExecutionSignature } = await signIntent(
+    config,
+    targetExecutionIntentOp,
+    targetChain,
+    signers,
+    true,
   )
   const authorizations = config.eoa
     ? await signAuthorizationsInternal(config, intentRoute)
@@ -262,6 +276,7 @@ async function sendTransactionAsIntent(
     intentRoute.intentOp,
     originSignatures,
     destinationSignature,
+    targetExecutionSignature,
     authorizations,
     false,
   )
