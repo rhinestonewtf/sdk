@@ -475,12 +475,17 @@ async function createRhinestoneAccount(
 
   function experimental_getSessionDetails(sessions: Session[]) {
     const account = getAddress()
-    return getSessionDetailsInternal(account, sessions)
+    return getSessionDetailsInternal(account, sessions, config.useDevContracts)
   }
 
   function experimental_isSessionEnabled(session: Session) {
     const account = getAddress()
-    return isSessionEnabledInternal(account, config.provider, session)
+    return isSessionEnabledInternal(
+      account,
+      config.provider,
+      session,
+      config.useDevContracts,
+    )
   }
 
   function experimental_signEnableSession(details: SessionDetails) {
