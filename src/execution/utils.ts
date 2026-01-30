@@ -136,7 +136,7 @@ interface PreparedUserOperationData {
 interface SignedTransactionData extends PreparedTransactionData {
   originSignatures: OriginSignature[]
   destinationSignature: Hex
-  targetExecutionSignature: Hex
+  targetExecutionSignature: Hex | undefined
 }
 
 interface SignedUserOperationData extends PreparedUserOperationData {
@@ -273,17 +273,11 @@ async function signTransaction(
     signers,
     false,
   )
-  // TODO only do this for SSX execution
-  const targetExecutionIntentOp = {
-    ...intentRoute.intentOp,
-    nonce: intentRoute.intentOp.targetExecutionNonce,
-  }
-  const { destinationSignature: targetExecutionSignature } = await signIntent(
+  const targetExecutionSignature = await getTargetExecutionSignature(
     config,
-    targetExecutionIntentOp,
+    intentRoute.intentOp,
     targetChain,
     signers,
-    true,
   )
 
   return {
@@ -293,6 +287,29 @@ async function signTransaction(
     destinationSignature,
     targetExecutionSignature,
   }
+}
+
+async function getTargetExecutionSignature(
+  config: RhinestoneConfig,
+  intentOp: IntentOp,
+  targetChain: Chain,
+  signers: SignerSet | undefined,
+) {
+  if (signers?.type === 'experimental_session') {
+    return undefined
+  }
+  const targetExecutionIntentOp = {
+    ...intentOp,
+    nonce: intentOp.targetExecutionNonce,
+  }
+  const { destinationSignature: targetExecutionSignature } = await signIntent(
+    config,
+    targetExecutionIntentOp,
+    targetChain,
+    signers,
+    true,
+  )
+  return targetExecutionSignature
 }
 
 async function signUserOperation(
@@ -729,11 +746,10 @@ async function prepareTransactionAsIntent(
 
   const intentAccount = getIntentAccount(config, eip7702InitSignature, account)
   const recipient = getRecipient(recipientInput)
-  // const signatureMode =
-  //   signers?.type === 'experimental_session'
-  //     ? SIG_MODE_EMISSARY_EXECUTION_ERC1271
-  //     : SIG_MODE_ERC1271_EMISSARY
-  const signatureMode = SIG_MODE_EMISSARY_EXECUTION_ERC1271
+  const signatureMode =
+    signers?.type === 'experimental_session'
+      ? SIG_MODE_EMISSARY_EXECUTION_ERC1271
+      : SIG_MODE_ERC1271_EMISSARY
 
   const metaIntent: IntentInput = {
     destinationChainId: targetChain.id,
@@ -1097,7 +1113,7 @@ async function submitIntent(
   intentOp: IntentOp,
   originSignatures: OriginSignature[],
   destinationSignature: Hex,
-  targetExecutionSignature: Hex,
+  targetExecutionSignature: Hex | undefined,
   authorizations: SignedAuthorizationList,
   dryRun: boolean,
 ) {
@@ -1133,7 +1149,7 @@ function createSignedIntentOp(
   intentOp: IntentOp,
   originSignatures: OriginSignature[],
   destinationSignature: Hex,
-  targetExecutionSignature: Hex,
+  targetExecutionSignature: Hex | undefined,
   authorizations: SignedAuthorizationList,
 ): SignedIntentOp {
   return {
@@ -1162,7 +1178,7 @@ async function submitIntentInternal(
   intentOp: IntentOp,
   originSignatures: OriginSignature[],
   destinationSignature: Hex,
-  targetExecutionSignature: Hex,
+  targetExecutionSignature: Hex | undefined,
   authorizations: SignedAuthorizationList,
   dryRun: boolean,
 ) {
@@ -1403,6 +1419,7 @@ export {
   getTokenRequests,
   resolveCallInputs,
   getIntentAccount,
+  getTargetExecutionSignature,
 }
 export type {
   IntentRoute,

@@ -39,6 +39,7 @@ import {
 import type { TransactionResult, UserOperationResult } from './utils'
 import {
   getOrchestratorByChain,
+  getTargetExecutionSignature,
   getTokenRequests,
   getValidatorAccount,
   parseCalls,
@@ -253,18 +254,11 @@ async function sendTransactionAsIntent(
     targetChain,
     signers,
   )
-  // TODO only do this for SSX execution
-  const targetExecutionIntentOp = {
-    ...intentRoute.intentOp,
-    nonce: intentRoute.intentOp.targetExecutionNonce,
-  }
-  console.log('sendTransactionAsIntent 2')
-  const { destinationSignature: targetExecutionSignature } = await signIntent(
+  const targetExecutionSignature = await getTargetExecutionSignature(
     config,
-    targetExecutionIntentOp,
+    intentRoute.intentOp,
     targetChain,
     signers,
-    true,
   )
   const authorizations = config.eoa
     ? await signAuthorizationsInternal(config, intentRoute)

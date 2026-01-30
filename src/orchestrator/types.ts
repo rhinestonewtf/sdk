@@ -319,7 +319,7 @@ type OriginSignature = Hex | { notarizedClaimSig: Hex; preClaimSig: Hex }
 type SignedIntentOp = IntentOp & {
   originSignatures: OriginSignature[]
   destinationSignature: Hex
-  targetExecutionSignature: Hex
+  targetExecutionSignature?: Hex
   signedAuthorizations?: readonly {
     chainId: number
     address: Address
