@@ -857,7 +857,6 @@ async function signIntent(
       typedData,
       chain,
     )
-    console.log('signIntent 1', signature)
     originSignatures.push(signature)
   }
 
@@ -927,10 +926,6 @@ function getIntentMessages(
         element.mandate.qualifier.settlementContext.settlementLayer ===
         'INTENT_EXECUTOR',
     )
-  console.log('getIntentMessages', {
-    targetExecution,
-    withIntentExecutorOps,
-  })
   const origin: TypedDataDefinition[] = []
   for (const element of intentOp.elements) {
     if (withIntentExecutorOps) {

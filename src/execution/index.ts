@@ -247,7 +247,6 @@ async function sendTransactionAsIntent(
   if (!intentRoute) {
     throw new OrderPathRequiredForIntentsError()
   }
-  console.log('sendTransactionAsIntent 1')
   const { originSignatures, destinationSignature } = await signIntent(
     config,
     intentRoute.intentOp,

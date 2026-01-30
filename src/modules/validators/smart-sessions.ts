@@ -408,7 +408,6 @@ async function getSessionDetails(
       data: session,
     }),
   }))
-  console.log('hashesAndChainIds', hashesAndChainIds)
 
   const data: TypedDataDefinition<typeof types, 'MultiChainSession'> = {
     domain: {
