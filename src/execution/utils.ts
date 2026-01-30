@@ -295,7 +295,7 @@ async function getTargetExecutionSignature(
   targetChain: Chain,
   signers: SignerSet | undefined,
 ) {
-  if (signers?.type === 'experimental_session') {
+  if (signers?.type !== 'experimental_session') {
     return undefined
   }
   const targetExecutionIntentOp = {
