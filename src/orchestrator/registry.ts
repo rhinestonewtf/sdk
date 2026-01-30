@@ -30,7 +30,10 @@ function getWethAddress(chain: Chain): Address {
   return wethToken.address
 }
 
-function getTokenSymbol(tokenAddress: Address, chainId: number): string {
+function getTokenSymbol(
+  tokenAddress: Address,
+  chainId: number,
+): string | undefined {
   const chainEntry = getChainEntry(chainId)
   if (!chainEntry) {
     throw new UnsupportedChainError(chainId)
@@ -40,11 +43,7 @@ function getTokenSymbol(tokenAddress: Address, chainId: number): string {
     (t) => t.address.toLowerCase() === tokenAddress.toLowerCase(),
   )
 
-  if (!token) {
-    throw new UnsupportedTokenError(tokenAddress, chainId)
-  }
-
-  return token.symbol
+  return token?.symbol
 }
 
 function getTokenAddress(tokenSymbol: TokenSymbol, chainId: number): Address {
@@ -94,9 +93,9 @@ function isTokenAddressSupported(address: Address, chainId: number): boolean {
     return false
   }
 
-  return chainEntry.tokens
-    .filter((token) => token.supportsMultichain)
-    .some((token) => token.address.toLowerCase() === address.toLowerCase())
+  return chainEntry.tokens.some(
+    (token) => token.address.toLowerCase() === address.toLowerCase(),
+  )
 }
 
 function getSupportedTokens(chainId: number): TokenConfig[] {
@@ -105,7 +104,7 @@ function getSupportedTokens(chainId: number): TokenConfig[] {
     throw new UnsupportedChainError(chainId)
   }
 
-  return chainEntry.tokens.filter((token) => token.supportsMultichain)
+  return chainEntry.tokens
 }
 
 function getDefaultAccountAccessList(onTestnets?: boolean) {

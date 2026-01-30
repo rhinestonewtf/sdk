@@ -1,6 +1,6 @@
 {
   "name": "@rhinestone/sdk",
-  "version": "1.2.5",
+  "version": "1.2.6",
   "description": "End-to-end chain abstraction and modularity toolkit",
   "author": {
     "name": "Rhinestone",
@@ -151,7 +151,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@rhinestone/shared-configs": "1.4.56",
+    "@rhinestone/shared-configs": "1.4.74",
     "ox": "^0.9.11",
     "solady": "^0.1.26"
   },

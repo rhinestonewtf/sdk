@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.2.6
+
+### Patch Changes
+
+- 588ca01: latest shared configs
+
 ## 1.2.5
 
 ### Patch Changes
