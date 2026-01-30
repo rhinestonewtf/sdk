@@ -56,7 +56,7 @@ function experimental_enableSession(
   sessionToEnableIndex: number,
 ): LazyCallInput {
   return {
-    async resolve({ accountAddress, chain }) {
+    async resolve({ accountAddress, chain, config }) {
       return getEnableSessionCall(
         accountAddress,
         {
@@ -66,6 +66,7 @@ function experimental_enableSession(
         enableSessionSignature,
         hashesAndChainIds,
         sessionToEnableIndex,
+        config.useDevContracts,
       )
     },
   }

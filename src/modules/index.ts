@@ -9,7 +9,7 @@ import {
   polygon,
 } from 'viem/chains'
 
-import type { RhinestoneAccountConfig, RhinestoneConfig } from '../types'
+import type { RhinestoneConfig } from '../types'
 import {
   INTENT_EXECUTOR_ADDRESS,
   INTENT_EXECUTOR_ADDRESS_DEV,
@@ -36,7 +36,7 @@ import {
 const SMART_SESSION_COMPATIBILITY_FALLBACK_ADDRESS: Address =
   '0x000000000052e9685932845660777DF43C2dC496'
 
-function getSetup(config: RhinestoneAccountConfig): ModeleSetup {
+function getSetup(config: RhinestoneConfig): ModeleSetup {
   const ownerValidator = getOwnerValidator(config)
   const smartSessionValidator = getSmartSessionValidator(config)
 

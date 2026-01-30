@@ -23,6 +23,8 @@ import type {
 
 import { MODULE_TYPE_ID_VALIDATOR, type Module } from '../common'
 
+const SMART_SESSION_EMISSARY_ADDRESS_DEV: Address =
+  '0x60731de80d78548875f8a67c4fec2a8660194e0c'
 const SMART_SESSION_EMISSARY_ADDRESS: Address =
   '0xad568b3f825a8d5ffc06dd3253526b64d810ae89'
 
@@ -387,6 +389,7 @@ function supportsEip712(validator: Module) {
     case OWNABLE_BETA_VALIDATOR_ADDRESS: // Ownable Validator V1-beta
     case OWNABLE_V0_VALIDATOR_ADDRESS: // Ownable Validator V0
     case SMART_SESSION_EMISSARY_ADDRESS: // Smart Sessions (not yet supported)
+    case SMART_SESSION_EMISSARY_ADDRESS_DEV: // Smart Sessions (not yet supported)
       return false
     default:
       return true
@@ -400,6 +403,7 @@ export {
   MULTI_FACTOR_VALIDATOR_ADDRESS,
   WEBAUTHN_V0_VALIDATOR_ADDRESS,
   SMART_SESSION_EMISSARY_ADDRESS,
+  SMART_SESSION_EMISSARY_ADDRESS_DEV,
   getOwnerValidator,
   getOwnableValidator,
   getENSValidator,
