@@ -151,8 +151,8 @@
     "access": "public"
   },
   "dependencies": {
-    "@rhinestone/shared-configs": "1.4.74",
-    "ox": "^0.9.11",
+    "@rhinestone/shared-configs": "1.4.86",
+    "ox": "^0.11.3",
     "solady": "^0.1.26"
   },
   "peerDependencies": {
