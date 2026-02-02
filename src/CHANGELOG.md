@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.2.8
+
+### Patch Changes
+
+- b6ebd62: Add dev contract support for smart session emissary and fix target executions
+
 ## 1.2.7
 
 ### Patch Changes
