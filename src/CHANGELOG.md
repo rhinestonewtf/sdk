@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.2.9
+
+### Patch Changes
+
+- d3e41bc: Fix intents to chains with no USDC
+
 ## 1.2.8
 
 ### Patch Changes
