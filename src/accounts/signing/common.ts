@@ -286,8 +286,8 @@ async function signWithOwners<T>(
         return {
           authenticatorData: signature.webauthn.authenticatorData,
           clientDataJSON: signature.webauthn.clientDataJSON,
-          challengeIndex: BigInt(signature.webauthn.challengeIndex),
-          typeIndex: BigInt(signature.webauthn.typeIndex),
+          challengeIndex: BigInt(signature.webauthn.challengeIndex ?? 0),
+          typeIndex: BigInt(signature.webauthn.typeIndex ?? 0),
           r,
           s,
         }

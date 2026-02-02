@@ -3,7 +3,7 @@ import type { UserOperationReceipt } from 'viem/_types/account-abstraction'
 import { base, baseSepolia } from 'viem/chains'
 import { deploy, getAddress } from '../accounts'
 import { createTransport, getBundlerClient } from '../accounts/utils'
-import type { IntentOpStatus } from '../orchestrator'
+import type { IntentOpStatus, SplitIntentsInput } from '../orchestrator'
 import {
   INTENT_STATUS_COMPLETED,
   INTENT_STATUS_FAILED,
@@ -422,6 +422,19 @@ async function getIntentStatus(
   }
 }
 
+async function splitIntents(
+  apiKey: string | undefined,
+  endpointUrl: string | undefined,
+  input: SplitIntentsInput,
+) {
+  const orchestrator = getOrchestratorByChain(
+    input.chain.id,
+    apiKey,
+    endpointUrl,
+  )
+  return orchestrator.splitIntents(input)
+}
+
 export {
   sendTransaction,
   sendTransactionInternal,
@@ -430,6 +443,7 @@ export {
   waitForExecution,
   getPortfolio,
   getIntentStatus,
+  splitIntents,
   // Errors
   isExecutionError,
   ExecutionError,
