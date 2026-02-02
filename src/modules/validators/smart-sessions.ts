@@ -29,13 +29,18 @@ import type {
   Policy,
   ProviderConfig,
   RhinestoneAccountConfig,
+  RhinestoneConfig,
   Session,
   SignerSet,
   UniversalActionPolicyParamCondition,
 } from '../../types'
 import smartSessionEmissaryAbi from '../abi/smart-session-emissary'
 import { MODULE_TYPE_ID_VALIDATOR, type Module } from '../common'
-import { getValidator, SMART_SESSION_EMISSARY_ADDRESS } from './core'
+import {
+  getValidator,
+  SMART_SESSION_EMISSARY_ADDRESS,
+  SMART_SESSION_EMISSARY_ADDRESS_DEV,
+} from './core'
 
 type FixedLengthArray<
   T,
@@ -184,6 +189,7 @@ const types = {
 
 const SMART_SESSION_MODE_USE = '0x00'
 const SMART_SESSION_MODE_ENABLE = '0x01'
+
 const SMART_SESSIONS_FALLBACK_TARGET_FLAG: Address =
   '0x0000000000000000000000000000000000000001'
 const SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG: Hex = '0x00000001'
@@ -375,14 +381,23 @@ function packSignature(
 async function getSessionDetails(
   account: Address,
   sessions: Session[],
+  useDevContracts?: boolean,
 ): Promise<SessionDetails> {
   const lockTag = '0x000000000000000000000000'
   const sessionNonces = await Promise.all(
-    sessions.map((session) => getSessionNonce(account, session, lockTag)),
+    sessions.map((session) =>
+      getSessionNonce(account, session, lockTag, useDevContracts),
+    ),
   )
   const sessionDatas = sessions.map((session) => getSessionData(session))
   const signedSessions = sessionDatas.map((session, index) =>
-    getSignedSession(account, lockTag, session, sessionNonces[index]),
+    getSignedSession(
+      account,
+      lockTag,
+      session,
+      sessionNonces[index],
+      useDevContracts,
+    ),
   )
   const chains = sessions.map((session) => session.chain)
   const hashesAndChainIds = signedSessions.map((session, index) => ({
@@ -420,13 +435,14 @@ async function isSessionEnabled(
   account: Address,
   provider: ProviderConfig | undefined,
   session: Session,
+  useDevContracts?: boolean,
 ): Promise<boolean> {
   const publicClient = createPublicClient({
     chain: session.chain,
     transport: createTransport(session.chain, provider),
   })
   const isEnabled = await publicClient.readContract({
-    address: SMART_SESSION_EMISSARY_ADDRESS,
+    address: getSmartSessionEmissaryAddress(useDevContracts),
     abi: [
       {
         type: 'function',
@@ -458,13 +474,14 @@ async function getSessionNonce(
   account: Address,
   session: Session,
   lockTag: Hex,
+  useDevContracts?: boolean,
 ): Promise<bigint> {
   const publicClient = createPublicClient({
     chain: session.chain,
     transport: http(),
   })
   const nonce = await publicClient.readContract({
-    address: SMART_SESSION_EMISSARY_ADDRESS,
+    address: getSmartSessionEmissaryAddress(useDevContracts),
     abi: [
       {
         type: 'function',
@@ -488,6 +505,7 @@ function getSignedSession(
   lockTag: Hex,
   session: SessionData,
   nonce: bigint,
+  useDevContracts?: boolean,
 ) {
   return {
     account,
@@ -515,7 +533,7 @@ function getSignedSession(
     sessionValidator: session.sessionValidator,
     sessionValidatorInitData: session.sessionValidatorInitData,
     salt: session.salt,
-    smartSessionEmissary: SMART_SESSION_EMISSARY_ADDRESS,
+    smartSessionEmissary: getSmartSessionEmissaryAddress(useDevContracts),
     expires: maxUint256,
     nonce,
   }
@@ -530,11 +548,12 @@ async function getEnableSessionCall(
     sessionDigest: Hex
   }[],
   sessionToEnableIndex: number,
+  useDevContracts?: boolean,
 ) {
   const sessionData = getSessionData(session)
   const permissionId = getPermissionId(session)
   return {
-    to: SMART_SESSION_EMISSARY_ADDRESS,
+    to: getSmartSessionEmissaryAddress(useDevContracts),
     data: encodeFunctionData({
       abi: smartSessionEmissaryAbi,
       functionName: 'setConfig',
@@ -805,9 +824,7 @@ function getPolicyData(policy: Policy): PolicyData {
   }
 }
 
-function getSmartSessionValidator(
-  config: RhinestoneAccountConfig,
-): Module | null {
+function getSmartSessionValidator(config: RhinestoneConfig): Module | null {
   if (!config.experimental_sessions) {
     return null
   }
@@ -816,12 +833,18 @@ function getSmartSessionValidator(
     return null
   }
   return {
-    address: module ?? SMART_SESSION_EMISSARY_ADDRESS,
+    address: module ?? getSmartSessionEmissaryAddress(config.useDevContracts),
     initData: '0x',
     deInitData: '0x',
     additionalContext: '0x',
     type: MODULE_TYPE_ID_VALIDATOR,
   }
+}
+
+function getSmartSessionEmissaryAddress(useDevContracts?: boolean): Address {
+  return useDevContracts === true
+    ? SMART_SESSION_EMISSARY_ADDRESS_DEV
+    : SMART_SESSION_EMISSARY_ADDRESS
 }
 
 function createFixedArray<T, N extends number>(
@@ -833,6 +856,7 @@ function createFixedArray<T, N extends number>(
 
 export {
   SMART_SESSION_EMISSARY_ADDRESS,
+  SMART_SESSION_EMISSARY_ADDRESS_DEV,
   SMART_SESSIONS_FALLBACK_TARGET_FLAG,
   SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
   SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG_PERMITTED_TO_CALL_SMARTSESSION,

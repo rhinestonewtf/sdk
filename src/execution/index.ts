@@ -39,6 +39,7 @@ import {
 import type { TransactionResult, UserOperationResult } from './utils'
 import {
   getOrchestratorByChain,
+  getTargetExecutionSignature,
   getTokenRequests,
   getValidatorAccount,
   parseCalls,
@@ -252,6 +253,12 @@ async function sendTransactionAsIntent(
     targetChain,
     signers,
   )
+  const targetExecutionSignature = await getTargetExecutionSignature(
+    config,
+    intentRoute.intentOp,
+    targetChain,
+    signers,
+  )
   const authorizations = config.eoa
     ? await signAuthorizationsInternal(config, intentRoute)
     : []
@@ -262,6 +269,7 @@ async function sendTransactionAsIntent(
     intentRoute.intentOp,
     originSignatures,
     destinationSignature,
+    targetExecutionSignature,
     authorizations,
     false,
   )
