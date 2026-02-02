@@ -856,6 +856,7 @@ async function signIntent(
       isRoot,
       typedData,
       chain,
+      targetExecution ?? false,
     )
     originSignatures.push(signature)
   }
@@ -868,6 +869,7 @@ async function signIntent(
     targetChain,
     destination,
     originSignatures,
+    targetExecution ?? false,
   )
 
   return {
@@ -884,6 +886,7 @@ async function getDestinationSignature(
   targetChain: Chain,
   destination: TypedDataDefinition,
   originSignatures: OriginSignature[],
+  targetExecution: boolean,
 ): Promise<Hex> {
   // For smart sessions, we need to provide a separate destination signature for the target chain
   if (signers?.type === 'experimental_session') {
@@ -895,6 +898,7 @@ async function getDestinationSignature(
       isRoot,
       destination,
       destinationChain,
+      targetExecution,
     )
     return typeof destinationSignatures === 'object'
       ? destinationSignatures.preClaimSig
@@ -965,6 +969,7 @@ async function signIntentTypedData<
   isRoot: boolean,
   parameters: HashTypedDataParameters<typedData, primaryType>,
   chain: Chain,
+  targetExecution: boolean,
 ) {
   if (supportsEip712(validator)) {
     return await getTypedDataPackedSignature(
@@ -980,6 +985,18 @@ async function signIntentTypedData<
   }
   const hash = hashTypedData(parameters)
   if (signers?.type === 'experimental_session' && signers.verifyExecutions) {
+    if (targetExecution) {
+      return await getEmissarySignature(
+        config,
+        {
+          type: 'experimental_session',
+          session: signers.session,
+          verifyExecutions: true,
+        },
+        chain,
+        hash,
+      )
+    }
     const eip1271Signature = await getEip1271Signature(
       config,
       {
