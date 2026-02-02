@@ -982,14 +982,12 @@ async function signIntentTypedData<
   if (signers?.type === 'experimental_session' && signers.verifyExecutions) {
     const eip1271Signature = await getEip1271Signature(
       config,
-      signers.type === 'experimental_session'
-        ? {
-            type: 'experimental_session',
-            session: signers.session,
-            verifyExecutions: false,
-            enableData: signers.enableData,
-          }
-        : signers,
+      {
+        type: 'experimental_session',
+        session: signers.session,
+        verifyExecutions: false,
+        enableData: signers.enableData,
+      },
       chain,
       {
         address: validator.address,
@@ -999,14 +997,12 @@ async function signIntentTypedData<
     )
     const emissarySignature = await getEmissarySignature(
       config,
-      signers.type === 'experimental_session'
-        ? {
-            type: 'experimental_session',
-            session: signers.session,
-            verifyExecutions: true,
-            enableData: signers.enableData,
-          }
-        : signers,
+      {
+        type: 'experimental_session',
+        session: signers.session,
+        verifyExecutions: true,
+        enableData: signers.enableData,
+      },
       chain,
       hash,
     )
