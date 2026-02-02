@@ -19,6 +19,7 @@ import {
   type TypedDataDefinition,
   type TypedDataDomain,
   toHex,
+  zeroAddress,
 } from 'viem'
 import {
   entryPoint07Address,
@@ -604,9 +605,8 @@ function getTokenRequests(
     )
   }
   // Across requires passing some value to repay the solvers
-  // Use USDC to prevent having destination ops injected to unwrap WETH
   const defaultTokenRequest = {
-    address: getTokenAddress('USDC', targetChain.id),
+    address: zeroAddress,
     amount: 1n,
   }
   const isSameChain =
