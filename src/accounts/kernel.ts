@@ -49,9 +49,9 @@ type ValidatorType = 'root' | 'validator'
 const KERNEL_META_FACTORY_ADDRESS: Address =
   '0xd703aae79538628d27099b8c4f621be4ccd142d5'
 const KERNEL_IMPLEMENTATION_ADDRESS: Address =
-  '0xd6CEDDe84be40893d153Be9d467CD6aD37875b28'
+  '0xd6cedde84be40893d153be9d467cd6ad37875b28'
 const KERNEL_FACTORY_ADDRESS: Address =
-  '0x2577507b78c2008Ff367261CB6285d44ba5eF2E9'
+  '0x2577507b78c2008ff367261cb6285d44ba5ef2e9'
 
 const KERNEL_BYTECODE =
   '0x603d3d8160223d3973d6cedde84be40893d153be9d467cd6ad37875b2860095155f3363d3d373d3d363d7f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc545af43d6000803e6038573d6000fd5b3d6000f3'
@@ -79,7 +79,7 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
     const createData = factoryData.args[1]
     const salt = factoryData.args[2]
     const implementation =
-      factory === KERNEL_FACTORY_ADDRESS
+      factory.toLowerCase() === KERNEL_FACTORY_ADDRESS
         ? KERNEL_IMPLEMENTATION_ADDRESS
         : zeroAddress
     if (implementation === zeroAddress) {
