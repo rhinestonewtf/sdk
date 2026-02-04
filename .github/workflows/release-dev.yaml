@@ -3,7 +3,7 @@ name: Release Dev
 on:
   push:
     branches:
-      - dev
+      - main
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
@@ -40,7 +40,7 @@ jobs:
         run: bunx publint
 
   release:
-    name: Release
+    name: Release Snapshot
     runs-on: ubuntu-latest
     needs: [build-and-test]
     steps:
@@ -53,13 +53,11 @@ jobs:
       - name: Install the npm dependencies
         run: bun install --frozen-lockfile
 
-      - name: Create Release Pull Request or Publish
-        uses: changesets/action@v1
-        with:
-          commit: "chore: dev release"
-          title: "Dev Release"
-          publish: bun run build && changeset publish --tag dev
-          version: bun run changeset:version
-        env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Setup npm auth
+        run: echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
+
+      - name: Version snapshot
+        run: bunx changeset version --snapshot dev
+
+      - name: Build and publish snapshot
+        run: bun run build && bunx changeset publish --tag dev
