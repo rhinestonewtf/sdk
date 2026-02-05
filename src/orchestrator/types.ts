@@ -170,9 +170,37 @@ export interface Op {
   ops: Execution[]
 }
 
+export interface ExecutionWithPlaceholders extends Execution {
+  senderAddressPlaceholder?: Address
+  recipientAddressPlaceholder?: Address
+}
+
+export interface ElementSwapDestination {
+  tokenIn: Address
+  amountIn: string
+  amountOut: string
+  slippage: number
+  quoter: string
+  executions: ExecutionWithPlaceholders[]
+  outputDecimals: number
+  outputSymbol: string
+}
+
+export interface ElementSwapOrigin {
+  tokenIn: Address
+  tokenOut: Address
+  amountIn: string
+  amountOut: string
+  executions: ExecutionWithPlaceholders[]
+  inputDecimals: number
+  inputSymbol: string
+  price: number
+}
+
 interface IntentOpElementMandate {
   recipient: Address
   tokenOut: [[string, string]]
+  swapDestinations?: (ElementSwapDestination | null)[]
   destinationChainId: string
   fillDeadline: string
   destinationOps: Op
@@ -200,6 +228,7 @@ interface IntentOpElement {
   chainId: string
   idsAndAmounts: [[string, string]]
   spendTokens: [[string, string]]
+  swapOrigins?: (ElementSwapOrigin | null)[]
   beforeFill: boolean
   smartAccountStatus?: AccountContext
   mandate: IntentOpElementMandate
