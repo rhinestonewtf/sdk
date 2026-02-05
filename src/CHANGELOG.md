@@ -1,5 +1,12 @@
 # @rhinestone/sdk
 
+## 1.2.10
+
+### Patch Changes
+
+- d190b56: Skip initData check if factory data is not provided
+- 220e282: Lowercase contract addresses in account implementations
+
 ## 1.2.9
 
 ### Patch Changes
