@@ -38,11 +38,11 @@ const NEXUS_DEFAULT_VALIDATOR_ADDRESS: Address = OWNABLE_VALIDATOR_ADDRESS
 const NEXUS_VERSION = '1.2.0'
 
 const NEXUS_IMPLEMENTATION_ADDRESS: Address =
-  '0x000000000032dDC454C3BDcba80484Ad5A798705'
+  '0x000000000032ddc454c3bdcba80484ad5a798705'
 const NEXUS_FACTORY_ADDRESS: Address =
-  '0x0000000000679A258c64d2F20F310e12B64b7375'
+  '0x0000000000679a258c64d2f20f310e12b64b7375'
 const NEXUS_BOOTSTRAP_ADDRESS: Address =
-  '0x00000000006eFb61D8c9546FF1B500de3f244EA7'
+  '0x00000000006efb61d8c9546ff1b500de3f244ea7'
 
 const NEXUS_IMPLEMENTATION_1_0_0: Address =
   '0x000000039dfcad030719b07296710f045f0558f7'
@@ -183,12 +183,12 @@ function getAddress(config: RhinestoneAccountConfig) {
   const { factory, salt, initializationCallData, implementation } = deployArgs
 
   const creationCode =
-    factory === NEXUS_FACTORY_ADDRESS
+    factory.toLowerCase() === NEXUS_FACTORY_ADDRESS
       ? NEXUS_CREATION_CODE
       : '0x603d3d8160223d3973000000039dfcad030719b07296710f045f0558f760095155f3363d3d373d3d363d7f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc545af43d6000803e6038573d6000fd5b3d6000f3'
 
   const accountInitData =
-    factory === NEXUS_FACTORY_ADDRESS
+    factory.toLowerCase() === NEXUS_FACTORY_ADDRESS
       ? encodeAbiParameters(
           [
             {
@@ -269,7 +269,7 @@ function getDefaultValidatorAddress(
   }
   switch (version) {
     case '1.0.2':
-      return '0x0000002D6DB27c52E3C11c1Cf24072004AC75cBa'
+      return '0x0000002d6db27c52e3c11c1cf24072004ac75cba'
     case '1.2.0':
       return '0x00000000d12897ddadc2044614a9677b191a2d95'
     case 'rhinestone-1.0.0-beta':
@@ -547,7 +547,7 @@ function tryDecodeV0FactoryData(factory: Address, factoryData: Hex) {
       ),
     )
     const implementation =
-      factory === NEXUS_FACTORY_ADDRESS
+      factory.toLowerCase() === NEXUS_FACTORY_ADDRESS
         ? NEXUS_IMPLEMENTATION_ADDRESS
         : NEXUS_IMPLEMENTATION_1_0_0
 
