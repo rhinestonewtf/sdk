@@ -188,13 +188,13 @@ export interface ElementSwapDestination {
 
 export interface ElementSwapOrigin {
   tokenIn: Address
-  tokenOut: Address 
+  tokenOut: Address
   amountIn: string
   amountOut: string
   executions: ExecutionWithPlaceholders[]
   inputDecimals: number
   inputSymbol: string
-  price: number 
+  price: number
 }
 
 interface IntentOpElementMandate {
