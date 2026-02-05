@@ -366,12 +366,14 @@ function getAddress(config: RhinestoneConfig) {
 }
 
 function checkAddress(config: RhinestoneConfig) {
-  if (!config.initData) {
+  const initData = config.initData
+  if (!initData) {
     return true
   }
-  return (
-    config.initData.address.toLowerCase() === getAddress(config).toLowerCase()
-  )
+  if (!('factory' in initData)) {
+    return true
+  }
+  return initData.address.toLowerCase() === getAddress(config).toLowerCase()
 }
 
 // Signs and packs a signature to be EIP-1271 compatible
