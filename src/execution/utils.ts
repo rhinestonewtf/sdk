@@ -105,7 +105,10 @@ import type {
   UserOperationTransaction,
 } from '../types'
 import { getCompactTypedData } from './compact'
-import { SignerNotSupportedError } from './error'
+import {
+  Eip7702InitSignatureRequiredError,
+  SignerNotSupportedError,
+} from './error'
 import { getTypedData as getPermit2TypedData } from './permit2'
 import { getTypedData as getSingleChainOpsTypedData } from './singleChainOps'
 
@@ -1338,9 +1341,7 @@ function getSetupOperationsAndDelegations(
   } else if (is7702(config)) {
     // EIP-7702 initialization is only needed for EOA accounts
     if (!eip7702InitSignature || eip7702InitSignature === '0x') {
-      throw new Error(
-        'EIP-7702 initialization signature is required for EOA accounts',
-      )
+      throw new Eip7702InitSignatureRequiredError()
     }
 
     const { initData: eip7702InitData, contract: eip7702Contract } =

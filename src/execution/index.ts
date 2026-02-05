@@ -83,6 +83,7 @@ async function sendTransaction(
     recipient,
     signers,
     sponsored,
+    eip7702InitSignature,
     settlementLayers,
     sourceAssets,
     feeAsset,
@@ -98,6 +99,7 @@ async function sendTransaction(
     recipient,
     signers,
     sponsored,
+    eip7702InitSignature,
     settlementLayers,
     sourceAssets,
     feeAsset,
@@ -134,6 +136,7 @@ async function sendTransactionInternal(
     recipient?: RhinestoneAccountConfig | Address
     signers?: SignerSet
     sponsored?: Sponsorship
+    eip7702InitSignature?: Hex
     settlementLayers?: SettlementLayer[]
     sourceAssets?: SourceAssetInput
     lockFunds?: boolean
@@ -170,6 +173,7 @@ async function sendTransactionInternal(
       options.recipient,
       options.signers,
       options.sponsored,
+      options.eip7702InitSignature,
       options.settlementLayers,
       options.sourceAssets,
       options.feeAsset,
@@ -222,6 +226,7 @@ async function sendTransactionAsIntent(
   recipient: RhinestoneAccountConfig | Address | undefined,
   signers?: SignerSet,
   sponsored?: Sponsorship,
+  eip7702InitSignature?: Hex,
   settlementLayers?: SettlementLayer[],
   sourceAssets?: SourceAssetInput,
   feeAsset?: Address | TokenSymbol,
@@ -236,7 +241,7 @@ async function sendTransactionAsIntent(
     tokenRequests,
     recipient,
     sponsored ?? false,
-    undefined,
+    eip7702InitSignature,
     settlementLayers,
     sourceAssets,
     feeAsset,
