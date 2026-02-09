@@ -5,3 +5,7 @@ dist
 .env
 
 examples/
+
+# Rust / WASM build artifacts
+target/
+crates/encoding-wasm/pkg/

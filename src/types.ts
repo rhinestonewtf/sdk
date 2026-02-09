@@ -223,11 +223,21 @@ interface RhinestoneAccountConfig {
       }
 }
 
+interface WasmEncodingConfig {
+  enabled: boolean
+  /** URL to fetch the WASM binary from. If not set, uses the default CDN URL. */
+  url?: string
+  /** Fetch timeout in milliseconds. Default: 5000. */
+  timeout?: number
+}
+
 interface RhinestoneSDKConfig {
   apiKey?: string
   provider?: ProviderConfig
   bundler?: BundlerConfig
   paymaster?: PaymasterConfig
+  /** Enable WASM-based encoding for protocol types. Default: disabled. */
+  wasm?: WasmEncodingConfig | boolean
   /**
    * @internal
    * Optional orchestrator URL override for internal testing - do not use
@@ -407,6 +417,7 @@ export type {
   RhinestoneAccountConfig,
   RhinestoneSDKConfig,
   RhinestoneConfig,
+  WasmEncodingConfig,
   AccountProviderConfig,
   ProviderConfig,
   BundlerConfig,

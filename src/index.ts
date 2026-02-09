@@ -111,8 +111,10 @@ import type {
   Transaction,
   UniversalActionPolicyParamCondition,
   UserOperationTransaction,
+  WasmEncodingConfig,
   WebauthnValidatorConfig,
 } from './types'
+import { setWasmConfig, preloadWasm, isWasmLoaded } from './wasm'
 
 interface RhinestoneAccount {
   config: RhinestoneAccountConfig
@@ -554,6 +556,11 @@ class RhinestoneSDK {
     this.bundler = options?.bundler
     this.paymaster = options?.paymaster
     this.useDevContracts = options?.useDevContracts
+
+    // Configure WASM encoding if requested
+    if (options?.wasm) {
+      setWasmConfig(options.wasm)
+    }
   }
 
   createAccount(config: RhinestoneAccountConfig) {
@@ -595,6 +602,9 @@ export {
   // Multi-chain permit2 signing
   signPermit2Batch,
   signPermit2Sequential,
+  // WASM encoding
+  preloadWasm,
+  isWasmLoaded,
 }
 export type {
   RhinestoneAccount,
@@ -640,4 +650,6 @@ export type {
   MultiChainPermit2Config,
   MultiChainPermit2Result,
   BatchPermit2Result,
+  // WASM encoding
+  WasmEncodingConfig,
 }

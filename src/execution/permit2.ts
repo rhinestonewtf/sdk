@@ -8,6 +8,8 @@ import {
 import { createTransport } from '../accounts/utils'
 import type { IntentOpElement } from '../orchestrator/types'
 import type { RhinestoneConfig } from '../types'
+import { preparePermit2Input, restoreTypedDataOutput } from '../wasm/bridge'
+import { getWasmConfig, getWasmInstance } from '../wasm/loader'
 import type {
   BatchPermit2Result,
   MultiChainPermit2Config,
@@ -26,6 +28,23 @@ function getTypedData(
   nonce: bigint,
   expires: bigint,
 ) {
+  // Try WASM path if enabled and loaded
+  const wasmConfig = getWasmConfig()
+  if (wasmConfig.enabled) {
+    const wasm = getWasmInstance()
+    if (wasm) {
+      try {
+        const input = preparePermit2Input(element, nonce, expires)
+        return restoreTypedDataOutput(wasm.get_permit2_typed_data(input)) as any
+      } catch (err) {
+        console.warn(
+          '[rhinestone/wasm] get_permit2_typed_data failed, using TS:',
+          err,
+        )
+      }
+    }
+  }
+
   const tokens = element.idsAndAmounts.map(([id, amount]) => [
     BigInt(id),
     BigInt(amount),

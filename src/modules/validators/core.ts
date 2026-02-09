@@ -20,7 +20,13 @@ import type {
   RhinestoneAccountConfig,
   WebauthnValidatorConfig,
 } from '../../types'
-
+import {
+  prepareENSInput,
+  prepareOwnableInput,
+  prepareWebAuthnInput,
+  restoreModuleOutput,
+} from '../../wasm/bridge'
+import { getWasmConfig, getWasmInstance } from '../../wasm/loader'
 import { MODULE_TYPE_ID_VALIDATOR, type Module } from '../common'
 
 const SMART_SESSION_EMISSARY_ADDRESS_DEV: Address =
@@ -124,6 +130,10 @@ function getMockSignature(ownerSet: OwnerSet): Hex {
 }
 
 function getValidator(owners: OwnerSet) {
+  // Try WASM path if enabled and loaded
+  const wasmResult = tryWasmValidator(owners)
+  if (wasmResult) return wasmResult
+
   switch (owners.type) {
     case 'ecdsa':
       return getOwnableValidator(
@@ -149,6 +159,55 @@ function getValidator(owners: OwnerSet) {
     case 'multi-factor': {
       return getMultiFactorValidator(owners.threshold ?? 1, owners.validators)
     }
+  }
+}
+
+function tryWasmValidator(owners: OwnerSet): Module | null {
+  const config = getWasmConfig()
+  if (!config.enabled) return null
+
+  const wasm = getWasmInstance()
+  if (!wasm) return null
+
+  try {
+    switch (owners.type) {
+      case 'ecdsa': {
+        const input = prepareOwnableInput(
+          owners.threshold ?? 1,
+          owners.accounts.map((a) => a.address),
+          owners.module,
+        )
+        return restoreModuleOutput(wasm.get_ownable_validator(input))
+      }
+      case 'ens': {
+        const input = prepareENSInput(
+          owners.threshold ?? 1,
+          owners.accounts.map((a) => a.address),
+          owners.ownerExpirations,
+          owners.module,
+        )
+        return restoreModuleOutput(wasm.get_ens_validator(input))
+      }
+      case 'passkey': {
+        const pubKeys = owners.accounts.map((account) => {
+          const pk = parsePublicKey(account.publicKey)
+          return {
+            pubKeyX: `0x${pk.x.toString(16).padStart(64, '0')}`,
+            pubKeyY: `0x${pk.y.toString(16).padStart(64, '0')}`,
+          }
+        })
+        const input = prepareWebAuthnInput(owners.threshold ?? 1, pubKeys)
+        return restoreModuleOutput(wasm.get_webauthn_validator(input))
+      }
+      default:
+        return null // multi-factor: fall through to TS for now
+    }
+  } catch (err) {
+    console.warn(
+      '[rhinestone/wasm] validator encoding failed, using TS fallback:',
+      err,
+    )
+    return null
   }
 }
 

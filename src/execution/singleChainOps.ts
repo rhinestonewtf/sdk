@@ -1,5 +1,11 @@
 import { type Address, zeroAddress } from 'viem'
 import type { IntentOpElement, Op } from '../orchestrator/types'
+import {
+  prepareSingleChainGasRefundInput,
+  prepareSingleChainLegacyInput,
+  restoreTypedDataOutput,
+} from '../wasm/bridge'
+import { getWasmConfig, getWasmInstance } from '../wasm/loader'
 
 interface GasRefund {
   token: Address
@@ -111,6 +117,45 @@ function getTypedData(
 ) {
   const { destinationChainId, destinationOps } = element.mandate
   const gasRefund = element.mandate.qualifier.settlementContext.gasRefund
+
+  // Try WASM path if enabled and loaded
+  const wasmConfig = getWasmConfig()
+  if (wasmConfig.enabled) {
+    const wasm = getWasmInstance()
+    if (wasm) {
+      try {
+        if (gasRefund) {
+          const input = prepareSingleChainGasRefundInput(
+            account,
+            intentExecutorAddress,
+            destinationChainId,
+            destinationOps,
+            nonce,
+            gasRefund,
+          )
+          return restoreTypedDataOutput(
+            wasm.get_single_chain_typed_data_with_gas_refund(input),
+          ) as any
+        }
+        const input = prepareSingleChainLegacyInput(
+          account,
+          intentExecutorAddress,
+          destinationChainId,
+          destinationOps,
+          nonce,
+        )
+        // biome-ignore lint: WASM returns matching shape
+        return restoreTypedDataOutput(
+          wasm.get_single_chain_typed_data_legacy(input),
+        ) as any
+      } catch (err) {
+        console.warn(
+          '[rhinestone/wasm] single_chain typed data failed, using TS:',
+          err,
+        )
+      }
+    }
+  }
 
   if (gasRefund) {
     return getTypedDataWithGasRefund(

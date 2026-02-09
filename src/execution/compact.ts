@@ -1,5 +1,7 @@
 import { type Hex, hashTypedData, keccak256, slice, toHex } from 'viem'
 import type { IntentOp, IntentOpElement } from '../orchestrator/types'
+import { prepareCompactInput, restoreTypedDataOutput } from '../wasm/bridge'
+import { getWasmConfig, getWasmInstance } from '../wasm/loader'
 import { getTypedData as getPermit2TypedData } from './permit2'
 
 const SCOPE_MULTICHAIN = 0
@@ -55,6 +57,23 @@ const COMPACT_TYPED_DATA_TYPES = {
 } as const
 
 function getCompactTypedData(intentOp: IntentOp) {
+  // Try WASM path if enabled and loaded
+  const wasmConfig = getWasmConfig()
+  if (wasmConfig.enabled) {
+    const wasm = getWasmInstance()
+    if (wasm) {
+      try {
+        const input = prepareCompactInput(intentOp)
+        return restoreTypedDataOutput(wasm.get_compact_typed_data(input)) as any
+      } catch (err) {
+        console.warn(
+          '[rhinestone/wasm] get_compact_typed_data failed, using TS:',
+          err,
+        )
+      }
+    }
+  }
+
   const typedData = {
     domain: {
       name: 'The Compact',
