@@ -43,6 +43,7 @@ import {
 } from './registry'
 import type {
   ApprovalRequired,
+  AuxiliaryFunds,
   IntentInput,
   IntentOp,
   IntentOpStatus,
@@ -76,6 +77,7 @@ function getOrchestrator(
 }
 
 export type {
+  AuxiliaryFunds,
   IntentInput,
   IntentOp,
   IntentOpStatus,
