@@ -539,19 +539,21 @@ async function deploy(
     sponsored?: boolean
   },
 ): Promise<boolean> {
-  const account = getAccountProvider(config)
-  const deployArgs = getDeployArgs(config)
-  if (!deployArgs) {
-    throw new FactoryArgsNotAvailableError()
-  }
-  if (account.type === 'eoa') {
-    return false
-  }
-
   const deployed = await isDeployed(config, chain)
   if (deployed) {
     return false
   }
+
+  const account = getAccountProvider(config)
+  if (account.type === 'eoa') {
+    return false
+  }
+
+  const deployArgs = getDeployArgs(config)
+  if (!deployArgs) {
+    throw new FactoryArgsNotAvailableError()
+  }
+
   const intentExecutorInstalled =
     'intentExecutorInstalled' in deployArgs
       ? deployArgs.intentExecutorInstalled
