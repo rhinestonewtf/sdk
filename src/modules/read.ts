@@ -135,4 +135,61 @@ async function getOwners(
   }
 }
 
-export { getValidators, getOwners }
+async function getExecutors(
+  accountType: AccountType,
+  account: Address,
+  chain: Chain,
+  provider?: ProviderConfig,
+): Promise<Address[]> {
+  const publicClient = createPublicClient({
+    chain,
+    transport: createTransport(chain, provider),
+  })
+  switch (accountType) {
+    case 'safe':
+    case 'startale':
+    case 'nexus':
+    case 'passport': {
+      const executors = await publicClient.readContract({
+        abi: [
+          {
+            name: 'getExecutorsPaginated',
+            type: 'function',
+            inputs: [
+              {
+                name: 'cursor',
+                type: 'address',
+              },
+              {
+                name: 'size',
+                type: 'uint256',
+              },
+            ],
+            outputs: [
+              {
+                name: 'array',
+                type: 'address[]',
+              },
+              {
+                name: 'next',
+                type: 'address',
+              },
+            ],
+          },
+        ],
+        functionName: 'getExecutorsPaginated',
+        address: account,
+        args: ['0x0000000000000000000000000000000000000001', 100n],
+      })
+      return (executors as [Address[], Address])[0]
+    }
+    case 'eoa': {
+      return []
+    }
+    case 'kernel': {
+      throw new Error('Kernel not supported')
+    }
+  }
+}
+
+export { getValidators, getExecutors, getOwners }

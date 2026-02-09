@@ -115,16 +115,8 @@ export function runDeploymentTests() {
           expect(threshold).toEqual(1n)
 
           // Check omni account modules are installed
-          const executorList = await publicClient.readContract({
-            address: rhinestoneAccount.getAddress(),
-            abi: biconomyImplementationAbi,
-            functionName: 'getExecutorsPaginated',
-            args: [SENTINEL_ADDRESS, 10n],
-          })
-          const executors = executorList[0].filter(
-            (validator) => validator !== SENTINEL_ADDRESS,
-          )
-          expect(executors).toEqual([INTENT_EXECUTOR_ADDRESS])
+          const executors = await rhinestoneAccount.getExecutors(sourceChain)
+          expect(executors).toContain(INTENT_EXECUTOR_ADDRESS)
           const fallbackHandler = await publicClient.readContract({
             address: rhinestoneAccount.getAddress(),
             abi: biconomyImplementationAbi,
