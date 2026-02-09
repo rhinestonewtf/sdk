@@ -57,7 +57,7 @@ jobs:
         run: echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
 
       - name: Version snapshot
-        run: bunx changeset version --snapshot dev
+        run: bunx changeset version --snapshot dev && bun run scripts/sync-version.ts
 
       - name: Build and publish snapshot
         run: bun run build && bunx changeset publish --tag dev
