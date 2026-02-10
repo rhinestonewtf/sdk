@@ -247,6 +247,7 @@ async function sendTransactionAsIntent(
     feeAsset,
     lockFunds,
     undefined,
+    undefined,
     signers,
   )
   if (!intentRoute) {

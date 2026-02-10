@@ -92,12 +92,17 @@ type SignatureMode =
   | typeof SIG_MODE_EMISSARY_EXECUTION_ERC1271
   | typeof SIG_MODE_ERC1271_EMISSARY_EXECUTION
 
+type AuxiliaryFunds = {
+  [chainId: number]: Record<Address, bigint>
+}
+
 interface IntentOptions {
   topupCompact: boolean
   feeToken?: Address | SupportedTokenSymbol
   sponsorSettings?: SponsorSettings
   settlementLayers?: SettlementLayer[]
   signatureMode?: SignatureMode
+  auxiliaryFunds?: AuxiliaryFunds
 }
 
 interface SponsorSettings {
@@ -435,6 +440,7 @@ type PortfolioResponse = PortfolioTokenResponse[]
 export type {
   Account,
   AccountType,
+  AuxiliaryFunds,
   TokenConfig,
   SupportedChain,
   SettlementLayer,

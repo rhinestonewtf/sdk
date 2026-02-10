@@ -74,6 +74,7 @@ import {
 } from './modules/validators/smart-sessions'
 import {
   type ApprovalRequired,
+  type AuxiliaryFunds,
   getAllSupportedChainsAndTokens,
   getSupportedTokens,
   getTokenAddress,
@@ -633,6 +634,7 @@ export type {
   PreparedUserOperationData,
   SignedUserOperationData,
   UserOperationResult,
+  AuxiliaryFunds,
   IntentInput,
   IntentOp,
   IntentOpStatus,

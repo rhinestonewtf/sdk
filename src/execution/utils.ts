@@ -80,6 +80,7 @@ import {
 } from '../orchestrator/registry'
 import {
   type AccountAccessList,
+  type AuxiliaryFunds,
   type Account as OrchestratorAccount,
   type OriginSignature,
   type SettlementLayer,
@@ -161,6 +162,7 @@ async function prepareTransaction(
     sourceAssets,
     feeAsset,
     lockFunds,
+    auxiliaryFunds,
     account,
     recipient,
   } = getTransactionParams(transaction)
@@ -189,6 +191,7 @@ async function prepareTransaction(
     sourceAssets,
     feeAsset,
     lockFunds,
+    auxiliaryFunds,
     account,
     signers,
   )
@@ -568,6 +571,7 @@ function getTransactionParams(transaction: Transaction) {
   const sourceAssets = transaction.sourceAssets
   const feeAsset = transaction.feeAsset
   const lockFunds = transaction.lockFunds
+  const auxiliaryFunds = transaction.auxiliaryFunds
   const account = transaction.experimental_accountOverride
   const recipient = transaction.recipient
 
@@ -590,6 +594,7 @@ function getTransactionParams(transaction: Transaction) {
     sourceAssets,
     feeAsset,
     lockFunds,
+    auxiliaryFunds,
     account,
     recipient,
   }
@@ -716,6 +721,7 @@ async function prepareTransactionAsIntent(
   sourceAssets: SourceAssetInput | undefined,
   feeAsset: Address | TokenSymbol | undefined,
   lockFunds: boolean | undefined,
+  auxiliaryFunds: AuxiliaryFunds | undefined,
   account:
     | {
         setupOps?: {
@@ -783,6 +789,7 @@ async function prepareTransactionAsIntent(
         : undefined,
       settlementLayers,
       signatureMode,
+      auxiliaryFunds,
     },
   }
 

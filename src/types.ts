@@ -1,7 +1,7 @@
 import type { Account, Address, Chain, Hex } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
 import type { ModuleType } from './modules/common'
-import type { SettlementLayer } from './orchestrator/types'
+import type { AuxiliaryFunds, SettlementLayer } from './orchestrator/types'
 
 type AccountType = 'safe' | 'nexus' | 'kernel' | 'startale' | 'passport' | 'eoa'
 
@@ -370,6 +370,7 @@ interface BaseTransaction {
   feeAsset?: Address | TokenSymbol
   settlementLayers?: SettlementLayer[]
   lockFunds?: boolean
+  auxiliaryFunds?: AuxiliaryFunds
   experimental_accountOverride?: {
     setupOps?: {
       to: Address
