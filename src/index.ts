@@ -21,6 +21,10 @@ import {
   setup as setupInternal,
   signEip7702InitData as signEip7702InitDataInternal,
 } from './accounts'
+import {
+  toRemoteWebAuthnAccount,
+  type WebAuthnSignResponse,
+} from './accounts/signing/remoteWebAuthn'
 import { walletClientToAccount, wrapParaAccount } from './accounts/walletClient'
 import { deployAccountsForOwners } from './actions/deployment'
 import {
@@ -45,6 +49,7 @@ import {
   signPermit2Sequential,
 } from './execution/permit2'
 import {
+  assembleTransaction as assembleTransactionInternal,
   getTransactionMessages as getTransactionMessagesInternal,
   type IntentRoute,
   type PreparedTransactionData,
@@ -137,6 +142,13 @@ interface RhinestoneAccount {
   }
   signTransaction: (
     preparedTransaction: PreparedTransactionData,
+  ) => Promise<SignedTransactionData>
+  assembleTransaction: (
+    preparedTransaction: PreparedTransactionData,
+    rawSignatures: {
+      origin: WebAuthnSignResponse[]
+      destination?: WebAuthnSignResponse
+    },
   ) => Promise<SignedTransactionData>
   signAuthorizations: (
     preparedTransaction: PreparedTransactionData,
@@ -301,6 +313,29 @@ async function createRhinestoneAccount(
    */
   function signTransaction(preparedTransaction: PreparedTransactionData) {
     return signTransactionInternal(config, preparedTransaction)
+  }
+
+  /**
+   * Assemble a transaction from pre-computed WebAuthn signatures.
+   * Use this for server/client split flows where signing happens on the browser
+   * and assembly/submission happens on the server.
+   * @param preparedTransaction Prepared transaction data
+   * @param rawSignatures Pre-computed WebAuthn signatures (one per origin element)
+   * @returns signed transaction data ready for submission
+   * @see {@link getTransactionMessages} to get the typed data messages for client-side signing
+   */
+  function assembleTransaction(
+    preparedTransaction: PreparedTransactionData,
+    rawSignatures: {
+      origin: WebAuthnSignResponse[]
+      destination?: WebAuthnSignResponse
+    },
+  ) {
+    return assembleTransactionInternal(
+      config,
+      preparedTransaction,
+      rawSignatures,
+    )
   }
 
   /**
@@ -525,6 +560,7 @@ async function createRhinestoneAccount(
     prepareTransaction,
     getTransactionMessages,
     signTransaction,
+    assembleTransaction,
     signAuthorizations,
     signMessage,
     signTypedData,
@@ -604,6 +640,8 @@ export {
   // Multi-chain permit2 signing
   signPermit2Batch,
   signPermit2Sequential,
+  // Remote WebAuthn account
+  toRemoteWebAuthnAccount,
 }
 export type {
   RhinestoneAccount,
@@ -650,3 +688,7 @@ export type {
   MultiChainPermit2Result,
   BatchPermit2Result,
 }
+export type {
+  RemoteWebAuthnAccountConfig,
+  WebAuthnSignResponse,
+} from './accounts/signing/remoteWebAuthn'

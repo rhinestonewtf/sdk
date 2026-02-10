@@ -44,6 +44,10 @@ import {
   toErc6492Signature,
 } from '../accounts'
 import {
+  toRemoteWebAuthnAccount,
+  type WebAuthnSignResponse,
+} from '../accounts/signing/remoteWebAuthn'
+import {
   createTransport,
   getBundlerClient,
   type ValidatorConfig,
@@ -289,6 +293,79 @@ async function signTransaction(
     originSignatures,
     destinationSignature,
     targetExecutionSignature,
+  }
+}
+
+async function assembleTransaction(
+  config: RhinestoneConfig,
+  preparedTransaction: PreparedTransactionData,
+  rawSignatures: {
+    origin: WebAuthnSignResponse[]
+    destination?: WebAuthnSignResponse
+  },
+): Promise<SignedTransactionData> {
+  const { signers } = getTransactionParams(preparedTransaction.transaction)
+  const intentRoute = preparedTransaction.intentRoute
+  const targetChain =
+    'targetChain' in preparedTransaction.transaction
+      ? preparedTransaction.transaction.targetChain
+      : preparedTransaction.transaction.chain
+
+  if (!signers || signers.type !== 'owner' || signers.kind !== 'passkey') {
+    throw new Error('assembleTransaction only supports passkey owner signers')
+  }
+
+  // Build a queue of pre-computed signatures
+  // Each call to sign() or signTypedData() on the remote account dequeues one
+  let signatureIndex = 0
+  const allSignatures = [...rawSignatures.origin]
+
+  const remoteSigners: SignerSet = {
+    type: 'owner',
+    kind: 'passkey',
+    module: signers.module,
+    accounts: signers.accounts.map((account) =>
+      toRemoteWebAuthnAccount({
+        credential: {
+          id: account.id,
+          publicKey: account.publicKey,
+        },
+        sign: async () => {
+          const sig = allSignatures[signatureIndex++]
+          if (!sig) {
+            throw new Error(
+              `Not enough passkey signatures provided. Expected at least ${signatureIndex} but got ${allSignatures.length}.`,
+            )
+          }
+          return sig
+        },
+        signTypedData: async () => {
+          const sig = allSignatures[signatureIndex++]
+          if (!sig) {
+            throw new Error(
+              `Not enough passkey signatures provided. Expected at least ${signatureIndex} but got ${allSignatures.length}.`,
+            )
+          }
+          return sig
+        },
+      }),
+    ),
+  }
+
+  const { originSignatures, destinationSignature } = await signIntent(
+    config,
+    intentRoute.intentOp,
+    targetChain,
+    remoteSigners,
+    false,
+  )
+
+  return {
+    intentRoute,
+    transaction: preparedTransaction.transaction,
+    originSignatures,
+    destinationSignature,
+    targetExecutionSignature: undefined,
   }
 }
 
@@ -1418,6 +1495,7 @@ export {
   prepareTransaction,
   getTransactionMessages,
   signTransaction,
+  assembleTransaction,
   signAuthorizations,
   signAuthorizationsInternal,
   signMessage,
