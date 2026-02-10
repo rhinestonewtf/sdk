@@ -557,7 +557,7 @@ class RhinestoneSDK {
   private paymaster?: PaymasterConfig
   private useDevContracts?: boolean
 
-  constructor(options: RhinestoneSDKConfig & { apiKey: string }) {
+  constructor(options: RhinestoneSDKConfig) {
     this.apiKey = options.apiKey
     this.endpointUrl = options.endpointUrl
     this.provider = options.provider

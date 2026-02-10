@@ -224,7 +224,7 @@ interface RhinestoneAccountConfig {
 }
 
 interface RhinestoneSDKConfig {
-  apiKey?: string
+  apiKey: string
   provider?: ProviderConfig
   bundler?: BundlerConfig
   paymaster?: PaymasterConfig
@@ -240,7 +240,7 @@ interface RhinestoneSDKConfig {
   useDevContracts?: boolean
 }
 
-type RhinestoneConfig = RhinestoneAccountConfig & RhinestoneSDKConfig
+type RhinestoneConfig = RhinestoneAccountConfig & Partial<RhinestoneSDKConfig>
 
 type TokenSymbol = 'ETH' | 'WETH' | 'USDC' | 'USDT'
 
