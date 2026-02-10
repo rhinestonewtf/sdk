@@ -23,7 +23,7 @@ vi.mock('viem', async (importOriginal) => {
 
 describe('Recovery Actions', () => {
   describe('Set Up Recovery', async () => {
-    const rhinestone = new RhinestoneSDK()
+    const rhinestone = new RhinestoneSDK({ apiKey: 'test' })
     const rhinestoneAccount = await rhinestone.createAccount({
       owners: {
         type: 'ecdsa',
@@ -65,7 +65,7 @@ describe('Recovery Actions', () => {
   })
 
   describe('Recover', () => {
-    const rhinestone = new RhinestoneSDK()
+    const rhinestone = new RhinestoneSDK({ apiKey: 'test' })
     const accountPromise = rhinestone.createAccount({
       owners: {
         type: 'ecdsa',

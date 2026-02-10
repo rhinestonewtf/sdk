@@ -69,13 +69,8 @@ import {
   type SignedIntentOp,
 } from '../orchestrator'
 import {
-  PROD_ORCHESTRATOR_URL,
-  STAGING_ORCHESTRATOR_URL,
-} from '../orchestrator/consts'
-import {
   getChainById,
   getTokenAddress,
-  isTestnet,
   resolveTokenAddress,
 } from '../orchestrator/registry'
 import {
@@ -793,11 +788,7 @@ async function prepareTransactionAsIntent(
     },
   }
 
-  const orchestrator = getOrchestratorByChain(
-    targetChain.id,
-    config.apiKey,
-    config.endpointUrl,
-  )
+  const orchestrator = getOrchestrator(config.apiKey, config.endpointUrl)
   const intentRoute = await orchestrator.getIntentRoute(metaIntent)
   return intentRoute
 }
@@ -1148,21 +1139,6 @@ async function submitIntent(
   )
 }
 
-function getOrchestratorByChain(
-  chainId: number,
-  apiKey: string | undefined,
-  orchestratorUrl?: string,
-) {
-  if (orchestratorUrl) {
-    return getOrchestrator(apiKey, orchestratorUrl)
-  }
-
-  const defaultOrchestratorUrl = isTestnet(chainId)
-    ? STAGING_ORCHESTRATOR_URL
-    : PROD_ORCHESTRATOR_URL
-  return getOrchestrator(apiKey, defaultOrchestratorUrl)
-}
-
 function createSignedIntentOp(
   intentOp: IntentOp,
   originSignatures: OriginSignature[],
@@ -1207,11 +1183,7 @@ async function submitIntentInternal(
     targetExecutionSignature,
     authorizations,
   )
-  const orchestrator = getOrchestratorByChain(
-    targetChain.id,
-    config.apiKey,
-    config.endpointUrl,
-  )
+  const orchestrator = getOrchestrator(config.apiKey, config.endpointUrl)
   const intentResults = await orchestrator.submitIntent(signedIntentOp, dryRun)
   return {
     type: 'intent',
@@ -1433,7 +1405,6 @@ export {
   prepareUserOperation,
   signUserOperation,
   submitUserOperation,
-  getOrchestratorByChain,
   signIntent,
   prepareTransactionAsIntent,
   submitIntentInternal,
