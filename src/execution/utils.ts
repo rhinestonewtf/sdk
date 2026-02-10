@@ -1371,6 +1371,13 @@ function getSetupOperationsAndDelegations(
     const to = 'factory' in initCode ? initCode.factory : undefined
     const data = 'factory' in initCode ? initCode.factoryData : undefined
     if (!to || !data) {
+      // Check if it's a migrated account with address-only initData
+      if (config.initData && !('factory' in config.initData)) {
+        // Assume the account is already deployed
+        return {
+          setupOps: [],
+        }
+      }
       throw new FactoryArgsNotAvailableError()
     }
     // Contract account with init code
