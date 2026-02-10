@@ -25,7 +25,7 @@ import {
   type ModeleSetup,
   type Module,
 } from './common'
-import { getOwners, getValidators } from './read'
+import { getExecutors, getOwners, getValidators } from './read'
 import { getOwnerValidator, getSmartSessionValidator } from './validators'
 import { getSocialRecoveryValidator } from './validators/core'
 import {
@@ -143,6 +143,7 @@ export {
   getSetup,
   getOwnerValidator,
   getOwners,
+  getExecutors,
   getIntentExecutor,
   getValidators,
   isRip7212SupportedNetwork,
