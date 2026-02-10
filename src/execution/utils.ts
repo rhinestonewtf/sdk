@@ -69,17 +69,13 @@ import {
   type SignedIntentOp,
 } from '../orchestrator'
 import {
-  PROD_ORCHESTRATOR_URL,
-  STAGING_ORCHESTRATOR_URL,
-} from '../orchestrator/consts'
-import {
   getChainById,
   getTokenAddress,
-  isTestnet,
   resolveTokenAddress,
 } from '../orchestrator/registry'
 import {
   type AccountAccessList,
+  type AuxiliaryFunds,
   type Account as OrchestratorAccount,
   type OriginSignature,
   type SettlementLayer,
@@ -105,7 +101,10 @@ import type {
   UserOperationTransaction,
 } from '../types'
 import { getCompactTypedData } from './compact'
-import { SignerNotSupportedError } from './error'
+import {
+  Eip7702InitSignatureRequiredError,
+  SignerNotSupportedError,
+} from './error'
 import { getTypedData as getPermit2TypedData } from './permit2'
 import { getTypedData as getSingleChainOpsTypedData } from './singleChainOps'
 
@@ -158,6 +157,7 @@ async function prepareTransaction(
     sourceAssets,
     feeAsset,
     lockFunds,
+    auxiliaryFunds,
     account,
     recipient,
   } = getTransactionParams(transaction)
@@ -186,6 +186,7 @@ async function prepareTransaction(
     sourceAssets,
     feeAsset,
     lockFunds,
+    auxiliaryFunds,
     account,
     signers,
   )
@@ -565,6 +566,7 @@ function getTransactionParams(transaction: Transaction) {
   const sourceAssets = transaction.sourceAssets
   const feeAsset = transaction.feeAsset
   const lockFunds = transaction.lockFunds
+  const auxiliaryFunds = transaction.auxiliaryFunds
   const account = transaction.experimental_accountOverride
   const recipient = transaction.recipient
 
@@ -587,6 +589,7 @@ function getTransactionParams(transaction: Transaction) {
     sourceAssets,
     feeAsset,
     lockFunds,
+    auxiliaryFunds,
     account,
     recipient,
   }
@@ -713,6 +716,7 @@ async function prepareTransactionAsIntent(
   sourceAssets: SourceAssetInput | undefined,
   feeAsset: Address | TokenSymbol | undefined,
   lockFunds: boolean | undefined,
+  auxiliaryFunds: AuxiliaryFunds | undefined,
   account:
     | {
         setupOps?: {
@@ -780,14 +784,11 @@ async function prepareTransactionAsIntent(
         : undefined,
       settlementLayers,
       signatureMode,
+      auxiliaryFunds,
     },
   }
 
-  const orchestrator = getOrchestratorByChain(
-    targetChain.id,
-    config.apiKey,
-    config.endpointUrl,
-  )
+  const orchestrator = getOrchestrator(config.apiKey, config.endpointUrl)
   const intentRoute = await orchestrator.getIntentRoute(metaIntent)
   return intentRoute
 }
@@ -1138,21 +1139,6 @@ async function submitIntent(
   )
 }
 
-function getOrchestratorByChain(
-  chainId: number,
-  apiKey: string | undefined,
-  orchestratorUrl?: string,
-) {
-  if (orchestratorUrl) {
-    return getOrchestrator(apiKey, orchestratorUrl)
-  }
-
-  const defaultOrchestratorUrl = isTestnet(chainId)
-    ? STAGING_ORCHESTRATOR_URL
-    : PROD_ORCHESTRATOR_URL
-  return getOrchestrator(apiKey, defaultOrchestratorUrl)
-}
-
 function createSignedIntentOp(
   intentOp: IntentOp,
   originSignatures: OriginSignature[],
@@ -1197,11 +1183,7 @@ async function submitIntentInternal(
     targetExecutionSignature,
     authorizations,
   )
-  const orchestrator = getOrchestratorByChain(
-    targetChain.id,
-    config.apiKey,
-    config.endpointUrl,
-  )
+  const orchestrator = getOrchestrator(config.apiKey, config.endpointUrl)
   const intentResults = await orchestrator.submitIntent(signedIntentOp, dryRun)
   return {
     type: 'intent',
@@ -1338,9 +1320,7 @@ function getSetupOperationsAndDelegations(
   } else if (is7702(config)) {
     // EIP-7702 initialization is only needed for EOA accounts
     if (!eip7702InitSignature || eip7702InitSignature === '0x') {
-      throw new Error(
-        'EIP-7702 initialization signature is required for EOA accounts',
-      )
+      throw new Eip7702InitSignatureRequiredError()
     }
 
     const { initData: eip7702InitData, contract: eip7702Contract } =
@@ -1363,6 +1343,13 @@ function getSetupOperationsAndDelegations(
     const to = 'factory' in initCode ? initCode.factory : undefined
     const data = 'factory' in initCode ? initCode.factoryData : undefined
     if (!to || !data) {
+      // Check if it's a migrated account with address-only initData
+      if (config.initData && !('factory' in config.initData)) {
+        // Assume the account is already deployed
+        return {
+          setupOps: [],
+        }
+      }
       throw new FactoryArgsNotAvailableError()
     }
     // Contract account with init code
@@ -1418,7 +1405,6 @@ export {
   prepareUserOperation,
   signUserOperation,
   submitUserOperation,
-  getOrchestratorByChain,
   signIntent,
   prepareTransactionAsIntent,
   submitIntentInternal,

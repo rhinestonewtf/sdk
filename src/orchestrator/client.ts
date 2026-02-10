@@ -1,4 +1,5 @@
 import type { Address } from 'viem'
+import { SDK_VERSION } from './consts'
 import {
   AuthenticationRequiredError,
   BadRequestError,
@@ -207,6 +208,7 @@ export class Orchestrator {
   private getHeaders(): HeadersInit {
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
+      'x-sdk-version': SDK_VERSION,
     }
     if (this.apiKey) {
       headers['x-api-key'] = this.apiKey

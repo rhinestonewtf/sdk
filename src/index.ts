@@ -62,6 +62,7 @@ import {
   submitUserOperation as submitUserOperationInternal,
 } from './execution/utils'
 import {
+  getExecutors as getExecutorsInternal,
   getOwners as getOwnersInternal,
   getSessionDetails as getSessionDetailsInternal,
   getValidators as getValidatorsInternal,
@@ -73,6 +74,7 @@ import {
 } from './modules/validators/smart-sessions'
 import {
   type ApprovalRequired,
+  type AuxiliaryFunds,
   getAllSupportedChainsAndTokens,
   getSupportedTokens,
   getTokenAddress,
@@ -191,6 +193,7 @@ interface RhinestoneAccount {
     threshold: number
   } | null>
   getValidators: (chain: Chain) => Promise<Address[]>
+  getExecutors: (chain: Chain) => Promise<Address[]>
   checkERC20Allowance: (tokenAddress: Address, chain: Chain) => Promise<bigint>
 }
 
@@ -476,6 +479,12 @@ async function createRhinestoneAccount(
     return getValidatorsInternal(accountType, account, chain, config.provider)
   }
 
+  function getExecutors(chain: Chain) {
+    const accountType = getAccountProvider(config).type
+    const account = getAddress()
+    return getExecutorsInternal(accountType, account, chain, config.provider)
+  }
+
   function experimental_getSessionDetails(sessions: Session[]) {
     const account = getAddress()
     return getSessionDetailsInternal(account, sessions, config.useDevContracts)
@@ -531,6 +540,7 @@ async function createRhinestoneAccount(
     getPortfolio,
     getOwners,
     getValidators,
+    getExecutors,
     experimental_getSessionDetails,
     experimental_isSessionEnabled,
     experimental_signEnableSession,
@@ -540,20 +550,20 @@ async function createRhinestoneAccount(
 }
 
 class RhinestoneSDK {
-  private apiKey?: string
+  private apiKey: string
   private endpointUrl?: string
   private provider?: ProviderConfig
   private bundler?: BundlerConfig
   private paymaster?: PaymasterConfig
   private useDevContracts?: boolean
 
-  constructor(options?: RhinestoneSDKConfig) {
-    this.apiKey = options?.apiKey
-    this.endpointUrl = options?.endpointUrl
-    this.provider = options?.provider
-    this.bundler = options?.bundler
-    this.paymaster = options?.paymaster
-    this.useDevContracts = options?.useDevContracts
+  constructor(options: RhinestoneSDKConfig) {
+    this.apiKey = options.apiKey
+    this.endpointUrl = options.endpointUrl
+    this.provider = options.provider
+    this.bundler = options.bundler
+    this.paymaster = options.paymaster
+    this.useDevContracts = options.useDevContracts
   }
 
   createAccount(config: RhinestoneAccountConfig) {
@@ -624,6 +634,7 @@ export type {
   PreparedUserOperationData,
   SignedUserOperationData,
   UserOperationResult,
+  AuxiliaryFunds,
   IntentInput,
   IntentOp,
   IntentOpStatus,

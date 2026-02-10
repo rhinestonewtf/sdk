@@ -92,12 +92,17 @@ type SignatureMode =
   | typeof SIG_MODE_EMISSARY_EXECUTION_ERC1271
   | typeof SIG_MODE_ERC1271_EMISSARY_EXECUTION
 
+type AuxiliaryFunds = {
+  [chainId: number]: Record<Address, bigint>
+}
+
 interface IntentOptions {
   topupCompact: boolean
   feeToken?: Address | SupportedTokenSymbol
   sponsorSettings?: SponsorSettings
   settlementLayers?: SettlementLayer[]
   signatureMode?: SignatureMode
+  auxiliaryFunds?: AuxiliaryFunds
 }
 
 interface SponsorSettings {
@@ -139,6 +144,17 @@ interface IntentInput {
   options: IntentOptions
 }
 
+interface ChainGasCost {
+  chainId: number
+  gasUSD: number
+}
+
+interface GasCostBreakdown {
+  originChains: ChainGasCost[]
+  destination: ChainGasCost
+  totalUSD: number
+}
+
 interface IntentCost {
   hasFulfilledAll: boolean
   tokensReceived: [
@@ -163,6 +179,7 @@ interface IntentCost {
       }
     }
   }
+  gasCost?: GasCostBreakdown
 }
 
 export interface Op {
@@ -170,9 +187,37 @@ export interface Op {
   ops: Execution[]
 }
 
+export interface ExecutionWithPlaceholders extends Execution {
+  senderAddressPlaceholder?: Address
+  recipientAddressPlaceholder?: Address
+}
+
+export interface ElementSwapDestination {
+  tokenIn: Address
+  amountIn: string
+  amountOut: string
+  slippage: number
+  quoter: string
+  executions: ExecutionWithPlaceholders[]
+  outputDecimals: number
+  outputSymbol: string
+}
+
+export interface ElementSwapOrigin {
+  tokenIn: Address
+  tokenOut: Address
+  amountIn: string
+  amountOut: string
+  executions: ExecutionWithPlaceholders[]
+  inputDecimals: number
+  inputSymbol: string
+  price: number
+}
+
 interface IntentOpElementMandate {
   recipient: Address
   tokenOut: [[string, string]]
+  swapDestinations?: (ElementSwapDestination | null)[]
   destinationChainId: string
   fillDeadline: string
   destinationOps: Op
@@ -200,6 +245,7 @@ interface IntentOpElement {
   chainId: string
   idsAndAmounts: [[string, string]]
   spendTokens: [[string, string]]
+  swapOrigins?: (ElementSwapOrigin | null)[]
   beforeFill: boolean
   smartAccountStatus?: AccountContext
   mandate: IntentOpElementMandate
@@ -406,6 +452,7 @@ type PortfolioResponse = PortfolioTokenResponse[]
 export type {
   Account,
   AccountType,
+  AuxiliaryFunds,
   TokenConfig,
   SupportedChain,
   SettlementLayer,

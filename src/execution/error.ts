@@ -102,6 +102,20 @@ class IntentStatusTimeoutError extends ExecutionError {
   }
 }
 
+class Eip7702InitSignatureRequiredError extends ExecutionError {
+  constructor(params?: {
+    context?: any
+    errorType?: string
+    traceId?: string
+  }) {
+    super({
+      message:
+        'EIP-7702 initialization signature is required for 7702 accounts. This signature is needed during transaction preparation, even if your account is already deployed on all chains. Use `getEip7702InitSignature()` to generate it.',
+      ...params,
+    })
+  }
+}
+
 function isExecutionError(error: Error): error is ExecutionError {
   return error instanceof ExecutionError
 }
@@ -109,6 +123,7 @@ function isExecutionError(error: Error): error is ExecutionError {
 export {
   isExecutionError,
   ExecutionError,
+  Eip7702InitSignatureRequiredError,
   OrderPathRequiredForIntentsError,
   SessionChainRequiredError,
   IntentFailedError,
