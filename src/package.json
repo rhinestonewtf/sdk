@@ -139,6 +139,11 @@
       "types": "./dist/src/execution/singleChainOps.d.ts",
       "import": "./dist/src/execution/singleChainOps.js",
       "require": "./dist/src/execution/singleChainOps.js"
+    },
+    "./smart-sessions": {
+      "types": "./dist/src/modules/validators/smart-sessions.d.ts",
+      "import": "./dist/src/modules/validators/smart-sessions.js",
+      "require": "./dist/src/modules/validators/smart-sessions.js"
     }
   },
   "files": [
