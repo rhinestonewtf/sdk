@@ -1,18 +1,23 @@
 import { type Address, type Chain, createPublicClient, type Hex } from 'viem'
 import type { UserOperationReceipt } from 'viem/_types/account-abstraction'
-import { base, baseSepolia } from 'viem/chains'
 import { deploy, getAddress } from '../accounts'
 import { createTransport, getBundlerClient } from '../accounts/utils'
-import type { IntentOpStatus, SplitIntentsInput } from '../orchestrator'
 import {
+  getOrchestrator,
   INTENT_STATUS_COMPLETED,
   INTENT_STATUS_FAILED,
   INTENT_STATUS_FILLED,
   INTENT_STATUS_PRECONFIRMED,
+  type IntentOpStatus,
   isRateLimited,
   isRetryable,
+  type SplitIntentsInput,
 } from '../orchestrator'
-import { getChainById } from '../orchestrator/registry'
+import {
+  getChainById,
+  getSupportedChainIds,
+  isTestnet,
+} from '../orchestrator/registry'
 import type { SettlementLayer } from '../orchestrator/types'
 import type {
   CalldataInput,
@@ -38,7 +43,6 @@ import {
 } from './error'
 import type { TransactionResult, UserOperationResult } from './utils'
 import {
-  getOrchestratorByChain,
   getTargetExecutionSignature,
   getTokenRequests,
   getValidatorAccount,
@@ -310,11 +314,7 @@ async function waitForExecution(
             },
           })
         }
-        const orchestrator = getOrchestratorByChain(
-          result.targetChain,
-          config.apiKey,
-          config.endpointUrl,
-        )
+        const orchestrator = getOrchestrator(config.apiKey, config.endpointUrl)
         try {
           intentStatus = await orchestrator.getIntentOpStatus(result.id)
           // reset error backoff on success
@@ -393,13 +393,16 @@ async function waitForExecution(
 
 async function getPortfolio(config: RhinestoneConfig, onTestnets: boolean) {
   const address = getAddress(config)
-  const chainId = onTestnets ? baseSepolia.id : base.id
-  const orchestrator = getOrchestratorByChain(
-    chainId,
-    config.apiKey,
-    config.endpointUrl,
-  )
-  return orchestrator.getPortfolio(address)
+  const orchestrator = getOrchestrator(config.apiKey, config.endpointUrl)
+  const supportedChainIds = getSupportedChainIds()
+  const filteredChainIds = supportedChainIds.filter((id) => {
+    try {
+      return isTestnet(id) === onTestnets
+    } catch {
+      return false
+    }
+  })
+  return orchestrator.getPortfolio(address, { chainIds: filteredChainIds })
 }
 
 async function getIntentStatus(
@@ -411,15 +414,13 @@ async function getIntentStatus(
     status: IntentOpStatus['status']
   }
 > {
-  const environment = BigInt(intentId.toString().slice(0, 1))
-  const chainId = environment === 4n ? base.id : baseSepolia.id
-  const orchestrator = getOrchestratorByChain(chainId, apiKey, endpointUrl)
+  const orchestrator = getOrchestrator(apiKey, endpointUrl)
   const internalStatus = await orchestrator.getIntentOpStatus(intentId)
   return {
     status: internalStatus.status,
     fill: {
       hash: internalStatus.fillTransactionHash,
-      chainId: chainId,
+      chainId: internalStatus.destinationChainId,
     },
     claims: internalStatus.claims.map((claim) => ({
       hash: claim.claimTransactionHash,
@@ -433,11 +434,7 @@ async function splitIntents(
   endpointUrl: string | undefined,
   input: SplitIntentsInput,
 ) {
-  const orchestrator = getOrchestratorByChain(
-    input.chain.id,
-    apiKey,
-    endpointUrl,
-  )
+  const orchestrator = getOrchestrator(apiKey, endpointUrl)
   return orchestrator.splitIntents(input)
 }
 

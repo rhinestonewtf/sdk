@@ -550,20 +550,20 @@ async function createRhinestoneAccount(
 }
 
 class RhinestoneSDK {
-  private apiKey?: string
+  private apiKey: string
   private endpointUrl?: string
   private provider?: ProviderConfig
   private bundler?: BundlerConfig
   private paymaster?: PaymasterConfig
   private useDevContracts?: boolean
 
-  constructor(options?: RhinestoneSDKConfig) {
-    this.apiKey = options?.apiKey
-    this.endpointUrl = options?.endpointUrl
-    this.provider = options?.provider
-    this.bundler = options?.bundler
-    this.paymaster = options?.paymaster
-    this.useDevContracts = options?.useDevContracts
+  constructor(options: RhinestoneSDKConfig & { apiKey: string }) {
+    this.apiKey = options.apiKey
+    this.endpointUrl = options.endpointUrl
+    this.provider = options.provider
+    this.bundler = options.bundler
+    this.paymaster = options.paymaster
+    this.useDevContracts = options.useDevContracts
   }
 
   createAccount(config: RhinestoneAccountConfig) {
