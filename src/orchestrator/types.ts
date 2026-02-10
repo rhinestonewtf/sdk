@@ -144,6 +144,17 @@ interface IntentInput {
   options: IntentOptions
 }
 
+interface ChainGasCost {
+  chainId: number
+  gasUSD: number
+}
+
+interface GasCostBreakdown {
+  originChains: ChainGasCost[]
+  destination: ChainGasCost
+  totalUSD: number
+}
+
 interface IntentCost {
   hasFulfilledAll: boolean
   tokensReceived: [
@@ -168,6 +179,7 @@ interface IntentCost {
       }
     }
   }
+  gasCost?: GasCostBreakdown
 }
 
 export interface Op {

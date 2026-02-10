@@ -24,6 +24,11 @@ export function createOrchestratorMock() {
           },
         },
       },
+      gasCost: {
+        originChains: [{ chainId: 8453, gasUSD: 0.5 }],
+        destination: { chainId: 8453, gasUSD: 1.2 },
+        totalUSD: 1.7,
+      },
     }),
     getIntentRoute: vi.fn().mockResolvedValue({
       intentOp: {
@@ -123,6 +128,11 @@ export function createOrchestratorMock() {
               unlocked: '0',
             },
           },
+        },
+        gasCost: {
+          originChains: [{ chainId: 8453, gasUSD: 0.3 }],
+          destination: { chainId: 8453, gasUSD: 0.8 },
+          totalUSD: 1.1,
         },
       },
     }),
