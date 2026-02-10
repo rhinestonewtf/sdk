@@ -36,7 +36,7 @@ export function runBundlesTestCases() {
           const receiverPrivateKey = generatePrivateKey()
           const receiverAccount = privateKeyToAccount(receiverPrivateKey)
 
-          const rhinestone = new RhinestoneSDK()
+          const rhinestone = new RhinestoneSDK({ apiKey: 'test' })
           const rhinestoneAccount = await rhinestone.createAccount({
             owners: {
               type: 'ecdsa',

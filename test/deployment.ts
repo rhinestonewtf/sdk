@@ -40,7 +40,7 @@ export function runDeploymentTests() {
         async () => {
           const ownerPrivateKey = generatePrivateKey()
           const ownerAccount = privateKeyToAccount(ownerPrivateKey)
-          const rhinestone = new RhinestoneSDK()
+          const rhinestone = new RhinestoneSDK({ apiKey: 'test' })
           const rhinestoneAccount = await rhinestone.createAccount({
             owners: {
               type: 'ecdsa',
@@ -142,7 +142,7 @@ export function runDeploymentTestCases() {
           const ownerPrivateKey = generatePrivateKey()
           const ownerAccount = privateKeyToAccount(ownerPrivateKey)
 
-          const rhinestone = new RhinestoneSDK()
+          const rhinestone = new RhinestoneSDK({ apiKey: 'test' })
           const rhinestoneAccount = await rhinestone.createAccount({
             owners: {
               type: 'ecdsa',
