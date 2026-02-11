@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.2.12
+
+### Patch Changes
+
+- e7255bc: add mock usd token
+
 ## 1.2.11
 
 ### Patch Changes
