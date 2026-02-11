@@ -23,9 +23,9 @@
     },
     "src": {
       "name": "@rhinestone/sdk",
-      "version": "1.2.6",
+      "version": "1.2.9",
       "dependencies": {
-        "@rhinestone/shared-configs": "1.4.91",
+        "@rhinestone/shared-configs": "1.4.97",
         "ox": "^0.11.3",
         "solady": "^0.1.26",
       },
@@ -171,7 +171,7 @@
 
     "@rhinestone/sdk": ["@rhinestone/sdk@workspace:src"],
 
-    "@rhinestone/shared-configs": ["@rhinestone/shared-configs@1.4.91", "", { "peerDependencies": { "typescript": "^5", "viem": "^2.40.1" } }, "sha512-Yn5jF7kzWN9j+l2HT6GWRwtU80KoA5zxm3cUk+7t44YKXziPyqno5Jfo2SQv4j8Cv1PheKR9YATH8vH5/fxN2A=="],
+    "@rhinestone/shared-configs": ["@rhinestone/shared-configs@1.4.97", "", { "peerDependencies": { "typescript": "^5", "viem": "^2.40.1" } }, "sha512-+3OigqALe7cix8qf6OpopqxS15XddYhC3q+i5Z91ccA6D4RBjx9SxCrXuLH6zdMlj3pojNKj5zyCs5wTXkPIMw=="],
 
     "@rollup/rollup-android-arm-eabi": ["@rollup/rollup-android-arm-eabi@4.40.1", "", { "os": "android", "cpu": "arm" }, "sha512-kxz0YeeCrRUHz3zyqvd7n+TVRlNyTifBsmnmNPtk3hQURUyG9eAB+usz6DAwagMusjx/zb3AjvDUvhFGDAexGw=="],
 
