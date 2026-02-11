@@ -1,6 +1,14 @@
 import { Orchestrator } from './client'
 import { PROD_ORCHESTRATOR_URL, RHINESTONE_SPOKE_POOL_ADDRESS } from './consts'
 import {
+  SafeOrchestrator,
+  getSafeOrchestrator,
+  categorizeError,
+  ErrorCategory,
+  type OrchestratorResult,
+  type CategorizedError,
+} from './safeClient'
+import {
   AuthenticationRequiredError,
   BadRequestError,
   BodyParserError,
@@ -93,6 +101,8 @@ export type {
   TokenRequirements,
   WrapRequired,
   ApprovalRequired,
+  OrchestratorResult,
+  CategorizedError,
 }
 export {
   INTENT_STATUS_PENDING,
@@ -130,6 +140,10 @@ export {
   UnsupportedChainIdError,
   UnsupportedTokenError,
   getOrchestrator,
+  SafeOrchestrator,
+  getSafeOrchestrator,
+  categorizeError,
+  ErrorCategory,
   getWethAddress,
   getTokenSymbol,
   getTokenAddress,
