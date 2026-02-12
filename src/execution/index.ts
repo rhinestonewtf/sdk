@@ -155,10 +155,8 @@ async function sendTransactionInternal(
     accountAddress,
   )
   const tokenRequests = getTokenRequests(
-    sourceChains,
     targetChain,
     options.initialTokenRequests,
-    options.settlementLayers,
   )
 
   const sendAsUserOp =
