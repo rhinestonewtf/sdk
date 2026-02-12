@@ -19,7 +19,6 @@ import {
   type TypedDataDefinition,
   type TypedDataDomain,
   toHex,
-  zeroAddress,
 } from 'viem'
 import {
   entryPoint07Address,
@@ -571,10 +570,8 @@ function getTransactionParams(transaction: Transaction) {
   const recipient = transaction.recipient
 
   const tokenRequests = getTokenRequests(
-    sourceChains || [],
     targetChain,
     initialTokenRequests,
-    settlementLayers,
   )
 
   return {
@@ -596,10 +593,8 @@ function getTransactionParams(transaction: Transaction) {
 }
 
 function getTokenRequests(
-  sourceChains: Chain[] | undefined,
   targetChain: Chain,
   initialTokenRequests: TokenRequest[] | undefined,
-  settlementLayers: SettlementLayer[] | undefined,
 ) {
   if (initialTokenRequests) {
     validateTokenSymbols(
@@ -607,23 +602,7 @@ function getTokenRequests(
       initialTokenRequests.map((tokenRequest) => tokenRequest.address),
     )
   }
-  // Across requires passing some value to repay the solvers
-  const defaultTokenRequest = {
-    address: zeroAddress,
-    amount: 1n,
-  }
-  const isSameChain =
-    (settlementLayers?.length === 1 && settlementLayers[0] === 'SAME_CHAIN') ||
-    (sourceChains &&
-      sourceChains.length === 1 &&
-      sourceChains[0].id === targetChain.id)
-  const tokenRequests =
-    !initialTokenRequests || initialTokenRequests.length === 0
-      ? isSameChain
-        ? []
-        : [defaultTokenRequest]
-      : initialTokenRequests
-  return tokenRequests
+  return initialTokenRequests ?? []
 }
 
 async function prepareTransactionAsUserOp(
