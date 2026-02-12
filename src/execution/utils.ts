@@ -569,10 +569,7 @@ function getTransactionParams(transaction: Transaction) {
   const account = transaction.experimental_accountOverride
   const recipient = transaction.recipient
 
-  const tokenRequests = getTokenRequests(
-    targetChain,
-    initialTokenRequests,
-  )
+  const tokenRequests = getTokenRequests(targetChain, initialTokenRequests)
 
   return {
     sourceChains,
