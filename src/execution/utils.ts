@@ -19,7 +19,6 @@ import {
   type TypedDataDefinition,
   type TypedDataDomain,
   toHex,
-  zeroAddress,
 } from 'viem'
 import {
   entryPoint07Address,
@@ -250,11 +249,7 @@ function getTransactionMessages(
   origin: TypedDataDefinition[]
   destination: TypedDataDefinition
 } {
-  return getIntentMessages(
-    config,
-    preparedTransaction.intentRoute.intentOp,
-    false,
-  )
+  return getIntentMessages(config, preparedTransaction.intentRoute.intentOp)
 }
 
 async function signTransaction(
@@ -570,12 +565,7 @@ function getTransactionParams(transaction: Transaction) {
   const account = transaction.experimental_accountOverride
   const recipient = transaction.recipient
 
-  const tokenRequests = getTokenRequests(
-    sourceChains || [],
-    targetChain,
-    initialTokenRequests,
-    settlementLayers,
-  )
+  const tokenRequests = getTokenRequests(targetChain, initialTokenRequests)
 
   return {
     sourceChains,
@@ -596,10 +586,8 @@ function getTransactionParams(transaction: Transaction) {
 }
 
 function getTokenRequests(
-  sourceChains: Chain[] | undefined,
   targetChain: Chain,
   initialTokenRequests: TokenRequest[] | undefined,
-  settlementLayers: SettlementLayer[] | undefined,
 ) {
   if (initialTokenRequests) {
     validateTokenSymbols(
@@ -607,23 +595,7 @@ function getTokenRequests(
       initialTokenRequests.map((tokenRequest) => tokenRequest.address),
     )
   }
-  // Across requires passing some value to repay the solvers
-  const defaultTokenRequest = {
-    address: zeroAddress,
-    amount: 1n,
-  }
-  const isSameChain =
-    (settlementLayers?.length === 1 && settlementLayers[0] === 'SAME_CHAIN') ||
-    (sourceChains &&
-      sourceChains.length === 1 &&
-      sourceChains[0].id === targetChain.id)
-  const tokenRequests =
-    !initialTokenRequests || initialTokenRequests.length === 0
-      ? isSameChain
-        ? []
-        : [defaultTokenRequest]
-      : initialTokenRequests
-  return tokenRequests
+  return initialTokenRequests ?? []
 }
 
 async function prepareTransactionAsUserOp(
@@ -800,11 +772,7 @@ async function signIntent(
   signers?: SignerSet,
   targetExecution?: boolean,
 ) {
-  const { origin, destination } = getIntentMessages(
-    config,
-    intentOp,
-    targetExecution ?? false,
-  )
+  const { origin, destination } = getIntentMessages(config, intentOp)
   if (config.account?.type === 'eoa') {
     const eoa = config.eoa
     if (!eoa) {
@@ -912,11 +880,7 @@ async function getDestinationSignature(
     : (lastOriginSignature ?? '0x')
 }
 
-function getIntentMessages(
-  config: RhinestoneConfig,
-  intentOp: IntentOp,
-  targetExecution: boolean,
-) {
+function getIntentMessages(config: RhinestoneConfig, intentOp: IntentOp) {
   const address = getAddress(config)
   const intentExecutor = getIntentExecutor(config)
 
@@ -924,13 +888,11 @@ function getIntentMessages(
     (element) =>
       element.mandate.qualifier.settlementContext.fundingMethod === 'PERMIT2',
   )
-  const withIntentExecutorOps =
-    targetExecution ||
-    intentOp.elements.some(
-      (element) =>
-        element.mandate.qualifier.settlementContext.settlementLayer ===
-        'INTENT_EXECUTOR',
-    )
+  const withIntentExecutorOps = intentOp.elements.some(
+    (element) =>
+      element.mandate.qualifier.settlementContext.settlementLayer ===
+      'INTENT_EXECUTOR',
+  )
   const origin: TypedDataDefinition[] = []
   for (const element of intentOp.elements) {
     if (withIntentExecutorOps) {
