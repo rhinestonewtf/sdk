@@ -1,5 +1,13 @@
 # @rhinestone/sdk
 
+## 1.2.13
+
+### Patch Changes
+
+- ba80541: Remove default 1 wei token request for cross-chain transactions
+- c24fa2c: Remove legacy single ops signing code path
+- 0545b2f: Remove targetExecution parameter from cross-chain transaction signing
+
 ## 1.2.12
 
 ### Patch Changes
