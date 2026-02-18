@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.2.14
+
+### Patch Changes
+
+- 623f9f1: Use provider param in smart session
+
 ## 1.2.13
 
 ### Patch Changes
