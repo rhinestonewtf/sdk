@@ -7,7 +7,6 @@ import {
   encodePacked,
   type Hex,
   hashStruct,
-  http,
   isHex,
   keccak256,
   maxUint256,
@@ -381,12 +380,13 @@ function packSignature(
 async function getSessionDetails(
   account: Address,
   sessions: Session[],
+  provider: ProviderConfig | undefined,
   useDevContracts?: boolean,
 ): Promise<SessionDetails> {
   const lockTag = '0x000000000000000000000000'
   const sessionNonces = await Promise.all(
     sessions.map((session) =>
-      getSessionNonce(account, session, lockTag, useDevContracts),
+      getSessionNonce(account, session, lockTag, provider, useDevContracts),
     ),
   )
   const sessionDatas = sessions.map((session) => getSessionData(session))
@@ -474,11 +474,12 @@ async function getSessionNonce(
   account: Address,
   session: Session,
   lockTag: Hex,
+  provider: ProviderConfig | undefined,
   useDevContracts?: boolean,
 ): Promise<bigint> {
   const publicClient = createPublicClient({
     chain: session.chain,
-    transport: http(),
+    transport: createTransport(session.chain, provider),
   })
   const nonce = await publicClient.readContract({
     address: getSmartSessionEmissaryAddress(useDevContracts),
