@@ -13,6 +13,7 @@ import {
   padHex,
   size,
   type TypedDataDefinition,
+  toFunctionSelector,
   toHex,
   zeroAddress,
   zeroHash,
@@ -24,7 +25,9 @@ import {
   SCOPE_MULTICHAIN,
 } from '../../execution/compact'
 import { signTypedData } from '../../execution/utils'
+import { getTokenAddress } from '../../orchestrator/registry'
 import type {
+  Action,
   Policy,
   ProviderConfig,
   RhinestoneAccountConfig,
@@ -194,6 +197,8 @@ const SMART_SESSIONS_FALLBACK_TARGET_FLAG: Address =
 const SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG: Hex = '0x00000001'
 const SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG_PERMITTED_TO_CALL_SMARTSESSION: Hex =
   '0x00000002'
+
+const PAYMASTER_ADDRESS: Address = '0x1d7df6ddc7328ac827eb4d7f171c60afb7f9a599'
 
 const SPENDING_LIMITS_POLICY_ADDRESS: Address =
   '0x00000088d48cf102a8cdb0137a9b173f957c6343'
@@ -608,11 +613,45 @@ function getSessionData(session: Session): SessionData {
       },
     ],
   }
+
+  const injectedActions: Action[] = [
+    // Gas refunds
+    {
+      target: PAYMASTER_ADDRESS,
+      selector: toFunctionSelector({
+        type: 'function',
+        name: 'callbackAllowMaxAmount',
+        inputs: [
+          { type: 'address', name: 'token' },
+          { type: 'uint256', name: 'maxAmount' },
+        ],
+        outputs: [],
+        stateMutability: 'payable',
+      }),
+    },
+    // ETH wrapping
+    {
+      target: getTokenAddress('WETH', session.chain.id),
+      selector: toFunctionSelector({
+        type: 'function',
+        name: 'deposit',
+        inputs: [],
+        outputs: [],
+        stateMutability: 'payable',
+      }),
+    },
+  ]
+
   const actions = session.actions
-    ? session.actions.map((action) => ({
+    ? [...session.actions, ...injectedActions].map((action) => ({
         actionTargetSelector:
-          action.selector ?? SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
-        actionTarget: action.target ?? SMART_SESSIONS_FALLBACK_TARGET_FLAG,
+          'selector' in action
+            ? action.selector
+            : SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
+        actionTarget:
+          'target' in action
+            ? action.target
+            : SMART_SESSIONS_FALLBACK_TARGET_FLAG,
         actionPolicies: action.policies?.map((policy) =>
           getPolicyData(policy),
         ) ?? [
