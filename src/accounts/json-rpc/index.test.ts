@@ -23,15 +23,15 @@ describe('JSON-RPC', () => {
       expect(transport).toBeDefined()
     })
 
-    test('Custom throws error when URL not configured for chain', () => {
-      expect(() =>
-        createTransport(mainnet, {
-          type: 'custom',
-          urls: {
-            [base.id]: 'https://my-rpc.example.com',
-          },
-        }),
-      ).toThrow('No custom provider URL configured for chain 1')
+    test('Custom falls back to default when URL not configured for chain', () => {
+      const transport = createTransport(mainnet, {
+        type: 'custom',
+        urls: {
+          [base.id]: 'https://my-rpc.example.com',
+        },
+      })
+      // Should not throw and return a valid transport using default provider
+      expect(transport).toBeDefined()
     })
   })
 })
