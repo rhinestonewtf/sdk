@@ -13,7 +13,10 @@ function getAlchemyUrl(chainId: SupportedChain, apiKey: string): string {
     .replace('\$\{ALCHEMY_API_KEY\}', apiKey)
 }
 
-function getCustomUrl(chainId: number, urls: Record<number, string>): string | undefined {
+function getCustomUrl(
+  chainId: number,
+  urls: Record<number, string>,
+): string | undefined {
   return urls[chainId]
 }
 
