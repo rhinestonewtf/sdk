@@ -172,11 +172,17 @@ type Policy =
   | UsageLimitPolicy
   | ValueLimitPolicy
 
-interface Action {
-  target?: Address
-  selector?: Hex
-  policies?: [Policy, ...Policy[]]
+interface FallbackAction {
+  policies?: Policy[]
 }
+
+interface ScopedAction {
+  target: Address
+  selector: Hex
+  policies?: Policy[]
+}
+
+type Action = FallbackAction | ScopedAction
 
 interface SessionInput {
   owners: OwnerSet
@@ -430,6 +436,7 @@ export type {
   WebauthnValidatorConfig,
   MultiFactorValidatorConfig,
   SignerSet,
+  Action,
   SessionInput,
   SessionEnableData,
   Session,
