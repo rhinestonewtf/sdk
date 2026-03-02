@@ -164,6 +164,10 @@ interface ValueLimitPolicy {
   limit: bigint
 }
 
+interface IntentExecutionPolicy {
+  type: 'intent-execution'
+}
+
 type Policy =
   | SudoPolicy
   | UniversalActionPolicy
@@ -171,6 +175,7 @@ type Policy =
   | TimeFramePolicy
   | UsageLimitPolicy
   | ValueLimitPolicy
+  | IntentExecutionPolicy
 
 interface FallbackAction {
   policies?: Policy[]

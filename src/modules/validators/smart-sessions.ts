@@ -25,7 +25,7 @@ import {
   SCOPE_MULTICHAIN,
 } from '../../execution/compact'
 import { signTypedData } from '../../execution/utils'
-import { getTokenAddress } from '../../orchestrator/registry'
+import { getTokenAddress } from '../../orchestrator'
 import type {
   Action,
   Policy,
@@ -198,8 +198,6 @@ const SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG: Hex = '0x00000001'
 const SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG_PERMITTED_TO_CALL_SMARTSESSION: Hex =
   '0x00000002'
 
-const PAYMASTER_ADDRESS: Address = '0x1d7df6ddc7328ac827eb4d7f171c60afb7f9a599'
-
 const SPENDING_LIMITS_POLICY_ADDRESS: Address =
   '0x00000088d48cf102a8cdb0137a9b173f957c6343'
 const TIME_FRAME_POLICY_ADDRESS: Address =
@@ -212,6 +210,8 @@ const USAGE_LIMIT_POLICY_ADDRESS: Address =
   '0x1f34ef8311345a3a4a4566af321b313052f51493'
 const VALUE_LIMIT_POLICY_ADDRESS: Address =
   '0x730da93267e7e513e932301b47f2ac7d062abc83'
+const INTENT_EXECUTION_POLICY_ADDRESS: Address =
+  '0xa09b47de6e510cbdc18b97e9239bedcb44fb4901'
 
 const ACTION_CONDITION_EQUAL = 0
 const ACTION_CONDITION_GREATER_THAN = 1
@@ -615,20 +615,6 @@ function getSessionData(session: Session): SessionData {
   }
 
   const injectedActions: Action[] = [
-    // Gas refunds
-    {
-      target: PAYMASTER_ADDRESS,
-      selector: toFunctionSelector({
-        type: 'function',
-        name: 'callbackAllowMaxAmount',
-        inputs: [
-          { type: 'address', name: 'token' },
-          { type: 'uint256', name: 'maxAmount' },
-        ],
-        outputs: [],
-        stateMutability: 'payable',
-      }),
-    },
     // ETH wrapping
     {
       target: getTokenAddress('WETH', session.chain.id),
@@ -639,6 +625,13 @@ function getSessionData(session: Session): SessionData {
         outputs: [],
         stateMutability: 'payable',
       }),
+    },
+    {
+      policies: [
+        {
+          type: 'intent-execution',
+        },
+      ],
     },
   ]
 
@@ -704,6 +697,11 @@ function getPolicyData(policy: Policy): PolicyData {
     case 'sudo':
       return {
         policy: SUDO_POLICY_ADDRESS,
+        initData: '0x',
+      }
+    case 'intent-execution':
+      return {
+        policy: INTENT_EXECUTION_POLICY_ADDRESS,
         initData: '0x',
       }
     case 'universal-action': {
