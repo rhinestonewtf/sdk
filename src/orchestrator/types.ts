@@ -245,7 +245,7 @@ interface IntentOpElement {
   chainId: string
   idsAndAmounts: [[string, string]]
   spendTokens: [[string, string]]
-  swapOrigins?: (ElementSwapOrigin | null)[]
+  swapOrigins?: Record<string, ElementSwapOrigin>
   beforeFill: boolean
   smartAccountStatus?: AccountContext
   mandate: IntentOpElementMandate
