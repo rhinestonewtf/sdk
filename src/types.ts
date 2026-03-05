@@ -242,7 +242,7 @@ interface RhinestoneSDKConfig {
 
 type RhinestoneConfig = RhinestoneAccountConfig & Partial<RhinestoneSDKConfig>
 
-type TokenSymbol = 'ETH' | 'WETH' | 'USDC' | 'USDT'
+type TokenSymbol = 'ETH' | 'WETH' | 'USDC' | 'USDT' | 'USDT0'
 
 interface CalldataInput {
   to: Address | TokenSymbol
