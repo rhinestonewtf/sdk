@@ -1,5 +1,13 @@
 # @rhinestone/sdk
 
+## 1.2.15
+
+### Patch Changes
+
+- 64b30eb: Update swapOrigin type
+- 08ab15d: Add 'USDT0' token symbol
+- a4a07fc: Allow partial custom provider URLs
+
 ## 1.2.14
 
 ### Patch Changes
