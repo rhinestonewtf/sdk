@@ -69,9 +69,9 @@ import {
   getValidators as getValidatorsInternal,
   MULTI_FACTOR_VALIDATOR_ADDRESS,
   OWNABLE_VALIDATOR_ADDRESS,
-  signEnableSession as signEnableSessionInternal,
   SMART_SESSION_EMISSARY_ADDRESS,
   SMART_SESSION_EMISSARY_ADDRESS_DEV,
+  signEnableSession as signEnableSessionInternal,
   WEBAUTHN_V0_VALIDATOR_ADDRESS,
   WEBAUTHN_VALIDATOR_ADDRESS,
 } from './modules'
