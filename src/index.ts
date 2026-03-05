@@ -66,7 +66,11 @@ import {
   getOwners as getOwnersInternal,
   getSessionDetails as getSessionDetailsInternal,
   getValidators as getValidatorsInternal,
+  MULTI_FACTOR_VALIDATOR_ADDRESS,
+  OWNABLE_VALIDATOR_ADDRESS,
+  SMART_SESSION_EMISSARY_ADDRESS,
   signEnableSession as signEnableSessionInternal,
+  WEBAUTHN_VALIDATOR_ADDRESS,
 } from './modules'
 import {
   isSessionEnabled as isSessionEnabledInternal,
@@ -599,6 +603,11 @@ export {
   deployAccountsForOwners,
   walletClientToAccount,
   wrapParaAccount,
+  // Validator addresses
+  OWNABLE_VALIDATOR_ADDRESS,
+  WEBAUTHN_VALIDATOR_ADDRESS,
+  MULTI_FACTOR_VALIDATOR_ADDRESS,
+  SMART_SESSION_EMISSARY_ADDRESS,
   // Registry functions
   getSupportedTokens,
   getTokenAddress,
