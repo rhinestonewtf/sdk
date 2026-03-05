@@ -1,4 +1,14 @@
-import { getMockSignature, getOwnerValidator } from './core'
+import {
+  ENS_VALIDATOR_ADDRESS,
+  getMockSignature,
+  getOwnerValidator,
+  MULTI_FACTOR_VALIDATOR_ADDRESS,
+  OWNABLE_VALIDATOR_ADDRESS,
+  SMART_SESSION_EMISSARY_ADDRESS,
+  SMART_SESSION_EMISSARY_ADDRESS_DEV,
+  WEBAUTHN_V0_VALIDATOR_ADDRESS,
+  WEBAUTHN_VALIDATOR_ADDRESS,
+} from './core'
 import {
   getEnableSessionCall,
   getPermissionId,
@@ -6,6 +16,13 @@ import {
 } from './smart-sessions'
 
 export {
+  OWNABLE_VALIDATOR_ADDRESS,
+  ENS_VALIDATOR_ADDRESS,
+  WEBAUTHN_VALIDATOR_ADDRESS,
+  MULTI_FACTOR_VALIDATOR_ADDRESS,
+  WEBAUTHN_V0_VALIDATOR_ADDRESS,
+  SMART_SESSION_EMISSARY_ADDRESS,
+  SMART_SESSION_EMISSARY_ADDRESS_DEV,
   getOwnerValidator,
   getSmartSessionValidator,
   getEnableSessionCall,

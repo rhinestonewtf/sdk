@@ -62,11 +62,18 @@ import {
   submitUserOperation as submitUserOperationInternal,
 } from './execution/utils'
 import {
+  ENS_VALIDATOR_ADDRESS,
   getExecutors as getExecutorsInternal,
   getOwners as getOwnersInternal,
   getSessionDetails as getSessionDetailsInternal,
   getValidators as getValidatorsInternal,
+  MULTI_FACTOR_VALIDATOR_ADDRESS,
+  OWNABLE_VALIDATOR_ADDRESS,
   signEnableSession as signEnableSessionInternal,
+  SMART_SESSION_EMISSARY_ADDRESS,
+  SMART_SESSION_EMISSARY_ADDRESS_DEV,
+  WEBAUTHN_V0_VALIDATOR_ADDRESS,
+  WEBAUTHN_VALIDATOR_ADDRESS,
 } from './modules'
 import {
   isSessionEnabled as isSessionEnabledInternal,
@@ -599,6 +606,14 @@ export {
   deployAccountsForOwners,
   walletClientToAccount,
   wrapParaAccount,
+  // Validator addresses
+  OWNABLE_VALIDATOR_ADDRESS,
+  ENS_VALIDATOR_ADDRESS,
+  WEBAUTHN_VALIDATOR_ADDRESS,
+  MULTI_FACTOR_VALIDATOR_ADDRESS,
+  WEBAUTHN_V0_VALIDATOR_ADDRESS,
+  SMART_SESSION_EMISSARY_ADDRESS,
+  SMART_SESSION_EMISSARY_ADDRESS_DEV,
   // Registry functions
   getSupportedTokens,
   getTokenAddress,
