@@ -30,14 +30,11 @@ import {
 } from './common'
 import { getExecutors, getOwners, getValidators } from './read'
 import {
-  ENS_VALIDATOR_ADDRESS,
   getOwnerValidator,
   getSmartSessionValidator,
   MULTI_FACTOR_VALIDATOR_ADDRESS,
   OWNABLE_VALIDATOR_ADDRESS,
   SMART_SESSION_EMISSARY_ADDRESS,
-  SMART_SESSION_EMISSARY_ADDRESS_DEV,
-  WEBAUTHN_V0_VALIDATOR_ADDRESS,
   WEBAUTHN_VALIDATOR_ADDRESS,
 } from './validators'
 import { getSocialRecoveryValidator } from './validators/core'
@@ -157,12 +154,9 @@ function isRip7212SupportedNetwork(chain: Chain) {
 
 export {
   OWNABLE_VALIDATOR_ADDRESS,
-  ENS_VALIDATOR_ADDRESS,
   WEBAUTHN_VALIDATOR_ADDRESS,
   MULTI_FACTOR_VALIDATOR_ADDRESS,
-  WEBAUTHN_V0_VALIDATOR_ADDRESS,
   SMART_SESSION_EMISSARY_ADDRESS,
-  SMART_SESSION_EMISSARY_ADDRESS_DEV,
   getSetup,
   getOwnerValidator,
   getOwners,
