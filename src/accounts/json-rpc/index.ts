@@ -18,6 +18,7 @@ function createTransport(chain: Chain, provider?: ProviderConfig): Transport {
     }
     case 'custom': {
       const customUrl = getCustomUrl(chain.id, provider.urls)
+      // Fall back to default provider if no custom URL configured for this chain
       return http(customUrl)
     }
   }

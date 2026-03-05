@@ -35,6 +35,7 @@ Docs: https://docs.rhinestone.dev/smart-wallet
 
 - Use viem types for addresses, chains, and hex values
 - Account implementations live in `/src/accounts/*.ts`
+- The project is using `changeset` to manage releases. Create a changeset file for each fix or feature.
 
 ## Testing
 

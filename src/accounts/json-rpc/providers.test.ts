@@ -34,14 +34,12 @@ describe('Providers', () => {
       )
     })
 
-    test('Throws error when chain not configured', () => {
+    test('Returns undefined when chain not configured', () => {
       const urls = {
         [arbitrum.id]: 'https://my-rpc.example.com/mainnet',
       }
 
-      expect(() => getCustomUrl(sepolia.id, urls)).toThrow(
-        'No custom provider URL configured for chain 11155111',
-      )
+      expect(getCustomUrl(sepolia.id, urls)).toBeUndefined()
     })
 
     test('Accepts HTTP URLs', () => {
