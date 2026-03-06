@@ -75,6 +75,7 @@ import {
 import {
   type AccountAccessList,
   type AuxiliaryFunds,
+  type IntentOpElement,
   type Account as OrchestratorAccount,
   type OriginSignature,
   type SettlementLayer,
@@ -294,18 +295,24 @@ async function getTargetExecutionSignature(
   if (signers?.type !== 'experimental_session') {
     return undefined
   }
-  const targetExecutionIntentOp = {
-    ...intentOp,
-    nonce: intentOp.targetExecutionNonce,
+  const destination = getTargetExecutionMessage(config, intentOp)
+  const validator = getValidator(config, signers)
+  if (!validator) {
+    throw new Error('Validator not available')
   }
-  const { destinationSignature: targetExecutionSignature } = await signIntent(
+  const ownerValidator = getOwnerValidator(config)
+  const isRoot = validator.address === ownerValidator.address
+  const signature = await getDestinationSignature(
     config,
-    targetExecutionIntentOp,
-    targetChain,
     signers,
+    validator,
+    isRoot,
+    targetChain,
+    destination,
+    [],
     true,
   )
-  return targetExecutionSignature
+  return signature
 }
 
 async function signUserOperation(
@@ -924,6 +931,27 @@ function getIntentMessages(config: RhinestoneConfig, intentOp: IntentOp) {
     origin,
     destination,
   }
+}
+
+function getTargetExecutionMessage(
+  config: RhinestoneConfig,
+  intentOp: IntentOp,
+) {
+  const address = getAddress(config)
+  const intentExecutor = getIntentExecutor(config)
+  const lastElement = intentOp.elements.at(-1)
+  const typedData = getSingleChainOpsTypedData(
+    address,
+    intentExecutor.address,
+    lastElement as IntentOpElement,
+    BigInt(intentOp.targetExecutionNonce),
+  )
+  typedData.message.gasRefund = typedData.message.gasRefund ?? {
+    token: '0x0000000000000000000000000000000000000000',
+    exchangeRate: 0n,
+    overhead: 0n,
+  }
+  return typedData
 }
 
 async function signIntentTypedData<
