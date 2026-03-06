@@ -587,6 +587,7 @@ class RhinestoneSDK {
       bundler: this.bundler,
       paymaster: this.paymaster,
       useDevContracts: this.useDevContracts,
+      logger: this.logger,
     }
     return createRhinestoneAccount(rhinestoneConfig)
   }
