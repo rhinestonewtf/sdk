@@ -1,5 +1,6 @@
 import { setupOrchestratorMock } from './orchestrator'
 import { setupViemMock } from './utils/viem'
+import { setupWasmFetchMock } from './utils/wasm'
 
 const funderPrivateKey =
   '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80'
@@ -24,6 +25,7 @@ import { getForkUrl } from './utils/utils'
 
 describe.sequential('E2E Tests', () => {
   beforeAll(async () => {
+    setupWasmFetchMock()
     await anvil.start()
   })
 
