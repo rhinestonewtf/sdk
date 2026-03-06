@@ -1,24 +1,14 @@
-import type { Account, Address, Chain, Hex } from 'viem'
+import type { Account, Chain, Hex } from 'viem'
 import type { IntentOp } from '../orchestrator/types'
 
-interface TokenPermissions {
-  token: Address
-  amount: bigint
-}
-
-/**
- * Multi-chain permit2 signing configuration
- */
-interface MultiChainPermit2Config {
+interface MultiChainSigningConfig {
   chain: Chain
   intentOp: IntentOp
   eoaAccount: Account
+  wasmUrl: string
 }
 
-/**
- * Result of a multi-chain permit2 signing operation
- */
-interface MultiChainPermit2Result {
+interface MultiChainSigningResult {
   chainId: number
   originSignatures: Hex[]
   destinationSignature: Hex
@@ -26,19 +16,25 @@ interface MultiChainPermit2Result {
   error?: Error
 }
 
-/**
- * Batch permit2 signing result
- */
-interface BatchPermit2Result {
-  results: MultiChainPermit2Result[]
+interface BatchSigningResult {
+  results: MultiChainSigningResult[]
   totalChains: number
   successfulSignatures: number
   failedSignatures: number
   allSuccessful: boolean
 }
 
+/** @deprecated Use MultiChainSigningConfig */
+type MultiChainPermit2Config = MultiChainSigningConfig
+/** @deprecated Use MultiChainSigningResult */
+type MultiChainPermit2Result = MultiChainSigningResult
+/** @deprecated Use BatchSigningResult */
+type BatchPermit2Result = BatchSigningResult
+
 export type {
-  TokenPermissions,
+  MultiChainSigningConfig,
+  MultiChainSigningResult,
+  BatchSigningResult,
   MultiChainPermit2Config,
   MultiChainPermit2Result,
   BatchPermit2Result,

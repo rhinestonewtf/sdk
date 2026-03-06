@@ -1,0 +1,18 @@
+[package]
+name = "eip712-mapper-viem"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+# Use "lib" for native testing. build.sh swaps to cdylib for WASM.
+crate-type = ["lib"]
+
+[features]
+default = []
+dev = ["eip712-mapper-core/dev"]
+
+[dependencies]
+eip712-mapper-core = { path = "../core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+alloy-primitives = { version = "1.5", default-features = false, features = ["std", "serde"] }

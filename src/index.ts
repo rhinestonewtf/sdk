@@ -35,15 +35,19 @@ import {
   waitForExecution as waitForExecutionInternal,
 } from './execution'
 import {
-  type BatchPermit2Result,
   checkERC20AllowanceDirect,
   checkERC20Allowance as checkERC20AllowanceInternal,
   getPermit2Address,
-  type MultiChainPermit2Config,
-  type MultiChainPermit2Result,
-  signPermit2Batch,
-  signPermit2Sequential,
-} from './execution/permit2'
+} from './execution/allowance'
+import { signIntentBatch, signIntentSequential } from './execution/signing'
+import type {
+  BatchPermit2Result,
+  BatchSigningResult,
+  MultiChainPermit2Config,
+  MultiChainPermit2Result,
+  MultiChainSigningConfig,
+  MultiChainSigningResult,
+} from './execution/types'
 import {
   getTransactionMessages as getTransactionMessagesInternal,
   type IntentRoute,
@@ -61,6 +65,8 @@ import {
   submitTransaction as submitTransactionInternal,
   submitUserOperation as submitUserOperationInternal,
 } from './execution/utils'
+import { WasmExecutionError, WasmLoadError } from './execution/wasm/errors'
+import { preloadWasm as preloadWasmInternal } from './execution/wasm/loader'
 import {
   getExecutors as getExecutorsInternal,
   getOwners as getOwnersInternal,
@@ -80,6 +86,7 @@ import {
   type ApprovalRequired,
   type AuxiliaryFunds,
   getAllSupportedChainsAndTokens,
+  getOrchestrator,
   getSupportedTokens,
   getTokenAddress,
   getTokenDecimals,
@@ -136,10 +143,12 @@ interface RhinestoneAccount {
   prepareTransaction: (
     transaction: Transaction,
   ) => Promise<PreparedTransactionData>
-  getTransactionMessages: (preparedTransaction: PreparedTransactionData) => {
+  getTransactionMessages: (
+    preparedTransaction: PreparedTransactionData,
+  ) => Promise<{
     origin: TypedDataDefinition[]
     destination: TypedDataDefinition
-  }
+  }>
   signTransaction: (
     preparedTransaction: PreparedTransactionData,
   ) => Promise<SignedTransactionData>
@@ -595,6 +604,16 @@ class RhinestoneSDK {
   splitIntents(input: SplitIntentsInput) {
     return splitIntentsInternal(this.apiKey, this.endpointUrl, input)
   }
+
+  async preload(): Promise<void> {
+    const orchestrator = getOrchestrator(this.apiKey, this.endpointUrl)
+    const manifest = await orchestrator.getClientManifest()
+    await preloadWasmInternal(manifest.eip712ImplementationUrl)
+  }
+
+  preloadWasm(wasmUrl: string) {
+    return preloadWasmInternal(wasmUrl)
+  }
 }
 
 export {
@@ -613,12 +632,15 @@ export {
   getTokenAddress,
   getTokenDecimals,
   getAllSupportedChainsAndTokens,
-  // Permit2 helpers
+  // Allowance helpers
   checkERC20AllowanceDirect,
   getPermit2Address,
-  // Multi-chain permit2 signing
-  signPermit2Batch,
-  signPermit2Sequential,
+  // Multi-chain intent signing
+  signIntentBatch,
+  signIntentSequential,
+  // WASM typed data mapper
+  WasmLoadError,
+  WasmExecutionError,
 }
 export type {
   RhinestoneAccount,
@@ -661,8 +683,20 @@ export type {
   TokenRequirements,
   WrapRequired,
   ApprovalRequired,
-  // Multi-chain permit2 types
+  // Multi-chain signing types
+  MultiChainSigningConfig,
+  MultiChainSigningResult,
+  BatchSigningResult,
+  /** @deprecated Use MultiChainSigningConfig */
   MultiChainPermit2Config,
+  /** @deprecated Use MultiChainSigningResult */
   MultiChainPermit2Result,
+  /** @deprecated Use BatchSigningResult */
   BatchPermit2Result,
 }
+
+/** @deprecated Use signIntentBatch */
+const signPermit2Batch = signIntentBatch
+/** @deprecated Use signIntentSequential */
+const signPermit2Sequential = signIntentSequential
+export { signPermit2Batch, signPermit2Sequential }

@@ -6,8 +6,9 @@ import {
   type Hex,
   zeroAddress,
 } from 'viem'
-import { COMPACT_ADDRESS } from '../execution/compact'
 import type { CalldataInput, LazyCallInput } from '../types'
+
+const COMPACT_ADDRESS = '0x00000000000000171ede64904551eeDF3C6C9788'
 
 type ResetPeriod =
   | 0 // OneSecond

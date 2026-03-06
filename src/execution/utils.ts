@@ -47,7 +47,6 @@ import {
   getBundlerClient,
   type ValidatorConfig,
 } from '../accounts/utils'
-import { getIntentExecutor } from '../modules'
 import type { Module } from '../modules/common'
 import {
   getOwnerValidator,
@@ -99,13 +98,11 @@ import type {
   Transaction,
   UserOperationTransaction,
 } from '../types'
-import { getCompactTypedData } from './compact'
 import {
   Eip7702InitSignatureRequiredError,
   SignerNotSupportedError,
 } from './error'
-import { getTypedData as getPermit2TypedData } from './permit2'
-import { getTypedData as getSingleChainOpsTypedData } from './singleChainOps'
+import { getIntentMessagesFromWasm } from './wasm/loader'
 
 interface UserOperationResult {
   type: 'userop'
@@ -123,6 +120,7 @@ interface TransactionResult {
 interface PreparedTransactionData {
   intentRoute: IntentRoute
   transaction: Transaction
+  wasmUrl: string | undefined
 }
 
 interface PreparedUserOperationData {
@@ -166,7 +164,7 @@ async function prepareTransaction(
   if (isUserOpSigner) {
     throw new SignerNotSupportedError()
   }
-  const intentRoute = await prepareTransactionAsIntent(
+  const { wasmUrl, ...intentRoute } = await prepareTransactionAsIntent(
     config,
     sourceChains,
     targetChain,
@@ -193,6 +191,7 @@ async function prepareTransaction(
   return {
     intentRoute,
     transaction,
+    wasmUrl,
   }
 }
 
@@ -242,14 +241,18 @@ async function resolveCallInputs(
   return resolved
 }
 
-function getTransactionMessages(
+async function getTransactionMessages(
   config: RhinestoneConfig,
   preparedTransaction: PreparedTransactionData,
-): {
+): Promise<{
   origin: TypedDataDefinition[]
   destination: TypedDataDefinition
-} {
-  return getIntentMessages(config, preparedTransaction.intentRoute.intentOp)
+}> {
+  return getIntentMessages(
+    config,
+    preparedTransaction.intentRoute.intentOp,
+    preparedTransaction.wasmUrl,
+  )
 }
 
 async function signTransaction(
@@ -268,12 +271,14 @@ async function signTransaction(
     targetChain,
     signers,
     false,
+    preparedTransaction.wasmUrl,
   )
   const targetExecutionSignature = await getTargetExecutionSignature(
     config,
     intentRoute.intentOp,
     targetChain,
     signers,
+    preparedTransaction.wasmUrl,
   )
 
   return {
@@ -282,6 +287,7 @@ async function signTransaction(
     originSignatures,
     destinationSignature,
     targetExecutionSignature,
+    wasmUrl: preparedTransaction.wasmUrl,
   }
 }
 
@@ -290,6 +296,7 @@ async function getTargetExecutionSignature(
   intentOp: IntentOp,
   targetChain: Chain,
   signers: SignerSet | undefined,
+  wasmUrl: string | undefined,
 ) {
   if (signers?.type !== 'experimental_session') {
     return undefined
@@ -304,6 +311,7 @@ async function getTargetExecutionSignature(
     targetChain,
     signers,
     true,
+    wasmUrl,
   )
   return targetExecutionSignature
 }
@@ -771,8 +779,13 @@ async function signIntent(
   targetChain: Chain,
   signers?: SignerSet,
   targetExecution?: boolean,
+  wasmUrl?: string | undefined,
 ) {
-  const { origin, destination } = getIntentMessages(config, intentOp)
+  const { origin, destination } = await getIntentMessages(
+    config,
+    intentOp,
+    wasmUrl,
+  )
   if (config.account?.type === 'eoa') {
     const eoa = config.eoa
     if (!eoa) {
@@ -880,46 +893,30 @@ async function getDestinationSignature(
     : (lastOriginSignature ?? '0x')
 }
 
-function getIntentMessages(config: RhinestoneConfig, intentOp: IntentOp) {
+async function getIntentMessages(
+  config: RhinestoneConfig,
+  intentOp: IntentOp,
+  wasmUrl: string | undefined,
+): Promise<{
+  origin: TypedDataDefinition[]
+  destination: TypedDataDefinition
+}> {
+  if (!wasmUrl) {
+    throw new Error(
+      'WASM URL not available. The orchestrator response did not include the X-EIP712-Implementation header.',
+    )
+  }
   const address = getAddress(config)
-  const intentExecutor = getIntentExecutor(config)
 
-  const withPermit2 = intentOp.elements.some(
-    (element) =>
-      element.mandate.qualifier.settlementContext.fundingMethod === 'PERMIT2',
+  return getIntentMessagesFromWasm(
+    {
+      intentOp,
+      context: {
+        accountAddress: address,
+      },
+    },
+    wasmUrl,
   )
-  const withIntentExecutorOps = intentOp.elements.some(
-    (element) =>
-      element.mandate.qualifier.settlementContext.settlementLayer ===
-      'INTENT_EXECUTOR',
-  )
-  const origin: TypedDataDefinition[] = []
-  for (const element of intentOp.elements) {
-    if (withIntentExecutorOps) {
-      const typedData = getSingleChainOpsTypedData(
-        address,
-        intentExecutor.address,
-        element,
-        BigInt(intentOp.nonce),
-      )
-      origin.push(typedData)
-    } else if (withPermit2) {
-      const typedData = getPermit2TypedData(
-        element,
-        BigInt(intentOp.nonce),
-        BigInt(intentOp.expires),
-      )
-      origin.push(typedData)
-    } else {
-      const typedData = getCompactTypedData(intentOp)
-      origin.push(typedData)
-    }
-  }
-  const destination = origin.at(-1) as TypedDataDefinition
-  return {
-    origin,
-    destination,
-  }
 }
 
 async function signIntentTypedData<

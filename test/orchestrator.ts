@@ -30,7 +30,11 @@ export function createOrchestratorMock() {
         totalUSD: 1.7,
       },
     }),
+    getClientManifest: vi.fn().mockResolvedValue({
+      eip712ImplementationUrl: 'https://test.local/eip712_mapper.wasm',
+    }),
     getIntentRoute: vi.fn().mockResolvedValue({
+      wasmUrl: 'https://test.local/eip712_mapper.wasm',
       intentOp: {
         sponsor: '0x7a07d9cc408dd92165900c302d31d914d26b3827',
         nonce:

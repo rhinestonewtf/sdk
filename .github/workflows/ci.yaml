@@ -28,8 +28,11 @@ jobs:
       - name: Typecheck
         run: bun run typecheck
 
+  wasm:
+    uses: ./.github/workflows/wasm.yml
+
   test:
-    needs: ["build"]
+    needs: [build, wasm]
     runs-on: "ubuntu-latest"
     steps:
       - name: Check out the repo
@@ -43,6 +46,15 @@ jobs:
 
       - name: Install the npm dependencies
         run: bun install
+
+      - name: Download WASM artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: eip712-mapper-wasm
+          path: crates/eip712-mapper/target/wasm32-unknown-unknown/release/
+
+      - name: Set default WASM binary
+        run: cp crates/eip712-mapper/target/wasm32-unknown-unknown/release/eip712_mapper_viem_prod.wasm crates/eip712-mapper/target/wasm32-unknown-unknown/release/eip712_mapper_viem.wasm
 
       - name: Clean
         run: bun run clean

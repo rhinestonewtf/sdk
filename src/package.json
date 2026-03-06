@@ -125,20 +125,15 @@
       "import": "./dist/src/orchestrator/types.js",
       "require": "./dist/src/orchestrator/types.js"
     },
-    "./dist/src/execution/compact": {
-      "types": "./dist/src/execution/compact.d.ts",
-      "import": "./dist/src/execution/compact.js",
-      "require": "./dist/src/execution/compact.js"
+    "./dist/src/execution/allowance": {
+      "types": "./dist/src/execution/allowance.d.ts",
+      "import": "./dist/src/execution/allowance.js",
+      "require": "./dist/src/execution/allowance.js"
     },
-    "./dist/src/execution/permit2": {
-      "types": "./dist/src/execution/permit2.d.ts",
-      "import": "./dist/src/execution/permit2.js",
-      "require": "./dist/src/execution/permit2.js"
-    },
-    "./dist/src/execution/singleChainOps": {
-      "types": "./dist/src/execution/singleChainOps.d.ts",
-      "import": "./dist/src/execution/singleChainOps.js",
-      "require": "./dist/src/execution/singleChainOps.js"
+    "./dist/src/execution/signing": {
+      "types": "./dist/src/execution/signing.d.ts",
+      "import": "./dist/src/execution/signing.js",
+      "require": "./dist/src/execution/signing.js"
     },
     "./smart-sessions": {
       "types": "./dist/src/modules/validators/smart-sessions.d.ts",

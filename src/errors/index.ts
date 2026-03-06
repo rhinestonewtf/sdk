@@ -20,6 +20,7 @@ import {
   SessionChainRequiredError,
   SignerNotSupportedError,
 } from '../execution'
+import { WasmExecutionError, WasmLoadError } from '../execution/wasm/errors'
 import {
   AuthenticationRequiredError,
   BadRequestError,
@@ -74,6 +75,9 @@ export {
   OrderPathRequiredForIntentsError,
   SessionChainRequiredError,
   SignerNotSupportedError,
+  // WASM
+  WasmLoadError,
+  WasmExecutionError,
   // Orchestrator
   isOrchestratorError,
   isRetryable,
