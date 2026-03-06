@@ -1,0 +1,8 @@
+# Override global cargo config that sets -undefined dynamic_lookup
+# (breaks panic unwinding in test harness).
+# Link against libiconv (required by alloy-primitives ≥1.0 on macOS/NixOS).
+[target.x86_64-apple-darwin]
+rustflags = ["-L", "native=/nix/store/7h6icyvqv6lqd0bcx41c8h3615rjcqb2-libiconv-109.100.2/lib"]
+
+[target.aarch64-apple-darwin]
+rustflags = ["-L", "native=/nix/store/7h6icyvqv6lqd0bcx41c8h3615rjcqb2-libiconv-109.100.2/lib"]

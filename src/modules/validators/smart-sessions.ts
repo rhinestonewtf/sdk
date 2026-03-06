@@ -19,10 +19,10 @@ import {
 } from 'viem'
 import { mainnet } from 'viem/chains'
 import { createTransport } from '../../accounts/utils'
-import {
-  RESET_PERIOD_ONE_WEEK,
-  SCOPE_MULTICHAIN,
-} from '../../execution/compact'
+
+const SCOPE_MULTICHAIN = 0
+const RESET_PERIOD_ONE_WEEK = 6
+
 import { signTypedData } from '../../execution/utils'
 import type {
   Policy,

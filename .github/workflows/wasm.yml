@@ -1,0 +1,50 @@
+name: WASM
+
+on:
+  workflow_call:
+
+jobs:
+  build:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install binaryen (wasm-opt)
+        run: sudo apt-get update && sudo apt-get install -y binaryen
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            crates/eip712-mapper/target
+          key: wasm-${{ hashFiles('crates/eip712-mapper/**/Cargo.toml', 'crates/eip712-mapper/**/Cargo.lock') }}
+
+      - name: Run Rust tests
+        run: make -C crates/eip712-mapper test
+
+      - name: Build WASM binaries
+        run: make -C crates/eip712-mapper build
+
+      - name: Compute SHA-256 checksums
+        working-directory: crates/eip712-mapper/target/wasm32-unknown-unknown/release
+        run: |
+          sha256sum eip712_mapper_viem_prod.wasm eip712_mapper_viem_dev.wasm > checksums.sha256
+          cat checksums.sha256
+
+      - name: Upload WASM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: eip712-mapper-wasm
+          path: |
+            crates/eip712-mapper/target/wasm32-unknown-unknown/release/eip712_mapper_viem_prod.wasm
+            crates/eip712-mapper/target/wasm32-unknown-unknown/release/eip712_mapper_viem_dev.wasm
+            crates/eip712-mapper/target/wasm32-unknown-unknown/release/checksums.sha256

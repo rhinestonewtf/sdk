@@ -83,7 +83,7 @@ export class Orchestrator {
     }
     const url = new URL(`${this.serverUrl}/accounts/${userAddress}/portfolio`)
     url.search = params.toString()
-    const json = await this.fetch(url.toString(), {
+    const { data: json } = await this.fetch(url.toString(), {
       headers: this.getHeaders(),
     })
     const portfolioResponse = json.portfolio as PortfolioResponse
@@ -113,12 +113,28 @@ export class Orchestrator {
     return portfolio
   }
 
-  async getIntentRoute(input: IntentInput): Promise<IntentRoute> {
-    return await this.fetch(`${this.serverUrl}/intents/route`, {
-      method: 'POST',
-      headers: this.getHeaders(),
-      body: JSON.stringify(convertBigIntFields(input)),
-    })
+  async getClientManifest(): Promise<{ eip712ImplementationUrl: string }> {
+    const { data } = await this.fetch(
+      `${this.serverUrl}/client-manifest`,
+      {
+        headers: this.getHeaders(),
+      },
+    )
+    return data
+  }
+
+  async getIntentRoute(
+    input: IntentInput,
+  ): Promise<IntentRoute & { wasmUrl: string | undefined }> {
+    const { data, wasmUrl } = await this.fetch(
+      `${this.serverUrl}/intents/route`,
+      {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify(convertBigIntFields(input)),
+      },
+    )
+    return { ...data, wasmUrl }
   }
 
   async splitIntents(input: SplitIntentsInput): Promise<SplitIntentsResult> {
@@ -187,22 +203,24 @@ export class Orchestrator {
         dryRun: true,
       }
     }
-    return await this.fetch(`${this.serverUrl}/intent-operations`, {
+    const { data } = await this.fetch(`${this.serverUrl}/intent-operations`, {
       method: 'POST',
       headers: this.getHeaders(),
       body: JSON.stringify({
         signedIntentOp,
       }),
     })
+    return data
   }
 
   async getIntentOpStatus(intentId: bigint): Promise<IntentOpStatus> {
-    return await this.fetch(
+    const { data } = await this.fetch(
       `${this.serverUrl}/intent-operation/${intentId.toString()}`,
       {
         headers: this.getHeaders(),
       },
     )
+    return data
   }
 
   private getHeaders(): HeadersInit {
@@ -216,7 +234,10 @@ export class Orchestrator {
     return headers
   }
 
-  private async fetch(url: string, options?: RequestInit): Promise<any> {
+  private async fetch(
+    url: string,
+    options?: RequestInit,
+  ): Promise<{ data: any; wasmUrl: string | undefined }> {
     const response = await fetch(url, options)
 
     if (!response.ok) {
@@ -241,7 +262,10 @@ export class Orchestrator {
         },
       })
     }
-    return response.json()
+    const wasmUrl =
+      response.headers?.get?.('X-EIP712-Implementation') || undefined
+    const data = await response.json()
+    return { data, wasmUrl }
   }
 
   private parseError(error: any) {

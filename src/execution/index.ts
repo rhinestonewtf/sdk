@@ -234,7 +234,7 @@ async function sendTransactionAsIntent(
   feeAsset?: Address | TokenSymbol,
   lockFunds?: boolean,
 ) {
-  const intentRoute = await prepareTransactionAsIntent(
+  const { wasmUrl, ...intentRoute } = await prepareTransactionAsIntent(
     config,
     sourceChains,
     targetChain,
@@ -260,12 +260,15 @@ async function sendTransactionAsIntent(
     intentRoute.intentOp,
     targetChain,
     signers,
+    undefined,
+    wasmUrl,
   )
   const targetExecutionSignature = await getTargetExecutionSignature(
     config,
     intentRoute.intentOp,
     targetChain,
     signers,
+    wasmUrl,
   )
   const authorizations = config.eoa
     ? await signAuthorizationsInternal(config, intentRoute)
