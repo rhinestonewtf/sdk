@@ -566,6 +566,7 @@ class RhinestoneSDK {
   private bundler?: BundlerConfig
   private paymaster?: PaymasterConfig
   private useDevContracts?: boolean
+  private logger?: Logger
 
   constructor(options: RhinestoneSDKConfig) {
     this.apiKey = options.apiKey
@@ -574,6 +575,7 @@ class RhinestoneSDK {
     this.bundler = options.bundler
     this.paymaster = options.paymaster
     this.useDevContracts = options.useDevContracts
+    this.logger = options.logger
   }
 
   createAccount(config: RhinestoneAccountConfig) {
@@ -590,11 +592,21 @@ class RhinestoneSDK {
   }
 
   getIntentStatus(intentId: bigint) {
-    return getIntentStatusInternal(this.apiKey, this.endpointUrl, intentId)
+    return getIntentStatusInternal(
+      this.apiKey,
+      this.endpointUrl,
+      this.logger,
+      intentId,
+    )
   }
 
   splitIntents(input: SplitIntentsInput) {
-    return splitIntentsInternal(this.apiKey, this.endpointUrl, input)
+    return splitIntentsInternal(
+      this.apiKey,
+      this.endpointUrl,
+      this.logger,
+      input,
+    )
   }
 }
 

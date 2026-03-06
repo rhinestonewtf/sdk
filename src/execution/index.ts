@@ -11,6 +11,7 @@ import {
   type IntentOpStatus,
   isRateLimited,
   isRetryable,
+  type Logger,
   type SplitIntentsInput,
 } from '../orchestrator'
 import {
@@ -312,7 +313,11 @@ async function waitForExecution(
             },
           })
         }
-        const orchestrator = getOrchestrator(config.apiKey, config.endpointUrl)
+        const orchestrator = getOrchestrator(
+          config.apiKey,
+          config.endpointUrl,
+          config.logger,
+        )
         try {
           intentStatus = await orchestrator.getIntentOpStatus(result.id)
           // reset error backoff on success
@@ -391,7 +396,11 @@ async function waitForExecution(
 
 async function getPortfolio(config: RhinestoneConfig, onTestnets: boolean) {
   const address = getAddress(config)
-  const orchestrator = getOrchestrator(config.apiKey, config.endpointUrl)
+  const orchestrator = getOrchestrator(
+    config.apiKey,
+    config.endpointUrl,
+    config.logger,
+  )
   const supportedChainIds = getSupportedChainIds()
   const filteredChainIds = supportedChainIds.filter((id) => {
     try {
@@ -406,13 +415,14 @@ async function getPortfolio(config: RhinestoneConfig, onTestnets: boolean) {
 async function getIntentStatus(
   apiKey: string | undefined,
   endpointUrl: string | undefined,
+  logger: Logger | undefined,
   intentId: bigint,
 ): Promise<
   TransactionStatus & {
     status: IntentOpStatus['status']
   }
 > {
-  const orchestrator = getOrchestrator(apiKey, endpointUrl)
+  const orchestrator = getOrchestrator(apiKey, endpointUrl, logger)
   const internalStatus = await orchestrator.getIntentOpStatus(intentId)
   return {
     status: internalStatus.status,
@@ -430,9 +440,10 @@ async function getIntentStatus(
 async function splitIntents(
   apiKey: string | undefined,
   endpointUrl: string | undefined,
+  logger: Logger | undefined,
   input: SplitIntentsInput,
 ) {
-  const orchestrator = getOrchestrator(apiKey, endpointUrl)
+  const orchestrator = getOrchestrator(apiKey, endpointUrl, logger)
   return orchestrator.splitIntents(input)
 }
 
