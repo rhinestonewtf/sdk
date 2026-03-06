@@ -901,15 +901,9 @@ async function getIntentMessages(
   origin: TypedDataDefinition[]
   destination: TypedDataDefinition
 }> {
-  let resolvedWasmUrl = wasmUrl
-  if (!resolvedWasmUrl) {
-    const orchestrator = getOrchestrator(config.apiKey, config.endpointUrl)
-    const manifest = await orchestrator.getClientManifest()
-    resolvedWasmUrl = manifest.eip712ImplementationUrl
-  }
-  if (!resolvedWasmUrl) {
+  if (!wasmUrl) {
     throw new Error(
-      'WASM URL not available. The orchestrator response did not include the X-EIP712-Implementation header and the client manifest did not provide a fallback.',
+      'WASM URL not available. The orchestrator response did not include the X-EIP712-Implementation header.',
     )
   }
   const address = getAddress(config)
@@ -921,7 +915,7 @@ async function getIntentMessages(
         accountAddress: address,
       },
     },
-    resolvedWasmUrl,
+    wasmUrl,
   )
 }
 
