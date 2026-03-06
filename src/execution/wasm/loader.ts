@@ -24,6 +24,7 @@ interface WasmMapperInstance {
 let cachedInstance: WasmMapperInstance | null = null
 let cachedUrl: string | null = null
 let loadingPromise: Promise<WasmMapperInstance> | null = null
+let loadingUrl: string | null = null
 
 /**
  * Compiles a WASM binary and wraps it in a `WasmMapperInstance`.
@@ -108,12 +109,14 @@ async function getWasmInstance(wasmUrl: string): Promise<WasmMapperInstance> {
     return cachedInstance
   }
 
-  if (loadingPromise) {
+  if (loadingPromise && loadingUrl === wasmUrl) {
     return loadingPromise
   }
 
+  loadingUrl = wasmUrl
   loadingPromise = loadInstance(wasmUrl).finally(() => {
     loadingPromise = null
+    loadingUrl = null
   })
 
   return loadingPromise
@@ -124,6 +127,7 @@ function invalidateCache(): void {
   cachedInstance = null
   cachedUrl = null
   loadingPromise = null
+  loadingUrl = null
 }
 
 /**

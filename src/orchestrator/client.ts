@@ -114,12 +114,9 @@ export class Orchestrator {
   }
 
   async getClientManifest(): Promise<{ eip712ImplementationUrl: string }> {
-    const { data } = await this.fetch(
-      `${this.serverUrl}/client-manifest`,
-      {
-        headers: this.getHeaders(),
-      },
-    )
+    const { data } = await this.fetch(`${this.serverUrl}/client-manifest`, {
+      headers: this.getHeaders(),
+    })
     return data
   }
 

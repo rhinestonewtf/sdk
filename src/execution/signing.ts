@@ -41,7 +41,7 @@ async function signConfig(
   return {
     chainId: config.chain.id,
     originSignatures,
-    destinationSignature: originSignatures[0] ?? ('0x' as Hex),
+    destinationSignature: originSignatures.at(-1) ?? ('0x' as Hex),
     success: true,
   }
 }
