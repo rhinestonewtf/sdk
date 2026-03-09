@@ -11,7 +11,6 @@ import {
   type IntentOpStatus,
   isRateLimited,
   isRetryable,
-  type Logger,
   type SplitIntentsInput,
 } from '../orchestrator'
 import {
@@ -316,7 +315,6 @@ async function waitForExecution(
         const orchestrator = getOrchestrator(
           config.apiKey,
           config.endpointUrl,
-          config.logger,
           config.headers,
         )
         try {
@@ -400,7 +398,6 @@ async function getPortfolio(config: RhinestoneConfig, onTestnets: boolean) {
   const orchestrator = getOrchestrator(
     config.apiKey,
     config.endpointUrl,
-    config.logger,
     config.headers,
   )
   const supportedChainIds = getSupportedChainIds()
@@ -417,7 +414,6 @@ async function getPortfolio(config: RhinestoneConfig, onTestnets: boolean) {
 async function getIntentStatus(
   apiKey: string | undefined,
   endpointUrl: string | undefined,
-  logger: Logger | undefined,
   intentId: bigint,
   headers?: Record<string, string>,
 ): Promise<
@@ -425,7 +421,7 @@ async function getIntentStatus(
     status: IntentOpStatus['status']
   }
 > {
-  const orchestrator = getOrchestrator(apiKey, endpointUrl, logger, headers)
+  const orchestrator = getOrchestrator(apiKey, endpointUrl, headers)
   const internalStatus = await orchestrator.getIntentOpStatus(intentId)
   return {
     status: internalStatus.status,
@@ -443,11 +439,10 @@ async function getIntentStatus(
 async function splitIntents(
   apiKey: string | undefined,
   endpointUrl: string | undefined,
-  logger: Logger | undefined,
   input: SplitIntentsInput,
   headers?: Record<string, string>,
 ) {
-  const orchestrator = getOrchestrator(apiKey, endpointUrl, logger, headers)
+  const orchestrator = getOrchestrator(apiKey, endpointUrl, headers)
   return orchestrator.splitIntents(input)
 }
 

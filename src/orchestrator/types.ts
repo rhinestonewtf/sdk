@@ -8,13 +8,6 @@ import type {
 } from '@rhinestone/shared-configs'
 import type { Address, Chain, Hex } from 'viem'
 
-interface Logger {
-  info(message: string, fields?: Record<string, unknown>): void
-  debug(message: string, fields?: Record<string, unknown>): void
-  warn(message: string, fields?: Record<string, unknown>): void
-  error(message: string, error?: Error, fields?: Record<string, unknown>): void
-}
-
 type SupportedTokenSymbol = 'ETH' | 'WETH' | 'USDC' | 'USDT' | 'USDT0'
 type SupportedToken = SupportedTokenSymbol | Address
 
@@ -460,7 +453,6 @@ export type {
   Account,
   AccountType,
   AuxiliaryFunds,
-  Logger,
   TokenConfig,
   SupportedChain,
   SettlementLayer,
