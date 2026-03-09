@@ -425,12 +425,7 @@ async function getIntentStatus(
     status: IntentOpStatus['status']
   }
 > {
-  const orchestrator = getOrchestrator(
-    apiKey,
-    endpointUrl,
-    logger,
-    headers,
-  )
+  const orchestrator = getOrchestrator(apiKey, endpointUrl, logger, headers)
   const internalStatus = await orchestrator.getIntentOpStatus(intentId)
   return {
     status: internalStatus.status,
@@ -452,12 +447,7 @@ async function splitIntents(
   input: SplitIntentsInput,
   headers?: Record<string, string>,
 ) {
-  const orchestrator = getOrchestrator(
-    apiKey,
-    endpointUrl,
-    logger,
-    headers,
-  )
+  const orchestrator = getOrchestrator(apiKey, endpointUrl, logger, headers)
   return orchestrator.splitIntents(input)
 }
 
