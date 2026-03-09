@@ -1,11 +1,7 @@
 import type { Account, Address, Chain, Hex } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
 import type { ModuleType } from './modules/common'
-import type {
-  AuxiliaryFunds,
-  Logger,
-  SettlementLayer,
-} from './orchestrator/types'
+import type { AuxiliaryFunds, SettlementLayer } from './orchestrator/types'
 
 type AccountType = 'safe' | 'nexus' | 'kernel' | 'startale' | 'passport' | 'eoa'
 
@@ -242,7 +238,6 @@ interface RhinestoneSDKConfig {
    * Optional intent executor address override for internal testing - do not use
    */
   useDevContracts?: boolean
-  logger?: Logger
   /**
    * Optional custom headers sent with every orchestrator request.
    */
