@@ -243,6 +243,10 @@ interface RhinestoneSDKConfig {
    */
   useDevContracts?: boolean
   logger?: Logger
+  /**
+   * Optional Authorization header value sent with every orchestrator request.
+   */
+  authorizationHeader?: string
 }
 
 type RhinestoneConfig = RhinestoneAccountConfig & Partial<RhinestoneSDKConfig>
