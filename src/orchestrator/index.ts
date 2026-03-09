@@ -74,13 +74,13 @@ function getOrchestrator(
   apiKey?: string,
   orchestratorUrl?: string,
   logger?: Logger,
-  authorizationHeader?: string,
+  headers?: Record<string, string>,
 ): Orchestrator {
   return new Orchestrator(
     orchestratorUrl ?? PROD_ORCHESTRATOR_URL,
     apiKey,
     logger,
-    authorizationHeader,
+    headers,
   )
 }
 

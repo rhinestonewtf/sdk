@@ -567,7 +567,7 @@ class RhinestoneSDK {
   private paymaster?: PaymasterConfig
   private useDevContracts?: boolean
   private logger?: Logger
-  private authorizationHeader?: string
+  private headers?: Record<string, string>
 
   constructor(options: RhinestoneSDKConfig) {
     this.apiKey = options.apiKey
@@ -577,7 +577,7 @@ class RhinestoneSDK {
     this.paymaster = options.paymaster
     this.useDevContracts = options.useDevContracts
     this.logger = options.logger
-    this.authorizationHeader = options.authorizationHeader
+    this.headers = options.headers
   }
 
   createAccount(config: RhinestoneAccountConfig) {
@@ -600,7 +600,7 @@ class RhinestoneSDK {
       this.endpointUrl,
       this.logger,
       intentId,
-      this.authorizationHeader,
+      this.headers,
     )
   }
 
@@ -610,7 +610,7 @@ class RhinestoneSDK {
       this.endpointUrl,
       this.logger,
       input,
-      this.authorizationHeader,
+      this.headers,
     )
   }
 }

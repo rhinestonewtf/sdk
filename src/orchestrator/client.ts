@@ -54,18 +54,18 @@ export class Orchestrator {
   private serverUrl: string
   private apiKey?: string
   private logger?: Logger
-  private authorizationHeader?: string
+  private headers?: Record<string, string>
 
   constructor(
     serverUrl: string,
     apiKey?: string,
     logger?: Logger,
-    authorizationHeader?: string,
+    headers?: Record<string, string>,
   ) {
     this.serverUrl = serverUrl
     this.apiKey = apiKey
     this.logger = logger
-    this.authorizationHeader = authorizationHeader
+    this.headers = headers
   }
 
   async getPortfolio(
@@ -225,10 +225,7 @@ export class Orchestrator {
     if (this.apiKey) {
       headers['x-api-key'] = this.apiKey
     }
-    if (this.authorizationHeader) {
-      headers.Authorization = this.authorizationHeader
-    }
-    return headers
+    return { ...headers, ...this.headers }
   }
 
   private async fetch(url: string, options?: RequestInit): Promise<any> {

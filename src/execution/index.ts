@@ -317,7 +317,7 @@ async function waitForExecution(
           config.apiKey,
           config.endpointUrl,
           config.logger,
-          config.authorizationHeader,
+          config.headers,
         )
         try {
           intentStatus = await orchestrator.getIntentOpStatus(result.id)
@@ -401,7 +401,7 @@ async function getPortfolio(config: RhinestoneConfig, onTestnets: boolean) {
     config.apiKey,
     config.endpointUrl,
     config.logger,
-    config.authorizationHeader,
+    config.headers,
   )
   const supportedChainIds = getSupportedChainIds()
   const filteredChainIds = supportedChainIds.filter((id) => {
@@ -419,7 +419,7 @@ async function getIntentStatus(
   endpointUrl: string | undefined,
   logger: Logger | undefined,
   intentId: bigint,
-  authorizationHeader?: string,
+  headers?: Record<string, string>,
 ): Promise<
   TransactionStatus & {
     status: IntentOpStatus['status']
@@ -429,7 +429,7 @@ async function getIntentStatus(
     apiKey,
     endpointUrl,
     logger,
-    authorizationHeader,
+    headers,
   )
   const internalStatus = await orchestrator.getIntentOpStatus(intentId)
   return {
@@ -450,13 +450,13 @@ async function splitIntents(
   endpointUrl: string | undefined,
   logger: Logger | undefined,
   input: SplitIntentsInput,
-  authorizationHeader?: string,
+  headers?: Record<string, string>,
 ) {
   const orchestrator = getOrchestrator(
     apiKey,
     endpointUrl,
     logger,
-    authorizationHeader,
+    headers,
   )
   return orchestrator.splitIntents(input)
 }

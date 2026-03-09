@@ -771,7 +771,7 @@ async function prepareTransactionAsIntent(
     config.apiKey,
     config.endpointUrl,
     config.logger,
-    config.authorizationHeader,
+    config.headers,
   )
   const intentRoute = await orchestrator.getIntentRoute(metaIntent)
   return intentRoute
@@ -1182,7 +1182,7 @@ async function submitIntentInternal(
     config.apiKey,
     config.endpointUrl,
     config.logger,
-    config.authorizationHeader,
+    config.headers,
   )
   const intentResults = await orchestrator.submitIntent(signedIntentOp, dryRun)
   return {
