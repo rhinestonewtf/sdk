@@ -243,6 +243,10 @@ interface RhinestoneSDKConfig {
    */
   useDevContracts?: boolean
   logger?: Logger
+  /**
+   * Optional custom headers sent with every orchestrator request.
+   */
+  headers?: Record<string, string>
 }
 
 type RhinestoneConfig = RhinestoneAccountConfig & Partial<RhinestoneSDKConfig>
