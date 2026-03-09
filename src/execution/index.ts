@@ -159,9 +159,7 @@ async function sendTransactionInternal(
     options.initialTokenRequests,
   )
 
-  const sendAsUserOp =
-    options.signers?.type === 'guardians' ||
-    options.signers?.type === 'experimental_session'
+  const sendAsUserOp = options.signers?.type === 'guardians'
   if (sendAsUserOp) {
     throw new SignerNotSupportedError()
   } else {
