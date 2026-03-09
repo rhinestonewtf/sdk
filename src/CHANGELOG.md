@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.2.16
+
+### Patch Changes
+
+- a7758f0: Add optional Authorization header to orch
+
 ## 1.2.15
 
 ### Patch Changes
