@@ -49,6 +49,7 @@ import type {
   IntentOpStatus,
   IntentResult,
   IntentRoute,
+  Logger,
   Portfolio,
   SettlementLayer,
   SignedIntentOp,
@@ -72,8 +73,15 @@ import {
 function getOrchestrator(
   apiKey?: string,
   orchestratorUrl?: string,
+  logger?: Logger,
+  headers?: Record<string, string>,
 ): Orchestrator {
-  return new Orchestrator(orchestratorUrl ?? PROD_ORCHESTRATOR_URL, apiKey)
+  return new Orchestrator(
+    orchestratorUrl ?? PROD_ORCHESTRATOR_URL,
+    apiKey,
+    logger,
+    headers,
+  )
 }
 
 export type {
@@ -83,6 +91,7 @@ export type {
   IntentOpStatus,
   IntentResult,
   IntentRoute,
+  Logger,
   SettlementLayer,
   SignedIntentOp,
   SplitIntentsInput,

@@ -86,6 +86,7 @@ import {
   type IntentInput,
   type IntentOp,
   type IntentOpStatus,
+  type Logger,
   type Portfolio,
   type SettlementLayer,
   type SignedIntentOp,
@@ -565,6 +566,8 @@ class RhinestoneSDK {
   private bundler?: BundlerConfig
   private paymaster?: PaymasterConfig
   private useDevContracts?: boolean
+  private logger?: Logger
+  private headers?: Record<string, string>
 
   constructor(options: RhinestoneSDKConfig) {
     this.apiKey = options.apiKey
@@ -573,6 +576,8 @@ class RhinestoneSDK {
     this.bundler = options.bundler
     this.paymaster = options.paymaster
     this.useDevContracts = options.useDevContracts
+    this.logger = options.logger
+    this.headers = options.headers
   }
 
   createAccount(config: RhinestoneAccountConfig) {
@@ -584,16 +589,29 @@ class RhinestoneSDK {
       bundler: this.bundler,
       paymaster: this.paymaster,
       useDevContracts: this.useDevContracts,
+      logger: this.logger,
     }
     return createRhinestoneAccount(rhinestoneConfig)
   }
 
   getIntentStatus(intentId: bigint) {
-    return getIntentStatusInternal(this.apiKey, this.endpointUrl, intentId)
+    return getIntentStatusInternal(
+      this.apiKey,
+      this.endpointUrl,
+      this.logger,
+      intentId,
+      this.headers,
+    )
   }
 
   splitIntents(input: SplitIntentsInput) {
-    return splitIntentsInternal(this.apiKey, this.endpointUrl, input)
+    return splitIntentsInternal(
+      this.apiKey,
+      this.endpointUrl,
+      this.logger,
+      input,
+      this.headers,
+    )
   }
 }
 
@@ -653,6 +671,7 @@ export type {
   IntentOp,
   IntentOpStatus,
   IntentRoute,
+  Logger,
   SettlementLayer,
   SignedIntentOp,
   SplitIntentsInput,
