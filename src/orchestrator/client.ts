@@ -30,7 +30,6 @@ import type {
   IntentOpStatus,
   IntentResult,
   IntentRoute,
-  Logger,
   Portfolio,
   PortfolioResponse,
   SignedIntentOp,
@@ -53,18 +52,15 @@ function parseTokenAmountsRecord(
 export class Orchestrator {
   private serverUrl: string
   private apiKey?: string
-  private logger?: Logger
   private headers?: Record<string, string>
 
   constructor(
     serverUrl: string,
     apiKey?: string,
-    logger?: Logger,
     headers?: Record<string, string>,
   ) {
     this.serverUrl = serverUrl
     this.apiKey = apiKey
-    this.logger = logger
     this.headers = headers
   }
 
@@ -125,7 +121,6 @@ export class Orchestrator {
 
   async getIntentRoute(input: IntentInput): Promise<IntentRoute> {
     const body = convertBigIntFields(input)
-    this.logger?.info('orchestrator request: /intents/route', { body })
     return await this.fetch(`${this.serverUrl}/intents/route`, {
       method: 'POST',
       headers: this.getHeaders(),
@@ -200,7 +195,6 @@ export class Orchestrator {
       }
     }
     const body = { signedIntentOp }
-    this.logger?.info('orchestrator request: /intent-operations', { body })
     return await this.fetch(`${this.serverUrl}/intent-operations`, {
       method: 'POST',
       headers: this.getHeaders(),
