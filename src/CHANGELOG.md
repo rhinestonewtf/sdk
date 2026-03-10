@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.2.17
+
+### Patch Changes
+
+- ed15083: Remove experimental_session check from sendAsUserOp condition
+
 ## 1.2.16
 
 ### Patch Changes
