@@ -25,7 +25,13 @@ describe('Accounts: Startale', () => {
         },
       })
       expect(result).not.toBeNull()
-      const { factory, factoryData, salt, implementation, initializationCallData } = result!
+      const {
+        factory,
+        factoryData,
+        salt,
+        implementation,
+        initializationCallData,
+      } = result!
 
       expect(factory).toEqual('0x0000003b3e7b530b4f981ae80d9350392defef90')
       expect(factoryData).toEqual(
@@ -53,7 +59,13 @@ describe('Accounts: Startale', () => {
         },
       })
       expect(result).not.toBeNull()
-      const { factory, factoryData, salt, implementation, initializationCallData } = result!
+      const {
+        factory,
+        factoryData,
+        salt,
+        implementation,
+        initializationCallData,
+      } = result!
 
       expect(factory).toEqual('0x0000003b3e7b530b4f981ae80d9350392defef90')
       expect(factoryData).toEqual(
