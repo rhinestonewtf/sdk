@@ -297,6 +297,7 @@ interface Account {
   setupOps: Pick<Execution, 'to' | 'data'>[]
   delegations?: Delegations
   emissaryConfig?: EmissarySetupConfig
+  mockSignature?: Hex
 }
 
 type AccountWithContext = Omit<Account, 'delegations'> & {

@@ -1,6 +1,7 @@
 import { LibZip } from 'solady'
 import {
   type Address,
+  concat,
   createPublicClient,
   encodeAbiParameters,
   encodeFunctionData,
@@ -848,6 +849,30 @@ function getSmartSessionEmissaryAddress(useDevContracts?: boolean): Address {
     : SMART_SESSION_EMISSARY_ADDRESS
 }
 
+/**
+ * Builds a mockSignature for SSX validation gas estimation.
+ * Format: emissaryAddress (20 bytes) + enable-mode sigData.
+ * Uses real session data (policies/actions from the user's session config) with dummy
+ * sigs and hashes — the mock emissary skips sig verification and only writes storage.
+ * The orchestrator slices off the first 20 bytes to identify the validator, then
+ * simulates verifyExecution with the mock emissary to estimate gas before the user signs.
+ */
+function buildMockSignature(session: Session, useDevContracts?: boolean): Hex {
+  const emissaryAddress = getSmartSessionEmissaryAddress(useDevContracts)
+  const dummySigners = {
+    type: 'experimental_session' as const,
+    session,
+    verifyExecutions: true,
+    enableData: {
+      userSignature: `0x${'00'.repeat(65)}` as Hex,
+      hashesAndChainIds: [{ chainId: 0n, sessionDigest: zeroHash }],
+      sessionToEnableIndex: 0,
+    },
+  }
+  const sigData = packSignature(dummySigners, '0x')
+  return concat([emissaryAddress, sigData])
+}
+
 function createFixedArray<T, N extends number>(
   length: N,
   getValue: (index: number) => T,
@@ -869,6 +894,7 @@ export {
   getSessionDetails,
   isSessionEnabled,
   signEnableSession,
+  buildMockSignature,
 }
 export type {
   ChainSession,
