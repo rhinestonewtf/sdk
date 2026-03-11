@@ -15,13 +15,7 @@ const MOCK_MODULE_ADDRESS = '0x28de6501fa86f2e6cd0b33c3aabdaeb4a1b93f3f'
 describe('Accounts: Startale', () => {
   describe('Deploy Args', () => {
     test('ECDSA owners', () => {
-      const {
-        factory,
-        factoryData,
-        salt,
-        implementation,
-        initializationCallData,
-      } = getDeployArgs({
+      const result = getDeployArgs({
         account: {
           type: 'startale',
         },
@@ -30,6 +24,8 @@ describe('Accounts: Startale', () => {
           accounts: [accountA, accountB],
         },
       })
+      expect(result).not.toBeNull()
+      const { factory, factoryData, salt, implementation, initializationCallData } = result!
 
       expect(factory).toEqual('0x0000003b3e7b530b4f981ae80d9350392defef90')
       expect(factoryData).toEqual(
@@ -47,13 +43,7 @@ describe('Accounts: Startale', () => {
     })
 
     test('Passkey owner', () => {
-      const {
-        factory,
-        factoryData,
-        salt,
-        implementation,
-        initializationCallData,
-      } = getDeployArgs({
+      const result = getDeployArgs({
         account: {
           type: 'startale',
         },
@@ -62,6 +52,8 @@ describe('Accounts: Startale', () => {
           accounts: [passkeyAccount],
         },
       })
+      expect(result).not.toBeNull()
+      const { factory, factoryData, salt, implementation, initializationCallData } = result!
 
       expect(factory).toEqual('0x0000003b3e7b530b4f981ae80d9350392defef90')
       expect(factoryData).toEqual(
@@ -105,6 +97,48 @@ describe('Accounts: Startale', () => {
       })
 
       expect(address).toEqual('0x4d78f6b273d07f2fd24433ebc7a90d89f0d061ae')
+    })
+
+    test('initData with address fallback', () => {
+      const expectedAddress = '0x229ca553b9863b0c8f2f03d4287cb8c73e2bede7'
+      const address = getAddress({
+        account: {
+          type: 'startale',
+        },
+        owners: {
+          type: 'ecdsa',
+          accounts: [accountA],
+        },
+        initData: {
+          address: expectedAddress,
+        },
+      })
+      expect(address).toEqual(expectedAddress)
+    })
+
+    test('initData with factory decodes correctly', () => {
+      // First get the real deploy args to get valid factory/factoryData
+      const deployArgs = getDeployArgs({
+        account: { type: 'startale' },
+        owners: { type: 'ecdsa', accounts: [accountA, accountB] },
+      })
+      expect(deployArgs).not.toBeNull()
+      const { factory, factoryData } = deployArgs!
+
+      // Now use initData path with a different owners set (simulating mock signer)
+      const address = getAddress({
+        account: { type: 'startale' },
+        owners: { type: 'ecdsa', accounts: [accountA] },
+        initData: {
+          address: '0x614ea8885429c480a83deddd2e050d411da36d4b',
+          factory,
+          factoryData,
+          intentExecutorInstalled: true,
+        },
+      })
+
+      // Should derive the same address from factoryData, not from the mock owners
+      expect(address).toEqual('0x614ea8885429c480a83deddd2e050d411da36d4b')
     })
   })
 
