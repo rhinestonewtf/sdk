@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.2.18
+
+### Patch Changes
+
+- 553678b: Fix startale getDeployArgs and getAddress
+
 ## 1.2.17
 
 ### Patch Changes
