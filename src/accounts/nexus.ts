@@ -58,7 +58,6 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
     if (!('factory' in config.initData)) {
       return null
     }
-
     const { factory, factoryData } = config.initData
 
     const v1Result = tryDecodeV1FactoryData(factory, factoryData)

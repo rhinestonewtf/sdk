@@ -31,6 +31,7 @@ import {
   EoaSigningMethodNotConfiguredError,
   FactoryArgsNotAvailableError,
   getAddress,
+  getDeployArgs,
   getEip712Domain,
   getEip1271Signature,
   getEip7702InitCall,
@@ -1341,14 +1342,23 @@ function getSetupOperationsAndDelegations(
     const to = 'factory' in initCode ? initCode.factory : undefined
     const data = 'factory' in initCode ? initCode.factoryData : undefined
     if (!to || !data) {
-      // Check if it's a migrated account with address-only initData
-      if (config.initData && !('factory' in config.initData)) {
-        // Assume the account is already deployed
-        return {
-          setupOps: [],
-        }
+      // Address-only migrated account — derive factory data from account
+      // provider config so the account can be deployed on new chains.
+      const deployArgs = getDeployArgs(
+        // Strip initData so getDeployArgs generates from account config
+        { ...config, initData: undefined },
+      )
+      if (!deployArgs) {
+        throw new FactoryArgsNotAvailableError()
       }
-      throw new FactoryArgsNotAvailableError()
+      return {
+        setupOps: [
+          {
+            to: deployArgs.factory,
+            data: deployArgs.factoryData,
+          },
+        ],
+      }
     }
     // Contract account with init code
     return {

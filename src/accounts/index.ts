@@ -875,6 +875,7 @@ export {
   getAddress,
   checkAddress,
   getAccountProvider,
+  getDeployArgs,
   getInitCode,
   getV0InitCode,
   signEip7702InitData,
