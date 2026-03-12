@@ -857,15 +857,26 @@ function getSmartSessionEmissaryAddress(useDevContracts?: boolean): Address {
  * The orchestrator slices off the first 20 bytes to identify the validator, then
  * simulates verifyExecution with the mock emissary to estimate gas before the user signs.
  */
-function buildMockSignature(session: Session, useDevContracts?: boolean): Hex {
+function buildMockSignature(
+  session: Session,
+  useDevContracts?: boolean,
+  chainCount: number = 1,
+): Hex {
   const emissaryAddress = getSmartSessionEmissaryAddress(useDevContracts)
+  // Build one entry per chain — first entry is the real chain ID (for the ChainId check),
+  // remaining entries use chainId 0 as placeholders. Hash mismatch is skipped by the
+  // mock emissary, so sessionDigest can be zeroHash throughout.
+  const hashesAndChainIds = Array.from({ length: Math.max(1, chainCount) }, (_, i) => ({
+    chainId: i === 0 ? BigInt(session.chain.id) : 0n,
+    sessionDigest: zeroHash,
+  }))
   const dummySigners = {
     type: 'experimental_session' as const,
     session,
     verifyExecutions: true,
     enableData: {
       userSignature: `0x${'00'.repeat(65)}` as Hex,
-      hashesAndChainIds: [{ chainId: 0n, sessionDigest: zeroHash }],
+      hashesAndChainIds,
       sessionToEnableIndex: 0,
     },
   }
