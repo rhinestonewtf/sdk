@@ -883,7 +883,8 @@ function buildMockSignature(
       sessionToEnableIndex: 0,
     },
   }
-  const sigData = packSignature(dummySigners, '0x')
+  const dummyValidatorSignature = `0x${'00'.repeat(65)}` as Hex
+  const sigData = packSignature(dummySigners, dummyValidatorSignature)
   return concat([emissaryAddress, sigData])
 }
 

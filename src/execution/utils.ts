@@ -734,6 +734,7 @@ async function prepareTransactionAsIntent(
       mockSignature: buildMockSignature(
         signers.session,
         config.useDevContracts,
+        sourceChains?.length,
       ),
     }),
   }
