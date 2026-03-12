@@ -1,4 +1,4 @@
-import { isAddressEqual, slice, type Address, type Hex } from 'viem'
+import { type Address, type Hex, isAddressEqual, slice } from 'viem'
 import { base } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 import { accountA } from '../../../test/consts'

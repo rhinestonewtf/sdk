@@ -731,7 +731,10 @@ async function prepareTransactionAsIntent(
   const intentAccount: OrchestratorAccount = {
     ...getIntentAccount(config, eip7702InitSignature, account),
     ...(signers?.type === 'experimental_session' && {
-      mockSignature: buildMockSignature(signers.session, config.useDevContracts),
+      mockSignature: buildMockSignature(
+        signers.session,
+        config.useDevContracts,
+      ),
     }),
   }
   const recipient = getRecipient(recipientInput)

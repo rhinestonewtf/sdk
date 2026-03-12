@@ -866,10 +866,13 @@ function buildMockSignature(
   // Build one entry per chain — first entry is the real chain ID (for the ChainId check),
   // remaining entries use chainId 0 as placeholders. Hash mismatch is skipped by the
   // mock emissary, so sessionDigest can be zeroHash throughout.
-  const hashesAndChainIds = Array.from({ length: Math.max(1, chainCount) }, (_, i) => ({
-    chainId: i === 0 ? BigInt(session.chain.id) : 0n,
-    sessionDigest: zeroHash,
-  }))
+  const hashesAndChainIds = Array.from(
+    { length: Math.max(1, chainCount) },
+    (_, i) => ({
+      chainId: i === 0 ? BigInt(session.chain.id) : 0n,
+      sessionDigest: zeroHash,
+    }),
+  )
   const dummySigners = {
     type: 'experimental_session' as const,
     session,
