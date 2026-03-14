@@ -7,6 +7,7 @@ import {
   WEBAUTHN_VALIDATOR_ADDRESS,
 } from './core'
 import {
+  buildMockSignature,
   getEnableSessionCall,
   getPermissionId,
   getSmartSessionValidator,
@@ -22,4 +23,5 @@ export {
   getEnableSessionCall,
   getPermissionId,
   getMockSignature,
+  buildMockSignature,
 }
