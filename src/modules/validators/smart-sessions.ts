@@ -13,6 +13,7 @@ import {
   padHex,
   size,
   type TypedDataDefinition,
+  toFunctionSelector,
   toHex,
   zeroAddress,
   zeroHash,
@@ -24,7 +25,9 @@ import {
   SCOPE_MULTICHAIN,
 } from '../../execution/compact'
 import { signTypedData } from '../../execution/utils'
+import { getTokenAddress } from '../../orchestrator'
 import type {
+  Action,
   Policy,
   ProviderConfig,
   RhinestoneAccountConfig,
@@ -207,6 +210,8 @@ const USAGE_LIMIT_POLICY_ADDRESS: Address =
   '0x1f34ef8311345a3a4a4566af321b313052f51493'
 const VALUE_LIMIT_POLICY_ADDRESS: Address =
   '0x730da93267e7e513e932301b47f2ac7d062abc83'
+const INTENT_EXECUTION_POLICY_ADDRESS: Address =
+  '0xa09b47de6e510cbdc18b97e9239bedcb44fb4901'
 
 const ACTION_CONDITION_EQUAL = 0
 const ACTION_CONDITION_GREATER_THAN = 1
@@ -608,11 +613,38 @@ function getSessionData(session: Session): SessionData {
       },
     ],
   }
+
+  const injectedActions: Action[] = [
+    // ETH wrapping
+    {
+      target: getTokenAddress('WETH', session.chain.id),
+      selector: toFunctionSelector({
+        type: 'function',
+        name: 'deposit',
+        inputs: [],
+        outputs: [],
+        stateMutability: 'payable',
+      }),
+    },
+    {
+      policies: [
+        {
+          type: 'intent-execution',
+        },
+      ],
+    },
+  ]
+
   const actions = session.actions
-    ? session.actions.map((action) => ({
+    ? [...session.actions, ...injectedActions].map((action) => ({
         actionTargetSelector:
-          action.selector ?? SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
-        actionTarget: action.target ?? SMART_SESSIONS_FALLBACK_TARGET_FLAG,
+          'selector' in action
+            ? action.selector
+            : SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
+        actionTarget:
+          'target' in action
+            ? action.target
+            : SMART_SESSIONS_FALLBACK_TARGET_FLAG,
         actionPolicies: action.policies?.map((policy) =>
           getPolicyData(policy),
         ) ?? [
@@ -665,6 +697,11 @@ function getPolicyData(policy: Policy): PolicyData {
     case 'sudo':
       return {
         policy: SUDO_POLICY_ADDRESS,
+        initData: '0x',
+      }
+    case 'intent-execution':
+      return {
+        policy: INTENT_EXECUTION_POLICY_ADDRESS,
         initData: '0x',
       }
     case 'universal-action': {
