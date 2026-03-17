@@ -66,7 +66,11 @@ import {
   getOwners as getOwnersInternal,
   getSessionDetails as getSessionDetailsInternal,
   getValidators as getValidatorsInternal,
+  MULTI_FACTOR_VALIDATOR_ADDRESS,
+  OWNABLE_VALIDATOR_ADDRESS,
+  SMART_SESSION_EMISSARY_ADDRESS,
   signEnableSession as signEnableSessionInternal,
+  WEBAUTHN_VALIDATOR_ADDRESS,
 } from './modules'
 import {
   isSessionEnabled as isSessionEnabledInternal,
@@ -561,6 +565,7 @@ class RhinestoneSDK {
   private bundler?: BundlerConfig
   private paymaster?: PaymasterConfig
   private useDevContracts?: boolean
+  private headers?: Record<string, string>
 
   constructor(options: RhinestoneSDKConfig) {
     this.apiKey = options.apiKey
@@ -569,6 +574,7 @@ class RhinestoneSDK {
     this.bundler = options.bundler
     this.paymaster = options.paymaster
     this.useDevContracts = options.useDevContracts
+    this.headers = options.headers
   }
 
   createAccount(config: RhinestoneAccountConfig) {
@@ -580,16 +586,27 @@ class RhinestoneSDK {
       bundler: this.bundler,
       paymaster: this.paymaster,
       useDevContracts: this.useDevContracts,
+      headers: this.headers,
     }
     return createRhinestoneAccount(rhinestoneConfig)
   }
 
   getIntentStatus(intentId: bigint) {
-    return getIntentStatusInternal(this.apiKey, this.endpointUrl, intentId)
+    return getIntentStatusInternal(
+      this.apiKey,
+      this.endpointUrl,
+      intentId,
+      this.headers,
+    )
   }
 
   splitIntents(input: SplitIntentsInput) {
-    return splitIntentsInternal(this.apiKey, this.endpointUrl, input)
+    return splitIntentsInternal(
+      this.apiKey,
+      this.endpointUrl,
+      input,
+      this.headers,
+    )
   }
 }
 
@@ -599,6 +616,11 @@ export {
   deployAccountsForOwners,
   walletClientToAccount,
   wrapParaAccount,
+  // Validator addresses
+  OWNABLE_VALIDATOR_ADDRESS,
+  WEBAUTHN_VALIDATOR_ADDRESS,
+  MULTI_FACTOR_VALIDATOR_ADDRESS,
+  SMART_SESSION_EMISSARY_ADDRESS,
   // Registry functions
   getSupportedTokens,
   getTokenAddress,

@@ -72,8 +72,13 @@ import {
 function getOrchestrator(
   apiKey?: string,
   orchestratorUrl?: string,
+  headers?: Record<string, string>,
 ): Orchestrator {
-  return new Orchestrator(orchestratorUrl ?? PROD_ORCHESTRATOR_URL, apiKey)
+  return new Orchestrator(
+    orchestratorUrl ?? PROD_ORCHESTRATOR_URL,
+    apiKey,
+    headers,
+  )
 }
 
 export type {

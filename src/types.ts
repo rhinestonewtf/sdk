@@ -249,11 +249,15 @@ interface RhinestoneSDKConfig {
    * Optional intent executor address override for internal testing - do not use
    */
   useDevContracts?: boolean
+  /**
+   * Optional custom headers sent with every orchestrator request.
+   */
+  headers?: Record<string, string>
 }
 
 type RhinestoneConfig = RhinestoneAccountConfig & Partial<RhinestoneSDKConfig>
 
-type TokenSymbol = 'ETH' | 'WETH' | 'USDC' | 'USDT'
+type TokenSymbol = 'ETH' | 'WETH' | 'USDC' | 'USDT' | 'USDT0'
 
 interface CalldataInput {
   to: Address | TokenSymbol

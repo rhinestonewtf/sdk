@@ -50,6 +50,7 @@ import {
 import { getIntentExecutor } from '../modules'
 import type { Module } from '../modules/common'
 import {
+  buildMockSignature,
   getOwnerValidator,
   getPermissionId,
   getSmartSessionValidator,
@@ -727,7 +728,16 @@ async function prepareTransactionAsIntent(
     return getIntentAccount(recipient, eip7702InitSignature, account)
   }
 
-  const intentAccount = getIntentAccount(config, eip7702InitSignature, account)
+  const intentAccount: OrchestratorAccount = {
+    ...getIntentAccount(config, eip7702InitSignature, account),
+    ...(signers?.type === 'experimental_session' && {
+      mockSignature: buildMockSignature(
+        signers.session,
+        config.useDevContracts,
+        sourceChains?.length,
+      ),
+    }),
+  }
   const recipient = getRecipient(recipientInput)
   const signatureMode =
     signers?.type === 'experimental_session'
@@ -767,7 +777,11 @@ async function prepareTransactionAsIntent(
     },
   }
 
-  const orchestrator = getOrchestrator(config.apiKey, config.endpointUrl)
+  const orchestrator = getOrchestrator(
+    config.apiKey,
+    config.endpointUrl,
+    config.headers,
+  )
   const intentRoute = await orchestrator.getIntentRoute(metaIntent)
   return intentRoute
 }
@@ -1173,7 +1187,11 @@ async function submitIntentInternal(
     targetExecutionSignature,
     authorizations,
   )
-  const orchestrator = getOrchestrator(config.apiKey, config.endpointUrl)
+  const orchestrator = getOrchestrator(
+    config.apiKey,
+    config.endpointUrl,
+    config.headers,
+  )
   const intentResults = await orchestrator.submitIntent(signedIntentOp, dryRun)
   return {
     type: 'intent',

@@ -8,7 +8,7 @@ import type {
 } from '@rhinestone/shared-configs'
 import type { Address, Chain, Hex } from 'viem'
 
-type SupportedTokenSymbol = 'ETH' | 'WETH' | 'USDC' | 'USDT'
+type SupportedTokenSymbol = 'ETH' | 'WETH' | 'USDC' | 'USDT' | 'USDT0'
 type SupportedToken = SupportedTokenSymbol | Address
 
 type AccountType = 'GENERIC' | 'ERC7579' | 'EOA'
@@ -245,7 +245,7 @@ interface IntentOpElement {
   chainId: string
   idsAndAmounts: [[string, string]]
   spendTokens: [[string, string]]
-  swapOrigins?: (ElementSwapOrigin | null)[]
+  swapOrigins?: Record<string, ElementSwapOrigin>
   beforeFill: boolean
   smartAccountStatus?: AccountContext
   mandate: IntentOpElementMandate
@@ -297,6 +297,7 @@ interface Account {
   setupOps: Pick<Execution, 'to' | 'data'>[]
   delegations?: Delegations
   emissaryConfig?: EmissarySetupConfig
+  mockSignature?: Hex
 }
 
 type AccountWithContext = Omit<Account, 'delegations'> & {
