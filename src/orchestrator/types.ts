@@ -155,6 +155,28 @@ interface GasCostBreakdown {
   totalUSD: number
 }
 
+interface FeeBreakdown {
+  gasFee: string
+  bridgeFee: string
+  protocolFee: string
+  swapFee: string
+  settlementFee: string
+}
+
+interface FeesByTokenEntry {
+  amount: string
+  breakdown: FeeBreakdown
+}
+
+interface FeeBreakdownUSD {
+  gasFeeUSD: number
+  bridgeFeeUSD: number
+  protocolFeeUSD: number
+  swapFeeUSD: number
+  settlementFeeUSD: number
+  totalFeeUSD: number
+}
+
 interface IntentCost {
   hasFulfilledAll: boolean
   tokensReceived: [
@@ -164,6 +186,8 @@ interface IntentCost {
       amountSpent: string
       destinationAmount: string
       fee: string
+      feeBreakdown?: FeeBreakdown
+      feesByToken?: Record<Address, FeesByTokenEntry>
     },
   ]
   sponsoredFee: {
@@ -180,6 +204,7 @@ interface IntentCost {
     }
   }
   gasCost?: GasCostBreakdown
+  feeBreakdownUSD?: FeeBreakdownUSD
 }
 
 export interface Op {
@@ -459,6 +484,9 @@ export type {
   SettlementLayer,
   IntentInput,
   IntentCost,
+  FeeBreakdown,
+  FeesByTokenEntry,
+  FeeBreakdownUSD,
   IntentRoute,
   IntentOp,
   IntentOpElement,
