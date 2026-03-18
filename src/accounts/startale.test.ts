@@ -101,21 +101,33 @@ describe('Accounts: Startale', () => {
       expect(defaultResult).not.toEqual(k1Result)
     })
 
-    test('Passkey owner throws', () => {
-      expect(() =>
-        getDeployArgs({
-          account: {
-            type: 'startale',
-          },
-          owners: {
-            type: 'passkey',
-            accounts: [passkeyAccount],
-          },
-        }),
-      ).toThrow(AccountConfigurationNotSupportedError)
+    test('Passkey owner (default/ownable)', () => {
+      const result = getDeployArgs({
+        account: {
+          type: 'startale',
+        },
+        owners: {
+          type: 'passkey',
+          accounts: [passkeyAccount],
+        },
+      })
+      expect(result).not.toBeNull()
     })
 
-    test('Multiple ECDSA owners throws', () => {
+    test('Multiple ECDSA owners (default/ownable)', () => {
+      const result = getDeployArgs({
+        account: {
+          type: 'startale',
+        },
+        owners: {
+          type: 'ecdsa',
+          accounts: [accountA, accountB],
+        },
+      })
+      expect(result).not.toBeNull()
+    })
+
+    test('Multiple ECDSA owners with K1 throws', () => {
       expect(() =>
         getDeployArgs({
           account: {
@@ -124,6 +136,7 @@ describe('Accounts: Startale', () => {
           owners: {
             type: 'ecdsa',
             accounts: [accountA, accountB],
+            module: K1_DEFAULT_VALIDATOR_ADDRESS,
           },
         }),
       ).toThrow(AccountConfigurationNotSupportedError)

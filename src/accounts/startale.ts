@@ -73,21 +73,6 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
       return null
     }
   }
-  if (config.owners) {
-    if (config.owners.type !== 'ecdsa') {
-      throw new AccountConfigurationNotSupportedError(
-        'Startale accounts only support ECDSA owners',
-        'startale',
-      )
-    }
-    if (config.owners.accounts.length > 1) {
-      throw new AccountConfigurationNotSupportedError(
-        'Startale accounts only support a single owner',
-        'startale',
-      )
-    }
-  }
-
   const account = config.account
   const salt = (account as StartaleAccount)?.salt ?? zeroHash
   const moduleSetup = getModuleSetup(config)
@@ -96,6 +81,18 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
   const isK1 =
     ownerValidator.address.toLowerCase() ===
     K1_DEFAULT_VALIDATOR_ADDRESS.toLowerCase()
+
+  if (
+    isK1 &&
+    config.owners &&
+    'accounts' in config.owners &&
+    config.owners.accounts.length > 1
+  ) {
+    throw new AccountConfigurationNotSupportedError(
+      'K1 validator only supports a single owner',
+      'startale',
+    )
+  }
 
   const initData = isK1
     ? getK1InitData(config, moduleSetup)
