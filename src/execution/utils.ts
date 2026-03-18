@@ -4,12 +4,16 @@ import {
   concat,
   createPublicClient,
   createWalletClient,
+  encodeAbiParameters,
   encodePacked,
   type HashTypedDataParameters,
   type Hex,
+  hashDomain,
   hashMessage,
+  hashStruct,
   hashTypedData,
   isAddress,
+  keccak256,
   type PublicClient,
   publicActions,
   type SignableMessage,
@@ -42,6 +46,7 @@ import {
   is7702,
   toErc6492Signature,
 } from '../accounts'
+import { K1_DEFAULT_VALIDATOR_ADDRESS } from '../accounts/startale'
 import {
   createTransport,
   getBundlerClient,
@@ -878,27 +883,66 @@ async function getDestinationSignature(
   originSignatures: OriginSignature[],
   targetExecution: boolean,
 ): Promise<Hex> {
-  // For smart sessions, we need to provide a separate destination signature for the target chain
+  // Smart sessions require a separate destination signature because the
+  // session enable data differs per chain
   if (signers?.type === 'experimental_session') {
-    const destinationChain = getChainById(targetChain.id)
-    const destinationSignatures = await signIntentTypedData(
+    return await signDestinationSeparately(
       config,
       signers,
       validator,
       isRoot,
+      targetChain,
       destination,
-      destinationChain,
       targetExecution,
     )
-    return typeof destinationSignatures === 'object'
-      ? destinationSignatures.preClaimSig
-      : (destinationSignatures ?? '0x')
+  }
+
+  // ERC-7739 with K1 validator requires a separate destination signature because
+  // the account's eip712Domain() returns the target chain's chainId, which differs
+  // from the origin chain used for the last origin signature
+  const isK1Validator =
+    validator.address.toLowerCase() ===
+    K1_DEFAULT_VALIDATOR_ADDRESS.toLowerCase()
+  if (isK1Validator && supportsEip712(validator)) {
+    return await signDestinationSeparately(
+      config,
+      signers,
+      validator,
+      isRoot,
+      targetChain,
+      destination,
+      targetExecution,
+    )
   }
 
   const lastOriginSignature = originSignatures.at(-1)
   return typeof lastOriginSignature === 'object'
     ? lastOriginSignature.preClaimSig
     : (lastOriginSignature ?? '0x')
+}
+
+async function signDestinationSeparately(
+  config: RhinestoneConfig,
+  signers: SignerSet | undefined,
+  validator: Module,
+  isRoot: boolean,
+  targetChain: Chain,
+  destination: TypedDataDefinition,
+  targetExecution: boolean,
+): Promise<Hex> {
+  const destinationChain = getChainById(targetChain.id)
+  const destinationSignatures = await signIntentTypedData(
+    config,
+    signers,
+    validator,
+    isRoot,
+    destination,
+    destinationChain,
+    targetExecution,
+  )
+  return typeof destinationSignatures === 'object'
+    ? destinationSignatures.preClaimSig
+    : (destinationSignatures ?? '0x')
 }
 
 function getIntentMessages(config: RhinestoneConfig, intentOp: IntentOp) {
@@ -977,6 +1021,19 @@ async function signIntentTypedData<
   targetExecution: boolean,
 ) {
   if (supportsEip712(validator)) {
+    const isK1Validator =
+      validator.address.toLowerCase() ===
+      K1_DEFAULT_VALIDATOR_ADDRESS.toLowerCase()
+    if (isK1Validator) {
+      return await signErc7739IntentTypedData(
+        config,
+        signers,
+        validator,
+        isRoot,
+        parameters,
+        chain,
+      )
+    }
     return await getTypedDataPackedSignature(
       config,
       signers,
@@ -1401,6 +1458,157 @@ function validateTokenSymbols(
   }
 }
 
+// Signs intent typed data using ERC-7739 nested EIP-712 for Startale accounts.
+// Uses a Solady-compatible TypedDataSign hash and wraps the signature with
+// the app domain separator and contents hash for on-chain verification.
+async function signErc7739IntentTypedData<
+  typedData extends TypedData | Record<string, unknown> = TypedData,
+  primaryType extends keyof typedData | 'EIP712Domain' = keyof typedData,
+>(
+  config: RhinestoneConfig,
+  signers: SignerSet | undefined,
+  validator: Module,
+  isRoot: boolean,
+  parameters: HashTypedDataParameters<typedData, primaryType>,
+  chain: Chain,
+) {
+  const verifierDomain = getEip712Domain(config, chain)
+  const hash = hashErc7739TypedDataForSolady({
+    domain: parameters.domain as TypedDataDomain,
+    types: parameters.types as TypedData,
+    primaryType: parameters.primaryType as string,
+    message: parameters.message as Record<string, unknown>,
+    verifierDomain,
+  })
+  return await getEip1271Signature(
+    config,
+    signers,
+    chain,
+    {
+      address: validator.address,
+      isRoot,
+    },
+    hash,
+    (signature) =>
+      wrapTypedDataSignature({
+        domain: parameters.domain as TypedDataDomain,
+        primaryType: parameters.primaryType as string,
+        types: parameters.types as TypedData,
+        message: parameters.message as Record<string, unknown>,
+        signature,
+      }),
+  )
+}
+
+// Computes an ERC-7739 TypedDataSign hash compatible with Solady's ERC1271
+// on-chain verification. Solady constructs the TypedDataSign type string by
+// appending the contentsType directly after the TypedDataSign definition,
+// which differs from viem's standard EIP-712 encodeType that re-sorts all
+// referenced types alphabetically.
+function hashErc7739TypedDataForSolady({
+  domain,
+  types,
+  primaryType,
+  message,
+  verifierDomain,
+}: {
+  domain: TypedDataDomain
+  types: TypedData
+  primaryType: string
+  message: Record<string, unknown>
+  verifierDomain: {
+    name: string
+    version: string
+    chainId: number
+    verifyingContract: Address
+    salt: Hex
+  }
+}): Hex {
+  type TypeField = { name: string; type: string }
+  // Standard EIP-712 encodeType for the original content type
+  function encodeTypeString(
+    primary: string,
+    allTypes: Record<string, readonly TypeField[]>,
+  ): string {
+    const deps = new Set<string>()
+    function findDeps(t: string) {
+      const match = t.match(/^\w*/)
+      const typeName = match?.[0]
+      if (!typeName || deps.has(typeName) || !allTypes[typeName]) return
+      deps.add(typeName)
+      for (const field of allTypes[typeName]) findDeps(field.type)
+    }
+    findDeps(primary)
+    deps.delete(primary)
+    const sorted = [primary, ...Array.from(deps).sort()]
+    return sorted
+      .map(
+        (t) =>
+          `${t}(${allTypes[t].map((f: TypeField) => `${f.type} ${f.name}`).join(',')})`,
+      )
+      .join('')
+  }
+
+  const contentsType = encodeTypeString(
+    primaryType,
+    types as Record<string, readonly TypeField[]>,
+  )
+  const contentsName = primaryType
+
+  // Construct TypedDataSign type string matching Solady's on-chain encoding:
+  // TypedDataSign(<contentsName> contents,...salt) + contentsType
+  const typedDataSignTypeString = `TypedDataSign(${contentsName} contents,string name,string version,uint256 chainId,address verifyingContract,bytes32 salt)${contentsType}`
+  const typedDataSignTypeHash = keccak256(toHex(typedDataSignTypeString))
+
+  // Hash the original content struct
+  const contentsHash = hashStruct({
+    data: message,
+    primaryType,
+    types: types as Record<string, readonly TypeField[]>,
+  })
+
+  // Compute the TypedDataSign struct hash
+  const structHash = keccak256(
+    encodeAbiParameters(
+      [
+        { type: 'bytes32' },
+        { type: 'bytes32' },
+        { type: 'bytes32' },
+        { type: 'bytes32' },
+        { type: 'uint256' },
+        { type: 'address' },
+        { type: 'bytes32' },
+      ],
+      [
+        typedDataSignTypeHash,
+        contentsHash,
+        keccak256(toHex(verifierDomain.name)),
+        keccak256(toHex(verifierDomain.version)),
+        BigInt(verifierDomain.chainId),
+        verifierDomain.verifyingContract,
+        verifierDomain.salt,
+      ],
+    ),
+  )
+
+  // Compute the app domain separator
+  const domainTypes = []
+  if (domain.name) domainTypes.push({ name: 'name', type: 'string' })
+  if (domain.version) domainTypes.push({ name: 'version', type: 'string' })
+  if (domain.chainId) domainTypes.push({ name: 'chainId', type: 'uint256' })
+  if (domain.verifyingContract)
+    domainTypes.push({ name: 'verifyingContract', type: 'address' })
+  if (domain.salt) domainTypes.push({ name: 'salt', type: 'bytes32' })
+
+  const appDomainSeparator = hashDomain({
+    domain,
+    types: { EIP712Domain: domainTypes },
+  } as any)
+
+  // Final hash: keccak256("\x19\x01" || appDomainSep || structHash)
+  return keccak256(concat(['0x1901', appDomainSeparator, structHash]))
+}
+
 export {
   prepareTransaction,
   getTransactionMessages,
@@ -1422,6 +1630,7 @@ export {
   resolveCallInputs,
   getIntentAccount,
   getTargetExecutionSignature,
+  hashErc7739TypedDataForSolady,
 }
 export type {
   IntentRoute,
