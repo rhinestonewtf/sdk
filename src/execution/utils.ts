@@ -1630,6 +1630,7 @@ export {
   resolveCallInputs,
   getIntentAccount,
   getTargetExecutionSignature,
+  hashErc7739TypedDataForSolady,
 }
 export type {
   IntentRoute,
