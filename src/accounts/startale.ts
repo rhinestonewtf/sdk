@@ -12,13 +12,18 @@ import {
   zeroHash,
 } from 'viem'
 import { getSetup as getModuleSetup } from '../modules'
-import type { Module } from '../modules/common'
+import type { ModeleSetup, Module } from '../modules/common'
+import { getOwnerValidator } from '../modules/validators/core'
 import type {
+  OwnableValidatorConfig,
   OwnerSet,
   RhinestoneAccountConfig,
   StartaleAccount,
 } from '../types'
-import { Eip712DomainNotAvailableError } from './error'
+import {
+  AccountConfigurationNotSupportedError,
+  Eip712DomainNotAvailableError,
+} from './error'
 import {
   getGuardianSmartAccount as getNexusGuardianSmartAccount,
   getInstallData as getNexusInstallData,
@@ -68,10 +73,102 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
       return null
     }
   }
+  if (config.owners) {
+    if (config.owners.type !== 'ecdsa') {
+      throw new AccountConfigurationNotSupportedError(
+        'Startale accounts only support ECDSA owners',
+        'startale',
+      )
+    }
+    if (config.owners.accounts.length > 1) {
+      throw new AccountConfigurationNotSupportedError(
+        'Startale accounts only support a single owner',
+        'startale',
+      )
+    }
+  }
+
   const account = config.account
   const salt = (account as StartaleAccount)?.salt ?? zeroHash
   const moduleSetup = getModuleSetup(config)
-  const initData = encodeAbiParameters(
+
+  const ownerValidator = getOwnerValidator(config)
+  const isK1 =
+    ownerValidator.address.toLowerCase() ===
+    K1_DEFAULT_VALIDATOR_ADDRESS.toLowerCase()
+
+  const initData = isK1
+    ? getK1InitData(config, moduleSetup)
+    : getOwnableInitData(moduleSetup)
+  const factoryData = encodeFunctionData({
+    abi: parseAbi(['function createAccount(bytes,bytes32)']),
+    functionName: 'createAccount',
+    args: [initData, salt],
+  })
+
+  const initializationCallData = encodeFunctionData({
+    abi: parseAbi(['function initializeAccount(bytes)']),
+    functionName: 'initializeAccount',
+    args: [initData],
+  })
+
+  return {
+    factory: FACTORY_ADDRESS,
+    factoryData,
+    salt,
+    implementation: IMPLEMENTATION_ADDRESS,
+    initializationCallData,
+  }
+}
+
+function getK1InitData(
+  config: RhinestoneAccountConfig,
+  moduleSetup: ModeleSetup,
+): Hex {
+  const ownerAddress = (config.owners as OwnableValidatorConfig).accounts[0]
+    .address as Hex
+  const validators = moduleSetup.validators.filter(
+    (v) =>
+      v.address.toLowerCase() !== K1_DEFAULT_VALIDATOR_ADDRESS.toLowerCase(),
+  )
+  return encodeAbiParameters(
+    [{ type: 'address' }, { type: 'bytes' }],
+    [
+      BOOTSTRAP_ADDRESS,
+      encodeFunctionData({
+        abi: parseAbi([
+          'struct BootstrapConfig {address module;bytes initData;}',
+          'struct BootstrapPreValidationHookConfig {uint256 hookType;address module;bytes data;}',
+          'function initWithDefaultValidatorAndOtherModules(bytes calldata defaultValidatorInitData,BootstrapConfig[] calldata validators,BootstrapConfig[] calldata executors,BootstrapConfig calldata hook,BootstrapConfig[] calldata fallbacks,BootstrapPreValidationHookConfig[] calldata preValidationHooks) external payable',
+        ]),
+        functionName: 'initWithDefaultValidatorAndOtherModules',
+        args: [
+          ownerAddress,
+          validators.map((v) => ({
+            module: v.address,
+            initData: v.initData,
+          })),
+          moduleSetup.executors.map((e) => ({
+            module: e.address,
+            initData: e.initData,
+          })),
+          {
+            module: zeroAddress,
+            initData: '0x',
+          },
+          moduleSetup.fallbacks.map((f) => ({
+            module: f.address,
+            initData: f.initData,
+          })),
+          [],
+        ],
+      }),
+    ],
+  )
+}
+
+function getOwnableInitData(moduleSetup: ModeleSetup): Hex {
+  return encodeAbiParameters(
     [{ type: 'address' }, { type: 'bytes' }],
     [
       BOOTSTRAP_ADDRESS,
@@ -104,25 +201,6 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
       }),
     ],
   )
-  const factoryData = encodeFunctionData({
-    abi: parseAbi(['function createAccount(bytes,bytes32)']),
-    functionName: 'createAccount',
-    args: [initData, salt],
-  })
-
-  const initializationCallData = encodeFunctionData({
-    abi: parseAbi(['function initializeAccount(bytes)']),
-    functionName: 'initializeAccount',
-    args: [initData],
-  })
-
-  return {
-    factory: FACTORY_ADDRESS,
-    factoryData,
-    salt,
-    implementation: IMPLEMENTATION_ADDRESS,
-    initializationCallData,
-  }
 }
 
 function getAddress(config: RhinestoneAccountConfig) {
@@ -229,6 +307,7 @@ async function getGuardianSmartAccount(
 }
 
 export {
+  K1_DEFAULT_VALIDATOR_ADDRESS,
   getEip712Domain,
   getInstallData,
   getAddress,
