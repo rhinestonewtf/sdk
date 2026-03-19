@@ -34,6 +34,7 @@ import {
   EoaAccountMustHaveAccountError,
   EoaSigningMethodNotConfiguredError,
   FactoryArgsNotAvailableError,
+  getAccountProvider,
   getAddress,
   getEip712Domain,
   getEip1271Signature,
@@ -405,6 +406,27 @@ async function signTypedData<
       signers,
       parameters,
     )
+  }
+
+  const account = getAccountProvider(config)
+  if (account.type === 'startale' && supportsEip712(validator)) {
+    const isK1 =
+      validator.address.toLowerCase() ===
+      K1_DEFAULT_VALIDATOR_ADDRESS.toLowerCase()
+    if (isK1) {
+      const sig = await signErc7739TypedData(
+        config,
+        signers,
+        validator,
+        isRoot,
+        parameters,
+        chain,
+      )
+      if (!options?.skipErc6492) {
+        return await toErc6492Signature(config, sig, chain)
+      }
+      return sig
+    }
   }
 
   const signature = await getTypedDataPackedSignature(
@@ -1025,7 +1047,7 @@ async function signIntentTypedData<
       validator.address.toLowerCase() ===
       K1_DEFAULT_VALIDATOR_ADDRESS.toLowerCase()
     if (isK1Validator) {
-      return await signErc7739IntentTypedData(
+      return await signErc7739TypedData(
         config,
         signers,
         validator,
@@ -1458,10 +1480,10 @@ function validateTokenSymbols(
   }
 }
 
-// Signs intent typed data using ERC-7739 nested EIP-712 for Startale accounts.
+// Signs typed data using ERC-7739 nested EIP-712 for Startale accounts.
 // Uses a Solady-compatible TypedDataSign hash and wraps the signature with
 // the app domain separator and contents hash for on-chain verification.
-async function signErc7739IntentTypedData<
+async function signErc7739TypedData<
   typedData extends TypedData | Record<string, unknown> = TypedData,
   primaryType extends keyof typedData | 'EIP712Domain' = keyof typedData,
 >(
