@@ -1,5 +1,17 @@
 # @rhinestone/sdk
 
+## 1.3.0
+
+### Minor Changes
+
+- eaf8d64: Export `buildMockSignature` for generating Smart Sessions mock signatures used in gas estimation
+
+### Patch Changes
+
+- a0747f4: Make K1 validator opt-in for Startale accounts via owners.module override
+- 1e57df8: Enable more headers
+- 2439e4d: Use type-safe function selectors for injected session actions
+
 ## 1.2.18
 
 ### Patch Changes
