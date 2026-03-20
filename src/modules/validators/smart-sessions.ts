@@ -616,7 +616,7 @@ function getSessionData(session: Session): SessionData {
   }
 
   const injectedActions: Action[] = [
-    // ETH wrapping
+    // Native token wrapping
     {
       target: getWrappedTokenAddress(session.chain),
       selector: toFunctionSelector({
