@@ -654,7 +654,7 @@ function getSessionData(session: Session): SessionData {
             initData: '0x' as Hex,
           },
         ],
-    }))
+      }))
     : [sudoAction]
   return {
     sessionValidator: validator.address,
