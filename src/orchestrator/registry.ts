@@ -30,6 +30,16 @@ function getWethAddress(chain: Chain): Address {
   return wethToken.address
 }
 
+function getWrappedTokenAddress(chain: Chain): Address {
+  const chainEntry = getChainEntry(chain.id)
+  if (!chainEntry) {
+    throw new UnsupportedChainError(chain.id)
+  }
+
+  const token = chainEntry.wrappedNativeToken
+  return token.address
+}
+
 function getTokenSymbol(
   tokenAddress: Address,
   chainId: number,
@@ -148,6 +158,7 @@ export {
   getTokenAddress,
   getTokenDecimals,
   getWethAddress,
+  getWrappedTokenAddress,
   getChainById,
   getSupportedTokens,
   getSupportedChainIds,

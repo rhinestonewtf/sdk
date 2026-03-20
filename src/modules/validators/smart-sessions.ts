@@ -26,7 +26,7 @@ import {
   SCOPE_MULTICHAIN,
 } from '../../execution/compact'
 import { signTypedData } from '../../execution/utils'
-import { getTokenAddress } from '../../orchestrator'
+import { getWrappedTokenAddress } from '../../orchestrator/registry'
 import type {
   Action,
   Policy,
@@ -616,9 +616,9 @@ function getSessionData(session: Session): SessionData {
   }
 
   const injectedActions: Action[] = [
-    // ETH wrapping
+    // Native token wrapping
     {
-      target: getTokenAddress('WETH', session.chain.id),
+      target: getWrappedTokenAddress(session.chain),
       selector: toFunctionSelector({
         type: 'function',
         name: 'deposit',
