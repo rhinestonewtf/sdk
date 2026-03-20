@@ -39,7 +39,7 @@ import type {
   RhinestoneAccountConfig,
   RhinestoneConfig,
   Session,
-  SignerSet,
+  SessionEnableData,
   UniversalActionPolicyParamCondition,
 } from '../../types'
 import smartSessionEmissaryAbi from '../abi/smart-session-emissary'
@@ -228,8 +228,15 @@ const ACTION_CONDITION_LESS_THAN_OR_EQUAL = 4
 const ACTION_CONDITION_NOT_EQUAL = 5
 const ACTION_CONDITION_IN_RANGE = 6
 
+interface ResolvedSessionSignerSet {
+  type: 'experimental_session'
+  session: Session
+  enableData?: SessionEnableData
+  verifyExecutions: boolean
+}
+
 function packSignature(
-  signers: SignerSet & { type: 'experimental_session' },
+  signers: ResolvedSessionSignerSet,
   validatorSignature: Hex,
 ): Hex {
   const session = signers.session
@@ -937,8 +944,8 @@ function buildMockSignature(
       sessionDigest: zeroHash,
     }),
   )
-  const dummySigners = {
-    type: 'experimental_session' as const,
+  const dummySigners: ResolvedSessionSignerSet = {
+    type: 'experimental_session',
     session,
     verifyExecutions: true,
     enableData: {
@@ -978,6 +985,7 @@ export {
 export type {
   ChainSession,
   ChainDigest,
+  ResolvedSessionSignerSet,
   SessionData,
   SmartSessionModeType,
   SessionDetails,

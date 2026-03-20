@@ -1,11 +1,13 @@
 import { zeroAddress } from 'viem'
-import { arbitrum, base } from 'viem/chains'
+import { arbitrum, base, mainnet, optimism } from 'viem/chains'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { accountA } from '../../test/consts'
 import type { IntentInput } from '../orchestrator/types'
+import type { SessionSignerSet } from '../types'
 import {
   hashErc7739TypedDataForSolady,
   prepareTransactionAsIntent,
+  resolveSessionForChain,
 } from './utils'
 
 const mockGetIntentRoute = vi.fn()
@@ -206,5 +208,71 @@ describe('prepareTransactionAsIntent', () => {
     expect(mockGetIntentRoute).toHaveBeenCalledOnce()
     const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
     expect(intentInput.options.auxiliaryFunds).toBeUndefined()
+  })
+})
+
+const makeSession = (chainId: number) => ({
+  chain: { id: chainId } as any,
+  owners: {
+    type: 'ecdsa' as const,
+    accounts: [accountA],
+    threshold: 1,
+  },
+})
+
+describe('resolveSessionForChain', () => {
+  test('single session returns session for any chain', () => {
+    const signers: SessionSignerSet = {
+      type: 'experimental_session',
+      session: makeSession(mainnet.id),
+    }
+    const result = resolveSessionForChain(signers, optimism.id)
+    expect(result).toBeDefined()
+    expect(result!.session).toBe(signers.session)
+  })
+
+  test('single session with enableData returns enableData', () => {
+    const enableData = {
+      userSignature: '0x00' as `0x${string}`,
+      hashesAndChainIds: [],
+      sessionToEnableIndex: 0,
+    }
+    const signers: SessionSignerSet = {
+      type: 'experimental_session',
+      session: makeSession(mainnet.id),
+      enableData,
+    }
+    const result = resolveSessionForChain(signers, mainnet.id)
+    expect(result!.enableData).toBe(enableData)
+  })
+
+  test('per-chain sessions returns correct session per chain', () => {
+    const mainnetSession = makeSession(mainnet.id)
+    const optimismSession = makeSession(optimism.id)
+    const signers: SessionSignerSet = {
+      type: 'experimental_session',
+      sessions: {
+        [mainnet.id]: { session: mainnetSession },
+        [optimism.id]: { session: optimismSession },
+      },
+    }
+    expect(resolveSessionForChain(signers, mainnet.id).session).toBe(
+      mainnetSession,
+    )
+    expect(resolveSessionForChain(signers, optimism.id).session).toBe(
+      optimismSession,
+    )
+  })
+
+  test('per-chain sessions throws for missing chain', () => {
+    const signers: SessionSignerSet = {
+      type: 'experimental_session',
+      sessions: {
+        [mainnet.id]: { session: makeSession(mainnet.id) },
+      },
+    }
+    expect(() => resolveSessionForChain(signers, optimism.id)).toThrow(
+      `No session configured for chain ${optimism.id}`,
+    )
   })
 })
