@@ -17,6 +17,7 @@ async function getValidators(
     case 'safe':
     case 'startale':
     case 'nexus':
+    case 'hca':
     case 'passport': {
       const validators = await publicClient.readContract({
         abi: [
@@ -149,6 +150,7 @@ async function getExecutors(
     case 'safe':
     case 'startale':
     case 'nexus':
+    case 'hca':
     case 'passport': {
       const executors = await publicClient.readContract({
         abi: [

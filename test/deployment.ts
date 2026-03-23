@@ -11,7 +11,13 @@ const anvil = getAnvil(sourceChain, getForkUrl(sourceChain))
 setupOrchestratorMock()
 setupViemMock(anvil, funderAccount)
 
-import { type Address, createPublicClient, http, zeroAddress } from 'viem'
+import {
+  type Address,
+  createPublicClient,
+  http,
+  maxUint48,
+  zeroAddress,
+} from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import { base } from 'viem/chains'
 import { describe, expect, it } from 'vitest'
@@ -234,6 +240,47 @@ export function runDeploymentTestCases() {
           //   args: ['0x3a5be8cb'],
           // })
           // expect(fallbackHandler[1]).toEqual(zeroAddress)
+        },
+      )
+
+      it(
+        'should deploy an HCA account using ENS owners',
+        {
+          timeout: 10_000,
+        },
+        async () => {
+          const ownerPrivateKey = generatePrivateKey()
+          const ownerAccount = privateKeyToAccount(ownerPrivateKey)
+
+          const rhinestone = new RhinestoneSDK({ apiKey: 'test' })
+          const rhinestoneAccount = await rhinestone.createAccount({
+            account: { type: 'hca' },
+            owners: {
+              type: 'ens',
+              accounts: [ownerAccount],
+              ownerExpirations: [Number(maxUint48)],
+            },
+          })
+
+          const publicClient = createPublicClient({
+            chain: sourceChain,
+            transport: http(),
+          })
+          const codeBefore = await publicClient.getCode({
+            address: rhinestoneAccount.getAddress(),
+          })
+          expect(codeBefore).toBeUndefined()
+
+          await rhinestoneAccount.sendTransaction({
+            chain: sourceChain,
+            calls: [
+              {
+                to: ownerAccount.address,
+                data: '0x',
+              },
+            ],
+            tokenRequests: [],
+          })
         },
       )
     })
