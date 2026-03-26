@@ -1,5 +1,19 @@
 # @rhinestone/sdk
 
+## 1.4.0
+
+### Minor Changes
+
+- d557674: - Add per-chain session configuration via `sessions` map
+  - Allow enabling sessions on both source and target chains
+  - Remove `verifyExecutions` from public API (determined internally via on-chain checks)
+
+### Patch Changes
+
+- 20be9a5: Fix startale initData packing
+- c599380: Add ERC-7739 signing for session enable on Startale+K1 accounts
+- f9dfa30: Use proper wrapped token address for smart sessions instead of WETH
+
 ## 1.3.0
 
 ### Minor Changes
