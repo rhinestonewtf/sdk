@@ -34,6 +34,7 @@ import {
   EoaAccountMustHaveAccountError,
   EoaSigningMethodNotConfiguredError,
   FactoryArgsNotAvailableError,
+  getAccountProvider,
   getAddress,
   getEip712Domain,
   getEip1271Signature,
@@ -46,6 +47,7 @@ import {
   is7702,
   toErc6492Signature,
 } from '../accounts'
+import { convertOwnerSetToSignerSet } from '../accounts/signing/common'
 import { K1_DEFAULT_VALIDATOR_ADDRESS } from '../accounts/startale'
 import {
   createTransport,
@@ -59,6 +61,7 @@ import {
   getOwnerValidator,
   getPermissionId,
   getSmartSessionValidator,
+  isSessionEnabled,
 } from '../modules/validators'
 import {
   getMultiFactorValidator,
@@ -66,6 +69,7 @@ import {
   getWebAuthnValidator,
   supportsEip712,
 } from '../modules/validators/core'
+import type { ResolvedSessionSignerSet } from '../modules/validators/smart-sessions'
 import {
   getOrchestrator,
   type IntentInput,
@@ -97,6 +101,9 @@ import type {
   ExactInputConfig,
   RhinestoneAccountConfig,
   RhinestoneConfig,
+  Session,
+  SessionEnableData,
+  SessionSignerSet,
   SignerSet,
   SimpleTokenList,
   SourceAssetInput,
@@ -113,6 +120,56 @@ import {
 } from './error'
 import { getTypedData as getPermit2TypedData } from './permit2'
 import { getTypedData as getSingleChainOpsTypedData } from './singleChainOps'
+
+type InternalSignerSet =
+  | Exclude<SignerSet, SessionSignerSet>
+  | ResolvedSessionSignerSet
+
+function isResolvedSessionSignerSet(
+  signers: InternalSignerSet | undefined,
+): signers is ResolvedSessionSignerSet {
+  return (
+    signers?.type === 'experimental_session' && 'verifyExecutions' in signers
+  )
+}
+
+async function resolveSignersForChain(
+  config: RhinestoneConfig,
+  signers: SignerSet | undefined,
+  chainId: number,
+): Promise<InternalSignerSet | undefined> {
+  if (signers?.type !== 'experimental_session') {
+    return signers
+  }
+  const resolved = resolveSessionForChain(signers, chainId)
+  const enabled = await isSessionEnabled(
+    getAddress(config),
+    config.provider,
+    resolved.session,
+    config.useDevContracts,
+  )
+  const enableData = enabled ? undefined : resolved.enableData
+  return {
+    type: 'experimental_session',
+    session: resolved.session,
+    enableData,
+    verifyExecutions: !!enableData,
+  } satisfies ResolvedSessionSignerSet
+}
+
+function resolveSessionForChain(
+  signers: SessionSignerSet,
+  chainId: number,
+): { session: Session; enableData?: SessionEnableData } {
+  if ('sessions' in signers) {
+    const config = signers.sessions[chainId]
+    if (!config) {
+      throw new Error(`No session configured for chain ${chainId}`)
+    }
+    return config
+  }
+  return { session: signers.session, enableData: signers.enableData }
+}
 
 interface UserOperationResult {
   type: 'userop'
@@ -301,6 +358,11 @@ async function getTargetExecutionSignature(
   if (signers?.type !== 'experimental_session') {
     return undefined
   }
+  const resolvedSigners = await resolveSignersForChain(
+    config,
+    signers,
+    targetChain.id,
+  )
   const destination = getTargetExecutionMessage(config, intentOp)
   const validator = getValidator(config, signers)
   if (!validator) {
@@ -310,7 +372,7 @@ async function getTargetExecutionSignature(
   const isRoot = validator.address === ownerValidator.address
   const signature = await getDestinationSignature(
     config,
-    signers,
+    resolvedSigners,
     validator,
     isRoot,
     targetChain,
@@ -395,6 +457,7 @@ async function signTypedData<
   const isRoot = validator.address === ownerValidator.address
 
   if (signers?.type === 'experimental_session') {
+    const resolved = resolveSessionForChain(signers, chain.id)
     return await signTypedDataWithSession(
       config,
       chain,
@@ -402,9 +465,30 @@ async function signTypedData<
         address: validator.address,
         isRoot,
       },
-      signers,
+      resolved.session,
       parameters,
     )
+  }
+
+  const account = getAccountProvider(config)
+  if (account.type === 'startale' && supportsEip712(validator)) {
+    const isK1 =
+      validator.address.toLowerCase() ===
+      K1_DEFAULT_VALIDATOR_ADDRESS.toLowerCase()
+    if (isK1) {
+      const sig = await signErc7739TypedData(
+        config,
+        signers,
+        validator,
+        isRoot,
+        parameters,
+        chain,
+      )
+      if (!options?.skipErc6492) {
+        return await toErc6492Signature(config, sig, chain)
+      }
+      return sig
+    }
   }
 
   const signature = await getTypedDataPackedSignature(
@@ -430,13 +514,14 @@ async function signTypedDataWithSession<
   config: RhinestoneConfig,
   chain: Chain,
   validator: ValidatorConfig,
-  signers: SignerSet & { type: 'experimental_session' },
+  session: Session,
   parameters: HashTypedDataParameters<typedData, primaryType>,
 ) {
   const { name, version, chainId, verifyingContract, salt } = getEip712Domain(
     config,
     chain,
   )
+  const signers = convertOwnerSetToSignerSet(session.owners)
   const signature = await getTypedDataPackedSignature(
     config,
     signers,
@@ -475,7 +560,7 @@ async function signTypedDataWithSession<
       })
       return encodePacked(
         ['bytes32', 'bytes'],
-        [getPermissionId(signers.session), erc7739Signature],
+        [getPermissionId(session), erc7739Signature],
       )
     },
   )
@@ -737,7 +822,7 @@ async function prepareTransactionAsIntent(
     ...getIntentAccount(config, eip7702InitSignature, account),
     ...(signers?.type === 'experimental_session' && {
       mockSignature: buildMockSignature(
-        signers.session,
+        resolveSessionForChain(signers, targetChain.id).session,
         config.useDevContracts,
         sourceChains?.length,
       ),
@@ -830,20 +915,11 @@ async function signIntent(
   const originSignatures: OriginSignature[] = []
   for (const typedData of origin) {
     const chain = getChainById(typedData.domain?.chainId as number)
-    // For same chain transactions, we need to modify the origin signers
-    // Specifically, we need to remove the enable data in this case
-    const matchesTargetChain = chain.id === targetChain.id
-    const originSigners =
-      signers?.type === 'experimental_session'
-        ? ({
-            type: 'experimental_session',
-            session: signers.session,
-            verifyExecutions: matchesTargetChain
-              ? signers.verifyExecutions
-              : undefined,
-            enableData: matchesTargetChain ? signers.enableData : undefined,
-          } as SignerSet & { type: 'experimental_session' })
-        : signers
+    const originSigners = await resolveSignersForChain(
+      config,
+      signers,
+      chain.id,
+    )
     const signature = await signIntentTypedData(
       config,
       originSigners,
@@ -856,9 +932,15 @@ async function signIntent(
     originSignatures.push(signature)
   }
 
-  const destinationSignature = await getDestinationSignature(
+  const destinationSigners = await resolveSignersForChain(
     config,
     signers,
+    targetChain.id,
+  )
+
+  const destinationSignature = await getDestinationSignature(
+    config,
+    destinationSigners,
     validator,
     isRoot,
     targetChain,
@@ -875,7 +957,7 @@ async function signIntent(
 
 async function getDestinationSignature(
   config: RhinestoneConfig,
-  signers: SignerSet | undefined,
+  signers: InternalSignerSet | undefined,
   validator: Module,
   isRoot: boolean,
   targetChain: Chain,
@@ -923,7 +1005,7 @@ async function getDestinationSignature(
 
 async function signDestinationSeparately(
   config: RhinestoneConfig,
-  signers: SignerSet | undefined,
+  signers: InternalSignerSet | undefined,
   validator: Module,
   isRoot: boolean,
   targetChain: Chain,
@@ -1013,7 +1095,7 @@ async function signIntentTypedData<
   primaryType extends keyof typedData | 'EIP712Domain' = keyof typedData,
 >(
   config: RhinestoneConfig,
-  signers: SignerSet | undefined,
+  signers: InternalSignerSet | undefined,
   validator: Module,
   isRoot: boolean,
   parameters: HashTypedDataParameters<typedData, primaryType>,
@@ -1025,7 +1107,7 @@ async function signIntentTypedData<
       validator.address.toLowerCase() ===
       K1_DEFAULT_VALIDATOR_ADDRESS.toLowerCase()
     if (isK1Validator) {
-      return await signErc7739IntentTypedData(
+      return await signErc7739TypedData(
         config,
         signers,
         validator,
@@ -1046,7 +1128,7 @@ async function signIntentTypedData<
     )
   }
   const hash = hashTypedData(parameters)
-  if (signers?.type === 'experimental_session' && signers.verifyExecutions) {
+  if (isResolvedSessionSignerSet(signers) && signers.verifyExecutions) {
     if (targetExecution) {
       return await getEmissarySignature(
         config,
@@ -1054,7 +1136,7 @@ async function signIntentTypedData<
           type: 'experimental_session',
           session: signers.session,
           verifyExecutions: true,
-        },
+        } satisfies ResolvedSessionSignerSet,
         chain,
         hash,
       )
@@ -1066,7 +1148,7 @@ async function signIntentTypedData<
         session: signers.session,
         verifyExecutions: false,
         enableData: signers.enableData,
-      },
+      } satisfies ResolvedSessionSignerSet,
       chain,
       {
         address: validator.address,
@@ -1081,7 +1163,7 @@ async function signIntentTypedData<
         session: signers.session,
         verifyExecutions: true,
         enableData: signers.enableData,
-      },
+      } satisfies ResolvedSessionSignerSet,
       chain,
       hash,
     )
@@ -1458,15 +1540,15 @@ function validateTokenSymbols(
   }
 }
 
-// Signs intent typed data using ERC-7739 nested EIP-712 for Startale accounts.
+// Signs typed data using ERC-7739 nested EIP-712 for Startale accounts.
 // Uses a Solady-compatible TypedDataSign hash and wraps the signature with
 // the app domain separator and contents hash for on-chain verification.
-async function signErc7739IntentTypedData<
+async function signErc7739TypedData<
   typedData extends TypedData | Record<string, unknown> = TypedData,
   primaryType extends keyof typedData | 'EIP712Domain' = keyof typedData,
 >(
   config: RhinestoneConfig,
-  signers: SignerSet | undefined,
+  signers: InternalSignerSet | undefined,
   validator: Module,
   isRoot: boolean,
   parameters: HashTypedDataParameters<typedData, primaryType>,
@@ -1631,8 +1713,10 @@ export {
   getIntentAccount,
   getTargetExecutionSignature,
   hashErc7739TypedDataForSolady,
+  resolveSessionForChain,
 }
 export type {
+  InternalSignerSet,
   IntentRoute,
   TransactionResult,
   PreparedTransactionData,

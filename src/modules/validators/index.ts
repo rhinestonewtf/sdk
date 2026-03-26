@@ -11,6 +11,7 @@ import {
   getEnableSessionCall,
   getPermissionId,
   getSmartSessionValidator,
+  isSessionEnabled,
 } from './smart-sessions'
 
 export {
@@ -24,4 +25,5 @@ export {
   getPermissionId,
   getMockSignature,
   buildMockSignature,
+  isSessionEnabled,
 }

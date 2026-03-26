@@ -8,6 +8,7 @@ import {
   toHex,
 } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
+import type { ResolvedSessionSignerSet } from '../../modules/validators/smart-sessions'
 import type { SignerSet } from '../../types'
 import { SigningNotSupportedForAccountError } from '../error'
 import {
@@ -17,8 +18,10 @@ import {
   signWithSession,
 } from './common'
 
+type InternalSignerSet = SignerSet | ResolvedSessionSignerSet
+
 async function sign(
-  signers: SignerSet,
+  signers: InternalSignerSet,
   chain: Chain,
   address: Address,
   hash: Hex,
@@ -42,7 +45,13 @@ async function sign(
       )
     }
     case 'experimental_session': {
-      return signWithSession(signers, chain, address, hash, sign)
+      return signWithSession(
+        signers as ResolvedSessionSignerSet,
+        chain,
+        address,
+        hash,
+        sign,
+      )
     }
     case 'guardians': {
       return signWithGuardians(signers, hash, signingFunctions)

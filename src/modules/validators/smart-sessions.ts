@@ -20,13 +20,18 @@ import {
   zeroHash,
 } from 'viem'
 import { mainnet } from 'viem/chains'
+import { getAccountProvider } from '../../accounts'
+import { K1_DEFAULT_VALIDATOR_ADDRESS } from '../../accounts/startale'
 import { createTransport } from '../../accounts/utils'
 import {
   RESET_PERIOD_ONE_WEEK,
   SCOPE_MULTICHAIN,
 } from '../../execution/compact'
 import { signTypedData } from '../../execution/utils'
-import { getTokenAddress } from '../../orchestrator'
+import {
+  getChainById,
+  getWrappedTokenAddress,
+} from '../../orchestrator/registry'
 import type {
   Action,
   Policy,
@@ -34,12 +39,13 @@ import type {
   RhinestoneAccountConfig,
   RhinestoneConfig,
   Session,
-  SignerSet,
+  SessionEnableData,
   UniversalActionPolicyParamCondition,
 } from '../../types'
 import smartSessionEmissaryAbi from '../abi/smart-session-emissary'
 import { MODULE_TYPE_ID_VALIDATOR, type Module } from '../common'
 import {
+  getOwnerValidator,
   getValidator,
   SMART_SESSION_EMISSARY_ADDRESS,
   SMART_SESSION_EMISSARY_ADDRESS_DEV,
@@ -222,8 +228,15 @@ const ACTION_CONDITION_LESS_THAN_OR_EQUAL = 4
 const ACTION_CONDITION_NOT_EQUAL = 5
 const ACTION_CONDITION_IN_RANGE = 6
 
+interface ResolvedSessionSignerSet {
+  type: 'experimental_session'
+  session: Session
+  enableData?: SessionEnableData
+  verifyExecutions: boolean
+}
+
 function packSignature(
-  signers: SignerSet & { type: 'experimental_session' },
+  signers: ResolvedSessionSignerSet,
   validatorSignature: Hex,
 ): Hex {
   const session = signers.session
@@ -471,6 +484,27 @@ async function signEnableSession(
   config: RhinestoneAccountConfig,
   details: SessionDetails,
 ): Promise<Hex> {
+  const account = getAccountProvider(config)
+  const validator = getOwnerValidator(config)
+  const isStartaleK1 =
+    account.type === 'startale' &&
+    validator.address.toLowerCase() ===
+      K1_DEFAULT_VALIDATOR_ADDRESS.toLowerCase()
+
+  if (isStartaleK1) {
+    const chainIds = details.hashesAndChainIds.map((h) => h.chainId)
+    const uniqueChainIds = [...new Set(chainIds.map((c) => c.toString()))]
+    if (uniqueChainIds.length > 1) {
+      throw new Error(
+        'Startale accounts with K1 validator do not support multi-chain session enable',
+      )
+    }
+    const chain = getChainById(Number(chainIds[0]))
+    return signTypedData(config, details.data, chain, undefined, {
+      skipErc6492: true,
+    })
+  }
+
   return signTypedData(config, details.data, mainnet, undefined, {
     skipErc6492: true,
   })
@@ -616,9 +650,9 @@ function getSessionData(session: Session): SessionData {
   }
 
   const injectedActions: Action[] = [
-    // ETH wrapping
+    // Native token wrapping
     {
-      target: getTokenAddress('WETH', session.chain.id),
+      target: getWrappedTokenAddress(session.chain),
       selector: toFunctionSelector({
         type: 'function',
         name: 'deposit',
@@ -910,8 +944,8 @@ function buildMockSignature(
       sessionDigest: zeroHash,
     }),
   )
-  const dummySigners = {
-    type: 'experimental_session' as const,
+  const dummySigners: ResolvedSessionSignerSet = {
+    type: 'experimental_session',
     session,
     verifyExecutions: true,
     enableData: {
@@ -951,6 +985,7 @@ export {
 export type {
   ChainSession,
   ChainDigest,
+  ResolvedSessionSignerSet,
   SessionData,
   SmartSessionModeType,
   SessionDetails,

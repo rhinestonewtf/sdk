@@ -22,7 +22,10 @@ import {
   OWNABLE_VALIDATOR_ADDRESS,
   WEBAUTHN_V0_VALIDATOR_ADDRESS,
 } from '../../modules/validators/core'
-import { packSignature as packSmartSessionSignature } from '../../modules/validators/smart-sessions'
+import {
+  packSignature as packSmartSessionSignature,
+  type ResolvedSessionSignerSet,
+} from '../../modules/validators/smart-sessions'
 import type { OwnerSet, SignerSet } from '../../types'
 import {
   generateCredentialId,
@@ -169,7 +172,7 @@ async function signWithMultiFactorAuth<T>(
 }
 
 async function signWithSession(
-  signers: SignerSet & { type: 'experimental_session' },
+  signers: ResolvedSessionSignerSet,
   chain: Chain,
   address: Address,
   hash: Hex,
