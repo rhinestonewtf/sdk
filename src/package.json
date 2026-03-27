@@ -144,6 +144,11 @@
       "types": "./dist/src/modules/validators/smart-sessions.d.ts",
       "import": "./dist/src/modules/validators/smart-sessions.js",
       "require": "./dist/src/modules/validators/smart-sessions.js"
+    },
+    "./jwt-server": {
+      "types": "./dist/src/jwt-server/index.d.ts",
+      "import": "./dist/src/jwt-server/index.js",
+      "require": "./dist/src/jwt-server/index.js"
     }
   },
   "files": [
@@ -166,6 +171,12 @@
     "solady": "^0.1.26"
   },
   "peerDependencies": {
-    "viem": "^2.38.0"
+    "viem": "^2.38.0",
+    "jose": ">=5.0.0"
+  },
+  "peerDependenciesMeta": {
+    "jose": {
+      "optional": true
+    }
   }
 }
