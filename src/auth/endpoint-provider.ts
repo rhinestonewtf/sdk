@@ -69,9 +69,7 @@ export function createEndpointAuthProvider(
   }
 
   async function refreshAccessToken(): Promise<CachedToken> {
-    const { access_token, expires_in } = await fetchToken(
-      config.tokenEndpoint,
-    )
+    const { access_token, expires_in } = await fetchToken(config.tokenEndpoint)
     const result: CachedToken = {
       token: access_token,
       expiresAt: Date.now() + expires_in * 1000,

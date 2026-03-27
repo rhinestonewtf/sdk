@@ -64,7 +64,5 @@ function resolveAuth(config: {
     return { mode: 'apiKey', apiKey: config.apiKey }
   }
 
-  throw new Error(
-    'RhinestoneSDK requires either `apiKey` or `auth` in config',
-  )
+  throw new Error('RhinestoneSDK requires either `apiKey` or `auth` in config')
 }
