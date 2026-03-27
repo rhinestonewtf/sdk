@@ -11,6 +11,7 @@
         "@size-limit/esbuild-why": "^11.2.0",
         "@size-limit/preset-small-lib": "^11.2.0",
         "@types/bun": "^1.2.8",
+        "jose": "^6.2.2",
         "prool": "^0.0.24",
         "rimraf": "^6.0.1",
         "size-limit": "^11.2.0",
@@ -30,8 +31,12 @@
         "solady": "^0.1.26",
       },
       "peerDependencies": {
+        "jose": ">=5.0.0",
         "viem": "^2.38.0",
       },
+      "optionalPeers": [
+        "jose",
+      ],
     },
   },
   "packages": {
@@ -452,6 +457,8 @@
     "jackspeak": ["jackspeak@4.1.0", "", { "dependencies": { "@isaacs/cliui": "^8.0.2" } }, "sha512-9DDdhb5j6cpeitCbvLO7n7J4IxnbM6hoF6O1g4HQ5TfhvvKN8ywDM7668ZhMHRqVmxqhps/F6syWK2KcPxYlkw=="],
 
     "jiti": ["jiti@2.4.2", "", { "bin": { "jiti": "lib/jiti-cli.mjs" } }, "sha512-rg9zJN+G4n2nfJl5MW3BMygZX56zKPNVEYYqq7adpmMh4Jn2QNEwhvQlFy6jPVdcod7txZtKHWnyZiA3a0zP7A=="],
+
+    "jose": ["jose@6.2.2", "", {}, "sha512-d7kPDd34KO/YnzaDOlikGpOurfF0ByC2sEV4cANCtdqLlTfBlw2p14O/5d/zv40gJPbIQxfES3nSx1/oYNyuZQ=="],
 
     "js-yaml": ["js-yaml@3.14.1", "", { "dependencies": { "argparse": "^1.0.7", "esprima": "^4.0.0" }, "bin": { "js-yaml": "bin/js-yaml.js" } }, "sha512-okMH7OXXJ7YrN9Ok3/SXrnu4iX9yOk+25nqX4imS2npuvTYDmo/QEZoqwZkYaIDk3jVvBOTOIEgEhaLOynBS9g=="],
 

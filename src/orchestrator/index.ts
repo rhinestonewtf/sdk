@@ -1,3 +1,4 @@
+import type { AuthProvider } from '../auth/provider'
 import { Orchestrator } from './client'
 import { PROD_ORCHESTRATOR_URL, RHINESTONE_SPOKE_POOL_ADDRESS } from './consts'
 import {
@@ -70,13 +71,13 @@ import {
 } from './types'
 
 function getOrchestrator(
-  apiKey?: string,
+  authProvider: AuthProvider,
   orchestratorUrl?: string,
   headers?: Record<string, string>,
 ): Orchestrator {
   return new Orchestrator(
     orchestratorUrl ?? PROD_ORCHESTRATOR_URL,
-    apiKey,
+    authProvider,
     headers,
   )
 }
