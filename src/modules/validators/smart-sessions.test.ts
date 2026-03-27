@@ -137,7 +137,9 @@ describe('getSessionData', () => {
   test('no actions → single sudoAction fallback', () => {
     const data = getSessionData(baseSession)
     expect(data.actions).toHaveLength(1)
-    expect(data.actions[0].actionTarget).toBe(SMART_SESSIONS_FALLBACK_TARGET_FLAG)
+    expect(data.actions[0].actionTarget).toBe(
+      SMART_SESSIONS_FALLBACK_TARGET_FLAG,
+    )
     expect(data.actions[0].actionTargetSelector).toBe(
       SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
     )
@@ -154,7 +156,9 @@ describe('getSessionData', () => {
       '0x0000000000000000000000000000000000000000',
     )
     // injected intent-execution fallback
-    expect(data.actions[2].actionTarget).toBe(SMART_SESSIONS_FALLBACK_TARGET_FLAG)
+    expect(data.actions[2].actionTarget).toBe(
+      SMART_SESSIONS_FALLBACK_TARGET_FLAG,
+    )
   })
 
   test('multiple policies on one action', () => {
@@ -210,7 +214,9 @@ describe('getPermissionId', () => {
   test('actions do not affect permissionId (only validator identity does)', () => {
     // permissionId is derived from sessionValidator + sessionValidatorInitData + salt,
     // NOT from actions — so same owner with different actions yields the same id
-    expect(getPermissionId(baseSession)).toBe(getPermissionId(sessionWithAction))
+    expect(getPermissionId(baseSession)).toBe(
+      getPermissionId(sessionWithAction),
+    )
   })
 
   test('returns 32-byte hex string', () => {
@@ -263,7 +269,9 @@ describe('packSignature', () => {
       verifyExecutions: true,
       enableData: {
         userSignature: dummySig,
-        hashesAndChainIds: [{ chainId: BigInt(base.id), sessionDigest: zeroHash }],
+        hashesAndChainIds: [
+          { chainId: BigInt(base.id), sessionDigest: zeroHash },
+        ],
         sessionToEnableIndex: 0,
       },
     }
@@ -278,7 +286,9 @@ describe('packSignature', () => {
       verifyExecutions: true,
       enableData: {
         userSignature: dummySig,
-        hashesAndChainIds: [{ chainId: BigInt(base.id), sessionDigest: zeroHash }],
+        hashesAndChainIds: [
+          { chainId: BigInt(base.id), sessionDigest: zeroHash },
+        ],
         sessionToEnableIndex: 0,
       },
     }
@@ -362,7 +372,10 @@ describe('buildMockSignature', () => {
     expect(byteLen).toBeGreaterThan(21)
     // Must start with the emissary address
     expect(
-      isAddressEqual(slice(sig, 0, 20) as Address, SMART_SESSION_EMISSARY_ADDRESS),
+      isAddressEqual(
+        slice(sig, 0, 20) as Address,
+        SMART_SESSION_EMISSARY_ADDRESS,
+      ),
     ).toBe(true)
   })
 })

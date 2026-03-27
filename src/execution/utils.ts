@@ -149,11 +149,9 @@ async function resolveSignersForChain(
     config.useDevContracts,
   )
   const enableData = enabled ? undefined : resolved.enableData
-  const hasExplicitActions = !!(resolved.session.actions?.length)
+  const hasExplicitActions = !!resolved.session.actions?.length
   const verifyExecutions =
-    resolved.verifyExecutions ??
-    signers.verifyExecutions ??
-    hasExplicitActions
+    resolved.verifyExecutions ?? signers.verifyExecutions ?? hasExplicitActions
   return {
     type: 'experimental_session',
     session: resolved.session,
@@ -165,7 +163,11 @@ async function resolveSignersForChain(
 function resolveSessionForChain(
   signers: SessionSignerSet,
   chainId: number,
-): { session: Session; enableData?: SessionEnableData; verifyExecutions?: boolean } {
+): {
+  session: Session
+  enableData?: SessionEnableData
+  verifyExecutions?: boolean
+} {
   if ('sessions' in signers) {
     const config = signers.sessions[chainId]
     if (!config) {
@@ -371,7 +373,6 @@ async function getTargetExecutionSignature(
     (l) => l === 'INTENT_EXECUTOR',
   )
   if (!hasIntentExecutorOps) {
-
     return undefined
   }
   const resolvedSigners = await resolveSignersForChain(
@@ -1197,10 +1198,16 @@ async function signIntentTypedData<
       }
       return await getEmissarySignature(config, targetSigners, chain, hash)
     }
-    return await getEip1271Signature(config, signers, chain, {
-      address: validator.address,
-      isRoot,
-    }, hash)
+    return await getEip1271Signature(
+      config,
+      signers,
+      chain,
+      {
+        address: validator.address,
+        isRoot,
+      },
+      hash,
+    )
   }
 
   return await getEip1271Signature(
