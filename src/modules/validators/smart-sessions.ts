@@ -410,7 +410,9 @@ async function getSessionDetails(
       getSessionNonce(account, session, lockTag, provider, useDevContracts),
     ),
   )
-  const sessionDatas = sessions.map((session) => getSessionData(session, useDevContracts))
+  const sessionDatas = sessions.map((session) =>
+    getSessionData(session, useDevContracts),
+  )
   const signedSessions = sessionDatas.map((session, index) =>
     getSignedSession(
       account,
@@ -623,7 +625,10 @@ async function getEnableSessionCall(
   }
 }
 
-function getSessionData(session: Session, useDevContracts?: boolean): SessionData {
+function getSessionData(
+  session: Session,
+  useDevContracts?: boolean,
+): SessionData {
   const validator = getValidator(session.owners)
   const allowedContent = [
     {
@@ -652,7 +657,9 @@ function getSessionData(session: Session, useDevContracts?: boolean): SessionDat
   }
 
   const userHasFallbackAction = session.actions?.some(
-    (action) => !('target' in action && action.target !== undefined) && !('selector' in action && action.selector !== undefined),
+    (action) =>
+      !('target' in action && action.target !== undefined) &&
+      !('selector' in action && action.selector !== undefined),
   )
 
   const injectedActions: Action[] = [

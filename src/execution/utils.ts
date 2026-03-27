@@ -380,7 +380,10 @@ async function getTargetExecutionSignature(
     signers,
     targetChain.id,
   )
-  if (!isResolvedSessionSignerSet(resolvedSigners) || !resolvedSigners.verifyExecutions) {
+  if (
+    !isResolvedSessionSignerSet(resolvedSigners) ||
+    !resolvedSigners.verifyExecutions
+  ) {
     return undefined
   }
   const destination = getTargetExecutionMessage(config, intentOp)

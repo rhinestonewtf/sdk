@@ -1,8 +1,8 @@
 import {
   type Address,
-  type Hex,
   encodeAbiParameters,
   encodePacked,
+  type Hex,
   isAddressEqual,
   parseEther,
   slice,
@@ -12,24 +12,24 @@ import { base } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 import { accountA, accountB } from '../../../test/consts'
 import type { Session } from '../../types'
+import type { ResolvedSessionSignerSet } from './smart-sessions'
 import {
+  buildMockSignature,
+  getPermissionId,
+  getPolicyData,
+  getSessionData,
+  INTENT_EXECUTION_POLICY_ADDRESS,
+  packSignature,
   SMART_SESSION_EMISSARY_ADDRESS,
+  SMART_SESSIONS_FALLBACK_TARGET_FLAG,
+  SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
   SPENDING_LIMITS_POLICY_ADDRESS,
   SUDO_POLICY_ADDRESS,
   TIME_FRAME_POLICY_ADDRESS,
+  UNIVERSAL_ACTION_POLICY_ADDRESS,
   USAGE_LIMIT_POLICY_ADDRESS,
   VALUE_LIMIT_POLICY_ADDRESS,
-  INTENT_EXECUTION_POLICY_ADDRESS,
-  UNIVERSAL_ACTION_POLICY_ADDRESS,
-  SMART_SESSIONS_FALLBACK_TARGET_FLAG,
-  SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
-  buildMockSignature,
-  getPolicyData,
-  getPermissionId,
-  getSessionData,
-  packSignature,
 } from './smart-sessions'
-import type { ResolvedSessionSignerSet } from './smart-sessions'
 
 // ---------------------------------------------------------------------------
 // Shared fixtures

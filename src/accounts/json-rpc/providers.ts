@@ -10,7 +10,7 @@ function getAlchemyUrl(chainId: SupportedChain, apiKey: string): string {
   }
   return urlTemplate
     .replace('{{chain_param}}', chainParam)
-    .replace('\$\{ALCHEMY_API_KEY\}', apiKey)
+    .replace('${ALCHEMY_API_KEY}', apiKey)
 }
 
 function getCustomUrl(
