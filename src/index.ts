@@ -23,10 +23,7 @@ import {
 } from './accounts'
 import { walletClientToAccount, wrapParaAccount } from './accounts/walletClient'
 import { deployAccountsForOwners } from './actions/deployment'
-import {
-  createAuthProvider,
-  type AuthProvider,
-} from './auth/provider'
+import { type AuthProvider, createAuthProvider } from './auth/provider'
 import {
   getIntentStatus as getIntentStatusInternal,
   getPortfolio as getPortfolioInternal,

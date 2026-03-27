@@ -1,22 +1,20 @@
 import { createServer, type Server } from 'node:http'
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { generateKeyPair } from 'jose'
-import { createJwtSigner } from './signer'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { createEndpointAuthProvider } from '../auth/endpoint-provider'
+import { createAuthProvider } from '../auth/provider'
+import { computeIntentInputDigest } from './digest'
 import {
   createAccessTokenHandler,
   createExtensionTokenHandler,
 } from './handlers'
-import { createEndpointAuthProvider } from '../auth/endpoint-provider'
-import { createAuthProvider } from '../auth/provider'
 import { jcsCanonicalise } from './jcs'
-import { computeIntentInputDigest } from './digest'
+import { createJwtSigner } from './signer'
 
 const VALID_SESSION_TOKEN = 'session_test_abc123'
 
 /** Adapt a Web Response handler to a Node http.Server. */
-function serveHandler(
-  handler: (req: Request) => Promise<Response>,
-): Server {
+function serveHandler(handler: (req: Request) => Promise<Response>): Server {
   return createServer(async (req, res) => {
     const url = `http://localhost${req.url}`
     const headers = new Headers()

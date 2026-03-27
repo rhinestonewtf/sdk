@@ -29,7 +29,8 @@ export function createAccessTokenHandler(
     try {
       authorized = await config.authorize(request.headers)
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Authorization denied'
+      const message =
+        err instanceof Error ? err.message : 'Authorization denied'
       return errorResponse('forbidden', message, 403)
     }
     if (!authorized) {
@@ -40,7 +41,8 @@ export function createAccessTokenHandler(
       const token = await config.signer.signAccessToken({ expiresIn })
       return jsonResponse({ access_token: token, expires_in: expiresInSeconds })
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Token signing failed'
+      const message =
+        err instanceof Error ? err.message : 'Token signing failed'
       return errorResponse('internal_error', message, 500)
     }
   }
@@ -76,7 +78,8 @@ export function createExtensionTokenHandler(
     try {
       authorized = await config.authorize(request.headers, intentInput)
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Authorization denied'
+      const message =
+        err instanceof Error ? err.message : 'Authorization denied'
       return errorResponse('forbidden', message, 403)
     }
     if (!authorized) {
@@ -87,7 +90,8 @@ export function createExtensionTokenHandler(
       const token = await config.signer.signIntentExtensionToken(intentInput)
       return jsonResponse({ access_token: token, expires_in: 300 })
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Token signing failed'
+      const message =
+        err instanceof Error ? err.message : 'Token signing failed'
       return errorResponse('internal_error', message, 500)
     }
   }
@@ -114,7 +118,11 @@ function errorResponse(
   status: number,
   extraHeaders?: Record<string, string>,
 ): Response {
-  return jsonResponse({ error, error_description: description }, status, extraHeaders)
+  return jsonResponse(
+    { error, error_description: description },
+    status,
+    extraHeaders,
+  )
 }
 
 function parseDurationToSeconds(duration: string): number {

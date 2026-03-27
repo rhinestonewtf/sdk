@@ -54,6 +54,7 @@ import {
   getBundlerClient,
   type ValidatorConfig,
 } from '../accounts/utils'
+import { createAuthProvider } from '../auth/provider'
 import { getIntentExecutor } from '../modules'
 import type { Module } from '../modules/common'
 import {
@@ -72,7 +73,6 @@ import {
 import type { Permit2ClaimMessage } from '../modules/validators/policies/claim/permit2'
 import { buildPermit2ClaimPolicyCalldata } from '../modules/validators/policies/claim/permit2'
 import type { ResolvedSessionSignerSet } from '../modules/validators/smart-sessions'
-import { createAuthProvider } from '../auth/provider'
 import {
   getOrchestrator,
   type IntentInput,
@@ -80,7 +80,6 @@ import {
   type IntentRoute,
   type SignedIntentOp,
 } from '../orchestrator'
-import { convertBigIntFields } from '../orchestrator/utils'
 import {
   getChainById,
   getTokenAddress,
@@ -97,6 +96,7 @@ import {
   SIG_MODE_ERC1271_EMISSARY,
   type SupportedChain,
 } from '../orchestrator/types'
+import { convertBigIntFields } from '../orchestrator/utils'
 import type {
   AccountProviderConfig,
   Call,
