@@ -410,7 +410,7 @@ async function getSessionDetails(
       getSessionNonce(account, session, lockTag, provider, useDevContracts),
     ),
   )
-  const sessionDatas = sessions.map((session) => getSessionData(session))
+  const sessionDatas = sessions.map((session) => getSessionData(session, useDevContracts))
   const signedSessions = sessionDatas.map((session, index) =>
     getSignedSession(
       account,
@@ -593,7 +593,7 @@ async function getEnableSessionCall(
   sessionToEnableIndex: number,
   useDevContracts?: boolean,
 ) {
-  const sessionData = getSessionData(session)
+  const sessionData = getSessionData(session, useDevContracts)
   const permissionId = getPermissionId(session)
   return {
     to: getSmartSessionEmissaryAddress(useDevContracts),
@@ -623,7 +623,7 @@ async function getEnableSessionCall(
   }
 }
 
-function getSessionData(session: Session): SessionData {
+function getSessionData(session: Session, useDevContracts?: boolean): SessionData {
   const validator = getValidator(session.owners)
   const allowedContent = [
     {
@@ -652,7 +652,7 @@ function getSessionData(session: Session): SessionData {
   }
 
   const userHasFallbackAction = session.actions?.some(
-    (action) => !('target' in action) && !('selector' in action),
+    (action) => !('target' in action && action.target !== undefined) && !('selector' in action && action.selector !== undefined),
   )
 
   const injectedActions: Action[] = [
@@ -686,7 +686,7 @@ function getSessionData(session: Session): SessionData {
             ? action.target
             : SMART_SESSIONS_FALLBACK_TARGET_FLAG,
         actionPolicies: action.policies?.map((policy) =>
-          getPolicyData(policy),
+          getPolicyData(policy, useDevContracts),
         ) ?? [
           {
             policy: SUDO_POLICY_ADDRESS,
@@ -732,7 +732,7 @@ function getPermissionId(session: Session) {
   )
 }
 
-function getPolicyData(policy: Policy): PolicyData {
+function getPolicyData(policy: Policy, useDevContracts?: boolean): PolicyData {
   switch (policy.type) {
     case 'sudo':
       return {
@@ -741,7 +741,9 @@ function getPolicyData(policy: Policy): PolicyData {
       }
     case 'intent-execution':
       return {
-        policy: INTENT_EXECUTION_POLICY_ADDRESS,
+        policy: useDevContracts
+          ? INTENT_EXECUTION_POLICY_ADDRESS_DEV
+          : INTENT_EXECUTION_POLICY_ADDRESS,
         initData: '0x',
       }
     case 'universal-action': {

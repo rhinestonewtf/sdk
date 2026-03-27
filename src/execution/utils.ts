@@ -380,6 +380,9 @@ async function getTargetExecutionSignature(
     signers,
     targetChain.id,
   )
+  if (!isResolvedSessionSignerSet(resolvedSigners) || !resolvedSigners.verifyExecutions) {
+    return undefined
+  }
   const destination = getTargetExecutionMessage(config, intentOp)
   const validator = getValidator(config, signers)
   if (!validator) {
@@ -1191,13 +1194,6 @@ async function signIntentTypedData<
   }
 
   if (isResolvedSessionSignerSet(signers)) {
-    if (targetExecution) {
-      const targetSigners: ResolvedSessionSignerSet = {
-        ...signers,
-        verifyExecutions: true,
-      }
-      return await getEmissarySignature(config, targetSigners, chain, hash)
-    }
     return await getEip1271Signature(
       config,
       signers,
