@@ -445,7 +445,7 @@ export class Orchestrator {
       throw new BodyParserError({ message, ...errorParams })
     } else if (message === 'Bundle simulation failed') {
       const simulations = errorParams.context.error.simulations
-      const { traceId, errorType, statusCode, context } = errorParams
+const { traceId, errorType, statusCode, context } = errorParams
       throw new SimulationFailedError({
         message,
         context,

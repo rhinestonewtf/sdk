@@ -12,6 +12,7 @@ import {
   getPermissionId,
   getSmartSessionValidator,
   isSessionEnabled,
+  packSignature,
 } from './smart-sessions'
 
 export {
@@ -26,4 +27,5 @@ export {
   getMockSignature,
   buildMockSignature,
   isSessionEnabled,
+  packSignature,
 }

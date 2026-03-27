@@ -354,17 +354,20 @@ interface SessionEnableData {
 interface ChainSessionConfig {
   session: Session
   enableData?: SessionEnableData
+  verifyExecutions?: boolean
 }
 
 interface SingleSessionSignerSet {
   type: 'experimental_session'
   session: Session
   enableData?: SessionEnableData
+  verifyExecutions?: boolean
 }
 
 interface PerChainSessionSignerSet {
   type: 'experimental_session'
   sessions: Record<number, ChainSessionConfig>
+  verifyExecutions?: boolean
 }
 
 type SessionSignerSet = SingleSessionSignerSet | PerChainSessionSignerSet
