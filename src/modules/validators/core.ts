@@ -41,8 +41,7 @@ interface WebauthnCredential {
 
 const OWNABLE_VALIDATOR_ADDRESS: Address =
   '0x000000000013fdb5234e4e3162a810f54d9f7e98'
-const ENS_VALIDATOR_ADDRESS: Address =
-  '0xdc38f07b060374b6480c4bf06231e7d10955bca4'
+const ENS_HCA_MODULE: Address = '0x432df07BA217077EF70356eD10eBB339CD14c625'
 const WEBAUTHN_VALIDATOR_ADDRESS: Address =
   '0x0000000000578c4cb0e472a5462da43c495c3f33'
 const SOCIAL_RECOVERY_VALIDATOR_ADDRESS: Address =
@@ -209,7 +208,7 @@ function getENSValidator(
     [BigInt(threshold), ownersWithExpiration],
   )
 
-  const moduleAddress = address ?? ENS_VALIDATOR_ADDRESS
+  const moduleAddress = address ?? ENS_HCA_MODULE
 
   return {
     address: moduleAddress,
@@ -398,7 +397,7 @@ function supportsEip712(validator: Module) {
 
 export {
   OWNABLE_VALIDATOR_ADDRESS,
-  ENS_VALIDATOR_ADDRESS,
+  ENS_HCA_MODULE,
   WEBAUTHN_VALIDATOR_ADDRESS,
   MULTI_FACTOR_VALIDATOR_ADDRESS,
   WEBAUTHN_V0_VALIDATOR_ADDRESS,

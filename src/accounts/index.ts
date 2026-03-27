@@ -52,6 +52,14 @@ import {
   WalletClientNoConnectedAccountError,
 } from './error'
 import {
+  getAddress as getHcaAddress,
+  getDeployArgs as getHcaDeployArgs,
+  getEip712Domain as getHcaEip712Domain,
+  getGuardianSmartAccount as getHcaGuardianSmartAccount,
+  getSmartAccount as getHcaSmartAccount,
+  packSignature as packHcaSignature,
+} from './hca'
+import {
   getAddress as getKernelAddress,
   getDeployArgs as getKernelDeployArgs,
   getEip712Domain as getKernelEip712Domain,
@@ -122,6 +130,9 @@ function getDeployArgs(config: RhinestoneConfig) {
     }
     case 'startale': {
       return getStartaleDeployArgs(config)
+    }
+    case 'hca': {
+      return getHcaDeployArgs(config)
     }
     case 'passport': {
       // Mocked data; will be overridden by the actual deploy args
@@ -207,7 +218,8 @@ async function signEip7702InitData(config: RhinestoneConfig) {
     }
     case 'safe':
     case 'kernel':
-    case 'startale': {
+    case 'startale':
+    case 'hca': {
       throw new Eip7702NotSupportedForAccountError(account.type)
     }
     default: {
@@ -224,7 +236,8 @@ function getEip7702InitCall(config: RhinestoneConfig, signature: Hex) {
     }
     case 'safe':
     case 'kernel':
-    case 'startale': {
+    case 'startale':
+    case 'hca': {
       throw new Eip7702NotSupportedForAccountError(account.type)
     }
     default: {
@@ -247,6 +260,9 @@ function getEip712Domain(config: RhinestoneConfig, chain: Chain) {
     }
     case 'startale': {
       return getStartaleEip712Domain(config, chain)
+    }
+    case 'hca': {
+      return getHcaEip712Domain(config, chain)
     }
     case 'eoa': {
       throw new Eip712DomainNotAvailableError(
@@ -284,6 +300,9 @@ function getModuleInstallationCalls(
       }
       case 'passport': {
         return [getPassportInstallData(module)]
+      }
+      case 'hca': {
+        throw new ModuleInstallationNotSupportedError(account.type)
       }
       case 'eoa': {
         throw new ModuleInstallationNotSupportedError(account.type)
@@ -353,6 +372,9 @@ function getAddress(config: RhinestoneConfig) {
     }
     case 'startale': {
       return getStartaleAddress(config)
+    }
+    case 'hca': {
+      return getHcaAddress(config)
     }
     case 'passport': {
       return getPassportAddress(config)
@@ -425,6 +447,10 @@ async function getEip1271Signature(
     case 'startale': {
       const signature = await signFn(hash)
       return packStartaleSignature(signature, validator, transformSignature)
+    }
+    case 'hca': {
+      const signature = await signFn(hash)
+      return packHcaSignature(signature, validator, transformSignature)
     }
     default: {
       throw new Error(`Unsupported account type: ${(account as any).type}`)
@@ -508,6 +534,10 @@ async function getTypedDataPackedSignature<
       const signature = await signFn(parameters)
       return packStartaleSignature(signature, validator, transformSignature)
     }
+    case 'hca': {
+      const signature = await signFn(parameters)
+      return packHcaSignature(signature, validator, transformSignature)
+    }
     default: {
       throw new Error(`Unsupported account type: ${(account as any).type}`)
     }
@@ -580,7 +610,7 @@ async function deploy(
 async function setup(config: RhinestoneConfig, chain: Chain): Promise<boolean> {
   const account = getAccountProvider(config)
 
-  if (account.type === 'eoa') {
+  if (account.type === 'eoa' || account.type === 'hca') {
     return false
   }
 
@@ -791,6 +821,15 @@ async function getSmartAccount(
         signFn,
       )
     }
+    case 'hca': {
+      return getHcaSmartAccount(
+        client,
+        address,
+        config.owners,
+        ownerValidator.address,
+        signFn,
+      )
+    }
   }
 }
 
@@ -847,6 +886,15 @@ async function getGuardianSmartAccount(
     }
     case 'startale': {
       return getStartaleGuardianSmartAccount(
+        client,
+        address,
+        guardians,
+        socialRecoveryValidator.address,
+        signFn,
+      )
+    }
+    case 'hca': {
+      return getHcaGuardianSmartAccount(
         client,
         address,
         guardians,
