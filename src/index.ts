@@ -102,8 +102,6 @@ import type {
   Call,
   CallInput,
   ChainSessionConfig,
-  EndpointHeaders,
-  JwtEndpointAuth,
   MultiFactorValidatorConfig,
   OwnableValidatorConfig,
   OwnerSet,
@@ -683,7 +681,4 @@ export type {
   MultiChainPermit2Config,
   MultiChainPermit2Result,
   BatchPermit2Result,
-  // Auth types
-  JwtEndpointAuth,
-  EndpointHeaders,
 }

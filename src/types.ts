@@ -251,26 +251,7 @@ interface JwtAuth {
   getIntentExtensionToken?: (intentInput: unknown) => Promise<string>
 }
 
-/** Headers or async callback for authenticating to token endpoints. */
-type EndpointHeaders =
-  | Record<string, string>
-  | (() => Promise<Record<string, string>>)
-
-interface JwtEndpointAuth {
-  mode: 'jwt-endpoint'
-  /** URL to fetch access tokens from. Returns `{ access_token, expires_in }`. */
-  tokenEndpoint: string
-  /** URL to fetch intent extension tokens from (for sponsored intents). */
-  extensionTokenEndpoint?: string
-  /** Headers or async callback for authenticating to the token endpoints. */
-  endpointHeaders?: EndpointHeaders
-  /** Fetch credentials mode for cookie-based auth. Defaults to `'same-origin'`. */
-  credentials?: RequestCredentials
-  /** Seconds before expiry to trigger a proactive refresh. Defaults to `60`. */
-  refreshBufferSeconds?: number
-}
-
-type AuthConfig = ApiKeyAuth | JwtAuth | JwtEndpointAuth
+type AuthConfig = ApiKeyAuth | JwtAuth
 
 interface RhinestoneSDKConfig {
   /** @deprecated Use `auth` instead. Still supported for backward compatibility. */
@@ -515,7 +496,5 @@ export type {
   UniversalActionPolicyParamCondition,
   ApiKeyAuth,
   JwtAuth,
-  JwtEndpointAuth,
-  EndpointHeaders,
   AuthConfig,
 }
