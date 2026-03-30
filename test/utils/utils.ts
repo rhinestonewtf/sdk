@@ -3,7 +3,7 @@ import { base } from 'viem/chains'
 import { expect } from 'vitest'
 
 function getForkUrl(chain: Chain) {
-  // @ts-ignore
+  // @ts-expect-error
   const alchemyApiKey = import.meta.env.VITE_ALCHEMY_API_KEY
   if (!alchemyApiKey) {
     throw new Error('VITE_ALCHEMY_API_KEY is not set')

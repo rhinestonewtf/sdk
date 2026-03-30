@@ -218,6 +218,8 @@ const USAGE_LIMIT_POLICY_ADDRESS: Address =
 const VALUE_LIMIT_POLICY_ADDRESS: Address =
   '0x730da93267e7e513e932301b47f2ac7d062abc83'
 const INTENT_EXECUTION_POLICY_ADDRESS: Address =
+  '0xe9eA54d063975cDee9e06b7636d5563d95a7A23C'
+const INTENT_EXECUTION_POLICY_ADDRESS_DEV: Address =
   '0xa09b47de6e510cbdc18b97e9239bedcb44fb4901'
 
 const ACTION_CONDITION_EQUAL = 0
@@ -408,7 +410,9 @@ async function getSessionDetails(
       getSessionNonce(account, session, lockTag, provider, useDevContracts),
     ),
   )
-  const sessionDatas = sessions.map((session) => getSessionData(session))
+  const sessionDatas = sessions.map((session) =>
+    getSessionData(session, useDevContracts),
+  )
   const signedSessions = sessionDatas.map((session, index) =>
     getSignedSession(
       account,
@@ -591,7 +595,7 @@ async function getEnableSessionCall(
   sessionToEnableIndex: number,
   useDevContracts?: boolean,
 ) {
-  const sessionData = getSessionData(session)
+  const sessionData = getSessionData(session, useDevContracts)
   const permissionId = getPermissionId(session)
   return {
     to: getSmartSessionEmissaryAddress(useDevContracts),
@@ -621,7 +625,10 @@ async function getEnableSessionCall(
   }
 }
 
-function getSessionData(session: Session): SessionData {
+function getSessionData(
+  session: Session,
+  useDevContracts?: boolean,
+): SessionData {
   const validator = getValidator(session.owners)
   const allowedContent = [
     {
@@ -649,6 +656,12 @@ function getSessionData(session: Session): SessionData {
     ],
   }
 
+  const userHasFallbackAction = session.actions?.some(
+    (action) =>
+      !('target' in action && action.target !== undefined) &&
+      !('selector' in action && action.selector !== undefined),
+  )
+
   const injectedActions: Action[] = [
     // Native token wrapping
     {
@@ -661,13 +674,12 @@ function getSessionData(session: Session): SessionData {
         stateMutability: 'payable',
       }),
     },
-    {
-      policies: [
-        {
-          type: 'intent-execution',
-        },
-      ],
-    },
+    // Only inject the intent-execution fallback if the user hasn't defined their own
+    // fallback action — otherwise both map to the same actionId and their policies merge,
+    // causing IntentExecutionPolicy to be required for all fallback calls
+    ...(!userHasFallbackAction
+      ? [{ policies: [{ type: 'intent-execution' as const }] }]
+      : []),
   ]
 
   const actions = session.actions
@@ -681,7 +693,7 @@ function getSessionData(session: Session): SessionData {
             ? action.target
             : SMART_SESSIONS_FALLBACK_TARGET_FLAG,
         actionPolicies: action.policies?.map((policy) =>
-          getPolicyData(policy),
+          getPolicyData(policy, useDevContracts),
         ) ?? [
           {
             policy: SUDO_POLICY_ADDRESS,
@@ -727,7 +739,7 @@ function getPermissionId(session: Session) {
   )
 }
 
-function getPolicyData(policy: Policy): PolicyData {
+function getPolicyData(policy: Policy, useDevContracts?: boolean): PolicyData {
   switch (policy.type) {
     case 'sudo':
       return {
@@ -736,7 +748,9 @@ function getPolicyData(policy: Policy): PolicyData {
       }
     case 'intent-execution':
       return {
-        policy: INTENT_EXECUTION_POLICY_ADDRESS,
+        policy: useDevContracts
+          ? INTENT_EXECUTION_POLICY_ADDRESS_DEV
+          : INTENT_EXECUTION_POLICY_ADDRESS,
         initData: '0x',
       }
     case 'universal-action': {
@@ -972,8 +986,16 @@ export {
   SMART_SESSIONS_FALLBACK_TARGET_FLAG,
   SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
   SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG_PERMITTED_TO_CALL_SMARTSESSION,
+  SPENDING_LIMITS_POLICY_ADDRESS,
+  TIME_FRAME_POLICY_ADDRESS,
+  SUDO_POLICY_ADDRESS,
+  UNIVERSAL_ACTION_POLICY_ADDRESS,
+  USAGE_LIMIT_POLICY_ADDRESS,
+  VALUE_LIMIT_POLICY_ADDRESS,
+  INTENT_EXECUTION_POLICY_ADDRESS,
   packSignature,
   getSessionData,
+  getPolicyData,
   getEnableSessionCall,
   getPermissionId,
   getSmartSessionValidator,

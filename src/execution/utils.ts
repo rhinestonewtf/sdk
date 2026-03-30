@@ -149,18 +149,25 @@ async function resolveSignersForChain(
     config.useDevContracts,
   )
   const enableData = enabled ? undefined : resolved.enableData
+  const hasExplicitActions = !!resolved.session.actions?.length
+  const verifyExecutions =
+    resolved.verifyExecutions ?? signers.verifyExecutions ?? hasExplicitActions
   return {
     type: 'experimental_session',
     session: resolved.session,
     enableData,
-    verifyExecutions: !!enableData,
+    verifyExecutions,
   } satisfies ResolvedSessionSignerSet
 }
 
 function resolveSessionForChain(
   signers: SessionSignerSet,
   chainId: number,
-): { session: Session; enableData?: SessionEnableData } {
+): {
+  session: Session
+  enableData?: SessionEnableData
+  verifyExecutions?: boolean
+} {
   if ('sessions' in signers) {
     const config = signers.sessions[chainId]
     if (!config) {
@@ -358,11 +365,27 @@ async function getTargetExecutionSignature(
   if (signers?.type !== 'experimental_session') {
     return undefined
   }
+  const settlementLayers = intentOp.elements.map(
+    (e) => e.mandate.qualifier.settlementContext.settlementLayer,
+  )
+
+  const hasIntentExecutorOps = settlementLayers.some(
+    (l) => l === 'INTENT_EXECUTOR',
+  )
+  if (!hasIntentExecutorOps) {
+    return undefined
+  }
   const resolvedSigners = await resolveSignersForChain(
     config,
     signers,
     targetChain.id,
   )
+  if (
+    !isResolvedSessionSignerSet(resolvedSigners) ||
+    !resolvedSigners.verifyExecutions
+  ) {
+    return undefined
+  }
   const destination = getTargetExecutionMessage(config, intentOp)
   const validator = getValidator(config, signers)
   if (!validator) {
@@ -1130,25 +1153,25 @@ async function signIntentTypedData<
   const hash = hashTypedData(parameters)
   if (isResolvedSessionSignerSet(signers) && signers.verifyExecutions) {
     if (targetExecution) {
-      return await getEmissarySignature(
-        config,
-        {
-          type: 'experimental_session',
-          session: signers.session,
-          verifyExecutions: true,
-        } satisfies ResolvedSessionSignerSet,
-        chain,
-        hash,
-      )
+      const targetSigners: ResolvedSessionSignerSet = {
+        type: 'experimental_session',
+        session: signers.session,
+        verifyExecutions: true,
+        enableData: signers.enableData,
+      }
+      // signWithSession (called inside getEmissarySignature) already calls packSignature
+      // internally, so no transform is needed here
+      return await getEmissarySignature(config, targetSigners, chain, hash)
+    }
+    const sessionSignersForEip1271: ResolvedSessionSignerSet = {
+      type: 'experimental_session',
+      session: signers.session,
+      verifyExecutions: false,
+      enableData: signers.enableData,
     }
     const eip1271Signature = await getEip1271Signature(
       config,
-      {
-        type: 'experimental_session',
-        session: signers.session,
-        verifyExecutions: false,
-        enableData: signers.enableData,
-      } satisfies ResolvedSessionSignerSet,
+      sessionSignersForEip1271,
       chain,
       {
         address: validator.address,
@@ -1171,6 +1194,19 @@ async function signIntentTypedData<
       preClaimSig: emissarySignature,
       notarizedClaimSig: eip1271Signature,
     }
+  }
+
+  if (isResolvedSessionSignerSet(signers)) {
+    return await getEip1271Signature(
+      config,
+      signers,
+      chain,
+      {
+        address: validator.address,
+        isRoot,
+      },
+      hash,
+    )
   }
 
   return await getEip1271Signature(
