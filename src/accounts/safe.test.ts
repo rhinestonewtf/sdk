@@ -7,6 +7,7 @@ import { MODULE_TYPE_ID_VALIDATOR } from '../modules/common'
 import {
   getAddress,
   getDeployArgs,
+  getEip712Domain,
   getInstallData,
   packSignature,
 } from './safe'
@@ -136,6 +137,72 @@ describe('Accounts: Safe', () => {
       })
 
       expect(address).toEqual('0xc41bb9cfB2658dD3D74Ada0862044f5f30304b38')
+    })
+
+    test('Address-only initData fallback', () => {
+      const address = getAddress({
+        account: {
+          type: 'safe',
+        },
+        owners: {
+          type: 'ecdsa',
+          accounts: [accountA, accountB],
+        },
+        initData: {
+          address: '0xc41bb9cfB2658dD3D74Ada0862044f5f30304b38',
+        },
+      })
+
+      expect(address).toEqual('0xc41bb9cfB2658dD3D74Ada0862044f5f30304b38')
+    })
+  })
+
+  describe('EIP-712 Domain', () => {
+    test('Factory-backed initData stays signable', () => {
+      const domain = getEip712Domain(
+        {
+          owners: {
+            type: 'ecdsa',
+            accounts: [accountA, accountB],
+          },
+          initData: {
+            factory: '0x4e1dcf7ad4e460cfd30791ccc4f9c8a4f820ec67',
+            factoryData:
+              '0x1688f0b90000000000000000000000007579011ab74c46090561ea277ba79d510c6c00ff0000000000000000000000000000000000000000000000000000000000000060000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000844fff40e1ec88f0966a6bc17a138345cdf7519caf9a1e0bb840330108a6a4315f1028c39000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000060000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000',
+            address: '0xc41bb9cfB2658dD3D74Ada0862044f5f30304b38',
+            intentExecutorInstalled: true,
+          },
+        },
+        {
+          id: 1,
+        } as any,
+      )
+
+      expect(domain.verifyingContract).toEqual(
+        '0xc41bb9cfB2658dD3D74Ada0862044f5f30304b38',
+      )
+    })
+
+    test('Address-only initData remains unsupported', () => {
+      expect(() =>
+        getEip712Domain(
+          {
+            account: {
+              type: 'safe',
+            },
+            owners: {
+              type: 'ecdsa',
+              accounts: [accountA, accountB],
+            },
+            initData: {
+              address: '0xc41bb9cfB2658dD3D74Ada0862044f5f30304b38',
+            },
+          },
+          {
+            id: 1,
+          } as any,
+        ),
+      ).toThrow('Existing Safe-7579 accounts are not yet supported')
     })
   })
 
