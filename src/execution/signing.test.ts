@@ -7,7 +7,7 @@ import type {
   IntentOpElement,
   SettlementLayer,
 } from '../orchestrator/types'
-import type { RhinestoneConfig, Session, SessionSignerSet } from '../types'
+import type { RhinestoneConfig, Session, SessionSignerSet, SignerSet } from '../types'
 import { getTargetExecutionSignature, signIntent } from './utils'
 
 const {
@@ -223,11 +223,11 @@ const makeSessionSigners = (session: Session): SessionSignerSet => ({
   session,
 })
 
-const ownerSigners = {
+const ownerSigners: SignerSet = {
   type: 'owner',
   kind: 'ecdsa',
   accounts: [accountA],
-} as const
+}
 
 // --- Tests ---
 
