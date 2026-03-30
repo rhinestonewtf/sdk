@@ -7,7 +7,12 @@ import type {
   IntentOpElement,
   SettlementLayer,
 } from '../orchestrator/types'
-import type { RhinestoneConfig, Session, SessionSignerSet, SignerSet } from '../types'
+import type {
+  RhinestoneConfig,
+  Session,
+  SessionSignerSet,
+  SignerSet,
+} from '../types'
 import { getTargetExecutionSignature, signIntent } from './utils'
 
 const {
