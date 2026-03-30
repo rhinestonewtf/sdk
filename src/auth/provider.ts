@@ -1,5 +1,4 @@
 import type { AuthConfig } from '../types'
-import { createEndpointAuthProvider } from './endpoint-provider'
 
 export interface AuthProvider {
   getHeaders(): Promise<Record<string, string>>
@@ -14,10 +13,6 @@ export function createAuthProvider(config: {
   auth?: AuthConfig
 }): AuthProvider {
   const resolved = resolveAuth(config)
-
-  if (resolved.mode === 'jwt-endpoint') {
-    return createEndpointAuthProvider(resolved)
-  }
 
   if (resolved.mode === 'apiKey') {
     const headers: Record<string, string> = { 'x-api-key': resolved.apiKey }
