@@ -244,6 +244,9 @@ function getV0DeployArgs(config: RhinestoneAccountConfig) {
 function getAddress(config: RhinestoneAccountConfig) {
   const deployArgs = getDeployArgs(config)
   if (!deployArgs) {
+    if (config.initData?.address) {
+      return config.initData.address
+    }
     throw new Error('Cannot derive address: deploy args not available')
   }
   const { factory, implementation, salt } = deployArgs
@@ -261,7 +264,7 @@ function getAddress(config: RhinestoneAccountConfig) {
 }
 
 function getEip712Domain(config: RhinestoneAccountConfig, chain: Chain) {
-  if (config.initData) {
+  if (config.initData && !('factory' in config.initData)) {
     throw new Eip712DomainNotAvailableError(
       'Existing Safe-7579 accounts are not yet supported',
     )
