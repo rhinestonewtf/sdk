@@ -657,9 +657,7 @@ function getSessionData(
   }
 
   const userHasFallbackAction = session.actions?.some(
-    (action) =>
-      !('target' in action && action.target !== undefined) &&
-      !('selector' in action && action.selector !== undefined),
+    (action) => !('target' in action) && !('selector' in action),
   )
 
   const injectedActions: Action[] = [
