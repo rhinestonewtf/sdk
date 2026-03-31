@@ -266,8 +266,7 @@ describe('getTargetExecutionSignature', () => {
     expect(result).toBeUndefined()
   })
 
-  test('no INTENT_EXECUTOR ops (SAME_CHAIN only) returns undefined', async () => {
-    // PERMIT2 settlement also uses SAME_CHAIN layer — both are covered by this case
+  test('SAME_CHAIN + verifyExecutions: true returns emissary sig', async () => {
     const intentOp = makeIntentOp('SAME_CHAIN')
     const signers = makeSessionSigners(sessionWithActions)
     const result = await getTargetExecutionSignature(
@@ -276,7 +275,7 @@ describe('getTargetExecutionSignature', () => {
       base,
       signers,
     )
-    expect(result).toBeUndefined()
+    expect(result).toBe(MOCK_EMISSARY)
   })
 
   test('INTENT_EXECUTOR + verifyExecutions: false (no actions) returns undefined', async () => {
@@ -479,7 +478,7 @@ describe('signIntent + getTargetExecutionSignature routing', () => {
     expect(targetExecutionSignature).toBeUndefined()
   })
 
-  test('SAME_CHAIN + verifyExecutions: true — EMISSARY destination, undefined target', async () => {
+  test('SAME_CHAIN + verifyExecutions: true — EMISSARY for both destination and target', async () => {
     const intentOp = makeIntentOp('SAME_CHAIN')
     const signers = makeSessionSigners(sessionWithActions)
 
@@ -497,6 +496,6 @@ describe('signIntent + getTargetExecutionSignature routing', () => {
     )
 
     expect(destinationSignature).toBe(MOCK_EMISSARY)
-    expect(targetExecutionSignature).toBeUndefined()
+    expect(targetExecutionSignature).toBe(MOCK_EMISSARY)
   })
 })

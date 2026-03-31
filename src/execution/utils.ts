@@ -370,7 +370,7 @@ async function getTargetExecutionSignature(
   )
 
   const hasIntentExecutorOps = settlementLayers.some(
-    (l) => l === 'INTENT_EXECUTOR',
+    (l) => l === 'INTENT_EXECUTOR' || l === 'SAME_CHAIN',
   )
   if (!hasIntentExecutorOps) {
     return undefined
