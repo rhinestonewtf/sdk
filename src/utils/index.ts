@@ -2,12 +2,9 @@ import type { Account, Address, Hex } from 'viem'
 import { toAccount } from 'viem/accounts'
 import { getAddress, getInitCode, getV0InitCode } from '../accounts'
 import { getSetup as experimental_getModuleSetup } from '../modules'
-import type { AccountProviderConfig, OwnerSet } from '../types'
+import type { RhinestoneAccountConfig } from '../types'
 
-function experimental_getV0InitData(config: {
-  account?: AccountProviderConfig
-  owners?: OwnerSet
-}): {
+function experimental_getV0InitData(config: RhinestoneAccountConfig): {
   address: Address
   factory: Address
   factoryData: Hex
@@ -30,10 +27,7 @@ function experimental_getV0InitData(config: {
   }
 }
 
-function experimental_getRhinestoneInitData(config: {
-  account?: AccountProviderConfig
-  owners?: OwnerSet
-}):
+function experimental_getRhinestoneInitData(config: RhinestoneAccountConfig):
   | {
       address: Address
       factory: Address

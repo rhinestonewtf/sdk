@@ -151,7 +151,7 @@ function getK1InitData(
           })),
           {
             module: zeroAddress,
-            initData: '0x',
+            initData: zeroHash,
           },
           moduleSetup.fallbacks.map((f) => ({
             module: f.address,
