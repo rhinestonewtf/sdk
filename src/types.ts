@@ -168,6 +168,24 @@ interface IntentExecutionPolicy {
   type: 'intent-execution'
 }
 
+interface Permit2ClaimPolicy {
+  type: 'permit2-claim'
+  /** Whitelisted Permit2 spender addresses */
+  arbiters?: Address[]
+  /** Permitted input tokens per origin chain */
+  tokensIn?: { chainId: number; token: Address }[]
+  /** Permitted output tokens per destination chain */
+  tokensOut?: { chainId: number; token: Address }[]
+  /** Permitted recipients per destination chain (use `'any'` to allow all) */
+  recipients?: { chainId: number; recipient: Address | 'any' }[]
+  /** Enforce that recipient === sponsor (bridge-to-self) */
+  recipientIsSponsor?: boolean
+  /** Deadline bounds (min/max unix timestamps) */
+  expiryBounds?: { min?: bigint; max?: bigint }
+  /** Fill expiry bounds per destination chain */
+  fillExpiryBounds?: { chainId: number; min?: bigint; max?: bigint }[]
+}
+
 type Policy =
   | SudoPolicy
   | UniversalActionPolicy
@@ -192,6 +210,7 @@ type Action = FallbackAction | ScopedAction
 interface SessionInput {
   owners: OwnerSet
   actions?: Action[]
+  claimPolicies?: Permit2ClaimPolicy[]
 }
 
 interface Session extends SessionInput {
@@ -471,5 +490,6 @@ export type {
   ModuleType,
   ModuleInput,
   Policy,
+  Permit2ClaimPolicy,
   UniversalActionPolicyParamCondition,
 }

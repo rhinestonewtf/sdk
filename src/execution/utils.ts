@@ -69,6 +69,8 @@ import {
   getWebAuthnValidator,
   supportsEip712,
 } from '../modules/validators/core'
+import type { Permit2ClaimMessage } from '../modules/validators/policies/claim/permit2'
+import { buildPermit2ClaimPolicyCalldata } from '../modules/validators/policies/claim/permit2'
 import type { ResolvedSessionSignerSet } from '../modules/validators/smart-sessions'
 import {
   getOrchestrator,
@@ -1113,6 +1115,36 @@ function getTargetExecutionMessage(
   return typedData
 }
 
+/** Computes claim policy calldata when parameters are Permit2 typed data with claim policies. */
+function resolveClaimPolicyData<
+  typedData extends TypedData | Record<string, unknown>,
+  primaryType extends keyof typedData | 'EIP712Domain',
+>(
+  signers: ResolvedSessionSignerSet,
+  parameters: HashTypedDataParameters<typedData, primaryType>,
+): Hex | undefined {
+  if (
+    parameters.primaryType !== 'PermitBatchWitnessTransferFrom' ||
+    !signers.session.claimPolicies?.length
+  ) {
+    return undefined
+  }
+  const msg = parameters.message as Record<string, unknown>
+  if (
+    !msg.permitted ||
+    !msg.mandate ||
+    typeof msg.spender !== 'string' ||
+    typeof msg.nonce !== 'bigint' ||
+    typeof msg.deadline !== 'bigint'
+  ) {
+    return undefined
+  }
+  return buildPermit2ClaimPolicyCalldata(
+    signers.session.claimPolicies[0],
+    parameters.message as unknown as Permit2ClaimMessage,
+  )
+}
+
 async function signIntentTypedData<
   typedData extends TypedData | Record<string, unknown> = TypedData,
   primaryType extends keyof typedData | 'EIP712Domain' = keyof typedData,
@@ -1163,11 +1195,13 @@ async function signIntentTypedData<
       // internally, so no transform is needed here
       return await getEmissarySignature(config, targetSigners, chain, hash)
     }
+    const claimPolicyData = resolveClaimPolicyData(signers, parameters)
     const sessionSignersForEip1271: ResolvedSessionSignerSet = {
       type: 'experimental_session',
       session: signers.session,
       verifyExecutions: false,
       enableData: signers.enableData,
+      claimPolicyData,
     }
     const eip1271Signature = await getEip1271Signature(
       config,
@@ -1197,9 +1231,10 @@ async function signIntentTypedData<
   }
 
   if (isResolvedSessionSignerSet(signers)) {
+    const claimPolicyData = resolveClaimPolicyData(signers, parameters)
     return await getEip1271Signature(
       config,
-      signers,
+      claimPolicyData !== undefined ? { ...signers, claimPolicyData } : signers,
       chain,
       {
         address: validator.address,

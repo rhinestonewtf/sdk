@@ -118,7 +118,7 @@ vi.mock('../modules/validators', () => ({
     additionalContext: '0x',
   }),
   buildMockSignature: vi.fn(),
-  getPermissionId: vi.fn().mockReturnValue('0x' + 'cc'.repeat(32)),
+  getPermissionId: vi.fn().mockReturnValue(`0x${'cc'.repeat(32)}`),
   getSmartSessionValidator: vi.fn().mockReturnValue({
     address: MOCK_VALIDATOR,
     type: 1,
@@ -165,11 +165,11 @@ const makeElement = (settlementLayer: SettlementLayer): IntentOpElement =>
     mandate: {
       destinationChainId: base.id,
       destinationOps: {
-        vt: ('0x' + '00'.repeat(32)) as Hex,
+        vt: `0x${'00'.repeat(32)}` as Hex,
         ops: [],
       },
       preClaimOps: {
-        vt: ('0x' + '00'.repeat(32)) as Hex,
+        vt: `0x${'00'.repeat(32)}` as Hex,
         ops: [],
       },
       qualifier: {
