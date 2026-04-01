@@ -566,7 +566,9 @@ describe('signIntent with permit2 claim policy', () => {
   test('Permit2 typed data + claimPolicies → getEip1271Signature called with claimPolicyData', async () => {
     const { getTypedData: mockPermit2GetTypedData } = await import('./permit2')
     vi.mocked(mockPermit2GetTypedData).mockReturnValueOnce(
-      MOCK_PERMIT2_TYPED_DATA as unknown as ReturnType<typeof mockPermit2GetTypedData>,
+      MOCK_PERMIT2_TYPED_DATA as unknown as ReturnType<
+        typeof mockPermit2GetTypedData
+      >,
     )
 
     const signers: SessionSignerSet = {
@@ -605,7 +607,9 @@ describe('signIntent with permit2 claim policy', () => {
   test('Permit2 typed data without claimPolicies → getEip1271Signature called without claimPolicyData', async () => {
     const { getTypedData: mockPermit2GetTypedData } = await import('./permit2')
     vi.mocked(mockPermit2GetTypedData).mockReturnValueOnce(
-      MOCK_PERMIT2_TYPED_DATA as unknown as ReturnType<typeof mockPermit2GetTypedData>,
+      MOCK_PERMIT2_TYPED_DATA as unknown as ReturnType<
+        typeof mockPermit2GetTypedData
+      >,
     )
 
     const signers: SessionSignerSet = {
