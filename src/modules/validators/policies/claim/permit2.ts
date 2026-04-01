@@ -191,8 +191,6 @@ function encodeTokenEntry(token: Address, amount: bigint): Hex {
  *   Mandate: if any target check enabled — expanded target + minGas:16 + ops hashes + q
  *            else — pre-computed mandateHash [32]
  *
- * All claim policies in a session must share the same mode configuration; this
- * function uses the first policy when multiple are provided.
  */
 export function buildPermit2ClaimPolicyCalldata(
   policy: Permit2ClaimPolicy,

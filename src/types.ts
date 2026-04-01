@@ -210,7 +210,7 @@ type Action = FallbackAction | ScopedAction
 interface SessionInput {
   owners: OwnerSet
   actions?: Action[]
-  claimPolicies?: Permit2ClaimPolicy[]
+  claimPolicies?: [Permit2ClaimPolicy]
 }
 
 interface Session extends SessionInput {
