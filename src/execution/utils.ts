@@ -1139,6 +1139,9 @@ function resolveClaimPolicyData<
   ) {
     return undefined
   }
+  if (signers.session.claimPolicies.length > 1) {
+    throw new Error('Only one claim policy per session is currently supported')
+  }
   return buildPermit2ClaimPolicyCalldata(
     signers.session.claimPolicies[0],
     parameters.message as unknown as Permit2ClaimMessage,

@@ -186,7 +186,7 @@ function encodeTokenEntry(token: Address, amount: bigint): Hex {
  * Builds the policySpecificData calldata for a Permit2ClaimPolicy EIP-1271 check.
  *
  * Format (derived from Permit2ClaimPolicy.sol calldata layout):
- *   Header:  [arbiter:20][nonce:32][deadline:32]
+ *   Header:  [spender:20][nonce:32][deadline:32]
  *   TokenIn: expanded [count:1][token:32][amount:32]... OR pre-computed hash [32]
  *   Mandate: if any target check enabled — expanded target + minGas:16 + ops hashes + q
  *            else — pre-computed mandateHash [32]
@@ -315,6 +315,8 @@ export function encodePermit2ClaimPolicyInitData(
 
   // Arbiter: [count: 1][address: 20] each
   if (policy.arbiters?.length) {
+    if (policy.arbiters.length > 255)
+      throw new Error('arbiters array exceeds max length of 255')
     parts.push(
       encodePacked(
         ['uint8', ...policy.arbiters.map(() => 'address' as const)],
@@ -333,6 +335,8 @@ export function encodePermit2ClaimPolicyInitData(
 
   // TokenIn: [count: 1][chainId: 32][token: 20] each
   if (policy.tokensIn?.length) {
+    if (policy.tokensIn.length > 255)
+      throw new Error('tokensIn array exceeds max length of 255')
     parts.push(toHex(policy.tokensIn.length, { size: 1 }))
     for (const { chainId, token } of policy.tokensIn) {
       parts.push(encodePacked(['uint256', 'address'], [BigInt(chainId), token]))
@@ -341,6 +345,8 @@ export function encodePermit2ClaimPolicyInitData(
 
   // Recipient: [count: 1][chainId: 32][recipient: 20] each
   if (policy.recipients?.length) {
+    if (policy.recipients.length > 255)
+      throw new Error('recipients array exceeds max length of 255')
     parts.push(toHex(policy.recipients.length, { size: 1 }))
     for (const { chainId, recipient } of policy.recipients) {
       parts.push(
@@ -354,6 +360,8 @@ export function encodePermit2ClaimPolicyInitData(
 
   // FillExpiry: [count: 1][chainId: 32][max<<128|min packed into uint256] each
   if (policy.fillExpiryBounds?.length) {
+    if (policy.fillExpiryBounds.length > 255)
+      throw new Error('fillExpiryBounds array exceeds max length of 255')
     const mask128 = (1n << 128n) - 1n
     parts.push(toHex(policy.fillExpiryBounds.length, { size: 1 }))
     for (const { chainId, min: fMin, max: fMax } of policy.fillExpiryBounds) {
@@ -368,6 +376,8 @@ export function encodePermit2ClaimPolicyInitData(
 
   // TokenOut: [count: 1][chainId: 32][token: 20] each
   if (policy.tokensOut?.length) {
+    if (policy.tokensOut.length > 255)
+      throw new Error('tokensOut array exceeds max length of 255')
     parts.push(toHex(policy.tokensOut.length, { size: 1 }))
     for (const { chainId, token } of policy.tokensOut) {
       parts.push(encodePacked(['uint256', 'address'], [BigInt(chainId), token]))

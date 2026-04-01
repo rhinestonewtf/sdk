@@ -711,6 +711,7 @@ function getSessionData(
     sessionValidatorInitData: validator.initData,
     erc7739Policies: erc7739Data,
     actions,
+    // Note: Permit2ClaimPolicy has no dev deployment — same address in all environments
     claimPolicies:
       session.claimPolicies?.map((p) => ({
         policy: PERMIT2_CLAIM_POLICY_ADDRESS,
