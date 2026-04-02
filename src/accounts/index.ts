@@ -24,7 +24,11 @@ import {
 import { getIntentExecutor, getSetup } from '../modules'
 import type { Module } from '../modules/common'
 import { getOwnerValidator } from '../modules/validators'
-import { getSocialRecoveryValidator } from '../modules/validators/core'
+import {
+  getSocialRecoveryValidator,
+  SMART_SESSION_EMISSARY_ADDRESS,
+  SMART_SESSION_EMISSARY_ADDRESS_DEV,
+} from '../modules/validators/core'
 import type { ResolvedSessionSignerSet } from '../modules/validators/smart-sessions'
 import type {
   AccountProviderConfig,
@@ -449,7 +453,11 @@ async function getEmissarySignature(
   const signFn = (hash: Hex) =>
     signMessage(signers, chain, address, hash, false)
   const signature = await signFn(hash)
-  return transformSignature(signature)
+  const emissaryAddress =
+    config.useDevContracts === true
+      ? SMART_SESSION_EMISSARY_ADDRESS_DEV
+      : SMART_SESSION_EMISSARY_ADDRESS
+  return transformSignature(concat([emissaryAddress, signature]))
 }
 
 // Signs and packs a signature to be EIP-1271 compatible
