@@ -1,0 +1,10 @@
+name: Update shared-configs
+on:
+  repository_dispatch:
+    types: [shared-configs-update]
+  workflow_dispatch:
+jobs:
+  upgrade-shared-configs:
+    uses: rhinestonewtf/yeet/.github/workflows/reusable-bump-dependency.yml@main
+    with:
+      version: ${{ github.event.client_payload.version || '' }}
