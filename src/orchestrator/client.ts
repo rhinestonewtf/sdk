@@ -1,4 +1,5 @@
 import type { Address } from 'viem'
+import type { AuthProvider } from '../auth/provider'
 import { SDK_VERSION } from './consts'
 import {
   AuthenticationRequiredError,
@@ -51,17 +52,17 @@ function parseTokenAmountsRecord(
 
 export class Orchestrator {
   private serverUrl: string
-  private apiKey?: string
-  private headers?: Record<string, string>
+  private authProvider: AuthProvider
+  private extraHeaders?: Record<string, string>
 
   constructor(
     serverUrl: string,
-    apiKey?: string,
+    authProvider: AuthProvider,
     headers?: Record<string, string>,
   ) {
     this.serverUrl = serverUrl
-    this.apiKey = apiKey
-    this.headers = headers
+    this.authProvider = authProvider
+    this.extraHeaders = headers
   }
 
   async getPortfolio(
@@ -90,7 +91,7 @@ export class Orchestrator {
     const url = new URL(`${this.serverUrl}/accounts/${userAddress}/portfolio`)
     url.search = params.toString()
     const json = await this.fetch(url.toString(), {
-      headers: this.getHeaders(),
+      headers: await this.getHeaders(),
     })
     const portfolioResponse = json.portfolio as PortfolioResponse
     const portfolio: Portfolio = portfolioResponse.map((tokenResponse) => ({
@@ -123,7 +124,7 @@ export class Orchestrator {
     const body = convertBigIntFields(input)
     return await this.fetch(`${this.serverUrl}/intents/route`, {
       method: 'POST',
-      headers: this.getHeaders(),
+      headers: await this.getHeaders(),
       body: JSON.stringify(body),
     })
   }
@@ -131,7 +132,7 @@ export class Orchestrator {
   async splitIntents(input: SplitIntentsInput): Promise<SplitIntentsResult> {
     const response = await fetch(`${this.serverUrl}/intents/split`, {
       method: 'POST',
-      headers: this.getHeaders(),
+      headers: await this.getHeaders(),
       body: JSON.stringify(
         convertBigIntFields({
           chainId: input.chain.id,
@@ -187,6 +188,7 @@ export class Orchestrator {
   async submitIntent(
     signedIntentOpUnformatted: SignedIntentOp,
     dryRun: boolean,
+    policyContext?: { intentInput: unknown; isSponsored: boolean },
   ): Promise<IntentResult> {
     const signedIntentOp = convertBigIntFields(signedIntentOpUnformatted)
     if (dryRun) {
@@ -195,9 +197,15 @@ export class Orchestrator {
       }
     }
     const body = { signedIntentOp }
+    const headers = policyContext
+      ? await this.getSubmitHeaders(
+          policyContext.intentInput,
+          policyContext.isSponsored,
+        )
+      : await this.getHeaders()
     return await this.fetch(`${this.serverUrl}/intent-operations`, {
       method: 'POST',
-      headers: this.getHeaders(),
+      headers,
       body: JSON.stringify(body),
     })
   }
@@ -206,20 +214,35 @@ export class Orchestrator {
     return await this.fetch(
       `${this.serverUrl}/intent-operation/${intentId.toString()}`,
       {
-        headers: this.getHeaders(),
+        headers: await this.getHeaders(),
       },
     )
   }
 
-  private getHeaders(): HeadersInit {
-    const headers: HeadersInit = {
+  private async getHeaders(): Promise<Record<string, string>> {
+    const auth = await this.authProvider.getHeaders()
+    return {
       'Content-Type': 'application/json',
       'x-sdk-version': SDK_VERSION,
+      ...auth,
+      ...this.extraHeaders,
     }
-    if (this.apiKey) {
-      headers['x-api-key'] = this.apiKey
+  }
+
+  private async getSubmitHeaders(
+    intentInput: unknown,
+    isSponsored: boolean,
+  ): Promise<Record<string, string>> {
+    const auth = await this.authProvider.getSubmitHeaders(
+      intentInput,
+      isSponsored,
+    )
+    return {
+      'Content-Type': 'application/json',
+      'x-sdk-version': SDK_VERSION,
+      ...auth,
+      ...this.extraHeaders,
     }
-    return { ...headers, ...this.headers }
   }
 
   private async fetch(url: string, options?: RequestInit): Promise<any> {

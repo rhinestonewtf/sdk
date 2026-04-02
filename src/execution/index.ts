@@ -2,6 +2,7 @@ import { type Address, type Chain, createPublicClient, type Hex } from 'viem'
 import type { UserOperationReceipt } from 'viem/_types/account-abstraction'
 import { deploy, getAddress } from '../accounts'
 import { createTransport, getBundlerClient } from '../accounts/utils'
+import { type AuthProvider, createAuthProvider } from '../auth/provider'
 import {
   getOrchestrator,
   INTENT_STATUS_COMPLETED,
@@ -232,7 +233,7 @@ async function sendTransactionAsIntent(
   feeAsset?: Address | TokenSymbol,
   lockFunds?: boolean,
 ) {
-  const intentRoute = await prepareTransactionAsIntent(
+  const prepared = await prepareTransactionAsIntent(
     config,
     sourceChains,
     targetChain,
@@ -250,9 +251,10 @@ async function sendTransactionAsIntent(
     undefined,
     signers,
   )
-  if (!intentRoute) {
+  if (!prepared) {
     throw new OrderPathRequiredForIntentsError()
   }
+  const { intentRoute, intentInput } = prepared
   const { originSignatures, destinationSignature } = await signIntent(
     config,
     intentRoute.intentOp,
@@ -278,6 +280,7 @@ async function sendTransactionAsIntent(
     targetExecutionSignature,
     authorizations,
     false,
+    intentInput,
   )
 }
 
@@ -311,7 +314,7 @@ async function waitForExecution(
           })
         }
         const orchestrator = getOrchestrator(
-          config.apiKey,
+          config._authProvider ?? createAuthProvider(config),
           config.endpointUrl,
           config.headers,
         )
@@ -394,7 +397,7 @@ async function waitForExecution(
 async function getPortfolio(config: RhinestoneConfig, onTestnets: boolean) {
   const address = getAddress(config)
   const orchestrator = getOrchestrator(
-    config.apiKey,
+    config._authProvider ?? createAuthProvider(config),
     config.endpointUrl,
     config.headers,
   )
@@ -410,7 +413,7 @@ async function getPortfolio(config: RhinestoneConfig, onTestnets: boolean) {
 }
 
 async function getIntentStatus(
-  apiKey: string | undefined,
+  authProvider: AuthProvider,
   endpointUrl: string | undefined,
   intentId: bigint,
   headers?: Record<string, string>,
@@ -419,7 +422,7 @@ async function getIntentStatus(
     status: IntentOpStatus['status']
   }
 > {
-  const orchestrator = getOrchestrator(apiKey, endpointUrl, headers)
+  const orchestrator = getOrchestrator(authProvider, endpointUrl, headers)
   const internalStatus = await orchestrator.getIntentOpStatus(intentId)
   return {
     status: internalStatus.status,
@@ -435,12 +438,12 @@ async function getIntentStatus(
 }
 
 async function splitIntents(
-  apiKey: string | undefined,
+  authProvider: AuthProvider,
   endpointUrl: string | undefined,
   input: SplitIntentsInput,
   headers?: Record<string, string>,
 ) {
-  const orchestrator = getOrchestrator(apiKey, endpointUrl, headers)
+  const orchestrator = getOrchestrator(authProvider, endpointUrl, headers)
   return orchestrator.splitIntents(input)
 }
 

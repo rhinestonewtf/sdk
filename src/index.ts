@@ -23,6 +23,7 @@ import {
 } from './accounts'
 import { walletClientToAccount, wrapParaAccount } from './accounts/walletClient'
 import { deployAccountsForOwners } from './actions/deployment'
+import { type AuthProvider, createAuthProvider } from './auth/provider'
 import {
   getIntentStatus as getIntentStatusInternal,
   getPortfolio as getPortfolioInternal,
@@ -561,7 +562,7 @@ async function createRhinestoneAccount(
 }
 
 class RhinestoneSDK {
-  private apiKey: string
+  private authProvider: AuthProvider
   private endpointUrl?: string
   private provider?: ProviderConfig
   private bundler?: BundlerConfig
@@ -570,7 +571,7 @@ class RhinestoneSDK {
   private headers?: Record<string, string>
 
   constructor(options: RhinestoneSDKConfig) {
-    this.apiKey = options.apiKey
+    this.authProvider = createAuthProvider(options)
     this.endpointUrl = options.endpointUrl
     this.provider = options.provider
     this.bundler = options.bundler
@@ -582,7 +583,7 @@ class RhinestoneSDK {
   createAccount(config: RhinestoneAccountConfig) {
     const rhinestoneConfig: RhinestoneConfig = {
       ...config,
-      apiKey: this.apiKey,
+      _authProvider: this.authProvider,
       endpointUrl: this.endpointUrl,
       provider: this.provider,
       bundler: this.bundler,
@@ -595,7 +596,7 @@ class RhinestoneSDK {
 
   getIntentStatus(intentId: bigint) {
     return getIntentStatusInternal(
-      this.apiKey,
+      this.authProvider,
       this.endpointUrl,
       intentId,
       this.headers,
@@ -604,7 +605,7 @@ class RhinestoneSDK {
 
   splitIntents(input: SplitIntentsInput) {
     return splitIntentsInternal(
-      this.apiKey,
+      this.authProvider,
       this.endpointUrl,
       input,
       this.headers,

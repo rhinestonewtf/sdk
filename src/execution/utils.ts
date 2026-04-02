@@ -54,6 +54,7 @@ import {
   getBundlerClient,
   type ValidatorConfig,
 } from '../accounts/utils'
+import { createAuthProvider } from '../auth/provider'
 import { getIntentExecutor } from '../modules'
 import type { Module } from '../modules/common'
 import {
@@ -95,6 +96,7 @@ import {
   SIG_MODE_ERC1271_EMISSARY,
   type SupportedChain,
 } from '../orchestrator/types'
+import { convertBigIntFields } from '../orchestrator/utils'
 import type {
   AccountProviderConfig,
   Call,
@@ -195,6 +197,7 @@ interface TransactionResult {
 
 interface PreparedTransactionData {
   intentRoute: IntentRoute
+  intentInput: unknown
   transaction: Transaction
 }
 
@@ -239,7 +242,7 @@ async function prepareTransaction(
   if (isUserOpSigner) {
     throw new SignerNotSupportedError()
   }
-  const intentRoute = await prepareTransactionAsIntent(
+  const prepared = await prepareTransactionAsIntent(
     config,
     sourceChains,
     targetChain,
@@ -264,7 +267,8 @@ async function prepareTransaction(
   )
 
   return {
-    intentRoute,
+    intentRoute: prepared.intentRoute,
+    intentInput: prepared.intentInput,
     transaction,
   }
 }
@@ -351,6 +355,7 @@ async function signTransaction(
 
   return {
     intentRoute,
+    intentInput: preparedTransaction.intentInput,
     transaction: preparedTransaction.transaction,
     originSignatures,
     destinationSignature,
@@ -639,6 +644,7 @@ async function submitTransaction(
 ): Promise<TransactionResult> {
   const {
     intentRoute,
+    intentInput,
     transaction,
     originSignatures,
     destinationSignature,
@@ -656,6 +662,7 @@ async function submitTransaction(
     targetExecutionSignature,
     authorizations,
     dryRun,
+    intentInput,
   )
 }
 
@@ -892,13 +899,15 @@ async function prepareTransactionAsIntent(
     },
   }
 
+  const serializedIntent = convertBigIntFields(metaIntent)
+
   const orchestrator = getOrchestrator(
-    config.apiKey,
+    config._authProvider ?? createAuthProvider(config),
     config.endpointUrl,
     config.headers,
   )
   const intentRoute = await orchestrator.getIntentRoute(metaIntent)
-  return intentRoute
+  return { intentRoute, intentInput: serializedIntent }
 }
 
 async function signIntent(
@@ -1339,6 +1348,7 @@ async function submitIntent(
   targetExecutionSignature: Hex | undefined,
   authorizations: SignedAuthorizationList,
   dryRun: boolean,
+  intentInput?: unknown,
 ) {
   return submitIntentInternal(
     config,
@@ -1350,6 +1360,7 @@ async function submitIntent(
     targetExecutionSignature,
     authorizations,
     dryRun,
+    intentInput,
   )
 }
 
@@ -1389,6 +1400,7 @@ async function submitIntentInternal(
   targetExecutionSignature: Hex | undefined,
   authorizations: SignedAuthorizationList,
   dryRun: boolean,
+  intentInput?: unknown,
 ) {
   const signedIntentOp = createSignedIntentOp(
     intentOp,
@@ -1397,12 +1409,17 @@ async function submitIntentInternal(
     targetExecutionSignature,
     authorizations,
   )
+  const isSponsored = !!(intentOp as any).sponsorSettings
   const orchestrator = getOrchestrator(
-    config.apiKey,
+    config._authProvider ?? createAuthProvider(config),
     config.endpointUrl,
     config.headers,
   )
-  const intentResults = await orchestrator.submitIntent(signedIntentOp, dryRun)
+  const intentResults = await orchestrator.submitIntent(
+    signedIntentOp,
+    dryRun,
+    intentInput ? { intentInput, isSponsored } : undefined,
+  )
   return {
     type: 'intent',
     id: BigInt(intentResults.result.id),

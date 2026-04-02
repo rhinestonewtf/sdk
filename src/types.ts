@@ -253,8 +253,29 @@ interface RhinestoneAccountConfig {
       }
 }
 
-interface RhinestoneSDKConfig {
+interface ApiKeyAuth {
+  mode: 'apiKey'
   apiKey: string
+}
+
+interface JwtAuth {
+  mode: 'jwt'
+  /** Static access token, or async getter for refreshable tokens. */
+  accessToken: string | (() => Promise<string>)
+  /**
+   * Called at submitIntent time when the intent is sponsored.
+   * Receives the raw intent input object.
+   * Must return a signed intent_extension_token JWT.
+   */
+  getIntentExtensionToken?: (intentInput: unknown) => Promise<string>
+}
+
+type AuthConfig = ApiKeyAuth | JwtAuth
+
+interface RhinestoneSDKConfig {
+  /** @deprecated Use `auth` instead. Still supported for backward compatibility. */
+  apiKey?: string
+  auth?: AuthConfig
   provider?: ProviderConfig
   bundler?: BundlerConfig
   paymaster?: PaymasterConfig
@@ -274,7 +295,11 @@ interface RhinestoneSDKConfig {
   headers?: Record<string, string>
 }
 
-type RhinestoneConfig = RhinestoneAccountConfig & Partial<RhinestoneSDKConfig>
+type RhinestoneConfig = RhinestoneAccountConfig &
+  Partial<RhinestoneSDKConfig> & {
+    /** @internal Resolved auth provider — set by RhinestoneSDK, not by users. */
+    _authProvider?: import('./auth/provider').AuthProvider
+  }
 
 type TokenSymbol = 'ETH' | 'WETH' | 'USDC' | 'USDT' | 'USDT0'
 
@@ -492,4 +517,7 @@ export type {
   Policy,
   Permit2ClaimPolicy,
   UniversalActionPolicyParamCondition,
+  ApiKeyAuth,
+  JwtAuth,
+  AuthConfig,
 }
