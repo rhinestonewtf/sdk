@@ -4,6 +4,7 @@ import {
   encodeAbiParameters,
   encodePacked,
   type Hex,
+  hashStruct,
   keccak256,
   maxUint256,
   toHex,
@@ -21,19 +22,41 @@ import {
   MODE_CHECK_STORAGE,
 } from './types'
 
-// Precomputed EIP-712 type hashes for Permit2/Mandate struct encoding
-const TYPEHASH_PERMIT2_TOKEN: Hex =
-  '0x618358ac3db8dc274f0cd8829da7e234bd48cd73c4a740aede1adec9846d06a1'
-const TYPEHASH_TOKENOUT: Hex =
-  '0x55550a068ac7a6c7ce02eac46ebe7c7b964dd10d7800455df1c5bc5a6685a42c'
-const TYPEHASH_TARGET: Hex =
-  '0xf72802bb5695954ab337feb3d113d61f4206cfaef3987552df2b2b47477db74b'
-const TYPEHASH_OPS: Hex =
-  '0x09b0a32e9842b65559835c235891737e06927d59e48a6f0e0512e136a513a9e4'
-const TYPEHASH_OP: Hex =
-  '0xdbc520cb50a8aaf3fa06ea43dc3d59d248e52ae638476e3268a1e6e36bffe196'
-const TYPEHASH_MANDATE: Hex =
-  '0xc988b4da10503879cf4b893fed09620229f5ade301ef5e4af6124b22823627dc'
+// EIP-712 type definitions for Permit2/Mandate struct encoding.
+// Note: the token-out struct is named 'Token' in the Solidity contract (matching the
+// signed Permit2 message types in execution/permit2.ts).
+const PERMIT2_TYPES = {
+  TokenPermissions: [
+    { name: 'token', type: 'address' },
+    { name: 'amount', type: 'uint256' },
+  ],
+  Token: [
+    { name: 'token', type: 'address' },
+    { name: 'amount', type: 'uint256' },
+  ],
+  Ops: [
+    { name: 'to', type: 'address' },
+    { name: 'value', type: 'uint256' },
+    { name: 'data', type: 'bytes' },
+  ],
+  Op: [
+    { name: 'vt', type: 'bytes32' },
+    { name: 'ops', type: 'Ops[]' },
+  ],
+  Target: [
+    { name: 'recipient', type: 'address' },
+    { name: 'tokenOut', type: 'Token[]' },
+    { name: 'targetChain', type: 'uint256' },
+    { name: 'fillExpiry', type: 'uint256' },
+  ],
+  Mandate: [
+    { name: 'target', type: 'Target' },
+    { name: 'minGas', type: 'uint128' },
+    { name: 'originOps', type: 'Op' },
+    { name: 'destOps', type: 'Op' },
+    { name: 'q', type: 'bytes32' },
+  ],
+} as const
 
 /** Typed representation of the Permit2 message fields used for calldata building */
 export interface Permit2ClaimMessage {
@@ -67,30 +90,16 @@ function hashArray(hashes: Hex[]): Hex {
   return keccak256(hashes.length > 0 ? concat(hashes) : '0x')
 }
 
-function hashSingleTokenPermission(token: Address, amount: bigint): Hex {
-  return keccak256(
-    encodeAbiParameters(
-      [{ type: 'bytes32' }, { type: 'address' }, { type: 'uint256' }],
-      [TYPEHASH_PERMIT2_TOKEN, token, amount],
-    ),
-  )
-}
-
 function hashTokenPermissionsArray(
   permitted: readonly { token: Address; amount: bigint }[],
 ): Hex {
   return hashArray(
     permitted.map(({ token, amount }) =>
-      hashSingleTokenPermission(token, amount),
-    ),
-  )
-}
-
-function hashSingleTokenOut(token: Address, amount: bigint): Hex {
-  return keccak256(
-    encodeAbiParameters(
-      [{ type: 'bytes32' }, { type: 'address' }, { type: 'uint256' }],
-      [TYPEHASH_TOKENOUT, token, amount],
+      hashStruct({
+        primaryType: 'TokenPermissions',
+        types: PERMIT2_TYPES,
+        data: { token, amount },
+      }),
     ),
   )
 }
@@ -99,20 +108,12 @@ function hashTokenOutArray(
   tokenOut: readonly { token: Address; amount: bigint }[],
 ): Hex {
   return hashArray(
-    tokenOut.map(({ token, amount }) => hashSingleTokenOut(token, amount)),
-  )
-}
-
-function hashSingleExec(exec: { to: Address; value: bigint; data: Hex }): Hex {
-  return keccak256(
-    encodeAbiParameters(
-      [
-        { type: 'bytes32' },
-        { type: 'address' },
-        { type: 'uint256' },
-        { type: 'bytes32' },
-      ],
-      [TYPEHASH_OPS, exec.to, exec.value, keccak256(exec.data)],
+    tokenOut.map(({ token, amount }) =>
+      hashStruct({
+        primaryType: 'Token',
+        types: PERMIT2_TYPES,
+        data: { token, amount },
+      }),
     ),
   )
 }
@@ -121,55 +122,33 @@ function hashOpStruct(op: {
   vt: Hex
   ops: readonly { to: Address; value: bigint; data: Hex }[]
 }): Hex {
-  const opsArrayHash = hashArray(Array.from(op.ops).map(hashSingleExec))
-  return keccak256(
-    encodeAbiParameters(
-      [{ type: 'bytes32' }, { type: 'bytes32' }, { type: 'bytes32' }],
-      [TYPEHASH_OP, op.vt, opsArrayHash],
-    ),
-  )
+  return hashStruct({
+    primaryType: 'Op',
+    types: PERMIT2_TYPES,
+    data: { vt: op.vt, ops: Array.from(op.ops) },
+  })
 }
 
-function hashTargetStruct(
-  recipient: Address,
-  tokenOutHash: Hex,
-  targetChain: bigint,
-  fillExpiry: bigint,
-): Hex {
-  return keccak256(
-    encodeAbiParameters(
-      [
-        { type: 'bytes32' },
-        { type: 'address' },
-        { type: 'bytes32' },
-        { type: 'uint256' },
-        { type: 'uint256' },
-      ],
-      [TYPEHASH_TARGET, recipient, tokenOutHash, targetChain, fillExpiry],
-    ),
-  )
-}
-
-function hashMandateStruct(
-  targetHash: Hex,
-  minGas: bigint,
-  originOpsHash: Hex,
-  destOpsHash: Hex,
-  q: Hex,
-): Hex {
-  return keccak256(
-    encodeAbiParameters(
-      [
-        { type: 'bytes32' },
-        { type: 'bytes32' },
-        { type: 'uint128' },
-        { type: 'bytes32' },
-        { type: 'bytes32' },
-        { type: 'bytes32' },
-      ],
-      [TYPEHASH_MANDATE, targetHash, minGas, originOpsHash, destOpsHash, q],
-    ),
-  )
+function hashMandateStruct(mandate: Permit2ClaimMessage['mandate']): Hex {
+  return hashStruct({
+    primaryType: 'Mandate',
+    types: PERMIT2_TYPES,
+    data: {
+      target: {
+        recipient: mandate.target.recipient,
+        tokenOut: Array.from(mandate.target.tokenOut),
+        targetChain: mandate.target.targetChain,
+        fillExpiry: mandate.target.fillExpiry,
+      },
+      minGas: mandate.minGas,
+      originOps: {
+        vt: mandate.originOps.vt,
+        ops: Array.from(mandate.originOps.ops),
+      },
+      destOps: { vt: mandate.destOps.vt, ops: Array.from(mandate.destOps.ops) },
+      q: mandate.q,
+    },
+  })
 }
 
 // --- Token array encoding helpers ---
@@ -235,24 +214,7 @@ export function buildPermit2ClaimPolicyCalldata(
   // Mandate section
   if (!hasAnyTargetCheck) {
     // No mandate-level checks enabled — provide pre-computed mandateHash
-    const tokenOutHash = hashTokenOutArray(message.mandate.target.tokenOut)
-    const targetHash = hashTargetStruct(
-      message.mandate.target.recipient,
-      tokenOutHash,
-      message.mandate.target.targetChain,
-      message.mandate.target.fillExpiry,
-    )
-    const originOpsHash = hashOpStruct(message.mandate.originOps)
-    const destOpsHash = hashOpStruct(message.mandate.destOps)
-    parts.push(
-      hashMandateStruct(
-        targetHash,
-        message.mandate.minGas,
-        originOpsHash,
-        destOpsHash,
-        message.mandate.q,
-      ),
-    )
+    parts.push(hashMandateStruct(message.mandate))
   } else {
     // Expanded mandate: target fields + minGas + ops hashes + q
     const target = message.mandate.target
