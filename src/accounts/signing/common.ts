@@ -17,7 +17,7 @@ import {
 import type { WebAuthnAccount } from 'viem/account-abstraction'
 import { isRip7212SupportedNetwork } from '../../modules'
 import {
-  ENS_VALIDATOR_ADDRESS,
+  ENS_HCA_MODULE,
   getValidator,
   OWNABLE_VALIDATOR_ADDRESS,
   WEBAUTHN_V0_VALIDATOR_ADDRESS,
@@ -50,7 +50,7 @@ function convertOwnerSetToSignerSet(owners: OwnerSet): SignerSet {
         type: 'owner',
         kind: 'ecdsa',
         accounts: owners.accounts,
-        module: owners.module ?? ENS_VALIDATOR_ADDRESS,
+        module: owners.module ?? ENS_HCA_MODULE,
       }
     }
     case 'passkey': {
@@ -80,7 +80,7 @@ function convertOwnerSetToSignerSet(owners: OwnerSet): SignerSet {
                 type: 'ecdsa',
                 id: index,
                 accounts: validator.accounts,
-                module: validator.module ?? ENS_VALIDATOR_ADDRESS,
+                module: validator.module ?? ENS_HCA_MODULE,
               }
             }
             case 'passkey': {
@@ -261,7 +261,7 @@ async function signWithOwners<T>(
       const isOwnableOrENS =
         !signers.module ||
         signers.module?.toLowerCase() === OWNABLE_VALIDATOR_ADDRESS ||
-        signers.module?.toLowerCase() === ENS_VALIDATOR_ADDRESS
+        signers.module?.toLowerCase() === ENS_HCA_MODULE
 
       const updateV = isOwnableOrENS && !isUserOpHash
 

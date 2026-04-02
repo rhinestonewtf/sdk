@@ -230,6 +230,8 @@ function getAccountName(account: AccountType) {
       return 'Nexus'
     case 'startale':
       return 'Startale'
+    case 'hca':
+      return 'HCA'
     case 'eoa':
       return 'EOA'
   }
