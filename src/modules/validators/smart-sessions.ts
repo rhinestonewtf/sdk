@@ -50,6 +50,10 @@ import {
   SMART_SESSION_EMISSARY_ADDRESS,
   SMART_SESSION_EMISSARY_ADDRESS_DEV,
 } from './core'
+import {
+  encodePermit2ClaimPolicyInitData,
+  PERMIT2_CLAIM_POLICY_ADDRESS,
+} from './policies/claim/permit2'
 
 type FixedLengthArray<
   T,
@@ -235,6 +239,7 @@ interface ResolvedSessionSignerSet {
   session: Session
   enableData?: SessionEnableData
   verifyExecutions: boolean
+  claimPolicyData?: Hex
 }
 
 function packSignature(
@@ -382,7 +387,7 @@ function packSignature(
     const SIGNATURE_IS_VALID_SIG_1271 = '0x00'
     const policyDataOffset = BigInt(64 + size(validatorSignature))
     const mode = SIGNATURE_IS_VALID_SIG_1271
-    const policySpecificData = '0x'
+    const policySpecificData = signers.claimPolicyData ?? '0x'
     const signature = encodePacked(
       ['bytes1', 'bytes32', 'uint256', 'bytes', 'bytes'],
       [
@@ -706,7 +711,12 @@ function getSessionData(
     sessionValidatorInitData: validator.initData,
     erc7739Policies: erc7739Data,
     actions,
-    claimPolicies: [],
+    // Note: Permit2ClaimPolicy has no dev deployment — same address in all environments
+    claimPolicies:
+      session.claimPolicies?.map((p) => ({
+        policy: PERMIT2_CLAIM_POLICY_ADDRESS,
+        initData: encodePermit2ClaimPolicyInitData(p),
+      })) ?? [],
   }
 }
 

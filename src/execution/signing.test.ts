@@ -118,7 +118,7 @@ vi.mock('../modules/validators', () => ({
     additionalContext: '0x',
   }),
   buildMockSignature: vi.fn(),
-  getPermissionId: vi.fn().mockReturnValue('0x' + 'cc'.repeat(32)),
+  getPermissionId: vi.fn().mockReturnValue(`0x${'cc'.repeat(32)}`),
   getSmartSessionValidator: vi.fn().mockReturnValue({
     address: MOCK_VALIDATOR,
     type: 1,
@@ -165,11 +165,11 @@ const makeElement = (settlementLayer: SettlementLayer): IntentOpElement =>
     mandate: {
       destinationChainId: base.id,
       destinationOps: {
-        vt: ('0x' + '00'.repeat(32)) as Hex,
+        vt: `0x${'00'.repeat(32)}` as Hex,
         ops: [],
       },
       preClaimOps: {
-        vt: ('0x' + '00'.repeat(32)) as Hex,
+        vt: `0x${'00'.repeat(32)}` as Hex,
         ops: [],
       },
       qualifier: {
@@ -497,5 +497,133 @@ describe('signIntent + getTargetExecutionSignature routing', () => {
 
     expect(destinationSignature).toBe(MOCK_EMISSARY)
     expect(targetExecutionSignature).toBe(MOCK_EMISSARY)
+  })
+})
+
+// Permit2 typed data shape that triggers resolveClaimPolicyData
+const MOCK_PERMIT2_TYPED_DATA = {
+  domain: { name: 'Permit2', chainId: 8453, verifyingContract: MOCK_EXECUTOR },
+  types: {
+    PermitBatchWitnessTransferFrom: [{ name: 'nonce', type: 'uint256' }],
+  },
+  primaryType: 'PermitBatchWitnessTransferFrom' as const,
+  message: {
+    permitted: [
+      { token: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', amount: 20000n },
+    ],
+    spender: MOCK_EXECUTOR,
+    nonce: 1n,
+    deadline: 9999999999n,
+    mandate: {
+      target: {
+        recipient: MOCK_ACCOUNT,
+        tokenOut: [],
+        targetChain: 8453n,
+        fillExpiry: 9999999999n,
+      },
+      minGas: 0n,
+      originOps: { vt: `0x${'00'.repeat(32)}` as Hex, ops: [] },
+      destOps: { vt: `0x${'00'.repeat(32)}` as Hex, ops: [] },
+      q: `0x${'ab'.repeat(32)}` as Hex,
+    },
+  },
+}
+
+const makePermit2IntentOp = (): IntentOp =>
+  ({
+    sponsor: MOCK_ACCOUNT,
+    nonce: '100',
+    targetExecutionNonce: '200',
+    expires: '9999999999',
+    elements: [
+      {
+        mandate: {
+          destinationChainId: base.id,
+          destinationOps: { vt: `0x${'00'.repeat(32)}` as Hex, ops: [] },
+          preClaimOps: { vt: `0x${'00'.repeat(32)}` as Hex, ops: [] },
+          qualifier: {
+            settlementContext: {
+              // SAME_CHAIN avoids the INTENT_EXECUTOR branch so the PERMIT2 funding path is taken
+              settlementLayer: 'SAME_CHAIN',
+              fundingMethod: 'PERMIT2',
+              using7579: true,
+              gasRefund: { token: zeroAddress, exchangeRate: 0n, overhead: 0n },
+            },
+          },
+        },
+      },
+    ],
+  }) as unknown as IntentOp
+
+const sessionWithClaimPolicy: Session = {
+  chain: base,
+  owners: { type: 'ecdsa', accounts: [accountA] },
+  actions: [{ policies: [{ type: 'usage-limit', limit: 1n }] }],
+  claimPolicies: [{ type: 'permit2-claim' }],
+}
+
+describe('signIntent with permit2 claim policy', () => {
+  test('Permit2 typed data + claimPolicies → getEip1271Signature called with claimPolicyData', async () => {
+    const { getTypedData: mockPermit2GetTypedData } = await import('./permit2')
+    vi.mocked(mockPermit2GetTypedData).mockReturnValueOnce(
+      MOCK_PERMIT2_TYPED_DATA as unknown as ReturnType<
+        typeof mockPermit2GetTypedData
+      >,
+    )
+
+    const signers: SessionSignerSet = {
+      type: 'experimental_session',
+      session: sessionWithClaimPolicy,
+      verifyExecutions: true,
+    }
+
+    await signIntent(config, makePermit2IntentOp(), base, signers)
+
+    expect(mockGetEip1271Signature).toHaveBeenCalled()
+    const sessionSignersArg = mockGetEip1271Signature.mock.calls[0][1] as {
+      claimPolicyData?: Hex
+    }
+    expect(sessionSignersArg.claimPolicyData).toBeDefined()
+    expect(sessionSignersArg.claimPolicyData).not.toBe('0x')
+  })
+
+  test('non-Permit2 typed data + claimPolicies → getEip1271Signature called without claimPolicyData', async () => {
+    // Default mock returns MOCK_TYPED_DATA (primaryType: 'Test'), not Permit2
+    const signers: SessionSignerSet = {
+      type: 'experimental_session',
+      session: sessionWithClaimPolicy,
+      verifyExecutions: true,
+    }
+
+    await signIntent(config, makeIntentOp('INTENT_EXECUTOR'), base, signers)
+
+    expect(mockGetEip1271Signature).toHaveBeenCalled()
+    const sessionSignersArg = mockGetEip1271Signature.mock.calls[0][1] as {
+      claimPolicyData?: Hex
+    }
+    expect(sessionSignersArg.claimPolicyData).toBeUndefined()
+  })
+
+  test('Permit2 typed data without claimPolicies → getEip1271Signature called without claimPolicyData', async () => {
+    const { getTypedData: mockPermit2GetTypedData } = await import('./permit2')
+    vi.mocked(mockPermit2GetTypedData).mockReturnValueOnce(
+      MOCK_PERMIT2_TYPED_DATA as unknown as ReturnType<
+        typeof mockPermit2GetTypedData
+      >,
+    )
+
+    const signers: SessionSignerSet = {
+      type: 'experimental_session',
+      session: sessionWithActions, // no claimPolicies
+      verifyExecutions: true,
+    }
+
+    await signIntent(config, makePermit2IntentOp(), base, signers)
+
+    expect(mockGetEip1271Signature).toHaveBeenCalled()
+    const sessionSignersArg = mockGetEip1271Signature.mock.calls[0][1] as {
+      claimPolicyData?: Hex
+    }
+    expect(sessionSignersArg.claimPolicyData).toBeUndefined()
   })
 })
