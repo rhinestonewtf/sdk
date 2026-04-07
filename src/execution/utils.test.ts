@@ -313,7 +313,6 @@ const makeElement = (preClaimOps: {
   }) as unknown as IntentOpElement
 
 describe('injectDummyPreClaimOps', () => {
-  // biome-ignore lint/suspicious/noExplicitAny: spy type is complex to express generically
   let isSessionEnabledSpy: any
 
   beforeEach(() => {
