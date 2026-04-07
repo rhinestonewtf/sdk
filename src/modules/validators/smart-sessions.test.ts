@@ -182,6 +182,17 @@ describe('getSessionData', () => {
     // which covers all (target, selector) pairs — no dummy action needed.
     const data = getSessionData(baseSession)
     expect(data.actions).toHaveLength(1)
+    expect(data.actions[0].actionTarget).toBe(
+      SMART_SESSIONS_FALLBACK_TARGET_FLAG,
+    )
+  })
+
+  test('empty actions array → same sudoAction fallback as no actions', () => {
+    // actions: [] is truthy but has no elements — must be treated the same as
+    // actions: undefined so injectedActions are not appended.
+    const sessionWithEmptyActions: Session = { ...baseSession, actions: [] }
+    const data = getSessionData(sessionWithEmptyActions)
+    expect(data.actions).toHaveLength(1)
     expect(data.actions[0].actionTarget).toBe(SMART_SESSIONS_FALLBACK_TARGET_FLAG)
   })
 

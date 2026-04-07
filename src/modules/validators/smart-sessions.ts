@@ -704,7 +704,7 @@ function getSessionData(
     },
   ]
 
-  const actions = session.actions
+  const actions = session.actions?.length
     ? [...session.actions, ...injectedActions].map((action) => ({
         actionTargetSelector:
           'selector' in action
