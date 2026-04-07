@@ -230,30 +230,18 @@ async function injectDummyPreClaimOps(
     if (element.mandate.preClaimOps.ops.length > 0) continue
 
     const chainId = Number(element.chainId)
-    const resolvedSession = resolveSessionForChain(signers, chainId)
-    const { session, enableData, verifyExecutions: sessionVerifyExecutions } =
-      resolvedSession
+    // resolveSignersForChain handles both the isSessionEnabled check (nulling out
+    // enableData when already enabled) and verifyExecutions derivation — no need
+    // to call isSessionEnabled separately.
+    const resolved = await resolveSignersForChain(config, signers, chainId)
 
-    // Only inject when the session will produce a verifyExecution (ENABLE mode)
-    // signature — same derivation as resolveSignersForChain. Sessions without
-    // explicit actions default to verifyExecutions=false and use USE mode, so
-    // injecting a dummy preclaimop for them would cause the filler to call
-    // verifyExecution against a session that isn't enabled yet.
-    const verifyExecutions =
-      sessionVerifyExecutions ?? signers.verifyExecutions ?? !!session.actions?.length
-    if (!verifyExecutions) continue
+    if (!isResolvedSessionSignerSet(resolved)) continue
 
-    // Only act for sessions that have enable data (i.e. need enabling)
-    if (!enableData) continue
+    const { enableData, verifyExecutions } = resolved
 
-    // Skip if the session is already enabled on this chain
-    const enabled = await isSessionEnabled(
-      getAddress(config),
-      config.provider,
-      session,
-      config.useDevContracts,
-    )
-    if (enabled) continue
+    // Only inject for sessions that will produce a verifyExecution (ENABLE mode)
+    // signature. enableData is null when the session is already enabled.
+    if (!verifyExecutions || !enableData) continue
 
     // Session not enabled and no preclaimops — inject a dummy preclaimop so the
     // filler can trigger verifyExecution in ENABLE mode to enable the session

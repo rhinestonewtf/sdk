@@ -1,14 +1,14 @@
-import { zeroAddress, type Hex } from 'viem'
+import { type Hex, zeroAddress } from 'viem'
 import { arbitrum, base, mainnet, optimism } from 'viem/chains'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { accountA } from '../../test/consts'
-import type { IntentInput, IntentOpElement } from '../orchestrator/types'
 import * as validators from '../modules/validators'
-import type { RhinestoneConfig, SessionSignerSet } from '../types'
 import {
   DUMMY_PRECLAIMOP_SELECTOR,
   DUMMY_PRECLAIMOP_TARGET,
 } from '../modules/validators'
+import type { IntentInput, IntentOpElement } from '../orchestrator/types'
+import type { RhinestoneConfig, SessionSignerSet } from '../types'
 import {
   DUMMY_PRECLAIMOP_VT,
   hashErc7739TypedDataForSolady,
@@ -295,11 +295,16 @@ const makeConfig = (): RhinestoneConfig => ({
 
 const makeEnableData = () => ({
   userSignature: `0x${'00'.repeat(65)}` as Hex,
-  hashesAndChainIds: [{ chainId: BigInt(base.id), sessionDigest: `0x${'00'.repeat(32)}` as Hex }],
+  hashesAndChainIds: [
+    { chainId: BigInt(base.id), sessionDigest: `0x${'00'.repeat(32)}` as Hex },
+  ],
   sessionToEnableIndex: 0,
 })
 
-const makeElement = (preClaimOps: { vt: Hex; ops: { to: `0x${string}`; value: bigint; data: Hex }[] }): IntentOpElement =>
+const makeElement = (preClaimOps: {
+  vt: Hex
+  ops: { to: `0x${string}`; value: bigint; data: Hex }[]
+}): IntentOpElement =>
   ({
     chainId: String(base.id),
     mandate: {
@@ -308,7 +313,8 @@ const makeElement = (preClaimOps: { vt: Hex; ops: { to: `0x${string}`; value: bi
   }) as unknown as IntentOpElement
 
 describe('injectDummyPreClaimOps', () => {
-  let isSessionEnabledSpy: ReturnType<typeof vi.spyOn>
+  // biome-ignore lint/suspicious/noExplicitAny: spy type is complex to express generically
+  let isSessionEnabledSpy: any
 
   beforeEach(() => {
     isSessionEnabledSpy = vi
@@ -329,7 +335,13 @@ describe('injectDummyPreClaimOps', () => {
       session: {
         ...makeSession(base.id),
         chain: base,
-        actions: [{ target: '0x1111111111111111111111111111111111111111' as `0x${string}`, selector: '0xdeadbeef' as `0x${string}` }],
+        actions: [
+          {
+            target:
+              '0x1111111111111111111111111111111111111111' as `0x${string}`,
+            selector: '0xdeadbeef' as `0x${string}`,
+          },
+        ],
       },
       enableData: makeEnableData(),
     }
@@ -339,15 +351,24 @@ describe('injectDummyPreClaimOps', () => {
 
     expect(element.mandate.preClaimOps.ops).toHaveLength(1)
     expect(element.mandate.preClaimOps.ops[0].to).toBe(DUMMY_PRECLAIMOP_TARGET)
-    expect(element.mandate.preClaimOps.ops[0].data).toBe(DUMMY_PRECLAIMOP_SELECTOR)
+    expect(element.mandate.preClaimOps.ops[0].data).toBe(
+      DUMMY_PRECLAIMOP_SELECTOR,
+    )
     expect(element.mandate.preClaimOps.ops[0].value).toBe(0n)
     expect(element.mandate.preClaimOps.vt).toBe(DUMMY_PRECLAIMOP_VT)
   })
 
   test('does not inject when preclaimops already present', async () => {
     // isSessionEnabledSpy already returns false from beforeEach, but won't be reached
-    const existingOp = { to: '0xdeadbeef00000000000000000000000000000000' as `0x${string}`, value: 0n, data: '0xabcd1234' as Hex }
-    const element = makeElement({ vt: `0x${'00'.repeat(32)}` as Hex, ops: [existingOp] })
+    const existingOp = {
+      to: '0xdeadbeef00000000000000000000000000000000' as `0x${string}`,
+      value: 0n,
+      data: '0xabcd1234' as Hex,
+    }
+    const element = makeElement({
+      vt: `0x${'00'.repeat(32)}` as Hex,
+      ops: [existingOp],
+    })
     const signers: SessionSignerSet = {
       type: 'experimental_session',
       session: { ...makeSession(base.id), chain: base },
@@ -392,7 +413,6 @@ describe('injectDummyPreClaimOps', () => {
 
     await injectDummyPreClaimOps(makeConfig(), signers, intentRoute)
 
-    expect(isSessionEnabledSpy).not.toHaveBeenCalled()
     expect(element.mandate.preClaimOps.ops).toHaveLength(0)
   })
 
@@ -407,39 +427,59 @@ describe('injectDummyPreClaimOps', () => {
 
     await injectDummyPreClaimOps(makeConfig(), signers, intentRoute)
 
-    expect(isSessionEnabledSpy).not.toHaveBeenCalled()
     expect(element.mandate.preClaimOps.ops).toHaveLength(0)
   })
 
   test('handles multiple elements — injects only into not-enabled ones', async () => {
     isSessionEnabledSpy
       .mockResolvedValueOnce(false) // base — not enabled
-      .mockResolvedValueOnce(true)  // optimism — already enabled
+      .mockResolvedValueOnce(true) // optimism — already enabled
 
-    const elementBase = makeElement({ vt: `0x${'00'.repeat(32)}` as Hex, ops: [] })
+    const elementBase = makeElement({
+      vt: `0x${'00'.repeat(32)}` as Hex,
+      ops: [],
+    })
     const elementOpt = {
       chainId: String(optimism.id),
       mandate: { preClaimOps: { vt: `0x${'00'.repeat(32)}` as Hex, ops: [] } },
     } as unknown as IntentOpElement
 
-    const sessionWithActions = (chainId: number, chain: typeof base) => ({
+    const sessionWithActions = (
+      chainId: number,
+      chain: typeof base | typeof optimism,
+    ) => ({
       ...makeSession(chainId),
       chain,
-      actions: [{ target: '0x1111111111111111111111111111111111111111' as `0x${string}`, selector: '0xdeadbeef' as `0x${string}` }],
+      actions: [
+        {
+          target: '0x1111111111111111111111111111111111111111' as `0x${string}`,
+          selector: '0xdeadbeef' as `0x${string}`,
+        },
+      ],
     })
     const sessions: SessionSignerSet = {
       type: 'experimental_session',
       sessions: {
-        [base.id]: { session: sessionWithActions(base.id, base), enableData: makeEnableData() },
-        [optimism.id]: { session: sessionWithActions(optimism.id, optimism), enableData: makeEnableData() },
+        [base.id]: {
+          session: sessionWithActions(base.id, base),
+          enableData: makeEnableData(),
+        },
+        [optimism.id]: {
+          session: sessionWithActions(optimism.id, optimism),
+          enableData: makeEnableData(),
+        },
       },
     }
-    const intentRoute = { intentOp: { elements: [elementBase, elementOpt] } } as any
+    const intentRoute = {
+      intentOp: { elements: [elementBase, elementOpt] },
+    } as any
 
     await injectDummyPreClaimOps(makeConfig(), sessions, intentRoute)
 
     expect(elementBase.mandate.preClaimOps.ops).toHaveLength(1)
-    expect(elementBase.mandate.preClaimOps.ops[0].to).toBe(DUMMY_PRECLAIMOP_TARGET)
+    expect(elementBase.mandate.preClaimOps.ops[0].to).toBe(
+      DUMMY_PRECLAIMOP_TARGET,
+    )
     expect(elementOpt.mandate.preClaimOps.ops).toHaveLength(0)
   })
 })
