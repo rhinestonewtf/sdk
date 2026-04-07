@@ -15,6 +15,8 @@ import type { Session } from '../../types'
 import type { ResolvedSessionSignerSet } from './smart-sessions'
 import {
   buildMockSignature,
+  DUMMY_PRECLAIMOP_SELECTOR,
+  DUMMY_PRECLAIMOP_TARGET,
   getPermissionId,
   getPolicyData,
   getSessionData,
@@ -145,9 +147,9 @@ describe('getSessionData', () => {
     )
   })
 
-  test('explicit actions → user action + 2 injected (WETH deposit + intent-execution fallback)', () => {
+  test('explicit actions → user action + 3 injected (WETH deposit + intent-execution fallback + dummy preclaimop)', () => {
     const data = getSessionData(sessionWithAction)
-    expect(data.actions).toHaveLength(3)
+    expect(data.actions).toHaveLength(4)
     expect(data.actions[0].actionTarget).toBe(
       '0x1111111111111111111111111111111111111111',
     )
@@ -159,6 +161,28 @@ describe('getSessionData', () => {
     expect(data.actions[2].actionTarget).toBe(
       SMART_SESSIONS_FALLBACK_TARGET_FLAG,
     )
+    // injected dummy preclaimop action
+    expect(data.actions[3].actionTarget).toBe(DUMMY_PRECLAIMOP_TARGET)
+    expect(data.actions[3].actionTargetSelector).toBe(DUMMY_PRECLAIMOP_SELECTOR)
+  })
+
+  test('dummy preclaimop action uses sudo policy', () => {
+    const data = getSessionData(sessionWithAction)
+    const dummyAction = data.actions.find(
+      (a) => a.actionTargetSelector === DUMMY_PRECLAIMOP_SELECTOR,
+    )
+    expect(dummyAction).toBeDefined()
+    expect(dummyAction!.actionPolicies).toHaveLength(1)
+    expect(dummyAction!.actionPolicies[0].policy).toBe(SUDO_POLICY_ADDRESS)
+    expect(dummyAction!.actionPolicies[0].initData).toBe('0x')
+  })
+
+  test('no explicit actions → sudoAction fallback only (dummy injected via injectedActions path is not used)', () => {
+    // Sessions without explicit actions use the [sudoAction] fallback directly,
+    // which covers all (target, selector) pairs — no dummy action needed.
+    const data = getSessionData(baseSession)
+    expect(data.actions).toHaveLength(1)
+    expect(data.actions[0].actionTarget).toBe(SMART_SESSIONS_FALLBACK_TARGET_FLAG)
   })
 
   test('multiple policies on one action', () => {

@@ -209,6 +209,17 @@ const SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG: Hex = '0x00000001'
 const SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG_PERMITTED_TO_CALL_SMARTSESSION: Hex =
   '0x00000002'
 
+// Dummy preclaimop action injected into every session so that the filler can trigger
+// verifyExecution (ENABLE mode) using an injected dummy preclaimop when there are no
+// real preclaimops. Target 0x...0001 is the ecRecover precompile; calls to it fail
+// silently because preclaimops are failure-tolerant. Selector 0x69123456 is
+// intentionally uncommon. Note: this address is the same as
+// SMART_SESSIONS_FALLBACK_TARGET_FLAG — that is harmless because they operate in
+// different contexts (action matching vs. literal execution target).
+const DUMMY_PRECLAIMOP_TARGET: Address =
+  '0x0000000000000000000000000000000000000001'
+const DUMMY_PRECLAIMOP_SELECTOR: Hex = '0x69123456'
+
 const SPENDING_LIMITS_POLICY_ADDRESS: Address =
   '0x00000088d48cf102a8cdb0137a9b173f957c6343'
 const TIME_FRAME_POLICY_ADDRESS: Address =
@@ -683,6 +694,14 @@ function getSessionData(
     ...(!userHasFallbackAction
       ? [{ policies: [{ type: 'intent-execution' as const }] }]
       : []),
+    // Dummy action: allows the filler to call verifyExecution in ENABLE mode using
+    // an injected dummy preclaimop so any session can be enabled on-chain without
+    // a separate UserOp, regardless of whether it has claim or action policies.
+    {
+      target: DUMMY_PRECLAIMOP_TARGET,
+      selector: DUMMY_PRECLAIMOP_SELECTOR,
+      policies: [{ type: 'sudo' as const }],
+    },
   ]
 
   const actions = session.actions
@@ -994,6 +1013,8 @@ export {
   SMART_SESSIONS_FALLBACK_TARGET_FLAG,
   SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
   SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG_PERMITTED_TO_CALL_SMARTSESSION,
+  DUMMY_PRECLAIMOP_TARGET,
+  DUMMY_PRECLAIMOP_SELECTOR,
   SPENDING_LIMITS_POLICY_ADDRESS,
   TIME_FRAME_POLICY_ADDRESS,
   SUDO_POLICY_ADDRESS,

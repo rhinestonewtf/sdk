@@ -58,6 +58,8 @@ import { getIntentExecutor } from '../modules'
 import type { Module } from '../modules/common'
 import {
   buildMockSignature,
+  DUMMY_PRECLAIMOP_SELECTOR,
+  DUMMY_PRECLAIMOP_TARGET,
   getOwnerValidator,
   getPermissionId,
   getSmartSessionValidator,
@@ -214,6 +216,61 @@ interface SignedUserOperationData extends PreparedUserOperationData {
   signature: Hex
 }
 
+// vt encodes ERC7579 execution (0x02) + EMISSARY_EXECUTION_ERC1271 sig mode (0x05),
+// padded right to 32 bytes — matches the signatureMode used for session signers.
+const DUMMY_PRECLAIMOP_VT: Hex = `0x0205${'00'.repeat(30)}`
+
+async function injectDummyPreClaimOps(
+  config: RhinestoneConfig,
+  signers: SessionSignerSet,
+  intentRoute: IntentRoute,
+): Promise<void> {
+  for (const element of intentRoute.intentOp.elements) {
+    // If there are already preClaimOps, the filler handles session enabling during claim
+    if (element.mandate.preClaimOps.ops.length > 0) continue
+
+    const chainId = Number(element.chainId)
+    const resolvedSession = resolveSessionForChain(signers, chainId)
+    const { session, enableData, verifyExecutions: sessionVerifyExecutions } =
+      resolvedSession
+
+    // Only inject when the session will produce a verifyExecution (ENABLE mode)
+    // signature — same derivation as resolveSignersForChain. Sessions without
+    // explicit actions default to verifyExecutions=false and use USE mode, so
+    // injecting a dummy preclaimop for them would cause the filler to call
+    // verifyExecution against a session that isn't enabled yet.
+    const verifyExecutions =
+      sessionVerifyExecutions ?? signers.verifyExecutions ?? !!session.actions?.length
+    if (!verifyExecutions) continue
+
+    // Only act for sessions that have enable data (i.e. need enabling)
+    if (!enableData) continue
+
+    // Skip if the session is already enabled on this chain
+    const enabled = await isSessionEnabled(
+      getAddress(config),
+      config.provider,
+      session,
+      config.useDevContracts,
+    )
+    if (enabled) continue
+
+    // Session not enabled and no preclaimops — inject a dummy preclaimop so the
+    // filler can trigger verifyExecution in ENABLE mode to enable the session
+    // on-chain without requiring a separate UserOp.
+    element.mandate.preClaimOps = {
+      vt: DUMMY_PRECLAIMOP_VT,
+      ops: [
+        {
+          to: DUMMY_PRECLAIMOP_TARGET,
+          value: 0n,
+          data: DUMMY_PRECLAIMOP_SELECTOR,
+        },
+      ],
+    }
+  }
+}
+
 async function prepareTransaction(
   config: RhinestoneConfig,
   transaction: Transaction,
@@ -262,6 +319,10 @@ async function prepareTransaction(
     account,
     signers,
   )
+
+  if (signers?.type === 'experimental_session') {
+    await injectDummyPreClaimOps(config, signers, intentRoute)
+  }
 
   return {
     intentRoute,
@@ -1785,6 +1846,8 @@ export {
   getTargetExecutionSignature,
   hashErc7739TypedDataForSolady,
   resolveSessionForChain,
+  injectDummyPreClaimOps,
+  DUMMY_PRECLAIMOP_VT,
 }
 export type {
   InternalSignerSet,
