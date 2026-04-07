@@ -193,7 +193,9 @@ describe('getSessionData', () => {
     const sessionWithEmptyActions: Session = { ...baseSession, actions: [] }
     const data = getSessionData(sessionWithEmptyActions)
     expect(data.actions).toHaveLength(1)
-    expect(data.actions[0].actionTarget).toBe(SMART_SESSIONS_FALLBACK_TARGET_FLAG)
+    expect(data.actions[0].actionTarget).toBe(
+      SMART_SESSIONS_FALLBACK_TARGET_FLAG,
+    )
   })
 
   test('multiple policies on one action', () => {
