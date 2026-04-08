@@ -24,6 +24,10 @@ import {
 import { walletClientToAccount, wrapParaAccount } from './accounts/walletClient'
 import { deployAccountsForOwners } from './actions/deployment'
 import {
+  type ContractPermissions,
+  definePermissions,
+} from './actions/permissions'
+import {
   getIntentStatus as getIntentStatusInternal,
   getPortfolio as getPortfolioInternal,
   sendTransaction as sendTransactionInternal,
@@ -634,6 +638,8 @@ export {
   // Multi-chain permit2 signing
   signPermit2Batch,
   signPermit2Sequential,
+  // Permission builder
+  definePermissions,
 }
 export type {
   RhinestoneAccount,
@@ -682,4 +688,6 @@ export type {
   MultiChainPermit2Config,
   MultiChainPermit2Result,
   BatchPermit2Result,
+  // Permission builder types
+  ContractPermissions,
 }
