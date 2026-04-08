@@ -1,69 +1,78 @@
 /**
- * Example: Using definePermissions to build complex session key permissions
+ * Example: Using definePermissions with complex, multi-param functions
  *
- * This example demonstrates a DeFi session key that grants a backend
- * limited, scoped access to a Uniswap V3 router and an ERC-20 token.
- * It combines param-level constraints (universal-action policy) with
- * spending limits, time windows, and usage caps.
+ * Shows how param-level rules (universal-action policy) work on functions
+ * with many static arguments — not just simple ERC-20 transfers.
  */
 import type { Address } from 'viem'
 import { base } from 'viem/chains'
 import { definePermissions } from '../actions/permissions'
 import type { Session } from '../types'
 
-// -- Contracts ----------------------------------------------------------------
+// -- Constants ----------------------------------------------------------------
 
 const USDC: Address = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
+const WETH: Address = '0x4200000000000000000000000000000000000006'
 const TREASURY: Address = '0x000000000000000000000000000000000000dead'
+const POOL: Address = '0x0000000000000000000000000000000000000042'
+const LENDING_POOL: Address = '0x0000000000000000000000000000000000C0FFEE'
 
-// Minimal Uniswap V3 SwapRouter ABI (only the functions we need)
-const swapRouterAbi = [
+// -- ABIs ---------------------------------------------------------------------
+
+// A lending protocol with complex multi-arg functions
+const lendingPoolAbi = [
   {
     type: 'function',
-    name: 'exactInputSingle',
+    name: 'deposit',
     inputs: [
-      {
-        name: 'params',
-        type: 'tuple',
-        components: [
-          { name: 'tokenIn', type: 'address' },
-          { name: 'tokenOut', type: 'address' },
-          { name: 'fee', type: 'uint24' },
-          { name: 'recipient', type: 'address' },
-          { name: 'deadline', type: 'uint256' },
-          { name: 'amountIn', type: 'uint256' },
-          { name: 'amountOutMinimum', type: 'uint256' },
-          { name: 'sqrtPriceLimitX96', type: 'uint160' },
-        ],
-      },
+      { name: 'asset', type: 'address' }, // which token to deposit
+      { name: 'amount', type: 'uint256' }, // how much
+      { name: 'onBehalfOf', type: 'address' }, // credit goes to
+      { name: 'referralCode', type: 'uint16' }, // referral tracking
     ],
-    outputs: [{ name: 'amountOut', type: 'uint256' }],
-    stateMutability: 'payable',
+    outputs: [],
+    stateMutability: 'nonpayable',
   },
   {
     type: 'function',
-    name: 'exactOutputSingle',
+    name: 'borrow',
     inputs: [
-      {
-        name: 'params',
-        type: 'tuple',
-        components: [
-          { name: 'tokenIn', type: 'address' },
-          { name: 'tokenOut', type: 'address' },
-          { name: 'fee', type: 'uint24' },
-          { name: 'recipient', type: 'address' },
-          { name: 'amountOut', type: 'uint256' },
-          { name: 'amountInMaximum', type: 'uint256' },
-          { name: 'sqrtPriceLimitX96', type: 'uint160' },
-        ],
-      },
+      { name: 'asset', type: 'address' }, // token to borrow
+      { name: 'amount', type: 'uint256' }, // how much
+      { name: 'interestRateMode', type: 'uint256' }, // 1=stable, 2=variable
+      { name: 'referralCode', type: 'uint16' }, // referral tracking
+      { name: 'onBehalfOf', type: 'address' }, // who takes the debt
     ],
-    outputs: [{ name: 'amountIn', type: 'uint256' }],
-    stateMutability: 'payable',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'repay',
+    inputs: [
+      { name: 'asset', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+      { name: 'interestRateMode', type: 'uint256' },
+      { name: 'onBehalfOf', type: 'address' },
+    ],
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'liquidationCall',
+    inputs: [
+      { name: 'collateralAsset', type: 'address' },
+      { name: 'debtAsset', type: 'address' },
+      { name: 'user', type: 'address' },
+      { name: 'debtToCover', type: 'uint256' },
+      { name: 'receiveAToken', type: 'bool' },
+    ],
+    outputs: [],
+    stateMutability: 'nonpayable',
   },
 ] as const
 
-// ERC-20 ABI (transfer + approve only)
 const erc20Abi = [
   {
     type: 'function',
@@ -89,97 +98,132 @@ const erc20Abi = [
 
 // -- Permissions --------------------------------------------------------------
 
-const SWAP_ROUTER: Address = '0x2626664c2603336E57B271c5C0b26F421741e481'
-const ALLOWED_SPENDER: Address = SWAP_ROUTER
-
 const now = Date.now()
-const ONE_HOUR = 60 * 60 * 1000
+const ONE_DAY = 24 * 60 * 60 * 1000
 
-// 1) USDC permissions: transfer only to treasury, approve only the router
-const usdcActions = definePermissions({
+// 1) Lending pool: deposit, borrow, repay, liquidate — each with param rules
+//
+//    Every `params` block generates a universal-action policy. The helper
+//    computes calldataOffset from the parameter's position in the ABI:
+//      index 0 → offset 0    (bytes 0–31)
+//      index 1 → offset 32   (bytes 32–63)
+//      index 2 → offset 64   (bytes 64–95)
+//      index 3 → offset 96   (bytes 96–127)
+//      index 4 → offset 128  (bytes 128–159)
+//
+const lendingActions = definePermissions({
+  abi: lendingPoolAbi,
+  address: LENDING_POOL,
+  functions: {
+    // deposit: only USDC, only to our own account, max 50k per call
+    deposit: {
+      policies: [
+        { type: 'usage-limit', limit: 100n },
+        { type: 'time-frame', validAfter: now, validUntil: now + ONE_DAY },
+      ],
+      // Generates a universal-action policy with 3 rules:
+      //   rule 0: calldata[0:32]  == USDC       (asset must be USDC)
+      //   rule 1: calldata[32:64] <= 50k        (amount capped)
+      //   rule 2: calldata[64:96] == TREASURY   (credit goes to treasury)
+      params: {
+        asset: { condition: 'equal', value: USDC },
+        amount: { condition: 'lessThanOrEqual', value: 50_000n * 10n ** 6n },
+        onBehalfOf: { condition: 'equal', value: TREASURY },
+      },
+    },
+
+    // borrow: only WETH, variable rate only, max 10 WETH, debt to treasury
+    borrow: {
+      policies: [{ type: 'usage-limit', limit: 10n }],
+      // Generates a universal-action policy with 4 rules across 5 params:
+      //   rule 0: calldata[0:32]   == WETH       (borrow WETH only)
+      //   rule 1: calldata[32:64]  <= 10 ETH     (max borrow amount)
+      //   rule 2: calldata[64:96]  == 2          (variable rate mode)
+      //   rule 3: calldata[128:160] == TREASURY  (debt assigned to treasury)
+      //
+      // Note: referralCode (index 3, offset 96) is skipped — no constraint.
+      // Only params you list get rules. The rest are unconstrained.
+      params: {
+        asset: { condition: 'equal', value: WETH },
+        amount: { condition: 'lessThanOrEqual', value: 10n * 10n ** 18n },
+        interestRateMode: { condition: 'equal', value: 2n },
+        onBehalfOf: { condition: 'equal', value: TREASURY },
+      },
+    },
+
+    // repay: allow repaying any amount of USDC, variable rate, for treasury
+    repay: {
+      policies: [{ type: 'usage-limit', limit: 50n }],
+      params: {
+        asset: { condition: 'equal', value: USDC },
+        interestRateMode: { condition: 'equal', value: 2n },
+        onBehalfOf: { condition: 'equal', value: TREASURY },
+      },
+    },
+
+    // liquidationCall: lock down all 5 params
+    //   - only liquidate WETH collateral / USDC debt
+    //   - only for a specific user (the pool)
+    //   - max 5k USDC debt coverage per call
+    //   - must receive aTokens (not underlying)
+    liquidationCall: {
+      policies: [
+        { type: 'usage-limit', limit: 5n },
+        { type: 'time-frame', validAfter: now, validUntil: now + ONE_DAY },
+      ],
+      // All 5 params constrained:
+      //   calldata[0:32]   == WETH   (collateralAsset)
+      //   calldata[32:64]  == USDC   (debtAsset)
+      //   calldata[64:96]  == POOL   (user to liquidate)
+      //   calldata[96:128] <= 5000e6 (debtToCover)
+      //   calldata[128:160] == true  (receiveAToken)
+      params: {
+        collateralAsset: { condition: 'equal', value: WETH },
+        debtAsset: { condition: 'equal', value: USDC },
+        user: { condition: 'equal', value: POOL },
+        debtToCover: {
+          condition: 'lessThanOrEqual',
+          value: 5_000n * 10n ** 6n,
+        },
+        receiveAToken: { condition: 'equal', value: true },
+      },
+    },
+  },
+})
+
+// 2) Token approvals for the lending pool
+const tokenActions = definePermissions({
   abi: erc20Abi,
   address: USDC,
   functions: {
-    // Allow transfers only to the treasury, capped at 10k USDC per call
-    transfer: {
-      policies: [
-        // Max 50 transfer calls total
-        { type: 'usage-limit', limit: 50n },
-        // Only valid for the next hour
-        {
-          type: 'time-frame',
-          validAfter: now,
-          validUntil: now + ONE_HOUR,
-        },
-        // Spend at most 100k USDC across all calls
-        {
-          type: 'spending-limits',
-          limits: [{ token: USDC, amount: 100_000n * 10n ** 6n }],
-        },
-      ],
-      // Param-level constraints generate a universal-action policy automatically
-      params: {
-        to: { condition: 'equal', value: TREASURY },
-        amount: { condition: 'lessThanOrEqual', value: 10_000n * 10n ** 6n },
-      },
-    },
-    // Allow approvals only for the swap router, max 50k USDC
     approve: {
       policies: [{ type: 'usage-limit', limit: 5n }],
       params: {
-        spender: { condition: 'equal', value: ALLOWED_SPENDER },
+        spender: { condition: 'equal', value: LENDING_POOL },
         amount: { condition: 'lessThanOrEqual', value: 50_000n * 10n ** 6n },
       },
     },
   },
 })
 
-// 2) Swap router permissions: allow exactInputSingle and exactOutputSingle
-//    with value limit (max 1 ETH of native value per swap call)
-const swapActions = definePermissions({
-  abi: swapRouterAbi,
-  address: SWAP_ROUTER,
-  functions: {
-    // exactInputSingle: allow with a native value cap
-    exactInputSingle: {
-      valueLimitPerUse: 10n ** 18n, // max 1 ETH per call
-      policies: [
-        { type: 'usage-limit', limit: 20n },
-        {
-          type: 'time-frame',
-          validAfter: now,
-          validUntil: now + ONE_HOUR,
-        },
-      ],
-      // Note: tuple params (like `params` in exactInputSingle) are dynamic at
-      // the ABI level, so we can't add param-level rules for them here.
-      // The universal-action policy is still created because of valueLimitPerUse.
-    },
-    // exactOutputSingle: policies only, no param constraints
-    exactOutputSingle: {
-      policies: [
-        { type: 'usage-limit', limit: 10n },
-        { type: 'value-limit', limit: 10n ** 18n },
-      ],
-    },
-  },
-})
-
 // -- Session ------------------------------------------------------------------
 
-// Combine permissions from both contracts into a single session
 const _session: Session = {
   chain: base,
   owners: {
     type: 'ecdsa',
-    accounts: [], // session key signer would go here
+    accounts: [],
     threshold: 1,
   },
-  actions: [...usdcActions, ...swapActions],
+  actions: [...lendingActions, ...tokenActions],
 }
 
-// The session.actions array now contains 4 scoped actions:
-//   1. USDC transfer  — param rules (to=treasury, amount<=10k) + usage + time + spending
-//   2. USDC approve   — param rules (spender=router, amount<=50k) + usage
-//   3. exactInputSingle — value limit + usage + time
-//   4. exactOutputSingle — usage + value limit
+// Result: 5 scoped actions, each with a universal-action policy generated
+// from params, plus additional policies (usage-limit, time-frame) stacked on.
+//
+// What the session key can do:
+//   1. deposit(USDC, ≤50k, to=treasury, any referral)      — 100 calls, 24h
+//   2. borrow(WETH, ≤10, variable rate, to=treasury)       — 10 calls
+//   3. repay(USDC, any amount, variable rate, for=treasury) — 50 calls
+//   4. liquidationCall(WETH/USDC, pool, ≤5k, aTokens)      — 5 calls, 24h
+//   5. approve(USDC, spender=lending pool, ≤50k)            — 5 calls
