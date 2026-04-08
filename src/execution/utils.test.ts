@@ -1,18 +1,16 @@
-import { type Hex, zeroAddress } from 'viem'
+import { zeroAddress } from 'viem'
 import { arbitrum, base, mainnet, optimism } from 'viem/chains'
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { accountA } from '../../test/consts'
 import * as validators from '../modules/validators'
 import {
   DUMMY_PRECLAIMOP_SELECTOR,
   DUMMY_PRECLAIMOP_TARGET,
 } from '../modules/validators'
-import type { IntentInput, IntentOpElement } from '../orchestrator/types'
-import type { RhinestoneConfig, SessionSignerSet } from '../types'
+import type { IntentInput } from '../orchestrator/types'
+import type { SessionSignerSet } from '../types'
 import {
-  DUMMY_PRECLAIMOP_VT,
   hashErc7739TypedDataForSolady,
-  injectDummyPreClaimOps,
   prepareTransactionAsIntent,
   resolveSessionForChain,
 } from './utils'
@@ -285,55 +283,37 @@ describe('resolveSessionForChain', () => {
 })
 
 // ---------------------------------------------------------------------------
-// injectDummyPreClaimOps
+// preClaimExecutions in routing request
 // ---------------------------------------------------------------------------
 
-const makeConfig = (): RhinestoneConfig => ({
-  owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
-  apiKey: 'test',
-})
-
 const makeEnableData = () => ({
-  userSignature: `0x${'00'.repeat(65)}` as Hex,
+  userSignature: `0x${'00'.repeat(65)}` as `0x${string}`,
   hashesAndChainIds: [
-    { chainId: BigInt(base.id), sessionDigest: `0x${'00'.repeat(32)}` as Hex },
+    {
+      chainId: BigInt(base.id),
+      sessionDigest: `0x${'00'.repeat(32)}` as `0x${string}`,
+    },
   ],
   sessionToEnableIndex: 0,
 })
 
-const makeElement = (preClaimOps: {
-  vt: Hex
-  ops: { to: `0x${string}`; value: bigint; data: Hex }[]
-}): IntentOpElement =>
-  ({
-    chainId: String(base.id),
-    mandate: {
-      preClaimOps,
-    },
-  }) as unknown as IntentOpElement
-
-describe('injectDummyPreClaimOps', () => {
+describe('prepareTransactionAsIntent — preClaimExecutions', () => {
   let isSessionEnabledSpy: any
 
   beforeEach(() => {
+    mockGetIntentRoute.mockReset()
+    mockGetIntentRoute.mockResolvedValue({ intentOp: {}, intentCost: {} })
     isSessionEnabledSpy = vi
       .spyOn(validators, 'isSessionEnabled')
       .mockResolvedValue(false)
   })
 
-  afterEach(() => {
-    isSessionEnabledSpy.mockRestore()
-  })
-
-  test('injects dummy preclaimop when session is not enabled and has no preclaimops', async () => {
-    // isSessionEnabledSpy already returns false by default from beforeEach
-    const element = makeElement({ vt: `0x${'00'.repeat(32)}` as Hex, ops: [] })
+  test('includes dummy preclaimop in preClaimExecutions when session needs enabling', async () => {
     const signers: SessionSignerSet = {
       type: 'experimental_session',
-      // explicit action → verifyExecutions=true → ENABLE mode signature
       session: {
-        ...makeSession(base.id),
         chain: base,
+        owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
         actions: [
           {
             target:
@@ -344,141 +324,162 @@ describe('injectDummyPreClaimOps', () => {
       },
       enableData: makeEnableData(),
     }
-    const intentRoute = { intentOp: { elements: [element] } } as any
 
-    await injectDummyPreClaimOps(makeConfig(), signers, intentRoute)
-
-    expect(element.mandate.preClaimOps.ops).toHaveLength(1)
-    expect(element.mandate.preClaimOps.ops[0].to).toBe(DUMMY_PRECLAIMOP_TARGET)
-    expect(element.mandate.preClaimOps.ops[0].data).toBe(
-      DUMMY_PRECLAIMOP_SELECTOR,
-    )
-    expect(element.mandate.preClaimOps.ops[0].value).toBe(0n)
-    expect(element.mandate.preClaimOps.vt).toBe(DUMMY_PRECLAIMOP_VT)
-  })
-
-  test('does not inject when preclaimops already present', async () => {
-    // isSessionEnabledSpy already returns false from beforeEach, but won't be reached
-    const existingOp = {
-      to: '0xdeadbeef00000000000000000000000000000000' as `0x${string}`,
-      value: 0n,
-      data: '0xabcd1234' as Hex,
-    }
-    const element = makeElement({
-      vt: `0x${'00'.repeat(32)}` as Hex,
-      ops: [existingOp],
-    })
-    const signers: SessionSignerSet = {
-      type: 'experimental_session',
-      session: { ...makeSession(base.id), chain: base },
-      enableData: makeEnableData(),
-    }
-    const intentRoute = { intentOp: { elements: [element] } } as any
-
-    await injectDummyPreClaimOps(makeConfig(), signers, intentRoute)
-
-    expect(element.mandate.preClaimOps.ops).toHaveLength(1)
-    expect(element.mandate.preClaimOps.ops[0]).toBe(existingOp)
-  })
-
-  test('does not inject when session is already enabled', async () => {
-    isSessionEnabledSpy.mockResolvedValue(true)
-
-    const element = makeElement({ vt: `0x${'00'.repeat(32)}` as Hex, ops: [] })
-    const signers: SessionSignerSet = {
-      type: 'experimental_session',
-      session: { ...makeSession(base.id), chain: base },
-      enableData: makeEnableData(),
-    }
-    const intentRoute = { intentOp: { elements: [element] } } as any
-
-    await injectDummyPreClaimOps(makeConfig(), signers, intentRoute)
-
-    expect(element.mandate.preClaimOps.ops).toHaveLength(0)
-  })
-
-  test('does not inject when verifyExecutions is false (session without explicit actions)', async () => {
-    // Sessions without explicit actions derive verifyExecutions=false, so they use
-    // USE mode signatures. Injecting a dummy preclaimop would make the filler call
-    // verifyExecution against a session that isn't enabled yet.
-    const element = makeElement({ vt: `0x${'00'.repeat(32)}` as Hex, ops: [] })
-    const signers: SessionSignerSet = {
-      type: 'experimental_session',
-      // no actions → verifyExecutions defaults to false
-      session: { ...makeSession(base.id), chain: base },
-      enableData: makeEnableData(),
-    }
-    const intentRoute = { intentOp: { elements: [element] } } as any
-
-    await injectDummyPreClaimOps(makeConfig(), signers, intentRoute)
-
-    expect(element.mandate.preClaimOps.ops).toHaveLength(0)
-  })
-
-  test('does not inject when session has no enableData', async () => {
-    const element = makeElement({ vt: `0x${'00'.repeat(32)}` as Hex, ops: [] })
-    const signers: SessionSignerSet = {
-      type: 'experimental_session',
-      session: { ...makeSession(base.id), chain: base },
-      // no enableData
-    }
-    const intentRoute = { intentOp: { elements: [element] } } as any
-
-    await injectDummyPreClaimOps(makeConfig(), signers, intentRoute)
-
-    expect(element.mandate.preClaimOps.ops).toHaveLength(0)
-  })
-
-  test('handles multiple elements — injects only into not-enabled ones', async () => {
-    isSessionEnabledSpy
-      .mockResolvedValueOnce(false) // base — not enabled
-      .mockResolvedValueOnce(true) // optimism — already enabled
-
-    const elementBase = makeElement({
-      vt: `0x${'00'.repeat(32)}` as Hex,
-      ops: [],
-    })
-    const elementOpt = {
-      chainId: String(optimism.id),
-      mandate: { preClaimOps: { vt: `0x${'00'.repeat(32)}` as Hex, ops: [] } },
-    } as unknown as IntentOpElement
-
-    const sessionWithActions = (
-      chainId: number,
-      chain: typeof base | typeof optimism,
-    ) => ({
-      ...makeSession(chainId),
-      chain,
-      actions: [
-        {
-          target: '0x1111111111111111111111111111111111111111' as `0x${string}`,
-          selector: '0xdeadbeef' as `0x${string}`,
-        },
-      ],
-    })
-    const sessions: SessionSignerSet = {
-      type: 'experimental_session',
-      sessions: {
-        [base.id]: {
-          session: sessionWithActions(base.id, base),
-          enableData: makeEnableData(),
-        },
-        [optimism.id]: {
-          session: sessionWithActions(optimism.id, optimism),
-          enableData: makeEnableData(),
-        },
+    await prepareTransactionAsIntent(
+      {
+        owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+        apiKey: 'test',
       },
-    }
-    const intentRoute = {
-      intentOp: { elements: [elementBase, elementOpt] },
-    } as any
+      [base],
+      base,
+      [],
+      undefined,
+      [{ address: zeroAddress, amount: 1n }],
+      undefined,
+      false,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      signers,
+    )
 
-    await injectDummyPreClaimOps(makeConfig(), sessions, intentRoute)
-
-    expect(elementBase.mandate.preClaimOps.ops).toHaveLength(1)
-    expect(elementBase.mandate.preClaimOps.ops[0].to).toBe(
+    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    expect(intentInput.preClaimExecutions).toBeDefined()
+    expect(intentInput.preClaimExecutions![base.id]).toHaveLength(1)
+    expect(intentInput.preClaimExecutions![base.id][0].to).toBe(
       DUMMY_PRECLAIMOP_TARGET,
     )
-    expect(elementOpt.mandate.preClaimOps.ops).toHaveLength(0)
+    expect(intentInput.preClaimExecutions![base.id][0].data).toBe(
+      DUMMY_PRECLAIMOP_SELECTOR,
+    )
+  })
+
+  test('omits preClaimExecutions when session is already enabled', async () => {
+    isSessionEnabledSpy.mockResolvedValue(true)
+
+    const signers: SessionSignerSet = {
+      type: 'experimental_session',
+      session: {
+        chain: base,
+        owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+        actions: [
+          {
+            target:
+              '0x1111111111111111111111111111111111111111' as `0x${string}`,
+            selector: '0xdeadbeef' as `0x${string}`,
+          },
+        ],
+      },
+      enableData: makeEnableData(),
+    }
+
+    await prepareTransactionAsIntent(
+      {
+        owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+        apiKey: 'test',
+      },
+      [base],
+      base,
+      [],
+      undefined,
+      [{ address: zeroAddress, amount: 1n }],
+      undefined,
+      false,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      signers,
+    )
+
+    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    expect(intentInput.preClaimExecutions).toBeUndefined()
+  })
+
+  test('omits preClaimExecutions when session has no enableData', async () => {
+    const signers: SessionSignerSet = {
+      type: 'experimental_session',
+      session: {
+        chain: base,
+        owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+        actions: [
+          {
+            target:
+              '0x1111111111111111111111111111111111111111' as `0x${string}`,
+            selector: '0xdeadbeef' as `0x${string}`,
+          },
+        ],
+      },
+      // no enableData
+    }
+
+    await prepareTransactionAsIntent(
+      {
+        owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+        apiKey: 'test',
+      },
+      [base],
+      base,
+      [],
+      undefined,
+      [{ address: zeroAddress, amount: 1n }],
+      undefined,
+      false,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      signers,
+    )
+
+    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    expect(intentInput.preClaimExecutions).toBeUndefined()
+  })
+
+  test('omits preClaimExecutions when session has no explicit actions (verifyExecutions=false)', async () => {
+    const signers: SessionSignerSet = {
+      type: 'experimental_session',
+      session: {
+        chain: base,
+        owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+        // no actions → verifyExecutions defaults to false
+      },
+      enableData: makeEnableData(),
+    }
+
+    await prepareTransactionAsIntent(
+      {
+        owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+        apiKey: 'test',
+      },
+      [base],
+      base,
+      [],
+      undefined,
+      [{ address: zeroAddress, amount: 1n }],
+      undefined,
+      false,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      signers,
+    )
+
+    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    expect(intentInput.preClaimExecutions).toBeUndefined()
   })
 })
