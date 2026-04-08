@@ -131,10 +131,16 @@ describe('jcsCanonicalise', () => {
     expect(jcsCanonicalise({ a: 1, b: undefined, c: 3 })).toBe('{"a":1,"c":3}')
   })
 
-  it('coerces BigInt to string', () => {
+  it('coerces safe BigInt to number string', () => {
     expect(jcsCanonicalise({ amount: BigInt('1000000') })).toBe(
       '{"amount":1000000}',
     )
+  })
+
+  it('throws on BigInt exceeding safe integer range', () => {
+    expect(() =>
+      jcsCanonicalise({ amount: BigInt('9007199254740992') }),
+    ).toThrow(/exceeds safe integer range/)
   })
 
   it('normalizes negative zero to zero', () => {

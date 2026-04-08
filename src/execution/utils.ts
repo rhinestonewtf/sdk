@@ -1409,7 +1409,9 @@ async function submitIntentInternal(
     targetExecutionSignature,
     authorizations,
   )
-  const isSponsored = !!(intentOp as any).sponsorSettings
+  const isSponsored = !!(
+    intentInput as { options?: { sponsorSettings?: unknown } } | undefined
+  )?.options?.sponsorSettings
   const orchestrator = getOrchestrator(
     config._authProvider ?? createAuthProvider(config),
     config.endpointUrl,

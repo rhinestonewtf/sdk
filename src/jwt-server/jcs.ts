@@ -33,7 +33,18 @@ function serialize(value: unknown): string {
       return JSON.stringify(value)
 
     case 'bigint':
-      // BigInt is not valid JSON; coerce to number string for interop
+      // BigInt is not valid JSON; coerce to bare decimal string.
+      // Values above MAX_SAFE_INTEGER are rejected because downstream
+      // JSON parsers using IEEE 754 doubles would silently lose precision,
+      // producing a different digest.
+      if (
+        value > BigInt(Number.MAX_SAFE_INTEGER) ||
+        value < BigInt(-Number.MAX_SAFE_INTEGER)
+      ) {
+        throw new Error(
+          `JCS: BigInt ${value} exceeds safe integer range — convert to string before calling`,
+        )
+      }
       return String(value)
 
     default:
