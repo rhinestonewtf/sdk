@@ -704,26 +704,41 @@ function getSessionData(
     },
   ]
 
+  // Map a list of actions (user-defined + injected) to the on-chain format.
+  const mapActions = (acts: Action[]) =>
+    acts.map((action) => ({
+      actionTargetSelector:
+        'selector' in action
+          ? action.selector
+          : SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
+      actionTarget:
+        'target' in action
+          ? action.target
+          : SMART_SESSIONS_FALLBACK_TARGET_FLAG,
+      actionPolicies: action.policies?.map((policy) =>
+        getPolicyData(policy, useDevContracts),
+      ) ?? [
+        {
+          policy: SUDO_POLICY_ADDRESS,
+          initData: '0x' as Hex,
+        },
+      ],
+    }))
+
   const actions = session.actions?.length
-    ? [...session.actions, ...injectedActions].map((action) => ({
-        actionTargetSelector:
-          'selector' in action
-            ? action.selector
-            : SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
-        actionTarget:
-          'target' in action
-            ? action.target
-            : SMART_SESSIONS_FALLBACK_TARGET_FLAG,
-        actionPolicies: action.policies?.map((policy) =>
-          getPolicyData(policy, useDevContracts),
-        ) ?? [
+    ? mapActions([...session.actions, ...injectedActions])
+    : // No explicit actions — still inject the dummy preclaimop action so the
+      // filler can call verifyExecution in ENABLE mode even for catch-all sessions.
+      [
+        sudoAction,
+        ...mapActions([
           {
-            policy: SUDO_POLICY_ADDRESS,
-            initData: '0x' as Hex,
+            target: DUMMY_PRECLAIMOP_TARGET,
+            selector: DUMMY_PRECLAIMOP_SELECTOR,
+            policies: [{ type: 'sudo' as const }],
           },
-        ],
-      }))
-    : [sudoAction]
+        ]),
+      ]
   return {
     sessionValidator: validator.address,
     salt: zeroHash,

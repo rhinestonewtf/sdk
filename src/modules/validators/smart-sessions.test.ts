@@ -136,15 +136,17 @@ describe('getPolicyData', () => {
 // ---------------------------------------------------------------------------
 
 describe('getSessionData', () => {
-  test('no actions → single sudoAction fallback', () => {
+  test('no actions → sudoAction fallback + dummy preclaimop action', () => {
     const data = getSessionData(baseSession)
-    expect(data.actions).toHaveLength(1)
+    expect(data.actions).toHaveLength(2)
     expect(data.actions[0].actionTarget).toBe(
       SMART_SESSIONS_FALLBACK_TARGET_FLAG,
     )
     expect(data.actions[0].actionTargetSelector).toBe(
       SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
     )
+    expect(data.actions[1].actionTarget).toBe(DUMMY_PRECLAIMOP_TARGET)
+    expect(data.actions[1].actionTargetSelector).toBe(DUMMY_PRECLAIMOP_SELECTOR)
   })
 
   test('explicit actions → user action + 3 injected (WETH deposit + intent-execution fallback + dummy preclaimop)', () => {
@@ -177,25 +179,14 @@ describe('getSessionData', () => {
     expect(dummyAction!.actionPolicies[0].initData).toBe('0x')
   })
 
-  test('no explicit actions → sudoAction fallback only (dummy injected via injectedActions path is not used)', () => {
-    // Sessions without explicit actions use the [sudoAction] fallback directly,
-    // which covers all (target, selector) pairs — no dummy action needed.
-    const data = getSessionData(baseSession)
-    expect(data.actions).toHaveLength(1)
-    expect(data.actions[0].actionTarget).toBe(
-      SMART_SESSIONS_FALLBACK_TARGET_FLAG,
-    )
-  })
-
-  test('empty actions array → same sudoAction fallback as no actions', () => {
-    // actions: [] is truthy but has no elements — must be treated the same as
-    // actions: undefined so injectedActions are not appended.
+  test('empty actions array → same as no actions (sudoAction + dummy)', () => {
     const sessionWithEmptyActions: Session = { ...baseSession, actions: [] }
     const data = getSessionData(sessionWithEmptyActions)
-    expect(data.actions).toHaveLength(1)
+    expect(data.actions).toHaveLength(2)
     expect(data.actions[0].actionTarget).toBe(
       SMART_SESSIONS_FALLBACK_TARGET_FLAG,
     )
+    expect(data.actions[1].actionTarget).toBe(DUMMY_PRECLAIMOP_TARGET)
   })
 
   test('multiple policies on one action', () => {
