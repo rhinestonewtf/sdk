@@ -206,13 +206,16 @@ const tokenActions = definePermissions({
   },
 })
 
-// -- Session ------------------------------------------------------------------
+// -- Session definition -------------------------------------------------------
 
-const _session: Session = {
+// The session key holder — a separate ECDSA key with limited permissions
+const sessionKeyAccount = {} as any // in practice: privateKeyToAccount('0x...')
+
+const session: Session = {
   chain: base,
   owners: {
     type: 'ecdsa',
-    accounts: [],
+    accounts: [sessionKeyAccount],
     threshold: 1,
   },
   actions: [...lendingActions, ...tokenActions],
@@ -227,3 +230,72 @@ const _session: Session = {
 //   3. repay(USDC, any amount, variable rate, for=treasury) — 50 calls
 //   4. liquidationCall(WETH/USDC, pool, ≤5k, aTokens)      — 5 calls, 24h
 //   5. approve(USDC, spender=lending pool, ≤50k)            — 5 calls
+
+// -- Enable session on the smart session emissary -----------------------------
+
+async function enableSession() {
+  // 1. Create the account with smart sessions enabled
+  const { createRhinestoneAccount } = await import('../index')
+
+  const account = await createRhinestoneAccount({
+    apiKey: 'YOUR_API_KEY',
+    owners: {
+      type: 'ecdsa',
+      accounts: [sessionKeyAccount], // the account owner
+      threshold: 1,
+    },
+    experimental_sessions: { enabled: true },
+  })
+
+  // 2. Prepare the session for signing — computes EIP-712 typed data
+  //    and fetches nonces from the on-chain emissary
+  const details = await account.experimental_getSessionDetails([session])
+
+  // 3. Owner signs the session — this authorizes the session key to act
+  //    within the defined permissions
+  const signature = await account.experimental_signEnableSession(details)
+
+  // 4. Submit a transaction that enables the session on-chain.
+  //    The emissary stores the permission config so it can verify
+  //    future calls from the session key.
+  const { experimental_enableSession } = await import(
+    '../actions/smart-sessions'
+  )
+
+  await account.sendTransaction({
+    chain: base,
+    calls: [
+      experimental_enableSession(
+        session,
+        signature,
+        details.hashesAndChainIds,
+        0,
+      ),
+    ],
+  })
+
+  // 5. Now the session key can execute scoped transactions.
+  //    The session key holder signs with their own key, and the emissary
+  //    validates each call against the stored permissions + policies.
+  await account.sendTransaction({
+    chain: base,
+    calls: [
+      {
+        to: LENDING_POOL,
+        data: '0x...', // encoded deposit(USDC, 10000e6, treasury, 0)
+      },
+    ],
+    signers: {
+      type: 'experimental_session',
+      session,
+      enableData: {
+        userSignature: signature,
+        hashesAndChainIds: details.hashesAndChainIds,
+        sessionToEnableIndex: 0,
+      },
+      verifyExecutions: true,
+    },
+  })
+}
+
+void enableSession
