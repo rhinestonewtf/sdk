@@ -62,7 +62,7 @@ interface Claim {
   claimTransactionHash?: Hex
 }
 
-export interface Execution {
+interface Execution {
   to: Address
   value: bigint
   data: Hex

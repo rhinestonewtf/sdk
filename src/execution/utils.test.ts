@@ -482,4 +482,66 @@ describe('prepareTransactionAsIntent — preClaimExecutions', () => {
     const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
     expect(intentInput.preClaimExecutions).toBeUndefined()
   })
+
+  test('injects only for not-yet-enabled chains when multiple source chains', async () => {
+    // base: not enabled → gets dummy preclaimop
+    // arbitrum: already enabled → skipped
+    isSessionEnabledSpy
+      .mockResolvedValueOnce(false) // base
+      .mockResolvedValueOnce(true) // arbitrum
+
+    const makeSessionWithActions = (chainId: number) => ({
+      ...makeSession(chainId),
+      actions: [
+        {
+          target: '0x1111111111111111111111111111111111111111' as `0x${string}`,
+          selector: '0xdeadbeef' as `0x${string}`,
+        },
+      ],
+    })
+
+    const signers: SessionSignerSet = {
+      type: 'experimental_session',
+      sessions: {
+        [base.id]: {
+          session: makeSessionWithActions(base.id) as any,
+          enableData: makeEnableData(),
+        },
+        [arbitrum.id]: {
+          session: makeSessionWithActions(arbitrum.id) as any,
+          enableData: makeEnableData(),
+        },
+      },
+    }
+
+    await prepareTransactionAsIntent(
+      {
+        owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+        apiKey: 'test',
+      },
+      [base, arbitrum],
+      base,
+      [],
+      undefined,
+      [{ address: zeroAddress, amount: 1n }],
+      undefined,
+      false,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      signers,
+    )
+
+    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    expect(intentInput.preClaimExecutions).toBeDefined()
+    expect(intentInput.preClaimExecutions![base.id]).toHaveLength(1)
+    expect(intentInput.preClaimExecutions![base.id][0].to).toBe(
+      DUMMY_PRECLAIMOP_TARGET,
+    )
+    expect(intentInput.preClaimExecutions![arbitrum.id]).toBeUndefined()
+  })
 })

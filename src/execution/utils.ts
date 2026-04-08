@@ -75,8 +75,8 @@ import type { Permit2ClaimMessage } from '../modules/validators/policies/claim/p
 import { buildPermit2ClaimPolicyCalldata } from '../modules/validators/policies/claim/permit2'
 import type { ResolvedSessionSignerSet } from '../modules/validators/smart-sessions'
 import {
-  getOrchestrator,
   type Execution,
+  getOrchestrator,
   type IntentInput,
   type IntentOp,
   type IntentRoute,
@@ -869,12 +869,17 @@ async function prepareTransactionAsIntent(
   // post-facto — because the orchestrator HMAC covers preClaimOps.
   const preClaimExecutions: Record<number, Execution[]> = {}
   if (signers?.type === 'experimental_session' && sourceChains) {
-    for (const chain of sourceChains) {
-      const resolved = await resolveSignersForChain(config, signers, chain.id)
+    const resolvedPerChain = await Promise.all(
+      sourceChains.map(async (chain) => ({
+        chainId: chain.id,
+        resolved: await resolveSignersForChain(config, signers, chain.id),
+      })),
+    )
+    for (const { chainId, resolved } of resolvedPerChain) {
       if (!isResolvedSessionSignerSet(resolved)) continue
       const { enableData, verifyExecutions } = resolved
       if (!verifyExecutions || !enableData) continue
-      preClaimExecutions[chain.id] = [
+      preClaimExecutions[chainId] = [
         {
           to: DUMMY_PRECLAIMOP_TARGET,
           value: 0n,
