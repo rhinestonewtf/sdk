@@ -76,6 +76,7 @@ import { buildPermit2ClaimPolicyCalldata } from '../modules/validators/policies/
 import type { ResolvedSessionSignerSet } from '../modules/validators/smart-sessions'
 import {
   getOrchestrator,
+  type Execution,
   type IntentInput,
   type IntentOp,
   type IntentRoute,

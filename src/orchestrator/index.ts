@@ -44,6 +44,7 @@ import {
 import type {
   ApprovalRequired,
   AuxiliaryFunds,
+  Execution,
   IntentInput,
   IntentOp,
   IntentOpStatus,
@@ -83,6 +84,7 @@ function getOrchestrator(
 
 export type {
   AuxiliaryFunds,
+  Execution,
   IntentInput,
   IntentOp,
   IntentOpStatus,
