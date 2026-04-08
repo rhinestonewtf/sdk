@@ -3,8 +3,133 @@ on:
   repository_dispatch:
     types: [shared-configs-update]
   workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   upgrade-shared-configs:
-    uses: rhinestonewtf/yeet/.github/workflows/reusable-bump-dependency.yml@main
-    with:
-      version: ${{ github.event.client_payload.version || '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect package manager
+        id: pm
+        shell: bash
+        run: |
+          if [ -f "bun.lock" ] || [ -f "bun.lockb" ]; then
+            echo "name=bun" >> "$GITHUB_OUTPUT"
+            echo "lockfile=bun.lock" >> "$GITHUB_OUTPUT"
+            echo "add=bun add" >> "$GITHUB_OUTPUT"
+            echo "install=bun install --frozen-lockfile" >> "$GITHUB_OUTPUT"
+          elif [ -f "pnpm-lock.yaml" ]; then
+            echo "name=pnpm" >> "$GITHUB_OUTPUT"
+            echo "lockfile=pnpm-lock.yaml" >> "$GITHUB_OUTPUT"
+            echo "add=pnpm add" >> "$GITHUB_OUTPUT"
+            echo "install=pnpm install --frozen-lockfile" >> "$GITHUB_OUTPUT"
+          elif [ -f "yarn.lock" ]; then
+            echo "name=yarn" >> "$GITHUB_OUTPUT"
+            echo "lockfile=yarn.lock" >> "$GITHUB_OUTPUT"
+            echo "add=yarn add" >> "$GITHUB_OUTPUT"
+            echo "install=yarn install --frozen-lockfile" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=npm" >> "$GITHUB_OUTPUT"
+            echo "lockfile=package-lock.json" >> "$GITHUB_OUTPUT"
+            echo "add=npm install" >> "$GITHUB_OUTPUT"
+            echo "install=npm ci" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Bun
+        if: steps.pm.outputs.name == 'bun'
+        uses: oven-sh/setup-bun@v2
+
+      - name: Setup Node
+        if: steps.pm.outputs.name != 'bun'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Setup pnpm
+        if: steps.pm.outputs.name == 'pnpm'
+        uses: pnpm/action-setup@v4
+
+      - name: Resolve version
+        id: resolve
+        shell: bash
+        run: |
+          VERSION="${{ github.event.client_payload.version || '' }}"
+          if [ -z "$VERSION" ]; then
+            VERSION=$(npm view "@rhinestone/shared-configs" version)
+            echo "Auto-detected latest version: ${VERSION}"
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Determine values
+        id: vars
+        shell: bash
+        run: |
+          VERSION="${{ steps.resolve.outputs.version }}"
+          BRANCH="upgrade/shared-configs-${VERSION}"
+
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
+          echo "install_command=${{ steps.pm.outputs.add }} @rhinestone/shared-configs@${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "files=package.json ${{ steps.pm.outputs.lockfile }}" >> "$GITHUB_OUTPUT"
+
+      - name: Check for existing branch
+        id: check
+        run: |
+          if git ls-remote --heads origin "${{ steps.vars.outputs.branch }}" | grep -q .; then
+            echo "Branch ${{ steps.vars.outputs.branch }} already exists, skipping"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install dependencies
+        if: steps.check.outputs.skip != 'true'
+        run: ${{ steps.pm.outputs.install }}
+
+      - name: Bump dependency
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          git checkout -b "${{ steps.vars.outputs.branch }}"
+          eval "${{ steps.vars.outputs.install_command }}"
+
+      - name: Commit and push
+        if: steps.check.outputs.skip != 'true'
+        id: commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ${{ steps.vars.outputs.files }}
+
+          if git diff --cached --quiet; then
+            echo "Already up to date"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          VERSION="${{ steps.vars.outputs.version }}"
+          git commit -m "upgrade(shared-configs): ${VERSION}"
+          git push origin "${{ steps.vars.outputs.branch }}"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Create PR
+        if: steps.check.outputs.skip != 'true' && steps.commit.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.vars.outputs.version }}"
+          gh pr create \
+            --title "upgrade(shared-configs): ${VERSION}" \
+            --body "Automated bump of \`@rhinestone/shared-configs\` to \`${VERSION}\`.
+
+          **Links:**
+          - [Release tag \`v${VERSION}\`](https://github.com/rhinestonewtf/yeet/releases/tag/v${VERSION})
+          - [npm package](https://www.npmjs.com/package/@rhinestone/shared-configs/v/${VERSION})
+
+          ---
+          *Created automatically by [yeet](https://github.com/rhinestonewtf/yeet) publish workflow.*" \
+            --head "${{ steps.vars.outputs.branch }}"

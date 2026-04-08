@@ -540,6 +540,7 @@ async function deploy(
   chain: Chain,
   params?: {
     sponsored?: boolean
+    eip7702InitSignature?: Hex
   },
 ): Promise<boolean> {
   const deployed = await isDeployed(config, chain)
@@ -569,7 +570,12 @@ async function deploy(
   if (asUserOp) {
     await deployWithBundler(chain, config)
   } else {
-    await deployWithIntent(chain, config, params?.sponsored ?? false)
+    await deployWithIntent(
+      chain,
+      config,
+      params?.sponsored ?? false,
+      params?.eip7702InitSignature,
+    )
   }
   return true
 }
@@ -648,6 +654,7 @@ async function deployWithIntent(
   chain: Chain,
   config: RhinestoneConfig,
   sponsored: boolean,
+  eip7702InitSignature?: Hex,
 ) {
   const publicClient = createPublicClient({
     chain,
@@ -659,11 +666,19 @@ async function deployWithIntent(
     // Already deployed
     return
   }
+
+  // For EIP-7702 accounts, auto-sign if no signature was provided
+  let initSignature = eip7702InitSignature
+  if (!initSignature && is7702(config)) {
+    initSignature = await signEip7702InitData(config)
+  }
+
   const result = await sendTransaction(config, {
     sourceChains: [chain],
     targetChain: chain,
     calls: [],
     sponsored,
+    eip7702InitSignature: initSignature,
   })
   await waitForExecution(config, result, true)
 }
