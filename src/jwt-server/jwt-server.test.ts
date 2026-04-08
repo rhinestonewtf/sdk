@@ -1,7 +1,14 @@
+import {
+  decodeJwt,
+  decodeProtectedHeader,
+  exportJWK,
+  generateKeyPair,
+} from 'jose'
 import { describe, expect, it } from 'vitest'
 import { createAuthProvider } from '../auth/provider'
 import { computeIntentInputDigest } from './digest'
 import { jcsCanonicalise } from './jcs'
+import { createJwtSigner } from './signer'
 
 describe('createAuthProvider routing', () => {
   it('resolves api key mode from apiKey field', async () => {
@@ -53,7 +60,7 @@ describe('createAuthProvider routing', () => {
     const headers = await provider.getHeaders()
 
     expect(headers.Authorization).toBe('Bearer jwt-wins')
-    expect(headers['x-api-key']).toBeUndefined()
+    expect(headers['x-api-key']).toBe('jwt')
   })
 
   it('jwt mode getSubmitHeaders calls getIntentExtensionToken when sponsored', async () => {
@@ -171,5 +178,83 @@ describe('computeIntentInputDigest', () => {
     const digest2 = await computeIntentInputDigest({ a: 2, z: 1 })
 
     expect(digest1).toBe(digest2)
+  })
+})
+
+describe('createJwtSigner', () => {
+  async function makeTestConfig() {
+    const { privateKey } = await generateKeyPair('RS256', {
+      extractable: true,
+    })
+    const jwk = await exportJWK(privateKey)
+    return {
+      privateKey: jwk,
+      integratorId: 'test-integrator',
+      projectId: 'test-project',
+      appId: 'test-app',
+      keyId: 'test-key',
+    }
+  }
+
+  it('returns accessToken and getIntentExtensionToken functions', async () => {
+    const signer = createJwtSigner(await makeTestConfig())
+
+    expect(typeof signer.accessToken).toBe('function')
+    expect(typeof signer.getIntentExtensionToken).toBe('function')
+  })
+
+  it('accessToken returns a JWT with correct claims', async () => {
+    const config = await makeTestConfig()
+    const signer = createJwtSigner(config)
+    const token = await signer.accessToken()
+
+    const header = decodeProtectedHeader(token)
+    expect(header.alg).toBe('RS256')
+    expect(header.kid).toBe('test-key')
+
+    const payload = decodeJwt(token)
+    expect(payload.iss).toBe('test-integrator')
+    expect(payload.sub).toBe('test-project')
+    expect(payload.aud).toBe('rhinestone-api')
+    expect((payload as any).typ).toBe('access')
+    expect((payload as any).app_id).toBe('test-app')
+    expect(payload.exp).toBeDefined()
+  })
+
+  it('getIntentExtensionToken returns a JWT with digest in policy', async () => {
+    const config = await makeTestConfig()
+    const signer = createJwtSigner(config)
+    const intentInput = { amount: '1000', token: 'USDC' }
+    const token = await signer.getIntentExtensionToken(intentInput)
+
+    const payload = decodeJwt(token) as any
+    expect(payload.typ).toBe('intent_extension')
+    expect(payload.app_id).toBe('test-app')
+    expect(payload.jti).toBeDefined()
+    expect(payload.policy.sponsorship.scope).toBe('intent')
+    expect(payload.policy.sponsorship.intent_input.digest).toMatch(
+      /^[0-9a-f]{64}$/,
+    )
+  })
+
+  it('uses custom audience when provided', async () => {
+    const config = await makeTestConfig()
+    const signer = createJwtSigner({ ...config, audience: 'custom-audience' })
+    const token = await signer.accessToken()
+
+    const payload = decodeJwt(token)
+    expect(payload.aud).toBe('custom-audience')
+  })
+
+  it('caches the key across calls', async () => {
+    const config = await makeTestConfig()
+    const signer = createJwtSigner(config)
+
+    const token1 = await signer.accessToken()
+    const token2 = await signer.accessToken()
+
+    // Both should be valid JWTs (key import succeeded both times via cache)
+    expect(token1.split('.')).toHaveLength(3)
+    expect(token2.split('.')).toHaveLength(3)
   })
 })

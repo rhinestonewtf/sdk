@@ -30,13 +30,14 @@ export function createAuthProvider(config: {
   return {
     async getHeaders() {
       const token = await resolveAccessToken()
-      return { Authorization: `Bearer ${token}` }
+      return { Authorization: `Bearer ${token}`, 'x-api-key': 'jwt' }
     },
 
     async getSubmitHeaders(intentInput: unknown, isSponsored: boolean) {
       const token = await resolveAccessToken()
       const headers: Record<string, string> = {
         Authorization: `Bearer ${token}`,
+        'x-api-key': 'jwt',
       }
 
       if (isSponsored && getIntentExtensionToken) {

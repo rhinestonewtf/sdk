@@ -31,6 +31,58 @@ npm install viem @rhinestone/sdk
 bun install viem @rhinestone/sdk
 ```
 
+## Authentication
+
+The SDK supports two authentication modes: **API key** (default) and **JWT**.
+
+### API Key
+
+```ts
+const rhinestone = new RhinestoneSDK({ apiKey: 'your-api-key' })
+```
+
+### JWT
+
+For JWT authentication, provide an access token (static or async getter) and an optional callback for signing intent extension tokens (required for sponsored intents):
+
+```ts
+const rhinestone = new RhinestoneSDK({
+  auth: {
+    mode: 'jwt',
+    accessToken: async () => fetchTokenFromBackend(),
+    getIntentExtensionToken: async (intentInput) => fetchExtensionToken(intentInput),
+  },
+})
+```
+
+#### Same-host signing (no HTTP round-trip)
+
+If your SDK and JWT signing logic run on the same server, use `createJwtSigner` to handle token creation in-process:
+
+```ts
+import { createJwtSigner } from '@rhinestone/sdk/jwt-server'
+
+const signer = createJwtSigner({
+  privateKey: myJwk, // RS256 JWK (private key)
+  integratorId: 'int_abc',
+  projectId: 'proj_xyz',
+  appId: 'app_prod',
+  keyId: 'key_1',
+})
+
+const rhinestone = new RhinestoneSDK({
+  auth: { mode: 'jwt', ...signer },
+})
+```
+
+Generate a keypair for JWT signing:
+
+```bash
+bun run scripts/generate-jwt-keypair.ts --kid key_1
+```
+
+See [`examples/jwt-server/`](examples/jwt-server/) for a full client + server example.
+
 ## Quickstart
 
 Create a smart account:
