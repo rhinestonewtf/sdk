@@ -928,7 +928,14 @@ async function prepareTransactionAsIntent(
     config.endpointUrl,
     config.headers,
   )
-  const intentRoute = await orchestrator.getIntentRoute(metaIntent)
+  const routeHeaders =
+    Object.keys(preClaimExecutions).length > 0
+      ? { 'x-feature-flags': 'new-path-generation=new' }
+      : undefined
+  const intentRoute = await orchestrator.getIntentRoute(
+    metaIntent,
+    routeHeaders,
+  )
   return intentRoute
 }
 
