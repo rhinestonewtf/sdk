@@ -119,11 +119,14 @@ export class Orchestrator {
     return portfolio
   }
 
-  async getIntentRoute(input: IntentInput): Promise<IntentRoute> {
+  async getIntentRoute(
+    input: IntentInput,
+    extraHeaders?: Record<string, string>,
+  ): Promise<IntentRoute> {
     const body = convertBigIntFields(input)
     return await this.fetch(`${this.serverUrl}/intents/route`, {
       method: 'POST',
-      headers: this.getHeaders(),
+      headers: { ...this.getHeaders(), ...extraHeaders },
       body: JSON.stringify(body),
     })
   }
