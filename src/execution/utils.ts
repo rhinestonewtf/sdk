@@ -75,6 +75,7 @@ import type { Permit2ClaimMessage } from '../modules/validators/policies/claim/p
 import { buildPermit2ClaimPolicyCalldata } from '../modules/validators/policies/claim/permit2'
 import type { ResolvedSessionSignerSet } from '../modules/validators/smart-sessions'
 import {
+  type Execution,
   getOrchestrator,
   type IntentInput,
   type IntentOp,
@@ -216,49 +217,6 @@ interface SignedUserOperationData extends PreparedUserOperationData {
   signature: Hex
 }
 
-// vt encodes ERC7579 execution (0x02) + EMISSARY_EXECUTION_ERC1271 sig mode (0x05),
-// padded right to 32 bytes — matches the signatureMode used for session signers.
-const DUMMY_PRECLAIMOP_VT: Hex = `0x0205${'00'.repeat(30)}`
-
-async function injectDummyPreClaimOps(
-  config: RhinestoneConfig,
-  signers: SessionSignerSet,
-  intentRoute: IntentRoute,
-): Promise<void> {
-  for (const element of intentRoute.intentOp.elements) {
-    // If there are already preClaimOps, the filler handles session enabling during claim
-    if (element.mandate.preClaimOps.ops.length > 0) continue
-
-    const chainId = Number(element.chainId)
-    // resolveSignersForChain handles both the isSessionEnabled check (nulling out
-    // enableData when already enabled) and verifyExecutions derivation — no need
-    // to call isSessionEnabled separately.
-    const resolved = await resolveSignersForChain(config, signers, chainId)
-
-    if (!isResolvedSessionSignerSet(resolved)) continue
-
-    const { enableData, verifyExecutions } = resolved
-
-    // Only inject for sessions that will produce a verifyExecution (ENABLE mode)
-    // signature. enableData is null when the session is already enabled.
-    if (!verifyExecutions || !enableData) continue
-
-    // Session not enabled and no preclaimops — inject a dummy preclaimop so the
-    // filler can trigger verifyExecution in ENABLE mode to enable the session
-    // on-chain without requiring a separate UserOp.
-    element.mandate.preClaimOps = {
-      vt: DUMMY_PRECLAIMOP_VT,
-      ops: [
-        {
-          to: DUMMY_PRECLAIMOP_TARGET,
-          value: 0n,
-          data: DUMMY_PRECLAIMOP_SELECTOR,
-        },
-      ],
-    }
-  }
-}
-
 async function prepareTransaction(
   config: RhinestoneConfig,
   transaction: Transaction,
@@ -307,10 +265,6 @@ async function prepareTransaction(
     account,
     signers,
   )
-
-  if (signers?.type === 'experimental_session') {
-    await injectDummyPreClaimOps(config, signers, intentRoute)
-  }
 
   return {
     intentRoute,
@@ -908,6 +862,33 @@ async function prepareTransactionAsIntent(
       ? SIG_MODE_EMISSARY_EXECUTION_ERC1271
       : SIG_MODE_ERC1271_EMISSARY
 
+  // For session signers that need enabling, pass a dummy preclaimop per source chain
+  // so the orchestrator bakes it into the bundle before computing its HMAC. The filler
+  // executes the op via verifyExecution in ENABLE mode, enabling the session on-chain
+  // without a separate UserOp. Must be sent in the routing request — not injected
+  // post-facto — because the orchestrator HMAC covers preClaimOps.
+  const preClaimExecutions: Record<number, Execution[]> = {}
+  if (signers?.type === 'experimental_session' && sourceChains) {
+    const resolvedPerChain = await Promise.all(
+      sourceChains.map(async (chain) => ({
+        chainId: chain.id,
+        resolved: await resolveSignersForChain(config, signers, chain.id),
+      })),
+    )
+    for (const { chainId, resolved } of resolvedPerChain) {
+      if (!isResolvedSessionSignerSet(resolved)) continue
+      const { enableData, verifyExecutions } = resolved
+      if (!verifyExecutions || !enableData) continue
+      preClaimExecutions[chainId] = [
+        {
+          to: DUMMY_PRECLAIMOP_TARGET,
+          value: 0n,
+          data: DUMMY_PRECLAIMOP_SELECTOR,
+        },
+      ]
+    }
+  }
+
   const metaIntent: IntentInput = {
     destinationChainId: targetChain.id,
     tokenRequests: tokenRequests.map((tokenRequest) => ({
@@ -939,6 +920,7 @@ async function prepareTransactionAsIntent(
       signatureMode,
       auxiliaryFunds,
     },
+    ...(Object.keys(preClaimExecutions).length > 0 && { preClaimExecutions }),
   }
 
   const orchestrator = getOrchestrator(
@@ -1834,8 +1816,6 @@ export {
   getTargetExecutionSignature,
   hashErc7739TypedDataForSolady,
   resolveSessionForChain,
-  injectDummyPreClaimOps,
-  DUMMY_PRECLAIMOP_VT,
 }
 export type {
   InternalSignerSet,

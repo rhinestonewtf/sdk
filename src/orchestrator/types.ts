@@ -142,6 +142,7 @@ interface IntentInput {
   recipient?: Account
   accountAccessList?: AccountAccessList
   options: IntentOptions
+  preClaimExecutions?: Record<number, Execution[]>
 }
 
 interface ChainGasCost {
