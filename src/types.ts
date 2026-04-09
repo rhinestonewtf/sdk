@@ -259,7 +259,7 @@ interface ApiKeyAuth {
 }
 
 interface JwtAuth {
-  mode: 'jwt'
+  mode: 'experimental_jwt'
   /** Static access token, or async getter for refreshable tokens. */
   accessToken: string | (() => Promise<string>)
   /**

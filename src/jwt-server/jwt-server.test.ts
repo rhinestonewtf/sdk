@@ -29,7 +29,7 @@ describe('createAuthProvider routing', () => {
 
   it('resolves jwt mode with static token', async () => {
     const provider = createAuthProvider({
-      auth: { mode: 'jwt', accessToken: 'static-jwt-token' },
+      auth: { mode: 'experimental_jwt', accessToken: 'static-jwt-token' },
     })
     const headers = await provider.getHeaders()
 
@@ -39,7 +39,7 @@ describe('createAuthProvider routing', () => {
   it('resolves jwt mode with async token getter', async () => {
     const provider = createAuthProvider({
       auth: {
-        mode: 'jwt',
+        mode: 'experimental_jwt',
         accessToken: async () => 'dynamic-jwt-token',
       },
     })
@@ -51,7 +51,7 @@ describe('createAuthProvider routing', () => {
   it('jwt mode getSubmitHeaders calls getIntentExtensionToken when sponsored', async () => {
     const provider = createAuthProvider({
       auth: {
-        mode: 'jwt',
+        mode: 'experimental_jwt',
         accessToken: 'my-access-token',
         getIntentExtensionToken: async (intentInput) => {
           return `ext-for-${(intentInput as any).id}`
@@ -69,7 +69,7 @@ describe('createAuthProvider routing', () => {
     let callbackCalled = false
     const provider = createAuthProvider({
       auth: {
-        mode: 'jwt',
+        mode: 'experimental_jwt',
         accessToken: 'my-access-token',
         getIntentExtensionToken: async () => {
           callbackCalled = true
@@ -87,7 +87,7 @@ describe('createAuthProvider routing', () => {
 
   it('jwt mode getSubmitHeaders works without getIntentExtensionToken callback', async () => {
     const provider = createAuthProvider({
-      auth: { mode: 'jwt', accessToken: 'my-access-token' },
+      auth: { mode: 'experimental_jwt', accessToken: 'my-access-token' },
     })
 
     const headers = await provider.getSubmitHeaders({ id: 'intent-42' }, true)

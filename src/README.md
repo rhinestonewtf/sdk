@@ -40,10 +40,15 @@ The SDK supports two authentication modes: **API key** and **JWT**.
 Pass the API key from the [Rhinestone dashboard](https://dashboard.rhinestone.dev):
 
 ```ts
-const rhinestone = new RhinestoneSDK({ apiKey: 'your-api-key' })
+const rhinestone = new RhinestoneSDK({
+  auth: {
+    mode: 'apiKey',
+    apiKey: 'your-api-key',
+  },
+})
 ```
 
-### JWT
+### JWT (Experimental)
 
 JWT authentication uses RS256-signed tokens for fine-grained access control. There are two integration patterns depending on your architecture:
 
@@ -54,7 +59,7 @@ When the SDK runs on the client and a separate backend holds the signing key, fe
 ```ts
 const rhinestone = new RhinestoneSDK({
   auth: {
-    mode: 'jwt',
+    mode: 'experimental_jwt',
     accessToken: async () => {
       const res = await fetch('/api/auth/token')
       const { token } = await res.json()
@@ -92,7 +97,7 @@ const signer = createJwtSigner({
 })
 
 const rhinestone = new RhinestoneSDK({
-  auth: { mode: 'jwt', ...signer },
+  auth: { mode: 'experimental_jwt', ...signer },
 })
 ```
 
