@@ -2,3 +2,4 @@
 export { computeIntentInputDigest } from './digest'
 export { jcsCanonicalise } from './jcs'
 export { createJwtSigner, type JwtSignerConfig } from './signer'
+export { type SponsorshipFilter, shouldSponsor } from './sponsorship'

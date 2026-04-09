@@ -9,6 +9,7 @@ import { createAuthProvider } from '../auth/provider'
 import { computeIntentInputDigest } from './digest'
 import { jcsCanonicalise } from './jcs'
 import { createJwtSigner } from './signer'
+import { shouldSponsor } from './sponsorship'
 
 describe('createAuthProvider routing', () => {
   it('resolves api key mode from apiKey field', async () => {
@@ -169,6 +170,112 @@ describe('computeIntentInputDigest', () => {
     const digest2 = await computeIntentInputDigest({ a: 2, z: 1 })
 
     expect(digest1).toBe(digest2)
+  })
+})
+
+describe('shouldSponsor', () => {
+  const validIntentInput = {
+    account: { address: '0x1234000000000000000000000000000000000000' },
+    destinationChainId: 8453,
+    destinationExecutions: [
+      {
+        to: '0xaaaa000000000000000000000000000000000000',
+        value: '1000000',
+        data: '0x',
+      },
+    ],
+    tokenRequests: [],
+    options: {},
+  }
+
+  it('returns true when no filters are provided', async () => {
+    expect(await shouldSponsor(validIntentInput, {})).toBe(true)
+  })
+
+  it('passes chain id to chain filter', async () => {
+    const result = await shouldSponsor(validIntentInput, {
+      chain: (chain) => chain.id === 8453,
+    })
+    expect(result).toBe(true)
+
+    const rejected = await shouldSponsor(validIntentInput, {
+      chain: (chain) => chain.id === 1,
+    })
+    expect(rejected).toBe(false)
+  })
+
+  it('passes account address to account filter', async () => {
+    const result = await shouldSponsor(validIntentInput, {
+      account: (addr) => addr === '0x1234000000000000000000000000000000000000',
+    })
+    expect(result).toBe(true)
+
+    const rejected = await shouldSponsor(validIntentInput, {
+      account: (addr) => addr === '0xdead000000000000000000000000000000000000',
+    })
+    expect(rejected).toBe(false)
+  })
+
+  it('passes calls with bigint values to calls filter', async () => {
+    const result = await shouldSponsor(validIntentInput, {
+      calls: (calls) => {
+        expect(calls).toHaveLength(1)
+        expect(calls[0].to).toBe('0xaaaa000000000000000000000000000000000000')
+        expect(calls[0].value).toBe(1000000n)
+        expect(calls[0].data).toBe('0x')
+        return true
+      },
+    })
+    expect(result).toBe(true)
+  })
+
+  it('AND-composes all filters (all pass)', async () => {
+    const result = await shouldSponsor(validIntentInput, {
+      chain: (chain) => chain.id === 8453,
+      account: () => true,
+      calls: () => true,
+    })
+    expect(result).toBe(true)
+  })
+
+  it('AND-composes all filters (one fails)', async () => {
+    const result = await shouldSponsor(validIntentInput, {
+      chain: (chain) => chain.id === 8453,
+      account: () => false,
+      calls: () => true,
+    })
+    expect(result).toBe(false)
+  })
+
+  it('supports async predicates', async () => {
+    const result = await shouldSponsor(validIntentInput, {
+      account: async (addr) => {
+        await new Promise((r) => setTimeout(r, 1))
+        return addr === '0x1234000000000000000000000000000000000000'
+      },
+    })
+    expect(result).toBe(true)
+  })
+
+  it('short-circuits on first failing filter', async () => {
+    let callsFilterCalled = false
+    await shouldSponsor(validIntentInput, {
+      chain: () => false,
+      calls: () => {
+        callsFilterCalled = true
+        return true
+      },
+    })
+    expect(callsFilterCalled).toBe(false)
+  })
+
+  it('throws on invalid input', async () => {
+    await expect(shouldSponsor(null, {})).rejects.toThrow(
+      'intentInput must be a non-null object',
+    )
+    await expect(
+      shouldSponsor({ destinationChainId: 'not-a-number' }, {}),
+    ).rejects.toThrow('intentInput.destinationChainId must be a number')
   })
 })
 
