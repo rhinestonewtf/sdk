@@ -272,10 +272,7 @@ interface JwtAuth {
 
 type AuthConfig = ApiKeyAuth | JwtAuth
 
-interface RhinestoneSDKConfig {
-  /** @deprecated Use `auth` instead. Still supported for backward compatibility. */
-  apiKey?: string
-  auth?: AuthConfig
+interface RhinestoneSDKConfigBase {
   provider?: ProviderConfig
   bundler?: BundlerConfig
   paymaster?: PaymasterConfig
@@ -294,6 +291,17 @@ interface RhinestoneSDKConfig {
    */
   headers?: Record<string, string>
 }
+
+type RhinestoneSDKConfig = RhinestoneSDKConfigBase &
+  (
+    | {
+        /** @deprecated Use `auth` instead. Still supported for backward compatibility. */
+        apiKey: string
+      }
+    | {
+        auth: AuthConfig
+      }
+  )
 
 type RhinestoneConfig = RhinestoneAccountConfig &
   Partial<RhinestoneSDKConfig> & {

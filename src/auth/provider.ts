@@ -1,4 +1,8 @@
-import type { AuthConfig } from '../types'
+import type {
+  AuthConfig,
+  RhinestoneConfig,
+  RhinestoneSDKConfig,
+} from '../types'
 
 export interface AuthProvider {
   getHeaders(): Promise<Record<string, string>>
@@ -8,10 +12,9 @@ export interface AuthProvider {
   ): Promise<Record<string, string>>
 }
 
-export function createAuthProvider(config: {
-  apiKey?: string
-  auth?: AuthConfig
-}): AuthProvider {
+export function createAuthProvider(
+  config: RhinestoneSDKConfig | RhinestoneConfig,
+): AuthProvider {
   const resolved = resolveAuth(config)
 
   if (resolved.mode === 'apiKey') {
@@ -50,13 +53,12 @@ export function createAuthProvider(config: {
   }
 }
 
-function resolveAuth(config: {
-  apiKey?: string
-  auth?: AuthConfig
-}): AuthConfig {
-  if (config.auth) return config.auth
+function resolveAuth(
+  config: RhinestoneSDKConfig | RhinestoneConfig,
+): AuthConfig {
+  if ('auth' in config && config.auth) return config.auth
 
-  if (config.apiKey) {
+  if ('apiKey' in config && config.apiKey) {
     return { mode: 'apiKey', apiKey: config.apiKey }
   }
 

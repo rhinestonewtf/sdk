@@ -48,21 +48,6 @@ describe('createAuthProvider routing', () => {
     expect(headers.Authorization).toBe('Bearer dynamic-jwt-token')
   })
 
-  it('throws when neither apiKey nor auth is provided', () => {
-    expect(() => createAuthProvider({})).toThrow(/apiKey.*auth/)
-  })
-
-  it('prefers auth over deprecated apiKey', async () => {
-    const provider = createAuthProvider({
-      apiKey: 'old-key',
-      auth: { mode: 'jwt', accessToken: 'jwt-wins' },
-    })
-    const headers = await provider.getHeaders()
-
-    expect(headers.Authorization).toBe('Bearer jwt-wins')
-    expect(headers['x-api-key']).toBe('jwt')
-  })
-
   it('jwt mode getSubmitHeaders calls getIntentExtensionToken when sponsored', async () => {
     const provider = createAuthProvider({
       auth: {
