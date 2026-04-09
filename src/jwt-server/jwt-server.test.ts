@@ -9,7 +9,7 @@ import { createAuthProvider } from '../auth/provider'
 import { computeIntentInputDigest } from './digest'
 import { jcsCanonicalise } from './jcs'
 import { createJwtSigner } from './signer'
-import { shouldSponsor } from './sponsorship'
+import { SponsorshipDeniedError, shouldSponsor } from './sponsorship'
 
 describe('createAuthProvider routing', () => {
   it('resolves api key mode from apiKey field', async () => {
@@ -286,11 +286,13 @@ describe('createJwtSigner', () => {
     })
     const jwk = await exportJWK(privateKey)
     return {
-      privateKey: jwk,
-      integratorId: 'test-integrator',
-      projectId: 'test-project',
-      appId: 'test-app',
-      keyId: 'test-key',
+      jwt: {
+        privateKey: jwk,
+        integratorId: 'test-integrator',
+        projectId: 'test-project',
+        appId: 'test-app',
+        keyId: 'test-key',
+      },
     }
   }
 
@@ -337,7 +339,9 @@ describe('createJwtSigner', () => {
 
   it('uses custom audience when provided', async () => {
     const config = await makeTestConfig()
-    const signer = createJwtSigner({ ...config, audience: 'custom-audience' })
+    const signer = createJwtSigner({
+      jwt: { ...config.jwt, audience: 'custom-audience' },
+    })
     const token = await signer.accessToken()
 
     const payload = decodeJwt(token)
@@ -354,5 +358,68 @@ describe('createJwtSigner', () => {
     // Both should be valid JWTs (key import succeeded both times via cache)
     expect(token1.split('.')).toHaveLength(3)
     expect(token2.split('.')).toHaveLength(3)
+  })
+
+  it('signs normally when shouldSponsor filters all pass', async () => {
+    const config = await makeTestConfig()
+    const signer = createJwtSigner({
+      ...config,
+      shouldSponsor: {
+        chain: (chain) => chain.id === 8453,
+        account: () => true,
+      },
+    })
+    const intentInput = {
+      account: { address: '0x1234000000000000000000000000000000000000' },
+      destinationChainId: 8453,
+      destinationExecutions: [
+        {
+          to: '0xaaaa000000000000000000000000000000000000',
+          value: '0',
+          data: '0x',
+        },
+      ],
+    }
+    const token = await signer.getIntentExtensionToken(intentInput)
+
+    const payload = decodeJwt(token) as any
+    expect(payload.typ).toBe('intent_extension')
+  })
+
+  it('throws SponsorshipDeniedError when a filter rejects', async () => {
+    const config = await makeTestConfig()
+    const signer = createJwtSigner({
+      ...config,
+      shouldSponsor: {
+        chain: (chain) => chain.id === 1,
+      },
+    })
+    const intentInput = {
+      account: { address: '0x1234000000000000000000000000000000000000' },
+      destinationChainId: 8453,
+      destinationExecutions: [
+        {
+          to: '0xaaaa000000000000000000000000000000000000',
+          value: '0',
+          data: '0x',
+        },
+      ],
+    }
+
+    await expect(signer.getIntentExtensionToken(intentInput)).rejects.toThrow(
+      SponsorshipDeniedError,
+    )
+  })
+
+  it('propagates parse errors from invalid intent input when filters are present', async () => {
+    const config = await makeTestConfig()
+    const signer = createJwtSigner({
+      ...config,
+      shouldSponsor: { chain: () => true },
+    })
+
+    await expect(signer.getIntentExtensionToken(null)).rejects.toThrow(
+      'intentInput must be a non-null object',
+    )
   })
 })

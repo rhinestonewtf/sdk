@@ -1,12 +1,7 @@
 import { createJwtSigner, type JwtSignerConfig } from './signer'
-import {
-  shouldSponsor as checkSponsor,
-  type SponsorshipFilter,
-} from './sponsorship'
+import { SponsorshipDeniedError } from './sponsorship'
 
-export interface JwtHandlerConfig extends JwtSignerConfig {
-  shouldSponsor?: SponsorshipFilter
-}
+export type JwtHandlerConfig = JwtSignerConfig
 
 interface HandlerResult {
   status: number
@@ -34,7 +29,6 @@ export function createCoreExtensionTokenHandler(
   config: JwtHandlerConfig,
 ): (intentInput: unknown) => Promise<HandlerResult> {
   const signer = createJwtSigner(config)
-  const filters = config.shouldSponsor
 
   return async (intentInput: unknown) => {
     if (intentInput === undefined || intentInput === null) {
@@ -44,23 +38,13 @@ export function createCoreExtensionTokenHandler(
       }
     }
 
-    if (filters) {
-      try {
-        const allowed = await checkSponsor(intentInput, filters)
-        if (!allowed) {
-          return { status: 403, body: { error: 'Sponsorship denied' } }
-        }
-      } catch (error) {
-        const message =
-          error instanceof Error ? error.message : 'Invalid intent input'
-        return { status: 400, body: { error: message } }
-      }
-    }
-
     try {
       const token = await signer.getIntentExtensionToken(intentInput)
       return { status: 200, body: { token } }
     } catch (error) {
+      if (error instanceof SponsorshipDeniedError) {
+        return { status: 403, body: { error: error.message } }
+      }
       const message =
         error instanceof Error ? error.message : 'Internal server error'
       return { status: 500, body: { error: message } }

@@ -1,7 +1,12 @@
 import { importJWK, SignJWT } from 'jose'
 import { computeIntentInputDigest } from './digest'
+import {
+  shouldSponsor as checkSponsor,
+  SponsorshipDeniedError,
+  type SponsorshipFilter,
+} from './sponsorship'
 
-export interface JwtSignerConfig {
+export interface JwtCredentials {
   privateKey: JsonWebKey
   integratorId: string
   projectId: string
@@ -10,17 +15,25 @@ export interface JwtSignerConfig {
   audience?: string
 }
 
+export interface JwtSignerConfig {
+  jwt: JwtCredentials
+  shouldSponsor?: SponsorshipFilter
+}
+
 export function createJwtSigner(config: JwtSignerConfig): {
   accessToken: () => Promise<string>
   getIntentExtensionToken: (intentInput: unknown) => Promise<string>
 } {
   const {
-    privateKey,
-    integratorId,
-    projectId,
-    appId,
-    keyId,
-    audience = 'rhinestone-api',
+    jwt: {
+      privateKey,
+      integratorId,
+      projectId,
+      appId,
+      keyId,
+      audience = 'rhinestone-api',
+    },
+    shouldSponsor: filters,
   } = config
 
   let cachedKey: CryptoKey | null = null
@@ -47,6 +60,13 @@ export function createJwtSigner(config: JwtSignerConfig): {
   async function getIntentExtensionToken(
     intentInput: unknown,
   ): Promise<string> {
+    if (filters) {
+      const allowed = await checkSponsor(intentInput, filters)
+      if (!allowed) {
+        throw new SponsorshipDeniedError()
+      }
+    }
+
     const key = await getKey()
     const digest = await computeIntentInputDigest(intentInput)
     return new SignJWT({

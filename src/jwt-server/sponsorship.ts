@@ -1,5 +1,12 @@
 import type { Address, Hex } from 'viem'
 
+export class SponsorshipDeniedError extends Error {
+  constructor() {
+    super('Sponsorship denied')
+    this.name = 'SponsorshipDeniedError'
+  }
+}
+
 type MaybeAsync<T> = T | Promise<T>
 
 export interface SponsorshipFilter {

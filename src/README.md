@@ -89,11 +89,13 @@ When the SDK runs server-side with access to the private key, use `createJwtSign
 import { createJwtSigner } from '@rhinestone/sdk/jwt-server'
 
 const signer = createJwtSigner({
-  privateKey: myJwk, // RS256 private key in JWK format
-  integratorId: 'int_abc',
-  projectId: 'proj_xyz',
-  appId: 'app_prod',
-  keyId: 'key_1',
+  jwt: {
+    privateKey: myJwk, // RS256 private key in JWK format
+    integratorId: 'int_abc',
+    projectId: 'proj_xyz',
+    appId: 'app_prod',
+    keyId: 'key_1',
+  },
 })
 
 const rhinestone = new RhinestoneSDK({
@@ -102,6 +104,20 @@ const rhinestone = new RhinestoneSDK({
 ```
 
 `createJwtSigner` returns `{ accessToken, getIntentExtensionToken }` — the same shape as the `auth` config, so you can spread it directly. It handles all claim structure, key caching, and intent digest computation internally.
+
+To control which intents your backend sponsors, pass `shouldSponsor` filters. The signer checks them before signing — denied requests throw a `SponsorshipDeniedError`:
+
+```ts
+import { createJwtSigner } from '@rhinestone/sdk/jwt-server'
+
+const signer = createJwtSigner({
+  // ...
+  shouldSponsor: {
+    chain: ({ id }) => [1, 8453, 10].includes(id),
+    account: async (address) => isUser(address),
+  },
+})
+```
 
 ## Quickstart
 
