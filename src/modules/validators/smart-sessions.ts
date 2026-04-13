@@ -50,6 +50,10 @@ import {
   SMART_SESSION_EMISSARY_ADDRESS,
   SMART_SESSION_EMISSARY_ADDRESS_DEV,
 } from './core'
+import {
+  encodePermit2ClaimPolicyInitData,
+  PERMIT2_CLAIM_POLICY_ADDRESS,
+} from './policies/claim/permit2'
 
 type FixedLengthArray<
   T,
@@ -205,6 +209,17 @@ const SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG: Hex = '0x00000001'
 const SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG_PERMITTED_TO_CALL_SMARTSESSION: Hex =
   '0x00000002'
 
+// Dummy preclaimop action injected into every session so that the filler can trigger
+// verifyExecution (ENABLE mode) using an injected dummy preclaimop when there are no
+// real preclaimops. Target 0x...0001 is the ecRecover precompile; calls to it fail
+// silently because preclaimops are failure-tolerant. Selector 0x69123456 is
+// intentionally uncommon. Note: this address is the same as
+// SMART_SESSIONS_FALLBACK_TARGET_FLAG — that is harmless because they operate in
+// different contexts (action matching vs. literal execution target).
+const DUMMY_PRECLAIMOP_TARGET: Address =
+  '0x0000000000000000000000000000000000000001'
+const DUMMY_PRECLAIMOP_SELECTOR: Hex = '0x69123456'
+
 const SPENDING_LIMITS_POLICY_ADDRESS: Address =
   '0x00000088d48cf102a8cdb0137a9b173f957c6343'
 const TIME_FRAME_POLICY_ADDRESS: Address =
@@ -218,6 +233,8 @@ const USAGE_LIMIT_POLICY_ADDRESS: Address =
 const VALUE_LIMIT_POLICY_ADDRESS: Address =
   '0x730da93267e7e513e932301b47f2ac7d062abc83'
 const INTENT_EXECUTION_POLICY_ADDRESS: Address =
+  '0xe9eA54d063975cDee9e06b7636d5563d95a7A23C'
+const INTENT_EXECUTION_POLICY_ADDRESS_DEV: Address =
   '0xa09b47de6e510cbdc18b97e9239bedcb44fb4901'
 
 const ACTION_CONDITION_EQUAL = 0
@@ -233,6 +250,7 @@ interface ResolvedSessionSignerSet {
   session: Session
   enableData?: SessionEnableData
   verifyExecutions: boolean
+  claimPolicyData?: Hex
 }
 
 function packSignature(
@@ -380,7 +398,7 @@ function packSignature(
     const SIGNATURE_IS_VALID_SIG_1271 = '0x00'
     const policyDataOffset = BigInt(64 + size(validatorSignature))
     const mode = SIGNATURE_IS_VALID_SIG_1271
-    const policySpecificData = '0x'
+    const policySpecificData = signers.claimPolicyData ?? '0x'
     const signature = encodePacked(
       ['bytes1', 'bytes32', 'uint256', 'bytes', 'bytes'],
       [
@@ -408,7 +426,9 @@ async function getSessionDetails(
       getSessionNonce(account, session, lockTag, provider, useDevContracts),
     ),
   )
-  const sessionDatas = sessions.map((session) => getSessionData(session))
+  const sessionDatas = sessions.map((session) =>
+    getSessionData(session, useDevContracts),
+  )
   const signedSessions = sessionDatas.map((session, index) =>
     getSignedSession(
       account,
@@ -591,7 +611,7 @@ async function getEnableSessionCall(
   sessionToEnableIndex: number,
   useDevContracts?: boolean,
 ) {
-  const sessionData = getSessionData(session)
+  const sessionData = getSessionData(session, useDevContracts)
   const permissionId = getPermissionId(session)
   return {
     to: getSmartSessionEmissaryAddress(useDevContracts),
@@ -621,7 +641,10 @@ async function getEnableSessionCall(
   }
 }
 
-function getSessionData(session: Session): SessionData {
+function getSessionData(
+  session: Session,
+  useDevContracts?: boolean,
+): SessionData {
   const validator = getValidator(session.owners)
   const allowedContent = [
     {
@@ -649,6 +672,10 @@ function getSessionData(session: Session): SessionData {
     ],
   }
 
+  const userHasFallbackAction = session.actions?.some(
+    (action) => !('target' in action) && !('selector' in action),
+  )
+
   const injectedActions: Action[] = [
     // Native token wrapping
     {
@@ -661,16 +688,23 @@ function getSessionData(session: Session): SessionData {
         stateMutability: 'payable',
       }),
     },
+    // Only inject the intent-execution fallback if the user hasn't defined their own
+    // fallback action — otherwise both map to the same actionId and their policies merge,
+    // causing IntentExecutionPolicy to be required for all fallback calls
+    ...(!userHasFallbackAction
+      ? [{ policies: [{ type: 'intent-execution' as const }] }]
+      : []),
+    // Dummy action: allows the filler to call verifyExecution in ENABLE mode using
+    // an injected dummy preclaimop so any session can be enabled on-chain without
+    // a separate UserOp, regardless of whether it has claim or action policies.
     {
-      policies: [
-        {
-          type: 'intent-execution',
-        },
-      ],
+      target: DUMMY_PRECLAIMOP_TARGET,
+      selector: DUMMY_PRECLAIMOP_SELECTOR,
+      policies: [{ type: 'sudo' as const }],
     },
   ]
 
-  const actions = session.actions
+  const actions = session.actions?.length
     ? [...session.actions, ...injectedActions].map((action) => ({
         actionTargetSelector:
           'selector' in action
@@ -681,7 +715,7 @@ function getSessionData(session: Session): SessionData {
             ? action.target
             : SMART_SESSIONS_FALLBACK_TARGET_FLAG,
         actionPolicies: action.policies?.map((policy) =>
-          getPolicyData(policy),
+          getPolicyData(policy, useDevContracts),
         ) ?? [
           {
             policy: SUDO_POLICY_ADDRESS,
@@ -696,7 +730,12 @@ function getSessionData(session: Session): SessionData {
     sessionValidatorInitData: validator.initData,
     erc7739Policies: erc7739Data,
     actions,
-    claimPolicies: [],
+    // Note: Permit2ClaimPolicy has no dev deployment — same address in all environments
+    claimPolicies:
+      session.claimPolicies?.map((p) => ({
+        policy: PERMIT2_CLAIM_POLICY_ADDRESS,
+        initData: encodePermit2ClaimPolicyInitData(p),
+      })) ?? [],
   }
 }
 
@@ -727,7 +766,7 @@ function getPermissionId(session: Session) {
   )
 }
 
-function getPolicyData(policy: Policy): PolicyData {
+function getPolicyData(policy: Policy, useDevContracts?: boolean): PolicyData {
   switch (policy.type) {
     case 'sudo':
       return {
@@ -736,7 +775,9 @@ function getPolicyData(policy: Policy): PolicyData {
       }
     case 'intent-execution':
       return {
-        policy: INTENT_EXECUTION_POLICY_ADDRESS,
+        policy: useDevContracts
+          ? INTENT_EXECUTION_POLICY_ADDRESS_DEV
+          : INTENT_EXECUTION_POLICY_ADDRESS,
         initData: '0x',
       }
     case 'universal-action': {
@@ -972,8 +1013,18 @@ export {
   SMART_SESSIONS_FALLBACK_TARGET_FLAG,
   SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
   SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG_PERMITTED_TO_CALL_SMARTSESSION,
+  DUMMY_PRECLAIMOP_TARGET,
+  DUMMY_PRECLAIMOP_SELECTOR,
+  SPENDING_LIMITS_POLICY_ADDRESS,
+  TIME_FRAME_POLICY_ADDRESS,
+  SUDO_POLICY_ADDRESS,
+  UNIVERSAL_ACTION_POLICY_ADDRESS,
+  USAGE_LIMIT_POLICY_ADDRESS,
+  VALUE_LIMIT_POLICY_ADDRESS,
+  INTENT_EXECUTION_POLICY_ADDRESS,
   packSignature,
   getSessionData,
+  getPolicyData,
   getEnableSessionCall,
   getPermissionId,
   getSmartSessionValidator,

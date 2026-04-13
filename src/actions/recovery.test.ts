@@ -15,7 +15,7 @@ const accountAddress = '0x36C03e7D593F7B2C6b06fC18B5f4E9a4A29C99b0'
 vi.mock('viem', async (importOriginal) => {
   const actual = await importOriginal()
   return {
-    // @ts-ignore
+    // @ts-expect-error
     ...actual,
     createPublicClient: vi.fn(),
   }

@@ -58,6 +58,8 @@ import { getIntentExecutor } from '../modules'
 import type { Module } from '../modules/common'
 import {
   buildMockSignature,
+  DUMMY_PRECLAIMOP_SELECTOR,
+  DUMMY_PRECLAIMOP_TARGET,
   getOwnerValidator,
   getPermissionId,
   getSmartSessionValidator,
@@ -69,8 +71,11 @@ import {
   getWebAuthnValidator,
   supportsEip712,
 } from '../modules/validators/core'
+import type { Permit2ClaimMessage } from '../modules/validators/policies/claim/permit2'
+import { buildPermit2ClaimPolicyCalldata } from '../modules/validators/policies/claim/permit2'
 import type { ResolvedSessionSignerSet } from '../modules/validators/smart-sessions'
 import {
+  type Execution,
   getOrchestrator,
   type IntentInput,
   type IntentOp,
@@ -149,18 +154,25 @@ async function resolveSignersForChain(
     config.useDevContracts,
   )
   const enableData = enabled ? undefined : resolved.enableData
+  const hasExplicitActions = !!resolved.session.actions?.length
+  const verifyExecutions =
+    resolved.verifyExecutions ?? signers.verifyExecutions ?? hasExplicitActions
   return {
     type: 'experimental_session',
     session: resolved.session,
     enableData,
-    verifyExecutions: !!enableData,
+    verifyExecutions,
   } satisfies ResolvedSessionSignerSet
 }
 
 function resolveSessionForChain(
   signers: SessionSignerSet,
   chainId: number,
-): { session: Session; enableData?: SessionEnableData } {
+): {
+  session: Session
+  enableData?: SessionEnableData
+  verifyExecutions?: boolean
+} {
   if ('sessions' in signers) {
     const config = signers.sessions[chainId]
     if (!config) {
@@ -358,11 +370,27 @@ async function getTargetExecutionSignature(
   if (signers?.type !== 'experimental_session') {
     return undefined
   }
+  const settlementLayers = intentOp.elements.map(
+    (e) => e.mandate.qualifier.settlementContext.settlementLayer,
+  )
+
+  const hasIntentExecutorOps = settlementLayers.some(
+    (l) => l === 'INTENT_EXECUTOR' || l === 'SAME_CHAIN',
+  )
+  if (!hasIntentExecutorOps) {
+    return undefined
+  }
   const resolvedSigners = await resolveSignersForChain(
     config,
     signers,
     targetChain.id,
   )
+  if (
+    !isResolvedSessionSignerSet(resolvedSigners) ||
+    !resolvedSigners.verifyExecutions
+  ) {
+    return undefined
+  }
   const destination = getTargetExecutionMessage(config, intentOp)
   const validator = getValidator(config, signers)
   if (!validator) {
@@ -834,6 +862,33 @@ async function prepareTransactionAsIntent(
       ? SIG_MODE_EMISSARY_EXECUTION_ERC1271
       : SIG_MODE_ERC1271_EMISSARY
 
+  // For session signers that need enabling, pass a dummy preclaimop per source chain
+  // so the orchestrator bakes it into the bundle before computing its HMAC. The filler
+  // executes the op via verifyExecution in ENABLE mode, enabling the session on-chain
+  // without a separate UserOp. Must be sent in the routing request — not injected
+  // post-facto — because the orchestrator HMAC covers preClaimOps.
+  const preClaimExecutions: Record<number, Execution[]> = {}
+  if (signers?.type === 'experimental_session' && sourceChains) {
+    const resolvedPerChain = await Promise.all(
+      sourceChains.map(async (chain) => ({
+        chainId: chain.id,
+        resolved: await resolveSignersForChain(config, signers, chain.id),
+      })),
+    )
+    for (const { chainId, resolved } of resolvedPerChain) {
+      if (!isResolvedSessionSignerSet(resolved)) continue
+      const { enableData, verifyExecutions } = resolved
+      if (!verifyExecutions || !enableData) continue
+      preClaimExecutions[chainId] = [
+        {
+          to: DUMMY_PRECLAIMOP_TARGET,
+          value: 0n,
+          data: DUMMY_PRECLAIMOP_SELECTOR,
+        },
+      ]
+    }
+  }
+
   const metaIntent: IntentInput = {
     destinationChainId: targetChain.id,
     tokenRequests: tokenRequests.map((tokenRequest) => ({
@@ -865,6 +920,7 @@ async function prepareTransactionAsIntent(
       signatureMode,
       auxiliaryFunds,
     },
+    ...(Object.keys(preClaimExecutions).length > 0 && { preClaimExecutions }),
   }
 
   const orchestrator = getOrchestrator(
@@ -1090,6 +1146,36 @@ function getTargetExecutionMessage(
   return typedData
 }
 
+/** Computes claim policy calldata when parameters are Permit2 typed data with claim policies. */
+function resolveClaimPolicyData<
+  typedData extends TypedData | Record<string, unknown>,
+  primaryType extends keyof typedData | 'EIP712Domain',
+>(
+  signers: ResolvedSessionSignerSet,
+  parameters: HashTypedDataParameters<typedData, primaryType>,
+): Hex | undefined {
+  if (
+    parameters.primaryType !== 'PermitBatchWitnessTransferFrom' ||
+    !signers.session.claimPolicies?.length
+  ) {
+    return undefined
+  }
+  const msg = parameters.message as Record<string, unknown>
+  if (
+    !msg.permitted ||
+    !msg.mandate ||
+    typeof msg.spender !== 'string' ||
+    typeof msg.nonce !== 'bigint' ||
+    typeof msg.deadline !== 'bigint'
+  ) {
+    return undefined
+  }
+  return buildPermit2ClaimPolicyCalldata(
+    signers.session.claimPolicies[0],
+    parameters.message as unknown as Permit2ClaimMessage,
+  )
+}
+
 async function signIntentTypedData<
   typedData extends TypedData | Record<string, unknown> = TypedData,
   primaryType extends keyof typedData | 'EIP712Domain' = keyof typedData,
@@ -1130,25 +1216,27 @@ async function signIntentTypedData<
   const hash = hashTypedData(parameters)
   if (isResolvedSessionSignerSet(signers) && signers.verifyExecutions) {
     if (targetExecution) {
-      return await getEmissarySignature(
-        config,
-        {
-          type: 'experimental_session',
-          session: signers.session,
-          verifyExecutions: true,
-        } satisfies ResolvedSessionSignerSet,
-        chain,
-        hash,
-      )
+      const targetSigners: ResolvedSessionSignerSet = {
+        type: 'experimental_session',
+        session: signers.session,
+        verifyExecutions: true,
+        enableData: signers.enableData,
+      }
+      // signWithSession (called inside getEmissarySignature) already calls packSignature
+      // internally, so no transform is needed here
+      return await getEmissarySignature(config, targetSigners, chain, hash)
+    }
+    const claimPolicyData = resolveClaimPolicyData(signers, parameters)
+    const sessionSignersForEip1271: ResolvedSessionSignerSet = {
+      type: 'experimental_session',
+      session: signers.session,
+      verifyExecutions: false,
+      enableData: signers.enableData,
+      claimPolicyData,
     }
     const eip1271Signature = await getEip1271Signature(
       config,
-      {
-        type: 'experimental_session',
-        session: signers.session,
-        verifyExecutions: false,
-        enableData: signers.enableData,
-      } satisfies ResolvedSessionSignerSet,
+      sessionSignersForEip1271,
       chain,
       {
         address: validator.address,
@@ -1171,6 +1259,20 @@ async function signIntentTypedData<
       preClaimSig: emissarySignature,
       notarizedClaimSig: eip1271Signature,
     }
+  }
+
+  if (isResolvedSessionSignerSet(signers)) {
+    const claimPolicyData = resolveClaimPolicyData(signers, parameters)
+    return await getEip1271Signature(
+      config,
+      claimPolicyData !== undefined ? { ...signers, claimPolicyData } : signers,
+      chain,
+      {
+        address: validator.address,
+        isRoot,
+      },
+      hash,
+    )
   }
 
   return await getEip1271Signature(

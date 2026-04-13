@@ -36,7 +36,12 @@ function getWrappedTokenAddress(chain: Chain): Address {
     throw new UnsupportedChainError(chain.id)
   }
 
-  const token = chainEntry.wrappedNativeToken
+  const token =
+    chainEntry.wrappedNativeToken ??
+    chainEntry.tokens.find((t) => t.symbol === 'WETH')
+  if (!token) {
+    throw new UnsupportedTokenError('WETH', chain.id)
+  }
   return token.address
 }
 

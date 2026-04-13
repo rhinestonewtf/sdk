@@ -16,7 +16,7 @@ async function setupViemMock(anvil: any, funderAccount: Account) {
     const actual = await importOriginal()
 
     return {
-      // @ts-ignore
+      // @ts-expect-error
       ...actual,
       createPublicClient: vi.fn(),
       createWalletClient: vi.fn(),

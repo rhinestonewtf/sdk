@@ -168,7 +168,7 @@ export function setupOrchestratorMock() {
     const actual = await importOriginal()
 
     return {
-      // @ts-ignore
+      // @ts-expect-error
       ...actual,
       getOrchestrator: vi.fn().mockReturnValue(createOrchestratorMock()),
     }

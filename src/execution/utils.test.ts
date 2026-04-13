@@ -2,6 +2,11 @@ import { zeroAddress } from 'viem'
 import { arbitrum, base, mainnet, optimism } from 'viem/chains'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { accountA } from '../../test/consts'
+import * as validators from '../modules/validators'
+import {
+  DUMMY_PRECLAIMOP_SELECTOR,
+  DUMMY_PRECLAIMOP_TARGET,
+} from '../modules/validators'
 import type { IntentInput } from '../orchestrator/types'
 import type { SessionSignerSet } from '../types'
 import {
@@ -274,5 +279,269 @@ describe('resolveSessionForChain', () => {
     expect(() => resolveSessionForChain(signers, optimism.id)).toThrow(
       `No session configured for chain ${optimism.id}`,
     )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// preClaimExecutions in routing request
+// ---------------------------------------------------------------------------
+
+const makeEnableData = () => ({
+  userSignature: `0x${'00'.repeat(65)}` as `0x${string}`,
+  hashesAndChainIds: [
+    {
+      chainId: BigInt(base.id),
+      sessionDigest: `0x${'00'.repeat(32)}` as `0x${string}`,
+    },
+  ],
+  sessionToEnableIndex: 0,
+})
+
+describe('prepareTransactionAsIntent — preClaimExecutions', () => {
+  let isSessionEnabledSpy: any
+
+  beforeEach(() => {
+    mockGetIntentRoute.mockReset()
+    mockGetIntentRoute.mockResolvedValue({ intentOp: {}, intentCost: {} })
+    isSessionEnabledSpy = vi
+      .spyOn(validators, 'isSessionEnabled')
+      .mockResolvedValue(false)
+  })
+
+  test('includes dummy preclaimop in preClaimExecutions when session needs enabling', async () => {
+    const signers: SessionSignerSet = {
+      type: 'experimental_session',
+      session: {
+        chain: base,
+        owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+        actions: [
+          {
+            target:
+              '0x1111111111111111111111111111111111111111' as `0x${string}`,
+            selector: '0xdeadbeef' as `0x${string}`,
+          },
+        ],
+      },
+      enableData: makeEnableData(),
+    }
+
+    await prepareTransactionAsIntent(
+      {
+        owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+        apiKey: 'test',
+      },
+      [base],
+      base,
+      [],
+      undefined,
+      [{ address: zeroAddress, amount: 1n }],
+      undefined,
+      false,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      signers,
+    )
+
+    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    expect(intentInput.preClaimExecutions).toBeDefined()
+    expect(intentInput.preClaimExecutions![base.id]).toHaveLength(1)
+    expect(intentInput.preClaimExecutions![base.id][0].to).toBe(
+      DUMMY_PRECLAIMOP_TARGET,
+    )
+    expect(intentInput.preClaimExecutions![base.id][0].data).toBe(
+      DUMMY_PRECLAIMOP_SELECTOR,
+    )
+  })
+
+  test('omits preClaimExecutions when session is already enabled', async () => {
+    isSessionEnabledSpy.mockResolvedValue(true)
+
+    const signers: SessionSignerSet = {
+      type: 'experimental_session',
+      session: {
+        chain: base,
+        owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+        actions: [
+          {
+            target:
+              '0x1111111111111111111111111111111111111111' as `0x${string}`,
+            selector: '0xdeadbeef' as `0x${string}`,
+          },
+        ],
+      },
+      enableData: makeEnableData(),
+    }
+
+    await prepareTransactionAsIntent(
+      {
+        owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+        apiKey: 'test',
+      },
+      [base],
+      base,
+      [],
+      undefined,
+      [{ address: zeroAddress, amount: 1n }],
+      undefined,
+      false,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      signers,
+    )
+
+    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    expect(intentInput.preClaimExecutions).toBeUndefined()
+  })
+
+  test('omits preClaimExecutions when session has no enableData', async () => {
+    const signers: SessionSignerSet = {
+      type: 'experimental_session',
+      session: {
+        chain: base,
+        owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+        actions: [
+          {
+            target:
+              '0x1111111111111111111111111111111111111111' as `0x${string}`,
+            selector: '0xdeadbeef' as `0x${string}`,
+          },
+        ],
+      },
+      // no enableData
+    }
+
+    await prepareTransactionAsIntent(
+      {
+        owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+        apiKey: 'test',
+      },
+      [base],
+      base,
+      [],
+      undefined,
+      [{ address: zeroAddress, amount: 1n }],
+      undefined,
+      false,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      signers,
+    )
+
+    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    expect(intentInput.preClaimExecutions).toBeUndefined()
+  })
+
+  test('omits preClaimExecutions when session has no explicit actions (verifyExecutions=false)', async () => {
+    const signers: SessionSignerSet = {
+      type: 'experimental_session',
+      session: {
+        chain: base,
+        owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+        // no actions → verifyExecutions defaults to false
+      },
+      enableData: makeEnableData(),
+    }
+
+    await prepareTransactionAsIntent(
+      {
+        owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+        apiKey: 'test',
+      },
+      [base],
+      base,
+      [],
+      undefined,
+      [{ address: zeroAddress, amount: 1n }],
+      undefined,
+      false,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      signers,
+    )
+
+    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    expect(intentInput.preClaimExecutions).toBeUndefined()
+  })
+
+  test('injects only for not-yet-enabled chains when multiple source chains', async () => {
+    // base: not enabled → gets dummy preclaimop
+    // arbitrum: already enabled → skipped
+    isSessionEnabledSpy
+      .mockResolvedValueOnce(false) // base
+      .mockResolvedValueOnce(true) // arbitrum
+
+    const makeSessionWithActions = (chainId: number) => ({
+      ...makeSession(chainId),
+      actions: [
+        {
+          target: '0x1111111111111111111111111111111111111111' as `0x${string}`,
+          selector: '0xdeadbeef' as `0x${string}`,
+        },
+      ],
+    })
+
+    const signers: SessionSignerSet = {
+      type: 'experimental_session',
+      sessions: {
+        [base.id]: {
+          session: makeSessionWithActions(base.id) as any,
+          enableData: makeEnableData(),
+        },
+        [arbitrum.id]: {
+          session: makeSessionWithActions(arbitrum.id) as any,
+          enableData: makeEnableData(),
+        },
+      },
+    }
+
+    await prepareTransactionAsIntent(
+      {
+        owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+        apiKey: 'test',
+      },
+      [base, arbitrum],
+      base,
+      [],
+      undefined,
+      [{ address: zeroAddress, amount: 1n }],
+      undefined,
+      false,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      signers,
+    )
+
+    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    expect(intentInput.preClaimExecutions).toBeDefined()
+    expect(intentInput.preClaimExecutions![base.id]).toHaveLength(1)
+    expect(intentInput.preClaimExecutions![base.id][0].to).toBe(
+      DUMMY_PRECLAIMOP_TARGET,
+    )
+    expect(intentInput.preClaimExecutions![arbitrum.id]).toBeUndefined()
   })
 })
