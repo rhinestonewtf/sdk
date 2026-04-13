@@ -1,5 +1,12 @@
 # @rhinestone/sdk
 
+## 1.4.2
+
+### Patch Changes
+
+- 44b15b3: Fix `deploy()` for EIP-7702 accounts by passing `eip7702InitSignature` through to `sendTransaction`. Auto-signs via `signEip7702InitData` when no signature is provided.
+- 09650a9: Bump shared config version
+
 ## 1.4.1
 
 ### Patch Changes
