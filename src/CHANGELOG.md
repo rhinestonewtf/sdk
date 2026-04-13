@@ -1,5 +1,99 @@
 # @rhinestone/sdk
 
+## 1.4.1
+
+### Patch Changes
+
+- 3695877: support v0 factory-backed initData in Safe EIP-712 domain and widen V0 util types
+
+## 1.4.0
+
+### Minor Changes
+
+- d557674: - Add per-chain session configuration via `sessions` map
+  - Allow enabling sessions on both source and target chains
+  - Remove `verifyExecutions` from public API (determined internally via on-chain checks)
+
+### Patch Changes
+
+- 20be9a5: Fix startale initData packing
+- c599380: Add ERC-7739 signing for session enable on Startale+K1 accounts
+- f9dfa30: Use proper wrapped token address for smart sessions instead of WETH
+
+## 1.3.0
+
+### Minor Changes
+
+- eaf8d64: Export `buildMockSignature` for generating Smart Sessions mock signatures used in gas estimation
+
+### Patch Changes
+
+- a0747f4: Make K1 validator opt-in for Startale accounts via owners.module override
+- 1e57df8: Enable more headers
+- 2439e4d: Use type-safe function selectors for injected session actions
+
+## 1.2.18
+
+### Patch Changes
+
+- 553678b: Fix startale getDeployArgs and getAddress
+
+## 1.2.17
+
+### Patch Changes
+
+- ed15083: Remove experimental_session check from sendAsUserOp condition
+
+## 1.2.16
+
+### Patch Changes
+
+- a7758f0: Add optional Authorization header to orch
+
+## 1.2.15
+
+### Patch Changes
+
+- 64b30eb: Update swapOrigin type
+- 08ab15d: Add 'USDT0' token symbol
+- a4a07fc: Allow partial custom provider URLs
+
+## 1.2.14
+
+### Patch Changes
+
+- 623f9f1: Use provider param in smart session
+
+## 1.2.13
+
+### Patch Changes
+
+- ba80541: Remove default 1 wei token request for cross-chain transactions
+- c24fa2c: Remove legacy single ops signing code path
+- 0545b2f: Remove targetExecution parameter from cross-chain transaction signing
+
+## 1.2.12
+
+### Patch Changes
+
+- e7255bc: add mock usd token
+
+## 1.2.11
+
+### Patch Changes
+
+- 69f99d7: Include swap types on intent
+- 7400889: - Pass `eip7702InitSignature` to `sendTransaction`
+  - Improve EIP-7702 init signature required error message
+- 995f064: add auxiliary funds to route
+
+## 1.2.10
+
+### Patch Changes
+
+- d190b56: Skip initData check if factory data is not provided
+- 220e282: Lowercase contract addresses in account implementations
+
 ## 1.2.9
 
 ### Patch Changes
