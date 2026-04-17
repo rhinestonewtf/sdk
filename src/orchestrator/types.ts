@@ -327,7 +327,7 @@ interface Account {
   mockSignature?: Hex
   /** Per-chain SSX mock signatures keyed by decimal chainId string.
    *  Takes precedence over mockSignature for each chain present. */
-  mockSignatures?: Record<string, Hex>
+  mockSignatures?: Record<`${number}`, Hex>
 }
 
 type AccountWithContext = Omit<

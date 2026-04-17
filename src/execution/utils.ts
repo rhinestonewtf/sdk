@@ -860,7 +860,7 @@ async function prepareTransactionAsIntent(
       mockSignature: buildMockSignature(
         resolveSessionForChain(signers, targetChain.id).session,
         config.useDevContracts,
-        sourceChains?.length,
+        sourceChains?.length ?? 1,
       ),
       // Per-chain map: enables accurate per-chain session validation gas simulation
       mockSignatures: Object.fromEntries(
@@ -874,7 +874,7 @@ async function prepareTransactionAsIntent(
           buildMockSignature(
             resolveSessionForChain(signers, chainId).session,
             config.useDevContracts,
-            sourceChains?.length,
+            sourceChains?.length ?? 1,
             chainId,
           ),
         ]),

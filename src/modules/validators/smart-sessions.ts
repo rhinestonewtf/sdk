@@ -980,16 +980,19 @@ function buildMockSignature(
   // mock emissary's chainId check passes on the correct chain. Falls back to
   // session.chain.id for the global mockSignature (single-chain path).
   const primaryChainId = targetChainId ?? session.chain.id
+  // Normalize chainCount to a finite positive integer. Guards against
+  // accidental NaN/undefined from caller (e.g. `sourceChains?.length` when
+  // sourceChains is undefined) which would otherwise make Array.from produce
+  // an empty array and silently drop the ChainId check.
+  const safeChainCount =
+    Number.isFinite(chainCount) && chainCount > 0 ? Math.floor(chainCount) : 1
   // Build one entry per chain — first entry is the real chain ID (for the ChainId check),
   // remaining entries use chainId 0 as placeholders. Hash mismatch is skipped by the
   // mock emissary, so sessionDigest can be zeroHash throughout.
-  const hashesAndChainIds = Array.from(
-    { length: Math.max(1, chainCount) },
-    (_, i) => ({
-      chainId: i === 0 ? BigInt(primaryChainId) : 0n,
-      sessionDigest: zeroHash,
-    }),
-  )
+  const hashesAndChainIds = Array.from({ length: safeChainCount }, (_, i) => ({
+    chainId: i === 0 ? BigInt(primaryChainId) : 0n,
+    sessionDigest: zeroHash,
+  }))
   const dummySigners: ResolvedSessionSignerSet = {
     type: 'experimental_session',
     session,

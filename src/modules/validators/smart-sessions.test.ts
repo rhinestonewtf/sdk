@@ -446,4 +446,22 @@ describe('buildMockSignature', () => {
     const sigForOpt = buildMockSignature(baseSession, false, 2, 10)
     expect(sigForArb).not.toBe(sigForOpt)
   })
+
+  test('non-finite chainCount normalizes to 1 (guards against undefined callsite)', () => {
+    // Regression guard: `sourceChains?.length` can be undefined at call sites
+    // and would previously make `Math.max(1, undefined) === NaN`, producing
+    // an empty hashesAndChainIds array and silently dropping the ChainId
+    // check. The internal normalization must clamp to at least 1.
+    const sigDefault = buildMockSignature(baseSession, false)
+    const sigUndefined = buildMockSignature(
+      baseSession,
+      false,
+      undefined as unknown as number,
+    )
+    const sigNaN = buildMockSignature(baseSession, false, NaN)
+    const sigZero = buildMockSignature(baseSession, false, 0)
+    expect(sigUndefined).toBe(sigDefault)
+    expect(sigNaN).toBe(sigDefault)
+    expect(sigZero).toBe(sigDefault)
+  })
 })
