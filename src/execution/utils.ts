@@ -875,6 +875,7 @@ async function prepareTransactionAsIntent(
             resolveSessionForChain(signers, chainId).session,
             config.useDevContracts,
             sourceChains?.length,
+            chainId,
           ),
         ]),
       ),

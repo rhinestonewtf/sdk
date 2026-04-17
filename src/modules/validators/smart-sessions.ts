@@ -973,15 +973,20 @@ function buildMockSignature(
   session: Session,
   useDevContracts?: boolean,
   chainCount: number = 1,
+  targetChainId?: number,
 ): Hex {
   const emissaryAddress = getSmartSessionEmissaryAddress(useDevContracts)
+  // Use targetChainId when provided (per-chain mockSignatures path) so the
+  // mock emissary's chainId check passes on the correct chain. Falls back to
+  // session.chain.id for the global mockSignature (single-chain path).
+  const primaryChainId = targetChainId ?? session.chain.id
   // Build one entry per chain — first entry is the real chain ID (for the ChainId check),
   // remaining entries use chainId 0 as placeholders. Hash mismatch is skipped by the
   // mock emissary, so sessionDigest can be zeroHash throughout.
   const hashesAndChainIds = Array.from(
     { length: Math.max(1, chainCount) },
     (_, i) => ({
-      chainId: i === 0 ? BigInt(session.chain.id) : 0n,
+      chainId: i === 0 ? BigInt(primaryChainId) : 0n,
       sessionDigest: zeroHash,
     }),
   )
