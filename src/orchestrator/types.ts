@@ -330,7 +330,10 @@ interface Account {
   mockSignatures?: Record<string, Hex>
 }
 
-type AccountWithContext = Omit<Account, 'delegations' | 'mockSignature' | 'mockSignatures'> & {
+type AccountWithContext = Omit<
+  Account,
+  'delegations' | 'mockSignature' | 'mockSignatures'
+> & {
   accountContext: { [chainId: number]: AccountContext }
   requiredDelegations?: Delegations
 }
