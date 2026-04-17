@@ -15,6 +15,7 @@
     "./src"
   ],
   "dependencies": {
+    "@rhinestone/shared-configs": "1.4.141",
     "viem": "^2.40.1"
   },
   "devDependencies": {
