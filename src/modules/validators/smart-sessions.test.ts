@@ -415,4 +415,35 @@ describe('buildMockSignature', () => {
       ),
     ).toBe(true)
   })
+
+  test('omitting targetChainId matches passing session.chain.id explicitly', () => {
+    // Backward compat: the legacy single-chain path (no targetChainId)
+    // should produce the same sig as explicitly passing session.chain.id.
+    const sigDefault = buildMockSignature(baseSession, false, 1)
+    const sigExplicitSessionChain = buildMockSignature(
+      baseSession,
+      false,
+      1,
+      baseSession.chain.id,
+    )
+    expect(sigDefault).toBe(sigExplicitSessionChain)
+  })
+
+  test('targetChainId different from session.chain.id changes the sig payload', () => {
+    // baseSession.chain is Base (8453). Passing a different targetChainId
+    // must change the encoded hashesAndChainIds[0].chainId, producing a
+    // different compressed sig payload.
+    const sigForSessionChain = buildMockSignature(baseSession, false, 1)
+    const sigForOtherChain = buildMockSignature(baseSession, false, 1, 42161)
+    expect(sigForSessionChain).not.toBe(sigForOtherChain)
+  })
+
+  test('different targetChainId values produce different sigs', () => {
+    // Two calls with the same session but different target chains must
+    // produce distinct sigs — the per-chain mockSignatures path relies on
+    // this to give each chain its own correct chainId in the first entry.
+    const sigForArb = buildMockSignature(baseSession, false, 2, 42161)
+    const sigForOpt = buildMockSignature(baseSession, false, 2, 10)
+    expect(sigForArb).not.toBe(sigForOpt)
+  })
 })
