@@ -856,10 +856,28 @@ async function prepareTransactionAsIntent(
   const intentAccount: OrchestratorAccount = {
     ...getIntentAccount(config, eip7702InitSignature, account),
     ...(signers?.type === 'experimental_session' && {
+      // Global fallback: target-chain sig for backward-compat with older orchestrators
       mockSignature: buildMockSignature(
         resolveSessionForChain(signers, targetChain.id).session,
         config.useDevContracts,
-        sourceChains?.length,
+        sourceChains?.length ?? 1,
+      ),
+      // Per-chain map: enables accurate per-chain session validation gas simulation
+      mockSignatures: Object.fromEntries(
+        [
+          ...new Set([
+            ...(sourceChains ?? []).map((c) => c.id),
+            targetChain.id,
+          ]),
+        ].map((chainId) => [
+          String(chainId),
+          buildMockSignature(
+            resolveSessionForChain(signers, chainId).session,
+            config.useDevContracts,
+            sourceChains?.length ?? 1,
+            chainId,
+          ),
+        ]),
       ),
     }),
   }
@@ -1453,9 +1471,12 @@ async function submitIntentInternal(
     dryRun,
     intentInput ? { intentInput, isSponsored } : undefined,
   )
+  // Some settlement paths (e.g. SAME_CHAIN) may not return an intentId — fall
+  // back to the nonce which the orchestrator also accepts as an intent identifier.
+  const intentId = intentResults.intentId ?? intentOp.nonce
   return {
     type: 'intent',
-    id: BigInt(intentResults.intentId),
+    id: BigInt(intentId),
     sourceChains: sourceChains?.map((chain) => chain.id),
     targetChain: targetChain.id,
   } as TransactionResult

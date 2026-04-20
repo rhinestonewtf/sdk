@@ -323,10 +323,17 @@ interface Account {
   setupOps: Pick<Execution, 'to' | 'data'>[]
   delegations?: Delegations
   emissaryConfig?: EmissarySetupConfig
+  /** @deprecated Use mockSignatures for per-chain accuracy. Kept as global fallback for backward-compat. */
   mockSignature?: Hex
+  /** Per-chain SSX mock signatures keyed by decimal chainId string.
+   *  Takes precedence over mockSignature for each chain present. */
+  mockSignatures?: Record<`${number}`, Hex>
 }
 
-type AccountWithContext = Omit<Account, 'delegations'> & {
+type AccountWithContext = Omit<
+  Account,
+  'delegations' | 'mockSignature' | 'mockSignatures'
+> & {
   accountContext: { [chainId: number]: AccountContext }
   requiredDelegations?: Delegations
 }
