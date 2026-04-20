@@ -387,10 +387,8 @@ interface IntentRoute {
 }
 
 interface IntentResult {
-  result: {
-    id: string
-    status: IntentStatus
-  }
+  intentId: string
+  status: IntentStatus
 }
 
 type OriginSignature = Hex | { notarizedClaimSig: Hex; preClaimSig: Hex }

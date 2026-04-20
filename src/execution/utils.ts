@@ -1455,7 +1455,7 @@ async function submitIntentInternal(
   )
   return {
     type: 'intent',
-    id: BigInt(intentResults.result.id),
+    id: BigInt(intentResults.intentId),
     sourceChains: sourceChains?.map((chain) => chain.id),
     targetChain: targetChain.id,
   } as TransactionResult
