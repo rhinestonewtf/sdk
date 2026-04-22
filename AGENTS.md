@@ -19,7 +19,7 @@ Docs: https://docs.rhinestone.dev/smart-wallet
 - Language: TypeScript (strict mode)
 - Testing: Vitest
 - Linting: Biome
-- Dependencies: viem (peer), ox, solady
+- Dependencies: viem (peer), solady
 
 ## Structure
 

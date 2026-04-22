@@ -1,4 +1,3 @@
-import type { WebAuthnP256 } from 'ox'
 import {
   type Account,
   type Address,
@@ -103,13 +102,21 @@ function convertOwnerSetToSignerSet(owners: OwnerSet): SignerSet {
   }
 }
 
+type WebAuthnSignMetadata = {
+  authenticatorData: Hex
+  challengeIndex?: number | undefined
+  clientDataJSON: string
+  typeIndex?: number | undefined
+  userVerificationRequired?: boolean | undefined
+}
+
 type SigningFunctions<T> = {
   signEcdsa: (account: Account, params: T, updateV: boolean) => Promise<Hex>
   signPasskey: (
     account: WebAuthnAccount,
     params: T,
   ) => Promise<{
-    webauthn: WebAuthnP256.SignMetadata
+    webauthn: WebAuthnSignMetadata
     signature: Hex
   }>
 }

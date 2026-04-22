@@ -28,7 +28,6 @@
       "version": "1.4.1",
       "dependencies": {
         "@rhinestone/shared-configs": "1.4.139",
-        "ox": "^0.11.3",
         "solady": "^0.1.26",
       },
       "peerDependencies": {
