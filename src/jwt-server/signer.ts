@@ -20,6 +20,19 @@ export interface JwtSignerConfig {
   shouldSponsor?: SponsorshipFilter
 }
 
+type JwsAlg = 'RS256' | 'ES256' | 'ES384' | 'ES512'
+
+function pickAlg(jwk: JsonWebKey): JwsAlg {
+  if (jwk.kty === 'EC') {
+    if (jwk.crv === 'P-256') return 'ES256'
+    if (jwk.crv === 'P-384') return 'ES384'
+    if (jwk.crv === 'P-521') return 'ES512'
+    throw new Error(`Unsupported EC curve: ${jwk.crv}`)
+  }
+  if (jwk.kty === 'RSA') return 'RS256'
+  throw new Error(`Unsupported JWK kty: ${jwk.kty}`)
+}
+
 export function createJwtSigner(config: JwtSignerConfig): {
   accessToken: () => Promise<string>
   getIntentExtensionToken: (intentInput: unknown) => Promise<string>
@@ -36,11 +49,12 @@ export function createJwtSigner(config: JwtSignerConfig): {
     shouldSponsor: filters,
   } = config
 
+  const alg = pickAlg(privateKey)
   let cachedKey: CryptoKey | null = null
 
   async function getKey(): Promise<CryptoKey> {
     if (!cachedKey) {
-      cachedKey = (await importJWK(privateKey, 'RS256')) as CryptoKey
+      cachedKey = (await importJWK(privateKey, alg)) as CryptoKey
     }
     return cachedKey
   }
@@ -48,7 +62,7 @@ export function createJwtSigner(config: JwtSignerConfig): {
   async function accessToken(): Promise<string> {
     const key = await getKey()
     return new SignJWT({ typ: 'access', app_id: appId })
-      .setProtectedHeader({ alg: 'RS256', kid: keyId })
+      .setProtectedHeader({ alg, kid: keyId })
       .setIssuer(integratorId)
       .setSubject(projectId)
       .setAudience(audience)
@@ -80,7 +94,7 @@ export function createJwtSigner(config: JwtSignerConfig): {
         },
       },
     })
-      .setProtectedHeader({ alg: 'RS256', kid: keyId })
+      .setProtectedHeader({ alg, kid: keyId })
       .setIssuer(integratorId)
       .setSubject(projectId)
       .setAudience(audience)
