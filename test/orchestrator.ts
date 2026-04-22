@@ -137,10 +137,9 @@ export function createOrchestratorMock() {
       },
     }),
     submitIntent: vi.fn().mockResolvedValue({
-      result: {
-        id: '5155984005891081751907744166694346796440695583636245585396069902646285172736',
-        status: 'PENDING',
-      },
+      intentId:
+        '5155984005891081751907744166694346796440695583636245585396069902646285172736',
+      status: 'PENDING',
     }),
     getIntentOpStatus: vi.fn().mockResolvedValue({
       status: 'COMPLETED',

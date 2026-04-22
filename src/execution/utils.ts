@@ -856,10 +856,28 @@ async function prepareTransactionAsIntent(
   const intentAccount: OrchestratorAccount = {
     ...getIntentAccount(config, eip7702InitSignature, account),
     ...(signers?.type === 'experimental_session' && {
+      // Global fallback: target-chain sig for backward-compat with older orchestrators
       mockSignature: buildMockSignature(
         resolveSessionForChain(signers, targetChain.id).session,
         config.useDevContracts,
-        sourceChains?.length,
+        sourceChains?.length ?? 1,
+      ),
+      // Per-chain map: enables accurate per-chain session validation gas simulation
+      mockSignatures: Object.fromEntries(
+        [
+          ...new Set([
+            ...(sourceChains ?? []).map((c) => c.id),
+            targetChain.id,
+          ]),
+        ].map((chainId) => [
+          String(chainId),
+          buildMockSignature(
+            resolveSessionForChain(signers, chainId).session,
+            config.useDevContracts,
+            sourceChains?.length ?? 1,
+            chainId,
+          ),
+        ]),
       ),
     }),
   }
@@ -1455,7 +1473,7 @@ async function submitIntentInternal(
   )
   return {
     type: 'intent',
-    id: BigInt(intentResults.result.id),
+    id: BigInt(intentResults.intentId),
     sourceChains: sourceChains?.map((chain) => chain.id),
     targetChain: targetChain.id,
   } as TransactionResult

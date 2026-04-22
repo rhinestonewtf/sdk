@@ -3,6 +3,8 @@ import {
   decodeProtectedHeader,
   exportJWK,
   generateKeyPair,
+  importJWK,
+  jwtVerify,
 } from 'jose'
 import { describe, expect, it } from 'vitest'
 import { createAuthProvider } from '../auth/provider'
@@ -421,5 +423,94 @@ describe('createJwtSigner', () => {
     await expect(signer.getIntentExtensionToken(null)).rejects.toThrow(
       'intentInput must be a non-null object',
     )
+  })
+
+  async function makeEcTestConfig(alg: 'ES256' | 'ES384' | 'ES512') {
+    const { privateKey, publicKey } = await generateKeyPair(alg, {
+      extractable: true,
+    })
+    const privateJwk = await exportJWK(privateKey)
+    const publicJwk = await exportJWK(publicKey)
+    return {
+      config: {
+        jwt: {
+          privateKey: privateJwk,
+          integratorId: 'test-integrator',
+          projectId: 'test-project',
+          appId: 'test-app',
+          keyId: 'test-key',
+        },
+      },
+      publicJwk,
+    }
+  }
+
+  it.each(['ES256', 'ES384', 'ES512'] as const)(
+    'mints a %s-signed accessToken that verifies against the public JWK',
+    async (alg) => {
+      const { config, publicJwk } = await makeEcTestConfig(alg)
+      const signer = createJwtSigner(config)
+      const token = await signer.accessToken()
+
+      const header = decodeProtectedHeader(token)
+      expect(header.alg).toBe(alg)
+      expect(header.kid).toBe('test-key')
+
+      const publicKey = await importJWK(publicJwk, alg)
+      const { payload } = await jwtVerify(token, publicKey)
+      expect(payload.iss).toBe('test-integrator')
+      expect(payload.sub).toBe('test-project')
+    },
+  )
+
+  it('mints an ES256-signed intent extension token', async () => {
+    const { config } = await makeEcTestConfig('ES256')
+    const signer = createJwtSigner(config)
+    const token = await signer.getIntentExtensionToken({ amount: '1' })
+
+    const header = decodeProtectedHeader(token)
+    expect(header.alg).toBe('ES256')
+    expect(header.kid).toBe('test-key')
+  })
+
+  it('throws at construction for unsupported JWK kty (OKP)', () => {
+    const badJwk = {
+      kty: 'OKP',
+      crv: 'Ed25519',
+      x: 'AAAA',
+      d: 'AAAA',
+    } as unknown as JsonWebKey
+    expect(() =>
+      createJwtSigner({
+        jwt: {
+          privateKey: badJwk,
+          integratorId: 'i',
+          projectId: 'p',
+          appId: 'a',
+          keyId: 'k',
+        },
+      }),
+    ).toThrow(/Unsupported JWK kty/)
+  })
+
+  it('throws at construction for unsupported EC curve', () => {
+    const badJwk = {
+      kty: 'EC',
+      crv: 'P-999',
+      x: 'AAAA',
+      y: 'AAAA',
+      d: 'AAAA',
+    } as unknown as JsonWebKey
+    expect(() =>
+      createJwtSigner({
+        jwt: {
+          privateKey: badJwk,
+          integratorId: 'i',
+          projectId: 'p',
+          appId: 'a',
+          keyId: 'k',
+        },
+      }),
+    ).toThrow(/Unsupported EC curve/)
   })
 })
