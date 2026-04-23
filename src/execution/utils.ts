@@ -1471,9 +1471,12 @@ async function submitIntentInternal(
     dryRun,
     intentInput ? { intentInput, isSponsored } : undefined,
   )
+  // Some settlement paths (e.g. SAME_CHAIN) may not return a result.id — fall
+  // back to the nonce which the orchestrator also accepts as an intent identifier.
+  const intentId = intentResults.result.id ?? intentOp.nonce
   return {
     type: 'intent',
-    id: BigInt(intentResults.intentId),
+    id: BigInt(intentId),
     sourceChains: sourceChains?.map((chain) => chain.id),
     targetChain: targetChain.id,
   } as TransactionResult
