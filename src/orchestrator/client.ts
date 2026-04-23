@@ -191,18 +191,12 @@ export class Orchestrator {
     policyContext?: { intentInput: unknown; isSponsored: boolean },
   ): Promise<IntentResult> {
     const signedIntentOp = convertBigIntFields(signedIntentOpUnformatted)
-    const body = {
-      intentId: signedIntentOp.nonce,
-      signatures: {
-        origin: signedIntentOp.originSignatures,
-        destination: signedIntentOp.destinationSignature,
-        targetExecution: signedIntentOp.targetExecutionSignature,
-      },
-      authorizations: signedIntentOp.signedAuthorizations
-        ? { sponsor: signedIntentOp.signedAuthorizations }
-        : undefined,
-      options: dryRun ? { dryRun: true } : undefined,
+    if (dryRun) {
+      signedIntentOp.options = {
+        dryRun: true,
+      }
     }
+    const body = { signedIntentOp }
     const headers = policyContext
       ? await this.getSubmitHeaders(
           policyContext.intentInput,
@@ -247,7 +241,6 @@ export class Orchestrator {
     return {
       'Content-Type': 'application/json',
       'x-sdk-version': SDK_VERSION,
-      'x-api-version': API_VERSION,
       ...auth,
       ...this.extraHeaders,
     }
@@ -459,8 +452,7 @@ export class Orchestrator {
       throw new ForbiddenError(errorParams)
     } else if (
       message.includes('No such intent with nonce') ||
-      message === 'Order bundle not found' ||
-      message === 'Intent not found or expired'
+      message === 'Order bundle not found'
     ) {
       throw new IntentNotFoundError(errorParams)
     } else if (
