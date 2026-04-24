@@ -1,6 +1,7 @@
 import type { Account, Address, Chain, Hex } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
 import type { ModuleType } from './modules/common'
+import type { OrchestratorApiVersion } from './orchestrator/consts'
 import type { AuxiliaryFunds, SettlementLayer } from './orchestrator/types'
 
 type AccountType = 'safe' | 'nexus' | 'kernel' | 'startale' | 'passport' | 'eoa'
@@ -290,6 +291,10 @@ interface RhinestoneSDKConfigBase {
    * Optional custom headers sent with every orchestrator request.
    */
   headers?: Record<string, string>
+  /**
+   * Optional orchestrator API version. Defaults to `blanc`, which uses CAIP-2 on the wire.
+   */
+  apiVersion?: OrchestratorApiVersion
 }
 
 type RhinestoneSDKConfig = RhinestoneSDKConfigBase &

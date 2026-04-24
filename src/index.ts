@@ -80,6 +80,7 @@ import {
 import {
   type ApprovalRequired,
   type AuxiliaryFunds,
+  fromCaip2,
   getAllSupportedChainsAndTokens,
   getSupportedTokens,
   getTokenAddress,
@@ -87,12 +88,14 @@ import {
   type IntentInput,
   type IntentOp,
   type IntentOpStatus,
+  type OrchestratorApiVersion,
   type Portfolio,
   type SettlementLayer,
   type SignedIntentOp,
   type SplitIntentsInput,
   type SplitIntentsResult,
   type TokenRequirements,
+  toCaip2,
   type WrapRequired,
 } from './orchestrator'
 import type {
@@ -569,6 +572,7 @@ class RhinestoneSDK {
   private paymaster?: PaymasterConfig
   private useDevContracts?: boolean
   private headers?: Record<string, string>
+  private apiVersion?: OrchestratorApiVersion
 
   constructor(options: RhinestoneSDKConfig) {
     this.authProvider = createAuthProvider(options)
@@ -578,6 +582,7 @@ class RhinestoneSDK {
     this.paymaster = options.paymaster
     this.useDevContracts = options.useDevContracts
     this.headers = options.headers
+    this.apiVersion = options.apiVersion
   }
 
   createAccount(config: RhinestoneAccountConfig) {
@@ -590,6 +595,7 @@ class RhinestoneSDK {
       paymaster: this.paymaster,
       useDevContracts: this.useDevContracts,
       headers: this.headers,
+      apiVersion: this.apiVersion,
     }
     return createRhinestoneAccount(rhinestoneConfig)
   }
@@ -600,6 +606,7 @@ class RhinestoneSDK {
       this.endpointUrl,
       intentId,
       this.headers,
+      this.apiVersion,
     )
   }
 
@@ -609,6 +616,7 @@ class RhinestoneSDK {
       this.endpointUrl,
       input,
       this.headers,
+      this.apiVersion,
     )
   }
 }
@@ -629,6 +637,8 @@ export {
   getTokenAddress,
   getTokenDecimals,
   getAllSupportedChainsAndTokens,
+  fromCaip2,
+  toCaip2,
   // Permit2 helpers
   checkERC20AllowanceDirect,
   getPermit2Address,
@@ -679,6 +689,7 @@ export type {
   TokenRequirements,
   WrapRequired,
   ApprovalRequired,
+  OrchestratorApiVersion,
   // Multi-chain permit2 types
   MultiChainPermit2Config,
   MultiChainPermit2Result,

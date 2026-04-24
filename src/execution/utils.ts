@@ -954,6 +954,7 @@ async function prepareTransactionAsIntent(
     config._authProvider ?? createAuthProvider(config),
     config.endpointUrl,
     config.headers,
+    config.apiVersion,
   )
   const intentRoute = await orchestrator.getIntentRoute(metaIntent)
   return { intentRoute, intentInput: serializedIntent }
@@ -1465,6 +1466,7 @@ async function submitIntentInternal(
     config._authProvider ?? createAuthProvider(config),
     config.endpointUrl,
     config.headers,
+    config.apiVersion,
   )
   const intentResults = await orchestrator.submitIntent(
     signedIntentOp,

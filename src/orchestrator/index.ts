@@ -1,6 +1,12 @@
 import type { AuthProvider } from '../auth/provider'
+import { fromCaip2, toCaip2 } from './caip2'
 import { Orchestrator } from './client'
-import { PROD_ORCHESTRATOR_URL, RHINESTONE_SPOKE_POOL_ADDRESS } from './consts'
+import {
+  DEFAULT_ORCHESTRATOR_API_VERSION,
+  type OrchestratorApiVersion,
+  PROD_ORCHESTRATOR_URL,
+  RHINESTONE_SPOKE_POOL_ADDRESS,
+} from './consts'
 import {
   AuthenticationRequiredError,
   BadRequestError,
@@ -75,11 +81,13 @@ function getOrchestrator(
   authProvider: AuthProvider,
   orchestratorUrl?: string,
   headers?: Record<string, string>,
+  apiVersion: OrchestratorApiVersion = DEFAULT_ORCHESTRATOR_API_VERSION,
 ): Orchestrator {
   return new Orchestrator(
     orchestratorUrl ?? PROD_ORCHESTRATOR_URL,
     authProvider,
     headers,
+    apiVersion,
   )
 }
 
@@ -101,6 +109,7 @@ export type {
   TokenRequirements,
   WrapRequired,
   ApprovalRequired,
+  OrchestratorApiVersion,
 }
 export {
   INTENT_STATUS_PENDING,
@@ -138,6 +147,8 @@ export {
   UnsupportedChainIdError,
   UnsupportedTokenError,
   getOrchestrator,
+  fromCaip2,
+  toCaip2,
   getWethAddress,
   getTokenSymbol,
   getTokenAddress,

@@ -1,6 +1,12 @@
 import type { Address } from 'viem'
 import type { AuthProvider } from '../auth/provider'
-import { API_VERSION, SDK_VERSION } from './consts'
+import { fromCaip2, isCaip2, toCaip2 } from './caip2'
+import {
+  DEFAULT_ORCHESTRATOR_API_VERSION,
+  ORCHESTRATOR_API_VERSION_HEADERS,
+  type OrchestratorApiVersion,
+  SDK_VERSION,
+} from './consts'
 import {
   AuthenticationRequiredError,
   BadRequestError,
@@ -37,7 +43,11 @@ import type {
   SplitIntentsInput,
   SplitIntentsResult,
 } from './types'
-import { convertBigIntFields } from './utils'
+import {
+  convertBigIntFields,
+  decodeChainIdsFromWire,
+  encodeChainIdsForWire,
+} from './utils'
 
 function parseTokenAmountsRecord(
   record: Record<string, string>,
@@ -50,19 +60,103 @@ function parseTokenAmountsRecord(
   ) as Record<Address, bigint>
 }
 
+/**
+ * Restores chain ids that are numeric in the SDK surface after the generic wire decoder
+ * has converted BLANC CAIP-2 strings back to legacy decimal strings.
+ */
+function toNumericChainId(chainId: number | string): number {
+  return typeof chainId === 'number' ? chainId : Number(chainId)
+}
+
+/**
+ * Portfolio balances still expose numeric chain ids publicly even when the wire format is BLANC.
+ */
+function parsePortfolio(portfolioResponse: PortfolioResponse): Portfolio {
+  return portfolioResponse.map((tokenResponse) => ({
+    symbol: tokenResponse.tokenName,
+    decimals: tokenResponse.tokenDecimals,
+    balances: {
+      locked: BigInt(tokenResponse.balance.locked),
+      unlocked: BigInt(tokenResponse.balance.unlocked),
+    },
+    chains: tokenResponse.tokenChainBalance.map((chainBalance) => ({
+      chain: toNumericChainId(chainBalance.chainId),
+      address: chainBalance.tokenAddress,
+      locked: BigInt(chainBalance.balance.locked),
+      unlocked: BigInt(chainBalance.balance.unlocked),
+    })) as [
+      {
+        isAccountDeployed: boolean
+        chain: number
+        address: Address
+        locked: bigint
+        unlocked: bigint
+      },
+    ],
+  }))
+}
+
+/**
+ * Intent-status endpoints return numeric chain ids to SDK callers even though BLANC sends CAIP-2.
+ */
+function parseIntentOpStatus(status: IntentOpStatus): IntentOpStatus {
+  return {
+    ...status,
+    destinationChainId: toNumericChainId(status.destinationChainId),
+    claims: status.claims.map((claim) => ({
+      ...claim,
+      chainId: toNumericChainId(claim.chainId),
+    })),
+  }
+}
+
+/**
+ * Route responses still expose numeric gas-cost chain ids while leaving signed payload fields untouched.
+ */
+function parseIntentRoute(route: IntentRoute): IntentRoute {
+  if (!route.intentCost.gasCost) {
+    return route
+  }
+
+  return {
+    ...route,
+    intentCost: {
+      ...route.intentCost,
+      gasCost: {
+        ...route.intentCost.gasCost,
+        originChains: route.intentCost.gasCost.originChains.map(
+          (originChain) => ({
+            ...originChain,
+            chainId: toNumericChainId(originChain.chainId),
+          }),
+        ),
+        destination: {
+          ...route.intentCost.gasCost.destination,
+          chainId: toNumericChainId(
+            route.intentCost.gasCost.destination.chainId,
+          ),
+        },
+      },
+    },
+  }
+}
+
 export class Orchestrator {
   private serverUrl: string
   private authProvider: AuthProvider
   private extraHeaders?: Record<string, string>
+  private apiVersion: OrchestratorApiVersion
 
   constructor(
     serverUrl: string,
     authProvider: AuthProvider,
     headers?: Record<string, string>,
+    apiVersion: OrchestratorApiVersion = DEFAULT_ORCHESTRATOR_API_VERSION,
   ) {
     this.serverUrl = serverUrl
     this.authProvider = authProvider
     this.extraHeaders = headers
+    this.apiVersion = apiVersion
   }
 
   async getPortfolio(
@@ -76,78 +170,81 @@ export class Orchestrator {
   ): Promise<Portfolio> {
     const params = new URLSearchParams()
     if (filter?.chainIds) {
-      params.set('chainIds', filter.chainIds.join(','))
+      if (this.apiVersion === 'blanc') {
+        for (const chainId of filter.chainIds) {
+          params.append('chainIds', toCaip2(chainId))
+        }
+      } else {
+        params.set('chainIds', filter.chainIds.join(','))
+      }
     }
     if (filter?.tokens) {
-      params.set(
-        'tokens',
-        Object.entries(filter.tokens)
-          .flatMap(([chainId, tokens]) =>
-            tokens.map((token) => `${chainId}:${token}`),
-          )
-          .join(','),
-      )
+      const tokenEntries = Object.entries(filter.tokens)
+
+      if (this.apiVersion === 'blanc') {
+        for (const [chainId, tokens] of tokenEntries) {
+          const caip2ChainId = toCaip2(Number(chainId))
+          for (const token of tokens) {
+            params.append('tokens', `${caip2ChainId}:${token}`)
+          }
+        }
+      } else {
+        params.set(
+          'tokens',
+          tokenEntries
+            .flatMap(([chainId, tokens]) =>
+              tokens.map((token) => `${chainId}:${token}`),
+            )
+            .join(','),
+        )
+      }
     }
     const url = new URL(`${this.serverUrl}/accounts/${userAddress}/portfolio`)
     url.search = params.toString()
     const json = await this.fetch(url.toString(), {
       headers: await this.getHeaders(),
     })
-    const portfolioResponse = json.portfolio as PortfolioResponse
-    const portfolio: Portfolio = portfolioResponse.map((tokenResponse) => ({
-      symbol: tokenResponse.tokenName,
-      decimals: tokenResponse.tokenDecimals,
-      balances: {
-        locked: BigInt(tokenResponse.balance.locked),
-        unlocked: BigInt(tokenResponse.balance.unlocked),
-      },
-      chains: tokenResponse.tokenChainBalance.map((chainBalance) => ({
-        chain: chainBalance.chainId,
-        address: chainBalance.tokenAddress,
-        locked: BigInt(chainBalance.balance.locked),
-        unlocked: BigInt(chainBalance.balance.unlocked),
-      })) as [
-        {
-          isAccountDeployed: boolean
-          chain: number
-          address: Address
-          locked: bigint
-          unlocked: bigint
-        },
-      ],
-    }))
 
-    return portfolio
+    return parsePortfolio(json.portfolio as PortfolioResponse)
   }
 
   async getIntentRoute(input: IntentInput): Promise<IntentRoute> {
-    const body = convertBigIntFields(input)
-    return await this.fetch(`${this.serverUrl}/intents/route`, {
+    const body = encodeChainIdsForWire(
+      convertBigIntFields(input),
+      this.apiVersion,
+    )
+    return parseIntentRoute(
+      await this.fetch(`${this.serverUrl}/intents/route`, {
+        method: 'POST',
+        headers: await this.getHeaders(),
+        body: JSON.stringify(body),
+      }),
+    )
+  }
+
+  async splitIntents(input: SplitIntentsInput): Promise<SplitIntentsResult> {
+    const body = encodeChainIdsForWire(
+      convertBigIntFields({
+        chainId: input.chain.id,
+        tokens: input.tokens,
+        settlementLayers: input.settlementLayers,
+      }),
+      this.apiVersion,
+    )
+
+    const response = await fetch(`${this.serverUrl}/intents/split`, {
       method: 'POST',
       headers: await this.getHeaders(),
       body: JSON.stringify(body),
     })
-  }
-
-  async splitIntents(input: SplitIntentsInput): Promise<SplitIntentsResult> {
-    const response = await fetch(`${this.serverUrl}/intents/split`, {
-      method: 'POST',
-      headers: await this.getHeaders(),
-      body: JSON.stringify(
-        convertBigIntFields({
-          chainId: input.chain.id,
-          tokens: input.tokens,
-          settlementLayers: input.settlementLayers,
-        }),
-      ),
-    })
 
     if (response.ok) {
-      const json = await response.json()
+      const json = decodeChainIdsFromWire(
+        await response.json(),
+        this.apiVersion,
+      ) as { intents: Record<string, string>[] }
       return {
-        intents: (json.intents as Record<string, string>[]).map(
-          parseTokenAmountsRecord,
-        ),
+        intents: json.intents.map(parseTokenAmountsRecord),
       }
     }
 
@@ -190,7 +287,10 @@ export class Orchestrator {
     dryRun: boolean,
     policyContext?: { intentInput: unknown; isSponsored: boolean },
   ): Promise<IntentResult> {
-    const signedIntentOp = convertBigIntFields(signedIntentOpUnformatted)
+    const signedIntentOp = encodeChainIdsForWire(
+      convertBigIntFields(signedIntentOpUnformatted),
+      this.apiVersion,
+    )
     if (dryRun) {
       signedIntentOp.options = {
         dryRun: true,
@@ -211,11 +311,13 @@ export class Orchestrator {
   }
 
   async getIntentOpStatus(intentId: bigint): Promise<IntentOpStatus> {
-    return await this.fetch(
-      `${this.serverUrl}/intent-operation/${intentId.toString()}`,
-      {
-        headers: await this.getHeaders(),
-      },
+    return parseIntentOpStatus(
+      await this.fetch(
+        `${this.serverUrl}/intent-operation/${intentId.toString()}`,
+        {
+          headers: await this.getHeaders(),
+        },
+      ),
     )
   }
 
@@ -224,9 +326,9 @@ export class Orchestrator {
     return {
       'Content-Type': 'application/json',
       'x-sdk-version': SDK_VERSION,
-      'x-api-version': API_VERSION,
       ...auth,
       ...this.extraHeaders,
+      'x-api-version': ORCHESTRATOR_API_VERSION_HEADERS[this.apiVersion],
     }
   }
 
@@ -243,6 +345,7 @@ export class Orchestrator {
       'x-sdk-version': SDK_VERSION,
       ...auth,
       ...this.extraHeaders,
+      'x-api-version': ORCHESTRATOR_API_VERSION_HEADERS[this.apiVersion],
     }
   }
 
@@ -271,7 +374,7 @@ export class Orchestrator {
         },
       })
     }
-    return response.json()
+    return decodeChainIdsFromWire(await response.json(), this.apiVersion)
   }
 
   private parseError(error: any) {
@@ -392,9 +495,9 @@ export class Orchestrator {
     ) {
       throw new UnsupportedChainIdError(errorParams)
     } else if (message.startsWith('Unsupported chain ')) {
-      const chainIdMatch = message.match(/Unsupported chain (\d+)/)
+      const chainIdMatch = message.match(/Unsupported chain ((?:eip155:)?\d+)/)
       if (chainIdMatch) {
-        const chainId = parseInt(chainIdMatch[1], 10)
+        const chainId = parseErrorChainId(chainIdMatch[1])
         throw new UnsupportedChainError(chainId, errorParams)
       }
       throw new UnsupportedChainIdError(errorParams)
@@ -403,11 +506,11 @@ export class Orchestrator {
       message.includes('for chain')
     ) {
       const tokenMatch = message.match(
-        /Unsupported token (\w+) for chain (\d+)/,
+        /Unsupported token (\w+) for chain ((?:eip155:)?\d+)/,
       )
       if (tokenMatch) {
         const tokenSymbol = tokenMatch[1]
-        const chainId = parseInt(tokenMatch[2], 10)
+        const chainId = parseErrorChainId(tokenMatch[2])
         throw new UnsupportedTokenError(tokenSymbol, chainId, errorParams)
       }
       throw new OrchestratorError({ message, ...errorParams })
@@ -416,11 +519,11 @@ export class Orchestrator {
       throw new BadRequestError({ message, ...errorParams })
     } else if (message.includes('not supported on chain')) {
       const tokenMatch = message.match(
-        /Token (.+) not supported on chain (\d+)/,
+        /Token (.+) not supported on chain ((?:eip155:)?\d+)/,
       )
       if (tokenMatch) {
         const tokenAddress = tokenMatch[1]
-        const chainId = parseInt(tokenMatch[2], 10)
+        const chainId = parseErrorChainId(tokenMatch[2])
         throw new TokenNotSupportedError(tokenAddress, chainId, errorParams)
       }
       throw new OrchestratorError({ message, ...errorParams })
@@ -482,4 +585,11 @@ export class Orchestrator {
       throw new OrchestratorError({ message, ...errorParams })
     }
   }
+}
+
+/**
+ * Error messages can contain either legacy decimal ids or BLANC CAIP-2 ids.
+ */
+function parseErrorChainId(chainId: string): number {
+  return isCaip2(chainId) ? fromCaip2(chainId) : Number(chainId)
 }
