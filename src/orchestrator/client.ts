@@ -1,53 +1,31 @@
 import type { Address } from 'viem'
 import type { AuthProvider } from '../auth/provider'
+import { fromCaip2, toCaip2 } from './caip2'
 import { API_VERSION, SDK_VERSION } from './consts'
 import {
-  AuthenticationRequiredError,
-  BadRequestError,
-  BodyParserError,
-  ConflictError,
-  ForbiddenError,
-  InsufficientBalanceError,
-  InsufficientLiquidityError,
-  IntentNotFoundError,
-  InternalServerError,
-  InvalidApiKeyError,
-  InvalidIntentSignatureError,
-  NoPathFoundError,
-  OnlyOneTargetTokenAmountCanBeUnsetError,
+  type ErrorEnvelope,
   OrchestratorError,
-  RateLimitedError,
-  ResourceNotFoundError,
-  ServiceUnavailableError,
-  SimulationFailedError,
-  TokenNotSupportedError,
-  UnauthorizedError,
-  UnsupportedChainError,
-  UnsupportedChainIdError,
-  UnsupportedTokenError,
+  parseErrorEnvelope,
 } from './error'
 import type {
+  Cost,
+  CostTokenEntry,
   IntentInput,
   IntentOpStatus,
-  IntentResult,
-  IntentRoute,
+  IntentSubmitRequestInternal,
+  IntentSubmitResponse,
   Portfolio,
-  PortfolioResponse,
-  SignedIntentOp,
+  Quote,
+  QuoteResponse,
   SplitIntentsInput,
   SplitIntentsResult,
+  TokenRequirements,
 } from './types'
 import { convertBigIntFields } from './utils'
 
-function parseTokenAmountsRecord(
-  record: Record<string, string>,
-): Record<Address, bigint> {
-  return Object.fromEntries(
-    Object.entries(record).map(([addr, amount]) => [
-      addr as Address,
-      BigInt(amount),
-    ]),
-  ) as Record<Address, bigint>
+interface PolicyContext {
+  intentInput: unknown
+  isSponsored: boolean
 }
 
 export class Orchestrator {
@@ -66,157 +44,123 @@ export class Orchestrator {
   }
 
   async getPortfolio(
-    userAddress: Address,
+    accountAddress: Address,
     filter?: {
       chainIds?: number[]
-      tokens?: {
-        [chainId: number]: Address[]
-      }
+      tokens?: { [chainId: number]: Address[] }
     },
   ): Promise<Portfolio> {
     const params = new URLSearchParams()
     if (filter?.chainIds) {
-      params.set('chainIds', filter.chainIds.join(','))
+      params.set('chainIds', filter.chainIds.map(toCaip2).join(','))
     }
     if (filter?.tokens) {
       params.set(
         'tokens',
         Object.entries(filter.tokens)
           .flatMap(([chainId, tokens]) =>
-            tokens.map((token) => `${chainId}:${token}`),
+            tokens.map((token) => `${toCaip2(Number(chainId))}:${token}`),
           )
           .join(','),
       )
     }
-    const url = new URL(`${this.serverUrl}/accounts/${userAddress}/portfolio`)
+    const url = new URL(
+      `${this.serverUrl}/accounts/${accountAddress}/portfolio`,
+    )
     url.search = params.toString()
     const json = await this.fetch(url.toString(), {
       headers: await this.getHeaders(),
     })
-    const portfolioResponse = json.portfolio as PortfolioResponse
-    const portfolio: Portfolio = portfolioResponse.map((tokenResponse) => ({
-      symbol: tokenResponse.tokenName,
-      decimals: tokenResponse.tokenDecimals,
+    const portfolioWire = json.portfolio as Array<{
+      symbol: string
+      decimals: number
+      balance: { locked: string; unlocked: string }
+      chains: Array<{
+        chainId: string | number
+        address: Address
+        balance: { locked: string; unlocked: string }
+      }>
+    }>
+    return portfolioWire.map((token) => ({
+      symbol: token.symbol,
+      decimals: token.decimals,
       balances: {
-        locked: BigInt(tokenResponse.balance.locked),
-        unlocked: BigInt(tokenResponse.balance.unlocked),
+        locked: BigInt(token.balance.locked),
+        unlocked: BigInt(token.balance.unlocked),
       },
-      chains: tokenResponse.tokenChainBalance.map((chainBalance) => ({
-        chain: chainBalance.chainId,
-        address: chainBalance.tokenAddress,
-        locked: BigInt(chainBalance.balance.locked),
-        unlocked: BigInt(chainBalance.balance.unlocked),
-      })) as [
-        {
-          isAccountDeployed: boolean
-          chain: number
-          address: Address
-          locked: bigint
-          unlocked: bigint
-        },
-      ],
+      chains: token.chains.map((c) => ({
+        chain: parseChainId(c.chainId),
+        address: c.address,
+        locked: BigInt(c.balance.locked),
+        unlocked: BigInt(c.balance.unlocked),
+      })) as PortfolioToken['chains'],
     }))
-
-    return portfolio
   }
 
-  async getIntentRoute(input: IntentInput): Promise<IntentRoute> {
-    const body = convertBigIntFields(input)
-    return await this.fetch(`${this.serverUrl}/intents/route`, {
+  async createQuote(input: IntentInput): Promise<QuoteResponse> {
+    const body = encodeIntentInput(input)
+    const json = await this.fetch(`${this.serverUrl}/quotes`, {
       method: 'POST',
       headers: await this.getHeaders(),
       body: JSON.stringify(body),
     })
+    return decodeQuoteResponse(json)
   }
 
-  async splitIntents(input: SplitIntentsInput): Promise<SplitIntentsResult> {
-    const response = await fetch(`${this.serverUrl}/intents/split`, {
+  async getSplit(input: SplitIntentsInput): Promise<SplitIntentsResult> {
+    const body = convertBigIntFields({
+      chainId: toCaip2(input.chain.id),
+      tokens: input.tokens,
+      settlementLayers: input.settlementLayers,
+    })
+    const json = await this.fetch(`${this.serverUrl}/intents/splits`, {
       method: 'POST',
       headers: await this.getHeaders(),
-      body: JSON.stringify(
-        convertBigIntFields({
-          chainId: input.chain.id,
-          tokens: input.tokens,
-          settlementLayers: input.settlementLayers,
-        }),
+      body: JSON.stringify(body),
+    })
+    return {
+      intents: (json.intents as Record<string, string>[]).map(
+        parseTokenAmountsRecord,
       ),
-    })
-
-    if (response.ok) {
-      const json = await response.json()
-      return {
-        intents: (json.intents as Record<string, string>[]).map(
-          parseTokenAmountsRecord,
-        ),
-      }
     }
-
-    let errorData: any = {}
-    try {
-      errorData = await response.json()
-    } catch {
-      try {
-        const text = await response.text()
-        errorData = { message: text }
-      } catch {}
-    }
-
-    if (
-      response.status === 422 &&
-      errorData.error === 'INSUFFICIENT_LIQUIDITY'
-    ) {
-      throw new InsufficientLiquidityError({
-        availableIntents: (
-          errorData.availableIntents as Record<string, string>[]
-        ).map(parseTokenAmountsRecord),
-        unfillable: parseTokenAmountsRecord(errorData.unfillable),
-        traceId: errorData.traceId,
-        statusCode: 422,
-      })
-    }
-
-    this.parseError({
-      response: {
-        status: response.status,
-        data: errorData,
-        headers: {},
-      },
-    })
-    throw new OrchestratorError({ message: 'Unexpected error' })
   }
 
-  async submitIntent(
-    signedIntentOpUnformatted: SignedIntentOp,
-    dryRun: boolean,
-    policyContext?: { intentInput: unknown; isSponsored: boolean },
-  ): Promise<IntentResult> {
-    const signedIntentOp = convertBigIntFields(signedIntentOpUnformatted)
-    if (dryRun) {
-      signedIntentOp.options = {
-        dryRun: true,
-      }
-    }
-    const body = { signedIntentOp }
+  async createIntent(
+    request: IntentSubmitRequestInternal,
+    policyContext?: PolicyContext,
+  ): Promise<IntentSubmitResponse> {
+    const body = convertBigIntFields(request)
     const headers = policyContext
       ? await this.getSubmitHeaders(
           policyContext.intentInput,
           policyContext.isSponsored,
         )
       : await this.getHeaders()
-    return await this.fetch(`${this.serverUrl}/intent-operations`, {
+    return await this.fetch(`${this.serverUrl}/intents`, {
       method: 'POST',
       headers,
       body: JSON.stringify(body),
     })
   }
 
-  async getIntentOpStatus(intentId: bigint): Promise<IntentOpStatus> {
-    return await this.fetch(
-      `${this.serverUrl}/intent-operation/${intentId.toString()}`,
-      {
-        headers: await this.getHeaders(),
-      },
-    )
+  async getIntent(intentId: string): Promise<IntentOpStatus> {
+    const json = await this.fetch(`${this.serverUrl}/intents/${intentId}`, {
+      headers: await this.getHeaders(),
+    })
+    return {
+      status: json.status,
+      claims: (json.claims ?? []).map((claim: any) => ({
+        depositId: claim.depositId !== undefined ? BigInt(claim.depositId) : 0n,
+        chainId: parseChainId(claim.chainId),
+        status: claim.status,
+        claimTimestamp: claim.claimTimestamp,
+        claimTransactionHash: claim.claimTransactionHash,
+      })),
+      destinationChainId: parseChainId(json.destinationChainId),
+      accountAddress: json.accountAddress,
+      fillTimestamp: json.fillTimestamp,
+      fillTransactionHash: json.fillTransactionHash,
+    }
   }
 
   private async getHeaders(): Promise<Record<string, string>> {
@@ -241,6 +185,7 @@ export class Orchestrator {
     return {
       'Content-Type': 'application/json',
       'x-sdk-version': SDK_VERSION,
+      'x-api-version': API_VERSION,
       ...auth,
       ...this.extraHeaders,
     }
@@ -250,236 +195,148 @@ export class Orchestrator {
     const response = await fetch(url, options)
 
     if (!response.ok) {
-      let errorData: any = {}
+      let body: any
       try {
-        errorData = await response.json()
+        body = await response.json()
       } catch {
-        try {
-          const text = await response.text()
-          errorData = { message: text }
-        } catch {}
+        body = {
+          code: 'INTERNAL_ERROR',
+          message: `Request failed with status ${response.status}`,
+          traceId: '',
+        }
       }
-      const retryAfterHeader =
-        response.headers?.get?.('retry-after') || undefined
-      this.parseError({
-        response: {
-          status: response.status,
-          data: errorData,
-          headers: {
-            retryAfter: retryAfterHeader,
-          },
-        },
-      })
+      const retryAfter = response.headers?.get?.('retry-after') ?? undefined
+      throw parseErrorEnvelope(
+        body as ErrorEnvelope,
+        response.status,
+        retryAfter ?? undefined,
+      )
     }
+
     return response.json()
   }
+}
 
-  private parseError(error: any) {
-    if (error.response) {
-      const status: number | undefined = error.response.status
-      const { headers } = error.response
-      const { errors = [], traceId, message } = error.response.data || {}
+function parseTokenAmountsRecord(
+  record: Record<string, string>,
+): Record<Address, bigint> {
+  return Object.fromEntries(
+    Object.entries(record).map(([addr, amount]) => [
+      addr as Address,
+      BigInt(amount),
+    ]),
+  ) as Record<Address, bigint>
+}
 
-      let errorType: string = 'Unknown'
-      switch (status) {
-        case 400:
-          errorType = 'Bad Request'
-          break
-        case 401:
-          errorType = 'Unauthorized'
-          break
-        case 403:
-          errorType = 'Forbidden'
-          break
-        case 404:
-          errorType = 'Not Found'
-          break
-        case 409:
-          errorType = 'Conflict'
-          break
-        case 422:
-          errorType = 'Unprocessable Entity'
-          break
-        case 429:
-          errorType = 'Too Many Requests'
-          break
-        case 500:
-          errorType = 'Internal Server Error'
-          break
-        case 503:
-          errorType = 'Service Unavailable'
-          break
-        default:
-          errorType = 'Unknown'
-      }
+function parseChainId(value: string | number): number {
+  if (typeof value === 'number') return value
+  if (typeof value === 'string') {
+    if (value.startsWith('eip155:')) return fromCaip2(value)
+    return Number(value)
+  }
+  throw new OrchestratorError({
+    message: `Invalid chain id value: ${String(value)}`,
+  })
+}
 
-      const baseParams = {
-        context: { traceId },
-        errorType,
-        traceId,
-        statusCode: status,
-      }
+function encodeIntentInput(input: IntentInput): unknown {
+  const {
+    account,
+    destinationChainId,
+    destinationExecutions,
+    destinationGasUnits,
+    tokenRequests,
+    recipient,
+    accountAccessList,
+    options,
+    preClaimExecutions,
+  } = input
 
-      if (status === 429) {
-        const retryAfter = headers?.retryAfter
-        const context = { traceId, retryAfter }
-        throw new RateLimitedError({
-          ...baseParams,
-          context,
-        })
-      }
-      if (status === 503) {
-        throw new ServiceUnavailableError(baseParams)
-      }
-
-      if (message) {
-        this.parseErrorMessage(message as string, baseParams)
-      }
-
-      for (const err of errors) {
-        const mergedParams = {
-          ...baseParams,
-          context: { ...err.context, traceId },
-        }
-        this.parseErrorMessage(err.message, mergedParams)
-      }
-
-      switch (status) {
-        case 400:
-          throw new BadRequestError({
-            ...baseParams,
-            context: { traceId, errors },
-            message: message as string,
-          })
-        case 401:
-          if (message === 'Authentication is required') {
-            throw new AuthenticationRequiredError(baseParams)
-          }
-          throw new UnauthorizedError(baseParams)
-        case 403:
-          throw new ForbiddenError(baseParams)
-        case 404:
-          throw new ResourceNotFoundError(baseParams)
-        case 409:
-          throw new ConflictError(baseParams)
-        case 500:
-          if (errors && errors.length > 0) {
-            const mergedParams = {
-              ...baseParams,
-              context: { ...errors[0].context, traceId },
-            }
-            throw new OrchestratorError({
-              ...mergedParams,
-              message: errors[0].message || 'Internal Server Error',
-            })
-          }
-          throw new InternalServerError(baseParams)
-        default:
-          throw new OrchestratorError({
-            ...baseParams,
-            message: (message as string) || errorType,
-          })
-      }
-    }
+  const wire: Record<string, unknown> = {
+    account,
+    destinationChainId: toCaip2(destinationChainId),
+    destinationExecutions,
+    tokenRequests,
+    recipient,
+    accountAccessList,
+    options,
   }
 
-  private parseErrorMessage(message: string, errorParams: any) {
-    if (message === 'Insufficient balance') {
-      throw new InsufficientBalanceError(errorParams)
-    } else if (
-      message === 'Unsupported chain id' ||
-      message === 'Unsupported chain ids'
-    ) {
-      throw new UnsupportedChainIdError(errorParams)
-    } else if (message.startsWith('Unsupported chain ')) {
-      const chainIdMatch = message.match(/Unsupported chain (\d+)/)
-      if (chainIdMatch) {
-        const chainId = parseInt(chainIdMatch[1], 10)
-        throw new UnsupportedChainError(chainId, errorParams)
-      }
-      throw new UnsupportedChainIdError(errorParams)
-    } else if (
-      message.includes('Unsupported token') &&
-      message.includes('for chain')
-    ) {
-      const tokenMatch = message.match(
-        /Unsupported token (\w+) for chain (\d+)/,
-      )
-      if (tokenMatch) {
-        const tokenSymbol = tokenMatch[1]
-        const chainId = parseInt(tokenMatch[2], 10)
-        throw new UnsupportedTokenError(tokenSymbol, chainId, errorParams)
-      }
-      throw new OrchestratorError({ message, ...errorParams })
-    } else if (message === 'Unsupported token addresses') {
-      // generic unsupported tokens without specific symbol/chain context
-      throw new BadRequestError({ message, ...errorParams })
-    } else if (message.includes('not supported on chain')) {
-      const tokenMatch = message.match(
-        /Token (.+) not supported on chain (\d+)/,
-      )
-      if (tokenMatch) {
-        const tokenAddress = tokenMatch[1]
-        const chainId = parseInt(tokenMatch[2], 10)
-        throw new TokenNotSupportedError(tokenAddress, chainId, errorParams)
-      }
-      throw new OrchestratorError({ message, ...errorParams })
-    } else if (message === 'Authentication is required') {
-      throw new AuthenticationRequiredError(errorParams)
-    } else if (message === 'Invalid API key') {
-      throw new InvalidApiKeyError(errorParams)
-    } else if (message === 'Insufficient permissions') {
-      throw new ForbiddenError(errorParams)
-    } else if (message === 'Invalid bundle signature') {
-      throw new InvalidIntentSignatureError(errorParams)
-    } else if (message === 'Invalid checksum signature') {
-      throw new InvalidIntentSignatureError(errorParams)
-    } else if (
-      message === 'Only one target token amount can be unset' ||
-      message === 'Only one max-out transfer is allowed'
-    ) {
-      throw new OnlyOneTargetTokenAmountCanBeUnsetError(errorParams)
-    } else if (
-      message === 'No valid settlement plan found for the given transfers' ||
-      message === 'No valid transfers sent for settlement quotes' ||
-      message === 'No Path Found'
-    ) {
-      throw new NoPathFoundError(errorParams)
-    } else if (
-      message === 'Emissary is not enabled' ||
-      message === 'Emissary is not the expected address'
-    ) {
-      throw new ForbiddenError(errorParams)
-    } else if (
-      message.includes('No such intent with nonce') ||
-      message === 'Order bundle not found'
-    ) {
-      throw new IntentNotFoundError(errorParams)
-    } else if (
-      message === 'Could not retrieve a valid quote from any aggregator'
-    ) {
-      throw new NoPathFoundError(errorParams)
-    } else if (message === 'No aggregators available for swap') {
-      throw new InternalServerError(errorParams)
-    } else if (
-      message === 'entity.parse.failed' ||
-      message === 'entity.too.large' ||
-      message === 'encoding.unsupported'
-    ) {
-      throw new BodyParserError({ message, ...errorParams })
-    } else if (message === 'Bundle simulation failed') {
-      const simulations = errorParams.context.error.simulations
-      const { traceId, errorType, statusCode, context } = errorParams
-      throw new SimulationFailedError({
-        message,
-        context,
-        errorType,
-        traceId,
-        statusCode,
-        simulations,
-      })
-    } else {
-      throw new OrchestratorError({ message, ...errorParams })
-    }
+  if (destinationGasUnits !== undefined) {
+    wire.destinationGasLimit = destinationGasUnits
+  }
+
+  if (preClaimExecutions) {
+    wire.preClaimExecutions = Object.fromEntries(
+      Object.entries(preClaimExecutions).map(([chainId, ops]) => [
+        toCaip2(Number(chainId)),
+        ops,
+      ]),
+    )
+  }
+
+  return convertBigIntFields(wire)
+}
+
+function decodeQuoteResponse(json: any): QuoteResponse {
+  const routes = (json.routes ?? []) as any[]
+  return { routes: routes.map(decodeQuote) }
+}
+
+function decodeQuote(route: any): Quote {
+  return {
+    intentId: route.intentId,
+    expiresAt: route.expiresAt,
+    estimatedFillTime: route.estimatedFillTime,
+    settlementLayer: route.settlementLayer,
+    signData: route.signData,
+    cost: decodeCost(route.cost),
+    tokenRequirements: route.tokenRequirements
+      ? decodeTokenRequirements(route.tokenRequirements)
+      : undefined,
   }
 }
+
+function decodeCost(cost: any): Cost {
+  return {
+    input: (cost.input as any[]).map(decodeCostTokenEntry),
+    output: (cost.output as any[]).map(decodeCostTokenEntry),
+    feeToken: cost.feeToken
+      ? {
+          chainId: parseChainId(cost.feeToken.chainId),
+          tokenAddress: cost.feeToken.tokenAddress,
+        }
+      : undefined,
+    fees: cost.fees,
+  }
+}
+
+function decodeCostTokenEntry(entry: any): CostTokenEntry {
+  return {
+    chainId: parseChainId(entry.chainId),
+    tokenAddress: entry.tokenAddress,
+    symbol: entry.symbol,
+    decimals: entry.decimals,
+    price: entry.price,
+    amount: BigInt(entry.amount),
+  }
+}
+
+function decodeTokenRequirements(wire: any): TokenRequirements {
+  const out: TokenRequirements = {}
+  for (const [chainKey, tokens] of Object.entries(wire)) {
+    const chainId = parseChainId(chainKey)
+    out[chainId] = {} as TokenRequirements[number]
+    for (const [tokenAddress, requirement] of Object.entries(
+      tokens as Record<string, any>,
+    )) {
+      out[chainId][tokenAddress as Address] = {
+        ...requirement,
+        amount: BigInt(requirement.amount),
+      }
+    }
+  }
+  return out
+}
+
+type PortfolioToken = Portfolio[number]
