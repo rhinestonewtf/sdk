@@ -10,11 +10,12 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     // Output
+    "rootDir": ".",
     "outDir": "./src/dist",
     "declaration": true,
     "declarationMap": true,
     "sourceMap": false
   },
   "include": ["src"],
-  "exclude": ["src/examples", "src/dist"]
+  "exclude": ["src/examples", "src/dist", "**/*.test.ts"]
 }

@@ -54,6 +54,7 @@ import {
   getBundlerClient,
   type ValidatorConfig,
 } from '../accounts/utils'
+import { createAuthProvider } from '../auth/provider'
 import { getIntentExecutor } from '../modules'
 import type { Module } from '../modules/common'
 import {
@@ -98,6 +99,7 @@ import {
   SIG_MODE_ERC1271_EMISSARY,
   type SupportedChain,
 } from '../orchestrator/types'
+import { convertBigIntFields } from '../orchestrator/utils'
 import type {
   AccountProviderConfig,
   Call,
@@ -198,6 +200,7 @@ interface TransactionResult {
 
 interface PreparedTransactionData {
   intentRoute: IntentRoute
+  intentInput: unknown
   transaction: Transaction
 }
 
@@ -242,7 +245,7 @@ async function prepareTransaction(
   if (isUserOpSigner) {
     throw new SignerNotSupportedError()
   }
-  const intentRoute = await prepareTransactionAsIntent(
+  const prepared = await prepareTransactionAsIntent(
     config,
     sourceChains,
     targetChain,
@@ -267,7 +270,8 @@ async function prepareTransaction(
   )
 
   return {
-    intentRoute,
+    intentRoute: prepared.intentRoute,
+    intentInput: prepared.intentInput,
     transaction,
   }
 }
@@ -354,6 +358,7 @@ async function signTransaction(
 
   return {
     intentRoute,
+    intentInput: preparedTransaction.intentInput,
     transaction: preparedTransaction.transaction,
     originSignatures,
     destinationSignature,
@@ -642,6 +647,7 @@ async function submitTransaction(
 ): Promise<TransactionResult> {
   const {
     intentRoute,
+    intentInput,
     transaction,
     originSignatures,
     destinationSignature,
@@ -659,6 +665,7 @@ async function submitTransaction(
     targetExecutionSignature,
     authorizations,
     dryRun,
+    intentInput,
   )
 }
 
@@ -849,10 +856,28 @@ async function prepareTransactionAsIntent(
   const intentAccount: OrchestratorAccount = {
     ...getIntentAccount(config, eip7702InitSignature, account),
     ...(signers?.type === 'experimental_session' && {
+      // Global fallback: target-chain sig for backward-compat with older orchestrators
       mockSignature: buildMockSignature(
         resolveSessionForChain(signers, targetChain.id).session,
         config.useDevContracts,
-        sourceChains?.length,
+        sourceChains?.length ?? 1,
+      ),
+      // Per-chain map: enables accurate per-chain session validation gas simulation
+      mockSignatures: Object.fromEntries(
+        [
+          ...new Set([
+            ...(sourceChains ?? []).map((c) => c.id),
+            targetChain.id,
+          ]),
+        ].map((chainId) => [
+          String(chainId),
+          buildMockSignature(
+            resolveSessionForChain(signers, chainId).session,
+            config.useDevContracts,
+            sourceChains?.length ?? 1,
+            chainId,
+          ),
+        ]),
       ),
     }),
   }
@@ -923,13 +948,15 @@ async function prepareTransactionAsIntent(
     ...(Object.keys(preClaimExecutions).length > 0 && { preClaimExecutions }),
   }
 
+  const serializedIntent = convertBigIntFields(metaIntent)
+
   const orchestrator = getOrchestrator(
-    config.apiKey,
+    config._authProvider ?? createAuthProvider(config),
     config.endpointUrl,
     config.headers,
   )
   const intentRoute = await orchestrator.getIntentRoute(metaIntent)
-  return intentRoute
+  return { intentRoute, intentInput: serializedIntent }
 }
 
 async function signIntent(
@@ -1370,6 +1397,7 @@ async function submitIntent(
   targetExecutionSignature: Hex | undefined,
   authorizations: SignedAuthorizationList,
   dryRun: boolean,
+  intentInput?: unknown,
 ) {
   return submitIntentInternal(
     config,
@@ -1381,6 +1409,7 @@ async function submitIntent(
     targetExecutionSignature,
     authorizations,
     dryRun,
+    intentInput,
   )
 }
 
@@ -1420,6 +1449,7 @@ async function submitIntentInternal(
   targetExecutionSignature: Hex | undefined,
   authorizations: SignedAuthorizationList,
   dryRun: boolean,
+  intentInput?: unknown,
 ) {
   const signedIntentOp = createSignedIntentOp(
     intentOp,
@@ -1428,15 +1458,25 @@ async function submitIntentInternal(
     targetExecutionSignature,
     authorizations,
   )
+  const isSponsored = !!(
+    intentInput as { options?: { sponsorSettings?: unknown } } | undefined
+  )?.options?.sponsorSettings
   const orchestrator = getOrchestrator(
-    config.apiKey,
+    config._authProvider ?? createAuthProvider(config),
     config.endpointUrl,
     config.headers,
   )
-  const intentResults = await orchestrator.submitIntent(signedIntentOp, dryRun)
+  const intentResults = await orchestrator.submitIntent(
+    signedIntentOp,
+    dryRun,
+    intentInput ? { intentInput, isSponsored } : undefined,
+  )
+  // Some settlement paths (e.g. SAME_CHAIN) may not return a result.id — fall
+  // back to the nonce which the orchestrator also accepts as an intent identifier.
+  const intentId = intentResults.result.id ?? intentOp.nonce
   return {
     type: 'intent',
-    id: BigInt(intentResults.result.id),
+    id: BigInt(intentId),
     sourceChains: sourceChains?.map((chain) => chain.id),
     targetChain: targetChain.id,
   } as TransactionResult

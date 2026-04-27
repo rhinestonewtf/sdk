@@ -31,6 +31,94 @@ npm install viem @rhinestone/sdk
 bun install viem @rhinestone/sdk
 ```
 
+## Authentication
+
+The SDK supports two authentication modes: **API key** and **JWT**.
+
+### API Key
+
+Pass the API key from the [Rhinestone dashboard](https://dashboard.rhinestone.dev):
+
+```ts
+const rhinestone = new RhinestoneSDK({
+  auth: {
+    mode: 'apiKey',
+    apiKey: 'your-api-key',
+  },
+})
+```
+
+### JWT (Experimental)
+
+JWT authentication uses RS256-signed tokens for fine-grained access control. There are two integration patterns depending on your architecture:
+
+#### Client-server (SDK runs in browser/client)
+
+When the SDK runs on the client and a separate backend holds the signing key, fetch tokens via HTTP:
+
+```ts
+const rhinestone = new RhinestoneSDK({
+  auth: {
+    mode: 'experimental_jwt',
+    accessToken: async () => {
+      const res = await fetch('/api/auth/token')
+      const { token } = await res.json()
+      return token
+    },
+    // Only needed for sponsored intents:
+    getIntentExtensionToken: async (intentInput) => {
+      const res = await fetch('/api/auth/extension-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ intentInput }),
+      })
+      const { token } = await res.json()
+      return token
+    },
+  },
+})
+```
+
+Your backend is responsible for signing JWTs with the correct claims. See the [JWT documentation](https://docs.rhinestone.dev) for the required token format.
+
+#### Same-host (SDK and signing key on the same server)
+
+When the SDK runs server-side with access to the private key, use `createJwtSigner` to sign tokens in-process without an HTTP round-trip:
+
+```ts
+import { createJwtSigner } from '@rhinestone/sdk/jwt-server'
+
+const signer = createJwtSigner({
+  jwt: {
+    privateKey: myJwk, // RS256 private key in JWK format
+    integratorId: 'int_abc',
+    projectId: 'proj_xyz',
+    appId: 'app_prod',
+    keyId: 'key_1',
+  },
+})
+
+const rhinestone = new RhinestoneSDK({
+  auth: { mode: 'experimental_jwt', ...signer },
+})
+```
+
+`createJwtSigner` returns `{ accessToken, getIntentExtensionToken }` — the same shape as the `auth` config, so you can spread it directly. It handles all claim structure, key caching, and intent digest computation internally.
+
+To control which intents your backend sponsors, pass `shouldSponsor` filters. The signer checks them before signing — denied requests throw a `SponsorshipDeniedError`:
+
+```ts
+import { createJwtSigner } from '@rhinestone/sdk/jwt-server'
+
+const signer = createJwtSigner({
+  // ...
+  shouldSponsor: {
+    chain: ({ id }) => [1, 8453, 10].includes(id),
+    account: async (address) => isUser(address),
+  },
+})
+```
+
 ## Quickstart
 
 Create a smart account:
@@ -38,7 +126,7 @@ Create a smart account:
 ```ts
 import { RhinestoneSDK } from '@rhinestone/sdk'
 
-const rhinestone = new RhinestoneSDK()
+const rhinestone = new RhinestoneSDK({ apiKey: 'your-api-key' })
 const account = await rhinestone.createAccount({
   owners: {
     type: 'ecdsa',
