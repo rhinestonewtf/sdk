@@ -30,15 +30,12 @@ type IntentStatus =
   | typeof INTENT_STATUS_FAILED
   | typeof INTENT_STATUS_CLAIMED
 
-type AccountAccessListLegacy = {
-  chainId: number
-  tokenAddress: Address
-  amount?: bigint
-}[]
-
 type MappedChainTokenAccessList = {
   chainTokens?: {
     [chainId in SupportedChain]?: SupportedToken[]
+  }
+  chainTokenAmounts?: {
+    [chainId in SupportedChain]?: Partial<Record<SupportedToken, bigint>>
   }
 }
 
@@ -48,7 +45,6 @@ type UnmappedChainTokenAccessList = {
 }
 
 type AccountAccessList =
-  | AccountAccessListLegacy
   | MappedChainTokenAccessList
   | UnmappedChainTokenAccessList
 
@@ -402,7 +398,6 @@ export type {
   PortfolioToken,
   Execution,
   AccountAccessList,
-  AccountAccessListLegacy,
   MappedChainTokenAccessList,
   UnmappedChainTokenAccessList,
   OriginSignature,

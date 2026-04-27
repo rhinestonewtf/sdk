@@ -91,6 +91,7 @@ import {
   type AccountAccessList,
   type AuxiliaryFunds,
   type IntentSubmitRequestInternal,
+  type MappedChainTokenAccessList,
   type Account as OrchestratorAccount,
   type OriginSignature,
   type SettlementLayer,
@@ -1551,14 +1552,32 @@ function createAccountAccessList(
       sourceAssets.length > 0 && typeof sourceAssets[0] !== 'string'
 
     if (isExactConfig) {
-      const resolvedConfigs = (sourceAssets as ExactInputConfig[]).map(
-        (config) => ({
-          chainId: config.chain.id,
-          tokenAddress: resolveTokenAddress(config.address, config.chain.id),
-          amount: config.amount,
-        }),
-      )
-      return resolvedConfigs
+      const chainTokens: Record<number, Address[]> = {}
+      const chainTokenAmounts: Record<number, Record<Address, bigint>> = {}
+      for (const config of sourceAssets as ExactInputConfig[]) {
+        const chainId = config.chain.id
+        const tokenAddress = resolveTokenAddress(
+          config.address,
+          config.chain.id,
+        )
+        if (config.amount !== undefined) {
+          if (!chainTokenAmounts[chainId]) chainTokenAmounts[chainId] = {}
+          chainTokenAmounts[chainId][tokenAddress] = config.amount
+        } else {
+          if (!chainTokens[chainId]) chainTokens[chainId] = []
+          chainTokens[chainId].push(tokenAddress)
+        }
+      }
+      const out: MappedChainTokenAccessList = {}
+      if (Object.keys(chainTokens).length > 0) {
+        out.chainTokens =
+          chainTokens as MappedChainTokenAccessList['chainTokens']
+      }
+      if (Object.keys(chainTokenAmounts).length > 0) {
+        out.chainTokenAmounts =
+          chainTokenAmounts as MappedChainTokenAccessList['chainTokenAmounts']
+      }
+      return out
     }
 
     return chainIds
