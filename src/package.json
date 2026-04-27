@@ -12,143 +12,60 @@
     "sdk"
   ],
   "license": "MIT",
-  "main": "./dist/src/index.js",
+  "type": "module",
   "types": "./dist/src/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/src/index.d.ts",
-      "import": "./dist/src/index.js",
-      "require": "./dist/src/index.js"
+      "import": "./dist/src/index.js"
     },
     "./actions": {
       "types": "./dist/src/actions/index.d.ts",
-      "import": "./dist/src/actions/index.js",
-      "require": "./dist/src/actions/index.js"
+      "import": "./dist/src/actions/index.js"
     },
     "./actions/compact": {
       "types": "./dist/src/actions/compact.d.ts",
-      "import": "./dist/src/actions/compact.js",
-      "require": "./dist/src/actions/compact.js"
+      "import": "./dist/src/actions/compact.js"
     },
     "./actions/ecdsa": {
       "types": "./dist/src/actions/ecdsa.d.ts",
-      "import": "./dist/src/actions/ecdsa.js",
-      "require": "./dist/src/actions/ecdsa.js"
+      "import": "./dist/src/actions/ecdsa.js"
     },
     "./actions/mfa": {
       "types": "./dist/src/actions/mfa.d.ts",
-      "import": "./dist/src/actions/mfa.js",
-      "require": "./dist/src/actions/mfa.js"
+      "import": "./dist/src/actions/mfa.js"
     },
     "./actions/passkeys": {
       "types": "./dist/src/actions/passkeys.d.ts",
-      "import": "./dist/src/actions/passkeys.js",
-      "require": "./dist/src/actions/passkeys.js"
+      "import": "./dist/src/actions/passkeys.js"
     },
     "./signing/passkeys": {
       "types": "./dist/src/accounts/signing/passkeys.d.ts",
-      "import": "./dist/src/accounts/signing/passkeys.js",
-      "require": "./dist/src/accounts/signing/passkeys.js"
+      "import": "./dist/src/accounts/signing/passkeys.js"
     },
     "./actions/smart-sessions": {
       "types": "./dist/src/actions/smart-sessions.d.ts",
-      "import": "./dist/src/actions/smart-sessions.js",
-      "require": "./dist/src/actions/smart-sessions.js"
+      "import": "./dist/src/actions/smart-sessions.js"
     },
     "./actions/recovery": {
       "types": "./dist/src/actions/recovery.d.ts",
-      "import": "./dist/src/actions/recovery.js",
-      "require": "./dist/src/actions/recovery.js"
+      "import": "./dist/src/actions/recovery.js"
     },
     "./errors": {
       "types": "./dist/src/errors/index.d.ts",
-      "import": "./dist/src/errors/index.js",
-      "require": "./dist/src/errors/index.js"
+      "import": "./dist/src/errors/index.js"
     },
     "./utils": {
       "types": "./dist/src/utils/index.d.ts",
-      "import": "./dist/src/utils/index.js",
-      "require": "./dist/src/utils/index.js"
-    },
-    "./dist/src/actions": {
-      "types": "./dist/src/actions/index.d.ts",
-      "import": "./dist/src/actions/index.js",
-      "require": "./dist/src/actions/index.js"
-    },
-    "./dist/src/actions/compact": {
-      "types": "./dist/src/actions/compact.d.ts",
-      "import": "./dist/src/actions/compact.js",
-      "require": "./dist/src/actions/compact.js"
-    },
-    "./dist/src/actions/ecdsa": {
-      "types": "./dist/src/actions/ecdsa.d.ts",
-      "import": "./dist/src/actions/ecdsa.js",
-      "require": "./dist/src/actions/ecdsa.js"
-    },
-    "./dist/src/actions/mfa": {
-      "types": "./dist/src/actions/mfa.d.ts",
-      "import": "./dist/src/actions/mfa.js",
-      "require": "./dist/src/actions/mfa.js"
-    },
-    "./dist/src/actions/passkeys": {
-      "types": "./dist/src/actions/passkeys.d.ts",
-      "import": "./dist/src/actions/passkeys.js",
-      "require": "./dist/src/actions/passkeys.js"
-    },
-    "./dist/src/actions/smart-sessions": {
-      "types": "./dist/src/actions/smart-sessions.d.ts",
-      "import": "./dist/src/actions/smart-sessions.js",
-      "require": "./dist/src/actions/smart-sessions.js"
-    },
-    "./dist/src/actions/recovery": {
-      "types": "./dist/src/actions/recovery.d.ts",
-      "import": "./dist/src/actions/recovery.js",
-      "require": "./dist/src/actions/recovery.js"
-    },
-    "./dist/src/errors": {
-      "types": "./dist/src/errors/index.d.ts",
-      "import": "./dist/src/errors/index.js",
-      "require": "./dist/src/errors/index.js"
-    },
-    "./dist/src/utils": {
-      "types": "./dist/src/utils/index.d.ts",
-      "import": "./dist/src/utils/index.js",
-      "require": "./dist/src/utils/index.js"
-    },
-    "./dist/src/orchestrator": {
-      "types": "./dist/src/orchestrator/index.d.ts",
-      "import": "./dist/src/orchestrator/index.js",
-      "require": "./dist/src/orchestrator/index.js"
-    },
-    "./dist/src/orchestrator/types": {
-      "types": "./dist/src/orchestrator/types.d.ts",
-      "import": "./dist/src/orchestrator/types.js",
-      "require": "./dist/src/orchestrator/types.js"
-    },
-    "./dist/src/execution/compact": {
-      "types": "./dist/src/execution/compact.d.ts",
-      "import": "./dist/src/execution/compact.js",
-      "require": "./dist/src/execution/compact.js"
-    },
-    "./dist/src/execution/permit2": {
-      "types": "./dist/src/execution/permit2.d.ts",
-      "import": "./dist/src/execution/permit2.js",
-      "require": "./dist/src/execution/permit2.js"
-    },
-    "./dist/src/execution/singleChainOps": {
-      "types": "./dist/src/execution/singleChainOps.d.ts",
-      "import": "./dist/src/execution/singleChainOps.js",
-      "require": "./dist/src/execution/singleChainOps.js"
+      "import": "./dist/src/utils/index.js"
     },
     "./smart-sessions": {
       "types": "./dist/src/modules/validators/smart-sessions.d.ts",
-      "import": "./dist/src/modules/validators/smart-sessions.js",
-      "require": "./dist/src/modules/validators/smart-sessions.js"
+      "import": "./dist/src/modules/validators/smart-sessions.js"
     },
     "./jwt-server": {
       "types": "./dist/src/jwt-server/index.d.ts",
-      "import": "./dist/src/jwt-server/index.js",
-      "require": "./dist/src/jwt-server/index.js"
+      "import": "./dist/src/jwt-server/index.js"
     }
   },
   "files": [
