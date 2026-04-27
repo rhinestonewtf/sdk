@@ -36,14 +36,9 @@ import {
   waitForExecution as waitForExecutionInternal,
 } from './execution'
 import {
-  type BatchPermit2Result,
   checkERC20AllowanceDirect,
   checkERC20Allowance as checkERC20AllowanceInternal,
   getPermit2Address,
-  type MultiChainPermit2Config,
-  type MultiChainPermit2Result,
-  signPermit2Batch,
-  signPermit2Sequential,
 } from './execution/permit2'
 import {
   getTransactionMessages as getTransactionMessagesInternal,
@@ -629,9 +624,6 @@ export {
   // Permit2 helpers
   checkERC20AllowanceDirect,
   getPermit2Address,
-  // Multi-chain permit2 signing
-  signPermit2Batch,
-  signPermit2Sequential,
 }
 export type {
   RhinestoneAccount,
@@ -673,8 +665,4 @@ export type {
   TokenRequirements,
   WrapRequired,
   ApprovalRequired,
-  // Multi-chain permit2 types
-  MultiChainPermit2Config,
-  MultiChainPermit2Result,
-  BatchPermit2Result,
 }
