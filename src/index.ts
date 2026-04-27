@@ -591,7 +591,7 @@ class RhinestoneSDK {
     return createRhinestoneAccount(rhinestoneConfig)
   }
 
-  getIntentStatus(intentId: bigint) {
+  getIntentStatus(intentId: string) {
     return getIntentStatusInternal(
       this.authProvider,
       this.endpointUrl,

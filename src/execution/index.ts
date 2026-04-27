@@ -268,7 +268,11 @@ async function sendTransactionAsIntent(
     signers,
   )
   const authorizations = config.eoa
-    ? await signAuthorizationsInternal(config, intentRoute)
+    ? await signAuthorizationsInternal(config, {
+        sourceChains,
+        targetChain,
+        eip7702InitSignature,
+      })
     : []
   return await submitIntentInternal(
     config,
@@ -309,7 +313,7 @@ async function waitForExecution(
         if (now - startTs >= POLL_MAX_WAIT_MS) {
           throw new IntentStatusTimeoutError({
             context: {
-              intentId: result.id.toString(),
+              intentId: result.id,
             },
           })
         }
@@ -319,7 +323,7 @@ async function waitForExecution(
           config.headers,
         )
         try {
-          intentStatus = await orchestrator.getIntentOpStatus(result.id)
+          intentStatus = await orchestrator.getIntent(result.id)
           // reset error backoff on success
           errorBackoffMs = POLL_ERROR_BACKOFF_MS
           const elapsed = Date.now() - startTs
@@ -361,10 +365,9 @@ async function waitForExecution(
         }
       }
       if (intentStatus.status === INTENT_STATUS_FAILED) {
-        const intentId = result.id.toString()
         throw new IntentFailedError({
           context: {
-            intentId,
+            intentId: result.id,
           },
         })
       }
@@ -415,7 +418,7 @@ async function getPortfolio(config: RhinestoneConfig, onTestnets: boolean) {
 async function getIntentStatus(
   authProvider: AuthProvider,
   endpointUrl: string | undefined,
-  intentId: bigint,
+  intentId: string,
   headers?: Record<string, string>,
 ): Promise<
   TransactionStatus & {
@@ -423,7 +426,7 @@ async function getIntentStatus(
   }
 > {
   const orchestrator = getOrchestrator(authProvider, endpointUrl, headers)
-  const internalStatus = await orchestrator.getIntentOpStatus(intentId)
+  const internalStatus = await orchestrator.getIntent(intentId)
   return {
     status: internalStatus.status,
     fill: {
@@ -444,7 +447,7 @@ async function splitIntents(
   headers?: Record<string, string>,
 ) {
   const orchestrator = getOrchestrator(authProvider, endpointUrl, headers)
-  return orchestrator.splitIntents(input)
+  return orchestrator.getSplit(input)
 }
 
 export {

@@ -90,6 +90,7 @@ import {
 import {
   type AccountAccessList,
   type AuxiliaryFunds,
+  type IntentSubmitRequestInternal,
   type Account as OrchestratorAccount,
   type OriginSignature,
   type SettlementLayer,
@@ -188,7 +189,7 @@ interface UserOperationResult {
 
 interface TransactionResult {
   type: 'intent'
-  id: bigint
+  id: string
   sourceChains?: number[]
   targetChain: number
 }
@@ -429,7 +430,16 @@ async function signAuthorizations(
   config: RhinestoneConfig,
   preparedTransaction: PreparedTransactionData,
 ) {
-  return await signAuthorizationsInternal(config, preparedTransaction)
+  const transaction = preparedTransaction.transaction
+  const sourceChains =
+    'chain' in transaction ? [transaction.chain] : transaction.sourceChains
+  const targetChain =
+    'chain' in transaction ? transaction.chain : transaction.targetChain
+  return await signAuthorizationsInternal(config, {
+    sourceChains,
+    targetChain,
+    eip7702InitSignature: transaction.eip7702InitSignature,
+  })
 }
 
 async function signMessage(
@@ -591,17 +601,17 @@ async function signTypedDataWithSession<
 
 async function signAuthorizationsInternal(
   config: RhinestoneConfig,
-  data: PreparedTransactionData | UserOperation,
+  context: {
+    sourceChains: Chain[] | undefined
+    targetChain: Chain
+    eip7702InitSignature: Hex | undefined
+  },
 ) {
   const eoa = config.eoa
   if (!eoa) {
     throw new Error('EIP-7702 initialization is required for EOA accounts')
   }
-  // UserOperation flow does not require 7702 authorizations from this code path.
-  if (!('transaction' in data)) {
-    return []
-  }
-  const eip7702InitSignature = data.transaction.eip7702InitSignature
+  const eip7702InitSignature = context.eip7702InitSignature
   if (!eip7702InitSignature) {
     return []
   }
@@ -611,15 +621,8 @@ async function signAuthorizationsInternal(
     eip7702InitSignature,
   )
 
-  const transaction = data.transaction
-  const sourceChains =
-    'chain' in transaction
-      ? [transaction.chain]
-      : (transaction.sourceChains ?? [])
-  const targetChain =
-    'chain' in transaction ? transaction.chain : transaction.targetChain
   const chains = new Map<number, Chain>()
-  for (const chain of [...sourceChains, targetChain]) {
+  for (const chain of [...(context.sourceChains ?? []), context.targetChain]) {
     chains.set(chain.id, chain)
   }
 
@@ -654,7 +657,7 @@ async function submitTransaction(
   dryRun: boolean = false,
 ): Promise<TransactionResult> {
   const {
-    intentRoute,
+    quote,
     intentInput,
     transaction,
     originSignatures,
@@ -662,12 +665,11 @@ async function submitTransaction(
     targetExecutionSignature,
   } = signedTransaction
   const { sourceChains, targetChain } = getTransactionParams(transaction)
-  const intentOp = intentRoute.intentOp
-  return await submitIntent(
+  return await submitIntentInternal(
     config,
     sourceChains,
     targetChain,
-    intentOp,
+    quote,
     originSignatures,
     destinationSignature,
     targetExecutionSignature,
@@ -1405,77 +1407,41 @@ async function submitUserOp(
   } as UserOperationResult
 }
 
-async function submitIntent(
-  config: RhinestoneConfig,
-  sourceChains: Chain[] | undefined,
-  targetChain: Chain,
-  intentOp: IntentOp,
-  originSignatures: OriginSignature[],
-  destinationSignature: Hex,
-  targetExecutionSignature: Hex | undefined,
-  authorizations: SignedAuthorizationList,
-  dryRun: boolean,
-  intentInput?: unknown,
-) {
-  return submitIntentInternal(
-    config,
-    sourceChains,
-    targetChain,
-    intentOp,
-    originSignatures,
-    destinationSignature,
-    targetExecutionSignature,
-    authorizations,
-    dryRun,
-    intentInput,
-  )
-}
-
-function createSignedIntentOp(
-  intentOp: IntentOp,
-  originSignatures: OriginSignature[],
-  destinationSignature: Hex,
-  targetExecutionSignature: Hex | undefined,
-  authorizations: SignedAuthorizationList,
-): SignedIntentOp {
-  return {
-    ...intentOp,
-    originSignatures,
-    destinationSignature,
-    targetExecutionSignature,
-    signedAuthorizations:
-      authorizations.length > 0
-        ? authorizations.map((authorization) => ({
-            chainId: authorization.chainId,
-            address: authorization.address,
-            nonce: authorization.nonce,
-            yParity: authorization.yParity ?? 0,
-            r: authorization.r,
-            s: authorization.s,
-          }))
-        : undefined,
-  }
-}
-
 async function submitIntentInternal(
   config: RhinestoneConfig,
   sourceChains: Chain[] | undefined,
   targetChain: Chain,
-  intentOp: IntentOp,
+  quote: Quote,
   originSignatures: OriginSignature[],
   destinationSignature: Hex,
   targetExecutionSignature: Hex | undefined,
   authorizations: SignedAuthorizationList,
   dryRun: boolean,
   intentInput?: unknown,
-) {
-  const signedIntentOp = createSignedIntentOp(
-    intentOp,
-    originSignatures,
-    destinationSignature,
-    targetExecutionSignature,
-    authorizations,
-  )
+): Promise<TransactionResult> {
+  const request: IntentSubmitRequestInternal = {
+    intentId: quote.intentId,
+    signatures: {
+      origin: originSignatures,
+      destination: destinationSignature,
+      ...(targetExecutionSignature !== undefined && {
+        targetExecution: targetExecutionSignature,
+      }),
+    },
+    ...(authorizations.length > 0 && {
+      authorizations: {
+        sponsor: authorizations.map((authorization) => ({
+          chainId: authorization.chainId,
+          address: authorization.address,
+          nonce: authorization.nonce,
+          yParity: authorization.yParity ?? 0,
+          r: authorization.r,
+          s: authorization.s,
+        })),
+      },
+    }),
+    ...(dryRun && { options: { dryRun: true } }),
+  }
   const isSponsored = !!(
     intentInput as { options?: { sponsorSettings?: unknown } } | undefined
   )?.options?.sponsorSettings
@@ -1484,20 +1450,16 @@ async function submitIntentInternal(
     config.endpointUrl,
     config.headers,
   )
-  const intentResults = await orchestrator.submitIntent(
-    signedIntentOp,
-    dryRun,
+  const response = await orchestrator.createIntent(
+    request,
     intentInput ? { intentInput, isSponsored } : undefined,
   )
-  // Some settlement paths (e.g. SAME_CHAIN) may not return a result.id — fall
-  // back to the nonce which the orchestrator also accepts as an intent identifier.
-  const intentId = intentResults.result.id ?? intentOp.nonce
   return {
     type: 'intent',
-    id: BigInt(intentId),
+    id: response.intentId,
     sourceChains: sourceChains?.map((chain) => chain.id),
     targetChain: targetChain.id,
-  } as TransactionResult
+  }
 }
 
 async function getValidatorAccount(
