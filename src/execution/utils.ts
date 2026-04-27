@@ -866,12 +866,6 @@ async function prepareTransactionAsIntent(
   const intentAccount: OrchestratorAccount = {
     ...getIntentAccount(config, eip7702InitSignature, account),
     ...(signers?.type === 'experimental_session' && {
-      // Global fallback: target-chain sig for backward-compat with older orchestrators
-      mockSignature: buildMockSignature(
-        resolveSessionForChain(signers, targetChain.id).session,
-        config.useDevContracts,
-        sourceChains?.length ?? 1,
-      ),
       // Per-chain map: enables accurate per-chain session validation gas simulation
       mockSignatures: Object.fromEntries(
         [
