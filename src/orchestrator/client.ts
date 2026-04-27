@@ -8,10 +8,13 @@ import {
   parseErrorEnvelope,
 } from './error'
 import type {
+  AccountAccessList,
+  AuxiliaryFunds,
   Cost,
   CostTokenEntry,
   IntentInput,
   IntentOpStatus,
+  IntentOptions,
   IntentSubmitRequestInternal,
   IntentSubmitResponse,
   Portfolio,
@@ -258,8 +261,8 @@ function encodeIntentInput(input: IntentInput): unknown {
     destinationExecutions,
     tokenRequests,
     recipient,
-    accountAccessList,
-    options,
+    accountAccessList: encodeAccountAccessList(accountAccessList),
+    options: encodeOptions(options),
   }
 
   if (destinationGasUnits !== undefined) {
@@ -276,6 +279,51 @@ function encodeIntentInput(input: IntentInput): unknown {
   }
 
   return convertBigIntFields(wire)
+}
+
+function encodeAccountAccessList(
+  list: AccountAccessList | undefined,
+): unknown {
+  if (!list) return undefined
+  if (Array.isArray(list)) {
+    return list.map((entry) => ({
+      ...entry,
+      chainId: toCaip2(entry.chainId),
+    }))
+  }
+  const out: Record<string, unknown> = {}
+  if ('chainIds' in list && list.chainIds) {
+    out.chainIds = list.chainIds.map(toCaip2)
+  }
+  if ('tokens' in list && list.tokens) {
+    out.tokens = list.tokens
+  }
+  if ('chainTokens' in list && list.chainTokens) {
+    out.chainTokens = Object.fromEntries(
+      Object.entries(list.chainTokens).map(([chainId, tokens]) => [
+        toCaip2(Number(chainId)),
+        tokens,
+      ]),
+    )
+  }
+  return out
+}
+
+function encodeAuxiliaryFunds(funds: AuxiliaryFunds): AuxiliaryFunds {
+  return Object.fromEntries(
+    Object.entries(funds).map(([chainId, balances]) => [
+      toCaip2(Number(chainId)),
+      balances,
+    ]),
+  ) as AuxiliaryFunds
+}
+
+function encodeOptions(options: IntentOptions): IntentOptions {
+  if (!options.auxiliaryFunds) return options
+  return {
+    ...options,
+    auxiliaryFunds: encodeAuxiliaryFunds(options.auxiliaryFunds),
+  }
 }
 
 function decodeQuoteResponse(json: any): QuoteResponse {
