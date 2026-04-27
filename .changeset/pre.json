@@ -4,5 +4,7 @@
   "initialVersions": {
     "@rhinestone/sdk": "1.5.0"
   },
-  "changesets": []
+  "changesets": [
+    "v2-beta-prereq"
+  ]
 }
