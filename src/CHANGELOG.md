@@ -1,5 +1,24 @@
 # @rhinestone/sdk
 
+## 1.5.0
+
+### Minor Changes
+
+- e8bbde0: Add JWT authentication support alongside existing API key flow.
+
+  - New `auth` config option with `{ mode: 'experimental_jwt', accessToken, getIntentExtensionToken }`
+  - `createJwtSigner` helper in `@rhinestone/sdk/jwt-server` for same-host RS256 signing
+  - JCS canonicalization (RFC 8785) and intent input digest computation
+  - `shouldSponsor` config-based filtering (chain, account, calls predicates) built into `createJwtSigner`
+  - Framework handler wrappers for Web Standard (`Request`/`Response`) and Express
+  - `SponsorshipDeniedError` custom error class for typed denial handling
+
+### Patch Changes
+
+- d3ef16c: Support EC JWKs in `createJwtSigner`. The JWS algorithm is now derived from the supplied JWK (`P-256` → `ES256`, `P-384` → `ES384`, `P-521` → `ES512`); RSA keys continue to sign as `RS256`. Unsupported `kty`/`crv` combinations throw at signer construction.
+- cc71613: Drop `ox` dependency by inlining the single type reference (`WebAuthnP256.SignMetadata`). The SDK had no runtime usage of `ox` — only a type-only import — so this has no behavioral impact. Consumers still get `ox` transitively through `viem` if needed.
+- 7613f1d: Revert the `2026-04.blanc` orchestrator submit schema and restore the `2026-01.alps` API version. Submit requests again send `{ signedIntentOp }` and expect the nested `result.id`/`status` intent response.
+
 ## 1.4.2
 
 ### Patch Changes
