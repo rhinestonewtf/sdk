@@ -1,8 +1,11 @@
+import { createRequire } from 'node:module'
 import {
   createCoreAccessTokenHandler,
   createCoreExtensionTokenHandler,
   type JwtHandlerConfig,
 } from './handlers'
+
+const require = createRequire(import.meta.url)
 
 interface ExpressRequest {
   body?: unknown
