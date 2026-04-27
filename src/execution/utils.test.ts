@@ -15,13 +15,38 @@ import {
   resolveSessionForChain,
 } from './utils'
 
-const mockGetIntentRoute = vi.fn()
+const mockCreateQuote = vi.fn()
 
 vi.mock('../orchestrator', () => ({
   getOrchestrator: () => ({
-    getIntentRoute: mockGetIntentRoute,
+    createQuote: mockCreateQuote,
   }),
 }))
+
+const mockQuote = {
+  intentId: 'mock-intent-id',
+  expiresAt: 0,
+  estimatedFillTime: { seconds: 0 },
+  settlementLayer: 'INTENT_EXECUTOR',
+  signData: {
+    origin: [],
+    destination: { types: {}, primaryType: '', message: {} },
+  },
+  cost: {
+    input: [],
+    output: [],
+    fees: {
+      total: { usd: 0 },
+      breakdown: {
+        gas: { usd: 0 },
+        bridge: { usd: 0 },
+        protocol: { usd: 0 },
+        swap: { usd: 0 },
+        settlement: { usd: 0 },
+      },
+    },
+  },
+}
 
 describe('hashErc7739TypedDataForSolady', () => {
   const verifierDomain = {
@@ -140,7 +165,7 @@ describe('hashErc7739TypedDataForSolady', () => {
 
 describe('prepareTransactionAsIntent', () => {
   beforeEach(() => {
-    mockGetIntentRoute.mockReset()
+    mockCreateQuote.mockReset()
   })
 
   test('includes auxiliaryFunds in options when provided', async () => {
@@ -150,10 +175,7 @@ describe('prepareTransactionAsIntent', () => {
       } as Record<`0x${string}`, bigint>,
     }
 
-    mockGetIntentRoute.mockResolvedValue({
-      intentOp: {},
-      intentCost: {},
-    })
+    mockCreateQuote.mockResolvedValue({ routes: [mockQuote] })
 
     await prepareTransactionAsIntent(
       {
@@ -177,16 +199,13 @@ describe('prepareTransactionAsIntent', () => {
       undefined,
     )
 
-    expect(mockGetIntentRoute).toHaveBeenCalledOnce()
-    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    expect(mockCreateQuote).toHaveBeenCalledOnce()
+    const intentInput: IntentInput = mockCreateQuote.mock.calls[0][0]
     expect(intentInput.options.auxiliaryFunds).toEqual(auxiliaryFunds)
   })
 
   test('does not include auxiliaryFunds in options when not provided', async () => {
-    mockGetIntentRoute.mockResolvedValue({
-      intentOp: {},
-      intentCost: {},
-    })
+    mockCreateQuote.mockResolvedValue({ routes: [mockQuote] })
 
     await prepareTransactionAsIntent(
       {
@@ -210,8 +229,8 @@ describe('prepareTransactionAsIntent', () => {
       undefined,
     )
 
-    expect(mockGetIntentRoute).toHaveBeenCalledOnce()
-    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    expect(mockCreateQuote).toHaveBeenCalledOnce()
+    const intentInput: IntentInput = mockCreateQuote.mock.calls[0][0]
     expect(intentInput.options.auxiliaryFunds).toBeUndefined()
   })
 })
@@ -301,8 +320,8 @@ describe('prepareTransactionAsIntent — preClaimExecutions', () => {
   let isSessionEnabledSpy: any
 
   beforeEach(() => {
-    mockGetIntentRoute.mockReset()
-    mockGetIntentRoute.mockResolvedValue({ intentOp: {}, intentCost: {} })
+    mockCreateQuote.mockReset()
+    mockCreateQuote.mockResolvedValue({ routes: [mockQuote] })
     isSessionEnabledSpy = vi
       .spyOn(validators, 'isSessionEnabled')
       .mockResolvedValue(false)
@@ -347,7 +366,7 @@ describe('prepareTransactionAsIntent — preClaimExecutions', () => {
       signers,
     )
 
-    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    const intentInput: IntentInput = mockCreateQuote.mock.calls[0][0]
     expect(intentInput.preClaimExecutions).toBeDefined()
     expect(intentInput.preClaimExecutions![base.id]).toHaveLength(1)
     expect(intentInput.preClaimExecutions![base.id][0].to).toBe(
@@ -399,7 +418,7 @@ describe('prepareTransactionAsIntent — preClaimExecutions', () => {
       signers,
     )
 
-    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    const intentInput: IntentInput = mockCreateQuote.mock.calls[0][0]
     expect(intentInput.preClaimExecutions).toBeUndefined()
   })
 
@@ -442,7 +461,7 @@ describe('prepareTransactionAsIntent — preClaimExecutions', () => {
       signers,
     )
 
-    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    const intentInput: IntentInput = mockCreateQuote.mock.calls[0][0]
     expect(intentInput.preClaimExecutions).toBeUndefined()
   })
 
@@ -479,7 +498,7 @@ describe('prepareTransactionAsIntent — preClaimExecutions', () => {
       signers,
     )
 
-    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    const intentInput: IntentInput = mockCreateQuote.mock.calls[0][0]
     expect(intentInput.preClaimExecutions).toBeUndefined()
   })
 
@@ -536,7 +555,7 @@ describe('prepareTransactionAsIntent — preClaimExecutions', () => {
       signers,
     )
 
-    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    const intentInput: IntentInput = mockCreateQuote.mock.calls[0][0]
     expect(intentInput.preClaimExecutions).toBeDefined()
     expect(intentInput.preClaimExecutions![base.id]).toHaveLength(1)
     expect(intentInput.preClaimExecutions![base.id][0].to).toBe(

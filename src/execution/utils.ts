@@ -22,6 +22,7 @@ import {
   type TypedData,
   type TypedDataDefinition,
   type TypedDataDomain,
+  type TypedDataParameter,
   toHex,
 } from 'viem'
 import {
@@ -55,7 +56,6 @@ import {
   type ValidatorConfig,
 } from '../accounts/utils'
 import { createAuthProvider } from '../auth/provider'
-import { getIntentExecutor } from '../modules'
 import type { Module } from '../modules/common'
 import {
   buildMockSignature,
@@ -79,9 +79,8 @@ import {
   type Execution,
   getOrchestrator,
   type IntentInput,
-  type IntentOp,
-  type IntentRoute,
-  type SignedIntentOp,
+  type Quote,
+  type SignData,
 } from '../orchestrator'
 import {
   getChainById,
@@ -91,7 +90,6 @@ import {
 import {
   type AccountAccessList,
   type AuxiliaryFunds,
-  type IntentOpElement,
   type Account as OrchestratorAccount,
   type OriginSignature,
   type SettlementLayer,
@@ -120,13 +118,10 @@ import type {
   Transaction,
   UserOperationTransaction,
 } from '../types'
-import { getCompactTypedData } from './compact'
 import {
   Eip7702InitSignatureRequiredError,
   SignerNotSupportedError,
 } from './error'
-import { getTypedData as getPermit2TypedData } from './permit2'
-import { getTypedData as getSingleChainOpsTypedData } from './singleChainOps'
 
 type InternalSignerSet =
   | Exclude<SignerSet, SessionSignerSet>
@@ -199,7 +194,7 @@ interface TransactionResult {
 }
 
 interface PreparedTransactionData {
-  intentRoute: IntentRoute
+  quote: Quote
   intentInput: unknown
   transaction: Transaction
 }
@@ -215,6 +210,9 @@ interface SignedTransactionData extends PreparedTransactionData {
   destinationSignature: Hex
   targetExecutionSignature: Hex | undefined
 }
+
+type TypedDataMessage = Record<string, unknown>
+type TypedDataTypes = Record<string, readonly TypedDataParameter[]>
 
 interface SignedUserOperationData extends PreparedUserOperationData {
   signature: Hex
@@ -270,7 +268,7 @@ async function prepareTransaction(
   )
 
   return {
-    intentRoute: prepared.intentRoute,
+    quote: prepared.quote,
     intentInput: prepared.intentInput,
     transaction,
   }
@@ -323,13 +321,14 @@ async function resolveCallInputs(
 }
 
 function getTransactionMessages(
-  config: RhinestoneConfig,
+  _config: RhinestoneConfig,
   preparedTransaction: PreparedTransactionData,
 ): {
   origin: TypedDataDefinition[]
   destination: TypedDataDefinition
+  targetExecution?: TypedDataDefinition
 } {
-  return getIntentMessages(config, preparedTransaction.intentRoute.intentOp)
+  return getIntentMessages(preparedTransaction.quote.signData)
 }
 
 async function signTransaction(
@@ -337,27 +336,27 @@ async function signTransaction(
   preparedTransaction: PreparedTransactionData,
 ): Promise<SignedTransactionData> {
   const { signers } = getTransactionParams(preparedTransaction.transaction)
-  const intentRoute = preparedTransaction.intentRoute
+  const quote = preparedTransaction.quote
   const targetChain =
     'targetChain' in preparedTransaction.transaction
       ? preparedTransaction.transaction.targetChain
       : preparedTransaction.transaction.chain
   const { originSignatures, destinationSignature } = await signIntent(
     config,
-    intentRoute.intentOp,
+    quote.signData,
     targetChain,
     signers,
     false,
   )
   const targetExecutionSignature = await getTargetExecutionSignature(
     config,
-    intentRoute.intentOp,
+    quote.signData,
     targetChain,
     signers,
   )
 
   return {
-    intentRoute,
+    quote,
     intentInput: preparedTransaction.intentInput,
     transaction: preparedTransaction.transaction,
     originSignatures,
@@ -368,21 +367,14 @@ async function signTransaction(
 
 async function getTargetExecutionSignature(
   config: RhinestoneConfig,
-  intentOp: IntentOp,
+  signData: SignData,
   targetChain: Chain,
   signers: SignerSet | undefined,
 ) {
   if (signers?.type !== 'experimental_session') {
     return undefined
   }
-  const settlementLayers = intentOp.elements.map(
-    (e) => e.mandate.qualifier.settlementContext.settlementLayer,
-  )
-
-  const hasIntentExecutorOps = settlementLayers.some(
-    (l) => l === 'INTENT_EXECUTOR' || l === 'SAME_CHAIN',
-  )
-  if (!hasIntentExecutorOps) {
+  if (!signData.targetExecution) {
     return undefined
   }
   const resolvedSigners = await resolveSignersForChain(
@@ -396,13 +388,13 @@ async function getTargetExecutionSignature(
   ) {
     return undefined
   }
-  const destination = getTargetExecutionMessage(config, intentOp)
   const validator = getValidator(config, signers)
   if (!validator) {
     throw new Error('Validator not available')
   }
   const ownerValidator = getOwnerValidator(config)
   const isRoot = validator.address === ownerValidator.address
+  const destination = prepareTypedData(signData.targetExecution)
   const signature = await getDestinationSignature(
     config,
     resolvedSigners,
@@ -437,10 +429,7 @@ async function signAuthorizations(
   config: RhinestoneConfig,
   preparedTransaction: PreparedTransactionData,
 ) {
-  return await signAuthorizationsInternal(
-    config,
-    preparedTransaction.intentRoute,
-  )
+  return await signAuthorizationsInternal(config, preparedTransaction)
 }
 
 async function signMessage(
@@ -602,21 +591,40 @@ async function signTypedDataWithSession<
 
 async function signAuthorizationsInternal(
   config: RhinestoneConfig,
-  data: IntentRoute | UserOperation,
+  data: PreparedTransactionData | UserOperation,
 ) {
   const eoa = config.eoa
   if (!eoa) {
     throw new Error('EIP-7702 initialization is required for EOA accounts')
   }
+  // UserOperation flow does not require 7702 authorizations from this code path.
+  if (!('transaction' in data)) {
+    return []
+  }
+  const eip7702InitSignature = data.transaction.eip7702InitSignature
+  if (!eip7702InitSignature) {
+    return []
+  }
   const accountAddress = getAddress(config)
-  const requiredDelegations =
-    'intentOp' in data
-      ? data.intentOp.signedMetadata.account.requiredDelegations || {}
-      : {}
+  const { contract: eip7702Contract } = getEip7702InitCall(
+    config,
+    eip7702InitSignature,
+  )
+
+  const transaction = data.transaction
+  const sourceChains =
+    'chain' in transaction
+      ? [transaction.chain]
+      : (transaction.sourceChains ?? [])
+  const targetChain =
+    'chain' in transaction ? transaction.chain : transaction.targetChain
+  const chains = new Map<number, Chain>()
+  for (const chain of [...sourceChains, targetChain]) {
+    chains.set(chain.id, chain)
+  }
+
   const authorizations: SignedAuthorization[] = []
-  for (const chainId in requiredDelegations) {
-    const delegation = requiredDelegations[chainId]
-    const chain = getChainById(Number(chainId))
+  for (const chain of chains.values()) {
     const walletClient = createWalletClient({
       chain,
       account: eoa,
@@ -626,13 +634,13 @@ async function signAuthorizationsInternal(
       address: accountAddress,
     })
     const isDelegated =
-      code === concat(['0xef0100', delegation.contract.toLowerCase() as Hex])
+      code === concat(['0xef0100', eip7702Contract.toLowerCase() as Hex])
     if (isDelegated) {
       continue
     }
     const authorization = await walletClient.signAuthorization({
-      contractAddress: delegation.contract,
-      chainId: Number(chainId),
+      contractAddress: eip7702Contract,
+      chainId: chain.id,
     })
     authorizations.push(authorization)
   }
@@ -931,14 +939,14 @@ async function prepareTransactionAsIntent(
       sponsorSettings: sponsored
         ? typeof sponsored === 'object'
           ? {
-              gasSponsored: sponsored.gas,
-              bridgeFeesSponsored: sponsored.bridging,
-              swapFeesSponsored: sponsored.swaps,
+              gas: sponsored.gas,
+              bridgeFees: sponsored.bridging,
+              swapFees: sponsored.swaps,
             }
           : {
-              gasSponsored: sponsored,
-              bridgeFeesSponsored: sponsored,
-              swapFeesSponsored: sponsored,
+              gas: sponsored,
+              bridgeFees: sponsored,
+              swapFees: sponsored,
             }
         : undefined,
       settlementLayers,
@@ -955,18 +963,22 @@ async function prepareTransactionAsIntent(
     config.endpointUrl,
     config.headers,
   )
-  const intentRoute = await orchestrator.getIntentRoute(metaIntent)
-  return { intentRoute, intentInput: serializedIntent }
+  const { routes } = await orchestrator.createQuote(metaIntent)
+  const quote = routes[0]
+  if (!quote) {
+    throw new Error('Orchestrator returned no quote')
+  }
+  return { quote, intentInput: serializedIntent }
 }
 
 async function signIntent(
   config: RhinestoneConfig,
-  intentOp: IntentOp,
+  signData: SignData,
   targetChain: Chain,
   signers?: SignerSet,
   targetExecution?: boolean,
 ) {
-  const { origin, destination } = getIntentMessages(config, intentOp)
+  const { origin, destination } = getIntentMessages(signData)
   if (config.account?.type === 'eoa') {
     const eoa = config.eoa
     if (!eoa) {
@@ -1110,67 +1122,73 @@ async function signDestinationSeparately(
     : (destinationSignatures ?? '0x')
 }
 
-function getIntentMessages(config: RhinestoneConfig, intentOp: IntentOp) {
-  const address = getAddress(config)
-  const intentExecutor = getIntentExecutor(config)
-
-  const withPermit2 = intentOp.elements.some(
-    (element) =>
-      element.mandate.qualifier.settlementContext.fundingMethod === 'PERMIT2',
-  )
-  const withIntentExecutorOps = intentOp.elements.some(
-    (element) =>
-      element.mandate.qualifier.settlementContext.settlementLayer ===
-      'INTENT_EXECUTOR',
-  )
-  const origin: TypedDataDefinition[] = []
-  for (const element of intentOp.elements) {
-    if (withIntentExecutorOps) {
-      const typedData = getSingleChainOpsTypedData(
-        address,
-        intentExecutor.address,
-        element,
-        BigInt(intentOp.nonce),
-      )
-      origin.push(typedData)
-    } else if (withPermit2) {
-      const typedData = getPermit2TypedData(
-        element,
-        BigInt(intentOp.nonce),
-        BigInt(intentOp.expires),
-      )
-      origin.push(typedData)
-    } else {
-      const typedData = getCompactTypedData(intentOp)
-      origin.push(typedData)
-    }
-  }
-  const destination = origin.at(-1) as TypedDataDefinition
+function getIntentMessages(signData: SignData): {
+  origin: TypedDataDefinition[]
+  destination: TypedDataDefinition
+  targetExecution?: TypedDataDefinition
+} {
   return {
-    origin,
-    destination,
+    origin: signData.origin.map(prepareTypedData),
+    destination: prepareTypedData(signData.destination),
+    targetExecution: signData.targetExecution
+      ? prepareTypedData(signData.targetExecution)
+      : undefined,
   }
 }
 
-function getTargetExecutionMessage(
-  config: RhinestoneConfig,
-  intentOp: IntentOp,
-) {
-  const address = getAddress(config)
-  const intentExecutor = getIntentExecutor(config)
-  const lastElement = intentOp.elements.at(-1)
-  const typedData = getSingleChainOpsTypedData(
-    address,
-    intentExecutor.address,
-    lastElement as IntentOpElement,
-    BigInt(intentOp.targetExecutionNonce),
-  )
-  typedData.message.gasRefund = typedData.message.gasRefund ?? {
-    token: '0x0000000000000000000000000000000000000000',
-    exchangeRate: 0n,
-    overhead: 0n,
+// Server emits uint*/int* values as decimal strings; viem's hashTypedData
+// expects bigint. Walk the message tree against the type schema and coerce
+// numeric fields back to bigint before signing.
+function prepareTypedData(td: TypedDataDefinition): TypedDataDefinition {
+  const types = td.types as TypedDataTypes
+  return {
+    ...td,
+    message: coerceTypedDataMessage(
+      types,
+      td.primaryType as string,
+      td.message as TypedDataMessage,
+    ),
+  } as TypedDataDefinition
+}
+
+function coerceTypedDataMessage(
+  types: TypedDataTypes,
+  primaryType: string,
+  message: TypedDataMessage,
+): TypedDataMessage {
+  const fields = types[primaryType]
+  if (!fields) return message
+  const result: TypedDataMessage = { ...message }
+  for (const { name, type } of fields) {
+    if (name in message) {
+      result[name] = coerceTypedDataValue(types, type, message[name])
+    }
   }
-  return typedData
+  return result
+}
+
+function coerceTypedDataValue(
+  types: TypedDataTypes,
+  type: string,
+  value: unknown,
+): unknown {
+  if (value === null || value === undefined) return value
+  const arrayMatch = type.match(/^(.+)\[\d*\]$/)
+  if (arrayMatch) {
+    const elementType = arrayMatch[1]
+    if (!Array.isArray(value)) return value
+    return value.map((v) => coerceTypedDataValue(types, elementType, v))
+  }
+  if (/^u?int\d*$/.test(type)) {
+    if (typeof value === 'string' || typeof value === 'number') {
+      return BigInt(value)
+    }
+    return value
+  }
+  if (types[type]) {
+    return coerceTypedDataMessage(types, type, value as TypedDataMessage)
+  }
+  return value
 }
 
 /** Computes claim policy calldata when parameters are Permit2 typed data with claim policies. */
@@ -1859,7 +1877,6 @@ export {
 }
 export type {
   InternalSignerSet,
-  IntentRoute,
   TransactionResult,
   PreparedTransactionData,
   PreparedUserOperationData,

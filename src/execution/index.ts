@@ -254,16 +254,16 @@ async function sendTransactionAsIntent(
   if (!prepared) {
     throw new OrderPathRequiredForIntentsError()
   }
-  const { intentRoute, intentInput } = prepared
+  const { quote, intentInput } = prepared
   const { originSignatures, destinationSignature } = await signIntent(
     config,
-    intentRoute.intentOp,
+    quote.signData,
     targetChain,
     signers,
   )
   const targetExecutionSignature = await getTargetExecutionSignature(
     config,
-    intentRoute.intentOp,
+    quote.signData,
     targetChain,
     signers,
   )
@@ -274,7 +274,7 @@ async function sendTransactionAsIntent(
     config,
     sourceChains,
     targetChain,
-    intentRoute.intentOp,
+    quote,
     originSignatures,
     destinationSignature,
     targetExecutionSignature,
