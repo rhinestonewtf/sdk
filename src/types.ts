@@ -263,9 +263,8 @@ interface JwtAuth {
   /** Static access token, or async getter for refreshable tokens. */
   accessToken: string | (() => Promise<string>)
   /**
-   * Called at submitIntent time when the intent is sponsored.
-   * Receives the raw intent input object.
-   * Must return a signed intent_extension_token JWT.
+   * Called when submitting a sponsored intent. Receives the raw intent
+   * input object and must return a signed intent_extension_token JWT.
    */
   getIntentExtensionToken?: (intentInput: unknown) => Promise<string>
 }
