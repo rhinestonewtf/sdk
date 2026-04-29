@@ -90,7 +90,7 @@ export class Orchestrator {
         decimals: c.decimals,
         locked: BigInt(c.balance.locked),
         unlocked: BigInt(c.balance.unlocked),
-      })) as PortfolioToken['chains'],
+      })),
     }))
   }
 
@@ -380,5 +380,3 @@ function decodeTokenRequirements(wire: any): TokenRequirements {
   }
   return out
 }
-
-type PortfolioToken = Portfolio[number]

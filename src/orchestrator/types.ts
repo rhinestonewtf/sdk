@@ -107,15 +107,13 @@ interface SponsorSettings {
 
 interface PortfolioToken {
   symbol: string
-  chains: [
-    {
-      chain: number
-      address: Address
-      decimals: number
-      locked: bigint
-      unlocked: bigint
-    },
-  ]
+  chains: {
+    chain: number
+    address: Address
+    decimals: number
+    locked: bigint
+    unlocked: bigint
+  }[]
 }
 
 type Portfolio = PortfolioToken[]
