@@ -55,17 +55,16 @@ export class Orchestrator {
   ): Promise<Portfolio> {
     const params = new URLSearchParams()
     if (filter?.chainIds) {
-      params.set('chainIds', filter.chainIds.map(toCaip2).join(','))
+      for (const id of filter.chainIds) {
+        params.append('chainIds', toCaip2(id))
+      }
     }
     if (filter?.tokens) {
-      params.set(
-        'tokens',
-        Object.entries(filter.tokens)
-          .flatMap(([chainId, tokens]) =>
-            tokens.map((token) => `${toCaip2(Number(chainId))}:${token}`),
-          )
-          .join(','),
-      )
+      for (const [chainId, tokens] of Object.entries(filter.tokens)) {
+        for (const token of tokens) {
+          params.append('tokens', `${toCaip2(Number(chainId))}:${token}`)
+        }
+      }
     }
     const url = new URL(
       `${this.serverUrl}/accounts/${accountAddress}/portfolio`,
