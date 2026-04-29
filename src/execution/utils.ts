@@ -207,7 +207,7 @@ interface PreparedTransactionData {
   transaction: Transaction
 }
 
-interface SignTransactionOptions {
+interface QuoteSelection {
   quote?: Quote
 }
 
@@ -336,18 +336,20 @@ async function resolveCallInputs(
 function getTransactionMessages(
   _config: RhinestoneConfig,
   preparedTransaction: PreparedTransactionData,
+  options?: QuoteSelection,
 ): {
   origin: TypedDataDefinition[]
   destination: TypedDataDefinition
   targetExecution?: TypedDataDefinition
 } {
-  return getIntentMessages(preparedTransaction.quotes.best.signData)
+  const quote = resolveQuote(preparedTransaction.quotes, options?.quote)
+  return getIntentMessages(quote.signData)
 }
 
 async function signTransaction(
   config: RhinestoneConfig,
   preparedTransaction: PreparedTransactionData,
-  options?: SignTransactionOptions,
+  options?: QuoteSelection,
 ): Promise<SignedTransactionData> {
   const { signers } = getTransactionParams(preparedTransaction.transaction)
   const quote = resolveQuote(preparedTransaction.quotes, options?.quote)
@@ -1883,8 +1885,8 @@ export type {
   PreparedQuotes,
   PreparedTransactionData,
   PreparedUserOperationData,
+  QuoteSelection,
   SignedTransactionData,
   SignedUserOperationData,
-  SignTransactionOptions,
   UserOperationResult,
 }

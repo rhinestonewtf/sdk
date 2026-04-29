@@ -47,9 +47,9 @@ import {
   type PreparedUserOperationData,
   prepareTransaction as prepareTransactionInternal,
   prepareUserOperation as prepareUserOperationInternal,
+  type QuoteSelection,
   type SignedTransactionData,
   type SignedUserOperationData,
-  type SignTransactionOptions,
   signAuthorizations as signAuthorizationsInternal,
   signMessage as signMessageInternal,
   signTransaction as signTransactionInternal,
@@ -133,13 +133,16 @@ interface RhinestoneAccount {
   prepareTransaction: (
     transaction: Transaction,
   ) => Promise<PreparedTransactionData>
-  getTransactionMessages: (preparedTransaction: PreparedTransactionData) => {
+  getTransactionMessages: (
+    preparedTransaction: PreparedTransactionData,
+    options?: QuoteSelection,
+  ) => {
     origin: TypedDataDefinition[]
     destination: TypedDataDefinition
   }
   signTransaction: (
     preparedTransaction: PreparedTransactionData,
-    options?: SignTransactionOptions,
+    options?: QuoteSelection,
   ) => Promise<SignedTransactionData>
   signAuthorizations: (
     preparedTransaction: PreparedTransactionData,
@@ -288,12 +291,14 @@ async function createRhinestoneAccount(
   /**
    * Get the transaction typed data message to sign
    * @param preparedTransaction Prepared transaction data
+   * @param options Optional override; pass `{ quote }` to inspect a specific quote from `preparedTransaction.quotes.all`
    * @see {@link prepareTransaction} to prepare the transaction data for signing
    */
   function getTransactionMessages(
     preparedTransaction: PreparedTransactionData,
+    options?: QuoteSelection,
   ) {
-    return getTransactionMessagesInternal(config, preparedTransaction)
+    return getTransactionMessagesInternal(config, preparedTransaction, options)
   }
 
   /**
@@ -305,7 +310,7 @@ async function createRhinestoneAccount(
    */
   function signTransaction(
     preparedTransaction: PreparedTransactionData,
-    options?: SignTransactionOptions,
+    options?: QuoteSelection,
   ) {
     return signTransactionInternal(config, preparedTransaction, options)
   }
@@ -658,7 +663,7 @@ export type {
   UniversalActionPolicyParamCondition,
   PreparedQuotes,
   PreparedTransactionData,
-  SignTransactionOptions,
+  QuoteSelection,
   SignedTransactionData,
   TransactionResult,
   PreparedUserOperationData,
