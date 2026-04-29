@@ -8,9 +8,12 @@ function getAlchemyUrl(chainId: SupportedChain, apiKey: string): string {
   if (!chainParam) {
     throw new Error(`Unsupported chain: ${chainId}`)
   }
-  return urlTemplate
-    .replace('{{chain_param}}', chainParam)
-    .replace('${ALCHEMY_API_KEY}', apiKey)
+  return (
+    urlTemplate
+      .replace('{{chain_param}}', chainParam)
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal placeholder token in the upstream shared-configs url_template
+      .replace('${ALCHEMY_API_KEY}', apiKey)
+  )
 }
 
 function getCustomUrl(
