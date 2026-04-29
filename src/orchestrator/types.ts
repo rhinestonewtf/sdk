@@ -107,15 +107,11 @@ interface SponsorSettings {
 
 interface PortfolioToken {
   symbol: string
-  decimals: number
-  balances: {
-    locked: bigint
-    unlocked: bigint
-  }
   chains: [
     {
       chain: number
       address: Address
+      decimals: number
       locked: bigint
       unlocked: bigint
     },

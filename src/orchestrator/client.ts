@@ -76,24 +76,19 @@ export class Orchestrator {
     })
     const portfolioWire = json.portfolio as Array<{
       symbol: string
-      decimals: number
-      balance: { locked: string; unlocked: string }
       chains: Array<{
         chainId: string | number
         address: Address
+        decimals: number
         balance: { locked: string; unlocked: string }
       }>
     }>
     return portfolioWire.map((token) => ({
       symbol: token.symbol,
-      decimals: token.decimals,
-      balances: {
-        locked: BigInt(token.balance.locked),
-        unlocked: BigInt(token.balance.unlocked),
-      },
       chains: token.chains.map((c) => ({
         chain: parseChainId(c.chainId),
         address: c.address,
+        decimals: c.decimals,
         locked: BigInt(c.balance.locked),
         unlocked: BigInt(c.balance.unlocked),
       })) as PortfolioToken['chains'],
