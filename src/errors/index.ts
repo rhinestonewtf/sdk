@@ -17,6 +17,7 @@ import {
   IntentFailedError,
   isExecutionError,
   OrderPathRequiredForIntentsError,
+  QuoteNotInPreparedTransactionError,
   SessionChainRequiredError,
   SignerNotSupportedError,
 } from '../execution'
@@ -63,6 +64,7 @@ export {
   ExecutionError,
   IntentFailedError,
   OrderPathRequiredForIntentsError,
+  QuoteNotInPreparedTransactionError,
   SessionChainRequiredError,
   SignerNotSupportedError,
   // Orchestrator

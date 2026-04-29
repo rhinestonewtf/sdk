@@ -42,12 +42,14 @@ import {
 } from './execution/permit2'
 import {
   getTransactionMessages as getTransactionMessagesInternal,
+  type PreparedQuotes,
   type PreparedTransactionData,
   type PreparedUserOperationData,
   prepareTransaction as prepareTransactionInternal,
   prepareUserOperation as prepareUserOperationInternal,
   type SignedTransactionData,
   type SignedUserOperationData,
+  type SignTransactionOptions,
   signAuthorizations as signAuthorizationsInternal,
   signMessage as signMessageInternal,
   signTransaction as signTransactionInternal,
@@ -137,6 +139,7 @@ interface RhinestoneAccount {
   }
   signTransaction: (
     preparedTransaction: PreparedTransactionData,
+    options?: SignTransactionOptions,
   ) => Promise<SignedTransactionData>
   signAuthorizations: (
     preparedTransaction: PreparedTransactionData,
@@ -296,11 +299,15 @@ async function createRhinestoneAccount(
   /**
    * Sign a transaction
    * @param preparedTransaction Prepared transaction data
+   * @param options Optional override; pass `{ quote }` to sign a specific quote from `preparedTransaction.quotes.all`
    * @returns signed transaction data
    * @see {@link prepareTransaction} to prepare the transaction data for signing
    */
-  function signTransaction(preparedTransaction: PreparedTransactionData) {
-    return signTransactionInternal(config, preparedTransaction)
+  function signTransaction(
+    preparedTransaction: PreparedTransactionData,
+    options?: SignTransactionOptions,
+  ) {
+    return signTransactionInternal(config, preparedTransaction, options)
   }
 
   /**
@@ -649,7 +656,9 @@ export type {
   Policy,
   Permit2ClaimPolicy,
   UniversalActionPolicyParamCondition,
+  PreparedQuotes,
   PreparedTransactionData,
+  SignTransactionOptions,
   SignedTransactionData,
   TransactionResult,
   PreparedUserOperationData,

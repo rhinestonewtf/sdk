@@ -102,6 +102,20 @@ class IntentStatusTimeoutError extends ExecutionError {
   }
 }
 
+class QuoteNotInPreparedTransactionError extends ExecutionError {
+  constructor(params?: {
+    context?: { intentId?: string }
+    errorType?: string
+    traceId?: string
+  }) {
+    super({
+      message:
+        'Selected quote does not belong to the prepared transaction. Re-prepare and try again.',
+      ...params,
+    })
+  }
+}
+
 class Eip7702InitSignatureRequiredError extends ExecutionError {
   constructor(params?: {
     context?: any
@@ -125,6 +139,7 @@ export {
   ExecutionError,
   Eip7702InitSignatureRequiredError,
   OrderPathRequiredForIntentsError,
+  QuoteNotInPreparedTransactionError,
   SessionChainRequiredError,
   IntentFailedError,
   IntentStatusTimeoutError,

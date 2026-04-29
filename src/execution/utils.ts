@@ -122,6 +122,7 @@ import type {
 } from '../types'
 import {
   Eip7702InitSignatureRequiredError,
+  QuoteNotInPreparedTransactionError,
   SignerNotSupportedError,
 } from './error'
 
@@ -195,10 +196,19 @@ interface TransactionResult {
   targetChain: number
 }
 
+interface PreparedQuotes {
+  best: Quote
+  all: Quote[]
+}
+
 interface PreparedTransactionData {
-  quote: Quote
+  quotes: PreparedQuotes
   intentInput: unknown
   transaction: Transaction
+}
+
+interface SignTransactionOptions {
+  quote?: Quote
 }
 
 interface PreparedUserOperationData {
@@ -208,6 +218,7 @@ interface PreparedUserOperationData {
 }
 
 interface SignedTransactionData extends PreparedTransactionData {
+  quote: Quote
   originSignatures: OriginSignature[]
   destinationSignature: Hex
   targetExecutionSignature: Hex | undefined
@@ -270,7 +281,7 @@ async function prepareTransaction(
   )
 
   return {
-    quote: prepared.quote,
+    quotes: prepared.quotes,
     intentInput: prepared.intentInput,
     transaction,
   }
@@ -330,15 +341,16 @@ function getTransactionMessages(
   destination: TypedDataDefinition
   targetExecution?: TypedDataDefinition
 } {
-  return getIntentMessages(preparedTransaction.quote.signData)
+  return getIntentMessages(preparedTransaction.quotes.best.signData)
 }
 
 async function signTransaction(
   config: RhinestoneConfig,
   preparedTransaction: PreparedTransactionData,
+  options?: SignTransactionOptions,
 ): Promise<SignedTransactionData> {
   const { signers } = getTransactionParams(preparedTransaction.transaction)
-  const quote = preparedTransaction.quote
+  const quote = resolveQuote(preparedTransaction.quotes, options?.quote)
   const targetChain =
     'targetChain' in preparedTransaction.transaction
       ? preparedTransaction.transaction.targetChain
@@ -359,12 +371,24 @@ async function signTransaction(
 
   return {
     quote,
+    quotes: preparedTransaction.quotes,
     intentInput: preparedTransaction.intentInput,
     transaction: preparedTransaction.transaction,
     originSignatures,
     destinationSignature,
     targetExecutionSignature,
   }
+}
+
+function resolveQuote(quotes: PreparedQuotes, selected?: Quote): Quote {
+  if (!selected) return quotes.best
+  const match = quotes.all.find((q) => q.intentId === selected.intentId)
+  if (!match) {
+    throw new QuoteNotInPreparedTransactionError({
+      context: { intentId: selected.intentId },
+    })
+  }
+  return match
 }
 
 async function getTargetExecutionSignature(
@@ -961,11 +985,14 @@ async function prepareTransactionAsIntent(
     config.headers,
   )
   const { routes } = await orchestrator.createQuote(metaIntent)
-  const quote = routes[0]
-  if (!quote) {
+  const best = routes[0]
+  if (!best) {
     throw new Error('Orchestrator returned no quote')
   }
-  return { quote, intentInput: serializedIntent }
+  return {
+    quotes: { best, all: routes } satisfies PreparedQuotes,
+    intentInput: serializedIntent,
+  }
 }
 
 async function signIntent(
@@ -1853,9 +1880,11 @@ export {
 export type {
   InternalSignerSet,
   TransactionResult,
+  PreparedQuotes,
   PreparedTransactionData,
   PreparedUserOperationData,
   SignedTransactionData,
   SignedUserOperationData,
+  SignTransactionOptions,
   UserOperationResult,
 }

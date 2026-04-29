@@ -39,6 +39,7 @@ import {
   IntentStatusTimeoutError,
   isExecutionError,
   OrderPathRequiredForIntentsError,
+  QuoteNotInPreparedTransactionError,
   SessionChainRequiredError,
   SignerNotSupportedError,
 } from './error'
@@ -254,7 +255,8 @@ async function sendTransactionAsIntent(
   if (!prepared) {
     throw new OrderPathRequiredForIntentsError()
   }
-  const { quote, intentInput } = prepared
+  const { quotes, intentInput } = prepared
+  const quote = quotes.best
   const { originSignatures, destinationSignature } = await signIntent(
     config,
     quote.signData,
@@ -465,6 +467,7 @@ export {
   IntentFailedError,
   IntentStatusTimeoutError,
   OrderPathRequiredForIntentsError,
+  QuoteNotInPreparedTransactionError,
   SessionChainRequiredError,
   SignerNotSupportedError,
 }
