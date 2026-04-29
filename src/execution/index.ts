@@ -334,9 +334,7 @@ async function waitForExecution(
           await new Promise((resolve) => setTimeout(resolve, nextDelayMs))
         } catch (err) {
           if (isRateLimited(err)) {
-            const retryAfter = (err as any)?.context?.retryAfter as
-              | string
-              | undefined
+            const retryAfter = err.retryAfter
             let retryMs = nextDelayMs
             if (retryAfter) {
               const parsed = Number(retryAfter)
