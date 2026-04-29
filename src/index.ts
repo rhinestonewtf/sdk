@@ -139,6 +139,7 @@ interface RhinestoneAccount {
   ) => {
     origin: TypedDataDefinition[]
     destination: TypedDataDefinition
+    targetExecution?: TypedDataDefinition
   }
   signTransaction: (
     preparedTransaction: PreparedTransactionData,
