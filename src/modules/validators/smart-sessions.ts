@@ -211,7 +211,7 @@ const SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG_PERMITTED_TO_CALL_SMARTSESSIO
 
 // Dummy preclaimop action injected into every session so that the filler can trigger
 // verifyExecution (ENABLE mode) using an injected dummy preclaimop when there are no
-// real preclaimops. Target 0x...0001 is the ecRecover precompile; calls to it fail
+// real preclaimops. Target 0x...0420 is the ecRecover precompile; calls to it fail
 // silently because preclaimops are failure-tolerant. Selector 0x69123456 is
 // intentionally uncommon.
 const DUMMY_PRECLAIMOP_TARGET: Address =
