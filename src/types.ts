@@ -449,7 +449,6 @@ interface BaseTransaction {
   sourceAssets?: SourceAssetInput
   feeAsset?: Address | TokenSymbol
   settlementLayers?: SettlementLayer[]
-  lockFunds?: boolean
   auxiliaryFunds?: AuxiliaryFunds
   experimental_accountOverride?: {
     setupOps?: {
