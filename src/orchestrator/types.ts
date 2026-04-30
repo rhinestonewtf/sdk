@@ -6,7 +6,7 @@ import type {
   SupportedOPStackTestnet,
   SupportedTestnet,
 } from '@rhinestone/shared-configs'
-import type { Address, Chain, Hex } from 'viem'
+import type { Address, Chain, Hex, TypedDataDefinition } from 'viem'
 
 type SupportedTokenSymbol = 'ETH' | 'WETH' | 'USDC' | 'USDT' | 'USDT0'
 type SupportedToken = SupportedTokenSymbol | Address
@@ -30,15 +30,12 @@ type IntentStatus =
   | typeof INTENT_STATUS_FAILED
   | typeof INTENT_STATUS_CLAIMED
 
-type AccountAccessListLegacy = {
-  chainId: number
-  tokenAddress: Address
-  amount?: bigint
-}[]
-
 type MappedChainTokenAccessList = {
   chainTokens?: {
     [chainId in SupportedChain]?: SupportedToken[]
+  }
+  chainTokenAmounts?: {
+    [chainId in SupportedChain]?: Partial<Record<SupportedToken, bigint>>
   }
 }
 
@@ -48,7 +45,6 @@ type UnmappedChainTokenAccessList = {
 }
 
 type AccountAccessList =
-  | AccountAccessListLegacy
   | MappedChainTokenAccessList
   | UnmappedChainTokenAccessList
 
@@ -72,8 +68,6 @@ type SettlementLayer =
   | 'SAME_CHAIN'
   | 'INTENT_EXECUTOR'
   | CrossChainSettlementLayer
-
-type FundingMethod = 'COMPACT' | 'PERMIT2' | 'NO_FUNDING'
 
 const SIG_MODE_EMISSARY = 0
 const SIG_MODE_ERC1271 = 1
@@ -105,26 +99,20 @@ interface IntentOptions {
 }
 
 interface SponsorSettings {
-  gasSponsored: boolean
-  bridgeFeesSponsored: boolean
-  swapFeesSponsored: boolean
+  gas: boolean
+  bridgeFees: boolean
+  swapFees: boolean
 }
 
 interface PortfolioToken {
   symbol: string
-  decimals: number
-  balances: {
+  chains: {
+    chain: number
+    address: Address
+    decimals: number
     locked: bigint
     unlocked: bigint
-  }
-  chains: [
-    {
-      chain: number
-      address: Address
-      locked: bigint
-      unlocked: bigint
-    },
-  ]
+  }[]
 }
 
 type Portfolio = PortfolioToken[]
@@ -144,164 +132,107 @@ interface IntentInput {
   preClaimExecutions?: Record<number, Execution[]>
 }
 
-interface ChainGasCost {
-  chainId: number
-  gasUSD: number
+interface UsdAmount {
+  usd: number
 }
 
-interface GasCostBreakdown {
-  originChains: ChainGasCost[]
-  destination: ChainGasCost
-  totalUSD: number
+type Price = { usd: number } | null
+
+interface CostTokenEntry {
+  chainId: number
+  tokenAddress: Address
+  symbol: string | null
+  decimals: number | null
+  price: Price
+  amount: bigint
 }
 
 interface FeeBreakdown {
-  gasFee: string
-  bridgeFee: string
-  protocolFee: string
-  swapFee: string
-  settlementFee: string
+  gas: UsdAmount
+  bridge: UsdAmount
+  protocol: UsdAmount
+  swap: UsdAmount
+  settlement: UsdAmount
 }
 
-interface FeesByTokenEntry {
-  amount: string
+interface Fees {
+  total: UsdAmount
   breakdown: FeeBreakdown
 }
 
-interface FeeBreakdownUSD {
-  gasFeeUSD: number
-  bridgeFeeUSD: number
-  protocolFeeUSD: number
-  swapFeeUSD: number
-  settlementFeeUSD: number
-  totalFeeUSD: number
+interface FeeToken {
+  chainId: number
+  tokenAddress: Address
 }
 
-interface IntentCost {
-  hasFulfilledAll: boolean
-  tokensReceived: [
-    {
-      tokenAddress: Address
-      hasFulfilled: boolean
-      amountSpent: string
-      destinationAmount: string
-      fee: string
-      feeBreakdown?: FeeBreakdown
-      feesByToken?: Record<Address, FeesByTokenEntry>
-    },
-  ]
-  sponsoredFee: {
-    relayer: number
-    protocol: number
+interface Cost {
+  input: CostTokenEntry[]
+  output: CostTokenEntry[]
+  feeToken?: FeeToken
+  fees: Fees
+}
+
+interface EstimatedFillTime {
+  seconds: number
+}
+
+interface SignData {
+  origin: TypedDataDefinition[]
+  destination: TypedDataDefinition
+  targetExecution?: TypedDataDefinition
+}
+
+interface Quote {
+  intentId: string
+  expiresAt: number
+  estimatedFillTime: EstimatedFillTime
+  settlementLayer: SettlementLayer
+  signData: SignData
+  cost: Cost
+  tokenRequirements?: TokenRequirements
+}
+
+interface QuoteResponse {
+  routes: Quote[]
+}
+
+type OriginSignature = Hex | { notarizedClaimSig: Hex; preClaimSig: Hex }
+
+interface SignedAuthorization {
+  chainId: number
+  address: Address
+  nonce: number
+  yParity: number
+  r: Hex
+  s: Hex
+}
+
+interface IntentSubmitRequest {
+  intentId: string
+  signatures: {
+    origin: OriginSignature[]
+    destination: Hex
+    targetExecution?: Hex
   }
-  tokensSpent: {
-    [chainId: string]: {
-      [tokenAddress: Address]: {
-        locked: string
-        unlocked: string
-        version: number
-      }
-    }
+  authorizations?: {
+    sponsor?: SignedAuthorization[]
+    recipient?: SignedAuthorization[]
   }
-  gasCost?: GasCostBreakdown
-  feeBreakdownUSD?: FeeBreakdownUSD
 }
 
-export interface Op {
-  vt: Hex
-  ops: Execution[]
-}
-
-export interface ExecutionWithPlaceholders extends Execution {
-  senderAddressPlaceholder?: Address
-  recipientAddressPlaceholder?: Address
-}
-
-export interface ElementSwapDestination {
-  tokenIn: Address
-  amountIn: string
-  amountOut: string
-  slippage: number
-  quoter: string
-  executions: ExecutionWithPlaceholders[]
-  outputDecimals: number
-  outputSymbol: string
-}
-
-export interface ElementSwapOrigin {
-  tokenIn: Address
-  tokenOut: Address
-  amountIn: string
-  amountOut: string
-  executions: ExecutionWithPlaceholders[]
-  inputDecimals: number
-  inputSymbol: string
-  price: number
-}
-
-interface IntentOpElementMandate {
-  recipient: Address
-  tokenOut: [[string, string]]
-  swapDestinations?: (ElementSwapDestination | null)[]
-  destinationChainId: string
-  fillDeadline: string
-  destinationOps: Op
-  preClaimOps: Op
-  qualifier: {
-    settlementContext: {
-      settlementLayer: SettlementLayer
-      fundingMethod: FundingMethod
-      using7579: boolean
-      requestId?: Hex
-      subsidizedAmount?: string
-      gasRefund?: {
-        token: Address
-        exchangeRate: bigint
-        overhead: bigint
-      }
-    }
-    encodedVal: Hex
+/**
+ * Internal augmentation of the submit request. Not part of the blanc public
+ * schema, but the orchestrator still reads `options.dryRun` from the raw body.
+ * Used by the SDK's `simulate` flag — never surfaced to consumers.
+ */
+interface IntentSubmitRequestInternal extends IntentSubmitRequest {
+  options?: {
+    dryRun?: boolean
   }
-  minGas: string
 }
 
-interface IntentOpElement {
-  arbiter: Address
-  chainId: string
-  idsAndAmounts: [[string, string]]
-  spendTokens: [[string, string]]
-  swapOrigins?: Record<string, ElementSwapOrigin>
-  beforeFill: boolean
-  smartAccountStatus?: AccountContext
-  mandate: IntentOpElementMandate
-}
-
-interface IntentOp {
-  sponsor: Address
-  nonce: string
-  targetExecutionNonce: string
-  expires: string
-  elements: IntentOpElement[]
-  serverSignature: string
-  signedMetadata: {
-    fees: unknown
-    quotes: Record<Address, unknown[]>
-    tokenPrices: Record<string, number>
-    opGasParams: Record<
-      string,
-      {
-        l1BaseFee: string
-        l1BlobBaseFee: string
-        baseFeeScalar: string
-        blobFeeScalar: string
-      }
-    > & {
-      estimatedCalldataSize: number
-    }
-    gasPrices: Record<string, string>
-    account: AccountWithContext
-    recipient?: AccountWithContext
-  }
+interface IntentSubmitResponse {
+  intentId: string
 }
 
 type AccountContext =
@@ -321,17 +252,11 @@ interface Account {
   accountType: AccountType
   setupOps: Pick<Execution, 'to' | 'data'>[]
   delegations?: Delegations
-  /** @deprecated Use mockSignatures for per-chain accuracy. Kept as global fallback for backward-compat. */
-  mockSignature?: Hex
-  /** Per-chain SSX mock signatures keyed by decimal chainId string.
-   *  Takes precedence over mockSignature for each chain present. */
+  /** Per-chain SSX mock signatures keyed by decimal chainId string. */
   mockSignatures?: Record<`${number}`, Hex>
 }
 
-type AccountWithContext = Omit<
-  Account,
-  'delegations' | 'mockSignature' | 'mockSignatures'
-> & {
+type AccountWithContext = Omit<Account, 'delegations' | 'mockSignatures'> & {
   accountContext: { [chainId: number]: AccountContext }
   requiredDelegations?: Delegations
 }
@@ -357,35 +282,6 @@ type TokenRequirements = {
   [chainId: number]: {
     [tokenAddress: Address]: ApprovalRequired | WrapRequired
   }
-}
-
-interface IntentRoute {
-  intentOp: IntentOp
-  intentCost: IntentCost
-  tokenRequirements?: TokenRequirements
-}
-
-interface IntentResult {
-  result: {
-    id: string
-    status: IntentStatus
-  }
-}
-
-type OriginSignature = Hex | { notarizedClaimSig: Hex; preClaimSig: Hex }
-
-type SignedIntentOp = IntentOp & {
-  originSignatures: OriginSignature[]
-  destinationSignature: Hex
-  targetExecutionSignature?: Hex
-  signedAuthorizations?: readonly {
-    chainId: number
-    address: Address
-    nonce: number
-    yParity: number
-    r: Hex
-    s: Hex
-  }[]
 }
 
 interface TokenConfig {
@@ -429,55 +325,41 @@ interface IntentOpStatus {
   status: IntentStatus
   claims: Claim[]
   destinationChainId: number
-  userAddress: Address
+  accountAddress: Address
   fillTimestamp?: number
   fillTransactionHash?: Hex
 }
 
-interface PortfolioTokenChainResponse {
-  chainId: number
-  tokenAddress: Address
-  balance: {
-    locked: string
-    unlocked: string
-  }
-}
-
-interface PortfolioTokenResponse {
-  tokenName: string
-  tokenDecimals: number
-  balance: {
-    locked: string
-    unlocked: string
-  }
-  tokenChainBalance: PortfolioTokenChainResponse[]
-}
-
-type PortfolioResponse = PortfolioTokenResponse[]
-
 export type {
   Account,
   AccountType,
+  AccountWithContext,
   AuxiliaryFunds,
   TokenConfig,
   SupportedChain,
   SettlementLayer,
+  SignatureMode,
   IntentInput,
-  IntentCost,
+  Quote,
+  QuoteResponse,
+  Cost,
+  CostTokenEntry,
   FeeBreakdown,
-  FeesByTokenEntry,
-  FeeBreakdownUSD,
-  IntentRoute,
-  IntentOp,
-  IntentOpElement,
-  IntentOpElementMandate,
-  SignedIntentOp,
+  FeeToken,
+  Fees,
+  Price,
+  UsdAmount,
+  EstimatedFillTime,
+  SignData,
+  IntentSubmitRequest,
+  IntentSubmitRequestInternal,
+  IntentSubmitResponse,
   IntentOpStatus,
-  IntentResult,
+  IntentOptions,
+  SponsorSettings,
+  SignedAuthorization,
   SplitIntentsInput,
   SplitIntentsResult,
-  PortfolioTokenResponse,
-  PortfolioResponse,
   Portfolio,
   PortfolioToken,
   Execution,
@@ -488,6 +370,7 @@ export type {
   TokenRequirements,
   WrapRequired,
   ApprovalRequired,
+  TypedDataDefinition,
 }
 export {
   INTENT_STATUS_PENDING,
