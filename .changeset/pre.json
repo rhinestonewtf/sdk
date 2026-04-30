@@ -5,6 +5,15 @@
     "@rhinestone/sdk": "1.5.0"
   },
   "changesets": [
+    "blanc-client",
+    "blanc-orphaned-helpers",
+    "blanc-portfolio-per-chain-decimals",
+    "blanc-submit-pipeline",
+    "drop-compact-bound-fields",
+    "dummy-preclaim-fallback-target",
+    "quote-selection-target-execution",
+    "quote-selection",
+    "retry-after-polling",
     "v2-beta-prereq"
   ]
 }

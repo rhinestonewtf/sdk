@@ -1,5 +1,26 @@
 # @rhinestone/sdk
 
+## 2.0.0-beta.1
+
+### Major Changes
+
+- f3f4fb2: - Switch the orchestrator client to the `2026-04.blanc` API version.
+- 766128e: - Drop the public `signPermit2Batch` / `signPermit2Sequential` helpers along with the `MultiChainPermit2Config` / `MultiChainPermit2Result` / `BatchPermit2Result` types.
+- 4391772: - `PortfolioToken` drops the token-level `decimals` and `balances` aggregate; `decimals` now lives on each `chains[]` entry.
+- edd83bf: - `RhinestoneSDK.getIntentStatus(intentId)` now takes a `string` (was `bigint`).
+- 839f2a6: - Drop compact-bound fields (`lockFunds` transaction option, `emissaryConfig` on the orchestrator `Account` type) to match the orchestrator's blanc API trim.
+- 6398613: - `RhinestoneAccount.getTransactionMessages` now surfaces the optional `targetExecution` typed data, matching the underlying helper.
+- f7c2de0: - `prepareTransaction` returns `quotes: { best, all }` instead of `quote`.
+  - `signTransaction(prepared, { intentId })` lets callers sign a non-default quote from `prepared.quotes.all`.
+  - `getTransactionMessages(prepared, { intentId })` accepts the same selection so external signers see the route `signTransaction` will sign.
+  - `SignedTransactionData.quote` is the selected quote.
+  - `intentId` is required on the options argument; pass an id from `prepared.quotes.all` or omit options entirely to sign the recommended quote.
+
+### Patch Changes
+
+- c778494: Don't use fallback target for the dummy preclaim op.
+- 5f7f20e: Respect `Retry-After` headers when polling intent status after rate limits.
+
 ## 2.0.0-beta.0
 
 ### Major Changes
