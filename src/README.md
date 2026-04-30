@@ -162,7 +162,7 @@ For a complete walkthrough, see the [Quickstart guide](https://docs.rhinestone.d
 
 ## Migrating from Orchestrator SDK
 
-To migrate from the [Orchestrator SDK](https://github.com/rhinestonewtf/orchestrator-sdk), replace all imports of `@rhinestone/orchestrator-sdk` with `@rhinestone/sdk/orchestrator`.
+To migrate from the [Orchestrator SDK](https://github.com/rhinestonewtf/orchestrator-sdk), replace all imports of `@rhinestone/orchestrator-sdk` with `@rhinestone/sdk`.
 
 Let us know if you encounter any issues!
 

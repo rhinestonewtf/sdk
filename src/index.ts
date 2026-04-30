@@ -36,22 +36,18 @@ import {
   waitForExecution as waitForExecutionInternal,
 } from './execution'
 import {
-  type BatchPermit2Result,
   checkERC20AllowanceDirect,
   checkERC20Allowance as checkERC20AllowanceInternal,
   getPermit2Address,
-  type MultiChainPermit2Config,
-  type MultiChainPermit2Result,
-  signPermit2Batch,
-  signPermit2Sequential,
 } from './execution/permit2'
 import {
   getTransactionMessages as getTransactionMessagesInternal,
-  type IntentRoute,
+  type PreparedQuotes,
   type PreparedTransactionData,
   type PreparedUserOperationData,
   prepareTransaction as prepareTransactionInternal,
   prepareUserOperation as prepareUserOperationInternal,
+  type QuoteSelection,
   type SignedTransactionData,
   type SignedUserOperationData,
   signAuthorizations as signAuthorizationsInternal,
@@ -85,11 +81,9 @@ import {
   getTokenAddress,
   getTokenDecimals,
   type IntentInput,
-  type IntentOp,
   type IntentOpStatus,
   type Portfolio,
   type SettlementLayer,
-  type SignedIntentOp,
   type SplitIntentsInput,
   type SplitIntentsResult,
   type TokenRequirements,
@@ -139,12 +133,17 @@ interface RhinestoneAccount {
   prepareTransaction: (
     transaction: Transaction,
   ) => Promise<PreparedTransactionData>
-  getTransactionMessages: (preparedTransaction: PreparedTransactionData) => {
+  getTransactionMessages: (
+    preparedTransaction: PreparedTransactionData,
+    options?: QuoteSelection,
+  ) => {
     origin: TypedDataDefinition[]
     destination: TypedDataDefinition
+    targetExecution?: TypedDataDefinition
   }
   signTransaction: (
     preparedTransaction: PreparedTransactionData,
+    options?: QuoteSelection,
   ) => Promise<SignedTransactionData>
   signAuthorizations: (
     preparedTransaction: PreparedTransactionData,
@@ -293,22 +292,28 @@ async function createRhinestoneAccount(
   /**
    * Get the transaction typed data message to sign
    * @param preparedTransaction Prepared transaction data
+   * @param options Optional override; pass `{ intentId }` to inspect a specific quote from `preparedTransaction.quotes.all`
    * @see {@link prepareTransaction} to prepare the transaction data for signing
    */
   function getTransactionMessages(
     preparedTransaction: PreparedTransactionData,
+    options?: QuoteSelection,
   ) {
-    return getTransactionMessagesInternal(config, preparedTransaction)
+    return getTransactionMessagesInternal(config, preparedTransaction, options)
   }
 
   /**
    * Sign a transaction
    * @param preparedTransaction Prepared transaction data
+   * @param options Optional override; pass `{ intentId }` to sign a specific quote from `preparedTransaction.quotes.all`
    * @returns signed transaction data
    * @see {@link prepareTransaction} to prepare the transaction data for signing
    */
-  function signTransaction(preparedTransaction: PreparedTransactionData) {
-    return signTransactionInternal(config, preparedTransaction)
+  function signTransaction(
+    preparedTransaction: PreparedTransactionData,
+    options?: QuoteSelection,
+  ) {
+    return signTransactionInternal(config, preparedTransaction, options)
   }
 
   /**
@@ -594,7 +599,7 @@ class RhinestoneSDK {
     return createRhinestoneAccount(rhinestoneConfig)
   }
 
-  getIntentStatus(intentId: bigint) {
+  getIntentStatus(intentId: string) {
     return getIntentStatusInternal(
       this.authProvider,
       this.endpointUrl,
@@ -632,9 +637,6 @@ export {
   // Permit2 helpers
   checkERC20AllowanceDirect,
   getPermit2Address,
-  // Multi-chain permit2 signing
-  signPermit2Batch,
-  signPermit2Sequential,
 }
 export type {
   RhinestoneAccount,
@@ -660,7 +662,9 @@ export type {
   Policy,
   Permit2ClaimPolicy,
   UniversalActionPolicyParamCondition,
+  PreparedQuotes,
   PreparedTransactionData,
+  QuoteSelection,
   SignedTransactionData,
   TransactionResult,
   PreparedUserOperationData,
@@ -668,19 +672,12 @@ export type {
   UserOperationResult,
   AuxiliaryFunds,
   IntentInput,
-  IntentOp,
   IntentOpStatus,
-  IntentRoute,
   SettlementLayer,
-  SignedIntentOp,
   SplitIntentsInput,
   SplitIntentsResult,
   Portfolio,
   TokenRequirements,
   WrapRequired,
   ApprovalRequired,
-  // Multi-chain permit2 types
-  MultiChainPermit2Config,
-  MultiChainPermit2Result,
-  BatchPermit2Result,
 }
