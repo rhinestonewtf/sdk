@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.5.1
+
+### Patch Changes
+
+- e7e7113: Don't use fallback target for the dummy preclaim op.
+
 ## 1.5.0
 
 ### Minor Changes
