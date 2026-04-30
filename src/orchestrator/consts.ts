@@ -2,8 +2,8 @@ const PROD_ORCHESTRATOR_URL = 'https://v1.orchestrator.rhinestone.dev'
 const RHINESTONE_SPOKE_POOL_ADDRESS =
   '0x000000000060f6e853447881951574cdd0663530'
 
-const SDK_VERSION = '1.4.1'
-const API_VERSION = '2026-04.blanc'
+const SDK_VERSION = '1.5.0'
+const API_VERSION = '2026-01.alps'
 
 export {
   PROD_ORCHESTRATOR_URL,
