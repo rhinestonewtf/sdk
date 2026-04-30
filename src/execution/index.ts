@@ -144,7 +144,6 @@ async function sendTransactionInternal(
     eip7702InitSignature?: Hex
     settlementLayers?: SettlementLayer[]
     sourceAssets?: SourceAssetInput
-    lockFunds?: boolean
     feeAsset?: Address | TokenSymbol
   },
 ) {
@@ -178,7 +177,6 @@ async function sendTransactionInternal(
       options.settlementLayers,
       options.sourceAssets,
       options.feeAsset,
-      options.lockFunds,
     )
   }
 }
@@ -231,7 +229,6 @@ async function sendTransactionAsIntent(
   settlementLayers?: SettlementLayer[],
   sourceAssets?: SourceAssetInput,
   feeAsset?: Address | TokenSymbol,
-  lockFunds?: boolean,
 ) {
   const prepared = await prepareTransactionAsIntent(
     config,
@@ -246,7 +243,6 @@ async function sendTransactionAsIntent(
     settlementLayers,
     sourceAssets,
     feeAsset,
-    lockFunds,
     undefined,
     undefined,
     signers,

@@ -97,7 +97,6 @@ type AuxiliaryFunds = {
 }
 
 interface IntentOptions {
-  topupCompact: boolean
   feeToken?: Address | SupportedTokenSymbol
   sponsorSettings?: SponsorSettings
   settlementLayers?: SettlementLayer[]
@@ -322,7 +321,6 @@ interface Account {
   accountType: AccountType
   setupOps: Pick<Execution, 'to' | 'data'>[]
   delegations?: Delegations
-  emissaryConfig?: EmissarySetupConfig
   /** @deprecated Use mockSignatures for per-chain accuracy. Kept as global fallback for backward-compat. */
   mockSignature?: Hex
   /** Per-chain SSX mock signatures keyed by decimal chainId string.
@@ -343,32 +341,6 @@ interface Delegation {
 }
 
 type Delegations = Record<number, Delegation>
-
-interface EmissarySetupConfig {
-  configId: number
-  validatorAddress: Address
-  emissaryAddress: Address
-  emissaryConfig: EmissaryConfig
-  emissaryEnable: EmissaryEnable
-}
-
-interface EmissaryConfig {
-  configId: number
-  allocator: Address
-  scope: number
-  resetPeriod: number
-  validator: Address
-  validatorConfig: Hex
-}
-
-interface EmissaryEnable {
-  allocatorSig: Hex
-  userSig: Hex
-  expires: bigint
-  nonce: bigint
-  allChainIds: bigint[]
-  chainIndex: bigint
-}
 
 interface WrapRequired {
   type: 'wrap'

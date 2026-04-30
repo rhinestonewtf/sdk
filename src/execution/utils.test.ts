@@ -171,7 +171,6 @@ describe('prepareTransactionAsIntent', () => {
       undefined,
       undefined,
       undefined,
-      undefined,
       auxiliaryFunds,
       undefined,
       undefined,
@@ -200,7 +199,6 @@ describe('prepareTransactionAsIntent', () => {
       [{ address: zeroAddress, amount: 1n }],
       undefined,
       false,
-      undefined,
       undefined,
       undefined,
       undefined,
@@ -343,7 +341,6 @@ describe('prepareTransactionAsIntent — preClaimExecutions', () => {
       undefined,
       undefined,
       undefined,
-      undefined,
       signers,
     )
 
@@ -395,7 +392,6 @@ describe('prepareTransactionAsIntent — preClaimExecutions', () => {
       undefined,
       undefined,
       undefined,
-      undefined,
       signers,
     )
 
@@ -438,7 +434,6 @@ describe('prepareTransactionAsIntent — preClaimExecutions', () => {
       undefined,
       undefined,
       undefined,
-      undefined,
       signers,
     )
 
@@ -469,7 +464,6 @@ describe('prepareTransactionAsIntent — preClaimExecutions', () => {
       [{ address: zeroAddress, amount: 1n }],
       undefined,
       false,
-      undefined,
       undefined,
       undefined,
       undefined,
@@ -526,7 +520,6 @@ describe('prepareTransactionAsIntent — preClaimExecutions', () => {
       [{ address: zeroAddress, amount: 1n }],
       undefined,
       false,
-      undefined,
       undefined,
       undefined,
       undefined,

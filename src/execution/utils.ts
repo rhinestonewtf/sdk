@@ -234,7 +234,6 @@ async function prepareTransaction(
     settlementLayers,
     sourceAssets,
     feeAsset,
-    lockFunds,
     auxiliaryFunds,
     account,
     recipient,
@@ -263,7 +262,6 @@ async function prepareTransaction(
     settlementLayers,
     sourceAssets,
     feeAsset,
-    lockFunds,
     auxiliaryFunds,
     account,
     signers,
@@ -693,7 +691,6 @@ function getTransactionParams(transaction: Transaction) {
   const settlementLayers = transaction.settlementLayers
   const sourceAssets = transaction.sourceAssets
   const feeAsset = transaction.feeAsset
-  const lockFunds = transaction.lockFunds
   const auxiliaryFunds = transaction.auxiliaryFunds
   const account = transaction.experimental_accountOverride
   const recipient = transaction.recipient
@@ -711,7 +708,6 @@ function getTransactionParams(transaction: Transaction) {
     settlementLayers,
     sourceAssets,
     feeAsset,
-    lockFunds,
     auxiliaryFunds,
     account,
     recipient,
@@ -820,7 +816,6 @@ async function prepareTransactionAsIntent(
   settlementLayers: SettlementLayer[] | undefined,
   sourceAssets: SourceAssetInput | undefined,
   feeAsset: Address | TokenSymbol | undefined,
-  lockFunds: boolean | undefined,
   auxiliaryFunds: AuxiliaryFunds | undefined,
   account:
     | {
@@ -926,7 +921,6 @@ async function prepareTransactionAsIntent(
     destinationGasUnits: gasLimit,
     accountAccessList,
     options: {
-      topupCompact: lockFunds ?? false,
       feeToken: feeAsset,
       sponsorSettings: sponsored
         ? typeof sponsored === 'object'
