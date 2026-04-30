@@ -292,7 +292,7 @@ async function createRhinestoneAccount(
   /**
    * Get the transaction typed data message to sign
    * @param preparedTransaction Prepared transaction data
-   * @param options Optional override; pass `{ quote }` to inspect a specific quote from `preparedTransaction.quotes.all`
+   * @param options Optional override; pass `{ intentId }` to inspect a specific quote from `preparedTransaction.quotes.all`
    * @see {@link prepareTransaction} to prepare the transaction data for signing
    */
   function getTransactionMessages(
@@ -305,7 +305,7 @@ async function createRhinestoneAccount(
   /**
    * Sign a transaction
    * @param preparedTransaction Prepared transaction data
-   * @param options Optional override; pass `{ quote }` to sign a specific quote from `preparedTransaction.quotes.all`
+   * @param options Optional override; pass `{ intentId }` to sign a specific quote from `preparedTransaction.quotes.all`
    * @returns signed transaction data
    * @see {@link prepareTransaction} to prepare the transaction data for signing
    */

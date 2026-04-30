@@ -208,7 +208,7 @@ interface PreparedTransactionData {
 }
 
 interface QuoteSelection {
-  quote?: Quote
+  intentId: string
 }
 
 interface PreparedUserOperationData {
@@ -342,7 +342,7 @@ function getTransactionMessages(
   destination: TypedDataDefinition
   targetExecution?: TypedDataDefinition
 } {
-  const quote = resolveQuote(preparedTransaction.quotes, options?.quote)
+  const quote = resolveQuote(preparedTransaction.quotes, options)
   return getIntentMessages(quote.signData)
 }
 
@@ -352,7 +352,7 @@ async function signTransaction(
   options?: QuoteSelection,
 ): Promise<SignedTransactionData> {
   const { signers } = getTransactionParams(preparedTransaction.transaction)
-  const quote = resolveQuote(preparedTransaction.quotes, options?.quote)
+  const quote = resolveQuote(preparedTransaction.quotes, options)
   const targetChain =
     'targetChain' in preparedTransaction.transaction
       ? preparedTransaction.transaction.targetChain
@@ -382,12 +382,12 @@ async function signTransaction(
   }
 }
 
-function resolveQuote(quotes: PreparedQuotes, selected?: Quote): Quote {
-  if (!selected) return quotes.best
-  const match = quotes.all.find((q) => q.intentId === selected.intentId)
+function resolveQuote(quotes: PreparedQuotes, options?: QuoteSelection): Quote {
+  if (!options) return quotes.best
+  const match = quotes.all.find((q) => q.intentId === options.intentId)
   if (!match) {
     throw new QuoteNotInPreparedTransactionError({
-      context: { intentId: selected.intentId },
+      context: { intentId: options.intentId },
     })
   }
   return match
