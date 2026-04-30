@@ -1,4 +1,4 @@
-import { LibZip } from 'solady';
+import { LibZip } from 'solady'
 import {
   type Address,
   concat,
@@ -18,14 +18,20 @@ import {
   toHex,
   zeroAddress,
   zeroHash,
-} from 'viem';
-import { mainnet } from 'viem/chains';
-import { getAccountProvider } from '../../accounts';
-import { K1_DEFAULT_VALIDATOR_ADDRESS } from '../../accounts/startale';
-import { createTransport } from '../../accounts/utils';
-import { RESET_PERIOD_ONE_WEEK, SCOPE_MULTICHAIN } from '../../execution/compact';
-import { signTypedData } from '../../execution/utils';
-import { getChainById, getWrappedTokenAddress } from '../../orchestrator/registry';
+} from 'viem'
+import { mainnet } from 'viem/chains'
+import { getAccountProvider } from '../../accounts'
+import { K1_DEFAULT_VALIDATOR_ADDRESS } from '../../accounts/startale'
+import { createTransport } from '../../accounts/utils'
+import {
+  RESET_PERIOD_ONE_WEEK,
+  SCOPE_MULTICHAIN,
+} from '../../execution/compact'
+import { signTypedData } from '../../execution/utils'
+import {
+  getChainById,
+  getWrappedTokenAddress,
+} from '../../orchestrator/registry'
 import type {
   Action,
   Policy,
@@ -35,111 +41,118 @@ import type {
   Session,
   SessionEnableData,
   UniversalActionPolicyParamCondition,
-} from '../../types';
-import smartSessionEmissaryAbi from '../abi/smart-session-emissary';
-import { MODULE_TYPE_ID_VALIDATOR, type Module } from '../common';
+} from '../../types'
+import smartSessionEmissaryAbi from '../abi/smart-session-emissary'
+import { MODULE_TYPE_ID_VALIDATOR, type Module } from '../common'
 import {
   getOwnerValidator,
   getValidator,
   SMART_SESSION_EMISSARY_ADDRESS,
   SMART_SESSION_EMISSARY_ADDRESS_DEV,
-} from './core';
-import { encodePermit2ClaimPolicyInitData, PERMIT2_CLAIM_POLICY_ADDRESS } from './policies/claim/permit2';
+} from './core'
+import {
+  encodePermit2ClaimPolicyInitData,
+  PERMIT2_CLAIM_POLICY_ADDRESS,
+} from './policies/claim/permit2'
 
-type FixedLengthArray<T, N extends number, A extends T[] = []> = A['length'] extends N
-  ? A
-  : FixedLengthArray<T, N, [...A, T]>;
+type FixedLengthArray<
+  T,
+  N extends number,
+  A extends T[] = [],
+> = A['length'] extends N ? A : FixedLengthArray<T, N, [...A, T]>
 
 interface SessionData {
-  sessionValidator: Address;
-  sessionValidatorInitData: Hex;
-  salt: Hex;
+  sessionValidator: Address
+  sessionValidatorInitData: Hex
+  salt: Hex
   erc7739Policies: {
-    allowedERC7739Content: readonly AllowedERC7739Content[];
-    erc1271Policies: readonly ERC1271Policy[];
-  };
-  actions: readonly ActionData[];
-  claimPolicies: readonly PolicyData[];
+    allowedERC7739Content: readonly AllowedERC7739Content[]
+    erc1271Policies: readonly ERC1271Policy[]
+  }
+  actions: readonly ActionData[]
+  claimPolicies: readonly PolicyData[]
 }
 
 interface ERC1271Policy {
-  policy: Address;
-  initData: Hex;
+  policy: Address
+  initData: Hex
 }
 
 interface AllowedERC7739Content {
-  appDomainSeparator: Hex;
-  contentNames: readonly string[];
+  appDomainSeparator: Hex
+  contentNames: readonly string[]
 }
 
 interface ActionData {
-  actionTargetSelector: Hex;
-  actionTarget: Address;
-  actionPolicies: readonly PolicyData[];
+  actionTargetSelector: Hex
+  actionTarget: Address
+  actionPolicies: readonly PolicyData[]
 }
 
 interface PolicyData {
-  policy: Address;
-  initData: Hex;
+  policy: Address
+  initData: Hex
 }
 
 interface ActionParamRule {
-  condition: number;
-  offset: bigint;
-  isLimited: boolean;
-  ref: Hex;
+  condition: number
+  offset: bigint
+  isLimited: boolean
+  ref: Hex
   usage: {
-    limit: bigint;
-    used: bigint;
-  };
+    limit: bigint
+    used: bigint
+  }
 }
 
-type SmartSessionModeType = typeof SMART_SESSION_MODE_USE | typeof SMART_SESSION_MODE_ENABLE;
+type SmartSessionModeType =
+  | typeof SMART_SESSION_MODE_USE
+  | typeof SMART_SESSION_MODE_ENABLE
 
 interface ChainDigest {
-  chainId: bigint;
-  sessionDigest: Hex;
+  chainId: bigint
+  sessionDigest: Hex
 }
 
 interface SignedPermissions {
-  permitGenericPolicy: boolean;
-  permitAdminAccess: boolean;
-  ignoreSecurityAttestations: boolean;
-  permitERC4337Paymaster: boolean;
-  userOpPolicies: readonly PolicyData[];
-  erc7739Policies: ERC7739Data;
-  actions: readonly ActionData[];
+  permitGenericPolicy: boolean
+  permitAdminAccess: boolean
+  ignoreSecurityAttestations: boolean
+  permitERC4337Paymaster: boolean
+  userOpPolicies: readonly PolicyData[]
+  erc7739Policies: ERC7739Data
+  actions: readonly ActionData[]
 }
 
 interface SignedSession {
-  account: Address;
-  permissions: SignedPermissions;
-  sessionValidator: Address;
-  sessionValidatorInitData: Hex;
-  salt: Hex;
-  smartSession: Address;
-  nonce: bigint;
+  account: Address
+  permissions: SignedPermissions
+  sessionValidator: Address
+  sessionValidatorInitData: Hex
+  salt: Hex
+  smartSession: Address
+  nonce: bigint
 }
 
 interface ChainSession {
-  chainId: bigint;
-  session: SignedSession;
+  chainId: bigint
+  session: SignedSession
 }
 
 interface ERC7739Data {
-  allowedERC7739Content: readonly ERC7739Context[];
-  erc1271Policies: readonly PolicyData[];
+  allowedERC7739Content: readonly ERC7739Context[]
+  erc1271Policies: readonly PolicyData[]
 }
 
 interface ERC7739Context {
-  appDomainSeparator: Hex;
-  contentName: readonly string[];
+  appDomainSeparator: Hex
+  contentName: readonly string[]
 }
 
 interface SessionDetails {
-  nonces: bigint[];
-  hashesAndChainIds: ChainDigest[];
-  data: TypedDataDefinition<typeof types, 'MultiChainSession'>;
+  nonces: bigint[]
+  hashesAndChainIds: ChainDigest[]
+  data: TypedDataDefinition<typeof types, 'MultiChainSession'>
 }
 
 const types = {
@@ -185,54 +198,70 @@ const types = {
     { name: 'session', type: 'SignedSession' },
   ],
   MultiChainSession: [{ name: 'sessionsAndChainIds', type: 'ChainSession[]' }],
-} as const;
+} as const
 
-const SMART_SESSION_MODE_USE = '0x00';
-const SMART_SESSION_MODE_ENABLE = '0x01';
+const SMART_SESSION_MODE_USE = '0x00'
+const SMART_SESSION_MODE_ENABLE = '0x01'
 
-const SMART_SESSIONS_FALLBACK_TARGET_FLAG: Address = '0x0000000000000000000000000000000000000001';
-const SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG: Hex = '0x00000001';
-const SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG_PERMITTED_TO_CALL_SMARTSESSION: Hex = '0x00000002';
+const SMART_SESSIONS_FALLBACK_TARGET_FLAG: Address =
+  '0x0000000000000000000000000000000000000001'
+const SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG: Hex = '0x00000001'
+const SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG_PERMITTED_TO_CALL_SMARTSESSION: Hex =
+  '0x00000002'
 
 // Dummy preclaimop action injected into every session so that the filler can trigger
 // verifyExecution (ENABLE mode) using an injected dummy preclaimop when there are no
 // real preclaimops. Target 0x...0001 is the ecRecover precompile; calls to it fail
 // silently because preclaimops are failure-tolerant. Selector 0x69123456 is
 // intentionally uncommon.
-const DUMMY_PRECLAIMOP_TARGET: Address = '0x0000000000000000000000000000000000000420';
-const DUMMY_PRECLAIMOP_SELECTOR: Hex = '0x69123456';
+const DUMMY_PRECLAIMOP_TARGET: Address =
+  '0x0000000000000000000000000000000000000420'
+const DUMMY_PRECLAIMOP_SELECTOR: Hex = '0x69123456'
 
-const SPENDING_LIMITS_POLICY_ADDRESS: Address = '0x00000088d48cf102a8cdb0137a9b173f957c6343';
-const TIME_FRAME_POLICY_ADDRESS: Address = '0x8177451511de0577b911c254e9551d981c26dc72';
-const SUDO_POLICY_ADDRESS: Address = '0x0000003111cd8e92337c100f22b7a9dbf8dee301';
-const UNIVERSAL_ACTION_POLICY_ADDRESS: Address = '0x0000006dda6c463511c4e9b05cfc34c1247fcf1f';
-const USAGE_LIMIT_POLICY_ADDRESS: Address = '0x1f34ef8311345a3a4a4566af321b313052f51493';
-const VALUE_LIMIT_POLICY_ADDRESS: Address = '0x730da93267e7e513e932301b47f2ac7d062abc83';
-const INTENT_EXECUTION_POLICY_ADDRESS: Address = '0xe9eA54d063975cDee9e06b7636d5563d95a7A23C';
-const INTENT_EXECUTION_POLICY_ADDRESS_DEV: Address = '0xa09b47de6e510cbdc18b97e9239bedcb44fb4901';
+const SPENDING_LIMITS_POLICY_ADDRESS: Address =
+  '0x00000088d48cf102a8cdb0137a9b173f957c6343'
+const TIME_FRAME_POLICY_ADDRESS: Address =
+  '0x8177451511de0577b911c254e9551d981c26dc72'
+const SUDO_POLICY_ADDRESS: Address =
+  '0x0000003111cd8e92337c100f22b7a9dbf8dee301'
+const UNIVERSAL_ACTION_POLICY_ADDRESS: Address =
+  '0x0000006dda6c463511c4e9b05cfc34c1247fcf1f'
+const USAGE_LIMIT_POLICY_ADDRESS: Address =
+  '0x1f34ef8311345a3a4a4566af321b313052f51493'
+const VALUE_LIMIT_POLICY_ADDRESS: Address =
+  '0x730da93267e7e513e932301b47f2ac7d062abc83'
+const INTENT_EXECUTION_POLICY_ADDRESS: Address =
+  '0xe9eA54d063975cDee9e06b7636d5563d95a7A23C'
+const INTENT_EXECUTION_POLICY_ADDRESS_DEV: Address =
+  '0xa09b47de6e510cbdc18b97e9239bedcb44fb4901'
 
-const ACTION_CONDITION_EQUAL = 0;
-const ACTION_CONDITION_GREATER_THAN = 1;
-const ACTION_CONDITION_LESS_THAN = 2;
-const ACTION_CONDITION_GREATER_THAN_OR_EQUAL = 3;
-const ACTION_CONDITION_LESS_THAN_OR_EQUAL = 4;
-const ACTION_CONDITION_NOT_EQUAL = 5;
-const ACTION_CONDITION_IN_RANGE = 6;
+const ACTION_CONDITION_EQUAL = 0
+const ACTION_CONDITION_GREATER_THAN = 1
+const ACTION_CONDITION_LESS_THAN = 2
+const ACTION_CONDITION_GREATER_THAN_OR_EQUAL = 3
+const ACTION_CONDITION_LESS_THAN_OR_EQUAL = 4
+const ACTION_CONDITION_NOT_EQUAL = 5
+const ACTION_CONDITION_IN_RANGE = 6
 
 interface ResolvedSessionSignerSet {
-  type: 'experimental_session';
-  session: Session;
-  enableData?: SessionEnableData;
-  verifyExecutions: boolean;
-  claimPolicyData?: Hex;
+  type: 'experimental_session'
+  session: Session
+  enableData?: SessionEnableData
+  verifyExecutions: boolean
+  claimPolicyData?: Hex
 }
 
-function packSignature(signers: ResolvedSessionSignerSet, validatorSignature: Hex): Hex {
-  const session = signers.session;
-  const permissionId = getPermissionId(session);
+function packSignature(
+  signers: ResolvedSessionSignerSet,
+  validatorSignature: Hex,
+): Hex {
+  const session = signers.session
+  const permissionId = getPermissionId(session)
   if (signers.verifyExecutions) {
-    const smartSessionMode = signers.enableData ? SMART_SESSION_MODE_ENABLE : SMART_SESSION_MODE_USE;
-    const sessionData = getSessionData(signers.session);
+    const smartSessionMode = signers.enableData
+      ? SMART_SESSION_MODE_ENABLE
+      : SMART_SESSION_MODE_USE
+    const sessionData = getSessionData(signers.session)
 
     const packedSignature = signers.enableData
       ? (LibZip.flzCompress(
@@ -353,24 +382,33 @@ function packSignature(signers: ResolvedSessionSignerSet, validatorSignature: He
                 permissionId: getPermissionId(signers.session),
               },
               validatorSignature,
-            ]
-          )
+            ],
+          ),
         ) as Hex)
-      : validatorSignature;
+      : validatorSignature
     return signers.enableData
       ? encodePacked(['bytes1', 'bytes'], [smartSessionMode, packedSignature])
-      : encodePacked(['bytes1', 'bytes32', 'bytes'], [smartSessionMode, permissionId, packedSignature]);
+      : encodePacked(
+          ['bytes1', 'bytes32', 'bytes'],
+          [smartSessionMode, permissionId, packedSignature],
+        )
   } else {
-    const SIGNATURE_IS_VALID_SIG_1271 = '0x00';
-    const policyDataOffset = BigInt(64 + size(validatorSignature));
-    const mode = SIGNATURE_IS_VALID_SIG_1271;
-    const policySpecificData = signers.claimPolicyData ?? '0x';
+    const SIGNATURE_IS_VALID_SIG_1271 = '0x00'
+    const policyDataOffset = BigInt(64 + size(validatorSignature))
+    const mode = SIGNATURE_IS_VALID_SIG_1271
+    const policySpecificData = signers.claimPolicyData ?? '0x'
     const signature = encodePacked(
       ['bytes1', 'bytes32', 'uint256', 'bytes', 'bytes'],
-      [mode, permissionId, policyDataOffset, validatorSignature, policySpecificData]
-    );
+      [
+        mode,
+        permissionId,
+        policyDataOffset,
+        validatorSignature,
+        policySpecificData,
+      ],
+    )
 
-    return signature;
+    return signature
   }
 }
 
@@ -378,17 +416,27 @@ async function getSessionDetails(
   account: Address,
   sessions: Session[],
   provider: ProviderConfig | undefined,
-  useDevContracts?: boolean
+  useDevContracts?: boolean,
 ): Promise<SessionDetails> {
-  const lockTag = '0x000000000000000000000000';
+  const lockTag = '0x000000000000000000000000'
   const sessionNonces = await Promise.all(
-    sessions.map((session) => getSessionNonce(account, session, lockTag, provider, useDevContracts))
-  );
-  const sessionDatas = sessions.map((session) => getSessionData(session, useDevContracts));
+    sessions.map((session) =>
+      getSessionNonce(account, session, lockTag, provider, useDevContracts),
+    ),
+  )
+  const sessionDatas = sessions.map((session) =>
+    getSessionData(session, useDevContracts),
+  )
   const signedSessions = sessionDatas.map((session, index) =>
-    getSignedSession(account, lockTag, session, sessionNonces[index], useDevContracts)
-  );
-  const chains = sessions.map((session) => session.chain);
+    getSignedSession(
+      account,
+      lockTag,
+      session,
+      sessionNonces[index],
+      useDevContracts,
+    ),
+  )
+  const chains = sessions.map((session) => session.chain)
   const hashesAndChainIds = signedSessions.map((session, index) => ({
     chainId: BigInt(chains[index].id),
     sessionDigest: hashStruct({
@@ -396,7 +444,7 @@ async function getSessionDetails(
       primaryType: 'SignedSession',
       data: session,
     }),
-  }));
+  }))
 
   const data: TypedDataDefinition<typeof types, 'MultiChainSession'> = {
     domain: {
@@ -411,25 +459,25 @@ async function getSessionDetails(
         session,
       })),
     },
-  };
+  }
 
   return {
     nonces: sessionNonces,
     hashesAndChainIds,
     data,
-  };
+  }
 }
 
 async function isSessionEnabled(
   account: Address,
   provider: ProviderConfig | undefined,
   session: Session,
-  useDevContracts?: boolean
+  useDevContracts?: boolean,
 ): Promise<boolean> {
   const publicClient = createPublicClient({
     chain: session.chain,
     transport: createTransport(session.chain, provider),
-  });
+  })
   const isEnabled = await publicClient.readContract({
     address: getSmartSessionEmissaryAddress(useDevContracts),
     abi: [
@@ -446,31 +494,38 @@ async function isSessionEnabled(
     ],
     functionName: 'isPermissionEnabled',
     args: [account, getPermissionId(session)],
-  });
-  return isEnabled;
+  })
+  return isEnabled
 }
 
-async function signEnableSession(config: RhinestoneAccountConfig, details: SessionDetails): Promise<Hex> {
-  const account = getAccountProvider(config);
-  const validator = getOwnerValidator(config);
+async function signEnableSession(
+  config: RhinestoneAccountConfig,
+  details: SessionDetails,
+): Promise<Hex> {
+  const account = getAccountProvider(config)
+  const validator = getOwnerValidator(config)
   const isStartaleK1 =
-    account.type === 'startale' && validator.address.toLowerCase() === K1_DEFAULT_VALIDATOR_ADDRESS.toLowerCase();
+    account.type === 'startale' &&
+    validator.address.toLowerCase() ===
+      K1_DEFAULT_VALIDATOR_ADDRESS.toLowerCase()
 
   if (isStartaleK1) {
-    const chainIds = details.hashesAndChainIds.map((h) => h.chainId);
-    const uniqueChainIds = [...new Set(chainIds.map((c) => c.toString()))];
+    const chainIds = details.hashesAndChainIds.map((h) => h.chainId)
+    const uniqueChainIds = [...new Set(chainIds.map((c) => c.toString()))]
     if (uniqueChainIds.length > 1) {
-      throw new Error('Startale accounts with K1 validator do not support multi-chain session enable');
+      throw new Error(
+        'Startale accounts with K1 validator do not support multi-chain session enable',
+      )
     }
-    const chain = getChainById(Number(chainIds[0]));
+    const chain = getChainById(Number(chainIds[0]))
     return signTypedData(config, details.data, chain, undefined, {
       skipErc6492: true,
-    });
+    })
   }
 
   return signTypedData(config, details.data, mainnet, undefined, {
     skipErc6492: true,
-  });
+  })
 }
 
 async function getSessionNonce(
@@ -478,12 +533,12 @@ async function getSessionNonce(
   session: Session,
   lockTag: Hex,
   provider: ProviderConfig | undefined,
-  useDevContracts?: boolean
+  useDevContracts?: boolean,
 ): Promise<bigint> {
   const publicClient = createPublicClient({
     chain: session.chain,
     transport: createTransport(session.chain, provider),
-  });
+  })
   const nonce = await publicClient.readContract({
     address: getSmartSessionEmissaryAddress(useDevContracts),
     abi: [
@@ -500,8 +555,8 @@ async function getSessionNonce(
     ],
     functionName: 'getNonce',
     args: [account, lockTag],
-  });
-  return nonce;
+  })
+  return nonce
 }
 
 function getSignedSession(
@@ -509,7 +564,7 @@ function getSignedSession(
   lockTag: Hex,
   session: SessionData,
   nonce: bigint,
-  useDevContracts?: boolean
+  useDevContracts?: boolean,
 ) {
   return {
     account,
@@ -517,17 +572,19 @@ function getSignedSession(
       permitGenericPolicy: session.actions.some(
         (action) =>
           action.actionTarget === SMART_SESSIONS_FALLBACK_TARGET_FLAG &&
-          action.actionTargetSelector === SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG
+          action.actionTargetSelector ===
+            SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
       ),
       lockTagPolicies: {
         lockTag,
         claimPolicies: session.claimPolicies,
       },
       erc7739Policies: {
-        allowedERC7739Content: session.erc7739Policies.allowedERC7739Content.map((content) => ({
-          contentName: content.contentNames,
-          appDomainSeparator: content.appDomainSeparator,
-        })),
+        allowedERC7739Content:
+          session.erc7739Policies.allowedERC7739Content.map((content) => ({
+            contentName: content.contentNames,
+            appDomainSeparator: content.appDomainSeparator,
+          })),
         erc1271Policies: session.erc7739Policies.erc1271Policies,
       },
       actions: session.actions,
@@ -538,7 +595,7 @@ function getSignedSession(
     smartSessionEmissary: getSmartSessionEmissaryAddress(useDevContracts),
     expires: maxUint256,
     nonce,
-  };
+  }
 }
 
 async function getEnableSessionCall(
@@ -546,14 +603,14 @@ async function getEnableSessionCall(
   session: Session,
   enableSessionSignature: Hex,
   hashesAndChainIds: {
-    chainId: bigint;
-    sessionDigest: Hex;
+    chainId: bigint
+    sessionDigest: Hex
   }[],
   sessionToEnableIndex: number,
-  useDevContracts?: boolean
+  useDevContracts?: boolean,
 ) {
-  const sessionData = getSessionData(session, useDevContracts);
-  const permissionId = getPermissionId(session);
+  const sessionData = getSessionData(session, useDevContracts)
+  const permissionId = getPermissionId(session)
   return {
     to: getSmartSessionEmissaryAddress(useDevContracts),
     data: encodeFunctionData({
@@ -579,17 +636,20 @@ async function getEnableSessionCall(
         },
       ],
     }),
-  };
+  }
 }
 
-function getSessionData(session: Session, useDevContracts?: boolean): SessionData {
-  const validator = getValidator(session.owners);
+function getSessionData(
+  session: Session,
+  useDevContracts?: boolean,
+): SessionData {
+  const validator = getValidator(session.owners)
   const allowedContent = [
     {
       contentNames: [''],
       appDomainSeparator: zeroHash,
     },
-  ];
+  ]
   const erc7739Data = {
     allowedERC7739Content: allowedContent,
     erc1271Policies: [
@@ -598,7 +658,7 @@ function getSessionData(session: Session, useDevContracts?: boolean): SessionDat
         initData: '0x' as Hex,
       },
     ],
-  };
+  }
   const sudoAction = {
     actionTargetSelector: SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
     actionTarget: SMART_SESSIONS_FALLBACK_TARGET_FLAG,
@@ -608,9 +668,11 @@ function getSessionData(session: Session, useDevContracts?: boolean): SessionDat
         initData: '0x' as Hex,
       },
     ],
-  };
+  }
 
-  const userHasFallbackAction = session.actions?.some((action) => !('target' in action) && !('selector' in action));
+  const userHasFallbackAction = session.actions?.some(
+    (action) => !('target' in action) && !('selector' in action),
+  )
 
   const injectedActions: Action[] = [
     // Native token wrapping
@@ -627,7 +689,9 @@ function getSessionData(session: Session, useDevContracts?: boolean): SessionDat
     // Only inject the intent-execution fallback if the user hasn't defined their own
     // fallback action — otherwise both map to the same actionId and their policies merge,
     // causing IntentExecutionPolicy to be required for all fallback calls
-    ...(!userHasFallbackAction ? [{ policies: [{ type: 'intent-execution' as const }] }] : []),
+    ...(!userHasFallbackAction
+      ? [{ policies: [{ type: 'intent-execution' as const }] }]
+      : []),
     // Dummy action: allows the filler to call verifyExecution in ENABLE mode using
     // an injected dummy preclaimop so any session can be enabled on-chain without
     // a separate UserOp, regardless of whether it has claim or action policies.
@@ -636,20 +700,28 @@ function getSessionData(session: Session, useDevContracts?: boolean): SessionDat
       selector: DUMMY_PRECLAIMOP_SELECTOR,
       policies: [{ type: 'sudo' as const }],
     },
-  ];
+  ]
 
   const actions = session.actions?.length
     ? [...session.actions, ...injectedActions].map((action) => ({
-        actionTargetSelector: 'selector' in action ? action.selector : SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
-        actionTarget: 'target' in action ? action.target : SMART_SESSIONS_FALLBACK_TARGET_FLAG,
-        actionPolicies: action.policies?.map((policy) => getPolicyData(policy, useDevContracts)) ?? [
+        actionTargetSelector:
+          'selector' in action
+            ? action.selector
+            : SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
+        actionTarget:
+          'target' in action
+            ? action.target
+            : SMART_SESSIONS_FALLBACK_TARGET_FLAG,
+        actionPolicies: action.policies?.map((policy) =>
+          getPolicyData(policy, useDevContracts),
+        ) ?? [
           {
             policy: SUDO_POLICY_ADDRESS,
             initData: '0x' as Hex,
           },
         ],
       }))
-    : [sudoAction];
+    : [sudoAction]
   return {
     sessionValidator: validator.address,
     salt: zeroHash,
@@ -662,11 +734,11 @@ function getSessionData(session: Session, useDevContracts?: boolean): SessionDat
         policy: PERMIT2_CLAIM_POLICY_ADDRESS,
         initData: encodePermit2ClaimPolicyInitData(p),
       })) ?? [],
-  };
+  }
 }
 
 function getPermissionId(session: Session) {
-  const sessionData = getSessionData(session);
+  const sessionData = getSessionData(session)
   return keccak256(
     encodeAbiParameters(
       [
@@ -683,9 +755,13 @@ function getPermissionId(session: Session) {
           name: 'salt',
         },
       ],
-      [sessionData.sessionValidator, sessionData.sessionValidatorInitData, sessionData.salt]
-    )
-  );
+      [
+        sessionData.sessionValidator,
+        sessionData.sessionValidatorInitData,
+        sessionData.salt,
+      ],
+    ),
+  )
 }
 
 function getPolicyData(policy: Policy, useDevContracts?: boolean): PolicyData {
@@ -694,43 +770,50 @@ function getPolicyData(policy: Policy, useDevContracts?: boolean): PolicyData {
       return {
         policy: SUDO_POLICY_ADDRESS,
         initData: '0x',
-      };
+      }
     case 'intent-execution':
       return {
-        policy: useDevContracts ? INTENT_EXECUTION_POLICY_ADDRESS_DEV : INTENT_EXECUTION_POLICY_ADDRESS,
+        policy: useDevContracts
+          ? INTENT_EXECUTION_POLICY_ADDRESS_DEV
+          : INTENT_EXECUTION_POLICY_ADDRESS,
         initData: '0x',
-      };
+      }
     case 'universal-action': {
       function getCondition(condition: UniversalActionPolicyParamCondition) {
         switch (condition) {
           case 'equal':
-            return ACTION_CONDITION_EQUAL;
+            return ACTION_CONDITION_EQUAL
           case 'greaterThan':
-            return ACTION_CONDITION_GREATER_THAN;
+            return ACTION_CONDITION_GREATER_THAN
           case 'lessThan':
-            return ACTION_CONDITION_LESS_THAN;
+            return ACTION_CONDITION_LESS_THAN
           case 'greaterThanOrEqual':
-            return ACTION_CONDITION_GREATER_THAN_OR_EQUAL;
+            return ACTION_CONDITION_GREATER_THAN_OR_EQUAL
           case 'lessThanOrEqual':
-            return ACTION_CONDITION_LESS_THAN_OR_EQUAL;
+            return ACTION_CONDITION_LESS_THAN_OR_EQUAL
           case 'notEqual':
-            return ACTION_CONDITION_NOT_EQUAL;
+            return ACTION_CONDITION_NOT_EQUAL
           case 'inRange':
-            return ACTION_CONDITION_IN_RANGE;
+            return ACTION_CONDITION_IN_RANGE
         }
       }
 
-      const MAX_RULES = 16;
-      const rules = createFixedArray<ActionParamRule, typeof MAX_RULES>(MAX_RULES, () => ({
-        condition: ACTION_CONDITION_EQUAL,
-        offset: 0n,
-        isLimited: false,
-        ref: zeroHash,
-        usage: { limit: 0n, used: 0n },
-      }));
+      const MAX_RULES = 16
+      const rules = createFixedArray<ActionParamRule, typeof MAX_RULES>(
+        MAX_RULES,
+        () => ({
+          condition: ACTION_CONDITION_EQUAL,
+          offset: 0n,
+          isLimited: false,
+          ref: zeroHash,
+          usage: { limit: 0n, used: 0n },
+        }),
+      )
       for (let i = 0; i < policy.rules.length; i++) {
-        const rule = policy.rules[i];
-        const ref = isHex(rule.referenceValue) ? padHex(rule.referenceValue) : toHex(rule.referenceValue, { size: 32 });
+        const rule = policy.rules[i]
+        const ref = isHex(rule.referenceValue)
+          ? padHex(rule.referenceValue)
+          : toHex(rule.referenceValue, { size: 32 })
         rules[i] = {
           condition: getCondition(rule.condition),
           offset: rule.calldataOffset,
@@ -740,7 +823,7 @@ function getPolicyData(policy: Policy, useDevContracts?: boolean): PolicyData {
             limit: rule.usageLimit ? rule.usageLimit : 0n,
             used: 0n,
           },
-        };
+        }
       }
       return {
         policy: UNIVERSAL_ACTION_POLICY_ADDRESS,
@@ -811,49 +894,55 @@ function getPolicyData(policy: Policy, useDevContracts?: boolean): PolicyData {
                 rules: rules,
               },
             },
-          ]
+          ],
         ),
-      };
+      }
     }
     case 'spending-limits': {
-      const tokens = policy.limits.map(({ token }) => token);
-      const limits = policy.limits.map(({ amount }) => amount);
+      const tokens = policy.limits.map(({ token }) => token)
+      const limits = policy.limits.map(({ amount }) => amount)
       return {
         policy: SPENDING_LIMITS_POLICY_ADDRESS,
-        initData: encodeAbiParameters([{ type: 'address[]' }, { type: 'uint256[]' }], [tokens, limits]),
-      };
+        initData: encodeAbiParameters(
+          [{ type: 'address[]' }, { type: 'uint256[]' }],
+          [tokens, limits],
+        ),
+      }
     }
     case 'time-frame': {
       return {
         policy: TIME_FRAME_POLICY_ADDRESS,
         initData: encodePacked(
           ['uint48', 'uint48'],
-          [Math.floor(policy.validUntil / 1000), Math.floor(policy.validAfter / 1000)]
+          [
+            Math.floor(policy.validUntil / 1000),
+            Math.floor(policy.validAfter / 1000),
+          ],
         ),
-      };
+      }
     }
     case 'usage-limit': {
       return {
         policy: USAGE_LIMIT_POLICY_ADDRESS,
         initData: encodePacked(['uint128'], [policy.limit]),
-      };
+      }
     }
     case 'value-limit': {
       return {
         policy: VALUE_LIMIT_POLICY_ADDRESS,
         initData: encodeAbiParameters([{ type: 'uint256' }], [policy.limit]),
-      };
+      }
     }
   }
 }
 
 function getSmartSessionValidator(config: RhinestoneConfig): Module | null {
   if (!config.experimental_sessions) {
-    return null;
+    return null
   }
-  const { enabled, module } = config.experimental_sessions;
+  const { enabled, module } = config.experimental_sessions
   if (!enabled) {
-    return null;
+    return null
   }
   return {
     address: module ?? getSmartSessionEmissaryAddress(config.useDevContracts),
@@ -861,11 +950,13 @@ function getSmartSessionValidator(config: RhinestoneConfig): Module | null {
     deInitData: '0x',
     additionalContext: '0x',
     type: MODULE_TYPE_ID_VALIDATOR,
-  };
+  }
 }
 
 function getSmartSessionEmissaryAddress(useDevContracts?: boolean): Address {
-  return useDevContracts === true ? SMART_SESSION_EMISSARY_ADDRESS_DEV : SMART_SESSION_EMISSARY_ADDRESS;
+  return useDevContracts === true
+    ? SMART_SESSION_EMISSARY_ADDRESS_DEV
+    : SMART_SESSION_EMISSARY_ADDRESS
 }
 
 /**
@@ -880,25 +971,26 @@ function buildMockSignature(
   session: Session,
   useDevContracts?: boolean,
   chainCount: number = 1,
-  targetChainId?: number
+  targetChainId?: number,
 ): Hex {
-  const emissaryAddress = getSmartSessionEmissaryAddress(useDevContracts);
+  const emissaryAddress = getSmartSessionEmissaryAddress(useDevContracts)
   // Use targetChainId when provided (per-chain mockSignatures path) so the
   // mock emissary's chainId check passes on the correct chain. Falls back to
   // session.chain.id for the global mockSignature (single-chain path).
-  const primaryChainId = targetChainId ?? session.chain.id;
+  const primaryChainId = targetChainId ?? session.chain.id
   // Normalize chainCount to a finite positive integer. Guards against
   // accidental NaN/undefined from caller (e.g. `sourceChains?.length` when
   // sourceChains is undefined) which would otherwise make Array.from produce
   // an empty array and silently drop the ChainId check.
-  const safeChainCount = Number.isFinite(chainCount) && chainCount > 0 ? Math.floor(chainCount) : 1;
+  const safeChainCount =
+    Number.isFinite(chainCount) && chainCount > 0 ? Math.floor(chainCount) : 1
   // Build one entry per chain — first entry is the real chain ID (for the ChainId check),
   // remaining entries use chainId 0 as placeholders. Hash mismatch is skipped by the
   // mock emissary, so sessionDigest can be zeroHash throughout.
   const hashesAndChainIds = Array.from({ length: safeChainCount }, (_, i) => ({
     chainId: i === 0 ? BigInt(primaryChainId) : 0n,
     sessionDigest: zeroHash,
-  }));
+  }))
   const dummySigners: ResolvedSessionSignerSet = {
     type: 'experimental_session',
     session,
@@ -908,14 +1000,17 @@ function buildMockSignature(
       hashesAndChainIds,
       sessionToEnableIndex: 0,
     },
-  };
-  const dummyValidatorSignature = `0x${'00'.repeat(65)}` as Hex;
-  const sigData = packSignature(dummySigners, dummyValidatorSignature);
-  return concat([emissaryAddress, sigData]);
+  }
+  const dummyValidatorSignature = `0x${'00'.repeat(65)}` as Hex
+  const sigData = packSignature(dummySigners, dummyValidatorSignature)
+  return concat([emissaryAddress, sigData])
 }
 
-function createFixedArray<T, N extends number>(length: N, getValue: (index: number) => T): FixedLengthArray<T, N> {
-  return Array.from({ length }, (_, i) => getValue(i)) as FixedLengthArray<T, N>;
+function createFixedArray<T, N extends number>(
+  length: N,
+  getValue: (index: number) => T,
+): FixedLengthArray<T, N> {
+  return Array.from({ length }, (_, i) => getValue(i)) as FixedLengthArray<T, N>
 }
 
 export {
@@ -943,5 +1038,12 @@ export {
   isSessionEnabled,
   signEnableSession,
   buildMockSignature,
-};
-export type { ChainSession, ChainDigest, ResolvedSessionSignerSet, SessionData, SmartSessionModeType, SessionDetails };
+}
+export type {
+  ChainSession,
+  ChainDigest,
+  ResolvedSessionSignerSet,
+  SessionData,
+  SmartSessionModeType,
+  SessionDetails,
+}
