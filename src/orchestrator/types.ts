@@ -110,8 +110,7 @@ interface PortfolioToken {
     chain: number
     address: Address
     decimals: number
-    locked: bigint
-    unlocked: bigint
+    amount: bigint
   }[]
 }
 

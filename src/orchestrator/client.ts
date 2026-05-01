@@ -79,7 +79,7 @@ export class Orchestrator {
         chainId: string | number
         address: Address
         decimals: number
-        balance: { locked: string; unlocked: string }
+        amount: string
       }>
     }>
     return portfolioWire.map((token) => ({
@@ -88,8 +88,7 @@ export class Orchestrator {
         chain: parseChainId(c.chainId),
         address: c.address,
         decimals: c.decimals,
-        locked: BigInt(c.balance.locked),
-        unlocked: BigInt(c.balance.unlocked),
+        amount: BigInt(c.amount),
       })),
     }))
   }
