@@ -63,6 +63,40 @@ toSession({
   ],
 })
 
+toSession({
+  chain: base,
+  owners: { type: 'ecdsa', accounts: [accountA] },
+  permissions: [
+    {
+      abi: erc20Abi,
+      address: USDC,
+      functions: {
+        // @ts-expect-error mint is not in the ERC-20 ABI.
+        mint: {},
+      },
+    },
+  ],
+})
+
+toSession({
+  chain: base,
+  owners: { type: 'ecdsa', accounts: [accountA] },
+  permissions: [
+    {
+      abi: erc20Abi,
+      address: USDC,
+      functions: {
+        transfer: {
+          params: {
+            // @ts-expect-error sender is not a transfer parameter.
+            sender: { condition: 'equal', value: RECIPIENT },
+          },
+        },
+      },
+    },
+  ],
+})
+
 const bytesAbi = [
   {
     type: 'function',
