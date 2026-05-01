@@ -79,7 +79,7 @@ export class Orchestrator {
         chainId: string | number
         address: Address
         decimals: number
-        balance: { locked: string; unlocked: string }
+        amount: string
       }>
     }>
     return portfolioWire.map((token) => ({
@@ -88,8 +88,7 @@ export class Orchestrator {
         chain: parseChainId(c.chainId),
         address: c.address,
         decimals: c.decimals,
-        locked: BigInt(c.balance.locked),
-        unlocked: BigInt(c.balance.unlocked),
+        amount: BigInt(c.amount),
       })),
     }))
   }
@@ -343,12 +342,6 @@ function decodeCost(cost: any): Cost {
   return {
     input: (cost.input as any[]).map(decodeCostTokenEntry),
     output: (cost.output as any[]).map(decodeCostTokenEntry),
-    feeToken: cost.feeToken
-      ? {
-          chainId: parseChainId(cost.feeToken.chainId),
-          tokenAddress: cost.feeToken.tokenAddress,
-        }
-      : undefined,
     fees: cost.fees,
   }
 }
