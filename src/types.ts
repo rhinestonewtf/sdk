@@ -164,21 +164,21 @@ interface IntentExecutionPolicy {
 }
 
 interface Permit2ClaimPolicy {
-  type: 'permit2-claim'
+  type: 'permit2'
   /** Whitelisted Permit2 spender addresses */
-  arbiters?: Address[]
+  spenders?: Address[]
   /** Permitted input tokens per origin chain */
-  tokensIn?: { chainId: number; token: Address }[]
+  sourceTokens?: { chain: Chain; address: Address }[]
   /** Permitted output tokens per destination chain */
-  tokensOut?: { chainId: number; token: Address }[]
+  destinationTokens?: { chain: Chain; address: Address }[]
   /** Permitted recipients per destination chain (use `'any'` to allow all) */
-  recipients?: { chainId: number; recipient: Address | 'any' }[]
-  /** Enforce that recipient === sponsor (bridge-to-self) */
-  recipientIsSponsor?: boolean
-  /** Deadline bounds (min/max unix timestamps) */
-  expiryBounds?: { min?: bigint; max?: bigint }
-  /** Fill expiry bounds per destination chain */
-  fillExpiryBounds?: { chainId: number; min?: bigint; max?: bigint }[]
+  recipients?: { chain: Chain; address: Address | 'any' }[]
+  /** Enforce that the destination recipient is the smart account */
+  recipientIsAccount?: boolean
+  /** Bounds for the Permit2 signature deadline */
+  permitDeadline?: { min?: bigint; max?: bigint }
+  /** Bounds for the mandate target fill deadline, per destination chain */
+  fillDeadline?: { chain: Chain; min?: bigint; max?: bigint }[]
 }
 
 type Policy =
@@ -278,6 +278,7 @@ interface SessionDefinition<TAbis extends readonly Abi[] = readonly Abi[]> {
   chain: Chain
   owners: OwnerSet
   permissions?: readonly [...PermissionsForAbis<TAbis>]
+  claimPolicies?: readonly Permit2ClaimPolicy[]
 }
 
 type SessionInput<TAbis extends readonly Abi[] = readonly Abi[]> = Omit<

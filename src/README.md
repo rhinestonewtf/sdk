@@ -185,6 +185,17 @@ const session = toSession({
       },
     },
   ],
+  claimPolicies: [
+    {
+      type: 'permit2',
+      spenders: [permit2Spender],
+      sourceTokens: [{ chain: base, address: usdc }],
+      destinationTokens: [{ chain: optimism, address: usdc }],
+      recipients: [{ chain: optimism, address: recipient }],
+      permitDeadline: { max: permitDeadline },
+      fillDeadline: [{ chain: optimism, max: fillDeadline }],
+    },
+  ],
 })
 ```
 

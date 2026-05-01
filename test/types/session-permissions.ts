@@ -1,6 +1,10 @@
 import { type Address, erc20Abi } from 'viem'
 import { base } from 'viem/chains'
-import { type Permission, toSession } from '../../src/index'
+import {
+  type Permission,
+  type Permit2ClaimPolicy,
+  toSession,
+} from '../../src/index'
 import { accountA } from '../consts'
 
 const USDC: Address = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'
@@ -143,4 +147,32 @@ toSession({
   chain: base,
   owners: { type: 'ecdsa', accounts: [accountA] },
   permissions: [permission],
+})
+
+const permit2ClaimPolicy = {
+  type: 'permit2',
+  spenders: [RECIPIENT],
+  sourceTokens: [{ chain: base, address: USDC }],
+  destinationTokens: [{ chain: base, address: RECIPIENT }],
+  recipients: [{ chain: base, address: 'any' }],
+  recipientIsAccount: true,
+  permitDeadline: { min: 1n, max: 2n },
+  fillDeadline: [{ chain: base, min: 3n, max: 4n }],
+} as const satisfies Permit2ClaimPolicy
+
+toSession({
+  chain: base,
+  owners: { type: 'ecdsa', accounts: [accountA] },
+  claimPolicies: [permit2ClaimPolicy],
+})
+
+toSession({
+  chain: base,
+  owners: { type: 'ecdsa', accounts: [accountA] },
+  claimPolicies: [
+    {
+      // @ts-expect-error public Permit2 claim policies use `permit2`.
+      type: 'permit2-claim',
+    },
+  ],
 })

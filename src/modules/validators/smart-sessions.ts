@@ -35,6 +35,7 @@ import {
 } from '../../orchestrator/registry'
 import type {
   Action,
+  Permit2ClaimPolicy,
   Policy,
   ProviderConfig,
   ResolvedAction,
@@ -55,6 +56,11 @@ import {
   SMART_SESSION_EMISSARY_ADDRESS_DEV,
 } from './core'
 import { resolvePermissions } from './permissions'
+import {
+  encodePermit2ClaimPolicyInitData,
+  type InternalPermit2ClaimPolicy,
+  PERMIT2_CLAIM_POLICY_ADDRESS,
+} from './policies/claim/permit2'
 
 type FixedLengthArray<
   T,
@@ -627,6 +633,34 @@ function toSession<const TAbis extends readonly Abi[]>(
   }
 }
 
+function resolvePermit2ClaimPolicy(
+  policy: Permit2ClaimPolicy,
+): InternalPermit2ClaimPolicy {
+  return {
+    type: 'permit2-claim',
+    arbiters: policy.spenders,
+    tokensIn: policy.sourceTokens?.map(({ chain, address }) => ({
+      chainId: chain.id,
+      token: address,
+    })),
+    tokensOut: policy.destinationTokens?.map(({ chain, address }) => ({
+      chainId: chain.id,
+      token: address,
+    })),
+    recipients: policy.recipients?.map(({ chain, address }) => ({
+      chainId: chain.id,
+      recipient: address,
+    })),
+    recipientIsSponsor: policy.recipientIsAccount,
+    expiryBounds: policy.permitDeadline,
+    fillExpiryBounds: policy.fillDeadline?.map(({ chain, min, max }) => ({
+      chainId: chain.id,
+      min,
+      max,
+    })),
+  }
+}
+
 function resolveSessionData(
   session: SessionDefinition,
   useDevContracts?: boolean,
@@ -713,7 +747,13 @@ function resolveSessionData(
     sessionValidatorInitData: validator.initData,
     erc7739Policies: erc7739Data,
     actions,
-    claimPolicies: [],
+    claimPolicies:
+      session.claimPolicies?.map((policy) => ({
+        policy: PERMIT2_CLAIM_POLICY_ADDRESS,
+        initData: encodePermit2ClaimPolicyInitData(
+          resolvePermit2ClaimPolicy(policy),
+        ),
+      })) ?? [],
   }
 }
 

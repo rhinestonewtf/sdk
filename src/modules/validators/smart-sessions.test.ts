@@ -13,6 +13,7 @@ import { base } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 import { accountA, accountB } from '../../../test/consts'
 import type { Session } from '../../types'
+import { PERMIT2_CLAIM_POLICY_ADDRESS } from './policies/claim/permit2'
 import type { ResolvedSessionSignerSet } from './smart-sessions'
 import {
   buildMockSignature,
@@ -59,6 +60,8 @@ const sessionWithAction: Session = toSession({
 })
 
 const dummySig = `0x${'00'.repeat(65)}` as Hex
+const USDC: Address = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'
+const RECIPIENT: Address = '0x1111111111111111111111111111111111111111'
 
 // ---------------------------------------------------------------------------
 // A. Policy encoding
@@ -240,6 +243,29 @@ describe('getSessionData', () => {
     expect(data.erc7739Policies.erc1271Policies[0].policy).toBe(
       SUDO_POLICY_ADDRESS,
     )
+  })
+
+  test('claimPolicies resolves public Permit2 policy to policy data', () => {
+    const session = toSession({
+      chain: base,
+      owners: { type: 'ecdsa', accounts: [accountA] },
+      claimPolicies: [
+        {
+          type: 'permit2',
+          spenders: ['0x1234567890123456789012345678901234567890'],
+          sourceTokens: [{ chain: base, address: USDC }],
+          destinationTokens: [{ chain: base, address: RECIPIENT }],
+          recipients: [{ chain: base, address: 'any' }],
+          recipientIsAccount: true,
+          permitDeadline: { min: 1n, max: 2n },
+          fillDeadline: [{ chain: base, min: 3n, max: 4n }],
+        },
+      ],
+    })
+    const data = getSessionData(session)
+    expect(data.claimPolicies).toHaveLength(1)
+    expect(data.claimPolicies[0].policy).toBe(PERMIT2_CLAIM_POLICY_ADDRESS)
+    expect(data.claimPolicies[0].initData).not.toBe('0x')
   })
 })
 
