@@ -16,8 +16,7 @@ async function getValidators(
   switch (accountType) {
     case 'safe':
     case 'startale':
-    case 'nexus':
-    case 'passport': {
+    case 'nexus': {
       const validators = await publicClient.readContract({
         abi: [
           {
@@ -148,8 +147,7 @@ async function getExecutors(
   switch (accountType) {
     case 'safe':
     case 'startale':
-    case 'nexus':
-    case 'passport': {
+    case 'nexus': {
       const executors = await publicClient.readContract({
         abi: [
           {

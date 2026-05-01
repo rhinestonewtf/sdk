@@ -4,7 +4,7 @@ import type { WebAuthnAccount } from 'viem/account-abstraction'
 import type { ModuleType } from './modules/common'
 import type { AuxiliaryFunds, SettlementLayer } from './orchestrator/types'
 
-type AccountType = 'safe' | 'nexus' | 'kernel' | 'startale' | 'passport' | 'eoa'
+type AccountType = 'safe' | 'nexus' | 'kernel' | 'startale' | 'eoa'
 
 interface SafeAccount {
   type: 'safe'
@@ -30,10 +30,6 @@ interface StartaleAccount {
   salt?: Hex
 }
 
-interface PassportAccount {
-  type: 'passport'
-}
-
 interface EoaAccount {
   type: 'eoa'
 }
@@ -43,7 +39,6 @@ type AccountProviderConfig =
   | NexusAccount
   | KernelAccount
   | StartaleAccount
-  | PassportAccount
   | EoaAccount
 
 interface OwnableValidatorConfig {
@@ -551,7 +546,6 @@ export type {
   NexusAccount,
   KernelAccount,
   StartaleAccount,
-  PassportAccount,
   EoaAccount,
   RhinestoneAccountConfig,
   RhinestoneSDKConfig,

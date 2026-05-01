@@ -138,7 +138,7 @@ const account = await rhinestone.createAccount({
 Send a crosschain transaction:
 
 ```ts
-const transaction = await account.sendTransaction({
+const prepared = await account.prepareTransaction({
   sourceChains: [baseSepolia],
   targetChain: arbitrumSepolia,
   calls: [
@@ -155,6 +155,8 @@ const transaction = await account.sendTransaction({
   tokenRequests: [{ address: 'USDC', amount }],
 })
 
+const signed = await account.signTransaction(prepared)
+const transaction = await account.submitTransaction(signed)
 const result = await account.waitForExecution(transaction)
 ```
 

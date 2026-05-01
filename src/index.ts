@@ -27,7 +27,6 @@ import { type AuthProvider, createAuthProvider } from './auth/provider'
 import {
   getIntentStatus as getIntentStatusInternal,
   getPortfolio as getPortfolioInternal,
-  sendTransaction as sendTransactionInternal,
   sendUserOperation as sendUserOperationInternal,
   splitIntents as splitIntentsInternal,
   type TransactionResult,
@@ -120,6 +119,16 @@ import type {
   WebauthnValidatorConfig,
 } from './types'
 
+interface SubmitTransactionOptions {
+  authorizations?: SignedAuthorizationList
+  /**
+   * When `true`, the orchestrator validates the intent without executing it
+   * onchain. Internal use only; the `internal_` prefix marks it as not part
+   * of the supported public API.
+   */
+  internal_dryRun?: boolean
+}
+
 interface RhinestoneAccount {
   config: RhinestoneAccountConfig
   deploy: (
@@ -166,10 +175,8 @@ interface RhinestoneAccount {
   ) => Promise<Hex>
   submitTransaction: (
     signedTransaction: SignedTransactionData,
-    authorizations?: SignedAuthorizationList,
-    dryRun?: boolean,
+    options?: SubmitTransactionOptions,
   ) => Promise<TransactionResult>
-  sendTransaction: (transaction: Transaction) => Promise<TransactionResult>
   prepareUserOperation: (
     transaction: UserOperationTransaction,
   ) => Promise<PreparedUserOperationData>
@@ -182,14 +189,8 @@ interface RhinestoneAccount {
   sendUserOperation: (
     transaction: UserOperationTransaction,
   ) => Promise<UserOperationResult>
-  waitForExecution(
-    result: TransactionResult,
-    acceptsPreconfirmations?: boolean,
-  ): Promise<TransactionStatus>
-  waitForExecution(
-    result: UserOperationResult,
-    acceptsPreconfirmations?: boolean,
-  ): Promise<UserOperationReceipt>
+  waitForExecution(result: TransactionResult): Promise<TransactionStatus>
+  waitForExecution(result: UserOperationResult): Promise<UserOperationReceipt>
   getAddress: () => Address
   getPortfolio: (onTestnets?: boolean) => Promise<Portfolio>
   experimental_getSessionDetails: (
@@ -370,22 +371,21 @@ async function createRhinestoneAccount(
   /**
    * Submit a transaction
    * @param signedTransaction Signed transaction data
-   * @param authorizations EIP-7702 authorizations to submit (optional)
+   * @param options Optional submission options
+   * @param options.authorizations EIP-7702 authorizations to submit
    * @returns transaction result object (a UserOp hash)
    * @see {@link signTransaction} to sign the transaction data
    * @see {@link signAuthorizations} to sign the required EIP-7702 authorizations
-   * @see {@link dryRun} true when intent is not executed onchain (internal use only)
    */
   function submitTransaction(
     signedTransaction: SignedTransactionData,
-    authorizations?: SignedAuthorizationList,
-    dryRun?: boolean,
+    options?: SubmitTransactionOptions,
   ) {
     return submitTransactionInternal(
       config,
       signedTransaction,
-      authorizations ?? [],
-      dryRun,
+      options?.authorizations ?? [],
+      options?.internal_dryRun ?? false,
     )
   }
 
@@ -418,15 +418,6 @@ async function createRhinestoneAccount(
   }
 
   /**
-   * Sign and send a transaction
-   * @param transaction Transaction to send
-   * @returns transaction result object (an intent ID)
-   */
-  function sendTransaction(transaction: Transaction) {
-    return sendTransactionInternal(config, transaction)
-  }
-
-  /**
    * Sign and send a user operation
    * @param transaction User operation to send
    * @returns user operation result object (a UserOp hash)
@@ -438,22 +429,16 @@ async function createRhinestoneAccount(
   /**
    * Wait for the transaction execution onchain
    * @param result transaction result object
-   * @param acceptsPreconfirmations whether to accept preconfirmations from relayers before the transaction lands onchain (enabled by default)
    * @returns intent result or a UserOp receipt
    */
   function waitForExecution(
     result: TransactionResult,
-    acceptsPreconfirmations?: boolean,
   ): Promise<TransactionStatus>
   function waitForExecution(
     result: UserOperationResult,
-    acceptsPreconfirmations?: boolean,
   ): Promise<UserOperationReceipt>
-  function waitForExecution(
-    result: TransactionResult | UserOperationResult,
-    acceptsPreconfirmations = true,
-  ) {
-    return waitForExecutionInternal(config, result, acceptsPreconfirmations)
+  function waitForExecution(result: TransactionResult | UserOperationResult) {
+    return waitForExecutionInternal(config, result)
   }
 
   /**
@@ -553,7 +538,6 @@ async function createRhinestoneAccount(
     prepareUserOperation,
     signUserOperation,
     submitUserOperation,
-    sendTransaction,
     sendUserOperation,
     waitForExecution,
     getAddress,
