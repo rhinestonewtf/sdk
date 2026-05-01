@@ -1,5 +1,12 @@
 # @rhinestone/sdk
 
+## 2.0.0-beta.3
+
+### Major Changes
+
+- edeae4c: - `PortfolioToken.chains[]` replaces `locked`/`unlocked` with a single `amount: bigint`, matching the orchestrator's blanc wire shape (`balance: { locked, unlocked }` collapsed to a flat `amount`; post-compact, locked is always `0`).
+- a5bded7: - Drop the unused `feeToken` field from the `Cost` response and remove the public `FeeToken` type. The orchestrator's blanc `POST /quotes` response never populates this field.
+
 ## 2.0.0-beta.2
 
 ### Major Changes
