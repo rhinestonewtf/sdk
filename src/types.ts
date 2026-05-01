@@ -1,5 +1,4 @@
-import type { Abi, AbiFunction } from 'abitype'
-import type { Account, Address, Chain, Hex } from 'viem'
+import type { Abi, AbiFunction, Account, Address, Chain, Hex } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
 import type { ModuleType } from './modules/common'
 import type { AuxiliaryFunds, SettlementLayer } from './orchestrator/types'
