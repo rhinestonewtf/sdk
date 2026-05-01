@@ -172,6 +172,62 @@ describe('resolvePermission', () => {
     expect(ruleF.referenceValue).toBe(0n)
   })
 
+  test('validates bytesN values are fixed-size hex strings', () => {
+    const abi = [
+      {
+        type: 'function',
+        name: 'setBytes',
+        inputs: [{ name: 'value', type: 'bytes4' }],
+        outputs: [],
+        stateMutability: 'nonpayable',
+      },
+    ] as const
+
+    const actions = resolvePermission({
+      abi,
+      address: USDC,
+      functions: {
+        setBytes: {
+          params: {
+            value: { condition: 'equal', value: '0x12345678' },
+          },
+        },
+      },
+    })
+
+    const policy = actions[0].policies![0]
+    if (policy.type !== 'universal-action') throw new Error('wrong type')
+    expect(policy.rules[0].referenceValue).toBe('0x12345678')
+  })
+
+  test('throws for invalid bytesN values', () => {
+    const abi = [
+      {
+        type: 'function',
+        name: 'setBytes',
+        inputs: [{ name: 'value', type: 'bytes4' }],
+        outputs: [],
+        stateMutability: 'nonpayable',
+      },
+    ] as const
+
+    for (const value of ['nothex', '0x123', '0x1234567890']) {
+      expect(() =>
+        resolvePermission({
+          abi,
+          address: USDC,
+          functions: {
+            setBytes: {
+              params: {
+                value: { condition: 'equal', value },
+              },
+            },
+          },
+        }),
+      ).toThrow(/4-byte hex string/)
+    }
+  })
+
   test('throws for dynamic parameter types', () => {
     const abi = [
       {

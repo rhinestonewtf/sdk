@@ -3,6 +3,8 @@ import {
   type AbiParameter,
   type Hex,
   isAddress,
+  isHex,
+  size,
   toFunctionSelector,
 } from 'viem'
 import type {
@@ -39,8 +41,15 @@ function toReferenceValue(value: unknown, abiType: string): Hex | bigint {
     )
   }
   if (/^bytes\d+$/.test(abiType)) {
-    if (typeof value === 'string') return value as Hex
-    throw new Error(`Expected hex string for ${abiType}, got: ${typeof value}`)
+    const expectedSize = Number.parseInt(abiType.slice(5), 10)
+    if (
+      typeof value === 'string' &&
+      isHex(value) &&
+      size(value) === expectedSize
+    ) {
+      return value as Hex
+    }
+    throw new Error(`Expected ${expectedSize}-byte hex string for ${abiType}`)
   }
   throw new Error(`Unsupported ABI type: ${abiType}`)
 }
