@@ -113,7 +113,7 @@ function isTokenAddressSupported(address: Address, chainId: number): boolean {
   )
 }
 
-function getSupportedTokens(chainId: number): TokenConfig[] {
+function getTokensForChain(chainId: number): TokenConfig[] {
   const chainEntry = getChainEntry(chainId)
   if (!chainEntry) {
     throw new UnsupportedChainError(chainId)
@@ -147,17 +147,6 @@ function resolveTokenAddress(
   return getTokenAddress(token, chainId)
 }
 
-function getAllSupportedChainsAndTokens(): {
-  chainId: number
-  tokens: TokenConfig[]
-}[] {
-  const supportedChainIds = getSupportedChainIds()
-  return supportedChainIds.map((chainId) => ({
-    chainId,
-    tokens: getSupportedTokens(chainId),
-  }))
-}
-
 export {
   getTokenSymbol,
   getTokenAddress,
@@ -165,11 +154,10 @@ export {
   getWethAddress,
   getWrappedTokenAddress,
   getChainById,
-  getSupportedTokens,
+  getTokensForChain,
   getSupportedChainIds,
   isTestnet,
   isTokenAddressSupported,
   getDefaultAccountAccessList,
   resolveTokenAddress,
-  getAllSupportedChainsAndTokens,
 }

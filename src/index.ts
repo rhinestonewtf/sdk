@@ -21,8 +21,6 @@ import {
   setup as setupInternal,
   signEip7702InitData as signEip7702InitDataInternal,
 } from './accounts'
-import { walletClientToAccount, wrapParaAccount } from './accounts/walletClient'
-import { deployAccountsForOwners } from './actions/deployment'
 import { type AuthProvider, createAuthProvider } from './auth/provider'
 import {
   getIntentStatus as getIntentStatusInternal,
@@ -34,11 +32,7 @@ import {
   type UserOperationResult,
   waitForExecution as waitForExecutionInternal,
 } from './execution'
-import {
-  checkERC20AllowanceDirect,
-  checkERC20Allowance as checkERC20AllowanceInternal,
-  getPermit2Address,
-} from './execution/permit2'
+import { checkERC20Allowance as checkERC20AllowanceInternal } from './execution/permit2'
 import {
   getTransactionMessages as getTransactionMessagesInternal,
   type PreparedQuotes,
@@ -71,23 +65,18 @@ import {
 import {
   isSessionEnabled as isSessionEnabledInternal,
   type SessionDetails,
-  toSession,
 } from './modules/validators/smart-sessions'
-import {
-  type ApprovalRequired,
-  type AuxiliaryFunds,
-  getAllSupportedChainsAndTokens,
-  getSupportedTokens,
-  getTokenAddress,
-  getTokenDecimals,
-  type IntentInput,
-  type IntentOpStatus,
-  type Portfolio,
-  type SettlementLayer,
-  type SplitIntentsInput,
-  type SplitIntentsResult,
-  type TokenRequirements,
-  type WrapRequired,
+import type {
+  ApprovalRequired,
+  AuxiliaryFunds,
+  IntentInput,
+  IntentOpStatus,
+  Portfolio,
+  SettlementLayer,
+  SplitIntentsInput,
+  SplitIntentsResult,
+  TokenRequirements,
+  WrapRequired,
 } from './orchestrator'
 import type {
   AccountProviderConfig,
@@ -610,23 +599,11 @@ class RhinestoneSDK {
 export {
   RhinestoneSDK,
   createRhinestoneAccount,
-  deployAccountsForOwners,
-  walletClientToAccount,
-  wrapParaAccount,
   // Validator addresses
   OWNABLE_VALIDATOR_ADDRESS,
   WEBAUTHN_VALIDATOR_ADDRESS,
   MULTI_FACTOR_VALIDATOR_ADDRESS,
   SMART_SESSION_EMISSARY_ADDRESS,
-  // Registry functions
-  getSupportedTokens,
-  getTokenAddress,
-  getTokenDecimals,
-  getAllSupportedChainsAndTokens,
-  toSession,
-  // Permit2 helpers
-  checkERC20AllowanceDirect,
-  getPermit2Address,
 }
 export type {
   RhinestoneAccount,

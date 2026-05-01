@@ -5,10 +5,10 @@ import {
   getChainById,
   getDefaultAccountAccessList,
   getSupportedChainIds,
-  getSupportedTokens,
   getTokenAddress,
   getTokenDecimals,
   getTokenSymbol,
+  getTokensForChain,
   getWethAddress,
   isTestnet,
   isTokenAddressSupported,
@@ -171,15 +171,15 @@ describe('Registry', () => {
     })
   })
 
-  describe('getSupportedTokens', () => {
+  describe('getTokensForChain', () => {
     test('returns tokens for supported chain', () => {
-      const tokens = getSupportedTokens(arbitrum.id)
+      const tokens = getTokensForChain(arbitrum.id)
       expect(tokens.length).toBeGreaterThan(0)
       expect(tokens.find((t) => t.symbol === TOKEN_SYMBOLS.USDC)).toBeDefined()
     })
 
     test('throws error for unsupported chain', () => {
-      expect(() => getSupportedTokens(UNSUPPORTED_CHAIN_ID)).toThrow(
+      expect(() => getTokensForChain(UNSUPPORTED_CHAIN_ID)).toThrow(
         `Unsupported chain ${UNSUPPORTED_CHAIN_ID}`,
       )
     })

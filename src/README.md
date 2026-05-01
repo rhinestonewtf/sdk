@@ -163,7 +163,7 @@ const result = await account.waitForExecution(transaction)
 Create a smart session from ABI-driven permissions:
 
 ```ts
-import { toSession } from '@rhinestone/sdk'
+import { toSession } from '@rhinestone/sdk/smart-sessions'
 
 const session = toSession({
   chain: base,
