@@ -317,7 +317,7 @@ interface Session {
   salt: Hex
   erc7739Policies: ResolvedERC7739Policies
   actions: readonly ResolvedAction[]
-  claimPolicies: readonly ResolvedPolicy[]
+  claimPolicies: readonly Permit2ClaimPolicy[]
 }
 
 interface Recovery {

@@ -39,6 +39,7 @@ import type {
   Policy,
   ProviderConfig,
   ResolvedAction,
+  ResolvedERC7739Policies,
   ResolvedPolicy,
   RhinestoneAccountConfig,
   RhinestoneConfig,
@@ -68,10 +69,14 @@ type FixedLengthArray<
   A extends T[] = [],
 > = A['length'] extends N ? A : FixedLengthArray<T, N, [...A, T]>
 
-type SessionData = Omit<
-  Session,
-  'chain' | 'owners' | 'hasExplicitPermissions' | 'permissionId'
->
+interface SessionData {
+  sessionValidator: Address
+  sessionValidatorInitData: Hex
+  salt: Hex
+  erc7739Policies: ResolvedERC7739Policies
+  actions: readonly ResolvedAction[]
+  claimPolicies: readonly ResolvedPolicy[]
+}
 
 type ActionData = ResolvedAction
 type PolicyData = ResolvedPolicy
@@ -629,7 +634,12 @@ function toSession<const TAbis extends readonly Abi[]>(
     owners: definition.owners,
     hasExplicitPermissions: !!definition.permissions?.length,
     permissionId: getPermissionIdFromData(sessionData),
-    ...sessionData,
+    sessionValidator: sessionData.sessionValidator,
+    sessionValidatorInitData: sessionData.sessionValidatorInitData,
+    salt: sessionData.salt,
+    erc7739Policies: sessionData.erc7739Policies,
+    actions: sessionData.actions,
+    claimPolicies: definition.claimPolicies ?? [],
   }
 }
 
@@ -764,7 +774,12 @@ function getSessionData(session: Session): SessionData {
     sessionValidatorInitData: session.sessionValidatorInitData,
     erc7739Policies: session.erc7739Policies,
     actions: session.actions,
-    claimPolicies: session.claimPolicies,
+    claimPolicies: session.claimPolicies.map((policy) => ({
+      policy: PERMIT2_CLAIM_POLICY_ADDRESS,
+      initData: encodePermit2ClaimPolicyInitData(
+        resolvePermit2ClaimPolicy(policy),
+      ),
+    })),
   }
 }
 
@@ -1064,6 +1079,7 @@ export {
   INTENT_EXECUTION_POLICY_ADDRESS,
   packSignature,
   toSession,
+  resolvePermit2ClaimPolicy,
   getSessionData,
   getPolicyData,
   getEnableSessionCall,

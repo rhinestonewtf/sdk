@@ -2,6 +2,10 @@ import { erc20Abi, type Hex } from 'viem'
 import { base } from 'viem/chains'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { accountA } from '../../test/consts'
+import {
+  buildPermit2ClaimPolicyCalldata,
+  type Permit2ClaimMessage,
+} from '../modules/validators/policies/claim/permit2'
 import { toSession } from '../modules/validators/smart-sessions'
 import type { SignData } from '../orchestrator/types'
 import type {
@@ -429,7 +433,7 @@ const MOCK_PERMIT2_TYPED_DATA = {
   },
 }
 
-const sessionWithClaimPolicy: Session = toSession({
+const sessionWithPermit2ClaimPolicy: Session = toSession({
   chain: base,
   owners: { type: 'ecdsa', accounts: [accountA] },
   permissions: [
@@ -441,6 +445,12 @@ const sessionWithClaimPolicy: Session = toSession({
       },
     },
   ],
+  claimPolicies: [
+    {
+      type: 'permit2',
+      spenders: [MOCK_EXECUTOR],
+    },
+  ],
 })
 
 const makePermit2SignData = (): SignData => ({
@@ -448,11 +458,11 @@ const makePermit2SignData = (): SignData => ({
   destination: MOCK_PERMIT2_TYPED_DATA as unknown as SignData['destination'],
 })
 
-describe('signIntent without permit2 claim policy support', () => {
-  test('Permit2 typed data → getEip1271Signature called without claimPolicyData', async () => {
+describe('signIntent permit2 claim policy data', () => {
+  test('Permit2 typed data + session.claimPolicies → claimPolicyData matches buildPermit2ClaimPolicyCalldata', async () => {
     const signers: SessionSignerSet = {
       type: 'experimental_session',
-      session: sessionWithClaimPolicy,
+      session: sessionWithPermit2ClaimPolicy,
       verifyExecutions: true,
     }
 
@@ -462,13 +472,17 @@ describe('signIntent without permit2 claim policy support', () => {
     const sessionSignersArg = mockGetEip1271Signature.mock.calls[0][1] as {
       claimPolicyData?: Hex
     }
-    expect(sessionSignersArg.claimPolicyData).toBeUndefined()
+    const expected = buildPermit2ClaimPolicyCalldata(
+      { type: 'permit2-claim', arbiters: [MOCK_EXECUTOR] },
+      MOCK_PERMIT2_TYPED_DATA.message as unknown as Permit2ClaimMessage,
+    )
+    expect(sessionSignersArg.claimPolicyData).toBe(expected)
   })
 
-  test('non-Permit2 typed data → getEip1271Signature called without claimPolicyData', async () => {
+  test('non-Permit2 typed data + session.claimPolicies → claimPolicyData undefined', async () => {
     const signers: SessionSignerSet = {
       type: 'experimental_session',
-      session: sessionWithClaimPolicy,
+      session: sessionWithPermit2ClaimPolicy,
       verifyExecutions: true,
     }
 
@@ -481,7 +495,7 @@ describe('signIntent without permit2 claim policy support', () => {
     expect(sessionSignersArg.claimPolicyData).toBeUndefined()
   })
 
-  test('Permit2 typed data without explicit permissions → getEip1271Signature called without claimPolicyData', async () => {
+  test('Permit2 typed data + session without claimPolicies → claimPolicyData undefined', async () => {
     const signers: SessionSignerSet = {
       type: 'experimental_session',
       session: sessionWithActions, // no claimPolicies

@@ -72,7 +72,14 @@ import {
   getWebAuthnValidator,
   supportsEip712,
 } from '../modules/validators/core'
-import type { ResolvedSessionSignerSet } from '../modules/validators/smart-sessions'
+import {
+  buildPermit2ClaimPolicyCalldata,
+  type Permit2ClaimMessage,
+} from '../modules/validators/policies/claim/permit2'
+import {
+  type ResolvedSessionSignerSet,
+  resolvePermit2ClaimPolicy,
+} from '../modules/validators/smart-sessions'
 import {
   type Execution,
   getOrchestrator,
@@ -1234,7 +1241,10 @@ function resolveClaimPolicyData<
   ) {
     return undefined
   }
-  return undefined
+  return buildPermit2ClaimPolicyCalldata(
+    resolvePermit2ClaimPolicy(signers.session.claimPolicies[0]),
+    parameters.message as unknown as Permit2ClaimMessage,
+  )
 }
 
 async function signIntentTypedData<
