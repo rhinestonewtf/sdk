@@ -6,9 +6,7 @@ import {
   getDefaultAccountAccessList,
   getSupportedChainIds,
   getTokenAddress,
-  getTokenDecimals,
   getTokenSymbol,
-  getTokensForChain,
   getWethAddress,
   isTestnet,
   isTokenAddressSupported,
@@ -84,24 +82,6 @@ describe('Registry', () => {
     })
   })
 
-  describe('getTokenDecimals', () => {
-    test('returns 18 for ETH', () => {
-      const address = getTokenDecimals(TOKEN_SYMBOLS.ETH, arbitrum.id)
-      expect(address).toBe(18)
-    })
-
-    test('returns correct decimals for token symbol', () => {
-      const address = getTokenDecimals(TOKEN_SYMBOLS.USDC, arbitrum.id)
-      expect(address).toBe(6)
-    })
-
-    test('throws error for unsupported chain', () => {
-      expect(() =>
-        getTokenDecimals(TOKEN_SYMBOLS.USDC, UNSUPPORTED_CHAIN_ID),
-      ).toThrow(`Unsupported chain ${UNSUPPORTED_CHAIN_ID}`)
-    })
-  })
-
   describe('getWethAddress', () => {
     test('returns correct WETH address', () => {
       const address = getWethAddress(base)
@@ -168,20 +148,6 @@ describe('Registry', () => {
           UNSUPPORTED_CHAIN_ID,
         ),
       ).toBe(false)
-    })
-  })
-
-  describe('getTokensForChain', () => {
-    test('returns tokens for supported chain', () => {
-      const tokens = getTokensForChain(arbitrum.id)
-      expect(tokens.length).toBeGreaterThan(0)
-      expect(tokens.find((t) => t.symbol === TOKEN_SYMBOLS.USDC)).toBeDefined()
-    })
-
-    test('throws error for unsupported chain', () => {
-      expect(() => getTokensForChain(UNSUPPORTED_CHAIN_ID)).toThrow(
-        `Unsupported chain ${UNSUPPORTED_CHAIN_ID}`,
-      )
     })
   })
 

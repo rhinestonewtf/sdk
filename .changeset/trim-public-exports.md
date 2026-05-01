@@ -6,6 +6,7 @@
 - Remove the public `deployAccountsForOwners` helper.
 - Remove the public `checkERC20AllowanceDirect` helper.
 - Remove the public `getPermit2Address` helper.
+- Remove the `account.checkERC20Allowance` method.
 - Move `walletClientToAccount` from the package root to `@rhinestone/sdk/utils`.
 - Move `wrapParaAccount` from the package root to `@rhinestone/sdk/utils`.
 - Move `toSession` from the package root to `@rhinestone/sdk/smart-sessions`.

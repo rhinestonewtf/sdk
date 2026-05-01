@@ -32,7 +32,6 @@ import {
   type UserOperationResult,
   waitForExecution as waitForExecutionInternal,
 } from './execution'
-import { checkERC20Allowance as checkERC20AllowanceInternal } from './execution/permit2'
 import {
   getTransactionMessages as getTransactionMessagesInternal,
   type PreparedQuotes,
@@ -195,7 +194,6 @@ interface RhinestoneAccount {
   } | null>
   getValidators: (chain: Chain) => Promise<Address[]>
   getExecutors: (chain: Chain) => Promise<Address[]>
-  checkERC20Allowance: (tokenAddress: Address, chain: Chain) => Promise<bigint>
 }
 
 /**
@@ -500,19 +498,6 @@ async function createRhinestoneAccount(
     return signEnableSessionInternal(config, details)
   }
 
-  /**
-   * Check ERC20 allowance for the account owner and token (using Permit2 as spender)
-   * @param tokenAddress The token contract address
-   * @param chain The chain to check the allowance on
-   * @returns The allowance amount
-   */
-  function checkERC20Allowance(tokenAddress: Address, chain: Chain) {
-    if (!config.provider) {
-      throw new Error('Provider configuration is required')
-    }
-    return checkERC20AllowanceInternal(tokenAddress, chain, config)
-  }
-
   return {
     config,
     deploy,
@@ -539,7 +524,6 @@ async function createRhinestoneAccount(
     experimental_getSessionDetails,
     experimental_isSessionEnabled,
     experimental_signEnableSession,
-    checkERC20Allowance,
     getInitData,
   }
 }
