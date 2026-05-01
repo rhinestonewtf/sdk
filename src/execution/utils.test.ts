@@ -1,4 +1,4 @@
-import { zeroAddress } from 'viem'
+import { erc20Abi, zeroAddress } from 'viem'
 import { arbitrum, base, mainnet, optimism } from 'viem/chains'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { accountA } from '../../test/consts'
@@ -242,6 +242,14 @@ const makeSession = (chainId: number) => ({
   },
 })
 
+const explicitPermissions = [
+  {
+    abi: erc20Abi,
+    address: '0x1111111111111111111111111111111111111111' as `0x${string}`,
+    functions: { transfer: {} },
+  },
+]
+
 describe('resolveSessionForChain', () => {
   test('single session returns session for any chain', () => {
     const signers: SessionSignerSet = {
@@ -331,13 +339,7 @@ describe('prepareTransactionAsIntent — preClaimExecutions', () => {
       session: {
         chain: base,
         owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
-        actions: [
-          {
-            target:
-              '0x1111111111111111111111111111111111111111' as `0x${string}`,
-            selector: '0xdeadbeef' as `0x${string}`,
-          },
-        ],
+        permissions: explicitPermissions,
       },
       enableData: makeEnableData(),
     }
@@ -382,13 +384,7 @@ describe('prepareTransactionAsIntent — preClaimExecutions', () => {
       session: {
         chain: base,
         owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
-        actions: [
-          {
-            target:
-              '0x1111111111111111111111111111111111111111' as `0x${string}`,
-            selector: '0xdeadbeef' as `0x${string}`,
-          },
-        ],
+        permissions: explicitPermissions,
       },
       enableData: makeEnableData(),
     }
@@ -424,13 +420,7 @@ describe('prepareTransactionAsIntent — preClaimExecutions', () => {
       session: {
         chain: base,
         owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
-        actions: [
-          {
-            target:
-              '0x1111111111111111111111111111111111111111' as `0x${string}`,
-            selector: '0xdeadbeef' as `0x${string}`,
-          },
-        ],
+        permissions: explicitPermissions,
       },
       // no enableData
     }
@@ -505,12 +495,7 @@ describe('prepareTransactionAsIntent — preClaimExecutions', () => {
 
     const makeSessionWithActions = (chainId: number) => ({
       ...makeSession(chainId),
-      actions: [
-        {
-          target: '0x1111111111111111111111111111111111111111' as `0x${string}`,
-          selector: '0xdeadbeef' as `0x${string}`,
-        },
-      ],
+      permissions: explicitPermissions,
     })
 
     const signers: SessionSignerSet = {

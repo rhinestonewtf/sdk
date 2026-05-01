@@ -1,3 +1,4 @@
+import type { Abi, AbiFunction } from 'abitype'
 import type { Account, Address, Chain, Hex } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
 import type { ModuleType } from './modules/common'
@@ -195,21 +196,89 @@ type Policy =
   | ValueLimitPolicy
   | IntentExecutionPolicy
 
+/** @internal */
 interface FallbackAction {
   policies?: Policy[]
 }
 
+/** @internal */
 interface ScopedAction {
   target: Address
   selector: Hex
   policies?: Policy[]
 }
 
+/** @internal */
 type Action = FallbackAction | ScopedAction
+
+/** Extract function names from an ABI. */
+type FunctionNames<TAbi extends Abi> = Extract<
+  TAbi[number],
+  { type: 'function' }
+>['name']
+
+/** Pull the AbiFunction entry for a given name (union if overloaded). */
+type GetFunction<TAbi extends Abi, TName extends string> = Extract<
+  TAbi[number],
+  { type: 'function'; name: TName }
+>
+
+/**
+ * Map a Solidity type string to the TypeScript value a developer provides as
+ * `value` in a param constraint. Dynamic types resolve to `never` so the
+ * compiler prevents rules on params the on-chain policy cannot compare.
+ */
+type AbiTypeToValue<T extends string> = T extends 'address'
+  ? Address
+  : T extends 'bool'
+    ? boolean
+    : T extends `uint${string}`
+      ? bigint
+      : T extends `int${string}`
+        ? bigint
+        : T extends `bytes${infer N}`
+          ? N extends ''
+            ? never
+            : Hex
+          : never
+
+type ParamValue<
+  TFn extends AbiFunction,
+  TParamName extends string,
+> = AbiTypeToValue<Extract<TFn['inputs'][number], { name: TParamName }>['type']>
+
+type NamedInputs<TFn extends AbiFunction> = Extract<
+  TFn['inputs'][number],
+  { name: string }
+>
+
+interface ParamConstraint<TValue> {
+  condition: UniversalActionPolicyParamCondition
+  value: TValue
+  usageLimit?: bigint
+}
+
+interface PermissionFunctionConfig<TFn extends AbiFunction> {
+  policies?: Policy[]
+  valueLimitPerUse?: bigint
+  params?: {
+    [K in NamedInputs<TFn>['name']]?: ParamConstraint<ParamValue<TFn, K>>
+  }
+}
+
+interface Permission<TAbi extends Abi = Abi> {
+  abi: TAbi
+  address: Address
+  functions: {
+    [K in FunctionNames<TAbi>]?: PermissionFunctionConfig<
+      GetFunction<TAbi, K> & AbiFunction
+    >
+  }
+}
 
 interface SessionInput {
   owners: OwnerSet
-  actions?: Action[]
+  permissions?: Permission[]
   claimPolicies?: [Permit2ClaimPolicy]
 }
 
@@ -513,13 +582,18 @@ export type {
   SingleSessionSignerSet,
   PerChainSessionSignerSet,
   SessionSignerSet,
-  Action,
   SessionInput,
   SessionEnableData,
   Session,
   Recovery,
   ModuleType,
   ModuleInput,
+  Action,
+  ScopedAction,
+  FallbackAction,
+  Permission,
+  PermissionFunctionConfig,
+  ParamConstraint,
   Policy,
   Permit2ClaimPolicy,
   UniversalActionPolicyParamCondition,

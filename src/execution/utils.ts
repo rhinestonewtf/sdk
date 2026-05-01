@@ -154,9 +154,11 @@ async function resolveSignersForChain(
     config.useDevContracts,
   )
   const enableData = enabled ? undefined : resolved.enableData
-  const hasExplicitActions = !!resolved.session.actions?.length
+  const hasExplicitPermissions = !!resolved.session.permissions?.length
   const verifyExecutions =
-    resolved.verifyExecutions ?? signers.verifyExecutions ?? hasExplicitActions
+    resolved.verifyExecutions ??
+    signers.verifyExecutions ??
+    hasExplicitPermissions
   return {
     type: 'experimental_session',
     session: resolved.session,

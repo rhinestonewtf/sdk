@@ -2,6 +2,7 @@ import {
   type Address,
   encodeAbiParameters,
   encodePacked,
+  erc20Abi,
   type Hex,
   isAddressEqual,
   parseEther,
@@ -45,11 +46,13 @@ const baseSession: Session = {
 const sessionWithAction: Session = {
   chain: base,
   owners: { type: 'ecdsa', accounts: [accountA] },
-  actions: [
+  permissions: [
     {
-      target: '0x1111111111111111111111111111111111111111' as Address,
-      selector: '0xa9059cbb' as Hex,
-      policies: [{ type: 'sudo' }],
+      abi: erc20Abi,
+      address: '0x1111111111111111111111111111111111111111' as Address,
+      functions: {
+        transfer: { policies: [{ type: 'sudo' }] },
+      },
     },
   ],
 }
@@ -187,11 +190,14 @@ describe('getSessionData', () => {
     )
   })
 
-  test('empty actions array → same sudoAction fallback as no actions', () => {
-    // actions: [] is truthy but has no elements — must be treated the same as
-    // actions: undefined so injectedActions are not appended.
-    const sessionWithEmptyActions: Session = { ...baseSession, actions: [] }
-    const data = getSessionData(sessionWithEmptyActions)
+  test('empty permissions array → same sudoAction fallback as no permissions', () => {
+    // permissions: [] is truthy but has no elements — must be treated the same as
+    // permissions: undefined so injectedActions are not appended.
+    const sessionWithEmptyPermissions: Session = {
+      ...baseSession,
+      permissions: [],
+    }
+    const data = getSessionData(sessionWithEmptyPermissions)
     expect(data.actions).toHaveLength(1)
     expect(data.actions[0].actionTarget).toBe(
       SMART_SESSIONS_FALLBACK_TARGET_FLAG,
@@ -202,11 +208,15 @@ describe('getSessionData', () => {
     const session: Session = {
       chain: base,
       owners: { type: 'ecdsa', accounts: [accountA] },
-      actions: [
+      permissions: [
         {
-          target: '0x2222222222222222222222222222222222222222' as Address,
-          selector: '0x12345678' as Hex,
-          policies: [{ type: 'sudo' }, { type: 'usage-limit', limit: 3n }],
+          abi: erc20Abi,
+          address: '0x2222222222222222222222222222222222222222' as Address,
+          functions: {
+            transfer: {
+              policies: [{ type: 'sudo' }, { type: 'usage-limit', limit: 3n }],
+            },
+          },
         },
       ],
     }

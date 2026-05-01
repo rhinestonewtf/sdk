@@ -50,6 +50,7 @@ import {
   SMART_SESSION_EMISSARY_ADDRESS,
   SMART_SESSION_EMISSARY_ADDRESS_DEV,
 } from './core'
+import { resolvePermissions } from './permissions'
 import {
   encodePermit2ClaimPolicyInitData,
   PERMIT2_CLAIM_POLICY_ADDRESS,
@@ -670,9 +671,9 @@ function getSessionData(
     ],
   }
 
-  const userHasFallbackAction = session.actions?.some(
-    (action) => !('target' in action) && !('selector' in action),
-  )
+  const userActions = session.permissions?.length
+    ? resolvePermissions(session.permissions)
+    : []
 
   const injectedActions: Action[] = [
     // Native token wrapping
@@ -686,12 +687,8 @@ function getSessionData(
         stateMutability: 'payable',
       }),
     },
-    // Only inject the intent-execution fallback if the user hasn't defined their own
-    // fallback action — otherwise both map to the same actionId and their policies merge,
-    // causing IntentExecutionPolicy to be required for all fallback calls
-    ...(!userHasFallbackAction
-      ? [{ policies: [{ type: 'intent-execution' as const }] }]
-      : []),
+    // Intent-execution fallback for any non-scoped call.
+    { policies: [{ type: 'intent-execution' as const }] },
     // Dummy action: allows the filler to call verifyExecution in ENABLE mode using
     // an injected dummy preclaimop so any session can be enabled on-chain without
     // a separate UserOp, regardless of whether it has claim or action policies.
@@ -702,8 +699,9 @@ function getSessionData(
     },
   ]
 
-  const actions = session.actions?.length
-    ? [...session.actions, ...injectedActions].map((action) => ({
+  const allActions: Action[] = [...userActions, ...injectedActions]
+  const actions = userActions.length
+    ? allActions.map((action) => ({
         actionTargetSelector:
           'selector' in action
             ? action.selector

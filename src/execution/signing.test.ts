@@ -1,4 +1,4 @@
-import type { Hex } from 'viem'
+import { erc20Abi, type Hex } from 'viem'
 import { base } from 'viem/chains'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { accountA } from '../../test/consts'
@@ -143,14 +143,22 @@ const makeSignData = (opts?: {
   targetExecution: opts?.withTargetExecution ? MOCK_TYPED_DATA : undefined,
 })
 
-// verifyExecutions auto-derived as true when session.actions is non-empty
+// verifyExecutions auto-derived as true when session.permissions is non-empty
 const sessionWithActions: Session = {
   chain: base,
   owners: { type: 'ecdsa', accounts: [accountA] },
-  actions: [{ policies: [{ type: 'usage-limit', limit: 1n }] }],
+  permissions: [
+    {
+      abi: erc20Abi,
+      address: '0x1111111111111111111111111111111111111111',
+      functions: {
+        transfer: { policies: [{ type: 'usage-limit', limit: 1n }] },
+      },
+    },
+  ],
 }
 
-// verifyExecutions auto-derived as false when session.actions is absent
+// verifyExecutions auto-derived as false when session.permissions is absent
 const sessionNoActions: Session = {
   chain: base,
   owners: { type: 'ecdsa', accounts: [accountA] },
@@ -415,7 +423,15 @@ const MOCK_PERMIT2_TYPED_DATA = {
 const sessionWithClaimPolicy: Session = {
   chain: base,
   owners: { type: 'ecdsa', accounts: [accountA] },
-  actions: [{ policies: [{ type: 'usage-limit', limit: 1n }] }],
+  permissions: [
+    {
+      abi: erc20Abi,
+      address: '0x1111111111111111111111111111111111111111',
+      functions: {
+        transfer: { policies: [{ type: 'usage-limit', limit: 1n }] },
+      },
+    },
+  ],
   claimPolicies: [{ type: 'permit2-claim' }],
 }
 
