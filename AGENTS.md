@@ -24,7 +24,7 @@ Docs: https://docs.rhinestone.dev/smart-wallet
 ## Structure
 
 - `/src` - Main package source (`@rhinestone/sdk`); `src/package.json` is the published manifest
-- `/src/accounts` - Smart account implementations (Safe, Kernel, Nexus, Startale, Passport)
+- `/src/accounts` - Smart account implementations (Safe, Kernel, Nexus, Startale)
 - `/src/actions` - Atomic account actions (ECDSA, passkeys, smart-sessions, recovery)
 - `/src/auth` - Auth provider (API key / JWT modes)
 - `/src/execution` - Transaction execution and signing

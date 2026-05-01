@@ -8,7 +8,6 @@ import {
   INTENT_STATUS_COMPLETED,
   INTENT_STATUS_FAILED,
   INTENT_STATUS_FILLED,
-  INTENT_STATUS_PRECONFIRMED,
   type IntentOpStatus,
   isRateLimited,
   isRetryable,
@@ -30,7 +29,6 @@ import type {
   Sponsorship,
   TokenRequest,
   TokenSymbol,
-  Transaction,
   UserOperationTransaction,
 } from '../types'
 import {
@@ -72,44 +70,6 @@ interface TransactionStatus {
     hash: Hex | undefined
     chainId: number
   }[]
-}
-
-async function sendTransaction(
-  config: RhinestoneAccountConfig,
-  transaction: Transaction,
-) {
-  const sourceChains =
-    'chain' in transaction ? [transaction.chain] : transaction.sourceChains
-  const targetChain =
-    'chain' in transaction ? transaction.chain : transaction.targetChain
-  const {
-    calls,
-    gasLimit,
-    tokenRequests,
-    recipient,
-    signers,
-    sponsored,
-    eip7702InitSignature,
-    settlementLayers,
-    sourceAssets,
-    feeAsset,
-  } = transaction
-  const isUserOpSigner = signers?.type === 'guardians'
-  if (isUserOpSigner) {
-    throw new SignerNotSupportedError()
-  }
-  return await sendTransactionInternal(config, sourceChains, targetChain, {
-    callInputs: calls,
-    gasLimit,
-    initialTokenRequests: tokenRequests,
-    recipient,
-    signers,
-    sponsored,
-    eip7702InitSignature,
-    settlementLayers,
-    sourceAssets,
-    feeAsset,
-  })
 }
 
 async function sendUserOperation(
@@ -289,16 +249,12 @@ async function sendTransactionAsIntent(
 async function waitForExecution(
   config: RhinestoneConfig,
   result: TransactionResult | UserOperationResult,
-  acceptsPreconfirmations: boolean,
 ): Promise<TransactionStatus | UserOperationReceipt> {
   const validStatuses: Set<IntentOpStatus['status']> = new Set([
     INTENT_STATUS_FAILED,
     INTENT_STATUS_COMPLETED,
     INTENT_STATUS_FILLED,
   ])
-  if (acceptsPreconfirmations) {
-    validStatuses.add(INTENT_STATUS_PRECONFIRMED)
-  }
 
   switch (result.type) {
     case 'intent': {
@@ -447,7 +403,6 @@ async function splitIntents(
 }
 
 export {
-  sendTransaction,
   sendTransactionInternal,
   sendUserOperation,
   sendUserOperationInternal,

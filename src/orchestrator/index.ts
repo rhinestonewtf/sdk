@@ -25,10 +25,6 @@ import {
   ValidationError,
 } from './error'
 import {
-  getAllSupportedChainsAndTokens,
-  getSupportedTokens,
-  getTokenAddress,
-  getTokenDecimals,
   getTokenSymbol,
   getWethAddress,
   isTokenAddressSupported,
@@ -150,10 +146,6 @@ export {
   getOrchestrator,
   getWethAddress,
   getTokenSymbol,
-  getTokenAddress,
-  getTokenDecimals,
-  getSupportedTokens,
-  getAllSupportedChainsAndTokens,
   isOrchestratorError,
   isRetryable,
   isAuthError,

@@ -2,6 +2,7 @@ import {
   type Address,
   encodeAbiParameters,
   encodePacked,
+  erc20Abi,
   type Hex,
   isAddressEqual,
   parseEther,
@@ -12,6 +13,7 @@ import { base } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 import { accountA, accountB } from '../../../test/consts'
 import type { Session } from '../../types'
+import { PERMIT2_CLAIM_POLICY_ADDRESS } from './policies/claim/permit2'
 import type { ResolvedSessionSignerSet } from './smart-sessions'
 import {
   buildMockSignature,
@@ -28,6 +30,7 @@ import {
   SPENDING_LIMITS_POLICY_ADDRESS,
   SUDO_POLICY_ADDRESS,
   TIME_FRAME_POLICY_ADDRESS,
+  toSession,
   UNIVERSAL_ACTION_POLICY_ADDRESS,
   USAGE_LIMIT_POLICY_ADDRESS,
   VALUE_LIMIT_POLICY_ADDRESS,
@@ -37,24 +40,28 @@ import {
 // Shared fixtures
 // ---------------------------------------------------------------------------
 
-const baseSession: Session = {
+const baseSession: Session = toSession({
   chain: base,
   owners: { type: 'ecdsa', accounts: [accountA] },
-}
+})
 
-const sessionWithAction: Session = {
+const sessionWithAction: Session = toSession({
   chain: base,
   owners: { type: 'ecdsa', accounts: [accountA] },
-  actions: [
+  permissions: [
     {
-      target: '0x1111111111111111111111111111111111111111' as Address,
-      selector: '0xa9059cbb' as Hex,
-      policies: [{ type: 'sudo' }],
+      abi: erc20Abi,
+      address: '0x1111111111111111111111111111111111111111' as Address,
+      functions: {
+        transfer: { policies: [{ type: 'sudo' }] },
+      },
     },
   ],
-}
+})
 
 const dummySig = `0x${'00'.repeat(65)}` as Hex
+const USDC: Address = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'
+const RECIPIENT: Address = '0x1111111111111111111111111111111111111111'
 
 // ---------------------------------------------------------------------------
 // A. Policy encoding
@@ -187,11 +194,15 @@ describe('getSessionData', () => {
     )
   })
 
-  test('empty actions array → same sudoAction fallback as no actions', () => {
-    // actions: [] is truthy but has no elements — must be treated the same as
-    // actions: undefined so injectedActions are not appended.
-    const sessionWithEmptyActions: Session = { ...baseSession, actions: [] }
-    const data = getSessionData(sessionWithEmptyActions)
+  test('empty permissions array → same sudoAction fallback as no permissions', () => {
+    // permissions: [] is truthy but has no elements — must be treated the same as
+    // permissions: undefined so injectedActions are not appended.
+    const sessionWithEmptyPermissions = toSession({
+      chain: base,
+      owners: { type: 'ecdsa', accounts: [accountA] },
+      permissions: [],
+    })
+    const data = getSessionData(sessionWithEmptyPermissions)
     expect(data.actions).toHaveLength(1)
     expect(data.actions[0].actionTarget).toBe(
       SMART_SESSIONS_FALLBACK_TARGET_FLAG,
@@ -199,17 +210,21 @@ describe('getSessionData', () => {
   })
 
   test('multiple policies on one action', () => {
-    const session: Session = {
+    const session = toSession({
       chain: base,
       owners: { type: 'ecdsa', accounts: [accountA] },
-      actions: [
+      permissions: [
         {
-          target: '0x2222222222222222222222222222222222222222' as Address,
-          selector: '0x12345678' as Hex,
-          policies: [{ type: 'sudo' }, { type: 'usage-limit', limit: 3n }],
+          abi: erc20Abi,
+          address: '0x2222222222222222222222222222222222222222' as Address,
+          functions: {
+            transfer: {
+              policies: [{ type: 'sudo' }, { type: 'usage-limit', limit: 3n }],
+            },
+          },
         },
       ],
-    }
+    })
     const data = getSessionData(session)
     expect(data.actions[0].actionPolicies).toHaveLength(2)
     expect(data.actions[0].actionPolicies[0].policy).toBe(SUDO_POLICY_ADDRESS)
@@ -229,6 +244,29 @@ describe('getSessionData', () => {
       SUDO_POLICY_ADDRESS,
     )
   })
+
+  test('claimPolicies resolves public Permit2 policy to policy data', () => {
+    const session = toSession({
+      chain: base,
+      owners: { type: 'ecdsa', accounts: [accountA] },
+      claimPolicies: [
+        {
+          type: 'permit2',
+          spenders: ['0x1234567890123456789012345678901234567890'],
+          sourceTokens: [{ chain: base, address: USDC }],
+          destinationTokens: [{ chain: base, address: RECIPIENT }],
+          recipients: [{ chain: base, address: 'any' }],
+          recipientIsAccount: true,
+          permitDeadline: { min: 1n, max: 2n },
+          fillDeadline: [{ chain: base, min: 3n, max: 4n }],
+        },
+      ],
+    })
+    const data = getSessionData(session)
+    expect(data.claimPolicies).toHaveLength(1)
+    expect(data.claimPolicies[0].policy).toBe(PERMIT2_CLAIM_POLICY_ADDRESS)
+    expect(data.claimPolicies[0].initData).not.toBe('0x')
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -241,10 +279,10 @@ describe('getPermissionId', () => {
   })
 
   test('different owners → different permissionId', () => {
-    const sessionB: Session = {
+    const sessionB = toSession({
       chain: base,
       owners: { type: 'ecdsa', accounts: [accountB] },
-    }
+    })
     expect(getPermissionId(baseSession)).not.toBe(getPermissionId(sessionB))
   })
 
@@ -345,10 +383,10 @@ describe('packSignature', () => {
   })
 
   test('different owners produce different packed bytes', () => {
-    const sessionB: Session = {
+    const sessionB = toSession({
       chain: base,
       owners: { type: 'ecdsa', accounts: [accountB] },
-    }
+    })
     const signersA: ResolvedSessionSignerSet = {
       type: 'experimental_session',
       session: baseSession,

@@ -8,7 +8,7 @@ import type {
   TypedDataDefinition,
   WalletClient,
 } from 'viem'
-import { WalletClientNoConnectedAccountError } from './error'
+import { WalletClientNoConnectedAccountError } from '../accounts/error'
 
 /**
  * Adapts a Viem/Wagmi WalletClient into an Account-like signer that the SDK can consume.

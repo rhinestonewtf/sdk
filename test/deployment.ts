@@ -59,7 +59,7 @@ export function runDeploymentTests() {
           })
           expect(codeBefore).toBeUndefined()
 
-          await rhinestoneAccount.sendTransaction({
+          const prepared = await rhinestoneAccount.prepareTransaction({
             chain: sourceChain,
             calls: [
               {
@@ -69,6 +69,8 @@ export function runDeploymentTests() {
             ],
             tokenRequests: [],
           })
+          const signed = await rhinestoneAccount.signTransaction(prepared)
+          await rhinestoneAccount.submitTransaction(signed)
 
           // Check the account is deployed
           const codeAfter = await publicClient.getCode({
@@ -161,7 +163,7 @@ export function runDeploymentTestCases() {
           })
           expect(codeBefore).toBeUndefined()
 
-          await rhinestoneAccount.sendTransaction({
+          const prepared = await rhinestoneAccount.prepareTransaction({
             chain: sourceChain,
             calls: [
               {
@@ -171,6 +173,8 @@ export function runDeploymentTestCases() {
             ],
             tokenRequests: [],
           })
+          const signed = await rhinestoneAccount.signTransaction(prepared)
+          await rhinestoneAccount.submitTransaction(signed)
 
           // // Check the account is deployed
           // const codeAfter = await publicClient.getCode({

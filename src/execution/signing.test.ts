@@ -1,7 +1,12 @@
-import type { Hex } from 'viem'
+import { erc20Abi, type Hex } from 'viem'
 import { base } from 'viem/chains'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { accountA } from '../../test/consts'
+import {
+  buildPermit2ClaimPolicyCalldata,
+  type Permit2ClaimMessage,
+} from '../modules/validators/policies/claim/permit2'
+import { toSession } from '../modules/validators/smart-sessions'
 import type { SignData } from '../orchestrator/types'
 import type {
   RhinestoneConfig,
@@ -115,7 +120,12 @@ vi.mock('../modules/validators', () => ({
 }))
 
 vi.mock('../modules/validators/core', () => ({
+  SUDO_POLICY_ADDRESS: '0x0000000000000000000000000000000000000000',
   supportsEip712: vi.fn().mockReturnValue(false),
+  getValidator: vi.fn().mockReturnValue({
+    address: MOCK_VALIDATOR,
+    initData: '0x',
+  }),
   getMultiFactorValidator: vi.fn(),
   getSocialRecoveryValidator: vi.fn(),
   getWebAuthnValidator: vi.fn(),
@@ -123,6 +133,9 @@ vi.mock('../modules/validators/core', () => ({
 
 vi.mock('../orchestrator/registry', () => ({
   getChainById: vi.fn().mockReturnValue(base),
+  getWrappedTokenAddress: vi
+    .fn()
+    .mockReturnValue('0x0000000000000000000000000000000000000001'),
   getTokenAddress: vi.fn(),
   resolveTokenAddress: vi.fn(),
 }))
@@ -143,18 +156,26 @@ const makeSignData = (opts?: {
   targetExecution: opts?.withTargetExecution ? MOCK_TYPED_DATA : undefined,
 })
 
-// verifyExecutions auto-derived as true when session.actions is non-empty
-const sessionWithActions: Session = {
+// verifyExecutions auto-derived as true when session.permissions is non-empty
+const sessionWithActions: Session = toSession({
   chain: base,
   owners: { type: 'ecdsa', accounts: [accountA] },
-  actions: [{ policies: [{ type: 'usage-limit', limit: 1n }] }],
-}
+  permissions: [
+    {
+      abi: erc20Abi,
+      address: '0x1111111111111111111111111111111111111111',
+      functions: {
+        transfer: { policies: [{ type: 'usage-limit', limit: 1n }] },
+      },
+    },
+  ],
+})
 
-// verifyExecutions auto-derived as false when session.actions is absent
-const sessionNoActions: Session = {
+// verifyExecutions auto-derived as false when session.permissions is absent
+const sessionNoActions: Session = toSession({
   chain: base,
   owners: { type: 'ecdsa', accounts: [accountA] },
-}
+})
 
 const config: RhinestoneConfig = {
   apiKey: 'test',
@@ -412,23 +433,36 @@ const MOCK_PERMIT2_TYPED_DATA = {
   },
 }
 
-const sessionWithClaimPolicy: Session = {
+const sessionWithPermit2ClaimPolicy: Session = toSession({
   chain: base,
   owners: { type: 'ecdsa', accounts: [accountA] },
-  actions: [{ policies: [{ type: 'usage-limit', limit: 1n }] }],
-  claimPolicies: [{ type: 'permit2-claim' }],
-}
+  permissions: [
+    {
+      abi: erc20Abi,
+      address: '0x1111111111111111111111111111111111111111',
+      functions: {
+        transfer: { policies: [{ type: 'usage-limit', limit: 1n }] },
+      },
+    },
+  ],
+  claimPolicies: [
+    {
+      type: 'permit2',
+      spenders: [MOCK_EXECUTOR],
+    },
+  ],
+})
 
 const makePermit2SignData = (): SignData => ({
   origin: [MOCK_PERMIT2_TYPED_DATA as unknown as SignData['origin'][number]],
   destination: MOCK_PERMIT2_TYPED_DATA as unknown as SignData['destination'],
 })
 
-describe('signIntent with permit2 claim policy', () => {
-  test('Permit2 typed data + claimPolicies → getEip1271Signature called with claimPolicyData', async () => {
+describe('signIntent permit2 claim policy data', () => {
+  test('Permit2 typed data + session.claimPolicies → claimPolicyData matches buildPermit2ClaimPolicyCalldata', async () => {
     const signers: SessionSignerSet = {
       type: 'experimental_session',
-      session: sessionWithClaimPolicy,
+      session: sessionWithPermit2ClaimPolicy,
       verifyExecutions: true,
     }
 
@@ -438,14 +472,17 @@ describe('signIntent with permit2 claim policy', () => {
     const sessionSignersArg = mockGetEip1271Signature.mock.calls[0][1] as {
       claimPolicyData?: Hex
     }
-    expect(sessionSignersArg.claimPolicyData).toBeDefined()
-    expect(sessionSignersArg.claimPolicyData).not.toBe('0x')
+    const expected = buildPermit2ClaimPolicyCalldata(
+      { type: 'permit2-claim', arbiters: [MOCK_EXECUTOR] },
+      MOCK_PERMIT2_TYPED_DATA.message as unknown as Permit2ClaimMessage,
+    )
+    expect(sessionSignersArg.claimPolicyData).toBe(expected)
   })
 
-  test('non-Permit2 typed data + claimPolicies → getEip1271Signature called without claimPolicyData', async () => {
+  test('non-Permit2 typed data + session.claimPolicies → claimPolicyData undefined', async () => {
     const signers: SessionSignerSet = {
       type: 'experimental_session',
-      session: sessionWithClaimPolicy,
+      session: sessionWithPermit2ClaimPolicy,
       verifyExecutions: true,
     }
 
@@ -458,7 +495,7 @@ describe('signIntent with permit2 claim policy', () => {
     expect(sessionSignersArg.claimPolicyData).toBeUndefined()
   })
 
-  test('Permit2 typed data without claimPolicies → getEip1271Signature called without claimPolicyData', async () => {
+  test('Permit2 typed data + session without claimPolicies → claimPolicyData undefined', async () => {
     const signers: SessionSignerSet = {
       type: 'experimental_session',
       session: sessionWithActions, // no claimPolicies

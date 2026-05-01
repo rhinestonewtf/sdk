@@ -72,9 +72,14 @@ import {
   getWebAuthnValidator,
   supportsEip712,
 } from '../modules/validators/core'
-import type { Permit2ClaimMessage } from '../modules/validators/policies/claim/permit2'
-import { buildPermit2ClaimPolicyCalldata } from '../modules/validators/policies/claim/permit2'
-import type { ResolvedSessionSignerSet } from '../modules/validators/smart-sessions'
+import {
+  buildPermit2ClaimPolicyCalldata,
+  type Permit2ClaimMessage,
+} from '../modules/validators/policies/claim/permit2'
+import {
+  type ResolvedSessionSignerSet,
+  resolvePermit2ClaimPolicy,
+} from '../modules/validators/smart-sessions'
 import {
   type Execution,
   getOrchestrator,
@@ -154,9 +159,10 @@ async function resolveSignersForChain(
     config.useDevContracts,
   )
   const enableData = enabled ? undefined : resolved.enableData
-  const hasExplicitActions = !!resolved.session.actions?.length
   const verifyExecutions =
-    resolved.verifyExecutions ?? signers.verifyExecutions ?? hasExplicitActions
+    resolved.verifyExecutions ??
+    signers.verifyExecutions ??
+    resolved.session.hasExplicitPermissions
   return {
     type: 'experimental_session',
     session: resolved.session,
@@ -1221,7 +1227,7 @@ function resolveClaimPolicyData<
 ): Hex | undefined {
   if (
     parameters.primaryType !== 'PermitBatchWitnessTransferFrom' ||
-    !signers.session.claimPolicies?.length
+    !signers.session.claimPolicies.length
   ) {
     return undefined
   }
@@ -1236,7 +1242,7 @@ function resolveClaimPolicyData<
     return undefined
   }
   return buildPermit2ClaimPolicyCalldata(
-    signers.session.claimPolicies[0],
+    resolvePermit2ClaimPolicy(signers.session.claimPolicies[0]),
     parameters.message as unknown as Permit2ClaimMessage,
   )
 }

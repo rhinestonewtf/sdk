@@ -63,7 +63,7 @@ export function runBundlesTestCases() {
           })
           expect(balanceBefore).toEqual(parseEther('1'))
 
-          await rhinestoneAccount.sendTransaction({
+          const prepared = await rhinestoneAccount.prepareTransaction({
             chain: sourceChain,
             calls: [
               {
@@ -74,6 +74,8 @@ export function runBundlesTestCases() {
             ],
             tokenRequests: [],
           })
+          const signed = await rhinestoneAccount.signTransaction(prepared)
+          await rhinestoneAccount.submitTransaction(signed)
 
           // // Check the account balance after transaction
           // const balanceAfter = await publicClient.getBalance({
