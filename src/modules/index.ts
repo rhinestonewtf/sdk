@@ -41,6 +41,7 @@ import { getSocialRecoveryValidator } from './validators/core'
 import {
   getSessionDetails,
   signEnableSession,
+  toSession,
 } from './validators/smart-sessions'
 
 const SMART_SESSION_COMPATIBILITY_FALLBACK_ADDRESS: Address =
@@ -166,4 +167,5 @@ export {
   isRip7212SupportedNetwork,
   getSessionDetails,
   signEnableSession,
+  toSession,
 }

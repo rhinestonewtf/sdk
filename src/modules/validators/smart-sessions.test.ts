@@ -29,6 +29,7 @@ import {
   SPENDING_LIMITS_POLICY_ADDRESS,
   SUDO_POLICY_ADDRESS,
   TIME_FRAME_POLICY_ADDRESS,
+  toSession,
   UNIVERSAL_ACTION_POLICY_ADDRESS,
   USAGE_LIMIT_POLICY_ADDRESS,
   VALUE_LIMIT_POLICY_ADDRESS,
@@ -38,12 +39,12 @@ import {
 // Shared fixtures
 // ---------------------------------------------------------------------------
 
-const baseSession: Session = {
+const baseSession: Session = toSession({
   chain: base,
   owners: { type: 'ecdsa', accounts: [accountA] },
-}
+})
 
-const sessionWithAction: Session = {
+const sessionWithAction: Session = toSession({
   chain: base,
   owners: { type: 'ecdsa', accounts: [accountA] },
   permissions: [
@@ -55,7 +56,7 @@ const sessionWithAction: Session = {
       },
     },
   ],
-}
+})
 
 const dummySig = `0x${'00'.repeat(65)}` as Hex
 
@@ -193,10 +194,11 @@ describe('getSessionData', () => {
   test('empty permissions array → same sudoAction fallback as no permissions', () => {
     // permissions: [] is truthy but has no elements — must be treated the same as
     // permissions: undefined so injectedActions are not appended.
-    const sessionWithEmptyPermissions: Session = {
-      ...baseSession,
+    const sessionWithEmptyPermissions = toSession({
+      chain: base,
+      owners: { type: 'ecdsa', accounts: [accountA] },
       permissions: [],
-    }
+    })
     const data = getSessionData(sessionWithEmptyPermissions)
     expect(data.actions).toHaveLength(1)
     expect(data.actions[0].actionTarget).toBe(
@@ -205,7 +207,7 @@ describe('getSessionData', () => {
   })
 
   test('multiple policies on one action', () => {
-    const session: Session = {
+    const session = toSession({
       chain: base,
       owners: { type: 'ecdsa', accounts: [accountA] },
       permissions: [
@@ -219,7 +221,7 @@ describe('getSessionData', () => {
           },
         },
       ],
-    }
+    })
     const data = getSessionData(session)
     expect(data.actions[0].actionPolicies).toHaveLength(2)
     expect(data.actions[0].actionPolicies[0].policy).toBe(SUDO_POLICY_ADDRESS)
@@ -251,10 +253,10 @@ describe('getPermissionId', () => {
   })
 
   test('different owners → different permissionId', () => {
-    const sessionB: Session = {
+    const sessionB = toSession({
       chain: base,
       owners: { type: 'ecdsa', accounts: [accountB] },
-    }
+    })
     expect(getPermissionId(baseSession)).not.toBe(getPermissionId(sessionB))
   })
 
@@ -355,10 +357,10 @@ describe('packSignature', () => {
   })
 
   test('different owners produce different packed bytes', () => {
-    const sessionB: Session = {
+    const sessionB = toSession({
       chain: base,
       owners: { type: 'ecdsa', accounts: [accountB] },
-    }
+    })
     const signersA: ResolvedSessionSignerSet = {
       type: 'experimental_session',
       session: baseSession,

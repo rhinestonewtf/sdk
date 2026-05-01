@@ -2,6 +2,7 @@ import { erc20Abi, type Hex } from 'viem'
 import { base } from 'viem/chains'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { accountA } from '../../test/consts'
+import { toSession } from '../modules/validators/smart-sessions'
 import type { SignData } from '../orchestrator/types'
 import type {
   RhinestoneConfig,
@@ -115,7 +116,12 @@ vi.mock('../modules/validators', () => ({
 }))
 
 vi.mock('../modules/validators/core', () => ({
+  SUDO_POLICY_ADDRESS: '0x0000000000000000000000000000000000000000',
   supportsEip712: vi.fn().mockReturnValue(false),
+  getValidator: vi.fn().mockReturnValue({
+    address: MOCK_VALIDATOR,
+    initData: '0x',
+  }),
   getMultiFactorValidator: vi.fn(),
   getSocialRecoveryValidator: vi.fn(),
   getWebAuthnValidator: vi.fn(),
@@ -123,6 +129,9 @@ vi.mock('../modules/validators/core', () => ({
 
 vi.mock('../orchestrator/registry', () => ({
   getChainById: vi.fn().mockReturnValue(base),
+  getWrappedTokenAddress: vi
+    .fn()
+    .mockReturnValue('0x0000000000000000000000000000000000000001'),
   getTokenAddress: vi.fn(),
   resolveTokenAddress: vi.fn(),
 }))
@@ -144,7 +153,7 @@ const makeSignData = (opts?: {
 })
 
 // verifyExecutions auto-derived as true when session.permissions is non-empty
-const sessionWithActions: Session = {
+const sessionWithActions: Session = toSession({
   chain: base,
   owners: { type: 'ecdsa', accounts: [accountA] },
   permissions: [
@@ -156,13 +165,13 @@ const sessionWithActions: Session = {
       },
     },
   ],
-}
+})
 
 // verifyExecutions auto-derived as false when session.permissions is absent
-const sessionNoActions: Session = {
+const sessionNoActions: Session = toSession({
   chain: base,
   owners: { type: 'ecdsa', accounts: [accountA] },
-}
+})
 
 const config: RhinestoneConfig = {
   apiKey: 'test',
@@ -420,7 +429,7 @@ const MOCK_PERMIT2_TYPED_DATA = {
   },
 }
 
-const sessionWithClaimPolicy: Session = {
+const sessionWithClaimPolicy: Session = toSession({
   chain: base,
   owners: { type: 'ecdsa', accounts: [accountA] },
   permissions: [
@@ -432,16 +441,15 @@ const sessionWithClaimPolicy: Session = {
       },
     },
   ],
-  claimPolicies: [{ type: 'permit2-claim' }],
-}
+})
 
 const makePermit2SignData = (): SignData => ({
   origin: [MOCK_PERMIT2_TYPED_DATA as unknown as SignData['origin'][number]],
   destination: MOCK_PERMIT2_TYPED_DATA as unknown as SignData['destination'],
 })
 
-describe('signIntent with permit2 claim policy', () => {
-  test('Permit2 typed data + claimPolicies → getEip1271Signature called with claimPolicyData', async () => {
+describe('signIntent without permit2 claim policy support', () => {
+  test('Permit2 typed data → getEip1271Signature called without claimPolicyData', async () => {
     const signers: SessionSignerSet = {
       type: 'experimental_session',
       session: sessionWithClaimPolicy,
@@ -454,11 +462,10 @@ describe('signIntent with permit2 claim policy', () => {
     const sessionSignersArg = mockGetEip1271Signature.mock.calls[0][1] as {
       claimPolicyData?: Hex
     }
-    expect(sessionSignersArg.claimPolicyData).toBeDefined()
-    expect(sessionSignersArg.claimPolicyData).not.toBe('0x')
+    expect(sessionSignersArg.claimPolicyData).toBeUndefined()
   })
 
-  test('non-Permit2 typed data + claimPolicies → getEip1271Signature called without claimPolicyData', async () => {
+  test('non-Permit2 typed data → getEip1271Signature called without claimPolicyData', async () => {
     const signers: SessionSignerSet = {
       type: 'experimental_session',
       session: sessionWithClaimPolicy,
@@ -474,7 +481,7 @@ describe('signIntent with permit2 claim policy', () => {
     expect(sessionSignersArg.claimPolicyData).toBeUndefined()
   })
 
-  test('Permit2 typed data without claimPolicies → getEip1271Signature called without claimPolicyData', async () => {
+  test('Permit2 typed data without explicit permissions → getEip1271Signature called without claimPolicyData', async () => {
     const signers: SessionSignerSet = {
       type: 'experimental_session',
       session: sessionWithActions, // no claimPolicies

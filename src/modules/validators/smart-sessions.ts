@@ -1,5 +1,6 @@
 import { LibZip } from 'solady'
 import {
+  type Abi,
   type Address,
   concat,
   createPublicClient,
@@ -36,9 +37,12 @@ import type {
   Action,
   Policy,
   ProviderConfig,
+  ResolvedAction,
+  ResolvedPolicy,
   RhinestoneAccountConfig,
   RhinestoneConfig,
   Session,
+  SessionDefinition,
   SessionEnableData,
   UniversalActionPolicyParamCondition,
 } from '../../types'
@@ -51,10 +55,6 @@ import {
   SMART_SESSION_EMISSARY_ADDRESS_DEV,
 } from './core'
 import { resolvePermissions } from './permissions'
-import {
-  encodePermit2ClaimPolicyInitData,
-  PERMIT2_CLAIM_POLICY_ADDRESS,
-} from './policies/claim/permit2'
 
 type FixedLengthArray<
   T,
@@ -62,38 +62,13 @@ type FixedLengthArray<
   A extends T[] = [],
 > = A['length'] extends N ? A : FixedLengthArray<T, N, [...A, T]>
 
-interface SessionData {
-  sessionValidator: Address
-  sessionValidatorInitData: Hex
-  salt: Hex
-  erc7739Policies: {
-    allowedERC7739Content: readonly AllowedERC7739Content[]
-    erc1271Policies: readonly ERC1271Policy[]
-  }
-  actions: readonly ActionData[]
-  claimPolicies: readonly PolicyData[]
-}
+type SessionData = Omit<
+  Session,
+  'chain' | 'owners' | 'hasExplicitPermissions' | 'permissionId'
+>
 
-interface ERC1271Policy {
-  policy: Address
-  initData: Hex
-}
-
-interface AllowedERC7739Content {
-  appDomainSeparator: Hex
-  contentNames: readonly string[]
-}
-
-interface ActionData {
-  actionTargetSelector: Hex
-  actionTarget: Address
-  actionPolicies: readonly PolicyData[]
-}
-
-interface PolicyData {
-  policy: Address
-  initData: Hex
-}
+type ActionData = ResolvedAction
+type PolicyData = ResolvedPolicy
 
 interface ActionParamRule {
   condition: number
@@ -425,9 +400,7 @@ async function getSessionDetails(
       getSessionNonce(account, session, lockTag, provider, useDevContracts),
     ),
   )
-  const sessionDatas = sessions.map((session) =>
-    getSessionData(session, useDevContracts),
-  )
+  const sessionDatas = sessions.map((session) => getSessionData(session))
   const signedSessions = sessionDatas.map((session, index) =>
     getSignedSession(
       account,
@@ -610,7 +583,7 @@ async function getEnableSessionCall(
   sessionToEnableIndex: number,
   useDevContracts?: boolean,
 ) {
-  const sessionData = getSessionData(session, useDevContracts)
+  const sessionData = getSessionData(session)
   const permissionId = getPermissionId(session)
   return {
     to: getSmartSessionEmissaryAddress(useDevContracts),
@@ -640,8 +613,22 @@ async function getEnableSessionCall(
   }
 }
 
-function getSessionData(
-  session: Session,
+function toSession<const TAbis extends readonly Abi[]>(
+  definition: SessionDefinition<TAbis>,
+  options: { useDevContracts?: boolean } = {},
+): Session {
+  const sessionData = resolveSessionData(definition, options.useDevContracts)
+  return {
+    chain: definition.chain,
+    owners: definition.owners,
+    hasExplicitPermissions: !!definition.permissions?.length,
+    permissionId: getPermissionIdFromData(sessionData),
+    ...sessionData,
+  }
+}
+
+function resolveSessionData(
+  session: SessionDefinition,
   useDevContracts?: boolean,
 ): SessionData {
   const validator = getValidator(session.owners)
@@ -726,17 +713,26 @@ function getSessionData(
     sessionValidatorInitData: validator.initData,
     erc7739Policies: erc7739Data,
     actions,
-    // Note: Permit2ClaimPolicy has no dev deployment — same address in all environments
-    claimPolicies:
-      session.claimPolicies?.map((p) => ({
-        policy: PERMIT2_CLAIM_POLICY_ADDRESS,
-        initData: encodePermit2ClaimPolicyInitData(p),
-      })) ?? [],
+    claimPolicies: [],
+  }
+}
+
+function getSessionData(session: Session): SessionData {
+  return {
+    sessionValidator: session.sessionValidator,
+    salt: session.salt,
+    sessionValidatorInitData: session.sessionValidatorInitData,
+    erc7739Policies: session.erc7739Policies,
+    actions: session.actions,
+    claimPolicies: session.claimPolicies,
   }
 }
 
 function getPermissionId(session: Session) {
-  const sessionData = getSessionData(session)
+  return session.permissionId
+}
+
+function getPermissionIdFromData(sessionData: SessionData) {
   return keccak256(
     encodeAbiParameters(
       [
@@ -1027,6 +1023,7 @@ export {
   VALUE_LIMIT_POLICY_ADDRESS,
   INTENT_EXECUTION_POLICY_ADDRESS,
   packSignature,
+  toSession,
   getSessionData,
   getPolicyData,
   getEnableSessionCall,

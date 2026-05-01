@@ -2,9 +2,8 @@ import { type Address, erc20Abi, toFunctionSelector } from 'viem'
 import { base } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 import { accountA } from '../../../test/consts'
-import type { Session } from '../../types'
 import { resolvePermission, resolvePermissions } from './permissions'
-import { getSessionData } from './smart-sessions'
+import { getSessionData, toSession } from './smart-sessions'
 
 const USDC: Address = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'
 const RECIPIENT: Address = '0x1111111111111111111111111111111111111111'
@@ -443,7 +442,7 @@ describe('resolvePermissions', () => {
   })
 
   test('Session.permissions feeds into getSessionData without errors', () => {
-    const session: Session = {
+    const session = toSession({
       chain: base,
       owners: { type: 'ecdsa', accounts: [accountA] },
       permissions: [
@@ -460,7 +459,7 @@ describe('resolvePermissions', () => {
           },
         },
       ],
-    }
+    })
 
     const data = getSessionData(session)
     // User action + injected WETH deposit + injected intent-execution fallback

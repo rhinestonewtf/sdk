@@ -270,14 +270,53 @@ interface Permission<TAbi extends Abi = Abi> {
   }
 }
 
-interface SessionInput {
-  owners: OwnerSet
-  permissions?: Permission[]
-  claimPolicies?: [Permit2ClaimPolicy]
+type PermissionsForAbis<TAbis extends readonly Abi[]> = {
+  [K in keyof TAbis]: TAbis[K] extends Abi ? Permission<TAbis[K]> : never
 }
 
-interface Session extends SessionInput {
+interface SessionDefinition<TAbis extends readonly Abi[] = readonly Abi[]> {
   chain: Chain
+  owners: OwnerSet
+  permissions?: readonly [...PermissionsForAbis<TAbis>]
+}
+
+type SessionInput<TAbis extends readonly Abi[] = readonly Abi[]> = Omit<
+  SessionDefinition<TAbis>,
+  'chain'
+>
+
+interface ResolvedERC7739Content {
+  appDomainSeparator: Hex
+  contentNames: readonly string[]
+}
+
+interface ResolvedPolicy {
+  policy: Address
+  initData: Hex
+}
+
+interface ResolvedERC7739Policies {
+  allowedERC7739Content: readonly ResolvedERC7739Content[]
+  erc1271Policies: readonly ResolvedPolicy[]
+}
+
+interface ResolvedAction {
+  actionTargetSelector: Hex
+  actionTarget: Address
+  actionPolicies: readonly ResolvedPolicy[]
+}
+
+interface Session {
+  chain: Chain
+  owners: OwnerSet
+  hasExplicitPermissions: boolean
+  permissionId: Hex
+  sessionValidator: Address
+  sessionValidatorInitData: Hex
+  salt: Hex
+  erc7739Policies: ResolvedERC7739Policies
+  actions: readonly ResolvedAction[]
+  claimPolicies: readonly ResolvedPolicy[]
 }
 
 interface Recovery {
@@ -575,6 +614,7 @@ export type {
   SingleSessionSignerSet,
   PerChainSessionSignerSet,
   SessionSignerSet,
+  SessionDefinition,
   SessionInput,
   SessionEnableData,
   Session,
@@ -585,8 +625,13 @@ export type {
   ScopedAction,
   FallbackAction,
   Permission,
+  PermissionsForAbis,
   PermissionFunctionConfig,
   ParamConstraint,
+  ResolvedAction,
+  ResolvedERC7739Content,
+  ResolvedERC7739Policies,
+  ResolvedPolicy,
   Policy,
   Permit2ClaimPolicy,
   UniversalActionPolicyParamCondition,

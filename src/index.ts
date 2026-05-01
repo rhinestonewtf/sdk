@@ -71,6 +71,7 @@ import {
 import {
   isSessionEnabled as isSessionEnabledInternal,
   type SessionDetails,
+  toSession,
 } from './modules/validators/smart-sessions'
 import {
   type ApprovalRequired,
@@ -110,6 +111,7 @@ import type {
   RhinestoneConfig,
   RhinestoneSDKConfig,
   Session,
+  SessionDefinition,
   SignerSet,
   TokenRequest,
   TokenSymbol,
@@ -621,6 +623,7 @@ export {
   getTokenAddress,
   getTokenDecimals,
   getAllSupportedChainsAndTokens,
+  toSession,
   // Permit2 helpers
   checkERC20AllowanceDirect,
   getPermit2Address,
@@ -645,6 +648,7 @@ export type {
   SignerSet,
   ChainSessionConfig,
   Session,
+  SessionDefinition,
   Recovery,
   Permission,
   PermissionFunctionConfig,

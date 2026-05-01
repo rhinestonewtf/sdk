@@ -160,6 +160,34 @@ const transaction = await account.submitTransaction(signed)
 const result = await account.waitForExecution(transaction)
 ```
 
+Create a smart session from ABI-driven permissions:
+
+```ts
+import { toSession } from '@rhinestone/sdk'
+
+const session = toSession({
+  chain: base,
+  owners: {
+    type: 'ecdsa',
+    accounts: [sessionSigner],
+  },
+  permissions: [
+    {
+      abi: erc20Abi,
+      address: usdc,
+      functions: {
+        transfer: {
+          params: {
+            recipient: { condition: 'equal', value: recipient },
+            amount: { condition: 'lessThanOrEqual', value: 1000n },
+          },
+        },
+      },
+    },
+  ],
+})
+```
+
 For a complete walkthrough, see the [Quickstart guide](https://docs.rhinestone.dev/smart-wallet/quickstart).
 
 ## Migrating from Orchestrator SDK

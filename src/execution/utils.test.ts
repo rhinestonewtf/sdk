@@ -6,6 +6,7 @@ import * as validators from '../modules/validators'
 import {
   DUMMY_PRECLAIMOP_SELECTOR,
   DUMMY_PRECLAIMOP_TARGET,
+  toSession,
 } from '../modules/validators'
 import type { IntentInput } from '../orchestrator/types'
 import type { SessionSignerSet } from '../types'
@@ -233,14 +234,28 @@ describe('prepareTransactionAsIntent', () => {
   })
 })
 
-const makeSession = (chainId: number) => ({
-  chain: { id: chainId } as any,
-  owners: {
-    type: 'ecdsa' as const,
-    accounts: [accountA],
-    threshold: 1,
-  },
-})
+const getTestChain = (chainId: number) => {
+  switch (chainId) {
+    case arbitrum.id:
+      return arbitrum
+    case base.id:
+      return base
+    case optimism.id:
+      return optimism
+    default:
+      return mainnet
+  }
+}
+
+const makeSession = (chainId: number) =>
+  toSession({
+    chain: getTestChain(chainId),
+    owners: {
+      type: 'ecdsa' as const,
+      accounts: [accountA],
+      threshold: 1,
+    },
+  })
 
 const explicitPermissions = [
   {
@@ -336,11 +351,11 @@ describe('prepareTransactionAsIntent — preClaimExecutions', () => {
   test('includes dummy preclaimop in preClaimExecutions when session needs enabling', async () => {
     const signers: SessionSignerSet = {
       type: 'experimental_session',
-      session: {
+      session: toSession({
         chain: base,
         owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
         permissions: explicitPermissions,
-      },
+      }),
       enableData: makeEnableData(),
     }
 
@@ -381,11 +396,11 @@ describe('prepareTransactionAsIntent — preClaimExecutions', () => {
 
     const signers: SessionSignerSet = {
       type: 'experimental_session',
-      session: {
+      session: toSession({
         chain: base,
         owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
         permissions: explicitPermissions,
-      },
+      }),
       enableData: makeEnableData(),
     }
 
@@ -417,11 +432,11 @@ describe('prepareTransactionAsIntent — preClaimExecutions', () => {
   test('omits preClaimExecutions when session has no enableData', async () => {
     const signers: SessionSignerSet = {
       type: 'experimental_session',
-      session: {
+      session: toSession({
         chain: base,
         owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
         permissions: explicitPermissions,
-      },
+      }),
       // no enableData
     }
 
@@ -453,11 +468,11 @@ describe('prepareTransactionAsIntent — preClaimExecutions', () => {
   test('omits preClaimExecutions when session has no explicit actions (verifyExecutions=false)', async () => {
     const signers: SessionSignerSet = {
       type: 'experimental_session',
-      session: {
+      session: toSession({
         chain: base,
         owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
         // no actions → verifyExecutions defaults to false
-      },
+      }),
       enableData: makeEnableData(),
     }
 
@@ -493,20 +508,26 @@ describe('prepareTransactionAsIntent — preClaimExecutions', () => {
       .mockResolvedValueOnce(false) // base
       .mockResolvedValueOnce(true) // arbitrum
 
-    const makeSessionWithActions = (chainId: number) => ({
-      ...makeSession(chainId),
-      permissions: explicitPermissions,
-    })
+    const makeSessionWithActions = (chainId: number) =>
+      toSession({
+        chain: getTestChain(chainId),
+        owners: {
+          type: 'ecdsa' as const,
+          accounts: [accountA],
+          threshold: 1,
+        },
+        permissions: explicitPermissions,
+      })
 
     const signers: SessionSignerSet = {
       type: 'experimental_session',
       sessions: {
         [base.id]: {
-          session: makeSessionWithActions(base.id) as any,
+          session: makeSessionWithActions(base.id),
           enableData: makeEnableData(),
         },
         [arbitrum.id]: {
-          session: makeSessionWithActions(arbitrum.id) as any,
+          session: makeSessionWithActions(arbitrum.id),
           enableData: makeEnableData(),
         },
       },

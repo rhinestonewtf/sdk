@@ -151,7 +151,9 @@ function resolvePermission(permission: Permission): ScopedAction[] {
   return actions
 }
 
-function resolvePermissions(permissions: Permission[]): ScopedAction[] {
+function resolvePermissions(
+  permissions: readonly Permission[],
+): ScopedAction[] {
   return permissions.flatMap(resolvePermission)
 }
 

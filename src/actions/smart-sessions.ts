@@ -6,6 +6,7 @@ import {
 import {
   getEnableSessionCall,
   getSmartSessionValidator,
+  toSession,
 } from '../modules/validators/smart-sessions'
 import type { LazyCallInput, SessionInput } from '../types'
 
@@ -59,10 +60,13 @@ function experimental_enableSession(
     async resolve({ accountAddress, chain, config }) {
       return getEnableSessionCall(
         accountAddress,
-        {
-          ...session,
-          chain,
-        },
+        toSession(
+          {
+            ...session,
+            chain,
+          },
+          { useDevContracts: config.useDevContracts },
+        ),
         enableSessionSignature,
         hashesAndChainIds,
         sessionToEnableIndex,

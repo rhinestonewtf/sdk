@@ -72,8 +72,6 @@ import {
   getWebAuthnValidator,
   supportsEip712,
 } from '../modules/validators/core'
-import type { Permit2ClaimMessage } from '../modules/validators/policies/claim/permit2'
-import { buildPermit2ClaimPolicyCalldata } from '../modules/validators/policies/claim/permit2'
 import type { ResolvedSessionSignerSet } from '../modules/validators/smart-sessions'
 import {
   type Execution,
@@ -154,11 +152,10 @@ async function resolveSignersForChain(
     config.useDevContracts,
   )
   const enableData = enabled ? undefined : resolved.enableData
-  const hasExplicitPermissions = !!resolved.session.permissions?.length
   const verifyExecutions =
     resolved.verifyExecutions ??
     signers.verifyExecutions ??
-    hasExplicitPermissions
+    resolved.session.hasExplicitPermissions
   return {
     type: 'experimental_session',
     session: resolved.session,
@@ -1223,7 +1220,7 @@ function resolveClaimPolicyData<
 ): Hex | undefined {
   if (
     parameters.primaryType !== 'PermitBatchWitnessTransferFrom' ||
-    !signers.session.claimPolicies?.length
+    !signers.session.claimPolicies.length
   ) {
     return undefined
   }
@@ -1237,10 +1234,7 @@ function resolveClaimPolicyData<
   ) {
     return undefined
   }
-  return buildPermit2ClaimPolicyCalldata(
-    signers.session.claimPolicies[0],
-    parameters.message as unknown as Permit2ClaimMessage,
-  )
+  return undefined
 }
 
 async function signIntentTypedData<
