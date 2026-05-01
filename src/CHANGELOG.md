@@ -1,5 +1,27 @@
 # @rhinestone/sdk
 
+## 2.0.0-beta.2
+
+### Major Changes
+
+- 522d3df: - Remove `passport` account support. `account.type: 'passport'` is no longer accepted; the `PassportAccount` type and the `passport` member of `AccountType` / `AccountProviderConfig` are removed.
+- 522d3df: - Drop the `acceptsPreconfirmations` parameter from `account.waitForExecution`. The method now always waits for `FILLED` / `COMPLETED` and never treats `PRECONFIRMED` as terminal.
+- 522d3df: - Drop the `account.sendTransaction(transaction)` shortcut. Use the `prepareTransaction` → `signTransaction` → `submitTransaction` flow instead.
+- 3f6adba: - Replace `Session.actions` with `toSession({ permissions, claimPolicies })`, an ABI-driven session definition shape (`{ abi, address, functions }`) that resolves to a low-level `Session`. Function selectors and param calldata offsets are derived from the ABI, param value types are checked against ABI input types, and public Permit2 claim policies use chain-aware fields that resolve to the internal onchain schema.
+- 522d3df: - Reshape `account.submitTransaction` to take an options bag: `submitTransaction(signed, { authorizations?, internal_dryRun? })` instead of positional `submitTransaction(signed, authorizations?, dryRun?)`.
+- 9bebb79: - Remove the `@rhinestone/sdk/actions/compact` subpackage entry and its helpers.
+  - Remove the public `deployAccountsForOwners` helper.
+  - Remove the public `checkERC20AllowanceDirect` helper.
+  - Remove the public `getPermit2Address` helper.
+  - Remove the `account.checkERC20Allowance` method.
+  - Move `walletClientToAccount` from the package root to `@rhinestone/sdk/utils`.
+  - Move `wrapParaAccount` from the package root to `@rhinestone/sdk/utils`.
+  - Move `toSession` from the package root to `@rhinestone/sdk/smart-sessions`.
+  - Remove the public `getSupportedTokens` helper.
+  - Remove the public `getTokenAddress` helper.
+  - Remove the public `getTokenDecimals` helper.
+  - Remove the public `getAllSupportedChainsAndTokens` helper.
+
 ## 2.0.0-beta.1
 
 ### Major Changes
