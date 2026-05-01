@@ -160,15 +160,9 @@ interface Fees {
   breakdown: FeeBreakdown
 }
 
-interface FeeToken {
-  chainId: number
-  tokenAddress: Address
-}
-
 interface Cost {
   input: CostTokenEntry[]
   output: CostTokenEntry[]
-  feeToken?: FeeToken
   fees: Fees
 }
 
@@ -345,7 +339,6 @@ export type {
   Cost,
   CostTokenEntry,
   FeeBreakdown,
-  FeeToken,
   Fees,
   Price,
   UsdAmount,

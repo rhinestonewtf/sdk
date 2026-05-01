@@ -343,12 +343,6 @@ function decodeCost(cost: any): Cost {
   return {
     input: (cost.input as any[]).map(decodeCostTokenEntry),
     output: (cost.output as any[]).map(decodeCostTokenEntry),
-    feeToken: cost.feeToken
-      ? {
-          chainId: parseChainId(cost.feeToken.chainId),
-          tokenAddress: cost.feeToken.tokenAddress,
-        }
-      : undefined,
     fees: cost.fees,
   }
 }
