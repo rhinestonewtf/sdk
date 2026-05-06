@@ -4,12 +4,9 @@ import { deploy, getAddress } from '../accounts'
 import { createTransport, getBundlerClient } from '../accounts/utils'
 import { type AuthProvider, createAuthProvider } from '../auth/provider'
 import {
-  type FillTransactionHash,
   getOrchestrator,
   INTENT_STATUS_COMPLETED,
-  INTENT_STATUS_EXPIRED,
   INTENT_STATUS_FAILED,
-  INTENT_STATUS_FILLED,
   type IntentOpStatus,
   isRateLimited,
   isRetryable,
@@ -65,15 +62,12 @@ const POLL_ERROR_BACKOFF_MS = 1000
 const POLL_ERROR_BACKOFF_MAX_MS = 10000
 
 interface TransactionStatus {
-  fill: {
-    /** Destination fill hash — viem `Hex` for EVM, base58 / Tron-hex for non-EVM. */
-    hash: FillTransactionHash | undefined
-    chainId: number
-  }
-  claims: {
-    hash: Hex | undefined
-    chainId: number
-  }[]
+  /** High-level intent status. */
+  status: IntentOpStatus['status']
+  /** The account address that owns this intent. */
+  accountAddress: Address
+  /** Per-chain operation status. One entry per chain. */
+  operations: IntentOpStatus['operations']
 }
 
 async function sendUserOperation(
@@ -254,11 +248,10 @@ async function waitForExecution(
   config: RhinestoneConfig,
   result: TransactionResult | UserOperationResult,
 ): Promise<TransactionStatus | UserOperationReceipt> {
-  const validStatuses: Set<IntentOpStatus['status']> = new Set([
+  /** Terminal states: stop polling once the intent is COMPLETED or FAILED. */
+  const terminalStatuses: Set<IntentOpStatus['status']> = new Set([
     INTENT_STATUS_FAILED,
-    INTENT_STATUS_EXPIRED,
     INTENT_STATUS_COMPLETED,
-    INTENT_STATUS_FILLED,
   ])
 
   switch (result.type) {
@@ -268,7 +261,10 @@ async function waitForExecution(
       const deadlineMs = result.expiresAt * 1000
       let nextDelayMs = POLL_INITIAL_MS
       let errorBackoffMs = POLL_ERROR_BACKOFF_MS
-      while (intentStatus === null || !validStatuses.has(intentStatus.status)) {
+      while (
+        intentStatus === null ||
+        !terminalStatuses.has(intentStatus.status)
+      ) {
         const now = Date.now()
         if (now >= deadlineMs) {
           throw new IntentExpiredError({
@@ -327,26 +323,14 @@ async function waitForExecution(
         throw new IntentFailedError({
           context: {
             intentId: result.id,
-          },
-        })
-      }
-      if (intentStatus.status === INTENT_STATUS_EXPIRED) {
-        throw new IntentExpiredError({
-          context: {
-            intentId: result.id,
-            expiresAt: result.expiresAt,
+            operations: intentStatus.operations,
           },
         })
       }
       return {
-        fill: {
-          hash: intentStatus.fillTransactionHash,
-          chainId: result.targetChain,
-        },
-        claims: intentStatus.claims.map((claim) => ({
-          hash: claim.claimTransactionHash,
-          chainId: claim.chainId,
-        })),
+        status: intentStatus.status,
+        accountAddress: intentStatus.accountAddress,
+        operations: intentStatus.operations,
       }
     }
     case 'userop': {
@@ -387,23 +371,13 @@ async function getIntentStatus(
   endpointUrl: string | undefined,
   intentId: string,
   headers?: Record<string, string>,
-): Promise<
-  TransactionStatus & {
-    status: IntentOpStatus['status']
-  }
-> {
+): Promise<TransactionStatus> {
   const orchestrator = getOrchestrator(authProvider, endpointUrl, headers)
   const internalStatus = await orchestrator.getIntent(intentId)
   return {
     status: internalStatus.status,
-    fill: {
-      hash: internalStatus.fillTransactionHash,
-      chainId: internalStatus.destinationChainId,
-    },
-    claims: internalStatus.claims.map((claim) => ({
-      hash: claim.claimTransactionHash,
-      chainId: claim.chainId,
-    })),
+    accountAddress: internalStatus.accountAddress,
+    operations: internalStatus.operations,
   }
 }
 

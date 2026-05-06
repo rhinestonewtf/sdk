@@ -149,17 +149,12 @@ export class Orchestrator {
     })
     return {
       status: json.status,
-      claims: (json.claims ?? []).map((claim: any) => ({
-        depositId: claim.depositId !== undefined ? BigInt(claim.depositId) : 0n,
-        chainId: parseChainId(claim.chainId),
-        status: claim.status,
-        claimTimestamp: claim.claimTimestamp,
-        claimTransactionHash: claim.claimTransactionHash,
-      })),
-      destinationChainId: parseChainId(json.destinationChainId),
       accountAddress: json.accountAddress,
-      fillTimestamp: json.fillTimestamp,
-      fillTransactionHash: json.fillTransactionHash,
+      // Flatten orchestrator's per-chain items[] to one entry per chain.
+      operations: (json.operations ?? []).map((op: any) => {
+        const item = op.items?.[0] ?? {}
+        return { chain: op.chain, ...item }
+      }),
     }
   }
 
