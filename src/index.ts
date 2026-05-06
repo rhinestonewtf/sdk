@@ -68,6 +68,7 @@ import {
 import type {
   ApprovalRequired,
   AuxiliaryFunds,
+  BridgeFill,
   IntentInput,
   IntentOpStatus,
   Portfolio,
@@ -626,6 +627,7 @@ export type {
   SignedUserOperationData,
   UserOperationResult,
   AuxiliaryFunds,
+  BridgeFill,
   IntentInput,
   IntentOpStatus,
   SettlementLayer,

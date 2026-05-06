@@ -335,6 +335,7 @@ function decodeQuote(route: any): Quote {
     tokenRequirements: route.tokenRequirements
       ? decodeTokenRequirements(route.tokenRequirements)
       : undefined,
+    bridgeFill: route.bridgeFill,
   }
 }
 

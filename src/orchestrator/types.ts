@@ -175,6 +175,19 @@ interface SignData {
   targetExecution?: TypedDataDefinition
 }
 
+// Per-intent tracking handle for layers that hand off to a third-party bridge
+type BridgeFill =
+  | { type: 'OFT'; destinationChainId: number }
+  | { type: 'RELAY'; destinationChainId: number; requestId: string }
+  | { type: 'NEAR'; destinationChainId: number; depositAddress: Address }
+  | { type: 'RHINO'; destinationChainId: number; commitmentId: string }
+  | {
+      type: 'CCTP'
+      destinationChainId: number
+      sourceDomainId: number
+      destinationDomainId: number
+    }
+
 interface Quote {
   intentId: string
   expiresAt: number
@@ -183,6 +196,7 @@ interface Quote {
   signData: SignData
   cost: Cost
   tokenRequirements?: TokenRequirements
+  bridgeFill?: BridgeFill
 }
 
 interface QuoteResponse {
@@ -333,6 +347,7 @@ export type {
   SettlementLayer,
   SignatureMode,
   IntentInput,
+  BridgeFill,
   Quote,
   QuoteResponse,
   Cost,

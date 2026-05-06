@@ -32,6 +32,7 @@ import {
 import type {
   ApprovalRequired,
   AuxiliaryFunds,
+  BridgeFill,
   Cost,
   CostTokenEntry,
   EstimatedFillTime,
@@ -86,6 +87,7 @@ function getOrchestrator(
 export type {
   ApprovalRequired,
   AuxiliaryFunds,
+  BridgeFill,
   Cost,
   CostTokenEntry,
   EstimatedFillTime,
