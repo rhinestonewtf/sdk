@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 2.0.0-beta.4
+
+### Patch Changes
+
+- e223a77: Add bridgeFill param as response
+
 ## 2.0.0-beta.3
 
 ### Major Changes

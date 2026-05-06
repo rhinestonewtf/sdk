@@ -14,6 +14,7 @@
     "drop-preconfirmations",
     "drop-send-transaction",
     "dummy-preclaim-fallback-target",
+    "heavy-grapes-punch",
     "portfolio-amount",
     "quote-selection-target-execution",
     "quote-selection",
