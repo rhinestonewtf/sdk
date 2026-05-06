@@ -1,5 +1,6 @@
 import { LibZip } from 'solady'
 import {
+  type Abi,
   type Address,
   concat,
   createPublicClient,
@@ -34,11 +35,16 @@ import {
 } from '../../orchestrator/registry'
 import type {
   Action,
+  Permit2ClaimPolicy,
   Policy,
   ProviderConfig,
+  ResolvedAction,
+  ResolvedERC7739Policies,
+  ResolvedPolicy,
   RhinestoneAccountConfig,
   RhinestoneConfig,
   Session,
+  SessionDefinition,
   SessionEnableData,
   UniversalActionPolicyParamCondition,
 } from '../../types'
@@ -50,8 +56,10 @@ import {
   SMART_SESSION_EMISSARY_ADDRESS,
   SMART_SESSION_EMISSARY_ADDRESS_DEV,
 } from './core'
+import { resolvePermissions } from './permissions'
 import {
   encodePermit2ClaimPolicyInitData,
+  type InternalPermit2ClaimPolicy,
   PERMIT2_CLAIM_POLICY_ADDRESS,
 } from './policies/claim/permit2'
 
@@ -65,34 +73,13 @@ interface SessionData {
   sessionValidator: Address
   sessionValidatorInitData: Hex
   salt: Hex
-  erc7739Policies: {
-    allowedERC7739Content: readonly AllowedERC7739Content[]
-    erc1271Policies: readonly ERC1271Policy[]
-  }
-  actions: readonly ActionData[]
-  claimPolicies: readonly PolicyData[]
+  erc7739Policies: ResolvedERC7739Policies
+  actions: readonly ResolvedAction[]
+  claimPolicies: readonly ResolvedPolicy[]
 }
 
-interface ERC1271Policy {
-  policy: Address
-  initData: Hex
-}
-
-interface AllowedERC7739Content {
-  appDomainSeparator: Hex
-  contentNames: readonly string[]
-}
-
-interface ActionData {
-  actionTargetSelector: Hex
-  actionTarget: Address
-  actionPolicies: readonly PolicyData[]
-}
-
-interface PolicyData {
-  policy: Address
-  initData: Hex
-}
+type ActionData = ResolvedAction
+type PolicyData = ResolvedPolicy
 
 interface ActionParamRule {
   condition: number
@@ -211,13 +198,11 @@ const SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG_PERMITTED_TO_CALL_SMARTSESSIO
 
 // Dummy preclaimop action injected into every session so that the filler can trigger
 // verifyExecution (ENABLE mode) using an injected dummy preclaimop when there are no
-// real preclaimops. Target 0x...0001 is the ecRecover precompile; calls to it fail
+// real preclaimops. Target 0x...0420 is the ecRecover precompile; calls to it fail
 // silently because preclaimops are failure-tolerant. Selector 0x69123456 is
-// intentionally uncommon. Note: this address is the same as
-// SMART_SESSIONS_FALLBACK_TARGET_FLAG — that is harmless because they operate in
-// different contexts (action matching vs. literal execution target).
+// intentionally uncommon.
 const DUMMY_PRECLAIMOP_TARGET: Address =
-  '0x0000000000000000000000000000000000000001'
+  '0x0000000000000000000000000000000000000420'
 const DUMMY_PRECLAIMOP_SELECTOR: Hex = '0x69123456'
 
 const SPENDING_LIMITS_POLICY_ADDRESS: Address =
@@ -426,9 +411,7 @@ async function getSessionDetails(
       getSessionNonce(account, session, lockTag, provider, useDevContracts),
     ),
   )
-  const sessionDatas = sessions.map((session) =>
-    getSessionData(session, useDevContracts),
-  )
+  const sessionDatas = sessions.map((session) => getSessionData(session))
   const signedSessions = sessionDatas.map((session, index) =>
     getSignedSession(
       account,
@@ -611,7 +594,7 @@ async function getEnableSessionCall(
   sessionToEnableIndex: number,
   useDevContracts?: boolean,
 ) {
-  const sessionData = getSessionData(session, useDevContracts)
+  const sessionData = getSessionData(session)
   const permissionId = getPermissionId(session)
   return {
     to: getSmartSessionEmissaryAddress(useDevContracts),
@@ -641,8 +624,55 @@ async function getEnableSessionCall(
   }
 }
 
-function getSessionData(
-  session: Session,
+function toSession<const TAbis extends readonly Abi[]>(
+  definition: SessionDefinition<TAbis>,
+  options: { useDevContracts?: boolean } = {},
+): Session {
+  const sessionData = resolveSessionData(definition, options.useDevContracts)
+  return {
+    chain: definition.chain,
+    owners: definition.owners,
+    hasExplicitPermissions: !!definition.permissions?.length,
+    permissionId: getPermissionIdFromData(sessionData),
+    sessionValidator: sessionData.sessionValidator,
+    sessionValidatorInitData: sessionData.sessionValidatorInitData,
+    salt: sessionData.salt,
+    erc7739Policies: sessionData.erc7739Policies,
+    actions: sessionData.actions,
+    claimPolicies: definition.claimPolicies ?? [],
+  }
+}
+
+function resolvePermit2ClaimPolicy(
+  policy: Permit2ClaimPolicy,
+): InternalPermit2ClaimPolicy {
+  return {
+    type: 'permit2-claim',
+    arbiters: policy.spenders,
+    tokensIn: policy.sourceTokens?.map(({ chain, address }) => ({
+      chainId: chain.id,
+      token: address,
+    })),
+    tokensOut: policy.destinationTokens?.map(({ chain, address }) => ({
+      chainId: chain.id,
+      token: address,
+    })),
+    recipients: policy.recipients?.map(({ chain, address }) => ({
+      chainId: chain.id,
+      recipient: address,
+    })),
+    recipientIsSponsor: policy.recipientIsAccount,
+    expiryBounds: policy.permitDeadline,
+    fillExpiryBounds: policy.fillDeadline?.map(({ chain, min, max }) => ({
+      chainId: chain.id,
+      min,
+      max,
+    })),
+  }
+}
+
+function resolveSessionData(
+  session: SessionDefinition,
   useDevContracts?: boolean,
 ): SessionData {
   const validator = getValidator(session.owners)
@@ -672,9 +702,9 @@ function getSessionData(
     ],
   }
 
-  const userHasFallbackAction = session.actions?.some(
-    (action) => !('target' in action) && !('selector' in action),
-  )
+  const userActions = session.permissions?.length
+    ? resolvePermissions(session.permissions)
+    : []
 
   const injectedActions: Action[] = [
     // Native token wrapping
@@ -688,12 +718,8 @@ function getSessionData(
         stateMutability: 'payable',
       }),
     },
-    // Only inject the intent-execution fallback if the user hasn't defined their own
-    // fallback action — otherwise both map to the same actionId and their policies merge,
-    // causing IntentExecutionPolicy to be required for all fallback calls
-    ...(!userHasFallbackAction
-      ? [{ policies: [{ type: 'intent-execution' as const }] }]
-      : []),
+    // Intent-execution fallback for any non-scoped call.
+    { policies: [{ type: 'intent-execution' as const }] },
     // Dummy action: allows the filler to call verifyExecution in ENABLE mode using
     // an injected dummy preclaimop so any session can be enabled on-chain without
     // a separate UserOp, regardless of whether it has claim or action policies.
@@ -704,8 +730,9 @@ function getSessionData(
     },
   ]
 
-  const actions = session.actions?.length
-    ? [...session.actions, ...injectedActions].map((action) => ({
+  const allActions: Action[] = [...userActions, ...injectedActions]
+  const actions = userActions.length
+    ? allActions.map((action) => ({
         actionTargetSelector:
           'selector' in action
             ? action.selector
@@ -730,17 +757,37 @@ function getSessionData(
     sessionValidatorInitData: validator.initData,
     erc7739Policies: erc7739Data,
     actions,
-    // Note: Permit2ClaimPolicy has no dev deployment — same address in all environments
     claimPolicies:
-      session.claimPolicies?.map((p) => ({
+      session.claimPolicies?.map((policy) => ({
         policy: PERMIT2_CLAIM_POLICY_ADDRESS,
-        initData: encodePermit2ClaimPolicyInitData(p),
+        initData: encodePermit2ClaimPolicyInitData(
+          resolvePermit2ClaimPolicy(policy),
+        ),
       })) ?? [],
   }
 }
 
+function getSessionData(session: Session): SessionData {
+  return {
+    sessionValidator: session.sessionValidator,
+    salt: session.salt,
+    sessionValidatorInitData: session.sessionValidatorInitData,
+    erc7739Policies: session.erc7739Policies,
+    actions: session.actions,
+    claimPolicies: session.claimPolicies.map((policy) => ({
+      policy: PERMIT2_CLAIM_POLICY_ADDRESS,
+      initData: encodePermit2ClaimPolicyInitData(
+        resolvePermit2ClaimPolicy(policy),
+      ),
+    })),
+  }
+}
+
 function getPermissionId(session: Session) {
-  const sessionData = getSessionData(session)
+  return session.permissionId
+}
+
+function getPermissionIdFromData(sessionData: SessionData) {
   return keccak256(
     encodeAbiParameters(
       [
@@ -1031,6 +1078,8 @@ export {
   VALUE_LIMIT_POLICY_ADDRESS,
   INTENT_EXECUTION_POLICY_ADDRESS,
   packSignature,
+  toSession,
+  resolvePermit2ClaimPolicy,
   getSessionData,
   getPolicyData,
   getEnableSessionCall,

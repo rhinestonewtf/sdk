@@ -1,5 +1,55 @@
 # @rhinestone/sdk
 
+## 2.0.0-beta.3
+
+### Major Changes
+
+- edeae4c: - `PortfolioToken.chains[]` replaces `locked`/`unlocked` with a single `amount: bigint`, matching the orchestrator's blanc wire shape (`balance: { locked, unlocked }` collapsed to a flat `amount`; post-compact, locked is always `0`).
+- a5bded7: - Drop the unused `feeToken` field from the `Cost` response and remove the public `FeeToken` type. The orchestrator's blanc `POST /quotes` response never populates this field.
+
+## 2.0.0-beta.2
+
+### Major Changes
+
+- 522d3df: - Remove `passport` account support. `account.type: 'passport'` is no longer accepted; the `PassportAccount` type and the `passport` member of `AccountType` / `AccountProviderConfig` are removed.
+- 522d3df: - Drop the `acceptsPreconfirmations` parameter from `account.waitForExecution`. The method now always waits for `FILLED` / `COMPLETED` and never treats `PRECONFIRMED` as terminal.
+- 522d3df: - Drop the `account.sendTransaction(transaction)` shortcut. Use the `prepareTransaction` → `signTransaction` → `submitTransaction` flow instead.
+- 3f6adba: - Replace `Session.actions` with `toSession({ permissions, claimPolicies })`, an ABI-driven session definition shape (`{ abi, address, functions }`) that resolves to a low-level `Session`. Function selectors and param calldata offsets are derived from the ABI, param value types are checked against ABI input types, and public Permit2 claim policies use chain-aware fields that resolve to the internal onchain schema.
+- 522d3df: - Reshape `account.submitTransaction` to take an options bag: `submitTransaction(signed, { authorizations?, internal_dryRun? })` instead of positional `submitTransaction(signed, authorizations?, dryRun?)`.
+- 9bebb79: - Remove the `@rhinestone/sdk/actions/compact` subpackage entry and its helpers.
+  - Remove the public `deployAccountsForOwners` helper.
+  - Remove the public `checkERC20AllowanceDirect` helper.
+  - Remove the public `getPermit2Address` helper.
+  - Remove the `account.checkERC20Allowance` method.
+  - Move `walletClientToAccount` from the package root to `@rhinestone/sdk/utils`.
+  - Move `wrapParaAccount` from the package root to `@rhinestone/sdk/utils`.
+  - Move `toSession` from the package root to `@rhinestone/sdk/smart-sessions`.
+  - Remove the public `getSupportedTokens` helper.
+  - Remove the public `getTokenAddress` helper.
+  - Remove the public `getTokenDecimals` helper.
+  - Remove the public `getAllSupportedChainsAndTokens` helper.
+
+## 2.0.0-beta.1
+
+### Major Changes
+
+- f3f4fb2: - Switch the orchestrator client to the `2026-04.blanc` API version.
+- 766128e: - Drop the public `signPermit2Batch` / `signPermit2Sequential` helpers along with the `MultiChainPermit2Config` / `MultiChainPermit2Result` / `BatchPermit2Result` types.
+- 4391772: - `PortfolioToken` drops the token-level `decimals` and `balances` aggregate; `decimals` now lives on each `chains[]` entry.
+- edd83bf: - `RhinestoneSDK.getIntentStatus(intentId)` now takes a `string` (was `bigint`).
+- 839f2a6: - Drop compact-bound fields (`lockFunds` transaction option, `emissaryConfig` on the orchestrator `Account` type) to match the orchestrator's blanc API trim.
+- 6398613: - `RhinestoneAccount.getTransactionMessages` now surfaces the optional `targetExecution` typed data, matching the underlying helper.
+- f7c2de0: - `prepareTransaction` returns `quotes: { best, all }` instead of `quote`.
+  - `signTransaction(prepared, { intentId })` lets callers sign a non-default quote from `prepared.quotes.all`.
+  - `getTransactionMessages(prepared, { intentId })` accepts the same selection so external signers see the route `signTransaction` will sign.
+  - `SignedTransactionData.quote` is the selected quote.
+  - `intentId` is required on the options argument; pass an id from `prepared.quotes.all` or omit options entirely to sign the recommended quote.
+
+### Patch Changes
+
+- c778494: Don't use fallback target for the dummy preclaim op.
+- 5f7f20e: Respect `Retry-After` headers when polling intent status after rate limits.
+
 ## 2.0.0-beta.0
 
 ### Major Changes

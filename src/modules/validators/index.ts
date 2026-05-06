@@ -15,6 +15,7 @@ import {
   getSmartSessionValidator,
   isSessionEnabled,
   packSignature,
+  toSession,
 } from './smart-sessions'
 
 export {
@@ -32,4 +33,5 @@ export {
   buildMockSignature,
   isSessionEnabled,
   packSignature,
+  toSession,
 }

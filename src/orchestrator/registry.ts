@@ -6,7 +6,6 @@ import {
 import { type Address, type Chain, isAddress } from 'viem'
 import type { TokenSymbol } from '../types'
 import { UnsupportedChainError, UnsupportedTokenError } from './error'
-import type { TokenConfig } from './types'
 
 function getSupportedChainIds(): number[] {
   return chains.map((chain) => chain.id)
@@ -75,20 +74,6 @@ function getTokenAddress(tokenSymbol: TokenSymbol, chainId: number): Address {
   return token.address
 }
 
-function getTokenDecimals(tokenSymbol: TokenSymbol, chainId: number): number {
-  const chainEntry = getChainEntry(chainId)
-  if (!chainEntry) {
-    throw new UnsupportedChainError(chainId)
-  }
-
-  const token = chainEntry.tokens.find((t) => t.symbol === tokenSymbol)
-  if (!token) {
-    throw new UnsupportedTokenError(tokenSymbol, chainId)
-  }
-
-  return token.decimals
-}
-
 function getChainById(chainId: number): Chain {
   const chain = chains.find((chain) => chain.id === chainId)
   if (!chain) {
@@ -111,15 +96,6 @@ function isTokenAddressSupported(address: Address, chainId: number): boolean {
   return chainEntry.tokens.some(
     (token) => token.address.toLowerCase() === address.toLowerCase(),
   )
-}
-
-function getSupportedTokens(chainId: number): TokenConfig[] {
-  const chainEntry = getChainEntry(chainId)
-  if (!chainEntry) {
-    throw new UnsupportedChainError(chainId)
-  }
-
-  return chainEntry.tokens
 }
 
 function getDefaultAccountAccessList(onTestnets?: boolean) {
@@ -147,29 +123,15 @@ function resolveTokenAddress(
   return getTokenAddress(token, chainId)
 }
 
-function getAllSupportedChainsAndTokens(): {
-  chainId: number
-  tokens: TokenConfig[]
-}[] {
-  const supportedChainIds = getSupportedChainIds()
-  return supportedChainIds.map((chainId) => ({
-    chainId,
-    tokens: getSupportedTokens(chainId),
-  }))
-}
-
 export {
   getTokenSymbol,
   getTokenAddress,
-  getTokenDecimals,
   getWethAddress,
   getWrappedTokenAddress,
   getChainById,
-  getSupportedTokens,
   getSupportedChainIds,
   isTestnet,
   isTokenAddressSupported,
   getDefaultAccountAccessList,
   resolveTokenAddress,
-  getAllSupportedChainsAndTokens,
 }

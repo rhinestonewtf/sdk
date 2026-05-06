@@ -1,4 +1,4 @@
-import { zeroAddress } from 'viem'
+import { erc20Abi, zeroAddress } from 'viem'
 import { arbitrum, base, mainnet, optimism } from 'viem/chains'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { accountA } from '../../test/consts'
@@ -6,6 +6,7 @@ import * as validators from '../modules/validators'
 import {
   DUMMY_PRECLAIMOP_SELECTOR,
   DUMMY_PRECLAIMOP_TARGET,
+  toSession,
 } from '../modules/validators'
 import type { IntentInput } from '../orchestrator/types'
 import type { SessionSignerSet } from '../types'
@@ -193,7 +194,6 @@ describe('prepareTransactionAsIntent', () => {
       undefined,
       undefined,
       undefined,
-      undefined,
       auxiliaryFunds,
       undefined,
       undefined,
@@ -226,7 +226,6 @@ describe('prepareTransactionAsIntent', () => {
       undefined,
       undefined,
       undefined,
-      undefined,
     )
 
     expect(mockCreateQuote).toHaveBeenCalledOnce()
@@ -235,14 +234,36 @@ describe('prepareTransactionAsIntent', () => {
   })
 })
 
-const makeSession = (chainId: number) => ({
-  chain: { id: chainId } as any,
-  owners: {
-    type: 'ecdsa' as const,
-    accounts: [accountA],
-    threshold: 1,
+const getTestChain = (chainId: number) => {
+  switch (chainId) {
+    case arbitrum.id:
+      return arbitrum
+    case base.id:
+      return base
+    case optimism.id:
+      return optimism
+    default:
+      return mainnet
+  }
+}
+
+const makeSession = (chainId: number) =>
+  toSession({
+    chain: getTestChain(chainId),
+    owners: {
+      type: 'ecdsa' as const,
+      accounts: [accountA],
+      threshold: 1,
+    },
+  })
+
+const explicitPermissions = [
+  {
+    abi: erc20Abi,
+    address: '0x1111111111111111111111111111111111111111' as `0x${string}`,
+    functions: { transfer: {} },
   },
-})
+]
 
 describe('resolveSessionForChain', () => {
   test('single session returns session for any chain', () => {
@@ -330,17 +351,11 @@ describe('prepareTransactionAsIntent — preClaimExecutions', () => {
   test('includes dummy preclaimop in preClaimExecutions when session needs enabling', async () => {
     const signers: SessionSignerSet = {
       type: 'experimental_session',
-      session: {
+      session: toSession({
         chain: base,
         owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
-        actions: [
-          {
-            target:
-              '0x1111111111111111111111111111111111111111' as `0x${string}`,
-            selector: '0xdeadbeef' as `0x${string}`,
-          },
-        ],
-      },
+        permissions: explicitPermissions,
+      }),
       enableData: makeEnableData(),
     }
 
@@ -356,7 +371,6 @@ describe('prepareTransactionAsIntent — preClaimExecutions', () => {
       [{ address: zeroAddress, amount: 1n }],
       undefined,
       false,
-      undefined,
       undefined,
       undefined,
       undefined,
@@ -382,17 +396,11 @@ describe('prepareTransactionAsIntent — preClaimExecutions', () => {
 
     const signers: SessionSignerSet = {
       type: 'experimental_session',
-      session: {
+      session: toSession({
         chain: base,
         owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
-        actions: [
-          {
-            target:
-              '0x1111111111111111111111111111111111111111' as `0x${string}`,
-            selector: '0xdeadbeef' as `0x${string}`,
-          },
-        ],
-      },
+        permissions: explicitPermissions,
+      }),
       enableData: makeEnableData(),
     }
 
@@ -414,7 +422,6 @@ describe('prepareTransactionAsIntent — preClaimExecutions', () => {
       undefined,
       undefined,
       undefined,
-      undefined,
       signers,
     )
 
@@ -425,17 +432,11 @@ describe('prepareTransactionAsIntent — preClaimExecutions', () => {
   test('omits preClaimExecutions when session has no enableData', async () => {
     const signers: SessionSignerSet = {
       type: 'experimental_session',
-      session: {
+      session: toSession({
         chain: base,
         owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
-        actions: [
-          {
-            target:
-              '0x1111111111111111111111111111111111111111' as `0x${string}`,
-            selector: '0xdeadbeef' as `0x${string}`,
-          },
-        ],
-      },
+        permissions: explicitPermissions,
+      }),
       // no enableData
     }
 
@@ -457,7 +458,6 @@ describe('prepareTransactionAsIntent — preClaimExecutions', () => {
       undefined,
       undefined,
       undefined,
-      undefined,
       signers,
     )
 
@@ -468,11 +468,11 @@ describe('prepareTransactionAsIntent — preClaimExecutions', () => {
   test('omits preClaimExecutions when session has no explicit actions (verifyExecutions=false)', async () => {
     const signers: SessionSignerSet = {
       type: 'experimental_session',
-      session: {
+      session: toSession({
         chain: base,
         owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
         // no actions → verifyExecutions defaults to false
-      },
+      }),
       enableData: makeEnableData(),
     }
 
@@ -494,7 +494,6 @@ describe('prepareTransactionAsIntent — preClaimExecutions', () => {
       undefined,
       undefined,
       undefined,
-      undefined,
       signers,
     )
 
@@ -509,25 +508,26 @@ describe('prepareTransactionAsIntent — preClaimExecutions', () => {
       .mockResolvedValueOnce(false) // base
       .mockResolvedValueOnce(true) // arbitrum
 
-    const makeSessionWithActions = (chainId: number) => ({
-      ...makeSession(chainId),
-      actions: [
-        {
-          target: '0x1111111111111111111111111111111111111111' as `0x${string}`,
-          selector: '0xdeadbeef' as `0x${string}`,
+    const makeSessionWithActions = (chainId: number) =>
+      toSession({
+        chain: getTestChain(chainId),
+        owners: {
+          type: 'ecdsa' as const,
+          accounts: [accountA],
+          threshold: 1,
         },
-      ],
-    })
+        permissions: explicitPermissions,
+      })
 
     const signers: SessionSignerSet = {
       type: 'experimental_session',
       sessions: {
         [base.id]: {
-          session: makeSessionWithActions(base.id) as any,
+          session: makeSessionWithActions(base.id),
           enableData: makeEnableData(),
         },
         [arbitrum.id]: {
-          session: makeSessionWithActions(arbitrum.id) as any,
+          session: makeSessionWithActions(arbitrum.id),
           enableData: makeEnableData(),
         },
       },
@@ -545,7 +545,6 @@ describe('prepareTransactionAsIntent — preClaimExecutions', () => {
       [{ address: zeroAddress, amount: 1n }],
       undefined,
       false,
-      undefined,
       undefined,
       undefined,
       undefined,

@@ -72,9 +72,14 @@ import {
   getWebAuthnValidator,
   supportsEip712,
 } from '../modules/validators/core'
-import type { Permit2ClaimMessage } from '../modules/validators/policies/claim/permit2'
-import { buildPermit2ClaimPolicyCalldata } from '../modules/validators/policies/claim/permit2'
-import type { ResolvedSessionSignerSet } from '../modules/validators/smart-sessions'
+import {
+  buildPermit2ClaimPolicyCalldata,
+  type Permit2ClaimMessage,
+} from '../modules/validators/policies/claim/permit2'
+import {
+  type ResolvedSessionSignerSet,
+  resolvePermit2ClaimPolicy,
+} from '../modules/validators/smart-sessions'
 import {
   type Execution,
   getOrchestrator,
@@ -154,9 +159,10 @@ async function resolveSignersForChain(
     config.useDevContracts,
   )
   const enableData = enabled ? undefined : resolved.enableData
-  const hasExplicitActions = !!resolved.session.actions?.length
   const verifyExecutions =
-    resolved.verifyExecutions ?? signers.verifyExecutions ?? hasExplicitActions
+    resolved.verifyExecutions ??
+    signers.verifyExecutions ??
+    resolved.session.hasExplicitPermissions
   return {
     type: 'experimental_session',
     session: resolved.session,
@@ -245,7 +251,6 @@ async function prepareTransaction(
     settlementLayers,
     sourceAssets,
     feeAsset,
-    lockFunds,
     auxiliaryFunds,
     account,
     recipient,
@@ -274,7 +279,6 @@ async function prepareTransaction(
     settlementLayers,
     sourceAssets,
     feeAsset,
-    lockFunds,
     auxiliaryFunds,
     account,
     signers,
@@ -730,7 +734,6 @@ function getTransactionParams(transaction: Transaction) {
   const settlementLayers = transaction.settlementLayers
   const sourceAssets = transaction.sourceAssets
   const feeAsset = transaction.feeAsset
-  const lockFunds = transaction.lockFunds
   const auxiliaryFunds = transaction.auxiliaryFunds
   const account = transaction.experimental_accountOverride
   const recipient = transaction.recipient
@@ -748,7 +751,6 @@ function getTransactionParams(transaction: Transaction) {
     settlementLayers,
     sourceAssets,
     feeAsset,
-    lockFunds,
     auxiliaryFunds,
     account,
     recipient,
@@ -857,7 +859,6 @@ async function prepareTransactionAsIntent(
   settlementLayers: SettlementLayer[] | undefined,
   sourceAssets: SourceAssetInput | undefined,
   feeAsset: Address | TokenSymbol | undefined,
-  lockFunds: boolean | undefined,
   auxiliaryFunds: AuxiliaryFunds | undefined,
   account:
     | {
@@ -957,7 +958,6 @@ async function prepareTransactionAsIntent(
     destinationGasUnits: gasLimit,
     accountAccessList,
     options: {
-      topupCompact: lockFunds ?? false,
       feeToken: feeAsset,
       sponsorSettings: sponsored
         ? typeof sponsored === 'object'
@@ -1227,7 +1227,7 @@ function resolveClaimPolicyData<
 ): Hex | undefined {
   if (
     parameters.primaryType !== 'PermitBatchWitnessTransferFrom' ||
-    !signers.session.claimPolicies?.length
+    !signers.session.claimPolicies.length
   ) {
     return undefined
   }
@@ -1242,7 +1242,7 @@ function resolveClaimPolicyData<
     return undefined
   }
   return buildPermit2ClaimPolicyCalldata(
-    signers.session.claimPolicies[0],
+    resolvePermit2ClaimPolicy(signers.session.claimPolicies[0]),
     parameters.message as unknown as Permit2ClaimMessage,
   )
 }

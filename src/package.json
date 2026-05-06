@@ -1,6 +1,6 @@
 {
   "name": "@rhinestone/sdk",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.3",
   "description": "End-to-end chain abstraction and modularity toolkit",
   "author": {
     "name": "Rhinestone",
@@ -22,10 +22,6 @@
     "./actions": {
       "types": "./dist/src/actions/index.d.ts",
       "import": "./dist/src/actions/index.js"
-    },
-    "./actions/compact": {
-      "types": "./dist/src/actions/compact.d.ts",
-      "import": "./dist/src/actions/compact.js"
     },
     "./actions/ecdsa": {
       "types": "./dist/src/actions/ecdsa.d.ts",

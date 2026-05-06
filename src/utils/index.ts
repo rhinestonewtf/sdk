@@ -3,6 +3,7 @@ import { toAccount } from 'viem/accounts'
 import { getAddress, getInitCode, getV0InitCode } from '../accounts'
 import { getSetup as experimental_getModuleSetup } from '../modules'
 import type { RhinestoneAccountConfig } from '../types'
+import { walletClientToAccount, wrapParaAccount } from './walletClient'
 
 function experimental_getV0InitData(config: RhinestoneAccountConfig): {
   address: Address
@@ -78,4 +79,6 @@ export {
   experimental_getModuleSetup,
   experimental_getRhinestoneInitData,
   toViewOnlyAccount,
+  walletClientToAccount,
+  wrapParaAccount,
 }

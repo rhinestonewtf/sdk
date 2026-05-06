@@ -5,6 +5,23 @@
     "@rhinestone/sdk": "1.5.0"
   },
   "changesets": [
+    "blanc-client",
+    "blanc-orphaned-helpers",
+    "blanc-portfolio-per-chain-decimals",
+    "blanc-submit-pipeline",
+    "drop-compact-bound-fields",
+    "drop-passport-account",
+    "drop-preconfirmations",
+    "drop-send-transaction",
+    "dummy-preclaim-fallback-target",
+    "portfolio-amount",
+    "quote-selection-target-execution",
+    "quote-selection",
+    "remove-fee-token",
+    "retry-after-polling",
+    "session-permissions-api",
+    "submit-transaction-options",
+    "trim-public-exports",
     "v2-beta-prereq"
   ]
 }

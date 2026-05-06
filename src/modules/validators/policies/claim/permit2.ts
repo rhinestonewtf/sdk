@@ -9,7 +9,6 @@ import {
   maxUint256,
   toHex,
 } from 'viem'
-import type { Permit2ClaimPolicy } from '../../../../types'
 import {
   ANY_ADDRESS,
   FIELD_ARBITER,
@@ -21,6 +20,17 @@ import {
   FIELD_TOKEN_OUT,
   MODE_CHECK_STORAGE,
 } from './types'
+
+interface InternalPermit2ClaimPolicy {
+  type: 'permit2-claim'
+  arbiters?: Address[]
+  tokensIn?: { chainId: number; token: Address }[]
+  tokensOut?: { chainId: number; token: Address }[]
+  recipients?: { chainId: number; recipient: Address | 'any' }[]
+  recipientIsSponsor?: boolean
+  expiryBounds?: { min?: bigint; max?: bigint }
+  fillExpiryBounds?: { chainId: number; min?: bigint; max?: bigint }[]
+}
 
 // EIP-712 type definitions for Permit2/Mandate struct encoding.
 // Note: the token-out struct is named 'Token' in the Solidity contract (matching the
@@ -172,7 +182,7 @@ function encodeTokenEntry(token: Address, amount: bigint): Hex {
  *
  */
 export function buildPermit2ClaimPolicyCalldata(
-  policy: Permit2ClaimPolicy,
+  policy: InternalPermit2ClaimPolicy,
   message: Permit2ClaimMessage,
 ): Hex {
   const tokenInEnabled = !!policy.tokensIn?.length
@@ -255,7 +265,7 @@ export const PERMIT2_CLAIM_POLICY_ADDRESS: Address =
   '0x62E3588C6d861C9f986E82EC3757434EDF16ce91'
 
 export function encodePermit2ClaimPolicyInitData(
-  policy: Permit2ClaimPolicy,
+  policy: InternalPermit2ClaimPolicy,
 ): Hex {
   let modeConfig = 0
 
@@ -348,3 +358,5 @@ export function encodePermit2ClaimPolicyInitData(
 
   return concat(parts)
 }
+
+export type { InternalPermit2ClaimPolicy }

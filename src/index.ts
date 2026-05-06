@@ -21,13 +21,10 @@ import {
   setup as setupInternal,
   signEip7702InitData as signEip7702InitDataInternal,
 } from './accounts'
-import { walletClientToAccount, wrapParaAccount } from './accounts/walletClient'
-import { deployAccountsForOwners } from './actions/deployment'
 import { type AuthProvider, createAuthProvider } from './auth/provider'
 import {
   getIntentStatus as getIntentStatusInternal,
   getPortfolio as getPortfolioInternal,
-  sendTransaction as sendTransactionInternal,
   sendUserOperation as sendUserOperationInternal,
   splitIntents as splitIntentsInternal,
   type TransactionResult,
@@ -35,11 +32,6 @@ import {
   type UserOperationResult,
   waitForExecution as waitForExecutionInternal,
 } from './execution'
-import {
-  checkERC20AllowanceDirect,
-  checkERC20Allowance as checkERC20AllowanceInternal,
-  getPermit2Address,
-} from './execution/permit2'
 import {
   getTransactionMessages as getTransactionMessagesInternal,
   type PreparedQuotes,
@@ -73,22 +65,18 @@ import {
   isSessionEnabled as isSessionEnabledInternal,
   type SessionDetails,
 } from './modules/validators/smart-sessions'
-import {
-  type ApprovalRequired,
-  type AuxiliaryFunds,
-  type BridgeFill,
-  getAllSupportedChainsAndTokens,
-  getSupportedTokens,
-  getTokenAddress,
-  getTokenDecimals,
-  type IntentInput,
-  type IntentOpStatus,
-  type Portfolio,
-  type SettlementLayer,
-  type SplitIntentsInput,
-  type SplitIntentsResult,
-  type TokenRequirements,
-  type WrapRequired,
+import type {
+  ApprovalRequired,
+  AuxiliaryFunds,
+  BridgeFill,
+  IntentInput,
+  IntentOpStatus,
+  Portfolio,
+  SettlementLayer,
+  SplitIntentsInput,
+  SplitIntentsResult,
+  TokenRequirements,
+  WrapRequired,
 } from './orchestrator'
 import type {
   AccountProviderConfig,
@@ -100,7 +88,10 @@ import type {
   MultiFactorValidatorConfig,
   OwnableValidatorConfig,
   OwnerSet,
+  ParamConstraint,
   PaymasterConfig,
+  Permission,
+  PermissionFunctionConfig,
   Permit2ClaimPolicy,
   Policy,
   ProviderConfig,
@@ -109,6 +100,7 @@ import type {
   RhinestoneConfig,
   RhinestoneSDKConfig,
   Session,
+  SessionDefinition,
   SignerSet,
   TokenRequest,
   TokenSymbol,
@@ -117,6 +109,16 @@ import type {
   UserOperationTransaction,
   WebauthnValidatorConfig,
 } from './types'
+
+interface SubmitTransactionOptions {
+  authorizations?: SignedAuthorizationList
+  /**
+   * When `true`, the orchestrator validates the intent without executing it
+   * onchain. Internal use only; the `internal_` prefix marks it as not part
+   * of the supported public API.
+   */
+  internal_dryRun?: boolean
+}
 
 interface RhinestoneAccount {
   config: RhinestoneAccountConfig
@@ -164,10 +166,8 @@ interface RhinestoneAccount {
   ) => Promise<Hex>
   submitTransaction: (
     signedTransaction: SignedTransactionData,
-    authorizations?: SignedAuthorizationList,
-    dryRun?: boolean,
+    options?: SubmitTransactionOptions,
   ) => Promise<TransactionResult>
-  sendTransaction: (transaction: Transaction) => Promise<TransactionResult>
   prepareUserOperation: (
     transaction: UserOperationTransaction,
   ) => Promise<PreparedUserOperationData>
@@ -180,14 +180,8 @@ interface RhinestoneAccount {
   sendUserOperation: (
     transaction: UserOperationTransaction,
   ) => Promise<UserOperationResult>
-  waitForExecution(
-    result: TransactionResult,
-    acceptsPreconfirmations?: boolean,
-  ): Promise<TransactionStatus>
-  waitForExecution(
-    result: UserOperationResult,
-    acceptsPreconfirmations?: boolean,
-  ): Promise<UserOperationReceipt>
+  waitForExecution(result: TransactionResult): Promise<TransactionStatus>
+  waitForExecution(result: UserOperationResult): Promise<UserOperationReceipt>
   getAddress: () => Address
   getPortfolio: (onTestnets?: boolean) => Promise<Portfolio>
   experimental_getSessionDetails: (
@@ -201,7 +195,6 @@ interface RhinestoneAccount {
   } | null>
   getValidators: (chain: Chain) => Promise<Address[]>
   getExecutors: (chain: Chain) => Promise<Address[]>
-  checkERC20Allowance: (tokenAddress: Address, chain: Chain) => Promise<bigint>
 }
 
 /**
@@ -368,22 +361,21 @@ async function createRhinestoneAccount(
   /**
    * Submit a transaction
    * @param signedTransaction Signed transaction data
-   * @param authorizations EIP-7702 authorizations to submit (optional)
+   * @param options Optional submission options
+   * @param options.authorizations EIP-7702 authorizations to submit
    * @returns transaction result object (a UserOp hash)
    * @see {@link signTransaction} to sign the transaction data
    * @see {@link signAuthorizations} to sign the required EIP-7702 authorizations
-   * @see {@link dryRun} true when intent is not executed onchain (internal use only)
    */
   function submitTransaction(
     signedTransaction: SignedTransactionData,
-    authorizations?: SignedAuthorizationList,
-    dryRun?: boolean,
+    options?: SubmitTransactionOptions,
   ) {
     return submitTransactionInternal(
       config,
       signedTransaction,
-      authorizations ?? [],
-      dryRun,
+      options?.authorizations ?? [],
+      options?.internal_dryRun ?? false,
     )
   }
 
@@ -416,15 +408,6 @@ async function createRhinestoneAccount(
   }
 
   /**
-   * Sign and send a transaction
-   * @param transaction Transaction to send
-   * @returns transaction result object (an intent ID)
-   */
-  function sendTransaction(transaction: Transaction) {
-    return sendTransactionInternal(config, transaction)
-  }
-
-  /**
    * Sign and send a user operation
    * @param transaction User operation to send
    * @returns user operation result object (a UserOp hash)
@@ -436,22 +419,16 @@ async function createRhinestoneAccount(
   /**
    * Wait for the transaction execution onchain
    * @param result transaction result object
-   * @param acceptsPreconfirmations whether to accept preconfirmations from relayers before the transaction lands onchain (enabled by default)
    * @returns intent result or a UserOp receipt
    */
   function waitForExecution(
     result: TransactionResult,
-    acceptsPreconfirmations?: boolean,
   ): Promise<TransactionStatus>
   function waitForExecution(
     result: UserOperationResult,
-    acceptsPreconfirmations?: boolean,
   ): Promise<UserOperationReceipt>
-  function waitForExecution(
-    result: TransactionResult | UserOperationResult,
-    acceptsPreconfirmations = true,
-  ) {
-    return waitForExecutionInternal(config, result, acceptsPreconfirmations)
+  function waitForExecution(result: TransactionResult | UserOperationResult) {
+    return waitForExecutionInternal(config, result)
   }
 
   /**
@@ -522,19 +499,6 @@ async function createRhinestoneAccount(
     return signEnableSessionInternal(config, details)
   }
 
-  /**
-   * Check ERC20 allowance for the account owner and token (using Permit2 as spender)
-   * @param tokenAddress The token contract address
-   * @param chain The chain to check the allowance on
-   * @returns The allowance amount
-   */
-  function checkERC20Allowance(tokenAddress: Address, chain: Chain) {
-    if (!config.provider) {
-      throw new Error('Provider configuration is required')
-    }
-    return checkERC20AllowanceInternal(tokenAddress, chain, config)
-  }
-
   return {
     config,
     deploy,
@@ -551,7 +515,6 @@ async function createRhinestoneAccount(
     prepareUserOperation,
     signUserOperation,
     submitUserOperation,
-    sendTransaction,
     sendUserOperation,
     waitForExecution,
     getAddress,
@@ -562,7 +525,6 @@ async function createRhinestoneAccount(
     experimental_getSessionDetails,
     experimental_isSessionEnabled,
     experimental_signEnableSession,
-    checkERC20Allowance,
     getInitData,
   }
 }
@@ -622,22 +584,11 @@ class RhinestoneSDK {
 export {
   RhinestoneSDK,
   createRhinestoneAccount,
-  deployAccountsForOwners,
-  walletClientToAccount,
-  wrapParaAccount,
   // Validator addresses
   OWNABLE_VALIDATOR_ADDRESS,
   WEBAUTHN_VALIDATOR_ADDRESS,
   MULTI_FACTOR_VALIDATOR_ADDRESS,
   SMART_SESSION_EMISSARY_ADDRESS,
-  // Registry functions
-  getSupportedTokens,
-  getTokenAddress,
-  getTokenDecimals,
-  getAllSupportedChainsAndTokens,
-  // Permit2 helpers
-  checkERC20AllowanceDirect,
-  getPermit2Address,
 }
 export type {
   RhinestoneAccount,
@@ -659,7 +610,11 @@ export type {
   SignerSet,
   ChainSessionConfig,
   Session,
+  SessionDefinition,
   Recovery,
+  Permission,
+  PermissionFunctionConfig,
+  ParamConstraint,
   Policy,
   Permit2ClaimPolicy,
   UniversalActionPolicyParamCondition,

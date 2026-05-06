@@ -138,7 +138,7 @@ const account = await rhinestone.createAccount({
 Send a crosschain transaction:
 
 ```ts
-const transaction = await account.sendTransaction({
+const prepared = await account.prepareTransaction({
   sourceChains: [baseSepolia],
   targetChain: arbitrumSepolia,
   calls: [
@@ -155,7 +155,48 @@ const transaction = await account.sendTransaction({
   tokenRequests: [{ address: 'USDC', amount }],
 })
 
+const signed = await account.signTransaction(prepared)
+const transaction = await account.submitTransaction(signed)
 const result = await account.waitForExecution(transaction)
+```
+
+Create a smart session from ABI-driven permissions:
+
+```ts
+import { toSession } from '@rhinestone/sdk/smart-sessions'
+
+const session = toSession({
+  chain: base,
+  owners: {
+    type: 'ecdsa',
+    accounts: [sessionSigner],
+  },
+  permissions: [
+    {
+      abi: erc20Abi,
+      address: usdc,
+      functions: {
+        transfer: {
+          params: {
+            recipient: { condition: 'equal', value: recipient },
+            amount: { condition: 'lessThanOrEqual', value: 1000n },
+          },
+        },
+      },
+    },
+  ],
+  claimPolicies: [
+    {
+      type: 'permit2',
+      spenders: [permit2Spender],
+      sourceTokens: [{ chain: base, address: usdc }],
+      destinationTokens: [{ chain: optimism, address: usdc }],
+      recipients: [{ chain: optimism, address: recipient }],
+      permitDeadline: { max: permitDeadline },
+      fillDeadline: [{ chain: optimism, max: fillDeadline }],
+    },
+  ],
+})
 ```
 
 For a complete walkthrough, see the [Quickstart guide](https://docs.rhinestone.dev/smart-wallet/quickstart).

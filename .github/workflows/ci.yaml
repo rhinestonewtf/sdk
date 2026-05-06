@@ -28,6 +28,9 @@ jobs:
       - name: Typecheck
         run: bun run typecheck
 
+      - name: Type tests
+        run: bun run test:types
+
   test:
     needs: ["build"]
     runs-on: "ubuntu-latest"

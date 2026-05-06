@@ -11,10 +11,8 @@ import {
   size,
   type TypedData,
   zeroAddress,
-  zeroHash,
 } from 'viem'
 import {
-  sendTransaction,
   sendTransactionInternal,
   sendUserOperationInternal,
   type TransactionResult,
@@ -74,11 +72,6 @@ import {
   signEip7702InitData as signNexusEip7702InitData,
 } from './nexus'
 import {
-  getAddress as getPassportAddress,
-  getInstallData as getPassportInstallData,
-  packSignature as packPassportSignature,
-} from './passport'
-import {
   getAddress as getSafeAddress,
   getDeployArgs as getSafeDeployArgs,
   getEip712Domain as getSafeEip712Domain,
@@ -122,17 +115,6 @@ function getDeployArgs(config: RhinestoneConfig) {
     }
     case 'startale': {
       return getStartaleDeployArgs(config)
-    }
-    case 'passport': {
-      // Mocked data; will be overridden by the actual deploy args
-      return {
-        factory: zeroAddress,
-        factoryData: zeroHash,
-        salt: zeroHash,
-        implementation: zeroAddress,
-        initializationCallData: '0x',
-        initData: '0x',
-      }
     }
     case 'eoa': {
       throw new Error('EOA accounts do not have deploy args')
@@ -282,9 +264,6 @@ function getModuleInstallationCalls(
       case 'startale': {
         return [getStartaleInstallData(module)]
       }
-      case 'passport': {
-        return [getPassportInstallData(module)]
-      }
       case 'eoa': {
         throw new ModuleInstallationNotSupportedError(account.type)
       }
@@ -354,9 +333,6 @@ function getAddress(config: RhinestoneConfig) {
     case 'startale': {
       return getStartaleAddress(config)
     }
-    case 'passport': {
-      return getPassportAddress(config)
-    }
     case 'eoa': {
       if (!config.eoa) {
         throw new AccountError({
@@ -413,10 +389,6 @@ async function getEip1271Signature(
         transformSignature,
         defaultValidatorAddress,
       )
-    }
-    case 'passport': {
-      const signature = await signFn(hash)
-      return packPassportSignature(signature, validator, transformSignature)
     }
     case 'kernel': {
       const signature = await signFn(wrapKernelMessageHash(hash, address))
@@ -490,10 +462,6 @@ async function getTypedDataPackedSignature<
         transformSignature,
         defaultValidatorAddress,
       )
-    }
-    case 'passport': {
-      const signature = await signFn(parameters)
-      return packPassportSignature(signature, validator, transformSignature)
     }
     case 'kernel': {
       const address = getAddress(config)
@@ -646,7 +614,7 @@ async function setup(config: RhinestoneConfig, chain: Chain): Promise<boolean> {
   } else {
     result = await sendUserOperationInternal(config, chain, calls)
   }
-  await waitForExecution(config, result, true)
+  await waitForExecution(config, result)
   return true
 }
 
@@ -673,14 +641,12 @@ async function deployWithIntent(
     initSignature = await signEip7702InitData(config)
   }
 
-  const result = await sendTransaction(config, {
-    sourceChains: [chain],
-    targetChain: chain,
-    calls: [],
+  const result = await sendTransactionInternal(config, [chain], chain, {
+    callInputs: [],
     sponsored,
     eip7702InitSignature: initSignature,
   })
-  await waitForExecution(config, result, true)
+  await waitForExecution(config, result)
 }
 
 async function deployWithBundler(chain: Chain, config: RhinestoneConfig) {

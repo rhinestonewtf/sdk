@@ -1,9 +1,9 @@
-import type { Account, Address, Chain, Hex } from 'viem'
+import type { Abi, AbiFunction, Account, Address, Chain, Hex } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
 import type { ModuleType } from './modules/common'
 import type { AuxiliaryFunds, SettlementLayer } from './orchestrator/types'
 
-type AccountType = 'safe' | 'nexus' | 'kernel' | 'startale' | 'passport' | 'eoa'
+type AccountType = 'safe' | 'nexus' | 'kernel' | 'startale' | 'eoa'
 
 interface SafeAccount {
   type: 'safe'
@@ -29,10 +29,6 @@ interface StartaleAccount {
   salt?: Hex
 }
 
-interface PassportAccount {
-  type: 'passport'
-}
-
 interface EoaAccount {
   type: 'eoa'
 }
@@ -42,7 +38,6 @@ type AccountProviderConfig =
   | NexusAccount
   | KernelAccount
   | StartaleAccount
-  | PassportAccount
   | EoaAccount
 
 interface OwnableValidatorConfig {
@@ -169,21 +164,21 @@ interface IntentExecutionPolicy {
 }
 
 interface Permit2ClaimPolicy {
-  type: 'permit2-claim'
+  type: 'permit2'
   /** Whitelisted Permit2 spender addresses */
-  arbiters?: Address[]
+  spenders?: Address[]
   /** Permitted input tokens per origin chain */
-  tokensIn?: { chainId: number; token: Address }[]
+  sourceTokens?: { chain: Chain; address: Address }[]
   /** Permitted output tokens per destination chain */
-  tokensOut?: { chainId: number; token: Address }[]
+  destinationTokens?: { chain: Chain; address: Address }[]
   /** Permitted recipients per destination chain (use `'any'` to allow all) */
-  recipients?: { chainId: number; recipient: Address | 'any' }[]
-  /** Enforce that recipient === sponsor (bridge-to-self) */
-  recipientIsSponsor?: boolean
-  /** Deadline bounds (min/max unix timestamps) */
-  expiryBounds?: { min?: bigint; max?: bigint }
-  /** Fill expiry bounds per destination chain */
-  fillExpiryBounds?: { chainId: number; min?: bigint; max?: bigint }[]
+  recipients?: { chain: Chain; address: Address | 'any' }[]
+  /** Enforce that the destination recipient is the smart account */
+  recipientIsAccount?: boolean
+  /** Bounds for the Permit2 signature deadline */
+  permitDeadline?: { min?: bigint; max?: bigint }
+  /** Bounds for the mandate target fill deadline, per destination chain */
+  fillDeadline?: { chain: Chain; min?: bigint; max?: bigint }[]
 }
 
 type Policy =
@@ -195,26 +190,134 @@ type Policy =
   | ValueLimitPolicy
   | IntentExecutionPolicy
 
+/** @internal */
 interface FallbackAction {
   policies?: Policy[]
 }
 
+/** @internal */
 interface ScopedAction {
   target: Address
   selector: Hex
   policies?: Policy[]
 }
 
+/** @internal */
 type Action = FallbackAction | ScopedAction
 
-interface SessionInput {
-  owners: OwnerSet
-  actions?: Action[]
-  claimPolicies?: [Permit2ClaimPolicy]
+/** Extract function names from an ABI. */
+type FunctionNames<TAbi extends Abi> = Extract<
+  TAbi[number],
+  { type: 'function' }
+>['name']
+
+/** Pull the AbiFunction entry for a given name (union if overloaded). */
+type GetFunction<TAbi extends Abi, TName extends string> = Extract<
+  TAbi[number],
+  { type: 'function'; name: TName }
+>
+
+/**
+ * Map a Solidity type string to the TypeScript value a developer provides as
+ * `value` in a param constraint. Dynamic types resolve to `never` so the
+ * compiler prevents rules on params the on-chain policy cannot compare.
+ */
+type AbiTypeToValue<T extends string> = T extends 'address'
+  ? Address
+  : T extends 'bool'
+    ? boolean
+    : T extends `uint${string}`
+      ? bigint
+      : T extends `int${string}`
+        ? bigint
+        : T extends `bytes${infer N}`
+          ? N extends ''
+            ? never
+            : Hex
+          : never
+
+type ParamValue<
+  TFn extends AbiFunction,
+  TParamName extends string,
+> = AbiTypeToValue<Extract<TFn['inputs'][number], { name: TParamName }>['type']>
+
+type NamedInputs<TFn extends AbiFunction> = Extract<
+  TFn['inputs'][number],
+  { name: string }
+>
+
+interface ParamConstraint<TValue> {
+  condition: UniversalActionPolicyParamCondition
+  value: TValue
+  usageLimit?: bigint
 }
 
-interface Session extends SessionInput {
+interface PermissionFunctionConfig<TFn extends AbiFunction> {
+  policies?: Policy[]
+  valueLimitPerUse?: bigint
+  params?: {
+    [K in NamedInputs<TFn>['name']]?: ParamConstraint<ParamValue<TFn, K>>
+  }
+}
+
+interface Permission<TAbi extends Abi = Abi> {
+  abi: TAbi
+  address: Address
+  functions: {
+    [K in FunctionNames<TAbi>]?: PermissionFunctionConfig<
+      GetFunction<TAbi, K> & AbiFunction
+    >
+  }
+}
+
+type PermissionsForAbis<TAbis extends readonly Abi[]> = {
+  [K in keyof TAbis]: TAbis[K] extends Abi ? Permission<TAbis[K]> : never
+}
+
+interface SessionDefinition<TAbis extends readonly Abi[] = readonly Abi[]> {
   chain: Chain
+  owners: OwnerSet
+  permissions?: readonly [...PermissionsForAbis<TAbis>]
+  claimPolicies?: readonly Permit2ClaimPolicy[]
+}
+
+type SessionInput<TAbis extends readonly Abi[] = readonly Abi[]> = Omit<
+  SessionDefinition<TAbis>,
+  'chain'
+>
+
+interface ResolvedERC7739Content {
+  appDomainSeparator: Hex
+  contentNames: readonly string[]
+}
+
+interface ResolvedPolicy {
+  policy: Address
+  initData: Hex
+}
+
+interface ResolvedERC7739Policies {
+  allowedERC7739Content: readonly ResolvedERC7739Content[]
+  erc1271Policies: readonly ResolvedPolicy[]
+}
+
+interface ResolvedAction {
+  actionTargetSelector: Hex
+  actionTarget: Address
+  actionPolicies: readonly ResolvedPolicy[]
+}
+
+interface Session {
+  chain: Chain
+  owners: OwnerSet
+  hasExplicitPermissions: boolean
+  permissionId: Hex
+  sessionValidator: Address
+  sessionValidatorInitData: Hex
+  salt: Hex
+  erc7739Policies: ResolvedERC7739Policies
+  actions: readonly ResolvedAction[]
+  claimPolicies: readonly Permit2ClaimPolicy[]
 }
 
 interface Recovery {
@@ -449,7 +552,6 @@ interface BaseTransaction {
   sourceAssets?: SourceAssetInput
   feeAsset?: Address | TokenSymbol
   settlementLayers?: SettlementLayer[]
-  lockFunds?: boolean
   auxiliaryFunds?: AuxiliaryFunds
   experimental_accountOverride?: {
     setupOps?: {
@@ -483,7 +585,6 @@ export type {
   NexusAccount,
   KernelAccount,
   StartaleAccount,
-  PassportAccount,
   EoaAccount,
   RhinestoneAccountConfig,
   RhinestoneSDKConfig,
@@ -514,13 +615,24 @@ export type {
   SingleSessionSignerSet,
   PerChainSessionSignerSet,
   SessionSignerSet,
-  Action,
+  SessionDefinition,
   SessionInput,
   SessionEnableData,
   Session,
   Recovery,
   ModuleType,
   ModuleInput,
+  Action,
+  ScopedAction,
+  FallbackAction,
+  Permission,
+  PermissionsForAbis,
+  PermissionFunctionConfig,
+  ParamConstraint,
+  ResolvedAction,
+  ResolvedERC7739Content,
+  ResolvedERC7739Policies,
+  ResolvedPolicy,
   Policy,
   Permit2ClaimPolicy,
   UniversalActionPolicyParamCondition,
