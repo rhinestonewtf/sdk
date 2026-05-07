@@ -33,6 +33,21 @@ Docs: https://docs.rhinestone.dev/smart-wallet
 - `/src/orchestrator` - Rhinestone API client
 - `/test` - Integration tests
 
+## Branching
+
+The SDK uses three long-lived branches while v2 stabilizes:
+
+- `main` — dev releases for **v1** SDK
+- `release` — beta releases for **v2** SDK
+- `v1` — prod releases for **v1** SDK
+
+Where to open PRs:
+
+- **v2 changes** → target `release`
+- **Bug fixes for existing users** → target `main` (will be ported to v1/v2 as needed)
+
+Once v2 is stable, we'll switch back to the standard `main` (dev) / `release` (prod) flow.
+
 ## Patterns
 
 - Use viem types for addresses, chains, and hex values
