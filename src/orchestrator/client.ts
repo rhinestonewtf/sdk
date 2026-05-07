@@ -10,6 +10,7 @@ import {
 import type {
   AccountAccessList,
   AuxiliaryFunds,
+  BridgeFill,
   Cost,
   CostTokenEntry,
   IntentInput,
@@ -335,8 +336,14 @@ function decodeQuote(route: any): Quote {
     tokenRequirements: route.tokenRequirements
       ? decodeTokenRequirements(route.tokenRequirements)
       : undefined,
-    bridgeFill: route.bridgeFill,
+    bridgeFill: decodeBridgeFill(route.bridgeFill),
   }
+}
+
+// Normalizes CAIP-2 strings to numeric IDs for consistency with BridgeFill decodeCostTokenEntry, and getIntent
+function decodeBridgeFill(bf: any): BridgeFill | undefined {
+  if (!bf) return undefined
+  return { ...bf, destinationChainId: parseChainId(bf.destinationChainId) }
 }
 
 function decodeCost(cost: any): Cost {
