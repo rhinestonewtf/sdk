@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 2.0.0-beta.6
+
+### Patch Changes
+
+- 20bb8e3: Add soneium usdt support
+
 ## 2.0.0-beta.5
 
 ### Patch Changes
