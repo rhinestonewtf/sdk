@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 2.0.0-beta.5
+
+### Patch Changes
+
+- db826fe: Fix BridgeFill.destinationChainId type
+
 ## 2.0.0-beta.4
 
 ### Patch Changes
