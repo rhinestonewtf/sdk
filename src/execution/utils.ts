@@ -200,6 +200,7 @@ interface TransactionResult {
   id: string
   sourceChains?: number[]
   targetChain: number
+  expiresAt: number
 }
 
 interface PreparedQuotes {
@@ -1483,6 +1484,7 @@ async function submitIntentInternal(
     id: response.intentId,
     sourceChains: sourceChains?.map((chain) => chain.id),
     targetChain: targetChain.id,
+    expiresAt: quote.expiresAt,
   }
 }
 
