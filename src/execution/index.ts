@@ -58,7 +58,6 @@ import {
 const POLL_INITIAL_MS = 500
 const POLL_SLOW_AFTER_MS = 15000
 const POLL_SLOW_MS = 2000
-const POLL_EXPIRY_GRACE_MS = 5000
 const POLL_ERROR_BACKOFF_MS = 1000
 const POLL_ERROR_BACKOFF_MAX_MS = 10000
 
@@ -262,7 +261,7 @@ async function waitForExecution(
     case 'intent': {
       let intentStatus: IntentOpStatus | null = null
       const startTs = Date.now()
-      const deadlineMs = result.expiresAt * 1000 + POLL_EXPIRY_GRACE_MS
+      const deadlineMs = result.expiresAt * 1000
       let nextDelayMs = POLL_INITIAL_MS
       let errorBackoffMs = POLL_ERROR_BACKOFF_MS
       while (intentStatus === null || !validStatuses.has(intentStatus.status)) {
