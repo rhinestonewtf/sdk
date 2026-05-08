@@ -96,7 +96,7 @@ class IntentExpiredError extends ExecutionError {
     traceId?: string
   }) {
     super({
-      message: 'Intent expired before reaching a terminal status',
+      message: 'Intent expired before being filled',
       ...params,
     })
   }
