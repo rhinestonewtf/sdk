@@ -15,6 +15,7 @@ import {
 import {
   ExecutionError,
   IntentFailedError,
+  InvalidSourceCallsError,
   isExecutionError,
   OrderPathRequiredForIntentsError,
   SessionChainRequiredError,
@@ -71,6 +72,7 @@ export {
   isExecutionError,
   ExecutionError,
   IntentFailedError,
+  InvalidSourceCallsError,
   OrderPathRequiredForIntentsError,
   SessionChainRequiredError,
   SignerNotSupportedError,

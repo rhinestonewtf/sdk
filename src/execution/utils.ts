@@ -123,6 +123,7 @@ import type {
 import { getCompactTypedData } from './compact'
 import {
   Eip7702InitSignatureRequiredError,
+  InvalidSourceCallsError,
   SignerNotSupportedError,
 } from './error'
 import { getTypedData as getPermit2TypedData } from './permit2'
@@ -238,6 +239,7 @@ async function prepareTransaction(
     auxiliaryFunds,
     account,
     recipient,
+    sourceCalls,
   } = getTransactionParams(transaction)
   const accountAddress = getAddress(config)
 
@@ -267,6 +269,7 @@ async function prepareTransaction(
     auxiliaryFunds,
     account,
     signers,
+    sourceCalls,
   )
 
   return {
@@ -697,6 +700,7 @@ function getTransactionParams(transaction: Transaction) {
   const auxiliaryFunds = transaction.auxiliaryFunds
   const account = transaction.experimental_accountOverride
   const recipient = transaction.recipient
+  const sourceCalls = transaction.sourceCalls
 
   const tokenRequests = getTokenRequests(targetChain, initialTokenRequests)
 
@@ -715,6 +719,7 @@ function getTransactionParams(transaction: Transaction) {
     auxiliaryFunds,
     account,
     recipient,
+    sourceCalls,
   }
 }
 
@@ -831,6 +836,7 @@ async function prepareTransactionAsIntent(
       }
     | undefined,
   signers: SignerSet | undefined,
+  sourceCalls: Record<number, CallInput[]> | undefined,
 ) {
   const calls = parseCalls(callInputs, targetChain.id)
   const accountAccessList = createAccountAccessList(sourceChains, sourceAssets)
@@ -910,6 +916,38 @@ async function prepareTransactionAsIntent(
           value: 0n,
           data: DUMMY_PRECLAIMOP_SELECTOR,
         },
+      ]
+    }
+  }
+
+  if (sourceCalls) {
+    const accountAddress = getAddress(config)
+    const allowedChainIds = new Set<number>([
+      ...(sourceChains ?? []).map((c) => c.id),
+      targetChain.id,
+    ])
+    for (const [chainIdStr, calls] of Object.entries(sourceCalls)) {
+      const chainId = Number(chainIdStr)
+      if (!allowedChainIds.has(chainId)) {
+        throw new InvalidSourceCallsError({ chainId })
+      }
+      const chain =
+        sourceChains?.find((c) => c.id === chainId) ??
+        (targetChain.id === chainId ? targetChain : undefined)
+      if (!chain) {
+        throw new InvalidSourceCallsError({ chainId })
+      }
+      const resolved = await resolveCallInputs(
+        calls,
+        config,
+        chain,
+        accountAddress,
+      )
+      const userExecutions = parseCalls(resolved, chainId)
+      if (userExecutions.length === 0) continue
+      preClaimExecutions[chainId] = [
+        ...(preClaimExecutions[chainId] ?? []),
+        ...userExecutions,
       ]
     }
   }

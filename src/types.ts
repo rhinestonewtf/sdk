@@ -441,6 +441,19 @@ type Sponsorship =
 
 interface BaseTransaction {
   calls?: CallInput[]
+  /**
+   * Per-chain executions to run on the source side, before the claim.
+   * Keyed by chain ID (must be present in `sourceChains`, or equal the
+   * target chain for same-chain transactions). Bundled into the intent
+   * at routing time and covered by the user's mandate signature.
+   *
+   * Caveat: only executes if the orchestrator creates an element on the
+   * matching chain — i.e. when the intent actually moves tokens from
+   * that source. Sponsored / no-op fills with no source movement skip
+   * the source element entirely, and `sourceCalls` keyed on that chain
+   * are silently dropped.
+   */
+  sourceCalls?: Record<number, CallInput[]>
   tokenRequests?: TokenRequests
   recipient?: RhinestoneAccountConfig | Address
   gasLimit?: bigint
