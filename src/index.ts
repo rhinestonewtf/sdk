@@ -80,7 +80,6 @@ import {
 import {
   type ApprovalRequired,
   type AuxiliaryFunds,
-  type BridgeFill,
   getAllSupportedChainsAndTokens,
   getSupportedTokens,
   getTokenAddress,
@@ -668,7 +667,6 @@ export type {
   SignedUserOperationData,
   UserOperationResult,
   AuxiliaryFunds,
-  BridgeFill,
   IntentInput,
   IntentOp,
   IntentOpStatus,

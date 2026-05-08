@@ -240,19 +240,6 @@ export interface ElementSwapOrigin {
   price: number
 }
 
-// Per-intent tracking handle for layers that hand off to a third-party bridge.
-type BridgeFill =
-  | { type: 'OFT'; destinationChainId: number }
-  | { type: 'RELAY'; destinationChainId: number; requestId: string }
-  | { type: 'NEAR'; destinationChainId: number; depositAddress: Address }
-  | { type: 'RHINO'; destinationChainId: number; commitmentId: string }
-  | {
-      type: 'CCTP'
-      destinationChainId: number
-      sourceDomainId: number
-      destinationDomainId: number
-    }
-
 interface IntentOpElementMandate {
   recipient: Address
   tokenOut: [[string, string]]
@@ -273,7 +260,6 @@ interface IntentOpElementMandate {
         exchangeRate: bigint
         overhead: bigint
       }
-      bridgeFill?: BridgeFill
     }
     encodedVal: Hex
   }
@@ -501,7 +487,6 @@ export type {
   Account,
   AccountType,
   AuxiliaryFunds,
-  BridgeFill,
   TokenConfig,
   SupportedChain,
   SettlementLayer,
