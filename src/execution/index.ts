@@ -37,6 +37,7 @@ import {
   ExecutionError,
   IntentFailedError,
   IntentStatusTimeoutError,
+  InvalidSourceCallsError,
   isExecutionError,
   OrderPathRequiredForIntentsError,
   SessionChainRequiredError,
@@ -83,6 +84,7 @@ async function sendTransaction(
     'chain' in transaction ? transaction.chain : transaction.targetChain
   const {
     calls,
+    sourceCalls,
     gasLimit,
     tokenRequests,
     recipient,
@@ -99,6 +101,7 @@ async function sendTransaction(
   }
   return await sendTransactionInternal(config, sourceChains, targetChain, {
     callInputs: calls,
+    sourceCalls,
     gasLimit,
     initialTokenRequests: tokenRequests,
     recipient,
@@ -136,6 +139,7 @@ async function sendTransactionInternal(
   targetChain: Chain,
   options: {
     callInputs?: CallInput[]
+    sourceCalls?: Record<number, CallInput[]>
     gasLimit?: bigint
     initialTokenRequests?: TokenRequest[]
     recipient?: RhinestoneAccountConfig | Address
@@ -179,6 +183,7 @@ async function sendTransactionInternal(
       options.sourceAssets,
       options.feeAsset,
       options.lockFunds,
+      options.sourceCalls,
     )
   }
 }
@@ -232,6 +237,7 @@ async function sendTransactionAsIntent(
   sourceAssets?: SourceAssetInput,
   feeAsset?: Address | TokenSymbol,
   lockFunds?: boolean,
+  sourceCalls?: Record<number, CallInput[]>,
 ) {
   const prepared = await prepareTransactionAsIntent(
     config,
@@ -250,6 +256,7 @@ async function sendTransactionAsIntent(
     undefined,
     undefined,
     signers,
+    sourceCalls,
   )
   if (!prepared) {
     throw new OrderPathRequiredForIntentsError()
@@ -461,6 +468,7 @@ export {
   ExecutionError,
   IntentFailedError,
   IntentStatusTimeoutError,
+  InvalidSourceCallsError,
   OrderPathRequiredForIntentsError,
   SessionChainRequiredError,
   SignerNotSupportedError,
