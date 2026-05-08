@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.6.0
+
+### Minor Changes
+
+- 2478841: Expose `sourceCalls` on `Transaction` so callers can supply per-chain source-side executions that are bundled into the intent at routing time.
+
 ## 1.5.1
 
 ### Patch Changes
