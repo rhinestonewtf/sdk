@@ -18,7 +18,7 @@ import {
   getSupportedChainIds,
   isTestnet,
 } from '../orchestrator/registry'
-import type { SettlementLayer } from '../orchestrator/types'
+import type { SettlementLayerFilter } from '../orchestrator/types'
 import type {
   CalldataInput,
   CallInput,
@@ -103,7 +103,7 @@ async function sendTransactionInternal(
     signers?: SignerSet
     sponsored?: Sponsorship
     eip7702InitSignature?: Hex
-    settlementLayers?: SettlementLayer[]
+    settlementLayers?: SettlementLayerFilter
     sourceAssets?: SourceAssetInput
     feeAsset?: Address | TokenSymbol
   },
@@ -187,7 +187,7 @@ async function sendTransactionAsIntent(
   signers?: SignerSet,
   sponsored?: Sponsorship,
   eip7702InitSignature?: Hex,
-  settlementLayers?: SettlementLayer[],
+  settlementLayers?: SettlementLayerFilter,
   sourceAssets?: SourceAssetInput,
   feeAsset?: Address | TokenSymbol,
 ) {

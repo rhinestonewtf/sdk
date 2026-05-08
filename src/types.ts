@@ -1,7 +1,10 @@
 import type { Abi, AbiFunction, Account, Address, Chain, Hex } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
 import type { ModuleType } from './modules/common'
-import type { AuxiliaryFunds, SettlementLayer } from './orchestrator/types'
+import type {
+  AuxiliaryFunds,
+  SettlementLayerFilter,
+} from './orchestrator/types'
 
 type AccountType = 'safe' | 'nexus' | 'kernel' | 'startale' | 'eoa'
 
@@ -551,7 +554,7 @@ interface BaseTransaction {
   eip7702InitSignature?: Hex
   sourceAssets?: SourceAssetInput
   feeAsset?: Address | TokenSymbol
-  settlementLayers?: SettlementLayer[]
+  settlementLayers?: SettlementLayerFilter
   auxiliaryFunds?: AuxiliaryFunds
   experimental_accountOverride?: {
     setupOps?: {
