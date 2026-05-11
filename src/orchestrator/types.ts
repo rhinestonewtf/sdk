@@ -69,6 +69,10 @@ type SettlementLayer =
   | 'INTENT_EXECUTOR'
   | CrossChainSettlementLayer
 
+type SettlementLayerFilter =
+  | { include: SettlementLayer[] }
+  | { exclude: SettlementLayer[] }
+
 const SIG_MODE_EMISSARY = 0
 const SIG_MODE_ERC1271 = 1
 const SIG_MODE_EMISSARY_ERC1271 = 2
@@ -93,7 +97,7 @@ type AuxiliaryFunds = {
 interface IntentOptions {
   feeToken?: Address | SupportedTokenSymbol
   sponsorSettings?: SponsorSettings
-  settlementLayers?: SettlementLayer[]
+  settlementLayers?: SettlementLayerFilter
   signatureMode?: SignatureMode
   auxiliaryFunds?: AuxiliaryFunds
 }
@@ -321,7 +325,7 @@ export type OPNetworkParams =
 interface SplitIntentsInput {
   chain: Chain
   tokens: Record<Address, bigint>
-  settlementLayers?: SettlementLayer[]
+  settlementLayers?: SettlementLayerFilter
 }
 
 interface SplitIntentsResult {
@@ -345,6 +349,7 @@ export type {
   TokenConfig,
   SupportedChain,
   SettlementLayer,
+  SettlementLayerFilter,
   SignatureMode,
   IntentInput,
   BridgeFill,
