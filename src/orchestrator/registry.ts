@@ -27,7 +27,7 @@ function getWethAddress(chain: Chain): Address {
     throw new UnsupportedTokenError('WETH', chain.id)
   }
 
-  return wethToken.address
+  return wethToken.address as Address
 }
 
 function getWrappedTokenAddress(chain: Chain): Address {
@@ -42,7 +42,7 @@ function getWrappedTokenAddress(chain: Chain): Address {
   if (!token) {
     throw new UnsupportedTokenError('WETH', chain.id)
   }
-  return token.address
+  return token.address as Address
 }
 
 function getTokenSymbol(
@@ -72,7 +72,7 @@ function getTokenAddress(tokenSymbol: TokenSymbol, chainId: number): Address {
     throw new UnsupportedTokenError(tokenSymbol, chainId)
   }
 
-  return token.address
+  return token.address as Address
 }
 
 function getTokenDecimals(tokenSymbol: TokenSymbol, chainId: number): number {
@@ -119,7 +119,10 @@ function getSupportedTokens(chainId: number): TokenConfig[] {
     throw new UnsupportedChainError(chainId)
   }
 
-  return chainEntry.tokens
+  return chainEntry.tokens.map((token) => ({
+    ...token,
+    address: token.address as Address,
+  }))
 }
 
 function getDefaultAccountAccessList(onTestnets?: boolean) {
