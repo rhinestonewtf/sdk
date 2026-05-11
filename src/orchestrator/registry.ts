@@ -26,7 +26,7 @@ function getWethAddress(chain: Chain): Address {
     throw new UnsupportedTokenError('WETH', chain.id)
   }
 
-  return wethToken.address
+  return wethToken.address as Address
 }
 
 function getWrappedTokenAddress(chain: Chain): Address {
@@ -41,7 +41,7 @@ function getWrappedTokenAddress(chain: Chain): Address {
   if (!token) {
     throw new UnsupportedTokenError('WETH', chain.id)
   }
-  return token.address
+  return token.address as Address
 }
 
 function getTokenSymbol(
@@ -71,7 +71,7 @@ function getTokenAddress(tokenSymbol: TokenSymbol, chainId: number): Address {
     throw new UnsupportedTokenError(tokenSymbol, chainId)
   }
 
-  return token.address
+  return token.address as Address
 }
 
 function getChainById(chainId: number): Chain {
