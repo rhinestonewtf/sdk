@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.6.1
+
+### Patch Changes
+
+- bb63504: Bump @rhinestone/shared-configs to pick up the RHINO settlement layer.
+
 ## 1.6.0
 
 ### Minor Changes
