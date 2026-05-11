@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 2.0.0-beta.8
+
+### Patch Changes
+
+- 10cf96b: Bump @rhinestone/shared-configs to 1.5.1
+
 ## 2.0.0-beta.7
 
 ### Major Changes
