@@ -1,5 +1,15 @@
 # @rhinestone/sdk
 
+## 2.0.0-beta.7
+
+### Major Changes
+
+- 46a197a: - `Transaction.settlementLayers` is now `{ include: SettlementLayer[] } | { exclude: SettlementLayer[] }` — you can blacklist specific layers without enumerating every other one.
+
+### Patch Changes
+
+- 4411a46: Re-export `Quote` from the main entry so consumers don't need to derive it from `PreparedQuotes['best']`
+
 ## 2.0.0-beta.6
 
 ### Patch Changes
