@@ -1,6 +1,7 @@
 import type { Abi, AbiFunction, Account, Address, Chain, Hex } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
 import type { ModuleType } from './modules/common'
+import type { DestinationChain } from './orchestrator/destinations'
 import type {
   AuxiliaryFunds,
   SettlementLayerFilter,
@@ -570,7 +571,13 @@ interface SameChainTransaction extends BaseTransaction {
 
 interface CrossChainTransaction extends BaseTransaction {
   sourceChains?: Chain[]
-  targetChain: Chain
+  /**
+   * Destination chain. EVM destinations use viem's `Chain`; non-EVM
+   * destinations (Solana, Tron) use a `DestinationChain` descriptor
+   * (e.g. `solanaMainnet`, `tronMainnet`). The origin smart account is
+   * always EVM — only the destination side widens.
+   */
+  targetChain: Chain | DestinationChain
 }
 
 interface UserOperationTransaction {

@@ -260,8 +260,17 @@ type AccountContext =
 
 interface Account {
   address: Address
-  accountType: AccountType
-  setupOps: Pick<Execution, 'to' | 'data'>[]
+  /**
+   * Account type — required for EVM accounts. Omitted for non-EVM
+   * recipients (Solana / Tron) where smart-account semantics don't apply
+   * and the orchestrator schema requires it unset.
+   */
+  accountType?: AccountType
+  /**
+   * Per-chain account-setup operations — required for EVM accounts.
+   * Omitted for non-EVM recipients for the same reason as `accountType`.
+   */
+  setupOps?: Pick<Execution, 'to' | 'data'>[]
   delegations?: Delegations
   /** Per-chain SSX mock signatures keyed by decimal chainId string. */
   mockSignatures?: Record<`${number}`, Hex>
@@ -332,13 +341,22 @@ interface SplitIntentsResult {
   intents: Record<Address, bigint>[]
 }
 
+/**
+ * Destination fill transaction hash. EVM destinations produce a 32-byte
+ * `Hex`; Solana / Tron destinations produce base58 / Tron-hex strings that
+ * don't satisfy viem's `Hex` shape. Widened to `Hex | string` here so
+ * non-EVM hashes round-trip through the SDK without lying about their
+ * format; consumers that need EVM-typed handling should narrow themselves.
+ */
+type FillTransactionHash = Hex | string
+
 interface IntentOpStatus {
   status: IntentStatus
   claims: Claim[]
   destinationChainId: number
   accountAddress: Address
   fillTimestamp?: number
-  fillTransactionHash?: Hex
+  fillTransactionHash?: FillTransactionHash
 }
 
 export type {
@@ -367,6 +385,7 @@ export type {
   IntentSubmitRequestInternal,
   IntentSubmitResponse,
   IntentOpStatus,
+  FillTransactionHash,
   IntentOptions,
   SponsorSettings,
   SignedAuthorization,

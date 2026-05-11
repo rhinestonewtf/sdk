@@ -5,6 +5,7 @@ import {
 } from '@rhinestone/shared-configs'
 import { type Address, type Chain, isAddress } from 'viem'
 import type { TokenSymbol } from '../types'
+import { isNonEvmChainId } from './caip2'
 import { UnsupportedChainError, UnsupportedTokenError } from './error'
 
 function getSupportedChainIds(): number[] {
@@ -119,6 +120,16 @@ function resolveTokenAddress(
 ): Address {
   if (isAddress(token)) {
     return token
+  }
+  // Non-EVM destinations carry SPL mints (base58) / Tron T-prefixed
+  // addresses — neither shape satisfies viem's `isAddress`. The
+  // orchestrator's wire schema accepts the raw string for non-EVM
+  // chains, so pass it through unchanged. The return type stays
+  // `Address` for now since the public `IntentInput.tokenAddress`
+  // field is still typed that way; the actual runtime value is
+  // namespace-correct.
+  if (isNonEvmChainId(chainId)) {
+    return token as unknown as Address
   }
   return getTokenAddress(token, chainId)
 }

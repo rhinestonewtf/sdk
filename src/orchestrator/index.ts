@@ -2,6 +2,12 @@ import type { AuthProvider } from '../auth/provider'
 import { Orchestrator } from './client'
 import { PROD_ORCHESTRATOR_URL, RHINESTONE_SPOKE_POOL_ADDRESS } from './consts'
 import {
+  type DestinationChain,
+  isDestinationChain,
+  solanaMainnet,
+  tronMainnet,
+} from './destinations'
+import {
   ConflictError,
   ExternalServiceTimeoutError,
   ForbiddenError,
@@ -39,6 +45,7 @@ import type {
   Execution,
   FeeBreakdown,
   Fees,
+  FillTransactionHash,
   IntentInput,
   IntentOpStatus,
   IntentOptions,
@@ -91,10 +98,12 @@ export type {
   BridgeFill,
   Cost,
   CostTokenEntry,
+  DestinationChain,
   EstimatedFillTime,
   Execution,
   FeeBreakdown,
   Fees,
+  FillTransactionHash,
   IntentInput,
   IntentOpStatus,
   IntentOptions,
@@ -120,6 +129,9 @@ export type {
   WrapRequired,
 }
 export {
+  isDestinationChain,
+  solanaMainnet,
+  tronMainnet,
   INTENT_STATUS_PENDING,
   INTENT_STATUS_EXPIRED,
   INTENT_STATUS_COMPLETED,

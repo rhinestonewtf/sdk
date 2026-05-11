@@ -88,6 +88,10 @@ import {
   type SignData,
 } from '../orchestrator'
 import {
+  type DestinationChain,
+  isDestinationChain,
+} from '../orchestrator/destinations'
+import {
   getChainById,
   getTokenAddress,
   resolveTokenAddress,
@@ -261,16 +265,31 @@ async function prepareTransaction(
   if (isUserOpSigner) {
     throw new SignerNotSupportedError()
   }
-  const prepared = await prepareTransactionAsIntent(
-    config,
-    sourceChains,
-    targetChain,
-    await resolveCallInputs(
+  // Destination calls (transaction.calls on a cross-chain transaction) are
+  // executed on the destination chain by the solver/account. For non-EVM
+  // destinations we can't resolve arbitrary EVM calls; assert there are
+  // none and route an empty list through.
+  let resolvedCalls: CalldataInput[]
+  if (isDestinationChain(targetChain)) {
+    if (transaction.calls && transaction.calls.length > 0) {
+      throw new Error(
+        `Destination calls are not supported for non-EVM target chain ${targetChain.name} (id ${targetChain.id})`,
+      )
+    }
+    resolvedCalls = []
+  } else {
+    resolvedCalls = await resolveCallInputs(
       transaction.calls,
       config,
       targetChain,
       accountAddress,
-    ),
+    )
+  }
+  const prepared = await prepareTransactionAsIntent(
+    config,
+    sourceChains,
+    targetChain,
+    resolvedCalls,
     transaction.gasLimit,
     tokenRequests,
     recipient,
@@ -400,13 +419,18 @@ function resolveQuote(quotes: PreparedQuotes, options?: QuoteSelection): Quote {
 async function getTargetExecutionSignature(
   config: RhinestoneConfig,
   signData: SignData,
-  targetChain: Chain,
+  targetChain: Chain | DestinationChain,
   signers: SignerSet | undefined,
 ) {
   if (signers?.type !== 'experimental_session') {
     return undefined
   }
   if (!signData.targetExecution) {
+    return undefined
+  }
+  // Target executions are EVM-only (smart-session validator on destination).
+  // Non-EVM destinations don't have a validator there to verify the sig.
+  if (isDestinationChain(targetChain)) {
     return undefined
   }
   const resolvedSigners = await resolveSignersForChain(
@@ -634,7 +658,7 @@ async function signAuthorizationsInternal(
   config: RhinestoneConfig,
   context: {
     sourceChains: Chain[] | undefined
-    targetChain: Chain
+    targetChain: Chain | DestinationChain
     eip7702InitSignature: Hex | undefined
   },
 ) {
@@ -652,9 +676,15 @@ async function signAuthorizationsInternal(
     eip7702InitSignature,
   )
 
+  // EIP-7702 authorization is EVM-only — there's no contract to delegate
+  // to on Solana / Tron. Skip the destination chain entirely when it's
+  // non-EVM; source chains are always EVM by construction.
   const chains = new Map<number, Chain>()
-  for (const chain of [...(context.sourceChains ?? []), context.targetChain]) {
+  for (const chain of context.sourceChains ?? []) {
     chains.set(chain.id, chain)
+  }
+  if (!isDestinationChain(context.targetChain)) {
+    chains.set(context.targetChain.id, context.targetChain)
   }
 
   const authorizations: SignedAuthorization[] = []
@@ -758,10 +788,14 @@ function getTransactionParams(transaction: Transaction) {
 }
 
 function getTokenRequests(
-  targetChain: Chain,
+  targetChain: Chain | DestinationChain,
   initialTokenRequests: TokenRequest[] | undefined,
 ) {
-  if (initialTokenRequests) {
+  // Non-EVM destinations carry SPL mint / Tron T-prefixed addresses that
+  // aren't valid 0x-hex; skip symbol/EVM-address validation here and let
+  // the orchestrator validate per its own schema. EVM destinations keep
+  // the existing strict check so a typo on Optimism still fails fast.
+  if (initialTokenRequests && !isDestinationChain(targetChain)) {
     validateTokenSymbols(
       targetChain,
       initialTokenRequests.map((tokenRequest) => tokenRequest.address),
@@ -849,7 +883,7 @@ function getIntentAccount(
 async function prepareTransactionAsIntent(
   config: RhinestoneConfig,
   sourceChains: Chain[] | undefined,
-  targetChain: Chain,
+  targetChain: Chain | DestinationChain,
   callInputs: CalldataInput[],
   gasLimit: bigint | undefined,
   tokenRequests: TokenRequest[],
@@ -877,7 +911,13 @@ async function prepareTransactionAsIntent(
     recipient: RhinestoneAccountConfig | Address | undefined,
   ): OrchestratorAccount | undefined {
     if (typeof recipient === 'string') {
-      // Passed as an address, assume it's an EOA
+      // Non-EVM recipients (Solana base58 / Tron T-prefix) carry no
+      // EVM smart-account semantics; orchestrator schema requires
+      // accountType / setupOps to be unset. Emit just the address.
+      if (isDestinationChain(targetChain)) {
+        return { address: recipient }
+      }
+      // EVM passthrough — assume EOA.
       return {
         address: recipient,
         accountType: 'EOA',
@@ -1000,7 +1040,7 @@ async function prepareTransactionAsIntent(
 async function signIntent(
   config: RhinestoneConfig,
   signData: SignData,
-  targetChain: Chain,
+  targetChain: Chain | DestinationChain,
   signers?: SignerSet,
   targetExecution?: boolean,
 ) {
@@ -1081,41 +1121,48 @@ async function getDestinationSignature(
   signers: InternalSignerSet | undefined,
   validator: Module,
   isRoot: boolean,
-  targetChain: Chain,
+  targetChain: Chain | DestinationChain,
   destination: TypedDataDefinition,
   originSignatures: OriginSignature[],
   targetExecution: boolean,
 ): Promise<Hex> {
-  // Smart sessions require a separate destination signature because the
-  // session enable data differs per chain
-  if (signers?.type === 'experimental_session') {
-    return await signDestinationSeparately(
-      config,
-      signers,
-      validator,
-      isRoot,
-      targetChain,
-      destination,
-      targetExecution,
-    )
-  }
+  // Non-EVM destinations have no destination-side validator, no
+  // eip712Domain(), no smart session enable data. Settlement is solver-
+  // mediated on the orchestrator side and the origin signatures alone
+  // authorize the bundle. Fall through to the "reuse last origin sig"
+  // branch instead of trying to sign on Solana / Tron.
+  if (!isDestinationChain(targetChain)) {
+    // Smart sessions require a separate destination signature because the
+    // session enable data differs per chain
+    if (signers?.type === 'experimental_session') {
+      return await signDestinationSeparately(
+        config,
+        signers,
+        validator,
+        isRoot,
+        targetChain,
+        destination,
+        targetExecution,
+      )
+    }
 
-  // ERC-7739 with K1 validator requires a separate destination signature because
-  // the account's eip712Domain() returns the target chain's chainId, which differs
-  // from the origin chain used for the last origin signature
-  const isK1Validator =
-    validator.address.toLowerCase() ===
-    K1_DEFAULT_VALIDATOR_ADDRESS.toLowerCase()
-  if (isK1Validator && supportsEip712(validator)) {
-    return await signDestinationSeparately(
-      config,
-      signers,
-      validator,
-      isRoot,
-      targetChain,
-      destination,
-      targetExecution,
-    )
+    // ERC-7739 with K1 validator requires a separate destination signature because
+    // the account's eip712Domain() returns the target chain's chainId, which differs
+    // from the origin chain used for the last origin signature
+    const isK1Validator =
+      validator.address.toLowerCase() ===
+      K1_DEFAULT_VALIDATOR_ADDRESS.toLowerCase()
+    if (isK1Validator && supportsEip712(validator)) {
+      return await signDestinationSeparately(
+        config,
+        signers,
+        validator,
+        isRoot,
+        targetChain,
+        destination,
+        targetExecution,
+      )
+    }
   }
 
   const lastOriginSignature = originSignatures.at(-1)
@@ -1434,7 +1481,7 @@ async function submitUserOp(
 async function submitIntentInternal(
   config: RhinestoneConfig,
   sourceChains: Chain[] | undefined,
-  targetChain: Chain,
+  targetChain: Chain | DestinationChain,
   quote: Quote,
   originSignatures: OriginSignature[],
   destinationSignature: Hex,
