@@ -7,6 +7,7 @@ import {
   type FillTransactionHash,
   getOrchestrator,
   INTENT_STATUS_COMPLETED,
+  INTENT_STATUS_EXPIRED,
   INTENT_STATUS_FAILED,
   INTENT_STATUS_FILLED,
   type IntentOpStatus,
@@ -36,8 +37,8 @@ import type {
 } from '../types'
 import {
   ExecutionError,
+  IntentExpiredError,
   IntentFailedError,
-  IntentStatusTimeoutError,
   isExecutionError,
   OrderPathRequiredForIntentsError,
   QuoteNotInPreparedTransactionError,
@@ -60,7 +61,6 @@ import {
 const POLL_INITIAL_MS = 500
 const POLL_SLOW_AFTER_MS = 15000
 const POLL_SLOW_MS = 2000
-const POLL_MAX_WAIT_MS = 210000
 const POLL_ERROR_BACKOFF_MS = 1000
 const POLL_ERROR_BACKOFF_MAX_MS = 10000
 
@@ -256,6 +256,7 @@ async function waitForExecution(
 ): Promise<TransactionStatus | UserOperationReceipt> {
   const validStatuses: Set<IntentOpStatus['status']> = new Set([
     INTENT_STATUS_FAILED,
+    INTENT_STATUS_EXPIRED,
     INTENT_STATUS_COMPLETED,
     INTENT_STATUS_FILLED,
   ])
@@ -264,14 +265,16 @@ async function waitForExecution(
     case 'intent': {
       let intentStatus: IntentOpStatus | null = null
       const startTs = Date.now()
+      const deadlineMs = result.expiresAt * 1000
       let nextDelayMs = POLL_INITIAL_MS
       let errorBackoffMs = POLL_ERROR_BACKOFF_MS
       while (intentStatus === null || !validStatuses.has(intentStatus.status)) {
         const now = Date.now()
-        if (now - startTs >= POLL_MAX_WAIT_MS) {
-          throw new IntentStatusTimeoutError({
+        if (now >= deadlineMs) {
+          throw new IntentExpiredError({
             context: {
               intentId: result.id,
+              expiresAt: result.expiresAt,
             },
           })
         }
@@ -324,6 +327,14 @@ async function waitForExecution(
         throw new IntentFailedError({
           context: {
             intentId: result.id,
+          },
+        })
+      }
+      if (intentStatus.status === INTENT_STATUS_EXPIRED) {
+        throw new IntentExpiredError({
+          context: {
+            intentId: result.id,
+            expiresAt: result.expiresAt,
           },
         })
       }
@@ -417,8 +428,8 @@ export {
   // Errors
   isExecutionError,
   ExecutionError,
+  IntentExpiredError,
   IntentFailedError,
-  IntentStatusTimeoutError,
   OrderPathRequiredForIntentsError,
   QuoteNotInPreparedTransactionError,
   SessionChainRequiredError,

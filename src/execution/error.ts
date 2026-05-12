@@ -89,14 +89,14 @@ class IntentFailedError extends ExecutionError {
   }
 }
 
-class IntentStatusTimeoutError extends ExecutionError {
+class IntentExpiredError extends ExecutionError {
   constructor(params?: {
     context?: any
     errorType?: string
     traceId?: string
   }) {
     super({
-      message: 'Intent status polling timed out',
+      message: 'Intent expired before being filled',
       ...params,
     })
   }
@@ -142,6 +142,6 @@ export {
   QuoteNotInPreparedTransactionError,
   SessionChainRequiredError,
   IntentFailedError,
-  IntentStatusTimeoutError,
+  IntentExpiredError,
   SignerNotSupportedError,
 }
