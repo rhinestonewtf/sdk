@@ -3,7 +3,9 @@ import { Orchestrator } from './client'
 import { PROD_ORCHESTRATOR_URL, RHINESTONE_SPOKE_POOL_ADDRESS } from './consts'
 import {
   type DestinationChain,
-  isDestinationChain,
+  isNonEvmChain,
+  type NonEvmAddress,
+  type NonEvmChain,
   solanaMainnet,
   tronMainnet,
 } from './destinations'
@@ -99,6 +101,8 @@ export type {
   Cost,
   CostTokenEntry,
   DestinationChain,
+  NonEvmAddress,
+  NonEvmChain,
   EstimatedFillTime,
   Execution,
   FeeBreakdown,
@@ -129,7 +133,7 @@ export type {
   WrapRequired,
 }
 export {
-  isDestinationChain,
+  isNonEvmChain,
   solanaMainnet,
   tronMainnet,
   INTENT_STATUS_PENDING,

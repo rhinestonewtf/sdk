@@ -14,6 +14,7 @@ import {
   isRetryable,
   type SplitIntentsInput,
 } from '../orchestrator'
+import type { NonEvmAddress } from '../orchestrator/destinations'
 import {
   getChainById,
   getSupportedChainIds,
@@ -23,6 +24,7 @@ import type { SettlementLayerFilter } from '../orchestrator/types'
 import type {
   CalldataInput,
   CallInput,
+  NonEvmTokenRequest,
   RhinestoneAccountConfig,
   RhinestoneConfig,
   SignerSet,
@@ -184,8 +186,8 @@ async function sendTransactionAsIntent(
   targetChain: Chain,
   callInputs: CalldataInput[],
   gasLimit: bigint | undefined,
-  tokenRequests: TokenRequest[],
-  recipient: RhinestoneAccountConfig | Address | undefined,
+  tokenRequests: (TokenRequest | NonEvmTokenRequest)[],
+  recipient: RhinestoneAccountConfig | Address | NonEvmAddress | undefined,
   signers?: SignerSet,
   sponsored?: Sponsorship,
   eip7702InitSignature?: Hex,

@@ -89,7 +89,9 @@ import {
 } from '../orchestrator'
 import {
   type DestinationChain,
-  isDestinationChain,
+  getChainId,
+  isNonEvmChain,
+  type NonEvmAddress,
 } from '../orchestrator/destinations'
 import {
   getChainById,
@@ -115,6 +117,7 @@ import type {
   CalldataInput,
   CallInput,
   ExactInputConfig,
+  NonEvmTokenRequest,
   RhinestoneAccountConfig,
   RhinestoneConfig,
   Session,
@@ -270,10 +273,10 @@ async function prepareTransaction(
   // destinations we can't resolve arbitrary EVM calls; assert there are
   // none and route an empty list through.
   let resolvedCalls: CalldataInput[]
-  if (isDestinationChain(targetChain)) {
+  if (isNonEvmChain(targetChain)) {
     if (transaction.calls && transaction.calls.length > 0) {
       throw new Error(
-        `Destination calls are not supported for non-EVM target chain ${targetChain.name} (id ${targetChain.id})`,
+        `Destination calls are not supported for non-EVM target chain ${targetChain.name} (${targetChain.caip2})`,
       )
     }
     resolvedCalls = []
@@ -419,7 +422,7 @@ function resolveQuote(quotes: PreparedQuotes, options?: QuoteSelection): Quote {
 async function getTargetExecutionSignature(
   config: RhinestoneConfig,
   signData: SignData,
-  targetChain: Chain | DestinationChain,
+  targetChain: DestinationChain,
   signers: SignerSet | undefined,
 ) {
   if (signers?.type !== 'experimental_session') {
@@ -430,7 +433,7 @@ async function getTargetExecutionSignature(
   }
   // Target executions are EVM-only (smart-session validator on destination).
   // Non-EVM destinations don't have a validator there to verify the sig.
-  if (isDestinationChain(targetChain)) {
+  if (isNonEvmChain(targetChain)) {
     return undefined
   }
   const resolvedSigners = await resolveSignersForChain(
@@ -658,7 +661,7 @@ async function signAuthorizationsInternal(
   config: RhinestoneConfig,
   context: {
     sourceChains: Chain[] | undefined
-    targetChain: Chain | DestinationChain
+    targetChain: DestinationChain
     eip7702InitSignature: Hex | undefined
   },
 ) {
@@ -683,7 +686,7 @@ async function signAuthorizationsInternal(
   for (const chain of context.sourceChains ?? []) {
     chains.set(chain.id, chain)
   }
-  if (!isDestinationChain(context.targetChain)) {
+  if (!isNonEvmChain(context.targetChain)) {
     chains.set(context.targetChain.id, context.targetChain)
   }
 
@@ -788,17 +791,20 @@ function getTransactionParams(transaction: Transaction) {
 }
 
 function getTokenRequests(
-  targetChain: Chain | DestinationChain,
-  initialTokenRequests: TokenRequest[] | undefined,
+  targetChain: DestinationChain,
+  initialTokenRequests: (TokenRequest | NonEvmTokenRequest)[] | undefined,
 ) {
   // Non-EVM destinations carry SPL mint / Tron T-prefixed addresses that
   // aren't valid 0x-hex; skip symbol/EVM-address validation here and let
   // the orchestrator validate per its own schema. EVM destinations keep
   // the existing strict check so a typo on Optimism still fails fast.
-  if (initialTokenRequests && !isDestinationChain(targetChain)) {
+  if (initialTokenRequests && !isNonEvmChain(targetChain)) {
+    // Inside this branch targetChain is a viem `Chain`, which excludes the
+    // non-EVM transaction variant — token requests are EVM-typed here.
+    const evmRequests = initialTokenRequests as TokenRequest[]
     validateTokenSymbols(
       targetChain,
-      initialTokenRequests.map((tokenRequest) => tokenRequest.address),
+      evmRequests.map((tokenRequest) => tokenRequest.address),
     )
   }
   return initialTokenRequests ?? []
@@ -883,11 +889,11 @@ function getIntentAccount(
 async function prepareTransactionAsIntent(
   config: RhinestoneConfig,
   sourceChains: Chain[] | undefined,
-  targetChain: Chain | DestinationChain,
+  targetChain: DestinationChain,
   callInputs: CalldataInput[],
   gasLimit: bigint | undefined,
-  tokenRequests: TokenRequest[],
-  recipientInput: RhinestoneAccountConfig | Address | undefined,
+  tokenRequests: (TokenRequest | NonEvmTokenRequest)[],
+  recipientInput: RhinestoneAccountConfig | Address | NonEvmAddress | undefined,
   sponsored: Sponsorship | undefined,
   eip7702InitSignature: Hex | undefined,
   settlementLayers: SettlementLayerFilter | undefined,
@@ -904,17 +910,18 @@ async function prepareTransactionAsIntent(
     | undefined,
   signers: SignerSet | undefined,
 ) {
-  const calls = parseCalls(callInputs, targetChain.id)
+  const targetChainId = getChainId(targetChain)
+  const calls = parseCalls(callInputs, targetChainId)
   const accountAccessList = createAccountAccessList(sourceChains, sourceAssets)
 
   function getRecipient(
-    recipient: RhinestoneAccountConfig | Address | undefined,
+    recipient: RhinestoneAccountConfig | Address | NonEvmAddress | undefined,
   ): OrchestratorAccount | undefined {
     if (typeof recipient === 'string') {
       // Non-EVM recipients (Solana base58 / Tron T-prefix) carry no
       // EVM smart-account semantics; orchestrator schema requires
       // accountType / setupOps to be unset. Emit just the address.
-      if (isDestinationChain(targetChain)) {
+      if (isNonEvmChain(targetChain)) {
         return { address: recipient }
       }
       // EVM passthrough — assume EOA.
@@ -934,12 +941,16 @@ async function prepareTransactionAsIntent(
   const intentAccount: OrchestratorAccount = {
     ...getIntentAccount(config, eip7702InitSignature, account),
     ...(signers?.type === 'experimental_session' && {
-      // Per-chain map: enables accurate per-chain session validation gas simulation
+      // Per-chain map: enables accurate per-chain session validation gas
+      // simulation. Non-EVM destinations are excluded — they have no
+      // destination-side session validator, so adding the synthetic chain
+      // id would force users to configure a session that's never used and
+      // make `resolveSessionForChain` throw for per-chain session signers.
       mockSignatures: Object.fromEntries(
         [
           ...new Set([
             ...(sourceChains ?? []).map((c) => c.id),
-            targetChain.id,
+            ...(isNonEvmChain(targetChain) ? [] : [targetChainId]),
           ]),
         ].map((chainId) => [
           String(chainId),
@@ -987,9 +998,9 @@ async function prepareTransactionAsIntent(
   }
 
   const metaIntent: IntentInput = {
-    destinationChainId: targetChain.id,
+    destinationChainId: targetChainId,
     tokenRequests: tokenRequests.map((tokenRequest) => ({
-      tokenAddress: resolveTokenAddress(tokenRequest.address, targetChain.id),
+      tokenAddress: resolveTokenAddress(tokenRequest.address, targetChainId),
       amount: tokenRequest.amount,
     })),
     recipient,
@@ -1040,7 +1051,7 @@ async function prepareTransactionAsIntent(
 async function signIntent(
   config: RhinestoneConfig,
   signData: SignData,
-  targetChain: Chain | DestinationChain,
+  targetChain: DestinationChain,
   signers?: SignerSet,
   targetExecution?: boolean,
 ) {
@@ -1093,11 +1104,14 @@ async function signIntent(
     originSignatures.push(signature)
   }
 
-  const destinationSigners = await resolveSignersForChain(
-    config,
-    signers,
-    targetChain.id,
-  )
+  // Non-EVM destinations have no destination-side validator, so there's no
+  // session to resolve and no signer to derive. Skipping here matters for
+  // per-chain experimental sessions: `resolveSessionForChain` would throw
+  // `No session configured for chain {synthetic-id}` since users never
+  // configure a session keyed by the synthetic Solana/Tron chain id.
+  const destinationSigners = isNonEvmChain(targetChain)
+    ? undefined
+    : await resolveSignersForChain(config, signers, targetChain.id)
 
   const destinationSignature = await getDestinationSignature(
     config,
@@ -1121,7 +1135,7 @@ async function getDestinationSignature(
   signers: InternalSignerSet | undefined,
   validator: Module,
   isRoot: boolean,
-  targetChain: Chain | DestinationChain,
+  targetChain: DestinationChain,
   destination: TypedDataDefinition,
   originSignatures: OriginSignature[],
   targetExecution: boolean,
@@ -1131,7 +1145,7 @@ async function getDestinationSignature(
   // mediated on the orchestrator side and the origin signatures alone
   // authorize the bundle. Fall through to the "reuse last origin sig"
   // branch instead of trying to sign on Solana / Tron.
-  if (!isDestinationChain(targetChain)) {
+  if (!isNonEvmChain(targetChain)) {
     // Smart sessions require a separate destination signature because the
     // session enable data differs per chain
     if (signers?.type === 'experimental_session') {
@@ -1481,7 +1495,7 @@ async function submitUserOp(
 async function submitIntentInternal(
   config: RhinestoneConfig,
   sourceChains: Chain[] | undefined,
-  targetChain: Chain | DestinationChain,
+  targetChain: DestinationChain,
   quote: Quote,
   originSignatures: OriginSignature[],
   destinationSignature: Hex,
@@ -1529,7 +1543,7 @@ async function submitIntentInternal(
     type: 'intent',
     id: response.intentId,
     sourceChains: sourceChains?.map((chain) => chain.id),
-    targetChain: targetChain.id,
+    targetChain: getChainId(targetChain),
   }
 }
 
@@ -1607,10 +1621,12 @@ function getValidator(
 }
 
 function parseCalls(calls: CalldataInput[], chainId: number): Call[] {
+  // Destination calls only run on EVM chains (non-EVM destinations reject
+  // calls upstream), so the resolved `to` is always a viem `Address` here.
   return calls.map((call) => ({
     data: call.data ?? '0x',
     value: call.value ?? 0n,
-    to: resolveTokenAddress(call.to, chainId),
+    to: resolveTokenAddress(call.to, chainId) as Address,
   }))
 }
 
@@ -1632,10 +1648,12 @@ function createAccountAccessList(
       const chainTokenAmounts: Record<number, Record<Address, bigint>> = {}
       for (const config of sourceAssets as ExactInputConfig[]) {
         const chainId = config.chain.id
+        // Source assets live on viem `Chain`s, which are always EVM, so the
+        // resolved value is a viem `Address`.
         const tokenAddress = resolveTokenAddress(
           config.address,
           config.chain.id,
-        )
+        ) as Address
         if (config.amount !== undefined) {
           if (!chainTokenAmounts[chainId]) chainTokenAmounts[chainId] = {}
           chainTokenAmounts[chainId][tokenAddress] = config.amount

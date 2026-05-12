@@ -7,6 +7,7 @@ import type {
   SupportedTestnet,
 } from '@rhinestone/shared-configs'
 import type { Address, Chain, Hex, TypedDataDefinition } from 'viem'
+import type { NonEvmAddress } from './destinations'
 
 type SupportedTokenSymbol = 'ETH' | 'WETH' | 'USDC' | 'USDT' | 'USDT0'
 type SupportedToken = SupportedTokenSymbol | Address
@@ -126,7 +127,7 @@ interface IntentInput {
   destinationExecutions: Execution[]
   destinationGasUnits?: bigint
   tokenRequests: {
-    tokenAddress: Address
+    tokenAddress: Address | NonEvmAddress
     amount?: bigint
   }[]
   recipient?: Account
@@ -259,7 +260,11 @@ type AccountContext =
     }
 
 interface Account {
-  address: Address
+  // EVM accounts use viem's `Address`; non-EVM recipients pass the raw
+  // chain-namespace-specific string (Solana base58, Tron T-prefix). The
+  // orchestrator validates the format against the destination's CAIP-2
+  // namespace.
+  address: Address | NonEvmAddress
   /**
    * Account type — required for EVM accounts. Omitted for non-EVM
    * recipients (Solana / Tron) where smart-account semantics don't apply
@@ -341,14 +346,10 @@ interface SplitIntentsResult {
   intents: Record<Address, bigint>[]
 }
 
-/**
- * Destination fill transaction hash. EVM destinations produce a 32-byte
- * `Hex`; Solana / Tron destinations produce base58 / Tron-hex strings that
- * don't satisfy viem's `Hex` shape. Widened to `Hex | string` here so
- * non-EVM hashes round-trip through the SDK without lying about their
- * format; consumers that need EVM-typed handling should narrow themselves.
- */
-type FillTransactionHash = Hex | string
+// EVM destinations produce a 32-byte `Hex`; Solana / Tron destinations
+// produce base58 / Tron-hex strings. Typed as `string` so non-EVM hashes
+// round-trip without lying about their format.
+type FillTransactionHash = string
 
 interface IntentOpStatus {
   status: IntentStatus
