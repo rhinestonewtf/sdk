@@ -69,8 +69,11 @@ import type {
   ApprovalRequired,
   AuxiliaryFunds,
   BridgeFill,
+  DestinationChain,
   IntentInput,
   IntentOpStatus,
+  NonEvmAddress,
+  NonEvmChain,
   Portfolio,
   Quote,
   SettlementLayer,
@@ -80,6 +83,7 @@ import type {
   TokenRequirements,
   WrapRequired,
 } from './orchestrator'
+import { solanaMainnet, tronMainnet } from './orchestrator'
 import type {
   AccountProviderConfig,
   AccountType,
@@ -88,6 +92,8 @@ import type {
   CallInput,
   ChainSessionConfig,
   MultiFactorValidatorConfig,
+  NonEvmTokenRequest,
+  NonEvmTokenRequests,
   OwnableValidatorConfig,
   OwnerSet,
   ParamConstraint,
@@ -586,6 +592,9 @@ class RhinestoneSDK {
 export {
   RhinestoneSDK,
   createRhinestoneAccount,
+  // Non-EVM destination chain descriptors
+  solanaMainnet,
+  tronMainnet,
   // Validator addresses
   OWNABLE_VALIDATOR_ADDRESS,
   WEBAUTHN_VALIDATOR_ADDRESS,
@@ -605,6 +614,9 @@ export type {
   CallInput,
   Call,
   TokenRequest,
+  NonEvmTokenRequest,
+  NonEvmTokenRequests,
+  NonEvmAddress,
   OwnerSet,
   OwnableValidatorConfig,
   WebauthnValidatorConfig,
@@ -631,6 +643,8 @@ export type {
   UserOperationResult,
   AuxiliaryFunds,
   BridgeFill,
+  DestinationChain,
+  NonEvmChain,
   IntentInput,
   IntentOpStatus,
   SettlementLayer,

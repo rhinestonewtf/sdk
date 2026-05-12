@@ -2,6 +2,14 @@ import type { AuthProvider } from '../auth/provider'
 import { Orchestrator } from './client'
 import { PROD_ORCHESTRATOR_URL, RHINESTONE_SPOKE_POOL_ADDRESS } from './consts'
 import {
+  type DestinationChain,
+  isNonEvmChain,
+  type NonEvmAddress,
+  type NonEvmChain,
+  solanaMainnet,
+  tronMainnet,
+} from './destinations'
+import {
   ConflictError,
   ExternalServiceTimeoutError,
   ForbiddenError,
@@ -39,6 +47,7 @@ import type {
   Execution,
   FeeBreakdown,
   Fees,
+  FillTransactionHash,
   IntentInput,
   IntentOpStatus,
   IntentOptions,
@@ -91,10 +100,14 @@ export type {
   BridgeFill,
   Cost,
   CostTokenEntry,
+  DestinationChain,
+  NonEvmAddress,
+  NonEvmChain,
   EstimatedFillTime,
   Execution,
   FeeBreakdown,
   Fees,
+  FillTransactionHash,
   IntentInput,
   IntentOpStatus,
   IntentOptions,
@@ -120,6 +133,9 @@ export type {
   WrapRequired,
 }
 export {
+  isNonEvmChain,
+  solanaMainnet,
+  tronMainnet,
   INTENT_STATUS_PENDING,
   INTENT_STATUS_EXPIRED,
   INTENT_STATUS_COMPLETED,

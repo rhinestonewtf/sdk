@@ -4,6 +4,7 @@ import { deploy, getAddress } from '../accounts'
 import { createTransport, getBundlerClient } from '../accounts/utils'
 import { type AuthProvider, createAuthProvider } from '../auth/provider'
 import {
+  type FillTransactionHash,
   getOrchestrator,
   INTENT_STATUS_COMPLETED,
   INTENT_STATUS_FAILED,
@@ -13,6 +14,7 @@ import {
   isRetryable,
   type SplitIntentsInput,
 } from '../orchestrator'
+import type { NonEvmAddress } from '../orchestrator/destinations'
 import {
   getChainById,
   getSupportedChainIds,
@@ -22,6 +24,7 @@ import type { SettlementLayerFilter } from '../orchestrator/types'
 import type {
   CalldataInput,
   CallInput,
+  NonEvmTokenRequest,
   RhinestoneAccountConfig,
   RhinestoneConfig,
   SignerSet,
@@ -63,7 +66,8 @@ const POLL_ERROR_BACKOFF_MAX_MS = 10000
 
 interface TransactionStatus {
   fill: {
-    hash: Hex | undefined
+    /** Destination fill hash — viem `Hex` for EVM, base58 / Tron-hex for non-EVM. */
+    hash: FillTransactionHash | undefined
     chainId: number
   }
   claims: {
@@ -182,8 +186,8 @@ async function sendTransactionAsIntent(
   targetChain: Chain,
   callInputs: CalldataInput[],
   gasLimit: bigint | undefined,
-  tokenRequests: TokenRequest[],
-  recipient: RhinestoneAccountConfig | Address | undefined,
+  tokenRequests: (TokenRequest | NonEvmTokenRequest)[],
+  recipient: RhinestoneAccountConfig | Address | NonEvmAddress | undefined,
   signers?: SignerSet,
   sponsored?: Sponsorship,
   eip7702InitSignature?: Hex,

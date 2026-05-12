@@ -7,6 +7,7 @@ import type {
   SupportedTestnet,
 } from '@rhinestone/shared-configs'
 import type { Address, Chain, Hex, TypedDataDefinition } from 'viem'
+import type { NonEvmAddress } from './destinations'
 
 type SupportedTokenSymbol = 'ETH' | 'WETH' | 'USDC' | 'USDT' | 'USDT0'
 type SupportedToken = SupportedTokenSymbol | Address
@@ -126,7 +127,7 @@ interface IntentInput {
   destinationExecutions: Execution[]
   destinationGasUnits?: bigint
   tokenRequests: {
-    tokenAddress: Address
+    tokenAddress: Address | NonEvmAddress
     amount?: bigint
   }[]
   recipient?: Account
@@ -259,9 +260,22 @@ type AccountContext =
     }
 
 interface Account {
-  address: Address
-  accountType: AccountType
-  setupOps: Pick<Execution, 'to' | 'data'>[]
+  // EVM accounts use viem's `Address`; non-EVM recipients pass the raw
+  // chain-namespace-specific string (Solana base58, Tron T-prefix). The
+  // orchestrator validates the format against the destination's CAIP-2
+  // namespace.
+  address: Address | NonEvmAddress
+  /**
+   * Account type — required for EVM accounts. Omitted for non-EVM
+   * recipients (Solana / Tron) where smart-account semantics don't apply
+   * and the orchestrator schema requires it unset.
+   */
+  accountType?: AccountType
+  /**
+   * Per-chain account-setup operations — required for EVM accounts.
+   * Omitted for non-EVM recipients for the same reason as `accountType`.
+   */
+  setupOps?: Pick<Execution, 'to' | 'data'>[]
   delegations?: Delegations
   /** Per-chain SSX mock signatures keyed by decimal chainId string. */
   mockSignatures?: Record<`${number}`, Hex>
@@ -332,13 +346,18 @@ interface SplitIntentsResult {
   intents: Record<Address, bigint>[]
 }
 
+// EVM destinations produce a 32-byte `Hex`; Solana / Tron destinations
+// produce base58 / Tron-hex strings. Typed as `string` so non-EVM hashes
+// round-trip without lying about their format.
+type FillTransactionHash = string
+
 interface IntentOpStatus {
   status: IntentStatus
   claims: Claim[]
   destinationChainId: number
   accountAddress: Address
   fillTimestamp?: number
-  fillTransactionHash?: Hex
+  fillTransactionHash?: FillTransactionHash
 }
 
 export type {
@@ -367,6 +386,7 @@ export type {
   IntentSubmitRequestInternal,
   IntentSubmitResponse,
   IntentOpStatus,
+  FillTransactionHash,
   IntentOptions,
   SponsorSettings,
   SignedAuthorization,

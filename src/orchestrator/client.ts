@@ -1,6 +1,6 @@
 import type { Address } from 'viem'
 import type { AuthProvider } from '../auth/provider'
-import { fromCaip2, toCaip2 } from './caip2'
+import { fromCaip2, isCaip2, toCaip2 } from './caip2'
 import { API_VERSION, SDK_VERSION } from './consts'
 import {
   type ErrorEnvelope,
@@ -231,8 +231,9 @@ function parseTokenAmountsRecord(
 function parseChainId(value: string | number): number {
   if (typeof value === 'number') return value
   if (typeof value === 'string') {
-    if (value.startsWith('eip155:')) return fromCaip2(value)
-    return Number(value)
+    if (isCaip2(value)) return fromCaip2(value)
+    const numeric = Number(value)
+    if (Number.isFinite(numeric)) return numeric
   }
   throw new OrchestratorError({
     message: `Invalid chain id value: ${String(value)}`,
