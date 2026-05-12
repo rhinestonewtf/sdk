@@ -5,6 +5,8 @@ import {
 } from '@rhinestone/shared-configs'
 import { type Address, type Chain, isAddress } from 'viem'
 import type { TokenSymbol } from '../types'
+import { isNonEvmChainId } from './caip2'
+import type { NonEvmAddress } from './destinations'
 import { UnsupportedChainError, UnsupportedTokenError } from './error'
 
 function getSupportedChainIds(): number[] {
@@ -26,7 +28,7 @@ function getWethAddress(chain: Chain): Address {
     throw new UnsupportedTokenError('WETH', chain.id)
   }
 
-  return wethToken.address
+  return wethToken.address as Address
 }
 
 function getWrappedTokenAddress(chain: Chain): Address {
@@ -41,7 +43,7 @@ function getWrappedTokenAddress(chain: Chain): Address {
   if (!token) {
     throw new UnsupportedTokenError('WETH', chain.id)
   }
-  return token.address
+  return token.address as Address
 }
 
 function getTokenSymbol(
@@ -71,7 +73,7 @@ function getTokenAddress(tokenSymbol: TokenSymbol, chainId: number): Address {
     throw new UnsupportedTokenError(tokenSymbol, chainId)
   }
 
-  return token.address
+  return token.address as Address
 }
 
 function getChainById(chainId: number): Chain {
@@ -114,13 +116,22 @@ function getDefaultAccountAccessList(onTestnets?: boolean) {
 }
 
 function resolveTokenAddress(
-  token: TokenSymbol | Address,
+  token: TokenSymbol | Address | NonEvmAddress,
   chainId: number,
-): Address {
+): Address | NonEvmAddress {
   if (isAddress(token)) {
     return token
   }
-  return getTokenAddress(token, chainId)
+  // Non-EVM destinations carry SPL mints (base58) / Tron T-prefixed
+  // addresses that don't satisfy viem's `isAddress`. The orchestrator's
+  // wire schema accepts the raw string for non-EVM chains, so pass it
+  // through unchanged.
+  if (isNonEvmChainId(chainId)) {
+    return token
+  }
+  // For EVM chains that aren't a hex address, the value must be a known
+  // token symbol. `getTokenAddress` throws if it isn't.
+  return getTokenAddress(token as TokenSymbol, chainId)
 }
 
 export {

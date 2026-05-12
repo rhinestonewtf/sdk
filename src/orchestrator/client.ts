@@ -1,6 +1,6 @@
 import type { Address } from 'viem'
 import type { AuthProvider } from '../auth/provider'
-import { fromCaip2, toCaip2 } from './caip2'
+import { fromCaip2, isCaip2, toCaip2 } from './caip2'
 import { API_VERSION, SDK_VERSION } from './consts'
 import {
   type ErrorEnvelope,
@@ -21,6 +21,7 @@ import type {
   Portfolio,
   Quote,
   QuoteResponse,
+  SettlementLayerFilter,
   SplitIntentsInput,
   SplitIntentsResult,
   TokenRequirements,
@@ -108,7 +109,9 @@ export class Orchestrator {
     const body = convertBigIntFields({
       chainId: toCaip2(input.chain.id),
       tokens: input.tokens,
-      settlementLayers: input.settlementLayers,
+      settlementLayers: input.settlementLayers
+        ? encodeSettlementLayers(input.settlementLayers)
+        : undefined,
     })
     const json = await this.fetch(`${this.serverUrl}/intents/splits`, {
       method: 'POST',
@@ -228,8 +231,9 @@ function parseTokenAmountsRecord(
 function parseChainId(value: string | number): number {
   if (typeof value === 'number') return value
   if (typeof value === 'string') {
-    if (value.startsWith('eip155:')) return fromCaip2(value)
-    return Number(value)
+    if (isCaip2(value)) return fromCaip2(value)
+    const numeric = Number(value)
+    if (Number.isFinite(numeric)) return numeric
   }
   throw new OrchestratorError({
     message: `Invalid chain id value: ${String(value)}`,
@@ -312,12 +316,35 @@ function encodeAuxiliaryFunds(funds: AuxiliaryFunds): AuxiliaryFunds {
   ) as AuxiliaryFunds
 }
 
-function encodeOptions(options: IntentOptions): IntentOptions {
-  if (!options.auxiliaryFunds) return options
-  return {
-    ...options,
-    auxiliaryFunds: encodeAuxiliaryFunds(options.auxiliaryFunds),
+function encodeOptions(options: IntentOptions): Record<string, unknown> {
+  const wire: Record<string, unknown> = { ...options }
+  if (options.auxiliaryFunds) {
+    wire.auxiliaryFunds = encodeAuxiliaryFunds(options.auxiliaryFunds)
   }
+  if (options.settlementLayers) {
+    wire.settlementLayers = encodeSettlementLayers(options.settlementLayers)
+  }
+  return wire
+}
+
+// Inversion universe for `{ exclude }`. Drop once the orchestrator accepts the
+// union natively; RHINO/CCTP are listed despite not being in `SettlementLayer`.
+const KNOWN_SETTLEMENT_LAYERS = [
+  'ACROSS',
+  'ECO',
+  'RELAY',
+  'OFT',
+  'NEAR',
+  'RHINO',
+  'CCTP',
+] as const
+
+export function encodeSettlementLayers(
+  filter: SettlementLayerFilter,
+): readonly string[] {
+  if ('include' in filter) return filter.include
+  const excluded = new Set<string>(filter.exclude)
+  return KNOWN_SETTLEMENT_LAYERS.filter((layer) => !excluded.has(layer))
 }
 
 function decodeQuoteResponse(json: any): QuoteResponse {

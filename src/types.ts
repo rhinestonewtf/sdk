@@ -1,7 +1,11 @@
 import type { Abi, AbiFunction, Account, Address, Chain, Hex } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
 import type { ModuleType } from './modules/common'
-import type { AuxiliaryFunds, SettlementLayer } from './orchestrator/types'
+import type { NonEvmAddress, NonEvmChain } from './orchestrator/destinations'
+import type {
+  AuxiliaryFunds,
+  SettlementLayerFilter,
+} from './orchestrator/types'
 
 type AccountType = 'safe' | 'nexus' | 'kernel' | 'startale' | 'eoa'
 
@@ -453,6 +457,24 @@ type TokenRequest = TokenRequestWithAmount | TokenRequestWithoutAmount
 
 type TokenRequests = [TokenRequestWithoutAmount] | TokenRequestWithAmount[]
 
+interface NonEvmTokenRequestWithAmount {
+  address: NonEvmAddress
+  amount: bigint
+}
+
+interface NonEvmTokenRequestWithoutAmount {
+  address: NonEvmAddress
+  amount?: undefined
+}
+
+type NonEvmTokenRequest =
+  | NonEvmTokenRequestWithAmount
+  | NonEvmTokenRequestWithoutAmount
+
+type NonEvmTokenRequests =
+  | [NonEvmTokenRequestWithoutAmount]
+  | NonEvmTokenRequestWithAmount[]
+
 export type SimpleTokenList = (Address | TokenSymbol)[]
 
 export type ChainTokenMap = Record<number, SimpleTokenList>
@@ -543,15 +565,13 @@ type Sponsorship =
 
 interface BaseTransaction {
   calls?: CallInput[]
-  tokenRequests?: TokenRequests
-  recipient?: RhinestoneAccountConfig | Address
   gasLimit?: bigint
   signers?: SignerSet
   sponsored?: Sponsorship
   eip7702InitSignature?: Hex
   sourceAssets?: SourceAssetInput
   feeAsset?: Address | TokenSymbol
-  settlementLayers?: SettlementLayer[]
+  settlementLayers?: SettlementLayerFilter
   auxiliaryFunds?: AuxiliaryFunds
   experimental_accountOverride?: {
     setupOps?: {
@@ -563,12 +583,30 @@ interface BaseTransaction {
 
 interface SameChainTransaction extends BaseTransaction {
   chain: Chain
+  tokenRequests?: TokenRequests
+  recipient?: RhinestoneAccountConfig | Address
 }
 
-interface CrossChainTransaction extends BaseTransaction {
+interface CrossChainEvmTransaction extends BaseTransaction {
   sourceChains?: Chain[]
   targetChain: Chain
+  tokenRequests?: TokenRequests
+  recipient?: RhinestoneAccountConfig | Address
 }
+
+// Non-EVM destinations (Solana, Tron). `recipient` and `tokenRequests`
+// take chain-namespace-specific addresses; `RhinestoneAccountConfig` (an
+// EVM smart account) is intentionally not accepted as a non-EVM recipient.
+interface CrossChainNonEvmTransaction extends BaseTransaction {
+  sourceChains?: Chain[]
+  targetChain: NonEvmChain
+  tokenRequests?: NonEvmTokenRequests
+  recipient?: NonEvmAddress
+}
+
+type CrossChainTransaction =
+  | CrossChainEvmTransaction
+  | CrossChainNonEvmTransaction
 
 interface UserOperationTransaction {
   calls: CallInput[]
@@ -604,6 +642,8 @@ export type {
   Sponsorship,
   TokenRequest,
   TokenRequests,
+  NonEvmTokenRequest,
+  NonEvmTokenRequests,
   SourceAssetInput,
   OwnerSet,
   OwnableValidatorConfig,
