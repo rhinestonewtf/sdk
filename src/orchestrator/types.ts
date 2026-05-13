@@ -16,20 +16,19 @@ type AccountType = 'GENERIC' | 'ERC7579' | 'EOA'
 
 const INTENT_STATUS_PENDING = 'PENDING'
 const INTENT_STATUS_FAILED = 'FAILED'
-const INTENT_STATUS_EXPIRED = 'EXPIRED'
 const INTENT_STATUS_COMPLETED = 'COMPLETED'
-const INTENT_STATUS_FILLED = 'FILLED'
-const INTENT_STATUS_PRECONFIRMED = 'PRECONFIRMED'
-const INTENT_STATUS_CLAIMED = 'CLAIMED'
 
+/**
+ * High-level intent status.
+ *
+ * - `PENDING`   – the intent has been accepted and is being processed
+ * - `COMPLETED` – all operations finished successfully
+ * - `FAILED`    – the intent failed (inspect `operations` for details)
+ */
 type IntentStatus =
   | typeof INTENT_STATUS_PENDING
-  | typeof INTENT_STATUS_EXPIRED
   | typeof INTENT_STATUS_COMPLETED
-  | typeof INTENT_STATUS_FILLED
-  | typeof INTENT_STATUS_PRECONFIRMED
   | typeof INTENT_STATUS_FAILED
-  | typeof INTENT_STATUS_CLAIMED
 
 type MappedChainTokenAccessList = {
   chainTokens?: {
@@ -49,15 +48,44 @@ type AccountAccessList =
   | MappedChainTokenAccessList
   | UnmappedChainTokenAccessList
 
-type ClaimStatus = 'PENDING' | 'EXPIRED' | 'CLAIMED'
+/** Per-operation status. */
+type OperationStatus = 'PENDING' | 'COMPLETED' | 'FAILED'
 
-interface Claim {
-  depositId: bigint
-  chainId: number
-  status: ClaimStatus
-  claimTimestamp?: number
-  claimTransactionHash?: Hex
-}
+/**
+ * Why an operation failed. Only meaningful when `status` is `FAILED`.
+ *
+ * - `EXPIRED`          – the operation deadline passed without completion
+ * - `REVERTED`         – the on-chain transaction reverted
+ * - `RELAYER_FAILURE`  – the relayer could not submit the transaction
+ */
+type FailureReason = 'EXPIRED' | 'REVERTED' | 'RELAYER_FAILURE'
+
+/**
+ * One operation per chain involved in the intent.
+ *
+ * The orchestrator returns `items[]` per chain for future extensibility;
+ * the SDK flattens to one entry per chain for simpler DX.
+ */
+type ChainOperation =
+  | {
+      /** Chain ID this operation belongs to. */
+      chain: number
+      status: 'PENDING'
+    }
+  | {
+      chain: number
+      status: 'COMPLETED'
+      /** Transaction hash of the confirmed on-chain transaction. */
+      txHash: Hex
+      /** UNIX epoch seconds when the on-chain transaction was confirmed. */
+      timestamp: number
+    }
+  | {
+      chain: number
+      status: 'FAILED'
+      /** Why the operation failed. */
+      failureReason: FailureReason
+    }
 
 interface Execution {
   to: Address
@@ -346,18 +374,19 @@ interface SplitIntentsResult {
   intents: Record<Address, bigint>[]
 }
 
-// EVM destinations produce a 32-byte `Hex`; Solana / Tron destinations
-// produce base58 / Tron-hex strings. Typed as `string` so non-EVM hashes
-// round-trip without lying about their format.
-type FillTransactionHash = string
-
+/**
+ * Full intent status as returned by the orchestrator (blanc API version).
+ *
+ * One operation per chain involved in the intent. The SDK flattens the
+ * orchestrator's per-chain `items[]` to a single entry per chain.
+ */
 interface IntentOpStatus {
+  /** High-level intent status. */
   status: IntentStatus
-  claims: Claim[]
-  destinationChainId: number
+  /** The smart-account address that owns this intent. */
   accountAddress: Address
-  fillTimestamp?: number
-  fillTransactionHash?: FillTransactionHash
+  /** Per-chain operation status. One entry per chain. */
+  operations: ChainOperation[]
 }
 
 export type {
@@ -386,7 +415,6 @@ export type {
   IntentSubmitRequestInternal,
   IntentSubmitResponse,
   IntentOpStatus,
-  FillTransactionHash,
   IntentOptions,
   SponsorSettings,
   SignedAuthorization,
@@ -403,15 +431,14 @@ export type {
   WrapRequired,
   ApprovalRequired,
   TypedDataDefinition,
+  OperationStatus,
+  FailureReason,
+  ChainOperation,
 }
 export {
   INTENT_STATUS_PENDING,
   INTENT_STATUS_FAILED,
-  INTENT_STATUS_EXPIRED,
-  INTENT_STATUS_CLAIMED,
   INTENT_STATUS_COMPLETED,
-  INTENT_STATUS_FILLED,
-  INTENT_STATUS_PRECONFIRMED,
   SIG_MODE_EMISSARY,
   SIG_MODE_ERC1271,
   SIG_MODE_EMISSARY_ERC1271,

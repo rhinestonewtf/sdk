@@ -69,11 +69,14 @@ import type {
   ApprovalRequired,
   AuxiliaryFunds,
   BridgeFill,
+  ChainOperation,
   DestinationChain,
+  FailureReason,
   IntentInput,
   IntentOpStatus,
   NonEvmAddress,
   NonEvmChain,
+  OperationStatus,
   Portfolio,
   Quote,
   SettlementLayer,
@@ -425,9 +428,13 @@ async function createRhinestoneAccount(
   }
 
   /**
-   * Wait for the transaction execution onchain
-   * @param result transaction result object
-   * @returns intent result or a UserOp receipt
+   * Wait for the transaction execution onchain.
+   *
+   * Polls the orchestrator until the intent reaches a terminal state
+   * (`COMPLETED` or `FAILED`). On failure an {@link IntentFailedError} is thrown.
+   *
+   * @param result Transaction result object returned by {@link sendTransaction}
+   * @returns Per-chain operation breakdown (for intents) or a UserOp receipt
    */
   function waitForExecution(
     result: TransactionResult,
@@ -655,4 +662,8 @@ export type {
   TokenRequirements,
   WrapRequired,
   ApprovalRequired,
+  // Operation status types (blanc API)
+  OperationStatus,
+  FailureReason,
+  ChainOperation,
 }
