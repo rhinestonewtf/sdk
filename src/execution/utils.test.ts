@@ -681,36 +681,6 @@ describe('resolveSignatureMode', () => {
     expect(mode).toBe(SIG_MODE_EMISSARY)
   })
 
-  test('claim-only session with verifyExecutions=true override returns SIG_MODE_EMISSARY_EXECUTION_ERC1271', async () => {
-    const signers: SessionSignerSet = {
-      type: 'experimental_session',
-      session: claimOnlySession,
-      verifyExecutions: true,
-    }
-    const mode = await resolveSignatureMode(
-      smartAccountConfig,
-      signers,
-      [base],
-      base.id,
-    )
-    expect(mode).toBe(SIG_MODE_EMISSARY_EXECUTION_ERC1271)
-  })
-
-  test('session with actions and verifyExecutions=false override returns SIG_MODE_EMISSARY', async () => {
-    const signers: SessionSignerSet = {
-      type: 'experimental_session',
-      session: sessionWithActions,
-      verifyExecutions: false,
-    }
-    const mode = await resolveSignatureMode(
-      smartAccountConfig,
-      signers,
-      [base],
-      base.id,
-    )
-    expect(mode).toBe(SIG_MODE_EMISSARY)
-  })
-
   test('multi-chain session with divergent verifyExecutions returns SIG_MODE_EMISSARY_EXECUTION_ERC1271', async () => {
     const signers: SessionSignerSet = {
       type: 'experimental_session',
