@@ -9,7 +9,6 @@ import {
 } from '../modules/validators'
 import {
   type IntentInput,
-  SIG_MODE_EMISSARY,
   SIG_MODE_EMISSARY_EXECUTION_ERC1271,
   SIG_MODE_ERC1271,
 } from '../orchestrator/types'
@@ -221,6 +220,53 @@ describe('prepareTransactionAsIntent', () => {
     expect(mockGetIntentRoute).toHaveBeenCalledOnce()
     const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
     expect(intentInput.options.auxiliaryFunds).toBeUndefined()
+  })
+
+  test('claim-only session sends SIG_MODE_ERC1271 in routing request', async () => {
+    mockGetIntentRoute.mockResolvedValue({
+      intentOp: {},
+      intentCost: {},
+    })
+    vi.spyOn(validators, 'isSessionEnabled').mockResolvedValue(false)
+
+    const signers: SessionSignerSet = {
+      type: 'experimental_session',
+      session: {
+        chain: base,
+        owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+      },
+      enableData: {
+        userSignature: '0xdeadbeef',
+        hashesAndChainIds: [],
+        sessionToEnableIndex: 0,
+      },
+    }
+
+    await prepareTransactionAsIntent(
+      {
+        owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+        apiKey: 'test',
+      },
+      [base],
+      base,
+      [],
+      undefined,
+      [{ address: zeroAddress, amount: 1n }],
+      undefined,
+      false,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      signers,
+      undefined,
+    )
+
+    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    expect(intentInput.options.signatureMode).toBe(SIG_MODE_ERC1271)
   })
 })
 
@@ -915,7 +961,7 @@ describe('resolveSignatureMode', () => {
     expect(mode).toBe(SIG_MODE_EMISSARY_EXECUTION_ERC1271)
   })
 
-  test('claim-only session returns SIG_MODE_EMISSARY', async () => {
+  test('claim-only session returns SIG_MODE_ERC1271', async () => {
     const signers: SessionSignerSet = {
       type: 'experimental_session',
       session: claimOnlySession,
@@ -926,7 +972,7 @@ describe('resolveSignatureMode', () => {
       [base],
       base,
     )
-    expect(mode).toBe(SIG_MODE_EMISSARY)
+    expect(mode).toBe(SIG_MODE_ERC1271)
   })
 
   test('claim-only session with verifyExecutions=true override returns SIG_MODE_EMISSARY_EXECUTION_ERC1271', async () => {
@@ -944,7 +990,7 @@ describe('resolveSignatureMode', () => {
     expect(mode).toBe(SIG_MODE_EMISSARY_EXECUTION_ERC1271)
   })
 
-  test('session with actions and verifyExecutions=false override returns SIG_MODE_EMISSARY', async () => {
+  test('session with actions and verifyExecutions=false override returns SIG_MODE_ERC1271', async () => {
     const signers: SessionSignerSet = {
       type: 'experimental_session',
       session: sessionWithActions,
@@ -956,7 +1002,7 @@ describe('resolveSignatureMode', () => {
       [base],
       base,
     )
-    expect(mode).toBe(SIG_MODE_EMISSARY)
+    expect(mode).toBe(SIG_MODE_ERC1271)
   })
 
   test('multi-chain session with divergent verifyExecutions returns SIG_MODE_EMISSARY_EXECUTION_ERC1271', async () => {
