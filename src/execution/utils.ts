@@ -106,7 +106,6 @@ import {
   type Account as OrchestratorAccount,
   type OriginSignature,
   type SettlementLayerFilter,
-  SIG_MODE_EMISSARY,
   SIG_MODE_EMISSARY_EXECUTION_ERC1271,
   SIG_MODE_ERC1271,
   type SignatureMode,
@@ -211,7 +210,7 @@ async function resolveSignatureMode(
   // verifyExecutions=true, so mode 5 is the right hybrid.
   return anyVerifyExecutions
     ? SIG_MODE_EMISSARY_EXECUTION_ERC1271
-    : SIG_MODE_EMISSARY
+    : SIG_MODE_ERC1271
 }
 
 function resolveSessionForChain(
