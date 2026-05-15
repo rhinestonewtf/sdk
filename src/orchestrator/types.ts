@@ -513,6 +513,7 @@ export type {
   MappedChainTokenAccessList,
   UnmappedChainTokenAccessList,
   OriginSignature,
+  SignatureMode,
   TokenRequirements,
   WrapRequired,
   ApprovalRequired,

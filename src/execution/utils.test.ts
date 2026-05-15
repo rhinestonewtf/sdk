@@ -7,12 +7,17 @@ import {
   DUMMY_PRECLAIMOP_SELECTOR,
   DUMMY_PRECLAIMOP_TARGET,
 } from '../modules/validators'
-import type { IntentInput } from '../orchestrator/types'
-import type { SessionSignerSet } from '../types'
+import {
+  type IntentInput,
+  SIG_MODE_EMISSARY_EXECUTION_ERC1271,
+  SIG_MODE_ERC1271,
+} from '../orchestrator/types'
+import type { RhinestoneConfig, SessionSignerSet, SignerSet } from '../types'
 import {
   hashErc7739TypedDataForSolady,
   prepareTransactionAsIntent,
   resolveSessionForChain,
+  resolveSignatureMode,
 } from './utils'
 
 const mockGetIntentRoute = vi.fn()
@@ -215,6 +220,53 @@ describe('prepareTransactionAsIntent', () => {
     expect(mockGetIntentRoute).toHaveBeenCalledOnce()
     const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
     expect(intentInput.options.auxiliaryFunds).toBeUndefined()
+  })
+
+  test('claim-only session sends SIG_MODE_ERC1271 in routing request', async () => {
+    mockGetIntentRoute.mockResolvedValue({
+      intentOp: {},
+      intentCost: {},
+    })
+    vi.spyOn(validators, 'isSessionEnabled').mockResolvedValue(false)
+
+    const signers: SessionSignerSet = {
+      type: 'experimental_session',
+      session: {
+        chain: base,
+        owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+      },
+      enableData: {
+        userSignature: '0xdeadbeef',
+        hashesAndChainIds: [],
+        sessionToEnableIndex: 0,
+      },
+    }
+
+    await prepareTransactionAsIntent(
+      {
+        owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+        apiKey: 'test',
+      },
+      [base],
+      base,
+      [],
+      undefined,
+      [{ address: zeroAddress, amount: 1n }],
+      undefined,
+      false,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      signers,
+      undefined,
+    )
+
+    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    expect(intentInput.options.signatureMode).toBe(SIG_MODE_ERC1271)
   })
 })
 
@@ -492,9 +544,10 @@ describe('prepareTransactionAsIntent — preClaimExecutions', () => {
   test('injects only for not-yet-enabled chains when multiple source chains', async () => {
     // base: not enabled → gets dummy preclaimop
     // arbitrum: already enabled → skipped
-    isSessionEnabledSpy
-      .mockResolvedValueOnce(false) // base
-      .mockResolvedValueOnce(true) // arbitrum
+    isSessionEnabledSpy.mockImplementation(
+      async (_address: any, _provider: any, session: any) =>
+        session.chain.id === arbitrum.id,
+    )
 
     const makeSessionWithActions = (chainId: number) => ({
       ...makeSession(chainId),
@@ -804,5 +857,168 @@ describe('prepareTransactionAsIntent — sourceCalls', () => {
 
     const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
     expect(intentInput.preClaimExecutions).toBeUndefined()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// resolveSignatureMode
+// ---------------------------------------------------------------------------
+
+describe('resolveSignatureMode', () => {
+  beforeEach(() => {
+    vi.spyOn(validators, 'isSessionEnabled').mockResolvedValue(false)
+  })
+
+  const ownerSigners: SignerSet = {
+    type: 'owner',
+    kind: 'ecdsa',
+    accounts: [accountA],
+  } as unknown as SignerSet
+
+  const guardianSigners: SignerSet = {
+    type: 'guardians',
+    guardians: [accountA],
+  } as unknown as SignerSet
+
+  const smartAccountConfig: RhinestoneConfig = {
+    owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+    apiKey: 'test',
+  } as unknown as RhinestoneConfig
+
+  const eoaAccountConfig: RhinestoneConfig = {
+    account: { type: 'eoa' },
+    owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+    apiKey: 'test',
+  } as unknown as RhinestoneConfig
+
+  const sessionWithActions: SessionSignerSet['session'] = {
+    chain: base,
+    owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+    actions: [
+      {
+        target: '0x1111111111111111111111111111111111111111' as `0x${string}`,
+        selector: '0xdeadbeef' as `0x${string}`,
+      },
+    ],
+  } as unknown as SessionSignerSet['session']
+
+  const claimOnlySession: SessionSignerSet['session'] = {
+    chain: base,
+    owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+  } as unknown as SessionSignerSet['session']
+
+  test('EOA returns SIG_MODE_ERC1271', async () => {
+    const mode = await resolveSignatureMode(
+      eoaAccountConfig,
+      undefined,
+      [arbitrum],
+      base,
+    )
+    expect(mode).toBe(SIG_MODE_ERC1271)
+  })
+
+  test('smart account with undefined signers returns SIG_MODE_ERC1271', async () => {
+    const mode = await resolveSignatureMode(
+      smartAccountConfig,
+      undefined,
+      [arbitrum],
+      base,
+    )
+    expect(mode).toBe(SIG_MODE_ERC1271)
+  })
+
+  test('smart account with owner signers returns SIG_MODE_ERC1271', async () => {
+    const mode = await resolveSignatureMode(
+      smartAccountConfig,
+      ownerSigners,
+      [arbitrum],
+      base,
+    )
+    expect(mode).toBe(SIG_MODE_ERC1271)
+  })
+
+  test('smart account with guardian signers returns SIG_MODE_ERC1271', async () => {
+    const mode = await resolveSignatureMode(
+      smartAccountConfig,
+      guardianSigners,
+      [arbitrum],
+      base,
+    )
+    expect(mode).toBe(SIG_MODE_ERC1271)
+  })
+
+  test('session with actions returns SIG_MODE_EMISSARY_EXECUTION_ERC1271', async () => {
+    const signers: SessionSignerSet = {
+      type: 'experimental_session',
+      session: sessionWithActions,
+    }
+    const mode = await resolveSignatureMode(
+      smartAccountConfig,
+      signers,
+      [base],
+      base,
+    )
+    expect(mode).toBe(SIG_MODE_EMISSARY_EXECUTION_ERC1271)
+  })
+
+  test('claim-only session returns SIG_MODE_ERC1271', async () => {
+    const signers: SessionSignerSet = {
+      type: 'experimental_session',
+      session: claimOnlySession,
+    }
+    const mode = await resolveSignatureMode(
+      smartAccountConfig,
+      signers,
+      [base],
+      base,
+    )
+    expect(mode).toBe(SIG_MODE_ERC1271)
+  })
+
+  test('claim-only session with verifyExecutions=true override returns SIG_MODE_EMISSARY_EXECUTION_ERC1271', async () => {
+    const signers: SessionSignerSet = {
+      type: 'experimental_session',
+      session: claimOnlySession,
+      verifyExecutions: true,
+    }
+    const mode = await resolveSignatureMode(
+      smartAccountConfig,
+      signers,
+      [base],
+      base,
+    )
+    expect(mode).toBe(SIG_MODE_EMISSARY_EXECUTION_ERC1271)
+  })
+
+  test('session with actions and verifyExecutions=false override returns SIG_MODE_ERC1271', async () => {
+    const signers: SessionSignerSet = {
+      type: 'experimental_session',
+      session: sessionWithActions,
+      verifyExecutions: false,
+    }
+    const mode = await resolveSignatureMode(
+      smartAccountConfig,
+      signers,
+      [base],
+      base,
+    )
+    expect(mode).toBe(SIG_MODE_ERC1271)
+  })
+
+  test('multi-chain session with divergent verifyExecutions returns SIG_MODE_EMISSARY_EXECUTION_ERC1271', async () => {
+    const signers: SessionSignerSet = {
+      type: 'experimental_session',
+      sessions: {
+        [base.id]: { session: sessionWithActions },
+        [arbitrum.id]: { session: claimOnlySession },
+      },
+    }
+    const mode = await resolveSignatureMode(
+      smartAccountConfig,
+      signers,
+      [base, arbitrum],
+      base,
+    )
+    expect(mode).toBe(SIG_MODE_EMISSARY_EXECUTION_ERC1271)
   })
 })
