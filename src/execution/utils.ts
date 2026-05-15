@@ -107,7 +107,8 @@ import {
   type OriginSignature,
   type SettlementLayerFilter,
   SIG_MODE_EMISSARY_EXECUTION_ERC1271,
-  SIG_MODE_ERC1271_EMISSARY,
+  SIG_MODE_ERC1271,
+  type SignatureMode,
   type SupportedChain,
 } from '../orchestrator/types'
 import { convertBigIntFields } from '../orchestrator/utils'
@@ -166,16 +167,50 @@ async function resolveSignersForChain(
     config.useDevContracts,
   )
   const enableData = enabled ? undefined : resolved.enableData
-  const verifyExecutions =
-    resolved.verifyExecutions ??
-    signers.verifyExecutions ??
-    resolved.session.hasExplicitPermissions
   return {
     type: 'experimental_session',
     session: resolved.session,
     enableData,
-    verifyExecutions,
+    verifyExecutions: resolved.session.hasExplicitPermissions,
   } satisfies ResolvedSessionSignerSet
+}
+
+// Picks the single signature mode that matches the bytes shape the SDK will
+// actually sign, so the on-chain dispatcher hits the right validator on the
+// first try instead of falling through a hybrid.
+async function resolveSignatureMode(
+  config: RhinestoneConfig,
+  signers: SignerSet | undefined,
+  sourceChains: Chain[] | undefined,
+  targetChainId: number,
+): Promise<SignatureMode> {
+  if (config.account?.type === 'eoa') {
+    return SIG_MODE_ERC1271
+  }
+  if (signers?.type !== 'experimental_session') {
+    return SIG_MODE_ERC1271
+  }
+  const chainIds = [
+    ...new Set([...(sourceChains ?? []).map((c) => c.id), targetChainId]),
+  ]
+  const resolvedSet = await Promise.all(
+    chainIds.map((chainId) => resolveSignersForChain(config, signers, chainId)),
+  )
+  let anyVerifyExecutions = false
+  for (const resolved of resolvedSet) {
+    if (!isResolvedSessionSignerSet(resolved)) {
+      return SIG_MODE_ERC1271
+    }
+    // Conservative: one chain with verifyExecutions=true forces mode 5 across
+    // all origin signatures — a single mode field can't describe divergence.
+    if (resolved.verifyExecutions) anyVerifyExecutions = true
+  }
+  // Mode 4 (pure emissary-execution) is unused: signIntentTypedData always
+  // emits a dual sig for the intent's origin/destination signatures when
+  // verifyExecutions=true, so mode 5 is the right hybrid.
+  return anyVerifyExecutions
+    ? SIG_MODE_EMISSARY_EXECUTION_ERC1271
+    : SIG_MODE_ERC1271
 }
 
 function resolveSessionForChain(
@@ -184,7 +219,6 @@ function resolveSessionForChain(
 ): {
   session: Session
   enableData?: SessionEnableData
-  verifyExecutions?: boolean
 } {
   if ('sessions' in signers) {
     const config = signers.sessions[chainId]
@@ -966,10 +1000,12 @@ async function prepareTransactionAsIntent(
     }),
   }
   const recipient = getRecipient(recipientInput)
-  const signatureMode =
-    signers?.type === 'experimental_session'
-      ? SIG_MODE_EMISSARY_EXECUTION_ERC1271
-      : SIG_MODE_ERC1271_EMISSARY
+  const signatureMode = await resolveSignatureMode(
+    config,
+    signers,
+    sourceChains,
+    targetChainId,
+  )
 
   // For session signers that need enabling, pass a dummy preclaimop per source chain
   // so the orchestrator bakes it into the bundle before computing its HMAC. The filler
@@ -1945,6 +1981,7 @@ export {
   getTargetExecutionSignature,
   hashErc7739TypedDataForSolady,
   resolveSessionForChain,
+  resolveSignatureMode,
 }
 export type {
   InternalSignerSet,

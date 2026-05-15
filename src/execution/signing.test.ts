@@ -256,36 +256,6 @@ describe('getTargetExecutionSignature', () => {
     expect(result).toBeUndefined()
   })
 
-  test('explicit verifyExecutions: false on signers overrides session with actions', async () => {
-    const signers: SessionSignerSet = {
-      type: 'experimental_session',
-      session: sessionWithActions,
-      verifyExecutions: false,
-    }
-    const result = await getTargetExecutionSignature(
-      config,
-      makeSignData({ withTargetExecution: true }),
-      base,
-      signers,
-    )
-    expect(result).toBeUndefined()
-  })
-
-  test('explicit verifyExecutions: true on signers overrides session without actions', async () => {
-    const signers: SessionSignerSet = {
-      type: 'experimental_session',
-      session: sessionNoActions,
-      verifyExecutions: true,
-    }
-    const result = await getTargetExecutionSignature(
-      config,
-      makeSignData({ withTargetExecution: true }),
-      base,
-      signers,
-    )
-    expect(result).toBe(MOCK_EMISSARY)
-  })
-
   test('session not yet enabled still resolves verifyExecutions from actions', async () => {
     mockIsSessionEnabled.mockResolvedValueOnce(false)
     const signers = makeSessionSigners(sessionWithActions)
@@ -463,7 +433,6 @@ describe('signIntent permit2 claim policy data', () => {
     const signers: SessionSignerSet = {
       type: 'experimental_session',
       session: sessionWithPermit2ClaimPolicy,
-      verifyExecutions: true,
     }
 
     await signIntent(config, makePermit2SignData(), base, signers)
@@ -483,7 +452,6 @@ describe('signIntent permit2 claim policy data', () => {
     const signers: SessionSignerSet = {
       type: 'experimental_session',
       session: sessionWithPermit2ClaimPolicy,
-      verifyExecutions: true,
     }
 
     await signIntent(config, makeSignData(), base, signers)
@@ -499,7 +467,6 @@ describe('signIntent permit2 claim policy data', () => {
     const signers: SessionSignerSet = {
       type: 'experimental_session',
       session: sessionWithActions, // no claimPolicies
-      verifyExecutions: true,
     }
 
     await signIntent(config, makePermit2SignData(), base, signers)
