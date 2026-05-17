@@ -1,5 +1,5 @@
 import { type Address, type Chain, createPublicClient, type Hex } from 'viem'
-import type { UserOperationReceipt } from 'viem/_types/account-abstraction'
+import type { UserOperationReceipt } from 'viem/account-abstraction'
 import { deploy, getAddress } from '../accounts'
 import { createTransport, getBundlerClient } from '../accounts/utils'
 import { type AuthProvider, createAuthProvider } from '../auth/provider'
