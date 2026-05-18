@@ -77,6 +77,7 @@ import type {
   NonEvmAddress,
   NonEvmChain,
   OperationStatus,
+  OriginSignature,
   Portfolio,
   Quote,
   SettlementLayer,
@@ -662,6 +663,8 @@ export type {
   TokenRequirements,
   WrapRequired,
   ApprovalRequired,
+  // Intent signing
+  OriginSignature,
   // Operation status types (blanc API)
   OperationStatus,
   FailureReason,
