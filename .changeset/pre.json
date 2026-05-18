@@ -18,6 +18,7 @@
     "dummy-preclaim-fallback-target",
     "expose-quote-type",
     "heavy-grapes-punch",
+    "key-scope-denied-error",
     "non-evm-destinations",
     "operation-model-redesign",
     "poll-until-intent-expiry",
