@@ -4,6 +4,7 @@ type ErrorCode =
   | 'NOT_FOUND'
   | 'UNAUTHORIZED'
   | 'FORBIDDEN'
+  | 'KEY_SCOPE_DENIED'
   | 'CONFLICT'
   | 'UNPROCESSABLE_CONTENT'
   | 'TOO_MANY_REQUESTS'
@@ -75,8 +76,34 @@ class UnauthorizedError extends OrchestratorError {
 }
 
 class ForbiddenError extends OrchestratorError {
-  constructor(params: BaseErrorParams) {
-    super({ ...params, code: 'FORBIDDEN' })
+  constructor(params: BaseErrorParams & { code?: ErrorCode }) {
+    super({ ...params, code: params.code ?? 'FORBIDDEN' })
+  }
+}
+
+/**
+ * Thrown when an API key's scope denies the request.
+ *
+ * Subclass of `ForbiddenError` carrying the failed `scope` and the
+ * `required` / `actual` levels — distinct from a generic 403 so integrators
+ * can prompt the user to widen the key's scope rather than rotate it.
+ */
+class KeyScopeDeniedError extends ForbiddenError {
+  readonly scope: string
+  readonly required: string | boolean
+  readonly actual: string | boolean
+
+  constructor(
+    params: BaseErrorParams & {
+      scope: string
+      required: string | boolean
+      actual: string | boolean
+    },
+  ) {
+    super({ ...params, code: 'KEY_SCOPE_DENIED' })
+    this.scope = params.scope
+    this.required = params.required
+    this.actual = params.actual
   }
 }
 
@@ -206,6 +233,22 @@ function parseErrorEnvelope(
       return new UnauthorizedError(base)
     case 'FORBIDDEN':
       return new ForbiddenError(base)
+    case 'KEY_SCOPE_DENIED': {
+      const detail = Array.isArray(envelope.details)
+        ? (envelope.details[0] as { context?: unknown } | undefined)
+        : undefined
+      const context = (detail?.context ?? {}) as {
+        scope?: string
+        required?: string | boolean
+        actual?: string | boolean
+      }
+      return new KeyScopeDeniedError({
+        ...base,
+        scope: context.scope ?? '',
+        required: context.required ?? '',
+        actual: context.actual ?? '',
+      })
+    }
     case 'CONFLICT':
       return new ConflictError(base)
     case 'UNPROCESSABLE_CONTENT':
@@ -267,6 +310,7 @@ export {
   NotFoundError,
   UnauthorizedError,
   ForbiddenError,
+  KeyScopeDeniedError,
   ConflictError,
   UnprocessableContentError,
   RateLimitedError,
