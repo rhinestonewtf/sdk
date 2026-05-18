@@ -1,5 +1,12 @@
 # @rhinestone/sdk
 
+## 2.0.0-beta.14
+
+### Patch Changes
+
+- 9f018c8: Re-export `OriginSignature` from the public entry. Consumers iterating intent signature arrays for the merkle / encoded-signature path can now `import type { OriginSignature } from '@rhinestone/sdk'` (or from `@rhinestone/sdk/orchestrator`) instead of inlining the union locally.
+- 02e5003: Fix `getPolicyData('time-frame')` to match the deployed `TimeFramePolicy` contract. Was emitting `encodePacked(['uint48','uint48'], [validUntil, validAfter])`; now emits `encodeAbiParameters([uint48, uint48], [validAfter, validUntil])`. Sessions installed with a `time-frame` policy through the SDK now behave as intended.
+
 ## 2.0.0-beta.13
 
 ### Minor Changes
