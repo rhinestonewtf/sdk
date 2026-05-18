@@ -87,14 +87,14 @@ describe('getPolicyData', () => {
     expect(result.initData).toBe(expected)
   })
 
-  test('time-frame encodes validUntil/validAfter in seconds (ms → s)', () => {
+  test('time-frame encodes (validAfter, validUntil) as ABI uint48 pair in seconds (ms → s)', () => {
     const validUntil = 1_800_000_000_000
     const validAfter = 1_700_000_000_000
     const result = getPolicyData({ type: 'time-frame', validUntil, validAfter })
     expect(result.policy).toBe(TIME_FRAME_POLICY_ADDRESS)
-    const expected = encodePacked(
-      ['uint48', 'uint48'],
-      [Math.floor(validUntil / 1000), Math.floor(validAfter / 1000)],
+    const expected = encodeAbiParameters(
+      [{ type: 'uint48' }, { type: 'uint48' }],
+      [Math.floor(validAfter / 1000), Math.floor(validUntil / 1000)],
     )
     expect(result.initData).toBe(expected)
   })
