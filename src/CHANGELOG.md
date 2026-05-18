@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 2.0.0-beta.13
+
+### Minor Changes
+
+- 641dec4: Surface orchestrator `KEY_SCOPE_DENIED` responses as a typed `KeyScopeDeniedError` (subclass of `ForbiddenError`) carrying the failed `scope`, the `required` level, and the key's `actual` level. Integrators can now distinguish "scoped out" from "invalid key" without losing the structured payload.
+
 ## 2.0.0-beta.12
 
 ### Major Changes
