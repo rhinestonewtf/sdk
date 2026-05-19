@@ -322,8 +322,8 @@ function encodeOptions(options: IntentOptions): Record<string, unknown> {
   return wire
 }
 
-// Inversion universe for `{ exclude }`. Drop once the orchestrator accepts the
-// union natively; RHINO/CCTP are listed despite not being in `SettlementLayer`.
+// Inversion universe for `{ exclude }` — must mirror the orchestrator's
+// cross-chain settlement layer enum.
 const KNOWN_SETTLEMENT_LAYERS = [
   'ACROSS',
   'ECO',
