@@ -54,6 +54,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Create Release Pull Request or Publish
+        id: changesets
         uses: changesets/action@v1
         with:
           commit: "chore: release"
@@ -63,3 +64,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Label release PR
+        if: steps.changesets.outputs.pullRequestNumber != ''
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: gh pr edit ${{ steps.changesets.outputs.pullRequestNumber }} --add-label ship
