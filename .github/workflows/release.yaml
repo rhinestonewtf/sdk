@@ -1,5 +1,10 @@
 name: Release
 
+# Push to main publishes a snapshot (@dev tag); push to release runs
+# changesets/action to open a Release PR or publish (@latest tag).
+# Publishes to npm via OIDC trusted publishing; release PRs are opened
+# by the rhinestone-automations GitHub App.
+
 on:
   push:
     branches:
