@@ -48,8 +48,18 @@ jobs:
       contents: read
       id-token: write
     steps:
+      - name: Mint release-bot token
+        if: github.ref == 'refs/heads/release'
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+
       - name: Check out the repo
         uses: "actions/checkout@v4"
+        with:
+          token: ${{ steps.app-token.outputs.token || github.token }}
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -80,10 +90,10 @@ jobs:
           publish: bun run changeset:release
           version: bun run changeset:version
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
 
       - name: Label release PR
         if: github.ref == 'refs/heads/release' && steps.changesets.outputs.pullRequestNumber != ''
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: gh pr edit ${{ steps.changesets.outputs.pullRequestNumber }} --add-label ship
