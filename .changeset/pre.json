@@ -35,7 +35,9 @@
     "signature-mode-sync",
     "small-jeans-care",
     "submit-transaction-options",
+    "trim-fee-breakdown",
     "trim-public-exports",
-    "v2-beta-prereq"
+    "v2-beta-prereq",
+    "wait-for-terminal-state"
   ]
 }
