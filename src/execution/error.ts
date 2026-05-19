@@ -89,19 +89,6 @@ class IntentFailedError extends ExecutionError {
   }
 }
 
-class IntentExpiredError extends ExecutionError {
-  constructor(params?: {
-    context?: any
-    errorType?: string
-    traceId?: string
-  }) {
-    super({
-      message: 'Intent expired before being filled',
-      ...params,
-    })
-  }
-}
-
 class QuoteNotInPreparedTransactionError extends ExecutionError {
   constructor(params?: {
     context?: { intentId?: string }
@@ -142,6 +129,5 @@ export {
   QuoteNotInPreparedTransactionError,
   SessionChainRequiredError,
   IntentFailedError,
-  IntentExpiredError,
   SignerNotSupportedError,
 }

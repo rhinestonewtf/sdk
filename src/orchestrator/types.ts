@@ -99,8 +99,8 @@ type SettlementLayer =
   | CrossChainSettlementLayer
 
 type SettlementLayerFilter =
-  | { include: SettlementLayer[] }
-  | { exclude: SettlementLayer[] }
+  | { include: CrossChainSettlementLayer[] }
+  | { exclude: CrossChainSettlementLayer[] }
 
 const SIG_MODE_EMISSARY = 0
 const SIG_MODE_ERC1271 = 1

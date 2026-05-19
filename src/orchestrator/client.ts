@@ -1,3 +1,4 @@
+import type { SettlementLayer as CrossChainSettlementLayer } from '@rhinestone/shared-configs'
 import type { Address } from 'viem'
 import type { AuthProvider } from '../auth/provider'
 import { fromCaip2, isCaip2, toCaip2 } from './caip2'
@@ -322,8 +323,8 @@ function encodeOptions(options: IntentOptions): Record<string, unknown> {
   return wire
 }
 
-// Inversion universe for `{ exclude }`. Drop once the orchestrator accepts the
-// union natively; RHINO/CCTP are listed despite not being in `SettlementLayer`.
+// Inversion universe for `{ exclude }` — must mirror the orchestrator's
+// cross-chain settlement layer enum.
 const KNOWN_SETTLEMENT_LAYERS = [
   'ACROSS',
   'ECO',
@@ -332,7 +333,7 @@ const KNOWN_SETTLEMENT_LAYERS = [
   'NEAR',
   'RHINO',
   'CCTP',
-] as const
+] as const satisfies readonly CrossChainSettlementLayer[]
 
 export function encodeSettlementLayers(
   filter: SettlementLayerFilter,

@@ -34,7 +34,6 @@ import type {
 } from '../types'
 import {
   ExecutionError,
-  IntentExpiredError,
   IntentFailedError,
   isExecutionError,
   OrderPathRequiredForIntentsError,
@@ -258,22 +257,12 @@ async function waitForExecution(
     case 'intent': {
       let intentStatus: IntentOpStatus | null = null
       const startTs = Date.now()
-      const deadlineMs = result.expiresAt * 1000
       let nextDelayMs = POLL_INITIAL_MS
       let errorBackoffMs = POLL_ERROR_BACKOFF_MS
       while (
         intentStatus === null ||
         !terminalStatuses.has(intentStatus.status)
       ) {
-        const now = Date.now()
-        if (now >= deadlineMs) {
-          throw new IntentExpiredError({
-            context: {
-              intentId: result.id,
-              expiresAt: result.expiresAt,
-            },
-          })
-        }
         const orchestrator = getOrchestrator(
           config._authProvider ?? createAuthProvider(config),
           config.endpointUrl,
@@ -402,7 +391,6 @@ export {
   // Errors
   isExecutionError,
   ExecutionError,
-  IntentExpiredError,
   IntentFailedError,
   OrderPathRequiredForIntentsError,
   QuoteNotInPreparedTransactionError,
