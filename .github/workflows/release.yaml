@@ -3,6 +3,7 @@ name: Release
 on:
   push:
     branches:
+      - main
       - release
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
@@ -59,7 +60,18 @@ jobs:
       - name: Install the npm dependencies
         run: bun install --frozen-lockfile
 
+      # Snapshot publish (main → @dev)
+      - name: Version snapshot
+        if: github.ref == 'refs/heads/main'
+        run: bunx changeset version --snapshot dev && bun run scripts/sync-version.ts
+
+      - name: Build and publish snapshot
+        if: github.ref == 'refs/heads/main'
+        run: bun run build && bunx changeset publish --tag dev
+
+      # Beta/prod publish (release → Release PR or @latest)
       - name: Create Release Pull Request or Publish
+        if: github.ref == 'refs/heads/release'
         id: changesets
         uses: changesets/action@v1
         with:
@@ -71,7 +83,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
 
       - name: Label release PR
-        if: steps.changesets.outputs.pullRequestNumber != ''
+        if: github.ref == 'refs/heads/release' && steps.changesets.outputs.pullRequestNumber != ''
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: gh pr edit ${{ steps.changesets.outputs.pullRequestNumber }} --add-label ship
