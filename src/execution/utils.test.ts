@@ -46,9 +46,7 @@ const mockQuote = {
       breakdown: {
         gas: { usd: 0 },
         bridge: { usd: 0 },
-        protocol: { usd: 0 },
         swap: { usd: 0 },
-        settlement: { usd: 0 },
       },
     },
   },

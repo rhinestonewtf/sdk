@@ -182,9 +182,7 @@ interface CostTokenEntry {
 interface FeeBreakdown {
   gas: UsdAmount
   bridge: UsdAmount
-  protocol: UsdAmount
   swap: UsdAmount
-  settlement: UsdAmount
 }
 
 interface Fees {
