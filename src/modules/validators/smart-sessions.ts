@@ -912,11 +912,11 @@ function getPolicyData(policy: Policy, useDevContracts?: boolean): PolicyData {
     case 'time-frame': {
       return {
         policy: TIME_FRAME_POLICY_ADDRESS,
-        initData: encodePacked(
-          ['uint48', 'uint48'],
+        initData: encodeAbiParameters(
+          [{ type: 'uint48' }, { type: 'uint48' }],
           [
-            Math.floor(policy.validUntil / 1000),
             Math.floor(policy.validAfter / 1000),
+            Math.floor(policy.validUntil / 1000),
           ],
         ),
       }
