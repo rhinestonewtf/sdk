@@ -1,15 +1,16 @@
 name: Release
 
-# Push to main publishes a snapshot (@dev tag); push to release runs
-# changesets/action to open a Release PR or publish (@latest tag).
-# Publishes to npm via OIDC trusted publishing; release PRs are opened
-# by the rhinestone-automations GitHub App.
+# Push to main publishes a snapshot (@dev tag); push to release or v1
+# runs changesets/action to open a Release PR or publish to npm.
+# Publishes use OIDC trusted publishing; release PRs are opened by the
+# rhinestone-automations GitHub App.
 
 on:
   push:
     branches:
       - main
       - release
+      - v1
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
@@ -54,7 +55,7 @@ jobs:
       id-token: write
     steps:
       - name: Mint release-bot token
-        if: github.ref == 'refs/heads/release'
+        if: github.ref == 'refs/heads/release' || github.ref == 'refs/heads/v1'
         id: app-token
         uses: actions/create-github-app-token@v1
         with:
@@ -84,9 +85,9 @@ jobs:
         if: github.ref == 'refs/heads/main'
         run: bun run build && bunx changeset publish --tag dev
 
-      # Beta/prod publish (release → Release PR or @latest)
+      # Beta/prod publish (release or v1 → Release PR or @latest)
       - name: Create Release Pull Request or Publish
-        if: github.ref == 'refs/heads/release'
+        if: github.ref == 'refs/heads/release' || github.ref == 'refs/heads/v1'
         id: changesets
         uses: changesets/action@v1
         with:
@@ -98,7 +99,7 @@ jobs:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
 
       - name: Label release PR
-        if: github.ref == 'refs/heads/release' && steps.changesets.outputs.pullRequestNumber != ''
+        if: (github.ref == 'refs/heads/release' || github.ref == 'refs/heads/v1') && steps.changesets.outputs.pullRequestNumber != ''
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: gh pr edit ${{ steps.changesets.outputs.pullRequestNumber }} --add-label ship
