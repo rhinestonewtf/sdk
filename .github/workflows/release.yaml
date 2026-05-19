@@ -55,7 +55,7 @@ jobs:
         uses: oven-sh/setup-bun@v2
 
       - name: Use OIDC-capable npm
-        run: npm install -g npm@latest
+        run: sudo npm install -g npm@latest
 
       - name: Install the npm dependencies
         run: bun install --frozen-lockfile
