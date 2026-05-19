@@ -58,6 +58,4 @@ Once v2 is stable, we'll switch back to the standard `main` (dev) / `release` (p
 ## Testing
 
 - Run single test: `bun run test -- path/to/file.test.ts`
-- Tests use prool for local chain testing
-- Integration tests in `/test` require `.env` configuration
-- Make sure to remove the `src/dist` build folder before running integration tests
+- Unit tests live next to source as `*.test.ts`. There is no e2e suite at the moment.
