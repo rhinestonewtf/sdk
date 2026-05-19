@@ -1,3 +1,4 @@
+import type { SettlementLayer as CrossChainSettlementLayer } from '@rhinestone/shared-configs'
 import type { Address } from 'viem'
 import type { AuthProvider } from '../auth/provider'
 import { fromCaip2, isCaip2, toCaip2 } from './caip2'
@@ -332,7 +333,7 @@ const KNOWN_SETTLEMENT_LAYERS = [
   'NEAR',
   'RHINO',
   'CCTP',
-] as const
+] as const satisfies readonly CrossChainSettlementLayer[]
 
 export function encodeSettlementLayers(
   filter: SettlementLayerFilter,
