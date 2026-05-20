@@ -171,7 +171,11 @@ async function resolveSignersForChain(
     type: 'experimental_session',
     session: resolved.session,
     enableData,
-    verifyExecutions: resolved.session.hasExplicitPermissions,
+    // First use of any session must go through the emissary's verifyExecution
+    // path: that's the only mechanism that consumes enableData + calls setConfig
+    // to install the session on-chain. Once installed, steady-state signing can
+    // drop to mode 1 unless the session has explicit permissions to enforce.
+    verifyExecutions: !enabled || resolved.session.hasExplicitPermissions,
   } satisfies ResolvedSessionSignerSet
 }
 
