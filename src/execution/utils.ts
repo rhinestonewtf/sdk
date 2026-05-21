@@ -1011,9 +1011,11 @@ async function prepareTransactionAsIntent(
 
   // Per-chain mock signatures: enables accurate per-chain session validation gas
   // simulation. Non-EVM destinations are excluded — they have no destination-side
-  // session validator. Each mock sig carries the shape the bundle will validate
-  // with (ENABLE-mode verifyExecution on first use, plain ERC-1271 once enabled),
-  // matching the signatureMode the orchestrator dispatches on.
+  // session validator. Each chain's mock sig carries that chain's own resolved
+  // shape (ENABLE / USE / ERC-1271). Note these are per-chain and may differ in
+  // shape, whereas `signatureMode` (below) is a single global value resolved
+  // conservatively (anyVerifyExecutions across chains → mode 5) — so in mixed
+  // states a chain's mock shape need not match the global signatureMode.
   let mockSignatures: Record<string, Hex> | undefined
   if (resolvedByChain) {
     const entries = [...resolvedByChain.entries()].flatMap(
