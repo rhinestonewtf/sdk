@@ -15,6 +15,7 @@ import {
 import {
   ExecutionError,
   IntentFailedError,
+  InvalidSourceCallsError,
   isExecutionError,
   OrderPathRequiredForIntentsError,
   QuoteNotInPreparedTransactionError,
@@ -64,6 +65,7 @@ export {
   isExecutionError,
   ExecutionError,
   IntentFailedError,
+  InvalidSourceCallsError,
   OrderPathRequiredForIntentsError,
   QuoteNotInPreparedTransactionError,
   SessionChainRequiredError,

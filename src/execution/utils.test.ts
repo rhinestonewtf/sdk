@@ -1,4 +1,4 @@
-import { erc20Abi, zeroAddress } from 'viem'
+import { type Chain, erc20Abi, zeroAddress } from 'viem'
 import { arbitrum, base, mainnet, optimism } from 'viem/chains'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { accountA } from '../../test/consts'
@@ -686,6 +686,301 @@ describe('prepareTransactionAsIntent — preClaimExecutions', () => {
       DUMMY_PRECLAIMOP_TARGET,
     )
     expect(intentInput.preClaimExecutions![arbitrum.id]).toBeUndefined()
+  })
+})
+
+describe('prepareTransactionAsIntent — sourceCalls', () => {
+  beforeEach(() => {
+    mockCreateQuote.mockReset()
+    mockCreateQuote.mockResolvedValue({ routes: [mockQuote] })
+    vi.spyOn(validators, 'isSessionEnabled').mockResolvedValue(false)
+  })
+
+  const callA = {
+    to: '0x1111111111111111111111111111111111111111' as `0x${string}`,
+    value: 0n,
+    data: '0xaaaa' as `0x${string}`,
+  }
+  const callB = {
+    to: '0x2222222222222222222222222222222222222222' as `0x${string}`,
+    value: 1n,
+    data: '0xbbbb' as `0x${string}`,
+  }
+  const usdc = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831' as `0x${string}`
+
+  test('user-provided sourceCalls flow into preClaimExecutions', async () => {
+    await prepareTransactionAsIntent(
+      {
+        owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+        apiKey: 'test',
+      },
+      [arbitrum],
+      base,
+      [],
+      undefined,
+      [{ address: zeroAddress, amount: 1n }],
+      undefined,
+      false,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { [arbitrum.id]: [callA, callB] },
+    )
+
+    const intentInput: IntentInput = mockCreateQuote.mock.calls[0][0]
+    expect(intentInput.preClaimExecutions).toBeDefined()
+    expect(intentInput.preClaimExecutions![arbitrum.id]).toEqual([callA, callB])
+  })
+
+  test('sourceCalls provides entries flow into auxiliaryFunds', async () => {
+    await prepareTransactionAsIntent(
+      {
+        owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+        apiKey: 'test',
+      },
+      [arbitrum],
+      base,
+      [],
+      undefined,
+      [{ address: zeroAddress, amount: 1n }],
+      undefined,
+      false,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {
+        [arbitrum.id]: [
+          {
+            ...callA,
+            provides: [{ token: usdc, amount: 500000000n }],
+          },
+        ],
+      },
+    )
+
+    const intentInput: IntentInput = mockCreateQuote.mock.calls[0][0]
+    expect(intentInput.preClaimExecutions![arbitrum.id]).toEqual([callA])
+    expect(intentInput.options.auxiliaryFunds).toEqual({
+      [arbitrum.id]: { [usdc]: 500000000n },
+    })
+  })
+
+  test('sourceCalls provided funds merge with explicit auxiliaryFunds', async () => {
+    await prepareTransactionAsIntent(
+      {
+        owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+        apiKey: 'test',
+      },
+      [arbitrum],
+      base,
+      [],
+      undefined,
+      [{ address: zeroAddress, amount: 1n }],
+      undefined,
+      false,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {
+        [arbitrum.id]: { [usdc]: 100000000n },
+        [base.id]: {
+          '0x4200000000000000000000000000000000000006': 1n,
+        },
+      },
+      undefined,
+      undefined,
+      {
+        [arbitrum.id]: [
+          {
+            ...callA,
+            provides: [{ token: usdc, amount: 200000000n }],
+          },
+          {
+            ...callB,
+            provides: [{ token: usdc, amount: 300000000n }],
+          },
+        ],
+      },
+    )
+
+    const intentInput: IntentInput = mockCreateQuote.mock.calls[0][0]
+    expect(intentInput.options.auxiliaryFunds).toEqual({
+      [arbitrum.id]: { [usdc]: 600000000n },
+      [base.id]: {
+        '0x4200000000000000000000000000000000000006': 1n,
+      },
+    })
+  })
+
+  test('sourceCalls on the target chain are accepted for same-chain intents', async () => {
+    await prepareTransactionAsIntent(
+      {
+        owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+        apiKey: 'test',
+      },
+      [base],
+      base,
+      [],
+      undefined,
+      [{ address: zeroAddress, amount: 1n }],
+      undefined,
+      false,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { [base.id]: [callA] },
+    )
+
+    const intentInput: IntentInput = mockCreateQuote.mock.calls[0][0]
+    expect(intentInput.preClaimExecutions![base.id]).toEqual([callA])
+  })
+
+  test('throws when sourceCalls references a chain not in sourceChains', async () => {
+    await expect(
+      prepareTransactionAsIntent(
+        {
+          owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+          apiKey: 'test',
+        },
+        [arbitrum],
+        base,
+        [],
+        undefined,
+        [{ address: zeroAddress, amount: 1n }],
+        undefined,
+        false,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { [optimism.id]: [callA] },
+      ),
+    ).rejects.toThrow(/10|sourceChains/i)
+  })
+
+  test('lazy source CallInput resolves with the per-chain context', async () => {
+    const resolve = vi.fn(async ({ chain }: { chain: Chain }) => ({
+      to: '0x3333333333333333333333333333333333333333' as `0x${string}`,
+      value: 0n,
+      data: `0x${chain.id.toString(16).padStart(8, '0')}` as `0x${string}`,
+    }))
+
+    await prepareTransactionAsIntent(
+      {
+        owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+        apiKey: 'test',
+      },
+      [arbitrum, optimism],
+      base,
+      [],
+      undefined,
+      [{ address: zeroAddress, amount: 1n }],
+      undefined,
+      false,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {
+        [arbitrum.id]: [{ resolve }],
+        [optimism.id]: [{ resolve }],
+      },
+    )
+
+    expect(resolve).toHaveBeenCalledTimes(2)
+    const chainIds = resolve.mock.calls.map((c) => c[0].chain.id).sort()
+    expect(chainIds).toEqual([arbitrum.id, optimism.id].sort())
+
+    const intentInput: IntentInput = mockCreateQuote.mock.calls[0][0]
+    expect(intentInput.preClaimExecutions![arbitrum.id]).toHaveLength(1)
+    expect(intentInput.preClaimExecutions![optimism.id]).toHaveLength(1)
+  })
+
+  test('user sourceCalls merge after the dummy session preclaimop on the same chain', async () => {
+    const signers: SessionSignerSet = {
+      type: 'experimental_session',
+      session: toSession({
+        chain: base,
+        owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+        permissions: explicitPermissions,
+      }),
+      enableData: makeEnableData(),
+    }
+
+    await prepareTransactionAsIntent(
+      {
+        owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+        apiKey: 'test',
+      },
+      [base],
+      base,
+      [],
+      undefined,
+      [{ address: zeroAddress, amount: 1n }],
+      undefined,
+      false,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      signers,
+      { [base.id]: [callA] },
+    )
+
+    const intentInput: IntentInput = mockCreateQuote.mock.calls[0][0]
+    const ops = intentInput.preClaimExecutions![base.id]
+    expect(ops).toHaveLength(2)
+    expect(ops[0].to).toBe(DUMMY_PRECLAIMOP_TARGET)
+    expect(ops[0].data).toBe(DUMMY_PRECLAIMOP_SELECTOR)
+    expect(ops[1]).toEqual(callA)
+  })
+
+  test('empty sourceCalls entries are dropped', async () => {
+    await prepareTransactionAsIntent(
+      {
+        owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+        apiKey: 'test',
+      },
+      [arbitrum],
+      base,
+      [],
+      undefined,
+      [{ address: zeroAddress, amount: 1n }],
+      undefined,
+      false,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { [arbitrum.id]: [] },
+    )
+
+    const intentInput: IntentInput = mockCreateQuote.mock.calls[0][0]
+    expect(intentInput.preClaimExecutions).toBeUndefined()
   })
 })
 
