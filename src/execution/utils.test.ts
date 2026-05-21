@@ -236,7 +236,44 @@ describe('prepareTransactionAsIntent', () => {
     expect(intentInput.options.auxiliaryFunds).toBeUndefined()
   })
 
-  test('claim-only session sends SIG_MODE_ERC1271 in routing request', async () => {
+  test('claim-only session already enabled sends SIG_MODE_ERC1271 in routing request', async () => {
+    mockCreateQuote.mockResolvedValue({ routes: [mockQuote] })
+    vi.spyOn(validators, 'isSessionEnabled').mockResolvedValue(true)
+
+    const signers: SessionSignerSet = {
+      type: 'experimental_session',
+      session: toSession({
+        chain: base,
+        owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+      }),
+    }
+
+    await prepareTransactionAsIntent(
+      {
+        owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+        apiKey: 'test',
+      },
+      [base],
+      base,
+      [],
+      undefined,
+      [{ address: zeroAddress, amount: 1n }],
+      undefined,
+      false,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      signers,
+    )
+
+    const intentInput: IntentInput = mockCreateQuote.mock.calls[0][0]
+    expect(intentInput.options.signatureMode).toBe(SIG_MODE_ERC1271)
+  })
+
+  test('claim-only session not yet enabled escalates to SIG_MODE_EMISSARY_EXECUTION_ERC1271 to install', async () => {
     mockCreateQuote.mockResolvedValue({ routes: [mockQuote] })
     vi.spyOn(validators, 'isSessionEnabled').mockResolvedValue(false)
 
@@ -275,7 +312,9 @@ describe('prepareTransactionAsIntent', () => {
     )
 
     const intentInput: IntentInput = mockCreateQuote.mock.calls[0][0]
-    expect(intentInput.options.signatureMode).toBe(SIG_MODE_ERC1271)
+    expect(intentInput.options.signatureMode).toBe(
+      SIG_MODE_EMISSARY_EXECUTION_ERC1271,
+    )
   })
 })
 
@@ -510,13 +549,53 @@ describe('prepareTransactionAsIntent — preClaimExecutions', () => {
     expect(intentInput.preClaimExecutions).toBeUndefined()
   })
 
-  test('omits preClaimExecutions when session has no explicit actions (verifyExecutions=false)', async () => {
+  test('injects preClaimExecutions for claim-only session that still needs install', async () => {
+    // Claim-only sessions have no actions to validate, but on first use we still
+    // route through the emissary's verifyExecution path because that's the only
+    // mechanism that consumes enableData and writes the session via setConfig.
     const signers: SessionSignerSet = {
       type: 'experimental_session',
       session: toSession({
         chain: base,
         owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
-        // no actions → verifyExecutions defaults to false
+      }),
+      enableData: makeEnableData(),
+    }
+
+    await prepareTransactionAsIntent(
+      {
+        owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+        apiKey: 'test',
+      },
+      [base],
+      base,
+      [],
+      undefined,
+      [{ address: zeroAddress, amount: 1n }],
+      undefined,
+      false,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      signers,
+    )
+
+    const intentInput: IntentInput = mockCreateQuote.mock.calls[0][0]
+    expect(intentInput.preClaimExecutions).toBeDefined()
+    expect(intentInput.preClaimExecutions![base.id]).toHaveLength(1)
+  })
+
+  test('omits preClaimExecutions when claim-only session is already enabled', async () => {
+    isSessionEnabledSpy.mockResolvedValue(true)
+
+    const signers: SessionSignerSet = {
+      type: 'experimental_session',
+      session: toSession({
+        chain: base,
+        owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
       }),
       enableData: makeEnableData(),
     }
@@ -706,7 +785,24 @@ describe('resolveSignatureMode', () => {
     expect(mode).toBe(SIG_MODE_EMISSARY_EXECUTION_ERC1271)
   })
 
-  test('claim-only session returns SIG_MODE_ERC1271', async () => {
+  test('claim-only session not yet enabled returns SIG_MODE_EMISSARY_EXECUTION_ERC1271 to install', async () => {
+    // The default mock in beforeEach has isSessionEnabled → false.
+    const signers: SessionSignerSet = {
+      type: 'experimental_session',
+      session: claimOnlySession,
+    }
+    const mode = await resolveSignatureMode(
+      smartAccountConfig,
+      signers,
+      [base],
+      base.id,
+    )
+    expect(mode).toBe(SIG_MODE_EMISSARY_EXECUTION_ERC1271)
+  })
+
+  test('claim-only session already enabled returns SIG_MODE_ERC1271', async () => {
+    vi.spyOn(validators, 'isSessionEnabled').mockResolvedValue(true)
+
     const signers: SessionSignerSet = {
       type: 'experimental_session',
       session: claimOnlySession,
