@@ -29,7 +29,7 @@ export async function expectSessionEnabled(
   account: RhinestoneAccount,
   session: Session,
 ): Promise<void> {
-  const enabled = await account.experimental_isSessionEnabled(session)
+  const enabled = await waitForSessionEnabled(account, session)
   expect(enabled, `Session should be enabled on ${account.getAddress()}`).toBe(
     true,
   )
@@ -54,6 +54,17 @@ async function waitForDeployment(
     await sleep(1_000)
   }
   return account.isDeployed(chain)
+}
+
+async function waitForSessionEnabled(
+  account: RhinestoneAccount,
+  session: Session,
+): Promise<boolean> {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    if (await account.experimental_isSessionEnabled(session)) return true
+    await sleep(1_000)
+  }
+  return account.experimental_isSessionEnabled(session)
 }
 
 function sleep(ms: number): Promise<void> {
