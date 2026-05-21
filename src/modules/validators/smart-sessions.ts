@@ -1016,25 +1016,30 @@ function getSmartSessionEmissaryAddress(useDevContracts?: boolean): Address {
  * The orchestrator slices off the first 20 bytes to identify the validator, then
  * simulates verifyExecution with the mock emissary to estimate gas before the user signs.
  */
+// The shape a mock signature should take, mirroring the real signature the
+// bundle will validate with on-chain:
+//   'enable'  → ENABLE   (0x01): first use; installs the session (verifyExecution
+//               + setConfig). The mock carries dummy enableData.
+//   'use'     → USE      (0x00): already enabled WITH explicit permissions;
+//               verifyExecution, no install. No enableData.
+//   'erc1271' → ERC-1271 (0x00): already enabled, no explicit permissions;
+//               validated via isValidSignatureWithSender.
+// Named so call sites are self-documenting (no order-sensitive boolean pair).
+type SmartSessionMockShape = 'enable' | 'use' | 'erc1271'
+
 function buildMockSignature(
   session: Session,
   useDevContracts?: boolean,
   chainCount: number = 1,
   targetChainId?: number,
-  // Mirror the chain's resolved sigMode so the mock sig matches what the bundle
-  // will actually validate with. The three real shapes, all reproduced here:
-  //   verifyExecutions=true  + includeEnableData=true  → ENABLE  (0x01): first
-  //     use, installs the session (verifyExecution + setConfig).
-  //   verifyExecutions=true  + includeEnableData=false → USE     (0x00): already
-  //     enabled, explicit permissions (verifyExecution, no install).
-  //   verifyExecutions=false                           → ERC-1271 (0x00): already
-  //     enabled, no explicit permissions (isValidSignatureWithSender).
-  // packSignature picks ENABLE vs USE on enableData *presence*, so a session that
-  // is already enabled must omit it or the mock over-simulates the install path.
-  // Defaults preserve the historical first-use ENABLE shape.
-  verifyExecutions: boolean = true,
-  includeEnableData: boolean = true,
+  // Defaults to the historical first-use ENABLE shape.
+  shape: SmartSessionMockShape = 'enable',
 ): Hex {
+  // packSignature keys ENABLE vs USE on enableData *presence* within the
+  // verifyExecutions branch, and takes the ERC-1271 branch when verifyExecutions
+  // is false — so derive both from the requested shape.
+  const verifyExecutions = shape !== 'erc1271'
+  const includeEnableData = shape === 'enable'
   const emissaryAddress = getSmartSessionEmissaryAddress(useDevContracts)
   // Use targetChainId when provided (per-chain mockSignatures path) so the
   // mock emissary's chainId check passes on the correct chain. Falls back to

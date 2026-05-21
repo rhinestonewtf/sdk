@@ -203,10 +203,12 @@ async function resolveSignatureMode(
     ...new Set([...(sourceChains ?? []).map((c) => c.id), targetChainId]),
   ]
   const resolvedSet = await Promise.all(
-    chainIds.map(
-      (chainId) =>
-        preResolved?.get(chainId) ??
-        resolveSignersForChain(config, signers, chainId),
+    chainIds.map((chainId) =>
+      // Use has() not `?? resolve` so a cached `undefined` entry is still reused
+      // (get() can't distinguish "missing key" from "present but undefined").
+      preResolved?.has(chainId)
+        ? preResolved.get(chainId)
+        : resolveSignersForChain(config, signers, chainId),
     ),
   )
   let anyVerifyExecutions = false
@@ -1018,6 +1020,15 @@ async function prepareTransactionAsIntent(
       ([chainId, resolved]) => {
         if (chainId === targetChainId && isNonEvmChain(targetChain)) return []
         if (!isResolvedSessionSignerSet(resolved)) return []
+        // Match the mock shape to what the real sig will be: ERC-1271 when not
+        // verifying executions; otherwise ENABLE if the session still needs
+        // installing (enableData present), else USE (already enabled, e.g.
+        // explicit permissions — its real sig is MODE_USE with no enableData).
+        const shape = !resolved.verifyExecutions
+          ? 'erc1271'
+          : resolved.enableData !== undefined
+            ? 'enable'
+            : 'use'
         return [
           [
             String(chainId),
@@ -1026,12 +1037,7 @@ async function prepareTransactionAsIntent(
               config.useDevContracts,
               sourceChains?.length ?? 1,
               chainId,
-              resolved.verifyExecutions,
-              // Include enableData only when the real sig would (session not yet
-              // enabled). An already-enabled session resolves enableData=undefined
-              // even with verifyExecutions=true (explicit permissions), and its
-              // real sig is MODE_USE — so the mock must omit enableData too.
-              resolved.enableData !== undefined,
+              shape,
             ),
           ] as const,
         ]
