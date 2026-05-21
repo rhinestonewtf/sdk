@@ -190,7 +190,10 @@ async function resolveSignatureMode(
   // Optional pre-resolved per-chain signer sets. When supplied, reuse them
   // instead of resolving again — each resolveSignersForChain does an
   // isSessionEnabled RPC, so sharing one map across mockSignatures, sigMode, and
-  // preClaim avoids duplicate calls per intent.
+  // preClaim avoids duplicate calls per intent. The map also defines *which*
+  // chains carry a session: the caller omits a non-EVM target (it has no session
+  // validator), so deriving the chain set from the map's keys keeps us from
+  // resolving — and throwing on — a target with no configured session.
   preResolved?: Map<number, InternalSignerSet | undefined>,
 ): Promise<SignatureMode> {
   if (config.account?.type === 'eoa') {
@@ -199,9 +202,9 @@ async function resolveSignatureMode(
   if (signers?.type !== 'experimental_session') {
     return SIG_MODE_ERC1271
   }
-  const chainIds = [
-    ...new Set([...(sourceChains ?? []).map((c) => c.id), targetChainId]),
-  ]
+  const chainIds = preResolved
+    ? [...preResolved.keys()]
+    : [...new Set([...(sourceChains ?? []).map((c) => c.id), targetChainId])]
   const resolvedSet = await Promise.all(
     chainIds.map((chainId) =>
       // Use has() not `?? resolve` so a cached `undefined` entry is still reused
@@ -991,8 +994,8 @@ async function prepareTransactionAsIntent(
   // isSessionEnabled RPC) and reuse it for mock signatures, the signature mode,
   // and preClaim ops. Exclude a non-EVM destination — it has no session
   // validator, so resolving it would waste an RPC (or throw for per-chain
-  // session signers). resolveSignatureMode still resolves the target itself when
-  // it's not in this shared map.
+  // session signers). resolveSignatureMode derives its chain set from this map's
+  // keys, so the excluded non-EVM target is never resolved there either.
   const sessionChainIds = [
     ...new Set([
       ...(sourceChains ?? []).map((c) => c.id),
