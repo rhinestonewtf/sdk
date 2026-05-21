@@ -99,3 +99,15 @@ export function createOutOfScopeCall(): {
     data: '0xdeadbeef',
   }
 }
+
+export function createWrongTargetCall(): {
+  to: Address
+  value: bigint
+  data: Hex
+} {
+  return {
+    to: '0x0000000000000000000000000000000000000001',
+    value: 0n,
+    data: noopSelector,
+  }
+}

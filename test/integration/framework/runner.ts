@@ -1,4 +1,3 @@
-import { expect } from 'vitest'
 import type {
   PreparedTransactionData,
   RhinestoneAccount,
@@ -148,20 +147,26 @@ export function expectOutcome(
   const phase = expected.kind.replace('-error', '')
   if (execution.phase === 'success') {
     throw new Error(
-      `Expected ${expected.kind}, but intent completed\n${formatIntentDiagnostics(execution)}`,
+      `Expected ${
+        expected.kind
+      }, but intent completed\n${formatIntentDiagnostics(execution)}`,
     )
   }
 
   if (execution.phase !== phase) {
     throw new Error(
-      `Expected ${expected.kind}, got ${execution.phase}-error\n${formatIntentDiagnostics(execution)}`,
+      `Expected ${expected.kind}, got ${
+        execution.phase
+      }-error\n${formatIntentDiagnostics(execution)}`,
       { cause: execution.error },
     )
   }
 
   if (expected.error && !(execution.error instanceof expected.error)) {
     throw new Error(
-      `Expected ${expected.error.name}, got ${getErrorName(execution.error)}\n${formatIntentDiagnostics(execution)}`,
+      `Expected ${expected.error.name}, got ${getErrorName(
+        execution.error,
+      )}\n${formatIntentDiagnostics(execution)}`,
       { cause: execution.error },
     )
   }
@@ -170,7 +175,9 @@ export function expectOutcome(
     const code = getErrorField(execution.error, 'code')
     if (code !== expected.code) {
       throw new Error(
-        `Expected error code ${expected.code}, got ${String(code)}\n${formatIntentDiagnostics(execution)}`,
+        `Expected error code ${expected.code}, got ${String(
+          code,
+        )}\n${formatIntentDiagnostics(execution)}`,
         { cause: execution.error },
       )
     }
@@ -184,14 +191,18 @@ export function expectOutcome(
     if (typeof expected.message === 'string') {
       if (!message.includes(expected.message)) {
         throw new Error(
-          `Expected error message to contain ${JSON.stringify(expected.message)}\n${formatIntentDiagnostics(execution)}`,
+          `Expected error message to contain ${JSON.stringify(
+            expected.message,
+          )}\n${formatIntentDiagnostics(execution)}`,
           { cause: execution.error },
         )
       }
     } else {
       if (!expected.message.test(message)) {
         throw new Error(
-          `Expected error message to match ${expected.message}\n${formatIntentDiagnostics(execution)}`,
+          `Expected error message to match ${
+            expected.message
+          }\n${formatIntentDiagnostics(execution)}`,
           { cause: execution.error },
         )
       }
@@ -214,33 +225,71 @@ export function expectCompletedOperation(
   status: unknown,
   chainId: number,
 ): void {
-  expect(
-    getOperations(status).some((operation) => {
-      const op = operation as { chain?: number; status?: string }
-      return op.chain === chainId && op.status === 'COMPLETED'
-    }),
-  ).toBe(true)
+  const operations = getOperations(status)
+  const found = operations.some((operation) => {
+    const op = operation as { chain?: number; status?: string }
+    return op.chain === chainId && op.status === 'COMPLETED'
+  })
+  if (!found) {
+    const observed = formatOperations(operations)
+    throw new Error(
+      `Expected a COMPLETED operation on chain ${chainId}, but none was found.\nObserved operations:\n${observed}`,
+    )
+  }
 }
 
 export function expectNoOperationOnChain(
   status: unknown,
   chainId: number,
 ): void {
-  expect(
-    getOperations(status).some((operation) => {
-      const op = operation as { chain?: number }
-      return op.chain === chainId
-    }),
-  ).toBe(false)
+  const operations = getOperations(status)
+  const found = operations.some((operation) => {
+    const op = operation as { chain?: number }
+    return op.chain === chainId
+  })
+  if (found) {
+    const observed = formatOperations(operations)
+    throw new Error(
+      `Expected no operation on chain ${chainId}, but one was found.\nObserved operations:\n${observed}`,
+    )
+  }
 }
 
 export function expectNoFailedOperations(status: unknown): void {
-  expect(
-    getOperations(status).filter((operation) => {
-      const op = operation as { status?: string }
-      return op.status === 'FAILED'
-    }),
-  ).toEqual([])
+  const operations = getOperations(status)
+  const failed = operations.filter((operation) => {
+    const op = operation as { status?: string }
+    return op.status === 'FAILED'
+  })
+  if (failed.length > 0) {
+    const observed = formatOperations(operations)
+    throw new Error(
+      `Expected no failed operations, but ${failed.length} failed.\nObserved operations:\n${observed}`,
+    )
+  }
+}
+
+function formatOperations(operations: unknown[]): string {
+  if (operations.length === 0) return '  (none)'
+  return operations
+    .map((operation) => {
+      const op = operation as {
+        chain?: unknown
+        status?: unknown
+        type?: unknown
+        txHash?: unknown
+      }
+      const parts = [
+        typeof op.chain === 'number' ? `chain=${op.chain}` : undefined,
+        typeof op.status === 'string' ? `status=${op.status}` : undefined,
+        typeof op.type === 'string' ? `type=${op.type}` : undefined,
+        typeof op.txHash === 'string' ? `tx=${op.txHash}` : undefined,
+      ]
+        .filter((part): part is string => Boolean(part))
+        .join(' ')
+      return `  - ${parts || '(unknown)'}`
+    })
+    .join('\n')
 }
 
 function logDebugDiagnostics(execution: IntentExecution): void {
