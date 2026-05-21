@@ -1014,9 +1014,12 @@ function getSmartSessionEmissaryAddress(useDevContracts?: boolean): Address {
  * (policies/actions from the user's session config) with dummy sigs and hashes —
  * the mock emissary skips sig verification and only reads/writes storage. The
  * orchestrator slices off the first 20 bytes to identify the validator, then
- * simulates whichever path the `shape` implies: `verifyExecution` for the
- * ENABLE/USE shapes, or `isValidSignatureWithSender` (via `simulate_verify1271`)
- * for the ERC-1271 shape — estimating gas before the user signs.
+ * picks the gas-simulation path from the bundle's declared `signatureMode`:
+ * `verifyExecution` for execution-emissary modes (ENABLE/USE), or
+ * `isValidSignatureWithSender` via `simulate_verify1271` for plain ERC-1271.
+ * The mode byte alone can't disambiguate USE from ERC-1271 (both are `0x00`),
+ * but `shape` is derived from the same resolved `verifyExecutions` that drives
+ * `signatureMode`, so the mock payload always matches the path that mode selects.
  */
 // The shape a mock signature should take, mirroring the real signature the
 // bundle will validate with on-chain:
