@@ -88,6 +88,44 @@ export function createScopedSession({
   })
 }
 
+export function createUnscopedSession({
+  chain,
+  owner,
+}: {
+  chain: Chain
+  owner: ReturnType<typeof privateKeyToAccount>
+}): Session {
+  return toSession({
+    chain,
+    owners: { type: 'ecdsa', accounts: [owner] },
+  })
+}
+
+export function createMultiScopedSession({
+  chain,
+  owner,
+}: {
+  chain: Chain
+  owner: ReturnType<typeof privateKeyToAccount>
+}): Session {
+  return toSession({
+    chain,
+    owners: { type: 'ecdsa', accounts: [owner] },
+    permissions: [
+      {
+        abi: noopAbi,
+        address: noopTarget,
+        functions: { noop: {} },
+      },
+      {
+        abi: erc20Abi,
+        address: noopTarget,
+        functions: { balanceOf: {} },
+      },
+    ],
+  })
+}
+
 export function createOutOfScopeCall(): {
   to: Address
   value: bigint

@@ -33,5 +33,11 @@ The smoke suite currently covers:
 - submit-time simulation failure without account deployment
 - deployed account reuse
 
-Additional scenarios cover account kinds, smart-session negatives, 7702 missing
-authorization, and unsupported route errors.
+Additional scenarios cover:
+
+- same-chain and cross-chain default Nexus execution
+- account kinds on same-chain routes
+- smart-session matrix coverage across account state, chain mode, and scope
+- smart-session negative cases
+- 7702 missing authorization
+- unsupported route errors
