@@ -1,4 +1,4 @@
-name: Integration Tests
+name: Package Compatibility Tests
 
 on:
   pull_request:
@@ -31,6 +31,6 @@ jobs:
         working-directory: src
         run: bunx npm pack --pack-destination $GITHUB_WORKSPACE/
 
-      # Run Integration Tests
-      - name: Test ${{ matrix.environment }} integration
+      # Run package compatibility smoke tests
+      - name: Test ${{ matrix.environment }} package compatibility
         run: ./.github/scripts/test-${{ matrix.environment }}.sh

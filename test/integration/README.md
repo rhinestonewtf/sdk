@@ -7,6 +7,12 @@ They are manual for now and require `INTEGRATION_RHINESTONE_API_KEY`.
 INTEGRATION_RHINESTONE_API_KEY=... bun run test:integration:smoke
 ```
 
+Run every live integration scenario:
+
+```bash
+INTEGRATION_RHINESTONE_API_KEY=... bun run test:integration -- --run
+```
+
 For verbose per-intent diagnostics on passing and expected-failing cases:
 
 ```bash
@@ -25,3 +31,7 @@ The smoke suite currently covers:
 - sponsored cross-chain execution from Base Sepolia to Arbitrum Sepolia
 - inline smart-session enablement and execution
 - submit-time simulation failure without account deployment
+- deployed account reuse
+
+Additional scenarios cover account kinds, smart-session negatives, 7702 missing
+authorization, and unsupported route errors.

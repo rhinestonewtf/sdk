@@ -10,6 +10,8 @@ Docs: https://docs.rhinestone.dev/smart-wallet
 
 - `bun run build` - Build the project (clean + tsc)
 - `bun run test` - Run tests (vitest).
+- `bun run test:integration:smoke` - Run the live SDK smoke suite against testnets.
+- `bun run test:integration` - Run all live SDK integration tests.
 - `bun run check` - Lint and format (biome)
 - `bun run typecheck` - Type check without emit
 
@@ -31,7 +33,7 @@ Docs: https://docs.rhinestone.dev/smart-wallet
 - `/src/jwt-server` - Server-side JWT signer (Express + Web handlers)
 - `/src/modules` - Module validators and chain abstraction
 - `/src/orchestrator` - Rhinestone API client
-- `/test` - Integration tests
+- `/test` - Unit helpers, type tests, and live integration tests
 
 ## Branching
 
@@ -58,4 +60,6 @@ Once v2 is stable, we'll switch back to the standard `main` (dev) / `release` (p
 ## Testing
 
 - Run single test: `bun run test -- path/to/file.test.ts`
-- Unit tests live next to source as `*.test.ts`. There is no e2e suite at the moment.
+- Unit tests live next to source as `*.test.ts`.
+- Live SDK integration tests live under `/test/integration` as `*.itest.ts`. They require `INTEGRATION_RHINESTONE_API_KEY` and use `vitest.config.integration.ts`.
+- Run the live smoke suite with `bun run test:integration:smoke -- --run`.
