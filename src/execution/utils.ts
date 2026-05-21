@@ -1896,7 +1896,9 @@ function hashErc7739TypedDataForSolady({
     return sorted
       .map(
         (t) =>
-          `${t}(${allTypes[t].map((f: TypeField) => `${f.type} ${f.name}`).join(',')})`,
+          `${t}(${allTypes[t]
+            .map((f: TypeField) => `${f.type} ${f.name}`)
+            .join(',')})`,
       )
       .join('')
   }
