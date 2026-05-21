@@ -1,5 +1,14 @@
 # @rhinestone/sdk
 
+## 2.0.0-beta.17
+
+### Patch Changes
+
+- 8598c5a: Fix `experimental_enableSession` dropping `permissions` for scoped sessions. The function accepted `SessionInput` and re-ran `toSession` on it inside `resolve`, but callers pass a resolved `Session` (which carries the derived `actions` but not the original `SessionDefinition.permissions`). The re-resolution treated `permissions` as undefined and replaced the action set with a sole `sudoAction`, so the on-chain digest computed by `SmartSessionLens.getAndVerifyDigest` no longer matched the digest signed in `getSessionDetails` and the emissary rejected the enable. The parameter type is now `Session` and the resolved value is passed straight to `getEnableSessionCall`.
+- 87ba706: Fix `uninstallModule` reverting on Nexus, Safe7579, and Startale accounts. These ERC-7579 accounts store validators in a `SentinelList` and decode `uninstallModule`'s `deInitData` arg as `(address prev, bytes moduleDeInit)`. The SDK was passing module-level `deInitData` (typically `'0x'`) straight into that slot, which fails `abi.decode` before the linked list pop can run. `getModuleUninstallationCalls` now reads the live validator list, computes the prev pointer, and wraps `module.deInitData` as `abi.encode(prev, module.deInitData)` for validator-type uninstalls on SentinelList accounts. Kernel and EOA paths are untouched (Kernel treats the slot as raw module bytes; EOA has no modules).
+
+  Affects every existing disable action — `ecdsa.disable`, `passkeys.disable`, `mfa.disable`, `experimental_disable` (smart sessions), and the generic `uninstallModule(module)` — all of which were silently broken on Nexus before.
+
 ## 2.0.0-beta.16
 
 ### Patch Changes
