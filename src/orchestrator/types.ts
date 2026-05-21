@@ -237,7 +237,7 @@ interface QuoteResponse {
 type OriginSignature = Hex | { notarizedClaimSig: Hex; preClaimSig: Hex }
 
 interface SignedAuthorization {
-  chainId: number | string
+  chainId: string
   address: Address
   nonce: number
   yParity: number
