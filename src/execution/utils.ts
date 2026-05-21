@@ -87,6 +87,7 @@ import {
   type Quote,
   type SignData,
 } from '../orchestrator'
+import { toCaip2 } from '../orchestrator/caip2'
 import {
   type DestinationChain,
   getChainId,
@@ -1556,7 +1557,7 @@ async function submitIntentInternal(
     ...(authorizations.length > 0 && {
       authorizations: {
         sponsor: authorizations.map((authorization) => ({
-          chainId: authorization.chainId,
+          chainId: toCaip2(authorization.chainId),
           address: authorization.address,
           nonce: authorization.nonce,
           yParity: authorization.yParity ?? 0,
