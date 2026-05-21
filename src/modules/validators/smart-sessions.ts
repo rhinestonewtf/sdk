@@ -910,13 +910,14 @@ function getPolicyData(policy: Policy, useDevContracts?: boolean): PolicyData {
       }
     }
     case 'time-frame': {
+      // Deployed TimeFramePolicy reads `bytes16 validUntil || bytes16 validAfter` (32 bytes).
       return {
         policy: TIME_FRAME_POLICY_ADDRESS,
-        initData: encodeAbiParameters(
-          [{ type: 'uint48' }, { type: 'uint48' }],
+        initData: encodePacked(
+          ['uint128', 'uint128'],
           [
-            Math.floor(policy.validAfter / 1000),
-            Math.floor(policy.validUntil / 1000),
+            BigInt(Math.floor(policy.validUntil / 1000)),
+            BigInt(Math.floor(policy.validAfter / 1000)),
           ],
         ),
       }
