@@ -27,6 +27,7 @@ import type {
   RhinestoneConfig,
   SignerSet,
   SourceAssetInput,
+  SourceCallInput,
   Sponsorship,
   TokenRequest,
   TokenSymbol,
@@ -35,6 +36,7 @@ import type {
 import {
   ExecutionError,
   IntentFailedError,
+  InvalidSourceCallsError,
   isExecutionError,
   OrderPathRequiredForIntentsError,
   QuoteNotInPreparedTransactionError,
@@ -94,6 +96,7 @@ async function sendTransactionInternal(
   targetChain: Chain,
   options: {
     callInputs?: CallInput[]
+    sourceCalls?: Record<number, SourceCallInput[]>
     gasLimit?: bigint
     initialTokenRequests?: TokenRequest[]
     recipient?: RhinestoneAccountConfig | Address
@@ -135,6 +138,7 @@ async function sendTransactionInternal(
       options.settlementLayers,
       options.sourceAssets,
       options.feeAsset,
+      options.sourceCalls,
     )
   }
 }
@@ -187,6 +191,7 @@ async function sendTransactionAsIntent(
   settlementLayers?: SettlementLayerFilter,
   sourceAssets?: SourceAssetInput,
   feeAsset?: Address | TokenSymbol,
+  sourceCalls?: Record<number, SourceCallInput[]>,
 ) {
   const prepared = await prepareTransactionAsIntent(
     config,
@@ -204,6 +209,7 @@ async function sendTransactionAsIntent(
     undefined,
     undefined,
     signers,
+    sourceCalls,
   )
   if (!prepared) {
     throw new OrderPathRequiredForIntentsError()
@@ -392,6 +398,7 @@ export {
   isExecutionError,
   ExecutionError,
   IntentFailedError,
+  InvalidSourceCallsError,
   OrderPathRequiredForIntentsError,
   QuoteNotInPreparedTransactionError,
   SessionChainRequiredError,

@@ -103,6 +103,23 @@ class QuoteNotInPreparedTransactionError extends ExecutionError {
   }
 }
 
+class InvalidSourceCallsError extends ExecutionError {
+  constructor(params?: {
+    chainId?: number
+    context?: any
+    errorType?: string
+    traceId?: string
+  }) {
+    super({
+      message:
+        params?.chainId !== undefined
+          ? `sourceCalls includes chainId ${params.chainId} which is not in sourceChains (or the target chain for same-chain transactions)`
+          : 'sourceCalls includes a chainId not in sourceChains (or the target chain for same-chain transactions)',
+      ...params,
+    })
+  }
+}
+
 class Eip7702InitSignatureRequiredError extends ExecutionError {
   constructor(params?: {
     context?: any
@@ -125,6 +142,7 @@ export {
   isExecutionError,
   ExecutionError,
   Eip7702InitSignatureRequiredError,
+  InvalidSourceCallsError,
   OrderPathRequiredForIntentsError,
   QuoteNotInPreparedTransactionError,
   SessionChainRequiredError,
