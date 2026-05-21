@@ -1021,6 +1021,12 @@ function buildMockSignature(
   useDevContracts?: boolean,
   chainCount: number = 1,
   targetChainId?: number,
+  // Mirror the chain's resolved sigMode so the mock sig matches what the bundle
+  // will actually validate with: verifyExecutions=true → ENABLE-mode payload
+  // (the orchestrator simulates verifyExecution); false → plain ERC-1271 payload
+  // (the orchestrator simulates isValidSignatureWithSender). Defaults to true to
+  // preserve the historical first-use shape for callers that don't resolve it.
+  verifyExecutions: boolean = true,
 ): Hex {
   const emissaryAddress = getSmartSessionEmissaryAddress(useDevContracts)
   // Use targetChainId when provided (per-chain mockSignatures path) so the
@@ -1040,10 +1046,13 @@ function buildMockSignature(
     chainId: i === 0 ? BigInt(primaryChainId) : 0n,
     sessionDigest: zeroHash,
   }))
+  // enableData is only consumed by packSignature's verifyExecutions=true branch
+  // (ENABLE-mode payload). For the ERC-1271 branch it's ignored, so it's safe to
+  // always include and let `verifyExecutions` select the shape.
   const dummySigners: ResolvedSessionSignerSet = {
     type: 'experimental_session',
     session,
-    verifyExecutions: true,
+    verifyExecutions,
     enableData: {
       userSignature: `0x${'00'.repeat(65)}` as Hex,
       hashesAndChainIds,

@@ -1,4 +1,4 @@
-import { erc20Abi, zeroAddress } from 'viem'
+import { erc20Abi, slice, zeroAddress } from 'viem'
 import { arbitrum, base, mainnet, optimism } from 'viem/chains'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { accountA } from '../../test/consts'
@@ -271,6 +271,11 @@ describe('prepareTransactionAsIntent', () => {
 
     const intentInput: IntentInput = mockCreateQuote.mock.calls[0][0]
     expect(intentInput.options.signatureMode).toBe(SIG_MODE_ERC1271)
+    // Already enabled → the per-chain mock sig must carry the steady-state
+    // ERC-1271 shape (mode byte 0x00 after the 20-byte emissary prefix) so the
+    // orchestrator simulates isValidSignatureWithSender, not verifyExecution.
+    const enabledMockSig = intentInput.account.mockSignatures![String(base.id)]
+    expect(slice(enabledMockSig, 20, 21)).toBe('0x00')
   })
 
   test('claim-only session not yet enabled escalates to SIG_MODE_EMISSARY_EXECUTION_ERC1271 to install', async () => {
@@ -315,6 +320,11 @@ describe('prepareTransactionAsIntent', () => {
     expect(intentInput.options.signatureMode).toBe(
       SIG_MODE_EMISSARY_EXECUTION_ERC1271,
     )
+    // Not yet enabled → the per-chain mock sig must carry the ENABLE-mode
+    // (verifyExecution) shape (mode byte 0x01) so the orchestrator simulates the
+    // verifyExecution install path, matching the escalated sigMode.
+    const installMockSig = intentInput.account.mockSignatures![String(base.id)]
+    expect(slice(installMockSig, 20, 21)).toBe('0x01')
   })
 })
 

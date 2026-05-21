@@ -502,4 +502,46 @@ describe('buildMockSignature', () => {
     expect(sigNaN).toBe(sigDefault)
     expect(sigZero).toBe(sigDefault)
   })
+
+  test('verifyExecutions=true (default) emits the ENABLE shape (mode byte 0x01)', () => {
+    const sig = buildMockSignature(baseSession, false, 1, undefined, true)
+    expect(slice(sig, 20, 21)).toBe('0x01')
+  })
+
+  test('verifyExecutions=false emits the ERC-1271 shape (mode byte 0x00), still emissary-prefixed', () => {
+    const sig = buildMockSignature(baseSession, false, 1, undefined, false)
+    expect(
+      isAddressEqual(
+        slice(sig, 0, 20) as Address,
+        SMART_SESSION_EMISSARY_ADDRESS,
+      ),
+    ).toBe(true)
+    expect(slice(sig, 20, 21)).toBe('0x00')
+  })
+
+  test('verifyExecutions=false places permissionId right after the mode byte', () => {
+    // The orchestrator strips the 20-byte validator prefix + 1 mode byte, then
+    // simulate_verify1271 reads signature[0:32] as the permissionId. Pin that
+    // the permissionId lands at bytes [21:53] so that stripping stays correct.
+    const sig = buildMockSignature(baseSession, false, 1, undefined, false)
+    expect(slice(sig, 21, 53)).toBe(getPermissionId(baseSession))
+  })
+
+  test('verifyExecutions toggles the payload shape', () => {
+    const enableShape = buildMockSignature(
+      baseSession,
+      false,
+      1,
+      undefined,
+      true,
+    )
+    const erc1271Shape = buildMockSignature(
+      baseSession,
+      false,
+      1,
+      undefined,
+      false,
+    )
+    expect(enableShape).not.toBe(erc1271Shape)
+  })
 })

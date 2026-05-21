@@ -976,31 +976,48 @@ async function prepareTransactionAsIntent(
     return getIntentAccount(recipient, eip7702InitSignature, account)
   }
 
+  // Per-chain mock signatures: enables accurate per-chain session validation gas
+  // simulation. Non-EVM destinations are excluded — they have no destination-side
+  // session validator, so adding the synthetic chain id would force users to
+  // configure a session that's never used and make `resolveSessionForChain` throw
+  // for per-chain session signers.
+  let mockSignatures: Record<string, Hex> | undefined
+  if (signers?.type === 'experimental_session') {
+    const mockChainIds = [
+      ...new Set([
+        ...(sourceChains ?? []).map((c) => c.id),
+        ...(isNonEvmChain(targetChain) ? [] : [targetChainId]),
+      ]),
+    ]
+    // Resolve verifyExecutions per chain so each mock sig carries the same shape
+    // the bundle will validate with: ENABLE-mode (verifyExecution) on first use,
+    // plain ERC-1271 once the session is already enabled. The orchestrator picks
+    // the matching gas simulation off the resolved signatureMode.
+    const resolvedByChain = await Promise.all(
+      mockChainIds.map(async (chainId) => ({
+        chainId,
+        resolved: await resolveSignersForChain(config, signers, chainId),
+      })),
+    )
+    mockSignatures = Object.fromEntries(
+      resolvedByChain.map(({ chainId, resolved }) => [
+        String(chainId),
+        buildMockSignature(
+          resolveSessionForChain(signers, chainId).session,
+          config.useDevContracts,
+          sourceChains?.length ?? 1,
+          chainId,
+          isResolvedSessionSignerSet(resolved)
+            ? resolved.verifyExecutions
+            : true,
+        ),
+      ]),
+    )
+  }
+
   const intentAccount: OrchestratorAccount = {
     ...getIntentAccount(config, eip7702InitSignature, account),
-    ...(signers?.type === 'experimental_session' && {
-      // Per-chain map: enables accurate per-chain session validation gas
-      // simulation. Non-EVM destinations are excluded — they have no
-      // destination-side session validator, so adding the synthetic chain
-      // id would force users to configure a session that's never used and
-      // make `resolveSessionForChain` throw for per-chain session signers.
-      mockSignatures: Object.fromEntries(
-        [
-          ...new Set([
-            ...(sourceChains ?? []).map((c) => c.id),
-            ...(isNonEvmChain(targetChain) ? [] : [targetChainId]),
-          ]),
-        ].map((chainId) => [
-          String(chainId),
-          buildMockSignature(
-            resolveSessionForChain(signers, chainId).session,
-            config.useDevContracts,
-            sourceChains?.length ?? 1,
-            chainId,
-          ),
-        ]),
-      ),
-    }),
+    ...(mockSignatures && { mockSignatures }),
   }
   const recipient = getRecipient(recipientInput)
   const signatureMode = await resolveSignatureMode(
