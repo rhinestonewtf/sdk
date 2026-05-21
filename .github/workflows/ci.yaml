@@ -38,9 +38,6 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
 
-      - name: Set up Foundry
-        uses: foundry-rs/foundry-toolchain@v1
-
       - name: Install the npm dependencies
         run: bun install
 
@@ -49,5 +46,3 @@ jobs:
 
       - name: Run tests
         run: bun run test
-        env:
-          VITE_ALCHEMY_API_KEY: ${{ secrets.ALCHEMY_API_KEY}}
