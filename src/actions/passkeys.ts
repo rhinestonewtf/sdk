@@ -39,8 +39,8 @@ function disable(): LazyCallInput {
     },
   ])
   return {
-    async resolve({ config }) {
-      return getModuleUninstallationCalls(config, module)
+    async resolve({ chain, config }) {
+      return getModuleUninstallationCalls(config, chain, module)
     },
   }
 }

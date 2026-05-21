@@ -66,8 +66,8 @@ function changeThreshold(newThreshold: number): CalldataInput {
 function disable(): LazyCallInput {
   const module = getMultiFactorValidator(1, [])
   return {
-    async resolve({ config }) {
-      return getModuleUninstallationCalls(config, module)
+    async resolve({ chain, config }) {
+      return getModuleUninstallationCalls(config, chain, module)
     },
   }
 }
