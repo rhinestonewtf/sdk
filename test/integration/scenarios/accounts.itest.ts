@@ -101,37 +101,52 @@ describe.sequential('SDK integration account kinds', () => {
       // EOA accounts are not yet supported on sponsored testnet routes.
       // The orchestrator returns UNPROCESSABLE_CONTENT with
       // "the account type is not supported for the available routes".
-    },
-  )
-
-  test.todo(
-    'runs a sponsored same-chain intent on a fresh Nexus 7702 account',
-    async () => {
-      // EIP-7702 on Base Sepolia hits a VALIDATION_ERROR:
-      // "Invalid CAIP-2 chain id (expected string): 84532".
-      // This looks like an orchestrator formatting bug for 7702 accounts.
       //
       // const sdk = createIntegrationSDK()
       // const owner = createOwner()
-      // const eoa = createOwner()
       // const account = await sdk.createAccount({
-      //   account: { type: 'nexus' },
+      //   account: { type: 'eoa' },
       //   owners: { type: 'ecdsa', accounts: [owner] },
-      //   eoa,
+      //   eoa: owner,
       // })
-      // const eip7702InitSignature = await account.signEip7702InitData()
       // const execution = await executeIntent({
       //   account,
-      //   label: 'accounts/nexus-7702/same-chain/fresh/sponsored',
+      //   label: 'accounts/eoa/same-chain/fresh/sponsored',
       //   transaction: {
       //     chain: sourceChain,
       //     sponsored: true,
       //     calls: [createNoopCall()],
-      //     eip7702InitSignature,
       //   },
-      //   signAuthorizations: true,
       // })
       // expectOutcome(execution, { kind: 'success' })
     },
   )
+
+  test('runs a sponsored same-chain intent on a fresh Nexus 7702 account', async () => {
+    const sdk = createIntegrationSDK()
+    const owner = createOwner()
+    const eoa = createOwner()
+    const account = await sdk.createAccount({
+      account: { type: 'nexus' },
+      owners: { type: 'ecdsa', accounts: [owner] },
+      eoa,
+    })
+    const eip7702InitSignature = await account.signEip7702InitData()
+    const execution = await executeIntent({
+      account,
+      label: 'accounts/nexus-7702/same-chain/fresh/sponsored',
+      transaction: {
+        chain: sourceChain,
+        sponsored: true,
+        calls: [createNoopCall()],
+        eip7702InitSignature,
+      },
+      signAuthorizations: true,
+    })
+    expectOutcome(execution, { kind: 'success' })
+    if (execution.phase !== 'success') return
+
+    expectNoFailedOperations(execution.status)
+    expectCompletedOperation(execution.status, sourceChain.id)
+  })
 })
