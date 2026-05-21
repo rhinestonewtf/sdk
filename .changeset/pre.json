@@ -20,6 +20,7 @@
     "expose-quote-type",
     "fix-time-frame-policy-encoding",
     "heavy-grapes-punch",
+    "install-session-via-emissary-on-first-use",
     "key-scope-denied-error",
     "non-evm-destinations",
     "operation-model-redesign",
