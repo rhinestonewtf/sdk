@@ -1027,6 +1027,11 @@ async function prepareTransactionAsIntent(
               sourceChains?.length ?? 1,
               chainId,
               resolved.verifyExecutions,
+              // Include enableData only when the real sig would (session not yet
+              // enabled). An already-enabled session resolves enableData=undefined
+              // even with verifyExecutions=true (explicit permissions), and its
+              // real sig is MODE_USE — so the mock must omit enableData too.
+              resolved.enableData !== undefined,
             ),
           ] as const,
         ]

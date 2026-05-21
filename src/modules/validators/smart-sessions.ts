@@ -1022,11 +1022,18 @@ function buildMockSignature(
   chainCount: number = 1,
   targetChainId?: number,
   // Mirror the chain's resolved sigMode so the mock sig matches what the bundle
-  // will actually validate with: verifyExecutions=true → ENABLE-mode payload
-  // (the orchestrator simulates verifyExecution); false → plain ERC-1271 payload
-  // (the orchestrator simulates isValidSignatureWithSender). Defaults to true to
-  // preserve the historical first-use shape for callers that don't resolve it.
+  // will actually validate with. The three real shapes, all reproduced here:
+  //   verifyExecutions=true  + includeEnableData=true  → ENABLE  (0x01): first
+  //     use, installs the session (verifyExecution + setConfig).
+  //   verifyExecutions=true  + includeEnableData=false → USE     (0x00): already
+  //     enabled, explicit permissions (verifyExecution, no install).
+  //   verifyExecutions=false                           → ERC-1271 (0x00): already
+  //     enabled, no explicit permissions (isValidSignatureWithSender).
+  // packSignature picks ENABLE vs USE on enableData *presence*, so a session that
+  // is already enabled must omit it or the mock over-simulates the install path.
+  // Defaults preserve the historical first-use ENABLE shape.
   verifyExecutions: boolean = true,
+  includeEnableData: boolean = true,
 ): Hex {
   const emissaryAddress = getSmartSessionEmissaryAddress(useDevContracts)
   // Use targetChainId when provided (per-chain mockSignatures path) so the
@@ -1046,18 +1053,20 @@ function buildMockSignature(
     chainId: i === 0 ? BigInt(primaryChainId) : 0n,
     sessionDigest: zeroHash,
   }))
-  // enableData is only consumed by packSignature's verifyExecutions=true branch
-  // (ENABLE-mode payload). For the ERC-1271 branch it's ignored, so it's safe to
-  // always include and let `verifyExecutions` select the shape.
+  // Include enableData only when the session is actually being enabled — its
+  // presence is what makes packSignature emit ENABLE (0x01) vs USE (0x00) in the
+  // verifyExecutions branch. (Ignored entirely by the ERC-1271 branch.)
   const dummySigners: ResolvedSessionSignerSet = {
     type: 'experimental_session',
     session,
     verifyExecutions,
-    enableData: {
-      userSignature: `0x${'00'.repeat(65)}` as Hex,
-      hashesAndChainIds,
-      sessionToEnableIndex: 0,
-    },
+    ...(includeEnableData && {
+      enableData: {
+        userSignature: `0x${'00'.repeat(65)}` as Hex,
+        hashesAndChainIds,
+        sessionToEnableIndex: 0,
+      },
+    }),
   }
   const dummyValidatorSignature = `0x${'00'.repeat(65)}` as Hex
   const sigData = packSignature(dummySigners, dummyValidatorSignature)

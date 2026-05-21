@@ -503,9 +503,27 @@ describe('buildMockSignature', () => {
     expect(sigZero).toBe(sigDefault)
   })
 
-  test('verifyExecutions=true (default) emits the ENABLE shape (mode byte 0x01)', () => {
-    const sig = buildMockSignature(baseSession, false, 1, undefined, true)
+  test('verifyExecutions=true with enableData emits the ENABLE shape (mode byte 0x01)', () => {
+    const sig = buildMockSignature(baseSession, false, 1, undefined, true, true)
     expect(slice(sig, 20, 21)).toBe('0x01')
+  })
+
+  test('verifyExecutions=true WITHOUT enableData emits the USE shape (mode byte 0x00)', () => {
+    // Already-enabled session with explicit permissions: verifyExecutions stays
+    // true but the real sig omits enableData (MODE_USE). The mock must match so
+    // the orchestrator simulates the steady-state path, not the install path.
+    const sig = buildMockSignature(
+      baseSession,
+      false,
+      1,
+      undefined,
+      true,
+      false,
+    )
+    expect(slice(sig, 20, 21)).toBe('0x00')
+    // USE shape places the permissionId right after the mode byte (no compressed
+    // enable payload), distinguishing it from the 0x01 ENABLE shape.
+    expect(slice(sig, 21, 53)).toBe(getPermissionId(baseSession))
   })
 
   test('verifyExecutions=false emits the ERC-1271 shape (mode byte 0x00), still emissary-prefixed', () => {
