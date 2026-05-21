@@ -1028,7 +1028,8 @@ async function prepareTransactionAsIntent(
   if (resolvedByChain) {
     const entries = [...resolvedByChain.entries()].flatMap(
       ([chainId, resolved]) => {
-        if (chainId === targetChainId && isNonEvmChain(targetChain)) return []
+        // resolvedByChain is keyed by sessionChainIds, which already excludes a
+        // non-EVM target — so no per-entry target guard is needed here.
         if (!isResolvedSessionSignerSet(resolved)) return []
         // Match the mock shape to what the real sig will be: ERC-1271 when not
         // verifying executions; otherwise ENABLE if the session still needs
