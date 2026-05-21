@@ -1,19 +1,29 @@
-name: Package Compatibility Tests
+name: Integration Tests
 
 on:
-  pull_request:
-    branches:
-      - main
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: "Integration suite to run"
+        required: true
+        default: "smoke"
+        type: choice
+        options:
+          - smoke
+          - all
+
+concurrency:
+  group: live-integration-tests
+  cancel-in-progress: false
 
 jobs:
   test:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        environment: ["node-cjs", "node-esm", "react-native"]
+    timeout-minutes: 30
+    env:
+      INTEGRATION_RHINESTONE_API_KEY: ${{ secrets.INTEGRATION_RHINESTONE_API_KEY }}
 
     steps:
-      # Setup and Build
       - name: Check out the repo
         uses: actions/checkout@v4
 
@@ -23,14 +33,10 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Build SDK
-        run: bun run build
+      - name: Run smoke integration tests
+        if: ${{ inputs.suite == 'smoke' }}
+        run: bun run test:integration:smoke -- --run
 
-      # Package SDK for Testing
-      - name: Pack SDK
-        working-directory: src
-        run: bunx npm pack --pack-destination $GITHUB_WORKSPACE/
-
-      # Run package compatibility smoke tests
-      - name: Test ${{ matrix.environment }} package compatibility
-        run: ./.github/scripts/test-${{ matrix.environment }}.sh
+      - name: Run all integration tests
+        if: ${{ inputs.suite == 'all' }}
+        run: bun run test:integration -- --run
