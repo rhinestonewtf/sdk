@@ -1,4 +1,5 @@
 import {
+  type Address,
   type Chain,
   concat,
   createPublicClient,
@@ -20,7 +21,8 @@ import {
   waitForExecution,
 } from '../execution'
 import { getIntentExecutor, getSetup } from '../modules'
-import type { Module } from '../modules/common'
+import { MODULE_TYPE_ID_VALIDATOR, type Module } from '../modules/common'
+import { getValidators as getValidatorsInternal } from '../modules/read'
 import { getOwnerValidator } from '../modules/validators'
 import { getSocialRecoveryValidator } from '../modules/validators/core'
 import type { ResolvedSessionSignerSet } from '../modules/validators/smart-sessions'
@@ -278,11 +280,24 @@ function getModuleInstallationCalls(
   }))
 }
 
-function getModuleUninstallationCalls(
+// SentinelList head pointer used by ERC-7579 module managers (Nexus, Safe7579,
+// Startale). Validator/executor uninstall on these accounts decodes the
+// `deInitData` slot as `(address prev, bytes moduleDeInit)`, where `prev`
+// identifies the preceding linked-list entry to repair on removal.
+const SENTINEL_LIST_HEAD: Address = '0x0000000000000000000000000000000000000001'
+
+async function getModuleUninstallationCalls(
   config: RhinestoneConfig,
+  chain: Chain,
   module: Module,
-): Call[] {
+): Promise<Call[]> {
   const address = getAddress(config)
+  const onChainDeInitData = await resolveOnChainDeInitData(
+    config,
+    chain,
+    address,
+    module,
+  )
   const data = encodeFunctionData({
     abi: [
       {
@@ -307,9 +322,62 @@ function getModuleUninstallationCalls(
       },
     ],
     functionName: 'uninstallModule',
-    args: [module.type, module.address, module.deInitData],
+    args: [module.type, module.address, onChainDeInitData],
   })
   return [{ to: address, data, value: 0n }]
+}
+
+/**
+ * Build the value the account expects in `uninstallModule`'s third argument.
+ *
+ * `Module.deInitData` carries module-level bytes (mirroring `Module.initData`,
+ * what the module's `onUninstall` sees). ERC-7579 accounts that store
+ * validators / executors in a SentinelList — Nexus, Safe7579, Startale —
+ * require an account-level wrapper `abi.encode(prev, moduleDeInit)` so they
+ * can pop the entry from the linked list. Kernel uses different storage and
+ * treats this slot as raw module bytes, so we pass `module.deInitData` through
+ * unchanged.
+ *
+ * Scope: validator type only — there are no public actions to disable
+ * executor modules today.
+ */
+async function resolveOnChainDeInitData(
+  config: RhinestoneConfig,
+  chain: Chain,
+  account: Address,
+  module: Module,
+): Promise<Hex> {
+  if (module.type !== MODULE_TYPE_ID_VALIDATOR) {
+    return module.deInitData
+  }
+  const accountType = getAccountProvider(config).type
+  if (
+    accountType !== 'nexus' &&
+    accountType !== 'safe' &&
+    accountType !== 'startale'
+  ) {
+    return module.deInitData
+  }
+
+  const validators = await getValidatorsInternal(
+    accountType,
+    account,
+    chain,
+    config.provider,
+  )
+  const targetLower = module.address.toLowerCase()
+  const index = validators.findIndex((v) => v.toLowerCase() === targetLower)
+  if (index === -1) {
+    // Not installed; pass through unchanged. The account's `uninstallModule`
+    // will surface a `ModuleNotInstalled` revert with the original module
+    // address, which is more useful than a silent abi.decode mismatch.
+    return module.deInitData
+  }
+  const prev = index === 0 ? SENTINEL_LIST_HEAD : validators[index - 1]
+  return encodeAbiParameters(
+    [{ type: 'address' }, { type: 'bytes' }],
+    [prev, module.deInitData],
+  )
 }
 
 function getAddress(config: RhinestoneConfig) {

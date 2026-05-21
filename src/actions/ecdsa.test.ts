@@ -1,5 +1,6 @@
+import { encodeAbiParameters, encodeFunctionData } from 'viem'
 import { base } from 'viem/chains'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { accountA } from '../../test/consts'
 import { RhinestoneSDK } from '..'
 import { resolveCallInputs } from '../execution/utils'
@@ -10,6 +11,53 @@ import {
   enable as enableEcdsa,
   removeOwner,
 } from './ecdsa'
+
+// `getModuleUninstallationCalls` reads the on-chain validator list to compute
+// the SentinelList `prev` pointer for the uninstall. The test account isn't
+// deployed, so stub the read with a known single-validator list. The address
+// is inlined because `vi.mock` is hoisted above any module-scope `const`.
+vi.mock('../modules/read', async (importActual) => {
+  const actual = await importActual<typeof import('../modules/read')>()
+  return {
+    ...actual,
+    getValidators: vi
+      .fn()
+      .mockResolvedValue(['0x000000000013fdb5234e4e3162a810f54d9f7e98']),
+  }
+})
+
+const OWNABLE_VALIDATOR_ADDRESS =
+  '0x000000000013fdb5234e4e3162a810f54d9f7e98' as const
+
+const UNINSTALL_MODULE_ABI = [
+  {
+    type: 'function',
+    name: 'uninstallModule',
+    inputs: [
+      { type: 'uint256', name: 'moduleTypeId' },
+      { type: 'address', name: 'module' },
+      { type: 'bytes', name: 'deInitData' },
+    ],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+] as const
+
+const SENTINEL = '0x0000000000000000000000000000000000000001' as const
+
+function expectedUninstallValidatorCalldata(validator: `0x${string}`) {
+  // Validator is at head of the mocked SentinelList → prev = SENTINEL,
+  // moduleDeInit = '0x'.
+  const deInitData = encodeAbiParameters(
+    [{ type: 'address' }, { type: 'bytes' }],
+    [SENTINEL, '0x'],
+  )
+  return encodeFunctionData({
+    abi: UNINSTALL_MODULE_ABI,
+    functionName: 'uninstallModule',
+    args: [1n, validator, deInitData],
+  })
+}
 
 const MOCK_OWNER_A = '0xd1aefebdceefc094f1805b241fa5e6db63a9181a'
 const MOCK_OWNER_B = '0xeddfcb50d18f6d3d51c4f7cbca5ed6bdebc59817'
@@ -95,7 +143,7 @@ describe('ECDSA Actions', () => {
         {
           to: accountAddress,
           value: 0n,
-          data: '0xa71763a80000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000013fdb5234e4e3162a810f54d9f7e9800000000000000000000000000000000000000000000000000000000000000600000000000000000000000000000000000000000000000000000000000000000',
+          data: expectedUninstallValidatorCalldata(OWNABLE_VALIDATOR_ADDRESS),
         },
       ])
     })

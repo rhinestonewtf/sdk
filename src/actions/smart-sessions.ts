@@ -31,12 +31,12 @@ function experimental_enable(): LazyCallInput {
  */
 function experimental_disable(): LazyCallInput {
   return {
-    async resolve({ config }) {
+    async resolve({ chain, config }) {
       const module = getSmartSessionValidator(config)
       if (!module) {
         return []
       }
-      return getModuleUninstallationCalls(config, module)
+      return getModuleUninstallationCalls(config, chain, module)
     },
   }
 }
