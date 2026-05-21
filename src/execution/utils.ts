@@ -989,10 +989,15 @@ async function prepareTransactionAsIntent(
 
   // Resolve per-chain signer state once (each resolveSignersForChain does an
   // isSessionEnabled RPC) and reuse it for mock signatures, the signature mode,
-  // and preClaim ops. Covers the same chain set resolveSignatureMode uses
-  // (sources + target) so the map can be shared directly.
+  // and preClaim ops. Exclude a non-EVM destination — it has no session
+  // validator, so resolving it would waste an RPC (or throw for per-chain
+  // session signers). resolveSignatureMode still resolves the target itself when
+  // it's not in this shared map.
   const sessionChainIds = [
-    ...new Set([...(sourceChains ?? []).map((c) => c.id), targetChainId]),
+    ...new Set([
+      ...(sourceChains ?? []).map((c) => c.id),
+      ...(isNonEvmChain(targetChain) ? [] : [targetChainId]),
+    ]),
   ]
   const resolvedByChain =
     signers?.type === 'experimental_session'

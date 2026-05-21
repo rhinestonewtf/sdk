@@ -1048,7 +1048,7 @@ function buildMockSignature(
   // shape) — its presence is what makes packSignature emit 0x01 vs 0x00, and it's
   // ignored entirely by the USE / ERC-1271 shapes. Built lazily so steady-state
   // shapes skip the chainId-entry allocation.
-  let enableData: ResolvedSessionSignerSet['enableData']
+  let enableData: SessionEnableData | undefined
   if (includeEnableData) {
     // Use targetChainId when provided (per-chain mockSignatures path) so the mock
     // emissary's chainId check passes on the correct chain. Falls back to
