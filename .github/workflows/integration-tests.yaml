@@ -11,6 +11,14 @@ on:
         options:
           - smoke
           - all
+      target:
+        description: "Orchestrator environment to run against"
+        required: true
+        default: "prod"
+        type: choice
+        options:
+          - prod
+          - dev
 
 concurrency:
   group: live-integration-tests
@@ -21,7 +29,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      INTEGRATION_RHINESTONE_API_KEY: ${{ secrets.INTEGRATION_RHINESTONE_API_KEY }}
+      # When target=dev, point the SDK at the dev orchestrator. The SDK then
+      # auto-enables dev contract addresses (see createIntegrationSDK), so
+      # bundles simulate against the matching dev deployment. Empty for prod
+      # falls back to the SDK's built-in prod URL + prod contracts.
+      INTEGRATION_ORCHESTRATOR_URL: ${{ inputs.target == 'dev' && 'https://dev.v1.orchestrator.rhinestone.dev' || '' }}
+      INTEGRATION_RHINESTONE_API_KEY: ${{ inputs.target == 'dev' && secrets.INTEGRATION_RHINESTONE_API_KEY_DEV || secrets.INTEGRATION_RHINESTONE_API_KEY }}
 
     steps:
       - name: Check out the repo
