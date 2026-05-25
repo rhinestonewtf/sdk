@@ -1,4 +1,4 @@
-import { type Chain, erc20Abi, zeroAddress } from 'viem'
+import { type Chain, erc20Abi, slice, zeroAddress } from 'viem'
 import { arbitrum, base, mainnet, optimism } from 'viem/chains'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { accountA } from '../../test/consts'
@@ -271,6 +271,11 @@ describe('prepareTransactionAsIntent', () => {
 
     const intentInput: IntentInput = mockCreateQuote.mock.calls[0][0]
     expect(intentInput.options.signatureMode).toBe(SIG_MODE_ERC1271)
+    // Already enabled → the per-chain mock sig must carry the steady-state
+    // ERC-1271 shape (mode byte 0x00 after the 20-byte emissary prefix) so the
+    // orchestrator simulates isValidSignatureWithSender, not verifyExecution.
+    const enabledMockSig = intentInput.account.mockSignatures![String(base.id)]
+    expect(slice(enabledMockSig, 20, 21)).toBe('0x00')
   })
 
   test('claim-only session not yet enabled escalates to SIG_MODE_EMISSARY_EXECUTION_ERC1271 to install', async () => {
@@ -315,6 +320,11 @@ describe('prepareTransactionAsIntent', () => {
     expect(intentInput.options.signatureMode).toBe(
       SIG_MODE_EMISSARY_EXECUTION_ERC1271,
     )
+    // Not yet enabled → the per-chain mock sig must carry the ENABLE-mode
+    // (verifyExecution) shape (mode byte 0x01) so the orchestrator simulates the
+    // verifyExecution install path, matching the escalated sigMode.
+    const installMockSig = intentInput.account.mockSignatures![String(base.id)]
+    expect(slice(installMockSig, 20, 21)).toBe('0x01')
   })
 })
 
@@ -1126,5 +1136,71 @@ describe('resolveSignatureMode', () => {
       base.id,
     )
     expect(mode).toBe(SIG_MODE_EMISSARY_EXECUTION_ERC1271)
+  })
+
+  // Regression: a non-EVM destination (Solana/Tron) has no session validator,
+  // so prepareTransactionAsIntent omits it from the shared preResolved map. The
+  // mode must be derived from the map's keys (EVM sources) — NOT from
+  // [...sources, targetChainId] — otherwise the missing non-EVM target falls
+  // through to resolveSessionForChain and throws "No session configured for
+  // chain <id>", making Solana/Tron intents with EVM-only sessions un-preparable.
+  describe('non-EVM target (preResolved-driven chain set)', () => {
+    const solanaTargetId = 792703809
+
+    const evmOnlySessions: SessionSignerSet = {
+      type: 'experimental_session',
+      sessions: {
+        // Note: no entry for solanaTargetId — resolving it would throw.
+        [base.id]: { session: sessionWithActions },
+      },
+    }
+
+    const preResolvedBaseOnly = new Map([
+      [
+        base.id,
+        {
+          type: 'experimental_session' as const,
+          session: sessionWithActions,
+          enableData: undefined,
+          verifyExecutions: true,
+        },
+      ],
+    ]) as Parameters<typeof resolveSignatureMode>[4]
+
+    test('derives mode from EVM sources without throwing on the non-EVM target', async () => {
+      const mode = await resolveSignatureMode(
+        smartAccountConfig,
+        evmOnlySessions,
+        [base],
+        solanaTargetId,
+        preResolvedBaseOnly,
+      )
+      expect(mode).toBe(SIG_MODE_EMISSARY_EXECUTION_ERC1271)
+    })
+
+    test('does not re-resolve any chain when preResolved is supplied', async () => {
+      const isSessionEnabled = vi.spyOn(validators, 'isSessionEnabled')
+      await resolveSignatureMode(
+        smartAccountConfig,
+        evmOnlySessions,
+        [base],
+        solanaTargetId,
+        preResolvedBaseOnly,
+      )
+      // Every chain comes from the map, so no resolveSignersForChain RPC fires —
+      // and in particular the non-EVM target is never resolved.
+      expect(isSessionEnabled).not.toHaveBeenCalled()
+    })
+
+    test('without preResolved, the missing non-EVM target still throws (documents why the map gate exists)', async () => {
+      await expect(
+        resolveSignatureMode(
+          smartAccountConfig,
+          evmOnlySessions,
+          [base],
+          solanaTargetId,
+        ),
+      ).rejects.toThrow(`No session configured for chain ${solanaTargetId}`)
+    })
   })
 })

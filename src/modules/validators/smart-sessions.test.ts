@@ -507,4 +507,60 @@ describe('buildMockSignature', () => {
     expect(sigNaN).toBe(sigDefault)
     expect(sigZero).toBe(sigDefault)
   })
+
+  test("shape 'enable' emits the ENABLE shape (mode byte 0x01)", () => {
+    const sig = buildMockSignature(baseSession, false, 1, undefined, 'enable')
+    expect(slice(sig, 20, 21)).toBe('0x01')
+  })
+
+  test("shape 'use' emits the USE shape (mode byte 0x00)", () => {
+    // Already-enabled session with explicit permissions: the real sig is MODE_USE
+    // (verifyExecution, no enableData). The mock must match so the orchestrator
+    // simulates the steady-state path, not the install path.
+    const sig = buildMockSignature(baseSession, false, 1, undefined, 'use')
+    expect(slice(sig, 20, 21)).toBe('0x00')
+    // USE shape places the permissionId right after the mode byte (no compressed
+    // enable payload), distinguishing it from the 0x01 ENABLE shape.
+    expect(slice(sig, 21, 53)).toBe(getPermissionId(baseSession))
+  })
+
+  test("shape 'erc1271' emits the ERC-1271 shape (mode byte 0x00), still emissary-prefixed", () => {
+    const sig = buildMockSignature(baseSession, false, 1, undefined, 'erc1271')
+    expect(
+      isAddressEqual(
+        slice(sig, 0, 20) as Address,
+        SMART_SESSION_EMISSARY_ADDRESS,
+      ),
+    ).toBe(true)
+    expect(slice(sig, 20, 21)).toBe('0x00')
+  })
+
+  test("shape 'erc1271' places permissionId right after the mode byte", () => {
+    // The orchestrator strips the 20-byte validator prefix + 1 mode byte, then
+    // simulate_verify1271 reads signature[0:32] as the permissionId. Pin that
+    // the permissionId lands at bytes [21:53] so that stripping stays correct.
+    const sig = buildMockSignature(baseSession, false, 1, undefined, 'erc1271')
+    expect(slice(sig, 21, 53)).toBe(getPermissionId(baseSession))
+  })
+
+  test('enable / use / erc1271 shapes all differ', () => {
+    const enableShape = buildMockSignature(
+      baseSession,
+      false,
+      1,
+      undefined,
+      'enable',
+    )
+    const useShape = buildMockSignature(baseSession, false, 1, undefined, 'use')
+    const erc1271Shape = buildMockSignature(
+      baseSession,
+      false,
+      1,
+      undefined,
+      'erc1271',
+    )
+    expect(enableShape).not.toBe(useShape)
+    expect(enableShape).not.toBe(erc1271Shape)
+    expect(useShape).not.toBe(erc1271Shape)
+  })
 })

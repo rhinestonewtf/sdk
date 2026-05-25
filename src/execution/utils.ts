@@ -190,6 +190,14 @@ async function resolveSignatureMode(
   signers: SignerSet | undefined,
   sourceChains: Chain[] | undefined,
   targetChainId: number,
+  // Optional pre-resolved per-chain signer sets. When supplied, reuse them
+  // instead of resolving again — each resolveSignersForChain does an
+  // isSessionEnabled RPC, so sharing one map across mockSignatures, sigMode, and
+  // preClaim avoids duplicate calls per intent. The map also defines *which*
+  // chains carry a session: the caller omits a non-EVM target (it has no session
+  // validator), so deriving the chain set from the map's keys keeps us from
+  // resolving — and throwing on — a target with no configured session.
+  preResolved?: Map<number, InternalSignerSet | undefined>,
 ): Promise<SignatureMode> {
   if (config.account?.type === 'eoa') {
     return SIG_MODE_ERC1271
@@ -197,11 +205,17 @@ async function resolveSignatureMode(
   if (signers?.type !== 'experimental_session') {
     return SIG_MODE_ERC1271
   }
-  const chainIds = [
-    ...new Set([...(sourceChains ?? []).map((c) => c.id), targetChainId]),
-  ]
+  const chainIds = preResolved
+    ? [...preResolved.keys()]
+    : [...new Set([...(sourceChains ?? []).map((c) => c.id), targetChainId])]
   const resolvedSet = await Promise.all(
-    chainIds.map((chainId) => resolveSignersForChain(config, signers, chainId)),
+    chainIds.map((chainId) =>
+      // Use has() not `?? resolve` so a cached `undefined` entry is still reused
+      // (get() can't distinguish "missing key" from "present but undefined").
+      preResolved?.has(chainId)
+        ? preResolved.get(chainId)
+        : resolveSignersForChain(config, signers, chainId),
+    ),
   )
   let anyVerifyExecutions = false
   for (const resolved of resolvedSet) {
@@ -1018,31 +1032,78 @@ async function prepareTransactionAsIntent(
     return getIntentAccount(recipient, eip7702InitSignature, account)
   }
 
+  // Resolve per-chain signer state once (each resolveSignersForChain does an
+  // isSessionEnabled RPC) and reuse it for mock signatures, the signature mode,
+  // and preClaim ops. Exclude a non-EVM destination — it has no session
+  // validator, so resolving it would waste an RPC (or throw for per-chain
+  // session signers). resolveSignatureMode derives its chain set from this map's
+  // keys, so the excluded non-EVM target is never resolved there either.
+  const sessionChainIds = [
+    ...new Set([
+      ...(sourceChains ?? []).map((c) => c.id),
+      ...(isNonEvmChain(targetChain) ? [] : [targetChainId]),
+    ]),
+  ]
+  const resolvedByChain =
+    signers?.type === 'experimental_session'
+      ? new Map<number, InternalSignerSet | undefined>(
+          await Promise.all(
+            sessionChainIds.map(
+              async (chainId) =>
+                [
+                  chainId,
+                  await resolveSignersForChain(config, signers, chainId),
+                ] as const,
+            ),
+          ),
+        )
+      : undefined
+
+  // Per-chain mock signatures: enables accurate per-chain session validation gas
+  // simulation. Non-EVM destinations are excluded — they have no destination-side
+  // session validator. Each chain's mock sig carries that chain's own resolved
+  // shape (ENABLE / USE / ERC-1271). Note these are per-chain and may differ in
+  // shape, whereas `signatureMode` (below) is a single global value resolved
+  // conservatively (anyVerifyExecutions across chains → mode 5) — so in mixed
+  // states a chain's mock shape need not match the global signatureMode.
+  let mockSignatures: Record<string, Hex> | undefined
+  if (resolvedByChain) {
+    const entries = [...resolvedByChain.entries()].flatMap(
+      ([chainId, resolved]) => {
+        // resolvedByChain is keyed by sessionChainIds, which already excludes a
+        // non-EVM target — so no per-entry target guard is needed here.
+        if (!isResolvedSessionSignerSet(resolved)) return []
+        // Match the mock shape to what the real sig will be: ERC-1271 when not
+        // verifying executions; otherwise ENABLE if the session still needs
+        // installing (enableData present), else USE (already enabled, e.g.
+        // explicit permissions — its real sig is MODE_USE with no enableData).
+        const shape = !resolved.verifyExecutions
+          ? 'erc1271'
+          : resolved.enableData !== undefined
+            ? 'enable'
+            : 'use'
+        return [
+          [
+            String(chainId),
+            buildMockSignature(
+              resolved.session,
+              config.useDevContracts,
+              sourceChains?.length ?? 1,
+              chainId,
+              shape,
+            ),
+          ] as const,
+        ]
+      },
+    )
+    // Leave mockSignatures undefined (not {}) when there are no eligible chains,
+    // so downstream consumers can treat presence as "per-chain sigs provided".
+    if (entries.length > 0) mockSignatures = Object.fromEntries(entries)
+  }
+
   const intentAccount: OrchestratorAccount = {
     ...getIntentAccount(config, eip7702InitSignature, account),
-    ...(signers?.type === 'experimental_session' && {
-      // Per-chain map: enables accurate per-chain session validation gas
-      // simulation. Non-EVM destinations are excluded — they have no
-      // destination-side session validator, so adding the synthetic chain
-      // id would force users to configure a session that's never used and
-      // make `resolveSessionForChain` throw for per-chain session signers.
-      mockSignatures: Object.fromEntries(
-        [
-          ...new Set([
-            ...(sourceChains ?? []).map((c) => c.id),
-            ...(isNonEvmChain(targetChain) ? [] : [targetChainId]),
-          ]),
-        ].map((chainId) => [
-          String(chainId),
-          buildMockSignature(
-            resolveSessionForChain(signers, chainId).session,
-            config.useDevContracts,
-            sourceChains?.length ?? 1,
-            chainId,
-          ),
-        ]),
-      ),
-    }),
+    ...(mockSignatures && { mockSignatures }),
   }
   const recipient = getRecipient(recipientInput)
   const signatureMode = await resolveSignatureMode(
@@ -1050,6 +1111,7 @@ async function prepareTransactionAsIntent(
     signers,
     sourceChains,
     targetChainId,
+    resolvedByChain,
   )
 
   // For session signers that need enabling, pass a dummy preclaimop per source chain
@@ -1059,13 +1121,11 @@ async function prepareTransactionAsIntent(
   // post-facto — because the orchestrator HMAC covers preClaimOps.
   const preClaimExecutions: Record<number, Execution[]> = {}
   if (signers?.type === 'experimental_session' && sourceChains) {
-    const resolvedPerChain = await Promise.all(
-      sourceChains.map(async (chain) => ({
-        chainId: chain.id,
-        resolved: await resolveSignersForChain(config, signers, chain.id),
-      })),
-    )
-    for (const { chainId, resolved } of resolvedPerChain) {
+    // Reuse the shared per-chain resolution (source chains are a subset of
+    // sessionChainIds) instead of resolving — and re-doing isSessionEnabled — again.
+    for (const chain of sourceChains) {
+      const chainId = chain.id
+      const resolved = resolvedByChain?.get(chainId)
       if (!isResolvedSessionSignerSet(resolved)) continue
       const { enableData, verifyExecutions } = resolved
       if (!verifyExecutions || !enableData) continue

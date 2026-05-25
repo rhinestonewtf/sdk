@@ -1011,45 +1011,80 @@ function getSmartSessionEmissaryAddress(useDevContracts?: boolean): Address {
 
 /**
  * Builds a mockSignature for SSX validation gas estimation.
- * Format: emissaryAddress (20 bytes) + enable-mode sigData.
- * Uses real session data (policies/actions from the user's session config) with dummy
- * sigs and hashes — the mock emissary skips sig verification and only writes storage.
- * The orchestrator slices off the first 20 bytes to identify the validator, then
- * simulates verifyExecution with the mock emissary to estimate gas before the user signs.
+ * Format: emissaryAddress (20 bytes) + packed sigData. Uses real session data
+ * (policies/actions from the user's session config) with dummy sigs and hashes —
+ * the mock emissary skips sig verification and only reads/writes storage. The
+ * orchestrator slices off the first 20 bytes to identify the validator, then
+ * picks the gas-simulation path from the bundle's declared `signatureMode`:
+ * `verifyExecution` for execution-emissary modes (ENABLE/USE), or
+ * `isValidSignatureWithSender` via `simulate_verify1271` for plain ERC-1271.
+ * The mode byte alone can't disambiguate USE from ERC-1271 (both are `0x00`),
+ * but `shape` is derived from the same resolved `verifyExecutions` that drives
+ * `signatureMode`, so the mock payload always matches the path that mode selects.
  */
+// The shape a mock signature should take, mirroring the real signature the
+// bundle will validate with on-chain:
+//   'enable'  → ENABLE   (0x01): first use; installs the session (verifyExecution
+//               + setConfig). The mock carries dummy enableData.
+//   'use'     → USE      (0x00): already enabled WITH explicit permissions;
+//               verifyExecution, no install. No enableData.
+//   'erc1271' → ERC-1271 (0x00): already enabled, no explicit permissions;
+//               validated via isValidSignatureWithSender.
+// Named so call sites are self-documenting (no order-sensitive boolean pair).
+type SmartSessionMockShape = 'enable' | 'use' | 'erc1271'
+
 function buildMockSignature(
   session: Session,
   useDevContracts?: boolean,
   chainCount: number = 1,
   targetChainId?: number,
+  // Defaults to the historical first-use ENABLE shape.
+  shape: SmartSessionMockShape = 'enable',
 ): Hex {
+  // packSignature keys ENABLE vs USE on enableData *presence* within the
+  // verifyExecutions branch, and takes the ERC-1271 branch when verifyExecutions
+  // is false — so derive both from the requested shape.
+  const verifyExecutions = shape !== 'erc1271'
+  const includeEnableData = shape === 'enable'
   const emissaryAddress = getSmartSessionEmissaryAddress(useDevContracts)
-  // Use targetChainId when provided (per-chain mockSignatures path) so the
-  // mock emissary's chainId check passes on the correct chain. Falls back to
-  // session.chain.id for the global mockSignature (single-chain path).
-  const primaryChainId = targetChainId ?? session.chain.id
-  // Normalize chainCount to a finite positive integer. Guards against
-  // accidental NaN/undefined from caller (e.g. `sourceChains?.length` when
-  // sourceChains is undefined) which would otherwise make Array.from produce
-  // an empty array and silently drop the ChainId check.
-  const safeChainCount =
-    Number.isFinite(chainCount) && chainCount > 0 ? Math.floor(chainCount) : 1
-  // Build one entry per chain — first entry is the real chain ID (for the ChainId check),
-  // remaining entries use chainId 0 as placeholders. Hash mismatch is skipped by the
-  // mock emissary, so sessionDigest can be zeroHash throughout.
-  const hashesAndChainIds = Array.from({ length: safeChainCount }, (_, i) => ({
-    chainId: i === 0 ? BigInt(primaryChainId) : 0n,
-    sessionDigest: zeroHash,
-  }))
-  const dummySigners: ResolvedSessionSignerSet = {
-    type: 'experimental_session',
-    session,
-    verifyExecutions: true,
-    enableData: {
+
+  // Include enableData only when the session is actually being enabled (ENABLE
+  // shape) — its presence is what makes packSignature emit 0x01 vs 0x00, and it's
+  // ignored entirely by the USE / ERC-1271 shapes. Built lazily so steady-state
+  // shapes skip the chainId-entry allocation.
+  let enableData: SessionEnableData | undefined
+  if (includeEnableData) {
+    // Use targetChainId when provided (per-chain mockSignatures path) so the mock
+    // emissary's chainId check passes on the correct chain. Falls back to
+    // session.chain.id for the global mockSignature (single-chain path).
+    const primaryChainId = targetChainId ?? session.chain.id
+    // Normalize chainCount to a finite positive integer — guards against NaN/
+    // undefined from callers (e.g. `sourceChains?.length`) that would otherwise
+    // produce an empty array and silently drop the ChainId check.
+    const safeChainCount =
+      Number.isFinite(chainCount) && chainCount > 0 ? Math.floor(chainCount) : 1
+    // First entry is the real chain ID (for the ChainId check), the rest are
+    // chainId 0 placeholders. Hash mismatch is skipped by the mock emissary, so
+    // sessionDigest can be zeroHash throughout.
+    const hashesAndChainIds = Array.from(
+      { length: safeChainCount },
+      (_, i) => ({
+        chainId: i === 0 ? BigInt(primaryChainId) : 0n,
+        sessionDigest: zeroHash,
+      }),
+    )
+    enableData = {
       userSignature: `0x${'00'.repeat(65)}` as Hex,
       hashesAndChainIds,
       sessionToEnableIndex: 0,
-    },
+    }
+  }
+
+  const dummySigners: ResolvedSessionSignerSet = {
+    type: 'experimental_session',
+    session,
+    verifyExecutions,
+    ...(enableData && { enableData }),
   }
   const dummyValidatorSignature = `0x${'00'.repeat(65)}` as Hex
   const sigData = packSignature(dummySigners, dummyValidatorSignature)
