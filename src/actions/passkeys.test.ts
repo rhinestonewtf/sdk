@@ -1,5 +1,6 @@
+import { encodeAbiParameters, encodeFunctionData } from 'viem'
 import { base } from 'viem/chains'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { accountA, passkeyAccount } from '../../test/consts'
 import { RhinestoneSDK } from '..'
 import { resolveCallInputs } from '../execution/utils'
@@ -7,6 +8,53 @@ import {
   disable as disablePasskeys,
   enable as enablePasskeys,
 } from './passkeys'
+
+// `getModuleUninstallationCalls` reads the on-chain validator list to compute
+// the SentinelList `prev` pointer for the uninstall. The test account isn't
+// deployed, so stub the read with a known single-validator list. The address
+// is inlined because `vi.mock` is hoisted above any module-scope `const`.
+vi.mock('../modules/read', async (importActual) => {
+  const actual = await importActual<typeof import('../modules/read')>()
+  return {
+    ...actual,
+    getValidators: vi
+      .fn()
+      .mockResolvedValue(['0x0000000000578c4cb0e472a5462da43c495c3f33']),
+  }
+})
+
+const WEBAUTHN_VALIDATOR_ADDRESS =
+  '0x0000000000578c4cb0e472a5462da43c495c3f33' as const
+
+const UNINSTALL_MODULE_ABI = [
+  {
+    type: 'function',
+    name: 'uninstallModule',
+    inputs: [
+      { type: 'uint256', name: 'moduleTypeId' },
+      { type: 'address', name: 'module' },
+      { type: 'bytes', name: 'deInitData' },
+    ],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+] as const
+
+const SENTINEL = '0x0000000000000000000000000000000000000001' as const
+
+function expectedUninstallValidatorCalldata(validator: `0x${string}`) {
+  // Validator is at head of the mocked SentinelList → prev = SENTINEL,
+  // moduleDeInit = '0x'.
+  const deInitData = encodeAbiParameters(
+    [{ type: 'address' }, { type: 'bytes' }],
+    [SENTINEL, '0x'],
+  )
+  return encodeFunctionData({
+    abi: UNINSTALL_MODULE_ABI,
+    functionName: 'uninstallModule',
+    args: [1n, validator, deInitData],
+  })
+}
 
 const accountAddress = '0x36C03e7D593F7B2C6b06fC18B5f4E9a4A29C99b0'
 
@@ -62,7 +110,7 @@ describe('Passkeys Actions', () => {
         {
           to: accountAddress,
           value: 0n,
-          data: '0xa71763a800000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000578c4cb0e472a5462da43c495c3f3300000000000000000000000000000000000000000000000000000000000000600000000000000000000000000000000000000000000000000000000000000000',
+          data: expectedUninstallValidatorCalldata(WEBAUTHN_VALIDATOR_ADDRESS),
         },
       ])
     })

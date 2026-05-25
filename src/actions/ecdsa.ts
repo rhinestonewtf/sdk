@@ -31,8 +31,8 @@ function enable(owners: Address[], threshold = 1): LazyCallInput {
 function disable(): LazyCallInput {
   const module = getOwnableValidator(1, [])
   return {
-    async resolve({ config }) {
-      return getModuleUninstallationCalls(config, module)
+    async resolve({ chain, config }) {
+      return getModuleUninstallationCalls(config, chain, module)
     },
   }
 }

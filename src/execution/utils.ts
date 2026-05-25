@@ -87,6 +87,7 @@ import {
   type Quote,
   type SignData,
 } from '../orchestrator'
+import { toCaip2 } from '../orchestrator/caip2'
 import {
   type DestinationChain,
   getChainId,
@@ -127,6 +128,7 @@ import type {
   SignerSet,
   SimpleTokenList,
   SourceAssetInput,
+  SourceCallInput,
   Sponsorship,
   TokenRequest,
   TokenSymbol,
@@ -135,6 +137,7 @@ import type {
 } from '../types'
 import {
   Eip7702InitSignatureRequiredError,
+  InvalidSourceCallsError,
   QuoteNotInPreparedTransactionError,
   SignerNotSupportedError,
 } from './error'
@@ -313,6 +316,7 @@ async function prepareTransaction(
     auxiliaryFunds,
     account,
     recipient,
+    sourceCalls,
   } = getTransactionParams(transaction)
   const accountAddress = getAddress(config)
 
@@ -356,6 +360,7 @@ async function prepareTransaction(
     auxiliaryFunds,
     account,
     signers,
+    sourceCalls,
   )
 
   return {
@@ -822,6 +827,7 @@ function getTransactionParams(transaction: Transaction) {
   const auxiliaryFunds = transaction.auxiliaryFunds
   const account = transaction.experimental_accountOverride
   const recipient = transaction.recipient
+  const sourceCalls = transaction.sourceCalls
 
   const tokenRequests = getTokenRequests(targetChain, initialTokenRequests)
 
@@ -839,6 +845,7 @@ function getTransactionParams(transaction: Transaction) {
     auxiliaryFunds,
     account,
     recipient,
+    sourceCalls,
   }
 }
 
@@ -938,6 +945,40 @@ function getIntentAccount(
   }
 }
 
+function cloneAuxiliaryFunds(
+  auxiliaryFunds: AuxiliaryFunds | undefined,
+): AuxiliaryFunds | undefined {
+  if (!auxiliaryFunds) return undefined
+  return Object.fromEntries(
+    Object.entries(auxiliaryFunds).map(([chainId, funds]) => [
+      Number(chainId),
+      { ...funds },
+    ]),
+  )
+}
+
+function toCallInput(sourceCall: SourceCallInput): CallInput {
+  const { provides: _provides, ...call } = sourceCall
+  return call as CallInput
+}
+
+function addProvidedFunds(
+  auxiliaryFunds: AuxiliaryFunds | undefined,
+  chainId: number,
+  calls: SourceCallInput[],
+): AuxiliaryFunds | undefined {
+  let next = auxiliaryFunds
+  for (const call of calls) {
+    for (const provided of call.provides ?? []) {
+      next ??= {}
+      next[chainId] ??= {}
+      const token = provided.token
+      next[chainId][token] = (next[chainId][token] ?? 0n) + provided.amount
+    }
+  }
+  return next
+}
+
 async function prepareTransactionAsIntent(
   config: RhinestoneConfig,
   sourceChains: Chain[] | undefined,
@@ -961,6 +1002,7 @@ async function prepareTransactionAsIntent(
       }
     | undefined,
   signers: SignerSet | undefined,
+  sourceCalls?: Record<number, SourceCallInput[]>,
 ) {
   const targetChainId = getChainId(targetChain)
   const calls = parseCalls(callInputs, targetChainId)
@@ -1097,6 +1139,47 @@ async function prepareTransactionAsIntent(
     }
   }
 
+  let combinedAuxiliaryFunds = cloneAuxiliaryFunds(auxiliaryFunds)
+
+  if (sourceCalls) {
+    const accountAddress = getAddress(config)
+    const allowedChainIds = new Set<number>([
+      ...(sourceChains ?? []).map((c) => c.id),
+      ...(!isNonEvmChain(targetChain) ? [targetChainId] : []),
+    ])
+    for (const [chainIdStr, calls] of Object.entries(sourceCalls)) {
+      const chainId = Number(chainIdStr)
+      if (!allowedChainIds.has(chainId)) {
+        throw new InvalidSourceCallsError({ chainId })
+      }
+      const chain =
+        sourceChains?.find((c) => c.id === chainId) ??
+        (!isNonEvmChain(targetChain) && targetChainId === chainId
+          ? targetChain
+          : undefined)
+      if (!chain) {
+        throw new InvalidSourceCallsError({ chainId })
+      }
+      combinedAuxiliaryFunds = addProvidedFunds(
+        combinedAuxiliaryFunds,
+        chainId,
+        calls,
+      )
+      const resolved = await resolveCallInputs(
+        calls.map(toCallInput),
+        config,
+        chain,
+        accountAddress,
+      )
+      const userExecutions = parseCalls(resolved, chainId)
+      if (userExecutions.length === 0) continue
+      preClaimExecutions[chainId] = [
+        ...(preClaimExecutions[chainId] ?? []),
+        ...userExecutions,
+      ]
+    }
+  }
+
   const metaIntent: IntentInput = {
     destinationChainId: targetChainId,
     tokenRequests: tokenRequests.map((tokenRequest) => ({
@@ -1125,7 +1208,7 @@ async function prepareTransactionAsIntent(
         : undefined,
       settlementLayers,
       signatureMode,
-      auxiliaryFunds,
+      auxiliaryFunds: combinedAuxiliaryFunds,
     },
     ...(Object.keys(preClaimExecutions).length > 0 && { preClaimExecutions }),
   }
@@ -1616,7 +1699,7 @@ async function submitIntentInternal(
     ...(authorizations.length > 0 && {
       authorizations: {
         sponsor: authorizations.map((authorization) => ({
-          chainId: authorization.chainId,
+          chainId: toCaip2(authorization.chainId),
           address: authorization.address,
           nonce: authorization.nonce,
           yParity: authorization.yParity ?? 0,
@@ -1955,7 +2038,9 @@ function hashErc7739TypedDataForSolady({
     return sorted
       .map(
         (t) =>
-          `${t}(${allTypes[t].map((f: TypeField) => `${f.type} ${f.name}`).join(',')})`,
+          `${t}(${allTypes[t]
+            .map((f: TypeField) => `${f.type} ${f.name}`)
+            .join(',')})`,
       )
       .join('')
   }

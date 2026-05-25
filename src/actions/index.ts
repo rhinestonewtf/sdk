@@ -28,8 +28,8 @@ function installModule(module: ModuleInput): LazyCallInput {
 function uninstallModule(module: ModuleInput): LazyCallInput {
   const moduleData: Module = getModule(module)
   return {
-    async resolve({ config }) {
-      return getModuleUninstallationCalls(config, moduleData)
+    async resolve({ chain, config }) {
+      return getModuleUninstallationCalls(config, chain, moduleData)
     },
   }
 }
