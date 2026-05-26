@@ -1,4 +1,4 @@
-import type { Address, Hex } from 'viem'
+import { isAddress, isHex, type Address, type Hex } from 'viem'
 
 export class SponsorshipDeniedError extends Error {
   constructor() {
@@ -49,13 +49,37 @@ function parseIntentInput(intentInput: unknown): ParsedIntentInput {
     throw new Error('intentInput.destinationExecutions must be an array')
   }
 
-  const calls = executions.map(
-    (exec: { to: string; value: string | number; data: string }) => ({
-      to: exec.to as Address,
+  const calls = executions.map((execution, index) => {
+    if (typeof execution !== 'object' || execution === null) {
+      throw new Error(
+        `intentInput.destinationExecutions[${index}] must be a non-null object`,
+      )
+    }
+
+    const exec = execution as Record<string, unknown>
+
+    if (typeof exec.to !== 'string' || !isAddress(exec.to)) {
+      throw new Error(
+        `intentInput.destinationExecutions[${index}].to must be an address`,
+      )
+    }
+    if (typeof exec.data !== 'string' || !isHex(exec.data)) {
+      throw new Error(
+        `intentInput.destinationExecutions[${index}].data must be hex`,
+      )
+    }
+    if (typeof exec.value !== 'string' && typeof exec.value !== 'number') {
+      throw new Error(
+        `intentInput.destinationExecutions[${index}].value must be a string or number`,
+      )
+    }
+
+    return {
+      to: exec.to,
       value: BigInt(exec.value),
-      data: exec.data as Hex,
-    }),
-  )
+      data: exec.data,
+    }
+  })
 
   return {
     chain: { id: chainId },
