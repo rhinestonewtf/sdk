@@ -239,6 +239,7 @@ interface UserOperationResult {
 interface TransactionResult {
   type: 'intent'
   id: string
+  traceId: string
   sourceChains?: number[]
   targetChain: number
   expiresAt: number
@@ -1580,6 +1581,7 @@ async function submitIntentInternal(
   return {
     type: 'intent',
     id: response.intentId,
+    traceId: response.traceId,
     sourceChains: sourceChains?.map((chain) => chain.id),
     targetChain: getChainId(targetChain),
     expiresAt: quote.expiresAt,
