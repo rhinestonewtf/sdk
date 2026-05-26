@@ -6,10 +6,13 @@ const authProvider = {
   getSubmitHeaders: async () => ({ 'x-api-key': 'test-key' }),
 }
 
-function mockJsonResponse(body: unknown) {
+function mockJsonResponse(body: unknown, traceId?: string, status = 200) {
   return new Response(JSON.stringify(body), {
-    status: 200,
-    headers: { 'content-type': 'application/json' },
+    status,
+    headers: {
+      'content-type': 'application/json',
+      ...(traceId ? { 'x-trace-id': traceId } : {}),
+    },
   })
 }
 
@@ -22,19 +25,21 @@ describe('Orchestrator trace IDs', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
-        mockJsonResponse({
-          traceId: 'trace-quote',
-          routes: [
-            {
-              intentId: '1',
-              expiresAt: 123,
-              estimatedFillTime: { seconds: 3 },
-              settlementLayer: 'ACROSS',
-              signData: { origin: [], destination: null },
-              cost: { input: [], output: [], fees: {} },
-            },
-          ],
-        }),
+        mockJsonResponse(
+          {
+            routes: [
+              {
+                intentId: '1',
+                expiresAt: 123,
+                estimatedFillTime: { seconds: 3 },
+                settlementLayer: 'ACROSS',
+                signData: { origin: [], destination: null },
+                cost: { input: [], output: [], fees: {} },
+              },
+            ],
+          },
+          'trace-quote',
+        ),
       ),
     )
     const orchestrator = new Orchestrator(
@@ -60,10 +65,12 @@ describe('Orchestrator trace IDs', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
-        mockJsonResponse({
-          traceId: 'trace-split',
-          intents: [{ '0x0000000000000000000000000000000000000001': '1' }],
-        }),
+        mockJsonResponse(
+          {
+            intents: [{ '0x0000000000000000000000000000000000000001': '1' }],
+          },
+          'trace-split',
+        ),
       ),
     )
     const orchestrator = new Orchestrator(
@@ -83,12 +90,14 @@ describe('Orchestrator trace IDs', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
-        mockJsonResponse({
-          traceId: 'trace-status',
-          status: 'PENDING',
-          accountAddress: '0x0000000000000000000000000000000000000001',
-          operations: [],
-        }),
+        mockJsonResponse(
+          {
+            status: 'PENDING',
+            accountAddress: '0x0000000000000000000000000000000000000001',
+            operations: [],
+          },
+          'trace-status',
+        ),
       ),
     )
     const orchestrator = new Orchestrator(
@@ -105,10 +114,12 @@ describe('Orchestrator trace IDs', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
-        mockJsonResponse({
-          traceId: 'trace-submit',
-          intentId: '1',
-        }),
+        mockJsonResponse(
+          {
+            intentId: '1',
+          },
+          'trace-submit',
+        ),
       ),
     )
     const orchestrator = new Orchestrator(
@@ -119,6 +130,31 @@ describe('Orchestrator trace IDs', () => {
     const result = await orchestrator.createIntent({ intentId: '1' } as any)
 
     expect(result.traceId).toBe('trace-submit')
+  })
+
+  it('prefers x-trace-id over error body traceId', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        mockJsonResponse(
+          {
+            code: 'VALIDATION_ERROR',
+            message: 'Invalid request',
+            traceId: 'trace-body',
+          },
+          'trace-header',
+          400,
+        ),
+      ),
+    )
+    const orchestrator = new Orchestrator(
+      'https://orchestrator.test',
+      authProvider,
+    )
+
+    await expect(orchestrator.getIntent('1')).rejects.toMatchObject({
+      traceId: 'trace-header',
+    })
   })
 })
 

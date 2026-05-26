@@ -9,10 +9,10 @@ const authProvider = {
   getSubmitHeaders: async () => ({ 'x-api-key': 'test-key' }),
 }
 
-function mockJsonResponse(body: unknown) {
+function mockJsonResponse(body: unknown, traceId: string) {
   return new Response(JSON.stringify(body), {
     status: 200,
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', 'x-trace-id': traceId },
   })
 }
 
@@ -24,10 +24,12 @@ describe('execution trace IDs', () => {
 
   it('preserves traceId on submitted intent results without posting it', async () => {
     const fetch = vi.fn().mockResolvedValue(
-      mockJsonResponse({
-        traceId: 'trace-submit',
-        intentId: '123',
-      }),
+      mockJsonResponse(
+        {
+          intentId: '123',
+        },
+        'trace-submit',
+      ),
     )
     vi.stubGlobal('fetch', fetch)
 
@@ -55,12 +57,14 @@ describe('execution trace IDs', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
-        mockJsonResponse({
-          traceId: 'trace-status',
-          status: INTENT_STATUS_COMPLETED,
-          accountAddress: '0x0000000000000000000000000000000000000001',
-          operations: [],
-        }),
+        mockJsonResponse(
+          {
+            status: INTENT_STATUS_COMPLETED,
+            accountAddress: '0x0000000000000000000000000000000000000001',
+            operations: [],
+          },
+          'trace-status',
+        ),
       ),
     )
 
@@ -78,12 +82,14 @@ describe('execution trace IDs', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
-        mockJsonResponse({
-          traceId: 'trace-wait',
-          status: INTENT_STATUS_COMPLETED,
-          accountAddress: '0x0000000000000000000000000000000000000001',
-          operations: [],
-        }),
+        mockJsonResponse(
+          {
+            status: INTENT_STATUS_COMPLETED,
+            accountAddress: '0x0000000000000000000000000000000000000001',
+            operations: [],
+          },
+          'trace-wait',
+        ),
       ),
     )
 

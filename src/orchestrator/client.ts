@@ -190,6 +190,7 @@ export class Orchestrator {
 
   private async fetch(url: string, options?: RequestInit): Promise<any> {
     const response = await fetch(url, options)
+    const traceId = response.headers?.get?.('x-trace-id') ?? undefined
 
     if (!response.ok) {
       let body: any
@@ -202,6 +203,7 @@ export class Orchestrator {
           traceId: '',
         }
       }
+      body = { ...body, traceId: traceId ?? body.traceId ?? '' }
       const retryAfter = response.headers?.get?.('retry-after') ?? undefined
       throw parseErrorEnvelope(
         body as ErrorEnvelope,
@@ -210,7 +212,11 @@ export class Orchestrator {
       )
     }
 
-    return response.json()
+    const body = await response.json()
+    if (body && typeof body === 'object' && !Array.isArray(body)) {
+      return { ...body, traceId: traceId ?? body.traceId }
+    }
+    return body
   }
 }
 
