@@ -245,6 +245,7 @@ interface TransactionResult {
 }
 
 interface PreparedQuotes {
+  traceId: string
   best: Quote
   all: Quote[]
 }
@@ -1074,13 +1075,13 @@ async function prepareTransactionAsIntent(
     config.endpointUrl,
     config.headers,
   )
-  const { routes } = await orchestrator.createQuote(metaIntent)
+  const { routes, traceId } = await orchestrator.createQuote(metaIntent)
   const best = routes[0]
   if (!best) {
     throw new Error('Orchestrator returned no quote')
   }
   return {
-    quotes: { best, all: routes } satisfies PreparedQuotes,
+    quotes: { traceId, best, all: routes } satisfies PreparedQuotes,
     intentInput: serializedIntent,
   }
 }

@@ -119,6 +119,7 @@ export class Orchestrator {
       body: JSON.stringify(body),
     })
     return {
+      traceId: json.traceId,
       intents: (json.intents as Record<string, string>[]).map(
         parseTokenAmountsRecord,
       ),
@@ -148,6 +149,7 @@ export class Orchestrator {
       headers: await this.getHeaders(),
     })
     return {
+      traceId: json.traceId,
       status: json.status,
       accountAddress: json.accountAddress,
       // Flatten orchestrator's per-chain items[] to one entry per chain.
@@ -344,7 +346,7 @@ export function encodeSettlementLayers(
 
 function decodeQuoteResponse(json: any): QuoteResponse {
   const routes = (json.routes ?? []) as any[]
-  return { routes: routes.map(decodeQuote) }
+  return { traceId: json.traceId, routes: routes.map(decodeQuote) }
 }
 
 function decodeQuote(route: any): Quote {
