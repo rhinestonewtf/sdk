@@ -11,6 +11,14 @@ on:
         options:
           - smoke
           - all
+      target:
+        description: "Orchestrator environment to run against"
+        required: true
+        default: "prod"
+        type: choice
+        options:
+          - prod
+          - dev
 
 concurrency:
   group: live-integration-tests
@@ -21,9 +29,37 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      INTEGRATION_RHINESTONE_API_KEY: ${{ secrets.INTEGRATION_RHINESTONE_API_KEY }}
+      # When target=dev, point the SDK at the dev orchestrator. The SDK then
+      # auto-enables dev contract addresses (see createIntegrationSDK), so
+      # bundles simulate against the matching dev deployment. Empty for prod
+      # falls back to the SDK's built-in prod URL + prod contracts.
+      INTEGRATION_ORCHESTRATOR_URL: ${{ inputs.target == 'dev' && 'https://dev.v1.orchestrator.rhinestone.dev' || '' }}
 
     steps:
+      # Resolve the API key explicitly per target. A ternary like
+      # `target == 'dev' && DEV || PROD` would silently fall back to the prod
+      # key when the dev secret is unset (empty is falsy), sending the wrong
+      # credential to the dev endpoint. Fail fast instead.
+      - name: Resolve integration API key
+        env:
+          TARGET: ${{ inputs.target }}
+          PROD_API_KEY: ${{ secrets.INTEGRATION_RHINESTONE_API_KEY }}
+          DEV_API_KEY: ${{ secrets.INTEGRATION_RHINESTONE_API_KEY_DEV }}
+        run: |
+          if [ "$TARGET" = "dev" ]; then
+            if [ -z "$DEV_API_KEY" ]; then
+              echo "::error::target=dev requires the INTEGRATION_RHINESTONE_API_KEY_DEV secret"
+              exit 1
+            fi
+            echo "INTEGRATION_RHINESTONE_API_KEY=$DEV_API_KEY" >> "$GITHUB_ENV"
+          else
+            if [ -z "$PROD_API_KEY" ]; then
+              echo "::error::target=prod requires the INTEGRATION_RHINESTONE_API_KEY secret"
+              exit 1
+            fi
+            echo "INTEGRATION_RHINESTONE_API_KEY=$PROD_API_KEY" >> "$GITHUB_ENV"
+          fi
+
       - name: Check out the repo
         uses: actions/checkout@v4
 
