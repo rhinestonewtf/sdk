@@ -19,7 +19,6 @@ import {
   zeroAddress,
   zeroHash,
 } from 'viem'
-import { mainnet } from 'viem/chains'
 import { getAccountProvider } from '../../accounts'
 import { K1_DEFAULT_VALIDATOR_ADDRESS } from '../../accounts/startale'
 import { createTransport } from '../../accounts/utils'
@@ -523,7 +522,8 @@ async function signEnableSession(
     })
   }
 
-  return signTypedData(config, details.data, mainnet, undefined, {
+  const chain = getChainById(Number(details.hashesAndChainIds[0].chainId))
+  return signTypedData(config, details.data, chain, undefined, {
     skipErc6492: true,
   })
 }
