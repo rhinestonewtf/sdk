@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.6.5
+
+### Patch Changes
+
+- 65997fd: Fix `signEnableSession` hardcoding `mainnet` when requesting an EIP-712 signature for the multi-chain session-enable digest
+
 ## 1.6.4
 
 ### Patch Changes
