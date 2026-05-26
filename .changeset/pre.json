@@ -24,6 +24,7 @@
     "heavy-grapes-punch",
     "install-session-via-emissary-on-first-use",
     "key-scope-denied-error",
+    "mock-sig-1271-shape",
     "non-evm-destinations",
     "operation-model-redesign",
     "poll-until-intent-expiry",
