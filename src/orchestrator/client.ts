@@ -120,6 +120,7 @@ export class Orchestrator {
       body: JSON.stringify(body),
     })
     return {
+      traceId: json.traceId,
       intents: (json.intents as Record<string, string>[]).map(
         parseTokenAmountsRecord,
       ),
@@ -149,6 +150,7 @@ export class Orchestrator {
       headers: await this.getHeaders(),
     })
     return {
+      traceId: json.traceId,
       status: json.status,
       accountAddress: json.accountAddress,
       // Flatten orchestrator's per-chain items[] to one entry per chain.
@@ -189,6 +191,7 @@ export class Orchestrator {
 
   private async fetch(url: string, options?: RequestInit): Promise<any> {
     const response = await fetch(url, options)
+    const traceId = response.headers?.get?.('x-trace-id') ?? undefined
 
     if (!response.ok) {
       let body: any
@@ -201,6 +204,7 @@ export class Orchestrator {
           traceId: '',
         }
       }
+      body = { ...body, traceId: traceId ?? body.traceId ?? '' }
       const retryAfter = response.headers?.get?.('retry-after') ?? undefined
       throw parseErrorEnvelope(
         body as ErrorEnvelope,
@@ -209,7 +213,11 @@ export class Orchestrator {
       )
     }
 
-    return response.json()
+    const body = await response.json()
+    if (body && typeof body === 'object' && !Array.isArray(body)) {
+      return { ...body, traceId: traceId ?? body.traceId }
+    }
+    return body
   }
 }
 
@@ -345,7 +353,7 @@ export function encodeSettlementLayers(
 
 function decodeQuoteResponse(json: any): QuoteResponse {
   const routes = (json.routes ?? []) as any[]
-  return { routes: routes.map(decodeQuote) }
+  return { traceId: json.traceId, routes: routes.map(decodeQuote) }
 }
 
 function decodeQuote(route: any): Quote {

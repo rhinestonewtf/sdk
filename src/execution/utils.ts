@@ -260,11 +260,13 @@ interface UserOperationResult {
 interface TransactionResult {
   type: 'intent'
   id: string
+  traceId: string
   sourceChains?: number[]
   targetChain: number
 }
 
 interface PreparedQuotes {
+  traceId: string
   best: Quote
   all: Quote[]
 }
@@ -1220,13 +1222,13 @@ async function prepareTransactionAsIntent(
     config.endpointUrl,
     config.headers,
   )
-  const { routes } = await orchestrator.createQuote(metaIntent)
+  const { routes, traceId } = await orchestrator.createQuote(metaIntent)
   const best = routes[0]
   if (!best) {
     throw new Error('Orchestrator returned no quote')
   }
   return {
-    quotes: { best, all: routes } satisfies PreparedQuotes,
+    quotes: { traceId, best, all: routes } satisfies PreparedQuotes,
     intentInput: serializedIntent,
   }
 }
@@ -1725,6 +1727,7 @@ async function submitIntentInternal(
   return {
     type: 'intent',
     id: response.intentId,
+    traceId: response.traceId,
     sourceChains: sourceChains?.map((chain) => chain.id),
     targetChain: getChainId(targetChain),
   }

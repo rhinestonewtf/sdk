@@ -231,6 +231,7 @@ interface Quote {
 }
 
 interface QuoteResponse {
+  traceId: string
   routes: Quote[]
 }
 
@@ -270,6 +271,7 @@ interface IntentSubmitRequestInternal extends IntentSubmitRequest {
 }
 
 interface IntentSubmitResponse {
+  traceId: string
   intentId: string
 }
 
@@ -369,6 +371,7 @@ interface SplitIntentsInput {
 }
 
 interface SplitIntentsResult {
+  traceId: string
   intents: Record<Address, bigint>[]
 }
 
@@ -379,6 +382,8 @@ interface SplitIntentsResult {
  * orchestrator's per-chain `items[]` to a single entry per chain.
  */
 interface IntentOpStatus {
+  /** OpenTelemetry trace ID for correlating this orchestrator response. */
+  traceId: string
   /** High-level intent status. */
   status: IntentStatus
   /** The smart-account address that owns this intent. */

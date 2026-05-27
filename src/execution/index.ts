@@ -63,6 +63,8 @@ const POLL_ERROR_BACKOFF_MS = 1000
 const POLL_ERROR_BACKOFF_MAX_MS = 10000
 
 interface TransactionStatus {
+  /** OpenTelemetry trace ID for correlating the status response. */
+  traceId: IntentOpStatus['traceId']
   /** High-level intent status. */
   status: IntentOpStatus['status']
   /** The account address that owns this intent. */
@@ -323,6 +325,7 @@ async function waitForExecution(
         })
       }
       return {
+        traceId: intentStatus.traceId,
         status: intentStatus.status,
         accountAddress: intentStatus.accountAddress,
         operations: intentStatus.operations,
@@ -370,6 +373,7 @@ async function getIntentStatus(
   const orchestrator = getOrchestrator(authProvider, endpointUrl, headers)
   const internalStatus = await orchestrator.getIntent(intentId)
   return {
+    traceId: internalStatus.traceId,
     status: internalStatus.status,
     accountAddress: internalStatus.accountAddress,
     operations: internalStatus.operations,
