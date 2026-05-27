@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 2.0.0-beta.19
+
+### Minor Changes
+
+- fff29d2: Expose orchestrator `traceId` values on successful quote, split, submit, and intent-status responses.
+
 ## 2.0.0-beta.18
 
 ### Patch Changes
