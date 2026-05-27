@@ -1,5 +1,5 @@
 ---
-"@rhinestone/sdk": patch
+'@rhinestone/sdk': patch
 ---
 
-Add soneium usdt support
+Add USDT support on Soneium.

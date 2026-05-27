@@ -1,5 +1,5 @@
 ---
-"@rhinestone/sdk": patch
+'@rhinestone/sdk': patch
 ---
 
-Add bridgeFill param as response
+Expose `BridgeFill` on quote responses — a per-intent tracking handle (request id, deposit address, commitment id) for third-party bridge layers (`OFT`, `RELAY`, `NEAR`, `RHINO`, `CCTP`).

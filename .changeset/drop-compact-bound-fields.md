@@ -2,4 +2,4 @@
 '@rhinestone/sdk': major
 ---
 
-- Drop compact-bound fields (`lockFunds` transaction option, `emissaryConfig` on the orchestrator `Account` type) to match the orchestrator's blanc API trim.
+Drop the `lockFunds` transaction option and the `emissaryConfig` field on the orchestrator `Account` type. Both referenced the compact-bound flow that no longer applies.
