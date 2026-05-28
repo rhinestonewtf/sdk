@@ -139,6 +139,23 @@ type UniversalActionPolicyParamCondition =
   | 'notEqual'
   | 'inRange'
 
+// ArgPolicy is the expression-tree successor to UniversalActionPolicy. Same
+// per-rule leaf semantics, but rules are composed with AND/OR/NOT nodes and
+// arbitrary nesting instead of an implicit all-AND fixed array. Use when a
+// session needs disjunction (e.g. "recipient == alice OR recipient == bob") —
+// for plain AND-of-rules, UniversalActionPolicy is simpler and cheaper to init.
+type ArgPolicyExpression =
+  | { type: 'rule'; rule: UniversalActionPolicyParamRule }
+  | { type: 'not'; child: ArgPolicyExpression }
+  | { type: 'and'; left: ArgPolicyExpression; right: ArgPolicyExpression }
+  | { type: 'or'; left: ArgPolicyExpression; right: ArgPolicyExpression }
+
+interface ArgPolicy {
+  type: 'arg-policy'
+  valueLimitPerUse?: bigint
+  expression: ArgPolicyExpression
+}
+
 interface SpendingLimitsPolicy {
   type: 'spending-limits'
   limits: {
@@ -188,6 +205,7 @@ interface Permit2ClaimPolicy {
 type Policy =
   | SudoPolicy
   | UniversalActionPolicy
+  | ArgPolicy
   | SpendingLimitsPolicy
   | TimeFramePolicy
   | UsageLimitPolicy
@@ -250,19 +268,72 @@ type NamedInputs<TFn extends AbiFunction> = Extract<
   { name: string }
 >
 
-interface ParamConstraint<TValue> {
-  condition: UniversalActionPolicyParamCondition
-  value: TValue
-  usageLimit?: bigint
-}
+// A constraint on a single named parameter. Two shapes:
+//   - { condition, value, usageLimit? } : single comparison (AND-conjunctive,
+//     emits universal-action when every param uses this form)
+//   - { anyOf: [v1, v2, ...] }           : OR of EQUAL rules (allowlist) —
+//     forces the function to emit arg-policy
+type ParamConstraint<TValue> =
+  | {
+      condition: UniversalActionPolicyParamCondition
+      value: TValue
+      usageLimit?: bigint
+      anyOf?: never
+    }
+  | {
+      anyOf: readonly [TValue, ...TValue[]]
+      condition?: never
+      value?: never
+      usageLimit?: never
+    }
 
-interface PermissionFunctionConfig<TFn extends AbiFunction> {
+// Compile-time gates for sugar fields that only make sense on certain ABIs.
+// Structural `extends` on `inputs` so extra ABI entry fields (`name`,
+// `internalType`) don't prevent the match.
+type IsERC20TransferLike<TFn extends AbiFunction> = TFn['inputs'] extends
+  | readonly [{ type: 'address' }, { type: 'uint256' }]
+  | readonly [{ type: 'address' }, { type: 'address' }, { type: 'uint256' }]
+  ? true
+  : false
+
+type IsPayable<TFn extends AbiFunction> =
+  TFn['stateMutability'] extends 'payable' ? true : false
+
+// `never` on the sugar field rejects any user-supplied value at the call site,
+// turning a footgun (e.g. spendingLimit on vault.deposit) into a compile error.
+type SpendingLimitField<TFn extends AbiFunction> =
+  IsERC20TransferLike<TFn> extends true
+    ? { spendingLimit?: { token: Address; amount: bigint } }
+    : { spendingLimit?: never }
+
+type ValueLimitField<TFn extends AbiFunction> = IsPayable<TFn> extends true
+  ? { valueLimit?: bigint }
+  : { valueLimit?: never }
+
+type PermissionFunctionConfig<TFn extends AbiFunction> = {
+  /** Escape hatch — raw `Policy` objects merged with sugar-emitted policies. */
   policies?: Policy[]
+  /** `valueLimitPerUse` embedded in universal/arg-policy `ActionConfig`. */
   valueLimitPerUse?: bigint
   params?: {
     [K in NamedInputs<TFn>['name']]?: ParamConstraint<ParamValue<TFn, K>>
   }
-}
+  /**
+   * Per-action call cap. Emits a standalone `usage-limit` policy.
+   * Counter is scoped to this single action — `transfer.maxUses=10` and
+   * `approve.maxUses=10` are independent counters.
+   */
+  maxUses?: bigint
+  /**
+   * Upper bound on `block.timestamp` (Date or ms-epoch). Pairs with
+   * `validAfter` into one `time-frame` policy. If only one of the two is set,
+   * the other defaults to "always passes" (validAfter=0 / validUntil=year-2100).
+   */
+  validUntil?: Date | number
+  /** Lower bound on `block.timestamp` (Date or ms-epoch). See `validUntil`. */
+  validAfter?: Date | number
+} & SpendingLimitField<TFn> &
+  ValueLimitField<TFn>
 
 interface Permission<TAbi extends Abi = Abi> {
   abi: TAbi
@@ -278,11 +349,39 @@ type PermissionsForAbis<TAbis extends readonly Abi[]> = {
   [K in keyof TAbis]: TAbis[K] extends Abi ? Permission<TAbis[K]> : never
 }
 
+/**
+ * Per-session override for SmartSession policy singleton addresses.
+ *
+ * Defaults are the latest canonical V2 deployments. Provide a partial map to
+ * pin one or more policies to non-default addresses — primarily for backwards
+ * compatibility with accounts that already enabled sessions against the
+ * previous V1 deployments.
+ *
+ * Resolved addresses are baked into `Session.actions[i].actionPolicies[j].policy`
+ * at construction time, so this only needs to be set on `SessionDefinition` —
+ * downstream consumers read the already-resolved values off the `Session`.
+ */
+interface SessionPolicyAddresses {
+  sudo?: Address
+  universalAction?: Address
+  argPolicy?: Address
+  spendingLimits?: Address
+  timeFrame?: Address
+  usageLimit?: Address
+  valueLimit?: Address
+}
+
 interface SessionDefinition<TAbis extends readonly Abi[] = readonly Abi[]> {
   chain: Chain
   owners: OwnerSet
   permissions?: readonly [...PermissionsForAbis<TAbis>]
   claimPolicies?: readonly Permit2ClaimPolicy[]
+  /**
+   * Override one or more SmartSession policy addresses. Defaults to the latest
+   * V2 deployments. Use to pin to V1 deployments for an account that already
+   * has sessions enabled against them.
+   */
+  policyAddresses?: SessionPolicyAddresses
 }
 
 type SessionInput<TAbis extends readonly Abi[] = readonly Abi[]> = Omit<
@@ -697,6 +796,8 @@ export type {
   Policy,
   Permit2ClaimPolicy,
   UniversalActionPolicyParamCondition,
+  ArgPolicyExpression,
+  SessionPolicyAddresses,
   ApiKeyAuth,
   JwtAuth,
   AuthConfig,
