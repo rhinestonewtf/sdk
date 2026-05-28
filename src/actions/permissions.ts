@@ -1,5 +1,11 @@
 import type { Abi, AbiFunction, AbiParameter } from 'abitype'
-import { type Address, type Hex, isAddress, toFunctionSelector } from 'viem'
+import {
+  type Address,
+  type Hex,
+  isAddress,
+  padHex,
+  toFunctionSelector,
+} from 'viem'
 import type {
   ArgPolicyExpression,
   Policy,
@@ -153,7 +159,16 @@ function toReferenceValue(value: unknown, abiType: string): Hex | bigint {
     )
   }
   if (/^bytes\d+$/.test(abiType)) {
-    if (typeof value === 'string') return value as Hex
+    if (typeof value === 'string') {
+      // Solidity calldata encoding for `bytesN` (N<32) is left-aligned and
+      // right-padded inside its 32-byte word; for `address`/`uint*`/`bool`
+      // it's right-aligned and left-padded. Downstream `encodeActionParamRule`
+      // unconditionally left-pads with `padHex`, which is correct for the
+      // right-aligned types but wrong for `bytesN`. We pre-encode here to a
+      // full 32-byte hex with the correct alignment so the policy's bytes32
+      // == bytes32 comparison matches what's actually in calldata.
+      return padHex(value as Hex, { size: 32, dir: 'right' })
+    }
     throw new Error(`Expected hex string for ${abiType}, got: ${typeof value}`)
   }
   throw new Error(`Unsupported ABI type: ${abiType}`)

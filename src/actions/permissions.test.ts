@@ -1,4 +1,4 @@
-import { type Address, erc20Abi, toFunctionSelector } from 'viem'
+import { type Address, erc20Abi, type Hex, toFunctionSelector } from 'viem'
 import { base } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 import { accountA } from '../../test/consts'
@@ -654,6 +654,155 @@ describe('definePermissions — anyOf (arg-policy)', () => {
     }
     const data = getSessionData(session)
     expect(data.actions[0].actionPolicies[0].initData.length).toBeGreaterThan(2)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// F2. bytesN reference value encoding — calldata is left-aligned + right-padded
+//     so the reference value the policy compares against must use the same
+//     layout, not the right-aligned form used for address/uint/bool.
+// ---------------------------------------------------------------------------
+
+describe('definePermissions — bytesN encoding', () => {
+  test('bytes4 reference value is left-aligned + right-padded to bytes32', () => {
+    const bytes4Abi = [
+      {
+        type: 'function',
+        name: 'check',
+        inputs: [{ name: 'sel', type: 'bytes4' }],
+        outputs: [],
+        stateMutability: 'nonpayable',
+      },
+    ] as const
+    const actions = definePermissions({
+      abi: bytes4Abi,
+      address: USDC,
+      functions: {
+        check: {
+          params: {
+            sel: { condition: 'equal', value: '0x12345678' as Hex },
+          },
+        },
+      },
+    })
+    const policy = actions[0].policies![0]
+    if (policy.type !== 'universal-action') throw new Error('wrong policy')
+    expect(policy.rules[0].referenceValue).toBe(
+      // 4 value bytes + 28 zero bytes (left-aligned, right-padded)
+      `0x12345678${'00'.repeat(28)}` as Hex,
+    )
+  })
+
+  test('bytes1 ref value uses left-alignment, not right-alignment', () => {
+    const bytes1Abi = [
+      {
+        type: 'function',
+        name: 'check',
+        inputs: [{ name: 'b', type: 'bytes1' }],
+        outputs: [],
+        stateMutability: 'nonpayable',
+      },
+    ] as const
+    const actions = definePermissions({
+      abi: bytes1Abi,
+      address: USDC,
+      functions: {
+        check: {
+          params: { b: { condition: 'equal', value: '0xff' as Hex } },
+        },
+      },
+    })
+    const policy = actions[0].policies![0]
+    if (policy.type !== 'universal-action') throw new Error('wrong policy')
+    // Left-aligned: high byte = 0xff, rest zero.
+    // Wrong (right-aligned) form would be `0x${'00'.repeat(31)}ff`.
+    expect(policy.rules[0].referenceValue).toBe(`0xff${'00'.repeat(31)}` as Hex)
+    expect(policy.rules[0].referenceValue).not.toBe(
+      `0x${'00'.repeat(31)}ff` as Hex,
+    )
+  })
+
+  test('bytes32 ref value pre-pads to itself (no-op, dir does not matter for full word)', () => {
+    const bytes32Abi = [
+      {
+        type: 'function',
+        name: 'check',
+        inputs: [{ name: 'h', type: 'bytes32' }],
+        outputs: [],
+        stateMutability: 'nonpayable',
+      },
+    ] as const
+    const fullHash = `0x${'ab'.repeat(32)}` as Hex
+    const actions = definePermissions({
+      abi: bytes32Abi,
+      address: USDC,
+      functions: {
+        check: {
+          params: { h: { condition: 'equal', value: fullHash } },
+        },
+      },
+    })
+    const policy = actions[0].policies![0]
+    if (policy.type !== 'universal-action') throw new Error('wrong policy')
+    expect(policy.rules[0].referenceValue).toBe(fullHash)
+  })
+
+  test('address ref value still right-aligned (unchanged behavior)', () => {
+    const actions = definePermissions({
+      abi: erc20Abi,
+      address: USDC,
+      functions: {
+        transfer: {
+          params: {
+            recipient: { condition: 'equal', value: RECIPIENT },
+          },
+        },
+      },
+    })
+    const policy = actions[0].policies![0]
+    if (policy.type !== 'universal-action') throw new Error('wrong policy')
+    // For address, the encoder downstream still left-pads the 20-byte value
+    // to 32 bytes; we return the raw address here so that pipeline is intact.
+    expect(policy.rules[0].referenceValue).toBe(RECIPIENT)
+  })
+
+  test('bytesN anyOf path also pre-pads each value (arg-policy)', () => {
+    const bytes4Abi = [
+      {
+        type: 'function',
+        name: 'check',
+        inputs: [{ name: 'sel', type: 'bytes4' }],
+        outputs: [],
+        stateMutability: 'nonpayable',
+      },
+    ] as const
+    const actions = definePermissions({
+      abi: bytes4Abi,
+      address: USDC,
+      functions: {
+        check: {
+          params: {
+            sel: {
+              anyOf: ['0x11111111' as Hex, '0x22222222' as Hex] as const,
+            },
+          },
+        },
+      },
+    })
+    const policy = actions[0].policies![0]
+    if (policy.type !== 'arg-policy') throw new Error('expected arg-policy')
+    if (policy.expression.type !== 'or') throw new Error('expected OR')
+    if (
+      policy.expression.left.type !== 'rule' ||
+      policy.expression.right.type !== 'rule'
+    )
+      throw new Error('expected leaves')
+    expect(policy.expression.left.rule.referenceValue).toBe(
+      `0x11111111${'00'.repeat(28)}` as Hex,
+    )
+    expect(policy.expression.right.rule.referenceValue).toBe(
+      `0x22222222${'00'.repeat(28)}` as Hex,
+    )
   })
 })
 
