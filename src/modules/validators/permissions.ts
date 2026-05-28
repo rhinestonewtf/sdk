@@ -270,6 +270,14 @@ function resolvePermission(permission: Permission): ScopedAction[] {
 
       const usesArgPolicy = normalized.some((n) => n.anyOf !== undefined)
 
+      // UniActionPolicy/ArgPolicy reject `msg.value > valueLimitPerUse`, so a
+      // default of 0 would block any non-zero msg.value before the standalone
+      // value-limit policy (sugar) could allow it. Inherit the sugar's cap so
+      // the per-use gate matches user intent; value-limit still enforces the
+      // cumulative cap on top.
+      const embeddedValueLimit =
+        config.valueLimitPerUse ?? config.valueLimit ?? 0n
+
       if (usesArgPolicy) {
         // One sub-expression per param, then AND across params.
         const perParam: ArgPolicyExpression[] = normalized.map((n) => {
@@ -299,7 +307,7 @@ function resolvePermission(permission: Permission): ScopedAction[] {
 
         policies.push({
           type: 'arg-policy',
-          valueLimitPerUse: config.valueLimitPerUse ?? 0n,
+          valueLimitPerUse: embeddedValueLimit,
           expression: perParam.length === 1 ? perParam[0] : andChain(perParam),
         })
       } else {
@@ -313,7 +321,7 @@ function resolvePermission(permission: Permission): ScopedAction[] {
 
         policies.push({
           type: 'universal-action' as const,
-          valueLimitPerUse: config.valueLimitPerUse ?? 0n,
+          valueLimitPerUse: embeddedValueLimit,
           rules: rules as [(typeof rules)[number], ...(typeof rules)[number][]],
         })
       }

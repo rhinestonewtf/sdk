@@ -768,6 +768,102 @@ describe('resolvePermission sugar fields', () => {
     ).toThrow(/not payable/)
   })
 
+  test('valueLimit sugar propagates to universal-action valueLimitPerUse (single-condition params)', () => {
+    const abi = [
+      {
+        type: 'function',
+        name: 'deposit',
+        inputs: [{ name: 'recipient', type: 'address' }],
+        outputs: [],
+        stateMutability: 'payable',
+      },
+    ] as const
+    const actions = resolvePermission({
+      abi,
+      address: USDC,
+      functions: {
+        deposit: {
+          valueLimit: 1_000_000n,
+          params: {
+            recipient: { condition: 'equal', value: RECIPIENT },
+          },
+        },
+      },
+    })
+
+    const policies = actions[0].policies!
+    expect(policies.map((p) => p.type).sort()).toEqual(
+      ['universal-action', 'value-limit'].sort(),
+    )
+    const uni = policies.find((p) => p.type === 'universal-action')!
+    if (uni.type !== 'universal-action') throw new Error('wrong type')
+    // Without this propagation, msg.value > 0 would fail the action policy's
+    // `value <= valueLimitPerUse` check before the standalone value-limit
+    // policy could allow it.
+    expect(uni.valueLimitPerUse).toBe(1_000_000n)
+  })
+
+  test('valueLimit sugar propagates to arg-policy valueLimitPerUse (anyOf params)', () => {
+    const abi = [
+      {
+        type: 'function',
+        name: 'deposit',
+        inputs: [{ name: 'recipient', type: 'address' }],
+        outputs: [],
+        stateMutability: 'payable',
+      },
+    ] as const
+    const actions = resolvePermission({
+      abi,
+      address: USDC,
+      functions: {
+        deposit: {
+          valueLimit: 1_000_000n,
+          params: {
+            recipient: { anyOf: [RECIPIENT] },
+          },
+        },
+      },
+    })
+
+    const policies = actions[0].policies!
+    expect(policies.map((p) => p.type).sort()).toEqual(
+      ['arg-policy', 'value-limit'].sort(),
+    )
+    const arg = policies.find((p) => p.type === 'arg-policy')!
+    if (arg.type !== 'arg-policy') throw new Error('wrong type')
+    expect(arg.valueLimitPerUse).toBe(1_000_000n)
+  })
+
+  test('explicit valueLimitPerUse wins over valueLimit sugar', () => {
+    const abi = [
+      {
+        type: 'function',
+        name: 'deposit',
+        inputs: [{ name: 'recipient', type: 'address' }],
+        outputs: [],
+        stateMutability: 'payable',
+      },
+    ] as const
+    const actions = resolvePermission({
+      abi,
+      address: USDC,
+      functions: {
+        deposit: {
+          valueLimit: 1_000_000n,
+          valueLimitPerUse: 7n,
+          params: {
+            recipient: { condition: 'equal', value: RECIPIENT },
+          },
+        },
+      },
+    })
+
+    const uni = actions[0].policies!.find((p) => p.type === 'universal-action')!
+    if (uni.type !== 'universal-action') throw new Error('wrong type')
+    expect(uni.valueLimitPerUse).toBe(7n)
+  })
+
   test('all sugar fields stack with params (arg-policy + usage + time-frame + spending)', () => {
     const actions = resolvePermission({
       abi: erc20Abi,
