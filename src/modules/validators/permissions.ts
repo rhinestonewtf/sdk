@@ -155,13 +155,16 @@ function resolvePermission(permission: Permission): ScopedAction[] {
     const abiEntry = abiEntries[0]
     const selector = toFunctionSelector(abiEntry)
 
+    if (Object.hasOwn(config, 'policies')) {
+      throw new Error(
+        `Function "${fnName}": \`policies\` was removed from permission configs. ` +
+          'Use params, maxUses, validUntil/validAfter, valueLimit, or spendingLimit instead.',
+      )
+    }
+
     const policies: Policy[] = []
 
     // --- Sugar field expansion -----------------------------------------------
-    // Each top-level field maps 1:1 to a known policy. Smart-sessions
-    // AND-composes every action policy on-chain, so duplicates (e.g. raw
-    // `policies: [{ type: 'usage-limit', ... }]` + sugar `maxUses`) are
-    // accepted but redundant; not deduped.
 
     if (config.maxUses !== undefined) {
       policies.push({ type: 'usage-limit', limit: config.maxUses })
@@ -193,7 +196,7 @@ function resolvePermission(permission: Permission): ScopedAction[] {
         throw new Error(
           `Function "${fnName}" is not payable — \`valueLimit\` only constrains native ETH ` +
             'attached to the call, which is always zero for non-payable functions. ' +
-            'Remove `valueLimit`, or use the raw `policies` field if this is intentional.',
+            'Remove `valueLimit`.',
         )
       }
       policies.push({ type: 'value-limit', limit: config.valueLimit })

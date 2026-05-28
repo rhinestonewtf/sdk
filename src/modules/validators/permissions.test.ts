@@ -55,10 +55,10 @@ describe('resolvePermission', () => {
       address: USDC,
       functions: {
         transfer: {
-          policies: [{ type: 'usage-limit', limit: 10n }],
+          maxUses: 10n,
         },
         approve: {
-          policies: [{ type: 'usage-limit', limit: 5n }],
+          maxUses: 5n,
         },
       },
     })
@@ -301,10 +301,24 @@ describe('resolvePermission', () => {
         abi,
         address: USDC,
         functions: {
-          transfer: { policies: [{ type: 'sudo' }] },
+          transfer: {},
         },
       }),
     ).toThrow(/overloaded/)
+  })
+
+  test('throws when removed policies escape hatch is provided at runtime', () => {
+    expect(() =>
+      resolvePermission({
+        abi: erc20Abi,
+        address: USDC,
+        functions: {
+          transfer: {
+            policies: [{ type: 'usage-limit', limit: 1n }],
+          } as never,
+        },
+      }),
+    ).toThrow(/`policies` was removed/)
   })
 
   test('throws for unknown parameter name', () => {
@@ -428,7 +442,7 @@ describe('resolvePermission', () => {
         address: USDC,
         functions: {
           // @ts-expect-error — 'bar' doesn't exist in abi
-          bar: { policies: [{ type: 'sudo' }] },
+          bar: {},
         },
       }),
     ).toThrow(/not found/)
@@ -444,12 +458,12 @@ describe('resolvePermissions', () => {
       {
         abi: erc20Abi,
         address: usdc,
-        functions: { transfer: { policies: [{ type: 'sudo' }] } },
+        functions: { transfer: {} },
       },
       {
         abi: erc20Abi,
         address: dai,
-        functions: { approve: { policies: [{ type: 'sudo' }] } },
+        functions: { approve: {} },
       },
     ])
 
@@ -468,7 +482,7 @@ describe('resolvePermissions', () => {
           address: USDC,
           functions: {
             transfer: {
-              policies: [{ type: 'usage-limit', limit: 10n }],
+              maxUses: 10n,
               params: {
                 recipient: { condition: 'equal', value: RECIPIENT },
               },

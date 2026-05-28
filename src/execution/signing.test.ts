@@ -165,7 +165,7 @@ const sessionWithActions: Session = toSession({
       abi: erc20Abi,
       address: '0x1111111111111111111111111111111111111111',
       functions: {
-        transfer: { policies: [{ type: 'usage-limit', limit: 1n }] },
+        transfer: {},
       },
     },
   ],
@@ -411,7 +411,7 @@ const sessionWithPermit2ClaimPolicy: Session = toSession({
       abi: erc20Abi,
       address: '0x1111111111111111111111111111111111111111',
       functions: {
-        transfer: { policies: [{ type: 'usage-limit', limit: 1n }] },
+        transfer: {},
       },
     },
   ],

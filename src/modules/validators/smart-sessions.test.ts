@@ -55,7 +55,7 @@ const sessionWithAction: Session = toSession({
       abi: erc20Abi,
       address: '0x1111111111111111111111111111111111111111' as Address,
       functions: {
-        transfer: { policies: [{ type: 'sudo' }] },
+        transfer: {},
       },
     },
   ],
@@ -461,7 +461,7 @@ describe('policyAddresses override', () => {
           abi: erc20Abi,
           address: USDC,
           functions: {
-            transfer: { policies: [{ type: 'sudo' }] },
+            transfer: {},
           },
         },
       ],
