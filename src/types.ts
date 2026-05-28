@@ -288,13 +288,24 @@ type ParamConstraint<TValue> =
     }
 
 // Compile-time gates for sugar fields that only make sense on certain ABIs.
-// Structural `extends` on `inputs` so extra ABI entry fields (`name`,
-// `internalType`) don't prevent the match.
-type IsERC20TransferLike<TFn extends AbiFunction> = TFn['inputs'] extends
-  | readonly [{ type: 'address' }, { type: 'uint256' }]
-  | readonly [{ type: 'address' }, { type: 'address' }, { type: 'uint256' }]
-  ? true
-  : false
+// Match the on-chain selector dispatch in ERC20SpendingLimitPolicy: name must
+// be one of the four ERC-20 transfer/approve selectors AND shape must match.
+type IsERC20TransferLike<TFn extends AbiFunction> = TFn['name'] extends
+  | 'approve'
+  | 'increaseAllowance'
+  | 'transfer'
+  ? TFn['inputs'] extends readonly [{ type: 'address' }, { type: 'uint256' }]
+    ? true
+    : false
+  : TFn['name'] extends 'transferFrom'
+    ? TFn['inputs'] extends readonly [
+        { type: 'address' },
+        { type: 'address' },
+        { type: 'uint256' },
+      ]
+      ? true
+      : false
+    : false
 
 type IsPayable<TFn extends AbiFunction> =
   TFn['stateMutability'] extends 'payable' ? true : false

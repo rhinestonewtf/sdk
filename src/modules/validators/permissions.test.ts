@@ -732,7 +732,35 @@ describe('resolvePermission sugar fields', () => {
           deposit: { spendingLimit: { token: USDC, amount: 5000n } },
         },
       }),
-    ).toThrow(/spendingLimit.*only\s+works/)
+    ).toThrow(/not an ERC-20 transfer\/approve selector/)
+  })
+
+  test('spendingLimit on an ERC-20-shaped non-ERC-20 selector throws (e.g. mint)', () => {
+    // mint(address,uint256) has the same calldata shape as transfer/approve
+    // but a different selector. On-chain ERC20SpendingLimitPolicy dispatches
+    // by selector, so it would fail every call — reject at SDK level.
+    const abi = [
+      {
+        type: 'function',
+        name: 'mint',
+        inputs: [
+          { name: 'to', type: 'address' },
+          { name: 'amount', type: 'uint256' },
+        ],
+        outputs: [],
+        stateMutability: 'nonpayable',
+      },
+    ] as const
+    expect(() =>
+      resolvePermission({
+        abi,
+        address: USDC,
+        functions: {
+          // @ts-expect-error — spendingLimit is gated to ERC-20 selectors at the type level
+          mint: { spendingLimit: { token: USDC, amount: 5000n } },
+        },
+      }),
+    ).toThrow(/not an ERC-20 transfer\/approve selector/)
   })
 
   test('valueLimit on a payable function emits value-limit', () => {

@@ -112,9 +112,16 @@ type RawFunctionConfig = {
   spendingLimit?: { token: `0x${string}`; amount: bigint }
 }
 
-const ERC20_SPENDING_LIMIT_SHAPES = new Set([
-  'address,uint256',
-  'address,address,uint256',
+// On-chain ERC20SpendingLimitPolicy._isTokenTransferOrApprove matches by
+// 4-byte selector, accepting only these four. Selector-gating here keeps the
+// SDK's accepted set congruent with the contract's — a same-shaped function
+// like `mint(address,uint256)` would otherwise pass argument-type checks and
+// fail every call on-chain.
+const ERC20_SPENDING_LIMIT_SELECTORS = new Set<Hex>([
+  '0x095ea7b3', // approve(address,uint256)
+  '0x39509351', // increaseAllowance(address,uint256)
+  '0xa9059cbb', // transfer(address,uint256)
+  '0x23b872dd', // transferFrom(address,address,uint256)
 ])
 
 // Year 2100 in ms — well within uint128 after the encoder's ms→s conversion.
@@ -194,17 +201,15 @@ function resolvePermission(permission: Permission): ScopedAction[] {
     }
 
     if (config.spendingLimit !== undefined) {
-      // Runtime backstop: ERC20SpendingLimitPolicy decodes the amount from a
-      // fixed offset that only makes sense for transfer(address,uint256),
-      // transferFrom(address,address,uint256), or approve(address,uint256).
-      // Attaching it to anything else reads garbage and is silently wrong.
-      const inputTypes = abiEntry.inputs.map((i) => i.type).join(',')
-      if (!ERC20_SPENDING_LIMIT_SHAPES.has(inputTypes)) {
+      // Runtime backstop: type-level gate restricts shape, but ERC20SpendingLimitPolicy
+      // dispatches by selector on-chain — a same-shaped function like
+      // mint(address,uint256) would encode successfully and fail every call.
+      if (!ERC20_SPENDING_LIMIT_SELECTORS.has(selector)) {
         throw new Error(
-          `Function "${fnName}" has signature (${inputTypes}); \`spendingLimit\` only ` +
-            'works on ERC-20 transfer-shaped functions: (address,uint256) or ' +
-            '(address,address,uint256). The policy decodes the amount from a fixed ' +
-            'calldata offset and would read garbage on other shapes.',
+          `Function "${fnName}" (selector ${selector}) is not an ERC-20 transfer/approve ` +
+            'selector; `spendingLimit` only works on approve, increaseAllowance, ' +
+            'transfer, or transferFrom. The on-chain policy dispatches by selector ' +
+            'and would fail every call for other functions.',
         )
       }
       policies.push({
