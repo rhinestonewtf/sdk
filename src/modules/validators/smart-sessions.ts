@@ -1155,14 +1155,15 @@ function getPolicyData(
       }
     }
     case 'time-frame': {
-      // Deployed TimeFramePolicy reads `bytes16 validUntil || bytes16 validAfter` (32 bytes).
+      // Deployed TimeFramePolicy slices initData[0:12] and unpacks as
+      // uint48 validUntil || uint48 validAfter (high 48 bits || low 48 bits).
       return {
         policy: addresses.timeFrame,
         initData: encodePacked(
-          ['uint128', 'uint128'],
+          ['uint48', 'uint48'],
           [
-            BigInt(Math.floor(policy.validUntil / 1000)),
-            BigInt(Math.floor(policy.validAfter / 1000)),
+            Math.floor(policy.validUntil / 1000),
+            Math.floor(policy.validAfter / 1000),
           ],
         ),
       }

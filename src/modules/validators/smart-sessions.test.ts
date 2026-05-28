@@ -96,21 +96,18 @@ describe('getPolicyData', () => {
     expect(result.initData).toBe(expected)
   })
 
-  test('time-frame packs (validUntil, validAfter) as bytes16 || bytes16 in seconds (ms → s)', () => {
+  test('time-frame packs (validUntil, validAfter) as uint48 || uint48 in seconds (ms → s)', () => {
     const validUntil = 1_800_000_000_000
     const validAfter = 1_700_000_000_000
     const result = getPolicyData({ type: 'time-frame', validUntil, validAfter })
     expect(result.policy).toBe(TIME_FRAME_POLICY_ADDRESS)
     const expected = encodePacked(
-      ['uint128', 'uint128'],
-      [
-        BigInt(Math.floor(validUntil / 1000)),
-        BigInt(Math.floor(validAfter / 1000)),
-      ],
+      ['uint48', 'uint48'],
+      [Math.floor(validUntil / 1000), Math.floor(validAfter / 1000)],
     )
     expect(result.initData).toBe(expected)
-    // 32 bytes total (matches deployed TimeFramePolicy's `bytes16 || bytes16` layout)
-    expect((expected.length - 2) / 2).toBe(32)
+    // 12 bytes total (matches deployed TimeFramePolicy's bytes12 / uint96 layout)
+    expect((expected.length - 2) / 2).toBe(12)
   })
 
   test('usage-limit encodes limit as uint128', () => {
