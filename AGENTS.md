@@ -55,7 +55,7 @@ Once v2 is stable, we'll switch back to the standard `main` (dev) / `release` (p
 - Use viem types for addresses, chains, and hex values
 - Account implementations live in `/src/accounts/*.ts`
 - Public API is the union of `src/index.ts` re-exports and the subpath exports in `src/package.json` (`/actions`, `/errors`, `/jwt-server`, `/smart-sessions`, etc.) — adding, renaming, or removing exports is a breaking change
-- The project is using `changeset` to manage releases. Create a changeset file for each fix or feature.
+- The project uses `changeset` to manage releases. Create a changeset file for each fix or feature, and use the `sdk-changesets` skill when adding, editing, or reviewing SDK changelog wording.
 
 ## Testing
 

@@ -2,4 +2,4 @@
 '@rhinestone/sdk': patch
 ---
 
-Don't use fallback target for the dummy preclaim op.
+Fix internal collision between the dummy preclaim-op action target and the smart-session fallback-target marker.
