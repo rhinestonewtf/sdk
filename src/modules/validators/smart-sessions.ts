@@ -33,6 +33,7 @@ import {
 } from '../../orchestrator/registry'
 import type {
   Action,
+  ArgPolicyExpression,
   Policy,
   ProviderConfig,
   RhinestoneAccountConfig,
@@ -218,17 +219,18 @@ const DUMMY_PRECLAIMOP_TARGET: Address =
 const DUMMY_PRECLAIMOP_SELECTOR: Hex = '0x69123456'
 
 const SPENDING_LIMITS_POLICY_ADDRESS: Address =
-  '0x00000088d48cf102a8cdb0137a9b173f957c6343'
+  '0x000000000033212E272655D8a22402Db819477A6'
 const TIME_FRAME_POLICY_ADDRESS: Address =
-  '0x8177451511de0577b911c254e9551d981c26dc72'
+  '0x0000000000D30f611fA3bf652ac6879428586930'
 const SUDO_POLICY_ADDRESS: Address =
-  '0x0000003111cd8e92337c100f22b7a9dbf8dee301'
+  '0x0000000000FEEc8D74e3143fBaBbca515358d869'
 const UNIVERSAL_ACTION_POLICY_ADDRESS: Address =
-  '0x0000006dda6c463511c4e9b05cfc34c1247fcf1f'
+  '0x0000000000714Cf48FcF88A0bFBa70d313415032'
+const ARG_POLICY_ADDRESS: Address = '0x0000000000167edE64D8751daACDdC0312565a73'
 const USAGE_LIMIT_POLICY_ADDRESS: Address =
-  '0x1f34ef8311345a3a4a4566af321b313052f51493'
+  '0x00000000001d4479FA2A947026204d0283ceDe4B'
 const VALUE_LIMIT_POLICY_ADDRESS: Address =
-  '0x730da93267e7e513e932301b47f2ac7d062abc83'
+  '0x000000000021dC45451291BCDfc9f0B46d6f0278'
 const INTENT_EXECUTION_POLICY_ADDRESS: Address =
   '0xe9eA54d063975cDee9e06b7636d5563d95a7A23C'
 const INTENT_EXECUTION_POLICY_ADDRESS_DEV: Address =
@@ -241,6 +243,23 @@ const ACTION_CONDITION_GREATER_THAN_OR_EQUAL = 3
 const ACTION_CONDITION_LESS_THAN_OR_EQUAL = 4
 const ACTION_CONDITION_NOT_EQUAL = 5
 const ACTION_CONDITION_IN_RANGE = 6
+
+// ArgPolicy expression-tree node packing — must match ArgPolicyTreeLib.sol:
+//   bits  0..1  : node type (0=rule, 1=NOT, 2=AND, 3=OR)
+//   bits  2..9  : rule index (rule nodes only)
+//   bits 10..17 : left/only child index
+//   bits 18..25 : right child index (AND/OR only)
+const ARG_NODE_TYPE_RULE = 0n
+const ARG_NODE_TYPE_NOT = 1n
+const ARG_NODE_TYPE_AND = 2n
+const ARG_NODE_TYPE_OR = 3n
+const ARG_RULE_INDEX_SHIFT = 2n
+const ARG_LEFT_CHILD_SHIFT = 10n
+const ARG_RIGHT_CHILD_SHIFT = 18n
+// On-chain caps from ArgPolicyTreeLib.sol; we fail early instead of letting
+// the deployment revert with `TooManyRules` / `TooManyNodes`.
+const ARG_MAX_RULES = 128
+const ARG_MAX_NODES = 256
 
 interface ResolvedSessionSignerSet {
   type: 'experimental_session'
@@ -764,6 +783,110 @@ function getPermissionId(session: Session) {
   )
 }
 
+function getActionConditionId(
+  condition: UniversalActionPolicyParamCondition,
+): number {
+  switch (condition) {
+    case 'equal':
+      return ACTION_CONDITION_EQUAL
+    case 'greaterThan':
+      return ACTION_CONDITION_GREATER_THAN
+    case 'lessThan':
+      return ACTION_CONDITION_LESS_THAN
+    case 'greaterThanOrEqual':
+      return ACTION_CONDITION_GREATER_THAN_OR_EQUAL
+    case 'lessThanOrEqual':
+      return ACTION_CONDITION_LESS_THAN_OR_EQUAL
+    case 'notEqual':
+      return ACTION_CONDITION_NOT_EQUAL
+    case 'inRange':
+      return ACTION_CONDITION_IN_RANGE
+  }
+}
+
+function encodeActionParamRule(rule: {
+  condition: UniversalActionPolicyParamCondition
+  calldataOffset: bigint
+  usageLimit?: bigint
+  referenceValue: Hex | bigint
+}): ActionParamRule {
+  const ref = isHex(rule.referenceValue)
+    ? padHex(rule.referenceValue)
+    : toHex(rule.referenceValue, { size: 32 })
+  return {
+    condition: getActionConditionId(rule.condition),
+    offset: rule.calldataOffset,
+    isLimited: rule.usageLimit !== undefined,
+    ref,
+    usage: {
+      limit: rule.usageLimit ?? 0n,
+      used: 0n,
+    },
+  }
+}
+
+// Compile an ArgPolicyExpression AST into the on-chain wire format
+// (flat rules[] + bit-packed nodes[] + rootNodeIndex). Post-order walk:
+// children get appended before their parent so a parent's child indices
+// always reference earlier slots.
+function compileArgPolicyExpression(expr: ArgPolicyExpression): {
+  rules: ActionParamRule[]
+  packedNodes: bigint[]
+  rootNodeIndex: number
+} {
+  const rules: ActionParamRule[] = []
+  const nodes: bigint[] = []
+
+  function walk(e: ArgPolicyExpression): number {
+    switch (e.type) {
+      case 'rule': {
+        const ruleIdx = rules.length
+        rules.push(encodeActionParamRule(e.rule))
+        const nodeIdx = nodes.length
+        nodes.push(
+          ARG_NODE_TYPE_RULE | (BigInt(ruleIdx) << ARG_RULE_INDEX_SHIFT),
+        )
+        return nodeIdx
+      }
+      case 'not': {
+        const childIdx = walk(e.child)
+        const nodeIdx = nodes.length
+        nodes.push(
+          ARG_NODE_TYPE_NOT | (BigInt(childIdx) << ARG_LEFT_CHILD_SHIFT),
+        )
+        return nodeIdx
+      }
+      case 'and':
+      case 'or': {
+        const leftIdx = walk(e.left)
+        const rightIdx = walk(e.right)
+        const nodeIdx = nodes.length
+        const nodeType = e.type === 'and' ? ARG_NODE_TYPE_AND : ARG_NODE_TYPE_OR
+        nodes.push(
+          nodeType |
+            (BigInt(leftIdx) << ARG_LEFT_CHILD_SHIFT) |
+            (BigInt(rightIdx) << ARG_RIGHT_CHILD_SHIFT),
+        )
+        return nodeIdx
+      }
+    }
+  }
+
+  const rootNodeIndex = walk(expr)
+
+  if (rules.length > ARG_MAX_RULES) {
+    throw new Error(
+      `ArgPolicy expression has ${rules.length} rules, max is ${ARG_MAX_RULES}`,
+    )
+  }
+  if (nodes.length > ARG_MAX_NODES) {
+    throw new Error(
+      `ArgPolicy expression has ${nodes.length} nodes, max is ${ARG_MAX_NODES}`,
+    )
+  }
+  return { rules, packedNodes: nodes, rootNodeIndex }
+}
+
 function getPolicyData(policy: Policy, useDevContracts?: boolean): PolicyData {
   switch (policy.type) {
     case 'sudo':
@@ -779,25 +902,6 @@ function getPolicyData(policy: Policy, useDevContracts?: boolean): PolicyData {
         initData: '0x',
       }
     case 'universal-action': {
-      function getCondition(condition: UniversalActionPolicyParamCondition) {
-        switch (condition) {
-          case 'equal':
-            return ACTION_CONDITION_EQUAL
-          case 'greaterThan':
-            return ACTION_CONDITION_GREATER_THAN
-          case 'lessThan':
-            return ACTION_CONDITION_LESS_THAN
-          case 'greaterThanOrEqual':
-            return ACTION_CONDITION_GREATER_THAN_OR_EQUAL
-          case 'lessThanOrEqual':
-            return ACTION_CONDITION_LESS_THAN_OR_EQUAL
-          case 'notEqual':
-            return ACTION_CONDITION_NOT_EQUAL
-          case 'inRange':
-            return ACTION_CONDITION_IN_RANGE
-        }
-      }
-
       const MAX_RULES = 16
       const rules = createFixedArray<ActionParamRule, typeof MAX_RULES>(
         MAX_RULES,
@@ -810,20 +914,7 @@ function getPolicyData(policy: Policy, useDevContracts?: boolean): PolicyData {
         }),
       )
       for (let i = 0; i < policy.rules.length; i++) {
-        const rule = policy.rules[i]
-        const ref = isHex(rule.referenceValue)
-          ? padHex(rule.referenceValue)
-          : toHex(rule.referenceValue, { size: 32 })
-        rules[i] = {
-          condition: getCondition(rule.condition),
-          offset: rule.calldataOffset,
-          isLimited: rule.usageLimit !== undefined,
-          ref,
-          usage: {
-            limit: rule.usageLimit ? rule.usageLimit : 0n,
-            used: 0n,
-          },
-        }
+        rules[i] = encodeActionParamRule(policy.rules[i])
       }
       return {
         policy: UNIVERSAL_ACTION_POLICY_ADDRESS,
@@ -892,6 +983,61 @@ function getPolicyData(policy: Policy, useDevContracts?: boolean): PolicyData {
               paramRules: {
                 length: BigInt(policy.rules.length),
                 rules: rules,
+              },
+            },
+          ],
+        ),
+      }
+    }
+    case 'arg-policy': {
+      const { rules, packedNodes, rootNodeIndex } = compileArgPolicyExpression(
+        policy.expression,
+      )
+      return {
+        policy: ARG_POLICY_ADDRESS,
+        initData: encodeAbiParameters(
+          [
+            {
+              components: [
+                { name: 'valueLimitPerUse', type: 'uint256' },
+                {
+                  components: [
+                    { name: 'rootNodeIndex', type: 'uint8' },
+                    {
+                      components: [
+                        { name: 'condition', type: 'uint8' },
+                        { name: 'offset', type: 'uint64' },
+                        { name: 'isLimited', type: 'bool' },
+                        { name: 'ref', type: 'bytes32' },
+                        {
+                          components: [
+                            { name: 'limit', type: 'uint256' },
+                            { name: 'used', type: 'uint256' },
+                          ],
+                          name: 'usage',
+                          type: 'tuple',
+                        },
+                      ],
+                      name: 'rules',
+                      type: 'tuple[]',
+                    },
+                    { name: 'packedNodes', type: 'uint256[]' },
+                  ],
+                  name: 'paramRules',
+                  type: 'tuple',
+                },
+              ],
+              name: 'ActionConfig',
+              type: 'tuple',
+            },
+          ],
+          [
+            {
+              valueLimitPerUse: policy.valueLimitPerUse ?? 0n,
+              paramRules: {
+                rootNodeIndex,
+                rules,
+                packedNodes,
               },
             },
           ],
@@ -1026,6 +1172,7 @@ export {
   TIME_FRAME_POLICY_ADDRESS,
   SUDO_POLICY_ADDRESS,
   UNIVERSAL_ACTION_POLICY_ADDRESS,
+  ARG_POLICY_ADDRESS,
   USAGE_LIMIT_POLICY_ADDRESS,
   VALUE_LIMIT_POLICY_ADDRESS,
   INTENT_EXECUTION_POLICY_ADDRESS,

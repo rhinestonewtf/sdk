@@ -23,6 +23,7 @@ import {
 } from './accounts'
 import { walletClientToAccount, wrapParaAccount } from './accounts/walletClient'
 import { deployAccountsForOwners } from './actions/deployment'
+import { definePermissions } from './actions/permissions'
 import { type AuthProvider, createAuthProvider } from './auth/provider'
 import {
   getIntentStatus as getIntentStatusInternal,
@@ -617,6 +618,7 @@ export {
   RhinestoneSDK,
   createRhinestoneAccount,
   deployAccountsForOwners,
+  definePermissions,
   walletClientToAccount,
   wrapParaAccount,
   // Validator addresses
