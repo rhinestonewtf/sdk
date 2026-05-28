@@ -127,6 +127,23 @@ toSession({
   ],
 })
 
+toSession({
+  chain: base,
+  owners: { type: 'ecdsa', accounts: [accountA] },
+  permissions: [
+    {
+      abi: erc20Abi,
+      address: USDC,
+      functions: {
+        transfer: {
+          // @ts-expect-error raw policies were removed from permission configs.
+          policies: [{ type: 'usage-limit', limit: 1n }],
+        },
+      },
+    },
+  ],
+})
+
 const permission = {
   abi: erc20Abi,
   address: USDC,

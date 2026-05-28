@@ -1,5 +1,6 @@
 import {
   type Address,
+  decodeAbiParameters,
   encodeAbiParameters,
   encodePacked,
   erc20Abi,
@@ -12,10 +13,11 @@ import {
 import { base } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 import { accountA, accountB } from '../../../test/consts'
-import type { Session } from '../../types'
+import type { ArgPolicyExpression, Session } from '../../types'
 import { PERMIT2_CLAIM_POLICY_ADDRESS } from './policies/claim/permit2'
 import type { ResolvedSessionSignerSet } from './smart-sessions'
 import {
+  ARG_POLICY_ADDRESS,
   buildMockSignature,
   DUMMY_PRECLAIMOP_SELECTOR,
   DUMMY_PRECLAIMOP_TARGET,
@@ -53,7 +55,7 @@ const sessionWithAction: Session = toSession({
       abi: erc20Abi,
       address: '0x1111111111111111111111111111111111111111' as Address,
       functions: {
-        transfer: { policies: [{ type: 'sudo' }] },
+        transfer: {},
       },
     },
   ],
@@ -94,21 +96,18 @@ describe('getPolicyData', () => {
     expect(result.initData).toBe(expected)
   })
 
-  test('time-frame packs (validUntil, validAfter) as bytes16 || bytes16 in seconds (ms → s)', () => {
+  test('time-frame packs (validUntil, validAfter) as uint48 || uint48 in seconds (ms → s)', () => {
     const validUntil = 1_800_000_000_000
     const validAfter = 1_700_000_000_000
     const result = getPolicyData({ type: 'time-frame', validUntil, validAfter })
     expect(result.policy).toBe(TIME_FRAME_POLICY_ADDRESS)
     const expected = encodePacked(
-      ['uint128', 'uint128'],
-      [
-        BigInt(Math.floor(validUntil / 1000)),
-        BigInt(Math.floor(validAfter / 1000)),
-      ],
+      ['uint48', 'uint48'],
+      [Math.floor(validUntil / 1000), Math.floor(validAfter / 1000)],
     )
     expect(result.initData).toBe(expected)
-    // 32 bytes total (matches deployed TimeFramePolicy's `bytes16 || bytes16` layout)
-    expect((expected.length - 2) / 2).toBe(32)
+    // 12 bytes total (matches deployed TimeFramePolicy's bytes12 / uint96 layout)
+    expect((expected.length - 2) / 2).toBe(12)
   })
 
   test('usage-limit encodes limit as uint128', () => {
@@ -140,6 +139,338 @@ describe('getPolicyData', () => {
     })
     expect(result.policy).toBe(UNIVERSAL_ACTION_POLICY_ADDRESS)
     expect(result.initData.length).toBeGreaterThan(2)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// A2. ArgPolicy encoding — verifies the bit-packed node layout matches
+//     ArgPolicyTreeLib.sol exactly: [type:2 | ruleIdx:8 | leftChild:8 | rightChild:8]
+// ---------------------------------------------------------------------------
+
+const argPolicyActionConfigAbi = [
+  {
+    components: [
+      { name: 'valueLimitPerUse', type: 'uint256' },
+      {
+        components: [
+          { name: 'rootNodeIndex', type: 'uint8' },
+          {
+            components: [
+              { name: 'condition', type: 'uint8' },
+              { name: 'offset', type: 'uint64' },
+              { name: 'isLimited', type: 'bool' },
+              { name: 'ref', type: 'bytes32' },
+              {
+                components: [
+                  { name: 'limit', type: 'uint256' },
+                  { name: 'used', type: 'uint256' },
+                ],
+                name: 'usage',
+                type: 'tuple',
+              },
+            ],
+            name: 'rules',
+            type: 'tuple[]',
+          },
+          { name: 'packedNodes', type: 'uint256[]' },
+        ],
+        name: 'paramRules',
+        type: 'tuple',
+      },
+    ],
+    name: 'ActionConfig',
+    type: 'tuple',
+  },
+] as const
+
+function decodeArgPolicyInitData(initData: Hex) {
+  return decodeAbiParameters(argPolicyActionConfigAbi, initData)[0]
+}
+
+const NODE_TYPE_MASK = 0x3n
+const RULE_INDEX_MASK = 0xffn
+const CHILD_MASK = 0xffn
+
+function unpackNode(node: bigint) {
+  return {
+    nodeType: Number(node & NODE_TYPE_MASK),
+    ruleIndex: Number((node >> 2n) & RULE_INDEX_MASK),
+    leftChild: Number((node >> 10n) & CHILD_MASK),
+    rightChild: Number((node >> 18n) & CHILD_MASK),
+  }
+}
+
+describe('getPolicyData arg-policy', () => {
+  test('single rule → 1 rule, 1 RULE node, root index 0', () => {
+    const result = getPolicyData({
+      type: 'arg-policy',
+      valueLimitPerUse: 42n,
+      expression: {
+        type: 'rule',
+        rule: {
+          condition: 'equal',
+          calldataOffset: 4n,
+          referenceValue: 100n,
+        },
+      },
+    })
+    expect(result.policy).toBe(ARG_POLICY_ADDRESS)
+    const decoded = decodeArgPolicyInitData(result.initData)
+    expect(decoded.valueLimitPerUse).toBe(42n)
+    expect(decoded.paramRules.rootNodeIndex).toBe(0)
+    expect(decoded.paramRules.rules.length).toBe(1)
+    expect(decoded.paramRules.packedNodes.length).toBe(1)
+    const root = unpackNode(decoded.paramRules.packedNodes[0])
+    expect(root.nodeType).toBe(0) // RULE
+    expect(root.ruleIndex).toBe(0)
+    expect(decoded.paramRules.rules[0].ref).toBe(
+      `0x${'00'.repeat(31)}64` as Hex,
+    )
+    expect(decoded.paramRules.rules[0].offset).toBe(4n)
+    expect(decoded.paramRules.rules[0].isLimited).toBe(false)
+  })
+
+  test('OR of two rules — root is OR with two RULE children, children come before parent', () => {
+    const rule = (ref: bigint) =>
+      ({
+        type: 'rule',
+        rule: {
+          condition: 'equal' as const,
+          calldataOffset: 4n,
+          referenceValue: ref,
+        },
+      }) as const
+    const result = getPolicyData({
+      type: 'arg-policy',
+      expression: {
+        type: 'or',
+        left: rule(1n),
+        right: rule(2n),
+      },
+    })
+    const decoded = decodeArgPolicyInitData(result.initData)
+    expect(decoded.paramRules.rules.length).toBe(2)
+    expect(decoded.paramRules.packedNodes.length).toBe(3)
+    const leftLeaf = unpackNode(decoded.paramRules.packedNodes[0])
+    const rightLeaf = unpackNode(decoded.paramRules.packedNodes[1])
+    const root = unpackNode(decoded.paramRules.packedNodes[2])
+    expect(leftLeaf.nodeType).toBe(0)
+    expect(leftLeaf.ruleIndex).toBe(0)
+    expect(rightLeaf.nodeType).toBe(0)
+    expect(rightLeaf.ruleIndex).toBe(1)
+    expect(root.nodeType).toBe(3) // OR
+    expect(root.leftChild).toBe(0)
+    expect(root.rightChild).toBe(1)
+    expect(decoded.paramRules.rootNodeIndex).toBe(2)
+  })
+
+  test('NOT wraps a single rule, unary child packed into left slot only', () => {
+    const result = getPolicyData({
+      type: 'arg-policy',
+      expression: {
+        type: 'not',
+        child: {
+          type: 'rule',
+          rule: {
+            condition: 'equal',
+            calldataOffset: 4n,
+            referenceValue: 1n,
+          },
+        },
+      },
+    })
+    const decoded = decodeArgPolicyInitData(result.initData)
+    expect(decoded.paramRules.packedNodes.length).toBe(2)
+    const notRoot = unpackNode(decoded.paramRules.packedNodes[1])
+    expect(notRoot.nodeType).toBe(1) // NOT
+    expect(notRoot.leftChild).toBe(0)
+    expect(notRoot.rightChild).toBe(0)
+  })
+
+  test('nested (A AND B) OR (NOT C) — post-order, every parent points at earlier children', () => {
+    const ruleA: ArgPolicyExpression = {
+      type: 'rule',
+      rule: { condition: 'equal', calldataOffset: 4n, referenceValue: 1n },
+    }
+    const ruleB: ArgPolicyExpression = {
+      type: 'rule',
+      rule: { condition: 'equal', calldataOffset: 4n, referenceValue: 2n },
+    }
+    const ruleC: ArgPolicyExpression = {
+      type: 'rule',
+      rule: { condition: 'equal', calldataOffset: 4n, referenceValue: 3n },
+    }
+    const result = getPolicyData({
+      type: 'arg-policy',
+      expression: {
+        type: 'or',
+        left: { type: 'and', left: ruleA, right: ruleB },
+        right: { type: 'not', child: ruleC },
+      },
+    })
+    const decoded = decodeArgPolicyInitData(result.initData)
+    // 3 rules, 3 leaf nodes + AND + NOT + OR = 6 nodes
+    expect(decoded.paramRules.rules.length).toBe(3)
+    expect(decoded.paramRules.packedNodes.length).toBe(6)
+    decoded.paramRules.packedNodes.forEach((rawNode: bigint, i: number) => {
+      const n = unpackNode(rawNode)
+      if (n.nodeType === 1) {
+        expect(n.leftChild).toBeLessThan(i)
+      } else if (n.nodeType === 2 || n.nodeType === 3) {
+        expect(n.leftChild).toBeLessThan(i)
+        expect(n.rightChild).toBeLessThan(i)
+      }
+    })
+    expect(decoded.paramRules.rootNodeIndex).toBe(5)
+    const root = unpackNode(decoded.paramRules.packedNodes[5])
+    expect(root.nodeType).toBe(3) // OR
+  })
+
+  test('usageLimit on a rule sets isLimited=true and copies the limit', () => {
+    const result = getPolicyData({
+      type: 'arg-policy',
+      expression: {
+        type: 'rule',
+        rule: {
+          condition: 'lessThanOrEqual',
+          calldataOffset: 36n,
+          referenceValue: 1000n,
+          usageLimit: 5000n,
+        },
+      },
+    })
+    const decoded = decodeArgPolicyInitData(result.initData)
+    expect(decoded.paramRules.rules[0].isLimited).toBe(true)
+    expect(decoded.paramRules.rules[0].usage.limit).toBe(5000n)
+    expect(decoded.paramRules.rules[0].usage.used).toBe(0n)
+  })
+
+  test('reference value as hex is left-padded to bytes32', () => {
+    const addr = '0xaabbccdd00000000000000000000000000000001' as Hex
+    const result = getPolicyData({
+      type: 'arg-policy',
+      expression: {
+        type: 'rule',
+        rule: {
+          condition: 'equal',
+          calldataOffset: 4n,
+          referenceValue: addr,
+        },
+      },
+    })
+    const decoded = decodeArgPolicyInitData(result.initData)
+    expect(decoded.paramRules.rules[0].ref).toBe(
+      `0x000000000000000000000000aabbccdd00000000000000000000000000000001` as Hex,
+    )
+  })
+
+  test('rule index packing uses bits 2..9 — supports indices > 0', () => {
+    const r = (v: bigint): ArgPolicyExpression => ({
+      type: 'rule',
+      rule: { condition: 'equal', calldataOffset: 4n, referenceValue: v },
+    })
+    const result = getPolicyData({
+      type: 'arg-policy',
+      expression: {
+        type: 'and',
+        left: r(1n),
+        right: { type: 'and', left: r(2n), right: r(3n) },
+      },
+    })
+    const decoded = decodeArgPolicyInitData(result.initData)
+    const leafIndices = decoded.paramRules.packedNodes
+      .map(unpackNode)
+      .filter((n) => n.nodeType === 0)
+      .map((n) => n.ruleIndex)
+    expect(leafIndices).toContain(2)
+  })
+
+  test('throws when expression compiles to >128 rules', () => {
+    const leaf = (v: bigint): ArgPolicyExpression => ({
+      type: 'rule',
+      rule: { condition: 'equal', calldataOffset: 4n, referenceValue: v },
+    })
+    let expr: ArgPolicyExpression = leaf(0n)
+    for (let i = 1; i < 129; i++) {
+      expr = { type: 'and', left: leaf(BigInt(i)), right: expr }
+    }
+    expect(() =>
+      getPolicyData({ type: 'arg-policy', expression: expr }),
+    ).toThrow(/max is 128/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// A3. Per-session policyAddresses override
+// ---------------------------------------------------------------------------
+
+describe('policyAddresses override', () => {
+  const SUDO_OVERRIDE: Address = '0xdeadbeef00000000000000000000000000000001'
+  const UA_OVERRIDE: Address = '0xdeadbeef00000000000000000000000000000002'
+
+  test('override propagates to the erc1271 sudo policy too', () => {
+    const session = toSession({
+      chain: base,
+      owners: { type: 'ecdsa', accounts: [accountA] },
+      policyAddresses: { sudo: SUDO_OVERRIDE },
+    })
+    const data = getSessionData(session)
+    expect(data.erc7739Policies.erc1271Policies[0].policy).toBe(SUDO_OVERRIDE)
+  })
+
+  test('default fallback sudo action picks up the override', () => {
+    // No explicit permissions → resolveSessionData emits the [sudoAction] fallback.
+    const session = toSession({
+      chain: base,
+      owners: { type: 'ecdsa', accounts: [accountA] },
+      policyAddresses: { sudo: SUDO_OVERRIDE },
+    })
+    const data = getSessionData(session)
+    expect(data.actions[0].actionPolicies[0].policy).toBe(SUDO_OVERRIDE)
+  })
+
+  test('universal-action address override is reflected in encoded action policy', () => {
+    const session = toSession({
+      chain: base,
+      owners: { type: 'ecdsa', accounts: [accountA] },
+      permissions: [
+        {
+          abi: erc20Abi,
+          address: USDC,
+          functions: {
+            transfer: {
+              params: {
+                recipient: { condition: 'equal', value: RECIPIENT },
+              },
+            },
+          },
+        },
+      ],
+      policyAddresses: { universalAction: UA_OVERRIDE },
+    })
+    const data = getSessionData(session)
+    expect(data.actions[0].actionPolicies[0].policy).toBe(UA_OVERRIDE)
+  })
+
+  test('no override → all default V2 addresses are used', () => {
+    const session = toSession({
+      chain: base,
+      owners: { type: 'ecdsa', accounts: [accountA] },
+      permissions: [
+        {
+          abi: erc20Abi,
+          address: USDC,
+          functions: {
+            transfer: {},
+          },
+        },
+      ],
+    })
+    const data = getSessionData(session)
+    expect(data.actions[0].actionPolicies[0].policy).toBe(SUDO_POLICY_ADDRESS)
+    expect(data.erc7739Policies.erc1271Policies[0].policy).toBe(
+      SUDO_POLICY_ADDRESS,
+    )
   })
 })
 
@@ -211,30 +542,6 @@ describe('getSessionData', () => {
     expect(data.actions).toHaveLength(1)
     expect(data.actions[0].actionTarget).toBe(
       SMART_SESSIONS_FALLBACK_TARGET_FLAG,
-    )
-  })
-
-  test('multiple policies on one action', () => {
-    const session = toSession({
-      chain: base,
-      owners: { type: 'ecdsa', accounts: [accountA] },
-      permissions: [
-        {
-          abi: erc20Abi,
-          address: '0x2222222222222222222222222222222222222222' as Address,
-          functions: {
-            transfer: {
-              policies: [{ type: 'sudo' }, { type: 'usage-limit', limit: 3n }],
-            },
-          },
-        },
-      ],
-    })
-    const data = getSessionData(session)
-    expect(data.actions[0].actionPolicies).toHaveLength(2)
-    expect(data.actions[0].actionPolicies[0].policy).toBe(SUDO_POLICY_ADDRESS)
-    expect(data.actions[0].actionPolicies[1].policy).toBe(
-      USAGE_LIMIT_POLICY_ADDRESS,
     )
   })
 

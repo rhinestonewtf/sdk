@@ -55,10 +55,10 @@ describe('resolvePermission', () => {
       address: USDC,
       functions: {
         transfer: {
-          policies: [{ type: 'usage-limit', limit: 10n }],
+          maxUses: 10n,
         },
         approve: {
-          policies: [{ type: 'usage-limit', limit: 5n }],
+          maxUses: 5n,
         },
       },
     })
@@ -70,41 +70,6 @@ describe('resolvePermission', () => {
       toFunctionSelector('function approve(address spender, uint256 value)'),
     ].sort()
     expect(names).toEqual(expectedSelectors)
-  })
-
-  test('policies only — no universal-action generated', () => {
-    const actions = resolvePermission({
-      abi: erc20Abi,
-      address: USDC,
-      functions: {
-        approve: {
-          policies: [{ type: 'sudo' }],
-        },
-      },
-    })
-
-    expect(actions).toHaveLength(1)
-    expect(actions[0].policies).toEqual([{ type: 'sudo' }])
-  })
-
-  test('user policies come before generated universal-action', () => {
-    const actions = resolvePermission({
-      abi: erc20Abi,
-      address: USDC,
-      functions: {
-        transfer: {
-          policies: [{ type: 'usage-limit', limit: 3n }],
-          params: {
-            recipient: { condition: 'equal', value: RECIPIENT },
-          },
-        },
-      },
-    })
-
-    const policies = actions[0].policies!
-    expect(policies).toHaveLength(2)
-    expect(policies[0].type).toBe('usage-limit')
-    expect(policies[1].type).toBe('universal-action')
   })
 
   test('calldataOffset for third parameter is 64n', () => {
@@ -171,7 +136,11 @@ describe('resolvePermission', () => {
     expect(ruleF.referenceValue).toBe(0n)
   })
 
-  test('validates bytesN values are fixed-size hex strings', () => {
+  test('bytesN values are right-padded to 32 bytes (matches calldata alignment)', () => {
+    // Solidity calldata encodes bytesN (N<32) left-aligned + right-padded inside
+    // its 32-byte word, whereas downstream encodeActionParamRule left-pads with
+    // padHex. resolvePermission pre-pads with `dir: 'right'` so the downstream
+    // left-pad becomes idempotent and the policy comparison matches calldata.
     const abi = [
       {
         type: 'function',
@@ -196,7 +165,55 @@ describe('resolvePermission', () => {
 
     const policy = actions[0].policies![0]
     if (policy.type !== 'universal-action') throw new Error('wrong type')
-    expect(policy.rules[0].referenceValue).toBe('0x12345678')
+    expect(policy.rules[0].referenceValue).toBe(`0x12345678${'00'.repeat(28)}`)
+  })
+
+  test('bytes32 values are passed through unchanged (already 32 bytes)', () => {
+    const abi = [
+      {
+        type: 'function',
+        name: 'setHash',
+        inputs: [{ name: 'h', type: 'bytes32' }],
+        outputs: [],
+        stateMutability: 'nonpayable',
+      },
+    ] as const
+
+    const full =
+      '0x1122334455667788112233445566778811223344556677881122334455667788' as const
+    const actions = resolvePermission({
+      abi,
+      address: USDC,
+      functions: {
+        setHash: { params: { h: { condition: 'equal', value: full } } },
+      },
+    })
+    const policy = actions[0].policies![0]
+    if (policy.type !== 'universal-action') throw new Error('wrong type')
+    expect(policy.rules[0].referenceValue).toBe(full)
+  })
+
+  test('bytes1 values are right-padded with 31 zero bytes', () => {
+    const abi = [
+      {
+        type: 'function',
+        name: 'setOne',
+        inputs: [{ name: 'b', type: 'bytes1' }],
+        outputs: [],
+        stateMutability: 'nonpayable',
+      },
+    ] as const
+
+    const actions = resolvePermission({
+      abi,
+      address: USDC,
+      functions: {
+        setOne: { params: { b: { condition: 'equal', value: '0xff' } } },
+      },
+    })
+    const policy = actions[0].policies![0]
+    if (policy.type !== 'universal-action') throw new Error('wrong type')
+    expect(policy.rules[0].referenceValue).toBe(`0xff${'00'.repeat(31)}`)
   })
 
   test('throws for invalid bytesN values', () => {
@@ -284,10 +301,24 @@ describe('resolvePermission', () => {
         abi,
         address: USDC,
         functions: {
-          transfer: { policies: [{ type: 'sudo' }] },
+          transfer: {},
         },
       }),
     ).toThrow(/overloaded/)
+  })
+
+  test('throws when removed policies escape hatch is provided at runtime', () => {
+    expect(() =>
+      resolvePermission({
+        abi: erc20Abi,
+        address: USDC,
+        functions: {
+          transfer: {
+            policies: [{ type: 'usage-limit', limit: 1n }],
+          } as never,
+        },
+      }),
+    ).toThrow(/`policies` was removed/)
   })
 
   test('throws for unknown parameter name', () => {
@@ -411,7 +442,7 @@ describe('resolvePermission', () => {
         address: USDC,
         functions: {
           // @ts-expect-error — 'bar' doesn't exist in abi
-          bar: { policies: [{ type: 'sudo' }] },
+          bar: {},
         },
       }),
     ).toThrow(/not found/)
@@ -427,12 +458,12 @@ describe('resolvePermissions', () => {
       {
         abi: erc20Abi,
         address: usdc,
-        functions: { transfer: { policies: [{ type: 'sudo' }] } },
+        functions: { transfer: {} },
       },
       {
         abi: erc20Abi,
         address: dai,
-        functions: { approve: { policies: [{ type: 'sudo' }] } },
+        functions: { approve: {} },
       },
     ])
 
@@ -451,7 +482,7 @@ describe('resolvePermissions', () => {
           address: USDC,
           functions: {
             transfer: {
-              policies: [{ type: 'usage-limit', limit: 10n }],
+              maxUses: 10n,
               params: {
                 recipient: { condition: 'equal', value: RECIPIENT },
               },
@@ -466,5 +497,398 @@ describe('resolvePermissions', () => {
     // + injected dummy preclaimop
     expect(data.actions.length).toBeGreaterThanOrEqual(2)
     expect(data.actions[0].actionTarget).toBe(USDC)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// anyOf: OR-of-EQUAL allowlists → emits arg-policy
+// ---------------------------------------------------------------------------
+
+describe('resolvePermission anyOf', () => {
+  const ALICE: Address = '0x4444444444444444444444444444444444444444'
+  const BOB: Address = '0x5555555555555555555555555555555555555555'
+  const CAROL: Address = '0x6666666666666666666666666666666666666666'
+
+  test('anyOf on a single param switches the emitted policy to arg-policy', () => {
+    const actions = resolvePermission({
+      abi: erc20Abi,
+      address: USDC,
+      functions: {
+        transfer: {
+          params: {
+            recipient: { anyOf: [ALICE, BOB] },
+          },
+        },
+      },
+    })
+    const policy = actions[0].policies![0]
+    expect(policy.type).toBe('arg-policy')
+    if (policy.type !== 'arg-policy') throw new Error('wrong type')
+    // Two-element anyOf becomes a single OR of two RULE leaves.
+    expect(policy.expression.type).toBe('or')
+  })
+
+  test('anyOf with a single value compiles to a bare rule (no OR wrapper)', () => {
+    const actions = resolvePermission({
+      abi: erc20Abi,
+      address: USDC,
+      functions: {
+        transfer: { params: { recipient: { anyOf: [ALICE] } } },
+      },
+    })
+    const policy = actions[0].policies![0]
+    if (policy.type !== 'arg-policy') throw new Error('wrong type')
+    expect(policy.expression.type).toBe('rule')
+  })
+
+  test('mixing anyOf and single-condition AND-composes across params', () => {
+    const actions = resolvePermission({
+      abi: erc20Abi,
+      address: USDC,
+      functions: {
+        transfer: {
+          params: {
+            recipient: { anyOf: [ALICE, BOB] },
+            amount: { condition: 'lessThan', value: 1000n },
+          },
+        },
+      },
+    })
+    const policy = actions[0].policies![0]
+    if (policy.type !== 'arg-policy') throw new Error('wrong type')
+    // Top-level AND between recipient sub-expression and amount rule.
+    expect(policy.expression.type).toBe('and')
+  })
+
+  test('all-single-condition params keep emitting universal-action (cheaper init)', () => {
+    const actions = resolvePermission({
+      abi: erc20Abi,
+      address: USDC,
+      functions: {
+        transfer: {
+          params: {
+            recipient: { condition: 'equal', value: ALICE },
+            amount: { condition: 'lessThan', value: 1000n },
+          },
+        },
+      },
+    })
+    expect(actions[0].policies![0].type).toBe('universal-action')
+  })
+
+  test('three-element anyOf builds a right-leaning OR chain (OR(a, OR(b, c)))', () => {
+    const actions = resolvePermission({
+      abi: erc20Abi,
+      address: USDC,
+      functions: {
+        transfer: { params: { recipient: { anyOf: [ALICE, BOB, CAROL] } } },
+      },
+    })
+    const policy = actions[0].policies![0]
+    if (policy.type !== 'arg-policy') throw new Error('wrong type')
+    expect(policy.expression.type).toBe('or')
+    if (policy.expression.type !== 'or') throw new Error()
+    expect(policy.expression.left.type).toBe('rule')
+    expect(policy.expression.right.type).toBe('or')
+  })
+
+  test('throws on empty anyOf', () => {
+    expect(() =>
+      resolvePermission({
+        abi: erc20Abi,
+        address: USDC,
+        functions: {
+          // @ts-expect-error — readonly [T, ...T[]] rejects an empty array at the type level too
+          transfer: { params: { recipient: { anyOf: [] } } },
+        },
+      }),
+    ).toThrow(/empty anyOf/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Sugar fields: maxUses, validUntil/validAfter, valueLimit, spendingLimit
+// ---------------------------------------------------------------------------
+
+describe('resolvePermission sugar fields', () => {
+  test('maxUses emits a standalone usage-limit policy', () => {
+    const actions = resolvePermission({
+      abi: erc20Abi,
+      address: USDC,
+      functions: { transfer: { maxUses: 10n } },
+    })
+    expect(actions[0].policies).toEqual([{ type: 'usage-limit', limit: 10n }])
+  })
+
+  test('validUntil + validAfter compose into a single time-frame policy', () => {
+    const until = new Date('2027-01-01').getTime()
+    const after = new Date('2026-01-01').getTime()
+    const actions = resolvePermission({
+      abi: erc20Abi,
+      address: USDC,
+      functions: {
+        transfer: {
+          validUntil: new Date('2027-01-01'),
+          validAfter: new Date('2026-01-01'),
+        },
+      },
+    })
+    expect(actions[0].policies).toEqual([
+      { type: 'time-frame', validUntil: until, validAfter: after },
+    ])
+  })
+
+  test('one-sided validUntil defaults validAfter to 0', () => {
+    const until = new Date('2027-01-01').getTime()
+    const actions = resolvePermission({
+      abi: erc20Abi,
+      address: USDC,
+      functions: { transfer: { validUntil: new Date('2027-01-01') } },
+    })
+    const policy = actions[0].policies![0]
+    if (policy.type !== 'time-frame') throw new Error('wrong type')
+    expect(policy.validUntil).toBe(until)
+    expect(policy.validAfter).toBe(0)
+  })
+
+  test('one-sided validAfter defaults validUntil to year-2100 sentinel', () => {
+    const after = new Date('2026-01-01').getTime()
+    const actions = resolvePermission({
+      abi: erc20Abi,
+      address: USDC,
+      functions: { transfer: { validAfter: new Date('2026-01-01') } },
+    })
+    const policy = actions[0].policies![0]
+    if (policy.type !== 'time-frame') throw new Error('wrong type')
+    expect(policy.validUntil).toBe(4_102_444_800_000)
+    expect(policy.validAfter).toBe(after)
+  })
+
+  test('rejects validUntil < validAfter', () => {
+    expect(() =>
+      resolvePermission({
+        abi: erc20Abi,
+        address: USDC,
+        functions: {
+          transfer: {
+            validUntil: new Date('2026-01-01'),
+            validAfter: new Date('2027-01-01'),
+          },
+        },
+      }),
+    ).toThrow(/before validAfter/)
+  })
+
+  test('spendingLimit on an ERC-20-transfer-shaped ABI emits spending-limits', () => {
+    const actions = resolvePermission({
+      abi: erc20Abi,
+      address: USDC,
+      functions: {
+        transfer: { spendingLimit: { token: USDC, amount: 5000n } },
+      },
+    })
+    expect(actions[0].policies).toEqual([
+      { type: 'spending-limits', limits: [{ token: USDC, amount: 5000n }] },
+    ])
+  })
+
+  test('spendingLimit on a non-ERC-20 shape throws (runtime backstop)', () => {
+    const abi = [
+      {
+        type: 'function',
+        name: 'deposit',
+        inputs: [{ name: 'amount', type: 'uint256' }],
+        outputs: [],
+        stateMutability: 'payable',
+      },
+    ] as const
+    expect(() =>
+      resolvePermission({
+        abi,
+        address: USDC,
+        functions: {
+          // @ts-expect-error — spendingLimit is gated to ERC-20-transfer-shaped ABIs at the type level
+          deposit: { spendingLimit: { token: USDC, amount: 5000n } },
+        },
+      }),
+    ).toThrow(/not an ERC-20 transfer\/approve selector/)
+  })
+
+  test('spendingLimit on an ERC-20-shaped non-ERC-20 selector throws (e.g. mint)', () => {
+    // mint(address,uint256) has the same calldata shape as transfer/approve
+    // but a different selector. On-chain ERC20SpendingLimitPolicy dispatches
+    // by selector, so it would fail every call — reject at SDK level.
+    const abi = [
+      {
+        type: 'function',
+        name: 'mint',
+        inputs: [
+          { name: 'to', type: 'address' },
+          { name: 'amount', type: 'uint256' },
+        ],
+        outputs: [],
+        stateMutability: 'nonpayable',
+      },
+    ] as const
+    expect(() =>
+      resolvePermission({
+        abi,
+        address: USDC,
+        functions: {
+          // @ts-expect-error — spendingLimit is gated to ERC-20 selectors at the type level
+          mint: { spendingLimit: { token: USDC, amount: 5000n } },
+        },
+      }),
+    ).toThrow(/not an ERC-20 transfer\/approve selector/)
+  })
+
+  test('valueLimit on a payable function emits value-limit', () => {
+    const abi = [
+      {
+        type: 'function',
+        name: 'deposit',
+        inputs: [],
+        outputs: [],
+        stateMutability: 'payable',
+      },
+    ] as const
+    const actions = resolvePermission({
+      abi,
+      address: USDC,
+      functions: { deposit: { valueLimit: 1_000_000n } },
+    })
+    expect(actions[0].policies).toEqual([
+      { type: 'value-limit', limit: 1_000_000n },
+    ])
+  })
+
+  test('valueLimit on a non-payable function throws (runtime backstop)', () => {
+    expect(() =>
+      resolvePermission({
+        abi: erc20Abi,
+        address: USDC,
+        functions: {
+          // @ts-expect-error — valueLimit is gated to payable functions at the type level
+          transfer: { valueLimit: 100n },
+        },
+      }),
+    ).toThrow(/not payable/)
+  })
+
+  test('valueLimit sugar propagates to universal-action valueLimitPerUse (single-condition params)', () => {
+    const abi = [
+      {
+        type: 'function',
+        name: 'deposit',
+        inputs: [{ name: 'recipient', type: 'address' }],
+        outputs: [],
+        stateMutability: 'payable',
+      },
+    ] as const
+    const actions = resolvePermission({
+      abi,
+      address: USDC,
+      functions: {
+        deposit: {
+          valueLimit: 1_000_000n,
+          params: {
+            recipient: { condition: 'equal', value: RECIPIENT },
+          },
+        },
+      },
+    })
+
+    const policies = actions[0].policies!
+    expect(policies.map((p) => p.type).sort()).toEqual(
+      ['universal-action', 'value-limit'].sort(),
+    )
+    const uni = policies.find((p) => p.type === 'universal-action')!
+    if (uni.type !== 'universal-action') throw new Error('wrong type')
+    // Without this propagation, msg.value > 0 would fail the action policy's
+    // `value <= valueLimitPerUse` check before the standalone value-limit
+    // policy could allow it.
+    expect(uni.valueLimitPerUse).toBe(1_000_000n)
+  })
+
+  test('valueLimit sugar propagates to arg-policy valueLimitPerUse (anyOf params)', () => {
+    const abi = [
+      {
+        type: 'function',
+        name: 'deposit',
+        inputs: [{ name: 'recipient', type: 'address' }],
+        outputs: [],
+        stateMutability: 'payable',
+      },
+    ] as const
+    const actions = resolvePermission({
+      abi,
+      address: USDC,
+      functions: {
+        deposit: {
+          valueLimit: 1_000_000n,
+          params: {
+            recipient: { anyOf: [RECIPIENT] },
+          },
+        },
+      },
+    })
+
+    const policies = actions[0].policies!
+    expect(policies.map((p) => p.type).sort()).toEqual(
+      ['arg-policy', 'value-limit'].sort(),
+    )
+    const arg = policies.find((p) => p.type === 'arg-policy')!
+    if (arg.type !== 'arg-policy') throw new Error('wrong type')
+    expect(arg.valueLimitPerUse).toBe(1_000_000n)
+  })
+
+  test('explicit valueLimitPerUse wins over valueLimit sugar', () => {
+    const abi = [
+      {
+        type: 'function',
+        name: 'deposit',
+        inputs: [{ name: 'recipient', type: 'address' }],
+        outputs: [],
+        stateMutability: 'payable',
+      },
+    ] as const
+    const actions = resolvePermission({
+      abi,
+      address: USDC,
+      functions: {
+        deposit: {
+          valueLimit: 1_000_000n,
+          valueLimitPerUse: 7n,
+          params: {
+            recipient: { condition: 'equal', value: RECIPIENT },
+          },
+        },
+      },
+    })
+
+    const uni = actions[0].policies!.find((p) => p.type === 'universal-action')!
+    if (uni.type !== 'universal-action') throw new Error('wrong type')
+    expect(uni.valueLimitPerUse).toBe(7n)
+  })
+
+  test('all sugar fields stack with params (arg-policy + usage + time-frame + spending)', () => {
+    const actions = resolvePermission({
+      abi: erc20Abi,
+      address: USDC,
+      functions: {
+        transfer: {
+          params: {
+            recipient: { anyOf: [RECIPIENT] },
+          },
+          maxUses: 10n,
+          validUntil: new Date('2027-01-01'),
+          spendingLimit: { token: USDC, amount: 5000n },
+        },
+      },
+    })
+    const types = actions[0].policies!.map((p) => p.type).sort()
+    expect(types).toEqual(
+      ['arg-policy', 'spending-limits', 'time-frame', 'usage-limit'].sort(),
+    )
   })
 })
