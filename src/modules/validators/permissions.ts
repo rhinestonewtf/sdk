@@ -102,7 +102,6 @@ type RawParamConstraint = {
 }
 
 type RawFunctionConfig = {
-  policies?: Policy[]
   valueLimitPerUse?: bigint
   params?: Record<string, RawParamConstraint | undefined>
   maxUses?: bigint
@@ -156,7 +155,7 @@ function resolvePermission(permission: Permission): ScopedAction[] {
     const abiEntry = abiEntries[0]
     const selector = toFunctionSelector(abiEntry)
 
-    const policies: Policy[] = config.policies ? [...config.policies] : []
+    const policies: Policy[] = []
 
     // --- Sugar field expansion -----------------------------------------------
     // Each top-level field maps 1:1 to a known policy. Smart-sessions

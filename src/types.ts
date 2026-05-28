@@ -322,8 +322,6 @@ type ValueLimitField<TFn extends AbiFunction> = IsPayable<TFn> extends true
   : { valueLimit?: never }
 
 type PermissionFunctionConfig<TFn extends AbiFunction> = {
-  /** Escape hatch — raw `Policy` objects merged with sugar-emitted policies. */
-  policies?: Policy[]
   /** `valueLimitPerUse` embedded in universal/arg-policy `ActionConfig`. */
   valueLimitPerUse?: bigint
   params?: {

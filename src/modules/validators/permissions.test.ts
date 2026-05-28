@@ -72,41 +72,6 @@ describe('resolvePermission', () => {
     expect(names).toEqual(expectedSelectors)
   })
 
-  test('policies only — no universal-action generated', () => {
-    const actions = resolvePermission({
-      abi: erc20Abi,
-      address: USDC,
-      functions: {
-        approve: {
-          policies: [{ type: 'sudo' }],
-        },
-      },
-    })
-
-    expect(actions).toHaveLength(1)
-    expect(actions[0].policies).toEqual([{ type: 'sudo' }])
-  })
-
-  test('user policies come before generated universal-action', () => {
-    const actions = resolvePermission({
-      abi: erc20Abi,
-      address: USDC,
-      functions: {
-        transfer: {
-          policies: [{ type: 'usage-limit', limit: 3n }],
-          params: {
-            recipient: { condition: 'equal', value: RECIPIENT },
-          },
-        },
-      },
-    })
-
-    const policies = actions[0].policies!
-    expect(policies).toHaveLength(2)
-    expect(policies[0].type).toBe('usage-limit')
-    expect(policies[1].type).toBe('universal-action')
-  })
-
   test('calldataOffset for third parameter is 64n', () => {
     const customAbi = [
       {

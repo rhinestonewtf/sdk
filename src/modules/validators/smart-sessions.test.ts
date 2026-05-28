@@ -408,30 +408,6 @@ describe('policyAddresses override', () => {
   const SUDO_OVERRIDE: Address = '0xdeadbeef00000000000000000000000000000001'
   const UA_OVERRIDE: Address = '0xdeadbeef00000000000000000000000000000002'
 
-  test('partial override pins only the named policies, defaults stay for the rest', () => {
-    const session = toSession({
-      chain: base,
-      owners: { type: 'ecdsa', accounts: [accountA] },
-      permissions: [
-        {
-          abi: erc20Abi,
-          address: USDC,
-          functions: {
-            transfer: {
-              policies: [{ type: 'sudo' }, { type: 'usage-limit', limit: 3n }],
-            },
-          },
-        },
-      ],
-      policyAddresses: { sudo: SUDO_OVERRIDE },
-    })
-    const data = getSessionData(session)
-    const userAction = data.actions[0]
-    expect(userAction.actionPolicies[0].policy).toBe(SUDO_OVERRIDE)
-    // Non-overridden policies keep their default address.
-    expect(userAction.actionPolicies[1].policy).toBe(USAGE_LIMIT_POLICY_ADDRESS)
-  })
-
   test('override propagates to the erc1271 sudo policy too', () => {
     const session = toSession({
       chain: base,
@@ -566,30 +542,6 @@ describe('getSessionData', () => {
     expect(data.actions).toHaveLength(1)
     expect(data.actions[0].actionTarget).toBe(
       SMART_SESSIONS_FALLBACK_TARGET_FLAG,
-    )
-  })
-
-  test('multiple policies on one action', () => {
-    const session = toSession({
-      chain: base,
-      owners: { type: 'ecdsa', accounts: [accountA] },
-      permissions: [
-        {
-          abi: erc20Abi,
-          address: '0x2222222222222222222222222222222222222222' as Address,
-          functions: {
-            transfer: {
-              policies: [{ type: 'sudo' }, { type: 'usage-limit', limit: 3n }],
-            },
-          },
-        },
-      ],
-    })
-    const data = getSessionData(session)
-    expect(data.actions[0].actionPolicies).toHaveLength(2)
-    expect(data.actions[0].actionPolicies[0].policy).toBe(SUDO_POLICY_ADDRESS)
-    expect(data.actions[0].actionPolicies[1].policy).toBe(
-      USAGE_LIMIT_POLICY_ADDRESS,
     )
   })
 
