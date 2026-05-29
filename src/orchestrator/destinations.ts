@@ -1,7 +1,9 @@
-// Public non-EVM destination chain descriptors. Mirrors the minimal shape
-// of viem's `Chain` (name, nativeCurrency) so callers can pass them
-// anywhere a destination chain is expected — `targetChain: solanaMainnet`
-// reads the same as `targetChain: optimism`.
+// Public destination chain descriptors for destinations that aren't a plain
+// viem `Chain`: the non-EVM chains (Solana, Tron) plus HyperCore (an EVM-settled
+// virtual L1). Mirrors the minimal shape of viem's `Chain` (name,
+// nativeCurrency) so callers can pass them anywhere a destination chain is
+// expected — `targetChain: solanaMainnet` reads the same as `targetChain:
+// optimism`.
 //
 // The `kind` field discriminates these from viem `Chain` objects; viem
 // chains don't carry a `kind` field, so the `isNonEvmChain` helper
@@ -31,7 +33,10 @@ type NonEvmAddress = string
 interface NonEvmChain {
   readonly name: string
   readonly caip2: Caip2ChainId
-  readonly kind: 'svm' | 'tvm'
+  // 'svm' (Solana) / 'tvm' (Tron) are non-EVM VMs; 'hypercore' is an EVM-settled
+  // virtual L1. All three are solver-mediated destinations with no user-signed
+  // destination session — see `isNonEvmChain`.
+  readonly kind: 'svm' | 'tvm' | 'hypercore'
   readonly nativeCurrency: NativeCurrency
   readonly testnet?: boolean
 }
@@ -52,8 +57,26 @@ const tronMainnet: NonEvmChain = {
   nativeCurrency: { name: 'Tron', symbol: 'TRX', decimals: 6 },
 }
 
+// HyperCore is Hyperliquid's virtual trading L1 (chain id 1337). Unlike Solana
+// and Tron it settles on an EVM chain (HyperEVM, 999), but the deposit is
+// solver-mediated: the orchestrator builds the core-deposit executions and the
+// user signs no destination session, so it belongs with the descriptor-addressed
+// destinations rather than the standard EVM signing path. The CAIP-2 reference
+// is the virtual id; the orchestrator maps 1337 → 999 for settlement.
+const hyperCoreMainnet: NonEvmChain = {
+  name: 'HyperCore',
+  caip2: 'eip155:1337',
+  kind: 'hypercore',
+  nativeCurrency: { name: 'Hyperliquid', symbol: 'HYPE', decimals: 18 },
+}
+
+// True for any descriptor-addressed destination (Solana, Tron, HyperCore) as
+// opposed to a plain viem `Chain`. viem chains carry no `kind` field, so the
+// presence of `kind` is the structural discriminator — and every such
+// destination is solver-mediated (no user-signed destination session, no
+// destination-side validator), which is what every caller keys off.
 function isNonEvmChain(chain: DestinationChain): chain is NonEvmChain {
-  return 'kind' in chain && (chain.kind === 'svm' || chain.kind === 'tvm')
+  return 'kind' in chain
 }
 
 // Numeric chain id for either chain kind. EVM uses viem's `id`; non-EVM
@@ -64,4 +87,10 @@ function getChainId(chain: DestinationChain): number {
 }
 
 export type { DestinationChain, NativeCurrency, NonEvmAddress, NonEvmChain }
-export { getChainId, isNonEvmChain, solanaMainnet, tronMainnet }
+export {
+  getChainId,
+  hyperCoreMainnet,
+  isNonEvmChain,
+  solanaMainnet,
+  tronMainnet,
+}
