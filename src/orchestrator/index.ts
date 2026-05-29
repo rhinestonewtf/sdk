@@ -3,6 +3,7 @@ import { Orchestrator } from './client'
 import { PROD_ORCHESTRATOR_URL, RHINESTONE_SPOKE_POOL_ADDRESS } from './consts'
 import {
   type DestinationChain,
+  hyperCoreMainnet,
   isNonEvmChain,
   type NonEvmAddress,
   type NonEvmChain,
@@ -136,6 +137,7 @@ export type {
   WrapRequired,
 }
 export {
+  hyperCoreMainnet,
   isNonEvmChain,
   solanaMainnet,
   tronMainnet,

@@ -125,7 +125,10 @@ function resolveTokenAddress(
   // Non-EVM destinations carry SPL mints (base58) / Tron T-prefixed
   // addresses that don't satisfy viem's `isAddress`. The orchestrator's
   // wire schema accepts the raw string for non-EVM chains, so pass it
-  // through unchanged.
+  // through unchanged. HyperCore is descriptor-addressed too but its tokens
+  // are EVM hex addresses (returned above), so it is intentionally absent
+  // from `isNonEvmChainId` — a token *symbol* for HyperCore is not a valid
+  // request and falls through to the throw below.
   if (isNonEvmChainId(chainId)) {
     return token
   }

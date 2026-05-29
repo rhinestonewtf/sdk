@@ -87,7 +87,7 @@ import type {
   TokenRequirements,
   WrapRequired,
 } from './orchestrator'
-import { solanaMainnet, tronMainnet } from './orchestrator'
+import { hyperCoreMainnet, solanaMainnet, tronMainnet } from './orchestrator'
 import type {
   AccountProviderConfig,
   AccountType,
@@ -602,7 +602,8 @@ class RhinestoneSDK {
 export {
   RhinestoneSDK,
   createRhinestoneAccount,
-  // Non-EVM destination chain descriptors
+  // Non-viem destination chain descriptors (Solana, Tron, HyperCore)
+  hyperCoreMainnet,
   solanaMainnet,
   tronMainnet,
   // Validator addresses
