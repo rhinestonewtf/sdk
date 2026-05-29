@@ -50,6 +50,11 @@
       "import": "./dist/src/accounts/signing/passkeys.js",
       "require": "./dist/src/accounts/signing/passkeys.js"
     },
+    "./client": {
+      "types": "./dist/src/client.d.ts",
+      "import": "./dist/src/client.js",
+      "require": "./dist/src/client.js"
+    },
     "./actions/smart-sessions": {
       "types": "./dist/src/actions/smart-sessions.d.ts",
       "import": "./dist/src/actions/smart-sessions.js",
