@@ -9,6 +9,7 @@ import {
   encodePacked,
   type Hex,
   hashStruct,
+  isAddressEqual,
   isHex,
   keccak256,
   maxUint256,
@@ -36,6 +37,7 @@ import {
 import type {
   Action,
   ArgPolicyExpression,
+  CrossChainPermit,
   Permit2ClaimPolicy,
   Policy,
   ProviderConfig,
@@ -59,11 +61,13 @@ import {
   SMART_SESSION_EMISSARY_ADDRESS,
   SMART_SESSION_EMISSARY_ADDRESS_DEV,
 } from './core'
-import { resolvePermissions } from './permissions'
+import { FAR_FUTURE_MS, resolvePermissions } from './permissions'
+import { getArbitersForSettlementLayers } from './policies/claim/arbiters'
 import {
   encodePermit2ClaimPolicyInitData,
   type InternalPermit2ClaimPolicy,
   PERMIT2_CLAIM_POLICY_ADDRESS,
+  type Permit2ClaimMessage,
 } from './policies/claim/permit2'
 
 type FixedLengthArray<
@@ -694,6 +698,14 @@ function toSession<const TAbis extends readonly Abi[]>(
     options.useDevContracts,
     addresses,
   )
+  // Cross-chain permits add synthesized claim policies that must appear
+  // on the returned `Session` too — `getSessionData(session)` re-encodes
+  // from `session.claimPolicies` at signing time, so missing entries
+  // here would diverge from what `resolveSessionData` already baked
+  // into `sessionData.claimPolicies` for the permission-ID hash.
+  const expandedCrossChainClaims = (definition.crossChainPermits ?? []).map(
+    (p) => expandCrossChainPermit(p, options.useDevContracts).claim,
+  )
   return {
     chain: definition.chain,
     owners: definition.owners,
@@ -704,8 +716,218 @@ function toSession<const TAbis extends readonly Abi[]>(
     salt: sessionData.salt,
     erc7739Policies: sessionData.erc7739Policies,
     actions: sessionData.actions,
-    claimPolicies: definition.claimPolicies ?? [],
+    claimPolicies: [
+      ...(definition.claimPolicies ?? []),
+      ...expandedCrossChainClaims,
+    ],
   }
+}
+
+/**
+ * Expands one {@link CrossChainPermit} into:
+ *
+ * - a {@link Permit2ClaimPolicy} for `SessionDefinition.claimPolicies`
+ *   (gates Permit2 arbiter settlement) — settlement layers are resolved
+ *   to canonical arbiter addresses via
+ *   {@link getArbitersForSettlementLayers}.
+ * - optional {@link SpendingLimitsPolicy} / {@link TimeFramePolicy}
+ *   entries for the session's fallback action — the claim policy itself
+ *   doesn't enforce amounts or expiry on-chain, so we lift those
+ *   guarantees into action-level policies that do.
+ *
+ * An Intent Executor policy is intentionally NOT synthesized: the
+ * params-bearing on-chain contract is still being designed in
+ * smart-sessions-v2 (PR #46). Once it lands, this helper grows a second
+ * branch that emits matching constraints there.
+ */
+function expandCrossChainPermit(
+  permit: CrossChainPermit,
+  useDevContracts?: boolean,
+): {
+  claim: Permit2ClaimPolicy
+  fallbackPolicies: Policy[]
+} {
+  // `from`/`to` are optional: an absent leg list means "no token/chain
+  // restriction on that side" — we emit `undefined` so the underlying
+  // Permit2 policy skips the check entirely (matching how every other
+  // policy field treats undefined as unrestricted).
+  const sourceTokens = permit.from?.length
+    ? permit.from.map(({ chain, token }) => ({ chain, address: token }))
+    : undefined
+  const destinationTokens = permit.to?.length
+    ? permit.to.map(({ chain, token }) => ({ chain, address: token }))
+    : undefined
+  // Only emit a `recipients` whitelist when at least one destination
+  // leg pins a concrete recipient (or the explicit `'any'` sentinel).
+  // Leaving the field undefined disables the on-chain recipient check
+  // entirely; emitting `['any', ...]` would force the contract into
+  // recipient-check mode without actually restricting anything.
+  const recipientsList = (permit.to ?? [])
+    .filter((t) => t.recipient !== undefined)
+    .map((t) => ({
+      chain: t.chain,
+      address: t.recipient as Address | 'any',
+    }))
+  const recipients = recipientsList.length ? recipientsList : undefined
+
+  const permitDeadline =
+    permit.validAfter !== undefined || permit.validUntil !== undefined
+      ? { min: permit.validAfter, max: permit.validUntil }
+      : undefined
+
+  // Resolve the dev-friendly settlement-layer selectors into the actual
+  // Permit2 arbiter addresses the on-chain policy enforces. Empty or
+  // undefined ⇒ union of all supported layers (never an empty
+  // whitelist that disables the on-chain check).
+  const spenders = getArbitersForSettlementLayers(
+    permit.settlementLayers,
+    useDevContracts,
+  )
+
+  const claim: Permit2ClaimPolicy = {
+    type: 'permit2',
+    spenders,
+    sourceTokens,
+    destinationTokens,
+    recipients,
+    recipientIsAccount: permit.recipientIsAccount,
+    permitDeadline,
+    fillDeadline: permit.fillDeadline,
+  }
+
+  const fallbackPolicies: Policy[] = []
+
+  // Per-origin amount caps: the Permit2 claim policy doesn't enforce
+  // amounts on-chain, so we lift those caps into a separate
+  // `SpendingLimitsPolicy` on the fallback action. This keeps the
+  // user-facing promise ("at most X of token Y") honest.
+  const limits = (permit.from ?? [])
+    .filter((f) => f.maxAmount !== undefined)
+    .map((f) => ({ token: f.token, amount: f.maxAmount as bigint }))
+  if (limits.length) {
+    fallbackPolicies.push({ type: 'spending-limits', limits })
+  }
+
+  // Time-frame: the on-chain TimeFramePolicy expects millisecond inputs
+  // (see `case 'time-frame'` in getPolicyData), while CrossChainPermit
+  // uses unix-seconds bigints — matching the Permit2 deadline
+  // convention. We convert at the boundary so both encoders see their
+  // preferred unit.
+  //
+  // One-sided bounds get always-passing defaults, mirroring the
+  // permission resolver: an unset `validUntil` defaults to the year-2100
+  // sentinel (NOT 0 — that would make the policy expired the moment
+  // `validAfter` is reached), and an unset `validAfter` defaults to 0.
+  if (permitDeadline) {
+    const validUntilMs =
+      permit.validUntil !== undefined
+        ? Number(permit.validUntil * 1000n)
+        : FAR_FUTURE_MS
+    const validAfterMs =
+      permit.validAfter !== undefined ? Number(permit.validAfter * 1000n) : 0
+    fallbackPolicies.push({
+      type: 'time-frame',
+      validUntil: validUntilMs,
+      validAfter: validAfterMs,
+    })
+  }
+
+  return { claim, fallbackPolicies }
+}
+
+/**
+ * True when `message` satisfies every dimension `policy` constrains. Used to
+ * pick the correct claim policy at Permit2-signing time when a session holds
+ * more than one (e.g. a user claim policy plus one or more cross-chain
+ * permits).
+ *
+ * The on-chain emissary validates a Permit2 claim against the matching claim
+ * policy, and `buildPermit2ClaimPolicyCalldata` expands the message
+ * differently per policy (the calldata layout depends on which mode bits a
+ * policy enables). Signing calldata for the wrong policy decodes incorrectly
+ * on-chain and fails ERC-1271 validation — hence we must match.
+ *
+ * Only constrained dimensions are checked; an unset policy field imposes no
+ * requirement (mirrors the contract's "skip the check" semantics). Source
+ * tokens are matched by address alone because the Permit2 message carries no
+ * origin chain id; destination tokens / recipients are scoped to the
+ * mandate's `targetChain`.
+ */
+function permit2ClaimPolicyMatchesMessage(
+  policy: Permit2ClaimPolicy,
+  message: Permit2ClaimMessage,
+): boolean {
+  // Spender (arbiter) — the primary discriminator between settlement layers.
+  if (policy.spenders?.length) {
+    if (!policy.spenders.some((s) => isAddressEqual(s, message.spender))) {
+      return false
+    }
+  }
+
+  // Source tokens: every permitted token must be allow-listed (by address).
+  if (policy.sourceTokens?.length) {
+    const allowed = new Set(
+      policy.sourceTokens.map((t) => t.address.toLowerCase()),
+    )
+    if (!message.permitted.every((p) => allowed.has(p.token.toLowerCase()))) {
+      return false
+    }
+  }
+
+  const targetChain = message.mandate.target.targetChain
+
+  // Destination tokens: every mandate output token must be allow-listed for
+  // the destination chain.
+  if (policy.destinationTokens?.length) {
+    const allowed = new Set(
+      policy.destinationTokens
+        .filter((t) => BigInt(t.chain.id) === targetChain)
+        .map((t) => t.address.toLowerCase()),
+    )
+    if (
+      !message.mandate.target.tokenOut.every((o) =>
+        allowed.has(o.token.toLowerCase()),
+      )
+    ) {
+      return false
+    }
+  }
+
+  // Recipient: scoped to the destination chain. An `'any'` entry for that
+  // chain accepts any recipient.
+  if (policy.recipients?.length) {
+    const entries = policy.recipients.filter(
+      (r) => BigInt(r.chain.id) === targetChain,
+    )
+    if (entries.length) {
+      const recipient = message.mandate.target.recipient
+      const matches = entries.some(
+        (r) => r.address === 'any' || isAddressEqual(r.address, recipient),
+      )
+      if (!matches) return false
+    }
+  }
+
+  return true
+}
+
+/**
+ * Selects the claim policy whose constraints the given Permit2 message
+ * satisfies. With 0–1 policies the choice is trivial; with several, returns
+ * the first match in list order (aligns with the contract iterating its
+ * stored claim policies). Falls back to the first policy when nothing matches
+ * so behaviour is never worse than the previous always-`[0]` logic — the
+ * resulting on-chain failure is then identical to before.
+ */
+function selectPermit2ClaimPolicyForMessage(
+  claimPolicies: readonly Permit2ClaimPolicy[],
+  message: Permit2ClaimMessage,
+): Permit2ClaimPolicy | undefined {
+  if (claimPolicies.length <= 1) return claimPolicies[0]
+  return (
+    claimPolicies.find((p) => permit2ClaimPolicyMatchesMessage(p, message)) ??
+    claimPolicies[0]
+  )
 }
 
 function resolvePermit2ClaimPolicy(
@@ -778,6 +1000,19 @@ function resolveSessionData(
     ? resolvePermissions(session.permissions)
     : []
 
+  // Expand every cross-chain permit into a (claim, fallbackPolicies)
+  // pair. The claim policies go onto `session.claimPolicies` (Permit2
+  // settlement); the fallback policies (SpendingLimits / TimeFrame
+  // derived from maxAmount / validUntil) are appended to the injected
+  // fallback action below.
+  const expandedPermits = (session.crossChainPermits ?? []).map((p) =>
+    expandCrossChainPermit(p, useDevContracts),
+  )
+  const extraClaimPolicies = expandedPermits.map((e) => e.claim)
+  const permitFallbackPolicies = expandedPermits.flatMap(
+    (e) => e.fallbackPolicies,
+  )
+
   const injectedActions: Action[] = [
     // Native token wrapping
     {
@@ -790,8 +1025,17 @@ function resolveSessionData(
         stateMutability: 'payable',
       }),
     },
-    // Intent-execution fallback for any non-scoped call.
-    { policies: [{ type: 'intent-execution' as const }] },
+    // Intent-execution fallback for any non-scoped call. Cross-chain
+    // permits attach their synthesized SpendingLimits / TimeFrame
+    // guardrails to this same fallback so the on-chain emissary applies
+    // them when the orchestrator drives a bridge through the fallback
+    // action path.
+    {
+      policies: [
+        { type: 'intent-execution' as const },
+        ...permitFallbackPolicies,
+      ],
+    },
     // Dummy action: allows the filler to call verifyExecution in ENABLE mode using
     // an injected dummy preclaimop so any session can be enabled on-chain without
     // a separate UserOp, regardless of whether it has claim or action policies.
@@ -803,7 +1047,12 @@ function resolveSessionData(
   ]
 
   const allActions: Action[] = [...userActions, ...injectedActions]
-  const actions = userActions.length
+  // When there are cross-chain permits but no explicit user actions, we
+  // still want the injected fallback (with its synthesized guardrails)
+  // to land on-chain — otherwise the legacy `[sudoAction]` path drops
+  // the SpendingLimits / TimeFrame the user explicitly asked for.
+  const needsInjection = userActions.length || permitFallbackPolicies.length
+  const actions = needsInjection
     ? allActions.map((action) => ({
         actionTargetSelector:
           'selector' in action
@@ -823,19 +1072,27 @@ function resolveSessionData(
         ],
       }))
     : [sudoAction]
+  // Concatenate user-supplied claim policies with the ones synthesized
+  // from cross-chain permits. Order is not security-sensitive — the
+  // on-chain contract iterates the full list — but we keep user
+  // policies first for deterministic permission IDs across SDK
+  // releases that add permit expansion.
+  const allClaimPolicies: Permit2ClaimPolicy[] = [
+    ...(session.claimPolicies ?? []),
+    ...extraClaimPolicies,
+  ]
   return {
     sessionValidator: validator.address,
     salt: zeroHash,
     sessionValidatorInitData: validator.initData,
     erc7739Policies: erc7739Data,
     actions,
-    claimPolicies:
-      session.claimPolicies?.map((policy) => ({
-        policy: PERMIT2_CLAIM_POLICY_ADDRESS,
-        initData: encodePermit2ClaimPolicyInitData(
-          resolvePermit2ClaimPolicy(policy),
-        ),
-      })) ?? [],
+    claimPolicies: allClaimPolicies.map((policy) => ({
+      policy: PERMIT2_CLAIM_POLICY_ADDRESS,
+      initData: encodePermit2ClaimPolicyInitData(
+        resolvePermit2ClaimPolicy(policy),
+      ),
+    })),
   }
 }
 
@@ -1321,6 +1578,7 @@ export {
   packSignature,
   toSession,
   resolvePermit2ClaimPolicy,
+  selectPermit2ClaimPolicyForMessage,
   getSessionData,
   getPolicyData,
   getEnableSessionCall,

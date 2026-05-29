@@ -125,7 +125,9 @@ const ERC20_SPENDING_LIMIT_SELECTORS = new Set<Hex>([
 
 // Year 2100 in ms — well within uint128 after the encoder's ms→s conversion.
 // Used as the one-sided default for `validUntil` when only `validAfter` is set.
-const FAR_FUTURE_MS = 4_102_444_800_000
+// Exported so the cross-chain permit expansion (smart-sessions.ts) applies the
+// same always-passing upper bound instead of defaulting to 0 (already expired).
+export const FAR_FUTURE_MS = 4_102_444_800_000
 
 function resolvePermission(permission: Permission): ScopedAction[] {
   const { abi, address, functions } = permission
