@@ -12,7 +12,10 @@ import {
   toHex,
 } from 'viem'
 
-import { OwnersFieldRequiredError } from '../../accounts/error'
+import {
+  AccountConfigurationNotSupportedError,
+  OwnersFieldRequiredError,
+} from '../../accounts/error'
 import type {
   ENSValidatorConfig,
   OwnableValidatorConfig,
@@ -65,6 +68,14 @@ const WEBAUTHN_MOCK_SIGNATURE =
 function getOwnerValidator(config: RhinestoneAccountConfig) {
   if (!config.owners) {
     throw new OwnersFieldRequiredError()
+  }
+  // ENS owners resolve to the HCA module, which is only valid for HCA accounts.
+  // Other account types would silently install/sign against the wrong validator.
+  if (config.owners.type === 'ens' && config.account?.type !== 'hca') {
+    throw new AccountConfigurationNotSupportedError(
+      'ENS owners are only supported on HCA accounts',
+      config.account?.type ?? 'nexus',
+    )
   }
   return getValidator(config.owners)
 }
