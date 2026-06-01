@@ -71,7 +71,11 @@ function getOwnerValidator(config: RhinestoneAccountConfig) {
   }
   // ENS owners resolve to the HCA module, which is only valid for HCA accounts.
   // Other account types would silently install/sign against the wrong validator.
-  if (config.owners.type === 'ens' && config.account?.type !== 'hca') {
+  const usesEns =
+    config.owners.type === 'ens' ||
+    (config.owners.type === 'multi-factor' &&
+      config.owners.validators.some((validator) => validator.type === 'ens'))
+  if (usesEns && config.account?.type !== 'hca') {
     throw new AccountConfigurationNotSupportedError(
       'ENS owners are only supported on HCA accounts',
       config.account?.type ?? 'nexus',

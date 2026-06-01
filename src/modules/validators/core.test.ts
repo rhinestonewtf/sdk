@@ -145,6 +145,25 @@ describe('Validators Core', () => {
       ).toThrow(AccountConfigurationNotSupportedError)
     })
 
+    test('ENS sub-validator in multi-factor requires an HCA account', () => {
+      expect(() =>
+        getOwnerValidator({
+          account: { type: 'nexus' },
+          owners: {
+            type: 'multi-factor',
+            validators: [
+              { type: 'ecdsa', accounts: [accountB] },
+              {
+                type: 'ens',
+                accounts: [accountA],
+                ownerExpirations: [281474976710655],
+              },
+            ],
+          },
+        }),
+      ).toThrow(AccountConfigurationNotSupportedError)
+    })
+
     test('ENS owners are allowed on HCA accounts', () => {
       const validator = getOwnerValidator({
         account: { type: 'hca' },
