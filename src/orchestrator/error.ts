@@ -10,6 +10,7 @@ type ErrorCode =
   | 'TOO_MANY_REQUESTS'
   | 'SETTLEMENT_QUOTE_ERROR'
   | 'SETTLEMENT_EXECUTION_ERROR'
+  | 'SIMULATION_FAILED'
   | 'EXTERNAL_SERVICE_TIMEOUT'
   | 'RELAYER_MARKET_UNAVAILABLE'
   | 'INTERNAL_ERROR'
@@ -23,6 +24,31 @@ interface BaseErrorParams {
   message: string
   traceId?: string
   statusCode?: number
+}
+
+type SimulationAction = 'claim' | 'fill' | string
+
+interface SimulationFailureSimulation {
+  success: false
+  action?: SimulationAction
+  chainId?: string
+  call?: unknown
+  errorSelector?: string
+  errorName?: string
+  errorArgs?: Record<string, unknown>
+  errorCategory?: string
+  details?: unknown
+}
+
+interface SimulationFailureDetails {
+  nonce?: string
+  category?: string
+  errorSelector?: string
+  errorName?: string
+  errorArgs?: Record<string, unknown>
+  retryable?: boolean
+  retryHint?: string
+  simulations?: SimulationFailureSimulation[]
 }
 
 class OrchestratorError extends Error {
@@ -140,6 +166,29 @@ class SettlementExecutionError extends OrchestratorError {
   }
 }
 
+class SimulationFailedError extends OrchestratorError {
+  readonly nonce?: string
+  readonly category?: string
+  readonly errorSelector?: string
+  readonly errorName?: string
+  readonly errorArgs?: Record<string, unknown>
+  readonly retryable: boolean
+  readonly retryHint?: string
+  readonly simulations: SimulationFailureSimulation[]
+
+  constructor(params: BaseErrorParams & SimulationFailureDetails) {
+    super({ ...params, code: 'SIMULATION_FAILED' })
+    this.nonce = params.nonce
+    this.category = params.category
+    this.errorSelector = params.errorSelector
+    this.errorName = params.errorName
+    this.errorArgs = params.errorArgs
+    this.retryable = params.retryable ?? false
+    this.retryHint = params.retryHint
+    this.simulations = params.simulations ?? []
+  }
+}
+
 class ExternalServiceTimeoutError extends OrchestratorError {
   constructor(params: BaseErrorParams) {
     super({ ...params, code: 'EXTERNAL_SERVICE_TIMEOUT' })
@@ -194,6 +243,49 @@ function parseTokenAmounts(
   return Object.fromEntries(
     Object.entries(record).map(([addr, amount]) => [addr, BigInt(amount)]),
   )
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined
+}
+
+function booleanValue(value: unknown): boolean | undefined {
+  return typeof value === 'boolean' ? value : undefined
+}
+
+function recordValue(value: unknown): Record<string, unknown> | undefined {
+  return isRecord(value) ? value : undefined
+}
+
+function isSimulationFailureSimulation(
+  value: unknown,
+): value is SimulationFailureSimulation {
+  return isRecord(value) && value.success === false
+}
+
+function parseSimulationFailureDetails(
+  details: unknown,
+): SimulationFailureDetails {
+  if (!isRecord(details)) {
+    return {}
+  }
+
+  return {
+    nonce: stringValue(details.nonce),
+    category: stringValue(details.category),
+    errorSelector: stringValue(details.errorSelector),
+    errorName: stringValue(details.errorName),
+    errorArgs: recordValue(details.errorArgs),
+    retryable: booleanValue(details.retryable),
+    retryHint: stringValue(details.retryHint),
+    simulations: Array.isArray(details.simulations)
+      ? details.simulations.filter(isSimulationFailureSimulation)
+      : undefined,
+  }
 }
 
 function parseErrorEnvelope(
@@ -259,6 +351,11 @@ function parseErrorEnvelope(
       return new SettlementQuoteError(base)
     case 'SETTLEMENT_EXECUTION_ERROR':
       return new SettlementExecutionError(base)
+    case 'SIMULATION_FAILED':
+      return new SimulationFailedError({
+        ...base,
+        ...parseSimulationFailureDetails(envelope.details),
+      })
     case 'EXTERNAL_SERVICE_TIMEOUT':
       return new ExternalServiceTimeoutError(base)
     case 'RELAYER_MARKET_UNAVAILABLE':
@@ -288,15 +385,28 @@ function isAuthError(
   return error instanceof UnauthorizedError || error instanceof ForbiddenError
 }
 
+function isSimulationFailed(error: unknown): error is SimulationFailedError {
+  return error instanceof SimulationFailedError
+}
+
 function isRetryable(error: unknown): boolean {
   return (
     error instanceof InternalServerError ||
     error instanceof ExternalServiceTimeoutError ||
-    error instanceof RelayerMarketUnavailableError
+    error instanceof RelayerMarketUnavailableError ||
+    (error instanceof SimulationFailedError &&
+      (error.retryable || error.retryHint !== undefined))
   )
 }
 
-export type { ErrorCode, ErrorEnvelope, ValidationIssue }
+export type {
+  ErrorCode,
+  ErrorEnvelope,
+  SimulationAction,
+  SimulationFailureDetails,
+  SimulationFailureSimulation,
+  ValidationIssue,
+}
 export {
   parseErrorEnvelope,
   isOrchestratorError,
@@ -304,6 +414,7 @@ export {
   isAuthError,
   isValidationError,
   isRateLimited,
+  isSimulationFailed,
   OrchestratorError,
   ValidationError,
   InsufficientLiquidityError,
@@ -316,6 +427,7 @@ export {
   RateLimitedError,
   SettlementQuoteError,
   SettlementExecutionError,
+  SimulationFailedError,
   ExternalServiceTimeoutError,
   RelayerMarketUnavailableError,
   InternalServerError,
