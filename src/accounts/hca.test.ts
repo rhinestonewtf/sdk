@@ -172,6 +172,28 @@ describe('Accounts: HCA', () => {
       expect(address1).not.toEqual(address2)
     })
 
+    test('Owner ordering does not affect the derived address', () => {
+      const address1 = getAddress({
+        account: { type: 'hca' },
+        owners: {
+          type: 'ens',
+          accounts: [accountA, accountB],
+          threshold: 2,
+          ownerExpirations: [Number(maxUint48), Number(maxUint48)],
+        },
+      })
+      const address2 = getAddress({
+        account: { type: 'hca' },
+        owners: {
+          type: 'ens',
+          accounts: [accountB, accountA],
+          threshold: 2,
+          ownerExpirations: [Number(maxUint48), Number(maxUint48)],
+        },
+      })
+      expect(address1).toEqual(address2)
+    })
+
     test('initData with address fallback', () => {
       const expectedAddress = '0x229ca553b9863b0c8f2f03d4287cb8c73e2bede7'
       const address = getAddress({

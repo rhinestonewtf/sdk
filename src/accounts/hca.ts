@@ -26,11 +26,12 @@ import {
 import type { ValidatorConfig } from './utils'
 
 const HCA_IMPLEMENTATION_ADDRESS: Address =
-  '0x04eEd1aA7555C36d26a88E3566A802B6E311B3ac'
+  '0x7c2cC1e499a87ab480Df154e05164cD56D05d570'
 const HCA_FACTORY_ADDRESS: Address =
-  '0x9B5FC82012ea7a306c33246164672e12CC2E52f9'
+  '0x358680728dedb552adaa9f5eb5d4395b291cf943'
 
-const HCA_VERSION = '1.0.0'
+// HCA inherits Nexus's EIP-712 domain (verified on-chain via eip712Domain()).
+const HCA_VERSION = '1.2.0'
 
 // Solady CREATE3 proxy bytecode hash
 const CREATE3_PROXY_HASH: Hex =
@@ -116,8 +117,13 @@ function getAddress(config: RhinestoneAccountConfig) {
     throw new Error('Cannot derive HCA address without ENS owners')
   }
 
-  // Primary owner is the first account
-  const primaryOwner = config.owners.accounts[0].address
+  // The factory derives the CREATE3 salt from getOwnerFromInitData(initData),
+  // which returns owners[0] of the validator init data. getOwnerValidator sorts
+  // owners by lowercased address, so the salt owner is the lowest address — not
+  // necessarily the first account as provided.
+  const primaryOwner = config.owners.accounts
+    .map((account) => account.address.toLowerCase() as Address)
+    .sort((a, b) => a.localeCompare(b))[0]
 
   return predictCreate3Address(HCA_FACTORY_ADDRESS, primaryOwner)
 }
