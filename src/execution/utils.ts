@@ -87,7 +87,7 @@ import {
   type Quote,
   type SignData,
 } from '../orchestrator'
-import { toCaip2 } from '../orchestrator/caip2'
+import { isNonEvmChainId, toCaip2 } from '../orchestrator/caip2'
 import {
   type DestinationChain,
   getChainId,
@@ -1014,13 +1014,16 @@ async function prepareTransactionAsIntent(
     recipient: RhinestoneAccountConfig | Address | NonEvmAddress | undefined,
   ): OrchestratorAccount | undefined {
     if (typeof recipient === 'string') {
-      // Non-EVM recipients (Solana base58 / Tron T-prefix) carry no
-      // EVM smart-account semantics; orchestrator schema requires
-      // accountType / setupOps to be unset. Emit just the address.
-      if (isNonEvmChain(targetChain)) {
+      // Non-EVM-addressed recipients (Solana base58 / Tron T-prefix) carry no
+      // EVM smart-account semantics; the orchestrator schema requires
+      // accountType / setupOps to be unset. Emit just the address. HyperCore
+      // is EVM-addressed (eip155:1337) so it falls through to the EOA
+      // passthrough below — the orchestrator's HyperCore gate requires
+      // accountType: 'EOA'.
+      if (isNonEvmChainId(targetChainId)) {
         return { address: recipient }
       }
-      // EVM passthrough — assume EOA.
+      // EVM (and HyperCore) passthrough — assume EOA.
       return {
         address: recipient,
         accountType: 'EOA',
