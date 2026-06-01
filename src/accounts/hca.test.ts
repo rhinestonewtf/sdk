@@ -80,6 +80,54 @@ describe('Accounts: HCA', () => {
       ).toThrow(AccountConfigurationNotSupportedError)
     })
 
+    test('recovery throws', () => {
+      expect(() =>
+        getDeployArgs({
+          account: { type: 'hca' },
+          owners: {
+            type: 'ens',
+            accounts: [accountA],
+            ownerExpirations: [Number(maxUint48)],
+          },
+          recovery: { guardians: [accountB] },
+        }),
+      ).toThrow(AccountConfigurationNotSupportedError)
+    })
+
+    test('extra modules throw', () => {
+      expect(() =>
+        getDeployArgs({
+          account: { type: 'hca' },
+          owners: {
+            type: 'ens',
+            accounts: [accountA],
+            ownerExpirations: [Number(maxUint48)],
+          },
+          modules: [
+            {
+              address: MOCK_MODULE_ADDRESS,
+              initData: '0x',
+              type: 'validator',
+            },
+          ],
+        }),
+      ).toThrow(AccountConfigurationNotSupportedError)
+    })
+
+    test('sessions throw', () => {
+      expect(() =>
+        getDeployArgs({
+          account: { type: 'hca' },
+          owners: {
+            type: 'ens',
+            accounts: [accountA],
+            ownerExpirations: [Number(maxUint48)],
+          },
+          experimental_sessions: { enabled: true },
+        }),
+      ).toThrow(AccountConfigurationNotSupportedError)
+    })
+
     test('initData with factory round-trips correctly', () => {
       const deployArgs = getDeployArgs({
         account: { type: 'hca' },

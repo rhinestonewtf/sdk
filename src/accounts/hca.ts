@@ -73,6 +73,20 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
     )
   }
 
+  // HCA accounts are locked to their initial configuration and block module
+  // installation, so recovery, sessions, and extra modules would be silently
+  // dropped at deploy and then signed against as if they existed.
+  if (
+    config.recovery ||
+    config.experimental_sessions?.enabled ||
+    (config.modules && config.modules.length > 0)
+  ) {
+    throw new AccountConfigurationNotSupportedError(
+      'HCA accounts cannot install recovery, sessions, or additional modules',
+      'hca',
+    )
+  }
+
   const ownerValidator = getOwnerValidator(config)
   const moduleInitData = ownerValidator.initData
 
