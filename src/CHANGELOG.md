@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 2.0.0-beta.23
+
+### Minor Changes
+
+- 55762ad: Surface orchestrator `SIMULATION_FAILED` responses as a typed `SimulationFailedError`, preserving classification fields such as `category`, `errorSelector`, `errorName`, `errorArgs`, `retryable`, `retryHint`, `simulations`, and `nonce` so callers can re-prepare stale submissions when instructed.
+
 ## 2.0.0-beta.22
 
 ### Patch Changes
