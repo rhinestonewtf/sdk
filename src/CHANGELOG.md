@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 2.0.0-beta.22
+
+### Patch Changes
+
+- 99f5161: Send HyperCore recipients as EOA-typed orchestrator accounts. HyperCore recipients are EVM EOAs, but `getRecipient` emitted them as a bare `{ address }` (the Solana/Tron shape, with no `accountType`). The orchestrator's HyperCore planning gate strictly requires `accountType === 'EOA'`, so deposits were rejected at `/quotes` with "HyperCore destinations require an EOA recipient". HyperCore now takes the EVM passthrough (`accountType: 'EOA'`) while remaining solver-mediated for signing.
+
 ## 2.0.0-beta.21
 
 ### Minor Changes
