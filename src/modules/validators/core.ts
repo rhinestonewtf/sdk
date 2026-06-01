@@ -81,6 +81,20 @@ function getOwnerValidator(config: RhinestoneAccountConfig) {
       config.account?.type ?? 'nexus',
     )
   }
+  // HCA accounts use the ENS validator baked into the implementation; a custom
+  // owners.module would never be installed yet would drive signing/nonce
+  // selection, producing signatures for a validator the account does not have.
+  if (
+    config.account?.type === 'hca' &&
+    config.owners.type === 'ens' &&
+    config.owners.module &&
+    config.owners.module.toLowerCase() !== ENS_HCA_MODULE.toLowerCase()
+  ) {
+    throw new AccountConfigurationNotSupportedError(
+      'HCA accounts do not support a custom ENS owners.module',
+      'hca',
+    )
+  }
   return getValidator(config.owners)
 }
 

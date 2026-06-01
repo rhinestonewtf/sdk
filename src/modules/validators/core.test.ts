@@ -164,6 +164,20 @@ describe('Validators Core', () => {
       ).toThrow(AccountConfigurationNotSupportedError)
     })
 
+    test('HCA rejects a custom ENS owners.module', () => {
+      expect(() =>
+        getOwnerValidator({
+          account: { type: 'hca' },
+          owners: {
+            type: 'ens',
+            accounts: [accountA],
+            ownerExpirations: [281474976710655],
+            module: '0x00000000000000000000000000000000deadbeef',
+          },
+        }),
+      ).toThrow(AccountConfigurationNotSupportedError)
+    })
+
     test('ENS owners are allowed on HCA accounts', () => {
       const validator = getOwnerValidator({
         account: { type: 'hca' },
