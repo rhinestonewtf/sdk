@@ -1,3 +1,5 @@
+import type { Address, Hex } from 'viem'
+
 type ErrorCode =
   | 'VALIDATION_ERROR'
   | 'INSUFFICIENT_LIQUIDITY'
@@ -26,28 +28,66 @@ interface BaseErrorParams {
   statusCode?: number
 }
 
-type SimulationAction = 'claim' | 'fill' | string
+type SimulationAction = 'claim' | 'fill'
+type SimulationRetryHint = 'RE_PREPARE' | 'RETRY_LATER'
+type SimulationErrorCategory =
+  | 'QUOTE_EXPIRED'
+  | 'ORDER_EXPIRED'
+  | 'PERMIT_EXPIRED'
+  | 'PERMIT2_NONCE_CONSUMED'
+  | 'EXECUTOR_NONCE_CONSUMED'
+  | 'INVALID_SIGNATURE'
+  | 'INVALID_PERMIT2_SIGNATURE'
+  | 'INVALID_CONTRACT_SIGNATURE'
+  | 'INVALID_SIGNER'
+  | 'INSUFFICIENT_BALANCE'
+  | 'INSUFFICIENT_ALLOWANCE'
+  | 'ACCOUNT_CREATION_FAILED'
+  | 'ACCOUNT_UNAUTHORIZED'
+  | 'ADAPTER_CALL_FAILED'
+  | 'EXECUTION_FAILED'
+  | 'CLAIM_FAILED'
+  | 'ROUTER_PAUSED'
+  | 'ADAPTER_NOT_FOUND'
+  | 'PANIC'
+  | 'REQUIRE_FAILED'
+  | 'UNCLASSIFIED_REVERT'
+  | 'EMPTY_REVERT'
+
+interface SimulationCall {
+  chainId?: string
+  to?: Address
+  data?: Hex
+  value?: string
+}
+
+interface SimulationDetails {
+  stateOverride?: unknown
+  blockNumber?: string
+  relayer?: Address
+  simulationUrls?: string[]
+}
 
 interface SimulationFailureSimulation {
   success: false
   action?: SimulationAction
   chainId?: string
-  call?: unknown
+  call?: SimulationCall
   errorSelector?: string
   errorName?: string
   errorArgs?: Record<string, unknown>
-  errorCategory?: string
-  details?: unknown
+  errorCategory?: SimulationErrorCategory
+  details?: SimulationDetails
 }
 
 interface SimulationFailureDetails {
   nonce?: string
-  category?: string
+  category?: SimulationErrorCategory
   errorSelector?: string
   errorName?: string
   errorArgs?: Record<string, unknown>
   retryable?: boolean
-  retryHint?: string
+  retryHint?: SimulationRetryHint
   simulations?: SimulationFailureSimulation[]
 }
 
@@ -168,12 +208,12 @@ class SettlementExecutionError extends OrchestratorError {
 
 class SimulationFailedError extends OrchestratorError {
   readonly nonce?: string
-  readonly category?: string
+  readonly category?: SimulationErrorCategory
   readonly errorSelector?: string
   readonly errorName?: string
   readonly errorArgs?: Record<string, unknown>
   readonly retryable: boolean
-  readonly retryHint?: string
+  readonly retryHint?: SimulationRetryHint
   readonly simulations: SimulationFailureSimulation[]
 
   constructor(params: BaseErrorParams & SimulationFailureDetails) {
@@ -261,10 +301,98 @@ function recordValue(value: unknown): Record<string, unknown> | undefined {
   return isRecord(value) ? value : undefined
 }
 
+const SIMULATION_ACTIONS = ['claim', 'fill'] as const
+const SIMULATION_RETRY_HINTS = ['RE_PREPARE', 'RETRY_LATER'] as const
+const SIMULATION_ERROR_CATEGORIES = [
+  'QUOTE_EXPIRED',
+  'ORDER_EXPIRED',
+  'PERMIT_EXPIRED',
+  'PERMIT2_NONCE_CONSUMED',
+  'EXECUTOR_NONCE_CONSUMED',
+  'INVALID_SIGNATURE',
+  'INVALID_PERMIT2_SIGNATURE',
+  'INVALID_CONTRACT_SIGNATURE',
+  'INVALID_SIGNER',
+  'INSUFFICIENT_BALANCE',
+  'INSUFFICIENT_ALLOWANCE',
+  'ACCOUNT_CREATION_FAILED',
+  'ACCOUNT_UNAUTHORIZED',
+  'ADAPTER_CALL_FAILED',
+  'EXECUTION_FAILED',
+  'CLAIM_FAILED',
+  'ROUTER_PAUSED',
+  'ADAPTER_NOT_FOUND',
+  'PANIC',
+  'REQUIRE_FAILED',
+  'UNCLASSIFIED_REVERT',
+  'EMPTY_REVERT',
+] as const
+
+function oneOf<const T extends readonly string[]>(
+  value: unknown,
+  allowed: T,
+): T[number] | undefined {
+  return typeof value === 'string' && allowed.includes(value)
+    ? value
+    : undefined
+}
+
+function stringArrayValue(value: unknown): string[] | undefined {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : undefined
+}
+
+function parseSimulationCall(value: unknown): SimulationCall | undefined {
+  if (!isRecord(value)) {
+    return undefined
+  }
+
+  return {
+    chainId: stringValue(value.chainId),
+    to: stringValue(value.to) as Address | undefined,
+    data: stringValue(value.data) as Hex | undefined,
+    value: stringValue(value.value),
+  }
+}
+
+function parseSimulationDetails(value: unknown): SimulationDetails | undefined {
+  if (!isRecord(value)) {
+    return undefined
+  }
+
+  return {
+    stateOverride: value.stateOverride,
+    blockNumber: stringValue(value.blockNumber),
+    relayer: stringValue(value.relayer) as Address | undefined,
+    simulationUrls: stringArrayValue(value.simulationUrls),
+  }
+}
+
 function isSimulationFailureSimulation(
   value: unknown,
 ): value is SimulationFailureSimulation {
   return isRecord(value) && value.success === false
+}
+
+function parseSimulationFailureSimulation(
+  value: unknown,
+): SimulationFailureSimulation | undefined {
+  if (!isSimulationFailureSimulation(value)) {
+    return undefined
+  }
+
+  return {
+    success: false,
+    action: oneOf(value.action, SIMULATION_ACTIONS),
+    chainId: stringValue(value.chainId),
+    call: parseSimulationCall(value.call),
+    errorSelector: stringValue(value.errorSelector),
+    errorName: stringValue(value.errorName),
+    errorArgs: recordValue(value.errorArgs),
+    errorCategory: oneOf(value.errorCategory, SIMULATION_ERROR_CATEGORIES),
+    details: parseSimulationDetails(value.details),
+  }
 }
 
 function parseSimulationFailureDetails(
@@ -276,14 +404,19 @@ function parseSimulationFailureDetails(
 
   return {
     nonce: stringValue(details.nonce),
-    category: stringValue(details.category),
+    category: oneOf(details.category, SIMULATION_ERROR_CATEGORIES),
     errorSelector: stringValue(details.errorSelector),
     errorName: stringValue(details.errorName),
     errorArgs: recordValue(details.errorArgs),
     retryable: booleanValue(details.retryable),
-    retryHint: stringValue(details.retryHint),
+    retryHint: oneOf(details.retryHint, SIMULATION_RETRY_HINTS),
     simulations: Array.isArray(details.simulations)
-      ? details.simulations.filter(isSimulationFailureSimulation)
+      ? details.simulations
+          .map(parseSimulationFailureSimulation)
+          .filter(
+            (simulation): simulation is SimulationFailureSimulation =>
+              simulation !== undefined,
+          )
       : undefined,
   }
 }
@@ -394,8 +527,7 @@ function isRetryable(error: unknown): boolean {
     error instanceof InternalServerError ||
     error instanceof ExternalServiceTimeoutError ||
     error instanceof RelayerMarketUnavailableError ||
-    (error instanceof SimulationFailedError &&
-      (error.retryable || error.retryHint !== undefined))
+    (error instanceof SimulationFailedError && error.retryable)
   )
 }
 
@@ -403,8 +535,12 @@ export type {
   ErrorCode,
   ErrorEnvelope,
   SimulationAction,
+  SimulationCall,
+  SimulationDetails,
+  SimulationErrorCategory,
   SimulationFailureDetails,
   SimulationFailureSimulation,
+  SimulationRetryHint,
   ValidationIssue,
 }
 export {

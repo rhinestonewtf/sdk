@@ -158,4 +158,26 @@ describe('parseErrorEnvelope — SIMULATION_FAILED', () => {
     })
     expect(isRetryable(err)).toBe(false)
   })
+
+  test('does not treat retry hints as retryable without retryable=true', () => {
+    const err = parseErrorEnvelope(
+      {
+        code: 'SIMULATION_FAILED',
+        message: 'Simulation failed: Router paused',
+        traceId: 'trace-3',
+        details: {
+          category: 'ROUTER_PAUSED',
+          errorSelector: '0x9e87fac8',
+          errorName: 'Paused()',
+          retryable: false,
+          retryHint: 'RETRY_LATER',
+        },
+      },
+      503,
+    )
+
+    expect(isSimulationFailed(err)).toBe(true)
+    expect((err as SimulationFailedError).retryHint).toBe('RETRY_LATER')
+    expect(isRetryable(err)).toBe(false)
+  })
 })
