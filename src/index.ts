@@ -471,8 +471,9 @@ async function createRhinestoneAccount(
    * @returns Account owners
    */
   function getOwners(chain: Chain) {
+    const accountType = getAccountProvider(config).type
     const account = getAddress()
-    return getOwnersInternal(account, chain, config.provider)
+    return getOwnersInternal(accountType, account, chain, config.provider)
   }
 
   /**
