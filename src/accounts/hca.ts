@@ -1,6 +1,7 @@
 import type { Address, Chain, Hex, PublicClient } from 'viem'
 import {
   concat,
+  decodeAbiParameters,
   decodeFunctionData,
   encodeFunctionData,
   encodePacked,
@@ -38,6 +39,27 @@ const CREATE3_PROXY_HASH: Hex =
   '0x21c35dbe1b344a2488cf3321d6ce542f8e9f305544ff09e4993a62319a497c1f'
 
 function getDeployArgs(config: RhinestoneAccountConfig) {
+  // HCA accounts are locked to their initial configuration and block module
+  // installation, so recovery, sessions, and extra modules can never be
+  // installed. Reject them on every path (including externally-provided
+  // initData) rather than silently dropping them.
+  if (
+    config.recovery ||
+    config.experimental_sessions?.enabled ||
+    (config.modules && config.modules.length > 0)
+  ) {
+    throw new AccountConfigurationNotSupportedError(
+      'HCA accounts cannot install recovery, sessions, or additional modules',
+      'hca',
+    )
+  }
+  if (config.owners && config.owners.type !== 'ens') {
+    throw new AccountConfigurationNotSupportedError(
+      'HCA accounts require ENS owners with ownerExpirations',
+      'hca',
+    )
+  }
+
   if (config.initData) {
     if (!('factory' in config.initData)) {
       return null
@@ -66,23 +88,9 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
     }
   }
 
-  if (!config.owners || config.owners.type !== 'ens') {
+  if (!config.owners) {
     throw new AccountConfigurationNotSupportedError(
       'HCA accounts require ENS owners with ownerExpirations',
-      'hca',
-    )
-  }
-
-  // HCA accounts are locked to their initial configuration and block module
-  // installation, so recovery, sessions, and extra modules would be silently
-  // dropped at deploy and then signed against as if they existed.
-  if (
-    config.recovery ||
-    config.experimental_sessions?.enabled ||
-    (config.modules && config.modules.length > 0)
-  ) {
-    throw new AccountConfigurationNotSupportedError(
-      'HCA accounts cannot install recovery, sessions, or additional modules',
       'hca',
     )
   }
@@ -123,23 +131,34 @@ function getAddress(config: RhinestoneAccountConfig) {
     throw new Error('Cannot derive address: deploy args not available')
   }
 
-  if (config.initData?.address) {
-    return config.initData.address
-  }
+  // Always derive deterministically from the factory data so a mismatched
+  // initData.address is caught by checkAddress instead of being trusted.
+  const primaryOwner = getPrimaryOwnerFromFactoryData(deployArgs.factoryData)
+  return predictCreate3Address(deployArgs.factory, primaryOwner)
+}
 
-  if (!config.owners || config.owners.type !== 'ens') {
-    throw new Error('Cannot derive HCA address without ENS owners')
-  }
-
-  // The factory derives the CREATE3 salt from getOwnerFromInitData(initData),
-  // which returns owners[0] of the validator init data. getOwnerValidator sorts
-  // owners by lowercased address, so the salt owner is the lowest address — not
-  // necessarily the first account as provided.
-  const primaryOwner = config.owners.accounts
-    .map((account) => account.address.toLowerCase() as Address)
-    .sort((a, b) => a.localeCompare(b))[0]
-
-  return predictCreate3Address(HCA_FACTORY_ADDRESS, primaryOwner)
+// The factory derives the CREATE3 salt from getOwnerFromInitData(initData),
+// which returns owners[0] of the validator init data. getOwnerValidator sorts
+// owners by lowercased address, so owners[0] is the salt owner the factory uses.
+function getPrimaryOwnerFromFactoryData(factoryData: Hex): Address {
+  const { args } = decodeFunctionData({
+    abi: parseAbi(['function createAccount(bytes)']),
+    data: factoryData,
+  })
+  const [, owners] = decodeAbiParameters(
+    [
+      { type: 'uint256' },
+      {
+        type: 'tuple[]',
+        components: [
+          { name: 'addr', type: 'address' },
+          { name: 'expiration', type: 'uint48' },
+        ],
+      },
+    ],
+    args[0],
+  )
+  return owners[0].addr
 }
 
 // Solady CREATE3 address derivation:

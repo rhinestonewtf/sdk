@@ -159,6 +159,29 @@ describe('Accounts: HCA', () => {
       expect(roundTripped!.initializationCallData).toBeDefined()
     })
 
+    test('initData path rejects unsupported config', () => {
+      const { factory, factoryData } = getDeployArgs({
+        account: { type: 'hca' },
+        owners: {
+          type: 'ens',
+          accounts: [accountA],
+          ownerExpirations: [Number(maxUint48)],
+        },
+      })!
+      expect(() =>
+        getDeployArgs({
+          account: { type: 'hca' },
+          recovery: { guardians: [accountB] },
+          initData: {
+            address: '0x229ca553b9863b0c8f2f03d4287cb8c73e2bede7',
+            factory,
+            factoryData,
+            intentExecutorInstalled: true,
+          },
+        }),
+      ).toThrow(AccountConfigurationNotSupportedError)
+    })
+
     test('initData without factory returns null', () => {
       const result = getDeployArgs({
         account: { type: 'hca' },
@@ -256,6 +279,31 @@ describe('Accounts: HCA', () => {
         },
       })
       expect(address).toEqual(expectedAddress)
+    })
+
+    test('factory-backed initData derives the address from factoryData', () => {
+      const config = {
+        account: { type: 'hca' as const },
+        owners: {
+          type: 'ens' as const,
+          accounts: [accountA],
+          ownerExpirations: [Number(maxUint48)],
+        },
+      }
+      const derived = getAddress(config)
+      const { factory, factoryData } = getDeployArgs(config)!
+
+      // A mismatched initData.address must not be trusted.
+      const address = getAddress({
+        ...config,
+        initData: {
+          address: '0x000000000000000000000000000000000000dead',
+          factory,
+          factoryData,
+          intentExecutorInstalled: true,
+        },
+      })
+      expect(address).toEqual(derived)
     })
   })
 
