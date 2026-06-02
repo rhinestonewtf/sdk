@@ -615,7 +615,7 @@ async function deploy(
   }
 
   const account = getAccountProvider(config)
-  if (account.type === 'eoa' || account.type === 'hca') {
+  if (account.type === 'eoa') {
     return false
   }
 
