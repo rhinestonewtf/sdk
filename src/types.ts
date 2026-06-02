@@ -7,7 +7,7 @@ import type {
   SettlementLayerFilter,
 } from './orchestrator/types'
 
-type AccountType = 'safe' | 'nexus' | 'kernel' | 'startale' | 'eoa'
+type AccountType = 'safe' | 'nexus' | 'kernel' | 'startale' | 'eoa' | 'hca'
 
 interface SafeAccount {
   type: 'safe'
@@ -33,6 +33,10 @@ interface StartaleAccount {
   salt?: Hex
 }
 
+interface HcaAccount {
+  type: 'hca'
+}
+
 interface EoaAccount {
   type: 'eoa'
 }
@@ -42,6 +46,7 @@ type AccountProviderConfig =
   | NexusAccount
   | KernelAccount
   | StartaleAccount
+  | HcaAccount
   | EoaAccount
 
 interface OwnableValidatorConfig {
@@ -750,6 +755,7 @@ export type {
   NexusAccount,
   KernelAccount,
   StartaleAccount,
+  HcaAccount,
   EoaAccount,
   RhinestoneAccountConfig,
   RhinestoneSDKConfig,

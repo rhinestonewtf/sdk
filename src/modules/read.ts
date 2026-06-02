@@ -1,7 +1,7 @@
 import { type Address, type Chain, createPublicClient } from 'viem'
 import { createTransport } from '../accounts/utils'
 import type { AccountType, ProviderConfig } from '../types'
-import { OWNABLE_VALIDATOR_ADDRESS } from './validators/core'
+import { ENS_HCA_MODULE, OWNABLE_VALIDATOR_ADDRESS } from './validators/core'
 
 async function getValidators(
   accountType: AccountType,
@@ -16,6 +16,7 @@ async function getValidators(
   switch (accountType) {
     case 'safe':
     case 'startale':
+    case 'hca':
     case 'nexus': {
       const validators = await publicClient.readContract({
         abi: [
@@ -60,6 +61,7 @@ async function getValidators(
 }
 
 async function getOwners(
+  accountType: AccountType,
   account: Address,
   chain: Chain,
   provider?: ProviderConfig,
@@ -71,7 +73,10 @@ async function getOwners(
     chain,
     transport: createTransport(chain, provider),
   })
-  const moduleAddress = OWNABLE_VALIDATOR_ADDRESS
+  // HCA accounts hold owner state under the ENS HCA module, which is also
+  // OwnableValidator-based, so the getOwners/threshold reads are identical.
+  const moduleAddress =
+    accountType === 'hca' ? ENS_HCA_MODULE : OWNABLE_VALIDATOR_ADDRESS
   const [ownerResult, thresholdResult] = await publicClient.multicall({
     contracts: [
       {
@@ -147,6 +152,7 @@ async function getExecutors(
   switch (accountType) {
     case 'safe':
     case 'startale':
+    case 'hca':
     case 'nexus': {
       const executors = await publicClient.readContract({
         abi: [

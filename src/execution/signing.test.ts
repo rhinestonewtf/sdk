@@ -126,6 +126,7 @@ vi.mock('../modules/validators/core', () => ({
     address: MOCK_VALIDATOR,
     initData: '0x',
   }),
+  ownerSetUsesEns: vi.fn().mockReturnValue(false),
   getMultiFactorValidator: vi.fn(),
   getSocialRecoveryValidator: vi.fn(),
   getWebAuthnValidator: vi.fn(),
