@@ -6,8 +6,9 @@ import {
   accountC,
   passkeyAccount,
 } from '../../../test/consts'
+import { AccountConfigurationNotSupportedError } from '../../accounts/error'
 import { MODULE_TYPE_ID_VALIDATOR } from '../common'
-import { getMockSignature, getValidator } from './core'
+import { getMockSignature, getOwnerValidator, getValidator } from './core'
 
 describe('Validators Core', () => {
   describe('Validator', () => {
@@ -126,6 +127,68 @@ describe('Validators Core', () => {
           },
         ],
         signature,
+      )
+    })
+  })
+
+  describe('Owner Validator', () => {
+    test('ENS owners require an HCA account', () => {
+      expect(() =>
+        getOwnerValidator({
+          account: { type: 'nexus' },
+          owners: {
+            type: 'ens',
+            accounts: [accountA],
+            ownerExpirations: [281474976710655],
+          },
+        }),
+      ).toThrow(AccountConfigurationNotSupportedError)
+    })
+
+    test('ENS sub-validator in multi-factor requires an HCA account', () => {
+      expect(() =>
+        getOwnerValidator({
+          account: { type: 'nexus' },
+          owners: {
+            type: 'multi-factor',
+            validators: [
+              { type: 'ecdsa', accounts: [accountB] },
+              {
+                type: 'ens',
+                accounts: [accountA],
+                ownerExpirations: [281474976710655],
+              },
+            ],
+          },
+        }),
+      ).toThrow(AccountConfigurationNotSupportedError)
+    })
+
+    test('HCA rejects a custom ENS owners.module', () => {
+      expect(() =>
+        getOwnerValidator({
+          account: { type: 'hca' },
+          owners: {
+            type: 'ens',
+            accounts: [accountA],
+            ownerExpirations: [281474976710655],
+            module: '0x00000000000000000000000000000000deadbeef',
+          },
+        }),
+      ).toThrow(AccountConfigurationNotSupportedError)
+    })
+
+    test('ENS owners are allowed on HCA accounts', () => {
+      const validator = getOwnerValidator({
+        account: { type: 'hca' },
+        owners: {
+          type: 'ens',
+          accounts: [accountA],
+          ownerExpirations: [281474976710655],
+        },
+      })
+      expect(validator.address).toEqual(
+        '0x5049ecBd4d961aE6DFEED9b7ccCe7f026454970E',
       )
     })
   })

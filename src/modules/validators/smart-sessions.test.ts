@@ -479,6 +479,19 @@ describe('policyAddresses override', () => {
 // ---------------------------------------------------------------------------
 
 describe('getSessionData', () => {
+  test('ENS session owners are rejected', () => {
+    expect(() =>
+      toSession({
+        chain: base,
+        owners: {
+          type: 'ens',
+          accounts: [accountA],
+          ownerExpirations: [281474976710655],
+        },
+      }),
+    ).toThrow('ENS owners are not supported for smart sessions')
+  })
+
   test('no actions → single sudoAction fallback', () => {
     const data = getSessionData(baseSession)
     expect(data.actions).toHaveLength(1)
