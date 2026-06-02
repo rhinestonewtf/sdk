@@ -652,7 +652,8 @@ async function deploy(
 async function setup(config: RhinestoneConfig, chain: Chain): Promise<boolean> {
   const account = getAccountProvider(config)
 
-  if (account.type === 'eoa') {
+  // HCA accounts are locked and cannot install modules, so there is nothing to set up.
+  if (account.type === 'eoa' || account.type === 'hca') {
     return false
   }
 
