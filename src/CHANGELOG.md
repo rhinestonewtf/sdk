@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.7.0
+
+### Minor Changes
+
+- 0e8bcad: Add ENS-HCA (Hierarchical Contract Account) support
+
 ## 1.6.5
 
 ### Patch Changes
