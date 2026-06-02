@@ -152,6 +152,20 @@ describe('getSessionData', () => {
     )
   })
 
+  test('ENS session owners are rejected', () => {
+    const ensSession: Session = {
+      chain: base,
+      owners: {
+        type: 'ens',
+        accounts: [accountA],
+        ownerExpirations: [281474976710655],
+      },
+    }
+    expect(() => getSessionData(ensSession)).toThrow(
+      'ENS owners are not supported for smart sessions',
+    )
+  })
+
   test('explicit actions → user action + 3 injected (WETH deposit + intent-execution fallback + dummy preclaimop)', () => {
     const data = getSessionData(sessionWithAction)
     expect(data.actions).toHaveLength(4)

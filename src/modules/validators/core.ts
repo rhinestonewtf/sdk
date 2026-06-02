@@ -12,7 +12,10 @@ import {
   toHex,
 } from 'viem'
 
-import { OwnersFieldRequiredError } from '../../accounts/error'
+import {
+  AccountConfigurationNotSupportedError,
+  OwnersFieldRequiredError,
+} from '../../accounts/error'
 import type {
   ENSValidatorConfig,
   OwnableValidatorConfig,
@@ -41,8 +44,7 @@ interface WebauthnCredential {
 
 const OWNABLE_VALIDATOR_ADDRESS: Address =
   '0x000000000013fdb5234e4e3162a810f54d9f7e98'
-const ENS_VALIDATOR_ADDRESS: Address =
-  '0xdc38f07b060374b6480c4bf06231e7d10955bca4'
+const ENS_HCA_MODULE: Address = '0x5049ecBd4d961aE6DFEED9b7ccCe7f026454970E'
 const WEBAUTHN_VALIDATOR_ADDRESS: Address =
   '0x0000000000578c4cb0e472a5462da43c495c3f33'
 const SOCIAL_RECOVERY_VALIDATOR_ADDRESS: Address =
@@ -63,9 +65,42 @@ const ECDSA_MOCK_SIGNATURE =
 const WEBAUTHN_MOCK_SIGNATURE =
   '0x0000000000000000000000000000000000000000000000000000000000000060000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000001b9b86eb98fda3ed4d797d9e690588dfadf17b329a76a47cec935bebf92d7ddc80000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000120000000000000000000000000000000000000000000000000000000000000001700000000000000000000000000000000000000000000000000000000000000019b2e9410bb6850f9f660a03d609d5a844fb96bcdc87a15139b03ee22c70f469100d2b865a215c3bf786387064effa8fcedcb1d625b5148f8a1236d5e3ff11acf000000000000000000000000000000000000000000000000000000000000002549960de5880e8c687434170f6476605b8fe4aeb9a28632c7995cf3ba831d9763050000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000867b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a22396a4546696a75684557724d34534f572d7443684a625545484550343456636a634a2d42716f3166544d38222c226f726967696e223a22687474703a2f2f6c6f63616c686f73743a38303830222c2263726f73734f726967696e223a66616c73657d0000000000000000000000000000000000000000000000000000'
 
+// ENS validation is only available on HCA accounts (its validator default is
+// the HCA module). True for a direct ENS owner set or an ENS sub-validator
+// nested in a multi-factor config.
+function ownerSetUsesEns(owners: OwnerSet): boolean {
+  return (
+    owners.type === 'ens' ||
+    (owners.type === 'multi-factor' &&
+      owners.validators.some((validator) => validator.type === 'ens'))
+  )
+}
+
 function getOwnerValidator(config: RhinestoneAccountConfig) {
   if (!config.owners) {
     throw new OwnersFieldRequiredError()
+  }
+  // ENS owners resolve to the HCA module, which is only valid for HCA accounts.
+  // Other account types would silently install/sign against the wrong validator.
+  if (ownerSetUsesEns(config.owners) && config.account?.type !== 'hca') {
+    throw new AccountConfigurationNotSupportedError(
+      'ENS owners are only supported on HCA accounts',
+      config.account?.type ?? 'nexus',
+    )
+  }
+  // HCA accounts use the ENS validator baked into the implementation; a custom
+  // owners.module would never be installed yet would drive signing/nonce
+  // selection, producing signatures for a validator the account does not have.
+  if (
+    config.account?.type === 'hca' &&
+    config.owners.type === 'ens' &&
+    config.owners.module &&
+    config.owners.module.toLowerCase() !== ENS_HCA_MODULE.toLowerCase()
+  ) {
+    throw new AccountConfigurationNotSupportedError(
+      'HCA accounts do not support a custom ENS owners.module',
+      'hca',
+    )
   }
   return getValidator(config.owners)
 }
@@ -209,7 +244,7 @@ function getENSValidator(
     [BigInt(threshold), ownersWithExpiration],
   )
 
-  const moduleAddress = address ?? ENS_VALIDATOR_ADDRESS
+  const moduleAddress = address ?? ENS_HCA_MODULE
 
   return {
     address: moduleAddress,
@@ -398,7 +433,7 @@ function supportsEip712(validator: Module) {
 
 export {
   OWNABLE_VALIDATOR_ADDRESS,
-  ENS_VALIDATOR_ADDRESS,
+  ENS_HCA_MODULE,
   WEBAUTHN_VALIDATOR_ADDRESS,
   MULTI_FACTOR_VALIDATOR_ADDRESS,
   WEBAUTHN_V0_VALIDATOR_ADDRESS,
@@ -413,5 +448,6 @@ export {
   getValidator,
   getMockSignature,
   supportsEip712,
+  ownerSetUsesEns,
 }
 export type { WebauthnCredential }
