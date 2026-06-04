@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import {
   ForbiddenError,
+  isConnectionError,
   isRetryable,
   isSimulationFailed,
   KeyScopeDeniedError,
@@ -179,5 +180,60 @@ describe('parseErrorEnvelope — SIMULATION_FAILED', () => {
     expect(isSimulationFailed(err)).toBe(true)
     expect((err as SimulationFailedError).retryHint).toBe('RETRY_LATER')
     expect(isRetryable(err)).toBe(false)
+  })
+})
+
+describe('isConnectionError', () => {
+  test('matches Bun socket-closed message (plain Error)', () => {
+    const err = new Error(
+      'The socket connection was closed unexpectedly. For more information, pass `verbose: true` in the second argument to fetch()',
+    )
+    expect(isConnectionError(err)).toBe(true)
+  })
+
+  test('matches undici TypeError with a coded cause', () => {
+    const err = new TypeError('fetch failed', {
+      cause: Object.assign(new Error('read ECONNRESET'), {
+        code: 'ECONNRESET',
+      }),
+    })
+    expect(isConnectionError(err)).toBe(true)
+  })
+
+  test('matches a top-level system error code', () => {
+    const err = Object.assign(new Error('connect ETIMEDOUT'), {
+      code: 'ETIMEDOUT',
+    })
+    expect(isConnectionError(err)).toBe(true)
+  })
+
+  test('matches an undici cause code nested in the chain', () => {
+    const err = new Error('request failed', {
+      cause: Object.assign(new Error('other side closed'), {
+        code: 'UND_ERR_SOCKET',
+      }),
+    })
+    expect(isConnectionError(err)).toBe(true)
+  })
+
+  test('does not match caller-initiated aborts', () => {
+    const err = new Error('This operation was aborted')
+    err.name = 'AbortError'
+    expect(isConnectionError(err)).toBe(false)
+  })
+
+  test('does not match typed HTTP errors (handled by isRetryable)', () => {
+    const err = parseErrorEnvelope(
+      { code: 'INTERNAL_ERROR', message: 'boom', traceId: '' },
+      500,
+    )
+    expect(isConnectionError(err)).toBe(false)
+    expect(isRetryable(err)).toBe(true)
+  })
+
+  test('does not match unrelated logic errors', () => {
+    expect(isConnectionError(new Error('intent not found'))).toBe(false)
+    expect(isConnectionError(new RangeError('out of range'))).toBe(false)
+    expect(isConnectionError(undefined)).toBe(false)
   })
 })

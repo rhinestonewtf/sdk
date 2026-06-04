@@ -8,6 +8,7 @@ import {
   INTENT_STATUS_COMPLETED,
   INTENT_STATUS_FAILED,
   type IntentOpStatus,
+  isConnectionError,
   isRateLimited,
   isRetryable,
   type SplitIntentsInput,
@@ -304,7 +305,10 @@ async function waitForExecution(
             await new Promise((resolve) => setTimeout(resolve, retryMs))
             continue
           }
-          if (isRetryable(err)) {
+          // Transport errors (socket closed, connection reset) bubble up
+          // untyped from fetch; retry them like server-side 5xx since the
+          // intent-status read is idempotent.
+          if (isRetryable(err) || isConnectionError(err)) {
             const backoff = Math.min(errorBackoffMs, POLL_ERROR_BACKOFF_MAX_MS)
             errorBackoffMs = Math.min(
               errorBackoffMs * 2,
