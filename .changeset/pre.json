@@ -5,6 +5,7 @@
     "@rhinestone/sdk": "1.5.0"
   },
   "changesets": [
+    "add-hca-account",
     "blanc-client",
     "blanc-orphaned-helpers",
     "blanc-portfolio-per-chain-decimals",
@@ -37,6 +38,7 @@
     "remove-fee-token",
     "remove-verify-executions-public-api",
     "retry-after-polling",
+    "retry-connection-errors-polling",
     "session-permissions-api",
     "settlement-layer-filter",
     "signature-mode-sync",
