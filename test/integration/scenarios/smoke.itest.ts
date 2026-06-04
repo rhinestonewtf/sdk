@@ -1,5 +1,5 @@
 import { describe, test } from 'vitest'
-import { ValidationError } from '../../../src/errors/index'
+import { SimulationFailedError } from '../../../src/errors/index'
 import { sourceChain, targetChain } from '../config/chains'
 import { createIntegrationSDK } from '../config/environment'
 import {
@@ -144,9 +144,9 @@ describe.sequential('SDK integration smoke', () => {
 
     expectOutcome(execution, {
       kind: 'submit-error',
-      error: ValidationError,
-      code: 'VALIDATION_ERROR',
-      message: 'Bundle simulation failed',
+      error: SimulationFailedError,
+      code: 'SIMULATION_FAILED',
+      message: 'Simulation failed',
     })
     await expectNotDeployed(account, sourceChain)
   })

@@ -1,6 +1,6 @@
 import type { Chain } from 'viem/chains'
 import { describe, test } from 'vitest'
-import { ValidationError } from '../../../src/errors/index'
+import { SimulationFailedError } from '../../../src/errors/index'
 import type { RhinestoneAccount, Session } from '../../../src/index'
 import { sourceChain, targetChain } from '../config/chains'
 import { createIntegrationSDK } from '../config/environment'
@@ -134,8 +134,8 @@ describe.sequential('SDK integration ssx', () => {
 
     expectOutcome(execution, {
       kind: 'submit-error',
-      error: ValidationError,
-      code: 'VALIDATION_ERROR',
+      error: SimulationFailedError,
+      code: 'SIMULATION_FAILED',
     })
     await expectNotDeployed(account, sourceChain)
   })
@@ -171,8 +171,8 @@ describe.sequential('SDK integration ssx', () => {
 
     expectOutcome(execution, {
       kind: 'submit-error',
-      error: ValidationError,
-      code: 'VALIDATION_ERROR',
+      error: SimulationFailedError,
+      code: 'SIMULATION_FAILED',
     })
     await expectNotDeployed(account, sourceChain)
   })
