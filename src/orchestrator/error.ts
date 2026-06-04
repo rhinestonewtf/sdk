@@ -531,6 +531,76 @@ function isRetryable(error: unknown): boolean {
   )
 }
 
+// Transport-level error codes that escape `fetch` as raw errors rather than
+// typed HTTP envelopes. Spans Node/undici and common system codes.
+const CONNECTION_ERROR_CODES = new Set([
+  'ECONNRESET',
+  'ECONNREFUSED',
+  'ECONNABORTED',
+  'ETIMEDOUT',
+  'EPIPE',
+  'ENOTFOUND',
+  'EAI_AGAIN',
+  'EHOSTUNREACH',
+  'ENETUNREACH',
+  'UND_ERR_SOCKET',
+  'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_HEADERS_TIMEOUT',
+  'UND_ERR_BODY_TIMEOUT',
+])
+
+const CONNECTION_ERROR_MESSAGES = [
+  'socket connection was closed', // Bun
+  'fetch failed', // undici/Node (the coded cause is matched separately)
+  'failed to fetch', // Chrome/Edge
+  'networkerror when attempting to fetch', // Firefox
+  'network request failed',
+  'connection closed',
+  'connection reset',
+]
+
+/**
+ * Detects transport-level failures (connection reset, socket closed, DNS, TLS)
+ * that `fetch` rejects with instead of returning an HTTP response. Unlike HTTP
+ * errors — which the client converts into typed {@link OrchestratorError}s —
+ * these carry no status and bubble up untyped, so {@link isRetryable} misses
+ * them. They are safe to retry for idempotent reads (e.g. intent-status
+ * polling). We match by `code` and message across the cause chain — never by
+ * error type: `fetch` rejects network failures as `TypeError`, but `TypeError`
+ * is also thrown for logic bugs, bad URLs, and response-decoding errors that
+ * must NOT be retried (`waitForExecution` has no SDK-side deadline). Runtimes
+ * differ (Bun throws a plain `Error` with a socket message; undici/Node a
+ * `TypeError` with a coded `cause`), hence both signals. Caller-initiated
+ * aborts are excluded so deadlines/cancellation still propagate.
+ */
+function isConnectionError(error: unknown): boolean {
+  // HTTP-status errors are already typed and classified elsewhere.
+  if (isOrchestratorError(error)) {
+    return false
+  }
+  // Caller cancellation / deadline must propagate, not retry.
+  if (error instanceof Error && error.name === 'AbortError') {
+    return false
+  }
+  // Walk the `cause` chain; `seen` guards against cyclic causes looping forever.
+  const seen = new Set<unknown>()
+  let current: unknown = error
+  while (current != null && !seen.has(current)) {
+    seen.add(current)
+    const code = (current as { code?: unknown }).code
+    if (typeof code === 'string' && CONNECTION_ERROR_CODES.has(code)) {
+      return true
+    }
+    const message =
+      current instanceof Error ? current.message.toLowerCase() : ''
+    if (CONNECTION_ERROR_MESSAGES.some((m) => message.includes(m))) {
+      return true
+    }
+    current = (current as { cause?: unknown }).cause
+  }
+  return false
+}
+
 export type {
   ErrorCode,
   ErrorEnvelope,
@@ -547,6 +617,7 @@ export {
   parseErrorEnvelope,
   isOrchestratorError,
   isRetryable,
+  isConnectionError,
   isAuthError,
   isValidationError,
   isRateLimited,
