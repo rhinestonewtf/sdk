@@ -191,13 +191,34 @@ describe('isConnectionError', () => {
     expect(isConnectionError(err)).toBe(true)
   })
 
-  test('matches undici TypeError with a coded cause', () => {
+  test('matches undici TypeError via message + coded cause', () => {
     const err = new TypeError('fetch failed', {
       cause: Object.assign(new Error('read ECONNRESET'), {
         code: 'ECONNRESET',
       }),
     })
     expect(isConnectionError(err)).toBe(true)
+  })
+
+  test('matches browser network-failure messages', () => {
+    expect(isConnectionError(new TypeError('Failed to fetch'))).toBe(true)
+    expect(
+      isConnectionError(
+        new TypeError('NetworkError when attempting to fetch resource.'),
+      ),
+    ).toBe(true)
+  })
+
+  test('does not retry non-network TypeErrors (logic bugs, bad URLs)', () => {
+    // waitForExecution catches the whole getIntent path; these must propagate.
+    expect(
+      isConnectionError(
+        new TypeError("Cannot read properties of undefined (reading 'status')"),
+      ),
+    ).toBe(false)
+    expect(
+      isConnectionError(new TypeError('Failed to parse URL from /intents/123')),
+    ).toBe(false)
   })
 
   test('matches a top-level system error code', () => {

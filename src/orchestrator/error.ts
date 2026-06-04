@@ -551,7 +551,9 @@ const CONNECTION_ERROR_CODES = new Set([
 
 const CONNECTION_ERROR_MESSAGES = [
   'socket connection was closed', // Bun
-  'fetch failed', // undici wrapper
+  'fetch failed', // undici/Node (the coded cause is matched separately)
+  'failed to fetch', // Chrome/Edge
+  'networkerror when attempting to fetch', // Firefox
   'network request failed',
   'connection closed',
   'connection reset',
@@ -563,10 +565,13 @@ const CONNECTION_ERROR_MESSAGES = [
  * errors — which the client converts into typed {@link OrchestratorError}s —
  * these carry no status and bubble up untyped, so {@link isRetryable} misses
  * them. They are safe to retry for idempotent reads (e.g. intent-status
- * polling). Runtimes differ (Bun throws a plain `Error` with a socket message,
- * undici/Node a `TypeError` with a coded `cause`), so we check error type,
- * `code`, and message across the cause chain. Caller-initiated aborts are
- * explicitly excluded so deadlines/cancellation still propagate.
+ * polling). We match by `code` and message across the cause chain — never by
+ * error type: `fetch` rejects network failures as `TypeError`, but `TypeError`
+ * is also thrown for logic bugs, bad URLs, and response-decoding errors that
+ * must NOT be retried (`waitForExecution` has no SDK-side deadline). Runtimes
+ * differ (Bun throws a plain `Error` with a socket message; undici/Node a
+ * `TypeError` with a coded `cause`), hence both signals. Caller-initiated
+ * aborts are excluded so deadlines/cancellation still propagate.
  */
 function isConnectionError(error: unknown): boolean {
   // HTTP-status errors are already typed and classified elsewhere.
@@ -577,14 +582,11 @@ function isConnectionError(error: unknown): boolean {
   if (error instanceof Error && error.name === 'AbortError') {
     return false
   }
+  // Walk the `cause` chain; `seen` guards against cyclic causes looping forever.
   const seen = new Set<unknown>()
   let current: unknown = error
   while (current != null && !seen.has(current)) {
     seen.add(current)
-    // WHATWG fetch rejects network failures as TypeError.
-    if (current instanceof TypeError) {
-      return true
-    }
     const code = (current as { code?: unknown }).code
     if (typeof code === 'string' && CONNECTION_ERROR_CODES.has(code)) {
       return true
