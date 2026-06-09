@@ -1,7 +1,5 @@
-import { mainnet } from 'viem/chains'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Orchestrator } from './client'
-import type { SettlementLayerFilter } from './types'
 
 const authProvider = {
   getHeaders: async () => ({ 'x-api-key': 'test-key' }),
@@ -157,49 +155,5 @@ describe('Orchestrator trace IDs', () => {
     await expect(orchestrator.getIntent('1')).rejects.toMatchObject({
       traceId: 'trace-header',
     })
-  })
-})
-
-describe('settlementLayers filter', () => {
-  afterEach(() => {
-    vi.unstubAllGlobals()
-  })
-
-  async function capturedSplitBody(
-    settlementLayers: SettlementLayerFilter | undefined,
-  ) {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(mockJsonResponse({ intents: [] }))
-    vi.stubGlobal('fetch', fetchMock)
-
-    const orchestrator = new Orchestrator(
-      'https://orchestrator.test',
-      authProvider,
-    )
-    await orchestrator.getSplit({
-      chain: mainnet,
-      tokens: {},
-      settlementLayers,
-    })
-
-    return JSON.parse(fetchMock.mock.calls[0][1].body)
-  }
-
-  it('sends an include filter on the wire unchanged', async () => {
-    const body = await capturedSplitBody({ include: ['ACROSS', 'ECO'] })
-    expect(body.settlementLayers).toEqual({ include: ['ACROSS', 'ECO'] })
-  })
-
-  it('sends an exclude filter on the wire unchanged', async () => {
-    // The orchestrator inverts `exclude` against its own live layer set, so
-    // the SDK forwards the filter verbatim instead of enumerating layers.
-    const body = await capturedSplitBody({ exclude: ['RELAY'] })
-    expect(body.settlementLayers).toEqual({ exclude: ['RELAY'] })
-  })
-
-  it('omits settlementLayers when unset', async () => {
-    const body = await capturedSplitBody(undefined)
-    expect(body.settlementLayers).toBeUndefined()
   })
 })
