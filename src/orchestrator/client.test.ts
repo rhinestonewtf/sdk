@@ -1,5 +1,7 @@
+import { mainnet } from 'viem/chains'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { encodeSettlementLayers, Orchestrator } from './client'
+import { Orchestrator } from './client'
+import type { SettlementLayerFilter } from './types'
 
 const authProvider = {
   getHeaders: async () => ({ 'x-api-key': 'test-key' }),
@@ -158,36 +160,46 @@ describe('Orchestrator trace IDs', () => {
   })
 })
 
-describe('encodeSettlementLayers', () => {
-  it('include passes through unchanged', () => {
-    expect(encodeSettlementLayers({ include: ['ACROSS', 'ECO'] })).toEqual([
-      'ACROSS',
-      'ECO',
-    ])
+describe('settlementLayers filter', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
   })
 
-  it('exclude inverts against the known-layers universe', () => {
-    expect(encodeSettlementLayers({ exclude: ['RELAY'] })).toEqual([
-      'ACROSS',
-      'ECO',
-      'OFT',
-      'NEAR',
-      'RHINO',
-      'CCTP',
-    ])
+  async function capturedSplitBody(
+    settlementLayers: SettlementLayerFilter | undefined,
+  ) {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(mockJsonResponse({ intents: [] }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const orchestrator = new Orchestrator(
+      'https://orchestrator.test',
+      authProvider,
+    )
+    await orchestrator.getSplit({
+      chain: mainnet,
+      tokens: {},
+      settlementLayers,
+    })
+
+    return JSON.parse(fetchMock.mock.calls[0][1].body)
+  }
+
+  it('sends an include filter on the wire unchanged', async () => {
+    const body = await capturedSplitBody({ include: ['ACROSS', 'ECO'] })
+    expect(body.settlementLayers).toEqual({ include: ['ACROSS', 'ECO'] })
   })
 
-  it('exclude with unknown layer is a no-op against the universe', () => {
-    // SAME_CHAIN isn't user-selectable on the orchestrator. Excluding it
-    // should leave the universe intact rather than narrowing further.
-    expect(encodeSettlementLayers({ exclude: ['SAME_CHAIN'] })).toEqual([
-      'ACROSS',
-      'ECO',
-      'RELAY',
-      'OFT',
-      'NEAR',
-      'RHINO',
-      'CCTP',
-    ])
+  it('sends an exclude filter on the wire unchanged', async () => {
+    // The orchestrator inverts `exclude` against its own live layer set, so
+    // the SDK forwards the filter verbatim instead of enumerating layers.
+    const body = await capturedSplitBody({ exclude: ['RELAY'] })
+    expect(body.settlementLayers).toEqual({ exclude: ['RELAY'] })
+  })
+
+  it('omits settlementLayers when unset', async () => {
+    const body = await capturedSplitBody(undefined)
+    expect(body.settlementLayers).toBeUndefined()
   })
 })
