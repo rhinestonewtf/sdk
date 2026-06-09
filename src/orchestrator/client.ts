@@ -1,4 +1,3 @@
-import type { SettlementLayer as CrossChainSettlementLayer } from '@rhinestone/shared-configs'
 import type { Address } from 'viem'
 import type { AuthProvider } from '../auth/provider'
 import { fromCaip2, isCaip2, toCaip2 } from './caip2'
@@ -22,7 +21,6 @@ import type {
   Portfolio,
   Quote,
   QuoteResponse,
-  SettlementLayerFilter,
   SplitIntentsInput,
   SplitIntentsResult,
   TokenRequirements,
@@ -110,9 +108,7 @@ export class Orchestrator {
     const body = convertBigIntFields({
       chainId: toCaip2(input.chain.id),
       tokens: input.tokens,
-      settlementLayers: input.settlementLayers
-        ? encodeSettlementLayers(input.settlementLayers)
-        : undefined,
+      settlementLayers: input.settlementLayers,
     })
     const json = await this.fetch(`${this.serverUrl}/intents/splits`, {
       method: 'POST',
@@ -325,30 +321,7 @@ function encodeOptions(options: IntentOptions): Record<string, unknown> {
   if (options.auxiliaryFunds) {
     wire.auxiliaryFunds = encodeAuxiliaryFunds(options.auxiliaryFunds)
   }
-  if (options.settlementLayers) {
-    wire.settlementLayers = encodeSettlementLayers(options.settlementLayers)
-  }
   return wire
-}
-
-// Inversion universe for `{ exclude }` — must mirror the orchestrator's
-// cross-chain settlement layer enum.
-const KNOWN_SETTLEMENT_LAYERS = [
-  'ACROSS',
-  'ECO',
-  'RELAY',
-  'OFT',
-  'NEAR',
-  'RHINO',
-  'CCTP',
-] as const satisfies readonly CrossChainSettlementLayer[]
-
-export function encodeSettlementLayers(
-  filter: SettlementLayerFilter,
-): readonly string[] {
-  if ('include' in filter) return filter.include
-  const excluded = new Set<string>(filter.exclude)
-  return KNOWN_SETTLEMENT_LAYERS.filter((layer) => !excluded.has(layer))
 }
 
 function decodeQuoteResponse(json: any): QuoteResponse {

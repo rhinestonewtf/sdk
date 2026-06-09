@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { encodeSettlementLayers, Orchestrator } from './client'
+import { Orchestrator } from './client'
 
 const authProvider = {
   getHeaders: async () => ({ 'x-api-key': 'test-key' }),
@@ -155,39 +155,5 @@ describe('Orchestrator trace IDs', () => {
     await expect(orchestrator.getIntent('1')).rejects.toMatchObject({
       traceId: 'trace-header',
     })
-  })
-})
-
-describe('encodeSettlementLayers', () => {
-  it('include passes through unchanged', () => {
-    expect(encodeSettlementLayers({ include: ['ACROSS', 'ECO'] })).toEqual([
-      'ACROSS',
-      'ECO',
-    ])
-  })
-
-  it('exclude inverts against the known-layers universe', () => {
-    expect(encodeSettlementLayers({ exclude: ['RELAY'] })).toEqual([
-      'ACROSS',
-      'ECO',
-      'OFT',
-      'NEAR',
-      'RHINO',
-      'CCTP',
-    ])
-  })
-
-  it('exclude with unknown layer is a no-op against the universe', () => {
-    // SAME_CHAIN isn't user-selectable on the orchestrator. Excluding it
-    // should leave the universe intact rather than narrowing further.
-    expect(encodeSettlementLayers({ exclude: ['SAME_CHAIN'] })).toEqual([
-      'ACROSS',
-      'ECO',
-      'RELAY',
-      'OFT',
-      'NEAR',
-      'RHINO',
-      'CCTP',
-    ])
   })
 })
