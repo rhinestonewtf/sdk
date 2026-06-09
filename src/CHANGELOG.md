@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 2.0.0-beta.25
+
+### Patch Changes
+
+- fba610c: Resolve the `settlementLayers` `{ exclude }` filter on the orchestrator instead of in the SDK, so excluding specific layers automatically accounts for new settlement layers as they are added.
+
 ## 2.0.0-beta.24
 
 ### Minor Changes

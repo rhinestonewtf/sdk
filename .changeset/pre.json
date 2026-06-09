@@ -40,6 +40,7 @@
     "retry-after-polling",
     "retry-connection-errors-polling",
     "session-permissions-api",
+    "settlement-layer-filter-wire",
     "settlement-layer-filter",
     "signature-mode-sync",
     "simulation-failed-error",
