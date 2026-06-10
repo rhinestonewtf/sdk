@@ -15,9 +15,16 @@ type SuccessfulIntent = {
   durationMs: number
   prepared: PreparedTransactionData
   signed: SignedTransactionData
-  result: TransactionResult
-  status: unknown
+  result?: TransactionResult
+  status?: unknown
 }
+
+// How far the pipeline runs:
+//   - 'sign'    → prepare + sign only (encode-assert; inspect prepared/signed)
+//   - 'dryRun'  → + submit with internal_dryRun (orchestrator validates without
+//                 settlement or funds), no waitForExecution
+//   - 'execute' → full end-to-end incl. waitForExecution (default)
+export type ExecutionMode = 'sign' | 'dryRun' | 'execute'
 
 type FailedIntent = {
   phase: ErrorPhase
@@ -45,11 +52,17 @@ export async function executeIntent({
   transaction,
   label,
   signAuthorizations = false,
+  mode = 'execute',
+  transformSigned,
 }: {
   account: RhinestoneAccount
   transaction: Transaction
   label?: string
   signAuthorizations?: boolean
+  mode?: ExecutionMode
+  // Mutate the signed payload before submit, e.g. to tamper with signature
+  // bytes and assert the orchestrator rejects them.
+  transformSigned?: (signed: SignedTransactionData) => SignedTransactionData
 }): Promise<IntentExecution> {
   const startedAt = Date.now()
   let prepared: PreparedTransactionData | undefined
@@ -66,6 +79,7 @@ export async function executeIntent({
 
   try {
     signed = await account.signTransaction(prepared)
+    if (transformSigned) signed = transformSigned(signed)
   } catch (error) {
     return { phase: 'sign', label, durationMs: elapsed(), error, prepared }
   }
@@ -89,11 +103,21 @@ export async function executeIntent({
     }
   }
 
-  try {
-    result = await account.submitTransaction(
+  if (mode === 'sign') {
+    return {
+      phase: 'success',
+      label,
+      durationMs: elapsed(),
+      prepared,
       signed,
-      authorizations ? { authorizations } : undefined,
-    )
+    }
+  }
+
+  try {
+    result = await account.submitTransaction(signed, {
+      ...(authorizations ? { authorizations } : {}),
+      ...(mode === 'dryRun' ? { internal_dryRun: true } : {}),
+    })
   } catch (error) {
     return {
       phase: 'submit',
@@ -102,6 +126,17 @@ export async function executeIntent({
       error,
       prepared,
       signed,
+    }
+  }
+
+  if (mode === 'dryRun') {
+    return {
+      phase: 'success',
+      label,
+      durationMs: elapsed(),
+      prepared,
+      signed,
+      result,
     }
   }
 

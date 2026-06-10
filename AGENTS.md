@@ -61,5 +61,5 @@ Once v2 is stable, we'll switch back to the standard `main` (dev) / `release` (p
 
 - Run single test: `bun run test -- path/to/file.test.ts`
 - Unit tests live next to source as `*.test.ts`.
-- Live SDK integration tests live under `/test/integration` as `*.itest.ts`. They require `INTEGRATION_RHINESTONE_API_KEY` and use `vitest.config.integration.ts`.
+- Live SDK integration tests live under `/test/integration` as `*.itest.ts`. They require `INTEGRATION_RHINESTONE_API_KEY` and use `vitest.config.integration.ts`. Funded specs (smart-session policies, on-chain source-call execution) additionally require `INTEGRATION_FUNDER_PRIVATE_KEY` — a key whose address holds testnet native + USDC on the integration chains.
 - Run the live smoke suite with `bun run test:integration:smoke -- --run`.
