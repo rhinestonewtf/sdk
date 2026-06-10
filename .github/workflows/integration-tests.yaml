@@ -34,6 +34,9 @@ jobs:
       # bundles simulate against the matching dev deployment. Empty for prod
       # falls back to the SDK's built-in prod URL + prod contracts.
       INTEGRATION_ORCHESTRATOR_URL: ${{ inputs.target == 'dev' && 'https://dev.v1.orchestrator.rhinestone.dev' || '' }}
+      # Funder for the funded specs in the `all` suite (smoke needs none). The
+      # address must hold testnet native + USDC; same testnet key for prod/dev.
+      INTEGRATION_FUNDER_PRIVATE_KEY: ${{ secrets.INTEGRATION_FUNDER_PRIVATE_KEY }}
 
     steps:
       # Resolve the API key explicitly per target. A ternary like
