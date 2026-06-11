@@ -141,6 +141,10 @@ export function wrapParaAccount(
 function adjustVByte(signature: string): Hex {
   const V_OFFSET_FOR_ETHEREUM = 27
   const cleanSig = signature.startsWith('0x') ? signature.slice(2) : signature
+  if (!/^[\da-f]{130}$/iu.test(cleanSig)) {
+    throw new Error('Invalid signature')
+  }
+
   const r = cleanSig.slice(0, 64)
   const s = cleanSig.slice(64, 128)
   let v = parseInt(cleanSig.slice(128, 130), 16)
