@@ -152,6 +152,23 @@ type UniversalActionPolicyParamCondition =
   | 'notEqual'
   | 'inRange'
 
+// ArgPolicy is the expression-tree successor to UniActionPolicy. Same per-rule
+// leaf semantics, but rules are composed with AND/OR/NOT nodes and arbitrary
+// nesting instead of an implicit all-AND fixed array. Use when a session needs
+// disjunction (e.g. "recipient == alice OR recipient == bob") — for plain
+// AND-of-rules, UniversalActionPolicy is simpler.
+type ArgPolicyExpression =
+  | { type: 'rule'; rule: UniversalActionPolicyParamRule }
+  | { type: 'not'; child: ArgPolicyExpression }
+  | { type: 'and'; left: ArgPolicyExpression; right: ArgPolicyExpression }
+  | { type: 'or'; left: ArgPolicyExpression; right: ArgPolicyExpression }
+
+interface ArgPolicy {
+  type: 'arg-policy'
+  valueLimitPerUse?: bigint
+  expression: ArgPolicyExpression
+}
+
 interface SpendingLimitsPolicy {
   type: 'spending-limits'
   limits: {
@@ -201,6 +218,7 @@ interface Permit2ClaimPolicy {
 type Policy =
   | SudoPolicy
   | UniversalActionPolicy
+  | ArgPolicy
   | SpendingLimitsPolicy
   | TimeFramePolicy
   | UsageLimitPolicy
@@ -551,6 +569,7 @@ export type {
   Policy,
   Permit2ClaimPolicy,
   UniversalActionPolicyParamCondition,
+  ArgPolicyExpression,
   ApiKeyAuth,
   JwtAuth,
   AuthConfig,
