@@ -279,6 +279,45 @@ describe('shouldSponsor', () => {
       shouldSponsor({ destinationChainId: 'not-a-number' }, {}),
     ).rejects.toThrow('intentInput.destinationChainId must be a number')
   })
+
+  it('rejects malformed execution entries before calling filters', async () => {
+    let callsFilterCalled = false
+
+    await expect(
+      shouldSponsor(
+        {
+          ...validIntentInput,
+          destinationExecutions: [{ to: 'not-an-address', value: '0', data: '0x' }],
+        },
+        {
+          calls: () => {
+            callsFilterCalled = true
+            return true
+          },
+        },
+      ),
+    ).rejects.toThrow('intentInput.destinationExecutions[0].to must be an address')
+
+    expect(callsFilterCalled).toBe(false)
+  })
+
+  it('rejects non-hex execution calldata before calling filters', async () => {
+    await expect(
+      shouldSponsor(
+        {
+          ...validIntentInput,
+          destinationExecutions: [
+            {
+              to: '0xaaaa000000000000000000000000000000000000',
+              value: '0',
+              data: 'transfer()',
+            },
+          ],
+        },
+        {},
+      ),
+    ).rejects.toThrow('intentInput.destinationExecutions[0].data must be hex')
+  })
 })
 
 describe('createJwtSigner', () => {
