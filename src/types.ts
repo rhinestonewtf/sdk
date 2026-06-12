@@ -207,6 +207,67 @@ interface Permit2ClaimPolicy {
   fillDeadline?: { chain: Chain; min?: bigint; max?: bigint }[]
 }
 
+/**
+ * Settlement layers supported by the cross-chain session abstraction.
+ * Each value maps to one or more Permit2 arbiter addresses sourced from
+ * `@rhinestone/shared-configs` — devs pick a layer, the SDK resolves it
+ * to the on-chain arbiter whitelist.
+ *
+ * The set is intentionally narrower than the orchestrator's broader
+ * `SettlementLayer` union (which also names intent-executor-backed
+ * bridges like `CCTP`, `RHINO`, ...). Once the params-bearing
+ * intent-executor policy lands in smart-sessions-v2 (see
+ * `rhinestonewtf/smart-sessions-v2#46`), this union grows to cover those
+ * layers via the same selector interface.
+ */
+type CrossChainSettlementLayer = 'SAME_CHAIN' | 'ECO' | 'ACROSS'
+
+/**
+ * A high-level permit that authorises a session key to move funds
+ * between two chains via Permit2 arbiter settlement. The SDK expands
+ * one `CrossChainPermit` into a {@link Permit2ClaimPolicy} (claim-side)
+ * plus optional {@link SpendingLimitsPolicy} / {@link TimeFramePolicy}
+ * entries on the fallback action — the claim policy itself doesn't
+ * enforce amounts or expiry on-chain, so we lift those guarantees into
+ * action-level policies that do.
+ *
+ * Use `createCrossChainPermission()` to build this from an ergonomic
+ * shape (token symbols, single object instead of array, `Date`
+ * validity).
+ */
+interface CrossChainPermit {
+  /**
+   * Allowed source legs: chain + token (+ optional max amount cap).
+   * Omit for no source-token restriction (any token on any chain may be
+   * pulled) — only the arbiter whitelist, deadline, and bridge-to-self
+   * flag then constrain the source side.
+   */
+  from?: { chain: Chain; token: Address; maxAmount?: bigint }[]
+  /**
+   * Allowed destination legs: chain + token (+ optional recipient pin).
+   * Omit for no destination-token restriction. Note `recipientIsAccount`
+   * still constrains the destination recipient even when `to` is absent.
+   */
+  to?: { chain: Chain; token: Address; recipient?: Address | 'any' }[]
+  /** Upper bound on the permit deadline (Permit2 deadline) — unix seconds */
+  validUntil?: bigint
+  /** Lower bound on the permit deadline — unix seconds */
+  validAfter?: bigint
+  /** Per-destination fill-deadline windows — unix seconds */
+  fillDeadline?: { chain: Chain; min?: bigint; max?: bigint }[]
+  /**
+   * Enforce bridge-to-self (the destination recipient must be the smart
+   * account). Defaults to `true` in `createCrossChainPermission`.
+   */
+  recipientIsAccount?: boolean
+  /**
+   * Settlement layers this session is permitted to use. Omit (or pass
+   * `[]`) for any supported layer — the SDK resolves to the union of
+   * every known arbiter from `@rhinestone/shared-configs`.
+   */
+  settlementLayers?: CrossChainSettlementLayer[]
+}
+
 type Policy =
   | SudoPolicy
   | UniversalActionPolicy
@@ -390,6 +451,13 @@ interface SessionDefinition<TAbis extends readonly Abi[] = readonly Abi[]> {
   owners: OwnerSet
   permissions?: readonly [...PermissionsForAbis<TAbis>]
   claimPolicies?: readonly Permit2ClaimPolicy[]
+  /**
+   * Cross-chain permits expanded by the SDK into matching
+   * {@link Permit2ClaimPolicy} (claim-side) plus action-level
+   * {@link SpendingLimitsPolicy} / {@link TimeFramePolicy} guardrails.
+   * Use `createCrossChainPermission()` for an ergonomic builder.
+   */
+  crossChainPermits?: readonly CrossChainPermit[]
   /**
    * Override one or more SmartSession policy addresses. Defaults to the latest
    * V2 deployments. Use to pin to V1 deployments for an account that already
@@ -810,6 +878,8 @@ export type {
   ResolvedPolicy,
   Policy,
   Permit2ClaimPolicy,
+  CrossChainPermit,
+  CrossChainSettlementLayer,
   UniversalActionPolicyParamCondition,
   ArgPolicyExpression,
   SessionPolicyAddresses,

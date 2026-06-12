@@ -31,6 +31,7 @@ import {
   SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
   SPENDING_LIMITS_POLICY_ADDRESS,
   SUDO_POLICY_ADDRESS,
+  selectPermit2ClaimPolicyForMessage,
   TIME_FRAME_POLICY_ADDRESS,
   toSession,
   UNIVERSAL_ACTION_POLICY_ADDRESS,
@@ -591,6 +592,331 @@ describe('getSessionData', () => {
     expect(data.claimPolicies).toHaveLength(1)
     expect(data.claimPolicies[0].policy).toBe(PERMIT2_CLAIM_POLICY_ADDRESS)
     expect(data.claimPolicies[0].initData).not.toBe('0x')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// B'. crossChainPermits expansion
+// ---------------------------------------------------------------------------
+
+describe('crossChainPermits expansion', () => {
+  const USDC_ARB: Address = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831'
+
+  test('one permit with settlement layer → one Permit2 claim policy with arbiter whitelist', () => {
+    const session = toSession({
+      chain: base,
+      owners: { type: 'ecdsa', accounts: [accountA] },
+      crossChainPermits: [
+        {
+          from: [{ chain: base, token: USDC }],
+          to: [{ chain: base, token: USDC_ARB }],
+          settlementLayers: ['ECO'],
+        },
+      ],
+    })
+    const data = getSessionData(session)
+    expect(data.claimPolicies).toHaveLength(1)
+    expect(data.claimPolicies[0].policy).toBe(PERMIT2_CLAIM_POLICY_ADDRESS)
+    // modeConfig header: FIELD_ARBITER bit (bit 0) set → arbiter check on
+    const modeConfig = Number.parseInt(
+      data.claimPolicies[0].initData.slice(2, 10),
+      16,
+    )
+    expect(modeConfig & 0b11).toBe(0b01)
+  })
+
+  test('permit with maxAmount adds a SpendingLimitsPolicy to the fallback', () => {
+    const session = toSession({
+      chain: base,
+      owners: { type: 'ecdsa', accounts: [accountA] },
+      crossChainPermits: [
+        {
+          from: [{ chain: base, token: USDC, maxAmount: 1_000n }],
+          to: [{ chain: base, token: USDC_ARB }],
+        },
+      ],
+    })
+    const data = getSessionData(session)
+    const fallback = data.actions.find(
+      (a) => a.actionTarget === SMART_SESSIONS_FALLBACK_TARGET_FLAG,
+    )!
+    expect(
+      fallback.actionPolicies.some(
+        (p) => p.policy === SPENDING_LIMITS_POLICY_ADDRESS,
+      ),
+    ).toBe(true)
+  })
+
+  test('permit with validUntil adds a TimeFramePolicy to the fallback', () => {
+    const session = toSession({
+      chain: base,
+      owners: { type: 'ecdsa', accounts: [accountA] },
+      crossChainPermits: [
+        {
+          from: [{ chain: base, token: USDC }],
+          to: [{ chain: base, token: USDC_ARB }],
+          validUntil: 2_000_000_000n,
+        },
+      ],
+    })
+    const data = getSessionData(session)
+    const fallback = data.actions.find(
+      (a) => a.actionTarget === SMART_SESSIONS_FALLBACK_TARGET_FLAG,
+    )!
+    expect(
+      fallback.actionPolicies.some(
+        (p) => p.policy === TIME_FRAME_POLICY_ADDRESS,
+      ),
+    ).toBe(true)
+  })
+
+  test('user claimPolicies + crossChainPermits are concatenated', () => {
+    const session = toSession({
+      chain: base,
+      owners: { type: 'ecdsa', accounts: [accountA] },
+      claimPolicies: [{ type: 'permit2' }],
+      crossChainPermits: [
+        {
+          from: [{ chain: base, token: USDC }],
+          to: [{ chain: base, token: USDC_ARB }],
+        },
+      ],
+    })
+    expect(session.claimPolicies).toHaveLength(2)
+    const data = getSessionData(session)
+    expect(data.claimPolicies).toHaveLength(2)
+  })
+
+  test('multiple permits → N claim policies', () => {
+    const session = toSession({
+      chain: base,
+      owners: { type: 'ecdsa', accounts: [accountA] },
+      crossChainPermits: [
+        {
+          from: [{ chain: base, token: USDC }],
+          to: [{ chain: base, token: USDC_ARB }],
+        },
+        {
+          from: [{ chain: base, token: USDC }],
+          to: [{ chain: base, token: USDC_ARB }],
+        },
+        {
+          from: [{ chain: base, token: USDC }],
+          to: [{ chain: base, token: USDC_ARB }],
+        },
+      ],
+    })
+    expect(getSessionData(session).claimPolicies).toHaveLength(3)
+  })
+
+  test('permit with neither from nor to still emits a claim policy (arbiter-only)', () => {
+    // from/to optional — a permit with just a settlement layer is "any
+    // cross-chain move through these arbiters". The arbiter whitelist is
+    // always present (settlement layers resolve to it), so the claim
+    // policy initData is non-empty.
+    const session = toSession({
+      chain: base,
+      owners: { type: 'ecdsa', accounts: [accountA] },
+      crossChainPermits: [{ settlementLayers: ['ECO'] }],
+    })
+    const data = getSessionData(session)
+    expect(data.claimPolicies).toHaveLength(1)
+    const modeConfig = Number.parseInt(
+      data.claimPolicies[0].initData.slice(2, 10),
+      16,
+    )
+    // arbiter bit set, token-in / token-out bits unset (no from/to)
+    expect(modeConfig & 0b11).toBe(0b01)
+  })
+
+  test('omitted from/to → source/dest token checks are skipped (mode bits unset)', () => {
+    const session = toSession({
+      chain: base,
+      owners: { type: 'ecdsa', accounts: [accountA] },
+      crossChainPermits: [{ settlementLayers: ['ECO'] }],
+    })
+    const withTokens = toSession({
+      chain: base,
+      owners: { type: 'ecdsa', accounts: [accountA] },
+      crossChainPermits: [
+        {
+          from: [{ chain: base, token: USDC }],
+          to: [{ chain: base, token: USDC_ARB }],
+          settlementLayers: ['ECO'],
+        },
+      ],
+    })
+    const bare = getSessionData(session).claimPolicies[0].initData
+    const tokened = getSessionData(withTokens).claimPolicies[0].initData
+    // Adding source/dest tokens flips additional mode bits + lengthens the
+    // payload, so the two encodings must differ.
+    expect(bare).not.toBe(tokened)
+    expect(bare.length).toBeLessThan(tokened.length)
+  })
+
+  test('one-sided validAfter → TimeFramePolicy gets an always-passing far-future validUntil (not 0)', () => {
+    // Regression: a permit with only `validAfter` must NOT produce a
+    // TimeFramePolicy with validUntil=0 (expired the instant validAfter is
+    // reached). It should default to the year-2100 sentinel, mirroring the
+    // permission resolver.
+    const validAfter = 1_700_000_000n // unix seconds
+    const session = toSession({
+      chain: base,
+      owners: { type: 'ecdsa', accounts: [accountA] },
+      crossChainPermits: [
+        {
+          from: [{ chain: base, token: USDC }],
+          to: [{ chain: base, token: USDC_ARB }],
+          validAfter,
+        },
+      ],
+    })
+    const data = getSessionData(session)
+    const fallback = data.actions.find(
+      (a) => a.actionTarget === SMART_SESSIONS_FALLBACK_TARGET_FLAG,
+    )!
+    const timeFrame = fallback.actionPolicies.find(
+      (p) => p.policy === TIME_FRAME_POLICY_ADDRESS,
+    )
+    expect(timeFrame).toBeDefined()
+    // initData is encodePacked(['uint48','uint48'], [validUntil_s, validAfter_s]):
+    // 6 bytes (12 hex chars) each, validUntil first.
+    const hex = timeFrame!.initData.slice(2)
+    const validUntilSec = Number.parseInt(hex.slice(0, 12), 16)
+    const validAfterSec = Number.parseInt(hex.slice(12, 24), 16)
+    expect(validAfterSec).toBe(Number(validAfter))
+    // Far-future sentinel (year 2100) in seconds — must be well in the future.
+    expect(validUntilSec).toBe(4_102_444_800)
+    expect(validUntilSec).toBeGreaterThan(validAfterSec)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// B''. selectPermit2ClaimPolicyForMessage — picks the right claim policy for
+//      a Permit2 message when a session holds more than one.
+// ---------------------------------------------------------------------------
+
+describe('selectPermit2ClaimPolicyForMessage', () => {
+  const ARB_A: Address = '0xaAAa000000000000000000000000000000000001'
+  const ARB_B: Address = '0xbBBb000000000000000000000000000000000002'
+  const TOKEN_OUT: Address = '0xCccC000000000000000000000000000000000003'
+  const RCPT: Address = '0xDddD000000000000000000000000000000000004'
+  const EMPTY_OP = { vt: zeroHash, ops: [] as never[] }
+
+  function messageWithSpender(
+    spender: Address,
+    overrides: Partial<{
+      targetChain: bigint
+      recipient: Address
+      tokenOut: Address
+    }> = {},
+  ) {
+    return {
+      permitted: [{ token: USDC, amount: 1_000n }],
+      spender,
+      nonce: 1n,
+      deadline: 9_999n,
+      mandate: {
+        target: {
+          recipient: overrides.recipient ?? RCPT,
+          tokenOut: [{ token: overrides.tokenOut ?? TOKEN_OUT, amount: 1n }],
+          targetChain: overrides.targetChain ?? BigInt(base.id),
+          fillExpiry: 8_888n,
+        },
+        minGas: 0n,
+        originOps: EMPTY_OP,
+        destOps: EMPTY_OP,
+        q: zeroHash,
+      },
+    }
+  }
+
+  test('0 policies → undefined', () => {
+    expect(
+      selectPermit2ClaimPolicyForMessage([], messageWithSpender(ARB_A)),
+    ).toBeUndefined()
+  })
+
+  test('1 policy → that policy regardless of match', () => {
+    const only = { type: 'permit2' as const, spenders: [ARB_B] }
+    expect(
+      selectPermit2ClaimPolicyForMessage([only], messageWithSpender(ARB_A)),
+    ).toBe(only)
+  })
+
+  test('picks the policy whose spender matches the message (not [0])', () => {
+    const a = { type: 'permit2' as const, spenders: [ARB_A] }
+    const b = { type: 'permit2' as const, spenders: [ARB_B] }
+    // message spender = ARB_B → must select b, even though a is first.
+    expect(
+      selectPermit2ClaimPolicyForMessage([a, b], messageWithSpender(ARB_B)),
+    ).toBe(b)
+  })
+
+  test('falls back to first policy when none match', () => {
+    const a = { type: 'permit2' as const, spenders: [ARB_A] }
+    const b = { type: 'permit2' as const, spenders: [ARB_B] }
+    const unknownSpender: Address = '0xeeEe000000000000000000000000000000000009'
+    expect(
+      selectPermit2ClaimPolicyForMessage(
+        [a, b],
+        messageWithSpender(unknownSpender),
+      ),
+    ).toBe(a)
+  })
+
+  test('a policy with no spenders (any arbiter) matches any message', () => {
+    const specific = { type: 'permit2' as const, spenders: [ARB_A] }
+    const any = { type: 'permit2' as const }
+    // message spender = ARB_B → specific fails, `any` matches.
+    expect(
+      selectPermit2ClaimPolicyForMessage(
+        [specific, any],
+        messageWithSpender(ARB_B),
+      ),
+    ).toBe(any)
+  })
+
+  test('disambiguates by destination token + targetChain when spenders overlap', () => {
+    const otherToken: Address = '0xffFf00000000000000000000000000000000000a'
+    const a = {
+      type: 'permit2' as const,
+      spenders: [ARB_A],
+      destinationTokens: [{ chain: base, address: otherToken }],
+    }
+    const b = {
+      type: 'permit2' as const,
+      spenders: [ARB_A],
+      destinationTokens: [{ chain: base, address: TOKEN_OUT }],
+    }
+    // Same spender on both; only b allows the message's tokenOut.
+    expect(
+      selectPermit2ClaimPolicyForMessage(
+        [a, b],
+        messageWithSpender(ARB_A, { tokenOut: TOKEN_OUT }),
+      ),
+    ).toBe(b)
+  })
+
+  test("recipient='any' for the target chain matches any recipient", () => {
+    const a = {
+      type: 'permit2' as const,
+      spenders: [ARB_A],
+      recipients: [{ chain: base, address: RCPT }],
+    }
+    const b = {
+      type: 'permit2' as const,
+      spenders: [ARB_B],
+      recipients: [{ chain: base, address: 'any' as const }],
+    }
+    const otherRecipient: Address = '0x1111000000000000000000000000000000000011'
+    // spender ARB_B + a recipient not in a's list → b ('any') matches.
+    expect(
+      selectPermit2ClaimPolicyForMessage(
+        [a, b],
+        messageWithSpender(ARB_B, { recipient: otherRecipient }),
+      ),
+    ).toBe(b)
   })
 })
 

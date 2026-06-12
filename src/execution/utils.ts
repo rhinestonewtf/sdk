@@ -79,6 +79,7 @@ import {
 import {
   type ResolvedSessionSignerSet,
   resolvePermit2ClaimPolicy,
+  selectPermit2ClaimPolicyForMessage,
 } from '../modules/validators/smart-sessions'
 import {
   type Execution,
@@ -1490,9 +1491,22 @@ function resolveClaimPolicyData<
   ) {
     return undefined
   }
+  const message = parameters.message as unknown as Permit2ClaimMessage
+  // A session may carry several claim policies (a user policy plus one or
+  // more synthesized cross-chain permits). The on-chain emissary validates
+  // against the policy that matches this Permit2 message, and the calldata
+  // layout is policy-specific — so we must build it from the matching policy,
+  // not blindly `claimPolicies[0]`.
+  const claimPolicy = selectPermit2ClaimPolicyForMessage(
+    signers.session.claimPolicies,
+    message,
+  )
+  if (!claimPolicy) {
+    return undefined
+  }
   return buildPermit2ClaimPolicyCalldata(
-    resolvePermit2ClaimPolicy(signers.session.claimPolicies[0]),
-    parameters.message as unknown as Permit2ClaimMessage,
+    resolvePermit2ClaimPolicy(claimPolicy),
+    message,
   )
 }
 
