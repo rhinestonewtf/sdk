@@ -69,7 +69,6 @@ interface ENSValidatorConfig {
   accounts: Account[]
   threshold?: number
   ownerExpirations: number[]
-  module?: Address
 }
 
 interface WebauthnValidatorConfig {
