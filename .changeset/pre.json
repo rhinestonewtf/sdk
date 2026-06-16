@@ -21,6 +21,7 @@
     "dummy-preclaim-fallback-target",
     "export-origin-signature",
     "expose-quote-type",
+    "expose-sign-intent",
     "fix-enable-session-preserve-permissions",
     "fix-time-frame-policy-encoding",
     "fix-uninstall-module-sentinel-list-prev",
