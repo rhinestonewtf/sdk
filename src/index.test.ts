@@ -49,17 +49,16 @@ describe('createRhinestoneAccount', () => {
     mockGetTargetExecutionSignature.mockResolvedValue('0x33')
 
     const account = await createRhinestoneAccount(config)
-    const result = await account.signIntent(signData, base, signers, {
-      targetExecution: true,
-    })
+    const result = await account.signIntent(signData, base, signers)
 
-    // Keep headless integrations on the canonical SDK SmartSession signer.
+    // Mirror the canonical signTransaction path: origin/destination always
+    // signed in claim mode (targetExecution=false), target-exec sig separate.
     expect(mockSignIntent).toHaveBeenCalledWith(
       config,
       signData,
       base,
       signers,
-      true,
+      false,
     )
     expect(mockGetTargetExecutionSignature).toHaveBeenCalledWith(
       config,

@@ -188,7 +188,6 @@ interface RhinestoneAccount {
     signData: SignData,
     targetChain: DestinationChain,
     signers?: SignerSet,
-    options?: { targetExecution?: boolean },
   ) => Promise<SignedIntentData>
   submitTransaction: (
     signedTransaction: SignedTransactionData,
@@ -394,25 +393,25 @@ async function createRhinestoneAccount(
    * Sign an orchestrator intent operation.
    * This is used by headless flows that prepare the intent outside the SDK but
    * still need the SDK-owned SmartSession signature packing and target-execution
-   * signature routing.
+   * signature routing. Mirrors the canonical {@link signTransaction} path: origin
+   * and destination are always signed in claim mode, and the target-execution
+   * signature is derived separately (returned only when the intent requires it).
    * @param signData Sign data returned by the orchestrator (origin/destination/targetExecution typed data)
    * @param targetChain Chain where the destination execution runs
    * @param signers Signers to use for signing
-   * @param options Optional signature routing controls
    * @returns Intent signatures ready for submission
    */
   async function signIntent(
     signData: SignData,
     targetChain: DestinationChain,
     signers?: SignerSet,
-    options?: { targetExecution?: boolean },
   ): Promise<SignedIntentData> {
     const { originSignatures, destinationSignature } = await signIntentInternal(
       config,
       signData,
       targetChain,
       signers,
-      options?.targetExecution,
+      false,
     )
     const targetExecutionSignature = await getTargetExecutionSignatureInternal(
       config,
