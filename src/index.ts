@@ -732,6 +732,7 @@ export type {
   ApprovalRequired,
   // Intent signing
   OriginSignature,
+  SignData,
   SignedIntentData,
   // Operation status types (blanc API)
   OperationStatus,
