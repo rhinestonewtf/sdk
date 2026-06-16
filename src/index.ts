@@ -46,6 +46,7 @@ import {
   signPermit2Sequential,
 } from './execution/permit2'
 import {
+  getTargetExecutionSignature as getTargetExecutionSignatureInternal,
   getTransactionMessages as getTransactionMessagesInternal,
   type IntentRoute,
   type PreparedTransactionData,
@@ -55,6 +56,7 @@ import {
   type SignedTransactionData,
   type SignedUserOperationData,
   signAuthorizations as signAuthorizationsInternal,
+  signIntent as signIntentInternal,
   signMessage as signMessageInternal,
   signTransaction as signTransactionInternal,
   signTypedData as signTypedDataInternal,
@@ -87,6 +89,7 @@ import {
   type IntentInput,
   type IntentOp,
   type IntentOpStatus,
+  type OriginSignature,
   type Portfolio,
   type SettlementLayer,
   type SignedIntentOp,
@@ -162,6 +165,12 @@ interface RhinestoneAccount {
     chain: Chain,
     signers: SignerSet | undefined,
   ) => Promise<Hex>
+  signIntent: (
+    intentOp: IntentOp,
+    targetChain: Chain,
+    signers?: SignerSet,
+    options?: { targetExecution?: boolean },
+  ) => Promise<SignedIntentData>
   submitTransaction: (
     signedTransaction: SignedTransactionData,
     authorizations?: SignedAuthorizationList,
@@ -202,6 +211,12 @@ interface RhinestoneAccount {
   getValidators: (chain: Chain) => Promise<Address[]>
   getExecutors: (chain: Chain) => Promise<Address[]>
   checkERC20Allowance: (tokenAddress: Address, chain: Chain) => Promise<bigint>
+}
+
+interface SignedIntentData {
+  originSignatures: OriginSignature[]
+  destinationSignature: Hex
+  targetExecutionSignature: Hex | undefined
 }
 
 /**
@@ -357,6 +372,44 @@ async function createRhinestoneAccount(
       chain,
       signers,
     )
+  }
+
+  /**
+   * Sign an orchestrator intent operation.
+   * This is used by headless flows that prepare the IntentOp outside the SDK but
+   * still need the SDK-owned SmartSession signature packing and target-execution
+   * signature routing.
+   * @param intentOp Intent operation returned by the orchestrator
+   * @param targetChain Chain where the destination execution runs
+   * @param signers Signers to use for signing
+   * @param options Optional signature routing controls
+   * @returns Intent signatures ready for submission
+   */
+  async function signIntent(
+    intentOp: IntentOp,
+    targetChain: Chain,
+    signers?: SignerSet,
+    options?: { targetExecution?: boolean },
+  ): Promise<SignedIntentData> {
+    const { originSignatures, destinationSignature } = await signIntentInternal(
+      config,
+      intentOp,
+      targetChain,
+      signers,
+      options?.targetExecution,
+    )
+    const targetExecutionSignature = await getTargetExecutionSignatureInternal(
+      config,
+      intentOp,
+      targetChain,
+      signers,
+    )
+
+    return {
+      originSignatures,
+      destinationSignature,
+      targetExecutionSignature,
+    }
   }
 
   /**
@@ -542,6 +595,7 @@ async function createRhinestoneAccount(
     signAuthorizations,
     signMessage,
     signTypedData,
+    signIntent,
     submitTransaction,
     prepareUserOperation,
     signUserOperation,
@@ -663,6 +717,7 @@ export type {
   UniversalActionPolicyParamCondition,
   PreparedTransactionData,
   SignedTransactionData,
+  SignedIntentData,
   TransactionResult,
   PreparedUserOperationData,
   SignedUserOperationData,
