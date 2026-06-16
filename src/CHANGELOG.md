@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 2.0.0-beta.27
+
+### Minor Changes
+
+- a77d0f2: Expose `signIntent` on the account to sign orchestrator-prepared intents in headless flows, and export the `SignedIntentData` type.
+
 ## 2.0.0-beta.26
 
 ### Minor Changes
