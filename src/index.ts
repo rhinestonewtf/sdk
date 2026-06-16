@@ -34,6 +34,7 @@ import {
   waitForExecution as waitForExecutionInternal,
 } from './execution'
 import {
+  getTargetExecutionSignature as getTargetExecutionSignatureInternal,
   getTransactionMessages as getTransactionMessagesInternal,
   type PreparedQuotes,
   type PreparedTransactionData,
@@ -44,6 +45,7 @@ import {
   type SignedTransactionData,
   type SignedUserOperationData,
   signAuthorizations as signAuthorizationsInternal,
+  signIntent as signIntentInternal,
   signMessage as signMessageInternal,
   signTransaction as signTransactionInternal,
   signTypedData as signTypedDataInternal,
@@ -83,6 +85,7 @@ import type {
   Quote,
   SettlementLayer,
   SettlementLayerFilter,
+  SignData,
   SplitIntentsInput,
   SplitIntentsResult,
   TokenRequirements,
@@ -181,6 +184,12 @@ interface RhinestoneAccount {
     chain: Chain,
     signers: SignerSet | undefined,
   ) => Promise<Hex>
+  signIntent: (
+    signData: SignData,
+    targetChain: DestinationChain,
+    signers?: SignerSet,
+    options?: { targetExecution?: boolean },
+  ) => Promise<SignedIntentData>
   submitTransaction: (
     signedTransaction: SignedTransactionData,
     options?: SubmitTransactionOptions,
@@ -212,6 +221,12 @@ interface RhinestoneAccount {
   } | null>
   getValidators: (chain: Chain) => Promise<Address[]>
   getExecutors: (chain: Chain) => Promise<Address[]>
+}
+
+interface SignedIntentData {
+  originSignatures: OriginSignature[]
+  destinationSignature: Hex
+  targetExecutionSignature: Hex | undefined
 }
 
 /**
@@ -376,6 +391,44 @@ async function createRhinestoneAccount(
   }
 
   /**
+   * Sign an orchestrator intent operation.
+   * This is used by headless flows that prepare the intent outside the SDK but
+   * still need the SDK-owned SmartSession signature packing and target-execution
+   * signature routing.
+   * @param signData Sign data returned by the orchestrator (origin/destination/targetExecution typed data)
+   * @param targetChain Chain where the destination execution runs
+   * @param signers Signers to use for signing
+   * @param options Optional signature routing controls
+   * @returns Intent signatures ready for submission
+   */
+  async function signIntent(
+    signData: SignData,
+    targetChain: DestinationChain,
+    signers?: SignerSet,
+    options?: { targetExecution?: boolean },
+  ): Promise<SignedIntentData> {
+    const { originSignatures, destinationSignature } = await signIntentInternal(
+      config,
+      signData,
+      targetChain,
+      signers,
+      options?.targetExecution,
+    )
+    const targetExecutionSignature = await getTargetExecutionSignatureInternal(
+      config,
+      signData,
+      targetChain,
+      signers,
+    )
+
+    return {
+      originSignatures,
+      destinationSignature,
+      targetExecutionSignature,
+    }
+  }
+
+  /**
    * Submit a transaction
    * @param signedTransaction Signed transaction data
    * @param options Optional submission options
@@ -533,6 +586,7 @@ async function createRhinestoneAccount(
     signAuthorizations,
     signMessage,
     signTypedData,
+    signIntent,
     submitTransaction,
     prepareUserOperation,
     signUserOperation,
@@ -678,6 +732,7 @@ export type {
   ApprovalRequired,
   // Intent signing
   OriginSignature,
+  SignedIntentData,
   // Operation status types (blanc API)
   OperationStatus,
   FailureReason,
