@@ -196,6 +196,20 @@ describe('Accounts: HCA', () => {
       })
       expect(result).toBeNull()
     })
+
+    test('custom factory overrides the deploy target', () => {
+      const customFactory: Address =
+        '0x00000000000000000000000000000000c0ffee00'
+      const result = getDeployArgs({
+        account: { type: 'hca', factory: customFactory },
+        owners: {
+          type: 'ens',
+          accounts: [accountA],
+          ownerExpirations: [Number(maxUint48)],
+        },
+      })
+      expect(result?.factory).toEqual(customFactory)
+    })
   })
 
   describe('Get Address', () => {
@@ -221,6 +235,23 @@ describe('Accounts: HCA', () => {
         },
       })
       expect(address).toEqual(address2)
+    })
+
+    test('Custom factory produces a different address', () => {
+      const owners = {
+        type: 'ens' as const,
+        accounts: [accountA],
+        ownerExpirations: [Number(maxUint48)],
+      }
+      const address = getAddress({ account: { type: 'hca' }, owners })
+      const customAddress = getAddress({
+        account: {
+          type: 'hca',
+          factory: '0x00000000000000000000000000000000c0ffee00',
+        },
+        owners,
+      })
+      expect(customAddress).not.toEqual(address)
     })
 
     test('Different primary owners produce different addresses', () => {
