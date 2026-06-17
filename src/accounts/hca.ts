@@ -60,6 +60,11 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
     )
   }
 
+  const factory =
+    config.account?.type === 'hca' && config.account.factory
+      ? config.account.factory
+      : HCA_FACTORY_ADDRESS
+
   if (config.initData) {
     if (!('factory' in config.initData)) {
       return null
@@ -114,7 +119,7 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
   })
 
   return {
-    factory: HCA_FACTORY_ADDRESS,
+    factory,
     factoryData,
     salt: zeroHash,
     implementation: HCA_IMPLEMENTATION_ADDRESS,
