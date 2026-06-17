@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.9.0
+
+### Minor Changes
+
+- 31cc690: Support a custom HCA factory via `account.factory`, which defines the deploy address and, through its implementation, the account's default validator.
+
 ## 1.8.0
 
 ### Minor Changes
