@@ -256,6 +256,26 @@ function getInstallData(module: Module) {
   })
 }
 
+// On Nexus the OwnableValidator is the hardwired default validator. It cannot
+// be added via `installModule` (reverts `DefaultValidatorAlreadyInstalled`), so
+// it is initialized out-of-band by calling its `onInstall` directly with the
+// same init data `installModule` would have passed (`abi.encode(threshold, owners)`).
+function getDefaultValidatorInitData(module: Module): Hex {
+  return encodeFunctionData({
+    abi: [
+      {
+        type: 'function',
+        name: 'onInstall',
+        inputs: [{ type: 'bytes', name: 'data' }],
+        outputs: [],
+        stateMutability: 'nonpayable',
+      },
+    ],
+    functionName: 'onInstall',
+    args: [module.initData],
+  })
+}
+
 function getDefaultValidatorAddress(
   version:
     | '1.0.2'
@@ -593,6 +613,7 @@ function isAbiDecodingError(error: unknown): boolean {
 export {
   getEip712Domain,
   getInstallData,
+  getDefaultValidatorInitData,
   getAddress,
   getDefaultValidatorAddress,
   packSignature,

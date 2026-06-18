@@ -217,4 +217,36 @@ async function getExecutors(
   }
 }
 
-export { getValidators, getExecutors, getOwners }
+async function isValidatorInitialized(
+  account: Address,
+  chain: Chain,
+  validatorAddress: Address,
+  provider?: ProviderConfig,
+): Promise<boolean> {
+  const publicClient = createPublicClient({
+    chain,
+    transport: createTransport(chain, provider),
+  })
+  try {
+    return await publicClient.readContract({
+      abi: [
+        {
+          name: 'isInitialized',
+          type: 'function',
+          stateMutability: 'view',
+          inputs: [{ name: 'smartAccount', type: 'address' }],
+          outputs: [{ name: '', type: 'bool' }],
+        },
+      ],
+      functionName: 'isInitialized',
+      address: validatorAddress,
+      args: [account],
+    })
+  } catch {
+    // Treat read failures (e.g. undeployed account) as not-initialized so the
+    // common first-time enable path still produces an `onInstall` call.
+    return false
+  }
+}
+
+export { getValidators, getExecutors, getOwners, isValidatorInitialized }

@@ -23,6 +23,7 @@ import {
 } from '../execution'
 import { getIntentExecutor, getSetup } from '../modules'
 import type { Module } from '../modules/common'
+import { isValidatorInitialized } from '../modules/read'
 import { getOwnerValidator } from '../modules/validators'
 import { getSocialRecoveryValidator } from '../modules/validators/core'
 import type { ResolvedSessionSignerSet } from '../modules/validators/smart-sessions'
@@ -36,6 +37,7 @@ import type {
 import {
   AccountConfigurationNotSupportedError,
   AccountError,
+  DefaultValidatorAlreadyInitializedError,
   Eip712DomainNotAvailableError,
   Eip7702AccountMustHaveEoaError,
   Eip7702NotSupportedForAccountError,
@@ -72,6 +74,7 @@ import {
 import {
   getAddress as getNexusAddress,
   getDefaultValidatorAddress as getNexusDefaultValidatorAddress,
+  getDefaultValidatorInitData as getNexusDefaultValidatorInitData,
   getDeployArgs as getNexusDeployArgs,
   getEip712Domain as getNexusEip712Domain,
   getEip7702InitCall as getNexusEip7702InitCall,
@@ -316,6 +319,45 @@ function getModuleInstallationCalls(
     value: 0n,
     data,
   }))
+}
+
+// Like `getModuleInstallationCalls`, but aware of the Nexus default validator.
+// On Nexus the OwnableValidator is the hardwired default validator: it can't be
+// added via `installModule` (reverts `DefaultValidatorAlreadyInstalled`), and
+// passkey-bootstrapped accounts never initialize it, so `addOwner` reverts with
+// `NotInitialized`. For that case we initialize it directly via `onInstall`.
+async function getValidatorInstallationCalls(
+  config: RhinestoneConfig,
+  chain: Chain,
+  module: Module,
+): Promise<Call[]> {
+  const account = getAccountProvider(config)
+  if (account.type === 'nexus') {
+    const defaultValidatorAddress = getNexusDefaultValidatorAddress(
+      account.version,
+    )
+    if (
+      module.address.toLowerCase() === defaultValidatorAddress.toLowerCase()
+    ) {
+      const initialized = await isValidatorInitialized(
+        getAddress(config),
+        chain,
+        defaultValidatorAddress,
+        config.provider,
+      )
+      if (initialized) {
+        throw new DefaultValidatorAlreadyInitializedError()
+      }
+      return [
+        {
+          to: defaultValidatorAddress,
+          value: 0n,
+          data: getNexusDefaultValidatorInitData(module),
+        },
+      ]
+    }
+  }
+  return getModuleInstallationCalls(config, module)
 }
 
 function getModuleUninstallationCalls(
@@ -937,6 +979,7 @@ function getAccountProvider(config: RhinestoneConfig): AccountProviderConfig {
 export {
   getEip712Domain,
   getModuleInstallationCalls,
+  getValidatorInstallationCalls,
   getModuleUninstallationCalls,
   getAddress,
   checkAddress,
