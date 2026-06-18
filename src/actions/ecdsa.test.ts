@@ -1,7 +1,7 @@
 import { type Address, encodeAbiParameters, encodeFunctionData } from 'viem'
 import { base } from 'viem/chains'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import { accountA } from '../../test/consts'
+import { accountA, passkeyAccount } from '../../test/consts'
 import { RhinestoneSDK } from '..'
 import { resolveCallInputs } from '../execution/utils'
 import { OWNABLE_VALIDATOR_ADDRESS } from '../modules/validators/core'
@@ -55,13 +55,16 @@ const MOCK_OWNER_C = '0xb31e76f19defe76edc4b7eceeb4b0a2d6ddaca39'
 const accountAddress = '0x36C03e7D593F7B2C6b06fC18B5f4E9a4A29C99b0'
 
 describe('ECDSA Actions', () => {
+  // Enabling ECDSA on a passkey account is the real scenario: the OwnableValidator
+  // (the Nexus default validator) is not initialized at deploy, so `enable`
+  // initializes it via `onInstall`.
   describe('Install Ownable Validator', async () => {
     const read = await import('../modules/read')
     const rhinestone = new RhinestoneSDK({ apiKey: 'test' })
     const rhinestoneAccount = await rhinestone.createAccount({
       owners: {
-        type: 'ecdsa',
-        accounts: [accountA],
+        type: 'passkey',
+        accounts: [passkeyAccount],
       },
     })
 
@@ -121,7 +124,7 @@ describe('ECDSA Actions', () => {
       ])
     })
 
-    test('throws when the default validator is already initialized', async () => {
+    test('throws when the default validator is already initialized on-chain', async () => {
       vi.mocked(read.isValidatorInitialized).mockResolvedValue(true)
       await expect(
         resolveCallInputs(
@@ -131,6 +134,35 @@ describe('ECDSA Actions', () => {
           accountAddress,
         ),
       ).rejects.toThrow(/ECDSA is already enabled/)
+    })
+  })
+
+  // An ECDSA-configured account initializes the default validator at deployment,
+  // so `enable` is redundant. This is detected from config without an on-chain
+  // read, so it also holds for not-yet-deployed (counterfactual) accounts.
+  describe('Enable on an account already configured with ECDSA', async () => {
+    const read = await import('../modules/read')
+    const rhinestone = new RhinestoneSDK({ apiKey: 'test' })
+    const rhinestoneAccount = await rhinestone.createAccount({
+      owners: {
+        type: 'ecdsa',
+        accounts: [accountA],
+      },
+    })
+
+    test('throws without reading chain state', async () => {
+      vi.mocked(read.isValidatorInitialized)
+        .mockClear()
+        .mockResolvedValue(false)
+      await expect(
+        resolveCallInputs(
+          [enableEcdsa([MOCK_OWNER_A])],
+          rhinestoneAccount.config,
+          base,
+          accountAddress,
+        ),
+      ).rejects.toThrow(/ECDSA is already enabled/)
+      expect(read.isValidatorInitialized).not.toHaveBeenCalled()
     })
   })
 

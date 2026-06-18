@@ -276,6 +276,24 @@ function getDefaultValidatorInitData(module: Module): Hex {
   })
 }
 
+// Whether the deploy bootstrap will initialize the default validator — i.e. the
+// account is configured with an Ownable/ECDSA owner set. Mirrors the
+// `defaultValidatorInitData` computation in `getDeployArgs`, so a counterfactual
+// (not-yet-deployed) account whose deployment initializes the default validator
+// is treated as already-initialized rather than emitting a second `onInstall`.
+function isDefaultValidatorConfigured(
+  config: RhinestoneAccountConfig,
+): boolean {
+  if (config.initData) {
+    return false
+  }
+  const moduleSetup = getModuleSetup(config)
+  const defaultValidator = moduleSetup.validators.find(
+    (v) => v.address === NEXUS_DEFAULT_VALIDATOR_ADDRESS,
+  )
+  return defaultValidator ? size(defaultValidator.initData) > 0 : false
+}
+
 function getDefaultValidatorAddress(
   version:
     | '1.0.2'
@@ -614,6 +632,7 @@ export {
   getEip712Domain,
   getInstallData,
   getDefaultValidatorInitData,
+  isDefaultValidatorConfigured,
   getAddress,
   getDefaultValidatorAddress,
   packSignature,

@@ -81,6 +81,7 @@ import {
   getGuardianSmartAccount as getNexusGuardianSmartAccount,
   getInstallData as getNexusInstallData,
   getSmartAccount as getNexusSmartAccount,
+  isDefaultValidatorConfigured as isNexusDefaultValidatorConfigured,
   packSignature as packNexusSignature,
   signEip7702InitData as signNexusEip7702InitData,
 } from './nexus'
@@ -339,12 +340,18 @@ async function getValidatorInstallationCalls(
     if (
       module.address.toLowerCase() === defaultValidatorAddress.toLowerCase()
     ) {
-      const initialized = await isValidatorInitialized(
-        getAddress(config),
-        chain,
-        defaultValidatorAddress,
-        config.provider,
-      )
+      // Treat the validator as initialized if the account's deployment will
+      // initialize it (config check, covers not-yet-deployed accounts) or if
+      // it is already initialized on-chain (covers accounts where ECDSA was
+      // enabled separately after deployment).
+      const initialized =
+        isNexusDefaultValidatorConfigured(config) ||
+        (await isValidatorInitialized(
+          getAddress(config),
+          chain,
+          defaultValidatorAddress,
+          config.provider,
+        ))
       if (initialized) {
         throw new DefaultValidatorAlreadyInitializedError()
       }
