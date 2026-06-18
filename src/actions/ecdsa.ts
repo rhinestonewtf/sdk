@@ -1,7 +1,7 @@
 import { type Address, encodeFunctionData } from 'viem'
 import {
-  getModuleInstallationCalls,
   getModuleUninstallationCalls,
+  getValidatorInstallationCalls,
 } from '../accounts'
 import {
   getOwnableValidator,
@@ -18,8 +18,8 @@ import type { CalldataInput, LazyCallInput } from '../types'
 function enable(owners: Address[], threshold = 1): LazyCallInput {
   const module = getOwnableValidator(threshold, owners)
   return {
-    async resolve({ config }) {
-      return getModuleInstallationCalls(config, module)
+    async resolve({ chain, config }) {
+      return getValidatorInstallationCalls(config, chain, module)
     },
   }
 }
