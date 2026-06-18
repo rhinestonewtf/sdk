@@ -19,6 +19,7 @@
     "drop-preconfirmations",
     "drop-send-transaction",
     "dummy-preclaim-fallback-target",
+    "ecdsa-enable-default-validator",
     "export-origin-signature",
     "expose-quote-type",
     "expose-sign-intent",
