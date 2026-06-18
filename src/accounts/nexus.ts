@@ -256,6 +256,44 @@ function getInstallData(module: Module) {
   })
 }
 
+// On Nexus the OwnableValidator is the hardwired default validator. It cannot
+// be added via `installModule` (reverts `DefaultValidatorAlreadyInstalled`), so
+// it is initialized out-of-band by calling its `onInstall` directly with the
+// same init data `installModule` would have passed (`abi.encode(threshold, owners)`).
+function getDefaultValidatorInitData(module: Module): Hex {
+  return encodeFunctionData({
+    abi: [
+      {
+        type: 'function',
+        name: 'onInstall',
+        inputs: [{ type: 'bytes', name: 'data' }],
+        outputs: [],
+        stateMutability: 'nonpayable',
+      },
+    ],
+    functionName: 'onInstall',
+    args: [module.initData],
+  })
+}
+
+// Whether the deploy bootstrap will initialize the default validator — i.e. the
+// account is configured with an Ownable/ECDSA owner set. Mirrors the
+// `defaultValidatorInitData` computation in `getDeployArgs`, so a counterfactual
+// (not-yet-deployed) account whose deployment initializes the default validator
+// is treated as already-initialized rather than emitting a second `onInstall`.
+function isDefaultValidatorConfigured(
+  config: RhinestoneAccountConfig,
+): boolean {
+  if (config.initData) {
+    return false
+  }
+  const moduleSetup = getModuleSetup(config)
+  const defaultValidator = moduleSetup.validators.find(
+    (v) => v.address === NEXUS_DEFAULT_VALIDATOR_ADDRESS,
+  )
+  return defaultValidator ? size(defaultValidator.initData) > 0 : false
+}
+
 function getDefaultValidatorAddress(
   version:
     | '1.0.2'
@@ -593,6 +631,8 @@ function isAbiDecodingError(error: unknown): boolean {
 export {
   getEip712Domain,
   getInstallData,
+  getDefaultValidatorInitData,
+  isDefaultValidatorConfigured,
   getAddress,
   getDefaultValidatorAddress,
   packSignature,
