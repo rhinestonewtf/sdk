@@ -206,26 +206,25 @@ async function isValidatorInitialized(
     chain,
     transport: createTransport(chain, provider),
   })
-  try {
-    return await publicClient.readContract({
-      abi: [
-        {
-          name: 'isInitialized',
-          type: 'function',
-          stateMutability: 'view',
-          inputs: [{ name: 'smartAccount', type: 'address' }],
-          outputs: [{ name: '', type: 'bool' }],
-        },
-      ],
-      functionName: 'isInitialized',
-      address: validatorAddress,
-      args: [account],
-    })
-  } catch {
-    // Treat read failures (e.g. undeployed account) as not-initialized so the
-    // common first-time enable path still produces an `onInstall` call.
-    return false
-  }
+  // `isInitialized` is a plain storage read on the validator singleton and
+  // returns `false` for an uninitialized (or undeployed) account without
+  // reverting. We deliberately let real read failures (provider/ABI errors)
+  // propagate rather than coercing them to `false`, which could otherwise
+  // produce an `onInstall` call for an already-initialized account.
+  return publicClient.readContract({
+    abi: [
+      {
+        name: 'isInitialized',
+        type: 'function',
+        stateMutability: 'view',
+        inputs: [{ name: 'smartAccount', type: 'address' }],
+        outputs: [{ name: '', type: 'bool' }],
+      },
+    ],
+    functionName: 'isInitialized',
+    address: validatorAddress,
+    args: [account],
+  })
 }
 
 export { getValidators, getExecutors, getOwners, isValidatorInitialized }
