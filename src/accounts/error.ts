@@ -101,6 +101,20 @@ class SmartSessionsNotEnabledError extends AccountError {
   }
 }
 
+class DefaultValidatorAlreadyInitializedError extends AccountError {
+  constructor(params?: {
+    context?: any
+    errorType?: string
+    traceId?: string
+  }) {
+    super({
+      message:
+        'ECDSA is already enabled on this account. Use `addOwner` / `removeOwner` / `changeThreshold` to manage owners instead of `enable`.',
+      ...params,
+    })
+  }
+}
+
 class SigningNotSupportedForAccountError extends AccountError {
   constructor(params?: {
     context?: any
@@ -246,6 +260,7 @@ export {
   EoaAccountMustHaveAccountError,
   FactoryArgsNotAvailableError,
   SmartSessionsNotEnabledError,
+  DefaultValidatorAlreadyInitializedError,
   SigningNotSupportedForAccountError,
   Eip7702NotSupportedForAccountError,
   AccountConfigurationNotSupportedError,

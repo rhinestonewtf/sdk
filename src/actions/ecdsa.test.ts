@@ -1,6 +1,6 @@
-import { encodeAbiParameters, encodeFunctionData } from 'viem'
+import { type Address, encodeAbiParameters, encodeFunctionData } from 'viem'
 import { base } from 'viem/chains'
-import { describe, expect, test, vi } from 'vitest'
+import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { accountA } from '../../test/consts'
 import { RhinestoneSDK } from '..'
 import { resolveCallInputs } from '../execution/utils'
@@ -13,9 +13,10 @@ import {
 } from './ecdsa'
 
 // `getModuleUninstallationCalls` reads the on-chain validator list to compute
-// the SentinelList `prev` pointer for the uninstall. The test account isn't
-// deployed, so stub the read with a known single-validator list. The address
-// is inlined because `vi.mock` is hoisted above any module-scope `const`.
+// the SentinelList `prev` pointer for the uninstall. `enable` reads whether the
+// Nexus default validator is already initialized. The test account isn't
+// deployed, so stub both reads. The address is inlined because `vi.mock` is
+// hoisted above any module-scope `const`.
 vi.mock('../modules/read', async (importActual) => {
   const actual = await importActual<typeof import('../modules/read')>()
   return {
@@ -23,6 +24,7 @@ vi.mock('../modules/read', async (importActual) => {
     getValidators: vi
       .fn()
       .mockResolvedValue(['0x000000000013fdb5234e4e3162a810f54d9f7e98']),
+    isValidatorInitialized: vi.fn().mockResolvedValue(false),
   }
 })
 
@@ -64,14 +66,44 @@ const MOCK_OWNER_B = '0xeddfcb50d18f6d3d51c4f7cbca5ed6bdebc59817'
 const MOCK_OWNER_C = '0xb31e76f19defe76edc4b7eceeb4b0a2d6ddaca39'
 const accountAddress = '0x36C03e7D593F7B2C6b06fC18B5f4E9a4A29C99b0'
 
+// On Nexus the OwnableValidator is the default validator: `enable` initializes
+// it via `onInstall(abi.encode(threshold, owners))` instead of `installModule`.
+function expectedOnInstallCalldata(threshold: number, owners: Address[]) {
+  const initData = encodeAbiParameters(
+    [{ type: 'uint256' }, { type: 'address[]' }],
+    [
+      BigInt(threshold),
+      owners.map((owner) => owner.toLowerCase() as Address).sort(),
+    ],
+  )
+  return encodeFunctionData({
+    abi: [
+      {
+        type: 'function',
+        name: 'onInstall',
+        inputs: [{ type: 'bytes', name: 'data' }],
+        outputs: [],
+        stateMutability: 'nonpayable',
+      },
+    ],
+    functionName: 'onInstall',
+    args: [initData],
+  })
+}
+
 describe('ECDSA Actions', () => {
   describe('Install Ownable Validator', async () => {
+    const read = await import('../modules/read')
     const rhinestone = new RhinestoneSDK({ apiKey: 'test' })
     const rhinestoneAccount = await rhinestone.createAccount({
       owners: {
         type: 'ecdsa',
         accounts: [accountA],
       },
+    })
+
+    beforeEach(() => {
+      vi.mocked(read.isValidatorInitialized).mockResolvedValue(false)
     })
 
     test('1/1 Owners', async () => {
@@ -83,9 +115,9 @@ describe('ECDSA Actions', () => {
       )
       expect(calls).toEqual([
         {
-          to: accountAddress,
+          to: OWNABLE_VALIDATOR_ADDRESS,
           value: 0n,
-          data: '0x9517e29f0000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000013fdb5234e4e3162a810f54d9f7e9800000000000000000000000000000000000000000000000000000000000000600000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000001000000000000000000000000d1aefebdceefc094f1805b241fa5e6db63a9181a',
+          data: expectedOnInstallCalldata(1, [MOCK_OWNER_A]),
         },
       ])
     })
@@ -99,9 +131,9 @@ describe('ECDSA Actions', () => {
       )
       expect(calls).toEqual([
         {
-          to: accountAddress,
+          to: OWNABLE_VALIDATOR_ADDRESS,
           value: 0n,
-          data: '0x9517e29f0000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000013fdb5234e4e3162a810f54d9f7e98000000000000000000000000000000000000000000000000000000000000006000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000002000000000000000000000000d1aefebdceefc094f1805b241fa5e6db63a9181a000000000000000000000000eddfcb50d18f6d3d51c4f7cbca5ed6bdebc59817',
+          data: expectedOnInstallCalldata(1, [MOCK_OWNER_A, MOCK_OWNER_B]),
         },
       ])
     })
@@ -115,11 +147,27 @@ describe('ECDSA Actions', () => {
       )
       expect(calls).toEqual([
         {
-          to: accountAddress,
+          to: OWNABLE_VALIDATOR_ADDRESS,
           value: 0n,
-          data: '0x9517e29f0000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000013fdb5234e4e3162a810f54d9f7e98000000000000000000000000000000000000000000000000000000000000006000000000000000000000000000000000000000000000000000000000000000c0000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000003000000000000000000000000b31e76f19defe76edc4b7eceeb4b0a2d6ddaca39000000000000000000000000d1aefebdceefc094f1805b241fa5e6db63a9181a000000000000000000000000eddfcb50d18f6d3d51c4f7cbca5ed6bdebc59817',
+          data: expectedOnInstallCalldata(2, [
+            MOCK_OWNER_A,
+            MOCK_OWNER_B,
+            MOCK_OWNER_C,
+          ]),
         },
       ])
+    })
+
+    test('throws when the default validator is already initialized', async () => {
+      vi.mocked(read.isValidatorInitialized).mockResolvedValue(true)
+      await expect(
+        resolveCallInputs(
+          [enableEcdsa([MOCK_OWNER_A])],
+          rhinestoneAccount.config,
+          base,
+          accountAddress,
+        ),
+      ).rejects.toThrow(/ECDSA is already enabled/)
     })
   })
 
