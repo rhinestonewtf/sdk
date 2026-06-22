@@ -105,6 +105,10 @@ describe('jcsCanonicalise', () => {
     expect(jcsCanonicalise({ z: 1, a: 2, m: 3 })).toBe('{"a":2,"m":3,"z":1}')
   })
 
+  it('sorts keys by Unicode code point order', () => {
+    expect(jcsCanonicalise({ '\uE000': 1, '😀': 2 })).toBe('{"":1,"😀":2}')
+  })
+
   it('sorts nested object keys', () => {
     expect(jcsCanonicalise({ b: { d: 1, c: 2 }, a: 3 })).toBe(
       '{"a":3,"b":{"c":2,"d":1}}',

@@ -58,7 +58,7 @@ function serialize(value: unknown): string {
 
   // Object — sort keys by Unicode code-point order
   const obj = value as Record<string, unknown>
-  const keys = Object.keys(obj).sort()
+  const keys = Object.keys(obj).sort(compareUnicodeCodePoints)
   const members: string[] = []
   for (const key of keys) {
     const v = obj[key]
@@ -66,4 +66,18 @@ function serialize(value: unknown): string {
     members.push(`${JSON.stringify(key)}:${serialize(v)}`)
   }
   return `{${members.join(',')}}`
+}
+
+function compareUnicodeCodePoints(a: string, b: string): number {
+  const aPoints = Array.from(a)
+  const bPoints = Array.from(b)
+  const len = Math.min(aPoints.length, bPoints.length)
+
+  for (let i = 0; i < len; i++) {
+    const aPoint = aPoints[i].codePointAt(0)!
+    const bPoint = bPoints[i].codePointAt(0)!
+    if (aPoint !== bPoint) return aPoint - bPoint
+  }
+
+  return aPoints.length - bPoints.length
 }
