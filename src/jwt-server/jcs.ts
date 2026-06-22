@@ -2,7 +2,7 @@
  * RFC 8785 JSON Canonicalization Scheme (JCS).
  *
  * Produces a deterministic JSON serialization by:
- * 1. Sorting object keys lexicographically (Unicode code-point order)
+ * 1. Sorting object keys lexicographically (UTF-16 code-unit order, per RFC 8785 §3.2.3)
  * 2. Using ES2015+ `JSON.stringify` number serialization (IEEE 754 → shortest round-trip)
  * 3. No whitespace
  *
@@ -56,7 +56,9 @@ function serialize(value: unknown): string {
     return `[${items.join(',')}]`
   }
 
-  // Object — sort keys by Unicode code-point order
+  // Object — sort keys by UTF-16 code-unit order (RFC 8785 §3.2.3).
+  // Native String comparison already orders by UTF-16 code unit, which is
+  // exactly what JCS mandates — do not replace with a code-point comparator.
   const obj = value as Record<string, unknown>
   const keys = Object.keys(obj).sort()
   const members: string[] = []
