@@ -7,6 +7,7 @@ import {
   type HashTypedDataParameters,
   type Hex,
   hashTypedData,
+  isAddressEqual,
   type PublicClient,
   size,
   type TypedData,
@@ -111,6 +112,7 @@ import {
   getInstallData as getStartaleInstallData,
   getSmartAccount as getStartaleSmartAccount,
   packSignature as packStartaleSignature,
+  K1_DEFAULT_VALIDATOR_ADDRESS as STARTALE_K1_VALIDATOR_ADDRESS,
 } from './startale'
 import {
   createTransport,
@@ -680,7 +682,16 @@ async function setup(config: RhinestoneConfig, chain: Chain): Promise<boolean> {
     ...modules.executors,
     ...modules.fallbacks,
     ...modules.hooks,
-  ]
+  ].filter(
+    // Startale's K1 validator is the account's built-in default validator, set
+    // at deployment — it is never a regular 7579 module, so isModuleInstalled
+    // reports false and trying to install it reverts. Skip it.
+    (module) =>
+      !(
+        account.type === 'startale' &&
+        isAddressEqual(module.address, STARTALE_K1_VALIDATOR_ADDRESS)
+      ),
+  )
   // Check if the modules are already installed
   const installedResults = await publicClient.multicall({
     contracts: allModules.map((module) => ({
