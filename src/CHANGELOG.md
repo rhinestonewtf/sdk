@@ -1,5 +1,12 @@
 # @rhinestone/sdk
 
+## 1.9.2
+
+### Patch Changes
+
+- 0b80cb1: Allow Startale accounts adopted via `initData` to sign intents: `getEip712Domain` no longer throws for existing accounts and derives the domain from `getAddress(config)`.
+- bd967d5: Fix `setup()` reverting on Startale K1 accounts: skip the built-in K1 default validator so only genuinely missing modules (e.g. the intent executor) are installed.
+
 ## 1.9.1
 
 ### Patch Changes
