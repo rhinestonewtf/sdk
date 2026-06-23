@@ -346,15 +346,22 @@ function usageSnippet(entry: SymbolEntry, sig: TDNode | undefined): string {
       return `${assign}${awaitKw}sdk.${entry.symbol}(${params})`
     case 'constructor':
       return `const sdk = new ${entry.symbol}({\n  // ...config\n})`
-    case 'action':
-      // Actions return calls; the realistic usage is passing them to
-      // prepareTransaction (or sendUserOperation) on an account instance.
+    case 'action': {
+      // Actions produce calls passed to prepareTransaction on an account.
+      // Some return a single call, others a Promise of a calls array — shape
+      // the snippet accordingly so it stays valid.
+      const retT = sig?.type
+      const isProm = retT?.type === 'reference' && retT.name === 'Promise'
+      const inner = isProm ? retT.typeArguments?.[0] : retT
+      const call = `${isProm ? 'await ' : ''}${entry.symbol}(${params})`
+      const calls = inner?.type === 'array' ? call : `[${call}]`
       return [
         `const transaction = await account.prepareTransaction({`,
         `  chain,`,
-        `  calls: [${entry.symbol}(${params})],`,
+        `  calls: ${calls},`,
         `})`,
       ].join('\n')
+    }
     default:
       return `${assign}${awaitKw}${entry.symbol}(${params})`
   }
