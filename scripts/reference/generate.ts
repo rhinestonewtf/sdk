@@ -71,16 +71,42 @@ function resolveNode(entry: SymbolEntry): TDNode | undefined {
   return (mod.children ?? []).find((c: TDNode) => c.name === entry.symbol)
 }
 
-function signatureOf(node: TDNode, entry: SymbolEntry): TDNode | undefined {
-  if (!node) return undefined
+// All call signatures for a symbol (an overloaded method has more than one).
+function signaturesOf(node: TDNode, entry: SymbolEntry): TDNode[] {
+  if (!node) return []
   if (entry.callStyle === 'constructor') {
     const ctor =
       node.kind === 512
         ? node
         : (node.children ?? []).find((c: TDNode) => c.kind === 512)
-    return ctor?.signatures?.[0]
+    return ctor?.signatures ?? []
   }
-  return node.signatures?.[0]
+  return node.signatures ?? []
+}
+
+// Merge parameters across overloads: union the types per parameter name, keep
+// the first description, and treat a param as required unless optional everywhere.
+function mergeParameters(sigs: TDNode[]): TDNode[] {
+  const byName = new Map<string, TDNode>()
+  for (const sig of sigs) {
+    for (const p of sig.parameters ?? []) {
+      const existing = byName.get(p.name)
+      if (!existing) {
+        byName.set(p.name, {
+          name: p.name,
+          types: [typeToString(p.type)],
+          optional: !!p.flags?.isOptional,
+          comment: p.comment,
+        })
+      } else {
+        const t = typeToString(p.type)
+        if (!existing.types.includes(t)) existing.types.push(t)
+        existing.optional = existing.optional && !!p.flags?.isOptional
+        existing.comment = existing.comment ?? p.comment
+      }
+    }
+  }
+  return [...byName.values()]
 }
 
 // The class-level comment lives on the class node, not its constructor.
@@ -293,17 +319,20 @@ function importLine(entry: SymbolEntry): string {
 }
 
 function usageSnippet(entry: SymbolEntry, sig: TDNode | undefined): string {
-  const params = (sig?.parameters ?? [])
+  const paramNames = (sig?.parameters ?? [])
     .filter((p: TDNode) => !p.flags?.isOptional)
     .map((p: TDNode) => p.name)
-    .join(', ')
+  const params = paramNames.join(', ')
   const isPromise =
     sig?.type?.type === 'reference' && sig.type.name === 'Promise'
   const awaitKw = isPromise ? 'await ' : ''
   const ret = isPromise ? sig.type.typeArguments?.[0] : sig?.type
+  // Avoid shadowing a parameter with the return variable (TDZ / invalid example).
+  let varName = returnFieldName(entry)
+  if (paramNames.includes(varName)) varName = 'result'
   const assign =
     ret && !(ret.type === 'intrinsic' && ret.name === 'void')
-      ? `const ${returnFieldName(entry)} = `
+      ? `const ${varName} = `
       : ''
   switch (entry.callStyle) {
     case 'accountMethod':
@@ -342,11 +371,13 @@ function instanceNote(entry: SymbolEntry): string | undefined {
 
 function renderPage(entry: SymbolEntry): string | null {
   const node = resolveNode(entry)
-  const sig = signatureOf(node, entry)
   if (!node) {
     console.error(`! could not resolve ${entry.source}#${entry.symbol}`)
     return null
   }
+  const sigs = signaturesOf(node, entry)
+  // Prefer the signature carrying the JSDoc for prose/usage; overloads merge below.
+  const sig = sigs.find((s: TDNode) => s.comment) ?? sigs[0]
   const isCtor = entry.callStyle === 'constructor'
   const sigComment = sig?.comment
   // For a constructor page, the page-level prose lives on the class comment;
@@ -425,16 +456,16 @@ function renderPage(entry: SymbolEntry): string | null {
     out.push('')
   }
 
-  // Parameters.
-  const params = sig?.parameters ?? []
+  // Parameters (merged across overloads).
+  const params = mergeParameters(sigs)
   if (params.length) {
     out.push('## Parameters')
     out.push('')
     for (const p of params) {
-      const required = p.flags?.isOptional ? '' : ' required'
+      const required = p.optional ? '' : ' required'
       const desc = renderParts(p.comment?.summary)
       out.push(
-        `<ParamField path="${p.name}" type="${escapeAttr(typeToString(p.type))}"${required}>`,
+        `<ParamField path="${p.name}" type="${escapeAttr(p.types.join(' | '))}"${required}>`,
       )
       if (desc) out.push(`  ${desc}`)
       out.push('</ParamField>')
@@ -442,8 +473,9 @@ function renderPage(entry: SymbolEntry): string | null {
     }
   }
 
-  // Returns (omitted for constructors).
-  const retType = sig?.type
+  // Returns (omitted for constructors). Union return types across overloads.
+  const retTypes = sigs.map((s: TDNode) => s.type).filter(Boolean)
+  const retType = retTypes[0]
   const isVoid = retType?.type === 'intrinsic' && retType.name === 'void'
   if (retType && !isVoid && !isCtor) {
     out.push('## Returns')
@@ -451,7 +483,10 @@ function renderPage(entry: SymbolEntry): string | null {
     const retDesc = renderParts(blockTag(sigComment, '@returns')[0]?.content)
     // Unwrap Promise<T> so an object-literal return expands into per-field rows.
     const unwrapped = unwrapPromise(retType)
-    const fields = objectFields(unwrapped)
+    const unionType = [
+      ...new Set(retTypes.map((t: TDNode) => typeToString(unwrapPromise(t)))),
+    ].join(' | ')
+    const fields = retTypes.length === 1 ? objectFields(unwrapped) : undefined
     if (fields) {
       if (retDesc) {
         out.push(retDesc)
@@ -467,7 +502,7 @@ function renderPage(entry: SymbolEntry): string | null {
       }
     } else {
       out.push(
-        `<ResponseField name="${returnFieldName(entry)}" type="${escapeAttr(typeToString(unwrapped))}">`,
+        `<ResponseField name="${returnFieldName(entry)}" type="${escapeAttr(unionType)}">`,
       )
       if (retDesc) out.push(`  ${retDesc}`)
       out.push('</ResponseField>')
