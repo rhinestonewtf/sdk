@@ -535,7 +535,12 @@ function build(nodes: Node[], trail: string[]): (string | NavGroup)[] {
       const page = pagePath(node, trail)
       const mdx = renderPage(node)
       if (!mdx) continue
-      const file = join(OUT_DIR, '..', `${page}.mdx`)
+      // `page` is doc-root-relative (starts with NAV_BASE); strip that prefix so
+      // files land inside OUT_DIR — the same dir cleanGenerated wipes.
+      const rel = page.startsWith(`${NAV_BASE}/`)
+        ? page.slice(NAV_BASE.length + 1)
+        : page
+      const file = join(OUT_DIR, `${rel}.mdx`)
       mkdirSync(dirname(file), { recursive: true })
       writeFileSync(file, mdx)
       pages.push(page)

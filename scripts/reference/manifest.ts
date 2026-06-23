@@ -239,11 +239,15 @@ export const manifest: Group[] = [
             './actions/smart-sessions',
             true,
           ),
-          action(
-            'createCrossChainPermission',
-            './actions/smart-sessions',
-            true,
-          ),
+          // Returns a CrossChainPermit (not a call), so it is a plain function,
+          // not an `action` wrapped in prepareTransaction `calls`.
+          {
+            kind: 'symbol',
+            symbol: 'createCrossChainPermission',
+            source: './actions/smart-sessions',
+            callStyle: 'function',
+            experimental: true,
+          },
         ],
       },
     ],
