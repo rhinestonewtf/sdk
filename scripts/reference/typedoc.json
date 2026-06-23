@@ -1,0 +1,22 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": [
+    "../../src/index.ts",
+    "../../src/actions/index.ts",
+    "../../src/actions/ecdsa.ts",
+    "../../src/actions/mfa.ts",
+    "../../src/actions/passkeys.ts",
+    "../../src/actions/smart-sessions.ts",
+    "../../src/actions/recovery.ts",
+    "../../src/utils/index.ts",
+    "../../src/modules/validators/smart-sessions.ts"
+  ],
+  "entryPointStrategy": "resolve",
+  "tsconfig": "../../tsconfig.json",
+  "json": "./typedoc.json.out",
+  "pretty": true,
+  "excludeExternals": true,
+  "excludePrivate": true,
+  "excludeInternal": true,
+  "skipErrorChecking": true
+}

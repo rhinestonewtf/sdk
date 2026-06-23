@@ -141,85 +141,244 @@ interface SubmitTransactionOptions {
 }
 
 interface RhinestoneAccount {
+  /** The resolved account configuration. */
   config: RhinestoneAccountConfig
-  deploy: (
+  /**
+   * Deploy the account on a given chain.
+   * @param chain Chain to deploy the account on
+   * @param params Optional deployment parameters (session, sponsorship)
+   * @returns `true` once the deployment is submitted
+   */
+  deploy(
     chain: Chain,
     params?: { session?: Session; sponsored?: boolean },
-  ) => Promise<boolean>
-  isDeployed: (chain: Chain) => Promise<boolean>
-  setup: (chain: Chain) => Promise<boolean>
+  ): Promise<boolean>
+  /**
+   * Check whether the account is deployed on a given chain.
+   * @param chain Chain to check
+   * @returns `true` if the account is deployed, `false` otherwise
+   */
+  isDeployed(chain: Chain): Promise<boolean>
+  /**
+   * Set up an existing account on a given chain by installing any missing modules.
+   * @param chain Chain to set the account up on
+   * @returns `true` once setup is submitted
+   */
+  setup(chain: Chain): Promise<boolean>
+  /**
+   * Get the account initialization data, used to deploy the account onchain.
+   * @returns The factory address and factory data
+   */
   getInitData(): {
     factory: Address
     factoryData: Hex
   }
-  signEip7702InitData: () => Promise<Hex>
-  prepareTransaction: (
-    transaction: Transaction,
-  ) => Promise<PreparedTransactionData>
-  getTransactionMessages: (
+  /**
+   * Prepare and sign the EIP-7702 account initialization data.
+   * @returns The init data signature
+   */
+  signEip7702InitData(): Promise<Hex>
+  /**
+   * Prepare a transaction for signing.
+   * @param transaction Transaction to prepare
+   * @returns The prepared transaction data
+   * @see {@link signTransaction} to sign the prepared transaction
+   * @see {@link submitTransaction} to submit the signed transaction
+   */
+  prepareTransaction(transaction: Transaction): Promise<PreparedTransactionData>
+  /**
+   * Get the typed-data messages to sign for a prepared transaction.
+   * @param preparedTransaction Prepared transaction data
+   * @param options Optional override; pass `{ intentId }` to inspect a specific quote from `preparedTransaction.quotes.all`
+   * @returns The origin, destination, and (when required) target-execution typed-data messages
+   * @see {@link prepareTransaction} to prepare the transaction data for signing
+   */
+  getTransactionMessages(
     preparedTransaction: PreparedTransactionData,
     options?: QuoteSelection,
-  ) => {
+  ): {
     origin: TypedDataDefinition[]
     destination: TypedDataDefinition
     targetExecution?: TypedDataDefinition
   }
-  signTransaction: (
+  /**
+   * Sign a prepared transaction.
+   * @param preparedTransaction Prepared transaction data
+   * @param options Optional override; pass `{ intentId }` to sign a specific quote from `preparedTransaction.quotes.all`
+   * @returns The signed transaction data
+   * @see {@link prepareTransaction} to prepare the transaction data for signing
+   * @see {@link submitTransaction} to submit the signed transaction
+   */
+  signTransaction(
     preparedTransaction: PreparedTransactionData,
     options?: QuoteSelection,
-  ) => Promise<SignedTransactionData>
-  signAuthorizations: (
+  ): Promise<SignedTransactionData>
+  /**
+   * Sign the EIP-7702 authorizations required for a transaction.
+   * @param preparedTransaction Prepared transaction data
+   * @returns The signed authorization list
+   * @see {@link prepareTransaction} to prepare the transaction data for signing
+   */
+  signAuthorizations(
     preparedTransaction: PreparedTransactionData,
-  ) => Promise<SignedAuthorizationList>
-  signMessage: (
+  ): Promise<SignedAuthorizationList>
+  /**
+   * Sign a message (EIP-191).
+   * @param message Message to sign
+   * @param chain Chain to sign the message for
+   * @param signers Signers to use, or `undefined` for the account default
+   * @returns The signature
+   * @see {@link signTypedData} to sign EIP-712 typed data
+   */
+  signMessage(
     message: SignableMessage,
     chain: Chain,
     signers: SignerSet | undefined,
-  ) => Promise<Hex>
-  signTypedData: <
+  ): Promise<Hex>
+  /**
+   * Sign typed data (EIP-712).
+   * @param parameters Typed-data parameters
+   * @param chain Chain to sign the typed data for
+   * @param signers Signers to use, or `undefined` for the account default
+   * @returns The signature
+   * @see {@link signMessage} to sign an EIP-191 message
+   */
+  signTypedData<
     typedData extends TypedData | Record<string, unknown> = TypedData,
     primaryType extends keyof typedData | 'EIP712Domain' = keyof typedData,
   >(
     parameters: HashTypedDataParameters<typedData, primaryType>,
     chain: Chain,
     signers: SignerSet | undefined,
-  ) => Promise<Hex>
-  signIntent: (
+  ): Promise<Hex>
+  /**
+   * Sign an orchestrator intent operation. Used by headless flows that prepare
+   * the intent outside the SDK but still need the SDK-owned smart-session
+   * signature packing and target-execution signature routing.
+   * @param signData Sign data returned by the orchestrator (origin/destination/targetExecution typed data)
+   * @param targetChain Chain where the destination execution runs
+   * @param signers Signers to use, or `undefined` for the account default
+   * @returns The intent signatures, ready for submission
+   * @see {@link signTransaction} for the canonical signing path
+   */
+  signIntent(
     signData: SignData,
     targetChain: DestinationChain,
     signers?: SignerSet,
-  ) => Promise<SignedIntentData>
-  submitTransaction: (
+  ): Promise<SignedIntentData>
+  /**
+   * Submit a signed transaction.
+   * @param signedTransaction Signed transaction data
+   * @param options Optional submission options (e.g. EIP-7702 `authorizations`)
+   * @returns The transaction result (an intent ID)
+   * @see {@link signTransaction} to sign the transaction data
+   * @see {@link signAuthorizations} to sign the required EIP-7702 authorizations
+   * @see {@link waitForExecution} to wait for the transaction to execute onchain
+   */
+  submitTransaction(
     signedTransaction: SignedTransactionData,
     options?: SubmitTransactionOptions,
-  ) => Promise<TransactionResult>
-  prepareUserOperation: (
+  ): Promise<TransactionResult>
+  /**
+   * Prepare a user operation for signing.
+   * @param transaction User operation to prepare
+   * @returns The prepared user operation data
+   * @see {@link signUserOperation} to sign the prepared user operation
+   * @see {@link submitUserOperation} to submit the signed user operation
+   * @see {@link sendUserOperation} to prepare, sign, and submit in one call
+   */
+  prepareUserOperation(
     transaction: UserOperationTransaction,
-  ) => Promise<PreparedUserOperationData>
-  signUserOperation: (
+  ): Promise<PreparedUserOperationData>
+  /**
+   * Sign a prepared user operation.
+   * @param preparedUserOperation Prepared user operation data
+   * @returns The signed user operation data
+   * @see {@link prepareUserOperation} to prepare the user operation data for signing
+   * @see {@link submitUserOperation} to submit the signed user operation
+   */
+  signUserOperation(
     preparedUserOperation: PreparedUserOperationData,
-  ) => Promise<SignedUserOperationData>
-  submitUserOperation: (
+  ): Promise<SignedUserOperationData>
+  /**
+   * Submit a signed user operation.
+   * @param signedUserOperation Signed user operation data
+   * @returns The user operation result (a UserOp hash)
+   * @see {@link signUserOperation} to sign the user operation data
+   * @see {@link waitForExecution} to wait for the user operation to execute onchain
+   */
+  submitUserOperation(
     signedUserOperation: SignedUserOperationData,
-  ) => Promise<UserOperationResult>
-  sendUserOperation: (
+  ): Promise<UserOperationResult>
+  /**
+   * Prepare, sign, and submit a user operation in a single call.
+   * @param transaction User operation to send
+   * @returns The user operation result (a UserOp hash)
+   * @see {@link waitForExecution} to wait for the user operation to execute onchain
+   */
+  sendUserOperation(
     transaction: UserOperationTransaction,
-  ) => Promise<UserOperationResult>
+  ): Promise<UserOperationResult>
+  /**
+   * Wait for a submitted transaction or user operation to execute onchain.
+   * Polls the orchestrator until the intent reaches a terminal state; on failure
+   * an `IntentFailedError` is thrown.
+   * @param result The result returned by a submit/send call
+   * @returns The per-chain operation status (for intents) or a UserOp receipt
+   */
   waitForExecution(result: TransactionResult): Promise<TransactionStatus>
   waitForExecution(result: UserOperationResult): Promise<UserOperationReceipt>
-  getAddress: () => Address
-  getPortfolio: (onTestnets?: boolean) => Promise<Portfolio>
-  experimental_getSessionDetails: (
-    sessions: Session[],
-  ) => Promise<SessionDetails>
-  experimental_isSessionEnabled: (session: Session) => Promise<boolean>
-  experimental_signEnableSession: (details: SessionDetails) => Promise<Hex>
-  getOwners: (chain: Chain) => Promise<{
+  /**
+   * Get the account address.
+   * @returns The smart account address
+   */
+  getAddress(): Address
+  /**
+   * Get the account portfolio (token balances across chains).
+   * @param onTestnets Whether to query testnet balances (default is `false`)
+   * @returns The account balances
+   */
+  getPortfolio(onTestnets?: boolean): Promise<Portfolio>
+  /**
+   * Resolve the smart-session details for a set of sessions.
+   * @param sessions Sessions to resolve
+   * @returns The resolved session details
+   */
+  experimental_getSessionDetails(sessions: Session[]): Promise<SessionDetails>
+  /**
+   * Check whether a smart session is enabled on the account.
+   * @param session Session to check
+   * @returns `true` if the session is enabled
+   */
+  experimental_isSessionEnabled(session: Session): Promise<boolean>
+  /**
+   * Sign the data required to enable a smart session.
+   * @param details Session details to enable
+   * @returns The enable-session signature
+   */
+  experimental_signEnableSession(details: SessionDetails): Promise<Hex>
+  /**
+   * Get the account owners.
+   * @remarks Only returns ECDSA owners; owners managed by other validator types are not included.
+   * @param chain Chain to read the owners from
+   * @returns The owner addresses and threshold, or `null` if unavailable
+   */
+  getOwners(chain: Chain): Promise<{
     accounts: Address[]
     threshold: number
   } | null>
-  getValidators: (chain: Chain) => Promise<Address[]>
-  getExecutors: (chain: Chain) => Promise<Address[]>
+  /**
+   * Get the account validator modules.
+   * @param chain Chain to read the validators from
+   * @returns The validator module addresses
+   */
+  getValidators(chain: Chain): Promise<Address[]>
+  /**
+   * Get the account executor modules.
+   * @param chain Chain to read the executors from
+   * @returns The executor module addresses
+   */
+  getExecutors(chain: Chain): Promise<Address[]>
 }
 
 interface SignedIntentData {
@@ -246,11 +405,6 @@ async function createRhinestoneAccount(
     throw new OwnersFieldRequiredError()
   }
 
-  /**
-   * Deploys the account on a given chain
-   * @param chain Chain to deploy the account on
-   * @param session Session to deploy the account on (optional)
-   */
   function deploy(
     chain: Chain,
     params?: { session?: Session; sponsored?: boolean },
@@ -258,28 +412,14 @@ async function createRhinestoneAccount(
     return deployInternal(config, chain, params)
   }
 
-  /**
-   * Checks if the account is deployed on a given chain
-   * @param chain Chain to check if the account is deployed on
-   * @returns true if the account is deployed, false otherwise
-   */
   function isDeployed(chain: Chain) {
     return isDeployedInternal(config, chain)
   }
 
-  /**
-   * Sets up the existing account on a given chain
-   * by installing the missing modules (if any).
-   * @param chain Chain to set up the account on
-   */
   function setup(chain: Chain) {
     return setupInternal(config, chain)
   }
 
-  /**
-   * Get the account initialization data. Used for deploying the account onchain.
-   * @returns factory address and factory data
-   */
   function getInitData(): {
     factory: Address
     factoryData: Hex
@@ -297,29 +437,14 @@ async function createRhinestoneAccount(
     }
   }
 
-  /**
-   * Prepare and sign the EIP-7702 account initialization data
-   * @returns init data signature
-   */
   function signEip7702InitData() {
     return signEip7702InitDataInternal(config)
   }
 
-  /**
-   * Prepare a transaction data
-   * @param transaction Transaction to prepare
-   * @returns prepared transaction data
-   */
   function prepareTransaction(transaction: Transaction) {
     return prepareTransactionInternal(config, transaction)
   }
 
-  /**
-   * Get the transaction typed data message to sign
-   * @param preparedTransaction Prepared transaction data
-   * @param options Optional override; pass `{ intentId }` to inspect a specific quote from `preparedTransaction.quotes.all`
-   * @see {@link prepareTransaction} to prepare the transaction data for signing
-   */
   function getTransactionMessages(
     preparedTransaction: PreparedTransactionData,
     options?: QuoteSelection,
@@ -327,13 +452,6 @@ async function createRhinestoneAccount(
     return getTransactionMessagesInternal(config, preparedTransaction, options)
   }
 
-  /**
-   * Sign a transaction
-   * @param preparedTransaction Prepared transaction data
-   * @param options Optional override; pass `{ intentId }` to sign a specific quote from `preparedTransaction.quotes.all`
-   * @returns signed transaction data
-   * @see {@link prepareTransaction} to prepare the transaction data for signing
-   */
   function signTransaction(
     preparedTransaction: PreparedTransactionData,
     options?: QuoteSelection,
@@ -341,23 +459,10 @@ async function createRhinestoneAccount(
     return signTransactionInternal(config, preparedTransaction, options)
   }
 
-  /**
-   * Sign the required EIP-7702 authorizations for a transaction
-   * @param preparedTransaction Prepared transaction data
-   * @returns signed authorizations
-   * @see {@link prepareTransaction} to prepare the transaction data for signing
-   */
   function signAuthorizations(preparedTransaction: PreparedTransactionData) {
     return signAuthorizationsInternal(config, preparedTransaction)
   }
 
-  /**
-   * Sign a message (EIP-191)
-   * @param message Message to sign
-   * @param chain Chain to sign the message on
-   * @param signers Signers to use for signing
-   * @returns signature
-   */
   function signMessage(
     message: SignableMessage,
     chain: Chain,
@@ -366,13 +471,6 @@ async function createRhinestoneAccount(
     return signMessageInternal(config, message, chain, signers)
   }
 
-  /**
-   * Sign a typed data (EIP-712)
-   * @param parameters Typed data parameters
-   * @param chain Chain to sign the typed data on
-   * @param signers Signers to use for signing
-   * @returns signature
-   */
   function signTypedData<
     typedData extends TypedData | Record<string, unknown> = TypedData,
     primaryType extends keyof typedData | 'EIP712Domain' = keyof typedData,
@@ -389,18 +487,6 @@ async function createRhinestoneAccount(
     )
   }
 
-  /**
-   * Sign an orchestrator intent operation.
-   * This is used by headless flows that prepare the intent outside the SDK but
-   * still need the SDK-owned SmartSession signature packing and target-execution
-   * signature routing. Mirrors the canonical {@link signTransaction} path: origin
-   * and destination are always signed in claim mode, and the target-execution
-   * signature is derived separately (returned only when the intent requires it).
-   * @param signData Sign data returned by the orchestrator (origin/destination/targetExecution typed data)
-   * @param targetChain Chain where the destination execution runs
-   * @param signers Signers to use for signing
-   * @returns Intent signatures ready for submission
-   */
   async function signIntent(
     signData: SignData,
     targetChain: DestinationChain,
@@ -427,15 +513,6 @@ async function createRhinestoneAccount(
     }
   }
 
-  /**
-   * Submit a transaction
-   * @param signedTransaction Signed transaction data
-   * @param options Optional submission options
-   * @param options.authorizations EIP-7702 authorizations to submit
-   * @returns transaction result object (a UserOp hash)
-   * @see {@link signTransaction} to sign the transaction data
-   * @see {@link signAuthorizations} to sign the required EIP-7702 authorizations
-   */
   function submitTransaction(
     signedTransaction: SignedTransactionData,
     options?: SubmitTransactionOptions,
@@ -448,52 +525,21 @@ async function createRhinestoneAccount(
     )
   }
 
-  /**
-   * Prepare a user operation data
-   * @param transaction User operation to prepare
-   * @returns prepared user operation data
-   */
   function prepareUserOperation(transaction: UserOperationTransaction) {
     return prepareUserOperationInternal(config, transaction)
   }
 
-  /**
-   * Sign a user operation
-   * @param preparedUserOperation Prepared user operation data
-   * @returns signed user operation data
-   * @see {@link prepareUserOperation} to prepare the user operation data for signing
-   */
   function signUserOperation(preparedUserOperation: PreparedUserOperationData) {
     return signUserOperationInternal(config, preparedUserOperation)
   }
-  /**
-   * Submit a transaction
-   * @param signedTransaction Signed transaction data
-   * @returns transaction result object (a UserOp hash)
-   * @see {@link signUserOperation} to sign the user operation data
-   */
   function submitUserOperation(signedUserOperation: SignedUserOperationData) {
     return submitUserOperationInternal(config, signedUserOperation)
   }
 
-  /**
-   * Sign and send a user operation
-   * @param transaction User operation to send
-   * @returns user operation result object (a UserOp hash)
-   */
   function sendUserOperation(transaction: UserOperationTransaction) {
     return sendUserOperationInternal(config, transaction)
   }
 
-  /**
-   * Wait for the transaction execution onchain.
-   *
-   * Polls the orchestrator until the intent reaches a terminal state
-   * (`COMPLETED` or `FAILED`). On failure an {@link IntentFailedError} is thrown.
-   *
-   * @param result Transaction result object returned by {@link sendTransaction}
-   * @returns Per-chain operation breakdown (for intents) or a UserOp receipt
-   */
   function waitForExecution(
     result: TransactionResult,
   ): Promise<TransactionStatus>
@@ -504,39 +550,20 @@ async function createRhinestoneAccount(
     return waitForExecutionInternal(config, result)
   }
 
-  /**
-   * Get account address
-   * @returns Address of the smart account
-   */
   function getAddress() {
     return getAddressInternal(config)
   }
 
-  /**
-   * Get account portfolio
-   * @param onTestnets Whether to query the testnet balances (default is `false`)
-   * @returns Account balances
-   */
   function getPortfolio(onTestnets = false) {
     return getPortfolioInternal(config, onTestnets)
   }
 
-  /**
-   * Get account owners (ECDSA)
-   * @param chain Chain to get the owners on
-   * @returns Account owners
-   */
   function getOwners(chain: Chain) {
     const accountType = getAccountProvider(config).type
     const account = getAddress()
     return getOwnersInternal(accountType, account, chain, config.provider)
   }
 
-  /**
-   * Get account validator modules
-   * @param chain Chain to get the validators on
-   * @returns List of account validators
-   */
   function getValidators(chain: Chain) {
     const accountType = getAccountProvider(config).type
     const account = getAddress()
@@ -604,6 +631,10 @@ async function createRhinestoneAccount(
   }
 }
 
+/**
+ * Stateful entry point that holds shared configuration (auth, provider, bundler,
+ * paymaster) and creates accounts from it.
+ */
 class RhinestoneSDK {
   private authProvider: AuthProvider
   private endpointUrl?: string
@@ -613,6 +644,10 @@ class RhinestoneSDK {
   private useDevContracts?: boolean
   private headers?: Record<string, string>
 
+  /**
+   * Create a Rhinestone SDK instance.
+   * @param options Shared configuration applied to every account created by this instance
+   */
   constructor(options: RhinestoneSDKConfig) {
     this.authProvider = createAuthProvider(options)
     this.endpointUrl = options.endpointUrl
@@ -623,6 +658,26 @@ class RhinestoneSDK {
     this.headers = options.headers
   }
 
+  /**
+   * Create an account using this instance's shared configuration.
+   * @param config Per-account configuration (owners, account type, modules, sessions)
+   * @returns The account instance
+   * @example
+   * ```ts
+   * import { RhinestoneSDK } from '@rhinestone/sdk'
+   * import { privateKeyToAccount } from 'viem/accounts'
+   *
+   * const owner = privateKeyToAccount('0x...')
+   *
+   * const sdk = new RhinestoneSDK({
+   *   auth: { mode: 'apiKey', apiKey: process.env.RHINESTONE_API_KEY! },
+   * })
+   *
+   * const account = await sdk.createAccount({
+   *   owners: { type: 'ecdsa', accounts: [owner] },
+   * })
+   * ```
+   */
   createAccount(config: RhinestoneAccountConfig) {
     const rhinestoneConfig: RhinestoneConfig = {
       ...config,
@@ -637,6 +692,11 @@ class RhinestoneSDK {
     return createRhinestoneAccount(rhinestoneConfig)
   }
 
+  /**
+   * Get the current status of a submitted intent.
+   * @param intentId The intent ID returned when the transaction was submitted
+   * @returns The intent status
+   */
   getIntentStatus(intentId: string) {
     return getIntentStatusInternal(
       this.authProvider,
@@ -646,6 +706,11 @@ class RhinestoneSDK {
     )
   }
 
+  /**
+   * Split a transaction into multiple intents across chains.
+   * @param input The intents to split
+   * @returns The split-intents result
+   */
   splitIntents(input: SplitIntentsInput) {
     return splitIntentsInternal(
       this.authProvider,
