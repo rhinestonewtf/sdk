@@ -329,7 +329,12 @@ function usageSnippet(entry: SymbolEntry, sig: TDNode | undefined): string {
   const ret = isPromise ? sig.type.typeArguments?.[0] : sig?.type
   // Avoid shadowing a parameter with the return variable (TDZ / invalid example).
   let varName = returnFieldName(entry)
-  if (paramNames.includes(varName)) varName = 'result'
+  if (paramNames.includes(varName)) {
+    varName =
+      ['result', 'output', 'value', 'res'].find(
+        (c) => !paramNames.includes(c),
+      ) ?? `${varName}_`
+  }
   const assign =
     ret && !(ret.type === 'intrinsic' && ret.name === 'void')
       ? `const ${varName} = `
