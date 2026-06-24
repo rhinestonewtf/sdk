@@ -7,7 +7,6 @@
     "../../src/actions/mfa.ts",
     "../../src/actions/passkeys.ts",
     "../../src/actions/smart-sessions.ts",
-    "../../src/actions/recovery.ts",
     "../../src/utils/index.ts",
     "../../src/modules/validators/smart-sessions.ts"
   ],

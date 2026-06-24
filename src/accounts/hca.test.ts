@@ -80,20 +80,6 @@ describe('Accounts: HCA', () => {
       ).toThrow(AccountConfigurationNotSupportedError)
     })
 
-    test('recovery throws', () => {
-      expect(() =>
-        getDeployArgs({
-          account: { type: 'hca' },
-          owners: {
-            type: 'ens',
-            accounts: [accountA],
-            ownerExpirations: [Number(maxUint48)],
-          },
-          recovery: { guardians: [accountB] },
-        }),
-      ).toThrow(AccountConfigurationNotSupportedError)
-    })
-
     test('extra modules throw', () => {
       expect(() =>
         getDeployArgs({
@@ -171,7 +157,7 @@ describe('Accounts: HCA', () => {
       expect(() =>
         getDeployArgs({
           account: { type: 'hca' },
-          recovery: { guardians: [accountB] },
+          experimental_sessions: { enabled: true },
           initData: {
             address: '0x229ca553b9863b0c8f2f03d4287cb8c73e2bede7',
             factory,

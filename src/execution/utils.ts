@@ -41,7 +41,6 @@ import {
   getEip1271Signature,
   getEip7702InitCall,
   getEmissarySignature,
-  getGuardianSmartAccount,
   getInitCode,
   getSmartAccount,
   getTypedDataPackedSignature,
@@ -68,7 +67,6 @@ import {
 } from '../modules/validators'
 import {
   getMultiFactorValidator,
-  getSocialRecoveryValidator,
   getWebAuthnValidator,
   supportsEip712,
 } from '../modules/validators/core'
@@ -140,7 +138,6 @@ import {
   Eip7702InitSignatureRequiredError,
   InvalidSourceCallsError,
   QuoteNotInPreparedTransactionError,
-  SignerNotSupportedError,
 } from './error'
 
 type InternalSignerSet =
@@ -323,10 +320,6 @@ async function prepareTransaction(
   } = getTransactionParams(transaction)
   const accountAddress = getAddress(config)
 
-  const isUserOpSigner = signers?.type === 'guardians'
-  if (isUserOpSigner) {
-    throw new SignerNotSupportedError()
-  }
   // Destination calls (transaction.calls on a cross-chain transaction) are
   // executed on the destination chain by the solver/account. For non-EVM
   // destinations we can't resolve arbitrary EVM calls; assert there are
@@ -1766,14 +1759,7 @@ async function getValidatorAccount(
     return getSmartAccount(config, publicClient, chain)
   }
 
-  const withGuardians = signers.type === 'guardians' ? signers : null
-
-  return withGuardians
-    ? await getGuardianSmartAccount(config, publicClient, chain, {
-        type: 'ecdsa',
-        accounts: withGuardians.guardians,
-      })
-    : null
+  return null
 }
 
 function getValidator(
@@ -1814,11 +1800,6 @@ function getValidator(
     return getSmartSessionValidator(config)
   }
 
-  // Guardians (social recovery)
-  const withGuardians = signers.type === 'guardians' ? signers : null
-  if (withGuardians) {
-    return getSocialRecoveryValidator(withGuardians.guardians)
-  }
   // Fallback
   return undefined
 }

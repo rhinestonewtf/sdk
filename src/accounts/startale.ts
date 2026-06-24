@@ -25,7 +25,6 @@ import {
   Eip712DomainNotAvailableError,
 } from './error'
 import {
-  getGuardianSmartAccount as getNexusGuardianSmartAccount,
   getInstallData as getNexusInstallData,
   getSmartAccount as getNexusSmartAccount,
   packSignature as packNexusSignature,
@@ -286,23 +285,6 @@ async function getSmartAccount(
   )
 }
 
-async function getGuardianSmartAccount(
-  client: PublicClient,
-  address: Address,
-  guardians: OwnerSet,
-  validatorAddress: Address,
-  sign: (hash: Hex) => Promise<Hex>,
-) {
-  return getNexusGuardianSmartAccount(
-    client,
-    address,
-    guardians,
-    validatorAddress,
-    sign,
-    K1_DEFAULT_VALIDATOR_ADDRESS,
-  )
-}
-
 export {
   K1_DEFAULT_VALIDATOR_ADDRESS,
   getEip712Domain,
@@ -311,5 +293,4 @@ export {
   packSignature,
   getDeployArgs,
   getSmartAccount,
-  getGuardianSmartAccount,
 }

@@ -20,7 +20,6 @@ import {
   OrderPathRequiredForIntentsError,
   QuoteNotInPreparedTransactionError,
   SessionChainRequiredError,
-  SignerNotSupportedError,
 } from '../execution'
 import {
   ConflictError,
@@ -71,7 +70,6 @@ export {
   OrderPathRequiredForIntentsError,
   QuoteNotInPreparedTransactionError,
   SessionChainRequiredError,
-  SignerNotSupportedError,
   // Orchestrator
   isOrchestratorError,
   isRetryable,

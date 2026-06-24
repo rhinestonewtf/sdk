@@ -209,19 +209,6 @@ async function signWithSession(
   return packSmartSessionSignature(signers, validatorSignature)
 }
 
-async function signWithGuardians<T>(
-  signers: SignerSet & { type: 'guardians' },
-  params: T,
-  signingFunctions: SigningFunctions<T>,
-): Promise<Hex> {
-  const signatures = await Promise.all(
-    signers.guardians.map((account) =>
-      signingFunctions.signEcdsa(account, params, false),
-    ),
-  )
-  return concat(signatures)
-}
-
 async function signWithOwners<T>(
   signers: SignerSet & { type: 'owner' },
   chain: Chain,
@@ -327,7 +314,6 @@ export {
   convertOwnerSetToSignerSet,
   signWithMultiFactorAuth,
   signWithSession,
-  signWithGuardians,
   signWithOwners,
   type SigningFunctions,
 }

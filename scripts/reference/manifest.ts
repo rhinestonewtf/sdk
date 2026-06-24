@@ -6,9 +6,8 @@
 // passkeys, and mfa) resolve unambiguously.
 //
 // Scope is intentionally the hot path: the RhinestoneSDK entry point, the
-// account instance, actions, and utils. Types, errors, jwt-server, the
-// standalone createRhinestoneAccount function, and the /smart-sessions module
-// are out of scope for now.
+// account instance, actions, and utils. Types, errors, jwt-server, and the
+// /smart-sessions module are out of scope for now.
 
 export type SymbolEntry = {
   kind: 'symbol'
@@ -211,15 +210,6 @@ export const manifest: Group[] = [
       },
       {
         kind: 'group',
-        group: 'Recovery',
-        items: [
-          action('enable', './actions/recovery'),
-          action('recoverEcdsaOwnership', './actions/recovery'),
-          action('recoverPasskeyOwnership', './actions/recovery'),
-        ],
-      },
-      {
-        kind: 'group',
         group: 'Modules',
         items: [
           action('installModule', './actions'),
@@ -239,15 +229,6 @@ export const manifest: Group[] = [
             './actions/smart-sessions',
             true,
           ),
-          // Returns a CrossChainPermit (not a call), so it is a plain function,
-          // not an `action` wrapped in prepareTransaction `calls`.
-          {
-            kind: 'symbol',
-            symbol: 'createCrossChainPermission',
-            source: './actions/smart-sessions',
-            callStyle: 'function',
-            experimental: true,
-          },
         ],
       },
     ],

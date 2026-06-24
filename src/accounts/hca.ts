@@ -19,7 +19,6 @@ import {
   Eip712DomainNotAvailableError,
 } from './error'
 import {
-  getGuardianSmartAccount as getNexusGuardianSmartAccount,
   getInstallData as getNexusInstallData,
   getSmartAccount as getNexusSmartAccount,
   packSignature as packNexusSignature,
@@ -40,16 +39,15 @@ const CREATE3_PROXY_HASH: Hex =
 
 function getDeployArgs(config: RhinestoneAccountConfig) {
   // HCA accounts are locked to their initial configuration and block module
-  // installation, so recovery, sessions, and extra modules can never be
-  // installed. Reject them on every path (including externally-provided
-  // initData) rather than silently dropping them.
+  // installation, so sessions and extra modules can never be installed.
+  // Reject them on every path (including externally-provided initData)
+  // rather than silently dropping them.
   if (
-    config.recovery ||
     config.experimental_sessions?.enabled ||
     (config.modules && config.modules.length > 0)
   ) {
     throw new AccountConfigurationNotSupportedError(
-      'HCA accounts cannot install recovery, sessions, or additional modules',
+      'HCA accounts cannot install sessions or additional modules',
       'hca',
     )
   }
@@ -235,23 +233,6 @@ async function getSmartAccount(
   )
 }
 
-async function getGuardianSmartAccount(
-  client: PublicClient,
-  address: Address,
-  guardians: OwnerSet,
-  validatorAddress: Address,
-  sign: (hash: Hex) => Promise<Hex>,
-) {
-  return getNexusGuardianSmartAccount(
-    client,
-    address,
-    guardians,
-    validatorAddress,
-    sign,
-    ENS_HCA_MODULE,
-  )
-}
-
 export {
   ENS_HCA_MODULE,
   getEip712Domain,
@@ -260,5 +241,4 @@ export {
   packSignature,
   getDeployArgs,
   getSmartAccount,
-  getGuardianSmartAccount,
 }

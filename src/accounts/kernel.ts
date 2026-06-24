@@ -303,27 +303,6 @@ async function getSmartAccount(
   )
 }
 
-async function getGuardianSmartAccount(
-  client: PublicClient,
-  address: Address,
-  guardians: OwnerSet,
-  validatorAddress: Address,
-  sign: (hash: Hex) => Promise<Hex>,
-) {
-  return await getBaseSmartAccount(
-    address,
-    client,
-    validatorAddress,
-    'validator',
-    async () => {
-      return getMockSignature(guardians)
-    },
-    async (hash) => {
-      return await sign(hash)
-    },
-  )
-}
-
 async function getBaseSmartAccount(
   address: Address,
   client: PublicClient,
@@ -407,7 +386,6 @@ export {
   getAddress,
   getDeployArgs,
   getSmartAccount,
-  getGuardianSmartAccount,
   packSignature,
   wrapMessageHash,
 }

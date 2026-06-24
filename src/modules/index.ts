@@ -37,7 +37,6 @@ import {
   SMART_SESSION_EMISSARY_ADDRESS,
   WEBAUTHN_VALIDATOR_ADDRESS,
 } from './validators'
-import { getSocialRecoveryValidator } from './validators/core'
 import {
   getSessionDetails,
   signEnableSession,
@@ -54,13 +53,6 @@ function getSetup(config: RhinestoneConfig): ModeleSetup {
   const validators: Module[] = [ownerValidator]
   if (smartSessionValidator) {
     validators.push(smartSessionValidator)
-  }
-  if (config.recovery) {
-    const socialRecoveryValidator = getSocialRecoveryValidator(
-      config.recovery.guardians,
-      config.recovery.threshold,
-    )
-    validators.push(socialRecoveryValidator)
   }
 
   const intentExecutor = getIntentExecutor(config)

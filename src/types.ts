@@ -231,9 +231,9 @@ type CrossChainSettlementLayer = 'SAME_CHAIN' | 'ECO' | 'ACROSS'
  * enforce amounts or expiry on-chain, so we lift those guarantees into
  * action-level policies that do.
  *
- * Use `createCrossChainPermission()` to build this from an ergonomic
- * shape (token symbols, single object instead of array, `Date`
- * validity).
+ * @internal Resolved from {@link CrossChainPermissionInput} by the SDK;
+ * consumers set `SessionDefinition.crossChainPermits` with the input
+ * shape, not this one.
  */
 interface CrossChainPermit {
   /**
@@ -257,13 +257,72 @@ interface CrossChainPermit {
   fillDeadline?: { chain: Chain; min?: bigint; max?: bigint }[]
   /**
    * Enforce bridge-to-self (the destination recipient must be the smart
-   * account). Defaults to `true` in `createCrossChainPermission`.
+   * account). Defaults to `true` when resolved from
+   * {@link CrossChainPermissionInput}.
    */
   recipientIsAccount?: boolean
   /**
    * Settlement layers this session is permitted to use. Omit (or pass
    * `[]`) for any supported layer — the SDK resolves to the union of
    * every known arbiter from `@rhinestone/shared-configs`.
+   */
+  settlementLayers?: CrossChainSettlementLayer[]
+}
+
+interface FromLeg {
+  chain: Chain
+  token: Address | TokenSymbol
+  maxAmount?: bigint
+}
+
+interface ToLeg {
+  chain: Chain
+  token: Address | TokenSymbol
+  recipient?: Address | 'any'
+}
+
+/**
+ * Ergonomic input for a cross-chain session permit. Set on
+ * `SessionDefinition.crossChainPermits`; the SDK resolves token symbols
+ * to per-chain addresses and `Date`s to on-chain deadlines, then expands
+ * each entry into a {@link Permit2ClaimPolicy} (claim-side) plus optional
+ * {@link SpendingLimitsPolicy} / {@link TimeFramePolicy} guardrails.
+ */
+interface CrossChainPermissionInput {
+  /**
+   * Source chain + token (+ optional max amount cap). Pass a single leg
+   * or an array for multi-leg permits. Omit for no source-token
+   * restriction (any token on any chain may be pulled) — the arbiter
+   * whitelist, deadline, and bridge-to-self flag still apply.
+   */
+  from?: FromLeg | FromLeg[]
+  /**
+   * Destination chain + token (+ optional recipient pin). Pass a single
+   * leg or an array for fan-out destinations. Omit for no
+   * destination-token restriction; `recipientIsAccount` still constrains
+   * the recipient.
+   */
+  to?: ToLeg | ToLeg[]
+  /** Upper bound on the permit deadline. */
+  validUntil?: Date
+  /** Lower bound on the permit deadline. */
+  validAfter?: Date
+  /** Per-destination fill-deadline windows — unix seconds. */
+  fillDeadline?: { chain: Chain; min?: bigint; max?: bigint }[]
+  /**
+   * Allow the destination recipient to differ from the smart account
+   * (the sponsor funding the cross-chain transfer). Defaults to
+   * `false`, which enforces bridge-to-self on-chain — the safer default
+   * since it prevents a compromised session key from routing funds to
+   * an attacker-controlled address. Set to `true` to opt out explicitly.
+   */
+  allowRecipientNotAccount?: boolean
+  /**
+   * Settlement layers this session is permitted to use. Omit (or pass
+   * `[]`) to allow **any of the supported settlement layers** — the SDK
+   * resolves to the union of every known arbiter from
+   * `@rhinestone/shared-configs`. Pass a subset (e.g. `['ECO']`) to
+   * narrow.
    */
   settlementLayers?: CrossChainSettlementLayer[]
 }
@@ -455,9 +514,9 @@ interface SessionDefinition<TAbis extends readonly Abi[] = readonly Abi[]> {
    * Cross-chain permits expanded by the SDK into matching
    * {@link Permit2ClaimPolicy} (claim-side) plus action-level
    * {@link SpendingLimitsPolicy} / {@link TimeFramePolicy} guardrails.
-   * Use `createCrossChainPermission()` for an ergonomic builder.
+   * See {@link CrossChainPermissionInput}.
    */
-  crossChainPermits?: readonly CrossChainPermit[]
+  crossChainPermits?: readonly CrossChainPermissionInput[]
   /**
    * Override one or more SmartSession policy addresses. Defaults to the latest
    * V2 deployments. Use to pin to V1 deployments for an account that already
@@ -505,11 +564,6 @@ interface Session {
   claimPolicies: readonly Permit2ClaimPolicy[]
 }
 
-interface Recovery {
-  guardians: Account[]
-  threshold?: number
-}
-
 interface ModuleInput {
   type: ModuleType
   address: Address
@@ -526,7 +580,6 @@ interface RhinestoneAccountConfig {
     module?: Address
     compatibilityFallback?: Address
   }
-  recovery?: Recovery
   eoa?: Account
   modules?: ModuleInput[]
   initData?:
@@ -735,12 +788,7 @@ interface PerChainSessionSignerSet {
 
 type SessionSignerSet = SingleSessionSignerSet | PerChainSessionSignerSet
 
-interface GuardiansSignerSet {
-  type: 'guardians'
-  guardians: Account[]
-}
-
-type SignerSet = OwnerSignerSet | SessionSignerSet | GuardiansSignerSet
+type SignerSet = OwnerSignerSet | SessionSignerSet
 
 type Sponsorship =
   | boolean
@@ -862,7 +910,6 @@ export type {
   SessionInput,
   SessionEnableData,
   Session,
-  Recovery,
   ModuleType,
   ModuleInput,
   Action,
@@ -879,6 +926,9 @@ export type {
   Policy,
   Permit2ClaimPolicy,
   CrossChainPermit,
+  CrossChainPermissionInput,
+  FromLeg,
+  ToLeg,
   CrossChainSettlementLayer,
   UniversalActionPolicyParamCondition,
   ArgPolicyExpression,

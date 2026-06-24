@@ -9,11 +9,7 @@ import type {
 import type { WebAuthnAccount } from 'viem/account-abstraction'
 import type { SignerSet } from '../../types'
 import { SigningNotSupportedForAccountError } from '../error'
-import {
-  type SigningFunctions,
-  signWithGuardians,
-  signWithOwners,
-} from './common'
+import { type SigningFunctions, signWithOwners } from './common'
 
 async function sign<
   typedData extends TypedData | Record<string, unknown> = TypedData,
@@ -42,9 +38,6 @@ async function sign<
         false,
         sign,
       )
-    }
-    case 'guardians': {
-      return signWithGuardians(signers, parameters, signingFunctions)
     }
     case 'experimental_session': {
       throw new Error('Not supported')

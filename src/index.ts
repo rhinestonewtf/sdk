@@ -21,7 +21,6 @@ import {
   setup as setupInternal,
   signEip7702InitData as signEip7702InitDataInternal,
 } from './accounts'
-import { createCrossChainPermission } from './actions/smart-sessions'
 import { type AuthProvider, createAuthProvider } from './auth/provider'
 import {
   getIntentStatus as getIntentStatusInternal,
@@ -99,8 +98,9 @@ import type {
   Call,
   CallInput,
   ChainSessionConfig,
-  CrossChainPermit,
+  CrossChainPermissionInput,
   CrossChainSettlementLayer,
+  FromLeg,
   MultiFactorValidatorConfig,
   NonEvmTokenRequest,
   NonEvmTokenRequests,
@@ -113,7 +113,6 @@ import type {
   Permit2ClaimPolicy,
   Policy,
   ProviderConfig,
-  Recovery,
   RhinestoneAccountConfig,
   RhinestoneConfig,
   RhinestoneSDKConfig,
@@ -124,6 +123,7 @@ import type {
   SourceCallProvidedFunds,
   TokenRequest,
   TokenSymbol,
+  ToLeg,
   Transaction,
   UniversalActionPolicyParamCondition,
   UserOperationTransaction,
@@ -146,13 +146,10 @@ interface RhinestoneAccount {
   /**
    * Deploy the account on a given chain.
    * @param chain Chain to deploy the account on
-   * @param params Optional deployment parameters (session, sponsorship)
+   * @param params Optional deployment parameters (sponsorship)
    * @returns `true` once the deployment is submitted
    */
-  deploy(
-    chain: Chain,
-    params?: { session?: Session; sponsored?: boolean },
-  ): Promise<boolean>
+  deploy(chain: Chain, params?: { sponsored?: boolean }): Promise<boolean>
   /**
    * Check whether the account is deployed on a given chain.
    * @param chain Chain to check
@@ -388,12 +385,11 @@ interface SignedIntentData {
 }
 
 /**
- * Initialize a Rhinestone account
+ * Initialize a Rhinestone account from a fully-resolved config.
  * Note: accounts are deployed onchain only when the first transaction is sent.
- * @param config Account config (e.g. implementation vendor, owner signers, smart sessions)
- * @returns account
+ * @internal Use {@link RhinestoneSDK.createAccount} instead.
  */
-async function createRhinestoneAccount(
+async function createAccountInternal(
   config: RhinestoneConfig,
 ): Promise<RhinestoneAccount> {
   // Sanity check for existing (externally created) accounts
@@ -405,10 +401,12 @@ async function createRhinestoneAccount(
     throw new OwnersFieldRequiredError()
   }
 
-  function deploy(
-    chain: Chain,
-    params?: { session?: Session; sponsored?: boolean },
-  ) {
+  /**
+   * Deploys the account on a given chain
+   * @param chain Chain to deploy the account on
+   * @param params Optional deployment params (e.g. `sponsored`)
+   */
+  function deploy(chain: Chain, params?: { sponsored?: boolean }) {
     return deployInternal(config, chain, params)
   }
 
@@ -689,7 +687,7 @@ class RhinestoneSDK {
       useDevContracts: this.useDevContracts,
       headers: this.headers,
     }
-    return createRhinestoneAccount(rhinestoneConfig)
+    return createAccountInternal(rhinestoneConfig)
   }
 
   /**
@@ -723,7 +721,6 @@ class RhinestoneSDK {
 
 export {
   RhinestoneSDK,
-  createRhinestoneAccount,
   // Non-viem destination chain descriptors (Solana, Tron, HyperCore)
   hyperCoreMainnet,
   solanaMainnet,
@@ -733,8 +730,6 @@ export {
   WEBAUTHN_VALIDATOR_ADDRESS,
   MULTI_FACTOR_VALIDATOR_ADDRESS,
   SMART_SESSION_EMISSARY_ADDRESS,
-  // Cross-chain session permissions
-  createCrossChainPermission,
 }
 export type {
   RhinestoneAccount,
@@ -762,13 +757,14 @@ export type {
   ChainSessionConfig,
   Session,
   SessionDefinition,
-  Recovery,
   Permission,
   PermissionFunctionConfig,
   ParamConstraint,
   Policy,
   Permit2ClaimPolicy,
-  CrossChainPermit,
+  CrossChainPermissionInput,
+  FromLeg,
+  ToLeg,
   CrossChainSettlementLayer,
   UniversalActionPolicyParamCondition,
   PreparedQuotes,

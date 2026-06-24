@@ -43,10 +43,6 @@
       "types": "./dist/src/actions/smart-sessions.d.ts",
       "import": "./dist/src/actions/smart-sessions.js"
     },
-    "./actions/recovery": {
-      "types": "./dist/src/actions/recovery.d.ts",
-      "import": "./dist/src/actions/recovery.js"
-    },
     "./errors": {
       "types": "./dist/src/errors/index.d.ts",
       "import": "./dist/src/errors/index.js"

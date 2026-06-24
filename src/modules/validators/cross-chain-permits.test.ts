@@ -1,7 +1,7 @@
 import type { Address } from 'viem'
 import { arbitrum, mainnet } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
-import { createCrossChainPermission } from './smart-sessions'
+import { resolveCrossChainPermission } from './cross-chain-permits'
 
 // Concrete addresses skip the TokenSymbol registry path so these tests stay
 // independent of shared-configs registry contents.
@@ -9,9 +9,9 @@ const TOKEN_A = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48' as Address
 const TOKEN_B = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831' as Address
 const RECIPIENT = '0x5555555555555555555555555555555555555555' as Address
 
-describe('createCrossChainPermission', () => {
+describe('resolveCrossChainPermission', () => {
   test('normalises single from/to into arrays', () => {
-    const permit = createCrossChainPermission({
+    const permit = resolveCrossChainPermission({
       from: { chain: mainnet, token: TOKEN_A },
       to: { chain: arbitrum, token: TOKEN_B },
     })
@@ -24,7 +24,7 @@ describe('createCrossChainPermission', () => {
   })
 
   test('preserves arrays of multiple legs', () => {
-    const permit = createCrossChainPermission({
+    const permit = resolveCrossChainPermission({
       from: [
         { chain: mainnet, token: TOKEN_A, maxAmount: 1000n },
         { chain: mainnet, token: TOKEN_A },
@@ -36,38 +36,33 @@ describe('createCrossChainPermission', () => {
     })
     expect(permit.from).toHaveLength(2)
     expect(permit.to).toHaveLength(2)
-    expect(permit.from[0].maxAmount).toBe(1000n)
-    expect(permit.to[0].recipient).toBe(RECIPIENT)
-    expect(permit.to[1].recipient).toBe('any')
+    expect(permit.from?.[0].maxAmount).toBe(1000n)
+    expect(permit.to?.[0].recipient).toBe(RECIPIENT)
+    expect(permit.to?.[1].recipient).toBe('any')
   })
 
-  test('Date → unix-seconds bigint conversion', () => {
+  test('Date → unix-seconds conversion on both bounds', () => {
+    const validAfter = new Date('2025-01-01T00:00:00Z')
     const validUntil = new Date('2030-01-01T00:00:00Z')
-    const expectedSeconds = BigInt(Math.floor(validUntil.getTime() / 1000))
-    const permit = createCrossChainPermission({
+    const permit = resolveCrossChainPermission({
       from: { chain: mainnet, token: TOKEN_A },
       to: { chain: arbitrum, token: TOKEN_B },
+      validAfter,
       validUntil,
     })
-    expect(permit.validUntil).toBe(expectedSeconds)
-  })
-
-  test('bigint passthrough on validUntil/validAfter', () => {
-    const permit = createCrossChainPermission({
-      from: { chain: mainnet, token: TOKEN_A },
-      to: { chain: arbitrum, token: TOKEN_B },
-      validUntil: 9_999_999n,
-      validAfter: 1_000_000n,
-    })
-    expect(permit.validUntil).toBe(9_999_999n)
-    expect(permit.validAfter).toBe(1_000_000n)
+    expect(permit.validAfter).toBe(
+      BigInt(Math.floor(validAfter.getTime() / 1000)),
+    )
+    expect(permit.validUntil).toBe(
+      BigInt(Math.floor(validUntil.getTime() / 1000)),
+    )
   })
 
   test('omitting settlementLayers leaves field undefined (resolver expands to "any supported")', () => {
     // The helper passes the field through verbatim; expansion to the
     // union of supported layers happens at session-data build time in
     // getArbitersForSettlementLayers.
-    const permit = createCrossChainPermission({
+    const permit = resolveCrossChainPermission({
       from: { chain: mainnet, token: TOKEN_A },
       to: { chain: arbitrum, token: TOKEN_B },
     })
@@ -75,7 +70,7 @@ describe('createCrossChainPermission', () => {
   })
 
   test('settlementLayers override is preserved verbatim (subset)', () => {
-    const permit = createCrossChainPermission({
+    const permit = resolveCrossChainPermission({
       from: { chain: mainnet, token: TOKEN_A },
       to: { chain: arbitrum, token: TOKEN_B },
       settlementLayers: ['ECO'],
@@ -84,7 +79,7 @@ describe('createCrossChainPermission', () => {
   })
 
   test('recipientIsAccount defaults to true (bridge-to-self enforced)', () => {
-    const permit = createCrossChainPermission({
+    const permit = resolveCrossChainPermission({
       from: { chain: mainnet, token: TOKEN_A },
       to: { chain: arbitrum, token: TOKEN_B },
     })
@@ -92,7 +87,7 @@ describe('createCrossChainPermission', () => {
   })
 
   test('allowRecipientNotAccount: true disables the bridge-to-self check', () => {
-    const permit = createCrossChainPermission({
+    const permit = resolveCrossChainPermission({
       from: { chain: mainnet, token: TOKEN_A },
       to: { chain: arbitrum, token: TOKEN_B },
       allowRecipientNotAccount: true,
@@ -109,8 +104,8 @@ describe('createCrossChainPermission', () => {
     // cross-chain move through these arbiters, locked to self, within
     // this deadline". Mirrors how the underlying Permit2 policy treats
     // absent token lists.
-    const permit = createCrossChainPermission({
-      validUntil: 9_999_999n,
+    const permit = resolveCrossChainPermission({
+      validUntil: new Date('2030-01-01T00:00:00Z'),
       settlementLayers: ['ECO'],
     })
     expect(permit.from).toBeUndefined()
@@ -118,7 +113,7 @@ describe('createCrossChainPermission', () => {
   })
 
   test('empty arrays normalise to undefined (treated as no restriction)', () => {
-    const permit = createCrossChainPermission({
+    const permit = resolveCrossChainPermission({
       from: [],
       to: [],
     })
@@ -127,7 +122,7 @@ describe('createCrossChainPermission', () => {
   })
 
   test('one side present, other omitted', () => {
-    const permit = createCrossChainPermission({
+    const permit = resolveCrossChainPermission({
       to: { chain: arbitrum, token: TOKEN_B },
     })
     expect(permit.from).toBeUndefined()
@@ -138,36 +133,37 @@ describe('createCrossChainPermission', () => {
 
   test('validAfter > validUntil throws at build time', () => {
     expect(() =>
-      createCrossChainPermission({
+      resolveCrossChainPermission({
         from: { chain: mainnet, token: TOKEN_A },
         to: { chain: arbitrum, token: TOKEN_B },
-        validAfter: 9_999n,
-        validUntil: 1_000n,
+        validAfter: new Date('2030-01-01T00:00:00Z'),
+        validUntil: new Date('2020-01-01T00:00:00Z'),
       }),
     ).toThrow(/validAfter.*greater than validUntil/)
   })
 
   test('validAfter == validUntil is allowed (single-instant window)', () => {
+    const instant = new Date('2030-01-01T00:00:00Z')
     expect(() =>
-      createCrossChainPermission({
+      resolveCrossChainPermission({
         from: { chain: mainnet, token: TOKEN_A },
         to: { chain: arbitrum, token: TOKEN_B },
-        validAfter: 1_000n,
-        validUntil: 1_000n,
+        validAfter: instant,
+        validUntil: instant,
       }),
     ).not.toThrow()
   })
 
   test('maxAmount = 0n is preserved (not coerced away)', () => {
-    const permit = createCrossChainPermission({
+    const permit = resolveCrossChainPermission({
       from: { chain: mainnet, token: TOKEN_A, maxAmount: 0n },
       to: { chain: arbitrum, token: TOKEN_B },
     })
-    expect(permit.from[0].maxAmount).toBe(0n)
+    expect(permit.from?.[0].maxAmount).toBe(0n)
   })
 
   test('undefined validUntil/validAfter stay undefined (no implicit defaults)', () => {
-    const permit = createCrossChainPermission({
+    const permit = resolveCrossChainPermission({
       from: { chain: mainnet, token: TOKEN_A },
       to: { chain: arbitrum, token: TOKEN_B },
     })
@@ -176,7 +172,7 @@ describe('createCrossChainPermission', () => {
   })
 
   test('Date inputs at unix epoch boundary convert cleanly', () => {
-    const permit = createCrossChainPermission({
+    const permit = resolveCrossChainPermission({
       from: { chain: mainnet, token: TOKEN_A },
       to: { chain: arbitrum, token: TOKEN_B },
       validAfter: new Date(0),

@@ -34,20 +34,6 @@ class ExecutionError extends Error {
   }
 }
 
-class SignerNotSupportedError extends ExecutionError {
-  constructor(params?: {
-    context?: any
-    errorType?: string
-    traceId?: string
-  }) {
-    super({
-      message:
-        'Sending a transaction is not supported for this type of signers. Use user operations instead.',
-      ...params,
-    })
-  }
-}
-
 class OrderPathRequiredForIntentsError extends ExecutionError {
   constructor(params?: {
     context?: any
@@ -147,5 +133,4 @@ export {
   QuoteNotInPreparedTransactionError,
   SessionChainRequiredError,
   IntentFailedError,
-  SignerNotSupportedError,
 }

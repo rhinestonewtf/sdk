@@ -354,28 +354,6 @@ async function getSmartAccount(
   )
 }
 
-async function getGuardianSmartAccount(
-  client: PublicClient,
-  address: Address,
-  guardians: OwnerSet,
-  validatorAddress: Address,
-  sign: (hash: Hex) => Promise<Hex>,
-  defaultValidatorAddress: Address = NEXUS_DEFAULT_VALIDATOR_ADDRESS,
-) {
-  return await getBaseSmartAccount(
-    address,
-    client,
-    validatorAddress,
-    async () => {
-      return getMockSignature(guardians)
-    },
-    async (hash) => {
-      return await sign(hash)
-    },
-    defaultValidatorAddress,
-  )
-}
-
 async function getBaseSmartAccount(
   address: Address,
   client: PublicClient,
@@ -638,7 +616,6 @@ export {
   packSignature,
   getDeployArgs,
   getSmartAccount,
-  getGuardianSmartAccount,
   signEip7702InitData,
   getEip7702InitCall,
 }
