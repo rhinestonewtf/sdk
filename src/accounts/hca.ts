@@ -53,7 +53,7 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
   }
   if (config.owners && config.owners.type !== 'ens') {
     throw new AccountConfigurationNotSupportedError(
-      'HCA accounts require ENS owners with ownerExpirations',
+      'HCA accounts require ENS owners',
       'hca',
     )
   }
@@ -88,7 +88,7 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
 
   if (!config.owners) {
     throw new AccountConfigurationNotSupportedError(
-      'HCA accounts require ENS owners with ownerExpirations',
+      'HCA accounts require ENS owners',
       'hca',
     )
   }

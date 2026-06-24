@@ -138,8 +138,7 @@ describe('Validators Core', () => {
           account: { type: 'nexus' },
           owners: {
             type: 'ens',
-            accounts: [accountA],
-            ownerExpirations: [281474976710655],
+            owners: [{ account: accountA }],
           },
         }),
       ).toThrow(AccountConfigurationNotSupportedError)
@@ -155,8 +154,7 @@ describe('Validators Core', () => {
               { type: 'ecdsa', accounts: [accountB] },
               {
                 type: 'ens',
-                accounts: [accountA],
-                ownerExpirations: [281474976710655],
+                owners: [{ account: accountA }],
               },
             ],
           },
@@ -170,8 +168,7 @@ describe('Validators Core', () => {
           account: { type: 'hca' },
           owners: {
             type: 'ens',
-            accounts: [accountA],
-            ownerExpirations: [281474976710655],
+            owners: [{ account: accountA }],
             module: '0x00000000000000000000000000000000deadbeef',
           },
         }),
@@ -183,8 +180,7 @@ describe('Validators Core', () => {
         account: { type: 'hca' },
         owners: {
           type: 'ens',
-          accounts: [accountA],
-          ownerExpirations: [281474976710655],
+          owners: [{ account: accountA }],
         },
       })
       expect(validator.address).toEqual(

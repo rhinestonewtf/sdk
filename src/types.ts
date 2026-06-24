@@ -58,9 +58,9 @@ interface OwnableValidatorConfig {
 
 interface ENSValidatorConfig {
   type: 'ens'
-  accounts: Account[]
+  /** Each owner with an optional expiry. Omit `expiration` to never expire. */
+  owners: { account: Account; expiration?: Date }[]
   threshold?: number
-  ownerExpirations: number[]
   module?: Address
 }
 
@@ -231,9 +231,9 @@ type CrossChainSettlementLayer = 'SAME_CHAIN' | 'ECO' | 'ACROSS'
  * enforce amounts or expiry on-chain, so we lift those guarantees into
  * action-level policies that do.
  *
- * @internal Resolved from {@link CrossChainPermissionInput} by the SDK;
- * consumers set `SessionDefinition.crossChainPermits` with the input
- * shape, not this one.
+ * Resolved from {@link CrossChainPermissionInput} by the SDK; consumers
+ * normally set `SessionDefinition.crossChainPermits` with the input shape,
+ * not this one. Exported as a low-level escape hatch.
  */
 interface CrossChainPermit {
   /**
@@ -307,8 +307,8 @@ interface CrossChainPermissionInput {
   validUntil?: Date
   /** Lower bound on the permit deadline. */
   validAfter?: Date
-  /** Per-destination fill-deadline windows — unix seconds. */
-  fillDeadline?: { chain: Chain; min?: bigint; max?: bigint }[]
+  /** Per-destination fill-deadline windows. */
+  fillDeadline?: { chain: Chain; min?: Date; max?: Date }[]
   /**
    * Allow the destination recipient to differ from the smart account
    * (the sponsor funding the cross-chain transfer). Defaults to
@@ -459,13 +459,13 @@ type PermissionFunctionConfig<TFn extends AbiFunction> = {
    */
   maxUses?: bigint
   /**
-   * Upper bound on `block.timestamp` (Date or ms-epoch). Pairs with
-   * `validAfter` into one `time-frame` policy. If only one of the two is set,
-   * the other defaults to "always passes" (validAfter=0 / validUntil=year-2100).
+   * Upper bound on `block.timestamp`. Pairs with `validAfter` into one
+   * `time-frame` policy. If only one of the two is set, the other defaults to
+   * "always passes" (validAfter=0 / validUntil=year-2100).
    */
-  validUntil?: Date | number
-  /** Lower bound on `block.timestamp` (Date or ms-epoch). See `validUntil`. */
-  validAfter?: Date | number
+  validUntil?: Date
+  /** Lower bound on `block.timestamp`. See `validUntil`. */
+  validAfter?: Date
 } & SpendingLimitField<TFn> &
   ValueLimitField<TFn>
 

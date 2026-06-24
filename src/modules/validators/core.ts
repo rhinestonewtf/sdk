@@ -104,11 +104,14 @@ function getOwnerValidator(config: RhinestoneAccountConfig) {
 
 function getMockSignature(ownerSet: OwnerSet): Hex {
   switch (ownerSet.type) {
-    case 'ecdsa':
-    case 'ens': {
-      // ENS validator uses same mock signature format as ECDSA for UserOps
+    case 'ecdsa': {
       const owners = ownerSet.accounts.map((account) => account.address)
       const signatures = owners.map(() => ECDSA_MOCK_SIGNATURE as Hex)
+      return concat(signatures)
+    }
+    case 'ens': {
+      // ENS validator uses same mock signature format as ECDSA for UserOps
+      const signatures = ownerSet.owners.map(() => ECDSA_MOCK_SIGNATURE as Hex)
       return concat(signatures)
     }
     case 'passkey':
@@ -166,8 +169,8 @@ function getValidator(owners: OwnerSet) {
     case 'ens':
       return getENSValidator(
         owners.threshold ?? 1,
-        owners.accounts.map((account) => account.address),
-        owners.ownerExpirations,
+        owners.owners.map((o) => o.account.address),
+        owners.owners.map((o) => o.expiration),
         owners.module,
       )
     case 'passkey':
@@ -210,16 +213,24 @@ function getOwnableValidator(
 function getENSValidator(
   threshold: number,
   owners: Address[],
-  ownerExpirations: number[],
+  expirations: (Date | undefined)[],
   address?: Address,
 ): Module {
   // format: (uint256 threshold, Owner[] owners)
   // where Owner is a tuple of (address addr, uint48 expiration)
 
-  const ownerPairs = owners.map((owner, index) => ({
-    addr: owner.toLowerCase() as Address,
-    expiration: ownerExpirations[index] ?? maxUint48,
-  }))
+  const ownerPairs = owners.map((owner, index) => {
+    const expiration = expirations[index]
+    return {
+      addr: owner.toLowerCase() as Address,
+      // maxUint48 is the on-chain "never expires" sentinel; it's outside the
+      // representable Date range, so an omitted expiry maps to it directly.
+      expiration:
+        expiration !== undefined
+          ? Math.floor(expiration.getTime() / 1000)
+          : Number(maxUint48),
+    }
+  })
 
   // Sort by address to match ENS validator's expectations
   const sortedPairs = ownerPairs.sort((a, b) => a.addr.localeCompare(b.addr))
