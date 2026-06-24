@@ -5,3 +5,5 @@ dist
 .env
 
 examples/
+# TypeDoc reference extraction artifact
+scripts/reference/typedoc.json.out

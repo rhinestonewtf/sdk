@@ -155,8 +155,9 @@ function resolveTokenForChain(
 }
 
 /**
- * Build a {@link CrossChainPermit} from an ergonomic input shape that
- * accepts:
+ * Build a {@link CrossChainPermit} from an ergonomic input shape.
+ *
+ * Accepts:
  *   - a single `from`/`to` leg or arrays of legs
  *   - `TokenSymbol` ("USDC", "USDT", ...) which is resolved to the
  *     per-chain ERC-20 address via the shared token registry

@@ -57,6 +57,10 @@ Once v2 is stable, we'll switch back to the standard `main` (dev) / `release` (p
 - Public API is the union of `src/index.ts` re-exports and the subpath exports in `src/package.json` (`/actions`, `/errors`, `/jwt-server`, `/smart-sessions`, etc.) — adding, renaming, or removing exports is a breaking change
 - The project uses `changeset` to manage releases. Create a changeset file for each fix or feature, and use the `sdk-changesets` skill when adding, editing, or reviewing SDK changelog wording.
 
+## SDK reference docs
+
+The public docs site's "SDK Reference" is generated from this repo's JSDoc (`scripts/reference/`, run with `bun run reference`; see `scripts/reference/README.md`). When you add, rename, or remove a public export, or change its JSDoc, regenerate with the `docs` repo checked out as a sibling and commit the updated `docs/sdk-reference` output — Mintlify builds from committed content. The generator warns about public exports (in already-documented modules) that are missing from `scripts/reference/manifest.ts`; add new symbols there (the mapping is curated, not automatic).
+
 ## Testing
 
 - Run single test: `bun run test -- path/to/file.test.ts`
