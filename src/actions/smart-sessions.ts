@@ -1,4 +1,4 @@
-import type { Hex } from 'viem'
+import { type Hex, maxUint256 } from 'viem'
 import {
   getModuleInstallationCalls,
   getModuleUninstallationCalls,
@@ -89,20 +89,20 @@ function experimental_enableSession(
  * the session is being disabled.
  *
  * @param session resolved session to disable
- * @param expires deadline after which this disable call is no longer valid;
- *   must be in the future
+ * @param expires optional deadline after which this disable call is no longer
+ *   valid; must be in the future. Omit for no expiry.
  * @returns Calls to disable the smart session
  */
 function experimental_disableSession(
   session: Session,
-  expires: Date,
+  expires?: Date,
 ): LazyCallInput {
   return {
     async resolve({ accountAddress, config }) {
       return getDisableSessionCall(
         accountAddress,
         session,
-        BigInt(Math.floor(expires.getTime() / 1000)),
+        expires ? BigInt(Math.floor(expires.getTime() / 1000)) : maxUint256,
         config.provider,
         config.useDevContracts,
       )
