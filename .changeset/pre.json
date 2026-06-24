@@ -42,6 +42,7 @@
     "remove-verify-executions-public-api",
     "retry-after-polling",
     "retry-connection-errors-polling",
+    "sdk-reference-jsdoc",
     "session-permissions-api",
     "settlement-layer-filter-wire",
     "settlement-layer-filter",
