@@ -19,7 +19,7 @@ import {
   getSupportedChainIds,
   isTestnet,
 } from '../orchestrator/registry'
-import type { SettlementLayerFilter } from '../orchestrator/types'
+import type { AppFeeRate, SettlementLayerFilter } from '../orchestrator/types'
 import type {
   CalldataInput,
   CallInput,
@@ -108,6 +108,7 @@ async function sendTransactionInternal(
     settlementLayers?: SettlementLayerFilter
     sourceAssets?: SourceAssetInput
     feeAsset?: Address | TokenSymbol
+    appFees?: AppFeeRate
   },
 ) {
   const accountAddress = getAddress(config)
@@ -137,6 +138,7 @@ async function sendTransactionInternal(
     options.sourceAssets,
     options.feeAsset,
     options.sourceCalls,
+    options.appFees,
   )
 }
 
@@ -189,6 +191,7 @@ async function sendTransactionAsIntent(
   sourceAssets?: SourceAssetInput,
   feeAsset?: Address | TokenSymbol,
   sourceCalls?: Record<number, SourceCallInput[]>,
+  appFees?: AppFeeRate,
 ) {
   const prepared = await prepareTransactionAsIntent(
     config,
@@ -207,6 +210,7 @@ async function sendTransactionAsIntent(
     undefined,
     signers,
     sourceCalls,
+    appFees,
   )
   if (!prepared) {
     throw new OrderPathRequiredForIntentsError()

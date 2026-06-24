@@ -47,6 +47,7 @@ const mockQuote = {
         gas: { usd: 0 },
         bridge: { usd: 0 },
         swap: { usd: 0 },
+        app: { usd: 0 },
       },
     },
   },
@@ -234,6 +235,37 @@ describe('prepareTransactionAsIntent', () => {
     expect(mockCreateQuote).toHaveBeenCalledOnce()
     const intentInput: IntentInput = mockCreateQuote.mock.calls[0][0]
     expect(intentInput.options.auxiliaryFunds).toBeUndefined()
+  })
+
+  test('includes appFees in options when provided', async () => {
+    mockCreateQuote.mockResolvedValue({ routes: [mockQuote] })
+
+    await prepareTransactionAsIntent(
+      {
+        owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+        apiKey: 'test',
+      },
+      [arbitrum],
+      base,
+      [],
+      undefined,
+      [{ address: zeroAddress, amount: 1n }],
+      undefined,
+      false,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { feeBps: 100 },
+    )
+
+    expect(mockCreateQuote).toHaveBeenCalledOnce()
+    const intentInput: IntentInput = mockCreateQuote.mock.calls[0][0]
+    expect(intentInput.options.appFees).toEqual({ feeBps: 100 })
   })
 
   test('claim-only session already enabled sends SIG_MODE_ERC1271 in routing request', async () => {

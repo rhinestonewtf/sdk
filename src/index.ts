@@ -90,6 +90,9 @@ import type {
   TokenRequirements,
   WrapRequired,
 } from './orchestrator'
+
+export type { AppFee, AppFeeRate } from './orchestrator'
+
 import { hyperCoreMainnet, solanaMainnet, tronMainnet } from './orchestrator'
 import type {
   AccountProviderConfig,
