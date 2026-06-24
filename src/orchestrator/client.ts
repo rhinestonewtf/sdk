@@ -33,6 +33,71 @@ interface PolicyContext {
   isSponsored: boolean
 }
 
+type ChainIdInput = string | number
+
+type AppFeeResponse = {
+  feeBps: number
+  baseAmount: string | number | bigint
+  amount: string | number | bigint
+  chainId: ChainIdInput
+  tokenAddress: Address
+}
+
+type AlpsTokenBalance = {
+  locked?: string | number | bigint
+  unlocked?: string | number | bigint
+}
+
+type AlpsIntentCost =
+  | {
+      hasFulfilledAll: true
+      tokensSpent?: Record<string, Record<Address, AlpsTokenBalance>>
+      tokensReceived?: Array<{
+        tokenAddress: Address
+        destinationAmount: string | number | bigint
+      }>
+      appFee?: AppFeeResponse[]
+      gasCost?: { destination?: { chainId?: ChainIdInput } }
+      feeBreakdownUSD?: {
+        gasFeeUSD?: number
+        bridgeFeeUSD?: number
+        swapFeeUSD?: number
+        settlementFeeUSD?: number
+        appFeeUSD?: number
+      }
+    }
+  | {
+      hasFulfilledAll: false
+      totalTokenShortfallInUSD?: number
+    }
+
+type AlpsSettlementContext = {
+  settlementLayer?: Quote['settlementLayer']
+  bridgeFill?: { type: Quote['settlementLayer'] }
+}
+
+type AlpsIntentOp = {
+  nonce: string | number | bigint
+  expires: string | number | bigint
+  signData?: Quote['signData']
+  bridgeFill?: BridgeFill
+  elements?: Array<{
+    mandate?: {
+      qualifier?: {
+        settlementContext?: AlpsSettlementContext
+      }
+    }
+  }>
+}
+
+type AlpsQuoteResponse = {
+  traceId?: string
+  intentOp: AlpsIntentOp
+  intentCost: AlpsIntentCost
+  estimatedFillTimeSec?: number
+  tokenRequirements?: unknown
+}
+
 export class Orchestrator {
   private serverUrl: string
   private authProvider: AuthProvider
@@ -326,8 +391,144 @@ function encodeOptions(options: IntentOptions): Record<string, unknown> {
 }
 
 function decodeQuoteResponse(json: any): QuoteResponse {
+  if (!Array.isArray(json.routes) && json.intentOp && json.intentCost) {
+    return {
+      traceId: json.traceId,
+      routes: [decodeAlpsQuote(json as AlpsQuoteResponse)],
+    }
+  }
+
   const routes = (json.routes ?? []) as any[]
   return { traceId: json.traceId, routes: routes.map(decodeQuote) }
+}
+
+function decodeAlpsQuote(response: AlpsQuoteResponse): Quote {
+  const intentOp = response.intentOp
+  return {
+    intentId: String(intentOp.nonce),
+    expiresAt: Number(intentOp.expires),
+    estimatedFillTime: { seconds: response.estimatedFillTimeSec ?? 0 },
+    settlementLayer: decodeAlpsSettlementLayer(intentOp),
+    signData:
+      intentOp.signData ??
+      ({ origin: [], destination: undefined } as unknown as Quote['signData']),
+    cost: decodeAlpsCost(response.intentCost),
+    appFee: response.intentCost.hasFulfilledAll
+      ? decodeAppFee(response.intentCost.appFee)
+      : undefined,
+    tokenRequirements: response.tokenRequirements
+      ? decodeTokenRequirements(response.tokenRequirements)
+      : undefined,
+    bridgeFill: decodeBridgeFill(intentOp.bridgeFill),
+  }
+}
+
+function decodeAlpsSettlementLayer(
+  intentOp: AlpsIntentOp,
+): Quote['settlementLayer'] {
+  const context = intentOp.elements?.find?.((element) => {
+    const ctx = element?.mandate?.qualifier?.settlementContext
+    return ctx?.bridgeFill
+  })?.mandate?.qualifier?.settlementContext
+
+  const firstContext =
+    context ?? intentOp.elements?.[0]?.mandate?.qualifier?.settlementContext
+
+  if (
+    firstContext?.settlementLayer === 'INTENT_EXECUTOR' &&
+    firstContext.bridgeFill
+  ) {
+    return firstContext.bridgeFill.type
+  }
+
+  return firstContext?.settlementLayer ?? 'INTENT_EXECUTOR'
+}
+
+function decodeAlpsCost(intentCost: AlpsIntentCost): Cost {
+  if (!intentCost.hasFulfilledAll) {
+    return {
+      input: [],
+      output: [],
+      fees: {
+        total: { usd: intentCost.totalTokenShortfallInUSD ?? 0 },
+        breakdown: {
+          gas: { usd: 0 },
+          bridge: { usd: 0 },
+          swap: { usd: 0 },
+          app: { usd: 0 },
+        },
+      },
+    }
+  }
+
+  const breakdown = intentCost.feeBreakdownUSD ?? {}
+  const gasUSD = breakdown.gasFeeUSD ?? 0
+  const bridgeUSD = breakdown.settlementFeeUSD ?? breakdown.bridgeFeeUSD ?? 0
+  const swapUSD = breakdown.swapFeeUSD ?? 0
+  const appUSD = breakdown.appFeeUSD ?? 0
+
+  return {
+    input: decodeAlpsInputEntries(intentCost.tokensSpent),
+    output: decodeAlpsOutputEntries(intentCost),
+    fees: {
+      total: { usd: gasUSD + bridgeUSD + swapUSD + appUSD },
+      breakdown: {
+        gas: { usd: gasUSD },
+        bridge: { usd: bridgeUSD },
+        swap: { usd: swapUSD },
+        app: { usd: appUSD },
+      },
+    },
+  }
+}
+
+function decodeAlpsInputEntries(
+  tokensSpent: Extract<
+    AlpsIntentCost,
+    { hasFulfilledAll: true }
+  >['tokensSpent'],
+): CostTokenEntry[] {
+  const entries: CostTokenEntry[] = []
+  for (const [chainKey, perToken] of Object.entries(tokensSpent ?? {})) {
+    const chainId = parseChainId(chainKey)
+    for (const [tokenAddress, tokenBalance] of Object.entries(perToken)) {
+      entries.push({
+        chainId,
+        tokenAddress: tokenAddress as Address,
+        symbol: null,
+        decimals: null,
+        price: null,
+        amount:
+          BigInt(tokenBalance.locked ?? 0) + BigInt(tokenBalance.unlocked ?? 0),
+      })
+    }
+  }
+  return entries
+}
+
+function decodeAlpsOutputEntries(
+  intentCost: Extract<AlpsIntentCost, { hasFulfilledAll: true }>,
+): CostTokenEntry[] {
+  const destinationChainId = parseChainId(
+    intentCost.gasCost?.destination?.chainId ?? 0,
+  )
+  const byToken = new Map<Address, bigint>()
+  for (const entry of intentCost.tokensReceived ?? []) {
+    const tokenAddress = entry.tokenAddress as Address
+    byToken.set(
+      tokenAddress,
+      (byToken.get(tokenAddress) ?? 0n) + BigInt(entry.destinationAmount),
+    )
+  }
+
+  return [...byToken.entries()].map(([tokenAddress, amount]) => ({
+    chainId: destinationChainId,
+    tokenAddress,
+    symbol: null,
+    decimals: null,
+    price: null,
+    amount,
+  }))
 }
 
 function decodeQuote(route: any): Quote {
@@ -346,9 +547,11 @@ function decodeQuote(route: any): Quote {
   }
 }
 
-function decodeAppFee(appFee: any): AppFee[] | undefined {
+function decodeAppFee(
+  appFee: AppFeeResponse[] | undefined,
+): AppFee[] | undefined {
   if (!appFee) return undefined
-  return (appFee as any[]).map((fee) => ({
+  return appFee.map((fee) => ({
     feeBps: fee.feeBps,
     baseAmount: BigInt(fee.baseAmount),
     amount: BigInt(fee.amount),
