@@ -8,5 +8,3 @@ Remove the legacy social-recovery surface:
 - Remove the `recovery` field from `RhinestoneAccountConfig` and the `Recovery` type.
 - Remove the `guardians` signer (`GuardiansSignerSet`) from `SignerSet`.
 - Remove `SignerNotSupportedError` — it only guarded the guardian path.
-
-The intent and user-operation flows are unaffected.

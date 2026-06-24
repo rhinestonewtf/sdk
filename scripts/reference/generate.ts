@@ -659,7 +659,6 @@ function cleanGenerated() {
 // or forgotten exports. Listed here (rather than silently skipped) so the
 // deliberate exclusions stay visible.
 const UNDOCUMENTED_OK = new Set<string>([
-  'createRhinestoneAccount', // superseded by RhinestoneSDK in the reference
   'experimental_getModuleSetup', // advanced/internal
   'walletClientToAccount', // adapter, deferred
   'wrapParaAccount', // adapter, deferred
