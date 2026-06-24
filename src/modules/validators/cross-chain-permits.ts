@@ -75,12 +75,18 @@ function resolveCrossChainPermission(
     )
   }
 
+  const fillDeadline = input.fillDeadline?.map(({ chain, min, max }) => ({
+    chain,
+    min: min !== undefined ? dateToUnixSeconds(min) : undefined,
+    max: max !== undefined ? dateToUnixSeconds(max) : undefined,
+  }))
+
   return {
     from,
     to,
     validUntil,
     validAfter,
-    fillDeadline: input.fillDeadline,
+    fillDeadline,
     // Inverted default: callers must opt out of bridge-to-self
     // explicitly. This stops a session key from quietly bridging to an
     // attacker-controlled recipient.

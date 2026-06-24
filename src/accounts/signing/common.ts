@@ -48,7 +48,7 @@ function convertOwnerSetToSignerSet(owners: OwnerSet): SignerSet {
       return {
         type: 'owner',
         kind: 'ecdsa',
-        accounts: owners.accounts,
+        accounts: owners.owners.map((o) => o.account),
         module: owners.module ?? ENS_HCA_MODULE,
       }
     }
@@ -78,7 +78,7 @@ function convertOwnerSetToSignerSet(owners: OwnerSet): SignerSet {
               return {
                 type: 'ecdsa',
                 id: index,
-                accounts: validator.accounts,
+                accounts: validator.owners.map((o) => o.account),
                 module: validator.module ?? ENS_HCA_MODULE,
               }
             }

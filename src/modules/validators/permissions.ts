@@ -105,8 +105,8 @@ type RawFunctionConfig = {
   valueLimitPerUse?: bigint
   params?: Record<string, RawParamConstraint | undefined>
   maxUses?: bigint
-  validUntil?: Date | number
-  validAfter?: Date | number
+  validUntil?: Date
+  validAfter?: Date
   valueLimit?: bigint
   spendingLimit?: { token: `0x${string}`; amount: bigint }
 }
@@ -173,14 +173,12 @@ function resolvePermission(permission: Permission): ScopedAction[] {
     }
 
     if (config.validUntil !== undefined || config.validAfter !== undefined) {
-      const toMs = (v: Date | number): number =>
-        v instanceof Date ? v.getTime() : v
       const validUntil =
         config.validUntil !== undefined
-          ? toMs(config.validUntil)
+          ? config.validUntil.getTime()
           : FAR_FUTURE_MS
       const validAfter =
-        config.validAfter !== undefined ? toMs(config.validAfter) : 0
+        config.validAfter !== undefined ? config.validAfter.getTime() : 0
       if (validUntil < validAfter) {
         throw new Error(
           `Function "${fnName}": validUntil (${validUntil}) is before validAfter (${validAfter}).`,

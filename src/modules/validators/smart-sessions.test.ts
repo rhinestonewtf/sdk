@@ -486,8 +486,7 @@ describe('getSessionData', () => {
         chain: base,
         owners: {
           type: 'ens',
-          accounts: [accountA],
-          ownerExpirations: [281474976710655],
+          owners: [{ account: accountA }],
         },
       }),
     ).toThrow('ENS owners are not supported for smart sessions')

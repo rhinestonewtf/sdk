@@ -1,5 +1,5 @@
 import type { Address } from 'viem'
-import { decodeFunctionData, maxUint48, parseAbi } from 'viem'
+import { decodeFunctionData, parseAbi } from 'viem'
 import { describe, expect, test } from 'vitest'
 
 import { accountA, accountB, passkeyAccount } from '../../test/consts'
@@ -22,8 +22,7 @@ describe('Accounts: HCA', () => {
         account: { type: 'hca' },
         owners: {
           type: 'ens',
-          accounts: [accountA],
-          ownerExpirations: [Number(maxUint48)],
+          owners: [{ account: accountA }],
         },
       })
       expect(result).not.toBeNull()
@@ -46,9 +45,11 @@ describe('Accounts: HCA', () => {
         account: { type: 'hca' },
         owners: {
           type: 'ens',
-          accounts: [accountA, accountB],
+          owners: [
+            { account: accountA },
+            { account: accountB, expiration: new Date(1000000 * 1000) },
+          ],
           threshold: 2,
-          ownerExpirations: [Number(maxUint48), 1000000],
         },
       })
       expect(result).not.toBeNull()
@@ -86,8 +87,7 @@ describe('Accounts: HCA', () => {
           account: { type: 'hca' },
           owners: {
             type: 'ens',
-            accounts: [accountA],
-            ownerExpirations: [Number(maxUint48)],
+            owners: [{ account: accountA }],
           },
           modules: [
             {
@@ -106,8 +106,7 @@ describe('Accounts: HCA', () => {
           account: { type: 'hca' },
           owners: {
             type: 'ens',
-            accounts: [accountA],
-            ownerExpirations: [Number(maxUint48)],
+            owners: [{ account: accountA }],
           },
           experimental_sessions: { enabled: true },
         }),
@@ -119,8 +118,7 @@ describe('Accounts: HCA', () => {
         account: { type: 'hca' },
         owners: {
           type: 'ens',
-          accounts: [accountA],
-          ownerExpirations: [Number(maxUint48)],
+          owners: [{ account: accountA }],
         },
       })
       expect(deployArgs).not.toBeNull()
@@ -130,8 +128,7 @@ describe('Accounts: HCA', () => {
         account: { type: 'hca' },
         owners: {
           type: 'ens',
-          accounts: [accountA],
-          ownerExpirations: [Number(maxUint48)],
+          owners: [{ account: accountA }],
         },
         initData: {
           address: '0x229ca553b9863b0c8f2f03d4287cb8c73e2bede7',
@@ -150,8 +147,7 @@ describe('Accounts: HCA', () => {
         account: { type: 'hca' },
         owners: {
           type: 'ens',
-          accounts: [accountA],
-          ownerExpirations: [Number(maxUint48)],
+          owners: [{ account: accountA }],
         },
       })!
       expect(() =>
@@ -173,8 +169,7 @@ describe('Accounts: HCA', () => {
         account: { type: 'hca' },
         owners: {
           type: 'ens',
-          accounts: [accountA],
-          ownerExpirations: [Number(maxUint48)],
+          owners: [{ account: accountA }],
         },
         initData: {
           address: '0x229ca553b9863b0c8f2f03d4287cb8c73e2bede7',
@@ -190,8 +185,7 @@ describe('Accounts: HCA', () => {
         account: { type: 'hca' },
         owners: {
           type: 'ens',
-          accounts: [accountA],
-          ownerExpirations: [Number(maxUint48)],
+          owners: [{ account: accountA }],
         },
       })
       expect(address).toBeDefined()
@@ -202,8 +196,7 @@ describe('Accounts: HCA', () => {
         account: { type: 'hca' },
         owners: {
           type: 'ens',
-          accounts: [accountA],
-          ownerExpirations: [Number(maxUint48)],
+          owners: [{ account: accountA }],
         },
       })
       expect(address).toEqual(address2)
@@ -214,16 +207,14 @@ describe('Accounts: HCA', () => {
         account: { type: 'hca' },
         owners: {
           type: 'ens',
-          accounts: [accountA],
-          ownerExpirations: [Number(maxUint48)],
+          owners: [{ account: accountA }],
         },
       })
       const address2 = getAddress({
         account: { type: 'hca' },
         owners: {
           type: 'ens',
-          accounts: [accountB],
-          ownerExpirations: [Number(maxUint48)],
+          owners: [{ account: accountB }],
         },
       })
       expect(address1).not.toEqual(address2)
@@ -234,18 +225,16 @@ describe('Accounts: HCA', () => {
         account: { type: 'hca' },
         owners: {
           type: 'ens',
-          accounts: [accountA, accountB],
+          owners: [{ account: accountA }, { account: accountB }],
           threshold: 2,
-          ownerExpirations: [Number(maxUint48), Number(maxUint48)],
         },
       })
       const address2 = getAddress({
         account: { type: 'hca' },
         owners: {
           type: 'ens',
-          accounts: [accountB, accountA],
+          owners: [{ account: accountB }, { account: accountA }],
           threshold: 2,
-          ownerExpirations: [Number(maxUint48), Number(maxUint48)],
         },
       })
       expect(address1).toEqual(address2)
@@ -257,8 +246,7 @@ describe('Accounts: HCA', () => {
         account: { type: 'hca' },
         owners: {
           type: 'ens',
-          accounts: [accountA],
-          ownerExpirations: [Number(maxUint48)],
+          owners: [{ account: accountA }],
         },
         initData: {
           address: expectedAddress,
@@ -272,8 +260,7 @@ describe('Accounts: HCA', () => {
         account: { type: 'hca' as const },
         owners: {
           type: 'ens' as const,
-          accounts: [accountA],
-          ownerExpirations: [Number(maxUint48)],
+          owners: [{ account: accountA }],
         },
       }
       const derived = getAddress(config)
