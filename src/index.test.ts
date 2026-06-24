@@ -18,9 +18,9 @@ vi.mock('./execution/utils', async (importOriginal) => {
   }
 })
 
-const { createRhinestoneAccount } = await import('.')
+const { RhinestoneSDK } = await import('.')
 
-describe('createRhinestoneAccount', () => {
+describe('RhinestoneSDK.createAccount', () => {
   beforeEach(() => {
     mockGetTargetExecutionSignature.mockReset()
     mockSignIntent.mockReset()
@@ -48,20 +48,23 @@ describe('createRhinestoneAccount', () => {
     })
     mockGetTargetExecutionSignature.mockResolvedValue('0x33')
 
-    const account = await createRhinestoneAccount(config)
+    const sdk = new RhinestoneSDK({
+      auth: { mode: 'apiKey', apiKey: 'test' },
+    })
+    const account = await sdk.createAccount(config)
     const result = await account.signIntent(signData, base, signers)
 
     // Mirror the canonical signTransaction path: origin/destination always
     // signed in claim mode (targetExecution=false), target-exec sig separate.
     expect(mockSignIntent).toHaveBeenCalledWith(
-      config,
+      expect.objectContaining(config),
       signData,
       base,
       signers,
       false,
     )
     expect(mockGetTargetExecutionSignature).toHaveBeenCalledWith(
-      config,
+      expect.objectContaining(config),
       signData,
       base,
       signers,

@@ -388,12 +388,11 @@ interface SignedIntentData {
 }
 
 /**
- * Initialize a Rhinestone account
+ * Initialize a Rhinestone account from a fully-resolved config.
  * Note: accounts are deployed onchain only when the first transaction is sent.
- * @param config Account config (e.g. implementation vendor, owner signers, smart sessions)
- * @returns account
+ * @internal Use {@link RhinestoneSDK.createAccount} instead.
  */
-async function createRhinestoneAccount(
+async function createAccountInternal(
   config: RhinestoneConfig,
 ): Promise<RhinestoneAccount> {
   // Sanity check for existing (externally created) accounts
@@ -689,7 +688,7 @@ class RhinestoneSDK {
       useDevContracts: this.useDevContracts,
       headers: this.headers,
     }
-    return createRhinestoneAccount(rhinestoneConfig)
+    return createAccountInternal(rhinestoneConfig)
   }
 
   /**
@@ -723,7 +722,6 @@ class RhinestoneSDK {
 
 export {
   RhinestoneSDK,
-  createRhinestoneAccount,
   // Non-viem destination chain descriptors (Solana, Tron, HyperCore)
   hyperCoreMainnet,
   solanaMainnet,
