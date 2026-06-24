@@ -142,7 +142,6 @@ vi.mock('../orchestrator/registry', () => ({
 
 vi.mock('./error', () => ({
   Eip7702InitSignatureRequiredError: class extends Error {},
-  SignerNotSupportedError: class extends Error {},
 }))
 
 // --- Helpers ---

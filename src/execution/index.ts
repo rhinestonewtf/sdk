@@ -35,13 +35,13 @@ import type {
   UserOperationTransaction,
 } from '../types'
 import {
+  Eip7702InitSignatureRequiredError,
   ExecutionError,
   IntentFailedError,
   InvalidSourceCallsError,
   isExecutionError,
   OrderPathRequiredForIntentsError,
   QuoteNotInPreparedTransactionError,
-  SessionChainRequiredError,
 } from './error'
 import type { TransactionResult, UserOperationResult } from './utils'
 import {
@@ -399,10 +399,10 @@ export {
   // Errors
   isExecutionError,
   ExecutionError,
+  Eip7702InitSignatureRequiredError,
   IntentFailedError,
   InvalidSourceCallsError,
   OrderPathRequiredForIntentsError,
   QuoteNotInPreparedTransactionError,
-  SessionChainRequiredError,
 }
 export type { TransactionStatus, TransactionResult, UserOperationResult }
