@@ -42,7 +42,6 @@ import {
   OrderPathRequiredForIntentsError,
   QuoteNotInPreparedTransactionError,
   SessionChainRequiredError,
-  SignerNotSupportedError,
 } from './error'
 import type { TransactionResult, UserOperationResult } from './utils'
 import {
@@ -123,27 +122,22 @@ async function sendTransactionInternal(
     options.initialTokenRequests,
   )
 
-  const sendAsUserOp = options.signers?.type === 'guardians'
-  if (sendAsUserOp) {
-    throw new SignerNotSupportedError()
-  } else {
-    return await sendTransactionAsIntent(
-      config,
-      sourceChains,
-      targetChain,
-      resolvedCalls,
-      options.gasLimit,
-      tokenRequests,
-      options.recipient,
-      options.signers,
-      options.sponsored,
-      options.eip7702InitSignature,
-      options.settlementLayers,
-      options.sourceAssets,
-      options.feeAsset,
-      options.sourceCalls,
-    )
-  }
+  return await sendTransactionAsIntent(
+    config,
+    sourceChains,
+    targetChain,
+    resolvedCalls,
+    options.gasLimit,
+    tokenRequests,
+    options.recipient,
+    options.signers,
+    options.sponsored,
+    options.eip7702InitSignature,
+    options.settlementLayers,
+    options.sourceAssets,
+    options.feeAsset,
+    options.sourceCalls,
+  )
 }
 
 async function sendUserOperationInternal(
@@ -410,6 +404,5 @@ export {
   OrderPathRequiredForIntentsError,
   QuoteNotInPreparedTransactionError,
   SessionChainRequiredError,
-  SignerNotSupportedError,
 }
 export type { TransactionStatus, TransactionResult, UserOperationResult }

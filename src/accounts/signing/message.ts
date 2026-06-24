@@ -13,7 +13,6 @@ import type { SignerSet } from '../../types'
 import { SigningNotSupportedForAccountError } from '../error'
 import {
   type SigningFunctions,
-  signWithGuardians,
   signWithOwners,
   signWithSession,
 } from './common'
@@ -52,9 +51,6 @@ async function sign(
         hash,
         sign,
       )
-    }
-    case 'guardians': {
-      return signWithGuardians(signers, hash, signingFunctions)
     }
   }
 }

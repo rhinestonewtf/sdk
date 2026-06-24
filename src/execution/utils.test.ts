@@ -1009,11 +1009,6 @@ describe('resolveSignatureMode', () => {
     accounts: [accountA],
   } as unknown as SignerSet
 
-  const guardianSigners: SignerSet = {
-    type: 'guardians',
-    guardians: [accountA],
-  } as unknown as SignerSet
-
   const smartAccountConfig: RhinestoneConfig = {
     owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
     apiKey: 'test',
@@ -1060,16 +1055,6 @@ describe('resolveSignatureMode', () => {
     const mode = await resolveSignatureMode(
       smartAccountConfig,
       ownerSigners,
-      [arbitrum],
-      base.id,
-    )
-    expect(mode).toBe(SIG_MODE_ERC1271)
-  })
-
-  test('smart account with guardian signers returns SIG_MODE_ERC1271', async () => {
-    const mode = await resolveSignatureMode(
-      smartAccountConfig,
-      guardianSigners,
       [arbitrum],
       base.id,
     )

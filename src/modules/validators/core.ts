@@ -1,5 +1,4 @@
 import {
-  type Account,
   type Address,
   bytesToHex,
   concat,
@@ -47,8 +46,6 @@ const OWNABLE_VALIDATOR_ADDRESS: Address =
 const ENS_HCA_MODULE: Address = '0x5049ecBd4d961aE6DFEED9b7ccCe7f026454970E'
 const WEBAUTHN_VALIDATOR_ADDRESS: Address =
   '0x0000000000578c4cb0e472a5462da43c495c3f33'
-const SOCIAL_RECOVERY_VALIDATOR_ADDRESS: Address =
-  '0xa04d053b3c8021e8d5bf641816c42daa75d8b597'
 const MULTI_FACTOR_VALIDATOR_ADDRESS: Address =
   '0xf6bdf42c9be18ceca5c06c42a43daf7fbbe7896b'
 
@@ -379,33 +376,6 @@ function getMultiFactorValidator(
   }
 }
 
-function getSocialRecoveryValidator(
-  guardians: Account[],
-  threshold = 1,
-): Module {
-  const guardianAddresses = guardians.map((guardian) => guardian.address)
-  guardianAddresses.sort()
-  return {
-    type: MODULE_TYPE_ID_VALIDATOR,
-    address: SOCIAL_RECOVERY_VALIDATOR_ADDRESS,
-    initData: encodeAbiParameters(
-      [
-        {
-          type: 'uint256',
-          name: 'threshold',
-        },
-        {
-          type: 'address[]',
-          name: 'guardians',
-        },
-      ],
-      [BigInt(threshold), guardianAddresses],
-    ),
-    deInitData: '0x',
-    additionalContext: '0x',
-  }
-}
-
 function parsePublicKey(publicKey: Hex | Uint8Array): PublicKey {
   const bytes =
     typeof publicKey === 'string' ? hexToBytes(publicKey) : publicKey
@@ -444,7 +414,6 @@ export {
   getENSValidator,
   getWebAuthnValidator,
   getMultiFactorValidator,
-  getSocialRecoveryValidator,
   getValidator,
   getMockSignature,
   supportsEip712,

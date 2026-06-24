@@ -128,7 +128,6 @@ vi.mock('../modules/validators/core', () => ({
   }),
   ownerSetUsesEns: vi.fn().mockReturnValue(false),
   getMultiFactorValidator: vi.fn(),
-  getSocialRecoveryValidator: vi.fn(),
   getWebAuthnValidator: vi.fn(),
 }))
 

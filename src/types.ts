@@ -564,11 +564,6 @@ interface Session {
   claimPolicies: readonly Permit2ClaimPolicy[]
 }
 
-interface Recovery {
-  guardians: Account[]
-  threshold?: number
-}
-
 interface ModuleInput {
   type: ModuleType
   address: Address
@@ -585,7 +580,6 @@ interface RhinestoneAccountConfig {
     module?: Address
     compatibilityFallback?: Address
   }
-  recovery?: Recovery
   eoa?: Account
   modules?: ModuleInput[]
   initData?:
@@ -794,12 +788,7 @@ interface PerChainSessionSignerSet {
 
 type SessionSignerSet = SingleSessionSignerSet | PerChainSessionSignerSet
 
-interface GuardiansSignerSet {
-  type: 'guardians'
-  guardians: Account[]
-}
-
-type SignerSet = OwnerSignerSet | SessionSignerSet | GuardiansSignerSet
+type SignerSet = OwnerSignerSet | SessionSignerSet
 
 type Sponsorship =
   | boolean
@@ -921,7 +910,6 @@ export type {
   SessionInput,
   SessionEnableData,
   Session,
-  Recovery,
   ModuleType,
   ModuleInput,
   Action,

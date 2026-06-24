@@ -27,12 +27,10 @@ import {
   isValidatorInitialized,
 } from '../modules/read'
 import { getOwnerValidator } from '../modules/validators'
-import { getSocialRecoveryValidator } from '../modules/validators/core'
 import type { ResolvedSessionSignerSet } from '../modules/validators/smart-sessions'
 import type {
   AccountProviderConfig,
   Call,
-  OwnerSet,
   RhinestoneConfig,
   SignerSet,
 } from '../types'
@@ -59,7 +57,6 @@ import {
   getAddress as getHcaAddress,
   getDeployArgs as getHcaDeployArgs,
   getEip712Domain as getHcaEip712Domain,
-  getGuardianSmartAccount as getHcaGuardianSmartAccount,
   getSmartAccount as getHcaSmartAccount,
   packSignature as packHcaSignature,
 } from './hca'
@@ -67,7 +64,6 @@ import {
   getAddress as getKernelAddress,
   getDeployArgs as getKernelDeployArgs,
   getEip712Domain as getKernelEip712Domain,
-  getGuardianSmartAccount as getKernelGuardianSmartAccount,
   getInstallData as getKernelInstallData,
   getSmartAccount as getKernelSmartAccount,
   packSignature as packKernelSignature,
@@ -80,7 +76,6 @@ import {
   getDeployArgs as getNexusDeployArgs,
   getEip712Domain as getNexusEip712Domain,
   getEip7702InitCall as getNexusEip7702InitCall,
-  getGuardianSmartAccount as getNexusGuardianSmartAccount,
   getInstallData as getNexusInstallData,
   getSmartAccount as getNexusSmartAccount,
   isDefaultValidatorConfigured as isNexusDefaultValidatorConfigured,
@@ -91,7 +86,6 @@ import {
   getAddress as getSafeAddress,
   getDeployArgs as getSafeDeployArgs,
   getEip712Domain as getSafeEip712Domain,
-  getGuardianSmartAccount as getSafeGuardianSmartAccount,
   getInstallData as getSafeInstallData,
   getSmartAccount as getSafeSmartAccount,
   getV0DeployArgs as getSafeV0DeployArgs,
@@ -104,7 +98,6 @@ import {
   getAddress as getStartaleAddress,
   getDeployArgs as getStartaleDeployArgs,
   getEip712Domain as getStartaleEip712Domain,
-  getGuardianSmartAccount as getStartaleGuardianSmartAccount,
   getInstallData as getStartaleInstallData,
   getSmartAccount as getStartaleSmartAccount,
   packSignature as packStartaleSignature,
@@ -934,78 +927,6 @@ async function getSmartAccount(
   }
 }
 
-async function getGuardianSmartAccount(
-  config: RhinestoneConfig,
-  client: PublicClient,
-  chain: Chain,
-  guardians: OwnerSet,
-) {
-  const address = getAddress(config)
-  const accounts = guardians.type === 'ecdsa' ? guardians.accounts : []
-  const socialRecoveryValidator = getSocialRecoveryValidator(accounts)
-  if (!socialRecoveryValidator) {
-    throw new Error('Social recovery is not available')
-  }
-  const signers: SignerSet = {
-    type: 'guardians',
-    guardians: accounts,
-  }
-  const signFn = (hash: Hex) => signMessage(signers, chain, address, hash, true)
-
-  const account = getAccountProvider(config)
-  switch (account.type) {
-    case 'safe': {
-      return getSafeGuardianSmartAccount(
-        client,
-        address,
-        guardians,
-        socialRecoveryValidator.address,
-        signFn,
-      )
-    }
-    case 'nexus': {
-      const defaultValidatorAddress = getNexusDefaultValidatorAddress(
-        account.version,
-      )
-      return getNexusGuardianSmartAccount(
-        client,
-        address,
-        guardians,
-        socialRecoveryValidator.address,
-        signFn,
-        defaultValidatorAddress,
-      )
-    }
-    case 'kernel': {
-      return getKernelGuardianSmartAccount(
-        client,
-        address,
-        guardians,
-        socialRecoveryValidator.address,
-        signFn,
-      )
-    }
-    case 'startale': {
-      return getStartaleGuardianSmartAccount(
-        client,
-        address,
-        guardians,
-        socialRecoveryValidator.address,
-        signFn,
-      )
-    }
-    case 'hca': {
-      return getHcaGuardianSmartAccount(
-        client,
-        address,
-        guardians,
-        socialRecoveryValidator.address,
-        signFn,
-      )
-    }
-  }
-}
-
 function is7702(config: RhinestoneConfig): boolean {
   const account = getAccountProvider(config)
   return account.type !== 'eoa' && config.eoa !== undefined
@@ -1038,7 +959,6 @@ export {
   setup,
   toErc6492Signature,
   getSmartAccount,
-  getGuardianSmartAccount,
   getEip1271Signature,
   getEmissarySignature,
   getTypedDataPackedSignature,
