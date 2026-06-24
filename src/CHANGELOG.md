@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 2.0.0-beta.29
+
+### Patch Changes
+
+- d44f9ea: Improve JSDoc across the public API (account methods, `RhinestoneSDK`, actions, and utils) for richer in-editor docs and to power the generated SDK reference.
+
 ## 2.0.0-beta.28
 
 ### Patch Changes
