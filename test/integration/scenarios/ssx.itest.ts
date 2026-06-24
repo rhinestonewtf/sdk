@@ -1,5 +1,6 @@
 import type { Chain } from 'viem/chains'
 import { describe, test } from 'vitest'
+import { experimental_disableSession } from '../../../src/actions/smart-sessions'
 import { SimulationFailedError } from '../../../src/errors/index'
 import type { RhinestoneAccount, Session } from '../../../src/index'
 import { sourceChain, targetChain } from '../config/chains'
@@ -102,6 +103,42 @@ describe.sequential('SDK integration ssx', () => {
     })
   }
 
+  // DISABLE: enable a session for real, then disable it via
+  // experimental_disableSession. The account executes removeConfig itself, so
+  // the disable needs no separate user signature — only the outer (owner) tx.
+  for (const chainMode of chainModes) {
+    test(`disables a session on a ${chainMode}-chain account`, async () => {
+      const account = await createSessionAccount()
+      const session = createScopedSession({
+        chain: getExecutionChain(chainMode),
+        owner: createOwner(),
+      })
+
+      await enableSession(
+        account,
+        session,
+        chainMode,
+        `ssx/${chainMode}/disable-enable`,
+      )
+
+      const execution = await executeIntent({
+        account,
+        label: `ssx/${chainMode}/disable`,
+        transaction: createDisableTransaction(chainMode, { session }),
+      })
+
+      expectOutcome(execution, { kind: 'success' })
+      if (execution.phase !== 'success') return
+
+      expectNoFailedOperations(execution.status)
+      expectCompletedOperation(
+        execution.status,
+        getExecutionChain(chainMode).id,
+      )
+      await expectSessionDisabled(account, session)
+    })
+  }
+
   test('rejects a session-signed call with wrong selector', async () => {
     await expectScopedCallRejected(createOutOfScopeCall(), 'wrong-selector')
   })
@@ -177,6 +214,21 @@ function createSessionTransaction(
     return { ...base, sourceChains: [sourceChain], targetChain }
   }
   return { ...base, chain: sourceChain }
+}
+
+// Disable is local to the session's chain and owner-signed (no session
+// signers), so no cross-chain routing is needed regardless of chainMode.
+function createDisableTransaction(
+  chainMode: ChainMode,
+  { session }: { session: Session },
+) {
+  return {
+    chain: getExecutionChain(chainMode),
+    sponsored: true,
+    calls: [
+      experimental_disableSession(session, new Date(Date.now() + 60 * 60_000)),
+    ],
+  }
 }
 
 async function addEnableData(
