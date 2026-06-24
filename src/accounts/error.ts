@@ -49,19 +49,6 @@ class Eip7702AccountMustHaveEoaError extends AccountError {
   }
 }
 
-class ExistingEip7702AccountsNotSupportedError extends AccountError {
-  constructor(params?: {
-    context?: any
-    errorType?: string
-    traceId?: string
-  }) {
-    super({
-      message: 'Existing EIP-7702 accounts are not yet supported',
-      ...params,
-    })
-  }
-}
-
 class EoaAccountMustHaveAccountError extends AccountError {
   constructor(params?: {
     context?: any
@@ -83,19 +70,6 @@ class FactoryArgsNotAvailableError extends AccountError {
   }) {
     super({
       message: 'Factory args not available',
-      ...params,
-    })
-  }
-}
-
-class SmartSessionsNotEnabledError extends AccountError {
-  constructor(params?: {
-    context?: any
-    errorType?: string
-    traceId?: string
-  }) {
-    super({
-      message: 'Smart sessions are not enabled for this account',
       ...params,
     })
   }
@@ -256,10 +230,8 @@ export {
   AccountError,
   Eip712DomainNotAvailableError,
   Eip7702AccountMustHaveEoaError,
-  ExistingEip7702AccountsNotSupportedError,
   EoaAccountMustHaveAccountError,
   FactoryArgsNotAvailableError,
-  SmartSessionsNotEnabledError,
   DefaultValidatorAlreadyInitializedError,
   SigningNotSupportedForAccountError,
   Eip7702NotSupportedForAccountError,

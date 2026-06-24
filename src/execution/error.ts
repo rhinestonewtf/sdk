@@ -47,20 +47,6 @@ class OrderPathRequiredForIntentsError extends ExecutionError {
   }
 }
 
-class SessionChainRequiredError extends ExecutionError {
-  constructor(params?: {
-    context?: any
-    errorType?: string
-    traceId?: string
-  }) {
-    super({
-      message:
-        'Specifying a chain is required when using multi-chain smart sessions',
-      ...params,
-    })
-  }
-}
-
 class IntentFailedError extends ExecutionError {
   constructor(params?: {
     intentId?: string
@@ -131,6 +117,5 @@ export {
   InvalidSourceCallsError,
   OrderPathRequiredForIntentsError,
   QuoteNotInPreparedTransactionError,
-  SessionChainRequiredError,
   IntentFailedError,
 }
