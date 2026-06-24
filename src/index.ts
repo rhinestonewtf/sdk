@@ -146,13 +146,10 @@ interface RhinestoneAccount {
   /**
    * Deploy the account on a given chain.
    * @param chain Chain to deploy the account on
-   * @param params Optional deployment parameters (session, sponsorship)
+   * @param params Optional deployment parameters (sponsorship)
    * @returns `true` once the deployment is submitted
    */
-  deploy(
-    chain: Chain,
-    params?: { session?: Session; sponsored?: boolean },
-  ): Promise<boolean>
+  deploy(chain: Chain, params?: { sponsored?: boolean }): Promise<boolean>
   /**
    * Check whether the account is deployed on a given chain.
    * @param chain Chain to check
@@ -404,10 +401,12 @@ async function createAccountInternal(
     throw new OwnersFieldRequiredError()
   }
 
-  function deploy(
-    chain: Chain,
-    params?: { session?: Session; sponsored?: boolean },
-  ) {
+  /**
+   * Deploys the account on a given chain
+   * @param chain Chain to deploy the account on
+   * @param params Optional deployment params (e.g. `sponsored`)
+   */
+  function deploy(chain: Chain, params?: { sponsored?: boolean }) {
     return deployInternal(config, chain, params)
   }
 
