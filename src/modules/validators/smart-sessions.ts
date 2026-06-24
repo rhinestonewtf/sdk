@@ -689,6 +689,88 @@ async function getEnableSessionCall(
   }
 }
 
+// SignedPermissionDisable(address account,bytes32 permissionId,bytes12 lockTag,uint256 expires,uint256 nonce)
+// Vendored from contracts/smart-sessions-v2/src/lib/HashLibV2.sol.
+const SIGNED_PERMISSION_DISABLE_TYPEHASH: Hex =
+  '0x098b3120e60a8adc9d970dec9c1f8796974a3ab6154f995ad56ee7b9a38d8836'
+
+// Builds a `removeConfig` call that disables a single smart session.
+//
+// The disable user-signature (`disableData.userSig`) is left empty: the
+// emissary only verifies it when `msg.sender != account`
+// (SignatureLib.verifySignatures), and here the account itself executes the
+// call, so the disable is authorized by the outer transaction the user signs
+// normally. The `disableDigest` leaf still has to match on-chain, so we build
+// it from the current emissary nonce + `expires`. No-allocator flow only
+// (`allocator == zeroAddress`), matching how enable is used today.
+async function getDisableSessionCall(
+  account: Address,
+  session: Session,
+  expires: bigint,
+  provider: ProviderConfig | undefined,
+  useDevContracts?: boolean,
+) {
+  const lockTag: Hex = '0x000000000000000000000000'
+  const permissionId = getPermissionId(session)
+  const nonce = await getSessionNonce(
+    account,
+    session,
+    lockTag,
+    provider,
+    useDevContracts,
+  )
+  // SmartSessionLens reuses the session multichain wrapper for the disable
+  // digest, plugging this leaf in as `sessionDigest` (HashLibV2.disableDigest).
+  const disableDigest = keccak256(
+    encodeAbiParameters(
+      [
+        { type: 'bytes32' },
+        { type: 'address' },
+        { type: 'bytes32' },
+        { type: 'bytes12' },
+        { type: 'uint256' },
+        { type: 'uint256' },
+      ],
+      [
+        SIGNED_PERMISSION_DISABLE_TYPEHASH,
+        account,
+        permissionId,
+        lockTag,
+        expires,
+        nonce,
+      ],
+    ),
+  )
+  const hashesAndChainIds = [
+    { chainId: BigInt(session.chain.id), sessionDigest: disableDigest },
+  ]
+  return {
+    to: getSmartSessionEmissaryAddress(useDevContracts),
+    data: encodeFunctionData({
+      abi: smartSessionEmissaryAbi,
+      functionName: 'removeConfig',
+      args: [
+        account,
+        {
+          scope: SCOPE_MULTICHAIN,
+          resetPeriod: RESET_PERIOD_ONE_WEEK,
+          allocator: zeroAddress,
+          permissionId,
+        },
+        {
+          allocatorSig: '0x',
+          userSig: '0x',
+          expires,
+          session: {
+            chainDigestIndex: 0,
+            hashesAndChainIds,
+          },
+        },
+      ],
+    }),
+  }
+}
+
 function toSession<const TAbis extends readonly Abi[]>(
   definition: SessionDefinition<TAbis>,
   options: { useDevContracts?: boolean } = {},
@@ -1584,6 +1666,7 @@ export {
   getSessionData,
   getPolicyData,
   getEnableSessionCall,
+  getDisableSessionCall,
   getPermissionId,
   getSmartSessionValidator,
   getSessionDetails,

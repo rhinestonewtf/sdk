@@ -229,6 +229,11 @@ export const manifest: Group[] = [
             './actions/smart-sessions',
             true,
           ),
+          action(
+            'experimental_disableSession',
+            './actions/smart-sessions',
+            true,
+          ),
         ],
       },
     ],

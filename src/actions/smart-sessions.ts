@@ -4,6 +4,7 @@ import {
   getModuleUninstallationCalls,
 } from '../accounts'
 import {
+  getDisableSessionCall,
   getEnableSessionCall,
   getSmartSessionValidator,
 } from '../modules/validators/smart-sessions'
@@ -77,4 +78,41 @@ function experimental_enableSession(
   }
 }
 
-export { experimental_disable, experimental_enable, experimental_enableSession }
+/**
+ * Disable a smart session
+ *
+ * Removes a single session from the smart-session emissary via `removeConfig`.
+ * The account executes the call itself, so the emissary skips the disable
+ * user-signature — the user authorizes it by signing the outer transaction as
+ * usual (no separate, blind session-digest signature). The `session` must be a
+ * resolved `Session` (the return value of `toSession(...)`) on the chain where
+ * the session is being disabled.
+ *
+ * @param session resolved session to disable
+ * @param expires deadline after which this disable call is no longer valid;
+ *   must be in the future
+ * @returns Calls to disable the smart session
+ */
+function experimental_disableSession(
+  session: Session,
+  expires: Date,
+): LazyCallInput {
+  return {
+    async resolve({ accountAddress, config }) {
+      return getDisableSessionCall(
+        accountAddress,
+        session,
+        BigInt(Math.floor(expires.getTime() / 1000)),
+        config.provider,
+        config.useDevContracts,
+      )
+    },
+  }
+}
+
+export {
+  experimental_disable,
+  experimental_disableSession,
+  experimental_enable,
+  experimental_enableSession,
+}
