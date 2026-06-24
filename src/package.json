@@ -52,8 +52,8 @@
       "import": "./dist/src/utils/index.js"
     },
     "./smart-sessions": {
-      "types": "./dist/src/modules/validators/smart-sessions.d.ts",
-      "import": "./dist/src/modules/validators/smart-sessions.js"
+      "types": "./dist/src/smart-sessions/index.d.ts",
+      "import": "./dist/src/smart-sessions/index.js"
     },
     "./jwt-server": {
       "types": "./dist/src/jwt-server/index.d.ts",
