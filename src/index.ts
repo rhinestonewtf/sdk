@@ -21,7 +21,6 @@ import {
   setup as setupInternal,
   signEip7702InitData as signEip7702InitDataInternal,
 } from './accounts'
-import { createCrossChainPermission } from './actions/smart-sessions'
 import { type AuthProvider, createAuthProvider } from './auth/provider'
 import {
   getIntentStatus as getIntentStatusInternal,
@@ -99,8 +98,9 @@ import type {
   Call,
   CallInput,
   ChainSessionConfig,
-  CrossChainPermit,
+  CrossChainPermissionInput,
   CrossChainSettlementLayer,
+  FromLeg,
   MultiFactorValidatorConfig,
   NonEvmTokenRequest,
   NonEvmTokenRequests,
@@ -124,6 +124,7 @@ import type {
   SourceCallProvidedFunds,
   TokenRequest,
   TokenSymbol,
+  ToLeg,
   Transaction,
   UniversalActionPolicyParamCondition,
   UserOperationTransaction,
@@ -730,8 +731,6 @@ export {
   WEBAUTHN_VALIDATOR_ADDRESS,
   MULTI_FACTOR_VALIDATOR_ADDRESS,
   SMART_SESSION_EMISSARY_ADDRESS,
-  // Cross-chain session permissions
-  createCrossChainPermission,
 }
 export type {
   RhinestoneAccount,
@@ -765,7 +764,9 @@ export type {
   ParamConstraint,
   Policy,
   Permit2ClaimPolicy,
-  CrossChainPermit,
+  CrossChainPermissionInput,
+  FromLeg,
+  ToLeg,
   CrossChainSettlementLayer,
   UniversalActionPolicyParamCondition,
   PreparedQuotes,

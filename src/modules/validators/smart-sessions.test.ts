@@ -655,7 +655,7 @@ describe('crossChainPermits expansion', () => {
         {
           from: [{ chain: base, token: USDC }],
           to: [{ chain: base, token: USDC_ARB }],
-          validUntil: 2_000_000_000n,
+          validUntil: new Date(2_000_000_000 * 1000),
         },
       ],
     })
@@ -759,7 +759,7 @@ describe('crossChainPermits expansion', () => {
     // TimeFramePolicy with validUntil=0 (expired the instant validAfter is
     // reached). It should default to the year-2100 sentinel, mirroring the
     // permission resolver.
-    const validAfter = 1_700_000_000n // unix seconds
+    const validAfterSeconds = 1_700_000_000 // unix seconds
     const session = toSession({
       chain: base,
       owners: { type: 'ecdsa', accounts: [accountA] },
@@ -767,7 +767,7 @@ describe('crossChainPermits expansion', () => {
         {
           from: [{ chain: base, token: USDC }],
           to: [{ chain: base, token: USDC_ARB }],
-          validAfter,
+          validAfter: new Date(validAfterSeconds * 1000),
         },
       ],
     })
@@ -784,7 +784,7 @@ describe('crossChainPermits expansion', () => {
     const hex = timeFrame!.initData.slice(2)
     const validUntilSec = Number.parseInt(hex.slice(0, 12), 16)
     const validAfterSec = Number.parseInt(hex.slice(12, 24), 16)
-    expect(validAfterSec).toBe(Number(validAfter))
+    expect(validAfterSec).toBe(validAfterSeconds)
     // Far-future sentinel (year 2100) in seconds — must be well in the future.
     expect(validUntilSec).toBe(4_102_444_800)
     expect(validUntilSec).toBeGreaterThan(validAfterSec)

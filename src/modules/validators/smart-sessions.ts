@@ -37,7 +37,7 @@ import {
 import type {
   Action,
   ArgPolicyExpression,
-  CrossChainPermit,
+  CrossChainPermissionInput,
   Permit2ClaimPolicy,
   Policy,
   ProviderConfig,
@@ -61,6 +61,7 @@ import {
   SMART_SESSION_EMISSARY_ADDRESS,
   SMART_SESSION_EMISSARY_ADDRESS_DEV,
 } from './core'
+import { resolveCrossChainPermission } from './cross-chain-permits'
 import { FAR_FUTURE_MS, resolvePermissions } from './permissions'
 import { getArbitersForSettlementLayers } from './policies/claim/arbiters'
 import {
@@ -741,12 +742,13 @@ function toSession<const TAbis extends readonly Abi[]>(
  * branch that emits matching constraints there.
  */
 function expandCrossChainPermit(
-  permit: CrossChainPermit,
+  input: CrossChainPermissionInput,
   useDevContracts?: boolean,
 ): {
   claim: Permit2ClaimPolicy
   fallbackPolicies: Policy[]
 } {
+  const permit = resolveCrossChainPermission(input)
   // `from`/`to` are optional: an absent leg list means "no token/chain
   // restriction on that side" — we emit `undefined` so the underlying
   // Permit2 policy skips the check entirely (matching how every other
