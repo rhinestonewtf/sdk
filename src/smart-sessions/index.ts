@@ -3,6 +3,7 @@
 // and the smart-sessions actions; this barrel re-exports just the building blocks
 // integrators need directly.
 
+import { toCrossChainPermissionInput } from '../modules/validators/cross-chain-permits'
 import type {
   ChainDigest,
   SessionDetails,
@@ -37,6 +38,7 @@ export {
   getSessionData,
   getSessionDetails,
   isSessionEnabled,
+  toCrossChainPermissionInput,
   SPENDING_LIMITS_POLICY_ADDRESS,
   TIME_FRAME_POLICY_ADDRESS,
   SUDO_POLICY_ADDRESS,

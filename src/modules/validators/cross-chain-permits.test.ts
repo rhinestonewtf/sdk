@@ -1,7 +1,10 @@
 import type { Address } from 'viem'
 import { arbitrum, mainnet } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
-import { resolveCrossChainPermission } from './cross-chain-permits'
+import {
+  resolveCrossChainPermission,
+  toCrossChainPermissionInput,
+} from './cross-chain-permits'
 
 // Concrete addresses skip the TokenSymbol registry path so these tests stay
 // independent of shared-configs registry contents.
@@ -178,5 +181,58 @@ describe('resolveCrossChainPermission', () => {
       validAfter: new Date(0),
     })
     expect(permit.validAfter).toBe(0n)
+  })
+})
+
+describe('toCrossChainPermissionInput', () => {
+  test('round-trips a resolved permit back to input that re-resolves identically', () => {
+    const resolved = resolveCrossChainPermission({
+      from: { chain: mainnet, token: TOKEN_A, maxAmount: 1000n },
+      to: { chain: arbitrum, token: TOKEN_B, recipient: RECIPIENT },
+      validAfter: new Date('2025-01-01T00:00:00Z'),
+      validUntil: new Date('2030-01-01T00:00:00Z'),
+      settlementLayers: ['ECO'],
+    })
+    expect(
+      resolveCrossChainPermission(toCrossChainPermissionInput(resolved)),
+    ).toEqual(resolved)
+  })
+
+  test('converts unix-seconds deadlines back to Date', () => {
+    const validUntil = 1_900_000_000n
+    expect(toCrossChainPermissionInput({ validUntil }).validUntil).toEqual(
+      new Date(Number(validUntil) * 1000),
+    )
+  })
+
+  test('converts fillDeadline windows to Date', () => {
+    expect(
+      toCrossChainPermissionInput({
+        fillDeadline: [{ chain: arbitrum, min: 1_000n, max: 2_000n }],
+      }).fillDeadline,
+    ).toEqual([
+      { chain: arbitrum, min: new Date(1_000_000), max: new Date(2_000_000) },
+    ])
+  })
+
+  test('maps recipientIsAccount to the inverse allowRecipientNotAccount', () => {
+    expect(
+      toCrossChainPermissionInput({ recipientIsAccount: true })
+        .allowRecipientNotAccount,
+    ).toBe(false)
+    expect(
+      toCrossChainPermissionInput({ recipientIsAccount: false })
+        .allowRecipientNotAccount,
+    ).toBe(true)
+    expect(
+      toCrossChainPermissionInput({}).allowRecipientNotAccount,
+    ).toBeUndefined()
+  })
+
+  test('passes settlementLayers through and leaves omitted deadlines undefined', () => {
+    const input = toCrossChainPermissionInput({ settlementLayers: ['ACROSS'] })
+    expect(input.settlementLayers).toEqual(['ACROSS'])
+    expect(input.validUntil).toBeUndefined()
+    expect(input.validAfter).toBeUndefined()
   })
 })
