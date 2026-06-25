@@ -42,6 +42,7 @@
     "prune-and-expose-errors",
     "quote-selection-target-execution",
     "quote-selection",
+    "reexport-smart-session-internals",
     "remove-create-rhinestone-account",
     "remove-fee-token",
     "remove-recovery-and-guardian-signer",
