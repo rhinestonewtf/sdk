@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 2.0.0-beta.32
+
+### Minor Changes
+
+- d696a3c: Export `toCrossChainPermissionInput` from `@rhinestone/sdk/smart-sessions`, which converts a resolved `CrossChainPermit` (unix-seconds deadlines, `recipientIsAccount`) back into the `CrossChainPermissionInput` shape accepted by `SessionDefinition.crossChainPermits` (`Date` deadlines, `allowRecipientNotAccount`). Useful when a permit was persisted in resolved form and has to be re-supplied as session input.
+
 ## 2.0.0-beta.31
 
 ### Patch Changes
