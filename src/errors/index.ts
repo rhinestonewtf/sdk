@@ -24,6 +24,7 @@ import {
   OrderPathRequiredForIntentsError,
   QuoteNotInPreparedTransactionError,
 } from '../execution'
+import type { ErrorDetail } from '../orchestrator'
 import {
   ConflictError,
   ExternalServiceTimeoutError,
@@ -50,6 +51,8 @@ import {
   UnsupportedTokenError,
   ValidationError,
 } from '../orchestrator'
+
+export type { ErrorDetail }
 
 export {
   // Account
