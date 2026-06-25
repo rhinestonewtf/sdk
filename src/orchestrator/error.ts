@@ -22,6 +22,11 @@ interface ValidationIssue {
   context?: Record<string, unknown>
 }
 
+interface ErrorDetail {
+  message: string
+  context?: Record<string, unknown>
+}
+
 interface BaseErrorParams {
   message: string
   traceId?: string
@@ -180,8 +185,11 @@ class ConflictError extends OrchestratorError {
 }
 
 class UnprocessableContentError extends OrchestratorError {
-  constructor(params: BaseErrorParams) {
+  readonly details: ErrorDetail[]
+
+  constructor(params: BaseErrorParams & { details?: ErrorDetail[] }) {
     super({ ...params, code: 'UNPROCESSABLE_CONTENT' })
+    this.details = params.details ?? []
   }
 }
 
@@ -299,6 +307,26 @@ function booleanValue(value: unknown): boolean | undefined {
 
 function recordValue(value: unknown): Record<string, unknown> | undefined {
   return isRecord(value) ? value : undefined
+}
+
+function parseErrorDetails(details: unknown): ErrorDetail[] {
+  if (!Array.isArray(details)) {
+    return []
+  }
+
+  return details.flatMap((detail): ErrorDetail[] => {
+    if (!isRecord(detail) || typeof detail.message !== 'string') {
+      return []
+    }
+
+    const context = recordValue(detail.context)
+    return [
+      {
+        message: detail.message,
+        ...(context ? { context } : {}),
+      },
+    ]
+  })
 }
 
 const SIMULATION_ACTIONS = ['claim', 'fill'] as const
@@ -477,7 +505,10 @@ function parseErrorEnvelope(
     case 'CONFLICT':
       return new ConflictError(base)
     case 'UNPROCESSABLE_CONTENT':
-      return new UnprocessableContentError(base)
+      return new UnprocessableContentError({
+        ...base,
+        details: parseErrorDetails(envelope.details),
+      })
     case 'TOO_MANY_REQUESTS':
       return new RateLimitedError({ ...base, retryAfter })
     case 'SETTLEMENT_QUOTE_ERROR':
@@ -603,6 +634,7 @@ function isConnectionError(error: unknown): boolean {
 
 export type {
   ErrorCode,
+  ErrorDetail,
   ErrorEnvelope,
   SimulationAction,
   SimulationCall,

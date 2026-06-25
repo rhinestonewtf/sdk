@@ -10,6 +10,7 @@ import {
   solanaMainnet,
   tronMainnet,
 } from './destinations'
+import type { ErrorDetail } from './error'
 import {
   ConflictError,
   ExternalServiceTimeoutError,
@@ -106,6 +107,7 @@ export type {
   Cost,
   CostTokenEntry,
   DestinationChain,
+  ErrorDetail,
   NonEvmAddress,
   NonEvmChain,
   EstimatedFillTime,

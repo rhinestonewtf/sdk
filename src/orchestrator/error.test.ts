@@ -7,6 +7,7 @@ import {
   KeyScopeDeniedError,
   parseErrorEnvelope,
   SimulationFailedError,
+  UnprocessableContentError,
 } from './error'
 
 describe('parseErrorEnvelope — KEY_SCOPE_DENIED', () => {
@@ -74,6 +75,94 @@ describe('parseErrorEnvelope — KEY_SCOPE_DENIED', () => {
     expect(err.scope).toBe('')
     expect(err.required).toBe('')
     expect(err.actual).toBe('')
+  })
+})
+
+describe('parseErrorEnvelope — UNPROCESSABLE_CONTENT', () => {
+  test('preserves structured details for callers', () => {
+    const err = parseErrorEnvelope(
+      {
+        code: 'UNPROCESSABLE_CONTENT',
+        message: 'No viable route found for this intent.',
+        traceId: 'trace-unprocessable',
+        details: [
+          {
+            message: 'No viable route found for this intent.',
+            context: {
+              code: 'NO_PLAN_AVAILABLE',
+              failureCodes: ['NO_ROUTE_SUPPORT', 'RELAY_FAILED'],
+              strategyFailures: [
+                {
+                  strategy: 'StandardPlanStrategy',
+                  code: 'NO_ROUTE_SUPPORT',
+                  message: 'no route support',
+                },
+                {
+                  strategy: 'RelayPlanStrategy',
+                  code: 'RELAY_FAILED',
+                  message: 'Relay quote exceeded 3000ms deadline',
+                },
+              ],
+            },
+          },
+        ],
+      },
+      422,
+    )
+
+    expect(err).toBeInstanceOf(UnprocessableContentError)
+    expect(err.code).toBe('UNPROCESSABLE_CONTENT')
+    expect(err.statusCode).toBe(422)
+    expect(err.traceId).toBe('trace-unprocessable')
+    expect((err as UnprocessableContentError).details).toEqual([
+      {
+        message: 'No viable route found for this intent.',
+        context: {
+          code: 'NO_PLAN_AVAILABLE',
+          failureCodes: ['NO_ROUTE_SUPPORT', 'RELAY_FAILED'],
+          strategyFailures: [
+            {
+              strategy: 'StandardPlanStrategy',
+              code: 'NO_ROUTE_SUPPORT',
+              message: 'no route support',
+            },
+            {
+              strategy: 'RelayPlanStrategy',
+              code: 'RELAY_FAILED',
+              message: 'Relay quote exceeded 3000ms deadline',
+            },
+          ],
+        },
+      },
+    ])
+  })
+
+  test('defaults details to an empty array when missing or malformed', () => {
+    const withoutDetails = parseErrorEnvelope(
+      {
+        code: 'UNPROCESSABLE_CONTENT',
+        message: 'unprocessable',
+        traceId: '',
+      },
+      422,
+    ) as UnprocessableContentError
+
+    const malformedDetails = parseErrorEnvelope(
+      {
+        code: 'UNPROCESSABLE_CONTENT',
+        message: 'unprocessable',
+        traceId: '',
+        details: [
+          { context: { code: 'NO_PLAN_AVAILABLE' } },
+          { message: 123, context: { code: 'NO_PLAN_AVAILABLE' } },
+          'not-an-object',
+        ],
+      },
+      422,
+    ) as UnprocessableContentError
+
+    expect(withoutDetails.details).toEqual([])
+    expect(malformedDetails.details).toEqual([])
   })
 })
 
