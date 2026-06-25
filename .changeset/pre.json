@@ -5,6 +5,7 @@
     "@rhinestone/sdk": "1.5.0"
   },
   "changesets": [
+    "add-disable-session",
     "add-hca-account",
     "blanc-client",
     "blanc-orphaned-helpers",
@@ -13,7 +14,9 @@
     "bump-shared-configs-1-6-7",
     "bump-shared-configs",
     "cool-moles-press",
+    "disable-session-optional-expires",
     "drop-compact-bound-fields",
+    "drop-deploy-session-param",
     "drop-passport-account",
     "drop-preconfirmations",
     "drop-send-transaction",
@@ -32,16 +35,21 @@
     "key-scope-denied-error",
     "mock-sig-1271-shape",
     "non-evm-destinations",
+    "normalize-datetime-inputs",
     "operation-model-redesign",
     "poll-until-intent-expiry",
     "portfolio-amount",
+    "prune-and-expose-errors",
     "quote-selection-target-execution",
     "quote-selection",
+    "remove-create-rhinestone-account",
     "remove-fee-token",
+    "remove-recovery-and-guardian-signer",
     "remove-verify-executions-public-api",
     "retry-after-polling",
     "retry-connection-errors-polling",
     "sdk-reference-jsdoc",
+    "session-cross-chain-permits",
     "session-permissions-api",
     "settlement-layer-filter-wire",
     "settlement-layer-filter",
@@ -53,7 +61,9 @@
     "trace-id-responses",
     "trim-fee-breakdown",
     "trim-public-exports",
+    "trim-smart-sessions-surface",
     "v2-beta-prereq",
-    "wait-for-terminal-state"
+    "wait-for-terminal-state",
+    "witty-cameras-sparkle"
   ]
 }
