@@ -3,6 +3,7 @@ import type { WebAuthnAccount } from 'viem/account-abstraction'
 import type { ModuleType } from './modules/common'
 import type { NonEvmAddress, NonEvmChain } from './orchestrator/destinations'
 import type {
+  AppFeeRate,
   AuxiliaryFunds,
   SettlementLayerFilter,
 } from './orchestrator/types'
@@ -819,6 +820,7 @@ interface BaseTransaction {
   eip7702InitSignature?: Hex
   sourceAssets?: SourceAssetInput
   feeAsset?: Address | TokenSymbol
+  appFees?: AppFeeRate
   settlementLayers?: SettlementLayerFilter
   auxiliaryFunds?: AuxiliaryFunds
   experimental_accountOverride?: {

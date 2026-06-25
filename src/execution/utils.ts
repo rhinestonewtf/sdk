@@ -100,6 +100,7 @@ import {
 } from '../orchestrator/registry'
 import {
   type AccountAccessList,
+  type AppFeeRate,
   type AuxiliaryFunds,
   type IntentSubmitRequestInternal,
   type MappedChainTokenAccessList,
@@ -314,6 +315,7 @@ async function prepareTransaction(
     sourceAssets,
     feeAsset,
     auxiliaryFunds,
+    appFees,
     account,
     recipient,
     sourceCalls,
@@ -357,6 +359,7 @@ async function prepareTransaction(
     account,
     signers,
     sourceCalls,
+    appFees,
   )
 
   return {
@@ -821,6 +824,7 @@ function getTransactionParams(transaction: Transaction) {
   const sourceAssets = transaction.sourceAssets
   const feeAsset = transaction.feeAsset
   const auxiliaryFunds = transaction.auxiliaryFunds
+  const appFees = transaction.appFees
   const account = transaction.experimental_accountOverride
   const recipient = transaction.recipient
   const sourceCalls = transaction.sourceCalls
@@ -839,6 +843,7 @@ function getTransactionParams(transaction: Transaction) {
     sourceAssets,
     feeAsset,
     auxiliaryFunds,
+    appFees,
     account,
     recipient,
     sourceCalls,
@@ -999,6 +1004,7 @@ async function prepareTransactionAsIntent(
     | undefined,
   signers: SignerSet | undefined,
   sourceCalls?: Record<number, SourceCallInput[]>,
+  appFees?: AppFeeRate,
 ) {
   const targetChainId = getChainId(targetChain)
   const calls = parseCalls(callInputs, targetChainId)
@@ -1208,6 +1214,7 @@ async function prepareTransactionAsIntent(
       settlementLayers,
       signatureMode,
       auxiliaryFunds: combinedAuxiliaryFunds,
+      appFees,
     },
     ...(Object.keys(preClaimExecutions).length > 0 && { preClaimExecutions }),
   }

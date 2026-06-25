@@ -9,6 +9,7 @@ import {
 } from './error'
 import type {
   AccountAccessList,
+  AppFee,
   AuxiliaryFunds,
   BridgeFill,
   Cost,
@@ -337,11 +338,23 @@ function decodeQuote(route: any): Quote {
     settlementLayer: route.settlementLayer,
     signData: route.signData,
     cost: decodeCost(route.cost),
+    appFee: decodeAppFee(route.appFee ?? route.intentCost?.appFee),
     tokenRequirements: route.tokenRequirements
       ? decodeTokenRequirements(route.tokenRequirements)
       : undefined,
     bridgeFill: decodeBridgeFill(route.bridgeFill),
   }
+}
+
+function decodeAppFee(appFee: any): AppFee[] | undefined {
+  if (!appFee) return undefined
+  return (appFee as any[]).map((fee) => ({
+    feeBps: fee.feeBps,
+    baseAmount: BigInt(fee.baseAmount),
+    amount: BigInt(fee.amount),
+    chainId: parseChainId(fee.chainId),
+    tokenAddress: fee.tokenAddress,
+  }))
 }
 
 // Normalizes CAIP-2 strings to numeric IDs for consistency with BridgeFill decodeCostTokenEntry, and getIntent

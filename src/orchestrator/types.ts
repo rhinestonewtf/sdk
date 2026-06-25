@@ -125,10 +125,22 @@ type AuxiliaryFunds = {
 
 interface IntentOptions {
   feeToken?: Address | SupportedTokenSymbol
+  appFees?: AppFeeRate
   sponsorSettings?: SponsorSettings
   settlementLayers?: SettlementLayerFilter
   signatureMode?: SignatureMode
   auxiliaryFunds?: AuxiliaryFunds
+}
+
+interface AppFeeRate {
+  feeBps: number
+}
+
+interface AppFee extends AppFeeRate {
+  baseAmount: bigint
+  amount: bigint
+  chainId: number
+  tokenAddress: Address
 }
 
 interface SponsorSettings {
@@ -183,6 +195,7 @@ interface FeeBreakdown {
   gas: UsdAmount
   bridge: UsdAmount
   swap: UsdAmount
+  app: UsdAmount
 }
 
 interface Fees {
@@ -226,6 +239,7 @@ interface Quote {
   settlementLayer: SettlementLayer
   signData: SignData
   cost: Cost
+  appFee?: AppFee[]
   tokenRequirements?: TokenRequirements
   bridgeFill?: BridgeFill
 }
@@ -396,6 +410,8 @@ export type {
   Account,
   AccountType,
   AccountWithContext,
+  AppFee,
+  AppFeeRate,
   AuxiliaryFunds,
   TokenConfig,
   SupportedChain,
