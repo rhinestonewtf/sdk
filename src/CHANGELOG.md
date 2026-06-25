@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 2.0.0-beta.31
+
+### Patch Changes
+
+- 15029de: Re-export the low-level smart-session helpers
+
 ## 2.0.0-beta.30
 
 ### Major Changes
