@@ -1,5 +1,39 @@
 # @rhinestone/sdk
 
+## 2.0.0-beta.30
+
+### Major Changes
+
+- 972f72a: Drop the `session` param from `account.deploy(chain, params)`. It was a no-op — sessions cannot be enabled at deployment time. Enable a session after deployment with `experimental_signEnableSession` and the smart-sessions actions.
+- 0149a68: Normalize public datetime inputs to accept `Date`.
+
+  - `PermissionFunctionConfig.validUntil` / `validAfter` now accept `Date` only (dropped the raw millisecond-epoch `number`).
+  - `CrossChainPermissionInput.fillDeadline` bounds (`min` / `max`) now accept `Date` (dropped the unix-seconds `bigint`).
+  - Reshape `ENSValidatorConfig`: replace the parallel `accounts` + `ownerExpirations` arrays with a single `owners: { account: Account; expiration?: Date }[]`. Omit `expiration` for an owner that never expires (previously the `maxUint48` sentinel).
+  - `CrossChainPermit` is no longer marked `@internal` — the resolved permit shape (unix-seconds `bigint`) is now a documented low-level escape hatch.
+
+- fa7492d: Clean up the `./errors` surface.
+
+  - Remove `ExistingEip7702AccountsNotSupportedError`, `SmartSessionsNotEnabledError`, and `SessionChainRequiredError`. None were ever thrown; the "session needs a chain" rule the latter described is enforced at the type level (`chain` is required on `SessionDefinition` and `Session`).
+  - Export `DefaultValidatorAlreadyInitializedError`, `ModuleInstallationNotSupportedError`, `EoaSigningNotSupportedError`, `EoaSigningMethodNotConfiguredError`, `OwnersFieldRequiredError`, and `Eip7702InitSignatureRequiredError`, which are thrown by the SDK but were previously not catchable by type.
+
+- 8e02b11: Remove the top-level `createRhinestoneAccount` export. Construct accounts through `new RhinestoneSDK(config).createAccount(...)` instead.
+- fa7d3a5: Remove the legacy social-recovery surface:
+
+  - Remove the `@rhinestone/sdk/actions/recovery` subpackage (`enable`, `recoverEcdsaOwnership`, `recoverPasskeyOwnership`).
+  - Remove the `recovery` field from `RhinestoneAccountConfig` and the `Recovery` type.
+  - Remove the `guardians` signer (`GuardiansSignerSet`) from `SignerSet`.
+  - Remove `SignerNotSupportedError` — it only guarded the guardian path.
+
+- 50c5822: Trim the `@rhinestone/sdk/smart-sessions` subpath to a curated public surface. It now exports only `toSession`, `SMART_SESSION_EMISSARY_ADDRESS`, the policy address constants (`SPENDING_LIMITS_POLICY_ADDRESS`, `TIME_FRAME_POLICY_ADDRESS`, `SUDO_POLICY_ADDRESS`, `UNIVERSAL_ACTION_POLICY_ADDRESS`, `ARG_POLICY_ADDRESS`, `USAGE_LIMIT_POLICY_ADDRESS`, `VALUE_LIMIT_POLICY_ADDRESS`, `INTENT_EXECUTION_POLICY_ADDRESS`), and the `SessionDetails` and `ChainDigest` types. The remaining low-level helpers, constants, and types that the subpath previously re-exported are now internal. Use the account's `experimental_*` methods and the `@rhinestone/sdk/actions/smart-sessions` actions instead.
+
+### Minor Changes
+
+- a415156: Add `experimental_disableSession` to the smart-sessions actions. Removes a single enabled session from an account via the emissary's `removeConfig`. The account executes the call itself, so the user authorizes it by signing the outer transaction — no separate session-digest signature is needed. Takes the resolved session and an `expires` deadline (`Date`).
+- 9731767: Make `expires` optional in `experimental_disableSession`. Omitting it disables the session with no expiry (`maxUint256` sentinel), matching the enable paths, instead of forcing callers to invent a far-future `Date`.
+- cc406d9: Add `SessionDefinition.crossChainPermits` (`CrossChainPermissionInput`) to authorise session keys to move funds across chains via Permit2 arbiter settlement. Pick settlement layers (`SAME_CHAIN` / `ECO` / `ACROSS`, or all by default); bridge-to-self is enforced unless `allowRecipientNotAccount` is set.
+- c5e2777: Add app-fee quote support by threading `appFees` through transaction preparation and exposing app-fee quote details in orchestrator responses.
+
 ## 2.0.0-beta.29
 
 ### Patch Changes
