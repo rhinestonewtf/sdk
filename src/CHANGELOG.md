@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 2.0.0-beta.33
+
+### Minor Changes
+
+- 555d60e: Preserve unprocessable-content response details on `UnprocessableContentError` so callers can inspect structured orchestrator validation and planning context.
+
 ## 2.0.0-beta.32
 
 ### Minor Changes
