@@ -40,6 +40,7 @@
     "operation-model-redesign",
     "poll-until-intent-expiry",
     "portfolio-amount",
+    "preserve-unprocessable-details",
     "prune-and-expose-errors",
     "quote-selection-target-execution",
     "quote-selection",
