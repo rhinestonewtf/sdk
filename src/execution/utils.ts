@@ -90,6 +90,7 @@ import {
 } from '../orchestrator/registry'
 import {
   type AccountAccessList,
+  type AppFeeRate,
   type AuxiliaryFunds,
   type IntentOpElement,
   type Account as OrchestratorAccount,
@@ -274,6 +275,7 @@ async function prepareTransaction(
     settlementLayers,
     sourceAssets,
     feeAsset,
+    appFees,
     lockFunds,
     auxiliaryFunds,
     account,
@@ -309,6 +311,7 @@ async function prepareTransaction(
     account,
     signers,
     sourceCalls,
+    appFees,
   )
 
   return {
@@ -735,6 +738,7 @@ function getTransactionParams(transaction: Transaction) {
   const settlementLayers = transaction.settlementLayers
   const sourceAssets = transaction.sourceAssets
   const feeAsset = transaction.feeAsset
+  const appFees = transaction.appFees
   const lockFunds = transaction.lockFunds
   const auxiliaryFunds = transaction.auxiliaryFunds
   const account = transaction.experimental_accountOverride
@@ -754,6 +758,7 @@ function getTransactionParams(transaction: Transaction) {
     settlementLayers,
     sourceAssets,
     feeAsset,
+    appFees,
     lockFunds,
     auxiliaryFunds,
     account,
@@ -876,6 +881,7 @@ async function prepareTransactionAsIntent(
     | undefined,
   signers: SignerSet | undefined,
   sourceCalls: Record<number, CallInput[]> | undefined,
+  appFees?: AppFeeRate,
 ) {
   const calls = parseCalls(callInputs, targetChain.id)
   const accountAccessList = createAccountAccessList(sourceChains, sourceAssets)
@@ -1007,6 +1013,7 @@ async function prepareTransactionAsIntent(
     options: {
       topupCompact: lockFunds ?? false,
       feeToken: feeAsset,
+      appFees,
       sponsorSettings: sponsored
         ? typeof sponsored === 'object'
           ? {
@@ -1913,38 +1920,38 @@ function hashErc7739TypedDataForSolady({
   return keccak256(concat(['0x1901', appDomainSeparator, structHash]))
 }
 
-export {
-  prepareTransaction,
-  getTransactionMessages,
-  signTransaction,
-  signAuthorizations,
-  signAuthorizationsInternal,
-  signMessage,
-  signTypedData,
-  submitTransaction,
-  prepareUserOperation,
-  signUserOperation,
-  submitUserOperation,
-  signIntent,
-  prepareTransactionAsIntent,
-  submitIntentInternal,
-  getValidatorAccount,
-  parseCalls,
-  getTokenRequests,
-  resolveCallInputs,
-  getIntentAccount,
-  getTargetExecutionSignature,
-  hashErc7739TypedDataForSolady,
-  resolveSessionForChain,
-  resolveSignatureMode,
-}
 export type {
-  InternalSignerSet,
   IntentRoute,
-  TransactionResult,
+  InternalSignerSet,
   PreparedTransactionData,
   PreparedUserOperationData,
   SignedTransactionData,
   SignedUserOperationData,
+  TransactionResult,
   UserOperationResult,
+}
+export {
+  getIntentAccount,
+  getTargetExecutionSignature,
+  getTokenRequests,
+  getTransactionMessages,
+  getValidatorAccount,
+  hashErc7739TypedDataForSolady,
+  parseCalls,
+  prepareTransaction,
+  prepareTransactionAsIntent,
+  prepareUserOperation,
+  resolveCallInputs,
+  resolveSessionForChain,
+  resolveSignatureMode,
+  signAuthorizations,
+  signAuthorizationsInternal,
+  signIntent,
+  signMessage,
+  signTransaction,
+  signTypedData,
+  signUserOperation,
+  submitIntentInternal,
+  submitTransaction,
+  submitUserOperation,
 }

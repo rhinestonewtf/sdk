@@ -19,7 +19,7 @@ import {
   getSupportedChainIds,
   isTestnet,
 } from '../orchestrator/registry'
-import type { SettlementLayer } from '../orchestrator/types'
+import type { AppFeeRate, SettlementLayer } from '../orchestrator/types'
 import type {
   CalldataInput,
   CallInput,
@@ -94,6 +94,7 @@ async function sendTransaction(
     settlementLayers,
     sourceAssets,
     feeAsset,
+    appFees,
   } = transaction
   const isUserOpSigner = signers?.type === 'guardians'
   if (isUserOpSigner) {
@@ -111,6 +112,7 @@ async function sendTransaction(
     settlementLayers,
     sourceAssets,
     feeAsset,
+    appFees,
   })
 }
 
@@ -150,6 +152,7 @@ async function sendTransactionInternal(
     sourceAssets?: SourceAssetInput
     lockFunds?: boolean
     feeAsset?: Address | TokenSymbol
+    appFees?: AppFeeRate
   },
 ) {
   const accountAddress = getAddress(config)
@@ -184,6 +187,7 @@ async function sendTransactionInternal(
       options.feeAsset,
       options.lockFunds,
       options.sourceCalls,
+      options.appFees,
     )
   }
 }
@@ -238,6 +242,7 @@ async function sendTransactionAsIntent(
   feeAsset?: Address | TokenSymbol,
   lockFunds?: boolean,
   sourceCalls?: Record<number, CallInput[]>,
+  appFees?: AppFeeRate,
 ) {
   const prepared = await prepareTransactionAsIntent(
     config,
@@ -257,6 +262,7 @@ async function sendTransactionAsIntent(
     undefined,
     signers,
     sourceCalls,
+    appFees,
   )
   if (!prepared) {
     throw new OrderPathRequiredForIntentsError()
@@ -454,23 +460,23 @@ async function splitIntents(
   return orchestrator.splitIntents(input)
 }
 
+export type { TransactionResult, TransactionStatus, UserOperationResult }
 export {
+  ExecutionError,
+  getIntentStatus,
+  getPortfolio,
+  IntentFailedError,
+  IntentStatusTimeoutError,
+  InvalidSourceCallsError,
+  // Errors
+  isExecutionError,
+  OrderPathRequiredForIntentsError,
+  SessionChainRequiredError,
+  SignerNotSupportedError,
   sendTransaction,
   sendTransactionInternal,
   sendUserOperation,
   sendUserOperationInternal,
-  waitForExecution,
-  getPortfolio,
-  getIntentStatus,
   splitIntents,
-  // Errors
-  isExecutionError,
-  ExecutionError,
-  IntentFailedError,
-  IntentStatusTimeoutError,
-  InvalidSourceCallsError,
-  OrderPathRequiredForIntentsError,
-  SessionChainRequiredError,
-  SignerNotSupportedError,
+  waitForExecution,
 }
-export type { TransactionStatus, TransactionResult, UserOperationResult }
