@@ -22,6 +22,7 @@ jobs:
     timeout-minutes: 30
     env:
       INTEGRATION_RHINESTONE_API_KEY: ${{ secrets.INTEGRATION_RHINESTONE_API_KEY }}
+      INTEGRATION_FUNDER_PRIVATE_KEY: ${{ secrets.INTEGRATION_FUNDER_PRIVATE_KEY }}
 
     steps:
       - name: Check out release
