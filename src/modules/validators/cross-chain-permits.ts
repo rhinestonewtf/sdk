@@ -98,4 +98,46 @@ function resolveCrossChainPermission(
   }
 }
 
-export { resolveCrossChainPermission }
+function unixSecondsToDate(seconds: bigint): Date {
+  // Inverse of dateToUnixSeconds: on-chain deadlines are unix-seconds; Date
+  // expects milliseconds.
+  return new Date(Number(seconds) * 1000)
+}
+
+/**
+ * Convert a resolved {@link CrossChainPermit} back into the
+ * {@link CrossChainPermissionInput} shape accepted by
+ * `SessionDefinition.crossChainPermits`.
+ *
+ * Useful when a permit was persisted in its resolved (unix-seconds) form and
+ * has to be re-supplied as session input: converts `bigint` deadlines to
+ * `Date` and maps `recipientIsAccount` to the inverse `allowRecipientNotAccount`.
+ */
+function toCrossChainPermissionInput(
+  permit: CrossChainPermit,
+): CrossChainPermissionInput {
+  return {
+    from: permit.from,
+    to: permit.to,
+    validUntil:
+      permit.validUntil !== undefined
+        ? unixSecondsToDate(permit.validUntil)
+        : undefined,
+    validAfter:
+      permit.validAfter !== undefined
+        ? unixSecondsToDate(permit.validAfter)
+        : undefined,
+    fillDeadline: permit.fillDeadline?.map(({ chain, min, max }) => ({
+      chain,
+      min: min !== undefined ? unixSecondsToDate(min) : undefined,
+      max: max !== undefined ? unixSecondsToDate(max) : undefined,
+    })),
+    allowRecipientNotAccount:
+      permit.recipientIsAccount !== undefined
+        ? !permit.recipientIsAccount
+        : undefined,
+    settlementLayers: permit.settlementLayers,
+  }
+}
+
+export { resolveCrossChainPermission, toCrossChainPermissionInput }
