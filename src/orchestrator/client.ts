@@ -36,6 +36,7 @@ import type {
   WireCostInputEntry,
   WireCostOutputEntry,
   WireIntentStatus,
+  WireIntentSubmitResponse,
   WirePortfolioResponse,
   WireQuoteResponse,
   WireRoute,
@@ -147,11 +148,15 @@ export class Orchestrator {
           policyContext.isSponsored,
         )
       : await this.getHeaders()
-    return await this.fetch(`${this.serverUrl}/intents`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-    })
+    const json: WithTraceId<WireIntentSubmitResponse> = await this.fetch(
+      `${this.serverUrl}/intents`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+      },
+    )
+    return { traceId: json.traceId ?? '', intentId: json.intentId }
   }
 
   async getIntent(intentId: string): Promise<IntentOpStatus> {

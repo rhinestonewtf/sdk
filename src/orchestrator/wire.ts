@@ -20,14 +20,7 @@ type SuccessJson<
   ? T
   : never
 
-type RequestJson<O extends keyof operations> = operations[O] extends {
-  requestBody?: { content: { 'application/json': infer T } }
-}
-  ? T
-  : never
-
 // POST /quotes
-export type WireQuoteRequest = RequestJson<'createQuote'>
 export type WireQuoteResponse = SuccessJson<'createQuote', 200>
 export type WireRoute = WireQuoteResponse['routes'][number]
 export type WireCost = WireRoute['cost']
@@ -38,11 +31,9 @@ export type WireBridgeFill = NonNullable<WireRoute['bridgeFill']>
 export type WireTokenRequirements = NonNullable<WireRoute['tokenRequirements']>
 
 // POST /intents/splits
-export type WireSplitRequest = RequestJson<'getSplit'>
 export type WireSplitResponse = SuccessJson<'getSplit', 200>
 
 // POST /intents
-export type WireIntentSubmitRequest = RequestJson<'createIntent'>
 export type WireIntentSubmitResponse = SuccessJson<'createIntent', 201>
 
 // GET /intents/{id}
