@@ -19,6 +19,11 @@ jobs:
       - name: Install the npm dependencies
         run: bun install
 
+      - name: Verify wire types match the published OpenAPI spec
+        run: |
+          bun run generate:wire
+          git diff --exit-code src/orchestrator/wire.gen.ts
+
       - name: Build
         run: bun run build
 
