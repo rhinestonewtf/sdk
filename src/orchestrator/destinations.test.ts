@@ -38,8 +38,11 @@ describe('getChainId', () => {
 })
 
 describe('hyperCoreMainnet descriptor', () => {
-  test('is an EVM-settled virtual destination addressed by eip155:1337', () => {
+  test('is an EVM-settled virtual destination with the canonical hypercore:mainnet id', () => {
     expect(hyperCoreMainnet.kind).toBe('hypercore')
-    expect(hyperCoreMainnet.caip2).toBe('eip155:1337')
+    // Canonical CAIP-2 (RHI-4560) — no longer the wrong eip155:1337. Still
+    // resolves to the numeric virtual id 1337.
+    expect(hyperCoreMainnet.caip2).toBe('hypercore:mainnet')
+    expect(getChainId(hyperCoreMainnet)).toBe(1337)
   })
 })
