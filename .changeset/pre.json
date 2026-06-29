@@ -30,6 +30,7 @@
     "fix-time-frame-policy-encoding",
     "fix-uninstall-module-sentinel-list-prev",
     "heavy-grapes-punch",
+    "hypercore-caip2-mainnet",
     "hypercore-destination",
     "hypercore-eoa-recipient",
     "install-session-via-emissary-on-first-use",
@@ -65,6 +66,7 @@
     "trim-fee-breakdown",
     "trim-public-exports",
     "trim-smart-sessions-surface",
+    "tron-caip2-mainnet",
     "v2-beta-prereq",
     "wait-for-terminal-state",
     "witty-cameras-sparkle"
