@@ -52,7 +52,7 @@ const solanaMainnet: NonEvmChain = {
 
 const tronMainnet: NonEvmChain = {
   name: 'Tron',
-  caip2: 'tron:0x2b6653dc',
+  caip2: 'tron:mainnet',
   kind: 'tvm',
   nativeCurrency: { name: 'Tron', symbol: 'TRX', decimals: 6 },
 }
