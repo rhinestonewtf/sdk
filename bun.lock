@@ -27,7 +27,7 @@
       "name": "@rhinestone/sdk",
       "version": "2.0.0-beta.33",
       "dependencies": {
-        "@rhinestone/shared-configs": "1.6.15",
+        "@rhinestone/shared-configs": "1.7.0",
         "solady": "^0.1.26",
       },
       "peerDependencies": {
@@ -689,8 +689,6 @@
     "@manypkg/get-packages/@changesets/types": ["@changesets/types@4.1.0", "", {}, "sha512-LDQvVDv5Kb50ny2s25Fhm3d9QSZimsoUGBsUioj6MC3qbMUCuC8GPIvk/M6IvXx3lYhAs0lwWUQLb+VIEUCECw=="],
 
     "@manypkg/get-packages/fs-extra": ["fs-extra@8.1.0", "", { "dependencies": { "graceful-fs": "^4.2.0", "jsonfile": "^4.0.0", "universalify": "^0.1.0" } }, "sha512-yhlQgA6mnOJUKOsRUFsgJdQCvkKhcz8tlZG5HBQfReYZy46OwLcY+Zia0mtdHsOo9y/hP+CxMN0TU9QxoOtG4g=="],
-
-    "@rhinestone/sdk/@rhinestone/shared-configs": ["@rhinestone/shared-configs@1.6.15", "", { "peerDependencies": { "typescript": "^5", "viem": "^2.40.1" } }, "sha512-hVVVRXUJktnss+aVyi+RlOqadIQ7VHvW0TrjVSFwswyZlpPgC+qj4ug57cfh5puB6n3Vmx3AkVR/j25HVqG7aA=="],
 
     "anymatch/picomatch": ["picomatch@2.3.1", "", {}, "sha512-JU3teHTNjmE2VCGFzuY8EXzCDVwEqB2a8fsIvwaStHhAWJEeVd1o1QD80CU6+ZdEXXSLbSsuLwJjkCBWqRQUVA=="],
 
