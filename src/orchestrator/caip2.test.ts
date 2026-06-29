@@ -19,7 +19,7 @@ describe('toCaip2', () => {
   })
 
   test('encodes Tron synthetic id to its CAIP-2 string', () => {
-    expect(toCaip2(728126428)).toBe('tron:0x2b6653dc')
+    expect(toCaip2(728126428)).toBe('tron:mainnet')
   })
 
   test('encodes HyperCore virtual id to its canonical CAIP-2 (not eip155:1337)', () => {
@@ -43,7 +43,7 @@ describe('fromCaip2', () => {
   })
 
   test('decodes tron CAIP-2 to synthetic id', () => {
-    expect(fromCaip2('tron:0x2b6653dc')).toBe(728126428)
+    expect(fromCaip2('tron:mainnet')).toBe(728126428)
   })
 
   test('decodes canonical HyperCore CAIP-2 to virtual id 1337', () => {
@@ -76,7 +76,7 @@ describe('isCaip2 / isEvmCaip2', () => {
   test('isCaip2 accepts all supported namespaces', () => {
     expect(isCaip2('eip155:1')).toBe(true)
     expect(isCaip2('solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp')).toBe(true)
-    expect(isCaip2('tron:0x2b6653dc')).toBe(true)
+    expect(isCaip2('tron:mainnet')).toBe(true)
     expect(isCaip2('hypercore:mainnet')).toBe(true)
     expect(isCaip2('cosmos:cosmoshub-4')).toBe(false)
     expect(isCaip2('not-a-caip2')).toBe(false)
@@ -85,7 +85,7 @@ describe('isCaip2 / isEvmCaip2', () => {
   test('isEvmCaip2 only matches eip155 (not hypercore)', () => {
     expect(isEvmCaip2('eip155:1')).toBe(true)
     expect(isEvmCaip2('solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp')).toBe(false)
-    expect(isEvmCaip2('tron:0x2b6653dc')).toBe(false)
+    expect(isEvmCaip2('tron:mainnet')).toBe(false)
     expect(isEvmCaip2('hypercore:mainnet')).toBe(false)
   })
 })
