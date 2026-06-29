@@ -61,11 +61,15 @@ const tronMainnet: NonEvmChain = {
 // and Tron it settles on an EVM chain (HyperEVM, 999), but the deposit is
 // solver-mediated: the orchestrator builds the core-deposit executions and the
 // user signs no destination session, so it belongs with the descriptor-addressed
-// destinations rather than the standard EVM signing path. The CAIP-2 reference
-// is the virtual id; the orchestrator maps 1337 → 999 for settlement.
+// destinations rather than the standard EVM signing path. The canonical CAIP-2
+// id is `hypercore:mainnet` (the orchestrator emits this since shared-configs
+// 1.6.14 / RHI-4560; `eip155:1337` was wrong because 1337 is the
+// Hardhat/Ganache local chain id). It still resolves to the numeric virtual id
+// 1337, which the orchestrator maps to 999 for settlement; HyperCore stays
+// EVM-addressed (`isNonEvmChainId(1337) === false`).
 const hyperCoreMainnet: NonEvmChain = {
   name: 'HyperCore',
-  caip2: 'eip155:1337',
+  caip2: 'hypercore:mainnet',
   kind: 'hypercore',
   nativeCurrency: { name: 'Hyperliquid', symbol: 'HYPE', decimals: 18 },
 }
