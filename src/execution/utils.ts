@@ -1793,11 +1793,12 @@ function getValidator(
           pubKey: account.publicKey,
           authenticatorId: account.id,
         })),
+        withOwner.module,
       )
     }
     // Multi-factor
     if (withOwner.kind === 'multi-factor') {
-      return getMultiFactorValidator(1, withOwner.validators)
+      return getMultiFactorValidator(1, withOwner.validators, withOwner.module)
     }
   }
 

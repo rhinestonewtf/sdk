@@ -85,20 +85,6 @@ function getOwnerValidator(config: RhinestoneAccountConfig) {
       config.account?.type ?? 'nexus',
     )
   }
-  // HCA accounts use the ENS validator baked into the implementation; a custom
-  // owners.module would never be installed yet would drive signing/nonce
-  // selection, producing signatures for a validator the account does not have.
-  if (
-    config.account?.type === 'hca' &&
-    config.owners.type === 'ens' &&
-    config.owners.module &&
-    config.owners.module.toLowerCase() !== ENS_HCA_MODULE.toLowerCase()
-  ) {
-    throw new AccountConfigurationNotSupportedError(
-      'HCA accounts do not support a custom ENS owners.module',
-      'hca',
-    )
-  }
   return getValidator(config.owners)
 }
 
@@ -167,11 +153,12 @@ function getValidator(owners: OwnerSet) {
         owners.module,
       )
     case 'ens':
+      // ENS validation is baked into the HCA account implementation, so the
+      // module address is fixed (no override).
       return getENSValidator(
         owners.threshold ?? 1,
         owners.owners.map((o) => o.account.address),
         owners.owners.map((o) => o.expiration),
-        owners.module,
       )
     case 'passkey':
       return getWebAuthnValidator(
@@ -180,9 +167,14 @@ function getValidator(owners: OwnerSet) {
           pubKey: account.publicKey,
           authenticatorId: account.id,
         })),
+        owners.module,
       )
     case 'multi-factor': {
-      return getMultiFactorValidator(owners.threshold ?? 1, owners.validators)
+      return getMultiFactorValidator(
+        owners.threshold ?? 1,
+        owners.validators,
+        owners.module,
+      )
     }
   }
 }
@@ -214,7 +206,6 @@ function getENSValidator(
   threshold: number,
   owners: Address[],
   expirations: (Date | undefined)[],
-  address?: Address,
 ): Module {
   // format: (uint256 threshold, Owner[] owners)
   // where Owner is a tuple of (address addr, uint48 expiration)
@@ -252,10 +243,8 @@ function getENSValidator(
     [BigInt(threshold), ownersWithExpiration],
   )
 
-  const moduleAddress = address ?? ENS_HCA_MODULE
-
   return {
-    address: moduleAddress,
+    address: ENS_HCA_MODULE,
     initData,
     deInitData: '0x',
     additionalContext: '0x',
@@ -337,9 +326,10 @@ function getMultiFactorValidator(
     | WebauthnValidatorConfig
     | null
   )[],
+  address?: Address,
 ): Module {
   return {
-    address: MULTI_FACTOR_VALIDATOR_ADDRESS,
+    address: address ?? MULTI_FACTOR_VALIDATOR_ADDRESS,
     initData: encodePacked(
       ['uint8', 'bytes'],
       [

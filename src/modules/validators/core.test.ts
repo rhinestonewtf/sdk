@@ -73,6 +73,45 @@ describe('Validators Core', () => {
         '0x000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000001580a9af0569ad3905b26a703201b358aa0904236642ebe79b22a19d00d3737637d46f725a5427ae45a9569259bf67e1e16b187d7b3ad1ed70138c4f0409677d10000000000000000000000000000000000000000000000000000000000000000',
       )
     })
+
+    const customModule = '0x00000000000000000000000000000000deadbeef'
+
+    test('ECDSA: custom module override', () => {
+      const validator = getValidator({
+        type: 'ecdsa',
+        accounts: [accountA],
+        module: customModule,
+      })
+      expect(validator.address).toEqual(customModule)
+    })
+
+    test('Passkey: custom module override', () => {
+      const validator = getValidator({
+        type: 'passkey',
+        accounts: [passkeyAccount],
+        module: customModule,
+      })
+      expect(validator.address).toEqual(customModule)
+    })
+
+    test('Multi-factor: default module', () => {
+      const validator = getValidator({
+        type: 'multi-factor',
+        validators: [{ type: 'ecdsa', accounts: [accountA] }],
+      })
+      expect(validator.address).toEqual(
+        '0xf6bdf42c9be18ceca5c06c42a43daf7fbbe7896b',
+      )
+    })
+
+    test('Multi-factor: custom module override', () => {
+      const validator = getValidator({
+        type: 'multi-factor',
+        validators: [{ type: 'ecdsa', accounts: [accountA] }],
+        module: customModule,
+      })
+      expect(validator.address).toEqual(customModule)
+    })
   })
 
   describe('Mock Signature', () => {
@@ -157,19 +196,6 @@ describe('Validators Core', () => {
                 owners: [{ account: accountA }],
               },
             ],
-          },
-        }),
-      ).toThrow(AccountConfigurationNotSupportedError)
-    })
-
-    test('HCA rejects a custom ENS owners.module', () => {
-      expect(() =>
-        getOwnerValidator({
-          account: { type: 'hca' },
-          owners: {
-            type: 'ens',
-            owners: [{ account: accountA }],
-            module: '0x00000000000000000000000000000000deadbeef',
           },
         }),
       ).toThrow(AccountConfigurationNotSupportedError)
