@@ -72,8 +72,16 @@ import {
   getWebAuthnValidator,
   supportsEip712,
 } from '../modules/validators/core'
+import type { IntentExecutorClaimMessage } from '../modules/validators/policies/claim/intent-executor'
+import { buildIntentExecutorClaimPolicyCalldata } from '../modules/validators/policies/claim/intent-executor'
 import type { Permit2ClaimMessage } from '../modules/validators/policies/claim/permit2'
 import { buildPermit2ClaimPolicyCalldata } from '../modules/validators/policies/claim/permit2'
+import {
+  coversIntentExecutor,
+  coversPermit2,
+  toIntentExecutorClaimPolicy,
+  toPermit2ClaimPolicy,
+} from '../modules/validators/policies/claim/unified'
 import type { ResolvedSessionSignerSet } from '../modules/validators/smart-sessions'
 import {
   type Execution,
@@ -1259,34 +1267,74 @@ function getTargetExecutionMessage(
   return typedData
 }
 
-/** Computes claim policy calldata when parameters are Permit2 typed data with claim policies. */
+/**
+ * Computes claim-policy calldata (policySpecificData) for a session signature.
+ *
+ * Dispatches on the typed-data primary type so the same signing path serves both
+ * settlement mechanisms: Permit2-arbiter intents (`PermitBatchWitnessTransferFrom`
+ * + `permit2-claim`) and IntentExecutor intents (`SingleChainOps` +
+ * `intent-executor-claim`). Returns undefined when there is no matching claim
+ * policy, leaving the signature unannotated.
+ */
 function resolveClaimPolicyData<
   typedData extends TypedData | Record<string, unknown>,
   primaryType extends keyof typedData | 'EIP712Domain',
 >(
   signers: ResolvedSessionSignerSet,
   parameters: HashTypedDataParameters<typedData, primaryType>,
+  chain: Chain,
+  useDevContracts?: boolean,
 ): Hex | undefined {
-  if (
-    parameters.primaryType !== 'PermitBatchWitnessTransferFrom' ||
-    !signers.session.claimPolicies?.length
-  ) {
+  const claimPolicies = signers.session.claimPolicies
+  if (!claimPolicies?.length) {
     return undefined
   }
-  const msg = parameters.message as Record<string, unknown>
-  if (
-    !msg.permitted ||
-    !msg.mandate ||
-    typeof msg.spender !== 'string' ||
-    typeof msg.nonce !== 'bigint' ||
-    typeof msg.deadline !== 'bigint'
-  ) {
-    return undefined
+
+  // Across (Permit2 arbiter) intents are signed as PermitBatchWitnessTransferFrom.
+  if (parameters.primaryType === 'PermitBatchWitnessTransferFrom') {
+    const policy = claimPolicies.find(coversPermit2)
+    if (!policy) {
+      return undefined
+    }
+    const msg = parameters.message as Record<string, unknown>
+    if (
+      !msg.permitted ||
+      !msg.mandate ||
+      typeof msg.spender !== 'string' ||
+      typeof msg.nonce !== 'bigint' ||
+      typeof msg.deadline !== 'bigint'
+    ) {
+      return undefined
+    }
+    return buildPermit2ClaimPolicyCalldata(
+      toPermit2ClaimPolicy(policy),
+      parameters.message as unknown as Permit2ClaimMessage,
+    )
   }
-  return buildPermit2ClaimPolicyCalldata(
-    signers.session.claimPolicies[0],
-    parameters.message as unknown as Permit2ClaimMessage,
-  )
+
+  // Relay (IntentExecutor) intents are signed as SingleChainOps.
+  if (parameters.primaryType === 'SingleChainOps') {
+    const policy = claimPolicies.find(coversIntentExecutor)
+    if (!policy) {
+      return undefined
+    }
+    const msg = parameters.message as Record<string, unknown>
+    if (
+      typeof msg.account !== 'string' ||
+      typeof msg.nonce !== 'bigint' ||
+      !msg.op
+    ) {
+      return undefined
+    }
+    return buildIntentExecutorClaimPolicyCalldata(
+      toIntentExecutorClaimPolicy(policy),
+      parameters.message as unknown as IntentExecutorClaimMessage,
+      chain,
+      useDevContracts,
+    )
+  }
+
+  return undefined
 }
 
 async function signIntentTypedData<
@@ -1339,7 +1387,12 @@ async function signIntentTypedData<
       // internally, so no transform is needed here
       return await getEmissarySignature(config, targetSigners, chain, hash)
     }
-    const claimPolicyData = resolveClaimPolicyData(signers, parameters)
+    const claimPolicyData = resolveClaimPolicyData(
+      signers,
+      parameters,
+      chain,
+      config.useDevContracts,
+    )
     const sessionSignersForEip1271: ResolvedSessionSignerSet = {
       type: 'experimental_session',
       session: signers.session,
@@ -1375,7 +1428,12 @@ async function signIntentTypedData<
   }
 
   if (isResolvedSessionSignerSet(signers)) {
-    const claimPolicyData = resolveClaimPolicyData(signers, parameters)
+    const claimPolicyData = resolveClaimPolicyData(
+      signers,
+      parameters,
+      chain,
+      config.useDevContracts,
+    )
     return await getEip1271Signature(
       config,
       claimPolicyData !== undefined ? { ...signers, claimPolicyData } : signers,

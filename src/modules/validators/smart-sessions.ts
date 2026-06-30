@@ -42,6 +42,10 @@ import type {
   UniversalActionPolicyParamCondition,
 } from '../../types'
 import smartSessionEmissaryAbi from '../abi/smart-session-emissary'
+import {
+  INTENT_EXECUTOR_ADDRESS,
+  INTENT_EXECUTOR_ADDRESS_DEV,
+} from '../chain-abstraction'
 import { MODULE_TYPE_ID_VALIDATOR, type Module } from '../common'
 import {
   getOwnerValidator,
@@ -51,9 +55,19 @@ import {
   SMART_SESSION_EMISSARY_ADDRESS_DEV,
 } from './core'
 import {
+  encodeIntentExecutorClaimPolicyInitData,
+  INTENT_EXECUTOR_CLAIM_POLICY_ADDRESS,
+} from './policies/claim/intent-executor'
+import {
   encodePermit2ClaimPolicyInitData,
   PERMIT2_CLAIM_POLICY_ADDRESS,
 } from './policies/claim/permit2'
+import {
+  coversIntentExecutor,
+  coversPermit2,
+  toIntentExecutorClaimPolicy,
+  toPermit2ClaimPolicy,
+} from './policies/claim/unified'
 
 type FixedLengthArray<
   T,
@@ -735,12 +749,34 @@ function getSessionData(
     sessionValidatorInitData: validator.initData,
     erc7739Policies: erc7739Data,
     actions,
-    // Note: Permit2ClaimPolicy has no dev deployment — same address in all environments
-    claimPolicies:
-      session.claimPolicies?.map((p) => ({
-        policy: PERMIT2_CLAIM_POLICY_ADDRESS,
-        initData: encodePermit2ClaimPolicyInitData(p),
-      })) ?? [],
+    // Expand each settlement-layer-keyed policy into the matching on-chain
+    // policies: Across → Permit2 (same address in all envs), Relay →
+    // IntentExecutor (resolves executor + adapter infra internally). A single
+    // policy with `settlementLayers: 'any'` yields one entry per mechanism.
+    claimPolicies: (session.claimPolicies ?? []).flatMap((p) => {
+      const out: PolicyData[] = []
+      if (coversPermit2(p)) {
+        out.push({
+          policy: PERMIT2_CLAIM_POLICY_ADDRESS,
+          initData: encodePermit2ClaimPolicyInitData(toPermit2ClaimPolicy(p)),
+        })
+      }
+      if (coversIntentExecutor(p)) {
+        const intentExecutor = useDevContracts
+          ? INTENT_EXECUTOR_ADDRESS_DEV
+          : INTENT_EXECUTOR_ADDRESS
+        out.push({
+          policy: INTENT_EXECUTOR_CLAIM_POLICY_ADDRESS,
+          initData: encodeIntentExecutorClaimPolicyInitData(
+            toIntentExecutorClaimPolicy(p),
+            session.chain,
+            intentExecutor,
+            useDevContracts,
+          ),
+        })
+      }
+      return out
+    }),
   }
 }
 

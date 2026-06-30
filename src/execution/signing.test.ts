@@ -559,7 +559,16 @@ const sessionWithClaimPolicy: Session = {
   chain: base,
   owners: { type: 'ecdsa', accounts: [accountA] },
   actions: [{ policies: [{ type: 'usage-limit', limit: 1n }] }],
-  claimPolicies: [{ type: 'permit2-claim' }],
+  claimPolicies: [{ settlementLayers: ['across'] }],
+}
+
+// Backward-compat: the deprecated tagged `{ type: 'permit2-claim' }` shape must
+// still work as a drop-in for existing integrations (e.g. 1auth arbiter sessions).
+const sessionWithLegacyClaimPolicy: Session = {
+  chain: base,
+  owners: { type: 'ecdsa', accounts: [accountA] },
+  actions: [{ policies: [{ type: 'usage-limit', limit: 1n }] }],
+  claimPolicies: [{ type: 'permit2-claim', arbiters: [MOCK_EXECUTOR] }],
 }
 
 describe('signIntent with permit2 claim policy', () => {
@@ -580,6 +589,27 @@ describe('signIntent with permit2 claim policy', () => {
     await signIntent(config, makePermit2IntentOp(), base, signers)
 
     expect(mockGetEip1271Signature).toHaveBeenCalled()
+    const sessionSignersArg = mockGetEip1271Signature.mock.calls[0][1] as {
+      claimPolicyData?: Hex
+    }
+    expect(sessionSignersArg.claimPolicyData).toBeDefined()
+    expect(sessionSignersArg.claimPolicyData).not.toBe('0x')
+  })
+
+  test('legacy { type: "permit2-claim" } shape still produces claimPolicyData (drop-in)', async () => {
+    const { getTypedData: mockPermit2GetTypedData } = await import('./permit2')
+    vi.mocked(mockPermit2GetTypedData).mockReturnValueOnce(
+      MOCK_PERMIT2_TYPED_DATA as unknown as ReturnType<
+        typeof mockPermit2GetTypedData
+      >,
+    )
+
+    await signIntent(config, makePermit2IntentOp(), base, {
+      type: 'experimental_session',
+      session: sessionWithLegacyClaimPolicy,
+      verifyExecutions: true,
+    })
+
     const sessionSignersArg = mockGetEip1271Signature.mock.calls[0][1] as {
       claimPolicyData?: Hex
     }
@@ -625,5 +655,81 @@ describe('signIntent with permit2 claim policy', () => {
       claimPolicyData?: Hex
     }
     expect(sessionSignersArg.claimPolicyData).toBeUndefined()
+  })
+})
+
+// SingleChainOps typed data shape (IntentExecutor / Relay) that triggers the
+// intent-executor-claim branch of resolveClaimPolicyData.
+const MOCK_SINGLE_CHAIN_OPS_TYPED_DATA = {
+  domain: {
+    name: 'IntentExecutor',
+    version: 'v0.0.1',
+    chainId: 8453,
+    verifyingContract: MOCK_EXECUTOR,
+  },
+  types: { SingleChainOps: [{ name: 'nonce', type: 'uint256' }] },
+  primaryType: 'SingleChainOps' as const,
+  message: {
+    account: MOCK_ACCOUNT,
+    nonce: 1n,
+    op: { vt: `0x${'00'.repeat(32)}` as Hex, ops: [] },
+    gasRefund: { token: zeroAddress, exchangeRate: 0n, overhead: 0n },
+  },
+}
+
+// A single session that unifies both settlement layers via ONE declarative
+// claim policy: settlementLayers 'any' authorizes Across (Permit2 arbiter) AND
+// Relay (IntentExecutor). The SDK selects the right one per intent at sign time.
+const unifiedSession: Session = {
+  chain: base,
+  owners: { type: 'ecdsa', accounts: [accountA] },
+  actions: [{ policies: [{ type: 'usage-limit', limit: 1n }] }],
+  claimPolicies: [{ settlementLayers: 'any' }],
+}
+
+describe('signIntent with unified claim policies (Across + Relay)', () => {
+  test('Across (Permit2) intent → permit2-claim selected', async () => {
+    const { getTypedData: mockPermit2GetTypedData } = await import('./permit2')
+    vi.mocked(mockPermit2GetTypedData).mockReturnValueOnce(
+      MOCK_PERMIT2_TYPED_DATA as unknown as ReturnType<
+        typeof mockPermit2GetTypedData
+      >,
+    )
+
+    await signIntent(config, makePermit2IntentOp(), base, {
+      type: 'experimental_session',
+      session: unifiedSession,
+      verifyExecutions: true,
+    })
+
+    const sessionSignersArg = mockGetEip1271Signature.mock.calls[0][1] as {
+      claimPolicyData?: Hex
+    }
+    expect(sessionSignersArg.claimPolicyData).toBeDefined()
+    expect(sessionSignersArg.claimPolicyData).not.toBe('0x')
+  })
+
+  test('Relay (IntentExecutor) intent → intent-executor-claim selected', async () => {
+    const { getTypedData: mockSingleChainOpsGetTypedData } = await import(
+      './singleChainOps'
+    )
+    vi.mocked(mockSingleChainOpsGetTypedData).mockReturnValueOnce(
+      MOCK_SINGLE_CHAIN_OPS_TYPED_DATA as unknown as ReturnType<
+        typeof mockSingleChainOpsGetTypedData
+      >,
+    )
+
+    await signIntent(config, makeIntentOp('INTENT_EXECUTOR'), base, {
+      type: 'experimental_session',
+      session: unifiedSession,
+      verifyExecutions: true,
+    })
+
+    const sessionSignersArg = mockGetEip1271Signature.mock.calls[0][1] as {
+      claimPolicyData?: Hex
+    }
+    // variant byte (0x00) leads the IntentExecutor data blob.
+    expect(sessionSignersArg.claimPolicyData).toBeDefined()
+    expect(sessionSignersArg.claimPolicyData?.startsWith('0x00')).toBe(true)
   })
 })

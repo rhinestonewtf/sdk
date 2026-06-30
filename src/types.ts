@@ -187,22 +187,121 @@ interface IntentExecutionPolicy {
   type: 'intent-execution'
 }
 
+/**
+ * Settlement layers a session claim policy can authorize.
+ *
+ * The developer thinks in settlement layers, not in the underlying claim
+ * mechanism. The SDK maps each layer to its mechanism internally:
+ * - `'across'` settles via the Permit2 arbiter.
+ * - `'relay'` settles via the IntentExecutor.
+ */
+type SessionSettlementLayer = 'across' | 'relay'
+
+/** Constraints enforceable on every settlement layer. */
+interface SharedClaimConstraints {
+  /** Permitted destination tokens per chain. */
+  tokensOut?: { chainId: number; token: Address }[]
+  /** Permitted recipients per destination chain (use `'any'` to allow all). */
+  recipients?: { chainId: number; recipient: Address | 'any' }[]
+}
+
+/**
+ * Constraints only enforceable on the Across (Permit2 arbiter) settlement
+ * layer. Notably this is where time bounds live — Across signs a Permit2
+ * `deadline`, so expiry can be enforced on-chain. The IntentExecutor (Relay)
+ * path has no signed deadline, so these fields are blocked for it at the type
+ * level rather than silently ignored.
+ */
+interface AcrossClaimConstraints {
+  /** Permitted input tokens per origin chain. */
+  tokensIn?: { chainId: number; token: Address }[]
+  /** Whitelisted arbiter/spender addresses. */
+  arbiters?: Address[]
+  /** Enforce that recipient === sponsor / bridge-to-self. */
+  recipientIsSponsor?: boolean
+  /** Permit deadline bounds, min/max unix timestamps. */
+  expiryBounds?: { min?: bigint; max?: bigint }
+  /** Fill expiry bounds per destination chain. */
+  fillExpiryBounds?: { chainId: number; min?: bigint; max?: bigint }[]
+}
+
+/** Constraints only enforceable on the Relay (IntentExecutor) settlement layer. */
+interface RelayClaimConstraints {
+  /** Permitted gas-refund tokens per chain. */
+  gasTokens?: { chainId: number; token: Address }[]
+  /** Cap on the gas-refund exchange rate. */
+  maxExchangeRate?: bigint
+  /** Require a non-empty gas refund on every signed op. */
+  requireGasRefund?: boolean
+  /** Pin the policy to the installing account. */
+  lockAccount?: boolean
+}
+
+// `?: never` blockers: setting one of these keys becomes a compile error on the
+// union members where the constraint can't be enforced.
+type BlockAcross = { [K in keyof AcrossClaimConstraints]?: never }
+type BlockRelay = { [K in keyof RelayClaimConstraints]?: never }
+
+/**
+ * A session claim policy, keyed on settlement layer. The developer names
+ * settlement layers, not the underlying claim mechanism; the SDK expands one
+ * entry into the matching on-chain policies and selects the right one per intent
+ * at sign time.
+ *
+ * The type system enforces that layer-specific constraints can only be set when
+ * that layer is the sole selection — e.g. `expiryBounds`/`fillExpiryBounds`
+ * (time bounds) require `settlementLayers: ['across']`, because the Relay path
+ * has no on-chain deadline to bind them to. Authorizing multiple layers (or
+ * `'any'`/omitted) restricts you to the shared constraints.
+ */
+type SessionClaimPolicy =
+  // Across only — Across-specific + shared constraints; Relay fields blocked.
+  | ({ settlementLayers: ['across'] } & AcrossClaimConstraints &
+      SharedClaimConstraints &
+      BlockRelay)
+  // Relay only — Relay-specific + shared constraints; Across fields blocked.
+  | ({ settlementLayers: ['relay'] } & RelayClaimConstraints &
+      SharedClaimConstraints &
+      BlockAcross)
+  // Multiple layers / 'any' / omitted — shared constraints only.
+  | ({
+      settlementLayers?: 'any' | ['across', 'relay'] | ['relay', 'across']
+    } & SharedClaimConstraints &
+      BlockAcross &
+      BlockRelay)
+  // Legacy shape, kept for backward compatibility — see {@link Permit2ClaimPolicy}.
+  | Permit2ClaimPolicy
+
+/**
+ * @deprecated Use the settlement-layer-keyed {@link SessionClaimPolicy} instead:
+ * `{ settlementLayers: ['across'], arbiters, tokensIn, ... }`. This tagged shape
+ * is still accepted (and behaves identically — Across/Permit2 only) so existing
+ * integrations keep compiling, but it will be removed in a future major.
+ */
 interface Permit2ClaimPolicy {
   type: 'permit2-claim'
-  /** Whitelisted Permit2 spender addresses */
   arbiters?: Address[]
-  /** Permitted input tokens per origin chain */
   tokensIn?: { chainId: number; token: Address }[]
-  /** Permitted output tokens per destination chain */
   tokensOut?: { chainId: number; token: Address }[]
-  /** Permitted recipients per destination chain (use `'any'` to allow all) */
   recipients?: { chainId: number; recipient: Address | 'any' }[]
-  /** Enforce that recipient === sponsor (bridge-to-self) */
   recipientIsSponsor?: boolean
-  /** Deadline bounds (min/max unix timestamps) */
   expiryBounds?: { min?: bigint; max?: bigint }
-  /** Fill expiry bounds per destination chain */
   fillExpiryBounds?: { chainId: number; min?: bigint; max?: bigint }[]
+}
+
+/**
+ * @internal Mechanism-shaped config consumed by the IntentExecutor claim-policy
+ * encoder. Built by the SDK from a {@link SessionClaimPolicy}; not part of the
+ * public API.
+ */
+interface IntentExecutorClaimPolicy {
+  type: 'intent-executor-claim'
+  gasTokens?: { chainId: number; token: Address }[]
+  maxExchangeRate?: bigint
+  requireGasRefund?: boolean
+  lockAccount?: boolean
+  tokensOut?: { chainId: number; token: Address }[]
+  recipients?: { chainId: number; recipient: Address }[]
 }
 
 type Policy =
@@ -229,7 +328,13 @@ type Action = FallbackAction | ScopedAction
 interface SessionInput {
   owners: OwnerSet
   actions?: Action[]
-  claimPolicies?: [Permit2ClaimPolicy]
+  /**
+   * Claim policies gating how the session's funds may be claimed, keyed on
+   * settlement layer. A single entry with `settlementLayers: 'any'` authorizes
+   * every supported layer (Across, Relay); the SDK selects the right one per
+   * intent at sign time.
+   */
+  claimPolicies?: SessionClaimPolicy[]
 }
 
 interface Session extends SessionInput {
@@ -559,6 +664,9 @@ export type {
   TokenRequests,
   TokenSymbol,
   Transaction,
+  SessionClaimPolicy,
+  SessionSettlementLayer,
+  IntentExecutorClaimPolicy,
   UniversalActionPolicyParamCondition,
   UserOperationTransaction,
   WebauthnValidatorConfig,
