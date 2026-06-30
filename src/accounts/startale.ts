@@ -20,10 +20,7 @@ import type {
   RhinestoneAccountConfig,
   StartaleAccount,
 } from '../types'
-import {
-  AccountConfigurationNotSupportedError,
-  Eip712DomainNotAvailableError,
-} from './error'
+import { AccountConfigurationNotSupportedError } from './error'
 import {
   getInstallData as getNexusInstallData,
   getSmartAccount as getNexusSmartAccount,
@@ -237,11 +234,9 @@ function getAddress(config: RhinestoneAccountConfig) {
 }
 
 function getEip712Domain(config: RhinestoneAccountConfig, chain: Chain) {
-  if (config.initData) {
-    throw new Eip712DomainNotAvailableError(
-      'Existing Startale accounts are not yet supported',
-    )
-  }
+  // Works for adopted accounts too: getAddress resolves the initData cases
+  // (returns initData.address, or recomputes the CREATE2 address from
+  // initData.factory/factoryData).
   return {
     name: 'Startale',
     version: STARTALE_VERSION,
