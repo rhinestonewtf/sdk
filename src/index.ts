@@ -563,7 +563,23 @@ async function createAccountInternal(
   function getOwners(chain: Chain) {
     const accountType = getAccountProvider(config).type
     const account = getAddress()
-    return getOwnersInternal(accountType, account, chain, config.provider)
+    // For HCA, the module lives behind the factory (custom factories define
+    // their own). Resolve from the configured or initData factory so reads hit
+    // the right module.
+    const hcaFactory =
+      config.account?.type === 'hca'
+        ? (config.account.factory ??
+          (config.initData && 'factory' in config.initData
+            ? config.initData.factory
+            : undefined))
+        : undefined
+    return getOwnersInternal(
+      accountType,
+      account,
+      chain,
+      config.provider,
+      hcaFactory,
+    )
   }
 
   function getValidators(chain: Chain) {

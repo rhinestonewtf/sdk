@@ -36,6 +36,10 @@ interface StartaleAccount {
 
 interface HcaAccount {
   type: 'hca'
+  // Custom HCA factory. Defines the CREATE3 deploy address and, via its
+  // implementation, the account's default validator (the HCA module).
+  // Defaults to the canonical HCA factory.
+  factory?: Address
 }
 
 interface EoaAccount {
