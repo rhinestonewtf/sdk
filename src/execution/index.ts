@@ -31,7 +31,6 @@ import type {
   SourceCallInput,
   Sponsorship,
   TokenRequest,
-  TokenSymbol,
   UserOperationTransaction,
 } from '../types'
 import {
@@ -107,7 +106,6 @@ async function sendTransactionInternal(
     eip7702InitSignature?: Hex
     settlementLayers?: SettlementLayerFilter
     sourceAssets?: SourceAssetInput
-    feeAsset?: Address | TokenSymbol
     appFees?: AppFeeRate
   },
 ) {
@@ -136,7 +134,6 @@ async function sendTransactionInternal(
     options.eip7702InitSignature,
     options.settlementLayers,
     options.sourceAssets,
-    options.feeAsset,
     options.sourceCalls,
     options.appFees,
   )
@@ -189,7 +186,6 @@ async function sendTransactionAsIntent(
   eip7702InitSignature?: Hex,
   settlementLayers?: SettlementLayerFilter,
   sourceAssets?: SourceAssetInput,
-  feeAsset?: Address | TokenSymbol,
   sourceCalls?: Record<number, SourceCallInput[]>,
   appFees?: AppFeeRate,
 ) {
@@ -205,7 +201,6 @@ async function sendTransactionAsIntent(
     eip7702InitSignature,
     settlementLayers,
     sourceAssets,
-    feeAsset,
     undefined,
     undefined,
     signers,

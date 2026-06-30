@@ -822,7 +822,6 @@ interface BaseTransaction {
   sponsored?: Sponsorship
   eip7702InitSignature?: Hex
   sourceAssets?: SourceAssetInput
-  feeAsset?: Address | TokenSymbol
   appFees?: AppFeeRate
   settlementLayers?: SettlementLayerFilter
   auxiliaryFunds?: AuxiliaryFunds
