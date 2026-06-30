@@ -313,7 +313,6 @@ async function prepareTransaction(
     eip7702InitSignature,
     settlementLayers,
     sourceAssets,
-    feeAsset,
     auxiliaryFunds,
     appFees,
     account,
@@ -354,7 +353,6 @@ async function prepareTransaction(
     eip7702InitSignature,
     settlementLayers,
     sourceAssets,
-    feeAsset,
     auxiliaryFunds,
     account,
     signers,
@@ -822,7 +820,6 @@ function getTransactionParams(transaction: Transaction) {
   const gasLimit = transaction.gasLimit
   const settlementLayers = transaction.settlementLayers
   const sourceAssets = transaction.sourceAssets
-  const feeAsset = transaction.feeAsset
   const auxiliaryFunds = transaction.auxiliaryFunds
   const appFees = transaction.appFees
   const account = transaction.experimental_accountOverride
@@ -841,7 +838,6 @@ function getTransactionParams(transaction: Transaction) {
     gasLimit,
     settlementLayers,
     sourceAssets,
-    feeAsset,
     auxiliaryFunds,
     appFees,
     account,
@@ -992,7 +988,6 @@ async function prepareTransactionAsIntent(
   eip7702InitSignature: Hex | undefined,
   settlementLayers: SettlementLayerFilter | undefined,
   sourceAssets: SourceAssetInput | undefined,
-  feeAsset: Address | TokenSymbol | undefined,
   auxiliaryFunds: AuxiliaryFunds | undefined,
   account:
     | {
@@ -1197,7 +1192,6 @@ async function prepareTransactionAsIntent(
     destinationGasUnits: gasLimit,
     accountAccessList,
     options: {
-      feeToken: feeAsset,
       sponsorSettings: sponsored
         ? typeof sponsored === 'object'
           ? {

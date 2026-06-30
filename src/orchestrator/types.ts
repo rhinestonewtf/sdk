@@ -124,7 +124,6 @@ type AuxiliaryFunds = {
 }
 
 interface IntentOptions {
-  feeToken?: Address | SupportedTokenSymbol
   appFees?: AppFeeRate
   sponsorSettings?: SponsorSettings
   settlementLayers?: SettlementLayerFilter

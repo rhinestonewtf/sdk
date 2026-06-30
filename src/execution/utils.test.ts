@@ -197,7 +197,6 @@ describe('prepareTransactionAsIntent', () => {
       undefined,
       undefined,
       undefined,
-      undefined,
       auxiliaryFunds,
       undefined,
       undefined,
@@ -229,7 +228,6 @@ describe('prepareTransactionAsIntent', () => {
       undefined,
       undefined,
       undefined,
-      undefined,
     )
 
     expect(mockCreateQuote).toHaveBeenCalledOnce()
@@ -252,7 +250,6 @@ describe('prepareTransactionAsIntent', () => {
       [{ address: zeroAddress, amount: 1n }],
       undefined,
       false,
-      undefined,
       undefined,
       undefined,
       undefined,
@@ -292,7 +289,6 @@ describe('prepareTransactionAsIntent', () => {
       [{ address: zeroAddress, amount: 1n }],
       undefined,
       false,
-      undefined,
       undefined,
       undefined,
       undefined,
@@ -339,7 +335,6 @@ describe('prepareTransactionAsIntent', () => {
       [{ address: zeroAddress, amount: 1n }],
       undefined,
       false,
-      undefined,
       undefined,
       undefined,
       undefined,
@@ -502,7 +497,6 @@ describe('prepareTransactionAsIntent — preClaimExecutions', () => {
       undefined,
       undefined,
       undefined,
-      undefined,
       signers,
     )
 
@@ -547,7 +541,6 @@ describe('prepareTransactionAsIntent — preClaimExecutions', () => {
       undefined,
       undefined,
       undefined,
-      undefined,
       signers,
     )
 
@@ -578,7 +571,6 @@ describe('prepareTransactionAsIntent — preClaimExecutions', () => {
       [{ address: zeroAddress, amount: 1n }],
       undefined,
       false,
-      undefined,
       undefined,
       undefined,
       undefined,
@@ -621,7 +613,6 @@ describe('prepareTransactionAsIntent — preClaimExecutions', () => {
       undefined,
       undefined,
       undefined,
-      undefined,
       signers,
     )
 
@@ -654,7 +645,6 @@ describe('prepareTransactionAsIntent — preClaimExecutions', () => {
       [{ address: zeroAddress, amount: 1n }],
       undefined,
       false,
-      undefined,
       undefined,
       undefined,
       undefined,
@@ -717,7 +707,6 @@ describe('prepareTransactionAsIntent — preClaimExecutions', () => {
       undefined,
       undefined,
       undefined,
-      undefined,
       signers,
     )
 
@@ -769,7 +758,6 @@ describe('prepareTransactionAsIntent — sourceCalls', () => {
       undefined,
       undefined,
       undefined,
-      undefined,
       { [arbitrum.id]: [callA, callB] },
     )
 
@@ -791,7 +779,6 @@ describe('prepareTransactionAsIntent — sourceCalls', () => {
       [{ address: zeroAddress, amount: 1n }],
       undefined,
       false,
-      undefined,
       undefined,
       undefined,
       undefined,
@@ -828,7 +815,6 @@ describe('prepareTransactionAsIntent — sourceCalls', () => {
       [{ address: zeroAddress, amount: 1n }],
       undefined,
       false,
-      undefined,
       undefined,
       undefined,
       undefined,
@@ -882,7 +868,6 @@ describe('prepareTransactionAsIntent — sourceCalls', () => {
       undefined,
       undefined,
       undefined,
-      undefined,
       { [base.id]: [callA] },
     )
 
@@ -904,7 +889,6 @@ describe('prepareTransactionAsIntent — sourceCalls', () => {
         [{ address: zeroAddress, amount: 1n }],
         undefined,
         false,
-        undefined,
         undefined,
         undefined,
         undefined,
@@ -935,7 +919,6 @@ describe('prepareTransactionAsIntent — sourceCalls', () => {
       [{ address: zeroAddress, amount: 1n }],
       undefined,
       false,
-      undefined,
       undefined,
       undefined,
       undefined,
@@ -985,7 +968,6 @@ describe('prepareTransactionAsIntent — sourceCalls', () => {
       undefined,
       undefined,
       undefined,
-      undefined,
       signers,
       { [base.id]: [callA] },
     )
@@ -1011,7 +993,6 @@ describe('prepareTransactionAsIntent — sourceCalls', () => {
       [{ address: zeroAddress, amount: 1n }],
       undefined,
       false,
-      undefined,
       undefined,
       undefined,
       undefined,
