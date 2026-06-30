@@ -1,5 +1,20 @@
 # @rhinestone/sdk
 
+## 2.0.0-beta.35
+
+### Major Changes
+
+- 971a298: Support custom module address overrides for the passkey and multi-factor validators via `owners.module`. Removed the inert `module` override from the ENS validator, whose address is fixed by the HCA account implementation.
+
+### Minor Changes
+
+- bfc46e0: Support a custom HCA factory via `account.factory`, which defines the deploy address and, through its implementation, the account's default validator.
+
+### Patch Changes
+
+- 1cd3687: Allow Startale accounts adopted via `initData` to sign intents: `getEip712Domain` no longer throws for existing accounts and derives the domain from `getAddress(config)`.
+- 694ba08: Fix `setup()` reverting on Startale K1 accounts: skip the built-in K1 default validator so only genuinely missing modules (e.g. the intent executor) are installed.
+
 ## 2.0.0-beta.34
 
 ### Minor Changes

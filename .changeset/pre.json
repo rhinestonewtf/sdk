@@ -29,6 +29,7 @@
     "fix-enable-session-preserve-permissions",
     "fix-time-frame-policy-encoding",
     "fix-uninstall-module-sentinel-list-prev",
+    "hca-custom-factory",
     "heavy-grapes-punch",
     "hypercore-caip2-mainnet",
     "hypercore-destination",
@@ -61,6 +62,8 @@
     "simulation-failed-error",
     "small-jeans-care",
     "smart-session-policy-addresses",
+    "startale-adopted-eip712-domain",
+    "startale-setup-skip-default-validator",
     "submit-transaction-options",
     "trace-id-responses",
     "trim-fee-breakdown",
@@ -68,6 +71,7 @@
     "trim-smart-sessions-surface",
     "tron-caip2-mainnet",
     "v2-beta-prereq",
+    "validator-module-overrides",
     "wait-for-terminal-state",
     "witty-cameras-sparkle"
   ]
