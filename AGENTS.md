@@ -55,7 +55,9 @@ Once v2 is stable, we'll switch back to the standard `main` (dev) / `release` (p
 - Use viem types for addresses, chains, and hex values
 - Account implementations live in `/src/accounts/*.ts`
 - Public API is the union of `src/index.ts` re-exports and the subpath exports in `src/package.json` (`/actions`, `/errors`, `/jwt-server`, `/smart-sessions`, etc.) — adding, renaming, or removing exports is a breaking change
-- The project uses `changeset` to manage releases. Create a changeset file for each fix or feature, and use the `sdk-changesets` skill when adding, editing, or reviewing SDK changelog wording.
+- When changing the public surface (types, exports, account/action APIs, config, errors, defaults), use the `dx` skill to keep it safe and ergonomic to integrate
+- When writing or editing JSDoc on public symbols (it generates the published SDK Reference), use the `jsdoc` skill
+- The project uses `changeset` to manage releases. Create a changeset file for each fix or feature, and use the `changesets` skill when adding, editing, or reviewing SDK changelog wording.
 
 ## SDK reference docs
 

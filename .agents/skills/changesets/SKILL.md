@@ -1,5 +1,5 @@
 ---
-name: sdk-changesets
+name: changesets
 description: Writes, reviews, and polishes @rhinestone/sdk changesets. Use when adding release notes, editing .changeset/*.md files, preparing SDK releases, or reviewing changelog wording.
 ---
 
