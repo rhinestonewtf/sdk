@@ -35,6 +35,16 @@ Docs: https://docs.rhinestone.dev/smart-wallet
 - `/src/orchestrator` - Rhinestone API client
 - `/test` - Unit helpers, type tests, and live integration tests
 
+See [docs/architecture.md](docs/architecture.md) for how these fit together and the transaction flow.
+
+## Docs
+
+- [Architecture](docs/architecture.md) — layering and transaction flow
+- [Testing](docs/testing.md) — unit, type, and live integration tests
+- [Code generation](docs/codegen.md) — SDK Reference and orchestrator wire types
+
+Keep these in sync with the code — update the relevant doc in the same PR as any change it covers.
+
 ## Branching
 
 The SDK uses three long-lived branches while v2 stabilizes:
@@ -59,13 +69,10 @@ Once v2 is stable, we'll switch back to the standard `main` (dev) / `release` (p
 - When writing or editing JSDoc on public symbols (it generates the published SDK Reference), use the `jsdoc` skill
 - The project uses `changeset` to manage releases. Create a changeset file for each fix or feature, and use the `changesets` skill when adding, editing, or reviewing SDK changelog wording.
 
-## SDK reference docs
-
-The public docs site's "SDK Reference" is generated from this repo's JSDoc (`scripts/reference/`, run with `bun run reference`; see `scripts/reference/README.md`). When you add, rename, or remove a public export, or change its JSDoc, regenerate with the `docs` repo checked out as a sibling and commit the updated `docs/sdk-reference` output — Mintlify builds from committed content. The generator warns about public exports (in already-documented modules) that are missing from `scripts/reference/manifest.ts`; add new symbols there (the mapping is curated, not automatic).
-
 ## Testing
 
-- Run single test: `bun run test -- path/to/file.test.ts`
-- Unit tests live next to source as `*.test.ts`.
-- Live SDK integration tests live under `/test/integration` as `*.itest.ts`. They require `INTEGRATION_RHINESTONE_API_KEY` and use `vitest.config.integration.ts`. Funded specs (smart-session policies, on-chain source-call execution) additionally require `INTEGRATION_FUNDER_PRIVATE_KEY` — a key whose address holds testnet native + USDC on the integration chains.
-- Run the live smoke suite with `bun run test:integration:smoke -- --run`.
+Unit tests live next to source as `*.test.ts`; run a single file with `bun run test -- path/to/file.test.ts`. Live integration tests need API keys and run manually. See [docs/testing.md](docs/testing.md).
+
+## Code generation
+
+The SDK Reference (from JSDoc) and the orchestrator wire types (from the OpenAPI spec) are both generated — don't hand-edit. Regenerate with `bun run reference` and `bun run generate:wire`. See [docs/codegen.md](docs/codegen.md). When writing the JSDoc that feeds the reference, use the `jsdoc` skill.

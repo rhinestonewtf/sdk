@@ -16,8 +16,8 @@ and **high quality**. A missing or lazy comment becomes a missing or lazy
 reference page.
 
 The mechanics of running the generator and committing the output live in
-`sdk/CLAUDE.md` and `scripts/reference/README.md` — use them; don't repeat them
-here. This skill is about *writing the comment well*.
+`docs/codegen.md` — use them; don't repeat them here. This skill is about
+*writing the comment well*.
 
 ## Apply when
 
