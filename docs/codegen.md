@@ -4,7 +4,7 @@ The repo generates two artifacts. Neither is hand-edited — regenerate instead.
 
 | Artifact            | Source                          | Output                          | Command              |
 | ------------------- | ------------------------------- | ------------------------------- | -------------------- |
-| SDK Reference (MDX) | JSDoc on public symbols         | `docs` repo `sdk-reference/`    | `bun run reference`  |
+| SDK Reference (MDX) | JSDoc on public symbols         | `docs` repo `sdk-reference/`    | `bun run generate:reference` |
 | Orchestrator wire types | Orchestrator OpenAPI spec   | `src/orchestrator/wire.gen.ts`  | `bun run generate:wire` |
 
 ## SDK Reference
@@ -15,19 +15,19 @@ to *write* those comments, use the `jsdoc` skill; this section is the pipeline.
 
 ### How it works
 
-1. `reference:extract` — `typedoc --json` (config `scripts/reference/typedoc.json`)
+1. `generate:reference:extract` — `typedoc --json` (config `scripts/reference/typedoc.json`)
    extracts a structured model of the public API into `typedoc.json.out`
    (gitignored build artifact).
-2. `reference:generate` — `scripts/reference/generate.ts` walks the curated
+2. `generate:reference:render` — `scripts/reference/generate.ts` walks the curated
    `scripts/reference/manifest.ts`, looks up each symbol in that model, and
    renders one MDX page per symbol against a fixed template (Import / Usage /
    Parameters / Returns / See also). It then patches the `SDK Reference` tab into
    `docs/docs.json`.
 
 ```bash
-bun run reference            # extract + generate (run from the sdk repo root)
-bun run reference:extract    # typedoc JSON only
-bun run reference:generate   # render MDX from existing JSON
+bun run generate:reference            # extract + render (run from the sdk repo root)
+bun run generate:reference:extract    # typedoc JSON only
+bun run generate:reference:render     # render MDX from existing JSON
 ```
 
 Output defaults to the sibling `docs` repo and can be overridden:
@@ -58,7 +58,7 @@ symbols there.
 ### Committing
 
 The generated MDX is committed to the `docs` repo — Mintlify builds from repo
-content, so the pages must be present in git. Re-run `bun run reference` with
+content, so the pages must be present in git. Re-run `bun run generate:reference` with
 the `docs` repo checked out as a sibling and commit the result whenever the
 public API or its JSDoc changes.
 
