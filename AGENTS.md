@@ -43,6 +43,8 @@ See [docs/architecture.md](docs/architecture.md) for how these fit together and 
 - [Testing](docs/testing.md) — unit, type, and live integration tests
 - [Code generation](docs/codegen.md) — SDK Reference and orchestrator wire types
 
+Keep these in sync with the code — update the relevant doc in the same PR as any change it covers.
+
 ## Branching
 
 The SDK uses three long-lived branches while v2 stabilizes:
