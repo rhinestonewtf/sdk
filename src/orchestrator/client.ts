@@ -10,6 +10,7 @@ import {
 import type {
   AccountAccessList,
   AppFee,
+  ApprovalRequired,
   AuxiliaryFunds,
   BridgeFill,
   Cost,
@@ -22,11 +23,30 @@ import type {
   Portfolio,
   Quote,
   QuoteResponse,
+  SignData,
   SplitIntentsInput,
   SplitIntentsResult,
   TokenRequirements,
+  WrapRequired,
 } from './types'
 import { convertBigIntFields } from './utils'
+import type {
+  WireBridgeFill,
+  WireCost,
+  WireCostInputEntry,
+  WireCostOutputEntry,
+  WireIntentStatus,
+  WireIntentSubmitResponse,
+  WirePortfolioResponse,
+  WireQuoteResponse,
+  WireRoute,
+  WireSplitResponse,
+  WireTokenRequirements,
+} from './wire'
+
+/** Body shape returned by {@link Orchestrator.fetch}: the wire body plus the
+ * `x-trace-id` header folded in. */
+type WithTraceId<T> = T & { traceId?: string }
 
 interface PolicyContext {
   intentInput: unknown
@@ -72,23 +92,15 @@ export class Orchestrator {
       `${this.serverUrl}/accounts/${accountAddress}/portfolio`,
     )
     url.search = params.toString()
-    const json = await this.fetch(url.toString(), {
+    const json: WirePortfolioResponse = await this.fetch(url.toString(), {
       headers: await this.getHeaders(),
     })
-    const portfolioWire = json.portfolio as Array<{
-      symbol: string
-      chains: Array<{
-        chainId: string | number
-        address: Address
-        decimals: number
-        amount: string
-      }>
-    }>
+    const portfolioWire = json.portfolio
     return portfolioWire.map((token) => ({
       symbol: token.symbol,
       chains: token.chains.map((c) => ({
         chain: parseChainId(c.chainId),
-        address: c.address,
+        address: c.address as Address,
         decimals: c.decimals,
         amount: BigInt(c.amount),
       })),
@@ -111,16 +123,17 @@ export class Orchestrator {
       tokens: input.tokens,
       settlementLayers: input.settlementLayers,
     })
-    const json = await this.fetch(`${this.serverUrl}/intents/splits`, {
-      method: 'POST',
-      headers: await this.getHeaders(),
-      body: JSON.stringify(body),
-    })
+    const json: WithTraceId<WireSplitResponse> = await this.fetch(
+      `${this.serverUrl}/intents/splits`,
+      {
+        method: 'POST',
+        headers: await this.getHeaders(),
+        body: JSON.stringify(body),
+      },
+    )
     return {
-      traceId: json.traceId,
-      intents: (json.intents as Record<string, string>[]).map(
-        parseTokenAmountsRecord,
-      ),
+      traceId: json.traceId ?? '',
+      intents: json.intents.map(parseTokenAmountsRecord),
     }
   }
 
@@ -135,25 +148,35 @@ export class Orchestrator {
           policyContext.isSponsored,
         )
       : await this.getHeaders()
-    return await this.fetch(`${this.serverUrl}/intents`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-    })
+    const json: WithTraceId<WireIntentSubmitResponse> = await this.fetch(
+      `${this.serverUrl}/intents`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+      },
+    )
+    return { traceId: json.traceId ?? '', intentId: json.intentId }
   }
 
   async getIntent(intentId: string): Promise<IntentOpStatus> {
-    const json = await this.fetch(`${this.serverUrl}/intents/${intentId}`, {
-      headers: await this.getHeaders(),
-    })
+    const json: WithTraceId<WireIntentStatus> = await this.fetch(
+      `${this.serverUrl}/intents/${intentId}`,
+      {
+        headers: await this.getHeaders(),
+      },
+    )
     return {
-      traceId: json.traceId,
+      traceId: json.traceId ?? '',
       status: json.status,
-      accountAddress: json.accountAddress,
+      accountAddress: json.accountAddress as Address,
       // Flatten orchestrator's per-chain items[] to one entry per chain.
-      operations: (json.operations ?? []).map((op: any) => {
-        const item = op.items?.[0] ?? {}
-        return { chain: op.chain, ...item }
+      operations: (json.operations ?? []).map((op) => {
+        const item = op.items?.[0]
+        return {
+          chain: op.chain,
+          ...item,
+        } as IntentOpStatus['operations'][number]
       }),
     }
   }
@@ -325,20 +348,24 @@ function encodeOptions(options: IntentOptions): Record<string, unknown> {
   return wire
 }
 
-function decodeQuoteResponse(json: any): QuoteResponse {
-  const routes = (json.routes ?? []) as any[]
-  return { traceId: json.traceId, routes: routes.map(decodeQuote) }
+function decodeQuoteResponse(
+  json: WithTraceId<WireQuoteResponse>,
+): QuoteResponse {
+  return {
+    traceId: json.traceId ?? '',
+    routes: (json.routes ?? []).map(decodeQuote),
+  }
 }
 
-function decodeQuote(route: any): Quote {
+function decodeQuote(route: WireRoute): Quote {
   return {
     intentId: route.intentId,
     expiresAt: route.expiresAt,
     estimatedFillTime: route.estimatedFillTime,
     settlementLayer: route.settlementLayer,
-    signData: route.signData,
+    signData: route.signData as unknown as SignData,
     cost: decodeCost(route.cost),
-    appFee: decodeAppFee(route.appFee ?? route.intentCost?.appFee),
+    appFee: decodeAppFee(route.appFee),
     tokenRequirements: route.tokenRequirements
       ? decodeTokenRequirements(route.tokenRequirements)
       : undefined,
@@ -346,35 +373,38 @@ function decodeQuote(route: any): Quote {
   }
 }
 
-function decodeAppFee(appFee: any): AppFee[] | undefined {
+function decodeAppFee(appFee: WireRoute['appFee']): AppFee[] | undefined {
   if (!appFee) return undefined
-  return (appFee as any[]).map((fee) => ({
+  return appFee.map((fee) => ({
     feeBps: fee.feeBps,
     baseAmount: BigInt(fee.baseAmount),
     amount: BigInt(fee.amount),
     chainId: parseChainId(fee.chainId),
-    tokenAddress: fee.tokenAddress,
+    tokenAddress: fee.tokenAddress as Address,
   }))
 }
 
-// Normalizes CAIP-2 strings to numeric IDs for consistency with BridgeFill decodeCostTokenEntry, and getIntent
-function decodeBridgeFill(bf: any): BridgeFill | undefined {
+function decodeBridgeFill(
+  bf: WireBridgeFill | undefined,
+): BridgeFill | undefined {
   if (!bf) return undefined
-  return { ...bf, destinationChainId: parseChainId(bf.destinationChainId) }
+  return { ...bf } as BridgeFill
 }
 
-function decodeCost(cost: any): Cost {
+function decodeCost(cost: WireCost): Cost {
   return {
-    input: (cost.input as any[]).map(decodeCostTokenEntry),
-    output: (cost.output as any[]).map(decodeCostTokenEntry),
+    input: cost.input.map(decodeCostTokenEntry),
+    output: cost.output.map(decodeCostTokenEntry),
     fees: cost.fees,
   }
 }
 
-function decodeCostTokenEntry(entry: any): CostTokenEntry {
+function decodeCostTokenEntry(
+  entry: WireCostInputEntry | WireCostOutputEntry,
+): CostTokenEntry {
   return {
     chainId: parseChainId(entry.chainId),
-    tokenAddress: entry.tokenAddress,
+    tokenAddress: entry.tokenAddress as Address,
     symbol: entry.symbol,
     decimals: entry.decimals,
     price: entry.price,
@@ -382,18 +412,18 @@ function decodeCostTokenEntry(entry: any): CostTokenEntry {
   }
 }
 
-function decodeTokenRequirements(wire: any): TokenRequirements {
+function decodeTokenRequirements(
+  wire: WireTokenRequirements,
+): TokenRequirements {
   const out: TokenRequirements = {}
   for (const [chainKey, tokens] of Object.entries(wire)) {
     const chainId = parseChainId(chainKey)
     out[chainId] = {} as TokenRequirements[number]
-    for (const [tokenAddress, requirement] of Object.entries(
-      tokens as Record<string, any>,
-    )) {
+    for (const [tokenAddress, requirement] of Object.entries(tokens)) {
       out[chainId][tokenAddress as Address] = {
         ...requirement,
         amount: BigInt(requirement.amount),
-      }
+      } as ApprovalRequired | WrapRequired
     }
   }
   return out
