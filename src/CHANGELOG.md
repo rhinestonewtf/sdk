@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 2.0.0-beta.36
+
+### Major Changes
+
+- c87e09e: Remove the `feeAsset` transaction option. The orchestrator never honored it — the corresponding `feeToken` field was reserved with no effect — so choosing an ERC-20 fee asset was a no-op. Drop `feeAsset` from your `prepareTransaction` calls; it has no replacement until the feature actually ships.
+
 ## 2.0.0-beta.35
 
 ### Major Changes

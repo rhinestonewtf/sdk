@@ -48,6 +48,7 @@
     "quote-selection",
     "reexport-smart-session-internals",
     "remove-create-rhinestone-account",
+    "remove-fee-asset",
     "remove-fee-token",
     "remove-recovery-and-guardian-signer",
     "remove-verify-executions-public-api",
