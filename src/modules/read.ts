@@ -65,6 +65,7 @@ async function getOwners(
   account: Address,
   chain: Chain,
   provider?: ProviderConfig,
+  hcaFactory?: Address,
 ): Promise<{
   accounts: Address[]
   threshold: number
@@ -73,10 +74,28 @@ async function getOwners(
     chain,
     transport: createTransport(chain, provider),
   })
-  // HCA accounts hold owner state under the ENS HCA module, which is also
-  // OwnableValidator-based, so the getOwners/threshold reads are identical.
-  const moduleAddress =
-    accountType === 'hca' ? ENS_HCA_MODULE : OWNABLE_VALIDATOR_ADDRESS
+  // HCA accounts hold owner state under the HCA module (the factory's init-data
+  // parser), which is OwnableValidator-based, so the getOwners/threshold reads
+  // are identical. A custom factory defines its own module, so resolve it from
+  // the factory; otherwise fall back to the canonical module.
+  let moduleAddress: Address = OWNABLE_VALIDATOR_ADDRESS
+  if (accountType === 'hca') {
+    moduleAddress = hcaFactory
+      ? await publicClient.readContract({
+          abi: [
+            {
+              name: 'initDataParser',
+              type: 'function',
+              stateMutability: 'view',
+              inputs: [],
+              outputs: [{ name: '', type: 'address' }],
+            },
+          ],
+          functionName: 'initDataParser',
+          address: hcaFactory,
+        })
+      : ENS_HCA_MODULE
+  }
   const [ownerResult, thresholdResult] = await publicClient.multicall({
     contracts: [
       {
