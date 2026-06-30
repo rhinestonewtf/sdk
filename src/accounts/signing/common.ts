@@ -49,7 +49,7 @@ function convertOwnerSetToSignerSet(owners: OwnerSet): SignerSet {
         type: 'owner',
         kind: 'ecdsa',
         accounts: owners.owners.map((o) => o.account),
-        module: owners.module ?? ENS_HCA_MODULE,
+        module: ENS_HCA_MODULE,
       }
     }
     case 'passkey': {
@@ -79,7 +79,7 @@ function convertOwnerSetToSignerSet(owners: OwnerSet): SignerSet {
                 type: 'ecdsa',
                 id: index,
                 accounts: validator.owners.map((o) => o.account),
-                module: validator.module ?? ENS_HCA_MODULE,
+                module: ENS_HCA_MODULE,
               }
             }
             case 'passkey': {
@@ -97,6 +97,7 @@ function convertOwnerSetToSignerSet(owners: OwnerSet): SignerSet {
             }
           }
         }),
+        module: owners.module,
       }
     }
   }

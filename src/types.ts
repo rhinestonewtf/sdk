@@ -62,7 +62,6 @@ interface ENSValidatorConfig {
   /** Each owner with an optional expiry. Omit `expiration` to never expire. */
   owners: { account: Account; expiration?: Date }[]
   threshold?: number
-  module?: Address
 }
 
 interface WebauthnValidatorConfig {
