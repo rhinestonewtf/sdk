@@ -135,13 +135,6 @@ interface AppFeeRate {
   feeBps: number
 }
 
-interface AppFee extends AppFeeRate {
-  baseAmount: bigint
-  amount: bigint
-  chainId: number
-  tokenAddress: Address
-}
-
 interface SponsorSettings {
   gas: boolean
   bridgeFees: boolean
@@ -238,7 +231,6 @@ interface Quote {
   settlementLayer: SettlementLayer
   signData: SignData
   cost: Cost
-  appFee?: AppFee[]
   tokenRequirements?: TokenRequirements
   bridgeFill?: BridgeFill
 }
@@ -409,7 +401,6 @@ export type {
   Account,
   AccountType,
   AccountWithContext,
-  AppFee,
   AppFeeRate,
   AuxiliaryFunds,
   TokenConfig,

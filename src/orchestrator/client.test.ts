@@ -98,7 +98,7 @@ describe('Orchestrator trace IDs', () => {
     })
   })
 
-  it('decodes app fee legs and app fee breakdown', async () => {
+  it('decodes app fee breakdown', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
@@ -110,15 +110,6 @@ describe('Orchestrator trace IDs', () => {
               estimatedFillTime: { seconds: 3 },
               settlementLayer: 'ACROSS',
               signData: { origin: [], destination: null },
-              appFee: [
-                {
-                  feeBps: 100,
-                  baseAmount: '1000000',
-                  amount: '10000',
-                  chainId: 'eip155:42161',
-                  tokenAddress: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
-                },
-              ],
               cost: {
                 input: [],
                 output: [],
@@ -153,16 +144,8 @@ describe('Orchestrator trace IDs', () => {
       options: {},
     } as any)
 
-    expect(result.routes[0].appFee).toEqual([
-      {
-        feeBps: 100,
-        baseAmount: 1000000n,
-        amount: 10000n,
-        chainId: 42161,
-        tokenAddress: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
-      },
-    ])
     expect(result.routes[0].cost.fees.breakdown.app).toEqual({ usd: 0.01 })
+    expect('appFee' in result.routes[0]).toBe(false)
   })
 
   it('preserves traceId on split responses', async () => {

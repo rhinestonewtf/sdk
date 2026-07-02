@@ -26,7 +26,6 @@ export type WireRoute = WireQuoteResponse['routes'][number]
 export type WireCost = WireRoute['cost']
 export type WireCostInputEntry = WireCost['input'][number]
 export type WireCostOutputEntry = WireCost['output'][number]
-export type WireAppFee = NonNullable<WireRoute['appFee']>[number]
 export type WireBridgeFill = NonNullable<WireRoute['bridgeFill']>
 export type WireTokenRequirements = NonNullable<WireRoute['tokenRequirements']>
 
