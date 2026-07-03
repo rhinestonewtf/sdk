@@ -91,7 +91,7 @@ import type {
   WrapRequired,
 } from './orchestrator'
 
-export type { AppFee, AppFeeRate } from './orchestrator'
+export type { AppFeeRate } from './orchestrator'
 
 import { hyperCoreMainnet, solanaMainnet, tronMainnet } from './orchestrator'
 import type {

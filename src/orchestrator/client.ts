@@ -9,7 +9,6 @@ import {
 } from './error'
 import type {
   AccountAccessList,
-  AppFee,
   ApprovalRequired,
   AuxiliaryFunds,
   BridgeFill,
@@ -365,23 +364,11 @@ function decodeQuote(route: WireRoute): Quote {
     settlementLayer: route.settlementLayer,
     signData: route.signData as unknown as SignData,
     cost: decodeCost(route.cost),
-    appFee: decodeAppFee(route.appFee),
     tokenRequirements: route.tokenRequirements
       ? decodeTokenRequirements(route.tokenRequirements)
       : undefined,
     bridgeFill: decodeBridgeFill(route.bridgeFill),
   }
-}
-
-function decodeAppFee(appFee: WireRoute['appFee']): AppFee[] | undefined {
-  if (!appFee) return undefined
-  return appFee.map((fee) => ({
-    feeBps: fee.feeBps,
-    baseAmount: BigInt(fee.baseAmount),
-    amount: BigInt(fee.amount),
-    chainId: parseChainId(fee.chainId),
-    tokenAddress: fee.tokenAddress as Address,
-  }))
 }
 
 function decodeBridgeFill(

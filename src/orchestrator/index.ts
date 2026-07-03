@@ -44,7 +44,6 @@ import {
   isTokenAddressSupported,
 } from './registry'
 import type {
-  AppFee,
   AppFeeRate,
   ApprovalRequired,
   AuxiliaryFunds,
@@ -103,7 +102,6 @@ function getOrchestrator(
 
 export type {
   ApprovalRequired,
-  AppFee,
   AppFeeRate,
   AuxiliaryFunds,
   BridgeFill,
