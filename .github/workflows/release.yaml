@@ -98,3 +98,66 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: gh pr edit ${{ steps.changesets.outputs.pullRequestNumber }} --add-label ship
+
+      # Regenerate the SDK reference and open/update a PR in the docs repo, but
+      # only when a real publish happened (not when the Release PR is merely
+      # opened/updated). Gated to the v2 line — flip `release` to `main` when v2
+      # graduates. v1 publishes are intentionally excluded so they can't clobber
+      # the v2 reference the docs site tracks.
+      - name: Mint docs-repo token
+        if: steps.changesets.outputs.published == 'true' && github.ref == 'refs/heads/release'
+        id: docs-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: docs
+
+      - name: Checkout docs repo
+        if: steps.changesets.outputs.published == 'true' && github.ref == 'refs/heads/release'
+        uses: "actions/checkout@v4"
+        with:
+          repository: ${{ github.repository_owner }}/docs
+          ref: main
+          token: ${{ steps.docs-token.outputs.token }}
+          path: docs-repo
+
+      - name: Regenerate SDK reference into the docs checkout
+        if: steps.changesets.outputs.published == 'true' && github.ref == 'refs/heads/release'
+        env:
+          SDK_REF_OUT: ${{ github.workspace }}/docs-repo/sdk-reference
+          SDK_REF_DOCS_JSON: ${{ github.workspace }}/docs-repo/docs.json
+        run: bun run generate:reference
+
+      - name: Open or update docs PR
+        if: steps.changesets.outputs.published == 'true' && github.ref == 'refs/heads/release'
+        env:
+          DOCS_TOKEN: ${{ steps.docs-token.outputs.token }}
+          GH_TOKEN: ${{ steps.docs-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          BRANCH="update/sdk-reference"
+          cd docs-repo
+          git checkout -b "$BRANCH"
+          git add sdk-reference docs.json
+          if git diff --cached --quiet; then
+            echo "SDK reference unchanged; nothing to open."
+            exit 0
+          fi
+          git config user.name "rhinestone-automations[bot]"
+          git config user.email "rhinestone-automations[bot]@users.noreply.github.com"
+          git commit -m "chore(sdk-reference): sync from ${GITHUB_REPOSITORY}@${GITHUB_SHA}"
+          git push --force "https://x-access-token:${DOCS_TOKEN}@github.com/${GITHUB_REPOSITORY_OWNER}/docs.git" "$BRANCH"
+          BODY="Regenerated SDK reference from ${GITHUB_REPOSITORY}@${GITHUB_SHA}."
+          EXISTING_PR=$(gh pr list --repo "${GITHUB_REPOSITORY_OWNER}/docs" --head "$BRANCH" --state open --json number --jq '.[0].number')
+          if [ -n "$EXISTING_PR" ]; then
+            gh pr edit "$EXISTING_PR" --repo "${GITHUB_REPOSITORY_OWNER}/docs" --body "$BODY"
+          else
+            gh pr create \
+              --repo "${GITHUB_REPOSITORY_OWNER}/docs" \
+              --base main \
+              --head "$BRANCH" \
+              --title "Sync SDK reference" \
+              --body "$BODY"
+          fi

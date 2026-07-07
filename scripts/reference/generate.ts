@@ -27,6 +27,15 @@ const OUT_DIR =
   process.env.SDK_REF_OUT ?? resolve(HERE, '../../../docs/sdk-reference')
 const NAV_BASE = 'sdk-reference'
 
+// When set, the render exits non-zero on any coverage problem (an unresolved
+// manifest symbol or a public export missing from the manifest) instead of
+// just warning. Used by CI to block reference drift at PR time.
+const CHECK = process.env.SDK_REF_CHECK === '1'
+
+// Manifest symbols that could not be resolved in the TypeDoc model, collected
+// during render so CHECK mode can fail on them.
+const unresolved: string[] = []
+
 // ---------------------------------------------------------------------------
 // TypeDoc JSON traversal
 // ---------------------------------------------------------------------------
@@ -385,6 +394,7 @@ function renderPage(entry: SymbolEntry): string | null {
   const node = resolveNode(entry)
   if (!node) {
     console.error(`! could not resolve ${entry.source}#${entry.symbol}`)
+    unresolved.push(`${entry.source}#${entry.symbol}`)
     return null
   }
   const sigs = signaturesOf(node, entry)
@@ -668,7 +678,7 @@ const UNDOCUMENTED_OK = new Set<string>([
 // already documents, but are themselves missing from it. Scoped this way so
 // out-of-scope modules (jwt-server, errors, types, the standalone
 // /smart-sessions module) are never flagged.
-function warnMissingCoverage() {
+function warnMissingCoverage(): string[] {
   const documented = new Set(nameToPage.keys())
   const containers = new Set<string>()
   const modules = new Set<string>()
@@ -712,6 +722,7 @@ function warnMissingCoverage() {
       '  Add them to manifest.ts, or to UNDOCUMENTED_OK in generate.ts if intentional.',
     )
   }
+  return missing
 }
 
 function main() {
@@ -719,9 +730,16 @@ function main() {
 
   const navPages = build(manifest as Node[], [NAV_BASE])
   patchDocsJson(navPages)
-  warnMissingCoverage()
+  const missing = warnMissingCoverage()
 
   console.info(`Generated ${countPages(navPages)} pages under ${OUT_DIR}`)
+
+  if (CHECK && (unresolved.length || missing.length)) {
+    console.error(
+      `\n! reference coverage check failed: ${unresolved.length} unresolved symbol(s), ${missing.length} undocumented export(s).`,
+    )
+    process.exit(1)
+  }
 }
 
 function countPages(pages: (string | NavGroup)[]): number {
