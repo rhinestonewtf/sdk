@@ -3519,36 +3519,6 @@ export interface operations {
                                     };
                                 };
                             };
-                            /** @description Concrete app-fee legs charged to the user. Empty or omitted when no app fee applies; app fees are never sponsored. */
-                            appFee?: {
-                                /**
-                                 * @description Integrator app-fee rate in basis points.
-                                 * @example 100
-                                 */
-                                feeBps: number;
-                                /**
-                                 * Format: uint256
-                                 * @description Principal amount the app fee was computed from, in token base units.
-                                 * @example 10000000
-                                 */
-                                baseAmount: string;
-                                /**
-                                 * Format: uint256
-                                 * @description App-fee amount in token base units.
-                                 * @example 100000
-                                 */
-                                amount: string;
-                                /**
-                                 * @description Origin chain where the app-fee token is spent.
-                                 * @example eip155:42161
-                                 */
-                                chainId: string;
-                                /**
-                                 * @description Address of the token used to pay the app fee.
-                                 * @example 0xaf88d065e77c8cC2239327C5EDb3A432268e5831
-                                 */
-                                tokenAddress: string;
-                            }[];
                             /**
                              * @description Pre-flight token operations the user must perform before submitting this route (approvals, wrapping). Emitted for EOA accounts only — smart accounts handle these internally.
                              * @example {
