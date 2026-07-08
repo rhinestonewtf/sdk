@@ -392,7 +392,7 @@ export class Orchestrator {
     ) {
       throw new UnsupportedChainIdError(errorParams)
     } else if (message.startsWith('Unsupported chain ')) {
-      const chainIdMatch = message.match(/Unsupported chain (\d+)/)
+      const chainIdMatch = message.match(/^Unsupported chain (\d+)$/)
       if (chainIdMatch) {
         const chainId = parseInt(chainIdMatch[1], 10)
         throw new UnsupportedChainError(chainId, errorParams)
@@ -403,7 +403,7 @@ export class Orchestrator {
       message.includes('for chain')
     ) {
       const tokenMatch = message.match(
-        /Unsupported token (\w+) for chain (\d+)/,
+        /^Unsupported token (\w+) for chain (\d+)$/,
       )
       if (tokenMatch) {
         const tokenSymbol = tokenMatch[1]
@@ -416,7 +416,7 @@ export class Orchestrator {
       throw new BadRequestError({ message, ...errorParams })
     } else if (message.includes('not supported on chain')) {
       const tokenMatch = message.match(
-        /Token (.+) not supported on chain (\d+)/,
+        /^Token (.+) not supported on chain (\d+)$/,
       )
       if (tokenMatch) {
         const tokenAddress = tokenMatch[1]
