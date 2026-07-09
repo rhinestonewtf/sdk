@@ -361,6 +361,15 @@ async function getPortfolio(config: RhinestoneConfig, onTestnets: boolean) {
   return orchestrator.getPortfolio(address, { chainIds: filteredChainIds })
 }
 
+async function getAppFeeBalances(config: RhinestoneConfig) {
+  const orchestrator = getOrchestrator(
+    config._authProvider ?? createAuthProvider(config),
+    config.endpointUrl,
+    config.headers,
+  )
+  return orchestrator.getAppFeeBalances()
+}
+
 async function getIntentStatus(
   authProvider: AuthProvider,
   endpointUrl: string | undefined,
@@ -393,6 +402,7 @@ export {
   sendUserOperationInternal,
   waitForExecution,
   getPortfolio,
+  getAppFeeBalances,
   getIntentStatus,
   splitIntents,
   // Errors

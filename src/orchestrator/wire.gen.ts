@@ -147,6 +147,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/app-fees/balances": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get App-Fee Balances
+         * @description The authenticated project's withdrawable app-fee balance as a USD total, valued at collection time. `pendingUsd` is 0 until withdrawals land.
+         */
+        get: operations["getAppFeeBalances"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3566,6 +3586,8 @@ export interface operations {
                                 destinationChainId: number;
                                 /** @description Optional bridge-specific fill deadline duration, in seconds. Preserved on stored quote reload so checksum validation uses the same bridgeFill payload that was signed at quote time. */
                                 fillExpirationPeriod?: number;
+                                /** @description Fill-tracker watch window, in seconds. The orchestrator owns this timeout; the fill-tracker reads it here to decide when a bridge fill has timed out. */
+                                fillStatusTimeout: number;
                                 /**
                                  * @description LayerZero OFT
                                  * @enum {string}
@@ -3576,6 +3598,8 @@ export interface operations {
                                 destinationChainId: number;
                                 /** @description Optional bridge-specific fill deadline duration, in seconds. Preserved on stored quote reload so checksum validation uses the same bridgeFill payload that was signed at quote time. */
                                 fillExpirationPeriod?: number;
+                                /** @description Fill-tracker watch window, in seconds. The orchestrator owns this timeout; the fill-tracker reads it here to decide when a bridge fill has timed out. */
+                                fillStatusTimeout: number;
                                 /**
                                  * @description Relay.link
                                  * @enum {string}
@@ -3588,6 +3612,8 @@ export interface operations {
                                 destinationChainId: number;
                                 /** @description Optional bridge-specific fill deadline duration, in seconds. Preserved on stored quote reload so checksum validation uses the same bridgeFill payload that was signed at quote time. */
                                 fillExpirationPeriod?: number;
+                                /** @description Fill-tracker watch window, in seconds. The orchestrator owns this timeout; the fill-tracker reads it here to decide when a bridge fill has timed out. */
+                                fillStatusTimeout: number;
                                 /**
                                  * @description NEAR Intents
                                  * @enum {string}
@@ -3600,6 +3626,8 @@ export interface operations {
                                 destinationChainId: number;
                                 /** @description Optional bridge-specific fill deadline duration, in seconds. Preserved on stored quote reload so checksum validation uses the same bridgeFill payload that was signed at quote time. */
                                 fillExpirationPeriod?: number;
+                                /** @description Fill-tracker watch window, in seconds. The orchestrator owns this timeout; the fill-tracker reads it here to decide when a bridge fill has timed out. */
+                                fillStatusTimeout: number;
                                 /**
                                  * @description Rhino.fi
                                  * @enum {string}
@@ -3612,6 +3640,8 @@ export interface operations {
                                 destinationChainId: number;
                                 /** @description Optional bridge-specific fill deadline duration, in seconds. Preserved on stored quote reload so checksum validation uses the same bridgeFill payload that was signed at quote time. */
                                 fillExpirationPeriod?: number;
+                                /** @description Fill-tracker watch window, in seconds. The orchestrator owns this timeout; the fill-tracker reads it here to decide when a bridge fill has timed out. */
+                                fillStatusTimeout: number;
                                 /**
                                  * @description Circle CCTP
                                  * @enum {string}
@@ -3728,6 +3758,334 @@ export interface operations {
             };
             /** @description API key scope denied */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "VALIDATION_ERROR";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Per-field validation issues */
+                        details?: {
+                            /** @description Human-readable issue description */
+                            message: string;
+                            /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                            context?: {
+                                [key: string]: unknown;
+                            };
+                        }[];
+                    } | {
+                        /** @enum {string} */
+                        code: "SIMULATION_FAILED";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Classified on-chain simulation failure details */
+                        details?: {
+                            nonce?: string;
+                            category: string;
+                            errorSelector: string;
+                            errorName: string;
+                            errorArgs?: {
+                                [key: string]: string;
+                            };
+                            retryable: boolean;
+                            /** @enum {string} */
+                            retryHint?: "RE_PREPARE" | "RETRY_LATER";
+                            simulations?: unknown;
+                        } & {
+                            [key: string]: unknown;
+                        };
+                    } | {
+                        /** @enum {string} */
+                        code: "INSUFFICIENT_LIQUIDITY";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Fillable subset and unfillable remainder */
+                        details?: {
+                            /** @description Intents fillable with current liquidity */
+                            availableIntents: {
+                                [key: string]: string;
+                            }[];
+                            /** @description Token amounts that cannot be filled */
+                            unfillable: {
+                                [key: string]: string;
+                            };
+                        };
+                    } | {
+                        /** @enum {string} */
+                        code: "KEY_SCOPE_DENIED";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Single-element list describing the failing scope */
+                        details?: {
+                            message: string;
+                            context: {
+                                /**
+                                 * @description Which scope rejected the request
+                                 * @enum {string}
+                                 */
+                                scope: "allowMainnet" | "intents" | "deposits";
+                                /** @description Minimum level the endpoint demands */
+                                required: boolean | ("read" | "write");
+                                /** @description Level resolved on the key */
+                                actual: boolean | ("none" | "read" | "write");
+                            };
+                        }[];
+                    } | {
+                        /** @enum {string} */
+                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                    };
+                };
+            };
+            /** @description Server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "VALIDATION_ERROR";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Per-field validation issues */
+                        details?: {
+                            /** @description Human-readable issue description */
+                            message: string;
+                            /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                            context?: {
+                                [key: string]: unknown;
+                            };
+                        }[];
+                    } | {
+                        /** @enum {string} */
+                        code: "SIMULATION_FAILED";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Classified on-chain simulation failure details */
+                        details?: {
+                            nonce?: string;
+                            category: string;
+                            errorSelector: string;
+                            errorName: string;
+                            errorArgs?: {
+                                [key: string]: string;
+                            };
+                            retryable: boolean;
+                            /** @enum {string} */
+                            retryHint?: "RE_PREPARE" | "RETRY_LATER";
+                            simulations?: unknown;
+                        } & {
+                            [key: string]: unknown;
+                        };
+                    } | {
+                        /** @enum {string} */
+                        code: "INSUFFICIENT_LIQUIDITY";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Fillable subset and unfillable remainder */
+                        details?: {
+                            /** @description Intents fillable with current liquidity */
+                            availableIntents: {
+                                [key: string]: string;
+                            }[];
+                            /** @description Token amounts that cannot be filled */
+                            unfillable: {
+                                [key: string]: string;
+                            };
+                        };
+                    } | {
+                        /** @enum {string} */
+                        code: "KEY_SCOPE_DENIED";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Single-element list describing the failing scope */
+                        details?: {
+                            message: string;
+                            context: {
+                                /**
+                                 * @description Which scope rejected the request
+                                 * @enum {string}
+                                 */
+                                scope: "allowMainnet" | "intents" | "deposits";
+                                /** @description Minimum level the endpoint demands */
+                                required: boolean | ("read" | "write");
+                                /** @description Level resolved on the key */
+                                actual: boolean | ("none" | "read" | "write");
+                            };
+                        }[];
+                    } | {
+                        /** @enum {string} */
+                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                    };
+                };
+            };
+        };
+    };
+    getAppFeeBalances: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description API version. Required; pinned to this document. */
+                "x-api-version": "2026-04.blanc";
+                /** @description API key. */
+                "x-api-key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        withdrawableUsd: number;
+                        pendingUsd: number;
+                    };
+                };
+            };
+            /** @description Validation error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "VALIDATION_ERROR";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Per-field validation issues */
+                        details?: {
+                            /** @description Human-readable issue description */
+                            message: string;
+                            /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                            context?: {
+                                [key: string]: unknown;
+                            };
+                        }[];
+                    } | {
+                        /** @enum {string} */
+                        code: "SIMULATION_FAILED";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Classified on-chain simulation failure details */
+                        details?: {
+                            nonce?: string;
+                            category: string;
+                            errorSelector: string;
+                            errorName: string;
+                            errorArgs?: {
+                                [key: string]: string;
+                            };
+                            retryable: boolean;
+                            /** @enum {string} */
+                            retryHint?: "RE_PREPARE" | "RETRY_LATER";
+                            simulations?: unknown;
+                        } & {
+                            [key: string]: unknown;
+                        };
+                    } | {
+                        /** @enum {string} */
+                        code: "INSUFFICIENT_LIQUIDITY";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Fillable subset and unfillable remainder */
+                        details?: {
+                            /** @description Intents fillable with current liquidity */
+                            availableIntents: {
+                                [key: string]: string;
+                            }[];
+                            /** @description Token amounts that cannot be filled */
+                            unfillable: {
+                                [key: string]: string;
+                            };
+                        };
+                    } | {
+                        /** @enum {string} */
+                        code: "KEY_SCOPE_DENIED";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Single-element list describing the failing scope */
+                        details?: {
+                            message: string;
+                            context: {
+                                /**
+                                 * @description Which scope rejected the request
+                                 * @enum {string}
+                                 */
+                                scope: "allowMainnet" | "intents" | "deposits";
+                                /** @description Minimum level the endpoint demands */
+                                required: boolean | ("read" | "write");
+                                /** @description Level resolved on the key */
+                                actual: boolean | ("none" | "read" | "write");
+                            };
+                        }[];
+                    } | {
+                        /** @enum {string} */
+                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                    };
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

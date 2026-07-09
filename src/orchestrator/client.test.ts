@@ -243,4 +243,24 @@ describe('Orchestrator trace IDs', () => {
       traceId: 'trace-header',
     })
   })
+
+  it('gets app-fee balances from GET /app-fees/balances', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        mockJsonResponse({ withdrawableUsd: 12.34, pendingUsd: 0 }),
+      )
+    vi.stubGlobal('fetch', fetchMock)
+    const orchestrator = new Orchestrator(
+      'https://orchestrator.test',
+      authProvider,
+    )
+
+    const result = await orchestrator.getAppFeeBalances()
+
+    expect(result).toEqual({ withdrawableUsd: 12.34, pendingUsd: 0 })
+    const [url, options] = fetchMock.mock.calls[0]
+    expect(url).toBe('https://orchestrator.test/app-fees/balances')
+    expect(options.headers).toMatchObject({ 'x-api-key': 'test-key' })
+  })
 })

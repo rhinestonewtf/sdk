@@ -9,6 +9,7 @@ import {
 } from './error'
 import type {
   AccountAccessList,
+  AppFeeBalances,
   ApprovalRequired,
   AuxiliaryFunds,
   BridgeFill,
@@ -30,6 +31,7 @@ import type {
 } from './types'
 import { convertBigIntFields } from './utils'
 import type {
+  WireAppFeeBalancesResponse,
   WireBridgeFill,
   WireCost,
   WireCostInputEntry,
@@ -104,6 +106,17 @@ export class Orchestrator {
         amount: BigInt(c.amount),
       })),
     }))
+  }
+
+  async getAppFeeBalances(): Promise<AppFeeBalances> {
+    const json: WireAppFeeBalancesResponse = await this.fetch(
+      `${this.serverUrl}/app-fees/balances`,
+      { headers: await this.getHeaders() },
+    )
+    return {
+      withdrawableUsd: json.withdrawableUsd,
+      pendingUsd: json.pendingUsd,
+    }
   }
 
   async createQuote(input: IntentInput): Promise<QuoteResponse> {

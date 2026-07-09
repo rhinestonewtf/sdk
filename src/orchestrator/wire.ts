@@ -40,3 +40,6 @@ export type WireIntentStatus = SuccessJson<'getIntent', 200>
 
 // GET /accounts/{accountAddress}/portfolio
 export type WirePortfolioResponse = SuccessJson<'getPortfolio', 200>
+
+// GET /app-fees/balances
+export type WireAppFeeBalancesResponse = SuccessJson<'getAppFeeBalances', 200>

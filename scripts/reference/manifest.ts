@@ -154,6 +154,7 @@ export const manifest: Group[] = [
         items: [
           accountMethod('getAddress'),
           accountMethod('getPortfolio'),
+          accountMethod('getAppFeeBalances'),
           accountMethod('getOwners'),
           accountMethod('getValidators'),
           accountMethod('getExecutors'),

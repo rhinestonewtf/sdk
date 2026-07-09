@@ -23,6 +23,7 @@ import {
 } from './accounts'
 import { type AuthProvider, createAuthProvider } from './auth/provider'
 import {
+  getAppFeeBalances as getAppFeeBalancesInternal,
   getIntentStatus as getIntentStatusInternal,
   getPortfolio as getPortfolioInternal,
   sendUserOperation as sendUserOperationInternal,
@@ -68,6 +69,7 @@ import {
   type SessionDetails,
 } from './modules/validators/smart-sessions'
 import type {
+  AppFeeBalances,
   ApprovalRequired,
   AuxiliaryFunds,
   BridgeFill,
@@ -91,7 +93,7 @@ import type {
   WrapRequired,
 } from './orchestrator'
 
-export type { AppFeeRate } from './orchestrator'
+export type { AppFeeBalances, AppFeeRate } from './orchestrator'
 
 import { hyperCoreMainnet, solanaMainnet, tronMainnet } from './orchestrator'
 import type {
@@ -341,6 +343,15 @@ interface RhinestoneAccount {
    */
   getPortfolio(onTestnets?: boolean): Promise<Portfolio>
   /**
+   * Get the integrator's accrued app-fee balance, as USD totals.
+   *
+   * App fees are earned by the integrator (identified by the API key's project)
+   * and valued in USD at the moment each fee is collected, so the balance is not
+   * affected by later price movements of the collected tokens.
+   * @returns The withdrawable and pending app-fee balances in USD
+   */
+  getAppFeeBalances(): Promise<AppFeeBalances>
+  /**
    * Resolve the smart-session details for a set of sessions.
    * @param sessions Sessions to resolve
    * @returns The resolved session details
@@ -560,6 +571,10 @@ async function createAccountInternal(
     return getPortfolioInternal(config, onTestnets)
   }
 
+  function getAppFeeBalances() {
+    return getAppFeeBalancesInternal(config)
+  }
+
   function getOwners(chain: Chain) {
     const accountType = getAccountProvider(config).type
     const account = getAddress()
@@ -639,6 +654,7 @@ async function createAccountInternal(
     waitForExecution,
     getAddress,
     getPortfolio,
+    getAppFeeBalances,
     getOwners,
     getValidators,
     getExecutors,
