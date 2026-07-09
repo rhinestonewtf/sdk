@@ -5,6 +5,7 @@
     "@rhinestone/sdk": "1.5.0"
   },
   "changesets": [
+    "add-app-fee-balances",
     "add-disable-session",
     "add-hca-account",
     "blanc-client",
