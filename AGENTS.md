@@ -63,6 +63,7 @@ Once v2 is stable, we'll switch back to the standard `main` (dev) / `release` (p
 ## Patterns
 
 - Use viem types for addresses, chains, and hex values
+- Placement of a new public method — `RhinestoneSDK` vs `RhinestoneAccount`: put it on **`RhinestoneSDK`** when its data is scoped to the API key's project/integrator and needs no account (auth-only orchestrator reads, e.g. `getIntentStatus`, `splitIntents`, `getAppFeeBalances`); put it on **`RhinestoneAccount`** only when it is genuinely account-scoped (needs the account address / owners / on-chain state, e.g. `getPortfolio`, signing). Exposing project-scoped data as an account method misleads callers into reading it as account-scoped.
 - Account implementations live in `/src/accounts/*.ts`
 - Public API is the union of `src/index.ts` re-exports and the subpath exports in `src/package.json` (`/actions`, `/errors`, `/jwt-server`, `/smart-sessions`, etc.) — adding, renaming, or removing exports is a breaking change
 - When changing the public surface (types, exports, account/action APIs, config, errors, defaults), use the `dx` skill to keep it safe and ergonomic to integrate

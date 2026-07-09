@@ -23,6 +23,7 @@ import {
 } from './accounts'
 import { type AuthProvider, createAuthProvider } from './auth/provider'
 import {
+  getAppFeeBalances as getAppFeeBalancesInternal,
   getIntentStatus as getIntentStatusInternal,
   getPortfolio as getPortfolioInternal,
   sendUserOperation as sendUserOperationInternal,
@@ -68,6 +69,7 @@ import {
   type SessionDetails,
 } from './modules/validators/smart-sessions'
 import type {
+  AppFeeBalances,
   ApprovalRequired,
   AuxiliaryFunds,
   BridgeFill,
@@ -91,7 +93,7 @@ import type {
   WrapRequired,
 } from './orchestrator'
 
-export type { AppFeeRate } from './orchestrator'
+export type { AppFeeBalances, AppFeeRate } from './orchestrator'
 
 import { hyperCoreMainnet, solanaMainnet, tronMainnet } from './orchestrator'
 import type {
@@ -734,6 +736,23 @@ class RhinestoneSDK {
       this.authProvider,
       this.endpointUrl,
       input,
+      this.headers,
+    )
+  }
+
+  /**
+   * Get the integrator's accrued app-fee balance, as USD totals.
+   *
+   * App fees are earned by the integrator identified by this instance's API key
+   * (project-scoped, not tied to any account) and valued in USD at the moment
+   * each fee is collected, so the balance is not affected by later price
+   * movements of the collected tokens.
+   * @returns The withdrawable and pending app-fee balances in USD
+   */
+  getAppFeeBalances(): Promise<AppFeeBalances> {
+    return getAppFeeBalancesInternal(
+      this.authProvider,
+      this.endpointUrl,
       this.headers,
     )
   }
