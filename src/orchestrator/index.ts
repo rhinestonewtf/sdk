@@ -44,6 +44,7 @@ import {
 } from './registry'
 import type {
   AppFee,
+  AppFeeBalances,
   AppFeeRate,
   ApprovalRequired,
   AuxiliaryFunds,
@@ -87,6 +88,7 @@ function getOrchestrator(
 
 export type {
   AppFee,
+  AppFeeBalances,
   AppFeeRate,
   ApprovalRequired,
   AuxiliaryFunds,

@@ -110,6 +110,14 @@ interface AppFeeRate {
   feeBps: number
 }
 
+/** An integrator's accrued app-fee balance, as USD totals. */
+interface AppFeeBalances {
+  /** Collected (accrued) app fees available to withdraw, valued in USD at collection. */
+  withdrawableUsd: number
+  /** Value reserved by an in-flight withdrawal; `0` until withdrawals are enabled. */
+  pendingUsd: number
+}
+
 interface AppFee extends AppFeeRate {
   baseAmount: string
   amount: string
@@ -503,6 +511,7 @@ export type {
   AccountAccessList,
   AccountType,
   AppFee,
+  AppFeeBalances,
   AppFeeRate,
   ApprovalRequired,
   AuxiliaryFunds,
