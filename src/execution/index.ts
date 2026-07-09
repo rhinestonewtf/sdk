@@ -460,9 +460,19 @@ async function splitIntents(
   return orchestrator.splitIntents(input)
 }
 
+async function getAppFeeBalances(
+  authProvider: AuthProvider,
+  endpointUrl: string | undefined,
+  headers?: Record<string, string>,
+) {
+  const orchestrator = getOrchestrator(authProvider, endpointUrl, headers)
+  return orchestrator.getAppFeeBalances()
+}
+
 export type { TransactionResult, TransactionStatus, UserOperationResult }
 export {
   ExecutionError,
+  getAppFeeBalances,
   getIntentStatus,
   getPortfolio,
   IntentFailedError,

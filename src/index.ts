@@ -25,6 +25,7 @@ import { walletClientToAccount, wrapParaAccount } from './accounts/walletClient'
 import { deployAccountsForOwners } from './actions/deployment'
 import { type AuthProvider, createAuthProvider } from './auth/provider'
 import {
+  getAppFeeBalances as getAppFeeBalancesInternal,
   getIntentStatus as getIntentStatusInternal,
   getPortfolio as getPortfolioInternal,
   sendTransaction as sendTransactionInternal,
@@ -79,6 +80,7 @@ import {
 } from './modules/validators/smart-sessions'
 import {
   type AppFee,
+  type AppFeeBalances,
   type AppFeeRate,
   type ApprovalRequired,
   type AuxiliaryFunds,
@@ -630,12 +632,30 @@ class RhinestoneSDK {
       this.headers,
     )
   }
+
+  /**
+   * Get the integrator's accrued app-fee balance, as USD totals.
+   *
+   * App fees are earned by the integrator identified by this instance's API key
+   * (project-scoped, not tied to any account) and valued in USD at the moment
+   * each fee is collected, so the balance is not affected by later price
+   * movements of the collected tokens.
+   * @returns The withdrawable and pending app-fee balances in USD
+   */
+  getAppFeeBalances(): Promise<AppFeeBalances> {
+    return getAppFeeBalancesInternal(
+      this.authProvider,
+      this.endpointUrl,
+      this.headers,
+    )
+  }
 }
 
 export type {
   AccountProviderConfig,
   AccountType,
   AppFee,
+  AppFeeBalances,
   AppFeeRate,
   ApprovalRequired,
   AuxiliaryFunds,
