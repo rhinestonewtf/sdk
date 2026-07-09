@@ -343,15 +343,6 @@ interface RhinestoneAccount {
    */
   getPortfolio(onTestnets?: boolean): Promise<Portfolio>
   /**
-   * Get the integrator's accrued app-fee balance, as USD totals.
-   *
-   * App fees are earned by the integrator (identified by the API key's project)
-   * and valued in USD at the moment each fee is collected, so the balance is not
-   * affected by later price movements of the collected tokens.
-   * @returns The withdrawable and pending app-fee balances in USD
-   */
-  getAppFeeBalances(): Promise<AppFeeBalances>
-  /**
    * Resolve the smart-session details for a set of sessions.
    * @param sessions Sessions to resolve
    * @returns The resolved session details
@@ -571,10 +562,6 @@ async function createAccountInternal(
     return getPortfolioInternal(config, onTestnets)
   }
 
-  function getAppFeeBalances() {
-    return getAppFeeBalancesInternal(config)
-  }
-
   function getOwners(chain: Chain) {
     const accountType = getAccountProvider(config).type
     const account = getAddress()
@@ -654,7 +641,6 @@ async function createAccountInternal(
     waitForExecution,
     getAddress,
     getPortfolio,
-    getAppFeeBalances,
     getOwners,
     getValidators,
     getExecutors,
@@ -750,6 +736,23 @@ class RhinestoneSDK {
       this.authProvider,
       this.endpointUrl,
       input,
+      this.headers,
+    )
+  }
+
+  /**
+   * Get the integrator's accrued app-fee balance, as USD totals.
+   *
+   * App fees are earned by the integrator identified by this instance's API key
+   * (project-scoped, not tied to any account) and valued in USD at the moment
+   * each fee is collected, so the balance is not affected by later price
+   * movements of the collected tokens.
+   * @returns The withdrawable and pending app-fee balances in USD
+   */
+  getAppFeeBalances(): Promise<AppFeeBalances> {
+    return getAppFeeBalancesInternal(
+      this.authProvider,
+      this.endpointUrl,
       this.headers,
     )
   }

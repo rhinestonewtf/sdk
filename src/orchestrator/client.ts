@@ -388,7 +388,11 @@ function decodeBridgeFill(
   bf: WireBridgeFill | undefined,
 ): BridgeFill | undefined {
   if (!bf) return undefined
-  return { ...bf } as BridgeFill
+  // `fillStatusTimeout` is an internal orchestrator field on the wire that the
+  // public `BridgeFill` type does not surface — strip it so the adapter returns
+  // only the typed variant fields rather than leaking an untyped runtime field.
+  const { fillStatusTimeout: _fillStatusTimeout, ...rest } = bf
+  return { ...rest } as BridgeFill
 }
 
 function decodeCost(cost: WireCost): Cost {

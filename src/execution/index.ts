@@ -361,12 +361,12 @@ async function getPortfolio(config: RhinestoneConfig, onTestnets: boolean) {
   return orchestrator.getPortfolio(address, { chainIds: filteredChainIds })
 }
 
-async function getAppFeeBalances(config: RhinestoneConfig) {
-  const orchestrator = getOrchestrator(
-    config._authProvider ?? createAuthProvider(config),
-    config.endpointUrl,
-    config.headers,
-  )
+async function getAppFeeBalances(
+  authProvider: AuthProvider,
+  endpointUrl: string | undefined,
+  headers?: Record<string, string>,
+) {
+  const orchestrator = getOrchestrator(authProvider, endpointUrl, headers)
   return orchestrator.getAppFeeBalances()
 }
 
