@@ -9,6 +9,16 @@
     "strict": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
+    // Deps: with commonjs "node" resolution, tsc ignores ox's exports map and
+    // resolves ox/* to its raw .ts source (skipLibCheck can't skip it). ox>=0.14
+    // (pulled in by viem 2.55, required for Robinhood in viem/chains) ships a
+    // tempo/ module whose source fails strict tsc. Redirect ox to its bundled
+    // .d.ts. Reached transitively via shared-configs -> viem/chains.
+    "baseUrl": ".",
+    "paths": {
+      "ox": ["./node_modules/ox/_types/index.d.ts"],
+      "ox/*": ["./node_modules/ox/_types/*"]
+    },
     // Output
     "rootDir": ".",
     "outDir": "./src/dist",
