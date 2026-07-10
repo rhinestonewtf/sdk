@@ -55,6 +55,7 @@
     "remove-verify-executions-public-api",
     "retry-after-polling",
     "retry-connection-errors-polling",
+    "robinhood-chain",
     "sdk-reference-jsdoc",
     "session-cross-chain-permits",
     "session-permissions-api",
