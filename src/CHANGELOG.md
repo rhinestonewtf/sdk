@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 2.0.0-beta.41
+
+### Minor Changes
+
+- 81c5236: Add independent multisig signing. Pass an `owner` to `signTransaction` to create a serializable owner signature, then combine owner signatures with `assembleTransaction` before submission. Supports ECDSA, passkey, and multi-factor owner sets.
+
 ## 2.0.0-beta.40
 
 ### Patch Changes

@@ -35,6 +35,7 @@
     "hypercore-caip2-mainnet",
     "hypercore-destination",
     "hypercore-eoa-recipient",
+    "independent-multisig-signing",
     "install-session-via-emissary-on-first-use",
     "key-scope-denied-error",
     "mock-sig-1271-shape",
