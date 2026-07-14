@@ -3122,9 +3122,9 @@ export interface operations {
                     /** @description Account access list specifying which chains and tokens an account may access */
                     accountAccessList?: {
                         chainIds?: number[];
-                        tokens?: (string | ("ETH" | "USDC" | "WETH" | "USDT" | "USDT0" | "BNB" | "WBNB" | "XDAI" | "WXDAI" | "POL" | "WPOL" | "MON" | "WMON" | "S" | "WS" | "HYPE" | "WHYPE" | "XPL" | "WXPL" | "MockUSD" | "TRX" | "WTRX" | "SOL" | "WSOL"))[];
+                        tokens?: (string | ("ETH" | "USDC" | "WETH" | "USDT" | "USDT0" | "BNB" | "WBNB" | "XDAI" | "WXDAI" | "POL" | "WPOL" | "MON" | "WMON" | "S" | "WS" | "HYPE" | "WHYPE" | "USDG" | "XPL" | "WXPL" | "MockUSD" | "TRX" | "WTRX" | "SOL" | "WSOL"))[];
                         chainTokens?: {
-                            [key: string]: (string | ("ETH" | "USDC" | "WETH" | "USDT" | "USDT0" | "BNB" | "WBNB" | "XDAI" | "WXDAI" | "POL" | "WPOL" | "MON" | "WMON" | "S" | "WS" | "HYPE" | "WHYPE" | "XPL" | "WXPL" | "MockUSD" | "TRX" | "WTRX" | "SOL" | "WSOL"))[];
+                            [key: string]: (string | ("ETH" | "USDC" | "WETH" | "USDT" | "USDT0" | "BNB" | "WBNB" | "XDAI" | "WXDAI" | "POL" | "WPOL" | "MON" | "WMON" | "S" | "WS" | "HYPE" | "WHYPE" | "USDG" | "XPL" | "WXPL" | "MockUSD" | "TRX" | "WTRX" | "SOL" | "WSOL"))[];
                         };
                         chainTokenAmounts?: {
                             [key: string]: {
@@ -3133,9 +3133,9 @@ export interface operations {
                         };
                         exclude?: {
                             chainIds?: number[];
-                            tokens?: (string | ("ETH" | "USDC" | "WETH" | "USDT" | "USDT0" | "BNB" | "WBNB" | "XDAI" | "WXDAI" | "POL" | "WPOL" | "MON" | "WMON" | "S" | "WS" | "HYPE" | "WHYPE" | "XPL" | "WXPL" | "MockUSD" | "TRX" | "WTRX" | "SOL" | "WSOL"))[];
+                            tokens?: (string | ("ETH" | "USDC" | "WETH" | "USDT" | "USDT0" | "BNB" | "WBNB" | "XDAI" | "WXDAI" | "POL" | "WPOL" | "MON" | "WMON" | "S" | "WS" | "HYPE" | "WHYPE" | "USDG" | "XPL" | "WXPL" | "MockUSD" | "TRX" | "WTRX" | "SOL" | "WSOL"))[];
                             chainTokens?: {
-                                [key: string]: (string | ("ETH" | "USDC" | "WETH" | "USDT" | "USDT0" | "BNB" | "WBNB" | "XDAI" | "WXDAI" | "POL" | "WPOL" | "MON" | "WMON" | "S" | "WS" | "HYPE" | "WHYPE" | "XPL" | "WXPL" | "MockUSD" | "TRX" | "WTRX" | "SOL" | "WSOL"))[];
+                                [key: string]: (string | ("ETH" | "USDC" | "WETH" | "USDT" | "USDT0" | "BNB" | "WBNB" | "XDAI" | "WXDAI" | "POL" | "WPOL" | "MON" | "WMON" | "S" | "WS" | "HYPE" | "WHYPE" | "USDG" | "XPL" | "WXPL" | "MockUSD" | "TRX" | "WTRX" | "SOL" | "WSOL"))[];
                             };
                         };
                     };
@@ -3243,7 +3243,7 @@ export interface operations {
                          * @description Reserved for future use. No effect today.
                          * @enum {string}
                          */
-                        feeToken?: "ETH" | "USDC" | "WETH" | "USDT" | "USDT0" | "BNB" | "WBNB" | "XDAI" | "WXDAI" | "POL" | "WPOL" | "MON" | "WMON" | "S" | "WS" | "HYPE" | "WHYPE" | "XPL" | "WXPL" | "MockUSD" | "TRX" | "WTRX" | "SOL" | "WSOL";
+                        feeToken?: "ETH" | "USDC" | "WETH" | "USDT" | "USDT0" | "BNB" | "WBNB" | "XDAI" | "WXDAI" | "POL" | "WPOL" | "MON" | "WMON" | "S" | "WS" | "HYPE" | "WHYPE" | "USDG" | "XPL" | "WXPL" | "MockUSD" | "TRX" | "WTRX" | "SOL" | "WSOL";
                         appFees?: {
                             /**
                              * @description App fee rate in basis points of the input value (0–10000 = 0–100%).
