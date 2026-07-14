@@ -349,10 +349,48 @@ function resolvePermission(permission: Permission): ScopedAction[] {
   return actions
 }
 
+// Error-path only: recover the function name behind a selector for the
+// duplicate-permission message.
+function findFunctionName(
+  permission: Permission,
+  selector: Hex,
+): string | undefined {
+  return Object.keys(permission.functions).find((name) => {
+    const entry = (permission.abi as readonly AbiParameter[]).find(
+      (e): e is AbiFunction =>
+        (e as { type: string }).type === 'function' &&
+        (e as { name: string }).name === name,
+    )
+    return entry !== undefined && toFunctionSelector(entry) === selector
+  })
+}
+
 function resolvePermissions(
   permissions: readonly Permission[],
 ): ScopedAction[] {
-  return permissions.flatMap(resolvePermission)
+  // On-chain, actions are keyed by keccak(target, selector): two permission
+  // entries for the same function on the same contract share one actionId,
+  // and the later entry's `initializeWithMultiplexer` silently overwrites the
+  // earlier one's policy config. Reject at build time instead of letting the
+  // collision surface as an opaque InvalidSignature() at execution.
+  const seen = new Set<string>()
+  return permissions.flatMap((permission) => {
+    const actions = resolvePermission(permission)
+    for (const action of actions) {
+      const key = `${action.target.toLowerCase()}:${action.selector.toLowerCase()}`
+      if (seen.has(key)) {
+        const fnName = findFunctionName(permission, action.selector)
+        throw new Error(
+          `Duplicate permission for function "${fnName}" (selector ${action.selector}) ` +
+            `on ${action.target}: permission entries for the same function on the same ` +
+            "contract share one on-chain action, so the later entry's policies would " +
+            'silently overwrite the earlier ones. Merge them into a single entry.',
+        )
+      }
+      seen.add(key)
+    }
+    return actions
+  })
 }
 
 export { resolvePermissions, resolvePermission }
