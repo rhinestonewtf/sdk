@@ -1,5 +1,12 @@
 # @rhinestone/sdk
 
+## 2.0.0-beta.40
+
+### Patch Changes
+
+- 0ffab75: Reject duplicate session permissions for the same function on the same contract at session build time. Previously they were silently accepted and collided on-chain, so only the last entry's policies took effect and calls permitted by earlier entries failed at execution.
+- 97981bf: Accept `USDG` as a token symbol in `accountAccessList` and fee-token wire typings, matching the published orchestrator OpenAPI spec.
+
 ## 2.0.0-beta.39
 
 ### Patch Changes
