@@ -472,6 +472,72 @@ describe('resolvePermissions', () => {
     expect(actions[1].target).toBe(dai)
   })
 
+  test('throws on duplicate (target, function) across permission entries', () => {
+    const recipientB: Address = '0x2222222222222222222222222222222222222222'
+
+    expect(() =>
+      resolvePermissions([
+        {
+          abi: erc20Abi,
+          address: USDC,
+          functions: {
+            transfer: {
+              params: { recipient: { condition: 'equal', value: RECIPIENT } },
+            },
+          },
+        },
+        {
+          abi: erc20Abi,
+          address: USDC,
+          functions: {
+            transfer: {
+              params: { recipient: { condition: 'equal', value: recipientB } },
+            },
+          },
+        },
+      ]),
+    ).toThrow(
+      new RegExp(`Duplicate permission for function "transfer".*on ${USDC}`),
+    )
+  })
+
+  test('duplicate detection is case-insensitive on the target address', () => {
+    expect(() =>
+      resolvePermissions([
+        {
+          abi: erc20Abi,
+          address: USDC,
+          functions: { transfer: {} },
+        },
+        {
+          abi: erc20Abi,
+          address: USDC.toLowerCase() as Address,
+          functions: { transfer: {} },
+        },
+      ]),
+    ).toThrow(/Duplicate permission/)
+  })
+
+  test('same function on different contracts is allowed', () => {
+    const dai: Address = '0x3333333333333333333333333333333333333333'
+
+    const actions = resolvePermissions([
+      { abi: erc20Abi, address: USDC, functions: { transfer: {} } },
+      { abi: erc20Abi, address: dai, functions: { transfer: {} } },
+    ])
+
+    expect(actions).toHaveLength(2)
+  })
+
+  test('different functions on the same contract are allowed', () => {
+    const actions = resolvePermissions([
+      { abi: erc20Abi, address: USDC, functions: { transfer: {} } },
+      { abi: erc20Abi, address: USDC, functions: { approve: {} } },
+    ])
+
+    expect(actions).toHaveLength(2)
+  })
+
   test('Session.permissions feeds into getSessionData without errors', () => {
     const session = toSession({
       chain: base,
