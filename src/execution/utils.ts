@@ -16,6 +16,7 @@ import {
   isAddress,
   keccak256,
   type PublicClient,
+  pad,
   publicActions,
   type SignableMessage,
   type SignedAuthorization,
@@ -130,6 +131,7 @@ import type {
   CallInput,
   ENSValidatorConfig,
   ExactInputConfig,
+  MultiFactorValidatorConfig,
   NonEvmTokenRequest,
   OwnableValidatorConfig,
   OwnerSet,
@@ -302,8 +304,8 @@ interface QuoteSelection {
 interface SignAsOwnerOptions {
   /** Account that contributes this signature. Must belong to the configured owner set. */
   owner: Account | WebAuthnAccount
-  /** Multi-factor validator index containing `owner`. Required only for multi-factor accounts. */
-  validatorId?: number
+  /** Multi-factor validator ID containing `owner`. Required only for multi-factor accounts. */
+  validatorId?: number | Hex
   /** Quote to sign. Defaults to `preparedTransaction.quotes.best`. */
   intentId?: string
 }
@@ -336,7 +338,7 @@ type OwnerSignature =
   | {
       intentId: string
       kind: 'multi-factor'
-      validatorId: number
+      validatorId: number | Hex
       signature: OwnerSignatureData
     }
 
@@ -544,7 +546,7 @@ type AtomicOwnerSet =
 function assertIndependentSigningSupported(
   config: RhinestoneConfig,
   preparedTransaction: PreparedTransactionData,
-): { owners: OwnerSet; validator: Module } {
+): { owners: OwnerSet; signers: SignerSet | undefined; validator: Module } {
   if (config.account?.type === 'eoa') {
     throw new IndependentSigningNotSupportedError({
       context: { reason: 'eoa-account' },
@@ -579,24 +581,70 @@ function assertIndependentSigningSupported(
       context: { reason: 'missing-owner-set' },
     })
   }
-  return { owners: config.owners, validator }
+  return { owners: config.owners, signers, validator }
+}
+
+interface MultiFactorOwnerFactor {
+  id: number | Hex
+  owners: AtomicOwnerSet
+}
+
+function getValidatorIdKey(id: number | Hex): Hex | undefined {
+  if (typeof id === 'number' && (!Number.isSafeInteger(id) || id < 0)) {
+    return undefined
+  }
+  try {
+    return pad(toHex(id), { size: 12 }).toLowerCase() as Hex
+  } catch {
+    return undefined
+  }
+}
+
+function getMultiFactorOwnerFactors(
+  owners: MultiFactorValidatorConfig,
+  signers: SignerSet | undefined,
+): MultiFactorOwnerFactor[] {
+  if (signers?.type === 'owner' && signers.kind === 'multi-factor') {
+    return signers.validators.map((factor) => {
+      switch (factor.type) {
+        case 'ecdsa':
+          return {
+            id: factor.id,
+            owners: {
+              type: 'ecdsa',
+              accounts: factor.accounts,
+              threshold: factor.accounts.length,
+            },
+          }
+        case 'passkey':
+          return {
+            id: factor.id,
+            owners: {
+              type: 'passkey',
+              accounts: factor.accounts,
+              threshold: factor.accounts.length,
+            },
+          }
+      }
+    })
+  }
+  return owners.validators.map((factor, id) => ({ id, owners: factor }))
 }
 
 function resolveAtomicOwnerSet(
   owners: OwnerSet,
-  validatorId: number | undefined,
-): AtomicOwnerSet | undefined {
+  validatorId: number | Hex | undefined,
+  signers: SignerSet | undefined,
+): MultiFactorOwnerFactor | undefined {
   if (owners.type !== 'multi-factor') {
-    return validatorId === undefined ? owners : undefined
+    return validatorId === undefined ? { id: 0, owners } : undefined
   }
-  if (
-    validatorId === undefined ||
-    !Number.isInteger(validatorId) ||
-    validatorId < 0
-  ) {
-    return undefined
-  }
-  return owners.validators[validatorId]
+  if (validatorId === undefined) return undefined
+  const key = getValidatorIdKey(validatorId)
+  if (!key) return undefined
+  return getMultiFactorOwnerFactors(owners, signers).find(
+    (factor) => getValidatorIdKey(factor.id) === key,
+  )
 }
 
 function getAtomicOwnerAccounts(
@@ -649,16 +697,17 @@ async function signTransactionAsOwner(
   preparedTransaction: PreparedTransactionData,
   options: SignAsOwnerOptions,
 ): Promise<OwnerSignature> {
-  const { owners } = assertIndependentSigningSupported(
+  const { owners, signers } = assertIndependentSigningSupported(
     config,
     preparedTransaction,
   )
-  const atomicOwners = resolveAtomicOwnerSet(owners, options.validatorId)
-  if (!atomicOwners) {
+  const factor = resolveAtomicOwnerSet(owners, options.validatorId, signers)
+  if (!factor) {
     throw new InvalidOwnerSigningOptionsError({
       context: { validatorId: options.validatorId },
     })
   }
+  const atomicOwners = factor.owners
   if (!isOwnerMember(atomicOwners, options.owner)) {
     throw new UnknownOwnerError({
       context: {
@@ -733,7 +782,7 @@ async function signTransactionAsOwner(
     ? {
         intentId: quote.intentId,
         kind: 'multi-factor',
-        validatorId: options.validatorId as number,
+        validatorId: factor.id,
         signature,
       }
     : { intentId: quote.intentId, ...signature }
@@ -743,7 +792,7 @@ function orderAtomicOwnerSignatures(
   owners: AtomicOwnerSet,
   signatures: OwnerSignatureData[],
   originCount: number,
-  validatorId?: number,
+  validatorId?: number | Hex,
 ): OwnerSignatureData[] {
   const expectedKind = owners.type === 'passkey' ? 'passkey' : 'ecdsa'
   const byIdentity = new Map<string, OwnerSignatureData>()
@@ -838,7 +887,7 @@ async function assembleTransaction(
   preparedTransaction: PreparedTransactionData,
   signatures: OwnerSignature[],
 ): Promise<SignedTransactionData> {
-  const { owners, validator } = assertIndependentSigningSupported(
+  const { owners, signers, validator } = assertIndependentSigningSupported(
     config,
     preparedTransaction,
   )
@@ -866,45 +915,54 @@ async function assembleTransaction(
   let directSignatures: OwnerSignatureData[] | undefined
   let factorSignatures:
     | {
-        id: number
+        id: number | Hex
         owners: AtomicOwnerSet
         signatures: OwnerSignatureData[]
       }[]
     | undefined
 
   if (owners.type === 'multi-factor') {
-    const grouped = new Map<number, OwnerSignatureData[]>()
+    const factors = getMultiFactorOwnerFactors(owners, signers)
+    const factorsById = new Map(
+      factors.flatMap((factor) => {
+        const key = getValidatorIdKey(factor.id)
+        return key ? [[key, factor] as const] : []
+      }),
+    )
+    const grouped = new Map<Hex, OwnerSignatureData[]>()
     for (const signature of signatures) {
       if (signature.kind !== 'multi-factor') {
         throw new MismatchedOwnerSignaturesError({
           context: { expectedKind: 'multi-factor' },
         })
       }
-      const atomicOwners = resolveAtomicOwnerSet(owners, signature.validatorId)
-      if (!atomicOwners) {
+      const key = getValidatorIdKey(signature.validatorId)
+      if (!key || !factorsById.has(key)) {
         throw new MismatchedOwnerSignaturesError({
           context: { validatorId: signature.validatorId },
         })
       }
-      const current = grouped.get(signature.validatorId) ?? []
+      const current = grouped.get(key) ?? []
       current.push(signature.signature)
-      grouped.set(signature.validatorId, current)
+      grouped.set(key, current)
     }
-    factorSignatures = [...grouped.entries()]
-      .sort(([a], [b]) => a - b)
-      .map(([id, groupedSignatures]) => {
-        const atomicOwners = owners.validators[id]
-        return {
-          id,
-          owners: atomicOwners,
+    factorSignatures = factors.flatMap((factor) => {
+      const key = getValidatorIdKey(factor.id)
+      const groupedSignatures = key ? grouped.get(key) : undefined
+      if (!groupedSignatures) return []
+      return [
+        {
+          id: factor.id,
+          owners: factor.owners,
           signatures: orderAtomicOwnerSignatures(
-            atomicOwners,
+            factor.owners,
             groupedSignatures,
             origin.length,
-            id,
+            factor.id,
           ),
-        }
-      })
+        },
+      ]
+    })
     const required = owners.threshold ?? 1
     if (factorSignatures.length < required) {
       throw new InsufficientOwnerSignaturesError({

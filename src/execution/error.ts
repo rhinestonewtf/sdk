@@ -1,3 +1,5 @@
+import type { Hex } from 'viem'
+
 class ExecutionError extends Error {
   private readonly _message: string
   private readonly _context: any
@@ -108,7 +110,11 @@ class Eip7702InitSignatureRequiredError extends ExecutionError {
 
 class UnknownOwnerError extends ExecutionError {
   constructor(params?: {
-    context?: { signer?: string; publicKey?: string; validatorId?: number }
+    context?: {
+      signer?: string
+      publicKey?: string
+      validatorId?: number | Hex
+    }
     errorType?: string
     traceId?: string
   }) {
@@ -140,7 +146,7 @@ class InsufficientOwnerSignaturesError extends ExecutionError {
   constructor(params?: {
     required?: number
     provided?: number
-    validatorId?: number
+    validatorId?: number | Hex
     context?: any
     errorType?: string
     traceId?: string

@@ -213,7 +213,7 @@ interface RhinestoneAccount {
    * Sign a prepared transaction as one configured owner. The returned signature
    * can be serialized and shared with the party coordinating submission.
    * @param preparedTransaction Prepared transaction data
-   * @param options Owner account, optional quote, and multi-factor validator index
+   * @param options Owner account, optional quote, and multi-factor validator ID
    * @returns This owner's signature contribution
    * @see {@link prepareTransaction} to prepare the transaction data for signing
    * @see {@link assembleTransaction} to combine independent owner signatures
@@ -237,8 +237,9 @@ interface RhinestoneAccount {
   /**
    * Assemble independently collected owner signatures into a signed transaction.
    * Signatures are deduplicated and ordered according to the configured owner set.
-   * Thresholds are read from the local account configuration; callers must keep
-   * it synchronized with any onchain owner or threshold changes.
+   * Account thresholds are read from the local configuration; an explicit
+   * transaction signer set determines active MFA IDs and contributing owners.
+   * Callers must keep these synchronized with onchain owner and threshold changes.
    * @param preparedTransaction The prepared transaction every owner signed
    * @param signatures Owner signatures returned by `signTransaction` with an `owner` option
    * @returns Signed transaction data ready for submission

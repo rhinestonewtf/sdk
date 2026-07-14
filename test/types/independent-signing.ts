@@ -18,6 +18,11 @@ const selectedOwnerSignature: Promise<OwnerSignature> = account.signTransaction(
   prepared,
   { owner: accountA, intentId: 'intent-id' },
 )
+const multiFactorOwnerSignature: Promise<OwnerSignature> =
+  account.signTransaction(prepared, {
+    owner: accountA,
+    validatorId: '0x1234',
+  })
 const signedTransaction: Promise<SignedTransactionData> =
   account.signTransaction(prepared)
 const selectedSignedTransaction: Promise<SignedTransactionData> =
@@ -27,6 +32,7 @@ const assembledTransaction: Promise<SignedTransactionData> =
 
 void ownerSignature
 void selectedOwnerSignature
+void multiFactorOwnerSignature
 void signedTransaction
 void selectedSignedTransaction
 void assembledTransaction

@@ -19,6 +19,7 @@ import type {
   MultiFactorValidatorConfig,
   OwnerSet,
   RhinestoneConfig,
+  SignerSet,
 } from '../types'
 import {
   IndependentSigningNotSupportedError,
@@ -124,7 +125,7 @@ const passkeyB = makePasskey('2')
 
 const accountTypes = ['safe', 'nexus', 'kernel', 'startale'] as const
 
-function signingOptions(owners: OwnerSet) {
+function signingOptions(owners: OwnerSet, signers?: SignerSet) {
   switch (owners.type) {
     case 'ecdsa':
       return owners.accounts.map((owner) => ({ owner }))
@@ -132,7 +133,12 @@ function signingOptions(owners: OwnerSet) {
       return owners.owners.map(({ account: owner }) => ({ owner }))
     case 'passkey':
       return owners.accounts.map((owner) => ({ owner }))
-    case 'multi-factor':
+    case 'multi-factor': {
+      if (signers?.type === 'owner' && signers.kind === 'multi-factor') {
+        return signers.validators.flatMap(({ accounts, id: validatorId }) =>
+          accounts.map((owner) => ({ owner, validatorId })),
+        )
+      }
       return owners.validators.flatMap((validator, validatorId) => {
         const accounts =
           validator.type === 'ens'
@@ -140,6 +146,7 @@ function signingOptions(owners: OwnerSet) {
             : validator.accounts
         return accounts.map((owner) => ({ owner, validatorId }))
       })
+    }
   }
 }
 
@@ -149,7 +156,10 @@ async function expectGoldenEquivalence(
 ) {
   const full = await signTransaction(config, prepared)
   const partials: OwnerSignature[] = []
-  for (const options of signingOptions(config.owners as OwnerSet)) {
+  for (const options of signingOptions(
+    config.owners as OwnerSet,
+    prepared.transaction.signers,
+  )) {
     partials.push(await signTransaction(config, prepared, options))
   }
   expect(JSON.parse(JSON.stringify(partials))).toEqual(partials)
@@ -315,6 +325,32 @@ describe('independent signing validation', () => {
     await expect(
       assembleTransaction(multiFactorConfig, prepared, [factorC, factorA]),
     ).resolves.toEqual(full)
+  })
+
+  test('uses custom numeric and hex multi-factor validator ids', async () => {
+    const multiFactorConfig = makeConfig('safe', {
+      type: 'multi-factor',
+      validators: [
+        { type: 'ecdsa', accounts: [accountA] },
+        { type: 'passkey', accounts: [passkeyA] },
+      ],
+      threshold: 2,
+    })
+    const prepared = makePrepared({
+      transaction: {
+        chain: base,
+        signers: {
+          type: 'owner',
+          kind: 'multi-factor',
+          validators: [
+            { type: 'ecdsa', id: 42, accounts: [accountA] },
+            { type: 'passkey', id: '0x1234', accounts: [passkeyA] },
+          ],
+        },
+      },
+    })
+
+    await expectGoldenEquivalence(multiFactorConfig, prepared)
   })
 
   test('rejects an owner outside the configured owner set', async () => {
