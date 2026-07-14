@@ -64,7 +64,9 @@ the relayer market; the SDK signs and submits.
 2. `getTransactionMessages(...)` — typed-data messages to sign (optional; for
    headless signing).
 3. `signTransaction(...)` — signs the origin/destination/target-execution typed
-   data with the account's validator.
+   data with the account's validator. Multisig owners can instead call
+   `signTransaction(prepared, { owner })` independently and combine their
+   contributions with `assembleTransaction(...)`.
 4. `submitTransaction(...)` — posts the signed intent; returns a
    `TransactionResult` (an intent id).
 5. `waitForExecution(result)` — polls the orchestrator until the intent reaches

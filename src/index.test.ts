@@ -4,17 +4,26 @@ import { accountA } from '../test/consts'
 import type { SignData } from './orchestrator'
 import type { SessionSignerSet } from './types'
 
-const { mockGetTargetExecutionSignature, mockSignIntent } = vi.hoisted(() => ({
+const {
+  mockAssembleTransaction,
+  mockGetTargetExecutionSignature,
+  mockSignIntent,
+  mockSignTransaction,
+} = vi.hoisted(() => ({
+  mockAssembleTransaction: vi.fn(),
   mockGetTargetExecutionSignature: vi.fn(),
   mockSignIntent: vi.fn(),
+  mockSignTransaction: vi.fn(),
 }))
 
 vi.mock('./execution/utils', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./execution/utils')>()
   return {
     ...actual,
+    assembleTransaction: mockAssembleTransaction,
     getTargetExecutionSignature: mockGetTargetExecutionSignature,
     signIntent: mockSignIntent,
+    signTransaction: mockSignTransaction,
   }
 })
 
@@ -22,8 +31,10 @@ const { RhinestoneSDK } = await import('.')
 
 describe('RhinestoneSDK.createAccount', () => {
   beforeEach(() => {
+    mockAssembleTransaction.mockReset()
     mockGetTargetExecutionSignature.mockReset()
     mockSignIntent.mockReset()
+    mockSignTransaction.mockReset()
   })
 
   test('signIntent delegates to SDK intent signing utilities', async () => {
@@ -74,5 +85,38 @@ describe('RhinestoneSDK.createAccount', () => {
       destinationSignature: '0x22',
       targetExecutionSignature: '0x33',
     })
+  })
+
+  test('independent signing and assembly delegate to execution utilities', async () => {
+    const config = {
+      owners: { type: 'ecdsa' as const, accounts: [accountA], threshold: 1 },
+    }
+    const prepared = { quotes: {} } as never
+    const ownerSignature = { intentId: 'intent', kind: 'ecdsa' } as never
+    const signedTransaction = { quote: {} } as never
+    mockSignTransaction.mockResolvedValue(ownerSignature)
+    mockAssembleTransaction.mockResolvedValue(signedTransaction)
+
+    const sdk = new RhinestoneSDK({
+      auth: { mode: 'apiKey', apiKey: 'test' },
+    })
+    const account = await sdk.createAccount(config)
+
+    await expect(
+      account.signTransaction(prepared, { owner: accountA }),
+    ).resolves.toBe(ownerSignature)
+    await expect(
+      account.assembleTransaction(prepared, [ownerSignature]),
+    ).resolves.toBe(signedTransaction)
+    expect(mockSignTransaction).toHaveBeenCalledWith(
+      expect.objectContaining(config),
+      prepared,
+      { owner: accountA },
+    )
+    expect(mockAssembleTransaction).toHaveBeenCalledWith(
+      expect.objectContaining(config),
+      prepared,
+      [ownerSignature],
+    )
   })
 })

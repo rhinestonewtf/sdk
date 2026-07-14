@@ -130,6 +130,7 @@ export const manifest: Group[] = [
           accountMethod('prepareTransaction'),
           accountMethod('getTransactionMessages'),
           accountMethod('signTransaction'),
+          accountMethod('assembleTransaction'),
           accountMethod('signAuthorizations'),
           accountMethod('signIntent'),
           accountMethod('submitTransaction'),
