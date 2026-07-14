@@ -1,4 +1,5 @@
 import {
+  type Account,
   type Address,
   type Chain,
   concat,
@@ -29,6 +30,7 @@ import {
   entryPoint07Address,
   getUserOperationHash,
   type UserOperation,
+  type WebAuthnAccount,
 } from 'viem/account-abstraction'
 import { wrapTypedDataSignature } from 'viem/experimental/erc7739'
 import {
@@ -42,12 +44,19 @@ import {
   getEip7702InitCall,
   getEmissarySignature,
   getInitCode,
+  getOwnerEcdsaSignature,
+  getOwnerPasskeySignature,
   getSmartAccount,
   getTypedDataPackedSignature,
   is7702,
+  packAccountSignature,
   toErc6492Signature,
 } from '../accounts'
-import { convertOwnerSetToSignerSet } from '../accounts/signing/common'
+import {
+  convertOwnerSetToSignerSet,
+  packMultiFactorOwnerSignatures,
+  packPasskeyOwnerSignatures,
+} from '../accounts/signing/common'
 import { K1_DEFAULT_VALIDATOR_ADDRESS } from '../accounts/startale'
 import {
   createTransport,
@@ -67,6 +76,7 @@ import {
 } from '../modules/validators'
 import {
   getMultiFactorValidator,
+  getValidator as getValidatorModule,
   getWebAuthnValidator,
   supportsEip712,
 } from '../modules/validators/core'
@@ -118,8 +128,11 @@ import type {
   Call,
   CalldataInput,
   CallInput,
+  ENSValidatorConfig,
   ExactInputConfig,
   NonEvmTokenRequest,
+  OwnableValidatorConfig,
+  OwnerSet,
   RhinestoneAccountConfig,
   RhinestoneConfig,
   Session,
@@ -134,11 +147,17 @@ import type {
   TokenSymbol,
   Transaction,
   UserOperationTransaction,
+  WebauthnValidatorConfig,
 } from '../types'
 import {
   Eip7702InitSignatureRequiredError,
+  IndependentSigningNotSupportedError,
+  InsufficientOwnerSignaturesError,
+  InvalidOwnerSigningOptionsError,
   InvalidSourceCallsError,
+  MismatchedOwnerSignaturesError,
   QuoteNotInPreparedTransactionError,
+  UnknownOwnerError,
 } from './error'
 
 type InternalSignerSet =
@@ -279,6 +298,47 @@ interface PreparedTransactionData {
 interface QuoteSelection {
   intentId: string
 }
+
+interface SignAsOwnerOptions {
+  /** Account that contributes this signature. Must belong to the configured owner set. */
+  owner: Account | WebAuthnAccount
+  /** Multi-factor validator index containing `owner`. Required only for multi-factor accounts. */
+  validatorId?: number
+  /** Quote to sign. Defaults to `preparedTransaction.quotes.best`. */
+  intentId?: string
+}
+
+interface OwnerPasskeySignature {
+  webauthn: {
+    authenticatorData: Hex
+    challengeIndex?: number
+    clientDataJSON: string
+    typeIndex?: number
+    userVerificationRequired?: boolean
+  }
+  signature: Hex
+}
+
+type OwnerSignatureData =
+  | {
+      kind: 'ecdsa'
+      signer: Address
+      origin: Hex[]
+    }
+  | {
+      kind: 'passkey'
+      publicKey: Hex
+      origin: OwnerPasskeySignature[]
+    }
+
+type OwnerSignature =
+  | ({ intentId: string } & OwnerSignatureData)
+  | {
+      intentId: string
+      kind: 'multi-factor'
+      validatorId: number
+      signature: OwnerSignatureData
+    }
 
 interface PreparedUserOperationData {
   userOperation: UserOperation
@@ -426,11 +486,25 @@ function getTransactionMessages(
   return getIntentMessages(quote.signData)
 }
 
-async function signTransaction(
+function signTransaction(
+  config: RhinestoneConfig,
+  preparedTransaction: PreparedTransactionData,
+  options: SignAsOwnerOptions,
+): Promise<OwnerSignature>
+function signTransaction(
   config: RhinestoneConfig,
   preparedTransaction: PreparedTransactionData,
   options?: QuoteSelection,
-): Promise<SignedTransactionData> {
+): Promise<SignedTransactionData>
+async function signTransaction(
+  config: RhinestoneConfig,
+  preparedTransaction: PreparedTransactionData,
+  options?: QuoteSelection | SignAsOwnerOptions,
+): Promise<SignedTransactionData | OwnerSignature> {
+  if (options && 'owner' in options) {
+    return signTransactionAsOwner(config, preparedTransaction, options)
+  }
+
   const { signers } = getTransactionParams(preparedTransaction.transaction)
   const quote = resolveQuote(preparedTransaction.quotes, options)
   const targetChain =
@@ -459,6 +533,438 @@ async function signTransaction(
     originSignatures,
     destinationSignature,
     targetExecutionSignature,
+  }
+}
+
+type AtomicOwnerSet =
+  | OwnableValidatorConfig
+  | ENSValidatorConfig
+  | WebauthnValidatorConfig
+
+function assertIndependentSigningSupported(
+  config: RhinestoneConfig,
+  preparedTransaction: PreparedTransactionData,
+): { owners: OwnerSet; validator: Module } {
+  if (config.account?.type === 'eoa') {
+    throw new IndependentSigningNotSupportedError({
+      context: { reason: 'eoa-account' },
+    })
+  }
+  const { signers } = getTransactionParams(preparedTransaction.transaction)
+  if (signers?.type === 'experimental_session') {
+    throw new IndependentSigningNotSupportedError({
+      context: { reason: 'smart-session' },
+    })
+  }
+  const validator = getOwnerValidator(config)
+  const selectedValidator = getValidator(config, signers)
+  if (
+    !selectedValidator ||
+    selectedValidator.address.toLowerCase() !== validator.address.toLowerCase()
+  ) {
+    throw new IndependentSigningNotSupportedError({
+      context: { reason: 'non-owner-validator' },
+    })
+  }
+  if (
+    validator.address.toLowerCase() ===
+    K1_DEFAULT_VALIDATOR_ADDRESS.toLowerCase()
+  ) {
+    throw new IndependentSigningNotSupportedError({
+      context: { reason: 'erc7739-validator' },
+    })
+  }
+  if (!config.owners) {
+    throw new IndependentSigningNotSupportedError({
+      context: { reason: 'missing-owner-set' },
+    })
+  }
+  return { owners: config.owners, validator }
+}
+
+function resolveAtomicOwnerSet(
+  owners: OwnerSet,
+  validatorId: number | undefined,
+): AtomicOwnerSet | undefined {
+  if (owners.type !== 'multi-factor') {
+    return validatorId === undefined ? owners : undefined
+  }
+  if (
+    validatorId === undefined ||
+    !Number.isInteger(validatorId) ||
+    validatorId < 0
+  ) {
+    return undefined
+  }
+  return owners.validators[validatorId]
+}
+
+function getAtomicOwnerAccounts(
+  owners: AtomicOwnerSet,
+): (Account | WebAuthnAccount)[] {
+  switch (owners.type) {
+    case 'ecdsa':
+    case 'passkey':
+      return owners.accounts
+    case 'ens':
+      return owners.owners.map(({ account }) => account)
+  }
+}
+
+function getAtomicOwnerThreshold(owners: AtomicOwnerSet): number {
+  return owners.threshold ?? 1
+}
+
+function isWebAuthnAccount(
+  account: Account | WebAuthnAccount,
+): account is WebAuthnAccount {
+  return account.type === 'webAuthn'
+}
+
+function getAccountIdentity(account: Account | WebAuthnAccount): string {
+  return isWebAuthnAccount(account)
+    ? account.publicKey.toLowerCase()
+    : account.address.toLowerCase()
+}
+
+function getAtomicSignatureIdentity(signature: OwnerSignatureData): string {
+  return signature.kind === 'passkey'
+    ? signature.publicKey.toLowerCase()
+    : signature.signer.toLowerCase()
+}
+
+function isOwnerMember(
+  owners: AtomicOwnerSet,
+  account: Account | WebAuthnAccount,
+): boolean {
+  if ((owners.type === 'passkey') !== isWebAuthnAccount(account)) return false
+  const identity = getAccountIdentity(account)
+  return getAtomicOwnerAccounts(owners).some(
+    (configured) => getAccountIdentity(configured) === identity,
+  )
+}
+
+async function signTransactionAsOwner(
+  config: RhinestoneConfig,
+  preparedTransaction: PreparedTransactionData,
+  options: SignAsOwnerOptions,
+): Promise<OwnerSignature> {
+  const { owners } = assertIndependentSigningSupported(
+    config,
+    preparedTransaction,
+  )
+  const atomicOwners = resolveAtomicOwnerSet(owners, options.validatorId)
+  if (!atomicOwners) {
+    throw new InvalidOwnerSigningOptionsError({
+      context: { validatorId: options.validatorId },
+    })
+  }
+  if (!isOwnerMember(atomicOwners, options.owner)) {
+    throw new UnknownOwnerError({
+      context: {
+        ...(isWebAuthnAccount(options.owner)
+          ? { publicKey: options.owner.publicKey }
+          : { signer: options.owner.address }),
+        validatorId: options.validatorId,
+      },
+    })
+  }
+
+  const quote = resolveQuote(
+    preparedTransaction.quotes,
+    options.intentId === undefined ? undefined : { intentId: options.intentId },
+  )
+  const { origin } = getIntentMessages(quote.signData)
+  const atomicSigners = convertOwnerSetToSignerSet(atomicOwners)
+  if (atomicSigners.type !== 'owner' || atomicSigners.kind === 'multi-factor') {
+    throw new IndependentSigningNotSupportedError()
+  }
+  const validatorSupportsEip712 = supportsEip712(
+    getValidatorModule(atomicOwners),
+  )
+
+  let signature: OwnerSignatureData
+  if (atomicSigners.kind === 'ecdsa' && !isWebAuthnAccount(options.owner)) {
+    const signatures: Hex[] = []
+    for (const typedData of origin) {
+      signatures.push(
+        await getOwnerEcdsaSignature(
+          config,
+          getChainById(typedData.domain?.chainId as number),
+          typedData,
+          options.owner,
+          atomicSigners.module,
+          validatorSupportsEip712,
+        ),
+      )
+    }
+    signature = {
+      kind: 'ecdsa',
+      signer: options.owner.address,
+      origin: signatures,
+    }
+  } else if (
+    atomicSigners.kind === 'passkey' &&
+    isWebAuthnAccount(options.owner)
+  ) {
+    const signatures: OwnerPasskeySignature[] = []
+    for (const typedData of origin) {
+      signatures.push(
+        await getOwnerPasskeySignature(
+          config,
+          typedData,
+          options.owner,
+          validatorSupportsEip712,
+        ),
+      )
+    }
+    signature = {
+      kind: 'passkey',
+      publicKey: options.owner.publicKey,
+      origin: signatures,
+    }
+  } else {
+    throw new UnknownOwnerError({
+      context: { validatorId: options.validatorId },
+    })
+  }
+
+  return owners.type === 'multi-factor'
+    ? {
+        intentId: quote.intentId,
+        kind: 'multi-factor',
+        validatorId: options.validatorId as number,
+        signature,
+      }
+    : { intentId: quote.intentId, ...signature }
+}
+
+function orderAtomicOwnerSignatures(
+  owners: AtomicOwnerSet,
+  signatures: OwnerSignatureData[],
+  originCount: number,
+  validatorId?: number,
+): OwnerSignatureData[] {
+  const expectedKind = owners.type === 'passkey' ? 'passkey' : 'ecdsa'
+  const byIdentity = new Map<string, OwnerSignatureData>()
+  const configuredIdentities = new Set(
+    getAtomicOwnerAccounts(owners).map(getAccountIdentity),
+  )
+
+  for (const signature of signatures) {
+    if (
+      signature.kind !== expectedKind ||
+      signature.origin.length !== originCount
+    ) {
+      throw new MismatchedOwnerSignaturesError({
+        context: {
+          expectedKind,
+          expectedOriginCount: originCount,
+          validatorId,
+        },
+      })
+    }
+    const identity = getAtomicSignatureIdentity(signature)
+    if (!configuredIdentities.has(identity)) {
+      throw new UnknownOwnerError({
+        context: {
+          ...(signature.kind === 'passkey'
+            ? { publicKey: signature.publicKey }
+            : { signer: signature.signer }),
+          validatorId,
+        },
+      })
+    }
+    if (!byIdentity.has(identity)) byIdentity.set(identity, signature)
+  }
+
+  const ordered = [...configuredIdentities].flatMap((identity) => {
+    const signature = byIdentity.get(identity)
+    return signature ? [signature] : []
+  })
+  const required = getAtomicOwnerThreshold(owners)
+  if (ordered.length < required) {
+    throw new InsufficientOwnerSignaturesError({
+      required,
+      provided: ordered.length,
+      validatorId,
+    })
+  }
+  return ordered
+}
+
+function packAtomicOwnerSignatures(
+  owners: AtomicOwnerSet,
+  signatures: OwnerSignatureData[],
+  originIndex: number,
+  chain: Chain,
+  accountAddress: Address,
+): Hex {
+  const signers = convertOwnerSetToSignerSet(owners)
+  if (
+    owners.type === 'passkey' &&
+    signers.type === 'owner' &&
+    signers.kind === 'passkey'
+  ) {
+    const passkeySignatures = signatures.map((signature) => {
+      if (signature.kind !== 'passkey') {
+        throw new MismatchedOwnerSignaturesError()
+      }
+      return {
+        publicKey: signature.publicKey,
+        signature: signature.origin[originIndex],
+      }
+    })
+    return packPasskeyOwnerSignatures(
+      chain,
+      accountAddress,
+      passkeySignatures.map(({ publicKey }) => publicKey),
+      passkeySignatures.map(({ signature }) => signature),
+      signers.module,
+    )
+  }
+  return concat(
+    signatures.map((signature) => {
+      if (signature.kind !== 'ecdsa') {
+        throw new MismatchedOwnerSignaturesError()
+      }
+      return signature.origin[originIndex]
+    }),
+  )
+}
+
+async function assembleTransaction(
+  config: RhinestoneConfig,
+  preparedTransaction: PreparedTransactionData,
+  signatures: OwnerSignature[],
+): Promise<SignedTransactionData> {
+  const { owners, validator } = assertIndependentSigningSupported(
+    config,
+    preparedTransaction,
+  )
+  if (signatures.length === 0) {
+    throw new InsufficientOwnerSignaturesError({
+      required: owners.threshold ?? 1,
+      provided: 0,
+    })
+  }
+
+  const intentIds = [...new Set(signatures.map(({ intentId }) => intentId))]
+  if (intentIds.length !== 1) {
+    throw new MismatchedOwnerSignaturesError({ context: { intentIds } })
+  }
+  const quote = resolveQuote(preparedTransaction.quotes, {
+    intentId: intentIds[0],
+  })
+  const { origin } = getIntentMessages(quote.signData)
+  const accountAddress = getAddress(config)
+  const validatorConfig: ValidatorConfig = {
+    address: validator.address,
+    isRoot: true,
+  }
+
+  let directSignatures: OwnerSignatureData[] | undefined
+  let factorSignatures:
+    | {
+        id: number
+        owners: AtomicOwnerSet
+        signatures: OwnerSignatureData[]
+      }[]
+    | undefined
+
+  if (owners.type === 'multi-factor') {
+    const grouped = new Map<number, OwnerSignatureData[]>()
+    for (const signature of signatures) {
+      if (signature.kind !== 'multi-factor') {
+        throw new MismatchedOwnerSignaturesError({
+          context: { expectedKind: 'multi-factor' },
+        })
+      }
+      const atomicOwners = resolveAtomicOwnerSet(owners, signature.validatorId)
+      if (!atomicOwners) {
+        throw new MismatchedOwnerSignaturesError({
+          context: { validatorId: signature.validatorId },
+        })
+      }
+      const current = grouped.get(signature.validatorId) ?? []
+      current.push(signature.signature)
+      grouped.set(signature.validatorId, current)
+    }
+    factorSignatures = [...grouped.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([id, groupedSignatures]) => {
+        const atomicOwners = owners.validators[id]
+        return {
+          id,
+          owners: atomicOwners,
+          signatures: orderAtomicOwnerSignatures(
+            atomicOwners,
+            groupedSignatures,
+            origin.length,
+            id,
+          ),
+        }
+      })
+    const required = owners.threshold ?? 1
+    if (factorSignatures.length < required) {
+      throw new InsufficientOwnerSignaturesError({
+        required,
+        provided: factorSignatures.length,
+      })
+    }
+  } else {
+    directSignatures = orderAtomicOwnerSignatures(
+      owners,
+      signatures.map((signature) => {
+        if (signature.kind === 'multi-factor') {
+          throw new MismatchedOwnerSignaturesError({
+            context: { expectedKind: owners.type },
+          })
+        }
+        const { intentId: _, ...atomicSignature } = signature
+        return atomicSignature
+      }),
+      origin.length,
+    )
+  }
+
+  const originSignatures: Hex[] = []
+  for (const [originIndex, typedData] of origin.entries()) {
+    const chain = getChainById(typedData.domain?.chainId as number)
+    const validatorSignature = factorSignatures
+      ? packMultiFactorOwnerSignatures(
+          factorSignatures.map((factor) => ({
+            id: factor.id,
+            validatorAddress: getValidatorModule(factor.owners).address,
+            signature: packAtomicOwnerSignatures(
+              factor.owners,
+              factor.signatures,
+              originIndex,
+              chain,
+              accountAddress,
+            ),
+          })),
+        )
+      : packAtomicOwnerSignatures(
+          owners as AtomicOwnerSet,
+          directSignatures as OwnerSignatureData[],
+          originIndex,
+          chain,
+          accountAddress,
+        )
+    originSignatures.push(
+      await packAccountSignature(config, validatorSignature, validatorConfig),
+    )
+  }
+
+  return {
+    quote,
+    quotes: preparedTransaction.quotes,
+    intentInput: preparedTransaction.intentInput,
+    transaction: preparedTransaction.transaction,
+    originSignatures,
+    destinationSignature: originSignatures.at(-1) ?? '0x',
+    targetExecutionSignature: undefined,
   }
 }
 
@@ -2112,6 +2618,7 @@ export {
   prepareTransaction,
   getTransactionMessages,
   signTransaction,
+  assembleTransaction,
   signAuthorizations,
   signAuthorizationsInternal,
   signMessage,
@@ -2139,7 +2646,11 @@ export type {
   PreparedQuotes,
   PreparedTransactionData,
   PreparedUserOperationData,
+  OwnerPasskeySignature,
+  OwnerSignature,
+  OwnerSignatureData,
   QuoteSelection,
+  SignAsOwnerOptions,
   SignedTransactionData,
   SignedUserOperationData,
   UserOperationResult,

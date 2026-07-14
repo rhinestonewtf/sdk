@@ -36,11 +36,16 @@ import type {
 import {
   Eip7702InitSignatureRequiredError,
   ExecutionError,
+  IndependentSigningNotSupportedError,
+  InsufficientOwnerSignaturesError,
   IntentFailedError,
+  InvalidOwnerSigningOptionsError,
   InvalidSourceCallsError,
   isExecutionError,
+  MismatchedOwnerSignaturesError,
   OrderPathRequiredForIntentsError,
   QuoteNotInPreparedTransactionError,
+  UnknownOwnerError,
 } from './error'
 import type { TransactionResult, UserOperationResult } from './utils'
 import {
@@ -409,9 +414,14 @@ export {
   isExecutionError,
   ExecutionError,
   Eip7702InitSignatureRequiredError,
+  IndependentSigningNotSupportedError,
+  InsufficientOwnerSignaturesError,
   IntentFailedError,
+  InvalidOwnerSigningOptionsError,
   InvalidSourceCallsError,
+  MismatchedOwnerSignaturesError,
   OrderPathRequiredForIntentsError,
   QuoteNotInPreparedTransactionError,
+  UnknownOwnerError,
 }
 export type { TransactionStatus, TransactionResult, UserOperationResult }

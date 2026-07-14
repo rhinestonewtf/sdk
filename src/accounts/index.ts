@@ -1,4 +1,5 @@
 import {
+  type Account,
   type Address,
   type Chain,
   concat,
@@ -14,6 +15,7 @@ import {
   type TypedData,
   zeroAddress,
 } from 'viem'
+import type { WebAuthnAccount } from 'viem/account-abstraction'
 import {
   sendTransactionInternal,
   sendUserOperationInternal,
@@ -489,7 +491,43 @@ function checkAddress(config: RhinestoneConfig) {
   return initData.address.toLowerCase() === getAddress(config).toLowerCase()
 }
 
-// Signs and packs a signature to be EIP-1271 compatible
+async function packAccountSignature(
+  config: RhinestoneConfig,
+  signature: Hex,
+  validator: ValidatorConfig,
+  transformSignature: (signature: Hex) => Hex = (signature) => signature,
+): Promise<Hex> {
+  const account = getAccountProvider(config)
+  switch (account.type) {
+    case 'safe': {
+      return packSafeSignature(signature, validator, transformSignature)
+    }
+    case 'nexus': {
+      const defaultValidatorAddress = getNexusDefaultValidatorAddress(
+        account.version,
+      )
+      return packNexusSignature(
+        signature,
+        validator,
+        transformSignature,
+        defaultValidatorAddress,
+      )
+    }
+    case 'kernel': {
+      return packKernelSignature(signature, validator, transformSignature)
+    }
+    case 'startale': {
+      return packStartaleSignature(signature, validator, transformSignature)
+    }
+    case 'hca': {
+      return packHcaSignature(signature, validator, transformSignature)
+    }
+    default: {
+      throw new Error(`Unsupported account type: ${(account as any).type}`)
+    }
+  }
+}
+
 async function getEip1271Signature(
   config: RhinestoneConfig,
   signers: InternalSignerSet | undefined,
@@ -503,43 +541,18 @@ async function getEip1271Signature(
   }
 
   signers = signers ?? convertOwnerSetToSignerSet(config.owners!)
-  const signFn = (hash: Hex) =>
-    signMessage(signers, chain, address, hash, false)
   const account = getAccountProvider(config)
   const address = getAddress(config)
-  switch (account.type) {
-    case 'safe': {
-      const signature = await signFn(hash)
-      return packSafeSignature(signature, validator, transformSignature)
-    }
-    case 'nexus': {
-      const signature = await signFn(hash)
-      const defaultValidatorAddress = getNexusDefaultValidatorAddress(
-        account.version,
-      )
-      return packNexusSignature(
-        signature,
-        validator,
-        transformSignature,
-        defaultValidatorAddress,
-      )
-    }
-    case 'kernel': {
-      const signature = await signFn(wrapKernelMessageHash(hash, address))
-      return packKernelSignature(signature, validator, transformSignature)
-    }
-    case 'startale': {
-      const signature = await signFn(hash)
-      return packStartaleSignature(signature, validator, transformSignature)
-    }
-    case 'hca': {
-      const signature = await signFn(hash)
-      return packHcaSignature(signature, validator, transformSignature)
-    }
-    default: {
-      throw new Error(`Unsupported account type: ${(account as any).type}`)
-    }
-  }
+  const signedHash =
+    account.type === 'kernel' ? wrapKernelMessageHash(hash, address) : hash
+  const signature = await signMessage(
+    signers,
+    chain,
+    address,
+    signedHash,
+    false,
+  )
+  return packAccountSignature(config, signature, validator, transformSignature)
 }
 
 // Signs and packs a signature to be used by the emissary validator
@@ -580,48 +593,100 @@ async function getTypedDataPackedSignature<
 
   const address = getAddress(config)
   signers = signers ?? convertOwnerSetToSignerSet(config.owners!)
-  const signFn = (
-    parameters: HashTypedDataParameters<typedData, primaryType>,
-  ) => signTypedData(signers, chain, address, parameters)
   const account = getAccountProvider(config)
-  switch (account.type) {
-    case 'safe': {
-      const signature = await signFn(parameters)
-      return packSafeSignature(signature, validator, transformSignature)
-    }
-    case 'nexus': {
-      const signature = await signFn(parameters)
-      const defaultValidatorAddress = getNexusDefaultValidatorAddress(
-        account.version,
-      )
-      return packNexusSignature(
-        signature,
-        validator,
-        transformSignature,
-        defaultValidatorAddress,
-      )
-    }
-    case 'kernel': {
-      const address = getAddress(config)
-      const signMessageFn = (hash: Hex) =>
-        signMessage(signers, chain, address, hash, false)
-      const signature = await signMessageFn(
-        wrapKernelMessageHash(hashTypedData(parameters), address),
-      )
-      return packKernelSignature(signature, validator, transformSignature)
-    }
-    case 'startale': {
-      const signature = await signFn(parameters)
-      return packStartaleSignature(signature, validator, transformSignature)
-    }
-    case 'hca': {
-      const signature = await signFn(parameters)
-      return packHcaSignature(signature, validator, transformSignature)
-    }
-    default: {
-      throw new Error(`Unsupported account type: ${(account as any).type}`)
-    }
+  const signature =
+    account.type === 'kernel'
+      ? await signMessage(
+          signers,
+          chain,
+          address,
+          wrapKernelMessageHash(hashTypedData(parameters), address),
+          false,
+        )
+      : await signTypedData(signers, chain, address, parameters)
+  return packAccountSignature(config, signature, validator, transformSignature)
+}
+
+async function getOwnerEcdsaSignature<
+  typedData extends TypedData | Record<string, unknown> = TypedData,
+  primaryType extends keyof typedData | 'EIP712Domain' = keyof typedData,
+>(
+  config: RhinestoneConfig,
+  chain: Chain,
+  parameters: HashTypedDataParameters<typedData, primaryType>,
+  owner: Account,
+  module: Address | undefined,
+  validatorSupportsEip712: boolean,
+): Promise<Hex> {
+  if (config.account?.type === 'eoa') {
+    throw new EoaSigningNotSupportedError('packed signatures')
   }
+  const address = getAddress(config)
+  const signers: SignerSet = {
+    type: 'owner',
+    kind: 'ecdsa',
+    accounts: [owner],
+    module,
+  }
+  const accountProvider = getAccountProvider(config)
+  if (accountProvider.type === 'kernel') {
+    return signMessage(
+      signers,
+      chain,
+      address,
+      wrapKernelMessageHash(hashTypedData(parameters), address),
+      false,
+    )
+  }
+  if (!validatorSupportsEip712) {
+    return signMessage(
+      signers,
+      chain,
+      address,
+      hashTypedData(parameters),
+      false,
+    )
+  }
+  return signTypedData(signers, chain, address, parameters)
+}
+
+async function getOwnerPasskeySignature<
+  typedData extends TypedData | Record<string, unknown> = TypedData,
+  primaryType extends keyof typedData | 'EIP712Domain' = keyof typedData,
+>(
+  config: RhinestoneConfig,
+  parameters: HashTypedDataParameters<typedData, primaryType>,
+  owner: WebAuthnAccount,
+  validatorSupportsEip712: boolean,
+): Promise<{
+  webauthn: {
+    authenticatorData: Hex
+    clientDataJSON: string
+    challengeIndex?: number | undefined
+    typeIndex?: number | undefined
+    userVerificationRequired?: boolean | undefined
+  }
+  signature: Hex
+}> {
+  if (config.account?.type === 'eoa') {
+    throw new EoaSigningNotSupportedError('packed signatures')
+  }
+  const address = getAddress(config)
+  const accountProvider = getAccountProvider(config)
+  if (accountProvider.type === 'kernel') {
+    const { webauthn, signature } = await owner.sign({
+      hash: wrapKernelMessageHash(hashTypedData(parameters), address),
+    })
+    return { webauthn, signature }
+  }
+  if (!validatorSupportsEip712) {
+    const { webauthn, signature } = await owner.sign({
+      hash: hashTypedData(parameters),
+    })
+    return { webauthn, signature }
+  }
+  const { webauthn, signature } = await owner.signTypedData(parameters)
+  return { webauthn, signature }
 }
 
 async function isDeployed(config: RhinestoneConfig, chain: Chain) {
@@ -970,7 +1035,10 @@ export {
   getSmartAccount,
   getEip1271Signature,
   getEmissarySignature,
+  getOwnerEcdsaSignature,
+  getOwnerPasskeySignature,
   getTypedDataPackedSignature,
+  packAccountSignature,
   // Errors
   isAccountError,
   AccountError,

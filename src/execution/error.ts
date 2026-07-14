@@ -106,6 +106,92 @@ class Eip7702InitSignatureRequiredError extends ExecutionError {
   }
 }
 
+class UnknownOwnerError extends ExecutionError {
+  constructor(params?: {
+    context?: { signer?: string; publicKey?: string; validatorId?: number }
+    errorType?: string
+    traceId?: string
+  }) {
+    super({
+      message:
+        'The provided owner is not part of the account owner set. Pass an account that matches one of the configured `owners` (for multi-factor owner sets, also pass the matching `validatorId`).',
+      ...params,
+    })
+  }
+}
+
+class MismatchedOwnerSignaturesError extends ExecutionError {
+  constructor(params?: {
+    message?: string
+    context?: any
+    errorType?: string
+    traceId?: string
+  }) {
+    super({
+      message:
+        params?.message ??
+        'Owner signatures are inconsistent and cannot be assembled. All owners must sign the same prepared transaction and quote using `signTransaction` with the `owner` option.',
+      ...params,
+    })
+  }
+}
+
+class InsufficientOwnerSignaturesError extends ExecutionError {
+  constructor(params?: {
+    required?: number
+    provided?: number
+    validatorId?: number
+    context?: any
+    errorType?: string
+    traceId?: string
+  }) {
+    super({
+      message:
+        params?.required !== undefined
+          ? params?.validatorId !== undefined
+            ? `Not enough owner signatures to meet the threshold of validator ${params.validatorId}: ${params.provided ?? 0} of ${params.required} required. Collect the missing owner signatures before calling \`assembleTransaction\`.`
+            : `Not enough owner signatures to meet the account threshold: ${params.provided ?? 0} of ${params.required} required. Collect the missing owner signatures before calling \`assembleTransaction\`.`
+          : 'Not enough owner signatures to meet the account threshold. Collect the missing owner signatures before calling `assembleTransaction`.',
+      context: {
+        required: params?.required,
+        provided: params?.provided,
+        validatorId: params?.validatorId,
+        ...params?.context,
+      },
+      errorType: params?.errorType,
+      traceId: params?.traceId,
+    })
+  }
+}
+
+class InvalidOwnerSigningOptionsError extends ExecutionError {
+  constructor(params?: {
+    context?: any
+    errorType?: string
+    traceId?: string
+  }) {
+    super({
+      message:
+        'Invalid per-owner signing options. Pass `validatorId` only for multi-factor accounts, where it must identify the factor containing `owner`.',
+      ...params,
+    })
+  }
+}
+
+class IndependentSigningNotSupportedError extends ExecutionError {
+  constructor(params?: {
+    context?: any
+    errorType?: string
+    traceId?: string
+  }) {
+    super({
+      message:
+        'Independent owner signing is only supported for smart accounts using ECDSA, passkey, or multi-factor owners. EOA accounts, smart sessions, and K1/ERC-7739 validators must use the standard `signTransaction` flow.',
+      ...params,
+    })
+  }
+}
+
 function isExecutionError(error: Error): error is ExecutionError {
   return error instanceof ExecutionError
 }
@@ -114,8 +200,13 @@ export {
   isExecutionError,
   ExecutionError,
   Eip7702InitSignatureRequiredError,
+  IndependentSigningNotSupportedError,
+  InsufficientOwnerSignaturesError,
+  InvalidOwnerSigningOptionsError,
   InvalidSourceCallsError,
+  MismatchedOwnerSignaturesError,
   OrderPathRequiredForIntentsError,
   QuoteNotInPreparedTransactionError,
   IntentFailedError,
+  UnknownOwnerError,
 }

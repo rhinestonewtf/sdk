@@ -18,11 +18,16 @@ import {
 import {
   Eip7702InitSignatureRequiredError,
   ExecutionError,
+  IndependentSigningNotSupportedError,
+  InsufficientOwnerSignaturesError,
   IntentFailedError,
+  InvalidOwnerSigningOptionsError,
   InvalidSourceCallsError,
   isExecutionError,
+  MismatchedOwnerSignaturesError,
   OrderPathRequiredForIntentsError,
   QuoteNotInPreparedTransactionError,
+  UnknownOwnerError,
 } from '../execution'
 import type { ErrorDetail } from '../orchestrator'
 import {
@@ -75,10 +80,15 @@ export {
   isExecutionError,
   ExecutionError,
   Eip7702InitSignatureRequiredError,
+  IndependentSigningNotSupportedError,
+  InsufficientOwnerSignaturesError,
   IntentFailedError,
+  InvalidOwnerSigningOptionsError,
   InvalidSourceCallsError,
+  MismatchedOwnerSignaturesError,
   OrderPathRequiredForIntentsError,
   QuoteNotInPreparedTransactionError,
+  UnknownOwnerError,
   // Orchestrator
   isOrchestratorError,
   isRetryable,

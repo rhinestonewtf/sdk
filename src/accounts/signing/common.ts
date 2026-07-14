@@ -146,7 +146,23 @@ async function signWithMultiFactorAuth<T>(
     }),
   )
 
-  const data = encodeAbiParameters(
+  return packMultiFactorOwnerSignatures(
+    signers.validators.map((validator, index) => ({
+      id: validator.id,
+      validatorAddress: getValidator(validator).address,
+      signature: signatures[index],
+    })),
+  )
+}
+
+function packMultiFactorOwnerSignatures(
+  entries: {
+    id: number | Hex
+    validatorAddress: Address
+    signature: Hex
+  }[],
+): Hex {
+  return encodeAbiParameters(
     [
       {
         components: [
@@ -162,21 +178,46 @@ async function signWithMultiFactorAuth<T>(
       },
     ],
     [
-      signers.validators.map((validator, index) => {
-        const validatorModule = getValidator(validator)
-        return {
-          packedValidatorAndId: concat([
-            pad(toHex(validator.id), {
-              size: 12,
-            }),
-            validatorModule.address,
-          ]),
-          data: signatures[index],
-        }
-      }),
+      entries.map((entry) => ({
+        packedValidatorAndId: concat([
+          pad(toHex(entry.id), {
+            size: 12,
+          }),
+          entry.validatorAddress,
+        ]),
+        data: entry.signature,
+      })),
     ],
   )
-  return data
+}
+
+function packPasskeyOwnerSignatures(
+  chain: Chain,
+  address: Address,
+  publicKeys: Hex[],
+  signatures: { webauthn: WebAuthnSignMetadata; signature: Hex }[],
+  module?: Address,
+): Hex {
+  const usePrecompile = isRip7212SupportedNetwork(chain)
+  const credIds = publicKeys.map((publicKey) => {
+    const { x, y } = parsePublicKey(publicKey)
+    return generateCredentialId(x, y, address)
+  })
+  const webAuthns = signatures.map((signature) => {
+    const { r, s } = parseSignature(signature.signature)
+    return {
+      authenticatorData: signature.webauthn.authenticatorData,
+      clientDataJSON: signature.webauthn.clientDataJSON,
+      challengeIndex: BigInt(signature.webauthn.challengeIndex ?? 0),
+      typeIndex: BigInt(signature.webauthn.typeIndex ?? 0),
+      r,
+      s,
+    }
+  })
+  if (module?.toLowerCase() === WEBAUTHN_V0_VALIDATOR_ADDRESS) {
+    return packPasskeySignatureV0(webAuthns[0], usePrecompile)
+  }
+  return packPasskeySignature(credIds, usePrecompile, webAuthns)
 }
 
 async function signWithSession(
@@ -273,27 +314,13 @@ async function signWithOwners<T>(
           signingFunctions.signPasskey(account, params),
         ),
       )
-      const usePrecompile = isRip7212SupportedNetwork(chain)
-      const credIds = signers.accounts.map((account) => {
-        const publicKey = account.publicKey
-        const { x, y } = parsePublicKey(publicKey)
-        return generateCredentialId(x, y, address)
-      })
-      const webAuthns = signatures.map((signature) => {
-        const { r, s } = parseSignature(signature.signature)
-        return {
-          authenticatorData: signature.webauthn.authenticatorData,
-          clientDataJSON: signature.webauthn.clientDataJSON,
-          challengeIndex: BigInt(signature.webauthn.challengeIndex ?? 0),
-          typeIndex: BigInt(signature.webauthn.typeIndex ?? 0),
-          r,
-          s,
-        }
-      })
-      if (signers.module?.toLowerCase() === WEBAUTHN_V0_VALIDATOR_ADDRESS) {
-        return packPasskeySignatureV0(webAuthns[0], usePrecompile)
-      }
-      return packPasskeySignature(credIds, usePrecompile, webAuthns)
+      return packPasskeyOwnerSignatures(
+        chain,
+        address,
+        signers.accounts.map((account) => account.publicKey),
+        signatures,
+        signers.module,
+      )
     }
     case 'multi-factor': {
       return signWithMultiFactorAuth(
@@ -313,6 +340,8 @@ async function signWithOwners<T>(
 
 export {
   convertOwnerSetToSignerSet,
+  packMultiFactorOwnerSignatures,
+  packPasskeyOwnerSignatures,
   signWithMultiFactorAuth,
   signWithSession,
   signWithOwners,

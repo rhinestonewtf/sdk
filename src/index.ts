@@ -34,14 +34,19 @@ import {
   waitForExecution as waitForExecutionInternal,
 } from './execution'
 import {
+  assembleTransaction as assembleTransactionInternal,
   getTargetExecutionSignature as getTargetExecutionSignatureInternal,
   getTransactionMessages as getTransactionMessagesInternal,
+  type OwnerPasskeySignature,
+  type OwnerSignature,
+  type OwnerSignatureData,
   type PreparedQuotes,
   type PreparedTransactionData,
   type PreparedUserOperationData,
   prepareTransaction as prepareTransactionInternal,
   prepareUserOperation as prepareUserOperationInternal,
   type QuoteSelection,
+  type SignAsOwnerOptions,
   type SignedTransactionData,
   type SignedUserOperationData,
   signAuthorizations as signAuthorizationsInternal,
@@ -205,7 +210,20 @@ interface RhinestoneAccount {
     targetExecution?: TypedDataDefinition
   }
   /**
-   * Sign a prepared transaction.
+   * Sign a prepared transaction as one configured owner. The returned signature
+   * can be serialized and shared with the party coordinating submission.
+   * @param preparedTransaction Prepared transaction data
+   * @param options Owner account, optional quote, and multi-factor validator index
+   * @returns This owner's signature contribution
+   * @see {@link prepareTransaction} to prepare the transaction data for signing
+   * @see {@link assembleTransaction} to combine independent owner signatures
+   */
+  signTransaction(
+    preparedTransaction: PreparedTransactionData,
+    options: SignAsOwnerOptions,
+  ): Promise<OwnerSignature>
+  /**
+   * Sign a prepared transaction with the transaction's configured signers.
    * @param preparedTransaction Prepared transaction data
    * @param options Optional override; pass `{ intentId }` to sign a specific quote from `preparedTransaction.quotes.all`
    * @returns The signed transaction data
@@ -215,6 +233,21 @@ interface RhinestoneAccount {
   signTransaction(
     preparedTransaction: PreparedTransactionData,
     options?: QuoteSelection,
+  ): Promise<SignedTransactionData>
+  /**
+   * Assemble independently collected owner signatures into a signed transaction.
+   * Signatures are deduplicated and ordered according to the configured owner set.
+   * Thresholds are read from the local account configuration; callers must keep
+   * it synchronized with any onchain owner or threshold changes.
+   * @param preparedTransaction The prepared transaction every owner signed
+   * @param signatures Owner signatures returned by `signTransaction` with an `owner` option
+   * @returns Signed transaction data ready for submission
+   * @see {@link signTransaction} to create each owner signature
+   * @see {@link submitTransaction} to submit the result
+   */
+  assembleTransaction(
+    preparedTransaction: PreparedTransactionData,
+    signatures: OwnerSignature[],
   ): Promise<SignedTransactionData>
   /**
    * Sign the EIP-7702 authorizations required for a transaction.
@@ -458,9 +491,27 @@ async function createAccountInternal(
 
   function signTransaction(
     preparedTransaction: PreparedTransactionData,
+    options: SignAsOwnerOptions,
+  ): Promise<OwnerSignature>
+  function signTransaction(
+    preparedTransaction: PreparedTransactionData,
     options?: QuoteSelection,
-  ) {
+  ): Promise<SignedTransactionData>
+  function signTransaction(
+    preparedTransaction: PreparedTransactionData,
+    options?: QuoteSelection | SignAsOwnerOptions,
+  ): Promise<SignedTransactionData | OwnerSignature> {
+    if (options && 'owner' in options) {
+      return signTransactionInternal(config, preparedTransaction, options)
+    }
     return signTransactionInternal(config, preparedTransaction, options)
+  }
+
+  function assembleTransaction(
+    preparedTransaction: PreparedTransactionData,
+    signatures: OwnerSignature[],
+  ) {
+    return assembleTransactionInternal(config, preparedTransaction, signatures)
   }
 
   function signAuthorizations(preparedTransaction: PreparedTransactionData) {
@@ -629,6 +680,7 @@ async function createAccountInternal(
     prepareTransaction,
     getTransactionMessages,
     signTransaction,
+    assembleTransaction,
     signAuthorizations,
     signMessage,
     signTypedData,
@@ -811,6 +863,7 @@ export type {
   PreparedTransactionData,
   Quote,
   QuoteSelection,
+  SignAsOwnerOptions,
   SignedTransactionData,
   TransactionResult,
   PreparedUserOperationData,
@@ -838,4 +891,7 @@ export type {
   OperationStatus,
   FailureReason,
   ChainOperation,
+  OwnerPasskeySignature,
+  OwnerSignature,
+  OwnerSignatureData,
 }
