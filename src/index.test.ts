@@ -27,7 +27,7 @@ vi.mock('./execution/utils', async (importOriginal) => {
   }
 })
 
-const { RhinestoneSDK } = await import('.')
+const { RhinestoneSDK } = await import('./index')
 
 describe('RhinestoneSDK.createAccount', () => {
   beforeEach(() => {

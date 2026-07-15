@@ -4,8 +4,10 @@
     "includes": [
       "**",
       "!src/dist",
+      "!.artifacts",
       "!integration-test",
       "!.changeset",
+      "!test/characterization/baselines",
       "!src/orchestrator/wire.gen.ts"
     ]
   },

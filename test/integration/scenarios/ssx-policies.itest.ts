@@ -2,11 +2,10 @@ import { type Address, encodeFunctionData, erc20Abi } from 'viem'
 import { describe, test } from 'vitest'
 import { SimulationFailedError } from '../../../src/errors/index'
 import type { RhinestoneAccount, Session } from '../../../src/index'
-import { toSession } from '../../../src/modules/validators/smart-sessions'
 import { getTokenAddress } from '../../../src/orchestrator/registry'
 import { sourceChain } from '../config/chains'
 import { createIntegrationSDK } from '../config/environment'
-import { createOwner } from '../framework/fixtures'
+import { createIntegrationSession, createOwner } from '../framework/fixtures'
 import { ensureFunded, waitForOrchestratorUsdc } from '../framework/funding'
 import {
   executeIntent,
@@ -39,7 +38,7 @@ function usdcTransfer(to: Address, amount: bigint) {
 }
 
 function spendingLimitSession(amount: bigint): Session {
-  return toSession({
+  return createIntegrationSession({
     chain: sourceChain,
     owners: { type: 'ecdsa', accounts: [createOwner()] },
     permissions: [
@@ -55,7 +54,7 @@ function spendingLimitSession(amount: bigint): Session {
 function allowlistSession(
   recipients: readonly [Address, ...Address[]],
 ): Session {
-  return toSession({
+  return createIntegrationSession({
     chain: sourceChain,
     owners: { type: 'ecdsa', accounts: [createOwner()] },
     permissions: [

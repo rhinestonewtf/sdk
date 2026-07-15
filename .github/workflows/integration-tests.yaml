@@ -14,11 +14,11 @@ on:
       target:
         description: "Orchestrator environment to run against"
         required: true
-        default: "prod"
+        default: "dev"
         type: choice
         options:
-          - prod
           - dev
+          - prod
 
 concurrency:
   group: live-integration-tests
@@ -29,10 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      # When target=dev, point the SDK at the dev orchestrator. The SDK then
-      # auto-enables dev contract addresses (see createIntegrationSDK), so
-      # bundles simulate against the matching dev deployment. Empty for prod
-      # falls back to the SDK's built-in prod URL + prod contracts.
+      INTEGRATION_TARGET: ${{ inputs.target }}
       INTEGRATION_ORCHESTRATOR_URL: ${{ inputs.target == 'dev' && 'https://dev.v1.orchestrator.rhinestone.dev' || '' }}
       # Funder for the funded specs in the `all` suite (smoke needs none). The
       # address must hold testnet native + USDC; same testnet key for prod/dev.

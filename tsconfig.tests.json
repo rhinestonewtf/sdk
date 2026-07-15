@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "noEmit": true
+  },
+  "include": [
+    "scripts/characterization/**/*.ts",
+    "scripts/contract/**/*.ts",
+    "test/characterization/**/*.ts",
+    "test/contract/*.ctest.ts",
+    "test/fakes/**/*.ts",
+    "test/vectors/**/*.ts",
+    "vitest.config.*.ts"
+  ],
+  "exclude": ["node_modules", "src/dist", "test/contract/fixtures"]
+}

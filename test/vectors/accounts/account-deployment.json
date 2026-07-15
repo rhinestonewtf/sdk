@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "kind": "release-calibration",
+    "sha": "49efb8b8d957b2eea2b24c11ac56d6c4d80478d6"
+  },
+  "owner": "0xF6C02c78Ded62973b43bfa523B247dA099486936",
+  "cases": [
+    {
+      "id": "safe-1.4.1-adapter-1",
+      "address": "0x6903edC0Ef63Ee7B8F0605B11F16e2e85A8dF62F",
+      "factory": "0x4e1dcf7ad4e460cfd30791ccc4f9c8a4f820ec67",
+      "factoryDataHash": "0x061b5a8e2cdebe61392e9ef0295fcda20c3ef9a1e5e16f364d26adbdaf725403"
+    },
+    {
+      "id": "safe-1.4.1-adapter-2",
+      "address": "0x6903edC0Ef63Ee7B8F0605B11F16e2e85A8dF62F",
+      "factory": "0x4e1dcf7ad4e460cfd30791ccc4f9c8a4f820ec67",
+      "factoryDataHash": "0x061b5a8e2cdebe61392e9ef0295fcda20c3ef9a1e5e16f364d26adbdaf725403"
+    },
+    {
+      "id": "nexus-1.0.2",
+      "address": "0x36C03e7D593F7B2C6b06fC18B5f4E9a4A29C99b0",
+      "factory": "0x0000000000679a258c64d2f20f310e12b64b7375",
+      "factoryDataHash": "0xd5636e66ad18a8ae07464cf12e1ae63bcc9873f62bfaeda238eca1dc3df3597e"
+    },
+    {
+      "id": "nexus-1.2.0",
+      "address": "0x36C03e7D593F7B2C6b06fC18B5f4E9a4A29C99b0",
+      "factory": "0x0000000000679a258c64d2f20f310e12b64b7375",
+      "factoryDataHash": "0xd5636e66ad18a8ae07464cf12e1ae63bcc9873f62bfaeda238eca1dc3df3597e"
+    },
+    {
+      "id": "nexus-rhinestone-beta",
+      "address": "0x36C03e7D593F7B2C6b06fC18B5f4E9a4A29C99b0",
+      "factory": "0x0000000000679a258c64d2f20f310e12b64b7375",
+      "factoryDataHash": "0xd5636e66ad18a8ae07464cf12e1ae63bcc9873f62bfaeda238eca1dc3df3597e"
+    },
+    {
+      "id": "nexus-rhinestone-release",
+      "address": "0x36C03e7D593F7B2C6b06fC18B5f4E9a4A29C99b0",
+      "factory": "0x0000000000679a258c64d2f20f310e12b64b7375",
+      "factoryDataHash": "0xd5636e66ad18a8ae07464cf12e1ae63bcc9873f62bfaeda238eca1dc3df3597e"
+    },
+    {
+      "id": "kernel-3.1",
+      "address": "0xef76F1eDB9C4918415d5d0aC3Cb4818335Ca68e9",
+      "factory": "0xd703aae79538628d27099b8c4f621be4ccd142d5",
+      "factoryDataHash": "0xef21b650a250e0f92957625337bc22ecc292d2dfba3c0906420503320fcb9150"
+    },
+    {
+      "id": "kernel-3.2",
+      "address": "0xef76F1eDB9C4918415d5d0aC3Cb4818335Ca68e9",
+      "factory": "0xd703aae79538628d27099b8c4f621be4ccd142d5",
+      "factoryDataHash": "0xef21b650a250e0f92957625337bc22ecc292d2dfba3c0906420503320fcb9150"
+    },
+    {
+      "id": "kernel-3.3",
+      "address": "0xef76F1eDB9C4918415d5d0aC3Cb4818335Ca68e9",
+      "factory": "0xd703aae79538628d27099b8c4f621be4ccd142d5",
+      "factoryDataHash": "0xef21b650a250e0f92957625337bc22ecc292d2dfba3c0906420503320fcb9150"
+    },
+    {
+      "id": "startale",
+      "address": "0x8cdf27ccdec0ae54029a67b2edb5391e438aa023",
+      "factory": "0x0000003b3e7b530b4f981ae80d9350392defef90",
+      "factoryDataHash": "0x7c9f074a6ec654084f91cd2f6a8cd84efa6337716f5921b8085c576c87fc6173"
+    },
+    {
+      "id": "hca",
+      "address": "0x97068bf8c80ba2971a236f55d01becc090d22ef2",
+      "factory": "0x358680728dedb552adaa9f5eb5d4395b291cf943",
+      "factoryDataHash": "0xc2a5ea9f0f0cd5ca05419494bb1d08eca99190ad4d43d9349e61ae92f4448c09"
+    }
+  ]
+}

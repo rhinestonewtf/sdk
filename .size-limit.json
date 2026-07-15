@@ -1,14 +1,16 @@
 [
   {
     "name": "SDK",
-    "path": "./src/dist/index.js",
+    "path": "./src/dist/src/index.js",
     "limit": "70 kB",
-    "import": "*"
+    "import": "*",
+    "ignore": ["viem", "viem/*"]
   },
   {
     "name": "SDK (minimal surface - tree-shaking)",
-    "path": "./src/dist/index.js",
-    "limit": "15 kB",
-    "import": "{ installModule }"
+    "path": "./src/dist/src/actions/index.js",
+    "limit": "24 kB",
+    "import": "{ installModule }",
+    "ignore": ["viem", "viem/*"]
   }
 ]

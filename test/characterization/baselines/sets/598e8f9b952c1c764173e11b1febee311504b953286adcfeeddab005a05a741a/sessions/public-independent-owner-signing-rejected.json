@@ -1,0 +1,66 @@
+{
+  "appliedIdentities": [],
+  "appliedNormalizations": [],
+  "baseSha": "49efb8b8d957b2eea2b24c11ac56d6c4d80478d6",
+  "catalogVersion": 1,
+  "environment": {
+    "attributes": {
+      "sourceChainId": 84532,
+      "targetChainId": 421614,
+      "useDevContracts": true
+    },
+    "id": "development"
+  },
+  "generatedAt": "2026-07-15T20:29:17.721Z",
+  "normalizedObservation": {
+    "mode": "sign",
+    "outcome": {
+      "error": {
+        "class": "IndependentSigningNotSupportedError",
+        "message": "Independent owner signing is only supported for smart accounts using ECDSA, passkey, or multi-factor owners. EOA accounts, smart sessions, and K1/ERC-7739 validators must use the standard `signTransaction` flow.",
+        "name": "Error",
+        "phase": "sign"
+      },
+      "status": "failure"
+    },
+    "sign": {
+      "account": {
+        "address": "0x75aF922421bDc5015063DE3562Dc8010F14bb87e"
+      },
+      "signing": {
+        "caseId": "session-independent-rejection"
+      }
+    },
+    "workflow": "direct-signing"
+  },
+  "normalizerVersion": 2,
+  "observation": {
+    "comparisonGroup": "sdk-characterization:v1:49efb8b8d957b2eea2b24c11ac56d6c4d80478d6:baseline-dev-release-49efb8b:sessions/public-independent-owner-signing-rejected",
+    "mode": "sign",
+    "outcome": {
+      "error": {
+        "class": "IndependentSigningNotSupportedError",
+        "message": "Independent owner signing is only supported for smart accounts using ECDSA, passkey, or multi-factor owners. EOA accounts, smart sessions, and K1/ERC-7739 validators must use the standard `signTransaction` flow.",
+        "name": "Error",
+        "phase": "sign"
+      },
+      "status": "failure"
+    },
+    "runId": "baseline-dev-release-49efb8b",
+    "scenarioId": "sessions/public-independent-owner-signing-rejected",
+    "schemaVersion": 1,
+    "sign": {
+      "account": {
+        "address": "0x75aF922421bDc5015063DE3562Dc8010F14bb87e"
+      },
+      "signing": {
+        "caseId": "session-independent-rejection"
+      }
+    },
+    "subject": "legacy",
+    "workflow": "direct-signing"
+  },
+  "scenarioId": "sessions/public-independent-owner-signing-rejected",
+  "schemaVersion": 1,
+  "secretScan": "passed"
+}

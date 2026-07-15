@@ -1,0 +1,68 @@
+{
+  "appliedIdentities": [],
+  "appliedNormalizations": [],
+  "baseSha": "49efb8b8d957b2eea2b24c11ac56d6c4d80478d6",
+  "catalogVersion": 1,
+  "environment": {
+    "attributes": {
+      "sourceChainId": 84532,
+      "targetChainId": 421614,
+      "useDevContracts": true
+    },
+    "id": "development"
+  },
+  "generatedAt": "2026-07-15T20:29:17.721Z",
+  "normalizedObservation": {
+    "mode": "sign",
+    "outcome": {
+      "status": "success"
+    },
+    "sign": {
+      "account": {
+        "address": "0x3a254a34193bc9cdcd30c8833034b271e3c7b199"
+      },
+      "artifacts": {
+        "kind": "erc7739-verification",
+        "rpcMethods": [
+          "eth_getCode"
+        ],
+        "value": "0x000000000013fdb5234e4e3162a810f54d9f7e98e57ea92c9e5ed2a2de650c7b19ac78e5af7305b262180ff9e5a3c56c8cad5b0139ece518deea3ab027574e023069f741d8a4669bfd7878d07e7ac1531b5033fa1b"
+      },
+      "signing": {
+        "caseId": "erc7739-verification"
+      }
+    },
+    "workflow": "direct-signing"
+  },
+  "normalizerVersion": 2,
+  "observation": {
+    "comparisonGroup": "sdk-characterization:v1:49efb8b8d957b2eea2b24c11ac56d6c4d80478d6:baseline-dev-release-49efb8b:direct-signing/startale-erc7739",
+    "mode": "sign",
+    "outcome": {
+      "status": "success"
+    },
+    "runId": "baseline-dev-release-49efb8b",
+    "scenarioId": "direct-signing/startale-erc7739",
+    "schemaVersion": 1,
+    "sign": {
+      "account": {
+        "address": "0x3a254a34193bc9cdcd30c8833034b271e3c7b199"
+      },
+      "artifacts": {
+        "kind": "erc7739-verification",
+        "rpcMethods": [
+          "eth_getCode"
+        ],
+        "value": "0x000000000013fdb5234e4e3162a810f54d9f7e98e57ea92c9e5ed2a2de650c7b19ac78e5af7305b262180ff9e5a3c56c8cad5b0139ece518deea3ab027574e023069f741d8a4669bfd7878d07e7ac1531b5033fa1b"
+      },
+      "signing": {
+        "caseId": "erc7739-verification"
+      }
+    },
+    "subject": "legacy",
+    "workflow": "direct-signing"
+  },
+  "scenarioId": "direct-signing/startale-erc7739",
+  "schemaVersion": 1,
+  "secretScan": "passed"
+}

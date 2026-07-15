@@ -9,6 +9,7 @@
       "devDependencies": {
         "@biomejs/biome": "^2.1.0",
         "@changesets/cli": "^2.28.1",
+        "@noble/curves": "1.9.1",
         "@size-limit/esbuild-why": "^11.2.0",
         "@size-limit/preset-small-lib": "^11.2.0",
         "@types/bun": "^1.2.8",

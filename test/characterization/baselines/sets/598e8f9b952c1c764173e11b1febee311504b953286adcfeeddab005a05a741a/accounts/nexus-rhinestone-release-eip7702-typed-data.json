@@ -1,0 +1,68 @@
+{
+  "appliedIdentities": [],
+  "appliedNormalizations": [],
+  "baseSha": "49efb8b8d957b2eea2b24c11ac56d6c4d80478d6",
+  "catalogVersion": 1,
+  "environment": {
+    "attributes": {
+      "sourceChainId": 84532,
+      "targetChainId": 421614,
+      "useDevContracts": true
+    },
+    "id": "development"
+  },
+  "generatedAt": "2026-07-15T20:29:17.721Z",
+  "normalizedObservation": {
+    "mode": "sign",
+    "outcome": {
+      "status": "success"
+    },
+    "sign": {
+      "account": {
+        "address": "0xD078732dCb20E6b39bd1A7cdDF26B3cC6dF27adc"
+      },
+      "artifacts": {
+        "kind": "typed-data",
+        "rpcMethods": [
+          "eth_getCode"
+        ],
+        "value": "0x00000000000000000000000000000000000000004b4dbbec7c8ee593bb443356cc7b8b2b2d1a489d418d142aa6a780783b7fb4614511d1d1d68a0e4fe94f1edc7388b85409eaffe4ec754acafb6ed326745a214f1b"
+      },
+      "signing": {
+        "caseId": "typed-data"
+      }
+    },
+    "workflow": "direct-signing"
+  },
+  "normalizerVersion": 2,
+  "observation": {
+    "comparisonGroup": "sdk-characterization:v1:49efb8b8d957b2eea2b24c11ac56d6c4d80478d6:baseline-dev-release-49efb8b:accounts/nexus-rhinestone-release-eip7702-typed-data",
+    "mode": "sign",
+    "outcome": {
+      "status": "success"
+    },
+    "runId": "baseline-dev-release-49efb8b",
+    "scenarioId": "accounts/nexus-rhinestone-release-eip7702-typed-data",
+    "schemaVersion": 1,
+    "sign": {
+      "account": {
+        "address": "0xD078732dCb20E6b39bd1A7cdDF26B3cC6dF27adc"
+      },
+      "artifacts": {
+        "kind": "typed-data",
+        "rpcMethods": [
+          "eth_getCode"
+        ],
+        "value": "0x00000000000000000000000000000000000000004b4dbbec7c8ee593bb443356cc7b8b2b2d1a489d418d142aa6a780783b7fb4614511d1d1d68a0e4fe94f1edc7388b85409eaffe4ec754acafb6ed326745a214f1b"
+      },
+      "signing": {
+        "caseId": "typed-data"
+      }
+    },
+    "subject": "legacy",
+    "workflow": "direct-signing"
+  },
+  "scenarioId": "accounts/nexus-rhinestone-release-eip7702-typed-data",
+  "schemaVersion": 1,
+  "secretScan": "passed"
+}
