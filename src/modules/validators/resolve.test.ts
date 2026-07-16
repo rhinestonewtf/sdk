@@ -105,7 +105,7 @@ describe('validator resolution', () => {
       true,
     )
     expect(capabilities.signerTopology).toBe('nested-threshold')
-    expect(capabilities.recoveryEncoding).toBe('validator-offset-4')
+    expect(capabilities.recoveryEncoding).toBe('ethereum')
     expect(capabilities.contributionCodec.kind).toBe('nested-threshold')
     expect(capabilities.supportsOriginReuse).toBe(true)
 
@@ -139,6 +139,23 @@ describe('validator resolution', () => {
         true,
       ).signerTopology,
     ).toBe('single')
+
+    const passkeys = validator({
+      type: 'passkey',
+      accounts: [
+        passkeyAccount,
+        { ...passkeyAccount, publicKey: `0x04${'33'.repeat(64)}` },
+      ],
+    })
+    expect(
+      getValidatorCapabilities(
+        passkeys,
+        resolveValidator(passkeys),
+        'nexus',
+        'intent',
+        true,
+      ).contributionCodec,
+    ).toMatchObject({ kind: 'ordered-threshold' })
   })
 
   test('rejects validators whose owner shape does not match their codec', () => {
@@ -181,12 +198,10 @@ describe('validator resolution', () => {
       index === 0 ? 4 : index,
     )
     expect(parseWebauthnPublicKey(bytes).prefix).toBe(4)
-    expect(() => parseWebauthnPublicKey(new Uint8Array(63))).toThrow(
-      '64 or 65 bytes',
-    )
-    expect(() =>
-      parseWebauthnPublicKey(Uint8Array.from({ length: 65 }, () => 3)),
-    ).toThrow('uncompressed public keys')
+    expect(parseWebauthnPublicKey(new Uint8Array(63))).toEqual({ x: 0n, y: 0n })
+    expect(
+      parseWebauthnPublicKey(Uint8Array.from({ length: 65 }, () => 3)).prefix,
+    ).toBe(3)
     const custom = resolveWebauthnCredentials({
       credentials: [
         { pubKey: parsed, authenticatorId: 'object' },

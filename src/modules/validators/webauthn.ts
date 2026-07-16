@@ -1,4 +1,11 @@
-import { bytesToHex, encodeAbiParameters, type Hex, hexToBytes } from 'viem'
+import {
+  type Address,
+  bytesToHex,
+  encodeAbiParameters,
+  type Hex,
+  hexToBytes,
+  keccak256,
+} from 'viem'
 import type { ResolvedModule } from '../types'
 import type { AtomicValidatorDefinition } from './types'
 
@@ -20,6 +27,15 @@ export interface WebauthnCredential {
   readonly authenticatorId: string
 }
 
+export interface WebAuthnSignature {
+  authenticatorData: Hex
+  clientDataJSON: string
+  challengeIndex: bigint
+  typeIndex: bigint
+  r: bigint
+  s: bigint
+}
+
 export function parseWebauthnPublicKey(
   publicKey: Hex | Uint8Array,
 ): WebauthnPublicKey {
@@ -27,17 +43,161 @@ export function parseWebauthnPublicKey(
     typeof publicKey === 'string' ? hexToBytes(publicKey) : publicKey
   const offset = bytes.length === 65 ? 1 : 0
   const prefix = offset === 1 ? bytes[0] : undefined
-  if (bytes.length !== 64 && bytes.length !== 65) {
-    throw new Error('WebAuthn public key must contain 64 or 65 bytes')
-  }
-  if (prefix !== undefined && prefix !== 4) {
-    throw new Error('Only uncompressed public keys are supported')
-  }
   return {
     ...(prefix === undefined ? {} : { prefix }),
     x: BigInt(bytesToHex(bytes.slice(offset, 32 + offset))),
     y: BigInt(bytesToHex(bytes.slice(32 + offset, 64 + offset))),
   }
+}
+
+export function parseWebauthnSignature(signature: Hex | Uint8Array): {
+  readonly r: bigint
+  readonly s: bigint
+} {
+  const bytes =
+    typeof signature === 'string' ? hexToBytes(signature) : signature
+  return {
+    r: BigInt(bytesToHex(bytes.slice(0, 32))),
+    s: BigInt(bytesToHex(bytes.slice(32, 64))),
+  }
+}
+
+export function generateWebauthnCredentialId(
+  pubKeyX: bigint,
+  pubKeyY: bigint,
+  account: Address,
+): Hex {
+  return keccak256(
+    encodeAbiParameters(
+      [{ type: 'uint256' }, { type: 'uint256' }, { type: 'address' }],
+      [pubKeyX, pubKeyY, account],
+    ),
+  )
+}
+
+export function encodeWebauthnSignatures(
+  credentialIds: readonly Hex[],
+  usePrecompile: boolean,
+  signatures: readonly WebAuthnSignature[],
+): Hex {
+  const ordered = credentialIds
+    .map((credentialId, index) => ({
+      credentialId,
+      signature: signatures[index],
+    }))
+    .sort((left, right) => left.credentialId.localeCompare(right.credentialId))
+  return encodeAbiParameters(
+    [
+      { type: 'bytes32[]', name: 'credIds' },
+      { type: 'bool', name: 'usePrecompile' },
+      {
+        type: 'tuple[]',
+        name: 'webAuthns',
+        components: [
+          { type: 'bytes', name: 'authenticatorData' },
+          { type: 'string', name: 'clientDataJSON' },
+          { type: 'uint256', name: 'challengeIndex' },
+          { type: 'uint256', name: 'typeIndex' },
+          { type: 'uint256', name: 'r' },
+          { type: 'uint256', name: 's' },
+        ],
+      },
+    ],
+    [
+      ordered.map(({ credentialId }) => credentialId),
+      usePrecompile,
+      ordered.map(({ signature }) => signature),
+    ],
+  )
+}
+
+export function encodeWebauthnSignatureV0(
+  signature: Omit<WebAuthnSignature, 'challengeIndex'>,
+  usePrecompile: boolean,
+): Hex {
+  return encodeAbiParameters(
+    [
+      { type: 'bytes', name: 'authenticatorData' },
+      { type: 'string', name: 'clientDataJSON' },
+      { type: 'uint256', name: 'responseTypeLocation' },
+      { type: 'uint256', name: 'r' },
+      { type: 'uint256', name: 's' },
+      { type: 'bool', name: 'usePrecompiled' },
+    ],
+    [
+      signature.authenticatorData,
+      signature.clientDataJSON,
+      signature.typeIndex,
+      signature.r,
+      signature.s,
+      usePrecompile,
+    ],
+  )
+}
+
+export function encodeWebauthnValidatorContribution(input: {
+  readonly ownerOrder: readonly string[]
+  readonly threshold: number
+  readonly account: Address
+  readonly usePrecompile: boolean
+  readonly format: 'current' | 'v0'
+  readonly contributions: readonly {
+    readonly ownerId: string
+    readonly publicKey: Hex
+    readonly signature: Hex
+    readonly authenticatorData: Hex
+    readonly clientDataJSON: string
+    readonly challengeIndex: number
+    readonly typeIndex: number
+  }[]
+}): Hex {
+  if (input.threshold < 1 || input.threshold > input.ownerOrder.length) {
+    throw new Error('Validator threshold is outside the configured owner set')
+  }
+  const configured = new Set(input.ownerOrder)
+  const contributions = new Map<string, (typeof input.contributions)[number]>()
+  for (const contribution of input.contributions) {
+    if (!configured.has(contribution.ownerId)) {
+      throw new Error(`Unknown validator owner ${contribution.ownerId}`)
+    }
+    if (contributions.has(contribution.ownerId)) {
+      throw new Error(`Duplicate validator owner ${contribution.ownerId}`)
+    }
+    contributions.set(contribution.ownerId, contribution)
+  }
+  const ordered = input.ownerOrder.flatMap((ownerId) => {
+    const contribution = contributions.get(ownerId)
+    return contribution ? [contribution] : []
+  })
+  if (ordered.length < input.threshold) {
+    throw new Error(
+      `Insufficient validator contributions: required ${input.threshold}, received ${ordered.length}`,
+    )
+  }
+  const signatures = ordered.map(
+    (contribution): WebAuthnSignature => ({
+      authenticatorData: contribution.authenticatorData,
+      clientDataJSON: contribution.clientDataJSON,
+      challengeIndex: BigInt(contribution.challengeIndex),
+      typeIndex: BigInt(contribution.typeIndex),
+      ...parseWebauthnSignature(contribution.signature),
+    }),
+  )
+  if (input.format === 'v0') {
+    if (signatures.length !== 1) {
+      throw new Error('WebAuthn V0 accepts exactly one contribution')
+    }
+    return encodeWebauthnSignatureV0(signatures[0], input.usePrecompile)
+  }
+  const credentialIds = ordered.map((contribution) => {
+    const publicKey = parseWebauthnPublicKey(contribution.publicKey)
+    return generateWebauthnCredentialId(publicKey.x, publicKey.y, input.account)
+  })
+  return encodeWebauthnSignatures(
+    credentialIds,
+    input.usePrecompile,
+    signatures,
+  )
 }
 
 export function resolveWebauthnCredentials(input: {

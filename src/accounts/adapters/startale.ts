@@ -13,6 +13,7 @@ import {
   zeroHash,
 } from 'viem'
 import type { ModuleSetup } from '../../modules/types'
+import { K1_DEFAULT_VALIDATOR_ADDRESS } from '../../modules/validators/k1'
 import type { AccountAdapter } from '../adapter'
 import { type DeploymentMaterial, deploymentPlan } from '../deployment'
 import { encodeErc7579Calls } from '../erc7579-calls'
@@ -24,8 +25,7 @@ import {
   primaryOwnerAddresses,
 } from './shared'
 
-export const K1_DEFAULT_VALIDATOR_ADDRESS =
-  '0x00000072f286204bb934ed49d8969e86f7dec7b1' as const
+export { K1_DEFAULT_VALIDATOR_ADDRESS }
 const STARTALE_IMPLEMENTATION_ADDRESS =
   '0x000000b8f5f723a680d3d7ee624fe0bc84a6e05a' as const
 const STARTALE_FACTORY_ADDRESS =

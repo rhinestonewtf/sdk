@@ -1,6 +1,7 @@
 import type { Account, Address, Hex } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
 import type { ModuleId } from '../types'
+import type { SmartSessionEnableContributionData } from './smart-session-signature-types'
 
 export type ValidatorKind =
   | 'ecdsa'
@@ -102,6 +103,11 @@ export type ValidatorContributionCodec =
       readonly ownerOrder: readonly string[]
       readonly threshold: number
       readonly recoveryEncoding: 'ethereum' | 'validator-offset-4'
+      readonly webauthn?: {
+        readonly account: Address
+        readonly usePrecompile: boolean
+        readonly format: 'current' | 'v0'
+      }
     }
   | {
       readonly kind: 'nested-threshold'
@@ -114,6 +120,38 @@ export type ValidatorContributionCodec =
       readonly validator: ModuleId
       readonly mode: 'use' | 'enable-and-use' | 'pre-claim' | 'notarized'
       readonly permissionId: Hex
+      readonly claimPolicyData?: Hex
+      readonly enableData?: SmartSessionEnableContributionData
+    }
+
+export type ValidatorContributionInput =
+  | {
+      readonly kind: 'ecdsa'
+      readonly ownerId: string
+      readonly signature: Hex
+      readonly encoding: 'raw-signer' | 'validator-contribution'
+    }
+  | {
+      readonly kind: 'webauthn'
+      readonly ownerId: string
+      readonly publicKey: Hex
+      readonly signature: Hex
+      readonly authenticatorData: Hex
+      readonly clientDataJSON: string
+      readonly challengeIndex: number
+      readonly typeIndex: number
+      readonly userVerificationRequired: boolean
+    }
+  | {
+      readonly kind: 'factor'
+      readonly factorId: string
+      readonly publicId: number | Hex
+      readonly validator: Address
+      readonly contribution: Hex
+    }
+  | {
+      readonly kind: 'session'
+      readonly signature: Hex
     }
 
 export interface ValidatorCapabilities {

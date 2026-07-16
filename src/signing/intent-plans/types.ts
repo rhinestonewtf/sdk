@@ -1,9 +1,14 @@
 import type { Hex, TypedDataDefinition } from 'viem'
 import type { EvmChainReference } from '../../chains/types'
 import type {
+  ArtifactAssemblyPlan,
   ConfiguredValidatorTopology,
   EffectiveSignerSelection,
   SignatureUsage,
+  SigningBatch,
+  SigningPayloadRegistry,
+  SigningReadCheckpoint,
+  SigningTaskTemplate,
 } from '../types'
 
 export type PreparedIntentSignatureMode =
@@ -37,6 +42,7 @@ export interface IntentArtifactRequirement {
   readonly usage: SignatureUsage
   readonly payloadId: Hex
   readonly cardinality: 'one' | 'per-origin'
+  readonly shape: 'hex' | 'session-claims'
   readonly exposedForIndependentSigning: boolean
 }
 
@@ -56,4 +62,23 @@ export interface IndependentSigningProjection {
   readonly sourceIntentId: Hex
   readonly exposedArtifactIds: readonly string[]
   readonly selectedSignerIds: readonly string[]
+}
+
+export interface IntentSigningStageInput {
+  readonly id: string
+  readonly checkpoint: SigningReadCheckpoint
+  readonly priorOutputs: readonly {
+    readonly stageId: string
+    readonly outputId: string
+    readonly selection: 'whole' | 'pre-claim'
+  }[]
+  readonly tasks: readonly SigningTaskTemplate[]
+  readonly schedule: readonly SigningBatch[]
+  readonly artifacts: readonly Omit<ArtifactAssemblyPlan, 'stageId'>[]
+}
+
+export interface IntentSigningPlanCreationInput {
+  readonly intent: IntentSigningInput
+  readonly stages: readonly IntentSigningStageInput[]
+  readonly payloads: SigningPayloadRegistry
 }

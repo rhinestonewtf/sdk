@@ -9,6 +9,21 @@ import type { AccountSignatureEnvelope } from '../accounts/types'
 import type { EvmChainReference } from '../chains/types'
 import type { ValidatorContributionCodec } from '../modules/validators/types'
 
+export type PlannedValidatorContributionCodec =
+  | ValidatorContributionCodec
+  | {
+      readonly kind: 'smart-session-state'
+      readonly factId: string
+      readonly whenEnabled: Extract<
+        ValidatorContributionCodec,
+        { readonly kind: 'smart-session' }
+      >
+      readonly whenDisabled: Extract<
+        ValidatorContributionCodec,
+        { readonly kind: 'smart-session' }
+      >
+    }
+
 export type SigningPlanKind =
   | 'account-message'
   | 'account-typed-data'
@@ -81,11 +96,44 @@ export type RawSignerResult =
       readonly authorization: SignedAuthorization
     }
 
+export type SigningArtifact =
+  | Hex
+  | SignedAuthorization
+  | {
+      readonly preClaimSig: Hex
+      readonly notarizedClaimSig: Hex
+    }
+
+export type SigningPayloadMaterial =
+  | {
+      readonly kind: 'message'
+      readonly message: { readonly raw: Hex }
+    }
+  | {
+      readonly kind: 'typed-data'
+      readonly typedData: TypedDataDefinition
+    }
+  | {
+      readonly kind: 'authorization'
+      readonly authorization: AuthorizationRequest
+    }
+
+export type SigningPayloadRegistry = Readonly<
+  Record<Hex, SigningPayloadMaterial>
+>
+
 export interface SignerInvocationPort {
+  readonly has?: (signer: SignerReference) => boolean
   readonly invoke: (
     signer: SignerReference,
     invocation: SignerInvocation,
   ) => Promise<RawSignerResult>
+}
+
+export interface SigningCheckpointPort {
+  readonly read: (
+    checkpoint: Exclude<SigningReadCheckpoint, { readonly kind: 'none' }>,
+  ) => Promise<readonly SigningRuntimeFact[]>
 }
 
 export type SigningTaskRole =
@@ -118,7 +166,29 @@ export interface SigningTaskTemplate {
   readonly chain?: EvmChainReference
   readonly invocationKind: SignerInvocation['kind']
   readonly payload: SigningPayloadReference
+  readonly when?: {
+    readonly kind: 'delegation-required'
+    readonly factId: string
+    readonly contract: Address
+  }
+  readonly contribution?:
+    | {
+        readonly kind: 'ecdsa'
+        readonly ownerId: string
+        readonly encoding: 'raw-signer' | 'validator-contribution'
+        readonly factorId?: string
+      }
+    | {
+        readonly kind: 'webauthn'
+        readonly ownerId: string
+        readonly publicKey: Hex
+        readonly factorId?: string
+      }
+    | { readonly kind: 'session' }
+    | { readonly kind: 'authorization' }
 }
+
+export type PayloadSigningTask = Omit<SigningTaskTemplate, 'chain' | 'payload'>
 
 export interface SigningTask
   extends Omit<SigningTaskTemplate, 'invocationKind'> {
@@ -208,12 +278,29 @@ export interface ArtifactAssemblyPlan {
         readonly artifactId: string
         readonly selection: 'whole' | 'pre-claim'
       }
+    | {
+        readonly kind: 'session-claim-pair'
+        readonly preClaimArtifactId: string
+        readonly notarizedClaimArtifactId: string
+      }
   readonly validatorCodec:
-    | ValidatorContributionCodec
+    | PlannedValidatorContributionCodec
     | { readonly kind: 'none' }
+  readonly validatorFactors?: readonly {
+    readonly id: string
+    readonly publicId: number | Hex
+    readonly validator: Address
+    readonly codec: Extract<
+      ValidatorContributionCodec,
+      { readonly kind: 'ordered-threshold' }
+    >
+  }[]
   readonly erc7739:
     | { readonly kind: 'none' }
-    | { readonly kind: 'wrap'; readonly domainSeparator: Hex }
+    | {
+        readonly kind: 'wrap-typed-data'
+        readonly typedData: TypedDataDefinition
+      }
   readonly accountEnvelope: AccountSignatureEnvelope
   readonly erc6492:
     | { readonly kind: 'none' }
@@ -243,6 +330,35 @@ export interface SigningPlan {
   readonly payload: SigningPayloadIdentity
   readonly configuredTopology: ConfiguredValidatorTopology
   readonly effectiveSelection: EffectiveSignerSelection
+  readonly preparedIntent?: {
+    readonly signatureMode:
+      | 'default'
+      | 'session'
+      | 'session-with-execution-verification'
+    readonly artifacts: readonly {
+      readonly id: string
+      readonly usage: SignatureUsage
+      readonly payloadId: Hex
+      readonly cardinality: 'one' | 'per-origin'
+      readonly shape: 'hex' | 'session-claims'
+    }[]
+    readonly destination?:
+      | {
+          readonly mode: 'sign'
+          readonly artifactId: string
+          readonly payloadId: Hex
+        }
+      | {
+          readonly mode: 'reuse-origin'
+          readonly artifactId: string
+          readonly originArtifactId: string
+          readonly selection: 'whole' | 'pre-claim'
+        }
+    readonly target?: {
+      readonly artifactId: string
+      readonly payloadId: Hex
+    }
+  }
   readonly stages: readonly SigningStagePlan[]
   readonly publicOutputs: readonly {
     readonly id: string
@@ -263,7 +379,7 @@ export interface MaterializedSigningStage {
 export interface SigningStageTranscript {
   readonly stage: MaterializedSigningStage
   readonly results: Readonly<Record<string, RawSignerResult>>
-  readonly outputs: Readonly<Record<string, Hex>>
+  readonly outputs: Readonly<Record<string, SigningArtifact>>
 }
 
 export interface SigningTranscript {

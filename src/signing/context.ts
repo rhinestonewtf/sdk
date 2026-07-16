@@ -1,3 +1,4 @@
+import type { AccountAdapter } from '../accounts/adapter'
 import type { AccountCapabilities, AccountIdentity } from '../accounts/types'
 import type {
   ResolvedValidatorDefinition,
@@ -11,6 +12,7 @@ import type {
 
 export interface SigningContext {
   readonly account: AccountIdentity
+  readonly accountAdapter: AccountAdapter
   readonly accountCapabilities: AccountCapabilities
   readonly validator: ResolvedValidatorDefinition
   readonly validatorCapabilities: ValidatorCapabilities

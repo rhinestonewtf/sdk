@@ -29,7 +29,7 @@ describe('dual-session signing contract', () => {
     expect(destination.input).toEqual({
       kind: 'reuse-artifact',
       stageId: 'origin-base',
-      artifactId: 'origin-pre-claim',
+      artifactId: 'origin-dual',
       selection: 'pre-claim',
     })
     expect(target.input).toEqual(destination.input)

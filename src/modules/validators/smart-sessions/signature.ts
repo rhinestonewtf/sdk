@@ -8,6 +8,7 @@ import {
   zeroAddress,
   zeroHash,
 } from 'viem'
+import type { SmartSessionEnableContributionData } from '../smart-session-signature-types'
 import { getPermissionId, getSessionData } from './digest'
 import type { ResolvedSessionSignerSet } from './types'
 
@@ -22,22 +23,60 @@ export function encodeSmartSessionSignature(
 ): Hex {
   const permissionId = getPermissionId(signers.session)
   if (!signers.verifyExecutions) {
-    return encodePacked(
-      ['bytes1', 'bytes32', 'uint256', 'bytes', 'bytes'],
-      [
-        SMART_SESSION_MODE_USE,
-        permissionId,
-        BigInt(64 + size(validatorSignature)),
-        validatorSignature,
-        signers.claimPolicyData ?? '0x',
-      ],
-    )
+    return encodeSmartSessionContribution({
+      mode: 'notarized',
+      permissionId,
+      signature: validatorSignature,
+      ...(signers.claimPolicyData
+        ? { claimPolicyData: signers.claimPolicyData }
+        : {}),
+    })
   }
   if (!signers.enableData) {
+    return encodeSmartSessionContribution({
+      mode: 'use',
+      permissionId,
+      signature: validatorSignature,
+    })
+  }
+  return encodeSmartSessionContribution({
+    mode: 'enable-and-use',
+    permissionId,
+    signature: validatorSignature,
+    enableData: {
+      ...signers.enableData,
+      session: getSessionData(signers.session),
+    },
+  })
+}
+
+export function encodeSmartSessionContribution(input: {
+  readonly mode: 'use' | 'enable-and-use' | 'pre-claim' | 'notarized'
+  readonly permissionId: Hex
+  readonly signature: Hex
+  readonly claimPolicyData?: Hex
+  readonly enableData?: SmartSessionEnableContributionData
+}): Hex {
+  if (input.mode !== 'enable-and-use') {
+    if (input.mode === 'notarized') {
+      return encodePacked(
+        ['bytes1', 'bytes32', 'uint256', 'bytes', 'bytes'],
+        [
+          SMART_SESSION_MODE_USE,
+          input.permissionId,
+          BigInt(64 + size(input.signature)),
+          input.signature,
+          input.claimPolicyData ?? '0x',
+        ],
+      )
+    }
     return encodePacked(
       ['bytes1', 'bytes32', 'bytes'],
-      [SMART_SESSION_MODE_USE, permissionId, validatorSignature],
+      [SMART_SESSION_MODE_USE, input.permissionId, input.signature],
     )
+  }
+  if (!input.enableData) {
+    throw new Error('Enable-and-use signatures require enable data')
   }
   const compressed = LibZip.flzCompress(
     encodeAbiParameters(
@@ -139,21 +178,21 @@ export function encodeSmartSessionSignature(
       [
         {
           allocatorSig: zeroHash,
-          userSig: signers.enableData.userSignature,
+          userSig: input.enableData.userSignature,
           expires: maxUint256,
           enableSession: {
-            chainDigestIndex: signers.enableData.sessionToEnableIndex,
-            hashesAndChainIds: [...signers.enableData.hashesAndChainIds],
-            session: getSessionData(signers.session),
+            chainDigestIndex: input.enableData.sessionToEnableIndex,
+            hashesAndChainIds: [...input.enableData.hashesAndChainIds],
+            session: input.enableData.session,
           },
         },
         {
           scope: SCOPE_MULTICHAIN,
           resetPeriod: RESET_PERIOD_ONE_WEEK,
           allocator: zeroAddress,
-          permissionId,
+          permissionId: input.permissionId,
         },
-        validatorSignature,
+        input.signature,
       ],
     ),
   ) as Hex

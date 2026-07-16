@@ -78,7 +78,7 @@ export const dualSessionIntentInput: IntentSigningInput = {
   destination: {
     mode: 'reuse-origin',
     artifactId: 'destination-pre-claim',
-    originArtifactId: 'origin-pre-claim',
+    originArtifactId: 'origin-dual',
     selection: 'pre-claim',
   },
   target: {
@@ -90,17 +90,27 @@ export const dualSessionIntentInput: IntentSigningInput = {
   },
   artifacts: [
     {
-      id: 'origin-notarized',
-      usage: 'intent-notarized-claim',
+      id: 'origin-dual',
+      usage: 'intent-origin',
       payloadId: originPayloadId,
       cardinality: 'per-origin',
+      shape: 'session-claims',
       exposedForIndependentSigning: false,
     },
     {
-      id: 'origin-pre-claim',
-      usage: 'intent-pre-claim',
+      id: 'destination-pre-claim',
+      usage: 'intent-destination',
       payloadId: originPayloadId,
-      cardinality: 'per-origin',
+      cardinality: 'one',
+      shape: 'hex',
+      exposedForIndependentSigning: false,
+    },
+    {
+      id: 'target-session',
+      usage: 'intent-target',
+      payloadId: targetPayloadId,
+      cardinality: 'one',
+      shape: 'hex',
       exposedForIndependentSigning: false,
     },
   ],
@@ -112,6 +122,17 @@ export const dualSessionPlan: SigningPlan = {
   payload: { kind: 'intent', id: intentId },
   configuredTopology: dualSessionIntentInput.configuredTopology,
   effectiveSelection: dualSessionIntentInput.effectiveSelection,
+  preparedIntent: {
+    signatureMode: 'session-with-execution-verification',
+    artifacts: dualSessionIntentInput.artifacts,
+    destination: {
+      mode: 'reuse-origin',
+      artifactId: 'destination-pre-claim',
+      originArtifactId: 'origin-dual',
+      selection: 'pre-claim',
+    },
+    target: { artifactId: 'target-session', payloadId: targetPayloadId },
+  },
   stages: [
     {
       id: 'origin-base',
@@ -169,6 +190,20 @@ export const dualSessionPlan: SigningPlan = {
           accountEnvelope: { kind: 'none' },
           erc6492: { kind: 'none' },
         },
+        {
+          id: 'origin-dual',
+          stageId: 'origin-base',
+          usage: 'intent-origin',
+          input: {
+            kind: 'session-claim-pair',
+            preClaimArtifactId: 'origin-pre-claim',
+            notarizedClaimArtifactId: 'origin-notarized',
+          },
+          validatorCodec: { kind: 'none' },
+          erc7739: { kind: 'none' },
+          accountEnvelope: { kind: 'none' },
+          erc6492: { kind: 'none' },
+        },
       ],
     },
     {
@@ -183,7 +218,7 @@ export const dualSessionPlan: SigningPlan = {
       priorOutputs: [
         {
           stageId: 'origin-base',
-          outputId: 'origin-pre-claim',
+          outputId: 'origin-dual',
           selection: 'pre-claim',
         },
       ],
@@ -197,7 +232,7 @@ export const dualSessionPlan: SigningPlan = {
           input: {
             kind: 'reuse-artifact',
             stageId: 'origin-base',
-            artifactId: 'origin-pre-claim',
+            artifactId: 'origin-dual',
             selection: 'pre-claim',
           },
           validatorCodec: { kind: 'none' },
@@ -219,7 +254,7 @@ export const dualSessionPlan: SigningPlan = {
       priorOutputs: [
         {
           stageId: 'origin-base',
-          outputId: 'origin-pre-claim',
+          outputId: 'origin-dual',
           selection: 'pre-claim',
         },
       ],
@@ -233,7 +268,7 @@ export const dualSessionPlan: SigningPlan = {
           input: {
             kind: 'reuse-artifact',
             stageId: 'origin-base',
-            artifactId: 'origin-pre-claim',
+            artifactId: 'origin-dual',
             selection: 'pre-claim',
           },
           validatorCodec: { kind: 'none' },
@@ -246,8 +281,8 @@ export const dualSessionPlan: SigningPlan = {
   ],
   publicOutputs: [
     {
-      id: 'signed-intent',
-      source: { kind: 'artifact', artifactId: 'origin-notarized' },
+      id: 'origin-dual',
+      source: { kind: 'artifact', artifactId: 'origin-dual' },
       exposedForIndependentSigning: false,
     },
   ],
@@ -299,6 +334,10 @@ export const dualSessionTranscript: SigningTranscript = {
       outputs: {
         'origin-notarized': notarizedSignature,
         'origin-pre-claim': preClaimSignature,
+        'origin-dual': {
+          preClaimSig: preClaimSignature,
+          notarizedClaimSig: notarizedSignature,
+        },
       },
     },
     {

@@ -1,4 +1,4 @@
-import { concat, encodeAbiParameters, type Hex } from 'viem'
+import { concat, encodeAbiParameters, type Hex, hexToBytes, toHex } from 'viem'
 import type { ResolvedModule } from '../types'
 import type { AtomicValidatorDefinition } from './types'
 
@@ -63,4 +63,63 @@ export function resolveOwnableValidator(
 
 export function encodeOwnableMockSignature(ownerCount: number): Hex {
   return concat(Array.from({ length: ownerCount }, () => ECDSA_MOCK_SIGNATURE))
+}
+
+export function encodeEcdsaValidatorContribution(input: {
+  readonly ownerOrder: readonly string[]
+  readonly threshold: number
+  readonly recoveryEncoding: 'ethereum' | 'validator-offset-4'
+  readonly contributions: readonly {
+    readonly ownerId: string
+    readonly signature: Hex
+    readonly encoding: 'raw-signer' | 'validator-contribution'
+  }[]
+}): Hex {
+  if (input.threshold < 1 || input.threshold > input.ownerOrder.length) {
+    throw new Error('Validator threshold is outside the configured owner set')
+  }
+  const configured = new Set(input.ownerOrder)
+  const contributions = new Map<string, Hex>()
+  for (const contribution of input.contributions) {
+    if (!configured.has(contribution.ownerId)) {
+      throw new Error(`Unknown validator owner ${contribution.ownerId}`)
+    }
+    if (contributions.has(contribution.ownerId)) {
+      throw new Error(`Duplicate validator owner ${contribution.ownerId}`)
+    }
+    contributions.set(
+      contribution.ownerId,
+      contribution.encoding === 'validator-contribution'
+        ? contribution.signature
+        : encodeRecoveryValue(contribution.signature, input.recoveryEncoding),
+    )
+  }
+  const ordered = input.ownerOrder.flatMap((ownerId) => {
+    const contribution = contributions.get(ownerId)
+    return contribution ? [contribution] : []
+  })
+  if (ordered.length < input.threshold) {
+    throw new Error(
+      `Insufficient validator contributions: required ${input.threshold}, received ${ordered.length}`,
+    )
+  }
+  return concat(ordered)
+}
+
+function encodeRecoveryValue(
+  signature: Hex,
+  encoding: 'ethereum' | 'validator-offset-4',
+): Hex {
+  const bytes = hexToBytes(signature)
+  if (bytes.length !== 65) {
+    throw new Error('ECDSA signatures must contain 65 bytes')
+  }
+  const recovery = bytes[64]
+  const ethereumRecovery = recovery < 27 ? recovery + 27 : recovery
+  const encodedRecovery =
+    encoding === 'validator-offset-4' ? ethereumRecovery + 4 : ethereumRecovery
+  if (encodedRecovery > 255) {
+    throw new Error('ECDSA recovery value does not fit in one byte')
+  }
+  return concat([signature.slice(0, -2) as Hex, toHex(encodedRecovery)])
 }

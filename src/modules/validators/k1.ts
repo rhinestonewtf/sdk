@@ -1,0 +1,2 @@
+export const K1_DEFAULT_VALIDATOR_ADDRESS =
+  '0x00000072f286204bb934ed49d8969e86f7dec7b1' as const
