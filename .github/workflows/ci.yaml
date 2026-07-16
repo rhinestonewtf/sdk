@@ -39,6 +39,9 @@ jobs:
       - name: Check
         run: bun run check
 
+      - name: Check architecture
+        run: bun run check:architecture
+
       - name: Typecheck
         run: bun run typecheck
 
@@ -65,3 +68,6 @@ jobs:
 
       - name: Run tests
         run: bun run test
+
+      - name: Check pure-core coverage
+        run: bun run test:coverage:core

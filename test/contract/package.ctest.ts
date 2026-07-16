@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import sizeLimits from '../../.size-limit.ts'
 import type { ApiReport } from '../../scripts/contract/api-report.ts'
 import type { PackageManifest } from '../../scripts/contract/shared.ts'
 
@@ -11,6 +12,7 @@ interface ReleaseCalibration {
   packageVersion: string
   entrypoints: PackageManifest['exports']
   runtimeExports: Record<string, string[]>
+  sizeBytes: Record<string, number>
 }
 
 interface JwtProbeResult {
@@ -181,6 +183,24 @@ describe('packed package contract', () => {
         expect(existsSync(resolve(manifestDirectory, target.types))).toBe(true)
       }
     }
+  })
+
+  it('keeps a calibrated size gate for every published entry point', () => {
+    const entrypoints = Object.entries(calibration.entrypoints)
+    const expectedNames = entrypoints.map(([entrypoint]) =>
+      entrypoint === '.'
+        ? calibration.packageName
+        : `${calibration.packageName}/${entrypoint.slice(2)}`,
+    )
+    const expectedPaths = entrypoints.map(
+      ([, target]) => `./src/${target.import.slice(2)}`,
+    )
+
+    expect(Object.keys(calibration.sizeBytes)).toEqual(
+      entrypoints.map(([entrypoint]) => entrypoint),
+    )
+    expect(sizeLimits.map(({ name }) => name)).toEqual(expectedNames)
+    expect(sizeLimits.map(({ path }) => path)).toEqual(expectedPaths)
   })
 
   it('preserves every ESM runtime export key', () => {

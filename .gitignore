@@ -4,6 +4,7 @@ dist
 
 .env
 .artifacts/
+coverage/
 
 examples/
 # TypeDoc reference extraction artifact

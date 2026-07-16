@@ -6,17 +6,30 @@ comparing release behavior.
 
 ## Layers
 
-| Layer            | Files                                 | Runs against                                | Command                         |
-| ---------------- | ------------------------------------- | ------------------------------------------- | ------------------------------- |
-| Unit and vectors | `src/**/*.test.ts`, `test/vectors/**` | Local code and deterministic fakes          | `bun run test`                  |
-| Type             | `test/types/**`                       | TypeScript                                  | `bun run test:types`            |
-| Package contract | `test/contract/**/*.ctest.ts`         | Packed current and base packages            | `bun run test:contract`         |
-| Integration      | `test/integration/**/*.itest.ts`      | Live orchestrator and testnets              | `bun run test:integration`      |
-| Characterization | `test/characterization/**`            | Selected legacy, rewrite, or public subject | `bun run test:characterization` |
+| Layer              | Files                                 | Runs against                                | Command                         |
+| ------------------ | ------------------------------------- | ------------------------------------------- | ------------------------------- |
+| Unit and vectors   | `src/**/*.test.ts`, `test/vectors/**` | Local code and deterministic fakes          | `bun run test`                  |
+| Pure-core coverage | Rewritten core domains                | V8 coverage with scoped thresholds          | `bun run test:coverage:core`    |
+| Architecture       | Hand-written production imports       | Rewrite dependency and cycle rules          | `bun run check:architecture`    |
+| Type               | `test/types/**`                       | TypeScript                                  | `bun run test:types`            |
+| Package contract   | `test/contract/**/*.ctest.ts`         | Packed current and base packages            | `bun run test:contract`         |
+| Integration        | `test/integration/**/*.itest.ts`      | Live orchestrator and testnets              | `bun run test:integration`      |
+| Characterization   | `test/characterization/**`            | Selected legacy, rewrite, or public subject | `bun run test:characterization` |
 
 Unit tests live next to the source they cover. Type tests assert the public
 surface with `tsconfig.type-tests.json`. Run one unit file with
 `bun run test -- path/to/file.test.ts`.
+
+The pure-core gate requires 95% statements, lines, and functions and 90%
+branches. Contract-only files and the exact legacy implementation retained
+during the rewrite are excluded; removing a legacy exception brings that file
+under the gate. The architecture check applies the same transition boundary and
+rejects forbidden layer edges, concrete-client imports, published-barrel
+imports, and cycles in rewritten code.
+
+The package contract builds and packs both the pinned release and current
+subjects. It validates every published subpath against its own calibrated size
+limit in addition to comparing exports and declarations.
 
 ## Integration tests
 

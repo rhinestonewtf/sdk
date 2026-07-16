@@ -5,6 +5,7 @@
       "**",
       "!src/dist",
       "!.artifacts",
+      "!coverage",
       "!integration-test",
       "!.changeset",
       "!test/characterization/baselines",

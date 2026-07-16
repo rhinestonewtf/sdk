@@ -415,6 +415,7 @@ async function main(): Promise<void> {
     join(tmpdir(), 'rhinestone-sdk-contract-'),
   )
   let baseWorktree: string | undefined
+  let sizeStagingDirectory: string | undefined
   let result: Record<string, unknown> = {
     formatVersion: 1,
     baseSha,
@@ -467,6 +468,25 @@ async function main(): Promise<void> {
       temporaryDirectory,
       'current',
     )
+    const artifactsDirectory = join(repositoryRoot, '.artifacts')
+    mkdirSync(artifactsDirectory, { recursive: true })
+    sizeStagingDirectory = mkdtempSync(
+      join(artifactsDirectory, 'contract-size-'),
+    )
+    const baseSizePackage = createConsumerLayout({
+      packageDirectory: baseBuild.subject.packageDirectory,
+      consumerDirectory: join(sizeStagingDirectory, 'base'),
+      dependencyRoot: baseBuild.subject.dependencyRoot,
+      runtimeProbePath,
+      includeOptionalPeers: true,
+    })
+    const currentSizePackage = createConsumerLayout({
+      packageDirectory: current.packageDirectory,
+      consumerDirectory: join(sizeStagingDirectory, 'current'),
+      dependencyRoot: current.dependencyRoot,
+      runtimeProbePath,
+      includeOptionalPeers: true,
+    })
 
     const assignabilityConsumer = join(
       temporaryDirectory,
@@ -505,7 +525,20 @@ async function main(): Promise<void> {
       generateApiReport(currentConsumers.packageDirectory),
     )
 
-    runCommand('bun', ['run', 'size'], { cwd: repositoryRoot })
+    process.stdout.write('Checking calibrated base package sizes\n')
+    runCommand('bun', ['run', 'size'], {
+      cwd: repositoryRoot,
+      env: {
+        SDK_SIZE_PACKAGE_ROOT: join(baseSizePackage, 'dist/src'),
+      },
+    })
+    process.stdout.write('Checking current package sizes\n')
+    runCommand('bun', ['run', 'size'], {
+      cwd: repositoryRoot,
+      env: {
+        SDK_SIZE_PACKAGE_ROOT: join(currentSizePackage, 'dist/src'),
+      },
+    })
     runCommand(
       'bunx',
       ['vitest', '--config', 'vitest.config.contract.ts', '--run'],
@@ -544,6 +577,9 @@ async function main(): Promise<void> {
         cwd: repositoryRoot,
         quiet: true,
       })
+    }
+    if (sizeStagingDirectory) {
+      rmSync(sizeStagingDirectory, { recursive: true, force: true })
     }
     if (process.env.SDK_CONTRACT_KEEP_TEMP === '1') {
       process.stdout.write(`Contract staging retained: ${temporaryDirectory}\n`)
