@@ -1,5 +1,19 @@
 # @rhinestone/sdk
 
+## 1.10.0
+
+### Minor Changes
+
+- 48c6428: Add `getAppFeeBalances` to the account and orchestrator client. Returns the integrator's accrued app-fee balance as USD totals (`withdrawableUsd`, `pendingUsd`), read from `GET /app-fees/balances`. Fees are valued in USD at the moment they are collected, so the balance is unaffected by later price movements of the collected tokens.
+- 32a32a0: Expose app-fee request options and quote fields for legacy alps orchestrator routes.
+
+### Patch Changes
+
+- 1f1935f: Bump @rhinestone/shared-configs to 1.7.8 to add Robinhood Chain (4663). Raise the
+  `viem` peer floor to ^2.55.0 — shared-configs 1.7.8's generated networks import
+  `robinhood` from `viem/chains`, which was added in viem 2.55.0; on older viem the
+  package crashes at module load.
+
 ## 1.9.2
 
 ### Patch Changes
