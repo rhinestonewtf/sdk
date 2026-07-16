@@ -1,7 +1,11 @@
 import type { Account, Address, Chain, Hex } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
 import type { ModuleType } from './modules/common'
-import type { AuxiliaryFunds, SettlementLayer } from './orchestrator/types'
+import type {
+  AppFeeRate,
+  AuxiliaryFunds,
+  SettlementLayer,
+} from './orchestrator/types'
 
 type AccountType =
   | 'safe'
@@ -477,6 +481,7 @@ interface BaseTransaction {
   eip7702InitSignature?: Hex
   sourceAssets?: SourceAssetInput
   feeAsset?: Address | TokenSymbol
+  appFees?: AppFeeRate
   settlementLayers?: SettlementLayer[]
   lockFunds?: boolean
   auxiliaryFunds?: AuxiliaryFunds
@@ -507,54 +512,54 @@ interface UserOperationTransaction {
 type Transaction = SameChainTransaction | CrossChainTransaction
 
 export type {
-  AccountType,
-  SafeAccount,
-  NexusAccount,
-  KernelAccount,
-  StartaleAccount,
-  PassportAccount,
-  HcaAccount,
-  EoaAccount,
-  RhinestoneAccountConfig,
-  RhinestoneSDKConfig,
-  RhinestoneConfig,
   AccountProviderConfig,
-  ProviderConfig,
+  AccountType,
+  Action,
+  ApiKeyAuth,
+  AuthConfig,
   BundlerConfig,
-  PaymasterConfig,
-  Transaction,
-  UserOperationTransaction,
-  TokenSymbol,
+  Call,
   CalldataInput,
-  LazyCallInput,
   CallInput,
   CallResolveContext,
-  Call,
+  ChainSessionConfig,
+  ENSValidatorConfig,
+  EoaAccount,
+  HcaAccount,
+  JwtAuth,
+  KernelAccount,
+  LazyCallInput,
+  ModuleInput,
+  ModuleType,
+  MultiFactorValidatorConfig,
+  NexusAccount,
+  OwnableValidatorConfig,
+  OwnerSet,
+  PassportAccount,
+  PaymasterConfig,
+  PerChainSessionSignerSet,
+  Permit2ClaimPolicy,
+  Policy,
+  ProviderConfig,
+  Recovery,
+  RhinestoneAccountConfig,
+  RhinestoneConfig,
+  RhinestoneSDKConfig,
+  SafeAccount,
+  Session,
+  SessionEnableData,
+  SessionInput,
+  SessionSignerSet,
+  SignerSet,
+  SingleSessionSignerSet,
+  SourceAssetInput,
   Sponsorship,
+  StartaleAccount,
   TokenRequest,
   TokenRequests,
-  SourceAssetInput,
-  OwnerSet,
-  OwnableValidatorConfig,
-  ENSValidatorConfig,
-  WebauthnValidatorConfig,
-  MultiFactorValidatorConfig,
-  SignerSet,
-  ChainSessionConfig,
-  SingleSessionSignerSet,
-  PerChainSessionSignerSet,
-  SessionSignerSet,
-  Action,
-  SessionInput,
-  SessionEnableData,
-  Session,
-  Recovery,
-  ModuleType,
-  ModuleInput,
-  Policy,
-  Permit2ClaimPolicy,
+  TokenSymbol,
+  Transaction,
   UniversalActionPolicyParamCondition,
-  ApiKeyAuth,
-  JwtAuth,
-  AuthConfig,
+  UserOperationTransaction,
+  WebauthnValidatorConfig,
 }

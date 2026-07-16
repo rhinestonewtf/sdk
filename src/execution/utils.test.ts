@@ -222,6 +222,41 @@ describe('prepareTransactionAsIntent', () => {
     expect(intentInput.options.auxiliaryFunds).toBeUndefined()
   })
 
+  test('includes appFees in options when provided', async () => {
+    mockGetIntentRoute.mockResolvedValue({
+      intentOp: {},
+      intentCost: {},
+    })
+
+    await prepareTransactionAsIntent(
+      {
+        owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+        apiKey: 'test',
+      },
+      [arbitrum],
+      base,
+      [],
+      undefined,
+      [{ address: zeroAddress, amount: 1n }],
+      undefined,
+      false,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { feeBps: 100 },
+    )
+
+    expect(mockGetIntentRoute).toHaveBeenCalledOnce()
+    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    expect(intentInput.options.appFees).toEqual({ feeBps: 100 })
+  })
+
   test('claim-only session sends SIG_MODE_ERC1271 in routing request', async () => {
     mockGetIntentRoute.mockResolvedValue({
       intentOp: {},

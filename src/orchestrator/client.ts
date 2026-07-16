@@ -27,6 +27,7 @@ import {
   UnsupportedTokenError,
 } from './error'
 import type {
+  AppFeeBalances,
   IntentInput,
   IntentOpStatus,
   IntentResult,
@@ -217,6 +218,16 @@ export class Orchestrator {
         headers: await this.getHeaders(),
       },
     )
+  }
+
+  async getAppFeeBalances(): Promise<AppFeeBalances> {
+    const json = await this.fetch(`${this.serverUrl}/app-fees/balances`, {
+      headers: await this.getHeaders(),
+    })
+    return {
+      withdrawableUsd: json.withdrawableUsd,
+      pendingUsd: json.pendingUsd,
+    }
   }
 
   private async getHeaders(): Promise<Record<string, string>> {

@@ -99,10 +99,30 @@ type AuxiliaryFunds = {
 interface IntentOptions {
   topupCompact: boolean
   feeToken?: Address | SupportedTokenSymbol
+  appFees?: AppFeeRate
   sponsorSettings?: SponsorSettings
   settlementLayers?: SettlementLayer[]
   signatureMode?: SignatureMode
   auxiliaryFunds?: AuxiliaryFunds
+}
+
+interface AppFeeRate {
+  feeBps: number
+}
+
+/** An integrator's accrued app-fee balance, as USD totals. */
+interface AppFeeBalances {
+  /** Collected (accrued) app fees available to withdraw, valued in USD at collection. */
+  withdrawableUsd: number
+  /** Value reserved by an in-flight withdrawal; `0` until withdrawals are enabled. */
+  pendingUsd: number
+}
+
+interface AppFee extends AppFeeRate {
+  baseAmount: string
+  amount: string
+  chainId: number
+  tokenAddress: Address
 }
 
 interface SponsorSettings {
@@ -162,6 +182,7 @@ interface FeeBreakdown {
   protocolFee: string
   swapFee: string
   settlementFee: string
+  appFee: string
 }
 
 interface FeesByTokenEntry {
@@ -175,6 +196,7 @@ interface FeeBreakdownUSD {
   protocolFeeUSD: number
   swapFeeUSD: number
   settlementFeeUSD: number
+  appFeeUSD: number
   totalFeeUSD: number
 }
 
@@ -195,6 +217,7 @@ interface IntentCost {
     relayer: number
     protocol: number
   }
+  appFee?: AppFee[]
   tokensSpent: {
     [chainId: string]: {
       [tokenAddress: Address]: {
@@ -485,52 +508,55 @@ type PortfolioResponse = PortfolioTokenResponse[]
 
 export type {
   Account,
+  AccountAccessList,
   AccountType,
+  AppFee,
+  AppFeeBalances,
+  AppFeeRate,
+  ApprovalRequired,
   AuxiliaryFunds,
-  TokenConfig,
-  SupportedChain,
-  SettlementLayer,
-  IntentInput,
-  IntentCost,
+  Execution,
   FeeBreakdown,
-  FeesByTokenEntry,
   FeeBreakdownUSD,
-  IntentRoute,
+  FeesByTokenEntry,
+  IntentCost,
+  IntentInput,
   IntentOp,
   IntentOpElement,
   IntentOpElementMandate,
-  SignedIntentOp,
   IntentOpStatus,
   IntentResult,
+  IntentRoute,
+  MappedChainTokenAccessList,
+  OriginSignature,
+  Portfolio,
+  PortfolioResponse,
+  PortfolioToken,
+  PortfolioTokenResponse,
+  SettlementLayer,
+  SignatureMode,
+  SignedIntentOp,
   SplitIntentsInput,
   SplitIntentsResult,
-  PortfolioTokenResponse,
-  PortfolioResponse,
-  Portfolio,
-  PortfolioToken,
-  Execution,
-  AccountAccessList,
-  MappedChainTokenAccessList,
-  UnmappedChainTokenAccessList,
-  OriginSignature,
-  SignatureMode,
+  SupportedChain,
+  TokenConfig,
   TokenRequirements,
+  UnmappedChainTokenAccessList,
   WrapRequired,
-  ApprovalRequired,
 }
 export {
-  INTENT_STATUS_PENDING,
-  INTENT_STATUS_FAILED,
-  INTENT_STATUS_EXPIRED,
   INTENT_STATUS_CLAIMED,
   INTENT_STATUS_COMPLETED,
+  INTENT_STATUS_EXPIRED,
+  INTENT_STATUS_FAILED,
   INTENT_STATUS_FILLED,
+  INTENT_STATUS_PENDING,
   INTENT_STATUS_PRECONFIRMED,
   SIG_MODE_EMISSARY,
-  SIG_MODE_ERC1271,
   SIG_MODE_EMISSARY_ERC1271,
-  SIG_MODE_ERC1271_EMISSARY,
   SIG_MODE_EMISSARY_EXECUTION,
   SIG_MODE_EMISSARY_EXECUTION_ERC1271,
+  SIG_MODE_ERC1271,
+  SIG_MODE_ERC1271_EMISSARY,
   SIG_MODE_ERC1271_EMISSARY_EXECUTION,
 }
