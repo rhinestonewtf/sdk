@@ -1,5 +1,6 @@
-import type { Address, Hex } from 'viem'
-import type { ModuleId, ResolvedModule } from '../types'
+import type { Account, Address, Hex } from 'viem'
+import type { WebAuthnAccount } from 'viem/account-abstraction'
+import type { ModuleId } from '../types'
 
 export type ValidatorKind =
   | 'ecdsa'
@@ -22,15 +23,61 @@ export type ValidatorSigningPurpose =
   | 'user-operation'
   | 'session-enable'
 
-export interface ValidatorOwner {
-  readonly id: string
-  readonly signerId: string
+export type AtomicValidatorInput =
+  | {
+      type: 'ecdsa'
+      accounts: Account[]
+      threshold?: number
+      module?: Address
+    }
+  | {
+      type: 'ens'
+      owners: { account: Account; expiration?: Date }[]
+      threshold?: number
+    }
+  | {
+      type: 'passkey'
+      accounts: WebAuthnAccount[]
+      threshold?: number
+      module?: Address
+    }
+
+export interface MultiFactorValidatorInput {
+  type: 'multi-factor'
+  validators: AtomicValidatorInput[]
+  threshold?: number
+  module?: Address
 }
+
+export type ValidatorInput = AtomicValidatorInput | MultiFactorValidatorInput
+
+export type ValidatorModuleSelection =
+  | { readonly source: 'explicit'; readonly address: Address }
+  | {
+      readonly source: 'default'
+      readonly profile: 'ownable' | 'ens' | 'webauthn' | 'multi-factor'
+    }
+
+export type ValidatorOwner =
+  | {
+      readonly kind: 'ecdsa' | 'ens'
+      readonly id: string
+      readonly signerId: string
+      readonly account: Account
+      readonly expiration?: Date
+    }
+  | {
+      readonly kind: 'webauthn'
+      readonly id: string
+      readonly signerId: string
+      readonly account: WebAuthnAccount
+    }
 
 export interface AtomicValidatorDefinition {
   readonly kind: Exclude<ValidatorKind, 'multi-factor'>
   readonly id: string
-  readonly module: ResolvedModule
+  readonly publicId: number | Hex
+  readonly module: ValidatorModuleSelection
   readonly owners: readonly ValidatorOwner[]
   readonly threshold: number
 }
@@ -38,7 +85,8 @@ export interface AtomicValidatorDefinition {
 export interface MultiFactorValidatorDefinition {
   readonly kind: 'multi-factor'
   readonly id: string
-  readonly module: ResolvedModule
+  readonly publicId: number | Hex
+  readonly module: ValidatorModuleSelection
   readonly validators: readonly AtomicValidatorDefinition[]
   readonly threshold: number
 }

@@ -1,47 +1,57 @@
-import type { Address } from 'viem'
-import type { AccountDefinition, AccountKind } from '../accounts/types'
-import type { ResolvedModule } from '../modules/types'
-import type { ResolvedValidatorDefinition } from '../modules/validators/types'
+import type { Account, Address } from 'viem'
+import type { AccountInitData, AccountInput } from '../accounts/types'
+import type { ModuleInput } from '../modules/types'
+import type { ValidatorInput } from '../modules/validators/types'
 
 export type SdkAuthInput =
-  | { readonly kind: 'api-key'; readonly apiKey: string }
+  | { mode: 'apiKey'; apiKey: string }
   | {
-      readonly kind: 'jwt'
-      readonly getToken: () => Promise<string>
+      mode: 'experimental_jwt'
+      accessToken: string | (() => Promise<string>)
+      getIntentExtensionToken?: (intentInput: unknown) => Promise<string>
     }
 
 export type ProviderInput =
-  | { readonly kind: 'alchemy'; readonly apiKey: string }
-  | { readonly kind: 'custom'; readonly urls: Readonly<Record<number, string>> }
+  | { type: 'alchemy'; apiKey: string }
+  | { type: 'custom'; urls: Record<number, string> }
 
-export type BundlerInput =
-  | { readonly kind: 'pimlico' | 'biconomy'; readonly apiKey: string }
+export type ServiceInput =
   | {
-      readonly kind: 'custom'
-      readonly urls: string | Readonly<Record<number, string>>
+      type: 'pimlico' | 'biconomy'
+      apiKey: string
+    }
+  | {
+      type: 'custom'
+      url: string | Record<number, string>
     }
 
-export type PaymasterInput = BundlerInput
+export type BundlerInput = ServiceInput
+export type PaymasterInput = ServiceInput
 
-export interface SdkConstructionInput {
-  readonly auth: SdkAuthInput
-  readonly endpoint?: string
-  readonly environment?: 'production' | 'development'
-  readonly provider?: ProviderInput
-  readonly bundler?: BundlerInput
-  readonly paymaster?: PaymasterInput
-  readonly headers?: Readonly<Record<string, string>>
-  readonly defaultAccountKind?: AccountKind
+interface SdkConstructionInputBase {
+  provider?: ProviderInput
+  bundler?: BundlerInput
+  paymaster?: PaymasterInput
+  endpointUrl?: string
+  useDevContracts?: boolean
+  headers?: Record<string, string>
 }
 
+export type SdkConstructionInput = SdkConstructionInputBase &
+  (
+    | { apiKey: string; auth?: SdkAuthInput }
+    | { auth: SdkAuthInput; apiKey?: string }
+  )
+
 export interface AccountConstructionInput {
-  readonly account?: AccountDefinition
-  readonly address?: Address
-  readonly validator: ResolvedValidatorDefinition
-  readonly modules?: readonly ResolvedModule[]
-  readonly sessions?: {
-    readonly enabled?: boolean
-    readonly module?: Address
-    readonly environment?: 'production' | 'development'
+  account?: AccountInput
+  owners?: ValidatorInput
+  experimental_sessions?: {
+    enabled: boolean
+    module?: Address
+    compatibilityFallback?: Address
   }
+  eoa?: Account
+  modules?: ModuleInput[]
+  initData?: AccountInitData
 }
