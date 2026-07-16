@@ -50,6 +50,15 @@ describe('characterization runner', () => {
     ).rejects.toThrow('requires calibrated release')
   })
 
+  test('can validate an explicit source commit instead of the checkout', async () => {
+    await expect(
+      assertLegacyOracleSourceUnchanged(baseSha, process.cwd(), baseSha),
+    ).resolves.toBe(undefined)
+    await expect(
+      assertLegacyOracleSourceUnchanged(baseSha, process.cwd(), 'HEAD'),
+    ).rejects.toThrow('must be a full lowercase Git SHA')
+  })
+
   test('runs and compares an offline direct-signing scenario', async () => {
     const scenario = characterizationScenarios.find(
       (candidate): candidate is DirectSigningScenario =>

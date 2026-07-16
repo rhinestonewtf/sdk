@@ -150,19 +150,20 @@ It does not run all legacy cases hours before all rewrite cases.
 
 ### Harness environment
 
-| Variable                    | Contract                                                                                  |
-| --------------------------- | ----------------------------------------------------------------------------------------- |
-| `SDK_ITEST_SUBJECT`         | One of `legacy`, `rewrite`, or `public`; single-subject command only                      |
-| `SDK_ITEST_COMPARE`         | Two different ordered subjects, for example `legacy,rewrite`; compare and aggregate only  |
-| `SDK_ITEST_BASE_SHA`        | Full lowercase calibrated release SHA; required for legacy, compare, and baseline updates |
-| `SDK_ITEST_RUN_ID`          | Non-secret 1-80 character identifier; required for full, sharded, and aggregate runs      |
-| `SDK_ITEST_SHARD`           | One-based `index/total`, for example `1/8`; omit only for local unsharded subsets         |
-| `SDK_ITEST_WORKFLOW`        | Optional comma-separated `intent,user-operation,direct-signing` filter                    |
-| `SDK_ITEST_TAGS`            | Optional registered-tag filter; semantics below                                           |
-| `SDK_ITEST_MODE`            | Optional comma-separated `sign,dryRun,execute` filter; workflow/mode pairs are validated  |
-| `SDK_ITEST_UPDATE_BASELINE` | Must equal `1`; accepted only for a legacy run at the exact base SHA                      |
-| `SDK_ITEST_RESULTS_DIR`     | Result root; defaults to ignored `.artifacts/characterization`                            |
-| `INTEGRATION_TARGET`        | External environment; defaults to `dev`, while `prod` must be explicit                    |
+| Variable                       | Contract                                                                                  |
+| ------------------------------ | ----------------------------------------------------------------------------------------- |
+| `SDK_ITEST_SUBJECT`            | One of `legacy`, `rewrite`, or `public`; single-subject command only                      |
+| `SDK_ITEST_COMPARE`            | Two different ordered subjects, for example `legacy,rewrite`; compare and aggregate only  |
+| `SDK_ITEST_BASE_SHA`           | Full lowercase calibrated release SHA; required for legacy, compare, and baseline updates |
+| `SDK_ITEST_CURRENT_SOURCE_SHA` | Optional full source SHA for oracle checks when CI tests a synthetic merge commit         |
+| `SDK_ITEST_RUN_ID`             | Non-secret 1-80 character identifier; required for full, sharded, and aggregate runs      |
+| `SDK_ITEST_SHARD`              | One-based `index/total`, for example `1/8`; omit only for local unsharded subsets         |
+| `SDK_ITEST_WORKFLOW`           | Optional comma-separated `intent,user-operation,direct-signing` filter                    |
+| `SDK_ITEST_TAGS`               | Optional registered-tag filter; semantics below                                           |
+| `SDK_ITEST_MODE`               | Optional comma-separated `sign,dryRun,execute` filter; workflow/mode pairs are validated  |
+| `SDK_ITEST_UPDATE_BASELINE`    | Must equal `1`; accepted only for a legacy run at the exact base SHA                      |
+| `SDK_ITEST_RESULTS_DIR`        | Result root; defaults to ignored `.artifacts/characterization`                            |
+| `INTEGRATION_TARGET`           | External environment; defaults to `dev`, while `prod` must be explicit                    |
 
 Tag filters use registered catalog tags only:
 

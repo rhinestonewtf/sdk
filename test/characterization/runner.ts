@@ -94,6 +94,7 @@ export async function resolveCharacterizationBaseSha(
 export async function assertLegacyOracleSourceUnchanged(
   baseSha: string,
   cwd = process.cwd(),
+  currentSourceSha = process.env.SDK_ITEST_CURRENT_SOURCE_SHA,
 ): Promise<void> {
   if (baseSha !== CHARACTERIZATION_BASE_SHA) {
     throw new Error(
@@ -115,9 +116,15 @@ export async function assertLegacyOracleSourceUnchanged(
   if (oraclePaths.length === 0) {
     throw new Error(`No legacy oracle source files exist at ${baseSha}`)
   }
+  if (currentSourceSha && !/^[0-9a-f]{40}$/u.test(currentSourceSha)) {
+    throw new Error(
+      'SDK_ITEST_CURRENT_SOURCE_SHA must be a full lowercase Git SHA',
+    )
+  }
+  const diffRange = currentSourceSha ? [baseSha, currentSourceSha] : [baseSha]
   const { stdout: diffOutput } = await execFileAsync(
     'git',
-    ['diff', '--name-only', baseSha, '--', ...oraclePaths],
+    ['diff', '--name-only', ...diffRange, '--', ...oraclePaths],
     { cwd, maxBuffer: 4 * 1024 * 1024 },
   )
   const changed = diffOutput.trim()
