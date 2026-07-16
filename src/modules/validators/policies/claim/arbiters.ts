@@ -3,7 +3,7 @@ import {
   contractAddressesDev,
 } from '@rhinestone/shared-configs'
 import type { Address } from 'viem'
-import type { CrossChainSettlementLayer } from '../../../../types'
+import type { CrossChainSettlementLayer } from '../../smart-sessions/types'
 
 /**
  * The contract registry keys (per `shared-configs/contracts.{,dev}.js`)

@@ -18,10 +18,16 @@ const sourceGlobs = coreDirectories.map(
 const testGlobs = coreDirectories.map(
   (directory) => `src/${directory}/**/*.test.ts`,
 )
+const boundaryTestGlobs = [
+  'src/actions/**/*.test.ts',
+  'src/smart-sessions/**/*.test.ts',
+  'src/utils/**/*.test.ts',
+  'test/vectors/**/*.test.ts',
+] as const
 
 export default defineConfig({
   test: {
-    include: testGlobs,
+    include: [...testGlobs, ...boundaryTestGlobs],
     exclude: ['src/dist/**'],
     passWithNoTests: true,
     watch: false,
@@ -33,8 +39,10 @@ export default defineConfig({
         '**/types.ts',
         '**/port.ts',
         'src/accounts/adapter.ts',
+        'src/accounts/legacy.ts',
         'src/config/input.ts',
         'src/config/resolved.ts',
+        'src/modules/read-core.ts',
         'src/signing/context.ts',
         ...transitionalLegacyFiles,
       ],

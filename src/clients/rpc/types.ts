@@ -17,3 +17,11 @@ export interface RpcReadContext {
 export interface RpcCodeResult {
   readonly code?: Hex
 }
+
+export type RpcProvider =
+  | { readonly kind: 'public' }
+  | { readonly kind: 'alchemy'; readonly apiKey: string }
+  | {
+      readonly kind: 'custom'
+      readonly urls: Readonly<Record<number, string>>
+    }

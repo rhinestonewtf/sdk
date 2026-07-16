@@ -1,6 +1,14 @@
 import { keccak256 } from 'viem'
 import { describe, expect, test } from 'vitest'
+import { createAccountAdapter } from '../../../src/accounts/registry'
+import type { AccountConstruction } from '../../../src/accounts/types'
+import {
+  resolveAccountConfig,
+  resolveSdkConfig,
+} from '../../../src/config/resolve'
 import { type RhinestoneAccountConfig, RhinestoneSDK } from '../../../src/index'
+import { planModuleSetup } from '../../../src/modules/plan'
+import { resolveValidator } from '../../../src/modules/validators/resolve'
 import { accountA } from '../../consts'
 import vector from './account-deployment.json'
 
@@ -65,6 +73,61 @@ describe('release account deployment vectors', () => {
       address: account.getAddress(),
       factory: initData.factory,
       factoryDataHash: keccak256(initData.factoryData),
+    }).toEqual({
+      address: expected.address,
+      factory: expected.factory,
+      factoryDataHash: expected.factoryDataHash,
+    })
+  })
+})
+
+describe('rewritten account adapter deployment vectors', () => {
+  const sdk = resolveSdkConfig({ apiKey: 'vector-only' })
+
+  test.each(vector.cases)('$id', (expected) => {
+    const configuration = configurations[expected.id]
+    if (!configuration) throw new Error(`Missing vector input ${expected.id}`)
+    const resolved = resolveAccountConfig(sdk, configuration())
+    if (!resolved.owners) throw new Error(`Missing vector owner ${expected.id}`)
+    const owner = resolveValidator(resolved.owners)
+    const sessionModule =
+      resolved.sessions.module.source === 'explicit'
+        ? resolved.sessions.module.address
+        : undefined
+    const compatibilityFallback =
+      resolved.sessions.compatibilityFallback.source === 'explicit'
+        ? resolved.sessions.compatibilityFallback.address
+        : undefined
+    const construction: AccountConstruction = {
+      account: resolved.account,
+      owner: resolved.owners,
+      modules: resolved.modules,
+      setup: planModuleSetup({
+        accountKind: resolved.account.kind,
+        owner,
+        configured: resolved.modules,
+        environment: resolved.sessions.environment,
+        sessions: {
+          enabled: resolved.sessions.enabled,
+          ...(sessionModule ? { module: sessionModule } : {}),
+          ...(compatibilityFallback ? { compatibilityFallback } : {}),
+        },
+      }),
+      sessions: { enabled: resolved.sessions.enabled },
+      ...(resolved.initData ? { initData: resolved.initData } : {}),
+      ...(resolved.eoa ? { eoa: resolved.eoa } : {}),
+      chain: { kind: 'evm', id: 1, caip2: 'eip155:1' },
+      deployed: false,
+    }
+    const plan =
+      createAccountAdapter(construction).getDeploymentPlan(construction)
+
+    expect({
+      address: plan.address,
+      factory: plan.factory,
+      factoryDataHash: plan.factoryData
+        ? keccak256(plan.factoryData)
+        : undefined,
     }).toEqual({
       address: expected.address,
       factory: expected.factory,

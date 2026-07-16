@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+import { transitionalLegacyFiles } from '../../scripts/architecture/legacy-files'
 import type { PreparedTransactionData } from '../../src/index'
 import {
   LEGACY_DIRECT_SIGNING_HANDLER_KEYS,
@@ -110,8 +111,7 @@ export async function assertLegacyOracleSourceUnchanged(
     .split('\n')
     .filter(
       (file) =>
-        file === 'src/package.json' ||
-        (file.endsWith('.ts') && !file.endsWith('.test.ts')),
+        file === 'src/package.json' || transitionalLegacyFiles.has(file),
     )
   if (oraclePaths.length === 0) {
     throw new Error(`No legacy oracle source files exist at ${baseSha}`)

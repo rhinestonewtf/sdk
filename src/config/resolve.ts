@@ -1,5 +1,4 @@
-import type { Account, Address } from 'viem'
-import type { WebAuthnAccount } from 'viem/account-abstraction'
+import type { Address } from 'viem'
 import type {
   AccountDefinition,
   AccountInput,
@@ -10,14 +9,7 @@ import type {
   ModuleDataSelection,
   ModuleInput,
 } from '../modules/types'
-import type {
-  AtomicValidatorDefinition,
-  AtomicValidatorInput,
-  MultiFactorValidatorDefinition,
-  ResolvedValidatorDefinition,
-  ValidatorModuleSelection,
-  ValidatorOwner,
-} from '../modules/validators/types'
+import { defineValidator } from '../modules/validators/definition'
 import {
   currentV2Defaults,
   type SdkSemanticConfigDefaults,
@@ -169,105 +161,6 @@ function resolveAccountDefinition(
   }
 }
 
-function accountIdentity(account: Account): string {
-  return account.address.toLowerCase()
-}
-
-function webAuthnIdentity(account: WebAuthnAccount): string {
-  return account.publicKey.toLowerCase()
-}
-
-function resolveValidatorModule(
-  address: Address | undefined,
-  profile: Extract<ValidatorModuleSelection, { source: 'default' }>['profile'],
-): ValidatorModuleSelection {
-  return address === undefined
-    ? { source: 'default', profile }
-    : { source: 'explicit', address }
-}
-
-function resolveAtomicValidator(
-  input: AtomicValidatorInput,
-  id: string,
-  publicId: number,
-): AtomicValidatorDefinition {
-  const ownerId = (index: number): string => `${id}/owner/${index}`
-  switch (input.type) {
-    case 'ecdsa':
-      return {
-        kind: 'ecdsa',
-        id,
-        publicId,
-        module: resolveValidatorModule(input.module, 'ownable'),
-        owners: input.accounts.map(
-          (account, index): ValidatorOwner => ({
-            kind: 'ecdsa',
-            id: ownerId(index),
-            signerId: `ecdsa:${accountIdentity(account)}`,
-            account,
-          }),
-        ),
-        threshold: input.threshold ?? 1,
-      }
-    case 'ens':
-      return {
-        kind: 'ens',
-        id,
-        publicId,
-        module: resolveValidatorModule(undefined, 'ens'),
-        owners: input.owners.map(
-          (owner, index): ValidatorOwner => ({
-            kind: 'ens',
-            id: ownerId(index),
-            signerId: `ecdsa:${accountIdentity(owner.account)}`,
-            account: owner.account,
-            ...(owner.expiration ? { expiration: owner.expiration } : {}),
-          }),
-        ),
-        threshold: input.threshold ?? 1,
-      }
-    case 'passkey':
-      return {
-        kind: 'passkey',
-        id,
-        publicId,
-        module: resolveValidatorModule(input.module, 'webauthn'),
-        owners: input.accounts.map(
-          (account, index): ValidatorOwner => ({
-            kind: 'webauthn',
-            id: ownerId(index),
-            signerId: `webauthn:${webAuthnIdentity(account)}`,
-            account,
-          }),
-        ),
-        threshold: input.threshold ?? 1,
-      }
-  }
-}
-
-function resolveValidator(
-  input: NonNullable<AccountConstructionInput['owners']>,
-): ResolvedValidatorDefinition {
-  if (input.type !== 'multi-factor') {
-    return resolveAtomicValidator(input, 'owner-validator', 0)
-  }
-  const resolved: MultiFactorValidatorDefinition = {
-    kind: 'multi-factor',
-    id: 'owner-validator',
-    publicId: 0,
-    module: resolveValidatorModule(input.module, 'multi-factor'),
-    validators: input.validators.map((validator, index) =>
-      resolveAtomicValidator(
-        validator,
-        `owner-validator/factor/${index}`,
-        index,
-      ),
-    ),
-    threshold: input.threshold ?? 1,
-  }
-  return resolved
-}
-
 function resolveSessions(
   input: AccountConstructionInput['experimental_sessions'],
   environment: ResolvedSdkConfig['environment'],
@@ -292,7 +185,7 @@ function resolveAccountWithDefaults(
   return {
     profile: defaults.id,
     account: resolveAccountDefinition(input.account, defaults),
-    ...(input.owners ? { owners: resolveValidator(input.owners) } : {}),
+    ...(input.owners ? { owners: defineValidator(input.owners) } : {}),
     ...(input.eoa ? { eoa: input.eoa } : {}),
     modules: configureModules(input.modules),
     ...(input.initData ? { initData: input.initData } : {}),

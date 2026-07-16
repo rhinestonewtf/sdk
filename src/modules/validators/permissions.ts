@@ -11,10 +11,10 @@ import {
 import type {
   ArgPolicyExpression,
   Permission,
-  Policy,
   ScopedAction,
+  SessionPolicy,
   UniversalActionPolicyParamCondition,
-} from '../../types'
+} from './smart-sessions/types'
 
 function isStaticAbiType(type: string): boolean {
   if (type === 'address' || type === 'bool') return true
@@ -164,7 +164,7 @@ function resolvePermission(permission: Permission): ScopedAction[] {
       )
     }
 
-    const policies: Policy[] = []
+    const policies: SessionPolicy[] = []
 
     // --- Sugar field expansion -----------------------------------------------
 

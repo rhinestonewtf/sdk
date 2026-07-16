@@ -1,7 +1,8 @@
-import type { Address, Hex } from 'viem'
+import type { Account, Address, Hex } from 'viem'
 import type { Call } from '../calls/types'
 import type { EvmChainReference } from '../chains/types'
-import type { ResolvedModule } from '../modules/types'
+import type { ConfiguredModule, ModuleSetup } from '../modules/types'
+import type { ResolvedValidatorDefinition } from '../modules/validators/types'
 
 export type AccountKind =
   | 'safe'
@@ -86,6 +87,18 @@ export interface AccountIdentity {
   readonly address: Address
 }
 
+export interface AccountConstruction {
+  readonly account: AccountDefinition
+  readonly owner?: ResolvedValidatorDefinition
+  readonly modules: readonly ConfiguredModule[]
+  readonly setup: AccountModulePlan
+  readonly sessions: { readonly enabled: boolean }
+  readonly initData?: AccountInitData
+  readonly eoa?: Account
+  readonly chain: EvmChainReference
+  readonly deployed: boolean
+}
+
 export interface AccountDeploymentPlan {
   readonly chain: EvmChainReference
   readonly address: Address
@@ -99,7 +112,11 @@ export type AccountSignatureEnvelope =
   | { readonly kind: 'none' }
   | { readonly kind: 'safe'; readonly validator: Address }
   | { readonly kind: 'nexus'; readonly validator: Address }
-  | { readonly kind: 'kernel'; readonly validator: Address }
+  | {
+      readonly kind: 'kernel'
+      readonly validator: Address
+      readonly isRoot: boolean
+    }
   | { readonly kind: 'startale'; readonly validator: Address }
   | { readonly kind: 'hca'; readonly validator: Address }
 
@@ -113,12 +130,7 @@ export interface AccountCapabilities {
   readonly signatureEnvelope: AccountSignatureEnvelope
 }
 
-export interface AccountModulePlan {
-  readonly validators: readonly ResolvedModule[]
-  readonly executors: readonly ResolvedModule[]
-  readonly hooks: readonly ResolvedModule[]
-  readonly fallbacks: readonly ResolvedModule[]
-}
+export type AccountModulePlan = ModuleSetup
 
 export interface AccountCallEncodingInput {
   readonly chain: EvmChainReference

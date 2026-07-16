@@ -13,31 +13,55 @@ import {
 import { base } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 import { accountA, accountB } from '../../../test/consts'
-import type { ArgPolicyExpression, Session } from '../../types'
+import type { ArgPolicyExpression } from '../../types'
 import { PERMIT2_CLAIM_POLICY_ADDRESS } from './policies/claim/permit2'
-import type { ResolvedSessionSignerSet } from './smart-sessions'
+import { getPermissionId, getSessionData } from './smart-sessions/digest'
+import { buildSmartSessionMockSignature } from './smart-sessions/mock-signature'
+import { SMART_SESSION_EMISSARY_ADDRESS } from './smart-sessions/module'
 import {
   ARG_POLICY_ADDRESS,
-  buildMockSignature,
-  DUMMY_PRECLAIMOP_SELECTOR,
-  DUMMY_PRECLAIMOP_TARGET,
-  getPermissionId,
-  getPolicyData,
-  getSessionData,
   INTENT_EXECUTION_POLICY_ADDRESS,
-  packSignature,
-  SMART_SESSION_EMISSARY_ADDRESS,
-  SMART_SESSIONS_FALLBACK_TARGET_FLAG,
-  SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
   SPENDING_LIMITS_POLICY_ADDRESS,
   SUDO_POLICY_ADDRESS,
-  selectPermit2ClaimPolicyForMessage,
   TIME_FRAME_POLICY_ADDRESS,
-  toSession,
   UNIVERSAL_ACTION_POLICY_ADDRESS,
   USAGE_LIMIT_POLICY_ADDRESS,
   VALUE_LIMIT_POLICY_ADDRESS,
-} from './smart-sessions'
+} from './smart-sessions/policies/addresses'
+import { selectPermit2ClaimPolicyForMessage } from './smart-sessions/policies/claim'
+import { encodeSessionPolicy } from './smart-sessions/policies/encode'
+import {
+  DUMMY_PRECLAIMOP_SELECTOR,
+  DUMMY_PRECLAIMOP_TARGET,
+  SMART_SESSIONS_FALLBACK_TARGET_FLAG,
+  SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
+  toSession,
+} from './smart-sessions/resolve'
+import { encodeSmartSessionSignature as packSignature } from './smart-sessions/signature'
+import type {
+  ResolvedSessionSignerSet,
+  Session,
+  SessionPolicy,
+  SmartSessionMockShape,
+} from './smart-sessions/types'
+
+const getPolicyData = (policy: SessionPolicy, useDevContracts?: boolean) =>
+  encodeSessionPolicy(policy, useDevContracts ? 'development' : 'production')
+
+const buildMockSignature = (
+  session: Session,
+  useDevContracts = false,
+  chainCount = 1,
+  targetChainId?: number,
+  shape: SmartSessionMockShape = 'enable',
+) =>
+  buildSmartSessionMockSignature({
+    session,
+    environment: useDevContracts ? 'development' : 'production',
+    chainCount,
+    targetChainId,
+    shape,
+  })
 
 // ---------------------------------------------------------------------------
 // Shared fixtures
@@ -140,6 +164,20 @@ describe('getPolicyData', () => {
     })
     expect(result.policy).toBe(UNIVERSAL_ACTION_POLICY_ADDRESS)
     expect(result.initData.length).toBeGreaterThan(2)
+  })
+
+  test('rejects universal action policies with more than sixteen rules', () => {
+    const rules = Array.from({ length: 17 }, () => ({
+      condition: 'equal' as const,
+      calldataOffset: 4n,
+      referenceValue: 1n,
+    }))
+    expect(() =>
+      getPolicyData({
+        type: 'universal-action',
+        rules: rules as [(typeof rules)[number], ...typeof rules],
+      }),
+    ).toThrow('at most 16 rules')
   })
 })
 
@@ -398,6 +436,19 @@ describe('getPolicyData arg-policy', () => {
     expect(() =>
       getPolicyData({ type: 'arg-policy', expression: expr }),
     ).toThrow(/max is 128/)
+  })
+
+  test('throws when expression compiles to more than 256 nodes', () => {
+    let expr: ArgPolicyExpression = {
+      type: 'rule',
+      rule: { condition: 'equal', calldataOffset: 4n, referenceValue: 1n },
+    }
+    for (let index = 0; index < 256; index++) {
+      expr = { type: 'not', child: expr }
+    }
+    expect(() =>
+      getPolicyData({ type: 'arg-policy', expression: expr }),
+    ).toThrow('max is 256')
   })
 })
 

@@ -1,19 +1,53 @@
 import { encodeFunctionData, type Hex, padHex, toHex } from 'viem'
-import {
-  getModuleInstallationCalls,
-  getModuleUninstallationCalls,
-} from '../accounts'
-import {
-  getMultiFactorValidator,
-  getValidator,
-  MULTI_FACTOR_VALIDATOR_ADDRESS,
-} from '../modules/validators/core'
+import { defineValidator } from '../modules/validators/definition'
+import { MULTI_FACTOR_VALIDATOR_ADDRESS } from '../modules/validators/multi-factor'
+import { resolveValidator } from '../modules/validators/resolve'
+import type {
+  AtomicValidatorDefinition,
+  AtomicValidatorInput,
+  MultiFactorValidatorDefinition,
+} from '../modules/validators/types'
 import type {
   CalldataInput,
   LazyCallInput,
   OwnableValidatorConfig,
   WebauthnValidatorConfig,
 } from '../types'
+import {
+  resolveModuleInstallation,
+  resolveModuleUninstallation,
+} from './runtime'
+
+type MfaFactor = OwnableValidatorConfig | WebauthnValidatorConfig
+
+function factorModule(validator: MfaFactor) {
+  return resolveValidator(defineValidator(validator as AtomicValidatorInput))
+}
+
+function multiFactorModule(
+  validators: readonly (MfaFactor | null)[],
+  threshold: number,
+) {
+  const definition: MultiFactorValidatorDefinition = {
+    kind: 'multi-factor',
+    id: 'action/multi-factor',
+    publicId: 0,
+    module: { source: 'default', profile: 'multi-factor' },
+    validators: validators.flatMap((validator, index) =>
+      validator
+        ? [
+            defineValidator(
+              validator as AtomicValidatorInput,
+              `action/multi-factor/${index}`,
+              index,
+            ) as AtomicValidatorDefinition,
+          ]
+        : [],
+    ),
+    threshold,
+  }
+  return resolveValidator(definition)
+}
 
 /**
  * Enable multi-factor authentication
@@ -25,10 +59,10 @@ function enable(
   validators: (OwnableValidatorConfig | WebauthnValidatorConfig | null)[],
   threshold = 1,
 ): LazyCallInput {
-  const module = getMultiFactorValidator(threshold, validators)
+  const module = multiFactorModule(validators, threshold)
   return {
-    async resolve({ config }) {
-      return getModuleInstallationCalls(config, module)
+    async resolve(context) {
+      return resolveModuleInstallation(context, module)
     },
   }
 }
@@ -64,10 +98,10 @@ function changeThreshold(newThreshold: number): CalldataInput {
  * @returns Calls to disable multi-factor authentication
  */
 function disable(): LazyCallInput {
-  const module = getMultiFactorValidator(1, [])
+  const module = multiFactorModule([], 1)
   return {
-    async resolve({ chain, config }) {
-      return getModuleUninstallationCalls(config, chain, module)
+    async resolve(context) {
+      return resolveModuleUninstallation(context, module)
     },
   }
 }
@@ -83,7 +117,7 @@ function setSubValidator(
   validator: OwnableValidatorConfig | WebauthnValidatorConfig,
 ): CalldataInput {
   const validatorId = padHex(toHex(id), { size: 12 })
-  const validatorModule = getValidator(validator)
+  const validatorModule = factorModule(validator)
   return {
     to: MULTI_FACTOR_VALIDATOR_ADDRESS,
     value: 0n,
@@ -125,7 +159,7 @@ function removeSubValidator(
   validator: OwnableValidatorConfig | WebauthnValidatorConfig,
 ): CalldataInput {
   const validatorId = padHex(toHex(id), { size: 12 })
-  const validatorModule = getValidator(validator)
+  const validatorModule = factorModule(validator)
   return {
     to: MULTI_FACTOR_VALIDATOR_ADDRESS,
     value: 0n,

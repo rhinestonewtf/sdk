@@ -1,19 +1,14 @@
 import type { Hex } from 'viem'
+import type { ResolvedModule } from '../modules/types'
 import type {
   AccountCallEncodingInput,
   AccountCapabilities,
+  AccountConstruction,
   AccountDefinition,
   AccountDeploymentPlan,
   AccountIdentity,
-  AccountModulePlan,
   AccountSignatureEnvelope,
 } from './types'
-
-export interface AccountAdapterInput {
-  readonly account: AccountDefinition
-  readonly deployment: AccountDeploymentPlan
-  readonly modules: AccountModulePlan
-}
 
 export interface AccountSignatureEnvelopeInput {
   readonly account: AccountIdentity
@@ -25,11 +20,13 @@ export interface AccountSignatureEnvelopeInput {
 export interface AccountAdapter {
   readonly account: AccountDefinition
   readonly capabilities: AccountCapabilities
-  readonly getIdentity: (input: AccountAdapterInput) => AccountIdentity
+  readonly getIdentity: (input: AccountConstruction) => AccountIdentity
   readonly getDeploymentPlan: (
-    input: AccountAdapterInput,
+    input: AccountConstruction,
   ) => AccountDeploymentPlan
   readonly encodeCalls: (input: AccountCallEncodingInput) => Hex
+  readonly encodeModuleInstallation: (module: ResolvedModule) => readonly Hex[]
+  readonly encodeModuleUninstallation: (module: ResolvedModule) => Hex
   readonly encodeSignatureEnvelope: (
     input: AccountSignatureEnvelopeInput,
   ) => Hex

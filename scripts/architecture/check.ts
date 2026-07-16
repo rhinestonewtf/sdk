@@ -377,6 +377,7 @@ export function analyzeArchitecture(
         'src/actions/runtime.ts',
         'src/api/account.ts',
         'src/calls/resolve.ts',
+        'src/utils/index.ts',
       ].includes(file)
     ) {
       violations.push({

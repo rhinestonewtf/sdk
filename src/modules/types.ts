@@ -42,3 +42,10 @@ export interface ModuleInstallationPlan {
   readonly operation: 'install' | 'uninstall'
   readonly accountCallData: Hex
 }
+
+export interface ModuleSetup {
+  readonly validators: readonly ResolvedModule[]
+  readonly executors: readonly ResolvedModule[]
+  readonly hooks: readonly ResolvedModule[]
+  readonly fallbacks: readonly ResolvedModule[]
+}
