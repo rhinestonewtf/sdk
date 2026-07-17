@@ -109,6 +109,7 @@ export function projectIndependentSigning(
     const taskIds = new Set(taskTemplates.map(({ id }) => id))
     return {
       ...stage,
+      priorOutputs: [],
       taskTemplates,
       schedule: stage.schedule
         .map((batch) => ({
@@ -214,11 +215,16 @@ function assertPreparedMode(input: IntentSigningPlanCreationInput): void {
       `Prepared signature mode requires ${expected} origin artifacts, received ${originArtifacts.length}`,
     )
   }
-  const expectedShape =
-    input.intent.preparedSignatureMode === 'session-with-execution-verification'
-      ? 'session-claims'
-      : 'hex'
-  if (originArtifacts.some(({ shape }) => shape !== expectedShape)) {
+  const invalidShape = originArtifacts.some(({ shape }) =>
+    input.intent.preparedSignatureMode === 'default'
+      ? shape !== 'hex'
+      : !['hex', 'session-claims'].includes(shape),
+  )
+  if (invalidShape) {
+    const expectedShape =
+      input.intent.preparedSignatureMode === 'default'
+        ? 'hex'
+        : 'hex or session-claims'
     throw new Error(
       `Prepared signature mode requires ${expectedShape} origin artifacts`,
     )

@@ -2,7 +2,11 @@ import { type Hex, hashTypedData, type TypedDataDefinition } from 'viem'
 import { describe, expect, test, vi } from 'vitest'
 import type { ResolvedValidatorDefinition } from '../modules/validators/types'
 import { encodePlannedValidatorContribution } from './contribution'
-import { runSigningStep, SigningPipelineError } from './error'
+import {
+  IndependentSigningNotSupportedError,
+  runSigningStep,
+  SigningPipelineError,
+} from './error'
 import { executeSigningPlan } from './execute'
 import {
   createSingleStageSigningPlan,
@@ -51,6 +55,12 @@ function directPlan(tasks: readonly PayloadSigningTask[]): SigningPlan {
 }
 
 describe('signing plan materialization and execution', () => {
+  test('preserves the independent-signing compatibility error identity', () => {
+    const error = new IndependentSigningNotSupportedError()
+    expect(error.constructor.name).toBe('IndependentSigningNotSupportedError')
+    expect(error.name).toBe('Error')
+    expect(error.message).toContain('smart sessions')
+  })
   test('executes parallel batches and records typed results', async () => {
     const plan = directPlan([task('a'), task('b')])
     const calls: string[] = []
@@ -786,6 +796,22 @@ describe('signing plan materialization and execution', () => {
         role: 'factor',
       }).map(({ contribution }) => contribution?.kind),
     ).toEqual(['ecdsa', 'webauthn'])
+    expect(
+      createValidatorSigningTasks({
+        validator: {
+          ...nested,
+          validators: [nested.validators[1], nested.validators[0]],
+        },
+        signerReferences: {
+          'ecdsa:a': signer,
+          'webauthn:a': { id: 'passkey', kind: 'webauthn' },
+        },
+        taskPrefix: 'intent',
+        ecdsaInvocation: 'ecdsa-sign-typed-data',
+        webauthnInvocation: 'webauthn-sign-typed-data',
+        role: 'factor',
+      }).map(({ contribution }) => contribution?.kind),
+    ).toEqual(['ecdsa', 'webauthn'])
     expect(signingTopology(nested).configuredTopology.validators).toHaveLength(
       2,
     )
@@ -911,7 +937,15 @@ describe('signing plan materialization and execution', () => {
         artifact,
         stage: {
           ...stage,
-          tasks: [{ ...stage.tasks[0], contribution: { kind: 'session' } }],
+          tasks: [
+            {
+              ...stage.tasks[0],
+              contribution: {
+                kind: 'session',
+                recoveryEncoding: 'ethereum',
+              },
+            },
+          ],
         },
         results: {
           owner: {
@@ -951,5 +985,53 @@ describe('signing plan materialization and execution', () => {
         results: { owner: { kind: 'ecdsa-signature', signature } },
       }),
     ).toThrow('Session-state fact')
+  })
+
+  test('encodes session signer recovery for the owning validator', () => {
+    const sessionSignature = `0x${'22'.repeat(64)}1b` as Hex
+    const validator = {
+      kind: 'validator' as const,
+      address: '0x3333333333333333333333333333333333333333' as const,
+    }
+    const artifact = {
+      id: 'signature',
+      stageId: 'stage',
+      usage: 'intent-pre-claim' as const,
+      input: { kind: 'task-results' as const, taskIds: ['owner'] },
+      validatorCodec: {
+        kind: 'smart-session' as const,
+        validator,
+        mode: 'pre-claim' as const,
+        permissionId: payloadId,
+      },
+      erc7739: { kind: 'none' as const },
+      accountEnvelope: { kind: 'none' as const },
+      erc6492: { kind: 'none' as const },
+    }
+    const stage = {
+      stageId: 'stage',
+      facts: [],
+      schedule: [],
+      tasks: [
+        {
+          ...task('owner'),
+          payload: { source: 'plan-payload' as const, payloadId },
+          contribution: {
+            kind: 'session' as const,
+            recoveryEncoding: 'validator-offset-4' as const,
+          },
+        },
+      ],
+    }
+
+    expect(
+      encodePlannedValidatorContribution({
+        artifact,
+        stage,
+        results: {
+          owner: { kind: 'ecdsa-signature', signature: sessionSignature },
+        },
+      }).endsWith('1f'),
+    ).toBe(true)
   })
 })

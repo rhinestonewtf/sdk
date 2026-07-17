@@ -16,7 +16,11 @@ import { ModuleInstallationNotSupportedError } from '../error'
 import type { AccountConstruction, AccountKind } from '../types'
 import { createEoaAdapter } from './eoa'
 import { createHcaAdapter } from './hca'
-import { createKernelAdapter, kernelInstallData } from './kernel'
+import {
+  createKernelAdapter,
+  kernelInstallData,
+  wrapKernelMessageHash,
+} from './kernel'
 import {
   createNexusAdapter,
   nexusDefaultValidator,
@@ -28,7 +32,11 @@ import {
   primaryOwnerAddresses,
   primaryThreshold,
 } from './shared'
-import { createStartaleAdapter, K1_DEFAULT_VALIDATOR_ADDRESS } from './startale'
+import {
+  createStartaleAdapter,
+  K1_DEFAULT_VALIDATOR_ADDRESS,
+  startaleEip712Domain,
+} from './startale'
 
 const ecdsa = { type: 'ecdsa' as const, accounts: [accountA] }
 const inputs = {
@@ -224,6 +232,13 @@ describe('account adapter contract', () => {
     expect(nexusDefaultValidator('rhinestone-1.0.0-beta')).not.toBe(
       nexusDefaultValidator(undefined),
     )
+    const adoptedNexus = construction({ ...inputs.nexus, eoa: accountB })
+    expect(
+      createNexusAdapter(adoptedNexus).getEip7702AdoptionPlan?.(adoptedNexus),
+    ).toMatchObject({
+      contract: expect.any(String),
+      initData: expect.stringMatching(/^0x/u),
+    })
 
     const kernel = construction({
       account: { type: 'kernel', salt: zeroHash },
@@ -275,6 +290,9 @@ describe('account adapter contract', () => {
         })
         .toLowerCase(),
     ).toContain(accountA.address.slice(2).toLowerCase())
+    expect(wrapKernelMessageHash(zeroHash, accountA.address)).toMatch(
+      /^0x[0-9a-f]{64}$/u,
+    )
   })
 
   test('Startale supports K1 bootstrapping and rejects multiple K1 owners', () => {
@@ -322,6 +340,13 @@ describe('account adapter contract', () => {
         },
       }).address,
     ).toBe(accountB.address)
+    expect(startaleEip712Domain(accountA.address, 1)).toEqual({
+      name: 'Startale',
+      version: '1.0.0',
+      chainId: 1,
+      verifyingContract: accountA.address,
+      salt: zeroHash,
+    })
   })
 
   test('HCA rejects unsupported setup and preserves opaque custom addresses', () => {

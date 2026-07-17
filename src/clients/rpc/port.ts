@@ -7,6 +7,10 @@ export interface RpcReadPort {
     context: RpcReadContext,
     address: Address,
   ) => Promise<RpcCodeResult>
+  readonly getTransactionCount: (
+    context: RpcReadContext,
+    address: Address,
+  ) => Promise<bigint>
   readonly readContract: <TResult>(
     context: RpcReadContext,
     request: ContractRead<TResult>,

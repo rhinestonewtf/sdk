@@ -153,7 +153,7 @@ describe(`SDK characterization: ${subjects.join(' -> ')}`, () => {
         baseSha,
         runId,
         subject: referenceSubject,
-        ...(scenario.comparison === 'exact'
+        ...(scenario.comparison !== 'isolated-state'
           ? { onIntentPrepared: (prepared) => (preparedReplay = prepared) }
           : {}),
       })
@@ -163,7 +163,7 @@ describe(`SDK characterization: ${subjects.join(' -> ')}`, () => {
         baseSha,
         runId,
         subject: candidateSubject,
-        ...(scenario.comparison === 'exact' && preparedReplay
+        ...(scenario.comparison !== 'isolated-state' && preparedReplay
           ? { intentPreparedReplay: preparedReplay }
           : {}),
       })

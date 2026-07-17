@@ -3,8 +3,10 @@ import type { EvmChainReference } from '../../chains/types'
 import type { BundlerUserOperation } from '../bundler/port'
 
 export interface PaymasterSponsorship {
-  readonly paymasterFields: Readonly<Record<string, unknown>>
-  readonly paymasterSignature?: Hex
+  readonly paymaster: Hex
+  readonly paymasterData: Hex
+  readonly paymasterVerificationGasLimit: bigint
+  readonly paymasterPostOpGasLimit: bigint
 }
 
 export interface PaymasterPort {

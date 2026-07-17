@@ -8,7 +8,7 @@ export type LegacyUserOperationHandlerKey = Extract<
 
 export type LegacyUserOperationRunInput = {
   readonly scenario: UserOperationScenario
-  readonly subject: Extract<CharacterizationSubject, 'legacy'>
+  readonly subject: Extract<CharacterizationSubject, 'legacy' | 'rewrite'>
   readonly baseSha: string
   readonly runId: string
 }

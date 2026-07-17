@@ -149,7 +149,8 @@ export function readArchitectureGraph(): ArchitectureGraph {
 }
 
 function layer(path: string): string {
-  return path.split('/')[1] ?? ''
+  const [, root, nested] = path.split('/')
+  return root === 'transactions' ? (nested ?? root) : (root ?? '')
 }
 
 function clientFile(path: string): string | undefined {
@@ -228,6 +229,17 @@ function edgeViolation(
     )
   }
 
+  if (
+    workflowLayers.has(fromLayer) &&
+    workflowLayers.has(toLayer) &&
+    fromLayer !== toLayer
+  ) {
+    return fail(
+      'workflow-isolation',
+      'intent and UserOperation workflows must remain independent',
+    )
+  }
+
   const forbiddenByLayer: Readonly<Record<string, ReadonlySet<string>>> = {
     chains: new Set([
       'accounts',
@@ -297,17 +309,6 @@ function edgeViolation(
     )
   }
 
-  if (
-    workflowLayers.has(fromLayer) &&
-    workflowLayers.has(toLayer) &&
-    fromLayer !== toLayer
-  ) {
-    return fail(
-      'workflow-isolation',
-      'intent and UserOperation workflows must remain independent',
-    )
-  }
-
   return undefined
 }
 
@@ -361,6 +362,14 @@ export function analyzeArchitecture(
   }
 
   for (const file of rewriteFiles) {
+    if (/^src\/transactions\/[^/]+\.ts$/.test(file)) {
+      violations.push({
+        rule: 'transactions-namespace-only',
+        path: [file],
+        message:
+          'transactions is a namespace; implementation belongs to a workflow subdirectory',
+      })
+    }
     if (
       ['src/common.ts', 'src/types.ts', 'src/utils.ts'].includes(file) ||
       /^src\/[^/]+\.(?:common|types|utils)\.ts$/.test(file)

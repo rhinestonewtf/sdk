@@ -19,9 +19,13 @@ export function getComparisonGroupNamespace({
 
 export function getIdentityNamespace(input: NamespaceInput): string {
   const group = getComparisonGroupNamespace(input)
-  return input.scenario.comparison === 'isolated-state'
-    ? `${group}:${input.subject}`
-    : group
+  if (input.scenario.comparison === 'isolated-state') {
+    return `${group}:${input.subject}`
+  }
+  if (input.scenario.comparison === 'shared-inputs') {
+    return `sdk-characterization:v1:${input.baseSha}:shared:${input.scenario.id}`
+  }
+  return group
 }
 
 export function createDeterministicOwner(namespace: string, role: string) {

@@ -45,7 +45,9 @@ import type {
 import {
   buildLegacyIntentCasePlan,
   buildLegacyIntentFixture,
+  createIntentSdkInput,
   createSessionCall,
+  createSubjectSdk,
   getLegacyUsdcAddress,
   LEGACY_INTENT_CASE_HANDLERS,
   LEGACY_INTENT_FIXTURE_HANDLERS,
@@ -58,7 +60,10 @@ import {
 
 type RunLegacyIntentScenarioInput = {
   readonly scenario: IntentScenario
-  readonly subject?: Extract<CharacterizationSubject, 'legacy' | 'public'>
+  readonly subject?: Extract<
+    CharacterizationSubject,
+    'legacy' | 'public' | 'rewrite'
+  >
   readonly baseSha: string
   readonly runId: string
   readonly identityNamespace?: string
@@ -86,7 +91,7 @@ type FailedStage = {
 
 type PipelineResult = SuccessfulStage | FailedStage
 
-type BalanceObservation = {
+export type BalanceObservation = {
   readonly kind: 'native' | 'erc20'
   readonly address: Address
   readonly chainId: number
@@ -166,7 +171,15 @@ export async function runLegacyIntentScenario({
   let fixture: LegacyIntentFixture
   try {
     fixture = await buildLegacyIntentFixture(scenario, identityNamespace)
-    await enforcePreconditions(fixture)
+    await enforceIntentFixturePreconditions(fixture)
+    // Preconditions run through the legacy oracle; the rewrite subject drives
+    // the operations under test through the public facade on the same account.
+    if (subject === 'rewrite') {
+      fixture.account = await createSubjectSdk(
+        'rewrite',
+        createIntentSdkInput(scenario),
+      ).createAccount(fixture.accountConfig)
+    }
     fixture.invocations.length = 0
   } catch (error) {
     return finishFailure(context, scenario, {
@@ -192,7 +205,7 @@ export async function runLegacyIntentScenario({
 
   let before: bigint | undefined
   try {
-    before = plan.balance ? await readBalance(plan.balance) : undefined
+    before = plan.balance ? await readIntentBalance(plan.balance) : undefined
   } catch (error) {
     return finishFailure(
       context,
@@ -220,7 +233,7 @@ export async function runLegacyIntentScenario({
   try {
     balance =
       before !== undefined && plan.balance
-        ? await observeBalance(plan.balance, before)
+        ? await observeIntentBalance(plan.balance, before)
         : undefined
   } catch (error) {
     return finishFailure(
@@ -240,7 +253,7 @@ export async function runLegacyIntentScenario({
     assertionError = error
   }
   try {
-    await cleanupFixture(fixture)
+    await cleanupIntentFixture(fixture)
   } catch (error) {
     assertionError ??= error
   }
@@ -413,7 +426,7 @@ function tamperSignedTransaction(
   }
 }
 
-async function enforcePreconditions(
+export async function enforceIntentFixturePreconditions(
   fixture: LegacyIntentFixture,
 ): Promise<void> {
   const { scenario } = fixture
@@ -426,7 +439,7 @@ async function enforcePreconditions(
       if (!(await fixture.account.isDeployed(chain))) {
         await fixture.account.deploy(chain, { sponsored: true })
       }
-      if (!(await fixture.account.isDeployed(chain))) {
+      if (!(await waitForAccountDeployment(fixture, chain))) {
         throw new Error(
           `${fixture.account.getAddress()} was not deployed on ${chain.id}`,
         )
@@ -479,6 +492,18 @@ async function enforcePreconditions(
   if (scenario.setup.preconditions.includes('session-enabled')) {
     await ensureSessionsEnabled(fixture)
   }
+}
+
+async function waitForAccountDeployment(
+  fixture: LegacyIntentFixture,
+  chain: Chain,
+): Promise<boolean> {
+  const deadline = Date.now() + 10_000
+  while (Date.now() < deadline) {
+    if (await fixture.account.isDeployed(chain)) return true
+    await new Promise((resolve) => setTimeout(resolve, 500))
+  }
+  return fixture.account.isDeployed(chain)
 }
 
 function requiredDeploymentChains(scenario: IntentScenario): Chain[] {
@@ -560,7 +585,9 @@ async function executeSetupTransaction(
   }
 }
 
-async function cleanupFixture(fixture: LegacyIntentFixture): Promise<void> {
+export async function cleanupIntentFixture(
+  fixture: LegacyIntentFixture,
+): Promise<void> {
   if (fixture.scenario.setup.cleanup !== 'disable-session') return
   for (const session of fixture.sessions) {
     if (!(await fixture.account.experimental_isSessionEnabled(session)))
@@ -796,6 +823,25 @@ async function assertTerminalState(
   return asserted
 }
 
+export async function assertIntentFixtureTerminalState(input: {
+  readonly fixture: LegacyIntentFixture
+  readonly plan: LegacyIntentCasePlan
+  readonly terminal: unknown
+  readonly balance?: BalanceObservation
+}): Promise<readonly TerminalAssertion[]> {
+  return assertTerminalState(
+    input.fixture,
+    input.plan,
+    {
+      phase: 'success',
+      prepared: {} as PreparedTransactionData,
+      signed: {} as SignedTransactionData,
+      terminal: input.terminal,
+    },
+    input.balance,
+  )
+}
+
 function absolute(value: bigint): bigint {
   return value < 0n ? -value : value
 }
@@ -863,7 +909,7 @@ function getDestinationChain(transaction: Transaction): Chain | undefined {
   return 'id' in transaction.targetChain ? transaction.targetChain : undefined
 }
 
-async function readBalance(input: {
+export async function readIntentBalance(input: {
   kind: 'native' | 'erc20'
   address: Address
   chainId: number
@@ -883,11 +929,11 @@ async function readBalance(input: {
   })
 }
 
-async function observeBalance(
+export async function observeIntentBalance(
   input: LegacyIntentCasePlan['balance'] & {},
   before: bigint,
 ): Promise<BalanceObservation> {
-  const after = await readBalance(input)
+  const after = await readIntentBalance(input)
   return { ...input, before, after, delta: after - before }
 }
 
@@ -918,7 +964,7 @@ function finishFailure(
   context: {
     scenarioId: string
     workflow: 'intent'
-    subject: 'legacy' | 'public'
+    subject: 'legacy' | 'public' | 'rewrite'
     runId: string
     comparisonGroup: string
   },

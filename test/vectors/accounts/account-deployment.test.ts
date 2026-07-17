@@ -113,7 +113,10 @@ describe('rewritten account adapter deployment vectors', () => {
           ...(compatibilityFallback ? { compatibilityFallback } : {}),
         },
       }),
-      sessions: { enabled: resolved.sessions.enabled },
+      sessions: {
+        enabled: resolved.sessions.enabled,
+        environment: resolved.sessions.environment,
+      },
       ...(resolved.initData ? { initData: resolved.initData } : {}),
       ...(resolved.eoa ? { eoa: resolved.eoa } : {}),
       chain: { kind: 'evm', id: 1, caip2: 'eip155:1' },

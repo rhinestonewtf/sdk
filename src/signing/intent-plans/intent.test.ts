@@ -752,7 +752,10 @@ describe('intent signing plans', () => {
               chain,
               invocationKind: 'ecdsa-sign-message',
               payload: { source: 'plan-payload', payloadId: notarizedId },
-              contribution: { kind: 'session' },
+              contribution: {
+                kind: 'session',
+                recoveryEncoding: 'ethereum',
+              },
             },
             {
               id: 'pre-claim',
@@ -761,7 +764,10 @@ describe('intent signing plans', () => {
               chain,
               invocationKind: 'ecdsa-sign-typed-data',
               payload: { source: 'plan-payload', payloadId: preClaimId },
-              contribution: { kind: 'session' },
+              contribution: {
+                kind: 'session',
+                recoveryEncoding: 'ethereum',
+              },
             },
           ],
           schedule: [

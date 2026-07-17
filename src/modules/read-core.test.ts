@@ -17,6 +17,7 @@ function fakeReader(results: readonly unknown[]) {
   let index = 0
   const rpc: RpcReadPort = {
     getCode: async () => ({ code: '0x' }),
+    getTransactionCount: async () => 0n,
     readContract: async <TResult>(
       _context: RpcReadContext,
       request: ContractRead<TResult>,

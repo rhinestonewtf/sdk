@@ -1,11 +1,14 @@
 import { concat, type Hex, hashTypedData, type TypedDataDefinition } from 'viem'
 import { describe, expect, test, vi } from 'vitest'
 import type { AccountAdapter } from '../accounts/adapter'
+import { wrapKernelMessageHash } from '../accounts/adapters/kernel'
+import { K1_DEFAULT_VALIDATOR_ADDRESS } from '../accounts/adapters/startale'
 import { EoaSigningNotSupportedError } from '../accounts/error'
 import type { SigningContext } from './context'
 import {
   createAuthorizationListPlan,
   createNexusEip7702InitPlan,
+  createNexusEip7702InitTypedData,
   signAuthorizationList,
   signNexusEip7702Init,
 } from './eip7702'
@@ -14,7 +17,10 @@ import {
   createSessionEnableSigningPlan,
   signSessionEnablement,
 } from './session-enable'
-import { signAccountTypedData } from './typed-data'
+import {
+  resolveAccountTypedDataSigning,
+  signAccountTypedData,
+} from './typed-data'
 import type {
   PayloadSigningTask,
   SignerInvocationPort,
@@ -137,6 +143,18 @@ const noReads: SigningCheckpointPort = {
 }
 
 describe('direct rewritten signing pipelines', () => {
+  test('builds the Nexus EIP-7702 initialization payload', () => {
+    expect(
+      createNexusEip7702InitTypedData({
+        contract: account,
+        initData: '0x1234',
+      }),
+    ).toMatchObject({
+      domain: { name: 'Nexus', version: '1.2.0' },
+      primaryType: 'Initialize',
+      message: { nexus: account, chainIds: [0n], initData: '0x1234' },
+    })
+  })
   test('assembles message signatures in validator, account, ERC-6492 order', async () => {
     const context = signingContext()
     const result = await signAccountMessage({
@@ -249,6 +267,92 @@ describe('direct rewritten signing pipelines', () => {
     })
     expect(result.signature.startsWith('0xaa')).toBe(true)
     expect(result.signature).not.toContain(rawSignature.slice(2))
+  })
+
+  test('resolves account-specific typed-data signing routes', () => {
+    const context = signingContext()
+    expect(
+      resolveAccountTypedDataSigning({ typedData, chain, context }),
+    ).toMatchObject({
+      material: { kind: 'typed-data', typedData },
+      payloadKind: 'typed-data',
+      ecdsaInvocation: 'ecdsa-sign-typed-data',
+      webauthnInvocation: 'webauthn-sign-typed-data',
+      erc7739: { kind: 'none' },
+    })
+
+    const payload = hashTypedData(typedData)
+    expect(
+      resolveAccountTypedDataSigning({
+        typedData,
+        chain,
+        context: {
+          ...context,
+          account: { definition: { kind: 'kernel' }, address: account },
+        },
+      }),
+    ).toMatchObject({
+      material: {
+        kind: 'message',
+        message: { raw: wrapKernelMessageHash(payload, account) },
+      },
+      payloadKind: 'message',
+      ecdsaInvocation: 'ecdsa-sign-message',
+      webauthnInvocation: 'webauthn-sign-hash',
+      erc7739: { kind: 'none' },
+    })
+
+    const messageOnly = resolveAccountTypedDataSigning({
+      typedData,
+      chain,
+      context: {
+        ...context,
+        validatorCapabilities: {
+          ...context.validatorCapabilities,
+          supportsEip712: false,
+        },
+      },
+    })
+    expect(messageOnly).toMatchObject({
+      material: { kind: 'message', message: { raw: payload } },
+      payloadKind: 'message',
+      erc7739: { kind: 'none' },
+    })
+
+    const startaleK1 = resolveAccountTypedDataSigning({
+      typedData,
+      chain,
+      context: {
+        ...context,
+        account: { definition: { kind: 'startale' }, address: account },
+        validatorCapabilities: {
+          ...context.validatorCapabilities,
+          compatibilityKey: {
+            ...context.validatorCapabilities.compatibilityKey,
+            moduleAddress: K1_DEFAULT_VALIDATOR_ADDRESS,
+          },
+        },
+      },
+    })
+    expect(startaleK1).toMatchObject({
+      material: { kind: 'message' },
+      payloadKind: 'message',
+      ecdsaInvocation: 'ecdsa-sign-message',
+      webauthnInvocation: 'webauthn-sign-hash',
+      erc7739: { kind: 'wrap-typed-data', typedData },
+    })
+    expect(startaleK1.material).not.toEqual(messageOnly.material)
+
+    expect(
+      resolveAccountTypedDataSigning({
+        typedData,
+        chain,
+        context: {
+          ...context,
+          account: { definition: { kind: 'startale' }, address: account },
+        },
+      }).payloadKind,
+    ).toBe('typed-data')
   })
 
   test('supports direct typed-data and deployless typed-data routes', async () => {

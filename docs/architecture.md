@@ -52,6 +52,34 @@ graph TD
 
 ## Execution paths
 
+### Rewrite transition
+
+Commit 6 keeps the published facade on `execution/` while completing the new
+internal composition used by characterization tests. The new composition is
+owned by `api/compose.ts` and separates the operation workflows as follows:
+
+```mermaid
+graph TD
+  Compose[api/compose.ts] --> Intent[transactions/intents/]
+  Compose --> UserOp[transactions/user-operations/]
+  Compose --> Direct[api/direct-signing.ts]
+  Intent --> Signing[signing/]
+  UserOp --> Signing
+  Direct --> Signing
+  Intent --> Accounts[accounts/]
+  UserOp --> Accounts
+  Direct --> Accounts
+  Intent --> Clients[clients/orchestrator/]
+  UserOp --> Bundler[clients/bundler/ + paymaster/]
+```
+
+`transactions/` is an organizational namespace, not a shared protocol layer.
+Intent and UserOperation request models, preparation, submission, and status
+remain separate. They share account materialization, call resolution, signing
+plans/execution, chain data, clocks, and narrow client ports through their
+owning top-level subsystems. Direct account signing uses the same signing core
+without belonging to either transaction workflow.
+
 The account exposes two ways to execute, both ending at `waitForExecution`.
 
 ### Intent path (chain-abstracted)

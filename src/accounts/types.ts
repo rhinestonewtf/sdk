@@ -92,7 +92,10 @@ export interface AccountConstruction {
   readonly owner?: ResolvedValidatorDefinition
   readonly modules: readonly ConfiguredModule[]
   readonly setup: AccountModulePlan
-  readonly sessions: { readonly enabled: boolean }
+  readonly sessions: {
+    readonly enabled: boolean
+    readonly environment: 'production' | 'development'
+  }
   readonly initData?: AccountInitData
   readonly eoa?: Account
   readonly chain: EvmChainReference
@@ -106,6 +109,11 @@ export interface AccountDeploymentPlan {
   readonly factoryData?: Hex
   readonly initCode?: Hex
   readonly deployed: boolean
+}
+
+export interface AccountEip7702AdoptionPlan {
+  readonly contract: Address
+  readonly initData: Hex
 }
 
 export type AccountSignatureEnvelope =

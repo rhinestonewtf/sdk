@@ -17,9 +17,11 @@ describe('named characterization normalization rules', () => {
         gasEstimate: 12n,
       },
       execution: {
+        submission: { id: 'intent-submission-1' },
         transactionHash: `0x${'12'.repeat(32)}`,
         receipt: { blockNumber: 123 },
       },
+      simulation: { result: { id: 'intent-simulation-1' } },
     })
     const selected = [
       'request-id',
@@ -39,9 +41,14 @@ describe('named characterization normalization rules', () => {
       '/sign/prepared/quotes/best/quoteId',
       '/sign/prepared/createdAt',
       '/sign/prepared/gasEstimate',
+      '/execution/submission/id',
       '/execution/transactionHash',
       '/execution/receipt/blockNumber',
+      '/simulation/result/id',
     ])
+    expect(() =>
+      normalizeScenarioObservation(observation, selected),
+    ).not.toThrow()
   })
 
   test('keeps semantic fields and removes only harness comparison context', () => {
@@ -175,6 +182,7 @@ function makeObservation(
   details: {
     prepared?: unknown
     execution?: unknown
+    simulation?: unknown
   },
   subject: 'legacy' | 'rewrite' = 'legacy',
   accountAddress?: string,
@@ -192,6 +200,7 @@ function makeObservation(
       ...(details.prepared ? { prepared: details.prepared } : {}),
     },
     ...(details.execution ? { execution: details.execution } : {}),
+    ...(details.simulation ? { simulation: details.simulation } : {}),
     outcome: { status: 'success' },
   } as CharacterizationObservation
 }

@@ -52,7 +52,10 @@ export function createAccountConstruction(input: {
     ...(input.material.owner ? { owner: input.material.owner } : {}),
     modules: input.material.modules,
     setup,
-    sessions: { enabled: input.material.sessions.enabled },
+    sessions: {
+      enabled: input.material.sessions.enabled,
+      environment: input.material.sessions.environment,
+    },
     ...(input.material.initData ? { initData: input.material.initData } : {}),
     ...(input.material.eoa ? { eoa: input.material.eoa } : {}),
     chain: input.chain,

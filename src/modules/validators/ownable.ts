@@ -91,7 +91,10 @@ export function encodeEcdsaValidatorContribution(input: {
       contribution.ownerId,
       contribution.encoding === 'validator-contribution'
         ? contribution.signature
-        : encodeRecoveryValue(contribution.signature, input.recoveryEncoding),
+        : encodeEcdsaRecoveryValue(
+            contribution.signature,
+            input.recoveryEncoding,
+          ),
     )
   }
   const ordered = input.ownerOrder.flatMap((ownerId) => {
@@ -106,7 +109,7 @@ export function encodeEcdsaValidatorContribution(input: {
   return concat(ordered)
 }
 
-function encodeRecoveryValue(
+export function encodeEcdsaRecoveryValue(
   signature: Hex,
   encoding: 'ethereum' | 'validator-offset-4',
 ): Hex {

@@ -61,14 +61,8 @@ export function assertCharacterizationHandlerCoverage(): void {
 }
 
 export function assertCharacterizationSubjectAvailable(
-  subject: CharacterizationSubject,
-): void {
-  if (subject === 'rewrite') {
-    throw new Error(
-      'The rewrite characterization subject is unavailable until the complete test-only composition exists in Commit 6',
-    )
-  }
-}
+  _subject: CharacterizationSubject,
+): void {}
 
 export async function resolveCharacterizationBaseSha(
   configured?: string,
@@ -211,7 +205,7 @@ async function runSubjectAdapter(
     case 'intent':
       return runLegacyIntentScenario({
         scenario,
-        subject: context.subject as 'legacy' | 'public',
+        subject: context.subject as 'legacy' | 'public' | 'rewrite',
         baseSha: context.baseSha,
         runId: context.runId,
         identityNamespace: getIdentityNamespace(namespaceInput),
@@ -226,7 +220,7 @@ async function runSubjectAdapter(
     case 'user-operation':
       return runLegacyUserOperationScenario({
         scenario,
-        subject: context.subject as 'legacy',
+        subject: context.subject as 'legacy' | 'rewrite',
         baseSha: context.baseSha,
         runId: context.runId,
       })

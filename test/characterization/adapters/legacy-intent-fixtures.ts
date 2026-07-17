@@ -23,6 +23,7 @@ import {
 } from 'viem/account-abstraction'
 import { arbitrumSepolia, baseSepolia } from 'viem/chains'
 import { experimental_disableSession } from '../../../src/actions/smart-sessions'
+import { RhinestoneSDK as RewriteRhinestoneSDK } from '../../../src/api/sdk'
 import {
   hyperCoreMainnet,
   type NonEvmAddress,
@@ -131,6 +132,8 @@ type FixtureBuilder = (
   identityNamespace: string,
 ) => Promise<LegacyIntentFixture>
 
+export type FixtureSubject = 'legacy' | 'public' | 'rewrite'
+
 type CaseBuilder = (
   fixture: LegacyIntentFixture,
 ) => Promise<LegacyIntentCasePlan>
@@ -169,7 +172,9 @@ function requireRelayerApiKey(scenarioId: string): string {
   return value
 }
 
-function createSdk(scenario: IntentScenario): RhinestoneSDK {
+export function createIntentSdkInput(
+  scenario: IntentScenario,
+): ConstructorParameters<typeof RhinestoneSDK>[0] {
   const endpointUrl = getIntegrationOrchestratorUrl()
   if (
     scenario.axes.infrastructure.includes('orchestrator:custom-url') &&
@@ -217,7 +222,7 @@ function createSdk(scenario: IntentScenario): RhinestoneSDK {
     const token = rejected
       ? 'invalid-characterization-jwt'
       : requireEnvironment('INTEGRATION_RHINESTONE_JWT', scenario.id)
-    return new RhinestoneSDK({
+    return {
       ...common,
       auth: {
         mode: 'experimental_jwt',
@@ -225,7 +230,7 @@ function createSdk(scenario: IntentScenario): RhinestoneSDK {
           ? async () => token
           : token,
       },
-    })
+    }
   }
 
   const apiKey =
@@ -233,11 +238,11 @@ function createSdk(scenario: IntentScenario): RhinestoneSDK {
       ? requireRelayerApiKey(scenario.id)
       : requireEnvironment('INTEGRATION_RHINESTONE_API_KEY', scenario.id)
   return scenario.axes.infrastructure.includes('auth:deprecated-api-key')
-    ? new RhinestoneSDK({ ...common, apiKey })
-    : new RhinestoneSDK({
+    ? { ...common, apiKey }
+    : {
         ...common,
         auth: { mode: 'apiKey', apiKey },
-      })
+      }
 }
 
 function resolveUseDevContracts(scenario: IntentScenario): boolean {
@@ -713,7 +718,11 @@ async function createFixture(
   identityNamespace: string,
 ): Promise<LegacyIntentFixture> {
   const invocations: LegacySignerInvocation[] = []
-  const sdk = createSdk(scenario)
+  // Fixtures (and their on-chain preconditions: deploy, session enable) are
+  // always built with the legacy oracle. The paired rewrite subject swaps in a
+  // public-facade account for the operations under test once preconditions are
+  // satisfied — see runLegacyIntentScenario.
+  const sdk = new RhinestoneSDK(createIntentSdkInput(scenario))
   const ownerConfig = ownerConfigFor(
     scenario.fixtureId,
     scenario,
@@ -783,6 +792,17 @@ export function buildLegacyIntentFixture(
     scenario,
     identityNamespace,
   )
+}
+
+export function createSubjectSdk(
+  subject: FixtureSubject,
+  input: ConstructorParameters<typeof RhinestoneSDK>[0],
+): RhinestoneSDK {
+  return (subject === 'rewrite'
+    ? new RewriteRhinestoneSDK(
+        input as ConstructorParameters<typeof RewriteRhinestoneSDK>[0],
+      )
+    : new RhinestoneSDK(input)) as unknown as RhinestoneSDK
 }
 
 export function createNoopCall() {

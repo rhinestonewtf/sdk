@@ -11,7 +11,7 @@ const common = {
 }
 
 describe('characterization identity isolation', () => {
-  test('shares non-mutating identities across subjects', () => {
+  test('shares non-mutating identities across subjects and runs', () => {
     const scenario = {
       id: 'signing/safe',
       comparison: 'shared-inputs',
@@ -29,8 +29,9 @@ describe('characterization identity isolation', () => {
 
     expect(legacy).toBe(rewrite)
     expect(
-      getComparisonGroupNamespace({
+      getIdentityNamespace({
         ...common,
+        runId: 'calibration-2',
         scenario,
         subject: 'legacy',
       }),

@@ -1,4 +1,8 @@
+import { arbitrumSepolia, base } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
+import { encodeDisableSessionCall } from '../../src/modules/validators/smart-sessions/calls'
+import { toSession } from '../../src/modules/validators/smart-sessions/resolve'
+import { accountA, accountB } from '../consts'
 import {
   compareScenarioValues,
   projectIsolatedObservation,
@@ -108,7 +112,156 @@ describe('characterization comparison strategy', () => {
     )
     expect(raw.sign.artifacts.signature).toBe('0xaaaa')
   })
+
+  test('projects identity-bound session setup and permission artifacts', () => {
+    const reference = observation(
+      '0x1111111111111111111111111111111111111111',
+      'aa',
+      5n,
+    )
+    const candidate = observation(
+      '0x2222222222222222222222222222222222222222',
+      'bb',
+      5n,
+    )
+    Object.assign(reference.sign, {
+      prepared: {
+        account: {
+          setupOps: [
+            {
+              to: '0x7777777777777777777777777777777777777777',
+              data: '0xaaaa',
+            },
+          ],
+          mockSignatures: { 1: '0xaaaa' },
+        },
+      },
+      artifacts: { preClaimPrefix: '0x0011223344' },
+    })
+    Object.assign(candidate.sign, {
+      prepared: {
+        account: {
+          setupOps: [
+            {
+              to: '0x7777777777777777777777777777777777777777',
+              data: '0xbbbb',
+            },
+          ],
+          mockSignatures: { 1: '0xbbbb' },
+        },
+      },
+      artifacts: { preClaimPrefix: '0x00aabbccdd' },
+    })
+
+    expect(
+      compareScenarioValues(isolatedScenario, reference, candidate),
+    ).toMatchObject({
+      equal: true,
+      deltas: [],
+    })
+  })
+
+  test('projects isolated balance targets and subject-bound calldata', () => {
+    const reference = observation(
+      '0x1111111111111111111111111111111111111111',
+      'aa',
+      5n,
+    )
+    const candidate = observation(
+      '0x2222222222222222222222222222222222222222',
+      'bb',
+      5n,
+    )
+    reference.execution.balance.address =
+      '0x3333333333333333333333333333333333333333'
+    candidate.execution.balance.address =
+      '0x4444444444444444444444444444444444444444'
+    Object.assign(reference.sign.prepared, {
+      intentInput: {
+        destinationExecutions: [
+          {
+            to: reference.execution.balance.address,
+            data: `0xa9059cbb${'0'.repeat(24)}${reference.execution.balance.address.slice(2)}${'0'.repeat(63)}1`,
+          },
+        ],
+      },
+    })
+    Object.assign(candidate.sign.prepared, {
+      intentInput: {
+        destinationExecutions: [
+          {
+            to: candidate.execution.balance.address,
+            data: `0xa9059cbb${'0'.repeat(24)}${candidate.execution.balance.address.slice(2)}${'0'.repeat(63)}1`,
+          },
+        ],
+      },
+    })
+
+    expect(
+      compareScenarioValues(isolatedScenario, reference, candidate),
+    ).toMatchObject({ equal: true, deltas: [] })
+
+    const candidateInput = candidate.sign
+      .prepared as typeof candidate.sign.prepared & {
+      intentInput: { destinationExecutions: { data: string }[] }
+    }
+    candidateInput.intentInput.destinationExecutions[0].data = `0xa9059cbb${'0'.repeat(24)}${candidate.execution.balance.address.slice(2)}${'0'.repeat(63)}2`
+    expect(
+      compareScenarioValues(isolatedScenario, reference, candidate).equal,
+    ).toBe(false)
+  })
+
+  test('decodes identity-bound session disable calldata without hiding invariants', () => {
+    const scenario = {
+      comparison: 'isolated-state',
+      caseId: 'disable-session',
+    } as CharacterizationScenario
+    const reference = sessionDisableObservation(base, accountA, 123n)
+    const candidate = sessionDisableObservation(base, accountB, 456n)
+
+    expect(compareScenarioValues(scenario, reference, candidate)).toMatchObject(
+      {
+        equal: true,
+        deltas: [],
+      },
+    )
+
+    const changedChain = sessionDisableObservation(
+      arbitrumSepolia,
+      accountB,
+      456n,
+    )
+    expect(compareScenarioValues(scenario, reference, changedChain).equal).toBe(
+      false,
+    )
+  })
 })
+
+function sessionDisableObservation(
+  chain: typeof base | typeof arbitrumSepolia,
+  owner: typeof accountA,
+  expires: bigint,
+) {
+  const session = toSession({
+    chain,
+    owners: { type: 'ecdsa', accounts: [owner] },
+  })
+  const result = observation(owner.address, 'aa', 5n)
+  Object.assign(result.sign.prepared, {
+    intentInput: {
+      destinationExecutions: [
+        encodeDisableSessionCall({
+          account: owner.address,
+          session,
+          expires,
+          nonce: expires,
+          environment: 'production',
+        }),
+      ],
+    },
+  })
+  return result
+}
 
 function observation(
   address: string,

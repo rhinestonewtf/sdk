@@ -45,6 +45,31 @@ function isStableRecord(
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+// An explicitly-`undefined` field and an absent field are wire-equivalent (JSON
+// omits undefined), so treat them as equal. Serialization tags undefined as
+// `{ $characterizationType: 'undefined' }` with no `value` key.
+function isUndefinedMarker(value: StableValue): boolean {
+  return (
+    isStableRecord(value) &&
+    value.$characterizationType === 'undefined' &&
+    !Object.hasOwn(value, 'value')
+  )
+}
+
+// A bigint and its decimal-string form are wire-equivalent (the orchestrator
+// encodes numeric fields as strings). Comparing by decimal value still catches
+// genuine value differences.
+function canonicalScalar(value: StableValue): StableValue {
+  if (
+    isStableRecord(value) &&
+    value.$characterizationType === 'bigint' &&
+    typeof value.value === 'string'
+  ) {
+    return value.value
+  }
+  return value
+}
+
 export function compareObservations(
   expectedObservation: unknown,
   actualObservation: unknown,
@@ -73,10 +98,12 @@ export function compareObservations(
   }
 
   function compare(
-    expectedValue: StableValue,
-    actualValue: StableValue,
+    expectedInput: StableValue,
+    actualInput: StableValue,
     path: string,
   ): void {
+    const expectedValue = canonicalScalar(expectedInput)
+    const actualValue = canonicalScalar(actualInput)
     const expectedType = valueType(expectedValue)
     const actualType = valueType(actualValue)
     if (expectedType !== actualType) {
@@ -132,12 +159,14 @@ export function compareObservations(
         const hasActual = Object.hasOwn(actualValue, key)
         const keyPath = childPath(path, key)
         if (!hasActual) {
+          if (isUndefinedMarker(expectedValue[key])) continue
           add({
             path: keyPath,
             kind: 'missing-actual',
             expected: expectedValue[key],
           })
         } else if (!hasExpected) {
+          if (isUndefinedMarker(actualValue[key])) continue
           add({
             path: keyPath,
             kind: 'unexpected-actual',

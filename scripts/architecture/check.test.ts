@@ -47,6 +47,35 @@ describe('architecture rules', () => {
     ).toContain('actions-api')
   })
 
+  test('keeps nested transaction workflows isolated', () => {
+    const violations = analyzeArchitecture(
+      graph([
+        {
+          from: 'src/transactions/intents/send.ts',
+          to: 'src/transactions/user-operations/send.ts',
+          typeOnly: false,
+        },
+      ]),
+    )
+
+    expect(violations.map(({ rule }) => rule)).toContain('workflow-isolation')
+  })
+
+  test('rejects implementation files at the transactions namespace root', () => {
+    const violations = analyzeArchitecture({
+      files: ['src/transactions/index.ts'],
+      edges: [],
+      sourceText: { 'src/transactions/index.ts': '' },
+    })
+
+    expect(violations).toContainEqual({
+      rule: 'transactions-namespace-only',
+      path: ['src/transactions/index.ts'],
+      message:
+        'transactions is a namespace; implementation belongs to a workflow subdirectory',
+    })
+  })
+
   test('reports a shortest cycle path', () => {
     const violations = analyzeArchitecture(
       graph([

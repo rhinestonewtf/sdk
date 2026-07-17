@@ -66,11 +66,11 @@ afterEach(() => {
 })
 
 describe('legacy intent characterization adapter', () => {
-  test('accepts only unchanged legacy and public facade subjects', () => {
+  test('accepts legacy, public, and rewrite facade subjects', () => {
     type Subject = NonNullable<
       Parameters<typeof runLegacyIntentScenario>[0]['subject']
     >
-    expectTypeOf<Subject>().toEqualTypeOf<'legacy' | 'public'>()
+    expectTypeOf<Subject>().toEqualTypeOf<'legacy' | 'public' | 'rewrite'>()
   })
 
   test('has fixture and case handlers for every executable intent scenario', () => {

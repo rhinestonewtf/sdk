@@ -3,6 +3,7 @@ import type {
   OrchestratorIntentRequest,
   OrchestratorIntentStatus,
   OrchestratorIntentSubmission,
+  OrchestratorIntentSubmissionContext,
   OrchestratorPortfolio,
   OrchestratorPortfolioRequest,
   OrchestratorQuoteResponse,
@@ -20,6 +21,7 @@ export interface IntentQuotePort {
 export interface IntentSubmissionPort {
   readonly submitIntent: (
     intent: OrchestratorSignedIntent,
+    context?: OrchestratorIntentSubmissionContext,
   ) => Promise<OrchestratorIntentSubmission>
 }
 

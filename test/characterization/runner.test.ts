@@ -25,9 +25,9 @@ describe('characterization runner', () => {
   })
 
   test('reports rewrite subject availability honestly', () => {
-    expect(() => assertCharacterizationSubjectAvailable('rewrite')).toThrow(
-      'Commit 6',
-    )
+    expect(() =>
+      assertCharacterizationSubjectAvailable('rewrite'),
+    ).not.toThrow()
     expect(() => assertCharacterizationSubjectAvailable('legacy')).not.toThrow()
     expect(() => assertCharacterizationSubjectAvailable('public')).not.toThrow()
   })
@@ -82,5 +82,16 @@ describe('characterization runner', () => {
     expect(
       compareScenarioArtifacts(scenario, legacy, publicArtifact),
     ).toMatchObject({ status: 'passed', unexplainedDeltas: 0 })
+
+    const rewrite = await runCharacterizationScenario(scenario, {
+      baseSha,
+      runId: 'runner-test',
+      subject: 'rewrite',
+    })
+    expect(rewrite.status).toBe('passed')
+    expect(compareScenarioArtifacts(scenario, legacy, rewrite)).toMatchObject({
+      status: 'passed',
+      unexplainedDeltas: 0,
+    })
   })
 })

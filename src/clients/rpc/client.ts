@@ -35,6 +35,15 @@ export function createRpcReadPort(
           : { blockNumber: context.blockNumber }),
       }),
     }),
+    getTransactionCount: async (context, address) =>
+      BigInt(
+        await client.getTransactionCount({
+          address,
+          ...(context.blockNumber === undefined
+            ? {}
+            : { blockNumber: context.blockNumber }),
+        }),
+      ),
     readContract: (context, request) => read(request, context.blockNumber),
     multicall: async <TResults extends readonly unknown[]>(
       context: Parameters<RpcReadPort['multicall']>[0],

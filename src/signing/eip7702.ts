@@ -27,6 +27,28 @@ export interface NexusEip7702InitPlanInput {
   readonly signer: SignerReference
 }
 
+export function createNexusEip7702InitTypedData(input: {
+  readonly contract: Address
+  readonly initData: Hex
+}): TypedDataDefinition {
+  return {
+    domain: { name: 'Nexus', version: '1.2.0' },
+    types: {
+      Initialize: [
+        { name: 'nexus', type: 'address' },
+        { name: 'chainIds', type: 'uint256[]' },
+        { name: 'initData', type: 'bytes' },
+      ],
+    },
+    primaryType: 'Initialize',
+    message: {
+      nexus: input.contract,
+      chainIds: [0n],
+      initData: input.initData,
+    },
+  }
+}
+
 export function createNexusEip7702InitPlan(
   input: NexusEip7702InitPlanInput,
 ): SigningPlan {

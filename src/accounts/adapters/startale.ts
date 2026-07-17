@@ -26,6 +26,15 @@ import {
 } from './shared'
 
 export { K1_DEFAULT_VALIDATOR_ADDRESS }
+export function startaleEip712Domain(account: Address, chainId: number) {
+  return {
+    name: 'Startale',
+    version: '1.0.0',
+    chainId,
+    verifyingContract: account,
+    salt: zeroHash,
+  } as const
+}
 const STARTALE_IMPLEMENTATION_ADDRESS =
   '0x000000b8f5f723a680d3d7ee624fe0bc84a6e05a' as const
 const STARTALE_FACTORY_ADDRESS =

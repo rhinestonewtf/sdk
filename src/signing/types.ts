@@ -184,7 +184,10 @@ export interface SigningTaskTemplate {
         readonly publicKey: Hex
         readonly factorId?: string
       }
-    | { readonly kind: 'session' }
+    | {
+        readonly kind: 'session'
+        readonly recoveryEncoding: 'ethereum' | 'validator-offset-4'
+      }
     | { readonly kind: 'authorization' }
 }
 

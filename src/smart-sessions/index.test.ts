@@ -15,6 +15,7 @@ vi.mock('../clients/rpc/compatibility', () => ({
     chain: { kind: 'evm', id: 8453, caip2: 'eip155:8453' },
     rpc: {
       getCode: vi.fn(),
+      getTransactionCount: vi.fn(),
       readContract: reads,
       multicall: vi.fn(),
     },

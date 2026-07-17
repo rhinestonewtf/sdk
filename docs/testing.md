@@ -9,7 +9,7 @@ comparing release behavior.
 | Layer              | Files                                 | Runs against                                | Command                         |
 | ------------------ | ------------------------------------- | ------------------------------------------- | ------------------------------- |
 | Unit and vectors   | `src/**/*.test.ts`, `test/vectors/**` | Local code and deterministic fakes          | `bun run test`                  |
-| Pure-core coverage | Rewritten core domains                | V8 coverage with scoped thresholds          | `bun run test:coverage:core`    |
+| Pure-core coverage | Rewritten core domains                | V8 coverage with scoped thresholds          | `bun run test:coverage:pure`    |
 | Architecture       | Hand-written production imports       | Rewrite dependency and cycle rules          | `bun run check:architecture`    |
 | Type               | `test/types/**`                       | TypeScript                                  | `bun run test:types`            |
 | Package contract   | `test/contract/**/*.ctest.ts`         | Packed current and base packages            | `bun run test:contract`         |
@@ -108,13 +108,13 @@ The subjects have distinct meanings:
 | Subject   | Meaning                                                           | Rewrite evidence?                                     |
 | --------- | ----------------------------------------------------------------- | ----------------------------------------------------- |
 | `legacy`  | Preserved implementation calibrated at the exact release base SHA | No; compatibility oracle                              |
-| `rewrite` | Test-only rewritten composition                                   | Yes, once the complete composition exists in Commit 6 |
+| `rewrite` | Test-only rewritten composition                                   | Yes                                                   |
 | `public`  | Published package facade on the checked-out branch                | Only after the facade cutover in Commit 7             |
 
-Through Commit 5, `public` still exercises legacy implementation paths. A passing
-legacy/public run is a regression gate, not proof that rewritten internals
-work. The manual workflow intentionally runs only `legacy` and `public` until
-the rewrite subject is executable.
+Through Commit 6, `public` still exercises legacy implementation paths. A
+passing legacy/public run is a regression gate, not proof that rewritten
+internals work. Commit 6 comparisons use `legacy,rewrite`; Commit 7 adds the
+`public` cutover comparison.
 
 ### Commands
 
@@ -147,6 +147,17 @@ bun run test:characterization:compare -- --run
 
 The compare command executes both subjects for one scenario before advancing.
 It does not run all legacy cases hours before all rewrite cases.
+
+The nine direct-signing scenarios are deterministic and require no live
+credentials:
+
+```bash
+SDK_ITEST_COMPARE=legacy,rewrite \
+SDK_ITEST_BASE_SHA="$BASE_SHA" \
+SDK_ITEST_RUN_ID="$RUN_ID" \
+SDK_ITEST_WORKFLOW=direct-signing \
+bun run test:characterization:compare -- --run
+```
 
 ### Harness environment
 

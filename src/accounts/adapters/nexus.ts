@@ -166,6 +166,28 @@ export function nexusMaterial(
   }
 }
 
+function nexusEip7702AdoptionPlan(input: AccountConstruction): {
+  readonly contract: Address
+  readonly initData: Hex
+} {
+  const { eoa: _eoa, ...factoryConstruction } = input
+  const material = nexusMaterial(factoryConstruction)
+  if (!material.factoryData) {
+    throw new Error('Nexus EIP-7702 initialization data is unavailable')
+  }
+  const decoded = decodeFunctionData({
+    abi: parseAbi(['function createAccount(bytes,bytes32)']),
+    data: material.factoryData,
+  })
+  if (decoded.functionName !== 'createAccount') {
+    throw new Error('Invalid Nexus EIP-7702 initialization data')
+  }
+  return {
+    contract: NEXUS_IMPLEMENTATION_ADDRESS,
+    initData: decoded.args[0],
+  }
+}
+
 export function createNexusAdapter(
   construction: AccountConstruction,
 ): AccountAdapter {
@@ -194,6 +216,7 @@ export function createNexusAdapter(
     }),
     getDeploymentPlan: (input) =>
       deploymentPlan(input.chain, nexusMaterial(input), input.deployed),
+    getEip7702AdoptionPlan: nexusEip7702AdoptionPlan,
     encodeCalls: encodeErc7579Calls,
     encodeModuleInstallation: (module) => [encodeInstallModule(module)],
     encodeModuleUninstallation: encodeUninstallModule,

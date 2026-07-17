@@ -167,7 +167,9 @@ function isCompatibleVolatilePath(
     case 'generated-id':
       return (
         leaf.endsWith('id') &&
-        /(?:request|intent|operation|quote|trace)/u.test(joined)
+        /(?:request|intent|operation|quote|simulation|submission|trace)/u.test(
+          joined,
+        )
       )
     case 'transaction-hash':
       return ['transactionhash', 'txhash'].includes(leaf)

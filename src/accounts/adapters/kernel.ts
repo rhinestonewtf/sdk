@@ -1,13 +1,16 @@
 import {
   concat,
+  concatHex,
   decodeAbiParameters,
   decodeFunctionData,
+  domainSeparator,
   encodeAbiParameters,
   encodeFunctionData,
   getContractAddress,
   type Hex,
   keccak256,
   parseAbi,
+  stringToHex,
   toHex,
   zeroAddress,
   zeroHash,
@@ -30,6 +33,24 @@ const KERNEL_BYTECODE =
   '0x603d3d8160223d3973d6cedde84be40893d153be9d467cd6ad37875b2860095155f3363d3d373d3d363d7f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc545af43d6000803e6038573d6000fd5b3d6000f3' as const
 const HOOK_INSTALLED_ADDRESS =
   '0x0000000000000000000000000000000000000001' as const
+
+export function wrapKernelMessageHash(messageHash: Hex, account: Hex): Hex {
+  const separator = domainSeparator({
+    domain: {
+      name: 'Kernel',
+      version: '0.3.3',
+      chainId: 0,
+      verifyingContract: account,
+    },
+  })
+  const structHash = keccak256(
+    encodeAbiParameters(
+      [{ type: 'bytes32' }, { type: 'bytes32' }],
+      [keccak256(stringToHex('Kernel(bytes32 hash)')), messageHash],
+    ),
+  )
+  return keccak256(concatHex(['0x1901', separator, structHash]))
+}
 
 export function kernelInstallData(module: ResolvedModule): readonly Hex[] {
   const install = (initData: Hex) =>

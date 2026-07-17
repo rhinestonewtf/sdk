@@ -566,6 +566,10 @@ function scenarioDefaults(
 
   return {
     ...DEFAULT_SCENARIO_FIELDS,
+    comparison:
+      definition.mode === 'dryRun'
+        ? 'isolated-state'
+        : DEFAULT_SCENARIO_FIELDS.comparison,
     normalization:
       definition.mode === 'execute'
         ? [

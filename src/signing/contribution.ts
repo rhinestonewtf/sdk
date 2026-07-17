@@ -1,4 +1,5 @@
 import { encodeValidatorContribution } from '../modules/validators/contribution'
+import { encodeEcdsaRecoveryValue } from '../modules/validators/ownable'
 import type {
   ValidatorContributionCodec,
   ValidatorContributionInput,
@@ -108,7 +109,13 @@ function contributionFromResult(
       if (result.kind !== 'ecdsa-signature') {
         throw new Error('Session task returned an incompatible result')
       }
-      return { kind: 'session', signature: result.signature }
+      return {
+        kind: 'session',
+        signature: encodeEcdsaRecoveryValue(
+          result.signature,
+          metadata.recoveryEncoding,
+        ),
+      }
     case 'authorization':
       throw new Error('Authorization results are not validator contributions')
   }

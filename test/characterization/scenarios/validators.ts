@@ -178,6 +178,7 @@ export const validatorScenarios = [
       level: 'dry-run-only',
       limitation: 'WebAuthn execute fixtures are not provisioned.',
     },
+    comparison: 'shared-inputs',
     expected: {
       kind: 'failure',
       stage: 'submit',

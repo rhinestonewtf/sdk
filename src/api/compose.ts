@@ -1,98 +1,1015 @@
-import type { AccountAdapter } from '../accounts/adapter'
-import type { BundlerPort } from '../clients/bundler/port'
-import type { OrchestratorPort } from '../clients/orchestrator/port'
-import type { OrchestratorAppFeeBalances } from '../clients/orchestrator/types'
-import type { PaymasterPort } from '../clients/paymaster/port'
-import type { RpcPort } from '../clients/rpc/port'
+import { type Address, type Hex, isAddressEqual } from 'viem'
+import type { AccountRuntime, AccountRuntimePort } from '../accounts/adapter'
+import type { AccountConstructionMaterial } from '../accounts/construction'
+import { createAccountConstruction } from '../accounts/construction'
+import { FactoryArgsNotAvailableError } from '../accounts/error'
+import { createAccountAdapter } from '../accounts/registry'
+import { toEvmChainReference } from '../chains/caip2'
+import { getSupportedChain, sharedChainCatalog } from '../chains/catalog'
+import { createBundlerClient } from '../clients/bundler/client'
+import { createConfiguredOrchestratorClient } from '../clients/orchestrator/client'
+import { createPaymasterClient } from '../clients/paymaster/client'
+import { createRpcPort } from '../clients/rpc/client'
 import type {
   AccountInvocationContext,
+  ResolvedAccountConfig,
   ResolvedSdkConfig,
 } from '../config/resolved'
+import { getIntentExecutorModule } from '../modules/intent-executor'
+import { readInstalledModules, readOwners } from '../modules/read-core'
+import { K1_DEFAULT_VALIDATOR_ADDRESS } from '../modules/validators/k1'
+import {
+  getSessionDetails as buildSessionDetails,
+  SESSION_LOCK_TAG,
+} from '../modules/validators/smart-sessions/authorization'
+import { getSmartSessionEmissaryAddress } from '../modules/validators/smart-sessions/module'
+import {
+  readSessionEnabled,
+  readSessionNonce,
+} from '../modules/validators/smart-sessions/state'
+import type {
+  Session,
+  SessionDetails,
+} from '../modules/validators/smart-sessions/types'
+import type { ResolvedValidatorDefinition } from '../modules/validators/types'
+import {
+  createAccountSigningContext,
+  getAccountSignatureRoute,
+} from '../signing/context'
+import {
+  createNexusEip7702InitTypedData,
+  signAuthorizationList,
+  signNexusEip7702Init,
+} from '../signing/eip7702'
+import { createValidatorSigningTasks, signingTopology } from '../signing/plan'
+import { createSignerInvocationPort } from '../signing/signers/registry'
+import type { ExternalSignerRegistry } from '../signing/signers/types'
+import {
+  resolveAccountTypedDataSigning,
+  signAccountTypedData,
+} from '../signing/typed-data'
+import type {
+  SignerInvocationPort,
+  SigningCheckpointPort,
+} from '../signing/types'
+import {
+  buildIntentSigningInput,
+  prepareIntent,
+} from '../transactions/intents/prepare'
+import { sendIntent } from '../transactions/intents/send'
+import { prepareIntentSessions } from '../transactions/intents/sessions'
+import {
+  assembleIntent,
+  signIntent,
+  signIntentAsOwner,
+} from '../transactions/intents/sign-transaction'
+import { splitIntents } from '../transactions/intents/split'
+import {
+  getIntentStatus,
+  waitForIntentStatus,
+} from '../transactions/intents/status'
+import { submitIntent } from '../transactions/intents/submit'
 import type {
   IntentInput,
-  IntentStatus,
+  IntentWorkflowContext,
   PreparedIntent,
-  SignedIntent,
-  SubmittedIntent,
-} from '../intents/types'
-import type { SignerInvocationPort, SigningTranscript } from '../signing/types'
+} from '../transactions/intents/types'
+import { prepareUserOperation } from '../transactions/user-operations/prepare'
+import { sendUserOperation } from '../transactions/user-operations/send'
+import { signUserOperation } from '../transactions/user-operations/sign'
+import {
+  getUserOperationStatus,
+  waitForUserOperationStatus,
+} from '../transactions/user-operations/status'
+import { submitUserOperation } from '../transactions/user-operations/submit'
+import type { UserOperationWorkflowContext } from '../transactions/user-operations/types'
 import type {
-  PreparedUserOperation,
-  SignedUserOperation,
-  SubmittedUserOperation,
-  UserOperationInput,
-  UserOperationStatus,
-} from '../user-operations/types'
+  AccountComposition,
+  AccountWorkflows,
+  CoreComposition,
+  CoreDependencies,
+  IntentMessages,
+  ProjectWorkflows,
+} from './compose-types'
+import { signRuntimeMessage, signRuntimeTypedData } from './direct-signing'
+import { getAppFeeBalances } from './queries/app-fees'
+import { getPortfolio } from './queries/portfolio'
 
-export interface ClockPort {
-  readonly now: () => number
-  readonly sleep: (milliseconds: number) => Promise<void>
-}
+export type {
+  AccountComposition,
+  AccountWorkflows,
+  ClockPort,
+  CoreComposition,
+  CoreCompositionFactory,
+  CoreDependencies,
+  ProjectWorkflows,
+} from './compose-types'
 
-export interface CoreDependencies {
-  readonly orchestrator: OrchestratorPort
-  readonly rpc: RpcPort
-  readonly bundler?: BundlerPort
-  readonly paymaster?: PaymasterPort
-  readonly signerInvoker: SignerInvocationPort
-  readonly clock: ClockPort
-}
+const sessionEnabledAbi = [
+  {
+    type: 'function',
+    name: 'isPermissionEnabled',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'account', type: 'address' },
+      { name: 'permissionId', type: 'bytes32' },
+    ],
+    outputs: [{ name: 'enabled', type: 'bool' }],
+  },
+] as const
 
-export interface ProjectWorkflows {
-  readonly getIntentStatus: (intentId: string) => Promise<IntentStatus>
-  readonly splitIntents: OrchestratorPort['splitIntents']
-  readonly getAppFeeBalances: () => Promise<OrchestratorAppFeeBalances>
-}
-
-export interface AccountWorkflows<CompatibilityConfig = unknown> {
-  readonly prepareIntent: (
-    context: AccountInvocationContext<CompatibilityConfig>,
-    input: IntentInput,
-  ) => Promise<PreparedIntent>
-  readonly signIntent: (
-    context: AccountInvocationContext<CompatibilityConfig>,
-    input: PreparedIntent,
-  ) => Promise<{
-    readonly intent: SignedIntent
-    readonly transcript: SigningTranscript
-  }>
-  readonly submitIntent: (
-    context: AccountInvocationContext<CompatibilityConfig>,
-    input: SignedIntent,
-  ) => Promise<SubmittedIntent>
-  readonly prepareUserOperation: (
-    context: AccountInvocationContext<CompatibilityConfig>,
-    input: UserOperationInput,
-  ) => Promise<PreparedUserOperation>
-  readonly signUserOperation: (
-    context: AccountInvocationContext<CompatibilityConfig>,
-    input: PreparedUserOperation,
-  ) => Promise<SignedUserOperation>
-  readonly submitUserOperation: (
-    context: AccountInvocationContext<CompatibilityConfig>,
-    input: SignedUserOperation,
-  ) => Promise<SubmittedUserOperation>
-  readonly getUserOperationStatus: (
-    context: AccountInvocationContext<CompatibilityConfig>,
-    input: SubmittedUserOperation,
-  ) => Promise<UserOperationStatus>
-}
-
-export interface AccountComposition<CompatibilityConfig = unknown> {
-  readonly adapter: AccountAdapter
-  readonly context: AccountInvocationContext<CompatibilityConfig>
-  readonly workflows: AccountWorkflows<CompatibilityConfig>
-}
-
-export interface CoreComposition<CompatibilityConfig = unknown> {
-  readonly config: ResolvedSdkConfig
-  readonly project: ProjectWorkflows
-  readonly createAccount: (
-    context: AccountInvocationContext<CompatibilityConfig>,
-  ) => AccountComposition<CompatibilityConfig>
-}
-
-export type CoreCompositionFactory<CompatibilityConfig = unknown> = (
+export function createCoreComposition<CompatibilityConfig = unknown>(
   config: ResolvedSdkConfig,
   dependencies: CoreDependencies,
-) => CoreComposition<CompatibilityConfig>
+): CoreComposition<CompatibilityConfig> {
+  const project: ProjectWorkflows = {
+    getIntentStatus: (intentId) =>
+      getIntentStatus({ statusClient: dependencies.orchestrator }, intentId),
+    splitIntents: (input) => splitIntents(dependencies.orchestrator, input),
+    getAppFeeBalances: () => getAppFeeBalances(dependencies.orchestrator),
+  }
+  return {
+    config,
+    project,
+    createAccount: (context) => createAccountComposition(context, dependencies),
+  }
+}
+
+export function createConfiguredCoreComposition<CompatibilityConfig = unknown>(
+  config: ResolvedSdkConfig,
+): CoreComposition<CompatibilityConfig> {
+  const rpc = createRpcPort(config.provider)
+  return createCoreComposition<CompatibilityConfig>(config, {
+    orchestrator: createConfiguredOrchestratorClient(config),
+    rpc,
+    bundler: createBundlerClient({ endpoint: config.bundler }),
+    ...(config.paymaster
+      ? { paymaster: createPaymasterClient({ endpoint: config.paymaster }) }
+      : {}),
+    clock: {
+      now: Date.now,
+      sleep: (milliseconds) =>
+        new Promise((resolve) => setTimeout(resolve, milliseconds)),
+    },
+  })
+}
+
+function createAccountComposition<CompatibilityConfig>(
+  initialContext: AccountInvocationContext<CompatibilityConfig>,
+  dependencies: CoreDependencies,
+): AccountComposition<CompatibilityConfig> {
+  const workflows: AccountWorkflows<CompatibilityConfig> = {
+    getAddress: (context, chain) =>
+      createStaticAccountRuntime(context.account, chain, false).identity
+        .address,
+    signMessage: async (context, input) => {
+      const account = createAccountRuntimePort(context.account, dependencies)
+      return signRuntimeMessage({
+        ...input,
+        runtime: await account.forChain(input.chain),
+        signerInvoker: signerInvoker(context.account, dependencies),
+        checkpoints: checkpointPort(context.account, dependencies),
+      })
+    },
+    signTypedData: async (context, input) => {
+      const account = createAccountRuntimePort(context.account, dependencies)
+      return signRuntimeTypedData({
+        ...input,
+        runtime: await account.forChain(input.chain),
+        signerInvoker: signerInvoker(context.account, dependencies),
+        checkpoints: checkpointPort(context.account, dependencies),
+      })
+    },
+    signEip7702InitData: (context, chain) =>
+      signEip7702InitData(context.account, chain, dependencies),
+    signAuthorizations: (context, input) =>
+      signEip7702Authorizations(context.account, input, dependencies),
+    prepareIntent: (context, input) =>
+      prepareIntent(intentContext(context, dependencies), input),
+    signIntent: async (context, input) => {
+      const intent = await signIntent(
+        intentContext(context, dependencies),
+        input,
+      )
+      return { intent, transcript: intent.transcript }
+    },
+    signIntentAsOwner: (context, input, selectedSignerId) =>
+      signIntentAsOwner(
+        intentContext(context, dependencies),
+        input,
+        selectedSignerId,
+      ),
+    assembleIntent: (context, input, signatures) =>
+      assembleIntent(intentContext(context, dependencies), input, signatures),
+    submitIntent: (context, input) =>
+      submitIntent(intentContext(context, dependencies), input),
+    sendIntent: (context, input) =>
+      sendIntent(intentContext(context, dependencies), input),
+    waitForIntentStatus: (context, intentId) =>
+      waitForIntentStatus(intentContext(context, dependencies), intentId),
+    prepareUserOperation: (context, input) =>
+      prepareUserOperation(userOperationContext(context, dependencies), input),
+    signUserOperation: (context, input) =>
+      signUserOperation(userOperationContext(context, dependencies), input),
+    submitUserOperation: (context, input) =>
+      submitUserOperation(userOperationContext(context, dependencies), input),
+    sendUserOperation: (context, input) =>
+      sendUserOperation(userOperationContext(context, dependencies), input),
+    getUserOperationStatus: (context, input) =>
+      getUserOperationStatus(
+        userOperationContext(context, dependencies),
+        input,
+      ),
+    waitForUserOperationStatus: (context, input) =>
+      waitForUserOperationStatus(
+        userOperationContext(context, dependencies),
+        input,
+      ),
+    getPortfolio: (context, onTestnets = false) =>
+      getPortfolio({
+        account: createAccountRuntimePort(context.account, dependencies),
+        client: dependencies.orchestrator,
+        onTestnets,
+      }),
+    getInitData: (context) => accountInitData(context.account),
+    isDeployed: (context, chain) =>
+      isAccountDeployed(context.account, chain, dependencies),
+    deploy: (context, chain, options) =>
+      deployAccount(context, chain, options, dependencies),
+    setup: (context, chain) => setupAccount(context, chain, dependencies),
+    getTransactionMessages: (prepared) => intentMessages(prepared),
+    reconstructPreparedIntent: (context, input) =>
+      reconstructPreparedIntent(context, input, dependencies),
+    signIntentFromSignData: (context, input) =>
+      signIntentFromSignData(context, input, dependencies),
+    getOwners: (context, chain) =>
+      readOwners({
+        rpc: dependencies.rpc.forChain(chain),
+        chain,
+        accountKind: context.account.account.kind,
+        account: createStaticAccountRuntime(context.account, chain, false)
+          .identity.address,
+        ...(hcaFactory(context.account)
+          ? { hcaFactory: hcaFactory(context.account) as Address }
+          : {}),
+      }),
+    getValidators: (context, chain) =>
+      readInstalledModules({
+        rpc: dependencies.rpc.forChain(chain),
+        chain,
+        accountKind: context.account.account.kind,
+        account: createStaticAccountRuntime(context.account, chain, false)
+          .identity.address,
+        kind: 'validator',
+      }),
+    getExecutors: (context, chain) =>
+      readInstalledModules({
+        rpc: dependencies.rpc.forChain(chain),
+        chain,
+        accountKind: context.account.account.kind,
+        account: createStaticAccountRuntime(context.account, chain, false)
+          .identity.address,
+        kind: 'executor',
+      }),
+    getSessionDetails: (context, sessions) =>
+      accountSessionDetails(context.account, sessions, dependencies),
+    isSessionEnabled: (context, session) =>
+      accountSessionEnabled(context.account, session, dependencies),
+    signEnableSession: (context, details) =>
+      signAccountEnableSession(context, details, dependencies),
+  }
+  return { context: initialContext, workflows }
+}
+
+async function signEip7702InitData(
+  account: ResolvedAccountConfig,
+  chain: import('../chains/types').EvmChainReference,
+  dependencies: CoreDependencies,
+) {
+  const runtime = createStaticAccountRuntime(account, chain, false)
+  const adoption = runtime.adapter.getEip7702AdoptionPlan?.(
+    runtime.construction,
+  )
+  if (!adoption || !account.eoa) {
+    throw new Error('EIP-7702 initialization is unavailable for this account')
+  }
+  return signNexusEip7702Init({
+    planInput: {
+      typedData: createNexusEip7702InitTypedData(adoption),
+      chain,
+      signer: {
+        id: `ecdsa:${account.eoa.address.toLowerCase()}`,
+        kind: 'ecdsa',
+      },
+    },
+    signerInvoker: signerInvoker(account, dependencies),
+    checkpoints: { read: async () => [] },
+  })
+}
+
+async function signEip7702Authorizations(
+  account: ResolvedAccountConfig,
+  input: {
+    readonly chains: readonly import('../chains/types').ChainReference[]
+    readonly eip7702InitSignature?: import('viem').Hex
+  },
+  dependencies: CoreDependencies,
+) {
+  if (!input.eip7702InitSignature) return { authorizations: [] }
+  const chains = input.chains.flatMap((chain) =>
+    chain.kind === 'evm' ? [chain] : [],
+  )
+  const firstChain = chains[0]
+  if (!firstChain || !account.eoa) {
+    throw new Error('EIP-7702 authorization requires an EVM chain and EOA')
+  }
+  const runtime = createStaticAccountRuntime(account, firstChain, false)
+  const adoption = runtime.adapter.getEip7702AdoptionPlan?.(
+    runtime.construction,
+  )
+  if (!adoption) {
+    throw new Error('EIP-7702 authorization is unavailable for this account')
+  }
+  const facts = new Map<number, import('../signing/types').SigningRuntimeFact>()
+  const nonceByChain: Record<number, number> = {}
+  for (const chain of chains) {
+    if (facts.has(chain.id)) continue
+    const rpc = dependencies.rpc.forChain(chain)
+    const { code } = await rpc.getCode({ chain }, account.eoa.address)
+    facts.set(chain.id, {
+      kind: 'delegation-code',
+      id: `delegation-${chain.id}`,
+      ...(code ? { code } : {}),
+    })
+    const delegated =
+      code?.toLowerCase() ===
+      `0xef0100${adoption.contract.slice(2)}`.toLowerCase()
+    nonceByChain[chain.id] = delegated
+      ? 0
+      : Number(await rpc.getTransactionCount({ chain }, account.eoa.address))
+  }
+  const result = await signAuthorizationList({
+    planInput: {
+      account: account.eoa.address,
+      contract: adoption.contract,
+      chains,
+      signer: {
+        id: `ecdsa:${account.eoa.address.toLowerCase()}`,
+        kind: 'ecdsa',
+      },
+      nonceByChain,
+    },
+    signerInvoker: signerInvoker(account, dependencies),
+    checkpoints: {
+      read: async (checkpoint) => {
+        if (checkpoint.kind !== 'delegation-code') return []
+        const fact = facts.get(checkpoint.chain.id)
+        if (!fact) throw new Error(`Missing delegation fact ${checkpoint.id}`)
+        return [fact]
+      },
+    },
+  })
+  return result
+}
+
+function referenceChain(): import('../chains/types').EvmChainReference {
+  for (const id of sharedChainCatalog.getSupportedChainIds()) {
+    try {
+      return toEvmChainReference(id)
+    } catch {
+      // Not an EVM chain; keep looking.
+    }
+  }
+  throw new Error('No EVM chain is available for account initialization')
+}
+
+function accountInitData(account: ResolvedAccountConfig): {
+  readonly factory: Address
+  readonly factoryData: Hex
+} {
+  const runtime = createStaticAccountRuntime(account, referenceChain(), false)
+  const plan = runtime.adapter.getDeploymentPlan(runtime.construction)
+  if (!plan.factory || !plan.factoryData) {
+    throw new FactoryArgsNotAvailableError()
+  }
+  return { factory: plan.factory, factoryData: plan.factoryData }
+}
+
+function hcaFactory(account: ResolvedAccountConfig): Address | undefined {
+  if (account.account.kind !== 'hca') return undefined
+  return account.initData && 'factory' in account.initData
+    ? account.initData.factory
+    : undefined
+}
+
+async function isAccountDeployed(
+  account: ResolvedAccountConfig,
+  chain: import('../chains/types').EvmChainReference,
+  dependencies: CoreDependencies,
+): Promise<boolean> {
+  if (account.account.kind === 'eoa') return true
+  const runtime = createStaticAccountRuntime(account, chain, false)
+  const { code } = await dependencies.rpc
+    .forChain(chain)
+    .getCode({ chain }, runtime.identity.address)
+  return code !== undefined && code !== '0x'
+}
+
+function intentMessages<CompatibilityConfig>(
+  prepared: PreparedIntent<CompatibilityConfig>,
+): IntentMessages {
+  const { signData } = prepared.quote
+  return {
+    origin: [...signData.origin],
+    destination: signData.destination,
+    ...(signData.targetExecution
+      ? { targetExecution: signData.targetExecution }
+      : {}),
+  }
+}
+
+const zeroAddress = '0x0000000000000000000000000000000000000000' as Address
+
+async function deployAccount<CompatibilityConfig>(
+  context: AccountInvocationContext<CompatibilityConfig>,
+  chain: import('../chains/types').EvmChainReference,
+  options:
+    | { readonly sponsored?: boolean; readonly eip7702InitSignature?: Hex }
+    | undefined,
+  dependencies: CoreDependencies,
+): Promise<boolean> {
+  const account = context.account
+  if (account.account.kind === 'eoa') return false
+  if (await isAccountDeployed(account, chain, dependencies)) return false
+  const runtime = createStaticAccountRuntime(account, chain, false)
+  const plan = runtime.adapter.getDeploymentPlan(runtime.construction)
+  if (!plan.factory || !plan.factoryData) {
+    throw new FactoryArgsNotAvailableError()
+  }
+  const intentExecutorInstalled =
+    account.initData && 'intentExecutorInstalled' in account.initData
+      ? account.initData.intentExecutorInstalled
+      : false
+  const asUserOp = Boolean(account.initData) && !intentExecutorInstalled
+  let initSignature = options?.eip7702InitSignature
+  if (!initSignature && account.eoa && runtime.adapter.getEip7702AdoptionPlan) {
+    initSignature = (await signEip7702InitData(account, chain, dependencies))
+      .signature
+  }
+  if (asUserOp) {
+    await sendUserOperation(userOperationContext(context, dependencies), {
+      chain,
+      calls: [{ target: zeroAddress, value: 0n, data: '0x' }],
+    })
+  } else {
+    await sendIntent(intentContext(context, dependencies), {
+      destination: chain,
+      sourceChains: [chain],
+      calls: [],
+      tokenRequests: [],
+      ...(initSignature ? { eip7702InitSignature: initSignature } : {}),
+      options: options?.sponsored
+        ? { sponsorSettings: { gas: true, bridgeFees: true, swapFees: true } }
+        : {},
+    })
+  }
+  return true
+}
+
+async function setupAccount<CompatibilityConfig>(
+  context: AccountInvocationContext<CompatibilityConfig>,
+  chain: import('../chains/types').EvmChainReference,
+  dependencies: CoreDependencies,
+): Promise<boolean> {
+  const account = context.account
+  if (account.account.kind === 'eoa' || account.account.kind === 'hca') {
+    return false
+  }
+  const runtime = createStaticAccountRuntime(account, chain, true)
+  const plan = runtime.construction.setup
+  const candidates = [
+    ...plan.validators,
+    ...plan.executors,
+    ...plan.fallbacks,
+    ...plan.hooks,
+  ].filter(
+    (module) =>
+      !(
+        account.account.kind === 'startale' &&
+        isAddressEqual(module.address, K1_DEFAULT_VALIDATOR_ADDRESS)
+      ),
+  )
+  const installedModules = (
+    await Promise.all([
+      readInstalledModules({
+        rpc: dependencies.rpc.forChain(chain),
+        chain,
+        accountKind: account.account.kind,
+        account: runtime.identity.address,
+        kind: 'validator',
+      }),
+      readInstalledModules({
+        rpc: dependencies.rpc.forChain(chain),
+        chain,
+        accountKind: account.account.kind,
+        account: runtime.identity.address,
+        kind: 'executor',
+      }),
+    ])
+  ).flat()
+  const installed = new Set(
+    installedModules.map((address) => address.toLowerCase()),
+  )
+  const missing = candidates.filter(
+    (module) => !installed.has(module.address.toLowerCase()),
+  )
+  if (missing.length === 0) return false
+  const calls = missing.flatMap((module) =>
+    runtime.adapter.encodeModuleInstallation(module).map((data) => ({
+      target: runtime.identity.address,
+      value: 0n,
+      data,
+    })),
+  )
+  const intentExecutor = getIntentExecutorModule(account.sessions.environment)
+  const usesIntent = missing.every(
+    (module) => !isAddressEqual(module.address, intentExecutor.address),
+  )
+  if (usesIntent) {
+    const submitted = await sendIntent(intentContext(context, dependencies), {
+      destination: chain,
+      sourceChains: [chain],
+      calls,
+      tokenRequests: [],
+      options: {},
+    })
+    await waitForIntentStatus(
+      intentContext(context, dependencies),
+      submitted.intentId,
+    )
+  } else {
+    const submitted = await sendUserOperation(
+      userOperationContext(context, dependencies),
+      { chain, calls },
+    )
+    await waitForUserOperationStatus(
+      userOperationContext(context, dependencies),
+      submitted,
+    )
+  }
+  return true
+}
+
+function accountSessionDetails(
+  account: ResolvedAccountConfig,
+  sessions: readonly Session[],
+  dependencies: CoreDependencies,
+): Promise<SessionDetails> {
+  const address = createStaticAccountRuntime(account, referenceChain(), false)
+    .identity.address
+  const environment = account.sessions.environment
+  return buildSessionDetails({
+    account: address,
+    sessions,
+    environment,
+    readNonce: (session) => {
+      const chain = toEvmChainReference(session.chain.id)
+      return readSessionNonce({
+        rpc: dependencies.rpc.forChain(chain),
+        chain,
+        account: address,
+        lockTag: SESSION_LOCK_TAG,
+        environment,
+      })
+    },
+  })
+}
+
+function accountSessionEnabled(
+  account: ResolvedAccountConfig,
+  session: Session,
+  dependencies: CoreDependencies,
+): Promise<boolean> {
+  const chain = toEvmChainReference(session.chain.id)
+  const address = createStaticAccountRuntime(account, chain, false).identity
+    .address
+  return readSessionEnabled({
+    rpc: dependencies.rpc.forChain(chain),
+    chain,
+    account: address,
+    session,
+    environment: account.sessions.environment,
+  })
+}
+
+async function signAccountEnableSession<CompatibilityConfig>(
+  context: AccountInvocationContext<CompatibilityConfig>,
+  details: SessionDetails,
+  dependencies: CoreDependencies,
+): Promise<Hex> {
+  const runtime = createStaticAccountRuntime(
+    context.account,
+    referenceChain(),
+    false,
+  )
+  const signing = createAccountSigningContext({
+    runtime,
+    purpose: 'erc1271',
+    signerInvoker: signerInvoker(context.account, dependencies),
+  })
+  const topology = signingTopology(signing.validator)
+  // Mirror the legacy enable-session path: an account ERC-1271 typed-data
+  // signature over the multichain session data, but with ERC-6492 wrapping
+  // skipped (the account is deployed by the time the emissary verifies it).
+  const route = resolveAccountTypedDataSigning({
+    typedData: details.data,
+    chain: runtime.construction.chain,
+    context: signing,
+  })
+  const result = await signAccountTypedData({
+    context: signing,
+    checkpoints: checkpointPort(context.account, dependencies),
+    planInput: {
+      typedData: details.data,
+      signingMaterial: route.material,
+      chain: runtime.construction.chain,
+      ...topology,
+      tasks: createValidatorSigningTasks({
+        validator: signing.validator,
+        signerReferences: signing.signerReferences,
+        taskPrefix: 'typed-data',
+        ecdsaInvocation: route.ecdsaInvocation,
+        webauthnInvocation: route.webauthnInvocation,
+      }),
+      route: {
+        ...getAccountSignatureRoute(
+          runtime,
+          signing,
+          route.erc7739,
+          route.payloadKind,
+        ),
+        erc6492: { kind: 'none' },
+      },
+    },
+  })
+  return result.signature
+}
+
+async function reconstructPreparedIntent<CompatibilityConfig>(
+  context: AccountInvocationContext<CompatibilityConfig>,
+  input: {
+    readonly traceId: string
+    readonly quote: PreparedIntent<CompatibilityConfig>['quote']
+    readonly quotes: PreparedIntent<CompatibilityConfig>['quotes']
+    readonly request: PreparedIntent<CompatibilityConfig>['request']
+    readonly intentInput: IntentInput<CompatibilityConfig>
+  },
+  dependencies: CoreDependencies,
+): Promise<PreparedIntent<CompatibilityConfig>> {
+  const originChainId = Number(
+    input.quote.signData.origin.at(-1)?.domain?.chainId,
+  )
+  const accountChain = toEvmChainReference(originChainId)
+  const runtime = await createAccountRuntimePort(
+    context.account,
+    dependencies,
+  ).forChain(accountChain)
+  let resolvedSessions: PreparedIntent<CompatibilityConfig>['resolvedSessions']
+  if (input.intentInput.signers) {
+    const prepared = await prepareIntentSessions<CompatibilityConfig>({
+      intent: input.intentInput,
+      runtime,
+      context: { checkpoints: checkpointPort(context.account, dependencies) },
+    })
+    resolvedSessions = prepared?.byChain
+  }
+  const destination =
+    input.intentInput.destination.kind === 'evm'
+      ? input.intentInput.destination
+      : undefined
+  const signing = buildIntentSigningInput(
+    runtime,
+    input.quote,
+    resolvedSessions,
+    destination,
+  )
+  return {
+    traceId: input.traceId,
+    input: input.intentInput,
+    request: input.request,
+    quote: input.quote,
+    quotes: input.quotes,
+    signing,
+    accountChain,
+    ...(resolvedSessions
+      ? {
+          resolvedSessions,
+          sessionEnvironment: runtime.construction.sessions.environment,
+        }
+      : {}),
+  }
+}
+
+async function signIntentFromSignData<CompatibilityConfig>(
+  context: AccountInvocationContext<CompatibilityConfig>,
+  input: {
+    readonly signData: IntentMessages
+    readonly targetChain: import('../chains/types').ChainReference
+    readonly signers?: IntentInput<CompatibilityConfig>['signers']
+  },
+  dependencies: CoreDependencies,
+) {
+  const originChainId = Number(input.signData.origin.at(-1)?.domain?.chainId)
+  const accountChain = toEvmChainReference(originChainId)
+  const runtime = await createAccountRuntimePort(
+    context.account,
+    dependencies,
+  ).forChain(accountChain)
+  let resolvedSessions: PreparedIntent<CompatibilityConfig>['resolvedSessions']
+  if (input.signers) {
+    const preparedSessions = await prepareIntentSessions<CompatibilityConfig>({
+      intent: {
+        destination: input.targetChain,
+        calls: [],
+        tokenRequests: [],
+        signers: input.signers,
+      },
+      runtime,
+      context: { checkpoints: checkpointPort(context.account, dependencies) },
+    })
+    resolvedSessions = preparedSessions?.byChain
+  }
+  const destination =
+    input.targetChain.kind === 'evm' ? input.targetChain : undefined
+  const quote = {
+    signData: {
+      origin: [...input.signData.origin],
+      destination: input.signData.destination,
+      ...(input.signData.targetExecution
+        ? { targetExecution: input.signData.targetExecution }
+        : {}),
+    },
+  } as unknown as PreparedIntent<CompatibilityConfig>['quote']
+  const signing = buildIntentSigningInput(
+    runtime,
+    quote,
+    resolvedSessions,
+    destination,
+  )
+  const prepared: PreparedIntent<CompatibilityConfig> = {
+    traceId: '',
+    input: {
+      destination: input.targetChain,
+      calls: [],
+      tokenRequests: [],
+      ...(input.signers ? { signers: input.signers } : {}),
+    },
+    request: {} as PreparedIntent<CompatibilityConfig>['request'],
+    quote,
+    quotes: [quote],
+    signing,
+    accountChain,
+    ...(resolvedSessions
+      ? {
+          resolvedSessions,
+          sessionEnvironment: runtime.construction.sessions.environment,
+        }
+      : {}),
+  }
+  const signed = await signIntent(
+    intentContext(context, dependencies),
+    prepared,
+  )
+  return {
+    originSignatures: signed.originSignatures,
+    destinationSignature: signed.destinationSignature,
+    targetExecutionSignature: signed.targetSignature,
+    transcript: signed.transcript,
+  }
+}
+
+function intentContext<CompatibilityConfig>(
+  context: AccountInvocationContext<CompatibilityConfig>,
+  dependencies: CoreDependencies,
+): IntentWorkflowContext<CompatibilityConfig> {
+  return {
+    compatibilityConfig: context.compatibilityConfig,
+    account: createAccountRuntimePort(context.account, dependencies),
+    quoteClient: dependencies.orchestrator,
+    submissionClient: dependencies.orchestrator,
+    statusClient: dependencies.orchestrator,
+    signerInvoker: signerInvoker(context.account, dependencies),
+    checkpoints: checkpointPort(context.account, dependencies),
+    signAuthorizations: async (input) =>
+      (await signEip7702Authorizations(context.account, input, dependencies))
+        .authorizations,
+    clock: dependencies.clock,
+  }
+}
+
+function userOperationContext<CompatibilityConfig>(
+  context: AccountInvocationContext<CompatibilityConfig>,
+  dependencies: CoreDependencies,
+): UserOperationWorkflowContext<CompatibilityConfig> {
+  if (!dependencies.bundler) {
+    throw new Error('A bundler client is required for UserOperations')
+  }
+  return {
+    compatibilityConfig: context.compatibilityConfig,
+    account: createAccountRuntimePort(context.account, dependencies),
+    rpc: dependencies.rpc,
+    bundler: dependencies.bundler,
+    ...(dependencies.paymaster ? { paymaster: dependencies.paymaster } : {}),
+    signerInvoker: signerInvoker(context.account, dependencies),
+    checkpoints: checkpointPort(context.account, dependencies),
+    clock: dependencies.clock,
+  }
+}
+
+function createAccountRuntimePort(
+  account: ResolvedAccountConfig,
+  dependencies: Pick<CoreDependencies, 'rpc'>,
+): AccountRuntimePort {
+  const cache = new Map<number, Promise<AccountRuntime>>()
+  return {
+    forChain: (chain) => {
+      const existing = cache.get(chain.id)
+      if (existing) return existing
+      const pending = materializeAccountRuntime(account, dependencies, chain)
+      cache.set(chain.id, pending)
+      return pending
+    },
+  }
+}
+
+async function materializeAccountRuntime(
+  resolved: ResolvedAccountConfig,
+  dependencies: Pick<CoreDependencies, 'rpc'>,
+  chain: import('../chains/types').EvmChainReference,
+): Promise<AccountRuntime> {
+  const material = accountMaterial(resolved)
+  const pendingConstruction = createAccountConstruction({
+    material,
+    chain,
+    deployed: false,
+  })
+  const pendingAdapter = createAccountAdapter(pendingConstruction)
+  const identity = pendingAdapter.getIdentity(pendingConstruction)
+  const { code } = await dependencies.rpc
+    .forChain(chain)
+    .getCode({ chain }, identity.address)
+  const deployed = code !== undefined && code !== '0x'
+  if (!deployed) {
+    return {
+      adapter: pendingAdapter,
+      construction: pendingConstruction,
+      identity,
+    }
+  }
+  const construction = createAccountConstruction({
+    material,
+    chain,
+    deployed: true,
+  })
+  const adapter = createAccountAdapter(construction)
+  return {
+    adapter,
+    construction,
+    identity: adapter.getIdentity(construction),
+  }
+}
+
+function createStaticAccountRuntime(
+  resolved: ResolvedAccountConfig,
+  chain: import('../chains/types').EvmChainReference,
+  deployed: boolean,
+): AccountRuntime {
+  const construction = createAccountConstruction({
+    material: accountMaterial(resolved),
+    chain,
+    deployed,
+  })
+  const adapter = createAccountAdapter(construction)
+  return {
+    construction,
+    adapter,
+    identity: adapter.getIdentity(construction),
+  }
+}
+
+function accountMaterial(
+  resolved: ResolvedAccountConfig,
+): AccountConstructionMaterial {
+  return {
+    account: resolved.account,
+    ...(resolved.owners ? { owner: resolved.owners } : {}),
+    modules: resolved.modules,
+    ...(resolved.initData ? { initData: resolved.initData } : {}),
+    ...(resolved.eoa ? { eoa: resolved.eoa } : {}),
+    sessions: {
+      enabled: resolved.sessions.enabled,
+      environment: resolved.sessions.environment,
+      ...(resolved.sessions.module.source === 'explicit'
+        ? { module: resolved.sessions.module.address }
+        : {}),
+      ...(resolved.sessions.compatibilityFallback.source === 'explicit'
+        ? {
+            compatibilityFallback:
+              resolved.sessions.compatibilityFallback.address,
+          }
+        : {}),
+    },
+  }
+}
+
+function signerInvoker(
+  account: ResolvedAccountConfig,
+  dependencies: CoreDependencies,
+): SignerInvocationPort {
+  return (
+    dependencies.signerInvoker ??
+    createSignerInvocationPort({
+      signers: signerRegistry(account),
+      resolveChain: (chain) => getSupportedChain(sharedChainCatalog, chain.id),
+    })
+  )
+}
+
+function signerRegistry(
+  account: ResolvedAccountConfig,
+): ExternalSignerRegistry {
+  const signers: Record<string, ExternalSignerRegistry[string]> = {}
+  for (const owner of validatorOwners(account.owners)) {
+    signers[owner.signerId] =
+      owner.kind === 'webauthn'
+        ? { kind: 'webauthn', account: owner.account }
+        : { kind: 'ecdsa', account: owner.account }
+  }
+  if (account.eoa) {
+    signers[`ecdsa:${account.eoa.address.toLowerCase()}`] = {
+      kind: 'ecdsa',
+      account: account.eoa,
+    }
+  }
+  return signers
+}
+
+function validatorOwners(validator: ResolvedValidatorDefinition | undefined) {
+  if (!validator) return []
+  return validator.kind === 'multi-factor'
+    ? validator.validators.flatMap(({ owners }) => owners)
+    : validator.owners
+}
+
+function checkpointPort(
+  account: ResolvedAccountConfig,
+  dependencies: CoreDependencies,
+): SigningCheckpointPort {
+  return {
+    read: async (checkpoint) => {
+      const rpc = dependencies.rpc.forChain(checkpoint.chain)
+      switch (checkpoint.kind) {
+        case 'account-deployment': {
+          const { code } = await rpc.getCode(
+            { chain: checkpoint.chain },
+            checkpoint.account,
+          )
+          return [
+            {
+              kind: 'account-deployed',
+              id: checkpoint.id,
+              deployed: code !== undefined && code !== '0x',
+            },
+          ]
+        }
+        case 'delegation-code': {
+          const { code } = await rpc.getCode(
+            { chain: checkpoint.chain },
+            checkpoint.account,
+          )
+          return [
+            {
+              kind: 'delegation-code',
+              id: checkpoint.id,
+              ...(code ? { code } : {}),
+            },
+          ]
+        }
+        case 'session-enabled': {
+          const enabled = await rpc.readContract<boolean>(
+            { chain: checkpoint.chain },
+            {
+              address: getSmartSessionEmissaryAddress(
+                account.sessions.environment,
+              ),
+              abi: sessionEnabledAbi,
+              functionName: 'isPermissionEnabled',
+              args: [checkpoint.account, checkpoint.permissionId],
+            },
+          )
+          return [{ kind: 'session-enabled', id: checkpoint.id, enabled }]
+        }
+      }
+    },
+  }
+}

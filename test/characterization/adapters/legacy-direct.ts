@@ -1,11 +1,10 @@
 import type { Hex, TypedDataDefinition } from 'viem'
 import { baseSepolia } from 'viem/chains'
-import {
-  type PreparedTransactionData,
-  type RhinestoneAccount,
-  type RhinestoneAccountConfig,
-  RhinestoneSDK,
-  type Session,
+import type {
+  PreparedTransactionData,
+  RhinestoneAccount,
+  RhinestoneAccountConfig,
+  Session,
 } from '../../../src/index'
 import { toSession } from '../../../src/modules/validators/smart-sessions'
 import type { Quote, SignData } from '../../../src/orchestrator'
@@ -20,6 +19,7 @@ import {
 } from '../observe'
 import { stableStringify } from '../serialization'
 import type { DirectSigningCaseId, DirectSigningScenario } from '../types'
+import { createSubjectSdk, type FixtureSubject } from './legacy-intent-fixtures'
 
 export type LegacyDirectSigningContext = ObservationContext & {
   readonly identityNamespace: string
@@ -71,7 +71,7 @@ export async function runLegacyDirectSigning(
       'session-owner',
     )
     const session = createSession(sessionOwner)
-    const sdk = new RhinestoneSDK({
+    const sdk = createSubjectSdk(context.subject as FixtureSubject, {
       apiKey: 'offline-characterization',
       provider: { type: 'custom', urls: { [baseSepolia.id]: rpc.url } },
     })

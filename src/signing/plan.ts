@@ -359,7 +359,7 @@ export function createValidatorSigningTasks(input: {
           owners: validator.owners,
         }))
       : [{ factorId: undefined, owners: input.validator.owners }]
-  return factors.flatMap((factor) =>
+  const tasks = factors.flatMap((factor) =>
     factor.owners.map((owner) => {
       const signer = input.signerReferences[owner.signerId]
       if (!signer)
@@ -388,6 +388,16 @@ export function createValidatorSigningTasks(input: {
       }
     }),
   )
+  return input.validator.kind === 'multi-factor'
+    ? [...tasks].sort((left, right) =>
+        left.invocationKind.startsWith('ecdsa') ===
+        right.invocationKind.startsWith('ecdsa')
+          ? 0
+          : left.invocationKind.startsWith('ecdsa')
+            ? -1
+            : 1,
+      )
+    : tasks
 }
 
 export function signingTopology(validator: ResolvedValidatorDefinition): {

@@ -69,19 +69,7 @@ export function getValidatorCapabilities(
       : {
           kind: 'ordered-threshold',
           validator: module,
-          ownerOrder: [...definition.owners]
-            .sort((left, right) => {
-              const leftIdentity =
-                left.kind === 'webauthn'
-                  ? left.account.publicKey
-                  : left.account.address
-              const rightIdentity =
-                right.kind === 'webauthn'
-                  ? right.account.publicKey
-                  : right.account.address
-              return leftIdentity.localeCompare(rightIdentity)
-            })
-            .map((owner) => owner.id),
+          ownerOrder: definition.owners.map((owner) => owner.id),
           threshold: definition.threshold,
           recoveryEncoding: validatorRecovery,
         },
