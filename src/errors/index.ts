@@ -15,23 +15,10 @@ import {
   SigningNotSupportedForAccountError,
   WalletClientNoConnectedAccountError,
 } from '../accounts'
-import {
-  Eip7702InitSignatureRequiredError,
-  ExecutionError,
-  IndependentSigningNotSupportedError,
-  InsufficientOwnerSignaturesError,
-  IntentFailedError,
-  InvalidOwnerSigningOptionsError,
-  InvalidSourceCallsError,
-  isExecutionError,
-  MismatchedOwnerSignaturesError,
-  OrderPathRequiredForIntentsError,
-  QuoteNotInPreparedTransactionError,
-  UnknownOwnerError,
-} from '../execution'
-import type { ErrorDetail } from '../orchestrator'
+import { UnsupportedChainError, UnsupportedTokenError } from '../chains/errors'
 import {
   ConflictError,
+  type ErrorDetail,
   ExternalServiceTimeoutError,
   ForbiddenError,
   InsufficientLiquidityError,
@@ -44,7 +31,7 @@ import {
   isValidationError,
   KeyScopeDeniedError,
   NotFoundError,
-  OrchestratorError,
+  OrchestratorClientError,
   RateLimitedError,
   RelayerMarketUnavailableError,
   SettlementExecutionError,
@@ -52,10 +39,25 @@ import {
   SimulationFailedError,
   UnauthorizedError,
   UnprocessableContentError,
-  UnsupportedChainError,
-  UnsupportedTokenError,
   ValidationError,
-} from '../orchestrator'
+} from '../clients/orchestrator/errors'
+// Execution errors the rewrite does not (yet) throw are re-exported from their
+// current legacy owner for surface compatibility; the errors the rewrite throws
+// come from their canonical rewrite owners below. Repointed on legacy removal.
+import {
+  Eip7702InitSignatureRequiredError,
+  ExecutionError,
+  InsufficientOwnerSignaturesError,
+  InvalidOwnerSigningOptionsError,
+  InvalidSourceCallsError,
+  isExecutionError,
+  MismatchedOwnerSignaturesError,
+  OrderPathRequiredForIntentsError,
+  QuoteNotInPreparedTransactionError,
+  UnknownOwnerError,
+} from '../execution'
+import { IndependentSigningNotSupportedError } from '../signing/error'
+import { IntentFailedError } from '../transactions/intents/errors'
 
 export type { ErrorDetail }
 
@@ -103,7 +105,7 @@ export {
   InternalServerError,
   KeyScopeDeniedError,
   NotFoundError,
-  OrchestratorError,
+  OrchestratorClientError as OrchestratorError,
   RateLimitedError,
   RelayerMarketUnavailableError,
   SimulationFailedError,

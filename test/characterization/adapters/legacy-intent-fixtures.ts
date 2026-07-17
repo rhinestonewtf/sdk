@@ -889,7 +889,7 @@ export async function buildSessionSigners(
       ? {
           enableData: {
             userSignature: signature,
-            hashesAndChainIds: details.hashesAndChainIds,
+            hashesAndChainIds: [...details.hashesAndChainIds],
             sessionToEnableIndex: index,
           },
         }

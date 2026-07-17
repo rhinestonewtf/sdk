@@ -63,10 +63,15 @@ import type { CoreComposition } from './compose-types'
 
 interface SubmitTransactionOptions {
   authorizations?: SignedAuthorizationList
+  /**
+   * When `true`, the orchestrator validates the intent without executing it
+   * onchain. Internal use only; the `internal_` prefix marks it as not part
+   * of the supported public API.
+   */
   internal_dryRun?: boolean
 }
 
-interface SignedIntentData {
+export interface SignedIntentData {
   originSignatures: OriginSignature[]
   destinationSignature: Hex
   targetExecutionSignature: Hex | undefined
@@ -80,13 +85,52 @@ type Compat = LegacyAccountConfig<unknown>
  * mutable compatibility config and delegates to the SDK-core composition.
  */
 export interface RhinestoneAccount {
+  /** The resolved account configuration. */
   config: RhinestoneAccountConfig
+  /**
+   * Deploy the account on a given chain.
+   * @param chain Chain to deploy the account on
+   * @param params Optional deployment parameters (sponsorship)
+   * @returns `true` once the deployment is submitted
+   */
   deploy(chain: Chain, params?: { sponsored?: boolean }): Promise<boolean>
+  /**
+   * Check whether the account is deployed on a given chain.
+   * @param chain Chain to check
+   * @returns `true` if the account is deployed, `false` otherwise
+   */
   isDeployed(chain: Chain): Promise<boolean>
+  /**
+   * Set up an existing account on a given chain by installing any missing modules.
+   * @param chain Chain to set the account up on
+   * @returns `true` once setup is submitted
+   */
   setup(chain: Chain): Promise<boolean>
+  /**
+   * Get the account initialization data, used to deploy the account onchain.
+   * @returns The factory address and factory data
+   */
   getInitData(): { factory: Address; factoryData: Hex }
+  /**
+   * Prepare and sign the EIP-7702 account initialization data.
+   * @returns The init data signature
+   */
   signEip7702InitData(): Promise<Hex>
+  /**
+   * Prepare a transaction for signing.
+   * @param transaction Transaction to prepare
+   * @returns The prepared transaction data
+   * @see {@link signTransaction} to sign the prepared transaction
+   * @see {@link submitTransaction} to submit the signed transaction
+   */
   prepareTransaction(transaction: Transaction): Promise<PreparedTransactionData>
+  /**
+   * Get the typed-data messages to sign for a prepared transaction.
+   * @param preparedTransaction Prepared transaction data
+   * @param options Optional override; pass `{ intentId }` to inspect a specific quote from `preparedTransaction.quotes.all`
+   * @returns The origin, destination, and (when required) target-execution typed-data messages
+   * @see {@link prepareTransaction} to prepare the transaction data for signing
+   */
   getTransactionMessages(
     preparedTransaction: PreparedTransactionData,
     options?: QuoteSelection,
@@ -95,26 +139,77 @@ export interface RhinestoneAccount {
     destination: TypedDataDefinition
     targetExecution?: TypedDataDefinition
   }
+  /**
+   * Sign a prepared transaction as one configured owner. The returned signature
+   * can be serialized and shared with the party coordinating submission.
+   * @param preparedTransaction Prepared transaction data
+   * @param options Owner account, optional quote, and multi-factor validator ID
+   * @returns This owner's signature contribution
+   * @see {@link prepareTransaction} to prepare the transaction data for signing
+   * @see {@link assembleTransaction} to combine independent owner signatures
+   */
   signTransaction(
     preparedTransaction: PreparedTransactionData,
     options: SignAsOwnerOptions,
   ): Promise<OwnerSignature>
+  /**
+   * Sign a prepared transaction with the transaction's configured signers.
+   * @param preparedTransaction Prepared transaction data
+   * @param options Optional override; pass `{ intentId }` to sign a specific quote from `preparedTransaction.quotes.all`
+   * @returns The signed transaction data
+   * @see {@link prepareTransaction} to prepare the transaction data for signing
+   * @see {@link submitTransaction} to submit the signed transaction
+   */
   signTransaction(
     preparedTransaction: PreparedTransactionData,
     options?: QuoteSelection,
   ): Promise<SignedTransactionData>
+  /**
+   * Assemble independently collected owner signatures into a signed transaction.
+   * Signatures are deduplicated and ordered according to the configured owner set.
+   * Account thresholds are read from the local configuration; an explicit
+   * transaction signer set determines active MFA IDs and contributing owners.
+   * Callers must keep these synchronized with onchain owner and threshold changes.
+   * @param preparedTransaction The prepared transaction every owner signed
+   * @param signatures Owner signatures returned by `signTransaction` with an `owner` option
+   * @returns Signed transaction data ready for submission
+   * @see {@link signTransaction} to create each owner signature
+   * @see {@link submitTransaction} to submit the result
+   */
   assembleTransaction(
     preparedTransaction: PreparedTransactionData,
     signatures: OwnerSignature[],
   ): Promise<SignedTransactionData>
+  /**
+   * Sign the EIP-7702 authorizations required for a transaction.
+   * @param preparedTransaction Prepared transaction data
+   * @returns The signed authorization list
+   * @see {@link prepareTransaction} to prepare the transaction data for signing
+   */
   signAuthorizations(
     preparedTransaction: PreparedTransactionData,
   ): Promise<SignedAuthorizationList>
+  /**
+   * Sign a message (EIP-191).
+   * @param message Message to sign
+   * @param chain Chain to sign the message for
+   * @param signers Signers to use, or `undefined` for the account default
+   * @returns The signature
+   * @see {@link signTypedData} to sign EIP-712 typed data
+   */
   signMessage(
     message: SignableMessage,
     chain: Chain,
     signers: SignerSet | undefined,
   ): Promise<Hex>
+  /**
+   * Sign typed data (EIP-712).
+   * @param parameters Typed-data parameters
+   * @param chain Chain to sign the typed data for
+   * @param signers Signers to use, or `undefined` for the account default
+   * @returns The signature
+   * @see {@link signMessage} to sign an EIP-191 message
+   */
   signTypedData<
     typedData extends TypedData | Record<string, unknown> = TypedData,
     primaryType extends keyof typedData | 'EIP712Domain' = keyof typedData,
@@ -123,39 +218,133 @@ export interface RhinestoneAccount {
     chain: Chain,
     signers: SignerSet | undefined,
   ): Promise<Hex>
+  /**
+   * Sign an orchestrator intent operation. Used by headless flows that prepare
+   * the intent outside the SDK but still need the SDK-owned smart-session
+   * signature packing and target-execution signature routing.
+   * @param signData Sign data returned by the orchestrator (origin/destination/targetExecution typed data)
+   * @param targetChain Chain where the destination execution runs
+   * @param signers Signers to use, or `undefined` for the account default
+   * @returns The intent signatures, ready for submission
+   * @see {@link signTransaction} for the canonical signing path
+   */
   signIntent(
     signData: SignData,
     targetChain: DestinationChain,
     signers?: SignerSet,
   ): Promise<SignedIntentData>
+  /**
+   * Submit a signed transaction.
+   * @param signedTransaction Signed transaction data
+   * @param options Optional submission options (e.g. EIP-7702 `authorizations`)
+   * @returns The transaction result (an intent ID)
+   * @see {@link signTransaction} to sign the transaction data
+   * @see {@link signAuthorizations} to sign the required EIP-7702 authorizations
+   * @see {@link waitForExecution} to wait for the transaction to execute onchain
+   */
   submitTransaction(
     signedTransaction: SignedTransactionData,
     options?: SubmitTransactionOptions,
   ): Promise<TransactionResult>
+  /**
+   * Prepare a user operation for signing.
+   * @param transaction User operation to prepare
+   * @returns The prepared user operation data
+   * @see {@link signUserOperation} to sign the prepared user operation
+   * @see {@link submitUserOperation} to submit the signed user operation
+   * @see {@link sendUserOperation} to prepare, sign, and submit in one call
+   */
   prepareUserOperation(
     transaction: UserOperationTransaction,
   ): Promise<PreparedUserOperationData>
+  /**
+   * Sign a prepared user operation.
+   * @param preparedUserOperation Prepared user operation data
+   * @returns The signed user operation data
+   * @see {@link prepareUserOperation} to prepare the user operation data for signing
+   * @see {@link submitUserOperation} to submit the signed user operation
+   */
   signUserOperation(
     preparedUserOperation: PreparedUserOperationData,
   ): Promise<SignedUserOperationData>
+  /**
+   * Submit a signed user operation.
+   * @param signedUserOperation Signed user operation data
+   * @returns The user operation result (a UserOp hash)
+   * @see {@link signUserOperation} to sign the user operation data
+   * @see {@link waitForExecution} to wait for the user operation to execute onchain
+   */
   submitUserOperation(
     signedUserOperation: SignedUserOperationData,
   ): Promise<UserOperationResult>
+  /**
+   * Prepare, sign, and submit a user operation in a single call.
+   * @param transaction User operation to send
+   * @returns The user operation result (a UserOp hash)
+   * @see {@link waitForExecution} to wait for the user operation to execute onchain
+   */
   sendUserOperation(
     transaction: UserOperationTransaction,
   ): Promise<UserOperationResult>
+  /**
+   * Wait for a submitted transaction or user operation to execute onchain.
+   * Polls the orchestrator until the intent reaches a terminal state; on failure
+   * an `IntentFailedError` is thrown.
+   * @param result The result returned by a submit/send call
+   * @returns The per-chain operation status (for intents) or a UserOp receipt
+   */
   waitForExecution(result: TransactionResult): Promise<TransactionStatus>
   waitForExecution(result: UserOperationResult): Promise<UserOperationReceipt>
+  /**
+   * Get the account address.
+   * @returns The smart account address
+   */
   getAddress(): Address
+  /**
+   * Get the account portfolio (token balances across chains).
+   * @param onTestnets Whether to query testnet balances (default is `false`)
+   * @returns The account balances
+   */
   getPortfolio(onTestnets?: boolean): Promise<Portfolio>
+  /**
+   * Resolve the smart-session details for a set of sessions.
+   * @param sessions Sessions to resolve
+   * @returns The resolved session details
+   */
   experimental_getSessionDetails(sessions: Session[]): Promise<SessionDetails>
+  /**
+   * Check whether a smart session is enabled on the account.
+   * @param session Session to check
+   * @returns `true` if the session is enabled
+   */
   experimental_isSessionEnabled(session: Session): Promise<boolean>
+  /**
+   * Sign the data required to enable a smart session.
+   * @param details Session details to enable
+   * @returns The enable-session signature
+   */
   experimental_signEnableSession(details: SessionDetails): Promise<Hex>
+  /**
+   * Get the account owners.
+   * @remarks Only returns ECDSA owners; owners managed by other validator types are not included.
+   * @param chain Chain to read the owners from
+   * @returns The owner addresses and threshold, or `null` if unavailable
+   */
   getOwners(chain: Chain): Promise<{
     accounts: Address[]
     threshold: number
   } | null>
+  /**
+   * Get the account validator modules.
+   * @param chain Chain to read the validators from
+   * @returns The validator module addresses
+   */
   getValidators(chain: Chain): Promise<Address[]>
+  /**
+   * Get the account executor modules.
+   * @param chain Chain to read the executors from
+   * @returns The executor module addresses
+   */
   getExecutors(chain: Chain): Promise<Address[]>
 }
 
@@ -474,12 +663,15 @@ export function createAccountFacade(
     },
     async signUserOperation(preparedUserOperation) {
       const ctx = context('sign-user-operation')
-      const internal = preparedUserOperations.get(preparedUserOperation)
-      if (!internal) {
-        throw new Error(
-          'Prepared user operation was not created by this SDK instance',
-        )
-      }
+      const internal =
+        preparedUserOperations.get(preparedUserOperation) ??
+        (await workflowsFor(ctx).reconstructPreparedUserOperation(ctx, {
+          chain: toEvmChainReference(
+            preparedUserOperation.transaction.chain.id,
+          ),
+          operation:
+            preparedUserOperation.userOperation as unknown as PreparedUserOperation<Compat>['operation'],
+        }))
       const signed = await workflowsFor(ctx).signUserOperation(ctx, internal)
       const data: SignedUserOperationData = {
         ...preparedUserOperation,
@@ -492,12 +684,14 @@ export function createAccountFacade(
     },
     async submitUserOperation(signedUserOperation) {
       const ctx = context('submit-user-operation')
-      const internal = signedUserOperations.get(signedUserOperation)
-      if (!internal) {
-        throw new Error(
-          'Signed user operation was not created by this SDK instance',
-        )
-      }
+      const internal =
+        signedUserOperations.get(signedUserOperation) ??
+        (await workflowsFor(ctx).reconstructSignedUserOperation(ctx, {
+          chain: toEvmChainReference(signedUserOperation.transaction.chain.id),
+          operation:
+            signedUserOperation.userOperation as unknown as PreparedUserOperation<Compat>['operation'],
+          signature: signedUserOperation.signature,
+        }))
       const submitted = await workflowsFor(ctx).submitUserOperation(
         ctx,
         internal,

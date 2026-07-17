@@ -36,8 +36,8 @@
       "import": "./dist/src/actions/passkeys.js"
     },
     "./signing/passkeys": {
-      "types": "./dist/src/accounts/signing/passkeys.d.ts",
-      "import": "./dist/src/accounts/signing/passkeys.js"
+      "types": "./dist/src/signing/passkeys.d.ts",
+      "import": "./dist/src/signing/passkeys.js"
     },
     "./actions/smart-sessions": {
       "types": "./dist/src/actions/smart-sessions.d.ts",

@@ -24,8 +24,7 @@ export const userOperationAndDirectSigningScenarios = [
     support: {
       level: 'offline-only',
       limitation: 'No calibrated live paymaster endpoint is configured.',
-      coverageRef:
-        'test/characterization/adapters/legacy-user-operation-ports.test.ts',
+      coverageRef: 'src/transactions/user-operations/workflow.test.ts',
     },
     expected: { kind: 'success' },
   }),
@@ -53,8 +52,7 @@ export const userOperationAndDirectSigningScenarios = [
     support: {
       level: 'offline-only',
       limitation: 'No calibrated live bundler endpoint is configured.',
-      coverageRef:
-        'test/characterization/adapters/legacy-user-operation-ports.test.ts',
+      coverageRef: 'src/transactions/user-operations/workflow.test.ts',
     },
     expected: { kind: 'success' },
   }),
@@ -86,8 +84,7 @@ export const userOperationAndDirectSigningScenarios = [
       level: 'offline-only',
       limitation:
         'Custom bundler and paymaster endpoints require deterministic port fixtures.',
-      coverageRef:
-        'test/characterization/adapters/legacy-user-operation-ports.test.ts',
+      coverageRef: 'src/transactions/user-operations/workflow.test.ts',
     },
     expected: { kind: 'success' },
   }),
@@ -116,8 +113,7 @@ export const userOperationAndDirectSigningScenarios = [
       level: 'offline-only',
       limitation:
         'No calibrated live bundler and paymaster endpoints are configured.',
-      coverageRef:
-        'test/characterization/adapters/legacy-user-operation-ports.test.ts',
+      coverageRef: 'src/transactions/user-operations/workflow.test.ts',
     },
     expected: { kind: 'success' },
     comparison: 'isolated-state',
@@ -152,8 +148,7 @@ export const userOperationAndDirectSigningScenarios = [
       level: 'offline-only',
       limitation:
         'The bundler nonce error has not been calibrated against a live endpoint.',
-      coverageRef:
-        'test/characterization/adapters/legacy-user-operation-ports.test.ts',
+      coverageRef: 'src/transactions/user-operations/workflow.test.ts',
     },
     expected: {
       kind: 'failure',

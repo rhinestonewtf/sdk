@@ -1,3 +1,13 @@
+// Facade files rewired to the rewritten internals at the facade cutover. They
+// still re-export a few legacy type/error owners (removed with the legacy tree),
+// so they remain architecture exceptions but are no longer byte-pinned to the
+// calibrated release oracle.
+export const facadeCutoverFiles = new Set([
+  'src/index.ts',
+  'src/errors/index.ts',
+  'src/package.json',
+])
+
 // These exact files are the release implementation retained as the oracle
 // through the staged rewrite. Remove each entry when its file is replaced.
 export const transitionalLegacyFiles = new Set([

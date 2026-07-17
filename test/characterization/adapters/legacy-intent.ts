@@ -544,7 +544,7 @@ async function ensureSessionsEnabled(
           session,
           enableData: {
             userSignature,
-            hashesAndChainIds: details.hashesAndChainIds,
+            hashesAndChainIds: [...details.hashesAndChainIds],
             sessionToEnableIndex: 0,
           },
         },
