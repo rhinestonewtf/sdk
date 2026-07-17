@@ -5,6 +5,7 @@ import {
 } from '@rhinestone/shared-configs'
 import type { Chain } from 'viem'
 import { formatCaip2 } from './caip2'
+import { UnsupportedChainError } from './errors'
 import type { ChainReference } from './types'
 
 export interface ChainCatalog {
@@ -25,7 +26,7 @@ export function getSupportedChain(
   chainId: number,
 ): Chain {
   const chain = catalog.getChain(chainId)
-  if (!chain) throw new Error(`Unsupported chain ${chainId}`)
+  if (!chain) throw new UnsupportedChainError(chainId)
   return chain
 }
 

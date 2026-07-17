@@ -1,12 +1,13 @@
 import type { Address } from 'viem'
 import { isAddress } from 'viem'
 import type { ChainCatalog } from './catalog'
+import { UnsupportedChainError, UnsupportedTokenError } from './errors'
 
 export type CanonicalTokenSymbol = 'ETH' | 'WETH' | 'USDC' | 'USDT' | 'USDT0'
 
 function getEntry(catalog: ChainCatalog, chainId: number) {
   const entry = catalog.getEntry(chainId)
-  if (!entry) throw new Error(`Unsupported chain ${chainId}`)
+  if (!entry) throw new UnsupportedChainError(chainId)
   return entry
 }
 
@@ -18,8 +19,7 @@ export function getTokenAddress(
   const token = getEntry(catalog, chainId).tokens.find(
     (candidate) => candidate.symbol === symbol,
   )
-  if (!token)
-    throw new Error(`Unsupported token ${symbol} for chain ${chainId}`)
+  if (!token) throw new UnsupportedTokenError(symbol, chainId)
   return token.address as Address
 }
 
@@ -41,7 +41,7 @@ export function getWrappedNativeTokenAddress(
   const token =
     entry.wrappedNativeToken ??
     entry.tokens.find((candidate) => candidate.symbol === 'WETH')
-  if (!token) throw new Error(`Unsupported token WETH for chain ${chainId}`)
+  if (!token) throw new UnsupportedTokenError('WETH', chainId)
   return token.address as Address
 }
 
