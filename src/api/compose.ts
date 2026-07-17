@@ -75,6 +75,10 @@ import type {
   PreparedIntent,
 } from '../transactions/intents/types'
 import { prepareUserOperation } from '../transactions/user-operations/prepare'
+import {
+  reconstructPreparedUserOperation,
+  reconstructSignedUserOperation,
+} from '../transactions/user-operations/reconstruct'
 import { sendUserOperation } from '../transactions/user-operations/send'
 import { signUserOperation } from '../transactions/user-operations/sign'
 import {
@@ -222,6 +226,16 @@ function createAccountComposition<CompatibilityConfig>(
       ),
     waitForUserOperationStatus: (context, input) =>
       waitForUserOperationStatus(
+        userOperationContext(context, dependencies),
+        input,
+      ),
+    reconstructPreparedUserOperation: (context, input) =>
+      reconstructPreparedUserOperation(
+        userOperationContext(context, dependencies),
+        input,
+      ),
+    reconstructSignedUserOperation: (context, input) =>
+      reconstructSignedUserOperation(
         userOperationContext(context, dependencies),
         input,
       ),

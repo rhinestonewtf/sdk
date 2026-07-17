@@ -5,6 +5,10 @@ import type { AccountConstruction } from '../../accounts/types'
 import { toEvmChainReference } from '../../chains/caip2'
 import { defineValidator } from '../../modules/validators/definition'
 import { prepareUserOperation } from './prepare'
+import {
+  reconstructPreparedUserOperation,
+  reconstructSignedUserOperation,
+} from './reconstruct'
 import { sendUserOperation } from './send'
 import { signUserOperation } from './sign'
 import { submitUserOperation } from './submit'
@@ -160,5 +164,58 @@ describe('UserOperation workflow', () => {
       type: 'userop',
       hash,
     })
+  })
+
+  test('reconstructs a prepared UserOperation from a rebuilt public shape', async () => {
+    const workflow = context()
+    const prepared = await prepareUserOperation(workflow, input)
+    const operation = { ...prepared.operation, paymaster: sender }
+    const reconstructed = await reconstructPreparedUserOperation(workflow, {
+      chain,
+      operation,
+    })
+
+    expect(reconstructed.operation).toEqual(operation)
+    expect(reconstructed.input.chain).toEqual(chain)
+    expect(reconstructed.signing.tasks).toHaveLength(1)
+    // The signing hash tracks the rebuilt operation, so signing over a mutated
+    // (e.g. paymaster-added) operation stays consistent.
+    expect(reconstructed.signing.hash).toBe(reconstructed.hash)
+
+    const signed = await signUserOperation(workflow, reconstructed)
+    expect(signed.operation.paymaster).toBe(sender)
+  })
+
+  test('reconstructs a signed UserOperation for submission without bundler reads', async () => {
+    const workflow = context()
+    const reconstructed = await reconstructSignedUserOperation(workflow, {
+      chain,
+      operation: {
+        sender,
+        nonce: 0n,
+        callData: '0x',
+        callGasLimit: 1n,
+        verificationGasLimit: 1n,
+        preVerificationGas: 1n,
+        maxFeePerGas: 1n,
+        maxPriorityFeePerGas: 1n,
+        signature: '0x',
+      },
+      signature,
+    })
+
+    expect(reconstructed.signature).toBe(signature)
+    expect(reconstructed.transcript.planKind).toBe('user-operation')
+    // Reconstruction derives the signing plan from static config only.
+    expect(workflow.bundler.getGasPrice).not.toHaveBeenCalled()
+    expect(workflow.bundler.estimateGas).not.toHaveBeenCalled()
+
+    await expect(submitUserOperation(workflow, reconstructed)).resolves.toEqual(
+      {
+        type: 'userop',
+        chain,
+        hash,
+      },
+    )
   })
 })

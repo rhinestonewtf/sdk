@@ -159,6 +159,21 @@ export interface AccountWorkflows<CompatibilityConfig = unknown> {
     context: AccountInvocationContext<CompatibilityConfig>,
     input: SubmittedUserOperation,
   ) => Promise<UserOperationStatus>
+  readonly reconstructPreparedUserOperation: (
+    context: AccountInvocationContext<CompatibilityConfig>,
+    input: {
+      readonly chain: EvmChainReference
+      readonly operation: PreparedUserOperation<CompatibilityConfig>['operation']
+    },
+  ) => Promise<PreparedUserOperation<CompatibilityConfig>>
+  readonly reconstructSignedUserOperation: (
+    context: AccountInvocationContext<CompatibilityConfig>,
+    input: {
+      readonly chain: EvmChainReference
+      readonly operation: PreparedUserOperation<CompatibilityConfig>['operation']
+      readonly signature: Hex
+    },
+  ) => Promise<SignedUserOperation<CompatibilityConfig>>
   readonly getPortfolio: (
     context: AccountInvocationContext<CompatibilityConfig>,
     onTestnets?: boolean,

@@ -1,14 +1,18 @@
+import type { Hex } from 'viem'
 import { resolveCalls } from '../../calls/resolve'
+import type { EvmChainReference } from '../../chains/types'
 import type { BundlerUserOperation } from '../../clients/bundler/port'
 import {
   createAccountSigningContext,
   getSigningValidatorCodec,
   getSigningValidatorFactors,
+  type SigningContext,
 } from '../../signing/context'
 import {
   createValidatorSigningTasks,
   signingTopology,
 } from '../../signing/plan'
+import type { UserOperationSigningPlanInput } from '../../signing/user-operation'
 import { hashUserOperation } from './hash'
 import { getUserOperationNonceKey, readUserOperationNonce } from './nonce'
 import type {
@@ -80,6 +84,27 @@ export async function prepareUserOperation<CompatibilityConfig>(
     ...(input.gasLimit === undefined ? {} : { callGasLimit: input.gasLimit }),
   }
   const hash = hashUserOperation(input.chain, operation)
+  return {
+    input,
+    operation,
+    hash,
+    signing: buildUserOperationSigningPlanInput(
+      signingContext,
+      input.chain,
+      hash,
+    ),
+  }
+}
+
+/**
+ * Builds the validator signing-plan input for a UserOperation hash. Shared by
+ * preparation and reconstruction so both derive an identical signing plan.
+ */
+export function buildUserOperationSigningPlanInput(
+  signingContext: SigningContext,
+  chain: EvmChainReference,
+  hash: Hex,
+): UserOperationSigningPlanInput {
   const tasks = createValidatorSigningTasks({
     validator: signingContext.validator,
     signerReferences: signingContext.signerReferences,
@@ -89,19 +114,14 @@ export async function prepareUserOperation<CompatibilityConfig>(
   })
   const topology = signingTopology(signingContext.validator)
   return {
-    input,
-    operation,
     hash,
-    signing: {
-      hash,
-      chain: input.chain,
-      configuredTopology: topology.configuredTopology,
-      effectiveSelection: topology.effectiveSelection,
-      tasks,
-      validatorCodec: getSigningValidatorCodec(signingContext),
-      ...(signingContext.validator.kind === 'multi-factor'
-        ? { validatorFactors: getSigningValidatorFactors(signingContext) }
-        : {}),
-    },
+    chain,
+    configuredTopology: topology.configuredTopology,
+    effectiveSelection: topology.effectiveSelection,
+    tasks,
+    validatorCodec: getSigningValidatorCodec(signingContext),
+    ...(signingContext.validator.kind === 'multi-factor'
+      ? { validatorFactors: getSigningValidatorFactors(signingContext) }
+      : {}),
   }
 }
