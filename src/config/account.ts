@@ -4,6 +4,7 @@
 
 import type { Abi, AbiFunction, Account, Address, Chain, Hex } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
+import type { AccountType } from '../accounts/types'
 import type { NonEvmAddress, NonEvmChain } from '../chains/non-evm'
 import type {
   AppFeeRate,
@@ -33,8 +34,6 @@ interface AuthProvider {
     isSponsored: boolean,
   ): Promise<Record<string, string>>
 }
-
-type AccountType = 'safe' | 'nexus' | 'kernel' | 'startale' | 'eoa' | 'hca'
 
 interface SafeAccount {
   type: 'safe'

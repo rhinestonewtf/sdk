@@ -12,6 +12,14 @@ export type AccountKind =
   | 'hca'
   | 'eoa'
 
+export type AccountType =
+  | 'safe'
+  | 'nexus'
+  | 'kernel'
+  | 'startale'
+  | 'eoa'
+  | 'hca'
+
 export type AccountInput =
   | {
       type: 'safe'

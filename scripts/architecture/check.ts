@@ -216,7 +216,9 @@ function edgeViolation(
     toLayer === 'clients' &&
     fromLayer !== 'clients' &&
     fromLayer !== 'api' &&
-    !['port.ts', 'types.ts', 'errors.ts'].includes(clientFile(edge.to) ?? '') &&
+    !['port.ts', 'types.ts', 'errors.ts', 'public.ts'].includes(
+      clientFile(edge.to) ?? '',
+    ) &&
     !(
       edge.to === 'src/clients/rpc/compatibility.ts' &&
       (edge.from === 'src/actions/runtime.ts' ||
@@ -295,7 +297,26 @@ function edgeViolation(
     clients: new Set(['api', 'intents', 'user-operations']),
   }
 
-  if (forbiddenByLayer[fromLayer]?.has(toLayer)) {
+  // The published `PreparedTransactionData`/`PreparedUserOperationData` expose
+  // the original public `Transaction`/`UserOperationTransaction` input, which
+  // lives in `config/account.ts` and references `RhinestoneAccountConfig`. That
+  // forces a type-only edge from the workflow types to config; it cannot be
+  // removed without changing the public surface. Permit exactly that edge (the
+  // same shape as the `actions/deploy.ts -> api/account.ts` type-only allowance).
+  const publicInputTypeEdge =
+    (edge.typeOnly &&
+      edge.to === 'src/config/account.ts' &&
+      (edge.from === 'src/transactions/intents/types.ts' ||
+        edge.from === 'src/transactions/user-operations/types.ts')) ||
+    // The public `Transaction` options (`appFees`, `settlementLayers`,
+    // `auxiliaryFunds`) are typed with orchestrator public types, so the config
+    // input surface has a type-only dependency on the orchestrator public-type
+    // module that cannot be removed without changing the public surface.
+    (edge.typeOnly &&
+      edge.from === 'src/config/account.ts' &&
+      edge.to === 'src/clients/orchestrator/public.ts')
+
+  if (forbiddenByLayer[fromLayer]?.has(toLayer) && !publicInputTypeEdge) {
     return fail('layer-direction', `${fromLayer} must not depend on ${toLayer}`)
   }
 
@@ -386,6 +407,7 @@ export function analyzeArchitecture(
         'src/actions/runtime.ts',
         'src/api/account.ts',
         'src/calls/resolve.ts',
+        'src/config/account.ts',
         'src/utils/index.ts',
       ].includes(file)
     ) {
