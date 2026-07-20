@@ -167,6 +167,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/app-fees/withdrawals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List App-Fee Withdrawals
+         * @description The authenticated project's app-fee withdrawals (newest first) with each withdrawal's status and USD value paid out.
+         */
+        get: operations["listAppFeeWithdrawals"];
+        put?: never;
+        /**
+         * Create App-Fee Withdrawal
+         * @description Withdraw the authenticated project's full app-fee balance to a whitelisted stablecoin on the chosen chain, paid to the project's registered payout address.
+         */
+        post: operations["createAppFeeWithdrawal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/app-fees/withdrawals/{nonce}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get App-Fee Withdrawal
+         * @description A single app-fee withdrawal owned by the authenticated project, with its status and USD value paid out.
+         */
+        get: operations["getAppFeeWithdrawal"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -306,7 +350,7 @@ export interface operations {
                         }[];
                     } | {
                         /** @enum {string} */
-                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
+                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "WITHDRAWAL_IN_PROGRESS" | "WITHDRAWAL_FINALIZATION_PENDING" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
                         /**
                          * @description Human-readable error message
                          * @example Invalid input
@@ -461,7 +505,7 @@ export interface operations {
                         }[];
                     } | {
                         /** @enum {string} */
-                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
+                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "WITHDRAWAL_IN_PROGRESS" | "WITHDRAWAL_FINALIZATION_PENDING" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
                         /**
                          * @description Human-readable error message
                          * @example Invalid input
@@ -561,7 +605,7 @@ export interface operations {
                         }[];
                     } | {
                         /** @enum {string} */
-                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
+                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "WITHDRAWAL_IN_PROGRESS" | "WITHDRAWAL_FINALIZATION_PENDING" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
                         /**
                          * @description Human-readable error message
                          * @example Invalid input
@@ -661,7 +705,7 @@ export interface operations {
                         }[];
                     } | {
                         /** @enum {string} */
-                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
+                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "WITHDRAWAL_IN_PROGRESS" | "WITHDRAWAL_FINALIZATION_PENDING" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
                         /**
                          * @description Human-readable error message
                          * @example Invalid input
@@ -992,7 +1036,7 @@ export interface operations {
                         }[];
                     } | {
                         /** @enum {string} */
-                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
+                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "WITHDRAWAL_IN_PROGRESS" | "WITHDRAWAL_FINALIZATION_PENDING" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
                         /**
                          * @description Human-readable error message
                          * @example Invalid input
@@ -1092,7 +1136,7 @@ export interface operations {
                         }[];
                     } | {
                         /** @enum {string} */
-                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
+                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "WITHDRAWAL_IN_PROGRESS" | "WITHDRAWAL_FINALIZATION_PENDING" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
                         /**
                          * @description Human-readable error message
                          * @example Invalid input
@@ -1192,7 +1236,7 @@ export interface operations {
                         }[];
                     } | {
                         /** @enum {string} */
-                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
+                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "WITHDRAWAL_IN_PROGRESS" | "WITHDRAWAL_FINALIZATION_PENDING" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
                         /**
                          * @description Human-readable error message
                          * @example Invalid input
@@ -1292,7 +1336,7 @@ export interface operations {
                         }[];
                     } | {
                         /** @enum {string} */
-                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
+                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "WITHDRAWAL_IN_PROGRESS" | "WITHDRAWAL_FINALIZATION_PENDING" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
                         /**
                          * @description Human-readable error message
                          * @example Invalid input
@@ -1456,7 +1500,7 @@ export interface operations {
                         }[];
                     } | {
                         /** @enum {string} */
-                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
+                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "WITHDRAWAL_IN_PROGRESS" | "WITHDRAWAL_FINALIZATION_PENDING" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
                         /**
                          * @description Human-readable error message
                          * @example Invalid input
@@ -1556,7 +1600,7 @@ export interface operations {
                         }[];
                     } | {
                         /** @enum {string} */
-                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
+                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "WITHDRAWAL_IN_PROGRESS" | "WITHDRAWAL_FINALIZATION_PENDING" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
                         /**
                          * @description Human-readable error message
                          * @example Invalid input
@@ -1656,7 +1700,7 @@ export interface operations {
                         }[];
                     } | {
                         /** @enum {string} */
-                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
+                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "WITHDRAWAL_IN_PROGRESS" | "WITHDRAWAL_FINALIZATION_PENDING" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
                         /**
                          * @description Human-readable error message
                          * @example Invalid input
@@ -1844,7 +1888,7 @@ export interface operations {
                         }[];
                     } | {
                         /** @enum {string} */
-                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
+                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "WITHDRAWAL_IN_PROGRESS" | "WITHDRAWAL_FINALIZATION_PENDING" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
                         /**
                          * @description Human-readable error message
                          * @example Invalid input
@@ -1944,7 +1988,7 @@ export interface operations {
                         }[];
                     } | {
                         /** @enum {string} */
-                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
+                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "WITHDRAWAL_IN_PROGRESS" | "WITHDRAWAL_FINALIZATION_PENDING" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
                         /**
                          * @description Human-readable error message
                          * @example Invalid input
@@ -2044,7 +2088,7 @@ export interface operations {
                         }[];
                     } | {
                         /** @enum {string} */
-                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
+                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "WITHDRAWAL_IN_PROGRESS" | "WITHDRAWAL_FINALIZATION_PENDING" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
                         /**
                          * @description Human-readable error message
                          * @example Invalid input
@@ -2269,7 +2313,7 @@ export interface operations {
                         }[];
                     } | {
                         /** @enum {string} */
-                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
+                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "WITHDRAWAL_IN_PROGRESS" | "WITHDRAWAL_FINALIZATION_PENDING" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
                         /**
                          * @description Human-readable error message
                          * @example Invalid input
@@ -2369,7 +2413,7 @@ export interface operations {
                         }[];
                     } | {
                         /** @enum {string} */
-                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
+                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "WITHDRAWAL_IN_PROGRESS" | "WITHDRAWAL_FINALIZATION_PENDING" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
                         /**
                          * @description Human-readable error message
                          * @example Invalid input
@@ -2469,7 +2513,7 @@ export interface operations {
                         }[];
                     } | {
                         /** @enum {string} */
-                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
+                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "WITHDRAWAL_IN_PROGRESS" | "WITHDRAWAL_FINALIZATION_PENDING" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
                         /**
                          * @description Human-readable error message
                          * @example Invalid input
@@ -2569,7 +2613,7 @@ export interface operations {
                         }[];
                     } | {
                         /** @enum {string} */
-                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
+                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "WITHDRAWAL_IN_PROGRESS" | "WITHDRAWAL_FINALIZATION_PENDING" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
                         /**
                          * @description Human-readable error message
                          * @example Invalid input
@@ -2744,7 +2788,7 @@ export interface operations {
                         }[];
                     } | {
                         /** @enum {string} */
-                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
+                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "WITHDRAWAL_IN_PROGRESS" | "WITHDRAWAL_FINALIZATION_PENDING" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
                         /**
                          * @description Human-readable error message
                          * @example Invalid input
@@ -2844,7 +2888,7 @@ export interface operations {
                         }[];
                     } | {
                         /** @enum {string} */
-                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
+                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "WITHDRAWAL_IN_PROGRESS" | "WITHDRAWAL_FINALIZATION_PENDING" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
                         /**
                          * @description Human-readable error message
                          * @example Invalid input
@@ -2972,7 +3016,7 @@ export interface operations {
                         }[];
                     } | {
                         /** @enum {string} */
-                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
+                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "WITHDRAWAL_IN_PROGRESS" | "WITHDRAWAL_FINALIZATION_PENDING" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
                         /**
                          * @description Human-readable error message
                          * @example Invalid input
@@ -3752,7 +3796,7 @@ export interface operations {
                         }[];
                     } | {
                         /** @enum {string} */
-                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
+                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "WITHDRAWAL_IN_PROGRESS" | "WITHDRAWAL_FINALIZATION_PENDING" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
                         /**
                          * @description Human-readable error message
                          * @example Invalid input
@@ -3852,7 +3896,7 @@ export interface operations {
                         }[];
                     } | {
                         /** @enum {string} */
-                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
+                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "WITHDRAWAL_IN_PROGRESS" | "WITHDRAWAL_FINALIZATION_PENDING" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
                         /**
                          * @description Human-readable error message
                          * @example Invalid input
@@ -3952,7 +3996,7 @@ export interface operations {
                         }[];
                     } | {
                         /** @enum {string} */
-                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
+                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "WITHDRAWAL_IN_PROGRESS" | "WITHDRAWAL_FINALIZATION_PENDING" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
                         /**
                          * @description Human-readable error message
                          * @example Invalid input
@@ -4080,7 +4124,7 @@ export interface operations {
                         }[];
                     } | {
                         /** @enum {string} */
-                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
+                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "WITHDRAWAL_IN_PROGRESS" | "WITHDRAWAL_FINALIZATION_PENDING" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
                         /**
                          * @description Human-readable error message
                          * @example Invalid input
@@ -4180,7 +4224,7 @@ export interface operations {
                         }[];
                     } | {
                         /** @enum {string} */
-                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
+                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "WITHDRAWAL_IN_PROGRESS" | "WITHDRAWAL_FINALIZATION_PENDING" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
                         /**
                          * @description Human-readable error message
                          * @example Invalid input
@@ -4280,7 +4324,1417 @@ export interface operations {
                         }[];
                     } | {
                         /** @enum {string} */
-                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
+                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "WITHDRAWAL_IN_PROGRESS" | "WITHDRAWAL_FINALIZATION_PENDING" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                    };
+                };
+            };
+        };
+    };
+    listAppFeeWithdrawals: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description API version. Required; pinned to this document. */
+                "x-api-version": "2026-04.blanc";
+                /** @description API key. */
+                "x-api-key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        withdrawals: {
+                            requestNonce: string;
+                            /** @enum {string} */
+                            status: "PENDING" | "COMPLETED" | "FAILED";
+                            payoutUsd: number;
+                            targetChainId: number;
+                            targetToken: string;
+                            targetAmount: string;
+                            payoutAddress: string;
+                            txHash: string | null;
+                            createdAt: string;
+                        }[];
+                    };
+                };
+            };
+            /** @description Validation error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "VALIDATION_ERROR";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Per-field validation issues */
+                        details?: {
+                            /** @description Human-readable issue description */
+                            message: string;
+                            /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                            context?: {
+                                [key: string]: unknown;
+                            };
+                        }[];
+                    } | {
+                        /** @enum {string} */
+                        code: "SIMULATION_FAILED";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Classified on-chain simulation failure details */
+                        details?: {
+                            nonce?: string;
+                            category: string;
+                            errorSelector: string;
+                            errorName: string;
+                            errorArgs?: {
+                                [key: string]: string;
+                            };
+                            retryable: boolean;
+                            /** @enum {string} */
+                            retryHint?: "RE_PREPARE" | "RETRY_LATER";
+                            simulations?: unknown;
+                        } & {
+                            [key: string]: unknown;
+                        };
+                    } | {
+                        /** @enum {string} */
+                        code: "INSUFFICIENT_LIQUIDITY";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Fillable subset and unfillable remainder */
+                        details?: {
+                            /** @description Intents fillable with current liquidity */
+                            availableIntents: {
+                                [key: string]: string;
+                            }[];
+                            /** @description Token amounts that cannot be filled */
+                            unfillable: {
+                                [key: string]: string;
+                            };
+                        };
+                    } | {
+                        /** @enum {string} */
+                        code: "KEY_SCOPE_DENIED";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Single-element list describing the failing scope */
+                        details?: {
+                            message: string;
+                            context: {
+                                /**
+                                 * @description Which scope rejected the request
+                                 * @enum {string}
+                                 */
+                                scope: "allowMainnet" | "intents" | "deposits";
+                                /** @description Minimum level the endpoint demands */
+                                required: boolean | ("read" | "write");
+                                /** @description Level resolved on the key */
+                                actual: boolean | ("none" | "read" | "write");
+                            };
+                        }[];
+                    } | {
+                        /** @enum {string} */
+                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "WITHDRAWAL_IN_PROGRESS" | "WITHDRAWAL_FINALIZATION_PENDING" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                    };
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "VALIDATION_ERROR";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Per-field validation issues */
+                        details?: {
+                            /** @description Human-readable issue description */
+                            message: string;
+                            /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                            context?: {
+                                [key: string]: unknown;
+                            };
+                        }[];
+                    } | {
+                        /** @enum {string} */
+                        code: "SIMULATION_FAILED";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Classified on-chain simulation failure details */
+                        details?: {
+                            nonce?: string;
+                            category: string;
+                            errorSelector: string;
+                            errorName: string;
+                            errorArgs?: {
+                                [key: string]: string;
+                            };
+                            retryable: boolean;
+                            /** @enum {string} */
+                            retryHint?: "RE_PREPARE" | "RETRY_LATER";
+                            simulations?: unknown;
+                        } & {
+                            [key: string]: unknown;
+                        };
+                    } | {
+                        /** @enum {string} */
+                        code: "INSUFFICIENT_LIQUIDITY";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Fillable subset and unfillable remainder */
+                        details?: {
+                            /** @description Intents fillable with current liquidity */
+                            availableIntents: {
+                                [key: string]: string;
+                            }[];
+                            /** @description Token amounts that cannot be filled */
+                            unfillable: {
+                                [key: string]: string;
+                            };
+                        };
+                    } | {
+                        /** @enum {string} */
+                        code: "KEY_SCOPE_DENIED";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Single-element list describing the failing scope */
+                        details?: {
+                            message: string;
+                            context: {
+                                /**
+                                 * @description Which scope rejected the request
+                                 * @enum {string}
+                                 */
+                                scope: "allowMainnet" | "intents" | "deposits";
+                                /** @description Minimum level the endpoint demands */
+                                required: boolean | ("read" | "write");
+                                /** @description Level resolved on the key */
+                                actual: boolean | ("none" | "read" | "write");
+                            };
+                        }[];
+                    } | {
+                        /** @enum {string} */
+                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "WITHDRAWAL_IN_PROGRESS" | "WITHDRAWAL_FINALIZATION_PENDING" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                    };
+                };
+            };
+            /** @description API key scope denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "VALIDATION_ERROR";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Per-field validation issues */
+                        details?: {
+                            /** @description Human-readable issue description */
+                            message: string;
+                            /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                            context?: {
+                                [key: string]: unknown;
+                            };
+                        }[];
+                    } | {
+                        /** @enum {string} */
+                        code: "SIMULATION_FAILED";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Classified on-chain simulation failure details */
+                        details?: {
+                            nonce?: string;
+                            category: string;
+                            errorSelector: string;
+                            errorName: string;
+                            errorArgs?: {
+                                [key: string]: string;
+                            };
+                            retryable: boolean;
+                            /** @enum {string} */
+                            retryHint?: "RE_PREPARE" | "RETRY_LATER";
+                            simulations?: unknown;
+                        } & {
+                            [key: string]: unknown;
+                        };
+                    } | {
+                        /** @enum {string} */
+                        code: "INSUFFICIENT_LIQUIDITY";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Fillable subset and unfillable remainder */
+                        details?: {
+                            /** @description Intents fillable with current liquidity */
+                            availableIntents: {
+                                [key: string]: string;
+                            }[];
+                            /** @description Token amounts that cannot be filled */
+                            unfillable: {
+                                [key: string]: string;
+                            };
+                        };
+                    } | {
+                        /** @enum {string} */
+                        code: "KEY_SCOPE_DENIED";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Single-element list describing the failing scope */
+                        details?: {
+                            message: string;
+                            context: {
+                                /**
+                                 * @description Which scope rejected the request
+                                 * @enum {string}
+                                 */
+                                scope: "allowMainnet" | "intents" | "deposits";
+                                /** @description Minimum level the endpoint demands */
+                                required: boolean | ("read" | "write");
+                                /** @description Level resolved on the key */
+                                actual: boolean | ("none" | "read" | "write");
+                            };
+                        }[];
+                    } | {
+                        /** @enum {string} */
+                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "WITHDRAWAL_IN_PROGRESS" | "WITHDRAWAL_FINALIZATION_PENDING" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                    };
+                };
+            };
+            /** @description Server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "VALIDATION_ERROR";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Per-field validation issues */
+                        details?: {
+                            /** @description Human-readable issue description */
+                            message: string;
+                            /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                            context?: {
+                                [key: string]: unknown;
+                            };
+                        }[];
+                    } | {
+                        /** @enum {string} */
+                        code: "SIMULATION_FAILED";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Classified on-chain simulation failure details */
+                        details?: {
+                            nonce?: string;
+                            category: string;
+                            errorSelector: string;
+                            errorName: string;
+                            errorArgs?: {
+                                [key: string]: string;
+                            };
+                            retryable: boolean;
+                            /** @enum {string} */
+                            retryHint?: "RE_PREPARE" | "RETRY_LATER";
+                            simulations?: unknown;
+                        } & {
+                            [key: string]: unknown;
+                        };
+                    } | {
+                        /** @enum {string} */
+                        code: "INSUFFICIENT_LIQUIDITY";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Fillable subset and unfillable remainder */
+                        details?: {
+                            /** @description Intents fillable with current liquidity */
+                            availableIntents: {
+                                [key: string]: string;
+                            }[];
+                            /** @description Token amounts that cannot be filled */
+                            unfillable: {
+                                [key: string]: string;
+                            };
+                        };
+                    } | {
+                        /** @enum {string} */
+                        code: "KEY_SCOPE_DENIED";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Single-element list describing the failing scope */
+                        details?: {
+                            message: string;
+                            context: {
+                                /**
+                                 * @description Which scope rejected the request
+                                 * @enum {string}
+                                 */
+                                scope: "allowMainnet" | "intents" | "deposits";
+                                /** @description Minimum level the endpoint demands */
+                                required: boolean | ("read" | "write");
+                                /** @description Level resolved on the key */
+                                actual: boolean | ("none" | "read" | "write");
+                            };
+                        }[];
+                    } | {
+                        /** @enum {string} */
+                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "WITHDRAWAL_IN_PROGRESS" | "WITHDRAWAL_FINALIZATION_PENDING" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                    };
+                };
+            };
+        };
+    };
+    createAppFeeWithdrawal: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description API version. Required; pinned to this document. */
+                "x-api-version": "2026-04.blanc";
+                /** @description API key. */
+                "x-api-key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    targetChainId: number;
+                    targetToken: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        requestNonce: string;
+                    };
+                };
+            };
+            /** @description No payout address, nothing to withdraw, or invalid target */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "VALIDATION_ERROR";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Per-field validation issues */
+                        details?: {
+                            /** @description Human-readable issue description */
+                            message: string;
+                            /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                            context?: {
+                                [key: string]: unknown;
+                            };
+                        }[];
+                    } | {
+                        /** @enum {string} */
+                        code: "SIMULATION_FAILED";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Classified on-chain simulation failure details */
+                        details?: {
+                            nonce?: string;
+                            category: string;
+                            errorSelector: string;
+                            errorName: string;
+                            errorArgs?: {
+                                [key: string]: string;
+                            };
+                            retryable: boolean;
+                            /** @enum {string} */
+                            retryHint?: "RE_PREPARE" | "RETRY_LATER";
+                            simulations?: unknown;
+                        } & {
+                            [key: string]: unknown;
+                        };
+                    } | {
+                        /** @enum {string} */
+                        code: "INSUFFICIENT_LIQUIDITY";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Fillable subset and unfillable remainder */
+                        details?: {
+                            /** @description Intents fillable with current liquidity */
+                            availableIntents: {
+                                [key: string]: string;
+                            }[];
+                            /** @description Token amounts that cannot be filled */
+                            unfillable: {
+                                [key: string]: string;
+                            };
+                        };
+                    } | {
+                        /** @enum {string} */
+                        code: "KEY_SCOPE_DENIED";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Single-element list describing the failing scope */
+                        details?: {
+                            message: string;
+                            context: {
+                                /**
+                                 * @description Which scope rejected the request
+                                 * @enum {string}
+                                 */
+                                scope: "allowMainnet" | "intents" | "deposits";
+                                /** @description Minimum level the endpoint demands */
+                                required: boolean | ("read" | "write");
+                                /** @description Level resolved on the key */
+                                actual: boolean | ("none" | "read" | "write");
+                            };
+                        }[];
+                    } | {
+                        /** @enum {string} */
+                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "WITHDRAWAL_IN_PROGRESS" | "WITHDRAWAL_FINALIZATION_PENDING" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                    };
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "VALIDATION_ERROR";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Per-field validation issues */
+                        details?: {
+                            /** @description Human-readable issue description */
+                            message: string;
+                            /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                            context?: {
+                                [key: string]: unknown;
+                            };
+                        }[];
+                    } | {
+                        /** @enum {string} */
+                        code: "SIMULATION_FAILED";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Classified on-chain simulation failure details */
+                        details?: {
+                            nonce?: string;
+                            category: string;
+                            errorSelector: string;
+                            errorName: string;
+                            errorArgs?: {
+                                [key: string]: string;
+                            };
+                            retryable: boolean;
+                            /** @enum {string} */
+                            retryHint?: "RE_PREPARE" | "RETRY_LATER";
+                            simulations?: unknown;
+                        } & {
+                            [key: string]: unknown;
+                        };
+                    } | {
+                        /** @enum {string} */
+                        code: "INSUFFICIENT_LIQUIDITY";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Fillable subset and unfillable remainder */
+                        details?: {
+                            /** @description Intents fillable with current liquidity */
+                            availableIntents: {
+                                [key: string]: string;
+                            }[];
+                            /** @description Token amounts that cannot be filled */
+                            unfillable: {
+                                [key: string]: string;
+                            };
+                        };
+                    } | {
+                        /** @enum {string} */
+                        code: "KEY_SCOPE_DENIED";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Single-element list describing the failing scope */
+                        details?: {
+                            message: string;
+                            context: {
+                                /**
+                                 * @description Which scope rejected the request
+                                 * @enum {string}
+                                 */
+                                scope: "allowMainnet" | "intents" | "deposits";
+                                /** @description Minimum level the endpoint demands */
+                                required: boolean | ("read" | "write");
+                                /** @description Level resolved on the key */
+                                actual: boolean | ("none" | "read" | "write");
+                            };
+                        }[];
+                    } | {
+                        /** @enum {string} */
+                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "WITHDRAWAL_IN_PROGRESS" | "WITHDRAWAL_FINALIZATION_PENDING" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                    };
+                };
+            };
+            /** @description A withdrawal is in progress or failed delivery is awaiting finalization */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "VALIDATION_ERROR";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Per-field validation issues */
+                        details?: {
+                            /** @description Human-readable issue description */
+                            message: string;
+                            /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                            context?: {
+                                [key: string]: unknown;
+                            };
+                        }[];
+                    } | {
+                        /** @enum {string} */
+                        code: "SIMULATION_FAILED";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Classified on-chain simulation failure details */
+                        details?: {
+                            nonce?: string;
+                            category: string;
+                            errorSelector: string;
+                            errorName: string;
+                            errorArgs?: {
+                                [key: string]: string;
+                            };
+                            retryable: boolean;
+                            /** @enum {string} */
+                            retryHint?: "RE_PREPARE" | "RETRY_LATER";
+                            simulations?: unknown;
+                        } & {
+                            [key: string]: unknown;
+                        };
+                    } | {
+                        /** @enum {string} */
+                        code: "INSUFFICIENT_LIQUIDITY";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Fillable subset and unfillable remainder */
+                        details?: {
+                            /** @description Intents fillable with current liquidity */
+                            availableIntents: {
+                                [key: string]: string;
+                            }[];
+                            /** @description Token amounts that cannot be filled */
+                            unfillable: {
+                                [key: string]: string;
+                            };
+                        };
+                    } | {
+                        /** @enum {string} */
+                        code: "KEY_SCOPE_DENIED";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Single-element list describing the failing scope */
+                        details?: {
+                            message: string;
+                            context: {
+                                /**
+                                 * @description Which scope rejected the request
+                                 * @enum {string}
+                                 */
+                                scope: "allowMainnet" | "intents" | "deposits";
+                                /** @description Minimum level the endpoint demands */
+                                required: boolean | ("read" | "write");
+                                /** @description Level resolved on the key */
+                                actual: boolean | ("none" | "read" | "write");
+                            };
+                        }[];
+                    } | {
+                        /** @enum {string} */
+                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "WITHDRAWAL_IN_PROGRESS" | "WITHDRAWAL_FINALIZATION_PENDING" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                    };
+                };
+            };
+            /** @description Server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "VALIDATION_ERROR";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Per-field validation issues */
+                        details?: {
+                            /** @description Human-readable issue description */
+                            message: string;
+                            /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                            context?: {
+                                [key: string]: unknown;
+                            };
+                        }[];
+                    } | {
+                        /** @enum {string} */
+                        code: "SIMULATION_FAILED";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Classified on-chain simulation failure details */
+                        details?: {
+                            nonce?: string;
+                            category: string;
+                            errorSelector: string;
+                            errorName: string;
+                            errorArgs?: {
+                                [key: string]: string;
+                            };
+                            retryable: boolean;
+                            /** @enum {string} */
+                            retryHint?: "RE_PREPARE" | "RETRY_LATER";
+                            simulations?: unknown;
+                        } & {
+                            [key: string]: unknown;
+                        };
+                    } | {
+                        /** @enum {string} */
+                        code: "INSUFFICIENT_LIQUIDITY";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Fillable subset and unfillable remainder */
+                        details?: {
+                            /** @description Intents fillable with current liquidity */
+                            availableIntents: {
+                                [key: string]: string;
+                            }[];
+                            /** @description Token amounts that cannot be filled */
+                            unfillable: {
+                                [key: string]: string;
+                            };
+                        };
+                    } | {
+                        /** @enum {string} */
+                        code: "KEY_SCOPE_DENIED";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Single-element list describing the failing scope */
+                        details?: {
+                            message: string;
+                            context: {
+                                /**
+                                 * @description Which scope rejected the request
+                                 * @enum {string}
+                                 */
+                                scope: "allowMainnet" | "intents" | "deposits";
+                                /** @description Minimum level the endpoint demands */
+                                required: boolean | ("read" | "write");
+                                /** @description Level resolved on the key */
+                                actual: boolean | ("none" | "read" | "write");
+                            };
+                        }[];
+                    } | {
+                        /** @enum {string} */
+                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "WITHDRAWAL_IN_PROGRESS" | "WITHDRAWAL_FINALIZATION_PENDING" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                    };
+                };
+            };
+        };
+    };
+    getAppFeeWithdrawal: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description API version. Required; pinned to this document. */
+                "x-api-version": "2026-04.blanc";
+                /** @description API key. */
+                "x-api-key": string;
+            };
+            path: {
+                nonce: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        requestNonce: string;
+                        /** @enum {string} */
+                        status: "PENDING" | "COMPLETED" | "FAILED";
+                        payoutUsd: number;
+                        targetChainId: number;
+                        targetToken: string;
+                        targetAmount: string;
+                        payoutAddress: string;
+                        txHash: string | null;
+                        createdAt: string;
+                    };
+                };
+            };
+            /** @description Validation error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "VALIDATION_ERROR";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Per-field validation issues */
+                        details?: {
+                            /** @description Human-readable issue description */
+                            message: string;
+                            /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                            context?: {
+                                [key: string]: unknown;
+                            };
+                        }[];
+                    } | {
+                        /** @enum {string} */
+                        code: "SIMULATION_FAILED";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Classified on-chain simulation failure details */
+                        details?: {
+                            nonce?: string;
+                            category: string;
+                            errorSelector: string;
+                            errorName: string;
+                            errorArgs?: {
+                                [key: string]: string;
+                            };
+                            retryable: boolean;
+                            /** @enum {string} */
+                            retryHint?: "RE_PREPARE" | "RETRY_LATER";
+                            simulations?: unknown;
+                        } & {
+                            [key: string]: unknown;
+                        };
+                    } | {
+                        /** @enum {string} */
+                        code: "INSUFFICIENT_LIQUIDITY";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Fillable subset and unfillable remainder */
+                        details?: {
+                            /** @description Intents fillable with current liquidity */
+                            availableIntents: {
+                                [key: string]: string;
+                            }[];
+                            /** @description Token amounts that cannot be filled */
+                            unfillable: {
+                                [key: string]: string;
+                            };
+                        };
+                    } | {
+                        /** @enum {string} */
+                        code: "KEY_SCOPE_DENIED";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Single-element list describing the failing scope */
+                        details?: {
+                            message: string;
+                            context: {
+                                /**
+                                 * @description Which scope rejected the request
+                                 * @enum {string}
+                                 */
+                                scope: "allowMainnet" | "intents" | "deposits";
+                                /** @description Minimum level the endpoint demands */
+                                required: boolean | ("read" | "write");
+                                /** @description Level resolved on the key */
+                                actual: boolean | ("none" | "read" | "write");
+                            };
+                        }[];
+                    } | {
+                        /** @enum {string} */
+                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "WITHDRAWAL_IN_PROGRESS" | "WITHDRAWAL_FINALIZATION_PENDING" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                    };
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "VALIDATION_ERROR";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Per-field validation issues */
+                        details?: {
+                            /** @description Human-readable issue description */
+                            message: string;
+                            /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                            context?: {
+                                [key: string]: unknown;
+                            };
+                        }[];
+                    } | {
+                        /** @enum {string} */
+                        code: "SIMULATION_FAILED";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Classified on-chain simulation failure details */
+                        details?: {
+                            nonce?: string;
+                            category: string;
+                            errorSelector: string;
+                            errorName: string;
+                            errorArgs?: {
+                                [key: string]: string;
+                            };
+                            retryable: boolean;
+                            /** @enum {string} */
+                            retryHint?: "RE_PREPARE" | "RETRY_LATER";
+                            simulations?: unknown;
+                        } & {
+                            [key: string]: unknown;
+                        };
+                    } | {
+                        /** @enum {string} */
+                        code: "INSUFFICIENT_LIQUIDITY";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Fillable subset and unfillable remainder */
+                        details?: {
+                            /** @description Intents fillable with current liquidity */
+                            availableIntents: {
+                                [key: string]: string;
+                            }[];
+                            /** @description Token amounts that cannot be filled */
+                            unfillable: {
+                                [key: string]: string;
+                            };
+                        };
+                    } | {
+                        /** @enum {string} */
+                        code: "KEY_SCOPE_DENIED";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Single-element list describing the failing scope */
+                        details?: {
+                            message: string;
+                            context: {
+                                /**
+                                 * @description Which scope rejected the request
+                                 * @enum {string}
+                                 */
+                                scope: "allowMainnet" | "intents" | "deposits";
+                                /** @description Minimum level the endpoint demands */
+                                required: boolean | ("read" | "write");
+                                /** @description Level resolved on the key */
+                                actual: boolean | ("none" | "read" | "write");
+                            };
+                        }[];
+                    } | {
+                        /** @enum {string} */
+                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "WITHDRAWAL_IN_PROGRESS" | "WITHDRAWAL_FINALIZATION_PENDING" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                    };
+                };
+            };
+            /** @description API key scope denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "VALIDATION_ERROR";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Per-field validation issues */
+                        details?: {
+                            /** @description Human-readable issue description */
+                            message: string;
+                            /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                            context?: {
+                                [key: string]: unknown;
+                            };
+                        }[];
+                    } | {
+                        /** @enum {string} */
+                        code: "SIMULATION_FAILED";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Classified on-chain simulation failure details */
+                        details?: {
+                            nonce?: string;
+                            category: string;
+                            errorSelector: string;
+                            errorName: string;
+                            errorArgs?: {
+                                [key: string]: string;
+                            };
+                            retryable: boolean;
+                            /** @enum {string} */
+                            retryHint?: "RE_PREPARE" | "RETRY_LATER";
+                            simulations?: unknown;
+                        } & {
+                            [key: string]: unknown;
+                        };
+                    } | {
+                        /** @enum {string} */
+                        code: "INSUFFICIENT_LIQUIDITY";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Fillable subset and unfillable remainder */
+                        details?: {
+                            /** @description Intents fillable with current liquidity */
+                            availableIntents: {
+                                [key: string]: string;
+                            }[];
+                            /** @description Token amounts that cannot be filled */
+                            unfillable: {
+                                [key: string]: string;
+                            };
+                        };
+                    } | {
+                        /** @enum {string} */
+                        code: "KEY_SCOPE_DENIED";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Single-element list describing the failing scope */
+                        details?: {
+                            message: string;
+                            context: {
+                                /**
+                                 * @description Which scope rejected the request
+                                 * @enum {string}
+                                 */
+                                scope: "allowMainnet" | "intents" | "deposits";
+                                /** @description Minimum level the endpoint demands */
+                                required: boolean | ("read" | "write");
+                                /** @description Level resolved on the key */
+                                actual: boolean | ("none" | "read" | "write");
+                            };
+                        }[];
+                    } | {
+                        /** @enum {string} */
+                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "WITHDRAWAL_IN_PROGRESS" | "WITHDRAWAL_FINALIZATION_PENDING" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                    };
+                };
+            };
+            /** @description Withdrawal not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "VALIDATION_ERROR";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Per-field validation issues */
+                        details?: {
+                            /** @description Human-readable issue description */
+                            message: string;
+                            /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                            context?: {
+                                [key: string]: unknown;
+                            };
+                        }[];
+                    } | {
+                        /** @enum {string} */
+                        code: "SIMULATION_FAILED";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Classified on-chain simulation failure details */
+                        details?: {
+                            nonce?: string;
+                            category: string;
+                            errorSelector: string;
+                            errorName: string;
+                            errorArgs?: {
+                                [key: string]: string;
+                            };
+                            retryable: boolean;
+                            /** @enum {string} */
+                            retryHint?: "RE_PREPARE" | "RETRY_LATER";
+                            simulations?: unknown;
+                        } & {
+                            [key: string]: unknown;
+                        };
+                    } | {
+                        /** @enum {string} */
+                        code: "INSUFFICIENT_LIQUIDITY";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Fillable subset and unfillable remainder */
+                        details?: {
+                            /** @description Intents fillable with current liquidity */
+                            availableIntents: {
+                                [key: string]: string;
+                            }[];
+                            /** @description Token amounts that cannot be filled */
+                            unfillable: {
+                                [key: string]: string;
+                            };
+                        };
+                    } | {
+                        /** @enum {string} */
+                        code: "KEY_SCOPE_DENIED";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Single-element list describing the failing scope */
+                        details?: {
+                            message: string;
+                            context: {
+                                /**
+                                 * @description Which scope rejected the request
+                                 * @enum {string}
+                                 */
+                                scope: "allowMainnet" | "intents" | "deposits";
+                                /** @description Minimum level the endpoint demands */
+                                required: boolean | ("read" | "write");
+                                /** @description Level resolved on the key */
+                                actual: boolean | ("none" | "read" | "write");
+                            };
+                        }[];
+                    } | {
+                        /** @enum {string} */
+                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "WITHDRAWAL_IN_PROGRESS" | "WITHDRAWAL_FINALIZATION_PENDING" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                    };
+                };
+            };
+            /** @description Server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "VALIDATION_ERROR";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Per-field validation issues */
+                        details?: {
+                            /** @description Human-readable issue description */
+                            message: string;
+                            /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                            context?: {
+                                [key: string]: unknown;
+                            };
+                        }[];
+                    } | {
+                        /** @enum {string} */
+                        code: "SIMULATION_FAILED";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Classified on-chain simulation failure details */
+                        details?: {
+                            nonce?: string;
+                            category: string;
+                            errorSelector: string;
+                            errorName: string;
+                            errorArgs?: {
+                                [key: string]: string;
+                            };
+                            retryable: boolean;
+                            /** @enum {string} */
+                            retryHint?: "RE_PREPARE" | "RETRY_LATER";
+                            simulations?: unknown;
+                        } & {
+                            [key: string]: unknown;
+                        };
+                    } | {
+                        /** @enum {string} */
+                        code: "INSUFFICIENT_LIQUIDITY";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Fillable subset and unfillable remainder */
+                        details?: {
+                            /** @description Intents fillable with current liquidity */
+                            availableIntents: {
+                                [key: string]: string;
+                            }[];
+                            /** @description Token amounts that cannot be filled */
+                            unfillable: {
+                                [key: string]: string;
+                            };
+                        };
+                    } | {
+                        /** @enum {string} */
+                        code: "KEY_SCOPE_DENIED";
+                        /**
+                         * @description Human-readable error message
+                         * @example Invalid input
+                         */
+                        message: string;
+                        /** @description Single-element list describing the failing scope */
+                        details?: {
+                            message: string;
+                            context: {
+                                /**
+                                 * @description Which scope rejected the request
+                                 * @enum {string}
+                                 */
+                                scope: "allowMainnet" | "intents" | "deposits";
+                                /** @description Minimum level the endpoint demands */
+                                required: boolean | ("read" | "write");
+                                /** @description Level resolved on the key */
+                                actual: boolean | ("none" | "read" | "write");
+                            };
+                        }[];
+                    } | {
+                        /** @enum {string} */
+                        code: "NOT_FOUND" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "WITHDRAWAL_IN_PROGRESS" | "WITHDRAWAL_FINALIZATION_PENDING" | "UNPROCESSABLE_CONTENT" | "TOO_MANY_REQUESTS" | "SETTLEMENT_QUOTE_ERROR" | "SETTLEMENT_EXECUTION_ERROR" | "EXTERNAL_SERVICE_TIMEOUT" | "RELAYER_MARKET_UNAVAILABLE" | "INTERNAL_ERROR";
                         /**
                          * @description Human-readable error message
                          * @example Invalid input
