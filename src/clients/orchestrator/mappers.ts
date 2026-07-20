@@ -14,6 +14,12 @@ import type {
   OrchestratorSplitRequest,
   OrchestratorSplitResult,
 } from './types'
+import type {
+  WireIntentStatusResponse,
+  WirePortfolioResponse,
+  WireQuoteResponse,
+  WireSplitResponse,
+} from './wire'
 
 export function mapIntentRequestToWire(
   input: OrchestratorIntentRequest,
@@ -45,13 +51,12 @@ export function mapIntentRequestToWire(
 export function mapQuoteResponseFromWire(
   value: unknown,
 ): OrchestratorQuoteResponse {
-  const input = value as {
-    readonly traceId?: string
-    readonly routes?: readonly Record<string, unknown>[]
-  }
+  const input = value as WireQuoteResponse
   return {
     traceId: input.traceId ?? '',
-    routes: (input.routes ?? []).map(mapQuoteFromWire),
+    routes: ((input.routes ?? []) as readonly Record<string, unknown>[]).map(
+      mapQuoteFromWire,
+    ),
   }
 }
 
@@ -89,8 +94,7 @@ export function mapIntentStatusFromWire(
   intentId: string,
   value: unknown,
 ): OrchestratorIntentStatus {
-  const input = value as {
-    readonly traceId?: string
+  const input = value as WireIntentStatusResponse & {
     readonly status?: string
     readonly accountAddress?: Address
     readonly operations?: readonly {
@@ -113,7 +117,7 @@ export function mapIntentStatusFromWire(
 }
 
 export function mapPortfolioFromWire(value: unknown): OrchestratorPortfolio {
-  const input = value as {
+  const input = value as WirePortfolioResponse & {
     readonly portfolio?: readonly {
       readonly symbol: string
       readonly chains: readonly {
@@ -129,7 +133,7 @@ export function mapPortfolioFromWire(value: unknown): OrchestratorPortfolio {
       symbol: token.symbol,
       chains: token.chains.map((chain) => ({
         chain: parseChainValue(chain.chainId),
-        address: chain.address,
+        address: chain.address as Address,
         decimals: chain.decimals,
         amount: BigInt(chain.amount),
       })),
@@ -150,8 +154,7 @@ export function mapSplitRequestToWire(
 export function mapSplitResultFromWire(
   value: unknown,
 ): OrchestratorSplitResult {
-  const input = value as {
-    readonly traceId?: string
+  const input = value as WireSplitResponse & {
     readonly intents?: readonly Record<Address, string | number | bigint>[]
   }
   return {

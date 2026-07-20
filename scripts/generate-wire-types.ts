@@ -1,5 +1,5 @@
 /**
- * Generates `src/orchestrator/wire.gen.ts` from the orchestrator's published
+ * Generates `src/clients/orchestrator/wire.gen.ts` from the orchestrator's published
  * OpenAPI spec (blanc version). The generated wire types are the single source
  * of truth for the orchestrator's request/response shapes; the orchestrator
  * client adapts them to the SDK's internal types (BigInt amounts, numeric chain
@@ -19,7 +19,7 @@ const DEFAULT_SPEC =
   'https://raw.githubusercontent.com/rhinestonewtf/openapi/main/orchestrator/blanc.json'
 
 const OUT_PATH = fileURLToPath(
-  new URL('../src/orchestrator/wire.gen.ts', import.meta.url),
+  new URL('../src/clients/orchestrator/wire.gen.ts', import.meta.url),
 )
 
 function resolveSpec(value: string): URL {
