@@ -5,7 +5,7 @@ The repo generates two artifacts. Neither is hand-edited — regenerate instead.
 | Artifact            | Source                          | Output                          | Command              |
 | ------------------- | ------------------------------- | ------------------------------- | -------------------- |
 | SDK Reference (MDX) | JSDoc on public symbols         | `docs` repo `sdk-reference/`    | `bun run generate:reference` |
-| Orchestrator wire types | Orchestrator OpenAPI spec   | `src/orchestrator/wire.gen.ts`  | `bun run generate:wire` |
+| Orchestrator wire types | Orchestrator OpenAPI spec   | `src/clients/orchestrator/wire.gen.ts`  | `bun run generate:wire` |
 
 ## SDK Reference
 
@@ -64,13 +64,13 @@ public API or its JSDoc changes.
 
 ## Orchestrator wire types
 
-`src/orchestrator/wire.gen.ts` is generated from the orchestrator's published
+`src/clients/orchestrator/wire.gen.ts` is generated from the orchestrator's published
 OpenAPI spec (the `blanc` version) with `openapi-typescript`.
 
 ### Motivation
 
 The generated wire types are the single source of truth for the orchestrator's
-request/response shapes. The orchestrator client (`src/orchestrator/client.ts`)
+request/response shapes. The orchestrator mappers (`src/clients/orchestrator/mappers.ts`, via the `wire.ts` aliases)
 adapts them to the SDK's internal types — BigInt amounts, numeric chain ids —
 at one boundary. When the wire shape drifts, regenerating turns the change into
 a **typecheck error at the adapter boundary** instead of a runtime surprise.

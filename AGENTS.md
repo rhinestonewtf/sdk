@@ -26,13 +26,17 @@ Docs: https://docs.rhinestone.dev/smart-wallet
 ## Structure
 
 - `/src` - Main package source (`@rhinestone/sdk`); `src/package.json` is the published manifest
-- `/src/accounts` - Smart account implementations (Safe, Kernel, Nexus, Startale)
-- `/src/actions` - Atomic account actions (ECDSA, passkeys, smart-sessions, recovery)
-- `/src/auth` - Auth provider (API key / JWT modes)
-- `/src/execution` - Transaction execution and signing
+- `/src/api` - Public facade: `RhinestoneSDK`, the `RhinestoneAccount` instance, composition, and queries
+- `/src/config` - Public config types and resolution to the internal invocation context
+- `/src/chains`, `/src/calls` - Chain catalog / CAIP-2 / tokens, and call resolution
+- `/src/accounts` - Smart account adapters (Safe, Kernel, Nexus, Startale, HCA, EOA)
+- `/src/modules` - Module planning and validators, including Smart Sessions
+- `/src/signing` - The signing pipeline (plans, signers, protocols, intent plans)
+- `/src/transactions` - Intent and UserOperation workflows (`intents/`, `user-operations/`)
+- `/src/clients` - Ports and adapters for the orchestrator, RPC, bundler, and paymaster
+- `/src/actions` - Atomic account actions (ECDSA, passkeys, smart-sessions)
+- `/src/errors`, `/src/utils`, `/src/smart-sessions` - Published compatibility barrels
 - `/src/jwt-server` - Server-side JWT signer (Express + Web handlers)
-- `/src/modules` - Module validators and chain abstraction
-- `/src/orchestrator` - Rhinestone API client
 - `/test` - Unit helpers, type tests, and live integration tests
 
 See [docs/architecture.md](docs/architecture.md) for how these fit together and the transaction flow.

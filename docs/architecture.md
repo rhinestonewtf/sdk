@@ -8,77 +8,64 @@ Reference](https://docs.rhinestone.dev); this doc is the internal map.
 
 ```mermaid
 graph TD
-  App[Integrator app] --> SDK[RhinestoneSDK.createAccount]
-  SDK --> Account[RhinestoneAccount instance]
+  App[Integrator app] --> SDK[api/sdk.ts · RhinestoneSDK]
+  SDK --> Account[api/account.ts · RhinestoneAccount]
+  Account --> Compose[api/compose.ts · composition root]
 
-  Account --> Accounts[accounts/<br/>Safe · Kernel · Nexus · Startale · HCA]
-  Account --> Actions[actions/<br/>ECDSA · passkeys · smart-sessions · MFA]
-  Account --> Execution[execution/<br/>prepare · sign · submit]
+  Compose --> Intents[transactions/intents/]
+  Compose --> UserOps[transactions/user-operations/]
+  Compose --> Direct[api/direct-signing.ts]
 
-  Accounts --> Modules[modules/<br/>validators · chain abstraction]
-  Execution --> Orchestrator[orchestrator/<br/>Rhinestone API client]
+  Intents --> Signing[signing/]
+  UserOps --> Signing
+  Direct --> Signing
 
-  Account --> Auth[auth/<br/>API key · JWT provider]
-  Auth -. server-signed JWT .-> JwtServer[jwt-server/]
+  Intents --> Accounts[accounts/<br/>Safe · Kernel · Nexus · Startale · HCA · EOA]
+  Accounts --> Modules[modules/<br/>validators · Smart Sessions]
+  Intents --> Orch[clients/orchestrator/]
+  UserOps --> Bundler[clients/bundler/ + paymaster/]
+  Signing --> Rpc[clients/rpc/]
 
-  Orchestrator -->|HTTP| API[(Rhinestone Orchestrator API)]
+  Orch -->|HTTP| API[(Rhinestone Orchestrator API)]
 ```
 
-## Building blocks
+## Layering
 
-- **`RhinestoneSDK` / `createAccount`** (`src/index.ts`) — entry point.
-  `new RhinestoneSDK(config).createAccount(accountConfig)` resolves config and
-  returns a `RhinestoneAccount` instance; all flows hang off that object.
-- **`accounts/`** — account implementations (Safe, Kernel, Nexus, Startale, and
-  the ENS HCA factory). Each maps the unified config to that account's onchain
-  init data, module layout, and signing. `signing/` holds per-account signature
-  packing; `json-rpc/` the bundler/RPC glue.
-- **`actions/`** — atomic account operations exposed as the public `/actions`
-  subpath: ECDSA owner management, passkeys, smart sessions, MFA.
-- **`modules/`** — module validators and the chain-abstraction config
-  (`chain-abstraction.ts`), plus onchain reads (`read.ts`) for owners,
-  validators, and executors.
-- **`execution/`** — the prepare → sign → submit machinery shared by the intent
-  and user-operation paths.
-- **`orchestrator/`** — the Rhinestone API client. Owns quoting, intent
-  submission, and status polling, the typed error hierarchy (`error.ts`), token
-  registry (`registry.ts`), chain catalog (`destinations.ts`), CAIP-2
-  conversion (`caip2.ts`), and the generated wire types. See
-  [codegen.md](codegen.md) for how the wire types are produced.
-- **`auth/`** — auth provider: API-key mode (key sent directly) or JWT mode
-  (short-lived token signed by a backend).
-- **`jwt-server/`** — server-side JWT signer (Express + Web handlers) for the
-  JWT auth mode, published as the `/jwt-server` subpath.
+The rewrite is a pure core with an imperative shell. Dependencies flow one way,
+enforced by `scripts/architecture/check.ts`:
+
+- **`api/`** — the composition root and public facade. `sdk.ts` (`RhinestoneSDK`)
+  and `account.ts` (`RhinestoneAccount`) are the entry points; `compose.ts`
+  wires concrete clients into the workflows; `queries/` holds the small
+  portfolio and app-fee reads. Only `api/` may import concrete clients.
+- **`config/`** — public config types (`config/account.ts`) and resolution
+  (`resolve.ts`) from the public config into the narrow invocation context the
+  internals consume. Internals never take the aggregate `RhinestoneConfig`.
+- **`chains/`, `calls/`** — the universally-importable base: chain catalog,
+  CAIP-2, tokens, non-EVM descriptors, and call resolution.
+- **`accounts/`** — account adapters (Safe, Kernel, Nexus, Startale, HCA, EOA).
+  Each maps resolved config to that account's init data, module layout, and
+  signature envelope. The registry selects the adapter by kind.
+- **`modules/`** — module planning and validators (ECDSA, ENS, WebAuthn,
+  multi-factor, K1), including the Smart Sessions subsystem
+  (`modules/validators/smart-sessions/`).
+- **`signing/`** — the signing pipeline: signing plans, signer invocation,
+  protocol codecs (ERC-6492/7739), and intent-plan assembly.
+- **`transactions/`** — an organizational namespace, not a shared protocol. The
+  `intents/` and `user-operations/` workflows keep their own request models,
+  preparation, submission, and status; they share account materialization, call
+  resolution, signing, chain data, and narrow client ports through the
+  subsystems above.
+- **`clients/`** — ports and adapters for the orchestrator, RPC, bundler, and
+  paymaster. Domain and workflow code imports only the stable `port.ts`,
+  `types.ts`, `errors.ts`, and `public.ts` boundaries; concrete clients are
+  injected at `api/compose.ts`.
+- **`actions/`, `errors/`, `utils/`, `smart-sessions/`, `jwt-server/`** —
+  published subpath surfaces. `actions/` are standalone builders; the rest are
+  compatibility barrels re-exporting owning symbols, except `jwt-server/`, a
+  separate server-side bounded context with optional `jose`/`express` peers.
 
 ## Execution paths
-
-### Rewrite transition
-
-Commit 6 keeps the published facade on `execution/` while completing the new
-internal composition used by characterization tests. The new composition is
-owned by `api/compose.ts` and separates the operation workflows as follows:
-
-```mermaid
-graph TD
-  Compose[api/compose.ts] --> Intent[transactions/intents/]
-  Compose --> UserOp[transactions/user-operations/]
-  Compose --> Direct[api/direct-signing.ts]
-  Intent --> Signing[signing/]
-  UserOp --> Signing
-  Direct --> Signing
-  Intent --> Accounts[accounts/]
-  UserOp --> Accounts
-  Direct --> Accounts
-  Intent --> Clients[clients/orchestrator/]
-  UserOp --> Bundler[clients/bundler/ + paymaster/]
-```
-
-`transactions/` is an organizational namespace, not a shared protocol layer.
-Intent and UserOperation request models, preparation, submission, and status
-remain separate. They share account materialization, call resolution, signing
-plans/execution, chain data, clocks, and narrow client ports through their
-owning top-level subsystems. Direct account signing uses the same signing core
-without belonging to either transaction workflow.
 
 The account exposes two ways to execute, both ending at `waitForExecution`.
 
@@ -125,9 +112,9 @@ ERC-4337 path for direct bundler execution:
 
 ## External integrations
 
-| System                  | Purpose                                  | Interface       |
-| ----------------------- | ---------------------------------------- | --------------- |
-| Rhinestone Orchestrator | Intent quoting, routing, status          | HTTP (`orchestrator/`) |
-| Relayer market          | Cross-chain settlement (Across/Relay/Eco) | via orchestrator |
-| Bundler / RPC           | ERC-4337 user-operation submission       | viem (peer)     |
-| JWT backend             | Mints short-lived auth tokens (JWT mode) | `jwt-server/`   |
+| System                  | Purpose                                   | Interface                    |
+| ----------------------- | ----------------------------------------- | ---------------------------- |
+| Rhinestone Orchestrator | Intent quoting, routing, status           | HTTP (`clients/orchestrator/`) |
+| Relayer market          | Cross-chain settlement (Across/Relay/Eco) | via orchestrator             |
+| Bundler / RPC           | ERC-4337 user-operation submission        | `clients/bundler/`, `clients/rpc/` (viem peer) |
+| JWT backend             | Mints short-lived auth tokens (JWT mode)  | `jwt-server/`                |
