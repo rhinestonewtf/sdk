@@ -1,5 +1,6 @@
 import { encodeFunctionData, erc20Abi } from 'viem'
 import { describe, expect, test } from 'vitest'
+import { sharedChainCatalog } from '../../../src/chains/catalog'
 import { getTokenAddress } from '../../../src/chains/tokens'
 import type {
   PreparedTransactionData,
@@ -124,7 +125,7 @@ describe.sequential('SDK integration preclaim-ops', () => {
 
     const recipient = createOwner().address
     const sourceCallAmount = 5_000n
-    const usdc = getTokenAddress('USDC', sourceChain.id)
+    const usdc = getTokenAddress(sharedChainCatalog, 'USDC', sourceChain.id)
 
     const execution = await executeIntent({
       account,
