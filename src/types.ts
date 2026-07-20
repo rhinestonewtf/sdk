@@ -823,15 +823,6 @@ interface BaseTransaction {
   eip7702InitSignature?: Hex
   sourceAssets?: SourceAssetInput
   appFees?: AppFeeRate
-  /**
-   * Absolute unix timestamp (seconds) overriding the on-chain fill deadline.
-   * Honored only on the same-chain (tokenless) route and silently ignored on
-   * every other route. Must be between `now + 120s` and `now + 86400s` (24h);
-   * out-of-range values are rejected by the orchestrator with a `400`. When
-   * honored, the quoted `expiresAt` and the bundle claim/nonce expiry track
-   * this value automatically.
-   */
-  customDeadline?: number
   settlementLayers?: SettlementLayerFilter
   auxiliaryFunds?: AuxiliaryFunds
   experimental_accountOverride?: {
@@ -846,6 +837,16 @@ interface SameChainTransaction extends BaseTransaction {
   chain: Chain
   tokenRequests?: TokenRequests
   recipient?: RhinestoneAccountConfig | Address
+  /**
+   * Absolute unix timestamp (seconds) overriding the on-chain fill deadline
+   * (default 2 min). Same-chain only — the field lives on this type precisely
+   * because the orchestrator honors it only on the same-chain (tokenless)
+   * route; cross-chain transactions cannot set it. Must be between
+   * `now + 120s` and `now + 86400s` (24h); out-of-range values are rejected
+   * by the orchestrator with a `400`. When honored, the quoted `expiresAt`
+   * and the bundle claim/nonce expiry track this value automatically.
+   */
+  customDeadline?: number
 }
 
 interface CrossChainEvmTransaction extends BaseTransaction {

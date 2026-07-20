@@ -1388,7 +1388,10 @@ function getTransactionParams(transaction: Transaction) {
   const sourceAssets = transaction.sourceAssets
   const auxiliaryFunds = transaction.auxiliaryFunds
   const appFees = transaction.appFees
-  const customDeadline = transaction.customDeadline
+  // customDeadline lives only on same-chain transactions (see types.ts) — it's
+  // meaningless cross-chain, so narrow before reading it.
+  const customDeadline =
+    'chain' in transaction ? transaction.customDeadline : undefined
   const account = transaction.experimental_accountOverride
   const recipient = transaction.recipient
   const sourceCalls = transaction.sourceCalls
