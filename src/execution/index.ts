@@ -95,6 +95,7 @@ async function sendTransaction(
     sourceAssets,
     feeAsset,
     appFees,
+    customDeadline,
   } = transaction
   const isUserOpSigner = signers?.type === 'guardians'
   if (isUserOpSigner) {
@@ -113,6 +114,7 @@ async function sendTransaction(
     sourceAssets,
     feeAsset,
     appFees,
+    customDeadline,
   })
 }
 
@@ -153,6 +155,7 @@ async function sendTransactionInternal(
     lockFunds?: boolean
     feeAsset?: Address | TokenSymbol
     appFees?: AppFeeRate
+    customDeadline?: number
   },
 ) {
   const accountAddress = getAddress(config)
@@ -188,6 +191,7 @@ async function sendTransactionInternal(
       options.lockFunds,
       options.sourceCalls,
       options.appFees,
+      options.customDeadline,
     )
   }
 }
@@ -243,6 +247,7 @@ async function sendTransactionAsIntent(
   lockFunds?: boolean,
   sourceCalls?: Record<number, CallInput[]>,
   appFees?: AppFeeRate,
+  customDeadline?: number,
 ) {
   const prepared = await prepareTransactionAsIntent(
     config,
@@ -263,6 +268,7 @@ async function sendTransactionAsIntent(
     signers,
     sourceCalls,
     appFees,
+    customDeadline,
   )
   if (!prepared) {
     throw new OrderPathRequiredForIntentsError()

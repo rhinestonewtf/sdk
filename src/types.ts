@@ -482,6 +482,15 @@ interface BaseTransaction {
   sourceAssets?: SourceAssetInput
   feeAsset?: Address | TokenSymbol
   appFees?: AppFeeRate
+  /**
+   * Absolute unix timestamp (seconds) overriding the on-chain fill deadline.
+   * Honored only on the tokenless (same-chain / no-funding) route and silently
+   * ignored on every other route. Must be between `now + 120s` and
+   * `now + 86400s` (24h); out-of-range values are rejected by the orchestrator
+   * with a `400`. When honored, the quoted `expiresAt` and the bundle
+   * claim/nonce expiry track this value automatically.
+   */
+  customDeadline?: number
   settlementLayers?: SettlementLayer[]
   lockFunds?: boolean
   auxiliaryFunds?: AuxiliaryFunds

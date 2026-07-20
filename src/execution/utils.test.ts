@@ -257,6 +257,79 @@ describe('prepareTransactionAsIntent', () => {
     expect(intentInput.options.appFees).toEqual({ feeBps: 100 })
   })
 
+  test('includes customDeadline in options when provided', async () => {
+    mockGetIntentRoute.mockResolvedValue({
+      intentOp: {},
+      intentCost: {},
+    })
+
+    const customDeadline = 9_999_999_999
+
+    await prepareTransactionAsIntent(
+      {
+        owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+        apiKey: 'test',
+      },
+      [arbitrum],
+      base,
+      [],
+      undefined,
+      [{ address: zeroAddress, amount: 1n }],
+      undefined,
+      false,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      customDeadline,
+    )
+
+    expect(mockGetIntentRoute).toHaveBeenCalledOnce()
+    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    expect(intentInput.options.customDeadline).toBe(customDeadline)
+  })
+
+  test('omits customDeadline from options when not provided', async () => {
+    mockGetIntentRoute.mockResolvedValue({
+      intentOp: {},
+      intentCost: {},
+    })
+
+    await prepareTransactionAsIntent(
+      {
+        owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+        apiKey: 'test',
+      },
+      [arbitrum],
+      base,
+      [],
+      undefined,
+      [{ address: zeroAddress, amount: 1n }],
+      undefined,
+      false,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+    )
+
+    expect(mockGetIntentRoute).toHaveBeenCalledOnce()
+    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    expect(intentInput.options.customDeadline).toBeUndefined()
+  })
+
   test('claim-only session sends SIG_MODE_ERC1271 in routing request', async () => {
     mockGetIntentRoute.mockResolvedValue({
       intentOp: {},

@@ -104,6 +104,12 @@ interface IntentOptions {
   settlementLayers?: SettlementLayer[]
   signatureMode?: SignatureMode
   auxiliaryFunds?: AuxiliaryFunds
+  /**
+   * Absolute unix timestamp (seconds) overriding the on-chain fill deadline.
+   * Tokenless route only; ignored elsewhere. Bounds (`now + 120s` ..
+   * `now + 86400s`) are enforced by the orchestrator.
+   */
+  customDeadline?: number
 }
 
 interface AppFeeRate {
