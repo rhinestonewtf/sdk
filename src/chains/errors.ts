@@ -1,6 +1,6 @@
 /**
  * Thrown by the SDK's local chain/token registry — not an orchestrator API
- * error. Kept distinct from `OrchestratorClientError` so consumers can catch
+ * error. Kept distinct from `OrchestratorError` so consumers can catch
  * unsupported-chain/token failures separately from server-side errors.
  */
 export class UnsupportedChainError extends Error {

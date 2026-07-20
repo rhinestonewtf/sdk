@@ -1,5 +1,6 @@
 import { encodeFunctionData, erc20Abi } from 'viem'
 import { describe, expect, test } from 'vitest'
+import { getTokenAddress } from '../../../src/chains/tokens'
 import type {
   PreparedTransactionData,
   RhinestoneAccount,
@@ -8,8 +9,7 @@ import type {
 import {
   DUMMY_PRECLAIMOP_SELECTOR,
   DUMMY_PRECLAIMOP_TARGET,
-} from '../../../src/modules/validators/smart-sessions'
-import { getTokenAddress } from '../../../src/orchestrator/registry'
+} from '../../../src/modules/validators/smart-sessions/resolve'
 import { sourceChain, targetChain } from '../config/chains'
 import { createIntegrationSDK } from '../config/environment'
 import {

@@ -1,4 +1,4 @@
-import { IntentFailedError } from './errors'
+import { IntentFailedError } from '../../errors/execution'
 import { classifyIntentStatus, getIntentRetryDelay } from './status-policy'
 import type { IntentStatus, IntentWorkflowContext } from './types'
 
@@ -53,7 +53,9 @@ export async function waitForIntentStatus<CompatibilityConfig>(
     }
     if (!status.terminal) continue
     if (status.status === 'FAILED') {
-      throw new IntentFailedError(intentId, status.operations)
+      throw new IntentFailedError({
+        context: { intentId, operations: status.operations },
+      })
     }
     return status
   }

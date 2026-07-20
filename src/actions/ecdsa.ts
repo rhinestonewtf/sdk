@@ -1,9 +1,9 @@
 import { type Address, encodeFunctionData } from 'viem'
+import type { CalldataInput, LazyCallInput } from '../config/account'
 import {
   OWNABLE_VALIDATOR_ADDRESS,
   resolveOwnableAddresses,
 } from '../modules/validators/ownable'
-import type { CalldataInput, LazyCallInput } from '../types'
 import {
   resolveModuleUninstallation,
   resolveValidatorInstallation,

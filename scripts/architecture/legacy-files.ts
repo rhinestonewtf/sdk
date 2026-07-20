@@ -1,68 +1,7 @@
-// Facade files rewired to the rewritten internals at the facade cutover. They
-// still re-export a few legacy type/error owners (removed with the legacy tree),
-// so they remain architecture exceptions but are no longer byte-pinned to the
-// calibrated release oracle.
-export const facadeCutoverFiles = new Set([
-  'src/index.ts',
-  'src/errors/index.ts',
-  'src/package.json',
-])
+// The staged rewrite is complete: the legacy implementation tree has been
+// removed and no file is byte-pinned to the release oracle any longer. Both
+// sets are intentionally empty; the architecture check now holds every source
+// file to the rewrite rules.
+export const facadeCutoverFiles = new Set<string>([])
 
-// These exact files are the release implementation retained as the oracle
-// through the staged rewrite. Remove each entry when its file is replaced.
-export const transitionalLegacyFiles = new Set([
-  'src/accounts/error.ts',
-  'src/accounts/hca.ts',
-  'src/accounts/index.ts',
-  'src/accounts/json-rpc/index.ts',
-  'src/accounts/json-rpc/providers.ts',
-  'src/accounts/kernel.ts',
-  'src/accounts/nexus.ts',
-  'src/accounts/safe.ts',
-  'src/accounts/signing/common.ts',
-  'src/accounts/signing/message.ts',
-  'src/accounts/signing/passkeys.ts',
-  'src/accounts/signing/typedData.ts',
-  'src/accounts/startale.ts',
-  'src/accounts/utils.ts',
-  'src/auth/provider.ts',
-  'src/errors/index.ts',
-  'src/execution/compact.ts',
-  'src/execution/error.ts',
-  'src/execution/index.ts',
-  'src/execution/utils.ts',
-  'src/index.ts',
-  'src/jwt-server/digest.ts',
-  'src/jwt-server/express.ts',
-  'src/jwt-server/handlers.ts',
-  'src/jwt-server/index.ts',
-  'src/jwt-server/jcs.ts',
-  'src/jwt-server/signer.ts',
-  'src/jwt-server/sponsorship.ts',
-  'src/jwt-server/web.ts',
-  'src/modules/abi/smart-session-emissary.ts',
-  'src/modules/abi/smart-sessions.ts',
-  'src/modules/chain-abstraction.ts',
-  'src/modules/common.ts',
-  'src/modules/index.ts',
-  'src/modules/legacy.ts',
-  'src/modules/read.ts',
-  'src/modules/validators/core.ts',
-  'src/modules/validators/cross-chain-permits.ts',
-  'src/modules/validators/index.ts',
-  'src/modules/validators/policies/claim/permit2.ts',
-  'src/modules/validators/policies/claim/types.ts',
-  'src/modules/validators/smart-sessions.ts',
-  'src/orchestrator/caip2.ts',
-  'src/orchestrator/client.ts',
-  'src/orchestrator/consts.ts',
-  'src/orchestrator/destinations.ts',
-  'src/orchestrator/error.ts',
-  'src/orchestrator/index.ts',
-  'src/orchestrator/registry.ts',
-  'src/orchestrator/types.ts',
-  'src/orchestrator/utils.ts',
-  'src/orchestrator/wire.ts',
-  'src/types.ts',
-  'src/utils/walletClient.ts',
-])
+export const transitionalLegacyFiles = new Set<string>([])

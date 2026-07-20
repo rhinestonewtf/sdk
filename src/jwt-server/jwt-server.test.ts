@@ -7,98 +7,10 @@ import {
   jwtVerify,
 } from 'jose'
 import { describe, expect, it } from 'vitest'
-import { createAuthProvider } from '../auth/provider'
 import { computeIntentInputDigest } from './digest'
 import { jcsCanonicalise } from './jcs'
 import { createJwtSigner } from './signer'
 import { SponsorshipDeniedError, shouldSponsor } from './sponsorship'
-
-describe('createAuthProvider routing', () => {
-  it('resolves api key mode from apiKey field', async () => {
-    const provider = createAuthProvider({ apiKey: 'test-key' })
-    const headers = await provider.getHeaders()
-
-    expect(headers['x-api-key']).toBe('test-key')
-  })
-
-  it('resolves api key mode from auth config', async () => {
-    const provider = createAuthProvider({
-      auth: { mode: 'apiKey', apiKey: 'test-key-2' },
-    })
-    const headers = await provider.getHeaders()
-
-    expect(headers['x-api-key']).toBe('test-key-2')
-  })
-
-  it('resolves jwt mode with static token', async () => {
-    const provider = createAuthProvider({
-      auth: { mode: 'experimental_jwt', accessToken: 'static-jwt-token' },
-    })
-    const headers = await provider.getHeaders()
-
-    expect(headers.Authorization).toBe('Bearer static-jwt-token')
-  })
-
-  it('resolves jwt mode with async token getter', async () => {
-    const provider = createAuthProvider({
-      auth: {
-        mode: 'experimental_jwt',
-        accessToken: async () => 'dynamic-jwt-token',
-      },
-    })
-    const headers = await provider.getHeaders()
-
-    expect(headers.Authorization).toBe('Bearer dynamic-jwt-token')
-  })
-
-  it('jwt mode getSubmitHeaders calls getIntentExtensionToken when sponsored', async () => {
-    const provider = createAuthProvider({
-      auth: {
-        mode: 'experimental_jwt',
-        accessToken: 'my-access-token',
-        getIntentExtensionToken: async (intentInput) => {
-          return `ext-for-${(intentInput as any).id}`
-        },
-      },
-    })
-
-    const headers = await provider.getSubmitHeaders({ id: 'intent-42' }, true)
-
-    expect(headers.Authorization).toBe('Bearer my-access-token')
-    expect(headers['X-Intent-Extension']).toBe('Bearer ext-for-intent-42')
-  })
-
-  it('jwt mode getSubmitHeaders skips extension token when not sponsored', async () => {
-    let callbackCalled = false
-    const provider = createAuthProvider({
-      auth: {
-        mode: 'experimental_jwt',
-        accessToken: 'my-access-token',
-        getIntentExtensionToken: async () => {
-          callbackCalled = true
-          return 'should-not-be-used'
-        },
-      },
-    })
-
-    const headers = await provider.getSubmitHeaders({ id: 'intent-42' }, false)
-
-    expect(headers.Authorization).toBe('Bearer my-access-token')
-    expect(headers['X-Intent-Extension']).toBeUndefined()
-    expect(callbackCalled).toBe(false)
-  })
-
-  it('jwt mode getSubmitHeaders works without getIntentExtensionToken callback', async () => {
-    const provider = createAuthProvider({
-      auth: { mode: 'experimental_jwt', accessToken: 'my-access-token' },
-    })
-
-    const headers = await provider.getSubmitHeaders({ id: 'intent-42' }, true)
-
-    expect(headers.Authorization).toBe('Bearer my-access-token')
-    expect(headers['X-Intent-Extension']).toBeUndefined()
-  })
-})
 
 describe('jcsCanonicalise', () => {
   it('sorts object keys lexicographically', () => {

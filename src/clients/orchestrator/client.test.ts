@@ -1,7 +1,7 @@
 import { describe, expect, test, vi } from 'vitest'
 import { createOrchestratorAuth } from './auth'
 import { createOrchestratorClient } from './client'
-import type { OrchestratorClientError } from './errors'
+import type { RateLimitedError } from './errors'
 
 const address = '0x0000000000000000000000000000000000000001' as const
 
@@ -109,7 +109,7 @@ describe('orchestrator client', () => {
       auth: createOrchestratorAuth({ kind: 'api-key', apiKey: 'secret' }),
       fetch: async () =>
         new Response(
-          JSON.stringify({ code: 'RATE_LIMITED', message: 'slow' }),
+          JSON.stringify({ code: 'TOO_MANY_REQUESTS', message: 'slow' }),
           {
             status: 429,
             headers: { 'retry-after': '3', 'x-trace-id': 'trace-error' },
@@ -118,12 +118,11 @@ describe('orchestrator client', () => {
     })
 
     await expect(client.getIntentStatus('intent-1')).rejects.toMatchObject({
-      name: 'OrchestratorClientError',
       message: 'slow',
-      status: 429,
-      code: 'RATE_LIMITED',
+      statusCode: 429,
+      code: 'TOO_MANY_REQUESTS',
       retryAfter: '3',
       traceId: 'trace-error',
-    } satisfies Partial<OrchestratorClientError>)
+    } satisfies Partial<RateLimitedError>)
   })
 })

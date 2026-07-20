@@ -3,7 +3,7 @@ import { isAddress } from 'viem'
 import type { ChainCatalog } from './catalog'
 import { UnsupportedChainError, UnsupportedTokenError } from './errors'
 
-export type CanonicalTokenSymbol = 'ETH' | 'WETH' | 'USDC' | 'USDT' | 'USDT0'
+export type TokenSymbol = 'ETH' | 'WETH' | 'USDC' | 'USDT' | 'USDT0'
 
 function getEntry(catalog: ChainCatalog, chainId: number) {
   const entry = catalog.getEntry(chainId)
@@ -13,7 +13,7 @@ function getEntry(catalog: ChainCatalog, chainId: number) {
 
 export function getTokenAddress(
   catalog: ChainCatalog,
-  symbol: CanonicalTokenSymbol,
+  symbol: TokenSymbol,
   chainId: number,
 ): Address {
   const token = getEntry(catalog, chainId).tokens.find(
@@ -47,11 +47,11 @@ export function getWrappedNativeTokenAddress(
 
 export function normalizeTokenAddress(
   catalog: ChainCatalog,
-  token: CanonicalTokenSymbol | Address | string,
+  token: TokenSymbol | Address | string,
   chainId: number,
   nonEvm: boolean,
 ): Address | string {
   if (isAddress(token)) return token
   if (nonEvm) return token
-  return getTokenAddress(catalog, token as CanonicalTokenSymbol, chainId)
+  return getTokenAddress(catalog, token as TokenSymbol, chainId)
 }

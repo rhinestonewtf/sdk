@@ -2,11 +2,17 @@ import type { Address, Hex } from 'viem'
 import { createAccountConstruction } from '../accounts/construction'
 import { getRhinestoneInitData, getV0InitData } from '../accounts/legacy'
 import { toViewOnlyAccount } from '../accounts/wallet-account'
+import type {
+  RhinestoneAccountConfig,
+  RhinestoneConfig,
+} from '../config/account'
 import { resolveStandaloneAccountConfig } from '../config/resolve'
 import { assertAccountOwnersConfigured } from '../config/validate'
 import { toLegacyModuleSetup } from '../modules/legacy-core'
-import type { RhinestoneAccountConfig, RhinestoneConfig } from '../types'
-import { walletClientToAccount, wrapParaAccount } from './walletClient'
+import {
+  walletClientToAccount,
+  wrapParaAccount,
+} from '../signing/signers/compatibility'
 
 function standaloneConstruction(
   config: RhinestoneConfig,
@@ -125,13 +131,13 @@ function experimental_getRhinestoneInitData(config: RhinestoneAccountConfig):
  * })
  * ```
  */
-function experimental_getModuleSetup(config: RhinestoneConfig) {
+function getSetup(config: RhinestoneConfig) {
   return toLegacyModuleSetup(standaloneConstruction(config, 'current-v2').setup)
 }
 
 export {
   experimental_getV0InitData,
-  experimental_getModuleSetup,
+  getSetup as experimental_getModuleSetup,
   experimental_getRhinestoneInitData,
   toViewOnlyAccount,
   walletClientToAccount,

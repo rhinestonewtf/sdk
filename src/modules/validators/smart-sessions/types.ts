@@ -6,8 +6,8 @@ import type {
   Hex,
   TypedDataDefinition,
 } from 'viem'
-import type { CanonicalTokenSymbol } from '../../../chains/tokens'
-import type { ValidatorInput } from '../types'
+import type { TokenSymbol } from '../../../chains/tokens'
+import type { OwnerSet } from '../types'
 
 export type UniversalActionPolicyParamCondition =
   | 'equal'
@@ -113,133 +113,98 @@ export interface SessionPolicyAddresses {
 export type CrossChainSettlementLayer = 'SAME_CHAIN' | 'ECO' | 'ACROSS'
 
 export interface CrossChainPermit {
-  readonly from?: readonly {
-    readonly chain: Chain
-    readonly token: Address
-    readonly maxAmount?: bigint
-  }[]
-  readonly to?: readonly {
-    readonly chain: Chain
-    readonly token: Address
-    readonly recipient?: Address | 'any'
-  }[]
-  readonly validUntil?: bigint
-  readonly validAfter?: bigint
-  readonly fillDeadline?: readonly {
-    readonly chain: Chain
-    readonly min?: bigint
-    readonly max?: bigint
-  }[]
-  readonly recipientIsAccount?: boolean
-  readonly settlementLayers?: readonly CrossChainSettlementLayer[]
+  from?: { chain: Chain; token: Address; maxAmount?: bigint }[]
+  to?: { chain: Chain; token: Address; recipient?: Address | 'any' }[]
+  validUntil?: bigint
+  validAfter?: bigint
+  fillDeadline?: { chain: Chain; min?: bigint; max?: bigint }[]
+  recipientIsAccount?: boolean
+  settlementLayers?: CrossChainSettlementLayer[]
+}
+
+export interface FromLeg {
+  chain: Chain
+  token: Address | TokenSymbol
+  maxAmount?: bigint
+}
+
+export interface ToLeg {
+  chain: Chain
+  token: Address | TokenSymbol
+  recipient?: Address | 'any'
 }
 
 export interface CrossChainPermissionInput {
-  readonly from?:
-    | {
-        readonly chain: Chain
-        readonly token: Address | CanonicalTokenSymbol
-        readonly maxAmount?: bigint
-      }
-    | readonly {
-        readonly chain: Chain
-        readonly token: Address | CanonicalTokenSymbol
-        readonly maxAmount?: bigint
-      }[]
-  readonly to?:
-    | {
-        readonly chain: Chain
-        readonly token: Address | CanonicalTokenSymbol
-        readonly recipient?: Address | 'any'
-      }
-    | readonly {
-        readonly chain: Chain
-        readonly token: Address | CanonicalTokenSymbol
-        readonly recipient?: Address | 'any'
-      }[]
-  readonly validUntil?: Date
-  readonly validAfter?: Date
-  readonly fillDeadline?: readonly {
-    readonly chain: Chain
-    readonly min?: Date
-    readonly max?: Date
-  }[]
-  readonly allowRecipientNotAccount?: boolean
-  readonly settlementLayers?: readonly CrossChainSettlementLayer[]
+  from?: FromLeg | FromLeg[]
+  to?: ToLeg | ToLeg[]
+  validUntil?: Date
+  validAfter?: Date
+  fillDeadline?: { chain: Chain; min?: Date; max?: Date }[]
+  allowRecipientNotAccount?: boolean
+  settlementLayers?: CrossChainSettlementLayer[]
 }
 
 export interface Permit2ClaimPolicy {
-  readonly type: 'permit2'
-  readonly spenders?: readonly Address[]
-  readonly sourceTokens?: readonly {
-    readonly chain: Chain
-    readonly address: Address
-  }[]
-  readonly destinationTokens?: readonly {
-    readonly chain: Chain
-    readonly address: Address
-  }[]
-  readonly recipients?: readonly {
-    readonly chain: Chain
-    readonly address: Address | 'any'
-  }[]
-  readonly recipientIsAccount?: boolean
-  readonly permitDeadline?: { readonly min?: bigint; readonly max?: bigint }
-  readonly fillDeadline?: readonly {
-    readonly chain: Chain
-    readonly min?: bigint
-    readonly max?: bigint
-  }[]
+  type: 'permit2'
+  spenders?: Address[]
+  sourceTokens?: { chain: Chain; address: Address }[]
+  destinationTokens?: { chain: Chain; address: Address }[]
+  recipients?: { chain: Chain; address: Address | 'any' }[]
+  recipientIsAccount?: boolean
+  permitDeadline?: { min?: bigint; max?: bigint }
+  fillDeadline?: { chain: Chain; min?: bigint; max?: bigint }[]
 }
 
 export interface SessionDefinition {
-  readonly chain: Chain
-  readonly owners: ValidatorInput
-  readonly permissions?: readonly Permission[]
-  readonly claimPolicies?: readonly Permit2ClaimPolicy[]
-  readonly crossChainPermits?: readonly CrossChainPermissionInput[]
-  readonly policyAddresses?: SessionPolicyAddresses
+  chain: Chain
+  owners: OwnerSet
+  permissions?: Permission[]
+  claimPolicies?: Permit2ClaimPolicy[]
+  crossChainPermits?: CrossChainPermissionInput[]
+  policyAddresses?: SessionPolicyAddresses
 }
 
 export interface ResolvedPolicy {
-  readonly policy: Address
-  readonly initData: Hex
+  policy: Address
+  initData: Hex
 }
 
 export interface ResolvedAction {
-  readonly actionTargetSelector: Hex
-  readonly actionTarget: Address
-  readonly actionPolicies: readonly ResolvedPolicy[]
+  actionTargetSelector: Hex
+  actionTarget: Address
+  actionPolicies: readonly ResolvedPolicy[]
+}
+
+export interface ResolvedERC7739Content {
+  appDomainSeparator: Hex
+  contentNames: readonly string[]
 }
 
 export interface ResolvedERC7739Policies {
-  readonly allowedERC7739Content: readonly {
-    readonly appDomainSeparator: Hex
-    readonly contentNames: readonly string[]
-  }[]
-  readonly erc1271Policies: readonly ResolvedPolicy[]
+  allowedERC7739Content: readonly ResolvedERC7739Content[]
+  erc1271Policies: readonly ResolvedPolicy[]
 }
 
 export interface Session {
-  readonly chain: Chain
-  readonly owners: ValidatorInput
-  readonly hasExplicitPermissions: boolean
-  readonly permissionId: Hex
-  readonly sessionValidator: Address
-  readonly sessionValidatorInitData: Hex
-  readonly salt: Hex
-  readonly erc7739Policies: ResolvedERC7739Policies
-  readonly actions: readonly ResolvedAction[]
-  readonly claimPolicies: readonly Permit2ClaimPolicy[]
+  chain: Chain
+  owners: OwnerSet
+  hasExplicitPermissions: boolean
+  permissionId: Hex
+  sessionValidator: Address
+  sessionValidatorInitData: Hex
+  salt: Hex
+  erc7739Policies: ResolvedERC7739Policies
+  actions: readonly ResolvedAction[]
+  claimPolicies: readonly Permit2ClaimPolicy[]
 }
 
 export interface SessionData {
-  readonly sessionValidator: Address
-  readonly sessionValidatorInitData: Hex
-  readonly salt: Hex
-  readonly erc7739Policies: ResolvedERC7739Policies
-  readonly actions: readonly ResolvedAction[]
-  readonly claimPolicies: readonly ResolvedPolicy[]
+  sessionValidator: Address
+  sessionValidatorInitData: Hex
+  salt: Hex
+  erc7739Policies: ResolvedERC7739Policies
+  actions: readonly ResolvedAction[]
+  claimPolicies: readonly ResolvedPolicy[]
 }
 
 export interface SessionEnableData {
@@ -249,14 +214,17 @@ export interface SessionEnableData {
 }
 
 export interface ChainDigest {
-  readonly chainId: bigint
-  readonly sessionDigest: Hex
+  chainId: bigint
+  sessionDigest: Hex
 }
 
 export interface SessionDetails {
-  readonly nonces: readonly bigint[]
-  readonly hashesAndChainIds: readonly ChainDigest[]
-  readonly data: TypedDataDefinition
+  nonces: bigint[]
+  hashesAndChainIds: ChainDigest[]
+  data: TypedDataDefinition<
+    typeof import('./authorization').types,
+    'MultiChainSession'
+  >
 }
 
 export interface ResolvedSessionSignerSet {

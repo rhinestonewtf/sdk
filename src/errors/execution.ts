@@ -208,11 +208,11 @@ export {
   Eip7702InitSignatureRequiredError,
   IndependentSigningNotSupportedError,
   InsufficientOwnerSignaturesError,
+  IntentFailedError,
   InvalidOwnerSigningOptionsError,
   InvalidSourceCallsError,
   MismatchedOwnerSignaturesError,
   OrderPathRequiredForIntentsError,
   QuoteNotInPreparedTransactionError,
-  IntentFailedError,
   UnknownOwnerError,
 }

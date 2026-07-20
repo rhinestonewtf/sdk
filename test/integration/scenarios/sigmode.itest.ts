@@ -1,10 +1,10 @@
 import { describe, test } from 'vitest'
-import { SimulationFailedError } from '../../../src/errors/index'
-import type { RhinestoneAccount, Session } from '../../../src/index'
 import {
   SIG_MODE_EMISSARY_EXECUTION_ERC1271,
   SIG_MODE_ERC1271,
-} from '../../../src/orchestrator/types'
+} from '../../../src/clients/orchestrator/public'
+import { SimulationFailedError } from '../../../src/errors/index'
+import type { RhinestoneAccount, Session } from '../../../src/index'
 import { sourceChain } from '../config/chains'
 import { createIntegrationSDK } from '../config/environment'
 import { expectSessionEnabled } from '../framework/assertions'

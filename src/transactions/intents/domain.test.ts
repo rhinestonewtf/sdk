@@ -1,9 +1,9 @@
 import { describe, expect, test, vi } from 'vitest'
 import type { AccountRuntime } from '../../accounts/adapter'
 import { toEvmChainReference } from '../../chains/caip2'
-import { OrchestratorClientError } from '../../clients/orchestrator/errors'
+import { RateLimitedError } from '../../clients/orchestrator/errors'
+import { IntentFailedError } from '../../errors/execution'
 import { projectIntentAccount, projectIntentRecipient } from './account'
-import { IntentFailedError } from './errors'
 import { normalizeIntentTypedData } from './normalize'
 import { selectIntentQuote } from './quotes'
 import { buildIntentRequest } from './request'
@@ -188,9 +188,9 @@ describe('intent domain', () => {
     const getIntentStatus = vi
       .fn()
       .mockRejectedValueOnce(
-        new OrchestratorClientError({
+        new RateLimitedError({
           message: 'slow',
-          status: 429,
+          statusCode: 429,
           retryAfter: '2',
         }),
       )
@@ -223,9 +223,9 @@ describe('intent domain', () => {
 
   test('classifies retry delays and terminal failures', async () => {
     const rateLimit = (retryAfter?: string) =>
-      new OrchestratorClientError({
+      new RateLimitedError({
         message: 'slow',
-        status: 429,
+        statusCode: 429,
         ...(retryAfter ? { retryAfter } : {}),
       })
     const decide = (error: unknown) =>
@@ -240,9 +240,10 @@ describe('intent domain', () => {
       delay: 500,
       backoff: false,
     })
-    expect(
-      decide(new OrchestratorClientError({ message: 'offline', status: 0 })),
-    ).toEqual({ delay: 1_000, backoff: true })
+    expect(decide(new Error('fetch failed'))).toEqual({
+      delay: 1_000,
+      backoff: true,
+    })
     expect(decide(new Error('permanent'))).toBeUndefined()
 
     const sleep = vi.fn(async () => undefined)

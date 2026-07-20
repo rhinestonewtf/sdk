@@ -3,7 +3,23 @@ import { base } from 'viem/chains'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { accountA, passkeyAccount } from '../../test/consts'
 import { RhinestoneSDK } from '..'
-import { resolveCallInputs } from '../execution/utils'
+import { resolveCalls } from '../calls/resolve'
+import { toEvmChainReference } from '../chains/caip2'
+import type { CallInput } from '../config/account'
+
+function resolveCallInputs(
+  calls: readonly CallInput[],
+  config: unknown,
+  chain: { id: number },
+  account: Address,
+) {
+  return resolveCalls(calls as never, {
+    account,
+    chain: toEvmChainReference(chain.id),
+    config: config as never,
+  })
+}
+
 import {
   addOwner,
   changeThreshold,

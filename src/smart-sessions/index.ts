@@ -1,5 +1,10 @@
 import type { Abi, Address } from 'viem'
 import { materializeRpcReader } from '../clients/rpc/compatibility'
+import type {
+  ProviderConfig,
+  Session,
+  SessionDefinition,
+} from '../config/account'
 import {
   getSessionDetails as buildSessionDetails,
   SESSION_LOCK_TAG,
@@ -38,7 +43,6 @@ import type {
   SessionDefinition as DomainSessionDefinition,
   SessionDetails,
 } from '../modules/validators/smart-sessions/types'
-import type { ProviderConfig, Session, SessionDefinition } from '../types'
 
 function environment(useDevContracts: boolean | undefined) {
   return useDevContracts === true ? 'development' : 'production'

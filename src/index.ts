@@ -1,9 +1,9 @@
 import { RhinestoneSDK } from './api/sdk'
+import { hyperCoreMainnet, solanaMainnet, tronMainnet } from './chains/non-evm'
 import { MULTI_FACTOR_VALIDATOR_ADDRESS } from './modules/validators/multi-factor'
 import { OWNABLE_VALIDATOR_ADDRESS } from './modules/validators/ownable'
 import { SMART_SESSION_EMISSARY_ADDRESS } from './modules/validators/smart-sessions/module'
 import { WEBAUTHN_VALIDATOR_ADDRESS } from './modules/validators/webauthn'
-import { hyperCoreMainnet, solanaMainnet, tronMainnet } from './orchestrator'
 
 export {
   RhinestoneSDK,
@@ -20,21 +20,10 @@ export {
 
 export type { RhinestoneAccount, SignedIntentData } from './api/account'
 export type {
-  TransactionResult,
-  UserOperationResult,
-} from './execution'
-export type {
-  OwnerPasskeySignature,
-  OwnerSignature,
-  OwnerSignatureData,
-  PreparedQuotes,
-  PreparedTransactionData,
-  PreparedUserOperationData,
-  QuoteSelection,
-  SignAsOwnerOptions,
-  SignedTransactionData,
-  SignedUserOperationData,
-} from './execution/utils'
+  DestinationChain,
+  NonEvmAddress,
+  NonEvmChain,
+} from './chains/non-evm'
 export type {
   AppFeeBalances,
   AppFeeRate,
@@ -42,12 +31,9 @@ export type {
   AuxiliaryFunds,
   BridgeFill,
   ChainOperation,
-  DestinationChain,
   FailureReason,
   IntentInput,
   IntentOpStatus,
-  NonEvmAddress,
-  NonEvmChain,
   OperationStatus,
   OriginSignature,
   Portfolio,
@@ -59,7 +45,7 @@ export type {
   SplitIntentsResult,
   TokenRequirements,
   WrapRequired,
-} from './orchestrator'
+} from './clients/orchestrator/public'
 export type {
   AccountProviderConfig,
   AccountType,
@@ -94,4 +80,23 @@ export type {
   ToLeg,
   Transaction,
   UniversalActionPolicyParamCondition,
-} from './types'
+  WebauthnValidatorConfig,
+} from './config/account'
+export type {
+  OwnerPasskeySignature,
+  OwnerSignature,
+  OwnerSignatureData,
+  SignAsOwnerOptions,
+} from './signing/types'
+export type {
+  PreparedQuotes,
+  PreparedTransactionData,
+  QuoteSelection,
+  SignedTransactionData,
+  TransactionResult,
+} from './transactions/intents/types'
+export type {
+  PreparedUserOperationData,
+  SignedUserOperationData,
+  UserOperationResult,
+} from './transactions/user-operations/types'

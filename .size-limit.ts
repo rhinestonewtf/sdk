@@ -1,7 +1,15 @@
+import { existsSync } from 'node:fs'
 import type { BuildOptions } from 'esbuild'
 
 const viem = ['viem', 'viem/*']
 const packageRoot = process.env.SDK_SIZE_PACKAGE_ROOT ?? './src/dist/src'
+
+// Passkey signing was relocated (`accounts/signing/` → `signing/`). The contract
+// size gate measures the release oracle and the current package with the same
+// config, so resolve to whichever internal path the measured package ships.
+const passkeysSigningPath = existsSync(`${packageRoot}/signing/passkeys.js`)
+  ? `${packageRoot}/signing/passkeys.js`
+  : `${packageRoot}/accounts/signing/passkeys.js`
 
 const limits = [
   {
@@ -41,7 +49,7 @@ const limits = [
   },
   {
     name: '@rhinestone/sdk/signing/passkeys',
-    path: `${packageRoot}/accounts/signing/passkeys.js`,
+    path: passkeysSigningPath,
     limit: '1 kB',
     import: '*',
     ignore: viem,

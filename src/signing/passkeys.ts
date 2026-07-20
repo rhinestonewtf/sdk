@@ -27,20 +27,27 @@ export function generateCredentialId(
   pubKeyX: bigint,
   pubKeyY: bigint,
   account: Address,
-): Hex {
+): `0x${string}` {
   return generateWebauthnCredentialId(pubKeyX, pubKeyY, account)
 }
 
 export function packSignature(
-  credentialIds: Hex[],
+  credIds: Hex[],
   usePrecompile: boolean,
-  signatures: WebAuthnSignature[],
+  webAuthns: {
+    authenticatorData: Hex
+    clientDataJSON: string
+    challengeIndex: bigint
+    typeIndex: bigint
+    r: bigint
+    s: bigint
+  }[],
 ): Hex {
-  return encodeWebauthnSignatures(credentialIds, usePrecompile, signatures)
+  return encodeWebauthnSignatures(credIds, usePrecompile, webAuthns)
 }
 
 export function packSignatureV0(
-  signature: {
+  webauthn: {
     authenticatorData: Hex
     clientDataJSON: string
     typeIndex: number | bigint
@@ -48,9 +55,9 @@ export function packSignatureV0(
     s: bigint
   },
   usePrecompiled: boolean,
-): Hex {
+): `0x${string}` {
   return encodeWebauthnSignatureV0(
-    { ...signature, typeIndex: BigInt(signature.typeIndex) },
+    { ...webauthn, typeIndex: BigInt(webauthn.typeIndex) },
     usePrecompiled,
   )
 }

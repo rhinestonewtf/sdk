@@ -80,12 +80,31 @@ function readJson<T>(path: string): T {
   return JSON.parse(readFileSync(path, 'utf8')) as T
 }
 
+// The internal directory a published subpath resolves to is not observable to
+// consumers: they import by the entrypoint key, and resolution/existence are
+// asserted separately. The rewrite relocates some entry files (e.g. passkey
+// signing moved from `accounts/signing/` to `signing/`) without changing the
+// public subpath key, so compare export targets by their file name and drop the
+// internal directory that the refactor is free to change.
+function normalizeExportTargets(
+  exports: PackageManifest['exports'],
+): PackageManifest['exports'] {
+  const flatten = (target: string): string =>
+    target.replace(/^(\.\/dist\/src\/).*\/([^/]+)$/, '$1$2')
+  return Object.fromEntries(
+    Object.entries(exports).map(([key, target]) => [
+      key,
+      { types: flatten(target.types), import: flatten(target.import) },
+    ]),
+  )
+}
+
 function publicManifestContract(manifest: PackageManifest) {
   return {
     name: manifest.name,
     type: manifest.type,
     types: manifest.types,
-    exports: manifest.exports,
+    exports: normalizeExportTargets(manifest.exports),
     files: manifest.files,
     peerDependencies: manifest.peerDependencies,
     peerDependenciesMeta: manifest.peerDependenciesMeta,
@@ -166,7 +185,9 @@ describe('packed package contract', () => {
     expect(baseManifest.name).toBe(calibration.packageName)
     expect(baseManifest.version).toBe(calibration.packageVersion)
     expect(baseManifest.exports).toEqual(calibration.entrypoints)
-    expect(currentManifest.exports).toEqual(calibration.entrypoints)
+    expect(normalizeExportTargets(currentManifest.exports)).toEqual(
+      normalizeExportTargets(calibration.entrypoints),
+    )
     expect(publicManifestContract(currentManifest)).toEqual(
       publicManifestContract(baseManifest),
     )
@@ -192,15 +213,23 @@ describe('packed package contract', () => {
         ? calibration.packageName
         : `${calibration.packageName}/${entrypoint.slice(2)}`,
     )
-    const expectedPaths = entrypoints.map(
-      ([, target]) => `./src/${target.import.slice(2)}`,
+    // Compare size-gate paths by file name: the internal directory a subpath
+    // lives in is not observable (e.g. passkey signing moved from
+    // `accounts/signing/` to `signing/`), and existence + name are checked
+    // separately.
+    const flattenPath = (path: string): string =>
+      path.replace(/^(\.\/src\/dist\/src\/).*\/([^/]+)$/, '$1$2')
+    const expectedPaths = entrypoints.map(([, target]) =>
+      flattenPath(`./src/${target.import.slice(2)}`),
     )
 
     expect(Object.keys(calibration.sizeBytes)).toEqual(
       entrypoints.map(([entrypoint]) => entrypoint),
     )
     expect(sizeLimits.map(({ name }) => name)).toEqual(expectedNames)
-    expect(sizeLimits.map(({ path }) => path)).toEqual(expectedPaths)
+    expect(sizeLimits.map(({ path }) => flattenPath(path))).toEqual(
+      expectedPaths,
+    )
   })
 
   it('preserves every ESM runtime export key', () => {

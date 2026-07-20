@@ -1,10 +1,12 @@
 import type {
+  Account,
   Address,
   AuthorizationRequest,
   Hex,
   SignedAuthorization,
   TypedDataDefinition,
 } from 'viem'
+import type { WebAuthnAccount } from 'viem/account-abstraction'
 import type { AccountSignatureEnvelope } from '../accounts/types'
 import type { EvmChainReference } from '../chains/types'
 import type { ValidatorContributionCodec } from '../modules/validators/types'
@@ -389,4 +391,47 @@ export interface SigningTranscript {
   readonly planKind: SigningPlanKind
   readonly payloadId: Hex
   readonly stages: readonly SigningStageTranscript[]
+}
+
+// Public owner-signature types relocated verbatim from the legacy
+// `src/execution/utils.ts` so the published surface owns them.
+export interface OwnerPasskeySignature {
+  webauthn: {
+    authenticatorData: Hex
+    challengeIndex?: number
+    clientDataJSON: string
+    typeIndex?: number
+    userVerificationRequired?: boolean
+  }
+  signature: Hex
+}
+
+export type OwnerSignatureData =
+  | {
+      kind: 'ecdsa'
+      signer: Address
+      origin: Hex[]
+    }
+  | {
+      kind: 'passkey'
+      publicKey: Hex
+      origin: OwnerPasskeySignature[]
+    }
+
+export type OwnerSignature =
+  | ({ intentId: string } & OwnerSignatureData)
+  | {
+      intentId: string
+      kind: 'multi-factor'
+      validatorId: number | Hex
+      signature: OwnerSignatureData
+    }
+
+export interface SignAsOwnerOptions {
+  /** Account that contributes this signature. Must belong to the configured owner set. */
+  owner: Account | WebAuthnAccount
+  /** Multi-factor validator ID containing `owner`. Required only for multi-factor accounts. */
+  validatorId?: number | Hex
+  /** Quote to sign. Defaults to `preparedTransaction.quotes.best`. */
+  intentId?: string
 }

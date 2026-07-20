@@ -1,7 +1,4 @@
-import {
-  createOrchestratorClientError,
-  OrchestratorClientError,
-} from './errors'
+import { type ErrorEnvelope, parseErrorEnvelope } from './errors'
 
 export type FetchPort = (
   input: string | URL | Request,
@@ -13,55 +10,42 @@ export async function fetchOrchestratorJson(input: {
   readonly url: string
   readonly init?: RequestInit
 }): Promise<unknown> {
-  let response: Response
-  try {
-    response = await input.fetch(input.url, input.init)
-  } catch (cause) {
-    throw createOrchestratorClientError({
-      message: 'Orchestrator request failed',
-      status: 0,
-      cause,
-    })
-  }
+  // Transport-level failures reject here and bubble up raw so `isConnectionError`
+  // can classify them for retry; only HTTP responses become typed errors.
+  const response = await input.fetch(input.url, input.init)
   const traceId = response.headers.get('x-trace-id') ?? undefined
-  let body: unknown
-  try {
-    body = await response.json()
-  } catch (cause) {
-    if (!response.ok) {
-      throw new OrchestratorClientError({
-        message: `Orchestrator request failed with status ${response.status}`,
-        status: response.status,
-        traceId,
-        retryAfter: response.headers.get('retry-after') ?? undefined,
-        cause,
-      })
-    }
-    throw createOrchestratorClientError({
-      message: 'Orchestrator returned invalid JSON',
-      status: response.status,
-      traceId,
-      cause,
-    })
-  }
   if (!response.ok) {
-    const envelope = body as {
-      readonly code?: string
-      readonly message?: string
-      readonly traceId?: string
-      readonly details?: unknown
+    let body: {
+      code?: string
+      message?: string
+      traceId?: string
+      details?: unknown
     }
-    throw createOrchestratorClientError({
+    try {
+      body = (await response.json()) as typeof body
+    } catch {
+      body = {
+        code: 'INTERNAL_ERROR',
+        message: `Orchestrator request failed with status ${response.status}`,
+        traceId: '',
+      }
+    }
+    const envelope = {
+      code: body.code ?? 'INTERNAL_ERROR',
       message:
-        envelope?.message ??
+        body.message ??
         `Orchestrator request failed with status ${response.status}`,
-      status: response.status,
-      code: envelope?.code,
-      traceId: traceId ?? envelope?.traceId,
-      retryAfter: response.headers.get('retry-after') ?? undefined,
-      details: envelope?.details,
-    })
+      traceId: traceId ?? body.traceId ?? '',
+      details: body.details,
+    }
+    const retryAfter = response.headers.get('retry-after') ?? undefined
+    throw parseErrorEnvelope(
+      envelope as ErrorEnvelope,
+      response.status,
+      retryAfter ?? undefined,
+    )
   }
+  const body = await response.json()
   if (body && typeof body === 'object' && !Array.isArray(body)) {
     return {
       ...(body as Record<string, unknown>),

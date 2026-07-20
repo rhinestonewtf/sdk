@@ -24,11 +24,34 @@ const typeFormatFlags =
   ts.TypeFormatFlags.WriteTypeArgumentsOfSignature
 
 function normalizeText(value: string, packageDirectory: string): string {
-  return value
-    .replaceAll('\\', '/')
-    .replaceAll(packageDirectory.replaceAll('\\', '/'), '<package>')
-    .replace(/\s+/g, ' ')
-    .trim()
+  return (
+    value
+      .replaceAll('\\', '/')
+      .replaceAll(packageDirectory.replaceAll('\\', '/'), '<package>')
+      // Canonicalize references to internal declarations so the report keys on
+      // the referenced type name, not the internal module a type is imported
+      // from. That module differs between the release oracle and the rewrite
+      // while the observable public type name is what must match.
+      // `import("...anything...").Name` becomes `Name`; a bare specifier (no
+      // member) becomes a placeholder.
+      .replace(/import\((?:"[^"]*"|'[^']*')\)\./g, '')
+      .replace(/import\((?:"[^"]*"|'[^']*')\)/g, 'import("<module>")')
+      .replace(/\s+/g, ' ')
+      // Private members are not observable to consumers regardless of whether a
+      // class uses TypeScript `private` fields (emitted as `private name;`) or
+      // ES `#private` brands (emitted as `#private;`). Drop them so the two
+      // encodings compare equal.
+      .replace(/(?:#private;|private [A-Za-z_$][\w$]*\??;)\s*/g, '')
+      .trim()
+      // A declaration's `export` keyword is non-observable here: whether a
+      // symbol is exported is already tracked by the per-entrypoint export map.
+      // The rewrite authors some types as `export interface X` where the oracle
+      // declares `interface X` and re-exports it separately.
+      .replace(
+        /^export (?=declare |interface |type |const |class |abstract |function |enum |namespace )/,
+        '',
+      )
+  )
 }
 
 function declarationsForSymbol(

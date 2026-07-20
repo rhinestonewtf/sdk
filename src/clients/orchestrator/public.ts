@@ -1,3 +1,7 @@
+// Public orchestrator API types relocated verbatim from the legacy
+// `src/orchestrator/types.ts` so the published surface no longer depends on the
+// legacy tree. Internal wire representations live in `./types`.
+
 import type {
   SettlementLayer as CrossChainSettlementLayer,
   SupportedChain,
@@ -7,7 +11,7 @@ import type {
   SupportedTestnet,
 } from '@rhinestone/shared-configs'
 import type { Address, Chain, Hex, TypedDataDefinition } from 'viem'
-import type { NonEvmAddress } from './destinations'
+import type { NonEvmAddress } from '../../chains/non-evm'
 
 type SupportedTokenSymbol = 'ETH' | 'WETH' | 'USDC' | 'USDT' | 'USDT0'
 type SupportedToken = SupportedTokenSymbol | Address
@@ -452,6 +456,7 @@ export type {
   OperationStatus,
   FailureReason,
   ChainOperation,
+  IntentStatus,
 }
 export {
   INTENT_STATUS_PENDING,

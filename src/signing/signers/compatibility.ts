@@ -38,8 +38,11 @@ export function walletClientToAccount(walletClient: WalletClient): Account {
   } as unknown as Account
 }
 
-export function wrapParaAccount(account: Account, walletId?: string): Account {
-  const para = account as Account & {
+export function wrapParaAccount(
+  viemAccount: Account,
+  walletId?: string,
+): Account {
+  const para = viemAccount as Account & {
     walletId?: string
     _walletId?: string
     _paraWalletId?: string
@@ -47,11 +50,11 @@ export function wrapParaAccount(account: Account, walletId?: string): Account {
   const effectiveWalletId = walletId || para.walletId || para._walletId
   if (effectiveWalletId) para._paraWalletId = effectiveWalletId
   return {
-    ...account,
+    ...viemAccount,
     signMessage: async ({ message }: { message: SignableMessage }) => {
-      if (!account.signMessage)
+      if (!viemAccount.signMessage)
         throw new Error('Account does not support signMessage')
-      return normalizeParaRecovery(await account.signMessage({ message }))
+      return normalizeParaRecovery(await viemAccount.signMessage({ message }))
     },
     signTypedData: async <
       const typedData extends TypedData | Record<string, unknown>,
@@ -59,15 +62,15 @@ export function wrapParaAccount(account: Account, walletId?: string): Account {
     >(
       typedData: TypedDataDefinition<typedData, primaryType>,
     ) => {
-      if (!account.signTypedData) {
+      if (!viemAccount.signTypedData) {
         throw new Error('Account does not support signTypedData')
       }
-      return normalizeParaRecovery(await account.signTypedData(typedData))
+      return normalizeParaRecovery(await viemAccount.signTypedData(typedData))
     },
-    signAuthorization: account.signAuthorization
-      ? account.signAuthorization.bind(account)
+    signAuthorization: viemAccount.signAuthorization
+      ? viemAccount.signAuthorization.bind(viemAccount)
       : undefined,
-    client: account.client,
+    client: viemAccount.client,
   } as Account
 }
 

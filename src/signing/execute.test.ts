@@ -1,12 +1,9 @@
 import { type Hex, hashTypedData, type TypedDataDefinition } from 'viem'
 import { describe, expect, test, vi } from 'vitest'
+import { IndependentSigningNotSupportedError } from '../errors/execution'
 import type { ResolvedValidatorDefinition } from '../modules/validators/types'
 import { encodePlannedValidatorContribution } from './contribution'
-import {
-  IndependentSigningNotSupportedError,
-  runSigningStep,
-  SigningPipelineError,
-} from './error'
+import { runSigningStep, SigningPipelineError } from './error'
 import { executeSigningPlan } from './execute'
 import {
   createSingleStageSigningPlan,

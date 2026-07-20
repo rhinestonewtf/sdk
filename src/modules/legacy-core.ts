@@ -1,6 +1,34 @@
-import { encodeAbiParameters } from 'viem'
-import type { ModeleSetup, Module } from './common'
+import { type Address, encodeAbiParameters, type Hex } from 'viem'
 import type { ModuleKind, ModuleSetup, ResolvedModule } from './types'
+
+// Legacy module-setup shapes preserved for the `experimental_getModuleSetup`
+// compatibility surface (note the historical `ModeleSetup` spelling, which is
+// part of the published type name).
+const MODULE_TYPE_ID_VALIDATOR = 1n
+const MODULE_TYPE_ID_EXECUTOR = 2n
+const MODULE_TYPE_ID_FALLBACK = 3n
+const MODULE_TYPE_ID_HOOK = 4n
+
+export type ModuleTypeId =
+  | typeof MODULE_TYPE_ID_VALIDATOR
+  | typeof MODULE_TYPE_ID_EXECUTOR
+  | typeof MODULE_TYPE_ID_FALLBACK
+  | typeof MODULE_TYPE_ID_HOOK
+
+export interface Module {
+  address: Address
+  initData: Hex
+  deInitData: Hex
+  additionalContext: Hex
+  type: ModuleTypeId
+}
+
+export interface ModeleSetup {
+  validators: Module[]
+  executors: Module[]
+  fallbacks: Module[]
+  hooks: Module[]
+}
 
 const RHINESTONE_ATTESTER_ADDRESS =
   '0x000000333034E9f539ce08819E12c1b8Cb29084d' as const

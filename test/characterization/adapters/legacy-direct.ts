@@ -1,13 +1,13 @@
 import type { Hex, TypedDataDefinition } from 'viem'
 import { baseSepolia } from 'viem/chains'
+import type { Quote, SignData } from '../../../src/clients/orchestrator/public'
 import type {
   PreparedTransactionData,
   RhinestoneAccount,
   RhinestoneAccountConfig,
   Session,
 } from '../../../src/index'
-import { toSession } from '../../../src/modules/validators/smart-sessions'
-import type { Quote, SignData } from '../../../src/orchestrator'
+import { toSession } from '../../../src/smart-sessions/index'
 import { createFakeRpc } from '../../fakes/rpc'
 import type { ScenarioHandlerKey } from '../catalog'
 import { createDeterministicOwner } from '../identity'

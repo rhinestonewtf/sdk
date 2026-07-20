@@ -1,10 +1,10 @@
 import { encodeFunctionData } from 'viem'
+import type { CalldataInput, LazyCallInput } from '../config/account'
 import {
   resolveWebauthnCredentials,
   WEBAUTHN_VALIDATOR_ADDRESS,
   type WebauthnCredential,
 } from '../modules/validators/webauthn'
-import type { CalldataInput, LazyCallInput } from '../types'
 import {
   resolveModuleInstallation,
   resolveModuleUninstallation,

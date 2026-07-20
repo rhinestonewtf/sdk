@@ -1,12 +1,38 @@
+// Public account/transaction/session configuration types relocated verbatim
+// from the legacy `src/types.ts` so the published surface no longer depends on
+// the legacy tree. Internal resolved config shapes live in `./resolved`.
+
 import type { Abi, AbiFunction, Account, Address, Chain, Hex } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
-import type { ModuleType } from './modules/common'
-import type { NonEvmAddress, NonEvmChain } from './orchestrator/destinations'
+import type { NonEvmAddress, NonEvmChain } from '../chains/non-evm'
 import type {
   AppFeeRate,
   AuxiliaryFunds,
   SettlementLayerFilter,
-} from './orchestrator/types'
+} from '../clients/orchestrator/public'
+
+// Module type discriminator relocated verbatim from the legacy
+// `src/modules/common.ts` to preserve the exact published declaration closure.
+const MODULE_TYPE_VALIDATOR = 'validator'
+const MODULE_TYPE_EXECUTOR = 'executor'
+const MODULE_TYPE_FALLBACK = 'fallback'
+const MODULE_TYPE_HOOK = 'hook'
+
+type ModuleType =
+  | typeof MODULE_TYPE_VALIDATOR
+  | typeof MODULE_TYPE_EXECUTOR
+  | typeof MODULE_TYPE_FALLBACK
+  | typeof MODULE_TYPE_HOOK
+
+// Resolved auth provider shape relocated verbatim from the legacy
+// `src/auth/provider.ts`; referenced only by the internal `_authProvider` slot.
+interface AuthProvider {
+  getHeaders(): Promise<Record<string, string>>
+  getSubmitHeaders(
+    intentInput: unknown,
+    isSponsored: boolean,
+  ): Promise<Record<string, string>>
+}
 
 type AccountType = 'safe' | 'nexus' | 'kernel' | 'startale' | 'eoa' | 'hca'
 
@@ -650,7 +676,7 @@ type RhinestoneSDKConfig = RhinestoneSDKConfigBase &
 type RhinestoneConfig = RhinestoneAccountConfig &
   Partial<RhinestoneSDKConfig> & {
     /** @internal Resolved auth provider — set by RhinestoneSDK, not by users. */
-    _authProvider?: import('./auth/provider').AuthProvider
+    _authProvider?: AuthProvider
   }
 
 type TokenSymbol = 'ETH' | 'WETH' | 'USDC' | 'USDT' | 'USDT0'

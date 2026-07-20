@@ -1,3 +1,4 @@
+import type { RhinestoneAccountConfig } from '../config/account'
 import type {
   AccountConstructionInput,
   SdkConstructionInput,
@@ -9,7 +10,6 @@ import {
   type LegacySdkConfigSnapshot,
 } from '../config/legacy'
 import { resolveSdkConfig } from '../config/resolve'
-import type { RhinestoneAccountConfig } from '../types'
 import { createAccountFacade, type RhinestoneAccount } from './account'
 import { createConfiguredCoreComposition } from './compose'
 import type { CoreComposition } from './compose-types'

@@ -14,7 +14,7 @@ import type { Session, SessionData, SessionDetails } from './types'
 
 export const SESSION_LOCK_TAG = '0x000000000000000000000000' as const
 
-export const sessionAuthorizationTypes = {
+export const types = {
   PolicyData: [
     { name: 'policy', type: 'address' },
     { name: 'initData', type: 'bytes' },
@@ -116,17 +116,14 @@ export async function getSessionDetails(input: {
   const hashesAndChainIds = signed.map((session, index) => ({
     chainId: BigInt(input.sessions[index].chain.id),
     sessionDigest: hashStruct({
-      types: sessionAuthorizationTypes,
+      types,
       primaryType: 'SignedSession',
       data: session,
     }),
   }))
-  const data: TypedDataDefinition<
-    typeof sessionAuthorizationTypes,
-    'MultiChainSession'
-  > = {
+  const data: TypedDataDefinition<typeof types, 'MultiChainSession'> = {
     domain: { name: 'SmartSessionEmissary', version: '1' },
-    types: sessionAuthorizationTypes,
+    types,
     primaryType: 'MultiChainSession',
     message: {
       sessionsAndChainIds: signed.map((session, index) => ({

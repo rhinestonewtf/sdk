@@ -1,9 +1,16 @@
-import { concat, encodeAbiParameters, type Hex, hexToBytes, toHex } from 'viem'
+import {
+  type Address,
+  concat,
+  encodeAbiParameters,
+  type Hex,
+  hexToBytes,
+  toHex,
+} from 'viem'
 import type { ResolvedModule } from '../types'
 import type { AtomicValidatorDefinition } from './types'
 
-export const OWNABLE_VALIDATOR_ADDRESS =
-  '0x000000000013fdb5234e4e3162a810f54d9f7e98' as const
+export const OWNABLE_VALIDATOR_ADDRESS: Address =
+  '0x000000000013fdb5234e4e3162a810f54d9f7e98'
 export const OWNABLE_V0_VALIDATOR_ADDRESS =
   '0x2483da3a338895199e5e538530213157e931bf06' as const
 export const OWNABLE_BETA_VALIDATOR_ADDRESS =

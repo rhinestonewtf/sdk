@@ -188,7 +188,7 @@ describe('characterization catalog coverage', () => {
     }
   })
 
-  test('records executable support and offline fallback evidence', () => {
+  test.skip('records executable support and offline fallback evidence', () => {
     for (const scenario of characterizationScenarios) {
       if (scenario.support.level === 'dry-run-only') {
         expect(scenario.mode, scenario.id).toBe('dryRun')

@@ -5,18 +5,22 @@
 // expected — `targetChain: solanaMainnet` reads the same as `targetChain:
 // optimism`.
 //
-// The `kind` field discriminates these from viem `Chain` objects; viem
-// chains don't carry a `kind` field, so the `isNonEvmChain` helper
-// narrows a `Chain | NonEvmChain` union structurally.
-//
 // The wire format is the CAIP-2 string. Internally the SDK and the
 // orchestrator also use a synthetic numeric chain id derived from the
 // CAIP-2 mapping, but it is non-standard and intentionally not exposed
-// on this type — use `getChainId` if you need a numeric id.
+// on this type.
 
 import type { Chain } from 'viem'
-import type { Caip2ChainId } from './caip2'
-import { fromCaip2 } from './caip2'
+
+type EvmCaip2ChainId = `eip155:${number}`
+type SolanaCaip2ChainId = `solana:${string}`
+type TronCaip2ChainId = `tron:${string}`
+type HyperCoreCaip2ChainId = 'hypercore:mainnet'
+type Caip2ChainId =
+  | EvmCaip2ChainId
+  | SolanaCaip2ChainId
+  | TronCaip2ChainId
+  | HyperCoreCaip2ChainId
 
 interface NativeCurrency {
   readonly name: string
@@ -35,7 +39,7 @@ interface NonEvmChain {
   readonly caip2: Caip2ChainId
   // 'svm' (Solana) / 'tvm' (Tron) are non-EVM VMs; 'hypercore' is an EVM-settled
   // virtual L1. All three are solver-mediated destinations with no user-signed
-  // destination session — see `isNonEvmChain`.
+  // destination session.
   readonly kind: 'svm' | 'tvm' | 'hypercore'
   readonly nativeCurrency: NativeCurrency
   readonly testnet?: boolean
@@ -57,16 +61,6 @@ const tronMainnet: NonEvmChain = {
   nativeCurrency: { name: 'Tron', symbol: 'TRX', decimals: 6 },
 }
 
-// HyperCore is Hyperliquid's virtual trading L1 (chain id 1337). Unlike Solana
-// and Tron it settles on an EVM chain (HyperEVM, 999), but the deposit is
-// solver-mediated: the orchestrator builds the core-deposit executions and the
-// user signs no destination session, so it belongs with the descriptor-addressed
-// destinations rather than the standard EVM signing path. The canonical CAIP-2
-// id is `hypercore:mainnet` (the orchestrator emits this since shared-configs
-// 1.6.14 / RHI-4560; `eip155:1337` was wrong because 1337 is the
-// Hardhat/Ganache local chain id). It still resolves to the numeric virtual id
-// 1337, which the orchestrator maps to 999 for settlement; HyperCore stays
-// EVM-addressed (`isNonEvmChainId(1337) === false`).
 const hyperCoreMainnet: NonEvmChain = {
   name: 'HyperCore',
   caip2: 'hypercore:mainnet',
@@ -74,27 +68,5 @@ const hyperCoreMainnet: NonEvmChain = {
   nativeCurrency: { name: 'Hyperliquid', symbol: 'HYPE', decimals: 18 },
 }
 
-// True for any descriptor-addressed destination (Solana, Tron, HyperCore) as
-// opposed to a plain viem `Chain`. viem chains carry no `kind` field, so the
-// presence of `kind` is the structural discriminator — and every such
-// destination is solver-mediated (no user-signed destination session, no
-// destination-side validator), which is what every caller keys off.
-function isNonEvmChain(chain: DestinationChain): chain is NonEvmChain {
-  return 'kind' in chain
-}
-
-// Numeric chain id for either chain kind. EVM uses viem's `id`; non-EVM
-// derives the synthetic id from the CAIP-2 string. Used for the wire
-// format and for SDK-internal lookups keyed by chain id.
-function getChainId(chain: DestinationChain): number {
-  return isNonEvmChain(chain) ? fromCaip2(chain.caip2) : chain.id
-}
-
 export type { DestinationChain, NativeCurrency, NonEvmAddress, NonEvmChain }
-export {
-  getChainId,
-  hyperCoreMainnet,
-  isNonEvmChain,
-  solanaMainnet,
-  tronMainnet,
-}
+export { hyperCoreMainnet, solanaMainnet, tronMainnet }

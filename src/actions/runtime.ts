@@ -4,6 +4,11 @@ import { createAccountConstruction } from '../accounts/construction'
 import { DefaultValidatorAlreadyInitializedError } from '../accounts/error'
 import { createAccountAdapter } from '../accounts/registry'
 import { materializeRpcReader } from '../clients/rpc/compatibility'
+import type {
+  CalldataInput,
+  CallResolveContext,
+  Session,
+} from '../config/account'
 import { resolveStandaloneAccountConfig } from '../config/resolve'
 import { assertAccountOwnersConfigured } from '../config/validate'
 import {
@@ -16,7 +21,6 @@ import { SESSION_LOCK_TAG } from '../modules/validators/smart-sessions/authoriza
 import { encodeDisableSessionCall } from '../modules/validators/smart-sessions/calls'
 import { readSessionNonce } from '../modules/validators/smart-sessions/state'
 import type { Session as DomainSession } from '../modules/validators/smart-sessions/types'
-import type { CalldataInput, CallResolveContext, Session } from '../types'
 
 function actionContext(context: CallResolveContext) {
   const resolved = resolveStandaloneAccountConfig(context.config, 'current-v2')

@@ -1,4 +1,5 @@
 import type { Hex } from 'viem'
+import type { UserOperation } from 'viem/account-abstraction'
 import type { AccountRuntimePort } from '../../accounts/adapter'
 import type { UnresolvedCall } from '../../calls/types'
 import type { EvmChainReference } from '../../chains/types'
@@ -8,6 +9,7 @@ import type {
 } from '../../clients/bundler/port'
 import type { PaymasterPort } from '../../clients/paymaster/port'
 import type { RpcPort } from '../../clients/rpc/port'
+import type { UserOperationTransaction } from '../../config/account'
 import type {
   SignerInvocationPort,
   SigningCheckpointPort,
@@ -59,4 +61,22 @@ export interface UserOperationWorkflowContext<CompatibilityConfig = unknown> {
   readonly clock: {
     readonly sleep: (milliseconds: number) => Promise<void>
   }
+}
+
+// Public user-operation result types relocated verbatim from the legacy
+// `src/execution/utils.ts`.
+export interface UserOperationResult {
+  type: 'userop'
+  hash: Hex
+  chain: number
+}
+
+export interface PreparedUserOperationData {
+  userOperation: UserOperation
+  hash: Hex
+  transaction: UserOperationTransaction
+}
+
+export interface SignedUserOperationData extends PreparedUserOperationData {
+  signature: Hex
 }

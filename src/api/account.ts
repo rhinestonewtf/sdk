@@ -11,45 +11,18 @@ import type {
 import type { UserOperationReceipt } from 'viem/account-abstraction'
 import { parseCaip2, toEvmChainReference } from '../chains/caip2'
 import { getChainReference, sharedChainCatalog } from '../chains/catalog'
+import type { DestinationChain } from '../chains/non-evm'
 import { normalizeTokenAddress } from '../chains/tokens'
-import type {
-  OrchestratorAccountAccessList,
-  OrchestratorQuote,
-} from '../clients/orchestrator/types'
-import type { LegacyAccountConfig } from '../config/legacy'
-import { materializeAccountInvocationContext } from '../config/resolve'
-import type { AccountInvocationContext } from '../config/resolved'
-// Public compatibility types are sourced from their current (transitional)
-// owners; commit 8 relocates these to their permanent rewrite homes.
-import type {
-  TransactionResult,
-  TransactionStatus,
-  UserOperationResult,
-} from '../execution'
-import type {
-  OwnerSignature,
-  PreparedTransactionData,
-  PreparedUserOperationData,
-  QuoteSelection,
-  SignAsOwnerOptions,
-  SignedTransactionData,
-  SignedUserOperationData,
-} from '../execution/utils'
-import type { SessionDetails } from '../modules/validators/smart-sessions/types'
-import type { DestinationChain } from '../orchestrator'
 import type {
   OriginSignature,
   Portfolio,
   Quote,
   SignData,
-} from '../orchestrator/types'
-import { IndependentSigningNotSupportedError } from '../signing/error'
+} from '../clients/orchestrator/public'
 import type {
-  IntentInput,
-  PreparedIntent,
-  SignedIntent,
-} from '../transactions/intents/types'
-import type { PreparedUserOperation } from '../transactions/user-operations/types'
+  OrchestratorAccountAccessList,
+  OrchestratorQuote,
+} from '../clients/orchestrator/types'
 import type {
   CallInput,
   RhinestoneAccountConfig,
@@ -58,7 +31,29 @@ import type {
   SourceAssetInput,
   Transaction,
   UserOperationTransaction,
-} from '../types'
+} from '../config/account'
+import type { LegacyAccountConfig } from '../config/legacy'
+import { materializeAccountInvocationContext } from '../config/resolve'
+import type { AccountInvocationContext } from '../config/resolved'
+import { IndependentSigningNotSupportedError } from '../errors/execution'
+import type { SessionDetails } from '../modules/validators/smart-sessions/types'
+import type { OwnerSignature, SignAsOwnerOptions } from '../signing/types'
+import type {
+  IntentInput,
+  PreparedIntent,
+  PreparedTransactionData,
+  QuoteSelection,
+  SignedIntent,
+  SignedTransactionData,
+  TransactionResult,
+  TransactionStatus,
+} from '../transactions/intents/types'
+import type {
+  PreparedUserOperation,
+  PreparedUserOperationData,
+  SignedUserOperationData,
+  UserOperationResult,
+} from '../transactions/user-operations/types'
 import type { CoreComposition } from './compose-types'
 
 interface SubmitTransactionOptions {

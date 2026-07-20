@@ -8,12 +8,18 @@ import type {
   IntentSubmissionPort,
 } from '../../clients/orchestrator/port'
 import type {
+  IntentOpStatus,
+  OriginSignature,
+  Quote,
+} from '../../clients/orchestrator/public'
+import type {
   OrchestratorAccountAccessList,
   OrchestratorIntentOptions,
   OrchestratorIntentRequest,
   OrchestratorOriginSignature,
   OrchestratorQuote,
 } from '../../clients/orchestrator/types'
+import type { Transaction } from '../../config/account'
 import type {
   ResolvedSessionSignerSet,
   Session,
@@ -128,4 +134,48 @@ export interface IntentWorkflowContext<CompatibilityConfig = unknown> {
     readonly now: () => number
     readonly sleep: (milliseconds: number) => Promise<void>
   }
+}
+
+// Public transaction result types relocated verbatim from the legacy
+// `src/execution/utils.ts` / `src/execution/index.ts`.
+export interface TransactionResult {
+  type: 'intent'
+  id: string
+  traceId: string
+  sourceChains?: number[]
+  targetChain: number
+}
+
+export interface PreparedQuotes {
+  traceId: string
+  best: Quote
+  all: Quote[]
+}
+
+export interface PreparedTransactionData {
+  quotes: PreparedQuotes
+  intentInput: unknown
+  transaction: Transaction
+}
+
+export interface QuoteSelection {
+  intentId: string
+}
+
+export interface SignedTransactionData extends PreparedTransactionData {
+  quote: Quote
+  originSignatures: OriginSignature[]
+  destinationSignature: Hex
+  targetExecutionSignature: Hex | undefined
+}
+
+export interface TransactionStatus {
+  /** OpenTelemetry trace ID for correlating the status response. */
+  traceId: IntentOpStatus['traceId']
+  /** High-level intent status. */
+  status: IntentOpStatus['status']
+  /** The account address that owns this intent. */
+  accountAddress: Address
+  /** Per-chain operation status. One entry per chain. */
+  operations: IntentOpStatus['operations']
 }

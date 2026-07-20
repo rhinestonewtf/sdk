@@ -1,6 +1,6 @@
 import type { Address, Hex } from 'viem'
 
-export type ErrorCode =
+type ErrorCode =
   | 'VALIDATION_ERROR'
   | 'INSUFFICIENT_LIQUIDITY'
   | 'NOT_FOUND'
@@ -17,19 +17,25 @@ export type ErrorCode =
   | 'RELAYER_MARKET_UNAVAILABLE'
   | 'INTERNAL_ERROR'
 
-export interface ErrorDetail {
-  readonly message: string
-  readonly context?: Readonly<Record<string, unknown>>
+interface ValidationIssue {
+  message: string
+  context?: Record<string, unknown>
 }
 
-export interface ValidationIssue {
-  readonly message: string
-  readonly context?: Readonly<Record<string, unknown>>
+interface ErrorDetail {
+  message: string
+  context?: Record<string, unknown>
 }
 
-export type SimulationAction = 'claim' | 'fill'
-export type SimulationRetryHint = 'RE_PREPARE' | 'RETRY_LATER'
-export type SimulationErrorCategory =
+interface BaseErrorParams {
+  message: string
+  traceId?: string
+  statusCode?: number
+}
+
+type SimulationAction = 'claim' | 'fill'
+type SimulationRetryHint = 'RE_PREPARE' | 'RETRY_LATER'
+type SimulationErrorCategory =
   | 'QUOTE_EXPIRED'
   | 'ORDER_EXPIRED'
   | 'PERMIT_EXPIRED'
@@ -53,337 +59,207 @@ export type SimulationErrorCategory =
   | 'UNCLASSIFIED_REVERT'
   | 'EMPTY_REVERT'
 
-export interface SimulationCall {
-  readonly chainId?: string
-  readonly to?: Address
-  readonly data?: Hex
-  readonly value?: string
+interface SimulationCall {
+  chainId?: string
+  to?: Address
+  data?: Hex
+  value?: string
 }
 
-export interface SimulationDetails {
-  readonly stateOverride?: unknown
-  readonly blockNumber?: string
-  readonly relayer?: Address
-  readonly simulationUrls?: string[]
+interface SimulationDetails {
+  stateOverride?: unknown
+  blockNumber?: string
+  relayer?: Address
+  simulationUrls?: string[]
 }
 
-export interface SimulationFailureSimulation {
-  readonly success: false
-  readonly action?: SimulationAction
-  readonly chainId?: string
-  readonly call?: SimulationCall
-  readonly errorSelector?: string
-  readonly errorName?: string
-  readonly errorArgs?: Readonly<Record<string, unknown>>
-  readonly errorCategory?: SimulationErrorCategory
-  readonly details?: SimulationDetails
+interface SimulationFailureSimulation {
+  success: false
+  action?: SimulationAction
+  chainId?: string
+  call?: SimulationCall
+  errorSelector?: string
+  errorName?: string
+  errorArgs?: Record<string, unknown>
+  errorCategory?: SimulationErrorCategory
+  details?: SimulationDetails
 }
 
-export interface OrchestratorClientErrorInput {
-  readonly message: string
-  readonly status: number
-  readonly code?: string
-  readonly traceId?: string
-  readonly retryAfter?: string
-  readonly details?: unknown
-  readonly cause?: unknown
+interface SimulationFailureDetails {
+  nonce?: string
+  category?: SimulationErrorCategory
+  errorSelector?: string
+  errorName?: string
+  errorArgs?: Record<string, unknown>
+  retryable?: boolean
+  retryHint?: SimulationRetryHint
+  simulations?: SimulationFailureSimulation[]
 }
 
-/**
- * Base orchestrator API error. Mirrors the published legacy shape (`code`,
- * `traceId`, `statusCode`) while retaining the transport `status` the retry
- * loop reads. Subclasses match the legacy taxonomy one-to-one so error
- * identity survives the facade cutover.
- */
-export class OrchestratorClientError extends Error {
-  readonly status: number
-  readonly code: string
+class OrchestratorError extends Error {
+  readonly code: ErrorCode | 'UNKNOWN'
   readonly traceId: string
-  readonly retryAfter?: string
-  readonly details?: unknown
+  readonly statusCode?: number
 
-  constructor(input: OrchestratorClientErrorInput) {
-    super(
-      input.message,
-      input.cause === undefined ? undefined : { cause: input.cause },
-    )
-    this.name = 'OrchestratorClientError'
-    this.status = input.status
-    this.code = input.code ?? 'UNKNOWN'
-    this.traceId = input.traceId ?? ''
-    this.retryAfter = input.retryAfter
-    this.details = input.details
-  }
-
-  /** Legacy-compatible alias for the transport status. */
-  get statusCode(): number {
-    return this.status
+  constructor(params: BaseErrorParams & { code?: ErrorCode | 'UNKNOWN' }) {
+    super(params.message)
+    this.code = params.code ?? 'UNKNOWN'
+    this.traceId = params.traceId ?? ''
+    this.statusCode = params.statusCode
   }
 }
 
-export class ValidationError extends OrchestratorClientError {
-  readonly issues: readonly ValidationIssue[]
+class ValidationError extends OrchestratorError {
+  readonly issues: ValidationIssue[]
 
-  constructor(input: OrchestratorClientErrorInput) {
-    super(input)
-    this.name = 'Error'
-    this.issues = Array.isArray(input.details)
-      ? (input.details as ValidationIssue[])
-      : []
+  constructor(params: BaseErrorParams & { issues?: ValidationIssue[] }) {
+    super({ ...params, code: 'VALIDATION_ERROR' })
+    this.issues = params.issues ?? []
   }
 }
 
-export class InsufficientLiquidityError extends OrchestratorClientError {
-  readonly availableIntents: readonly Record<string, bigint>[]
-  readonly unfillable: Readonly<Record<string, bigint>>
+class InsufficientLiquidityError extends OrchestratorError {
+  readonly availableIntents: Record<string, bigint>[]
+  readonly unfillable: Record<string, bigint>
 
-  constructor(input: OrchestratorClientErrorInput) {
-    super(input)
-    this.name = 'Error'
-    const details = isRecord(input.details) ? input.details : {}
-    this.availableIntents = Array.isArray(details.availableIntents)
-      ? details.availableIntents
-          .filter(isRecord)
-          .map((entry) => parseTokenAmounts(entry as Record<string, string>))
-      : []
-    this.unfillable = parseTokenAmounts(
-      (isRecord(details.unfillable) ? details.unfillable : {}) as Record<
-        string,
-        string
-      >,
-    )
+  constructor(
+    params: BaseErrorParams & {
+      availableIntents: Record<string, bigint>[]
+      unfillable: Record<string, bigint>
+    },
+  ) {
+    super({ ...params, code: 'INSUFFICIENT_LIQUIDITY' })
+    this.availableIntents = params.availableIntents
+    this.unfillable = params.unfillable
   }
 }
 
-export class NotFoundError extends OrchestratorClientError {
-  constructor(input: OrchestratorClientErrorInput) {
-    super(input)
-    this.name = 'Error'
+class NotFoundError extends OrchestratorError {
+  constructor(params: BaseErrorParams) {
+    super({ ...params, code: 'NOT_FOUND' })
   }
 }
 
-export class UnauthorizedError extends OrchestratorClientError {
-  constructor(input: OrchestratorClientErrorInput) {
-    super(input)
-    this.name = 'Error'
+class UnauthorizedError extends OrchestratorError {
+  constructor(params: BaseErrorParams) {
+    super({ ...params, code: 'UNAUTHORIZED' })
   }
 }
 
-export class ForbiddenError extends OrchestratorClientError {
-  constructor(input: OrchestratorClientErrorInput) {
-    super(input)
-    this.name = 'Error'
+class ForbiddenError extends OrchestratorError {
+  constructor(params: BaseErrorParams & { code?: ErrorCode }) {
+    super({ ...params, code: params.code ?? 'FORBIDDEN' })
   }
 }
 
 /**
- * Thrown when an API key's scope denies the request. Subclass of
- * `ForbiddenError` carrying the failed `scope` and the `required` / `actual`
- * levels — distinct from a generic 403 so integrators can prompt the user to
- * widen the key's scope rather than rotate it.
+ * Thrown when an API key's scope denies the request.
+ *
+ * Subclass of `ForbiddenError` carrying the failed `scope` and the
+ * `required` / `actual` levels — distinct from a generic 403 so integrators
+ * can prompt the user to widen the key's scope rather than rotate it.
  */
-export class KeyScopeDeniedError extends ForbiddenError {
+class KeyScopeDeniedError extends ForbiddenError {
   readonly scope: string
   readonly required: string | boolean
   readonly actual: string | boolean
 
-  constructor(input: OrchestratorClientErrorInput) {
-    super(input)
-    this.name = 'Error'
-    const detail = Array.isArray(input.details)
-      ? (input.details[0] as { context?: unknown } | undefined)
-      : undefined
-    const context = (isRecord(detail?.context) ? detail?.context : {}) as {
-      scope?: string
-      required?: string | boolean
-      actual?: string | boolean
-    }
-    this.scope = context.scope ?? ''
-    this.required = context.required ?? ''
-    this.actual = context.actual ?? ''
+  constructor(
+    params: BaseErrorParams & {
+      scope: string
+      required: string | boolean
+      actual: string | boolean
+    },
+  ) {
+    super({ ...params, code: 'KEY_SCOPE_DENIED' })
+    this.scope = params.scope
+    this.required = params.required
+    this.actual = params.actual
   }
 }
 
-export class ConflictError extends OrchestratorClientError {
-  constructor(input: OrchestratorClientErrorInput) {
-    super(input)
-    this.name = 'Error'
+class ConflictError extends OrchestratorError {
+  constructor(params: BaseErrorParams) {
+    super({ ...params, code: 'CONFLICT' })
   }
 }
 
-export class UnprocessableContentError extends OrchestratorClientError {
-  readonly details: readonly ErrorDetail[]
+class UnprocessableContentError extends OrchestratorError {
+  readonly details: ErrorDetail[]
 
-  constructor(input: OrchestratorClientErrorInput) {
-    super(input)
-    this.name = 'Error'
-    this.details = parseErrorDetails(input.details)
+  constructor(params: BaseErrorParams & { details?: ErrorDetail[] }) {
+    super({ ...params, code: 'UNPROCESSABLE_CONTENT' })
+    this.details = params.details ?? []
   }
 }
 
-export class RateLimitedError extends OrchestratorClientError {
-  constructor(input: OrchestratorClientErrorInput) {
-    super(input)
-    this.name = 'Error'
+class RateLimitedError extends OrchestratorError {
+  readonly retryAfter?: string
+
+  constructor(params: BaseErrorParams & { retryAfter?: string }) {
+    super({ ...params, code: 'TOO_MANY_REQUESTS' })
+    this.retryAfter = params.retryAfter
   }
 }
 
-export class SettlementQuoteError extends OrchestratorClientError {
-  constructor(input: OrchestratorClientErrorInput) {
-    super(input)
-    this.name = 'Error'
+class SettlementQuoteError extends OrchestratorError {
+  constructor(params: BaseErrorParams) {
+    super({ ...params, code: 'SETTLEMENT_QUOTE_ERROR' })
   }
 }
 
-export class SettlementExecutionError extends OrchestratorClientError {
-  constructor(input: OrchestratorClientErrorInput) {
-    super(input)
-    this.name = 'Error'
+class SettlementExecutionError extends OrchestratorError {
+  constructor(params: BaseErrorParams) {
+    super({ ...params, code: 'SETTLEMENT_EXECUTION_ERROR' })
   }
 }
 
-export class SimulationFailedError extends OrchestratorClientError {
+class SimulationFailedError extends OrchestratorError {
   readonly nonce?: string
   readonly category?: SimulationErrorCategory
   readonly errorSelector?: string
   readonly errorName?: string
-  readonly errorArgs?: Readonly<Record<string, unknown>>
+  readonly errorArgs?: Record<string, unknown>
   readonly retryable: boolean
   readonly retryHint?: SimulationRetryHint
-  readonly simulations: readonly SimulationFailureSimulation[]
+  readonly simulations: SimulationFailureSimulation[]
 
-  constructor(input: OrchestratorClientErrorInput) {
-    super(input)
-    this.name = 'Error'
-    const details = isRecord(input.details) ? input.details : {}
-    this.nonce = stringValue(details.nonce)
-    this.category = oneOf(details.category, SIMULATION_ERROR_CATEGORIES)
-    this.errorSelector = stringValue(details.errorSelector)
-    this.errorName = stringValue(details.errorName)
-    this.errorArgs = recordValue(details.errorArgs)
-    this.retryable = details.retryable === true
-    this.retryHint = oneOf(details.retryHint, SIMULATION_RETRY_HINTS)
-    this.simulations = Array.isArray(details.simulations)
-      ? details.simulations
-          .map(parseSimulationFailureSimulation)
-          .filter(
-            (simulation): simulation is SimulationFailureSimulation =>
-              simulation !== undefined,
-          )
-      : []
+  constructor(params: BaseErrorParams & SimulationFailureDetails) {
+    super({ ...params, code: 'SIMULATION_FAILED' })
+    this.nonce = params.nonce
+    this.category = params.category
+    this.errorSelector = params.errorSelector
+    this.errorName = params.errorName
+    this.errorArgs = params.errorArgs
+    this.retryable = params.retryable ?? false
+    this.retryHint = params.retryHint
+    this.simulations = params.simulations ?? []
   }
 }
 
-export class ExternalServiceTimeoutError extends OrchestratorClientError {
-  constructor(input: OrchestratorClientErrorInput) {
-    super(input)
-    this.name = 'Error'
+class ExternalServiceTimeoutError extends OrchestratorError {
+  constructor(params: BaseErrorParams) {
+    super({ ...params, code: 'EXTERNAL_SERVICE_TIMEOUT' })
   }
 }
 
-export class RelayerMarketUnavailableError extends OrchestratorClientError {
-  constructor(input: OrchestratorClientErrorInput) {
-    super(input)
-    this.name = 'Error'
+class RelayerMarketUnavailableError extends OrchestratorError {
+  constructor(params: BaseErrorParams) {
+    super({ ...params, code: 'RELAYER_MARKET_UNAVAILABLE' })
   }
 }
 
-export class InternalServerError extends OrchestratorClientError {
-  constructor(input: OrchestratorClientErrorInput) {
-    super(input)
-    this.name = 'Error'
+class InternalServerError extends OrchestratorError {
+  constructor(params: BaseErrorParams) {
+    super({ ...params, code: 'INTERNAL_ERROR' })
   }
 }
 
-export function createOrchestratorClientError(
-  input: OrchestratorClientErrorInput,
-): OrchestratorClientError {
-  switch (input.code) {
-    case 'VALIDATION_ERROR':
-      return new ValidationError(input)
-    case 'INSUFFICIENT_LIQUIDITY':
-      return new InsufficientLiquidityError(input)
-    case 'NOT_FOUND':
-      return new NotFoundError(input)
-    case 'UNAUTHORIZED':
-      return new UnauthorizedError(input)
-    case 'FORBIDDEN':
-      return new ForbiddenError(input)
-    case 'KEY_SCOPE_DENIED':
-      return new KeyScopeDeniedError(input)
-    case 'CONFLICT':
-      return new ConflictError(input)
-    case 'UNPROCESSABLE_CONTENT':
-      return new UnprocessableContentError(input)
-    case 'TOO_MANY_REQUESTS':
-      return new RateLimitedError(input)
-    case 'SETTLEMENT_QUOTE_ERROR':
-      return new SettlementQuoteError(input)
-    case 'SETTLEMENT_EXECUTION_ERROR':
-      return new SettlementExecutionError(input)
-    case 'SIMULATION_FAILED':
-      return new SimulationFailedError(input)
-    case 'EXTERNAL_SERVICE_TIMEOUT':
-      return new ExternalServiceTimeoutError(input)
-    case 'RELAYER_MARKET_UNAVAILABLE':
-      return new RelayerMarketUnavailableError(input)
-    case 'INTERNAL_ERROR':
-      return new InternalServerError(input)
-    default:
-      return new OrchestratorClientError(input)
-  }
-}
-
-export function isOrchestratorError(
-  error: unknown,
-): error is OrchestratorClientError {
-  return error instanceof OrchestratorClientError
-}
-
-export function isRateLimited(error: unknown): error is RateLimitedError {
-  return error instanceof RateLimitedError
-}
-
-export function isValidationError(error: unknown): error is ValidationError {
-  return error instanceof ValidationError
-}
-
-export function isAuthError(
-  error: unknown,
-): error is UnauthorizedError | ForbiddenError {
-  return error instanceof UnauthorizedError || error instanceof ForbiddenError
-}
-
-export function isSimulationFailed(
-  error: unknown,
-): error is SimulationFailedError {
-  return error instanceof SimulationFailedError
-}
-
-/**
- * Published retryability predicate (legacy semantics): retry only on transient
- * server-side conditions, never on client (4xx) errors. Distinct from the
- * transport-status check the internal polling loop uses.
- */
-export function isRetryable(error: unknown): boolean {
-  return (
-    error instanceof InternalServerError ||
-    error instanceof ExternalServiceTimeoutError ||
-    error instanceof RelayerMarketUnavailableError ||
-    (error instanceof SimulationFailedError && error.retryable)
-  )
-}
-
-/**
- * Transport-level retryability used by the intent status poller: retry on rate
- * limits (429) and server errors (5xx). Synthetic connection failures (status
- * 0) are handled separately by the poller. Coarser than {@link isRetryable}.
- */
-export function isRetryableOrchestratorError(error: unknown): boolean {
-  return (
-    error instanceof OrchestratorClientError &&
-    (error.status === 429 || error.status >= 500)
-  )
+interface ErrorEnvelope {
+  code: ErrorCode
+  message: string
+  traceId: string
+  details?: unknown
 }
 
 function parseTokenAmounts(
@@ -394,14 +270,37 @@ function parseTokenAmounts(
   )
 }
 
-function parseErrorDetails(value: unknown): readonly ErrorDetail[] {
-  if (!Array.isArray(value)) return []
-  return value.flatMap((detail) => {
-    if (!isRecord(detail) || typeof detail.message !== 'string') return []
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined
+}
+
+function booleanValue(value: unknown): boolean | undefined {
+  return typeof value === 'boolean' ? value : undefined
+}
+
+function recordValue(value: unknown): Record<string, unknown> | undefined {
+  return isRecord(value) ? value : undefined
+}
+
+function parseErrorDetails(details: unknown): ErrorDetail[] {
+  if (!Array.isArray(details)) {
+    return []
+  }
+
+  return details.flatMap((detail): ErrorDetail[] => {
+    if (!isRecord(detail) || typeof detail.message !== 'string') {
+      return []
+    }
+
+    const context = recordValue(detail.context)
     return [
       {
         message: detail.message,
-        ...(isRecord(detail.context) ? { context: detail.context } : {}),
+        ...(context ? { context } : {}),
       },
     ]
   })
@@ -439,7 +338,7 @@ function oneOf<const T extends readonly string[]>(
   allowed: T,
 ): T[number] | undefined {
   return typeof value === 'string' && allowed.includes(value)
-    ? (value as T[number])
+    ? value
     : undefined
 }
 
@@ -450,7 +349,10 @@ function stringArrayValue(value: unknown): string[] | undefined {
 }
 
 function parseSimulationCall(value: unknown): SimulationCall | undefined {
-  if (!isRecord(value)) return undefined
+  if (!isRecord(value)) {
+    return undefined
+  }
+
   return {
     chainId: stringValue(value.chainId),
     to: stringValue(value.to) as Address | undefined,
@@ -460,7 +362,10 @@ function parseSimulationCall(value: unknown): SimulationCall | undefined {
 }
 
 function parseSimulationDetails(value: unknown): SimulationDetails | undefined {
-  if (!isRecord(value)) return undefined
+  if (!isRecord(value)) {
+    return undefined
+  }
+
   return {
     stateOverride: value.stateOverride,
     blockNumber: stringValue(value.blockNumber),
@@ -469,10 +374,19 @@ function parseSimulationDetails(value: unknown): SimulationDetails | undefined {
   }
 }
 
+function isSimulationFailureSimulation(
+  value: unknown,
+): value is SimulationFailureSimulation {
+  return isRecord(value) && value.success === false
+}
+
 function parseSimulationFailureSimulation(
   value: unknown,
 ): SimulationFailureSimulation | undefined {
-  if (!isRecord(value) || value.success !== false) return undefined
+  if (!isSimulationFailureSimulation(value)) {
+    return undefined
+  }
+
   return {
     success: false,
     action: oneOf(value.action, SIMULATION_ACTIONS),
@@ -486,14 +400,251 @@ function parseSimulationFailureSimulation(
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
+function parseSimulationFailureDetails(
+  details: unknown,
+): SimulationFailureDetails {
+  if (!isRecord(details)) {
+    return {}
+  }
+
+  return {
+    nonce: stringValue(details.nonce),
+    category: oneOf(details.category, SIMULATION_ERROR_CATEGORIES),
+    errorSelector: stringValue(details.errorSelector),
+    errorName: stringValue(details.errorName),
+    errorArgs: recordValue(details.errorArgs),
+    retryable: booleanValue(details.retryable),
+    retryHint: oneOf(details.retryHint, SIMULATION_RETRY_HINTS),
+    simulations: Array.isArray(details.simulations)
+      ? details.simulations
+          .map(parseSimulationFailureSimulation)
+          .filter(
+            (simulation): simulation is SimulationFailureSimulation =>
+              simulation !== undefined,
+          )
+      : undefined,
+  }
 }
 
-function stringValue(value: unknown): string | undefined {
-  return typeof value === 'string' ? value : undefined
+function parseErrorEnvelope(
+  envelope: ErrorEnvelope,
+  statusCode: number,
+  retryAfter?: string,
+): OrchestratorError {
+  const base = {
+    message: envelope.message,
+    traceId: envelope.traceId,
+    statusCode,
+  }
+
+  switch (envelope.code) {
+    case 'VALIDATION_ERROR': {
+      const issues = Array.isArray(envelope.details)
+        ? (envelope.details as ValidationIssue[])
+        : []
+      return new ValidationError({ ...base, issues })
+    }
+    case 'INSUFFICIENT_LIQUIDITY': {
+      const details = (envelope.details ?? {}) as {
+        availableIntents?: Record<string, string>[]
+        unfillable?: Record<string, string>
+      }
+      return new InsufficientLiquidityError({
+        ...base,
+        availableIntents: (details.availableIntents ?? []).map(
+          parseTokenAmounts,
+        ),
+        unfillable: parseTokenAmounts(details.unfillable ?? {}),
+      })
+    }
+    case 'NOT_FOUND':
+      return new NotFoundError(base)
+    case 'UNAUTHORIZED':
+      return new UnauthorizedError(base)
+    case 'FORBIDDEN':
+      return new ForbiddenError(base)
+    case 'KEY_SCOPE_DENIED': {
+      const detail = Array.isArray(envelope.details)
+        ? (envelope.details[0] as { context?: unknown } | undefined)
+        : undefined
+      const context = (detail?.context ?? {}) as {
+        scope?: string
+        required?: string | boolean
+        actual?: string | boolean
+      }
+      return new KeyScopeDeniedError({
+        ...base,
+        scope: context.scope ?? '',
+        required: context.required ?? '',
+        actual: context.actual ?? '',
+      })
+    }
+    case 'CONFLICT':
+      return new ConflictError(base)
+    case 'UNPROCESSABLE_CONTENT':
+      return new UnprocessableContentError({
+        ...base,
+        details: parseErrorDetails(envelope.details),
+      })
+    case 'TOO_MANY_REQUESTS':
+      return new RateLimitedError({ ...base, retryAfter })
+    case 'SETTLEMENT_QUOTE_ERROR':
+      return new SettlementQuoteError(base)
+    case 'SETTLEMENT_EXECUTION_ERROR':
+      return new SettlementExecutionError(base)
+    case 'SIMULATION_FAILED':
+      return new SimulationFailedError({
+        ...base,
+        ...parseSimulationFailureDetails(envelope.details),
+      })
+    case 'EXTERNAL_SERVICE_TIMEOUT':
+      return new ExternalServiceTimeoutError(base)
+    case 'RELAYER_MARKET_UNAVAILABLE':
+      return new RelayerMarketUnavailableError(base)
+    case 'INTERNAL_ERROR':
+      return new InternalServerError(base)
+    default:
+      return new OrchestratorError({ ...base, code: 'UNKNOWN' })
+  }
 }
 
-function recordValue(value: unknown): Record<string, unknown> | undefined {
-  return isRecord(value) ? value : undefined
+function isOrchestratorError(error: unknown): error is OrchestratorError {
+  return error instanceof OrchestratorError
+}
+
+function isRateLimited(error: unknown): error is RateLimitedError {
+  return error instanceof RateLimitedError
+}
+
+function isValidationError(error: unknown): error is ValidationError {
+  return error instanceof ValidationError
+}
+
+function isAuthError(
+  error: unknown,
+): error is UnauthorizedError | ForbiddenError {
+  return error instanceof UnauthorizedError || error instanceof ForbiddenError
+}
+
+function isSimulationFailed(error: unknown): error is SimulationFailedError {
+  return error instanceof SimulationFailedError
+}
+
+function isRetryable(error: unknown): boolean {
+  return (
+    error instanceof InternalServerError ||
+    error instanceof ExternalServiceTimeoutError ||
+    error instanceof RelayerMarketUnavailableError ||
+    (error instanceof SimulationFailedError && error.retryable)
+  )
+}
+
+// Transport-level error codes that escape `fetch` as raw errors rather than
+// typed HTTP envelopes. Spans Node/undici and common system codes.
+const CONNECTION_ERROR_CODES = new Set([
+  'ECONNRESET',
+  'ECONNREFUSED',
+  'ECONNABORTED',
+  'ETIMEDOUT',
+  'EPIPE',
+  'ENOTFOUND',
+  'EAI_AGAIN',
+  'EHOSTUNREACH',
+  'ENETUNREACH',
+  'UND_ERR_SOCKET',
+  'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_HEADERS_TIMEOUT',
+  'UND_ERR_BODY_TIMEOUT',
+])
+
+const CONNECTION_ERROR_MESSAGES = [
+  'socket connection was closed', // Bun
+  'fetch failed', // undici/Node (the coded cause is matched separately)
+  'failed to fetch', // Chrome/Edge
+  'networkerror when attempting to fetch', // Firefox
+  'network request failed',
+  'connection closed',
+  'connection reset',
+]
+
+/**
+ * Detects transport-level failures (connection reset, socket closed, DNS, TLS)
+ * that `fetch` rejects with instead of returning an HTTP response. Unlike HTTP
+ * errors — which the client converts into typed {@link OrchestratorError}s —
+ * these carry no status and bubble up untyped, so {@link isRetryable} misses
+ * them. They are safe to retry for idempotent reads (e.g. intent-status
+ * polling). We match by `code` and message across the cause chain — never by
+ * error type: `fetch` rejects network failures as `TypeError`, but `TypeError`
+ * is also thrown for logic bugs, bad URLs, and response-decoding errors that
+ * must NOT be retried (`waitForExecution` has no SDK-side deadline). Runtimes
+ * differ (Bun throws a plain `Error` with a socket message; undici/Node a
+ * `TypeError` with a coded `cause`), hence both signals. Caller-initiated
+ * aborts are excluded so deadlines/cancellation still propagate.
+ */
+function isConnectionError(error: unknown): boolean {
+  // HTTP-status errors are already typed and classified elsewhere.
+  if (isOrchestratorError(error)) {
+    return false
+  }
+  // Caller cancellation / deadline must propagate, not retry.
+  if (error instanceof Error && error.name === 'AbortError') {
+    return false
+  }
+  // Walk the `cause` chain; `seen` guards against cyclic causes looping forever.
+  const seen = new Set<unknown>()
+  let current: unknown = error
+  while (current != null && !seen.has(current)) {
+    seen.add(current)
+    const code = (current as { code?: unknown }).code
+    if (typeof code === 'string' && CONNECTION_ERROR_CODES.has(code)) {
+      return true
+    }
+    const message =
+      current instanceof Error ? current.message.toLowerCase() : ''
+    if (CONNECTION_ERROR_MESSAGES.some((m) => message.includes(m))) {
+      return true
+    }
+    current = (current as { cause?: unknown }).cause
+  }
+  return false
+}
+
+export type {
+  ErrorCode,
+  ErrorDetail,
+  ErrorEnvelope,
+  SimulationAction,
+  SimulationCall,
+  SimulationDetails,
+  SimulationErrorCategory,
+  SimulationFailureDetails,
+  SimulationFailureSimulation,
+  SimulationRetryHint,
+  ValidationIssue,
+}
+export {
+  parseErrorEnvelope,
+  isOrchestratorError,
+  isRetryable,
+  isConnectionError,
+  isAuthError,
+  isValidationError,
+  isRateLimited,
+  isSimulationFailed,
+  OrchestratorError,
+  ValidationError,
+  InsufficientLiquidityError,
+  NotFoundError,
+  UnauthorizedError,
+  ForbiddenError,
+  KeyScopeDeniedError,
+  ConflictError,
+  UnprocessableContentError,
+  RateLimitedError,
+  SettlementQuoteError,
+  SettlementExecutionError,
+  SimulationFailedError,
+  ExternalServiceTimeoutError,
+  RelayerMarketUnavailableError,
+  InternalServerError,
 }

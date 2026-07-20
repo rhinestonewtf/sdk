@@ -1,6 +1,8 @@
 import {
-  isRetryableOrchestratorError,
-  OrchestratorClientError,
+  isConnectionError,
+  isRateLimited,
+  isRetryable,
+  RateLimitedError,
 } from '../../clients/orchestrator/errors'
 import type { OrchestratorIntentStatus } from '../../clients/orchestrator/types'
 import type { IntentStatus } from './types'
@@ -27,15 +29,13 @@ export function getIntentRetryDelay(input: {
   readonly fallback: number
 }): { readonly delay: number; readonly backoff: boolean } | undefined {
   if (
-    !isRetryableOrchestratorError(input.error) &&
+    !isRetryable(input.error) &&
+    !isRateLimited(input.error) &&
     !isConnectionError(input.error)
   ) {
     return undefined
   }
-  if (
-    !(input.error instanceof OrchestratorClientError) ||
-    input.error.status !== 429
-  ) {
+  if (!(input.error instanceof RateLimitedError)) {
     return { delay: input.fallback, backoff: true }
   }
   if (!input.error.retryAfter) {
@@ -55,8 +55,4 @@ export function getIntentRetryDelay(input: {
       : Math.max(date - input.now, input.minimum),
     backoff: false,
   }
-}
-
-function isConnectionError(error: unknown): boolean {
-  return error instanceof OrchestratorClientError && error.status === 0
 }

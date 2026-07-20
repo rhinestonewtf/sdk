@@ -24,33 +24,53 @@ export type ValidatorSigningPurpose =
   | 'user-operation'
   | 'session-enable'
 
-export type AtomicValidatorInput =
-  | {
-      type: 'ecdsa'
-      accounts: Account[]
-      threshold?: number
-      module?: Address
-    }
-  | {
-      type: 'ens'
-      owners: { account: Account; expiration?: Date }[]
-      threshold?: number
-    }
-  | {
-      type: 'passkey'
-      accounts: WebAuthnAccount[]
-      threshold?: number
-      module?: Address
-    }
-
-export interface MultiFactorValidatorInput {
-  type: 'multi-factor'
-  validators: AtomicValidatorInput[]
+export interface OwnableValidatorConfig {
+  type: 'ecdsa'
+  accounts: Account[]
   threshold?: number
   module?: Address
 }
 
-export type ValidatorInput = AtomicValidatorInput | MultiFactorValidatorInput
+export interface ENSValidatorConfig {
+  type: 'ens'
+  owners: { account: Account; expiration?: Date }[]
+  threshold?: number
+}
+
+export interface WebauthnValidatorConfig {
+  type: 'passkey'
+  accounts: WebAuthnAccount[]
+  threshold?: number
+  module?: Address
+}
+
+export interface MultiFactorValidatorConfig {
+  type: 'multi-factor'
+  validators: (
+    | OwnableValidatorConfig
+    | ENSValidatorConfig
+    | WebauthnValidatorConfig
+  )[]
+  threshold?: number
+  module?: Address
+}
+
+export type OwnerSet =
+  | OwnableValidatorConfig
+  | ENSValidatorConfig
+  | WebauthnValidatorConfig
+  | MultiFactorValidatorConfig
+
+// Internal aliases retained for the rewrite's own use; not part of the public
+// surface (the published types are the named configs above and `OwnerSet`).
+export type AtomicValidatorInput =
+  | OwnableValidatorConfig
+  | ENSValidatorConfig
+  | WebauthnValidatorConfig
+
+export type MultiFactorValidatorInput = MultiFactorValidatorConfig
+
+export type ValidatorInput = OwnerSet
 
 export type ValidatorModuleSelection =
   | { readonly source: 'explicit'; readonly address: Address }

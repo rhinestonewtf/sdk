@@ -1,7 +1,7 @@
 import { type Address, erc20Abi } from 'viem'
 import { base } from 'viem/chains'
 import type { Permission, Permit2ClaimPolicy } from '../../src/index'
-import { toSession } from '../../src/modules/validators/smart-sessions'
+import { toSession } from '../../src/smart-sessions/index'
 import { accountA } from '../consts'
 
 const USDC: Address = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'

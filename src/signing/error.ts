@@ -42,14 +42,6 @@ export class SigningPipelineError extends Error {
   }
 }
 
-export class IndependentSigningNotSupportedError extends Error {
-  constructor() {
-    super(
-      'Independent owner signing is only supported for smart accounts using ECDSA, passkey, or multi-factor owners. EOA accounts, smart sessions, and K1/ERC-7739 validators must use the standard `signTransaction` flow.',
-    )
-  }
-}
-
 export function runSigningStep<Result>(input: {
   readonly plan: SigningPlan
   readonly failureStage: SigningFailureStage

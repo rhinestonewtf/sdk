@@ -3,7 +3,7 @@ import { privateKeyToAccount } from 'viem/accounts'
 import { describe, expect, test } from 'vitest'
 import { WalletClientNoConnectedAccountError } from '../../../src/errors'
 import { RhinestoneSDK } from '../../../src/index'
-import { walletClientToAccount } from '../../../src/utils/walletClient'
+import { walletClientToAccount } from '../../../src/signing/signers/compatibility'
 
 describe('legacy explicit gap contracts', () => {
   test('validators/missing-signer', () => {

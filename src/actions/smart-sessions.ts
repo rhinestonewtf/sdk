@@ -1,8 +1,8 @@
 import type { Hex } from 'viem'
+import type { LazyCallInput, Session } from '../config/account'
 import { encodeEnableSessionCall } from '../modules/validators/smart-sessions/calls'
 import { resolveSmartSessionModule } from '../modules/validators/smart-sessions/module'
 import type { Session as ResolvedSession } from '../modules/validators/smart-sessions/types'
-import type { LazyCallInput, Session } from '../types'
 import {
   resolveModuleInstallation,
   resolveModuleUninstallation,

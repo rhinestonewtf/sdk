@@ -1,11 +1,11 @@
 import type { Hex } from 'viem'
+import { IndependentSigningNotSupportedError } from '../../errors/execution'
 import {
   createAccountSigningContext,
   getSigningValidatorCodec,
   getSigningValidatorFactors,
   type SigningContext,
 } from '../../signing/context'
-import { IndependentSigningNotSupportedError } from '../../signing/error'
 import { executeSigningPlan } from '../../signing/execute'
 import {
   assembleIndependentIntentArtifact,

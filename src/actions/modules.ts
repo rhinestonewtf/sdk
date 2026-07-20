@@ -1,5 +1,5 @@
+import type { LazyCallInput, ModuleInput } from '../config/account'
 import type { ResolvedModule } from '../modules/types'
-import type { LazyCallInput, ModuleInput } from '../types'
 import {
   resolveModuleInstallation,
   resolveModuleUninstallation,

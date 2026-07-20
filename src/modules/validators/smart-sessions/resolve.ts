@@ -1,4 +1,4 @@
-import { toFunctionSelector, zeroHash } from 'viem'
+import { type Address, type Hex, toFunctionSelector, zeroHash } from 'viem'
 import { type ChainCatalog, sharedChainCatalog } from '../../../chains/catalog'
 import { getWrappedNativeTokenAddress } from '../../../chains/tokens'
 import { defineValidator } from '../definition'
@@ -27,10 +27,9 @@ import type {
   SessionDefinition,
 } from './types'
 
-export const SMART_SESSIONS_FALLBACK_TARGET_FLAG =
-  '0x0000000000000000000000000000000000000001' as const
-export const SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG =
-  '0x00000001' as const
+export const SMART_SESSIONS_FALLBACK_TARGET_FLAG: Address =
+  '0x0000000000000000000000000000000000000001'
+export const SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG: Hex = '0x00000001'
 export const SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG_PERMITTED_TO_CALL_SMARTSESSION =
   '0x00000002' as const
 export const DUMMY_PRECLAIMOP_TARGET =

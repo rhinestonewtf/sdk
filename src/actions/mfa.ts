@@ -1,4 +1,10 @@
 import { encodeFunctionData, type Hex, padHex, toHex } from 'viem'
+import type {
+  CalldataInput,
+  LazyCallInput,
+  OwnableValidatorConfig,
+  WebauthnValidatorConfig,
+} from '../config/account'
 import { defineValidator } from '../modules/validators/definition'
 import { MULTI_FACTOR_VALIDATOR_ADDRESS } from '../modules/validators/multi-factor'
 import { resolveValidator } from '../modules/validators/resolve'
@@ -7,12 +13,6 @@ import type {
   AtomicValidatorInput,
   MultiFactorValidatorDefinition,
 } from '../modules/validators/types'
-import type {
-  CalldataInput,
-  LazyCallInput,
-  OwnableValidatorConfig,
-  WebauthnValidatorConfig,
-} from '../types'
 import {
   resolveModuleInstallation,
   resolveModuleUninstallation,

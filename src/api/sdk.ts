@@ -1,6 +1,14 @@
+import type {
+  AppFeeBalances,
+  SplitIntentsInput,
+  SplitIntentsResult,
+} from '../clients/orchestrator/public'
+import type {
+  RhinestoneAccountConfig,
+  RhinestoneSDKConfig,
+} from '../config/account'
 import type { SdkConstructionInput } from '../config/input'
-import type { AppFeeBalances, SplitIntentsInput } from '../orchestrator'
-import type { RhinestoneAccountConfig, RhinestoneSDKConfig } from '../types'
+import type { TransactionStatus } from '../transactions/intents/types'
 import type { RhinestoneAccount } from './account'
 import { attachAccount, composeSdk, type SdkComposition } from './accounts'
 
@@ -11,13 +19,31 @@ import { attachAccount, composeSdk, type SdkComposition } from './accounts'
  */
 class RhinestoneSDK {
   readonly #sdk: SdkComposition
+  // Retained shared-config slots. The composition owns the resolved values;
+  // these mirror the published field surface and let the instance answer
+  // config questions without re-reaching into the composition internals.
+  private authProvider
+  private endpointUrl
+  private provider
+  private bundler
+  private paymaster
+  private useDevContracts
+  private headers
 
   /**
    * Create a Rhinestone SDK instance.
    * @param options Shared configuration applied to every account created by this instance
    */
   constructor(options: RhinestoneSDKConfig) {
-    this.#sdk = composeSdk(options as unknown as SdkConstructionInput)
+    const input = options as unknown as SdkConstructionInput
+    this.provider = input.provider
+    this.bundler = input.bundler
+    this.paymaster = input.paymaster
+    this.endpointUrl = input.endpointUrl
+    this.useDevContracts = input.useDevContracts
+    this.headers = input.headers
+    this.#sdk = composeSdk(input)
+    this.authProvider = this.#sdk.snapshot.authProvider
   }
 
   /**
@@ -49,8 +75,10 @@ class RhinestoneSDK {
    * @param intentId The intent ID returned when the transaction was submitted
    * @returns The intent status
    */
-  getIntentStatus(intentId: string) {
-    return this.#sdk.composition.project.getIntentStatus(intentId)
+  getIntentStatus(intentId: string): Promise<TransactionStatus> {
+    return this.#sdk.composition.project.getIntentStatus(
+      intentId,
+    ) as unknown as Promise<TransactionStatus>
   }
 
   /**
@@ -58,12 +86,12 @@ class RhinestoneSDK {
    * @param input The intents to split
    * @returns The split-intents result
    */
-  splitIntents(input: SplitIntentsInput) {
+  splitIntents(input: SplitIntentsInput): Promise<SplitIntentsResult> {
     return this.#sdk.composition.project.splitIntents(
       input as unknown as Parameters<
         SdkComposition['composition']['project']['splitIntents']
       >[0],
-    )
+    ) as unknown as Promise<SplitIntentsResult>
   }
 
   /**
