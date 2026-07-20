@@ -125,6 +125,12 @@ type AuxiliaryFunds = {
 
 interface IntentOptions {
   appFees?: AppFeeRate
+  /**
+   * Absolute unix timestamp (seconds) overriding the on-chain fill deadline.
+   * Same-chain (tokenless) route only; ignored elsewhere. Bounds (`now + 120s`
+   * .. `now + 86400s`) are enforced by the orchestrator.
+   */
+  customDeadline?: number
   sponsorSettings?: SponsorSettings
   settlementLayers?: SettlementLayerFilter
   signatureMode?: SignatureMode
