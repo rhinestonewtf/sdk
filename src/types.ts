@@ -823,6 +823,15 @@ interface BaseTransaction {
   eip7702InitSignature?: Hex
   sourceAssets?: SourceAssetInput
   appFees?: AppFeeRate
+  /**
+   * Absolute unix timestamp (seconds) overriding the on-chain fill deadline.
+   * Honored only on the same-chain (tokenless) route and silently ignored on
+   * every other route. Must be between `now + 120s` and `now + 86400s` (24h);
+   * out-of-range values are rejected by the orchestrator with a `400`. When
+   * honored, the quoted `expiresAt` and the bundle claim/nonce expiry track
+   * this value automatically.
+   */
+  customDeadline?: number
   settlementLayers?: SettlementLayerFilter
   auxiliaryFunds?: AuxiliaryFunds
   experimental_accountOverride?: {

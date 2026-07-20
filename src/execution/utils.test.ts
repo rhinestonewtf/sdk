@@ -265,6 +265,69 @@ describe('prepareTransactionAsIntent', () => {
     expect(intentInput.options.appFees).toEqual({ feeBps: 100 })
   })
 
+  test('includes customDeadline in options when provided', async () => {
+    mockCreateQuote.mockResolvedValue({ routes: [mockQuote] })
+
+    const customDeadline = 9_999_999_999
+
+    await prepareTransactionAsIntent(
+      {
+        owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+        apiKey: 'test',
+      },
+      [arbitrum],
+      base,
+      [],
+      undefined,
+      [{ address: zeroAddress, amount: 1n }],
+      undefined,
+      false,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      customDeadline,
+    )
+
+    expect(mockCreateQuote).toHaveBeenCalledOnce()
+    const intentInput: IntentInput = mockCreateQuote.mock.calls[0][0]
+    expect(intentInput.options.customDeadline).toBe(customDeadline)
+  })
+
+  test('omits customDeadline from options when not provided', async () => {
+    mockCreateQuote.mockResolvedValue({ routes: [mockQuote] })
+
+    await prepareTransactionAsIntent(
+      {
+        owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+        apiKey: 'test',
+      },
+      [arbitrum],
+      base,
+      [],
+      undefined,
+      [{ address: zeroAddress, amount: 1n }],
+      undefined,
+      false,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+    )
+
+    expect(mockCreateQuote).toHaveBeenCalledOnce()
+    const intentInput: IntentInput = mockCreateQuote.mock.calls[0][0]
+    expect(intentInput.options.customDeadline).toBeUndefined()
+  })
+
   test('claim-only session already enabled sends SIG_MODE_ERC1271 in routing request', async () => {
     mockCreateQuote.mockResolvedValue({ routes: [mockQuote] })
     vi.spyOn(validators, 'isSessionEnabled').mockResolvedValue(true)

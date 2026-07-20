@@ -112,6 +112,7 @@ async function sendTransactionInternal(
     settlementLayers?: SettlementLayerFilter
     sourceAssets?: SourceAssetInput
     appFees?: AppFeeRate
+    customDeadline?: number
   },
 ) {
   const accountAddress = getAddress(config)
@@ -141,6 +142,7 @@ async function sendTransactionInternal(
     options.sourceAssets,
     options.sourceCalls,
     options.appFees,
+    options.customDeadline,
   )
 }
 
@@ -193,6 +195,7 @@ async function sendTransactionAsIntent(
   sourceAssets?: SourceAssetInput,
   sourceCalls?: Record<number, SourceCallInput[]>,
   appFees?: AppFeeRate,
+  customDeadline?: number,
 ) {
   const prepared = await prepareTransactionAsIntent(
     config,
@@ -211,6 +214,7 @@ async function sendTransactionAsIntent(
     signers,
     sourceCalls,
     appFees,
+    customDeadline,
   )
   if (!prepared) {
     throw new OrderPathRequiredForIntentsError()

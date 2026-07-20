@@ -377,6 +377,7 @@ async function prepareTransaction(
     sourceAssets,
     auxiliaryFunds,
     appFees,
+    customDeadline,
     account,
     recipient,
     sourceCalls,
@@ -420,6 +421,7 @@ async function prepareTransaction(
     signers,
     sourceCalls,
     appFees,
+    customDeadline,
   )
 
   return {
@@ -1386,6 +1388,7 @@ function getTransactionParams(transaction: Transaction) {
   const sourceAssets = transaction.sourceAssets
   const auxiliaryFunds = transaction.auxiliaryFunds
   const appFees = transaction.appFees
+  const customDeadline = transaction.customDeadline
   const account = transaction.experimental_accountOverride
   const recipient = transaction.recipient
   const sourceCalls = transaction.sourceCalls
@@ -1404,6 +1407,7 @@ function getTransactionParams(transaction: Transaction) {
     sourceAssets,
     auxiliaryFunds,
     appFees,
+    customDeadline,
     account,
     recipient,
     sourceCalls,
@@ -1564,6 +1568,7 @@ async function prepareTransactionAsIntent(
   signers: SignerSet | undefined,
   sourceCalls?: Record<number, SourceCallInput[]>,
   appFees?: AppFeeRate,
+  customDeadline?: number,
 ) {
   const targetChainId = getChainId(targetChain)
   const calls = parseCalls(callInputs, targetChainId)
@@ -1773,6 +1778,7 @@ async function prepareTransactionAsIntent(
       signatureMode,
       auxiliaryFunds: combinedAuxiliaryFunds,
       appFees,
+      customDeadline,
     },
     ...(Object.keys(preClaimExecutions).length > 0 && { preClaimExecutions }),
   }

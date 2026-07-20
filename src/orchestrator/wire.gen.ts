@@ -3277,6 +3277,11 @@ export interface operations {
                          * @enum {string}
                          */
                         selectionStrategy?: "cheapest" | "fastest" | "best";
+                        /**
+                         * @description Absolute unix timestamp (seconds) overriding the on-chain fill deadline. **TOKENLESS intents only** — ignored on every other route. Must be between `now + 120s` and `now + 86400s`. The bundle claim/nonce expiry and the response `expiresAt` track this value automatically.
+                         * @example 1893456000
+                         */
+                        customDeadline?: number;
                     };
                 };
             };
