@@ -276,6 +276,7 @@ async function prepareTransaction(
     sourceAssets,
     feeAsset,
     appFees,
+    customDeadline,
     lockFunds,
     auxiliaryFunds,
     account,
@@ -312,6 +313,7 @@ async function prepareTransaction(
     signers,
     sourceCalls,
     appFees,
+    customDeadline,
   )
 
   return {
@@ -739,6 +741,7 @@ function getTransactionParams(transaction: Transaction) {
   const sourceAssets = transaction.sourceAssets
   const feeAsset = transaction.feeAsset
   const appFees = transaction.appFees
+  const customDeadline = transaction.customDeadline
   const lockFunds = transaction.lockFunds
   const auxiliaryFunds = transaction.auxiliaryFunds
   const account = transaction.experimental_accountOverride
@@ -759,6 +762,7 @@ function getTransactionParams(transaction: Transaction) {
     sourceAssets,
     feeAsset,
     appFees,
+    customDeadline,
     lockFunds,
     auxiliaryFunds,
     account,
@@ -882,6 +886,7 @@ async function prepareTransactionAsIntent(
   signers: SignerSet | undefined,
   sourceCalls: Record<number, CallInput[]> | undefined,
   appFees?: AppFeeRate,
+  customDeadline?: number,
 ) {
   const calls = parseCalls(callInputs, targetChain.id)
   const accountAccessList = createAccountAccessList(sourceChains, sourceAssets)
@@ -1014,6 +1019,7 @@ async function prepareTransactionAsIntent(
       topupCompact: lockFunds ?? false,
       feeToken: feeAsset,
       appFees,
+      customDeadline,
       sponsorSettings: sponsored
         ? typeof sponsored === 'object'
           ? {
