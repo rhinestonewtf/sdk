@@ -1,12 +1,17 @@
 import { describe, expect, test } from 'vitest'
 import {
   ForbiddenError,
+  InsufficientSponsorBalanceError,
   isConnectionError,
+  isInsufficientSponsorBalance,
   isRetryable,
   isSimulationFailed,
+  isSponsorError,
+  isSponsorLimitExceeded,
   KeyScopeDeniedError,
   parseErrorEnvelope,
   SimulationFailedError,
+  SponsorLimitExceededError,
   UnprocessableContentError,
 } from './error'
 
@@ -163,6 +168,155 @@ describe('parseErrorEnvelope — UNPROCESSABLE_CONTENT', () => {
 
     expect(withoutDetails.details).toEqual([])
     expect(malformedDetails.details).toEqual([])
+  })
+})
+
+describe('parseErrorEnvelope — sponsor errors', () => {
+  test('maps SPONSOR_LIMIT_EXCEEDED to a typed error with structured fields', () => {
+    const err = parseErrorEnvelope(
+      {
+        code: 'UNPROCESSABLE_CONTENT',
+        message: 'Sponsor coverage exceeds configured per-client limit',
+        traceId: 'trace-sponsor-cap',
+        details: [
+          {
+            message: 'Sponsor coverage exceeds configured per-client limit',
+            context: {
+              domain: 'planning',
+              code: 'SPONSOR_LIMIT_EXCEEDED',
+              limitKey: 'perIntentUSD',
+              capUSD: 2.5,
+              coverageUSD: 3.1,
+              sponsorAddress: '0x1111111111111111111111111111111111111111',
+            },
+          },
+        ],
+      },
+      422,
+    )
+
+    expect(err).toBeInstanceOf(SponsorLimitExceededError)
+    // Backward-compatible: still catchable as unprocessable content.
+    expect(err).toBeInstanceOf(UnprocessableContentError)
+    expect(err.code).toBe('UNPROCESSABLE_CONTENT')
+    expect(err.statusCode).toBe(422)
+    expect(err.traceId).toBe('trace-sponsor-cap')
+    expect(isSponsorLimitExceeded(err)).toBe(true)
+    expect(isSponsorError(err)).toBe(true)
+    expect(isInsufficientSponsorBalance(err)).toBe(false)
+
+    const cap = err as SponsorLimitExceededError
+    expect(cap.limitKey).toBe('perIntentUSD')
+    expect(cap.capUsd).toBe(2.5)
+    expect(cap.coverageUsd).toBe(3.1)
+    expect(cap.sponsorAddress).toBe(
+      '0x1111111111111111111111111111111111111111',
+    )
+    // Raw details are still preserved.
+    expect(cap.details).toHaveLength(1)
+  })
+
+  test('handles the post-fold cap breach with no sponsorAddress', () => {
+    const err = parseErrorEnvelope(
+      {
+        code: 'UNPROCESSABLE_CONTENT',
+        message: 'All candidate plans exceed the per-client sponsorship limit',
+        traceId: '',
+        details: [
+          {
+            message: 'exceeds limit',
+            context: {
+              code: 'SPONSOR_LIMIT_EXCEEDED',
+              limitKey: 'gasPerIntentUSD',
+              capUSD: 1,
+              coverageUSD: 2,
+            },
+          },
+        ],
+      },
+      422,
+    ) as SponsorLimitExceededError
+
+    expect(isSponsorLimitExceeded(err)).toBe(true)
+    expect(err.limitKey).toBe('gasPerIntentUSD')
+    expect(err.sponsorAddress).toBeUndefined()
+  })
+
+  test('drops an unrecognized limitKey rather than trusting it', () => {
+    const err = parseErrorEnvelope(
+      {
+        code: 'UNPROCESSABLE_CONTENT',
+        message: 'exceeds limit',
+        traceId: '',
+        details: [
+          {
+            message: 'exceeds limit',
+            context: { code: 'SPONSOR_LIMIT_EXCEEDED', limitKey: 'bogusKey' },
+          },
+        ],
+      },
+      422,
+    ) as SponsorLimitExceededError
+
+    expect(isSponsorLimitExceeded(err)).toBe(true)
+    expect(err.limitKey).toBeUndefined()
+    expect(err.capUsd).toBeUndefined()
+  })
+
+  test('maps INSUFFICIENT_SPONSOR_BALANCE to a typed error', () => {
+    const err = parseErrorEnvelope(
+      {
+        code: 'UNPROCESSABLE_CONTENT',
+        message: 'Insufficient sponsor balance to cover sponsored fees',
+        traceId: 'trace-sponsor-balance',
+        details: [
+          {
+            message: 'Insufficient sponsor balance to cover sponsored fees',
+            context: {
+              code: 'INSUFFICIENT_SPONSOR_BALANCE',
+              failedCategories: ['gas', 'bridgeFee'],
+              sponsorAddress: '0x2222222222222222222222222222222222222222',
+              remainingBalanceUSD: 0.5,
+              totalSponsoredUSD: 4.2,
+            },
+          },
+        ],
+      },
+      422,
+    )
+
+    expect(err).toBeInstanceOf(InsufficientSponsorBalanceError)
+    expect(err).toBeInstanceOf(UnprocessableContentError)
+    expect(err.code).toBe('UNPROCESSABLE_CONTENT')
+    expect(isInsufficientSponsorBalance(err)).toBe(true)
+    expect(isSponsorError(err)).toBe(true)
+    expect(isSponsorLimitExceeded(err)).toBe(false)
+
+    const balance = err as InsufficientSponsorBalanceError
+    expect(balance.failedCategories).toEqual(['gas', 'bridgeFee'])
+    expect(balance.sponsorAddress).toBe(
+      '0x2222222222222222222222222222222222222222',
+    )
+    expect(balance.remainingBalanceUsd).toBe(0.5)
+    expect(balance.totalSponsoredUsd).toBe(4.2)
+  })
+
+  test('falls back to a generic UnprocessableContentError for non-sponsor codes', () => {
+    const err = parseErrorEnvelope(
+      {
+        code: 'UNPROCESSABLE_CONTENT',
+        message: 'No viable route found for this intent.',
+        traceId: '',
+        details: [
+          { message: 'no route', context: { code: 'NO_PLAN_AVAILABLE' } },
+        ],
+      },
+      422,
+    )
+
+    expect(err).toBeInstanceOf(UnprocessableContentError)
+    expect(isSponsorError(err)).toBe(false)
+    expect(err.constructor.name).toBe('UnprocessableContentError')
   })
 })
 
