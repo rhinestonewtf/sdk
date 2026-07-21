@@ -70,7 +70,9 @@ describe('UserOperation domain', () => {
     )
   })
 
-  test('hashes an EntryPoint 0.7 UserOperation', () => {
+  test('hashes an EntryPoint 0.7 UserOperation to the calibrated digest', () => {
+    // Golden vector: viem's EntryPoint-0.7 getUserOperationHash for these fixed
+    // inputs on chain 1. Locks the chainId/entryPoint/version we pass through.
     expect(
       hashUserOperation(chain, {
         sender: address,
@@ -83,7 +85,7 @@ describe('UserOperation domain', () => {
         maxPriorityFeePerGas: 5n,
         signature: '0x',
       }),
-    ).toMatch(/^0x[0-9a-f]{64}$/u)
+    ).toBe('0x655e0337674fc3d5ae28948b8b1cec8d1cf595a9f8ee5d08fffea4bc409e780d')
   })
 
   test('builds an owner-validator stub and rejects unsupported accounts', () => {
