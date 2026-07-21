@@ -4,6 +4,7 @@ import {
   decodeFunctionData,
   encodeAbiParameters,
   encodeFunctionData,
+  encodePacked,
   getContractAddress,
   type Hex,
   keccak256,
@@ -188,6 +189,26 @@ function nexusEip7702AdoptionPlan(input: AccountConstruction): {
   }
 }
 
+// Builds the signed `initializeAccount` call sent as the account setup op when a
+// 7702 intent is prepared. The account authorizes initialization by prefixing
+// the raw module init data (packed with the any-chain sentinel) with its
+// EIP-7702 init signature.
+function nexusEip7702InitCall(
+  input: AccountConstruction,
+  eip7702InitSignature: Hex,
+): Hex {
+  const { initData } = nexusEip7702AdoptionPlan(input)
+  const packedInitData = encodePacked(
+    ['uint256', 'uint256', 'uint256', 'bytes'],
+    [0n, 1n, 0n, initData],
+  )
+  return encodeFunctionData({
+    abi: parseAbi(['function initializeAccount(bytes)']),
+    functionName: 'initializeAccount',
+    args: [concat([eip7702InitSignature, packedInitData])],
+  })
+}
+
 export function createNexusAdapter(
   construction: AccountConstruction,
 ): AccountAdapter {
@@ -217,6 +238,7 @@ export function createNexusAdapter(
     getDeploymentPlan: (input) =>
       deploymentPlan(input.chain, nexusMaterial(input), input.deployed),
     getEip7702AdoptionPlan: nexusEip7702AdoptionPlan,
+    getEip7702InitCall: nexusEip7702InitCall,
     encodeCalls: encodeErc7579Calls,
     encodeModuleInstallation: (module) => [encodeInstallModule(module)],
     encodeModuleUninstallation: encodeUninstallModule,

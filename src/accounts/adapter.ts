@@ -29,6 +29,14 @@ export interface AccountAdapter {
   readonly getEip7702AdoptionPlan?: (
     input: AccountConstruction,
   ) => AccountEip7702AdoptionPlan
+  // Encodes the account's own 7702 initialization call (the `initializeAccount`
+  // setup op sent to the orchestrator during intent preparation). Distinct from
+  // `getEip7702AdoptionPlan`, whose `initData` is the raw, unsigned module data
+  // used to build the init typed data the EOA signs.
+  readonly getEip7702InitCall?: (
+    input: AccountConstruction,
+    eip7702InitSignature: Hex,
+  ) => Hex
   readonly encodeCalls: (input: AccountCallEncodingInput) => Hex
   readonly encodeModuleInstallation: (module: ResolvedModule) => readonly Hex[]
   readonly encodeModuleUninstallation: (module: ResolvedModule) => Hex

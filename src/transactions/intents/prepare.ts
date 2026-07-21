@@ -40,6 +40,9 @@ export async function prepareIntent<CompatibilityConfig>(
       ...projectIntentAccount({
         runtime,
         setupOverride: input.accountSetupOverride,
+        ...(input.eip7702InitSignature
+          ? { eip7702InitSignature: input.eip7702InitSignature }
+          : {}),
       }),
       ...(sessions ? { mockSignatures: sessions.mockSignatures } : {}),
     },

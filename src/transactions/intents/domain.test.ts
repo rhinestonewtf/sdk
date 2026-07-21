@@ -2,7 +2,10 @@ import { describe, expect, test, vi } from 'vitest'
 import type { AccountRuntime } from '../../accounts/adapter'
 import { toEvmChainReference } from '../../chains/caip2'
 import { RateLimitedError } from '../../clients/orchestrator/errors'
-import { IntentFailedError } from '../../errors/execution'
+import {
+  Eip7702InitSignatureRequiredError,
+  IntentFailedError,
+} from '../../errors/execution'
 import { projectIntentAccount, projectIntentRecipient } from './account'
 import { normalizeIntentTypedData } from './normalize'
 import { selectIntentQuote } from './quotes'
@@ -123,11 +126,26 @@ describe('intent domain', () => {
           factoryData: '0x12',
         }),
         getEip7702AdoptionPlan: () => ({ contract: address, initData: '0x' }),
+        getEip7702InitCall: (
+          _construction: unknown,
+          signature: `0x${string}`,
+        ) => `0xinit${signature.slice(2)}` as `0x${string}`,
       },
     } as unknown as AccountRuntime
-    expect(
-      projectIntentAccount({ runtime: eip7702Runtime }).delegations,
-    ).toEqual({ 0: { contract: address } })
+    const projected7702 = projectIntentAccount({
+      runtime: eip7702Runtime,
+      eip7702InitSignature: '0xabcd',
+    })
+    expect(projected7702.delegations).toEqual({ 0: { contract: address } })
+    // 7702 accounts are routed by the signed `initializeAccount` setup op,
+    // targeted at the account itself — not the factory deployment op.
+    expect(projected7702.setupOps).toEqual([
+      { to: address, data: '0xinitabcd' },
+    ])
+    // The init signature is mandatory for 7702 preparation.
+    expect(() =>
+      projectIntentAccount({ runtime: eip7702Runtime }),
+    ).toThrowError(Eip7702InitSignatureRequiredError)
     expect(projectIntentRecipient(address, chain)).toMatchObject({
       accountType: 'EOA',
     })

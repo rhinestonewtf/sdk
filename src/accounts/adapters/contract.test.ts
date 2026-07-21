@@ -239,6 +239,14 @@ describe('account adapter contract', () => {
       contract: expect.any(String),
       initData: expect.stringMatching(/^0x/u),
     })
+    // The signed init call wraps the signature + packed module data in an
+    // `initializeAccount` call, embedding the provided init signature.
+    const nexusInitCall = createNexusAdapter(adoptedNexus).getEip7702InitCall?.(
+      adoptedNexus,
+      '0xabcd',
+    )
+    expect(nexusInitCall).toMatch(/^0x[0-9a-f]+$/u)
+    expect(nexusInitCall).toContain('abcd')
 
     const kernel = construction({
       account: { type: 'kernel', salt: zeroHash },
