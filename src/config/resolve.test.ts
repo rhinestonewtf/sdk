@@ -228,6 +228,48 @@ describe('SDK config resolution', () => {
     ).toBe('https://custom-default.test')
   })
 
+  test('materializes fresh contexts from a fixed profile, shared auth, and live compatibility state', () => {
+    const sdk = resolveSdkConfig({ apiKey: 'test' })
+    const compatibility = createLegacyAccountConfig(
+      {
+        account: { type: 'safe' },
+        owners: { type: 'ecdsa', accounts: [accountA] },
+      },
+      captureLegacySdkConfig({ apiKey: 'test' }, sdk.auth),
+    )
+
+    const first = materializeAccountInvocationContext(
+      sdk,
+      compatibility,
+      'get-address',
+    )
+    const second = materializeAccountInvocationContext(
+      sdk,
+      compatibility,
+      'deploy',
+    )
+
+    // Freshly materialized: a new context object per call, never reused.
+    expect(first).not.toBe(second)
+    expect(first.sdk).not.toBe(second.sdk)
+
+    // Fixed default profile and shared auth-provider identity are threaded by
+    // reference from the resolved SDK config into every context.
+    expect(first.sdk.profile).toBe(sdk.profile)
+    expect(first.sdk.defaults).toBe(sdk.defaults)
+    expect(first.sdk.auth).toBe(sdk.auth)
+    expect(second.sdk.auth).toBe(sdk.auth)
+
+    // Compatibility state is read live: a post-construction mutation is observed
+    // by the next materialization.
+    expect(first.sdk.environment).toBe('production')
+    compatibility.useDevContracts = true
+    expect(
+      materializeAccountInvocationContext(sdk, compatibility, 'deploy').sdk
+        .environment,
+    ).toBe('development')
+  })
+
   test('matches the rich resolved-config golden', () => {
     const expiration = new Date('2030-01-01T00:00:00.000Z')
     const sdk = resolveSdkConfig({
