@@ -248,7 +248,8 @@ export const sessionScenarios = [
     },
     comparison: 'isolated-state',
     terminalAssertions: ['intent-completed'],
-    timeoutMs: 180_000,
+    // Cross-chain execute waits on variable relayer settlement latency.
+    timeoutMs: 300_000,
   }),
   intentScenario({
     id: 'sessions/startale-cross-chain-destination-signing',
@@ -276,7 +277,8 @@ export const sessionScenarios = [
     },
     comparison: 'isolated-state',
     terminalAssertions: ['intent-completed'],
-    timeoutMs: 180_000,
+    // Cross-chain execute waits on variable relayer settlement latency.
+    timeoutMs: 300_000,
   }),
   intentScenario({
     id: 'sessions/sudo-permission',

@@ -511,6 +511,8 @@ export const intentScenarios = [
     },
     comparison: 'isolated-state',
     terminalAssertions: ['intent-completed', 'balance-changed'],
-    timeoutMs: 180_000,
+    // Cross-chain execute waits on relayer settlement, whose fill latency on dev
+    // is highly variable (seconds typically, but occasional multi-minute stalls).
+    timeoutMs: 300_000,
   }),
 ] as const

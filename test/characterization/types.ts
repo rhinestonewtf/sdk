@@ -547,6 +547,35 @@ const EXECUTE_NORMALIZATION_RULES = [
   'receipt-block',
 ] as const satisfies readonly NormalizationRule[]
 
+// Live cost budgets, in ms. On dev the orchestrator portfolio endpoint alone is
+// ~25-30s per call, and cold setup (deploy + fund + portfolio propagation)
+// stacks several such calls plus on-chain settlement. A flat timeout starves
+// cold funded/deploy scenarios; these additive budgets keep each timeout
+// proportional to the setup and mode the scenario actually drives. Warm reuse of
+// the same SDK_ITEST_RUN_ID stays well under these.
+const MODE_TIMEOUT_MS = {
+  sign: 60_000,
+  dryRun: 90_000,
+  execute: 180_000,
+} as const
+const FUNDING_TIMEOUT_MS = 120_000
+const DEPLOY_TIMEOUT_MS = 60_000
+const SESSION_ENABLE_TIMEOUT_MS = 60_000
+
+function computeTimeoutMs(
+  definition: ScenarioDefinition<CharacterizationScenario>,
+  preconditions: ReadonlySet<ScenarioBase['setup']['preconditions'][number]>,
+): number {
+  const funding = definition.setup?.funding ?? 'none'
+  let timeout = MODE_TIMEOUT_MS[definition.mode]
+  if (preconditions.has('account-funded') || funding !== 'none') {
+    timeout += FUNDING_TIMEOUT_MS
+  }
+  if (preconditions.has('account-deployed')) timeout += DEPLOY_TIMEOUT_MS
+  if (preconditions.has('session-enabled')) timeout += SESSION_ENABLE_TIMEOUT_MS
+  return timeout
+}
+
 function scenarioDefaults(
   definition: ScenarioDefinition<CharacterizationScenario>,
 ): ScenarioDefaults {
@@ -564,8 +593,16 @@ function scenarioDefaults(
   }
   if (preconditions.size === 0) preconditions.add('none')
 
+  // Timeout tracks the effective setup: an explicit scenario `setup` overrides
+  // the inferred preconditions (intentScenario spreads the definition last), so
+  // budget against whichever will actually run.
+  const effectivePreconditions = definition.setup
+    ? new Set(definition.setup.preconditions)
+    : preconditions
+
   return {
     ...DEFAULT_SCENARIO_FIELDS,
+    timeoutMs: computeTimeoutMs(definition, effectivePreconditions),
     comparison:
       definition.mode === 'dryRun'
         ? 'isolated-state'
