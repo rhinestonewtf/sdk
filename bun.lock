@@ -1,9 +1,9 @@
 {
   "lockfileVersion": 1,
+  "configVersion": 0,
   "workspaces": {
     "": {
       "dependencies": {
-        "@rhinestone/shared-configs": "^1.7.15",
         "viem": "^2.55.0",
       },
       "devDependencies": {
@@ -26,7 +26,7 @@
     },
     "src": {
       "name": "@rhinestone/sdk",
-      "version": "2.0.0-beta.42",
+      "version": "2.0.0-beta.43",
       "dependencies": {
         "@rhinestone/shared-configs": "1.7.15",
         "solady": "^0.1.26",
