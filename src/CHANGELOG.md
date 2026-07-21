@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 2.0.0-beta.43
+
+### Patch Changes
+
+- 0bbf56d: Bump @rhinestone/shared-configs to 1.7.15 to add Avalanche C-Chain (43114) support.
+
 ## 2.0.0-beta.42
 
 ### Minor Changes

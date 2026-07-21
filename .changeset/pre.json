@@ -8,6 +8,7 @@
     "add-app-fee-balances",
     "add-disable-session",
     "add-hca-account",
+    "avalanche-43114",
     "blanc-client",
     "blanc-orphaned-helpers",
     "blanc-portfolio-per-chain-decimals",
