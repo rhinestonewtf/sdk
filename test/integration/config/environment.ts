@@ -3,20 +3,6 @@ import { RhinestoneSDK } from '../../../src/index'
 const API_KEY_ENV = 'INTEGRATION_RHINESTONE_API_KEY'
 const ORCHESTRATOR_URL_ENV = 'INTEGRATION_ORCHESTRATOR_URL'
 const FUNDER_PRIVATE_KEY_ENV = 'INTEGRATION_FUNDER_PRIVATE_KEY'
-const TARGET_ENV = 'INTEGRATION_TARGET'
-
-export const DEV_ORCHESTRATOR_URL = 'https://dev.v1.orchestrator.rhinestone.dev'
-export const PROD_ORCHESTRATOR_URL = 'https://v1.orchestrator.rhinestone.dev'
-
-export type IntegrationTarget = 'dev' | 'prod'
-
-export function getIntegrationTarget(): IntegrationTarget {
-  const target = process.env[TARGET_ENV] ?? 'dev'
-  if (target !== 'dev' && target !== 'prod') {
-    throw new Error(`${TARGET_ENV} must be either dev or prod`)
-  }
-  return target
-}
 
 export function getIntegrationApiKey(): string {
   const apiKey = process.env[API_KEY_ENV]
@@ -45,27 +31,22 @@ export function getIntegrationFunderPrivateKey(): `0x${string}` {
   return key as `0x${string}`
 }
 
+// Optional endpoint override (e.g. dev orchestrator). Defaults to the SDK's
+// built-in prod URL when unset. Trailing slash trimmed so request URLs don't
+// double up on `/`.
 export function getIntegrationOrchestratorUrl(): string | undefined {
   const url = process.env[ORCHESTRATOR_URL_ENV]
-  const target = getIntegrationTarget()
-  const normalized = url?.replace(/\/+$/, '')
-  if (target !== 'prod' && normalized === PROD_ORCHESTRATOR_URL) {
-    throw new Error(
-      `${ORCHESTRATOR_URL_ENV} targets prod; set ${TARGET_ENV}=prod explicitly`,
-    )
-  }
-  if (normalized) return normalized
-  return target === 'dev' ? DEV_ORCHESTRATOR_URL : undefined
+  return url ? url.replace(/\/+$/, '') : undefined
 }
 
+// When pointing at the dev orchestrator, the SDK must also build bundles with
+// dev contract addresses (IntentExecutor etc.); otherwise the dev orchestrator
+// simulates against mismatched contracts and bundle submission fails. Tie the
+// two together: set dev contracts whenever a custom endpoint is configured, or
+// force it explicitly via INTEGRATION_USE_DEV_CONTRACTS.
 export function getIntegrationUseDevContracts(): boolean {
-  const configured = process.env.INTEGRATION_USE_DEV_CONTRACTS
-  if (configured !== undefined) {
-    if (configured === 'true') return true
-    if (configured === 'false') return false
-    throw new Error('INTEGRATION_USE_DEV_CONTRACTS must be true or false')
-  }
-  return getIntegrationTarget() === 'dev'
+  if (process.env.INTEGRATION_USE_DEV_CONTRACTS === 'true') return true
+  return getIntegrationOrchestratorUrl() !== undefined
 }
 
 export function createIntegrationSDK(): RhinestoneSDK {

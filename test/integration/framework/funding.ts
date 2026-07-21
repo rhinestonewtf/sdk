@@ -190,38 +190,16 @@ export async function waitForOrchestratorUsdc(
   chain: Chain,
   min: bigint,
 ): Promise<void> {
-  return waitForOrchestratorBalance(account, chain, 'USDC', min)
-}
-
-export async function waitForOrchestratorNative(
-  account: RhinestoneAccount,
-  chain: Chain,
-  min: bigint,
-): Promise<void> {
-  return waitForOrchestratorBalance(
-    account,
-    chain,
-    chain.nativeCurrency.symbol,
-    min,
-  )
-}
-
-async function waitForOrchestratorBalance(
-  account: RhinestoneAccount,
-  chain: Chain,
-  symbol: string,
-  min: bigint,
-): Promise<void> {
   for (let attempt = 0; attempt < 20; attempt++) {
     const portfolio = await account.getPortfolio(true)
-    const token = portfolio.find((entry) => entry.symbol === symbol)
-    const onChain = token?.chains.find((entry) => entry.chain === chain.id)
+    const usdc = portfolio.find((token) => token.symbol === 'USDC')
+    const onChain = usdc?.chains.find((entry) => entry.chain === chain.id)
     if (onChain && onChain.amount >= min) return
     await sleep(2_000)
   }
   throw new Error(
     `Orchestrator portfolio for ${account.getAddress()} never showed >= ${min} ` +
-      `${symbol} on ${chain.name} after funding`,
+      `USDC on ${chain.name} after funding`,
   )
 }
 
