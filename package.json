@@ -6,10 +6,6 @@
     "test": "bun run test:unit",
     "test:unit": "vitest --config vitest.config.unit.ts",
     "test:contract": "bun run scripts/contract/run.ts",
-    "test:characterization": "vitest --config vitest.config.characterization.ts",
-    "test:characterization:compare": "vitest --config vitest.config.characterization.ts",
-    "test:characterization:smoke": "SDK_ITEST_SUBJECT=legacy SDK_ITEST_BASE_SHA=49efb8b8d957b2eea2b24c11ac56d6c4d80478d6 SDK_ITEST_TAGS=smoke vitest --config vitest.config.characterization.ts",
-    "test:characterization:aggregate": "bun run scripts/characterization/aggregate.ts",
     "test:coverage:core": "vitest --config vitest.config.core.ts --coverage --run",
     "test:coverage:pure": "vitest --config vitest.config.core.ts --coverage --run",
     "test:integration": "vitest --config vitest.config.integration.ts",
@@ -26,8 +22,7 @@
     "changeset": "changeset",
     "changeset:release": "bun run build && changeset publish",
     "changeset:version": "changeset version && bun run scripts/sync-version.ts",
-    "size": "size-limit",
-    "size:rewrite": "bun run scripts/rewrite-bundle-report.ts"
+    "size": "size-limit"
   },
   "workspaces": [
     "./src"
@@ -39,7 +34,6 @@
   "devDependencies": {
     "@biomejs/biome": "^2.1.0",
     "@changesets/cli": "^2.28.1",
-    "@noble/curves": "1.9.1",
     "@size-limit/esbuild-why": "^11.2.0",
     "@size-limit/preset-small-lib": "^11.2.0",
     "@types/bun": "^1.2.8",

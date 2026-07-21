@@ -1,20 +1,5 @@
 {
-  "baseSha": "49efb8b8d957b2eea2b24c11ac56d6c4d80478d6",
   "packageName": "@rhinestone/sdk",
-  "packageVersion": "2.0.0-beta.40",
-  "sizeBytes": {
-    ".": 42431,
-    "./actions": 23659,
-    "./actions/ecdsa": 24049,
-    "./actions/mfa": 23766,
-    "./actions/passkeys": 23787,
-    "./signing/passkeys": 513,
-    "./actions/smart-sessions": 25346,
-    "./errors": 19223,
-    "./utils": 23926,
-    "./smart-sessions": 23780,
-    "./jwt-server": 1634
-  },
   "entrypoints": {
     ".": {
       "types": "./dist/src/index.d.ts",
@@ -37,8 +22,8 @@
       "import": "./dist/src/actions/passkeys.js"
     },
     "./signing/passkeys": {
-      "types": "./dist/src/accounts/signing/passkeys.d.ts",
-      "import": "./dist/src/accounts/signing/passkeys.js"
+      "types": "./dist/src/signing/passkeys.d.ts",
+      "import": "./dist/src/signing/passkeys.js"
     },
     "./actions/smart-sessions": {
       "types": "./dist/src/actions/smart-sessions.d.ts",

@@ -28,14 +28,6 @@ export interface PackageManifest {
   publishConfig?: Record<string, unknown>
 }
 
-export interface ContractProvenance {
-  formatVersion: 1
-  sourceSha: string
-  sourceDirty: boolean
-  packageName: string
-  packageVersion: string
-}
-
 export interface CommandOptions {
   cwd: string
   env?: NodeJS.ProcessEnv

@@ -8,7 +8,6 @@
       "!coverage",
       "!integration-test",
       "!.changeset",
-      "!test/characterization/baselines",
       "!src/orchestrator/wire.gen.ts"
     ]
   },

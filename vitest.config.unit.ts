@@ -5,7 +5,6 @@ export default defineConfig({
     include: [
       'src/**/*.test.ts',
       'scripts/architecture/**/*.test.ts',
-      'test/characterization/**/*.test.ts',
       'test/integration/config/**/*.test.ts',
       'test/integration/framework/**/*.test.ts',
       'test/vectors/**/*.test.ts',

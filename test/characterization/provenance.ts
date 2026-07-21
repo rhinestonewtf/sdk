@@ -1,2 +1,0 @@
-export const CHARACTERIZATION_BASE_SHA =
-  '49efb8b8d957b2eea2b24c11ac56d6c4d80478d6'

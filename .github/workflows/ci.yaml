@@ -67,8 +67,6 @@ jobs:
         run: bun run clean
 
       - name: Run tests
-        env:
-          SDK_ITEST_CURRENT_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: bun run test
 
       - name: Check pure-core coverage

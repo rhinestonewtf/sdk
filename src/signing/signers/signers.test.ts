@@ -168,6 +168,9 @@ describe('signer adapters', () => {
     expect(() => walletClientToAccount({} as WalletClient)).toThrow(
       WalletClientNoConnectedAccountError,
     )
+    expect(() =>
+      walletClientToAccount({ account: undefined } as WalletClient),
+    ).toThrow('missing a default account')
     const wallet = {
       account: { address },
       signMessage: vi.fn(async () => signature),

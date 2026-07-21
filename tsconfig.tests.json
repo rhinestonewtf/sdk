@@ -5,10 +5,8 @@
     "noEmit": true
   },
   "include": [
-    "scripts/characterization/**/*.ts",
     "scripts/architecture/**/*.ts",
     "scripts/contract/**/*.ts",
-    "test/characterization/**/*.ts",
     "test/contract/*.ctest.ts",
     "test/fakes/**/*.ts",
     "test/vectors/**/*.ts",
