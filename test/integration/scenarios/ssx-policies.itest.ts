@@ -4,9 +4,10 @@ import { sharedChainCatalog } from '../../../src/chains/catalog'
 import { getTokenAddress } from '../../../src/chains/tokens'
 import { SimulationFailedError } from '../../../src/errors/index'
 import type { RhinestoneAccount, Session } from '../../../src/index'
+import { toSession } from '../../../src/smart-sessions/index'
 import { sourceChain } from '../config/chains'
 import { createIntegrationSDK } from '../config/environment'
-import { createIntegrationSession, createOwner } from '../framework/fixtures'
+import { createOwner } from '../framework/fixtures'
 import { ensureFunded, waitForOrchestratorUsdc } from '../framework/funding'
 import {
   executeIntent,
@@ -39,7 +40,7 @@ function usdcTransfer(to: Address, amount: bigint) {
 }
 
 function spendingLimitSession(amount: bigint): Session {
-  return createIntegrationSession({
+  return toSession({
     chain: sourceChain,
     owners: { type: 'ecdsa', accounts: [createOwner()] },
     permissions: [
@@ -55,7 +56,7 @@ function spendingLimitSession(amount: bigint): Session {
 function allowlistSession(
   recipients: readonly [Address, ...Address[]],
 ): Session {
-  return createIntegrationSession({
+  return toSession({
     chain: sourceChain,
     owners: { type: 'ecdsa', accounts: [createOwner()] },
     permissions: [

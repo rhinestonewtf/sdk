@@ -1,6 +1,5 @@
 import { chainRegistry } from '@rhinestone/shared-configs'
 import {
-  type Abi,
   type Address,
   encodeFunctionData,
   erc20Abi,
@@ -10,13 +9,8 @@ import {
 } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import type { Chain } from 'viem/chains'
-import type {
-  Session,
-  SessionDefinition,
-  TokenSymbol,
-} from '../../../src/index'
+import type { Session, TokenSymbol } from '../../../src/index'
 import { toSession } from '../../../src/smart-sessions/index'
-import { getIntegrationUseDevContracts } from '../config/environment'
 
 export const noopTarget: Address = '0xd8da6bf26964af9d7eed9e03e53415d37aa96045'
 
@@ -31,14 +25,6 @@ const noopAbi = [
 ] as const
 
 export const noopSelector = toFunctionSelector(noopAbi[0])
-
-export function createIntegrationSession<const TAbis extends readonly Abi[]>(
-  definition: SessionDefinition<TAbis>,
-): Session {
-  return toSession(definition, {
-    useDevContracts: getIntegrationUseDevContracts(),
-  })
-}
 
 export function createOwner() {
   return privateKeyToAccount(generatePrivateKey())
@@ -89,7 +75,7 @@ export function createScopedSession({
   chain: Chain
   owner: ReturnType<typeof privateKeyToAccount>
 }): Session {
-  return createIntegrationSession({
+  return toSession({
     chain,
     owners: { type: 'ecdsa', accounts: [owner] },
     permissions: [
@@ -109,7 +95,7 @@ export function createUnscopedSession({
   chain: Chain
   owner: ReturnType<typeof privateKeyToAccount>
 }): Session {
-  return createIntegrationSession({
+  return toSession({
     chain,
     owners: { type: 'ecdsa', accounts: [owner] },
   })
@@ -122,7 +108,7 @@ export function createMultiScopedSession({
   chain: Chain
   owner: ReturnType<typeof privateKeyToAccount>
 }): Session {
-  return createIntegrationSession({
+  return toSession({
     chain,
     owners: { type: 'ecdsa', accounts: [owner] },
     permissions: [
