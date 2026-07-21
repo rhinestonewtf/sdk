@@ -75,7 +75,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@rhinestone/shared-configs": "1.7.8",
+    "@rhinestone/shared-configs": "1.7.15",
     "solady": "^0.1.26"
   },
   "peerDependencies": {
