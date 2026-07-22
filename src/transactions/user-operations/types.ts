@@ -11,6 +11,7 @@ import type { PaymasterPort } from '../../clients/paymaster/port'
 import type { RpcPort } from '../../clients/rpc/port'
 import type { UserOperationTransaction } from '../../config/account'
 import type {
+  OwnerSignerSelection,
   SignerInvocationPort,
   SigningCheckpointPort,
   SigningTranscript,
@@ -22,6 +23,7 @@ export interface UserOperationInput<CompatibilityConfig = unknown> {
   readonly calls: readonly UnresolvedCall<CompatibilityConfig>[]
   readonly nonceKey?: bigint
   readonly gasLimit?: bigint
+  readonly signers?: OwnerSignerSelection
 }
 
 export interface PreparedUserOperation<CompatibilityConfig = unknown> {

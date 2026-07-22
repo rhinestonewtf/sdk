@@ -181,6 +181,7 @@ export interface AccountWorkflows<CompatibilityConfig = unknown> {
     input: {
       readonly chain: EvmChainReference
       readonly operation: PreparedUserOperation<CompatibilityConfig>['operation']
+      readonly signers?: OwnerSignerSelection
     },
   ) => Promise<PreparedUserOperation<CompatibilityConfig>>
   readonly reconstructSignedUserOperation: (
@@ -189,6 +190,7 @@ export interface AccountWorkflows<CompatibilityConfig = unknown> {
       readonly chain: EvmChainReference
       readonly operation: PreparedUserOperation<CompatibilityConfig>['operation']
       readonly signature: Hex
+      readonly signers?: OwnerSignerSelection
     },
   ) => Promise<SignedUserOperation<CompatibilityConfig>>
   readonly getPortfolio: (

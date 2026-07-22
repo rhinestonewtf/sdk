@@ -2,6 +2,7 @@ import type { Hex } from 'viem'
 import type { EvmChainReference } from '../../chains/types'
 import type { BundlerUserOperation } from '../../clients/bundler/port'
 import { createAccountSigningContext } from '../../signing/context'
+import type { OwnerSignerSelection } from '../../signing/types'
 import { hashUserOperation } from './hash'
 import { buildUserOperationSigningPlanInput } from './prepare'
 import type {
@@ -13,6 +14,7 @@ import type {
 interface ReconstructPreparedInput {
   readonly chain: EvmChainReference
   readonly operation: BundlerUserOperation
+  readonly signers?: OwnerSignerSelection
 }
 
 interface ReconstructSignedInput extends ReconstructPreparedInput {
@@ -34,10 +36,15 @@ export async function reconstructPreparedUserOperation<CompatibilityConfig>(
     runtime,
     purpose: 'user-operation',
     signerInvoker: context.signerInvoker,
+    ...(input.signers ? { selection: input.signers } : {}),
   })
   const hash = hashUserOperation(input.chain, input.operation)
   return {
-    input: { chain: input.chain, calls: [] },
+    input: {
+      chain: input.chain,
+      calls: [],
+      ...(input.signers ? { signers: input.signers } : {}),
+    },
     operation: input.operation,
     hash,
     signing: buildUserOperationSigningPlanInput(
@@ -61,6 +68,7 @@ export async function reconstructSignedUserOperation<CompatibilityConfig>(
   const prepared = await reconstructPreparedUserOperation(context, {
     chain: input.chain,
     operation,
+    ...(input.signers ? { signers: input.signers } : {}),
   })
   return {
     prepared,

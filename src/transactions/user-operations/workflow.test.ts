@@ -7,6 +7,7 @@ import { toEvmChainReference } from '../../chains/caip2'
 import type { ContractRead, RpcReadContext } from '../../clients/rpc/types'
 import { defineValidator } from '../../modules/validators/definition'
 import { OWNABLE_VALIDATOR_ADDRESS } from '../../modules/validators/ownable'
+import { ecdsaSignerId } from '../../modules/validators/signer-id'
 import { prepareUserOperation } from './prepare'
 import {
   reconstructPreparedUserOperation,
@@ -21,9 +22,25 @@ const chain = toEvmChainReference(1)
 const owner = privateKeyToAccount(
   '0x0000000000000000000000000000000000000000000000000000000000000001',
 )
+const selectedOwner = privateKeyToAccount(
+  '0x0000000000000000000000000000000000000000000000000000000000000002',
+)
 const sender = '0x0000000000000000000000000000000000000010' as const
 const signature = `0x${'11'.repeat(64)}1b` as const
 const hash = `0x${'22'.repeat(32)}` as const
+const selectedValidator = '0x0000000000000000000000000000000000000020' as const
+
+function selectedOwnerSigners() {
+  return {
+    kind: 'owner' as const,
+    validator: defineValidator({
+      type: 'ecdsa' as const,
+      accounts: [selectedOwner],
+      module: selectedValidator,
+    }),
+    signerIds: [ecdsaSignerId(selectedOwner)],
+  }
+}
 
 function runtime(): AccountRuntime {
   const construction: AccountConstruction = {
@@ -154,6 +171,40 @@ describe('UserOperation workflow', () => {
     )
   })
 
+  test('uses the selected owner validator for nonce and signing', async () => {
+    const readContract = vi.fn()
+    const workflow = context({
+      rpc: {
+        forChain: () => ({
+          getCode: vi.fn(),
+          getTransactionCount: vi.fn(),
+          readContract: async <TResult>(
+            readContext: RpcReadContext,
+            request: ContractRead<TResult>,
+          ) => {
+            readContract(readContext, request)
+            return 7n as TResult
+          },
+          multicall: vi.fn(),
+        }),
+      },
+    })
+    const prepared = await prepareUserOperation(workflow, {
+      ...input,
+      signers: selectedOwnerSigners(),
+    })
+
+    expect(readContract).toHaveBeenCalledWith(
+      { chain },
+      expect.objectContaining({
+        args: [sender, BigInt(concat(['0x00000000', selectedValidator]))],
+      }),
+    )
+    expect(prepared.signing.effectiveSelection.signerIds).toEqual([
+      ecdsaSignerId(selectedOwner),
+    ])
+  })
+
   test('prepares nonce, account call data, deployment, fees, gas, and signing plan', async () => {
     const workflow = context({
       paymaster: {
@@ -267,6 +318,34 @@ describe('UserOperation workflow', () => {
 
     const signed = await signUserOperation(workflow, reconstructed)
     expect(signed.operation.paymaster).toBe(sender)
+  })
+
+  test('preserves selected owner signers when reconstructing UserOperations', async () => {
+    const workflow = context()
+    const operation = (await prepareUserOperation(workflow, input)).operation
+    const signers = selectedOwnerSigners()
+    const prepared = await reconstructPreparedUserOperation(workflow, {
+      chain,
+      operation,
+      signers,
+    })
+
+    expect(prepared.input.signers).toBe(signers)
+    expect(prepared.signing.effectiveSelection.signerIds).toEqual([
+      ecdsaSignerId(selectedOwner),
+    ])
+
+    const signed = await reconstructSignedUserOperation(workflow, {
+      chain,
+      operation,
+      signature,
+      signers,
+    })
+
+    expect(signed.prepared.input.signers).toBe(signers)
+    expect(signed.prepared.signing.effectiveSelection.signerIds).toEqual([
+      ecdsaSignerId(selectedOwner),
+    ])
   })
 
   test('reconstructs a signed UserOperation for submission without bundler reads', async () => {

@@ -50,7 +50,11 @@ import {
   webauthnSignerId,
 } from '../modules/validators/signer-id'
 import type { SessionDetails } from '../modules/validators/smart-sessions/types'
-import type { OwnerSignature, SignAsOwnerOptions } from '../signing/types'
+import type {
+  OwnerSignature,
+  OwnerSignerSelection,
+  SignAsOwnerOptions,
+} from '../signing/types'
 import {
   projectIntentAccount,
   projectIntentRecipient,
@@ -697,8 +701,8 @@ export function createAccountFacade(
       }
     },
     async prepareUserOperation(transaction) {
-      assertUserOperationSignerSelection(transaction)
       const ctx = context('prepare-user-operation')
+      const signers = userOperationSignerSelection(ctx, transaction)
       const prepared = await workflowsFor(ctx).prepareUserOperation(ctx, {
         chain: toEvmChainReference(transaction.chain.id),
         calls: transaction.calls.map((call) =>
@@ -707,6 +711,7 @@ export function createAccountFacade(
         ...(transaction.gasLimit === undefined
           ? {}
           : { gasLimit: transaction.gasLimit }),
+        ...(signers ? { signers } : {}),
       })
       const data: PreparedUserOperationData = {
         userOperation:
@@ -718,6 +723,10 @@ export function createAccountFacade(
     },
     async signUserOperation(preparedUserOperation) {
       const ctx = context('sign-user-operation')
+      const signers = userOperationSignerSelection(
+        ctx,
+        preparedUserOperation.transaction,
+      )
       // Recompute from the current public operation and live owners.
       const internal = await workflowsFor(ctx).reconstructPreparedUserOperation(
         ctx,
@@ -727,6 +736,7 @@ export function createAccountFacade(
           ),
           operation:
             preparedUserOperation.userOperation as unknown as PreparedUserOperation<Compat>['operation'],
+          ...(signers ? { signers } : {}),
         },
       )
       const signed = await workflowsFor(ctx).signUserOperation(ctx, internal)
@@ -738,6 +748,10 @@ export function createAccountFacade(
     },
     async submitUserOperation(signedUserOperation) {
       const ctx = context('submit-user-operation')
+      const signers = userOperationSignerSelection(
+        ctx,
+        signedUserOperation.transaction,
+      )
       // The public operation and top-level signature remain authoritative.
       const internal = await workflowsFor(ctx).reconstructSignedUserOperation(
         ctx,
@@ -746,17 +760,22 @@ export function createAccountFacade(
           operation:
             signedUserOperation.userOperation as unknown as PreparedUserOperation<Compat>['operation'],
           signature: signedUserOperation.signature,
+          ...(signers ? { signers } : {}),
         },
       )
       const submitted = await workflowsFor(ctx).submitUserOperation(
         ctx,
         internal,
       )
-      return { type: 'userop', hash: submitted.hash, chain: submitted.chain.id }
+      return {
+        type: 'userop',
+        hash: submitted.hash,
+        chain: submitted.chain.id,
+      }
     },
     async sendUserOperation(transaction) {
-      assertUserOperationSignerSelection(transaction)
       const ctx = context('send-user-operation')
+      const signers = userOperationSignerSelection(ctx, transaction)
       const submitted = await workflowsFor(ctx).sendUserOperation(ctx, {
         chain: toEvmChainReference(transaction.chain.id),
         calls: transaction.calls.map((call) =>
@@ -765,8 +784,13 @@ export function createAccountFacade(
         ...(transaction.gasLimit === undefined
           ? {}
           : { gasLimit: transaction.gasLimit }),
+        ...(signers ? { signers } : {}),
       })
-      return { type: 'userop', hash: submitted.hash, chain: submitted.chain.id }
+      return {
+        type: 'userop',
+        hash: submitted.hash,
+        chain: submitted.chain.id,
+      }
     },
     waitForExecution: ((
       result: TransactionResult | UserOperationResult,
@@ -848,12 +872,17 @@ function signerIdForOwner(owner: SignAsOwnerOptions['owner']): string {
   return ecdsaSignerId((owner as { address: Address }).address)
 }
 
-function assertUserOperationSignerSelection(
+function userOperationSignerSelection(
+  context: AccountInvocationContext<Compat>,
   transaction: UserOperationTransaction,
-): void {
+): OwnerSignerSelection | undefined {
+  if (!transaction.signers) return undefined
   if (transaction.signers?.type === 'experimental_session') {
     throw new Error('No account found')
   }
+  const selection = adaptSignerSelection(context.account, transaction.signers)
+  if (selection.kind !== 'owner') throw new Error('No account found')
+  return selection
 }
 
 function destinationChainReference(

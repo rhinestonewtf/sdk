@@ -62,6 +62,7 @@ import { createSignerInvocationPort } from '../signing/signers/registry'
 import type { ExternalSignerRegistry } from '../signing/signers/types'
 import { resolveAccountTypedDataSigning } from '../signing/typed-data'
 import type {
+  OwnerSignerSelection,
   SignerInvocationPort,
   SigningCheckpointPort,
 } from '../signing/types'
@@ -294,13 +295,22 @@ function createAccountComposition<CompatibilityConfig>(
     waitForIntentStatus: (context, intentId) =>
       waitForIntentStatus(intentContext(context, dependencies), intentId),
     prepareUserOperation: (context, input) =>
-      prepareUserOperation(userOperationContext(context, dependencies), input),
+      prepareUserOperation(
+        userOperationContext(context, dependencies, input.signers),
+        input,
+      ),
     signUserOperation: (context, input) =>
-      signUserOperation(userOperationContext(context, dependencies), input),
+      signUserOperation(
+        userOperationContext(context, dependencies, input.input.signers),
+        input,
+      ),
     submitUserOperation: (context, input) =>
       submitUserOperation(userOperationContext(context, dependencies), input),
     sendUserOperation: (context, input) =>
-      sendUserOperation(userOperationContext(context, dependencies), input),
+      sendUserOperation(
+        userOperationContext(context, dependencies, input.signers),
+        input,
+      ),
     getUserOperationStatus: (context, input) =>
       getUserOperationStatus(
         userOperationContext(context, dependencies),
@@ -313,12 +323,12 @@ function createAccountComposition<CompatibilityConfig>(
       ),
     reconstructPreparedUserOperation: (context, input) =>
       reconstructPreparedUserOperation(
-        userOperationContext(context, dependencies),
+        userOperationContext(context, dependencies, input.signers),
         input,
       ),
     reconstructSignedUserOperation: (context, input) =>
       reconstructSignedUserOperation(
-        userOperationContext(context, dependencies),
+        userOperationContext(context, dependencies, input.signers),
         input,
       ),
     getPortfolio: (context, onTestnets = false) =>
@@ -939,6 +949,7 @@ function intentContext<CompatibilityConfig>(
 function userOperationContext<CompatibilityConfig>(
   context: AccountInvocationContext<CompatibilityConfig>,
   dependencies: CoreDependencies,
+  selection?: OwnerSignerSelection,
 ): UserOperationWorkflowContext<CompatibilityConfig> {
   if (!dependencies.bundler) {
     throw new Error('A bundler client is required for UserOperations')
@@ -949,7 +960,11 @@ function userOperationContext<CompatibilityConfig>(
     rpc: dependencies.rpc,
     bundler: dependencies.bundler,
     ...(dependencies.paymaster ? { paymaster: dependencies.paymaster } : {}),
-    signerInvoker: signerInvoker(context.account, dependencies),
+    signerInvoker: signerInvoker(
+      context.account,
+      dependencies,
+      selection?.validator,
+    ),
     checkpoints: checkpointPort(context.account, dependencies),
     clock: dependencies.clock,
   }

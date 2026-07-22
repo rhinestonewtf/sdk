@@ -35,6 +35,7 @@ export async function prepareUserOperation<CompatibilityConfig>(
     runtime,
     purpose: 'user-operation',
     signerInvoker: context.signerInvoker,
+    ...(input.signers ? { selection: input.signers } : {}),
   })
   const calls = await resolveCalls(input.calls, {
     account: runtime.identity.address,

@@ -207,6 +207,11 @@ describe('account boundary adapters', () => {
       hash: `0x${'66'.repeat(32)}` as const,
       signing: {} as never,
     }))
+    const sendUserOperation = vi.fn(async (_context, input) => ({
+      type: 'userop' as const,
+      chain: input.chain,
+      hash: `0x${'77'.repeat(32)}` as const,
+    }))
     const workflows = {
       signMessage,
       signTypedData,
@@ -214,6 +219,7 @@ describe('account boundary adapters', () => {
       reconstructPreparedIntent,
       signIntentAsOwner,
       prepareUserOperation,
+      sendUserOperation,
     }
     const facade = createAccountFacade(compatibilityConfig, {
       config: sdk,
@@ -284,14 +290,22 @@ describe('account boundary adapters', () => {
       },
     )
 
-    await facade.prepareUserOperation({
+    const userOperation = {
       chain: mainnet,
       calls: [],
       signers,
-    })
-    expect(prepareUserOperation.mock.calls[0]?.[1]).not.toHaveProperty(
-      'signers',
-    )
+    }
+    await facade.prepareUserOperation(userOperation)
+    await facade.sendUserOperation(userOperation)
+    for (const call of [
+      prepareUserOperation.mock.calls[0]?.[1],
+      sendUserOperation.mock.calls[0]?.[1],
+    ]) {
+      expect(call?.signers).toMatchObject({
+        kind: 'owner',
+        signerIds: [`ecdsa:${selected.address.toLowerCase()}`],
+      })
+    }
     await expect(
       facade.prepareUserOperation({
         chain: mainnet,
