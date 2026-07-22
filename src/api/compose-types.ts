@@ -58,6 +58,10 @@ export interface CoreDependencies {
   readonly clock: ClockPort
 }
 
+export type AccountDependencyResolver<CompatibilityConfig = unknown> = (
+  context: AccountInvocationContext<CompatibilityConfig>,
+) => CoreDependencies
+
 export interface ProjectWorkflows {
   readonly getIntentStatus: (intentId: string) => Promise<IntentStatus>
   readonly splitIntents: OrchestratorPort['splitIntents']

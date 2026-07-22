@@ -74,6 +74,67 @@ describe('account config compatibility snapshot', () => {
     // SDK-scoped auth is exposed on the account config snapshot.
     expect('_authProvider' in account.config).toBe(true)
   })
+
+  test('rebuilds configured clients from live SDK compatibility fields', async () => {
+    const requests: { url: string; headers: Headers }[] = []
+    const fetch = vi.fn(
+      async (input: string | URL | Request, init?: RequestInit) => {
+        const url = input instanceof Request ? input.url : input.toString()
+        const headers = new Headers(
+          input instanceof Request ? input.headers : init?.headers,
+        )
+        requests.push({ url, headers })
+        if (url.includes('/portfolio')) {
+          return new Response(JSON.stringify({ portfolio: [] }), {
+            headers: { 'Content-Type': 'application/json' },
+          })
+        }
+        const body = JSON.parse(String(init?.body)) as { id: number }
+        return new Response(
+          JSON.stringify({ jsonrpc: '2.0', id: body.id, result: '0x' }),
+          { headers: { 'Content-Type': 'application/json' } },
+        )
+      },
+    )
+    vi.stubGlobal('fetch', fetch)
+    try {
+      const sdk = new RhinestoneSDK({
+        apiKey: 'offline',
+        provider: {
+          type: 'custom',
+          urls: { 1: 'https://provider-one.test' },
+        },
+      })
+      const account = await sdk.createAccount({
+        owners: { type: 'ecdsa', accounts: [owner] },
+      })
+      const live = account.config as unknown as LegacyAccountConfig<unknown>
+
+      await account.isDeployed(mainnet)
+      live.provider = {
+        type: 'custom',
+        urls: { 1: 'https://provider-two.test' },
+      }
+      await account.isDeployed(mainnet)
+
+      live.endpointUrl = 'https://orchestrator-two.test/base'
+      live.headers = { 'x-live-config': 'true' }
+      await account.getPortfolio()
+
+      expect(requests.map(({ url }) => url)).toEqual(
+        expect.arrayContaining([
+          'https://provider-one.test/',
+          'https://provider-two.test/',
+        ]),
+      )
+      const orchestratorRequest = requests.find(({ url }) =>
+        url.startsWith('https://orchestrator-two.test/base/accounts/'),
+      )
+      expect(orchestratorRequest?.headers.get('x-live-config')).toBe('true')
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
 })
 
 describe('account boundary adapters', () => {

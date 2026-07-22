@@ -1,6 +1,7 @@
 import { type Address, encodeAbiParameters, type Hex } from 'viem'
 import type { EvmChainReference } from '../chains/types'
 import type { RpcReadPort } from '../clients/rpc/port'
+import { moduleTypeId } from './erc7579-abi'
 import type { ModuleKind, ResolvedModule } from './types'
 import { ENS_HCA_MODULE } from './validators/ens'
 import { OWNABLE_VALIDATOR_ADDRESS } from './validators/ownable'
@@ -76,6 +77,44 @@ export async function readValidatorInitialized(input: {
       args: [input.account],
     },
   )
+}
+
+const moduleInstalledAbi = [
+  {
+    type: 'function',
+    name: 'isModuleInstalled',
+    inputs: [
+      { type: 'uint256', name: 'moduleTypeId' },
+      { type: 'address', name: 'module' },
+      { type: 'bytes', name: 'additionalContext' },
+    ],
+    outputs: [{ type: 'bool', name: 'isInstalled' }],
+    stateMutability: 'view',
+  },
+] as const
+
+export async function readModuleInstallations(input: {
+  readonly rpc: RpcReadPort
+  readonly chain: EvmChainReference
+  readonly account: Address
+  readonly modules: readonly ResolvedModule[]
+}): Promise<readonly boolean[]> {
+  const results = await input.rpc.multicall<
+    readonly { readonly result?: boolean; readonly error?: unknown }[]
+  >(
+    { chain: input.chain },
+    input.modules.map((module) => ({
+      address: input.account,
+      abi: moduleInstalledAbi,
+      functionName: 'isModuleInstalled',
+      args: [
+        moduleTypeId(module.kind),
+        module.address,
+        module.additionalContext,
+      ],
+    })),
+  )
+  return results.map(({ result }) => result === true)
 }
 
 export async function readOwners(input: {

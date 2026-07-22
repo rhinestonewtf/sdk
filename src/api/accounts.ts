@@ -9,7 +9,11 @@ import {
   type LegacyAccountConfig,
   type LegacySdkConfigSnapshot,
 } from '../config/legacy'
-import { resolveSdkConfig } from '../config/resolve'
+import {
+  materializeAccountInvocationContext,
+  resolveSdkConfig,
+} from '../config/resolve'
+import { assertAccountOwnersConfigured } from '../config/validate'
 import { createAccountFacade, type RhinestoneAccount } from './account'
 import { createConfiguredCoreComposition } from './compose'
 import type { CoreComposition } from './compose-types'
@@ -35,6 +39,13 @@ export function attachAccount(
   const compatibilityConfig = createLegacyAccountConfig(
     config as unknown as AccountConstructionInput,
     sdk.snapshot,
+  )
+  assertAccountOwnersConfigured(
+    materializeAccountInvocationContext(
+      sdk.composition.config,
+      compatibilityConfig,
+      'get-address',
+    ).account,
   )
   return createAccountFacade(compatibilityConfig, sdk.composition)
 }

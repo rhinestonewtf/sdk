@@ -19,7 +19,11 @@ import type {
   ResolvedSdkConfig,
 } from '../config/resolved'
 import { getIntentExecutorModule } from '../modules/intent-executor'
-import { readInstalledModules, readOwners } from '../modules/read-core'
+import {
+  readInstalledModules,
+  readModuleInstallations,
+  readOwners,
+} from '../modules/read-core'
 import { defineValidator } from '../modules/validators/definition'
 import { K1_DEFAULT_VALIDATOR_ADDRESS } from '../modules/validators/k1'
 import { ecdsaSignerId } from '../modules/validators/signer-id'
@@ -96,6 +100,7 @@ import { submitUserOperation } from '../transactions/user-operations/submit'
 import type { UserOperationWorkflowContext } from '../transactions/user-operations/types'
 import type {
   AccountComposition,
+  AccountDependencyResolver,
   AccountWorkflows,
   CoreComposition,
   CoreDependencies,
@@ -132,6 +137,8 @@ const sessionEnabledAbi = [
 export function createCoreComposition<CompatibilityConfig = unknown>(
   config: ResolvedSdkConfig,
   dependencies: CoreDependencies,
+  resolveAccountDependencies: AccountDependencyResolver<CompatibilityConfig> = () =>
+    dependencies,
 ): CoreComposition<CompatibilityConfig> {
   const project: ProjectWorkflows = {
     getIntentStatus: (intentId) =>
@@ -142,15 +149,26 @@ export function createCoreComposition<CompatibilityConfig = unknown>(
   return {
     config,
     project,
-    createAccount: (context) => createAccountComposition(context, dependencies),
+    createAccount: (context) =>
+      createAccountComposition(context, resolveAccountDependencies(context)),
   }
 }
 
 export function createConfiguredCoreComposition<CompatibilityConfig = unknown>(
   config: ResolvedSdkConfig,
 ): CoreComposition<CompatibilityConfig> {
+  return createCoreComposition<CompatibilityConfig>(
+    config,
+    createConfiguredDependencies(config),
+    (context) => createConfiguredDependencies(context.sdk),
+  )
+}
+
+function createConfiguredDependencies(
+  config: ResolvedSdkConfig,
+): CoreDependencies {
   const rpc = createRpcPort(config.provider)
-  return createCoreComposition<CompatibilityConfig>(config, {
+  return {
     orchestrator: createConfiguredOrchestratorClient(config),
     rpc,
     bundler: createBundlerClient({ endpoint: config.bundler }),
@@ -162,7 +180,7 @@ export function createConfiguredCoreComposition<CompatibilityConfig = unknown>(
       sleep: (milliseconds) =>
         new Promise((resolve) => setTimeout(resolve, milliseconds)),
     },
-  })
+  }
 }
 
 function createAccountComposition<CompatibilityConfig>(
@@ -509,18 +527,27 @@ async function deployAccount<CompatibilityConfig>(
       ? account.initData.intentExecutorInstalled
       : false
   const asUserOp = Boolean(account.initData) && !intentExecutorInstalled
+  const useUserOperation = asUserOp || context.sdk.bundler?.kind === 'custom'
   let initSignature = options?.eip7702InitSignature
-  if (!initSignature && account.eoa && runtime.adapter.getEip7702AdoptionPlan) {
+  if (
+    !useUserOperation &&
+    !initSignature &&
+    account.eoa &&
+    runtime.adapter.getEip7702AdoptionPlan
+  ) {
     initSignature = (await signEip7702InitData(account, chain, dependencies))
       .signature
   }
-  if (asUserOp) {
-    await sendUserOperation(userOperationContext(context, dependencies), {
+  if (useUserOperation) {
+    const workflowContext = userOperationContext(context, dependencies)
+    const submitted = await sendUserOperation(workflowContext, {
       chain,
       calls: [{ target: zeroAddress, value: 0n, data: '0x' }],
     })
+    await waitForUserOperationStatus(workflowContext, submitted)
   } else {
-    await sendIntent(intentContext(context, dependencies), {
+    const workflowContext = intentContext(context, dependencies)
+    const submitted = await sendIntent(workflowContext, {
       destination: chain,
       sourceChains: [chain],
       calls: [],
@@ -530,6 +557,7 @@ async function deployAccount<CompatibilityConfig>(
         ? { sponsorSettings: { gas: true, bridgeFees: true, swapFees: true } }
         : {},
     })
+    await waitForIntentStatus(workflowContext, submitted.intentId)
   }
   return true
 }
@@ -557,29 +585,14 @@ async function setupAccount<CompatibilityConfig>(
         isAddressEqual(module.address, K1_DEFAULT_VALIDATOR_ADDRESS)
       ),
   )
-  const installedModules = (
-    await Promise.all([
-      readInstalledModules({
-        rpc: dependencies.rpc.forChain(chain),
-        chain,
-        accountKind: account.account.kind,
-        account: runtime.identity.address,
-        kind: 'validator',
-      }),
-      readInstalledModules({
-        rpc: dependencies.rpc.forChain(chain),
-        chain,
-        accountKind: account.account.kind,
-        account: runtime.identity.address,
-        kind: 'executor',
-      }),
-    ])
-  ).flat()
-  const installed = new Set(
-    installedModules.map((address) => address.toLowerCase()),
-  )
+  const installationState = await readModuleInstallations({
+    rpc: dependencies.rpc.forChain(chain),
+    chain,
+    account: runtime.identity.address,
+    modules: candidates,
+  })
   const missing = candidates.filter(
-    (module) => !installed.has(module.address.toLowerCase()),
+    (_module, index) => !installationState[index],
   )
   if (missing.length === 0) return false
   const calls = missing.flatMap((module) =>

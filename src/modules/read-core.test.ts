@@ -5,6 +5,7 @@ import type { ContractRead, RpcReadContext } from '../clients/rpc/types'
 import {
   encodeAccountModuleDeInitData,
   readInstalledModules,
+  readModuleInstallations,
   readValidatorInitialized,
 } from './read-core'
 
@@ -59,6 +60,44 @@ describe('module reads', () => {
         validator,
       }),
     ).resolves.toBe(false)
+  })
+
+  test('checks installation state for every ERC-7579 module kind', async () => {
+    const requests: ContractRead[] = []
+    const rpc: RpcReadPort = {
+      ...fakeReader([]).rpc,
+      multicall: async (_context, input) => {
+        requests.push(...input)
+        return [
+          { result: true },
+          { result: false },
+          { result: true },
+          { error: new Error('read failed') },
+        ] as never
+      },
+    }
+    const kinds = ['validator', 'executor', 'fallback', 'hook'] as const
+
+    await expect(
+      readModuleInstallations({
+        rpc,
+        chain,
+        account,
+        modules: kinds.map((kind, index) => ({
+          kind,
+          address: `0x${String(index + 2).padStart(40, '0')}`,
+          initData: '0x',
+          deInitData: '0x',
+          additionalContext: '0x1234',
+        })),
+      }),
+    ).resolves.toEqual([true, false, true, false])
+    expect(requests.map(({ args }) => args)).toEqual([
+      [1n, expect.any(String), '0x1234'],
+      [2n, expect.any(String), '0x1234'],
+      [3n, expect.any(String), '0x1234'],
+      [4n, expect.any(String), '0x1234'],
+    ])
   })
 
   test('encodes SentinelList predecessors only for compatible accounts', () => {

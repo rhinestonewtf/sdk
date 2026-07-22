@@ -73,8 +73,10 @@ class RhinestoneSDK {
    * })
    * ```
    */
-  createAccount(config: RhinestoneAccountConfig): Promise<RhinestoneAccount> {
-    return Promise.resolve(attachAccount(this.#sdk, config))
+  async createAccount(
+    config: RhinestoneAccountConfig,
+  ): Promise<RhinestoneAccount> {
+    return attachAccount(this.#sdk, config)
   }
 
   /**

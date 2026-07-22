@@ -1,6 +1,8 @@
 import { mainnet } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
+import { OwnersFieldRequiredError } from '../accounts/error'
 import {
+  RhinestoneSDK,
   toOrchestratorSplitRequest,
   toPublicSplitResult,
   toPublicTransactionStatus,
@@ -9,6 +11,15 @@ import {
 const address = '0x0000000000000000000000000000000000000001' as const
 
 describe('SDK project boundary adapters', () => {
+  test('rejects missing owners asynchronously during account creation', async () => {
+    const result = new RhinestoneSDK({ apiKey: 'offline' }).createAccount({
+      account: { type: 'safe' },
+    })
+
+    expect(result).toBeInstanceOf(Promise)
+    await expect(result).rejects.toThrowError(OwnersFieldRequiredError)
+  })
+
   test('maps internal intent status to the public accountAddress shape', () => {
     expect(
       toPublicTransactionStatus({

@@ -1,3 +1,4 @@
+import { encodeAbiParameters } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { describe, expect, test, vi } from 'vitest'
 import { toEvmChainReference } from '../chains/caip2'
@@ -102,12 +103,13 @@ function fixture() {
         maxPriorityFeePerGas: 2n,
       })),
       send: vi.fn(async () => userOperationHash),
-      getReceipt: vi.fn(async () => undefined),
+      getReceipt: vi.fn(async () => ({ success: true }) as never),
     },
     clock: { now: () => 0, sleep: vi.fn(async () => undefined) },
   } as const
   return {
     context,
+    dependencies,
     orchestrator,
     composition: createCoreComposition(sdk, dependencies),
   }
@@ -192,5 +194,95 @@ describe('internal core composition', () => {
     expect(Object.keys(typed.transcript.stages[0]?.results ?? {})).toHaveLength(
       1,
     )
+  })
+
+  test('waits for intent and custom-bundler deployment execution', async () => {
+    const first = fixture()
+    const intentWorkflows = first.composition.createAccount(
+      first.context,
+    ).workflows
+
+    await expect(intentWorkflows.deploy(first.context, chain)).resolves.toBe(
+      true,
+    )
+    expect(first.orchestrator.submitIntent).toHaveBeenCalledOnce()
+    expect(first.orchestrator.getIntentStatus).toHaveBeenCalledWith('intent-1')
+
+    const second = fixture()
+    const customSdk = resolveSdkConfig({
+      apiKey: 'test',
+      bundler: { type: 'custom', url: 'https://bundler.test' },
+    })
+    const customContext = {
+      ...second.context,
+      sdk: customSdk,
+      account: resolveAccountConfig(customSdk, {
+        account: { type: 'nexus', version: '1.2.0' },
+        owners: { type: 'ecdsa', accounts: [owner] },
+      }),
+    }
+    const userOperationWorkflows =
+      second.composition.createAccount(customContext).workflows
+
+    await expect(
+      userOperationWorkflows.deploy(customContext, chain),
+    ).resolves.toBe(true)
+    expect(second.dependencies.bundler.send).toHaveBeenCalledOnce()
+    expect(second.dependencies.bundler.getReceipt).toHaveBeenCalledWith(
+      chain,
+      userOperationHash,
+    )
+    expect(second.orchestrator.createQuote).not.toHaveBeenCalled()
+  })
+
+  test('recognizes installed modules of every kind during Kernel setup', async () => {
+    const base = fixture()
+    const multicall = vi.fn(async (_context, requests: readonly unknown[]) =>
+      requests.map(() => ({ result: true })),
+    )
+    const dependencies = {
+      ...base.dependencies,
+      rpc: {
+        forChain: () => ({
+          getCode: vi.fn(async () => ({ code: '0x01' as const })),
+          getTransactionCount: vi.fn(async () => 0n),
+          readContract: vi.fn(async () => 0n),
+          multicall,
+        }),
+      },
+    }
+    const sdk = resolveSdkConfig({ apiKey: 'test' })
+    const context = {
+      ...base.context,
+      sdk,
+      account: resolveAccountConfig(sdk, {
+        account: { type: 'kernel' },
+        owners: { type: 'ecdsa', accounts: [owner] },
+        modules: [
+          {
+            type: 'fallback',
+            address: `0x${'33'.repeat(20)}`,
+            initData: encodeAbiParameters(
+              [{ type: 'bytes4' }, { type: 'bytes1' }, { type: 'bytes' }],
+              ['0x12345678', '0xfe', '0x'],
+            ),
+          },
+          { type: 'hook', address: `0x${'44'.repeat(20)}` },
+        ],
+      }),
+    }
+    const composition = createCoreComposition(sdk, dependencies)
+
+    await expect(
+      composition.createAccount(context).workflows.setup(context, chain),
+    ).resolves.toBe(false)
+    const requests = multicall.mock.calls[0]?.[1] as readonly {
+      args: readonly unknown[]
+    }[]
+    expect(requests.map(({ args }) => args[0])).toEqual(
+      expect.arrayContaining([1n, 2n, 3n, 4n]),
+    )
+    expect(base.orchestrator.submitIntent).not.toHaveBeenCalled()
+    expect(base.dependencies.bundler.send).not.toHaveBeenCalled()
   })
 })
