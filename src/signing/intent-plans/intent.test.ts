@@ -1,12 +1,16 @@
 import { concat, type Hex, hashTypedData, type TypedDataDefinition } from 'viem'
 import { describe, expect, test, vi } from 'vitest'
-import type { AccountAdapter } from '../../accounts/adapter'
+import type {
+  AccountAdapter,
+  AccountSignatureEnvelopeInput,
+} from '../../accounts/adapter'
 import {
   InsufficientOwnerSignaturesError,
   MismatchedOwnerSignaturesError,
   UnknownOwnerError,
 } from '../../errors/execution'
 import type { SigningContext } from '../context'
+import type { SignerInvocation, SignerReference } from '../types'
 import {
   assembleIntentStage,
   assembleIntentValidatorArtifact,
@@ -28,9 +32,9 @@ const destinationChain = {
   id: 10,
   caip2: 'eip155:10' as const,
 }
-const account = '0x1111111111111111111111111111111111111111'
-const owner = '0x2222222222222222222222222222222222222222'
-const validator = '0x3333333333333333333333333333333333333333'
+const account = '0x1111111111111111111111111111111111111111' as const
+const owner = '0x2222222222222222222222222222222222222222' as const
+const validator = '0x3333333333333333333333333333333333333333' as const
 const intentId = `0x${'44'.repeat(32)}` as Hex
 const rawSignature = `0x${'55'.repeat(64)}1b` as Hex
 const typedData = (id: number): TypedDataDefinition => ({
@@ -62,6 +66,10 @@ const codec = {
   recoveryEncoding: 'validator-offset-4' as const,
 }
 
+type DeepMutable<T> = {
+  -readonly [Key in keyof T]: DeepMutable<T[Key]>
+}
+
 function context(
   invoke: SigningContext['signerInvoker']['invoke'] = async () => ({
     kind: 'ecdsa-signature',
@@ -71,7 +79,9 @@ function context(
   return {
     account: { definition: { kind: 'eoa' }, address: account },
     accountAdapter: {
-      encodeSignatureEnvelope: ({ validatorContribution }) =>
+      encodeSignatureEnvelope: ({
+        validatorContribution,
+      }: AccountSignatureEnvelopeInput) =>
         concat(['0xaa', validatorContribution]),
     } as unknown as AccountAdapter,
     accountCapabilities: {
@@ -591,7 +601,6 @@ describe('intent signing plans', () => {
                 id: 'origin-owner',
                 signer: { id: 'owner', kind: 'ecdsa' },
                 role: 'owner',
-                invocationKind: 'ecdsa-sign-typed-data',
                 payload: { source: 'plan-payload', payloadId: intentId },
                 invocation: {
                   kind: 'ecdsa-sign-typed-data',
@@ -857,10 +866,12 @@ describe('intent signing plans', () => {
       ],
     }
     const reads: string[] = []
-    const invoke = vi.fn(async () => ({
-      kind: 'ecdsa-signature' as const,
-      signature: rawSignature,
-    }))
+    const invoke = vi.fn(
+      async (_signer: SignerReference, _invocation: SignerInvocation) => ({
+        kind: 'ecdsa-signature' as const,
+        signature: rawSignature,
+      }),
+    )
     const transcript = await executeIntentSigning({
       planInput,
       context: context(invoke),
@@ -908,7 +919,8 @@ describe('intent signing plans', () => {
   })
 
   test('rejects a plan whose artifact cardinality contradicts prepared mode', () => {
-    const input = ownerPlanInput()
+    const input =
+      ownerPlanInput() as DeepMutable<IntentSigningPlanCreationInput>
     input.intent.artifacts.length = 0
     expect(() => createIntentSigningPlan(input)).toThrow(
       'requires 1 origin artifacts',
@@ -1066,7 +1078,8 @@ describe('intent signing plans', () => {
       }),
     ).toThrow('target requires exactly one artifact')
 
-    const wrongShape = ownerPlanInput()
+    const wrongShape =
+      ownerPlanInput() as DeepMutable<IntentSigningPlanCreationInput>
     wrongShape.intent.artifacts[0].shape = 'session-claims'
     expect(() => createIntentSigningPlan(wrongShape)).toThrow(
       'requires hex origin artifacts',

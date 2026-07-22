@@ -18,6 +18,7 @@ const testGlobs = coreDirectories.map(
   (directory) => `src/${directory}/**/*.test.ts`,
 )
 const boundaryTestGlobs = [
+  'src/api/project-mappers.test.ts',
   'src/actions/**/*.test.ts',
   'src/smart-sessions/**/*.test.ts',
   'src/utils/**/*.test.ts',
@@ -32,7 +33,7 @@ export default defineConfig({
     watch: false,
     coverage: {
       provider: 'v8',
-      include: sourceGlobs,
+      include: [...sourceGlobs, 'src/api/project-mappers.ts'],
       exclude: [
         '**/*.test.ts',
         '**/types.ts',

@@ -117,7 +117,12 @@ describe('signer adapters', () => {
 
   test('rejects missing, mismatched, and unsupported signer methods', async () => {
     const port = createSignerInvocationPort({
-      signers: { owner: { kind: 'ecdsa', account: { address } as Account } },
+      signers: {
+        owner: {
+          kind: 'ecdsa',
+          account: { address } as unknown as Account,
+        },
+      },
     })
     await expect(
       port.invoke(

@@ -395,10 +395,13 @@ describe('SDK config resolution', () => {
         },
       },
     })
-    expect(
-      account.owners?.kind === 'multi-factor' &&
-        account.owners.validators[1]?.owners[0]?.expiration,
-    ).toBe(expiration)
+    const ensOwner =
+      account.owners?.kind === 'multi-factor'
+        ? account.owners.validators[1]?.owners[0]
+        : undefined
+    expect(ensOwner?.kind !== 'webauthn' && ensOwner?.expiration).toBe(
+      expiration,
+    )
   })
 
   test.each([
@@ -607,7 +610,11 @@ describe('config resolution properties', () => {
     const account = resolveAccountConfig(sdk, accountInput)
 
     expect(sdk.auth.kind === 'jwt' && sdk.auth.accessToken).toBe(getToken)
-    expect(account.owners?.owners[0]?.account).toBe(accountA)
+    expect(
+      account.owners?.kind !== 'multi-factor'
+        ? account.owners?.owners[0]?.account
+        : undefined,
+    ).toBe(accountA)
     expect(account.modules[0]).toEqual({
       kind: 'executor',
       address: addressB,
@@ -675,7 +682,11 @@ describe('account invocation materialization', () => {
       headers: compatibility.headers,
     })
     expect(context.account.profile).toBe('current-v2')
-    expect(context.account.owners?.owners[0]?.account).toBe(accountB)
+    expect(
+      context.account.owners?.kind !== 'multi-factor'
+        ? context.account.owners?.owners[0]?.account
+        : undefined,
+    ).toBe(accountB)
     expect(context.account.sessions.enabled).toBe(true)
     expect(context.account.sessions.environment).toBe('development')
   })

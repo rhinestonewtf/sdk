@@ -100,6 +100,13 @@ describe('Utils', () => {
   test('view-only accounts retain their address and reject every signer method', async () => {
     const account = toViewOnlyAccount(accountA.address)
     expect(account.address).toBe(accountA.address)
+    if (
+      !account.signMessage ||
+      !account.signTypedData ||
+      !account.signTransaction
+    ) {
+      throw new Error('Expected local account signing methods')
+    }
     await expect(account.signMessage({ message: 'test' })).rejects.toThrow(
       'Signing is not supported for view-only accounts',
     )

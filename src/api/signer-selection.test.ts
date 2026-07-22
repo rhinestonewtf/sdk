@@ -103,10 +103,10 @@ describe('public signer selection adapter', () => {
       permissionId: `0x${'44'.repeat(32)}`,
     } as never
     const enableData = {
-      userSignature: '0x12',
-      hashesAndChainIds: [],
+      userSignature: '0x12' as const,
+      hashesAndChainIds: [] as never[],
       sessionToEnableIndex: 0,
-    } as const
+    }
     const selected = adaptSignerSelection(
       account({ type: 'ecdsa', accounts: [first] }),
       {

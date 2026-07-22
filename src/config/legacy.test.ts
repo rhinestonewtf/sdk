@@ -31,7 +31,7 @@ describe('legacy account config compatibility', () => {
     const sdk = new RhinestoneSDK(sdkInput)
     const publicAccount = await sdk.createAccount(accountInput)
     const publicConfig = publicAccount.config
-    const authProvider = publicConfig._authProvider
+    const authProvider = Reflect.get(publicConfig, '_authProvider')
     expect(authProvider).toBeDefined()
 
     const capturedSdk = captureLegacySdkConfig(sdkInput, authProvider)
@@ -59,7 +59,7 @@ describe('legacy account config compatibility', () => {
     }
     const sdk = new RhinestoneSDK(sdkInput)
     const publicAccount = await sdk.createAccount(accountInput)
-    const authProvider = publicAccount.config._authProvider
+    const authProvider = Reflect.get(publicAccount.config, '_authProvider')
     const compatibilityConfig = createLegacyAccountConfig(
       accountInput,
       captureLegacySdkConfig(sdkInput, authProvider),

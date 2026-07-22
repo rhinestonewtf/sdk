@@ -3,10 +3,12 @@ import { privateKeyToAccount } from 'viem/accounts'
 import { describe, expect, test, vi } from 'vitest'
 import { toEvmChainReference } from '../chains/caip2'
 import type { OrchestratorPort } from '../clients/orchestrator/port'
+import type { RpcReadPort } from '../clients/rpc/port'
 import { resolveAccountConfig, resolveSdkConfig } from '../config/resolve'
 import type { AccountInvocationContext } from '../config/resolved'
 import { toSession } from '../modules/validators/smart-sessions/resolve'
 import { createCoreComposition } from './compose'
+import type { CoreDependencies } from './compose-types'
 
 const chain = toEvmChainReference(1)
 const owner = privateKeyToAccount(
@@ -45,7 +47,7 @@ function fixture() {
             intentId: 'intent-1',
             expiresAt: 1,
             estimatedFillTime: { seconds: 1 },
-            settlementLayer: 'SAME_CHAIN',
+            settlementLayer: 'SAME_CHAIN' as const,
             signData: { origin: [typedData], destination: typedData },
             cost: {
               input: [],
@@ -71,7 +73,7 @@ function fixture() {
     getIntentStatus: vi.fn(async (intentId) => ({
       traceId: 'trace-status',
       intentId,
-      status: 'COMPLETED',
+      status: 'COMPLETED' as const,
       account: target,
       operations: [],
     })),
@@ -88,8 +90,9 @@ function fixture() {
       forChain: () => ({
         getCode: vi.fn(async () => ({ code: undefined })),
         getTransactionCount: vi.fn(async () => 0n),
-        readContract: vi.fn(async () => 0n),
-        multicall: vi.fn(async () => []),
+        readContract: async <TResult>() => 0n as unknown as TResult,
+        multicall: async <TResults extends readonly unknown[]>() =>
+          [] as unknown as TResults,
       }),
     },
     bundler: {
@@ -110,7 +113,7 @@ function fixture() {
       sleep: vi.fn(async () => undefined),
       timeout: <T>(promise: Promise<T>) => promise,
     },
-  } as const
+  } as const satisfies CoreDependencies
   return {
     context,
     dependencies,
@@ -250,11 +253,11 @@ describe('internal core composition', () => {
         forChain: () => ({
           getCode: vi.fn(async () => ({ code: '0x01' as const })),
           getTransactionCount: vi.fn(async () => 0n),
-          readContract: vi.fn(async () => 0n),
-          multicall,
+          readContract: async <TResult>() => 0n as unknown as TResult,
+          multicall: multicall as RpcReadPort['multicall'],
         }),
       },
-    }
+    } satisfies CoreDependencies
     const sdk = resolveSdkConfig({ apiKey: 'test' })
     const context = {
       ...base.context,

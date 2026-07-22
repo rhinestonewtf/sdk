@@ -14,9 +14,14 @@ import {
 } from './plan'
 import type { PayloadSigningTask, SigningPlan } from './types'
 
+type DeepMutable<T> = {
+  -readonly [Key in keyof T]: DeepMutable<T[Key]>
+}
+
 const chain = { kind: 'evm' as const, id: 1, caip2: 'eip155:1' as const }
 const payloadId = `0x${'11'.repeat(32)}` as Hex
 const signature = `0x${'22'.repeat(65)}` as Hex
+const authorizationPayloadId = `0x${'33'.repeat(32)}` as Hex
 const typedData: TypedDataDefinition = {
   domain: { name: 'Test', version: '1', chainId: 1 },
   types: { Test: [{ name: 'value', type: 'uint256' }] },
@@ -38,17 +43,25 @@ function task(
   return { id, signer, role: 'owner', invocationKind }
 }
 
-function directPlan(tasks: readonly PayloadSigningTask[]): SigningPlan {
-  return createSingleStageSigningPlan({
-    kind: 'account-message',
-    payload: { kind: 'message', id: payloadId },
-    configuredTopology: topology,
-    effectiveSelection: selection,
-    stageId: 'stage',
-    chain,
-    tasks,
-    artifacts: [],
-  })
+function mutablePlan(plan: SigningPlan): DeepMutable<SigningPlan> {
+  return plan as DeepMutable<SigningPlan>
+}
+
+function directPlan(
+  tasks: readonly PayloadSigningTask[],
+): DeepMutable<SigningPlan> {
+  return mutablePlan(
+    createSingleStageSigningPlan({
+      kind: 'account-message',
+      payload: { kind: 'message', id: payloadId },
+      configuredTopology: topology,
+      effectiveSelection: selection,
+      stageId: 'stage',
+      chain,
+      tasks,
+      artifacts: [],
+    }),
+  )
 }
 
 describe('signing plan materialization and execution', () => {
@@ -121,7 +134,7 @@ describe('signing plan materialization and execution', () => {
               chain,
               payload: {
                 source: 'plan-payload',
-                payloadId: `0x${'33'.repeat(32)}`,
+                payloadId: authorizationPayloadId,
               },
             },
           ],
@@ -136,10 +149,11 @@ describe('signing plan materialization and execution', () => {
       payloads: {
         [payloadId]: { kind: 'message', message: { raw: payloadId } },
         [hashTypedData(typedData)]: { kind: 'typed-data', typedData },
-        [`0x${'33'.repeat(32)}`]: {
+        [authorizationPayloadId]: {
           kind: 'authorization',
           authorization: {
-            contractAddress: '0x3333333333333333333333333333333333333333',
+            contractAddress:
+              '0x3333333333333333333333333333333333333333' as const,
             chainId: 1,
             nonce: 0,
           },
@@ -158,7 +172,7 @@ describe('signing plan materialization and execution', () => {
   })
 
   test('skips an authorization immediately after observing delegation', () => {
-    const contract = '0x3333333333333333333333333333333333333333'
+    const contract = '0x3333333333333333333333333333333333333333' as const
     const plan = directPlan([])
     const stage = {
       ...plan.stages[0],
@@ -332,24 +346,26 @@ describe('signing plan materialization and execution', () => {
     })
     expect(() => validateSigningPlan(unknownPublic)).toThrow('unknown task')
 
-    const artifactPlan = createSingleStageSigningPlan({
-      kind: 'account-message',
-      payload: { kind: 'message', id: payloadId },
-      configuredTopology: topology,
-      effectiveSelection: selection,
-      stageId: 'artifact',
-      tasks: [],
-      artifacts: [
-        {
-          id: 'sig',
-          usage: 'erc1271',
-          validatorCodec: { kind: 'none' },
-          erc7739: { kind: 'none' },
-          accountEnvelope: { kind: 'none' },
-          erc6492: { kind: 'none' },
-        },
-      ],
-    })
+    const artifactPlan = mutablePlan(
+      createSingleStageSigningPlan({
+        kind: 'account-message',
+        payload: { kind: 'message', id: payloadId },
+        configuredTopology: topology,
+        effectiveSelection: selection,
+        stageId: 'artifact',
+        tasks: [],
+        artifacts: [
+          {
+            id: 'sig',
+            usage: 'erc1271',
+            validatorCodec: { kind: 'none' },
+            erc7739: { kind: 'none' },
+            accountEnvelope: { kind: 'none' },
+            erc6492: { kind: 'none' },
+          },
+        ],
+      }),
+    )
     artifactPlan.stages[0].artifacts[0].stageId = 'wrong'
     expect(() => validateSigningPlan(artifactPlan)).toThrow('another stage')
 
@@ -366,24 +382,26 @@ describe('signing plan materialization and execution', () => {
 
   test('rejects undeclared dependencies and invalid session-state routes', () => {
     const createArtifactPlan = () =>
-      createSingleStageSigningPlan({
-        kind: 'account-typed-data',
-        payload: { kind: 'typed-data', id: payloadId },
-        configuredTopology: topology,
-        effectiveSelection: selection,
-        stageId: 'artifact',
-        tasks: [],
-        artifacts: [
-          {
-            id: 'sig',
-            usage: 'erc1271',
-            validatorCodec: { kind: 'none' },
-            erc7739: { kind: 'none' },
-            accountEnvelope: { kind: 'none' },
-            erc6492: { kind: 'none' },
-          },
-        ],
-      })
+      mutablePlan(
+        createSingleStageSigningPlan({
+          kind: 'account-typed-data',
+          payload: { kind: 'typed-data', id: payloadId },
+          configuredTopology: topology,
+          effectiveSelection: selection,
+          stageId: 'artifact',
+          tasks: [],
+          artifacts: [
+            {
+              id: 'sig',
+              usage: 'erc1271',
+              validatorCodec: { kind: 'none' },
+              erc7739: { kind: 'none' },
+              accountEnvelope: { kind: 'none' },
+              erc6492: { kind: 'none' },
+            },
+          ],
+        }),
+      )
 
     const unavailable = directPlan([])
     unavailable.stages[0].priorOutputs.push({
@@ -1016,6 +1034,10 @@ describe('signing plan materialization and execution', () => {
           contribution: {
             kind: 'session' as const,
             recoveryEncoding: 'validator-offset-4' as const,
+          },
+          invocation: {
+            kind: 'ecdsa-sign-message' as const,
+            message: { raw: payloadId },
           },
         },
       ],

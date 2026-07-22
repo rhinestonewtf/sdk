@@ -22,7 +22,7 @@ jobs:
       - name: Verify wire types match the published OpenAPI spec
         run: |
           bun run generate:wire
-          git diff --exit-code src/orchestrator/wire.gen.ts
+          git diff --exit-code src/clients/orchestrator/wire.gen.ts
 
       # Fail if a public export drifts from the curated reference manifest.
       # Renders to a throwaway dir; the docs.json patch no-ops on a missing path.
@@ -70,4 +70,4 @@ jobs:
         run: bun run test
 
       - name: Check pure-core coverage
-        run: bun run test:coverage:core
+        run: bun run test:coverage:pure

@@ -32,7 +32,7 @@ function runtime(): AccountRuntime {
     owner: defineValidator({ type: 'ecdsa', accounts: [owner] }),
     modules: [],
     setup: { validators: [], executors: [], hooks: [], fallbacks: [] },
-    sessions: { enabled: false },
+    sessions: { enabled: false, environment: 'production' },
     chain,
     deployed: false,
   }
@@ -56,7 +56,7 @@ function runtime(): AccountRuntime {
       deployed: false,
     }),
     encodeCalls: () => '0xabcd',
-  } as AccountAdapter
+  } as unknown as AccountAdapter
   return {
     adapter,
     construction,
@@ -66,7 +66,7 @@ function runtime(): AccountRuntime {
 
 function context(
   overrides: Partial<UserOperationWorkflowContext<{ marker: boolean }>> = {},
-) {
+): UserOperationWorkflowContext<{ marker: boolean }> {
   return {
     compatibilityConfig: { marker: true },
     account: { forChain: vi.fn(async () => runtime()) },
@@ -74,7 +74,7 @@ function context(
       forChain: () => ({
         getCode: vi.fn(),
         getTransactionCount: vi.fn(),
-        readContract: vi.fn(async () => 7n),
+        readContract: async <TResult>() => 7n as unknown as TResult,
         multicall: vi.fn(),
       }),
     },
@@ -119,7 +119,7 @@ describe('UserOperation workflow', () => {
       paymaster: {
         sponsor: vi.fn(async () => ({
           paymaster: sender,
-          paymasterData: '0x12',
+          paymasterData: '0x12' as const,
           paymasterVerificationGasLimit: 20n,
           paymasterPostOpGasLimit: 30n,
         })),

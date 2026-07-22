@@ -8,7 +8,7 @@
       "!coverage",
       "!integration-test",
       "!.changeset",
-      "!src/orchestrator/wire.gen.ts"
+      "!src/clients/orchestrator/wire.gen.ts"
     ]
   },
   "formatter": {

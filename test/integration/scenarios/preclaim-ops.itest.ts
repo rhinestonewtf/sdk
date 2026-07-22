@@ -67,7 +67,7 @@ describe.sequential('SDK integration preclaim-ops', () => {
         sponsored: true,
         calls: [createNoopCall()],
         sourceCalls: { [sourceChain.id]: [createNoopCall()] },
-        signers: { type: 'experimental_session', session },
+        signers: { type: 'experimental_session' as const, session },
       }),
     })
 

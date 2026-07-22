@@ -5,10 +5,12 @@
     "noEmit": true
   },
   "include": [
+    "src/**/*.test.ts",
     "scripts/architecture/**/*.ts",
     "scripts/contract/**/*.ts",
     "test/contract/*.ctest.ts",
     "test/fakes/**/*.ts",
+    "test/integration/**/*.ts",
     "test/vectors/**/*.ts",
     "vitest.config.*.ts"
   ],

@@ -1,3 +1,4 @@
+import type { WebAuthnAccount } from 'viem/account-abstraction'
 import { privateKeyToAccount } from 'viem/accounts'
 import { mainnet } from 'viem/chains'
 import { describe, expect, test, vi } from 'vitest'
@@ -6,6 +7,7 @@ import type {
   AccountAdapter,
   AccountRuntime,
   AccountRuntimePort,
+  AccountSignatureEnvelopeInput,
 } from '../../accounts/adapter'
 import type { AccountConstruction } from '../../accounts/types'
 import { toEvmChainReference } from '../../chains/caip2'
@@ -41,7 +43,7 @@ const testPasskey = {
   ...passkeyAccount,
   sign: vi.fn(async () => passkeyResult),
   signTypedData: vi.fn(async () => passkeyResult),
-}
+} as unknown as WebAuthnAccount
 
 function quote(): OrchestratorQuote {
   const typedData = {
@@ -105,9 +107,10 @@ function runtime(): AccountRuntime {
       factoryData: '0x1234',
       deployed: false,
     }),
-    encodeSignatureEnvelope: ({ validatorContribution }) =>
+    encodeSignatureEnvelope: ({
       validatorContribution,
-  } as AccountAdapter
+    }: AccountSignatureEnvelopeInput) => validatorContribution,
+  } as unknown as AccountAdapter
   return {
     adapter,
     construction,
@@ -115,7 +118,9 @@ function runtime(): AccountRuntime {
   }
 }
 
-function context(overrides: Partial<IntentWorkflowContext> = {}) {
+function context(
+  overrides: Partial<IntentWorkflowContext<{ marker: boolean }>> = {},
+): IntentWorkflowContext<{ marker: boolean }> {
   const accountRuntime: AccountRuntimePort = {
     forChain: vi.fn(async () => runtime()),
   }
@@ -147,7 +152,6 @@ function context(overrides: Partial<IntentWorkflowContext> = {}) {
     clock: {
       now: () => 0,
       sleep: vi.fn(async () => undefined),
-      timeout: <T>(promise: Promise<T>) => promise,
     },
     ...overrides,
   } satisfies IntentWorkflowContext<{ marker: boolean }>
@@ -216,6 +220,9 @@ describe('intent workflow', () => {
       type: 'ecdsa',
       accounts: [secondAccount],
     })
+    if (validator.kind === 'multi-factor') {
+      throw new Error('Expected atomic validator')
+    }
     const prepared = await prepareIntent(workflow, {
       ...input,
       signers: {

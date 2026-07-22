@@ -94,7 +94,7 @@ describe('intent domain', () => {
             factoryData: '0x12',
           }),
         },
-      }) as AccountRuntime
+      }) as unknown as AccountRuntime
     expect(
       projectIntentAccount({ runtime: runtime(false, 'nexus') }),
     ).toMatchObject({
@@ -272,9 +272,15 @@ describe('intent domain', () => {
             getIntentStatus: vi.fn(async () => ({
               traceId: 'trace',
               intentId: 'intent',
-              status: 'FAILED',
+              status: 'FAILED' as const,
               account: address,
-              operations: [{ status: 'FAILED' }],
+              operations: [
+                {
+                  chain: 1,
+                  status: 'FAILED' as const,
+                  failureReason: 'REVERTED' as const,
+                },
+              ],
             })),
           },
           clock: {

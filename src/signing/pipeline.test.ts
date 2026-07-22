@@ -1,11 +1,16 @@
 import { concat, type Hex, hashTypedData, type TypedDataDefinition } from 'viem'
 import { describe, expect, test, vi } from 'vitest'
-import type { AccountAdapter } from '../accounts/adapter'
+import type {
+  AccountAdapter,
+  AccountSignatureEnvelopeInput,
+} from '../accounts/adapter'
 import { wrapKernelMessageHash } from '../accounts/adapters/kernel'
 import { K1_DEFAULT_VALIDATOR_ADDRESS } from '../accounts/adapters/startale'
 import { EoaSigningNotSupportedError } from '../accounts/error'
+import type { AccountDefinition } from '../accounts/types'
 import type { SigningContext } from './context'
 import {
+  type AuthorizationListPlanInput,
   createAuthorizationListPlan,
   createNexusEip7702InitPlan,
   createNexusEip7702InitTypedData,
@@ -23,7 +28,9 @@ import {
 } from './typed-data'
 import type {
   PayloadSigningTask,
+  SignerInvocation,
   SignerInvocationPort,
+  SignerReference,
   SigningCheckpointPort,
 } from './types'
 import {
@@ -32,9 +39,9 @@ import {
 } from './user-operation'
 
 const chain = { kind: 'evm' as const, id: 1, caip2: 'eip155:1' as const }
-const account = '0x1111111111111111111111111111111111111111'
-const validator = '0x2222222222222222222222222222222222222222'
-const factory = '0x3333333333333333333333333333333333333333'
+const account = '0x1111111111111111111111111111111111111111' as const
+const validator = '0x2222222222222222222222222222222222222222' as const
+const factory = '0x3333333333333333333333333333333333333333' as const
 const rawSignature = `0x${'44'.repeat(64)}00` as Hex
 const typedData: TypedDataDefinition = {
   domain: {
@@ -80,6 +87,23 @@ const codec = {
   recoveryEncoding: 'validator-offset-4' as const,
 }
 
+const nexusDefinition: AccountDefinition = {
+  kind: 'nexus',
+  version: { source: 'explicit', value: '1.2.0' },
+  salt: { source: 'explicit', value: '0x' },
+}
+
+const kernelDefinition: AccountDefinition = {
+  kind: 'kernel',
+  version: { source: 'explicit', value: '3.3' },
+  salt: { source: 'explicit', value: '0x' },
+}
+
+const startaleDefinition: AccountDefinition = {
+  kind: 'startale',
+  salt: { source: 'explicit', value: '0x' },
+}
+
 function signerInvoker(): SignerInvocationPort {
   return {
     has: () => true,
@@ -89,12 +113,14 @@ function signerInvoker(): SignerInvocationPort {
 
 function signingContext(): SigningContext {
   const adapter = {
-    encodeSignatureEnvelope: ({ validatorContribution }) =>
+    encodeSignatureEnvelope: ({
+      validatorContribution,
+    }: AccountSignatureEnvelopeInput) =>
       concat(['0xaa', validatorContribution]),
   } as unknown as AccountAdapter
   return {
     account: {
-      definition: { kind: 'nexus', version: '1.2.0' },
+      definition: nexusDefinition,
       address: account,
     },
     accountAdapter: adapter,
@@ -288,7 +314,7 @@ describe('direct rewritten signing pipelines', () => {
         chain,
         context: {
           ...context,
-          account: { definition: { kind: 'kernel' }, address: account },
+          account: { definition: kernelDefinition, address: account },
         },
       }),
     ).toMatchObject({
@@ -324,7 +350,7 @@ describe('direct rewritten signing pipelines', () => {
       chain,
       context: {
         ...context,
-        account: { definition: { kind: 'startale' }, address: account },
+        account: { definition: startaleDefinition, address: account },
         validatorCapabilities: {
           ...context.validatorCapabilities,
           compatibilityKey: {
@@ -349,7 +375,7 @@ describe('direct rewritten signing pipelines', () => {
         chain,
         context: {
           ...context,
-          account: { definition: { kind: 'startale' }, address: account },
+          account: { definition: startaleDefinition, address: account },
         },
       }).payloadKind,
     ).toBe('typed-data')
@@ -497,10 +523,12 @@ describe('direct rewritten signing pipelines', () => {
   test('preserves Kernel message material and the canonical EOA error', async () => {
     const context = signingContext()
     const wrapped = `0x${'aa'.repeat(32)}` as Hex
-    const invoked = vi.fn(async () => ({
-      kind: 'ecdsa-signature' as const,
-      signature: rawSignature,
-    }))
+    const invoked = vi.fn(
+      async (_signer: SignerReference, _invocation: SignerInvocation) => ({
+        kind: 'ecdsa-signature' as const,
+        signature: rawSignature,
+      }),
+    )
     await signAccountMessage({
       context: {
         ...context,
@@ -658,13 +686,13 @@ describe('direct rewritten signing pipelines', () => {
       nonce: 0,
       r: `0x${'66'.repeat(32)}` as Hex,
       s: `0x${'77'.repeat(32)}` as Hex,
-      yParity: 0,
+      yParity: 0 as const,
     }
     const invoke = vi.fn(async () => ({
       kind: 'signed-authorization' as const,
       authorization,
     }))
-    const planInput = {
+    const planInput: AuthorizationListPlanInput = {
       account,
       contract: validator,
       chains: [
@@ -686,7 +714,10 @@ describe('direct rewritten signing pipelines', () => {
     ).toThrow('nonce')
     const result = await signAuthorizationList({
       planInput,
-      signerInvoker: { has: () => true, invoke },
+      signerInvoker: {
+        has: () => true,
+        invoke: async () => invoke(),
+      },
       checkpoints: {
         read: async (checkpoint) => [
           { kind: 'delegation-code', id: checkpoint.id, code: '0x' },

@@ -15,7 +15,7 @@ const validator = {
   kind: 'validator' as const,
   address: '0x1111111111111111111111111111111111111111' as const,
 }
-const account = '0x2222222222222222222222222222222222222222'
+const account = '0x2222222222222222222222222222222222222222' as const
 const raw = (byte: string, recovery = '00') =>
   `0x${byte.repeat(64)}${recovery}` as Hex
 
@@ -412,8 +412,18 @@ describe('validator contribution codecs', () => {
           },
         },
         [
-          { kind: 'ecdsa', ownerId: 'a', signature: raw('11') },
-          { kind: 'ecdsa', ownerId: 'b', signature: raw('22') },
+          {
+            kind: 'ecdsa',
+            ownerId: 'a',
+            signature: raw('11'),
+            encoding: 'raw-signer',
+          },
+          {
+            kind: 'ecdsa',
+            ownerId: 'b',
+            signature: raw('22'),
+            encoding: 'raw-signer',
+          },
         ],
       ),
     ).toContain('9999')
@@ -437,7 +447,7 @@ describe('validator contribution codecs', () => {
       sessionToEnableIndex: 0,
       session: {
         sessionValidator: validator.address,
-        sessionValidatorInitData: '0x',
+        sessionValidatorInitData: '0x' as const,
         salt: `0x${'00'.repeat(32)}` as Hex,
         erc7739Policies: {
           allowedERC7739Content: [],

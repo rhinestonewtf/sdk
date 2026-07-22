@@ -15,6 +15,7 @@ import {
   createAccountFacade,
 } from './account'
 import type { CoreComposition } from './compose-types'
+import type { AdaptedSignerSelection } from './signer-selection'
 
 const owner = privateKeyToAccount(`0x${'02'.repeat(32)}`)
 const recipientAddress = '0x0000000000000000000000000000000000000010' as const
@@ -143,32 +144,47 @@ describe('account boundary adapters', () => {
     const compatibilityConfig: LegacyAccountConfig<unknown> = {
       owners: { type: 'ecdsa', accounts: [owner] },
     }
-    const signMessage = vi.fn(async () => ({
-      signature: '0x12' as const,
-      transcript: {
-        planKind: 'account-message' as const,
-        payloadId: '0x' as const,
-        stages: [],
-      },
-    }))
-    const signTypedData = vi.fn(async () => ({
-      signature: '0x34' as const,
-      transcript: {
-        planKind: 'account-typed-data' as const,
-        payloadId: '0x' as const,
-        stages: [],
-      },
-    }))
-    const signIntentFromSignData = vi.fn(async () => ({
-      originSignatures: [],
-      destinationSignature: '0x56' as const,
-      targetExecutionSignature: undefined,
-      transcript: {
-        planKind: 'intent-full' as const,
-        payloadId: '0x' as const,
-        stages: [],
-      },
-    }))
+    const signMessage = vi.fn(
+      async (
+        _context: unknown,
+        _input: { signers?: AdaptedSignerSelection },
+      ) => ({
+        signature: '0x12' as const,
+        transcript: {
+          planKind: 'account-message' as const,
+          payloadId: '0x' as const,
+          stages: [],
+        },
+      }),
+    )
+    const signTypedData = vi.fn(
+      async (
+        _context: unknown,
+        _input: { signers?: AdaptedSignerSelection },
+      ) => ({
+        signature: '0x34' as const,
+        transcript: {
+          planKind: 'account-typed-data' as const,
+          payloadId: '0x' as const,
+          stages: [],
+        },
+      }),
+    )
+    const signIntentFromSignData = vi.fn(
+      async (
+        _context: unknown,
+        _input: { signers?: AdaptedSignerSelection },
+      ) => ({
+        originSignatures: [],
+        destinationSignature: '0x56' as const,
+        targetExecutionSignature: undefined,
+        transcript: {
+          planKind: 'intent-full' as const,
+          payloadId: '0x' as const,
+          stages: [],
+        },
+      }),
+    )
     const reconstructPreparedIntent = vi.fn(async (_context, input) => ({
       ...input,
       input: input.intentInput,

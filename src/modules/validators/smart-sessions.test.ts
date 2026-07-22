@@ -1008,7 +1008,7 @@ describe('getPermissionId', () => {
 describe('packSignature', () => {
   test('verifyExecutions: false → MODE_USE (0x00) prefix', () => {
     const signers: ResolvedSessionSignerSet = {
-      type: 'experimental_session',
+      kind: 'smart-session',
       session: baseSession,
       verifyExecutions: false,
     }
@@ -1018,7 +1018,7 @@ describe('packSignature', () => {
 
   test('verifyExecutions: false → bytes 1-32 are the permissionId', () => {
     const signers: ResolvedSessionSignerSet = {
-      type: 'experimental_session',
+      kind: 'smart-session',
       session: baseSession,
       verifyExecutions: false,
     }
@@ -1029,7 +1029,7 @@ describe('packSignature', () => {
 
   test('verifyExecutions: false → total length > 66 bytes', () => {
     const signers: ResolvedSessionSignerSet = {
-      type: 'experimental_session',
+      kind: 'smart-session',
       session: baseSession,
       verifyExecutions: false,
     }
@@ -1040,7 +1040,7 @@ describe('packSignature', () => {
 
   test('verifyExecutions: true + enableData → MODE_ENABLE (0x01) prefix', () => {
     const signers: ResolvedSessionSignerSet = {
-      type: 'experimental_session',
+      kind: 'smart-session',
       session: baseSession,
       verifyExecutions: true,
       enableData: {
@@ -1057,7 +1057,7 @@ describe('packSignature', () => {
 
   test('verifyExecutions: true + enableData → longer output (has compressed payload)', () => {
     const signers: ResolvedSessionSignerSet = {
-      type: 'experimental_session',
+      kind: 'smart-session',
       session: baseSession,
       verifyExecutions: true,
       enableData: {
@@ -1075,7 +1075,7 @@ describe('packSignature', () => {
 
   test('verifyExecutions: true, no enableData → MODE_USE (0x00) prefix', () => {
     const signers: ResolvedSessionSignerSet = {
-      type: 'experimental_session',
+      kind: 'smart-session',
       session: baseSession,
       verifyExecutions: true,
     }
@@ -1089,12 +1089,12 @@ describe('packSignature', () => {
       owners: { type: 'ecdsa', accounts: [accountB] },
     })
     const signersA: ResolvedSessionSignerSet = {
-      type: 'experimental_session',
+      kind: 'smart-session',
       session: baseSession,
       verifyExecutions: false,
     }
     const signersB: ResolvedSessionSignerSet = {
-      type: 'experimental_session',
+      kind: 'smart-session',
       session: sessionB,
       verifyExecutions: false,
     }

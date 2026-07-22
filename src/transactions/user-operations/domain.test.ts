@@ -3,6 +3,7 @@ import { privateKeyToAccount } from 'viem/accounts'
 import { describe, expect, test, vi } from 'vitest'
 import type { AccountRuntime } from '../../accounts/adapter'
 import { toEvmChainReference } from '../../chains/caip2'
+import type { ContractRead, RpcReadContext } from '../../clients/rpc/types'
 import { defineValidator } from '../../modules/validators/definition'
 import { ECDSA_MOCK_SIGNATURE } from '../../modules/validators/ownable'
 import { WEBAUTHN_MOCK_SIGNATURE } from '../../modules/validators/webauthn'
@@ -48,13 +49,18 @@ describe('UserOperation domain', () => {
   })
 
   test('reads the EntryPoint nonce through the RPC port', async () => {
-    const readContract = vi.fn(async () => 9n)
+    const readContract = vi.fn(
+      async (_context: RpcReadContext, _request: ContractRead) => 9n,
+    )
     await expect(
       readUserOperationNonce({
         rpc: {
           getCode: vi.fn(),
           getTransactionCount: vi.fn(),
-          readContract,
+          readContract: async <TResult>(
+            context: RpcReadContext,
+            request: ContractRead<TResult>,
+          ) => readContract(context, request) as unknown as TResult,
           multicall: vi.fn(),
         },
         chain,
@@ -106,7 +112,7 @@ describe('UserOperation domain', () => {
           supportsOriginSignatureReuse: true,
         },
       },
-    } as AccountRuntime
+    } as unknown as AccountRuntime
     const context = createAccountSigningContext({
       runtime,
       purpose: 'user-operation',

@@ -13,7 +13,11 @@ import type { ResolvedModule } from '../../modules/types'
 import type { ResolvedValidatorDefinition } from '../../modules/validators/types'
 import { createAccountConstruction } from '../construction'
 import { ModuleInstallationNotSupportedError } from '../error'
-import type { AccountConstruction, AccountKind } from '../types'
+import type {
+  AccountConstruction,
+  AccountKind,
+  AccountSignatureEnvelope,
+} from '../types'
 import { createEoaAdapter } from './eoa'
 import { createHcaAdapter } from './hca'
 import {
@@ -100,12 +104,16 @@ describe('account adapter contract', () => {
       const valid = construction(inputs[kind])
       const other = construction(inputs[kind === 'safe' ? 'nexus' : 'safe'])
       const adapter = adapters[kind](valid)
+      const invalidEnvelope: AccountSignatureEnvelope =
+        kind === 'eoa'
+          ? { kind: 'safe', validator: zeroAddress }
+          : { kind: 'none' }
       expect(() => adapters[kind](other)).toThrow('Expected')
       expect(() => adapter.getIdentity(other)).toThrow()
       expect(() =>
         adapter.encodeSignatureEnvelope({
           account: adapter.getIdentity(valid),
-          envelope: { kind: kind === 'eoa' ? 'safe' : 'none' },
+          envelope: invalidEnvelope,
           validatorContribution: '0x12',
           purpose: 'erc1271',
         }),
@@ -164,6 +172,7 @@ describe('account adapter contract', () => {
 
   test('shared ownership and envelope helpers cover every owner shape', () => {
     const owner = construction(inputs.safe).owner as ResolvedValidatorDefinition
+    if (owner.kind === 'multi-factor') throw new Error('Expected atomic owner')
     expect(primaryOwnerAddresses(owner)).toEqual([accountA.address])
     expect(primaryThreshold(owner)).toBe(1n)
     const passkey = { ...owner, kind: 'passkey' } as ResolvedValidatorDefinition
@@ -313,6 +322,9 @@ describe('account adapter contract', () => {
         validators: [{ ...root, address: K1_DEFAULT_VALIDATOR_ADDRESS }],
       },
     }
+    if (!k1.owner || k1.owner.kind === 'multi-factor') {
+      throw new Error('Expected atomic K1 owner')
+    }
     expect(
       createStartaleAdapter(k1).getDeploymentPlan(k1).factoryData,
     ).toBeDefined()
@@ -361,7 +373,10 @@ describe('account adapter contract', () => {
     const input = construction(inputs.hca)
     const adapter = createHcaAdapter(input)
     expect(() =>
-      adapter.getIdentity({ ...input, sessions: { enabled: true } }),
+      adapter.getIdentity({
+        ...input,
+        sessions: { enabled: true, environment: 'production' },
+      }),
     ).toThrow('cannot install sessions')
     expect(() => adapter.getIdentity({ ...input, owner: undefined })).toThrow(
       'require ENS owners',

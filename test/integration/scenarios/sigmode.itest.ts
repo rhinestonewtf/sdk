@@ -71,7 +71,7 @@ describe.sequential('SDK integration sigmode', () => {
         chain: sourceChain,
         sponsored: true,
         calls: [createNoopCall()],
-        signers: { type: 'experimental_session', session },
+        signers: { type: 'experimental_session' as const, session },
       }),
     })
 
@@ -105,7 +105,7 @@ describe.sequential('SDK integration sigmode', () => {
         chain: sourceChain,
         sponsored: true,
         calls: [createNoopCall()],
-        signers: { type: 'experimental_session', session },
+        signers: { type: 'experimental_session' as const, session },
       }),
     })
     expectOutcome(enable, { kind: 'success' })
@@ -119,7 +119,7 @@ describe.sequential('SDK integration sigmode', () => {
         chain: sourceChain,
         sponsored: true,
         calls: [createNoopCall()],
-        signers: { type: 'experimental_session', session },
+        signers: { type: 'experimental_session' as const, session },
       },
     })
 
@@ -153,7 +153,7 @@ describe.sequential('SDK integration sigmode', () => {
         chain: sourceChain,
         sponsored: true,
         calls: [createNoopCall()],
-        signers: { type: 'experimental_session', session },
+        signers: { type: 'experimental_session' as const, session },
       }),
     })
 

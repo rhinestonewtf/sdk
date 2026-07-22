@@ -8,6 +8,7 @@ import {
   readModuleInstallations,
   readValidatorInitialized,
 } from './read-core'
+import type { ResolvedModule } from './types'
 
 const chain = { kind: 'evm', id: 1, caip2: 'eip155:1' } as const
 const account = '0x0000000000000000000000000000000000000001'
@@ -107,7 +108,7 @@ describe('module reads', () => {
       initData: '0x' as const,
       deInitData: '0x1234' as const,
       additionalContext: '0x' as const,
-    }
+    } satisfies ResolvedModule
     const previous = '0x0000000000000000000000000000000000000003' as Address
     expect(
       encodeAccountModuleDeInitData({

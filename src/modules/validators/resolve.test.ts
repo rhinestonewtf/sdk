@@ -159,7 +159,10 @@ describe('validator resolution', () => {
   })
 
   test('rejects validators whose owner shape does not match their codec', () => {
-    const ownable = validator({ type: 'ecdsa', accounts: [accountA] })
+    const ownable = validator({
+      type: 'ecdsa',
+      accounts: [accountA],
+    }) as AtomicValidatorDefinition
     expect(() =>
       resolveOwnableValidator({
         ...ownable,
@@ -170,7 +173,7 @@ describe('validator resolution', () => {
     const ens = validator({
       type: 'ens',
       owners: [{ account: accountA, expiration: new Date(2_000_000) }],
-    })
+    }) as AtomicValidatorDefinition
     expect(
       resolveEnsValidator(ens as AtomicValidatorDefinition).initData,
     ).toBeDefined()
@@ -181,7 +184,10 @@ describe('validator resolution', () => {
       } as AtomicValidatorDefinition),
     ).toThrow('non-ENS owner')
 
-    const passkey = validator({ type: 'passkey', accounts: [passkeyAccount] })
+    const passkey = validator({
+      type: 'passkey',
+      accounts: [passkeyAccount],
+    }) as AtomicValidatorDefinition
     expect(() =>
       resolveWebauthnValidator({
         ...passkey,
