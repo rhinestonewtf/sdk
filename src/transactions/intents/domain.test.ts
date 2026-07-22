@@ -25,14 +25,16 @@ describe('intent domain', () => {
         Root: [
           { name: 'count', type: 'uint256' },
           { name: 'items', type: 'Item[]' },
+          { name: 'enabled', type: 'bool' },
         ],
         Item: [{ name: 'delta', type: 'int32' }],
       },
-      message: { count: '2', items: [{ delta: -1 }] },
+      message: { count: '2', items: [{ delta: -1 }], enabled: true },
     })
     expect(normalized.message).toEqual({
       count: 2n,
       items: [{ delta: -1n }],
+      enabled: true,
     })
     expect(
       normalizeIntentTypedData({
@@ -91,7 +93,11 @@ describe('intent domain', () => {
       expiresAt: 1,
       estimatedFillTime: { seconds: 1 },
       settlementLayer: 'SAME_CHAIN',
-      signData: { origin: [typedData], destination: typedData },
+      signData: {
+        origin: [typedData],
+        destination: typedData,
+        targetExecution: typedData,
+      },
       cost: {
         input: [],
         output: [],
@@ -109,6 +115,7 @@ describe('intent domain', () => {
 
     expect(normalized.signData.origin[0]?.message).toEqual({ value: 7n })
     expect(normalized.signData.destination.message).toEqual({ value: 7n })
+    expect(normalized.signData.targetExecution?.message).toEqual({ value: 7n })
   })
 
   test('projects deployed, undeployed, override, EOA, and non-EVM accounts', () => {

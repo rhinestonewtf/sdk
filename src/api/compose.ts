@@ -492,6 +492,9 @@ function accountInitData(account: ResolvedAccountConfig): {
 
 function hcaFactory(account: ResolvedAccountConfig): Address | undefined {
   if (account.account.kind !== 'hca') return undefined
+  if (account.account.factory.source === 'explicit') {
+    return account.account.factory.value
+  }
   return account.initData && 'factory' in account.initData
     ? account.initData.factory
     : undefined

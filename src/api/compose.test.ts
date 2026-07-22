@@ -167,6 +167,63 @@ describe('internal core composition', () => {
     })
   })
 
+  test('reads HCA owners through the explicitly configured factory', async () => {
+    const base = fixture()
+    const factory = `0x${'33'.repeat(20)}` as const
+    const initDataFactory = `0x${'44'.repeat(20)}` as const
+    const validator = `0x${'55'.repeat(20)}` as const
+    const readContract = vi.fn(async () => validator)
+    const multicall = vi.fn(async () => [
+      { result: [owner.address] },
+      { result: 1n },
+    ])
+    const dependencies = {
+      ...base.dependencies,
+      rpc: {
+        forChain: () => ({
+          getCode: vi.fn(async () => ({ code: undefined })),
+          getTransactionCount: vi.fn(async () => 0n),
+          readContract: readContract as RpcReadPort['readContract'],
+          multicall: multicall as RpcReadPort['multicall'],
+        }),
+      },
+    } satisfies CoreDependencies
+    const context = {
+      ...base.context,
+      method: 'get-owners' as const,
+      account: resolveAccountConfig(base.context.sdk, {
+        account: { type: 'hca', factory },
+        owners: { type: 'ens', owners: [{ account: owner }] },
+        initData: {
+          address: target,
+          factory: initDataFactory,
+          factoryData: '0x',
+          intentExecutorInstalled: false,
+        },
+      }),
+    }
+    const workflows = createCoreComposition(
+      base.context.sdk,
+      dependencies,
+    ).createAccount(context).workflows
+
+    await expect(workflows.getOwners(context, chain)).resolves.toEqual({
+      accounts: [owner.address],
+      threshold: 1,
+    })
+    expect(readContract).toHaveBeenCalledWith(
+      { chain },
+      expect.objectContaining({
+        address: factory,
+        functionName: 'initDataParser',
+      }),
+    )
+    expect(multicall).toHaveBeenCalledWith(
+      { chain },
+      expect.arrayContaining([expect.objectContaining({ address: validator })]),
+    )
+  })
+
   test('signs messages and typed data with Smart Session owners', async () => {
     const { composition, context } = fixture()
     const workflows = composition.createAccount(context).workflows
