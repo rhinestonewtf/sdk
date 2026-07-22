@@ -32,12 +32,24 @@ import type {
   Transaction,
   UserOperationTransaction,
 } from '../config/account'
+import { createStaticAccountRuntime } from '../config/account-runtime'
+import type { AccountConstructionInput } from '../config/input'
 import type { LegacyAccountConfig } from '../config/legacy'
-import { materializeAccountInvocationContext } from '../config/resolve'
+import {
+  materializeAccountInvocationContext,
+  resolveAccountConfig,
+} from '../config/resolve'
 import type { AccountInvocationContext } from '../config/resolved'
-import { IndependentSigningNotSupportedError } from '../errors/execution'
+import {
+  IndependentSigningNotSupportedError,
+  QuoteNotInPreparedTransactionError,
+} from '../errors/execution'
 import type { SessionDetails } from '../modules/validators/smart-sessions/types'
 import type { OwnerSignature, SignAsOwnerOptions } from '../signing/types'
+import {
+  projectIntentAccount,
+  projectIntentRecipient,
+} from '../transactions/intents/account'
 import type {
   IntentInput,
   PreparedIntent,
@@ -343,28 +355,31 @@ export interface RhinestoneAccount {
   getExecutors(chain: Chain): Promise<Address[]>
 }
 
-// Internal intent state is cached by identity as a fast path for same-instance
-// flows (avoids re-issuing RPC reads and re-resolving sessions). When the public
-// object crosses SDK instances (paired replay) or is externally rebuilt, it is
-// reconstructed from the public shape instead (see reconstructInput).
-const preparedIntents = new WeakMap<object, PreparedIntent<Compat>>()
-const signedIntents = new WeakMap<object, SignedIntent<Compat>>()
-const preparedUserOperations = new WeakMap<
-  object,
-  PreparedUserOperation<Compat>
->()
-const signedUserOperations = new WeakMap<
-  object,
-  import('../transactions/user-operations/types').SignedUserOperation<Compat>
->()
-
 function toPublicQuote(quote: OrchestratorQuote): Quote {
-  return quote as unknown as Quote
+  return {
+    intentId: quote.intentId,
+    expiresAt: quote.expiresAt,
+    estimatedFillTime: quote.estimatedFillTime,
+    settlementLayer: quote.settlementLayer,
+    signData: {
+      origin: [...quote.signData.origin],
+      destination: quote.signData.destination,
+      ...(quote.signData.targetExecution
+        ? { targetExecution: quote.signData.targetExecution }
+        : {}),
+    },
+    cost: quote.cost,
+    ...(quote.tokenRequirements
+      ? { tokenRequirements: quote.tokenRequirements }
+      : {}),
+    ...(quote.bridgeFill ? { bridgeFill: quote.bridgeFill } : {}),
+  }
 }
 
 function toPreparedTransactionData(
   prepared: PreparedIntent<Compat>,
   transaction: Transaction,
+  cache: WeakMap<object, PreparedIntent<Compat>>,
 ): PreparedTransactionData {
   const data: PreparedTransactionData = {
     quotes: {
@@ -375,7 +390,7 @@ function toPreparedTransactionData(
     intentInput: prepared.request,
     transaction,
   }
-  preparedIntents.set(data, prepared)
+  cache.set(data, prepared)
   return data
 }
 
@@ -384,13 +399,17 @@ function selectedPublicQuote(
   intentId?: string,
 ): Quote {
   if (!intentId) return prepared.quotes.best
-  return (
-    prepared.quotes.all.find((quote) => quote.intentId === intentId) ??
-    prepared.quotes.best
+  const quote = prepared.quotes.all.find(
+    (candidate) => candidate.intentId === intentId,
   )
+  if (!quote) {
+    throw new QuoteNotInPreparedTransactionError({ context: { intentId } })
+  }
+  return quote
 }
 
 function reconstructInput(
+  context: AccountInvocationContext<Compat>,
   prepared: PreparedTransactionData,
   intentId?: string,
 ): Parameters<
@@ -401,16 +420,17 @@ function reconstructInput(
   const quote = selectedPublicQuote(prepared, intentId)
   return {
     traceId: prepared.quotes.traceId,
-    quote: quote as unknown as PreparedIntent<Compat>['quote'],
-    quotes: prepared.quotes.all as unknown as PreparedIntent<Compat>['quotes'],
+    quote,
+    quotes: prepared.quotes.all,
     request: prepared.intentInput as PreparedIntent<Compat>['request'],
-    intentInput: adaptTransaction(prepared.transaction),
+    intentInput: adaptTransaction(context, prepared.transaction),
   }
 }
 
 function toSignedTransactionData(
   prepared: PreparedTransactionData,
   signed: SignedIntent<Compat>,
+  cache: WeakMap<object, SignedIntent<Compat>>,
 ): SignedTransactionData {
   const data: SignedTransactionData = {
     ...prepared,
@@ -420,7 +440,7 @@ function toSignedTransactionData(
     destinationSignature: signed.destinationSignature,
     targetExecutionSignature: signed.targetSignature,
   }
-  signedIntents.set(data, signed)
+  cache.set(data, signed)
   return data
 }
 
@@ -439,6 +459,19 @@ export function createAccountFacade(
   compatibilityConfig: LegacyAccountConfig<unknown>,
   composition: CoreComposition<LegacyAccountConfig<unknown>>,
 ): RhinestoneAccount {
+  // These identity caches are deliberately facade-scoped. A public prepared
+  // object crossing account/SDK instances must be reconstructed and validated
+  // against the receiving account instead of reusing another facade's plan.
+  const preparedIntents = new WeakMap<object, PreparedIntent<Compat>>()
+  const signedIntents = new WeakMap<object, SignedIntent<Compat>>()
+  const preparedUserOperations = new WeakMap<
+    object,
+    PreparedUserOperation<Compat>
+  >()
+  const signedUserOperations = new WeakMap<
+    object,
+    import('../transactions/user-operations/types').SignedUserOperation<Compat>
+  >()
   const context = (
     method: AccountInvocationContext<LegacyAccountConfig<unknown>>['method'],
   ) =>
@@ -460,7 +493,7 @@ export function createAccountFacade(
     if (cached && !intentId) return Promise.resolve(cached)
     return workflowsFor(ctx).reconstructPreparedIntent(
       ctx,
-      reconstructInput(prepared, intentId),
+      reconstructInput(ctx, prepared, intentId),
     )
   }
 
@@ -498,9 +531,9 @@ export function createAccountFacade(
       const ctx = context('prepare-intent')
       const prepared = await workflowsFor(ctx).prepareIntent(
         ctx,
-        adaptTransaction(transaction),
+        adaptTransaction(ctx, transaction),
       )
-      return toPreparedTransactionData(prepared, transaction)
+      return toPreparedTransactionData(prepared, transaction, preparedIntents)
     },
     getTransactionMessages(preparedTransaction, options) {
       const quote = selectedPublicQuote(preparedTransaction, options?.intentId)
@@ -522,7 +555,10 @@ export function createAccountFacade(
         // Independent owner signing is unsupported for smart-session intents;
         // reject before resolving sessions (which would issue an RPC read),
         // matching the legacy fast-fail.
-        if (adaptTransaction(preparedTransaction.transaction).signers) {
+        if (
+          preparedTransaction.transaction.signers?.type ===
+          'experimental_session'
+        ) {
           return Promise.reject(new IndependentSigningNotSupportedError())
         }
         const signerId = signerIdForOwner(options.owner)
@@ -538,7 +574,7 @@ export function createAccountFacade(
       return resolvePrepared(ctx, preparedTransaction, options?.intentId)
         .then((internal) => workflows.signIntent(ctx, internal))
         .then(({ intent }) =>
-          toSignedTransactionData(preparedTransaction, intent),
+          toSignedTransactionData(preparedTransaction, intent, signedIntents),
         )
     }) as unknown as RhinestoneAccount['signTransaction'],
     async assembleTransaction(preparedTransaction, signatures) {
@@ -550,14 +586,12 @@ export function createAccountFacade(
         internal,
         signatures as unknown as Parameters<typeof workflows.assembleIntent>[2],
       )
-      return toSignedTransactionData(preparedTransaction, signed)
+      return toSignedTransactionData(preparedTransaction, signed, signedIntents)
     },
     async signAuthorizations(preparedTransaction) {
       const ctx = context('sign-authorizations')
-      const intentInput = adaptTransaction(preparedTransaction.transaction)
-      const chains = intentInput.sourceChains
-        ? [...intentInput.sourceChains]
-        : [intentInput.destination]
+      const intentInput = adaptTransaction(ctx, preparedTransaction.transaction)
+      const chains = authorizationChains(intentInput)
       const result = await workflowsFor(ctx).signAuthorizations(ctx, {
         chains,
         ...(intentInput.eip7702InitSignature
@@ -827,7 +861,10 @@ function adaptSignerSelection(
 // Public `Transaction` -> internal `IntentInput`. Owned here because the facade
 // is the only translation point between the compatibility surface and the
 // intent workflow.
-function adaptTransaction(transaction: Transaction): IntentInput {
+export function adaptTransaction(
+  context: AccountInvocationContext<Compat>,
+  transaction: Transaction,
+): IntentInput {
   const destination =
     'chain' in transaction
       ? getChainReference(sharedChainCatalog, transaction.chain.id)
@@ -863,8 +900,16 @@ function adaptTransaction(transaction: Transaction): IntentInput {
             ),
       ...(request.amount === undefined ? {} : { amount: request.amount }),
     })),
-    ...(typeof transaction.recipient === 'string'
-      ? { recipient: transaction.recipient }
+    ...(transaction.recipient
+      ? {
+          recipient: adaptRecipient(
+            context,
+            transaction.recipient,
+            destination,
+            transaction.eip7702InitSignature,
+            transaction.experimental_accountOverride?.setupOps,
+          ),
+        }
       : {}),
     ...(transaction.gasLimit === undefined
       ? {}
@@ -933,6 +978,59 @@ function adaptTransaction(transaction: Transaction): IntentInput {
         }
       : {}),
   }
+}
+
+function adaptRecipient(
+  context: AccountInvocationContext<Compat>,
+  recipient: RhinestoneAccountConfig | string,
+  destination: IntentInput['destination'],
+  eip7702InitSignature: Hex | undefined,
+  setupOverride:
+    | readonly { readonly to: Address; readonly data: Hex }[]
+    | undefined,
+): NonNullable<IntentInput['recipient']> {
+  if (typeof recipient === 'string') {
+    return projectIntentRecipient(recipient, destination)
+  }
+  if (destination.kind !== 'evm') {
+    throw new Error('Smart-account recipients require an EVM destination')
+  }
+  const resolved = resolveAccountConfig(
+    context.sdk,
+    toAccountConstructionInput(recipient),
+  )
+  return projectIntentAccount({
+    runtime: createStaticAccountRuntime(resolved, destination, false),
+    ...(setupOverride ? { setupOverride } : {}),
+    ...(eip7702InitSignature ? { eip7702InitSignature } : {}),
+  })
+}
+
+function toAccountConstructionInput(
+  config: RhinestoneAccountConfig,
+): AccountConstructionInput {
+  return {
+    ...(config.account ? { account: config.account } : {}),
+    ...(config.owners ? { owners: config.owners } : {}),
+    ...(config.experimental_sessions
+      ? { experimental_sessions: config.experimental_sessions }
+      : {}),
+    ...(config.eoa ? { eoa: config.eoa } : {}),
+    ...(config.modules ? { modules: config.modules } : {}),
+    ...(config.initData ? { initData: config.initData } : {}),
+  }
+}
+
+export function authorizationChains(
+  input: IntentInput,
+): readonly IntentInput['destination'][] {
+  const chains = [...(input.sourceChains ?? []), input.destination]
+  const seen = new Set<string>()
+  return chains.filter((chain) => {
+    if (seen.has(chain.caip2)) return false
+    seen.add(chain.caip2)
+    return true
+  })
 }
 
 function adaptCall(call: CallInput, chainId: number | undefined) {

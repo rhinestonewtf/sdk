@@ -7,7 +7,6 @@ import type {
   OrchestratorExecution,
   OrchestratorIntentRequest,
 } from '../../clients/orchestrator/types'
-import { projectIntentRecipient } from './account'
 import type { IntentInput } from './types'
 
 export function buildIntentRequest<CompatibilityConfig>(input: {
@@ -39,12 +38,7 @@ export function buildIntentRequest<CompatibilityConfig>(input: {
       ...(request.amount === undefined ? {} : { amount: request.amount }),
     })),
     ...(input.transaction.recipient
-      ? {
-          recipient: projectIntentRecipient(
-            input.transaction.recipient,
-            input.transaction.destination,
-          ),
-        }
+      ? { recipient: input.transaction.recipient }
       : {}),
     ...(input.transaction.gasLimit === undefined
       ? {}

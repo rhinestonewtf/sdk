@@ -17,6 +17,7 @@ type JsonResponse<Operation extends keyof operations> = NonNullable<
 type Folded<Body> = Body & { readonly traceId?: string }
 
 export type WireQuoteResponse = Folded<JsonResponse<'createQuote'>>
+export type WireQuote = WireQuoteResponse['routes'][number]
 export type WirePortfolioResponse = Folded<JsonResponse<'getPortfolio'>>
 export type WireIntentStatusResponse = Folded<JsonResponse<'getIntent'>>
 export type WireSplitResponse = Folded<JsonResponse<'getSplit'>>

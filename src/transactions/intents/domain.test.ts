@@ -166,7 +166,7 @@ describe('intent domain', () => {
         destination: chain,
         calls: [],
         tokenRequests: [{ token: address, amount: 2n }],
-        recipient: address,
+        recipient: projectIntentRecipient(address, chain),
         gasLimit: 3n,
         accountAccessList: { chainIds: [1] },
         options: { auxiliaryFunds: { 1: { [address]: 4n } } },

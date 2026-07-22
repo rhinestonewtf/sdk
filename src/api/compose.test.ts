@@ -45,7 +45,19 @@ function fixture() {
             estimatedFillTime: { seconds: 1 },
             settlementLayer: 'SAME_CHAIN',
             signData: { origin: [typedData], destination: typedData },
-            cost: {},
+            cost: {
+              input: [],
+              output: [],
+              fees: {
+                total: { usd: 0 },
+                breakdown: {
+                  gas: { usd: 0 },
+                  bridge: { usd: 0 },
+                  swap: { usd: 0 },
+                  app: { usd: 0 },
+                },
+              },
+            },
           },
         ],
       }

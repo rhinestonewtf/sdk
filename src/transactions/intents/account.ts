@@ -66,6 +66,14 @@ function eip7702SetupOp(
 }
 
 export function projectIntentRecipient(
+  recipient: Address | string,
+  destination: ChainReference,
+): OrchestratorAccount
+export function projectIntentRecipient(
+  recipient: undefined,
+  destination: ChainReference,
+): undefined
+export function projectIntentRecipient(
   recipient: Address | string | undefined,
   destination: ChainReference,
 ): OrchestratorAccount | undefined {

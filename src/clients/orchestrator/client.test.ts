@@ -31,7 +31,43 @@ describe('orchestrator client', () => {
                     message: {},
                   },
                 },
-                cost: {},
+                cost: {
+                  input: [
+                    {
+                      chainId: 'eip155:1',
+                      tokenAddress: address,
+                      symbol: 'TEST',
+                      decimals: 18,
+                      price: { usd: 2 },
+                      amount: '3',
+                    },
+                  ],
+                  output: [],
+                  fees: {
+                    total: { usd: 1 },
+                    breakdown: {
+                      gas: { usd: 1, sponsored: false },
+                      bridge: { usd: 0, sponsored: false },
+                      swap: { usd: 0, sponsored: false },
+                      app: { usd: 0, sponsored: false },
+                    },
+                  },
+                },
+                tokenRequirements: {
+                  'eip155:1': {
+                    [address]: {
+                      type: 'approval',
+                      amount: '4',
+                      spender: address,
+                    },
+                  },
+                },
+                bridgeFill: {
+                  type: 'RELAY',
+                  destinationChainId: 10,
+                  requestId: 'request-1',
+                  fillStatusTimeout: 30,
+                },
               },
             ],
           }),
@@ -56,6 +92,26 @@ describe('orchestrator client', () => {
 
     expect(result.traceId).toBe('trace-1')
     expect(result.routes[0]?.intentId).toBe('intent-1')
+    expect(result.routes[0]?.cost.input).toEqual([
+      {
+        chainId: 1,
+        tokenAddress: address,
+        symbol: 'TEST',
+        decimals: 18,
+        price: { usd: 2 },
+        amount: 3n,
+      },
+    ])
+    expect(result.routes[0]?.tokenRequirements).toEqual({
+      1: {
+        [address]: { type: 'approval', amount: 4n, spender: address },
+      },
+    })
+    expect(result.routes[0]?.bridgeFill).toEqual({
+      type: 'RELAY',
+      destinationChainId: 10,
+      requestId: 'request-1',
+    })
     expect(fetch).toHaveBeenCalledWith(
       'https://orchestrator.example/quotes',
       expect.objectContaining({

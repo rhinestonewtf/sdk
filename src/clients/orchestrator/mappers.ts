@@ -5,6 +5,13 @@ import {
   parseCaip2,
 } from '../../chains/caip2'
 import type {
+  BridgeFill,
+  ChainOperation,
+  Cost,
+  CostTokenEntry,
+  TokenRequirements,
+} from './public'
+import type {
   OrchestratorIntentRequest,
   OrchestratorIntentStatus,
   OrchestratorPortfolio,
@@ -17,6 +24,7 @@ import type {
 import type {
   WireIntentStatusResponse,
   WirePortfolioResponse,
+  WireQuote,
   WireQuoteResponse,
   WireSplitResponse,
 } from './wire'
@@ -54,9 +62,7 @@ export function mapQuoteResponseFromWire(
   const input = value as WireQuoteResponse
   return {
     traceId: input.traceId ?? '',
-    routes: ((input.routes ?? []) as readonly Record<string, unknown>[]).map(
-      mapQuoteFromWire,
-    ),
+    routes: (input.routes ?? []).map(mapQuoteFromWire),
   }
 }
 
@@ -95,7 +101,6 @@ export function mapIntentStatusFromWire(
   value: unknown,
 ): OrchestratorIntentStatus {
   const input = value as WireIntentStatusResponse & {
-    readonly status?: string
     readonly accountAddress?: Address
     readonly operations?: readonly {
       readonly chain?: string | number
@@ -105,14 +110,18 @@ export function mapIntentStatusFromWire(
   return {
     traceId: input.traceId ?? '',
     intentId,
-    status: input.status ?? '',
+    status: input.status,
     account:
       input.accountAddress ??
       ('0x0000000000000000000000000000000000000000' as Address),
-    operations: (input.operations ?? []).map((operation) => ({
-      chain: parseChainValue(operation.chain),
-      ...((operation.items?.[0] as Record<string, unknown> | undefined) ?? {}),
-    })),
+    operations: (input.operations ?? []).map(
+      (operation) =>
+        ({
+          chain: parseChainValue(operation.chain),
+          ...((operation.items?.[0] as Record<string, unknown> | undefined) ??
+            {}),
+        }) as ChainOperation,
+    ),
   }
 }
 
@@ -171,30 +180,69 @@ export function mapSplitResultFromWire(
   }
 }
 
-function mapQuoteFromWire(value: Record<string, unknown>): OrchestratorQuote {
+function mapQuoteFromWire(value: WireQuote): OrchestratorQuote {
   return {
-    intentId: String(value.intentId ?? ''),
-    expiresAt: Number(value.expiresAt ?? 0),
-    estimatedFillTime: value.estimatedFillTime as { readonly seconds: number },
-    settlementLayer: String(value.settlementLayer ?? ''),
-    signData: value.signData as OrchestratorQuote['signData'],
-    cost: value.cost,
+    intentId: value.intentId,
+    expiresAt: value.expiresAt,
+    estimatedFillTime: value.estimatedFillTime,
+    settlementLayer: value.settlementLayer,
+    signData: value.signData as unknown as OrchestratorQuote['signData'],
+    cost: mapCostFromWire(value.cost),
     ...(value.tokenRequirements === undefined
       ? {}
-      : { tokenRequirements: value.tokenRequirements }),
+      : {
+          tokenRequirements: mapTokenRequirementsFromWire(
+            value.tokenRequirements,
+          ),
+        }),
     ...(value.bridgeFill === undefined
       ? {}
-      : { bridgeFill: stripBridgeFillTimeout(value.bridgeFill) }),
+      : { bridgeFill: mapBridgeFillFromWire(value.bridgeFill) }),
   }
 }
 
-function stripBridgeFillTimeout(value: unknown): unknown {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return value
-  const { fillStatusTimeout: _ignored, ...bridgeFill } = value as Record<
-    string,
-    unknown
-  >
-  return bridgeFill
+function mapCostFromWire(value: WireQuote['cost']): Cost {
+  return {
+    input: value.input.map(mapCostTokenFromWire),
+    output: value.output.map(mapCostTokenFromWire),
+    fees: value.fees,
+  }
+}
+
+function mapCostTokenFromWire(
+  value: WireQuote['cost']['input'][number],
+): CostTokenEntry {
+  return {
+    chainId: parseChainValue(value.chainId),
+    tokenAddress: value.tokenAddress as Address,
+    symbol: value.symbol,
+    decimals: value.decimals,
+    price: value.price,
+    amount: BigInt(value.amount),
+  }
+}
+
+function mapTokenRequirementsFromWire(
+  value: NonNullable<WireQuote['tokenRequirements']>,
+): TokenRequirements {
+  return Object.fromEntries(
+    Object.entries(value).map(([chainId, tokens]) => [
+      parseChainValue(chainId),
+      Object.fromEntries(
+        Object.entries(tokens).map(([token, requirement]) => [
+          token,
+          { ...requirement, amount: BigInt(requirement.amount) },
+        ]),
+      ),
+    ]),
+  ) as TokenRequirements
+}
+
+function mapBridgeFillFromWire(
+  value: NonNullable<WireQuote['bridgeFill']>,
+): BridgeFill {
+  const { fillStatusTimeout: _ignored, ...bridgeFill } = value
+  return bridgeFill as BridgeFill
 }
 
 function mapAuthorizationToWire(authorization: SignedAuthorization): unknown {

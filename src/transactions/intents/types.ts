@@ -13,6 +13,7 @@ import type {
   Quote,
 } from '../../clients/orchestrator/public'
 import type {
+  OrchestratorAccount,
   OrchestratorAccountAccessList,
   OrchestratorIntentOptions,
   OrchestratorIntentRequest,
@@ -63,7 +64,7 @@ export interface IntentInput<CompatibilityConfig = unknown> {
   readonly sourceChains?: readonly EvmChainReference[]
   readonly calls: readonly UnresolvedCall<CompatibilityConfig>[]
   readonly tokenRequests: readonly IntentTokenRequest[]
-  readonly recipient?: Address | string
+  readonly recipient?: OrchestratorAccount
   readonly gasLimit?: bigint
   readonly eip7702InitSignature?: Hex
   readonly accountAccessList?: OrchestratorAccountAccessList
@@ -112,9 +113,9 @@ export interface SubmittedIntent {
 export interface IntentStatus {
   readonly traceId: string
   readonly intentId: string
-  readonly status: string
+  readonly status: IntentOpStatus['status']
   readonly account: Address
-  readonly operations: readonly unknown[]
+  readonly operations: readonly IntentOpStatus['operations'][number][]
   readonly terminal: boolean
 }
 

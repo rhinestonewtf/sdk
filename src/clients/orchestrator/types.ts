@@ -4,6 +4,14 @@ import type {
   SignedAuthorization,
   TypedDataDefinition,
 } from 'viem'
+import type {
+  BridgeFill,
+  ChainOperation,
+  Cost,
+  IntentStatus,
+  SettlementLayer,
+  TokenRequirements,
+} from './public'
 
 export interface OrchestratorExecution {
   readonly to: Address
@@ -67,15 +75,15 @@ export interface OrchestratorQuote {
   readonly intentId: string
   readonly expiresAt: number
   readonly estimatedFillTime: { readonly seconds: number }
-  readonly settlementLayer: string
+  readonly settlementLayer: SettlementLayer
   readonly signData: {
     readonly origin: readonly TypedDataDefinition[]
     readonly destination: TypedDataDefinition
     readonly targetExecution?: TypedDataDefinition
   }
-  readonly cost: unknown
-  readonly tokenRequirements?: unknown
-  readonly bridgeFill?: unknown
+  readonly cost: Cost
+  readonly tokenRequirements?: TokenRequirements
+  readonly bridgeFill?: BridgeFill
 }
 
 export interface OrchestratorQuoteResponse {
@@ -114,9 +122,9 @@ export interface OrchestratorIntentSubmission {
 export interface OrchestratorIntentStatus {
   readonly traceId: string
   readonly intentId: string
-  readonly status: string
+  readonly status: IntentStatus
   readonly account: Address
-  readonly operations: readonly unknown[]
+  readonly operations: readonly ChainOperation[]
 }
 
 export interface OrchestratorPortfolioRequest {
