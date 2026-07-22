@@ -8,15 +8,18 @@ integration setup.
 | Layer              | Files                                 | Runs against                       | Command                      |
 | ------------------ | ------------------------------------- | ---------------------------------- | ---------------------------- |
 | Unit and vectors   | `src/**/*.test.ts`, `test/vectors/**` | Local code and deterministic fakes | `bun run test`               |
-| Pure-core coverage | Rewritten core domains                | V8 coverage with scoped thresholds | `bun run test:coverage:core` |
+| Pure-core coverage | Rewritten core and pure adapters      | V8 coverage with scoped thresholds | `bun run test:coverage:pure` |
 | Architecture       | Production imports                    | Dependency and cycle rules         | `bun run check:architecture` |
-| Type               | `test/types/**`                       | TypeScript                         | `bun run test:types`         |
+| Typecheck           | Source, unit tests, and test harnesses | TypeScript                         | `bun run typecheck`          |
+| Public types        | `test/types/**`                       | Consumer-facing compile fixtures   | `bun run test:types`         |
 | Package contract   | `test/contract/**/*.ctest.ts`         | Packed current package             | `bun run test:contract`      |
 | Integration        | `test/integration/**/*.itest.ts`      | Live orchestrator and testnets     | `bun run test:integration`   |
 
 Unit tests live next to the source they cover. Vectors under `test/vectors/`
-pin exact addresses, hashes, and init data for shipped code. Type tests assert
-the public surface with `tsconfig.type-tests.json`. Run one unit file with
+pin exact addresses, hashes, and init data for shipped code. The main
+`bun run typecheck` command covers production source, colocated unit tests, and
+the integration harness without executing live scenarios. Public type fixtures
+run separately through `tsconfig.type-tests.json`. Run one unit file with
 `bun run test -- path/to/file.test.ts`.
 
 The pure-core gate requires 95% statements, lines, and functions and 90%
@@ -29,9 +32,11 @@ cycles.
 `bun run test:contract` cleans, builds, and packs the current package, then
 stages consumer projects against the packed tarball. It validates:
 
-- every published subpath resolves and its declaration/runtime export set
-  matches the calibrated snapshot (`test/contract/snapshots/release-package.json`);
-- a consumer project type-checks against the packed types
+- every published subpath resolves, its declaration file exists, and its runtime
+  export keys match the calibrated snapshot
+  (`test/contract/snapshots/release-package.json`);
+- a representative consumer project type-checks configurations, selected root
+  APIs, and every published subpath against the packed types
   (`test/contract/fixtures/consumer.ts`);
 - optional-peer behavior — the root imports without `jose`/`express`, and
   `/jwt-server` works without `express` but fails cleanly without `jose`;
@@ -45,15 +50,15 @@ consumer staging, and size run; `vitest.config.contract.ts` only discovers the
 
 ## Integration tests
 
-Integration tests exercise the dev orchestrator on testnets by default. They
-run manually through `vitest.config.integration.ts` with file parallelism
-disabled.
+Integration tests exercise live testnets. Unless
+`INTEGRATION_ORCHESTRATOR_URL` is set, they use the SDK's built-in production
+orchestrator URL. They run manually through `vitest.config.integration.ts`
+with file parallelism disabled.
 
 ### Environment
 
 | Variable                         | Purpose                                              | Required          |
 | -------------------------------- | ---------------------------------------------------- | ----------------- |
-| `INTEGRATION_TARGET`             | `dev` by default; `prod` requires explicit selection | No                |
 | `INTEGRATION_RHINESTONE_API_KEY` | Orchestrator API key                                 | Always            |
 | `INTEGRATION_FUNDER_PRIVATE_KEY` | Testnet funder holding native tokens and USDC        | Funded scenarios  |
 | `INTEGRATION_ORCHESTRATOR_URL`   | Orchestrator endpoint override                       | No                |
@@ -61,21 +66,19 @@ disabled.
 | `SDK_ITEST_DEBUG`                | Compact per-intent diagnostics when `1`              | No                |
 
 Funded scenarios fail fast when the funder is absent or has insufficient
-balance. The harness selects `https://dev.v1.orchestrator.rhinestone.dev` and
-development contracts when `INTEGRATION_TARGET` is unset. It rejects the
-production URL unless `INTEGRATION_TARGET=prod` is set explicitly; missing dev
-configuration never falls back to prod.
+balance. A custom orchestrator URL also enables development contract addresses;
+`INTEGRATION_USE_DEV_CONTRACTS=true` can enable them explicitly. With neither
+setting, the SDK uses its production endpoint and production contracts.
 
 ### Running
 
 ```bash
-# Smoke suite; no funder required.
-INTEGRATION_TARGET=dev \
+# Smoke suite; no funder required. Uses the SDK's production endpoint by default.
 INTEGRATION_RHINESTONE_API_KEY=... \
 bun run test:integration:smoke
 
-# Full integration suite.
-INTEGRATION_TARGET=dev \
+# Full integration suite against a custom orchestrator.
+INTEGRATION_ORCHESTRATOR_URL=https://dev.v1.orchestrator.rhinestone.dev \
 INTEGRATION_RHINESTONE_API_KEY=... \
 INTEGRATION_FUNDER_PRIVATE_KEY=... \
 bun run test:integration -- --run

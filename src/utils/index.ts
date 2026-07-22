@@ -1,7 +1,7 @@
 import type { Address, Hex } from 'viem'
 import { createAccountConstruction } from '../accounts/construction'
 import { getRhinestoneInitData, getV0InitData } from '../accounts/legacy'
-import { toViewOnlyAccount } from '../accounts/wallet-account'
+import { toViewOnlyAccount as createViewOnlyAccount } from '../accounts/wallet-account'
 import type {
   RhinestoneAccountConfig,
   RhinestoneConfig,
@@ -130,6 +130,13 @@ function experimental_getRhinestoneInitData(config: RhinestoneAccountConfig):
  *   owners: { type: 'ecdsa', accounts: [toViewOnlyAccount(userAddress)] },
  * })
  * ```
+ */
+const toViewOnlyAccount = createViewOnlyAccount
+
+/**
+ * Compute the ERC-7579 module setup for an account configuration.
+ * @param config Account and module configuration
+ * @returns Validators, executors, hooks, and fallbacks to install
  */
 function getSetup(config: RhinestoneConfig) {
   return toLegacyModuleSetup(standaloneConstruction(config, 'current-v2').setup)
