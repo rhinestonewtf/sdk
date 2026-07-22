@@ -1,4 +1,5 @@
 import { chainIdFromReference } from '../../chains/caip2'
+import { projectCompatibleIntentInput } from './compatibility'
 import type {
   IntentWorkflowContext,
   SignedIntent,
@@ -25,7 +26,7 @@ export async function submitIntent<CompatibilityConfig>(
       ...(signed.dryRun ? { dryRun: true } : {}),
     },
     {
-      intentInput: signed.prepared.request,
+      intentInput: projectCompatibleIntentInput(signed.prepared.request),
       sponsored: Boolean(signed.prepared.request.options.sponsorSettings),
     },
   )

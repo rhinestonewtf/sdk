@@ -7,7 +7,7 @@ import {
   IntentFailedError,
 } from '../../errors/execution'
 import { projectIntentAccount, projectIntentRecipient } from './account'
-import { normalizeIntentTypedData } from './normalize'
+import { normalizeIntentQuote, normalizeIntentTypedData } from './normalize'
 import { selectIntentQuote } from './quotes'
 import { buildIntentRequest } from './request'
 import { waitForIntentStatus } from './status'
@@ -77,6 +77,38 @@ describe('intent domain', () => {
         message: { items: 'not-an-array' },
       }).message,
     ).toEqual({ items: 'not-an-array' })
+  })
+
+  test('normalizes compatible quote typed data before signing', () => {
+    const typedData = {
+      domain: {},
+      types: { Test: [{ name: 'value', type: 'uint256' }] },
+      primaryType: 'Test',
+      message: { value: '7' },
+    } as const
+    const normalized = normalizeIntentQuote({
+      intentId: 'intent',
+      expiresAt: 1,
+      estimatedFillTime: { seconds: 1 },
+      settlementLayer: 'SAME_CHAIN',
+      signData: { origin: [typedData], destination: typedData },
+      cost: {
+        input: [],
+        output: [],
+        fees: {
+          total: { usd: 0 },
+          breakdown: {
+            gas: { usd: 0 },
+            bridge: { usd: 0 },
+            swap: { usd: 0 },
+            app: { usd: 0 },
+          },
+        },
+      },
+    })
+
+    expect(normalized.signData.origin[0]?.message).toEqual({ value: 7n })
+    expect(normalized.signData.destination.message).toEqual({ value: 7n })
   })
 
   test('projects deployed, undeployed, override, EOA, and non-EVM accounts', () => {

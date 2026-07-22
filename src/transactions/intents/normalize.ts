@@ -1,4 +1,5 @@
 import type { TypedDataDefinition, TypedDataParameter } from 'viem'
+import type { OrchestratorQuote } from '../../clients/orchestrator/types'
 
 type TypedDataTypes = Record<string, readonly TypedDataParameter[]>
 
@@ -14,6 +15,25 @@ export function normalizeIntentTypedData(
       typedData.message as Record<string, unknown>,
     ),
   } as TypedDataDefinition
+}
+
+export function normalizeIntentQuote(
+  quote: OrchestratorQuote,
+): OrchestratorQuote {
+  return {
+    ...quote,
+    signData: {
+      origin: quote.signData.origin.map(normalizeIntentTypedData),
+      destination: normalizeIntentTypedData(quote.signData.destination),
+      ...(quote.signData.targetExecution
+        ? {
+            targetExecution: normalizeIntentTypedData(
+              quote.signData.targetExecution,
+            ),
+          }
+        : {}),
+    },
+  }
 }
 
 function normalizeTypedDataMessage(

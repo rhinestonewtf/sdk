@@ -469,7 +469,12 @@ describe('intent workflow', () => {
     })
     expect(workflow.submissionClient.submitIntent).toHaveBeenCalledWith(
       expect.objectContaining({ intentId: 'intent-1' }),
-      expect.objectContaining({ sponsored: false }),
+      expect.objectContaining({
+        intentInput: expect.objectContaining({
+          destinationExecutions: [expect.objectContaining({ value: '1' })],
+        }),
+        sponsored: false,
+      }),
     )
   })
 

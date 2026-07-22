@@ -55,6 +55,11 @@ import {
   projectIntentAccount,
   projectIntentRecipient,
 } from '../transactions/intents/account'
+import {
+  projectCompatibleIntentInput,
+  projectCompatibleQuote,
+} from '../transactions/intents/compatibility'
+import { normalizeIntentQuote } from '../transactions/intents/normalize'
 import type {
   IntentInput,
   PreparedIntent,
@@ -362,23 +367,24 @@ export interface RhinestoneAccount {
 }
 
 function toPublicQuote(quote: OrchestratorQuote): Quote {
+  const compatible = projectCompatibleQuote(quote)
   return {
-    intentId: quote.intentId,
-    expiresAt: quote.expiresAt,
-    estimatedFillTime: quote.estimatedFillTime,
-    settlementLayer: quote.settlementLayer,
+    intentId: compatible.intentId,
+    expiresAt: compatible.expiresAt,
+    estimatedFillTime: compatible.estimatedFillTime,
+    settlementLayer: compatible.settlementLayer,
     signData: {
-      origin: [...quote.signData.origin],
-      destination: quote.signData.destination,
-      ...(quote.signData.targetExecution
-        ? { targetExecution: quote.signData.targetExecution }
+      origin: [...compatible.signData.origin],
+      destination: compatible.signData.destination,
+      ...(compatible.signData.targetExecution
+        ? { targetExecution: compatible.signData.targetExecution }
         : {}),
     },
-    cost: quote.cost,
-    ...(quote.tokenRequirements
-      ? { tokenRequirements: quote.tokenRequirements }
+    cost: compatible.cost,
+    ...(compatible.tokenRequirements
+      ? { tokenRequirements: compatible.tokenRequirements }
       : {}),
-    ...(quote.bridgeFill ? { bridgeFill: quote.bridgeFill } : {}),
+    ...(compatible.bridgeFill ? { bridgeFill: compatible.bridgeFill } : {}),
   }
 }
 
@@ -393,7 +399,7 @@ function toPreparedTransactionData(
       best: toPublicQuote(prepared.quote),
       all: prepared.quotes.map(toPublicQuote),
     },
-    intentInput: prepared.request,
+    intentInput: projectCompatibleIntentInput(prepared.request),
     transaction,
   }
   cache.set(data, prepared)
@@ -423,11 +429,16 @@ function reconstructInput(
     CoreComposition<Compat>['createAccount']
   >['workflows']['reconstructPreparedIntent']
 >[1] {
-  const quote = selectedPublicQuote(prepared, intentId)
+  const selected = selectedPublicQuote(prepared, intentId)
+  const quote = normalizeIntentQuote(selected as OrchestratorQuote)
   return {
     traceId: prepared.quotes.traceId,
     quote,
-    quotes: prepared.quotes.all,
+    quotes: prepared.quotes.all.map((candidate) =>
+      candidate.intentId === quote.intentId
+        ? quote
+        : normalizeIntentQuote(candidate as OrchestratorQuote),
+    ),
     request: prepared.intentInput as PreparedIntent<Compat>['request'],
     intentInput: adaptTransaction(context, prepared.transaction),
   }

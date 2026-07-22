@@ -10,7 +10,7 @@ import type { ResolvedSessionSignerSet } from '../../modules/validators/smart-se
 import type { IntentSigningInput } from '../../signing/intent-plans/types'
 import { signingTopology } from '../../signing/plan'
 import { projectIntentAccount } from './account'
-import { normalizeIntentTypedData } from './normalize'
+import { normalizeIntentQuote } from './normalize'
 import { selectIntentQuote } from './quotes'
 import { buildIntentRequest } from './request'
 import { prepareIntentSessions } from './sessions'
@@ -54,9 +54,11 @@ export async function prepareIntent<CompatibilityConfig>(
     providedFunds: source.providedFunds,
   })
   const response = await context.quoteClient.createQuote(request)
-  const quote = normalizeQuote(selectIntentQuote(response.routes))
+  const quote = normalizeIntentQuote(selectIntentQuote(response.routes))
   const quotes = response.routes.map((candidate) =>
-    candidate.intentId === quote.intentId ? quote : normalizeQuote(candidate),
+    candidate.intentId === quote.intentId
+      ? quote
+      : normalizeIntentQuote(candidate),
   )
   return {
     traceId: response.traceId,
@@ -154,25 +156,6 @@ async function resolveSourceCalls<CompatibilityConfig>(
     }
   }
   return { calls, providedFunds }
-}
-
-function normalizeQuote(
-  quote: PreparedIntent['quote'],
-): PreparedIntent['quote'] {
-  return {
-    ...quote,
-    signData: {
-      origin: quote.signData.origin.map(normalizeIntentTypedData),
-      destination: normalizeIntentTypedData(quote.signData.destination),
-      ...(quote.signData.targetExecution
-        ? {
-            targetExecution: normalizeIntentTypedData(
-              quote.signData.targetExecution,
-            ),
-          }
-        : {}),
-    },
-  }
 }
 
 export function buildIntentSigningInput(
