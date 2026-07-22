@@ -21,6 +21,16 @@ const SETTLEMENT_LAYER_CONTRACT_KEYS: Record<
 }
 
 /**
+ * Every settlement layer without a dedicated arbiter — CCTP, RELAY, RHINO,
+ * OFT, and any future layer — settles through the IntentExecutor, so it acts
+ * as the Permit2 claim arbiter for those routes. It's included in the "all
+ * layers" default and used as the fallback for any layer not present in
+ * {@link SETTLEMENT_LAYER_CONTRACT_KEYS}, so a newly-added settlement layer
+ * never silently fails the on-chain arbiter check.
+ */
+const FALLBACK_CONTRACT_KEYS: readonly string[] = ['intentExecutor']
+
+/**
  * Collects every distinct arbiter address that any chain in the registry
  * has deployed for the given settlement layers. The resulting whitelist
  * is what the Permit2 claim policy enforces on-chain — a session signed
@@ -42,15 +52,22 @@ export function getArbitersForSettlementLayers(
   layers: readonly CrossChainSettlementLayer[] | undefined,
   useDevContracts?: boolean,
 ): Address[] | undefined {
-  const effectiveLayers: readonly CrossChainSettlementLayer[] =
-    !layers || layers.length === 0
-      ? (Object.keys(
-          SETTLEMENT_LAYER_CONTRACT_KEYS,
-        ) as CrossChainSettlementLayer[])
-      : layers
-
   const registry = useDevContracts ? contractAddressesDev : contractAddresses
-  const keys = effectiveLayers.flatMap((l) => SETTLEMENT_LAYER_CONTRACT_KEYS[l])
+
+  // Unknown/empty ⇒ permission every mechanism: all dedicated arbiters PLUS
+  // the IntentExecutor (the universal settler). Named layers resolve to their
+  // dedicated arbiter, falling back to the IntentExecutor when they have none.
+  const layerKeys = SETTLEMENT_LAYER_CONTRACT_KEYS as Record<
+    string,
+    readonly string[] | undefined
+  >
+  const keys =
+    !layers || layers.length === 0
+      ? [
+          ...Object.values(SETTLEMENT_LAYER_CONTRACT_KEYS).flat(),
+          ...FALLBACK_CONTRACT_KEYS,
+        ]
+      : layers.flatMap((l) => layerKeys[l] ?? FALLBACK_CONTRACT_KEYS)
   const seen = new Set<string>()
   const addresses: Address[] = []
 
