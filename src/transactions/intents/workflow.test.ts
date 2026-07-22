@@ -144,7 +144,11 @@ function context(overrides: Partial<IntentWorkflowContext> = {}) {
     },
     checkpoints: { read: vi.fn(async () => []) },
     signAuthorizations: vi.fn(async () => []),
-    clock: { now: () => 0, sleep: vi.fn(async () => undefined) },
+    clock: {
+      now: () => 0,
+      sleep: vi.fn(async () => undefined),
+      timeout: <T>(promise: Promise<T>) => promise,
+    },
     ...overrides,
   } satisfies IntentWorkflowContext<{ marker: boolean }>
 }

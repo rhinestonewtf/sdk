@@ -47,6 +47,11 @@ import type {
 export interface ClockPort {
   readonly now: () => number
   readonly sleep: (milliseconds: number) => Promise<void>
+  readonly timeout: <T>(
+    promise: Promise<T>,
+    milliseconds: number,
+    error: () => Error,
+  ) => Promise<T>
 }
 
 export interface CoreDependencies {

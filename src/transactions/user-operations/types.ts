@@ -59,7 +59,13 @@ export interface UserOperationWorkflowContext<CompatibilityConfig = unknown> {
   readonly signerInvoker: SignerInvocationPort
   readonly checkpoints: SigningCheckpointPort
   readonly clock: {
+    readonly now: () => number
     readonly sleep: (milliseconds: number) => Promise<void>
+    readonly timeout: <T>(
+      promise: Promise<T>,
+      milliseconds: number,
+      error: () => Error,
+    ) => Promise<T>
   }
 }
 

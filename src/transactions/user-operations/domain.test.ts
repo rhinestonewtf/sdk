@@ -1,3 +1,4 @@
+import { WaitForUserOperationReceiptTimeoutError } from 'viem/account-abstraction'
 import { privateKeyToAccount } from 'viem/accounts'
 import { describe, expect, test, vi } from 'vitest'
 import type { AccountRuntime } from '../../accounts/adapter'
@@ -154,6 +155,7 @@ describe('UserOperation domain', () => {
       .mockResolvedValueOnce(undefined)
       .mockResolvedValueOnce(receipt)
     const sleep = vi.fn(async () => undefined)
+    const now = vi.fn(() => 0)
     const submitted = {
       type: 'userop' as const,
       chain,
@@ -168,10 +170,125 @@ describe('UserOperation domain', () => {
       .mockResolvedValueOnce(receipt)
     await expect(
       waitForUserOperationStatus(
-        { bundler: { getReceipt }, clock: { sleep } } as never,
+        {
+          bundler: { getReceipt },
+          clock: { now, sleep, timeout: <T>(promise: Promise<T>) => promise },
+        } as never,
         submitted,
       ),
     ).resolves.toMatchObject({ terminal: true, receipt })
-    expect(sleep).toHaveBeenCalledWith(500)
+    expect(sleep).toHaveBeenCalledWith(4_000)
+  })
+
+  test('times out with viem error identity after 120 seconds', async () => {
+    let time = 0
+    const getReceipt = vi.fn(async () => undefined)
+    const sleep = vi.fn(async (milliseconds: number) => {
+      time += milliseconds
+    })
+    const submitted = {
+      type: 'userop' as const,
+      chain,
+      hash: `0x${'22'.repeat(32)}` as const,
+    }
+
+    await expect(
+      waitForUserOperationStatus(
+        {
+          bundler: { getReceipt },
+          clock: {
+            now: () => time,
+            sleep,
+            timeout: <T>(promise: Promise<T>) => promise,
+          },
+        } as never,
+        submitted,
+      ),
+    ).rejects.toThrowError(WaitForUserOperationReceiptTimeoutError)
+    expect(time).toBe(120_000)
+    expect(getReceipt).toHaveBeenCalledTimes(30)
+    expect(sleep).toHaveBeenCalledTimes(30)
+  })
+
+  test('counts RPC time and a final partial polling interval', async () => {
+    const hash = `0x${'33'.repeat(32)}` as const
+    let time = 0
+    const slowReceipt = vi.fn(async () => {
+      time = 120_001
+      return undefined
+    })
+    const unusedSleep = vi.fn(async () => undefined)
+
+    await expect(
+      waitForUserOperationStatus(
+        {
+          bundler: { getReceipt: slowReceipt },
+          clock: {
+            now: () => time,
+            sleep: unusedSleep,
+            timeout: <T>(promise: Promise<T>) => promise,
+          },
+        } as never,
+        { type: 'userop', chain, hash },
+      ),
+    ).rejects.toThrowError(WaitForUserOperationReceiptTimeoutError)
+    expect(unusedSleep).not.toHaveBeenCalled()
+
+    time = 0
+    const partialSleep = vi.fn(async (milliseconds: number) => {
+      time += milliseconds
+    })
+    await expect(
+      waitForUserOperationStatus(
+        {
+          bundler: {
+            getReceipt: vi.fn(async () => {
+              time = 119_500
+              return undefined
+            }),
+          },
+          clock: {
+            now: () => time,
+            sleep: partialSleep,
+            timeout: <T>(promise: Promise<T>) => promise,
+          },
+        } as never,
+        {
+          type: 'userop',
+          chain: toEvmChainReference(11_155_111),
+          hash,
+        },
+      ),
+    ).rejects.toThrowError(WaitForUserOperationReceiptTimeoutError)
+    expect(partialSleep).toHaveBeenCalledWith(500)
+  })
+
+  test('applies the hard timeout while a bundler request is pending', async () => {
+    const hash = `0x${'44'.repeat(32)}` as const
+    const timeout = vi.fn(
+      async <T>(
+        _promise: Promise<T>,
+        milliseconds: number,
+        error: () => Error,
+      ) => {
+        expect(milliseconds).toBe(120_000)
+        throw error()
+      },
+    )
+
+    await expect(
+      waitForUserOperationStatus(
+        {
+          bundler: { getReceipt: () => new Promise(() => undefined) },
+          clock: {
+            now: () => 0,
+            sleep: vi.fn(async () => undefined),
+            timeout,
+          },
+        } as never,
+        { type: 'userop', chain, hash },
+      ),
+    ).rejects.toThrowError(WaitForUserOperationReceiptTimeoutError)
+    expect(timeout).toHaveBeenCalledOnce()
   })
 })

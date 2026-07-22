@@ -48,16 +48,27 @@ export function createRpcReadPort(
     multicall: async <TResults extends readonly unknown[]>(
       context: Parameters<RpcReadPort['multicall']>[0],
       requests: Parameters<RpcReadPort['multicall']>[1],
-    ): Promise<TResults> =>
-      Promise.all(
-        requests.map(async (request) => {
-          try {
-            return { result: await read(request, context.blockNumber) }
-          } catch (error) {
-            return { error }
-          }
-        }),
-      ) as unknown as Promise<TResults>,
+    ): Promise<TResults> => {
+      if (requests.length === 0) return [] as unknown as TResults
+      const results = await client.multicall({
+        contracts: requests.map((request) => ({
+          address: request.address,
+          abi: request.abi,
+          functionName: request.functionName,
+          ...(request.args ? { args: request.args } : {}),
+        })),
+        allowFailure: true,
+        batchSize: 0,
+        ...(context.blockNumber === undefined
+          ? {}
+          : { blockNumber: context.blockNumber }),
+      })
+      return results.map((result) =>
+        result.status === 'success'
+          ? { result: result.result }
+          : { error: result.error },
+      ) as unknown as TResults
+    },
   }
 }
 

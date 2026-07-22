@@ -179,6 +179,20 @@ function createConfiguredDependencies(
       now: Date.now,
       sleep: (milliseconds) =>
         new Promise((resolve) => setTimeout(resolve, milliseconds)),
+      timeout: (promise, milliseconds, error) =>
+        new Promise((resolve, reject) => {
+          const timer = setTimeout(() => reject(error()), milliseconds)
+          promise.then(
+            (value) => {
+              clearTimeout(timer)
+              resolve(value)
+            },
+            (reason) => {
+              clearTimeout(timer)
+              reject(reason)
+            },
+          )
+        }),
     },
   }
 }

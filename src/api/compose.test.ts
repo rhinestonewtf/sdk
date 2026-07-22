@@ -105,7 +105,11 @@ function fixture() {
       send: vi.fn(async () => userOperationHash),
       getReceipt: vi.fn(async () => ({ success: true }) as never),
     },
-    clock: { now: () => 0, sleep: vi.fn(async () => undefined) },
+    clock: {
+      now: () => 0,
+      sleep: vi.fn(async () => undefined),
+      timeout: <T>(promise: Promise<T>) => promise,
+    },
   } as const
   return {
     context,

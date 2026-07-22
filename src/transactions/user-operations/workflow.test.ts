@@ -99,7 +99,11 @@ function context(
       })),
     },
     checkpoints: { read: vi.fn(async () => []) },
-    clock: { sleep: vi.fn(async () => undefined) },
+    clock: {
+      now: () => 0,
+      sleep: vi.fn(async () => undefined),
+      timeout: <T>(promise: Promise<T>) => promise,
+    },
     ...overrides,
   } satisfies UserOperationWorkflowContext<{ marker: boolean }>
 }
