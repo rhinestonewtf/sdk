@@ -9,7 +9,10 @@ import { QuoteNotInPreparedTransactionError } from '../errors/execution'
 import type { RhinestoneAccountConfig } from '../index'
 import { RhinestoneSDK } from '../index'
 import { ecdsaSignerId } from '../modules/validators/signer-id'
-import type { PreparedTransactionData } from '../transactions/intents/types'
+import type {
+  PreparedTransactionData,
+  SignedTransactionData,
+} from '../transactions/intents/types'
 import {
   adaptTransaction,
   authorizationChains,
@@ -343,6 +346,54 @@ describe('account boundary adapters', () => {
     expect(() =>
       account.getTransactionMessages(prepared, { intentId: 'missing' }),
     ).toThrowError(QuoteNotInPreparedTransactionError)
+  })
+
+  test('preserves the selected quote when submitting uncached signed data', async () => {
+    const sdk = resolveSdkConfig({ apiKey: 'offline' })
+    const compatibilityConfig: LegacyAccountConfig<unknown> = {
+      owners: { type: 'ecdsa', accounts: [owner] },
+    }
+    const reconstructPreparedIntent = vi.fn(async (_context, input) => ({
+      ...input,
+      input: input.intentInput,
+      accountChain: toEvmChainReference(1),
+      signing: {} as never,
+    }))
+    const submitIntent = vi.fn(async (_context, signed) => ({
+      type: 'intent' as const,
+      traceId: signed.prepared.traceId,
+      intentId: signed.prepared.quote.intentId,
+      targetChain: 1,
+    }))
+    const facade = createAccountFacade(compatibilityConfig, {
+      config: sdk,
+      project: {} as never,
+      createAccount: (context) => ({
+        context,
+        workflows: { reconstructPreparedIntent, submitIntent } as never,
+      }),
+    })
+    const best = quoteFixture('best')
+    const alternate = quoteFixture('alternate')
+    const signed = {
+      quotes: { traceId: 'trace', best, all: [best, alternate] },
+      intentInput: {},
+      transaction: { chain: mainnet, calls: [] },
+      quote: alternate,
+      originSignatures: [],
+      destinationSignature: '0x12',
+      targetExecutionSignature: undefined,
+    } satisfies SignedTransactionData
+
+    await expect(facade.submitTransaction(signed)).resolves.toMatchObject({
+      id: 'alternate',
+    })
+    expect(reconstructPreparedIntent.mock.calls[0]?.[1].quote.intentId).toBe(
+      'alternate',
+    )
+    expect(submitIntent.mock.calls[0]?.[1].prepared.quote.intentId).toBe(
+      'alternate',
+    )
   })
 
   test('rebuilds UserOperations from current public data and live owners', async () => {

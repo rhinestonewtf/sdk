@@ -665,7 +665,11 @@ export function createAccountFacade(
       // replay or caller-tampered signatures) rebuild from the public shape.
       const cached = signedIntents.get(signedTransaction)
       const base: SignedIntent<Compat> = cached ?? {
-        prepared: await resolvePrepared(ctx, signedTransaction),
+        prepared: await resolvePrepared(
+          ctx,
+          signedTransaction,
+          signedTransaction.quote.intentId,
+        ),
         originSignatures:
           signedTransaction.originSignatures as SignedIntent<Compat>['originSignatures'],
         destinationSignature: signedTransaction.destinationSignature,
