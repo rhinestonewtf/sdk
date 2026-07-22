@@ -934,6 +934,9 @@ export function adaptTransaction(
       : {}),
     options: {
       ...(transaction.appFees ? { appFees: transaction.appFees } : {}),
+      ...('chain' in transaction && transaction.customDeadline !== undefined
+        ? { customDeadline: transaction.customDeadline }
+        : {}),
       ...(transaction.sponsored
         ? {
             sponsorSettings:

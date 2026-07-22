@@ -40,6 +40,7 @@ export interface OrchestratorAccountAccessList {
 
 export interface OrchestratorIntentOptions {
   readonly appFees?: { readonly feeBps: number }
+  readonly customDeadline?: number
   readonly sponsorSettings?: {
     readonly gas: boolean
     readonly bridgeFees: boolean

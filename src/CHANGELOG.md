@@ -1,5 +1,24 @@
 # @rhinestone/sdk
 
+## 2.0.0-beta.43
+
+### Patch Changes
+
+- 0bbf56d: Bump @rhinestone/shared-configs to 1.7.15 to add Avalanche C-Chain (43114) support.
+
+## 2.0.0-beta.42
+
+### Minor Changes
+
+- 089d85b: Expose typed errors for sponsored-fee failures on quotes. `SponsorLimitExceededError` (a configured per-client sponsorship cap was hit — carries `limitKey`, `capUsd`, `coverageUsd`, `sponsorAddress`) and `InsufficientSponsorBalanceError` (the sponsor's balance can't cover the enabled categories — carries `failedCategories`, `sponsorAddress`, `remainingBalanceUsd`, `totalSponsoredUsd`) now surface as distinct classes with the guards `isSponsorLimitExceeded`, `isInsufficientSponsorBalance`, and `isSponsorError`. Both extend `UnprocessableContentError` and keep `code` as `'UNPROCESSABLE_CONTENT'`, so existing handling of that error is unaffected.
+- d12bad7: Add `customDeadline` transaction option to override the on-chain fill deadline. Accepts an absolute unix timestamp (seconds) and is honored only on the same-chain (tokenless) route — ignored elsewhere. Bounds (`now + 120s` .. `now + 86400s`) are enforced by the orchestrator. When honored, the quoted `expiresAt` and the bundle claim/nonce expiry track this value automatically.
+
+## 2.0.0-beta.41
+
+### Minor Changes
+
+- 81c5236: Add independent multisig signing. Pass an `owner` to `signTransaction` to create a serializable owner signature, then combine owner signatures with `assembleTransaction` before submission. Supports ECDSA, passkey, and multi-factor owner sets.
+
 ## 2.0.0-beta.40
 
 ### Patch Changes

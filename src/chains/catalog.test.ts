@@ -1,6 +1,6 @@
 import type { ChainEntry } from '@rhinestone/shared-configs'
 import { type Chain, zeroAddress } from 'viem'
-import { arbitrum, base, sepolia } from 'viem/chains'
+import { arbitrum, avalanche, base, sepolia } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 import {
   getChainReference,
@@ -23,6 +23,9 @@ describe('shared chain catalog', () => {
     )
     expect(isTestnet(sharedChainCatalog, sepolia.id)).toBe(true)
     expect(isTestnet(sharedChainCatalog, base.id)).toBe(false)
+    expect(getSupportedChain(sharedChainCatalog, avalanche.id).id).toBe(
+      avalanche.id,
+    )
     expect(() => getSupportedChain(sharedChainCatalog, 81457)).toThrow(
       'Unsupported chain 81457',
     )

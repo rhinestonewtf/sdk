@@ -6,6 +6,7 @@ import * as actions from '../../src/actions/index'
 import * as mfaActions from '../../src/actions/mfa'
 import * as passkeyActions from '../../src/actions/passkeys'
 import * as sessionActions from '../../src/actions/smart-sessions'
+import type { SponsorLimitKey } from '../../src/errors/index'
 import * as errors from '../../src/errors/index'
 import {
   type PreparedTransactionData,
@@ -73,6 +74,22 @@ const transaction = {
   signers: ownerSigners,
 } satisfies Transaction
 
+const sameChainTransaction = {
+  chain: mainnet,
+  calls: [],
+  customDeadline: 9_999_999_999,
+} satisfies Transaction
+
+const crossChainWithDeadline = {
+  sourceChains: [mainnet],
+  targetChain: mainnet,
+  calls: [],
+  customDeadline: 9_999_999_999,
+} as const
+// @ts-expect-error customDeadline is only valid for same-chain transactions.
+const crossChainTransaction: Transaction = crossChainWithDeadline
+const sponsorLimitKey: SponsorLimitKey = 'perIntentUSD'
+
 const preparedResult: Promise<PreparedTransactionData> =
   account.prepareTransaction(transaction)
 const signedResult: Promise<SignedTransactionData> = account.signTransaction(
@@ -106,6 +123,9 @@ void messageSignature
 void typedDataSignature
 void intentSignature
 void userOperation
+void sameChainTransaction
+void crossChainTransaction
+void sponsorLimitKey
 void actions
 void ecdsaActions
 void mfaActions

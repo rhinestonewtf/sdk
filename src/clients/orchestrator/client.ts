@@ -14,7 +14,7 @@ import {
 } from './mappers'
 import type { OrchestratorPort } from './port'
 
-const SDK_VERSION = '2.0.0-beta.40'
+const SDK_VERSION = '2.0.0-beta.43'
 const API_VERSION = '2026-04.blanc'
 
 export interface OrchestratorClientOptions {

@@ -193,6 +193,92 @@ class UnprocessableContentError extends OrchestratorError {
   }
 }
 
+/** Per-client sponsorship cap a quote can breach. Mirrors the orchestrator's
+ * `SponsorLimits` keys: per-intent gas, per-intent bridge fee, or the
+ * per-intent aggregate. */
+const SPONSOR_LIMIT_KEYS = [
+  'gasPerIntentUSD',
+  'bridgeFeePerIntentUSD',
+  'perIntentUSD',
+] as const
+type SponsorLimitKey = (typeof SPONSOR_LIMIT_KEYS)[number]
+
+/**
+ * A configured per-client sponsorship cap was exceeded by a quote.
+ *
+ * A `422 UNPROCESSABLE_CONTENT` specialization: the integrator's sponsor
+ * policy sets a per-intent USD ceiling (gas, bridge-fee, or aggregate) and
+ * this quote's sponsored coverage would exceed it. Distinct from
+ * {@link InsufficientSponsorBalanceError} (a funds shortfall) — a cap breach
+ * is deterministic and does NOT clear by topping up the sponsorship balance;
+ * the cap itself must be raised or the intent made cheaper.
+ *
+ * Extends {@link UnprocessableContentError} and keeps `code` as
+ * `'UNPROCESSABLE_CONTENT'` (the wire does not yet carry a dedicated code), so
+ * existing handling of that error still catches it. `sponsorAddress` is
+ * populated only for the pre-fold check; the post-fold multi-candidate
+ * rejection omits it, so treat every field as best-effort.
+ */
+class SponsorLimitExceededError extends UnprocessableContentError {
+  readonly limitKey?: SponsorLimitKey
+  readonly capUsd?: number
+  readonly coverageUsd?: number
+  readonly sponsorAddress?: string
+
+  constructor(
+    params: BaseErrorParams & {
+      details?: ErrorDetail[]
+      limitKey?: SponsorLimitKey
+      capUsd?: number
+      coverageUsd?: number
+      sponsorAddress?: string
+    },
+  ) {
+    super(params)
+    this.limitKey = params.limitKey
+    this.capUsd = params.capUsd
+    this.coverageUsd = params.coverageUsd
+    this.sponsorAddress = params.sponsorAddress
+  }
+}
+
+/**
+ * The sponsor's prefunded balance cannot cover the sponsored categories for a
+ * quote.
+ *
+ * A `422 UNPROCESSABLE_CONTENT` specialization. Coverage is all-or-nothing:
+ * `failedCategories` lists the enabled categories (`gas`, `bridgeFee`,
+ * `swapFee`) that could not be covered. Unlike
+ * {@link SponsorLimitExceededError} (a configured policy cap), this clears once
+ * the sponsorship balance is topped up.
+ *
+ * Extends {@link UnprocessableContentError} and keeps `code` as
+ * `'UNPROCESSABLE_CONTENT'`, so existing handling of that error still catches
+ * it.
+ */
+class InsufficientSponsorBalanceError extends UnprocessableContentError {
+  readonly failedCategories: string[]
+  readonly sponsorAddress?: string
+  readonly remainingBalanceUsd?: number
+  readonly totalSponsoredUsd?: number
+
+  constructor(
+    params: BaseErrorParams & {
+      details?: ErrorDetail[]
+      failedCategories?: string[]
+      sponsorAddress?: string
+      remainingBalanceUsd?: number
+      totalSponsoredUsd?: number
+    },
+  ) {
+    super(params)
+    this.failedCategories = params.failedCategories ?? []
+    this.sponsorAddress = params.sponsorAddress
+    this.remainingBalanceUsd = params.remainingBalanceUsd
+    this.totalSponsoredUsd = params.totalSponsoredUsd
+  }
+}
+
 class RateLimitedError extends OrchestratorError {
   readonly retryAfter?: string
 
@@ -280,6 +366,10 @@ function stringValue(value: unknown): string | undefined {
 
 function booleanValue(value: unknown): boolean | undefined {
   return typeof value === 'boolean' ? value : undefined
+}
+
+function numberValue(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
 }
 
 function recordValue(value: unknown): Record<string, unknown> | undefined {
@@ -426,6 +516,50 @@ function parseSimulationFailureDetails(
   }
 }
 
+/**
+ * Detect a sponsor-specific failure inside a generic `UNPROCESSABLE_CONTENT`
+ * envelope. The orchestrator collapses both sponsor errors onto that wire code
+ * and carries the distinguishing code plus structured fields in the first
+ * detail's `context`. This reads that (untyped) context defensively and mints
+ * the typed error; anything unrecognized returns `undefined` so the caller
+ * falls back to a plain {@link UnprocessableContentError}.
+ *
+ * Interim: keyed on `details[0].context.code`, which is not part of the formal
+ * wire schema. If the orchestrator stops emitting it, detection degrades to the
+ * generic error (non-breaking). Superseded once a dedicated wire code ships.
+ */
+function parseSponsorError(
+  base: BaseErrorParams,
+  details: ErrorDetail[],
+): SponsorLimitExceededError | InsufficientSponsorBalanceError | undefined {
+  const context = details[0]?.context
+  if (!context) {
+    return undefined
+  }
+  switch (stringValue(context.code)) {
+    case 'SPONSOR_LIMIT_EXCEEDED':
+      return new SponsorLimitExceededError({
+        ...base,
+        details,
+        limitKey: oneOf(context.limitKey, SPONSOR_LIMIT_KEYS),
+        capUsd: numberValue(context.capUSD),
+        coverageUsd: numberValue(context.coverageUSD),
+        sponsorAddress: stringValue(context.sponsorAddress),
+      })
+    case 'INSUFFICIENT_SPONSOR_BALANCE':
+      return new InsufficientSponsorBalanceError({
+        ...base,
+        details,
+        failedCategories: stringArrayValue(context.failedCategories),
+        sponsorAddress: stringValue(context.sponsorAddress),
+        remainingBalanceUsd: numberValue(context.remainingBalanceUSD),
+        totalSponsoredUsd: numberValue(context.totalSponsoredUSD),
+      })
+    default:
+      return undefined
+  }
+}
+
 function parseErrorEnvelope(
   envelope: ErrorEnvelope,
   statusCode: number,
@@ -481,11 +615,13 @@ function parseErrorEnvelope(
     }
     case 'CONFLICT':
       return new ConflictError(base)
-    case 'UNPROCESSABLE_CONTENT':
-      return new UnprocessableContentError({
-        ...base,
-        details: parseErrorDetails(envelope.details),
-      })
+    case 'UNPROCESSABLE_CONTENT': {
+      const details = parseErrorDetails(envelope.details)
+      return (
+        parseSponsorError(base, details) ??
+        new UnprocessableContentError({ ...base, details })
+      )
+    }
     case 'TOO_MANY_REQUESTS':
       return new RateLimitedError({ ...base, retryAfter })
     case 'SETTLEMENT_QUOTE_ERROR':
@@ -528,6 +664,25 @@ function isAuthError(
 
 function isSimulationFailed(error: unknown): error is SimulationFailedError {
   return error instanceof SimulationFailedError
+}
+
+function isSponsorLimitExceeded(
+  error: unknown,
+): error is SponsorLimitExceededError {
+  return error instanceof SponsorLimitExceededError
+}
+
+function isInsufficientSponsorBalance(
+  error: unknown,
+): error is InsufficientSponsorBalanceError {
+  return error instanceof InsufficientSponsorBalanceError
+}
+
+/** Either sponsor failure: a configured cap breach or a balance shortfall. */
+function isSponsorError(
+  error: unknown,
+): error is SponsorLimitExceededError | InsufficientSponsorBalanceError {
+  return isSponsorLimitExceeded(error) || isInsufficientSponsorBalance(error)
 }
 
 function isRetryable(error: unknown): boolean {
@@ -620,6 +775,7 @@ export type {
   SimulationFailureDetails,
   SimulationFailureSimulation,
   SimulationRetryHint,
+  SponsorLimitKey,
   ValidationIssue,
 }
 export {
@@ -631,9 +787,14 @@ export {
   isValidationError,
   isRateLimited,
   isSimulationFailed,
+  isSponsorLimitExceeded,
+  isInsufficientSponsorBalance,
+  isSponsorError,
   OrchestratorError,
   ValidationError,
   InsufficientLiquidityError,
+  SponsorLimitExceededError,
+  InsufficientSponsorBalanceError,
   NotFoundError,
   UnauthorizedError,
   ForbiddenError,

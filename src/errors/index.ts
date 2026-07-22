@@ -22,12 +22,16 @@ import {
   ExternalServiceTimeoutError,
   ForbiddenError,
   InsufficientLiquidityError,
+  InsufficientSponsorBalanceError,
   InternalServerError,
   isAuthError,
+  isInsufficientSponsorBalance,
   isOrchestratorError,
   isRateLimited,
   isRetryable,
   isSimulationFailed,
+  isSponsorError,
+  isSponsorLimitExceeded,
   isValidationError,
   KeyScopeDeniedError,
   NotFoundError,
@@ -37,6 +41,8 @@ import {
   SettlementExecutionError,
   SettlementQuoteError,
   SimulationFailedError,
+  SponsorLimitExceededError,
+  type SponsorLimitKey,
   UnauthorizedError,
   UnprocessableContentError,
   ValidationError,
@@ -56,7 +62,7 @@ import {
   UnknownOwnerError,
 } from './execution'
 
-export type { ErrorDetail }
+export type { ErrorDetail, SponsorLimitKey }
 
 export {
   // Account
@@ -95,10 +101,14 @@ export {
   isValidationError,
   isRateLimited,
   isSimulationFailed,
+  isSponsorLimitExceeded,
+  isInsufficientSponsorBalance,
+  isSponsorError,
   ConflictError,
   ExternalServiceTimeoutError,
   ForbiddenError,
   InsufficientLiquidityError,
+  InsufficientSponsorBalanceError,
   InternalServerError,
   KeyScopeDeniedError,
   NotFoundError,
@@ -108,6 +118,7 @@ export {
   SimulationFailedError,
   SettlementExecutionError,
   SettlementQuoteError,
+  SponsorLimitExceededError,
   UnauthorizedError,
   UnprocessableContentError,
   ValidationError,

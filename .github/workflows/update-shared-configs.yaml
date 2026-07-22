@@ -75,7 +75,7 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
           echo "install_command=${{ steps.pm.outputs.add }} @rhinestone/shared-configs@${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "files=package.json ${{ steps.pm.outputs.lockfile }}" >> "$GITHUB_OUTPUT"
+          echo "files=src/package.json ${{ steps.pm.outputs.lockfile }}" >> "$GITHUB_OUTPUT"
 
       - name: Check for existing branch
         id: check
@@ -95,6 +95,7 @@ jobs:
         if: steps.check.outputs.skip != 'true'
         run: |
           git checkout -b "${{ steps.vars.outputs.branch }}"
+          cd src
           eval "${{ steps.vars.outputs.install_command }}"
 
       - name: Commit and push

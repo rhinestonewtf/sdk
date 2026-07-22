@@ -862,6 +862,16 @@ interface SameChainTransaction extends BaseTransaction {
   chain: Chain
   tokenRequests?: TokenRequests
   recipient?: RhinestoneAccountConfig | Address
+  /**
+   * Absolute unix timestamp (seconds) overriding the on-chain fill deadline
+   * (default 2 min). Same-chain only — the field lives on this type precisely
+   * because the orchestrator honors it only on the same-chain (tokenless)
+   * route; cross-chain transactions cannot set it. Must be between
+   * `now + 120s` and `now + 86400s` (24h); out-of-range values are rejected
+   * by the orchestrator with a `400`. When honored, the quoted `expiresAt`
+   * and the bundle claim/nonce expiry track this value automatically.
+   */
+  customDeadline?: number
 }
 
 interface CrossChainEvmTransaction extends BaseTransaction {
@@ -869,6 +879,7 @@ interface CrossChainEvmTransaction extends BaseTransaction {
   targetChain: Chain
   tokenRequests?: TokenRequests
   recipient?: RhinestoneAccountConfig | Address
+  customDeadline?: never
 }
 
 // Non-EVM destinations (Solana, Tron). `recipient` and `tokenRequests`
@@ -879,6 +890,7 @@ interface CrossChainNonEvmTransaction extends BaseTransaction {
   targetChain: NonEvmChain
   tokenRequests?: NonEvmTokenRequests
   recipient?: NonEvmAddress
+  customDeadline?: never
 }
 
 type CrossChainTransaction =

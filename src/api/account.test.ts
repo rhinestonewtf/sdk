@@ -385,6 +385,17 @@ describe('account boundary adapters', () => {
       toEvmChainReference(optimism.id),
     ])
   })
+
+  test('forwards customDeadline for same-chain intents', () => {
+    const customDeadline = 9_999_999_999
+    const transaction = adaptTransaction(invocationContext(), {
+      chain: mainnet,
+      calls: [],
+      customDeadline,
+    })
+
+    expect(transaction.options?.customDeadline).toBe(customDeadline)
+  })
 })
 
 function quoteFixture(intentId: string) {
