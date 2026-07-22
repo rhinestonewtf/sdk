@@ -42,7 +42,8 @@ offline. The command validates:
   release declarations;
 - representative consumer projects type-check configurations, selected root
   APIs, and every published subpath against both packages
-  (`test/contract/fixtures/consumer.ts`);
+  (`test/contract/fixtures/consumer.ts`). Type-only root exports must be imported
+  here explicitly because runtime export-key checks cannot observe them;
 - compatibility probes preserve address-only init data, legacy module shapes,
   and public error identity;
 - optional-peer behavior — the root imports without `jose`/`express`, and
@@ -57,10 +58,17 @@ consumer staging, and size run; `vitest.config.contract.ts` only discovers the
 
 ## Integration tests
 
-Integration tests exercise live testnets. Unless
-`INTEGRATION_ORCHESTRATOR_URL` is set, they use the SDK's built-in production
-orchestrator URL. They run manually through `vitest.config.integration.ts`
-with file parallelism disabled.
+Integration tests exercise Base Sepolia as the source chain and Arbitrum
+Sepolia as the target chain. Unless `INTEGRATION_ORCHESTRATOR_URL` is set, they
+use the SDK's built-in production orchestrator URL and production contract
+addresses. They run manually through `vitest.config.integration.ts`, with file
+parallelism disabled and five-minute test and hook timeouts.
+
+The smoke suite validates an unfunded sponsored flow. The full suite covers the
+account adapters, supported-chain queries, EIP-7702, failure behavior,
+pre-claim operations, signature modes, Smart Sessions, and session policies.
+Some full-suite scenarios move testnet native tokens or USDC and therefore need
+the funder key.
 
 ### Environment
 
@@ -70,32 +78,57 @@ with file parallelism disabled.
 | `INTEGRATION_FUNDER_PRIVATE_KEY` | Testnet funder holding native tokens and USDC        | Funded scenarios  |
 | `INTEGRATION_ORCHESTRATOR_URL`   | Orchestrator endpoint override                       | No                |
 | `INTEGRATION_USE_DEV_CONTRACTS`  | Use development contract addresses when `true`       | No                |
+| `INTEGRATION_RPC_URL_<CHAIN_ID>` | Per-chain RPC override for funding operations        | No                |
 | `SDK_ITEST_DEBUG`                | Compact per-intent diagnostics when `1`              | No                |
 
-Funded scenarios fail fast when the funder is absent or has insufficient
-balance. A custom orchestrator URL also enables development contract addresses;
+The API key must belong to the selected orchestrator environment; using a dev
+key against production, or the reverse, returns HTTP 403. A custom orchestrator
+URL also enables development contract addresses;
 `INTEGRATION_USE_DEV_CONTRACTS=true` can enable them explicitly. With neither
 setting, the SDK uses its production endpoint and production contracts.
+
+Funded scenarios fail immediately when the key is absent or the funder cannot
+cover a required top-up. After an onchain USDC transfer confirms, the harness
+also waits for the orchestrator portfolio view to observe the balance before it
+submits the intent. Indexer or public-RPC latency can therefore consume most of
+the five-minute test timeout. A timeout during funding or portfolio polling is
+an infrastructure/setup failure, not necessarily a failed SDK assertion.
 
 ### Running
 
 ```bash
-# Smoke suite; no funder required. Uses the SDK's production endpoint by default.
-INTEGRATION_RHINESTONE_API_KEY=... \
-bun run test:integration:smoke
+# Smoke suite against the production orchestrator and testnets; no funder required.
+op run --env-file=.env -- bun run test:integration:smoke -- --run
 
-# Full integration suite against a custom orchestrator.
-INTEGRATION_ORCHESTRATOR_URL=https://dev.v1.orchestrator.rhinestone.dev \
-INTEGRATION_RHINESTONE_API_KEY=... \
-INTEGRATION_FUNDER_PRIVATE_KEY=... \
-bun run test:integration -- --run
+# Full suite against the production orchestrator and testnets.
+op run --env-file=.env -- bun run test:integration -- --run
+
+# Run one scenario or test while investigating a failure.
+op run --env-file=.env -- bun run test:integration -- --run \
+  test/integration/scenarios/ssx-policies.itest.ts -t "allowlisted"
 
 # Compact per-intent diagnostics.
-SDK_ITEST_DEBUG=1 bun run test:integration:smoke
+SDK_ITEST_DEBUG=1 op run --env-file=.env -- \
+  bun run test:integration:smoke -- --run
 ```
 
 `test/integration/framework/` owns execution, funding, signature assertions,
 and reusable fixtures. Configuration lives in `test/integration/config/`.
+
+### GitHub Actions
+
+The `Integration Tests` workflow is manual and serializes live runs through the
+`live-integration-tests` concurrency group. Choose `suite=smoke` or `suite=all`
+and `target=prod` or `target=dev`. The job has a 30-minute timeout and resolves
+the environment-specific API key before executing the selected suite.
+
+```bash
+gh workflow run integration-tests.yaml -f suite=all -f target=prod
+```
+
+For `target=prod`, the workflow leaves the endpoint override empty so the SDK
+uses its built-in production URL and contracts. For `target=dev`, it supplies
+the development URL, which also enables development contract addresses.
 
 ### Credentials
 
@@ -104,7 +137,7 @@ paste resolved values into commands or logs.
 
 ```bash
 export OP_SHIM_KEY=...
-op run --env-file=.env -- bun run test:integration:smoke
+op run --env-file=.env -- bun run test:integration:smoke -- --run
 ```
 
 If `OP_SHIM_KEY` is absent, ask for it and export it for the current shell only.

@@ -24,7 +24,7 @@ graph TD
   Accounts --> Modules[modules/<br/>validators · Smart Sessions]
   Intents --> Orch[clients/orchestrator/]
   UserOps --> Bundler[clients/bundler/ + paymaster/]
-  Signing --> Rpc[clients/rpc/]
+  Compose --> Rpc[clients/rpc/]
 
   Orch -->|HTTP| API[(Rhinestone Orchestrator API)]
 ```
@@ -116,5 +116,5 @@ ERC-4337 path for direct bundler execution:
 | ----------------------- | ----------------------------------------- | ---------------------------- |
 | Rhinestone Orchestrator | Intent quoting, routing, status           | HTTP (`clients/orchestrator/`) |
 | Relayer market          | Cross-chain settlement (Across/Relay/Eco) | via orchestrator             |
-| Bundler / RPC           | ERC-4337 user-operation submission        | `clients/bundler/`, `clients/rpc/` (viem peer) |
+| Bundler / paymaster / RPC | ERC-4337 preparation and submission     | `clients/bundler/`, `clients/paymaster/`, `clients/rpc/` (viem peer) |
 | JWT backend             | Mints short-lived auth tokens (JWT mode)  | `jwt-server/`                |

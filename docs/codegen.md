@@ -34,8 +34,8 @@ Output defaults to the sibling `docs` repo and can be overridden:
 
 | Var                 | Purpose                          | Default                  |
 | ------------------- | -------------------------------- | ------------------------ |
-| `SDK_REF_OUT`       | Output dir                       | `../../docs/sdk-reference` |
-| `SDK_REF_DOCS_JSON` | `docs.json` to patch             | `../../docs/docs.json`   |
+| `SDK_REF_OUT`       | Output dir                       | `../docs/sdk-reference` |
+| `SDK_REF_DOCS_JSON` | `docs.json` to patch             | `../docs/docs.json`   |
 
 ### Scope and content
 
@@ -70,8 +70,9 @@ OpenAPI spec (the `blanc` version) with `openapi-typescript`.
 ### Motivation
 
 The generated wire types are the single source of truth for the orchestrator's
-request/response shapes. The orchestrator mappers (`src/clients/orchestrator/mappers.ts`, via the `wire.ts` aliases)
-adapts them to the SDK's internal types — BigInt amounts, numeric chain ids —
+request/response shapes. The orchestrator mappers
+(`src/clients/orchestrator/mappers.ts`, via the `wire.ts` aliases) adapt them to
+the SDK's internal types — BigInt amounts, numeric chain ids —
 at one boundary. When the wire shape drifts, regenerating turns the change into
 a **typecheck error at the adapter boundary** instead of a runtime surprise.
 
