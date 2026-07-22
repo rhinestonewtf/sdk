@@ -1,6 +1,11 @@
 import { concat, type Hex, hashTypedData, type TypedDataDefinition } from 'viem'
 import { describe, expect, test, vi } from 'vitest'
 import type { AccountAdapter } from '../../accounts/adapter'
+import {
+  InsufficientOwnerSignaturesError,
+  MismatchedOwnerSignaturesError,
+  UnknownOwnerError,
+} from '../../errors/execution'
 import type { SigningContext } from '../context'
 import {
   assembleIntentStage,
@@ -1096,10 +1101,12 @@ describe('intent signing plans', () => {
         context: signingContext,
       })
 
-    expect(() => assemble([{ ...valid, intentId: 'other' }])).toThrow(
-      'another intent',
+    expect(() => assemble([{ ...valid, intentId: 'other' }])).toThrowError(
+      MismatchedOwnerSignaturesError,
     )
-    expect(() => assemble([{ ...valid, origin: [] }])).toThrow('origin count')
+    expect(() => assemble([{ ...valid, origin: [] }])).toThrowError(
+      MismatchedOwnerSignaturesError,
+    )
     expect(() =>
       assemble([
         {
@@ -1107,14 +1114,16 @@ describe('intent signing plans', () => {
           signer: '0x9999999999999999999999999999999999999999',
         },
       ]),
-    ).toThrow('Unknown')
-    expect(() => assemble([valid, valid])).toThrow('Duplicate')
+    ).toThrowError(UnknownOwnerError)
+    expect(() => assemble([valid, valid])).toThrowError(
+      MismatchedOwnerSignaturesError,
+    )
     expect(() =>
       assemble(
         [valid],
         [{ ownerId: 'owner/a', identity: owner, kind: 'webauthn' }],
       ),
-    ).toThrow('kind')
+    ).toThrowError(MismatchedOwnerSignaturesError)
     expect(() =>
       assemble(
         [
@@ -1139,7 +1148,7 @@ describe('intent signing plans', () => {
           },
         ],
       ),
-    ).toThrow('validator id')
+    ).toThrowError(MismatchedOwnerSignaturesError)
     expect(() =>
       assemble(
         [valid],
@@ -1153,7 +1162,7 @@ describe('intent signing plans', () => {
           },
         ],
       ),
-    ).toThrow('missing its validator id')
+    ).toThrowError(MismatchedOwnerSignaturesError)
     expect(() =>
       assembleIndependentIntentArtifact({
         intentId,
@@ -1165,5 +1174,167 @@ describe('intent signing plans', () => {
         context: signingContext,
       }),
     ).toThrow('requires a validator codec')
+
+    for (const validatorCodec of [
+      {
+        kind: 'smart-session' as const,
+        validator: { kind: 'validator' as const, address: validator },
+        mode: 'pre-claim' as const,
+        permissionId: `0x${'66'.repeat(32)}` as Hex,
+      },
+      {
+        kind: 'smart-session-state' as const,
+        factId: 'session-state',
+        whenEnabled: {
+          kind: 'smart-session' as const,
+          validator: { kind: 'validator' as const, address: validator },
+          mode: 'pre-claim' as const,
+          permissionId: `0x${'66'.repeat(32)}` as Hex,
+        },
+        whenDisabled: {
+          kind: 'smart-session' as const,
+          validator: { kind: 'validator' as const, address: validator },
+          mode: 'pre-claim' as const,
+          permissionId: `0x${'66'.repeat(32)}` as Hex,
+        },
+      },
+    ]) {
+      expect(() =>
+        assembleIndependentIntentArtifact({
+          intentId,
+          originIndex: 0,
+          originCount: 1,
+          signatures: [valid],
+          owners: [{ ownerId: 'owner/a', identity: owner, kind: 'ecdsa' }],
+          artifact: { ...artifact, validatorCodec },
+          context: signingContext,
+        }),
+      ).toThrow('cannot be signed independently')
+    }
+  })
+
+  test('reports insufficient independent atomic and MFA signatures', () => {
+    const artifact = createIntentSigningPlan(ownerPlanInput()).stages[0]
+      .artifacts[0]
+    const signingContext = context()
+    const signature = {
+      intentId,
+      kind: 'ecdsa' as const,
+      signer: owner,
+      origin: [`0x${'55'.repeat(64)}1f` as Hex],
+    }
+    const assemble = (
+      artifactOverride: typeof artifact,
+      signatures: Parameters<
+        typeof assembleIndependentIntentArtifact
+      >[0]['signatures'],
+      owners: Parameters<typeof assembleIndependentIntentArtifact>[0]['owners'],
+    ) =>
+      assembleIndependentIntentArtifact({
+        intentId,
+        originIndex: 0,
+        originCount: 1,
+        signatures,
+        owners,
+        artifact: artifactOverride,
+        context: signingContext,
+      })
+
+    expect(() =>
+      assemble(
+        {
+          ...artifact,
+          validatorCodec: {
+            ...codec,
+            ownerOrder: ['owner/a', 'owner/b'],
+            threshold: 2,
+          },
+        },
+        [signature],
+        [{ ownerId: 'owner/a', identity: owner, kind: 'ecdsa' }],
+      ),
+    ).toThrowError(InsufficientOwnerSignaturesError)
+
+    const factor = {
+      id: 'factor-a',
+      publicId: 1,
+      validator,
+      codec: {
+        ...codec,
+        ownerOrder: ['owner/a', 'owner/b'],
+        threshold: 2,
+      },
+    }
+    const factorSignature = {
+      intentId,
+      kind: 'multi-factor' as const,
+      validatorId: 1,
+      signature: {
+        kind: 'ecdsa' as const,
+        signer: owner,
+        origin: signature.origin,
+      },
+    }
+    const factorOwner = {
+      ownerId: 'owner/a',
+      identity: owner,
+      kind: 'ecdsa' as const,
+      factorId: factor.id,
+      factorPublicId: factor.publicId,
+    }
+    expect(() =>
+      assemble(
+        {
+          ...artifact,
+          validatorCodec: {
+            kind: 'nested-threshold',
+            validator: { kind: 'validator', address: validator },
+            factorOrder: [factor.id],
+            threshold: 1,
+          },
+          validatorFactors: [factor],
+        },
+        [factorSignature],
+        [factorOwner],
+      ),
+    ).toThrowError(InsufficientOwnerSignaturesError)
+
+    expect(() =>
+      assemble(
+        {
+          ...artifact,
+          validatorCodec: {
+            kind: 'nested-threshold',
+            validator: { kind: 'validator', address: validator },
+            factorOrder: [factor.id, 'factor-b'],
+            threshold: 2,
+          },
+          validatorFactors: [
+            { ...factor, codec: { ...factor.codec, threshold: 1 } },
+          ],
+        },
+        [factorSignature],
+        [factorOwner],
+      ),
+    ).toThrowError(InsufficientOwnerSignaturesError)
+
+    expect(() =>
+      assemble(
+        {
+          ...artifact,
+          validatorCodec: {
+            kind: 'nested-threshold',
+            validator: { kind: 'validator', address: validator },
+            factorOrder: [factor.id],
+            threshold: 1,
+          },
+          validatorFactors: [
+            { ...factor, codec: { ...factor.codec, threshold: 1 } },
+          ],
+        },
+        [{ ...factorSignature, validatorId: `0x${'11'.repeat(13)}` }],
+        [factorOwner],
+      ),
+    ).toThrowError(MismatchedOwnerSignaturesError)
   })
 })

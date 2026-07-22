@@ -28,6 +28,7 @@ import type {
 } from '../../modules/validators/smart-sessions/types'
 import type { IntentSigningInput } from '../../signing/intent-plans/types'
 import type {
+  OwnerSignerSelection,
   SignerInvocationPort,
   SigningCheckpointPort,
   SigningTranscript,
@@ -77,7 +78,7 @@ export interface IntentInput<CompatibilityConfig = unknown> {
     readonly to: Address
     readonly data: Hex
   }[]
-  readonly signers?: IntentSessionSelection
+  readonly signers?: OwnerSignerSelection | IntentSessionSelection
 }
 
 export interface PreparedIntent<CompatibilityConfig = unknown> {

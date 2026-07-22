@@ -5,6 +5,7 @@ import type { Call } from '../../calls/types'
 import { chainIdFromReference, toEvmChainReference } from '../../chains/caip2'
 import type { EvmChainReference } from '../../chains/types'
 import { defineValidator } from '../../modules/validators/definition'
+import { ecdsaSignerId } from '../../modules/validators/signer-id'
 import type { ResolvedSessionSignerSet } from '../../modules/validators/smart-sessions/types'
 import type { IntentSigningInput } from '../../signing/intent-plans/types'
 import { signingTopology } from '../../signing/plan'
@@ -32,6 +33,8 @@ export async function prepareIntent<CompatibilityConfig>(
     runtime,
     context,
   })
+  const ownerSelection =
+    input.signers?.kind === 'owner' ? input.signers : undefined
   const request = buildIntentRequest({
     transaction: sessions
       ? { ...input, signatureMode: sessions.signatureMode }
@@ -66,6 +69,8 @@ export async function prepareIntent<CompatibilityConfig>(
       quote,
       sessions?.byChain,
       input.destination.kind === 'evm' ? input.destination : undefined,
+      ownerSelection?.validator,
+      ownerSelection?.signerIds,
     ),
     accountChain,
     ...(sessions
@@ -175,6 +180,8 @@ export function buildIntentSigningInput(
   quote: PreparedIntent['quote'],
   sessions?: PreparedIntent['resolvedSessions'],
   destination?: EvmChainReference,
+  ownerValidator?: import('../../modules/validators/types').ResolvedValidatorDefinition,
+  selectedSignerIds?: readonly string[],
 ): IntentSigningInput {
   const sessionTopology = sessions
     ? signingTopology(
@@ -184,10 +191,11 @@ export function buildIntentSigningInput(
         ),
       )
     : undefined
+  const selectedOwner = ownerValidator ?? runtime.construction.owner
   const topology = sessionTopology
     ? sessionTopology
-    : runtime.construction.owner
-      ? signingTopology(runtime.construction.owner)
+    : selectedOwner
+      ? signingTopology(selectedOwner, selectedSignerIds)
       : {
           configuredTopology: {
             rootValidatorId: 'eoa',
@@ -197,7 +205,7 @@ export function buildIntentSigningInput(
           effectiveSelection: {
             validatorIds: [],
             signerIds: runtime.construction.eoa
-              ? [`ecdsa:${runtime.construction.eoa.address.toLowerCase()}`]
+              ? [ecdsaSignerId(runtime.construction.eoa)]
               : [],
             threshold: 1,
           },

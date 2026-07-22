@@ -142,6 +142,10 @@ export type ValidatorContributionCodec =
       readonly permissionId: Hex
       readonly claimPolicyData?: Hex
       readonly enableData?: SmartSessionEnableContributionData
+      readonly signerCodec?: Exclude<
+        ValidatorContributionCodec,
+        { readonly kind: 'smart-session' }
+      >
     }
 
 export type ValidatorContributionInput =

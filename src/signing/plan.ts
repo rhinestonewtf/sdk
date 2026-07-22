@@ -351,7 +351,9 @@ export function createValidatorSigningTasks(input: {
   readonly ecdsaInvocation: 'ecdsa-sign-message' | 'ecdsa-sign-typed-data'
   readonly webauthnInvocation: 'webauthn-sign-hash' | 'webauthn-sign-typed-data'
   readonly role?: import('./types').SigningTaskRole
+  readonly selectedSignerIds?: readonly string[]
 }): readonly PayloadSigningTask[] {
+  const selectedSignerIds = input.selectedSignerIds
   const factors =
     input.validator.kind === 'multi-factor'
       ? input.validator.validators.map((validator) => ({
@@ -360,32 +362,37 @@ export function createValidatorSigningTasks(input: {
         }))
       : [{ factorId: undefined, owners: input.validator.owners }]
   const tasks = factors.flatMap((factor) =>
-    factor.owners.map((owner) => {
+    factor.owners.flatMap((owner) => {
+      if (selectedSignerIds && !selectedSignerIds.includes(owner.signerId)) {
+        return []
+      }
       const signer = input.signerReferences[owner.signerId]
       if (!signer)
         throw new Error(`Signer reference ${owner.signerId} is missing`)
       const webauthn = owner.kind === 'webauthn'
-      return {
-        id: `${input.taskPrefix}:${owner.id}`,
-        signer,
-        role: input.role ?? (factor.factorId ? 'factor' : 'owner'),
-        invocationKind: webauthn
-          ? input.webauthnInvocation
-          : input.ecdsaInvocation,
-        contribution: webauthn
-          ? {
-              kind: 'webauthn' as const,
-              ownerId: owner.id,
-              publicKey: owner.account.publicKey,
-              ...(factor.factorId ? { factorId: factor.factorId } : {}),
-            }
-          : {
-              kind: 'ecdsa' as const,
-              ownerId: owner.id,
-              encoding: 'raw-signer' as const,
-              ...(factor.factorId ? { factorId: factor.factorId } : {}),
-            },
-      }
+      return [
+        {
+          id: `${input.taskPrefix}:${owner.id}`,
+          signer,
+          role: input.role ?? (factor.factorId ? 'factor' : 'owner'),
+          invocationKind: webauthn
+            ? input.webauthnInvocation
+            : input.ecdsaInvocation,
+          contribution: webauthn
+            ? {
+                kind: 'webauthn' as const,
+                ownerId: owner.id,
+                publicKey: owner.account.publicKey,
+                ...(factor.factorId ? { factorId: factor.factorId } : {}),
+              }
+            : {
+                kind: 'ecdsa' as const,
+                ownerId: owner.id,
+                encoding: 'raw-signer' as const,
+                ...(factor.factorId ? { factorId: factor.factorId } : {}),
+              },
+        },
+      ]
     }),
   )
   return input.validator.kind === 'multi-factor'
@@ -400,7 +407,10 @@ export function createValidatorSigningTasks(input: {
     : tasks
 }
 
-export function signingTopology(validator: ResolvedValidatorDefinition): {
+export function signingTopology(
+  validator: ResolvedValidatorDefinition,
+  selectedSignerIds?: readonly string[],
+): {
   readonly configuredTopology: ConfiguredValidatorTopology
   readonly effectiveSelection: EffectiveSignerSelection
 } {
@@ -417,10 +427,19 @@ export function signingTopology(validator: ResolvedValidatorDefinition): {
       threshold: validator.threshold,
     },
     effectiveSelection: {
-      validatorIds: validators.map(({ id }) => id),
-      signerIds: validators.flatMap((item) =>
-        item.owners.map(({ signerId }) => signerId),
+      validatorIds: validators.flatMap((item) =>
+        selectedSignerIds &&
+        !item.owners.some(({ signerId }) =>
+          selectedSignerIds.includes(signerId),
+        )
+          ? []
+          : [item.id],
       ),
+      signerIds:
+        selectedSignerIds ??
+        validators.flatMap((item) =>
+          item.owners.map(({ signerId }) => signerId),
+        ),
       threshold: validator.threshold,
     },
   }

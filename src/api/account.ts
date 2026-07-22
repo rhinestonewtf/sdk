@@ -42,8 +42,13 @@ import {
 import type { AccountInvocationContext } from '../config/resolved'
 import {
   IndependentSigningNotSupportedError,
+  MismatchedOwnerSignaturesError,
   QuoteNotInPreparedTransactionError,
 } from '../errors/execution'
+import {
+  ecdsaSignerId,
+  webauthnSignerId,
+} from '../modules/validators/signer-id'
 import type { SessionDetails } from '../modules/validators/smart-sessions/types'
 import type { OwnerSignature, SignAsOwnerOptions } from '../signing/types'
 import {
@@ -67,6 +72,7 @@ import type {
   UserOperationResult,
 } from '../transactions/user-operations/types'
 import type { CoreComposition } from './compose-types'
+import { adaptSignerSelection } from './signer-selection'
 
 interface SubmitTransactionOptions {
   authorizations?: SignedAuthorizationList
@@ -562,13 +568,14 @@ export function createAccountFacade(
           return Promise.reject(new IndependentSigningNotSupportedError())
         }
         const signerId = signerIdForOwner(options.owner)
-        return resolvePrepared(ctx, preparedTransaction).then(
+        return resolvePrepared(ctx, preparedTransaction, options.intentId).then(
           (internal) =>
-            workflows.signIntentAsOwner(
-              ctx,
-              internal,
+            workflows.signIntentAsOwner(ctx, internal, {
               signerId,
-            ) as unknown as Promise<OwnerSignature>,
+              ...(options.validatorId === undefined
+                ? {}
+                : { validatorId: options.validatorId }),
+            }) as unknown as Promise<OwnerSignature>,
         )
       }
       return resolvePrepared(ctx, preparedTransaction, options?.intentId)
@@ -580,7 +587,15 @@ export function createAccountFacade(
     async assembleTransaction(preparedTransaction, signatures) {
       const ctx = context('assemble-intent')
       const workflows = workflowsFor(ctx)
-      const internal = await resolvePrepared(ctx, preparedTransaction)
+      const intentIds = [...new Set(signatures.map(({ intentId }) => intentId))]
+      if (intentIds.length > 1) {
+        throw new MismatchedOwnerSignaturesError({ context: { intentIds } })
+      }
+      const internal = await resolvePrepared(
+        ctx,
+        preparedTransaction,
+        intentIds[0],
+      )
       const signed = await workflows.assembleIntent(
         ctx,
         internal,
@@ -600,19 +615,25 @@ export function createAccountFacade(
       })
       return result.authorizations as SignedAuthorizationList
     },
-    async signMessage(message, chain, _signers) {
+    async signMessage(message, chain, signers) {
       const ctx = context('sign-message')
       const result = await workflowsFor(ctx).signMessage(ctx, {
         message,
         chain: toEvmChainReference(chain.id),
+        ...(signers
+          ? { signers: adaptSignerSelection(ctx.account, signers) }
+          : {}),
       })
       return result.signature
     },
-    async signTypedData(parameters, chain, _signers) {
+    async signTypedData(parameters, chain, signers) {
       const ctx = context('sign-typed-data')
       const result = await workflowsFor(ctx).signTypedData(ctx, {
         typedData: parameters as unknown as TypedDataDefinition,
         chain: toEvmChainReference(chain.id),
+        ...(signers
+          ? { signers: adaptSignerSelection(ctx.account, signers) }
+          : {}),
       })
       return result.signature
     },
@@ -627,7 +648,9 @@ export function createAccountFacade(
             : {}),
         },
         targetChain: destinationChainReference(targetChain),
-        ...(signers ? { signers: adaptSignerSelection(signers) } : {}),
+        ...(signers
+          ? { signers: adaptSignerSelection(ctx.account, signers) }
+          : {}),
       })
       return {
         originSignatures:
@@ -671,6 +694,7 @@ export function createAccountFacade(
       }
     },
     async prepareUserOperation(transaction) {
+      assertUserOperationSignerSelection(transaction)
       const ctx = context('prepare-user-operation')
       const prepared = await workflowsFor(ctx).prepareUserOperation(ctx, {
         chain: toEvmChainReference(transaction.chain.id),
@@ -728,6 +752,7 @@ export function createAccountFacade(
       return { type: 'userop', hash: submitted.hash, chain: submitted.chain.id }
     },
     async sendUserOperation(transaction) {
+      assertUserOperationSignerSelection(transaction)
       const ctx = context('send-user-operation')
       const submitted = await workflowsFor(ctx).sendUserOperation(ctx, {
         chain: toEvmChainReference(transaction.chain.id),
@@ -815,9 +840,17 @@ function signerIdForOwner(owner: SignAsOwnerOptions['owner']): string {
   // ECDSA local accounts also expose `publicKey`, so discriminate on the
   // account type rather than the presence of a public key.
   if ((owner as { type?: string }).type === 'webAuthn') {
-    return `webauthn:${((owner as { publicKey: Hex }).publicKey).toLowerCase()}`
+    return webauthnSignerId((owner as { publicKey: Hex }).publicKey)
   }
-  return `ecdsa:${(owner as { address: Address }).address.toLowerCase()}`
+  return ecdsaSignerId((owner as { address: Address }).address)
+}
+
+function assertUserOperationSignerSelection(
+  transaction: UserOperationTransaction,
+): void {
+  if (transaction.signers?.type === 'experimental_session') {
+    throw new Error('No account found')
+  }
 }
 
 function destinationChainReference(
@@ -830,32 +863,6 @@ function destinationChainReference(
     sharedChainCatalog,
     (targetChain as { id: number }).id,
   )
-}
-
-function adaptSignerSelection(
-  signers: SignerSet,
-): IntentInput['signers'] | undefined {
-  if (signers.type !== 'experimental_session') return undefined
-  if ('sessions' in signers) {
-    return {
-      kind: 'smart-session',
-      byChain: Object.fromEntries(
-        Object.entries(signers.sessions).map(([chainId, selection]) => [
-          Number(chainId),
-          selection,
-        ]),
-      ),
-    }
-  }
-  return {
-    kind: 'smart-session',
-    byChain: {
-      [signers.session.chain.id]: {
-        session: signers.session,
-        ...(signers.enableData ? { enableData: signers.enableData } : {}),
-      },
-    },
-  }
 }
 
 // Public `Transaction` -> internal `IntentInput`. Owned here because the facade
@@ -969,12 +976,18 @@ export function adaptTransaction(
             transaction.experimental_accountOverride.setupOps,
         }
       : {}),
-    ...(transaction.signers?.type === 'experimental_session'
+    ...(transaction.signers
       ? {
-          signers: {
-            kind: 'smart-session',
-            byChain: adaptSessionSelection(transaction, sourceChains ?? []),
-          } as const,
+          signers:
+            transaction.signers.type === 'experimental_session'
+              ? {
+                  kind: 'smart-session',
+                  byChain: adaptSessionSelection(
+                    transaction,
+                    sourceChains ?? [],
+                  ),
+                }
+              : adaptSignerSelection(context.account, transaction.signers),
         }
       : {}),
   }

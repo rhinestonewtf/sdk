@@ -1,5 +1,4 @@
-import type { Account } from 'viem'
-import type { WebAuthnAccount } from 'viem/account-abstraction'
+import { ecdsaSignerId, webauthnSignerId } from './signer-id'
 import type {
   AtomicValidatorDefinition,
   AtomicValidatorInput,
@@ -9,14 +8,6 @@ import type {
   ValidatorModuleSelection,
   ValidatorOwner,
 } from './types'
-
-function accountIdentity(account: Account): string {
-  return account.address.toLowerCase()
-}
-
-function webAuthnIdentity(account: WebAuthnAccount): string {
-  return account.publicKey.toLowerCase()
-}
 
 function moduleSelection(
   address: `0x${string}` | undefined,
@@ -44,7 +35,7 @@ function defineAtomicValidator(
           (account, index): ValidatorOwner => ({
             kind: 'ecdsa',
             id: ownerId(index),
-            signerId: `ecdsa:${accountIdentity(account)}`,
+            signerId: ecdsaSignerId(account),
             account,
           }),
         ),
@@ -60,7 +51,7 @@ function defineAtomicValidator(
           (owner, index): ValidatorOwner => ({
             kind: 'ens',
             id: ownerId(index),
-            signerId: `ecdsa:${accountIdentity(owner.account)}`,
+            signerId: ecdsaSignerId(owner.account),
             account: owner.account,
             ...(owner.expiration ? { expiration: owner.expiration } : {}),
           }),
@@ -77,7 +68,7 @@ function defineAtomicValidator(
           (account, index): ValidatorOwner => ({
             kind: 'webauthn',
             id: ownerId(index),
-            signerId: `webauthn:${webAuthnIdentity(account)}`,
+            signerId: webauthnSignerId(account),
             account,
           }),
         ),

@@ -23,7 +23,11 @@ import type {
   SessionDetails,
 } from '../modules/validators/smart-sessions/types'
 import type { IndependentOwnerSignature } from '../signing/intent-plans/independent'
-import type { SignerInvocationPort, SigningTranscript } from '../signing/types'
+import type {
+  OwnerSignerSelection,
+  SignerInvocationPort,
+  SigningTranscript,
+} from '../signing/types'
 import type {
   IntentInput,
   IntentSessionSelection,
@@ -70,6 +74,7 @@ export interface AccountWorkflows<CompatibilityConfig = unknown> {
     input: {
       readonly message: SignableMessage
       readonly chain: import('../chains/types').EvmChainReference
+      readonly signers?: OwnerSignerSelection | IntentSessionSelection
     },
   ) => Promise<{
     readonly signature: Hex
@@ -80,6 +85,7 @@ export interface AccountWorkflows<CompatibilityConfig = unknown> {
     input: {
       readonly typedData: TypedDataDefinition
       readonly chain: import('../chains/types').EvmChainReference
+      readonly signers?: OwnerSignerSelection | IntentSessionSelection
     },
   ) => Promise<{
     readonly signature: Hex
@@ -116,7 +122,10 @@ export interface AccountWorkflows<CompatibilityConfig = unknown> {
   readonly signIntentAsOwner: (
     context: AccountInvocationContext<CompatibilityConfig>,
     input: PreparedIntent<CompatibilityConfig>,
-    signerId: string,
+    selection: {
+      readonly signerId: string
+      readonly validatorId?: number | Hex
+    },
   ) => Promise<IndependentOwnerSignature>
   readonly assembleIntent: (
     context: AccountInvocationContext<CompatibilityConfig>,
@@ -215,7 +224,7 @@ export interface AccountWorkflows<CompatibilityConfig = unknown> {
     input: {
       readonly signData: IntentMessages
       readonly targetChain: ChainReference
-      readonly signers?: IntentSessionSelection
+      readonly signers?: OwnerSignerSelection | IntentSessionSelection
     },
   ) => Promise<{
     readonly originSignatures: SignedIntent<CompatibilityConfig>['originSignatures']

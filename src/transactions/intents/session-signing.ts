@@ -1,4 +1,5 @@
 import {
+  type Address,
   encodePacked,
   type Hex,
   hashMessage,
@@ -11,7 +12,10 @@ import { getValidatorCapabilities } from '../../modules/validators/capabilities'
 import { defineValidator } from '../../modules/validators/definition'
 import type { Permit2ClaimMessage } from '../../modules/validators/policies/claim/permit2'
 import { buildPermit2ClaimPolicyCalldata } from '../../modules/validators/policies/claim/permit2'
-import { resolveValidator } from '../../modules/validators/resolve'
+import {
+  resolveAtomicValidator,
+  resolveValidator,
+} from '../../modules/validators/resolve'
 import { getSessionData } from '../../modules/validators/smart-sessions/digest'
 import { getSmartSessionEmissaryAddress } from '../../modules/validators/smart-sessions/module'
 import {
@@ -19,8 +23,16 @@ import {
   selectPermit2ClaimPolicyForMessage,
 } from '../../modules/validators/smart-sessions/policies/claim'
 import type { ResolvedSessionSignerSet } from '../../modules/validators/smart-sessions/types'
+import type {
+  ResolvedValidatorDefinition,
+  ValidatorContributionCodec,
+} from '../../modules/validators/types'
 import type { SigningContext } from '../../signing/context'
 import type { IntentSigningPlanCreationInput } from '../../signing/intent-plans/types'
+import {
+  createValidatorSigningTasks,
+  signingTopology,
+} from '../../signing/plan'
 import { createSignerInvocationPort } from '../../signing/signers/registry'
 import type { ExternalSignerRegistry } from '../../signing/signers/types'
 import type {
@@ -173,7 +185,10 @@ function buildSessionStage(input: {
   readonly output: 'pair' | 'pre-claim' | 'notarized'
   readonly includeNotarized?: boolean
 }): IntentSigningPlanCreationInput['stages'][number] {
-  const signing = sessionSigningRoute(input.session)
+  const signing = sessionOwnerSigning(
+    input.session,
+    input.context.account.address,
+  )
   const module = getSmartSessionEmissaryAddress(input.environment)
   const tasks: SigningTaskTemplate[] = []
   const artifacts: Omit<ArtifactAssemblyPlan, 'stageId'>[] = []
@@ -205,28 +220,33 @@ function buildSessionStage(input: {
       kind: 'message',
       message: { raw: payloadId },
     }
-    const taskId = `${notarizedId}:signer`
-    tasks.push(
-      sessionTask(
-        taskId,
-        signing,
-        input.session,
-        payloadId,
-        'session-notarized',
-      ),
+    const stageTasks = sessionTasks(
+      `${notarizedId}:signer`,
+      signing,
+      input.session,
+      payloadId,
+      'session-notarized',
     )
-    scheduleIds.push(taskId)
+    tasks.push(...stageTasks)
+    scheduleIds.push(...stageTasks.map(({ id }) => id))
     artifacts.push({
       id: input.output === 'notarized' ? input.outputId : notarizedId,
       usage:
         input.output === 'notarized' ? input.usage : 'intent-notarized-claim',
-      input: { kind: 'task-results', taskIds: [taskId] },
+      input: {
+        kind: 'task-results',
+        taskIds: stageTasks.map(({ id }) => id),
+      },
       validatorCodec: sessionCodec(
         input.session,
         module,
+        signing.signerCodec,
         'notarized',
         input.typedData,
       ),
+      ...(signing.validatorFactors
+        ? { validatorFactors: signing.validatorFactors }
+        : {}),
       erc7739: { kind: 'none' },
       accountEnvelope: sessionAccountEnvelope(
         input.context.accountCapabilities.signatureEnvelope,
@@ -242,26 +262,31 @@ function buildSessionStage(input: {
     }
     const preClaimId =
       input.output === 'pre-claim' ? input.outputId : `${input.id}:pre-claim`
-    const taskId = `${preClaimId}:signer`
-    tasks.push(
-      sessionTask(
-        taskId,
-        signing,
-        input.session,
-        input.payloadId,
-        'session-pre-claim',
-      ),
+    const stageTasks = sessionTasks(
+      `${preClaimId}:signer`,
+      signing,
+      input.session,
+      input.payloadId,
+      'session-pre-claim',
     )
-    scheduleIds.push(taskId)
+    tasks.push(...stageTasks)
+    scheduleIds.push(...stageTasks.map(({ id }) => id))
     artifacts.push({
       id: preClaimId,
       usage: input.output === 'pre-claim' ? input.usage : 'intent-pre-claim',
-      input: { kind: 'task-results', taskIds: [taskId] },
+      input: {
+        kind: 'task-results',
+        taskIds: stageTasks.map(({ id }) => id),
+      },
       validatorCodec: sessionPreClaimCodec(
         input.session,
         module,
+        signing.signerCodec,
         checkpoint.id,
       ),
+      ...(signing.validatorFactors
+        ? { validatorFactors: signing.validatorFactors }
+        : {}),
       erc7739: { kind: 'none' },
       accountEnvelope: { kind: 'none' },
       erc6492: { kind: 'none' },
@@ -298,61 +323,96 @@ function buildSessionStage(input: {
   }
 }
 
-function sessionTask(
-  id: string,
-  signing: ReturnType<typeof sessionSigningRoute>,
+function sessionTasks(
+  taskPrefix: string,
+  signing: ReturnType<typeof sessionOwnerSigning>,
   session: ResolvedSessionSignerSet,
   payloadId: Hex,
   role: 'session-notarized' | 'session-pre-claim',
-): SigningTaskTemplate {
-  return {
-    id,
-    signer: signing.signer,
+): readonly SigningTaskTemplate[] {
+  return createValidatorSigningTasks({
+    validator: signing.validator,
+    signerReferences: signing.signerReferences,
+    taskPrefix,
+    ecdsaInvocation: 'ecdsa-sign-message',
+    webauthnInvocation: 'webauthn-sign-hash',
     role,
+  }).map((task) => ({
+    ...task,
     chain: {
       kind: 'evm',
       id: session.session.chain.id,
       caip2: `eip155:${session.session.chain.id}`,
     },
-    invocationKind: 'ecdsa-sign-message',
     payload: { source: 'plan-payload', payloadId },
-    contribution: {
-      kind: 'session',
-      recoveryEncoding: signing.recoveryEncoding,
-    },
-  }
+  }))
 }
 
-function sessionSigningRoute(session: ResolvedSessionSignerSet) {
+function sessionOwnerSigning(
+  session: ResolvedSessionSignerSet,
+  account: Address,
+) {
   const validator = defineValidator(
     session.session.owners,
     'smart-session-validator',
   )
-  const owners =
-    validator.kind === 'multi-factor'
-      ? validator.validators.flatMap(({ owners: factorOwners }) => factorOwners)
-      : validator.owners
-  const owner = owners[0]
-  if (!owner || owners.length !== 1 || owner.kind === 'webauthn') {
-    throw new Error(
-      'Smart Session intent signing currently requires one ECDSA session owner',
-    )
-  }
+  const owners = validatorOwners(validator)
+  const capabilities = getValidatorCapabilities(
+    validator,
+    resolveValidator(validator),
+    'smart-session-owner',
+    'intent',
+    false,
+  )
   return {
-    signer: { id: owner.signerId, kind: 'ecdsa' as const },
-    recoveryEncoding: getValidatorCapabilities(
-      validator,
-      resolveValidator(validator),
-      'smart-session-owner',
-      'intent',
-      false,
-    ).recoveryEncoding,
+    validator,
+    ...signingTopology(validator),
+    signerReferences: Object.fromEntries(
+      owners.map((owner) => [
+        owner.signerId,
+        {
+          id: owner.signerId,
+          kind:
+            owner.kind === 'webauthn'
+              ? ('webauthn' as const)
+              : ('ecdsa' as const),
+        },
+      ]),
+    ),
+    signerCodec: withWebauthnContext(
+      requireSessionSignerCodec(capabilities.contributionCodec),
+      validator.kind === 'passkey',
+      account,
+    ),
+    ...(validator.kind === 'multi-factor'
+      ? {
+          validatorFactors: validator.validators.map((factor) => ({
+            id: factor.id,
+            publicId: factor.publicId,
+            validator: resolveAtomicValidator(factor).address,
+            codec: withWebauthnContext(
+              requireAtomicSignerCodec(
+                getValidatorCapabilities(
+                  factor,
+                  resolveAtomicValidator(factor),
+                  'smart-session-owner',
+                  'intent',
+                  false,
+                ).contributionCodec,
+              ),
+              factor.kind === 'passkey',
+              account,
+            ),
+          })),
+        }
+      : {}),
   }
 }
 
 function sessionCodec(
   session: ResolvedSessionSignerSet,
   validator: `0x${string}`,
+  signerCodec: SessionSignerCodec,
   mode: 'notarized' | 'pre-claim',
   typedData?: TypedDataDefinition,
 ) {
@@ -361,6 +421,7 @@ function sessionCodec(
     validator: { kind: 'validator' as const, address: validator },
     mode,
     permissionId: session.session.permissionId,
+    signerCodec,
     ...(mode === 'notarized'
       ? { claimPolicyData: claimPolicyData(session, typedData) }
       : {}),
@@ -370,9 +431,10 @@ function sessionCodec(
 function sessionPreClaimCodec(
   session: ResolvedSessionSignerSet,
   validator: `0x${string}`,
+  signerCodec: SessionSignerCodec,
   factId: string,
 ) {
-  const enabled = sessionCodec(session, validator, 'pre-claim')
+  const enabled = sessionCodec(session, validator, signerCodec, 'pre-claim')
   if (!session.enableData) return enabled
   return {
     kind: 'smart-session-state' as const,
@@ -383,10 +445,69 @@ function sessionPreClaimCodec(
       validator: { kind: 'validator' as const, address: validator },
       mode: 'enable-and-use' as const,
       permissionId: session.session.permissionId,
+      signerCodec,
       enableData: {
         ...session.enableData,
         session: getSessionData(session.session),
       },
+    },
+  }
+}
+
+type SessionSignerCodec = Exclude<
+  ValidatorContributionCodec,
+  { readonly kind: 'smart-session' }
+>
+
+function requireSessionSignerCodec(
+  codec: ValidatorContributionCodec,
+): SessionSignerCodec {
+  if (codec.kind === 'smart-session') {
+    throw new Error('A Smart Session owner cannot use a session validator')
+  }
+  return codec
+}
+
+function requireAtomicSignerCodec(
+  codec: ValidatorContributionCodec,
+): Extract<ValidatorContributionCodec, { readonly kind: 'ordered-threshold' }> {
+  if (codec.kind !== 'ordered-threshold') {
+    throw new Error('A Smart Session factor must use an atomic validator')
+  }
+  return codec
+}
+
+function validatorOwners(validator: ResolvedValidatorDefinition) {
+  return validator.kind === 'multi-factor'
+    ? validator.validators.flatMap(({ owners }) => owners)
+    : validator.owners
+}
+
+function withWebauthnContext(
+  codec: Extract<
+    ValidatorContributionCodec,
+    { readonly kind: 'ordered-threshold' }
+  >,
+  webauthn: boolean,
+  account: Address,
+): Extract<ValidatorContributionCodec, { readonly kind: 'ordered-threshold' }>
+function withWebauthnContext(
+  codec: SessionSignerCodec,
+  webauthn: boolean,
+  account: Address,
+): SessionSignerCodec
+function withWebauthnContext(
+  codec: SessionSignerCodec,
+  webauthn: boolean,
+  account: Address,
+): SessionSignerCodec {
+  if (!webauthn || codec.kind !== 'ordered-threshold') return codec
+  return {
+    ...codec,
+    webauthn: {
+      account,
+      usePrecompile: false,
+      format: 'current',
     },
   }
 }

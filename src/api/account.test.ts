@@ -1,6 +1,6 @@
 import { privateKeyToAccount } from 'viem/accounts'
 import { mainnet, optimism } from 'viem/chains'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { toEvmChainReference } from '../chains/caip2'
 import type { LegacyAccountConfig } from '../config/legacy'
 import { resolveAccountConfig, resolveSdkConfig } from '../config/resolve'
@@ -9,7 +9,12 @@ import { QuoteNotInPreparedTransactionError } from '../errors/execution'
 import type { RhinestoneAccountConfig } from '../index'
 import { RhinestoneSDK } from '../index'
 import type { PreparedTransactionData } from '../transactions/intents/types'
-import { adaptTransaction, authorizationChains } from './account'
+import {
+  adaptTransaction,
+  authorizationChains,
+  createAccountFacade,
+} from './account'
+import type { CoreComposition } from './compose-types'
 
 const owner = privateKeyToAccount(`0x${'02'.repeat(32)}`)
 const recipientAddress = '0x0000000000000000000000000000000000000010' as const
@@ -72,6 +77,152 @@ describe('account config compatibility snapshot', () => {
 })
 
 describe('account boundary adapters', () => {
+  test('forwards signer and independent quote/factor selections', async () => {
+    const sdk = resolveSdkConfig({ apiKey: 'offline' })
+    const compatibilityConfig: LegacyAccountConfig<unknown> = {
+      owners: { type: 'ecdsa', accounts: [owner] },
+    }
+    const signMessage = vi.fn(async () => ({
+      signature: '0x12' as const,
+      transcript: {
+        planKind: 'account-message' as const,
+        payloadId: '0x' as const,
+        stages: [],
+      },
+    }))
+    const signTypedData = vi.fn(async () => ({
+      signature: '0x34' as const,
+      transcript: {
+        planKind: 'account-typed-data' as const,
+        payloadId: '0x' as const,
+        stages: [],
+      },
+    }))
+    const signIntentFromSignData = vi.fn(async () => ({
+      originSignatures: [],
+      destinationSignature: '0x56' as const,
+      targetExecutionSignature: undefined,
+      transcript: {
+        planKind: 'intent-full' as const,
+        payloadId: '0x' as const,
+        stages: [],
+      },
+    }))
+    const reconstructPreparedIntent = vi.fn(async (_context, input) => ({
+      ...input,
+      input: input.intentInput,
+      accountChain: toEvmChainReference(1),
+      signing: {} as never,
+    }))
+    const signIntentAsOwner = vi.fn(async () => ({
+      intentId: 'alternate',
+      kind: 'ecdsa' as const,
+      signer: owner.address,
+      origin: [],
+    }))
+    const prepareUserOperation = vi.fn(async (_context, input) => ({
+      input,
+      operation: {} as never,
+      hash: `0x${'66'.repeat(32)}` as const,
+      signing: {} as never,
+    }))
+    const workflows = {
+      signMessage,
+      signTypedData,
+      signIntentFromSignData,
+      reconstructPreparedIntent,
+      signIntentAsOwner,
+      prepareUserOperation,
+    }
+    const facade = createAccountFacade(compatibilityConfig, {
+      config: sdk,
+      project: {} as never,
+      createAccount: (context) => ({
+        context,
+        workflows: workflows as never,
+      }),
+    } satisfies CoreComposition<LegacyAccountConfig<unknown>>)
+    const selected = privateKeyToAccount(`0x${'03'.repeat(32)}`)
+    const signers = {
+      type: 'owner' as const,
+      kind: 'ecdsa' as const,
+      accounts: [selected],
+    }
+    const typedData = {
+      domain: { chainId: 1 },
+      types: { Test: [{ name: 'value', type: 'uint256' }] },
+      primaryType: 'Test',
+      message: { value: 1n },
+    } as const
+
+    await facade.signMessage('hello', mainnet, signers)
+    await facade.signTypedData(typedData, mainnet, signers)
+    await facade.signIntent(
+      { origin: [typedData], destination: typedData },
+      mainnet,
+      signers,
+    )
+
+    for (const call of [
+      signMessage.mock.calls[0]?.[1],
+      signTypedData.mock.calls[0]?.[1],
+      signIntentFromSignData.mock.calls[0]?.[1],
+    ]) {
+      expect(call?.signers).toMatchObject({
+        kind: 'owner',
+        signerIds: [`ecdsa:${selected.address.toLowerCase()}`],
+      })
+    }
+
+    const best = quoteFixture('best')
+    const alternate = quoteFixture('alternate')
+    const prepared = {
+      quotes: {
+        traceId: 'trace',
+        best,
+        all: [best, alternate],
+      },
+      intentInput: {},
+      transaction: { chain: mainnet, calls: [] },
+    } satisfies PreparedTransactionData
+    await facade.signTransaction(prepared, {
+      owner,
+      intentId: 'alternate',
+      validatorId: 7,
+    })
+
+    expect(reconstructPreparedIntent.mock.calls[0]?.[1].quote.intentId).toBe(
+      'alternate',
+    )
+    expect(signIntentAsOwner).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      {
+        signerId: `ecdsa:${owner.address.toLowerCase()}`,
+        validatorId: 7,
+      },
+    )
+
+    await facade.prepareUserOperation({
+      chain: mainnet,
+      calls: [],
+      signers,
+    })
+    expect(prepareUserOperation.mock.calls[0]?.[1]).not.toHaveProperty(
+      'signers',
+    )
+    await expect(
+      facade.prepareUserOperation({
+        chain: mainnet,
+        calls: [],
+        signers: {
+          type: 'experimental_session',
+          session: { chain: mainnet } as never,
+        },
+      }),
+    ).rejects.toThrow('No account found')
+  })
+
   test('rejects an intent id that is not in the prepared transaction', async () => {
     const sdk = new RhinestoneSDK({ apiKey: 'offline' })
     const account = await sdk.createAccount({
@@ -158,3 +309,34 @@ describe('account boundary adapters', () => {
     ])
   })
 })
+
+function quoteFixture(intentId: string) {
+  return {
+    intentId,
+    expiresAt: 1,
+    estimatedFillTime: { seconds: 1 },
+    settlementLayer: 'SAME_CHAIN' as const,
+    signData: {
+      origin: [],
+      destination: {
+        domain: {},
+        types: {},
+        primaryType: 'Test',
+        message: {},
+      },
+    },
+    cost: {
+      input: [],
+      output: [],
+      fees: {
+        total: { usd: 0 },
+        breakdown: {
+          gas: { usd: 0 },
+          bridge: { usd: 0 },
+          swap: { usd: 0 },
+          app: { usd: 0 },
+        },
+      },
+    },
+  }
+}

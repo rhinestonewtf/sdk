@@ -9,7 +9,16 @@ import type {
 import type { WebAuthnAccount } from 'viem/account-abstraction'
 import type { AccountSignatureEnvelope } from '../accounts/types'
 import type { EvmChainReference } from '../chains/types'
-import type { ValidatorContributionCodec } from '../modules/validators/types'
+import type {
+  ResolvedValidatorDefinition,
+  ValidatorContributionCodec,
+} from '../modules/validators/types'
+
+export interface OwnerSignerSelection {
+  readonly kind: 'owner'
+  readonly validator: ResolvedValidatorDefinition
+  readonly signerIds: readonly string[]
+}
 
 export type PlannedValidatorContributionCodec =
   | ValidatorContributionCodec
@@ -305,6 +314,11 @@ export interface ArtifactAssemblyPlan {
     | {
         readonly kind: 'wrap-typed-data'
         readonly typedData: TypedDataDefinition
+      }
+    | {
+        readonly kind: 'wrap-session-typed-data'
+        readonly typedData: TypedDataDefinition
+        readonly permissionId: Hex
       }
   readonly accountEnvelope: AccountSignatureEnvelope
   readonly erc6492:

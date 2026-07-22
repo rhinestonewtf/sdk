@@ -4,6 +4,7 @@ import { toEvmChainReference } from '../chains/caip2'
 import type { OrchestratorPort } from '../clients/orchestrator/port'
 import { resolveAccountConfig, resolveSdkConfig } from '../config/resolve'
 import type { AccountInvocationContext } from '../config/resolved'
+import { toSession } from '../modules/validators/smart-sessions/resolve'
 import { createCoreComposition } from './compose'
 
 const chain = toEvmChainReference(1)
@@ -152,5 +153,44 @@ describe('internal core composition', () => {
     await expect(workflows.getPortfolio(context)).resolves.toEqual({
       tokens: [],
     })
+  })
+
+  test('signs messages and typed data with Smart Session owners', async () => {
+    const { composition, context } = fixture()
+    const workflows = composition.createAccount(context).workflows
+    const session = toSession({
+      chain: { id: 1 } as never,
+      owners: { type: 'ecdsa', accounts: [owner] },
+    })
+    const signers = {
+      kind: 'smart-session' as const,
+      byChain: { 1: { session } },
+    }
+    const typedData = {
+      domain: { chainId: 1, verifyingContract: target },
+      types: { Test: [{ name: 'value', type: 'uint256' }] },
+      primaryType: 'Test',
+      message: { value: 1n },
+    } as const
+
+    const message = await workflows.signMessage(context, {
+      message: 'hello',
+      chain,
+      signers,
+    })
+    const typed = await workflows.signTypedData(context, {
+      typedData,
+      chain,
+      signers,
+    })
+
+    expect(message.signature).toMatch(/^0x/u)
+    expect(typed.signature).toMatch(/^0x/u)
+    expect(
+      Object.keys(message.transcript.stages[0]?.results ?? {}),
+    ).toHaveLength(1)
+    expect(Object.keys(typed.transcript.stages[0]?.results ?? {})).toHaveLength(
+      1,
+    )
   })
 })

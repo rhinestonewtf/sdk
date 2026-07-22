@@ -20,7 +20,9 @@ import type {
 } from '../config/resolved'
 import { getIntentExecutorModule } from '../modules/intent-executor'
 import { readInstalledModules, readOwners } from '../modules/read-core'
+import { defineValidator } from '../modules/validators/definition'
 import { K1_DEFAULT_VALIDATOR_ADDRESS } from '../modules/validators/k1'
+import { ecdsaSignerId } from '../modules/validators/signer-id'
 import {
   getSessionDetails as buildSessionDetails,
   SESSION_LOCK_TAG,
@@ -31,6 +33,7 @@ import {
   readSessionNonce,
 } from '../modules/validators/smart-sessions/state'
 import type {
+  ResolvedSessionSignerSet,
   Session,
   SessionDetails,
 } from '../modules/validators/smart-sessions/types'
@@ -74,6 +77,7 @@ import {
 import { submitIntent } from '../transactions/intents/submit'
 import type {
   IntentInput,
+  IntentSessionSelection,
   IntentWorkflowContext,
   PreparedIntent,
 } from '../transactions/intents/types'
@@ -171,20 +175,52 @@ function createAccountComposition<CompatibilityConfig>(
         .address,
     signMessage: async (context, input) => {
       const account = createAccountRuntimePort(context.account, dependencies)
+      const session =
+        input.signers?.kind === 'smart-session'
+          ? directSession(input.signers, input.chain)
+          : undefined
       return signRuntimeMessage({
         ...input,
         runtime: await account.forChain(input.chain),
-        signerInvoker: signerInvoker(context.account, dependencies),
+        signerInvoker: signerInvoker(
+          context.account,
+          dependencies,
+          session
+            ? defineValidator(session.session.owners, 'smart-session-validator')
+            : input.signers?.kind === 'owner'
+              ? input.signers.validator
+              : undefined,
+        ),
         checkpoints: checkpointPort(context.account, dependencies),
+        ...(input.signers?.kind === 'owner'
+          ? { selection: input.signers }
+          : {}),
+        ...(session ? { session } : {}),
       })
     },
     signTypedData: async (context, input) => {
       const account = createAccountRuntimePort(context.account, dependencies)
+      const session =
+        input.signers?.kind === 'smart-session'
+          ? directSession(input.signers, input.chain)
+          : undefined
       return signRuntimeTypedData({
         ...input,
         runtime: await account.forChain(input.chain),
-        signerInvoker: signerInvoker(context.account, dependencies),
+        signerInvoker: signerInvoker(
+          context.account,
+          dependencies,
+          session
+            ? defineValidator(session.session.owners, 'smart-session-validator')
+            : input.signers?.kind === 'owner'
+              ? input.signers.validator
+              : undefined,
+        ),
         checkpoints: checkpointPort(context.account, dependencies),
+        ...(input.signers?.kind === 'owner'
+          ? { selection: input.signers }
+          : {}),
+        ...(session ? { session } : {}),
       })
     },
     signEip7702InitData: (context, chain) =>
@@ -194,18 +230,23 @@ function createAccountComposition<CompatibilityConfig>(
     prepareIntent: (context, input) =>
       prepareIntent(intentContext(context, dependencies), input),
     signIntent: async (context, input) => {
+      const ownerSelection =
+        input.input.signers?.kind === 'owner' ? input.input.signers : undefined
       const intent = await signIntent(
-        intentContext(context, dependencies),
+        intentContext(context, dependencies, ownerSelection?.validator),
         input,
       )
       return { intent, transcript: intent.transcript }
     },
-    signIntentAsOwner: (context, input, selectedSignerId) =>
-      signIntentAsOwner(
-        intentContext(context, dependencies),
+    signIntentAsOwner: (context, input, selection) => {
+      const ownerSelection =
+        input.input.signers?.kind === 'owner' ? input.input.signers : undefined
+      return signIntentAsOwner(
+        intentContext(context, dependencies, ownerSelection?.validator),
         input,
-        selectedSignerId,
-      ),
+        selection,
+      )
+    },
     assembleIntent: (context, input, signatures) =>
       assembleIntent(intentContext(context, dependencies), input, signatures),
     submitIntent: (context, input) =>
@@ -315,7 +356,7 @@ async function signEip7702InitData(
       typedData: createNexusEip7702InitTypedData(adoption),
       chain,
       signer: {
-        id: `ecdsa:${account.eoa.address.toLowerCase()}`,
+        id: ecdsaSignerId(account.eoa),
         kind: 'ecdsa',
       },
     },
@@ -371,7 +412,7 @@ async function signEip7702Authorizations(
       contract: adoption.contract,
       chains,
       signer: {
-        id: `ecdsa:${account.eoa.address.toLowerCase()}`,
+        id: ecdsaSignerId(account.eoa),
         kind: 'ecdsa',
       },
       nonceByChain,
@@ -692,7 +733,7 @@ async function reconstructPreparedIntent<CompatibilityConfig>(
     dependencies,
   ).forChain(accountChain)
   let resolvedSessions: PreparedIntent<CompatibilityConfig>['resolvedSessions']
-  if (input.intentInput.signers) {
+  if (input.intentInput.signers?.kind === 'smart-session') {
     const prepared = await prepareIntentSessions<CompatibilityConfig>({
       intent: input.intentInput,
       runtime,
@@ -709,6 +750,12 @@ async function reconstructPreparedIntent<CompatibilityConfig>(
     input.quote,
     resolvedSessions,
     destination,
+    input.intentInput.signers?.kind === 'owner'
+      ? input.intentInput.signers.validator
+      : undefined,
+    input.intentInput.signers?.kind === 'owner'
+      ? input.intentInput.signers.signerIds
+      : undefined,
   )
   return {
     traceId: input.traceId,
@@ -743,7 +790,7 @@ async function signIntentFromSignData<CompatibilityConfig>(
     dependencies,
   ).forChain(accountChain)
   let resolvedSessions: PreparedIntent<CompatibilityConfig>['resolvedSessions']
-  if (input.signers) {
+  if (input.signers?.kind === 'smart-session') {
     const preparedSessions = await prepareIntentSessions<CompatibilityConfig>({
       intent: {
         destination: input.targetChain,
@@ -772,6 +819,8 @@ async function signIntentFromSignData<CompatibilityConfig>(
     quote,
     resolvedSessions,
     destination,
+    input.signers?.kind === 'owner' ? input.signers.validator : undefined,
+    input.signers?.kind === 'owner' ? input.signers.signerIds : undefined,
   )
   const prepared: PreparedIntent<CompatibilityConfig> = {
     traceId: '',
@@ -794,7 +843,11 @@ async function signIntentFromSignData<CompatibilityConfig>(
       : {}),
   }
   const signed = await signIntent(
-    intentContext(context, dependencies),
+    intentContext(
+      context,
+      dependencies,
+      input.signers?.kind === 'owner' ? input.signers.validator : undefined,
+    ),
     prepared,
   )
   return {
@@ -808,6 +861,7 @@ async function signIntentFromSignData<CompatibilityConfig>(
 function intentContext<CompatibilityConfig>(
   context: AccountInvocationContext<CompatibilityConfig>,
   dependencies: CoreDependencies,
+  validator?: ResolvedValidatorDefinition,
 ): IntentWorkflowContext<CompatibilityConfig> {
   return {
     compatibilityConfig: context.compatibilityConfig,
@@ -815,7 +869,7 @@ function intentContext<CompatibilityConfig>(
     quoteClient: dependencies.orchestrator,
     submissionClient: dependencies.orchestrator,
     statusClient: dependencies.orchestrator,
-    signerInvoker: signerInvoker(context.account, dependencies),
+    signerInvoker: signerInvoker(context.account, dependencies, validator),
     checkpoints: checkpointPort(context.account, dependencies),
     signAuthorizations: async (input) =>
       (await signEip7702Authorizations(context.account, input, dependencies))
@@ -899,11 +953,12 @@ async function materializeAccountRuntime(
 function signerInvoker(
   account: ResolvedAccountConfig,
   dependencies: CoreDependencies,
+  validator?: ResolvedValidatorDefinition,
 ): SignerInvocationPort {
   return (
     dependencies.signerInvoker ??
     createSignerInvocationPort({
-      signers: signerRegistry(account),
+      signers: signerRegistry(account, validator),
       resolveChain: (chain) => getSupportedChain(sharedChainCatalog, chain.id),
     })
   )
@@ -911,16 +966,20 @@ function signerInvoker(
 
 function signerRegistry(
   account: ResolvedAccountConfig,
+  validator?: ResolvedValidatorDefinition,
 ): ExternalSignerRegistry {
   const signers: Record<string, ExternalSignerRegistry[string]> = {}
-  for (const owner of validatorOwners(account.owners)) {
+  for (const owner of [
+    ...validatorOwners(account.owners),
+    ...validatorOwners(validator),
+  ]) {
     signers[owner.signerId] =
       owner.kind === 'webauthn'
         ? { kind: 'webauthn', account: owner.account }
         : { kind: 'ecdsa', account: owner.account }
   }
   if (account.eoa) {
-    signers[`ecdsa:${account.eoa.address.toLowerCase()}`] = {
+    signers[ecdsaSignerId(account.eoa)] = {
       kind: 'ecdsa',
       account: account.eoa,
     }
@@ -933,6 +992,20 @@ function validatorOwners(validator: ResolvedValidatorDefinition | undefined) {
   return validator.kind === 'multi-factor'
     ? validator.validators.flatMap(({ owners }) => owners)
     : validator.owners
+}
+
+function directSession(
+  selection: IntentSessionSelection,
+  chain: import('../chains/types').EvmChainReference,
+): ResolvedSessionSignerSet {
+  const selected = selection.byChain[chain.id]
+  if (!selected) throw new Error(`No session configured for chain ${chain.id}`)
+  return {
+    kind: 'smart-session',
+    session: selected.session,
+    ...(selected.enableData ? { enableData: selected.enableData } : {}),
+    verifyExecutions: false,
+  }
 }
 
 function checkpointPort(

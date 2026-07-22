@@ -58,13 +58,16 @@ export function encodeValidatorContribution(
       })
     }
     case 'smart-session': {
-      if (contributions.length !== 1 || contributions[0]?.kind !== 'session') {
-        throw new Error('Smart Session requires exactly one signer result')
-      }
+      const signature = codec.signerCodec
+        ? encodeValidatorContribution(codec.signerCodec, contributions)
+        : contributions.length === 1 && contributions[0]?.kind === 'session'
+          ? contributions[0].signature
+          : undefined
+      if (!signature) throw new Error('Smart Session signer result is missing')
       return encodeSmartSessionContribution({
         mode: codec.mode,
         permissionId: codec.permissionId,
-        signature: contributions[0].signature,
+        signature,
         ...(codec.claimPolicyData
           ? { claimPolicyData: codec.claimPolicyData }
           : {}),

@@ -86,6 +86,7 @@ export function createIntentSigningPlan(
 export function projectIndependentSigning(
   plan: SigningPlan,
   signerIds: readonly string[],
+  ownerIds?: readonly string[],
 ): {
   readonly plan: SigningPlan
   readonly projection: IndependentSigningProjection
@@ -94,6 +95,7 @@ export function projectIndependentSigning(
     throw new Error('Independent signing requires a full intent plan')
   }
   const selected = new Set(signerIds)
+  const selectedOwners = ownerIds ? new Set(ownerIds) : undefined
   if (selected.size !== signerIds.length) {
     throw new Error('Independent signer selection contains duplicates')
   }
@@ -103,8 +105,11 @@ export function projectIndependentSigning(
     }
   }
   const stages = plan.stages.map((stage) => {
-    const taskTemplates = stage.taskTemplates.filter((task) =>
-      selected.has(task.signer.id),
+    const taskTemplates = stage.taskTemplates.filter(
+      (task) =>
+        selected.has(task.signer.id) &&
+        (!selectedOwners ||
+          [...selectedOwners].some((ownerId) => task.id.includes(ownerId))),
     )
     const taskIds = new Set(taskTemplates.map(({ id }) => id))
     return {

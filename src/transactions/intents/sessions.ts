@@ -26,7 +26,7 @@ export async function prepareIntentSessions<CompatibilityConfig>(input: {
   >
 }): Promise<PreparedIntentSessions | undefined> {
   const selection = input.intent.signers
-  if (!selection) return undefined
+  if (!selection || selection.kind !== 'smart-session') return undefined
   const chains = sessionChains(input.intent)
   const resolvedEntries = await Promise.all(
     chains.map(async (chain) => {

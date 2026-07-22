@@ -395,7 +395,28 @@ describe('validator contribution codecs', () => {
         },
         [],
       ),
-    ).toThrow('exactly one')
+    ).toThrow('signer result is missing')
+    expect(
+      encodeValidatorContribution(
+        {
+          kind: 'smart-session',
+          validator,
+          mode: 'pre-claim',
+          permissionId: `0x${'99'.repeat(32)}`,
+          signerCodec: {
+            kind: 'ordered-threshold',
+            validator,
+            ownerOrder: ['a', 'b'],
+            threshold: 2,
+            recoveryEncoding: 'ethereum',
+          },
+        },
+        [
+          { kind: 'ecdsa', ownerId: 'a', signature: raw('11') },
+          { kind: 'ecdsa', ownerId: 'b', signature: raw('22') },
+        ],
+      ),
+    ).toContain('9999')
     expect(
       encodeValidatorContribution(
         {

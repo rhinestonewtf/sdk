@@ -1,5 +1,10 @@
 import type { Hex } from 'viem'
-import { IndependentSigningNotSupportedError } from '../../errors/execution'
+import {
+  IndependentSigningNotSupportedError,
+  InvalidOwnerSigningOptionsError,
+  UnknownOwnerError,
+} from '../../errors/execution'
+import { encodeValidatorId } from '../../modules/validators/multi-factor'
 import {
   createAccountSigningContext,
   getSigningValidatorCodec,
@@ -45,6 +50,10 @@ export async function signIntent<CompatibilityConfig>(
   prepared: PreparedIntent<CompatibilityConfig>,
 ): Promise<SignedIntent<CompatibilityConfig>> {
   const runtime = await context.account.forChain(prepared.accountChain)
+  const ownerSelection =
+    prepared.input.signers?.kind === 'owner'
+      ? prepared.input.signers
+      : undefined
   const signerInvoker = prepared.resolvedSessions
     ? createIntentSessionSignerInvoker(prepared, context.signerInvoker)
     : context.signerInvoker
@@ -52,6 +61,7 @@ export async function signIntent<CompatibilityConfig>(
     runtime,
     purpose: 'intent',
     signerInvoker,
+    ...(ownerSelection ? { selection: ownerSelection } : {}),
   })
   const planInput = prepared.resolvedSessions
     ? buildSessionIntentPlanInput(prepared, signing)
@@ -81,15 +91,20 @@ export async function signIntent<CompatibilityConfig>(
 export async function signIntentAsOwner<CompatibilityConfig>(
   context: IntentWorkflowContext<CompatibilityConfig>,
   prepared: PreparedIntent<CompatibilityConfig>,
-  signerId: string,
+  selection: {
+    readonly signerId: string
+    readonly validatorId?: number | Hex
+  },
 ): Promise<IndependentOwnerSignature> {
   const { signing, planInput } = await createIndependentSigningInput(
     context,
     prepared,
   )
+  const owner = findIndependentOwner(signing, selection)
   const { plan } = projectIndependentSigning(
     createIntentSigningPlan(planInput),
-    [signerId],
+    [selection.signerId],
+    [`${owner.ownerId}`],
   )
   const transcript = await executeSigningPlan({
     plan,
@@ -98,7 +113,6 @@ export async function signIntentAsOwner<CompatibilityConfig>(
     signerInvoker: signing.signerInvoker,
     assembleStage: () => ({}),
   })
-  const owner = findIndependentOwner(signing, signerId)
   const origin = prepared.signing.origins.map((_payload, index) => {
     const stage = transcript.stages.find(
       ({ stage: materialized }) => materialized.stageId === `origin-${index}`,
@@ -213,6 +227,9 @@ async function createIndependentSigningInput<CompatibilityConfig>(
     runtime,
     purpose: 'intent',
     signerInvoker: context.signerInvoker,
+    ...(prepared.input.signers?.kind === 'owner'
+      ? { selection: prepared.input.signers }
+      : {}),
   })
   if (!signing.validatorCapabilities.supportsIndependentSigning) {
     throw new IndependentSigningNotSupportedError()
@@ -242,13 +259,69 @@ function independentOwners(
 
 function findIndependentOwner(
   context: SigningContext,
-  signerId: string,
+  selection: {
+    readonly signerId: string
+    readonly validatorId?: number | Hex
+  },
 ): IndexedIndependentOwner {
-  const owner = independentOwners(context).find(
-    (candidate) => candidate.signerId === signerId,
+  if (context.validator.kind !== 'multi-factor') {
+    if (selection.validatorId !== undefined) {
+      throw new InvalidOwnerSigningOptionsError({
+        context: { validatorId: selection.validatorId },
+      })
+    }
+    const owner = independentOwners(context).find(
+      (candidate) => candidate.signerId === selection.signerId,
+    )
+    if (!owner) throw unknownOwner(selection)
+    return owner
+  }
+  if (selection.validatorId === undefined) {
+    throw new InvalidOwnerSigningOptionsError({
+      context: { validatorId: selection.validatorId },
+    })
+  }
+  const factor = context.validator.validators.find((candidate) =>
+    sameValidatorId(candidate.publicId, selection.validatorId!),
   )
-  if (!owner) throw new Error(`Independent signer ${signerId} is unknown`)
+  if (!factor) {
+    throw new InvalidOwnerSigningOptionsError({
+      context: { validatorId: selection.validatorId },
+    })
+  }
+  const owner = independentOwners(context).find(
+    (candidate) =>
+      candidate.factorId === factor.id &&
+      candidate.signerId === selection.signerId,
+  )
+  if (!owner) throw unknownOwner(selection)
   return owner
+}
+
+function sameValidatorId(left: number | Hex, right: number | Hex): boolean {
+  try {
+    return (
+      encodeValidatorId(left).toLowerCase() ===
+      encodeValidatorId(right).toLowerCase()
+    )
+  } catch {
+    return false
+  }
+}
+
+function unknownOwner(selection: {
+  readonly signerId: string
+  readonly validatorId?: number | Hex
+}): UnknownOwnerError {
+  const [kind, identity] = selection.signerId.split(':', 2)
+  return new UnknownOwnerError({
+    context: {
+      ...(kind === 'webauthn' ? { publicKey: identity } : { signer: identity }),
+      ...(selection.validatorId === undefined
+        ? {}
+        : { validatorId: selection.validatorId }),
+    },
+  })
 }
 
 function independentOwner(
@@ -387,6 +460,7 @@ function signingStage(input: {
         taskPrefix: input.id,
         ecdsaInvocation: input.route.ecdsaInvocation,
         webauthnInvocation: input.route.webauthnInvocation,
+        selectedSignerIds: input.context.effectiveSigners.signerIds,
       }).map(
         (task): SigningTaskTemplate => ({
           ...task,

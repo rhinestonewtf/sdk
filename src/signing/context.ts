@@ -3,6 +3,7 @@ import type { AccountAdapter, AccountRuntime } from '../accounts/adapter'
 import type { AccountCapabilities, AccountIdentity } from '../accounts/types'
 import { getValidatorCapabilities } from '../modules/validators/capabilities'
 import { resolveValidator } from '../modules/validators/resolve'
+import { ecdsaSignerId } from '../modules/validators/signer-id'
 import type {
   ResolvedValidatorDefinition,
   ValidatorCapabilities,
@@ -13,6 +14,7 @@ import { signingTopology } from './plan'
 import type {
   ArtifactAssemblyPlan,
   EffectiveSignerSelection,
+  OwnerSignerSelection,
   SignerInvocationPort,
   SignerReference,
 } from './types'
@@ -34,10 +36,14 @@ export function createAccountSigningContext(input: {
   readonly runtime: AccountRuntime
   readonly purpose: ValidatorSigningPurpose
   readonly signerInvoker: SignerInvocationPort
+  readonly selection?: OwnerSignerSelection
 }): SigningContext {
   const validator =
-    input.runtime.construction.owner ?? eoaValidator(input.runtime)
+    input.selection?.validator ??
+    input.runtime.construction.owner ??
+    eoaValidator(input.runtime)
   const module =
+    input.selection?.validator === undefined &&
     input.runtime.construction.owner === undefined
       ? {
           kind: 'validator' as const,
@@ -46,7 +52,7 @@ export function createAccountSigningContext(input: {
           deInitData: '0x' as Hex,
           additionalContext: '0x' as Hex,
         }
-      : resolveValidator(input.runtime.construction.owner)
+      : resolveValidator(validator)
   const signerReferences = Object.fromEntries(
     validatorOwners(validator).map((owner) => [
       owner.signerId,
@@ -60,6 +66,7 @@ export function createAccountSigningContext(input: {
     ]),
   )
   const topology =
+    input.selection?.validator === undefined &&
     input.runtime.construction.owner === undefined
       ? {
           configuredTopology: {
@@ -73,7 +80,7 @@ export function createAccountSigningContext(input: {
             threshold: 1,
           },
         }
-      : signingTopology(input.runtime.construction.owner)
+      : signingTopology(validator, input.selection?.signerIds)
   return {
     account: input.runtime.identity,
     accountAdapter: input.runtime.adapter,
@@ -198,7 +205,7 @@ function eoaValidator(runtime: AccountRuntime): ResolvedValidatorDefinition {
       {
         kind: 'ecdsa',
         id: 'eoa/owner/0',
-        signerId: `ecdsa:${account.address.toLowerCase()}`,
+        signerId: ecdsaSignerId(account),
         account,
       },
     ],

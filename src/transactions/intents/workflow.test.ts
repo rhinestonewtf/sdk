@@ -1,6 +1,7 @@
 import { privateKeyToAccount } from 'viem/accounts'
 import { mainnet } from 'viem/chains'
 import { describe, expect, test, vi } from 'vitest'
+import { passkeyAccount } from '../../../test/consts'
 import type {
   AccountAdapter,
   AccountRuntime,
@@ -21,8 +22,26 @@ const chain = toEvmChainReference(1)
 const account = privateKeyToAccount(
   '0x0000000000000000000000000000000000000000000000000000000000000001',
 )
+const secondAccount = privateKeyToAccount(
+  '0x0000000000000000000000000000000000000000000000000000000000000002',
+)
 const address = '0x0000000000000000000000000000000000000010' as const
 const signature = `0x${'11'.repeat(64)}1b` as const
+const passkeyResult = {
+  signature: `0x${'33'.repeat(64)}` as const,
+  webauthn: {
+    authenticatorData: '0x1234' as const,
+    clientDataJSON: '{}',
+    challengeIndex: 0,
+    typeIndex: 0,
+    userVerificationRequired: false,
+  },
+}
+const testPasskey = {
+  ...passkeyAccount,
+  sign: vi.fn(async () => passkeyResult),
+  signTypedData: vi.fn(async () => passkeyResult),
+}
 
 function quote(): OrchestratorQuote {
   const typedData = {
@@ -187,6 +206,32 @@ describe('intent workflow', () => {
     expect(workflow.signerInvoker.invoke).toHaveBeenCalledOnce()
   })
 
+  test('uses an explicit owner selection for preparation and signing', async () => {
+    const workflow = context()
+    const validator = defineValidator({
+      type: 'ecdsa',
+      accounts: [secondAccount],
+    })
+    const prepared = await prepareIntent(workflow, {
+      ...input,
+      signers: {
+        kind: 'owner',
+        validator,
+        signerIds: validator.owners.map(({ signerId }) => signerId),
+      },
+    })
+
+    await signIntent(workflow, prepared)
+
+    expect(prepared.signing.effectiveSelection.signerIds).toEqual([
+      `ecdsa:${secondAccount.address.toLowerCase()}`,
+    ])
+    expect(workflow.signerInvoker.invoke).toHaveBeenCalledWith(
+      { id: `ecdsa:${secondAccount.address.toLowerCase()}`, kind: 'ecdsa' },
+      expect.anything(),
+    )
+  })
+
   test('does not sign an ordinary target execution payload', () => {
     const intentQuote = quote()
     const targetExecution = {
@@ -253,6 +298,78 @@ describe('intent workflow', () => {
     expect(originSignature.notarizedClaimSig).toMatch(/^0x/u)
     expect(signed.destinationSignature).toMatch(/^0x01/u)
     expect(read).toHaveBeenCalledTimes(3)
+  })
+
+  test('signs Smart Sessions with a multi-factor owner topology', async () => {
+    const session = toSession({
+      chain: mainnet,
+      owners: {
+        type: 'multi-factor',
+        threshold: 2,
+        validators: [
+          { type: 'ecdsa', accounts: [account] },
+          { type: 'ecdsa', accounts: [secondAccount] },
+        ],
+      },
+    })
+    const workflow = context({
+      checkpoints: {
+        read: vi.fn(async (checkpoint) => [
+          {
+            kind: 'session-enabled' as const,
+            id: checkpoint.id,
+            enabled: true,
+          },
+        ]),
+      },
+    })
+    const prepared = await prepareIntent(workflow, {
+      ...input,
+      signers: {
+        kind: 'smart-session',
+        byChain: { 1: { session } },
+      },
+    })
+
+    const signed = await signIntent(workflow, prepared)
+
+    expect(signed.originSignatures[0]).toMatch(/^0x00/u)
+    expect(prepared.signing.effectiveSelection.signerIds).toHaveLength(2)
+    expect(
+      Object.keys(signed.transcript.stages[0]?.results ?? {}),
+    ).toHaveLength(2)
+  })
+
+  test('signs Smart Sessions with a passkey owner', async () => {
+    const session = toSession({
+      chain: mainnet,
+      owners: { type: 'passkey', accounts: [testPasskey] },
+    })
+    const workflow = context({
+      checkpoints: {
+        read: vi.fn(async (checkpoint) => [
+          {
+            kind: 'session-enabled' as const,
+            id: checkpoint.id,
+            enabled: true,
+          },
+        ]),
+      },
+    })
+    const prepared = await prepareIntent(workflow, {
+      ...input,
+      signers: {
+        kind: 'smart-session',
+        byChain: { 1: { session } },
+      },
+    })
+
+    const signed = await signIntent(workflow, prepared)
+
+    expect(signed.originSignatures[0]).toMatch(/^0x00/u)
+    expect(
+      Object.values(signed.transcript.stages[0]?.results ?? {})[0],
+    ).toMatchObject({ kind: 'webauthn-assertion' })
   })
 
   test('submits signed data with source and target metadata', async () => {
