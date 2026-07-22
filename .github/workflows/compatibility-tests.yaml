@@ -40,8 +40,6 @@ jobs:
   release-package-contract:
     if: github.base_ref == 'release'
     runs-on: ubuntu-latest
-    env:
-      SDK_CONTRACT_RESULTS_DIR: ${{ runner.temp }}/sdk-contract-results
 
     steps:
       - name: Check out the repo
@@ -56,6 +54,10 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Run packed package contract tests
+        env:
+          SDK_CONTRACT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          SDK_CONTRACT_INSTALL_BASE_DEPENDENCIES: '1'
+          SDK_CONTRACT_RESULTS_DIR: ${{ runner.temp }}/sdk-contract-results
         run: bun run test:contract
 
       - name: Upload contract result
@@ -63,5 +65,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: sdk-package-contract
-          path: ${{ env.SDK_CONTRACT_RESULTS_DIR }}/contract-result.json
+          path: ${{ runner.temp }}/sdk-contract-results/contract-result.json
           if-no-files-found: error

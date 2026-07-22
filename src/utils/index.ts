@@ -1,4 +1,4 @@
-import type { Address, Hex } from 'viem'
+import type { Account, Address, Hex } from 'viem'
 import { createAccountConstruction } from '../accounts/construction'
 import { getRhinestoneInitData, getV0InitData } from '../accounts/legacy'
 import { toViewOnlyAccount as createViewOnlyAccount } from '../accounts/wallet-account'
@@ -112,6 +112,15 @@ function experimental_getRhinestoneInitData(config: RhinestoneAccountConfig):
   | {
       address: Address
     } {
+  if (
+    config.initData &&
+    !('factory' in config.initData) &&
+    !config.eoa &&
+    config.account?.type !== 'eoa' &&
+    config.account?.type !== 'kernel'
+  ) {
+    return { address: config.initData.address }
+  }
   return getRhinestoneInitData(standaloneConstruction(config, 'current-v2'))
 }
 
@@ -131,7 +140,9 @@ function experimental_getRhinestoneInitData(config: RhinestoneAccountConfig):
  * })
  * ```
  */
-const toViewOnlyAccount = createViewOnlyAccount
+function toViewOnlyAccount(address: Address): Account {
+  return createViewOnlyAccount(address)
+}
 
 /**
  * Compute the ERC-7579 module setup for an account configuration.

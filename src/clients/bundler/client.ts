@@ -1,6 +1,12 @@
+import { createPublicClient } from 'viem'
 import { entryPoint07Address } from 'viem/account-abstraction'
-import type { ResolvedServiceEndpoint } from '../../config/resolved'
+import { getSupportedChain, sharedChainCatalog } from '../../chains/catalog'
+import type {
+  ResolvedProvider,
+  ResolvedServiceEndpoint,
+} from '../../config/resolved'
 import { type JsonRpcFetchPort, requestJsonRpc } from '../json-rpc'
+import { createRpcTransport } from '../rpc/transport'
 import { resolveBundlerUrl } from './endpoints'
 import type {
   BundlerGasEstimate,
@@ -11,6 +17,7 @@ import type {
 
 export function createBundlerClient(input: {
   readonly endpoint?: ResolvedServiceEndpoint
+  readonly provider: ResolvedProvider
   readonly fetch?: JsonRpcFetchPort
 }): BundlerPort {
   const fetchPort = input.fetch ?? globalThis.fetch
@@ -33,10 +40,22 @@ export function createBundlerClient(input: {
           entryPoint07Address,
         ]),
       ),
-    getGasPrice: async (chain) =>
-      mapGasPrice(
+    getGasPrice: async (chain) => {
+      if (input.endpoint?.kind === 'custom') {
+        const client = createPublicClient({
+          chain: getSupportedChain(sharedChainCatalog, chain.id),
+          transport: createRpcTransport(chain.id, input.provider),
+        })
+        const fees = await client.estimateFeesPerGas({ type: 'eip1559' })
+        return {
+          maxFeePerGas: 2n * fees.maxFeePerGas,
+          maxPriorityFeePerGas: 2n * fees.maxPriorityFeePerGas,
+        }
+      }
+      return mapGasPrice(
         await request(chain.id, 'pimlico_getUserOperationGasPrice', []),
-      ),
+      )
+    },
     send: async (chain, operation) =>
       (await request(chain.id, 'eth_sendUserOperation', [
         serializeUserOperation(operation),

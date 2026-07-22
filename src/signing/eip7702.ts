@@ -23,7 +23,6 @@ import type {
 
 export interface NexusEip7702InitPlanInput {
   readonly typedData: TypedDataDefinition
-  readonly chain: EvmChainReference
   readonly signer: SignerReference
 }
 
@@ -63,7 +62,6 @@ export function createNexusEip7702InitPlan(
       role: 'owner',
       invocationKind: 'ecdsa-sign-typed-data',
       payload: { source: 'plan-payload', payloadId },
-      chain: input.chain,
     },
     artifactId: 'nexus-eip7702-init-signature',
   })

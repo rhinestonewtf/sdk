@@ -8,6 +8,7 @@ import type { AccountInvocationContext } from '../config/resolved'
 import { QuoteNotInPreparedTransactionError } from '../errors/execution'
 import type { RhinestoneAccountConfig } from '../index'
 import { RhinestoneSDK } from '../index'
+import { ecdsaSignerId } from '../modules/validators/signer-id'
 import type { PreparedTransactionData } from '../transactions/intents/types'
 import {
   adaptTransaction,
@@ -342,6 +343,130 @@ describe('account boundary adapters', () => {
     expect(() =>
       account.getTransactionMessages(prepared, { intentId: 'missing' }),
     ).toThrowError(QuoteNotInPreparedTransactionError)
+  })
+
+  test('rebuilds UserOperations from current public data and live owners', async () => {
+    const sdk = resolveSdkConfig({ apiKey: 'offline' })
+    const compatibilityConfig: LegacyAccountConfig<unknown> = {
+      owners: { type: 'ecdsa', accounts: [owner] },
+    }
+    const replacementOwner = privateKeyToAccount(`0x${'03'.repeat(32)}`)
+    const initialHash = `0x${'44'.repeat(32)}` as const
+    const rebuiltHash = `0x${'55'.repeat(32)}` as const
+    const submittedHash = `0x${'66'.repeat(32)}` as const
+    const signedValue = `0x${'77'.repeat(64)}1b` as const
+    const replacementSignature = `0x${'88'.repeat(64)}1b` as const
+    const operation = {
+      sender: owner.address,
+      nonce: 0n,
+      callData: '0x' as const,
+      callGasLimit: 1n,
+      verificationGasLimit: 2n,
+      preVerificationGas: 3n,
+      maxFeePerGas: 4n,
+      maxPriorityFeePerGas: 5n,
+      signature: '0x' as const,
+    }
+    const prepareUserOperation = vi.fn(async (_context, input) => ({
+      input,
+      operation,
+      hash: initialHash,
+      signing: {} as never,
+    }))
+    const reconstructPreparedUserOperation = vi.fn(
+      async (invocationContext, input) => {
+        expect(invocationContext.account.owners).toMatchObject({
+          owners: [{ signerId: ecdsaSignerId(replacementOwner) }],
+        })
+        return {
+          input: { chain: input.chain, calls: [] },
+          operation: input.operation,
+          hash: rebuiltHash,
+          signing: { owner: ecdsaSignerId(replacementOwner) } as never,
+        }
+      },
+    )
+    const signUserOperation = vi.fn(async (_context, prepared) => ({
+      prepared,
+      operation: { ...prepared.operation, signature: signedValue },
+      signature: signedValue,
+      transcript: {
+        planKind: 'user-operation' as const,
+        payloadId: prepared.hash,
+        stages: [],
+      },
+    }))
+    const reconstructSignedUserOperation = vi.fn(async (_context, input) => ({
+      prepared: {
+        input: { chain: input.chain, calls: [] },
+        operation: input.operation,
+        hash: rebuiltHash,
+        signing: {} as never,
+      },
+      operation: input.operation,
+      signature: input.signature,
+      transcript: {
+        planKind: 'user-operation' as const,
+        payloadId: rebuiltHash,
+        stages: [],
+      },
+    }))
+    const submitUserOperation = vi.fn(async (_context, signed) => ({
+      type: 'userop' as const,
+      chain: signed.prepared.input.chain,
+      hash: submittedHash,
+    }))
+    const facade = createAccountFacade(compatibilityConfig, {
+      config: sdk,
+      project: {} as never,
+      createAccount: (context) => ({
+        context,
+        workflows: {
+          prepareUserOperation,
+          reconstructPreparedUserOperation,
+          signUserOperation,
+          reconstructSignedUserOperation,
+          submitUserOperation,
+        } as never,
+      }),
+    })
+    const prepared = await facade.prepareUserOperation({
+      chain: mainnet,
+      calls: [],
+    })
+
+    prepared.userOperation.callGasLimit = 99n
+    compatibilityConfig.owners = {
+      type: 'ecdsa',
+      accounts: [replacementOwner],
+    }
+    const signed = await facade.signUserOperation(prepared)
+
+    expect(reconstructPreparedUserOperation).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        operation: expect.objectContaining({ callGasLimit: 99n }),
+      }),
+    )
+    expect(signUserOperation.mock.calls[0]?.[1]).toMatchObject({
+      hash: rebuiltHash,
+      signing: { owner: ecdsaSignerId(replacementOwner) },
+    })
+    expect(signed.hash).toBe(initialHash)
+    expect(signed.userOperation.signature).toBe('0x')
+
+    signed.userOperation.callGasLimit = 100n
+    signed.signature = replacementSignature
+    await facade.submitUserOperation(signed)
+
+    expect(reconstructSignedUserOperation).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        operation: expect.objectContaining({ callGasLimit: 100n }),
+        signature: replacementSignature,
+      }),
+    )
+    expect(submitUserOperation).toHaveBeenCalledOnce()
   })
 
   test('projects smart-account recipients instead of dropping them', () => {

@@ -57,10 +57,14 @@ export async function reconstructSignedUserOperation<CompatibilityConfig>(
   context: UserOperationWorkflowContext<CompatibilityConfig>,
   input: ReconstructSignedInput,
 ): Promise<SignedUserOperation<CompatibilityConfig>> {
-  const prepared = await reconstructPreparedUserOperation(context, input)
+  const operation = { ...input.operation, signature: input.signature }
+  const prepared = await reconstructPreparedUserOperation(context, {
+    chain: input.chain,
+    operation,
+  })
   return {
     prepared,
-    operation: input.operation,
+    operation,
     signature: input.signature,
     transcript: {
       planKind: 'user-operation',

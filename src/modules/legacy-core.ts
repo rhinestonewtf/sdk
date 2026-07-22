@@ -54,7 +54,13 @@ const moduleType = (kind: ModuleKind): 1n | 2n | 3n | 4n => {
 }
 
 export function toLegacyModule(module: ResolvedModule): Module {
-  return { ...module, type: moduleType(module.kind) }
+  return {
+    address: module.address,
+    initData: module.initData,
+    deInitData: module.deInitData,
+    additionalContext: module.additionalContext,
+    type: moduleType(module.kind),
+  }
 }
 
 export function toLegacyModuleSetup(setup: ModuleSetup): ModeleSetup {

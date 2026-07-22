@@ -18,6 +18,7 @@ import {
   type SignedTransactionData,
   type SignerSet,
   type Transaction,
+  tronMainnet,
   type UserOperationResult,
 } from '../../src/index'
 import * as jwtServer from '../../src/jwt-server/index'
@@ -85,9 +86,13 @@ const crossChainWithDeadline = {
   targetChain: mainnet,
   calls: [],
   customDeadline: 9_999_999_999,
-} as const
-// @ts-expect-error customDeadline is only valid for same-chain transactions.
-const crossChainTransaction: Transaction = crossChainWithDeadline
+} as const satisfies Transaction
+
+const crossChainNonEvmWithDeadline = {
+  sourceChains: [mainnet],
+  targetChain: tronMainnet,
+  customDeadline: 9_999_999_999,
+} as const satisfies Transaction
 const sponsorLimitKey: SponsorLimitKey = 'perIntentUSD'
 
 const preparedResult: Promise<PreparedTransactionData> =
@@ -124,7 +129,8 @@ void typedDataSignature
 void intentSignature
 void userOperation
 void sameChainTransaction
-void crossChainTransaction
+void crossChainWithDeadline
+void crossChainNonEvmWithDeadline
 void sponsorLimitKey
 void actions
 void ecdsaActions

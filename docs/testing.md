@@ -12,7 +12,7 @@ integration setup.
 | Architecture       | Production imports                    | Dependency and cycle rules         | `bun run check:architecture` |
 | Typecheck           | Source, unit tests, and test harnesses | TypeScript                         | `bun run typecheck`          |
 | Public types        | `test/types/**`                       | Consumer-facing compile fixtures   | `bun run test:types`         |
-| Package contract   | `test/contract/**/*.ctest.ts`         | Packed current package             | `bun run test:contract`      |
+| Package contract   | `test/contract/**/*.ctest.ts`         | Packed release and current packages | `bun run test:contract`      |
 | Integration        | `test/integration/**/*.itest.ts`      | Live orchestrator and testnets     | `bun run test:integration`   |
 
 Unit tests live next to the source they cover. Vectors under `test/vectors/`
@@ -29,15 +29,22 @@ cycles.
 
 ## Package contract
 
-`bun run test:contract` cleans, builds, and packs the current package, then
-stages consumer projects against the packed tarball. It validates:
+`bun run test:contract` builds and packs both `origin/release` and the current
+worktree, then stages isolated consumer projects against both tarballs. Set
+`SDK_CONTRACT_BASE_SHA` to compare against a specific release commit; CI pins it
+to the pull request's base SHA and installs that commit's frozen dependencies.
+Local runs reuse the existing dependency installation so the comparison remains
+offline. The command validates:
 
 - every published subpath resolves, its declaration file exists, and its runtime
-  export keys match the calibrated snapshot
-  (`test/contract/snapshots/release-package.json`);
-- a representative consumer project type-checks configurations, selected root
-  APIs, and every published subpath against the packed types
+  export keys match the packed release package;
+- semantic declaration reports and bidirectional assignability match the packed
+  release declarations;
+- representative consumer projects type-check configurations, selected root
+  APIs, and every published subpath against both packages
   (`test/contract/fixtures/consumer.ts`);
+- compatibility probes preserve address-only init data, legacy module shapes,
+  and public error identity;
 - optional-peer behavior — the root imports without `jose`/`express`, and
   `/jwt-server` works without `express` but fails cleanly without `jose`;
 - public error constructor identity survives across the package boundary;

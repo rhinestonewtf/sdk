@@ -48,6 +48,7 @@ describe('bundler client', () => {
     )
     const client = createBundlerClient({
       endpoint: { kind: 'custom', urls: { 10: 'https://bundler.example' } },
+      provider: { kind: 'public' },
       fetch,
     })
 
@@ -62,5 +63,43 @@ describe('bundler client', () => {
       'https://bundler.example',
       expect.objectContaining({ method: 'POST' }),
     )
+  })
+
+  test('estimates custom bundler fees through the configured RPC provider', async () => {
+    const methods: string[] = []
+    const rpcFetch = vi.fn(
+      async (_url: string | URL | Request, init?: RequestInit) => {
+        const request = JSON.parse(String(init?.body))
+        methods.push(request.method)
+        const result =
+          request.method === 'eth_getBlockByNumber'
+            ? { baseFeePerGas: '0x64', transactions: [] }
+            : '0x2'
+        return Response.json({ jsonrpc: '2.0', id: request.id, result })
+      },
+    )
+    vi.stubGlobal('fetch', rpcFetch)
+    const bundlerFetch = vi.fn()
+    try {
+      const client = createBundlerClient({
+        endpoint: { kind: 'custom', urls: 'https://bundler.example' },
+        provider: { kind: 'custom', urls: { 1: 'https://rpc.example' } },
+        fetch: bundlerFetch,
+      })
+
+      await expect(client.getGasPrice(toEvmChainReference(1))).resolves.toEqual(
+        {
+          maxFeePerGas: 244n,
+          maxPriorityFeePerGas: 4n,
+        },
+      )
+      expect(methods).toEqual([
+        'eth_getBlockByNumber',
+        'eth_maxPriorityFeePerGas',
+      ])
+      expect(bundlerFetch).not.toHaveBeenCalled()
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })

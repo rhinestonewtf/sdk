@@ -102,7 +102,6 @@ export interface AccountWorkflows<CompatibilityConfig = unknown> {
   }>
   readonly signEip7702InitData: (
     context: AccountInvocationContext<CompatibilityConfig>,
-    chain: import('../chains/types').EvmChainReference,
   ) => Promise<{
     readonly signature: Hex
     readonly transcript: SigningTranscript

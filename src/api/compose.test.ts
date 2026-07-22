@@ -1,11 +1,14 @@
-import { encodeAbiParameters } from 'viem'
+import { type Account, encodeAbiParameters, type Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
+import { arbitrum, base as baseChain } from 'viem/chains'
 import { describe, expect, test, vi } from 'vitest'
 import { toEvmChainReference } from '../chains/caip2'
 import type { OrchestratorPort } from '../clients/orchestrator/port'
 import type { RpcReadPort } from '../clients/rpc/port'
 import { resolveAccountConfig, resolveSdkConfig } from '../config/resolve'
 import type { AccountInvocationContext } from '../config/resolved'
+import { K1_DEFAULT_VALIDATOR_ADDRESS } from '../modules/validators/k1'
+import { getSessionDetails } from '../modules/validators/smart-sessions/authorization'
 import { toSession } from '../modules/validators/smart-sessions/resolve'
 import { createCoreComposition } from './compose'
 import type { CoreDependencies } from './compose-types'
@@ -240,6 +243,144 @@ describe('internal core composition', () => {
       userOperationHash,
     )
     expect(second.orchestrator.createQuote).not.toHaveBeenCalled()
+  })
+
+  test('deploys an undelegated Nexus adoption through the intent path', async () => {
+    const base = fixture()
+    const adoptedContext = {
+      ...base.context,
+      method: 'deploy' as const,
+      account: resolveAccountConfig(base.context.sdk, {
+        account: { type: 'nexus', version: '1.2.0' },
+        owners: { type: 'ecdsa', accounts: [owner] },
+        eoa: owner,
+      }),
+    }
+    const workflows = base.composition.createAccount(adoptedContext).workflows
+
+    await expect(workflows.deploy(adoptedContext, chain)).resolves.toBe(true)
+    expect(base.orchestrator.createQuote).toHaveBeenCalledOnce()
+    expect(base.dependencies.bundler.send).not.toHaveBeenCalled()
+  })
+
+  test('signs chainless Nexus init typed data without switching a wallet chain', async () => {
+    const base = fixture()
+    const request = vi.fn(async () => null)
+    const signTypedData = vi.fn(async () => `0x${'11'.repeat(64)}1b` as Hex)
+    const eoa = {
+      address: owner.address,
+      client: { transport: { request } },
+      signTypedData,
+    } as unknown as Account
+    const signingContext = {
+      ...base.context,
+      method: 'sign-eip7702-init-data' as const,
+      account: resolveAccountConfig(base.context.sdk, {
+        account: { type: 'nexus', version: '1.2.0' },
+        owners: { type: 'ecdsa', accounts: [owner] },
+        eoa,
+      }),
+    }
+    const workflows = base.composition.createAccount(signingContext).workflows
+
+    await workflows.signEip7702InitData(signingContext)
+
+    expect(signTypedData).toHaveBeenCalledOnce()
+    expect(request).not.toHaveBeenCalled()
+  })
+
+  test('uses the single session chain for Startale K1 enablement', async () => {
+    const base = fixture()
+    const invoke = vi.fn(async () => ({
+      kind: 'ecdsa-signature' as const,
+      signature: `0x${'11'.repeat(64)}1b` as Hex,
+    }))
+    const dependencies = {
+      ...base.dependencies,
+      signerInvoker: { invoke },
+    } satisfies CoreDependencies
+    const startaleContext = {
+      ...base.context,
+      method: 'sign-enable-session' as const,
+      account: resolveAccountConfig(base.context.sdk, {
+        account: { type: 'startale' },
+        owners: {
+          type: 'ecdsa',
+          accounts: [owner],
+          module: K1_DEFAULT_VALIDATOR_ADDRESS,
+        },
+      }),
+    }
+    const workflows = createCoreComposition(
+      base.context.sdk,
+      dependencies,
+    ).createAccount(startaleContext).workflows
+    const session = toSession({
+      chain: baseChain,
+      owners: { type: 'ecdsa', accounts: [owner] },
+    })
+    const details = await getSessionDetails({
+      account: owner.address,
+      sessions: [session],
+      environment: 'production',
+      readNonce: async () => 0n,
+    })
+
+    await workflows.signEnableSession(startaleContext, details)
+
+    expect(invoke).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        chain: expect.objectContaining({ id: baseChain.id }),
+      }),
+    )
+  })
+
+  test('rejects multi-chain Startale K1 enablement before signing', async () => {
+    const base = fixture()
+    const invoke = vi.fn()
+    const dependencies = {
+      ...base.dependencies,
+      signerInvoker: { invoke },
+    } satisfies CoreDependencies
+    const startaleContext = {
+      ...base.context,
+      method: 'sign-enable-session' as const,
+      account: resolveAccountConfig(base.context.sdk, {
+        account: { type: 'startale' },
+        owners: {
+          type: 'ecdsa',
+          accounts: [owner],
+          module: K1_DEFAULT_VALIDATOR_ADDRESS,
+        },
+      }),
+    }
+    const workflows = createCoreComposition(
+      base.context.sdk,
+      dependencies,
+    ).createAccount(startaleContext).workflows
+    const details = await getSessionDetails({
+      account: owner.address,
+      sessions: [
+        toSession({
+          chain: baseChain,
+          owners: { type: 'ecdsa', accounts: [owner] },
+        }),
+        toSession({
+          chain: arbitrum,
+          owners: { type: 'ecdsa', accounts: [owner] },
+        }),
+      ],
+      environment: 'production',
+      readNonce: async () => 0n,
+    })
+
+    await expect(
+      workflows.signEnableSession(startaleContext, details),
+    ).rejects.toThrow(
+      'Startale accounts with K1 validator do not support multi-chain session enable',
+    )
+    expect(invoke).not.toHaveBeenCalled()
   })
 
   test('recognizes installed modules of every kind during Kernel setup', async () => {

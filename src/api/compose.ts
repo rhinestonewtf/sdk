@@ -45,6 +45,8 @@ import type { ResolvedValidatorDefinition } from '../modules/validators/types'
 import {
   createAccountSigningContext,
   getAccountSignatureRoute,
+  getSigningValidatorCodec,
+  getSigningValidatorFactors,
 } from '../signing/context'
 import {
   createNexusEip7702InitTypedData,
@@ -52,12 +54,13 @@ import {
   signNexusEip7702Init,
 } from '../signing/eip7702'
 import { createValidatorSigningTasks, signingTopology } from '../signing/plan'
+import {
+  resolveSessionEnableChain,
+  signSessionEnablement,
+} from '../signing/session-enable'
 import { createSignerInvocationPort } from '../signing/signers/registry'
 import type { ExternalSignerRegistry } from '../signing/signers/types'
-import {
-  resolveAccountTypedDataSigning,
-  signAccountTypedData,
-} from '../signing/typed-data'
+import { resolveAccountTypedDataSigning } from '../signing/typed-data'
 import type {
   SignerInvocationPort,
   SigningCheckpointPort,
@@ -171,7 +174,10 @@ function createConfiguredDependencies(
   return {
     orchestrator: createConfiguredOrchestratorClient(config),
     rpc,
-    bundler: createBundlerClient({ endpoint: config.bundler }),
+    bundler: createBundlerClient({
+      endpoint: config.bundler,
+      provider: config.provider,
+    }),
     ...(config.paymaster
       ? { paymaster: createPaymasterClient({ endpoint: config.paymaster }) }
       : {}),
@@ -255,8 +261,8 @@ function createAccountComposition<CompatibilityConfig>(
         ...(session ? { session } : {}),
       })
     },
-    signEip7702InitData: (context, chain) =>
-      signEip7702InitData(context.account, chain, dependencies),
+    signEip7702InitData: (context) =>
+      signEip7702InitData(context.account, dependencies),
     signAuthorizations: (context, input) =>
       signEip7702Authorizations(context.account, input, dependencies),
     prepareIntent: (context, input) =>
@@ -373,9 +379,9 @@ function createAccountComposition<CompatibilityConfig>(
 
 async function signEip7702InitData(
   account: ResolvedAccountConfig,
-  chain: import('../chains/types').EvmChainReference,
   dependencies: CoreDependencies,
 ) {
+  const chain = referenceChain()
   const runtime = createStaticAccountRuntime(account, chain, false)
   const adoption = runtime.adapter.getEip7702AdoptionPlan?.(
     runtime.construction,
@@ -386,7 +392,6 @@ async function signEip7702InitData(
   return signNexusEip7702Init({
     planInput: {
       typedData: createNexusEip7702InitTypedData(adoption),
-      chain,
       signer: {
         id: ecdsaSignerId(account.eoa),
         kind: 'ecdsa',
@@ -532,27 +537,25 @@ async function deployAccount<CompatibilityConfig>(
   if (account.account.kind === 'eoa') return false
   if (await isAccountDeployed(account, chain, dependencies)) return false
   const runtime = createStaticAccountRuntime(account, chain, false)
-  const plan = runtime.adapter.getDeploymentPlan(runtime.construction)
-  if (!plan.factory || !plan.factoryData) {
-    throw new FactoryArgsNotAvailableError()
-  }
+  const adoption = account.eoa
+    ? runtime.adapter.getEip7702AdoptionPlan?.(runtime.construction)
+    : undefined
   const intentExecutorInstalled =
     account.initData && 'intentExecutorInstalled' in account.initData
       ? account.initData.intentExecutorInstalled
       : false
   const asUserOp = Boolean(account.initData) && !intentExecutorInstalled
-  const useUserOperation = asUserOp || context.sdk.bundler?.kind === 'custom'
+  const useUserOperation =
+    !adoption && (asUserOp || context.sdk.bundler?.kind === 'custom')
   let initSignature = options?.eip7702InitSignature
-  if (
-    !useUserOperation &&
-    !initSignature &&
-    account.eoa &&
-    runtime.adapter.getEip7702AdoptionPlan
-  ) {
-    initSignature = (await signEip7702InitData(account, chain, dependencies))
-      .signature
+  if (adoption && !initSignature) {
+    initSignature = (await signEip7702InitData(account, dependencies)).signature
   }
   if (useUserOperation) {
+    const plan = runtime.adapter.getDeploymentPlan(runtime.construction)
+    if (!plan.factory || !plan.factoryData) {
+      throw new FactoryArgsNotAvailableError()
+    }
     const workflowContext = userOperationContext(context, dependencies)
     const submitted = await sendUserOperation(workflowContext, {
       chain,
@@ -692,32 +695,52 @@ async function signAccountEnableSession<CompatibilityConfig>(
   details: SessionDetails,
   dependencies: CoreDependencies,
 ): Promise<Hex> {
-  const runtime = createStaticAccountRuntime(
+  const defaultChain = referenceChain()
+  const defaultRuntime = createStaticAccountRuntime(
     context.account,
-    referenceChain(),
+    defaultChain,
     false,
   )
+  const defaultSigning = createAccountSigningContext({
+    runtime: defaultRuntime,
+    purpose: 'session-enable',
+    signerInvoker: signerInvoker(context.account, dependencies),
+  })
+  const chain = resolveSessionEnableChain({
+    accountKind: context.account.account.kind,
+    validator:
+      defaultSigning.validatorCapabilities.compatibilityKey.moduleAddress,
+    hashesAndChainIds: details.hashesAndChainIds,
+    defaultChain,
+  })
+  const runtime =
+    chain.id === defaultChain.id
+      ? defaultRuntime
+      : createStaticAccountRuntime(context.account, chain, false)
   const signing = createAccountSigningContext({
     runtime,
-    purpose: 'erc1271',
+    purpose: 'session-enable',
     signerInvoker: signerInvoker(context.account, dependencies),
   })
   const topology = signingTopology(signing.validator)
-  // Mirror the legacy enable-session path: an account ERC-1271 typed-data
-  // signature over the multichain session data, but with ERC-6492 wrapping
-  // skipped (the account is deployed by the time the emissary verifies it).
   const route = resolveAccountTypedDataSigning({
     typedData: details.data,
-    chain: runtime.construction.chain,
+    chain,
     context: signing,
   })
-  const result = await signAccountTypedData({
+  const accountRoute = getAccountSignatureRoute(
+    runtime,
+    signing,
+    route.erc7739,
+    route.payloadKind,
+  )
+  const result = await signSessionEnablement({
     context: signing,
     checkpoints: checkpointPort(context.account, dependencies),
     planInput: {
       typedData: details.data,
       signingMaterial: route.material,
-      chain: runtime.construction.chain,
+      chain,
       ...topology,
       tasks: createValidatorSigningTasks({
         validator: signing.validator,
@@ -726,13 +749,18 @@ async function signAccountEnableSession<CompatibilityConfig>(
         ecdsaInvocation: route.ecdsaInvocation,
         webauthnInvocation: route.webauthnInvocation,
       }),
+      validatorCodec: getSigningValidatorCodec(signing, route.payloadKind),
+      ...(signing.validator.kind === 'multi-factor'
+        ? {
+            validatorFactors: getSigningValidatorFactors(
+              signing,
+              route.payloadKind,
+            ),
+          }
+        : {}),
       route: {
-        ...getAccountSignatureRoute(
-          runtime,
-          signing,
-          route.erc7739,
-          route.payloadKind,
-        ),
+        erc7739: accountRoute.erc7739,
+        accountEnvelope: accountRoute.accountEnvelope,
         erc6492: { kind: 'none' },
       },
     },

@@ -465,19 +465,10 @@ export function createAccountFacade(
   compatibilityConfig: LegacyAccountConfig<unknown>,
   composition: CoreComposition<LegacyAccountConfig<unknown>>,
 ): RhinestoneAccount {
-  // These identity caches are deliberately facade-scoped. A public prepared
-  // object crossing account/SDK instances must be reconstructed and validated
-  // against the receiving account instead of reusing another facade's plan.
+  // Intent identity caches are facade-scoped. Values crossing account/SDK
+  // instances are reconstructed and validated by the receiving account.
   const preparedIntents = new WeakMap<object, PreparedIntent<Compat>>()
   const signedIntents = new WeakMap<object, SignedIntent<Compat>>()
-  const preparedUserOperations = new WeakMap<
-    object,
-    PreparedUserOperation<Compat>
-  >()
-  const signedUserOperations = new WeakMap<
-    object,
-    import('../transactions/user-operations/types').SignedUserOperation<Compat>
-  >()
   const context = (
     method: AccountInvocationContext<LegacyAccountConfig<unknown>>['method'],
   ) =>
@@ -527,10 +518,7 @@ export function createAccountFacade(
     },
     async signEip7702InitData() {
       const ctx = context('sign-eip7702-init-data')
-      const result = await workflowsFor(ctx).signEip7702InitData(
-        ctx,
-        referenceChain(),
-      )
+      const result = await workflowsFor(ctx).signEip7702InitData(ctx)
       return result.signature
     },
     async prepareTransaction(transaction) {
@@ -711,40 +699,40 @@ export function createAccountFacade(
         hash: prepared.hash,
         transaction,
       }
-      preparedUserOperations.set(data, prepared)
       return data
     },
     async signUserOperation(preparedUserOperation) {
       const ctx = context('sign-user-operation')
-      const internal =
-        preparedUserOperations.get(preparedUserOperation) ??
-        (await workflowsFor(ctx).reconstructPreparedUserOperation(ctx, {
+      // Recompute from the current public operation and live owners.
+      const internal = await workflowsFor(ctx).reconstructPreparedUserOperation(
+        ctx,
+        {
           chain: toEvmChainReference(
             preparedUserOperation.transaction.chain.id,
           ),
           operation:
             preparedUserOperation.userOperation as unknown as PreparedUserOperation<Compat>['operation'],
-        }))
+        },
+      )
       const signed = await workflowsFor(ctx).signUserOperation(ctx, internal)
       const data: SignedUserOperationData = {
         ...preparedUserOperation,
-        userOperation:
-          signed.operation as unknown as SignedUserOperationData['userOperation'],
         signature: signed.signature,
       }
-      signedUserOperations.set(data, signed)
       return data
     },
     async submitUserOperation(signedUserOperation) {
       const ctx = context('submit-user-operation')
-      const internal =
-        signedUserOperations.get(signedUserOperation) ??
-        (await workflowsFor(ctx).reconstructSignedUserOperation(ctx, {
+      // The public operation and top-level signature remain authoritative.
+      const internal = await workflowsFor(ctx).reconstructSignedUserOperation(
+        ctx,
+        {
           chain: toEvmChainReference(signedUserOperation.transaction.chain.id),
           operation:
             signedUserOperation.userOperation as unknown as PreparedUserOperation<Compat>['operation'],
           signature: signedUserOperation.signature,
-        }))
+        },
+      )
       const submitted = await workflowsFor(ctx).submitUserOperation(
         ctx,
         internal,

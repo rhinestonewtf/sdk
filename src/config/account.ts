@@ -879,7 +879,6 @@ interface CrossChainEvmTransaction extends BaseTransaction {
   targetChain: Chain
   tokenRequests?: TokenRequests
   recipient?: RhinestoneAccountConfig | Address
-  customDeadline?: never
 }
 
 // Non-EVM destinations (Solana, Tron). `recipient` and `tokenRequests`
@@ -890,7 +889,6 @@ interface CrossChainNonEvmTransaction extends BaseTransaction {
   targetChain: NonEvmChain
   tokenRequests?: NonEvmTokenRequests
   recipient?: NonEvmAddress
-  customDeadline?: never
 }
 
 type CrossChainTransaction =

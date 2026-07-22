@@ -1,6 +1,9 @@
-import { entryPoint07Address } from 'viem/account-abstraction'
+import { custom } from 'viem'
+import {
+  createPaymasterClient as createViemPaymasterClient,
+  entryPoint07Address,
+} from 'viem/account-abstraction'
 import type { ResolvedServiceEndpoint } from '../../config/resolved'
-import { serializeUserOperation } from '../bundler/client'
 import { type JsonRpcFetchPort, requestJsonRpc } from '../json-rpc'
 import { resolvePaymasterUrl } from './endpoints'
 import type { PaymasterPort, PaymasterSponsorship } from './port'
@@ -10,35 +13,48 @@ export function createPaymasterClient(input: {
   readonly fetch?: JsonRpcFetchPort
 }): PaymasterPort {
   const fetchPort = input.fetch ?? globalThis.fetch
+  const client = (chainId: number) =>
+    createViemPaymasterClient({
+      transport: custom({
+        request: ({ method, params }) =>
+          requestJsonRpc({
+            fetch: fetchPort,
+            url: resolvePaymasterUrl(chainId, input.endpoint),
+            method,
+            params: params ?? [],
+          }),
+      }),
+    })
   return {
-    sponsor: async (chain, operation) =>
-      mapSponsorship(
-        await requestJsonRpc({
-          fetch: fetchPort,
-          url: resolvePaymasterUrl(chain.id, input.endpoint),
-          method: 'pm_sponsorUserOperation',
-          params: [serializeUserOperation(operation), entryPoint07Address],
+    getStubData: async (chain, operation) => {
+      const {
+        isFinal = false,
+        sponsor: _,
+        ...stub
+      } = await client(chain.id).getPaymasterStubData({
+        ...operation,
+        chainId: chain.id,
+        entryPointAddress: entryPoint07Address,
+      })
+      return { ...requireV07(stub), isFinal }
+    },
+    getData: async (chain, operation) =>
+      requireV07(
+        await client(chain.id).getPaymasterData({
+          ...operation,
+          chainId: chain.id,
+          entryPointAddress: entryPoint07Address,
         }),
       ),
   }
 }
 
-function mapSponsorship(value: unknown): PaymasterSponsorship {
-  const result = value as Record<string, string | undefined>
-  if (!result.paymaster || !result.paymasterData) {
+function requireV07(value: {
+  readonly paymaster?: `0x${string}`
+  readonly paymasterData?: `0x${string}`
+}): PaymasterSponsorship {
+  if (!value.paymaster || !value.paymasterData) {
     throw new Error('Paymaster response is missing paymaster fields')
   }
-  return {
-    paymaster: result.paymaster as `0x${string}`,
-    paymasterData: result.paymasterData as `0x${string}`,
-    paymasterVerificationGasLimit: parseQuantity(
-      result.paymasterVerificationGasLimit,
-    ),
-    paymasterPostOpGasLimit: parseQuantity(result.paymasterPostOpGasLimit),
-  }
-}
-
-function parseQuantity(value: string | undefined): bigint {
-  if (value === undefined) throw new Error('Paymaster gas quantity is missing')
-  return BigInt(value)
+  return value as PaymasterSponsorship
 }

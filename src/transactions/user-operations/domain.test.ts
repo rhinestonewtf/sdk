@@ -1,12 +1,20 @@
+import { concat, decodeAbiParameters, toHex, zeroAddress } from 'viem'
 import { WaitForUserOperationReceiptTimeoutError } from 'viem/account-abstraction'
 import { privateKeyToAccount } from 'viem/accounts'
 import { describe, expect, test, vi } from 'vitest'
+import { passkeyAccount } from '../../../test/consts'
 import type { AccountRuntime } from '../../accounts/adapter'
 import { toEvmChainReference } from '../../chains/caip2'
 import type { ContractRead, RpcReadContext } from '../../clients/rpc/types'
 import { defineValidator } from '../../modules/validators/definition'
-import { ECDSA_MOCK_SIGNATURE } from '../../modules/validators/ownable'
-import { WEBAUTHN_MOCK_SIGNATURE } from '../../modules/validators/webauthn'
+import {
+  ECDSA_MOCK_SIGNATURE,
+  OWNABLE_VALIDATOR_ADDRESS,
+} from '../../modules/validators/ownable'
+import {
+  WEBAUTHN_MOCK_SIGNATURE,
+  WEBAUTHN_VALIDATOR_ADDRESS,
+} from '../../modules/validators/webauthn'
 import type { SigningContext } from '../../signing/context'
 import { createAccountSigningContext } from '../../signing/context'
 import { hashUserOperation } from './hash'
@@ -33,9 +41,28 @@ describe('UserOperation domain', () => {
     ).toBe(BigInt(`0x0000${address.slice(2)}0000`))
     for (const accountKind of ['nexus', 'startale', 'hca'] as const) {
       expect(
-        getUserOperationNonceKey({ accountKind, validator: address }),
-      ).toBe(0n)
+        getUserOperationNonceKey({
+          accountKind,
+          validator: address,
+          lane: 0x12_34_56n,
+        }),
+      ).toBe(BigInt(concat(['0x12345600', address])))
+      expect(
+        getUserOperationNonceKey({
+          accountKind,
+          validator: address,
+          defaultValidator: address,
+          lane: 0x12_34_56n,
+        }),
+      ).toBe(BigInt(concat(['0x12345600', zeroAddress])))
     }
+    expect(
+      getUserOperationNonceKey({
+        accountKind: 'nexus',
+        validator: address,
+        lane: 16_777_216n,
+      }),
+    ).toBe(BigInt(concat(['0x00000100', address])))
     expect(
       getUserOperationNonceKey({
         accountKind: 'safe',
@@ -138,20 +165,46 @@ describe('UserOperation domain', () => {
         validator: { kind: 'passkey' },
       } as SigningContext),
     ).toBe(WEBAUTHN_MOCK_SIGNATURE)
-    expect(
-      getUserOperationStubSignature(runtime, {
-        ...context,
-        validator: {
-          kind: 'multi-factor',
-          validators: [
-            { kind: 'passkey', owners: [] },
-            { kind: 'ecdsa', owners: [{}, {}] },
+    const multiFactor = defineValidator({
+      type: 'multi-factor',
+      threshold: 2,
+      validators: [
+        { type: 'ecdsa', accounts: [owner, owner] },
+        { type: 'passkey', accounts: [passkeyAccount] },
+      ],
+    })
+    const multiFactorStub = getUserOperationStubSignature(runtime, {
+      ...context,
+      validator: multiFactor,
+    } as SigningContext)
+    const [factors] = decodeAbiParameters(
+      [
+        {
+          type: 'tuple[]',
+          components: [
+            { name: 'packedValidatorAndId', type: 'bytes32' },
+            { name: 'data', type: 'bytes' },
           ],
         },
-      } as unknown as SigningContext),
-    ).toBe(
-      `${WEBAUTHN_MOCK_SIGNATURE}${ECDSA_MOCK_SIGNATURE.slice(2).repeat(2)}`,
+      ],
+      multiFactorStub,
     )
+    expect(factors).toEqual([
+      {
+        packedValidatorAndId: concat([
+          toHex(0, { size: 12 }),
+          OWNABLE_VALIDATOR_ADDRESS,
+        ]),
+        data: concat([ECDSA_MOCK_SIGNATURE, ECDSA_MOCK_SIGNATURE]),
+      },
+      {
+        packedValidatorAndId: concat([
+          toHex(1, { size: 12 }),
+          WEBAUTHN_VALIDATOR_ADDRESS,
+        ]),
+        data: WEBAUTHN_MOCK_SIGNATURE,
+      },
+    ])
   })
 
   test('polls until a receipt is available', async () => {

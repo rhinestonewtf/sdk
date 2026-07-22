@@ -55,6 +55,15 @@ describe('Utils', () => {
     )
   })
 
+  test('experimental_getRhinestoneInitData preserves address-only init data', () => {
+    const initData = experimental_getRhinestoneInitData({
+      account: { type: 'safe' },
+      initData: { address: accountA.address },
+    })
+
+    expect(initData).toEqual({ address: accountA.address })
+  })
+
   test('preserves v0 factory data with the current account address', () => {
     const initData = experimental_getV0InitData({
       account: { type: 'safe' },
@@ -95,6 +104,15 @@ describe('Utils', () => {
       address: '0x000000000052e9685932845660777DF43C2dC496',
       type: 3n,
     })
+    for (const module of Object.values(setup).flat()) {
+      expect(Object.keys(module).sort()).toEqual([
+        'additionalContext',
+        'address',
+        'deInitData',
+        'initData',
+        'type',
+      ])
+    }
   })
 
   test('view-only accounts retain their address and reject every signer method', async () => {

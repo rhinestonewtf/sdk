@@ -1,9 +1,12 @@
+import { concat } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { describe, expect, test, vi } from 'vitest'
 import type { AccountAdapter, AccountRuntime } from '../../accounts/adapter'
 import type { AccountConstruction } from '../../accounts/types'
 import { toEvmChainReference } from '../../chains/caip2'
+import type { ContractRead, RpcReadContext } from '../../clients/rpc/types'
 import { defineValidator } from '../../modules/validators/definition'
+import { OWNABLE_VALIDATOR_ADDRESS } from '../../modules/validators/ownable'
 import { prepareUserOperation } from './prepare'
 import {
   reconstructPreparedUserOperation,
@@ -114,14 +117,56 @@ const input = {
 }
 
 describe('UserOperation workflow', () => {
+  test('uses the release nonce lane for a non-default Nexus validator', async () => {
+    const readContract = vi.fn()
+    const workflow = context({
+      rpc: {
+        forChain: () => ({
+          getCode: vi.fn(),
+          getTransactionCount: vi.fn(),
+          readContract: async <TResult>(
+            readContext: RpcReadContext,
+            request: ContractRead<TResult>,
+          ) => {
+            readContract(readContext, request)
+            return 7n as TResult
+          },
+          multicall: vi.fn(),
+        }),
+      },
+      clock: {
+        now: () => 0x12_34_56,
+        sleep: vi.fn(async () => undefined),
+        timeout: <T>(promise: Promise<T>) => promise,
+      },
+    })
+
+    await prepareUserOperation(workflow, input)
+
+    expect(readContract).toHaveBeenCalledWith(
+      { chain },
+      expect.objectContaining({
+        args: [
+          sender,
+          BigInt(concat(['0x12345600', OWNABLE_VALIDATOR_ADDRESS])),
+        ],
+      }),
+    )
+  })
+
   test('prepares nonce, account call data, deployment, fees, gas, and signing plan', async () => {
     const workflow = context({
       paymaster: {
-        sponsor: vi.fn(async () => ({
+        getStubData: vi.fn(async () => ({
           paymaster: sender,
           paymasterData: '0x12' as const,
           paymasterVerificationGasLimit: 20n,
           paymasterPostOpGasLimit: 30n,
+          isFinal: false,
+        })),
+        getData: vi.fn(async () => ({
+          paymaster: sender,
+          paymasterData: '0x34' as const,
         })),
       },
     })
@@ -140,9 +185,43 @@ describe('UserOperation workflow', () => {
       verificationGasLimit: 200n,
       preVerificationGas: 300n,
       paymaster: sender,
+      paymasterData: '0x34',
+      paymasterVerificationGasLimit: 20n,
+      paymasterPostOpGasLimit: 30n,
     })
+    expect(workflow.paymaster?.getStubData).toHaveBeenCalledOnce()
+    expect(workflow.paymaster?.getData).toHaveBeenCalledWith(
+      chain,
+      expect.objectContaining({
+        callGasLimit: 111n,
+        verificationGasLimit: 200n,
+        preVerificationGas: 300n,
+        paymasterData: '0x12',
+      }),
+    )
     expect(prepared.signing.tasks).toHaveLength(1)
     expect(prepared.hash).toMatch(/^0x[0-9a-f]{64}$/u)
+  })
+
+  test('skips final paymaster data when the stub is already final', async () => {
+    const getData = vi.fn()
+    const workflow = context({
+      paymaster: {
+        getStubData: vi.fn(async () => ({
+          paymaster: sender,
+          paymasterData: '0x12' as const,
+          paymasterVerificationGasLimit: 20n,
+          paymasterPostOpGasLimit: 30n,
+          isFinal: true,
+        })),
+        getData,
+      },
+    })
+
+    const prepared = await prepareUserOperation(workflow, input)
+
+    expect(prepared.operation.paymasterData).toBe('0x12')
+    expect(getData).not.toHaveBeenCalled()
   })
 
   test('signs using the UserOperation-purpose shared pipeline', async () => {
@@ -209,17 +288,25 @@ describe('UserOperation workflow', () => {
     })
 
     expect(reconstructed.signature).toBe(signature)
+    expect(reconstructed.operation.signature).toBe(signature)
     expect(reconstructed.transcript.planKind).toBe('user-operation')
     // Reconstruction derives the signing plan from static config only.
     expect(workflow.bundler.getGasPrice).not.toHaveBeenCalled()
     expect(workflow.bundler.estimateGas).not.toHaveBeenCalled()
 
-    await expect(submitUserOperation(workflow, reconstructed)).resolves.toEqual(
-      {
-        type: 'userop',
-        chain,
-        hash,
-      },
+    await expect(
+      submitUserOperation(workflow, {
+        ...reconstructed,
+        operation: { ...reconstructed.operation, signature: '0xdead' },
+      }),
+    ).resolves.toEqual({
+      type: 'userop',
+      chain,
+      hash,
+    })
+    expect(workflow.bundler.send).toHaveBeenCalledWith(
+      chain,
+      expect.objectContaining({ signature }),
     )
   })
 })

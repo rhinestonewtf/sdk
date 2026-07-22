@@ -1,4 +1,4 @@
-import { type Address, concat } from 'viem'
+import { type Address, concat, toHex, zeroAddress } from 'viem'
 import { entryPoint07Address } from 'viem/account-abstraction'
 import type { AccountKind } from '../../accounts/types'
 import type { EvmChainReference } from '../../chains/types'
@@ -20,6 +20,8 @@ const getNonceAbi = [
 export function getUserOperationNonceKey(input: {
   readonly accountKind: AccountKind
   readonly validator: Address
+  readonly defaultValidator?: Address
+  readonly lane?: bigint
   readonly requested?: bigint
 }): bigint {
   if (input.requested !== undefined) return input.requested
@@ -30,8 +32,14 @@ export function getUserOperationNonceKey(input: {
       return BigInt(concat(['0x0000', input.validator, '0x0000']))
     case 'nexus':
     case 'startale':
-    case 'hca':
-      return 0n
+    case 'hca': {
+      const validator =
+        input.defaultValidator?.toLowerCase() === input.validator.toLowerCase()
+          ? zeroAddress
+          : input.validator
+      const lane = (input.lane ?? 0n) % 16_777_215n
+      return BigInt(concat([toHex(lane, { size: 3 }), '0x00', validator]))
+    }
     case 'eoa':
       throw new Error('EOA accounts do not support UserOperations')
   }

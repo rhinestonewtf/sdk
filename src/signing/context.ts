@@ -1,4 +1,4 @@
-import type { Hex } from 'viem'
+import { type Hex, isAddressEqual } from 'viem'
 import type { AccountAdapter, AccountRuntime } from '../accounts/adapter'
 import type { AccountCapabilities, AccountIdentity } from '../accounts/types'
 import { getValidatorCapabilities } from '../modules/validators/capabilities'
@@ -188,9 +188,24 @@ export function getAccountSignatureRoute(
       ? { validatorFactors: getSigningValidatorFactors(context, payloadKind) }
       : {}),
     erc7739,
-    accountEnvelope: context.accountCapabilities.signatureEnvelope,
+    accountEnvelope: getAccountSignatureEnvelope(context),
     erc6492,
   }
+}
+
+export function getAccountSignatureEnvelope(
+  context: SigningContext,
+): import('../accounts/types').AccountSignatureEnvelope {
+  const envelope = context.accountCapabilities.signatureEnvelope
+  if (envelope.kind === 'none' || envelope.kind === 'hca') return envelope
+  const validator = context.validatorCapabilities.compatibilityKey.moduleAddress
+  return envelope.kind === 'kernel'
+    ? {
+        ...envelope,
+        validator,
+        isRoot: isAddressEqual(validator, envelope.validator),
+      }
+    : { ...envelope, validator }
 }
 
 function eoaValidator(runtime: AccountRuntime): ResolvedValidatorDefinition {

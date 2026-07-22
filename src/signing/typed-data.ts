@@ -144,7 +144,7 @@ export async function signAccountTypedData(input: {
   return { signature, transcript }
 }
 
-function assembleTypedDataStage(
+export function assembleTypedDataStage(
   input: SigningStageAssemblyInput,
   context: SigningContext,
 ): Readonly<Record<string, Hex>> {

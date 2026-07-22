@@ -58,6 +58,28 @@ if (mode === 'exports') {
       }),
     )
   }
+} else if (mode === 'compatibility-values') {
+  const { privateKeyToAccount } = await import('viem/accounts')
+  const { experimental_getModuleSetup, experimental_getRhinestoneInitData } =
+    await import(`${manifest.name}/utils`)
+  const address = '0x0000000000000000000000000000000000000001'
+  const addressOnlyInitData = experimental_getRhinestoneInitData({
+    account: { type: 'safe' },
+    initData: { address },
+  })
+  const setup = experimental_getModuleSetup({
+    account: { type: 'safe' },
+    owners: {
+      type: 'ecdsa',
+      accounts: [privateKeyToAccount(`0x${'11'.repeat(32)}`)],
+    },
+  })
+  process.stdout.write(
+    JSON.stringify({
+      addressOnlyInitData,
+      moduleKeys: Object.keys(setup.validators[0]).sort(),
+    }),
+  )
 } else {
   throw new Error(`Unknown runtime probe mode: ${mode}`)
 }

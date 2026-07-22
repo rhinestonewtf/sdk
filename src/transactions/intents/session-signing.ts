@@ -28,6 +28,7 @@ import type {
   ValidatorContributionCodec,
 } from '../../modules/validators/types'
 import type { SigningContext } from '../../signing/context'
+import { getAccountSignatureEnvelope } from '../../signing/context'
 import type { IntentSigningPlanCreationInput } from '../../signing/intent-plans/types'
 import {
   createValidatorSigningTasks,
@@ -94,6 +95,7 @@ export function buildSessionIntentPlanInput<CompatibilityConfig>(
         usage: 'intent-origin',
         typedData: origin.typedData,
         payloadId: origin.id,
+        chain: origin.chain,
         session,
         environment: requireSessionEnvironment(prepared),
         context,
@@ -112,6 +114,7 @@ export function buildSessionIntentPlanInput<CompatibilityConfig>(
         usage: 'intent-destination',
         typedData: destination.payload.typedData,
         payloadId: destination.payload.id,
+        chain: destination.payload.chain,
         session,
         environment: requireSessionEnvironment(prepared),
         context,
@@ -161,6 +164,7 @@ export function buildSessionIntentPlanInput<CompatibilityConfig>(
         usage: 'intent-target',
         typedData: target.typedData,
         payloadId: target.id,
+        chain: target.chain,
         session: requireSession(prepared, target.chain.id),
         environment: requireSessionEnvironment(prepared),
         context,
@@ -178,6 +182,7 @@ function buildSessionStage(input: {
   readonly usage: 'intent-origin' | 'intent-destination' | 'intent-target'
   readonly typedData: TypedDataDefinition
   readonly payloadId: Hex
+  readonly chain: import('../../chains/types').EvmChainReference
   readonly session: ResolvedSessionSignerSet
   readonly environment: 'production' | 'development'
   readonly context: SigningContext
@@ -197,11 +202,7 @@ function buildSessionStage(input: {
     ? {
         kind: 'session-enabled' as const,
         id: `${input.id}:session-enabled`,
-        chain: {
-          kind: 'evm' as const,
-          id: input.session.session.chain.id,
-          caip2: `eip155:${input.session.session.chain.id}` as const,
-        },
+        chain: input.chain,
         account: input.context.account.address,
         permissionId: input.session.session.permissionId,
       }
@@ -223,7 +224,7 @@ function buildSessionStage(input: {
     const stageTasks = sessionTasks(
       `${notarizedId}:signer`,
       signing,
-      input.session,
+      input.chain,
       payloadId,
       'session-notarized',
     )
@@ -249,7 +250,7 @@ function buildSessionStage(input: {
         : {}),
       erc7739: { kind: 'none' },
       accountEnvelope: sessionAccountEnvelope(
-        input.context.accountCapabilities.signatureEnvelope,
+        getAccountSignatureEnvelope(input.context),
         module,
       ),
       erc6492: { kind: 'none' },
@@ -265,7 +266,7 @@ function buildSessionStage(input: {
     const stageTasks = sessionTasks(
       `${preClaimId}:signer`,
       signing,
-      input.session,
+      input.chain,
       input.payloadId,
       'session-pre-claim',
     )
@@ -326,7 +327,7 @@ function buildSessionStage(input: {
 function sessionTasks(
   taskPrefix: string,
   signing: ReturnType<typeof sessionOwnerSigning>,
-  session: ResolvedSessionSignerSet,
+  chain: import('../../chains/types').EvmChainReference,
   payloadId: Hex,
   role: 'session-notarized' | 'session-pre-claim',
 ): readonly SigningTaskTemplate[] {
@@ -339,11 +340,7 @@ function sessionTasks(
     role,
   }).map((task) => ({
     ...task,
-    chain: {
-      kind: 'evm',
-      id: session.session.chain.id,
-      caip2: `eip155:${session.session.chain.id}`,
-    },
+    chain,
     payload: { source: 'plan-payload', payloadId },
   }))
 }

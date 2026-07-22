@@ -1,7 +1,11 @@
 import type { Hex } from 'viem'
+import { nexusDefaultValidator } from '../../accounts/adapters/nexus'
+import { K1_DEFAULT_VALIDATOR_ADDRESS } from '../../accounts/adapters/startale'
+import type { AccountConstruction } from '../../accounts/types'
 import { resolveCalls } from '../../calls/resolve'
 import type { EvmChainReference } from '../../chains/types'
 import type { BundlerUserOperation } from '../../clients/bundler/port'
+import { ENS_HCA_MODULE } from '../../modules/validators/ens'
 import {
   createAccountSigningContext,
   getSigningValidatorCodec,
@@ -45,12 +49,14 @@ export async function prepareUserOperation<CompatibilityConfig>(
       accountKind: runtime.construction.account.kind,
       validator:
         signingContext.validatorCapabilities.compatibilityKey.moduleAddress,
+      defaultValidator: defaultUserOperationValidator(runtime.construction),
+      lane: BigInt(context.clock.now()),
       ...(input.nonceKey === undefined ? {} : { requested: input.nonceKey }),
     }),
   })
   const deployment = runtime.adapter.getDeploymentPlan(runtime.construction)
   const gasPrice = await context.bundler.getGasPrice(input.chain)
-  let operation = {
+  let operation: BundlerUserOperation = {
     sender: runtime.identity.address,
     nonce,
     ...(deployment.deployed || !deployment.factory || !deployment.factoryData
@@ -70,18 +76,42 @@ export async function prepareUserOperation<CompatibilityConfig>(
     maxFeePerGas: gasPrice.maxFeePerGas,
     maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas,
     signature: getUserOperationStubSignature(runtime, signingContext),
-  } satisfies BundlerUserOperation
+  }
+  let paymasterIsFinal = false
   if (context.paymaster) {
+    const { isFinal, ...stub } = await context.paymaster.getStubData(
+      input.chain,
+      operation,
+    )
+    paymasterIsFinal = isFinal
     operation = {
       ...operation,
-      ...(await context.paymaster.sponsor(input.chain, operation)),
+      ...stub,
     }
   }
   const gas = await context.bundler.estimateGas(input.chain, operation)
+  const paymasterGas = {
+    ...(operation.paymasterVerificationGasLimit === undefined
+      ? {}
+      : {
+          paymasterVerificationGasLimit:
+            operation.paymasterVerificationGasLimit,
+        }),
+    ...(operation.paymasterPostOpGasLimit === undefined
+      ? {}
+      : { paymasterPostOpGasLimit: operation.paymasterPostOpGasLimit }),
+  }
   operation = {
     ...operation,
     ...gas,
+    ...paymasterGas,
     ...(input.gasLimit === undefined ? {} : { callGasLimit: input.gasLimit }),
+  }
+  if (context.paymaster && !paymasterIsFinal) {
+    operation = {
+      ...operation,
+      ...(await context.paymaster.getData(input.chain, operation)),
+    }
   }
   const hash = hashUserOperation(input.chain, operation)
   return {
@@ -93,6 +123,25 @@ export async function prepareUserOperation<CompatibilityConfig>(
       input.chain,
       hash,
     ),
+  }
+}
+
+function defaultUserOperationValidator(construction: AccountConstruction) {
+  switch (construction.account.kind) {
+    case 'nexus':
+      return nexusDefaultValidator(
+        construction.account.version.source === 'explicit'
+          ? construction.account.version.value
+          : undefined,
+      )
+    case 'startale':
+      return K1_DEFAULT_VALIDATOR_ADDRESS
+    case 'hca':
+      return ENS_HCA_MODULE
+    case 'safe':
+    case 'kernel':
+    case 'eoa':
+      return undefined
   }
 }
 

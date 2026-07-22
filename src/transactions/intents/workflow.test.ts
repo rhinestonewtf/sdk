@@ -1,6 +1,7 @@
+import type { TypedDataDefinition } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
 import { privateKeyToAccount } from 'viem/accounts'
-import { mainnet } from 'viem/chains'
+import { arbitrum, base, mainnet } from 'viem/chains'
 import { describe, expect, test, vi } from 'vitest'
 import { passkeyAccount } from '../../../test/consts'
 import type {
@@ -14,8 +15,10 @@ import { toEvmChainReference } from '../../chains/caip2'
 import type { OrchestratorQuote } from '../../clients/orchestrator/types'
 import { defineValidator } from '../../modules/validators/definition'
 import { toSession } from '../../modules/validators/smart-sessions/resolve'
+import { createAccountSigningContext } from '../../signing/context'
 import { buildIntentSigningInput, prepareIntent } from './prepare'
 import { sendIntent } from './send'
+import { buildSessionIntentPlanInput } from './session-signing'
 import { signIntent } from './sign-transaction'
 import { submitIntent } from './submit'
 import type { IntentWorkflowContext } from './types'
@@ -309,6 +312,74 @@ describe('intent workflow', () => {
     expect(originSignature.notarizedClaimSig).toMatch(/^0x/u)
     expect(signed.destinationSignature).toMatch(/^0x01/u)
     expect(read).toHaveBeenCalledTimes(3)
+  })
+
+  test('uses each prepared stage chain for a shorthand cross-chain session', () => {
+    const source = toEvmChainReference(base.id)
+    const destination = toEvmChainReference(arbitrum.id)
+    const session = toSession({
+      chain: base,
+      owners: { type: 'ecdsa', accounts: [account] },
+    })
+    const selected = {
+      kind: 'smart-session' as const,
+      session,
+      verifyExecutions: false,
+      enableData: {
+        userSignature: signature,
+        hashesAndChainIds: [],
+        sessionToEnableIndex: 0,
+      },
+    }
+    const typedData = (chainId: number): TypedDataDefinition => ({
+      domain: { chainId, verifyingContract: address },
+      types: { Test: [{ name: 'value', type: 'uint256' }] },
+      primaryType: 'Test',
+      message: { value: 1n },
+    })
+    const prepared = {
+      signing: {
+        origins: [
+          {
+            id: `0x${'22'.repeat(32)}`,
+            chain: source,
+            typedData: typedData(source.id),
+          },
+        ],
+        destination: {
+          mode: 'sign',
+          artifactId: 'destination',
+          payload: {
+            id: `0x${'33'.repeat(32)}`,
+            chain: destination,
+            typedData: typedData(destination.id),
+          },
+        },
+      },
+      resolvedSessions: {
+        [source.id]: selected,
+        [destination.id]: selected,
+      },
+      sessionEnvironment: 'production',
+    } as never
+    const signing = createAccountSigningContext({
+      runtime: runtime(),
+      purpose: 'intent',
+      signerInvoker: { invoke: vi.fn() },
+    })
+
+    const plan = buildSessionIntentPlanInput(prepared, signing)
+    const destinationStage = plan.stages.find(({ id }) => id === 'destination')
+
+    expect(destinationStage?.tasks).not.toHaveLength(0)
+    expect(
+      destinationStage?.tasks.every(
+        (task) => task.chain?.id === destination.id,
+      ),
+    ).toBe(true)
+    expect(destinationStage?.checkpoint).toMatchObject({
+      chain: { id: destination.id },
+    })
   })
 
   test('signs Smart Sessions with a multi-factor owner topology', async () => {

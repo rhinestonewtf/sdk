@@ -7,6 +7,7 @@ import {
 import { encodeValidatorId } from '../../modules/validators/multi-factor'
 import {
   createAccountSigningContext,
+  getAccountSignatureEnvelope,
   getSigningValidatorCodec,
   getSigningValidatorFactors,
   type SigningContext,
@@ -486,7 +487,7 @@ function signingStage(input: {
     erc7739: input.route.erc7739,
     accountEnvelope: direct
       ? { kind: 'none' }
-      : input.context.accountCapabilities.signatureEnvelope,
+      : getAccountSignatureEnvelope(input.context),
     erc6492: { kind: 'none' },
   }
   return {

@@ -1,17 +1,26 @@
-import type { Hex, TypedDataDefinition } from 'viem'
-import { hashTypedData } from 'viem'
+import {
+  type Address,
+  type Hex,
+  hashTypedData,
+  isAddressEqual,
+  type TypedDataDefinition,
+} from 'viem'
+import type { AccountKind } from '../accounts/types'
+import { toEvmChainReference } from '../chains/caip2'
 import type { EvmChainReference } from '../chains/types'
+import { K1_DEFAULT_VALIDATOR_ADDRESS } from '../modules/validators/k1'
 import type { ValidatorContributionCodec } from '../modules/validators/types'
-import { encodePlannedValidatorContribution } from './contribution'
-import { runSigningStep } from './error'
+import type { SigningContext } from './context'
 import { executeSigningPlan } from './execute'
 import { createSingleStageSigningPlan } from './plan'
+import { assembleTypedDataStage } from './typed-data'
 import type {
+  ArtifactAssemblyPlan,
   ConfiguredValidatorTopology,
   EffectiveSignerSelection,
   PayloadSigningTask,
-  SignerInvocationPort,
   SigningCheckpointPort,
+  SigningPayloadMaterial,
   SigningPlan,
   SigningTranscript,
 } from './types'
@@ -22,8 +31,13 @@ export interface SessionEnableSigningPlanInput {
   readonly configuredTopology: ConfiguredValidatorTopology
   readonly effectiveSelection: EffectiveSignerSelection
   readonly tasks: readonly PayloadSigningTask[]
+  readonly signingMaterial?: SigningPayloadMaterial
   readonly validatorCodec: ValidatorContributionCodec
   readonly validatorFactors?: import('./types').ArtifactAssemblyPlan['validatorFactors']
+  readonly route: Pick<
+    ArtifactAssemblyPlan,
+    'erc7739' | 'accountEnvelope' | 'erc6492'
+  >
 }
 
 export function createSessionEnableSigningPlan(
@@ -45,9 +59,7 @@ export function createSessionEnableSigningPlan(
         ...(input.validatorFactors
           ? { validatorFactors: input.validatorFactors }
           : {}),
-        erc7739: { kind: 'none' },
-        accountEnvelope: { kind: 'none' },
-        erc6492: { kind: 'none' },
+        ...input.route,
       },
     ],
   })
@@ -55,7 +67,7 @@ export function createSessionEnableSigningPlan(
 
 export async function signSessionEnablement(input: {
   readonly planInput: SessionEnableSigningPlanInput
-  readonly signerInvoker: SignerInvocationPort
+  readonly context: SigningContext
   readonly checkpoints: SigningCheckpointPort
 }): Promise<{
   readonly signature: Hex
@@ -65,34 +77,44 @@ export async function signSessionEnablement(input: {
   const transcript = await executeSigningPlan({
     plan,
     payloads: {
-      [plan.payload.id]: {
+      [plan.payload.id]: input.planInput.signingMaterial ?? {
         kind: 'typed-data',
         typedData: input.planInput.typedData,
       },
     },
-    signerInvoker: input.signerInvoker,
+    signerInvoker: input.context.signerInvoker,
     checkpoints: input.checkpoints,
-    assembleStage: ({ stagePlan, stage, results }) => {
-      const artifact = stagePlan.artifacts[0]
-      return {
-        [artifact.id]: runSigningStep({
-          plan,
-          failureStage: 'validator-encode',
-          stageId: stage.stageId,
-          artifactId: artifact.id,
-          usage: artifact.usage,
-          operation: () =>
-            encodePlannedValidatorContribution({
-              artifact,
-              stage,
-              results,
-            }),
-        }),
-      }
-    },
+    assembleStage: (stage) => assembleTypedDataStage(stage, input.context),
   })
   const signature = transcript.stages[0].outputs[
     'session-enable-signature'
   ] as Hex
   return { signature, transcript }
+}
+
+export function resolveSessionEnableChain(input: {
+  readonly accountKind: AccountKind
+  readonly validator: Address
+  readonly hashesAndChainIds: readonly { readonly chainId: bigint }[]
+  readonly defaultChain: EvmChainReference
+}): EvmChainReference {
+  const startaleK1 =
+    input.accountKind === 'startale' &&
+    isAddressEqual(input.validator, K1_DEFAULT_VALIDATOR_ADDRESS)
+  if (!startaleK1) return input.defaultChain
+  const chainIds = [
+    ...new Set(
+      input.hashesAndChainIds.map(({ chainId }) => chainId.toString()),
+    ),
+  ]
+  if (chainIds.length > 1) {
+    throw new Error(
+      'Startale accounts with K1 validator do not support multi-chain session enable',
+    )
+  }
+  const chainId = chainIds[0]
+  if (chainId === undefined) {
+    throw new Error('Startale K1 session enable requires one session chain')
+  }
+  return toEvmChainReference(Number(chainId))
 }

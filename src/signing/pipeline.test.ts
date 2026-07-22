@@ -611,7 +611,7 @@ describe('direct rewritten signing pipelines', () => {
     expect(userOperation.signature).toBe(`0x${'44'.repeat(64)}1b`)
 
     const enablement = await signSessionEnablement({
-      signerInvoker: signerInvoker(),
+      context: { ...signingContext(), signerInvoker: signerInvoker() },
       checkpoints: noReads,
       planInput: {
         typedData,
@@ -619,6 +619,11 @@ describe('direct rewritten signing pipelines', () => {
         ...topology,
         tasks: [task('ecdsa-sign-typed-data')],
         validatorCodec: codec,
+        route: {
+          erc7739: { kind: 'none' },
+          accountEnvelope: { kind: 'none' },
+          erc6492: { kind: 'none' },
+        },
       },
     })
     expect(enablement.signature).toBe(`0x${'44'.repeat(64)}1f`)
@@ -657,6 +662,11 @@ describe('direct rewritten signing pipelines', () => {
           threshold: 1,
         },
         validatorFactors: [factor],
+        route: {
+          erc7739: { kind: 'none' },
+          accountEnvelope: { kind: 'none' },
+          erc6492: { kind: 'none' },
+        },
       }).stages[0].artifacts[0].validatorFactors,
     ).toEqual([factor])
   })
@@ -665,20 +675,19 @@ describe('direct rewritten signing pipelines', () => {
     expect(
       createNexusEip7702InitPlan({
         typedData,
-        chain,
         signer: { id: 'owner', kind: 'ecdsa' },
       }).kind,
     ).toBe('nexus-eip7702-init')
     const init = await signNexusEip7702Init({
       planInput: {
         typedData,
-        chain,
         signer: { id: 'owner', kind: 'ecdsa' },
       },
       signerInvoker: signerInvoker(),
       checkpoints: noReads,
     })
     expect(init.signature).toBe(rawSignature)
+    expect(init.transcript.stages[0]?.stage.tasks[0]?.chain).toBeUndefined()
 
     const authorization = {
       address: account,
