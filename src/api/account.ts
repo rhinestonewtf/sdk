@@ -12,7 +12,7 @@ import type { UserOperationReceipt } from 'viem/account-abstraction'
 import { parseCaip2, toEvmChainReference } from '../chains/caip2'
 import { getChainById, getChainReference } from '../chains/catalog'
 import type { DestinationChain } from '../chains/non-evm'
-import { normalizeTokenAddress } from '../chains/tokens'
+import { normalizeTokenAddress, validateTokenAddresses } from '../chains/tokens'
 import type {
   OriginSignature,
   Portfolio,
@@ -1167,10 +1167,17 @@ function adaptSourceAssets(
           : {}),
       }
     }
+    const tokens = sourceAssets as string[]
+    validateTokenAddresses(tokens)
     return {
       ...(chainIds ? { chainIds } : {}),
-      tokens: sourceAssets as string[],
+      tokens,
     }
+  }
+  // ChainTokenMap: validate every per-chain list too, so symbols can't slip
+  // through this input the way they can't through tokenRequests / ExactInputConfig.
+  for (const tokens of Object.values(sourceAssets)) {
+    validateTokenAddresses(tokens)
   }
   return { chainTokens: sourceAssets }
 }

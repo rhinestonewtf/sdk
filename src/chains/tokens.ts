@@ -15,3 +15,14 @@ export function normalizeTokenAddress(
     `Expected a token address on EVM chain ${chainId}, got: ${token}`,
   )
 }
+
+// Rejects non-address token identifiers (e.g. symbols) so they can't slip
+// through the `sourceAssets` token-list inputs the way they can't through
+// tokenRequests / per-chain `ExactInputConfig`.
+export function validateTokenAddresses(tokens: readonly string[]): void {
+  for (const token of tokens) {
+    if (!isAddress(token, { strict: false })) {
+      throw new Error(`Invalid token address: ${token}`)
+    }
+  }
+}

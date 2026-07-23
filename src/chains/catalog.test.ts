@@ -1,7 +1,7 @@
 import { arbitrum, base } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 import { getChainById, getChainReference } from './catalog'
-import { normalizeTokenAddress } from './tokens'
+import { normalizeTokenAddress, validateTokenAddresses } from './tokens'
 
 describe('runtime chain resolution', () => {
   test('resolves known viem chains and falls back for unknown ids', () => {
@@ -39,6 +39,13 @@ describe('normalizeTokenAddress', () => {
     // v2 no longer accepts symbols on EVM chains.
     expect(() => normalizeTokenAddress('USDC', arbitrum.id, false)).toThrow(
       'Expected a token address',
+    )
+  })
+
+  test('validateTokenAddresses accepts addresses and rejects symbols', () => {
+    expect(() => validateTokenAddresses([usdc])).not.toThrow()
+    expect(() => validateTokenAddresses([usdc, 'USDC'])).toThrow(
+      'Invalid token address: USDC',
     )
   })
 })
