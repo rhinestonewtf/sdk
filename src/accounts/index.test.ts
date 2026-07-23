@@ -12,7 +12,7 @@ describe('Accounts', () => {
           threshold: 1,
         },
       })
-      expect(address).toEqual('0x0681de31e060b384F0b08A3bAC99E9bDFf302474')
+      expect(address).toEqual('0x011ce90AB2e42C509E46bCF72ef12f9FbCa64e7e')
     })
     test('Safe, passkey owner with a session', () => {
       const address = getAddress({
@@ -21,7 +21,7 @@ describe('Accounts', () => {
           accounts: [passkeyAccount],
         },
       })
-      expect(address).toEqual('0x894b88C04B4DE6AbDdcE81E8bdc91927E37d6ceD')
+      expect(address).toEqual('0x68484B775e4a2828A50C7404ce8530f146d5598e')
     })
   })
 

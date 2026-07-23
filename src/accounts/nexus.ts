@@ -37,12 +37,21 @@ import { encode7579Calls, getAccountNonce, type ValidatorConfig } from './utils'
 const NEXUS_DEFAULT_VALIDATOR_ADDRESS: Address = OWNABLE_VALIDATOR_ADDRESS
 const NEXUS_VERSION = '1.2.0'
 
+// Previous (1.2.0) implementation + factory. Callers opt back into these with
+// `account.version = '1.2.0'`; the default deploys 1.2.1 (see getNexusDeployment).
 const NEXUS_IMPLEMENTATION_ADDRESS: Address =
   '0x000000000032ddc454c3bdcba80484ad5a798705'
 const NEXUS_FACTORY_ADDRESS: Address =
   '0x0000000000679a258c64d2f20f310e12b64b7375'
 const NEXUS_BOOTSTRAP_ADDRESS: Address =
   '0x00000000006efb61d8c9546ff1b500de3f244ea7'
+
+// Current default (1.2.1): new implementation + factory, same bootstrap and
+// proxy creation code as 1.2.0.
+const NEXUS_IMPLEMENTATION_1_2_1: Address =
+  '0x000000000d41c0bf0063dba53343389cdb2c9c78'
+const NEXUS_FACTORY_1_2_1: Address =
+  '0x0000000099d5576c73a3b190dabeeaa0f128ce6b'
 
 const NEXUS_IMPLEMENTATION_1_0_0: Address =
   '0x000000039dfcad030719b07296710f045f0558f7'
@@ -52,6 +61,44 @@ const NEXUS_K1_VALIDATOR: Address = '0x00000004171351c442b202678c48d8ab5b321e8f'
 
 const NEXUS_CREATION_CODE =
   '0x60806040526102aa803803806100148161018c565b92833981016040828203126101885781516001600160a01b03811692909190838303610188576020810151906001600160401b03821161018857019281601f8501121561018857835161006e610069826101c5565b61018c565b9481865260208601936020838301011161018857815f926020809301865e8601015260017f90b772c2cb8a51aa7a8a65fc23543c6d022d5b3f8e2b92eed79fba7eef8293005d823b15610176577f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc80546001600160a01b031916821790557fbc7cd75a20ee27fd9adebab32041f755214dbc6bffa90cc0225b39da2e5c2d3b5f80a282511561015e575f8091610146945190845af43d15610156573d91610137610069846101c5565b9283523d5f602085013e6101e0565b505b604051606b908161023f8239f35b6060916101e0565b50505034156101485763b398979f60e01b5f5260045ffd5b634c9c8ce360e01b5f5260045260245ffd5b5f80fd5b6040519190601f01601f191682016001600160401b038111838210176101b157604052565b634e487b7160e01b5f52604160045260245ffd5b6001600160401b0381116101b157601f01601f191660200190565b9061020457508051156101f557805190602001fd5b63d6bda27560e01b5f5260045ffd5b81511580610235575b610215575090565b639996b31560e01b5f9081526001600160a01b0391909116600452602490fd5b50803b1561020d56fe60806040523615605c575f8073ffffffffffffffffffffffffffffffffffffffff7f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc5416368280378136915af43d5f803e156058573d5ff35b3d5ffd5b00fea164736f6c634300081b000a'
+
+// Resolves the implementation + factory a fresh account deploys against. The
+// default (and every value other than '1.2.0') deploys the current 1.2.1
+// contracts; '1.2.0' opts back into the previous ones.
+function getNexusDeployment(version: NexusAccount['version']): {
+  implementation: Address
+  factory: Address
+} {
+  if (version === '1.2.0') {
+    return {
+      implementation: NEXUS_IMPLEMENTATION_ADDRESS,
+      factory: NEXUS_FACTORY_ADDRESS,
+    }
+  }
+  return {
+    implementation: NEXUS_IMPLEMENTATION_1_2_1,
+    factory: NEXUS_FACTORY_1_2_1,
+  }
+}
+
+// Whether the factory is one of the current Nexus factories (1.2.0 / 1.2.1),
+// which share the same proxy creation code. Legacy (1.0.0) factories use a
+// different proxy and account init encoding.
+function isNexusV1Factory(factory: Address): boolean {
+  const normalized = factory.toLowerCase()
+  return (
+    normalized === NEXUS_FACTORY_ADDRESS || normalized === NEXUS_FACTORY_1_2_1
+  )
+}
+
+// Maps a current Nexus factory to the implementation it deploys, so a persisted
+// `initData` payload recomputes against the right implementation (and the 7702
+// init helpers sign/return it) instead of defaulting to one version.
+function implementationForFactory(factory: Address): Address {
+  return factory.toLowerCase() === NEXUS_FACTORY_1_2_1
+    ? NEXUS_IMPLEMENTATION_1_2_1
+    : NEXUS_IMPLEMENTATION_ADDRESS
+}
 
 function getDeployArgs(config: RhinestoneAccountConfig) {
   if (config.initData) {
@@ -79,6 +126,9 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
   const account = config.account
   const defaultSalt = keccak256('0x')
   const salt = (account as NexusAccount)?.salt ?? defaultSalt
+  const { implementation, factory } = getNexusDeployment(
+    (account as NexusAccount)?.version,
+  )
   const moduleSetup = getModuleSetup(config)
   // Filter out the default validator
   const defaultValidator = moduleSetup.validators.find(
@@ -163,10 +213,10 @@ function getDeployArgs(config: RhinestoneAccountConfig) {
   })
 
   return {
-    factory: NEXUS_FACTORY_ADDRESS,
+    factory,
     factoryData,
     salt,
-    implementation: NEXUS_IMPLEMENTATION_ADDRESS,
+    implementation,
     initializationCallData,
     initData,
   }
@@ -182,27 +232,25 @@ function getAddress(config: RhinestoneAccountConfig) {
   }
   const { factory, salt, initializationCallData, implementation } = deployArgs
 
-  const creationCode =
-    factory.toLowerCase() === NEXUS_FACTORY_ADDRESS
-      ? NEXUS_CREATION_CODE
-      : '0x603d3d8160223d3973000000039dfcad030719b07296710f045f0558f760095155f3363d3d373d3d363d7f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc545af43d6000803e6038573d6000fd5b3d6000f3'
+  const creationCode = isNexusV1Factory(factory)
+    ? NEXUS_CREATION_CODE
+    : '0x603d3d8160223d3973000000039dfcad030719b07296710f045f0558f760095155f3363d3d373d3d363d7f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc545af43d6000803e6038573d6000fd5b3d6000f3'
 
-  const accountInitData =
-    factory.toLowerCase() === NEXUS_FACTORY_ADDRESS
-      ? encodeAbiParameters(
-          [
-            {
-              name: 'address',
-              type: 'address',
-            },
-            {
-              name: 'calldata',
-              type: 'bytes',
-            },
-          ],
-          [implementation, initializationCallData],
-        )
-      : '0x'
+  const accountInitData = isNexusV1Factory(factory)
+    ? encodeAbiParameters(
+        [
+          {
+            name: 'address',
+            type: 'address',
+          },
+          {
+            name: 'calldata',
+            type: 'bytes',
+          },
+        ],
+        [implementation, initializationCallData],
+      )
+    : '0x'
   const address = getContractAddress({
     opcode: 'CREATE2',
     from: factory,
@@ -294,22 +342,18 @@ function isDefaultValidatorConfigured(
   return defaultValidator ? size(defaultValidator.initData) > 0 : false
 }
 
-function getDefaultValidatorAddress(
-  version:
-    | '1.0.2'
-    | '1.2.0'
-    | 'rhinestone-1.0.0-beta'
-    | 'rhinestone-1.0.0'
-    | undefined,
-): Address {
+function getDefaultValidatorAddress(version: NexusAccount['version']): Address {
   if (!version) {
     return NEXUS_DEFAULT_VALIDATOR_ADDRESS
   }
   switch (version) {
     case '1.0.2':
       return '0x0000002d6db27c52e3c11c1cf24072004ac75cba'
+    // 1.2.0 and 1.2.1 both hardwire the Ownable validator; they differ only in
+    // implementation + factory.
     case '1.2.0':
-      return '0x00000000d12897ddadc2044614a9677b191a2d95'
+    case '1.2.1':
+      return NEXUS_DEFAULT_VALIDATOR_ADDRESS
     case 'rhinestone-1.0.0-beta':
       return '0x0000000000e9e6e96bcaa3c113187cdb7e38aed9'
     case 'rhinestone-1.0.0':
@@ -445,7 +489,7 @@ async function signEip7702InitData(
   if (!deployArgs) {
     throw new Error('Cannot sign EIP-7702 init data: deploy args not available')
   }
-  const { initData } = deployArgs
+  const { initData, implementation } = deployArgs
   if (!eoa.signTypedData) {
     throw new SigningNotSupportedForAccountError()
   }
@@ -463,7 +507,7 @@ async function signEip7702InitData(
     },
     primaryType: 'Initialize',
     message: {
-      nexus: NEXUS_IMPLEMENTATION_ADDRESS,
+      nexus: implementation,
       chainIds: [0n],
       initData,
     },
@@ -487,7 +531,7 @@ function getEip7702InitCall(config: RhinestoneAccountConfig, signature: Hex) {
   if (!deployArgs) {
     throw new Error('Cannot get EIP-7702 init call: deploy args not available')
   }
-  const { initData } = deployArgs
+  const { initData, implementation } = deployArgs
   const encodedData = getEncodedData(initData)
   const accountFullData = concat([signature, encodedData])
   const accountInitCallData = encodeFunctionData({
@@ -511,7 +555,7 @@ function getEip7702InitCall(config: RhinestoneAccountConfig, signature: Hex) {
 
   return {
     initData: accountInitCallData,
-    contract: NEXUS_IMPLEMENTATION_ADDRESS,
+    contract: implementation,
   }
 }
 
@@ -532,7 +576,7 @@ function tryDecodeV1FactoryData(factory: Address, factoryData: Hex) {
       salt,
       factory,
       factoryData,
-      implementation: NEXUS_IMPLEMENTATION_ADDRESS,
+      implementation: implementationForFactory(factory),
       initData,
       initializationCallData,
     }
