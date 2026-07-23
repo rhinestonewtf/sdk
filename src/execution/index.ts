@@ -19,7 +19,11 @@ import {
   getSupportedChainIds,
   isTestnet,
 } from '../orchestrator/registry'
-import type { AppFeeRate, SettlementLayer } from '../orchestrator/types'
+import type {
+  AppFeeRate,
+  ProtocolFeeRate,
+  SettlementLayer,
+} from '../orchestrator/types'
 import type {
   CalldataInput,
   CallInput,
@@ -96,6 +100,7 @@ async function sendTransaction(
     feeAsset,
     appFees,
     customDeadline,
+    protocolFees,
   } = transaction
   const isUserOpSigner = signers?.type === 'guardians'
   if (isUserOpSigner) {
@@ -115,6 +120,7 @@ async function sendTransaction(
     feeAsset,
     appFees,
     customDeadline,
+    protocolFees,
   })
 }
 
@@ -156,6 +162,7 @@ async function sendTransactionInternal(
     feeAsset?: Address | TokenSymbol
     appFees?: AppFeeRate
     customDeadline?: number
+    protocolFees?: ProtocolFeeRate
   },
 ) {
   const accountAddress = getAddress(config)
@@ -192,6 +199,7 @@ async function sendTransactionInternal(
       options.sourceCalls,
       options.appFees,
       options.customDeadline,
+      options.protocolFees,
     )
   }
 }
@@ -248,6 +256,7 @@ async function sendTransactionAsIntent(
   sourceCalls?: Record<number, CallInput[]>,
   appFees?: AppFeeRate,
   customDeadline?: number,
+  protocolFees?: ProtocolFeeRate,
 ) {
   const prepared = await prepareTransactionAsIntent(
     config,
@@ -269,6 +278,7 @@ async function sendTransactionAsIntent(
     sourceCalls,
     appFees,
     customDeadline,
+    protocolFees,
   )
   if (!prepared) {
     throw new OrderPathRequiredForIntentsError()

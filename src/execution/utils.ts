@@ -95,6 +95,7 @@ import {
   type IntentOpElement,
   type Account as OrchestratorAccount,
   type OriginSignature,
+  type ProtocolFeeRate,
   type SettlementLayer,
   SIG_MODE_EMISSARY_EXECUTION_ERC1271,
   SIG_MODE_ERC1271,
@@ -277,6 +278,7 @@ async function prepareTransaction(
     feeAsset,
     appFees,
     customDeadline,
+    protocolFees,
     lockFunds,
     auxiliaryFunds,
     account,
@@ -314,6 +316,7 @@ async function prepareTransaction(
     sourceCalls,
     appFees,
     customDeadline,
+    protocolFees,
   )
 
   return {
@@ -742,6 +745,7 @@ function getTransactionParams(transaction: Transaction) {
   const feeAsset = transaction.feeAsset
   const appFees = transaction.appFees
   const customDeadline = transaction.customDeadline
+  const protocolFees = transaction.protocolFees
   const lockFunds = transaction.lockFunds
   const auxiliaryFunds = transaction.auxiliaryFunds
   const account = transaction.experimental_accountOverride
@@ -763,6 +767,7 @@ function getTransactionParams(transaction: Transaction) {
     feeAsset,
     appFees,
     customDeadline,
+    protocolFees,
     lockFunds,
     auxiliaryFunds,
     account,
@@ -887,6 +892,7 @@ async function prepareTransactionAsIntent(
   sourceCalls: Record<number, CallInput[]> | undefined,
   appFees?: AppFeeRate,
   customDeadline?: number,
+  protocolFees?: ProtocolFeeRate,
 ) {
   const calls = parseCalls(callInputs, targetChain.id)
   const accountAccessList = createAccountAccessList(sourceChains, sourceAssets)
@@ -1020,17 +1026,20 @@ async function prepareTransactionAsIntent(
       feeToken: feeAsset,
       appFees,
       customDeadline,
+      protocolFees,
       sponsorSettings: sponsored
         ? typeof sponsored === 'object'
           ? {
               gasSponsored: sponsored.gas,
               bridgeFeesSponsored: sponsored.bridging,
               swapFeesSponsored: sponsored.swaps,
+              protocolFeesSponsored: sponsored.protocolFees ?? false,
             }
           : {
               gasSponsored: sponsored,
               bridgeFeesSponsored: sponsored,
               swapFeesSponsored: sponsored,
+              protocolFeesSponsored: sponsored,
             }
         : undefined,
       settlementLayers,
