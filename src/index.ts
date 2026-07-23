@@ -158,17 +158,6 @@ interface RhinestoneAccount {
   /** The resolved account configuration. */
   config: RhinestoneAccountConfig
   /**
-   * Create a smart session, resolving the chain's wrapped-native token from the
-   * orchestrator's chain catalog (`GET /chains`) so native-token wrapping is
-   * permitted automatically. For a fully offline build, use the standalone
-   * {@link toSession} and pass `wrappedNativeToken` yourself.
-   * @param definition The session definition
-   * @returns The resolved session
-   */
-  createSession<const TAbis extends readonly Abi[]>(
-    definition: SessionDefinition<TAbis>,
-  ): Promise<Session>
-  /**
    * Deploy the account on a given chain.
    * @param chain Chain to deploy the account on
    * @param params Optional deployment parameters (sponsorship)
@@ -493,32 +482,6 @@ async function createAccountInternal(
     return signEip7702InitDataInternal(config)
   }
 
-  async function createSession<const TAbis extends readonly Abi[]>(
-    definition: SessionDefinition<TAbis>,
-  ): Promise<Session> {
-    const orchestrator = getOrchestrator(
-      config._authProvider ?? createAuthProvider(config),
-      config.endpointUrl,
-      config.headers,
-    )
-    const catalog = await orchestrator.getChainCatalog()
-    const wrappedNativeToken = catalog.getWrappedNativeToken(
-      definition.chain.id,
-    )?.address as Address | undefined
-    // Fail fast: without the wrapped-native address we can't add the native-wrap
-    // `deposit()` permission, and a silently under-scoped session would
-    // sign/enable fine but break native-wrap intents later.
-    if (!wrappedNativeToken) {
-      throw new Error(
-        `createSession: the orchestrator's /chains has no wrapped-native token for chain ${definition.chain.id}. The chain must be supported and advertise its wrappedNativeToken.`,
-      )
-    }
-    return toSession(definition, {
-      wrappedNativeToken,
-      useDevContracts: config.useDevContracts,
-    })
-  }
-
   function prepareTransaction(transaction: Transaction) {
     return prepareTransactionInternal(config, transaction)
   }
@@ -714,7 +677,6 @@ async function createAccountInternal(
 
   return {
     config,
-    createSession,
     deploy,
     isDeployed,
     setup,
@@ -743,6 +705,28 @@ async function createAccountInternal(
     experimental_signEnableSession,
     getInitData,
   }
+}
+
+async function createSessionInternal<const TAbis extends readonly Abi[]>(
+  authProvider: AuthProvider,
+  endpointUrl: string | undefined,
+  headers: Record<string, string> | undefined,
+  useDevContracts: boolean | undefined,
+  definition: SessionDefinition<TAbis>,
+): Promise<Session> {
+  const orchestrator = getOrchestrator(authProvider, endpointUrl, headers)
+  const catalog = await orchestrator.getChainCatalog()
+  const wrappedNativeToken = catalog.getWrappedNativeToken(definition.chain.id)
+    ?.address as Address | undefined
+  // Fail fast: without the wrapped-native address we can't add the native-wrap
+  // `deposit()` permission, and a silently under-scoped session would
+  // sign/enable fine but break native-wrap intents later.
+  if (!wrappedNativeToken) {
+    throw new Error(
+      `createSession: the orchestrator's /chains has no wrapped-native token for chain ${definition.chain.id}. The chain must be supported and advertise its wrappedNativeToken.`,
+    )
+  }
+  return toSession(definition, { wrappedNativeToken, useDevContracts })
 }
 
 /**
@@ -804,6 +788,27 @@ class RhinestoneSDK {
       headers: this.headers,
     }
     return createAccountInternal(rhinestoneConfig)
+  }
+
+  /**
+   * Create a smart session, resolving the chain's wrapped-native token from the
+   * orchestrator's chain catalog (`GET /chains`) so native-token wrapping is
+   * permitted automatically. Project-scoped — needs the API key but no account.
+   * For a fully offline build, use the standalone {@link toSession} and pass
+   * `wrappedNativeToken` yourself.
+   * @param definition The session definition
+   * @returns The resolved session
+   */
+  createSession<const TAbis extends readonly Abi[]>(
+    definition: SessionDefinition<TAbis>,
+  ): Promise<Session> {
+    return createSessionInternal(
+      this.authProvider,
+      this.endpointUrl,
+      this.headers,
+      this.useDevContracts,
+      definition,
+    )
   }
 
   /**

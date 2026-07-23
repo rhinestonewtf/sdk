@@ -1098,7 +1098,7 @@ function resolveSessionData(
 
   // Native-token wrapping: permit `deposit()` on the chain's wrapped-native
   // token. Only injected when the wrapped-native address is known — supplied by
-  // `account.createSession` (resolved from `/chains`). Direct `toSession`
+  // `RhinestoneSDK.createSession` (resolved from `/chains`). Direct `toSession`
   // callers pass `wrappedNativeToken` to opt in.
   const nativeWrapActions: Action[] = wrappedNativeToken
     ? [

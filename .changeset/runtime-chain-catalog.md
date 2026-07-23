@@ -7,7 +7,7 @@ Read chain data at runtime from the orchestrator instead of bundling it. The SDK
 Breaking changes:
 
 - **`SupportedChain` is now `number`** (open) rather than a closed union of chain ids.
-- **New `account.createSession(definition)`** — resolves the chain's wrapped-native token from `/chains` and permits native-wrapping automatically. The standalone `toSession(definition, options)` is now pure: pass `options.wrappedNativeToken` to opt into the native-wrap action (otherwise it is omitted).
+- **New `RhinestoneSDK.createSession(definition)`** (`sdk.createSession(...)`) — resolves the chain's wrapped-native token from `/chains` and permits native-wrapping automatically. It is project-scoped (needs the API key, not an account). The standalone `toSession(definition, options)` is now pure: pass `options.wrappedNativeToken` to opt into the native-wrap action (otherwise it is omitted).
 - **Removed the `alchemy` provider type.** Supply RPC URLs yourself via `provider: { type: 'custom', urls: { [chainId]: url } }`, or omit `provider` to use viem's default transport.
 - **Removed the token-registry helpers** `getWethAddress`, `getTokenSymbol`, and `isTokenAddressSupported`. Fetch equivalent data from the orchestrator's `/chains` endpoint.
 
