@@ -4,7 +4,10 @@ import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import sizeLimits from '../../.size-limit.ts'
 import type { ApiReport } from '../../scripts/contract/api-report.ts'
-import type { PackageManifest } from '../../scripts/contract/shared.ts'
+import {
+  declaresSurfaceChange,
+  type PackageManifest,
+} from '../../scripts/contract/shared.ts'
 
 interface JwtProbeResult {
   ok: boolean
@@ -156,60 +159,12 @@ function privateSourceImports(packageDirectory: string): string[] {
   return violations
 }
 
-type SemverBump = 'major' | 'minor' | 'patch'
-const BUMP_RANK: Record<SemverBump, number> = { patch: 0, minor: 1, major: 2 }
-
-// Changeset basenames present on the PR base commit. `.changeset/` accumulates
-// every merged-but-unreleased changeset (and, in pre mode, released ones too
-// until pre exit), so the only reliable signal for "what this PR changes" is the
-// diff against the base. Returns null when the base tree can't be read, in which
-// case the gate stays strict rather than risk relaxing on incomplete info.
-function baseChangesetNames(): Set<string> | null {
-  const result = spawnSync(
-    'git',
-    ['ls-tree', '-r', '--name-only', baseSha, '--', '.changeset'],
-    { cwd: process.cwd(), encoding: 'utf8' },
-  )
-  if (result.status !== 0) return null
-  return new Set(
-    result.stdout
-      .split('\n')
-      .filter((path) => path.endsWith('.md') && !path.endsWith('README.md'))
-      .map((path) => (path.split('/').pop() ?? '').replace(/\.md$/, '')),
-  )
-}
-
-// Highest `@rhinestone/sdk` bump among changesets this PR adds (present in the
-// working tree but not on the base). A minor/major bump documents an intentional
-// public-surface change; patch (or no new changeset) means the surface is
-// expected to stay identical.
-function declaredSdkBump(): SemverBump | null {
-  const changesetDirectory = join(process.cwd(), '.changeset')
-  if (!existsSync(changesetDirectory)) return null
-  const baseChangesets = baseChangesetNames()
-  if (baseChangesets === null) return null
-  let highest: SemverBump | null = null
-  for (const entry of readdirSync(changesetDirectory)) {
-    if (!entry.endsWith('.md') || entry === 'README.md') continue
-    if (baseChangesets.has(entry.replace(/\.md$/, ''))) continue
-    const source = readFileSync(join(changesetDirectory, entry), 'utf8')
-    const match = source.match(
-      /['"]@rhinestone\/sdk['"]\s*:\s*(major|minor|patch)/,
-    )
-    if (!match) continue
-    const bump = match[1] as SemverBump
-    if (!highest || BUMP_RANK[bump] > BUMP_RANK[highest]) highest = bump
-  }
-  return highest
-}
-
-// When the PR declares an intentional surface change, the strict "no drift"
-// assertions are relaxed to well-formedness checks. The strict gate stays on
-// for patch-only PRs so accidental, undocumented breaks still fail.
-const intentionalSurfaceChange = (() => {
-  const bump = declaredSdkBump()
-  return bump === 'major' || bump === 'minor'
-})()
+// When the PR declares an intentional surface change (a minor/major changeset),
+// the strict "no drift" assertions are relaxed to well-formedness checks. The
+// strict gate stays on for patch-only PRs so accidental, undocumented breaks
+// still fail. `run.ts` gates the bidirectional assignability fixture on the same
+// signal, so the whole contract suite relaxes together.
+const intentionalSurfaceChange = declaresSurfaceChange(baseSha, process.cwd())
 
 describe('packed package contract', () => {
   it('uses a concrete release commit as the base subject', () => {

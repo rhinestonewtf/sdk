@@ -4,6 +4,7 @@ import { basename, join, resolve } from 'node:path'
 import { generateApiReport } from './api-report.ts'
 import {
   createConsumerLayout,
+  declaresSurfaceChange,
   type PackageManifest,
   readJson,
   runCommand,
@@ -273,26 +274,36 @@ async function main(): Promise<void> {
       runtimeProbePath,
       includeOptionalPeers: true,
     })
-    const assignabilityConsumer = join(
-      temporaryDirectory,
-      'assignability-consumer',
-    )
-    createConsumerLayout({
-      packageDirectory: current.packageDirectory,
-      consumerDirectory: assignabilityConsumer,
-      dependencyRoot: current.dependencyRoot,
-      runtimeProbePath,
-      includeOptionalPeers: true,
-    })
-    cpSync(
-      baseBuild.subject.packageDirectory,
-      join(assignabilityConsumer, 'node_modules/@rhinestone/sdk-base'),
-      { recursive: true },
-    )
-
     compileConsumer(baseConsumers.full)
     compileConsumer(currentConsumers.full)
-    compileConsumer(assignabilityConsumer, assignabilityFixturePath)
+
+    // The bidirectional assignability fixture asserts the public types stay
+    // compatible with the base release. A PR that declares an intentional
+    // surface change (minor/major changeset) is allowed to break that, so skip
+    // it there — matching the changeset-aware relaxation in the Vitest suite.
+    if (declaresSurfaceChange(baseSha, repositoryRoot)) {
+      process.stdout.write(
+        'Skipping bidirectional assignability check: PR declares an intentional public-surface change\n',
+      )
+    } else {
+      const assignabilityConsumer = join(
+        temporaryDirectory,
+        'assignability-consumer',
+      )
+      createConsumerLayout({
+        packageDirectory: current.packageDirectory,
+        consumerDirectory: assignabilityConsumer,
+        dependencyRoot: current.dependencyRoot,
+        runtimeProbePath,
+        includeOptionalPeers: true,
+      })
+      cpSync(
+        baseBuild.subject.packageDirectory,
+        join(assignabilityConsumer, 'node_modules/@rhinestone/sdk-base'),
+        { recursive: true },
+      )
+      compileConsumer(assignabilityConsumer, assignabilityFixturePath)
+    }
     validateMetadata(baseBuild.subject.packageDirectory)
     validateMetadata(current.packageDirectory)
 
