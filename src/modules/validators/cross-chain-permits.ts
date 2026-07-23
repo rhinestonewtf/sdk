@@ -1,23 +1,10 @@
-import { type Address, isAddress } from 'viem'
-import { getTokenAddress } from '../../orchestrator/registry'
-import type {
-  CrossChainPermissionInput,
-  CrossChainPermit,
-  TokenSymbol,
-} from '../../types'
+import type { CrossChainPermissionInput, CrossChainPermit } from '../../types'
 
 function dateToUnixSeconds(input: Date): bigint {
   // Date.getTime() returns milliseconds since epoch; the on-chain policy
   // expects unix-seconds. Integer division matches the Permit2 deadline
   // convention.
   return BigInt(Math.floor(input.getTime() / 1000))
-}
-
-function resolveTokenForChain(
-  token: Address | TokenSymbol,
-  chainId: number,
-): Address {
-  return isAddress(token) ? token : getTokenAddress(token, chainId)
 }
 
 // Normalise the single-object / array / omitted shapes into arrays. An
@@ -31,8 +18,9 @@ function normalizeLegs<T>(legs: T | T[] | undefined): T[] | undefined {
 
 /**
  * Resolve a {@link CrossChainPermissionInput} into a {@link CrossChainPermit}:
- * normalise single/array legs, resolve `TokenSymbol`s to per-chain ERC-20
- * addresses, and convert `Date` validity bounds to unix-seconds.
+ * normalise single/array legs and convert `Date` validity bounds to
+ * unix-seconds. Token fields are per-chain ERC-20 addresses (v2 no longer
+ * accepts symbols).
  *
  * @internal Used by `expandCrossChainPermit`; not part of the public API.
  */
@@ -44,12 +32,12 @@ function resolveCrossChainPermission(
 
   const from = fromLegs?.map((leg) => ({
     chain: leg.chain,
-    token: resolveTokenForChain(leg.token, leg.chain.id),
+    token: leg.token,
     maxAmount: leg.maxAmount,
   }))
   const to = toLegs?.map((leg) => ({
     chain: leg.chain,
-    token: resolveTokenForChain(leg.token, leg.chain.id),
+    token: leg.token,
     recipient: leg.recipient,
   }))
 

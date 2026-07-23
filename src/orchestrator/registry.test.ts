@@ -169,25 +169,15 @@ describe('Registry', () => {
       const address = TOKEN_ADDRESSES.ARBTRUM_USDC
       const result = resolveTokenAddress(address, arbitrum.id)
       expect(result).toBe(address)
+      // Note: UNSUPPORTED_CHAIN_ID is still exercised by the per-getter
+      // "unsupported chain" tests above; the symbol-resolution cases that used
+      // it here were removed with v2's address-only contract.
     })
 
-    test('resolves token symbol to address', () => {
-      const result = resolveTokenAddress(TOKEN_SYMBOLS.USDC, arbitrum.id)
-      expect(result).toBe(TOKEN_ADDRESSES.ARBTRUM_USDC)
-    })
-
-    test('throw error for unsupported token', () => {
+    test('throws for a non-address on an EVM chain (symbols no longer accepted)', () => {
       expect(() =>
-        resolveTokenAddress(TOKEN_SYMBOLS.USDT, baseSepolia.id),
-      ).toThrow(
-        `Unsupported token ${TOKEN_SYMBOLS.USDT} for chain ${baseSepolia.id}`,
-      )
-    })
-
-    test('throws error for unsupported chain', () => {
-      expect(() =>
-        resolveTokenAddress(TOKEN_SYMBOLS.USDC, UNSUPPORTED_CHAIN_ID),
-      ).toThrow(`Unsupported chain ${UNSUPPORTED_CHAIN_ID}`)
+        resolveTokenAddress(TOKEN_SYMBOLS.USDC, baseSepolia.id),
+      ).toThrow(`Expected a token address on EVM chain ${baseSepolia.id}`)
     })
   })
 })
