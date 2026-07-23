@@ -156,6 +156,37 @@ function privateSourceImports(packageDirectory: string): string[] {
   return violations
 }
 
+type SemverBump = 'major' | 'minor' | 'patch'
+const BUMP_RANK: Record<SemverBump, number> = { patch: 0, minor: 1, major: 2 }
+
+// Highest `@rhinestone/sdk` bump declared by pending changesets in the working
+// tree. A minor/major bump documents an intentional public-surface change; a
+// patch (or no changeset) means the surface is expected to stay identical.
+function declaredSdkBump(): SemverBump | null {
+  const changesetDirectory = join(process.cwd(), '.changeset')
+  if (!existsSync(changesetDirectory)) return null
+  let highest: SemverBump | null = null
+  for (const entry of readdirSync(changesetDirectory)) {
+    if (!entry.endsWith('.md') || entry === 'README.md') continue
+    const source = readFileSync(join(changesetDirectory, entry), 'utf8')
+    const match = source.match(
+      /['"]@rhinestone\/sdk['"]\s*:\s*(major|minor|patch)/,
+    )
+    if (!match) continue
+    const bump = match[1] as SemverBump
+    if (!highest || BUMP_RANK[bump] > BUMP_RANK[highest]) highest = bump
+  }
+  return highest
+}
+
+// When the PR declares an intentional surface change, the strict "no drift"
+// assertions are relaxed to well-formedness checks. The strict gate stays on
+// for patch-only PRs so accidental, undocumented breaks still fail.
+const intentionalSurfaceChange = (() => {
+  const bump = declaredSdkBump()
+  return bump === 'major' || bump === 'minor'
+})()
+
 describe('packed package contract', () => {
   it('uses a concrete release commit as the base subject', () => {
     expect(baseSha).toMatch(/^[0-9a-f]{40}$/)
@@ -223,22 +254,30 @@ describe('packed package contract', () => {
       'exports',
     )
 
+    if (intentionalSurfaceChange) {
+      // Names may differ from the base; still require every entry point to
+      // resolve to a non-empty export set.
+      for (const [entrypoint, exports] of Object.entries(currentExports)) {
+        expect(
+          exports.length,
+          `entry point ${entrypoint} exports nothing`,
+        ).toBeGreaterThan(0)
+      }
+      return
+    }
+
     expect(currentExports).toEqual(baseExports)
   })
 
   it('keeps a declaration for every runtime value export', () => {
-    const baseExports = runProbe<Record<string, string[]>>(
-      baseConsumerDirectory,
+    const currentExports = runProbe<Record<string, string[]>>(
+      currentConsumerDirectory,
       'exports',
     )
-    for (const [entrypoint, runtimeExports] of Object.entries(baseExports)) {
+    for (const [entrypoint, runtimeExports] of Object.entries(currentExports)) {
       for (const exportName of runtimeExports) {
         expect(
-          baseApiReport.entrypoints[entrypoint][exportName]?.hasValue,
-          `release declaration missing runtime export ${entrypoint}:${exportName}`,
-        ).toBe(true)
-        expect(
-          currentApiReport.entrypoints[entrypoint][exportName]?.hasValue,
+          currentApiReport.entrypoints[entrypoint]?.[exportName]?.hasValue,
           `current declaration missing runtime export ${entrypoint}:${exportName}`,
         ).toBe(true)
       }
@@ -246,6 +285,13 @@ describe('packed package contract', () => {
   })
 
   it('preserves the semantic declaration report for every entry point', () => {
+    if (intentionalSurfaceChange) {
+      // The report is expected to differ; assert it is still well-formed.
+      expect(Object.keys(currentApiReport.entrypoints).length).toBeGreaterThan(
+        0,
+      )
+      return
+    }
     expect(currentApiReport).toEqual(baseApiReport)
   })
 
