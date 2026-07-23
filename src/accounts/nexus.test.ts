@@ -99,6 +99,31 @@ describe('Accounts: Nexus', () => {
         '0x0d51f0b7000000000000000000000000db8fca317427c3f85b6734af6455f287011c54b50000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000',
       )
     })
+
+    test('ECDSA owners (1.2.1)', () => {
+      const previous = getDeployArgs({
+        owners: { type: 'ecdsa', accounts: [accountA, accountB] },
+      })
+      const deployArgs = getDeployArgs({
+        owners: { type: 'ecdsa', accounts: [accountA, accountB] },
+        account: { type: 'nexus', version: '1.2.1' },
+      })
+      assertNotNull(previous)
+      assertNotNull(deployArgs)
+
+      expect(deployArgs.factory).toEqual(
+        '0x0000000099d5576c73a3b190dabeeaa0f128ce6b',
+      )
+      expect(deployArgs.implementation).toEqual(
+        '0x000000000d41c0bf0063dba53343389cdb2c9c78',
+      )
+      // 1.2.1 only swaps the implementation + factory; the bootstrap and the
+      // calldata it drives are unchanged from 1.2.0.
+      expect(deployArgs.factoryData).toEqual(previous.factoryData)
+      expect(deployArgs.initializationCallData).toEqual(
+        previous.initializationCallData,
+      )
+    })
   })
 
   describe('Get Address', () => {
@@ -139,6 +164,28 @@ describe('Accounts: Nexus', () => {
       })
 
       expect(address).toEqual('0xBecba00993a919FfD35064a777E94643014A19Aa')
+    })
+
+    test('ECDSA owners (1.2.1)', () => {
+      const previous = getAddress({
+        owners: { type: 'ecdsa', accounts: [accountA, accountB] },
+      })
+      const address = getAddress({
+        owners: { type: 'ecdsa', accounts: [accountA, accountB] },
+        account: { type: 'nexus', version: '1.2.1' },
+      })
+
+      expect(address).toEqual('0x011ce90AB2e42C509E46bCF72ef12f9FbCa64e7e')
+      expect(address).not.toEqual(previous)
+    })
+
+    test('Passkey owner (1.2.1)', () => {
+      const address = getAddress({
+        owners: { type: 'passkey', accounts: [passkeyAccount] },
+        account: { type: 'nexus', version: '1.2.1' },
+      })
+
+      expect(address).toEqual('0x68484B775e4a2828A50C7404ce8530f146d5598e')
     })
   })
 
