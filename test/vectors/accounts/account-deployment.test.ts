@@ -21,28 +21,8 @@ const configurations: Record<string, () => RhinestoneAccountConfig> = {
     account: { type: 'safe', version: '1.4.1', adapter: '2.0.0' },
     owners: { type: 'ecdsa', accounts: [accountA] },
   }),
-  'nexus-1.0.2': () => ({
-    account: { type: 'nexus', version: '1.0.2' },
-    owners: { type: 'ecdsa', accounts: [accountA] },
-  }),
   'nexus-1.2.0': () => ({
     account: { type: 'nexus', version: '1.2.0' },
-    owners: { type: 'ecdsa', accounts: [accountA] },
-  }),
-  'nexus-rhinestone-beta': () => ({
-    account: { type: 'nexus', version: 'rhinestone-1.0.0-beta' },
-    owners: { type: 'ecdsa', accounts: [accountA] },
-  }),
-  'nexus-rhinestone-release': () => ({
-    account: { type: 'nexus', version: 'rhinestone-1.0.0' },
-    owners: { type: 'ecdsa', accounts: [accountA] },
-  }),
-  'kernel-3.1': () => ({
-    account: { type: 'kernel', version: '3.1' },
-    owners: { type: 'ecdsa', accounts: [accountA] },
-  }),
-  'kernel-3.2': () => ({
-    account: { type: 'kernel', version: '3.2' },
     owners: { type: 'ecdsa', accounts: [accountA] },
   }),
   'kernel-3.3': () => ({

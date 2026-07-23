@@ -45,18 +45,13 @@ interface SafeAccount {
 
 interface NexusAccount {
   type: 'nexus'
-  version?:
-    | '1.0.2'
-    | '1.2.0'
-    | '1.2.1'
-    | 'rhinestone-1.0.0-beta'
-    | 'rhinestone-1.0.0'
+  version?: '1.2.0' | '1.2.1'
   salt?: Hex
 }
 
 interface KernelAccount {
   type: 'kernel'
-  version?: '3.1' | '3.2' | '3.3'
+  version?: '3.3'
   salt?: Hex
 }
 

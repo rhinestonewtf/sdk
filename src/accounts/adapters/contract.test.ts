@@ -25,11 +25,7 @@ import {
   kernelInstallData,
   wrapKernelMessageHash,
 } from './kernel'
-import {
-  createNexusAdapter,
-  nexusDefaultValidator,
-  nexusMaterial,
-} from './nexus'
+import { createNexusAdapter, nexusMaterial } from './nexus'
 import { createSafeAdapter, safeV0FactoryMaterial } from './safe'
 import {
   encodeAddressEnvelope,
@@ -180,18 +176,6 @@ describe('account adapter contract', () => {
     // Only the implementation + factory differ; the bootstrap is identical.
     expect(previous.factoryData).toBe(current.factoryData)
     expect(previous.initializationCallData).toBe(current.initializationCallData)
-
-    for (const version of [
-      '1.0.2',
-      'rhinestone-1.0.0-beta',
-      'rhinestone-1.0.0',
-    ] as const) {
-      const legacy = nexusMaterial(
-        construction({ account: { type: 'nexus', version }, owners: ecdsa }),
-      )
-      expect(legacy.factory).toBe(previous.factory)
-      expect(legacy.implementation).toBe(previous.implementation)
-    }
   })
 
   test('EOA enforces its required account and unsupported operations', () => {
@@ -278,19 +262,6 @@ describe('account adapter contract', () => {
       owners: ecdsa,
     })
     expect(nexusMaterial(nexus).salt).toBe(zeroHash)
-    expect(nexusDefaultValidator('1.0.2')).not.toBe(
-      nexusDefaultValidator('1.2.0'),
-    )
-    // 1.2.0 and 1.2.1 both hardwire the Ownable (default) validator.
-    expect(nexusDefaultValidator('1.2.0')).toBe(
-      nexusDefaultValidator(undefined),
-    )
-    expect(nexusDefaultValidator('1.2.1')).toBe(
-      nexusDefaultValidator(undefined),
-    )
-    expect(nexusDefaultValidator('rhinestone-1.0.0-beta')).not.toBe(
-      nexusDefaultValidator(undefined),
-    )
     const adoptedNexus = construction({ ...inputs.nexus, eoa: accountB })
     expect(
       createNexusAdapter(adoptedNexus).getEip7702AdoptionPlan?.(adoptedNexus),

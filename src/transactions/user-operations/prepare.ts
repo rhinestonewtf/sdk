@@ -1,11 +1,11 @@
 import type { Hex } from 'viem'
-import { nexusDefaultValidator } from '../../accounts/adapters/nexus'
 import { K1_DEFAULT_VALIDATOR_ADDRESS } from '../../accounts/adapters/startale'
 import type { AccountConstruction } from '../../accounts/types'
 import { resolveCalls } from '../../calls/resolve'
 import type { EvmChainReference } from '../../chains/types'
 import type { BundlerUserOperation } from '../../clients/bundler/port'
 import { ENS_HCA_MODULE } from '../../modules/validators/ens'
+import { OWNABLE_VALIDATOR_ADDRESS } from '../../modules/validators/ownable'
 import {
   createAccountSigningContext,
   getSigningValidatorCodec,
@@ -130,11 +130,7 @@ export async function prepareUserOperation<CompatibilityConfig>(
 function defaultUserOperationValidator(construction: AccountConstruction) {
   switch (construction.account.kind) {
     case 'nexus':
-      return nexusDefaultValidator(
-        construction.account.version.source === 'explicit'
-          ? construction.account.version.value
-          : undefined,
-      )
+      return OWNABLE_VALIDATOR_ADDRESS
     case 'startale':
       return K1_DEFAULT_VALIDATOR_ADDRESS
     case 'hca':
