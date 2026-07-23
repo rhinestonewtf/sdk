@@ -16,7 +16,7 @@ describe('account runtime', () => {
       owners: { type: 'ecdsa', accounts: [owner] },
       modules: [{ type: 'executor', address: moduleAddress }],
       initData: { address: owner.address },
-      experimental_sessions: {
+      sessions: {
         enabled: true,
         module: moduleAddress,
         compatibilityFallback: fallbackAddress,

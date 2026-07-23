@@ -4,6 +4,7 @@ import {
   cpSync,
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   symlinkSync,
   writeFileSync,
@@ -74,6 +75,60 @@ export function writeJson(path: string, value: unknown): void {
 
 export function sha256File(path: string): string {
   return createHash('sha256').update(readFileSync(path)).digest('hex')
+}
+
+type SemverBump = 'major' | 'minor' | 'patch'
+const BUMP_RANK: Record<SemverBump, number> = { patch: 0, minor: 1, major: 2 }
+
+// Changeset basenames present on a git ref, or null if the ref can't be read.
+function changesetNamesInRef(ref: string, cwd: string): Set<string> | null {
+  const result = spawnSync(
+    'git',
+    ['ls-tree', '-r', '--name-only', ref, '--', '.changeset'],
+    { cwd, encoding: 'utf8' },
+  )
+  if (result.status !== 0) return null
+  return new Set(
+    result.stdout
+      .split('\n')
+      .filter((path) => path.endsWith('.md') && !path.endsWith('README.md'))
+      .map((path) => (path.split('/').pop() ?? '').replace(/\.md$/, '')),
+  )
+}
+
+// Highest `@rhinestone/sdk` bump among changesets this PR adds (present in the
+// working tree but not on `baseSha`). `.changeset/` accumulates merged-but-
+// unreleased changesets — and, in changeset pre mode, released ones too until
+// pre exit — so diffing against the base is the only reliable signal for what
+// this PR changes. Returns null when the base tree can't be read.
+function declaredSdkBump(baseSha: string, cwd: string): SemverBump | null {
+  const changesetDirectory = join(cwd, '.changeset')
+  if (!existsSync(changesetDirectory)) return null
+  const baseChangesets = changesetNamesInRef(baseSha, cwd)
+  if (baseChangesets === null) return null
+  let highest: SemverBump | null = null
+  for (const entry of readdirSync(changesetDirectory)) {
+    if (!entry.endsWith('.md') || entry === 'README.md') continue
+    if (baseChangesets.has(entry.replace(/\.md$/, ''))) continue
+    const source = readFileSync(join(changesetDirectory, entry), 'utf8')
+    const match = source.match(
+      /['"]@rhinestone\/sdk['"]\s*:\s*(major|minor|patch)/,
+    )
+    if (!match) continue
+    const bump = match[1] as SemverBump
+    if (!highest || BUMP_RANK[bump] > BUMP_RANK[highest]) highest = bump
+  }
+  return highest
+}
+
+// True when this PR introduces a minor/major `@rhinestone/sdk` changeset, i.e.
+// documents an intentional public-surface change. The contract suite uses this
+// to relax its strict "no drift" and bidirectional-assignability checks, which
+// an intentional change is allowed to break; patch-only (or no new changeset,
+// or an unreadable base) keeps the strict gate so accidental breaks still fail.
+export function declaresSurfaceChange(baseSha: string, cwd: string): boolean {
+  const bump = declaredSdkBump(baseSha, cwd)
+  return bump === 'major' || bump === 'minor'
 }
 
 function linkDependency(

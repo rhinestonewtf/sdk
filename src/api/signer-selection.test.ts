@@ -110,7 +110,7 @@ describe('public signer selection adapter', () => {
     const selected = adaptSignerSelection(
       account({ type: 'ecdsa', accounts: [first] }),
       {
-        type: 'experimental_session',
+        type: 'session',
         sessions: { 1: { session, enableData } },
       },
     )

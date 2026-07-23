@@ -49,7 +49,7 @@ describe.sequential('SDK integration preclaim-ops', () => {
     const sdk = createIntegrationSDK()
     const account = await sdk.createAccount({
       owners: { type: 'ecdsa', accounts: [createOwner()] },
-      experimental_sessions: { enabled: true },
+      sessions: { enabled: true },
     })
     const session = createScopedSession({
       chain: sourceChain,
@@ -66,7 +66,7 @@ describe.sequential('SDK integration preclaim-ops', () => {
         sponsored: true,
         calls: [createNoopCall()],
         sourceCalls: { [sourceChain.id]: [createNoopCall()] },
-        signers: { type: 'experimental_session' as const, session },
+        signers: { type: 'session' as const, session },
       }),
     })
 
@@ -164,9 +164,8 @@ async function withEnableData<T extends { signers: { type: string } }>(
   session: Session,
   transaction: T,
 ): Promise<T> {
-  const sessionDetails = await account.experimental_getSessionDetails([session])
-  const userSignature =
-    await account.experimental_signEnableSession(sessionDetails)
+  const sessionDetails = await account.getSessionDetails([session])
+  const userSignature = await account.signEnableSession(sessionDetails)
 
   return {
     ...transaction,

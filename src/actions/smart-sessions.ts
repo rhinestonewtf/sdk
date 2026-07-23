@@ -17,8 +17,8 @@ function sessionModule(
   config: Parameters<LazyCallInput['resolve']>[0]['config'],
 ) {
   return resolveSmartSessionModule({
-    enabled: config.experimental_sessions?.enabled ?? false,
-    address: config.experimental_sessions?.module,
+    enabled: config.sessions?.enabled ?? false,
+    address: config.sessions?.module,
     environment: environment(config.useDevContracts),
   })
 }
@@ -27,7 +27,7 @@ function sessionModule(
  * Enable smart sessions
  * @returns Calls to enable smart sessions
  */
-function experimental_enable(): LazyCallInput {
+function enable(): LazyCallInput {
   return {
     async resolve(context) {
       const module = sessionModule(context.config)
@@ -43,7 +43,7 @@ function experimental_enable(): LazyCallInput {
  * Disable smart sessions
  * @returns Calls to disable smart sessions
  */
-function experimental_disable(): LazyCallInput {
+function disable(): LazyCallInput {
   return {
     async resolve(context) {
       const module = sessionModule(context.config)
@@ -68,7 +68,7 @@ function experimental_disable(): LazyCallInput {
  * @param session resolved session to enable
  * @returns Calls to enable the smart session
  */
-function experimental_enableSession(
+function enableSession(
   session: Session,
   enableSessionSignature: Hex,
   hashesAndChainIds: {
@@ -107,10 +107,7 @@ function experimental_enableSession(
  *   valid; must be in the future. Omit for no expiry.
  * @returns Calls to disable the smart session
  */
-function experimental_disableSession(
-  session: Session,
-  expires?: Date,
-): LazyCallInput {
+function disableSession(session: Session, expires?: Date): LazyCallInput {
   return {
     async resolve(context) {
       return resolveSessionDisable({
@@ -123,9 +120,4 @@ function experimental_disableSession(
   }
 }
 
-export {
-  experimental_disable,
-  experimental_disableSession,
-  experimental_enable,
-  experimental_enableSession,
-}
+export { disable, disableSession, enable, enableSession }

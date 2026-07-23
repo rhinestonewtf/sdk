@@ -25,7 +25,7 @@ export function adaptSignerSelection(
   account: ResolvedAccountConfig,
   signers: SignerSet,
 ): AdaptedSignerSelection {
-  if (signers.type === 'experimental_session') {
+  if (signers.type === 'session') {
     return adaptSessionSelection(signers)
   }
   return adaptOwnerSelection(account, signers)
@@ -138,7 +138,7 @@ function replaceOwnerAccount(
 }
 
 function adaptSessionSelection(
-  signers: Extract<SignerSet, { type: 'experimental_session' }>,
+  signers: Extract<SignerSet, { type: 'session' }>,
 ): IntentSessionSelection {
   if ('sessions' in signers) {
     return {
