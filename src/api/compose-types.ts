@@ -20,6 +20,7 @@ import type {
 } from '../config/resolved'
 import type {
   Session,
+  SessionDefinition,
   SessionDetails,
 } from '../modules/validators/smart-sessions/types'
 import type { IndependentOwnerSignature } from '../signing/intent-plans/independent'
@@ -71,6 +72,7 @@ export interface ProjectWorkflows {
   readonly getIntentStatus: (intentId: string) => Promise<IntentStatus>
   readonly splitIntents: OrchestratorPort['splitIntents']
   readonly getAppFeeBalances: () => Promise<OrchestratorAppFeeBalances>
+  readonly createSession: (definition: SessionDefinition) => Promise<Session>
 }
 
 export interface AccountWorkflows<CompatibilityConfig = unknown> {

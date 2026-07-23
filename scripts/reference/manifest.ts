@@ -106,6 +106,13 @@ export const manifest: Group[] = [
         container: 'RhinestoneSDK',
         callStyle: 'sdkMethod',
       },
+      {
+        kind: 'symbol',
+        symbol: 'createSession',
+        source: '.',
+        container: 'RhinestoneSDK',
+        callStyle: 'sdkMethod',
+      },
     ],
   },
   {

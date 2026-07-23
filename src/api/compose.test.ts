@@ -1,4 +1,4 @@
-import { type Account, encodeAbiParameters, type Hex } from 'viem'
+import { type Account, encodeAbiParameters, erc20Abi, type Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { arbitrum, base as baseChain } from 'viem/chains'
 import { describe, expect, test, vi } from 'vitest'
@@ -516,5 +516,77 @@ describe('internal core composition', () => {
     expect(signed.originSignatures).toHaveLength(1)
     expect(signed.originSignatures[0]).toMatch(/^0x/u)
     expect(signed.destinationSignature).toMatch(/^0x/u)
+  })
+
+  test('createSession resolves the wrapped-native token from the chain catalog', async () => {
+    const base = fixture()
+    const weth = '0x4200000000000000000000000000000000000006'
+    const composition = createCoreComposition(base.context.sdk, {
+      ...base.dependencies,
+      orchestrator: {
+        ...base.orchestrator,
+        getChainCatalog: vi.fn(
+          async () =>
+            new ChainCatalog({
+              [baseChain.id]: {
+                name: 'Base',
+                testnet: false,
+                supportedTokens: 'all',
+                wrappedNativeToken: {
+                  symbol: 'WETH',
+                  address: weth,
+                  decimals: 18,
+                },
+              },
+            }),
+        ),
+      },
+    })
+
+    const session = await composition.project.createSession({
+      chain: baseChain,
+      owners: { type: 'ecdsa', accounts: [owner] },
+      permissions: [
+        {
+          abi: erc20Abi,
+          address: '0x1111111111111111111111111111111111111111',
+          functions: { transfer: {} },
+        },
+      ],
+    })
+
+    // The resolved wrapped-native token drives the injected native-wrap action.
+    expect(
+      session.actions.some(
+        (action) => action.actionTarget.toLowerCase() === weth,
+      ),
+    ).toBe(true)
+  })
+
+  test('createSession fails fast when the chain has no wrapped-native token', async () => {
+    const base = fixture()
+    const composition = createCoreComposition(base.context.sdk, {
+      ...base.dependencies,
+      orchestrator: {
+        ...base.orchestrator,
+        getChainCatalog: vi.fn(
+          async () =>
+            new ChainCatalog({
+              [baseChain.id]: {
+                name: 'Base',
+                testnet: false,
+                supportedTokens: 'all',
+              },
+            }),
+        ),
+      },
+    })
+
+    await expect(
+      composition.project.createSession({
+        chain: baseChain,
+        owners: { type: 'ecdsa', accounts: [owner] },
+      }),
+    ).rejects.toThrow('no wrapped-native token')
   })
 })

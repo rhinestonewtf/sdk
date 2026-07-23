@@ -8,6 +8,10 @@ import type {
   RhinestoneSDKConfig,
 } from '../config/account'
 import type { SdkConstructionInput } from '../config/input'
+import type {
+  Session,
+  SessionDefinition,
+} from '../modules/validators/smart-sessions/types'
 import type { TransactionStatus } from '../transactions/intents/types'
 import type { RhinestoneAccount } from './account'
 import { attachAccount, composeSdk, type SdkComposition } from './accounts'
@@ -110,6 +114,19 @@ class RhinestoneSDK {
    */
   getAppFeeBalances(): Promise<AppFeeBalances> {
     return this.#sdk.composition.project.getAppFeeBalances() as Promise<AppFeeBalances>
+  }
+
+  /**
+   * Create a smart session, resolving the chain's wrapped-native token from the
+   * orchestrator's chain catalog (`GET /chains`) so native-token wrapping is
+   * permitted automatically. Project-scoped — needs the API key but no account.
+   * For a fully offline build, use the standalone {@link toSession} and pass
+   * `wrappedNativeToken` yourself.
+   * @param definition The session definition
+   * @returns The resolved session
+   */
+  createSession(definition: SessionDefinition): Promise<Session> {
+    return this.#sdk.composition.project.createSession(definition)
   }
 }
 
