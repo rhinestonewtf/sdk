@@ -187,6 +187,31 @@ describe('Accounts: Nexus', () => {
 
       expect(address).toEqual('0x68484B775e4a2828A50C7404ce8530f146d5598e')
     })
+
+    test('Existing account (1.2.1 factory)', () => {
+      // A persisted 1.2.1 { factory, factoryData } must recompute the same
+      // counterfactual address as the direct config, i.e. against the 1.2.1
+      // implementation — not the 1.2.0 default.
+      const config = {
+        owners: { type: 'ecdsa', accounts: [accountA, accountB] },
+        account: { type: 'nexus', version: '1.2.1' },
+      } as const
+      const direct = getAddress(config)
+      const deployArgs = getDeployArgs(config)
+      assertNotNull(deployArgs)
+
+      const fromInitData = getAddress({
+        owners: { type: 'ecdsa', accounts: [accountA, accountB] },
+        initData: {
+          address: direct,
+          factory: deployArgs.factory,
+          factoryData: deployArgs.factoryData,
+        },
+      })
+
+      expect(fromInitData).toEqual(direct)
+      expect(fromInitData).toEqual('0x011ce90AB2e42C509E46bCF72ef12f9FbCa64e7e')
+    })
   })
 
   describe('Get Install Data', () => {

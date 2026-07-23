@@ -88,6 +88,15 @@ function isNexusV1Factory(factory: Address): boolean {
   )
 }
 
+// Maps a current Nexus factory to the implementation it deploys, so a persisted
+// v1.2.1 `initData` payload recomputes against the right implementation (and the
+// 7702 init helpers sign/return it) rather than defaulting to 1.2.0.
+function implementationForFactory(factory: Address): Address {
+  return factory.toLowerCase() === NEXUS_FACTORY_1_2_1
+    ? NEXUS_IMPLEMENTATION_1_2_1
+    : NEXUS_IMPLEMENTATION_ADDRESS
+}
+
 function getDeployArgs(config: RhinestoneAccountConfig) {
   if (config.initData) {
     if (!('factory' in config.initData)) {
@@ -585,7 +594,7 @@ function tryDecodeV1FactoryData(factory: Address, factoryData: Hex) {
       salt,
       factory,
       factoryData,
-      implementation: NEXUS_IMPLEMENTATION_ADDRESS,
+      implementation: implementationForFactory(factory),
       initData,
       initializationCallData,
     }
