@@ -151,6 +151,49 @@ describe('account adapter contract', () => {
     },
   )
 
+  test('Nexus defaults to 1.2.1 and pins the previous implementation for 1.2.0', () => {
+    const current = nexusMaterial(construction(inputs.nexus))
+    expect(current.factory).toBe('0x0000000099d5576c73a3b190dabeeaa0f128ce6b')
+    expect(current.implementation).toBe(
+      '0x000000000d41c0bf0063dba53343389cdb2c9c78',
+    )
+
+    const explicit = nexusMaterial(
+      construction({
+        account: { type: 'nexus', version: '1.2.1' },
+        owners: ecdsa,
+      }),
+    )
+    expect(explicit.factory).toBe(current.factory)
+    expect(explicit.implementation).toBe(current.implementation)
+
+    const previous = nexusMaterial(
+      construction({
+        account: { type: 'nexus', version: '1.2.0' },
+        owners: ecdsa,
+      }),
+    )
+    expect(previous.factory).toBe('0x0000000000679a258c64d2f20f310e12b64b7375')
+    expect(previous.implementation).toBe(
+      '0x000000000032ddc454c3bdcba80484ad5a798705',
+    )
+    // Only the implementation + factory differ; the bootstrap is identical.
+    expect(previous.factoryData).toBe(current.factoryData)
+    expect(previous.initializationCallData).toBe(current.initializationCallData)
+
+    for (const version of [
+      '1.0.2',
+      'rhinestone-1.0.0-beta',
+      'rhinestone-1.0.0',
+    ] as const) {
+      const legacy = nexusMaterial(
+        construction({ account: { type: 'nexus', version }, owners: ecdsa }),
+      )
+      expect(legacy.factory).toBe(previous.factory)
+      expect(legacy.implementation).toBe(previous.implementation)
+    }
+  })
+
   test('EOA enforces its required account and unsupported operations', () => {
     const input = construction(inputs.eoa)
     const adapter = createEoaAdapter(input)
@@ -237,6 +280,13 @@ describe('account adapter contract', () => {
     expect(nexusMaterial(nexus).salt).toBe(zeroHash)
     expect(nexusDefaultValidator('1.0.2')).not.toBe(
       nexusDefaultValidator('1.2.0'),
+    )
+    // 1.2.0 and 1.2.1 both hardwire the Ownable (default) validator.
+    expect(nexusDefaultValidator('1.2.0')).toBe(
+      nexusDefaultValidator(undefined),
+    )
+    expect(nexusDefaultValidator('1.2.1')).toBe(
+      nexusDefaultValidator(undefined),
     )
     expect(nexusDefaultValidator('rhinestone-1.0.0-beta')).not.toBe(
       nexusDefaultValidator(undefined),

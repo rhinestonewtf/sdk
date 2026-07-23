@@ -6,7 +6,6 @@ import type { AccountConstruction } from '../../accounts/types'
 import { toEvmChainReference } from '../../chains/caip2'
 import type { ContractRead, RpcReadContext } from '../../clients/rpc/types'
 import { defineValidator } from '../../modules/validators/definition'
-import { OWNABLE_VALIDATOR_ADDRESS } from '../../modules/validators/ownable'
 import { ecdsaSignerId } from '../../modules/validators/signer-id'
 import { prepareUserOperation } from './prepare'
 import {
@@ -158,15 +157,17 @@ describe('UserOperation workflow', () => {
       },
     })
 
-    await prepareUserOperation(workflow, input)
+    await prepareUserOperation(workflow, {
+      ...input,
+      signers: selectedOwnerSigners(),
+    })
 
+    // A validator other than the Nexus default is embedded in the nonce key,
+    // with the clock timestamp as the lane.
     expect(readContract).toHaveBeenCalledWith(
       { chain },
       expect.objectContaining({
-        args: [
-          sender,
-          BigInt(concat(['0x12345600', OWNABLE_VALIDATOR_ADDRESS])),
-        ],
+        args: [sender, BigInt(concat(['0x12345600', selectedValidator]))],
       }),
     )
   })

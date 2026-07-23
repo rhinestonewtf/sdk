@@ -27,6 +27,13 @@ export const NEXUS_IMPLEMENTATION_ADDRESS =
   '0x000000000032ddc454c3bdcba80484ad5a798705' as const
 export const NEXUS_FACTORY_ADDRESS =
   '0x0000000000679a258c64d2f20f310e12b64b7375' as const
+// Current default (1.2.1): new implementation + factory, same bootstrap and
+// proxy creation code as 1.2.0. `version: '1.2.0'` opts back into the previous
+// implementation + factory so its counterfactual address doesn't change.
+export const NEXUS_IMPLEMENTATION_1_2_1 =
+  '0x000000000d41c0bf0063dba53343389cdb2c9c78' as const
+export const NEXUS_FACTORY_1_2_1 =
+  '0x0000000099d5576c73a3b190dabeeaa0f128ce6b' as const
 const NEXUS_BOOTSTRAP_ADDRESS =
   '0x00000000006efb61d8c9546ff1b500de3f244ea7' as const
 const NEXUS_CREATION_CODE =
@@ -36,13 +43,42 @@ export function nexusDefaultValidator(version: string | undefined): Address {
   switch (version) {
     case '1.0.2':
       return '0x0000002d6db27c52e3c11c1cf24072004ac75cba'
-    case '1.2.0':
-      return '0x00000000d12897ddadc2044614a9677b191a2d95'
     case 'rhinestone-1.0.0-beta':
       return '0x0000000000e9e6e96bcaa3c113187cdb7e38aed9'
     default:
+      // 1.2.0 and 1.2.1 both hardwire the Ownable validator; unset and
+      // rhinestone-1.0.0 resolve to it as well.
       return OWNABLE_VALIDATOR_ADDRESS
   }
+}
+
+// Resolves the implementation + factory a fresh account deploys against. Only
+// the default (unset) and an explicit '1.2.1' deploy the current contracts;
+// '1.2.0' and the legacy pins keep the previous implementation + factory so
+// their counterfactual addresses don't change.
+function getNexusDeployment(version: string | undefined): {
+  implementation: Address
+  factory: Address
+} {
+  if (!version || version === '1.2.1') {
+    return {
+      implementation: NEXUS_IMPLEMENTATION_1_2_1,
+      factory: NEXUS_FACTORY_1_2_1,
+    }
+  }
+  return {
+    implementation: NEXUS_IMPLEMENTATION_ADDRESS,
+    factory: NEXUS_FACTORY_ADDRESS,
+  }
+}
+
+// Maps a Nexus factory to the implementation it deploys, so a persisted
+// `initData` payload recomputes against the right implementation instead of
+// defaulting to one version.
+function implementationForFactory(factory: Address): Address {
+  return factory.toLowerCase() === NEXUS_FACTORY_1_2_1
+    ? NEXUS_IMPLEMENTATION_1_2_1
+    : NEXUS_IMPLEMENTATION_ADDRESS
 }
 
 export interface NexusDeploymentMaterial extends DeploymentMaterial {
@@ -59,9 +95,13 @@ export function nexusMaterial(
   if (input.initData && !('factory' in input.initData)) {
     return { address: input.initData.address }
   }
-  let factory: Address = NEXUS_FACTORY_ADDRESS
+  const version =
+    input.account.version.source === 'explicit'
+      ? input.account.version.value
+      : undefined
+  let factory: Address
   let factoryData: Hex
-  const implementation: Address = NEXUS_IMPLEMENTATION_ADDRESS
+  let implementation: Address
   let initializationCallData: Hex
   let salt: Hex
   if (input.initData && 'factory' in input.initData) {
@@ -70,6 +110,7 @@ export function nexusMaterial(
       data: input.initData.factoryData,
     })
     factory = input.initData.factory
+    implementation = implementationForFactory(factory)
     factoryData = input.initData.factoryData
     const initData = decoded.args[0]
     salt = decoded.args[1]
@@ -79,6 +120,9 @@ export function nexusMaterial(
       args: [initData],
     })
   } else {
+    const deployment = getNexusDeployment(version)
+    factory = deployment.factory
+    implementation = deployment.implementation
     salt =
       input.account.salt.source === 'explicit'
         ? input.account.salt.value
@@ -173,7 +217,7 @@ function nexusEip7702AdoptionPlan(input: AccountConstruction): {
 } {
   const { eoa: _eoa, ...factoryConstruction } = input
   const material = nexusMaterial(factoryConstruction)
-  if (!material.factoryData) {
+  if (!material.factoryData || !material.implementation) {
     throw new Error('Nexus EIP-7702 initialization data is unavailable')
   }
   const decoded = decodeFunctionData({
@@ -184,7 +228,7 @@ function nexusEip7702AdoptionPlan(input: AccountConstruction): {
     throw new Error('Invalid Nexus EIP-7702 initialization data')
   }
   return {
-    contract: NEXUS_IMPLEMENTATION_ADDRESS,
+    contract: material.implementation,
     initData: decoded.args[0],
   }
 }

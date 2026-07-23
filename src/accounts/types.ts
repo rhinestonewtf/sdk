@@ -29,7 +29,12 @@ export type AccountInput =
     }
   | {
       type: 'nexus'
-      version?: '1.0.2' | '1.2.0' | 'rhinestone-1.0.0-beta' | 'rhinestone-1.0.0'
+      version?:
+        | '1.0.2'
+        | '1.2.0'
+        | '1.2.1'
+        | 'rhinestone-1.0.0-beta'
+        | 'rhinestone-1.0.0'
       salt?: Hex
     }
   | {
@@ -58,7 +63,11 @@ export type AccountDefinition =
   | {
       readonly kind: 'nexus'
       readonly version: AccountValueSelection<
-        '1.0.2' | '1.2.0' | 'rhinestone-1.0.0-beta' | 'rhinestone-1.0.0',
+        | '1.0.2'
+        | '1.2.0'
+        | '1.2.1'
+        | 'rhinestone-1.0.0-beta'
+        | 'rhinestone-1.0.0',
         'nexus-current-version'
       >
       readonly salt: AccountValueSelection<Hex, 'nexus-empty-calldata-salt'>

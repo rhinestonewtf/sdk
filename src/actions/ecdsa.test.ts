@@ -80,7 +80,7 @@ function expectedUninstallValidatorCalldata(validator: `0x${string}`) {
 const MOCK_OWNER_A = '0xd1aefebdceefc094f1805b241fa5e6db63a9181a'
 const MOCK_OWNER_B = '0xeddfcb50d18f6d3d51c4f7cbca5ed6bdebc59817'
 const MOCK_OWNER_C = '0xb31e76f19defe76edc4b7eceeb4b0a2d6ddaca39'
-const accountAddress = '0x36C03e7D593F7B2C6b06fC18B5f4E9a4A29C99b0'
+const accountAddress = '0xc02C600Bd93e6C86aE2Ed1D418B87Fe225171E74'
 
 // On Nexus the OwnableValidator is the default validator: `enable` initializes
 // it via `onInstall(abi.encode(threshold, owners))` instead of `installModule`.

@@ -81,7 +81,7 @@ function expectedUninstallValidatorCalldata(validator: `0x${string}`) {
   })
 }
 
-const accountAddress = '0x36C03e7D593F7B2C6b06fC18B5f4E9a4A29C99b0'
+const accountAddress = '0xc02C600Bd93e6C86aE2Ed1D418B87Fe225171E74'
 
 describe('Passkeys Actions', () => {
   describe('Install WebAuthn Validator', async () => {
