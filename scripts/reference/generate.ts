@@ -209,7 +209,7 @@ const RETURN_NAME_OVERRIDES: Record<string, string> = {
   signMessage: 'signature',
   signTypedData: 'signature',
   signEip7702InitData: 'signature',
-  experimental_signEnableSession: 'signature',
+  signEnableSession: 'signature',
   signIntent: 'signatures',
   waitForExecution: 'result',
   deploy: 'success',
