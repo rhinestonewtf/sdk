@@ -6,7 +6,6 @@ import type {
   Hex,
   TypedDataDefinition,
 } from 'viem'
-import type { TokenSymbol } from '../../../chains/tokens'
 import type { OwnerSet } from '../types'
 
 export type UniversalActionPolicyParamCondition =
@@ -124,13 +123,13 @@ export interface CrossChainPermit {
 
 export interface FromLeg {
   chain: Chain
-  token: Address | TokenSymbol
+  token: Address
   maxAmount?: bigint
 }
 
 export interface ToLeg {
   chain: Chain
-  token: Address | TokenSymbol
+  token: Address
   recipient?: Address | 'any'
 }
 

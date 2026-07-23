@@ -143,7 +143,7 @@ const prepared = await account.prepareTransaction({
   targetChain: arbitrumSepolia,
   calls: [
     {
-      to: 'USDC',
+      to: usdc,
       value: 0n,
       data: encodeFunctionData({
         abi: erc20Abi,
@@ -152,7 +152,7 @@ const prepared = await account.prepareTransaction({
       }),
     },
   ],
-  tokenRequests: [{ address: 'USDC', amount }],
+  tokenRequests: [{ address: usdc, amount }],
 })
 
 const signed = await account.signTransaction(prepared)

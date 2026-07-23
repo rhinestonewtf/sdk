@@ -71,10 +71,7 @@ export function resolveSessionData(
     ? resolvePermissions(definition.permissions)
     : []
   const expandedPermits = (definition.crossChainPermits ?? []).map((input) =>
-    expandCrossChainPermit(
-      resolveCrossChainPermission(input, catalog),
-      environment,
-    ),
+    expandCrossChainPermit(resolveCrossChainPermission(input), environment),
   )
   const permitFallbackPolicies = expandedPermits.flatMap(
     ({ fallbackPolicies }) => fallbackPolicies,
@@ -150,10 +147,8 @@ export function toSession(
   const data = resolveSessionData(definition, { environment, catalog })
   const expandedClaims = (definition.crossChainPermits ?? []).map(
     (input) =>
-      expandCrossChainPermit(
-        resolveCrossChainPermission(input, catalog),
-        environment,
-      ).claim,
+      expandCrossChainPermit(resolveCrossChainPermission(input), environment)
+        .claim,
   )
   return {
     chain: definition.chain,

@@ -3,7 +3,6 @@ import { size } from 'viem'
 import { base } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 import { accountA } from '../../../../test/consts'
-import { sharedChainCatalog } from '../../../chains/catalog'
 import { encodeDisableSessionCall, encodeEnableSessionCall } from './calls'
 import {
   resolveCrossChainPermission,
@@ -120,13 +119,14 @@ describe('Smart Sessions core', () => {
         fc.integer({ min: 1_700_000_000, max: 2_000_000_000 }),
         (timestamp) => {
           const input = {
-            from: { chain: base, token: 'USDC' as const, maxAmount: 1n },
+            from: {
+              chain: base,
+              token: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as const,
+              maxAmount: 1n,
+            },
             validUntil: new Date(timestamp * 1000),
           }
-          const resolved = resolveCrossChainPermission(
-            input,
-            sharedChainCatalog,
-          )
+          const resolved = resolveCrossChainPermission(input)
           const roundTrip = toCrossChainPermissionInput(resolved)
           expect(roundTrip.validUntil).toEqual(input.validUntil)
           expect(roundTrip.allowRecipientNotAccount).toBe(false)

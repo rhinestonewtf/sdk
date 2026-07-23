@@ -1,6 +1,3 @@
-import { isAddress } from 'viem'
-import type { ChainCatalog } from '../../../chains/catalog'
-import { getTokenAddress } from '../../../chains/tokens'
 import type { CrossChainPermissionInput, CrossChainPermit } from './types'
 
 function seconds(input: Date): bigint {
@@ -15,22 +12,19 @@ function normalizeLegs<T>(
   return values.length === 0 ? undefined : values
 }
 
+// Token fields are per-chain ERC-20 addresses (v2 no longer accepts symbols),
+// so legs pass through directly; only the `Date` bounds are converted.
 export function resolveCrossChainPermission(
   input: CrossChainPermissionInput,
-  catalog: ChainCatalog,
 ): CrossChainPermit {
   const from = normalizeLegs(input.from)?.map((leg) => ({
     chain: leg.chain,
-    token: isAddress(leg.token)
-      ? leg.token
-      : getTokenAddress(catalog, leg.token, leg.chain.id),
+    token: leg.token,
     ...(leg.maxAmount === undefined ? {} : { maxAmount: leg.maxAmount }),
   }))
   const to = normalizeLegs(input.to)?.map((leg) => ({
     chain: leg.chain,
-    token: isAddress(leg.token)
-      ? leg.token
-      : getTokenAddress(catalog, leg.token, leg.chain.id),
+    token: leg.token,
     ...(leg.recipient === undefined ? {} : { recipient: leg.recipient }),
   }))
   const validUntil = input.validUntil ? seconds(input.validUntil) : undefined

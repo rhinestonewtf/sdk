@@ -135,7 +135,7 @@ describe.sequential('SDK integration preclaim-ops', () => {
         targetChain,
         sponsored: true,
         calls: [],
-        tokenRequests: [{ address: 'USDC', amount: 10_000n }],
+        tokenRequests: [{ address: usdc, amount: 10_000n }],
         sourceCalls: {
           [sourceChain.id]: [
             {

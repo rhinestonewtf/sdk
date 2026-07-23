@@ -1,7 +1,6 @@
 import type { Address } from 'viem'
 import { arbitrum, mainnet } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
-import { sharedChainCatalog } from '../../chains/catalog'
 import {
   resolveCrossChainPermission as resolveInternal,
   toCrossChainPermissionInput,
@@ -9,10 +8,9 @@ import {
 import type { CrossChainPermissionInput } from './smart-sessions/types'
 
 const resolveCrossChainPermission = (input: CrossChainPermissionInput) =>
-  resolveInternal(input, sharedChainCatalog)
+  resolveInternal(input)
 
-// Concrete addresses skip the TokenSymbol registry path so these tests stay
-// independent of shared-configs registry contents.
+// Token fields are ERC-20 addresses; v2 no longer accepts symbols.
 const TOKEN_A = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48' as Address
 const TOKEN_B = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831' as Address
 const RECIPIENT = '0x5555555555555555555555555555555555555555' as Address
@@ -188,11 +186,11 @@ describe('resolveCrossChainPermission', () => {
     expect(permit.validAfter).toBe(0n)
   })
 
-  test('resolves symbolic destination tokens and fill-deadline bounds', () => {
+  test('resolves destination tokens and fill-deadline bounds', () => {
     const min = new Date('2025-01-01T00:00:00Z')
     const max = new Date('2030-01-01T00:00:00Z')
     const permit = resolveCrossChainPermission({
-      to: { chain: arbitrum, token: 'USDC' },
+      to: { chain: arbitrum, token: TOKEN_B },
       fillDeadline: [{ chain: arbitrum, min, max }, { chain: mainnet }],
     })
     expect(permit.to?.[0].token).toBe(TOKEN_B)
