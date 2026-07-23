@@ -104,11 +104,7 @@ import {
   isNonEvmChain,
   type NonEvmAddress,
 } from '../orchestrator/destinations'
-import {
-  getChainById,
-  getTokenAddress,
-  resolveTokenAddress,
-} from '../orchestrator/registry'
+import { getChainById, resolveTokenAddress } from '../orchestrator/registry'
 import {
   type AccountAccessList,
   type AppFeeRate,
@@ -146,7 +142,6 @@ import type {
   SourceCallInput,
   Sponsorship,
   TokenRequest,
-  TokenSymbol,
   Transaction,
   UserOperationTransaction,
   WebauthnValidatorConfig,
@@ -1429,8 +1424,7 @@ function getTokenRequests(
     // Inside this branch targetChain is a viem `Chain`, which excludes the
     // non-EVM transaction variant — token requests are EVM-typed here.
     const evmRequests = initialTokenRequests as TokenRequest[]
-    validateTokenSymbols(
-      targetChain,
+    validateTokenAddresses(
       evmRequests.map((tokenRequest) => tokenRequest.address),
     )
   }
@@ -2504,26 +2498,10 @@ function getSetupOperationsAndDelegations(
   }
 }
 
-function validateTokenSymbols(
-  chain: Chain,
-  tokenAddressOrSymbols: (Address | TokenSymbol)[],
-) {
-  function validateTokenSymbol(
-    chain: Chain,
-    addressOrSymbol: Address | TokenSymbol,
-  ) {
-    // Address
-    if (isAddress(addressOrSymbol, { strict: false })) {
-      return true
-    }
-    // Token symbol
-    const address = getTokenAddress(addressOrSymbol, chain.id)
-    return isAddress(address, { strict: false })
-  }
-
-  for (const addressOrSymbol of tokenAddressOrSymbols) {
-    if (!validateTokenSymbol(chain, addressOrSymbol)) {
-      throw new Error(`Invalid token symbol: ${addressOrSymbol}`)
+function validateTokenAddresses(tokenAddresses: Address[]) {
+  for (const address of tokenAddresses) {
+    if (!isAddress(address, { strict: false })) {
+      throw new Error(`Invalid token address: ${address}`)
     }
   }
 }

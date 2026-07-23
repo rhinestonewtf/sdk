@@ -275,13 +275,13 @@ interface CrossChainPermit {
 
 interface FromLeg {
   chain: Chain
-  token: Address | TokenSymbol
+  token: Address
   maxAmount?: bigint
 }
 
 interface ToLeg {
   chain: Chain
-  token: Address | TokenSymbol
+  token: Address
   recipient?: Address | 'any'
 }
 
@@ -656,7 +656,7 @@ type RhinestoneConfig = RhinestoneAccountConfig &
 type TokenSymbol = 'ETH' | 'WETH' | 'USDC' | 'USDT' | 'USDT0'
 
 interface CalldataInput {
-  to: Address | TokenSymbol
+  to: Address
   data?: Hex
   value?: bigint
 }
@@ -691,12 +691,12 @@ type SourceCallInput = CallInput & {
 }
 
 interface TokenRequestWithAmount {
-  address: Address | TokenSymbol
+  address: Address
   amount: bigint
 }
 
 interface TokenRequestWithoutAmount {
-  address: Address | TokenSymbol
+  address: Address
   amount?: undefined
 }
 
@@ -722,13 +722,13 @@ type NonEvmTokenRequests =
   | [NonEvmTokenRequestWithoutAmount]
   | NonEvmTokenRequestWithAmount[]
 
-export type SimpleTokenList = (Address | TokenSymbol)[]
+export type SimpleTokenList = Address[]
 
 export type ChainTokenMap = Record<number, SimpleTokenList>
 
 export type ExactInputConfig = {
   chain: Chain
-  address: Address | TokenSymbol
+  address: Address
   amount?: bigint
 }
 

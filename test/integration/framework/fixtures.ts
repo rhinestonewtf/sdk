@@ -9,8 +9,9 @@ import {
 } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import type { Chain } from 'viem/chains'
-import type { Session, TokenSymbol } from '../../../src/index'
+import type { Session } from '../../../src/index'
 import { toSession } from '../../../src/modules/validators/smart-sessions'
+import { getTokenAddress } from '../../../src/orchestrator/registry'
 
 export const noopTarget: Address = '0xd8da6bf26964af9d7eed9e03e53415d37aa96045'
 
@@ -38,11 +39,11 @@ export function createNoopCall() {
   }
 }
 
-export function createUsdcRequestWithoutFunds() {
+export function createUsdcRequestWithoutFunds(chainId: number) {
   return {
     tokenRequests: [
       {
-        address: 'USDC' as TokenSymbol,
+        address: getTokenAddress('USDC', chainId),
         amount: 1_000_000n,
       },
     ],

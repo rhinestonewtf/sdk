@@ -116,7 +116,7 @@ function getDefaultAccountAccessList(onTestnets?: boolean) {
 }
 
 function resolveTokenAddress(
-  token: TokenSymbol | Address | NonEvmAddress,
+  token: Address | NonEvmAddress,
   chainId: number,
 ): Address | NonEvmAddress {
   if (isAddress(token)) {
@@ -127,14 +127,15 @@ function resolveTokenAddress(
   // wire schema accepts the raw string for non-EVM chains, so pass it
   // through unchanged. HyperCore is descriptor-addressed too but its tokens
   // are EVM hex addresses (returned above), so it is intentionally absent
-  // from `isNonEvmChainId` — a token *symbol* for HyperCore is not a valid
-  // request and falls through to the throw below.
+  // from `isNonEvmChainId`.
   if (isNonEvmChainId(chainId)) {
     return token
   }
-  // For EVM chains that aren't a hex address, the value must be a known
-  // token symbol. `getTokenAddress` throws if it isn't.
-  return getTokenAddress(token as TokenSymbol, chainId)
+  // v2: token symbols are no longer accepted. An EVM input that isn't a hex
+  // address is invalid — callers must pass the token's address.
+  throw new Error(
+    `Expected a token address on EVM chain ${chainId}, got: ${token}`,
+  )
 }
 
 export {
