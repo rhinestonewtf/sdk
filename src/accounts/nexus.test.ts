@@ -101,6 +101,26 @@ describe('Accounts: Nexus', () => {
       )
     })
 
+    test('Legacy versions keep the previous implementation', () => {
+      for (const version of [
+        '1.0.2',
+        'rhinestone-1.0.0-beta',
+        'rhinestone-1.0.0',
+      ] as const) {
+        const deployArgs = getDeployArgs({
+          owners: { type: 'ecdsa', accounts: [accountA, accountB] },
+          account: { type: 'nexus', version },
+        })
+        assertNotNull(deployArgs)
+        expect(deployArgs.factory).toEqual(
+          '0x0000000000679a258c64d2f20f310e12b64b7375',
+        )
+        expect(deployArgs.implementation).toEqual(
+          '0x000000000032ddc454c3bdcba80484ad5a798705',
+        )
+      }
+    })
+
     test('Existing account', () => {
       const deployArgs = getDeployArgs({
         owners: {
