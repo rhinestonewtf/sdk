@@ -1,5 +1,18 @@
 # @rhinestone/sdk
 
+## 2.0.0-beta.47
+
+### Major Changes
+
+- 0521724: Drop the `experimental_` prefix from the smart-session API now that it's stable. Rename across your integration:
+
+  - Config: `experimental_sessions` → `sessions`
+  - Signer set: `type: 'experimental_session'` → `type: 'session'`
+  - Account methods: `experimental_getSessionDetails` → `getSessionDetails`, `experimental_isSessionEnabled` → `isSessionEnabled`, `experimental_signEnableSession` → `signEnableSession`
+  - `@rhinestone/sdk/actions/smart-sessions` actions: `experimental_enable` → `enable`, `experimental_disable` → `disable`, `experimental_enableSession` → `enableSession`, `experimental_disableSession` → `disableSession`
+
+- 97c6672: Trim the selectable account `version` values to the supported set. Nexus keeps `1.2.0` and `1.2.1` (default `1.2.1`); Kernel keeps `3.3`. Removed Nexus `1.0.2`, `rhinestone-1.0.0-beta`, and `rhinestone-1.0.0`, and Kernel `3.1` and `3.2`. If you pinned a removed version, omit `version` to use the default or pin a supported one.
+
 ## 2.0.0-beta.46
 
 ### Minor Changes
