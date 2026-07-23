@@ -3,7 +3,6 @@ import { describe, test } from 'vitest'
 import { SimulationFailedError } from '../../../src/errors/index'
 import type { RhinestoneAccount, Session } from '../../../src/index'
 import { toSession } from '../../../src/modules/validators/smart-sessions'
-import { getTokenAddress } from '../../../src/orchestrator/registry'
 import { sourceChain } from '../config/chains'
 import { createIntegrationSDK } from '../config/environment'
 import { createOwner } from '../framework/fixtures'
@@ -14,6 +13,7 @@ import {
   expectNoFailedOperations,
   expectOutcome,
 } from '../framework/runner'
+import { getTokenAddress } from '../framework/tokens'
 
 const ALICE: Address = '0x1111111111111111111111111111111111111111'
 const BOB: Address = '0x2222222222222222222222222222222222222222'

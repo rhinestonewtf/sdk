@@ -9,7 +9,6 @@ import {
   DUMMY_PRECLAIMOP_SELECTOR,
   DUMMY_PRECLAIMOP_TARGET,
 } from '../../../src/modules/validators/smart-sessions'
-import { getTokenAddress } from '../../../src/orchestrator/registry'
 import { sourceChain, targetChain } from '../config/chains'
 import { createIntegrationSDK } from '../config/environment'
 import {
@@ -29,6 +28,7 @@ import {
   expectCompletedOperation,
   expectOutcome,
 } from '../framework/runner'
+import { getTokenAddress } from '../framework/tokens'
 
 type Execution = { to: string; value: bigint; data: string }
 
