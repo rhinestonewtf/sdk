@@ -49,6 +49,16 @@ export class ChainCatalog {
     return this.chains[chainId]
   }
 
+  /**
+   * Whether the chain is a testnet, per the orchestrator's `/chains`. Uses the
+   * catalog's own flag so it is authoritative for every supported chain
+   * (including non-EVM and chains newer than the SDK's viem), rather than
+   * viem's local chain list.
+   */
+  isTestnet(chainId: number): boolean {
+    return this.chains[chainId]?.testnet ?? false
+  }
+
   /** The wrapped-native (e.g. WETH) token for the chain, if the orchestrator advertises it. */
   getWrappedNativeToken(chainId: number): CatalogToken | undefined {
     return this.chains[chainId]?.wrappedNativeToken

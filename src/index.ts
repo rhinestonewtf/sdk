@@ -505,6 +505,14 @@ async function createAccountInternal(
     const wrappedNativeToken = catalog.getWrappedNativeToken(
       definition.chain.id,
     )?.address as Address | undefined
+    // Fail fast: without the wrapped-native address we can't add the native-wrap
+    // `deposit()` permission, and a silently under-scoped session would
+    // sign/enable fine but break native-wrap intents later.
+    if (!wrappedNativeToken) {
+      throw new Error(
+        `createSession: the orchestrator's /chains has no wrapped-native token for chain ${definition.chain.id}. The chain must be supported and advertise its wrappedNativeToken.`,
+      )
+    }
     return toSession(definition, {
       wrappedNativeToken,
       useDevContracts: config.useDevContracts,
