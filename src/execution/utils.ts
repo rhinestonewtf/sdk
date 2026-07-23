@@ -2427,11 +2427,16 @@ function createAccountAccessList(
       return out
     }
 
-    return chainIds
-      ? { chainIds, tokens: sourceAssets as SimpleTokenList }
-      : { tokens: sourceAssets as SimpleTokenList }
+    const tokens = sourceAssets as SimpleTokenList
+    validateTokenAddresses(tokens)
+    return chainIds ? { chainIds, tokens } : { tokens }
   }
 
+  // ChainTokenMap: validate every per-chain list too, so symbols can't slip
+  // through this input the way they can't through tokenRequests/ExactInputConfig.
+  for (const tokens of Object.values(sourceAssets)) {
+    validateTokenAddresses(tokens)
+  }
   return { chainTokens: sourceAssets }
 }
 
