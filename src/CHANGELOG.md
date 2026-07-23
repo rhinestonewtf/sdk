@@ -1,5 +1,187 @@
 # @rhinestone/sdk
 
+## 2.0.0
+
+### Major Changes
+
+- f3f4fb2: SDK now targets the orchestrator's `2026-04.blanc` API version. The schema and behavior changes that come with it are detailed in the other entries in this release.
+- 766128e: Drop the public `signPermit2Batch` and `signPermit2Sequential` helpers, along with the `MultiChainPermit2Config`, `MultiChainPermit2Result`, and `BatchPermit2Result` types.
+- 4391772: `PortfolioToken` drops the top-level `decimals` field and the `balances` aggregate. `decimals` now lives on each `chains[]` entry.
+- edd83bf: `RhinestoneSDK.getIntentStatus(intentId)` now takes a `string` (was `bigint`).
+- 839f2a6: Drop the `lockFunds` transaction option and the `emissaryConfig` field on the orchestrator `Account` type. Both referenced the compact-bound flow that no longer applies.
+- 972f72a: Drop the `session` param from `account.deploy(chain, params)`. It was a no-op — sessions cannot be enabled at deployment time. Enable a session after deployment with `experimental_signEnableSession` and the smart-sessions actions.
+- 0521724: Drop the `experimental_` prefix from the smart-session API now that it's stable. Rename across your integration:
+
+  - Config: `experimental_sessions` → `sessions`
+  - Signer set: `type: 'experimental_session'` → `type: 'session'`
+  - Account methods: `experimental_getSessionDetails` → `getSessionDetails`, `experimental_isSessionEnabled` → `isSessionEnabled`, `experimental_signEnableSession` → `signEnableSession`
+  - `@rhinestone/sdk/actions/smart-sessions` actions: `experimental_enable` → `enable`, `experimental_disable` → `disable`, `experimental_enableSession` → `enableSession`, `experimental_disableSession` → `disableSession`
+
+- 522d3df: Remove `passport` account support. `account.type: 'passport'` is no longer accepted, and the `PassportAccount` type and the `passport` member of `AccountType` / `AccountProviderConfig` are removed.
+- 522d3df: Drop the `acceptsPreconfirmations` parameter from `account.waitForExecution`. The method no longer treats `PRECONFIRMED` as terminal.
+- 522d3df: Drop the `account.sendTransaction(transaction)` shortcut. Use the `prepareTransaction` → `signTransaction` → `submitTransaction` flow instead.
+- b778335: Nexus now defaults to v1.2.1. This changes the default counterfactual account address; opt back into the previous implementation with `account: { type: 'nexus', version: '1.2.0' }`.
+- 0149a68: Normalize public datetime inputs to accept `Date`.
+
+  - `PermissionFunctionConfig.validUntil` / `validAfter` now accept `Date` only (dropped the raw millisecond-epoch `number`).
+  - `CrossChainPermissionInput.fillDeadline` bounds (`min` / `max`) now accept `Date` (dropped the unix-seconds `bigint`).
+  - Reshape `ENSValidatorConfig`: replace the parallel `accounts` + `ownerExpirations` arrays with a single `owners: { account: Account; expiration?: Date }[]`. Omit `expiration` for an owner that never expires (previously the `maxUint48` sentinel).
+  - `CrossChainPermit` is no longer marked `@internal` — the resolved permit shape (unix-seconds `bigint`) is now a documented low-level escape hatch.
+
+- 26ef7ce: Align SDK with the orchestrator's new operation model (blanc API version).
+
+  - `IntentStatus` reduced to 3 states: `PENDING`, `COMPLETED`, `FAILED`. Removed: `PRECONFIRMED`, `CLAIMED`, `FILLED`, `EXPIRED`.
+  - `IntentOpStatus` response shape replaced with flat per-chain `operations[]`. Removed: `claims`, `fillTransactionHash`, `fillTimestamp`, `destinationChainId`.
+  - `TransactionStatus` (returned by `waitForExecution`) now contains `status`, `accountAddress`, and `operations[]` instead of `fill` / `claims`.
+  - `waitForExecution` no longer accepts the `acceptsPreconfirmations` parameter.
+  - Removed types: `Claim`, `ClaimStatus`.
+  - Removed status constants: `INTENT_STATUS_EXPIRED`, `INTENT_STATUS_FILLED`, `INTENT_STATUS_PRECONFIRMED`, `INTENT_STATUS_CLAIMED`.
+
+- edeae4c: `PortfolioToken.chains[]` replaces the `{ locked, unlocked }` balance pair with a single `amount: bigint`.
+- fa7492d: Clean up the `./errors` surface.
+
+  - Remove `ExistingEip7702AccountsNotSupportedError`, `SmartSessionsNotEnabledError`, and `SessionChainRequiredError`. None were ever thrown; the "session needs a chain" rule the latter described is enforced at the type level (`chain` is required on `SessionDefinition` and `Session`).
+  - Export `DefaultValidatorAlreadyInitializedError`, `ModuleInstallationNotSupportedError`, `EoaSigningNotSupportedError`, `EoaSigningMethodNotConfiguredError`, `OwnersFieldRequiredError`, and `Eip7702InitSignatureRequiredError`, which are thrown by the SDK but were previously not catchable by type.
+
+- 6398613: `RhinestoneAccount.getTransactionMessages` now surfaces the optional `targetExecution` typed data alongside the existing `intent` and `compact` messages.
+- f7c2de0: - `prepareTransaction` returns `quotes: { best, all }` instead of `quote`.
+  - `signTransaction(prepared, { intentId })` lets callers sign a non-default quote from `prepared.quotes.all`.
+  - `getTransactionMessages(prepared, { intentId })` accepts the same selection so external signers see the route `signTransaction` will sign.
+  - `SignedTransactionData.quote` is the selected quote.
+  - `intentId` is required on the options argument; pass an id from `prepared.quotes.all` or omit options entirely to sign the recommended quote.
+- 8e02b11: Remove the top-level `createRhinestoneAccount` export. Construct accounts through `new RhinestoneSDK(config).createAccount(...)` instead.
+- c87e09e: Remove the `feeAsset` transaction option. The orchestrator never honored it — the corresponding `feeToken` field was reserved with no effect — so choosing an ERC-20 fee asset was a no-op. Drop `feeAsset` from your `prepareTransaction` calls; it has no replacement until the feature actually ships.
+- a5bded7: Drop the unused `feeToken` field from the `Cost` response and remove the public `FeeToken` type. The orchestrator never populated this field.
+- fa7d3a5: Remove the legacy social-recovery surface:
+
+  - Remove the `@rhinestone/sdk/actions/recovery` subpackage (`enable`, `recoverEcdsaOwnership`, `recoverPasskeyOwnership`).
+  - Remove the `recovery` field from `RhinestoneAccountConfig` and the `Recovery` type.
+  - Remove the `guardians` signer (`GuardiansSignerSet`) from `SignerSet`.
+  - Remove `SignerNotSupportedError` — it only guarded the guardian path.
+
+- 487b93e: Remove `verifyExecutions` from the public session signer API. It's now derived automatically per chain.
+- df690eb: Require token **addresses** (not symbols) for all token inputs — `tokenRequests`, `CalldataInput.to`, `ExactInputConfig`, `SimpleTokenList`, and cross-chain permit legs (`from`/`to`). Token symbols (`'USDC'`, `'WETH'`, …) are no longer accepted; pass the token's address for the target chain. This removes the SDK's per-chain symbol→address resolution — the first step of dropping the bundled `@rhinestone/shared-configs` chain data so new chains no longer require an SDK release.
+- 420cb4b: Read chain data at runtime from the orchestrator instead of bundling it. The SDK no longer depends on `@rhinestone/shared-configs`: the supported-chain set, per-chain tokens, and the wrapped-native token are fetched (once, lazily, and cached) from the orchestrator's `GET /chains`, and `Chain` objects come from `viem`. A new chain no longer requires an SDK release.
+
+  Breaking changes:
+
+  - **`SupportedChain` is now `number`** (open) rather than a closed union of chain ids.
+  - **New `RhinestoneSDK.createSession(definition)`** (`sdk.createSession(...)`) — resolves the chain's wrapped-native token from `/chains` and permits native-wrapping automatically. It is project-scoped (needs the API key, not an account). The standalone `toSession(definition, options)` is now pure: pass `options.wrappedNativeToken` to opt into the native-wrap action (otherwise it is omitted).
+  - **Removed the `alchemy` provider type.** Supply RPC URLs yourself via `provider: { type: 'custom', urls: { [chainId]: url } }`, or omit `provider` to use viem's default transport.
+  - **Removed the token-registry helpers** `getWethAddress`, `getTokenSymbol`, and `isTokenAddressSupported`. Fetch equivalent data from the orchestrator's `/chains` endpoint.
+
+  The signed Permit2 arbiter allow-set stays bundled (it must remain client-trusted), now as a small inlined constant rather than read from shared-configs.
+
+  Requires an orchestrator that returns `wrappedNativeToken` on `/chains`.
+
+- 3f6adba: Replace `Session.actions` with `toSession({ permissions, claimPolicies })`, an ABI-driven session definition shape (`{ abi, address, functions }`) that resolves to a low-level `Session`. Function selectors and calldata offsets are derived from the ABI, parameter value types are checked against ABI input types, and Permit2 claim policies use chain-aware fields that resolve to the internal onchain schema.
+- 46a197a: `Transaction.settlementLayers` is now `{ include: SettlementLayer[] } | { exclude: SettlementLayer[] }` — you can blacklist specific layers without enumerating every other one.
+- 767c425: Remove the top-level `appFee` leg from quote routes. The orchestrator now charges the whole-intent app fee in a single token, so the concrete leg lives in signed metadata rather than on the route response. `Quote.appFee` and the `AppFee` type are removed; the app fee is available as `quote.cost.fees.breakdown.app.usd`. Requesting an app fee via `options.appFees` (type `AppFeeRate`) is unchanged.
+- 8cec964: Update SmartSession action policy singleton addresses to the new canonical V2 deployments (`SudoPolicy`, `UniversalActionPolicy`, `UsageLimitPolicy`, `ValueLimitPolicy`, `TimeFramePolicy`, `ERC20SpendingLimitPolicy`) and add `ArgPolicy` support for expression-tree rules. Sessions enabled against the previous policy contracts are not compatible with newly encoded session data and need re-enabling, or per-session opt-in to the old addresses via `SessionDefinition.policyAddresses`.
+
+  - Add the `arg-policy` policy variant (`ArgPolicyExpression` AST with `rule` / `not` / `and` / `or` nodes) for action rules that need disjunction or negation. `universal-action` stays available for plain AND-of-rules.
+  - Extend the `permissions` builder used by `toSession`: `params` constraints accept `{ anyOf: [v1, v2, ...] }` to allowlist values (compiles to `arg-policy`); per-function sugar fields `maxUses`, `validUntil`, `validAfter`, `valueLimit`, and `spendingLimit` map 1:1 to their policy types, with `valueLimit` type-gated to `payable` functions and `spendingLimit` type-gated to ERC-20 transfer-shaped ABIs.
+  - Remove the `permissions.functions.*.policies` escape hatch. Use the typed permission fields instead; stale runtime callers that still provide `policies` now throw instead of silently dropping guards.
+  - Add `SessionDefinition.policyAddresses` — a partial override map (`sudo`, `universalAction`, `argPolicy`, `spendingLimits`, `timeFrame`, `usageLimit`, `valueLimit`) for accounts already enabled against the previous deployments. Defaults to the new V2 addresses.
+  - Fix `bytesN` (N<32) reference values in `permissions`: pre-pad right so the encoded `bytes32` matches Solidity calldata alignment instead of being read at the wrong end of the word.
+
+- 522d3df: Reshape `account.submitTransaction` to take an options bag: `submitTransaction(signed, { authorizations?, internal_dryRun? })` instead of positional `submitTransaction(signed, authorizations?, dryRun?)`.
+- 97c6672: Trim the selectable account `version` values to the supported set. Nexus keeps `1.2.0` and `1.2.1` (default `1.2.1`); Kernel keeps `3.3`. Removed Nexus `1.0.2`, `rhinestone-1.0.0-beta`, and `rhinestone-1.0.0`, and Kernel `3.1` and `3.2`. If you pinned a removed version, omit `version` to use the default or pin a supported one.
+- bec6a8a: Drop `protocol` and `settlement` from `FeeBreakdown`. The orchestrator only returns `gas`, `bridge`, and `swap`.
+- 9bebb79: - Remove the `@rhinestone/sdk/actions/compact` subpackage entry and its helpers.
+  - Remove the public `deployAccountsForOwners` helper.
+  - Remove the public `checkERC20AllowanceDirect` helper.
+  - Remove the public `getPermit2Address` helper.
+  - Remove the `account.checkERC20Allowance` method.
+  - Move `walletClientToAccount` from the package root to `@rhinestone/sdk/utils`.
+  - Move `wrapParaAccount` from the package root to `@rhinestone/sdk/utils`.
+  - Move `toSession` from the package root to `@rhinestone/sdk/smart-sessions`.
+  - Remove the public `getSupportedTokens` helper.
+  - Remove the public `getTokenAddress` helper.
+  - Remove the public `getTokenDecimals` helper.
+  - Remove the public `getAllSupportedChainsAndTokens` helper.
+- 50c5822: Trim the `@rhinestone/sdk/smart-sessions` subpath to a curated public surface. It now exports `toSession`, the emissary addresses (`SMART_SESSION_EMISSARY_ADDRESS`, `SMART_SESSION_EMISSARY_ADDRESS_DEV`), the policy address constants (`SPENDING_LIMITS_POLICY_ADDRESS`, `TIME_FRAME_POLICY_ADDRESS`, `SUDO_POLICY_ADDRESS`, `UNIVERSAL_ACTION_POLICY_ADDRESS`, `ARG_POLICY_ADDRESS`, `USAGE_LIMIT_POLICY_ADDRESS`, `VALUE_LIMIT_POLICY_ADDRESS`, `INTENT_EXECUTION_POLICY_ADDRESS`), the fallback-target constants (`SMART_SESSIONS_FALLBACK_TARGET_FLAG`, `SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG`), the low-level session helpers (`getPermissionId`, `getSessionData`, `getSessionDetails`, `isSessionEnabled`) for integrators that hand-build emissary `setConfig`/`removeConfig` calls, and the `SessionDetails` and `ChainDigest` types. Other helpers, constants, and types the subpath previously re-exported are now internal. For standard enable/disable flows, prefer the account's `experimental_*` methods and the `@rhinestone/sdk/actions/smart-sessions` actions.
+- 81f4567: - ESM-only build; CJS `require('@rhinestone/sdk')` is no longer supported.
+  - Internal subpath exports are dropped — use the curated entry points (`./actions/*`, `./errors`, `./utils`, `./smart-sessions`, `./jwt-server`, etc.).
+- 971a298: Support custom module address overrides for the passkey and multi-factor validators via `owners.module`. Removed the inert `module` override from the ENS validator, whose address is fixed by the HCA account implementation.
+- b5c30f1: - `account.waitForExecution` now polls until the intent reaches a terminal state (`COMPLETED` or `FAILED`), with no SDK-side deadline (previously capped at 3.5 minutes). The orchestrator handles expiry internally and surfaces it as `FAILED`.
+  - Removed the `IntentStatusTimeoutError` class — expiry now surfaces as `IntentFailedError` (inspect `operations[].failureReason` for the cause).
+  - Removed the `expiresAt` field from `TransactionResult`.
+  - Narrowed `SettlementLayerFilter` to `CrossChainSettlementLayer[]` (`ACROSS | ECO | RELAY | OFT | NEAR | RHINO | CCTP`) — `SAME_CHAIN` and `INTENT_EXECUTOR` are picked by the orchestrator and were never accepted in the filter at runtime.
+
+### Minor Changes
+
+- e1d7c9f: Add `getAppFeeBalances` to `RhinestoneSDK`. Returns the integrator's accrued app-fee balance as USD totals (`withdrawableUsd`, `pendingUsd`), read from `GET /app-fees/balances`. The balance is project-scoped (keyed to the API key), not tied to any account. Fees are valued in USD at the moment they are collected, so the balance is unaffected by later price movements of the collected tokens.
+- a415156: Add `experimental_disableSession` to the smart-sessions actions. Removes a single enabled session from an account via the emissary's `removeConfig`. The account executes the call itself, so the user authorizes it by signing the outer transaction — no separate session-digest signature is needed. Takes the resolved session and an `expires` deadline (`Date`).
+- 3ae5d61: Add ENS-HCA (Hierarchical Contract Account) support
+- 34d15ff: Add the Rhinestone protocol fee: a caller-set fee that always accrues to Rhinestone, collected alongside `appFees` in one batched transfer, and — unlike the app fee — sponsorable.
+
+  - `transaction.protocolFees: { feeBps }` (0–10000) sets the rate; the `ProtocolFeeRate` type is exported.
+  - `sponsored.protocolFees` (or the `sponsored: true` shorthand) charges the integrator's sponsorship balance instead of the user, without the sponsorship surcharge.
+  - Quote responses surface the fee as `cost.fees.breakdown.protocol`.
+
+- d696a3c: Export `toCrossChainPermissionInput` from `@rhinestone/sdk/smart-sessions`, which converts a resolved `CrossChainPermit` (unix-seconds deadlines, `recipientIsAccount`) back into the `CrossChainPermissionInput` shape accepted by `SessionDefinition.crossChainPermits` (`Date` deadlines, `allowRecipientNotAccount`). Useful when a permit was persisted in resolved form and has to be re-supplied as session input.
+- 9731767: Make `expires` optional in `experimental_disableSession`. Omitting it disables the session with no expiry (`maxUint256` sentinel), matching the enable paths, instead of forcing callers to invent a far-future `Date`.
+- a77d0f2: Expose `signIntent` on the account to sign orchestrator-prepared intents in headless flows, and export the `SignedIntentData` type.
+- bfc46e0: Support a custom HCA factory via `account.factory`, which defines the deploy address and, through its implementation, the account's default validator.
+- b9e37ce: Use `hypercore:mainnet` as the canonical CAIP-2 id for the HyperCore destination instead of `eip155:1337` (RHI-4560). `eip155:1337` was semantically wrong — 1337 is the Hardhat/Ganache local chain id — and the orchestrator now emits `hypercore:mainnet`.
+
+  - `hyperCoreMainnet.caip2` is `'hypercore:mainnet'`. `fromCaip2` still accepts legacy `eip155:1337` for back-compat.
+  - HyperCore stays EVM-addressed: it's a `virtual` (`vmType: 'evm'`) entry, so `isNonEvmChainId(1337) === false` and its EVM token/recipient handling is unchanged.
+
+- 663fea9: Add HyperCore as a destination chain. `hyperCoreMainnet` (Hyperliquid's virtual trading L1, chain id 1337, settling on HyperEVM 999) can now be passed as `targetChain`, exactly like `solanaMainnet` / `tronMainnet`. HyperCore deposits are solver-mediated — the orchestrator builds the core-deposit executions and the user signs no destination session — so they prepare and sign without a destination-side smart session. Previously, expressing a HyperCore destination as a viem chain with id 1337 threw `UnsupportedChainError` at signing because 1337 is not a registered EVM chain.
+- 81c5236: Add independent multisig signing. Pass an `owner` to `signTransaction` to create a serializable owner signature, then combine owner signatures with `assembleTransaction` before submission. Supports ECDSA, passkey, and multi-factor owner sets.
+- 641dec4: Surface orchestrator `KEY_SCOPE_DENIED` responses as a typed `KeyScopeDeniedError` (subclass of `ForbiddenError`), carrying the failed `scope`, the `required` level, and the key's `actual` level. Integrators can distinguish "scoped out" from "invalid key" without losing the structured payload.
+- 7940667: Support non-EVM destination chains (Solana, Tron) in the intent flow.
+
+  - New `NonEvmChain` descriptor type and `solanaMainnet` / `tronMainnet` exports. Pass them anywhere a viem `Chain` was accepted for the destination: `targetChain: solanaMainnet`. `DestinationChain` (`Chain | NonEvmChain`) is the union form used by `Transaction.targetChain`.
+  - `CrossChainTransaction` is now a discriminated union — `CrossChainEvmTransaction` (EVM destinations) and `CrossChainNonEvmTransaction` (Solana / Tron). On non-EVM destinations, `recipient` accepts a `NonEvmAddress` (Solana base58 / Tron T-prefix) and `tokenRequests[].address` accepts non-EVM token strings.
+  - CAIP-2 helpers (`toCaip2`, `fromCaip2`, `isCaip2`) now dispatch on namespace and round-trip non-EVM chain ids through the orchestrator's CAIP-2 strings. Use `getChainId(chain)` for the numeric id of either chain kind.
+  - `IntentOpStatus.fillTransactionHash` is now `string` (`FillTransactionHash`), so Solana base58 / Tron hex fill hashes round-trip cleanly.
+  - Token-symbol validation and EVM-address parsing are skipped on the destination side for non-EVM chains; orchestrator-side validation handles SPL mints / Tron contracts.
+  - EIP-7702 authorization, smart-session target-execution signing, and destination-side session resolution all skip non-EVM destinations.
+  - `Account.accountType` and `Account.setupOps` are now optional. Non-EVM recipients emit just `{ address }`.
+
+  The UserOp path remains EVM-only.
+
+- 555d60e: Preserve unprocessable-content response details on `UnprocessableContentError` so callers can inspect structured orchestrator validation and planning context.
+- cc406d9: Add `SessionDefinition.crossChainPermits` (`CrossChainPermissionInput`) to authorise session keys to move funds across chains via Permit2 arbiter settlement. Pick settlement layers (`SAME_CHAIN` / `ECO` / `ACROSS`, or all by default); bridge-to-self is enforced unless `allowRecipientNotAccount` is set.
+- 55762ad: Surface orchestrator `SIMULATION_FAILED` responses as a typed `SimulationFailedError`, preserving classification fields such as `category`, `errorSelector`, `errorName`, `errorArgs`, `retryable`, `retryHint`, `simulations`, and `nonce` so callers can re-prepare stale submissions when instructed.
+- 089d85b: Expose typed errors for sponsored-fee failures on quotes. `SponsorLimitExceededError` (a configured per-client sponsorship cap was hit — carries `limitKey`, `capUsd`, `coverageUsd`, `sponsorAddress`) and `InsufficientSponsorBalanceError` (the sponsor's balance can't cover the enabled categories — carries `failedCategories`, `sponsorAddress`, `remainingBalanceUsd`, `totalSponsoredUsd`) now surface as distinct classes with the guards `isSponsorLimitExceeded`, `isInsufficientSponsorBalance`, and `isSponsorError`. Both extend `UnprocessableContentError` and keep `code` as `'UNPROCESSABLE_CONTENT'`, so existing handling of that error is unaffected.
+- d12bad7: Add `customDeadline` transaction option to override the on-chain fill deadline. Accepts an absolute unix timestamp (seconds) and is honored only on the same-chain (tokenless) route — ignored elsewhere. Bounds (`now + 120s` .. `now + 86400s`) are enforced by the orchestrator. When honored, the quoted `expiresAt` and the bundle claim/nonce expiry track this value automatically.
+- fff29d2: Expose orchestrator `traceId` values on successful quote, split, submit, and intent-status responses.
+- c5e2777: Add app-fee quote support by threading `appFees` through transaction preparation and exposing app-fee quote details in orchestrator responses.
+
+### Patch Changes
+
+- db826fe: Normalize `BridgeFill.destinationChainId` to a numeric chain ID. The orchestrator returns CAIP-2 strings; the SDK now decodes them to numbers for consistency with the rest of the API.
+- c778494: Fix internal collision between the dummy preclaim-op action target and the smart-session fallback-target marker.
+- ab18401: Fix `enable` (ECDSA) on Nexus accounts. The OwnableValidator is the Nexus default validator and cannot be added via `installModule` (`DefaultValidatorAlreadyInstalled`); on passkey-bootstrapped accounts it is also never initialized, so `addOwner` reverts with `NotInitialized`. `enable` now initializes the default validator directly via `onInstall`, and throws a clear error (instead of an opaque simulation revert) when ECDSA is already enabled.
+- 9f018c8: Re-export `OriginSignature` from the package root and `@rhinestone/sdk/orchestrator`, so consumers iterating intent signature arrays don't need to inline the union locally.
+- 4411a46: Re-export `Quote` from the package root, so consumers don't need to derive it from `PreparedQuotes['best']`.
+- 13e87ce: Fix intent preparation for EIP-7702 accounts. The orchestrator quote request now includes the signed `initializeAccount` setup op (built from `eip7702InitSignature`) instead of an empty/factory setup, so 7702 intents route correctly instead of failing with "no viable route". `prepareTransaction` for a 7702 account requires the init signature.
+- 8598c5a: Fix `experimental_enableSession` dropping `permissions` on scoped sessions, which caused the emissary to reject the enable. The function now accepts a resolved `Session` (was `SessionInput`).
+- 02e5003: Fix the `time-frame` session policy encoding to match the deployed `TimeFramePolicy` contract. Sessions installed with a `time-frame` policy through the SDK now correctly enforce `validUntil` / `validAfter`.
+- 87ba706: Fix `uninstallModule` reverting on Nexus, Safe7579, and Startale accounts. This unblocks every module disable action on those accounts — `ecdsa.disable`, `passkeys.disable`, `mfa.disable`, `experimental_disable` (smart sessions), and the generic `uninstallModule(module)` — all of which were silently broken on Nexus before. Kernel and EOA paths are unaffected.
+- e223a77: Expose `BridgeFill` on quote responses — a per-intent tracking handle (request id, deposit address, commitment id) for third-party bridge layers (`OFT`, `RELAY`, `NEAR`, `RHINO`, `CCTP`).
+- 99f5161: Send HyperCore recipients as EOA-typed orchestrator accounts. HyperCore recipients are EVM EOAs, but `getRecipient` emitted them as a bare `{ address }` (the Solana/Tron shape, with no `accountType`). The orchestrator's HyperCore planning gate strictly requires `accountType === 'EOA'`, so deposits were rejected at `/quotes` with "HyperCore destinations require an EOA recipient". HyperCore now takes the EVM passthrough (`accountType: 'EOA'`) while remaining solver-mediated for signing.
+- 2a6f56b: Fix claim-only sessions failing on first use. The session is now installed via the emissary on the first intent; subsequent intents on the same session use the cached state.
+- d464a1b: Use per-chain mock signature shapes during quote simulation. Steady-state ERC-1271 bundles no longer pay the validation gas of an `ENABLE`-mode session enable, giving more accurate gas estimates.
+- 56ca282: Preserve decimal-string numeric fields in public prepared and signed intent data while retaining bigint normalization internally for signing.
+- 15029de: Re-export the low-level smart-session helpers
+- 0ffab75: Reject duplicate session permissions for the same function on the same contract at session build time. Previously they were silently accepted and collided on-chain, so only the last entry's policies took effect and calls permitted by earlier entries failed at execution.
+- a1f8b8f: Restore release-compatible EIP-7702 adoption, validator signing, Smart Session chain routing, and UserOperation behavior. Custom bundlers and paymasters again use their generic RPC and ERC-7677 flows.
+- 5f7f20e: Respect `Retry-After` headers when polling intent status after rate limits.
+- e81f02e: Retry transient transport errors (socket closed, connection reset, DNS/TLS failures) while polling intent status in `waitForExecution`, instead of treating them as terminal. These bubble up untyped from `fetch` and were previously surfaced as bridge failures despite the intent still settling.
+- d44f9ea: Improve JSDoc across the public API (account methods, `RhinestoneSDK`, actions, and utils) for richer in-editor docs and to power the generated SDK reference.
+- fba610c: Resolve the `settlementLayers` `{ exclude }` filter on the orchestrator instead of in the SDK, so excluding specific layers automatically accounts for new settlement layers as they are added.
+- 8746989: Set the intent's declared `signatureMode` to match the bytes the SDK actually signs. EOAs, non-session smart accounts, and claim-only sessions now declare `ERC1271`; sessions with `verifyExecutions=true` declare `EMISSARY_EXECUTION_ERC1271`. Avoids a wasted on-chain validator call per bundle.
+- 20bb8e3: Add USDT support on Soneium.
+- 1cd3687: Allow Startale accounts adopted via `initData` to sign intents: `getEip712Domain` no longer throws for existing accounts and derives the domain from `getAddress(config)`.
+- 694ba08: Fix `setup()` reverting on Startale K1 accounts: skip the built-in K1 default validator so only genuinely missing modules (e.g. the intent executor) are installed.
+- 97981bf: Add `USDG` to the fee-token wire typings, matching the published orchestrator OpenAPI spec.
+- eadcf9a: Use `tron:mainnet` as Tron's canonical CAIP-2 (was `tron:0x2b6653dc`). Updates the hardcoded `tronMainnet` destination descriptor so `toCaip2(728126428)` and `fromCaip2('tron:mainnet')` resolve. Hard cutover: `tron:0x2b6653dc` no longer resolves.
+
 ## 2.0.0-beta.47
 
 ### Major Changes
