@@ -87,7 +87,9 @@ export function getArbitersForSettlementLayers(
   // Collect every unique address for the requested keys, deduped
   // case-insensitively.
   for (const key of keys) {
-    for (const addr of book[key] ?? []) {
+    // `keys` are `SETTLEMENT_LAYER_CONTRACT_KEYS` values, so `book` always has
+    // an entry for each — no missing-key fallback needed.
+    for (const addr of book[key]) {
       const norm = addr.toLowerCase()
       if (seen.has(norm)) continue
       seen.add(norm)
