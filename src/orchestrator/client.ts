@@ -1,6 +1,7 @@
 import type { Address } from 'viem'
 import type { AuthProvider } from '../auth/provider'
 import { fromCaip2, isCaip2, toCaip2 } from './caip2'
+import { ChainCatalog, type ChainInfoMap } from './chain-catalog'
 import { API_VERSION, SDK_VERSION } from './consts'
 import {
   type ErrorEnvelope,
@@ -33,6 +34,7 @@ import { convertBigIntFields } from './utils'
 import type {
   WireAppFeeBalancesResponse,
   WireBridgeFill,
+  WireChainsResponse,
   WireCost,
   WireCostInputEntry,
   WireCostOutputEntry,
@@ -58,6 +60,9 @@ export class Orchestrator {
   private serverUrl: string
   private authProvider: AuthProvider
   private extraHeaders?: Record<string, string>
+  // Memoized so the chain catalog is fetched at most once per client, lazily on
+  // first use — never at account construction.
+  private chainCatalogPromise?: Promise<ChainCatalog>
 
   constructor(
     serverUrl: string,
@@ -106,6 +111,50 @@ export class Orchestrator {
         amount: BigInt(c.amount),
       })),
     }))
+  }
+
+  /**
+   * Fetch the supported chains and their facts (tokens, wrapped-native token)
+   * from the orchestrator's public `/chains` endpoint. Returns a map keyed by
+   * numeric chain id (CAIP-2 keys on the wire are decoded).
+   */
+  async getChains(): Promise<ChainInfoMap> {
+    const json = (await this.fetch(`${this.serverUrl}/chains`, {
+      headers: await this.getHeaders(),
+    })) as WireChainsResponse
+    const out: ChainInfoMap = {}
+    for (const [key, entry] of Object.entries(json)) {
+      let id: number
+      try {
+        id = isCaip2(key) ? fromCaip2(key) : Number(key)
+      } catch {
+        // Skip chains whose CAIP-2 id we can't map to a numeric id.
+        continue
+      }
+      if (!Number.isFinite(id)) continue
+      // Adapter boundary: map the generated wire shape → the domain `ChainInfo`.
+      // If the orchestrator renames or drops a field, `wire.gen.ts` regenerates
+      // and this mapping fails to typecheck instead of drifting silently.
+      out[id] = {
+        name: entry.name,
+        testnet: entry.testnet,
+        supportedTokens: entry.supportedTokens,
+        wrappedNativeToken: entry.wrappedNativeToken,
+      }
+    }
+    return out
+  }
+
+  /**
+   * Lazily fetch (once) the runtime chain catalog from `/chains`. Cached for the
+   * lifetime of this client; callers that need chain facts await this instead of
+   * relying on bundled chain data.
+   */
+  getChainCatalog(): Promise<ChainCatalog> {
+    this.chainCatalogPromise ??= this.getChains().then(
+      (chains) => new ChainCatalog(chains),
+    )
+    return this.chainCatalogPromise
   }
 
   async getAppFeeBalances(): Promise<AppFeeBalances> {

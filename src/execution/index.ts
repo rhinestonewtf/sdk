@@ -14,11 +14,7 @@ import {
   type SplitIntentsInput,
 } from '../orchestrator'
 import type { NonEvmAddress } from '../orchestrator/destinations'
-import {
-  getChainById,
-  getSupportedChainIds,
-  isTestnet,
-} from '../orchestrator/registry'
+import { getChainById } from '../orchestrator/registry'
 import type { AppFeeRate, SettlementLayerFilter } from '../orchestrator/types'
 import type {
   CalldataInput,
@@ -359,14 +355,14 @@ async function getPortfolio(config: RhinestoneConfig, onTestnets: boolean) {
     config.endpointUrl,
     config.headers,
   )
-  const supportedChainIds = getSupportedChainIds()
-  const filteredChainIds = supportedChainIds.filter((id) => {
-    try {
-      return isTestnet(id) === onTestnets
-    } catch {
-      return false
-    }
-  })
+  const catalog = await orchestrator.getChainCatalog()
+  // Filter on the catalog's own `testnet` flag — authoritative for every chain
+  // the orchestrator supports (incl. non-EVM and chains newer than the SDK's
+  // viem). Filtering through viem would silently drop unknown chains, so their
+  // balances would disappear until an SDK/viem bump.
+  const filteredChainIds = catalog
+    .getSupportedChainIds()
+    .filter((id) => catalog.isTestnet(id) === onTestnets)
   return orchestrator.getPortfolio(address, { chainIds: filteredChainIds })
 }
 

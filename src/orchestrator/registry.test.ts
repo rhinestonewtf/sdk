@@ -1,104 +1,16 @@
-import { type Chain, zeroAddress } from 'viem'
-import { arbitrum, base, baseSepolia, sepolia } from 'viem/chains'
+import type { Address } from 'viem'
+import { arbitrum, baseSepolia, sepolia } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
-import {
-  getChainById,
-  getDefaultAccountAccessList,
-  getSupportedChainIds,
-  getTokenAddress,
-  getTokenSymbol,
-  getWethAddress,
-  isTestnet,
-  isTokenAddressSupported,
-  resolveTokenAddress,
-} from './registry'
+import { getChainById, isTestnet, resolveTokenAddress } from './registry'
 
-const DEPRECATED_CHAIN_ID = 5 // Goerli
-const UNSUPPORTED_CHAIN_ID = 81457 // Blast
+// A chain id absent from both viem and the Rhinestone-supported set. (v2
+// resolves `Chain` objects via viem, so a real-but-unsupported chain like Blast
+// would now resolve — this must be a genuinely unknown id to still exercise throws.)
+const UNSUPPORTED_CHAIN_ID = 424242
 
-const TOKEN_SYMBOLS = {
-  ETH: 'ETH',
-  USDC: 'USDC',
-  USDT: 'USDT',
-  WETH: 'WETH',
-} as const
-
-const TOKEN_ADDRESSES = {
-  ARBTRUM_USDC: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
-  BASE_WETH: '0x4200000000000000000000000000000000000006',
-} as const
-
-const UNSUPPORTED_TOKEN_ADDRESS = '0x1234567890123456789012345678901234567890'
+const ARBITRUM_USDC = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831' as Address
 
 describe('Registry', () => {
-  describe('getSupportedChainIds', () => {
-    test('returns supported chain IDs', () => {
-      const chainIds = getSupportedChainIds()
-      expect(chainIds).toContain(arbitrum.id)
-      expect(chainIds).toContain(base.id)
-      expect(chainIds).toContain(sepolia.id)
-    })
-
-    test('does not include unsupported chains', () => {
-      const chainIds = getSupportedChainIds()
-      expect(chainIds).not.toContain(DEPRECATED_CHAIN_ID)
-      expect(chainIds).not.toContain(UNSUPPORTED_CHAIN_ID)
-    })
-  })
-
-  describe('getTokenSymbol', () => {
-    test('returns correct symbol for supported token', () => {
-      const symbol = getTokenSymbol(TOKEN_ADDRESSES.ARBTRUM_USDC, arbitrum.id)
-      expect(symbol).toBe(TOKEN_SYMBOLS.USDC)
-    })
-
-    test('throws error for unsupported chain', () => {
-      expect(() =>
-        getTokenSymbol(TOKEN_ADDRESSES.ARBTRUM_USDC, UNSUPPORTED_CHAIN_ID),
-      ).toThrow(`Unsupported chain ${UNSUPPORTED_CHAIN_ID}`)
-    })
-
-    test('returns undefined for unsupported token on supported chain', () => {
-      const symbol = getTokenSymbol(UNSUPPORTED_TOKEN_ADDRESS, arbitrum.id)
-      expect(symbol).toBeUndefined()
-    })
-  })
-
-  describe('getTokenAddress', () => {
-    test('returns zero address for ETH', () => {
-      const address = getTokenAddress(TOKEN_SYMBOLS.ETH, arbitrum.id)
-      expect(address).toBe(zeroAddress)
-    })
-
-    test('returns correct address for token symbol', () => {
-      const address = getTokenAddress(TOKEN_SYMBOLS.USDC, arbitrum.id)
-      expect(address).toBe(TOKEN_ADDRESSES.ARBTRUM_USDC)
-    })
-
-    test('throws error for unsupported chain', () => {
-      expect(() =>
-        getTokenAddress(TOKEN_SYMBOLS.USDC, UNSUPPORTED_CHAIN_ID),
-      ).toThrow(`Unsupported chain ${UNSUPPORTED_CHAIN_ID}`)
-    })
-  })
-
-  describe('getWethAddress', () => {
-    test('returns correct WETH address', () => {
-      const address = getWethAddress(base)
-      expect(address).toBe(TOKEN_ADDRESSES.BASE_WETH)
-    })
-
-    test('throws error for unsupported chain', () => {
-      const unsupportedChain = {
-        id: UNSUPPORTED_CHAIN_ID,
-        name: 'Unsupported',
-      } as Chain
-      expect(() => getWethAddress(unsupportedChain)).toThrow(
-        `Unsupported chain ${UNSUPPORTED_CHAIN_ID}`,
-      )
-    })
-  })
-
   describe('getChainById', () => {
     test('returns correct chain for supported ID', () => {
       const chain = getChainById(arbitrum.id)
@@ -106,10 +18,11 @@ describe('Registry', () => {
       expect(chain.name).toBe(arbitrum.name)
     })
 
-    test('throws error for unsupported chain', () => {
-      expect(() => getChainById(UNSUPPORTED_CHAIN_ID)).toThrow(
-        `Unsupported chain ${UNSUPPORTED_CHAIN_ID}`,
-      )
+    test('falls back to a minimal chain for ids viem does not know', () => {
+      // Must not gate signing on the SDK's viem version: any orchestrator-
+      // supported id must resolve to a `Chain` carrying that id.
+      const chain = getChainById(UNSUPPORTED_CHAIN_ID)
+      expect(chain.id).toBe(UNSUPPORTED_CHAIN_ID)
     })
   })
 
@@ -122,61 +35,21 @@ describe('Registry', () => {
       expect(isTestnet(sepolia.id)).toBe(true)
     })
 
-    test('throws error for unsupported chain', () => {
-      expect(() => isTestnet(UNSUPPORTED_CHAIN_ID)).toThrow(
-        `Unsupported chain ${UNSUPPORTED_CHAIN_ID}`,
-      )
-    })
-  })
-
-  describe('isTokenAddressSupported', () => {
-    test('returns true for supported token', () => {
-      const isSupported = isTokenAddressSupported(
-        TOKEN_ADDRESSES.ARBTRUM_USDC,
-        arbitrum.id,
-      )
-      expect(isSupported).toBe(true)
-    })
-
-    test('returns false for unsupported token or chain', () => {
-      expect(
-        isTokenAddressSupported(UNSUPPORTED_TOKEN_ADDRESS, arbitrum.id),
-      ).toBe(false)
-      expect(
-        isTokenAddressSupported(
-          TOKEN_ADDRESSES.ARBTRUM_USDC,
-          UNSUPPORTED_CHAIN_ID,
-        ),
-      ).toBe(false)
-    })
-  })
-
-  describe('getDefaultAccountAccessList', () => {
-    test('filters chains by testnet status', () => {
-      const arbitrumList = getDefaultAccountAccessList(false)
-      const testnetList = getDefaultAccountAccessList(true)
-
-      expect(arbitrumList.chainIds).toContain(arbitrum.id)
-      expect(arbitrumList.chainIds).not.toContain(sepolia.id)
-
-      expect(testnetList.chainIds).toContain(sepolia.id)
-      expect(testnetList.chainIds).not.toContain(arbitrum.id)
+    test('returns false for an unknown chain (minimal fallback has no testnet flag)', () => {
+      expect(isTestnet(UNSUPPORTED_CHAIN_ID)).toBe(false)
     })
   })
 
   describe('resolveTokenAddress', () => {
-    test('returns address as-is when given valid address', () => {
-      const address = TOKEN_ADDRESSES.ARBTRUM_USDC
-      const result = resolveTokenAddress(address, arbitrum.id)
-      expect(result).toBe(address)
-      // Note: UNSUPPORTED_CHAIN_ID is still exercised by the per-getter
-      // "unsupported chain" tests above; the symbol-resolution cases that used
-      // it here were removed with v2's address-only contract.
+    test('returns the address as-is when given a valid address', () => {
+      expect(resolveTokenAddress(ARBITRUM_USDC, arbitrum.id)).toBe(
+        ARBITRUM_USDC,
+      )
     })
 
     test('throws for a non-address on an EVM chain (symbols no longer accepted)', () => {
       expect(() =>
-        resolveTokenAddress(TOKEN_SYMBOLS.USDC, baseSepolia.id),
+        resolveTokenAddress('USDC' as Address, baseSepolia.id),
       ).toThrow(`Expected a token address on EVM chain ${baseSepolia.id}`)
     })
   })

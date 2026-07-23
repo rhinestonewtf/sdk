@@ -43,11 +43,6 @@ import {
   UnsupportedTokenError,
   ValidationError,
 } from './error'
-import {
-  getTokenSymbol,
-  getWethAddress,
-  isTokenAddressSupported,
-} from './registry'
 import type {
   AppFeeBalances,
   AppFeeRate,
@@ -182,8 +177,6 @@ export {
   UnsupportedTokenError,
   ValidationError,
   getOrchestrator,
-  getWethAddress,
-  getTokenSymbol,
   isOrchestratorError,
   isRetryable,
   isConnectionError,
@@ -194,5 +187,4 @@ export {
   isSponsorLimitExceeded,
   isInsufficientSponsorBalance,
   isSponsorError,
-  isTokenAddressSupported,
 }

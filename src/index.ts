@@ -1,4 +1,5 @@
 import type {
+  Abi,
   Address,
   Chain,
   HashTypedDataParameters,
@@ -72,6 +73,7 @@ import {
 import {
   isSessionEnabled as isSessionEnabledInternal,
   type SessionDetails,
+  toSession,
 } from './modules/validators/smart-sessions'
 import type {
   AppFeeBalances,
@@ -97,6 +99,7 @@ import type {
   TokenRequirements,
   WrapRequired,
 } from './orchestrator'
+import { getOrchestrator } from './orchestrator'
 
 export type { AppFeeBalances, AppFeeRate } from './orchestrator'
 
@@ -704,6 +707,28 @@ async function createAccountInternal(
   }
 }
 
+async function createSessionInternal<const TAbis extends readonly Abi[]>(
+  authProvider: AuthProvider,
+  endpointUrl: string | undefined,
+  headers: Record<string, string> | undefined,
+  useDevContracts: boolean | undefined,
+  definition: SessionDefinition<TAbis>,
+): Promise<Session> {
+  const orchestrator = getOrchestrator(authProvider, endpointUrl, headers)
+  const catalog = await orchestrator.getChainCatalog()
+  const wrappedNativeToken = catalog.getWrappedNativeToken(definition.chain.id)
+    ?.address as Address | undefined
+  // Fail fast: without the wrapped-native address we can't add the native-wrap
+  // `deposit()` permission, and a silently under-scoped session would
+  // sign/enable fine but break native-wrap intents later.
+  if (!wrappedNativeToken) {
+    throw new Error(
+      `createSession: the orchestrator's /chains has no wrapped-native token for chain ${definition.chain.id}. The chain must be supported and advertise its wrappedNativeToken.`,
+    )
+  }
+  return toSession(definition, { wrappedNativeToken, useDevContracts })
+}
+
 /**
  * Stateful entry point that holds shared configuration (auth, provider, bundler,
  * paymaster) and creates accounts from it.
@@ -763,6 +788,27 @@ class RhinestoneSDK {
       headers: this.headers,
     }
     return createAccountInternal(rhinestoneConfig)
+  }
+
+  /**
+   * Create a smart session, resolving the chain's wrapped-native token from the
+   * orchestrator's chain catalog (`GET /chains`) so native-token wrapping is
+   * permitted automatically. Project-scoped — needs the API key but no account.
+   * For a fully offline build, use the standalone {@link toSession} and pass
+   * `wrappedNativeToken` yourself.
+   * @param definition The session definition
+   * @returns The resolved session
+   */
+  createSession<const TAbis extends readonly Abi[]>(
+    definition: SessionDefinition<TAbis>,
+  ): Promise<Session> {
+    return createSessionInternal(
+      this.authProvider,
+      this.endpointUrl,
+      this.headers,
+      this.useDevContracts,
+      definition,
+    )
   }
 
   /**

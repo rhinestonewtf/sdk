@@ -11,8 +11,8 @@ import {
 } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import type { RhinestoneAccount } from '../../../src/index'
-import { getTokenAddress } from '../../../src/orchestrator/registry'
 import { getIntegrationFunderPrivateKey } from '../config/environment'
+import { getTokenAddress } from './tokens'
 
 // Optional per-chain RPC override, e.g. INTEGRATION_RPC_URL_84532=https://...
 // Falls back to the viem chain's default public RPC.

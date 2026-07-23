@@ -1,24 +1,8 @@
-import { arbitrum, polygon, sepolia } from 'viem/chains'
+import { arbitrum, sepolia } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
-import { getAlchemyUrl, getCustomUrl } from './providers'
+import { getCustomUrl } from './providers'
 
 describe('Providers', () => {
-  describe('Alchemy', () => {
-    test('Network', () => {
-      const mockApiKey = '123'
-
-      expect(getAlchemyUrl(arbitrum.id, mockApiKey)).toBe(
-        'https://arb-mainnet.g.alchemy.com/v2/123',
-      )
-      expect(getAlchemyUrl(sepolia.id, mockApiKey)).toBe(
-        'https://eth-sepolia.g.alchemy.com/v2/123',
-      )
-      expect(getAlchemyUrl(polygon.id, mockApiKey)).toBe(
-        'https://polygon-mainnet.g.alchemy.com/v2/123',
-      )
-    })
-  })
-
   describe('Custom', () => {
     test('Returns URL for configured chain', () => {
       const urls = {

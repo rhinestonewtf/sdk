@@ -48,19 +48,24 @@ const baseSession: Session = toSession({
   owners: { type: 'ecdsa', accounts: [accountA] },
 })
 
-const sessionWithAction: Session = toSession({
-  chain: base,
-  owners: { type: 'ecdsa', accounts: [accountA] },
-  permissions: [
-    {
-      abi: erc20Abi,
-      address: '0x1111111111111111111111111111111111111111' as Address,
-      functions: {
-        transfer: {},
+const sessionWithAction: Session = toSession(
+  {
+    chain: base,
+    owners: { type: 'ecdsa', accounts: [accountA] },
+    permissions: [
+      {
+        abi: erc20Abi,
+        address: '0x1111111111111111111111111111111111111111' as Address,
+        functions: {
+          transfer: {},
+        },
       },
-    },
-  ],
-})
+    ],
+  },
+  // WETH on Base — opts into the native-wrap injected action (v2: the
+  // wrapped-native address is supplied, not looked up from bundled config).
+  { wrappedNativeToken: '0x4200000000000000000000000000000000000006' },
+)
 
 const dummySig = `0x${'00'.repeat(65)}` as Hex
 const USDC: Address = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'

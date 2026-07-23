@@ -1944,7 +1944,8 @@ async function signDestinationSeparately(
   destination: TypedDataDefinition,
   targetExecution: boolean,
 ): Promise<Hex> {
-  const destinationChain = getChainById(targetChain.id)
+  // `targetChain` is already the destination viem `Chain`; no lookup needed.
+  const destinationChain = targetChain
   const destinationSignatures = await signIntentTypedData(
     config,
     signers,

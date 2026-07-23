@@ -1,118 +1,35 @@
-import {
-  type ChainEntry,
-  chainRegistry,
-  chains,
-} from '@rhinestone/shared-configs'
-import { type Address, type Chain, isAddress } from 'viem'
-import type { TokenSymbol } from '../types'
+import { type Address, type Chain, defineChain, isAddress } from 'viem'
+import * as viemChains from 'viem/chains'
 import { isNonEvmChainId } from './caip2'
 import type { NonEvmAddress } from './destinations'
-import { UnsupportedChainError, UnsupportedTokenError } from './error'
 
-function getSupportedChainIds(): number[] {
-  return chains.map((chain) => chain.id)
-}
-
-function getChainEntry(chainId: number): ChainEntry | undefined {
-  return chainRegistry[chainId.toString()]
-}
-
-function getWethAddress(chain: Chain): Address {
-  const chainEntry = getChainEntry(chain.id)
-  if (!chainEntry) {
-    throw new UnsupportedChainError(chain.id)
-  }
-
-  const wethToken = chainEntry.tokens.find((token) => token.symbol === 'WETH')
-  if (!wethToken) {
-    throw new UnsupportedTokenError('WETH', chain.id)
-  }
-
-  return wethToken.address as Address
-}
-
-function getWrappedTokenAddress(chain: Chain): Address {
-  const chainEntry = getChainEntry(chain.id)
-  if (!chainEntry) {
-    throw new UnsupportedChainError(chain.id)
-  }
-
-  const token =
-    chainEntry.wrappedNativeToken ??
-    chainEntry.tokens.find((t) => t.symbol === 'WETH')
-  if (!token) {
-    throw new UnsupportedTokenError('WETH', chain.id)
-  }
-  return token.address as Address
-}
-
-function getTokenSymbol(
-  tokenAddress: Address,
-  chainId: number,
-): string | undefined {
-  const chainEntry = getChainEntry(chainId)
-  if (!chainEntry) {
-    throw new UnsupportedChainError(chainId)
-  }
-
-  const token = chainEntry.tokens.find(
-    (t) => t.address.toLowerCase() === tokenAddress.toLowerCase(),
-  )
-
-  return token?.symbol
-}
-
-function getTokenAddress(tokenSymbol: TokenSymbol, chainId: number): Address {
-  const chainEntry = getChainEntry(chainId)
-  if (!chainEntry) {
-    throw new UnsupportedChainError(chainId)
-  }
-
-  const token = chainEntry.tokens.find((t) => t.symbol === tokenSymbol)
-  if (!token) {
-    throw new UnsupportedTokenError(tokenSymbol, chainId)
-  }
-
-  return token.address as Address
-}
+// Chain objects (rpc / nativeCurrency / formatters, needed for signing and
+// `createPublicClient`) come from viem — not from bundled chain config. The
+// supported *set* is gated by the orchestrator; this resolves any known viem
+// chain by id.
+const allViemChains = (Object.values(viemChains) as unknown as Chain[]).filter(
+  (c) => typeof c?.id === 'number',
+)
 
 function getChainById(chainId: number): Chain {
-  const chain = chains.find((chain) => chain.id === chainId)
-  if (!chain) {
-    throw new UnsupportedChainError(chainId)
-  }
-  return chain
+  const known = allViemChains.find((c) => c.id === chainId)
+  if (known) return known
+  // The SDK must not gate signing/execution on its bundled viem version: a chain
+  // the orchestrator supports before viem knows it must still resolve. Fall back
+  // to a minimal chain carrying the id — the field EIP-712 signing needs. Richer
+  // metadata (formatters, default RPC) is only available for viem-known chains;
+  // RPC-needing paths already accept a caller-supplied transport.
+  return defineChain({
+    id: chainId,
+    name: `Chain ${chainId}`,
+    nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+    rpcUrls: { default: { http: [] } },
+  })
 }
 
 function isTestnet(chainId: number): boolean {
   const chain = getChainById(chainId)
   return chain.testnet ?? false
-}
-
-function isTokenAddressSupported(address: Address, chainId: number): boolean {
-  const chainEntry = getChainEntry(chainId)
-  if (!chainEntry) {
-    return false
-  }
-
-  return chainEntry.tokens.some(
-    (token) => token.address.toLowerCase() === address.toLowerCase(),
-  )
-}
-
-function getDefaultAccountAccessList(onTestnets?: boolean) {
-  const supportedChainIds = getSupportedChainIds()
-  const filteredChainIds = supportedChainIds.filter((chainId) => {
-    try {
-      return isTestnet(chainId) === !!onTestnets
-    } catch {
-      return false
-    }
-  })
-
-  return {
-    chainIds: filteredChainIds,
-  }
 }
 
 function resolveTokenAddress(
@@ -138,15 +55,4 @@ function resolveTokenAddress(
   )
 }
 
-export {
-  getTokenSymbol,
-  getTokenAddress,
-  getWethAddress,
-  getWrappedTokenAddress,
-  getChainById,
-  getSupportedChainIds,
-  isTestnet,
-  isTokenAddressSupported,
-  getDefaultAccountAccessList,
-  resolveTokenAddress,
-}
+export { getChainById, isTestnet, resolveTokenAddress }

@@ -255,6 +255,13 @@ export interface operations {
                                 address: string;
                                 decimals: number;
                             }[];
+                            /** @description The wrapped-native token (e.g. WETH) for the chain. Lets clients resolve the wrapped-native address without bundling a token registry. */
+                            wrappedNativeToken: {
+                                symbol: string;
+                                /** @description Token contract address (format depends on the chain) */
+                                address: string;
+                                decimals: number;
+                            };
                         };
                     };
                 };
@@ -3166,9 +3173,9 @@ export interface operations {
                     /** @description Account access list specifying which chains and tokens an account may access */
                     accountAccessList?: {
                         chainIds?: number[];
-                        tokens?: (string | ("ETH" | "USDC" | "WETH" | "USDT" | "USDT0" | "BNB" | "WBNB" | "XDAI" | "WXDAI" | "POL" | "WPOL" | "MON" | "WMON" | "S" | "WS" | "HYPE" | "WHYPE" | "USDG" | "XPL" | "WXPL" | "MockUSD" | "TRX" | "WTRX" | "SOL" | "WSOL"))[];
+                        tokens?: (string | ("ETH" | "USDC" | "WETH" | "USDT" | "USDT0" | "BNB" | "WBNB" | "XDAI" | "WXDAI" | "POL" | "WPOL" | "MON" | "WMON" | "S" | "WS" | "HYPE" | "WHYPE" | "USDG" | "XPL" | "WXPL" | "AVAX" | "WAVAX" | "MockUSD" | "TRX" | "WTRX" | "SOL" | "WSOL"))[];
                         chainTokens?: {
-                            [key: string]: (string | ("ETH" | "USDC" | "WETH" | "USDT" | "USDT0" | "BNB" | "WBNB" | "XDAI" | "WXDAI" | "POL" | "WPOL" | "MON" | "WMON" | "S" | "WS" | "HYPE" | "WHYPE" | "USDG" | "XPL" | "WXPL" | "MockUSD" | "TRX" | "WTRX" | "SOL" | "WSOL"))[];
+                            [key: string]: (string | ("ETH" | "USDC" | "WETH" | "USDT" | "USDT0" | "BNB" | "WBNB" | "XDAI" | "WXDAI" | "POL" | "WPOL" | "MON" | "WMON" | "S" | "WS" | "HYPE" | "WHYPE" | "USDG" | "XPL" | "WXPL" | "AVAX" | "WAVAX" | "MockUSD" | "TRX" | "WTRX" | "SOL" | "WSOL"))[];
                         };
                         chainTokenAmounts?: {
                             [key: string]: {
@@ -3177,9 +3184,9 @@ export interface operations {
                         };
                         exclude?: {
                             chainIds?: number[];
-                            tokens?: (string | ("ETH" | "USDC" | "WETH" | "USDT" | "USDT0" | "BNB" | "WBNB" | "XDAI" | "WXDAI" | "POL" | "WPOL" | "MON" | "WMON" | "S" | "WS" | "HYPE" | "WHYPE" | "USDG" | "XPL" | "WXPL" | "MockUSD" | "TRX" | "WTRX" | "SOL" | "WSOL"))[];
+                            tokens?: (string | ("ETH" | "USDC" | "WETH" | "USDT" | "USDT0" | "BNB" | "WBNB" | "XDAI" | "WXDAI" | "POL" | "WPOL" | "MON" | "WMON" | "S" | "WS" | "HYPE" | "WHYPE" | "USDG" | "XPL" | "WXPL" | "AVAX" | "WAVAX" | "MockUSD" | "TRX" | "WTRX" | "SOL" | "WSOL"))[];
                             chainTokens?: {
-                                [key: string]: (string | ("ETH" | "USDC" | "WETH" | "USDT" | "USDT0" | "BNB" | "WBNB" | "XDAI" | "WXDAI" | "POL" | "WPOL" | "MON" | "WMON" | "S" | "WS" | "HYPE" | "WHYPE" | "USDG" | "XPL" | "WXPL" | "MockUSD" | "TRX" | "WTRX" | "SOL" | "WSOL"))[];
+                                [key: string]: (string | ("ETH" | "USDC" | "WETH" | "USDT" | "USDT0" | "BNB" | "WBNB" | "XDAI" | "WXDAI" | "POL" | "WPOL" | "MON" | "WMON" | "S" | "WS" | "HYPE" | "WHYPE" | "USDG" | "XPL" | "WXPL" | "AVAX" | "WAVAX" | "MockUSD" | "TRX" | "WTRX" | "SOL" | "WSOL"))[];
                             };
                         };
                     };
@@ -3287,7 +3294,7 @@ export interface operations {
                          * @description Reserved for future use. No effect today.
                          * @enum {string}
                          */
-                        feeToken?: "ETH" | "USDC" | "WETH" | "USDT" | "USDT0" | "BNB" | "WBNB" | "XDAI" | "WXDAI" | "POL" | "WPOL" | "MON" | "WMON" | "S" | "WS" | "HYPE" | "WHYPE" | "USDG" | "XPL" | "WXPL" | "MockUSD" | "TRX" | "WTRX" | "SOL" | "WSOL";
+                        feeToken?: "ETH" | "USDC" | "WETH" | "USDT" | "USDT0" | "BNB" | "WBNB" | "XDAI" | "WXDAI" | "POL" | "WPOL" | "MON" | "WMON" | "S" | "WS" | "HYPE" | "WHYPE" | "USDG" | "XPL" | "WXPL" | "AVAX" | "WAVAX" | "MockUSD" | "TRX" | "WTRX" | "SOL" | "WSOL";
                         appFees?: {
                             /**
                              * @description App fee rate in basis points of the input value (0–10000 = 0–100%).
@@ -3322,7 +3329,7 @@ export interface operations {
                          */
                         selectionStrategy?: "cheapest" | "fastest" | "best";
                         /**
-                         * @description Absolute unix timestamp (seconds) overriding the on-chain fill deadline. **TOKENLESS intents only** — ignored on every other route. Must be between `now + 120s` and `now + 86400s`. The bundle claim/nonce expiry and the response `expiresAt` track this value automatically.
+                         * @description Absolute unix timestamp (seconds) overriding the on-chain fill deadline. **TOKENLESS intents only.** If the intent resolves to any other route (cross-chain or same-chain), the request is **rejected** with `INVALID_CUSTOM_DEADLINE` (422) rather than silently ignoring the override. Must be between `now + 120s` and `now + 86400s`. The bundle claim/nonce expiry and the response `expiresAt` track this value automatically.
                          * @example 1893456000
                          */
                         customDeadline?: number;
@@ -3574,6 +3581,19 @@ export interface operations {
                                         };
                                         /** @description Aggregate integrator app fee */
                                         app: {
+                                            /**
+                                             * @description Total cost of this category in USD, regardless of who pays.
+                                             * @example 0.029
+                                             */
+                                            usd: number;
+                                            /**
+                                             * @description True when a sponsor absorbs some or all of this category. The user-vs-sponsor split is not surfaced.
+                                             * @example false
+                                             */
+                                            sponsored: boolean;
+                                        };
+                                        /** @description Rhinestone's surcharge on the sponsored fee, charged to the sponsor. 0 when the intent is not sponsored. */
+                                        sponsorSurcharge: {
                                             /**
                                              * @description Total cost of this category in USD, regardless of who pays.
                                              * @example 0.029
