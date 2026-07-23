@@ -245,7 +245,11 @@ export function buildIntentSigningInput(
       ? targetCandidate
       : undefined
   return {
-    id: keccak256(stringToHex(quote.intentId)),
+    // Standalone `signIntent(SignData)` builds a synthetic quote with no
+    // intentId; fall back to the last origin payload hash so the signing-task
+    // namespace stays deterministic rather than relying on `stringToHex`
+    // coercing `undefined` to an empty string.
+    id: quote.intentId ? keccak256(stringToHex(quote.intentId)) : lastOrigin.id,
     preparedSignatureMode: sessions
       ? Object.values(sessions).some(({ verifyExecutions }) => verifyExecutions)
         ? 'session-with-execution-verification'

@@ -490,4 +490,24 @@ describe('internal core composition', () => {
     expect(base.orchestrator.submitIntent).not.toHaveBeenCalled()
     expect(base.dependencies.bundler.send).not.toHaveBeenCalled()
   })
+
+  test('signs raw SignData through the standalone signIntent path (no intent id)', async () => {
+    const { composition, context } = fixture()
+    const workflows = composition.createAccount(context).workflows
+    const typedData = {
+      domain: { chainId: 1, verifyingContract: target },
+      types: { Test: [{ name: 'value', type: 'uint256' }] },
+      primaryType: 'Test',
+      message: { value: 1n },
+    } as const
+
+    const signed = await workflows.signIntentFromSignData(context, {
+      signData: { origin: [typedData], destination: typedData },
+      targetChain: chain,
+    })
+
+    expect(signed.originSignatures).toHaveLength(1)
+    expect(signed.originSignatures[0]).toMatch(/^0x/u)
+    expect(signed.destinationSignature).toMatch(/^0x/u)
+  })
 })
