@@ -11,9 +11,10 @@ export type SdkAuthInput =
       getIntentExtensionToken?: (intentInput: unknown) => Promise<string>
     }
 
-export type ProviderInput =
-  | { type: 'alchemy'; apiKey: string }
-  | { type: 'custom'; urls: Record<number, string> }
+export type ProviderInput = {
+  type: 'custom'
+  urls: Record<number, string>
+}
 
 export type ServiceInput =
   | {

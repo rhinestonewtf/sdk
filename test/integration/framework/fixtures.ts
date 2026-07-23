@@ -1,4 +1,3 @@
-import { chainRegistry } from '@rhinestone/shared-configs'
 import {
   type Address,
   encodeFunctionData,
@@ -9,10 +8,9 @@ import {
 } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import type { Chain } from 'viem/chains'
-import { sharedChainCatalog } from '../../../src/chains/catalog'
-import { getTokenAddress } from '../../../src/chains/tokens'
 import type { Session } from '../../../src/index'
 import { toSession } from '../../../src/smart-sessions/index'
+import { getTokenAddress } from './tokens'
 
 export const noopTarget: Address = '0xd8da6bf26964af9d7eed9e03e53415d37aa96045'
 
@@ -44,7 +42,7 @@ export function createUsdcRequestWithoutFunds(chainId: number) {
   return {
     tokenRequests: [
       {
-        address: getTokenAddress(sharedChainCatalog, 'USDC', chainId),
+        address: getTokenAddress('USDC', chainId),
         amount: 1_000_000n,
       },
     ],
@@ -52,13 +50,7 @@ export function createUsdcRequestWithoutFunds(chainId: number) {
 }
 
 export function createUnfundedUsdcTransferCall(chain: Chain) {
-  const usdcAddress = chainRegistry[chain.id.toString()].tokens.find(
-    (token) => token.symbol === 'USDC',
-  )?.address as Address | undefined
-
-  if (!usdcAddress) {
-    throw new Error(`USDC is not configured for chain ${chain.id}`)
-  }
+  const usdcAddress = getTokenAddress('USDC', chain.id)
 
   return {
     to: usdcAddress,

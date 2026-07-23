@@ -1,7 +1,5 @@
 import { type Address, encodeFunctionData, erc20Abi } from 'viem'
 import { describe, test } from 'vitest'
-import { sharedChainCatalog } from '../../../src/chains/catalog'
-import { getTokenAddress } from '../../../src/chains/tokens'
 import { SimulationFailedError } from '../../../src/errors/index'
 import type { RhinestoneAccount, Session } from '../../../src/index'
 import { toSession } from '../../../src/smart-sessions/index'
@@ -15,12 +13,13 @@ import {
   expectNoFailedOperations,
   expectOutcome,
 } from '../framework/runner'
+import { getTokenAddress } from '../framework/tokens'
 
 const ALICE: Address = '0x1111111111111111111111111111111111111111'
 const BOB: Address = '0x2222222222222222222222222222222222222222'
 const CAROL: Address = '0x3333333333333333333333333333333333333333'
 
-const usdc = getTokenAddress(sharedChainCatalog, 'USDC', sourceChain.id)
+const usdc = getTokenAddress('USDC', sourceChain.id)
 
 // Comfortably above every transfer amount below, so an allowed transfer settles
 // against a real balance and a rejected one can only be the policy talking —

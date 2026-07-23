@@ -1,6 +1,4 @@
 import { type Address, type Hex, toFunctionSelector, zeroHash } from 'viem'
-import { type ChainCatalog, sharedChainCatalog } from '../../../chains/catalog'
-import { getWrappedNativeTokenAddress } from '../../../chains/tokens'
 import { defineValidator } from '../definition'
 import { resolvePermissions } from '../permissions'
 import {
@@ -46,7 +44,9 @@ function usesEns(definition: SessionDefinition['owners']): boolean {
 
 export interface ResolveSessionOptions {
   readonly environment?: 'production' | 'development'
-  readonly catalog?: ChainCatalog
+  // The chain's wrapped-native token address. Provide it to permit the
+  // native-wrap `deposit()` action; omit for a fully offline, pure build.
+  readonly wrappedNativeToken?: Address
 }
 
 export function resolveSessionData(
@@ -57,7 +57,6 @@ export function resolveSessionData(
     throw new Error('ENS owners are not supported for smart sessions')
   }
   const environment = options.environment ?? 'production'
-  const catalog = options.catalog ?? sharedChainCatalog
   const addresses = resolvePolicyAddresses(definition.policyAddresses)
   const validator = resolveValidator(
     defineValidator(definition.owners, 'session-validator'),
@@ -77,16 +76,23 @@ export function resolveSessionData(
     ({ fallbackPolicies }) => fallbackPolicies,
   )
   const injectedActions: SessionAction[] = [
-    {
-      target: getWrappedNativeTokenAddress(catalog, definition.chain.id),
-      selector: toFunctionSelector({
-        type: 'function',
-        name: 'deposit',
-        inputs: [],
-        outputs: [],
-        stateMutability: 'payable',
-      }),
-    },
+    // Native-wrap `deposit()` is only permitted when the caller supplies the
+    // chain's wrapped-native token (e.g. via `RhinestoneSDK.createSession`,
+    // which resolves it from `/chains`).
+    ...(options.wrappedNativeToken
+      ? [
+          {
+            target: options.wrappedNativeToken,
+            selector: toFunctionSelector({
+              type: 'function',
+              name: 'deposit',
+              inputs: [],
+              outputs: [],
+              stateMutability: 'payable',
+            }),
+          },
+        ]
+      : []),
     {
       policies: [{ type: 'intent-execution' }, ...permitFallbackPolicies],
     },
@@ -143,8 +149,12 @@ export function toSession(
   options: ResolveSessionOptions = {},
 ): Session {
   const environment = options.environment ?? 'production'
-  const catalog = options.catalog ?? sharedChainCatalog
-  const data = resolveSessionData(definition, { environment, catalog })
+  const data = resolveSessionData(definition, {
+    environment,
+    ...(options.wrappedNativeToken
+      ? { wrappedNativeToken: options.wrappedNativeToken }
+      : {}),
+  })
   const expandedClaims = (definition.crossChainPermits ?? []).map(
     (input) =>
       expandCrossChainPermit(resolveCrossChainPermission(input), environment)

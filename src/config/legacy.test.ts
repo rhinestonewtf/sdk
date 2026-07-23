@@ -113,7 +113,10 @@ describe('legacy account config compatibility', () => {
     }
     const captured = captureLegacySdkConfig(sdkInput, {})
 
-    sdkInput.provider = { type: 'alchemy', apiKey: 'replacement' }
+    sdkInput.provider = {
+      type: 'custom',
+      urls: { 1: 'https://replacement.test' },
+    }
     urls[1] = 'https://mutated.test'
 
     expect(captured.provider).toBe(initialProvider)

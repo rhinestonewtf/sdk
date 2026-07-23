@@ -1,5 +1,5 @@
 import { WaitForUserOperationReceiptTimeoutError } from 'viem/account-abstraction'
-import { getSupportedChain, sharedChainCatalog } from '../../chains/catalog'
+import { getChainById } from '../../chains/catalog'
 import type {
   SubmittedUserOperation,
   UserOperationStatus,
@@ -48,9 +48,7 @@ async function pollForUserOperationStatus<CompatibilityConfig>(
   timeoutError: () => WaitForUserOperationReceiptTimeoutError,
 ): Promise<UserOperationStatus> {
   const startedAt = context.clock.now()
-  const blockTime =
-    getSupportedChain(sharedChainCatalog, submitted.chain.id).blockTime ??
-    12_000
+  const blockTime = getChainById(submitted.chain.id).blockTime ?? 12_000
   const pollIntervalMs = Math.min(
     Math.max(Math.floor(blockTime / 2), 500),
     4_000,

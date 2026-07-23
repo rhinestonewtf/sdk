@@ -1,99 +1,44 @@
-import type { ChainEntry } from '@rhinestone/shared-configs'
-import { type Chain, zeroAddress } from 'viem'
-import { arbitrum, avalanche, base, sepolia } from 'viem/chains'
+import { arbitrum, base } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
-import {
-  getChainReference,
-  getSupportedChain,
-  isTestnet,
-  sharedChainCatalog,
-} from './catalog'
-import {
-  getTokenAddress,
-  getTokenSymbol,
-  getWrappedNativeTokenAddress,
-  normalizeTokenAddress,
-} from './tokens'
+import { getChainById, getChainReference } from './catalog'
+import { normalizeTokenAddress } from './tokens'
 
-describe('shared chain catalog', () => {
-  const accountAddress = '0x0000000000000000000000000000000000000001'
-  test('looks up supported chains and environments', () => {
-    expect(getSupportedChain(sharedChainCatalog, arbitrum.id).id).toBe(
-      arbitrum.id,
-    )
-    expect(isTestnet(sharedChainCatalog, sepolia.id)).toBe(true)
-    expect(isTestnet(sharedChainCatalog, base.id)).toBe(false)
-    expect(getSupportedChain(sharedChainCatalog, avalanche.id).id).toBe(
-      avalanche.id,
-    )
-    expect(() => getSupportedChain(sharedChainCatalog, 81457)).toThrow(
-      'Unsupported chain 81457',
-    )
+describe('runtime chain resolution', () => {
+  test('resolves known viem chains and falls back for unknown ids', () => {
+    expect(getChainById(arbitrum.id).id).toBe(arbitrum.id)
+    expect(getChainById(base.id).name).toBe(base.name)
+
+    // A chain viem doesn't know still resolves — signing must not be gated on
+    // the SDK's bundled viem version.
+    const unknown = getChainById(999_999_999_999)
+    expect(unknown.id).toBe(999_999_999_999)
+    expect(unknown.name).toBe('Chain 999999999999')
+    expect(unknown.nativeCurrency.symbol).toBe('ETH')
   })
 
   test('materializes canonical references', () => {
-    expect(getChainReference(sharedChainCatalog, base.id)).toEqual({
+    expect(getChainReference(base.id)).toEqual({
       kind: 'evm',
       id: base.id,
       caip2: `eip155:${base.id}`,
     })
-    const nonEvmCatalog = {
-      getChain: () => base,
-      getEntry: () => undefined,
-      getSupportedChainIds: () => [792703809],
-    }
-    expect(getChainReference(nonEvmCatalog, 792703809)).toMatchObject({
+    expect(getChainReference(792703809)).toMatchObject({
       kind: 'non-evm',
       namespace: 'solana',
     })
-    expect(sharedChainCatalog.getSupportedChainIds()).toContain(base.id)
-    expect(sharedChainCatalog.getEntry(base.id)).toBeDefined()
   })
+})
 
-  test('resolves tokens without ambient config', () => {
-    const usdc = getTokenAddress(sharedChainCatalog, 'USDC', arbitrum.id)
-    expect(getTokenSymbol(sharedChainCatalog, usdc, arbitrum.id)).toBe('USDC')
-    expect(getWrappedNativeTokenAddress(sharedChainCatalog, base.id)).toBe(
-      '0x4200000000000000000000000000000000000006',
-    )
-    expect(
-      normalizeTokenAddress(sharedChainCatalog, usdc, arbitrum.id, false),
-    ).toBe(usdc)
-    expect(
-      normalizeTokenAddress(sharedChainCatalog, 'mint', 792703809, true),
-    ).toBe('mint')
+describe('normalizeTokenAddress', () => {
+  const usdc = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831'
 
-    const token = '0x0000000000000000000000000000000000000002'
-    const catalog = {
-      getChain: () => base as Chain,
-      getSupportedChainIds: () => [base.id],
-      getEntry: () =>
-        ({
-          tokens: [
-            { symbol: 'USDC', address: token },
-            { symbol: 'WETH', address: accountAddress },
-          ],
-        }) as ChainEntry,
-    }
-    expect(getTokenAddress(catalog, 'USDC', base.id)).toBe(token)
-    expect(getTokenSymbol(catalog, accountAddress, base.id)).toBe('WETH')
-    expect(getTokenSymbol(catalog, zeroAddress, base.id)).toBeUndefined()
-    expect(getWrappedNativeTokenAddress(catalog, base.id)).toBe(accountAddress)
-    expect(normalizeTokenAddress(catalog, 'USDC', base.id, false)).toBe(token)
-    expect(() => getTokenAddress(catalog, 'USDT', base.id)).toThrow(
-      'Unsupported token',
-    )
-
-    const empty = { ...catalog, getEntry: () => undefined }
-    expect(() => getTokenAddress(empty, 'USDC', base.id)).toThrow(
-      'Unsupported chain',
-    )
-    const noWrapped = {
-      ...catalog,
-      getEntry: () => ({ tokens: [] }) as unknown as ChainEntry,
-    }
-    expect(() => getWrappedNativeTokenAddress(noWrapped, base.id)).toThrow(
-      'Unsupported token WETH',
+  test('passes addresses through and rejects EVM symbols', () => {
+    expect(normalizeTokenAddress(usdc, arbitrum.id, false)).toBe(usdc)
+    // Non-EVM chains pass their token identifiers through unchanged.
+    expect(normalizeTokenAddress('mint', 792703809, true)).toBe('mint')
+    // v2 no longer accepts symbols on EVM chains.
+    expect(() => normalizeTokenAddress('USDC', arbitrum.id, false)).toThrow(
+      'Expected a token address',
     )
   })
 })

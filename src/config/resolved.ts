@@ -17,7 +17,6 @@ export type ResolvedAuth =
 
 export type ResolvedProvider =
   | { readonly kind: 'public' }
-  | { readonly kind: 'alchemy'; readonly apiKey: string }
   | {
       readonly kind: 'custom'
       readonly urls: Readonly<Record<number, string>>

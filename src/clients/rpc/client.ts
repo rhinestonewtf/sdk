@@ -1,6 +1,6 @@
 import type { Chain } from 'viem'
 import { createPublicClient } from 'viem'
-import { getSupportedChain, sharedChainCatalog } from '../../chains/catalog'
+import { getChainById } from '../../chains/catalog'
 import type { EvmChainReference } from '../../chains/types'
 import type { RpcPort, RpcReadPort } from './port'
 import { createRpcTransport } from './transport'
@@ -78,10 +78,7 @@ export function createRpcPort(provider: RpcProvider): RpcPort {
     forChain: (chain: EvmChainReference) => {
       const existing = readers.get(chain.id)
       if (existing) return existing
-      const reader = createRpcReadPort(
-        getSupportedChain(sharedChainCatalog, chain.id),
-        provider,
-      )
+      const reader = createRpcReadPort(getChainById(chain.id), provider)
       readers.set(chain.id, reader)
       return reader
     },

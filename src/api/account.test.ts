@@ -94,6 +94,18 @@ describe('account config compatibility snapshot', () => {
             headers: { 'Content-Type': 'application/json' },
           })
         }
+        if (url.includes('/chains')) {
+          return new Response(
+            JSON.stringify({
+              'eip155:1': {
+                name: 'Ethereum',
+                testnet: false,
+                supportedTokens: 'all',
+              },
+            }),
+            { headers: { 'Content-Type': 'application/json' } },
+          )
+        }
         const body = JSON.parse(String(init?.body)) as { id: number }
         return new Response(
           JSON.stringify({ jsonrpc: '2.0', id: body.id, result: '0x' }),

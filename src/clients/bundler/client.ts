@@ -1,6 +1,6 @@
 import { createPublicClient } from 'viem'
 import { entryPoint07Address } from 'viem/account-abstraction'
-import { getSupportedChain, sharedChainCatalog } from '../../chains/catalog'
+import { getChainById } from '../../chains/catalog'
 import type {
   ResolvedProvider,
   ResolvedServiceEndpoint,
@@ -43,7 +43,7 @@ export function createBundlerClient(input: {
     getGasPrice: async (chain) => {
       if (input.endpoint?.kind === 'custom') {
         const client = createPublicClient({
-          chain: getSupportedChain(sharedChainCatalog, chain.id),
+          chain: getChainById(chain.id),
           transport: createRpcTransport(chain.id, input.provider),
         })
         const fees = await client.estimateFeesPerGas({ type: 'eip1559' })

@@ -4,7 +4,7 @@ import { createAccountConstruction } from '../accounts/construction'
 import { FactoryArgsNotAvailableError } from '../accounts/error'
 import { createAccountAdapter } from '../accounts/registry'
 import { toEvmChainReference } from '../chains/caip2'
-import { getSupportedChain, sharedChainCatalog } from '../chains/catalog'
+import { getChainById } from '../chains/catalog'
 import { createBundlerClient } from '../clients/bundler/client'
 import { createConfiguredOrchestratorClient } from '../clients/orchestrator/client'
 import { createPaymasterClient } from '../clients/paymaster/client'
@@ -478,14 +478,9 @@ async function signEip7702Authorizations(
 }
 
 function referenceChain(): import('../chains/types').EvmChainReference {
-  for (const id of sharedChainCatalog.getSupportedChainIds()) {
-    try {
-      return toEvmChainReference(id)
-    } catch {
-      // Not an EVM chain; keep looking.
-    }
-  }
-  throw new Error('No EVM chain is available for account initialization')
+  // Account addresses are CREATE2 and chain-independent, so initialization only
+  // needs some EVM chain reference. With no bundled chain set, use mainnet.
+  return toEvmChainReference(1)
 }
 
 function accountInitData(account: ResolvedAccountConfig): {
@@ -1032,7 +1027,7 @@ function signerInvoker(
     dependencies.signerInvoker ??
     createSignerInvocationPort({
       signers: signerRegistry(account, validator),
-      resolveChain: (chain) => getSupportedChain(sharedChainCatalog, chain.id),
+      resolveChain: (chain) => getChainById(chain.id),
     })
   )
 }

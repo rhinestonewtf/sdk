@@ -10,7 +10,7 @@ import type {
 } from 'viem'
 import type { UserOperationReceipt } from 'viem/account-abstraction'
 import { parseCaip2, toEvmChainReference } from '../chains/caip2'
-import { getChainReference, sharedChainCatalog } from '../chains/catalog'
+import { getChainById, getChainReference } from '../chains/catalog'
 import type { DestinationChain } from '../chains/non-evm'
 import { normalizeTokenAddress } from '../chains/tokens'
 import type {
@@ -466,14 +466,9 @@ function toSignedTransactionData(
 }
 
 function referenceChain(): import('../chains/types').EvmChainReference {
-  for (const id of sharedChainCatalog.getSupportedChainIds()) {
-    try {
-      return toEvmChainReference(id)
-    } catch {
-      // Not an EVM chain; keep looking.
-    }
-  }
-  throw new Error('No EVM chain is available for account initialization')
+  // Account addresses are CREATE2 and chain-independent, so initialization only
+  // needs some EVM chain reference. With no bundled chain set, use mainnet.
+  return toEvmChainReference(1)
 }
 
 export function createAccountFacade(
@@ -891,10 +886,7 @@ function destinationChainReference(
   if ('kind' in targetChain && typeof targetChain.caip2 === 'string') {
     return parseCaip2(targetChain.caip2)
   }
-  return getChainReference(
-    sharedChainCatalog,
-    (targetChain as { id: number }).id,
-  )
+  return getChainReference((targetChain as { id: number }).id)
 }
 
 // Public `Transaction` -> internal `IntentInput`. Owned here because the facade
@@ -906,18 +898,16 @@ export function adaptTransaction(
 ): IntentInput {
   const destination =
     'chain' in transaction
-      ? getChainReference(sharedChainCatalog, transaction.chain.id)
+      ? getChainReference(transaction.chain.id)
       : 'kind' in transaction.targetChain
         ? parseCaip2(transaction.targetChain.caip2)
-        : getChainReference(sharedChainCatalog, transaction.targetChain.id)
+        : getChainReference(transaction.targetChain.id)
   const destinationChainId =
     destination.kind === 'evm' ? destination.id : undefined
   const sourceChains =
     'chain' in transaction
-      ? [getChainReference(sharedChainCatalog, transaction.chain.id)]
-      : transaction.sourceChains?.map((chain) =>
-          getChainReference(sharedChainCatalog, chain.id),
-        )
+      ? [getChainReference(transaction.chain.id)]
+      : transaction.sourceChains?.map((chain) => getChainReference(chain.id))
   const evmSources = sourceChains?.flatMap((chain) =>
     chain.kind === 'evm' ? [chain] : [],
   )
@@ -931,12 +921,7 @@ export function adaptTransaction(
       token:
         destinationChainId === undefined
           ? request.address
-          : normalizeTokenAddress(
-              sharedChainCatalog,
-              request.address,
-              destinationChainId,
-              false,
-            ),
+          : normalizeTokenAddress(request.address, destinationChainId, false),
       ...(request.amount === undefined ? {} : { amount: request.amount }),
     })),
     ...(transaction.recipient
@@ -1089,8 +1074,7 @@ function adaptCall(call: CallInput, chainId: number | undefined) {
         chain: { id: number }
         account: Address
       }) => {
-        const chain = sharedChainCatalog.getChain(ctx.chain.id)
-        if (!chain) throw new Error(`Unsupported chain ${ctx.chain.id}`)
+        const chain = getChainById(ctx.chain.id)
         const value = await call.resolve({
           config: ctx.config as never,
           chain,
@@ -1113,12 +1097,7 @@ function normalizeCall(
   chainId: number,
 ) {
   return {
-    target: normalizeTokenAddress(
-      sharedChainCatalog,
-      call.to,
-      chainId,
-      false,
-    ) as Address,
+    target: normalizeTokenAddress(call.to, chainId, false) as Address,
     value: call.value ?? 0n,
     data: call.data ?? '0x',
   }
@@ -1173,7 +1152,6 @@ function adaptSourceAssets(
         amount?: bigint
       }[]) {
         const token = normalizeTokenAddress(
-          sharedChainCatalog,
           item.address,
           item.chain.id,
           false,

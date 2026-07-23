@@ -10,10 +10,9 @@ import {
   type WalletClient,
 } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
-import { sharedChainCatalog } from '../../../src/chains/catalog'
-import { getTokenAddress } from '../../../src/chains/tokens'
 import type { RhinestoneAccount } from '../../../src/index'
 import { getIntegrationFunderPrivateKey } from '../config/environment'
+import { getTokenAddress } from './tokens'
 
 // Optional per-chain RPC override, e.g. INTEGRATION_RPC_URL_84532=https://...
 // Falls back to the viem chain's default public RPC.
@@ -122,7 +121,7 @@ async function ensureUsdc(
   chain: Chain,
   required: bigint,
 ): Promise<void> {
-  const usdc = getTokenAddress(sharedChainCatalog, 'USDC', chain.id)
+  const usdc = getTokenAddress('USDC', chain.id)
   const publicClient = getPublicClient(chain)
   const balance = await publicClient.readContract({
     address: usdc,
@@ -174,7 +173,7 @@ function formatEther(wei: bigint): string {
 
 export function usdcBalanceOf(address: Address, chain: Chain): Promise<bigint> {
   return getPublicClient(chain).readContract({
-    address: getTokenAddress(sharedChainCatalog, 'USDC', chain.id),
+    address: getTokenAddress('USDC', chain.id),
     abi: erc20Abi,
     functionName: 'balanceOf',
     args: [address],

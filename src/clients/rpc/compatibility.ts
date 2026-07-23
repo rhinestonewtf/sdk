@@ -9,9 +9,6 @@ function resolveCompatibilityProvider(
   provider: ProviderInput | undefined,
 ): RpcProvider {
   if (!provider) return { kind: 'public' }
-  if (provider.type === 'alchemy') {
-    return { kind: 'alchemy', apiKey: provider.apiKey }
-  }
   return { kind: 'custom', urls: provider.urls }
 }
 

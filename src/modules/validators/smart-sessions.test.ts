@@ -72,19 +72,24 @@ const baseSession: Session = toSession({
   owners: { type: 'ecdsa', accounts: [accountA] },
 })
 
-const sessionWithAction: Session = toSession({
-  chain: base,
-  owners: { type: 'ecdsa', accounts: [accountA] },
-  permissions: [
-    {
-      abi: erc20Abi,
-      address: '0x1111111111111111111111111111111111111111' as Address,
-      functions: {
-        transfer: {},
+const sessionWithAction: Session = toSession(
+  {
+    chain: base,
+    owners: { type: 'ecdsa', accounts: [accountA] },
+    permissions: [
+      {
+        abi: erc20Abi,
+        address: '0x1111111111111111111111111111111111111111' as Address,
+        functions: {
+          transfer: {},
+        },
       },
-    },
-  ],
-})
+    ],
+  },
+  // Supply the wrapped-native token so the native-wrap `deposit()` action is
+  // injected (v2 `toSession` is pure: without it the action is omitted).
+  { wrappedNativeToken: '0x4200000000000000000000000000000000000006' },
+)
 
 const dummySig = `0x${'00'.repeat(65)}` as Hex
 const USDC: Address = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'
@@ -571,6 +576,28 @@ describe('getSessionData', () => {
     // injected dummy preclaimop action
     expect(data.actions[3].actionTarget).toBe(DUMMY_PRECLAIMOP_TARGET)
     expect(data.actions[3].actionTargetSelector).toBe(DUMMY_PRECLAIMOP_SELECTOR)
+  })
+
+  test('omits the native-wrap action without a wrapped-native token', () => {
+    const pure = toSession({
+      chain: base,
+      owners: { type: 'ecdsa', accounts: [accountA] },
+      permissions: [
+        {
+          abi: erc20Abi,
+          address: '0x1111111111111111111111111111111111111111' as Address,
+          functions: { transfer: {} },
+        },
+      ],
+    })
+    const data = getSessionData(pure)
+    // user action + intent-execution fallback + dummy preclaimop (no WETH deposit)
+    expect(data.actions).toHaveLength(3)
+    expect(
+      data.actions.some(
+        (a) => a.actionTarget === '0x4200000000000000000000000000000000000006',
+      ),
+    ).toBe(false)
   })
 
   test('dummy preclaimop action uses sudo policy', () => {

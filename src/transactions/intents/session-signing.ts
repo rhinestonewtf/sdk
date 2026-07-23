@@ -7,7 +7,7 @@ import {
   type TypedDataDefinition,
 } from 'viem'
 import type { AccountSignatureEnvelope } from '../../accounts/types'
-import { getSupportedChain, sharedChainCatalog } from '../../chains/catalog'
+import { getChainById } from '../../chains/catalog'
 import { getValidatorCapabilities } from '../../modules/validators/capabilities'
 import { defineValidator } from '../../modules/validators/definition'
 import type { Permit2ClaimMessage } from '../../modules/validators/policies/claim/permit2'
@@ -69,7 +69,7 @@ export function createIntentSessionSignerInvoker<CompatibilityConfig>(
   }
   const session = createSignerInvocationPort({
     signers,
-    resolveChain: (chain) => getSupportedChain(sharedChainCatalog, chain.id),
+    resolveChain: (chain) => getChainById(chain.id),
   })
   return {
     has: (signer) => session.has?.(signer) ?? fallback.has?.(signer) ?? false,

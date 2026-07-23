@@ -1,3 +1,4 @@
+import type { ChainCatalog } from './chain-catalog'
 import type {
   OrchestratorAppFeeBalances,
   OrchestratorIntentRequest,
@@ -47,10 +48,18 @@ export interface ProjectQueryPort {
   readonly getAppFeeBalances: () => Promise<OrchestratorAppFeeBalances>
 }
 
+export interface ChainCatalogPort {
+  // Lazily fetch (once) the runtime chain catalog from `GET /chains`. Cached for
+  // the lifetime of the client; callers that need chain facts await this
+  // instead of relying on bundled chain data.
+  readonly getChainCatalog: () => Promise<ChainCatalog>
+}
+
 export interface OrchestratorPort
   extends IntentQuotePort,
     IntentSubmissionPort,
     IntentStatusPort,
     IntentSplitPort,
     AccountQueryPort,
-    ProjectQueryPort {}
+    ProjectQueryPort,
+    ChainCatalogPort {}

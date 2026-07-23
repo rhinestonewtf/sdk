@@ -30,7 +30,6 @@
       "name": "@rhinestone/sdk",
       "version": "2.0.0-beta.43",
       "dependencies": {
-        "@rhinestone/shared-configs": "1.7.16",
         "solady": "^0.1.26",
       },
       "peerDependencies": {
@@ -206,8 +205,6 @@
     "@redocly/openapi-core": ["@redocly/openapi-core@1.34.15", "", { "dependencies": { "@redocly/ajv": "8.11.2", "@redocly/config": "0.22.0", "colorette": "1.4.0", "https-proxy-agent": "7.0.6", "js-levenshtein": "1.1.6", "js-yaml": "4.1.1", "minimatch": "5.1.9", "pluralize": "8.0.0", "yaml-ast-parser": "0.0.43" } }, "sha512-HAwCnNyKcs5XGQqms+9t7OdAPM/5TDstmhF+0i7tdCFato2QKuYIlyWETwkXd8c5zbltr1oB+6y9NTeQLr2d6Q=="],
 
     "@rhinestone/sdk": ["@rhinestone/sdk@workspace:src"],
-
-    "@rhinestone/shared-configs": ["@rhinestone/shared-configs@1.7.16", "", { "peerDependencies": { "typescript": "^5", "viem": "^2.55.0" } }, "sha512-ghWNUNITiqj0ddhx/48xOLBovTtIOWhu0X3W7PpQeYkbjbZSHmTGEW+Jl7BKOa+hwqKed8SdThRGUOaoX+GpwQ=="],
 
     "@rollup/rollup-android-arm-eabi": ["@rollup/rollup-android-arm-eabi@4.40.1", "", { "os": "android", "cpu": "arm" }, "sha512-kxz0YeeCrRUHz3zyqvd7n+TVRlNyTifBsmnmNPtk3hQURUyG9eAB+usz6DAwagMusjx/zb3AjvDUvhFGDAexGw=="],
 

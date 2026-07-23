@@ -3,6 +3,7 @@ import { privateKeyToAccount } from 'viem/accounts'
 import { arbitrum, base as baseChain } from 'viem/chains'
 import { describe, expect, test, vi } from 'vitest'
 import { toEvmChainReference } from '../chains/caip2'
+import { ChainCatalog } from '../clients/orchestrator/chain-catalog'
 import type { OrchestratorPort } from '../clients/orchestrator/port'
 import type { RpcReadPort } from '../clients/rpc/port'
 import { resolveAccountConfig, resolveSdkConfig } from '../config/resolve'
@@ -86,6 +87,12 @@ function fixture() {
       withdrawableUsd: 1,
       pendingUsd: 2,
     })),
+    getChainCatalog: vi.fn(
+      async () =>
+        new ChainCatalog({
+          1: { name: 'Ethereum', testnet: false, supportedTokens: 'all' },
+        }),
+    ),
   }
   const dependencies = {
     orchestrator,

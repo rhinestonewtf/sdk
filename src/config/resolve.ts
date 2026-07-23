@@ -102,9 +102,6 @@ function resolveAuth(input: SdkConstructionInput): ResolvedAuth {
 
 function resolveProvider(input: ProviderInput | undefined): ResolvedProvider {
   if (!input) return { kind: 'public' }
-  if (input.type === 'alchemy') {
-    return { kind: 'alchemy', apiKey: input.apiKey }
-  }
   return { kind: 'custom', urls: input.urls }
 }
 

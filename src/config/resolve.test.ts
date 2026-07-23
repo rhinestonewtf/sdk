@@ -106,23 +106,21 @@ const sdkInputArbitrary: fc.Arbitrary<SdkConstructionInput> = fc
     apiKey: fc.string({ minLength: 1, maxLength: 20 }),
     endpointUrl: fc.option(fc.webUrl(), { nil: undefined }),
     development: fc.boolean(),
-    providerKind: fc.constantFrom('public', 'alchemy', 'custom'),
+    providerKind: fc.constantFrom('public', 'custom'),
     providerKey: fc.string({ minLength: 1, maxLength: 20 }),
   })
   .map(({ apiKey, endpointUrl, development, providerKind, providerKey }) => ({
     apiKey,
     ...(endpointUrl === undefined ? {} : { endpointUrl }),
     ...(development ? { useDevContracts: true } : {}),
-    ...(providerKind === 'alchemy'
-      ? { provider: { type: 'alchemy' as const, apiKey: providerKey } }
-      : providerKind === 'custom'
-        ? {
-            provider: {
-              type: 'custom' as const,
-              urls: { 1: `https://${providerKey}.invalid` },
-            },
-          }
-        : {}),
+    ...(providerKind === 'custom'
+      ? {
+          provider: {
+            type: 'custom' as const,
+            urls: { 1: `https://${providerKey}.invalid` },
+          },
+        }
+      : {}),
   }))
 
 function serializeInput(value: unknown): string {
@@ -275,7 +273,7 @@ describe('SDK config resolution', () => {
     const sdk = resolveSdkConfig({
       apiKey: 'test',
       endpointUrl: 'https://orchestrator.test',
-      provider: { type: 'alchemy', apiKey: 'alchemy' },
+      provider: { type: 'custom', urls: { 1: 'https://rpc.test' } },
       bundler: { type: 'pimlico', apiKey: 'bundler' },
       paymaster: { type: 'custom', url: { 1: 'https://paymaster.test' } },
       useDevContracts: true,
@@ -338,7 +336,7 @@ describe('SDK config resolution', () => {
         profile: 'current-v2',
         environment: 'development',
         auth: 'api-key',
-        provider: 'alchemy',
+        provider: 'custom',
         bundler: 'pimlico',
         paymaster: 'custom',
       },
@@ -631,7 +629,7 @@ describe('account invocation materialization', () => {
   test('reflects live compatibility mutations under the original profile', () => {
     const sdkInput: SdkConstructionInput = {
       apiKey: 'test',
-      provider: { type: 'alchemy', apiKey: 'initial' },
+      provider: { type: 'custom', urls: { 1: 'https://initial.test' } },
       headers: { initial: 'true' },
     }
     const sdk = resolveSdkConfig(sdkInput)

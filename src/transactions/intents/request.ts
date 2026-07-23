@@ -1,6 +1,5 @@
 import type { Call } from '../../calls/types'
 import { chainIdFromReference } from '../../chains/caip2'
-import { sharedChainCatalog } from '../../chains/catalog'
 import { normalizeTokenAddress } from '../../chains/tokens'
 import type {
   OrchestratorAccount,
@@ -30,7 +29,6 @@ export function buildIntentRequest<CompatibilityConfig>(input: {
     destinationExecutions: input.calls.map(toExecution),
     tokenRequests: input.transaction.tokenRequests.map((request) => ({
       tokenAddress: normalizeTokenAddress(
-        sharedChainCatalog,
         request.token,
         destinationChainId,
         nonEvm,

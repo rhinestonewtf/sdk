@@ -2,6 +2,11 @@ import { formatCaip2 } from '../../chains/caip2'
 import type { ResolvedSdkConfig } from '../../config/resolved'
 import type { OrchestratorAuthPort } from './auth'
 import { createOrchestratorAuth } from './auth'
+import {
+  ChainCatalog,
+  parseChains,
+  type WireChainsResponse,
+} from './chain-catalog'
 import { type FetchPort, fetchOrchestratorJson } from './fetch'
 import {
   mapIntentRequestToWire,
@@ -62,6 +67,10 @@ export function createOrchestratorClient(
     })
   }
 
+  // Memoized so the chain catalog is fetched at most once per client, lazily on
+  // first use — never at account construction.
+  let chainCatalogPromise: Promise<ChainCatalog> | undefined
+
   return {
     createQuote: async (input) =>
       mapQuoteResponseFromWire(
@@ -119,6 +128,13 @@ export function createOrchestratorClient(
         withdrawableUsd: value.withdrawableUsd ?? 0,
         pendingUsd: value.pendingUsd ?? 0,
       }
+    },
+    getChainCatalog: () => {
+      chainCatalogPromise ??= (async () => {
+        const json = (await request({ path: 'chains' })) as WireChainsResponse
+        return new ChainCatalog(parseChains(json))
+      })()
+      return chainCatalogPromise
     },
   }
 }

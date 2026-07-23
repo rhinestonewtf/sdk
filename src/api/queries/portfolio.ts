@@ -1,23 +1,24 @@
 import type { AccountRuntimePort } from '../../accounts/adapter'
 import { toEvmChainReference } from '../../chains/caip2'
-import { isTestnet, sharedChainCatalog } from '../../chains/catalog'
-import type { AccountQueryPort } from '../../clients/orchestrator/port'
+import type {
+  AccountQueryPort,
+  ChainCatalogPort,
+} from '../../clients/orchestrator/port'
 import type { OrchestratorPortfolio } from '../../clients/orchestrator/types'
 
 export async function getPortfolio(input: {
   readonly account: AccountRuntimePort
-  readonly client: AccountQueryPort
+  readonly client: AccountQueryPort & ChainCatalogPort
   readonly onTestnets: boolean
 }): Promise<OrchestratorPortfolio> {
-  const chainIds = sharedChainCatalog
+  // Filter on the catalog's own `testnet` flag — authoritative for every chain
+  // the orchestrator supports (incl. non-EVM and chains newer than the SDK's
+  // viem). Filtering through viem would silently drop unknown chains, so their
+  // balances would disappear until an SDK/viem bump.
+  const catalog = await input.client.getChainCatalog()
+  const chainIds = catalog
     .getSupportedChainIds()
-    .filter((chainId) => {
-      try {
-        return isTestnet(sharedChainCatalog, chainId) === input.onTestnets
-      } catch {
-        return false
-      }
-    })
+    .filter((chainId) => catalog.isTestnet(chainId) === input.onTestnets)
   const accountChainId = chainIds.find((chainId) => {
     try {
       toEvmChainReference(chainId)
