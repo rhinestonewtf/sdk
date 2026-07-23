@@ -1,11 +1,7 @@
 import type { Address } from 'viem'
 import type { AuthProvider } from '../auth/provider'
 import { fromCaip2, isCaip2, toCaip2 } from './caip2'
-import {
-  ChainCatalog,
-  type ChainInfo,
-  type ChainInfoMap,
-} from './chain-catalog'
+import { ChainCatalog, type ChainInfoMap } from './chain-catalog'
 import { API_VERSION, SDK_VERSION } from './consts'
 import {
   type ErrorEnvelope,
@@ -38,6 +34,7 @@ import { convertBigIntFields } from './utils'
 import type {
   WireAppFeeBalancesResponse,
   WireBridgeFill,
+  WireChainsResponse,
   WireCost,
   WireCostInputEntry,
   WireCostOutputEntry,
@@ -124,9 +121,9 @@ export class Orchestrator {
   async getChains(): Promise<ChainInfoMap> {
     const json = (await this.fetch(`${this.serverUrl}/chains`, {
       headers: await this.getHeaders(),
-    })) as Record<string, ChainInfo>
+    })) as WireChainsResponse
     const out: ChainInfoMap = {}
-    for (const [key, info] of Object.entries(json)) {
+    for (const [key, entry] of Object.entries(json)) {
       let id: number
       try {
         id = isCaip2(key) ? fromCaip2(key) : Number(key)
@@ -134,7 +131,16 @@ export class Orchestrator {
         // Skip chains whose CAIP-2 id we can't map to a numeric id.
         continue
       }
-      if (Number.isFinite(id)) out[id] = info
+      if (!Number.isFinite(id)) continue
+      // Adapter boundary: map the generated wire shape → the domain `ChainInfo`.
+      // If the orchestrator renames or drops a field, `wire.gen.ts` regenerates
+      // and this mapping fails to typecheck instead of drifting silently.
+      out[id] = {
+        name: entry.name,
+        testnet: entry.testnet,
+        supportedTokens: entry.supportedTokens,
+        wrappedNativeToken: entry.wrappedNativeToken,
+      }
     }
     return out
   }

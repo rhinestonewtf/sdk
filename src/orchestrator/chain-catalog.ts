@@ -22,9 +22,9 @@ export type ChainInfo = {
   // `'all'` for swap-quoter chains — the orchestrator supports any token there,
   // so no explicit list is returned.
   supportedTokens: 'all' | CatalogToken[]
-  // Optional during the rollout window: orchestrator deployments predating
-  // rhinestonewtf/orchestrator#1758 don't return it yet. Consumers that need it
-  // must handle `undefined` (or wait for the deploy to propagate).
+  // Kept optional so consumers stay robust if the orchestrator ever omits it
+  // (e.g. a rollback). The wire type (`WireChainsResponse`) marks it required,
+  // so field drift is caught at the client adapter — not silently here.
   wrappedNativeToken?: CatalogToken
 }
 

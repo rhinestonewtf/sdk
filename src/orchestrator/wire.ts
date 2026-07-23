@@ -43,3 +43,6 @@ export type WirePortfolioResponse = SuccessJson<'getPortfolio', 200>
 
 // GET /app-fees/balances
 export type WireAppFeeBalancesResponse = SuccessJson<'getAppFeeBalances', 200>
+
+// GET /chains
+export type WireChainsResponse = SuccessJson<'listChains', 200>
