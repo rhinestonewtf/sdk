@@ -9,6 +9,7 @@ import type { NonEvmAddress, NonEvmChain } from '../chains/non-evm'
 import type {
   AppFeeRate,
   AuxiliaryFunds,
+  ProtocolFeeRate,
   SettlementLayerFilter,
 } from '../clients/orchestrator/public'
 
@@ -825,6 +826,13 @@ type Sponsorship =
       gas: boolean
       bridging: boolean
       swaps: boolean
+      /**
+       * Sponsor the Rhinestone protocol fee (`protocolFees`) from the
+       * integrator's sponsorship balance instead of charging the user, without
+       * the sponsorship surcharge. Defaults to `false` in the object form; the
+       * `sponsored: true` shorthand enables it along with the other categories.
+       */
+      protocolFees?: boolean
     }
 
 interface BaseTransaction {
@@ -848,6 +856,13 @@ interface BaseTransaction {
   eip7702InitSignature?: Hex
   sourceAssets?: SourceAssetInput
   appFees?: AppFeeRate
+  /**
+   * Rhinestone protocol fee rate in basis points of the input value (0–10000 =
+   * 0–100%). Collected alongside `appFees` in one batched transfer and always
+   * accrues to Rhinestone. Sponsor it via `sponsored.protocolFees` to charge
+   * the integrator's sponsorship balance instead of the user.
+   */
+  protocolFees?: ProtocolFeeRate
   settlementLayers?: SettlementLayerFilter
   auxiliaryFunds?: AuxiliaryFunds
   experimental_accountOverride?: {

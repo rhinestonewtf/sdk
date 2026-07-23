@@ -359,6 +359,7 @@ describe('account boundary adapters', () => {
             bridge: { usd: 0 },
             swap: { usd: 0 },
             app: { usd: 0 },
+            protocol: { usd: 0 },
           },
         },
       },
@@ -598,6 +599,62 @@ describe('account boundary adapters', () => {
 
     expect(transaction.options?.customDeadline).toBe(customDeadline)
   })
+
+  test('forwards protocolFees into intent options (RHI-4904)', () => {
+    const transaction = adaptTransaction(invocationContext(), {
+      chain: mainnet,
+      calls: [],
+      protocolFees: { feeBps: 35 },
+    })
+
+    expect(transaction.options?.protocolFees).toEqual({ feeBps: 35 })
+    expect(transaction.options?.appFees).toBeUndefined()
+  })
+
+  test('maps sponsored.protocolFees onto sponsorSettings (RHI-4904)', () => {
+    const transaction = adaptTransaction(invocationContext(), {
+      chain: mainnet,
+      calls: [],
+      sponsored: {
+        gas: false,
+        bridging: false,
+        swaps: false,
+        protocolFees: true,
+      },
+    })
+
+    expect(transaction.options?.sponsorSettings).toEqual({
+      gas: false,
+      bridgeFees: false,
+      swapFees: false,
+      protocolFees: true,
+    })
+  })
+
+  test('sponsored object without protocolFees defaults it to false (RHI-4904)', () => {
+    const transaction = adaptTransaction(invocationContext(), {
+      chain: mainnet,
+      calls: [],
+      sponsored: { gas: true, bridging: true, swaps: true },
+    })
+
+    expect(transaction.options?.sponsorSettings?.protocolFees).toBe(false)
+  })
+
+  test('boolean sponsored: true enables protocolFees too (RHI-4904)', () => {
+    const transaction = adaptTransaction(invocationContext(), {
+      chain: mainnet,
+      calls: [],
+      sponsored: true,
+    })
+
+    expect(transaction.options?.sponsorSettings).toEqual({
+      gas: true,
+      bridgeFees: true,
+      swapFees: true,
+      protocolFees: true,
+    })
+  })
 })
 
 function quoteFixture(intentId: string) {
@@ -625,6 +682,7 @@ function quoteFixture(intentId: string) {
           bridge: { usd: 0 },
           swap: { usd: 0 },
           app: { usd: 0 },
+          protocol: { usd: 0 },
         },
       },
     },

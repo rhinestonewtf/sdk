@@ -37,6 +37,7 @@ export type {
   OperationStatus,
   OriginSignature,
   Portfolio,
+  ProtocolFeeRate,
   Quote,
   SettlementLayer,
   SettlementLayerFilter,

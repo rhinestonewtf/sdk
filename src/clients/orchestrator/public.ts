@@ -137,6 +137,7 @@ type AuxiliaryFunds = {
 
 interface IntentOptions {
   appFees?: AppFeeRate
+  protocolFees?: ProtocolFeeRate
   /**
    * Absolute unix timestamp (seconds) overriding the on-chain fill deadline.
    * Same-chain (tokenless) route only; ignored elsewhere. Bounds (`now + 120s`
@@ -153,6 +154,16 @@ interface AppFeeRate {
   feeBps: number
 }
 
+/**
+ * Rate for the Rhinestone protocol fee — a clone of the app fee that always
+ * accrues to Rhinestone regardless of the caller's API key, collected alongside
+ * the app fee in one batched transfer, and (unlike the app fee) sponsorable via
+ * `SponsorSettings.protocolFees`.
+ */
+interface ProtocolFeeRate {
+  feeBps: number
+}
+
 /** An integrator's accrued app-fee balance, as USD totals. */
 interface AppFeeBalances {
   /** Collected (accrued) app fees available to withdraw, valued in USD at collection. */
@@ -165,6 +176,7 @@ interface SponsorSettings {
   gas: boolean
   bridgeFees: boolean
   swapFees: boolean
+  protocolFees?: boolean
 }
 
 interface PortfolioToken {
@@ -214,6 +226,7 @@ interface FeeBreakdown {
   bridge: UsdAmount
   swap: UsdAmount
   app: UsdAmount
+  protocol: UsdAmount
 }
 
 interface Fees {
@@ -429,6 +442,7 @@ export type {
   AccountType,
   AccountWithContext,
   AppFeeRate,
+  ProtocolFeeRate,
   AuxiliaryFunds,
   AppFeeBalances,
   TokenConfig,

@@ -951,6 +951,9 @@ export function adaptTransaction(
       : {}),
     options: {
       ...(transaction.appFees ? { appFees: transaction.appFees } : {}),
+      ...(transaction.protocolFees
+        ? { protocolFees: transaction.protocolFees }
+        : {}),
       ...('chain' in transaction && transaction.customDeadline !== undefined
         ? { customDeadline: transaction.customDeadline }
         : {}),
@@ -962,11 +965,13 @@ export function adaptTransaction(
                     gas: transaction.sponsored,
                     bridgeFees: transaction.sponsored,
                     swapFees: transaction.sponsored,
+                    protocolFees: transaction.sponsored,
                   }
                 : {
                     gas: transaction.sponsored.gas,
                     bridgeFees: transaction.sponsored.bridging,
                     swapFees: transaction.sponsored.swaps,
+                    protocolFees: transaction.sponsored.protocolFees ?? false,
                   },
           }
         : {}),
