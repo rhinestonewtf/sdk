@@ -15,7 +15,7 @@ describe('legacy account config compatibility', () => {
     const accountInput = {
       owners,
       modules,
-      experimental_sessions: sessions,
+      sessions: sessions,
     }
     const provider = { type: 'custom' as const, urls: { 1: 'https://rpc' } }
     const headers = { 'x-test': 'value' }
@@ -44,7 +44,7 @@ describe('legacy account config compatibility', () => {
     expect(compatibilityConfig).toEqual(publicConfig)
     expect(compatibilityConfig.owners).toBe(owners)
     expect(compatibilityConfig.modules).toBe(modules)
-    expect(compatibilityConfig.experimental_sessions).toBe(sessions)
+    expect(compatibilityConfig.sessions).toBe(sessions)
     expect(compatibilityConfig.provider).toBe(provider)
     expect(compatibilityConfig.headers).toBe(headers)
     expect(compatibilityConfig._authProvider).toBe(authProvider)

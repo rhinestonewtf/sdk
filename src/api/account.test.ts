@@ -323,7 +323,7 @@ describe('account boundary adapters', () => {
         chain: mainnet,
         calls: [],
         signers: {
-          type: 'experimental_session',
+          type: 'session',
           session: { chain: mainnet } as never,
         },
       }),

@@ -605,7 +605,7 @@ interface ModuleInput {
 interface RhinestoneAccountConfig {
   account?: AccountProviderConfig
   owners?: OwnerSet
-  experimental_sessions?: {
+  sessions?: {
     enabled: boolean
     module?: Address
     compatibilityFallback?: Address
@@ -806,13 +806,13 @@ interface ChainSessionConfig {
 }
 
 interface SingleSessionSignerSet {
-  type: 'experimental_session'
+  type: 'session'
   session: Session
   enableData?: SessionEnableData
 }
 
 interface PerChainSessionSignerSet {
-  type: 'experimental_session'
+  type: 'session'
   sessions: Record<number, ChainSessionConfig>
 }
 

@@ -24,7 +24,7 @@ describe('Utils', () => {
     const withoutSessions = experimental_getV0InitData(baseConfig)
     const withSessions = experimental_getV0InitData({
       ...baseConfig,
-      experimental_sessions: {
+      sessions: {
         enabled: true,
       },
     })
@@ -42,7 +42,7 @@ describe('Utils', () => {
         type: 'ecdsa',
         accounts: [accountA],
       },
-      experimental_sessions: {
+      sessions: {
         enabled: true,
       },
     })
@@ -68,7 +68,7 @@ describe('Utils', () => {
     const initData = experimental_getV0InitData({
       account: { type: 'safe' },
       owners: { type: 'ecdsa', accounts: [accountA] },
-      experimental_sessions: { enabled: true },
+      sessions: { enabled: true },
     })
 
     expect(initData.address).toBe('0xe2F9e65cff1e5EBc5dFe7650872ad36619875650')
@@ -81,7 +81,7 @@ describe('Utils', () => {
     const setup = experimental_getModuleSetup({
       account: { type: 'safe' },
       owners: { type: 'ecdsa', accounts: [accountA] },
-      experimental_sessions: { enabled: true },
+      sessions: { enabled: true },
     })
 
     expect(

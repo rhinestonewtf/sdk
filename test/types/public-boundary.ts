@@ -56,10 +56,7 @@ declare const account: RhinestoneAccount
 declare const prepared: PreparedTransactionData
 declare const signData: SignData
 declare const typedData: HashTypedDataParameters
-declare const sessionSigners: Extract<
-  SignerSet,
-  { type: 'experimental_session' }
->
+declare const sessionSigners: Extract<SignerSet, { type: 'session' }>
 
 const ownerSigners = {
   type: 'owner',

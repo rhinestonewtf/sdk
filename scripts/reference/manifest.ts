@@ -177,11 +177,10 @@ export const manifest: Group[] = [
       {
         kind: 'group',
         group: 'Smart sessions',
-        experimental: true,
         items: [
-          accountMethod('experimental_getSessionDetails', true),
-          accountMethod('experimental_isSessionEnabled', true),
-          accountMethod('experimental_signEnableSession', true),
+          accountMethod('getSessionDetails'),
+          accountMethod('isSessionEnabled'),
+          accountMethod('signEnableSession'),
         ],
       },
     ],
@@ -235,20 +234,11 @@ export const manifest: Group[] = [
       {
         kind: 'group',
         group: 'Smart sessions',
-        experimental: true,
         items: [
-          action('experimental_enable', './actions/smart-sessions', true),
-          action('experimental_disable', './actions/smart-sessions', true),
-          action(
-            'experimental_enableSession',
-            './actions/smart-sessions',
-            true,
-          ),
-          action(
-            'experimental_disableSession',
-            './actions/smart-sessions',
-            true,
-          ),
+          action('enable', './actions/smart-sessions'),
+          action('disable', './actions/smart-sessions'),
+          action('enableSession', './actions/smart-sessions'),
+          action('disableSession', './actions/smart-sessions'),
         ],
       },
     ],

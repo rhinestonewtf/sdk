@@ -85,17 +85,14 @@ describe.sequential('SDK integration smoke', () => {
     const sessionOwner = createOwner()
     const account = await sdk.createAccount({
       owners: { type: 'ecdsa', accounts: [owner] },
-      experimental_sessions: { enabled: true },
+      sessions: { enabled: true },
     })
     const session = createScopedSession({
       chain: sourceChain,
       owner: sessionOwner,
     })
-    const sessionDetails = await account.experimental_getSessionDetails([
-      session,
-    ])
-    const enableSignature =
-      await account.experimental_signEnableSession(sessionDetails)
+    const sessionDetails = await account.getSessionDetails([session])
+    const enableSignature = await account.signEnableSession(sessionDetails)
 
     await expectSessionDisabled(account, session)
 
@@ -107,7 +104,7 @@ describe.sequential('SDK integration smoke', () => {
         sponsored: true,
         calls: [createNoopCall()],
         signers: {
-          type: 'experimental_session',
+          type: 'session',
           session,
           enableData: {
             userSignature: enableSignature,

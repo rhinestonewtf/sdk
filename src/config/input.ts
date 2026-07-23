@@ -47,7 +47,7 @@ export type SdkConstructionInput = SdkConstructionInputBase &
 export interface AccountConstructionInput {
   account?: AccountInput
   owners?: ValidatorInput
-  experimental_sessions?: {
+  sessions?: {
     enabled: boolean
     module?: Address
     compatibilityFallback?: Address

@@ -115,7 +115,7 @@ describe.sequential('SDK integration ssx policies', () => {
 async function createFundedSessionAccount(): Promise<RhinestoneAccount> {
   const account = await createIntegrationSDK().createAccount({
     owners: { type: 'ecdsa', accounts: [createOwner()] },
-    experimental_sessions: { enabled: true },
+    sessions: { enabled: true },
   })
   await ensureFunded(account.getAddress(), sourceChain, { usdc: FUNDING })
   await waitForOrchestratorUsdc(account, sourceChain, FUNDING)
@@ -163,16 +163,15 @@ async function sessionTransfer(
   session: Session,
   call: ReturnType<typeof usdcTransfer>,
 ) {
-  const sessionDetails = await account.experimental_getSessionDetails([session])
-  const userSignature =
-    await account.experimental_signEnableSession(sessionDetails)
+  const sessionDetails = await account.getSessionDetails([session])
+  const userSignature = await account.signEnableSession(sessionDetails)
 
   return {
     chain: sourceChain,
     sponsored: true as const,
     calls: [call],
     signers: {
-      type: 'experimental_session' as const,
+      type: 'session' as const,
       session,
       enableData: {
         userSignature,

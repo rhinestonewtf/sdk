@@ -159,7 +159,7 @@ function resolveAccountDefinition(
 }
 
 function resolveSessions(
-  input: AccountConstructionInput['experimental_sessions'],
+  input: AccountConstructionInput['sessions'],
   environment: ResolvedSdkConfig['environment'],
 ): ResolvedSessionInstallation {
   return {
@@ -186,7 +186,7 @@ function resolveAccountWithDefaults(
     ...(input.eoa ? { eoa: input.eoa } : {}),
     modules: configureModules(input.modules),
     ...(input.initData ? { initData: input.initData } : {}),
-    sessions: resolveSessions(input.experimental_sessions, environment),
+    sessions: resolveSessions(input.sessions, environment),
   }
 }
 

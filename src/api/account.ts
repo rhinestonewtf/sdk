@@ -333,19 +333,19 @@ export interface RhinestoneAccount {
    * @param sessions Sessions to resolve
    * @returns The resolved session details
    */
-  experimental_getSessionDetails(sessions: Session[]): Promise<SessionDetails>
+  getSessionDetails(sessions: Session[]): Promise<SessionDetails>
   /**
    * Check whether a smart session is enabled on the account.
    * @param session Session to check
    * @returns `true` if the session is enabled
    */
-  experimental_isSessionEnabled(session: Session): Promise<boolean>
+  isSessionEnabled(session: Session): Promise<boolean>
   /**
    * Sign the data required to enable a smart session.
    * @param details Session details to enable
    * @returns The enable-session signature
    */
-  experimental_signEnableSession(details: SessionDetails): Promise<Hex>
+  signEnableSession(details: SessionDetails): Promise<Hex>
   /**
    * Get the account owners.
    * @remarks Only returns ECDSA owners; owners managed by other validator types are not included.
@@ -559,10 +559,7 @@ export function createAccountFacade(
         // Independent owner signing is unsupported for smart-session intents;
         // reject before resolving sessions (which would issue an RPC read),
         // matching the legacy fast-fail.
-        if (
-          preparedTransaction.transaction.signers?.type ===
-          'experimental_session'
-        ) {
+        if (preparedTransaction.transaction.signers?.type === 'session') {
           return Promise.reject(new IndependentSigningNotSupportedError())
         }
         const signerId = signerIdForOwner(options.owner)
@@ -820,15 +817,15 @@ export function createAccountFacade(
         .getPortfolio(ctx, onTestnets)
         .then((portfolio) => portfolio.tokens as unknown as Portfolio)
     },
-    experimental_getSessionDetails(sessions) {
+    getSessionDetails(sessions) {
       const ctx = context('get-session-details')
       return workflowsFor(ctx).getSessionDetails(ctx, sessions)
     },
-    experimental_isSessionEnabled(session) {
+    isSessionEnabled(session) {
       const ctx = context('is-session-enabled')
       return workflowsFor(ctx).isSessionEnabled(ctx, session)
     },
-    experimental_signEnableSession(details) {
+    signEnableSession(details) {
       const ctx = context('sign-enable-session')
       return workflowsFor(ctx).signEnableSession(ctx, details)
     },
@@ -872,7 +869,7 @@ function userOperationSignerSelection(
   transaction: UserOperationTransaction,
 ): OwnerSignerSelection | undefined {
   if (!transaction.signers) return undefined
-  if (transaction.signers?.type === 'experimental_session') {
+  if (transaction.signers?.type === 'session') {
     throw new Error('No account found')
   }
   const selection = adaptSignerSelection(context.account, transaction.signers)
@@ -1004,7 +1001,7 @@ export function adaptTransaction(
     ...(transaction.signers
       ? {
           signers:
-            transaction.signers.type === 'experimental_session'
+            transaction.signers.type === 'session'
               ? {
                   kind: 'smart-session',
                   byChain: adaptSessionSelection(
@@ -1050,9 +1047,7 @@ function toAccountConstructionInput(
   return {
     ...(config.account ? { account: config.account } : {}),
     ...(config.owners ? { owners: config.owners } : {}),
-    ...(config.experimental_sessions
-      ? { experimental_sessions: config.experimental_sessions }
-      : {}),
+    ...(config.sessions ? { sessions: config.sessions } : {}),
     ...(config.eoa ? { eoa: config.eoa } : {}),
     ...(config.modules ? { modules: config.modules } : {}),
     ...(config.initData ? { initData: config.initData } : {}),
@@ -1113,7 +1108,7 @@ function adaptSessionSelection(
   chains: readonly { readonly kind: string; readonly id?: number }[],
 ) {
   const signers = transaction.signers
-  if (!signers || signers.type !== 'experimental_session') return {}
+  if (!signers || signers.type !== 'session') return {}
   if ('sessions' in signers) {
     return Object.fromEntries(
       Object.entries(signers.sessions).map(([chainId, selection]) => [

@@ -1,6 +1,6 @@
 import type { Chain } from 'viem/chains'
 import { describe, test } from 'vitest'
-import { experimental_disableSession } from '../../../src/actions/smart-sessions'
+import { disableSession } from '../../../src/actions/smart-sessions'
 import { SimulationFailedError } from '../../../src/errors/index'
 import type {
   RhinestoneAccount,
@@ -112,7 +112,7 @@ describe.sequential('SDK integration ssx', () => {
   }
 
   // DISABLE: enable a session for real, then disable it via
-  // experimental_disableSession. The account executes removeConfig itself, so
+  // disableSession. The account executes removeConfig itself, so
   // the disable needs no separate user signature — only the outer (owner) tx.
   for (const chainMode of chainModes) {
     test(`disables a session on a ${chainMode}-chain account`, async () => {
@@ -175,7 +175,7 @@ async function expectScopedCallRejected(
       chain: sourceChain,
       sponsored: true,
       calls: [call],
-      signers: { type: 'experimental_session', session },
+      signers: { type: 'session', session },
     }),
   })
 
@@ -190,7 +190,7 @@ async function expectScopedCallRejected(
 function createSessionAccount() {
   return createIntegrationSDK().createAccount({
     owners: { type: 'ecdsa', accounts: [createOwner()] },
-    experimental_sessions: { enabled: true },
+    sessions: { enabled: true },
   })
 }
 
@@ -215,7 +215,7 @@ function createSessionTransaction(
   const base = {
     sponsored: true,
     calls: [createNoopCall()],
-    signers: { type: 'experimental_session' as const, session },
+    signers: { type: 'session' as const, session },
   }
 
   if (chainMode === 'cross') {
@@ -233,9 +233,7 @@ function createDisableTransaction(
   return {
     chain: getExecutionChain(chainMode),
     sponsored: true,
-    calls: [
-      experimental_disableSession(session, new Date(Date.now() + 60 * 60_000)),
-    ],
+    calls: [disableSession(session, new Date(Date.now() + 60 * 60_000))],
   }
 }
 
@@ -244,9 +242,8 @@ async function addEnableData(
   session: Session,
   transaction: ReturnType<typeof createSessionTransaction>,
 ): Promise<SessionTransaction> {
-  const sessionDetails = await account.experimental_getSessionDetails([session])
-  const enableSignature =
-    await account.experimental_signEnableSession(sessionDetails)
+  const sessionDetails = await account.getSessionDetails([session])
+  const enableSignature = await account.signEnableSession(sessionDetails)
 
   return {
     ...transaction,

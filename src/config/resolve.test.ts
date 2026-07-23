@@ -91,7 +91,7 @@ const accountConfigArbitrary: fc.Arbitrary<AccountConstructionInput> = fc
             threshold,
           },
         }),
-    ...(sessions ? { experimental_sessions: { enabled: true } } : {}),
+    ...(sessions ? { sessions: { enabled: true } } : {}),
     modules: [
       {
         type: 'executor' as const,
@@ -293,7 +293,7 @@ describe('SDK config resolution', () => {
         ],
       },
       modules: [{ type: 'executor', address: addressA }],
-      experimental_sessions: {
+      sessions: {
         enabled: true,
         module: addressB,
       },
@@ -500,7 +500,7 @@ describe('SDK config resolution', () => {
         module: addressA,
         threshold: 1,
       },
-      experimental_sessions: {
+      sessions: {
         enabled: true,
         compatibilityFallback: addressB,
       },
@@ -636,7 +636,7 @@ describe('account invocation materialization', () => {
     const accountInput: AccountConstructionInput = {
       account: { type: 'safe' },
       owners: { type: 'ecdsa', accounts: [accountA] },
-      experimental_sessions: { enabled: false },
+      sessions: { enabled: false },
     }
     const authProvider = {}
     const compatibility = createLegacyAccountConfig(
@@ -656,10 +656,10 @@ describe('account invocation materialization', () => {
       accounts: [accountB],
       threshold: 1,
     }
-    if (!compatibility.experimental_sessions) {
+    if (!compatibility.sessions) {
       throw new Error('Expected sessions compatibility input')
     }
-    compatibility.experimental_sessions.enabled = true
+    compatibility.sessions.enabled = true
 
     const context = materializeAccountInvocationContext(
       sdk,
