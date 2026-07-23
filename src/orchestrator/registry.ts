@@ -1,8 +1,7 @@
-import { type Address, type Chain, isAddress } from 'viem'
+import { type Address, type Chain, defineChain, isAddress } from 'viem'
 import * as viemChains from 'viem/chains'
 import { isNonEvmChainId } from './caip2'
 import type { NonEvmAddress } from './destinations'
-import { UnsupportedChainError } from './error'
 
 // Chain objects (rpc / nativeCurrency / formatters, needed for signing and
 // `createPublicClient`) come from viem — not from bundled chain config. The
@@ -13,11 +12,19 @@ const allViemChains = (Object.values(viemChains) as unknown as Chain[]).filter(
 )
 
 function getChainById(chainId: number): Chain {
-  const chain = allViemChains.find((c) => c.id === chainId)
-  if (!chain) {
-    throw new UnsupportedChainError(chainId)
-  }
-  return chain
+  const known = allViemChains.find((c) => c.id === chainId)
+  if (known) return known
+  // The SDK must not gate signing/execution on its bundled viem version: a chain
+  // the orchestrator supports before viem knows it must still resolve. Fall back
+  // to a minimal chain carrying the id — the field EIP-712 signing needs. Richer
+  // metadata (formatters, default RPC) is only available for viem-known chains;
+  // RPC-needing paths already accept a caller-supplied transport.
+  return defineChain({
+    id: chainId,
+    name: `Chain ${chainId}`,
+    nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+    rpcUrls: { default: { http: [] } },
+  })
 }
 
 function isTestnet(chainId: number): boolean {

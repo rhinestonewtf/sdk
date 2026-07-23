@@ -18,10 +18,11 @@ describe('Registry', () => {
       expect(chain.name).toBe(arbitrum.name)
     })
 
-    test('throws error for unknown chain', () => {
-      expect(() => getChainById(UNSUPPORTED_CHAIN_ID)).toThrow(
-        `Unsupported chain ${UNSUPPORTED_CHAIN_ID}`,
-      )
+    test('falls back to a minimal chain for ids viem does not know', () => {
+      // Must not gate signing on the SDK's viem version: any orchestrator-
+      // supported id must resolve to a `Chain` carrying that id.
+      const chain = getChainById(UNSUPPORTED_CHAIN_ID)
+      expect(chain.id).toBe(UNSUPPORTED_CHAIN_ID)
     })
   })
 
@@ -34,10 +35,8 @@ describe('Registry', () => {
       expect(isTestnet(sepolia.id)).toBe(true)
     })
 
-    test('throws error for unknown chain', () => {
-      expect(() => isTestnet(UNSUPPORTED_CHAIN_ID)).toThrow(
-        `Unsupported chain ${UNSUPPORTED_CHAIN_ID}`,
-      )
+    test('returns false for an unknown chain (minimal fallback has no testnet flag)', () => {
+      expect(isTestnet(UNSUPPORTED_CHAIN_ID)).toBe(false)
     })
   })
 
