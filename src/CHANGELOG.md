@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.12.0
+
+### Minor Changes
+
+- 5f94074: Add opt-in support for Nexus v1.2.1 via `account: { type: 'nexus', version: '1.2.1' }`. The previous Nexus stays the default.
+
 ## 1.11.0
 
 ### Minor Changes
