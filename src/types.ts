@@ -4,6 +4,7 @@ import type { ModuleType } from './modules/common'
 import type {
   AppFeeRate,
   AuxiliaryFunds,
+  ProtocolFeeRate,
   SettlementLayer,
 } from './orchestrator/types'
 
@@ -456,6 +457,7 @@ type Sponsorship =
       gas: boolean
       bridging: boolean
       swaps: boolean
+      protocolFees?: boolean
     }
 
 interface BaseTransaction {
@@ -482,6 +484,7 @@ interface BaseTransaction {
   sourceAssets?: SourceAssetInput
   feeAsset?: Address | TokenSymbol
   appFees?: AppFeeRate
+  protocolFees?: ProtocolFeeRate
   settlementLayers?: SettlementLayer[]
   lockFunds?: boolean
   auxiliaryFunds?: AuxiliaryFunds

@@ -100,6 +100,7 @@ interface IntentOptions {
   topupCompact: boolean
   feeToken?: Address | SupportedTokenSymbol
   appFees?: AppFeeRate
+  protocolFees?: ProtocolFeeRate
   sponsorSettings?: SponsorSettings
   settlementLayers?: SettlementLayer[]
   signatureMode?: SignatureMode
@@ -107,6 +108,15 @@ interface IntentOptions {
 }
 
 interface AppFeeRate {
+  feeBps: number
+}
+
+/**
+ * Rate for the Rhinestone protocol fee (RHI-4904) — a clone of the app fee
+ * that always accrues to Rhinestone regardless of the caller's API key, and
+ * (unlike the app fee) can be sponsored via `sponsorSettings.protocolFees`.
+ */
+interface ProtocolFeeRate {
   feeBps: number
 }
 
@@ -129,6 +139,7 @@ interface SponsorSettings {
   gasSponsored: boolean
   bridgeFeesSponsored: boolean
   swapFeesSponsored: boolean
+  protocolFeesSponsored?: boolean
 }
 
 interface PortfolioToken {
@@ -513,6 +524,7 @@ export type {
   AppFee,
   AppFeeBalances,
   AppFeeRate,
+  ProtocolFeeRate,
   ApprovalRequired,
   AuxiliaryFunds,
   Execution,
