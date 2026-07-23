@@ -74,6 +74,7 @@ describe('intent compatibility projections', () => {
             bridge: { usd: 0 },
             swap: { usd: 0 },
             app: { usd: 0 },
+            protocol: { usd: 0 },
           },
         },
       },

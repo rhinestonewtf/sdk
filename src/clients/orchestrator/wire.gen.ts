@@ -147,6 +147,26 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/quotes/estimate': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /**
+     * Create Indicative Quote
+     * @description Computes an indicative (non-binding) quote: ranked route estimates with per-route cost breakdown and fill time. Unlike `POST /quotes`, it returns no `intentId`, `signData`, or `expiresAt` — it cannot be submitted to `POST /intents`. Use it for pre-quote UX (price previews, route discovery) without persisting an intent.
+     */
+    post: operations['createQuoteEstimate']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/app-fees/balances': {
     parameters: {
       query?: never
@@ -3846,6 +3866,11 @@ export interface operations {
                * @default false
                */
               swapFees?: boolean
+              /**
+               * @description Whether to sponsor the Rhinestone protocol fee (`options.protocolFees`) for the intent. When `true`, the fee is charged to the integrator's sponsorship balance instead of carved from the user, without the sponsorship surcharge.
+               * @default false
+               */
+              protocolFees?: boolean
             }
             /**
              * @description How the user's intent signature will be verified onchain. `ECDSA` for plain EOA signatures; `ERC1271_EMISSARY` for smart-account signatures verified via TheCompact emissary delegation. The orchestrator picks a default based on `account.accountType` — only set this if you need to override.
@@ -3903,6 +3928,13 @@ export interface operations {
               /**
                * @description App fee rate in basis points of the input value (0–10000 = 0–100%).
                * @example 25
+               */
+              feeBps: number
+            }
+            protocolFees?: {
+              /**
+               * @description Rhinestone protocol fee rate in basis points of the input value (0–10000 = 0–100%). Collected alongside the app fee in one batched transfer and always accrues to Rhinestone; sponsor it via `sponsorSettings.protocolFees` to charge the integrator balance instead of the user.
+               * @example 35
                */
               feeBps: number
             }
@@ -4205,7 +4237,20 @@ export interface operations {
                        */
                       sponsored: boolean
                     }
-                    /** @description Rhinestone's surcharge on the sponsored fee, charged to the sponsor. 0 when the intent is not sponsored. */
+                    /** @description Rhinestone protocol fee (`options.protocolFees`). `sponsored: true` when the integrator sponsorship balance pays it instead of the user. */
+                    protocol: {
+                      /**
+                       * @description Total cost of this category in USD, regardless of who pays.
+                       * @example 0.029
+                       */
+                      usd: number
+                      /**
+                       * @description True when a sponsor absorbs some or all of this category. The user-vs-sponsor split is not surfaced.
+                       * @example false
+                       */
+                      sponsored: boolean
+                    }
+                    /** @description Rhinestone's surcharge on the sponsored relayer coverage, charged to the sponsor. 0 when the intent is not sponsored. Pure surcharge — a sponsored protocol fee is shown on `protocol`, never here. */
                     sponsorSurcharge: {
                       /**
                        * @description Total cost of this category in USD, regardless of who pays.
@@ -4342,6 +4387,740 @@ export interface operations {
                     destinationDomainId: number
                   }
             }[]
+          }
+        }
+      }
+      /** @description Invalid request parameters */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'WITHDRAWAL_FINALIZATION_PENDING'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+              }
+        }
+      }
+      /** @description API key scope denied */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'WITHDRAWAL_FINALIZATION_PENDING'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+              }
+        }
+      }
+      /** @description Server error */
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'WITHDRAWAL_FINALIZATION_PENDING'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+              }
+        }
+      }
+    }
+  }
+  createQuoteEstimate: {
+    parameters: {
+      query?: never
+      header: {
+        /** @description API version. Required; pinned to this document. */
+        'x-api-version': '2026-04.blanc'
+        /** @description API key. */
+        'x-api-key': string
+      }
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': {
+          /**
+           * @description `exactIn` fixes the deposited `amountIn` and estimates the delivered output; `exactOut` fixes the desired `amountOut` and estimates the required input.
+           * @example exactIn
+           * @enum {string}
+           */
+          direction: 'exactIn' | 'exactOut'
+          /**
+           * @description Source chain id (CAIP-2, eip155)
+           * @example eip155:8453
+           */
+          sourceChainId: string
+          /**
+           * @description Source token address
+           * @example 0x833589fcd6edb6e08f4c7c32d4f71b54bda02913
+           */
+          sourceToken: string
+          /**
+           * @description Destination chain id (CAIP-2), matching the destinations `POST /quotes` accepts: EVM (`eip155:*`), the virtual `hypercore:mainnet`, or non-EVM `solana:…` / `tron:…`.
+           * @example eip155:42161
+           */
+          destinationChainId: string
+          /**
+           * @description Destination token address — EVM `0x…`, Solana base58 mint, or Tron T-address.
+           * @example 0xaf88d065e77c8cc2239327c5edb3a432268e5831
+           */
+          destinationToken: string
+          /**
+           * Format: uint256
+           * @description Deposited amount in the source token's smallest unit. Required for (and only valid with) `direction: exactIn`.
+           * @example 1000000
+           */
+          amountIn?: string
+          /**
+           * Format: uint256
+           * @description Desired delivered amount in the destination token's smallest unit. Required for (and only valid with) `direction: exactOut`.
+           * @example 1000000
+           */
+          amountOut?: string
+          /**
+           * @description Account the route would execute against. Settlement layers filter on account type, so declaring it yields an estimate that matches what `POST /quotes` would plan. Defaults to `EOA` — the more restrictive of the two — so an undeclared caller is never shown smart-account-only routes.
+           * @example SMART_ACCOUNT
+           * @enum {string}
+           */
+          accountType?: 'EOA' | 'SMART_ACCOUNT'
+          /**
+           * @description Whether the smart account is already deployed on the source chain. An undeployed account pays one-time setup gas, so declaring it avoids over-charging repeat users. Defaults to undeployed (charges setup) for a smart account when omitted — the conservative direction. Ignored for EOAs.
+           * @example true
+           */
+          accountDeployed?: boolean
+          /** @description Optional estimate tuning knobs */
+          options?: {
+            /**
+             * @description Which settlement layers the estimate may rank. `{ include: [...] }` (allow-list) or `{ exclude: [...] }` (deny-list). Default unset = all layers eligible.
+             * @example {
+             *       "exclude": [
+             *         "RELAY"
+             *       ]
+             *     }
+             */
+            settlementLayers?:
+              | {
+                  include: (
+                    | 'ACROSS'
+                    | 'ECO'
+                    | 'RELAY'
+                    | 'OFT'
+                    | 'NEAR'
+                    | 'RHINO'
+                    | 'CCTP'
+                  )[]
+                }
+              | {
+                  exclude: (
+                    | 'ACROSS'
+                    | 'ECO'
+                    | 'RELAY'
+                    | 'OFT'
+                    | 'NEAR'
+                    | 'RHINO'
+                    | 'CCTP'
+                  )[]
+                }
+            /**
+             * @description Which fee categories to treat as sponsored. Sponsored categories are absorbed by the sponsor and do not reduce the delivered amount.
+             * @example {
+             *       "gas": true,
+             *       "bridgeFees": true,
+             *       "swapFees": false
+             *     }
+             */
+            sponsorSettings?: {
+              /**
+               * @description Whether to sponsor gas for the intent
+               * @default false
+               * @example true
+               */
+              gas?: boolean
+              /**
+               * @description Whether to sponsor bridge fees for the intent
+               * @default false
+               */
+              bridgeFees?: boolean
+              /**
+               * @description Whether to sponsor swap fees for the intent
+               * @default false
+               */
+              swapFees?: boolean
+              /**
+               * @description Whether to sponsor the Rhinestone protocol fee (`options.protocolFees`) for the intent. When `true`, the fee is charged to the integrator's sponsorship balance instead of carved from the user, without the sponsorship surcharge.
+               * @default false
+               */
+              protocolFees?: boolean
+            }
+            /**
+             * @description How to rank candidate routes. `cheapest` minimizes USD cost, `fastest` minimizes fill time, `best` balances delivered output and speed.
+             * @example best
+             * @enum {string}
+             */
+            selectionStrategy?: 'cheapest' | 'fastest' | 'best'
+            /** @description Integrator app fee applied to the estimate */
+            appFees?: {
+              /**
+               * @description App fee rate in basis points of the input value (0–10000 = 0–100%).
+               * @example 25
+               */
+              feeBps: number
+            }
+            /** @description Rhinestone protocol fee applied to the estimate */
+            protocolFees?: {
+              /**
+               * @description Rhinestone protocol fee rate in basis points of the input value (0–10000 = 0–100%). Carved from the user unless `sponsorSettings.protocolFees` is set.
+               * @example 5
+               */
+              feeBps: number
+            }
+          }
+        }
+      }
+    }
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': {
+            /** @description Indicative route estimates, best-first. Empty when no route is available. */
+            routes: {
+              /**
+               * @description Settlement layer this estimate is for
+               * @example ACROSS
+               * @enum {string}
+               */
+              settlementLayer:
+                | 'INTENT_EXECUTOR'
+                | 'SAME_CHAIN'
+                | 'ACROSS'
+                | 'ECO'
+                | 'RELAY'
+                | 'OFT'
+                | 'NEAR'
+                | 'RHINO'
+                | 'CCTP'
+              /**
+               * @description `exact` for formula-priced layers; `approximated` for solver-market layers estimated from a typical-fee table.
+               * @example exact
+               * @enum {string}
+               */
+              accuracy: 'exact' | 'approximated'
+              /**
+               * @description `over_capacity` when the delivered notional exceeds the known liquidity ceiling for this route; such routes rank below fillable ones.
+               * @example ok
+               * @enum {string}
+               */
+              status: 'ok' | 'over_capacity'
+              /** @description A single (chain, token) leg with amount, price, and metadata */
+              input: {
+                /**
+                 * @description Chain where this token leg settles
+                 * @example eip155:8453
+                 */
+                chainId: string
+                /**
+                 * @description ERC-20 contract address for this token
+                 * @example 0xaf88d065e77c8cc2239327c5edb3a432268e5831
+                 */
+                tokenAddress: string
+                /**
+                 * @description Token symbol. `null` when the internal token registry has no entry for this address.
+                 * @example USDC
+                 */
+                symbol: string | null
+                /**
+                 * @description Token decimals. `null` when the internal token registry has no entry for this address.
+                 * @example 6
+                 */
+                decimals: number | null
+                /** @description Unit price in USD. `null` when the price oracle has no data for this token. */
+                price: {
+                  /**
+                   * @description Unit price in USD
+                   * @example 1
+                   */
+                  usd: number
+                } | null
+                /**
+                 * Format: uint256
+                 * @description Token amount in the token's smallest unit
+                 * @example 1050000
+                 */
+                amount: string
+              }
+              /** @description A single (chain, token) leg with amount, price, and metadata */
+              output: {
+                /**
+                 * @description Chain where this token leg settles (CAIP-2, any namespace)
+                 * @example eip155:8453
+                 */
+                chainId: string
+                /**
+                 * @description Contract address of the delivered token (EVM 0x or non-EVM base58)
+                 * @example 0xaf88d065e77c8cc2239327c5edb3a432268e5831
+                 */
+                tokenAddress: string
+                /**
+                 * @description Token symbol. `null` when the internal token registry has no entry for this address.
+                 * @example USDC
+                 */
+                symbol: string | null
+                /**
+                 * @description Token decimals. `null` when the internal token registry has no entry for this address.
+                 * @example 6
+                 */
+                decimals: number | null
+                /** @description Unit price in USD. `null` when the price oracle has no data for this token. */
+                price: {
+                  /**
+                   * @description Unit price in USD
+                   * @example 1
+                   */
+                  usd: number
+                } | null
+                /**
+                 * Format: uint256
+                 * @description Token amount in the token's smallest unit
+                 * @example 1050000
+                 */
+                amount: string
+              }
+              /** @description Aggregate route fees with per-category breakdown */
+              fees: {
+                /** @description Full route cost in USD, regardless of who pays. Equal to `sum(breakdown.*.usd)` modulo rounding. */
+                total: {
+                  /**
+                   * @description USD-denominated value
+                   * @example 0.029
+                   */
+                  usd: number
+                }
+                /** @description Per-category fee breakdown */
+                breakdown: {
+                  /** @description Aggregate gas cost (destination fill, swap execution, origin gas) */
+                  gas: {
+                    /**
+                     * @description Total cost of this category in USD, regardless of who pays.
+                     * @example 0.029
+                     */
+                    usd: number
+                    /**
+                     * @description True when a sponsor absorbs some or all of this category. The user-vs-sponsor split is not surfaced.
+                     * @example false
+                     */
+                    sponsored: boolean
+                  }
+                  /** @description Aggregate settlement-layer bridge cost */
+                  bridge: {
+                    /**
+                     * @description Total cost of this category in USD, regardless of who pays.
+                     * @example 0.029
+                     */
+                    usd: number
+                    /**
+                     * @description True when a sponsor absorbs some or all of this category. The user-vs-sponsor split is not surfaced.
+                     * @example false
+                     */
+                    sponsored: boolean
+                  }
+                  /** @description Aggregate solver swap commission */
+                  swap: {
+                    /**
+                     * @description Total cost of this category in USD, regardless of who pays.
+                     * @example 0.029
+                     */
+                    usd: number
+                    /**
+                     * @description True when a sponsor absorbs some or all of this category. The user-vs-sponsor split is not surfaced.
+                     * @example false
+                     */
+                    sponsored: boolean
+                  }
+                  /** @description Aggregate integrator app fee */
+                  app: {
+                    /**
+                     * @description Total cost of this category in USD, regardless of who pays.
+                     * @example 0.029
+                     */
+                    usd: number
+                    /**
+                     * @description True when a sponsor absorbs some or all of this category. The user-vs-sponsor split is not surfaced.
+                     * @example false
+                     */
+                    sponsored: boolean
+                  }
+                  /** @description Rhinestone protocol fee (`options.protocolFees`). `sponsored: true` when the integrator sponsorship balance pays it instead of the user. */
+                  protocol: {
+                    /**
+                     * @description Total cost of this category in USD, regardless of who pays.
+                     * @example 0.029
+                     */
+                    usd: number
+                    /**
+                     * @description True when a sponsor absorbs some or all of this category. The user-vs-sponsor split is not surfaced.
+                     * @example false
+                     */
+                    sponsored: boolean
+                  }
+                  /** @description Rhinestone's surcharge on the sponsored relayer coverage, charged to the sponsor. 0 when the intent is not sponsored. Pure surcharge — a sponsored protocol fee is shown on `protocol`, never here. */
+                  sponsorSurcharge: {
+                    /**
+                     * @description Total cost of this category in USD, regardless of who pays.
+                     * @example 0.029
+                     */
+                    usd: number
+                    /**
+                     * @description True when a sponsor absorbs some or all of this category. The user-vs-sponsor split is not surfaced.
+                     * @example false
+                     */
+                    sponsored: boolean
+                  }
+                }
+              }
+              /** @description Estimated fill time for the route */
+              estimatedFillTime: {
+                /**
+                 * @description Typical end-to-end fill time for this route in seconds. Directional, not guaranteed.
+                 * @example 3
+                 */
+                seconds: number
+              }
+            }[]
+            /**
+             * @description Set when `routes` is empty and there is a single explanatory reason.
+             * @enum {string}
+             */
+            unavailableReason?:
+              | 'unsupported_token'
+              | 'no_route_support'
+              | 'no_price'
+              | 'below_minimum'
           }
         }
       }
