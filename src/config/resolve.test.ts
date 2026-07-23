@@ -43,19 +43,16 @@ const accountInputArbitrary: fc.Arbitrary<AccountInput> = fc
           ...(choice % 2 === 0 ? { adapter: '1.0.0' } : {}),
         }
       case 'nexus': {
-        const versions = [
-          '1.0.2',
-          '1.2.0',
-          'rhinestone-1.0.0-beta',
-          'rhinestone-1.0.0',
-        ] as const
+        const versions = ['1.2.0', '1.2.1'] as const
         return {
           type: 'nexus',
-          ...(explicit ? { version: versions[choice], salt } : {}),
+          ...(explicit
+            ? { version: versions[choice % versions.length], salt }
+            : {}),
         }
       }
       case 'kernel': {
-        const versions = ['3.1', '3.2', '3.3'] as const
+        const versions = ['3.3'] as const
         return {
           type: 'kernel',
           ...(explicit
@@ -417,13 +414,13 @@ describe('SDK config resolution', () => {
       input: {
         account: {
           type: 'nexus' as const,
-          version: '1.0.2' as const,
+          version: '1.2.0' as const,
           salt: `0x${'33'.repeat(32)}` as const,
         },
       },
       expected: {
         kind: 'nexus',
-        version: { source: 'explicit', value: '1.0.2' },
+        version: { source: 'explicit', value: '1.2.0' },
         salt: { source: 'explicit', value: `0x${'33'.repeat(32)}` },
       },
     },

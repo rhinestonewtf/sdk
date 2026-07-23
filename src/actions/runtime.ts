@@ -1,5 +1,4 @@
 import { encodeFunctionData, maxUint256, size } from 'viem'
-import { nexusDefaultValidator } from '../accounts/adapters/nexus'
 import { createAccountConstruction } from '../accounts/construction'
 import { DefaultValidatorAlreadyInitializedError } from '../accounts/error'
 import { createAccountAdapter } from '../accounts/registry'
@@ -17,6 +16,7 @@ import {
   readValidatorInitialized,
 } from '../modules/read-core'
 import type { ResolvedModule } from '../modules/types'
+import { OWNABLE_VALIDATOR_ADDRESS } from '../modules/validators/ownable'
 import { SESSION_LOCK_TAG } from '../modules/validators/smart-sessions/authorization'
 import { encodeDisableSessionCall } from '../modules/validators/smart-sessions/calls'
 import { readSessionNonce } from '../modules/validators/smart-sessions/state'
@@ -94,11 +94,7 @@ export async function resolveValidatorInstallation(
 ): Promise<CalldataInput[]> {
   const runtime = actionContext(context)
   if (runtime.construction.account.kind === 'nexus') {
-    const version =
-      runtime.construction.account.version.source === 'explicit'
-        ? runtime.construction.account.version.value
-        : undefined
-    const defaultValidator = nexusDefaultValidator(version)
+    const defaultValidator = OWNABLE_VALIDATOR_ADDRESS
     if (module.address.toLowerCase() === defaultValidator.toLowerCase()) {
       let initialized = defaultValidatorConfigured(runtime, defaultValidator)
       if (!initialized) {
