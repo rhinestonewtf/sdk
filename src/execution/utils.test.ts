@@ -330,6 +330,124 @@ describe('prepareTransactionAsIntent', () => {
     expect(intentInput.options.customDeadline).toBeUndefined()
   })
 
+  test('includes protocolFees in options when provided (RHI-4904)', async () => {
+    mockGetIntentRoute.mockResolvedValue({
+      intentOp: {},
+      intentCost: {},
+    })
+
+    await prepareTransactionAsIntent(
+      {
+        owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+        apiKey: 'test',
+      },
+      [arbitrum],
+      base,
+      [],
+      undefined,
+      [{ address: zeroAddress, amount: 1n }],
+      undefined,
+      false,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { feeBps: 35 },
+    )
+
+    expect(mockGetIntentRoute).toHaveBeenCalledOnce()
+    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    expect(intentInput.options.protocolFees).toEqual({ feeBps: 35 })
+    expect(intentInput.options.appFees).toBeUndefined()
+  })
+
+  test('maps sponsored.protocolFees onto sponsorSettings (RHI-4904)', async () => {
+    mockGetIntentRoute.mockResolvedValue({
+      intentOp: {},
+      intentCost: {},
+    })
+
+    await prepareTransactionAsIntent(
+      {
+        owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+        apiKey: 'test',
+      },
+      [arbitrum],
+      base,
+      [],
+      undefined,
+      [{ address: zeroAddress, amount: 1n }],
+      undefined,
+      { gas: false, bridging: false, swaps: false, protocolFees: true },
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { feeBps: 35 },
+    )
+
+    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    expect(intentInput.options.sponsorSettings).toEqual({
+      gasSponsored: false,
+      bridgeFeesSponsored: false,
+      swapFeesSponsored: false,
+      protocolFeesSponsored: true,
+    })
+  })
+
+  test('boolean sponsored: true enables protocolFeesSponsored too (RHI-4904)', async () => {
+    mockGetIntentRoute.mockResolvedValue({
+      intentOp: {},
+      intentCost: {},
+    })
+
+    await prepareTransactionAsIntent(
+      {
+        owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+        apiKey: 'test',
+      },
+      [arbitrum],
+      base,
+      [],
+      undefined,
+      [{ address: zeroAddress, amount: 1n }],
+      undefined,
+      true,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+    )
+
+    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    expect(intentInput.options.sponsorSettings).toEqual({
+      gasSponsored: true,
+      bridgeFeesSponsored: true,
+      swapFeesSponsored: true,
+      protocolFeesSponsored: true,
+    })
+  })
+
   test('claim-only session sends SIG_MODE_ERC1271 in routing request', async () => {
     mockGetIntentRoute.mockResolvedValue({
       intentOp: {},
