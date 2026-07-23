@@ -159,15 +159,39 @@ function privateSourceImports(packageDirectory: string): string[] {
 type SemverBump = 'major' | 'minor' | 'patch'
 const BUMP_RANK: Record<SemverBump, number> = { patch: 0, minor: 1, major: 2 }
 
-// Highest `@rhinestone/sdk` bump declared by pending changesets in the working
-// tree. A minor/major bump documents an intentional public-surface change; a
-// patch (or no changeset) means the surface is expected to stay identical.
+// Changesets already folded into a previous pre-release. In changeset pre mode
+// the `.md` files are not deleted per release (only at pre exit), so the
+// directory keeps every historical major/minor changeset. Those must be ignored
+// here — otherwise the bump scan would always see an old breaking changeset and
+// permanently relax the gate. Outside pre mode this is empty (files are deleted
+// on release, so every remaining changeset is genuinely new).
+function consumedChangesets(): Set<string> {
+  const preJsonPath = join(process.cwd(), '.changeset', 'pre.json')
+  if (!existsSync(preJsonPath)) return new Set()
+  try {
+    const pre = JSON.parse(readFileSync(preJsonPath, 'utf8')) as {
+      mode?: string
+      changesets?: string[]
+    }
+    if (pre.mode !== 'pre' || !Array.isArray(pre.changesets)) return new Set()
+    return new Set(pre.changesets)
+  } catch {
+    return new Set()
+  }
+}
+
+// Highest `@rhinestone/sdk` bump declared by changesets this PR introduces (i.e.
+// not yet consumed by a prior pre-release). A minor/major bump documents an
+// intentional public-surface change; patch (or no new changeset) means the
+// surface is expected to stay identical.
 function declaredSdkBump(): SemverBump | null {
   const changesetDirectory = join(process.cwd(), '.changeset')
   if (!existsSync(changesetDirectory)) return null
+  const consumed = consumedChangesets()
   let highest: SemverBump | null = null
   for (const entry of readdirSync(changesetDirectory)) {
     if (!entry.endsWith('.md') || entry === 'README.md') continue
+    if (consumed.has(entry.replace(/\.md$/, ''))) continue
     const source = readFileSync(join(changesetDirectory, entry), 'utf8')
     const match = source.match(
       /['"]@rhinestone\/sdk['"]\s*:\s*(major|minor|patch)/,
