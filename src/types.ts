@@ -287,8 +287,8 @@ interface ToLeg {
 
 /**
  * Ergonomic input for a cross-chain session permit. Set on
- * `SessionDefinition.crossChainPermits`; the SDK resolves token symbols
- * to per-chain addresses and `Date`s to on-chain deadlines, then expands
+ * `SessionDefinition.crossChainPermits`; token fields are per-chain
+ * addresses. The SDK converts `Date`s to on-chain deadlines, then expands
  * each entry into a {@link Permit2ClaimPolicy} (claim-side) plus optional
  * {@link SpendingLimitsPolicy} / {@link TimeFramePolicy} guardrails.
  */
