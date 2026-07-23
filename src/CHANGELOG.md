@@ -1,5 +1,13 @@
 # @rhinestone/sdk
 
+## 2.0.0-beta.45
+
+### Patch Changes
+
+- 13e87ce: Fix intent preparation for EIP-7702 accounts. The orchestrator quote request now includes the signed `initializeAccount` setup op (built from `eip7702InitSignature`) instead of an empty/factory setup, so 7702 intents route correctly instead of failing with "no viable route". `prepareTransaction` for a 7702 account requires the init signature.
+- 56ca282: Preserve decimal-string numeric fields in public prepared and signed intent data while retaining bigint normalization internally for signing.
+- a1f8b8f: Restore release-compatible EIP-7702 adoption, validator signing, Smart Session chain routing, and UserOperation behavior. Custom bundlers and paymasters again use their generic RPC and ERC-7677 flows.
+
 ## 2.0.0-beta.44
 
 ### Major Changes
