@@ -30,10 +30,7 @@ import {
   SCOPE_MULTICHAIN,
 } from '../../execution/compact'
 import { signTypedData } from '../../execution/utils'
-import {
-  getChainById,
-  getWrappedTokenAddress,
-} from '../../orchestrator/registry'
+import { getChainById } from '../../orchestrator/registry'
 import type {
   Action,
   ArgPolicyExpression,
@@ -773,13 +770,14 @@ async function getDisableSessionCall(
 
 function toSession<const TAbis extends readonly Abi[]>(
   definition: SessionDefinition<TAbis>,
-  options: { useDevContracts?: boolean } = {},
+  options: { useDevContracts?: boolean; wrappedNativeToken?: Address } = {},
 ): Session {
   const addresses = resolvePolicyAddresses(definition.policyAddresses)
   const sessionData = resolveSessionData(
     definition,
     options.useDevContracts,
     addresses,
+    options.wrappedNativeToken,
   )
   // Cross-chain permits add synthesized claim policies that must appear
   // on the returned `Session` too — `getSessionData(session)` re-encodes
@@ -1046,6 +1044,7 @@ function resolveSessionData(
   session: SessionDefinition,
   useDevContracts?: boolean,
   addresses: ResolvedPolicyAddresses = DEFAULT_POLICY_ADDRESSES,
+  wrappedNativeToken?: Address,
 ): SessionData {
   // ENS validation is HCA-only, and HCA accounts cannot install the smart
   // session validator, so an ENS session owner would silently resolve to the
@@ -1097,18 +1096,27 @@ function resolveSessionData(
     (e) => e.fallbackPolicies,
   )
 
+  // Native-token wrapping: permit `deposit()` on the chain's wrapped-native
+  // token. Only injected when the wrapped-native address is known — supplied by
+  // `account.createSession` (resolved from `/chains`). Direct `toSession`
+  // callers pass `wrappedNativeToken` to opt in.
+  const nativeWrapActions: Action[] = wrappedNativeToken
+    ? [
+        {
+          target: wrappedNativeToken,
+          selector: toFunctionSelector({
+            type: 'function',
+            name: 'deposit',
+            inputs: [],
+            outputs: [],
+            stateMutability: 'payable',
+          }),
+        },
+      ]
+    : []
+
   const injectedActions: Action[] = [
-    // Native token wrapping
-    {
-      target: getWrappedTokenAddress(session.chain),
-      selector: toFunctionSelector({
-        type: 'function',
-        name: 'deposit',
-        inputs: [],
-        outputs: [],
-        stateMutability: 'payable',
-      }),
-    },
+    ...nativeWrapActions,
     // Intent-execution fallback for any non-scoped call. Cross-chain
     // permits attach their synthesized SpendingLimits / TimeFrame
     // guardrails to this same fallback so the on-chain emissary applies

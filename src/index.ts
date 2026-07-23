@@ -1,4 +1,5 @@
 import type {
+  Abi,
   Address,
   Chain,
   HashTypedDataParameters,
@@ -72,6 +73,7 @@ import {
 import {
   isSessionEnabled as isSessionEnabledInternal,
   type SessionDetails,
+  toSession,
 } from './modules/validators/smart-sessions'
 import type {
   AppFeeBalances,
@@ -97,6 +99,7 @@ import type {
   TokenRequirements,
   WrapRequired,
 } from './orchestrator'
+import { getOrchestrator } from './orchestrator'
 
 export type { AppFeeBalances, AppFeeRate } from './orchestrator'
 
@@ -154,6 +157,17 @@ interface SubmitTransactionOptions {
 interface RhinestoneAccount {
   /** The resolved account configuration. */
   config: RhinestoneAccountConfig
+  /**
+   * Create a smart session, resolving the chain's wrapped-native token from the
+   * orchestrator's chain catalog (`GET /chains`) so native-token wrapping is
+   * permitted automatically. For a fully offline build, use the standalone
+   * {@link toSession} and pass `wrappedNativeToken` yourself.
+   * @param definition The session definition
+   * @returns The resolved session
+   */
+  createSession<const TAbis extends readonly Abi[]>(
+    definition: SessionDefinition<TAbis>,
+  ): Promise<Session>
   /**
    * Deploy the account on a given chain.
    * @param chain Chain to deploy the account on
@@ -479,6 +493,24 @@ async function createAccountInternal(
     return signEip7702InitDataInternal(config)
   }
 
+  async function createSession<const TAbis extends readonly Abi[]>(
+    definition: SessionDefinition<TAbis>,
+  ): Promise<Session> {
+    const orchestrator = getOrchestrator(
+      config._authProvider ?? createAuthProvider(config),
+      config.endpointUrl,
+      config.headers,
+    )
+    const catalog = await orchestrator.getChainCatalog()
+    const wrappedNativeToken = catalog.getWrappedNativeToken(
+      definition.chain.id,
+    )?.address as Address | undefined
+    return toSession(definition, {
+      wrappedNativeToken,
+      useDevContracts: config.useDevContracts,
+    })
+  }
+
   function prepareTransaction(transaction: Transaction) {
     return prepareTransactionInternal(config, transaction)
   }
@@ -674,6 +706,7 @@ async function createAccountInternal(
 
   return {
     config,
+    createSession,
     deploy,
     isDeployed,
     setup,

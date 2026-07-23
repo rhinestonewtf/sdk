@@ -1,13 +1,21 @@
-import type {
-  SettlementLayer as CrossChainSettlementLayer,
-  SupportedChain,
-  SupportedMainnet,
-  SupportedOPStackMainnet,
-  SupportedOPStackTestnet,
-  SupportedTestnet,
-} from '@rhinestone/shared-configs'
 import type { Address, Chain, Hex, TypedDataDefinition } from 'viem'
 import type { NonEvmAddress } from './destinations'
+
+// Cross-chain settlement layers exposed for filtering. v2: defined locally (a
+// closed capability union) rather than read from shared-configs — adding a
+// layer is a real code change.
+type CrossChainSettlementLayer =
+  | 'ACROSS'
+  | 'ECO'
+  | 'RELAY'
+  | 'OFT'
+  | 'NEAR'
+  | 'RHINO'
+  | 'CCTP'
+
+// v2: chain ids are open (`number`), not a closed union — a new chain needs no
+// SDK release.
+type SupportedChain = number
 
 type SupportedTokenSymbol = 'ETH' | 'WETH' | 'USDC' | 'USDT' | 'USDT0'
 type SupportedToken = SupportedTokenSymbol | Address
@@ -366,19 +374,20 @@ export type TokenPrices = {
   [key in SupportedTokenSymbol]?: number
 }
 
-export type GasPrices = {
-  [key in SupportedMainnet | SupportedTestnet]?: bigint
-}
+export type GasPrices = Partial<Record<number, bigint>>
 
 export type OPNetworkParams =
-  | {
-      [key in SupportedOPStackMainnet | SupportedOPStackTestnet]?: {
-        l1BaseFee: bigint
-        l1BlobBaseFee: bigint
-        baseFeeScalar: bigint
-        blobFeeScalar: bigint
-      }
-    }
+  | Partial<
+      Record<
+        number,
+        {
+          l1BaseFee: bigint
+          l1BlobBaseFee: bigint
+          baseFeeScalar: bigint
+          blobFeeScalar: bigint
+        }
+      >
+    >
   | {
       estimatedCalldataSize: number
     }

@@ -86,15 +86,12 @@ interface MultiFactorValidatorConfig {
   module?: Address
 }
 
-type ProviderConfig =
-  | {
-      type: 'alchemy'
-      apiKey: string
-    }
-  | {
-      type: 'custom'
-      urls: Record<number, string>
-    }
+// v2: the SDK no longer bundles provider slugs / builds Alchemy URLs. Callers
+// supply the RPC URL per chain (or omit `provider` to use viem's default).
+type ProviderConfig = {
+  type: 'custom'
+  urls: Record<number, string>
+}
 
 type BundlerConfig =
   | {
@@ -213,8 +210,8 @@ interface Permit2ClaimPolicy {
 
 /**
  * Settlement layers supported by the cross-chain session abstraction.
- * Each value maps to one or more Permit2 arbiter addresses sourced from
- * `@rhinestone/shared-configs` — devs pick a layer, the SDK resolves it
+ * Each value maps to one or more Permit2 arbiter addresses (a bundled,
+ * client-trusted allow-set) — devs pick a layer, the SDK resolves it
  * to the on-chain arbiter whitelist.
  *
  * The set is intentionally narrower than the orchestrator's broader
@@ -268,7 +265,7 @@ interface CrossChainPermit {
   /**
    * Settlement layers this session is permitted to use. Omit (or pass
    * `[]`) for any supported layer — the SDK resolves to the union of
-   * every known arbiter from `@rhinestone/shared-configs`.
+   * every known arbiter in its bundled allow-set.
    */
   settlementLayers?: CrossChainSettlementLayer[]
 }
@@ -324,9 +321,8 @@ interface CrossChainPermissionInput {
   /**
    * Settlement layers this session is permitted to use. Omit (or pass
    * `[]`) to allow **any of the supported settlement layers** — the SDK
-   * resolves to the union of every known arbiter from
-   * `@rhinestone/shared-configs`. Pass a subset (e.g. `['ECO']`) to
-   * narrow.
+   * resolves to the union of every known arbiter in its bundled
+   * allow-set. Pass a subset (e.g. `['ECO']`) to narrow.
    */
   settlementLayers?: CrossChainSettlementLayer[]
 }

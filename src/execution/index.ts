@@ -14,11 +14,7 @@ import {
   type SplitIntentsInput,
 } from '../orchestrator'
 import type { NonEvmAddress } from '../orchestrator/destinations'
-import {
-  getChainById,
-  getSupportedChainIds,
-  isTestnet,
-} from '../orchestrator/registry'
+import { getChainById, isTestnet } from '../orchestrator/registry'
 import type { AppFeeRate, SettlementLayerFilter } from '../orchestrator/types'
 import type {
   CalldataInput,
@@ -359,8 +355,8 @@ async function getPortfolio(config: RhinestoneConfig, onTestnets: boolean) {
     config.endpointUrl,
     config.headers,
   )
-  const supportedChainIds = getSupportedChainIds()
-  const filteredChainIds = supportedChainIds.filter((id) => {
+  const catalog = await orchestrator.getChainCatalog()
+  const filteredChainIds = catalog.getSupportedChainIds().filter((id) => {
     try {
       return isTestnet(id) === onTestnets
     } catch {
