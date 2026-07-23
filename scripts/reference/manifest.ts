@@ -172,6 +172,7 @@ export const manifest: Group[] = [
         group: 'Smart sessions',
         experimental: true,
         items: [
+          accountMethod('createSession'),
           accountMethod('experimental_getSessionDetails', true),
           accountMethod('experimental_isSessionEnabled', true),
           accountMethod('experimental_signEnableSession', true),
