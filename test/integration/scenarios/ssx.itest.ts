@@ -2,7 +2,12 @@ import type { Chain } from 'viem/chains'
 import { describe, test } from 'vitest'
 import { experimental_disableSession } from '../../../src/actions/smart-sessions'
 import { SimulationFailedError } from '../../../src/errors/index'
-import type { RhinestoneAccount, Session } from '../../../src/index'
+import type {
+  RhinestoneAccount,
+  Session,
+  SignerSet,
+  Transaction,
+} from '../../../src/index'
 import { sourceChain, targetChain } from '../config/chains'
 import { createIntegrationSDK } from '../config/environment'
 import {
@@ -29,6 +34,9 @@ import {
 
 type ChainMode = 'same' | 'cross'
 type Scope = 'unscoped' | 'scoped-single' | 'scoped-multi'
+type SessionTransaction = Transaction & {
+  signers: Extract<SignerSet, { session: Session }>
+}
 
 const chainModes: ChainMode[] = ['same', 'cross']
 const scopes: Scope[] = ['unscoped', 'scoped-single', 'scoped-multi']
@@ -203,7 +211,7 @@ function getExecutionChain(chainMode: ChainMode): Chain {
 function createSessionTransaction(
   chainMode: ChainMode,
   { session }: { session: Session },
-) {
+): SessionTransaction {
   const base = {
     sponsored: true,
     calls: [createNoopCall()],
@@ -235,7 +243,7 @@ async function addEnableData(
   account: RhinestoneAccount,
   session: Session,
   transaction: ReturnType<typeof createSessionTransaction>,
-): Promise<ReturnType<typeof createSessionTransaction>> {
+): Promise<SessionTransaction> {
   const sessionDetails = await account.experimental_getSessionDetails([session])
   const enableSignature =
     await account.experimental_signEnableSession(sessionDetails)

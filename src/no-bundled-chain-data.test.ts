@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import { describe, expect, test } from 'vitest'
 
 // Guard against re-introducing a build-time dependency on
@@ -25,6 +26,8 @@ describe('no bundled chain-data dependency', () => {
     const offenders = Object.entries(sources)
       // Exclude this guard file itself (it names the package in the matcher).
       .filter(([path]) => !path.endsWith('no-bundled-chain-data.test.ts'))
+      // Exclude generated build output (gitignored; absent in CI).
+      .filter(([path]) => !path.includes('/dist/'))
       .filter(([, src]) =>
         /\bfrom\s+['"]@rhinestone\/shared-configs['"]/.test(src),
       )

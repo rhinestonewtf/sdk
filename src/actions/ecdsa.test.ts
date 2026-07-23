@@ -3,7 +3,23 @@ import { base } from 'viem/chains'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { accountA, passkeyAccount } from '../../test/consts'
 import { RhinestoneSDK } from '..'
-import { resolveCallInputs } from '../execution/utils'
+import { resolveCalls } from '../calls/resolve'
+import { toEvmChainReference } from '../chains/caip2'
+import type { CallInput } from '../config/account'
+
+function resolveCallInputs(
+  calls: readonly CallInput[],
+  config: unknown,
+  chain: { id: number },
+  account: Address,
+) {
+  return resolveCalls(calls as never, {
+    account,
+    chain: toEvmChainReference(chain.id),
+    config: config as never,
+  })
+}
+
 import {
   addOwner,
   changeThreshold,
@@ -12,19 +28,19 @@ import {
   removeOwner,
 } from './ecdsa'
 
-// `getModuleUninstallationCalls` reads the on-chain validator list to compute
-// the SentinelList `prev` pointer for the uninstall. `enable` reads whether the
-// Nexus default validator is already initialized. The test account isn't
-// deployed, so stub both reads. The address is inlined because `vi.mock` is
-// hoisted above any module-scope `const`.
-vi.mock('../modules/read', async (importActual) => {
-  const actual = await importActual<typeof import('../modules/read')>()
+const rpcReadContract = vi.hoisted(() => vi.fn())
+
+vi.mock('../clients/rpc/compatibility', () => {
   return {
-    ...actual,
-    getValidators: vi
-      .fn()
-      .mockResolvedValue(['0x000000000013fdb5234e4e3162a810f54d9f7e98']),
-    isValidatorInitialized: vi.fn().mockResolvedValue(false),
+    materializeRpcReader: () => ({
+      chain: { kind: 'evm', id: 8453, caip2: 'eip155:8453' },
+      rpc: {
+        getCode: vi.fn(),
+        getTransactionCount: vi.fn(),
+        readContract: rpcReadContract,
+        multicall: vi.fn(),
+      },
+    }),
   }
 })
 
@@ -92,21 +108,26 @@ function expectedOnInstallCalldata(threshold: number, owners: Address[]) {
 }
 
 describe('ECDSA Actions', () => {
+  beforeEach(() => {
+    rpcReadContract
+      .mockReset()
+      .mockImplementation(async (_context, request) =>
+        request.functionName === 'isInitialized'
+          ? false
+          : [[OWNABLE_VALIDATOR_ADDRESS], SENTINEL],
+      )
+  })
+
   // Enabling ECDSA on a passkey account is the real scenario: the OwnableValidator
   // (the Nexus default validator) is not initialized at deploy, so `enable`
   // initializes it via `onInstall`.
   describe('Install Ownable Validator', async () => {
-    const read = await import('../modules/read')
     const rhinestone = new RhinestoneSDK({ apiKey: 'test' })
     const rhinestoneAccount = await rhinestone.createAccount({
       owners: {
         type: 'passkey',
         accounts: [passkeyAccount],
       },
-    })
-
-    beforeEach(() => {
-      vi.mocked(read.isValidatorInitialized).mockResolvedValue(false)
     })
 
     test('1/1 Owners', async () => {
@@ -162,7 +183,7 @@ describe('ECDSA Actions', () => {
     })
 
     test('throws when the default validator is already initialized on-chain', async () => {
-      vi.mocked(read.isValidatorInitialized).mockResolvedValue(true)
+      rpcReadContract.mockResolvedValueOnce(true)
       await expect(
         resolveCallInputs(
           [enableEcdsa([MOCK_OWNER_A])],
@@ -178,7 +199,6 @@ describe('ECDSA Actions', () => {
   // so `enable` is redundant. This is detected from config without an on-chain
   // read, so it also holds for not-yet-deployed (counterfactual) accounts.
   describe('Enable on an account already configured with ECDSA', async () => {
-    const read = await import('../modules/read')
     const rhinestone = new RhinestoneSDK({ apiKey: 'test' })
     const rhinestoneAccount = await rhinestone.createAccount({
       owners: {
@@ -188,9 +208,7 @@ describe('ECDSA Actions', () => {
     })
 
     test('throws without reading chain state', async () => {
-      vi.mocked(read.isValidatorInitialized)
-        .mockClear()
-        .mockResolvedValue(false)
+      rpcReadContract.mockClear()
       await expect(
         resolveCallInputs(
           [enableEcdsa([MOCK_OWNER_A])],
@@ -199,7 +217,7 @@ describe('ECDSA Actions', () => {
           accountAddress,
         ),
       ).rejects.toThrow(/ECDSA is already enabled/)
-      expect(read.isValidatorInitialized).not.toHaveBeenCalled()
+      expect(rpcReadContract).not.toHaveBeenCalled()
     })
   })
 

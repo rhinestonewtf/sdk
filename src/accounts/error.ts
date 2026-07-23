@@ -1,4 +1,4 @@
-import type { AccountType } from '../types'
+import type { AccountType } from './types'
 
 class AccountError extends Error {
   private readonly _message: string

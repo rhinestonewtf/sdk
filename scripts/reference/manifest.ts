@@ -87,13 +87,6 @@ export const manifest: Group[] = [
       },
       {
         kind: 'symbol',
-        symbol: 'createSession',
-        source: '.',
-        container: 'RhinestoneSDK',
-        callStyle: 'sdkMethod',
-      },
-      {
-        kind: 'symbol',
         symbol: 'getIntentStatus',
         source: '.',
         container: 'RhinestoneSDK',
@@ -109,6 +102,13 @@ export const manifest: Group[] = [
       {
         kind: 'symbol',
         symbol: 'getAppFeeBalances',
+        source: '.',
+        container: 'RhinestoneSDK',
+        callStyle: 'sdkMethod',
+      },
+      {
+        kind: 'symbol',
+        symbol: 'createSession',
         source: '.',
         container: 'RhinestoneSDK',
         callStyle: 'sdkMethod',

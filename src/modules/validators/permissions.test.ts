@@ -3,7 +3,8 @@ import { base } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 import { accountA } from '../../../test/consts'
 import { resolvePermission, resolvePermissions } from './permissions'
-import { getSessionData, toSession } from './smart-sessions'
+import { getSessionData } from './smart-sessions/digest'
+import { toSession } from './smart-sessions/resolve'
 
 const USDC: Address = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'
 const RECIPIENT: Address = '0x1111111111111111111111111111111111111111'
@@ -262,7 +263,7 @@ describe('resolvePermission', () => {
         functions: {
           send: {
             params: {
-              // @ts-expect-error — value is `never` for dynamic types
+              // Runtime backstop for dynamic values received without type safety.
               data: { condition: 'equal', value: '0x1234' },
             },
           },
@@ -339,7 +340,7 @@ describe('resolvePermission', () => {
         functions: {
           foo: {
             params: {
-              // @ts-expect-error — 'baz' doesn't exist
+              // Runtime backstop for unknown parameter names.
               baz: { condition: 'equal', value: 1n },
             },
           },
@@ -441,7 +442,7 @@ describe('resolvePermission', () => {
         abi,
         address: USDC,
         functions: {
-          // @ts-expect-error — 'bar' doesn't exist in abi
+          // Runtime backstop for unknown function names.
           bar: {},
         },
       }),
@@ -664,7 +665,7 @@ describe('resolvePermission anyOf', () => {
         abi: erc20Abi,
         address: USDC,
         functions: {
-          // @ts-expect-error — readonly [T, ...T[]] rejects an empty array at the type level too
+          // Runtime backstop for an empty allowlist.
           transfer: { params: { recipient: { anyOf: [] } } },
         },
       }),
@@ -773,7 +774,7 @@ describe('resolvePermission sugar fields', () => {
         abi,
         address: USDC,
         functions: {
-          // @ts-expect-error — spendingLimit is gated to ERC-20-transfer-shaped ABIs at the type level
+          // Runtime backstop for non-ERC-20 functions.
           deposit: { spendingLimit: { token: USDC, amount: 5000n } },
         },
       }),
@@ -801,7 +802,7 @@ describe('resolvePermission sugar fields', () => {
         abi,
         address: USDC,
         functions: {
-          // @ts-expect-error — spendingLimit is gated to ERC-20 selectors at the type level
+          // Runtime backstop for unsupported selectors.
           mint: { spendingLimit: { token: USDC, amount: 5000n } },
         },
       }),
@@ -834,7 +835,7 @@ describe('resolvePermission sugar fields', () => {
         abi: erc20Abi,
         address: USDC,
         functions: {
-          // @ts-expect-error — valueLimit is gated to payable functions at the type level
+          // Runtime backstop for non-payable functions.
           transfer: { valueLimit: 100n },
         },
       }),

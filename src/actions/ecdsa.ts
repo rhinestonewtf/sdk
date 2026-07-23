@@ -1,13 +1,13 @@
 import { type Address, encodeFunctionData } from 'viem'
+import type { CalldataInput, LazyCallInput } from '../config/account'
 import {
-  getModuleUninstallationCalls,
-  getValidatorInstallationCalls,
-} from '../accounts'
-import {
-  getOwnableValidator,
   OWNABLE_VALIDATOR_ADDRESS,
-} from '../modules/validators/core'
-import type { CalldataInput, LazyCallInput } from '../types'
+  resolveOwnableAddresses,
+} from '../modules/validators/ownable'
+import {
+  resolveModuleUninstallation,
+  resolveValidatorInstallation,
+} from './runtime'
 
 /**
  * Enable ECDSA authentication
@@ -16,10 +16,10 @@ import type { CalldataInput, LazyCallInput } from '../types'
  * @returns Calls to enable ECDSA authentication
  */
 function enable(owners: Address[], threshold = 1): LazyCallInput {
-  const module = getOwnableValidator(threshold, owners)
+  const module = resolveOwnableAddresses({ owners, threshold })
   return {
-    async resolve({ chain, config }) {
-      return getValidatorInstallationCalls(config, chain, module)
+    async resolve(context) {
+      return resolveValidatorInstallation(context, module)
     },
   }
 }
@@ -29,10 +29,10 @@ function enable(owners: Address[], threshold = 1): LazyCallInput {
  * @returns Calls to disable ECDSA authentication
  */
 function disable(): LazyCallInput {
-  const module = getOwnableValidator(1, [])
+  const module = resolveOwnableAddresses({ owners: [], threshold: 1 })
   return {
-    async resolve({ chain, config }) {
-      return getModuleUninstallationCalls(config, chain, module)
+    async resolve(context) {
+      return resolveModuleUninstallation(context, module)
     },
   }
 }

@@ -8,7 +8,7 @@ import type {
 import {
   DUMMY_PRECLAIMOP_SELECTOR,
   DUMMY_PRECLAIMOP_TARGET,
-} from '../../../src/modules/validators/smart-sessions'
+} from '../../../src/modules/validators/smart-sessions/resolve'
 import { sourceChain, targetChain } from '../config/chains'
 import { createIntegrationSDK } from '../config/environment'
 import {
@@ -66,7 +66,7 @@ describe.sequential('SDK integration preclaim-ops', () => {
         sponsored: true,
         calls: [createNoopCall()],
         sourceCalls: { [sourceChain.id]: [createNoopCall()] },
-        signers: { type: 'experimental_session', session },
+        signers: { type: 'experimental_session' as const, session },
       }),
     })
 

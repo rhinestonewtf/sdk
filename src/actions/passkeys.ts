@@ -1,14 +1,14 @@
 import { encodeFunctionData } from 'viem'
+import type { CalldataInput, LazyCallInput } from '../config/account'
 import {
-  getModuleInstallationCalls,
-  getModuleUninstallationCalls,
-} from '../accounts'
-import {
-  getWebAuthnValidator,
+  resolveWebauthnCredentials,
   WEBAUTHN_VALIDATOR_ADDRESS,
   type WebauthnCredential,
-} from '../modules/validators/core'
-import type { CalldataInput, LazyCallInput } from '../types'
+} from '../modules/validators/webauthn'
+import {
+  resolveModuleInstallation,
+  resolveModuleUninstallation,
+} from './runtime'
 
 /**
  * Enable passkeys authentication
@@ -17,10 +17,13 @@ import type { CalldataInput, LazyCallInput } from '../types'
  * @returns Calls to enable passkeys authentication
  */
 function enable(credential: WebauthnCredential): LazyCallInput {
-  const module = getWebAuthnValidator(1, [credential])
+  const module = resolveWebauthnCredentials({
+    credentials: [credential],
+    threshold: 1,
+  })
   return {
-    async resolve({ config }) {
-      return getModuleInstallationCalls(config, module)
+    async resolve(context) {
+      return resolveModuleInstallation(context, module)
     },
   }
 }
@@ -30,17 +33,19 @@ function enable(credential: WebauthnCredential): LazyCallInput {
  * @returns Calls to disable passkeys authentication
  */
 function disable(): LazyCallInput {
-  const module = getWebAuthnValidator(1, [
-    {
-      // Mocked values
-      pubKey:
-        '0x580a9af0569ad3905b26a703201b358aa0904236642ebe79b22a19d00d3737637d46f725a5427ae45a9569259bf67e1e16b187d7b3ad1ed70138c4f0409677d1',
-      authenticatorId: '0x',
-    },
-  ])
+  const module = resolveWebauthnCredentials({
+    threshold: 1,
+    credentials: [
+      {
+        pubKey:
+          '0x580a9af0569ad3905b26a703201b358aa0904236642ebe79b22a19d00d3737637d46f725a5427ae45a9569259bf67e1e16b187d7b3ad1ed70138c4f0409677d1',
+        authenticatorId: '0x',
+      },
+    ],
+  })
   return {
-    async resolve({ chain, config }) {
-      return getModuleUninstallationCalls(config, chain, module)
+    async resolve(context) {
+      return resolveModuleUninstallation(context, module)
     },
   }
 }

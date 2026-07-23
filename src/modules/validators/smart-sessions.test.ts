@@ -13,31 +13,55 @@ import {
 import { base } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 import { accountA, accountB } from '../../../test/consts'
-import type { ArgPolicyExpression, Session } from '../../types'
+import type { ArgPolicyExpression } from '../../config/account'
 import { PERMIT2_CLAIM_POLICY_ADDRESS } from './policies/claim/permit2'
-import type { ResolvedSessionSignerSet } from './smart-sessions'
+import { getPermissionId, getSessionData } from './smart-sessions/digest'
+import { buildSmartSessionMockSignature } from './smart-sessions/mock-signature'
+import { SMART_SESSION_EMISSARY_ADDRESS } from './smart-sessions/module'
 import {
   ARG_POLICY_ADDRESS,
-  buildMockSignature,
-  DUMMY_PRECLAIMOP_SELECTOR,
-  DUMMY_PRECLAIMOP_TARGET,
-  getPermissionId,
-  getPolicyData,
-  getSessionData,
   INTENT_EXECUTION_POLICY_ADDRESS,
-  packSignature,
-  SMART_SESSION_EMISSARY_ADDRESS,
-  SMART_SESSIONS_FALLBACK_TARGET_FLAG,
-  SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
   SPENDING_LIMITS_POLICY_ADDRESS,
   SUDO_POLICY_ADDRESS,
-  selectPermit2ClaimPolicyForMessage,
   TIME_FRAME_POLICY_ADDRESS,
-  toSession,
   UNIVERSAL_ACTION_POLICY_ADDRESS,
   USAGE_LIMIT_POLICY_ADDRESS,
   VALUE_LIMIT_POLICY_ADDRESS,
-} from './smart-sessions'
+} from './smart-sessions/policies/addresses'
+import { selectPermit2ClaimPolicyForMessage } from './smart-sessions/policies/claim'
+import { encodeSessionPolicy } from './smart-sessions/policies/encode'
+import {
+  DUMMY_PRECLAIMOP_SELECTOR,
+  DUMMY_PRECLAIMOP_TARGET,
+  SMART_SESSIONS_FALLBACK_TARGET_FLAG,
+  SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
+  toSession,
+} from './smart-sessions/resolve'
+import { encodeSmartSessionSignature as packSignature } from './smart-sessions/signature'
+import type {
+  ResolvedSessionSignerSet,
+  Session,
+  SessionPolicy,
+  SmartSessionMockShape,
+} from './smart-sessions/types'
+
+const getPolicyData = (policy: SessionPolicy, useDevContracts?: boolean) =>
+  encodeSessionPolicy(policy, useDevContracts ? 'development' : 'production')
+
+const buildMockSignature = (
+  session: Session,
+  useDevContracts = false,
+  chainCount = 1,
+  targetChainId?: number,
+  shape: SmartSessionMockShape = 'enable',
+) =>
+  buildSmartSessionMockSignature({
+    session,
+    environment: useDevContracts ? 'development' : 'production',
+    chainCount,
+    targetChainId,
+    shape,
+  })
 
 // ---------------------------------------------------------------------------
 // Shared fixtures
@@ -62,8 +86,8 @@ const sessionWithAction: Session = toSession(
       },
     ],
   },
-  // WETH on Base — opts into the native-wrap injected action (v2: the
-  // wrapped-native address is supplied, not looked up from bundled config).
+  // Supply the wrapped-native token so the native-wrap `deposit()` action is
+  // injected (v2 `toSession` is pure: without it the action is omitted).
   { wrappedNativeToken: '0x4200000000000000000000000000000000000006' },
 )
 
@@ -145,6 +169,20 @@ describe('getPolicyData', () => {
     })
     expect(result.policy).toBe(UNIVERSAL_ACTION_POLICY_ADDRESS)
     expect(result.initData.length).toBeGreaterThan(2)
+  })
+
+  test('rejects universal action policies with more than sixteen rules', () => {
+    const rules = Array.from({ length: 17 }, () => ({
+      condition: 'equal' as const,
+      calldataOffset: 4n,
+      referenceValue: 1n,
+    }))
+    expect(() =>
+      getPolicyData({
+        type: 'universal-action',
+        rules: rules as [(typeof rules)[number], ...typeof rules],
+      }),
+    ).toThrow('at most 16 rules')
   })
 })
 
@@ -404,6 +442,19 @@ describe('getPolicyData arg-policy', () => {
       getPolicyData({ type: 'arg-policy', expression: expr }),
     ).toThrow(/max is 128/)
   })
+
+  test('throws when expression compiles to more than 256 nodes', () => {
+    let expr: ArgPolicyExpression = {
+      type: 'rule',
+      rule: { condition: 'equal', calldataOffset: 4n, referenceValue: 1n },
+    }
+    for (let index = 0; index < 256; index++) {
+      expr = { type: 'not', child: expr }
+    }
+    expect(() =>
+      getPolicyData({ type: 'arg-policy', expression: expr }),
+    ).toThrow('max is 256')
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -525,6 +576,28 @@ describe('getSessionData', () => {
     // injected dummy preclaimop action
     expect(data.actions[3].actionTarget).toBe(DUMMY_PRECLAIMOP_TARGET)
     expect(data.actions[3].actionTargetSelector).toBe(DUMMY_PRECLAIMOP_SELECTOR)
+  })
+
+  test('omits the native-wrap action without a wrapped-native token', () => {
+    const pure = toSession({
+      chain: base,
+      owners: { type: 'ecdsa', accounts: [accountA] },
+      permissions: [
+        {
+          abi: erc20Abi,
+          address: '0x1111111111111111111111111111111111111111' as Address,
+          functions: { transfer: {} },
+        },
+      ],
+    })
+    const data = getSessionData(pure)
+    // user action + intent-execution fallback + dummy preclaimop (no WETH deposit)
+    expect(data.actions).toHaveLength(3)
+    expect(
+      data.actions.some(
+        (a) => a.actionTarget === '0x4200000000000000000000000000000000000006',
+      ),
+    ).toBe(false)
   })
 
   test('dummy preclaimop action uses sudo policy', () => {
@@ -962,7 +1035,7 @@ describe('getPermissionId', () => {
 describe('packSignature', () => {
   test('verifyExecutions: false → MODE_USE (0x00) prefix', () => {
     const signers: ResolvedSessionSignerSet = {
-      type: 'experimental_session',
+      kind: 'smart-session',
       session: baseSession,
       verifyExecutions: false,
     }
@@ -972,7 +1045,7 @@ describe('packSignature', () => {
 
   test('verifyExecutions: false → bytes 1-32 are the permissionId', () => {
     const signers: ResolvedSessionSignerSet = {
-      type: 'experimental_session',
+      kind: 'smart-session',
       session: baseSession,
       verifyExecutions: false,
     }
@@ -983,7 +1056,7 @@ describe('packSignature', () => {
 
   test('verifyExecutions: false → total length > 66 bytes', () => {
     const signers: ResolvedSessionSignerSet = {
-      type: 'experimental_session',
+      kind: 'smart-session',
       session: baseSession,
       verifyExecutions: false,
     }
@@ -994,7 +1067,7 @@ describe('packSignature', () => {
 
   test('verifyExecutions: true + enableData → MODE_ENABLE (0x01) prefix', () => {
     const signers: ResolvedSessionSignerSet = {
-      type: 'experimental_session',
+      kind: 'smart-session',
       session: baseSession,
       verifyExecutions: true,
       enableData: {
@@ -1011,7 +1084,7 @@ describe('packSignature', () => {
 
   test('verifyExecutions: true + enableData → longer output (has compressed payload)', () => {
     const signers: ResolvedSessionSignerSet = {
-      type: 'experimental_session',
+      kind: 'smart-session',
       session: baseSession,
       verifyExecutions: true,
       enableData: {
@@ -1029,7 +1102,7 @@ describe('packSignature', () => {
 
   test('verifyExecutions: true, no enableData → MODE_USE (0x00) prefix', () => {
     const signers: ResolvedSessionSignerSet = {
-      type: 'experimental_session',
+      kind: 'smart-session',
       session: baseSession,
       verifyExecutions: true,
     }
@@ -1043,12 +1116,12 @@ describe('packSignature', () => {
       owners: { type: 'ecdsa', accounts: [accountB] },
     })
     const signersA: ResolvedSessionSignerSet = {
-      type: 'experimental_session',
+      kind: 'smart-session',
       session: baseSession,
       verifyExecutions: false,
     }
     const signersB: ResolvedSessionSignerSet = {
-      type: 'experimental_session',
+      kind: 'smart-session',
       session: sessionB,
       verifyExecutions: false,
     }

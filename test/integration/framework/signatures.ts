@@ -1,13 +1,13 @@
 import type { Hex } from 'viem'
+import type { OriginSignature } from '../../../src/clients/orchestrator/public'
+import {
+  SIG_MODE_EMISSARY_EXECUTION_ERC1271,
+  SIG_MODE_ERC1271,
+} from '../../../src/clients/orchestrator/public'
 import type {
   PreparedTransactionData,
   SignedTransactionData,
 } from '../../../src/index'
-import type { OriginSignature } from '../../../src/orchestrator/types'
-import {
-  SIG_MODE_EMISSARY_EXECUTION_ERC1271,
-  SIG_MODE_ERC1271,
-} from '../../../src/orchestrator/types'
 
 // `signatureMode` lives on the prepared intent input, which the public type
 // keeps as `unknown`. Read it through a narrow cast rather than widening the

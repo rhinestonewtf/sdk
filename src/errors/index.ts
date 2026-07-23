@@ -14,24 +14,11 @@ import {
   OwnersFieldRequiredError,
   SigningNotSupportedForAccountError,
   WalletClientNoConnectedAccountError,
-} from '../accounts'
-import {
-  Eip7702InitSignatureRequiredError,
-  ExecutionError,
-  IndependentSigningNotSupportedError,
-  InsufficientOwnerSignaturesError,
-  IntentFailedError,
-  InvalidOwnerSigningOptionsError,
-  InvalidSourceCallsError,
-  isExecutionError,
-  MismatchedOwnerSignaturesError,
-  OrderPathRequiredForIntentsError,
-  QuoteNotInPreparedTransactionError,
-  UnknownOwnerError,
-} from '../execution'
-import type { ErrorDetail, SponsorLimitKey } from '../orchestrator'
+} from '../accounts/error'
+import { UnsupportedChainError, UnsupportedTokenError } from '../chains/errors'
 import {
   ConflictError,
+  type ErrorDetail,
   ExternalServiceTimeoutError,
   ForbiddenError,
   InsufficientLiquidityError,
@@ -55,12 +42,25 @@ import {
   SettlementQuoteError,
   SimulationFailedError,
   SponsorLimitExceededError,
+  type SponsorLimitKey,
   UnauthorizedError,
   UnprocessableContentError,
-  UnsupportedChainError,
-  UnsupportedTokenError,
   ValidationError,
-} from '../orchestrator'
+} from '../clients/orchestrator/errors'
+import {
+  Eip7702InitSignatureRequiredError,
+  ExecutionError,
+  IndependentSigningNotSupportedError,
+  InsufficientOwnerSignaturesError,
+  IntentFailedError,
+  InvalidOwnerSigningOptionsError,
+  InvalidSourceCallsError,
+  isExecutionError,
+  MismatchedOwnerSignaturesError,
+  OrderPathRequiredForIntentsError,
+  QuoteNotInPreparedTransactionError,
+  UnknownOwnerError,
+} from './execution'
 
 export type { ErrorDetail, SponsorLimitKey }
 

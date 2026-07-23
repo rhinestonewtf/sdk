@@ -3,6 +3,8 @@ dist
 .DS_Store
 
 .env
+.artifacts/
+coverage/
 
 examples/
 # TypeDoc reference extraction artifact

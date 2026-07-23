@@ -9,7 +9,7 @@ import {
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import type { Chain } from 'viem/chains'
 import type { Session } from '../../../src/index'
-import { toSession } from '../../../src/modules/validators/smart-sessions'
+import { toSession } from '../../../src/smart-sessions/index'
 import { getTokenAddress } from './tokens'
 
 export const noopTarget: Address = '0xd8da6bf26964af9d7eed9e03e53415d37aa96045'

@@ -1,14 +1,27 @@
-import { type Hex, maxUint256 } from 'viem'
+import type { Hex } from 'viem'
+import type { LazyCallInput, Session } from '../config/account'
+import { encodeEnableSessionCall } from '../modules/validators/smart-sessions/calls'
+import { resolveSmartSessionModule } from '../modules/validators/smart-sessions/module'
+import type { Session as ResolvedSession } from '../modules/validators/smart-sessions/types'
 import {
-  getModuleInstallationCalls,
-  getModuleUninstallationCalls,
-} from '../accounts'
-import {
-  getDisableSessionCall,
-  getEnableSessionCall,
-  getSmartSessionValidator,
-} from '../modules/validators/smart-sessions'
-import type { LazyCallInput, Session } from '../types'
+  resolveModuleInstallation,
+  resolveModuleUninstallation,
+  resolveSessionDisable,
+} from './runtime'
+
+function environment(useDevContracts: boolean | undefined) {
+  return useDevContracts === true ? 'development' : 'production'
+}
+
+function sessionModule(
+  config: Parameters<LazyCallInput['resolve']>[0]['config'],
+) {
+  return resolveSmartSessionModule({
+    enabled: config.experimental_sessions?.enabled ?? false,
+    address: config.experimental_sessions?.module,
+    environment: environment(config.useDevContracts),
+  })
+}
 
 /**
  * Enable smart sessions
@@ -16,12 +29,12 @@ import type { LazyCallInput, Session } from '../types'
  */
 function experimental_enable(): LazyCallInput {
   return {
-    async resolve({ config }) {
-      const module = getSmartSessionValidator(config)
+    async resolve(context) {
+      const module = sessionModule(context.config)
       if (!module) {
         return []
       }
-      return getModuleInstallationCalls(config, module)
+      return resolveModuleInstallation(context, module)
     },
   }
 }
@@ -32,12 +45,12 @@ function experimental_enable(): LazyCallInput {
  */
 function experimental_disable(): LazyCallInput {
   return {
-    async resolve({ chain, config }) {
-      const module = getSmartSessionValidator(config)
+    async resolve(context) {
+      const module = sessionModule(context.config)
       if (!module) {
         return []
       }
-      return getModuleUninstallationCalls(config, chain, module)
+      return resolveModuleUninstallation(context, module)
     },
   }
 }
@@ -66,14 +79,15 @@ function experimental_enableSession(
 ): LazyCallInput {
   return {
     async resolve({ accountAddress, config }) {
-      return getEnableSessionCall(
-        accountAddress,
-        session,
-        enableSessionSignature,
+      const call = encodeEnableSessionCall({
+        account: accountAddress,
+        session: session as ResolvedSession,
+        userSignature: enableSessionSignature,
         hashesAndChainIds,
         sessionToEnableIndex,
-        config.useDevContracts,
-      )
+        environment: environment(config.useDevContracts),
+      })
+      return { to: call.target, value: call.value, data: call.data }
     },
   }
 }
@@ -98,14 +112,13 @@ function experimental_disableSession(
   expires?: Date,
 ): LazyCallInput {
   return {
-    async resolve({ accountAddress, config }) {
-      return getDisableSessionCall(
-        accountAddress,
+    async resolve(context) {
+      return resolveSessionDisable({
+        context,
+        account: context.accountAddress,
         session,
-        expires ? BigInt(Math.floor(expires.getTime() / 1000)) : maxUint256,
-        config.provider,
-        config.useDevContracts,
-      )
+        ...(expires ? { expires } : {}),
+      })
     },
   }
 }

@@ -1,9 +1,54 @@
 import type { Account, Address, Hex } from 'viem'
-import { toAccount } from 'viem/accounts'
-import { getAddress, getInitCode, getV0InitCode } from '../accounts'
-import { getSetup as experimental_getModuleSetup } from '../modules'
-import type { RhinestoneAccountConfig } from '../types'
-import { walletClientToAccount, wrapParaAccount } from './walletClient'
+import { createAccountConstruction } from '../accounts/construction'
+import { getRhinestoneInitData, getV0InitData } from '../accounts/legacy'
+import { toViewOnlyAccount as createViewOnlyAccount } from '../accounts/wallet-account'
+import type {
+  RhinestoneAccountConfig,
+  RhinestoneConfig,
+} from '../config/account'
+import { resolveStandaloneAccountConfig } from '../config/resolve'
+import { assertAccountOwnersConfigured } from '../config/validate'
+import { toLegacyModuleSetup } from '../modules/legacy-core'
+import {
+  walletClientToAccount,
+  wrapParaAccount,
+} from '../signing/signers/compatibility'
+
+function standaloneConstruction(
+  config: RhinestoneConfig,
+  profile: 'current-v2' | 'legacy-v0',
+) {
+  const resolved = resolveStandaloneAccountConfig(config, profile)
+  assertAccountOwnersConfigured(resolved)
+  const module =
+    resolved.sessions.module.source === 'explicit'
+      ? resolved.sessions.module.address
+      : undefined
+  const compatibilityFallback =
+    resolved.sessions.compatibilityFallback.source === 'explicit'
+      ? resolved.sessions.compatibilityFallback.address
+      : undefined
+  return createAccountConstruction({
+    material: {
+      account: resolved.account,
+      ...(resolved.owners ? { owner: resolved.owners } : {}),
+      modules: resolved.modules,
+      ...(resolved.initData ? { initData: resolved.initData } : {}),
+      ...(resolved.eoa ? { eoa: resolved.eoa } : {}),
+      sessions: {
+        enabled: resolved.sessions.enabled,
+        environment:
+          config.useDevContracts === true
+            ? 'development'
+            : resolved.sessions.environment,
+        ...(module ? { module } : {}),
+        ...(compatibilityFallback ? { compatibilityFallback } : {}),
+      },
+    },
+    chain: { kind: 'evm', id: 1, caip2: 'eip155:1' },
+    deployed: false,
+  })
+}
 
 /**
  * Compute the v0 (legacy) initialization data for an account configuration.
@@ -32,21 +77,7 @@ function experimental_getV0InitData(config: RhinestoneAccountConfig): {
   factoryData: Hex
   intentExecutorInstalled: boolean
 } {
-  const initCode = getV0InitCode(config)
-  if (!initCode) {
-    throw new Error('Init code not available')
-  }
-  if (!('factory' in initCode)) {
-    throw new Error('Factory not available')
-  }
-  const { factory, factoryData } = initCode
-  const address = getAddress(config)
-  return {
-    address,
-    factory,
-    factoryData,
-    intentExecutorInstalled: true,
-  }
+  return getV0InitData(standaloneConstruction(config, 'legacy-v0'))
 }
 
 /**
@@ -81,24 +112,16 @@ function experimental_getRhinestoneInitData(config: RhinestoneAccountConfig):
   | {
       address: Address
     } {
-  const initCode = getInitCode(config)
-  if (!initCode) {
-    throw new Error('Init code not available')
+  if (
+    config.initData &&
+    !('factory' in config.initData) &&
+    !config.eoa &&
+    config.account?.type !== 'eoa' &&
+    config.account?.type !== 'kernel'
+  ) {
+    return { address: config.initData.address }
   }
-  const address = getAddress(config)
-  if ('factory' in initCode) {
-    const { factory, factoryData } = initCode
-    return {
-      address,
-      factory,
-      factoryData,
-      intentExecutorInstalled: true,
-    }
-  } else {
-    return {
-      address,
-    }
-  }
+  return getRhinestoneInitData(standaloneConstruction(config, 'current-v2'))
 }
 
 /**
@@ -118,24 +141,21 @@ function experimental_getRhinestoneInitData(config: RhinestoneAccountConfig):
  * ```
  */
 function toViewOnlyAccount(address: Address): Account {
-  const errorMessage = 'Signing is not supported for view-only accounts'
-  return toAccount({
-    address,
-    signMessage: async () => {
-      throw new Error(errorMessage)
-    },
-    signTypedData: async () => {
-      throw new Error(errorMessage)
-    },
-    signTransaction: async () => {
-      throw new Error(errorMessage)
-    },
-  })
+  return createViewOnlyAccount(address)
+}
+
+/**
+ * Compute the ERC-7579 module setup for an account configuration.
+ * @param config Account and module configuration
+ * @returns Validators, executors, hooks, and fallbacks to install
+ */
+function getSetup(config: RhinestoneConfig) {
+  return toLegacyModuleSetup(standaloneConstruction(config, 'current-v2').setup)
 }
 
 export {
   experimental_getV0InitData,
-  experimental_getModuleSetup,
+  getSetup as experimental_getModuleSetup,
   experimental_getRhinestoneInitData,
   toViewOnlyAccount,
   walletClientToAccount,

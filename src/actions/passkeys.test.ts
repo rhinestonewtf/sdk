@@ -1,25 +1,50 @@
-import { encodeAbiParameters, encodeFunctionData } from 'viem'
+import { type Address, encodeAbiParameters, encodeFunctionData } from 'viem'
 import { base } from 'viem/chains'
 import { describe, expect, test, vi } from 'vitest'
 import { accountA, passkeyAccount } from '../../test/consts'
 import { RhinestoneSDK } from '..'
-import { resolveCallInputs } from '../execution/utils'
+import { resolveCalls } from '../calls/resolve'
+import { toEvmChainReference } from '../chains/caip2'
+import type { CallInput } from '../config/account'
+
+function resolveCallInputs(
+  calls: readonly CallInput[],
+  config: unknown,
+  chain: { id: number },
+  account: Address,
+) {
+  return resolveCalls(calls as never, {
+    account,
+    chain: toEvmChainReference(chain.id),
+    config: config as never,
+  })
+}
+
 import {
   disable as disablePasskeys,
   enable as enablePasskeys,
 } from './passkeys'
 
-// `getModuleUninstallationCalls` reads the on-chain validator list to compute
-// the SentinelList `prev` pointer for the uninstall. The test account isn't
-// deployed, so stub the read with a known single-validator list. The address
-// is inlined because `vi.mock` is hoisted above any module-scope `const`.
-vi.mock('../modules/read', async (importActual) => {
-  const actual = await importActual<typeof import('../modules/read')>()
+const rpcReadContract = vi.hoisted(() =>
+  vi
+    .fn()
+    .mockResolvedValue([
+      ['0x0000000000578c4cb0e472a5462da43c495c3f33'],
+      '0x0000000000000000000000000000000000000001',
+    ]),
+)
+
+vi.mock('../clients/rpc/compatibility', () => {
   return {
-    ...actual,
-    getValidators: vi
-      .fn()
-      .mockResolvedValue(['0x0000000000578c4cb0e472a5462da43c495c3f33']),
+    materializeRpcReader: () => ({
+      chain: { kind: 'evm', id: 8453, caip2: 'eip155:8453' },
+      rpc: {
+        getCode: vi.fn(),
+        getTransactionCount: vi.fn(),
+        readContract: rpcReadContract,
+        multicall: vi.fn(),
+      },
+    }),
   }
 })
 
