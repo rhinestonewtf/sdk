@@ -2,11 +2,7 @@ import { formatCaip2 } from '../../chains/caip2'
 import type { ResolvedSdkConfig } from '../../config/resolved'
 import type { OrchestratorAuthPort } from './auth'
 import { createOrchestratorAuth } from './auth'
-import {
-  ChainCatalog,
-  parseChains,
-  type WireChainsResponse,
-} from './chain-catalog'
+import { ChainCatalog, parseChains } from './chain-catalog'
 import { type FetchPort, fetchOrchestratorJson } from './fetch'
 import {
   mapIntentRequestToWire,
@@ -18,6 +14,7 @@ import {
   mapSplitResultFromWire,
 } from './mappers'
 import type { OrchestratorPort } from './port'
+import type { WireChainsResponse } from './wire'
 
 const SDK_VERSION = '2.0.0-beta.43'
 const API_VERSION = '2026-04.blanc'

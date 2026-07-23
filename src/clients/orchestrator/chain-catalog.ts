@@ -11,6 +11,7 @@
 // The catalog only owns the chain *facts*.
 
 import { chainIdFromCaip2, isCaip2 } from '../../chains/caip2'
+import type { WireChainsResponse } from './wire'
 
 export type CatalogToken = {
   symbol: string
@@ -28,17 +29,6 @@ export type ChainInfo = {
 }
 
 export type ChainInfoMap = Record<number, ChainInfo>
-
-// Wire shape of `GET /chains`, keyed by CAIP-2 chain id.
-export type WireChainsResponse = Record<
-  string,
-  {
-    name: string
-    testnet: boolean
-    supportedTokens: 'all' | CatalogToken[]
-    wrappedNativeToken?: CatalogToken
-  }
->
 
 /**
  * Read-only view over the chain facts returned by `GET /chains`. Built once per

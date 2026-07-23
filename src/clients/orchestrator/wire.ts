@@ -21,3 +21,6 @@ export type WireQuote = WireQuoteResponse['routes'][number]
 export type WirePortfolioResponse = Folded<JsonResponse<'getPortfolio'>>
 export type WireIntentStatusResponse = Folded<JsonResponse<'getIntent'>>
 export type WireSplitResponse = Folded<JsonResponse<'getSplit'>>
+// The `/chains` catalog: a CAIP-2-keyed map of chain facts. Not folded — the
+// trace id (if present) is a non-CAIP-2 key the catalog parser skips.
+export type WireChainsResponse = JsonResponse<'listChains'>
