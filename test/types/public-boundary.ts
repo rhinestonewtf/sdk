@@ -10,6 +10,7 @@ import type { SponsorLimitKey } from '../../src/errors/index'
 import * as errors from '../../src/errors/index'
 import {
   type PreparedTransactionData,
+  type Quote,
   type RhinestoneAccount,
   type RhinestoneAccountConfig,
   RhinestoneSDK,
@@ -54,6 +55,7 @@ new RhinestoneSDK({
 
 declare const account: RhinestoneAccount
 declare const prepared: PreparedTransactionData
+declare const quote: Quote
 declare const signData: SignData
 declare const typedData: HashTypedDataParameters
 declare const sessionSigners: Extract<SignerSet, { type: 'session' }>
@@ -91,6 +93,9 @@ const crossChainNonEvmWithDeadline = {
   customDeadline: 9_999_999_999,
 } as const satisfies Transaction
 const sponsorLimitKey: SponsorLimitKey = 'perIntentUSD'
+const bridgeSponsored: boolean = quote.cost.fees.breakdown.bridge.sponsored
+const sponsorSurchargeUsd: number =
+  quote.cost.fees.breakdown.sponsorSurcharge.usd
 
 const preparedResult: Promise<PreparedTransactionData> =
   account.prepareTransaction(transaction)
@@ -129,6 +134,8 @@ void sameChainTransaction
 void crossChainWithDeadline
 void crossChainNonEvmWithDeadline
 void sponsorLimitKey
+void bridgeSponsored
+void sponsorSurchargeUsd
 void actions
 void ecdsaActions
 void mfaActions
