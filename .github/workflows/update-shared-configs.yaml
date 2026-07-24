@@ -12,7 +12,11 @@ jobs:
   upgrade-shared-configs:
     runs-on: ubuntu-latest
     steps:
+      # v2 (on `main`) no longer bundles `@rhinestone/shared-configs`, so the
+      # auto-bump only applies to the legacy v1 line — check out and PR v1.
       - uses: actions/checkout@v4
+        with:
+          ref: v1
 
       - name: Detect package manager
         id: pm
@@ -133,4 +137,5 @@ jobs:
 
           ---
           *Created automatically by [yeet](https://github.com/rhinestonewtf/yeet) publish workflow.*" \
+            --base v1 \
             --head "${{ steps.vars.outputs.branch }}"
