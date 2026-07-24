@@ -24,7 +24,7 @@ npm install $GITHUB_WORKSPACE/rhinestone-sdk-*.tgz
 cat > App.tsx << 'EOF'
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import sdk from '@rhinestone/sdk';
+import * as sdk from '@rhinestone/sdk';
 
 export default function App() {
   const [testResult, setTestResult] = React.useState<string>('Testing...');
@@ -64,16 +64,18 @@ const styles = StyleSheet.create({
 });
 EOF
 
-# Create a simple Node.js test to verify the SDK can be imported in a React Native context
-cat > test-import.js << 'EOF'
-const sdk = require('@rhinestone/sdk');
+# Create a simple Node.js test to verify the SDK can be imported in a React Native
+# context. The SDK is ESM-only with named exports, so use an ESM namespace import
+# from a .mjs file (independent of the project's package type).
+cat > test-import.mjs << 'EOF'
+import * as sdk from '@rhinestone/sdk';
 console.info('✓ SDK imported successfully in React Native project');
 
-// Basic smoke test - just try to access main exports
-if (typeof sdk === 'object' && sdk !== null) {
-  console.info('✓ SDK is an object');
+// Basic smoke test - the namespace should expose the public exports.
+if (typeof sdk === 'object' && sdk !== null && typeof sdk.RhinestoneSDK === 'function') {
+  console.info('✓ SDK exposes RhinestoneSDK');
 } else {
-  console.error('✗ SDK import failed - not an object');
+  console.error('✗ SDK import failed - RhinestoneSDK export missing');
   process.exit(1);
 }
 
@@ -81,4 +83,4 @@ console.info('✓ React Native integration test passed');
 EOF
 
 # Run the import test
-node test-import.js
+node test-import.mjs

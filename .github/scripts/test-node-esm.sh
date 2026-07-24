@@ -15,16 +15,17 @@ npm pkg set type=module
 # Install the packed SDK using absolute path
 npm install $GITHUB_WORKSPACE/rhinestone-sdk-*.tgz
 
-# Create test script
+# Create test script. The SDK is ESM-only with named exports (no default
+# export), so use a namespace import.
 cat > index.js << 'EOF'
-import sdk from '@rhinestone/sdk';
+import * as sdk from '@rhinestone/sdk';
 console.info('✓ SDK imported successfully');
 
-// Basic smoke test - just try to access main exports
-if (typeof sdk === 'object' && sdk !== null) {
-  console.info('✓ SDK is an object');
+// Basic smoke test - the namespace should expose the public exports.
+if (typeof sdk === 'object' && sdk !== null && typeof sdk.RhinestoneSDK === 'function') {
+  console.info('✓ SDK exposes RhinestoneSDK');
 } else {
-  console.error('✗ SDK import failed - not an object');
+  console.error('✗ SDK import failed - RhinestoneSDK export missing');
   process.exit(1);
 }
 
