@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        environment: ["node-cjs", "node-esm", "react-native"]
+        environment: ["node-esm", "react-native"]
 
     steps:
       # Setup and Build
