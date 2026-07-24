@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.13.0
+
+### Minor Changes
+
+- a8c5120: Add the `protocolFees` transaction option to configure the Rhinestone protocol fee, and support sponsoring it via `sponsored.protocolFees`.
+
 ## 1.12.0
 
 ### Minor Changes
