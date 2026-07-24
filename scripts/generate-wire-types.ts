@@ -6,22 +6,29 @@
  * ids). When the wire shape drifts, regenerating this file turns the change into
  * a typecheck error at the adapter boundary.
  *
- * Spec source resolves as: CLI arg → `ORCH_OPENAPI_SPEC` env → published URL.
+ * Spec source resolves as: CLI arg → `ORCH_OPENAPI_SPEC` env → pinned URL.
+ * The default targets the `openapi` commit pinned in `.openapi-ref` (next to
+ * the generated file), so regeneration is deterministic and immune to upstream
+ * `openapi/main` drift — the pin is bumped only by the scheduled sync workflow.
  * The published spec lives in the public `rhinestonewtf/openapi` repo, so the
  * default needs no auth. Pass a local path to generate against a checkout.
  */
 import { execFileSync } from 'node:child_process'
-import { writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import openapiTS, { astToString } from 'openapi-typescript'
 
-const DEFAULT_SPEC =
-  'https://raw.githubusercontent.com/rhinestonewtf/openapi/main/orchestrator/blanc.json'
-
 const OUT_PATH = fileURLToPath(
   new URL('../src/clients/orchestrator/wire.gen.ts', import.meta.url),
 )
+
+const REF_PATH = fileURLToPath(
+  new URL('../src/clients/orchestrator/.openapi-ref', import.meta.url),
+)
+
+const pinnedRef = readFileSync(REF_PATH, 'utf8').trim()
+const DEFAULT_SPEC = `https://raw.githubusercontent.com/rhinestonewtf/openapi/${pinnedRef}/orchestrator/blanc.json`
 
 function resolveSpec(value: string): URL {
   if (/^https?:\/\//.test(value)) return new URL(value)

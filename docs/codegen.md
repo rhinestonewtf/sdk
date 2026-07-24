@@ -79,12 +79,28 @@ a **typecheck error at the adapter boundary** instead of a runtime surprise.
 ### How it works
 
 ```bash
-bun run generate:wire                          # default: published spec
+bun run generate:wire                          # default: pinned spec
 bun run generate:wire ./path/to/blanc.json     # local checkout
 ORCH_OPENAPI_SPEC=<url|path> bun run generate:wire
 ```
 
-Spec source resolves as: CLI arg → `ORCH_OPENAPI_SPEC` env → published URL. The
-default is the public `rhinestonewtf/openapi` repo
-(`orchestrator/blanc.json`), so no auth is needed. After an orchestrator API
-change, regenerate and let `tsc` surface anything the client must adapt.
+Spec source resolves as: CLI arg → `ORCH_OPENAPI_SPEC` env → pinned URL. The
+default targets the `openapi` commit pinned in
+`src/clients/orchestrator/.openapi-ref` — `orchestrator/blanc.json` at that SHA
+in the public `rhinestonewtf/openapi` repo, so no auth is needed.
+
+### Pin and auto-sync
+
+The pin makes regeneration deterministic: because `openapi/main` auto-updates on
+every orchestrator API change, generating against it live would break *every*
+open SDK PR the moment upstream moves. Pinning means the per-PR CI check
+(`Verify wire types match the published OpenAPI spec`) regenerates against a
+fixed SHA and only ever reflects intentional bumps.
+
+The pin is advanced by the [`Sync wire types`](../.github/workflows/sync-wire-types.yaml)
+workflow (hourly cron + `workflow_dispatch`), the *only* thing that changes
+`wire.gen.ts`: it detects when `openapi/main` is ahead of the pin, bumps
+`.openapi-ref`, regenerates, typechecks, and opens/updates a rolling PR. A regen
+that fails typecheck (breaking upstream change) fails the job without opening a
+PR, so open PRs keep building until a human adapts the boundary. The pin is
+per-branch, so the v2 dev (`main`) and prod (`release`) lines can differ.
