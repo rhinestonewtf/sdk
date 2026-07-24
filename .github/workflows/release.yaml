@@ -101,9 +101,9 @@ jobs:
 
       # Regenerate the SDK reference and open/update a PR in the docs repo, but
       # only when a real publish happened (not when the Release PR is merely
-      # opened/updated). Gated to the v2 line — flip `release` to `main` when v2
-      # graduates. v1 publishes are intentionally excluded so they can't clobber
-      # the v2 reference the docs site tracks.
+      # opened/updated). Gated to `release` (v2 prod publishes to `@latest`);
+      # `main` only cuts `@dev` snapshots, and v1 publishes are excluded so they
+      # can't clobber the v2 reference the docs site tracks.
       - name: Mint docs-repo token
         if: steps.changesets.outputs.published == 'true' && github.ref == 'refs/heads/release'
         id: docs-token
