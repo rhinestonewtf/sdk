@@ -19,6 +19,14 @@ on:
         options:
           - prod
           - dev
+  # Run on push (post-merge), not pull_request: these jobs hold live credentials
+  # (a prod API key and the funder private key), so they must only ever run
+  # already-reviewed code. The suite is picked by branch — full suite on release
+  # (v2 prod), smoke on main (v2 dev) — both against prod.
+  push:
+    branches:
+      - main
+      - release
 
 concurrency:
   group: live-integration-tests
@@ -29,32 +37,48 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      # When target=dev, point the SDK at the dev orchestrator. The SDK then
-      # auto-enables dev contract addresses (see createIntegrationSDK), so
-      # bundles simulate against the matching dev deployment. Empty for prod
-      # falls back to the SDK's built-in prod URL + prod contracts.
-      INTEGRATION_ORCHESTRATOR_URL: ${{ inputs.target == 'dev' && 'https://dev.v1.orchestrator.rhinestone.dev' || '' }}
       # Funder for the funded specs in the `all` suite (smoke needs none). The
       # address must hold testnet native + USDC; same testnet key for prod/dev.
       INTEGRATION_FUNDER_PRIVATE_KEY: ${{ secrets.INTEGRATION_FUNDER_PRIVATE_KEY }}
 
     steps:
-      # Resolve the API key explicitly per target. A ternary like
-      # `target == 'dev' && DEV || PROD` would silently fall back to the prod
-      # key when the dev secret is unset (empty is falsy), sending the wrong
-      # credential to the dev endpoint. Fail fast instead.
-      - name: Resolve integration API key
+      # Resolve suite + target. workflow_dispatch honors the chosen inputs; pushes
+      # derive them from the branch — `release` runs the full suite, `main` runs
+      # smoke — always against prod. The API key is resolved explicitly per
+      # target: a ternary like `target == 'dev' && DEV || PROD` would silently
+      # fall back to the prod key when the dev secret is unset (empty is falsy),
+      # sending the wrong credential to the dev endpoint. Fail fast instead. When
+      # target=dev, point the SDK at the dev orchestrator so it auto-enables dev
+      # contract addresses (see createIntegrationSDK); prod leaves the URL empty
+      # and falls back to the SDK's built-in prod URL + prod contracts.
+      - name: Resolve run config
         env:
-          TARGET: ${{ inputs.target }}
+          EVENT: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_SUITE: ${{ inputs.suite }}
+          INPUT_TARGET: ${{ inputs.target }}
           PROD_API_KEY: ${{ secrets.INTEGRATION_RHINESTONE_API_KEY }}
           DEV_API_KEY: ${{ secrets.INTEGRATION_RHINESTONE_API_KEY_DEV }}
         run: |
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            SUITE="$INPUT_SUITE"
+            TARGET="$INPUT_TARGET"
+          elif [ "$REF_NAME" = "release" ]; then
+            SUITE="all"
+            TARGET="prod"
+          else
+            SUITE="smoke"
+            TARGET="prod"
+          fi
+          echo "SUITE=$SUITE" >> "$GITHUB_ENV"
+
           if [ "$TARGET" = "dev" ]; then
             if [ -z "$DEV_API_KEY" ]; then
               echo "::error::target=dev requires the INTEGRATION_RHINESTONE_API_KEY_DEV secret"
               exit 1
             fi
             echo "INTEGRATION_RHINESTONE_API_KEY=$DEV_API_KEY" >> "$GITHUB_ENV"
+            echo "INTEGRATION_ORCHESTRATOR_URL=https://dev.v1.orchestrator.rhinestone.dev" >> "$GITHUB_ENV"
           else
             if [ -z "$PROD_API_KEY" ]; then
               echo "::error::target=prod requires the INTEGRATION_RHINESTONE_API_KEY secret"
@@ -73,9 +97,9 @@ jobs:
         run: bun install
 
       - name: Run smoke integration tests
-        if: ${{ inputs.suite == 'smoke' }}
+        if: env.SUITE == 'smoke'
         run: bun run test:integration:smoke -- --run
 
       - name: Run all integration tests
-        if: ${{ inputs.suite == 'all' }}
+        if: env.SUITE == 'all'
         run: bun run test:integration -- --run
