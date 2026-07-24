@@ -1,9 +1,10 @@
 name: Release
 
 # Push to main publishes a snapshot (@dev tag); push to release or v1
-# runs changesets/action to open a Release PR or publish to npm.
-# Publishes use OIDC trusted publishing; release PRs are opened by the
-# rhinestone-automations GitHub App.
+# runs changesets/action to open a Release PR or publish to npm. On this
+# v1 line, publishes target the `v1` dist-tag so they don't move `latest`
+# (which tracks the v2 line). Publishes use OIDC trusted publishing;
+# release PRs are opened by the rhinestone-automations GitHub App.
 
 on:
   push:
