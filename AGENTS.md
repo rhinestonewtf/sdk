@@ -39,7 +39,7 @@ The SDK uses three long-lived branches:
 
 - `main` — dev releases for **v2** SDK (snapshots published under the `@dev` tag)
 - `release` — prod releases for **v2** SDK (published to `@latest`)
-- `v1` — prod releases for the legacy **v1** SDK (published under the `@v1` tag)
+- `v1` — prod releases for the legacy **v1** SDK (published under the `@v1-latest` tag)
 
 Where to open PRs:
 

@@ -7,7 +7,7 @@
     "check": "biome check",
     "typecheck": "tsc --noEmit",
     "changeset": "changeset",
-    "changeset:release": "bun run build && changeset publish --tag v1",
+    "changeset:release": "bun run build && changeset publish --tag v1-latest",
     "changeset:version": "changeset version && bun run scripts/sync-version.ts",
     "size": "size-limit"
   },
