@@ -44,12 +44,14 @@ describe('orchestrator client', () => {
                   ],
                   output: [],
                   fees: {
-                    total: { usd: 1 },
+                    total: { usd: 1.1 },
                     breakdown: {
                       gas: { usd: 1, sponsored: false },
                       bridge: { usd: 0, sponsored: false },
                       swap: { usd: 0, sponsored: false },
                       app: { usd: 0, sponsored: false },
+                      protocol: { usd: 0, sponsored: false },
+                      sponsorSurcharge: { usd: 0.1, sponsored: true },
                     },
                   },
                 },
@@ -102,6 +104,11 @@ describe('orchestrator client', () => {
         amount: 3n,
       },
     ])
+    expect(result.routes[0]?.cost.fees.breakdown.gas.sponsored).toBe(false)
+    expect(result.routes[0]?.cost.fees.breakdown.sponsorSurcharge).toEqual({
+      usd: 0.1,
+      sponsored: true,
+    })
     expect(result.routes[0]?.tokenRequirements).toEqual({
       1: {
         [address]: { type: 'approval', amount: 4n, spender: address },
