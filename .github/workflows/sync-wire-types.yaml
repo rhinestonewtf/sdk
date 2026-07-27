@@ -23,6 +23,10 @@ concurrency:
 jobs:
   sync:
     name: Bump the openapi pin and open a PR
+    # `schedule` only ever fires on the default branch, but this file also rides
+    # the main -> release merge, so a manual dispatch from `release` would bump
+    # the pin against release's tree and open a nonsense PR into `main`.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - name: Mint rhinestone-automations token
