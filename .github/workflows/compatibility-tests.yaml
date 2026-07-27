@@ -7,7 +7,10 @@ on:
       - release
 
 jobs:
-  test:
+  # Distinct from the `test` job in ci.yaml: a shared job name produces two check
+  # runs with the same context, which a required-status-check rule can't tell
+  # apart.
+  package-compat:
     if: github.base_ref == 'main'
     runs-on: ubuntu-latest
     strategy:
