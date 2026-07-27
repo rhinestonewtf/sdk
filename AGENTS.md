@@ -55,18 +55,18 @@ Keep these in sync with the code — update the relevant doc in the same PR as a
 
 ## Branching
 
-The SDK uses three long-lived branches while v2 stabilizes:
+The SDK uses three long-lived branches:
 
-- `main` — dev releases for **v1** SDK
-- `release` — beta releases for **v2** SDK
-- `v1` — prod releases for **v1** SDK
+- `main` — dev releases for **v2** SDK (snapshots published under the `@dev` tag)
+- `release` — prod releases for **v2** SDK (published to `@latest`)
+- `v1` — prod releases for the legacy **v1** SDK
 
 Where to open PRs:
 
-- **v2 changes** → target `release`
-- **Bug fixes for existing users** → target `main` (will be ported to v1/v2 as needed)
+- **v2 changes** (features and fixes) → target `main`
+- **v1 fixes** → target `v1`
 
-Once v2 is stable, we'll switch back to the standard `main` (dev) / `release` (prod) flow.
+The release process: push `main` for a v2 dev release, `release` for a v2 release, `v1` for a v1 release.
 
 ## Patterns
 

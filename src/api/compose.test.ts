@@ -59,11 +59,12 @@ function fixture() {
               fees: {
                 total: { usd: 0 },
                 breakdown: {
-                  gas: { usd: 0 },
-                  bridge: { usd: 0 },
-                  swap: { usd: 0 },
-                  app: { usd: 0 },
-                  protocol: { usd: 0 },
+                  gas: { usd: 0, sponsored: false },
+                  bridge: { usd: 0, sponsored: false },
+                  swap: { usd: 0, sponsored: false },
+                  app: { usd: 0, sponsored: false },
+                  protocol: { usd: 0, sponsored: false },
+                  sponsorSurcharge: { usd: 0, sponsored: false },
                 },
               },
             },

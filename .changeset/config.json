@@ -3,7 +3,7 @@
   "updateInternalDependencies": "patch",
   "linked": [],
   "access": "public",
-  "baseBranch": "release",
+  "baseBranch": "main",
   "ignore": [],
   "changelog": "@changesets/cli/changelog"
 }

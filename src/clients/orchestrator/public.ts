@@ -210,6 +210,14 @@ interface UsdAmount {
   usd: number
 }
 
+interface FeeCategory extends UsdAmount {
+  /**
+   * Whether a sponsor absorbs some or all of this category.
+   * The user-vs-sponsor split is not surfaced.
+   */
+  sponsored: boolean
+}
+
 type Price = { usd: number } | null
 
 interface CostTokenEntry {
@@ -222,11 +230,12 @@ interface CostTokenEntry {
 }
 
 interface FeeBreakdown {
-  gas: UsdAmount
-  bridge: UsdAmount
-  swap: UsdAmount
-  app: UsdAmount
-  protocol: UsdAmount
+  gas: FeeCategory
+  bridge: FeeCategory
+  swap: FeeCategory
+  app: FeeCategory
+  protocol: FeeCategory
+  sponsorSurcharge: FeeCategory
 }
 
 interface Fees {
