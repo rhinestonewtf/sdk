@@ -1,5 +1,26 @@
 # @rhinestone/sdk
 
+## 2.1.0
+
+### Minor Changes
+
+- ea3a4a2: Expose each quote fee category's `sponsored` flag and the `sponsorSurcharge` category.
+- df9efbf: Bring back social recovery. Add `recovery` to the account config, a `guardians` signer set for UserOperations, and the `@rhinestone/sdk/actions/recovery` subpath with `enable`, `recoverEcdsaOwnership`, and `recoverPasskeyOwnership`.
+
+  Recovery calls are ordered additions, then threshold, then removals. The previous implementation emitted the threshold change first and removed passkey credentials before adding them, which reverted with `InvalidThreshold` when raising the threshold and `CannotRemoveCredential` when rotating a 1-of-1 passkey account.
+
+  Guardians only sign UserOperations — the validator rejects ERC-1271 signatures and intents — and each returned call must be sent as its own UserOperation.
+
+  `recoverPasskeyOwnership` takes `currentCredentials`, the account's complete current credential set. Passing only the credentials being replaced makes it re-add an installed credential, which reverts with `CredentialAlreadyExists`.
+
+  `recovery` is also honored when an account config is used as an intent recipient, so recipient deployment installs the validator and derives the matching address.
+
+### Patch Changes
+
+- b0d694f: Make ECDSA recovery and owner reads use the configured Ownable validator instead of always targeting the canonical deployment.
+- e8a492c: Make passkey recovery read and update the account's configured WebAuthn validator.
+- 11ce775: Fix `recoverPasskeyOwnership` deriving the wrong coordinates from an uncompressed public key. Keys in the 65-byte SEC1 form carry an `0x04` prefix, and slicing from byte 0 shifted both `pubKeyX` and `pubKeyY`, so recovery installed an unusable credential and then removed the working one. Coordinates now come from the shared WebAuthn parser.
+
 ## 2.0.0
 
 ### Major Changes
