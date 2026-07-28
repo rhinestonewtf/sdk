@@ -124,7 +124,10 @@ describe.sequential('SDK integration preclaim-ops', () => {
 
     const recipient = createOwner().address
     const sourceCallAmount = 5_000n
-    const usdc = getTokenAddress('USDC', sourceChain.id)
+    // Token requests are denominated on the target chain, source calls run on
+    // the source chain — the two USDC addresses differ.
+    const sourceUsdc = getTokenAddress('USDC', sourceChain.id)
+    const targetUsdc = getTokenAddress('USDC', targetChain.id)
 
     const execution = await executeIntent({
       account,
@@ -134,11 +137,11 @@ describe.sequential('SDK integration preclaim-ops', () => {
         targetChain,
         sponsored: true,
         calls: [],
-        tokenRequests: [{ address: usdc, amount: 10_000n }],
+        tokenRequests: [{ address: targetUsdc, amount: 10_000n }],
         sourceCalls: {
           [sourceChain.id]: [
             {
-              to: usdc,
+              to: sourceUsdc,
               value: 0n,
               data: encodeFunctionData({
                 abi: erc20Abi,
