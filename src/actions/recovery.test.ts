@@ -377,6 +377,37 @@ describe('Recovery Actions', () => {
       ])
     })
 
+    test('derives coordinates from a prefixed uncompressed public key', async () => {
+      const rhinestoneAccount = await accountPromise
+      // Uncompressed SEC1 keys are 65 bytes with an 0x04 prefix. Slicing from
+      // byte 0 shifts both coordinates, so recovery would install an unusable
+      // credential and then remove the working one.
+      const x = 'aa'.repeat(32)
+      const y = 'bb'.repeat(32)
+      const prefixed = toWebAuthnAccount({
+        credential: { id: 'prefixed', publicKey: `0x04${x}${y}` },
+      })
+      rpcReadContract.mockResolvedValueOnce(1n)
+      const { passkeyAccount } = await import('../../test/consts')
+      const oldCredential = credentialOf(passkeyAccount)
+
+      const calls = await recoverPasskeyOwnership({
+        accountAddress,
+        chain: base,
+        config: rhinestoneAccount.config as never,
+        currentCredentials: [oldCredential],
+        newOwners: { type: 'passkey', accounts: [prefixed] },
+      })
+
+      expect(calls[0]).toEqual(
+        passkeyCall('addCredential', [
+          BigInt(`0x${x}`),
+          BigInt(`0x${y}`),
+          false,
+        ]),
+      )
+    })
+
     test('does not re-add a kept credential when replacing one of several', async () => {
       const rhinestoneAccount = await accountPromise
       // `currentCredentials` is the full installed set, so a credential kept in

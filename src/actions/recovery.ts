@@ -8,7 +8,10 @@ import type {
 } from '../config/account'
 import { OWNABLE_VALIDATOR_ADDRESS } from '../modules/validators/ownable'
 import { resolveSocialRecoveryValidator } from '../modules/validators/social-recovery'
-import { WEBAUTHN_VALIDATOR_ADDRESS } from '../modules/validators/webauthn'
+import {
+  parseWebauthnPublicKey,
+  WEBAUTHN_VALIDATOR_ADDRESS,
+} from '../modules/validators/webauthn'
 import { addOwner, changeThreshold, removeOwner } from './ecdsa'
 import {
   addOwner as addPasskeyOwner,
@@ -151,14 +154,10 @@ async function recoverPasskeyOwnership(
   )
 
   const newCredentials = options.newOwners.accounts.map((account) => {
-    const publicKey = account.publicKey.startsWith('0x')
-      ? account.publicKey.slice(2)
-      : account.publicKey
-    return {
-      pubKeyX: BigInt(`0x${publicKey.slice(0, 64)}`),
-      pubKeyY: BigInt(`0x${publicKey.slice(64, 128)}`),
-      requireUV: false,
-    }
+    // Must go through the shared parser: uncompressed SEC1 keys are 65 bytes
+    // with an 0x04 prefix, and slicing from byte 0 shifts both coordinates.
+    const { x, y } = parseWebauthnPublicKey(account.publicKey)
+    return { pubKeyX: x, pubKeyY: y, requireUV: false }
   })
   const newThreshold = options.newOwners.threshold ?? 1
 
