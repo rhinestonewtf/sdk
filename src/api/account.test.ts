@@ -12,6 +12,7 @@ import {
 import type { RhinestoneAccountConfig } from '../index'
 import { RhinestoneSDK } from '../index'
 import { ecdsaSignerId } from '../modules/validators/signer-id'
+import { SOCIAL_RECOVERY_VALIDATOR_ADDRESS } from '../modules/validators/social-recovery'
 import type {
   PreparedTransactionData,
   SignedTransactionData,
@@ -601,6 +602,32 @@ describe('account boundary adapters', () => {
       accountType: 'EOA',
       setupOps: [],
     })
+  })
+
+  test('carries recipient recovery config into setup and address derivation', () => {
+    const base: RhinestoneAccountConfig = {
+      account: { type: 'nexus', version: '1.2.0' },
+      owners: { type: 'ecdsa', accounts: [owner] },
+    }
+    const project = (recipient: RhinestoneAccountConfig) =>
+      adaptTransaction(invocationContext(), {
+        chain: mainnet,
+        calls: [],
+        recipient,
+      }).recipient
+
+    const plain = project(base)
+    const withRecovery = project({
+      ...base,
+      recovery: { guardians: [guardian] },
+    })
+
+    // Dropping `recovery` here would deploy the recipient without the validator
+    // and derive a different address than the caller configured.
+    const setupData = withRecovery?.setupOps?.[0]?.data?.toLowerCase() ?? ''
+    expect(setupData).toContain(SOCIAL_RECOVERY_VALIDATOR_ADDRESS.slice(2))
+    expect(setupData).toContain(guardian.address.slice(2).toLowerCase())
+    expect(withRecovery?.address).not.toBe(plain?.address)
   })
 
   test('includes source and destination authorization chains once', () => {

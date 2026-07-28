@@ -40,12 +40,19 @@ import {
 const accountAddress: Address = '0x36C03e7D593F7B2C6b06fC18B5f4E9a4A29C99b0'
 const SENTINEL: Address = '0x0000000000000000000000000000000000000001'
 
-// Second passkey, so rotation tests have a distinct credential to move to.
+// Extra passkeys, so rotation tests have distinct credentials to move between.
 const passkeyAccountB: WebAuthnAccount = toWebAuthnAccount({
   credential: {
     id: 'GJ8FS0jJPfPGnAHnkYWkNw',
     publicKey:
       '0x1b2c46d1b4b1b6c9b1f8fbc9ba26d4b96a8ea79fbb0a3b1b5e0f2c7d3a4b5c6d7e8f90112233445566778899aabbccddeeff00112233445566778899aabbccdd',
+  },
+})
+const passkeyAccountC: WebAuthnAccount = toWebAuthnAccount({
+  credential: {
+    id: 'Yk3TnPzQ5rWvB2xLmA9dKw',
+    publicKey:
+      '0x2f7e91a3c5d80b46e1f2a7c9d3b58604fa1e2d3c4b5a69788796a5b4c3d2e1f0092817263544536271809aabbccddeeff11223344556677889900aabbccddee11',
   },
 })
 
@@ -325,7 +332,7 @@ describe('Recovery Actions', () => {
         accountAddress,
         chain: base,
         config: rhinestoneAccount.config as never,
-        existingCredentials: [oldCredential],
+        currentCredentials: [oldCredential],
         newOwners: { type: 'passkey', accounts: [passkeyAccountB] },
       })
 
@@ -352,7 +359,7 @@ describe('Recovery Actions', () => {
         accountAddress,
         chain: base,
         config: rhinestoneAccount.config as never,
-        existingCredentials: [credentialOf(passkeyAccount)],
+        currentCredentials: [credentialOf(passkeyAccount)],
         newOwners: {
           type: 'passkey',
           accounts: [passkeyAccount, passkeyAccountB],
@@ -367,6 +374,34 @@ describe('Recovery Actions', () => {
           false,
         ]),
         passkeyCall('setThreshold', [2n]),
+      ])
+    })
+
+    test('does not re-add a kept credential when replacing one of several', async () => {
+      const rhinestoneAccount = await accountPromise
+      // `currentCredentials` is the full installed set, so a credential kept in
+      // `newOwners` must not be added again — addCredential reverts with
+      // CredentialAlreadyExists.
+      rpcReadContract.mockResolvedValueOnce(1n)
+      const { passkeyAccount } = await import('../../test/consts')
+      const kept = credentialOf(passkeyAccount)
+      const replaced = credentialOf(passkeyAccountC)
+      const added = credentialOf(passkeyAccountB)
+
+      const calls = await recoverPasskeyOwnership({
+        accountAddress,
+        chain: base,
+        config: rhinestoneAccount.config as never,
+        currentCredentials: [kept, replaced],
+        newOwners: {
+          type: 'passkey',
+          accounts: [passkeyAccount, passkeyAccountB],
+        },
+      })
+
+      expect(calls).toEqual([
+        passkeyCall('addCredential', [added.pubKeyX, added.pubKeyY, false]),
+        passkeyCall('removeCredential', [replaced.pubKeyX, replaced.pubKeyY]),
       ])
     })
   })

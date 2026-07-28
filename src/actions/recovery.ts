@@ -36,10 +36,16 @@ export interface RecoverEcdsaOwnershipOptions extends CallResolveContext {
 
 export interface RecoverPasskeyOwnershipOptions extends CallResolveContext {
   /**
-   * Credentials to remove. The validator stores credentials by hashed id, so
-   * their coordinates cannot be read back onchain and must be supplied.
+   * The account's complete current credential set, not just the ones being
+   * replaced. Credentials absent from `newOwners` are removed, and those
+   * already present here are not added again — passing a partial set makes the
+   * recovery re-add an installed credential, which reverts with
+   * `CredentialAlreadyExists`.
+   *
+   * This has to be supplied because the validator stores credentials by hashed
+   * id, so their coordinates cannot be read back onchain.
    */
-  existingCredentials: readonly PasskeyCredential[]
+  currentCredentials: readonly PasskeyCredential[]
   /** Target passkey owner set. */
   newOwners: WebauthnValidatorConfig
 }
@@ -156,12 +162,12 @@ async function recoverPasskeyOwnership(
   })
   const newThreshold = options.newOwners.threshold ?? 1
 
-  const existingKeys = options.existingCredentials.map(credentialKey)
+  const currentKeys = options.currentCredentials.map(credentialKey)
   const newKeys = newCredentials.map(credentialKey)
   const credentialsToAdd = newCredentials.filter(
-    (credential) => !existingKeys.includes(credentialKey(credential)),
+    (credential) => !currentKeys.includes(credentialKey(credential)),
   )
-  const credentialsToRemove = options.existingCredentials.filter(
+  const credentialsToRemove = options.currentCredentials.filter(
     (credential) => !newKeys.includes(credentialKey(credential)),
   )
 

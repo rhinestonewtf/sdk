@@ -1054,6 +1054,7 @@ function toAccountConstructionInput(
     ...(config.account ? { account: config.account } : {}),
     ...(config.owners ? { owners: config.owners } : {}),
     ...(config.sessions ? { sessions: config.sessions } : {}),
+    ...(config.recovery ? { recovery: config.recovery } : {}),
     ...(config.eoa ? { eoa: config.eoa } : {}),
     ...(config.modules ? { modules: config.modules } : {}),
     ...(config.initData ? { initData: config.initData } : {}),
