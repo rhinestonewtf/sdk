@@ -79,6 +79,85 @@ export async function readValidatorInitialized(input: {
   )
 }
 
+const validatorThresholdAbi = [
+  {
+    name: 'threshold',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'account', type: 'address' }],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+] as const
+
+const validatorOwnersAbi = [
+  {
+    name: 'getOwners',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'account', type: 'address' }],
+    outputs: [{ name: 'ownersArray', type: 'address[]' }],
+  },
+] as const
+
+/**
+ * Reads an ownable-style validator's owner list and threshold.
+ *
+ * The owner list is returned in the validator's own linked-list order, which
+ * callers need to derive the `prevOwner` argument for removals.
+ */
+export async function readValidatorOwnership(input: {
+  readonly rpc: RpcReadPort
+  readonly chain: EvmChainReference
+  readonly account: Address
+  readonly validator: Address
+}): Promise<{
+  readonly owners: readonly Address[]
+  readonly threshold: number
+}> {
+  const [owners, threshold] = await input.rpc.multicall<
+    [{ result?: readonly Address[] }, { result?: bigint }]
+  >({ chain: input.chain }, [
+    {
+      address: input.validator,
+      abi: validatorOwnersAbi,
+      functionName: 'getOwners',
+      args: [input.account],
+    },
+    {
+      address: input.validator,
+      abi: validatorThresholdAbi,
+      functionName: 'threshold',
+      args: [input.account],
+    },
+  ])
+  if (!owners.result || threshold.result === undefined) {
+    throw new Error('Failed to read existing owners or threshold')
+  }
+  return {
+    owners: owners.result.map((owner) => owner.toLowerCase() as Address),
+    threshold: Number(threshold.result),
+  }
+}
+
+/** Reads a validator's signature threshold for an account. */
+export async function readValidatorThreshold(input: {
+  readonly rpc: RpcReadPort
+  readonly chain: EvmChainReference
+  readonly account: Address
+  readonly validator: Address
+}): Promise<number> {
+  const threshold = await input.rpc.readContract<bigint>(
+    { chain: input.chain },
+    {
+      address: input.validator,
+      abi: validatorThresholdAbi,
+      functionName: 'threshold',
+      args: [input.account],
+    },
+  )
+  return Number(threshold)
+}
+
 const moduleInstalledAbi = [
   {
     type: 'function',
@@ -122,12 +201,13 @@ export async function readOwners(input: {
   readonly chain: EvmChainReference
   readonly accountKind: string
   readonly account: Address
+  readonly ownerValidator?: Address
   readonly hcaFactory?: Address
 }): Promise<{
   readonly accounts: readonly Address[]
   readonly threshold: number
 } | null> {
-  let validator: Address = OWNABLE_VALIDATOR_ADDRESS
+  let validator: Address = input.ownerValidator ?? OWNABLE_VALIDATOR_ADDRESS
   if (input.accountKind === 'hca') {
     validator = input.hcaFactory
       ? await input.rpc.readContract<Address>(

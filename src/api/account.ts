@@ -81,7 +81,10 @@ import type {
   UserOperationResult,
 } from '../transactions/user-operations/types'
 import type { CoreComposition } from './compose-types'
-import { adaptSignerSelection } from './signer-selection'
+import {
+  adaptSignerSelection,
+  adaptUserOperationSignerSelection,
+} from './signer-selection'
 
 interface SubmitTransactionOptions {
   authorizations?: SignedAuthorizationList
@@ -872,7 +875,10 @@ function userOperationSignerSelection(
   if (transaction.signers?.type === 'session') {
     throw new Error('No account found')
   }
-  const selection = adaptSignerSelection(context.account, transaction.signers)
+  const selection = adaptUserOperationSignerSelection(
+    context.account,
+    transaction.signers,
+  )
   if (selection.kind !== 'owner') throw new Error('No account found')
   return selection
 }
@@ -1048,6 +1054,7 @@ function toAccountConstructionInput(
     ...(config.account ? { account: config.account } : {}),
     ...(config.owners ? { owners: config.owners } : {}),
     ...(config.sessions ? { sessions: config.sessions } : {}),
+    ...(config.recovery ? { recovery: config.recovery } : {}),
     ...(config.eoa ? { eoa: config.eoa } : {}),
     ...(config.modules ? { modules: config.modules } : {}),
     ...(config.initData ? { initData: config.initData } : {}),

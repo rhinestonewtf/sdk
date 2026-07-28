@@ -26,6 +26,7 @@ import {
 } from '../modules/read-core'
 import { defineValidator } from '../modules/validators/definition'
 import { K1_DEFAULT_VALIDATOR_ADDRESS } from '../modules/validators/k1'
+import { resolveValidator } from '../modules/validators/resolve'
 import { ecdsaSignerId } from '../modules/validators/signer-id'
 import {
   getSessionDetails as buildSessionDetails,
@@ -362,6 +363,11 @@ function createAccountComposition<CompatibilityConfig>(
         accountKind: context.account.account.kind,
         account: createStaticAccountRuntime(context.account, chain, false)
           .identity.address,
+        ...(context.account.owners?.kind === 'ecdsa'
+          ? {
+              ownerValidator: resolveValidator(context.account.owners).address,
+            }
+          : {}),
         ...(hcaFactory(context.account)
           ? { hcaFactory: hcaFactory(context.account) as Address }
           : {}),

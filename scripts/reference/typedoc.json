@@ -6,6 +6,7 @@
     "../../src/actions/ecdsa.ts",
     "../../src/actions/mfa.ts",
     "../../src/actions/passkeys.ts",
+    "../../src/actions/recovery.ts",
     "../../src/actions/smart-sessions.ts",
     "../../src/utils/index.ts",
     "../../src/smart-sessions/index.ts"

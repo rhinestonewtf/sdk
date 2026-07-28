@@ -59,6 +59,7 @@ import {
   MismatchedOwnerSignaturesError,
   OrderPathRequiredForIntentsError,
   QuoteNotInPreparedTransactionError,
+  SignerNotSupportedError,
   UnknownOwnerError,
 } from './execution'
 
@@ -93,6 +94,7 @@ export {
   MismatchedOwnerSignaturesError,
   OrderPathRequiredForIntentsError,
   QuoteNotInPreparedTransactionError,
+  SignerNotSupportedError,
   UnknownOwnerError,
   // Orchestrator
   isOrchestratorError,

@@ -5,10 +5,14 @@ import { toEvmChainReference } from '../chains/caip2'
 import type { LegacyAccountConfig } from '../config/legacy'
 import { resolveAccountConfig, resolveSdkConfig } from '../config/resolve'
 import type { AccountInvocationContext } from '../config/resolved'
-import { QuoteNotInPreparedTransactionError } from '../errors/execution'
+import {
+  QuoteNotInPreparedTransactionError,
+  SignerNotSupportedError,
+} from '../errors/execution'
 import type { RhinestoneAccountConfig } from '../index'
 import { RhinestoneSDK } from '../index'
 import { ecdsaSignerId } from '../modules/validators/signer-id'
+import { SOCIAL_RECOVERY_VALIDATOR_ADDRESS } from '../modules/validators/social-recovery'
 import type {
   PreparedTransactionData,
   SignedTransactionData,
@@ -22,6 +26,7 @@ import type { CoreComposition } from './compose-types'
 import type { AdaptedSignerSelection } from './signer-selection'
 
 const owner = privateKeyToAccount(`0x${'02'.repeat(32)}`)
+const guardian = privateKeyToAccount(`0x${'03'.repeat(32)}`)
 const recipientAddress = '0x0000000000000000000000000000000000000010' as const
 
 function invocationContext(): AccountInvocationContext<
@@ -50,6 +55,28 @@ describe('account instance surface', () => {
 
     expect(Reflect.has(account, 'sendUserOperation')).toBe(true)
     expect(Reflect.has(account, 'sendTransaction')).toBe(false)
+  })
+
+  test('rejects guardians on the intent and ERC-1271 paths', async () => {
+    const sdk = new RhinestoneSDK({ apiKey: 'offline' })
+    const account = await sdk.createAccount({
+      owners: { type: 'ecdsa', accounts: [owner] },
+      recovery: { guardians: [guardian] },
+    })
+    const signers = { type: 'guardians' as const, guardians: [guardian] }
+
+    // The social recovery validator only validates UserOperations, so these
+    // must fail before any network call rather than produce a dead signature.
+    await expect(
+      account.prepareTransaction({
+        chain: mainnet,
+        calls: [{ to: guardian.address, value: 0n, data: '0x' }],
+        signers,
+      }),
+    ).rejects.toThrow(SignerNotSupportedError)
+    await expect(
+      account.signMessage('hello', mainnet, signers),
+    ).rejects.toThrow(SignerNotSupportedError)
   })
 })
 
@@ -575,6 +602,32 @@ describe('account boundary adapters', () => {
       accountType: 'EOA',
       setupOps: [],
     })
+  })
+
+  test('carries recipient recovery config into setup and address derivation', () => {
+    const base: RhinestoneAccountConfig = {
+      account: { type: 'nexus', version: '1.2.0' },
+      owners: { type: 'ecdsa', accounts: [owner] },
+    }
+    const project = (recipient: RhinestoneAccountConfig) =>
+      adaptTransaction(invocationContext(), {
+        chain: mainnet,
+        calls: [],
+        recipient,
+      }).recipient
+
+    const plain = project(base)
+    const withRecovery = project({
+      ...base,
+      recovery: { guardians: [guardian] },
+    })
+
+    // Dropping `recovery` here would deploy the recipient without the validator
+    // and derive a different address than the caller configured.
+    const setupData = withRecovery?.setupOps?.[0]?.data?.toLowerCase() ?? ''
+    expect(setupData).toContain(SOCIAL_RECOVERY_VALIDATOR_ADDRESS.slice(2))
+    expect(setupData).toContain(guardian.address.slice(2).toLowerCase())
+    expect(withRecovery?.address).not.toBe(plain?.address)
   })
 
   test('includes source and destination authorization chains once', () => {

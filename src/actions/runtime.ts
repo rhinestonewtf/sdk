@@ -14,6 +14,8 @@ import {
   encodeAccountModuleDeInitData,
   readInstalledModules,
   readValidatorInitialized,
+  readValidatorOwnership,
+  readValidatorThreshold,
 } from '../modules/read-core'
 import type { ResolvedModule } from '../modules/types'
 import { OWNABLE_VALIDATOR_ADDRESS } from '../modules/validators/ownable'
@@ -86,6 +88,40 @@ function defaultValidatorConfigured(
         size(module.initData) > 0,
     )
   )
+}
+
+export async function readOwnershipFor(
+  context: CallResolveContext,
+  account: `0x${string}`,
+  validator: `0x${string}`,
+): Promise<{ readonly owners: readonly `0x${string}`[]; threshold: number }> {
+  const reader = materializeRpcReader({
+    chain: context.chain,
+    provider: context.config.provider,
+  })
+  return readValidatorOwnership({
+    rpc: reader.rpc,
+    chain: reader.chain,
+    account,
+    validator,
+  })
+}
+
+export async function readThresholdFor(
+  context: CallResolveContext,
+  account: `0x${string}`,
+  validator: `0x${string}`,
+): Promise<number> {
+  const reader = materializeRpcReader({
+    chain: context.chain,
+    provider: context.config.provider,
+  })
+  return readValidatorThreshold({
+    rpc: reader.rpc,
+    chain: reader.chain,
+    account,
+    validator,
+  })
 }
 
 export async function resolveValidatorInstallation(

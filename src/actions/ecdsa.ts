@@ -1,9 +1,14 @@
-import { type Address, encodeFunctionData } from 'viem'
+import type { Address } from 'viem'
 import type { CalldataInput, LazyCallInput } from '../config/account'
 import {
   OWNABLE_VALIDATOR_ADDRESS,
   resolveOwnableAddresses,
 } from '../modules/validators/ownable'
+import {
+  addOwnableOwner,
+  changeOwnableThreshold,
+  removeOwnableOwner,
+} from './ownable'
 import {
   resolveModuleUninstallation,
   resolveValidatorInstallation,
@@ -43,23 +48,7 @@ function disable(): LazyCallInput {
  * @returns Call to add the owner
  */
 function addOwner(owner: Address): CalldataInput {
-  return {
-    to: OWNABLE_VALIDATOR_ADDRESS,
-    value: 0n,
-    data: encodeFunctionData({
-      abi: [
-        {
-          inputs: [{ internalType: 'address', name: 'owner', type: 'address' }],
-          name: 'addOwner',
-          outputs: [],
-          stateMutability: 'nonpayable',
-          type: 'function',
-        },
-      ],
-      functionName: 'addOwner',
-      args: [owner],
-    }),
-  }
+  return addOwnableOwner(OWNABLE_VALIDATOR_ADDRESS, owner)
 }
 
 /**
@@ -72,26 +61,7 @@ function removeOwner(
   prevOwner: Address,
   ownerToRemove: Address,
 ): CalldataInput {
-  return {
-    to: OWNABLE_VALIDATOR_ADDRESS,
-    value: 0n,
-    data: encodeFunctionData({
-      abi: [
-        {
-          inputs: [
-            { internalType: 'address', name: 'prevOwner', type: 'address' },
-            { internalType: 'address', name: 'owner', type: 'address' },
-          ],
-          name: 'removeOwner',
-          outputs: [],
-          stateMutability: 'nonpayable',
-          type: 'function',
-        },
-      ],
-      functionName: 'removeOwner',
-      args: [prevOwner, ownerToRemove],
-    }),
-  }
+  return removeOwnableOwner(OWNABLE_VALIDATOR_ADDRESS, prevOwner, ownerToRemove)
 }
 
 /**
@@ -100,25 +70,7 @@ function removeOwner(
  * @returns Call to change the threshold
  */
 function changeThreshold(newThreshold: number): CalldataInput {
-  return {
-    to: OWNABLE_VALIDATOR_ADDRESS,
-    value: 0n,
-    data: encodeFunctionData({
-      abi: [
-        {
-          inputs: [
-            { internalType: 'uint256', name: '_threshold', type: 'uint256' },
-          ],
-          name: 'setThreshold',
-          outputs: [],
-          stateMutability: 'nonpayable',
-          type: 'function',
-        },
-      ],
-      functionName: 'setThreshold',
-      args: [BigInt(newThreshold)],
-    }),
-  }
+  return changeOwnableThreshold(OWNABLE_VALIDATOR_ADDRESS, newThreshold)
 }
 
 export { addOwner, removeOwner, changeThreshold, disable, enable }

@@ -6,6 +6,7 @@ import {
   encodeAccountModuleDeInitData,
   readInstalledModules,
   readModuleInstallations,
+  readOwners,
   readValidatorInitialized,
 } from './read-core'
 import type { ResolvedModule } from './types'
@@ -61,6 +62,34 @@ describe('module reads', () => {
         validator,
       }),
     ).resolves.toBe(false)
+  })
+
+  test('reads owners from an explicitly configured validator', async () => {
+    const ownerValidator =
+      '0x0000000000000000000000000000000000000004' as Address
+    const owner = '0x0000000000000000000000000000000000000005'
+    const requests: ContractRead[] = []
+    const rpc: RpcReadPort = {
+      ...fakeReader([]).rpc,
+      multicall: async (_context, input) => {
+        requests.push(...input)
+        return [{ result: [owner] }, { result: 1n }] as never
+      },
+    }
+
+    await expect(
+      readOwners({
+        rpc,
+        chain,
+        accountKind: 'nexus',
+        account,
+        ownerValidator,
+      }),
+    ).resolves.toEqual({ accounts: [owner], threshold: 1 })
+    expect(requests).toEqual([
+      expect.objectContaining({ address: ownerValidator }),
+      expect.objectContaining({ address: ownerValidator }),
+    ])
   })
 
   test('checks installation state for every ERC-7579 module kind', async () => {

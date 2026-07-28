@@ -40,6 +40,13 @@ const limits = [
     ignore: viem,
   },
   {
+    name: '@rhinestone/sdk/actions/recovery',
+    path: `${packageRoot}/actions/recovery.js`,
+    limit: '25 kB',
+    import: '*',
+    ignore: viem,
+  },
+  {
     name: '@rhinestone/sdk/signing/passkeys',
     path: `${packageRoot}/signing/passkeys.js`,
     limit: '1 kB',

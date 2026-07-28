@@ -44,6 +44,11 @@ export type SdkConstructionInput = SdkConstructionInputBase &
     | { auth: SdkAuthInput; apiKey?: string }
   )
 
+export interface RecoveryInput {
+  guardians: Account[]
+  threshold?: number
+}
+
 export interface AccountConstructionInput {
   account?: AccountInput
   owners?: ValidatorInput
@@ -52,6 +57,7 @@ export interface AccountConstructionInput {
     module?: Address
     compatibilityFallback?: Address
   }
+  recovery?: RecoveryInput
   eoa?: Account
   modules?: ModuleInput[]
   initData?: AccountInitData
