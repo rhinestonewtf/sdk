@@ -249,6 +249,24 @@ describe('Recovery Actions', () => {
       expect(rpcMulticall).not.toHaveBeenCalled()
     })
 
+    test('accepts a matching recovery owner validator', async () => {
+      const rhinestoneAccount = await rhinestone.createAccount({
+        owners: {
+          type: 'ecdsa',
+          accounts: [accountA],
+          module: alternateOwnable,
+        },
+      })
+      ownershipIs([accountA.address.toLowerCase() as Address], 1)
+
+      await expect(
+        ecdsaRecovery(rhinestoneAccount.config, {
+          accounts: [accountA],
+          module: alternateOwnable,
+        }),
+      ).resolves.toEqual([])
+    })
+
     test('raises the threshold only after the new owners exist', async () => {
       const rhinestoneAccount = await accountPromise
       // 1-of-1 -> 2-of-2. setThreshold(2) reverts with InvalidThreshold while
