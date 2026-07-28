@@ -38,6 +38,7 @@ import {
 } from './recovery'
 
 const accountAddress: Address = '0x36C03e7D593F7B2C6b06fC18B5f4E9a4A29C99b0'
+const alternateOwnable: Address = '0x2483da3a338895199e5e538530213157e931bf06'
 const SENTINEL: Address = '0x0000000000000000000000000000000000000001'
 
 // Extra passkeys, so rotation tests have distinct credentials to move between.
@@ -77,6 +78,7 @@ async function resolveCallInputs(
 function ownableCall(
   functionName: 'addOwner' | 'removeOwner' | 'setThreshold',
   args: readonly unknown[],
+  validator: Address = OWNABLE_VALIDATOR_ADDRESS,
 ) {
   const abi = {
     addOwner: [{ name: 'owner', type: 'address' }],
@@ -87,7 +89,7 @@ function ownableCall(
     setThreshold: [{ name: '_threshold', type: 'uint256' }],
   }[functionName]
   return {
-    to: OWNABLE_VALIDATOR_ADDRESS,
+    to: validator,
     value: 0n,
     data: encodeFunctionData({
       abi: [
@@ -114,7 +116,11 @@ function ownershipIs(owners: readonly Address[], threshold: number) {
 
 async function ecdsaRecovery(
   config: unknown,
-  newOwners: { accounts: (typeof accountA)[]; threshold?: number },
+  newOwners: {
+    accounts: (typeof accountA)[]
+    threshold?: number
+    module?: Address
+  },
 ) {
   return recoverEcdsaOwnership({
     accountAddress,
@@ -192,6 +198,35 @@ describe('Recovery Actions', () => {
           accountB.address.toLowerCase(),
           accountA.address.toLowerCase(),
         ]),
+      ])
+    })
+
+    test('reads and mutates the explicitly configured owner validator', async () => {
+      const rhinestoneAccount = await accountPromise
+      ownershipIs([accountA.address.toLowerCase() as Address], 1)
+
+      const calls = await ecdsaRecovery(rhinestoneAccount.config, {
+        accounts: [accountB],
+        module: alternateOwnable,
+      })
+
+      expect(rpcMulticall).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.arrayContaining([
+          expect.objectContaining({ address: alternateOwnable }),
+        ]),
+      )
+      expect(calls).toEqual([
+        ownableCall(
+          'addOwner',
+          [accountB.address.toLowerCase()],
+          alternateOwnable,
+        ),
+        ownableCall(
+          'removeOwner',
+          [accountB.address.toLowerCase(), accountA.address.toLowerCase()],
+          alternateOwnable,
+        ),
       ])
     })
 

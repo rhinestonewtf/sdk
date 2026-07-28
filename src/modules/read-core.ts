@@ -201,12 +201,13 @@ export async function readOwners(input: {
   readonly chain: EvmChainReference
   readonly accountKind: string
   readonly account: Address
+  readonly ownerValidator?: Address
   readonly hcaFactory?: Address
 }): Promise<{
   readonly accounts: readonly Address[]
   readonly threshold: number
 } | null> {
-  let validator: Address = OWNABLE_VALIDATOR_ADDRESS
+  let validator: Address = input.ownerValidator ?? OWNABLE_VALIDATOR_ADDRESS
   if (input.accountKind === 'hca') {
     validator = input.hcaFactory
       ? await input.rpc.readContract<Address>(

@@ -233,6 +233,48 @@ describe('internal core composition', () => {
     )
   })
 
+  test('reads ECDSA owners through the configured validator', async () => {
+    const base = fixture()
+    const validator = `0x${'66'.repeat(20)}` as const
+    const multicall = vi.fn(async () => [
+      { result: [owner.address] },
+      { result: 1n },
+    ])
+    const dependencies = {
+      ...base.dependencies,
+      rpc: {
+        forChain: () => ({
+          getCode: vi.fn(async () => ({ code: undefined })),
+          getTransactionCount: vi.fn(async () => 0n),
+          readContract: vi.fn() as RpcReadPort['readContract'],
+          multicall: multicall as RpcReadPort['multicall'],
+        }),
+      },
+    } satisfies CoreDependencies
+    const context = {
+      ...base.context,
+      method: 'get-owners' as const,
+      account: resolveAccountConfig(base.context.sdk, {
+        account: { type: 'nexus', version: '1.2.1' },
+        owners: { type: 'ecdsa', accounts: [owner], module: validator },
+        initData: { address: target },
+      }),
+    }
+    const workflows = createCoreComposition(
+      base.context.sdk,
+      dependencies,
+    ).createAccount(context).workflows
+
+    await expect(workflows.getOwners(context, chain)).resolves.toEqual({
+      accounts: [owner.address],
+      threshold: 1,
+    })
+    expect(multicall).toHaveBeenCalledWith(
+      { chain },
+      expect.arrayContaining([expect.objectContaining({ address: validator })]),
+    )
+  })
+
   test('signs messages and typed data with Smart Session owners', async () => {
     const { composition, context } = fixture()
     const workflows = composition.createAccount(context).workflows
