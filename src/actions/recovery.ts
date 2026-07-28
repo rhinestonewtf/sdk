@@ -1,4 +1,4 @@
-import type { Account, Address } from 'viem'
+import { type Account, type Address, isAddressEqual } from 'viem'
 import type {
   CalldataInput,
   CallResolveContext,
@@ -12,7 +12,11 @@ import {
   parseWebauthnPublicKey,
   WEBAUTHN_VALIDATOR_ADDRESS,
 } from '../modules/validators/webauthn'
-import { addOwner, changeThreshold, removeOwner } from './ecdsa'
+import {
+  addOwnableOwner,
+  changeOwnableThreshold,
+  removeOwnableOwner,
+} from './ownable'
 import {
   addOwner as addPasskeyOwner,
   changeThreshold as changePasskeyThreshold,
@@ -33,7 +37,10 @@ interface PasskeyCredential {
 }
 
 export interface RecoverEcdsaOwnershipOptions extends CallResolveContext {
-  /** Target owner set. Existing owners not listed here are removed. */
+  /**
+   * Target owner set. Existing owners not listed here are removed. If supplied,
+   * `module` must match the account's configured owner validator.
+   */
   newOwners: OwnableValidatorConfig
 }
 
@@ -87,10 +94,26 @@ function enable(guardians: Account[], threshold = 1): LazyCallInput {
 async function recoverEcdsaOwnership(
   options: RecoverEcdsaOwnershipOptions,
 ): Promise<CalldataInput[]> {
+  const configuredValidator =
+    options.config.owners?.type === 'ecdsa'
+      ? (options.config.owners.module ?? OWNABLE_VALIDATOR_ADDRESS)
+      : undefined
+  const requestedValidator = options.newOwners.module
+  if (
+    configuredValidator &&
+    requestedValidator &&
+    !isAddressEqual(configuredValidator, requestedValidator)
+  ) {
+    throw new Error(
+      'Recovery owner validator must match the configured owner validator',
+    )
+  }
+  const validator =
+    configuredValidator ?? requestedValidator ?? OWNABLE_VALIDATOR_ADDRESS
   const existing = await readOwnershipFor(
     options,
     options.accountAddress,
-    OWNABLE_VALIDATOR_ADDRESS,
+    validator,
   )
 
   const newOwners = options.newOwners.accounts
@@ -113,19 +136,19 @@ async function recoverEcdsaOwnership(
   // to the threshold.
   let currentOwners = [...existing.owners]
   for (const owner of ownersToAdd) {
-    calls.push(addOwner(owner))
+    calls.push(addOwnableOwner(validator, owner))
     // The validator pushes new owners onto the front of the linked list.
     currentOwners.unshift(owner)
   }
 
   if (existing.threshold !== newThreshold) {
-    calls.push(changeThreshold(newThreshold))
+    calls.push(changeOwnableThreshold(validator, newThreshold))
   }
 
   for (const owner of ownersToRemove) {
     const index = currentOwners.indexOf(owner)
     const prevOwner = index <= 0 ? SENTINEL_OWNER : currentOwners[index - 1]
-    calls.push(removeOwner(prevOwner, owner))
+    calls.push(removeOwnableOwner(validator, prevOwner, owner))
     currentOwners = currentOwners.filter((entry) => entry !== owner)
   }
 
