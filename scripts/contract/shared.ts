@@ -101,7 +101,10 @@ function changesetNamesInRef(ref: string, cwd: string): Set<string> | null {
 // unreleased changesets — and, in changeset pre mode, released ones too until
 // pre exit — so diffing against the base is the only reliable signal for what
 // this PR changes. Returns null when the base tree can't be read.
-function declaredSdkBump(baseSha: string, cwd: string): SemverBump | null {
+export function declaredSdkBump(
+  baseSha: string,
+  cwd: string,
+): SemverBump | null {
   const changesetDirectory = join(cwd, '.changeset')
   if (!existsSync(changesetDirectory)) return null
   const baseChangesets = changesetNamesInRef(baseSha, cwd)
