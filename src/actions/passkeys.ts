@@ -1,4 +1,3 @@
-import { encodeFunctionData } from 'viem'
 import type { CalldataInput, LazyCallInput } from '../config/account'
 import {
   resolveWebauthnCredentials,
@@ -9,6 +8,11 @@ import {
   resolveModuleInstallation,
   resolveModuleUninstallation,
 } from './runtime'
+import {
+  addWebauthnCredential,
+  changeWebauthnThreshold,
+  removeWebauthnCredential,
+} from './webauthn'
 
 /**
  * Enable passkeys authentication
@@ -62,30 +66,12 @@ function addOwner(
   pubKeyY: bigint,
   requireUserVerification: boolean,
 ): CalldataInput {
-  return {
-    to: WEBAUTHN_VALIDATOR_ADDRESS,
-    value: 0n,
-    data: encodeFunctionData({
-      abi: [
-        {
-          inputs: [
-            { name: 'pubKeyX', type: 'uint256' },
-            { name: 'pubKeyY', type: 'uint256' },
-            {
-              name: 'requireUserVerification',
-              type: 'bool',
-            },
-          ],
-          name: 'addCredential',
-          outputs: [],
-          stateMutability: 'nonpayable',
-          type: 'function',
-        },
-      ],
-      functionName: 'addCredential',
-      args: [pubKeyX, pubKeyY, requireUserVerification],
-    }),
-  }
+  return addWebauthnCredential(
+    WEBAUTHN_VALIDATOR_ADDRESS,
+    pubKeyX,
+    pubKeyY,
+    requireUserVerification,
+  )
 }
 
 /**
@@ -95,26 +81,7 @@ function addOwner(
  * @returns Call to remove the passkey owner
  */
 function removeOwner(pubKeyX: bigint, pubKeyY: bigint): CalldataInput {
-  return {
-    to: WEBAUTHN_VALIDATOR_ADDRESS,
-    value: 0n,
-    data: encodeFunctionData({
-      abi: [
-        {
-          inputs: [
-            { name: 'pubKeyX', type: 'uint256' },
-            { name: 'pubKeyY', type: 'uint256' },
-          ],
-          name: 'removeCredential',
-          outputs: [],
-          stateMutability: 'nonpayable',
-          type: 'function',
-        },
-      ],
-      functionName: 'removeCredential',
-      args: [pubKeyX, pubKeyY],
-    }),
-  }
+  return removeWebauthnCredential(WEBAUTHN_VALIDATOR_ADDRESS, pubKeyX, pubKeyY)
 }
 
 /**
@@ -123,25 +90,7 @@ function removeOwner(pubKeyX: bigint, pubKeyY: bigint): CalldataInput {
  * @returns Call to change the threshold
  */
 function changeThreshold(newThreshold: number): CalldataInput {
-  return {
-    to: WEBAUTHN_VALIDATOR_ADDRESS,
-    value: 0n,
-    data: encodeFunctionData({
-      abi: [
-        {
-          inputs: [
-            { internalType: 'uint256', name: '_threshold', type: 'uint256' },
-          ],
-          name: 'setThreshold',
-          outputs: [],
-          stateMutability: 'nonpayable',
-          type: 'function',
-        },
-      ],
-      functionName: 'setThreshold',
-      args: [BigInt(newThreshold)],
-    }),
-  }
+  return changeWebauthnThreshold(WEBAUTHN_VALIDATOR_ADDRESS, newThreshold)
 }
 
 export { addOwner, removeOwner, changeThreshold, disable, enable }

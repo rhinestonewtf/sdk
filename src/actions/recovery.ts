@@ -18,15 +18,15 @@ import {
   removeOwnableOwner,
 } from './ownable'
 import {
-  addOwner as addPasskeyOwner,
-  changeThreshold as changePasskeyThreshold,
-  removeOwner as removePasskeyOwner,
-} from './passkeys'
-import {
   readOwnershipFor,
   readThresholdFor,
   resolveValidatorInstallation,
 } from './runtime'
+import {
+  addWebauthnCredential,
+  changeWebauthnThreshold,
+  removeWebauthnCredential,
+} from './webauthn'
 
 /** Sentinel head of the validator's owner linked list. */
 const SENTINEL_OWNER: Address = '0x0000000000000000000000000000000000000001'
@@ -56,7 +56,10 @@ export interface RecoverPasskeyOwnershipOptions extends CallResolveContext {
    * id, so their coordinates cannot be read back onchain.
    */
   currentCredentials: readonly PasskeyCredential[]
-  /** Target passkey owner set. */
+  /**
+   * Target passkey owner set. If supplied, `module` must match the account's
+   * configured owner validator.
+   */
   newOwners: WebauthnValidatorConfig
 }
 
@@ -170,10 +173,26 @@ async function recoverEcdsaOwnership(
 async function recoverPasskeyOwnership(
   options: RecoverPasskeyOwnershipOptions,
 ): Promise<CalldataInput[]> {
+  const configuredValidator =
+    options.config.owners?.type === 'passkey'
+      ? (options.config.owners.module ?? WEBAUTHN_VALIDATOR_ADDRESS)
+      : undefined
+  const requestedValidator = options.newOwners.module
+  if (
+    configuredValidator &&
+    requestedValidator &&
+    !isAddressEqual(configuredValidator, requestedValidator)
+  ) {
+    throw new Error(
+      'Recovery owner validator must match the configured owner validator',
+    )
+  }
+  const validator =
+    configuredValidator ?? requestedValidator ?? WEBAUTHN_VALIDATOR_ADDRESS
   const existingThreshold = await readThresholdFor(
     options,
     options.accountAddress,
-    WEBAUTHN_VALIDATOR_ADDRESS,
+    validator,
   )
 
   const newCredentials = options.newOwners.accounts.map((account) => {
@@ -201,7 +220,8 @@ async function recoverPasskeyOwnership(
   // Rotating the sole credential of a 1-of-1 account is impossible otherwise.
   for (const credential of credentialsToAdd) {
     calls.push(
-      addPasskeyOwner(
+      addWebauthnCredential(
+        validator,
         credential.pubKeyX,
         credential.pubKeyY,
         credential.requireUV,
@@ -210,11 +230,17 @@ async function recoverPasskeyOwnership(
   }
 
   if (existingThreshold !== newThreshold) {
-    calls.push(changePasskeyThreshold(newThreshold))
+    calls.push(changeWebauthnThreshold(validator, newThreshold))
   }
 
   for (const credential of credentialsToRemove) {
-    calls.push(removePasskeyOwner(credential.pubKeyX, credential.pubKeyY))
+    calls.push(
+      removeWebauthnCredential(
+        validator,
+        credential.pubKeyX,
+        credential.pubKeyY,
+      ),
+    )
   }
 
   return calls
