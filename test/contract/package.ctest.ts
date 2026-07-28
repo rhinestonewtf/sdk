@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 import sizeLimits from '../../.size-limit.ts'
 import type { ApiReport } from '../../scripts/contract/api-report.ts'
 import {
-  declaresSurfaceChange,
+  declaredSdkBump,
   type PackageManifest,
 } from '../../scripts/contract/shared.ts'
 
@@ -89,12 +89,14 @@ function normalizeExportTargets(
   )
 }
 
-function publicManifestContract(manifest: PackageManifest) {
+// Publish metadata only, deliberately excluding `exports`: adding an entry
+// point is the one manifest change a declared surface change may make, so the
+// export map is compared separately and this stays strict either way.
+function publishMetadataContract(manifest: PackageManifest) {
   return {
     name: manifest.name,
     type: manifest.type,
     types: manifest.types,
-    exports: normalizeExportTargets(manifest.exports),
     files: manifest.files,
     peerDependencies: manifest.peerDependencies,
     peerDependenciesMeta: manifest.peerDependenciesMeta,
@@ -159,12 +161,21 @@ function privateSourceImports(packageDirectory: string): string[] {
   return violations
 }
 
-// When the PR declares an intentional surface change (a minor/major changeset),
-// the strict "no drift" assertions are relaxed to well-formedness checks. The
-// strict gate stays on for patch-only PRs so accidental, undocumented breaks
-// still fail. `run.ts` gates the bidirectional assignability fixture on the same
-// signal, so the whole contract suite relaxes together.
-const intentionalSurfaceChange = declaresSurfaceChange(baseSha, process.cwd())
+// Strictness follows the declared bump:
+//
+// - patch (or no new changeset, or an unreadable base): exact equality, so
+//   accidental undocumented drift fails.
+// - minor: additive only. New entry points, exports, and symbols are allowed,
+//   but everything the base published must still be there. Shapes may widen —
+//   adding a union member changes a symbol's report while staying compatible —
+//   so existing symbols are checked for presence, not equality.
+// - major: well-formedness only. Removals are the point of a major.
+//
+// `run.ts` gates the bidirectional assignability fixture on the same signal.
+const declaredBump = declaredSdkBump(baseSha, process.cwd())
+const intentionalSurfaceChange =
+  declaredBump === 'minor' || declaredBump === 'major'
+const additiveOnly = declaredBump === 'minor'
 
 describe('packed package contract', () => {
   it('uses a concrete release commit as the base subject', () => {
@@ -179,13 +190,25 @@ describe('packed package contract', () => {
       join(currentPackageDirectory, 'package.json'),
     )
 
-    expect(currentManifest.name).toBe(baseManifest.name)
-    expect(normalizeExportTargets(currentManifest.exports)).toEqual(
-      normalizeExportTargets(baseManifest.exports),
+    // Publish metadata must never drift, declared surface change or not.
+    expect(publishMetadataContract(currentManifest)).toEqual(
+      publishMetadataContract(baseManifest),
     )
-    expect(publicManifestContract(currentManifest)).toEqual(
-      publicManifestContract(baseManifest),
-    )
+    const baseTargets = normalizeExportTargets(baseManifest.exports)
+    const currentTargets = normalizeExportTargets(currentManifest.exports)
+    if (!intentionalSurfaceChange) {
+      // The export map is the one part a declared surface change may alter.
+      // Adding a subpath export is otherwise unshippable, since the base
+      // manifest is packed from `release` and can never contain it.
+      expect(currentTargets).toEqual(baseTargets)
+    } else if (additiveOnly) {
+      for (const [entrypoint, target] of Object.entries(baseTargets)) {
+        expect(
+          currentTargets[entrypoint],
+          `minor dropped or retargeted entry point ${entrypoint}`,
+        ).toEqual(target)
+      }
+    }
 
     for (const manifestDirectory of [
       basePackageDirectory,
@@ -202,14 +225,17 @@ describe('packed package contract', () => {
   })
 
   it('keeps a size gate for every published entry point', () => {
-    const baseManifest = readJson<PackageManifest>(
-      join(basePackageDirectory, 'package.json'),
+    // Derived from the current manifest, not the base: a newly added entry
+    // point has to carry a size gate in the same PR, and a base-derived
+    // expectation would instead demand the gate be absent until release.
+    const currentManifest = readJson<PackageManifest>(
+      join(currentPackageDirectory, 'package.json'),
     )
-    const entrypoints = Object.entries(baseManifest.exports)
+    const entrypoints = Object.entries(currentManifest.exports)
     const expectedNames = entrypoints.map(([entrypoint]) =>
       entrypoint === '.'
-        ? baseManifest.name
-        : `${baseManifest.name}/${entrypoint.slice(2)}`,
+        ? currentManifest.name
+        : `${currentManifest.name}/${entrypoint.slice(2)}`,
     )
     const flattenPath = (path: string): string =>
       path.replace(/^(\.\/src\/dist\/src\/).*\/([^/]+)$/, '$1$2')
@@ -242,6 +268,21 @@ describe('packed package contract', () => {
           `entry point ${entrypoint} exports nothing`,
         ).toBeGreaterThan(0)
       }
+      if (additiveOnly) {
+        for (const [entrypoint, names] of Object.entries(baseExports)) {
+          const current = currentExports[entrypoint]
+          expect(
+            current,
+            `minor dropped entry point ${entrypoint}`,
+          ).toBeDefined()
+          for (const name of names) {
+            expect(
+              current,
+              `minor dropped runtime export ${entrypoint}:${name}`,
+            ).toContain(name)
+          }
+        }
+      }
       return
     }
 
@@ -269,6 +310,41 @@ describe('packed package contract', () => {
       expect(Object.keys(currentApiReport.entrypoints).length).toBeGreaterThan(
         0,
       )
+      if (additiveOnly) {
+        // Declaration text may widen under a minor, so shapes aren't compared —
+        // that's the assignability fixture's job. What must survive is the
+        // symbol and its type/value nature: swapping a type-only export for a
+        // value of the same name breaks `import type { X }` consumers, and
+        // gaining a nature is additive.
+        for (const [entrypoint, symbols] of Object.entries(
+          baseApiReport.entrypoints,
+        )) {
+          const current = currentApiReport.entrypoints[entrypoint]
+          expect(
+            current,
+            `minor dropped declaration entry point ${entrypoint}`,
+          ).toBeDefined()
+          for (const [symbol, report] of Object.entries(symbols)) {
+            const currentReport = current?.[symbol]
+            expect(
+              currentReport,
+              `minor dropped declared export ${entrypoint}:${symbol}`,
+            ).toBeDefined()
+            if (report.hasType) {
+              expect(
+                currentReport?.hasType,
+                `minor stopped exporting ${entrypoint}:${symbol} as a type`,
+              ).toBe(true)
+            }
+            if (report.hasValue) {
+              expect(
+                currentReport?.hasValue,
+                `minor stopped exporting ${entrypoint}:${symbol} as a value`,
+              ).toBe(true)
+            }
+          }
+        }
+      }
       return
     }
     expect(currentApiReport).toEqual(baseApiReport)
@@ -321,9 +397,22 @@ describe('packed package contract', () => {
 
   it('imports the root without optional server peers', () => {
     const baseResult = runProbe<string[]>(baseNoOptionalDirectory, 'root')
-    expect(runProbe<string[]>(currentNoOptionalDirectory, 'root')).toEqual(
-      baseResult,
-    )
+    const currentResult = runProbe<string[]>(currentNoOptionalDirectory, 'root')
+
+    // Follows the same bump-aware strictness as the other surface assertions,
+    // so a minor may add a root export without tripping this, and may not drop
+    // one. The root must always import cleanly without the optional peers.
+    expect(currentResult.length).toBeGreaterThan(0)
+    if (!intentionalSurfaceChange) {
+      expect(currentResult).toEqual(baseResult)
+    } else if (additiveOnly) {
+      for (const name of baseResult) {
+        expect(
+          currentResult,
+          `minor dropped root export ${name} in the no-optional-peers install`,
+        ).toContain(name)
+      }
+    }
   })
 
   it('preserves optional-peer behavior for the JWT server entry point', () => {
