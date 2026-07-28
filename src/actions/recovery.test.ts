@@ -5,7 +5,13 @@ import {
 } from 'viem/account-abstraction'
 import { base } from 'viem/chains'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import { accountA, accountB, accountC, accountD } from '../../test/consts'
+import {
+  accountA,
+  accountB,
+  accountC,
+  accountD,
+  passkeyAccount,
+} from '../../test/consts'
 import { RhinestoneSDK } from '..'
 import { resolveCalls } from '../calls/resolve'
 import { toEvmChainReference } from '../chains/caip2'
@@ -39,6 +45,7 @@ import {
 
 const accountAddress: Address = '0x36C03e7D593F7B2C6b06fC18B5f4E9a4A29C99b0'
 const alternateOwnable: Address = '0x2483da3a338895199e5e538530213157e931bf06'
+const alternateWebauthn: Address = '0x0000000000000000000000000000000000000006'
 const SENTINEL: Address = '0x0000000000000000000000000000000000000001'
 
 // Extra passkeys, so rotation tests have distinct credentials to move between.
@@ -358,6 +365,7 @@ describe('Recovery Actions', () => {
     function passkeyCall(
       functionName: 'addCredential' | 'removeCredential' | 'setThreshold',
       args: readonly unknown[],
+      validator: Address = WEBAUTHN_VALIDATOR_ADDRESS,
     ) {
       const abi = {
         addCredential: [
@@ -372,7 +380,7 @@ describe('Recovery Actions', () => {
         setThreshold: [{ name: '_threshold', type: 'uint256' }],
       }[functionName]
       return {
-        to: WEBAUTHN_VALIDATOR_ADDRESS,
+        to: validator,
         value: 0n,
         data: encodeFunctionData({
           abi: [
@@ -396,7 +404,6 @@ describe('Recovery Actions', () => {
       // removeCredential reverts with CannotRemoveCredential while
       // `credentials <= threshold`, so the add has to land first.
       rpcReadContract.mockResolvedValueOnce(1n)
-      const { passkeyAccount } = await import('../../test/consts')
       const oldCredential = credentialOf(passkeyAccount)
       const newCredential = credentialOf(passkeyAccountB)
 
@@ -421,10 +428,74 @@ describe('Recovery Actions', () => {
       ])
     })
 
+    test('reads and mutates the explicitly configured passkey validator', async () => {
+      const rhinestoneAccount = await rhinestone.createAccount({
+        owners: {
+          type: 'passkey',
+          accounts: [passkeyAccount],
+          module: alternateWebauthn,
+        },
+      })
+      rpcReadContract.mockResolvedValueOnce(1n)
+      const oldCredential = credentialOf(passkeyAccount)
+      const newCredential = credentialOf(passkeyAccountB)
+
+      const calls = await recoverPasskeyOwnership({
+        accountAddress,
+        chain: base,
+        config: rhinestoneAccount.config as never,
+        currentCredentials: [oldCredential],
+        newOwners: { type: 'passkey', accounts: [passkeyAccountB] },
+      })
+
+      expect(rpcReadContract).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ address: alternateWebauthn }),
+      )
+      expect(calls).toEqual([
+        passkeyCall(
+          'addCredential',
+          [newCredential.pubKeyX, newCredential.pubKeyY, false],
+          alternateWebauthn,
+        ),
+        passkeyCall(
+          'removeCredential',
+          [oldCredential.pubKeyX, oldCredential.pubKeyY],
+          alternateWebauthn,
+        ),
+      ])
+    })
+
+    test('rejects a passkey validator that differs from the account config', async () => {
+      const rhinestoneAccount = await rhinestone.createAccount({
+        owners: {
+          type: 'passkey',
+          accounts: [passkeyAccount],
+          module: alternateWebauthn,
+        },
+      })
+
+      await expect(
+        recoverPasskeyOwnership({
+          accountAddress,
+          chain: base,
+          config: rhinestoneAccount.config as never,
+          currentCredentials: [credentialOf(passkeyAccount)],
+          newOwners: {
+            type: 'passkey',
+            accounts: [passkeyAccountB],
+            module: WEBAUTHN_VALIDATOR_ADDRESS,
+          },
+        }),
+      ).rejects.toThrow(
+        'Recovery owner validator must match the configured owner validator',
+      )
+      expect(rpcReadContract).not.toHaveBeenCalled()
+    })
+
     test('raises the threshold only after the new credential exists', async () => {
       const rhinestoneAccount = await accountPromise
       rpcReadContract.mockResolvedValueOnce(1n)
-      const { passkeyAccount } = await import('../../test/consts')
       const newCredential = credentialOf(passkeyAccountB)
 
       const calls = await recoverPasskeyOwnership({
@@ -460,7 +531,6 @@ describe('Recovery Actions', () => {
         credential: { id: 'prefixed', publicKey: `0x04${x}${y}` },
       })
       rpcReadContract.mockResolvedValueOnce(1n)
-      const { passkeyAccount } = await import('../../test/consts')
       const oldCredential = credentialOf(passkeyAccount)
 
       const calls = await recoverPasskeyOwnership({
@@ -486,7 +556,6 @@ describe('Recovery Actions', () => {
       // `newOwners` must not be added again — addCredential reverts with
       // CredentialAlreadyExists.
       rpcReadContract.mockResolvedValueOnce(1n)
-      const { passkeyAccount } = await import('../../test/consts')
       const kept = credentialOf(passkeyAccount)
       const replaced = credentialOf(passkeyAccountC)
       const added = credentialOf(passkeyAccountB)
