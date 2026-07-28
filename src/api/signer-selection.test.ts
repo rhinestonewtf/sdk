@@ -1,9 +1,16 @@
+import { encodeAbiParameters } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { describe, expect, test } from 'vitest'
 import { passkeyAccount } from '../../test/consts'
 import { resolveAccountConfig, resolveSdkConfig } from '../config/resolve'
+import { SignerNotSupportedError } from '../errors/execution'
+import { resolveValidator } from '../modules/validators/resolve'
 import { ecdsaSignerId } from '../modules/validators/signer-id'
-import { adaptSignerSelection } from './signer-selection'
+import { SOCIAL_RECOVERY_VALIDATOR_ADDRESS } from '../modules/validators/social-recovery'
+import {
+  adaptSignerSelection,
+  adaptUserOperationSignerSelection,
+} from './signer-selection'
 
 const first = privateKeyToAccount(`0x${'11'.repeat(32)}`)
 const second = privateKeyToAccount(`0x${'22'.repeat(32)}`)
@@ -95,6 +102,74 @@ describe('public signer selection adapter', () => {
     expect(
       selected.validator.validators.map(({ publicId }) => publicId),
     ).toEqual([7, '0x08'])
+  })
+
+  test('pins guardians to the social recovery validator', () => {
+    const selected = adaptUserOperationSignerSelection(
+      account({ type: 'ecdsa', accounts: [first] }),
+      { type: 'guardians', guardians: [first, second] },
+    )
+
+    expect(selected.kind).toBe('owner')
+    if (selected.kind !== 'owner') throw new Error('Expected owner selection')
+    expect(selected.signerIds).toEqual([
+      ecdsaSignerId(first),
+      ecdsaSignerId(second),
+    ])
+    // Threshold matches the guardian count: the validator reads exactly
+    // `threshold` signatures, so every supplied guardian has to sign.
+    expect(selected.validator).toMatchObject({
+      kind: 'ecdsa',
+      threshold: 2,
+      module: {
+        source: 'explicit',
+        address: SOCIAL_RECOVERY_VALIDATOR_ADDRESS,
+      },
+    })
+  })
+
+  test('resolves the guardian validator to the audited module with sorted guardians', () => {
+    const selected = adaptUserOperationSignerSelection(
+      account({ type: 'ecdsa', accounts: [first] }),
+      { type: 'guardians', guardians: [second, first] },
+    )
+    if (selected.kind !== 'owner') throw new Error('Expected owner selection')
+    const module = resolveValidator(selected.validator)
+
+    expect(module.address).toBe(SOCIAL_RECOVERY_VALIDATOR_ADDRESS)
+    const sorted = [first, second]
+      .map((entry) => entry.address.toLowerCase())
+      .sort()
+    expect(module.initData.toLowerCase()).toBe(
+      encodeAbiParameters(
+        [
+          { name: 'threshold', type: 'uint256' },
+          { name: 'owners', type: 'address[]' },
+        ],
+        [2n, sorted as `0x${string}`[]],
+      ).toLowerCase(),
+    )
+  })
+
+  test('rejects guardians outside the UserOperation flow', () => {
+    const configured = account({ type: 'ecdsa', accounts: [first] })
+    // The social recovery validator reverts on isValidSignatureWithSender and
+    // never validates intents, so these paths must fail loudly.
+    expect(() =>
+      adaptSignerSelection(configured, {
+        type: 'guardians',
+        guardians: [first],
+      }),
+    ).toThrow(SignerNotSupportedError)
+  })
+
+  test('rejects an empty guardian set', () => {
+    expect(() =>
+      adaptUserOperationSignerSelection(
+        account({ type: 'ecdsa', accounts: [first] }),
+        { type: 'guardians', guardians: [] },
+      ),
+    ).toThrow('at least one guardian')
   })
 
   test('projects per-chain Smart Session selections without dropping enable data', () => {

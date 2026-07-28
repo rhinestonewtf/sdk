@@ -47,7 +47,7 @@ enforced by `scripts/architecture/check.ts`:
   Each maps resolved config to that account's init data, module layout, and
   signature envelope. The registry selects the adapter by kind.
 - **`modules/`** — module planning and validators (ECDSA, ENS, WebAuthn,
-  multi-factor, K1), including the Smart Sessions subsystem
+  multi-factor, K1, social recovery), including the Smart Sessions subsystem
   (`modules/validators/smart-sessions/`).
 - **`signing/`** — the signing pipeline: signing plans, signer invocation,
   protocol codecs (ERC-6492/7739), and intent-plan assembly.
@@ -109,6 +109,14 @@ ERC-4337 path for direct bundler execution:
 `prepareUserOperation` → `signUserOperation` → `submitUserOperation`, or
 `sendUserOperation` to do all three in one call. Returns a UserOp hash;
 `waitForExecution` resolves the receipt.
+
+This is also the only path that accepts `signers: { type: 'guardians' }`. The
+social recovery validator reverts on ERC-1271 and never validates intents, so
+`api/signer-selection.ts` rejects guardians everywhere else. Selecting it
+switches the validator used to derive the UserOp nonce key, which is how the
+account routes verification to the recovery module instead of the owner. It
+authorizes a single `execute` per UserOperation, so the calls from
+`actions/recovery` must be submitted one at a time.
 
 ## External integrations
 
