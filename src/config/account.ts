@@ -597,6 +597,19 @@ interface ModuleInput {
   additionalContext?: Hex
 }
 
+/**
+ * Social recovery configuration.
+ *
+ * Guardians can rotate the account's validator configuration without the
+ * current owner's approval, and there is no timelock. Prefer several trusted
+ * guardians with a `threshold` above 1.
+ */
+interface Recovery {
+  guardians: Account[]
+  /** Guardian signatures required to recover. Defaults to `1`. */
+  threshold?: number
+}
+
 interface RhinestoneAccountConfig {
   account?: AccountProviderConfig
   owners?: OwnerSet
@@ -605,6 +618,7 @@ interface RhinestoneAccountConfig {
     module?: Address
     compatibilityFallback?: Address
   }
+  recovery?: Recovery
   eoa?: Account
   modules?: ModuleInput[]
   initData?:
@@ -813,7 +827,19 @@ interface PerChainSessionSignerSet {
 
 type SessionSignerSet = SingleSessionSignerSet | PerChainSessionSignerSet
 
-type SignerSet = OwnerSignerSet | SessionSignerSet
+/**
+ * Signs with the account's recovery guardians instead of its owners.
+ *
+ * Only valid for UserOperations: the social recovery validator rejects
+ * ERC-1271 signatures and the intent flow entirely, and it accepts a single
+ * `execute` call targeting an installed validator.
+ */
+interface GuardiansSignerSet {
+  type: 'guardians'
+  guardians: Account[]
+}
+
+type SignerSet = OwnerSignerSet | SessionSignerSet | GuardiansSignerSet
 
 type Sponsorship =
   | boolean
@@ -951,6 +977,8 @@ export type {
   WebauthnValidatorConfig,
   MultiFactorValidatorConfig,
   SignerSet,
+  GuardiansSignerSet,
+  Recovery,
   ChainSessionConfig,
   SingleSessionSignerSet,
   PerChainSessionSignerSet,

@@ -64,9 +64,12 @@ function predictCreate3Address(factory: Address, owner: Address): Address {
 function hcaMaterial(input: AccountConstruction): DeploymentMaterial {
   if (input.account.kind !== 'hca') throw new Error('Expected HCA account')
   if (input.eoa) return { address: input.eoa.address }
+  // HCA derives its address from the ENS owner alone and has no module
+  // installation, so recovery, sessions, and extra modules can never be
+  // installed. `recovery` resolves into `modules`, so it is rejected here too.
   if (input.sessions.enabled || input.modules.length > 0) {
     throw new Error(
-      'HCA accounts cannot install sessions or additional modules',
+      'HCA accounts cannot install recovery, sessions, or additional modules',
     )
   }
   if (!input.owner || input.owner.kind !== 'ens') {

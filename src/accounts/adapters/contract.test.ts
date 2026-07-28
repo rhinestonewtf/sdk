@@ -398,7 +398,7 @@ describe('account adapter contract', () => {
         ...input,
         sessions: { enabled: true, environment: 'production' },
       }),
-    ).toThrow('cannot install sessions')
+    ).toThrow('cannot install recovery, sessions, or additional modules')
     expect(() => adapter.getIdentity({ ...input, owner: undefined })).toThrow(
       'require ENS owners',
     )

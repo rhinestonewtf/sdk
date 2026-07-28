@@ -1,9 +1,10 @@
 import fc from 'fast-check'
-import { toHex } from 'viem'
+import { encodeAbiParameters, toHex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { describe, expect, test, vi } from 'vitest'
 import { passkeyAccount } from '../../test/consts'
 import type { AccountInput } from '../accounts/types'
+import { SOCIAL_RECOVERY_VALIDATOR_ADDRESS } from '../modules/validators/social-recovery'
 import { currentV2Defaults } from './defaults'
 import type { AccountConstructionInput, SdkConstructionInput } from './input'
 import { captureLegacySdkConfig, createLegacyAccountConfig } from './legacy'
@@ -17,6 +18,7 @@ import {
 
 const accountA = privateKeyToAccount(`0x${'11'.repeat(32)}`)
 const accountB = privateKeyToAccount(`0x${'22'.repeat(32)}`)
+const accountC = privateKeyToAccount(`0x${'33'.repeat(32)}`)
 const addressA = accountA.address
 const addressB = accountB.address
 const propertySeed = Number(process.env.SDK_PROPERTY_SEED ?? 0x5d4c3b2a)
@@ -538,6 +540,72 @@ describe('SDK config resolution', () => {
       threshold: 1,
       module: { source: 'explicit', address: addressB },
     })
+  })
+
+  test('installs the social recovery validator from recovery config', () => {
+    const sdk = resolveSdkConfig({ apiKey: 'test' })
+    const account = resolveAccountConfig(sdk, {
+      owners: { type: 'ecdsa', accounts: [accountA] },
+      recovery: { guardians: [accountC, accountB], threshold: 2 },
+    })
+
+    // Guardians must reach onInstall sorted and unique, threshold first.
+    const sorted = [accountB, accountC]
+      .map((entry) => entry.address.toLowerCase())
+      .sort()
+    expect(account.modules).toEqual([
+      {
+        kind: 'validator',
+        address: SOCIAL_RECOVERY_VALIDATOR_ADDRESS,
+        initData: {
+          source: 'explicit',
+          value: encodeAbiParameters(
+            [
+              { name: 'threshold', type: 'uint256' },
+              { name: 'owners', type: 'address[]' },
+            ],
+            [2n, sorted as `0x${string}`[]],
+          ),
+        },
+        deInitData: { source: 'explicit', value: '0x' },
+        additionalContext: { source: 'explicit', value: '0x' },
+      },
+    ])
+  })
+
+  test('defaults the recovery threshold and keeps user modules', () => {
+    const sdk = resolveSdkConfig({ apiKey: 'test' })
+    const account = resolveAccountConfig(sdk, {
+      owners: { type: 'ecdsa', accounts: [accountA] },
+      recovery: { guardians: [accountB] },
+      modules: [{ type: 'executor', address: addressA }],
+    })
+
+    expect(account.modules).toHaveLength(2)
+    expect(account.modules[0]).toMatchObject({
+      kind: 'validator',
+      address: SOCIAL_RECOVERY_VALIDATOR_ADDRESS,
+      initData: {
+        source: 'explicit',
+        value: encodeAbiParameters(
+          [
+            { name: 'threshold', type: 'uint256' },
+            { name: 'owners', type: 'address[]' },
+          ],
+          [1n, [accountB.address.toLowerCase() as `0x${string}`]],
+        ),
+      },
+    })
+    expect(account.modules[1]).toMatchObject({ kind: 'executor' })
+  })
+
+  test('omits recovery modules when unconfigured', () => {
+    const sdk = resolveSdkConfig({ apiKey: 'test' })
+    const account = resolveAccountConfig(sdk, {
+      owners: { type: 'ecdsa', accounts: [accountA] },
+    })
+
+    expect(account.modules).toEqual([])
   })
 })
 

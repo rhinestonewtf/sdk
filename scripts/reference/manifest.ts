@@ -213,6 +213,28 @@ export const manifest: Group[] = [
       },
       {
         kind: 'group',
+        group: 'Recovery',
+        items: [
+          action('enable', './actions/recovery'),
+          // These return an array of calls that must each be sent as its own
+          // UserOperation, so they are plain functions rather than `action`s
+          // wrapped in a single prepareTransaction `calls`.
+          {
+            kind: 'symbol',
+            symbol: 'recoverEcdsaOwnership',
+            source: './actions/recovery',
+            callStyle: 'function',
+          },
+          {
+            kind: 'symbol',
+            symbol: 'recoverPasskeyOwnership',
+            source: './actions/recovery',
+            callStyle: 'function',
+          },
+        ],
+      },
+      {
+        kind: 'group',
         group: 'MFA',
         items: [
           action('enable', './actions/mfa'),

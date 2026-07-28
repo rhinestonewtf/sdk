@@ -10,6 +10,7 @@ import type {
   ModuleInput,
 } from '../modules/types'
 import { defineValidator } from '../modules/validators/definition'
+import { resolveSocialRecoveryValidator } from '../modules/validators/social-recovery'
 import {
   currentV2Defaults,
   type SdkSemanticConfigDefaults,
@@ -73,6 +74,30 @@ function configureModules(
     deInitData: selectModuleData(module.deInitData),
     additionalContext: selectModuleData(module.additionalContext),
   }))
+}
+
+function configureRecovery(
+  recovery: AccountConstructionInput['recovery'],
+): readonly ConfiguredModule[] {
+  if (!recovery) return []
+  const module = resolveSocialRecoveryValidator({
+    guardians: recovery.guardians.map((guardian) => guardian.address),
+    ...(recovery.threshold === undefined
+      ? {}
+      : { threshold: recovery.threshold }),
+  })
+  return [
+    {
+      kind: module.kind,
+      address: module.address,
+      initData: { source: 'explicit', value: module.initData },
+      deInitData: { source: 'explicit', value: module.deInitData },
+      additionalContext: {
+        source: 'explicit',
+        value: module.additionalContext,
+      },
+    },
+  ]
 }
 
 function resolveAuth(input: SdkConstructionInput): ResolvedAuth {
@@ -184,7 +209,10 @@ function resolveAccountWithDefaults(
     account: resolveAccountDefinition(input.account, defaults),
     ...(input.owners ? { owners: defineValidator(input.owners) } : {}),
     ...(input.eoa ? { eoa: input.eoa } : {}),
-    modules: configureModules(input.modules),
+    modules: [
+      ...configureRecovery(input.recovery),
+      ...configureModules(input.modules),
+    ],
     ...(input.initData ? { initData: input.initData } : {}),
     sessions: resolveSessions(input.sessions, environment),
   }

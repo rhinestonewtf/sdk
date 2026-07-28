@@ -2,11 +2,13 @@ import type { Account } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
 import type { SignerSet } from '../config/account'
 import type { ResolvedAccountConfig } from '../config/resolved'
+import { SignerNotSupportedError } from '../errors/execution'
 import { defineValidator } from '../modules/validators/definition'
 import {
   ecdsaSignerId,
   webauthnSignerId,
 } from '../modules/validators/signer-id'
+import { SOCIAL_RECOVERY_VALIDATOR_ADDRESS } from '../modules/validators/social-recovery'
 import type {
   AtomicValidatorDefinition,
   ResolvedValidatorDefinition,
@@ -21,14 +23,76 @@ export type AdaptedSignerSelection =
   | OwnerSignerSelection
   | IntentSessionSelection
 
+/**
+ * Adapts a signer selection for the intent and ERC-1271 flows.
+ *
+ * Rejects guardians: the social recovery validator reverts on
+ * `isValidSignatureWithSender` and only validates UserOperations, so a
+ * guardian signature could never be verified on these paths. Use
+ * {@link adaptUserOperationSignerSelection} for the UserOperation flow.
+ */
 export function adaptSignerSelection(
+  account: ResolvedAccountConfig,
+  signers: SignerSet,
+): AdaptedSignerSelection {
+  if (signers.type === 'guardians') {
+    throw new SignerNotSupportedError()
+  }
+  return adaptAnySignerSelection(account, signers)
+}
+
+/**
+ * Adapts a signer selection for the UserOperation flow, where guardians are
+ * the one supported non-owner signer.
+ */
+export function adaptUserOperationSignerSelection(
+  account: ResolvedAccountConfig,
+  signers: SignerSet,
+): AdaptedSignerSelection {
+  return adaptAnySignerSelection(account, signers)
+}
+
+function adaptAnySignerSelection(
   account: ResolvedAccountConfig,
   signers: SignerSet,
 ): AdaptedSignerSelection {
   if (signers.type === 'session') {
     return adaptSessionSelection(signers)
   }
+  if (signers.type === 'guardians') {
+    return adaptGuardianSelection(signers)
+  }
   return adaptOwnerSelection(account, signers)
+}
+
+/**
+ * Adapts a guardian selection onto the social recovery validator.
+ *
+ * The module shares the ownable validator's threshold-ECDSA shape, so it
+ * resolves as an ECDSA validator pinned to the recovery module address. The
+ * threshold is the number of supplied guardians: the validator reads exactly
+ * `threshold` signatures onchain and sorts the recovered signers itself, so
+ * every guardian passed here must sign and their order is irrelevant.
+ */
+function adaptGuardianSelection(
+  signers: Extract<SignerSet, { type: 'guardians' }>,
+): OwnerSignerSelection {
+  if (signers.guardians.length === 0) {
+    throw new Error('Guardian signer selection requires at least one guardian')
+  }
+  return {
+    kind: 'owner',
+    validator: defineValidator(
+      {
+        type: 'ecdsa',
+        accounts: signers.guardians,
+        threshold: signers.guardians.length,
+        module: SOCIAL_RECOVERY_VALIDATOR_ADDRESS,
+      },
+      'recovery-validator',
+    ),
+    signerIds: signers.guardians.map(ecdsaSignerId),
+  }
 }
 
 function adaptOwnerSelection(
