@@ -37,7 +37,10 @@ interface PasskeyCredential {
 }
 
 export interface RecoverEcdsaOwnershipOptions extends CallResolveContext {
-  /** Target owner set. Existing owners not listed here are removed. */
+  /**
+   * Target owner set. Existing owners not listed here are removed. If supplied,
+   * `module` must match the account's configured owner validator.
+   */
   newOwners: OwnableValidatorConfig
 }
 
