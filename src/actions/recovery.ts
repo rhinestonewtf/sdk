@@ -1,4 +1,4 @@
-import type { Account, Address } from 'viem'
+import { type Account, type Address, isAddressEqual } from 'viem'
 import type {
   CalldataInput,
   CallResolveContext,
@@ -91,7 +91,22 @@ function enable(guardians: Account[], threshold = 1): LazyCallInput {
 async function recoverEcdsaOwnership(
   options: RecoverEcdsaOwnershipOptions,
 ): Promise<CalldataInput[]> {
-  const validator = options.newOwners.module ?? OWNABLE_VALIDATOR_ADDRESS
+  const configuredValidator =
+    options.config.owners?.type === 'ecdsa'
+      ? (options.config.owners.module ?? OWNABLE_VALIDATOR_ADDRESS)
+      : undefined
+  const requestedValidator = options.newOwners.module
+  if (
+    configuredValidator &&
+    requestedValidator &&
+    !isAddressEqual(configuredValidator, requestedValidator)
+  ) {
+    throw new Error(
+      'Recovery owner validator must match the configured owner validator',
+    )
+  }
+  const validator =
+    configuredValidator ?? requestedValidator ?? OWNABLE_VALIDATOR_ADDRESS
   const existing = await readOwnershipFor(
     options,
     options.accountAddress,

@@ -202,12 +202,17 @@ describe('Recovery Actions', () => {
     })
 
     test('reads and mutates the explicitly configured owner validator', async () => {
-      const rhinestoneAccount = await accountPromise
+      const rhinestoneAccount = await rhinestone.createAccount({
+        owners: {
+          type: 'ecdsa',
+          accounts: [accountA],
+          module: alternateOwnable,
+        },
+      })
       ownershipIs([accountA.address.toLowerCase() as Address], 1)
 
       const calls = await ecdsaRecovery(rhinestoneAccount.config, {
         accounts: [accountB],
-        module: alternateOwnable,
       })
 
       expect(rpcMulticall).toHaveBeenCalledWith(
@@ -228,6 +233,20 @@ describe('Recovery Actions', () => {
           alternateOwnable,
         ),
       ])
+    })
+
+    test('rejects a recovery owner validator that differs from the account config', async () => {
+      const rhinestoneAccount = await accountPromise
+
+      await expect(
+        ecdsaRecovery(rhinestoneAccount.config, {
+          accounts: [accountB],
+          module: alternateOwnable,
+        }),
+      ).rejects.toThrow(
+        'Recovery owner validator must match the configured owner validator',
+      )
+      expect(rpcMulticall).not.toHaveBeenCalled()
     })
 
     test('raises the threshold only after the new owners exist', async () => {
