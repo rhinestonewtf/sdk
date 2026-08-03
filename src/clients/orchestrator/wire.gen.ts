@@ -176,7 +176,7 @@ export interface paths {
     }
     /**
      * Get App-Fee Balances
-     * @description The authenticated project's withdrawable app-fee balance as a USD total, valued at collection time. `pendingUsd` is 0 until withdrawals land.
+     * @description The authenticated project's app-fee balance as USD totals valued at collection time. `pendingUsd` is the payout value permanently reserved by signed withdrawals whose target-chain FILL has not completed, including failed or expired payouts.
      */
     get: operations['getAppFeeBalances']
     put?: never
@@ -390,7 +390,6 @@ export interface operations {
                   | 'FORBIDDEN'
                   | 'CONFLICT'
                   | 'WITHDRAWAL_IN_PROGRESS'
-                  | 'WITHDRAWAL_FINALIZATION_PENDING'
                   | 'UNPROCESSABLE_CONTENT'
                   | 'TOO_MANY_REQUESTS'
                   | 'SETTLEMENT_QUOTE_ERROR'
@@ -563,7 +562,6 @@ export interface operations {
                   | 'FORBIDDEN'
                   | 'CONFLICT'
                   | 'WITHDRAWAL_IN_PROGRESS'
-                  | 'WITHDRAWAL_FINALIZATION_PENDING'
                   | 'UNPROCESSABLE_CONTENT'
                   | 'TOO_MANY_REQUESTS'
                   | 'SETTLEMENT_QUOTE_ERROR'
@@ -681,7 +679,6 @@ export interface operations {
                   | 'FORBIDDEN'
                   | 'CONFLICT'
                   | 'WITHDRAWAL_IN_PROGRESS'
-                  | 'WITHDRAWAL_FINALIZATION_PENDING'
                   | 'UNPROCESSABLE_CONTENT'
                   | 'TOO_MANY_REQUESTS'
                   | 'SETTLEMENT_QUOTE_ERROR'
@@ -799,7 +796,6 @@ export interface operations {
                   | 'FORBIDDEN'
                   | 'CONFLICT'
                   | 'WITHDRAWAL_IN_PROGRESS'
-                  | 'WITHDRAWAL_FINALIZATION_PENDING'
                   | 'UNPROCESSABLE_CONTENT'
                   | 'TOO_MANY_REQUESTS'
                   | 'SETTLEMENT_QUOTE_ERROR'
@@ -1158,7 +1154,6 @@ export interface operations {
                   | 'FORBIDDEN'
                   | 'CONFLICT'
                   | 'WITHDRAWAL_IN_PROGRESS'
-                  | 'WITHDRAWAL_FINALIZATION_PENDING'
                   | 'UNPROCESSABLE_CONTENT'
                   | 'TOO_MANY_REQUESTS'
                   | 'SETTLEMENT_QUOTE_ERROR'
@@ -1276,7 +1271,6 @@ export interface operations {
                   | 'FORBIDDEN'
                   | 'CONFLICT'
                   | 'WITHDRAWAL_IN_PROGRESS'
-                  | 'WITHDRAWAL_FINALIZATION_PENDING'
                   | 'UNPROCESSABLE_CONTENT'
                   | 'TOO_MANY_REQUESTS'
                   | 'SETTLEMENT_QUOTE_ERROR'
@@ -1394,7 +1388,6 @@ export interface operations {
                   | 'FORBIDDEN'
                   | 'CONFLICT'
                   | 'WITHDRAWAL_IN_PROGRESS'
-                  | 'WITHDRAWAL_FINALIZATION_PENDING'
                   | 'UNPROCESSABLE_CONTENT'
                   | 'TOO_MANY_REQUESTS'
                   | 'SETTLEMENT_QUOTE_ERROR'
@@ -1512,7 +1505,6 @@ export interface operations {
                   | 'FORBIDDEN'
                   | 'CONFLICT'
                   | 'WITHDRAWAL_IN_PROGRESS'
-                  | 'WITHDRAWAL_FINALIZATION_PENDING'
                   | 'UNPROCESSABLE_CONTENT'
                   | 'TOO_MANY_REQUESTS'
                   | 'SETTLEMENT_QUOTE_ERROR'
@@ -1694,7 +1686,6 @@ export interface operations {
                   | 'FORBIDDEN'
                   | 'CONFLICT'
                   | 'WITHDRAWAL_IN_PROGRESS'
-                  | 'WITHDRAWAL_FINALIZATION_PENDING'
                   | 'UNPROCESSABLE_CONTENT'
                   | 'TOO_MANY_REQUESTS'
                   | 'SETTLEMENT_QUOTE_ERROR'
@@ -1812,7 +1803,6 @@ export interface operations {
                   | 'FORBIDDEN'
                   | 'CONFLICT'
                   | 'WITHDRAWAL_IN_PROGRESS'
-                  | 'WITHDRAWAL_FINALIZATION_PENDING'
                   | 'UNPROCESSABLE_CONTENT'
                   | 'TOO_MANY_REQUESTS'
                   | 'SETTLEMENT_QUOTE_ERROR'
@@ -1930,7 +1920,6 @@ export interface operations {
                   | 'FORBIDDEN'
                   | 'CONFLICT'
                   | 'WITHDRAWAL_IN_PROGRESS'
-                  | 'WITHDRAWAL_FINALIZATION_PENDING'
                   | 'UNPROCESSABLE_CONTENT'
                   | 'TOO_MANY_REQUESTS'
                   | 'SETTLEMENT_QUOTE_ERROR'
@@ -2136,7 +2125,6 @@ export interface operations {
                   | 'FORBIDDEN'
                   | 'CONFLICT'
                   | 'WITHDRAWAL_IN_PROGRESS'
-                  | 'WITHDRAWAL_FINALIZATION_PENDING'
                   | 'UNPROCESSABLE_CONTENT'
                   | 'TOO_MANY_REQUESTS'
                   | 'SETTLEMENT_QUOTE_ERROR'
@@ -2254,7 +2242,6 @@ export interface operations {
                   | 'FORBIDDEN'
                   | 'CONFLICT'
                   | 'WITHDRAWAL_IN_PROGRESS'
-                  | 'WITHDRAWAL_FINALIZATION_PENDING'
                   | 'UNPROCESSABLE_CONTENT'
                   | 'TOO_MANY_REQUESTS'
                   | 'SETTLEMENT_QUOTE_ERROR'
@@ -2372,7 +2359,6 @@ export interface operations {
                   | 'FORBIDDEN'
                   | 'CONFLICT'
                   | 'WITHDRAWAL_IN_PROGRESS'
-                  | 'WITHDRAWAL_FINALIZATION_PENDING'
                   | 'UNPROCESSABLE_CONTENT'
                   | 'TOO_MANY_REQUESTS'
                   | 'SETTLEMENT_QUOTE_ERROR'
@@ -2618,7 +2604,6 @@ export interface operations {
                   | 'FORBIDDEN'
                   | 'CONFLICT'
                   | 'WITHDRAWAL_IN_PROGRESS'
-                  | 'WITHDRAWAL_FINALIZATION_PENDING'
                   | 'UNPROCESSABLE_CONTENT'
                   | 'TOO_MANY_REQUESTS'
                   | 'SETTLEMENT_QUOTE_ERROR'
@@ -2736,7 +2721,6 @@ export interface operations {
                   | 'FORBIDDEN'
                   | 'CONFLICT'
                   | 'WITHDRAWAL_IN_PROGRESS'
-                  | 'WITHDRAWAL_FINALIZATION_PENDING'
                   | 'UNPROCESSABLE_CONTENT'
                   | 'TOO_MANY_REQUESTS'
                   | 'SETTLEMENT_QUOTE_ERROR'
@@ -2854,7 +2838,6 @@ export interface operations {
                   | 'FORBIDDEN'
                   | 'CONFLICT'
                   | 'WITHDRAWAL_IN_PROGRESS'
-                  | 'WITHDRAWAL_FINALIZATION_PENDING'
                   | 'UNPROCESSABLE_CONTENT'
                   | 'TOO_MANY_REQUESTS'
                   | 'SETTLEMENT_QUOTE_ERROR'
@@ -2972,7 +2955,6 @@ export interface operations {
                   | 'FORBIDDEN'
                   | 'CONFLICT'
                   | 'WITHDRAWAL_IN_PROGRESS'
-                  | 'WITHDRAWAL_FINALIZATION_PENDING'
                   | 'UNPROCESSABLE_CONTENT'
                   | 'TOO_MANY_REQUESTS'
                   | 'SETTLEMENT_QUOTE_ERROR'
@@ -3184,7 +3166,6 @@ export interface operations {
                   | 'FORBIDDEN'
                   | 'CONFLICT'
                   | 'WITHDRAWAL_IN_PROGRESS'
-                  | 'WITHDRAWAL_FINALIZATION_PENDING'
                   | 'UNPROCESSABLE_CONTENT'
                   | 'TOO_MANY_REQUESTS'
                   | 'SETTLEMENT_QUOTE_ERROR'
@@ -3302,7 +3283,6 @@ export interface operations {
                   | 'FORBIDDEN'
                   | 'CONFLICT'
                   | 'WITHDRAWAL_IN_PROGRESS'
-                  | 'WITHDRAWAL_FINALIZATION_PENDING'
                   | 'UNPROCESSABLE_CONTENT'
                   | 'TOO_MANY_REQUESTS'
                   | 'SETTLEMENT_QUOTE_ERROR'
@@ -3448,7 +3428,6 @@ export interface operations {
                   | 'FORBIDDEN'
                   | 'CONFLICT'
                   | 'WITHDRAWAL_IN_PROGRESS'
-                  | 'WITHDRAWAL_FINALIZATION_PENDING'
                   | 'UNPROCESSABLE_CONTENT'
                   | 'TOO_MANY_REQUESTS'
                   | 'SETTLEMENT_QUOTE_ERROR'
@@ -3796,8 +3775,7 @@ export interface operations {
            *         "gas": true,
            *         "bridgeFees": true,
            *         "swapFees": true
-           *       },
-           *       "feeToken": "USDC"
+           *       }
            *     }
            */
           options?: {
@@ -3892,38 +3870,6 @@ export interface operations {
               | 4
               | 5
               | 6
-            /**
-             * @description Reserved for future use. No effect today.
-             * @enum {string}
-             */
-            feeToken?:
-              | 'ETH'
-              | 'USDC'
-              | 'WETH'
-              | 'USDT'
-              | 'USDT0'
-              | 'BNB'
-              | 'WBNB'
-              | 'XDAI'
-              | 'WXDAI'
-              | 'POL'
-              | 'WPOL'
-              | 'MON'
-              | 'WMON'
-              | 'S'
-              | 'WS'
-              | 'HYPE'
-              | 'WHYPE'
-              | 'USDG'
-              | 'XPL'
-              | 'WXPL'
-              | 'AVAX'
-              | 'WAVAX'
-              | 'MockUSD'
-              | 'TRX'
-              | 'WTRX'
-              | 'SOL'
-              | 'WSOL'
             appFees?: {
               /**
                * @description App fee rate in basis points of the input value (0–10000 = 0–100%).
@@ -4492,7 +4438,6 @@ export interface operations {
                   | 'FORBIDDEN'
                   | 'CONFLICT'
                   | 'WITHDRAWAL_IN_PROGRESS'
-                  | 'WITHDRAWAL_FINALIZATION_PENDING'
                   | 'UNPROCESSABLE_CONTENT'
                   | 'TOO_MANY_REQUESTS'
                   | 'SETTLEMENT_QUOTE_ERROR'
@@ -4610,7 +4555,6 @@ export interface operations {
                   | 'FORBIDDEN'
                   | 'CONFLICT'
                   | 'WITHDRAWAL_IN_PROGRESS'
-                  | 'WITHDRAWAL_FINALIZATION_PENDING'
                   | 'UNPROCESSABLE_CONTENT'
                   | 'TOO_MANY_REQUESTS'
                   | 'SETTLEMENT_QUOTE_ERROR'
@@ -4728,7 +4672,6 @@ export interface operations {
                   | 'FORBIDDEN'
                   | 'CONFLICT'
                   | 'WITHDRAWAL_IN_PROGRESS'
-                  | 'WITHDRAWAL_FINALIZATION_PENDING'
                   | 'UNPROCESSABLE_CONTENT'
                   | 'TOO_MANY_REQUESTS'
                   | 'SETTLEMENT_QUOTE_ERROR'
@@ -5226,7 +5169,6 @@ export interface operations {
                   | 'FORBIDDEN'
                   | 'CONFLICT'
                   | 'WITHDRAWAL_IN_PROGRESS'
-                  | 'WITHDRAWAL_FINALIZATION_PENDING'
                   | 'UNPROCESSABLE_CONTENT'
                   | 'TOO_MANY_REQUESTS'
                   | 'SETTLEMENT_QUOTE_ERROR'
@@ -5344,7 +5286,6 @@ export interface operations {
                   | 'FORBIDDEN'
                   | 'CONFLICT'
                   | 'WITHDRAWAL_IN_PROGRESS'
-                  | 'WITHDRAWAL_FINALIZATION_PENDING'
                   | 'UNPROCESSABLE_CONTENT'
                   | 'TOO_MANY_REQUESTS'
                   | 'SETTLEMENT_QUOTE_ERROR'
@@ -5462,7 +5403,6 @@ export interface operations {
                   | 'FORBIDDEN'
                   | 'CONFLICT'
                   | 'WITHDRAWAL_IN_PROGRESS'
-                  | 'WITHDRAWAL_FINALIZATION_PENDING'
                   | 'UNPROCESSABLE_CONTENT'
                   | 'TOO_MANY_REQUESTS'
                   | 'SETTLEMENT_QUOTE_ERROR'
@@ -5608,7 +5548,6 @@ export interface operations {
                   | 'FORBIDDEN'
                   | 'CONFLICT'
                   | 'WITHDRAWAL_IN_PROGRESS'
-                  | 'WITHDRAWAL_FINALIZATION_PENDING'
                   | 'UNPROCESSABLE_CONTENT'
                   | 'TOO_MANY_REQUESTS'
                   | 'SETTLEMENT_QUOTE_ERROR'
@@ -5726,7 +5665,6 @@ export interface operations {
                   | 'FORBIDDEN'
                   | 'CONFLICT'
                   | 'WITHDRAWAL_IN_PROGRESS'
-                  | 'WITHDRAWAL_FINALIZATION_PENDING'
                   | 'UNPROCESSABLE_CONTENT'
                   | 'TOO_MANY_REQUESTS'
                   | 'SETTLEMENT_QUOTE_ERROR'
@@ -5844,7 +5782,6 @@ export interface operations {
                   | 'FORBIDDEN'
                   | 'CONFLICT'
                   | 'WITHDRAWAL_IN_PROGRESS'
-                  | 'WITHDRAWAL_FINALIZATION_PENDING'
                   | 'UNPROCESSABLE_CONTENT'
                   | 'TOO_MANY_REQUESTS'
                   | 'SETTLEMENT_QUOTE_ERROR'
@@ -6000,7 +5937,6 @@ export interface operations {
                   | 'FORBIDDEN'
                   | 'CONFLICT'
                   | 'WITHDRAWAL_IN_PROGRESS'
-                  | 'WITHDRAWAL_FINALIZATION_PENDING'
                   | 'UNPROCESSABLE_CONTENT'
                   | 'TOO_MANY_REQUESTS'
                   | 'SETTLEMENT_QUOTE_ERROR'
@@ -6118,7 +6054,6 @@ export interface operations {
                   | 'FORBIDDEN'
                   | 'CONFLICT'
                   | 'WITHDRAWAL_IN_PROGRESS'
-                  | 'WITHDRAWAL_FINALIZATION_PENDING'
                   | 'UNPROCESSABLE_CONTENT'
                   | 'TOO_MANY_REQUESTS'
                   | 'SETTLEMENT_QUOTE_ERROR'
@@ -6236,7 +6171,6 @@ export interface operations {
                   | 'FORBIDDEN'
                   | 'CONFLICT'
                   | 'WITHDRAWAL_IN_PROGRESS'
-                  | 'WITHDRAWAL_FINALIZATION_PENDING'
                   | 'UNPROCESSABLE_CONTENT'
                   | 'TOO_MANY_REQUESTS'
                   | 'SETTLEMENT_QUOTE_ERROR'
@@ -6354,7 +6288,6 @@ export interface operations {
                   | 'FORBIDDEN'
                   | 'CONFLICT'
                   | 'WITHDRAWAL_IN_PROGRESS'
-                  | 'WITHDRAWAL_FINALIZATION_PENDING'
                   | 'UNPROCESSABLE_CONTENT'
                   | 'TOO_MANY_REQUESTS'
                   | 'SETTLEMENT_QUOTE_ERROR'
@@ -6506,7 +6439,6 @@ export interface operations {
                   | 'FORBIDDEN'
                   | 'CONFLICT'
                   | 'WITHDRAWAL_IN_PROGRESS'
-                  | 'WITHDRAWAL_FINALIZATION_PENDING'
                   | 'UNPROCESSABLE_CONTENT'
                   | 'TOO_MANY_REQUESTS'
                   | 'SETTLEMENT_QUOTE_ERROR'
@@ -6624,7 +6556,6 @@ export interface operations {
                   | 'FORBIDDEN'
                   | 'CONFLICT'
                   | 'WITHDRAWAL_IN_PROGRESS'
-                  | 'WITHDRAWAL_FINALIZATION_PENDING'
                   | 'UNPROCESSABLE_CONTENT'
                   | 'TOO_MANY_REQUESTS'
                   | 'SETTLEMENT_QUOTE_ERROR'
@@ -6640,7 +6571,7 @@ export interface operations {
               }
         }
       }
-      /** @description A withdrawal is in progress or failed delivery is awaiting finalization */
+      /** @description A withdrawal is already being signed */
       409: {
         headers: {
           [name: string]: unknown
@@ -6742,7 +6673,6 @@ export interface operations {
                   | 'FORBIDDEN'
                   | 'CONFLICT'
                   | 'WITHDRAWAL_IN_PROGRESS'
-                  | 'WITHDRAWAL_FINALIZATION_PENDING'
                   | 'UNPROCESSABLE_CONTENT'
                   | 'TOO_MANY_REQUESTS'
                   | 'SETTLEMENT_QUOTE_ERROR'
@@ -6860,7 +6790,6 @@ export interface operations {
                   | 'FORBIDDEN'
                   | 'CONFLICT'
                   | 'WITHDRAWAL_IN_PROGRESS'
-                  | 'WITHDRAWAL_FINALIZATION_PENDING'
                   | 'UNPROCESSABLE_CONTENT'
                   | 'TOO_MANY_REQUESTS'
                   | 'SETTLEMENT_QUOTE_ERROR'
@@ -7016,7 +6945,6 @@ export interface operations {
                   | 'FORBIDDEN'
                   | 'CONFLICT'
                   | 'WITHDRAWAL_IN_PROGRESS'
-                  | 'WITHDRAWAL_FINALIZATION_PENDING'
                   | 'UNPROCESSABLE_CONTENT'
                   | 'TOO_MANY_REQUESTS'
                   | 'SETTLEMENT_QUOTE_ERROR'
@@ -7134,7 +7062,6 @@ export interface operations {
                   | 'FORBIDDEN'
                   | 'CONFLICT'
                   | 'WITHDRAWAL_IN_PROGRESS'
-                  | 'WITHDRAWAL_FINALIZATION_PENDING'
                   | 'UNPROCESSABLE_CONTENT'
                   | 'TOO_MANY_REQUESTS'
                   | 'SETTLEMENT_QUOTE_ERROR'
@@ -7252,7 +7179,6 @@ export interface operations {
                   | 'FORBIDDEN'
                   | 'CONFLICT'
                   | 'WITHDRAWAL_IN_PROGRESS'
-                  | 'WITHDRAWAL_FINALIZATION_PENDING'
                   | 'UNPROCESSABLE_CONTENT'
                   | 'TOO_MANY_REQUESTS'
                   | 'SETTLEMENT_QUOTE_ERROR'
@@ -7370,7 +7296,6 @@ export interface operations {
                   | 'FORBIDDEN'
                   | 'CONFLICT'
                   | 'WITHDRAWAL_IN_PROGRESS'
-                  | 'WITHDRAWAL_FINALIZATION_PENDING'
                   | 'UNPROCESSABLE_CONTENT'
                   | 'TOO_MANY_REQUESTS'
                   | 'SETTLEMENT_QUOTE_ERROR'
@@ -7488,7 +7413,6 @@ export interface operations {
                   | 'FORBIDDEN'
                   | 'CONFLICT'
                   | 'WITHDRAWAL_IN_PROGRESS'
-                  | 'WITHDRAWAL_FINALIZATION_PENDING'
                   | 'UNPROCESSABLE_CONTENT'
                   | 'TOO_MANY_REQUESTS'
                   | 'SETTLEMENT_QUOTE_ERROR'
