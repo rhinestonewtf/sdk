@@ -1,10 +1,6 @@
 import { encodeFunctionData, erc20Abi } from 'viem'
 import { describe, expect, test } from 'vitest'
-import type {
-  PreparedTransactionData,
-  RhinestoneAccount,
-  Session,
-} from '../../../src/index'
+import type { RhinestoneAccount, Session } from '../../../src/index'
 import {
   DUMMY_PRECLAIMOP_SELECTOR,
   DUMMY_PRECLAIMOP_TARGET,
@@ -29,17 +25,6 @@ import {
   expectOutcome,
 } from '../framework/runner'
 import { getTokenAddress } from '../framework/tokens'
-
-type Execution = { to: string; value: bigint; data: string }
-
-function readPreClaimExecutions(
-  prepared: PreparedTransactionData,
-): Record<number, Execution[]> | undefined {
-  const input = prepared.intentInput as
-    | { preClaimExecutions?: Record<number, Execution[]> }
-    | undefined
-  return input?.preClaimExecutions
-}
 
 describe.sequential('SDK integration preclaim-ops', () => {
   // A fresh session needs enabling, so the SDK injects the dummy enable op as
@@ -73,8 +58,8 @@ describe.sequential('SDK integration preclaim-ops', () => {
     expectOutcome(execution, { kind: 'success' })
     if (execution.phase !== 'success') return
 
-    const preClaim = readPreClaimExecutions(execution.prepared)
-    const ops = preClaim?.[sourceChain.id]
+    const ops =
+      execution.prepared.intentInput.preClaimExecutions?.[sourceChain.id]
     expect(ops?.length).toBe(2)
     expect(ops?.[0].to.toLowerCase()).toBe(
       DUMMY_PRECLAIMOP_TARGET.toLowerCase(),
@@ -107,7 +92,7 @@ describe.sequential('SDK integration preclaim-ops', () => {
     expectOutcome(execution, { kind: 'success' })
     if (execution.phase !== 'success') return
 
-    expect(readPreClaimExecutions(execution.prepared)).toBeUndefined()
+    expect(execution.prepared.intentInput.preClaimExecutions).toBeUndefined()
   })
 
   // Source calls aren't just encoded — they run on-chain. A cross-chain intent
@@ -124,7 +109,10 @@ describe.sequential('SDK integration preclaim-ops', () => {
 
     const recipient = createOwner().address
     const sourceCallAmount = 5_000n
-    const usdc = getTokenAddress('USDC', sourceChain.id)
+    // Token requests are denominated on the target chain, source calls run on
+    // the source chain — the two USDC addresses differ.
+    const sourceUsdc = getTokenAddress('USDC', sourceChain.id)
+    const targetUsdc = getTokenAddress('USDC', targetChain.id)
 
     const execution = await executeIntent({
       account,
@@ -134,11 +122,11 @@ describe.sequential('SDK integration preclaim-ops', () => {
         targetChain,
         sponsored: true,
         calls: [],
-        tokenRequests: [{ address: usdc, amount: 10_000n }],
+        tokenRequests: [{ address: targetUsdc, amount: 10_000n }],
         sourceCalls: {
           [sourceChain.id]: [
             {
-              to: usdc,
+              to: sourceUsdc,
               value: 0n,
               data: encodeFunctionData({
                 abi: erc20Abi,

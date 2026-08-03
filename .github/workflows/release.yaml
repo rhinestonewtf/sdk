@@ -50,7 +50,6 @@ jobs:
       id-token: write
     steps:
       - name: Mint release-bot token
-        if: github.ref == 'refs/heads/release' || github.ref == 'refs/heads/v1'
         id: app-token
         uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1.12.0
         with:
@@ -60,6 +59,7 @@ jobs:
       - name: Check out the repo
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          fetch-depth: 0
           token: ${{ steps.app-token.outputs.token || github.token }}
 
       - name: Setup Bun
@@ -79,6 +79,38 @@ jobs:
       - name: Build and publish snapshot
         if: github.ref == 'refs/heads/main'
         run: bun run build && bunx changeset publish --tag dev
+
+      - name: Detect unreleased changesets
+        if: github.ref == 'refs/heads/main'
+        id: promotion
+        run: |
+          CHANGESETS=$(git diff --diff-filter=A --name-only origin/release...HEAD -- '.changeset/*.md' ':!.changeset/README.md')
+          if [ -z "$CHANGESETS" ]; then
+            echo "No unreleased changesets; skipping the release promotion PR."
+            echo "releasable=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Unreleased changesets:"
+            echo "$CHANGESETS"
+            echo "releasable=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open release promotion PR
+        if: github.ref == 'refs/heads/main' && steps.promotion.outputs.releasable == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          EXISTING_PR=$(gh pr list --base release --head main --state open --json number --jq '.[0].number')
+          if [ -n "$EXISTING_PR" ]; then
+            echo "Release promotion PR #${EXISTING_PR} is already open."
+            exit 0
+          fi
+
+          gh pr create \
+            --base release \
+            --head main \
+            --title "Release" \
+            --body "Promotes releasable changes from \`main\` to \`release\` after a successful \`@dev\` publish." \
+            --label ship
 
       # Beta/prod publish (release or v1 → Release PR or @latest)
       - name: Create Release Pull Request or Publish

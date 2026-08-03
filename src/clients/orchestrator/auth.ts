@@ -1,9 +1,10 @@
 import type { ResolvedAuth } from '../../config/resolved'
+import type { SerializedIntentInput } from './public'
 
 export interface OrchestratorAuthPort {
   readonly getHeaders: () => Promise<Readonly<Record<string, string>>>
   readonly getSubmitHeaders: (
-    intentInput: unknown,
+    intentInput: SerializedIntentInput,
     sponsored: boolean,
   ) => Promise<Readonly<Record<string, string>>>
 }

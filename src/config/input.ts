@@ -1,5 +1,6 @@
 import type { Account, Address } from 'viem'
 import type { AccountInitData, AccountInput } from '../accounts/types'
+import type { SerializedIntentInput } from '../clients/orchestrator/public'
 import type { ModuleInput } from '../modules/types'
 import type { ValidatorInput } from '../modules/validators/types'
 
@@ -8,7 +9,9 @@ export type SdkAuthInput =
   | {
       mode: 'experimental_jwt'
       accessToken: string | (() => Promise<string>)
-      getIntentExtensionToken?: (intentInput: unknown) => Promise<string>
+      getIntentExtensionToken?: (
+        intentInput: SerializedIntentInput,
+      ) => Promise<string>
     }
 
 export type ProviderInput = {

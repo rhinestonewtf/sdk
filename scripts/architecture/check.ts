@@ -35,6 +35,14 @@ const publishedBarrels = new Set([
 ])
 
 const workflowLayers = new Set(['intents', 'user-operations'])
+// Config modules allowed a type-only edge to the orchestrator public types: the
+// public config surface plus the input/resolved mirrors that carry the same
+// values through resolution.
+const configOrchestratorTypeConsumers = new Set([
+  'src/config/account.ts',
+  'src/config/input.ts',
+  'src/config/resolved.ts',
+])
 const concreteClientFiles = new Set([
   'auth.ts',
   'client.ts',
@@ -309,11 +317,14 @@ function edgeViolation(
       (edge.from === 'src/transactions/intents/types.ts' ||
         edge.from === 'src/transactions/user-operations/types.ts')) ||
     // The public `Transaction` options (`appFees`, `settlementLayers`,
-    // `auxiliaryFunds`) are typed with orchestrator public types, so the config
-    // input surface has a type-only dependency on the orchestrator public-type
-    // module that cannot be removed without changing the public surface.
+    // `auxiliaryFunds`) and the JWT auth `getIntentExtensionToken` parameter
+    // (`SerializedIntentInput`) are typed with orchestrator public types, so the
+    // config surface — the public config and the input/resolved mirrors that
+    // carry the same values — has a type-only dependency on the orchestrator
+    // public-type module that cannot be removed without either changing the
+    // public surface or widening internal types back to `unknown`.
     (edge.typeOnly &&
-      edge.from === 'src/config/account.ts' &&
+      configOrchestratorTypeConsumers.has(edge.from) &&
       edge.to === 'src/clients/orchestrator/public.ts')
 
   if (forbiddenByLayer[fromLayer]?.has(toLayer) && !publicInputTypeEdge) {

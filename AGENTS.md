@@ -66,7 +66,7 @@ Where to open PRs:
 - **v2 changes** (features and fixes) → target `main`
 - **v1 fixes** → target `v1`
 
-The release process: push `main` for a v2 dev release, `release` for a v2 release, `v1` for a v1 release.
+After a changeset reaches `main`, a successful `@dev` publish opens one `main` → `release` promotion PR; pushes to `release` and `v1` run their production release workflows.
 
 ## Patterns
 

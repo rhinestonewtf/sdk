@@ -2,8 +2,16 @@ import { describe, expect, test, vi } from 'vitest'
 import { createOrchestratorAuth } from './auth'
 import { createOrchestratorClient } from './client'
 import type { RateLimitedError } from './errors'
+import type { SerializedIntentInput } from './public'
 
 const address = '0x0000000000000000000000000000000000000001' as const
+const serializedIntentInput = {
+  account: { address, accountType: 'ERC7579' },
+  destinationChainId: 1,
+  destinationExecutions: [],
+  tokenRequests: [],
+  options: {},
+} satisfies SerializedIntentInput
 
 describe('orchestrator client', () => {
   test('maps quote requests and preserves auth, custom headers, and trace ids', async () => {
@@ -159,11 +167,11 @@ describe('orchestrator client', () => {
         intentId: 'intent-1',
         signatures: { origin: [], destination: '0x' },
       },
-      { intentInput: { request: true }, sponsored: true },
+      { intentInput: serializedIntentInput, sponsored: true },
     )
 
     expect(accessToken).toHaveBeenCalledOnce()
-    expect(extension).toHaveBeenCalledWith({ request: true })
+    expect(extension).toHaveBeenCalledWith(serializedIntentInput)
   })
 
   test('maps error envelope metadata', async () => {

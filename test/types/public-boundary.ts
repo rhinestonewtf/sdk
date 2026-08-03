@@ -1,4 +1,4 @@
-import type { HashTypedDataParameters, Hex } from 'viem'
+import type { Address, HashTypedDataParameters, Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { mainnet } from 'viem/chains'
 import * as ecdsaActions from '../../src/actions/ecdsa'
@@ -14,6 +14,7 @@ import {
   type RhinestoneAccount,
   type RhinestoneAccountConfig,
   RhinestoneSDK,
+  type SerializedIntentInput,
   type SignData,
   type SignedIntentData,
   type SignedTransactionData,
@@ -92,6 +93,28 @@ const crossChainNonEvmWithDeadline = {
   targetChain: tronMainnet,
   customDeadline: 9_999_999_999,
 } as const satisfies Transaction
+// A sponsorship server types its request body with the serialized input and
+// reads it without casts; bigint fields arrive as decimal strings.
+declare const sponsorshipBody: SerializedIntentInput
+const sponsoredAccount: Address | string = sponsorshipBody.account.address
+const sponsoredChainId: number = sponsorshipBody.destinationChainId
+const sponsoredCallValue: string =
+  sponsorshipBody.destinationExecutions[0].value
+const sponsoredGasUnits: string | undefined =
+  sponsorshipBody.destinationGasUnits
+const sponsoredTokenAmount: string | undefined =
+  sponsorshipBody.tokenRequests[0].amount
+const preparedIntentInput: SerializedIntentInput = prepared.intentInput
+
+new RhinestoneSDK({
+  auth: {
+    mode: 'experimental_jwt',
+    accessToken: 'access-token',
+    getIntentExtensionToken: async (intentInput: SerializedIntentInput) =>
+      `token-${intentInput.destinationChainId}`,
+  },
+})
+
 const sponsorLimitKey: SponsorLimitKey = 'perIntentUSD'
 const bridgeSponsored: boolean = quote.cost.fees.breakdown.bridge.sponsored
 const sponsorSurchargeUsd: number =
@@ -136,6 +159,12 @@ void crossChainNonEvmWithDeadline
 void sponsorLimitKey
 void bridgeSponsored
 void sponsorSurchargeUsd
+void sponsoredAccount
+void sponsoredChainId
+void sponsoredCallValue
+void sponsoredGasUnits
+void sponsoredTokenAmount
+void preparedIntentInput
 void actions
 void ecdsaActions
 void mfaActions

@@ -9,16 +9,10 @@ import type {
   SignedTransactionData,
 } from '../../../src/index'
 
-// `signatureMode` lives on the prepared intent input, which the public type
-// keeps as `unknown`. Read it through a narrow cast rather than widening the
-// SDK type — tests assert on it, they don't depend on it being public.
 export function readSignatureMode(
   prepared: PreparedTransactionData,
 ): number | undefined {
-  const input = prepared.intentInput as
-    | { options?: { signatureMode?: number } }
-    | undefined
-  return input?.options?.signatureMode
+  return prepared.intentInput.options.signatureMode
 }
 
 // Single hex => ERC-1271 path; { preClaimSig, notarizedClaimSig } => the dual
