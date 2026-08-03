@@ -9,6 +9,7 @@ import type {
   ChainOperation,
   Cost,
   IntentStatus,
+  SerializedIntentInput,
   SettlementLayer,
   TokenRequirements,
 } from './public'
@@ -113,7 +114,7 @@ export interface OrchestratorSignedIntent {
 }
 
 export interface OrchestratorIntentSubmissionContext {
-  readonly intentInput: unknown
+  readonly intentInput: SerializedIntentInput
   readonly sponsored: boolean
 }
 

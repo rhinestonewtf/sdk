@@ -2,6 +2,7 @@ import { privateKeyToAccount } from 'viem/accounts'
 import { mainnet, optimism } from 'viem/chains'
 import { describe, expect, test, vi } from 'vitest'
 import { toEvmChainReference } from '../chains/caip2'
+import type { SerializedIntentInput } from '../clients/orchestrator/public'
 import type { LegacyAccountConfig } from '../config/legacy'
 import { resolveAccountConfig, resolveSdkConfig } from '../config/resolve'
 import type { AccountInvocationContext } from '../config/resolved'
@@ -28,6 +29,13 @@ import type { AdaptedSignerSelection } from './signer-selection'
 const owner = privateKeyToAccount(`0x${'02'.repeat(32)}`)
 const guardian = privateKeyToAccount(`0x${'03'.repeat(32)}`)
 const recipientAddress = '0x0000000000000000000000000000000000000010' as const
+const serializedIntentInput = {
+  account: { address: recipientAddress, accountType: 'ERC7579' },
+  destinationChainId: mainnet.id,
+  destinationExecutions: [],
+  tokenRequests: [],
+  options: {},
+} satisfies SerializedIntentInput
 
 function invocationContext(): AccountInvocationContext<
   LegacyAccountConfig<unknown>
@@ -308,7 +316,7 @@ describe('account boundary adapters', () => {
         best,
         all: [best, alternate],
       },
-      intentInput: {},
+      intentInput: serializedIntentInput,
       transaction: { chain: mainnet, calls: [] },
     } satisfies PreparedTransactionData
     await facade.signTransaction(prepared, {
@@ -394,7 +402,7 @@ describe('account boundary adapters', () => {
     }
     const prepared = {
       quotes: { traceId: 'trace', best: quote, all: [quote] },
-      intentInput: {},
+      intentInput: serializedIntentInput,
       transaction: { chain: mainnet, calls: [] },
     } satisfies PreparedTransactionData
 
@@ -432,7 +440,7 @@ describe('account boundary adapters', () => {
     const alternate = quoteFixture('alternate')
     const signed = {
       quotes: { traceId: 'trace', best, all: [best, alternate] },
-      intentInput: {},
+      intentInput: serializedIntentInput,
       transaction: { chain: mainnet, calls: [] },
       quote: alternate,
       originSignatures: [],

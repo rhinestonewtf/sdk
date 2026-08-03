@@ -39,6 +39,7 @@ export type {
   Portfolio,
   ProtocolFeeRate,
   Quote,
+  SerializedIntentInput,
   SettlementLayer,
   SettlementLayerFilter,
   SignData,

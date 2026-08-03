@@ -1,5 +1,6 @@
 import type { Account, Address } from 'viem'
 import type { AccountDefinition, AccountInitData } from '../accounts/types'
+import type { SerializedIntentInput } from '../clients/orchestrator/public'
 import type { ConfiguredModule } from '../modules/types'
 import type { ResolvedValidatorDefinition } from '../modules/validators/types'
 
@@ -11,7 +12,7 @@ export type ResolvedAuth =
       readonly kind: 'jwt'
       readonly accessToken: string | (() => Promise<string>)
       readonly getIntentExtensionToken?: (
-        intentInput: unknown,
+        intentInput: SerializedIntentInput,
       ) => Promise<string>
     }
 

@@ -14,6 +14,7 @@ import {
   mapSplitResultFromWire,
 } from './mappers'
 import type { OrchestratorPort } from './port'
+import type { OrchestratorIntentSubmissionContext } from './types'
 import type { WireChainsResponse } from './wire'
 
 const SDK_VERSION = '2.0.0'
@@ -34,10 +35,7 @@ export function createOrchestratorClient(
     readonly path: string
     readonly method?: 'GET' | 'POST'
     readonly body?: unknown
-    readonly submitContext?: {
-      readonly intentInput: unknown
-      readonly sponsored: boolean
-    }
+    readonly submitContext?: OrchestratorIntentSubmissionContext
   }): Promise<unknown> => {
     const authHeaders = input.submitContext
       ? await options.auth.getSubmitHeaders(
