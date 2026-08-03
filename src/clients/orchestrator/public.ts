@@ -206,6 +206,32 @@ interface IntentInput {
   preClaimExecutions?: Record<number, Execution[]>
 }
 
+// Transport projection: `bigint` becomes a decimal string, every other type
+// keeps its shape (template-literal `Address`/`Hex`, optionality, index
+// signatures). Internal — only the `IntentInput` projection below is published.
+type Serialized<T> = T extends bigint
+  ? string
+  : T extends string | number | boolean | null | undefined
+    ? T
+    : T extends object
+      ? { [K in keyof T]: Serialized<T[K]> }
+      : T
+
+/**
+ * {@link IntentInput} as it crosses the transport boundary: the same shape, with
+ * every `bigint` field serialized to a decimal string.
+ *
+ * This is the canonical form the SDK exposes as
+ * `PreparedTransactionData.intentInput` and passes to a JWT auth
+ * `getIntentExtensionToken` callback, and the form a sponsorship JWT's digest
+ * commits to. Type a sponsorship endpoint's request body with it instead of
+ * re-deriving the mapping locally.
+ *
+ * Compile-time shape only: an untrusted request body still needs runtime
+ * validation.
+ */
+type SerializedIntentInput = Serialized<IntentInput>
+
 interface UsdAmount {
   usd: number
 }
@@ -460,6 +486,7 @@ export type {
   SettlementLayerFilter,
   SignatureMode,
   IntentInput,
+  SerializedIntentInput,
   BridgeFill,
   Quote,
   QuoteResponse,

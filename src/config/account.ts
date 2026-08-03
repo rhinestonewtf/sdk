@@ -10,6 +10,7 @@ import type {
   AppFeeRate,
   AuxiliaryFunds,
   ProtocolFeeRate,
+  SerializedIntentInput,
   SettlementLayerFilter,
 } from '../clients/orchestrator/public'
 
@@ -31,7 +32,7 @@ type ModuleType =
 interface AuthProvider {
   getHeaders(): Promise<Record<string, string>>
   getSubmitHeaders(
-    intentInput: unknown,
+    intentInput: SerializedIntentInput,
     isSponsored: boolean,
   ): Promise<Record<string, string>>
 }
@@ -643,10 +644,13 @@ interface JwtAuth {
   /** Static access token, or async getter for refreshable tokens. */
   accessToken: string | (() => Promise<string>)
   /**
-   * Called when submitting a sponsored intent. Receives the raw intent
-   * input object and must return a signed intent_extension_token JWT.
+   * Called when submitting a sponsored intent. Receives the canonical
+   * serialized intent input and must return a signed intent_extension_token
+   * JWT whose sponsorship digest covers it.
    */
-  getIntentExtensionToken?: (intentInput: unknown) => Promise<string>
+  getIntentExtensionToken?: (
+    intentInput: SerializedIntentInput,
+  ) => Promise<string>
 }
 
 type AuthConfig = ApiKeyAuth | JwtAuth

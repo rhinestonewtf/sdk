@@ -11,6 +11,7 @@ import type {
   IntentOpStatus,
   OriginSignature,
   Quote,
+  SerializedIntentInput,
 } from '../../clients/orchestrator/public'
 import type {
   OrchestratorAccount,
@@ -156,7 +157,8 @@ export interface PreparedQuotes {
 
 export interface PreparedTransactionData {
   quotes: PreparedQuotes
-  intentInput: unknown
+  /** Canonical serialized intent input; the shape a sponsorship digest covers. */
+  intentInput: SerializedIntentInput
   transaction: Transaction
 }
 
