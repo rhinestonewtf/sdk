@@ -158,6 +158,11 @@ export interface PreparedQuotes {
 export interface PreparedTransactionData {
   quotes: PreparedQuotes
   /** Canonical serialized intent input; the shape a sponsorship digest covers. */
+  // Deliberately narrowed from the `unknown` this field used to carry. Prepared
+  // data produced by `prepareTransaction` and passed straight back to
+  // `signTransaction` / `submitTransaction` is unaffected; a value typed against
+  // an earlier release — a mocked or persisted prepared object — needs an
+  // annotation.
   intentInput: SerializedIntentInput
   transaction: Transaction
 }
