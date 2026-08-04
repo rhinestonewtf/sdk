@@ -286,7 +286,7 @@ describe('intent signing plans', () => {
     const assertion = {
       signature: passkeySignature,
       authenticatorData: `0x${'99'.repeat(37)}` as Hex,
-      clientDataJSON: '{}',
+      clientDataJSON: '{"type":"webauthn.get","challenge":"value"}',
       challengeIndex: 0,
       typeIndex: 1,
       userVerificationRequired: false,
