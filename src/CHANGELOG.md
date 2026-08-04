@@ -1,5 +1,13 @@
 # @rhinestone/sdk
 
+## 2.2.1
+
+### Patch Changes
+
+- 1016fb8: Exclude non-EIP-155 catalog chains from portfolio requests so EVM balance reads continue to work when the runtime catalog includes other namespaces.
+- 4044d73: Remove the Solady runtime dependency while preserving byte-compatible FastLZ encoding for Smart Sessions enable signatures.
+- 66648f9: Prevent unusable WebAuthn signatures by deriving client-data offsets and normalizing P-256 signatures to low-s before packing. Supplied `challengeIndex` and `typeIndex` values remain accepted for compatibility but no longer override the values derived from `clientDataJSON`.
+
 ## 2.2.0
 
 ### Minor Changes
