@@ -252,7 +252,7 @@ type CrossChainSettlementLayer = 'SAME_CHAIN' | 'ECO' | 'ACROSS'
  * A high-level permit that authorises a session key to move funds
  * between two chains via Permit2 arbiter settlement. The SDK expands
  * one `CrossChainPermit` into a {@link Permit2ClaimPolicy} (claim-side)
- * plus optional {@link SpendingLimitsPolicy} / {@link TimeFramePolicy}
+ * plus optional `SpendingLimitsPolicy` / `TimeFramePolicy`
  * entries on the fallback action — the claim policy itself doesn't
  * enforce amounts or expiry on-chain, so we lift those guarantees into
  * action-level policies that do.
@@ -313,7 +313,7 @@ interface ToLeg {
  * addresses (v2 no longer accepts symbols) and the SDK resolves `Date`s to
  * on-chain deadlines, then expands
  * each entry into a {@link Permit2ClaimPolicy} (claim-side) plus optional
- * {@link SpendingLimitsPolicy} / {@link TimeFramePolicy} guardrails.
+ * `SpendingLimitsPolicy` / `TimeFramePolicy` guardrails.
  */
 interface CrossChainPermissionInput {
   /**
@@ -539,7 +539,7 @@ interface SessionDefinition<TAbis extends readonly Abi[] = readonly Abi[]> {
   /**
    * Cross-chain permits expanded by the SDK into matching
    * {@link Permit2ClaimPolicy} (claim-side) plus action-level
-   * {@link SpendingLimitsPolicy} / {@link TimeFramePolicy} guardrails.
+   * `SpendingLimitsPolicy` / `TimeFramePolicy` guardrails.
    * See {@link CrossChainPermissionInput}.
    */
   crossChainPermits?: readonly CrossChainPermissionInput[]

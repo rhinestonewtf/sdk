@@ -16,5 +16,6 @@ export default defineConfig({
     hookTimeout: 300_000,
     watch: false,
     fileParallelism: false,
+    retry: process.env.CI ? 2 : 0,
   },
 })

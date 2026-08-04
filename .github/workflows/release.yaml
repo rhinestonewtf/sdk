@@ -15,12 +15,34 @@ on:
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
 jobs:
+  release-mode:
+    name: Resolve release mode
+    runs-on: ubuntu-latest
+    outputs:
+      has-changesets: ${{ steps.mode.outputs.has-changesets }}
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Detect unreleased changesets
+        id: mode
+        run: |
+          if find .changeset -maxdepth 1 -type f -name '*.md' ! -name 'README.md' -print -quit | grep -q .; then
+            echo "has-changesets=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has-changesets=false" >> "$GITHUB_OUTPUT"
+          fi
+
   build-and-test:
     name: Build & Test
+    needs: [release-mode]
+    # release/v1 pushes with changesets only open or update a release PR. Their
+    # code has already passed the target branch's required PR checks.
+    if: github.ref == 'refs/heads/main' || needs.release-mode.outputs.has-changesets != 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Check out the repo
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -41,23 +63,61 @@ jobs:
         working-directory: src
         run: bunx publint
 
+  integration-tests:
+    name: Integration Tests
+    needs: [release-mode, build-and-test]
+    if: needs.build-and-test.result == 'success' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: live-integration-tests
+      cancel-in-progress: false
+    env:
+      INTEGRATION_FUNDER_PRIVATE_KEY: ${{ secrets.INTEGRATION_FUNDER_PRIVATE_KEY }}
+      INTEGRATION_RHINESTONE_API_KEY: ${{ secrets.INTEGRATION_RHINESTONE_API_KEY }}
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run smoke integration tests
+        if: github.ref == 'refs/heads/main'
+        run: bun run test:integration:smoke -- --run
+
+      - name: Run all integration tests
+        if: github.ref == 'refs/heads/release'
+        run: bun run test:integration -- --run
+
   release:
     name: Release
     runs-on: ubuntu-latest
-    needs: [build-and-test]
+    needs: [release-mode, build-and-test, integration-tests]
+    if: >-
+      always() &&
+      needs.release-mode.result == 'success' &&
+      (
+        (github.ref != 'refs/heads/main' && needs.release-mode.outputs.has-changesets == 'true') ||
+        (github.ref == 'refs/heads/v1' && needs.release-mode.outputs.has-changesets != 'true' && needs.build-and-test.result == 'success') ||
+        ((github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release') && needs.build-and-test.result == 'success' && needs.integration-tests.result == 'success')
+      )
     permissions:
       contents: read
       id-token: write
     steps:
       - name: Mint release-bot token
         id: app-token
-        uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1.12.0
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
           app-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
       - name: Check out the repo
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token || github.token }}
@@ -66,6 +126,7 @@ jobs:
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
 
       - name: Use OIDC-capable npm
+        if: github.ref == 'refs/heads/main' || needs.release-mode.outputs.has-changesets != 'true'
         run: sudo npm install -g npm@11
 
       - name: Install the npm dependencies
@@ -139,7 +200,7 @@ jobs:
       - name: Mint docs-repo token
         if: steps.changesets.outputs.published == 'true' && github.ref == 'refs/heads/release'
         id: docs-token
-        uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1.12.0
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
           app-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
@@ -148,7 +209,7 @@ jobs:
 
       - name: Checkout docs repo
         if: steps.changesets.outputs.published == 'true' && github.ref == 'refs/heads/release'
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ github.repository_owner }}/docs
           ref: main
