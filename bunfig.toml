@@ -1,0 +1,4 @@
+[install]
+# Only install package versions published at least 3 days ago (supply-chain mitigation).
+minimumReleaseAge = 259200
+minimumReleaseAgeExcludes = ["@rhinestone/shared-configs"]
