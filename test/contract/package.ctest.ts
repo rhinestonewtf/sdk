@@ -182,6 +182,14 @@ describe('packed package contract', () => {
     expect(baseSha).toMatch(/^[0-9a-f]{40}$/)
   })
 
+  it('publishes without runtime dependencies', () => {
+    const currentManifest = readJson<PackageManifest>(
+      join(currentPackageDirectory, 'package.json'),
+    )
+
+    expect(Object.keys(currentManifest.dependencies ?? {})).toEqual([])
+  })
+
   it('preserves manifest entry points and package metadata', () => {
     const baseManifest = readJson<PackageManifest>(
       join(basePackageDirectory, 'package.json'),
