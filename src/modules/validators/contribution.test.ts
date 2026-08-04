@@ -16,6 +16,9 @@ const validator = {
   address: '0x1111111111111111111111111111111111111111' as const,
 }
 const account = '0x2222222222222222222222222222222222222222' as const
+const p256CurveOrder =
+  0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551n
+const p256HalfCurveOrder = p256CurveOrder / 2n
 const raw = (byte: string, recovery = '00') =>
   `0x${byte.repeat(64)}${recovery}` as Hex
 
@@ -111,7 +114,7 @@ describe('validator contribution codecs', () => {
       publicKey,
       signature: raw(index === 0 ? '55' : '66').slice(0, -2) as Hex,
       authenticatorData: `0x${'77'.repeat(37)}` as Hex,
-      clientDataJSON: `{"index":${index}}`,
+      clientDataJSON: `{"type":"webauthn.get","challenge":"value-${index}"}`,
       challengeIndex: index,
       typeIndex: index + 1,
     }))
@@ -144,24 +147,60 @@ describe('validator contribution codecs', () => {
     expect(usePrecompile).toBe(true)
     expect(credentialIds).toEqual([...credentialIds].sort())
     expect(assertions).toHaveLength(2)
+    expect(assertions.map((assertion) => assertion.slice(2, 4))).toEqual([
+      [23n, 1n],
+      [23n, 1n],
+    ])
   })
 
-  test('validates WebAuthn low-level and V0 shapes', () => {
+  test('normalizes WebAuthn low-level and V0 shapes', () => {
     const signature = {
       authenticatorData: '0x1234' as Hex,
-      clientDataJSON: '{}',
+      clientDataJSON: '{"note":"é","type":"webauthn.get","challenge":"value"}',
       challengeIndex: 0n,
-      typeIndex: 1n,
+      typeIndex: 0n,
       r: 2n,
-      s: 3n,
+      s: p256HalfCurveOrder + 1n,
     }
-    expect(encodeWebauthnSignatures([], false, [signature])).toMatch(/^0x/)
+    const [, , assertions] = decodeAbiParameters(
+      [
+        { type: 'bytes32[]' },
+        { type: 'bool' },
+        {
+          type: 'tuple[]',
+          components: [
+            { type: 'bytes' },
+            { type: 'string' },
+            { type: 'uint256' },
+            { type: 'uint256' },
+            { type: 'uint256' },
+            { type: 'uint256' },
+          ],
+        },
+      ],
+      encodeWebauthnSignatures([`0x${'11'.repeat(32)}`], false, [signature]),
+    )
+    expect(assertions[0].slice(2)).toEqual([35n, 13n, 2n, p256HalfCurveOrder])
+
+    const [, , typeIndex, , s] = decodeAbiParameters(
+      [
+        { type: 'bytes' },
+        { type: 'string' },
+        { type: 'uint256' },
+        { type: 'uint256' },
+        { type: 'uint256' },
+        { type: 'bool' },
+      ],
+      encodeWebauthnSignatureV0(signature, false),
+    )
+    expect(typeIndex).toBe(13n)
+    expect(s).toBe(p256HalfCurveOrder)
+
     expect(() => parseWebauthnSignature('0x12')).toThrow()
     expect(parseWebauthnSignature(raw('11'))).toEqual({
       r: BigInt(`0x${'11'.repeat(32)}`),
       s: BigInt(`0x${'11'.repeat(32)}`),
     })
-    expect(encodeWebauthnSignatureV0(signature, false)).toMatch(/^0x/)
     expect(generateWebauthnCredentialId(1n, 2n, account)).toHaveLength(66)
   })
 

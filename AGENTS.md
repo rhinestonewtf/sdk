@@ -25,7 +25,7 @@ Docs: https://docs.rhinestone.dev/smart-wallet
 - Language: TypeScript (strict mode)
 - Testing: Vitest
 - Linting: Biome
-- Dependencies: viem (peer), solady, jose (optional peer, for `jwt-server`)
+- Dependencies: viem (peer), jose and express (optional peers for `jwt-server`); the published package has no runtime dependencies
 
 ## Structure
 

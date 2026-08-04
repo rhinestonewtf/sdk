@@ -5,6 +5,7 @@ import {
   type Hex,
   hexToBytes,
   keccak256,
+  stringToBytes,
 } from 'viem'
 import type { ResolvedModule } from '../types'
 import type { AtomicValidatorDefinition } from './types'
@@ -34,6 +35,64 @@ export interface WebAuthnSignature {
   typeIndex: bigint
   r: bigint
   s: bigint
+}
+
+type NormalizedWebAuthnSignature = WebAuthnSignature & {
+  challengeIndex: bigint
+  typeIndex: bigint
+}
+
+const P256_CURVE_ORDER =
+  0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551n
+const P256_HALF_CURVE_ORDER = P256_CURVE_ORDER / 2n
+const WEBAUTHN_TYPE_LITERAL = stringToBytes('"type":"webauthn.get"')
+const WEBAUTHN_CHALLENGE_LITERAL = stringToBytes('"challenge":"')
+
+function findClientDataLiteral(
+  clientData: Uint8Array,
+  literal: Uint8Array,
+  name: 'type' | 'challenge',
+): bigint {
+  const lastStart = clientData.length - literal.length
+  for (let start = 0; start <= lastStart; start++) {
+    if (literal.every((byte, offset) => clientData[start + offset] === byte)) {
+      return BigInt(start)
+    }
+  }
+  throw new Error(
+    `WebAuthn clientDataJSON is missing the required ${name} field`,
+  )
+}
+
+function normalizeP256S(s: bigint): bigint {
+  return s > P256_HALF_CURVE_ORDER ? P256_CURVE_ORDER - s : s
+}
+
+function normalizeWebauthnSignature(
+  signature: WebAuthnSignature,
+): NormalizedWebAuthnSignature {
+  const clientData = stringToBytes(signature.clientDataJSON)
+  return {
+    ...signature,
+    challengeIndex: findClientDataLiteral(
+      clientData,
+      WEBAUTHN_CHALLENGE_LITERAL,
+      'challenge',
+    ),
+    typeIndex: findClientDataLiteral(clientData, WEBAUTHN_TYPE_LITERAL, 'type'),
+    s: normalizeP256S(signature.s),
+  }
+}
+
+function normalizeWebauthnSignatureV0(
+  signature: Omit<WebAuthnSignature, 'challengeIndex'>,
+): Omit<NormalizedWebAuthnSignature, 'challengeIndex'> {
+  const clientData = stringToBytes(signature.clientDataJSON)
+  return {
+    ...signature,
+    typeIndex: findClientDataLiteral(clientData, WEBAUTHN_TYPE_LITERAL, 'type'),
+    s: normalizeP256S(signature.s),
+  }
 }
 
 export function parseWebauthnPublicKey(publicKey: Hex | Uint8Array): PublicKey {
@@ -81,7 +140,7 @@ export function encodeWebauthnSignatures(
   const ordered = credentialIds
     .map((credentialId, index) => ({
       credentialId,
-      signature: signatures[index],
+      signature: normalizeWebauthnSignature(signatures[index]),
     }))
     .sort((left, right) => left.credentialId.localeCompare(right.credentialId))
   return encodeAbiParameters(
@@ -113,6 +172,7 @@ export function encodeWebauthnSignatureV0(
   signature: Omit<WebAuthnSignature, 'challengeIndex'>,
   usePrecompile: boolean,
 ): Hex {
+  const normalized = normalizeWebauthnSignatureV0(signature)
   return encodeAbiParameters(
     [
       { type: 'bytes', name: 'authenticatorData' },
@@ -123,11 +183,11 @@ export function encodeWebauthnSignatureV0(
       { type: 'bool', name: 'usePrecompiled' },
     ],
     [
-      signature.authenticatorData,
-      signature.clientDataJSON,
-      signature.typeIndex,
-      signature.r,
-      signature.s,
+      normalized.authenticatorData,
+      normalized.clientDataJSON,
+      normalized.typeIndex,
+      normalized.r,
+      normalized.s,
       usePrecompile,
     ],
   )

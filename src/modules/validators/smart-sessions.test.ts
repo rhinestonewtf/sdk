@@ -16,6 +16,7 @@ import { accountA, accountB } from '../../../test/consts'
 import type { ArgPolicyExpression } from '../../config/account'
 import { PERMIT2_CLAIM_POLICY_ADDRESS } from './policies/claim/permit2'
 import { getPermissionId, getSessionData } from './smart-sessions/digest'
+import { fastLzDecompress } from './smart-sessions/fast-lz'
 import { buildSmartSessionMockSignature } from './smart-sessions/mock-signature'
 import { SMART_SESSION_EMISSARY_ADDRESS } from './smart-sessions/module'
 import {
@@ -37,7 +38,10 @@ import {
   SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
   toSession,
 } from './smart-sessions/resolve'
-import { encodeSmartSessionSignature as packSignature } from './smart-sessions/signature'
+import {
+  encodeSmartSessionEnablePayload,
+  encodeSmartSessionSignature as packSignature,
+} from './smart-sessions/signature'
 import type {
   ResolvedSessionSignerSet,
   Session,
@@ -1082,22 +1086,31 @@ describe('packSignature', () => {
     expect(slice(result, 0, 1)).toBe('0x01')
   })
 
-  test('verifyExecutions: true + enableData → longer output (has compressed payload)', () => {
+  test('verifyExecutions: true + enableData → compressed payload decodes to the ABI data', () => {
+    const enableData = {
+      userSignature: dummySig,
+      hashesAndChainIds: [
+        { chainId: BigInt(base.id), sessionDigest: zeroHash },
+      ],
+      sessionToEnableIndex: 0,
+    }
     const signers: ResolvedSessionSignerSet = {
       kind: 'smart-session',
       session: baseSession,
       verifyExecutions: true,
-      enableData: {
-        userSignature: dummySig,
-        hashesAndChainIds: [
-          { chainId: BigInt(base.id), sessionDigest: zeroHash },
-        ],
-        sessionToEnableIndex: 0,
-      },
+      enableData,
     }
     const result = packSignature(signers, dummySig)
-    const byteLen = (result.length - 2) / 2
-    expect(byteLen).toBeGreaterThan(33)
+    const expectedPayload = encodeSmartSessionEnablePayload({
+      permissionId: getPermissionId(baseSession),
+      signature: dummySig,
+      enableData: {
+        ...enableData,
+        session: getSessionData(baseSession),
+      },
+    })
+
+    expect(fastLzDecompress(slice(result, 1))).toBe(expectedPayload)
   })
 
   test('verifyExecutions: true, no enableData → MODE_USE (0x00) prefix', () => {
@@ -1168,7 +1181,7 @@ describe('buildMockSignature', () => {
     expect(slice(sigProd, 0, 20)).not.toBe(slice(sigDev, 0, 20))
   })
 
-  test('chainCount=2 produces valid output (LibZip may compress smaller than chainCount=1)', () => {
+  test('chainCount=2 produces a valid compressed payload', () => {
     const sig = buildMockSignature(baseSession, false, 2)
     // Must be at least emissaryAddress (20) + mode byte (1) + some payload
     const byteLen = (sig.length - 2) / 2
