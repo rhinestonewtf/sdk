@@ -1,5 +1,9 @@
 import type { AccountRuntimePort } from '../../accounts/adapter'
-import { toEvmChainReference } from '../../chains/caip2'
+import {
+  formatCaip2,
+  isEvmCaip2,
+  toEvmChainReference,
+} from '../../chains/caip2'
 import type {
   AccountQueryPort,
   ChainCatalogPort,
@@ -11,22 +15,17 @@ export async function getPortfolio(input: {
   readonly client: AccountQueryPort & ChainCatalogPort
   readonly onTestnets: boolean
 }): Promise<OrchestratorPortfolio> {
-  // Filter on the catalog's own `testnet` flag — authoritative for every chain
-  // the orchestrator supports (incl. non-EVM and chains newer than the SDK's
-  // viem). Filtering through viem would silently drop unknown chains, so their
-  // balances would disappear until an SDK/viem bump.
+  // The catalog's `testnet` flag is authoritative even for chains newer than
+  // the SDK's viem version, while the portfolio endpoint accepts only EIP-155.
   const catalog = await input.client.getChainCatalog()
   const chainIds = catalog
     .getSupportedChainIds()
-    .filter((chainId) => catalog.isTestnet(chainId) === input.onTestnets)
-  const accountChainId = chainIds.find((chainId) => {
-    try {
-      toEvmChainReference(chainId)
-      return true
-    } catch {
-      return false
-    }
-  })
+    .filter(
+      (chainId) =>
+        catalog.isTestnet(chainId) === input.onTestnets &&
+        isEvmCaip2(formatCaip2(chainId)),
+    )
+  const accountChainId = chainIds[0]
   if (accountChainId === undefined) {
     throw new Error(
       'No EVM chain is available for portfolio account resolution',
