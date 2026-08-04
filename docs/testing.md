@@ -61,8 +61,9 @@ consumer staging, and size run; `vitest.config.contract.ts` only discovers the
 Integration tests exercise Base Sepolia as the source chain and Arbitrum
 Sepolia as the target chain. Unless `INTEGRATION_ORCHESTRATOR_URL` is set, they
 use the SDK's built-in production orchestrator URL and production contract
-addresses. They run manually through `vitest.config.integration.ts`, with file
-parallelism disabled and five-minute test and hook timeouts.
+addresses. They run through `vitest.config.integration.ts`, with file parallelism disabled
+and five-minute test and hook timeouts. CI retries a failed test up to twice;
+local runs fail on the first attempt.
 
 The smoke suite validates an unfunded sponsored flow. The full suite covers the
 account adapters, supported-chain queries, EIP-7702, failure behavior,
@@ -117,10 +118,15 @@ and reusable fixtures. Configuration lives in `test/integration/config/`.
 
 ### GitHub Actions
 
-The `Integration Tests` workflow is manual and serializes live runs through the
-`live-integration-tests` concurrency group. Choose `suite=smoke` or `suite=all`
-and `target=prod` or `target=dev`. The job has a 30-minute timeout and resolves
-the environment-specific API key before executing the selected suite.
+The Release workflow runs the smoke suite before a `main` snapshot publish and
+the full suite before a `release` production publish. Publishing is blocked on
+its result. The manual `Integration Tests` workflow remains available for
+ad-hoc runs. Both workflows serialize live runs through the
+`live-integration-tests` concurrency group.
+
+For a manual run, choose `suite=smoke` or `suite=all` and `target=prod` or
+`target=dev`. The job has a 30-minute timeout and resolves the
+environment-specific API key before executing the selected suite.
 
 ```bash
 gh workflow run integration-tests.yaml -f suite=all -f target=prod

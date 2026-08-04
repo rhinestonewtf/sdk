@@ -16,8 +16,7 @@ import {
 
 /**
  * Enable passkeys authentication
- * @param pubKey Public key for the passkey
- * @param authenticatorId Authenticator ID for the passkey
+ * @param credential WebAuthn credential to enable
  * @returns Calls to enable passkeys authentication
  */
 function enable(credential: WebauthnCredential): LazyCallInput {

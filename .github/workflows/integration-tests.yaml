@@ -19,15 +19,6 @@ on:
         options:
           - prod
           - dev
-  # Run on push (post-merge), not pull_request: these jobs hold live credentials
-  # (a prod API key and the funder private key), so they must only ever run
-  # already-reviewed code. The suite is picked by branch — full suite on release
-  # (v2 prod), smoke on main (v2 dev) — both against prod.
-  push:
-    branches:
-      - main
-      - release
-
 concurrency:
   group: live-integration-tests
   cancel-in-progress: false
@@ -88,7 +79,7 @@ jobs:
           fi
 
       - name: Check out the repo
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
