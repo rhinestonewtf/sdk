@@ -36,7 +36,7 @@ const passkeyResult = {
   signature: `0x${'33'.repeat(64)}` as const,
   webauthn: {
     authenticatorData: '0x1234' as const,
-    clientDataJSON: '{}',
+    clientDataJSON: '{"type":"webauthn.get","challenge":"value"}',
     challengeIndex: 0,
     typeIndex: 0,
     userVerificationRequired: false,
