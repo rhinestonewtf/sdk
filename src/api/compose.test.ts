@@ -21,6 +21,10 @@ const owner = privateKeyToAccount(
 const target = '0x0000000000000000000000000000000000000010' as const
 const userOperationHash = `0x${'22'.repeat(32)}` as const
 
+function catalogChain(name: string, testnet: boolean) {
+  return { name, testnet, supportedTokens: 'all' as const }
+}
+
 function fixture() {
   const sdk = resolveSdkConfig({ apiKey: 'test' })
   const account = resolveAccountConfig(sdk, {
@@ -174,6 +178,73 @@ describe('internal core composition', () => {
     await expect(workflows.getPortfolio(context)).resolves.toEqual({
       tokens: [],
     })
+  })
+
+  test('filters portfolio chains by network and EIP-155 namespace', async () => {
+    const base = fixture()
+    const portfolio = { tokens: [] }
+    const getPortfolio = vi.fn(async () => portfolio)
+    const orchestrator: OrchestratorPort = {
+      ...base.orchestrator,
+      getPortfolio,
+      getChainCatalog: vi.fn(
+        async () =>
+          new ChainCatalog({
+            1: catalogChain('Ethereum', false),
+            1337: catalogChain('HyperCore', false),
+            42161: catalogChain('Arbitrum', false),
+            11155111: catalogChain('Sepolia', true),
+            728126428: catalogChain('Tron', false),
+            792703809: catalogChain('Solana', false),
+          }),
+      ),
+    }
+    const workflows = createCoreComposition(base.context.sdk, {
+      ...base.dependencies,
+      orchestrator,
+    }).createAccount(base.context).workflows
+
+    await expect(workflows.getPortfolio(base.context, false)).resolves.toBe(
+      portfolio,
+    )
+    await expect(workflows.getPortfolio(base.context, true)).resolves.toBe(
+      portfolio,
+    )
+    expect(getPortfolio).toHaveBeenCalledTimes(2)
+    expect(getPortfolio).toHaveBeenNthCalledWith(1, {
+      account: expect.any(String),
+      chainIds: [1, 42161],
+    })
+    expect(getPortfolio).toHaveBeenNthCalledWith(2, {
+      account: expect.any(String),
+      chainIds: [11155111],
+    })
+  })
+
+  test('rejects portfolio reads without an EIP-155 catalog chain', async () => {
+    const base = fixture()
+    const getPortfolio = vi.fn(async () => ({ tokens: [] }))
+    const orchestrator: OrchestratorPort = {
+      ...base.orchestrator,
+      getPortfolio,
+      getChainCatalog: vi.fn(
+        async () =>
+          new ChainCatalog({
+            1337: catalogChain('HyperCore', false),
+            728126428: catalogChain('Tron', false),
+            792703809: catalogChain('Solana', false),
+          }),
+      ),
+    }
+    const workflows = createCoreComposition(base.context.sdk, {
+      ...base.dependencies,
+      orchestrator,
+    }).createAccount(base.context).workflows
+
+    await expect(workflows.getPortfolio(base.context, false)).rejects.toThrow(
+      'No EVM chain is available for portfolio account resolution',
+    )
+    expect(getPortfolio).not.toHaveBeenCalled()
   })
 
   test('reads HCA owners through the explicitly configured factory', async () => {
