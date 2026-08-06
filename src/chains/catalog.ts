@@ -1,6 +1,6 @@
 import { type Chain, defineChain } from 'viem'
 import * as viemChains from 'viem/chains'
-import { formatCaip2 } from './caip2'
+import { formatCaip2, isHyperCoreWireId } from './caip2'
 import type { ChainReference } from './types'
 
 // Chain objects (rpc / nativeCurrency / formatters, needed for signing and
@@ -29,7 +29,7 @@ export function getChainById(chainId: number): Chain {
 
 export function getChainReference(chainId: number): ChainReference {
   const caip2 = formatCaip2(chainId)
-  if (caip2.startsWith('eip155:') || chainId === 1337) {
+  if (caip2.startsWith('eip155:') || isHyperCoreWireId(chainId)) {
     return {
       kind: 'evm',
       id: chainId,

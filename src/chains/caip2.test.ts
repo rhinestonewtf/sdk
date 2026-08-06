@@ -17,6 +17,8 @@ describe('CAIP-2', () => {
     [792703809, 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp'],
     [728126428, 'tron:mainnet'],
     [1337, 'hypercore:mainnet'],
+    [1337001, 'hypercore:spot'],
+    [1337002, 'hypercore:perp'],
   ] as const)('formats and parses %i', (id, caip2) => {
     expect(formatCaip2(id)).toBe(caip2)
     expect(chainIdFromReference(parseCaip2(caip2))).toBe(id)
@@ -26,6 +28,27 @@ describe('CAIP-2', () => {
   test('preserves the legacy HyperCore alias', () => {
     expect(chainIdFromReference(parseCaip2('eip155:1337'))).toBe(1337)
     expect(isNonEvmChainId(1337)).toBe(false)
+  })
+
+  // The venue ids must be in this table, not just in the exported descriptors.
+  // Without an entry, `formatCaip2(1337001)` emits `eip155:1337001` and
+  // `parseCaip2('hypercore:spot')` throws — so `hyperCoreSpot` would fail to
+  // address the destination it names, which is the whole point of the split.
+  // Types cannot catch this: the table is data (RHI-5510).
+  test('routes every HyperCore venue through the wire table', () => {
+    for (const [id, caip2] of [
+      [1337001, 'hypercore:spot'],
+      [1337002, 'hypercore:perp'],
+    ] as const) {
+      expect(formatCaip2(id)).toBe(caip2)
+      expect(chainIdFromReference(parseCaip2(caip2))).toBe(id)
+      // EVM-addressed, so recipients stay hex and no non-EVM branch is taken.
+      expect(isNonEvmChainId(id)).toBe(false)
+      expect(parseCaip2(caip2).kind).toBe('evm')
+      // `hypercore:*` is EVM-addressed but not `eip155:`, the one combination
+      // `toEvmChainReference` has to let through rather than reject.
+      expect(toEvmChainReference(id).caip2).toBe(caip2)
+    }
   })
 
   test('rejects malformed and unknown values', () => {
