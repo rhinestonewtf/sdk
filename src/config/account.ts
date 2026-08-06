@@ -758,21 +758,29 @@ type TokenRequest = TokenRequestWithAmount | TokenRequestWithoutAmount
 
 type TokenRequests = [TokenRequestWithoutAmount] | TokenRequestWithAmount[]
 
-// `balance?: never` rather than omitting the field: Solana and Tron have no
-// venue concept and the orchestrator rejects `balance` on their destinations, so
-// declaring it as unsettable states that invariant in the type instead of
-// leaving consumers (and our own mappers) to narrow with `'balance' in request`
-// — which silently widens the value to `{}` and defeats the point.
+// The venue lives here too, and this is in fact the arm that matters:
+// `hyperCoreMainnet` is a `NonEvmChain` (`kind: 'hypercore'`), so the supported
+// way to target HyperCore — `targetChain: hyperCoreMainnet` — resolves to
+// `CrossChainNonEvmTransaction.tokenRequests`, i.e. these types. HyperCore
+// addresses are EVM-shaped, but the SDK's EVM/non-EVM split is by CAIP-2
+// namespace (`hypercore:` is not `eip155:`), not by address shape — so
+// "HyperCore is EVM-addressed" does not put it on the EVM arm.
+//
+// Declaring it `never` here (an earlier attempt at expressing "Solana and Tron
+// have no venue") made the venue a compile error on the one descriptor that
+// needs it. Solana/Tron share this arm, so type-level exclusivity per non-EVM
+// chain isn't expressible without splitting the descriptor; the orchestrator
+// rejects `balance` on their destinations at runtime instead.
 interface NonEvmTokenRequestWithAmount {
   address: NonEvmAddress
   amount: bigint
-  balance?: never
+  balance?: HyperCoreBalance
 }
 
 interface NonEvmTokenRequestWithoutAmount {
   address: NonEvmAddress
   amount?: undefined
-  balance?: never
+  balance?: HyperCoreBalance
 }
 
 type NonEvmTokenRequest =

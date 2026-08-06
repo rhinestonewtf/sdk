@@ -9,6 +9,7 @@ import * as sessionActions from '../../src/actions/smart-sessions'
 import type { SponsorLimitKey } from '../../src/errors/index'
 import * as errors from '../../src/errors/index'
 import {
+  hyperCoreMainnet,
   type PreparedTransactionData,
   type Quote,
   type RhinestoneAccount,
@@ -93,6 +94,25 @@ const crossChainNonEvmWithDeadline = {
   targetChain: tronMainnet,
   customDeadline: 9_999_999_999,
 } as const satisfies Transaction
+
+// RHI-5510: the orchestrator requires a delivery venue on HyperCore, so the
+// supported descriptor must be able to express one. `hyperCoreMainnet` is a
+// `NonEvmChain`, so this resolves to `CrossChainNonEvmTransaction` — declaring
+// `balance` only on the EVM arm made the venue a *compile* error here, which no
+// runtime test can catch. This assertion is the guard.
+const hyperCoreSpotDelivery = {
+  sourceChains: [mainnet],
+  targetChain: hyperCoreMainnet,
+  tokenRequests: [{ address: recipient, amount: 1_000_000n, balance: 'spot' }],
+  calls: [],
+} as const satisfies Transaction
+
+const hyperCorePerpDelivery = {
+  sourceChains: [mainnet],
+  targetChain: hyperCoreMainnet,
+  tokenRequests: [{ address: recipient, amount: 1_000_000n, balance: 'perp' }],
+  calls: [],
+} as const satisfies Transaction
 // A sponsorship server types its request body with the serialized input and
 // reads it without casts; bigint fields arrive as decimal strings.
 declare const sponsorshipBody: SerializedIntentInput
@@ -156,6 +176,8 @@ void userOperation
 void sameChainTransaction
 void crossChainWithDeadline
 void crossChainNonEvmWithDeadline
+void hyperCoreSpotDelivery
+void hyperCorePerpDelivery
 void sponsorLimitKey
 void bridgeSponsored
 void sponsorSurchargeUsd

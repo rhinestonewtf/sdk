@@ -938,7 +938,8 @@ export function adaptTransaction(
       // 'perp' default with no way to reach spot (RHI-5510). Omitted rather
       // than sent as `undefined` when unset, because the orchestrator rejects
       // the field on non-HyperCore destinations. Readable directly off the
-      // union because the non-EVM arms declare `balance?: never`.
+      // union because every arm declares it — including the non-EVM one, which
+      // is the arm a `targetChain: hyperCoreMainnet` request actually uses.
       ...(request.balance === undefined ? {} : { balance: request.balance }),
     })),
     ...(transaction.recipient
