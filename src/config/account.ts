@@ -729,14 +729,29 @@ type SourceCallInput = CallInput & {
   provides?: SourceCallProvidedFunds[]
 }
 
+/**
+ * Which HyperCore balance receives a token request — the recipient's spot
+ * wallet, or the default perp dex's margin account.
+ *
+ * Required when the destination is HyperCore and rejected on every other
+ * chain. There is no default: the two credit different accounts, and picking
+ * wrong is silent (the intent completes and the fill succeeds; only the
+ * recipient's Core state shows where the funds went). Until this field
+ * existed here, the SDK dropped it while rebuilding tokenRequests, so no
+ * consumer could deliver to spot even deliberately — see RHI-5510.
+ */
+type HyperCoreBalance = 'spot' | 'perp'
+
 interface TokenRequestWithAmount {
   address: Address
   amount: bigint
+  balance?: HyperCoreBalance
 }
 
 interface TokenRequestWithoutAmount {
   address: Address
   amount?: undefined
+  balance?: HyperCoreBalance
 }
 
 type TokenRequest = TokenRequestWithAmount | TokenRequestWithoutAmount
@@ -972,6 +987,7 @@ export type {
   Sponsorship,
   TokenRequest,
   TokenRequests,
+  HyperCoreBalance,
   NonEvmTokenRequest,
   NonEvmTokenRequests,
   SourceAssetInput,
