@@ -38,6 +38,13 @@ import type {
 export interface IntentTokenRequest {
   readonly token: Address | string
   readonly amount?: bigint
+  /**
+   * HyperCore delivery venue — the recipient's spot wallet or the default perp
+   * dex's margin account. Required by the orchestrator on HyperCore
+   * destinations and rejected everywhere else, so it is optional here and
+   * forwarded only when set (RHI-5510).
+   */
+  readonly balance?: 'spot' | 'perp'
 }
 
 export interface IntentSourceCall<CompatibilityConfig> {

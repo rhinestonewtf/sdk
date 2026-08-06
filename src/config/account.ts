@@ -758,14 +758,21 @@ type TokenRequest = TokenRequestWithAmount | TokenRequestWithoutAmount
 
 type TokenRequests = [TokenRequestWithoutAmount] | TokenRequestWithAmount[]
 
+// `balance?: never` rather than omitting the field: Solana and Tron have no
+// venue concept and the orchestrator rejects `balance` on their destinations, so
+// declaring it as unsettable states that invariant in the type instead of
+// leaving consumers (and our own mappers) to narrow with `'balance' in request`
+// — which silently widens the value to `{}` and defeats the point.
 interface NonEvmTokenRequestWithAmount {
   address: NonEvmAddress
   amount: bigint
+  balance?: never
 }
 
 interface NonEvmTokenRequestWithoutAmount {
   address: NonEvmAddress
   amount?: undefined
+  balance?: never
 }
 
 type NonEvmTokenRequest =

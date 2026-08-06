@@ -932,20 +932,14 @@ export function adaptTransaction(
           ? request.address
           : normalizeTokenAddress(request.address, destinationChainId, false),
       ...(request.amount === undefined ? {} : { amount: request.amount }),
-      // Forward the HyperCore delivery venue. This mapping rebuilds the
-      // request from named fields, so anything not listed here is dropped —
-      // which is how `balance` used to be lost, leaving every SDK caller on
-      // the orchestrator's 'perp' default with no way to reach spot
-      // (RHI-5510). The orchestrator now requires the field on HyperCore
-      // destinations and rejects it elsewhere, so pass it through only when
-      // the caller set it.
-      // `in` rather than a plain property read: this mapping also serves
-      // non-EVM requests (Solana/Tron), whose types carry no `balance` because
-      // those chains have no venue and the orchestrator rejects the field
-      // there. HyperCore is EVM-addressed, so only the EVM arm can set it.
-      ...('balance' in request && request.balance !== undefined
-        ? { balance: request.balance }
-        : {}),
+      // Forward the HyperCore delivery venue. This mapping rebuilds the request
+      // from named fields, so anything not listed here is dropped — which is
+      // how `balance` was lost, leaving every SDK caller on the orchestrator's
+      // 'perp' default with no way to reach spot (RHI-5510). Omitted rather
+      // than sent as `undefined` when unset, because the orchestrator rejects
+      // the field on non-HyperCore destinations. Readable directly off the
+      // union because the non-EVM arms declare `balance?: never`.
+      ...(request.balance === undefined ? {} : { balance: request.balance }),
     })),
     ...(transaction.recipient
       ? {
