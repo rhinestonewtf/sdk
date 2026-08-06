@@ -662,31 +662,12 @@ describe('account boundary adapters', () => {
     expect(transaction.options?.customDeadline).toBe(customDeadline)
   })
 
-  // RHI-5510: `adaptTransaction` rebuilds each tokenRequest from named fields,
-  // so an unlisted field is silently dropped. `balance` used to be dropped
-  // here, which left every SDK caller on the orchestrator's 'perp' default
-  // with no way to reach HyperCore spot — funds landed in perp margin and
-  // nothing reported it.
-  test('forwards the HyperCore delivery venue on tokenRequests (RHI-5510)', () => {
-    const transaction = adaptTransaction(invocationContext(), {
-      chain: mainnet,
-      calls: [],
-      tokenRequests: [
-        {
-          address: '0x0000000000000000000000000000000000000020',
-          amount: 1_000_000n,
-          balance: 'spot',
-        },
-      ],
-    })
-
-    expect(transaction.tokenRequests?.[0]).toMatchObject({
-      amount: 1_000_000n,
-      balance: 'spot',
-    })
-  })
-
-  test('omits balance entirely when the caller does not set one', () => {
+  // RHI-5510: the delivery venue is the destination chain, not a field on the
+  // token request, so `adaptTransaction` carries nothing venue-specific. This
+  // pins that no stray venue field is synthesised onto a request — the previous
+  // `balance` flag was dropped by this very mapping, which is what silently
+  // routed spot deliveries into perp margin.
+  test('synthesises no venue field onto token requests', () => {
     const transaction = adaptTransaction(invocationContext(), {
       chain: mainnet,
       calls: [],
@@ -698,8 +679,7 @@ describe('account boundary adapters', () => {
       ],
     })
 
-    // Absent, not `undefined`: the orchestrator rejects `balance` on every
-    // non-HyperCore destination, so it must not appear on ordinary intents.
+    expect(transaction.tokenRequests?.[0]).toMatchObject({ amount: 1_000_000n })
     expect(transaction.tokenRequests?.[0]).not.toHaveProperty('balance')
   })
 
