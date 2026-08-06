@@ -60,6 +60,7 @@ export type {
   CrossChainSettlementLayer,
   FromLeg,
   GuardiansSignerSet,
+  HyperCoreBalance,
   MultiFactorValidatorConfig,
   NonEvmTokenRequest,
   NonEvmTokenRequests,

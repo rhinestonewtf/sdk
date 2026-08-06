@@ -9,6 +9,7 @@ import * as sessionActions from '../../src/actions/smart-sessions'
 import type { SponsorLimitKey } from '../../src/errors/index'
 import * as errors from '../../src/errors/index'
 import {
+  type HyperCoreBalance,
   hyperCoreMainnet,
   type PreparedTransactionData,
   type Quote,
@@ -113,6 +114,11 @@ const hyperCorePerpDelivery = {
   tokenRequests: [{ address: recipient, amount: 1_000_000n, balance: 'perp' }],
   calls: [],
 } as const satisfies Transaction
+
+// The venue type must be importable from the package root, not just declared
+// internally — a consumer typing their own helper around it is the reason it is
+// named at all.
+const hyperCoreVenue: HyperCoreBalance = 'spot'
 // A sponsorship server types its request body with the serialized input and
 // reads it without casts; bigint fields arrive as decimal strings.
 declare const sponsorshipBody: SerializedIntentInput
@@ -178,6 +184,7 @@ void crossChainWithDeadline
 void crossChainNonEvmWithDeadline
 void hyperCoreSpotDelivery
 void hyperCorePerpDelivery
+void hyperCoreVenue
 void sponsorLimitKey
 void bridgeSponsored
 void sponsorSurchargeUsd
