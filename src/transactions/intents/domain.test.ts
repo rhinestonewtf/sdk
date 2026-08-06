@@ -226,6 +226,47 @@ describe('intent domain', () => {
     })
   })
 
+  // RHI-5510: two separate places rebuild a token request from named fields —
+  // `adaptTransaction` and this one, the last before the network call. Covering
+  // only the first left `balance` still dropped here, so HyperCore spot
+  // deliveries would silently keep going to the default venue. Assert at the
+  // boundary that actually reaches the orchestrator.
+  test('forwards the HyperCore delivery venue onto the orchestrator request', () => {
+    const request = buildIntentRequest({
+      transaction: {
+        destination: chain,
+        calls: [],
+        tokenRequests: [{ token: address, amount: 2n, balance: 'spot' }],
+        options: {},
+      },
+      account: { address },
+      calls: [],
+      sourceCalls: {},
+      providedFunds: {},
+    })
+    expect(request.tokenRequests).toEqual([
+      { tokenAddress: address, amount: 2n, balance: 'spot' },
+    ])
+  })
+
+  test('omits the venue when unset, so non-HyperCore intents are unaffected', () => {
+    const request = buildIntentRequest({
+      transaction: {
+        destination: chain,
+        calls: [],
+        tokenRequests: [{ token: address, amount: 2n }],
+        options: {},
+      },
+      account: { address },
+      calls: [],
+      sourceCalls: {},
+      providedFunds: {},
+    })
+    // Absent, not `undefined`: the orchestrator rejects `balance` outright on
+    // every non-HyperCore destination.
+    expect(request.tokenRequests[0]).not.toHaveProperty('balance')
+  })
+
   test('selects the best or requested quote and rejects missing quotes', () => {
     const quotes = [
       { intentId: 'a' },

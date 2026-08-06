@@ -66,6 +66,8 @@ export interface OrchestratorIntentRequest {
   readonly tokenRequests: readonly {
     readonly tokenAddress: Address | string
     readonly amount?: bigint
+    /** HyperCore delivery venue; see `IntentTokenRequest.balance` (RHI-5510). */
+    readonly balance?: 'spot' | 'perp'
   }[]
   readonly recipient?: OrchestratorAccount
   readonly accountAccessList?: OrchestratorAccountAccessList

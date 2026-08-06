@@ -199,6 +199,12 @@ interface IntentInput {
   tokenRequests: {
     tokenAddress: Address | NonEvmAddress
     amount?: bigint
+    /**
+     * HyperCore delivery venue. Present on the wire whenever the caller set it
+     * — `mapIntentRequestToWire` forwards `tokenRequests` wholesale, so this
+     * type would otherwise understate the payload (RHI-5510).
+     */
+    balance?: 'spot' | 'perp'
   }[]
   recipient?: Account
   accountAccessList?: AccountAccessList

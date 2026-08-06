@@ -662,6 +662,47 @@ describe('account boundary adapters', () => {
     expect(transaction.options?.customDeadline).toBe(customDeadline)
   })
 
+  // RHI-5510: `adaptTransaction` rebuilds each tokenRequest from named fields,
+  // so an unlisted field is silently dropped. `balance` used to be dropped
+  // here, which left every SDK caller on the orchestrator's 'perp' default
+  // with no way to reach HyperCore spot — funds landed in perp margin and
+  // nothing reported it.
+  test('forwards the HyperCore delivery venue on tokenRequests (RHI-5510)', () => {
+    const transaction = adaptTransaction(invocationContext(), {
+      chain: mainnet,
+      calls: [],
+      tokenRequests: [
+        {
+          address: '0x0000000000000000000000000000000000000020',
+          amount: 1_000_000n,
+          balance: 'spot',
+        },
+      ],
+    })
+
+    expect(transaction.tokenRequests?.[0]).toMatchObject({
+      amount: 1_000_000n,
+      balance: 'spot',
+    })
+  })
+
+  test('omits balance entirely when the caller does not set one', () => {
+    const transaction = adaptTransaction(invocationContext(), {
+      chain: mainnet,
+      calls: [],
+      tokenRequests: [
+        {
+          address: '0x0000000000000000000000000000000000000020',
+          amount: 1_000_000n,
+        },
+      ],
+    })
+
+    // Absent, not `undefined`: the orchestrator rejects `balance` on every
+    // non-HyperCore destination, so it must not appear on ordinary intents.
+    expect(transaction.tokenRequests?.[0]).not.toHaveProperty('balance')
+  })
+
   test('forwards protocolFees into intent options (RHI-4904)', () => {
     const transaction = adaptTransaction(invocationContext(), {
       chain: mainnet,

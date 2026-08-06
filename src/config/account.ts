@@ -729,28 +729,58 @@ type SourceCallInput = CallInput & {
   provides?: SourceCallProvidedFunds[]
 }
 
+/**
+ * Which HyperCore balance receives a token request — the recipient's spot
+ * wallet, or the default perp dex's margin account.
+ *
+ * Required when the destination is HyperCore and rejected on every other
+ * chain. There is no default: the two credit different accounts, and picking
+ * wrong is silent (the intent completes and the fill succeeds; only the
+ * recipient's Core state shows where the funds went). Until this field
+ * existed here, the SDK dropped it while rebuilding tokenRequests, so no
+ * consumer could deliver to spot even deliberately — see RHI-5510.
+ */
+type HyperCoreBalance = 'spot' | 'perp'
+
 interface TokenRequestWithAmount {
   address: Address
   amount: bigint
+  balance?: HyperCoreBalance
 }
 
 interface TokenRequestWithoutAmount {
   address: Address
   amount?: undefined
+  balance?: HyperCoreBalance
 }
 
 type TokenRequest = TokenRequestWithAmount | TokenRequestWithoutAmount
 
 type TokenRequests = [TokenRequestWithoutAmount] | TokenRequestWithAmount[]
 
+// The venue lives here too, and this is in fact the arm that matters:
+// `hyperCoreMainnet` is a `NonEvmChain` (`kind: 'hypercore'`), so the supported
+// way to target HyperCore — `targetChain: hyperCoreMainnet` — resolves to
+// `CrossChainNonEvmTransaction.tokenRequests`, i.e. these types. HyperCore
+// addresses are EVM-shaped, but the SDK's EVM/non-EVM split is by CAIP-2
+// namespace (`hypercore:` is not `eip155:`), not by address shape — so
+// "HyperCore is EVM-addressed" does not put it on the EVM arm.
+//
+// Declaring it `never` here (an earlier attempt at expressing "Solana and Tron
+// have no venue") made the venue a compile error on the one descriptor that
+// needs it. Solana/Tron share this arm, so type-level exclusivity per non-EVM
+// chain isn't expressible without splitting the descriptor; the orchestrator
+// rejects `balance` on their destinations at runtime instead.
 interface NonEvmTokenRequestWithAmount {
   address: NonEvmAddress
   amount: bigint
+  balance?: HyperCoreBalance
 }
 
 interface NonEvmTokenRequestWithoutAmount {
   address: NonEvmAddress
   amount?: undefined
+  balance?: HyperCoreBalance
 }
 
 type NonEvmTokenRequest =
@@ -972,6 +1002,7 @@ export type {
   Sponsorship,
   TokenRequest,
   TokenRequests,
+  HyperCoreBalance,
   NonEvmTokenRequest,
   NonEvmTokenRequests,
   SourceAssetInput,
