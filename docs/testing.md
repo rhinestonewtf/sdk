@@ -99,18 +99,17 @@ an infrastructure/setup failure, not necessarily a failed SDK assertion.
 
 ```bash
 # Smoke suite against the production orchestrator and testnets; no funder required.
-op run --env-file=.env -- bun run test:integration:smoke -- --run
+bun run test:integration:smoke -- --run
 
 # Full suite against the production orchestrator and testnets.
-op run --env-file=.env -- bun run test:integration -- --run
+bun run test:integration -- --run
 
 # Run one scenario or test while investigating a failure.
-op run --env-file=.env -- bun run test:integration -- --run \
+bun run test:integration -- --run \
   test/integration/scenarios/ssx-policies.itest.ts -t "allowlisted"
 
 # Compact per-intent diagnostics.
-SDK_ITEST_DEBUG=1 op run --env-file=.env -- \
-  bun run test:integration:smoke -- --run
+SDK_ITEST_DEBUG=1 bun run test:integration:smoke -- --run
 ```
 
 `test/integration/framework/` owns execution, funding, signature assertions,
@@ -138,13 +137,11 @@ the development URL, which also enables development contract addresses.
 
 ### Credentials
 
-Keep local credentials in the ignored `.env` file as `op://` references. Do not
-paste resolved values into commands or logs.
+Keep local credentials in the ignored `.env` file. Do not paste them into
+commands or logs.
 
 ```bash
-export OP_SHIM_KEY=...
-op run --env-file=.env -- bun run test:integration:smoke -- --run
+bun run test:integration:smoke -- --run
 ```
 
-If `OP_SHIM_KEY` is absent, ask for it and export it for the current shell only.
-Never write it to disk.
+`.env.example` lists the required variables.
