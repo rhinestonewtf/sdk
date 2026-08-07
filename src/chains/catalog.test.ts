@@ -27,6 +27,20 @@ describe('runtime chain resolution', () => {
       namespace: 'solana',
     })
   })
+
+  // Every HyperCore id must come back EVM, on its `hypercore:` caip2. This used
+  // to be spelled `chainId === 1337`, which turned every venue into a `non-evm`
+  // reference the moment a second id existed — hex recipients would then take the
+  // non-EVM branch (RHI-5510).
+  test('materializes every HyperCore id as an EVM reference', () => {
+    for (const [id, caip2] of [
+      [1337, 'hypercore:mainnet'],
+      [1337001, 'hypercore:spot'],
+      [1337002, 'hypercore:perp'],
+    ] as const) {
+      expect(getChainReference(id)).toEqual({ kind: 'evm', id, caip2 })
+    }
+  })
 })
 
 describe('normalizeTokenAddress', () => {

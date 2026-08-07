@@ -34,13 +34,6 @@ export function buildIntentRequest<CompatibilityConfig>(input: {
         nonEvm,
       ),
       ...(request.amount === undefined ? {} : { amount: request.amount }),
-      // The second of two places that rebuild a token request from named
-      // fields, and the last one before the network call — so dropping
-      // `balance` here undoes forwarding it in `adaptTransaction` and every
-      // HyperCore delivery silently reverts to the orchestrator's default
-      // venue (RHI-5510). Omitted rather than sent as `undefined` because the
-      // orchestrator rejects the field on non-HyperCore destinations.
-      ...(request.balance === undefined ? {} : { balance: request.balance }),
     })),
     ...(input.transaction.recipient
       ? { recipient: input.transaction.recipient }

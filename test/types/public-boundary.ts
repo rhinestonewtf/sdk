@@ -9,8 +9,8 @@ import * as sessionActions from '../../src/actions/smart-sessions'
 import type { SponsorLimitKey } from '../../src/errors/index'
 import * as errors from '../../src/errors/index'
 import {
-  type HyperCoreBalance,
-  hyperCoreMainnet,
+  hyperCorePerp,
+  hyperCoreSpot,
   type PreparedTransactionData,
   type Quote,
   type RhinestoneAccount,
@@ -96,29 +96,23 @@ const crossChainNonEvmWithDeadline = {
   customDeadline: 9_999_999_999,
 } as const satisfies Transaction
 
-// RHI-5510: the orchestrator requires a delivery venue on HyperCore, so the
-// supported descriptor must be able to express one. `hyperCoreMainnet` is a
-// `NonEvmChain`, so this resolves to `CrossChainNonEvmTransaction` — declaring
-// `balance` only on the EVM arm made the venue a *compile* error here, which no
-// runtime test can catch. This assertion is the guard.
+// RHI-5510: the delivery venue is the destination, so a caller addresses it by
+// picking a chain. There is no venue field to forget, and no way to express a
+// HyperCore delivery without stating which account it credits — both venues
+// must therefore be publicly importable descriptors.
 const hyperCoreSpotDelivery = {
   sourceChains: [mainnet],
-  targetChain: hyperCoreMainnet,
-  tokenRequests: [{ address: recipient, amount: 1_000_000n, balance: 'spot' }],
+  targetChain: hyperCoreSpot,
+  tokenRequests: [{ address: recipient, amount: 1_000_000n }],
   calls: [],
 } as const satisfies Transaction
 
 const hyperCorePerpDelivery = {
   sourceChains: [mainnet],
-  targetChain: hyperCoreMainnet,
-  tokenRequests: [{ address: recipient, amount: 1_000_000n, balance: 'perp' }],
+  targetChain: hyperCorePerp,
+  tokenRequests: [{ address: recipient, amount: 1_000_000n }],
   calls: [],
 } as const satisfies Transaction
-
-// The venue type must be importable from the package root, not just declared
-// internally — a consumer typing their own helper around it is the reason it is
-// named at all.
-const hyperCoreVenue: HyperCoreBalance = 'spot'
 // A sponsorship server types its request body with the serialized input and
 // reads it without casts; bigint fields arrive as decimal strings.
 declare const sponsorshipBody: SerializedIntentInput
@@ -184,7 +178,6 @@ void crossChainWithDeadline
 void crossChainNonEvmWithDeadline
 void hyperCoreSpotDelivery
 void hyperCorePerpDelivery
-void hyperCoreVenue
 void sponsorLimitKey
 void bridgeSponsored
 void sponsorSurchargeUsd

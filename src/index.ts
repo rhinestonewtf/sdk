@@ -1,5 +1,10 @@
 import { RhinestoneSDK } from './api/sdk'
-import { hyperCoreMainnet, solanaMainnet, tronMainnet } from './chains/non-evm'
+import {
+  hyperCorePerp,
+  hyperCoreSpot,
+  solanaMainnet,
+  tronMainnet,
+} from './chains/non-evm'
 import { MULTI_FACTOR_VALIDATOR_ADDRESS } from './modules/validators/multi-factor'
 import { OWNABLE_VALIDATOR_ADDRESS } from './modules/validators/ownable'
 import { SMART_SESSION_EMISSARY_ADDRESS } from './modules/validators/smart-sessions/module'
@@ -8,7 +13,8 @@ import { WEBAUTHN_VALIDATOR_ADDRESS } from './modules/validators/webauthn'
 export {
   RhinestoneSDK,
   // Non-viem destination chain descriptors (Solana, Tron, HyperCore)
-  hyperCoreMainnet,
+  hyperCorePerp,
+  hyperCoreSpot,
   solanaMainnet,
   tronMainnet,
   // Validator addresses
@@ -60,7 +66,6 @@ export type {
   CrossChainSettlementLayer,
   FromLeg,
   GuardiansSignerSet,
-  HyperCoreBalance,
   MultiFactorValidatorConfig,
   NonEvmTokenRequest,
   NonEvmTokenRequests,

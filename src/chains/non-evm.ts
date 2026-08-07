@@ -15,7 +15,9 @@ import type { Chain } from 'viem'
 type EvmCaip2ChainId = `eip155:${number}`
 type SolanaCaip2ChainId = `solana:${string}`
 type TronCaip2ChainId = `tron:${string}`
-type HyperCoreCaip2ChainId = 'hypercore:mainnet'
+// One id per HyperCore delivery venue — the venue is the destination, not a
+// flag on the token request (RHI-5510).
+type HyperCoreCaip2ChainId = 'hypercore:spot' | 'hypercore:perp'
 type Caip2ChainId =
   | EvmCaip2ChainId
   | SolanaCaip2ChainId
@@ -61,12 +63,26 @@ const tronMainnet: NonEvmChain = {
   nativeCurrency: { name: 'Tron', symbol: 'TRX', decimals: 6 },
 }
 
-const hyperCoreMainnet: NonEvmChain = {
-  name: 'HyperCore',
-  caip2: 'hypercore:mainnet',
+// A HyperCore deposit credits one of two accounts that are not
+// interchangeable: the recipient's spot wallet, or the default perp dex's
+// margin account. `CoreDepositWallet.depositFor` selects between them, and the
+// wrong choice is invisible — the intent completes, the fill succeeds, and only
+// the recipient's Core state shows where the funds went. So the venue is the
+// destination you address, not an optional field that four separate
+// field-by-field rebuilds could each silently drop (RHI-5510).
+const hyperCoreSpot: NonEvmChain = {
+  name: 'HyperCore Spot',
+  caip2: 'hypercore:spot',
+  kind: 'hypercore',
+  nativeCurrency: { name: 'Hyperliquid', symbol: 'HYPE', decimals: 18 },
+}
+
+const hyperCorePerp: NonEvmChain = {
+  name: 'HyperCore Perp',
+  caip2: 'hypercore:perp',
   kind: 'hypercore',
   nativeCurrency: { name: 'Hyperliquid', symbol: 'HYPE', decimals: 18 },
 }
 
 export type { DestinationChain, NativeCurrency, NonEvmAddress, NonEvmChain }
-export { hyperCoreMainnet, solanaMainnet, tronMainnet }
+export { hyperCorePerp, hyperCoreSpot, solanaMainnet, tronMainnet }
