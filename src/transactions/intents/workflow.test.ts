@@ -233,6 +233,48 @@ describe('intent workflow', () => {
     }
   })
 
+  // The session path repeats the same `kind === 'evm'` conflation, and an EOA
+  // end-to-end run does not exercise it: `sessionChains` would demand a smart
+  // session on 1337001/1337002, which can never exist — no account is deployed on
+  // a virtual chain, and HyperCore delivery is solver-mediated so there is no
+  // destination-side authorization for a session to grant (RHI-5510).
+  test('requires no session on a HyperCore venue', async () => {
+    const session = toSession({
+      chain: mainnet,
+      owners: { type: 'ecdsa', accounts: [account] },
+    })
+    const read = vi.fn(async (checkpoint: { id: string }) => [
+      { kind: 'session-enabled' as const, id: checkpoint.id, enabled: false },
+    ])
+    const workflow = context({ checkpoints: { read } })
+
+    // Only chain 1 (the source) has a session configured. Without the fix this
+    // throws `No session configured for chain 1337001`.
+    const prepared = await prepareIntent(workflow, {
+      ...input,
+      destination: toEvmChainReference(1337001),
+      calls: [],
+      signers: {
+        kind: 'smart-session',
+        byChain: {
+          1: {
+            session,
+            enableData: {
+              userSignature: signature,
+              hashesAndChainIds: [
+                { chainId: 1n, sessionDigest: `0x${'22'.repeat(32)}` },
+              ],
+              sessionToEnableIndex: 0,
+            },
+          },
+        },
+      },
+    })
+
+    expect(prepared.request.account.mockSignatures?.['1']).toMatch(/^0x/u)
+    expect(prepared.request.account.mockSignatures?.['1337001']).toBeUndefined()
+  })
+
   test('signs through the shared plan executor', async () => {
     const workflow = context()
     const prepared = await prepareIntent(workflow, input)
