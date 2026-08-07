@@ -30,4 +30,4 @@ Migration:
 
 Why the field was removed rather than forwarded: `balance` was optional, and optional was the defect. This SDK dropped it twice while rebuilding the intent (`adaptTransaction`, then `buildIntentRequest`), and `tsc` could not catch it because conditional spreads are exempt from excess-property checking. A `targetChain` cannot be dropped by a field-by-field rebuild — it is what a caller must supply to address anything at all — so the whole class of bug goes with the field.
 
-Requires `@rhinestone/shared-configs` ≥ 1.11.0.
+Requires an orchestrator that accepts the venue ids (shared-configs ≥ 1.11.0 on the server side). That is a runtime coupling, not a dependency of this package: the SDK bundles no chain data and reads the supported-chain set from `GET /chains`, so pointing this version at an older orchestrator fails when the intent is submitted rather than at build time.
