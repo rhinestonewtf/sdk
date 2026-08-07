@@ -9,6 +9,8 @@ import * as sessionActions from '../../src/actions/smart-sessions'
 import type { SponsorLimitKey } from '../../src/errors/index'
 import * as errors from '../../src/errors/index'
 import {
+  hyperCorePerp,
+  hyperCoreSpot,
   type PreparedTransactionData,
   type Quote,
   type RhinestoneAccount,
@@ -93,6 +95,24 @@ const crossChainNonEvmWithDeadline = {
   targetChain: tronMainnet,
   customDeadline: 9_999_999_999,
 } as const satisfies Transaction
+
+// RHI-5510: the delivery venue is the destination, so a caller addresses it by
+// picking a chain. There is no venue field to forget, and no way to express a
+// HyperCore delivery without stating which account it credits — both venues
+// must therefore be publicly importable descriptors.
+const hyperCoreSpotDelivery = {
+  sourceChains: [mainnet],
+  targetChain: hyperCoreSpot,
+  tokenRequests: [{ address: recipient, amount: 1_000_000n }],
+  calls: [],
+} as const satisfies Transaction
+
+const hyperCorePerpDelivery = {
+  sourceChains: [mainnet],
+  targetChain: hyperCorePerp,
+  tokenRequests: [{ address: recipient, amount: 1_000_000n }],
+  calls: [],
+} as const satisfies Transaction
 // A sponsorship server types its request body with the serialized input and
 // reads it without casts; bigint fields arrive as decimal strings.
 declare const sponsorshipBody: SerializedIntentInput
@@ -156,6 +176,8 @@ void userOperation
 void sameChainTransaction
 void crossChainWithDeadline
 void crossChainNonEvmWithDeadline
+void hyperCoreSpotDelivery
+void hyperCorePerpDelivery
 void sponsorLimitKey
 void bridgeSponsored
 void sponsorSurchargeUsd

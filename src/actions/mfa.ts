@@ -94,7 +94,6 @@ function changeThreshold(newThreshold: number): CalldataInput {
 
 /**
  * Disable multi-factor authentication
- * @param rhinestoneAccount Account to disable multi-factor authentication on
  * @returns Calls to disable multi-factor authentication
  */
 function disable(): LazyCallInput {

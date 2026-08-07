@@ -662,6 +662,27 @@ describe('account boundary adapters', () => {
     expect(transaction.options?.customDeadline).toBe(customDeadline)
   })
 
+  // RHI-5510: the delivery venue is the destination chain, not a field on the
+  // token request, so `adaptTransaction` carries nothing venue-specific. This
+  // pins that no stray venue field is synthesised onto a request — the previous
+  // `balance` flag was dropped by this very mapping, which is what silently
+  // routed spot deliveries into perp margin.
+  test('synthesises no venue field onto token requests', () => {
+    const transaction = adaptTransaction(invocationContext(), {
+      chain: mainnet,
+      calls: [],
+      tokenRequests: [
+        {
+          address: '0x0000000000000000000000000000000000000020',
+          amount: 1_000_000n,
+        },
+      ],
+    })
+
+    expect(transaction.tokenRequests?.[0]).toMatchObject({ amount: 1_000_000n })
+    expect(transaction.tokenRequests?.[0]).not.toHaveProperty('balance')
+  })
+
   test('forwards protocolFees into intent options (RHI-4904)', () => {
     const transaction = adaptTransaction(invocationContext(), {
       chain: mainnet,
