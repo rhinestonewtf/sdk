@@ -180,11 +180,7 @@ function privateSourceImports(packageDirectory: string): string[] {
 // Empty is the expected steady state. An entry earns its place by being a
 // removal whose blast radius is known to be zero — not merely believed small —
 // and it should be deleted at the next major, when the rule allows it outright.
-const SURFACE_EXCEPTIONS: {
-  reason: string
-  removed: readonly string[]
-  added: readonly string[]
-} = {
+const SURFACE_EXCEPTIONS = {
   // RHI-5510. `hyperCoreMainnet` is replaced by `hyperCoreSpot` /
   // `hyperCorePerp`, because a HyperCore delivery must name the venue it
   // credits and the old descriptor silently defaulted to perp margin. Shipped
@@ -195,6 +191,17 @@ const SURFACE_EXCEPTIONS: {
   reason: 'RHI-5510 HyperCore delivery venues',
   removed: ['hyperCoreMainnet'],
   added: ['hyperCoreSpot', 'hyperCorePerp'],
+  // Declaration text deliberately rewritten. Narrowing this union is part of the
+  // same change: a HyperCore destination must name a venue. It needs its own
+  // category because the text is embedded in `referencedDeclarations` of every
+  // symbol that mentions the type, so dropping the symbol itself would not
+  // reconcile them — and dropping all of those would gut the comparison.
+  declarationRewrites: [
+    [
+      "type HyperCoreCaip2ChainId = 'hypercore:mainnet';",
+      "type HyperCoreCaip2ChainId = 'hypercore:spot' | 'hypercore:perp';",
+    ],
+  ] as ReadonlyArray<readonly [string, string]>,
 }
 
 const stripExceptions = (names: readonly string[], drop: readonly string[]) =>
@@ -447,8 +454,28 @@ describe('packed package contract', () => {
       return
     }
 
+    // Rewrite the deliberately-changed declaration text wherever it appears.
+    // It is embedded in the `referencedDeclarations` of every symbol that
+    // mentions the type, not just in the type's own entry, so this has to reach
+    // every string in the report rather than one field.
+    const rewrite = (value: unknown): unknown => {
+      if (typeof value === 'string') {
+        return SURFACE_EXCEPTIONS.declarationRewrites.reduce(
+          (text, [from, to]) => text.split(from).join(to),
+          value,
+        )
+      }
+      if (Array.isArray(value)) return value.map(rewrite)
+      if (value && typeof value === 'object') {
+        return Object.fromEntries(
+          Object.entries(value).map(([key, inner]) => [key, rewrite(inner)]),
+        )
+      }
+      return value
+    }
+
     expect(dropSymbols(currentApiReport, SURFACE_EXCEPTIONS.added)).toEqual(
-      dropSymbols(baseApiReport, SURFACE_EXCEPTIONS.removed),
+      rewrite(dropSymbols(baseApiReport, SURFACE_EXCEPTIONS.removed)),
     )
   })
 
