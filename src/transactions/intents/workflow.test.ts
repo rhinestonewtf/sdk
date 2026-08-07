@@ -208,6 +208,31 @@ describe('intent workflow', () => {
     })
   })
 
+  // HyperCore is EVM-ADDRESSED but virtual: no RPC, no accounts. Selecting it as
+  // the account chain asks viem for a transport that cannot exist. It went
+  // unnoticed while HyperCore was chain 1337, because viem ships a `Localhost`
+  // chain with that id and quietly supplied `http://127.0.0.1:8545`; the venue
+  // ids have no viem chain, so the synthesised one has empty `rpcUrls` and the
+  // call dies with `UrlRequiredError` (RHI-5510).
+  test('hosts the account on a source chain for a HyperCore venue', async () => {
+    for (const venueId of [1337001, 1337002]) {
+      const workflow = context()
+      await prepareIntent(workflow, {
+        ...input,
+        destination: toEvmChainReference(venueId),
+        // HyperCore delivery is solver-mediated; the orchestrator builds the
+        // core-deposit ops, so a caller passes none.
+        calls: [],
+      })
+
+      // The SOURCE chain, never the venue.
+      expect(workflow.account.forChain).toHaveBeenCalledWith(chain)
+      expect(workflow.account.forChain).not.toHaveBeenCalledWith(
+        expect.objectContaining({ id: venueId }),
+      )
+    }
+  })
+
   test('signs through the shared plan executor', async () => {
     const workflow = context()
     const prepared = await prepareIntent(workflow, input)

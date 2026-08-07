@@ -2,7 +2,11 @@ import { hashTypedData, keccak256, stringToHex } from 'viem'
 import type { AccountRuntime } from '../../accounts/adapter'
 import { resolveCalls } from '../../calls/resolve'
 import type { Call } from '../../calls/types'
-import { chainIdFromReference, toEvmChainReference } from '../../chains/caip2'
+import {
+  chainIdFromReference,
+  isHyperCoreWireId,
+  toEvmChainReference,
+} from '../../chains/caip2'
 import type { EvmChainReference } from '../../chains/types'
 import { defineValidator } from '../../modules/validators/definition'
 import { ecdsaSignerId } from '../../modules/validators/signer-id'
@@ -84,13 +88,31 @@ export async function prepareIntent<CompatibilityConfig>(
   }
 }
 
+// The chain whose runtime hosts the account: identity, address derivation, and
+// the RPC reads that follow. The destination serves when it is a real execution
+// chain, and otherwise a source chain does.
+//
+// `kind === 'evm'` alone is not that test. HyperCore is EVM-ADDRESSED — hex
+// recipients, EIP-712 — while being virtual: it has no RPC of its own and hosts
+// no accounts, so materializing a runtime on it asks viem for a transport that
+// cannot exist. That went unnoticed while HyperCore was chain 1337, because viem
+// ships a `Localhost` chain with that exact id and quietly supplied
+// `http://127.0.0.1:8545`; the venue ids have no viem chain, so the synthesised
+// one has empty `rpcUrls` and the call fails with `UrlRequiredError` (RHI-5510).
 function selectAccountChain<CompatibilityConfig>(
   input: IntentInput<CompatibilityConfig>,
 ): EvmChainReference {
-  if (input.destination.kind === 'evm') return input.destination
+  if (
+    input.destination.kind === 'evm' &&
+    !isHyperCoreWireId(input.destination.id)
+  ) {
+    return input.destination
+  }
   const source = input.sourceChains?.at(-1)
   if (!source) {
-    throw new Error('A non-EVM intent requires at least one EVM source chain')
+    throw new Error(
+      `An intent to ${input.destination.caip2} requires at least one EVM source chain: the destination hosts no account runtime`,
+    )
   }
   return source
 }
