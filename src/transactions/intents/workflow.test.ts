@@ -208,6 +208,73 @@ describe('intent workflow', () => {
     })
   })
 
+  // HyperCore is EVM-ADDRESSED but virtual: no RPC, no accounts. Selecting it as
+  // the account chain asks viem for a transport that cannot exist. It went
+  // unnoticed while HyperCore was chain 1337, because viem ships a `Localhost`
+  // chain with that id and quietly supplied `http://127.0.0.1:8545`; the venue
+  // ids have no viem chain, so the synthesised one has empty `rpcUrls` and the
+  // call dies with `UrlRequiredError` (RHI-5510).
+  test('hosts the account on a source chain for a HyperCore venue', async () => {
+    for (const venueId of [1337001, 1337002]) {
+      const workflow = context()
+      await prepareIntent(workflow, {
+        ...input,
+        destination: toEvmChainReference(venueId),
+        // HyperCore delivery is solver-mediated; the orchestrator builds the
+        // core-deposit ops, so a caller passes none.
+        calls: [],
+      })
+
+      // The SOURCE chain, never the venue.
+      expect(workflow.account.forChain).toHaveBeenCalledWith(chain)
+      expect(workflow.account.forChain).not.toHaveBeenCalledWith(
+        expect.objectContaining({ id: venueId }),
+      )
+    }
+  })
+
+  // The session path repeats the same `kind === 'evm'` conflation, and an EOA
+  // end-to-end run does not exercise it: `sessionChains` would demand a smart
+  // session on 1337001/1337002, which can never exist — no account is deployed on
+  // a virtual chain, and HyperCore delivery is solver-mediated so there is no
+  // destination-side authorization for a session to grant (RHI-5510).
+  test('requires no session on a HyperCore venue', async () => {
+    const session = toSession({
+      chain: mainnet,
+      owners: { type: 'ecdsa', accounts: [account] },
+    })
+    const read = vi.fn(async (checkpoint: { id: string }) => [
+      { kind: 'session-enabled' as const, id: checkpoint.id, enabled: false },
+    ])
+    const workflow = context({ checkpoints: { read } })
+
+    // Only chain 1 (the source) has a session configured. Without the fix this
+    // throws `No session configured for chain 1337001`.
+    const prepared = await prepareIntent(workflow, {
+      ...input,
+      destination: toEvmChainReference(1337001),
+      calls: [],
+      signers: {
+        kind: 'smart-session',
+        byChain: {
+          1: {
+            session,
+            enableData: {
+              userSignature: signature,
+              hashesAndChainIds: [
+                { chainId: 1n, sessionDigest: `0x${'22'.repeat(32)}` },
+              ],
+              sessionToEnableIndex: 0,
+            },
+          },
+        },
+      },
+    })
+
+    expect(prepared.request.account.mockSignatures?.['1']).toMatch(/^0x/u)
+    expect(prepared.request.account.mockSignatures?.['1337001']).toBeUndefined()
+  })
+
   test('signs through the shared plan executor', async () => {
     const workflow = context()
     const prepared = await prepareIntent(workflow, input)
