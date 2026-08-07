@@ -172,63 +172,6 @@ function privateSourceImports(packageDirectory: string): string[] {
 // - major: well-formedness only. Removals are the point of a major.
 //
 // `run.ts` gates the bidirectional assignability fixture on the same signal.
-// Deliberate surface changes shipped under a bump that would otherwise forbid
-// them. This is an override of the rule above for NAMED symbols, not an
-// exemption from it: everything not listed here is still compared exactly, and
-// an unlisted drift fails as before.
-//
-// Empty is the expected steady state. An entry earns its place by being a
-// removal whose blast radius is known to be zero — not merely believed small —
-// and it should be deleted at the next major, when the rule allows it outright.
-const SURFACE_EXCEPTIONS = {
-  // RHI-5510. `hyperCoreMainnet` is replaced by `hyperCoreSpot` /
-  // `hyperCorePerp`, because a HyperCore delivery must name the venue it
-  // credits and the old descriptor silently defaulted to perp margin. Shipped
-  // as a patch deliberately: HyperCore has never carried an external client's
-  // intent (every one in prod history came from two internal projects), and a
-  // consumer that does reference the old name gets a compile error naming its
-  // replacement rather than a silent behaviour change.
-  reason: 'RHI-5510 HyperCore delivery venues',
-  removed: ['hyperCoreMainnet'],
-  added: ['hyperCoreSpot', 'hyperCorePerp'],
-  // Declaration text deliberately rewritten. Narrowing this union is part of the
-  // same change: a HyperCore destination must name a venue. It needs its own
-  // category because the text is embedded in `referencedDeclarations` of every
-  // symbol that mentions the type, so dropping the symbol itself would not
-  // reconcile them — and dropping all of those would gut the comparison.
-  declarationRewrites: [
-    [
-      "type HyperCoreCaip2ChainId = 'hypercore:mainnet';",
-      "type HyperCoreCaip2ChainId = 'hypercore:spot' | 'hypercore:perp';",
-    ],
-  ] as ReadonlyArray<readonly [string, string]>,
-}
-
-const stripExceptions = (names: readonly string[], drop: readonly string[]) =>
-  names.filter((name) => !drop.includes(name))
-
-// The exception applies ONLY across the transition it describes — while the
-// release baseline still publishes a listed removal.
-//
-// Without that condition it would outlive its purpose and start causing the
-// failures it exists to prevent: once this ships, the baseline contains the
-// added names too, and stripping them from `current` alone would compare a base
-// that has them against a current that no longer does, failing every later clean
-// patch until someone deleted the entry. Scoped this way a stale entry is inert
-// rather than harmful, and it cannot hide real drift once the transition is past.
-const exceptionApplies = (baseNames: readonly string[]) =>
-  SURFACE_EXCEPTIONS.removed.some((name) => baseNames.includes(name))
-
-// Base minus the deliberate removals, current minus the deliberate additions:
-// what remains must still match exactly.
-const reconcile = (base: readonly string[], current: readonly string[]) =>
-  exceptionApplies(base)
-    ? {
-        base: stripExceptions(base, SURFACE_EXCEPTIONS.removed),
-        current: stripExceptions(current, SURFACE_EXCEPTIONS.added),
-      }
-    : { base, current }
-
 const declaredBump = declaredSdkBump(baseSha, process.cwd())
 const intentionalSurfaceChange =
   declaredBump === 'minor' || declaredBump === 'major'
@@ -351,20 +294,7 @@ describe('packed package contract', () => {
       return
     }
 
-    const reconciledExports = Object.fromEntries(
-      Object.keys({ ...baseExports, ...currentExports }).map((entrypoint) => {
-        const { base, current } = reconcile(
-          baseExports[entrypoint] ?? [],
-          currentExports[entrypoint] ?? [],
-        )
-        return [entrypoint, { base, current }]
-      }),
-    )
-    for (const [entrypoint, { base, current }] of Object.entries(
-      reconciledExports,
-    )) {
-      expect(current, `runtime exports drifted for ${entrypoint}`).toEqual(base)
-    }
+    expect(currentExports).toEqual(baseExports)
   })
 
   it('keeps a declaration for every runtime value export', () => {
@@ -425,58 +355,7 @@ describe('packed package contract', () => {
       }
       return
     }
-    // Same reconciliation, one level deeper: the report is keyed by entry point
-    // then by symbol, so drop the exception symbols from each side's symbol map.
-    const dropSymbols = (
-      report: typeof baseApiReport,
-      drop: readonly string[],
-    ) => ({
-      ...report,
-      entrypoints: Object.fromEntries(
-        Object.entries(report.entrypoints).map(([entrypoint, symbols]) => [
-          entrypoint,
-          Object.fromEntries(
-            Object.entries(symbols).filter(
-              ([symbol]) => !drop.includes(symbol),
-            ),
-          ),
-        ]),
-      ),
-    })
-
-    // Same transition scoping as `reconcile`: only while the baseline report
-    // still declares a listed removal.
-    const baseSymbols = Object.values(baseApiReport.entrypoints).flatMap(
-      (symbols) => Object.keys(symbols),
-    )
-    if (!exceptionApplies(baseSymbols)) {
-      expect(currentApiReport).toEqual(baseApiReport)
-      return
-    }
-
-    // Rewrite the deliberately-changed declaration text wherever it appears.
-    // It is embedded in the `referencedDeclarations` of every symbol that
-    // mentions the type, not just in the type's own entry, so this has to reach
-    // every string in the report rather than one field.
-    const rewrite = (value: unknown): unknown => {
-      if (typeof value === 'string') {
-        return SURFACE_EXCEPTIONS.declarationRewrites.reduce(
-          (text, [from, to]) => text.split(from).join(to),
-          value,
-        )
-      }
-      if (Array.isArray(value)) return value.map(rewrite)
-      if (value && typeof value === 'object') {
-        return Object.fromEntries(
-          Object.entries(value).map(([key, inner]) => [key, rewrite(inner)]),
-        )
-      }
-      return value
-    }
-
-    expect(dropSymbols(currentApiReport, SURFACE_EXCEPTIONS.added)).toEqual(
-      rewrite(dropSymbols(baseApiReport, SURFACE_EXCEPTIONS.removed)),
-    )
+    expect(currentApiReport).toEqual(baseApiReport)
   })
 
   it('preserves compatibility-only runtime values and shapes', () => {
@@ -533,8 +412,7 @@ describe('packed package contract', () => {
     // one. The root must always import cleanly without the optional peers.
     expect(currentResult.length).toBeGreaterThan(0)
     if (!intentionalSurfaceChange) {
-      const { base, current } = reconcile(baseResult, currentResult)
-      expect(current).toEqual(base)
+      expect(currentResult).toEqual(baseResult)
     } else if (additiveOnly) {
       for (const name of baseResult) {
         expect(
