@@ -197,15 +197,30 @@ const SURFACE_EXCEPTIONS: {
   added: ['hyperCoreSpot', 'hyperCorePerp'],
 }
 
-// Base minus the deliberate removals, current minus the deliberate additions:
-// what remains must still match exactly.
 const stripExceptions = (names: readonly string[], drop: readonly string[]) =>
   names.filter((name) => !drop.includes(name))
 
-const reconcile = (base: readonly string[], current: readonly string[]) => ({
-  base: stripExceptions(base, SURFACE_EXCEPTIONS.removed),
-  current: stripExceptions(current, SURFACE_EXCEPTIONS.added),
-})
+// The exception applies ONLY across the transition it describes — while the
+// release baseline still publishes a listed removal.
+//
+// Without that condition it would outlive its purpose and start causing the
+// failures it exists to prevent: once this ships, the baseline contains the
+// added names too, and stripping them from `current` alone would compare a base
+// that has them against a current that no longer does, failing every later clean
+// patch until someone deleted the entry. Scoped this way a stale entry is inert
+// rather than harmful, and it cannot hide real drift once the transition is past.
+const exceptionApplies = (baseNames: readonly string[]) =>
+  SURFACE_EXCEPTIONS.removed.some((name) => baseNames.includes(name))
+
+// Base minus the deliberate removals, current minus the deliberate additions:
+// what remains must still match exactly.
+const reconcile = (base: readonly string[], current: readonly string[]) =>
+  exceptionApplies(base)
+    ? {
+        base: stripExceptions(base, SURFACE_EXCEPTIONS.removed),
+        current: stripExceptions(current, SURFACE_EXCEPTIONS.added),
+      }
+    : { base, current }
 
 const declaredBump = declaredSdkBump(baseSha, process.cwd())
 const intentionalSurfaceChange =
@@ -421,6 +436,16 @@ describe('packed package contract', () => {
         ]),
       ),
     })
+
+    // Same transition scoping as `reconcile`: only while the baseline report
+    // still declares a listed removal.
+    const baseSymbols = Object.values(baseApiReport.entrypoints).flatMap(
+      (symbols) => Object.keys(symbols),
+    )
+    if (!exceptionApplies(baseSymbols)) {
+      expect(currentApiReport).toEqual(baseApiReport)
+      return
+    }
 
     expect(dropSymbols(currentApiReport, SURFACE_EXCEPTIONS.added)).toEqual(
       dropSymbols(baseApiReport, SURFACE_EXCEPTIONS.removed),
