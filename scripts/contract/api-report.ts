@@ -18,7 +18,7 @@ export interface ApiExportReport {
     defaultReferences: string[]
   }[]
   hasPrivateOrProtectedMembers: boolean
-  hasVarianceSensitiveDeclarations: boolean
+  hasCheckerSensitiveDeclarations: boolean
   isNamespace: boolean
 }
 
@@ -279,7 +279,7 @@ function classHasPrivateOrProtectedMembers(
   })
 }
 
-function symbolHasVarianceSensitiveDeclarations(
+function symbolHasCheckerSensitiveDeclarations(
   candidate: ts.Symbol,
   checker: ts.TypeChecker,
   packageDirectory: string,
@@ -307,6 +307,7 @@ function symbolHasVarianceSensitiveDeclarations(
 
   const visitNode = (node: ts.Node): boolean => {
     if (
+      node.kind === ts.SyntaxKind.AnyKeyword ||
       ts.isMethodSignature(node) ||
       ts.isMethodDeclaration(node) ||
       ts.isConstructorDeclaration(node) ||
@@ -324,7 +325,7 @@ function symbolHasVarianceSensitiveDeclarations(
       const referencedSymbol = checker.getSymbolAtLocation(node)
       if (
         referencedSymbol &&
-        symbolHasVarianceSensitiveDeclarations(
+        symbolHasCheckerSensitiveDeclarations(
           referencedSymbol,
           checker,
           packageDirectory,
@@ -458,7 +459,7 @@ function reportExport(
         : {}),
     })),
     hasPrivateOrProtectedMembers,
-    hasVarianceSensitiveDeclarations: symbolHasVarianceSensitiveDeclarations(
+    hasCheckerSensitiveDeclarations: symbolHasCheckerSensitiveDeclarations(
       symbol,
       checker,
       packageDirectory,

@@ -151,12 +151,12 @@ export function generateApiCompatibilityReport(options: {
       continue
     }
     if (
-      comparison.base.hasVarianceSensitiveDeclarations ||
-      comparison.current.hasVarianceSensitiveDeclarations
+      comparison.base.hasCheckerSensitiveDeclarations ||
+      comparison.current.hasCheckerSensitiveDeclarations
     ) {
       incompatible.push(
         failure(comparison, [
-          'declaration text changed for a variance-sensitive type',
+          'declaration text changed for a checker-sensitive type',
         ]),
       )
       continue

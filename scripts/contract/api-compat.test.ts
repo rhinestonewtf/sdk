@@ -186,7 +186,7 @@ describe('API compatibility report', () => {
     expect(report.incompatible).toMatchObject([
       {
         symbol: '.:Handler',
-        reasons: ['declaration text changed for a variance-sensitive type'],
+        reasons: ['declaration text changed for a checker-sensitive type'],
       },
     ])
   })
@@ -201,7 +201,7 @@ describe('API compatibility report', () => {
       expect.arrayContaining([
         expect.objectContaining({
           symbol: '.:Config',
-          reasons: ['declaration text changed for a variance-sensitive type'],
+          reasons: ['declaration text changed for a checker-sensitive type'],
         }),
       ]),
     )
@@ -216,7 +216,7 @@ describe('API compatibility report', () => {
     expect(report.incompatible).toMatchObject([
       {
         symbol: '.:Handler',
-        reasons: ['declaration text changed for a variance-sensitive type'],
+        reasons: ['declaration text changed for a checker-sensitive type'],
       },
     ])
   })
@@ -230,9 +230,25 @@ describe('API compatibility report', () => {
     expect(report.incompatible).toMatchObject([
       {
         symbol: '.:Config',
-        reasons: ['declaration text changed for a variance-sensitive type'],
+        reasons: ['declaration text changed for a checker-sensitive type'],
       },
     ])
+  })
+
+  test('rejects any narrowing', () => {
+    const report = compare(
+      'type Value = any; export interface Config { value: Value }',
+      'type Value = string; export interface Config { value: Value }',
+    )
+
+    expect(report.incompatible).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          symbol: '.:Config',
+          reasons: ['declaration text changed for a checker-sensitive type'],
+        }),
+      ]),
+    )
   })
 
   test('still compares function properties semantically', () => {
