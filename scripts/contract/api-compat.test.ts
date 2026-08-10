@@ -313,6 +313,20 @@ describe('API compatibility report', () => {
     ])
   })
 
+  test('rejects mutable to Readonly-wrapped object property changes', () => {
+    const report = compare(
+      'export interface Config { value: { name: string } }',
+      'export interface Config { value: Readonly<{ name: string }> }',
+    )
+
+    expect(report.incompatible).toMatchObject([
+      {
+        symbol: '.:Config',
+        reasons: ['declaration text changed for a checker-sensitive type'],
+      },
+    ])
+  })
+
   test('rejects mutable to readonly array property changes', () => {
     const report = compare(
       'export interface Config { items: string[] }',

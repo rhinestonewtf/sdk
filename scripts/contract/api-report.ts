@@ -315,6 +315,9 @@ function checkerSensitiveDeclarationsForSymbol(
       ts.isConstructorDeclaration(node) ||
       ts.isConstructSignatureDeclaration(node) ||
       ts.isConstructorTypeNode(node) ||
+      (ts.isTypeReferenceNode(node) &&
+        ts.isIdentifier(node.typeName) &&
+        node.typeName.text === 'Readonly') ||
       (ts.isMappedTypeNode(node) && node.readonlyToken !== undefined) ||
       ((ts.isPropertySignature(node) ||
         ts.isPropertyDeclaration(node) ||
