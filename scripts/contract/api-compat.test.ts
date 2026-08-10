@@ -109,11 +109,27 @@ describe('API compatibility report', () => {
 
   test('accepts type parameter renames in constraint dependencies', () => {
     const report = compare(
-      'type Options<K> = { value: K }; export type Box<T extends Options<string>> = T',
-      'type Options<Key> = { value: Key }; export type Box<T extends Options<string>> = T',
+      'type Options<K> = { K: K }; export type Box<T extends Options<string>> = T',
+      'type Options<Key> = { K: Key }; export type Box<T extends Options<string>> = T',
     )
 
     expect(report.incompatible).toEqual([])
+  })
+
+  test('does not normalize matching property names as type parameters', () => {
+    const report = compare(
+      'type Options<K> = { K: string }; export type Box<T extends Options<string>> = T',
+      'type Options<Key> = { Key: string }; export type Box<T extends Options<string>> = T',
+    )
+
+    expect(report.incompatible).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          symbol: '.:Box',
+          reasons: ['type parameter constraints changed'],
+        }),
+      ]),
+    )
   })
 
   test('rejects changed generic defaults', () => {

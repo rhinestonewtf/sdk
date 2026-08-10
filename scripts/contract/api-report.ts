@@ -157,13 +157,11 @@ function referencedDeclarationsForNode(
 
     for (const declaration of declarations) {
       const declarationTypeParameters = typeParametersInScope(declaration)
-      const text = normalizeTypeParameterText(
-        printer.printNode(
-          ts.EmitHint.Unspecified,
-          declaration,
-          declaration.getSourceFile(),
-        ),
+      const text = printWithNormalizedTypeParameters(
+        declaration,
         declarationTypeParameters,
+        checker,
+        printer,
         packageDirectory,
       )
       referenced.set(`${target.getName()}:${text}`, text)
@@ -200,34 +198,54 @@ function typeParametersInScope(
   return []
 }
 
-function normalizeTypeParameterText(
-  value: string,
+function printWithNormalizedTypeParameters(
+  node: ts.Node,
   typeParameters: readonly ts.TypeParameterDeclaration[],
+  checker: ts.TypeChecker,
+  printer: ts.Printer,
   packageDirectory: string,
 ): string {
-  let text = value
+  const namesBySymbol = new Map<ts.Symbol, string>()
   for (const [index, parameter] of typeParameters.entries()) {
-    const escapedName = parameter.name.text.replace(
-      /[.*+?^${}()|[\]\\]/g,
-      '\\$&',
-    )
-    text = text.replace(
-      new RegExp(`(?<![\\w$])${escapedName}(?![\\w$])`, 'g'),
-      `T${index}`,
-    )
+    const symbol = checker.getSymbolAtLocation(parameter.name)
+    if (symbol) namesBySymbol.set(symbol, `T${index}`)
   }
+  const result = ts.transform(node, [
+    (context) => (root) => {
+      const visit = (candidate: ts.Node): ts.VisitResult<ts.Node> => {
+        if (ts.isIdentifier(candidate)) {
+          const symbol = checker.getSymbolAtLocation(candidate)
+          const name = symbol ? namesBySymbol.get(symbol) : undefined
+          if (name) return ts.factory.createIdentifier(name)
+        }
+        return ts.visitEachChild(candidate, visit, context)
+      }
+      return ts.visitNode(root, visit)
+    },
+  ])
+  const transformed = result.transformed[0]
+  if (!transformed) throw new Error('Type parameter normalization failed')
+  const text = printer.printNode(
+    ts.EmitHint.Unspecified,
+    transformed,
+    node.getSourceFile(),
+  )
+  result.dispose()
   return normalizeText(text, packageDirectory)
 }
 
 function normalizeTypeParameterExpression(
   node: ts.TypeNode,
   typeParameters: readonly ts.TypeParameterDeclaration[],
+  checker: ts.TypeChecker,
   printer: ts.Printer,
   packageDirectory: string,
 ): string {
-  return normalizeTypeParameterText(
-    printer.printNode(ts.EmitHint.Unspecified, node, node.getSourceFile()),
+  return printWithNormalizedTypeParameters(
+    node,
     typeParameters,
+    checker,
+    printer,
     packageDirectory,
   )
 }
@@ -421,6 +439,7 @@ function reportExport(
             constraint: normalizeTypeParameterExpression(
               parameter.constraint,
               genericTypeParameters,
+              checker,
               printer,
               packageDirectory,
             ),
@@ -431,6 +450,7 @@ function reportExport(
             default: normalizeTypeParameterExpression(
               parameter.default,
               genericTypeParameters,
+              checker,
               printer,
               packageDirectory,
             ),
