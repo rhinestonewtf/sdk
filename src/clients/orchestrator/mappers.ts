@@ -11,6 +11,7 @@ import type {
   CostTokenEntry,
   TokenRequirements,
 } from './public'
+import { serializeBigInts } from './serialization'
 import type {
   OrchestratorIntentRequest,
   OrchestratorIntentStatus,
@@ -288,25 +289,4 @@ function parseChainValue(value: string | number | undefined): number {
   if (value === undefined) throw new Error('Orchestrator chain id is missing')
   if (/^\d+$/u.test(value)) return Number(value)
   return chainIdFromReference(parseCaip2(value))
-}
-
-type SerializeBigInts<T> = T extends bigint
-  ? string
-  : T extends readonly (infer Item)[]
-    ? SerializeBigInts<Item>[]
-    : T extends object
-      ? { [Key in keyof T]: SerializeBigInts<T[Key]> }
-      : T
-
-function serializeBigInts<T>(value: T): SerializeBigInts<T> {
-  if (typeof value === 'bigint') return value.toString() as SerializeBigInts<T>
-  if (Array.isArray(value)) {
-    return value.map(serializeBigInts) as SerializeBigInts<T>
-  }
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(
-      Object.entries(value).map(([key, item]) => [key, serializeBigInts(item)]),
-    ) as SerializeBigInts<T>
-  }
-  return value as SerializeBigInts<T>
 }
