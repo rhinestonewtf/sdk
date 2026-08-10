@@ -72,21 +72,27 @@ function typeArgumentProbes(count: number, symbol: string): string[] {
     }
   }
 
-  const transferFunction =
-    "{ readonly type: 'function'; readonly name: 'transfer'; readonly stateMutability: 'nonpayable'; readonly inputs: readonly [{ readonly name: 'to'; readonly type: 'address' }, { readonly name: 'amount'; readonly type: 'uint256' }]; readonly outputs: readonly [] }"
+  const erc20Function = (name: string, inputs: string) =>
+    `{ readonly type: 'function'; readonly name: '${name}'; readonly stateMutability: 'nonpayable'; readonly inputs: readonly [${inputs}]; readonly outputs: readonly [] }`
+  const addressInput = "{ readonly name: 'account'; readonly type: 'address' }"
+  const amountInput = "{ readonly name: 'amount'; readonly type: 'uint256' }"
+  const erc20Functions = [
+    erc20Function('approve', `${addressInput}, ${amountInput}`),
+    erc20Function('increaseAllowance', `${addressInput}, ${amountInput}`),
+    erc20Function('transfer', `${addressInput}, ${amountInput}`),
+    erc20Function(
+      'transferFrom',
+      `${addressInput}, ${addressInput}, ${amountInput}`,
+    ),
+  ]
   const payableFunction =
     "{ readonly type: 'function'; readonly name: 'deposit'; readonly stateMutability: 'payable'; readonly inputs: readonly [{ readonly name: 'amount'; readonly type: 'uint256' }]; readonly outputs: readonly [] }"
+  const abiFunctions = [...erc20Functions, payableFunction]
   const concreteProbes: Record<string, string[]> = {
     ParamConstraint: ['string', '{ readonly value: string }'],
-    PermissionFunctionConfig: [transferFunction, payableFunction],
-    Permission: [
-      `readonly [${transferFunction}]`,
-      `readonly [${payableFunction}]`,
-    ],
-    SessionDefinition: [
-      `readonly [readonly [${transferFunction}]]`,
-      `readonly [readonly [${payableFunction}]]`,
-    ],
+    PermissionFunctionConfig: abiFunctions,
+    Permission: abiFunctions.map((fn) => `readonly [${fn}]`),
+    SessionDefinition: abiFunctions.map((fn) => `readonly [readonly [${fn}]]`),
   }
   for (const argument of concreteProbes[symbol] ?? []) {
     probes.add(`<${argument}>`)

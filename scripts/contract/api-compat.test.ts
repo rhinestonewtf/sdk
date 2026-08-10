@@ -177,18 +177,21 @@ describe('API compatibility report', () => {
     ])
   })
 
-  test('probes concrete ABI branches in public config generics', () => {
-    const report = compare(
-      "export type PermissionFunctionConfig<T extends { name: string }> = T['name'] extends 'transfer' ? { spendingLimit?: bigint } : { spendingLimit?: never }",
-      "export type PermissionFunctionConfig<T extends { name: string }> = T['name'] extends 'approve' ? { spendingLimit?: bigint } : { spendingLimit?: never }",
-    )
+  test.each(['approve', 'increaseAllowance', 'transfer', 'transferFrom'])(
+    'probes the %s ABI branch in public config generics',
+    (functionName) => {
+      const report = compare(
+        `export type PermissionFunctionConfig<T extends { name: string }> = T['name'] extends '${functionName}' ? { spendingLimit?: bigint } : { spendingLimit?: never }`,
+        'export type PermissionFunctionConfig<T extends { name: string }> = { spendingLimit?: never }',
+      )
 
-    expect(report.incompatible).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ symbol: '.:PermissionFunctionConfig' }),
-      ]),
-    )
-  })
+      expect(report.incompatible).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ symbol: '.:PermissionFunctionConfig' }),
+        ]),
+      )
+    },
+  )
 
   test('rejects method parameter narrowing', () => {
     const report = compare(
