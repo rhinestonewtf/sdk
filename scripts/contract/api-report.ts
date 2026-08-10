@@ -313,6 +313,8 @@ function checkerSensitiveDeclarationsForSymbol(
       node.kind === ts.SyntaxKind.AnyKeyword ||
       ts.isMethodSignature(node) ||
       ts.isMethodDeclaration(node) ||
+      ts.isGetAccessorDeclaration(node) ||
+      ts.isSetAccessorDeclaration(node) ||
       ts.isConstructorDeclaration(node) ||
       ts.isConstructSignatureDeclaration(node) ||
       ts.isConstructorTypeNode(node) ||

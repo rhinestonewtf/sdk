@@ -349,6 +349,28 @@ describe('API compatibility report', () => {
     },
   )
 
+  test.each([
+    [
+      'writable field to getter',
+      'export declare class Config { value: string }',
+      'export declare class Config { get value(): string }',
+    ],
+    [
+      'setter removal',
+      'export declare class Config { get value(): string; set value(value: string) }',
+      'export declare class Config { get value(): string }',
+    ],
+  ])('rejects %s', (_, base, current) => {
+    const report = compare(base, current)
+
+    expect(report.incompatible).toMatchObject([
+      {
+        symbol: '.:Config',
+        reasons: ['declaration text changed for a checker-sensitive type'],
+      },
+    ])
+  })
+
   test('rejects mutable to readonly property changes', () => {
     const report = compare(
       'export interface Config { value: string }',
