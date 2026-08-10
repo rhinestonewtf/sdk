@@ -18,12 +18,12 @@ export interface ApiExportReport {
     defaultReferences: string[]
   }[]
   hasPrivateOrProtectedMembers: boolean
-  hasCheckerSensitiveDeclarations: boolean
+  checkerSensitiveDeclarations: string[]
   isNamespace: boolean
 }
 
 export interface ApiReport {
-  formatVersion: 5
+  formatVersion: 6
   entrypoints: Record<string, Record<string, ApiExportReport>>
 }
 
@@ -279,33 +279,35 @@ function classHasPrivateOrProtectedMembers(
   })
 }
 
-function symbolHasCheckerSensitiveDeclarations(
+function checkerSensitiveDeclarationsForSymbol(
   candidate: ts.Symbol,
   checker: ts.TypeChecker,
+  printer: ts.Printer,
   packageDirectory: string,
   seen = new Set<ts.Symbol>(),
-): boolean {
+  declarations = new Set<string>(),
+): string[] {
   const symbol =
     candidate.flags & ts.SymbolFlags.Alias
       ? checker.getAliasedSymbol(candidate)
       : candidate
-  if (seen.has(symbol)) return false
+  if (seen.has(symbol)) return [...declarations].sort()
   seen.add(symbol)
 
-  const declarations = symbol.getDeclarations() ?? []
+  const symbolDeclarations = symbol.getDeclarations() ?? []
   if (
-    declarations.length === 0 ||
-    declarations.some(
+    symbolDeclarations.length === 0 ||
+    symbolDeclarations.some(
       (declaration) =>
         !resolve(declaration.getSourceFile().fileName).startsWith(
           `${resolve(packageDirectory)}/`,
         ),
     )
   ) {
-    return false
+    return [...declarations].sort()
   }
 
-  const visitNode = (node: ts.Node): boolean => {
+  const visitNode = (node: ts.Node): void => {
     if (
       node.kind === ts.SyntaxKind.AnyKeyword ||
       ts.isMethodSignature(node) ||
@@ -319,26 +321,35 @@ function symbolHasCheckerSensitiveDeclarations(
         ts.isIndexSignatureDeclaration(node)) &&
         ts.getCombinedModifierFlags(node) & ts.ModifierFlags.Readonly)
     ) {
-      return true
+      declarations.add(
+        printWithNormalizedTypeParameters(
+          node,
+          typeParametersInScope(node),
+          checker,
+          printer,
+          packageDirectory,
+        ),
+      )
+      return
     }
     if (ts.isIdentifier(node)) {
       const referencedSymbol = checker.getSymbolAtLocation(node)
-      if (
-        referencedSymbol &&
-        symbolHasCheckerSensitiveDeclarations(
+      if (referencedSymbol) {
+        checkerSensitiveDeclarationsForSymbol(
           referencedSymbol,
           checker,
+          printer,
           packageDirectory,
           seen,
+          declarations,
         )
-      ) {
-        return true
       }
     }
-    return node.getChildren().some(visitNode)
+    ts.forEachChild(node, visitNode)
   }
 
-  return declarations.some(visitNode)
+  for (const declaration of symbolDeclarations) visitNode(declaration)
+  return [...declarations].sort()
 }
 
 function reportExport(
@@ -459,9 +470,10 @@ function reportExport(
         : {}),
     })),
     hasPrivateOrProtectedMembers,
-    hasCheckerSensitiveDeclarations: symbolHasCheckerSensitiveDeclarations(
+    checkerSensitiveDeclarations: checkerSensitiveDeclarationsForSymbol(
       symbol,
       checker,
+      printer,
       packageDirectory,
     ),
     isNamespace,
@@ -523,7 +535,7 @@ export function generateApiReport(packageDirectory: string): ApiReport {
     )
   }
 
-  return { formatVersion: 5, entrypoints }
+  return { formatVersion: 6, entrypoints }
 }
 
 if (import.meta.main) {

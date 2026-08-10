@@ -67,6 +67,22 @@ describe('API compatibility report', () => {
     expect(report.incompatible).toEqual([])
   })
 
+  test.each([
+    ['readonly property', 'readonly value: T'],
+    ['method', 'set(value: T): void'],
+  ])(
+    'accepts a generic type parameter rename in a %s',
+    (_, memberDeclaration) => {
+      const report = compare(
+        `export interface Box<T> { ${memberDeclaration} }`,
+        `export interface Box<Value> { ${memberDeclaration.replaceAll('T', 'Value')} }`,
+      )
+
+      expect(report.compatible).toEqual(['.:Box'])
+      expect(report.incompatible).toEqual([])
+    },
+  )
+
   test('accepts renamed type parameters in constraints', () => {
     const report = compare(
       'export type Value<T, K extends keyof T> = T[K]',

@@ -177,8 +177,8 @@ export function generateApiCompatibilityReport(options: {
       continue
     }
     if (
-      comparison.base.hasCheckerSensitiveDeclarations ||
-      comparison.current.hasCheckerSensitiveDeclarations
+      JSON.stringify(comparison.base.checkerSensitiveDeclarations) !==
+      JSON.stringify(comparison.current.checkerSensitiveDeclarations)
     ) {
       incompatible.push(
         failure(comparison, [
