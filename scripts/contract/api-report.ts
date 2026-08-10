@@ -186,16 +186,17 @@ function referencedDeclarationsForNode(
 function typeParametersInScope(
   node: ts.Node,
 ): readonly ts.TypeParameterDeclaration[] {
+  const parameters: ts.TypeParameterDeclaration[] = []
   let current: ts.Node | undefined = node
   while (current) {
     if ('typeParameters' in current && current.typeParameters) {
-      return [
+      parameters.push(
         ...(current.typeParameters as ts.NodeArray<ts.TypeParameterDeclaration>),
-      ]
+      )
     }
     current = current.parent
   }
-  return []
+  return parameters
 }
 
 function printWithNormalizedTypeParameters(

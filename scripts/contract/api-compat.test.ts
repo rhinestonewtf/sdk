@@ -83,6 +83,16 @@ describe('API compatibility report', () => {
     },
   )
 
+  test('accepts renamed enclosing and method type parameters', () => {
+    const report = compare(
+      'export interface Box<T> { map<U>(value: T): U }',
+      'export interface Box<Value> { map<Item>(value: Value): Item }',
+    )
+
+    expect(report.compatible).toEqual(['.:Box'])
+    expect(report.incompatible).toEqual([])
+  })
+
   test('accepts renamed type parameters in constraints', () => {
     const report = compare(
       'export type Value<T, K extends keyof T> = T[K]',
