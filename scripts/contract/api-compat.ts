@@ -100,10 +100,10 @@ function typeArgumentProbes(count: number, symbol: string): string[] {
   return [...probes]
 }
 
-function packageMemberShape(
+function publicMemberShape(
   type: ts.Type,
   checker: ts.TypeChecker,
-  packageRoots: readonly string[],
+  program: ts.Program,
 ): string[] {
   const members = new Set<string>()
 
@@ -118,21 +118,14 @@ function packageMemberShape(
     }
 
     for (const property of checker.getPropertiesOfType(candidate)) {
-      const declarations = property.getDeclarations() ?? []
-      if (
-        declarations.length === 0 ||
-        !declarations.some((declaration) => {
-          const fileName = resolve(declaration.getSourceFile().fileName)
-          return packageRoots.some((root) => fileName.startsWith(`${root}/`))
-        })
-      ) {
-        continue
-      }
-
       const memberPath = `${path}/${JSON.stringify(property.getName())}`
       members.add(memberPath)
+      const declarations = property.getDeclarations() ?? []
       const declaration = property.valueDeclaration ?? declarations[0]
-      if (declaration) {
+      if (
+        declaration &&
+        !program.isSourceFileDefaultLibrary(declaration.getSourceFile())
+      ) {
         visit(
           checker.getTypeOfSymbolAtLocation(property, declaration),
           memberPath,
@@ -378,10 +371,6 @@ export function generateApiCompatibilityReport(options: {
   if (!fixture)
     throw new Error('Generated API compatibility fixture was not loaded')
   const checker = program.getTypeChecker()
-  const packageRoots = [
-    resolve(options.consumerDirectory, 'node_modules/@rhinestone/sdk-base'),
-    resolve(options.consumerDirectory, 'node_modules/@rhinestone/sdk'),
-  ]
   const aliases = new Map<string, ts.TypeAliasDeclaration>()
   for (const statement of fixture.statements) {
     if (ts.isTypeAliasDeclaration(statement)) {
@@ -401,8 +390,8 @@ export function generateApiCompatibilityReport(options: {
     const baseType = checker.getTypeAtLocation(baseAlias.type)
     const currentType = checker.getTypeAtLocation(currentAlias.type)
     if (
-      JSON.stringify(packageMemberShape(baseType, checker, packageRoots)) !==
-      JSON.stringify(packageMemberShape(currentType, checker, packageRoots))
+      JSON.stringify(publicMemberShape(baseType, checker, program)) !==
+      JSON.stringify(publicMemberShape(currentType, checker, program))
     ) {
       const entries = reasons.get(probe.comparison) ?? []
       entries.push(`${probe.facet}: public member shape changed`)

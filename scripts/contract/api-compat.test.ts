@@ -39,6 +39,19 @@ function compare(baseDeclaration: string, currentDeclaration: string) {
   temporaryDirectories.push(root)
   const base = createPackage(root, '@rhinestone/sdk-base', baseDeclaration)
   const current = createPackage(root, '@rhinestone/sdk', currentDeclaration)
+  const external = join(root, 'node_modules/external')
+  writeJson(join(external, 'package.json'), {
+    name: 'external',
+    version: '1.0.0',
+    type: 'module',
+    types: './index.d.ts',
+    exports: { '.': { types: './index.d.ts', import: './index.js' } },
+  })
+  writeFileSync(
+    join(external, 'index.d.ts'),
+    'export interface ExternalOptions { external?: string }',
+  )
+  writeFileSync(join(external, 'index.js'), '')
   const consumer = join(root, 'consumer')
   mkdirSync(join(consumer, 'node_modules/@rhinestone'), { recursive: true })
   cpSync(base, join(consumer, 'node_modules/@rhinestone/sdk-base'), {
@@ -47,6 +60,7 @@ function compare(baseDeclaration: string, currentDeclaration: string) {
   cpSync(current, join(consumer, 'node_modules/@rhinestone/sdk'), {
     recursive: true,
   })
+  cpSync(external, join(consumer, 'node_modules/external'), { recursive: true })
   writeJson(join(consumer, 'package.json'), { private: true, type: 'module' })
 
   return generateApiCompatibilityReport({
@@ -300,6 +314,11 @@ describe('API compatibility report', () => {
       "export type Config = { kind: 'a'; value?: string } | { kind: 'b' }",
       "export type Config = { kind: 'a' } | { kind: 'b' }",
     ],
+    [
+      'inherited external removal',
+      "import type { ExternalOptions } from 'external'; export interface Config extends ExternalOptions {}",
+      'export interface Config {}',
+    ],
   ])('rejects optional public member %s', (_, base, current) => {
     const report = compare(base, current)
 
@@ -378,7 +397,9 @@ describe('API compatibility report', () => {
     expect(report.incompatible).toMatchObject([
       {
         symbol: '.:Config',
-        reasons: ['type: current is not assignable to base'],
+        reasons: expect.arrayContaining([
+          'type: current is not assignable to base',
+        ]),
       },
     ])
   })
