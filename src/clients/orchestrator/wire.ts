@@ -4,6 +4,13 @@
 // time `bun run generate:wire` runs, per the generator's contract.
 import type { operations } from './wire.gen'
 
+type JsonRequest<Operation extends keyof operations> =
+  operations[Operation] extends {
+    requestBody: { content: { 'application/json': infer Body } }
+  }
+    ? Body
+    : never
+
 type JsonResponse<Operation extends keyof operations> = NonNullable<
   operations[Operation]['responses'] extends { 200: infer Ok }
     ? Ok extends { content: { 'application/json': infer Body } }
@@ -16,6 +23,8 @@ type JsonResponse<Operation extends keyof operations> = NonNullable<
 // JSON body, so a mapped response is the generated body plus that trace id.
 type Folded<Body> = Body & { readonly traceId?: string }
 
+export type WireQuoteRequest = JsonRequest<'createQuote'>
+export type WireSplitRequest = JsonRequest<'getSplit'>
 export type WireQuoteResponse = Folded<JsonResponse<'createQuote'>>
 export type WireQuote = WireQuoteResponse['routes'][number]
 export type WirePortfolioResponse = Folded<JsonResponse<'getPortfolio'>>

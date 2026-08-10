@@ -3,6 +3,7 @@ import type { AccountRuntime } from '../../accounts/adapter'
 import type { Call } from '../../calls/types'
 import { isHyperCoreWireId } from '../../chains/caip2'
 import type { EvmChainReference } from '../../chains/types'
+import type { SignatureMode } from '../../clients/orchestrator/public'
 import { buildSmartSessionMockSignature } from '../../modules/validators/smart-sessions/mock-signature'
 import {
   DUMMY_PRECLAIMOP_SELECTOR,
@@ -12,7 +13,7 @@ import type { ResolvedSessionSignerSet } from '../../modules/validators/smart-se
 import type { IntentInput, IntentWorkflowContext } from './types'
 
 export interface PreparedIntentSessions {
-  readonly signatureMode: number
+  readonly signatureMode: SignatureMode
   readonly byChain: Readonly<Record<number, ResolvedSessionSignerSet>>
   readonly mockSignatures: Readonly<Record<string, Hex>>
   readonly preClaimCalls: Readonly<Record<number, readonly Call[]>>

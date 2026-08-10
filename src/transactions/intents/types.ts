@@ -12,6 +12,7 @@ import type {
   OriginSignature,
   Quote,
   SerializedIntentInput,
+  SignatureMode,
 } from '../../clients/orchestrator/public'
 import type {
   OrchestratorAccount,
@@ -71,7 +72,7 @@ export interface IntentInput<CompatibilityConfig = unknown> {
   readonly eip7702InitSignature?: Hex
   readonly accountAccessList?: OrchestratorAccountAccessList
   readonly options?: Omit<OrchestratorIntentOptions, 'signatureMode'>
-  readonly signatureMode?: number
+  readonly signatureMode?: SignatureMode
   readonly sourceCalls?: Readonly<
     Record<number, readonly IntentSourceCall<CompatibilityConfig>[]>
   >

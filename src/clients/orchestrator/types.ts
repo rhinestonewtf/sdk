@@ -11,6 +11,8 @@ import type {
   IntentStatus,
   SerializedIntentInput,
   SettlementLayer,
+  SettlementLayerFilter,
+  SignatureMode,
   TokenRequirements,
 } from './public'
 
@@ -49,10 +51,8 @@ export interface OrchestratorIntentOptions {
     readonly swapFees: boolean
     readonly protocolFees?: boolean
   }
-  readonly settlementLayers?:
-    | { readonly include: readonly string[] }
-    | { readonly exclude: readonly string[] }
-  readonly signatureMode?: number
+  readonly settlementLayers?: SettlementLayerFilter
+  readonly signatureMode?: SignatureMode
   readonly auxiliaryFunds?: Readonly<
     Record<number, Readonly<Record<Address, bigint>>>
   >
@@ -157,9 +157,7 @@ export interface OrchestratorAppFeeBalances {
 export interface OrchestratorSplitRequest {
   readonly chainId: number
   readonly tokens: Readonly<Record<Address, bigint>>
-  readonly settlementLayers?:
-    | { readonly include: readonly string[] }
-    | { readonly exclude: readonly string[] }
+  readonly settlementLayers?: SettlementLayerFilter
 }
 
 export interface OrchestratorSplitResult {
