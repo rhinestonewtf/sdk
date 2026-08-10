@@ -4,8 +4,10 @@ import { describe, expect, test } from 'vitest'
 import { accountA, accountB, passkeyAccount } from '../../test/consts'
 import { assertNotNull } from '../../test/utils/utils'
 import { MODULE_TYPE_ID_VALIDATOR } from '../modules/common'
+import { OWNABLE_VALIDATOR_ADDRESS } from '../modules/validators/core'
 import {
   getAddress,
+  getDefaultValidatorAddress,
   getDeployArgs,
   getInstallData,
   packSignature,
@@ -230,7 +232,40 @@ describe('Accounts: Nexus', () => {
     })
   })
 
+  describe('Get Default Validator Address', () => {
+    test.each([undefined, '1.2.0', '1.2.1', 'rhinestone-1.0.0'] as const)(
+      'uses the deployment default for %s',
+      (version) => {
+        expect(getDefaultValidatorAddress(version)).toEqual(
+          OWNABLE_VALIDATOR_ADDRESS,
+        )
+      },
+    )
+
+    test('preserves adopted account defaults', () => {
+      expect(getDefaultValidatorAddress('1.0.2')).toEqual(
+        '0x0000002d6db27c52e3c11c1cf24072004ac75cba',
+      )
+      expect(getDefaultValidatorAddress('rhinestone-1.0.0-beta')).toEqual(
+        '0x0000000000e9e6e96bcaa3c113187cdb7e38aed9',
+      )
+    })
+  })
+
   describe('Get Packed Signature', () => {
+    test('elides the 1.2.0 default validator', async () => {
+      const signature = await packSignature(
+        '0x1234',
+        { address: OWNABLE_VALIDATOR_ADDRESS, isRoot: true },
+        undefined,
+        getDefaultValidatorAddress('1.2.0'),
+      )
+
+      expect(signature).toEqual(
+        '0x00000000000000000000000000000000000000001234',
+      )
+    })
+
     test('Mock signature', async () => {
       const mockSignature = '0x1234'
       const validator = {

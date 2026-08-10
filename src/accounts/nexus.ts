@@ -347,7 +347,8 @@ function getDefaultValidatorAddress(version: NexusAccount['version']): Address {
     case '1.0.2':
       return '0x0000002d6db27c52e3c11c1cf24072004ac75cba'
     case '1.2.0':
-      return '0x00000000d12897ddadc2044614a9677b191a2d95'
+      // Rhinestone's 1.2.0 deployment hardwires OwnableValidator, unlike upstream Nexus.
+      return NEXUS_DEFAULT_VALIDATOR_ADDRESS
     case '1.2.1':
       return NEXUS_DEFAULT_VALIDATOR_ADDRESS
     case 'rhinestone-1.0.0-beta':
