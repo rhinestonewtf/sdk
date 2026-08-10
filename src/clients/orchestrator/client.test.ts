@@ -20,6 +20,10 @@ describe('orchestrator client', () => {
         expect(JSON.parse(String(init?.body))).toMatchObject({
           destinationChainId: 'eip155:10',
           destinationExecutions: [{ to: address, value: '2', data: '0x' }],
+          accountAccessList: {
+            chainIds: ['eip155:1'],
+            chainTokenAmounts: { 'eip155:1': { [address]: '4' } },
+          },
           options: { auxiliaryFunds: { 'eip155:1': { [address]: '3' } } },
         })
         return new Response(
@@ -97,6 +101,10 @@ describe('orchestrator client', () => {
       destinationChainId: 10,
       destinationExecutions: [{ to: address, value: 2n, data: '0x' }],
       tokenRequests: [],
+      accountAccessList: {
+        chainIds: [1],
+        chainTokenAmounts: { 1: { [address]: 4n } },
+      },
       options: { auxiliaryFunds: { 1: { [address]: 3n } } },
     })
 

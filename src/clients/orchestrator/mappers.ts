@@ -11,6 +11,7 @@ import type {
   CostTokenEntry,
   TokenRequirements,
 } from './public'
+import { serializeBigInts } from './serialization'
 import type {
   OrchestratorIntentRequest,
   OrchestratorIntentStatus,
@@ -25,13 +26,15 @@ import type {
   WireIntentStatusResponse,
   WirePortfolioResponse,
   WireQuote,
+  WireQuoteRequest,
   WireQuoteResponse,
+  WireSplitRequest,
   WireSplitResponse,
 } from './wire'
 
 export function mapIntentRequestToWire(
   input: OrchestratorIntentRequest,
-): unknown {
+): WireQuoteRequest {
   return serializeBigInts({
     account: input.account,
     destinationChainId: formatCaip2(input.destinationChainId),
@@ -41,6 +44,10 @@ export function mapIntentRequestToWire(
     accountAccessList: mapAccessList(input.accountAccessList),
     options: {
       ...input.options,
+      settlementLayers: mapSettlementLayers(input.options.settlementLayers),
+      signatureMode: input.options.signatureMode as
+        | NonNullable<WireQuoteRequest['options']>['signatureMode']
+        | undefined,
       ...(input.options.auxiliaryFunds
         ? {
             auxiliaryFunds: mapChainRecord(input.options.auxiliaryFunds),
@@ -152,11 +159,11 @@ export function mapPortfolioFromWire(value: unknown): OrchestratorPortfolio {
 
 export function mapSplitRequestToWire(
   input: OrchestratorSplitRequest,
-): unknown {
+): WireSplitRequest {
   return serializeBigInts({
     chainId: formatCaip2(input.chainId),
     tokens: input.tokens,
-    settlementLayers: input.settlementLayers,
+    settlementLayers: mapSettlementLayers(input.settlementLayers),
   })
 }
 
@@ -256,9 +263,7 @@ function mapAuthorizationToWire(authorization: SignedAuthorization): unknown {
   }
 }
 
-function mapAccessList(
-  input: OrchestratorIntentRequest['accountAccessList'],
-): unknown {
+function mapAccessList(input: OrchestratorIntentRequest['accountAccessList']) {
   if (!input) return undefined
   return {
     ...(input.chainIds ? { chainIds: input.chainIds.map(formatCaip2) } : {}),
@@ -270,6 +275,15 @@ function mapAccessList(
       ? { chainTokenAmounts: mapChainRecord(input.chainTokenAmounts) }
       : {}),
   }
+}
+
+function mapSettlementLayers(
+  input:
+    | OrchestratorIntentRequest['options']['settlementLayers']
+    | OrchestratorSplitRequest['settlementLayers'],
+): NonNullable<WireQuoteRequest['options']>['settlementLayers'] {
+  // Keep the legacy public string arrays while checking the rest of the wire shape.
+  return input as NonNullable<WireQuoteRequest['options']>['settlementLayers']
 }
 
 function mapChainRecord<T>(
@@ -288,15 +302,4 @@ function parseChainValue(value: string | number | undefined): number {
   if (value === undefined) throw new Error('Orchestrator chain id is missing')
   if (/^\d+$/u.test(value)) return Number(value)
   return chainIdFromReference(parseCaip2(value))
-}
-
-function serializeBigInts(value: unknown): unknown {
-  if (typeof value === 'bigint') return value.toString()
-  if (Array.isArray(value)) return value.map(serializeBigInts)
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(
-      Object.entries(value).map(([key, item]) => [key, serializeBigInts(item)]),
-    )
-  }
-  return value
 }
