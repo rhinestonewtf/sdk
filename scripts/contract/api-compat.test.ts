@@ -95,24 +95,93 @@ describe('API compatibility report', () => {
     ])
   })
 
-  test('ignores referenced text drift when a nominal class declaration is unchanged', () => {
+  test('keeps namespace type members text-strict', () => {
     const report = compare(
-      'type Box<K> = { value: K }; export declare class Secret { private token; read(): Box<string> }',
-      'type Box<Key> = { value: Key }; export declare class Secret { private token; read(): Box<string> }',
+      "export declare namespace Values { const value: 'a'; type Item = 'a' }",
+      "export declare namespace Values { const value: 'a'; type Item = 'b' }",
     )
 
-    expect(report.compatible).toEqual(['.:Box', '.:Secret'])
-    expect(report.incompatible).toEqual([])
+    expect(report.incompatible).toMatchObject([
+      {
+        symbol: '.:Values',
+        reasons: ['declaration text changed for a namespace'],
+      },
+    ])
   })
 
-  test('checks changed referenced types through a nominal class public surface', () => {
+  test('keeps type-only namespaces text-strict', () => {
     const report = compare(
-      'type Box = { items: string[] }; export declare class Secret { private token; read(): Box }',
-      'type Box = { items: readonly string[] }; export declare class Secret { private token; read(): Box }',
+      "export declare namespace Types { type Item = 'a' }",
+      "export declare namespace Types { type Item = 'b' }",
+    )
+
+    expect(report.incompatible).toMatchObject([
+      {
+        symbol: '.:Types',
+        reasons: ['declaration text changed for a namespace'],
+      },
+    ])
+  })
+
+  test('keeps protected surfaces and their references text-strict', () => {
+    const report = compare(
+      'type Options = { value?: string }; export declare class Secret { protected run(options: Options): void }',
+      'type Options = { value: string }; export declare class Secret { protected run(options: Options): void }',
     )
 
     expect(report.incompatible).toEqual(
-      expect.arrayContaining([expect.objectContaining({ symbol: '.:Secret' })]),
+      expect.arrayContaining([
+        expect.objectContaining({
+          symbol: '.:Secret',
+          reasons: ['declaration text changed for a nominal class'],
+        }),
+      ]),
+    )
+  })
+
+  test('detects inherited private members as nominal', () => {
+    const report = compare(
+      'declare class Base { private token; } export declare class Child extends Base { constructor(value: string) }',
+      'declare class Base { private token; } export declare class Child extends Base { constructor(input: string) }',
+    )
+
+    expect(report.incompatible).toMatchObject([
+      {
+        symbol: '.:Child',
+        reasons: ['declaration text changed for a nominal class'],
+      },
+    ])
+  })
+
+  test('does not generate probes for generic nominal classes', () => {
+    const report = compare(
+      'type Box<K> = { value: K }; export declare class Secret<T> { private token; read(): Box<T> }',
+      'type Box<Key> = { value: Key }; export declare class Secret<T> { private token; read(): Box<T> }',
+    )
+
+    expect(report.incompatible).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          symbol: '.:Secret',
+          reasons: ['declaration text changed for a nominal class'],
+        }),
+      ]),
+    )
+  })
+
+  test('does not generate constructor probes for private constructors', () => {
+    const report = compare(
+      'type Box<K> = { value: K }; export declare class Secret { private constructor(); private token; read(): Box<string> }',
+      'type Box<Key> = { value: Key }; export declare class Secret { private constructor(); private token; read(): Box<string> }',
+    )
+
+    expect(report.incompatible).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          symbol: '.:Secret',
+          reasons: ['declaration text changed for a nominal class'],
+        }),
+      ]),
     )
   })
 

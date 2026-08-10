@@ -54,16 +54,6 @@ function sameReport(base: ApiExportReport, current: ApiExportReport): boolean {
   return JSON.stringify(base) === JSON.stringify(current)
 }
 
-function sameNominalDeclaration(
-  base: ApiExportReport,
-  current: ApiExportReport,
-): boolean {
-  const { referencedDeclarations: _baseReferences, ...baseDeclaration } = base
-  const { referencedDeclarations: _currentReferences, ...currentDeclaration } =
-    current
-  return JSON.stringify(baseDeclaration) === JSON.stringify(currentDeclaration)
-}
-
 function packageSpecifier(packageName: string, entrypoint: string): string {
   return entrypoint === '.'
     ? packageName
@@ -133,21 +123,21 @@ export function generateApiCompatibilityReport(options: {
   }
 
   const incompatible: ApiCompatibilityFailure[] = []
-  const nominalComparisons = new Set<Comparison>()
   const candidates: Comparison[] = []
   for (const comparison of comparisons) {
+    if (comparison.base.isNamespace || comparison.current.isNamespace) {
+      incompatible.push(
+        failure(comparison, ['declaration text changed for a namespace']),
+      )
+      continue
+    }
     if (
       comparison.base.hasPrivateOrProtectedMembers ||
       comparison.current.hasPrivateOrProtectedMembers
     ) {
-      if (sameNominalDeclaration(comparison.base, comparison.current)) {
-        nominalComparisons.add(comparison)
-        candidates.push(comparison)
-      } else {
-        incompatible.push(
-          failure(comparison, ['declaration text changed for a nominal class']),
-        )
-      }
+      incompatible.push(
+        failure(comparison, ['declaration text changed for a nominal class']),
+      )
       continue
     }
     if (
@@ -172,13 +162,7 @@ export function generateApiCompatibilityReport(options: {
     candidates.push(comparison)
   }
 
-  const source: string[] =
-    nominalComparisons.size > 0
-      ? [
-          'type PublicInstance<T> = { [K in keyof T]: T[K] }',
-          "type PublicStatic<T> = { [K in Exclude<keyof T, 'prototype'>]: T[K] }",
-        ]
-      : []
+  const source: string[] = []
   const probes: TypeProbe[] = []
   const entrypointAliases = new Map<string, { base: string; current: string }>()
   for (const comparison of candidates) {
@@ -217,29 +201,6 @@ export function generateApiCompatibilityReport(options: {
         baseAlias,
         currentAlias,
       })
-    }
-
-    if (nominalComparisons.has(comparison)) {
-      if (comparison.base.hasValue) {
-        addProbe(
-          'static',
-          `PublicStatic<typeof ${aliases.base}.${symbol}>`,
-          `PublicStatic<typeof ${aliases.current}.${symbol}>`,
-        )
-        addProbe(
-          'constructor parameters',
-          `ConstructorParameters<typeof ${aliases.base}.${symbol}>`,
-          `ConstructorParameters<typeof ${aliases.current}.${symbol}>`,
-        )
-      }
-      if (comparison.base.hasType) {
-        addProbe(
-          'public instance',
-          `PublicInstance<${aliases.base}.${symbol}>`,
-          `PublicInstance<${aliases.current}.${symbol}>`,
-        )
-      }
-      continue
     }
 
     if (comparison.base.hasValue) {

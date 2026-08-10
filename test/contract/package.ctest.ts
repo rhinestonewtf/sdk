@@ -169,8 +169,8 @@ function privateSourceImports(packageDirectory: string): string[] {
 //
 // - patch (or no new changeset, or an unreadable base): exact symbol inventory
 //   and mutually assignable types. Text-equal symbols take a fast path; generic
-//   types use representative instantiations, while nominal classes keep their
-//   own declaration text strict.
+//   types use representative instantiations, while namespaces and nominal
+//   classes keep their declarations and referenced declarations text-strict.
 // - minor: additive only. New entry points, exports, and symbols are allowed,
 //   but everything the base published must still be there. Shapes may widen —
 //   adding a union member changes a symbol's report while staying compatible —

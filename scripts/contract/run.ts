@@ -295,10 +295,13 @@ async function main(): Promise<void> {
       { recursive: true },
     )
 
-    // The hand-written fixture remains a supplementary patch check. Intentional
-    // minor and major changes may break it, while the generated comparator below
-    // still records a verdict for the contract assertions.
-    if (declaresSurfaceChange(baseSha, repositoryRoot)) {
+    // The hand-written fixture and generated semantic comparison are patch
+    // checks. Minor and major changes retain their existing report assertions.
+    const hasDeclaredSurfaceChange = declaresSurfaceChange(
+      baseSha,
+      repositoryRoot,
+    )
+    if (hasDeclaredSurfaceChange) {
       process.stdout.write(
         'Skipping bidirectional assignability check: PR declares an intentional public-surface change\n',
       )
@@ -325,11 +328,20 @@ async function main(): Promise<void> {
     )
     writeJson(
       apiCompatibilityReportPath,
-      generateApiCompatibilityReport({
-        consumerDirectory: compatibilityConsumer,
-        baseReport: baseApiReport,
-        currentReport: currentApiReport,
-      }),
+      hasDeclaredSurfaceChange
+        ? {
+            formatVersion: 1,
+            added: [],
+            removed: [],
+            natureChanged: [],
+            compatible: [],
+            incompatible: [],
+          }
+        : generateApiCompatibilityReport({
+            consumerDirectory: compatibilityConsumer,
+            baseReport: baseApiReport,
+            currentReport: currentApiReport,
+          }),
     )
 
     runCommand(

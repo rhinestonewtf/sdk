@@ -12,6 +12,7 @@ export interface ApiExportReport {
   constructSignatures: string[]
   typeParameters: { hasDefault: boolean }[]
   hasPrivateOrProtectedMembers: boolean
+  isNamespace: boolean
 }
 
 export interface ApiReport {
@@ -116,6 +117,35 @@ function declarationsForSymbol(
   }
 }
 
+function classHasPrivateOrProtectedMembers(
+  declaration: ts.ClassDeclaration,
+  checker: ts.TypeChecker,
+  seen = new Set<ts.Symbol>(),
+): boolean {
+  if (
+    declaration.members.some(
+      (member) =>
+        (member.name && ts.isPrivateIdentifier(member.name)) ||
+        ts.getCombinedModifierFlags(member) &
+          (ts.ModifierFlags.Private | ts.ModifierFlags.Protected),
+    )
+  ) {
+    return true
+  }
+
+  const classType = checker.getTypeAtLocation(declaration) as ts.InterfaceType
+  return (checker.getBaseTypes(classType) ?? []).some((baseType) => {
+    const baseSymbol = baseType.getSymbol()
+    if (!baseSymbol || seen.has(baseSymbol)) return false
+    seen.add(baseSymbol)
+    return (baseSymbol.getDeclarations() ?? [])
+      .filter(ts.isClassDeclaration)
+      .some((baseDeclaration) =>
+        classHasPrivateOrProtectedMembers(baseDeclaration, checker, seen),
+      )
+  })
+}
+
 function reportExport(
   exportedSymbol: ts.Symbol,
   checker: ts.TypeChecker,
@@ -145,13 +175,10 @@ function reportExport(
   )
   const classDeclaration = symbolDeclarations.find(ts.isClassDeclaration)
   const hasPrivateOrProtectedMembers = Boolean(
-    classDeclaration?.members.some(
-      (member) =>
-        (member.name && ts.isPrivateIdentifier(member.name)) ||
-        ts.getCombinedModifierFlags(member) &
-          (ts.ModifierFlags.Private | ts.ModifierFlags.Protected),
-    ),
+    classDeclaration &&
+      classHasPrivateOrProtectedMembers(classDeclaration, checker),
   )
+  const isNamespace = Boolean(symbol.flags & ts.SymbolFlags.Namespace)
   const valueType =
     hasValue && declaration
       ? checker.getTypeOfSymbolAtLocation(symbol, declaration)
@@ -186,6 +213,7 @@ function reportExport(
       (parameter) => ({ hasDefault: Boolean(parameter.default) }),
     ),
     hasPrivateOrProtectedMembers,
+    isNamespace,
   }
 }
 
