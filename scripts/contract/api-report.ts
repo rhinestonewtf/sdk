@@ -18,11 +18,12 @@ export interface ApiExportReport {
     defaultReferences: string[]
   }[]
   hasPrivateOrProtectedMembers: boolean
+  hasBivariantMethods: boolean
   isNamespace: boolean
 }
 
 export interface ApiReport {
-  formatVersion: 4
+  formatVersion: 5
   entrypoints: Record<string, Record<string, ApiExportReport>>
 }
 
@@ -260,6 +261,54 @@ function classHasPrivateOrProtectedMembers(
   })
 }
 
+function symbolHasBivariantMethods(
+  candidate: ts.Symbol,
+  checker: ts.TypeChecker,
+  packageDirectory: string,
+  seen = new Set<ts.Symbol>(),
+): boolean {
+  const symbol =
+    candidate.flags & ts.SymbolFlags.Alias
+      ? checker.getAliasedSymbol(candidate)
+      : candidate
+  if (seen.has(symbol)) return false
+  seen.add(symbol)
+
+  const declarations = symbol.getDeclarations() ?? []
+  if (
+    declarations.length === 0 ||
+    declarations.some(
+      (declaration) =>
+        !resolve(declaration.getSourceFile().fileName).startsWith(
+          `${resolve(packageDirectory)}/`,
+        ),
+    )
+  ) {
+    return false
+  }
+
+  const visitNode = (node: ts.Node): boolean => {
+    if (ts.isMethodSignature(node) || ts.isMethodDeclaration(node)) return true
+    if (ts.isIdentifier(node)) {
+      const referencedSymbol = checker.getSymbolAtLocation(node)
+      if (
+        referencedSymbol &&
+        symbolHasBivariantMethods(
+          referencedSymbol,
+          checker,
+          packageDirectory,
+          seen,
+        )
+      ) {
+        return true
+      }
+    }
+    return node.getChildren().some(visitNode)
+  }
+
+  return declarations.some(visitNode)
+}
+
 function reportExport(
   exportedSymbol: ts.Symbol,
   checker: ts.TypeChecker,
@@ -376,6 +425,11 @@ function reportExport(
         : {}),
     })),
     hasPrivateOrProtectedMembers,
+    hasBivariantMethods: symbolHasBivariantMethods(
+      symbol,
+      checker,
+      packageDirectory,
+    ),
     isNamespace,
   }
 }
@@ -435,7 +489,7 @@ export function generateApiReport(packageDirectory: string): ApiReport {
     )
   }
 
-  return { formatVersion: 4, entrypoints }
+  return { formatVersion: 5, entrypoints }
 }
 
 if (import.meta.main) {

@@ -151,6 +151,17 @@ export function generateApiCompatibilityReport(options: {
       continue
     }
     if (
+      comparison.base.hasBivariantMethods ||
+      comparison.current.hasBivariantMethods
+    ) {
+      incompatible.push(
+        failure(comparison, [
+          'declaration text changed for a type containing methods',
+        ]),
+      )
+      continue
+    }
+    if (
       comparison.base.typeParameters.length !==
       comparison.current.typeParameters.length
     ) {

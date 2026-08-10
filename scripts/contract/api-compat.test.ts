@@ -161,6 +161,50 @@ describe('API compatibility report', () => {
     ])
   })
 
+  test('rejects method parameter narrowing', () => {
+    const report = compare(
+      'export interface Handler { on(value: string | number): void }',
+      'export interface Handler { on(value: string): void }',
+    )
+
+    expect(report.incompatible).toMatchObject([
+      {
+        symbol: '.:Handler',
+        reasons: ['declaration text changed for a type containing methods'],
+      },
+    ])
+  })
+
+  test('rejects nested method parameter narrowing', () => {
+    const report = compare(
+      'interface Handler { on(value: string | number): void } export interface Config { handler: Handler }',
+      'interface Handler { on(value: string): void } export interface Config { handler: Handler }',
+    )
+
+    expect(report.incompatible).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          symbol: '.:Config',
+          reasons: ['declaration text changed for a type containing methods'],
+        }),
+      ]),
+    )
+  })
+
+  test('still compares function properties semantically', () => {
+    const report = compare(
+      'export interface Handler { on: (value: string | number) => void }',
+      'export interface Handler { on: (value: string) => void }',
+    )
+
+    expect(report.incompatible).toMatchObject([
+      {
+        symbol: '.:Handler',
+        reasons: ['type: current is not assignable to base'],
+      },
+    ])
+  })
+
   test('rejects mutable to readonly property changes', () => {
     const report = compare(
       'export interface Config { items: string[] }',
