@@ -44,6 +44,10 @@ export function mapIntentRequestToWire(
     accountAccessList: mapAccessList(input.accountAccessList),
     options: {
       ...input.options,
+      settlementLayers: mapSettlementLayers(input.options.settlementLayers),
+      signatureMode: input.options.signatureMode as
+        | NonNullable<WireQuoteRequest['options']>['signatureMode']
+        | undefined,
       ...(input.options.auxiliaryFunds
         ? {
             auxiliaryFunds: mapChainRecord(input.options.auxiliaryFunds),
@@ -159,7 +163,7 @@ export function mapSplitRequestToWire(
   return serializeBigInts({
     chainId: formatCaip2(input.chainId),
     tokens: input.tokens,
-    settlementLayers: input.settlementLayers,
+    settlementLayers: mapSettlementLayers(input.settlementLayers),
   })
 }
 
@@ -271,6 +275,15 @@ function mapAccessList(input: OrchestratorIntentRequest['accountAccessList']) {
       ? { chainTokenAmounts: mapChainRecord(input.chainTokenAmounts) }
       : {}),
   }
+}
+
+function mapSettlementLayers(
+  input:
+    | OrchestratorIntentRequest['options']['settlementLayers']
+    | OrchestratorSplitRequest['settlementLayers'],
+): NonNullable<WireQuoteRequest['options']>['settlementLayers'] {
+  // Keep the legacy public string arrays while checking the rest of the wire shape.
+  return input as NonNullable<WireQuoteRequest['options']>['settlementLayers']
 }
 
 function mapChainRecord<T>(

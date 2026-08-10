@@ -4,7 +4,6 @@
 
 import type { Address, Chain, Hex, TypedDataDefinition } from 'viem'
 import type { NonEvmAddress } from '../../chains/non-evm'
-import type { Serialized } from './serialization'
 
 // v2: chain ids are open (`number`), not a closed union — a new chain needs no
 // SDK release.
@@ -112,8 +111,8 @@ type SettlementLayer =
   | CrossChainSettlementLayer
 
 type SettlementLayerFilter =
-  | { include: readonly CrossChainSettlementLayer[] }
-  | { exclude: readonly CrossChainSettlementLayer[] }
+  | { include: CrossChainSettlementLayer[] }
+  | { exclude: CrossChainSettlementLayer[] }
 
 const SIG_MODE_EMISSARY = 0
 const SIG_MODE_ERC1271 = 1
@@ -210,6 +209,14 @@ interface IntentInput {
 // Transport projection: `bigint` becomes a decimal string, every other type
 // keeps its shape (template-literal `Address`/`Hex`, optionality, index
 // signatures). Internal — only the `IntentInput` projection below is published.
+type Serialized<T> = T extends bigint
+  ? string
+  : T extends string | number | boolean | null | undefined
+    ? T
+    : T extends object
+      ? { [K in keyof T]: Serialized<T[K]> }
+      : T
+
 /**
  * {@link IntentInput} as it crosses the transport boundary: the same shape, with
  * every `bigint` field serialized to a decimal string.
