@@ -100,6 +100,52 @@ function typeArgumentProbes(count: number, symbol: string): string[] {
   return [...probes]
 }
 
+function packageMemberShape(
+  type: ts.Type,
+  checker: ts.TypeChecker,
+  packageRoots: readonly string[],
+): string[] {
+  const members = new Set<string>()
+
+  const visit = (candidate: ts.Type, path: string, ancestors: Set<ts.Type>) => {
+    if (ancestors.has(candidate)) return
+    const nextAncestors = new Set(ancestors).add(candidate)
+
+    if (candidate.isUnionOrIntersection()) {
+      for (const constituent of candidate.types) {
+        visit(constituent, path, nextAncestors)
+      }
+    }
+
+    for (const property of checker.getPropertiesOfType(candidate)) {
+      const declarations = property.getDeclarations() ?? []
+      if (
+        declarations.length === 0 ||
+        !declarations.some((declaration) => {
+          const fileName = resolve(declaration.getSourceFile().fileName)
+          return packageRoots.some((root) => fileName.startsWith(`${root}/`))
+        })
+      ) {
+        continue
+      }
+
+      const memberPath = `${path}/${JSON.stringify(property.getName())}`
+      members.add(memberPath)
+      const declaration = property.valueDeclaration ?? declarations[0]
+      if (declaration) {
+        visit(
+          checker.getTypeOfSymbolAtLocation(property, declaration),
+          memberPath,
+          nextAncestors,
+        )
+      }
+    }
+  }
+
+  visit(type, '', new Set())
+  return [...members].sort()
+}
+
 function failure(
   comparison: Comparison,
   reasons: string[],
@@ -332,6 +378,10 @@ export function generateApiCompatibilityReport(options: {
   if (!fixture)
     throw new Error('Generated API compatibility fixture was not loaded')
   const checker = program.getTypeChecker()
+  const packageRoots = [
+    resolve(options.consumerDirectory, 'node_modules/@rhinestone/sdk-base'),
+    resolve(options.consumerDirectory, 'node_modules/@rhinestone/sdk'),
+  ]
   const aliases = new Map<string, ts.TypeAliasDeclaration>()
   for (const statement of fixture.statements) {
     if (ts.isTypeAliasDeclaration(statement)) {
@@ -350,6 +400,14 @@ export function generateApiCompatibilityReport(options: {
     }
     const baseType = checker.getTypeAtLocation(baseAlias.type)
     const currentType = checker.getTypeAtLocation(currentAlias.type)
+    if (
+      JSON.stringify(packageMemberShape(baseType, checker, packageRoots)) !==
+      JSON.stringify(packageMemberShape(currentType, checker, packageRoots))
+    ) {
+      const entries = reasons.get(probe.comparison) ?? []
+      entries.push(`${probe.facet}: public member shape changed`)
+      reasons.set(probe.comparison, entries)
+    }
     if (!checker.isTypeAssignableTo(baseType, currentType)) {
       const entries = reasons.get(probe.comparison) ?? []
       entries.push(`${probe.facet}: base is not assignable to current`)

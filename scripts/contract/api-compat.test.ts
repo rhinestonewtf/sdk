@@ -279,6 +279,38 @@ describe('API compatibility report', () => {
     ])
   })
 
+  test.each([
+    [
+      'removal',
+      'export interface Config { value?: string }',
+      'export interface Config {}',
+    ],
+    [
+      'rename',
+      'export interface Config { value?: string }',
+      'export interface Config { renamed?: string }',
+    ],
+    [
+      'nested removal',
+      'export interface Config { options: { value?: string } }',
+      'export interface Config { options: {} }',
+    ],
+    [
+      'union branch removal',
+      "export type Config = { kind: 'a'; value?: string } | { kind: 'b' }",
+      "export type Config = { kind: 'a' } | { kind: 'b' }",
+    ],
+  ])('rejects optional public member %s', (_, base, current) => {
+    const report = compare(base, current)
+
+    expect(report.incompatible).toMatchObject([
+      {
+        symbol: '.:Config',
+        reasons: expect.arrayContaining(['type: public member shape changed']),
+      },
+    ])
+  })
+
   test('rejects mutable to readonly property changes', () => {
     const report = compare(
       'export interface Config { value: string }',
