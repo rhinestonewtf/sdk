@@ -239,6 +239,22 @@ describe('API compatibility report', () => {
     )
   })
 
+  test('rejects method parameter narrowing through a referenced alias', () => {
+    const report = compare(
+      'type Options = string | number; export interface Handler { on(value: Options): void }',
+      'type Options = string; export interface Handler { on(value: Options): void }',
+    )
+
+    expect(report.incompatible).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          symbol: '.:Handler',
+          reasons: ['declaration text changed for a checker-sensitive type'],
+        }),
+      ]),
+    )
+  })
+
   test('rejects constructor parameter narrowing', () => {
     const report = compare(
       'export declare class Handler { constructor(value: string | number) }',

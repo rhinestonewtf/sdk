@@ -321,16 +321,30 @@ function checkerSensitiveDeclarationsForSymbol(
         ts.isIndexSignatureDeclaration(node)) &&
         ts.getCombinedModifierFlags(node) & ts.ModifierFlags.Readonly)
     ) {
+      const typeParameters = typeParametersInScope(node)
       declarations.add(
         printWithNormalizedTypeParameters(
           node,
-          typeParametersInScope(node),
+          typeParameters,
           checker,
           printer,
           packageDirectory,
         ),
       )
-      return
+      const ignoredSymbols = new Set<ts.Symbol>([symbol])
+      for (const parameter of typeParameters) {
+        const parameterSymbol = checker.getSymbolAtLocation(parameter.name)
+        if (parameterSymbol) ignoredSymbols.add(parameterSymbol)
+      }
+      for (const referenced of referencedDeclarationsForNode(
+        node,
+        checker,
+        printer,
+        packageDirectory,
+        ignoredSymbols,
+      )) {
+        declarations.add(referenced)
+      }
     }
     if (ts.isIdentifier(node)) {
       const referencedSymbol = checker.getSymbolAtLocation(node)
