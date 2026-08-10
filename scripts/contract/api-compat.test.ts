@@ -330,6 +330,25 @@ describe('API compatibility report', () => {
     ])
   })
 
+  test.each(['string', 'number'])(
+    'rejects removed %s index signatures',
+    (keyType) => {
+      const report = compare(
+        `export interface Config { [key: ${keyType}]: string }`,
+        'export interface Config {}',
+      )
+
+      expect(report.incompatible).toMatchObject([
+        {
+          symbol: '.:Config',
+          reasons: expect.arrayContaining([
+            'type: public member shape changed',
+          ]),
+        },
+      ])
+    },
+  )
+
   test('rejects mutable to readonly property changes', () => {
     const report = compare(
       'export interface Config { value: string }',

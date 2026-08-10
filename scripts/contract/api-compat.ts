@@ -117,6 +117,12 @@ function publicMemberShape(
       }
     }
 
+    for (const index of checker.getIndexInfosOfType(candidate)) {
+      const indexPath = `${path}/[${checker.typeToString(index.keyType)}]${index.isReadonly ? ':readonly' : ''}`
+      members.add(indexPath)
+      visit(index.type, indexPath, nextAncestors)
+    }
+
     for (const property of checker.getPropertiesOfType(candidate)) {
       const memberPath = `${path}/${JSON.stringify(property.getName())}`
       members.add(memberPath)
