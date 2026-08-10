@@ -177,6 +177,19 @@ describe('API compatibility report', () => {
     ])
   })
 
+  test('probes concrete ABI branches in public config generics', () => {
+    const report = compare(
+      "export type PermissionFunctionConfig<T extends { name: string }> = T['name'] extends 'transfer' ? { spendingLimit?: bigint } : { spendingLimit?: never }",
+      "export type PermissionFunctionConfig<T extends { name: string }> = T['name'] extends 'approve' ? { spendingLimit?: bigint } : { spendingLimit?: never }",
+    )
+
+    expect(report.incompatible).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ symbol: '.:PermissionFunctionConfig' }),
+      ]),
+    )
+  })
+
   test('rejects method parameter narrowing', () => {
     const report = compare(
       'export interface Handler { on(value: string | number): void }',

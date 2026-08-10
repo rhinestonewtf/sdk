@@ -60,7 +60,7 @@ function packageSpecifier(packageName: string, entrypoint: string): string {
     : `${packageName}/${entrypoint.replace(/^\.\//, '')}`
 }
 
-function typeArgumentProbes(count: number): string[] {
+function typeArgumentProbes(count: number, symbol: string): string[] {
   const probes = new Set<string>()
   for (const primary of ['never', 'any'] as const) {
     const secondary = primary === 'never' ? 'any' : 'never'
@@ -70,6 +70,26 @@ function typeArgumentProbes(count: number): string[] {
       )
       probes.add(`<${values.join(', ')}>`)
     }
+  }
+
+  const transferFunction =
+    "{ readonly type: 'function'; readonly name: 'transfer'; readonly stateMutability: 'nonpayable'; readonly inputs: readonly [{ readonly name: 'to'; readonly type: 'address' }, { readonly name: 'amount'; readonly type: 'uint256' }]; readonly outputs: readonly [] }"
+  const payableFunction =
+    "{ readonly type: 'function'; readonly name: 'deposit'; readonly stateMutability: 'payable'; readonly inputs: readonly [{ readonly name: 'amount'; readonly type: 'uint256' }]; readonly outputs: readonly [] }"
+  const concreteProbes: Record<string, string[]> = {
+    ParamConstraint: ['string', '{ readonly value: string }'],
+    PermissionFunctionConfig: [transferFunction, payableFunction],
+    Permission: [
+      `readonly [${transferFunction}]`,
+      `readonly [${payableFunction}]`,
+    ],
+    SessionDefinition: [
+      `readonly [readonly [${transferFunction}]]`,
+      `readonly [readonly [${payableFunction}]]`,
+    ],
+  }
+  for (const argument of concreteProbes[symbol] ?? []) {
+    probes.add(`<${argument}>`)
   }
   return [...probes]
 }
@@ -259,7 +279,7 @@ export function generateApiCompatibilityReport(options: {
           `${aliases.current}.${symbol}`,
         )
       } else {
-        for (const argumentsText of typeArgumentProbes(count)) {
+        for (const argumentsText of typeArgumentProbes(count, symbol)) {
           addProbe(
             `type${argumentsText}`,
             `${aliases.base}.${symbol}${argumentsText}`,

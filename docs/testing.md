@@ -40,8 +40,9 @@ offline. The command validates:
   export keys match the packed release package;
 - patch releases keep the exact declared export inventory and require changed
   public types to be mutually assignable with the packed release. Text-equal
-  symbols take a fast path; generic types use representative `never`, `any`, and
-  default instantiations. Namespaces, checker-sensitive declarations (explicit
+  symbols take a fast path; generic types use representative `never`, `any`,
+  default, and SDK smart-session ABI instantiations. Namespaces,
+  checker-sensitive declarations (explicit
   `any`, method or constructor syntax, and readonly object properties), and
   classes with private or protected members (including inherited members) keep
   their declarations and referenced declarations text-strict;
