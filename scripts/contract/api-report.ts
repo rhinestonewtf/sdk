@@ -10,13 +10,13 @@ export interface ApiExportReport {
   valueType?: string
   callSignatures: string[]
   constructSignatures: string[]
-  typeParameters: { hasDefault: boolean }[]
+  typeParameters: { hasDefault: boolean; constraint?: string }[]
   hasPrivateOrProtectedMembers: boolean
   isNamespace: boolean
 }
 
 export interface ApiReport {
-  formatVersion: 2
+  formatVersion: 3
   entrypoints: Record<string, Record<string, ApiExportReport>>
 }
 
@@ -117,6 +117,30 @@ function declarationsForSymbol(
   }
 }
 
+function normalizeTypeParameterExpression(
+  node: ts.TypeNode,
+  typeParameters: readonly ts.TypeParameterDeclaration[],
+  printer: ts.Printer,
+  packageDirectory: string,
+): string {
+  let text = printer.printNode(
+    ts.EmitHint.Unspecified,
+    node,
+    node.getSourceFile(),
+  )
+  for (const [index, parameter] of typeParameters.entries()) {
+    const escapedName = parameter.name.text.replace(
+      /[.*+?^${}()|[\]\\]/g,
+      '\\$&',
+    )
+    text = text.replace(
+      new RegExp(`(?<![\\w$])${escapedName}(?![\\w$])`, 'g'),
+      `T${index}`,
+    )
+  }
+  return normalizeText(text, packageDirectory)
+}
+
 function classHasPrivateOrProtectedMembers(
   declaration: ts.ClassDeclaration,
   checker: ts.TypeChecker,
@@ -210,7 +234,19 @@ function reportExport(
         ),
     ),
     typeParameters: [...(genericDeclaration?.typeParameters ?? [])].map(
-      (parameter) => ({ hasDefault: Boolean(parameter.default) }),
+      (parameter) => ({
+        hasDefault: Boolean(parameter.default),
+        ...(parameter.constraint
+          ? {
+              constraint: normalizeTypeParameterExpression(
+                parameter.constraint,
+                genericDeclaration?.typeParameters ?? [],
+                printer,
+                packageDirectory,
+              ),
+            }
+          : {}),
+      }),
     ),
     hasPrivateOrProtectedMembers,
     isNamespace,
@@ -272,7 +308,7 @@ export function generateApiReport(packageDirectory: string): ApiReport {
     )
   }
 
-  return { formatVersion: 2, entrypoints }
+  return { formatVersion: 3, entrypoints }
 }
 
 if (import.meta.main) {

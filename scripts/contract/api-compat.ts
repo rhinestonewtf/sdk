@@ -160,6 +160,18 @@ export function generateApiCompatibilityReport(options: {
     if (
       comparison.base.typeParameters.some(
         (parameter, index) =>
+          parameter.constraint !==
+          comparison.current.typeParameters[index]?.constraint,
+      )
+    ) {
+      incompatible.push(
+        failure(comparison, ['type parameter constraints changed']),
+      )
+      continue
+    }
+    if (
+      comparison.base.typeParameters.some(
+        (parameter, index) =>
           parameter.hasDefault !==
           comparison.current.typeParameters[index]?.hasDefault,
       )
