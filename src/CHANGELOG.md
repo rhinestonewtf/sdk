@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 2.2.3
+
+### Patch Changes
+
+- 2a25392: Type orchestrator quote and split request adapters against generated wire contracts.
+
 ## 2.2.2
 
 ### Patch Changes
