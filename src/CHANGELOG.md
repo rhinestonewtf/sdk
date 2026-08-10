@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.13.2
+
+### Patch Changes
+
+- 7ecb46d: Use the installed default validator when signing with Rhinestone Nexus 1.2.0 accounts.
+
 ## 1.13.1
 
 ### Patch Changes
