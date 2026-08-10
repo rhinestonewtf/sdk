@@ -1,6 +1,7 @@
 import { cpSync, mkdirSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
+import { generateApiCompatibilityReport } from './api-compat.ts'
 import { generateApiReport } from './api-report.ts'
 import {
   createConsumerLayout,
@@ -277,32 +278,32 @@ async function main(): Promise<void> {
     compileConsumer(baseConsumers.full)
     compileConsumer(currentConsumers.full)
 
-    // The bidirectional assignability fixture asserts the public types stay
-    // compatible with the base release. A PR that declares an intentional
-    // surface change (minor/major changeset) is allowed to break that, so skip
-    // it there — matching the changeset-aware relaxation in the Vitest suite.
+    const compatibilityConsumer = join(
+      temporaryDirectory,
+      'compatibility-consumer',
+    )
+    createConsumerLayout({
+      packageDirectory: current.packageDirectory,
+      consumerDirectory: compatibilityConsumer,
+      dependencyRoot: current.dependencyRoot,
+      runtimeProbePath,
+      includeOptionalPeers: true,
+    })
+    cpSync(
+      baseBuild.subject.packageDirectory,
+      join(compatibilityConsumer, 'node_modules/@rhinestone/sdk-base'),
+      { recursive: true },
+    )
+
+    // The hand-written fixture remains a supplementary patch check. Intentional
+    // minor and major changes may break it, while the generated comparator below
+    // still records a verdict for the contract assertions.
     if (declaresSurfaceChange(baseSha, repositoryRoot)) {
       process.stdout.write(
         'Skipping bidirectional assignability check: PR declares an intentional public-surface change\n',
       )
     } else {
-      const assignabilityConsumer = join(
-        temporaryDirectory,
-        'assignability-consumer',
-      )
-      createConsumerLayout({
-        packageDirectory: current.packageDirectory,
-        consumerDirectory: assignabilityConsumer,
-        dependencyRoot: current.dependencyRoot,
-        runtimeProbePath,
-        includeOptionalPeers: true,
-      })
-      cpSync(
-        baseBuild.subject.packageDirectory,
-        join(assignabilityConsumer, 'node_modules/@rhinestone/sdk-base'),
-        { recursive: true },
-      )
-      compileConsumer(assignabilityConsumer, assignabilityFixturePath)
+      compileConsumer(compatibilityConsumer, assignabilityFixturePath)
     }
     validateMetadata(baseBuild.subject.packageDirectory)
     validateMetadata(current.packageDirectory)
@@ -312,13 +313,23 @@ async function main(): Promise<void> {
       temporaryDirectory,
       'current-api-report.json',
     )
-    writeJson(
-      baseApiReportPath,
-      generateApiReport(baseConsumers.packageDirectory),
+    const baseApiReport = generateApiReport(baseConsumers.packageDirectory)
+    const currentApiReport = generateApiReport(
+      currentConsumers.packageDirectory,
+    )
+    writeJson(baseApiReportPath, baseApiReport)
+    writeJson(currentApiReportPath, currentApiReport)
+    const apiCompatibilityReportPath = join(
+      temporaryDirectory,
+      'api-compatibility-report.json',
     )
     writeJson(
-      currentApiReportPath,
-      generateApiReport(currentConsumers.packageDirectory),
+      apiCompatibilityReportPath,
+      generateApiCompatibilityReport({
+        consumerDirectory: compatibilityConsumer,
+        baseReport: baseApiReport,
+        currentReport: currentApiReport,
+      }),
     )
 
     runCommand(
@@ -339,6 +350,7 @@ async function main(): Promise<void> {
           SDK_CONTRACT_CURRENT_NO_EXPRESS_DIR: currentConsumers.withoutExpress,
           SDK_CONTRACT_BASE_API_REPORT: baseApiReportPath,
           SDK_CONTRACT_CURRENT_API_REPORT: currentApiReportPath,
+          SDK_CONTRACT_API_COMPATIBILITY_REPORT: apiCompatibilityReportPath,
         },
       },
     )

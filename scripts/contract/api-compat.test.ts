@@ -1,0 +1,132 @@
+import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, describe, expect, test } from 'vitest'
+import { generateApiCompatibilityReport } from './api-compat'
+import { generateApiReport } from './api-report'
+import { writeJson } from './shared'
+
+const temporaryDirectories: string[] = []
+
+afterEach(() => {
+  for (const directory of temporaryDirectories.splice(0)) {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
+function createPackage(
+  root: string,
+  name: string,
+  declaration: string,
+): string {
+  const directory = join(root, name.endsWith('base') ? 'base' : 'current')
+  writeJson(join(directory, 'package.json'), {
+    name,
+    version: '1.0.0',
+    type: 'module',
+    types: './index.d.ts',
+    exports: {
+      '.': { types: './index.d.ts', import: './index.js' },
+    },
+  })
+  writeFileSync(join(directory, 'index.d.ts'), declaration)
+  writeFileSync(join(directory, 'index.js'), '')
+  return directory
+}
+
+function compare(baseDeclaration: string, currentDeclaration: string) {
+  const root = mkdtempSync(join(tmpdir(), 'api-compat-test-'))
+  temporaryDirectories.push(root)
+  const base = createPackage(root, '@rhinestone/sdk-base', baseDeclaration)
+  const current = createPackage(root, '@rhinestone/sdk', currentDeclaration)
+  const consumer = join(root, 'consumer')
+  mkdirSync(join(consumer, 'node_modules/@rhinestone'), { recursive: true })
+  cpSync(base, join(consumer, 'node_modules/@rhinestone/sdk-base'), {
+    recursive: true,
+  })
+  cpSync(current, join(consumer, 'node_modules/@rhinestone/sdk'), {
+    recursive: true,
+  })
+  writeJson(join(consumer, 'package.json'), { private: true, type: 'module' })
+
+  return generateApiCompatibilityReport({
+    consumerDirectory: consumer,
+    baseReport: generateApiReport(base),
+    currentReport: generateApiReport(current),
+  })
+}
+
+describe('API compatibility report', () => {
+  test('accepts a generic type parameter rename through probe instantiations', () => {
+    const report = compare(
+      'export type Box<K> = { value: K }',
+      'export type Box<Key> = { value: Key }',
+    )
+
+    expect(report.compatible).toEqual(['.:Box'])
+    expect(report.incompatible).toEqual([])
+  })
+
+  test('rejects mutable to readonly property changes', () => {
+    const report = compare(
+      'export interface Config { items: string[] }',
+      'export interface Config { items: readonly string[] }',
+    )
+
+    expect(report.incompatible).toMatchObject([
+      {
+        symbol: '.:Config',
+        reasons: ['type: current is not assignable to base'],
+      },
+    ])
+  })
+
+  test('rejects union member additions', () => {
+    const report = compare(
+      "export type State = 'ready'",
+      "export type State = 'ready' | 'pending'",
+    )
+
+    expect(report.incompatible).toMatchObject([
+      {
+        symbol: '.:State',
+        reasons: ['type: current is not assignable to base'],
+      },
+    ])
+  })
+
+  test('ignores referenced text drift when a nominal class declaration is unchanged', () => {
+    const report = compare(
+      'type Box<K> = { value: K }; export declare class Secret { private token; read(): Box<string> }',
+      'type Box<Key> = { value: Key }; export declare class Secret { private token; read(): Box<string> }',
+    )
+
+    expect(report.compatible).toEqual(['.:Box', '.:Secret'])
+    expect(report.incompatible).toEqual([])
+  })
+
+  test('checks changed referenced types through a nominal class public surface', () => {
+    const report = compare(
+      'type Box = { items: string[] }; export declare class Secret { private token; read(): Box }',
+      'type Box = { items: readonly string[] }; export declare class Secret { private token; read(): Box }',
+    )
+
+    expect(report.incompatible).toEqual(
+      expect.arrayContaining([expect.objectContaining({ symbol: '.:Secret' })]),
+    )
+  })
+
+  test('keeps changed nominal classes text-strict', () => {
+    const report = compare(
+      'export declare class Secret { private token; constructor(value: string) }',
+      'export declare class Secret { private token; constructor(input: string) }',
+    )
+
+    expect(report.incompatible).toMatchObject([
+      {
+        symbol: '.:Secret',
+        reasons: ['declaration text changed for a nominal class'],
+      },
+    ])
+  })
+})

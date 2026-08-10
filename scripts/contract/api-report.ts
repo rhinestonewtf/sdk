@@ -2,7 +2,7 @@ import { resolve } from 'node:path'
 import ts from 'typescript'
 import { type PackageManifest, readJson, writeJson } from './shared.ts'
 
-interface ApiExportReport {
+export interface ApiExportReport {
   hasType: boolean
   hasValue: boolean
   declarations: string[]
@@ -10,10 +10,12 @@ interface ApiExportReport {
   valueType?: string
   callSignatures: string[]
   constructSignatures: string[]
+  typeParameters: { hasDefault: boolean }[]
+  hasPrivateOrProtectedMembers: boolean
 }
 
 export interface ApiReport {
-  formatVersion: 1
+  formatVersion: 2
   entrypoints: Record<string, Record<string, ApiExportReport>>
 }
 
@@ -133,6 +135,23 @@ function reportExport(
   const declaration = symbol.valueDeclaration ?? symbol.getDeclarations()?.[0]
   const hasValue = Boolean(symbol.flags & ts.SymbolFlags.Value)
   const hasType = Boolean(symbol.flags & ts.SymbolFlags.Type)
+  const symbolDeclarations = symbol.getDeclarations() ?? []
+  const genericDeclaration = symbolDeclarations.find(
+    (
+      candidate,
+    ): candidate is ts.Declaration & {
+      typeParameters: ts.NodeArray<ts.TypeParameterDeclaration>
+    } => 'typeParameters' in candidate && Boolean(candidate.typeParameters),
+  )
+  const classDeclaration = symbolDeclarations.find(ts.isClassDeclaration)
+  const hasPrivateOrProtectedMembers = Boolean(
+    classDeclaration?.members.some(
+      (member) =>
+        (member.name && ts.isPrivateIdentifier(member.name)) ||
+        ts.getCombinedModifierFlags(member) &
+          (ts.ModifierFlags.Private | ts.ModifierFlags.Protected),
+    ),
+  )
   const valueType =
     hasValue && declaration
       ? checker.getTypeOfSymbolAtLocation(symbol, declaration)
@@ -163,6 +182,10 @@ function reportExport(
           packageDirectory,
         ),
     ),
+    typeParameters: [...(genericDeclaration?.typeParameters ?? [])].map(
+      (parameter) => ({ hasDefault: Boolean(parameter.default) }),
+    ),
+    hasPrivateOrProtectedMembers,
   }
 }
 
@@ -221,7 +244,7 @@ export function generateApiReport(packageDirectory: string): ApiReport {
     )
   }
 
-  return { formatVersion: 1, entrypoints }
+  return { formatVersion: 2, entrypoints }
 }
 
 if (import.meta.main) {

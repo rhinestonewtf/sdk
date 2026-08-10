@@ -3,6 +3,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import sizeLimits from '../../.size-limit.ts'
+import type { ApiCompatibilityReport } from '../../scripts/contract/api-compat.ts'
 import type { ApiReport } from '../../scripts/contract/api-report.ts'
 import {
   declaredSdkBump,
@@ -74,6 +75,9 @@ const baseApiReport = readJson<ApiReport>(
 )
 const currentApiReport = readJson<ApiReport>(
   requiredEnvironment('SDK_CONTRACT_CURRENT_API_REPORT'),
+)
+const apiCompatibilityReport = readJson<ApiCompatibilityReport>(
+  requiredEnvironment('SDK_CONTRACT_API_COMPATIBILITY_REPORT'),
 )
 
 function normalizeExportTargets(
@@ -163,8 +167,10 @@ function privateSourceImports(packageDirectory: string): string[] {
 
 // Strictness follows the declared bump:
 //
-// - patch (or no new changeset, or an unreadable base): exact equality, so
-//   accidental undocumented drift fails.
+// - patch (or no new changeset, or an unreadable base): exact symbol inventory
+//   and mutually assignable types. Text-equal symbols take a fast path; generic
+//   types use representative instantiations, while nominal classes keep their
+//   own declaration text strict.
 // - minor: additive only. New entry points, exports, and symbols are allowed,
 //   but everything the base published must still be there. Shapes may widen —
 //   adding a union member changes a symbol's report while staying compatible —
@@ -355,7 +361,32 @@ describe('packed package contract', () => {
       }
       return
     }
-    expect(currentApiReport).toEqual(baseApiReport)
+    expect(
+      apiCompatibilityReport.added,
+      `patch added declared exports: ${apiCompatibilityReport.added.join(', ')}`,
+    ).toEqual([])
+    expect(
+      apiCompatibilityReport.removed,
+      `patch removed declared exports: ${apiCompatibilityReport.removed.join(', ')}`,
+    ).toEqual([])
+    expect(
+      apiCompatibilityReport.natureChanged,
+      `patch changed type/value export nature: ${apiCompatibilityReport.natureChanged.join(', ')}`,
+    ).toEqual([])
+
+    const incompatibilities = apiCompatibilityReport.incompatible
+      .map(({ symbol, reasons, baseDeclarations, currentDeclarations }) =>
+        [
+          `${symbol}: ${reasons.join('; ')}`,
+          `  base: ${baseDeclarations.join(' ')}`,
+          `  current: ${currentDeclarations.join(' ')}`,
+        ].join('\n'),
+      )
+      .join('\n')
+    expect(
+      apiCompatibilityReport.incompatible,
+      `patch has incompatible declarations:\n${incompatibilities}`,
+    ).toEqual([])
   })
 
   it('preserves compatibility-only runtime values and shapes', () => {

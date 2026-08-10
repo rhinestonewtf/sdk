@@ -38,8 +38,11 @@ offline. The command validates:
 
 - every published subpath resolves, its declaration file exists, and its runtime
   export keys match the packed release package;
-- semantic declaration reports and bidirectional assignability match the packed
-  release declarations;
+- patch releases keep the exact declared export inventory and require changed
+  public types to be mutually assignable with the packed release. Text-equal
+  symbols take a fast path; generic types use representative `never`, `any`, and
+  default instantiations, while classes with private or protected members keep
+  their own declaration text strict;
 - representative consumer projects type-check configurations, selected root
   APIs, and every published subpath against both packages
   (`test/contract/fixtures/consumer.ts`). Type-only root exports must be imported
@@ -53,8 +56,11 @@ offline. The command validates:
 - the per-entry `size-limit` gate for every published subpath.
 
 The suite runs through `scripts/contract/run.ts`, which owns the build, pack,
-consumer staging, and size run; `vitest.config.contract.ts` only discovers the
-`*.ctest.ts` assertions and requires the staged environment.
+consumer staging, compatibility report, and size run. A patch failure reports
+only the affected entry point and symbol with its base and current declarations.
+Minor and major changes keep their existing additive and well-formedness rules.
+`vitest.config.contract.ts` only discovers the `*.ctest.ts` assertions and
+requires the staged environment.
 
 ## Integration tests
 
