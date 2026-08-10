@@ -10,13 +10,17 @@ export interface ApiExportReport {
   valueType?: string
   callSignatures: string[]
   constructSignatures: string[]
-  typeParameters: { hasDefault: boolean; constraint?: string }[]
+  typeParameters: {
+    hasDefault: boolean
+    constraint?: string
+    constraintReferences: string[]
+  }[]
   hasPrivateOrProtectedMembers: boolean
   isNamespace: boolean
 }
 
 export interface ApiReport {
-  formatVersion: 3
+  formatVersion: 4
   entrypoints: Record<string, Record<string, ApiExportReport>>
 }
 
@@ -117,6 +121,65 @@ function declarationsForSymbol(
   }
 }
 
+function referencedDeclarationsForNode(
+  node: ts.Node,
+  checker: ts.TypeChecker,
+  printer: ts.Printer,
+  packageDirectory: string,
+  ignoredSymbols: ReadonlySet<ts.Symbol>,
+): string[] {
+  const seen = new Set(ignoredSymbols)
+  const referenced = new Map<string, string>()
+
+  const visitSymbol = (candidate: ts.Symbol): void => {
+    const target =
+      candidate.flags & ts.SymbolFlags.Alias
+        ? checker.getAliasedSymbol(candidate)
+        : candidate
+    if (seen.has(target)) return
+    seen.add(target)
+
+    const declarations = target.getDeclarations() ?? []
+    if (
+      declarations.length === 0 ||
+      declarations.some(
+        (declaration) =>
+          !resolve(declaration.getSourceFile().fileName).startsWith(
+            `${resolve(packageDirectory)}/`,
+          ),
+      )
+    ) {
+      return
+    }
+
+    for (const declaration of declarations) {
+      const text = normalizeText(
+        printer.printNode(
+          ts.EmitHint.Unspecified,
+          declaration,
+          declaration.getSourceFile(),
+        ),
+        packageDirectory,
+      )
+      referenced.set(`${target.getName()}:${text}`, text)
+      ts.forEachChild(declaration, visitNode)
+    }
+  }
+
+  const visitNode = (candidate: ts.Node): void => {
+    if (ts.isIdentifier(candidate)) {
+      const symbol = checker.getSymbolAtLocation(candidate)
+      if (symbol) visitSymbol(symbol)
+    }
+    ts.forEachChild(candidate, visitNode)
+  }
+
+  visitNode(node)
+  return [...referenced.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([, text]) => text)
+}
+
 function normalizeTypeParameterExpression(
   node: ts.TypeNode,
   typeParameters: readonly ts.TypeParameterDeclaration[],
@@ -197,6 +260,13 @@ function reportExport(
       typeParameters: ts.NodeArray<ts.TypeParameterDeclaration>
     } => 'typeParameters' in candidate && Boolean(candidate.typeParameters),
   )
+  const genericTypeParameters = [...(genericDeclaration?.typeParameters ?? [])]
+  const genericTypeParameterSymbols = new Set(
+    genericTypeParameters.flatMap((parameter) => {
+      const parameterSymbol = checker.getSymbolAtLocation(parameter.name)
+      return parameterSymbol ? [parameterSymbol] : []
+    }),
+  )
   const classDeclaration = symbolDeclarations.find(ts.isClassDeclaration)
   const hasPrivateOrProtectedMembers = Boolean(
     classDeclaration &&
@@ -233,21 +303,28 @@ function reportExport(
           packageDirectory,
         ),
     ),
-    typeParameters: [...(genericDeclaration?.typeParameters ?? [])].map(
-      (parameter) => ({
-        hasDefault: Boolean(parameter.default),
-        ...(parameter.constraint
-          ? {
-              constraint: normalizeTypeParameterExpression(
-                parameter.constraint,
-                genericDeclaration?.typeParameters ?? [],
-                printer,
-                packageDirectory,
-              ),
-            }
-          : {}),
-      }),
-    ),
+    typeParameters: genericTypeParameters.map((parameter) => ({
+      hasDefault: Boolean(parameter.default),
+      constraintReferences: parameter.constraint
+        ? referencedDeclarationsForNode(
+            parameter.constraint,
+            checker,
+            printer,
+            packageDirectory,
+            genericTypeParameterSymbols,
+          )
+        : [],
+      ...(parameter.constraint
+        ? {
+            constraint: normalizeTypeParameterExpression(
+              parameter.constraint,
+              genericTypeParameters,
+              printer,
+              packageDirectory,
+            ),
+          }
+        : {}),
+    })),
     hasPrivateOrProtectedMembers,
     isNamespace,
   }
@@ -308,7 +385,7 @@ export function generateApiReport(packageDirectory: string): ApiReport {
     )
   }
 
-  return { formatVersion: 3, entrypoints }
+  return { formatVersion: 4, entrypoints }
 }
 
 if (import.meta.main) {

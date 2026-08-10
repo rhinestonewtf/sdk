@@ -91,6 +91,22 @@ describe('API compatibility report', () => {
     ])
   })
 
+  test('rejects changes to declarations referenced by generic constraints', () => {
+    const report = compare(
+      'type Options = { value?: string }; export type Box<T extends Options> = T',
+      'type Options = { value: string }; export type Box<T extends Options> = T',
+    )
+
+    expect(report.incompatible).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          symbol: '.:Box',
+          reasons: ['type parameter constraints changed'],
+        }),
+      ]),
+    )
+  })
+
   test('rejects incompatible relationships between generic parameters', () => {
     const report = compare(
       'export type Pair<A, B> = { first: A; second: B }',

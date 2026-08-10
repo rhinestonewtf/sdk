@@ -158,11 +158,14 @@ export function generateApiCompatibilityReport(options: {
       continue
     }
     if (
-      comparison.base.typeParameters.some(
-        (parameter, index) =>
-          parameter.constraint !==
-          comparison.current.typeParameters[index]?.constraint,
-      )
+      comparison.base.typeParameters.some((parameter, index) => {
+        const currentParameter = comparison.current.typeParameters[index]
+        return (
+          parameter.constraint !== currentParameter?.constraint ||
+          JSON.stringify(parameter.constraintReferences) !==
+            JSON.stringify(currentParameter?.constraintReferences)
+        )
+      })
     ) {
       incompatible.push(
         failure(comparison, ['type parameter constraints changed']),
