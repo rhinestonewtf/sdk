@@ -187,6 +187,26 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/app-fees/withdrawal-targets': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /**
+     * Get App-Fee Withdrawal Targets
+     * @description Get the enabled EVM chains and whitelisted stablecoins currently accepted for app-fee withdrawals.
+     */
+    get: operations['getAppFeeWithdrawalTargets']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/app-fees/withdrawals': {
     parameters: {
       query?: never
@@ -942,6 +962,16 @@ export interface operations {
                    */
                   token: string
                   /**
+                   * @description Token symbol. `null` when the internal token registry has no entry for this address.
+                   * @example USDC
+                   */
+                  symbol: string | null
+                  /**
+                   * @description Token decimals. `null` when the internal token registry has no entry for this address.
+                   * @example 6
+                   */
+                  decimals: number | null
+                  /**
                    * @description Token amount in base units
                    * @example 1000000
                    */
@@ -978,6 +1008,16 @@ export interface operations {
                    * @example 0x0b2c639c533813f4aa9d7837caf62653d097ff85
                    */
                   token: string
+                  /**
+                   * @description Token symbol. `null` when the internal token registry has no entry for this address.
+                   * @example USDC
+                   */
+                  symbol: string | null
+                  /**
+                   * @description Token decimals. `null` when the internal token registry has no entry for this address.
+                   * @example 6
+                   */
+                  decimals: number | null
                   /**
                    * @description Token amount in base units
                    * @example 1000000
@@ -1994,6 +2034,16 @@ export interface operations {
                * @example 0x0b2c639c533813f4aa9d7837caf62653d097ff85
                */
               token?: string
+              /**
+               * @description Token symbol. `null` when the internal token registry has no entry for this address.
+               * @example USDC
+               */
+              symbol?: string | null
+              /**
+               * @description Token decimals. `null` when the internal token registry has no entry for this address.
+               * @example 6
+               */
+              decimals?: number | null
               /**
                * @description Intent value in base units — delivered on the destination chain, or spent for same-chain intents (which have no persisted delivery; for same-chain swaps this is the input, not the received amount).
                * @example 1000000
@@ -3479,7 +3529,7 @@ export interface operations {
              */
             amount?: string
             /**
-             * @description HyperCore balance class for this token request — 'spot' or 'perp'. Optional; defaults to 'perp' when destinationChainId is HyperCore. Rejected on every other destination.
+             * @description Which HyperCore balance receives this token request — 'spot' (the spot wallet) or 'perp' (the default perp dex's margin account). REQUIRED when destinationChainId is HyperCore, with no default: the two answers credit different accounts, so an unstated venue is rejected rather than guessed. Every tokenRequest in one intent must name the same venue. Rejected on every other destination.
              * @example spot
              * @enum {string}
              */
@@ -3544,9 +3594,9 @@ export interface operations {
             data: string
           }[]
           /**
-           * @description Execution calls to perform before the claim on each origin chain, keyed by chain ID. Max 10 ops per chain, max 5 chains.
+           * @description Execution calls to perform before the claim on each origin chain, keyed by CAIP-2 chain ID. Max 10 ops per chain, max 5 chains.
            * @example {
-           *       "8453": [
+           *       "eip155:8453": [
            *         {
            *           "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
            *           "value": "0",
@@ -3581,9 +3631,9 @@ export interface operations {
            * @example 100000
            */
           destinationGasLimit?: string
-          /** @description Account access list specifying which chains and tokens an account may access */
+          /** @description Account access list specifying which CAIP-2 chains and tokens an account may access */
           accountAccessList?: {
-            chainIds?: number[]
+            chainIds?: string[]
             tokens?: (
               | string
               | (
@@ -3616,6 +3666,14 @@ export interface operations {
                   | 'WSOL'
                 )
             )[]
+            /**
+             * @description Tokens keyed by CAIP-2 chain ID.
+             * @example {
+             *       "eip155:8453": [
+             *         "USDC"
+             *       ]
+             *     }
+             */
             chainTokens?: {
               [key: string]: (
                 | string
@@ -3650,13 +3708,21 @@ export interface operations {
                   )
               )[]
             }
+            /**
+             * @description Per-token maximum input amounts keyed by CAIP-2 chain ID.
+             * @example {
+             *       "eip155:8453": {
+             *         "USDC": "1000000"
+             *       }
+             *     }
+             */
             chainTokenAmounts?: {
               [key: string]: {
                 [key: string]: string
               }
             }
             exclude?: {
-              chainIds?: number[]
+              chainIds?: string[]
               tokens?: (
                 | string
                 | (
@@ -3689,6 +3755,14 @@ export interface operations {
                     | 'WSOL'
                   )
               )[]
+              /**
+               * @description Tokens keyed by CAIP-2 chain ID.
+               * @example {
+               *       "eip155:8453": [
+               *         "USDC"
+               *       ]
+               *     }
+               */
               chainTokens?: {
                 [key: string]: (
                   | string
@@ -3892,9 +3966,9 @@ export interface operations {
              */
             executionTokensReceived?: string[]
             /**
-             * @description Additional balances the quote should treat as available, beyond what is currently on the account. Use this to get a preliminary quote against funds you can produce by the time you submit — e.g. liquidity in a DeFi vault you will withdraw, an in-flight CEX deposit, or a parallel transfer from another wallet. Keyed by chain ID, then token address; amounts in the token's smallest unit.
+             * @description Additional balances the quote should treat as available, beyond what is currently on the account. Use this to get a preliminary quote against funds you can produce by the time you submit — e.g. liquidity in a DeFi vault you will withdraw, an in-flight CEX deposit, or a parallel transfer from another wallet. Keyed by CAIP-2 chain ID, then token address; amounts in the token's smallest unit.
              * @example {
-             *       "42161": {
+             *       "eip155:42161": {
              *         "0xaf88d065e77c8cC2239327C5EDb3A432268e5831": "500000000"
              *       }
              *     }
@@ -3905,7 +3979,7 @@ export interface operations {
               }
             }
             /**
-             * @description How to rank candidate plans. `cheapest` minimizes direct USD cost. `fastest` minimizes estimated fill time (with cost tiebreaker). `best` balances both via a notional- and time-weighted shadow fee.
+             * @description How to rank candidate plans. `cheapest` minimizes direct USD cost. `fastest` minimizes estimated fill time (with cost tiebreaker). `best` minimizes total USD given up: delivered-output forgone versus the best candidate, plus cost, plus the cost of waiting. Waiting is charged both in proportion to notional (0.8 bps per minute, modelling price risk on funds in flight) and as a flat $0.10 per minute independent of size, so small intents are ranked mostly on speed and large ones mostly on price. The two are equal at $1,250 of notional.
              * @example best
              * @enum {string}
              */
@@ -4743,6 +4817,12 @@ export interface operations {
            */
           amountOut?: string
           /**
+           * @description Which HyperCore balance receives this token request — 'spot' (the spot wallet) or 'perp' (the default perp dex's margin account). REQUIRED when destinationChainId is HyperCore, with no default: the two answers credit different accounts, so an unstated venue is rejected rather than guessed. Every tokenRequest in one intent must name the same venue. Rejected on every other destination.
+           * @example spot
+           * @enum {string}
+           */
+          balance?: 'spot' | 'perp'
+          /**
            * @description Account the route would execute against. Settlement layers filter on account type, so declaring it yields an estimate that matches what `POST /quotes` would plan. Defaults to `EOA` — the more restrictive of the two — so an undeclared caller is never shown smart-account-only routes.
            * @example SMART_ACCOUNT
            * @enum {string}
@@ -4818,7 +4898,7 @@ export interface operations {
               protocolFees?: boolean
             }
             /**
-             * @description How to rank candidate routes. `cheapest` minimizes USD cost, `fastest` minimizes fill time, `best` balances delivered output and speed.
+             * @description How to rank candidate routes. `cheapest` minimizes USD cost, `fastest` minimizes fill time, `best` minimizes total USD given up — delivered-output forgone, plus cost, plus the cost of waiting (0.8 bps/min of notional for price risk plus a flat $0.10/min). Mirrors the binding `/quotes` selector, so the recommended route agrees with the one you will be quoted.
              * @example best
              * @enum {string}
              */
@@ -5799,6 +5879,509 @@ export interface operations {
       }
     }
   }
+  getAppFeeWithdrawalTargets: {
+    parameters: {
+      query?: never
+      header: {
+        /** @description API version. Required; pinned to this document. */
+        'x-api-version': '2026-04.blanc'
+        /** @description API key. */
+        'x-api-key': string
+      }
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': {
+            targets: {
+              chainId: string
+              tokens: {
+                address: string
+                /** @enum {string} */
+                symbol: 'USDC' | 'USDT0' | 'USDT'
+                decimals: number
+              }[]
+            }[]
+          }
+        }
+      }
+      /** @description Validation error */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+              }
+        }
+      }
+      /** @description Missing or invalid API key */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+              }
+        }
+      }
+      /** @description API key scope denied */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+              }
+        }
+      }
+      /** @description Server error */
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+              }
+        }
+      }
+    }
+  }
   listAppFeeWithdrawals: {
     parameters: {
       query?: never
@@ -5825,7 +6408,7 @@ export interface operations {
               /** @enum {string} */
               status: 'PENDING' | 'COMPLETED' | 'FAILED'
               payoutUsd: number
-              targetChainId: number
+              targetChainId: string
               targetToken: string
               targetAmount: string
               payoutAddress: string
@@ -6320,7 +6903,7 @@ export interface operations {
     requestBody: {
       content: {
         'application/json': {
-          targetChainId: number
+          targetChainId: string
           targetToken: string
         }
       }
@@ -6834,7 +7417,7 @@ export interface operations {
             /** @enum {string} */
             status: 'PENDING' | 'COMPLETED' | 'FAILED'
             payoutUsd: number
-            targetChainId: number
+            targetChainId: string
             targetToken: string
             targetAmount: string
             payoutAddress: string
