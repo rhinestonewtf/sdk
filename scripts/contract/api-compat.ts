@@ -60,8 +60,18 @@ function packageSpecifier(packageName: string, entrypoint: string): string {
     : `${packageName}/${entrypoint.replace(/^\.\//, '')}`
 }
 
-function typeArguments(count: number, value: 'any' | 'never'): string {
-  return `<${Array.from({ length: count }, () => value).join(', ')}>`
+function typeArgumentProbes(count: number): string[] {
+  const probes = new Set<string>()
+  for (const primary of ['never', 'any'] as const) {
+    const secondary = primary === 'never' ? 'any' : 'never'
+    for (let index = 0; index < count; index++) {
+      const values = Array.from({ length: count }, (_, position) =>
+        position === index ? primary : secondary,
+      )
+      probes.add(`<${values.join(', ')}>`)
+    }
+  }
+  return [...probes]
 }
 
 function failure(
@@ -219,10 +229,9 @@ export function generateApiCompatibilityReport(options: {
           `${aliases.current}.${symbol}`,
         )
       } else {
-        for (const value of ['never', 'any'] as const) {
-          const argumentsText = typeArguments(count, value)
+        for (const argumentsText of typeArgumentProbes(count)) {
           addProbe(
-            `type<${value}>`,
+            `type${argumentsText}`,
             `${aliases.base}.${symbol}${argumentsText}`,
             `${aliases.current}.${symbol}${argumentsText}`,
           )

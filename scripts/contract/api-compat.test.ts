@@ -67,6 +67,23 @@ describe('API compatibility report', () => {
     expect(report.incompatible).toEqual([])
   })
 
+  test('rejects incompatible relationships between generic parameters', () => {
+    const report = compare(
+      'export type Pair<A, B> = { first: A; second: B }',
+      'export type Pair<A, B> = { first: B; second: A }',
+    )
+
+    expect(report.incompatible).toMatchObject([
+      {
+        symbol: '.:Pair',
+        reasons: expect.arrayContaining([
+          'type<never, any>: base is not assignable to current',
+          'type<never, any>: current is not assignable to base',
+        ]),
+      },
+    ])
+  })
+
   test('rejects mutable to readonly property changes', () => {
     const report = compare(
       'export interface Config { items: string[] }',
