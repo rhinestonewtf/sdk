@@ -11,9 +11,11 @@ export interface ApiExportReport {
   callSignatures: string[]
   constructSignatures: string[]
   typeParameters: {
-    hasDefault: boolean
+    isConst: boolean
     constraint?: string
     constraintReferences: string[]
+    default?: string
+    defaultReferences: string[]
   }[]
   hasPrivateOrProtectedMembers: boolean
   isNamespace: boolean
@@ -153,12 +155,14 @@ function referencedDeclarationsForNode(
     }
 
     for (const declaration of declarations) {
-      const text = normalizeText(
+      const declarationTypeParameters = typeParametersInScope(declaration)
+      const text = normalizeTypeParameterText(
         printer.printNode(
           ts.EmitHint.Unspecified,
           declaration,
           declaration.getSourceFile(),
         ),
+        declarationTypeParameters,
         packageDirectory,
       )
       referenced.set(`${target.getName()}:${text}`, text)
@@ -180,17 +184,27 @@ function referencedDeclarationsForNode(
     .map(([, text]) => text)
 }
 
-function normalizeTypeParameterExpression(
-  node: ts.TypeNode,
+function typeParametersInScope(
+  node: ts.Node,
+): readonly ts.TypeParameterDeclaration[] {
+  let current: ts.Node | undefined = node
+  while (current) {
+    if ('typeParameters' in current && current.typeParameters) {
+      return [
+        ...(current.typeParameters as ts.NodeArray<ts.TypeParameterDeclaration>),
+      ]
+    }
+    current = current.parent
+  }
+  return []
+}
+
+function normalizeTypeParameterText(
+  value: string,
   typeParameters: readonly ts.TypeParameterDeclaration[],
-  printer: ts.Printer,
   packageDirectory: string,
 ): string {
-  let text = printer.printNode(
-    ts.EmitHint.Unspecified,
-    node,
-    node.getSourceFile(),
-  )
+  let text = value
   for (const [index, parameter] of typeParameters.entries()) {
     const escapedName = parameter.name.text.replace(
       /[.*+?^${}()|[\]\\]/g,
@@ -202,6 +216,19 @@ function normalizeTypeParameterExpression(
     )
   }
   return normalizeText(text, packageDirectory)
+}
+
+function normalizeTypeParameterExpression(
+  node: ts.TypeNode,
+  typeParameters: readonly ts.TypeParameterDeclaration[],
+  printer: ts.Printer,
+  packageDirectory: string,
+): string {
+  return normalizeTypeParameterText(
+    printer.printNode(ts.EmitHint.Unspecified, node, node.getSourceFile()),
+    typeParameters,
+    packageDirectory,
+  )
 }
 
 function classHasPrivateOrProtectedMembers(
@@ -304,10 +331,23 @@ function reportExport(
         ),
     ),
     typeParameters: genericTypeParameters.map((parameter) => ({
-      hasDefault: Boolean(parameter.default),
+      isConst: Boolean(
+        parameter.modifiers?.some(
+          (modifier) => modifier.kind === ts.SyntaxKind.ConstKeyword,
+        ),
+      ),
       constraintReferences: parameter.constraint
         ? referencedDeclarationsForNode(
             parameter.constraint,
+            checker,
+            printer,
+            packageDirectory,
+            genericTypeParameterSymbols,
+          )
+        : [],
+      defaultReferences: parameter.default
+        ? referencedDeclarationsForNode(
+            parameter.default,
             checker,
             printer,
             packageDirectory,
@@ -318,6 +358,16 @@ function reportExport(
         ? {
             constraint: normalizeTypeParameterExpression(
               parameter.constraint,
+              genericTypeParameters,
+              printer,
+              packageDirectory,
+            ),
+          }
+        : {}),
+      ...(parameter.default
+        ? {
+            default: normalizeTypeParameterExpression(
+              parameter.default,
               genericTypeParameters,
               printer,
               packageDirectory,

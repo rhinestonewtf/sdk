@@ -107,6 +107,43 @@ describe('API compatibility report', () => {
     )
   })
 
+  test('accepts type parameter renames in constraint dependencies', () => {
+    const report = compare(
+      'type Options<K> = { value: K }; export type Box<T extends Options<string>> = T',
+      'type Options<Key> = { value: Key }; export type Box<T extends Options<string>> = T',
+    )
+
+    expect(report.incompatible).toEqual([])
+  })
+
+  test('rejects changed generic defaults', () => {
+    const report = compare(
+      'export type Box<T = string> = { value: T }',
+      'export type Box<T = number> = { value: T }',
+    )
+
+    expect(report.incompatible).toMatchObject([
+      {
+        symbol: '.:Box',
+        reasons: ['type parameter modifiers or defaults changed'],
+      },
+    ])
+  })
+
+  test('rejects removed const type parameter modifiers', () => {
+    const report = compare(
+      'export declare function define<const T>(value: T): T',
+      'export declare function define<T>(value: T): T',
+    )
+
+    expect(report.incompatible).toMatchObject([
+      {
+        symbol: '.:define',
+        reasons: ['type parameter modifiers or defaults changed'],
+      },
+    ])
+  })
+
   test('rejects incompatible relationships between generic parameters', () => {
     const report = compare(
       'export type Pair<A, B> = { first: A; second: B }',

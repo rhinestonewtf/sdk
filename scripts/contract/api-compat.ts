@@ -173,14 +173,18 @@ export function generateApiCompatibilityReport(options: {
       continue
     }
     if (
-      comparison.base.typeParameters.some(
-        (parameter, index) =>
-          parameter.hasDefault !==
-          comparison.current.typeParameters[index]?.hasDefault,
-      )
+      comparison.base.typeParameters.some((parameter, index) => {
+        const currentParameter = comparison.current.typeParameters[index]
+        return (
+          parameter.isConst !== currentParameter?.isConst ||
+          parameter.default !== currentParameter?.default ||
+          JSON.stringify(parameter.defaultReferences) !==
+            JSON.stringify(currentParameter?.defaultReferences)
+        )
+      })
     ) {
       incompatible.push(
-        failure(comparison, ['type parameter defaults changed']),
+        failure(comparison, ['type parameter modifiers or defaults changed']),
       )
       continue
     }
@@ -253,7 +257,7 @@ export function generateApiCompatibilityReport(options: {
         }
         if (
           comparison.base.typeParameters.every(
-            (parameter) => parameter.hasDefault,
+            (parameter) => parameter.default !== undefined,
           )
         ) {
           addProbe(
