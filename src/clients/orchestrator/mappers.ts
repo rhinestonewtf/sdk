@@ -25,13 +25,15 @@ import type {
   WireIntentStatusResponse,
   WirePortfolioResponse,
   WireQuote,
+  WireQuoteRequest,
   WireQuoteResponse,
+  WireSplitRequest,
   WireSplitResponse,
 } from './wire'
 
 export function mapIntentRequestToWire(
   input: OrchestratorIntentRequest,
-): unknown {
+): WireQuoteRequest {
   return serializeBigInts({
     account: input.account,
     destinationChainId: formatCaip2(input.destinationChainId),
@@ -152,7 +154,7 @@ export function mapPortfolioFromWire(value: unknown): OrchestratorPortfolio {
 
 export function mapSplitRequestToWire(
   input: OrchestratorSplitRequest,
-): unknown {
+): WireSplitRequest {
   return serializeBigInts({
     chainId: formatCaip2(input.chainId),
     tokens: input.tokens,
@@ -256,9 +258,7 @@ function mapAuthorizationToWire(authorization: SignedAuthorization): unknown {
   }
 }
 
-function mapAccessList(
-  input: OrchestratorIntentRequest['accountAccessList'],
-): unknown {
+function mapAccessList(input: OrchestratorIntentRequest['accountAccessList']) {
   if (!input) return undefined
   return {
     ...(input.chainIds ? { chainIds: input.chainIds.map(formatCaip2) } : {}),
@@ -290,13 +290,23 @@ function parseChainValue(value: string | number | undefined): number {
   return chainIdFromReference(parseCaip2(value))
 }
 
-function serializeBigInts(value: unknown): unknown {
-  if (typeof value === 'bigint') return value.toString()
-  if (Array.isArray(value)) return value.map(serializeBigInts)
+type SerializeBigInts<T> = T extends bigint
+  ? string
+  : T extends readonly (infer Item)[]
+    ? SerializeBigInts<Item>[]
+    : T extends object
+      ? { [Key in keyof T]: SerializeBigInts<T[Key]> }
+      : T
+
+function serializeBigInts<T>(value: T): SerializeBigInts<T> {
+  if (typeof value === 'bigint') return value.toString() as SerializeBigInts<T>
+  if (Array.isArray(value)) {
+    return value.map(serializeBigInts) as SerializeBigInts<T>
+  }
   if (value && typeof value === 'object') {
     return Object.fromEntries(
       Object.entries(value).map(([key, item]) => [key, serializeBigInts(item)]),
-    )
+    ) as SerializeBigInts<T>
   }
-  return value
+  return value as SerializeBigInts<T>
 }
