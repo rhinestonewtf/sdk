@@ -151,12 +151,12 @@ export function generateApiCompatibilityReport(options: {
       continue
     }
     if (
-      comparison.base.hasBivariantMethods ||
-      comparison.current.hasBivariantMethods
+      comparison.base.hasVarianceSensitiveDeclarations ||
+      comparison.current.hasVarianceSensitiveDeclarations
     ) {
       incompatible.push(
         failure(comparison, [
-          'declaration text changed for a type containing methods',
+          'declaration text changed for a variance-sensitive type',
         ]),
       )
       continue

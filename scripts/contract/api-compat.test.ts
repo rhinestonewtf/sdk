@@ -170,7 +170,7 @@ describe('API compatibility report', () => {
     expect(report.incompatible).toMatchObject([
       {
         symbol: '.:Handler',
-        reasons: ['declaration text changed for a type containing methods'],
+        reasons: ['declaration text changed for a variance-sensitive type'],
       },
     ])
   })
@@ -185,10 +185,38 @@ describe('API compatibility report', () => {
       expect.arrayContaining([
         expect.objectContaining({
           symbol: '.:Config',
-          reasons: ['declaration text changed for a type containing methods'],
+          reasons: ['declaration text changed for a variance-sensitive type'],
         }),
       ]),
     )
+  })
+
+  test('rejects constructor parameter narrowing', () => {
+    const report = compare(
+      'export declare class Handler { constructor(value: string | number) }',
+      'export declare class Handler { constructor(value: string) }',
+    )
+
+    expect(report.incompatible).toMatchObject([
+      {
+        symbol: '.:Handler',
+        reasons: ['declaration text changed for a variance-sensitive type'],
+      },
+    ])
+  })
+
+  test('rejects mutable to readonly property changes', () => {
+    const report = compare(
+      'export interface Config { value: string }',
+      'export interface Config { readonly value: string }',
+    )
+
+    expect(report.incompatible).toMatchObject([
+      {
+        symbol: '.:Config',
+        reasons: ['declaration text changed for a variance-sensitive type'],
+      },
+    ])
   })
 
   test('still compares function properties semantically', () => {
@@ -205,7 +233,7 @@ describe('API compatibility report', () => {
     ])
   })
 
-  test('rejects mutable to readonly property changes', () => {
+  test('rejects mutable to readonly array property changes', () => {
     const report = compare(
       'export interface Config { items: string[] }',
       'export interface Config { items: readonly string[] }',

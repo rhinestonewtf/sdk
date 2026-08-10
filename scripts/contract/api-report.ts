@@ -18,7 +18,7 @@ export interface ApiExportReport {
     defaultReferences: string[]
   }[]
   hasPrivateOrProtectedMembers: boolean
-  hasBivariantMethods: boolean
+  hasVarianceSensitiveDeclarations: boolean
   isNamespace: boolean
 }
 
@@ -261,7 +261,7 @@ function classHasPrivateOrProtectedMembers(
   })
 }
 
-function symbolHasBivariantMethods(
+function symbolHasVarianceSensitiveDeclarations(
   candidate: ts.Symbol,
   checker: ts.TypeChecker,
   packageDirectory: string,
@@ -288,12 +288,25 @@ function symbolHasBivariantMethods(
   }
 
   const visitNode = (node: ts.Node): boolean => {
-    if (ts.isMethodSignature(node) || ts.isMethodDeclaration(node)) return true
+    if (
+      ts.isMethodSignature(node) ||
+      ts.isMethodDeclaration(node) ||
+      ts.isConstructorDeclaration(node) ||
+      ts.isConstructSignatureDeclaration(node) ||
+      ts.isConstructorTypeNode(node) ||
+      (ts.isMappedTypeNode(node) && node.readonlyToken !== undefined) ||
+      ((ts.isPropertySignature(node) ||
+        ts.isPropertyDeclaration(node) ||
+        ts.isIndexSignatureDeclaration(node)) &&
+        ts.getCombinedModifierFlags(node) & ts.ModifierFlags.Readonly)
+    ) {
+      return true
+    }
     if (ts.isIdentifier(node)) {
       const referencedSymbol = checker.getSymbolAtLocation(node)
       if (
         referencedSymbol &&
-        symbolHasBivariantMethods(
+        symbolHasVarianceSensitiveDeclarations(
           referencedSymbol,
           checker,
           packageDirectory,
@@ -425,7 +438,7 @@ function reportExport(
         : {}),
     })),
     hasPrivateOrProtectedMembers,
-    hasBivariantMethods: symbolHasBivariantMethods(
+    hasVarianceSensitiveDeclarations: symbolHasVarianceSensitiveDeclarations(
       symbol,
       checker,
       packageDirectory,

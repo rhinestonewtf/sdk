@@ -41,10 +41,10 @@ offline. The command validates:
 - patch releases keep the exact declared export inventory and require changed
   public types to be mutually assignable with the packed release. Text-equal
   symbols take a fast path; generic types use representative `never`, `any`, and
-  default instantiations. Namespaces, types containing method syntax (whose
-  parameters TypeScript checks bivariantly), and classes with private or
-  protected members (including inherited members) keep their declarations and
-  referenced declarations text-strict;
+  default instantiations. Namespaces, variance-sensitive declarations (method
+  or constructor syntax and readonly object properties), and classes with
+  private or protected members (including inherited members) keep their
+  declarations and referenced declarations text-strict;
 - representative consumer projects type-check configurations, selected root
   APIs, and every published subpath against both packages
   (`test/contract/fixtures/consumer.ts`). Type-only root exports must be imported
