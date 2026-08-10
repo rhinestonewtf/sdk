@@ -144,7 +144,7 @@ function resolveTokenAddress(
   token: TokenSymbol | Address,
   chainId: number,
 ): Address {
-  if (isAddress(token)) {
+  if (isAddress(token, { strict: false })) {
     return token
   }
   return getTokenAddress(token, chainId)

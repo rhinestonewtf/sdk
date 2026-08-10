@@ -1,5 +1,5 @@
 import { zeroAddress } from 'viem'
-import { arbitrum, base, mainnet, optimism } from 'viem/chains'
+import { arbitrum, base, mainnet, optimism, sepolia } from 'viem/chains'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { accountA } from '../../test/consts'
 import * as validators from '../modules/validators'
@@ -15,6 +15,7 @@ import {
 import type { RhinestoneConfig, SessionSignerSet, SignerSet } from '../types'
 import {
   hashErc7739TypedDataForSolady,
+  parseCalls,
   prepareTransactionAsIntent,
   resolveSessionForChain,
   resolveSignatureMode,
@@ -140,6 +141,20 @@ describe('hashErc7739TypedDataForSolady', () => {
     expect(hashCrossChain).toEqual(
       '0x685f60853ef1d5fcbb3021db370b6f3c1c099f1fb42f08f9ba4e6b9b7c8c941a',
     )
+  })
+})
+
+describe('parseCalls', () => {
+  test('accepts a mis-checksummed call target', () => {
+    const target = '0x035ae6188AC22ab79B5018039DFbDA4FFE7990e9'
+
+    expect(parseCalls([{ to: target }], sepolia.id)).toEqual([
+      {
+        data: '0x',
+        value: 0n,
+        to: target,
+      },
+    ])
   })
 })
 
