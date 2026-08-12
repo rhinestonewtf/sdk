@@ -23,6 +23,7 @@ import type {
   OrchestratorSplitResult,
 } from './types'
 import type {
+  WireIntentRequest,
   WireIntentStatusResponse,
   WirePortfolioResponse,
   WireQuote,
@@ -75,7 +76,7 @@ export function mapQuoteResponseFromWire(
 
 export function mapSignedIntentToWire(
   input: OrchestratorSignedIntent,
-): unknown {
+): WireIntentRequest {
   return serializeBigInts({
     intentId: input.intentId,
     signatures: input.signatures,
@@ -252,15 +253,29 @@ function mapBridgeFillFromWire(
   return bridgeFill as BridgeFill
 }
 
-function mapAuthorizationToWire(authorization: SignedAuthorization): unknown {
+type WireAuthorization = NonNullable<
+  NonNullable<WireIntentRequest['authorizations']>['sponsor']
+>[number]
+
+function mapAuthorizationToWire(
+  authorization: SignedAuthorization,
+): WireAuthorization {
   return {
-    chainId: formatCaip2(authorization.chainId),
+    chainId: mapAuthorizationChainIdToWire(authorization.chainId),
     address: authorization.address,
     nonce: authorization.nonce,
     yParity: authorization.yParity ?? 0,
     r: authorization.r,
     s: authorization.s,
   }
+}
+
+function mapAuthorizationChainIdToWire(chainId: number): 0 | string {
+  if (chainId === 0) return 0
+  if (!Number.isSafeInteger(chainId) || chainId < 0) {
+    throw new RangeError(`Invalid EIP-7702 authorization chain ID: ${chainId}`)
+  }
+  return `eip155:${chainId}`
 }
 
 function mapAccessList(input: OrchestratorIntentRequest['accountAccessList']) {
