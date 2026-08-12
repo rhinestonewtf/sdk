@@ -99,13 +99,16 @@ describe('mapSignedIntentToWire', () => {
     ['negative', -1],
     ['fractional', 1.5],
     ['unsafe', Number.MAX_SAFE_INTEGER + 1],
+    ['HyperCore L1', 1337],
+    ['HyperCore spot', 1337001],
+    ['HyperCore perp', 1337002],
+    ['Tron', 728126428],
+    ['Solana', 792703809],
   ])('rejects %s authorization chain IDs', (_name, chainId) => {
     expect(() =>
       mapSignedIntentToWire(
         signedIntent({ sponsor: [authorization(chainId)] }),
       ),
-    ).toThrow(
-      new RangeError(`Invalid EIP-7702 authorization chain ID: ${chainId}`),
-    )
+    ).toThrow(new Error(`Invalid EIP-7702 authorization chain ID: ${chainId}`))
   })
 })

@@ -2,6 +2,8 @@ import type { Address, SignedAuthorization } from 'viem'
 import {
   chainIdFromReference,
   formatCaip2,
+  isHyperCoreWireId,
+  isNonEvmChainId,
   parseCaip2,
 } from '../../chains/caip2'
 import type {
@@ -24,6 +26,7 @@ import type {
 } from './types'
 import type {
   WireIntentRequest,
+  WireIntentRequestInternal,
   WireIntentStatusResponse,
   WirePortfolioResponse,
   WireQuote,
@@ -76,7 +79,7 @@ export function mapQuoteResponseFromWire(
 
 export function mapSignedIntentToWire(
   input: OrchestratorSignedIntent,
-): WireIntentRequest {
+): WireIntentRequestInternal {
   return serializeBigInts({
     intentId: input.intentId,
     signatures: input.signatures,
@@ -270,10 +273,17 @@ function mapAuthorizationToWire(
   }
 }
 
-function mapAuthorizationChainIdToWire(chainId: number): 0 | string {
+function mapAuthorizationChainIdToWire(
+  chainId: number,
+): 0 | `eip155:${number}` {
   if (chainId === 0) return 0
-  if (!Number.isSafeInteger(chainId) || chainId < 0) {
-    throw new RangeError(`Invalid EIP-7702 authorization chain ID: ${chainId}`)
+  if (
+    !Number.isSafeInteger(chainId) ||
+    chainId < 0 ||
+    isHyperCoreWireId(chainId) ||
+    isNonEvmChainId(chainId)
+  ) {
+    throw new Error(`Invalid EIP-7702 authorization chain ID: ${chainId}`)
   }
   return `eip155:${chainId}`
 }

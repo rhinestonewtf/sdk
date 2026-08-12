@@ -25,6 +25,10 @@ type Folded<Body> = Body & { readonly traceId?: string }
 
 export type WireQuoteRequest = JsonRequest<'createQuote'>
 export type WireIntentRequest = JsonRequest<'createIntent'>
+// The orchestrator consumes this internal simulation flag outside the public schema.
+export type WireIntentRequestInternal = WireIntentRequest & {
+  readonly options?: { readonly dryRun?: boolean }
+}
 export type WireSplitRequest = JsonRequest<'getSplit'>
 export type WireQuoteResponse = Folded<JsonResponse<'createQuote'>>
 export type WireQuote = WireQuoteResponse['routes'][number]
