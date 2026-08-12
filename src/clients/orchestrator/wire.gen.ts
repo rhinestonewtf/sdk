@@ -304,6 +304,22 @@ export interface operations {
                 address: string
                 decimals: number
               }
+              /** @description The chain's gas asset. Lets a client name a native-value transfer without assuming ETH — a wallet on a non-ETH chain would otherwise label AVAX or BNB as ETH in every review and receipt. */
+              nativeToken: {
+                symbol: string
+                /** @description Token contract address (format depends on the chain) */
+                address: string
+                decimals: number
+              }
+              /** @description Block explorer, or null for a chain that has none. Lets a client link a transaction on a chain it was never compiled against, instead of bundling a per-chain URL table. */
+              explorer: {
+                /** @example https://basescan.org */
+                url: string
+                /** @example /address/ */
+                addressPath: string
+                /** @example /tx/ */
+                txPath: string
+              } | null
             }
           }
         }
@@ -2470,13 +2486,9 @@ export interface operations {
             targetExecution?: string
           }
           authorizations?: {
-            /** @description EIP-7702 authorizations signed by the sponsor account. Each entry `chainId` is a CAIP-2 string (e.g. `eip155:8453`); the `0` any-chain sentinel is sent as a number. */
+            /** @description EIP-7702 authorizations signed by the sponsor account. Each chain ID is either a concrete eip155 CAIP-2 string or numeric 0 for an authorization valid on any chain. */
             sponsor?: {
-              /**
-               * @description Chain ID for EIP-7702 delegation, 0 means it can be applied to any chain
-               * @example 8453
-               */
-              chainId: number
+              chainId: 0 | string
               /**
                * @description Address of the delegate for EIP-7702 delegation
                * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
@@ -2503,13 +2515,9 @@ export interface operations {
                */
               s: string
             }[]
-            /** @description EIP-7702 authorizations signed by the recipient account. Each entry `chainId` is a CAIP-2 string (e.g. `eip155:8453`); the `0` any-chain sentinel is sent as a number. */
+            /** @description EIP-7702 authorizations signed by the recipient account. Each chain ID is either a concrete eip155 CAIP-2 string or numeric 0 for an authorization valid on any chain. */
             recipient?: {
-              /**
-               * @description Chain ID for EIP-7702 delegation, 0 means it can be applied to any chain
-               * @example 8453
-               */
-              chainId: number
+              chainId: 0 | string
               /**
                * @description Address of the delegate for EIP-7702 delegation
                * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
@@ -3528,12 +3536,7 @@ export interface operations {
              * @example 1000000
              */
             amount?: string
-            /**
-             * @description Which HyperCore balance receives this token request — 'spot' (the spot wallet) or 'perp' (the default perp dex's margin account). REQUIRED when destinationChainId is HyperCore, with no default: the two answers credit different accounts, so an unstated venue is rejected rather than guessed. Every tokenRequest in one intent must name the same venue. Rejected on every other destination.
-             * @example spot
-             * @enum {string}
-             */
-            balance?: 'spot' | 'perp'
+            readonly balance?: unknown
           }[]
           /** @description Account details */
           account: {
@@ -3660,6 +3663,7 @@ export interface operations {
                   | 'AVAX'
                   | 'WAVAX'
                   | 'MockUSD'
+                  | 'ensUSDC'
                   | 'TRX'
                   | 'WTRX'
                   | 'SOL'
@@ -3701,6 +3705,7 @@ export interface operations {
                     | 'AVAX'
                     | 'WAVAX'
                     | 'MockUSD'
+                    | 'ensUSDC'
                     | 'TRX'
                     | 'WTRX'
                     | 'SOL'
@@ -3749,6 +3754,7 @@ export interface operations {
                     | 'AVAX'
                     | 'WAVAX'
                     | 'MockUSD'
+                    | 'ensUSDC'
                     | 'TRX'
                     | 'WTRX'
                     | 'SOL'
@@ -3790,6 +3796,7 @@ export interface operations {
                       | 'AVAX'
                       | 'WAVAX'
                       | 'MockUSD'
+                      | 'ensUSDC'
                       | 'TRX'
                       | 'WTRX'
                       | 'SOL'
@@ -4795,7 +4802,7 @@ export interface operations {
            */
           sourceToken: string
           /**
-           * @description Destination chain id (CAIP-2), matching the destinations `POST /quotes` accepts: EVM (`eip155:*`), the virtual `hypercore:mainnet`, or non-EVM `solana:…` / `tron:…`.
+           * @description Destination chain id (CAIP-2), matching the destinations `POST /quotes` accepts: EVM (`eip155:*`), a virtual HyperCore delivery venue (`hypercore:spot` or `hypercore:perp`), or non-EVM `solana:…` / `tron:…`.
            * @example eip155:42161
            */
           destinationChainId: string
@@ -4816,12 +4823,6 @@ export interface operations {
            * @example 1000000
            */
           amountOut?: string
-          /**
-           * @description Which HyperCore balance receives this token request — 'spot' (the spot wallet) or 'perp' (the default perp dex's margin account). REQUIRED when destinationChainId is HyperCore, with no default: the two answers credit different accounts, so an unstated venue is rejected rather than guessed. Every tokenRequest in one intent must name the same venue. Rejected on every other destination.
-           * @example spot
-           * @enum {string}
-           */
-          balance?: 'spot' | 'perp'
           /**
            * @description Account the route would execute against. Settlement layers filter on account type, so declaring it yields an estimate that matches what `POST /quotes` would plan. Defaults to `EOA` — the more restrictive of the two — so an undeclared caller is never shown smart-account-only routes.
            * @example SMART_ACCOUNT
@@ -4920,6 +4921,7 @@ export interface operations {
               feeBps: number
             }
           }
+          readonly balance?: unknown
         }
       }
     }
@@ -6407,6 +6409,8 @@ export interface operations {
               requestNonce: string
               /** @enum {string} */
               status: 'PENDING' | 'COMPLETED' | 'FAILED'
+              grossUsd: number | null
+              cutBps: number | null
               payoutUsd: number
               targetChainId: string
               targetToken: string
@@ -7416,6 +7420,8 @@ export interface operations {
             requestNonce: string
             /** @enum {string} */
             status: 'PENDING' | 'COMPLETED' | 'FAILED'
+            grossUsd: number | null
+            cutBps: number | null
             payoutUsd: number
             targetChainId: string
             targetToken: string
