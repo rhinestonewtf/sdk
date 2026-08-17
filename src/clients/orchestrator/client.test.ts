@@ -157,6 +157,12 @@ describe('orchestrator client', () => {
           Authorization: 'Bearer access',
           'X-Intent-Extension': 'Bearer extension',
         })
+        expect(JSON.parse(String(init?.body))).toMatchObject({
+          authorizations: {
+            sponsor: [{ chainId: 'eip155:8453' }],
+            recipient: [{ chainId: 0 }],
+          },
+        })
         return Response.json({ intentId: 'intent-1' })
       },
     )
@@ -174,6 +180,28 @@ describe('orchestrator client', () => {
       {
         intentId: 'intent-1',
         signatures: { origin: [], destination: '0x' },
+        authorizations: {
+          sponsor: [
+            {
+              chainId: 8453,
+              address,
+              nonce: 1,
+              yParity: 0,
+              r: '0x01',
+              s: '0x02',
+            },
+          ],
+          recipient: [
+            {
+              chainId: 0,
+              address,
+              nonce: 2,
+              yParity: 1,
+              r: '0x03',
+              s: '0x04',
+            },
+          ],
+        },
       },
       { intentInput: serializedIntentInput, sponsored: true },
     )
