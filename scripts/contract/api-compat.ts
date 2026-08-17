@@ -3,6 +3,7 @@ import { join, resolve } from 'node:path'
 import ts from 'typescript'
 import type { ApiExportReport, ApiReport } from './api-report.ts'
 import { writeJson } from './shared.ts'
+import { createContractProgram } from './ts-program.ts'
 
 export interface ApiCompatibilityFailure {
   symbol: string
@@ -354,24 +355,7 @@ export function generateApiCompatibilityReport(options: {
 
   const fixturePath = join(options.consumerDirectory, 'api-compat.generated.ts')
   writeFileSync(fixturePath, `${source.join('\n')}\n`)
-  const program = ts.createProgram([fixturePath], {
-    target: ts.ScriptTarget.ES2022,
-    module: ts.ModuleKind.NodeNext,
-    moduleResolution: ts.ModuleResolutionKind.NodeNext,
-    strict: true,
-    skipLibCheck: true,
-    noEmit: true,
-  })
-  const diagnostics = ts.getPreEmitDiagnostics(program)
-  if (diagnostics.length > 0) {
-    throw new Error(
-      ts.formatDiagnosticsWithColorAndContext(diagnostics, {
-        getCanonicalFileName: (fileName) => fileName,
-        getCurrentDirectory: () => process.cwd(),
-        getNewLine: () => '\n',
-      }),
-    )
-  }
+  const program = createContractProgram([fixturePath])
 
   const fixture = program.getSourceFile(resolve(fixturePath))
   if (!fixture)

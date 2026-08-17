@@ -1,6 +1,7 @@
 import { resolve } from 'node:path'
 import ts from 'typescript'
 import { type PackageManifest, readJson, writeJson } from './shared.ts'
+import { createContractProgram } from './ts-program.ts'
 
 export interface ApiExportReport {
   hasType: boolean
@@ -507,24 +508,7 @@ export function generateApiReport(packageDirectory: string): ApiReport {
   const entryFiles = Object.values(manifest.exports).map((target) =>
     resolve(packageDirectory, target.types),
   )
-  const program = ts.createProgram(entryFiles, {
-    target: ts.ScriptTarget.ES2022,
-    module: ts.ModuleKind.NodeNext,
-    moduleResolution: ts.ModuleResolutionKind.NodeNext,
-    strict: true,
-    skipLibCheck: true,
-    noEmit: true,
-  })
-  const diagnostics = ts.getPreEmitDiagnostics(program)
-  if (diagnostics.length > 0) {
-    throw new Error(
-      ts.formatDiagnosticsWithColorAndContext(diagnostics, {
-        getCanonicalFileName: (fileName) => fileName,
-        getCurrentDirectory: () => process.cwd(),
-        getNewLine: () => '\n',
-      }),
-    )
-  }
+  const program = createContractProgram(entryFiles)
 
   const checker = program.getTypeChecker()
   const printer = ts.createPrinter({ removeComments: true })
