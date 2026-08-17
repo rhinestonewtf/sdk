@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 2.2.4
+
+### Patch Changes
+
+- 76e6e86: Submit EIP-7702 any-chain authorizations with the numeric zero sentinel while encoding concrete chain IDs as eip155 identifiers.
+
 ## 2.2.3
 
 ### Patch Changes
