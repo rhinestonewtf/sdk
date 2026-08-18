@@ -1,4 +1,4 @@
-import { decodeAbiParameters, size } from 'viem'
+import { decodeAbiParameters, maxUint48, size } from 'viem'
 import { describe, expect, test } from 'vitest'
 import {
   accountA,
@@ -194,6 +194,37 @@ describe('validator resolution', () => {
         owners: [{ ...passkey.owners[0], kind: 'ecdsa' }],
       } as AtomicValidatorDefinition),
     ).toThrow('non-WebAuthn owner')
+  })
+
+  test('sorts ENS owners by address regardless of input order', () => {
+    const ens = validator({
+      type: 'ens',
+      owners: [{ account: accountA }, { account: accountB }],
+      threshold: 2,
+    }) as AtomicValidatorDefinition
+    const [threshold, owners] = decodeAbiParameters(
+      [
+        { name: 'threshold', type: 'uint256' },
+        {
+          name: 'owners',
+          type: 'tuple[]',
+          components: [
+            { name: 'addr', type: 'address' },
+            { name: 'expiration', type: 'uint48' },
+          ],
+        },
+      ],
+      resolveEnsValidator(ens).initData,
+    )
+    expect(threshold).toBe(2n)
+    expect(owners.map((owner) => owner.addr)).toEqual([
+      accountB.address,
+      accountA.address,
+    ])
+    expect(owners.map((owner) => owner.expiration)).toEqual([
+      Number(maxUint48),
+      Number(maxUint48),
+    ])
   })
 
   test('parses every supported WebAuthn public-key representation', () => {

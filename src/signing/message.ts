@@ -90,7 +90,7 @@ export async function signAccountMessage(input: {
   return { signature, transcript }
 }
 
-function assembleMessageStage(
+export function assembleMessageStage(
   input: SigningStageAssemblyInput,
   context: SigningContext,
 ): Readonly<Record<string, Hex>> {

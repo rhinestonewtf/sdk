@@ -17,7 +17,7 @@ import {
   signAuthorizationList,
   signNexusEip7702Init,
 } from './eip7702'
-import { signAccountMessage } from './message'
+import { assembleMessageStage, signAccountMessage } from './message'
 import {
   createSessionEnableSigningPlan,
   signSessionEnablement,
@@ -484,6 +484,26 @@ describe('direct rewritten signing pipelines', () => {
     })
   })
 
+  test('guards message assembly against artifacts the plan cannot produce', () => {
+    // Plan validation rejects both shapes upstream, so the stage is synthesized
+    // here to pin the assembler's own invariants.
+    const assemblyInput = (artifacts: unknown[]) =>
+      ({ stagePlan: { artifacts } }) as unknown as Parameters<
+        typeof assembleMessageStage
+      >[0]
+    expect(() =>
+      assembleMessageStage(assemblyInput([]), signingContext()),
+    ).toThrow('Message plan has no artifact')
+    expect(() =>
+      assembleMessageStage(
+        assemblyInput([
+          { id: 'message-signature', erc7739: { kind: 'wrap-typed-data' } },
+        ]),
+        signingContext(),
+      ),
+    ).toThrow('ERC-7739 is not a message-signing operation')
+  })
+
   test('attributes artifact assembly failures to their exact step', async () => {
     const cause = new Error('account codec failed')
     await expect(
@@ -735,6 +755,52 @@ describe('direct rewritten signing pipelines', () => {
     })
     expect(result.authorizations).toEqual([authorization])
     expect(invoke).toHaveBeenCalledTimes(1)
+  })
+
+  test('rejects direct signing results that are not ECDSA signatures', async () => {
+    await expect(
+      signNexusEip7702Init({
+        planInput: { typedData, signer: { id: 'owner', kind: 'ecdsa' } },
+        signerInvoker: {
+          has: () => true,
+          invoke: async () => ({
+            kind: 'signed-authorization' as const,
+            authorization: {
+              address: account,
+              chainId: 1,
+              nonce: 0,
+              r: `0x${'66'.repeat(32)}` as Hex,
+              s: `0x${'77'.repeat(32)}` as Hex,
+              yParity: 0 as const,
+            },
+          }),
+        },
+        checkpoints: noReads,
+      }),
+    ).rejects.toMatchObject({
+      cause: {
+        message: 'Direct signing task did not return an ECDSA signature',
+      },
+    })
+  })
+
+  test('collects only signed authorizations from the authorization list', async () => {
+    const result = await signAuthorizationList({
+      planInput: {
+        account,
+        contract: validator,
+        chains: [chain],
+        signer: { id: 'wallet', kind: 'wallet-authorization' },
+        nonceByChain: { 1: 0 },
+      },
+      signerInvoker: signerInvoker(),
+      checkpoints: {
+        read: async (checkpoint) => [
+          { kind: 'delegation-code', id: checkpoint.id, code: '0x' },
+        ],
+      },
+    })
+    expect(result.authorizations).toEqual([])
   })
 
   test('skips authorization tasks for chains already delegated', async () => {

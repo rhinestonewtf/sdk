@@ -176,6 +176,39 @@ describe('account adapter contract', () => {
     // Only the implementation + factory differ; the bootstrap is identical.
     expect(previous.factoryData).toBe(current.factoryData)
     expect(previous.initializationCallData).toBe(current.initializationCallData)
+
+    // Persisted factory material recomputes against the implementation its own
+    // factory deploys, not the current default.
+    const reconstructed = nexusMaterial({
+      ...construction(inputs.nexus),
+      initData: {
+        address: previous.address,
+        factory: previous.factory as `0x${string}`,
+        factoryData: previous.factoryData as `0x${string}`,
+        intentExecutorInstalled: true,
+      },
+    })
+    expect(reconstructed.implementation).toBe(previous.implementation)
+    expect(reconstructed.address).toBe(previous.address)
+  })
+
+  test('Nexus falls back to the zero validator and rejects address-only 7702 adoption', () => {
+    const original = construction(inputs.nexus)
+    const withoutValidators = {
+      ...original,
+      setup: { ...original.setup, validators: [] },
+    } satisfies AccountConstruction
+    expect(
+      createNexusAdapter(withoutValidators).capabilities.signatureEnvelope,
+    ).toEqual({ kind: 'nexus', validator: zeroAddress })
+
+    const addressOnly = {
+      ...original,
+      initData: { address: accountB.address },
+    } satisfies AccountConstruction
+    expect(() =>
+      createNexusAdapter(original).getEip7702AdoptionPlan?.(addressOnly),
+    ).toThrow('Nexus EIP-7702 initialization data is unavailable')
   })
 
   test('EOA enforces its required account and unsupported operations', () => {
