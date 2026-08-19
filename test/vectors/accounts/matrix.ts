@@ -42,6 +42,8 @@ const passkeyC = passkey('vector:c')
 // Arbitrary but fixed addresses: they only need to be stable derivation inputs.
 const VALIDATOR_OVERRIDE = '0x00000000000000000000000000000000000000a1'
 const PASSKEY_VALIDATOR_OVERRIDE = '0x00000000000000000000000000000000000000a2'
+const MULTI_FACTOR_VALIDATOR_OVERRIDE =
+  '0x00000000000000000000000000000000000000a6'
 const SESSION_MODULE_OVERRIDE = '0x00000000000000000000000000000000000000a3'
 const COMPATIBILITY_FALLBACK_OVERRIDE =
   '0x00000000000000000000000000000000000000a4'
@@ -51,6 +53,7 @@ const CUSTOM_EXECUTOR = '0x00000000000000000000000000000000000000b2'
 const CUSTOM_HOOK = '0x00000000000000000000000000000000000000b3'
 const CUSTOM_FALLBACK = '0x00000000000000000000000000000000000000b4'
 const PINNED_ADDRESS = '0x00000000000000000000000000000000000000c1'
+const ENS_EXPIRATION = new Date('2030-01-01T00:00:00.000Z')
 
 const ecdsa = {
   type: 'ecdsa',
@@ -283,6 +286,35 @@ const ownerVariants: VectorCase[] = [
         { type: 'ecdsa', accounts: [accountA] },
         { type: 'ens', owners: [{ account: accountB }] },
       ],
+    },
+  }),
+  deployment('nexus-multi-factor-threshold-2', {
+    account: { type: 'nexus' },
+    owners: {
+      type: 'multi-factor',
+      validators: [
+        { type: 'ecdsa', accounts: [accountA] },
+        { type: 'passkey', accounts: [passkeyAccount] },
+      ],
+      threshold: 2,
+    },
+  }),
+  deployment('nexus-multi-factor-module-override', {
+    account: { type: 'nexus' },
+    owners: {
+      type: 'multi-factor',
+      validators: [
+        { type: 'ecdsa', accounts: [accountA] },
+        { type: 'passkey', accounts: [passkeyAccount] },
+      ],
+      module: MULTI_FACTOR_VALIDATOR_OVERRIDE,
+    },
+  }),
+  deployment('nexus-ens-expiration', {
+    account: { type: 'nexus' },
+    owners: {
+      type: 'ens',
+      owners: [{ account: accountA, expiration: ENS_EXPIRATION }],
     },
   }),
 ]

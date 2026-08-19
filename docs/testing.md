@@ -36,7 +36,7 @@ so it must never happen by accident.
 `matrix.ts` enumerates one case per address-affecting axis: every account type
 with every owner type, account variants (adapter, version, salt, nonce, custom
 factory), owner variants (multi-owner, thresholds, module overrides,
-multi-factor, ENS), sessions, recovery, custom modules, caller-pinned init data,
+multi-factor, ENS, ENS owner expiry), sessions, recovery, custom modules, caller-pinned init data,
 EOA and EIP-7702 accounts, and the legacy v0 reconstruction path. Each case pins
 `address`, `factory`, and the `factoryData` hash in `account-deployment.json`;
 cases that only pass an address through pin the address alone. Both derivation

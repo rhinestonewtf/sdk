@@ -102,6 +102,12 @@
       "factoryDataHash": "0xf8a3a6a94b1e1b92ec56bbf27d239611d9f6fecd542ff8942abe229b98d37b88"
     },
     {
+      "id": "nexus-ens-expiration",
+      "address": "0xe76d3354D461752Faa54d6245C57F22d8760b985",
+      "factory": "0x0000000099d5576c73a3b190dabeeaa0f128ce6b",
+      "factoryDataHash": "0x9a378318af2fb71e2758e7345a195696db479d2bb2c459adbcad175b1893bf1c"
+    },
+    {
       "id": "nexus-ens-multi",
       "address": "0xB5756D866D3FA50c1af13c31aA0125F8ED7a04Bb",
       "factory": "0x0000000099d5576c73a3b190dabeeaa0f128ce6b",
@@ -160,6 +166,18 @@
       "address": "0x3Da8246511eb3218531687153e2247AE66Be679d",
       "factory": "0x0000000099d5576c73a3b190dabeeaa0f128ce6b",
       "factoryDataHash": "0xdbf049fbd821984af4e5c36eaffb7d7396d4199a4881c0292f940e33d9d8edc5"
+    },
+    {
+      "id": "nexus-multi-factor-module-override",
+      "address": "0x150E73e7511E5d69046Eb37C69f9b10b5f6F0B6f",
+      "factory": "0x0000000099d5576c73a3b190dabeeaa0f128ce6b",
+      "factoryDataHash": "0x6c712ffc62fe28816b04ba33fcb3cc5f76765759e091b5300e4f2c63a37dce7c"
+    },
+    {
+      "id": "nexus-multi-factor-threshold-2",
+      "address": "0xc692A5228840ddc31cd3B6A4a5Fce0f284914276",
+      "factory": "0x0000000099d5576c73a3b190dabeeaa0f128ce6b",
+      "factoryDataHash": "0x483b3ddeccc40bddd0a68747522b4a20463b4492b48b3cd89bf1a53656e05d24"
     },
     {
       "id": "nexus-passkey-module-override",
