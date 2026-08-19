@@ -41,6 +41,18 @@
       "address": "0x97068bf8c80ba2971a236f55d01becc090d22ef2",
       "factory": "0x358680728dedb552adaa9f5eb5d4395b291cf943",
       "factoryDataHash": "0xc2a5ea9f0f0cd5ca05419494bb1d08eca99190ad4d43d9349e61ae92f4448c09"
+    },
+    {
+      "id": "nexus-passkey-single",
+      "address": "0x68484B775e4a2828A50C7404ce8530f146d5598e",
+      "factory": "0x0000000099d5576c73a3b190dabeeaa0f128ce6b",
+      "factoryDataHash": "0x8a379c1110f143d10cf88de7af5edfac4bacf03f63bc18de412ebd49d157d4e1"
+    },
+    {
+      "id": "nexus-passkey-multi",
+      "address": "0x0fAcFCB27c608DE3530bF7fEd87806c451181119",
+      "factory": "0x0000000099d5576c73a3b190dabeeaa0f128ce6b",
+      "factoryDataHash": "0x3cd697ee5c465154221ebd497183f07ca151a7b3e13d0fd136dff1dce6d6d40e"
     }
   ]
 }

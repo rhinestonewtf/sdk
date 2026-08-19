@@ -7,14 +7,18 @@ import {
   encodePacked,
   getContractAddress,
   type Hex,
-  keccak256,
   parseAbi,
   size,
   zeroAddress,
 } from 'viem'
 import { OWNABLE_VALIDATOR_ADDRESS } from '../../modules/validators/ownable'
 import type { AccountAdapter } from '../adapter'
-import { type DeploymentMaterial, deploymentPlan } from '../deployment'
+import {
+  type DeploymentMaterial,
+  deploymentPlan,
+  NEXUS_SALT_DEFAULTS,
+  selectedValue,
+} from '../deployment'
 import { encodeErc7579Calls } from '../erc7579-calls'
 import type { AccountConstruction } from '../types'
 import {
@@ -110,10 +114,7 @@ export function nexusMaterial(
     const deployment = getNexusDeployment(version)
     factory = deployment.factory
     implementation = deployment.implementation
-    salt =
-      input.account.salt.source === 'explicit'
-        ? input.account.salt.value
-        : keccak256('0x')
+    salt = selectedValue(input.account.salt, NEXUS_SALT_DEFAULTS)
     const defaultValidator = input.setup.validators.find(
       (module) => module.address === OWNABLE_VALIDATOR_ADDRESS,
     )

@@ -261,12 +261,26 @@ export function encodeWebauthnValidatorContribution(input: {
   )
 }
 
-export function resolveWebauthnCredentials(input: {
-  readonly credentials: readonly WebauthnCredential[]
-  readonly threshold: number
-  readonly address?: `0x${string}`
-}): ResolvedModule {
-  const credentials = input.credentials.map((credential) => {
+export interface WebauthnInstallCredential {
+  readonly pubKeyX: bigint
+  readonly pubKeyY: bigint
+  readonly requireUV: boolean
+}
+
+// How the credentials are laid out in the validator's install data. The
+// validator requires `keccak(x, y, account)` strictly ascending, but that order
+// depends on the account address, which depends on the install data — so the
+// address-independent `canonical` order is what the salt search grinds against,
+// and `credential-id` is only usable once the address is already fixed.
+export type WebauthnCredentialOrdering =
+  | { readonly kind: 'as-provided' }
+  | { readonly kind: 'canonical' }
+  | { readonly kind: 'credential-id'; readonly account: Address }
+
+export function toWebauthnInstallCredentials(
+  credentials: readonly WebauthnCredential[],
+): readonly WebauthnInstallCredential[] {
+  return credentials.map((credential) => {
     const publicKey =
       typeof credential.pubKey === 'object' &&
       !(credential.pubKey instanceof Uint8Array)
@@ -278,6 +292,86 @@ export function resolveWebauthnCredentials(input: {
       requireUV: false,
     }
   })
+}
+
+function comparePublicKeys(
+  left: WebauthnInstallCredential,
+  right: WebauthnInstallCredential,
+): number {
+  if (left.pubKeyX !== right.pubKeyX) {
+    return left.pubKeyX < right.pubKeyX ? -1 : 1
+  }
+  if (left.pubKeyY === right.pubKeyY) return 0
+  return left.pubKeyY < right.pubKeyY ? -1 : 1
+}
+
+export function orderWebauthnCredentials(
+  credentials: readonly WebauthnInstallCredential[],
+  ordering: WebauthnCredentialOrdering,
+): readonly WebauthnInstallCredential[] {
+  switch (ordering.kind) {
+    case 'as-provided':
+      return credentials
+    case 'canonical':
+      return [...credentials].sort(comparePublicKeys)
+    case 'credential-id': {
+      const account = ordering.account
+      return [...credentials].sort((left, right) =>
+        compareHexValues(
+          generateWebauthnCredentialId(left.pubKeyX, left.pubKeyY, account),
+          generateWebauthnCredentialId(right.pubKeyX, right.pubKeyY, account),
+        ),
+      )
+    }
+  }
+}
+
+// The validator's `onInstall` predicate: credential IDs strictly ascending,
+// which also rules out duplicates.
+export function webauthnCredentialsAreAscending(
+  credentials: readonly WebauthnInstallCredential[],
+  account: Address,
+): boolean {
+  let previous: Hex | undefined
+  for (const credential of credentials) {
+    const credentialId = generateWebauthnCredentialId(
+      credential.pubKeyX,
+      credential.pubKeyY,
+      account,
+    )
+    if (
+      previous !== undefined &&
+      compareHexValues(previous, credentialId) >= 0
+    ) {
+      return false
+    }
+    previous = credentialId
+  }
+  return true
+}
+
+export function hasDuplicateWebauthnCredentials(
+  credentials: readonly WebauthnInstallCredential[],
+): boolean {
+  const seen = new Set<string>()
+  for (const credential of credentials) {
+    const key = `${credential.pubKeyX}:${credential.pubKeyY}`
+    if (seen.has(key)) return true
+    seen.add(key)
+  }
+  return false
+}
+
+export function resolveWebauthnCredentials(input: {
+  readonly credentials: readonly WebauthnCredential[]
+  readonly threshold: number
+  readonly address?: `0x${string}`
+  readonly ordering?: WebauthnCredentialOrdering
+}): ResolvedModule {
+  const credentials = orderWebauthnCredentials(
+    toWebauthnInstallCredentials(input.credentials),
+    input.ordering ?? { kind: 'as-provided' },
+  )
   return {
     kind: 'validator',
     address: input.address ?? WEBAUTHN_VALIDATOR_ADDRESS,
@@ -294,17 +388,17 @@ export function resolveWebauthnCredentials(input: {
           ],
         },
       ],
-      [BigInt(input.threshold), credentials],
+      [BigInt(input.threshold), [...credentials]],
     ),
     deInitData: '0x',
     additionalContext: '0x',
   }
 }
 
-export function resolveWebauthnValidator(
+export function webauthnDefinitionCredentials(
   definition: AtomicValidatorDefinition,
-): ResolvedModule {
-  const credentials = definition.owners.map((owner) => {
+): readonly WebauthnCredential[] {
+  return definition.owners.map((owner) => {
     if (owner.kind !== 'webauthn') {
       throw new Error('WebAuthn validator contains a non-WebAuthn owner')
     }
@@ -313,12 +407,19 @@ export function resolveWebauthnValidator(
       authenticatorId: owner.account.id,
     }
   })
+}
+
+export function resolveWebauthnValidator(
+  definition: AtomicValidatorDefinition,
+  ordering?: WebauthnCredentialOrdering,
+): ResolvedModule {
   return resolveWebauthnCredentials({
-    credentials,
+    credentials: webauthnDefinitionCredentials(definition),
     threshold: definition.threshold,
     address:
       definition.module.source === 'explicit'
         ? definition.module.address
         : WEBAUTHN_VALIDATOR_ADDRESS,
+    ...(ordering ? { ordering } : {}),
   })
 }

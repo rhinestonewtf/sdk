@@ -196,6 +196,18 @@ class OwnersFieldRequiredError extends AccountError {
   }
 }
 
+class PasskeyConfigurationNotInstallableError extends AccountError {
+  constructor(
+    reason: string,
+    params?: { context?: any; errorType?: string; traceId?: string },
+  ) {
+    super({
+      message: `Passkey owner set cannot be installed on a new account: ${reason}`,
+      ...params,
+    })
+  }
+}
+
 class Eip712DomainNotAvailableError extends AccountError {
   constructor(message: string) {
     super({
@@ -241,4 +253,5 @@ export {
   EoaSigningNotSupportedError,
   EoaSigningMethodNotConfiguredError,
   OwnersFieldRequiredError,
+  PasskeyConfigurationNotInstallableError,
 }

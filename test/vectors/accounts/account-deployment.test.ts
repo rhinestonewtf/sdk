@@ -1,16 +1,24 @@
-import { keccak256 } from 'viem'
+import { keccak256, toHex } from 'viem'
+import { toWebAuthnAccount } from 'viem/account-abstraction'
 import { describe, expect, test } from 'vitest'
+import { createAccountConstruction } from '../../../src/accounts/construction'
 import { createAccountAdapter } from '../../../src/accounts/registry'
-import type { AccountConstruction } from '../../../src/accounts/types'
 import {
   resolveAccountConfig,
   resolveSdkConfig,
 } from '../../../src/config/resolve'
 import { type RhinestoneAccountConfig, RhinestoneSDK } from '../../../src/index'
-import { planModuleSetup } from '../../../src/modules/plan'
-import { resolveValidator } from '../../../src/modules/validators/resolve'
-import { accountA } from '../../consts'
+import { accountA, passkeyAccount } from '../../consts'
 import vector from './account-deployment.json'
+
+function passkey(tag: string) {
+  return toWebAuthnAccount({
+    credential: {
+      id: tag,
+      publicKey: `0x${keccak256(toHex(`x:${tag}`)).slice(2)}${keccak256(toHex(`y:${tag}`)).slice(2)}`,
+    },
+  })
+}
 
 const configurations: Record<string, () => RhinestoneAccountConfig> = {
   'safe-1.4.1-adapter-1': () => ({
@@ -36,6 +44,20 @@ const configurations: Record<string, () => RhinestoneAccountConfig> = {
   hca: () => ({
     account: { type: 'hca' },
     owners: { type: 'ens', owners: [{ account: accountA }] },
+  }),
+  // Regression guard: production passkey accounts install exactly one
+  // credential, and their addresses must not move.
+  'nexus-passkey-single': () => ({
+    account: { type: 'nexus' },
+    owners: { type: 'passkey', accounts: [passkeyAccount] },
+  }),
+  // Multi-passkey addresses come from the deterministic salt search.
+  'nexus-passkey-multi': () => ({
+    account: { type: 'nexus' },
+    owners: {
+      type: 'passkey',
+      accounts: [passkey('vector:a'), passkey('vector:b')],
+    },
   }),
 }
 
@@ -69,7 +91,6 @@ describe('rewritten account adapter deployment vectors', () => {
     if (!configuration) throw new Error(`Missing vector input ${expected.id}`)
     const resolved = resolveAccountConfig(sdk, configuration())
     if (!resolved.owners) throw new Error(`Missing vector owner ${expected.id}`)
-    const owner = resolveValidator(resolved.owners)
     const sessionModule =
       resolved.sessions.module.source === 'explicit'
         ? resolved.sessions.module.address
@@ -78,30 +99,23 @@ describe('rewritten account adapter deployment vectors', () => {
       resolved.sessions.compatibilityFallback.source === 'explicit'
         ? resolved.sessions.compatibilityFallback.address
         : undefined
-    const construction: AccountConstruction = {
-      account: resolved.account,
-      owner: resolved.owners,
-      modules: resolved.modules,
-      setup: planModuleSetup({
-        accountKind: resolved.account.kind,
-        owner,
-        configured: resolved.modules,
-        environment: resolved.sessions.environment,
+    const construction = createAccountConstruction({
+      material: {
+        account: resolved.account,
+        owner: resolved.owners,
+        modules: resolved.modules,
+        ...(resolved.initData ? { initData: resolved.initData } : {}),
+        ...(resolved.eoa ? { eoa: resolved.eoa } : {}),
         sessions: {
           enabled: resolved.sessions.enabled,
+          environment: resolved.sessions.environment,
           ...(sessionModule ? { module: sessionModule } : {}),
           ...(compatibilityFallback ? { compatibilityFallback } : {}),
         },
-      }),
-      sessions: {
-        enabled: resolved.sessions.enabled,
-        environment: resolved.sessions.environment,
       },
-      ...(resolved.initData ? { initData: resolved.initData } : {}),
-      ...(resolved.eoa ? { eoa: resolved.eoa } : {}),
       chain: { kind: 'evm', id: 1, caip2: 'eip155:1' },
       deployed: false,
-    }
+    })
     const plan =
       createAccountAdapter(construction).getDeploymentPlan(construction)
 
