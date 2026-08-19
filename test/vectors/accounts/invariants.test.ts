@@ -991,6 +991,37 @@ describe('documented derivation exceptions', () => {
       propertyParameters({ numRuns: 25 }),
     )
   })
+
+  // Known gap, independent of owner order and of the Safe fix: the `address`
+  // `getV0InitData` reports comes from the current path, while its factory args
+  // rebuild the v0 launchpad and adapter, so the two describe different
+  // accounts for every Safe including a single-owner one. Reconstruction is
+  // unaffected because passing the result back as `initData` re-derives the
+  // address from `factoryData`. Pinned so it cannot widen unnoticed.
+  test('the v0 address field does not match the account its factory args deploy', () => {
+    for (const accounts of [[accountA], [accountA, accountB, accountC]]) {
+      const owners = { type: 'ecdsa' as const, accounts }
+      const reported = deriveV0({ account: { type: 'safe' }, owners })
+      if (!derived(reported)) {
+        throw new Error('v0 Safe configurations must derive')
+      }
+      const reconstructed = deriveStatic({
+        account: { type: 'safe' },
+        owners,
+        initData: {
+          address: reported.address as Address,
+          factory: reported.factory as Address,
+          factoryData: reported.factoryData as Hex,
+          intentExecutorInstalled: true,
+        },
+      })
+      if (!derived(reconstructed)) {
+        throw new Error('reconstruction from v0 init data must derive')
+      }
+      expect(reconstructed.factoryData).toBe(reported.factoryData)
+      expect(reconstructed.address).not.toBe(reported.address)
+    }
+  })
 })
 
 describe('Safe multi-owner derivation', () => {

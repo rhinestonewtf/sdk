@@ -80,8 +80,12 @@ order of modules of the same kind, and the order of multi-factor factors.
 Documented exceptions, also asserted so they cannot drift: ENS-HCA accounts
 derive from their lowest-sorted ENS owner alone, so configurations sharing that
 owner share an address; EOA, EIP-7702, and caller-pinned `initData` pass an
-address through; the legacy v0 factory args keep their owner-order sensitivity;
-and a multi-credential passkey factor nested in a multi-factor owner set is
+address through; the legacy v0 factory args keep their owner-order sensitivity,
+and the `address` `experimental_getV0InitData` reports comes from the current
+derivation path rather than from those factory args, so the two describe
+different accounts (reconstruction is unaffected — passing the result back as
+`initData` re-derives the address from `factoryData`); and a multi-credential
+passkey factor nested in a multi-factor owner set is
 still installed in caller order, because the salt search only runs for a
 top-level passkey owner.
 
