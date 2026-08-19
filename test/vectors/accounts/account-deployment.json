@@ -296,6 +296,50 @@
       "factoryDataHash": "0x061b5a8e2cdebe61392e9ef0295fcda20c3ef9a1e5e16f364d26adbdaf725403"
     },
     {
+      "id": "safe-ecdsa-collation-pair",
+      "address": "0x2411301Aac5BF2a7bB8a508Afb69B5E241C2D243",
+      "factory": "0x4e1dcf7ad4e460cfd30791ccc4f9c8a4f820ec67",
+      "factoryDataHash": "0xf7208459e2cd8afa3f3f2529b20a4a865fb39b77becf98d30283b9dd36f2d895",
+      "deliberateChange": {
+        "sinceSha": "afb934d220e1638c849ab5b716e72153cfa54dbe",
+        "bump": "patch",
+        "reason": "Safe installs owners in canonical order, so the derived address no longer depends on the order they were listed in"
+      }
+    },
+    {
+      "id": "safe-ecdsa-three-threshold-2",
+      "address": "0xa6D075ba2981eC6615f1FCB1c82ebc30046aEf56",
+      "factory": "0x4e1dcf7ad4e460cfd30791ccc4f9c8a4f820ec67",
+      "factoryDataHash": "0xa451767a6bcd536ce082819fb22dcd73abafcdf169bf4534b1c02e768ce31c0b",
+      "deliberateChange": {
+        "sinceSha": "afb934d220e1638c849ab5b716e72153cfa54dbe",
+        "bump": "patch",
+        "reason": "Safe installs owners in canonical order, so the derived address no longer depends on the order they were listed in"
+      }
+    },
+    {
+      "id": "safe-ecdsa-two-default-threshold",
+      "address": "0xeAf1dFC596bdeB2e223cAaaBCCbaBc90b7a8573D",
+      "factory": "0x4e1dcf7ad4e460cfd30791ccc4f9c8a4f820ec67",
+      "factoryDataHash": "0x9a9e833952c540e6373792409a5c4b319a762eff6465cbdbbc1e0fe647f27d1d",
+      "deliberateChange": {
+        "sinceSha": "afb934d220e1638c849ab5b716e72153cfa54dbe",
+        "bump": "patch",
+        "reason": "Safe installs owners in canonical order, so the derived address no longer depends on the order they were listed in"
+      }
+    },
+    {
+      "id": "safe-ens-two",
+      "address": "0x41064d2486c71796000AE8a7E35dC10e1cD983eC",
+      "factory": "0x4e1dcf7ad4e460cfd30791ccc4f9c8a4f820ec67",
+      "factoryDataHash": "0x47395331e743eef6609ea746ae53fbf64dace5320fa7dc14a05836ff6f01f776",
+      "deliberateChange": {
+        "sinceSha": "afb934d220e1638c849ab5b716e72153cfa54dbe",
+        "bump": "patch",
+        "reason": "Safe installs owners in canonical order, so the derived address no longer depends on the order they were listed in"
+      }
+    },
+    {
       "id": "safe-multi-factor",
       "address": "0xbd352153856c2aF987D8CfAE3e74c286B8aff76F",
       "factory": "0x4e1dcf7ad4e460cfd30791ccc4f9c8a4f820ec67",
@@ -390,9 +434,14 @@
     },
     {
       "id": "v0-safe-ecdsa-three-threshold-2",
-      "address": "0x92249a7fb7a8a25b04e2A9680171299909458079",
+      "address": "0xa6D075ba2981eC6615f1FCB1c82ebc30046aEf56",
       "factory": "0x4e1dcf7ad4e460cfd30791ccc4f9c8a4f820ec67",
-      "factoryDataHash": "0x3c8024369627cd061d1479ff870ed78aac13f9781c6bc10b1c28b1e2f49374f0"
+      "factoryDataHash": "0x3c8024369627cd061d1479ff870ed78aac13f9781c6bc10b1c28b1e2f49374f0",
+      "deliberateChange": {
+        "sinceSha": "afb934d220e1638c849ab5b716e72153cfa54dbe",
+        "bump": "patch",
+        "reason": "Safe installs owners in canonical order, so the derived address no longer depends on the order they were listed in"
+      }
     },
     {
       "id": "v0-safe-multi-factor",

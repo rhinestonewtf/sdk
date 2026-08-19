@@ -3,6 +3,7 @@ import { encodeAbiParameters, toHex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { describe, expect, test, vi } from 'vitest'
 import { passkeyAccount } from '../../test/consts'
+import { propertyParameters } from '../../test/utils/property'
 import type { AccountInput } from '../accounts/types'
 import { SOCIAL_RECOVERY_VALIDATOR_ADDRESS } from '../modules/validators/social-recovery'
 import { currentV2Defaults } from './defaults'
@@ -21,8 +22,6 @@ const accountB = privateKeyToAccount(`0x${'22'.repeat(32)}`)
 const accountC = privateKeyToAccount(`0x${'33'.repeat(32)}`)
 const addressA = accountA.address
 const addressB = accountB.address
-const propertySeed = Number(process.env.SDK_PROPERTY_SEED ?? 0x5d4c3b2a)
-const propertyParameters = { seed: propertySeed, numRuns: 100, verbose: true }
 
 const hashArbitrary = fc
   .uint8Array({ minLength: 32, maxLength: 32 })
@@ -629,7 +628,7 @@ describe('config resolution properties', () => {
           expect(serializeInput(accountInput)).toBe(accountBefore)
         },
       ),
-      propertyParameters,
+      propertyParameters(),
     )
   })
 
@@ -654,7 +653,7 @@ describe('config resolution properties', () => {
           expect(leftFirst.modules).not.toBe(leftSecond.modules)
         },
       ),
-      propertyParameters,
+      propertyParameters(),
     )
   })
 
