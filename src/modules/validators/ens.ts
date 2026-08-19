@@ -1,5 +1,6 @@
 import { encodeAbiParameters, maxUint48 } from 'viem'
 import type { ResolvedModule } from '../types'
+import { compareHexValues } from './ordering'
 import type { AtomicValidatorDefinition } from './types'
 
 export const ENS_HCA_MODULE =
@@ -20,7 +21,7 @@ export function resolveEnsValidator(
           : Number(maxUint48),
       }
     })
-    .sort((left, right) => left.addr.localeCompare(right.addr))
+    .sort((left, right) => compareHexValues(left.addr, right.addr))
   return {
     kind: 'validator',
     address: ENS_HCA_MODULE,

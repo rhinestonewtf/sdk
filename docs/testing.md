@@ -9,7 +9,7 @@ integration setup.
 | ------------------ | ------------------------------------- | ---------------------------------- | ---------------------------- |
 | Unit and vectors   | `src/**/*.test.ts`, `test/vectors/**` | Local code and deterministic fakes | `bun run test`               |
 | Pure-core coverage | Rewritten core and pure adapters      | V8 coverage with scoped thresholds | `bun run test:coverage:pure` |
-| Architecture       | Production imports                    | Dependency and cycle rules         | `bun run check:architecture` |
+| Architecture       | Production imports                    | Dependency, cycle, and host-independence rules | `bun run check:architecture` |
 | Typecheck           | Source, unit tests, and test harnesses | TypeScript                         | `bun run typecheck`          |
 | Public types        | `test/types/**`                       | Consumer-facing compile fixtures   | `bun run test:types`         |
 | Package contract   | `test/contract/**/*.ctest.ts`         | Packed release and current packages | `bun run test:contract`      |

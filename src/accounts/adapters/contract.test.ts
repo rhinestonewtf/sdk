@@ -6,7 +6,13 @@ import {
   zeroHash,
 } from 'viem'
 import { describe, expect, test } from 'vitest'
-import { accountA, accountB } from '../../../test/consts'
+import {
+  accountA,
+  accountB,
+  collationAccountHigh,
+  collationAccountLow,
+} from '../../../test/consts'
+import { withoutHostCollation } from '../../../test/utils/locale'
 import type { AccountConstructionInput } from '../../config/input'
 import { resolveStandaloneAccountConfig } from '../../config/resolve'
 import type { ResolvedModule } from '../../modules/types'
@@ -421,6 +427,33 @@ describe('account adapter contract', () => {
       verifyingContract: accountA.address,
       salt: zeroHash,
     })
+  })
+
+  test('HCA derives the same address for multiple ENS owners on any host', () => {
+    // The CREATE3 salt is the first sorted owner, so a collation-dependent sort
+    // would derive a different account for the same config.
+    const address = (owners: { account: typeof accountA }[]) =>
+      withoutHostCollation(() => {
+        const input = construction({
+          account: { type: 'hca' as const },
+          owners: { type: 'ens' as const, owners },
+        })
+        return createHcaAdapter(input).getIdentity(input).address
+      })
+
+    const expected = '0x81f7e3abb7929e2b80458bcc87e9ecf29a44c542'
+    expect(
+      address([
+        { account: collationAccountLow },
+        { account: collationAccountHigh },
+      ]),
+    ).toBe(expected)
+    expect(
+      address([
+        { account: collationAccountHigh },
+        { account: collationAccountLow },
+      ]),
+    ).toBe(expected)
   })
 
   test('HCA rejects unsupported setup and preserves opaque custom addresses', () => {

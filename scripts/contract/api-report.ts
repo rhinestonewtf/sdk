@@ -120,7 +120,7 @@ function declarationsForSymbol(
   return {
     declarations: rootDeclarations,
     referencedDeclarations: [...referenced.entries()]
-      .sort(([left], [right]) => left.localeCompare(right))
+      .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
       .map(([, text]) => text),
   }
 }
@@ -180,7 +180,7 @@ function referencedDeclarationsForNode(
 
   visitNode(node)
   return [...referenced.entries()]
-    .sort(([left], [right]) => left.localeCompare(right))
+    .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
     .map(([, text]) => text)
 }
 
@@ -531,7 +531,12 @@ export function generateApiReport(packageDirectory: string): ApiReport {
     entrypoints[entrypoint] = Object.fromEntries(
       checker
         .getExportsOfModule(moduleSymbol)
-        .sort((left, right) => left.getName().localeCompare(right.getName()))
+        .sort((left, right) => {
+          const leftName = left.getName()
+          const rightName = right.getName()
+          if (leftName === rightName) return 0
+          return leftName < rightName ? -1 : 1
+        })
         .map((symbol) => [
           symbol.getName(),
           reportExport(symbol, checker, printer, packageDirectory),

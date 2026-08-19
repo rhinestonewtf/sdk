@@ -111,12 +111,7 @@ function encodeType(
   }
   collect(primaryType)
   dependencies.delete(primaryType)
-  return [primaryType, ...dependencies]
-    .sort((left, right) => {
-      if (left === primaryType) return -1
-      if (right === primaryType) return 1
-      return left.localeCompare(right)
-    })
+  return [primaryType, ...[...dependencies].sort()]
     .map(
       (type) =>
         `${type}(${types[type].map((field) => `${field.type} ${field.name}`).join(',')})`,

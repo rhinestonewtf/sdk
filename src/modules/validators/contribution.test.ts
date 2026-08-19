@@ -1,5 +1,6 @@
 import { concat, decodeAbiParameters, type Hex, pad, toHex } from 'viem'
 import { describe, expect, test } from 'vitest'
+import { withoutHostCollation } from '../../../test/utils/locale'
 import { encodeValidatorContribution } from './contribution'
 import { encodeMultiFactorContribution } from './multi-factor'
 import { encodeEcdsaValidatorContribution } from './ownable'
@@ -202,6 +203,42 @@ describe('validator contribution codecs', () => {
       s: BigInt(`0x${'11'.repeat(32)}`),
     })
     expect(generateWebauthnCredentialId(1n, 2n, account)).toHaveLength(66)
+  })
+
+  test('orders WebAuthn credential IDs by value, not by host collation', () => {
+    const signature = {
+      authenticatorData: '0x1234' as Hex,
+      clientDataJSON: '{"type":"webauthn.get","challenge":"value"}',
+      challengeIndex: 0n,
+      typeIndex: 0n,
+      r: 1n,
+      s: 2n,
+    }
+    // 0xb1… collates before 0xaa… on Danish-family locales, but the validator
+    // requires ascending credential IDs.
+    const high = `0xb1${'11'.repeat(31)}` as Hex
+    const low = `0xaa${'22'.repeat(31)}` as Hex
+    const [credIds] = decodeAbiParameters(
+      [
+        { type: 'bytes32[]' },
+        { type: 'bool' },
+        {
+          type: 'tuple[]',
+          components: [
+            { type: 'bytes' },
+            { type: 'string' },
+            { type: 'uint256' },
+            { type: 'uint256' },
+            { type: 'uint256' },
+            { type: 'uint256' },
+          ],
+        },
+      ],
+      withoutHostCollation(() =>
+        encodeWebauthnSignatures([high, low], false, [signature, signature]),
+      ),
+    )
+    expect(credIds).toEqual([low, high])
   })
 
   test('rejects malformed WebAuthn owner sets', () => {

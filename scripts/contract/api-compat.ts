@@ -415,9 +415,10 @@ export function generateApiCompatibilityReport(options: {
     removed,
     natureChanged,
     compatible: compatible.sort(),
-    incompatible: incompatible.sort((left, right) =>
-      left.symbol.localeCompare(right.symbol),
-    ),
+    incompatible: incompatible.sort((left, right) => {
+      if (left.symbol === right.symbol) return 0
+      return left.symbol < right.symbol ? -1 : 1
+    }),
   }
 }
 
