@@ -25,6 +25,7 @@ import type {
 } from '../../types'
 
 import { MODULE_TYPE_ID_VALIDATOR, type Module } from '../common'
+import { compareHexValues } from './ordering'
 
 const SMART_SESSION_EMISSARY_ADDRESS_DEV: Address =
   '0x60731de80d78548875f8a67c4fec2a8660194e0c'
@@ -216,7 +217,9 @@ function getENSValidator(
   }))
 
   // Sort by address to match ENS validator's expectations
-  const sortedPairs = ownerPairs.sort((a, b) => a.addr.localeCompare(b.addr))
+  const sortedPairs = ownerPairs.sort((a, b) =>
+    compareHexValues(a.addr, b.addr),
+  )
 
   const ownersWithExpiration = sortedPairs
 
@@ -373,8 +376,11 @@ function getSocialRecoveryValidator(
   guardians: Account[],
   threshold = 1,
 ): Module {
-  const guardianAddresses = guardians.map((guardian) => guardian.address)
-  guardianAddresses.sort()
+  // Lowercase before sorting: checksum casing would otherwise order `0xB5…`
+  // before `0xb4…`, which the validator rejects as unsorted.
+  const guardianAddresses = guardians
+    .map((guardian) => guardian.address.toLowerCase() as Address)
+    .sort()
   return {
     type: MODULE_TYPE_ID_VALIDATOR,
     address: SOCIAL_RECOVERY_VALIDATOR_ADDRESS,
