@@ -1,8 +1,14 @@
-import type { Address } from 'viem'
+import type { Account, Address } from 'viem'
 import { decodeFunctionData, maxUint48, parseAbi } from 'viem'
 import { describe, expect, test } from 'vitest'
-
-import { accountA, accountB, passkeyAccount } from '../../test/consts'
+import {
+  accountA,
+  accountB,
+  collationAccountHigh,
+  collationAccountLow,
+  passkeyAccount,
+} from '../../test/consts'
+import { withoutHostCollation } from '../../test/utils/locale'
 import { MODULE_TYPE_ID_VALIDATOR } from '../modules/common'
 import { AccountConfigurationNotSupportedError } from './error'
 import {
@@ -235,6 +241,30 @@ describe('Accounts: HCA', () => {
         },
       })
       expect(address).toEqual(address2)
+    })
+
+    test('Multiple ENS owners derive the same address on any host', () => {
+      // The CREATE3 salt is the first sorted owner, so a collation-dependent
+      // sort would derive a different account for the same config.
+      const derive = (accounts: Account[]) =>
+        withoutHostCollation(() =>
+          getAddress({
+            account: { type: 'hca' },
+            owners: {
+              type: 'ens',
+              accounts,
+              ownerExpirations: [Number(maxUint48), Number(maxUint48)],
+            },
+          }),
+        )
+
+      const expected = '0x81f7e3abb7929e2b80458bcc87e9ecf29a44c542'
+      expect(derive([collationAccountLow, collationAccountHigh])).toEqual(
+        expected,
+      )
+      expect(derive([collationAccountHigh, collationAccountLow])).toEqual(
+        expected,
+      )
     })
 
     test('Custom factory produces a different address', () => {

@@ -51,6 +51,7 @@ The release process: push `main` for a v2 dev release, `release` for a v2 releas
 ## Patterns
 
 - Use viem types for addresses, chains, and hex values
+- Ordering and case conversion must never depend on the host locale — sort hex values with `compareHexValues` and use the default `.sort()` comparator or `toLowerCase`/`toUpperCase` elsewhere; `test/locale-independence.test.ts` rejects `localeCompare`, `toLocale*Case`, and `Intl.Collator` in `src/`
 - Placement of a new public method — `RhinestoneSDK` vs `RhinestoneAccount`: put it on **`RhinestoneSDK`** when its data is scoped to the API key's project/integrator and needs no account (auth-only orchestrator reads, e.g. `getIntentStatus`, `splitIntents`, `getAppFeeBalances`); put it on **`RhinestoneAccount`** only when it is genuinely account-scoped (needs the account address / owners / on-chain state, e.g. `getPortfolio`, signing). Exposing project-scoped data as an account method misleads callers into reading it as account-scoped.
 - Account implementations live in `/src/accounts/*.ts`
 - Public API is the union of `src/index.ts` re-exports and the subpath exports in `src/package.json` (`/actions`, `/orchestrator`, `/jwt-server`, `/smart-sessions`, etc.) — adding, renaming, or removing exports is a breaking change

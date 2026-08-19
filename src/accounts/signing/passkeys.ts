@@ -7,6 +7,8 @@ import {
   keccak256,
 } from 'viem'
 
+import { compareHexValues } from '../../modules/validators/ordering'
+
 interface WebAuthnSignature {
   authenticatorData: Hex
   clientDataJSON: string
@@ -85,7 +87,7 @@ function packSignature(
     credId,
     webAuthn: webAuthns[index],
   }))
-  credIdsAndWebAuthns.sort((a, b) => a.credId.localeCompare(b.credId))
+  credIdsAndWebAuthns.sort((a, b) => compareHexValues(a.credId, b.credId))
   credIds = credIdsAndWebAuthns.map(({ credId }) => credId)
   webAuthns = credIdsAndWebAuthns.map(({ webAuthn }) => webAuthn)
   // Encode

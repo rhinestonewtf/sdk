@@ -1,14 +1,26 @@
-import { decodeAbiParameters, isAddress, size } from 'viem'
+import type { Account, Address } from 'viem'
+import { decodeAbiParameters, isAddress, maxUint48, size } from 'viem'
 import { describe, expect, test } from 'vitest'
 import {
   accountA,
   accountB,
   accountC,
+  casingAccountHigh,
+  casingAccountLow,
+  collationAccountHigh,
+  collationAccountLow,
   passkeyAccount,
 } from '../../../test/consts'
+import { withoutHostCollation } from '../../../test/utils/locale'
 import { AccountConfigurationNotSupportedError } from '../../accounts/error'
 import { MODULE_TYPE_ID_VALIDATOR } from '../common'
-import { getMockSignature, getOwnerValidator, getValidator } from './core'
+import {
+  getENSValidator,
+  getMockSignature,
+  getOwnerValidator,
+  getSocialRecoveryValidator,
+  getValidator,
+} from './core'
 
 describe('Validators Core', () => {
   describe('Validator', () => {
@@ -215,6 +227,75 @@ describe('Validators Core', () => {
       expect(validator.address).toEqual(
         '0x5049ecBd4d961aE6DFEED9b7ccCe7f026454970E',
       )
+    })
+  })
+
+  describe('Ordering', () => {
+    test('ENS owners are ordered by address value', () => {
+      const ownerAddresses = (owners: Account[]) => {
+        const initData = withoutHostCollation(
+          () =>
+            getENSValidator(
+              1,
+              owners.map((owner) => owner.address),
+              [Number(maxUint48), Number(maxUint48)],
+            ).initData,
+        )
+        const [, decoded] = decodeAbiParameters(
+          [
+            { name: 'threshold', type: 'uint256' },
+            {
+              name: 'owners',
+              type: 'tuple[]',
+              components: [
+                { name: 'addr', type: 'address' },
+                { name: 'expiration', type: 'uint48' },
+              ],
+            },
+          ],
+          initData,
+        )
+        return decoded.map((owner) => owner.addr.toLowerCase())
+      }
+
+      const expected = [
+        collationAccountLow.address.toLowerCase(),
+        collationAccountHigh.address.toLowerCase(),
+      ]
+      expect(
+        ownerAddresses([collationAccountLow, collationAccountHigh]),
+      ).toEqual(expected)
+      expect(
+        ownerAddresses([collationAccountHigh, collationAccountLow]),
+      ).toEqual(expected)
+    })
+
+    test('recovery guardians are ordered by address value, not by casing', () => {
+      const guardianAddresses = (guardians: Account[]) => {
+        const [, decoded] = decodeAbiParameters(
+          [
+            { name: 'threshold', type: 'uint256' },
+            { name: 'guardians', type: 'address[]' },
+          ],
+          getSocialRecoveryValidator(guardians).initData,
+        )
+        return decoded as readonly Address[]
+      }
+
+      const expected = [
+        casingAccountLow.address.toLowerCase(),
+        casingAccountHigh.address.toLowerCase(),
+      ]
+      expect(
+        guardianAddresses([casingAccountHigh, casingAccountLow]).map(
+          (address) => address.toLowerCase(),
+        ),
+      ).toEqual(expected)
+      expect(
+        guardianAddresses([casingAccountLow, casingAccountHigh]).map(
+          (address) => address.toLowerCase(),
+        ),
+      ).toEqual(expected)
     })
   })
 })
