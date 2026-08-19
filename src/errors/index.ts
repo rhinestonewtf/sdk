@@ -12,6 +12,7 @@ import {
   isAccountError,
   ModuleInstallationNotSupportedError,
   OwnersFieldRequiredError,
+  PasskeyConfigurationNotInstallableError,
   SigningNotSupportedForAccountError,
   WalletClientNoConnectedAccountError,
 } from '../accounts/error'
@@ -80,6 +81,7 @@ export {
   FactoryArgsNotAvailableError,
   ModuleInstallationNotSupportedError,
   OwnersFieldRequiredError,
+  PasskeyConfigurationNotInstallableError,
   SigningNotSupportedForAccountError,
   WalletClientNoConnectedAccountError,
   // Execution

@@ -14,7 +14,12 @@ import {
 } from 'viem'
 import { getV0Attesters } from '../../modules/legacy-core'
 import type { AccountAdapter } from '../adapter'
-import { type DeploymentMaterial, deploymentPlan } from '../deployment'
+import {
+  type DeploymentMaterial,
+  deploymentPlan,
+  SAFE_NONCE_DEFAULTS,
+  selectedValue,
+} from '../deployment'
 import { encodeErc7579Calls } from '../erc7579-calls'
 import type { AccountConstruction } from '../types'
 import {
@@ -111,8 +116,7 @@ function safeMaterial(input: AccountConstruction): DeploymentMaterial {
         zeroAddress,
       ],
     })
-    const nonce =
-      input.account.nonce.source === 'explicit' ? input.account.nonce.value : 0n
+    const nonce = selectedValue(input.account.nonce, SAFE_NONCE_DEFAULTS)
     factoryData = encodeFunctionData({
       abi: parseAbi([
         'function createProxyWithNonce(address singleton,bytes initializer,uint256 saltNonce)',
@@ -185,8 +189,7 @@ export function safeV0FactoryMaterial(
       zeroAddress,
     ],
   })
-  const nonce =
-    input.account.nonce.source === 'explicit' ? input.account.nonce.value : 0n
+  const nonce = selectedValue(input.account.nonce, SAFE_NONCE_DEFAULTS)
   return {
     factory: SAFE_FACTORY,
     factoryData: encodeFunctionData({
