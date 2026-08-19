@@ -8,7 +8,6 @@ import {
 import { toWebAuthnAccount } from 'viem/account-abstraction'
 import { privateKeyToAccount } from 'viem/accounts'
 import { describe, expect, test } from 'vitest'
-import { accountA, passkeyAccount } from '../../test/consts'
 import type { AccountConstructionInput } from '../config/input'
 import { resolveStandaloneAccountConfig } from '../config/resolve'
 import {
@@ -179,32 +178,6 @@ describe('passkey account construction', () => {
         owners,
       }).account,
     )
-  })
-
-  test('keeps single-passkey, ECDSA and multi-factor derivations unchanged', () => {
-    const single = deployment({
-      account: { type: 'nexus' },
-      owners: { type: 'passkey', accounts: [passkeyAccount] },
-    })
-    expect(single.address).toBe('0x68484B775e4a2828A50C7404ce8530f146d5598e')
-    expect(
-      deployment({
-        account: { type: 'nexus' },
-        owners: { type: 'ecdsa', accounts: [accountA] },
-      }).address,
-    ).toBe('0xc02C600Bd93e6C86aE2Ed1D418B87Fe225171E74')
-    expect(
-      deployment({
-        account: { type: 'nexus' },
-        owners: {
-          type: 'multi-factor',
-          validators: [
-            { type: 'ecdsa', accounts: [accountA] },
-            { type: 'passkey', accounts: [passkey('mfa:a'), passkey('mfa:b')] },
-          ],
-        },
-      }).address,
-    ).toBe('0x3636f63cC6b3B68AbEEB39b7b9317896597f8bb8')
   })
 
   test('keeps the caller salt when it already installs', () => {

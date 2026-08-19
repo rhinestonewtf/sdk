@@ -27,6 +27,38 @@ branches. Contract-only files are excluded. The architecture check rejects
 forbidden layer edges, concrete-client imports, published-barrel imports, and
 cycles.
 
+## Address derivation vectors
+
+`test/vectors/accounts/` guards the promise that a configuration always derives
+the same account address — an address change orphans already deployed accounts,
+so it must never happen by accident.
+
+`matrix.ts` enumerates one case per address-affecting axis: every account type
+with every owner type, account variants (adapter, version, salt, nonce, custom
+factory), owner variants (multi-owner, thresholds, module overrides,
+multi-factor, ENS), sessions, recovery, custom modules, caller-pinned init data,
+EOA and EIP-7702 accounts, and the legacy v0 reconstruction path. Each case pins
+`address`, `factory`, and the `factoryData` hash in `account-deployment.json`;
+cases that only pass an address through pin the address alone. Both derivation
+drivers run — the public API (`createAccount`) and the adapter deployment plan —
+and the suite also asserts that the matrix and the baseline cover exactly the
+same case ids, so coverage cannot shrink silently. `useDevContracts`
+configurations are excluded: dev module addresses are redeployable and not part
+of the compatibility promise.
+
+Baseline values are calibrated against the published release recorded in
+`source`. A case whose value deliberately differs from that release carries a
+`deliberateChange` note naming the release sha and the reason.
+
+To record a deliberate change, run `bun run vectors:generate` — it rewrites the
+baseline from the current checkout, carries over `source` and existing
+`deliberateChange` notes, and prints the cases whose values moved. Add a
+`deliberateChange` note for each of them and a changeset describing the change.
+To recalibrate against another ref, add a worktree of it, symlink
+`node_modules`, copy `test/vectors/accounts/{matrix,derive}.ts`,
+`test/consts.ts` and `scripts/vectors/generate.ts` into it, and run the
+generator there with `SDK_VECTORS_OUT` pointing at this checkout's baseline.
+
 ## Package contract
 
 `bun run test:contract` builds and packs both `origin/release` and the current
