@@ -4,8 +4,11 @@ import {
   accountA,
   accountB,
   accountC,
+  collationAccountHigh,
+  collationAccountLow,
   passkeyAccount,
 } from '../../../test/consts'
+import { withoutHostCollation } from '../../../test/utils/locale'
 import { resolveStandaloneAccountConfig } from '../../config/resolve'
 import { getValidatorCapabilities } from './capabilities'
 import { resolveEnsValidator } from './ens'
@@ -225,6 +228,48 @@ describe('validator resolution', () => {
       Number(maxUint48),
       Number(maxUint48),
     ])
+  })
+
+  test('orders ENS owners by value, not by host collation', () => {
+    const ownerAddresses = (owners: { account: typeof accountA }[]) => {
+      const ens = validator({
+        type: 'ens',
+        owners,
+        threshold: 1,
+      }) as AtomicValidatorDefinition
+      const initData = withoutHostCollation(
+        () => resolveEnsValidator(ens).initData,
+      )
+      const [, decoded] = decodeAbiParameters(
+        [
+          { name: 'threshold', type: 'uint256' },
+          {
+            name: 'owners',
+            type: 'tuple[]',
+            components: [
+              { name: 'addr', type: 'address' },
+              { name: 'expiration', type: 'uint48' },
+            ],
+          },
+        ],
+        initData,
+      )
+      return decoded.map((owner) => owner.addr)
+    }
+
+    const expected = [collationAccountLow.address, collationAccountHigh.address]
+    expect(
+      ownerAddresses([
+        { account: collationAccountLow },
+        { account: collationAccountHigh },
+      ]),
+    ).toEqual(expected)
+    expect(
+      ownerAddresses([
+        { account: collationAccountHigh },
+        { account: collationAccountLow },
+      ]),
+    ).toEqual(expected)
   })
 
   test('parses every supported WebAuthn public-key representation', () => {

@@ -1,5 +1,6 @@
 import { type Hex, hashTypedData, type TypedDataDefinition } from 'viem'
 import { describe, expect, test } from 'vitest'
+import { withoutHostCollation } from '../../../test/utils/locale'
 import {
   isErc6492Signature,
   unwrapErc6492Signature,
@@ -134,6 +135,44 @@ describe('signing protocol operations', () => {
         { ...message, attachment: { ...message.attachment, size: 1n } },
       ),
     ).not.toBe(hash({ Mail: mail, Person: person, Attachment: attachment }))
+  })
+
+  test('orders nested type dependencies by value, not by host collation', () => {
+    // `Aardvark` precedes `Zebra` byte-wise but follows it on Danish-family
+    // locales, where `aa` is a letter sorting after `z`.
+    const types = {
+      Note: [
+        { name: 'zebra', type: 'Zebra' },
+        { name: 'aardvark', type: 'Aardvark' },
+      ],
+      Zebra: [{ name: 'stripes', type: 'uint256' }],
+      Aardvark: [{ name: 'burrows', type: 'uint256' }],
+    }
+    const hash = withoutHostCollation(() =>
+      hashErc7739TypedData({
+        typedData: {
+          domain: {
+            name: 'TestApp',
+            version: '1',
+            chainId: 1,
+            verifyingContract: factory,
+          },
+          types,
+          primaryType: 'Note',
+          message: { zebra: { stripes: 1n }, aardvark: { burrows: 2n } },
+        } as unknown as TypedDataDefinition,
+        verifierDomain: {
+          name: 'Startale',
+          version: '1.0.0',
+          chainId: 1,
+          verifyingContract: account,
+          salt: `0x${'00'.repeat(32)}`,
+        },
+      }),
+    )
+    expect(hash).toBe(
+      '0xfe19863b25115aeca4c3c9cf35bb13bac15de5a4ddd39beef7b38eeee6d1f4f5',
+    )
   })
 
   test('hashes only the EIP-712 domain fields the app domain declares', () => {

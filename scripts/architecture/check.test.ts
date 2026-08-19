@@ -76,6 +76,37 @@ describe('architecture rules', () => {
     })
   })
 
+  test('rejects locale-sensitive ordering and case conversion', () => {
+    const file = 'src/modules/validators/ens.ts'
+    for (const source of [
+      'owners.sort((a, b) => a.localeCompare(b))',
+      'address.toLocaleLowerCase()',
+      'name.toLocaleUpperCase()',
+      'new Intl.Collator()',
+    ]) {
+      expect(
+        analyzeArchitecture({
+          files: [file],
+          edges: [],
+          sourceText: { [file]: source },
+        }),
+      ).toContainEqual({
+        rule: 'no-locale-sensitive-ordering',
+        path: [file],
+        message:
+          'ordering and case conversion must not depend on the host locale',
+      })
+    }
+
+    expect(
+      analyzeArchitecture({
+        files: [file],
+        edges: [],
+        sourceText: { [file]: 'owners.sort(compareHexValues)' },
+      }),
+    ).toEqual([])
+  })
+
   test('reports a shortest cycle path', () => {
     const violations = analyzeArchitecture(
       graph([

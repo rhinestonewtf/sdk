@@ -8,6 +8,7 @@ import {
   stringToBytes,
 } from 'viem'
 import type { ResolvedModule } from '../types'
+import { compareHexValues } from './ordering'
 import type { AtomicValidatorDefinition } from './types'
 
 export const WEBAUTHN_VALIDATOR_ADDRESS: Address =
@@ -142,7 +143,9 @@ export function encodeWebauthnSignatures(
       credentialId,
       signature: normalizeWebauthnSignature(signatures[index]),
     }))
-    .sort((left, right) => left.credentialId.localeCompare(right.credentialId))
+    .sort((left, right) =>
+      compareHexValues(left.credentialId, right.credentialId),
+    )
   return encodeAbiParameters(
     [
       { type: 'bytes32[]', name: 'credIds' },

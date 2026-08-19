@@ -133,9 +133,12 @@ function collectEdges(path: string, source: ts.SourceFile): DependencyEdge[] {
 }
 
 export function readArchitectureGraph(): ArchitectureGraph {
-  const absoluteFiles = listSourceFiles(sourceRoot).sort((left, right) =>
-    sourcePath(left).localeCompare(sourcePath(right)),
-  )
+  const absoluteFiles = listSourceFiles(sourceRoot).sort((left, right) => {
+    const leftPath = sourcePath(left)
+    const rightPath = sourcePath(right)
+    if (leftPath === rightPath) return 0
+    return leftPath < rightPath ? -1 : 1
+  })
   const files = absoluteFiles.map(sourcePath)
   const sourceText: Record<string, string> = {}
   const edges: DependencyEdge[] = []
@@ -410,6 +413,18 @@ export function analyzeArchitecture(
         rule: 'no-global-buckets',
         path: [file],
         message: 'behaviorful global common/types/utils buckets are forbidden',
+      })
+    }
+    if (
+      /\.localeCompare\(|toLocaleLowerCase|toLocaleUpperCase|Intl\.Collator/.test(
+        graph.sourceText[file] ?? '',
+      )
+    ) {
+      violations.push({
+        rule: 'no-locale-sensitive-ordering',
+        path: [file],
+        message:
+          'ordering and case conversion must not depend on the host locale',
       })
     }
     if (
