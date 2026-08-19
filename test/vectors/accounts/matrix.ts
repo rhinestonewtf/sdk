@@ -1,5 +1,4 @@
 import { keccak256, toHex } from 'viem'
-import { toWebAuthnAccount } from 'viem/account-abstraction'
 import type { RhinestoneAccountConfig } from '../../../src/index'
 import {
   accountA,
@@ -10,6 +9,7 @@ import {
   collationAccountLow,
   passkeyAccount,
 } from '../../consts'
+import { passkey } from '../../utils/passkeys'
 
 export type VectorCase = {
   readonly id: string
@@ -24,15 +24,6 @@ export type VectorCase = {
   readonly config: RhinestoneAccountConfig
   /** Builds `initData` from another case's derived deployment plan. */
   readonly pinnedFrom?: string
-}
-
-function passkey(tag: string) {
-  return toWebAuthnAccount({
-    credential: {
-      id: tag,
-      publicKey: `0x${keccak256(toHex(`x:${tag}`)).slice(2)}${keccak256(toHex(`y:${tag}`)).slice(2)}`,
-    },
-  })
 }
 
 const passkeyA = passkey('vector:a')
@@ -242,6 +233,32 @@ const accountVariants: VectorCase[] = [
 
 // Owner-set variants: multi-owner, thresholds, module overrides, multi-factor.
 const ownerVariants: VectorCase[] = [
+  deployment('safe-ecdsa-two-default-threshold', {
+    account: { type: 'safe' },
+    owners: { type: 'ecdsa', accounts: [accountA, accountB] },
+  }),
+  deployment('safe-ecdsa-three-threshold-2', {
+    account: { type: 'safe' },
+    owners: {
+      type: 'ecdsa',
+      accounts: [accountA, accountB, accountC],
+      threshold: 2,
+    },
+  }),
+  deployment('safe-ens-two', {
+    account: { type: 'safe' },
+    owners: {
+      type: 'ens',
+      owners: [{ account: accountA }, { account: accountB }],
+    },
+  }),
+  deployment('safe-ecdsa-collation-pair', {
+    account: { type: 'safe' },
+    owners: {
+      type: 'ecdsa',
+      accounts: [collationAccountLow, collationAccountHigh],
+    },
+  }),
   deployment('nexus-ecdsa-three-threshold-2', {
     account: { type: 'nexus' },
     owners: {

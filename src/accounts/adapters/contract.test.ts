@@ -34,6 +34,7 @@ import {
 import { createNexusAdapter, nexusMaterial } from './nexus'
 import { createSafeAdapter, safeV0FactoryMaterial } from './safe'
 import {
+  canonicalOwnerAddresses,
   encodeAddressEnvelope,
   primaryOwnerAddresses,
   primaryThreshold,
@@ -246,6 +247,23 @@ describe('account adapter contract', () => {
     expect(primaryThreshold(passkey)).toBe(1n)
     expect(() =>
       primaryOwnerAddresses({
+        ...owner,
+        owners: [{ ...owner.owners[0], kind: 'webauthn' }],
+      } as ResolvedValidatorDefinition),
+    ).toThrow('does not expose an address')
+    const unsorted = {
+      ...owner,
+      owners: [
+        { ...owner.owners[0], account: collationAccountHigh },
+        { ...owner.owners[0], account: collationAccountLow },
+      ],
+    } as ResolvedValidatorDefinition
+    expect(canonicalOwnerAddresses(unsorted)).toEqual([
+      collationAccountLow.address,
+      collationAccountHigh.address,
+    ])
+    expect(() =>
+      canonicalOwnerAddresses({
         ...owner,
         owners: [{ ...owner.owners[0], kind: 'webauthn' }],
       } as ResolvedValidatorDefinition),

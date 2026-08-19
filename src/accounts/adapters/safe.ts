@@ -23,6 +23,7 @@ import {
 import { encodeErc7579Calls } from '../erc7579-calls'
 import type { AccountConstruction } from '../types'
 import {
+  canonicalOwnerAddresses,
   encodeAddressEnvelope,
   encodeInstallModule,
   encodeUninstallModule,
@@ -106,7 +107,7 @@ function safeMaterial(input: AccountConstruction): DeploymentMaterial {
       ]),
       functionName: 'setup',
       args: [
-        [...primaryOwnerAddresses(input.owner)],
+        [...canonicalOwnerAddresses(input.owner)],
         primaryThreshold(input.owner),
         SAFE_LAUNCHPAD,
         addSafe7579,
@@ -179,6 +180,8 @@ export function safeV0FactoryMaterial(
     ]),
     functionName: 'setup',
     args: [
+      // Caller order, not canonical order: this path reconstructs accounts that
+      // SDK v0 already deployed from the owner list as it was supplied.
       [...primaryOwnerAddresses(input.owner)],
       primaryThreshold(input.owner),
       SAFE_V0_LAUNCHPAD,

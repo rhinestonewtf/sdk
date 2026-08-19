@@ -5,9 +5,9 @@ import {
   keccak256,
   toHex,
 } from 'viem'
-import { toWebAuthnAccount } from 'viem/account-abstraction'
 import { privateKeyToAccount } from 'viem/accounts'
 import { describe, expect, test } from 'vitest'
+import { passkey } from '../../test/utils/passkeys'
 import type { AccountConstructionInput } from '../config/input'
 import { resolveStandaloneAccountConfig } from '../config/resolve'
 import {
@@ -19,15 +19,6 @@ import { createAccountAdapter } from './registry'
 import type { AccountConstruction } from './types'
 
 const CHAIN = { kind: 'evm', id: 1, caip2: 'eip155:1' } as const
-
-function passkey(tag: string) {
-  return toWebAuthnAccount({
-    credential: {
-      id: tag,
-      publicKey: `0x${keccak256(toHex(`x:${tag}`)).slice(2)}${keccak256(toHex(`y:${tag}`)).slice(2)}`,
-    },
-  })
-}
 
 function construct(input: AccountConstructionInput): AccountConstruction {
   const resolved = resolveStandaloneAccountConfig(input, 'current-v2')

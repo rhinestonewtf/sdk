@@ -1,6 +1,7 @@
 import { encodeFunctionData, encodePacked, type Hex, zeroAddress } from 'viem'
 import { moduleTypeId } from '../../modules/erc7579-abi'
 import type { ResolvedModule } from '../../modules/types'
+import { compareHexValues } from '../../modules/validators/ordering'
 import type { ResolvedValidatorDefinition } from '../../modules/validators/types'
 
 export function primaryOwnerAddresses(
@@ -15,6 +16,15 @@ export function primaryOwnerAddresses(
     }
     return owner.account.address
   })
+}
+
+// Safe keeps owners in a linked list and imposes no order on them, but the
+// owner array is part of the `setup` initializer that becomes the account's
+// CREATE2 salt — so it must be ordered by value, never by caller order.
+export function canonicalOwnerAddresses(
+  validator: ResolvedValidatorDefinition,
+): readonly `0x${string}`[] {
+  return [...primaryOwnerAddresses(validator)].sort(compareHexValues)
 }
 
 export function primaryThreshold(
