@@ -1,46 +1,206 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "source": {
     "kind": "release-calibration",
-    "sha": "49efb8b8d957b2eea2b24c11ac56d6c4d80478d6"
+    "ref": "origin/release",
+    "version": "2.2.4",
+    "sha": "afb934d220e1638c849ab5b716e72153cfa54dbe"
   },
-  "owner": "0xF6C02c78Ded62973b43bfa523B247dA099486936",
   "cases": [
     {
-      "id": "safe-1.4.1-adapter-1",
-      "address": "0x6903edC0Ef63Ee7B8F0605B11F16e2e85A8dF62F",
-      "factory": "0x4e1dcf7ad4e460cfd30791ccc4f9c8a4f820ec67",
-      "factoryDataHash": "0x061b5a8e2cdebe61392e9ef0295fcda20c3ef9a1e5e16f364d26adbdaf725403"
+      "id": "eoa-ecdsa",
+      "address": "0xC5587d912C862252599B61926AdAEF316bA06DA0"
     },
     {
-      "id": "safe-1.4.1-adapter-2",
-      "address": "0x6903edC0Ef63Ee7B8F0605B11F16e2e85A8dF62F",
-      "factory": "0x4e1dcf7ad4e460cfd30791ccc4f9c8a4f820ec67",
-      "factoryDataHash": "0x061b5a8e2cdebe61392e9ef0295fcda20c3ef9a1e5e16f364d26adbdaf725403"
+      "id": "eoa-passkey",
+      "address": "0xC5587d912C862252599B61926AdAEF316bA06DA0"
     },
     {
-      "id": "nexus-1.2.0",
-      "address": "0x36C03e7D593F7B2C6b06fC18B5f4E9a4A29C99b0",
-      "factory": "0x0000000000679a258c64d2f20f310e12b64b7375",
-      "factoryDataHash": "0xd5636e66ad18a8ae07464cf12e1ae63bcc9873f62bfaeda238eca1dc3df3597e"
+      "id": "hca-custom-factory",
+      "address": "0xd0249f48385176d1b8ec224f742057cb41877858",
+      "factory": "0x00000000000000000000000000000000000000a5",
+      "factoryDataHash": "0xc2a5ea9f0f0cd5ca05419494bb1d08eca99190ad4d43d9349e61ae92f4448c09"
     },
     {
-      "id": "kernel-3.3",
+      "id": "hca-ens-collation-pair",
+      "address": "0x81f7e3abb7929e2b80458bcc87e9ecf29a44c542",
+      "factory": "0x358680728dedb552adaa9f5eb5d4395b291cf943",
+      "factoryDataHash": "0xb9c0563fbab96b6adf7b95ee8cd4f6edeff623d4971ca14dbcb9a49b893ecaa1"
+    },
+    {
+      "id": "hca-ens-single",
+      "address": "0x97068bf8c80ba2971a236f55d01becc090d22ef2",
+      "factory": "0x358680728dedb552adaa9f5eb5d4395b291cf943",
+      "factoryDataHash": "0xc2a5ea9f0f0cd5ca05419494bb1d08eca99190ad4d43d9349e61ae92f4448c09"
+    },
+    {
+      "id": "kernel-ecdsa",
       "address": "0xef76F1eDB9C4918415d5d0aC3Cb4818335Ca68e9",
       "factory": "0xd703aae79538628d27099b8c4f621be4ccd142d5",
       "factoryDataHash": "0xef21b650a250e0f92957625337bc22ecc292d2dfba3c0906420503320fcb9150"
     },
     {
-      "id": "startale",
-      "address": "0x8cdf27ccdec0ae54029a67b2edb5391e438aa023",
-      "factory": "0x0000003b3e7b530b4f981ae80d9350392defef90",
-      "factoryDataHash": "0x7c9f074a6ec654084f91cd2f6a8cd84efa6337716f5921b8085c576c87fc6173"
+      "id": "kernel-multi-factor",
+      "address": "0x3DEa352bb92E9d1f3a28fd66e36710554376fAB4",
+      "factory": "0xd703aae79538628d27099b8c4f621be4ccd142d5",
+      "factoryDataHash": "0x91386e4feb9753c580b542713b8e4d9f8d1e38ec2f53d34af6bc02eb3c89e58a"
     },
     {
-      "id": "hca",
-      "address": "0x97068bf8c80ba2971a236f55d01becc090d22ef2",
-      "factory": "0x358680728dedb552adaa9f5eb5d4395b291cf943",
-      "factoryDataHash": "0xc2a5ea9f0f0cd5ca05419494bb1d08eca99190ad4d43d9349e61ae92f4448c09"
+      "id": "kernel-passkey-single",
+      "address": "0xE48268B1C69528366d8eFaC5DB6fA947a7B52E55",
+      "factory": "0xd703aae79538628d27099b8c4f621be4ccd142d5",
+      "factoryDataHash": "0xb48dfa7841b2edaddc768e24d018f7018c34367beef33c223045279968f77aec"
+    },
+    {
+      "id": "kernel-salt",
+      "address": "0x7198DD0DcaD584A876397E03e4568f2986251eD3",
+      "factory": "0xd703aae79538628d27099b8c4f621be4ccd142d5",
+      "factoryDataHash": "0xaa60ccf6ab378269deebd0184165a0b322ad2ad9e832c7fe29c54ef5e57881bc"
+    },
+    {
+      "id": "kernel-sessions",
+      "address": "0x906edEb05782ff4029689520b5c80194753A0D7E",
+      "factory": "0xd703aae79538628d27099b8c4f621be4ccd142d5",
+      "factoryDataHash": "0x11d86bdc8fd47558e1915c6f9602a0cb268e165ba9ef3a6843f0361f21598bf7"
+    },
+    {
+      "id": "kernel-version-3-3",
+      "address": "0xef76F1eDB9C4918415d5d0aC3Cb4818335Ca68e9",
+      "factory": "0xd703aae79538628d27099b8c4f621be4ccd142d5",
+      "factoryDataHash": "0xef21b650a250e0f92957625337bc22ecc292d2dfba3c0906420503320fcb9150"
+    },
+    {
+      "id": "nexus-7702-ecdsa",
+      "address": "0xC5587d912C862252599B61926AdAEF316bA06DA0"
+    },
+    {
+      "id": "nexus-7702-passkey-multi",
+      "address": "0xC5587d912C862252599B61926AdAEF316bA06DA0"
+    },
+    {
+      "id": "nexus-ecdsa",
+      "address": "0xc02C600Bd93e6C86aE2Ed1D418B87Fe225171E74",
+      "factory": "0x0000000099d5576c73a3b190dabeeaa0f128ce6b",
+      "factoryDataHash": "0xd5636e66ad18a8ae07464cf12e1ae63bcc9873f62bfaeda238eca1dc3df3597e"
+    },
+    {
+      "id": "nexus-ecdsa-module-override",
+      "address": "0xf85a41161770bd668cF8944189EEe8371527C7F6",
+      "factory": "0x0000000099d5576c73a3b190dabeeaa0f128ce6b",
+      "factoryDataHash": "0x787080b9c85492c14c8ed8e9693b0ae5ac9a8b9d0a07900a12ce81a4a5b5bc7c"
+    },
+    {
+      "id": "nexus-ecdsa-three-threshold-2",
+      "address": "0xB2c401818A5D4305EAA756E6B3e2E1773d0812eD",
+      "factory": "0x0000000099d5576c73a3b190dabeeaa0f128ce6b",
+      "factoryDataHash": "0x74175cee0e8c4e8d0431dbb973d5ec80dc95dd14db44636e4924d74b609eb6c6"
+    },
+    {
+      "id": "nexus-ecdsa-two-default-threshold",
+      "address": "0x011ce90AB2e42C509E46bCF72ef12f9FbCa64e7e",
+      "factory": "0x0000000099d5576c73a3b190dabeeaa0f128ce6b",
+      "factoryDataHash": "0xf8a3a6a94b1e1b92ec56bbf27d239611d9f6fecd542ff8942abe229b98d37b88"
+    },
+    {
+      "id": "nexus-ens-expiration",
+      "address": "0xe76d3354D461752Faa54d6245C57F22d8760b985",
+      "factory": "0x0000000099d5576c73a3b190dabeeaa0f128ce6b",
+      "factoryDataHash": "0x9a378318af2fb71e2758e7345a195696db479d2bb2c459adbcad175b1893bf1c"
+    },
+    {
+      "id": "nexus-ens-multi",
+      "address": "0xB5756D866D3FA50c1af13c31aA0125F8ED7a04Bb",
+      "factory": "0x0000000099d5576c73a3b190dabeeaa0f128ce6b",
+      "factoryDataHash": "0xf3f7d262c9cb626704bbc3501c115ee36c2d18a31107cf080e456003b88255db"
+    },
+    {
+      "id": "nexus-ens-pair-threshold-2",
+      "address": "0x6E2B3885ADFBdECf6abeD4e2636b0b94eAED09C4",
+      "factory": "0x0000000099d5576c73a3b190dabeeaa0f128ce6b",
+      "factoryDataHash": "0x5f77d569542f4c95ce5b72a19d41041ab9af359f6ef1f0894b3907ffa25469fe"
+    },
+    {
+      "id": "nexus-ens-single",
+      "address": "0xfD8c82aaEe46E537F0D8dBD8932bA0A198767e25",
+      "factory": "0x0000000099d5576c73a3b190dabeeaa0f128ce6b",
+      "factoryDataHash": "0x795f67ea1ddeb824d4f679685c1f0b8824daaaff3ab1b3acd71e8d9d07c69844"
+    },
+    {
+      "id": "nexus-module-executor",
+      "address": "0xC59eFAe51361BB0923F54c076897e2bCC9167706",
+      "factory": "0x0000000099d5576c73a3b190dabeeaa0f128ce6b",
+      "factoryDataHash": "0x716958a323848d60041e0e9e80ed366dabcab3a0eef7b420db7465dd68cfa489"
+    },
+    {
+      "id": "nexus-module-fallback",
+      "address": "0xC215dE1E242586cFcb053ac347d82420412CE246",
+      "factory": "0x0000000099d5576c73a3b190dabeeaa0f128ce6b",
+      "factoryDataHash": "0x18980684d99c1106000455cf6eb53e297662068f80df6d85fd5ceb487f406880"
+    },
+    {
+      "id": "nexus-module-hook",
+      "address": "0xc02C600Bd93e6C86aE2Ed1D418B87Fe225171E74",
+      "factory": "0x0000000099d5576c73a3b190dabeeaa0f128ce6b",
+      "factoryDataHash": "0xd5636e66ad18a8ae07464cf12e1ae63bcc9873f62bfaeda238eca1dc3df3597e"
+    },
+    {
+      "id": "nexus-module-validator",
+      "address": "0x490Fb7FDb717f34AB0c261E3257EA13353669057",
+      "factory": "0x0000000099d5576c73a3b190dabeeaa0f128ce6b",
+      "factoryDataHash": "0xb819f4e09caec53a2c32d0c0bf77740fee98124705009800ef91bfd813ad0243"
+    },
+    {
+      "id": "nexus-modules-combined",
+      "address": "0x5C4e934ED425EbFbB71C3ba80a63341F78Fe805e",
+      "factory": "0x0000000099d5576c73a3b190dabeeaa0f128ce6b",
+      "factoryDataHash": "0x7d0174b04cc13cd5e674485106849e1d496059b787d7143b3e7e8853e8494404"
+    },
+    {
+      "id": "nexus-multi-factor",
+      "address": "0x8bdf768B73988Ba4B10DE74f65a3E52Cddc780E0",
+      "factory": "0x0000000099d5576c73a3b190dabeeaa0f128ce6b",
+      "factoryDataHash": "0xaf4e9f86adfa9af78ad8398df49f756283ee973a0b6c6d331867f2b38fbad7c3"
+    },
+    {
+      "id": "nexus-multi-factor-ecdsa-ens",
+      "address": "0x3Da8246511eb3218531687153e2247AE66Be679d",
+      "factory": "0x0000000099d5576c73a3b190dabeeaa0f128ce6b",
+      "factoryDataHash": "0xdbf049fbd821984af4e5c36eaffb7d7396d4199a4881c0292f940e33d9d8edc5"
+    },
+    {
+      "id": "nexus-multi-factor-module-override",
+      "address": "0x150E73e7511E5d69046Eb37C69f9b10b5f6F0B6f",
+      "factory": "0x0000000099d5576c73a3b190dabeeaa0f128ce6b",
+      "factoryDataHash": "0x6c712ffc62fe28816b04ba33fcb3cc5f76765759e091b5300e4f2c63a37dce7c"
+    },
+    {
+      "id": "nexus-multi-factor-threshold-2",
+      "address": "0xc692A5228840ddc31cd3B6A4a5Fce0f284914276",
+      "factory": "0x0000000099d5576c73a3b190dabeeaa0f128ce6b",
+      "factoryDataHash": "0x483b3ddeccc40bddd0a68747522b4a20463b4492b48b3cd89bf1a53656e05d24"
+    },
+    {
+      "id": "nexus-passkey-module-override",
+      "address": "0x9AbF65f12cC2244983B4b333CCaC3A1cdF2bAb76",
+      "factory": "0x0000000099d5576c73a3b190dabeeaa0f128ce6b",
+      "factoryDataHash": "0x394b3d5ee2406d548f46716ff8a8e5ee1d77e712ab968f102bb5cc8cc0eaaf8b"
+    },
+    {
+      "id": "nexus-passkey-multi",
+      "address": "0x0fAcFCB27c608DE3530bF7fEd87806c451181119",
+      "factory": "0x0000000099d5576c73a3b190dabeeaa0f128ce6b",
+      "factoryDataHash": "0x3cd697ee5c465154221ebd497183f07ca151a7b3e13d0fd136dff1dce6d6d40e",
+      "deliberateChange": {
+        "sinceSha": "afb934d220e1638c849ab5b716e72153cfa54dbe",
+        "bump": "patch",
+        "reason": "multi-passkey accounts install credentials in canonical order and search the salt so the derived address is deployable"
+      }
+    },
+    {
+      "id": "nexus-passkey-pair-threshold-2",
+      "address": "0x721763EB0ECd63905773d4bd1DAd3D83B25070Ea",
+      "factory": "0x0000000099d5576c73a3b190dabeeaa0f128ce6b",
+      "factoryDataHash": "0xbfcb6c12b90578f6f8d07eb15379ebb3d3b6e442b0722d81757c57e363e1b5a8"
     },
     {
       "id": "nexus-passkey-single",
@@ -49,10 +209,208 @@
       "factoryDataHash": "0x8a379c1110f143d10cf88de7af5edfac4bacf03f63bc18de412ebd49d157d4e1"
     },
     {
-      "id": "nexus-passkey-multi",
-      "address": "0x0fAcFCB27c608DE3530bF7fEd87806c451181119",
+      "id": "nexus-passkey-three",
+      "address": "0x33fce05c298a331B7a44e4F36A4cC80486Ff392f",
       "factory": "0x0000000099d5576c73a3b190dabeeaa0f128ce6b",
-      "factoryDataHash": "0x3cd697ee5c465154221ebd497183f07ca151a7b3e13d0fd136dff1dce6d6d40e"
+      "factoryDataHash": "0xbd74553367e5f9a5b898f9db4cba4067925870ed8e4a6e34e15cfa6329186e18",
+      "deliberateChange": {
+        "sinceSha": "afb934d220e1638c849ab5b716e72153cfa54dbe",
+        "bump": "patch",
+        "reason": "multi-passkey accounts install credentials in canonical order and search the salt so the derived address is deployable"
+      }
+    },
+    {
+      "id": "nexus-pinned-address",
+      "address": "0x00000000000000000000000000000000000000c1"
+    },
+    {
+      "id": "nexus-pinned-factory",
+      "address": "0xc02C600Bd93e6C86aE2Ed1D418B87Fe225171E74",
+      "factory": "0x0000000099d5576c73a3b190dabeeaa0f128ce6b",
+      "factoryDataHash": "0xd5636e66ad18a8ae07464cf12e1ae63bcc9873f62bfaeda238eca1dc3df3597e"
+    },
+    {
+      "id": "nexus-recovery-three-threshold-2",
+      "address": "0x846a37Db14cD9F66cd9892191b09D66f78546Cdf",
+      "factory": "0x0000000099d5576c73a3b190dabeeaa0f128ce6b",
+      "factoryDataHash": "0xdd905bd736655f055d41a56dccbb8b217db59af77c2f7313bb8a1c1d62ce1f6e"
+    },
+    {
+      "id": "nexus-recovery-two-guardians",
+      "address": "0xe0c96BE06a208F12581ED238b54862900E99D73b",
+      "factory": "0x0000000099d5576c73a3b190dabeeaa0f128ce6b",
+      "factoryDataHash": "0x07b24e641af8187bae0957354ec74242fdb1ad0ec9e6afb3e1bd41593fb435c6"
+    },
+    {
+      "id": "nexus-salt",
+      "address": "0x855D09Be686ce77C8322Ca92fe4Ed45d9A09BDA9",
+      "factory": "0x0000000099d5576c73a3b190dabeeaa0f128ce6b",
+      "factoryDataHash": "0x0046d9ff6ca77eab6a0ab2677723b88aab91c08d55aff6bf51c7795a52811803"
+    },
+    {
+      "id": "nexus-sessions",
+      "address": "0x76801823568F379E1238F062816fd40aAa31b004",
+      "factory": "0x0000000099d5576c73a3b190dabeeaa0f128ce6b",
+      "factoryDataHash": "0xcd7fb1d5de3928733148db6fd7c7eb49478ee3deb97948f81442498d91a03d95"
+    },
+    {
+      "id": "nexus-sessions-module-override",
+      "address": "0xd34631469bd65D3A93a96FF7B06A5C91b5E7bC4E",
+      "factory": "0x0000000099d5576c73a3b190dabeeaa0f128ce6b",
+      "factoryDataHash": "0xa6d02be79b344b2de5eaac47cfa9bc921a0db7fc1c5e707989db8500ad7680e0"
+    },
+    {
+      "id": "nexus-sessions-recovery-modules",
+      "address": "0xfFd1D3FdD13463A01d317336B371758ce3aB9228",
+      "factory": "0x0000000099d5576c73a3b190dabeeaa0f128ce6b",
+      "factoryDataHash": "0xb1edd5a9bc5e671e46a086f0bd3189aec02f058d8bf1544b1c7f9c59067db6a8"
+    },
+    {
+      "id": "nexus-version-1-2-0",
+      "address": "0x36C03e7D593F7B2C6b06fC18B5f4E9a4A29C99b0",
+      "factory": "0x0000000000679a258c64d2f20f310e12b64b7375",
+      "factoryDataHash": "0xd5636e66ad18a8ae07464cf12e1ae63bcc9873f62bfaeda238eca1dc3df3597e"
+    },
+    {
+      "id": "nexus-version-1-2-1",
+      "address": "0xc02C600Bd93e6C86aE2Ed1D418B87Fe225171E74",
+      "factory": "0x0000000099d5576c73a3b190dabeeaa0f128ce6b",
+      "factoryDataHash": "0xd5636e66ad18a8ae07464cf12e1ae63bcc9873f62bfaeda238eca1dc3df3597e"
+    },
+    {
+      "id": "safe-adapter-1",
+      "address": "0x6903edC0Ef63Ee7B8F0605B11F16e2e85A8dF62F",
+      "factory": "0x4e1dcf7ad4e460cfd30791ccc4f9c8a4f820ec67",
+      "factoryDataHash": "0x061b5a8e2cdebe61392e9ef0295fcda20c3ef9a1e5e16f364d26adbdaf725403"
+    },
+    {
+      "id": "safe-adapter-2",
+      "address": "0x6903edC0Ef63Ee7B8F0605B11F16e2e85A8dF62F",
+      "factory": "0x4e1dcf7ad4e460cfd30791ccc4f9c8a4f820ec67",
+      "factoryDataHash": "0x061b5a8e2cdebe61392e9ef0295fcda20c3ef9a1e5e16f364d26adbdaf725403"
+    },
+    {
+      "id": "safe-ecdsa",
+      "address": "0x6903edC0Ef63Ee7B8F0605B11F16e2e85A8dF62F",
+      "factory": "0x4e1dcf7ad4e460cfd30791ccc4f9c8a4f820ec67",
+      "factoryDataHash": "0x061b5a8e2cdebe61392e9ef0295fcda20c3ef9a1e5e16f364d26adbdaf725403"
+    },
+    {
+      "id": "safe-multi-factor",
+      "address": "0xbd352153856c2aF987D8CfAE3e74c286B8aff76F",
+      "factory": "0x4e1dcf7ad4e460cfd30791ccc4f9c8a4f820ec67",
+      "factoryDataHash": "0x821981c1c35057219a3b974755960aa274c12ecd907600a633ee1335af34a360"
+    },
+    {
+      "id": "safe-nonce",
+      "address": "0xB03Ea4e80f9cAB85dF71Bb22b93818db769e9489",
+      "factory": "0x4e1dcf7ad4e460cfd30791ccc4f9c8a4f820ec67",
+      "factoryDataHash": "0x76180ee0216c76fcf6a222dd8fe6b8c85403adc87134fd05d3db05f3d3e41d89"
+    },
+    {
+      "id": "safe-passkey-multi",
+      "address": "0x600021012Bc96be8857b8C11cB01Cb329a650ba9",
+      "factory": "0x4e1dcf7ad4e460cfd30791ccc4f9c8a4f820ec67",
+      "factoryDataHash": "0x87fdb17d866d36f6bfbc54757aea31984657e9436b5d20650da860f714bb6a5f",
+      "deliberateChange": {
+        "sinceSha": "afb934d220e1638c849ab5b716e72153cfa54dbe",
+        "bump": "patch",
+        "reason": "multi-passkey accounts install credentials in canonical order and search the salt so the derived address is deployable"
+      }
+    },
+    {
+      "id": "safe-passkey-single",
+      "address": "0xE86e416045645E1Ca4360D5DC396E4c513277C31",
+      "factory": "0x4e1dcf7ad4e460cfd30791ccc4f9c8a4f820ec67",
+      "factoryDataHash": "0xda63860dedbbfac35b42e101bf8a90fd55e2ed9a7797ffce67c0c063bf41b77d"
+    },
+    {
+      "id": "safe-pinned-address",
+      "address": "0x00000000000000000000000000000000000000c1"
+    },
+    {
+      "id": "safe-recovery-two-guardians",
+      "address": "0xBaCba2e4E0874af6E19384DA8469e6E13a98decA",
+      "factory": "0x4e1dcf7ad4e460cfd30791ccc4f9c8a4f820ec67",
+      "factoryDataHash": "0x756e73f4e37283e8a7462f1da3d27d1c3e92370e13e5e9155f4275f175dc8f89"
+    },
+    {
+      "id": "safe-sessions",
+      "address": "0xe2F9e65cff1e5EBc5dFe7650872ad36619875650",
+      "factory": "0x4e1dcf7ad4e460cfd30791ccc4f9c8a4f820ec67",
+      "factoryDataHash": "0x992af00b8e5aee13d34cca3ac7248973d12daa7c7a1e41032c241e912fbd612f"
+    },
+    {
+      "id": "safe-sessions-compatibility-fallback",
+      "address": "0xF79D77615b53050Fdc743CCaa9dc6C3bc2F9810f",
+      "factory": "0x4e1dcf7ad4e460cfd30791ccc4f9c8a4f820ec67",
+      "factoryDataHash": "0x96d6b95ee6fb551f46895ec9d9d58317a2933b72bf87ae088003ad24251f5be7"
+    },
+    {
+      "id": "safe-version-1-4-1",
+      "address": "0x6903edC0Ef63Ee7B8F0605B11F16e2e85A8dF62F",
+      "factory": "0x4e1dcf7ad4e460cfd30791ccc4f9c8a4f820ec67",
+      "factoryDataHash": "0x061b5a8e2cdebe61392e9ef0295fcda20c3ef9a1e5e16f364d26adbdaf725403"
+    },
+    {
+      "id": "startale-ecdsa",
+      "address": "0x8cdf27ccdec0ae54029a67b2edb5391e438aa023",
+      "factory": "0x0000003b3e7b530b4f981ae80d9350392defef90",
+      "factoryDataHash": "0x7c9f074a6ec654084f91cd2f6a8cd84efa6337716f5921b8085c576c87fc6173"
+    },
+    {
+      "id": "startale-multi-factor",
+      "address": "0xbdbcd5d746d385205db5aa3424fe17ed1cbf2703",
+      "factory": "0x0000003b3e7b530b4f981ae80d9350392defef90",
+      "factoryDataHash": "0x025537e67eaf059689071c877f504ee23873dd6708333dba4cf374eca65efc34"
+    },
+    {
+      "id": "startale-passkey-single",
+      "address": "0x4d78f6b273d07f2fd24433ebc7a90d89f0d061ae",
+      "factory": "0x0000003b3e7b530b4f981ae80d9350392defef90",
+      "factoryDataHash": "0x8a9f6c7aa75df743aa30b2e2953a806c3fec530cbcab971e417010df679dc8b5"
+    },
+    {
+      "id": "startale-salt",
+      "address": "0x7666393b510f88c0f299333fcf976f044a2ccbe4",
+      "factory": "0x0000003b3e7b530b4f981ae80d9350392defef90",
+      "factoryDataHash": "0x546f81c39f96072b72b0f458615ae80f81f8f53d88ab1d4bd45c51003f9560e8"
+    },
+    {
+      "id": "startale-sessions",
+      "address": "0x788116dfeef726b9270f70062151642430994e7d",
+      "factory": "0x0000003b3e7b530b4f981ae80d9350392defef90",
+      "factoryDataHash": "0x90952b55a4a32b8cef7fc5a1f9538c720182d50b75bc3e5b418b6da16b44e9bb"
+    },
+    {
+      "id": "v0-safe-ecdsa",
+      "address": "0x6903edC0Ef63Ee7B8F0605B11F16e2e85A8dF62F",
+      "factory": "0x4e1dcf7ad4e460cfd30791ccc4f9c8a4f820ec67",
+      "factoryDataHash": "0xdb33a351d8bd8506a53cdbb34eca482ace13bb45c4092898e35752879c83e89d"
+    },
+    {
+      "id": "v0-safe-ecdsa-three-threshold-2",
+      "address": "0x92249a7fb7a8a25b04e2A9680171299909458079",
+      "factory": "0x4e1dcf7ad4e460cfd30791ccc4f9c8a4f820ec67",
+      "factoryDataHash": "0x3c8024369627cd061d1479ff870ed78aac13f9781c6bc10b1c28b1e2f49374f0"
+    },
+    {
+      "id": "v0-safe-multi-factor",
+      "address": "0xbd352153856c2aF987D8CfAE3e74c286B8aff76F",
+      "factory": "0x4e1dcf7ad4e460cfd30791ccc4f9c8a4f820ec67",
+      "factoryDataHash": "0x697ed601643b2708bdd0c7338703976fa111bd52d89bedad0a4403c60af2670b"
+    },
+    {
+      "id": "v0-safe-passkey-single",
+      "address": "0xE86e416045645E1Ca4360D5DC396E4c513277C31",
+      "factory": "0x4e1dcf7ad4e460cfd30791ccc4f9c8a4f820ec67",
+      "factoryDataHash": "0x1c0bc61b9b5173ed15f96ba1ead987bdb615f383506b86f1c30b9ae9c01599c1"
+    },
+    {
+      "id": "v0-safe-sessions",
+      "address": "0xe2F9e65cff1e5EBc5dFe7650872ad36619875650",
+      "factory": "0x4e1dcf7ad4e460cfd30791ccc4f9c8a4f820ec67",
+      "factoryDataHash": "0x050f3e643db4bbef56cb4de48dd635e150be03bdde3392308b63fceafde36c83"
     }
   ]
 }
