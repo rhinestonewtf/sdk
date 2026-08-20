@@ -370,6 +370,7 @@ export function createValidatorSigningTasks(input: {
       if (!signer)
         throw new Error(`Signer reference ${owner.signerId} is missing`)
       const webauthn = owner.kind === 'webauthn'
+      const quorum = input.validator.kind === 'quorum'
       return [
         {
           id: `${input.taskPrefix}:${owner.id}`,
@@ -377,7 +378,9 @@ export function createValidatorSigningTasks(input: {
           role: input.role ?? (factor.factorId ? 'factor' : 'owner'),
           invocationKind: webauthn
             ? input.webauthnInvocation
-            : input.ecdsaInvocation,
+            : quorum
+              ? ('ecdsa-sign-hash' as const)
+              : input.ecdsaInvocation,
           contribution: webauthn
             ? {
                 kind: 'webauthn' as const,
@@ -475,6 +478,16 @@ function materializeTask(
           kind: 'ecdsa-sign-message',
           ...(chain ? { chain } : {}),
           message: material.message,
+        },
+      }
+    case 'ecdsa-sign-hash':
+      requireMaterial(template, material, 'message')
+      return {
+        ...template,
+        invocation: {
+          kind: 'ecdsa-sign-hash',
+          ...(chain ? { chain } : {}),
+          hash: material.message.raw,
         },
       }
     case 'ecdsa-sign-typed-data':

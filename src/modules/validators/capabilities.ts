@@ -48,9 +48,9 @@ export function getValidatorCapabilities(
     signatureModes: ['owner'],
     signerTopology: nested
       ? 'nested-threshold'
-      : definition.owners.length === 1
-        ? 'single'
-        : 'threshold',
+      : definition.kind === 'quorum' || definition.owners.length > 1
+        ? 'threshold'
+        : 'single',
     supportsIndependentSigning:
       definition.kind !== 'smart-session' &&
       module.address.toLowerCase() !==
@@ -66,12 +66,42 @@ export function getValidatorCapabilities(
           factorOrder: definition.validators.map((factor) => factor.id),
           threshold: definition.threshold,
         }
-      : {
-          kind: 'ordered-threshold',
-          validator: module,
-          ownerOrder: definition.owners.map((owner) => owner.id),
-          threshold: definition.threshold,
-          recoveryEncoding: validatorRecovery,
-        },
+      : definition.kind === 'quorum'
+        ? {
+            kind: 'weighted-quorum',
+            validator: module,
+            owners: definition.owners.map((owner) => {
+              if (owner.kind === 'webauthn' || owner.weight === undefined) {
+                throw new Error(
+                  'Quorum validator requires weighted ECDSA owners',
+                )
+              }
+              return {
+                ownerId: owner.id,
+                signer: owner.account.address,
+                weight: owner.weight,
+              }
+            }),
+            thresholdWeight: requireQuorumThreshold(definition),
+          }
+        : {
+            kind: 'ordered-threshold',
+            validator: module,
+            ownerOrder: definition.owners.map((owner) => owner.id),
+            threshold: definition.threshold,
+            recoveryEncoding: validatorRecovery,
+          },
   }
+}
+
+function requireQuorumThreshold(
+  definition: ResolvedValidatorDefinition,
+): bigint {
+  if (
+    definition.kind !== 'quorum' ||
+    definition.thresholdWeight === undefined
+  ) {
+    throw new Error('Quorum validator threshold weight is missing')
+  }
+  return definition.thresholdWeight
 }

@@ -74,11 +74,15 @@ export function assembleIndependentIntentArtifact(input: {
     throw new Error('Smart Session state cannot be signed independently')
   }
   const validatorContribution = input.artifact.validatorFactors
-    ? encodeIndependentFactors(
-        codec,
-        input.artifact.validatorFactors,
-        contributions,
-      )
+    ? codec.kind !== 'nested-threshold'
+      ? (() => {
+          throw new Error('Independent factor signing requires a nested codec')
+        })()
+      : encodeIndependentFactors(
+          codec,
+          input.artifact.validatorFactors,
+          contributions,
+        )
     : encodeAtomicContributions(
         codec,
         contributions.map(({ contribution }) => contribution),
@@ -206,9 +210,9 @@ function sameValidatorId(left: number | Hex, right: number | Hex): boolean {
 }
 
 function encodeIndependentFactors(
-  codec: Exclude<
+  codec: Extract<
     ValidatorContributionCodec,
-    { readonly kind: 'smart-session' }
+    { readonly kind: 'nested-threshold' }
   >,
   factors: NonNullable<ArtifactAssemblyPlan['validatorFactors']>,
   contributions: readonly {

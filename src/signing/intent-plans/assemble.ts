@@ -1,4 +1,5 @@
 import type { Hex } from 'viem'
+import { encodeQuorumMerkleEnvelope } from '../../modules/validators/quorum'
 import type { SigningContext } from '../context'
 import { encodePlannedValidatorContribution } from '../contribution'
 import { runSigningStep } from '../error'
@@ -60,6 +61,19 @@ export function assembleIntentValidatorArtifact(input: {
         })
       : operation()
   let contribution = input.validatorContribution
+  if (input.artifact.quorumMerkleProof) {
+    if (!contribution.startsWith('0x00')) {
+      throw new Error(
+        'Quorum Merkle contribution has no regular envelope prefix',
+      )
+    }
+    contribution = step('validator-encode', () =>
+      encodeQuorumMerkleEnvelope({
+        proof: input.artifact.quorumMerkleProof!,
+        signatures: `0x${contribution.slice(4)}`,
+      }),
+    )
+  }
   const erc7739 = input.artifact.erc7739
   if (erc7739.kind === 'wrap-typed-data') {
     contribution = step('protocol-operation', () =>

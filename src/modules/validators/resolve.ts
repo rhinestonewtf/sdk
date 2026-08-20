@@ -2,6 +2,7 @@ import type { ResolvedModule } from '../types'
 import { resolveEnsValidator } from './ens'
 import { resolveMultiFactorValidator } from './multi-factor'
 import { resolveOwnableValidator } from './ownable'
+import { resolveQuorumValidator } from './quorum'
 import type {
   AtomicValidatorDefinition,
   ResolvedValidatorDefinition,
@@ -18,6 +19,8 @@ export function resolveAtomicValidator(
   switch (definition.kind) {
     case 'ecdsa':
       return resolveOwnableValidator(definition)
+    case 'quorum':
+      return resolveQuorumValidator(definition)
     case 'ens':
       return resolveEnsValidator(definition)
     case 'passkey':
