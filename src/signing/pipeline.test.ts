@@ -380,6 +380,9 @@ describe('direct rewritten signing pipelines', () => {
       }).payloadKind,
     ).toBe('typed-data')
 
+    if (context.validator.kind === 'multi-factor') {
+      throw new Error('Expected atomic validator')
+    }
     const quorum = resolveAccountTypedDataSigning({
       typedData,
       chain,

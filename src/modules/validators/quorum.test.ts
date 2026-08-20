@@ -1,4 +1,4 @@
-import { zeroAddress } from 'viem'
+import { type Hex, zeroAddress } from 'viem'
 import { describe, expect, test } from 'vitest'
 import { accountA, accountB } from '../../../test/consts'
 import { encodeQuorumErc1271Signature } from '../../signing/quorum'
@@ -196,7 +196,7 @@ describe('Quorum validator encoding', () => {
   })
 
   test('rejects malformed Merkle envelopes', () => {
-    const proof = { root: `0x${'11'.repeat(32)}`, proof: [] }
+    const proof = { root: `0x${'11'.repeat(32)}` as Hex, proof: [] as Hex[] }
     expect(() =>
       encodeQuorumMerkleEnvelope({ proof, signatures: signature }),
     ).toThrow('between 1 and 32')
@@ -204,7 +204,10 @@ describe('Quorum validator encoding', () => {
       encodeQuorumMerkleEnvelope({
         proof: {
           ...proof,
-          proof: Array.from({ length: 33 }, () => `0x${'22'.repeat(32)}`),
+          proof: Array.from(
+            { length: 33 },
+            () => `0x${'22'.repeat(32)}` as Hex,
+          ),
         },
         signatures: signature,
       }),
