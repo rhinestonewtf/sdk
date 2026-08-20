@@ -3523,7 +3523,7 @@ export interface operations {
            * @example eip155:8453
            */
           destinationChainId: string
-          /** @description A list of token requested on the target chain */
+          /** @description A list of tokens requested on the target chain. Note `amount` may be credited against a balance already held on the destination chain — see the field for exactly when. */
           tokenRequests: {
             /**
              * @description The address of the requested token. Format depends on destination chain — 0x-hex for EVM, base58 SPL mint for Solana, T-address for Tron.
@@ -3532,7 +3532,7 @@ export interface operations {
             tokenAddress: string
             /**
              * Format: uint256
-             * @description The amount of the requested token (in the smallest unit). Omit for max-out.
+             * @description The amount of the requested token (in the smallest unit). Omit for max-out. IMPORTANT: for a self-send with no `destinationExecutions`, any balance of this token already held on the destination chain is CREDITED against the request, so this behaves as a target final balance and an already-satisfied request delivers nothing. The credit only applies when that destination balance is in scope as a source — pinning `sourceAssets` or `sourceChains` away from the destination chain excludes it, and then this amount is delivered in full on top of whatever is already there. Same-chain intents always have the destination balance in scope, so they always credit.
              * @example 1000000
              */
             amount?: string
@@ -3953,14 +3953,14 @@ export interface operations {
               | 6
             appFees?: {
               /**
-               * @description App fee rate in basis points of the input value (0–10000 = 0–100%).
+               * @description App fee rate in basis points (0–10000 = 0–100%). The base is the USD value of the intent, and which value depends on the intent shape: for a fixed-output intent it is the requested destination target(s), summed across `tokenRequests`; for a max-out intent it is the spendable source balance; for a destination-swap intent it is the swap input. Note the fixed-output base is the full requested target, not the delta over any balance already held.
                * @example 25
                */
               feeBps: number
             }
             protocolFees?: {
               /**
-               * @description Rhinestone protocol fee rate in basis points of the input value (0–10000 = 0–100%). Collected alongside the app fee in one batched transfer and always accrues to Rhinestone; sponsor it via `sponsorSettings.protocolFees` to charge the integrator balance instead of the user.
+               * @description Rhinestone protocol fee rate in basis points (0–10000 = 0–100%), on the same base as `appFees.feeBps` — see that field. Collected alongside the app fee in one batched transfer and always accrues to Rhinestone; sponsor it via `sponsorSettings.protocolFees` to charge the integrator balance instead of the user.
                * @example 35
                */
               feeBps: number
