@@ -123,15 +123,32 @@ export async function signIntentAsOwner<CompatibilityConfig>(
     signerInvoker: signing.signerInvoker,
     assembleStage: () => ({}),
   })
-  const origin = prepared.signing.origins.map((_payload, index) => {
-    const stage = transcript.stages.find(
-      ({ stage: materialized }) => materialized.stageId === `origin-${index}`,
-    )
-    const result = stage
-      ? Object.entries(stage.results).find(([taskId]) =>
-          taskId.includes(owner.ownerId),
-        )?.[1]
+  const quorumRootStage =
+    signing.validator.kind === 'quorum' && prepared.signing.origins.length > 1
+      ? transcript.stages.find(
+          ({ stage: materialized }) =>
+            materialized.stageId === 'quorum-origins',
+        )
       : undefined
+  const quorumRootResult = quorumRootStage
+    ? Object.entries(quorumRootStage.results).find(([taskId]) =>
+        taskId.includes(owner.ownerId),
+      )?.[1]
+    : undefined
+  const origin = prepared.signing.origins.map((_payload, index) => {
+    const stage = quorumRootStage
+      ? undefined
+      : transcript.stages.find(
+          ({ stage: materialized }) =>
+            materialized.stageId === `origin-${index}`,
+        )
+    const result =
+      quorumRootResult ??
+      (stage
+        ? Object.entries(stage.results).find(([taskId]) =>
+            taskId.includes(owner.ownerId),
+          )?.[1]
+        : undefined)
     return independentOriginResult(owner, result)
   })
   const signature =

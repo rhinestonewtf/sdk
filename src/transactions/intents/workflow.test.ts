@@ -19,7 +19,7 @@ import { createAccountSigningContext } from '../../signing/context'
 import { buildIntentSigningInput, prepareIntent } from './prepare'
 import { sendIntent } from './send'
 import { buildSessionIntentPlanInput } from './session-signing'
-import { signIntent } from './sign-transaction'
+import { signIntent, signIntentAsOwner } from './sign-transaction'
 import { submitIntent } from './submit'
 import type { IntentWorkflowContext } from './types'
 
@@ -340,6 +340,15 @@ describe('intent workflow', () => {
     expect(firstSignature.slice(4, 68)).toBe(secondSignature.slice(4, 68))
     expect(secondSignature).toMatch(/^0x01/u)
     expect(signed.destinationSignature).toBe(secondSignature)
+
+    const ownerSignature = await signIntentAsOwner(workflow, prepared, {
+      signerId: `ecdsa:${account.address.toLowerCase()}`,
+    })
+    if (ownerSignature.kind !== 'ecdsa') {
+      throw new Error('Expected independent ECDSA signature')
+    }
+    expect(ownerSignature.origin).toHaveLength(2)
+    expect(ownerSignature.origin[0]).toBe(ownerSignature.origin[1])
   })
 
   test('uses an explicit owner selection for preparation and signing', async () => {
