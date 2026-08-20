@@ -8,8 +8,8 @@ import {
   size,
   toHex,
 } from 'viem'
-import { compareHexValues } from './ordering'
 import type { ResolvedModule } from '../types'
+import { compareHexValues } from './ordering'
 import type {
   AtomicValidatorDefinition,
   ValidatorContributionInput,
