@@ -12,6 +12,7 @@ import type { AccountRuntime } from '../accounts/adapter'
 import { wrapKernelMessageHash } from '../accounts/adapters/kernel'
 import type { EvmChainReference } from '../chains/types'
 import { defineValidator } from '../modules/validators/definition'
+import { getQuorumSignableHash } from '../modules/validators/quorum'
 import { getPermissionId } from '../modules/validators/smart-sessions/digest'
 import { getSmartSessionEmissaryAddress } from '../modules/validators/smart-sessions/module'
 import type { ResolvedSessionSignerSet } from '../modules/validators/smart-sessions/types'
@@ -71,12 +72,23 @@ export async function signRuntimeMessage(
     input.selection?.signerIds,
   )
   const payload = hashMessage(input.message)
+  const validatorHash =
+    context.validator.kind === 'quorum'
+      ? getQuorumSignableHash({
+          validator:
+            context.validatorCapabilities.compatibilityKey.moduleAddress,
+          chainId: input.chain.id,
+          account: context.account.address,
+          hash: payload,
+        })
+      : payload
   const accountHash =
     input.runtime.construction.account.kind === 'kernel'
-      ? wrapKernelMessageHash(payload, context.account.address)
-      : payload
+      ? wrapKernelMessageHash(validatorHash, context.account.address)
+      : validatorHash
   const signingMaterial =
-    input.runtime.construction.account.kind === 'kernel'
+    input.runtime.construction.account.kind === 'kernel' ||
+    context.validator.kind === 'quorum'
       ? {
           kind: 'message' as const,
           message: { raw: accountHash },

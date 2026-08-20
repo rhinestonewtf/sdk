@@ -286,6 +286,62 @@ describe('intent workflow', () => {
     expect(workflow.signerInvoker.invoke).toHaveBeenCalledOnce()
   })
 
+  test('signs a multi-origin quorum once and emits per-origin Merkle proofs', async () => {
+    const quorumValidator = '0x0000000000000000000000000000000000000042'
+    const baseRuntime = runtime()
+    const quorumRuntime: AccountRuntime = {
+      ...baseRuntime,
+      construction: {
+        ...baseRuntime.construction,
+        owner: defineValidator({
+          type: 'quorum',
+          module: quorumValidator,
+          thresholdWeight: 1n,
+          owners: [{ account, weight: 1n }],
+        }),
+      },
+    }
+    const secondOrigin = {
+      ...quote().signData.origin[0],
+      domain: { chainId: 10, verifyingContract: address },
+      message: { value: '2' },
+    }
+    const workflow = context({
+      account: { forChain: vi.fn(async () => quorumRuntime) },
+      quoteClient: {
+        createQuote: vi.fn(async () => ({
+          traceId: 'trace-merkle',
+          routes: [
+            {
+              ...quote(),
+              signData: {
+                ...quote().signData,
+                origin: [quote().signData.origin[0], secondOrigin],
+              },
+            },
+          ],
+        })),
+      },
+    })
+    const prepared = await prepareIntent(workflow, input)
+    const signed = await signIntent(workflow, prepared)
+
+    expect(workflow.signerInvoker.invoke).toHaveBeenCalledOnce()
+    expect(signed.originSignatures).toHaveLength(2)
+    const [firstSignature, secondSignature] = signed.originSignatures
+    if (
+      typeof firstSignature !== 'string' ||
+      typeof secondSignature !== 'string'
+    ) {
+      throw new Error('Expected Quorum Merkle signatures')
+    }
+    expect(firstSignature).not.toBe(secondSignature)
+    expect(firstSignature).toMatch(/^0x01/u)
+    expect(firstSignature.slice(4, 68)).toBe(secondSignature.slice(4, 68))
+    expect(secondSignature).toMatch(/^0x01/u)
+    expect(signed.destinationSignature).toBe(secondSignature)
+  })
+
   test('uses an explicit owner selection for preparation and signing', async () => {
     const workflow = context()
     const validator = defineValidator({

@@ -6,6 +6,11 @@ import {
 } from '../../errors/execution'
 import { encodeValidatorId } from '../../modules/validators/multi-factor'
 import {
+  buildQuorumMerkleTree,
+  getQuorumMerkleRootSignableHash,
+  getQuorumSignableHash,
+} from '../../modules/validators/quorum'
+import {
   createAccountSigningContext,
   getAccountSignatureEnvelope,
   getSigningValidatorCodec,
@@ -24,11 +29,15 @@ import {
   projectIndependentSigning,
 } from '../../signing/intent-plans/plan'
 import type {
+  IntentSigningPayload,
   IntentSigningPlanCreationInput,
   IntentSigningStageInput,
 } from '../../signing/intent-plans/types'
 import { createValidatorSigningTasks } from '../../signing/plan'
-import { resolveAccountTypedDataSigning } from '../../signing/typed-data'
+import {
+  type AccountTypedDataSigningRoute,
+  resolveAccountTypedDataSigning,
+} from '../../signing/typed-data'
 import type {
   ArtifactAssemblyPlan,
   RawSignerResult,
@@ -374,23 +383,64 @@ function buildIntentPlanInput<CompatibilityConfig>(
 ): IntentSigningPlanCreationInput {
   const payloads: Record<Hex, SigningPayloadRegistry[Hex]> = {}
   const stages: IntentSigningStageInput[] = []
-  for (const [index, origin] of prepared.signing.origins.entries()) {
+  const quorumMerkle =
+    context.validator.kind === 'quorum' && prepared.signing.origins.length > 1
+      ? buildQuorumMerkleTree(
+          prepared.signing.origins.map((origin) => ({
+            account: context.account.address,
+            digest: getQuorumSignableHashForIntent(
+              context,
+              origin.id,
+              origin.chain.id,
+            ),
+          })),
+        )
+      : undefined
+  const quorumRootHash = quorumMerkle
+    ? getQuorumMerkleRootSignableHash({
+        validator: context.validatorCapabilities.compatibilityKey.moduleAddress,
+        root: quorumMerkle.root,
+      })
+    : undefined
+  if (quorumMerkle && quorumRootHash) {
+    const firstOrigin = prepared.signing.origins[0]
     const route = resolveAccountTypedDataSigning({
-      typedData: origin.typedData,
-      chain: origin.chain,
+      typedData: firstOrigin.typedData,
+      chain: firstOrigin.chain,
       context,
+      validationHash: quorumRootHash,
+      skipQuorumBinding: true,
     })
-    payloads[origin.id] = route.material
+    payloads[firstOrigin.id] = route.material
     stages.push(
-      signingStage({
-        id: `origin-${index}`,
-        payloadId: origin.id,
-        chain: origin.chain,
-        usage: 'intent-origin',
+      quorumMerkleSigningStage({
+        origins: prepared.signing.origins,
+        payloadId: firstOrigin.id,
         context,
         route,
+        proofs: quorumMerkle.operations,
       }),
     )
+  } else {
+    for (const [index, origin] of prepared.signing.origins.entries()) {
+      const route = resolveAccountTypedDataSigning({
+        typedData: origin.typedData,
+        chain: origin.chain,
+        context,
+        validationHash: origin.id,
+      })
+      payloads[origin.id] = route.material
+      stages.push(
+        signingStage({
+          id: `origin-${index}`,
+          payloadId: origin.id,
+          chain: origin.chain,
+          usage: 'intent-origin',
+          context,
+          route,
+        }),
+      )
+    }
   }
   const lastOriginIndex = prepared.signing.origins.length - 1
   stages.push({
@@ -398,7 +448,7 @@ function buildIntentPlanInput<CompatibilityConfig>(
     checkpoint: { kind: 'none', id: 'destination:none' },
     priorOutputs: [
       {
-        stageId: `origin-${lastOriginIndex}`,
+        stageId: quorumMerkle ? 'quorum-origins' : `origin-${lastOriginIndex}`,
         outputId: `origin-${lastOriginIndex}`,
         selection: 'whole',
       },
@@ -411,7 +461,9 @@ function buildIntentPlanInput<CompatibilityConfig>(
         usage: 'intent-destination',
         input: {
           kind: 'reuse-artifact',
-          stageId: `origin-${lastOriginIndex}`,
+          stageId: quorumMerkle
+            ? 'quorum-origins'
+            : `origin-${lastOriginIndex}`,
           artifactId: `origin-${lastOriginIndex}`,
           selection: 'whole',
         },
@@ -428,6 +480,7 @@ function buildIntentPlanInput<CompatibilityConfig>(
       typedData: target.typedData,
       chain: target.chain,
       context,
+      validationHash: target.id,
     })
     payloads[target.id] = route.material
     stages.push(
@@ -444,45 +497,131 @@ function buildIntentPlanInput<CompatibilityConfig>(
   return { intent: prepared.signing, stages, payloads }
 }
 
+function quorumMerkleSigningStage(input: {
+  readonly origins: readonly IntentSigningPayload[]
+  readonly payloadId: Hex
+  readonly context: SigningContext
+  readonly route: AccountTypedDataSigningRoute
+  readonly proofs: readonly {
+    readonly root: Hex
+    readonly proof: readonly Hex[]
+  }[]
+}): IntentSigningStageInput {
+  const tasks = createValidatorSigningTasks({
+    validator: input.context.validator,
+    signerReferences: input.context.signerReferences,
+    taskPrefix: 'quorum-root',
+    ecdsaInvocation: input.route.ecdsaInvocation,
+    webauthnInvocation: input.route.webauthnInvocation,
+    selectedSignerIds: input.context.effectiveSigners.signerIds,
+  }).map(
+    (task): SigningTaskTemplate => ({
+      ...task,
+      payload: { source: 'plan-payload', payloadId: input.payloadId },
+    }),
+  )
+  const validatorCodec = getSigningValidatorCodec(
+    input.context,
+    input.route.payloadKind,
+  )
+  return {
+    id: 'quorum-origins',
+    checkpoint: { kind: 'none', id: 'quorum-origins:none' },
+    priorOutputs: [],
+    tasks,
+    schedule: [
+      {
+        id: 'quorum-root:signers',
+        execution: 'parallel',
+        taskIds: tasks.map(({ id }) => id),
+      },
+    ],
+    artifacts: input.origins.map((_, index) => ({
+      id: `origin-${index}`,
+      usage: 'intent-origin',
+      input: { kind: 'task-results', taskIds: tasks.map(({ id }) => id) },
+      validatorCodec,
+      quorumMerkleProof: input.proofs[index],
+      erc7739: { kind: 'none' },
+      accountEnvelope: getAccountSignatureEnvelope(input.context),
+      erc6492: { kind: 'none' },
+    })),
+  }
+}
+
+function getQuorumSignableHashForIntent(
+  context: SigningContext,
+  hash: Hex,
+  chainId: number,
+): Hex {
+  return getQuorumSignableHash({
+    validator: context.validatorCapabilities.compatibilityKey.moduleAddress,
+    chainId,
+    account: context.account.address,
+    hash,
+  })
+}
+
 function signingStage(input: {
   readonly id: string
   readonly payloadId: Hex
   readonly chain: import('../../chains/types').EvmChainReference
   readonly usage: 'intent-origin' | 'intent-target'
   readonly context: SigningContext
-  readonly route: ReturnType<typeof resolveAccountTypedDataSigning>
+  readonly route: AccountTypedDataSigningRoute
+  readonly quorumMerkleProof?: {
+    readonly root: Hex
+    readonly proof: readonly Hex[]
+  }
+  readonly reuseStageId?: string
 }): IntentSigningStageInput {
   const direct = input.context.account.definition.kind === 'eoa'
-  const tasks = direct
-    ? eoaTask(input)
-    : createValidatorSigningTasks({
-        validator: input.context.validator,
-        signerReferences: input.context.signerReferences,
-        taskPrefix: input.id,
-        ecdsaInvocation: input.route.ecdsaInvocation,
-        webauthnInvocation: input.route.webauthnInvocation,
-        selectedSignerIds: input.context.effectiveSigners.signerIds,
-      }).map(
-        (task): SigningTaskTemplate => ({
-          ...task,
-          chain: input.chain,
-          payload: { source: 'plan-payload', payloadId: input.payloadId },
-        }),
-      )
+  const tasks = input.reuseStageId
+    ? []
+    : direct
+      ? eoaTask(input)
+      : createValidatorSigningTasks({
+          validator: input.context.validator,
+          signerReferences: input.context.signerReferences,
+          taskPrefix: input.id,
+          ecdsaInvocation: input.route.ecdsaInvocation,
+          webauthnInvocation: input.route.webauthnInvocation,
+          selectedSignerIds: input.context.effectiveSigners.signerIds,
+        }).map(
+          (task): SigningTaskTemplate => ({
+            ...task,
+            chain: input.chain,
+            payload: { source: 'plan-payload', payloadId: input.payloadId },
+          }),
+        )
   const artifact: Omit<ArtifactAssemblyPlan, 'stageId'> = {
     id: input.id,
     usage: input.usage,
-    input: { kind: 'task-results', taskIds: tasks.map(({ id }) => id) },
-    validatorCodec: direct
+    input: input.reuseStageId
+      ? {
+          kind: 'reuse-artifact',
+          stageId: input.reuseStageId,
+          artifactId: input.reuseStageId,
+          selection: 'whole',
+        }
+      : { kind: 'task-results', taskIds: tasks.map(({ id }) => id) },
+    validatorCodec: input.reuseStageId
       ? { kind: 'none' }
-      : getSigningValidatorCodec(input.context, input.route.payloadKind),
-    ...(!direct && input.context.validator.kind === 'multi-factor'
+      : direct
+        ? { kind: 'none' }
+        : getSigningValidatorCodec(input.context, input.route.payloadKind),
+    ...(!direct &&
+    !input.reuseStageId &&
+    input.context.validator.kind === 'multi-factor'
       ? {
           validatorFactors: getSigningValidatorFactors(
             input.context,
             input.route.payloadKind,
           ),
         }
+      : {}),
+    ...(input.quorumMerkleProof
+      ? { quorumMerkleProof: input.quorumMerkleProof }
       : {}),
     erc7739: input.route.erc7739,
     accountEnvelope: direct
@@ -493,18 +632,29 @@ function signingStage(input: {
   return {
     id: input.id,
     checkpoint: { kind: 'none', id: `${input.id}:none` },
-    priorOutputs: [],
+    priorOutputs: input.reuseStageId
+      ? [
+          {
+            stageId: input.reuseStageId,
+            outputId: input.reuseStageId,
+            selection: 'whole',
+          },
+        ]
+      : [],
     tasks,
-    schedule: [
-      {
-        id: `${input.id}:signers`,
-        execution:
-          input.context.validator.kind === 'multi-factor'
-            ? 'serial'
-            : 'parallel',
-        taskIds: tasks.map(({ id }) => id),
-      },
-    ],
+    schedule:
+      tasks.length === 0
+        ? []
+        : [
+            {
+              id: `${input.id}:signers`,
+              execution:
+                input.context.validator.kind === 'multi-factor'
+                  ? 'serial'
+                  : 'parallel',
+              taskIds: tasks.map(({ id }) => id),
+            },
+          ],
     artifacts: [artifact],
   }
 }

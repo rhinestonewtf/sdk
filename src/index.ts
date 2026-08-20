@@ -82,6 +82,8 @@ export type {
   Permit2ClaimPolicy,
   Policy,
   ProviderConfig,
+  QuorumOwner,
+  QuorumValidatorConfig,
   Recovery,
   RhinestoneAccountConfig,
   Session,
