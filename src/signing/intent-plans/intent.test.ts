@@ -1224,6 +1224,29 @@ describe('intent signing plans', () => {
         }),
       ).toThrow('cannot be signed independently')
     }
+
+    expect(() =>
+      assembleIndependentIntentArtifact({
+        intentId,
+        originIndex: 0,
+        originCount: 1,
+        signatures: [valid],
+        owners: [{ ownerId: 'owner/a', identity: owner, kind: 'ecdsa' }],
+        artifact: {
+          ...artifact,
+          validatorFactors: [
+            {
+              id: 'factor',
+              publicId: 1,
+              validator,
+              codec,
+            },
+          ],
+          validatorCodec: codec,
+        },
+        context: signingContext,
+      }),
+    ).toThrow('requires a nested codec')
   })
 
   test('reports insufficient independent atomic and MFA signatures', () => {
