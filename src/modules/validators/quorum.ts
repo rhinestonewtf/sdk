@@ -145,7 +145,9 @@ export function resolveQuorumValidator(
   if (definition.kind !== 'quorum') {
     throw new Error('Quorum resolver received a non-quorum validator')
   }
-  const owners = resolveOwners(definition)
+  const owners = resolveOwners(definition).sort((left, right) =>
+    compareHexValues(left.signer, right.signer),
+  )
   const thresholdWeight = requireThresholdWeight(definition)
   validateQuorumConfig(owners, thresholdWeight)
   if (definition.module.source !== 'explicit') {

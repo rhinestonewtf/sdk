@@ -96,10 +96,27 @@ describe('validator resolution', () => {
       module.initData,
     )
     expect(threshold).toBe(50n)
-    expect(owners).toEqual([
-      { addr: accountA.address, weight: 50n },
-      { addr: accountB.address, weight: 25n },
-    ])
+    expect(owners).toEqual(
+      [
+        { addr: accountA.address, weight: 50n },
+        { addr: accountB.address, weight: 25n },
+      ].sort((left, right) =>
+        BigInt(left.addr) < BigInt(right.addr) ? -1 : 1,
+      ),
+    )
+    expect(
+      resolveValidator(
+        validator({
+          type: 'quorum',
+          module: moduleAddress,
+          thresholdWeight: 50n,
+          owners: [
+            { account: accountB, weight: 25n },
+            { account: accountA, weight: 50n },
+          ],
+        }),
+      ).initData,
+    ).toBe(module.initData)
 
     const signatureA = `0x${'11'.repeat(64)}1b` as const
     const signatureB = `0x${'22'.repeat(64)}1c` as const
