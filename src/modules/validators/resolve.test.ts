@@ -289,6 +289,28 @@ describe('validator resolution', () => {
         ],
       }),
     ).toThrow('received 1')
+    const invalidQuorum = {
+      ...definition,
+      owners: [{ ...definition.owners[0], weight: undefined }],
+    } as AtomicValidatorDefinition
+    expect(() =>
+      getValidatorCapabilities(
+        invalidQuorum,
+        resolveValidator(definition),
+        'nexus',
+        'intent',
+        true,
+      ),
+    ).toThrow('weighted ECDSA owners')
+    expect(() =>
+      getValidatorCapabilities(
+        { ...definition, thresholdWeight: undefined },
+        resolveValidator(definition),
+        'nexus',
+        'intent',
+        true,
+      ),
+    ).toThrow('threshold weight is missing')
   })
 
   test('matches exact WebAuthn module bytes and mock schema', () => {
