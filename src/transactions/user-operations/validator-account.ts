@@ -2,6 +2,7 @@ import type { Hex } from 'viem'
 import type { AccountRuntime } from '../../accounts/adapter'
 import { encodeMultiFactorContribution } from '../../modules/validators/multi-factor'
 import { encodeOwnableMockSignature } from '../../modules/validators/ownable'
+import { encodeQuorumMockSignature } from '../../modules/validators/quorum'
 import { resolveValidator } from '../../modules/validators/resolve'
 import { WEBAUTHN_MOCK_SIGNATURE } from '../../modules/validators/webauthn'
 import type { SigningContext } from '../../signing/context'
@@ -16,6 +17,9 @@ export function getUserOperationStubSignature(
     )
   }
   if (context.validator.kind === 'passkey') return WEBAUTHN_MOCK_SIGNATURE
+  if (context.validator.kind === 'quorum') {
+    return encodeQuorumMockSignature(context.validator)
+  }
   if (context.validator.kind === 'multi-factor') {
     return encodeMultiFactorContribution({
       factorOrder: context.validator.validators.map(({ id }) => id),

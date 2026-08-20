@@ -47,6 +47,26 @@ describe('signer adapters', () => {
     expect(port.has?.({ id: 'owner', kind: 'webauthn' })).toBe(false)
   })
 
+  test('signs raw quorum digests without EIP-191 prefixing', async () => {
+    const sign = vi.fn(async () => signature)
+    const signMessage = vi.fn(async () => signature)
+    const account = { address, sign, signMessage } as unknown as Account
+    const port = createSignerInvocationPort({
+      signers: { owner: { kind: 'ecdsa', account } },
+    })
+    await expect(
+      port.invoke(
+        { id: 'owner', kind: 'ecdsa' },
+        { kind: 'ecdsa-sign-hash', hash: '0x1234' },
+      ),
+    ).resolves.toEqual({
+      kind: 'ecdsa-signature',
+      signature: `0x${'22'.repeat(64)}1b`,
+    })
+    expect(sign).toHaveBeenCalledWith({ hash: '0x1234' })
+    expect(signMessage).not.toHaveBeenCalled()
+  })
+
   test('keeps WebAuthn hash and typed-data calls distinct', async () => {
     const result = {
       signature: `0x${'33'.repeat(64)}` as Hex,

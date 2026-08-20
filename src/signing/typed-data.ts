@@ -6,6 +6,7 @@ import {
 } from '../accounts/adapters/startale'
 import { EoaSigningNotSupportedError } from '../accounts/error'
 import type { EvmChainReference } from '../chains/types'
+import { getQuorumSignableHash } from '../modules/validators/quorum'
 import type { SigningContext } from './context'
 import { encodePlannedValidatorContribution } from './contribution'
 import { runSigningStep } from './error'
@@ -44,37 +45,62 @@ export interface TypedDataSigningPlanInput {
   >
 }
 
-export function resolveAccountTypedDataSigning(input: {
-  readonly typedData: TypedDataDefinition
-  readonly chain: EvmChainReference
-  readonly context: SigningContext
-}): {
+export interface AccountTypedDataSigningRoute {
   readonly material: SigningPayloadMaterial
   readonly payloadKind: 'message' | 'typed-data'
   readonly ecdsaInvocation: 'ecdsa-sign-message' | 'ecdsa-sign-typed-data'
   readonly webauthnInvocation: 'webauthn-sign-hash' | 'webauthn-sign-typed-data'
   readonly erc7739: ArtifactAssemblyPlan['erc7739']
-} {
-  const payload = hashTypedData(input.typedData)
+}
+export function resolveAccountTypedDataSigning(input: {
+  readonly typedData: TypedDataDefinition
+  readonly chain: EvmChainReference
+  readonly context: SigningContext
+  /**
+   * Hash presented to the validator before Quorum's module/chain/account
+   * binding. Defaults to the EIP-712 hash of `typedData`.
+   */
+  readonly validationHash?: Hex
+  /** Use `validationHash` as an already derived Quorum signing digest. */
+  readonly skipQuorumBinding?: boolean
+}): AccountTypedDataSigningRoute {
+  const payload = input.validationHash ?? hashTypedData(input.typedData)
   const accountKind = input.context.account.definition.kind
   const startaleK1 =
     accountKind === 'startale' &&
     input.context.validatorCapabilities.compatibilityKey.moduleAddress.toLowerCase() ===
       K1_DEFAULT_VALIDATOR_ADDRESS.toLowerCase()
+  const quorumPayload =
+    input.context.validator.kind === 'quorum'
+      ? input.skipQuorumBinding
+        ? payload
+        : getQuorumSignableHash({
+            validator:
+              input.context.validatorCapabilities.compatibilityKey
+                .moduleAddress,
+            chainId: input.chain.id,
+            account: input.context.account.address,
+            hash: payload,
+          })
+      : undefined
   const messagePayload =
     accountKind === 'kernel'
-      ? wrapKernelMessageHash(payload, input.context.account.address)
-      : startaleK1
-        ? hashErc7739TypedData({
-            typedData: input.typedData,
-            verifierDomain: startaleEip712Domain(
-              input.context.account.address,
-              input.chain.id,
-            ),
-          })
-        : input.context.validatorCapabilities.supportsEip712
-          ? undefined
-          : payload
+      ? wrapKernelMessageHash(
+          quorumPayload ?? payload,
+          input.context.account.address,
+        )
+      : (quorumPayload ??
+        (startaleK1
+          ? hashErc7739TypedData({
+              typedData: input.typedData,
+              verifierDomain: startaleEip712Domain(
+                input.context.account.address,
+                input.chain.id,
+              ),
+            })
+          : input.context.validatorCapabilities.supportsEip712
+            ? undefined
+            : payload))
   return messagePayload
     ? {
         material: { kind: 'message', message: { raw: messagePayload } },

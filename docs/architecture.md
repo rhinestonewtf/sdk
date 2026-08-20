@@ -46,9 +46,9 @@ enforced by `scripts/architecture/check.ts`:
 - **`accounts/`** — account adapters (Safe, Kernel, Nexus, Startale, HCA, EOA).
   Each maps resolved config to that account's init data, module layout, and
   signature envelope. The registry selects the adapter by kind.
-- **`modules/`** — module planning and validators (ECDSA, ENS, WebAuthn,
-  multi-factor, K1, social recovery), including the Smart Sessions subsystem
-  (`modules/validators/smart-sessions/`).
+- **`modules/`** — module planning and validators (ECDSA, weighted Quorum
+  Signer, ENS, WebAuthn, multi-factor, K1, social recovery), including the Smart
+  Sessions subsystem (`modules/validators/smart-sessions/`).
 - **`signing/`** — the signing pipeline: signing plans, signer invocation,
   protocol codecs (ERC-6492/7739), and intent-plan assembly.
 - **`transactions/`** — an organizational namespace, not a shared protocol. The
@@ -86,6 +86,17 @@ the relayer market; the SDK signs and submits.
    `TransactionResult` (an intent id).
 5. `waitForExecution(result)` — polls the orchestrator until the intent reaches
    a terminal state; throws `IntentFailedError` on failure.
+
+Weighted Quorum Signer accounts collapse multi-origin intent signing into one
+chain-agnostic EIP-712 `WeightedMerkleRoot` signature. Each origin receives an
+account-bound Merkle proof, so the owner quorum signs once while every chain
+still receives a distinct validator envelope.
+
+Headless ERC-1271 integrations can import the same primitives from
+`@rhinestone/sdk/signing/quorum`: derive the account-bound digest, build a
+Merkle signing tree, derive its EIP-712 root hash, pack weighted owner
+signatures, and finally encode either a regular or proof-bearing validator
+signature.
 
 ```mermaid
 sequenceDiagram

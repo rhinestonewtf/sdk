@@ -379,6 +379,34 @@ describe('direct rewritten signing pipelines', () => {
         },
       }).payloadKind,
     ).toBe('typed-data')
+
+    if (context.validator.kind === 'multi-factor') {
+      throw new Error('Expected atomic validator')
+    }
+    const quorum = resolveAccountTypedDataSigning({
+      typedData,
+      chain,
+      context: {
+        ...context,
+        validator: {
+          ...context.validator,
+          kind: 'quorum',
+          thresholdWeight: 1n,
+        },
+        validatorCapabilities: {
+          ...context.validatorCapabilities,
+          compatibilityKey: {
+            ...context.validatorCapabilities.compatibilityKey,
+            validatorKind: 'quorum',
+          },
+        },
+      },
+    })
+    expect(quorum).toMatchObject({
+      material: { kind: 'message' },
+      payloadKind: 'message',
+      ecdsaInvocation: 'ecdsa-sign-message',
+    })
   })
 
   test('supports direct typed-data and deployless typed-data routes', async () => {

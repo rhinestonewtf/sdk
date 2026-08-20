@@ -6,6 +6,7 @@ import type { AccountConstruction } from '../../accounts/types'
 import { toEvmChainReference } from '../../chains/caip2'
 import type { ContractRead, RpcReadContext } from '../../clients/rpc/types'
 import { defineValidator } from '../../modules/validators/definition'
+import { getQuorumSignableHash } from '../../modules/validators/quorum'
 import { ecdsaSignerId } from '../../modules/validators/signer-id'
 import { prepareUserOperation } from './prepare'
 import {
@@ -204,6 +205,37 @@ describe('UserOperation workflow', () => {
     expect(prepared.signing.effectiveSelection.signerIds).toEqual([
       ecdsaSignerId(selectedOwner),
     ])
+  })
+
+  test('signs quorum UserOperations over the raw EntryPoint hash', async () => {
+    const quorumValidator = '0x0000000000000000000000000000000000000042'
+    const baseRuntime = runtime()
+    const quorumRuntime: AccountRuntime = {
+      ...baseRuntime,
+      construction: {
+        ...baseRuntime.construction,
+        owner: defineValidator({
+          type: 'quorum',
+          module: quorumValidator,
+          thresholdWeight: 1n,
+          owners: [{ account: owner, weight: 1n }],
+        }),
+      },
+    }
+    const workflow = context({
+      account: { forChain: vi.fn(async () => quorumRuntime) },
+    })
+    const prepared = await prepareUserOperation(workflow, input)
+    expect(prepared.signing.hash).toBe(prepared.hash)
+    expect(prepared.signing.tasks[0]?.invocationKind).toBe('ecdsa-sign-hash')
+    expect(prepared.signing.hash).not.toBe(
+      getQuorumSignableHash({
+        validator: quorumValidator,
+        chainId: chain.id,
+        account: sender,
+        hash: prepared.hash,
+      }),
+    )
   })
 
   test('prepares nonce, account call data, deployment, fees, gas, and signing plan', async () => {
