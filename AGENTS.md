@@ -77,7 +77,7 @@ After a changeset reaches `main`, a successful `@dev` publish opens one `main` â
 - Public API is the union of the explicit exports from `src/index.ts` and the subpath exports in `src/package.json` (`/actions`, `/errors`, `/jwt-server`, `/smart-sessions`, etc.) â€” adding, renaming, or removing exports is a breaking change. Determine root exports from export declarations or the packed package; a symbol imported into `src/index.ts` only for use in a public signature is not itself a named export.
 - When changing the public surface (types, exports, account/action APIs, config, errors, defaults), use the `dx` skill to keep it safe and ergonomic to integrate
 - When writing or editing JSDoc on public symbols (it generates the published SDK Reference), use the `jsdoc` skill
-- The project uses `changeset` to manage releases. Create a changeset file for each fix or feature, and use the `changesets` skill when adding, editing, or reviewing SDK changelog wording.
+- The project uses `changeset` to manage releases. Create a changeset file for each fix or feature, and use the `changesets` skill when adding, editing, or reviewing SDK changelog wording. Any change that adds a public export, including a publicly thrown error, requires a minor changeset because patch changesets must preserve the exact export surface.
 
 ## Testing
 
