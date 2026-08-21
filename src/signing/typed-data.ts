@@ -1,4 +1,4 @@
-import { concat, type Hex, hashTypedData, type TypedDataDefinition } from 'viem'
+import { type Hex, hashTypedData, type TypedDataDefinition } from 'viem'
 import { wrapKernelMessageHash } from '../accounts/adapters/kernel'
 import {
   K1_DEFAULT_VALIDATOR_ADDRESS,
@@ -171,15 +171,12 @@ export function assembleTypedDataStage(
   )
   const erc7739 = artifact.erc7739
   if (erc7739.kind !== 'none') {
-    contribution = step('protocol-operation', () => {
-      const wrapped = wrapErc7739TypedDataSignature({
+    contribution = step('protocol-operation', () =>
+      wrapErc7739TypedDataSignature({
         typedData: erc7739.typedData,
         signature: contribution,
-      })
-      return erc7739.kind === 'wrap-session-typed-data'
-        ? concat([erc7739.permissionId, wrapped])
-        : wrapped
-    })
+      }),
+    )
   }
   const accountSignature =
     artifact.accountEnvelope.kind === 'none'

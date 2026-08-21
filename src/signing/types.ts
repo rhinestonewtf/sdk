@@ -315,11 +315,6 @@ export interface ArtifactAssemblyPlan {
         readonly kind: 'wrap-typed-data'
         readonly typedData: TypedDataDefinition
       }
-    | {
-        readonly kind: 'wrap-session-typed-data'
-        readonly typedData: TypedDataDefinition
-        readonly permissionId: Hex
-      }
   readonly accountEnvelope: AccountSignatureEnvelope
   readonly erc6492:
     | { readonly kind: 'none' }
