@@ -16,7 +16,7 @@ Docs: https://docs.rhinestone.dev/smart-wallet
 - `bun run test:integration:smoke` - Run the live SDK smoke suite against testnets.
 - `bun run test:integration` - Run all live SDK integration tests.
 - `bun run check` - Lint and format (biome)
-- `bun run check:architecture` - Enforce dependency direction and import boundaries.
+- `bun run check:architecture` - Enforce dependency direction, import boundaries, and host-independent ordering.
 - `bun run typecheck` - Type check without emit
 
 ## Stack
@@ -71,6 +71,7 @@ After a changeset reaches `main`, a successful `@dev` publish opens one `main` �
 ## Patterns
 
 - Use viem types for addresses, chains, and hex values
+- Ordering and case conversion must never depend on the host locale — sort hex values with `compareHexValues` and use the default `.sort()` comparator or `toLowerCase`/`toUpperCase` elsewhere; `check:architecture` rejects `localeCompare`, `toLocale*Case`, and `Intl.Collator` in `src/`
 - Placement of a new public method — `RhinestoneSDK` vs `RhinestoneAccount`: put it on **`RhinestoneSDK`** when its data is scoped to the API key's project/integrator and needs no account (auth-only orchestrator reads, e.g. `getIntentStatus`, `splitIntents`, `getAppFeeBalances`); put it on **`RhinestoneAccount`** only when it is genuinely account-scoped (needs the account address / owners / on-chain state, e.g. `getPortfolio`, signing). Exposing project-scoped data as an account method misleads callers into reading it as account-scoped.
 - Account implementations live in `/src/accounts/adapters/*.ts`
 - Public API is the union of the explicit exports from `src/index.ts` and the subpath exports in `src/package.json` (`/actions`, `/errors`, `/jwt-server`, `/smart-sessions`, etc.) — adding, renaming, or removing exports is a breaking change. Determine root exports from export declarations or the packed package; a symbol imported into `src/index.ts` only for use in a public signature is not itself a named export.

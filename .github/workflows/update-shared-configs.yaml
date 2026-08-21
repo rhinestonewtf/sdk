@@ -12,11 +12,25 @@ jobs:
   upgrade-shared-configs:
     runs-on: ubuntu-latest
     steps:
+      # GitHub creates no workflow runs for events triggered by GITHUB_TOKEN, so
+      # a PR opened with it never fires `pull_request`, the required checks
+      # never report, and it sits BLOCKED with no error anywhere (RHI-5172).
+      # Events from an app token do trigger workflows.
+      - name: Mint an app token
+        id: app-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
       # v2 (on `main`) no longer bundles `@rhinestone/shared-configs`, so the
       # auto-bump only applies to the legacy v1 line — check out and PR v1.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: v1
+          # Persisted for the `git push` below, so the branch and the PR come
+          # from the same identity.
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Detect package manager
         id: pm
@@ -124,7 +138,7 @@ jobs:
       - name: Create PR
         if: steps.check.outputs.skip != 'true' && steps.commit.outputs.skip != 'true'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           VERSION="${{ steps.vars.outputs.version }}"
           gh pr create \
@@ -138,4 +152,5 @@ jobs:
           ---
           *Created automatically by [yeet](https://github.com/rhinestonewtf/yeet) publish workflow.*" \
             --base v1 \
-            --head "${{ steps.vars.outputs.branch }}"
+            --head "${{ steps.vars.outputs.branch }}" \
+            --label ship

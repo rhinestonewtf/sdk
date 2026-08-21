@@ -19,6 +19,7 @@
     "generate:reference:render": "bun run scripts/reference/generate.ts",
     "generate:reference": "bun run generate:reference:extract && bun run generate:reference:render",
     "generate:wire": "bun run scripts/generate-wire-types.ts",
+    "vectors:generate": "bun run scripts/vectors/generate.ts",
     "changeset": "changeset",
     "changeset:release": "bun run build && changeset publish",
     "changeset:version": "changeset version && bun run scripts/sync-version.ts",
@@ -36,7 +37,7 @@
     "@size-limit/esbuild-why": "^11.2.0",
     "@size-limit/preset-small-lib": "^11.2.0",
     "@types/bun": "^1.2.8",
-    "@vitest/coverage-v8": "3.1.2",
+    "@vitest/coverage-v8": "^4.1.10",
     "fast-check": "^4.9.0",
     "jose": "^6.2.2",
     "openapi-typescript": "^7.13.0",
@@ -47,6 +48,7 @@
     "tsc-esm-fix": "^3.1.2",
     "typedoc": "^0.28.19",
     "typescript": "^5.8.2",
-    "vitest": "^3.1.2"
+    "vite": "^6.3.3",
+    "vitest": "^4.1.10"
   }
 }

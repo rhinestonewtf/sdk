@@ -8,6 +8,7 @@
     "src/**/*.test.ts",
     "scripts/architecture/**/*.ts",
     "scripts/contract/**/*.ts",
+    "scripts/vectors/**/*.ts",
     "test/contract/*.ctest.ts",
     "test/fakes/**/*.ts",
     "test/integration/**/*.ts",

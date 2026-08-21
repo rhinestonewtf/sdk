@@ -1,4 +1,4 @@
-import type { Address, Hex } from 'viem'
+import { type Address, type Hex, keccak256, zeroHash } from 'viem'
 import type {
   AccountDefinition,
   AccountDeploymentPlan,
@@ -11,6 +11,17 @@ export interface DeploymentMaterial {
   readonly factory?: Address
   readonly factoryData?: Hex
 }
+
+// Salt/nonce defaults live here rather than in the adapters so the passkey salt
+// search grinds the same values the adapters derive addresses from.
+export const NEXUS_SALT_DEFAULTS = {
+  'nexus-empty-calldata-salt': keccak256('0x'),
+} as const
+export const KERNEL_SALT_DEFAULTS = { 'kernel-zero-salt': zeroHash } as const
+export const STARTALE_SALT_DEFAULTS = {
+  'startale-zero-salt': zeroHash,
+} as const
+export const SAFE_NONCE_DEFAULTS = { 'safe-zero-nonce': 0n } as const
 
 export function selectedValue<Value, Profile extends string>(
   selection: AccountValueSelection<Value, Profile>,

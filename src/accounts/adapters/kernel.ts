@@ -13,12 +13,16 @@ import {
   stringToHex,
   toHex,
   zeroAddress,
-  zeroHash,
 } from 'viem'
 import { moduleTypeId } from '../../modules/erc7579-abi'
 import type { ResolvedModule } from '../../modules/types'
 import type { AccountAdapter } from '../adapter'
-import { type DeploymentMaterial, deploymentPlan } from '../deployment'
+import {
+  type DeploymentMaterial,
+  deploymentPlan,
+  KERNEL_SALT_DEFAULTS,
+  selectedValue,
+} from '../deployment'
 import { encodeErc7579Calls } from '../erc7579-calls'
 import type { AccountConstruction } from '../types'
 import { encodeUninstallModule } from './shared'
@@ -144,10 +148,7 @@ function kernelMaterial(input: AccountConstruction): DeploymentMaterial {
         initConfig,
       ],
     })
-    salt =
-      input.account.salt.source === 'explicit'
-        ? input.account.salt.value
-        : zeroHash
+    salt = selectedValue(input.account.salt, KERNEL_SALT_DEFAULTS)
     factoryData = encodeFunctionData({
       abi: parseAbi(['function deployWithFactory(address,bytes,bytes32)']),
       functionName: 'deployWithFactory',

@@ -2,10 +2,10 @@ import {
   encodePacked,
   type Hex,
   hashMessage,
+  hashTypedData,
   pad,
   type SignableMessage,
   type TypedDataDefinition,
-  zeroHash,
 } from 'viem'
 import type { AccountRuntime } from '../accounts/adapter'
 import { wrapKernelMessageHash } from '../accounts/adapters/kernel'
@@ -48,34 +48,34 @@ export async function signRuntimeMessage(
   readonly signature: Hex
   readonly transcript: SigningTranscript
 }> {
-  const selection = input.session
-    ? sessionOwnerSelection(input.session)
-    : input.selection
+  if (input.session) {
+    return signSessionErc1271({
+      runtime: input.runtime,
+      signerInvoker: input.signerInvoker,
+      checkpoints: input.checkpoints,
+      chain: input.chain,
+      session: input.session,
+      contentHash: hashMessage(input.message),
+      nominalMessage: input.message,
+    })
+  }
   const context = createAccountSigningContext({
     runtime: input.runtime,
     purpose: 'erc1271',
     signerInvoker: input.signerInvoker,
-    ...(selection ? { selection } : {}),
+    ...(input.selection ? { selection: input.selection } : {}),
   })
-  const topology = signingTopology(context.validator, selection?.signerIds)
+  const topology = signingTopology(
+    context.validator,
+    input.selection?.signerIds,
+  )
   const payload = hashMessage(input.message)
   const accountHash =
     input.runtime.construction.account.kind === 'kernel'
       ? wrapKernelMessageHash(payload, context.account.address)
       : payload
-  const signingMaterial = input.session
-    ? {
-        kind: 'message' as const,
-        message: {
-          raw: hashMessage({
-            raw: encodePacked(
-              ['bytes32', 'bytes32'],
-              [pad(context.account.address, { size: 32 }), accountHash],
-            ),
-          }),
-        },
-      }
-    : input.runtime.construction.account.kind === 'kernel'
+  const signingMaterial =
+    input.runtime.construction.account.kind === 'kernel'
       ? {
           kind: 'message' as const,
           message: { raw: accountHash },
@@ -96,31 +96,11 @@ export async function signRuntimeMessage(
         taskPrefix: 'message',
         ecdsaInvocation: 'ecdsa-sign-message',
         webauthnInvocation: 'webauthn-sign-hash',
-        ...(selection ? { selectedSignerIds: selection.signerIds } : {}),
+        ...(input.selection
+          ? { selectedSignerIds: input.selection.signerIds }
+          : {}),
       }),
-      route: input.session
-        ? {
-            ...route,
-            validatorCodec: {
-              kind: 'smart-session',
-              validator: {
-                kind: 'validator',
-                address: getSmartSessionEmissaryAddress(
-                  input.runtime.construction.sessions.environment,
-                ),
-              },
-              mode: 'notarized',
-              permissionId: getPermissionId(input.session.session),
-              signerCodec: requireSessionOwnerCodec(
-                getSigningValidatorCodec(context),
-              ),
-            },
-            accountEnvelope: smartSessionEnvelope(
-              route.accountEnvelope,
-              input.runtime.construction.sessions.environment,
-            ),
-          }
-        : route,
+      route,
     },
   })
 }
@@ -131,21 +111,33 @@ export async function signRuntimeTypedData(
   readonly signature: Hex
   readonly transcript: SigningTranscript
 }> {
-  const selection = input.session
-    ? sessionOwnerSelection(input.session)
-    : input.selection
+  if (input.session) {
+    // Sessions sign an account-bound digest in direct (notarized) mode, the
+    // same shape signRuntimeMessage produces, so external ERC-1271 verifiers
+    // resolve the session validator directly.
+    const contentHash = hashTypedData(input.typedData)
+    return signSessionErc1271({
+      runtime: input.runtime,
+      signerInvoker: input.signerInvoker,
+      checkpoints: input.checkpoints,
+      chain: input.chain,
+      session: input.session,
+      contentHash,
+      nominalMessage: { raw: contentHash },
+    })
+  }
   const context = createAccountSigningContext({
     runtime: input.runtime,
     purpose: 'erc1271',
     signerInvoker: input.signerInvoker,
-    ...(selection ? { selection } : {}),
+    ...(input.selection ? { selection: input.selection } : {}),
   })
-  const topology = signingTopology(context.validator, selection?.signerIds)
-  const typedData = input.session
-    ? sessionTypedData(input.typedData, input.runtime, input.chain)
-    : input.typedData
+  const topology = signingTopology(
+    context.validator,
+    input.selection?.signerIds,
+  )
   const route = resolveAccountTypedDataSigning({
-    typedData,
+    typedData: input.typedData,
     chain: input.chain,
     context,
   })
@@ -159,7 +151,7 @@ export async function signRuntimeTypedData(
     context,
     checkpoints: input.checkpoints,
     planInput: {
-      typedData,
+      typedData: input.typedData,
       signingMaterial: route.material,
       chain: input.chain,
       ...topology,
@@ -169,22 +161,91 @@ export async function signRuntimeTypedData(
         taskPrefix: 'typed-data',
         ecdsaInvocation: route.ecdsaInvocation,
         webauthnInvocation: route.webauthnInvocation,
-        ...(selection ? { selectedSignerIds: selection.signerIds } : {}),
+        ...(input.selection
+          ? { selectedSignerIds: input.selection.signerIds }
+          : {}),
       }),
-      route: input.session
-        ? {
-            ...accountRoute,
-            erc7739: {
-              kind: 'wrap-session-typed-data',
-              typedData: input.typedData,
-              permissionId: getPermissionId(input.session.session),
-            },
-            accountEnvelope: smartSessionEnvelope(
-              accountRoute.accountEnvelope,
+      route: accountRoute,
+    },
+  })
+}
+
+// Shared ERC-1271 signing for a session: the session owner signs an
+// account-bound digest (keccak of account ‖ contentHash) in the smart-session
+// "notarized" (direct) mode. Used by both message and typed-data signing so
+// they produce the identical on-chain-verifiable shape.
+async function signSessionErc1271(input: {
+  readonly runtime: AccountRuntime
+  readonly signerInvoker: SignerInvocationPort
+  readonly checkpoints: SigningCheckpointPort
+  readonly chain: EvmChainReference
+  readonly session: ResolvedSessionSignerSet
+  readonly contentHash: Hex
+  readonly nominalMessage: SignableMessage
+}): Promise<{
+  readonly signature: Hex
+  readonly transcript: SigningTranscript
+}> {
+  const selection = sessionOwnerSelection(input.session)
+  const context = createAccountSigningContext({
+    runtime: input.runtime,
+    purpose: 'erc1271',
+    signerInvoker: input.signerInvoker,
+    selection,
+  })
+  const topology = signingTopology(context.validator, selection.signerIds)
+  const accountHash =
+    input.runtime.construction.account.kind === 'kernel'
+      ? wrapKernelMessageHash(input.contentHash, context.account.address)
+      : input.contentHash
+  const route = getAccountSignatureRoute(input.runtime, context)
+  return signAccountMessage({
+    context,
+    checkpoints: input.checkpoints,
+    planInput: {
+      message: input.nominalMessage,
+      signingMaterial: {
+        kind: 'message' as const,
+        message: {
+          raw: hashMessage({
+            raw: encodePacked(
+              ['bytes32', 'bytes32'],
+              [pad(context.account.address, { size: 32 }), accountHash],
+            ),
+          }),
+        },
+      },
+      chain: input.chain,
+      ...topology,
+      tasks: createValidatorSigningTasks({
+        validator: context.validator,
+        signerReferences: context.signerReferences,
+        taskPrefix: 'message',
+        ecdsaInvocation: 'ecdsa-sign-message',
+        webauthnInvocation: 'webauthn-sign-hash',
+        selectedSignerIds: selection.signerIds,
+      }),
+      route: {
+        ...route,
+        validatorCodec: {
+          kind: 'smart-session',
+          validator: {
+            kind: 'validator',
+            address: getSmartSessionEmissaryAddress(
               input.runtime.construction.sessions.environment,
             ),
-          }
-        : accountRoute,
+          },
+          mode: 'notarized',
+          permissionId: getPermissionId(input.session.session),
+          signerCodec: requireSessionOwnerCodec(
+            getSigningValidatorCodec(context),
+          ),
+        },
+        accountEnvelope: smartSessionEnvelope(
+          route.accountEnvelope,
+          input.runtime.construction.sessions.environment,
+        ),
+      },
     },
   })
 }
@@ -226,55 +287,4 @@ function smartSessionEnvelope(
   return envelope.kind === 'kernel'
     ? { ...envelope, validator, isRoot: false }
     : { ...envelope, validator }
-}
-
-function sessionTypedData(
-  typedData: TypedDataDefinition,
-  runtime: AccountRuntime,
-  chain: EvmChainReference,
-): TypedDataDefinition {
-  const verifier = sessionVerifierDomain(runtime, chain)
-  return {
-    domain: typedData.domain,
-    primaryType: 'TypedDataSign',
-    types: {
-      ...typedData.types,
-      TypedDataSign: [
-        { name: 'contents', type: typedData.primaryType as string },
-        { name: 'name', type: 'string' },
-        { name: 'version', type: 'string' },
-        { name: 'chainId', type: 'uint256' },
-        { name: 'verifyingContract', type: 'address' },
-        { name: 'salt', type: 'bytes32' },
-      ],
-    },
-    message: {
-      contents: typedData.message,
-      ...verifier,
-    },
-  } as unknown as TypedDataDefinition
-}
-
-function sessionVerifierDomain(
-  runtime: AccountRuntime,
-  chain: EvmChainReference,
-) {
-  const common = {
-    chainId: chain.id,
-    verifyingContract: runtime.identity.address,
-    salt: zeroHash,
-  }
-  switch (runtime.construction.account.kind) {
-    case 'safe':
-      return { ...common, name: 'rhinestone safe7579', version: 'v1.0.0' }
-    case 'nexus':
-    case 'hca':
-      return { ...common, name: 'Nexus', version: '1.2.0' }
-    case 'kernel':
-      return { ...common, name: 'Kernel', version: '0.3.3' }
-    case 'startale':
-      return { ...common, name: 'Startale', version: '1.0.0' }
-    case 'eoa':
-      throw new Error('EOA accounts do not have an EIP-712 domain')
-  }
 }

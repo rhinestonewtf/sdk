@@ -1053,4 +1053,59 @@ describe('signing plan materialization and execution', () => {
       }).endsWith('1f'),
     ).toBe(true)
   })
+
+  test('encodes a session ERC-1271 contribution in direct (notarized) mode', () => {
+    const sessionSignature = `0x${'22'.repeat(64)}1b` as Hex
+    const validator = {
+      kind: 'validator' as const,
+      address: '0x3333333333333333333333333333333333333333' as const,
+    }
+    const artifact = {
+      id: 'signature',
+      stageId: 'stage',
+      usage: 'erc1271' as const,
+      input: { kind: 'task-results' as const, taskIds: ['owner'] },
+      validatorCodec: {
+        kind: 'smart-session' as const,
+        validator,
+        mode: 'notarized' as const,
+        permissionId: payloadId,
+      },
+      erc7739: { kind: 'none' as const },
+      accountEnvelope: { kind: 'none' as const },
+      erc6492: { kind: 'none' as const },
+    }
+    const stage = {
+      stageId: 'stage',
+      facts: [],
+      schedule: [],
+      tasks: [
+        {
+          ...task('owner'),
+          payload: { source: 'plan-payload' as const, payloadId },
+          contribution: {
+            kind: 'session' as const,
+            recoveryEncoding: 'validator-offset-4' as const,
+          },
+          invocation: {
+            kind: 'ecdsa-sign-message' as const,
+            message: { raw: payloadId },
+          },
+        },
+      ],
+    }
+
+    const result = encodePlannedValidatorContribution({
+      artifact,
+      stage,
+      results: {
+        owner: { kind: 'ecdsa-signature', signature: sessionSignature },
+      },
+    })
+    // Direct-mode ERC-1271: a leading smart-session mode byte 0x00, followed
+    // immediately by the permissionId — never mode 0x01 and never a mode-less
+    // blob, so external ERC-1271 verifiers resolve the session on the first try.
+    expect(result.slice(0, 4)).toBe('0x00')
+    expect(result.slice(4, 68)).toBe(payloadId.slice(2))
+  })
 })

@@ -16,6 +16,14 @@ const accountC: Account = privateKeyToAccount(
 const accountD: Account = privateKeyToAccount(
   '0xa4aba81871b7b51fff56bfe441ea7f9a4879dd4bc8ce8c15fdb06dc92e63d1d7',
 )
+// 0xaa7d… and 0xb1a4…: byte order and Danish-family collation disagree on this
+// pair, so ordering bugs are visible in the derived address.
+const collationAccountLow: Account = privateKeyToAccount(
+  '0x20438a6e377aee6f3ecd82abbe9710ad5aa29586b54ebe2b2992171d0adbcd40',
+)
+const collationAccountHigh: Account = privateKeyToAccount(
+  '0x29b0743c3c66dd86fd3cc92b157925232de9aadef57dedd8bc079b6d92af7d87',
+)
 const passkeyAccount: WebAuthnAccount = toWebAuthnAccount({
   credential: {
     id: '9IwX9n6cn-l9SzqFzfQXvDHRuTM',
@@ -26,4 +34,13 @@ const passkeyAccount: WebAuthnAccount = toWebAuthnAccount({
 
 const MOCK_API_KEY = 'MOCK_KEY'
 
-export { accountA, accountB, accountC, accountD, passkeyAccount, MOCK_API_KEY }
+export {
+  accountA,
+  accountB,
+  accountC,
+  accountD,
+  collationAccountHigh,
+  collationAccountLow,
+  passkeyAccount,
+  MOCK_API_KEY,
+}

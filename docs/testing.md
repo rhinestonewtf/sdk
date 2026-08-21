@@ -9,7 +9,7 @@ integration setup.
 | ------------------ | ------------------------------------- | ---------------------------------- | ---------------------------- |
 | Unit and vectors   | `src/**/*.test.ts`, `test/vectors/**` | Local code and deterministic fakes | `bun run test`               |
 | Pure-core coverage | Rewritten core and pure adapters      | V8 coverage with scoped thresholds | `bun run test:coverage:pure` |
-| Architecture       | Production imports                    | Dependency and cycle rules         | `bun run check:architecture` |
+| Architecture       | Production imports                    | Dependency, cycle, and host-independence rules | `bun run check:architecture` |
 | Typecheck           | Source, unit tests, and test harnesses | TypeScript                         | `bun run typecheck`          |
 | Public types        | `test/types/**`                       | Consumer-facing compile fixtures   | `bun run test:types`         |
 | Package contract   | `test/contract/**/*.ctest.ts`         | Packed release and current packages | `bun run test:contract`      |
@@ -26,6 +26,72 @@ The pure-core gate requires 95% statements, lines, and functions and 90%
 branches. Contract-only files are excluded. The architecture check rejects
 forbidden layer edges, concrete-client imports, published-barrel imports, and
 cycles.
+
+## Address derivation vectors
+
+`test/vectors/accounts/` guards the promise that a configuration always derives
+the same account address — an address change orphans already deployed accounts,
+so it must never happen by accident.
+
+`matrix.ts` enumerates one case per address-affecting axis: every account type
+with every owner type, account variants (adapter, version, salt, nonce, custom
+factory), owner variants (multi-owner, thresholds, module overrides,
+multi-factor, ENS, ENS owner expiry), sessions, recovery, custom modules, caller-pinned init data,
+EOA and EIP-7702 accounts, and the legacy v0 reconstruction path. Each case pins
+`address`, `factory`, and the `factoryData` hash in `account-deployment.json`;
+cases that only pass an address through pin the address alone. Both derivation
+drivers run — the public API (`createAccount`) and the adapter deployment plan —
+and the suite also asserts that the matrix and the baseline cover exactly the
+same case ids, so coverage cannot shrink silently. `useDevContracts`
+configurations are excluded: dev module addresses are redeployable and not part
+of the compatibility promise.
+
+Baseline values are calibrated against the published release recorded in
+`source`. A case whose value deliberately differs from that release carries a
+`deliberateChange` note naming the release sha and the reason.
+
+To record a deliberate change, run `bun run vectors:generate` — it rewrites the
+baseline from the current checkout, carries over `source` and existing
+`deliberateChange` notes, and prints the cases whose values moved. Add a
+`deliberateChange` note for each of them and a changeset describing the change.
+To recalibrate against another ref, add a worktree of it, symlink
+`node_modules`, copy `test/vectors/accounts/{matrix,derive}.ts`,
+`test/consts.ts` and `scripts/vectors/generate.ts` into it, and run the
+generator there with `SDK_VECTORS_OUT` pointing at this checkout's baseline.
+
+## Derivation invariants
+
+`test/vectors/accounts/invariants.test.ts` guards the *shape* of the same
+promise with generated configurations (fast-check): which caller-visible
+differences must never move a derived address, and which must.
+
+Invariant: the order owners, recovery guardians, and multi-factor factor members
+are listed in; reordering modules across kinds while each kind keeps its relative
+order; spelling out a default (`threshold: 1`, `sessions: { enabled: false }`,
+`modules: []`); address and passkey public key casing and the uncompressed point
+prefix; the chain the address is requested for and whether the account is
+deployed; repeated derivation, derivation order across accounts, and host
+collation. Derivation never mutates the caller's configuration.
+
+Sensitive by design, and asserted as such: owner set membership, threshold,
+account type, version, salt, nonce, sessions, recovery, installed modules, the
+order of modules of the same kind, and the order of multi-factor factors.
+
+Documented exceptions, also asserted so they cannot drift: ENS-HCA accounts
+derive from their lowest-sorted ENS owner alone, so configurations sharing that
+owner share an address; EOA, EIP-7702, and caller-pinned `initData` pass an
+address through; the legacy v0 factory args keep their owner-order sensitivity,
+and the `address` `experimental_getV0InitData` reports comes from the current
+derivation path rather than from those factory args, so the two describe
+different accounts (reconstruction is unaffected — passing the result back as
+`initData` re-derives the address from `factoryData`); and a multi-credential
+passkey factor nested in a multi-factor owner set is
+still installed in caller order, because the salt search only runs for a
+top-level passkey owner.
+
+Properties run on a fixed seed so a counterexample reproduces on any host.
+`SDK_PROPERTY_SEED` and `SDK_PROPERTY_RUNS` override the seed and run count for
+exploration — never commit a configuration that depends on them.
 
 ## Package contract
 

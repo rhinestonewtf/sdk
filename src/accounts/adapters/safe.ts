@@ -14,10 +14,16 @@ import {
 } from 'viem'
 import { getV0Attesters } from '../../modules/legacy-core'
 import type { AccountAdapter } from '../adapter'
-import { type DeploymentMaterial, deploymentPlan } from '../deployment'
+import {
+  type DeploymentMaterial,
+  deploymentPlan,
+  SAFE_NONCE_DEFAULTS,
+  selectedValue,
+} from '../deployment'
 import { encodeErc7579Calls } from '../erc7579-calls'
 import type { AccountConstruction } from '../types'
 import {
+  canonicalOwnerAddresses,
   encodeAddressEnvelope,
   encodeInstallModule,
   encodeUninstallModule,
@@ -101,7 +107,7 @@ function safeMaterial(input: AccountConstruction): DeploymentMaterial {
       ]),
       functionName: 'setup',
       args: [
-        [...primaryOwnerAddresses(input.owner)],
+        [...canonicalOwnerAddresses(input.owner)],
         primaryThreshold(input.owner),
         SAFE_LAUNCHPAD,
         addSafe7579,
@@ -111,8 +117,7 @@ function safeMaterial(input: AccountConstruction): DeploymentMaterial {
         zeroAddress,
       ],
     })
-    const nonce =
-      input.account.nonce.source === 'explicit' ? input.account.nonce.value : 0n
+    const nonce = selectedValue(input.account.nonce, SAFE_NONCE_DEFAULTS)
     factoryData = encodeFunctionData({
       abi: parseAbi([
         'function createProxyWithNonce(address singleton,bytes initializer,uint256 saltNonce)',
@@ -175,6 +180,8 @@ export function safeV0FactoryMaterial(
     ]),
     functionName: 'setup',
     args: [
+      // Caller order, not canonical order: this path reconstructs accounts that
+      // SDK v0 already deployed from the owner list as it was supplied.
       [...primaryOwnerAddresses(input.owner)],
       primaryThreshold(input.owner),
       SAFE_V0_LAUNCHPAD,
@@ -185,8 +192,7 @@ export function safeV0FactoryMaterial(
       zeroAddress,
     ],
   })
-  const nonce =
-    input.account.nonce.source === 'explicit' ? input.account.nonce.value : 0n
+  const nonce = selectedValue(input.account.nonce, SAFE_NONCE_DEFAULTS)
   return {
     factory: SAFE_FACTORY,
     factoryData: encodeFunctionData({

@@ -245,6 +245,68 @@ describe('resolvePermission', () => {
     }
   })
 
+  test('throws when a param value does not match its static ABI type', () => {
+    const abi = [
+      {
+        type: 'function',
+        name: 'setFlag',
+        inputs: [{ name: 'flag', type: 'bool' }],
+        outputs: [],
+        stateMutability: 'nonpayable',
+      },
+    ] as const
+    const resolve =
+      (permission: Parameters<typeof resolvePermission>[0]) => () =>
+        resolvePermission(permission)
+
+    expect(
+      resolve({
+        abi: erc20Abi,
+        address: USDC,
+        functions: {
+          transfer: {
+            params: {
+              recipient: { condition: 'equal', value: 'not-an-address' },
+            },
+          },
+        },
+      }),
+    ).toThrow('Expected address value, got: string')
+    expect(
+      resolve({
+        abi,
+        address: USDC,
+        functions: {
+          setFlag: { params: { flag: { condition: 'equal', value: 1n } } },
+        },
+      }),
+    ).toThrow('Expected boolean value, got: bigint')
+    expect(
+      resolve({
+        abi: erc20Abi,
+        address: USDC,
+        functions: {
+          transfer: {
+            params: { amount: { condition: 'equal', value: '1000' } },
+          },
+        },
+      }),
+    ).toThrow('Expected bigint value for uint256, got: string')
+  })
+
+  test('accepts numbers for integer params', () => {
+    const actions = resolvePermission({
+      abi: erc20Abi,
+      address: USDC,
+      functions: {
+        transfer: { params: { amount: { condition: 'equal', value: 1000 } } },
+      },
+    })
+    const policy = actions[0].policies![0]
+    if (policy.type !== 'universal-action') throw new Error('wrong type')
+    expect(policy.rules[0].referenceValue).toBe(1000n)
+  })
+
   test('throws for dynamic parameter types', () => {
     const abi = [
       {

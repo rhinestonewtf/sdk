@@ -15,7 +15,12 @@ import {
 import type { ModuleSetup } from '../../modules/types'
 import { K1_DEFAULT_VALIDATOR_ADDRESS } from '../../modules/validators/k1'
 import type { AccountAdapter } from '../adapter'
-import { type DeploymentMaterial, deploymentPlan } from '../deployment'
+import {
+  type DeploymentMaterial,
+  deploymentPlan,
+  STARTALE_SALT_DEFAULTS,
+  selectedValue,
+} from '../deployment'
 import { encodeErc7579Calls } from '../erc7579-calls'
 import type { AccountConstruction } from '../types'
 import {
@@ -133,10 +138,7 @@ function startaleMaterial(input: AccountConstruction): DeploymentMaterial {
       return { address: input.initData.address }
     }
   } else {
-    salt =
-      input.account.salt.source === 'explicit'
-        ? input.account.salt.value
-        : zeroHash
+    salt = selectedValue(input.account.salt, STARTALE_SALT_DEFAULTS)
     const initData = startaleInitData(input)
     factoryData = encodeFunctionData({
       abi: parseAbi(['function createAccount(bytes,bytes32)']),
