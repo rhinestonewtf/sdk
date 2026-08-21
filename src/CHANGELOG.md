@@ -1,5 +1,20 @@
 # @rhinestone/sdk
 
+## 2.2.5
+
+### Patch Changes
+
+- 42e17a5: Order ENS owners, WebAuthn credential IDs, and EIP-712 type dependencies by value instead of host collation, so the same account config derives the same address and multi-passkey signatures stay valid on locales such as `da`, `nb`, and `cy`.
+- ffeba51: Derive multi-passkey account addresses that can actually be deployed. Credentials are now installed in a canonical, order-independent order, and the account salt is deterministically searched (starting from the salt you passed) until the derived address satisfies the WebAuthn validator's ascending credential ID rule. Passkey sets that cannot be installed — duplicates, or more than six passkeys at deployment — throw `PasskeyConfigurationNotInstallableError` instead of returning an unusable address; add the remaining passkeys after deployment with `passkeys.addOwner`.
+
+  Single-passkey, ECDSA, ENS, multi-factor and every non-passkey configuration keep the exact address they derive today. A multi-passkey configuration that is deployable today but was passed in a non-canonical order derives a new address; to keep the existing account, pin its `initData` instead of letting the SDK re-derive it.
+
+- e969a72: Derive one Safe account address regardless of the order its owners were listed in. A Safe with two or more ECDSA or ENS owners used to derive a different address for every ordering, because the owner list is baked into the Safe `setup` call that determines the account address. Owners are now installed in canonical, value-based order.
+
+  A multi-owner Safe that was previously passed in a non-canonical order derives a new address; to keep the existing account, pin its `initData` instead of letting the SDK re-derive it. Single-owner, passkey and multi-factor Safe configurations, every other account type, and the legacy v0 reconstruction path keep the exact address they derive today.
+
+- 105f058: Sign session ERC-1271 typed data in direct (notarized) mode. Signing typed data with a session previously produced an ERC-7739 nested signature that external ERC-1271 verifiers could not resolve, so `isValidSignature` checks against those signatures failed. Session typed-data signing now emits the same direct-mode, account-bound signature that session message signing already produced, so external verifiers resolve the session validator directly. Non-session signing and the account-native ERC-7739 paths are unchanged.
+
 ## 2.2.4
 
 ### Patch Changes
