@@ -8,6 +8,7 @@ import {
 import { resolveValidator } from '../resolve'
 import { resolveCrossChainPermission } from './cross-chain-permits'
 import { getPermissionIdFromData } from './digest'
+import { oneTimeUseIdErc1271Policy } from './one-time-use'
 import {
   DEFAULT_POLICY_ADDRESSES,
   resolvePolicyAddresses,
@@ -102,7 +103,7 @@ export function resolveSessionData(
       policies: [{ type: 'sudo' }],
     },
   ]
-  const actions =
+  let actions: ResolvedAction[] =
     userActions.length || permitFallbackPolicies.length
       ? [...userActions, ...injectedActions].map(
           (action): ResolvedAction => ({
@@ -120,7 +121,7 @@ export function resolveSessionData(
           }),
         )
       : [sudoAction]
-  const claimPolicies = [
+  let claimPolicies: { policy: Address; initData: Hex }[] = [
     ...(definition.claimPolicies ?? []),
     ...expandedPermits.map(({ claim }) => claim),
   ].map((policy) => ({
@@ -129,6 +130,36 @@ export function resolveSessionData(
       resolvePermit2ClaimPolicy(policy),
     ),
   }))
+  let erc1271Policies: { policy: Address; initData: Hex }[] = [
+    { policy: addresses.sudo, initData: '0x' },
+  ]
+  if (definition.oneTimeUse) {
+    if (!addresses.oneTimeUseId) {
+      throw new Error(
+        'oneTimeUse requires policyAddresses.oneTimeUseId (no canonical deployment yet)',
+      )
+    }
+    const once = oneTimeUseIdErc1271Policy({
+      policy: addresses.oneTimeUseId,
+      id: definition.oneTimeUse.id,
+    })
+    // The executor route enforces via ACTION policies (checkAction), not the 1271
+    // list, so the burn only bounds it when the once-policy sits on EVERY action
+    // the session permits — otherwise an executor settlement falls through to the
+    // permissive sudo fallback and the id is never read.
+    actions = actions.map((action) => ({
+      ...action,
+      actionPolicies: [...action.actionPolicies, once],
+    }))
+    // The Permit2/arbiter route enforces via the 1271 list. The once-policy's
+    // settling proof only binds when the digest-binding Permit2 claim policy sits
+    // on the SAME surface (the 1271 list is an AND: it bounds WHAT may settle, the
+    // once-policy bounds HOW MANY TIMES), so the claim policies move here from
+    // `claimPolicies`. A permit2 one-time-use session must therefore supply a claim
+    // policy; an executor-only session may have none.
+    erc1271Policies = [...claimPolicies, once]
+    claimPolicies = []
+  }
   return {
     sessionValidator: validator.address,
     sessionValidatorInitData: validator.initData,
@@ -137,7 +168,7 @@ export function resolveSessionData(
       allowedERC7739Content: [
         { contentNames: [''], appDomainSeparator: zeroHash },
       ],
-      erc1271Policies: [{ policy: addresses.sudo, initData: '0x' }],
+      erc1271Policies,
     },
     actions,
     claimPolicies,
@@ -170,7 +201,13 @@ export function toSession(
     salt: data.salt,
     erc7739Policies: data.erc7739Policies,
     actions: data.actions,
-    claimPolicies: [...(definition.claimPolicies ?? []), ...expandedClaims],
+    // For a one-time-use session the claim policies live on the erc1271 surface
+    // (see resolveSessionData); keep them off the claim surface here too, or
+    // getSessionData would re-encode them into lockTagPolicies and settle them on
+    // both surfaces.
+    claimPolicies: definition.oneTimeUse
+      ? []
+      : [...(definition.claimPolicies ?? []), ...expandedClaims],
   }
 }
 

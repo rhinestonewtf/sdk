@@ -529,6 +529,9 @@ interface SessionPolicyAddresses {
   timeFrame?: Address
   usageLimit?: Address
   valueLimit?: Address
+  // Required when a session sets `oneTimeUse`; no default until the policy has a
+  // canonical deployment.
+  oneTimeUseId?: Address
 }
 
 interface SessionDefinition<TAbis extends readonly Abi[] = readonly Abi[]> {
@@ -549,6 +552,15 @@ interface SessionDefinition<TAbis extends readonly Abi[] = readonly Abi[]> {
    * has sessions enabled against them.
    */
   policyAddresses?: SessionPolicyAddresses
+  /**
+   * Pins a one-time-use id on the session (RHI-5798): the session settles at most
+   * once per chain. Requires `policyAddresses.oneTimeUseId`. Each settlement must
+   * carry the matching burn op ({@link buildOneTimeUseBurnOp}) in its
+   * `preClaimExecutions`; a Permit2-route session must also supply a
+   * `claimPolicies` entry (moved onto the 1271 surface as the digest-binding
+   * partner).
+   */
+  oneTimeUse?: { id: bigint }
 }
 
 type SessionInput<TAbis extends readonly Abi[] = readonly Abi[]> = Omit<
