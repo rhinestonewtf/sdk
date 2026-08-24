@@ -197,6 +197,9 @@ export interface SessionPolicyAddresses {
   readonly timeFrame?: Address
   readonly usageLimit?: Address
   readonly valueLimit?: Address
+  // Required when a session sets `oneTimeUse`; no default until the policy has a
+  // canonical deployment.
+  readonly oneTimeUseId?: Address
 }
 
 export type CrossChainSettlementLayer = 'SAME_CHAIN' | 'ECO' | 'ACROSS'
@@ -312,6 +315,15 @@ export interface SessionDefinition {
   // its raw selector with no ABI (RHI-6286). ScopedAction only (never a fallback
   // action) so a raw entry can't map back to the wildcard fallback target.
   actions?: ScopedAction[]
+  // Pins a one-time-use id on the session (RHI-5798): the session settles at most
+  // once per chain. Requires `policyAddresses.oneTimeUseId`, and each settlement
+  // must carry the matching burn op (see buildOneTimeUseBurnOp) in its
+  // `preClaimExecutions`.
+  oneTimeUse?: OneTimeUseSessionConfig
+}
+
+export interface OneTimeUseSessionConfig {
+  readonly id: bigint
 }
 
 export interface ResolvedPolicy {

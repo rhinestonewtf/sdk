@@ -28,6 +28,8 @@ export interface ResolvedPolicyAddresses {
   readonly timeFrame: Address
   readonly usageLimit: Address
   readonly valueLimit: Address
+  // No canonical deployment yet, so no default — only present when overridden.
+  readonly oneTimeUseId?: Address
 }
 
 export const DEFAULT_POLICY_ADDRESSES: ResolvedPolicyAddresses = Object.freeze({
@@ -53,5 +55,8 @@ export function resolvePolicyAddresses(
     timeFrame: overrides?.timeFrame ?? DEFAULT_POLICY_ADDRESSES.timeFrame,
     usageLimit: overrides?.usageLimit ?? DEFAULT_POLICY_ADDRESSES.usageLimit,
     valueLimit: overrides?.valueLimit ?? DEFAULT_POLICY_ADDRESSES.valueLimit,
+    ...(overrides?.oneTimeUseId
+      ? { oneTimeUseId: overrides.oneTimeUseId }
+      : {}),
   }
 }
