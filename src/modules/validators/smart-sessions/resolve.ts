@@ -201,13 +201,14 @@ export function toSession(
     salt: data.salt,
     erc7739Policies: data.erc7739Policies,
     actions: data.actions,
-    // For a one-time-use session the claim policies live on the erc1271 surface
-    // (see resolveSessionData); keep them off the claim surface here too, or
-    // getSessionData would re-encode them into lockTagPolicies and settle them on
-    // both surfaces.
-    claimPolicies: definition.oneTimeUse
-      ? []
-      : [...(definition.claimPolicies ?? []), ...expandedClaims],
+    // Keep the raw claim policies on the high-level session for both routes: the
+    // permit2 settlement signature builds their calldata from here (see
+    // claimPolicyData in session-signing). For a one-time-use session they are
+    // enforced via the erc1271 surface (already in data.erc7739Policies), so the
+    // flag tells getSessionData NOT to re-encode them onto the on-chain claim
+    // (lockTag) surface — otherwise they'd settle on both surfaces.
+    claimPolicies: [...(definition.claimPolicies ?? []), ...expandedClaims],
+    claimPoliciesEnforcedVia1271: Boolean(definition.oneTimeUse),
   }
 }
 

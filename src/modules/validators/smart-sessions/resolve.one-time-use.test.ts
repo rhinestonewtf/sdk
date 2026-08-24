@@ -4,6 +4,7 @@ import { describe, expect, test } from 'vitest'
 
 import { accountA } from '../../../../test/consts'
 import { PERMIT2_CLAIM_POLICY_ADDRESS } from '../policies/claim/permit2'
+import { getSessionData } from './digest'
 import { resolveSessionData, toSession } from './resolve'
 
 // Kept out of resolve.test.ts because that file imports fast-check (declared in
@@ -57,7 +58,7 @@ describe('resolveSessionData — one-time-use session', () => {
     ).toThrow(/oneTimeUseId/)
   })
 
-  test('toSession also empties claimPolicies (no leak onto the claim surface via getSessionData)', () => {
+  test('toSession keeps claim policies on the high-level session (permit2 signature calldata) but off the on-chain claim surface', () => {
     const session = toSession({
       chain: base,
       owners,
@@ -65,6 +66,15 @@ describe('resolveSessionData — one-time-use session', () => {
       oneTimeUse: { id: 42n },
       policyAddresses: { oneTimeUseId: POLICY },
     })
-    expect(session.claimPolicies).toHaveLength(0)
+    // Populated so claimPolicyData() can build the permit2 settlement calldata
+    // that the erc1271-resident Permit2ClaimPolicy reads (RHI-5798).
+    expect(session.claimPolicies).toHaveLength(1)
+    expect(session.claimPoliciesEnforcedVia1271).toBe(true)
+    // ...but the on-chain claim (lockTag) surface stays empty — the policy is
+    // enforced via the erc1271 list, so getSessionData must not re-encode it.
+    expect(getSessionData(session).claimPolicies).toHaveLength(0)
+    expect(
+      getSessionData(session).erc7739Policies.erc1271Policies.length,
+    ).toBeGreaterThan(1)
   })
 })

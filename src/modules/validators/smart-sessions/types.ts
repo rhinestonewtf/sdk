@@ -207,6 +207,11 @@ export interface Session {
   erc7739Policies: ResolvedERC7739Policies
   actions: readonly ResolvedAction[]
   claimPolicies: readonly Permit2ClaimPolicy[]
+  // When true, `claimPolicies` are enforced via the ERC-1271 surface (already
+  // encoded into `erc7739Policies.erc1271Policies`) and must NOT be re-encoded
+  // onto the on-chain claim (lockTag) surface. They stay on the high-level
+  // session so the permit2 settlement signature can still build their calldata.
+  claimPoliciesEnforcedVia1271?: boolean
 }
 
 export interface SessionData {
