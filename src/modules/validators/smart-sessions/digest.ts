@@ -30,12 +30,17 @@ export function getSessionData(session: Session): SessionData {
     salt: session.salt,
     erc7739Policies: session.erc7739Policies,
     actions: session.actions,
-    claimPolicies: session.claimPolicies.map((policy) => ({
-      policy: PERMIT2_CLAIM_POLICY_ADDRESS,
-      initData: encodePermit2ClaimPolicyInitData(
-        resolvePermit2ClaimPolicy(policy),
-      ),
-    })),
+    // When the claim policies are enforced via the erc1271 surface they're
+    // already in erc7739Policies; encoding them here too would settle them on
+    // the on-chain claim (lockTag) surface as well.
+    claimPolicies: session.claimPoliciesEnforcedVia1271
+      ? []
+      : session.claimPolicies.map((policy) => ({
+          policy: PERMIT2_CLAIM_POLICY_ADDRESS,
+          initData: encodePermit2ClaimPolicyInitData(
+            resolvePermit2ClaimPolicy(policy),
+          ),
+        })),
   }
 }
 
