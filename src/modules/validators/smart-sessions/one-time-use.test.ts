@@ -60,4 +60,13 @@ describe('buildOneTimeUseBurnOp', () => {
     // orchestrator before the mandate is signed.
     expect(args).toEqual([42n, 0n])
   })
+
+  test('rejects id=0 (cannot emit a burn op for an unpinnable id)', () => {
+    expect(() =>
+      buildOneTimeUseBurnOp({ policy: POLICY, id: 0n, route: 'executor' }),
+    ).toThrow(/non-zero uint256/)
+    expect(() =>
+      buildOneTimeUseBurnOp({ policy: POLICY, id: 0n, route: 'permit2' }),
+    ).toThrow(/non-zero uint256/)
+  })
 })

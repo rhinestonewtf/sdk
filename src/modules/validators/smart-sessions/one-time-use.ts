@@ -35,12 +35,16 @@ export interface OneTimeUseBurnOp {
   readonly data: Hex
 }
 
-// Encodes the pinned id as the policy's initData (a bytes32). The id must be a
-// non-zero uint256 — the policy rejects zero ("not configured").
-export function encodeOneTimeUseIdInitData(id: bigint): Hex {
+// The id must be a non-zero uint256 — the policy rejects zero ("not configured").
+function assertValidOneTimeUseId(id: bigint): void {
   if (id <= 0n || id > (1n << 256n) - 1n) {
     throw new Error('OneTimeUseId id must be a non-zero uint256')
   }
+}
+
+// Encodes the pinned id as the policy's initData (a bytes32).
+export function encodeOneTimeUseIdInitData(id: bigint): Hex {
+  assertValidOneTimeUseId(id)
   return pad(toHex(id), { size: 32 })
 }
 
@@ -66,6 +70,9 @@ export function buildOneTimeUseBurnOp(params: {
   route: OneTimeUseSettlementRoute
 }): OneTimeUseBurnOp {
   const { policy, id, route } = params
+  // Reject id=0 here too (not just at initData encoding) so a caller can't emit a
+  // burn op whose id doesn't match a validly-pinned session.
+  assertValidOneTimeUseId(id)
   const data =
     route === 'permit2'
       ? encodeFunctionData({
