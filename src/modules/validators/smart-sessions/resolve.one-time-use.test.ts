@@ -106,6 +106,8 @@ describe('resolveSessionData — one-time-use session', () => {
     // that the erc1271-resident Permit2ClaimPolicy reads (RHI-5798).
     expect(session.claimPolicies).toHaveLength(1)
     expect(session.claimPoliciesEnforcedVia1271).toBe(true)
+    // Drives prepareIntentSessions to keep the session in verify-execution mode.
+    expect(session.oneTimeUse).toBe(true)
     // ...but the on-chain claim (lockTag) surface stays empty — the policy is
     // enforced via the erc1271 list, so getSessionData must not re-encode it.
     expect(getSessionData(session).claimPolicies).toHaveLength(0)

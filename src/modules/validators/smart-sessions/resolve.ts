@@ -292,10 +292,13 @@ export function resolveSessionData(
       policy: addresses.oneTimeUseId,
       id: definition.oneTimeUse.id,
     })
-    // The executor route enforces via ACTION policies (checkAction), not the 1271
-    // list, so the burn only bounds it when the once-policy sits on EVERY action
-    // the session permits — otherwise an executor settlement falls through to the
-    // permissive sudo fallback and the id is never read.
+    // Install the once-policy on EVERY action: on the executor route the contract's
+    // on-chain guard (a `consume` may only name the session's own id) runs via
+    // checkAction, once per execution, so a settler can't dodge it by composing the
+    // batch out of some other permitted action. checkAction only fires in
+    // verify-execution mode, which prepareIntentSessions forces for one-time-use
+    // sessions (see there). Replay of a burned id is additionally blocked on the
+    // 1271 surface below, which is consulted in every mode.
     actions = actions.map((action) => ({
       ...action,
       actionPolicies: [...action.actionPolicies, once],
@@ -306,7 +309,10 @@ export function resolveSessionData(
     // once-policy bounds HOW MANY TIMES), so the claim policies move here from
     // `claimPolicies`. A permit2 one-time-use session must therefore supply a claim
     // policy; an executor-only session may have none.
-    erc1271Policies = [...erc1271Policies, ...claimPolicies, once]
+    // Replace rather than append: leaving the permissive sudo entry on the 1271
+    // list would let the arbiter route fall through to it, so the once-policy
+    // would never bound the settlement.
+    erc1271Policies = [...claimPolicies, once]
     claimPolicies = []
   }
   return {
@@ -559,6 +565,7 @@ export function toSession(
     claimPolicies: [...(definition.claimPolicies ?? []), ...expandedClaims],
     claimPoliciesEnforcedVia1271: Boolean(definition.oneTimeUse),
     ...(definition.swap ? { swap: definition.swap } : {}),
+    oneTimeUse: Boolean(definition.oneTimeUse),
   }
 }
 
