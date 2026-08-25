@@ -52,6 +52,42 @@ describe('resolveSessionData — one-time-use session', () => {
     }
   })
 
+  test('executor-only one-time-use drops sudo from the 1271 list, leaving only the once-policy', () => {
+    const data = resolveSessionData({
+      chain: base,
+      owners,
+      oneTimeUse: { id: 42n },
+      policyAddresses: { oneTimeUseId: POLICY },
+    })
+    // No claim policy → the 1271 list is exactly [once]; the permissive sudo
+    // entry is intentionally replaced so the arbiter route can't fall through it.
+    expect(data.erc7739Policies.erc1271Policies).toEqual([onceEntry])
+    expect(data.claimPolicies).toHaveLength(0)
+    // ...and the burn still bounds the executor route: once-policy on every action.
+    expect(data.actions.length).toBeGreaterThan(0)
+    for (const action of data.actions) {
+      expect(action.actionPolicies).toContainEqual(onceEntry)
+    }
+  })
+
+  test('permissionId is derived from validator+salt, not the pinned id (id is bound via the enable-signed config)', () => {
+    const session = (id: bigint) =>
+      toSession({
+        chain: base,
+        owners,
+        claimPolicies: [{ type: 'permit2' }],
+        oneTimeUse: { id },
+        policyAddresses: { oneTimeUseId: POLICY },
+      })
+    // Smart-sessions derives the permissionId from (sessionValidator, initData,
+    // salt) only — the pinned id lives in the once-policy initData, which the
+    // enable signature authorizes over the full session config, not the
+    // permissionId. So two one-time-use sessions differing ONLY by id share a
+    // permissionId (as any two same-owner sessions do, since salt is fixed to
+    // zeroHash) and can't be installed concurrently on the same account.
+    expect(session(42n).permissionId).toBe(session(43n).permissionId)
+  })
+
   test('throws when oneTimeUse is set without policyAddresses.oneTimeUseId', () => {
     expect(() =>
       resolveSessionData({ chain: base, owners, oneTimeUse: { id: 42n } }),
