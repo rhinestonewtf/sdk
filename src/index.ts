@@ -82,6 +82,8 @@ export type {
   RhinestoneAccountConfig,
   Session,
   SessionDefinition,
+  SessionSigning,
+  SessionSigningContent,
   SignerSet,
   SourceCallInput,
   SourceCallProvidedFunds,

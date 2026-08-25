@@ -8,6 +8,7 @@ import {
 } from './erc6492'
 import {
   type Erc7739VerifierDomain,
+  encodeErc7739ContentType,
   hashErc7739TypedData,
   wrapErc7739TypedDataSignature,
 } from './erc7739'
@@ -120,8 +121,16 @@ describe('signing protocol operations', () => {
         verifierDomain,
       })
 
+    expect(
+      encodeErc7739ContentType({
+        primaryType: 'Mail',
+        types: { Mail: mail, Person: person, Attachment: attachment },
+      }),
+    ).toBe(
+      'Mail(Person from,Person to,string contents,Attachment attachment)Attachment(string uri,Person uploader)Person(string name,address wallet)',
+    )
     // The dependency set is discovery-ordered, so the digest is only stable
-    // because `encodeType` sorts it; declaration order must not matter.
+    // because the shared content encoder sorts it; declaration order must not matter.
     expect(hash({ Mail: mail, Person: person, Attachment: attachment })).toBe(
       hash({ Attachment: attachment, Person: person, Mail: mail }),
     )
