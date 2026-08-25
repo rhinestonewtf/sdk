@@ -174,6 +174,26 @@ describe('Smart Session signing capability', () => {
         },
       }),
     ).toThrow('not a valid EIP-712 type')
+    for (const type of ['uint', 'int']) {
+      expect(() =>
+        toSession({
+          ...definition(),
+          signing: {
+            mode: 'scoped',
+            allowedContents: [
+              {
+                domain,
+                primaryType: 'Permit',
+                types: {
+                  Permit: [{ name: 'value', type }],
+                  [type]: [],
+                },
+              },
+            ],
+          } as never,
+        }),
+      ).toThrow(`type "${type}" is not a valid EIP-712 type`)
+    }
     expect(() =>
       toSession({
         ...definition(),
