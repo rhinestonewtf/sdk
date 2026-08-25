@@ -8,6 +8,7 @@ import {
 import { toEvmChainReference } from '../chains/caip2'
 import { createStaticAccountRuntime } from '../config/account-runtime'
 import { resolveAccountConfig, resolveSdkConfig } from '../config/resolve'
+import { MULTI_FACTOR_VALIDATOR_V2_ADDRESS } from '../modules/validators/multi-factor'
 import { resolveValidator } from '../modules/validators/resolve'
 import { SOCIAL_RECOVERY_VALIDATOR_ADDRESS } from '../modules/validators/social-recovery'
 import { buildUserOperationSigningPlanInput } from '../transactions/user-operations/prepare'
@@ -69,6 +70,40 @@ describe('account signature routing', () => {
       }
     },
   )
+
+  test('routes registry-free MFA through the Nexus signing context', () => {
+    const sdk = resolveSdkConfig({ apiKey: 'test' })
+    const account = resolveAccountConfig(sdk, {
+      account: { type: 'nexus' },
+      owners: { type: 'ecdsa', accounts: [owner] },
+    })
+    const runtime = createStaticAccountRuntime(account, chain, true)
+    const selection = adaptSignerSelection(account, {
+      type: 'owner',
+      kind: 'multi-factor',
+      module: MULTI_FACTOR_VALIDATOR_V2_ADDRESS,
+      validators: [
+        { type: 'ecdsa', id: 1, accounts: [owner] },
+        { type: 'passkey', id: 2, accounts: [passkeyAccount] },
+      ],
+    })
+    if (selection.kind !== 'owner') throw new Error('Expected owner selection')
+
+    const context = createAccountSigningContext({
+      runtime,
+      purpose: 'user-operation',
+      signerInvoker: { invoke: vi.fn() },
+      selection,
+    })
+
+    expect(context.validatorCapabilities.compatibilityKey.moduleAddress).toBe(
+      MULTI_FACTOR_VALIDATOR_V2_ADDRESS,
+    )
+    expect(getAccountSignatureRoute(runtime, context).accountEnvelope).toEqual({
+      kind: 'nexus',
+      validator: MULTI_FACTOR_VALIDATOR_V2_ADDRESS,
+    })
+  })
 
   test.each(['safe', 'nexus', 'kernel', 'startale'] as const)(
     'routes guardian UserOperations to the social recovery validator on %s',

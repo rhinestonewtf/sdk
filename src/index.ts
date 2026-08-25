@@ -5,7 +5,10 @@ import {
   solanaMainnet,
   tronMainnet,
 } from './chains/non-evm'
-import { MULTI_FACTOR_VALIDATOR_ADDRESS } from './modules/validators/multi-factor'
+import {
+  MULTI_FACTOR_VALIDATOR_ADDRESS,
+  MULTI_FACTOR_VALIDATOR_V2_ADDRESS,
+} from './modules/validators/multi-factor'
 import { OWNABLE_VALIDATOR_ADDRESS } from './modules/validators/ownable'
 import { SMART_SESSION_EMISSARY_ADDRESS } from './modules/validators/smart-sessions/module'
 import { WEBAUTHN_VALIDATOR_ADDRESS } from './modules/validators/webauthn'
@@ -21,6 +24,7 @@ export {
   OWNABLE_VALIDATOR_ADDRESS,
   WEBAUTHN_VALIDATOR_ADDRESS,
   MULTI_FACTOR_VALIDATOR_ADDRESS,
+  MULTI_FACTOR_VALIDATOR_V2_ADDRESS,
   SMART_SESSION_EMISSARY_ADDRESS,
 }
 

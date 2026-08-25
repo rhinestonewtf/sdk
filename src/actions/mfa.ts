@@ -1,4 +1,4 @@
-import { encodeFunctionData, type Hex, padHex, toHex } from 'viem'
+import { type Address, encodeFunctionData, type Hex, padHex, toHex } from 'viem'
 import type {
   CalldataInput,
   LazyCallInput,
@@ -27,12 +27,15 @@ function factorModule(validator: MfaFactor) {
 function multiFactorModule(
   validators: readonly (MfaFactor | null)[],
   threshold: number,
+  moduleAddress?: Address,
 ) {
   const definition: MultiFactorValidatorDefinition = {
     kind: 'multi-factor',
     id: 'action/multi-factor',
     publicId: 0,
-    module: { source: 'default', profile: 'multi-factor' },
+    module: moduleAddress
+      ? { source: 'explicit', address: moduleAddress }
+      : { source: 'default', profile: 'multi-factor' },
     validators: validators.flatMap((validator, index) =>
       validator
         ? [
@@ -53,13 +56,15 @@ function multiFactorModule(
  * Enable multi-factor authentication
  * @param validators List of validators to use
  * @param threshold Threshold for the validators
+ * @param moduleAddress Multi-factor module to install. Defaults to the legacy module.
  * @returns Calls to enable multi-factor authentication
  */
 function enable(
   validators: (OwnableValidatorConfig | WebauthnValidatorConfig | null)[],
   threshold = 1,
+  moduleAddress?: Address,
 ): LazyCallInput {
-  const module = multiFactorModule(validators, threshold)
+  const module = multiFactorModule(validators, threshold, moduleAddress)
   return {
     async resolve(context) {
       return resolveModuleInstallation(context, module)
@@ -70,11 +75,15 @@ function enable(
 /**
  * Change the multi-factor threshold
  * @param newThreshold New threshold
+ * @param moduleAddress Multi-factor module to update. Defaults to the legacy module.
  * @returns Call to change the threshold
  */
-function changeThreshold(newThreshold: number): CalldataInput {
+function changeThreshold(
+  newThreshold: number,
+  moduleAddress: Address = MULTI_FACTOR_VALIDATOR_ADDRESS,
+): CalldataInput {
   return {
-    to: MULTI_FACTOR_VALIDATOR_ADDRESS,
+    to: moduleAddress,
     value: 0n,
     data: encodeFunctionData({
       abi: [
@@ -94,10 +103,11 @@ function changeThreshold(newThreshold: number): CalldataInput {
 
 /**
  * Disable multi-factor authentication
+ * @param moduleAddress Multi-factor module to uninstall. Defaults to the legacy module.
  * @returns Calls to disable multi-factor authentication
  */
-function disable(): LazyCallInput {
-  const module = multiFactorModule([], 1)
+function disable(moduleAddress?: Address): LazyCallInput {
+  const module = multiFactorModule([], 1, moduleAddress)
   return {
     async resolve(context) {
       return resolveModuleUninstallation(context, module)
@@ -109,16 +119,18 @@ function disable(): LazyCallInput {
  * Set a sub-validator (multi-factor)
  * @param id Validator ID
  * @param validator Validator module
+ * @param moduleAddress Multi-factor module to update. Defaults to the legacy module.
  * @returns Call to set the sub-validator
  */
 function setSubValidator(
   id: Hex | number,
   validator: OwnableValidatorConfig | WebauthnValidatorConfig,
+  moduleAddress: Address = MULTI_FACTOR_VALIDATOR_ADDRESS,
 ): CalldataInput {
   const validatorId = padHex(toHex(id), { size: 12 })
   const validatorModule = factorModule(validator)
   return {
-    to: MULTI_FACTOR_VALIDATOR_ADDRESS,
+    to: moduleAddress,
     value: 0n,
     data: encodeFunctionData({
       abi: [
@@ -151,16 +163,18 @@ function setSubValidator(
  * Remove a sub-validator (multi-factor)
  * @param id Validator ID
  * @param validator Validator module
+ * @param moduleAddress Multi-factor module to update. Defaults to the legacy module.
  * @returns Call to remove the sub-validator
  */
 function removeSubValidator(
   id: Hex | number,
   validator: OwnableValidatorConfig | WebauthnValidatorConfig,
+  moduleAddress: Address = MULTI_FACTOR_VALIDATOR_ADDRESS,
 ): CalldataInput {
   const validatorId = padHex(toHex(id), { size: 12 })
   const validatorModule = factorModule(validator)
   return {
-    to: MULTI_FACTOR_VALIDATOR_ADDRESS,
+    to: moduleAddress,
     value: 0n,
     data: encodeFunctionData({
       abi: [
