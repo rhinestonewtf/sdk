@@ -12,7 +12,10 @@ import { withoutHostCollation } from '../../../test/utils/locale'
 import { resolveStandaloneAccountConfig } from '../../config/resolve'
 import { getValidatorCapabilities } from './capabilities'
 import { resolveEnsValidator } from './ens'
-import { MULTI_FACTOR_VALIDATOR_ADDRESS } from './multi-factor'
+import {
+  MULTI_FACTOR_VALIDATOR_ADDRESS,
+  MULTI_FACTOR_VALIDATOR_V2_ADDRESS,
+} from './multi-factor'
 import {
   encodeOwnableMockSignature,
   OWNABLE_V0_VALIDATOR_ADDRESS,
@@ -74,19 +77,19 @@ describe('validator resolution', () => {
     ).not.toThrow()
   })
 
-  test('materializes nested MFA with stable ids and module overrides', () => {
+  test('materializes nested MFA with stable ids and the registry-free module', () => {
     const module = resolveValidator(
       validator({
         type: 'multi-factor',
         threshold: 1,
-        module: '0x00000000000000000000000000000000deadbeef',
+        module: MULTI_FACTOR_VALIDATOR_V2_ADDRESS,
         validators: [
           { type: 'ecdsa', accounts: [accountA] },
           { type: 'passkey', accounts: [passkeyAccount] },
         ],
       }),
     )
-    expect(module.address).toBe('0x00000000000000000000000000000000deadbeef')
+    expect(module.address).toBe(MULTI_FACTOR_VALIDATOR_V2_ADDRESS)
     expect(module.initData.startsWith('0x01')).toBe(true)
   })
 

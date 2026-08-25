@@ -11,6 +11,7 @@ import * as errors from '../../src/errors/index'
 import {
   hyperCorePerp,
   hyperCoreSpot,
+  MULTI_FACTOR_VALIDATOR_V2_ADDRESS,
   type PreparedTransactionData,
   type Quote,
   type RhinestoneAccount,
@@ -37,6 +38,14 @@ const recipient = '0x0000000000000000000000000000000000000001'
 const accountConfig = {
   account: { type: 'safe', version: '1.4.1', adapter: '2.0.0' },
   owners: { type: 'ecdsa', accounts: [owner], threshold: 1 },
+} satisfies RhinestoneAccountConfig
+
+const registryFreeMfaConfig = {
+  owners: {
+    type: 'multi-factor',
+    module: MULTI_FACTOR_VALIDATOR_V2_ADDRESS,
+    validators: [{ type: 'ecdsa', accounts: [owner] }],
+  },
 } satisfies RhinestoneAccountConfig
 
 new RhinestoneSDK({ apiKey: 'legacy-api-key' })
@@ -187,6 +196,7 @@ void typedDataSignature
 void intentSignature
 void userOperation
 void sameChainTransaction
+void registryFreeMfaConfig
 void crossChainWithDeadline
 void crossChainNonEvmWithDeadline
 void hyperCoreSpotDelivery

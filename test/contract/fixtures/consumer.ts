@@ -44,6 +44,14 @@ const accountConfig: RhinestoneAccountConfig = {
   owners: { type: 'ecdsa', accounts: [owner] },
 }
 
+const registryFreeMfaConfig: RhinestoneAccountConfig = {
+  owners: {
+    type: 'multi-factor',
+    module: '0x0000007261E4E2F1a892A58fd0708c9321e76020',
+    validators: [{ type: 'ecdsa', accounts: [owner] }],
+  },
+}
+
 const lazyCall: CallInput = {
   async resolve({ accountAddress, chain, config }) {
     void accountAddress
@@ -63,6 +71,7 @@ void legacySdk.createAccount(accountConfig)
 void apiKeySdk.createAccount(accountConfig)
 void jwtSdk.createAccount(accountConfig)
 void transaction
+void registryFreeMfaConfig
 void actions
 void ecdsaActions
 void mfaActions

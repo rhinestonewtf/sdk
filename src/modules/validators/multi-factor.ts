@@ -13,6 +13,9 @@ import type { MultiFactorValidatorDefinition } from './types'
 export const MULTI_FACTOR_VALIDATOR_ADDRESS: Address =
   '0xf6bdf42c9be18ceca5c06c42a43daf7fbbe7896b'
 
+export const MULTI_FACTOR_VALIDATOR_V2_ADDRESS: Address =
+  '0x0000007261E4E2F1a892A58fd0708c9321e76020'
+
 export type AtomicValidatorResolver = (
   definition: MultiFactorValidatorDefinition['validators'][number],
 ) => ResolvedModule
