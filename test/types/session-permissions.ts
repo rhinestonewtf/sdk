@@ -1,6 +1,11 @@
 import { type Address, erc20Abi } from 'viem'
 import { base } from 'viem/chains'
-import type { Permission, Permit2ClaimPolicy } from '../../src/index'
+import type {
+  Permission,
+  Permit2ClaimPolicy,
+  SessionSigning,
+  SessionSigningContent,
+} from '../../src/index'
 import { toSession } from '../../src/smart-sessions/index'
 import { accountA } from '../consts'
 
@@ -189,4 +194,48 @@ toSession({
       type: 'permit2-claim',
     },
   ],
+})
+
+const signingContent = {
+  domain: { name: 'Permit2', chainId: base.id, verifyingContract: USDC },
+  types: {
+    Permit: [
+      { name: 'spender', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+    ],
+  },
+  primaryType: 'Permit',
+} as const satisfies SessionSigningContent
+
+const scopedSigning = {
+  mode: 'scoped',
+  allowedContents: [signingContent],
+  validUntil: new Date('2030-01-01'),
+} as const satisfies SessionSigning
+
+for (const signing of [
+  { mode: 'disabled' } as const,
+  { mode: 'unrestricted', validAfter: new Date(0) } as const,
+  scopedSigning,
+]) {
+  toSession({
+    chain: base,
+    owners: { type: 'ecdsa', accounts: [accountA] },
+    permissions: [permission],
+    signing,
+  })
+}
+
+toSession({
+  chain: base,
+  owners: { type: 'ecdsa', accounts: [accountA] },
+  // @ts-expect-error disabled signing cannot define a validity window.
+  signing: { mode: 'disabled', validUntil: new Date() },
+})
+
+toSession({
+  chain: base,
+  owners: { type: 'ecdsa', accounts: [accountA] },
+  // @ts-expect-error unsupported signing mode.
+  signing: { mode: 'all' },
 })

@@ -4,7 +4,9 @@ import type {
   Address,
   Chain,
   Hex,
+  TypedData,
   TypedDataDefinition,
+  TypedDataDomain,
 } from 'viem'
 import type { OwnerSet } from '../types'
 
@@ -154,12 +156,33 @@ export interface Permit2ClaimPolicy {
   fillDeadline?: { chain: Chain; min?: bigint; max?: bigint }[]
 }
 
+export interface SessionSigningContent {
+  readonly domain: TypedDataDomain
+  readonly types: TypedData
+  readonly primaryType: string
+}
+
+export type SessionSigning =
+  | { readonly mode: 'disabled' }
+  | {
+      readonly mode: 'unrestricted'
+      readonly validAfter?: Date
+      readonly validUntil?: Date
+    }
+  | {
+      readonly mode: 'scoped'
+      readonly allowedContents: readonly SessionSigningContent[]
+      readonly validAfter?: Date
+      readonly validUntil?: Date
+    }
+
 export interface SessionDefinition {
   chain: Chain
   owners: OwnerSet
   permissions?: Permission[]
   claimPolicies?: Permit2ClaimPolicy[]
   crossChainPermits?: CrossChainPermissionInput[]
+  signing?: SessionSigning
   policyAddresses?: SessionPolicyAddresses
 }
 

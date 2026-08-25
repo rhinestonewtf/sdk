@@ -2,7 +2,16 @@
 // from the legacy `src/types.ts` so the published surface no longer depends on
 // the legacy tree. Internal resolved config shapes live in `./resolved`.
 
-import type { Abi, AbiFunction, Account, Address, Chain, Hex } from 'viem'
+import type {
+  Abi,
+  AbiFunction,
+  Account,
+  Address,
+  Chain,
+  Hex,
+  TypedData,
+  TypedDataDomain,
+} from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
 import type { AccountType } from '../accounts/types'
 import type { NonEvmAddress, NonEvmChain } from '../chains/non-evm'
@@ -531,6 +540,38 @@ interface SessionPolicyAddresses {
   valueLimit?: Address
 }
 
+/** An EIP-712 domain and canonical schema that a scoped session may sign. */
+interface SessionSigningContent {
+  /** The exact application domain. Omitted fields are not inferred. */
+  domain: TypedDataDomain
+  /** The primary type and every custom type reachable from it. */
+  types: TypedData
+  primaryType: string
+}
+
+/**
+ * ERC-1271 signing capability for a Smart Session.
+ *
+ * Omitting this field preserves the legacy unrestricted behavior. Scoped
+ * signing matches the domain and schema only, not message field values, and
+ * uses one validity window for every allowed schema. The production SDK does
+ * not yet emit scoped ERC-7739 signatures, so scoped direct signing fails
+ * locally until the deployed nested-signing path is remediated.
+ */
+type SessionSigning =
+  | { mode: 'disabled' }
+  | {
+      mode: 'unrestricted'
+      validAfter?: Date
+      validUntil?: Date
+    }
+  | {
+      mode: 'scoped'
+      allowedContents: readonly SessionSigningContent[]
+      validAfter?: Date
+      validUntil?: Date
+    }
+
 interface SessionDefinition<TAbis extends readonly Abi[] = readonly Abi[]> {
   chain: Chain
   owners: OwnerSet
@@ -543,6 +584,11 @@ interface SessionDefinition<TAbis extends readonly Abi[] = readonly Abi[]> {
    * See {@link CrossChainPermissionInput}.
    */
   crossChainPermits?: readonly CrossChainPermissionInput[]
+  /**
+   * Configure ERC-1271 signing. Omission is unrestricted for backwards
+   * compatibility; use `disabled` to remove signing capability explicitly.
+   */
+  signing?: SessionSigning
   /**
    * Override one or more SmartSession policy addresses. Defaults to the latest
    * V2 deployments. Use to pin to V1 deployments for an account that already
@@ -988,6 +1034,8 @@ export type {
   PerChainSessionSignerSet,
   SessionSignerSet,
   SessionDefinition,
+  SessionSigning,
+  SessionSigningContent,
   SessionInput,
   SessionEnableData,
   Session,

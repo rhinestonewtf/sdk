@@ -199,6 +199,41 @@ const session = toSession({
 })
 ```
 
+Smart Session ERC-1271 signing is unrestricted when `signing` is omitted. It
+can be disabled, time-boxed, or scoped to exact EIP-712 domains and schemas:
+
+```ts
+const disabled = { mode: 'disabled' } as const
+const timeboxed = {
+  mode: 'unrestricted',
+  validAfter: new Date(),
+  validUntil: new Date(Date.now() + 60 * 60 * 1000),
+} as const
+const scoped = {
+  mode: 'scoped',
+  allowedContents: [
+    {
+      domain: {
+        name: 'Permit2',
+        chainId: base.id,
+        verifyingContract: permit2,
+      },
+      types: {
+        Permit: [
+          { name: 'spender', type: 'address' },
+          { name: 'amount', type: 'uint256' },
+        ],
+      },
+      primaryType: 'Permit',
+    },
+  ],
+} as const
+```
+
+A scoped entry constrains its domain and schema, not message values. Scoped
+configuration can be enabled on-chain, but this SDK intentionally rejects
+scoped direct signing until safe ERC-7739 signature emission is available.
+
 For a complete walkthrough, see the [Quickstart guide](https://docs.rhinestone.dev/smart-wallet/quickstart).
 
 ## Migrating from Orchestrator SDK

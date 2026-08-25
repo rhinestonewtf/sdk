@@ -385,6 +385,67 @@ describe('internal core composition', () => {
     )
   })
 
+  test.each([
+    {
+      signing: { mode: 'disabled' as const },
+      error: 'signing disabled',
+    },
+    {
+      signing: {
+        mode: 'scoped' as const,
+        allowedContents: [
+          {
+            domain: { chainId: 1, verifyingContract: target },
+            types: { Test: [{ name: 'value', type: 'uint256' }] },
+            primaryType: 'Test',
+          },
+        ],
+      },
+      error: 'safe ERC-7739 emission',
+    },
+  ])(
+    'rejects $signing.mode Smart Session direct signing before invoking a signer',
+    async ({ signing, error }) => {
+      const base = fixture()
+      const invoke = vi.fn()
+      const workflows = createCoreComposition(base.context.sdk, {
+        ...base.dependencies,
+        signerInvoker: { invoke },
+      }).createAccount(base.context).workflows
+      const session = toSession({
+        chain: { id: 1 } as never,
+        owners: { type: 'ecdsa', accounts: [owner] },
+        signing,
+      })
+      const signers = {
+        kind: 'smart-session' as const,
+        byChain: { 1: { session } },
+      }
+      const typedData = {
+        domain: { chainId: 1, verifyingContract: target },
+        types: { Test: [{ name: 'value', type: 'uint256' }] },
+        primaryType: 'Test',
+        message: { value: 1n },
+      } as const
+
+      await expect(
+        workflows.signMessage(base.context, {
+          message: 'hello',
+          chain,
+          signers,
+        }),
+      ).rejects.toThrow(error)
+      await expect(
+        workflows.signTypedData(base.context, {
+          typedData,
+          chain,
+          signers,
+        }),
+      ).rejects.toThrow(error)
+      expect(invoke).not.toHaveBeenCalled()
+    },
+  )
+
   test('waits for intent and custom-bundler deployment execution', async () => {
     const first = fixture()
     const intentWorkflows = first.composition.createAccount(
