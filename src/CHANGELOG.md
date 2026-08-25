@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 2.3.0
+
+### Minor Changes
+
+- b530612: Add disabled, unrestricted, and EIP-712 domain-and-schema-scoped Smart Session signing capabilities, with optional session-wide validity windows. Existing sessions remain unrestricted when signing configuration is omitted; scoped direct signing is rejected until safe ERC-7739 emission is available.
+
 ## 2.2.5
 
 ### Patch Changes
