@@ -5,6 +5,7 @@ import { describe, expect, test, vi } from 'vitest'
 import { passkeyAccount } from '../../test/consts'
 import { propertyParameters } from '../../test/utils/property'
 import type { AccountInput } from '../accounts/types'
+import { MULTI_FACTOR_VALIDATOR_V2_ADDRESS } from '../modules/validators/multi-factor'
 import { SOCIAL_RECOVERY_VALIDATOR_ADDRESS } from '../modules/validators/social-recovery'
 import { currentV2Defaults } from './defaults'
 import type { AccountConstructionInput, SdkConstructionInput } from './input'
@@ -521,14 +522,14 @@ describe('SDK config resolution', () => {
     })
   })
 
-  test('retains init data and resolves default multi-factor threshold', () => {
+  test('retains init data and registry-free multi-factor selection', () => {
     const sdk = resolveSdkConfig({ apiKey: 'test' })
     const initData = { address: addressA }
     const account = resolveAccountConfig(sdk, {
       initData,
       owners: {
         type: 'multi-factor',
-        module: addressB,
+        module: MULTI_FACTOR_VALIDATOR_V2_ADDRESS,
         validators: [{ type: 'ecdsa', accounts: [accountA] }],
       },
     })
@@ -537,7 +538,10 @@ describe('SDK config resolution', () => {
     expect(account.owners).toMatchObject({
       kind: 'multi-factor',
       threshold: 1,
-      module: { source: 'explicit', address: addressB },
+      module: {
+        source: 'explicit',
+        address: MULTI_FACTOR_VALIDATOR_V2_ADDRESS,
+      },
     })
   })
 

@@ -1,5 +1,6 @@
 import { describe, test } from 'vitest'
 import { SimulationFailedError } from '../../../src/errors/index'
+import { MULTI_FACTOR_VALIDATOR_V2_ADDRESS } from '../../../src/index'
 import { sourceChain, targetChain } from '../config/chains'
 import { createIntegrationSDK } from '../config/environment'
 import {
@@ -48,6 +49,43 @@ describe.sequential('SDK integration smoke', () => {
     expectNoFailedOperations(execution.status)
     expectCompletedOperation(execution.status, sourceChain.id)
     expectNoOperationOnChain(execution.status, targetChain.id)
+    await expectDeployed(account, sourceChain)
+  })
+
+  test('runs a sponsored same-chain intent with registry-free MFA', async () => {
+    const sdk = createIntegrationSDK()
+    const firstOwner = createOwner()
+    const secondOwner = createOwner()
+    const account = await sdk.createAccount({
+      account: { type: 'nexus' },
+      owners: {
+        type: 'multi-factor',
+        module: MULTI_FACTOR_VALIDATOR_V2_ADDRESS,
+        threshold: 2,
+        validators: [
+          { type: 'ecdsa', accounts: [firstOwner] },
+          { type: 'ecdsa', accounts: [secondOwner] },
+        ],
+      },
+    })
+
+    await expectNotDeployed(account, sourceChain)
+
+    const execution = await executeIntent({
+      account,
+      label: 'smoke/same-chain/fresh/registry-free-mfa',
+      transaction: {
+        chain: sourceChain,
+        sponsored: true,
+        calls: [createNoopCall()],
+      },
+    })
+
+    expectOutcome(execution, { kind: 'success' })
+    if (execution.phase !== 'success') return
+
+    expectNoFailedOperations(execution.status)
+    expectCompletedOperation(execution.status, sourceChain.id)
     await expectDeployed(account, sourceChain)
   })
 
