@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 2.4.0
+
+### Minor Changes
+
+- d01c7ad: Add an opt-in registry-free multi-factor validator address and allow MFA account actions to target a selected multi-factor module. Existing MFA configurations and actions continue to use the legacy module by default.
+
 ## 2.3.0
 
 ### Minor Changes
