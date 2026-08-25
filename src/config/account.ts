@@ -300,6 +300,11 @@ interface CrossChainPermit {
    * Settlement layers this session is permitted to use. Omit (or pass
    * `[]`) for any supported layer — the SDK resolves to the union of
    * every arbiter in its bundled allow-set.
+   *
+   * **Smart Session limitation:** the built-in `ECO` permission currently
+   * authorizes only the legacy Standard ECO arbiter. Eco solver-network routes
+   * remain blocked by this allow-set until a route-aware claim policy can
+   * safely inspect their encoded delivery terms.
    */
   settlementLayers?: CrossChainSettlementLayer[]
 }
@@ -358,6 +363,11 @@ interface CrossChainPermissionInput {
    * `[]`) to allow **any of the supported settlement layers** — the SDK
    * resolves to the union of every arbiter in its bundled allow-set. Pass
    * a subset (e.g. `['ECO']`) to narrow.
+   *
+   * **Smart Session limitation:** the built-in `ECO` permission currently
+   * authorizes only the legacy Standard ECO arbiter. Eco solver-network routes
+   * remain blocked by this allow-set until a route-aware claim policy can
+   * safely inspect their encoded delivery terms.
    */
   settlementLayers?: CrossChainSettlementLayer[]
 }
