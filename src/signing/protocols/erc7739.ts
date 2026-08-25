@@ -12,6 +12,9 @@ import {
   toHex,
 } from 'viem'
 import { wrapTypedDataSignature } from 'viem/experimental/erc7739'
+import { encodeErc7739ContentType } from '../../modules/validators/smart-sessions/erc7739'
+
+export { encodeErc7739ContentType }
 
 export interface Erc7739VerifierDomain {
   readonly name: string
@@ -33,7 +36,10 @@ export function hashErc7739TypedData(input: {
     string,
     readonly { readonly name: string; readonly type: string }[]
   >
-  const contentsType = encodeType(primaryType, typeFields)
+  const contentsType = encodeErc7739ContentType({
+    primaryType,
+    types: typeFields,
+  })
   const typedDataSignTypeHash = keccak256(
     toHex(
       `TypedDataSign(${primaryType} contents,string name,string version,uint256 chainId,address verifyingContract,bytes32 salt)${contentsType}`,
@@ -94,27 +100,4 @@ export function wrapErc7739TypedDataSignature(input: {
     message: typedData.message as Record<string, unknown>,
     signature: input.signature,
   })
-}
-
-function encodeType(
-  primaryType: string,
-  types: Readonly<
-    Record<string, readonly { readonly name: string; readonly type: string }[]>
-  >,
-): string {
-  const dependencies = new Set<string>()
-  const collect = (type: string): void => {
-    const typeName = type.match(/^\w*/)?.[0]
-    if (!typeName || dependencies.has(typeName) || !types[typeName]) return
-    dependencies.add(typeName)
-    for (const field of types[typeName]) collect(field.type)
-  }
-  collect(primaryType)
-  dependencies.delete(primaryType)
-  return [primaryType, ...[...dependencies].sort()]
-    .map(
-      (type) =>
-        `${type}(${types[type].map((field) => `${field.type} ${field.name}`).join(',')})`,
-    )
-    .join('')
 }

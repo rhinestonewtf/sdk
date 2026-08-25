@@ -17,6 +17,7 @@ import {
   resolvePermit2ClaimPolicy,
 } from './policies/claim'
 import { encodeSessionPolicy } from './policies/encode'
+import { resolveSessionSigning } from './signing'
 import type {
   ResolvedAction,
   Session,
@@ -129,16 +130,16 @@ export function resolveSessionData(
       resolvePermit2ClaimPolicy(policy),
     ),
   }))
+  const erc7739Policies = resolveSessionSigning({
+    signing: definition.signing,
+    environment,
+    addresses,
+  })
   return {
     sessionValidator: validator.address,
     sessionValidatorInitData: validator.initData,
     salt: zeroHash,
-    erc7739Policies: {
-      allowedERC7739Content: [
-        { contentNames: [''], appDomainSeparator: zeroHash },
-      ],
-      erc1271Policies: [{ policy: addresses.sudo, initData: '0x' }],
-    },
+    erc7739Policies,
     actions,
     claimPolicies,
   }

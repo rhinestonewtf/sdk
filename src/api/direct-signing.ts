@@ -6,6 +6,7 @@ import {
   pad,
   type SignableMessage,
   type TypedDataDefinition,
+  zeroHash,
 } from 'viem'
 import type { AccountRuntime } from '../accounts/adapter'
 import { wrapKernelMessageHash } from '../accounts/adapters/kernel'
@@ -186,6 +187,7 @@ async function signSessionErc1271(input: {
   readonly signature: Hex
   readonly transcript: SigningTranscript
 }> {
+  assertDirectSessionSigning(input.session)
   const selection = sessionOwnerSelection(input.session)
   const context = createAccountSigningContext({
     runtime: input.runtime,
@@ -248,6 +250,22 @@ async function signSessionErc1271(input: {
       },
     },
   })
+}
+
+function assertDirectSessionSigning(session: ResolvedSessionSignerSet): void {
+  const allowedContents = session.session.erc7739Policies.allowedERC7739Content
+  const allowsDirectSigning = allowedContents.some(
+    (content) =>
+      content.appDomainSeparator === zeroHash &&
+      content.contentNames.includes(''),
+  )
+  if (allowsDirectSigning) return
+  if (allowedContents.length === 0) {
+    throw new Error('This Smart Session has signing disabled')
+  }
+  throw new Error(
+    'Scoped Smart Session signing requires safe ERC-7739 emission, which is not available in this SDK',
+  )
 }
 
 function sessionOwnerSelection(

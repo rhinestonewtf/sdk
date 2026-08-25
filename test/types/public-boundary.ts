@@ -17,6 +17,8 @@ import {
   type RhinestoneAccountConfig,
   RhinestoneSDK,
   type SerializedIntentInput,
+  type SessionSigning,
+  type SessionSigningContent,
   type SignData,
   type SignedIntentData,
   type SignedTransactionData,
@@ -62,6 +64,17 @@ declare const quote: Quote
 declare const signData: SignData
 declare const typedData: HashTypedDataParameters
 declare const sessionSigners: Extract<SignerSet, { type: 'session' }>
+
+const signingContent: SessionSigningContent = {
+  domain: { name: 'Example', chainId: mainnet.id },
+  types: { Example: [{ name: 'value', type: 'uint256' }] },
+  primaryType: 'Example',
+}
+const sessionSigning: SessionSigning = {
+  mode: 'scoped',
+  allowedContents: [signingContent],
+}
+void sessionSigning
 
 const ownerSigners = {
   type: 'owner',
