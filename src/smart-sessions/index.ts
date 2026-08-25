@@ -18,6 +18,15 @@ import {
   SMART_SESSION_EMISSARY_ADDRESS,
   SMART_SESSION_EMISSARY_ADDRESS_DEV,
 } from '../modules/validators/smart-sessions/module'
+import type {
+  OneTimeUseBurnOp,
+  OneTimeUseSettlementRoute,
+} from '../modules/validators/smart-sessions/one-time-use'
+import {
+  buildOneTimeUseBurnOp,
+  encodeOneTimeUseIdInitData,
+  oneTimeUseIdErc1271Policy,
+} from '../modules/validators/smart-sessions/one-time-use'
 import {
   ARG_POLICY_ADDRESS,
   INTENT_EXECUTION_POLICY_ADDRESS,
@@ -116,5 +125,13 @@ export {
   USAGE_LIMIT_POLICY_ADDRESS,
   VALUE_LIMIT_POLICY_ADDRESS,
   INTENT_EXECUTION_POLICY_ADDRESS,
+  buildOneTimeUseBurnOp,
+  encodeOneTimeUseIdInitData,
+  oneTimeUseIdErc1271Policy,
 }
-export type { ChainDigest, SessionDetails }
+export type {
+  ChainDigest,
+  SessionDetails,
+  OneTimeUseSettlementRoute,
+  OneTimeUseBurnOp,
+}

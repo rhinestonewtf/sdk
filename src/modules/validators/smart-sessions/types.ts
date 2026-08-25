@@ -107,6 +107,9 @@ export interface SessionPolicyAddresses {
   readonly timeFrame?: Address
   readonly usageLimit?: Address
   readonly valueLimit?: Address
+  // Required when a session sets `oneTimeUse`; no default until the policy has a
+  // canonical deployment.
+  readonly oneTimeUseId?: Address
 }
 
 export type CrossChainSettlementLayer = 'SAME_CHAIN' | 'ECO' | 'ACROSS'
@@ -161,6 +164,15 @@ export interface SessionDefinition {
   claimPolicies?: Permit2ClaimPolicy[]
   crossChainPermits?: CrossChainPermissionInput[]
   policyAddresses?: SessionPolicyAddresses
+  // Pins a one-time-use id on the session (RHI-5798): the session settles at most
+  // once per chain. Requires `policyAddresses.oneTimeUseId`, and each settlement
+  // must carry the matching burn op (see buildOneTimeUseBurnOp) in its
+  // `preClaimExecutions`.
+  oneTimeUse?: OneTimeUseSessionConfig
+}
+
+export interface OneTimeUseSessionConfig {
+  readonly id: bigint
 }
 
 export interface ResolvedPolicy {
@@ -195,6 +207,16 @@ export interface Session {
   erc7739Policies: ResolvedERC7739Policies
   actions: readonly ResolvedAction[]
   claimPolicies: readonly Permit2ClaimPolicy[]
+  // When true, `claimPolicies` are enforced via the ERC-1271 surface (already
+  // encoded into `erc7739Policies.erc1271Policies`) and must NOT be re-encoded
+  // onto the on-chain claim (lockTag) surface. They stay on the high-level
+  // session so the permit2 settlement signature can still build their calldata.
+  claimPoliciesEnforcedVia1271?: boolean
+  // A one-time-use session (RHI-5798). The executor route's on-chain guard runs
+  // via checkAction, which only fires in verify-execution mode, so this forces
+  // that mode in prepareIntentSessions even for an already-enabled session — see
+  // there for why dropping to plain ERC-1271 would make the guard inert.
+  oneTimeUse?: boolean
 }
 
 export interface SessionData {
