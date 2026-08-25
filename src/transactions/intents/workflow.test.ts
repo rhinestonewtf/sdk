@@ -383,6 +383,38 @@ describe('intent workflow', () => {
     expect(read).toHaveBeenCalledTimes(3)
   })
 
+  test('forces verify-execution mode for an already-enabled one-time-use session', async () => {
+    const session = toSession({
+      chain: mainnet,
+      owners: { type: 'ecdsa', accounts: [account] },
+      claimPolicies: [{ type: 'permit2' }],
+      oneTimeUse: { id: 42n },
+      policyAddresses: {
+        oneTimeUseId: '0x00000000000000000000000000000000000000aa',
+      },
+    })
+    const workflow = context({
+      checkpoints: {
+        read: vi.fn(async (checkpoint) => [
+          {
+            kind: 'session-enabled' as const,
+            id: checkpoint.id,
+            enabled: true,
+          },
+        ]),
+      },
+    })
+    const prepared = await prepareIntent(workflow, {
+      ...input,
+      signers: { kind: 'smart-session', byChain: { 1: { session } } },
+    })
+    // A permission-less session enabled on-chain would normally drop to
+    // signatureMode 1 (see the multi-factor/passkey enabled cases → 0x00). A
+    // one-time-use session must stay in mode 5 so checkAction keeps running on
+    // the executor route — otherwise the contract's action-surface guard is inert.
+    expect(prepared.request.options.signatureMode).toBe(5)
+  })
+
   test('uses each prepared stage chain for a shorthand cross-chain session', () => {
     const source = toEvmChainReference(base.id)
     const destination = toEvmChainReference(arbitrum.id)

@@ -212,6 +212,11 @@ export interface Session {
   // onto the on-chain claim (lockTag) surface. They stay on the high-level
   // session so the permit2 settlement signature can still build their calldata.
   claimPoliciesEnforcedVia1271?: boolean
+  // A one-time-use session (RHI-5798). The executor route's on-chain guard runs
+  // via checkAction, which only fires in verify-execution mode, so this forces
+  // that mode in prepareIntentSessions even for an already-enabled session — see
+  // there for why dropping to plain ERC-1271 would make the guard inert.
+  oneTimeUse?: boolean
 }
 
 export interface SessionData {
