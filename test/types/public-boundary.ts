@@ -9,6 +9,7 @@ import * as sessionActions from '../../src/actions/smart-sessions'
 import type { SponsorLimitKey } from '../../src/errors/index'
 import * as errors from '../../src/errors/index'
 import {
+  type BridgeFill,
   hyperCorePerp,
   hyperCoreSpot,
   MULTI_FACTOR_VALIDATOR_V2_ADDRESS,
@@ -74,6 +75,19 @@ declare const signData: SignData
 declare const typedData: HashTypedDataParameters
 declare const sessionSigners: Extract<SignerSet, { type: 'session' }>
 
+const ecoBridgeFill = {
+  type: 'ECO',
+  destinationChainId: mainnet.id,
+  intentHash: `0x${'11'.repeat(32)}`,
+} as const satisfies BridgeFill
+const ecoIntentHash: Hex = ecoBridgeFill.intentHash
+
+function readEcoIntentHash(bridgeFill: BridgeFill): Hex | undefined {
+  if (bridgeFill.type !== 'ECO') return undefined
+  return bridgeFill.intentHash
+}
+const narrowedEcoIntentHash: Hex | undefined = readEcoIntentHash(ecoBridgeFill)
+
 const signingContent: SessionSigningContent = {
   domain: { name: 'Example', chainId: mainnet.id },
   types: { Example: [{ name: 'value', type: 'uint256' }] },
@@ -84,6 +98,8 @@ const sessionSigning: SessionSigning = {
   allowedContents: [signingContent],
 }
 void sessionSigning
+void ecoIntentHash
+void narrowedEcoIntentHash
 
 const ownerSigners = {
   type: 'owner',

@@ -1,4 +1,4 @@
-import type { Address, SignedAuthorization } from 'viem'
+import type { Address, Hex, SignedAuthorization } from 'viem'
 import {
   chainIdFromReference,
   formatCaip2,
@@ -252,8 +252,48 @@ function mapTokenRequirementsFromWire(
 function mapBridgeFillFromWire(
   value: NonNullable<WireQuote['bridgeFill']>,
 ): BridgeFill {
-  const { fillStatusTimeout: _ignored, ...bridgeFill } = value
-  return bridgeFill as BridgeFill
+  switch (value.type) {
+    case 'OFT':
+      return {
+        type: 'OFT',
+        destinationChainId: value.destinationChainId,
+      }
+    case 'ECO':
+      return {
+        type: 'ECO',
+        destinationChainId: value.destinationChainId,
+        intentHash: value.intentHash as Hex,
+      }
+    case 'RELAY':
+      return {
+        type: 'RELAY',
+        destinationChainId: value.destinationChainId,
+        requestId: value.requestId,
+      }
+    case 'NEAR':
+      return {
+        type: 'NEAR',
+        destinationChainId: value.destinationChainId,
+        depositAddress: value.depositAddress as Address,
+      }
+    case 'RHINO':
+      return {
+        type: 'RHINO',
+        destinationChainId: value.destinationChainId,
+        commitmentId: value.commitmentId,
+      }
+    case 'CCTP':
+      return {
+        type: 'CCTP',
+        destinationChainId: value.destinationChainId,
+        sourceDomainId: value.sourceDomainId,
+        destinationDomainId: value.destinationDomainId,
+      }
+    default:
+      throw new Error(
+        `Unsupported bridge fill type from orchestrator: ${String((value as { readonly type?: unknown }).type)}`,
+      )
+  }
 }
 
 type WireAuthorization = NonNullable<
