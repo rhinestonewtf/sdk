@@ -129,9 +129,17 @@ export {
   encodeOneTimeUseIdInitData,
   oneTimeUseIdErc1271Policy,
 }
+export { experimental_defineSpendSession } from './experimental/spend-session'
 export type {
   ChainDigest,
   SessionDetails,
   OneTimeUseSettlementRoute,
   OneTimeUseBurnOp,
 }
+export type {
+  DefineSpendSessionInput,
+  SpendIntent,
+  SpendSession,
+  SpendTarget,
+  SpendToken,
+} from './experimental/spend-session'
