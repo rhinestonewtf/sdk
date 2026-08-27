@@ -238,6 +238,53 @@ describe('UserOperation workflow', () => {
     )
   })
 
+  test('signs quorum UserOperations with a threshold-satisfying owner subset', async () => {
+    const quorumValidator = '0x0000000000000000000000000000000000000042'
+    const validator = defineValidator({
+      type: 'quorum',
+      module: quorumValidator,
+      thresholdWeight: 2n,
+      owners: [
+        { account: owner, weight: 1n },
+        { account: selectedOwner, weight: 2n },
+      ],
+    })
+    const baseRuntime = runtime()
+    const quorumRuntime: AccountRuntime = {
+      ...baseRuntime,
+      construction: { ...baseRuntime.construction, owner: validator },
+    }
+    const invoke = vi.fn(async () => ({
+      kind: 'ecdsa-signature' as const,
+      signature,
+    }))
+    const workflow = context({
+      account: { forChain: vi.fn(async () => quorumRuntime) },
+      signerInvoker: { has: () => true, invoke },
+    })
+    const prepared = await prepareUserOperation(workflow, {
+      ...input,
+      signers: {
+        kind: 'owner',
+        validator,
+        signerIds: [ecdsaSignerId(selectedOwner)],
+      },
+    })
+
+    expect(prepared.signing.effectiveSelection.signerIds).toEqual([
+      ecdsaSignerId(selectedOwner),
+    ])
+    expect(prepared.signing.tasks).toHaveLength(1)
+    expect(prepared.signing.tasks[0]?.signer.id).toBe(
+      ecdsaSignerId(selectedOwner),
+    )
+
+    await expect(signUserOperation(workflow, prepared)).resolves.toMatchObject({
+      signature: expect.any(String),
+    })
+    expect(invoke).toHaveBeenCalledTimes(1)
+  })
+
   test('prepares nonce, account call data, deployment, fees, gas, and signing plan', async () => {
     const workflow = context({
       paymaster: {
