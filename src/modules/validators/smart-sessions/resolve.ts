@@ -132,11 +132,16 @@ export function resolveSessionData(
   }))
   // Extra pre-encoded 1271 policies (e.g. an IntentExecutor settlement-layer
   // policy). They are enforcing, so they replace the default sudo entry to keep
-  // the 1271 list a strict AND rather than letting sudo pass everything.
+  // the 1271 list a strict AND rather than letting sudo pass everything. A
+  // route-gating 1271 policy (settlement-layer) and Permit2 claim policies gate
+  // different routes on this shared AND-list, so the caller must not combine them
+  // (defineSpendSession guards this); doing so yields a session that cannot
+  // settle rather than a bypass.
   const extraErc1271 = definition.erc1271Policies ?? []
-  let erc1271Policies: { policy: Address; initData: Hex }[] = extraErc1271.length
-    ? [...extraErc1271]
-    : [{ policy: addresses.sudo, initData: '0x' }]
+  let erc1271Policies: { policy: Address; initData: Hex }[] =
+    extraErc1271.length
+      ? [...extraErc1271]
+      : [{ policy: addresses.sudo, initData: '0x' }]
   if (definition.oneTimeUse) {
     if (!addresses.oneTimeUseId) {
       throw new Error(

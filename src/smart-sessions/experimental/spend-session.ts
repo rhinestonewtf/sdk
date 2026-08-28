@@ -68,10 +68,24 @@ const ARBITER_ENFORCEABLE = {
 // Per-layer scoping capability. Enforceable flags for the adapter layers mirror
 // what each layer's on-chain calldata exposes (e.g. Rhino carries no on-chain
 // recipient; Relay's calldata is opaque) — see RHI-6242.
-export const LAYER_CAPABILITIES: Record<SpendSettlementLayer, LayerCapability> = {
-  SAME_CHAIN: { surface: 'claim-policy', enforceable: ARBITER_ENFORCEABLE, availableToday: true },
-  ECO: { surface: 'claim-policy', enforceable: ARBITER_ENFORCEABLE, availableToday: true },
-  ACROSS: { surface: 'claim-policy', enforceable: ARBITER_ENFORCEABLE, availableToday: true },
+export const LAYER_CAPABILITIES: Readonly<
+  Record<SpendSettlementLayer, LayerCapability>
+> = Object.freeze({
+  SAME_CHAIN: {
+    surface: 'claim-policy',
+    enforceable: ARBITER_ENFORCEABLE,
+    availableToday: true,
+  },
+  ECO: {
+    surface: 'claim-policy',
+    enforceable: ARBITER_ENFORCEABLE,
+    availableToday: true,
+  },
+  ACROSS: {
+    surface: 'claim-policy',
+    enforceable: ARBITER_ENFORCEABLE,
+    availableToday: true,
+  },
   CCTP: {
     surface: 'intent-executor-adapter',
     enforceable: { recipient: true, amount: true, token: true, chain: true },
@@ -89,7 +103,12 @@ export const LAYER_CAPABILITIES: Record<SpendSettlementLayer, LayerCapability> =
   },
   RELAY: {
     surface: 'intent-executor-adapter',
-    enforceable: { recipient: false, amount: false, token: false, chain: false },
+    enforceable: {
+      recipient: false,
+      amount: false,
+      token: false,
+      chain: false,
+    },
     availableToday: false,
   },
   NEAR: {
@@ -97,7 +116,7 @@ export const LAYER_CAPABILITIES: Record<SpendSettlementLayer, LayerCapability> =
     enforceable: { recipient: false, amount: true, token: true, chain: false },
     availableToday: false,
   },
-}
+})
 
 const ARBITER_LAYERS: readonly SpendSettlementLayer[] = [
   'SAME_CHAIN',
@@ -112,6 +131,7 @@ function assertLayersEnforceable(input: DefineSpendSessionInput): void {
   if (!layers || layers.length === 0) return
   const wantsRecipient = (input.spend.recipients?.length ?? 0) > 0
   const wantsAmount = input.spend.tokens.some((t) => t.maxAmount !== undefined)
+  const wantsChain = (input.spend.target?.chains.length ?? 0) > 0
   for (const layer of layers) {
     const cap = LAYER_CAPABILITIES[layer]
     if (!cap.availableToday) {
@@ -121,6 +141,9 @@ function assertLayersEnforceable(input: DefineSpendSessionInput): void {
           `Supported today: ${ARBITER_LAYERS.join(', ')}.`,
       )
     }
+    // Field-enforceability refusals. Every adapter layer is availableToday:false
+    // today, so these are reached only once a layer is flipped on — they keep the
+    // builder from emitting a field-restricted-looking but unrestricted session.
     if (wantsRecipient && !cap.enforceable.recipient) {
       throw new Error(
         `Settlement layer "${layer}" cannot enforce a recipient restriction; ` +
@@ -131,6 +154,12 @@ function assertLayersEnforceable(input: DefineSpendSessionInput): void {
       throw new Error(
         `Settlement layer "${layer}" cannot enforce an amount cap; ` +
           `remove maxAmount or drop "${layer}".`,
+      )
+    }
+    if (wantsChain && !cap.enforceable.chain) {
+      throw new Error(
+        `Settlement layer "${layer}" cannot enforce a target-chain restriction; ` +
+          `drop "${layer}".`,
       )
     }
   }
@@ -150,15 +179,16 @@ export interface SpendTarget {
   // supported layers. Layers not enforceable today are refused (see
   // LAYER_CAPABILITIES).
   readonly settlementLayers?: SpendSettlementLayer[]
-  // Destination-chain token addresses, when they differ from the source token.
-  // Defaults to reusing the source token address on each target chain.
-  readonly tokens?: { readonly chain: Chain; readonly token: Address }[]
+  // Destination-chain token address for each target chain. Required for every
+  // target chain — token addresses differ per chain, so there is no safe default.
+  readonly tokens: { readonly chain: Chain; readonly token: Address }[]
 }
 
 export interface SpendIntent {
   readonly tokens: [SpendToken, ...SpendToken[]]
-  // Addresses the funds may be sent to. Omit to bind the recipient to the
-  // account itself.
+  // Addresses the funds may be sent to. Same-chain: omit to allow ANY recipient
+  // (pair with maxAmount or singleUse to bound the spend). Cross-chain: omit to
+  // bind the recipient to the account. Must be non-empty when provided.
   readonly recipients?: Address[]
   // Omit for a same-chain spend.
   readonly target?: SpendTarget
@@ -174,9 +204,6 @@ export interface DefineSpendSessionInput {
   // `buildBurnOp()` yields the burn op to inject into the intent's source calls.
   // Requires `policyAddresses.oneTimeUseId`.
   readonly singleUse?: { readonly id: bigint }
-  // Override the auto-selected route (executor for same-chain, permit2 for
-  // cross-chain). Rarely needed.
-  readonly route?: OneTimeUseSettlementRoute
   // Pre-encoded ERC-1271 policy entries to install on the session (e.g. an
   // IntentExecutor settlement-layer policy — see intentExecutorPolicyEntry). This
   // is the escape hatch for scoping the IntentExecutor-backed layers until the
@@ -197,9 +224,8 @@ export interface SpendSession {
 }
 
 function isCrossChain(input: DefineSpendSessionInput): boolean {
-  const target = input.spend.target
   return (
-    target !== undefined && target.chains.some((c) => c.id !== input.chain.id)
+    input.spend.target?.chains.some((c) => c.id !== input.chain.id) ?? false
   )
 }
 
@@ -211,9 +237,17 @@ function crossChainPermit(
 ): CrossChainPermissionInput {
   const { chain, spend } = input
   const target = spend.target as SpendTarget
-  const destTokenFor = (c: Chain, sourceToken: Address): Address =>
-    target.tokens?.find((t) => t.chain.id === c.id)?.token ?? sourceToken
-  const recipients = spend.recipients ?? [undefined]
+  const destTokenFor = (c: Chain): Address => {
+    const entry = target.tokens?.find((t) => t.chain.id === c.id)
+    if (!entry) {
+      throw new Error(
+        `cross-chain spend needs a destination token for chain ${c.id} ` +
+          `(target.tokens) — token addresses differ per chain`,
+      )
+    }
+    return entry.token
+  }
+  const recipients: (Address | undefined)[] = spend.recipients ?? [undefined]
   return {
     from: spend.tokens.map((t) => ({
       chain,
@@ -221,13 +255,11 @@ function crossChainPermit(
       maxAmount: t.maxAmount,
     })),
     to: target.chains.flatMap((c) =>
-      spend.tokens.flatMap((t) =>
-        recipients.map((recipient) => ({
-          chain: c,
-          token: destTokenFor(c, t.token),
-          ...(recipient ? { recipient } : {}),
-        })),
-      ),
+      recipients.map((recipient) => ({
+        chain: c,
+        token: destTokenFor(c),
+        ...(recipient ? { recipient } : {}),
+      })),
     ),
     // Only arbiter layers reach here — assertLayersEnforceable refuses the rest.
     settlementLayers: target.settlementLayers as
@@ -256,7 +288,9 @@ function sameChainPermissions(input: DefineSpendSessionInput): Permission[] {
     address: t.token,
     functions: {
       transfer: {
-        ...(recipientConstraint ? { params: { recipient: recipientConstraint } } : {}),
+        ...(recipientConstraint
+          ? { params: { recipient: recipientConstraint } }
+          : {}),
         ...(t.maxAmount !== undefined
           ? { spendingLimit: { token: t.token, amount: t.maxAmount } }
           : {}),
@@ -278,9 +312,34 @@ export function experimental_defineSpendSession(
       'spend session with singleUse requires policyAddresses.oneTimeUseId',
     )
   }
+  if (input.spend.recipients?.length === 0) {
+    throw new Error(
+      'spend.recipients must be non-empty; omit it to allow any recipient ' +
+        '(same-chain) or bind to the account (cross-chain)',
+    )
+  }
   assertLayersEnforceable(input)
   const crossChain = isCrossChain(input)
-  const route = input.route ?? (crossChain ? 'permit2' : 'executor')
+  const route: OneTimeUseSettlementRoute = crossChain ? 'permit2' : 'executor'
+
+  // A same-chain spend with no restriction at all resolves to a sudo transfer
+  // action (any recipient, any amount) — never emit that silently. Require at
+  // least one bound: a recipient allowlist, an amount cap, a time window, or the
+  // single-use burn.
+  if (!crossChain) {
+    const bounded =
+      (input.spend.recipients?.length ?? 0) > 0 ||
+      input.spend.tokens.some((t) => t.maxAmount !== undefined) ||
+      input.spend.validUntil !== undefined ||
+      input.spend.validAfter !== undefined ||
+      input.singleUse !== undefined
+    if (!bounded) {
+      throw new Error(
+        'unrestricted same-chain spend: provide recipients, a token maxAmount, ' +
+          'validUntil/validAfter, or singleUse',
+      )
+    }
+  }
 
   // A settlement-layer 1271 policy and the Permit2 claim policy both live on the
   // 1271 AND-list and gate different routes, so they are mutually exclusive.

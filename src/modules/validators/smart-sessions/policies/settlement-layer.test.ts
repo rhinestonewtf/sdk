@@ -1,12 +1,4 @@
-import {
-  type Address,
-  type Hex,
-  keccak256,
-  size,
-  slice,
-  toBytes,
-  toHex,
-} from 'viem'
+import { type Address, type Hex, size, slice } from 'viem'
 import { describe, expect, test } from 'vitest'
 import {
   addressToBytes32,
@@ -35,10 +27,19 @@ const RECIPIENT: Address = '0x1111111111111111111111111111111111111111'
 const GAS_TOKEN: Address = '0x4200000000000000000000000000000000000006'
 
 describe('settlement-layer encoders — layer ids', () => {
-  test('layer ids are keccak256 of the adapter names', () => {
-    expect(CCTP_LAYER_ID).toBe(keccak256(toBytes('CCTP')))
-    expect(RELAY_LAYER_ID).toBe(keccak256(toBytes('RELAY')))
-    expect(RHINO_LAYER_ID).toBe(keccak256(toBytes('RHINO')))
+  // Pinned to fixed hashes (not keccak256(toBytes(name)), which would be a
+  // tautology) so an accidental rename of the id source is caught. These must
+  // equal each adapter's on-chain LAYER_ID = keccak256("<NAME>").
+  test('layer ids match the on-chain adapter LAYER_ID hashes', () => {
+    expect(CCTP_LAYER_ID).toBe(
+      '0xb15c6f4cb2704b59886404596581f035599143a4de893556943a4865c51863a5',
+    )
+    expect(RELAY_LAYER_ID).toBe(
+      '0x7f7b7e37c1c73a7fe521e350bfc44f06aa9ebbc4658ac6261b21c1e6f7b97f58',
+    )
+    expect(RHINO_LAYER_ID).toBe(
+      '0x5c01ead7ebf445ae993202284f0d6b2304b4adfcf34ea7abdee7f15587009db9',
+    )
   })
 })
 
@@ -155,8 +156,7 @@ describe('settlement-layer encoders — policy initData', () => {
     })
     const header = 54
     // header · count(1) · [32 + 2 + len]·2
-    const expected =
-      header + 1 + (32 + 2 + size(cctp)) + (32 + 2 + size(rhino))
+    const expected = header + 1 + (32 + 2 + size(cctp)) + (32 + 2 + size(rhino))
     expect(size(initData)).toBe(expected)
     // layer count byte right after the header
     expect(slice(initData, header, header + 1)).toBe('0x02')

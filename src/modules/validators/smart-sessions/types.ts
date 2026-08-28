@@ -110,9 +110,6 @@ export interface SessionPolicyAddresses {
   // Required when a session sets `oneTimeUse`; no default until the policy has a
   // canonical deployment.
   readonly oneTimeUseId?: Address
-  // The IntentExecutor settlement-layer policy (smart-sessions-v2 #46). No
-  // default until it has a canonical deployment.
-  readonly intentExecutorPolicy?: Address
 }
 
 export type CrossChainSettlementLayer = 'SAME_CHAIN' | 'ECO' | 'ACROSS'

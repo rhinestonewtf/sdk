@@ -7,7 +7,18 @@ import {
   size,
   toBytes,
   toHex,
+  zeroAddress,
 } from 'viem'
+
+// Guards a packed field width so a truncated address/bytes32 fails with a clear
+// SDK error instead of silently misaligning the blob (the on-chain adapter would
+// then revert on install with an opaque length error).
+function assertWidth(value: Hex, bytes: number, label: string): Hex {
+  if (size(value) !== bytes) {
+    throw new Error(`${label} must be ${bytes} bytes, got ${size(value)}`)
+  }
+  return value
+}
 
 // IntentExecutor settlement-layer policy (smart-sessions-v2 #46 / PR #54): an
 // EIP-1271 policy that gates the settlement signature the StandaloneIntentExecutor
@@ -52,11 +63,11 @@ export function encodeIntentExecutorBaseHeader(
 ): Hex {
   const gasTokens = config.gasTokens ?? []
   return concat([
-    config.intentExecutor,
+    assertWidth(config.intentExecutor, 20, 'intentExecutor'),
     toHex(config.flags ?? 0, { size: 1 }),
     toHex(config.maxExchangeRate ?? 0n, { size: 32 }),
     toHex(gasTokens.length, { size: 1 }),
-    ...gasTokens,
+    ...gasTokens.map((t) => assertWidth(t, 20, 'gasToken')),
   ])
 }
 
@@ -79,13 +90,13 @@ export interface CctpLayerConfig {
 export function encodeCctpAdapterConfig(config: CctpLayerConfig): Hex {
   const destDomains = config.destDomains ?? []
   return concat([
-    config.tokenMessenger,
+    assertWidth(config.tokenMessenger, 20, 'tokenMessenger'),
     toHex(config.maxFeeCap ?? 0n, { size: 32 }),
     toHex(config.minFinalityFloor ?? 0, { size: 4 }),
     toHex(config.mintRecipients.length, { size: 1 }),
-    ...config.mintRecipients,
+    ...config.mintRecipients.map((r) => assertWidth(r, 32, 'mintRecipient')),
     toHex(config.burnTokens.length, { size: 1 }),
-    ...config.burnTokens,
+    ...config.burnTokens.map((t) => assertWidth(t, 20, 'burnToken')),
     toHex(destDomains.length, { size: 1 }),
     ...destDomains.map((d) => toHex(d, { size: 4 })),
   ])
@@ -101,16 +112,18 @@ export interface RelayLayerConfig {
   readonly tokens: Address[]
 }
 
-const ZERO_ADDRESS: Address = '0x0000000000000000000000000000000000000000'
-
 export function encodeRelayAdapterConfig(config: RelayLayerConfig): Hex {
   return concat([
-    config.relayRouter,
-    config.intentExecutorAdapter ?? ZERO_ADDRESS,
+    assertWidth(config.relayRouter, 20, 'relayRouter'),
+    assertWidth(
+      config.intentExecutorAdapter ?? zeroAddress,
+      20,
+      'intentExecutorAdapter',
+    ),
     toHex(config.recipients.length, { size: 1 }),
-    ...config.recipients,
+    ...config.recipients.map((r) => assertWidth(r, 20, 'relay recipient')),
     toHex(config.tokens.length, { size: 1 }),
-    ...config.tokens,
+    ...config.tokens.map((t) => assertWidth(t, 20, 'relay token')),
   ])
 }
 
@@ -123,9 +136,9 @@ export interface RhinoLayerConfig {
 
 export function encodeRhinoAdapterConfig(config: RhinoLayerConfig): Hex {
   return concat([
-    config.bridgeContract,
+    assertWidth(config.bridgeContract, 20, 'bridgeContract'),
     toHex(config.tokens.length, { size: 1 }),
-    ...config.tokens,
+    ...config.tokens.map((t) => assertWidth(t, 20, 'rhino token')),
   ])
 }
 
