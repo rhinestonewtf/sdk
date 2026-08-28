@@ -38,6 +38,21 @@ import {
   VALUE_LIMIT_POLICY_ADDRESS,
 } from '../modules/validators/smart-sessions/policies/addresses'
 import {
+  addressToBytes32,
+  CCTP_LAYER_ID,
+  encodeCctpAdapterConfig,
+  encodeIntentExecutorBaseHeader,
+  encodeIntentExecutorPolicyInitData,
+  encodeRelayAdapterConfig,
+  encodeRhinoAdapterConfig,
+  encodeStaticIntentExecutorPolicyInitData,
+  FLAG_LOCK_ACCOUNT,
+  FLAG_REQUIRE_GAS_REFUND,
+  intentExecutorPolicyEntry,
+  RELAY_LAYER_ID,
+  RHINO_LAYER_ID,
+} from '../modules/validators/smart-sessions/policies/settlement-layer'
+import {
   toSession as resolveSession,
   SMART_SESSIONS_FALLBACK_TARGET_FLAG,
   SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
@@ -52,6 +67,10 @@ import type {
   SessionDefinition as DomainSessionDefinition,
   SessionDetails,
 } from '../modules/validators/smart-sessions/types'
+import {
+  experimental_defineSpendSession,
+  LAYER_CAPABILITIES,
+} from './experimental/spend-session'
 
 function environment(useDevContracts: boolean | undefined) {
   return useDevContracts === true ? 'development' : 'production'
@@ -128,10 +147,43 @@ export {
   buildOneTimeUseBurnOp,
   encodeOneTimeUseIdInitData,
   oneTimeUseIdErc1271Policy,
+  // IntentExecutor settlement-layer policy (experimental — no deployment yet)
+  addressToBytes32,
+  CCTP_LAYER_ID,
+  RELAY_LAYER_ID,
+  RHINO_LAYER_ID,
+  FLAG_LOCK_ACCOUNT,
+  FLAG_REQUIRE_GAS_REFUND,
+  encodeCctpAdapterConfig,
+  encodeRelayAdapterConfig,
+  encodeRhinoAdapterConfig,
+  encodeIntentExecutorBaseHeader,
+  encodeIntentExecutorPolicyInitData,
+  encodeStaticIntentExecutorPolicyInitData,
+  intentExecutorPolicyEntry,
+  // Spend-session abstraction (experimental)
+  experimental_defineSpendSession,
+  LAYER_CAPABILITIES,
 }
+export type {
+  CctpLayerConfig,
+  IntentExecutorBaseConfig,
+  LayerInstall,
+  RelayLayerConfig,
+  RhinoLayerConfig,
+} from '../modules/validators/smart-sessions/policies/settlement-layer'
 export type {
   ChainDigest,
   SessionDetails,
   OneTimeUseSettlementRoute,
   OneTimeUseBurnOp,
 }
+export type {
+  DefineSpendSessionInput,
+  LayerCapability,
+  SpendIntent,
+  SpendSession,
+  SpendSettlementLayer,
+  SpendTarget,
+  SpendToken,
+} from './experimental/spend-session'
