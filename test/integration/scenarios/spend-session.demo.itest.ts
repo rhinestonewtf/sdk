@@ -34,12 +34,9 @@ const BASE_RPC =
 const ARBITRUM_RPC =
   process.env.INTEGRATION_ARB_FORK_RPC ?? 'http://localhost:30002'
 const API_KEY = process.env.INTEGRATION_RHINESTONE_API_KEY ?? 'testuserapikey'
+// Skip the whole suite (rather than throwing at import, which would abort
+// integration-suite discovery) when the deployed policy address isn't provided.
 const POLICY = (process.env.INTEGRATION_ONE_TIME_USE_ID_POLICY ?? '') as Address
-if (!POLICY) {
-  throw new Error(
-    'Set INTEGRATION_ONE_TIME_USE_ID_POLICY to the deployed OneTimeUseIdPolicy address',
-  )
-}
 
 const USDC: Address = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
 const ARB_USDC: Address = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831'
@@ -96,7 +93,7 @@ function freshId(): bigint {
   return BigInt(Date.now()) * 1000n + BigInt(Math.floor(Math.random() * 1000))
 }
 
-describe('RHI-6242 spend-session demo (local fork)', () => {
+describe.skipIf(!POLICY)('RHI-6242 spend-session demo (local fork)', () => {
   let account: RhinestoneAccount
 
   beforeAll(async () => {
