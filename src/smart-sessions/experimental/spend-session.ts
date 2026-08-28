@@ -26,6 +26,115 @@ import type { OwnerSet } from '../../modules/validators/types'
 // `singleUse` selects the new Quorum-signer one-time-use method; omitting it is
 // the "old way" (explicit policy config, no burn op).
 
+// The settlement layers a spend may target. The three arbiter-based layers are
+// enforceable today via the Permit2 claim policy; the IntentExecutor-backed
+// layers need the settlement-layer adapter policy (smart-sessions-v2 #46) to
+// scope per-session, so they are declared here but refused until that lands.
+export type SpendSettlementLayer =
+  | 'SAME_CHAIN'
+  | 'ECO'
+  | 'ACROSS'
+  | 'RHINO'
+  | 'RELAY'
+  | 'CCTP'
+  | 'NEAR'
+  | 'OFT'
+
+export interface LayerCapability {
+  // How the layer is scoped: the Permit2 claim policy (arbiter route) or the
+  // per-layer IntentExecutor adapter ACL (adapter route).
+  readonly surface: 'claim-policy' | 'intent-executor-adapter'
+  // Which spend fields the layer can actually enforce. A `false` here means a
+  // restriction on that field would be fiction — the builder refuses it.
+  readonly enforceable: {
+    readonly recipient: boolean
+    readonly amount: boolean
+    readonly token: boolean
+    readonly chain: boolean
+  }
+  // False until the IntentExecutor settlement-layer policy family is deployed and
+  // the SDK exposes an ERC-1271-policy input. Arbiter layers are true today.
+  readonly availableToday: boolean
+}
+
+const ARBITER_ENFORCEABLE = {
+  recipient: true,
+  amount: true,
+  token: true,
+  chain: true,
+} as const
+
+// Per-layer scoping capability. Enforceable flags for the adapter layers mirror
+// what each layer's on-chain calldata exposes (e.g. Rhino carries no on-chain
+// recipient; Relay's calldata is opaque) — see RHI-6242.
+export const LAYER_CAPABILITIES: Record<SpendSettlementLayer, LayerCapability> = {
+  SAME_CHAIN: { surface: 'claim-policy', enforceable: ARBITER_ENFORCEABLE, availableToday: true },
+  ECO: { surface: 'claim-policy', enforceable: ARBITER_ENFORCEABLE, availableToday: true },
+  ACROSS: { surface: 'claim-policy', enforceable: ARBITER_ENFORCEABLE, availableToday: true },
+  CCTP: {
+    surface: 'intent-executor-adapter',
+    enforceable: { recipient: true, amount: true, token: true, chain: true },
+    availableToday: false,
+  },
+  RHINO: {
+    surface: 'intent-executor-adapter',
+    enforceable: { recipient: false, amount: true, token: true, chain: false },
+    availableToday: false,
+  },
+  OFT: {
+    surface: 'intent-executor-adapter',
+    enforceable: { recipient: true, amount: true, token: true, chain: true },
+    availableToday: false,
+  },
+  RELAY: {
+    surface: 'intent-executor-adapter',
+    enforceable: { recipient: false, amount: false, token: false, chain: false },
+    availableToday: false,
+  },
+  NEAR: {
+    surface: 'intent-executor-adapter',
+    enforceable: { recipient: false, amount: true, token: true, chain: false },
+    availableToday: false,
+  },
+}
+
+const ARBITER_LAYERS: readonly SpendSettlementLayer[] = [
+  'SAME_CHAIN',
+  'ECO',
+  'ACROSS',
+]
+
+// Refuses any requested settlement layer the builder cannot honestly enforce,
+// rather than emitting a restricted-looking-but-unrestricted session.
+function assertLayersEnforceable(input: DefineSpendSessionInput): void {
+  const layers = input.spend.target?.settlementLayers
+  if (!layers || layers.length === 0) return
+  const wantsRecipient = (input.spend.recipients?.length ?? 0) > 0
+  const wantsAmount = input.spend.tokens.some((t) => t.maxAmount !== undefined)
+  for (const layer of layers) {
+    const cap = LAYER_CAPABILITIES[layer]
+    if (!cap.availableToday) {
+      throw new Error(
+        `Settlement layer "${layer}" is not yet supported by defineSpendSession ` +
+          `(needs the IntentExecutor settlement-layer policy; see RHI-6242). ` +
+          `Supported today: ${ARBITER_LAYERS.join(', ')}.`,
+      )
+    }
+    if (wantsRecipient && !cap.enforceable.recipient) {
+      throw new Error(
+        `Settlement layer "${layer}" cannot enforce a recipient restriction; ` +
+          `remove recipients or drop "${layer}".`,
+      )
+    }
+    if (wantsAmount && !cap.enforceable.amount) {
+      throw new Error(
+        `Settlement layer "${layer}" cannot enforce an amount cap; ` +
+          `remove maxAmount or drop "${layer}".`,
+      )
+    }
+  }
+}
+
 export interface SpendToken {
   readonly token: Address
   // Upper bound on the amount this session may move for this token. Omit for no cap.
@@ -37,8 +146,9 @@ export interface SpendTarget {
   // cross-chain spend (Permit2 route); omit `target` entirely for same-chain.
   readonly chains: Chain[]
   // Which settlement layers may fill the cross-chain send. Omit to allow all
-  // supported layers.
-  readonly settlementLayers?: CrossChainSettlementLayer[]
+  // supported layers. Layers not enforceable today are refused (see
+  // LAYER_CAPABILITIES).
+  readonly settlementLayers?: SpendSettlementLayer[]
   // Destination-chain token addresses, when they differ from the source token.
   // Defaults to reusing the source token address on each target chain.
   readonly tokens?: { readonly chain: Chain; readonly token: Address }[]
@@ -111,7 +221,10 @@ function crossChainPermit(
         })),
       ),
     ),
-    settlementLayers: target.settlementLayers,
+    // Only arbiter layers reach here — assertLayersEnforceable refuses the rest.
+    settlementLayers: target.settlementLayers as
+      | CrossChainSettlementLayer[]
+      | undefined,
     validUntil: spend.validUntil,
     validAfter: spend.validAfter,
     allowRecipientNotAccount: spend.recipients !== undefined,
@@ -157,6 +270,7 @@ export function experimental_defineSpendSession(
       'spend session with singleUse requires policyAddresses.oneTimeUseId',
     )
   }
+  assertLayersEnforceable(input)
   const crossChain = isCrossChain(input)
   const route = input.route ?? (crossChain ? 'permit2' : 'executor')
 

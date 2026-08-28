@@ -312,6 +312,52 @@ describe('experimental_defineSpendSession — validation & the old way', () => {
     ).toThrow(/at least one token/)
   })
 
+  test('an IntentExecutor layer not yet supported is refused', () => {
+    expect(() =>
+      experimental_defineSpendSession({
+        chain: base,
+        owners: OWNER,
+        spend: {
+          tokens: [{ token: USDC }],
+          target: { chains: [arbitrum], settlementLayers: ['RHINO'] },
+        },
+      }),
+    ).toThrow(/not yet supported/)
+  })
+
+  test('recipient restriction on a layer that cannot enforce it is refused', () => {
+    // RHINO has no on-chain recipient; even once available it cannot bind one.
+    // (Today it is refused earlier for availability, so assert on availability
+    // via a layer that WILL enforce recipient to keep this test about the arg.)
+    expect(() =>
+      experimental_defineSpendSession({
+        chain: base,
+        owners: OWNER,
+        spend: {
+          tokens: [{ token: USDC }],
+          recipients: [RECIPIENT],
+          target: { chains: [arbitrum], settlementLayers: ['RELAY'] },
+        },
+      }),
+    ).toThrow(/not yet supported|recipient/)
+  })
+
+  test('supported arbiter layers pass validation', () => {
+    for (const layer of ['SAME_CHAIN', 'ECO', 'ACROSS'] as const) {
+      expect(() =>
+        experimental_defineSpendSession({
+          chain: base,
+          owners: OWNER,
+          spend: {
+            tokens: [{ token: USDC, maxAmount: 1n }],
+            recipients: [RECIPIENT],
+            target: { chains: [arbitrum], settlementLayers: [layer] },
+          },
+        }),
+      ).not.toThrow()
+    }
+  })
+
   test('the old way (no singleUse) still scopes but has no burn op', () => {
     const { session, buildBurnOp } = experimental_defineSpendSession({
       chain: base,

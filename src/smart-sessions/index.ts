@@ -129,7 +129,10 @@ export {
   encodeOneTimeUseIdInitData,
   oneTimeUseIdErc1271Policy,
 }
-export { experimental_defineSpendSession } from './experimental/spend-session'
+export {
+  experimental_defineSpendSession,
+  LAYER_CAPABILITIES,
+} from './experimental/spend-session'
 export type {
   ChainDigest,
   SessionDetails,
@@ -138,8 +141,10 @@ export type {
 }
 export type {
   DefineSpendSessionInput,
+  LayerCapability,
   SpendIntent,
   SpendSession,
+  SpendSettlementLayer,
   SpendTarget,
   SpendToken,
 } from './experimental/spend-session'
