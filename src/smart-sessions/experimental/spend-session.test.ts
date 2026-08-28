@@ -4,6 +4,13 @@ import { describe, expect, test } from 'vitest'
 import { accountA } from '../../../test/consts'
 import { getSessionData } from '../../modules/validators/smart-sessions/digest'
 import { oneTimeUseIdPolicyAbi } from '../../modules/validators/smart-sessions/one-time-use'
+import { SUDO_POLICY_ADDRESS } from '../../modules/validators/smart-sessions/policies/addresses'
+import {
+  CCTP_LAYER_ID,
+  addressToBytes32,
+  encodeCctpAdapterConfig,
+  intentExecutorPolicyEntry,
+} from '../../modules/validators/smart-sessions/policies/settlement-layer'
 import {
   ARG_POLICY_ADDRESS,
   SPENDING_LIMITS_POLICY_ADDRESS,
@@ -356,6 +363,66 @@ describe('experimental_defineSpendSession — validation & the old way', () => {
         }),
       ).not.toThrow()
     }
+  })
+
+  test('a settlement-layer 1271 policy is installed and replaces sudo', () => {
+    const POLICY: Address = '0x00000000000000000000000000000000000000AA'
+    const IE: Address = '0x00000000005aD9ce1f5035FD62CA96CEf16AdAAF'
+    const entry = intentExecutorPolicyEntry({
+      policy: POLICY,
+      base: { intentExecutor: IE },
+      layers: [
+        {
+          layerId: CCTP_LAYER_ID,
+          config: encodeCctpAdapterConfig({
+            tokenMessenger: '0xBd3fa81B58Ba92a82136038B25aDec7066af3155',
+            mintRecipients: [addressToBytes32(RECIPIENT)],
+            burnTokens: [USDC],
+          }),
+        },
+      ],
+    })
+    const { session } = experimental_defineSpendSession({
+      chain: base,
+      owners: OWNER,
+      spend: { tokens: [{ token: USDC }] },
+      erc1271Policies: [entry],
+      policyAddresses: { intentExecutorPolicy: POLICY },
+    })
+    const list = getSessionData(session).erc7739Policies.erc1271Policies
+    expect(list.some((p) => isAddressEqual(p.policy, POLICY))).toBe(true)
+    // enforcing 1271 policy drops the default sudo entry
+    expect(list.some((p) => isAddressEqual(p.policy, SUDO_POLICY_ADDRESS))).toBe(
+      false,
+    )
+  })
+
+  test('settlement-layer policy is refused alongside a cross-chain arbiter target', () => {
+    const entry = intentExecutorPolicyEntry({
+      policy: '0x00000000000000000000000000000000000000AA',
+      base: { intentExecutor: '0x00000000005aD9ce1f5035FD62CA96CEf16AdAAF' },
+      layers: [
+        {
+          layerId: CCTP_LAYER_ID,
+          config: encodeCctpAdapterConfig({
+            tokenMessenger: '0xBd3fa81B58Ba92a82136038B25aDec7066af3155',
+            mintRecipients: [addressToBytes32(RECIPIENT)],
+            burnTokens: [USDC],
+          }),
+        },
+      ],
+    })
+    expect(() =>
+      experimental_defineSpendSession({
+        chain: base,
+        owners: OWNER,
+        spend: {
+          tokens: [{ token: USDC }],
+          target: { chains: [arbitrum], settlementLayers: ['ACROSS'] },
+        },
+        erc1271Policies: [entry],
+      }),
+    ).toThrow(/mutually exclusive/)
   })
 
   test('the old way (no singleUse) still scopes but has no burn op', () => {

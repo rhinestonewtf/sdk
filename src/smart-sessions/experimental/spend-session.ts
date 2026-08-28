@@ -9,6 +9,7 @@ import type {
   CrossChainPermissionInput,
   CrossChainSettlementLayer,
   Permission,
+  ResolvedPolicy,
   Session,
   SessionDefinition,
   SessionPolicyAddresses,
@@ -176,6 +177,13 @@ export interface DefineSpendSessionInput {
   // Override the auto-selected route (executor for same-chain, permit2 for
   // cross-chain). Rarely needed.
   readonly route?: OneTimeUseSettlementRoute
+  // Pre-encoded ERC-1271 policy entries to install on the session (e.g. an
+  // IntentExecutor settlement-layer policy — see intentExecutorPolicyEntry). This
+  // is the escape hatch for scoping the IntentExecutor-backed layers until the
+  // builder can auto-derive their per-layer configs. Mutually exclusive with the
+  // Permit2 claim policy (arbiter route), so it cannot be combined with a
+  // cross-chain arbiter `target`.
+  readonly erc1271Policies?: ResolvedPolicy[]
   readonly policyAddresses?: SessionPolicyAddresses
   readonly useDevContracts?: boolean
 }
@@ -274,6 +282,16 @@ export function experimental_defineSpendSession(
   const crossChain = isCrossChain(input)
   const route = input.route ?? (crossChain ? 'permit2' : 'executor')
 
+  // A settlement-layer 1271 policy and the Permit2 claim policy both live on the
+  // 1271 AND-list and gate different routes, so they are mutually exclusive.
+  const hasErc1271 = (input.erc1271Policies?.length ?? 0) > 0
+  if (hasErc1271 && crossChain) {
+    throw new Error(
+      'erc1271Policies (settlement-layer policy) is mutually exclusive with a ' +
+        'cross-chain arbiter target (Permit2 claim policy); use one route.',
+    )
+  }
+
   const definition: SessionDefinition = {
     chain: input.chain,
     owners: input.owners,
@@ -282,6 +300,7 @@ export function experimental_defineSpendSession(
       ? { crossChainPermits: [crossChainPermit(input)] }
       : { permissions: sameChainPermissions(input) }),
     ...(input.singleUse ? { oneTimeUse: { id: input.singleUse.id } } : {}),
+    ...(hasErc1271 ? { erc1271Policies: input.erc1271Policies } : {}),
   }
 
   const session = resolveSession(definition, {

@@ -133,6 +133,28 @@ export {
   experimental_defineSpendSession,
   LAYER_CAPABILITIES,
 } from './experimental/spend-session'
+export {
+  addressToBytes32,
+  CCTP_LAYER_ID,
+  encodeCctpAdapterConfig,
+  encodeIntentExecutorBaseHeader,
+  encodeIntentExecutorPolicyInitData,
+  encodeRelayAdapterConfig,
+  encodeRhinoAdapterConfig,
+  encodeStaticIntentExecutorPolicyInitData,
+  FLAG_LOCK_ACCOUNT,
+  FLAG_REQUIRE_GAS_REFUND,
+  intentExecutorPolicyEntry,
+  RELAY_LAYER_ID,
+  RHINO_LAYER_ID,
+} from '../modules/validators/smart-sessions/policies/settlement-layer'
+export type {
+  CctpLayerConfig,
+  IntentExecutorBaseConfig,
+  LayerInstall,
+  RelayLayerConfig,
+  RhinoLayerConfig,
+} from '../modules/validators/smart-sessions/policies/settlement-layer'
 export type {
   ChainDigest,
   SessionDetails,

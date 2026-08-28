@@ -30,6 +30,8 @@ export interface ResolvedPolicyAddresses {
   readonly valueLimit: Address
   // No canonical deployment yet, so no default — only present when overridden.
   readonly oneTimeUseId?: Address
+  // The IntentExecutor settlement-layer policy — no canonical deployment yet.
+  readonly intentExecutorPolicy?: Address
 }
 
 export const DEFAULT_POLICY_ADDRESSES: ResolvedPolicyAddresses = Object.freeze({
@@ -57,6 +59,9 @@ export function resolvePolicyAddresses(
     valueLimit: overrides?.valueLimit ?? DEFAULT_POLICY_ADDRESSES.valueLimit,
     ...(overrides?.oneTimeUseId
       ? { oneTimeUseId: overrides.oneTimeUseId }
+      : {}),
+    ...(overrides?.intentExecutorPolicy
+      ? { intentExecutorPolicy: overrides.intentExecutorPolicy }
       : {}),
   }
 }
