@@ -184,6 +184,16 @@ export interface SessionDefinition {
   crossChainPermits?: CrossChainPermissionInput[]
   signing?: SessionSigning
   policyAddresses?: SessionPolicyAddresses
+  // Drops the wildcard intent-execution fallback so the session's explicit
+  // permissions are the ONLY ops it can run — any other (target, selector)
+  // reverts instead of passing via the global intent-execution target whitelist.
+  // Required to make a session provably restricted, e.g. to a specific swap
+  // aggregator (RHI-6286). Requires at least one permission or action.
+  restrictToActions?: boolean
+  // Raw scoped actions (target + selector + policies) for calls that can't be
+  // addressed by the ABI-name `permissions` sugar — e.g. a fynd swap scoped by
+  // its raw selector with no ABI (RHI-6286).
+  actions?: SessionAction[]
 }
 
 export interface ResolvedPolicy {

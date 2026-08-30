@@ -70,12 +70,23 @@ export function resolveSessionData(
   const userActions = definition.permissions?.length
     ? resolvePermissions(definition.permissions)
     : []
+  // Raw scoped actions (target + selector + policies) for calls that can't be
+  // addressed by the ABI-name `permissions` sugar — e.g. a fynd swap scoped by
+  // its raw selector with no ABI (RHI-6286).
+  const rawActions = definition.actions ?? []
   const expandedPermits = (definition.crossChainPermits ?? []).map((input) =>
     expandCrossChainPermit(resolveCrossChainPermission(input), environment),
   )
   const permitFallbackPolicies = expandedPermits.flatMap(
     ({ fallbackPolicies }) => fallbackPolicies,
   )
+  // The wildcard intent-execution fallback. Dropped for a restricted session so
+  // the explicit permissions are the ONLY authorized ops — a non-listed selector
+  // then reverts instead of escaping via the global intent-execution target
+  // whitelist (RHI-6286).
+  const fallbackAction: SessionAction = {
+    policies: [{ type: 'intent-execution' }, ...permitFallbackPolicies],
+  }
   const injectedActions: SessionAction[] = [
     // Native-wrap `deposit()` is only permitted when the caller supplies the
     // chain's wrapped-native token (e.g. via `RhinestoneSDK.createSession`,
@@ -94,18 +105,26 @@ export function resolveSessionData(
           },
         ]
       : []),
-    {
-      policies: [{ type: 'intent-execution' }, ...permitFallbackPolicies],
-    },
+    ...(definition.restrictToActions ? [] : [fallbackAction]),
     {
       target: DUMMY_PRECLAIMOP_TARGET,
       selector: DUMMY_PRECLAIMOP_SELECTOR,
       policies: [{ type: 'sudo' }],
     },
   ]
+  if (
+    definition.restrictToActions &&
+    !userActions.length &&
+    !rawActions.length
+  ) {
+    throw new Error(
+      'restrictToActions drops the fallback, so the session must supply at ' +
+        'least one permission or action — none were given',
+    )
+  }
   const actions =
-    userActions.length || permitFallbackPolicies.length
-      ? [...userActions, ...injectedActions].map(
+    userActions.length || rawActions.length || permitFallbackPolicies.length
+      ? [...userActions, ...rawActions, ...injectedActions].map(
           (action): ResolvedAction => ({
             actionTargetSelector:
               'selector' in action
