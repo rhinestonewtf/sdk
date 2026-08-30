@@ -75,6 +75,16 @@ export function resolveSessionData(
   // addressed by the ABI-name `permissions` sugar — e.g. a fynd swap scoped by
   // its raw selector with no ABI (RHI-6286).
   const rawActions = definition.actions ?? []
+  // Guard against a cast: a raw action without target+selector would map back to
+  // the wildcard fallback target — never allow that (it would defeat scoping).
+  for (const a of rawActions) {
+    if (!('target' in a) || !('selector' in a)) {
+      throw new Error(
+        'definition.actions entries must be scoped (target + selector); a ' +
+          'fallback-shaped action would map to the wildcard fallback target',
+      )
+    }
+  }
   const expandedPermits = (definition.crossChainPermits ?? []).map((input) =>
     expandCrossChainPermit(resolveCrossChainPermission(input), environment),
   )
@@ -111,7 +121,12 @@ export function resolveSessionData(
     {
       target: DUMMY_PRECLAIMOP_TARGET,
       selector: DUMMY_PRECLAIMOP_SELECTOR,
-      policies: [{ type: 'sudo' }],
+      // The real pre-claim op carries no value; cap it at 0 for a restricted
+      // session so this injected action can't be used to send native value to
+      // the dummy target (a plain sudo would allow it).
+      policies: definition.restrictToActions
+        ? [{ type: 'value-limit', limit: 0n }]
+        : [{ type: 'sudo' }],
     },
   ]
   if (

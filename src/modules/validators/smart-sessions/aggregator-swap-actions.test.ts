@@ -12,8 +12,12 @@ import {
   zeroExSwapActions,
 } from './aggregator-swap-actions'
 import { getSessionData } from './digest'
-import { INTENT_EXECUTION_POLICY_ADDRESS } from './policies/addresses'
-import { toSession } from './resolve'
+import {
+  INTENT_EXECUTION_POLICY_ADDRESS,
+  SUDO_POLICY_ADDRESS,
+  VALUE_LIMIT_POLICY_ADDRESS,
+} from './policies/addresses'
+import { DUMMY_PRECLAIMOP_TARGET, toSession } from './resolve'
 
 const USDC: Address = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
 const SETTLER: Address = '0x5555555555555555555555555555555555555555'
@@ -128,6 +132,38 @@ describe('restrictToActions (session is provably restricted)', () => {
         restrictToActions: true,
       }),
     ).toThrow(/must supply at least one permission/)
+  })
+
+  test('restricted session caps the dummy pre-claim action value (not sudo)', () => {
+    const session = toSession({
+      chain: base,
+      owners: { type: 'ecdsa', accounts: [accountA] },
+      permissions: zeroExSwapActions(scope),
+      restrictToActions: true,
+    })
+    const dummy = getSessionData(session).actions.find(
+      (a) =>
+        a.actionTarget.toLowerCase() === DUMMY_PRECLAIMOP_TARGET.toLowerCase(),
+    )
+    expect(dummy).toBeDefined()
+    const has = (addr: string) =>
+      dummy?.actionPolicies.some(
+        (p) => p.policy.toLowerCase() === addr.toLowerCase(),
+      )
+    expect(has(SUDO_POLICY_ADDRESS)).toBe(false)
+    expect(has(VALUE_LIMIT_POLICY_ADDRESS)).toBe(true)
+  })
+
+  test('a fallback-shaped raw action is rejected under restrictToActions', () => {
+    expect(() =>
+      toSession({
+        chain: base,
+        owners: { type: 'ecdsa', accounts: [accountA] },
+        // biome-ignore lint/suspicious/noExplicitAny: exercising the cast guard
+        actions: [{ policies: [{ type: 'sudo' }] } as any],
+        restrictToActions: true,
+      }),
+    ).toThrow(/must be scoped/)
   })
 })
 

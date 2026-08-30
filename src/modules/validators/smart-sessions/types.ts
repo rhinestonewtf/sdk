@@ -192,8 +192,9 @@ export interface SessionDefinition {
   restrictToActions?: boolean
   // Raw scoped actions (target + selector + policies) for calls that can't be
   // addressed by the ABI-name `permissions` sugar — e.g. a fynd swap scoped by
-  // its raw selector with no ABI (RHI-6286).
-  actions?: SessionAction[]
+  // its raw selector with no ABI (RHI-6286). ScopedAction only (never a fallback
+  // action) so a raw entry can't map back to the wildcard fallback target.
+  actions?: ScopedAction[]
 }
 
 export interface ResolvedPolicy {
