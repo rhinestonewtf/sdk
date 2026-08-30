@@ -595,6 +595,19 @@ interface SessionDefinition<TAbis extends readonly Abi[] = readonly Abi[]> {
    */
   crossChainPermits?: readonly CrossChainPermissionInput[]
   /**
+   * Raw scoped actions (target + selector + policies) for calls that can't be
+   * addressed by the ABI-name `permissions` sugar. Scoped actions only.
+   */
+  actions?: readonly ScopedAction[]
+  /**
+   * Drop the wildcard intent-execution fallback so the session's explicit
+   * permissions/actions are the ONLY ops it can run — any other (target,
+   * selector) reverts. Requires at least one permission or action, and is
+   * mutually exclusive with `crossChainPermits`/`claimPolicies` (which rely on
+   * the fallback for their guardrails).
+   */
+  restrictToActions?: boolean
+  /**
    * Configure ERC-1271 signing. Omission is unrestricted for backwards
    * compatibility; use `disabled` to remove signing capability explicitly.
    */
