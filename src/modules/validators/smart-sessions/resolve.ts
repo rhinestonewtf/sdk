@@ -75,6 +75,22 @@ export function resolveSessionData(
   // addressed by the ABI-name `permissions` sugar — e.g. a fynd swap scoped by
   // its raw selector with no ABI (RHI-6286).
   const rawActions = definition.actions ?? []
+  // A restricted session drops the fallback action, which is also where a
+  // cross-chain permit's spending-limit / time-frame guardrails live — so a
+  // restricted session combined with a permit would keep claim signing but lose
+  // maxAmount/deadline enforcement. These are different authorization surfaces;
+  // reject the combination rather than silently drop the guardrails.
+  if (
+    definition.restrictToActions &&
+    (definition.crossChainPermits?.length || definition.claimPolicies?.length)
+  ) {
+    throw new Error(
+      'restrictToActions is incompatible with crossChainPermits/claimPolicies: ' +
+        'dropping the fallback also drops the permit guardrails (spending/time ' +
+        'limits). Use a restricted scoped-action session or a permit session, ' +
+        'not both.',
+    )
+  }
   // Guard against a cast: a raw action without target+selector would map back to
   // the wildcard fallback target — never allow that (it would defeat scoping).
   for (const a of rawActions) {

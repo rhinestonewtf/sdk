@@ -154,6 +154,18 @@ describe('restrictToActions (session is provably restricted)', () => {
     expect(has(VALUE_LIMIT_POLICY_ADDRESS)).toBe(true)
   })
 
+  test('restrictToActions + a permit is rejected (would lose permit guardrails)', () => {
+    expect(() =>
+      toSession({
+        chain: base,
+        owners: { type: 'ecdsa', accounts: [accountA] },
+        permissions: zeroExSwapActions(scope),
+        claimPolicies: [{ type: 'permit2' }],
+        restrictToActions: true,
+      }),
+    ).toThrow(/incompatible with crossChainPermits\/claimPolicies/)
+  })
+
   test('a fallback-shaped raw action is rejected under restrictToActions', () => {
     expect(() =>
       toSession({
