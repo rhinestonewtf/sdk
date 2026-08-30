@@ -48,7 +48,9 @@ describe('zeroExSwapActions', () => {
 
   test('exec pins token(1)=USDC + amount(2) cap + target(3)=Settler', () => {
     const [, swap] = zeroExSwapActions(scope)
-    const policy = resolvePermission(swap)[0].policies?.[0]
+    const policy = resolvePermission(swap)[0].policies?.find(
+      (p) => p.type === 'universal-action',
+    )
     if (policy?.type !== 'universal-action')
       throw new Error('expected universal-action')
     const token = policy.rules.find((r) => r.calldataOffset === 32n)
@@ -66,7 +68,9 @@ describe('zeroExSwapActions', () => {
 
   test('omitting settler leaves the forward target unpinned', () => {
     const [, swap] = zeroExSwapActions({ sellToken: USDC })
-    const policy = resolvePermission(swap)[0].policies?.[0]
+    const policy = resolvePermission(swap)[0].policies?.find(
+      (p) => p.type === 'universal-action',
+    )
     if (policy?.type !== 'universal-action')
       throw new Error('expected universal-action')
     expect(policy.rules.some((r) => r.calldataOffset === 96n)).toBe(false)
@@ -140,7 +144,10 @@ describe('swapSessionActions (scope both 0x + fynd)', () => {
         maxSellAmount: 1_000_000n,
       }),
       fyndAggregator({ router: FYND_ROUTER, swapSelector: FYND_SELECTOR }),
-    ] as const,
+    ] as [
+      ReturnType<typeof zeroExAggregator>,
+      ReturnType<typeof fyndAggregator>,
+    ],
   }
 
   test('one merged approve with spender allowlist {AllowanceHolder, fynd}', () => {
@@ -163,7 +170,36 @@ describe('swapSessionActions (scope both 0x + fynd)', () => {
       (a) => a.target.toLowerCase() === FYND_ROUTER.toLowerCase(),
     )
     expect(fynd?.selector).toBe(FYND_SELECTOR)
-    expect(fynd?.policies?.[0]?.type).toBe('sudo') // fynd: target+selector only
+    // fynd has no arg pins → bound by target+selector with a native-value cap
+    // (not sudo, which would let the swap carry arbitrary value).
+    expect(fynd?.policies?.[0]?.type).toBe('value-limit')
+  })
+
+  test('no-pin aggregator caps native value at 0 by default', () => {
+    const { actions } = swapSessionActions({
+      sellToken: USDC,
+      aggregators: [
+        fyndAggregator({ router: FYND_ROUTER, swapSelector: FYND_SELECTOR }),
+      ],
+    })
+    const p = actions[0].policies?.[0]
+    if (p?.type !== 'value-limit') throw new Error('expected value-limit')
+    expect(p.limit).toBe(0n)
+  })
+
+  test('a raw action colliding with a permission action is rejected', () => {
+    // fynd swap on USDC.transfer selector collides with a USDC permission below.
+    expect(() =>
+      toSession({
+        chain: base,
+        owners: { type: 'ecdsa', accounts: [accountA] },
+        permissions: [zeroExSwapActions({ sellToken: USDC })[0]], // approve on USDC
+        actions: [
+          { target: USDC, selector: APPROVE, policies: [{ type: 'sudo' }] },
+        ],
+        restrictToActions: true,
+      }),
+    ).toThrow(/Duplicate scoped action/)
   })
 
   test('resolves into a restricted session with both swaps + no fallback', () => {

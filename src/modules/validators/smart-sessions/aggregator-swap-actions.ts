@@ -99,6 +99,9 @@ export function zeroExSwapActions(scope: ZeroExSwapScope): Permission[] {
     address: allowanceHolder,
     functions: {
       exec: {
+        // exec is payable — cap native value so the session can't route value
+        // through the router (the sell-token cap only bounds the ERC-20 pull).
+        valueLimit: 0n,
         params: {
           token: { condition: 'equal', value: scope.sellToken },
           ...(scope.maxSellAmount !== undefined
@@ -132,6 +135,10 @@ export interface AggregatorSwap {
   // Optional arg pins on the swap calldata (raw calldata offsets). Omit to bind
   // the swap by target+selector only (any calldata to that function allowed).
   readonly swapRules?: UniversalActionPolicyParamRule[]
+  // Max native value the swap may carry. Defaults to 0 — the approve cap only
+  // bounds ERC-20 pulls, so without this a payable swap selector could still send
+  // arbitrary native value through the router. Raise it only for native-in swaps.
+  readonly maxValue?: bigint
 }
 
 export interface SwapSessionScope {
@@ -234,17 +241,21 @@ export function swapSessionActions(
     },
   } as Permission
   const actions: ScopedAction[] = scope.aggregators.map((a) => {
+    const maxValue = a.maxValue ?? 0n
     const policies: SessionPolicy[] = a.swapRules?.length
       ? [
           {
             type: 'universal-action',
+            valueLimitPerUse: maxValue,
             rules: a.swapRules as [
               UniversalActionPolicyParamRule,
               ...UniversalActionPolicyParamRule[],
             ],
           },
         ]
-      : [{ type: 'sudo' }]
+      : // No arg pins: bind (target, selector) and cap native value (a plain sudo
+        // would let the swap carry arbitrary value through the router).
+        [{ type: 'value-limit', limit: maxValue }]
     return { target: a.swapTarget, selector: a.swapSelector, policies }
   })
   return { permissions: [approve], actions }

@@ -20,6 +20,7 @@ import { encodeSessionPolicy } from './policies/encode'
 import { resolveSessionSigning } from './signing'
 import type {
   ResolvedAction,
+  ScopedAction,
   Session,
   SessionAction,
   SessionData,
@@ -90,8 +91,9 @@ export function resolveSessionData(
   const injectedActions: SessionAction[] = [
     // Native-wrap `deposit()` is only permitted when the caller supplies the
     // chain's wrapped-native token (e.g. via `RhinestoneSDK.createSession`,
-    // which resolves it from `/chains`).
-    ...(options.wrappedNativeToken
+    // which resolves it from `/chains`). Dropped for a restricted session so it
+    // can't add an unrequested sudo action beyond the caller's permissions.
+    ...(options.wrappedNativeToken && !definition.restrictToActions
       ? [
           {
             target: options.wrappedNativeToken,
@@ -121,6 +123,24 @@ export function resolveSessionData(
       'restrictToActions drops the fallback, so the session must supply at ' +
         'least one permission or action — none were given',
     )
+  }
+  // Raw actions bypass resolvePermissions' duplicate guard, so a raw action that
+  // collides with an ABI permission (or another raw action) on the same
+  // (target, selector) would map to the same on-chain action id and silently
+  // overwrite policy config — reject it instead.
+  const scoped = [...userActions, ...rawActions].filter(
+    (a): a is ScopedAction => 'target' in a && 'selector' in a,
+  )
+  const seen = new Set<string>()
+  for (const a of scoped) {
+    const key = `${a.target.toLowerCase()}:${a.selector.toLowerCase()}`
+    if (seen.has(key)) {
+      throw new Error(
+        `Duplicate scoped action for (${a.target}, ${a.selector}) — permissions ` +
+          'and actions share one on-chain action id; merge them into a single entry',
+      )
+    }
+    seen.add(key)
   }
   const actions =
     userActions.length || rawActions.length || permitFallbackPolicies.length
@@ -183,7 +203,9 @@ export function toSession(
   return {
     chain: definition.chain,
     owners: definition.owners,
-    hasExplicitPermissions: Boolean(definition.permissions?.length),
+    hasExplicitPermissions: Boolean(
+      definition.permissions?.length || definition.actions?.length,
+    ),
     permissionId: getPermissionIdFromData(data),
     sessionValidator: data.sessionValidator,
     sessionValidatorInitData: data.sessionValidatorInitData,
