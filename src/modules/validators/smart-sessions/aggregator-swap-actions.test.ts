@@ -36,18 +36,23 @@ describe('zeroExSwapActions', () => {
     expect(rs.selector).toBe(ALLOWANCE_HOLDER_EXEC_SELECTOR)
   })
 
-  test('approve pins spender=AllowanceHolder + amount cap', () => {
+  test('approve pins spender + a cumulative spending limit (not per-call)', () => {
     const [approve] = zeroExSwapActions(scope)
-    const policy = resolvePermission(approve)[0].policies?.[0]
-    if (policy?.type !== 'universal-action')
+    const policies = resolvePermission(approve)[0].policies ?? []
+    const ua = policies.find((p) => p.type === 'universal-action')
+    if (ua?.type !== 'universal-action')
       throw new Error('expected universal-action')
-    const spender = policy.rules.find((r) => r.calldataOffset === 0n)
+    const spender = ua.rules.find((r) => r.calldataOffset === 0n)
     expect((spender?.referenceValue as string).toLowerCase()).toBe(
       ZEROX_ALLOWANCE_HOLDER.toLowerCase(),
     )
-    const amount = policy.rules.find((r) => r.calldataOffset === 32n)
-    expect(amount?.condition).toBe('lessThan')
-    expect(amount?.referenceValue).toBe(1_000_001n)
+    // maxSellAmount is now a cumulative session cap via spending-limits, not a
+    // per-call rule that repeated swaps could bypass.
+    const sl = policies.find((p) => p.type === 'spending-limits')
+    if (sl?.type !== 'spending-limits')
+      throw new Error('expected spending-limits')
+    expect(sl.limits[0].amount).toBe(1_000_000n)
+    expect(sl.limits[0].token.toLowerCase()).toBe(USDC.toLowerCase())
   })
 
   test('exec pins token(1)=USDC + amount(2) cap + target(3)=Settler', () => {
@@ -207,9 +212,11 @@ describe('swapSessionActions (scope both 0x + fynd)', () => {
   test('one merged approve with spender allowlist {AllowanceHolder, fynd}', () => {
     const { permissions } = swapSessionActions(both)
     expect(permissions).toHaveLength(1)
-    const policy = resolvePermission(permissions[0])[0].policies?.[0]
+    const policies = resolvePermission(permissions[0])[0].policies ?? []
     // two spenders → anyOf → arg-policy (not a single-condition universal-action)
-    expect(policy?.type).toBe('arg-policy')
+    expect(policies.some((p) => p.type === 'arg-policy')).toBe(true)
+    // + the cumulative spending-limit on the merged approve
+    expect(policies.some((p) => p.type === 'spending-limits')).toBe(true)
   })
 
   test('one scoped swap action per aggregator, right target+selector', () => {

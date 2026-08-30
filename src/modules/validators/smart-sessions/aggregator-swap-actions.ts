@@ -67,7 +67,8 @@ export interface ZeroExSwapScope {
   // the cap) instead of swapping through 0x. 0x rotates Settler versions, so this
   // binds the session to the current one — re-issue the session on a rotation.
   readonly settler: Address
-  // Upper bound on the sold amount. Omit for no cap.
+  // Cumulative cap on TOTAL sell-token spend across the session (a spending-limit
+  // on the approve sums approved amounts). Omit for no cap.
   readonly maxSellAmount?: bigint
   // Defaults to ZEROX_ALLOWANCE_HOLDER.
   readonly allowanceHolder?: Address
@@ -83,16 +84,19 @@ export function zeroExSwapActions(scope: ZeroExSwapScope): Permission[] {
     address: scope.sellToken,
     functions: {
       approve: {
+        // Cumulative cap: the spending-limit policy sums approved amounts across
+        // the session, so maxSellAmount bounds TOTAL sell-token spend, not just a
+        // single swap (which repeated swaps could otherwise drain past).
+        ...(scope.maxSellAmount !== undefined
+          ? {
+              spendingLimit: {
+                token: scope.sellToken,
+                amount: scope.maxSellAmount,
+              },
+            }
+          : {}),
         params: {
           spender: { condition: 'equal', value: allowanceHolder },
-          ...(scope.maxSellAmount !== undefined
-            ? {
-                amount: {
-                  condition: 'lessThan',
-                  value: scope.maxSellAmount + 1n,
-                },
-              }
-            : {}),
         },
       },
     },
@@ -147,6 +151,8 @@ export interface AggregatorSwap {
 
 export interface SwapSessionScope {
   readonly sellToken: Address
+  // Cumulative cap on TOTAL sell-token spend across the session (spending-limit
+  // on the merged approve). Omit for no cap.
   readonly maxSellAmount?: bigint
   readonly aggregators: [AggregatorSwap, ...AggregatorSwap[]]
 }
@@ -224,19 +230,20 @@ export function swapSessionActions(
     address: scope.sellToken,
     functions: {
       approve: {
+        // Cumulative session cap across all aggregators (see zeroExSwapActions).
+        ...(scope.maxSellAmount !== undefined
+          ? {
+              spendingLimit: {
+                token: scope.sellToken,
+                amount: scope.maxSellAmount,
+              },
+            }
+          : {}),
         params: {
           spender:
             spenders.length === 1
               ? { condition: 'equal', value: spenders[0] }
               : { anyOf: spenders },
-          ...(scope.maxSellAmount !== undefined
-            ? {
-                amount: {
-                  condition: 'lessThan',
-                  value: scope.maxSellAmount + 1n,
-                },
-              }
-            : {}),
         },
       },
     },
