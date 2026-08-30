@@ -15,10 +15,11 @@ import type {
 //   1. approve(AllowanceHolder, amount) on the sell token
 //   2. AllowanceHolder.exec(operator, token, amount, target, data) — pulls the
 //      approved sell token and forwards `data` to the 0x Settler (`target`).
-// exec's static words are pinnable: token(1), amount(2), target(3). The buy
-// token and route live inside the opaque `data` (the Settler calldata) and can
-// NOT be pinned here — so this binds the SELL side (token, cap, forward-to-
-// Settler) and the aggregator entrypoint, not the received token.
+// exec's static words are pinnable: operator(0), token(1), amount(2), target(3).
+// operator and target are both pinned to the Settler so the pulled sell token
+// can only be consumed by 0x's swap. The buy token and route live inside the
+// opaque `data` (the Settler calldata) and can NOT be pinned here — so this binds
+// the SELL side (token, cap, operator/target = Settler), not the received token.
 
 // 0x AllowanceHolder on Cancun-hardfork chains (incl. Plasma). Verify per chain.
 export const ZEROX_ALLOWANCE_HOLDER: Address =
@@ -60,10 +61,12 @@ export const ALLOWANCE_HOLDER_EXEC_SELECTOR = toFunctionSelector(
 export interface ZeroExSwapScope {
   // The token the session may sell (e.g. USDC on Plasma).
   readonly sellToken: Address
-  // The 0x Settler the AllowanceHolder forwards to (exec.target). 0x rotates
-  // Settler versions, so pinning it binds the session to the current one — omit
-  // to leave the forward target unpinned (weaker, but survives a rotation).
-  readonly settler?: Address
+  // The 0x Settler the AllowanceHolder forwards to. Pinned on BOTH exec.operator
+  // and exec.target. Required: leaving them unpinned lets a session key set
+  // operator/target to its own contract and pull the approved sell token (up to
+  // the cap) instead of swapping through 0x. 0x rotates Settler versions, so this
+  // binds the session to the current one — re-issue the session on a rotation.
+  readonly settler: Address
   // Upper bound on the sold amount. Omit for no cap.
   readonly maxSellAmount?: bigint
   // Defaults to ZEROX_ALLOWANCE_HOLDER.
@@ -103,6 +106,9 @@ export function zeroExSwapActions(scope: ZeroExSwapScope): Permission[] {
         // through the router (the sell-token cap only bounds the ERC-20 pull).
         valueLimit: 0n,
         params: {
+          // Pin both the permit consumer (operator) and the call target to the
+          // Settler so the pulled sell token can only be spent by 0x's swap.
+          operator: { condition: 'equal', value: scope.settler },
           token: { condition: 'equal', value: scope.sellToken },
           ...(scope.maxSellAmount !== undefined
             ? {
@@ -112,9 +118,7 @@ export function zeroExSwapActions(scope: ZeroExSwapScope): Permission[] {
                 },
               }
             : {}),
-          ...(scope.settler
-            ? { target: { condition: 'equal', value: scope.settler } }
-            : {}),
+          target: { condition: 'equal', value: scope.settler },
         },
       },
     },
@@ -154,34 +158,31 @@ export interface SwapSessionActions {
   readonly actions: ScopedAction[]
 }
 
-// 0x AllowanceHolder as an aggregator, pinning exec's sell-side words
-// (token@32, amount@64, target@96 = the Settler forward target).
+// 0x AllowanceHolder as an aggregator. exec(operator, token, amount, target, data)
+// — pins operator@0 and target@96 to the Settler (so the pulled sell token can
+// only be spent by 0x's swap, not redirected), token@32, and amount@64.
 export function zeroExAggregator(scope: {
   sellToken: Address
-  settler?: Address
+  // Required — see ZeroExSwapScope.settler for why leaving it unpinned is unsafe.
+  settler: Address
   maxSellAmount?: bigint
   allowanceHolder?: Address
 }): AggregatorSwap {
   const allowanceHolder = scope.allowanceHolder ?? ZEROX_ALLOWANCE_HOLDER
   const swapRules: UniversalActionPolicyParamRule[] = [
+    { condition: 'equal', calldataOffset: 0n, referenceValue: scope.settler }, // operator
     {
       condition: 'equal',
       calldataOffset: 32n,
       referenceValue: scope.sellToken,
     },
+    { condition: 'equal', calldataOffset: 96n, referenceValue: scope.settler }, // target
   ]
   if (scope.maxSellAmount !== undefined) {
     swapRules.push({
       condition: 'lessThan',
       calldataOffset: 64n,
       referenceValue: scope.maxSellAmount + 1n,
-    })
-  }
-  if (scope.settler) {
-    swapRules.push({
-      condition: 'equal',
-      calldataOffset: 96n,
-      referenceValue: scope.settler,
     })
   }
   return {

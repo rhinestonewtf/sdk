@@ -70,14 +70,20 @@ describe('zeroExSwapActions', () => {
     )
   })
 
-  test('omitting settler leaves the forward target unpinned', () => {
-    const [, swap] = zeroExSwapActions({ sellToken: USDC })
+  test('pins operator(0) and target(3) to the settler', () => {
+    const [, swap] = zeroExSwapActions(scope)
     const policy = resolvePermission(swap)[0].policies?.find(
       (p) => p.type === 'universal-action',
     )
     if (policy?.type !== 'universal-action')
       throw new Error('expected universal-action')
-    expect(policy.rules.some((r) => r.calldataOffset === 96n)).toBe(false)
+    for (const off of [0n, 96n]) {
+      const r = policy.rules.find((r) => r.calldataOffset === off)
+      expect(r?.condition).toBe('equal')
+      expect((r?.referenceValue as string).toLowerCase()).toBe(
+        SETTLER.toLowerCase(),
+      )
+    }
   })
 })
 
@@ -241,7 +247,9 @@ describe('swapSessionActions (scope both 0x + fynd)', () => {
       toSession({
         chain: base,
         owners: { type: 'ecdsa', accounts: [accountA] },
-        permissions: [zeroExSwapActions({ sellToken: USDC })[0]], // approve on USDC
+        permissions: [
+          zeroExSwapActions({ sellToken: USDC, settler: SETTLER })[0],
+        ], // approve on USDC
         actions: [
           { target: USDC, selector: APPROVE, policies: [{ type: 'sudo' }] },
         ],
