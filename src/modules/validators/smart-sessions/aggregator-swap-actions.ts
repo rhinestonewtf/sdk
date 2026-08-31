@@ -19,14 +19,16 @@ import type {
 // operator and target are pinned to the Settler so the pulled sell token can only
 // be consumed by 0x's swap.
 //
-// BOTH sides are bindable. The sell token + cumulative cap come from the approve;
-// the BUY token + recipient are bound via `AggregatorSwap.swapRules` — offset pins
-// at the swap-calldata positions where the aggregator encodes them (derived from a
-// quote). Those sit at word-aligned ABI slots: kyberswap's top-level output word,
-// or inside 0x's ABI-encoded Settler `data`. The offset is route-shape-specific,
-// so a reusable session re-pins per route while a one-time-use session pins the
-// exact quote. (A router that packs fields non-word-aligned — e.g. relay's Tycho
-// encoding — can't be matched by the word-granular policy; keep to aligned ones.)
+// Both src and dest tokens sit in the swap calldata as word-aligned ABI words, so
+// the plain UniversalActionPolicy pins BOTH via `AggregatorSwap.swapRules` — no
+// custom policy needed. Observed on the two Plasma aggregators:
+//   - Tycho (fynd) router `swap` (selector 0xce25e49e): tokenIn @ offset 32,
+//     tokenOut @ offset 64 (see TYCHO_TOKEN_IN_OFFSET / TYCHO_TOKEN_OUT_OFFSET).
+//   - 0x AllowanceHolder.exec: sell token is exec.token(1); the buy token lives
+//     inside exec.data, which is itself ABI-encoded, so it is word-aligned there
+//     too and pins at a quote-derived offset.
+// Offsets are function/route-specific — pin the selector too, and re-derive from a
+// sample when the aggregator returns a different route shape.
 
 // 0x AllowanceHolder on Cancun-hardfork chains (incl. Plasma). Verify per chain.
 export const ZEROX_ALLOWANCE_HOLDER: Address =
@@ -210,15 +212,46 @@ export function zeroExAggregator(scope: {
   }
 }
 
-// fynd (Tycho router) as an aggregator. Its swap calldata comes from the router
-// finder and isn't ABI-nameable here, so it is bound by target+selector — the
-// selector is the first 4 bytes of a live fynd swap tx. The router pulls the sell
-// token via an allowance to itself, so approveSpender defaults to the router.
+// Tycho `swap` (selector 0xce25e49e) encodes tokenIn and tokenOut as word-aligned
+// ABI words — verified against live fynd calldata. Offsets are past the 4-byte
+// selector; re-derive if fynd returns a different swap function for a route shape.
+export const TYCHO_SWAP_SELECTOR: Hex = '0xce25e49e'
+export const TYCHO_TOKEN_IN_OFFSET = 32n
+export const TYCHO_TOKEN_OUT_OFFSET = 64n
+
+// fynd (Tycho router) as an aggregator. Pins BOTH the sell and buy token (the
+// TychoRouter pulls the sell token via an allowance to itself, so approveSpender
+// defaults to the router). Pass sellToken/buyToken to bind "sell X, receive Y".
 export function fyndAggregator(scope: {
   router: Address
-  swapSelector: Hex
+  // Defaults to the Tycho `swap` selector; override for a different route shape.
+  swapSelector?: Hex
+  sellToken?: Address
+  buyToken?: Address
+  // Offsets for tokenIn/tokenOut in the swap calldata (default: Tycho `swap`).
+  tokenInOffset?: bigint
+  tokenOutOffset?: bigint
 }): AggregatorSwap {
-  return { swapTarget: scope.router, swapSelector: scope.swapSelector }
+  const swapRules: UniversalActionPolicyParamRule[] = []
+  if (scope.sellToken !== undefined) {
+    swapRules.push({
+      condition: 'equal',
+      calldataOffset: scope.tokenInOffset ?? TYCHO_TOKEN_IN_OFFSET,
+      referenceValue: scope.sellToken,
+    })
+  }
+  if (scope.buyToken !== undefined) {
+    swapRules.push({
+      condition: 'equal',
+      calldataOffset: scope.tokenOutOffset ?? TYCHO_TOKEN_OUT_OFFSET,
+      referenceValue: scope.buyToken,
+    })
+  }
+  return {
+    swapTarget: scope.router,
+    swapSelector: scope.swapSelector ?? TYCHO_SWAP_SELECTOR,
+    ...(swapRules.length ? { swapRules } : {}),
+  }
 }
 
 // Builds one merged approve (sell token, spender ∈ every aggregator's spender,

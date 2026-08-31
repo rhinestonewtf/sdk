@@ -91,13 +91,24 @@ export function resolveSessionData(
         'not both.',
     )
   }
-  // Guard against a cast: a raw action without target+selector would map back to
-  // the wildcard fallback target — never allow that (it would defeat scoping).
+  // Guard raw actions from reintroducing the wildcard: reject one without
+  // target+selector (would map to the fallback flags), or one that targets the
+  // fallback sentinel outright — either would re-add the wildcard action that
+  // restrictToActions drops.
   for (const a of rawActions) {
     if (!('target' in a) || !('selector' in a)) {
       throw new Error(
         'definition.actions entries must be scoped (target + selector); a ' +
           'fallback-shaped action would map to the wildcard fallback target',
+      )
+    }
+    if (
+      a.target.toLowerCase() ===
+      SMART_SESSIONS_FALLBACK_TARGET_FLAG.toLowerCase()
+    ) {
+      throw new Error(
+        'definition.actions must not target the fallback sentinel ' +
+          `(${SMART_SESSIONS_FALLBACK_TARGET_FLAG}) — it reintroduces the wildcard action`,
       )
     }
   }

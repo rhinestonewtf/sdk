@@ -17,7 +17,11 @@ import {
   SUDO_POLICY_ADDRESS,
   VALUE_LIMIT_POLICY_ADDRESS,
 } from './policies/addresses'
-import { DUMMY_PRECLAIMOP_TARGET, toSession } from './resolve'
+import {
+  DUMMY_PRECLAIMOP_TARGET,
+  SMART_SESSIONS_FALLBACK_TARGET_FLAG,
+  toSession,
+} from './resolve'
 
 const USDC: Address = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
 const SETTLER: Address = '0x5555555555555555555555555555555555555555'
@@ -188,6 +192,23 @@ describe('restrictToActions (session is provably restricted)', () => {
       }),
     ).toThrow(/must be scoped/)
   })
+
+  test('a raw action targeting the fallback sentinel is rejected', () => {
+    expect(() =>
+      toSession({
+        chain: base,
+        owners: { type: 'ecdsa', accounts: [accountA] },
+        actions: [
+          {
+            target: SMART_SESSIONS_FALLBACK_TARGET_FLAG,
+            selector: '0x00000001',
+            policies: [{ type: 'sudo' }],
+          },
+        ],
+        restrictToActions: true,
+      }),
+    ).toThrow(/must not target the fallback sentinel/)
+  })
 })
 
 describe('swapSessionActions (scope both 0x + fynd)', () => {
@@ -248,27 +269,28 @@ describe('swapSessionActions (scope both 0x + fynd)', () => {
     expect(p.limit).toBe(0n)
   })
 
-  test('buy token is bindable via swapRules where the aggregator exposes it', () => {
-    // kyberswap encodes the output token as an ABI word — pin it so the session
-    // enforces "receive WXPL", not just "spend USDC". Offset is route-shape-specific.
+  test('fynd/Tycho pins BOTH src (32) and dest (64) tokens', () => {
+    // Verified against live Tycho `swap` calldata: tokenIn @ 32, tokenOut @ 64.
     const WXPL = '0x6100E367285b01F48D07953803A2d8dCA5D19873' as Address
     const { actions } = swapSessionActions({
       sellToken: USDC,
       aggregators: [
-        {
-          swapTarget: FYND_ROUTER,
-          swapSelector: '0xe21fd0e9',
-          swapRules: [
-            { condition: 'equal', calldataOffset: 1344n, referenceValue: WXPL },
-          ],
-        },
+        fyndAggregator({
+          router: FYND_ROUTER,
+          sellToken: USDC,
+          buyToken: WXPL,
+        }),
       ],
     })
     const p = actions[0].policies?.[0]
     if (p?.type !== 'universal-action')
       throw new Error('expected universal-action')
-    const buy = p.rules.find((r) => r.calldataOffset === 1344n)
-    expect((buy?.referenceValue as string).toLowerCase()).toBe(
+    const inRule = p.rules.find((r) => r.calldataOffset === 32n)
+    const outRule = p.rules.find((r) => r.calldataOffset === 64n)
+    expect((inRule?.referenceValue as string).toLowerCase()).toBe(
+      USDC.toLowerCase(),
+    )
+    expect((outRule?.referenceValue as string).toLowerCase()).toBe(
       WXPL.toLowerCase(),
     )
   })
