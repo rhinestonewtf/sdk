@@ -248,6 +248,31 @@ describe('swapSessionActions (scope both 0x + fynd)', () => {
     expect(p.limit).toBe(0n)
   })
 
+  test('buy token is bindable via swapRules where the aggregator exposes it', () => {
+    // kyberswap encodes the output token as an ABI word — pin it so the session
+    // enforces "receive WXPL", not just "spend USDC". Offset is route-shape-specific.
+    const WXPL = '0x6100E367285b01F48D07953803A2d8dCA5D19873' as Address
+    const { actions } = swapSessionActions({
+      sellToken: USDC,
+      aggregators: [
+        {
+          swapTarget: FYND_ROUTER,
+          swapSelector: '0xe21fd0e9',
+          swapRules: [
+            { condition: 'equal', calldataOffset: 1344n, referenceValue: WXPL },
+          ],
+        },
+      ],
+    })
+    const p = actions[0].policies?.[0]
+    if (p?.type !== 'universal-action')
+      throw new Error('expected universal-action')
+    const buy = p.rules.find((r) => r.calldataOffset === 1344n)
+    expect((buy?.referenceValue as string).toLowerCase()).toBe(
+      WXPL.toLowerCase(),
+    )
+  })
+
   test('a raw action colliding with a permission action is rejected', () => {
     // fynd swap on USDC.transfer selector collides with a USDC permission below.
     expect(() =>

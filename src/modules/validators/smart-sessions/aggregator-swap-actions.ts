@@ -17,9 +17,13 @@ import type {
 //      approved sell token and forwards `data` to the 0x Settler (`target`).
 // exec's static words are pinnable: operator(0), token(1), amount(2), target(3).
 // operator and target are both pinned to the Settler so the pulled sell token
-// can only be consumed by 0x's swap. The buy token and route live inside the
-// opaque `data` (the Settler calldata) and can NOT be pinned here — so this binds
-// the SELL side (token, cap, operator/target = Settler), not the received token.
+// can only be consumed by 0x's swap. For 0x specifically the BUY token/route live
+// inside the opaque `data` (the Settler calldata), so 0x binds the sell side only.
+//
+// The buy token (and recipient) ARE bindable for aggregators that expose them at
+// a fixed calldata offset — e.g. kyberswap encodes the output token as an ABI word
+// — via `AggregatorSwap.swapRules` (the same offset rule used for the OFT/CCTP
+// pins). It is only 0x's nested exec.data that can't be pinned.
 
 // 0x AllowanceHolder on Cancun-hardfork chains (incl. Plasma). Verify per chain.
 export const ZEROX_ALLOWANCE_HOLDER: Address =
@@ -141,7 +145,11 @@ export interface AggregatorSwap {
   // to swapTarget.
   readonly approveSpender?: Address
   // Optional arg pins on the swap calldata (raw calldata offsets). Omit to bind
-  // the swap by target+selector only (any calldata to that function allowed).
+  // the swap by target+selector only. Use this to pin the BUY token and/or
+  // recipient where the aggregator exposes them at a fixed offset (e.g. kyberswap
+  // encodes the output token as an ABI word), binding "receive token Y", not just
+  // "spend token X". The offset is aggregator- and route-shape-specific — derive
+  // it from a sample of that aggregator's calldata for the pair.
   readonly swapRules?: UniversalActionPolicyParamRule[]
   // Max native value the swap may carry. Defaults to 0 — the approve cap only
   // bounds ERC-20 pulls, so without this a payable swap selector could still send
