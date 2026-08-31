@@ -160,6 +160,10 @@ export interface AggregatorSwap {
   // bounds ERC-20 pulls, so without this a payable swap selector could still send
   // arbitrary native value through the router. Raise it only for native-in swaps.
   readonly maxValue?: bigint
+  // Byte offset of the swap's own sell amount in its calldata. When set,
+  // swapSessionActions caps it at the scope's maxSellAmount so the per-swap pull
+  // is bounded even against a standing allowance (0x exec.amount@64, Tycho@0).
+  readonly sellAmountOffset?: bigint
 }
 
 export interface SwapSessionScope {
@@ -234,6 +238,7 @@ export function zeroExAggregator(scope: {
     swapSelector: ALLOWANCE_HOLDER_EXEC_SELECTOR,
     approveSpender: allowanceHolder,
     swapRules,
+    sellAmountOffset: 64n,
   }
 }
 
@@ -298,6 +303,7 @@ export function fyndAggregator(scope: {
     swapTarget: scope.router,
     swapSelector: scope.swapSelector ?? TYCHO_SWAP_SELECTOR,
     ...(swapRules.length ? { swapRules } : {}),
+    sellAmountOffset: TYCHO_AMOUNT_IN_OFFSET,
   }
 }
 
@@ -341,12 +347,26 @@ export function swapSessionActions(
   } as Permission
   const actions: ScopedAction[] = scope.aggregators.map((a) => {
     const maxValue = a.maxValue ?? 0n
-    const policies: SessionPolicy[] = a.swapRules?.length
+    // Cap the swap's OWN sell amount at the session cap (independent of the
+    // approve), so a standing allowance can't be used to pull more than maxSellAmount.
+    const rules = [...(a.swapRules ?? [])]
+    if (
+      scope.maxSellAmount !== undefined &&
+      a.sellAmountOffset !== undefined &&
+      !rules.some((r) => r.calldataOffset === a.sellAmountOffset)
+    ) {
+      rules.push({
+        condition: 'lessThan',
+        calldataOffset: a.sellAmountOffset,
+        referenceValue: scope.maxSellAmount + 1n,
+      })
+    }
+    const policies: SessionPolicy[] = rules.length
       ? [
           {
             type: 'universal-action',
             valueLimitPerUse: maxValue,
-            rules: a.swapRules as [
+            rules: rules as [
               UniversalActionPolicyParamRule,
               ...UniversalActionPolicyParamRule[],
             ],

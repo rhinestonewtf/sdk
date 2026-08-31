@@ -252,9 +252,9 @@ describe('swapSessionActions (scope both 0x + fynd)', () => {
       (a) => a.target.toLowerCase() === FYND_ROUTER.toLowerCase(),
     )
     expect(fynd?.selector).toBe(FYND_SELECTOR)
-    // fynd has no arg pins → bound by target+selector with a native-value cap
-    // (not sudo, which would let the swap carry arbitrary value).
-    expect(fynd?.policies?.[0]?.type).toBe('value-limit')
+    // `both` has maxSellAmount, so swapSessionActions injects an amountIn cap →
+    // the fynd action carries a universal-action (with that rule), not bare sudo.
+    expect(fynd?.policies?.[0]?.type).toBe('universal-action')
   })
 
   test('no-pin aggregator caps native value at 0 by default', () => {
@@ -319,6 +319,28 @@ describe('swapSessionActions (scope both 0x + fynd)', () => {
     expect((outRule?.referenceValue as string).toLowerCase()).toBe(
       WXPL.toLowerCase(),
     )
+  })
+
+  test('scope.maxSellAmount propagates a per-swap amount cap to each aggregator', () => {
+    const WXPL = '0x6100E367285b01F48D07953803A2d8dCA5D19873' as Address
+    const { actions } = swapSessionActions({
+      sellToken: USDC,
+      maxSellAmount: 1_000_000n,
+      aggregators: [
+        // aggregator built WITHOUT its own amount cap — scope must inject it
+        fyndAggregator({
+          router: FYND_ROUTER,
+          sellToken: USDC,
+          buyToken: WXPL,
+        }),
+      ],
+    })
+    const p = actions[0].policies?.[0]
+    if (p?.type !== 'universal-action')
+      throw new Error('expected universal-action')
+    const cap = p.rules.find((r) => r.calldataOffset === 0n) // TYCHO amountIn
+    expect(cap?.condition).toBe('lessThan')
+    expect(cap?.referenceValue).toBe(1_000_001n)
   })
 
   test('a raw action colliding with a permission action is rejected', () => {
