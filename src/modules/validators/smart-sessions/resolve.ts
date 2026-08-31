@@ -211,8 +211,14 @@ export function resolveSessionData(
       resolvePermit2ClaimPolicy(policy),
     ),
   }))
+  // A restricted session must not leave an open ERC-1271 signing surface: with
+  // signing defaulting to unrestricted, a session key limited to swap/approve
+  // could still sign e.g. a Permit2 approval off-chain and move funds. Default it
+  // to `disabled` when restricting; the caller can still opt into a signing policy.
   const erc7739Policies = resolveSessionSigning({
-    signing: definition.signing,
+    signing:
+      definition.signing ??
+      (definition.restrictToActions ? { mode: 'disabled' } : undefined),
     environment,
     addresses,
   })

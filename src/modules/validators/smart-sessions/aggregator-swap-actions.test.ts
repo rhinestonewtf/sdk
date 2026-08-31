@@ -9,7 +9,6 @@ import {
   swapSessionActions,
   ZEROX_ALLOWANCE_HOLDER,
   zeroExAggregator,
-  zeroExSwapActions,
 } from './aggregator-swap-actions'
 import { getSessionData } from './digest'
 import {
@@ -29,70 +28,63 @@ const APPROVE = toFunctionSelector('function approve(address,uint256)')
 
 const scope = { sellToken: USDC, settler: SETTLER, maxSellAmount: 1_000_000n }
 
-describe('zeroExSwapActions', () => {
-  test('returns approve(→AllowanceHolder) + exec(AllowanceHolder)', () => {
-    const [approve, swap] = zeroExSwapActions(scope)
-    const [ra] = resolvePermission(approve)
-    expect(ra.target.toLowerCase()).toBe(USDC.toLowerCase())
-    expect(ra.selector).toBe(APPROVE)
-    const [rs] = resolvePermission(swap)
-    expect(rs.target.toLowerCase()).toBe(ZEROX_ALLOWANCE_HOLDER.toLowerCase())
-    expect(rs.selector).toBe(ALLOWANCE_HOLDER_EXEC_SELECTOR)
+// A 0x-only restricted swap set, via the aggregator path (the full-binding way).
+function zeroExSwaps() {
+  return swapSessionActions({
+    sellToken: USDC,
+    maxSellAmount: 1_000_000n,
+    aggregators: [
+      zeroExAggregator({
+        sellToken: USDC,
+        settler: SETTLER,
+        maxSellAmount: 1_000_000n,
+      }),
+    ],
+  })
+}
+
+describe('zeroExAggregator', () => {
+  test('swap action targets the AllowanceHolder with exec selector', () => {
+    const agg = zeroExAggregator({ sellToken: USDC, settler: SETTLER })
+    expect(agg.swapTarget.toLowerCase()).toBe(
+      ZEROX_ALLOWANCE_HOLDER.toLowerCase(),
+    )
+    expect(agg.swapSelector).toBe(ALLOWANCE_HOLDER_EXEC_SELECTOR)
+    expect(agg.approveSpender?.toLowerCase()).toBe(
+      ZEROX_ALLOWANCE_HOLDER.toLowerCase(),
+    )
   })
 
-  test('approve pins spender + a cumulative spending limit (not per-call)', () => {
-    const [approve] = zeroExSwapActions(scope)
-    const policies = resolvePermission(approve)[0].policies ?? []
+  test('pins operator(0), token(32), target(96), amount cap(64)', () => {
+    const agg = zeroExAggregator(scope)
+    const at = (off: bigint) =>
+      agg.swapRules?.find((r) => r.calldataOffset === off)
+    expect((at(0n)?.referenceValue as string).toLowerCase()).toBe(
+      SETTLER.toLowerCase(),
+    )
+    expect((at(32n)?.referenceValue as string).toLowerCase()).toBe(
+      USDC.toLowerCase(),
+    )
+    expect((at(96n)?.referenceValue as string).toLowerCase()).toBe(
+      SETTLER.toLowerCase(),
+    )
+    expect(at(64n)?.condition).toBe('lessThan')
+  })
+
+  test('the merged approve pins spender + a cumulative spending limit', () => {
+    const { permissions } = zeroExSwaps()
+    const policies = resolvePermission(permissions[0])[0].policies ?? []
     const ua = policies.find((p) => p.type === 'universal-action')
     if (ua?.type !== 'universal-action')
       throw new Error('expected universal-action')
-    const spender = ua.rules.find((r) => r.calldataOffset === 0n)
-    expect((spender?.referenceValue as string).toLowerCase()).toBe(
+    expect((ua.rules[0]?.referenceValue as string).toLowerCase()).toBe(
       ZEROX_ALLOWANCE_HOLDER.toLowerCase(),
     )
-    // maxSellAmount is now a cumulative session cap via spending-limits, not a
-    // per-call rule that repeated swaps could bypass.
     const sl = policies.find((p) => p.type === 'spending-limits')
     if (sl?.type !== 'spending-limits')
       throw new Error('expected spending-limits')
     expect(sl.limits[0].amount).toBe(1_000_000n)
     expect(sl.limits[0].token.toLowerCase()).toBe(USDC.toLowerCase())
-  })
-
-  test('exec pins token(1)=USDC + amount(2) cap + target(3)=Settler', () => {
-    const [, swap] = zeroExSwapActions(scope)
-    const policy = resolvePermission(swap)[0].policies?.find(
-      (p) => p.type === 'universal-action',
-    )
-    if (policy?.type !== 'universal-action')
-      throw new Error('expected universal-action')
-    const token = policy.rules.find((r) => r.calldataOffset === 32n)
-    expect((token?.referenceValue as string).toLowerCase()).toBe(
-      USDC.toLowerCase(),
-    )
-    expect(policy.rules.find((r) => r.calldataOffset === 64n)?.condition).toBe(
-      'lessThan',
-    ) // amount
-    const target = policy.rules.find((r) => r.calldataOffset === 96n)
-    expect((target?.referenceValue as string).toLowerCase()).toBe(
-      SETTLER.toLowerCase(),
-    )
-  })
-
-  test('pins operator(0) and target(3) to the settler', () => {
-    const [, swap] = zeroExSwapActions(scope)
-    const policy = resolvePermission(swap)[0].policies?.find(
-      (p) => p.type === 'universal-action',
-    )
-    if (policy?.type !== 'universal-action')
-      throw new Error('expected universal-action')
-    for (const off of [0n, 96n]) {
-      const r = policy.rules.find((r) => r.calldataOffset === off)
-      expect(r?.condition).toBe('equal')
-      expect((r?.referenceValue as string).toLowerCase()).toBe(
-        SETTLER.toLowerCase(),
-      )
-    }
   })
 })
 
@@ -111,7 +103,7 @@ describe('restrictToActions (session is provably restricted)', () => {
     const session = toSession({
       chain: base,
       owners: { type: 'ecdsa', accounts: [accountA] },
-      permissions: zeroExSwapActions(scope),
+      ...zeroExSwaps(),
       restrictToActions: true,
     })
     expect(hasFallback(session)).toBe(false)
@@ -134,9 +126,32 @@ describe('restrictToActions (session is provably restricted)', () => {
     const session = toSession({
       chain: base,
       owners: { type: 'ecdsa', accounts: [accountA] },
-      permissions: zeroExSwapActions(scope),
+      ...zeroExSwaps(),
     })
     expect(hasFallback(session)).toBe(true)
+  })
+
+  test('restrictToActions locks the ERC-1271 signing surface by default', () => {
+    const open = getSessionData(
+      toSession({
+        chain: base,
+        owners: { type: 'ecdsa', accounts: [accountA] },
+        ...zeroExSwaps(),
+      }),
+    )
+    const restricted = getSessionData(
+      toSession({
+        chain: base,
+        owners: { type: 'ecdsa', accounts: [accountA] },
+        ...zeroExSwaps(),
+        restrictToActions: true,
+      }),
+    )
+    // an open session keeps a signing surface; a restricted one defaults it off
+    // (else a session key limited to swap/approve could still sign a Permit2 approval)
+    expect(restricted.erc7739Policies.erc1271Policies.length).toBeLessThan(
+      open.erc7739Policies.erc1271Policies.length,
+    )
   })
 
   test('restrictToActions with no permissions throws', () => {
@@ -153,7 +168,7 @@ describe('restrictToActions (session is provably restricted)', () => {
     const session = toSession({
       chain: base,
       owners: { type: 'ecdsa', accounts: [accountA] },
-      permissions: zeroExSwapActions(scope),
+      ...zeroExSwaps(),
       restrictToActions: true,
     })
     const dummy = getSessionData(session).actions.find(
@@ -174,7 +189,7 @@ describe('restrictToActions (session is provably restricted)', () => {
       toSession({
         chain: base,
         owners: { type: 'ecdsa', accounts: [accountA] },
-        permissions: zeroExSwapActions(scope),
+        ...zeroExSwaps(),
         claimPolicies: [{ type: 'permit2' }],
         restrictToActions: true,
       }),
@@ -349,9 +364,7 @@ describe('swapSessionActions (scope both 0x + fynd)', () => {
       toSession({
         chain: base,
         owners: { type: 'ecdsa', accounts: [accountA] },
-        permissions: [
-          zeroExSwapActions({ sellToken: USDC, settler: SETTLER })[0],
-        ], // approve on USDC
+        permissions: [zeroExSwaps().permissions[0]], // approve on USDC
         actions: [
           { target: USDC, selector: APPROVE, policies: [{ type: 'sudo' }] },
         ],

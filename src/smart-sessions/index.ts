@@ -9,7 +9,6 @@ import type {
   AggregatorSwap,
   SwapSessionActions,
   SwapSessionScope,
-  ZeroExSwapScope,
 } from '../modules/validators/smart-sessions/aggregator-swap-actions'
 import {
   ALLOWANCE_HOLDER_EXEC_SELECTOR,
@@ -17,7 +16,6 @@ import {
   swapSessionActions,
   ZEROX_ALLOWANCE_HOLDER,
   zeroExAggregator,
-  zeroExSwapActions,
 } from '../modules/validators/smart-sessions/aggregator-swap-actions'
 import {
   getSessionDetails as buildSessionDetails,
@@ -132,7 +130,6 @@ export {
   INTENT_EXECUTION_POLICY_ADDRESS,
   // Aggregator swap-session scoping (RHI-6286)
   swapSessionActions,
-  zeroExSwapActions,
   zeroExAggregator,
   fyndAggregator,
   ZEROX_ALLOWANCE_HOLDER,
@@ -144,5 +141,4 @@ export type {
   AggregatorSwap,
   SwapSessionActions,
   SwapSessionScope,
-  ZeroExSwapScope,
 }

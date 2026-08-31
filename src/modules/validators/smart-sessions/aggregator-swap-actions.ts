@@ -47,97 +47,9 @@ export const erc20ApproveAbi = [
   },
 ] as const satisfies Abi
 
-export const allowanceHolderExecAbi = [
-  {
-    type: 'function',
-    name: 'exec',
-    stateMutability: 'payable',
-    inputs: [
-      { name: 'operator', type: 'address' },
-      { name: 'token', type: 'address' },
-      { name: 'amount', type: 'uint256' },
-      { name: 'target', type: 'address' },
-      { name: 'data', type: 'bytes' },
-    ],
-    outputs: [{ name: '', type: 'bytes' }],
-  },
-] as const satisfies Abi
-
 export const ALLOWANCE_HOLDER_EXEC_SELECTOR = toFunctionSelector(
   'function exec(address,address,uint256,address,bytes)',
 )
-
-export interface ZeroExSwapScope {
-  // The token the session may sell (e.g. USDC on Plasma).
-  readonly sellToken: Address
-  // The 0x Settler the AllowanceHolder forwards to. Pinned on BOTH exec.operator
-  // and exec.target. Required: leaving them unpinned lets a session key set
-  // operator/target to its own contract and pull the approved sell token (up to
-  // the cap) instead of swapping through 0x. 0x rotates Settler versions, so this
-  // binds the session to the current one — re-issue the session on a rotation.
-  readonly settler: Address
-  // Cumulative cap on TOTAL sell-token spend across the session (a spending-limit
-  // on the approve sums approved amounts). Omit for no cap.
-  readonly maxSellAmount?: bigint
-  // Defaults to ZEROX_ALLOWANCE_HOLDER.
-  readonly allowanceHolder?: Address
-}
-
-// The complete action set authorizing a 0x AllowanceHolder swap: the sell-token
-// approval (spender pinned to AllowanceHolder) and the exec call (token + amount
-// + forward-target pinned). Install via `permissions` with `restrictToActions`.
-export function zeroExSwapActions(scope: ZeroExSwapScope): Permission[] {
-  const allowanceHolder = scope.allowanceHolder ?? ZEROX_ALLOWANCE_HOLDER
-  const approve = {
-    abi: erc20ApproveAbi as unknown as Abi,
-    address: scope.sellToken,
-    functions: {
-      approve: {
-        // Cumulative cap: the spending-limit policy sums approved amounts across
-        // the session, so maxSellAmount bounds TOTAL sell-token spend, not just a
-        // single swap (which repeated swaps could otherwise drain past).
-        ...(scope.maxSellAmount !== undefined
-          ? {
-              spendingLimit: {
-                token: scope.sellToken,
-                amount: scope.maxSellAmount,
-              },
-            }
-          : {}),
-        params: {
-          spender: { condition: 'equal', value: allowanceHolder },
-        },
-      },
-    },
-  } as Permission
-  const swap = {
-    abi: allowanceHolderExecAbi as unknown as Abi,
-    address: allowanceHolder,
-    functions: {
-      exec: {
-        // exec is payable — cap native value so the session can't route value
-        // through the router (the sell-token cap only bounds the ERC-20 pull).
-        valueLimit: 0n,
-        params: {
-          // Pin both the permit consumer (operator) and the call target to the
-          // Settler so the pulled sell token can only be spent by 0x's swap.
-          operator: { condition: 'equal', value: scope.settler },
-          token: { condition: 'equal', value: scope.sellToken },
-          ...(scope.maxSellAmount !== undefined
-            ? {
-                amount: {
-                  condition: 'lessThan',
-                  value: scope.maxSellAmount + 1n,
-                },
-              }
-            : {}),
-          target: { condition: 'equal', value: scope.settler },
-        },
-      },
-    },
-  } as Permission
-  return [approve, swap]
-}
 
 // --- Multi-aggregator scoping (scope BOTH 0x and fynd in one session) ---------
 
@@ -194,7 +106,8 @@ export const ZEROX_BUY_TOKEN_OFFSET = 228n
 // cap) and, when given, the BUY token + recipient inside the Settler `data`.
 export function zeroExAggregator(scope: {
   sellToken: Address
-  // Required — see ZeroExSwapScope.settler for why leaving it unpinned is unsafe.
+  // Required — pinned on exec.operator + exec.target; leaving them unpinned lets a
+  // session key redirect the AllowanceHolder pull to its own contract.
   settler: Address
   maxSellAmount?: bigint
   buyToken?: Address
@@ -327,7 +240,7 @@ export function swapSessionActions(
     address: scope.sellToken,
     functions: {
       approve: {
-        // Cumulative session cap across all aggregators (see zeroExSwapActions).
+        // Cumulative session cap across all aggregators (spending-limit on approve).
         ...(scope.maxSellAmount !== undefined
           ? {
               spendingLimit: {
