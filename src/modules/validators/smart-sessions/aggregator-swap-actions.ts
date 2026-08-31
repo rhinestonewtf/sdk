@@ -16,14 +16,17 @@ import type {
 //   2. AllowanceHolder.exec(operator, token, amount, target, data) — pulls the
 //      approved sell token and forwards `data` to the 0x Settler (`target`).
 // exec's static words are pinnable: operator(0), token(1), amount(2), target(3).
-// operator and target are both pinned to the Settler so the pulled sell token
-// can only be consumed by 0x's swap. For 0x specifically the BUY token/route live
-// inside the opaque `data` (the Settler calldata), so 0x binds the sell side only.
+// operator and target are pinned to the Settler so the pulled sell token can only
+// be consumed by 0x's swap.
 //
-// The buy token (and recipient) ARE bindable for aggregators that expose them at
-// a fixed calldata offset — e.g. kyberswap encodes the output token as an ABI word
-// — via `AggregatorSwap.swapRules` (the same offset rule used for the OFT/CCTP
-// pins). It is only 0x's nested exec.data that can't be pinned.
+// BOTH sides are bindable. The sell token + cumulative cap come from the approve;
+// the BUY token + recipient are bound via `AggregatorSwap.swapRules` — offset pins
+// at the swap-calldata positions where the aggregator encodes them (derived from a
+// quote). Those sit at word-aligned ABI slots: kyberswap's top-level output word,
+// or inside 0x's ABI-encoded Settler `data`. The offset is route-shape-specific,
+// so a reusable session re-pins per route while a one-time-use session pins the
+// exact quote. (A router that packs fields non-word-aligned — e.g. relay's Tycho
+// encoding — can't be matched by the word-granular policy; keep to aligned ones.)
 
 // 0x AllowanceHolder on Cancun-hardfork chains (incl. Plasma). Verify per chain.
 export const ZEROX_ALLOWANCE_HOLDER: Address =
