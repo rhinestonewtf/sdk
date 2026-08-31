@@ -269,9 +269,27 @@ describe('swapSessionActions (scope both 0x + fynd)', () => {
     expect(p.limit).toBe(0n)
   })
 
-  test('fynd/Tycho pins BOTH src (32) and dest (64) tokens', () => {
-    // Verified against live Tycho `swap` calldata: tokenIn @ 32, tokenOut @ 64.
+  test('0x aggregator pins buy token (228) + recipient (196) in exec.data', () => {
     const WXPL = '0x6100E367285b01F48D07953803A2d8dCA5D19873' as Address
+    const ACCT = '0x1111111111111111111111111111111111111111' as Address
+    const agg = zeroExAggregator({
+      sellToken: USDC,
+      settler: SETTLER,
+      buyToken: WXPL,
+      recipient: ACCT,
+    })
+    const at = (off: bigint) =>
+      agg.swapRules?.find((r) => r.calldataOffset === off)?.referenceValue
+    expect((at(228n) as string).toLowerCase()).toBe(WXPL.toLowerCase())
+    expect((at(196n) as string).toLowerCase()).toBe(ACCT.toLowerCase())
+    // sell side still pinned
+    expect((at(32n) as string).toLowerCase()).toBe(USDC.toLowerCase())
+  })
+
+  test('fynd/Tycho pins amountIn(0)+src(32)+dest(64)+recipient(128)', () => {
+    // Verified against live Tycho `swap` calldata.
+    const WXPL = '0x6100E367285b01F48D07953803A2d8dCA5D19873' as Address
+    const ACCT = '0x1111111111111111111111111111111111111111' as Address
     const { actions } = swapSessionActions({
       sellToken: USDC,
       aggregators: [
@@ -279,14 +297,22 @@ describe('swapSessionActions (scope both 0x + fynd)', () => {
           router: FYND_ROUTER,
           sellToken: USDC,
           buyToken: WXPL,
+          maxSellAmount: 1_000_000n,
+          recipient: ACCT,
         }),
       ],
     })
     const p = actions[0].policies?.[0]
     if (p?.type !== 'universal-action')
       throw new Error('expected universal-action')
-    const inRule = p.rules.find((r) => r.calldataOffset === 32n)
-    const outRule = p.rules.find((r) => r.calldataOffset === 64n)
+    const at = (off: bigint) => p.rules.find((r) => r.calldataOffset === off)
+    expect(at(0n)?.condition).toBe('lessThan') // amountIn cap
+    expect(at(0n)?.referenceValue).toBe(1_000_001n)
+    expect((at(128n)?.referenceValue as string).toLowerCase()).toBe(
+      ACCT.toLowerCase(),
+    ) // recipient
+    const inRule = at(32n)
+    const outRule = at(64n)
     expect((inRule?.referenceValue as string).toLowerCase()).toBe(
       USDC.toLowerCase(),
     )

@@ -177,14 +177,25 @@ export interface SwapSessionActions {
   readonly actions: ScopedAction[]
 }
 
-// 0x AllowanceHolder as an aggregator. exec(operator, token, amount, target, data)
-// — pins operator@0 and target@96 to the Settler (so the pulled sell token can
-// only be spent by 0x's swap, not redirected), token@32, and amount@64.
+// exec(operator, token, amount, target, data). exec's own words pin operator@0,
+// sellToken@32, amount@64, target@96. The BUY side lives in `data` = the Settler's
+// `execute((recipient, buyToken, minAmountOut) slippage, bytes[] actions, bytes32)`
+// — the slippage fields sit BEFORE the variable `actions`, so their exec-calldata
+// offsets are stable: recipient@196, buyToken@228 (data content @192, +4 inner
+// selector, +32 recipient). Verify against a live 0x exec if 0x revs the Settler.
+export const ZEROX_RECIPIENT_OFFSET = 196n
+export const ZEROX_BUY_TOKEN_OFFSET = 228n
+
+// 0x AllowanceHolder as an aggregator. Pins the sell side (token/operator/target/
+// cap) and, when given, the BUY token + recipient inside the Settler `data`.
 export function zeroExAggregator(scope: {
   sellToken: Address
   // Required — see ZeroExSwapScope.settler for why leaving it unpinned is unsafe.
   settler: Address
   maxSellAmount?: bigint
+  buyToken?: Address
+  // Bind the swap output recipient (e.g. the account) so 0x can't send it elsewhere.
+  recipient?: Address
   allowanceHolder?: Address
 }): AggregatorSwap {
   const allowanceHolder = scope.allowanceHolder ?? ZEROX_ALLOWANCE_HOLDER
@@ -204,6 +215,20 @@ export function zeroExAggregator(scope: {
       referenceValue: scope.maxSellAmount + 1n,
     })
   }
+  if (scope.buyToken !== undefined) {
+    swapRules.push({
+      condition: 'equal',
+      calldataOffset: ZEROX_BUY_TOKEN_OFFSET,
+      referenceValue: scope.buyToken,
+    })
+  }
+  if (scope.recipient !== undefined) {
+    swapRules.push({
+      condition: 'equal',
+      calldataOffset: ZEROX_RECIPIENT_OFFSET,
+      referenceValue: scope.recipient,
+    })
+  }
   return {
     swapTarget: allowanceHolder,
     swapSelector: ALLOWANCE_HOLDER_EXEC_SELECTOR,
@@ -212,27 +237,42 @@ export function zeroExAggregator(scope: {
   }
 }
 
-// Tycho `swap` (selector 0xce25e49e) encodes tokenIn and tokenOut as word-aligned
-// ABI words — verified against live fynd calldata. Offsets are past the 4-byte
-// selector; re-derive if fynd returns a different swap function for a route shape.
+// Tycho `swap` (selector 0xce25e49e) layout — verified against live fynd calldata:
+// amountIn@0, tokenIn@32, tokenOut@64, minAmountOut@96, receiver@128. Offsets are
+// past the 4-byte selector; re-derive if fynd returns a different swap function.
 export const TYCHO_SWAP_SELECTOR: Hex = '0xce25e49e'
+export const TYCHO_AMOUNT_IN_OFFSET = 0n
 export const TYCHO_TOKEN_IN_OFFSET = 32n
 export const TYCHO_TOKEN_OUT_OFFSET = 64n
+export const TYCHO_RECIPIENT_OFFSET = 128n
 
-// fynd (Tycho router) as an aggregator. Pins BOTH the sell and buy token (the
-// TychoRouter pulls the sell token via an allowance to itself, so approveSpender
-// defaults to the router). Pass sellToken/buyToken to bind "sell X, receive Y".
+// fynd (Tycho router) as an aggregator. Pins the sell + buy token, caps the swap's
+// own amountIn (so a standing allowance can't be used to pull more than the cap),
+// and binds the receiver. The TychoRouter pulls via an allowance to itself, so
+// approveSpender defaults to the router.
 export function fyndAggregator(scope: {
   router: Address
   // Defaults to the Tycho `swap` selector; override for a different route shape.
   swapSelector?: Hex
   sellToken?: Address
   buyToken?: Address
-  // Offsets for tokenIn/tokenOut in the swap calldata (default: Tycho `swap`).
+  // Upper bound on the swap's amountIn (caps the per-swap pull independent of the
+  // approve, closing a standing-allowance bypass).
+  maxSellAmount?: bigint
+  // Bind the swap receiver (e.g. the account) so the output can't be sent elsewhere.
+  recipient?: Address
+  // Override offsets for a non-default Tycho swap function.
   tokenInOffset?: bigint
   tokenOutOffset?: bigint
 }): AggregatorSwap {
   const swapRules: UniversalActionPolicyParamRule[] = []
+  if (scope.maxSellAmount !== undefined) {
+    swapRules.push({
+      condition: 'lessThan',
+      calldataOffset: TYCHO_AMOUNT_IN_OFFSET,
+      referenceValue: scope.maxSellAmount + 1n,
+    })
+  }
   if (scope.sellToken !== undefined) {
     swapRules.push({
       condition: 'equal',
@@ -245,6 +285,13 @@ export function fyndAggregator(scope: {
       condition: 'equal',
       calldataOffset: scope.tokenOutOffset ?? TYCHO_TOKEN_OUT_OFFSET,
       referenceValue: scope.buyToken,
+    })
+  }
+  if (scope.recipient !== undefined) {
+    swapRules.push({
+      condition: 'equal',
+      calldataOffset: TYCHO_RECIPIENT_OFFSET,
+      referenceValue: scope.recipient,
     })
   }
   return {
