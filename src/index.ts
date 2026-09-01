@@ -13,6 +13,21 @@ import { OWNABLE_VALIDATOR_ADDRESS } from './modules/validators/ownable'
 import { SMART_SESSION_EMISSARY_ADDRESS } from './modules/validators/smart-sessions/module'
 import { WEBAUTHN_VALIDATOR_ADDRESS } from './modules/validators/webauthn'
 
+export {
+  RhinestoneSDK,
+  // Non-viem destination chain descriptors (Solana, Tron, HyperCore)
+  hyperCorePerp,
+  hyperCoreSpot,
+  solanaMainnet,
+  tronMainnet,
+  // Validator addresses
+  OWNABLE_VALIDATOR_ADDRESS,
+  WEBAUTHN_VALIDATOR_ADDRESS,
+  MULTI_FACTOR_VALIDATOR_ADDRESS,
+  MULTI_FACTOR_VALIDATOR_V2_ADDRESS,
+  SMART_SESSION_EMISSARY_ADDRESS,
+}
+
 export type { RhinestoneAccount, SignedIntentData } from './api/account'
 export type {
   DestinationChain,
@@ -104,17 +119,3 @@ export type {
   SignedUserOperationData,
   UserOperationResult,
 } from './transactions/user-operations/types'
-export {
-  // Non-viem destination chain descriptors (Solana, Tron, HyperCore)
-  hyperCorePerp,
-  hyperCoreSpot,
-  MULTI_FACTOR_VALIDATOR_ADDRESS,
-  MULTI_FACTOR_VALIDATOR_V2_ADDRESS,
-  // Validator addresses
-  OWNABLE_VALIDATOR_ADDRESS,
-  RhinestoneSDK,
-  SMART_SESSION_EMISSARY_ADDRESS,
-  solanaMainnet,
-  tronMainnet,
-  WEBAUTHN_VALIDATOR_ADDRESS,
-}
