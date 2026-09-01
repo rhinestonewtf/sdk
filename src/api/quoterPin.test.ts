@@ -43,6 +43,22 @@ function pinFor(via: readonly unknown[] | undefined, quoters?: unknown) {
   return intent.options?.quoters
 }
 
+function pinForChains(
+  viaByChain: Record<number, readonly unknown[] | undefined>,
+) {
+  const sessions = Object.fromEntries(
+    Object.entries(viaByChain).map(([chainId, via]) => [
+      Number(chainId),
+      { session: session(via) },
+    ]),
+  )
+  const intent = adaptTransaction(
+    { account: {} } as never,
+    { chain: base, calls: [], signers: { type: 'session', sessions } } as never,
+  ) as { options?: { quoters?: unknown } }
+  return intent.options?.quoters
+}
+
 describe('quoter pin derived from a session venue scope', () => {
   test('a 0x-scoped session pins 0x', () => {
     expect(pinFor([zeroEx({ settler: SETTLER })])).toEqual({ include: ['0x'] })
@@ -84,6 +100,46 @@ describe('quoter pin derived from a session venue scope', () => {
     ).toEqual({
       include: ['fynd'],
     })
+  })
+
+  test('per-chain sessions that agree pin the venue they share', () => {
+    expect(
+      pinForChains({
+        8453: [zeroEx({ settler: SETTLER })],
+        10: [zeroEx({ settler: SETTLER })],
+      }),
+    ).toEqual({ include: ['0x'] })
+  })
+
+  test('per-chain sessions that DISAGREE send no pin at all', () => {
+    // `options.quoters` is one global filter with no chain dimension, so the
+    // union would permit fynd on the 0x-only chain and be rejected on-chain
+    // there. No venue satisfies both and no global filter can say "0x here,
+    // fynd there", so there is nothing safe to send.
+    expect(
+      pinForChains({ 8453: [zeroEx({ settler: SETTLER })], 10: [fynd()] }),
+    ).toBeUndefined()
+  })
+
+  test('per-chain sessions narrow to the venues every one of them permits', () => {
+    // The 0x-only chain is the binding constraint; fynd is unsafe globally.
+    expect(
+      pinForChains({
+        8453: [zeroEx({ settler: SETTLER }), fynd()],
+        10: [zeroEx({ settler: SETTLER })],
+      }),
+    ).toEqual({ include: ['0x'] })
+  })
+
+  test('an unconstrained chain session does not widen a constrained one', () => {
+    // A bare Swapper admits every venue, so it narrows nothing — 0x is still
+    // safe for both.
+    expect(
+      pinForChains({
+        8453: [zeroEx({ settler: SETTLER })],
+        10: [rhinestoneSwap()],
+      }),
+    ).toEqual({ include: ['0x'] })
   })
 
   test('a session with no swap scope sends no pin', () => {

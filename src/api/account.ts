@@ -915,7 +915,36 @@ function destinationChainReference(
  * Returns undefined (no pin) when the scope cannot imply one: a bare Rhinestone
  * Swapper venue is aggregator-agnostic, so any quoter may legitimately fill it,
  * and pinning would reject routes the session actually permits.
+ *
+ * Across a per-chain session set the pin is the INTERSECTION, not the union.
+ * `options.quoters` is one global filter with no chain dimension, so a venue is
+ * only safe to allow if every session would accept it — unioning a 0x-only and
+ * a fynd-only session would permit fynd everywhere and be rejected on-chain by
+ * the first. An empty intersection means no single venue satisfies them all,
+ * which no global filter can express, so that yields no pin.
  */
+function venuesForSession(
+  session:
+    | { swap?: { via?: readonly { id: string; route?: string }[] } }
+    | undefined,
+): Set<SwapQuoter> | null {
+  const via = session?.swap?.via
+  // No venue list means the scope defaults to the Swapper — unconstrained.
+  if (!via?.length) return null
+  const quoters = new Set<SwapQuoter>()
+  for (const venue of via) {
+    if (venue.id === '0x') quoters.add('0x')
+    else if (venue.id === 'fynd') quoters.add('fynd')
+    else if (venue.id === 'rhinestone') {
+      // The Swapper routes through whichever aggregator wins unless the scope
+      // pinned one, so an unpinned Swapper venue admits any quoter.
+      if (venue.route === 'zeroEx') quoters.add('0x')
+      else return null
+    } else return null
+  }
+  return quoters
+}
+
 function quoterPinFromSession(
   signers: SignerSet | undefined,
 ): SwapQuoterFilter | undefined {
@@ -925,23 +954,23 @@ function quoterPinFromSession(
       ? [signers.session]
       : Object.values(signers.sessions ?? {}).map((s) => s.session)
 
-  const quoters = new Set<SwapQuoter>()
+  let pinned: Set<SwapQuoter> | null = null
   for (const session of sessions) {
-    const via = session?.swap?.via
-    // No venue list means the scope defaults to the Swapper — unconstrained.
-    if (!via?.length) return undefined
-    for (const venue of via) {
-      if (venue.id === '0x') quoters.add('0x')
-      else if (venue.id === 'fynd') quoters.add('fynd')
-      else if (venue.id === 'rhinestone') {
-        // The Swapper routes through whichever aggregator wins unless the scope
-        // pinned one, so an unpinned Swapper venue admits any quoter.
-        if (venue.route === 'zeroEx') quoters.add('0x')
-        else return undefined
-      } else return undefined
+    const venues = venuesForSession(session)
+    // An unconstrained session admits every venue, so it narrows nothing.
+    if (!venues) continue
+    if (!pinned) {
+      pinned = venues
+      continue
     }
+    const narrowed = new Set<SwapQuoter>()
+    for (const quoter of pinned) {
+      if (venues.has(quoter)) narrowed.add(quoter)
+    }
+    pinned = narrowed
   }
-  return quoters.size ? { include: [...quoters] } : undefined
+  if (!pinned?.size) return undefined
+  return { include: [...pinned] }
 }
 
 export function adaptTransaction(
