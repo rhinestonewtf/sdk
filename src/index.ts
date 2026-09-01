@@ -91,6 +91,7 @@ export type {
   SignerSet,
   SourceCallInput,
   SourceCallProvidedFunds,
+  SwapScope,
   TokenRequest,
   TokenSymbol,
   ToLeg,

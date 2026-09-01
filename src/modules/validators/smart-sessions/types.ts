@@ -66,6 +66,34 @@ export type SessionPolicy =
   | { readonly type: 'value-limit'; readonly limit: bigint }
   | { readonly type: 'intent-execution' }
 
+/**
+ * A swap venue, produced by the `zeroEx()` / `fynd()` builders. Callers never
+ * construct these literally — router addresses, selectors and calldata offsets
+ * are resolved from the venue id inside `swap-venues.ts`.
+ */
+export interface ZeroExVenue {
+  readonly id: '0x'
+  readonly settler?: Address
+  readonly anySettler?: boolean
+  readonly maxSpend?: bigint
+}
+
+export interface FyndVenue {
+  readonly id: 'fynd'
+  readonly maxSpend?: bigint
+}
+
+export type SwapVenue = ZeroExVenue | FyndVenue
+
+/** Loose (chain-unaware) swap scope. The public config type narrows `via` by chain. */
+export interface SwapScopeInput {
+  readonly sell: { readonly token: Address; readonly maxTotal?: bigint }
+  readonly buy: { readonly token: Address }
+  /** Swap output recipient — pinned, so a compromised key cannot redirect output. */
+  readonly to: Address
+  readonly via: readonly SwapVenue[]
+}
+
 export interface FallbackAction {
   readonly policies?: SessionPolicy[]
 }
@@ -190,6 +218,11 @@ export interface SessionDefinition {
   // Required to make a session provably restricted, e.g. to a specific swap
   // aggregator (RHI-6286). Requires at least one permission or action.
   restrictToActions?: boolean
+  /**
+   * Venue-scoped swap permissions. Compiles to a merged approve plus one scoped
+   * swap action per venue, and implies `restrictToActions`.
+   */
+  swap?: SwapScopeInput
   // Raw scoped actions (target + selector + policies) for calls that can't be
   // addressed by the ABI-name `permissions` sugar — e.g. a fynd swap scoped by
   // its raw selector with no ABI (RHI-6286). ScopedAction only (never a fallback

@@ -18,6 +18,7 @@ import {
 } from './policies/claim'
 import { encodeSessionPolicy } from './policies/encode'
 import { resolveSessionSigning } from './signing'
+import { resolveSwapScope } from './swap/scope'
 import type {
   ResolvedAction,
   ScopedAction,
@@ -68,20 +69,39 @@ export function resolveSessionData(
     actionTarget: SMART_SESSIONS_FALLBACK_TARGET_FLAG,
     actionPolicies: [{ policy: addresses.sudo, initData: '0x' }],
   }
-  const userActions = definition.permissions?.length
-    ? resolvePermissions(definition.permissions)
-    : []
+  // `swap` is sugar over permissions + actions: it compiles to one merged
+  // approve plus one scoped swap action per venue, then rides the same
+  // resolution path. Venue routers, selectors and calldata offsets stay inside
+  // swap-venues.ts so they never reach the public surface (RHI-6286).
+  const swapScope = definition.swap
+    ? resolveSwapScope(definition.swap, definition.chain.id)
+    : undefined
+  // Declaring `swap` IS the restriction — a swap-scoped session that still
+  // carried the wildcard fallback would let the session key call anything the
+  // global intent-execution whitelist allows, which is the opposite of what the
+  // caller asked for. `restrictToActions` stays as the explicit spelling for
+  // sessions scoped by hand.
+  const restricted =
+    definition.restrictToActions === true || swapScope !== undefined
+  const permissions = [
+    ...(definition.permissions ?? []),
+    ...(swapScope?.permissions ?? []),
+  ]
+  const userActions = permissions.length ? resolvePermissions(permissions) : []
   // Raw scoped actions (target + selector + policies) for calls that can't be
   // addressed by the ABI-name `permissions` sugar — e.g. a fynd swap scoped by
   // its raw selector with no ABI (RHI-6286).
-  const rawActions = definition.actions ?? []
+  const rawActions = [
+    ...(definition.actions ?? []),
+    ...(swapScope?.actions ?? []),
+  ]
   // A restricted session drops the fallback action, which is also where a
   // cross-chain permit's spending-limit / time-frame guardrails live — so a
   // restricted session combined with a permit would keep claim signing but lose
   // maxAmount/deadline enforcement. These are different authorization surfaces;
   // reject the combination rather than silently drop the guardrails.
   if (
-    definition.restrictToActions &&
+    restricted &&
     (definition.crossChainPermits?.length || definition.claimPolicies?.length)
   ) {
     throw new Error(
@@ -130,7 +150,7 @@ export function resolveSessionData(
     // chain's wrapped-native token (e.g. via `RhinestoneSDK.createSession`,
     // which resolves it from `/chains`). Dropped for a restricted session so it
     // can't add an unrequested sudo action beyond the caller's permissions.
-    ...(options.wrappedNativeToken && !definition.restrictToActions
+    ...(options.wrappedNativeToken && !restricted
       ? [
           {
             target: options.wrappedNativeToken,
@@ -144,23 +164,19 @@ export function resolveSessionData(
           },
         ]
       : []),
-    ...(definition.restrictToActions ? [] : [fallbackAction]),
+    ...(restricted ? [] : [fallbackAction]),
     {
       target: DUMMY_PRECLAIMOP_TARGET,
       selector: DUMMY_PRECLAIMOP_SELECTOR,
       // The real pre-claim op carries no value; cap it at 0 for a restricted
       // session so this injected action can't be used to send native value to
       // the dummy target (a plain sudo would allow it).
-      policies: definition.restrictToActions
+      policies: restricted
         ? [{ type: 'value-limit', limit: 0n }]
         : [{ type: 'sudo' }],
     },
   ]
-  if (
-    definition.restrictToActions &&
-    !userActions.length &&
-    !rawActions.length
-  ) {
+  if (restricted && !userActions.length && !rawActions.length) {
     throw new Error(
       'restrictToActions drops the fallback, so the session must supply at ' +
         'least one permission or action — none were given',
@@ -217,8 +233,7 @@ export function resolveSessionData(
   // to `disabled` when restricting; the caller can still opt into a signing policy.
   const erc7739Policies = resolveSessionSigning({
     signing:
-      definition.signing ??
-      (definition.restrictToActions ? { mode: 'disabled' } : undefined),
+      definition.signing ?? (restricted ? { mode: 'disabled' } : undefined),
     environment,
     addresses,
   })

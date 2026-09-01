@@ -1,22 +1,10 @@
-import type { Abi, Address } from 'viem'
+import type { Abi, Address, Chain } from 'viem'
 import { materializeRpcReader } from '../clients/rpc/compatibility'
 import type {
   ProviderConfig,
   Session,
   SessionDefinition,
 } from '../config/account'
-import type {
-  AggregatorSwap,
-  SwapSessionActions,
-  SwapSessionScope,
-} from '../modules/validators/smart-sessions/aggregator-swap-actions'
-import {
-  ALLOWANCE_HOLDER_EXEC_SELECTOR,
-  fyndAggregator,
-  swapSessionActions,
-  ZEROX_ALLOWANCE_HOLDER,
-  zeroExAggregator,
-} from '../modules/validators/smart-sessions/aggregator-swap-actions'
 import {
   getSessionDetails as buildSessionDetails,
   SESSION_LOCK_TAG,
@@ -49,19 +37,35 @@ import {
   readSessionEnabled,
   readSessionNonce,
 } from '../modules/validators/smart-sessions/state'
+import { fynd } from '../modules/validators/smart-sessions/swap/fynd'
+import type { SwapVenueFor } from '../modules/validators/smart-sessions/swap/scope'
+import type {
+  ZeroExAnySettlerOptions,
+  ZeroExPinnedOptions,
+} from '../modules/validators/smart-sessions/swap/zero-ex'
+import {
+  resolveZeroExSettler,
+  zeroEx,
+} from '../modules/validators/smart-sessions/swap/zero-ex'
 import type {
   ChainDigest,
   Session as DomainSession,
   SessionDefinition as DomainSessionDefinition,
+  FyndVenue,
   SessionDetails,
+  SwapVenue,
+  ZeroExVenue,
 } from '../modules/validators/smart-sessions/types'
 
 function environment(useDevContracts: boolean | undefined) {
   return useDevContracts === true ? 'development' : 'production'
 }
 
-function toSession<const TAbis extends readonly Abi[]>(
-  definition: SessionDefinition<TAbis>,
+function toSession<
+  const TAbis extends readonly Abi[],
+  const TChain extends Chain,
+>(
+  definition: SessionDefinition<TAbis, TChain>,
   options: { useDevContracts?: boolean } = {},
 ): Session {
   return resolveSession(definition as DomainSessionDefinition, {
@@ -128,17 +132,18 @@ export {
   USAGE_LIMIT_POLICY_ADDRESS,
   VALUE_LIMIT_POLICY_ADDRESS,
   INTENT_EXECUTION_POLICY_ADDRESS,
-  // Aggregator swap-session scoping (RHI-6286)
-  swapSessionActions,
-  zeroExAggregator,
-  fyndAggregator,
-  ZEROX_ALLOWANCE_HOLDER,
-  ALLOWANCE_HOLDER_EXEC_SELECTOR,
+  // Venue-scoped swap sessions (RHI-6286)
+  zeroEx,
+  fynd,
+  resolveZeroExSettler,
 }
 export type {
   ChainDigest,
   SessionDetails,
-  AggregatorSwap,
-  SwapSessionActions,
-  SwapSessionScope,
+  FyndVenue,
+  SwapVenue,
+  SwapVenueFor,
+  ZeroExAnySettlerOptions,
+  ZeroExPinnedOptions,
+  ZeroExVenue,
 }

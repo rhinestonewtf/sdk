@@ -1,4 +1,5 @@
 import {
+  type Abi,
   type AbiFunction,
   type AbiParameter,
   type Hex,
@@ -83,6 +84,37 @@ function headOffset(inputs: readonly AbiParameter[], index: number): bigint {
   let offset = 0
   for (let i = 0; i < index; i++) offset += headSize(inputs[i])
   return BigInt(offset)
+}
+
+/**
+ * Calldata head offset of every named top-level parameter of `functionName`.
+ *
+ * Lets callers that build raw param rules (the swap venues) address arguments by
+ * name instead of hardcoding byte offsets — the offsets then follow the ABI
+ * automatically, and a signature change surfaces as a missing key rather than a
+ * rule silently pointing at the wrong word.
+ *
+ * Only single-word static params are included; anything dynamic or multi-word
+ * cannot be compared by a 32-byte reference value and is omitted.
+ */
+export function namedParamOffsets(
+  abi: Abi,
+  functionName: string,
+): Record<string, bigint> {
+  const entry = abi.find(
+    (item): item is AbiFunction =>
+      item.type === 'function' && item.name === functionName,
+  )
+  if (!entry) {
+    throw new Error(`Function "${functionName}" not found in ABI`)
+  }
+  const offsets: Record<string, bigint> = {}
+  entry.inputs.forEach((param, index) => {
+    if (param.name && isStaticAbiType(param.type)) {
+      offsets[param.name] = headOffset(entry.inputs, index)
+    }
+  })
+  return offsets
 }
 
 function toReferenceValue(value: unknown, abiType: string): Hex | bigint {

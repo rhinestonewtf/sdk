@@ -22,6 +22,7 @@ import type {
   SerializedIntentInput,
   SettlementLayerFilter,
 } from '../clients/orchestrator/public'
+import type { SwapVenueFor } from '../modules/validators/smart-sessions/swap/scope'
 
 // Module type discriminator relocated verbatim from the legacy
 // `src/modules/common.ts` to preserve the exact published declaration closure.
@@ -614,8 +615,63 @@ type SessionSigning =
       validUntil?: Date
     }
 
-interface SessionDefinition<TAbis extends readonly Abi[] = readonly Abi[]> {
-  chain: Chain
+/**
+ * Restrict a session to swapping one token for another through named venues.
+ *
+ * The only ops such a session can run are: approve the sell token to a listed
+ * venue's spender, and call that venue's swap entrypoint with the sell token,
+ * buy token and recipient pinned. Declaring `swap` implies `restrictToActions`,
+ * so the wildcard intent-execution fallback is dropped.
+ *
+ * Venues are named, not addressed — `via: [fynd()]`, not a router address. Every
+ * router, selector and calldata offset lives inside the SDK, so callers need no
+ * knowledge of how the swap is encoded on-chain.
+ *
+ * @example
+ * ```ts
+ * const session = await sdk.createSession({
+ *   owners: { type: 'ecdsa', accounts: [sessionKey] },
+ *   swap: {
+ *     sell: { token: usdc, maxTotal: parseUnits('1000', 6) },
+ *     buy: { token: usdt },
+ *     to: account.address,
+ *     via: [fynd(), zeroEx({ settler })],
+ *   },
+ * })
+ * ```
+ */
+interface SwapScope<TChainId extends number = number> {
+  sell: {
+    token: Address
+    /**
+     * Cumulative cap on total sell-token spend across the whole session —
+     * enforced both as a spending-limit on the approve and as an accumulating
+     * bound on each swap's own amount, so a pre-existing allowance cannot be
+     * used to exceed it. Omit for no cap.
+     */
+    maxTotal?: bigint
+  }
+  buy: { token: Address }
+  /**
+   * Swap output recipient, normally the account itself. Pinned on-chain, so a
+   * compromised session key cannot redirect the output elsewhere.
+   */
+  to: Address
+  /** Venues this session may route through. At least one. */
+  via: readonly SwapVenueFor<TChainId>[]
+}
+
+interface SessionDefinition<
+  TAbis extends readonly Abi[] = readonly Abi[],
+  TChain extends Chain = Chain,
+> {
+  chain: TChain
+  /**
+   * Venue-scoped swap permissions. See {@link SwapScope}. Implies
+   * `restrictToActions`, and is mutually exclusive with
+   * `crossChainPermits`/`claimPolicies`.
+   */
+  swap?: SwapScope<TChain['id']>
   owners: OwnerSet
   permissions?: readonly [...PermissionsForAbis<TAbis>]
   claimPolicies?: readonly Permit2ClaimPolicy[]
@@ -1103,6 +1159,7 @@ export type {
   PermissionsForAbis,
   PermissionFunctionConfig,
   ParamConstraint,
+  SwapScope,
   ResolvedAction,
   ResolvedERC7739Content,
   ResolvedERC7739Policies,
