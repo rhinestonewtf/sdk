@@ -28,13 +28,16 @@ import { executeIntent, expectOutcome } from '../framework/runner'
  * account the operator funds by hand. It is deliberately not part of the smoke
  * suite: it needs real USDT0 and a human in the loop.
  *
+ *   PLASMA_SWAP_ENABLED=true \
  *   INTEGRATION_RHINESTONE_API_KEY=<prod key> \
- *   PLASMA_SWAP_PRIVATE_KEY=0x...            # optional, reuse a funded account
+ *   PLASMA_SWAP_PRIVATE_KEY=0x...  # stable owner key, required
+ *   PLASMA_USDC_ADDRESS=0x...      # USDC on Plasma
  *   bun run test:integration -- plasma-swap
  *
- * Without `PLASMA_SWAP_PRIVATE_KEY` the test generates a key, prints the address
- * and the key, and fails with instructions — fund it and re-run with the key set
- * so the same account is reused.
+ * The owner key is required rather than generated: a fresh key would derive a
+ * different account address each run, so every re-run would strand the balance
+ * you funded the previous one with. Run it once to learn the smart account
+ * address, fund that address, then re-run with the same key.
  */
 
 const PLASMA_USDT0: Address = '0xB8CE59FC3717ada4C02eaDF9682A9e934F625ebb'
@@ -82,20 +85,29 @@ async function erc20Balance(token: Address, owner: Address): Promise<bigint> {
   })
 }
 
+/**
+ * The account owner key. Required — deliberately never generated here.
+ *
+ * Generating one per run would derive a different account address every time,
+ * so each re-run would strand the previously funded balance in an account
+ * nothing references again. The key has to be stable and operator-owned.
+ */
 function ownerAccount() {
   const key = process.env.PLASMA_SWAP_PRIVATE_KEY
-  if (key) {
-    if (!/^0x[0-9a-fA-F]{64}$/.test(key)) {
-      throw new Error('PLASMA_SWAP_PRIVATE_KEY must be a 0x 32-byte hex key')
-    }
-    return { account: privateKeyToAccount(key as `0x${string}`), fresh: false }
+  if (!key) {
+    throw new Error(
+      'PLASMA_SWAP_PRIVATE_KEY is required. This scenario spends real funds, ' +
+        'and a generated key would produce a new account address on every ' +
+        'run — stranding whatever you funded the last one with.\n' +
+        '  Generate once:  cast wallet new\n' +
+        '  Then set PLASMA_SWAP_PRIVATE_KEY and re-run; the test prints the ' +
+        'smart account address to fund.',
+    )
   }
-  const generated = generatePrivateKey()
-  return {
-    account: privateKeyToAccount(generated),
-    fresh: true,
-    key: generated,
+  if (!/^0x[0-9a-fA-F]{64}$/.test(key)) {
+    throw new Error('PLASMA_SWAP_PRIVATE_KEY must be a 0x 32-byte hex key')
   }
+  return privateKeyToAccount(key as `0x${string}`)
 }
 
 /** Nexus + ownable validator, sessions enabled — the deposit-service shape. */
@@ -116,15 +128,11 @@ describe
   .sequential('SDK integration plasma swap session (RHI-6286)', () => {
     test('scopes a session to a 0x USDT0 -> USDC swap and executes it', async () => {
       const owner = ownerAccount()
-      const account = await createSwapAccount(owner.account)
+      const account = await createSwapAccount(owner)
       const address = await account.getAddress()
 
       log('account', address)
-      log('owner', owner.account.address)
-
-      if (owner.fresh) {
-        log('generated key (set PLASMA_SWAP_PRIVATE_KEY to reuse)', owner.key)
-      }
+      log('owner', owner.address)
 
       // --- Discovery -----------------------------------------------------------
       // Everything below is logged before any assertion, so a failing run still
@@ -142,7 +150,8 @@ describe
       if (balance < SWAP_AMOUNT) {
         throw new Error(
           `Fund ${address} with at least ${formatUnits(SWAP_AMOUNT, 6)} USDT0 ` +
-            `on Plasma, then re-run with PLASMA_SWAP_PRIVATE_KEY set.`,
+            'on Plasma, then re-run with the same PLASMA_SWAP_PRIVATE_KEY. ' +
+            'The address is derived from that key, so it is stable across runs.',
         )
       }
 
