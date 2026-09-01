@@ -101,6 +101,7 @@ import {
   SIG_MODE_ERC1271,
   type SignatureMode,
   type SupportedChain,
+  type SwapQuoterFilter,
 } from '../orchestrator/types'
 import { convertBigIntFields } from '../orchestrator/utils'
 import type {
@@ -130,6 +131,7 @@ import {
   SignerNotSupportedError,
 } from './error'
 import { getTypedData as getPermit2TypedData } from './permit2'
+import { narrowQuoterPin, quoterPinFromSession } from './quoters'
 import { getTypedData as getSingleChainOpsTypedData } from './singleChainOps'
 
 type InternalSignerSet =
@@ -160,14 +162,22 @@ async function resolveSignersForChain(
     config.useDevContracts,
   )
   const enableData = enabled ? undefined : resolved.enableData
-  const hasExplicitActions = !!resolved.session.actions?.length
-  const verifyExecutions =
-    resolved.verifyExecutions ?? signers.verifyExecutions ?? hasExplicitActions
+  const restricted =
+    resolved.session.restrictToActions === true ||
+    resolved.session.swap !== undefined
+  const hasExplicitActions =
+    !!resolved.session.actions?.length || resolved.session.swap !== undefined
+  const verifyExecutions = restricted
+    ? true
+    : (resolved.verifyExecutions ??
+      signers.verifyExecutions ??
+      hasExplicitActions)
   return {
     type: 'experimental_session',
     session: resolved.session,
     enableData,
     verifyExecutions,
+    useDevContracts: config.useDevContracts,
   } satisfies ResolvedSessionSignerSet
 }
 
@@ -274,6 +284,7 @@ async function prepareTransaction(
     sponsored,
     eip7702InitSignature,
     settlementLayers,
+    quoters,
     sourceAssets,
     feeAsset,
     appFees,
@@ -317,6 +328,7 @@ async function prepareTransaction(
     appFees,
     customDeadline,
     protocolFees,
+    quoters,
   )
 
   return {
@@ -742,6 +754,7 @@ function getTransactionParams(transaction: Transaction) {
   const sponsored = transaction.sponsored
   const gasLimit = transaction.gasLimit
   const settlementLayers = transaction.settlementLayers
+  const quoters = transaction.quoters
   const sourceAssets = transaction.sourceAssets
   const feeAsset = transaction.feeAsset
   const appFees = transaction.appFees
@@ -764,6 +777,7 @@ function getTransactionParams(transaction: Transaction) {
     eip7702InitSignature,
     gasLimit,
     settlementLayers,
+    quoters,
     sourceAssets,
     feeAsset,
     appFees,
@@ -894,6 +908,7 @@ async function prepareTransactionAsIntent(
   appFees?: AppFeeRate,
   customDeadline?: number,
   protocolFees?: ProtocolFeeRate,
+  quoters?: SwapQuoterFilter,
 ) {
   const calls = parseCalls(callInputs, targetChain.id)
   const accountAccessList = createAccountAccessList(sourceChains, sourceAssets)
@@ -1011,6 +1026,12 @@ async function prepareTransactionAsIntent(
     }
   }
 
+  const sessionQuoters = quoterPinFromSession(signers, [
+    ...(sourceChains ?? []).map((chain) => chain.id),
+    targetChain.id,
+  ])
+  const resolvedQuoters = narrowQuoterPin(sessionQuoters, quoters)
+
   const metaIntent: IntentInput = {
     destinationChainId: targetChain.id,
     tokenRequests: tokenRequests.map((tokenRequest) => ({
@@ -1044,6 +1065,7 @@ async function prepareTransactionAsIntent(
             }
         : undefined,
       settlementLayers,
+      ...(resolvedQuoters ? { quoters: resolvedQuoters } : {}),
       signatureMode,
       auxiliaryFunds,
     },
@@ -1350,6 +1372,7 @@ async function signIntentTypedData<
         session: signers.session,
         verifyExecutions: true,
         enableData: signers.enableData,
+        useDevContracts: signers.useDevContracts,
       }
       // signWithSession (called inside getEmissarySignature) already calls packSignature
       // internally, so no transform is needed here
@@ -1362,6 +1385,7 @@ async function signIntentTypedData<
       verifyExecutions: false,
       enableData: signers.enableData,
       claimPolicyData,
+      useDevContracts: signers.useDevContracts,
     }
     const eip1271Signature = await getEip1271Signature(
       config,
@@ -1380,6 +1404,7 @@ async function signIntentTypedData<
         session: signers.session,
         verifyExecutions: true,
         enableData: signers.enableData,
+        useDevContracts: signers.useDevContracts,
       } satisfies ResolvedSessionSignerSet,
       chain,
       hash,

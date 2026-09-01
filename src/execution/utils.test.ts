@@ -7,6 +7,7 @@ import {
   DUMMY_PRECLAIMOP_SELECTOR,
   DUMMY_PRECLAIMOP_TARGET,
 } from '../modules/validators'
+import { zeroEx } from '../modules/validators/smart-sessions'
 import {
   type IntentInput,
   SIG_MODE_EMISSARY_EXECUTION_ERC1271,
@@ -16,6 +17,7 @@ import type { RhinestoneConfig, SessionSignerSet, SignerSet } from '../types'
 import {
   hashErc7739TypedDataForSolady,
   parseCalls,
+  prepareTransaction,
   prepareTransactionAsIntent,
   resolveSessionForChain,
   resolveSignatureMode,
@@ -235,6 +237,128 @@ describe('prepareTransactionAsIntent', () => {
     expect(mockGetIntentRoute).toHaveBeenCalledOnce()
     const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
     expect(intentInput.options.auxiliaryFunds).toBeUndefined()
+  })
+
+  test('forwards the public transaction quoter filter to the wire', async () => {
+    mockGetIntentRoute.mockResolvedValue({
+      intentOp: {},
+      intentCost: {},
+    })
+
+    await prepareTransaction(
+      {
+        owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+        apiKey: 'test',
+      },
+      {
+        chain: base,
+        quoters: { exclude: ['relay'] },
+      },
+    )
+
+    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    expect(intentInput.options.quoters).toEqual({ exclude: ['relay'] })
+  })
+
+  test('derives and narrows a session quoter filter on the wire', async () => {
+    mockGetIntentRoute.mockResolvedValue({
+      intentOp: {},
+      intentCost: {},
+    })
+    const enabled = vi
+      .spyOn(validators, 'isSessionEnabled')
+      .mockResolvedValue(true)
+
+    try {
+      await prepareTransactionAsIntent(
+        {
+          owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+          apiKey: 'test',
+        },
+        [base],
+        base,
+        [],
+        undefined,
+        [{ address: zeroAddress, amount: 1n }],
+        undefined,
+        false,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        {
+          type: 'experimental_session',
+          session: {
+            chain: base,
+            owners: { type: 'ecdsa', accounts: [accountA] },
+            swap: {
+              sell: {
+                token: '0x1111111111111111111111111111111111111111',
+              },
+              buy: {
+                token: '0x2222222222222222222222222222222222222222',
+              },
+              to: '0x3333333333333333333333333333333333333333',
+              via: [
+                zeroEx({
+                  settler: '0x4444444444444444444444444444444444444444',
+                }),
+              ],
+            },
+          },
+        },
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { include: ['0x', 'relay'] },
+      )
+    } finally {
+      enabled.mockRestore()
+    }
+
+    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    expect(intentInput.options.quoters).toEqual({ include: ['0x'] })
+  })
+
+  test('preserves an empty quoter include filter on the wire', async () => {
+    mockGetIntentRoute.mockResolvedValue({
+      intentOp: {},
+      intentCost: {},
+    })
+
+    await prepareTransactionAsIntent(
+      {
+        owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+        apiKey: 'test',
+      },
+      [arbitrum],
+      base,
+      [],
+      undefined,
+      [{ address: zeroAddress, amount: 1n }],
+      undefined,
+      false,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { include: [] },
+    )
+
+    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    expect(intentInput.options.quoters).toEqual({ include: [] })
   })
 
   test('includes appFees in options when provided', async () => {

@@ -4,8 +4,13 @@ import {
   getModuleUninstallationCalls,
 } from '../accounts'
 import {
+  fynd,
   getEnableSessionCall,
   getSmartSessionValidator,
+  resolveZeroExSettler,
+  rhinestoneSwap,
+  toSession,
+  zeroEx,
 } from '../modules/validators/smart-sessions'
 import type { LazyCallInput, SessionInput } from '../types'
 
@@ -72,4 +77,13 @@ function experimental_enableSession(
   }
 }
 
-export { experimental_disable, experimental_enable, experimental_enableSession }
+export {
+  experimental_disable,
+  experimental_enable,
+  experimental_enableSession,
+  fynd,
+  resolveZeroExSettler,
+  rhinestoneSwap,
+  toSession,
+  zeroEx,
+}

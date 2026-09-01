@@ -33,13 +33,19 @@ import {
 } from '../../orchestrator/registry'
 import type {
   Action,
+  ArgPolicyExpression,
+  FyndVenue,
   Policy,
   ProviderConfig,
   RhinestoneAccountConfig,
   RhinestoneConfig,
+  RhinestoneSwapVenue,
   Session,
   SessionEnableData,
+  SwapScope,
+  SwapVenue,
   UniversalActionPolicyParamCondition,
+  ZeroExVenue,
 } from '../../types'
 import smartSessionEmissaryAbi from '../abi/smart-session-emissary'
 import { MODULE_TYPE_ID_VALIDATOR, type Module } from '../common'
@@ -54,6 +60,20 @@ import {
   encodePermit2ClaimPolicyInitData,
   PERMIT2_CLAIM_POLICY_ADDRESS,
 } from './policies/claim/permit2'
+import { fynd } from './smart-sessions/swap/fynd'
+import { rhinestoneSwap } from './smart-sessions/swap/rhinestone'
+import {
+  resolveSwapScope,
+  type SwapScopeFor,
+  type SwapVenueFor,
+  toSession,
+} from './smart-sessions/swap/scope'
+import {
+  resolveZeroExSettler,
+  type ZeroExAnySettlerOptions,
+  type ZeroExPinnedOptions,
+  zeroEx,
+} from './smart-sessions/swap/zero-ex'
 
 type FixedLengthArray<
   T,
@@ -226,6 +246,7 @@ const SUDO_POLICY_ADDRESS: Address =
   '0x0000003111cd8e92337c100f22b7a9dbf8dee301'
 const UNIVERSAL_ACTION_POLICY_ADDRESS: Address =
   '0x0000006dda6c463511c4e9b05cfc34c1247fcf1f'
+const ARG_POLICY_ADDRESS: Address = '0x0000000000167edE64D8751daACDdC0312565a73'
 const USAGE_LIMIT_POLICY_ADDRESS: Address =
   '0x1f34ef8311345a3a4a4566af321b313052f51493'
 const VALUE_LIMIT_POLICY_ADDRESS: Address =
@@ -249,6 +270,7 @@ interface ResolvedSessionSignerSet {
   enableData?: SessionEnableData
   verifyExecutions: boolean
   claimPolicyData?: Hex
+  useDevContracts?: boolean
 }
 
 function packSignature(
@@ -261,7 +283,7 @@ function packSignature(
     const smartSessionMode = signers.enableData
       ? SMART_SESSION_MODE_ENABLE
       : SMART_SESSION_MODE_USE
-    const sessionData = getSessionData(signers.session)
+    const sessionData = getSessionData(signers.session, signers.useDevContracts)
 
     const packedSignature = signers.enableData
       ? (LibZip.flzCompress(
@@ -644,27 +666,69 @@ function getSessionData(
   session: Session,
   useDevContracts?: boolean,
 ): SessionData {
-  // ENS validation is HCA-only, and HCA accounts cannot install the smart
-  // session validator, so an ENS session owner would silently resolve to the
-  // HCA module and sign/enable against a validator the account does not have.
   if (ownerSetUsesEns(session.owners)) {
     throw new Error('ENS owners are not supported for smart sessions')
   }
+
   const validator = getValidator(session.owners)
-  const allowedContent = [
-    {
-      contentNames: [''],
-      appDomainSeparator: zeroHash,
-    },
-  ]
+  const swap = session.swap
+    ? resolveSwapScope(
+        session.swap,
+        session.chain.id,
+        useDevContracts ? 'development' : 'production',
+      )
+    : undefined
+  const restricted = session.restrictToActions === true || swap !== undefined
+  const explicitActions = [...(session.actions ?? []), ...(swap?.actions ?? [])]
+
+  if (restricted) {
+    if (session.claimPolicies?.length) {
+      throw new Error(
+        'Restricted sessions cannot use claimPolicies because their guardrails rely on the fallback action',
+      )
+    }
+    if (explicitActions.length === 0) {
+      throw new Error(
+        'Restricted sessions require at least one explicit action or swap scope',
+      )
+    }
+    const seen = new Set<string>()
+    for (const action of explicitActions) {
+      if (!('target' in action) || !('selector' in action)) {
+        throw new Error('Restricted sessions do not allow fallback actions')
+      }
+      if (action.target.toLowerCase() === SMART_SESSIONS_FALLBACK_TARGET_FLAG) {
+        throw new Error(
+          'Restricted sessions cannot target the smart-session fallback sentinel',
+        )
+      }
+      const key = `${action.target.toLowerCase()}|${action.selector.toLowerCase()}`
+      if (seen.has(key)) {
+        throw new Error(
+          `Duplicate scoped action for ${action.target} ${action.selector}`,
+        )
+      }
+      seen.add(key)
+    }
+  }
+
   const erc7739Data = {
-    allowedERC7739Content: allowedContent,
-    erc1271Policies: [
-      {
-        policy: SUDO_POLICY_ADDRESS,
-        initData: '0x' as Hex,
-      },
-    ],
+    allowedERC7739Content: restricted
+      ? []
+      : [
+          {
+            contentNames: [''],
+            appDomainSeparator: zeroHash,
+          },
+        ],
+    erc1271Policies: restricted
+      ? []
+      : [
+          {
+            policy: SUDO_POLICY_ADDRESS,
+            initData: '0x' as Hex,
+          },
+        ],
   }
   const sudoAction = {
     actionTargetSelector: SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
@@ -676,72 +740,112 @@ function getSessionData(
       },
     ],
   }
-
-  const userHasFallbackAction = session.actions?.some(
+  const userHasFallbackAction = explicitActions.some(
     (action) => !('target' in action) && !('selector' in action),
   )
-
   const injectedActions: Action[] = [
-    // Native token wrapping
-    {
-      target: getWrappedTokenAddress(session.chain),
-      selector: toFunctionSelector({
-        type: 'function',
-        name: 'deposit',
-        inputs: [],
-        outputs: [],
-        stateMutability: 'payable',
-      }),
-    },
-    // Only inject the intent-execution fallback if the user hasn't defined their own
-    // fallback action — otherwise both map to the same actionId and their policies merge,
-    // causing IntentExecutionPolicy to be required for all fallback calls
-    ...(!userHasFallbackAction
+    ...(!restricted
+      ? [
+          {
+            target: getWrappedTokenAddress(session.chain),
+            selector: toFunctionSelector({
+              type: 'function',
+              name: 'deposit',
+              inputs: [],
+              outputs: [],
+              stateMutability: 'payable',
+            }),
+          } satisfies Action,
+        ]
+      : []),
+    ...(!restricted && !userHasFallbackAction
       ? [{ policies: [{ type: 'intent-execution' as const }] }]
       : []),
-    // Dummy action: allows the filler to call verifyExecution in ENABLE mode using
-    // an injected dummy preclaimop so any session can be enabled on-chain without
-    // a separate UserOp, regardless of whether it has claim or action policies.
     {
       target: DUMMY_PRECLAIMOP_TARGET,
       selector: DUMMY_PRECLAIMOP_SELECTOR,
-      policies: [{ type: 'sudo' as const }],
+      policies: restricted
+        ? [{ type: 'value-limit' as const, limit: 1n }]
+        : [{ type: 'sudo' as const }],
     },
   ]
-
-  const actions = session.actions?.length
-    ? [...session.actions, ...injectedActions].map((action) => ({
-        actionTargetSelector:
-          'selector' in action
-            ? action.selector
-            : SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
-        actionTarget:
-          'target' in action
-            ? action.target
-            : SMART_SESSIONS_FALLBACK_TARGET_FLAG,
-        actionPolicies: action.policies?.map((policy) =>
-          getPolicyData(policy, useDevContracts),
-        ) ?? [
-          {
-            policy: SUDO_POLICY_ADDRESS,
-            initData: '0x' as Hex,
-          },
-        ],
-      }))
+  const sessionActions =
+    restricted || explicitActions.length > 0
+      ? [...explicitActions, ...injectedActions]
+      : []
+  const actions = sessionActions.length
+    ? sessionActions.map((action) => resolveActionData(action, useDevContracts))
     : [sudoAction]
+  const saltActions =
+    restricted && useDevContracts && session.swap
+      ? [
+          ...(session.actions ?? []),
+          ...resolveSwapScope(session.swap, session.chain.id, 'production')
+            .actions,
+          ...injectedActions,
+        ].map((action) => resolveActionData(action, false))
+      : actions
+
   return {
     sessionValidator: validator.address,
-    salt: zeroHash,
+    salt: restricted ? getRestrictedSessionSalt(saltActions) : zeroHash,
     sessionValidatorInitData: validator.initData,
     erc7739Policies: erc7739Data,
     actions,
-    // Note: Permit2ClaimPolicy has no dev deployment — same address in all environments
     claimPolicies:
-      session.claimPolicies?.map((p) => ({
+      session.claimPolicies?.map((policy) => ({
         policy: PERMIT2_CLAIM_POLICY_ADDRESS,
-        initData: encodePermit2ClaimPolicyInitData(p),
+        initData: encodePermit2ClaimPolicyInitData(policy),
       })) ?? [],
   }
+}
+
+function resolveActionData(
+  action: Action,
+  useDevContracts?: boolean,
+): ActionData {
+  return {
+    actionTargetSelector:
+      'selector' in action
+        ? action.selector
+        : SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
+    actionTarget:
+      'target' in action ? action.target : SMART_SESSIONS_FALLBACK_TARGET_FLAG,
+    actionPolicies: action.policies?.map((policy) =>
+      getPolicyData(policy, useDevContracts),
+    ) ?? [
+      {
+        policy: SUDO_POLICY_ADDRESS,
+        initData: '0x' as Hex,
+      },
+    ],
+  }
+}
+
+function getRestrictedSessionSalt(actions: readonly ActionData[]): Hex {
+  return keccak256(
+    encodeAbiParameters(
+      [
+        {
+          name: 'actions',
+          type: 'tuple[]',
+          components: [
+            { name: 'actionTargetSelector', type: 'bytes4' },
+            { name: 'actionTarget', type: 'address' },
+            {
+              name: 'actionPolicies',
+              type: 'tuple[]',
+              components: [
+                { name: 'policy', type: 'address' },
+                { name: 'initData', type: 'bytes' },
+              ],
+            },
+          ],
+        },
+      ],
+      [actions],
+    ),
+  )
 }
 
 function getPermissionId(session: Session) {
@@ -771,6 +875,69 @@ function getPermissionId(session: Session) {
   )
 }
 
+function encodeActionRule(
+  rule: Extract<Policy, { type: 'universal-action' }>['rules'][number],
+): ActionParamRule {
+  const conditions: Record<UniversalActionPolicyParamCondition, number> = {
+    equal: ACTION_CONDITION_EQUAL,
+    greaterThan: ACTION_CONDITION_GREATER_THAN,
+    lessThan: ACTION_CONDITION_LESS_THAN,
+    greaterThanOrEqual: ACTION_CONDITION_GREATER_THAN_OR_EQUAL,
+    lessThanOrEqual: ACTION_CONDITION_LESS_THAN_OR_EQUAL,
+    notEqual: ACTION_CONDITION_NOT_EQUAL,
+    inRange: ACTION_CONDITION_IN_RANGE,
+  }
+  return {
+    condition: conditions[rule.condition],
+    offset: rule.calldataOffset,
+    isLimited: rule.usageLimit !== undefined,
+    ref: isHex(rule.referenceValue)
+      ? padHex(rule.referenceValue)
+      : toHex(rule.referenceValue, { size: 32 }),
+    usage: { limit: rule.usageLimit ?? 0n, used: 0n },
+  }
+}
+
+function compileArgPolicyExpression(expression: ArgPolicyExpression) {
+  const rules: ActionParamRule[] = []
+  const packedNodes: bigint[] = []
+  const walk = (node: ArgPolicyExpression): number => {
+    if (node.type === 'rule') {
+      const ruleIndex = rules.push(encodeActionRule(node.rule)) - 1
+      const nodeIndex = packedNodes.length
+      packedNodes.push(BigInt(ruleIndex) << 2n)
+      return nodeIndex
+    }
+    if (node.type === 'not') {
+      const child = walk(node.child)
+      const nodeIndex = packedNodes.length
+      packedNodes.push(1n | (BigInt(child) << 10n))
+      return nodeIndex
+    }
+    const left = walk(node.left)
+    const right = walk(node.right)
+    const nodeIndex = packedNodes.length
+    packedNodes.push(
+      (node.type === 'and' ? 2n : 3n) |
+        (BigInt(left) << 10n) |
+        (BigInt(right) << 18n),
+    )
+    return nodeIndex
+  }
+  const rootNodeIndex = walk(expression)
+  if (rules.length > 128) {
+    throw new Error(
+      `ArgPolicy expression has ${rules.length} rules, max is 128`,
+    )
+  }
+  if (packedNodes.length > 256) {
+    throw new Error(
+      `ArgPolicy expression has ${packedNodes.length} nodes, max is 256`,
+    )
+  }
+  return { rules, packedNodes, rootNodeIndex }
+}
+
 function getPolicyData(policy: Policy, useDevContracts?: boolean): PolicyData {
   switch (policy.type) {
     case 'sudo':
@@ -786,26 +953,10 @@ function getPolicyData(policy: Policy, useDevContracts?: boolean): PolicyData {
         initData: '0x',
       }
     case 'universal-action': {
-      function getCondition(condition: UniversalActionPolicyParamCondition) {
-        switch (condition) {
-          case 'equal':
-            return ACTION_CONDITION_EQUAL
-          case 'greaterThan':
-            return ACTION_CONDITION_GREATER_THAN
-          case 'lessThan':
-            return ACTION_CONDITION_LESS_THAN
-          case 'greaterThanOrEqual':
-            return ACTION_CONDITION_GREATER_THAN_OR_EQUAL
-          case 'lessThanOrEqual':
-            return ACTION_CONDITION_LESS_THAN_OR_EQUAL
-          case 'notEqual':
-            return ACTION_CONDITION_NOT_EQUAL
-          case 'inRange':
-            return ACTION_CONDITION_IN_RANGE
-        }
-      }
-
       const MAX_RULES = 16
+      if (policy.rules.length > MAX_RULES) {
+        throw new Error('Universal action policy supports at most 16 rules')
+      }
       const rules = createFixedArray<ActionParamRule, typeof MAX_RULES>(
         MAX_RULES,
         () => ({
@@ -817,20 +968,7 @@ function getPolicyData(policy: Policy, useDevContracts?: boolean): PolicyData {
         }),
       )
       for (let i = 0; i < policy.rules.length; i++) {
-        const rule = policy.rules[i]
-        const ref = isHex(rule.referenceValue)
-          ? padHex(rule.referenceValue)
-          : toHex(rule.referenceValue, { size: 32 })
-        rules[i] = {
-          condition: getCondition(rule.condition),
-          offset: rule.calldataOffset,
-          isLimited: rule.usageLimit !== undefined,
-          ref,
-          usage: {
-            limit: rule.usageLimit ? rule.usageLimit : 0n,
-            used: 0n,
-          },
-        }
+        rules[i] = encodeActionRule(policy.rules[i])
       }
       return {
         policy: UNIVERSAL_ACTION_POLICY_ADDRESS,
@@ -900,6 +1038,55 @@ function getPolicyData(policy: Policy, useDevContracts?: boolean): PolicyData {
                 length: BigInt(policy.rules.length),
                 rules: rules,
               },
+            },
+          ],
+        ),
+      }
+    }
+    case 'arg-policy': {
+      const compiled = compileArgPolicyExpression(policy.expression)
+      return {
+        policy: ARG_POLICY_ADDRESS,
+        initData: encodeAbiParameters(
+          [
+            {
+              name: 'ActionConfig',
+              type: 'tuple',
+              components: [
+                { name: 'valueLimitPerUse', type: 'uint256' },
+                {
+                  name: 'paramRules',
+                  type: 'tuple',
+                  components: [
+                    { name: 'rootNodeIndex', type: 'uint8' },
+                    {
+                      name: 'rules',
+                      type: 'tuple[]',
+                      components: [
+                        { name: 'condition', type: 'uint8' },
+                        { name: 'offset', type: 'uint64' },
+                        { name: 'isLimited', type: 'bool' },
+                        { name: 'ref', type: 'bytes32' },
+                        {
+                          name: 'usage',
+                          type: 'tuple',
+                          components: [
+                            { name: 'limit', type: 'uint256' },
+                            { name: 'used', type: 'uint256' },
+                          ],
+                        },
+                      ],
+                    },
+                    { name: 'packedNodes', type: 'uint256[]' },
+                  ],
+                },
+              ],
+            },
+          ],
+          [
+            {
+              valueLimitPerUse: policy.valueLimitPerUse ?? 0n,
+              paramRules: compiled,
             },
           ],
         ),
@@ -1003,6 +1190,7 @@ function buildMockSignature(
     type: 'experimental_session',
     session,
     verifyExecutions: true,
+    useDevContracts,
     enableData: {
       userSignature: `0x${'00'.repeat(65)}` as Hex,
       hashesAndChainIds,
@@ -1033,6 +1221,7 @@ export {
   TIME_FRAME_POLICY_ADDRESS,
   SUDO_POLICY_ADDRESS,
   UNIVERSAL_ACTION_POLICY_ADDRESS,
+  ARG_POLICY_ADDRESS,
   USAGE_LIMIT_POLICY_ADDRESS,
   VALUE_LIMIT_POLICY_ADDRESS,
   INTENT_EXECUTION_POLICY_ADDRESS,
@@ -1046,12 +1235,27 @@ export {
   isSessionEnabled,
   signEnableSession,
   buildMockSignature,
+  fynd,
+  resolveZeroExSettler,
+  rhinestoneSwap,
+  toSession,
+  zeroEx,
 }
+
 export type {
   ChainSession,
   ChainDigest,
+  FyndVenue,
   ResolvedSessionSignerSet,
+  RhinestoneSwapVenue,
   SessionData,
   SmartSessionModeType,
   SessionDetails,
+  SwapScope,
+  SwapScopeFor,
+  SwapVenue,
+  SwapVenueFor,
+  ZeroExAnySettlerOptions,
+  ZeroExPinnedOptions,
+  ZeroExVenue,
 }
