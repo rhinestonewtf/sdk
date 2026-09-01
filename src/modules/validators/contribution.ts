@@ -1,6 +1,7 @@
 import type { Hex } from 'viem'
 import { encodeMultiFactorContribution } from './multi-factor'
 import { encodeEcdsaValidatorContribution } from './ownable'
+import { encodeQuorumValidatorContribution } from './quorum'
 import { encodeSmartSessionContribution } from './smart-sessions/signature'
 import type {
   ValidatorContributionCodec,
@@ -41,6 +42,19 @@ export function encodeValidatorContribution(
         ownerOrder: codec.ownerOrder,
         threshold: codec.threshold,
         recoveryEncoding: codec.recoveryEncoding,
+        contributions: ecdsa,
+      })
+    }
+    case 'weighted-quorum': {
+      const ecdsa = contributions.filter(
+        (contribution) => contribution.kind === 'ecdsa',
+      )
+      if (ecdsa.length !== contributions.length) {
+        throw new Error('Quorum validator received a non-ECDSA contribution')
+      }
+      return encodeQuorumValidatorContribution({
+        owners: codec.owners,
+        thresholdWeight: codec.thresholdWeight,
         contributions: ecdsa,
       })
     }

@@ -151,14 +151,16 @@ export function buildUserOperationSigningPlanInput(
   chain: EvmChainReference,
   hash: Hex,
 ): UserOperationSigningPlanInput {
+  const selectedSignerIds = signingContext.effectiveSigners.signerIds
   const tasks = createValidatorSigningTasks({
     validator: signingContext.validator,
     signerReferences: signingContext.signerReferences,
     taskPrefix: 'user-operation',
     ecdsaInvocation: 'ecdsa-sign-message',
     webauthnInvocation: 'webauthn-sign-hash',
+    selectedSignerIds,
   })
-  const topology = signingTopology(signingContext.validator)
+  const topology = signingTopology(signingContext.validator, selectedSignerIds)
   return {
     hash,
     chain,

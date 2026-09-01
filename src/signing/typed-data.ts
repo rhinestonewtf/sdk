@@ -1,5 +1,4 @@
 import { type Hex, hashTypedData, type TypedDataDefinition } from 'viem'
-import { wrapKernelMessageHash } from '../accounts/adapters/kernel'
 import {
   K1_DEFAULT_VALIDATOR_ADDRESS,
   startaleEip712Domain,
@@ -10,6 +9,7 @@ import type { SigningContext } from './context'
 import { encodePlannedValidatorContribution } from './contribution'
 import { runSigningStep } from './error'
 import { executeSigningPlan, type SigningStageAssemblyInput } from './execute'
+import { resolveAccountValidatorSignableHash } from './hash'
 import { createSingleStageSigningPlan } from './plan'
 import { wrapErc6492Signature } from './protocols/erc6492'
 import {
@@ -44,37 +44,49 @@ export interface TypedDataSigningPlanInput {
   >
 }
 
-export function resolveAccountTypedDataSigning(input: {
-  readonly typedData: TypedDataDefinition
-  readonly chain: EvmChainReference
-  readonly context: SigningContext
-}): {
+export interface AccountTypedDataSigningRoute {
   readonly material: SigningPayloadMaterial
   readonly payloadKind: 'message' | 'typed-data'
   readonly ecdsaInvocation: 'ecdsa-sign-message' | 'ecdsa-sign-typed-data'
   readonly webauthnInvocation: 'webauthn-sign-hash' | 'webauthn-sign-typed-data'
   readonly erc7739: ArtifactAssemblyPlan['erc7739']
-} {
-  const payload = hashTypedData(input.typedData)
+}
+
+export function resolveAccountTypedDataSigning(input: {
+  readonly typedData: TypedDataDefinition
+  readonly chain: EvmChainReference
+  readonly context: SigningContext
+  /**
+   * Hash presented to the smart account's ERC-1271 entry point. Defaults to
+   * the EIP-712 hash of `typedData`.
+   */
+  readonly validationHash?: Hex
+}): AccountTypedDataSigningRoute {
+  const payload = input.validationHash ?? hashTypedData(input.typedData)
   const accountKind = input.context.account.definition.kind
   const startaleK1 =
     accountKind === 'startale' &&
     input.context.validatorCapabilities.compatibilityKey.moduleAddress.toLowerCase() ===
       K1_DEFAULT_VALIDATOR_ADDRESS.toLowerCase()
-  const messagePayload =
-    accountKind === 'kernel'
-      ? wrapKernelMessageHash(payload, input.context.account.address)
-      : startaleK1
-        ? hashErc7739TypedData({
-            typedData: input.typedData,
-            verifierDomain: startaleEip712Domain(
-              input.context.account.address,
-              input.chain.id,
-            ),
-          })
-        : input.context.validatorCapabilities.supportsEip712
-          ? undefined
-          : payload
+  const requiresRawHash =
+    accountKind === 'kernel' || input.context.validator.kind === 'quorum'
+  const messagePayload = requiresRawHash
+    ? resolveAccountValidatorSignableHash({
+        hash: payload,
+        chain: input.chain,
+        context: input.context,
+      })
+    : startaleK1
+      ? hashErc7739TypedData({
+          typedData: input.typedData,
+          verifierDomain: startaleEip712Domain(
+            input.context.account.address,
+            input.chain.id,
+          ),
+        })
+      : input.context.validatorCapabilities.supportsEip712
+        ? undefined
+        : payload
   return messagePayload
     ? {
         material: { kind: 'message', message: { raw: messagePayload } },

@@ -3,6 +3,7 @@ import type { ResolvedModule } from '../types'
 import { encodeEnsStatelessData, resolveEnsValidator } from './ens'
 import { resolveMultiFactorValidator } from './multi-factor'
 import { resolveOwnableStatelessData, resolveOwnableValidator } from './ownable'
+import { resolveQuorumValidator } from './quorum'
 import type {
   AtomicValidatorDefinition,
   ResolvedValidatorDefinition,
@@ -20,6 +21,8 @@ export function resolveAtomicValidator(
   switch (definition.kind) {
     case 'ecdsa':
       return resolveOwnableValidator(definition)
+    case 'quorum':
+      return resolveQuorumValidator(definition)
     case 'ens':
       return resolveEnsValidator(definition)
     case 'passkey':
@@ -43,6 +46,10 @@ export function resolveAtomicValidatorStatelessData(
       return encodeEnsStatelessData(definition)
     case 'passkey':
       return resolveWebauthnStatelessData(definition)
+    case 'quorum':
+      throw new Error(
+        'Validator quorum cannot be used as a multi-factor factor',
+      )
     case 'k1':
     case 'smart-session':
       throw new Error(`Validator ${definition.kind} requires feature input`)

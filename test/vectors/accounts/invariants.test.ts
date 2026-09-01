@@ -159,6 +159,8 @@ function reorderOwners(owners: OwnerSet, reorder: Reorder): OwnerSet {
   switch (owners.type) {
     case 'ecdsa':
       return { ...owners, accounts: reorder(owners.accounts) }
+    case 'quorum':
+      return { ...owners, owners: reorder(owners.owners) }
     case 'passkey':
       return { ...owners, accounts: reorder(owners.accounts) }
     case 'ens':
@@ -182,6 +184,8 @@ function ownerCount(owners: OwnerSet): number {
     case 'ecdsa':
     case 'passkey':
       return owners.accounts.length
+    case 'quorum':
+      return owners.owners.length
     case 'ens':
       return owners.owners.length
     case 'multi-factor':
@@ -207,6 +211,14 @@ function recaseOwners(owners: OwnerSet, casing: Casing): OwnerSet {
         accounts: owners.accounts.map((account) =>
           withAddressCasing(account, casing),
         ),
+      }
+    case 'quorum':
+      return {
+        ...owners,
+        owners: owners.owners.map((owner) => ({
+          ...owner,
+          account: withAddressCasing(owner.account, casing),
+        })),
       }
     case 'ens':
       return {
@@ -643,7 +655,10 @@ describe('derivation is invariant under module and default spelling', () => {
         expect(deriveStatic({ ...withoutDefaults, modules: [] })).toEqual(
           baseline,
         )
-        if (withoutDefaults.owners) {
+        if (
+          withoutDefaults.owners &&
+          withoutDefaults.owners.type !== 'quorum'
+        ) {
           const { threshold: _threshold, ...owners } = withoutDefaults.owners
           const implicit = deriveStatic({
             ...withoutDefaults,
@@ -753,6 +768,18 @@ function replaceOwnerAccounts(
     const accounts = replace(owners.accounts)
     return accounts ? { ...owners, accounts } : undefined
   }
+  if (owners.type === 'quorum') {
+    const accounts = replace(owners.owners.map((owner) => owner.account))
+    return accounts
+      ? {
+          ...owners,
+          owners: accounts.map((account, index) => ({
+            account,
+            weight: owners.owners[index]?.weight ?? 1n,
+          })),
+        }
+      : undefined
+  }
   if (owners.type === 'ens') {
     const accounts = replace(owners.owners.map((owner) => owner.account))
     return accounts
@@ -790,7 +817,7 @@ const mutations: readonly Mutation[] = [
   {
     name: 'raises the owner threshold',
     apply: (config) => {
-      if (!config.owners) return undefined
+      if (!config.owners || config.owners.type === 'quorum') return undefined
       if (ownerCount(config.owners) < 2) return undefined
       if (config.owners.threshold === 2) return undefined
       return {

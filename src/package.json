@@ -43,6 +43,10 @@
       "types": "./dist/src/signing/passkeys.d.ts",
       "import": "./dist/src/signing/passkeys.js"
     },
+    "./signing/quorum": {
+      "types": "./dist/src/signing/quorum.d.ts",
+      "import": "./dist/src/signing/quorum.js"
+    },
     "./actions/smart-sessions": {
       "types": "./dist/src/actions/smart-sessions.d.ts",
       "import": "./dist/src/actions/smart-sessions.js"

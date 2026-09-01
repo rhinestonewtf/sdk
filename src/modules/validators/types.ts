@@ -5,6 +5,7 @@ import type { SmartSessionEnableContributionData } from './smart-session-signatu
 
 export type ValidatorKind =
   | 'ecdsa'
+  | 'quorum'
   | 'ens'
   | 'passkey'
   | 'multi-factor'
@@ -29,6 +30,20 @@ export interface OwnableValidatorConfig {
   accounts: Account[]
   threshold?: number
   module?: Address
+}
+
+/** One Quorum Signer owner and its non-zero voting weight. */
+export interface QuorumOwner {
+  account: Account
+  weight: bigint
+}
+
+/** Weighted owner configuration for a deployed Quorum Signer validator. */
+export interface QuorumValidatorConfig {
+  type: 'quorum'
+  owners: QuorumOwner[]
+  thresholdWeight: bigint
+  module: Address
 }
 
 export interface ENSValidatorConfig {
@@ -57,6 +72,7 @@ export interface MultiFactorValidatorConfig {
 
 export type OwnerSet =
   | OwnableValidatorConfig
+  | QuorumValidatorConfig
   | ENSValidatorConfig
   | WebauthnValidatorConfig
   | MultiFactorValidatorConfig
@@ -65,9 +81,9 @@ export type OwnerSet =
 // surface (the published types are the named configs above and `OwnerSet`).
 export type AtomicValidatorInput =
   | OwnableValidatorConfig
+  | QuorumValidatorConfig
   | ENSValidatorConfig
   | WebauthnValidatorConfig
-
 export type MultiFactorValidatorInput = MultiFactorValidatorConfig
 
 export type ValidatorInput = OwnerSet
@@ -86,6 +102,7 @@ export type ValidatorOwner =
       readonly signerId: string
       readonly account: Account
       readonly expiration?: Date
+      readonly weight?: bigint
     }
   | {
       readonly kind: 'webauthn'
@@ -101,6 +118,7 @@ export interface AtomicValidatorDefinition {
   readonly module: ValidatorModuleSelection
   readonly owners: readonly ValidatorOwner[]
   readonly threshold: number
+  readonly thresholdWeight?: bigint
 }
 
 export interface MultiFactorValidatorDefinition {
@@ -134,6 +152,16 @@ export type ValidatorContributionCodec =
           readonly publicKey: Hex
         }[]
       }
+    }
+  | {
+      readonly kind: 'weighted-quorum'
+      readonly validator: ModuleId
+      readonly owners: readonly {
+        readonly ownerId: string
+        readonly signer: Address
+        readonly weight: bigint
+      }[]
+      readonly thresholdWeight: bigint
     }
   | {
       readonly kind: 'nested-threshold'
