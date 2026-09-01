@@ -366,7 +366,7 @@ describe('resolveSwapScope — multi-venue and validation', () => {
           // Different caps produce different rules for the same Swapper call.
           via: [
             zeroEx({ settler: SETTLER }),
-            zeroEx({ settler: SETTLER, maxSpend: 5n }),
+            zeroEx({ anySettler: true, maxSpend: 5n }),
           ],
         }),
         PLASMA,

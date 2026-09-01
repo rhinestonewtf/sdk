@@ -643,6 +643,7 @@ function tamperedSession(
     buyToken: Address
     recipient: Address
     sessionKey: ReturnType<typeof privateKeyToAccount>
+    settler: Address
   },
   offset: bigint,
   replacement: unknown,
@@ -652,7 +653,7 @@ function tamperedSession(
       sell: { token: args.sellToken, maxTotal: SESSION_CAP },
       buy: { token: args.buyToken },
       to: args.recipient,
-      via: [zeroEx({ settler })],
+      via: [zeroEx({ settler: args.settler })],
     },
     plasma.id,
   )
@@ -735,12 +736,14 @@ describe
         const before = await erc20Balance(PLASMA_USDT0, address)
         const usdcBefore = await erc20Balance(usdc, address)
 
+        const settler = await resolveZeroExSettler(plasmaClient())
         const session = tamperedSession(
           {
             sellToken: PLASMA_USDT0,
             buyToken: usdc,
             recipient: address,
             sessionKey: privateKeyToAccount(generatePrivateKey()),
+            settler,
           },
           offset,
           replacement,
