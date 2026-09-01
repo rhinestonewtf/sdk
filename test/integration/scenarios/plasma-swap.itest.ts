@@ -9,6 +9,7 @@ import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import { plasma } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 import type { RhinestoneAccount, Session } from '../../../src/index'
+import { resolveSwapScope } from '../../../src/modules/validators/smart-sessions/swap/scope'
 import {
   resolveZeroExSettler,
   ZEROX_ALLOWANCE_HOLDER,
@@ -621,4 +622,150 @@ describe
       log('USDC leaked to outsider', leaked)
       expect(leaked).toBe(0n)
     })
+  })
+
+/**
+ * Invariants of the pinned Swapper route, tested against real intents.
+ *
+ * The compliant swap succeeding proves the pins MATCH production calldata. It
+ * does not prove they BIND — an inert rule would also let it through. So each
+ * case here keeps the real 0x route and corrupts one pinned word, via the
+ * public raw-`actions` passthrough. A rule that binds turns the
+ * previously-succeeding swap into an on-chain rejection.
+ *
+ * Every case is expected to fail, so they cost nothing but gas-free simulation.
+ */
+type TamperedRule = { calldataOffset: bigint; referenceValue: unknown }
+
+/** Rebuild the scoped session with one pinned word replaced. */
+function tamperedSession(
+  args: {
+    sellToken: Address
+    buyToken: Address
+    recipient: Address
+    sessionKey: ReturnType<typeof privateKeyToAccount>
+  },
+  offset: bigint,
+  replacement: unknown,
+) {
+  const { permissions, actions } = resolveSwapScope(
+    {
+      sell: { token: args.sellToken, maxTotal: SESSION_CAP },
+      buy: { token: args.buyToken },
+      to: args.recipient,
+      via: [swapperZeroEx()],
+    },
+    plasma.id,
+  )
+  const tampered = actions.map((action) => ({
+    ...action,
+    policies: action.policies?.map((policy) =>
+      policy.type === 'universal-action'
+        ? {
+            ...policy,
+            rules: policy.rules.map((rule: TamperedRule) =>
+              rule.calldataOffset === offset
+                ? { ...rule, referenceValue: replacement }
+                : rule,
+            ),
+          }
+        : policy,
+    ),
+  }))
+  return toSession({
+    chain: plasma,
+    owners: { type: 'ecdsa', accounts: [args.sessionKey] },
+    // The internal (loose) shapes are what `resolveSwapScope` emits; the public
+    // config type is the ABI-inferred one, so a cast is unavoidable here.
+    // biome-ignore lint/suspicious/noExplicitAny: internal shapes, corrupted on purpose
+    permissions: permissions as any,
+    // biome-ignore lint/suspicious/noExplicitAny: deliberately corrupted rules
+    actions: tampered as any,
+    restrictToActions: true,
+  })
+}
+
+describe
+  .runIf(enabled)
+  .sequential('plasma swapper route invariants (RHI-6286)', () => {
+    const cases: { name: string; offset: bigint; replacement: unknown }[] = [
+      {
+        name: 'calls[1].target pinned to a non-0x aggregator',
+        offset: 576n,
+        replacement: '0x000000000000000000000000000000000000dEaD' as Address,
+      },
+      {
+        name: 'calls[] length pinned to 3 instead of 2',
+        offset: 256n,
+        replacement: 3n,
+      },
+      {
+        name: 'calls[] array pointer pinned to a wrong position',
+        offset: 224n,
+        replacement: 288n,
+      },
+      {
+        name: 'calls[0].target pinned to a token that is not the sell token',
+        offset: 352n,
+        replacement: '0x000000000000000000000000000000000000dEaD' as Address,
+      },
+      {
+        name: 'head tokenIn pinned to the wrong token',
+        offset: 0n,
+        replacement: '0x000000000000000000000000000000000000dEaD' as Address,
+      },
+      {
+        name: 'head tokenOut pinned to the wrong token',
+        offset: 64n,
+        replacement: '0x000000000000000000000000000000000000dEaD' as Address,
+      },
+      {
+        name: 'head recipient pinned to someone other than the account',
+        offset: 160n,
+        replacement: '0x000000000000000000000000000000000000dEaD' as Address,
+      },
+    ]
+
+    for (const { name, offset, replacement } of cases) {
+      test(`rejects when ${name}`, async () => {
+        const owner = ownerAccount()
+        const account = await createSwapAccount(owner)
+        const address = await account.getAddress()
+        const usdc = plasmaUsdc()
+
+        const before = await erc20Balance(PLASMA_USDT0, address)
+        const usdcBefore = await erc20Balance(usdc, address)
+
+        const session = tamperedSession(
+          {
+            sellToken: PLASMA_USDT0,
+            buyToken: usdc,
+            recipient: address,
+            sessionKey: privateKeyToAccount(generatePrivateKey()),
+          },
+          offset,
+          replacement,
+        )
+
+        const execution = await executeIntent({
+          account,
+          label: `plasma-swap/invariant/${offset}`,
+          transaction: await withEnableData(account, session, {
+            chain: plasma,
+            tokenRequests: [{ address: usdc, amount: usdcBefore + BUY_DELTA }],
+            sourceAssets: { [plasma.id]: [PLASMA_USDT0] },
+            sponsored: true,
+            signers: { type: 'session' as const, session },
+          }),
+        })
+
+        log(`invariant@${offset} phase`, execution.phase)
+        const spent = before - (await erc20Balance(PLASMA_USDT0, address))
+        log(`invariant@${offset} spent`, spent)
+        // The identical session with a CORRECT pin executes this same swap, so
+        // a rejection here is the pinned word doing the work.
+        expect(execution.phase).not.toBe('success')
+        expect(spent).toBe(0n)
+      })
+    }
   })
