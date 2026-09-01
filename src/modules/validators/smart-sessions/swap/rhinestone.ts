@@ -304,7 +304,7 @@ export function scopeRhinestone(
     if (ctx.cap !== undefined) {
       rules.push(cumulativeCap(offsets[sellAmountParam], ctx.cap))
     }
-    if (routeAggregator !== undefined) {
+    if (venue.routes === undefined && routeAggregator !== undefined) {
       rules.push(
         ...routeRules(
           ctx.sellToken,
@@ -316,6 +316,17 @@ export function scopeRhinestone(
     return rules
   }
 
+  /** One rule set per authorised aggregator; the policy requires any one. */
+  const routeAlternatives = (venue.routes ?? []).map((route) =>
+    routeRules(
+      ctx.sellToken,
+      route === 'zeroEx'
+        ? ZEROX_ALLOWANCE_HOLDER
+        : FYND_ROUTERS[ctx.chainId as FyndChainId],
+      route === 'zeroEx' ? venue.settler : undefined,
+    ),
+  )
+
   return {
     // The account approves the proxy, never the Swapper and never a router —
     // one fixed spender per chain, whichever aggregator ends up filling.
@@ -325,11 +336,13 @@ export function scopeRhinestone(
         swapper,
         SWAP_EXACT_IN_SELECTOR,
         rulesFor(EXACT_IN, 'amountIn'),
+        routeAlternatives,
       ),
       swapAction(
         swapper,
         SWAP_EXACT_OUT_SELECTOR,
         rulesFor(EXACT_OUT, 'amountInMax'),
+        routeAlternatives,
       ),
     ],
   }

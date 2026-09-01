@@ -53,7 +53,10 @@ function flatten(
   expression: ArgPolicyExpression,
 ): UniversalActionPolicyParamRule[] {
   if (expression.type === 'rule') return [expression.rule]
-  if (expression.type === 'and') {
+  if (expression.type === 'and' || expression.type === 'or') {
+    // Flattening an OR loses which branch a rule belongs to, which is fine for
+    // asserting that a slot is pinned at all — the alternatives are asserted by
+    // checking that every authorised aggregator appears.
     return [...flatten(expression.left), ...flatten(expression.right)]
   }
   throw new Error(`unexpected node in a swap policy: ${expression.type}`)
@@ -277,6 +280,43 @@ describe('resolveSwapScope — the cumulative cap', () => {
       PLASMA,
     )
     expect(ruleAt(rulesOf(actions[0]), 0n)?.usageLimit).toBe(0n)
+  })
+})
+
+describe('multi-venue keeps the Swapper tail pinned', () => {
+  test('two aggregators pin the tail to EITHER, never to neither', () => {
+    // Sharing one Swapper action by dropping its route pins would authorise a
+    // tail neither venue named — broader than the scope the caller asked for.
+    const { actions } = resolveSwapScope(
+      scope({ via: [fynd(), zeroEx({ settler: SETTLER })] }),
+      PLASMA,
+    )
+    const wrapped = actions.filter(
+      (a) => a.target.toLowerCase() === SWAPPER_PLASMA.toLowerCase(),
+    )
+    expect(wrapped.length).toBeGreaterThan(0)
+    for (const action of wrapped) {
+      const rules = rulesOf(action)
+      // calls[1].target is the aggregator slot; both venues' routers must appear
+      // as alternatives, and the slot must be pinned rather than absent.
+      const pinnedAggregators = rules
+        .filter((r) => r.calldataOffset === 576n)
+        .map((r) => String(r.referenceValue).toLowerCase())
+      expect(pinnedAggregators).toContain(TYCHO_PLASMA.toLowerCase())
+      expect(pinnedAggregators).toContain(ZEROX_ALLOWANCE_HOLDER.toLowerCase())
+    }
+  })
+
+  test('a bare rhinestoneSwap() still leaves the tail open, as documented', () => {
+    // That venue authorises any aggregator by design, so pinning would
+    // contradict it.
+    const { actions } = resolveSwapScope(
+      scope({ via: [rhinestoneSwap()] }),
+      PLASMA,
+    )
+    for (const action of actions) {
+      expect(ruleAt(rulesOf(action), 576n)).toBeUndefined()
+    }
   })
 })
 

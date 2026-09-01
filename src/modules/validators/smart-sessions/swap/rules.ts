@@ -103,18 +103,39 @@ export function swapAction(
   target: Address,
   selector: `0x${string}`,
   rules: UniversalActionPolicyParamRule[],
+  /**
+   * Mutually exclusive rule sets, at least one of which must hold — used when
+   * several venues authorise the SAME call but pin its tail to different
+   * aggregators. One on-chain action id cannot carry two policies, and dropping
+   * the pins to share it would authorise a tail neither venue named, so the
+   * alternatives become an OR instead.
+   */
+  alternatives: UniversalActionPolicyParamRule[][] = [],
 ): ScopedAction {
+  const usable = alternatives.filter((set) => set.length > 0)
   const policy: SessionPolicy =
-    rules.length <= UNIVERSAL_ACTION_MAX_RULES
+    usable.length > 0
       ? {
-          type: 'universal-action',
+          type: 'arg-policy',
           valueLimitPerUse: 0n,
-          rules: rules as [
-            UniversalActionPolicyParamRule,
-            ...UniversalActionPolicyParamRule[],
-          ],
+          expression: {
+            type: 'and',
+            left: allOf(rules),
+            right: usable
+              .map(allOf)
+              .reduce((left, right) => ({ type: 'or', left, right })),
+          },
         }
-      : { type: 'arg-policy', valueLimitPerUse: 0n, expression: allOf(rules) }
+      : rules.length <= UNIVERSAL_ACTION_MAX_RULES
+        ? {
+            type: 'universal-action',
+            valueLimitPerUse: 0n,
+            rules: rules as [
+              UniversalActionPolicyParamRule,
+              ...UniversalActionPolicyParamRule[],
+            ],
+          }
+        : { type: 'arg-policy', valueLimitPerUse: 0n, expression: allOf(rules) }
   return { target, selector, policies: [policy] }
 }
 

@@ -96,6 +96,13 @@ export interface RhinestoneSwapVenue {
    */
   readonly route?: 'zeroEx' | 'fynd'
   /**
+   * Several aggregators authorised for the same wrapped call. Composed by
+   * `resolveSwapScope`, not written by callers: the tail is pinned to any ONE
+   * of them rather than left free, which is what keeps a multi-venue session no
+   * broader than the venues it names.
+   */
+  readonly routes?: readonly ('zeroEx' | 'fynd')[]
+  /**
    * 0x's Settler, when known. Pins the nested `AllowanceHolder.exec` inside
    * `calls[1].data`; without it that call's operator/target stay free.
    */

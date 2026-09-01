@@ -168,21 +168,30 @@ export function resolveSwapScope(
   )
   const sharedRoute =
     routes.size === 1 && !anyAggregatorAllowed ? [...routes][0] : undefined
+  // More than one aggregator authorised: pin the tail to ANY ONE of them rather
+  // than to none. Sharing the Swapper action by dropping its route pins would
+  // authorise a tail neither venue named, which is broader than the scope.
+  const sharedRoutes =
+    routes.size > 1 && !anyAggregatorAllowed ? [...routes] : undefined
   // The Settler the 0x venue already carries, so the wrapped half can pin the
   // nested exec instead of dropping the one address that makes it bindable.
   const zeroExSettler = via.flatMap((venue) =>
     venue.id === '0x' && venue.settler !== undefined ? [venue.settler] : [],
   )[0]
-  const wrappedVenue = (): RhinestoneSwapVenue =>
-    sharedRoute
-      ? {
-          id: 'rhinestone',
-          route: sharedRoute,
-          ...(sharedRoute === 'zeroEx' && zeroExSettler !== undefined
-            ? { settler: zeroExSettler }
-            : {}),
-        }
-      : { id: 'rhinestone' }
+  const wrappedVenue = (): RhinestoneSwapVenue => {
+    const settler =
+      zeroExSettler !== undefined ? { settler: zeroExSettler } : {}
+    if (sharedRoutes)
+      return { id: 'rhinestone', routes: sharedRoutes, ...settler }
+    if (sharedRoute) {
+      return {
+        id: 'rhinestone',
+        route: sharedRoute,
+        ...(sharedRoute === 'zeroEx' ? settler : {}),
+      }
+    }
+    return { id: 'rhinestone' }
+  }
 
   const scopings = via.map((venue): VenueScoping => {
     const ctx = ctxFor(venue)
