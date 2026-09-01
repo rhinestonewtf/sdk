@@ -627,6 +627,19 @@ type SessionSigning =
  * router, selector and calldata offset lives inside the SDK, so callers need no
  * knowledge of how the swap is encoded on-chain.
  *
+ * Which venue to name depends on who calls the aggregator. For orchestrator-
+ * routed swaps the account calls the Rhinestone Swapper and the aggregator sits
+ * inside its route, so use the default or `swapperZeroEx()`. `zeroEx()` and
+ * `fynd()` scope a DIRECT router call by the account, which is a different
+ * shape — naming them for an intent-routed swap rejects the swap it was meant
+ * to authorise.
+ *
+ * What a swap scope bounds: the ops runnable, the tokens, the recipient, and
+ * total sell-side spend. What it does not bound on its own is the QUALITY of
+ * the swap — `minAmountOut` is not pinned, so an unrouted scope can spend up to
+ * the cap and receive little or nothing. Pin the route (`swapperZeroEx()`) when
+ * that matters.
+ *
  * @example
  * ```ts
  * const session = await sdk.createSession({
@@ -635,7 +648,7 @@ type SessionSigning =
  *     sell: { token: usdc, maxTotal: parseUnits('1000', 6) },
  *     buy: { token: usdt },
  *     to: account.address,
- *     via: [fynd(), zeroEx({ settler })],
+ *     via: [swapperZeroEx()],
  *   },
  * })
  * ```
@@ -653,8 +666,9 @@ interface SwapScope<TChainId extends number = number> {
   }
   buy: { token: Address }
   /**
-   * Swap output recipient, normally the account itself. Pinned on-chain, so a
-   * compromised session key cannot redirect the output elsewhere.
+   * Swap output recipient, normally the account itself. Pinned on-chain as an
+   * argument rule, so a swap delivering elsewhere is rejected — verified live
+   * against the production orchestrator.
    */
   to: Address
   /**

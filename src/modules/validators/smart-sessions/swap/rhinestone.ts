@@ -29,9 +29,17 @@ import { ZEROX_ALLOWANCE_HOLDER, ZEROX_CHAIN_IDS } from './zero-ex'
  * What the Swapper guarantees (verified in compact-utils/src/swapper):
  * at most `amountIn` of `tokenIn` is pulled, once, from `msg.sender`; the
  * recipient's measured balance delta must be >= `minAmountOut` or it reverts;
- * every refund and sweep goes to `msg.sender`. So a bounded `amountIn` plus a
- * pinned `tokenIn`/`tokenOut`/`recipient` is a complete bound on the account's
- * exposure, regardless of what the `calls[]` tail does.
+ * every refund and sweep goes to `msg.sender`. The account cannot be drained
+ * beyond the pulled amount: the tail runs as the Swapper, which holds no
+ * allowance from the account, and `SwapperLib.runRoute` forbids the tail from
+ * calling the proxy that does.
+ *
+ * Be precise about what that bounds, though. A capped `amountIn` bounds how
+ * much can LEAVE; it does not ensure anything comes back. `minAmountOut` is a
+ * caller-supplied argument this scoping does not pin, and the contract accepts
+ * zero — so with an unconstrained route a compromised key can spend up to the
+ * cap and receive nothing. {@link swapperZeroEx} closes that by pinning the
+ * route, leaving the pulled input nowhere to go but a real aggregator.
  */
 
 /**
