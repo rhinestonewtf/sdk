@@ -3,6 +3,7 @@ import type {
   FyndVenue,
   Permission,
   RhinestoneSwapVenue,
+  RoutedRhinestoneSwapVenue,
   ScopedAction,
   SwapScopeInput,
   SwapVenue,
@@ -163,9 +164,9 @@ export function resolveSwapScope(
   // A bare `rhinestoneSwap()` authorises any aggregator in the tail, so pinning
   // it for the others would both contradict that venue and collide with it on
   // the same Swapper action.
-  const anyAggregatorAllowed = via.some(
-    (venue) => venue.id === 'rhinestone' && venue.route === undefined,
-  )
+  // A caller-written Swapper venue carries no route by construction — the
+  // routed shape is internal — so naming one authorises any aggregator.
+  const anyAggregatorAllowed = via.some((venue) => venue.id === 'rhinestone')
   const sharedRoute =
     routes.size === 1 && !anyAggregatorAllowed ? [...routes][0] : undefined
   // More than one aggregator authorised: pin the tail to ANY ONE of them rather
@@ -178,7 +179,7 @@ export function resolveSwapScope(
   const zeroExSettler = via.flatMap((venue) =>
     venue.id === '0x' && venue.settler !== undefined ? [venue.settler] : [],
   )[0]
-  const wrappedVenue = (): RhinestoneSwapVenue => {
+  const wrappedVenue = (): RoutedRhinestoneSwapVenue => {
     const settler =
       zeroExSettler !== undefined ? { settler: zeroExSettler } : {}
     if (sharedRoutes)
@@ -195,14 +196,7 @@ export function resolveSwapScope(
 
   const scopings = via.map((venue): VenueScoping => {
     const ctx = ctxFor(venue)
-    if (venue.id === 'rhinestone') {
-      return scopeRhinestone(
-        venue.route === 'zeroEx' && venue.settler === undefined && zeroExSettler
-          ? { ...venue, settler: zeroExSettler }
-          : venue,
-        ctx,
-      )
-    }
+    if (venue.id === 'rhinestone') return scopeRhinestone(venue, ctx)
 
     const parts: VenueScoping[] = [
       venue.id === 'fynd' ? scopeFynd(ctx) : scopeZeroEx(venue, ctx),

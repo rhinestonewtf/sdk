@@ -90,16 +90,25 @@ export interface FyndVenue {
 export interface RhinestoneSwapVenue {
   readonly id: 'rhinestone'
   readonly maxSpend?: bigint
-  /**
-   * Pin which aggregator the Swapper's `calls[]` tail may route through. Omit
-   * to leave the route unconstrained (bounded only by the sell cap).
-   */
+}
+
+/**
+ * The Swapper venue with its route pinned — composed by `resolveSwapScope`, and
+ * deliberately NOT part of {@link SwapVenue}.
+ *
+ * A caller who could hand-write `{ id: 'rhinestone', route: 'zeroEx' }` would
+ * get the wrapped 0x scoping while skipping `zeroEx()`'s options union, which
+ * is what forces either a Settler or `anySettler` + `maxSpend`. The nested exec
+ * would then be pinned by nothing at all. So the routed shape is reachable only
+ * by naming a venue, never by writing one.
+ */
+export interface RoutedRhinestoneSwapVenue extends RhinestoneSwapVenue {
+  /** Pin which aggregator the Swapper's `calls[]` tail may route through. */
   readonly route?: 'zeroEx' | 'fynd'
   /**
-   * Several aggregators authorised for the same wrapped call. Composed by
-   * `resolveSwapScope`, not written by callers: the tail is pinned to any ONE
-   * of them rather than left free, which is what keeps a multi-venue session no
-   * broader than the venues it names.
+   * Several aggregators authorised for the same wrapped call. The tail is
+   * pinned to any ONE of them rather than left free, which is what keeps a
+   * multi-venue session no broader than the venues it names.
    */
   readonly routes?: readonly ('zeroEx' | 'fynd')[]
   /**

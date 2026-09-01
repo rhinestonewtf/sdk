@@ -2,6 +2,7 @@ import { type Abi, type Address, type Hex, toFunctionSelector } from 'viem'
 import { namedParamOffsets } from '../../permissions'
 import type {
   RhinestoneSwapVenue,
+  RoutedRhinestoneSwapVenue,
   UniversalActionPolicyParamRule,
 } from '../types'
 import { FYND_CHAIN_IDS, FYND_ROUTERS, type FyndChainId } from './fynd'
@@ -268,7 +269,7 @@ export function rhinestoneSwap(
   }
 }
 export function scopeRhinestone(
-  venue: RhinestoneSwapVenue,
+  venue: RoutedRhinestoneSwapVenue,
   ctx: VenueContext,
 ): VenueScoping {
   const { swapper, proxy } = swapperAddresses(ctx.environment)

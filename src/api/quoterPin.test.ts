@@ -105,11 +105,24 @@ describe('quoter pin derived from a session venue scope', () => {
     expect(pinFor([fynd(), rhinestoneSwap()])).toBeUndefined()
   })
 
-  test('an explicit pin on the transaction wins over the derived one', () => {
+  test('an explicit pin NARROWS the derived one, it cannot widen it', () => {
+    // The session's venues are what the on-chain policy accepts, so an explicit
+    // filter naming something else would route outside them and be rejected at
+    // execution. Asking for fynd on a 0x-only session leaves nothing.
     expect(
       pinFor([zeroEx({ settler: SETTLER })], { include: ['fynd'] }),
-    ).toEqual({
-      include: ['fynd'],
+    ).toEqual({ include: [] })
+  })
+
+  test('an explicit pin narrows within what the session permits', () => {
+    expect(
+      pinFor([zeroEx({ settler: SETTLER }), fynd()], { include: ['fynd'] }),
+    ).toEqual({ include: ['fynd'] })
+  })
+
+  test('an explicit pin stands alone when there is no session scope', () => {
+    expect(pinFor([rhinestoneSwap()], { include: ['1inch'] })).toEqual({
+      include: ['1inch'],
     })
   })
 

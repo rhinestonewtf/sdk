@@ -989,6 +989,31 @@ function quoterPinFromSession(
   return { include: [...pinned] }
 }
 
+/**
+ * Combine an explicit `quoters` filter with the one a venue-scoped session
+ * implies.
+ *
+ * An explicit filter cannot WIDEN the session: the venues it names are what the
+ * on-chain policy will accept, so allowing a caller to replace the derived pin
+ * would route outside them and be rejected at execution — or, where the scope
+ * left the tail open, spend inside a venue the session was never meant to
+ * authorise. With no session scope there is nothing to narrow against and the
+ * explicit filter stands on its own.
+ */
+function narrowQuoterPin(
+  derived: SwapQuoterFilter | undefined,
+  explicit: SwapQuoterFilter | undefined,
+): SwapQuoterFilter | undefined {
+  if (!explicit) return derived
+  if (!derived || !('include' in derived)) return explicit
+  const allowed = new Set(derived.include)
+  const narrowed =
+    'include' in explicit
+      ? explicit.include.filter((quoter) => allowed.has(quoter))
+      : derived.include.filter((quoter) => !explicit.exclude.includes(quoter))
+  return { include: narrowed }
+}
+
 export function adaptTransaction(
   context: AccountInvocationContext<Compat>,
   transaction: Transaction,
@@ -1075,14 +1100,12 @@ export function adaptTransaction(
       ...(transaction.settlementLayers
         ? { settlementLayers: transaction.settlementLayers }
         : {}),
-      // An explicit pin wins; otherwise derive it from the session's venue scope.
       ...(() => {
-        const quoters =
-          transaction.quoters ??
-          quoterPinFromSession(transaction.signers, [
-            ...(destinationChainId === undefined ? [] : [destinationChainId]),
-            ...(evmSources?.map(({ id }) => id) ?? []),
-          ])
+        const derived = quoterPinFromSession(transaction.signers, [
+          ...(destinationChainId === undefined ? [] : [destinationChainId]),
+          ...(evmSources?.map(({ id }) => id) ?? []),
+        ])
+        const quoters = narrowQuoterPin(derived, transaction.quoters)
         return quoters ? { quoters } : {}
       })(),
       ...(transaction.auxiliaryFunds
