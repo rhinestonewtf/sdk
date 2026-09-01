@@ -15,15 +15,19 @@ import type {
 } from '../types'
 import { FYND_SWAP_SELECTOR, fynd, tychoRouterAbi } from './fynd'
 import {
+  rhinestoneSwap,
   SWAP_EXACT_IN_SELECTOR,
   SWAP_EXACT_OUT_SELECTOR,
+  swapperAddresses,
   swapperZeroEx,
 } from './rhinestone'
 import { resolveSwapScope } from './scope'
 import {
   ALLOWANCE_HOLDER_EXEC_SELECTOR,
   allowanceHolderAbi,
+  resolveZeroExSettler,
   ZEROX_ALLOWANCE_HOLDER,
+  ZEROX_SETTLER_REGISTRY,
   zeroEx,
 } from './zero-ex'
 
@@ -600,5 +604,69 @@ describe('resolveSwapScope — swapperZeroEx route pinning', () => {
         100,
       ),
     ).not.toThrow()
+  })
+})
+
+describe('resolveZeroExSettler', () => {
+  test('reads ownerOf(2) off the registry', async () => {
+    const calls: unknown[] = []
+    const settler = await resolveZeroExSettler({
+      readContract: async (args) => {
+        calls.push(args)
+        return SETTLER
+      },
+    })
+    expect(settler).toBe(SETTLER)
+    // Feature 2 is the taker-submitted Settler; a different slot would resolve
+    // a Settler variant ordinary swaps never use.
+    expect(calls[0]).toMatchObject({
+      address: ZEROX_SETTLER_REGISTRY,
+      functionName: 'ownerOf',
+      args: [2n],
+    })
+  })
+
+  test('propagates a failing read rather than returning a zero address', async () => {
+    await expect(
+      resolveZeroExSettler({
+        readContract: async () => {
+          throw new Error('rpc down')
+        },
+      }),
+    ).rejects.toThrow(/rpc down/)
+  })
+})
+
+describe('swapperAddresses', () => {
+  test('production and development are distinct pairs', () => {
+    const prod = swapperAddresses('production')
+    const dev = swapperAddresses('development')
+    expect(prod.swapper).not.toBe(dev.swapper)
+    expect(prod.proxy).not.toBe(dev.proxy)
+  })
+
+  test('a development session scopes the dev Swapper', () => {
+    const { actions } = resolveSwapScope(
+      { sell: { token: USDT0 }, buy: { token: USDC }, to: ACCOUNT },
+      PLASMA,
+      'development',
+    )
+    const { swapper } = swapperAddresses('development')
+    expect(actions.every((a) => a.target === swapper)).toBe(true)
+  })
+})
+
+describe('venue maxSpend', () => {
+  test('rhinestoneSwap carries a venue-level cap', () => {
+    const { actions } = resolveSwapScope(
+      {
+        sell: { token: USDT0, maxTotal: 1000n },
+        buy: { token: USDC },
+        to: ACCOUNT,
+        via: [rhinestoneSwap({ maxSpend: 7n })],
+      },
+      PLASMA,
+    )
+    expect(ruleAt(rulesOf(actions[0]), 32n)?.usageLimit).toBe(7n)
   })
 })
