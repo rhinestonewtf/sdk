@@ -566,17 +566,31 @@ async function getTypedDataPackedSignature<
     throw new EoaSigningNotSupportedError('packed signatures')
   }
 
-  if (
-    configuredOwners.type === 'quorum' &&
-    config.owners?.type === 'quorum' &&
-    validator.address.toLowerCase() === config.owners.module.toLowerCase()
-  ) {
-    return getEip1271Signature(
-      config,
-      signers,
+  if (configuredOwners.type === 'quorum') {
+    const address = getAddress(config)
+    const account = getAccountProvider(config)
+    const hash = hashTypedData(parameters)
+    const accountHash =
+      account.type === 'kernel' ? wrapKernelMessageHash(hash, address) : hash
+    const quorumSigners =
+      signers ?? convertOwnerSetToSignerSet(configuredOwners)
+    const signature = await signMessage(
+      quorumSigners,
+      configuredOwners,
       chain,
+      address,
+      getQuorumSignableHash({
+        validator: configuredOwners.module,
+        chainId: chain.id,
+        account: address,
+        hash: accountHash,
+      }),
+      false,
+    )
+    return await packEip1271Signature(
+      config,
+      signature,
       validator,
-      hashTypedData(parameters),
       transformSignature,
     )
   }

@@ -1,4 +1,4 @@
-import type { Account, Hex } from 'viem'
+import { type Account, type Hex, hashTypedData } from 'viem'
 import { mainnet } from 'viem/chains'
 import { describe, expect, test, vi } from 'vitest'
 import { accountA, accountB, passkeyAccount } from '../../test/consts'
@@ -6,7 +6,7 @@ import {
   getQuorumSignableHash,
   getQuorumValidator,
 } from '../modules/validators/quorum'
-import { getAddress, getEip1271Signature } from '.'
+import { getAddress, getEip1271Signature, getTypedDataPackedSignature } from '.'
 import { wrapMessageHash as wrapKernelMessageHash } from './kernel'
 
 describe('Accounts', () => {
@@ -64,6 +64,55 @@ describe('Accounts', () => {
     test.todo('With ECDSA, single key')
     test.todo('With ECDSA, multisig')
     test.todo('With Passkey')
+
+    test('Quorum-backed sessions raw-sign typed data with the session validator', async () => {
+      const module = '0x0000000000000000000000000000000000000042'
+      const innerSignature = `0x${'11'.repeat(64)}1b` as Hex
+      const rawSign = vi.fn().mockResolvedValue(innerSignature)
+      const sessionOwner = { ...accountA, sign: rawSign } as Account
+      const config = {
+        owners: { type: 'ecdsa' as const, accounts: [accountB] },
+      }
+      const configuredOwners = {
+        type: 'quorum' as const,
+        owners: [{ account: sessionOwner, weight: 1n }],
+        thresholdWeight: 1n,
+        module,
+      }
+      const parameters = {
+        domain: {
+          name: 'Test',
+          version: '1',
+          chainId: mainnet.id,
+          verifyingContract: accountB.address,
+        },
+        types: { Test: [{ name: 'value', type: 'uint256' }] },
+        primaryType: 'Test' as const,
+        message: { value: 1n },
+      }
+      const account = getAddress(config)
+
+      await getTypedDataPackedSignature(
+        config,
+        { type: 'owner', kind: 'quorum', accounts: [sessionOwner] },
+        mainnet,
+        {
+          address: '0x0000000000000000000000000000000000000043',
+          isRoot: false,
+        },
+        parameters,
+        configuredOwners,
+      )
+
+      expect(rawSign).toHaveBeenCalledWith({
+        hash: getQuorumSignableHash({
+          validator: module,
+          chainId: mainnet.id,
+          account,
+          hash: hashTypedData(parameters),
+        }),
+      })
+    })
 
     test('Kernel wraps the application hash before Quorum binding', async () => {
       const module = '0x0000000000000000000000000000000000000042'
