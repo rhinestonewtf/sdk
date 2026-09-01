@@ -45,6 +45,11 @@ describe('Smart Sessions claim policies', () => {
       'development',
     )
     expect(afterOnly.claim).toMatchObject({
+      // source: shared-configs generated development address book
+      spenders: [
+        '0x1BeBAfb3D05d84A5Bfd94800c88d1342f755d8AB',
+        '0x8A061029AE4c5Cf69b5368119B3b0C80B31F55fE',
+      ],
       sourceTokens: [{ chain: base, address: source }],
       destinationTokens: [{ chain: arbitrum, address: destination }],
       recipients: [{ chain: arbitrum, address: recipient }],
@@ -59,6 +64,24 @@ describe('Smart Sessions claim policies', () => {
     expect(expandCrossChainPermit({}, 'production').fallbackPolicies).toEqual(
       [],
     )
+  })
+
+  test('keeps solver-network ECO blocked instead of authorizing the generic IntentExecutor adapter', () => {
+    const { claim } = expandCrossChainPermit(
+      { settlementLayers: ['ECO'] },
+      'production',
+    )
+    // source: shared-configs generated production address book
+    const intentExecutorAdapter =
+      '0xa5DAC04a6cCF0eb19cE091b6B400Fc4FCD13Da1e' as const
+
+    expect(claim.spenders).not.toContain(intentExecutorAdapter)
+    expect(
+      permit2ClaimPolicyMatchesMessage(claim, {
+        ...message,
+        spender: intentExecutorAdapter,
+      }),
+    ).toBe(false)
   })
 
   test('checks every message restriction independently', () => {

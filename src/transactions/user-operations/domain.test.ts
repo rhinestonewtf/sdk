@@ -14,6 +14,7 @@ import {
 import {
   WEBAUTHN_MOCK_SIGNATURE,
   WEBAUTHN_VALIDATOR_ADDRESS,
+  webauthnStatelessMockSignature,
 } from '../../modules/validators/webauthn'
 import type { SigningContext } from '../../signing/context'
 import { createAccountSigningContext } from '../../signing/context'
@@ -202,9 +203,29 @@ describe('UserOperation domain', () => {
           toHex(1, { size: 12 }),
           WEBAUTHN_VALIDATOR_ADDRESS,
         ]),
-        data: WEBAUTHN_MOCK_SIGNATURE,
+        data: webauthnStatelessMockSignature(),
       },
     ])
+    // The factor stub must decode the way the validator's stateless path reads
+    // it: the assertions alone.
+    expect(() =>
+      decodeAbiParameters(
+        [
+          {
+            type: 'tuple[]',
+            components: [
+              { type: 'bytes', name: 'authenticatorData' },
+              { type: 'string', name: 'clientDataJSON' },
+              { type: 'uint256', name: 'challengeIndex' },
+              { type: 'uint256', name: 'typeIndex' },
+              { type: 'uint256', name: 'r' },
+              { type: 'uint256', name: 's' },
+            ],
+          },
+        ],
+        factors[1].data,
+      ),
+    ).not.toThrow()
   })
 
   test('polls until a receipt is available', async () => {

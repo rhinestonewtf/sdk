@@ -83,6 +83,43 @@ describe('orchestrator client', () => {
                   fillStatusTimeout: 30,
                 },
               },
+              {
+                intentId: 'intent-2',
+                expiresAt: 1,
+                estimatedFillTime: { seconds: 2 },
+                settlementLayer: 'ECO',
+                signData: {
+                  origin: [],
+                  destination: {
+                    domain: {},
+                    types: {},
+                    primaryType: 'Test',
+                    message: {},
+                  },
+                },
+                cost: {
+                  input: [],
+                  output: [],
+                  fees: {
+                    total: { usd: 0 },
+                    breakdown: {
+                      gas: { usd: 0, sponsored: false },
+                      bridge: { usd: 0, sponsored: false },
+                      swap: { usd: 0, sponsored: false },
+                      app: { usd: 0, sponsored: false },
+                      protocol: { usd: 0, sponsored: false },
+                      sponsorSurcharge: { usd: 0, sponsored: false },
+                    },
+                  },
+                },
+                bridgeFill: {
+                  type: 'ECO',
+                  destinationChainId: 42161,
+                  intentHash: `0x${'22'.repeat(32)}`,
+                  fillExpirationPeriod: 60,
+                  fillStatusTimeout: 30,
+                },
+              },
             ],
           }),
           { headers: { 'x-trace-id': 'trace-1' } },
@@ -134,6 +171,11 @@ describe('orchestrator client', () => {
       type: 'RELAY',
       destinationChainId: 10,
       requestId: 'request-1',
+    })
+    expect(result.routes[1]?.bridgeFill).toEqual({
+      type: 'ECO',
+      destinationChainId: 42161,
+      intentHash: `0x${'22'.repeat(32)}`,
     })
     expect(fetch).toHaveBeenCalledWith(
       'https://orchestrator.example/quotes',

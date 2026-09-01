@@ -239,3 +239,208 @@ toSession({
   // @ts-expect-error unsupported signing mode.
   signing: { mode: 'all' },
 })
+
+// --- Array-typed params are unaddressable by a 32-byte ref comparison --------
+// `uint256[]` used to match the `uint${string}` branch of AbiTypeToValue and be
+// typed `bigint`, so this compiled and only blew up at runtime.
+
+const arrayParamAbi = [
+  {
+    type: 'function',
+    name: 'batch',
+    inputs: [
+      { name: 'amounts', type: 'uint256[]' },
+      { name: 'fixedAmounts', type: 'uint256[3]' },
+      { name: 'recipients', type: 'address[]' },
+      { name: 'selectors', type: 'bytes4[]' },
+      { name: 'total', type: 'uint256' },
+    ],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+] as const
+
+toSession({
+  chain: base,
+  owners: { type: 'ecdsa', accounts: [accountA] },
+  permissions: [
+    {
+      abi: arrayParamAbi,
+      address: USDC,
+      functions: {
+        batch: {
+          params: {
+            // @ts-expect-error dynamic uint256[] cannot be constrained.
+            amounts: { condition: 'equal', value: 1n },
+          },
+        },
+      },
+    },
+  ],
+})
+
+toSession({
+  chain: base,
+  owners: { type: 'ecdsa', accounts: [accountA] },
+  permissions: [
+    {
+      abi: arrayParamAbi,
+      address: USDC,
+      functions: {
+        batch: {
+          params: {
+            // @ts-expect-error fixed-size uint256[3] spans three words.
+            fixedAmounts: { condition: 'equal', value: 1n },
+          },
+        },
+      },
+    },
+  ],
+})
+
+toSession({
+  chain: base,
+  owners: { type: 'ecdsa', accounts: [accountA] },
+  permissions: [
+    {
+      abi: arrayParamAbi,
+      address: USDC,
+      functions: {
+        batch: {
+          params: {
+            // @ts-expect-error address[] cannot be constrained.
+            recipients: { condition: 'equal', value: USDC },
+          },
+        },
+      },
+    },
+  ],
+})
+
+toSession({
+  chain: base,
+  owners: { type: 'ecdsa', accounts: [accountA] },
+  permissions: [
+    {
+      abi: arrayParamAbi,
+      address: USDC,
+      functions: {
+        batch: {
+          params: {
+            // @ts-expect-error bytes4[] cannot be constrained.
+            selectors: { condition: 'equal', value: '0x12345678' },
+          },
+        },
+      },
+    },
+  ],
+})
+
+// The scalar sibling on the same ABI must still be constrainable — proves the
+// array rejection is targeted, not a blanket failure of the whole function.
+toSession({
+  chain: base,
+  owners: { type: 'ecdsa', accounts: [accountA] },
+  permissions: [
+    {
+      abi: arrayParamAbi,
+      address: USDC,
+      functions: {
+        batch: { params: { total: { condition: 'lessThan', value: 1000n } } },
+      },
+    },
+  ],
+})
+
+// --- `inRange` needs two bounds, so it is not a single-value condition -------
+
+toSession({
+  chain: base,
+  owners: { type: 'ecdsa', accounts: [accountA] },
+  permissions: [
+    {
+      abi: erc20Abi,
+      address: USDC,
+      functions: {
+        transfer: {
+          params: {
+            // @ts-expect-error inRange cannot be expressed with a single value.
+            amount: { condition: 'inRange', value: 1000n },
+          },
+        },
+      },
+    },
+  ],
+})
+
+// The supported spelling: inclusive bounds.
+toSession({
+  chain: base,
+  owners: { type: 'ecdsa', accounts: [accountA] },
+  permissions: [
+    {
+      abi: erc20Abi,
+      address: USDC,
+      functions: {
+        transfer: { params: { amount: { min: 1n, max: 1000n } } },
+      },
+    },
+  ],
+})
+
+toSession({
+  chain: base,
+  owners: { type: 'ecdsa', accounts: [accountA] },
+  permissions: [
+    {
+      abi: erc20Abi,
+      address: USDC,
+      functions: {
+        transfer: {
+          params: {
+            // @ts-expect-error bounds must match the param's Solidity type.
+            amount: { min: 1n, max: USDC },
+          },
+        },
+      },
+    },
+  ],
+})
+
+toSession({
+  chain: base,
+  owners: { type: 'ecdsa', accounts: [accountA] },
+  permissions: [
+    {
+      abi: erc20Abi,
+      address: USDC,
+      functions: {
+        transfer: {
+          params: {
+            // @ts-expect-error bounds and a single-value condition are exclusive.
+            amount: { condition: 'lessThan', value: 5n, min: 1n, max: 10n },
+          },
+        },
+      },
+    },
+  ],
+})
+
+toSession({
+  chain: base,
+  owners: { type: 'ecdsa', accounts: [accountA] },
+  permissions: [
+    {
+      abi: erc20Abi,
+      address: USDC,
+      functions: {
+        transfer: {
+          params: {
+            // @ts-expect-error bounds and anyOf are exclusive.
+            amount: { anyOf: [1n, 2n], min: 1n, max: 10n },
+          },
+        },
+      },
+    },
+  ],
+})

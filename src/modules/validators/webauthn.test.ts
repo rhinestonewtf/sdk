@@ -1,10 +1,14 @@
 import { type Address, decodeAbiParameters, keccak256, toHex } from 'viem'
 import { describe, expect, test } from 'vitest'
 import {
+  encodeWebauthnStatelessData,
+  encodeWebauthnValidatorContribution,
   generateWebauthnCredentialId,
   hasDuplicateWebauthnCredentials,
   orderWebauthnCredentials,
+  parseWebauthnPublicKey,
   resolveWebauthnCredentials,
+  WEBAUTHN_STATELESS_ACCOUNT,
   type WebauthnInstallCredential,
   webauthnCredentialsAreAscending,
 } from './webauthn'
@@ -135,5 +139,188 @@ describe('WebAuthn credential ordering', () => {
     expect(
       [...canonical].sort((a, b) => (a.pubKeyX < b.pubKeyX ? -1 : 1)),
     ).toEqual([...canonical])
+  })
+})
+
+const STATELESS_DATA_ABI = [
+  {
+    name: 'context',
+    type: 'tuple',
+    components: [
+      { name: 'usePrecompile', type: 'bool' },
+      { name: 'threshold', type: 'uint256' },
+      { name: 'credentialIds', type: 'bytes32[]' },
+      {
+        name: 'credentialData',
+        type: 'tuple[]',
+        components: [
+          { name: 'pubKeyX', type: 'uint256' },
+          { name: 'pubKeyY', type: 'uint256' },
+          { name: 'requireUV', type: 'bool' },
+        ],
+      },
+    ],
+  },
+  { name: 'account', type: 'address' },
+] as const
+
+const STATELESS_SIGNATURE_ABI = [
+  {
+    type: 'tuple[]',
+    components: [
+      { type: 'bytes', name: 'authenticatorData' },
+      { type: 'string', name: 'clientDataJSON' },
+      { type: 'uint256', name: 'challengeIndex' },
+      { type: 'uint256', name: 'typeIndex' },
+      { type: 'uint256', name: 'r' },
+      { type: 'uint256', name: 's' },
+    ],
+  },
+] as const
+
+const CREDENTIALS = ['stateless-a', 'stateless-b', 'stateless-c'].map(
+  (tag) => ({ pubKey: publicKeyBytes(tag), authenticatorId: tag }),
+)
+
+function contribution(index: number) {
+  return {
+    ownerId: `owner-${index}`,
+    publicKey: CREDENTIALS[index].pubKey,
+    signature: `0x${'11'.repeat(32)}${'22'.repeat(32)}` as `0x${string}`,
+    authenticatorData: `0x${'77'.repeat(37)}` as `0x${string}`,
+    clientDataJSON: `{"type":"webauthn.get","challenge":"c-${index}"}`,
+    challengeIndex: 0,
+    typeIndex: 0,
+  }
+}
+
+describe('WebAuthn stateless configuration', () => {
+  test('satisfies every check the stateless validation path performs', () => {
+    const [context, account] = decodeAbiParameters(
+      STATELESS_DATA_ABI,
+      encodeWebauthnStatelessData({ credentials: CREDENTIALS, threshold: 2 }),
+    )
+    expect(account).toBe(WEBAUTHN_STATELESS_ACCOUNT)
+    expect(context.usePrecompile).toBe(false)
+    expect(context.credentialIds).toHaveLength(context.credentialData.length)
+    expect(context.credentialIds).toEqual(
+      context.credentialData.map((credential) =>
+        generateWebauthnCredentialId(
+          credential.pubKeyX,
+          credential.pubKeyY,
+          account,
+        ),
+      ),
+    )
+    expect([...context.credentialIds].sort()).toEqual([
+      ...context.credentialIds,
+    ])
+    expect(new Set(context.credentialIds).size).toBe(
+      context.credentialIds.length,
+    )
+    expect(context.threshold).toBe(2n)
+    expect(context.threshold).toBeLessThanOrEqual(
+      BigInt(context.credentialIds.length),
+    )
+  })
+
+  test('is credential-order independent', () => {
+    expect(
+      encodeWebauthnStatelessData({
+        credentials: [...CREDENTIALS].reverse(),
+        threshold: 1,
+      }),
+    ).toBe(
+      encodeWebauthnStatelessData({ credentials: CREDENTIALS, threshold: 1 }),
+    )
+  })
+
+  test('is not interchangeable with the validator install data', () => {
+    const stateless = encodeWebauthnStatelessData({
+      credentials: CREDENTIALS,
+      threshold: 1,
+    })
+    const install = resolveWebauthnCredentials({
+      credentials: CREDENTIALS,
+      threshold: 1,
+    }).initData
+    expect(stateless).not.toBe(install)
+    expect(() => installedCredentials(stateless)).toThrow()
+    expect(() => decodeAbiParameters(STATELESS_DATA_ABI, install)).toThrow()
+  })
+
+  test('signs with the assertions alone, ordered as the configuration is', () => {
+    const [assertions] = decodeAbiParameters(
+      STATELESS_SIGNATURE_ABI,
+      encodeWebauthnValidatorContribution({
+        ownerOrder: ['owner-0', 'owner-1', 'owner-2'],
+        threshold: 3,
+        account: WEBAUTHN_STATELESS_ACCOUNT,
+        usePrecompile: false,
+        format: 'stateless',
+        credentials: CREDENTIALS.map((credential, index) => ({
+          ownerId: `owner-${index}`,
+          publicKey: credential.pubKey,
+        })),
+        contributions: [contribution(2), contribution(0), contribution(1)],
+      }),
+    )
+    const [context] = decodeAbiParameters(
+      STATELESS_DATA_ABI,
+      encodeWebauthnStatelessData({ credentials: CREDENTIALS, threshold: 3 }),
+    )
+    expect(assertions.map((assertion) => assertion.clientDataJSON)).toEqual(
+      context.credentialData.map((credential) => {
+        const index = CREDENTIALS.findIndex(
+          (entry) =>
+            parseWebauthnPublicKey(entry.pubKey).x === credential.pubKeyX,
+        )
+        return contribution(index).clientDataJSON
+      }),
+    )
+  })
+
+  test('rejects a partial signer set that is not the configured prefix', () => {
+    const credentials = CREDENTIALS.map((credential, index) => ({
+      ownerId: `owner-${index}`,
+      publicKey: credential.pubKey,
+    }))
+    const configuredOrder = decodeAbiParameters(
+      STATELESS_DATA_ABI,
+      encodeWebauthnStatelessData({ credentials: CREDENTIALS, threshold: 1 }),
+    )[0].credentialData.map((credential) =>
+      CREDENTIALS.findIndex(
+        (entry) =>
+          parseWebauthnPublicKey(entry.pubKey).x === credential.pubKeyX,
+      ),
+    )
+    const signWith = (indexes: readonly number[]) =>
+      encodeWebauthnValidatorContribution({
+        ownerOrder: ['owner-0', 'owner-1', 'owner-2'],
+        threshold: 1,
+        account: WEBAUTHN_STATELESS_ACCOUNT,
+        usePrecompile: false,
+        format: 'stateless',
+        credentials,
+        contributions: indexes.map(contribution),
+      })
+    expect(() => signWith([configuredOrder[0]])).not.toThrow()
+    expect(() => signWith([configuredOrder[1]])).toThrow('lowest-ordered')
+    expect(() => signWith([configuredOrder[0], configuredOrder[2]])).toThrow(
+      'lowest-ordered',
+    )
+  })
+
+  test('requires the configured credentials to check that prefix', () => {
+    expect(() =>
+      encodeWebauthnValidatorContribution({
+        ownerOrder: ['owner-0'],
+        threshold: 1,
+        account: WEBAUTHN_STATELESS_ACCOUNT,
+        usePrecompile: false,
+        format: 'stateless',
+        contributions: [contribution(0)],
+      }),
+    ).toThrow('configured credentials')
   })
 })

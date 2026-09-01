@@ -554,6 +554,30 @@ describe('derivation is invariant under owner order', () => {
     )
   })
 
+  // A nested passkey factor is stored as the sub-validator's stateless
+  // configuration, whose credentials are ordered by their ID under a pinned
+  // account, so caller order cannot reach the derived address.
+  test('multi-passkey factors nested in a multi-factor set are order independent', () => {
+    const factors = (accounts: WebAuthnAccount[]) => ({
+      account: { type: 'nexus' as const },
+      owners: {
+        type: 'multi-factor' as const,
+        validators: [
+          { type: 'passkey' as const, accounts },
+          { type: 'ecdsa' as const, accounts: [accountA] },
+        ],
+      },
+    })
+    const first = passkey('property:nested-a')
+    const second = passkey('property:nested-b')
+    const baseline = deriveStatic(factors([first, second]))
+    const swapped = deriveStatic(factors([second, first]))
+    if (!derived(baseline) || !derived(swapped)) {
+      throw new Error('multi-factor configurations must derive')
+    }
+    expect(swapped.address).toBe(baseline.address)
+  })
+
   test('the order recovery guardians are listed in is ignored', () => {
     fc.assert(
       fc.property(configArbitrary, seedArbitrary, (config, seed) => {
@@ -965,31 +989,6 @@ describe('documented derivation exceptions', () => {
       }),
       propertyParameters({ numRuns: 50 }),
     )
-  })
-
-  // Known gap, pinned so it cannot widen: the salt search that makes a
-  // multi-credential passkey set order independent only runs for a top-level
-  // passkey owner, so credentials nested in a multi-factor factor are still
-  // installed in caller order.
-  test('multi-passkey factors nested in a multi-factor set stay order sensitive', () => {
-    const factors = (accounts: WebAuthnAccount[]) => ({
-      account: { type: 'nexus' as const },
-      owners: {
-        type: 'multi-factor' as const,
-        validators: [
-          { type: 'passkey' as const, accounts },
-          { type: 'ecdsa' as const, accounts: [accountA] },
-        ],
-      },
-    })
-    const first = passkey('property:nested-a')
-    const second = passkey('property:nested-b')
-    const baseline = deriveStatic(factors([first, second]))
-    const swapped = deriveStatic(factors([second, first]))
-    if (!derived(baseline) || !derived(swapped)) {
-      throw new Error('multi-factor configurations must derive')
-    }
-    expect(swapped.address).not.toBe(baseline.address)
   })
 
   // `getV0InitData` reports the current path's address with the v0 factory

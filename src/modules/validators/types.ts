@@ -144,7 +144,13 @@ export type ValidatorContributionCodec =
       readonly webauthn?: {
         readonly account: Address
         readonly usePrecompile: boolean
-        readonly format: 'current' | 'v0'
+        readonly format: 'current' | 'v0' | 'stateless'
+        // Every configured credential, needed by the stateless format to check
+        // that a partial signer set is the factor's lowest-ordered prefix.
+        readonly credentials?: readonly {
+          readonly ownerId: string
+          readonly publicKey: Hex
+        }[]
       }
     }
   | {
