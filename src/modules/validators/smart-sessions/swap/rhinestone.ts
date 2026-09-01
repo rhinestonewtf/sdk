@@ -39,7 +39,7 @@ import { ZEROX_ALLOWANCE_HOLDER, ZEROX_CHAIN_IDS } from './zero-ex'
  * much can LEAVE; it does not ensure anything comes back. `minAmountOut` is a
  * caller-supplied argument this scoping does not pin, and the contract accepts
  * zero — so with an unconstrained route a compromised key can spend up to the
- * cap and receive nothing. {@link swapperZeroEx} closes that by pinning the
+ * cap and receive nothing. Naming a venue closes that by pinning the
  * route, leaving the pulled input nowhere to go but a real aggregator.
  */
 
@@ -162,6 +162,9 @@ const CALLS_ELEM1_POINTER_OFFSET = 320n
 const CALLS_ELEM0_TARGET_OFFSET = 352n
 const CALLS_ELEM1_TARGET_OFFSET = 576n
 
+const CALLS_ELEM0_VALUE_OFFSET = 384n
+const CALLS_ELEM1_VALUE_OFFSET = 608n
+const NESTED_EXEC_TOKEN_OFFSET = 740n
 const CALLS_ELEM1_DATA_POINTER_OFFSET = 640n
 /** Head words of the `AllowanceHolder.exec` nested in `calls[1].data`. */
 const NESTED_EXEC_OPERATOR_OFFSET = 708n
@@ -200,21 +203,15 @@ function routeRules(
   aggregator: Address,
   settler?: Address,
 ): UniversalActionPolicyParamRule[] {
-  // UniversalActionPolicy allows at most 16 rules per action, and the base
-  // scope already spends 4 (tokenIn, tokenOut, recipient, cap) — so these 12
-  // are the whole budget. Every one of them is load-bearing: the shape words
-  // make the fixed offsets meaningful at all, and each pin below closes a way
-  // the pulled input could leave. The `calls[].value` words and the nested sell
-  // token were dropped to fit; the outer call's value is already capped by
-  // `swapAction`'s `valueLimitPerUse: 0n`, and the Swapper only ever holds the
-  // token it just pulled.
   const nested: UniversalActionPolicyParamRule[] = settler
     ? [
         // Pinning calls[1]'s target to the AllowanceHolder still leaves the
         // exec it forwards free to name any operator and target, which is where
         // the pulled input would go. Pin those too when the Settler is known.
+        pinValue(CALLS_ELEM1_VALUE_OFFSET, 0n),
         pinValue(CALLS_ELEM1_DATA_POINTER_OFFSET, CALLS_ELEM1_DATA_POINTER),
         pin(NESTED_EXEC_OPERATOR_OFFSET, settler),
+        pin(NESTED_EXEC_TOKEN_OFFSET, sellToken),
         pin(NESTED_EXEC_TARGET_OFFSET, settler),
       ]
     : []
@@ -230,6 +227,7 @@ function routeRules(
     // token — `transfer(attacker, amountIn)` as easily as an approve. Fixing
     // its length and the address it names leaves the aggregator as the only
     // party the pulled input can reach.
+    pinValue(CALLS_ELEM0_VALUE_OFFSET, 0n),
     pinValue(CALLS_ELEM0_DATA_POINTER_OFFSET, CALLS_ELEM0_DATA_POINTER),
     pinValue(CALLS_ELEM0_DATA_LENGTH_OFFSET, APPROVE_CALLDATA_LENGTH),
     pin(CALLS_ELEM0_SPENDER_OFFSET, aggregator),
@@ -251,45 +249,6 @@ export function rhinestoneSwap(
     ...(options.maxSpend !== undefined ? { maxSpend: options.maxSpend } : {}),
   }
 }
-
-/**
- * Route swaps through the Swapper AND require the aggregator inside `calls[]`
- * to be 0x.
- *
- * Distinct from {@link zeroEx}, which scopes a DIRECT `AllowanceHolder.exec`
- * call by the account. That shape is not what the orchestrator emits for
- * same-chain smart-account swaps — it wraps the aggregator behind the Swapper —
- * so use this one for intent-routed swaps and `zeroEx()` only where the account
- * calls the router itself.
- */
-/**
- * Route swaps through the Swapper AND require the aggregator inside `calls[]`
- * to be fynd's Tycho router.
- *
- * The counterpart to {@link swapperZeroEx}. Distinct from {@link rhinestoneSwap},
- * which leaves the tail unconstrained so any aggregator may fill it.
- */
-export function swapperFynd(
-  options: { maxSpend?: bigint } = {},
-): RhinestoneSwapVenue {
-  return {
-    id: 'rhinestone',
-    route: 'fynd',
-    ...(options.maxSpend !== undefined ? { maxSpend: options.maxSpend } : {}),
-  }
-}
-
-export function swapperZeroEx(
-  options: { maxSpend?: bigint; settler?: Address } = {},
-): RhinestoneSwapVenue {
-  return {
-    id: 'rhinestone',
-    route: 'zeroEx',
-    ...(options.settler !== undefined ? { settler: options.settler } : {}),
-    ...(options.maxSpend !== undefined ? { maxSpend: options.maxSpend } : {}),
-  }
-}
-
 export function scopeRhinestone(
   venue: RhinestoneSwapVenue,
   ctx: VenueContext,

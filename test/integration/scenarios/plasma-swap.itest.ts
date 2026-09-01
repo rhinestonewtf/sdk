@@ -16,7 +16,6 @@ import {
 } from '../../../src/modules/validators/smart-sessions/swap/zero-ex'
 import {
   getSessionData,
-  swapperZeroEx,
   toSession,
   zeroEx,
 } from '../../../src/smart-sessions/index'
@@ -653,7 +652,7 @@ function tamperedSession(
       sell: { token: args.sellToken, maxTotal: SESSION_CAP },
       buy: { token: args.buyToken },
       to: args.recipient,
-      via: [swapperZeroEx()],
+      via: [zeroEx({ settler })],
     },
     plasma.id,
   )

@@ -522,9 +522,8 @@ type SpendingLimitField<TFn extends AbiFunction> =
     ? { spendingLimit?: { token: Address; amount: bigint } }
     : { spendingLimit?: never }
 
-type ValueLimitField<TFn extends AbiFunction> = IsPayable<TFn> extends true
-  ? { valueLimit?: bigint }
-  : { valueLimit?: never }
+type ValueLimitField<TFn extends AbiFunction> =
+  IsPayable<TFn> extends true ? { valueLimit?: bigint } : { valueLimit?: never }
 
 type PermissionFunctionConfig<TFn extends AbiFunction> = {
   /** `valueLimitPerUse` embedded in universal/arg-policy `ActionConfig`. */
@@ -631,7 +630,7 @@ type SessionSigning =
  *
  * Which venue to name depends on who calls the aggregator. For orchestrator-
  * routed swaps the account calls the Rhinestone Swapper and the aggregator sits
- * inside its route, so use the default or `swapperZeroEx()`. `zeroEx()` and
+ * inside its route, so use the default or . `zeroEx()` and
  * `fynd()` scope a DIRECT router call by the account, which is a different
  * shape — naming them for an intent-routed swap rejects the swap it was meant
  * to authorise.
@@ -639,7 +638,7 @@ type SessionSigning =
  * What a swap scope bounds: the ops runnable, the tokens, the recipient, and
  * total sell-side spend. What it does not bound on its own is the QUALITY of
  * the swap — `minAmountOut` is not pinned, so an unrouted scope can spend up to
- * the cap and receive little or nothing. Pin the route (`swapperZeroEx()`) when
+ * the cap and receive little or nothing. Pin the route (when
  * that matters.
  *
  * `chain` is what narrows `via`: the same `swap` block naming `fynd()` compiles
@@ -1142,81 +1141,81 @@ interface UserOperationTransaction {
 type Transaction = SameChainTransaction | CrossChainTransaction
 
 export type {
-  AccountType,
-  SafeAccount,
-  NexusAccount,
-  KernelAccount,
-  StartaleAccount,
-  HcaAccount,
-  EoaAccount,
-  RhinestoneAccountConfig,
-  RhinestoneSDKConfig,
-  RhinestoneConfig,
   AccountProviderConfig,
-  ProviderConfig,
+  AccountType,
+  Action,
+  ApiKeyAuth,
+  ArgPolicyExpression,
+  AuthConfig,
   BundlerConfig,
-  PaymasterConfig,
-  Transaction,
-  UserOperationTransaction,
-  TokenSymbol,
-  CalldataInput,
-  LazyCallInput,
-  CallInput,
-  SourceCallProvidedFunds,
-  SourceCallInput,
-  CallResolveContext,
   Call,
-  Sponsorship,
-  TokenRequest,
-  TokenRequests,
+  CalldataInput,
+  CallInput,
+  CallResolveContext,
+  ChainSessionConfig,
+  CrossChainPermissionInput,
+  CrossChainPermit,
+  CrossChainSettlementLayer,
+  ENSValidatorConfig,
+  EoaAccount,
+  FallbackAction,
+  FromLeg,
+  GuardiansSignerSet,
+  HcaAccount,
+  JwtAuth,
+  KernelAccount,
+  LazyCallInput,
+  ModuleInput,
+  ModuleType,
+  MultiFactorValidatorConfig,
+  NexusAccount,
   NonEvmTokenRequest,
   NonEvmTokenRequests,
-  SourceAssetInput,
-  OwnerSet,
   OwnableValidatorConfig,
-  ENSValidatorConfig,
-  WebauthnValidatorConfig,
-  MultiFactorValidatorConfig,
-  SignerSet,
-  GuardiansSignerSet,
-  Recovery,
-  ChainSessionConfig,
-  SingleSessionSignerSet,
-  PerChainSessionSignerSet,
-  SessionSignerSet,
-  SessionDefinition,
-  SessionSigning,
-  SessionSigningContent,
-  SessionInput,
-  SessionEnableData,
-  Session,
-  ModuleType,
-  ModuleInput,
-  Action,
-  ScopedAction,
-  FallbackAction,
-  Permission,
-  PermissionsForAbis,
-  PermissionFunctionConfig,
+  OwnerSet,
   ParamConstraint,
-  SwapScope,
+  PaymasterConfig,
+  PerChainSessionSignerSet,
+  Permission,
+  PermissionFunctionConfig,
+  PermissionsForAbis,
+  Permit2ClaimPolicy,
+  Policy,
+  ProviderConfig,
+  Recovery,
   ResolvedAction,
   ResolvedERC7739Content,
   ResolvedERC7739Policies,
   ResolvedPolicy,
-  Policy,
-  Permit2ClaimPolicy,
-  CrossChainPermit,
-  CrossChainPermissionInput,
-  FromLeg,
-  ToLeg,
-  CrossChainSettlementLayer,
-  UniversalActionPolicyParamCondition,
-  ArgPolicyExpression,
+  RhinestoneAccountConfig,
+  RhinestoneConfig,
+  RhinestoneSDKConfig,
+  SafeAccount,
+  ScopedAction,
+  Session,
+  SessionDefinition,
+  SessionEnableData,
+  SessionInput,
   SessionPolicyAddresses,
-  ApiKeyAuth,
-  JwtAuth,
-  AuthConfig,
+  SessionSignerSet,
+  SessionSigning,
+  SessionSigningContent,
+  SignerSet,
+  SingleSessionSignerSet,
+  SourceAssetInput,
+  SourceCallInput,
+  SourceCallProvidedFunds,
+  Sponsorship,
+  StartaleAccount,
   SwapQuoter,
   SwapQuoterFilter,
+  SwapScope,
+  TokenRequest,
+  TokenRequests,
+  TokenSymbol,
+  ToLeg,
+  Transaction,
+  UniversalActionPolicyParamCondition,
+  UserOperationTransaction,
+  WebauthnValidatorConfig,
 }

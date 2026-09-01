@@ -181,8 +181,6 @@ export interface ZeroExAnySettlerOptions {
  * not when the session is signed. Authorising one shape is how a session ends
  * up rejecting the swap it was created for.
  *
- * Use {@link swapperZeroEx} when the wrapped shape is the only one you want.
- *
  * Takes either a pinned `settler` or `anySettler` + `maxSpend`. There is
  * deliberately no zero-argument form: a bundled Settler constant would be stale
  * within weeks of the release that shipped it.

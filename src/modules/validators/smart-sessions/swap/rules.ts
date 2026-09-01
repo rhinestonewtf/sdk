@@ -1,5 +1,6 @@
 import type { Address } from 'viem'
 import type {
+  ArgPolicyExpression,
   ScopedAction,
   SessionPolicy,
   UniversalActionPolicyParamRule,
@@ -67,19 +68,45 @@ export function cumulativeCap(
  * without it, a payable swap selector could still carry arbitrary native value
  * through the router.
  */
+/** Every rule must hold, as a right-folded AND over the expression tree. */
+function allOf(rules: UniversalActionPolicyParamRule[]): ArgPolicyExpression {
+  return rules
+    .map((rule): ArgPolicyExpression => ({ type: 'rule', rule }))
+    .reduceRight((right, left) => ({ type: 'and', left, right }))
+}
+
+/**
+ * Wrap rules into the action's policy.
+ *
+ * `valueLimitPerUse: 0n` because the approve cap only bounds ERC-20 pulls —
+ * without it, a payable swap selector could still carry arbitrary native value
+ * through the router.
+ *
+ * UniversalActionPolicy while the rules fit its fixed 16-slot array, which is
+ * every venue except a fully-pinned wrapped route — those pin the shape words,
+ * both call targets, the approve and the nested exec, and run past 16. ArgPolicy
+ * takes a dynamic rule list, so it carries the overflow rather than forcing a
+ * pin to be dropped. Preferring the simpler policy keeps the common case on the
+ * contract it has always used.
+ */
+const UNIVERSAL_ACTION_MAX_RULES = 16
+
 export function swapAction(
   target: Address,
   selector: `0x${string}`,
   rules: UniversalActionPolicyParamRule[],
 ): ScopedAction {
-  const policy: SessionPolicy = {
-    type: 'universal-action',
-    valueLimitPerUse: 0n,
-    rules: rules as [
-      UniversalActionPolicyParamRule,
-      ...UniversalActionPolicyParamRule[],
-    ],
-  }
+  const policy: SessionPolicy =
+    rules.length <= UNIVERSAL_ACTION_MAX_RULES
+      ? {
+          type: 'universal-action',
+          valueLimitPerUse: 0n,
+          rules: rules as [
+            UniversalActionPolicyParamRule,
+            ...UniversalActionPolicyParamRule[],
+          ],
+        }
+      : { type: 'arg-policy', valueLimitPerUse: 0n, expression: allOf(rules) }
   return { target, selector, policies: [policy] }
 }
 

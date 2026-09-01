@@ -9,6 +9,7 @@ import {
   toSession,
 } from '../resolve'
 import type {
+  ArgPolicyExpression,
   ScopedAction,
   SwapScopeInput,
   UniversalActionPolicyParamRule,
@@ -19,7 +20,6 @@ import {
   SWAP_EXACT_IN_SELECTOR,
   SWAP_EXACT_OUT_SELECTOR,
   swapperAddresses,
-  swapperZeroEx,
 } from './rhinestone'
 import { resolveSwapScope } from './scope'
 import {
@@ -48,12 +48,30 @@ function scope(overrides: Partial<SwapScopeInput> = {}): SwapScopeInput {
   }
 }
 
+/** Flatten the AND tree a swap action's ArgPolicy expression is built from. */
+function flatten(
+  expression: ArgPolicyExpression,
+): UniversalActionPolicyParamRule[] {
+  if (expression.type === 'rule') return [expression.rule]
+  if (expression.type === 'and') {
+    return [...flatten(expression.left), ...flatten(expression.right)]
+  }
+  throw new Error(`unexpected node in a swap policy: ${expression.type}`)
+}
+
 function rulesOf(action: ScopedAction): UniversalActionPolicyParamRule[] {
   const policy = action.policies?.[0]
-  if (policy?.type !== 'universal-action') {
-    throw new Error(`expected universal-action, got ${policy?.type}`)
+  if (policy?.type === 'universal-action') return [...policy.rules]
+  if (policy?.type === 'arg-policy') return flatten(policy.expression)
+  throw new Error(`expected a swap policy, got ${policy?.type}`)
+}
+
+function valueLimitOf(action: ScopedAction): bigint | undefined {
+  const policy = action.policies?.[0]
+  if (policy?.type === 'universal-action' || policy?.type === 'arg-policy') {
+    return policy.valueLimitPerUse
   }
-  return [...policy.rules]
+  return undefined
 }
 
 const SWAPPER_PLASMA = swapperAddresses('production').swapper
@@ -99,9 +117,9 @@ describe('resolveSwapScope — fynd', () => {
 
   test('native value is capped at zero so a payable route cannot carry XPL', () => {
     const { actions } = resolveSwapScope(scope(), PLASMA)
-    const policy = actions[0].policies![0]
-    if (policy.type !== 'universal-action') throw new Error('wrong type')
-    expect(policy.valueLimitPerUse).toBe(0n)
+    for (const action of actions) {
+      expect(valueLimitOf(action)).toBe(0n)
+    }
   })
 })
 
@@ -273,16 +291,23 @@ describe('every scope fits the on-chain rule ceiling', () => {
     ['0x pinned', () => [zeroEx({ settler: SETTLER })]],
     ['0x anySettler', () => [zeroEx({ anySettler: true, maxSpend: 500n })]],
     ['swapper', () => [rhinestoneSwap()]],
-    ['swapper+0x', () => [swapperZeroEx()]],
     ['fynd+0x', () => [fynd(), zeroEx({ settler: SETTLER })]],
     ['fynd+swapper', () => [fynd(), rhinestoneSwap()]],
   ] as const
 
   for (const [name, via] of combos) {
-    test(`${name} stays within 16 rules per action`, () => {
+    test(`${name} builds a policy that can hold its rules`, () => {
       const { actions } = resolveSwapScope(scope({ via: via() }), PLASMA)
       for (const action of actions) {
-        expect(rulesOf(action).length).toBeLessThanOrEqual(16)
+        const policy = action.policies?.[0]
+        // UniversalActionPolicy encodes a fixed 16-slot array, so anything past
+        // that has to be on ArgPolicy — otherwise the encoder throws and the
+        // scope is unbuildable.
+        if (policy?.type === 'universal-action') {
+          expect(policy.rules.length).toBeLessThanOrEqual(16)
+        } else {
+          expect(policy?.type).toBe('arg-policy')
+        }
       }
     })
   }
@@ -322,9 +347,11 @@ describe('resolveSwapScope — multi-venue and validation', () => {
   })
 
   test('two venues authorising the same call collapse instead of colliding', () => {
-    // `zeroEx()` covers the wrapped shape too, so this overlaps swapperZeroEx().
+    // Two 0x venues describe the same calls, so they collapse rather than clash.
     const { actions } = resolveSwapScope(
-      scope({ via: [zeroEx({ settler: SETTLER }), swapperZeroEx()] }),
+      scope({
+        via: [zeroEx({ settler: SETTLER }), zeroEx({ settler: SETTLER })],
+      }),
       PLASMA,
     )
     const keys = actions.map((a) => `${a.target}|${a.selector}`)
@@ -337,7 +364,10 @@ describe('resolveSwapScope — multi-venue and validation', () => {
         scope({
           sell: { token: USDT0, maxTotal: 1000n },
           // Different caps produce different rules for the same Swapper call.
-          via: [zeroEx({ settler: SETTLER }), swapperZeroEx({ maxSpend: 5n })],
+          via: [
+            zeroEx({ settler: SETTLER }),
+            zeroEx({ settler: SETTLER, maxSpend: 5n }),
+          ],
         }),
         PLASMA,
       ),
@@ -604,20 +634,26 @@ describe('resolveSwapScope — Rhinestone Swapper', () => {
 // Pinning a target inside a dynamic array is only sound if the LAYOUT is pinned
 // too — otherwise a compromised key re-encodes so a fixed offset reads a
 // different word. These assert the shape words are pinned alongside the targets.
-describe('resolveSwapScope — swapperZeroEx route pinning', () => {
+describe('resolveSwapScope — wrapped 0x route pinning', () => {
   const scoped = () =>
     resolveSwapScope(
       {
         sell: { token: USDT0, maxTotal: 500n },
         buy: { token: USDC },
         to: ACCOUNT,
-        via: [swapperZeroEx()],
+        via: [zeroEx({ settler: SETTLER })],
       },
       PLASMA,
     )
 
+  /** The Swapper actions — zeroEx() also emits the direct AllowanceHolder call. */
+  const wrapped = () =>
+    scoped().actions.filter(
+      (a) => a.target.toLowerCase() === SWAPPER_PLASMA.toLowerCase(),
+    )
+
   test('pins the array pointer, length and both element pointers', () => {
-    const rules = rulesOf(scoped().actions[0])
+    const rules = rulesOf(wrapped()[0])
     expect(ruleAt(rules, 224n)?.referenceValue).toBe(256n) // calls -> ptr
     expect(ruleAt(rules, 256n)?.referenceValue).toBe(2n) // length
     expect(ruleAt(rules, 288n)?.referenceValue).toBe(64n) // elem[0] ptr
@@ -625,21 +661,30 @@ describe('resolveSwapScope — swapperZeroEx route pinning', () => {
   })
 
   test('pins calls[0] to the sell token and calls[1] to 0x', () => {
-    const rules = rulesOf(scoped().actions[0])
+    const rules = rulesOf(wrapped()[0])
     expect(ruleAt(rules, 352n)?.referenceValue).toBe(USDT0)
     expect(ruleAt(rules, 576n)?.referenceValue).toBe(ZEROX_ALLOWANCE_HOLDER)
   })
 
   test('applies the same route pins to the exact-out selector', () => {
-    const rules = rulesOf(scoped().actions[1])
+    const rules = rulesOf(wrapped()[1])
     expect(ruleAt(rules, 256n)?.referenceValue).toBe(2n)
     expect(ruleAt(rules, 576n)?.referenceValue).toBe(ZEROX_ALLOWANCE_HOLDER)
   })
 
-  test('stays within the 16-rule UniversalActionPolicy ceiling', () => {
-    for (const action of scoped().actions) {
-      expect(rulesOf(action).length).toBeLessThanOrEqual(16)
+  test('a fully pinned wrapped route moves to ArgPolicy rather than drop a pin', () => {
+    // The shape words, both call targets, the approve and the nested exec run
+    // past UniversalActionPolicy's fixed 16 slots. ArgPolicy's rule list is
+    // dynamic, so the overflow costs a policy type rather than a binding.
+    for (const action of wrapped()) {
+      expect(rulesOf(action).length).toBeGreaterThan(16)
+      expect(action.policies?.[0].type).toBe('arg-policy')
     }
+    // The direct call still fits the simpler policy.
+    const direct = scoped().actions.find(
+      (a) => a.target.toLowerCase() === ZEROX_ALLOWANCE_HOLDER.toLowerCase(),
+    )!
+    expect(direct.policies?.[0].type).toBe('universal-action')
   })
 
   test('rejects a chain where 0x is not a quoter', () => {
@@ -649,7 +694,7 @@ describe('resolveSwapScope — swapperZeroEx route pinning', () => {
           sell: { token: USDT0 },
           buy: { token: USDC },
           to: ACCOUNT,
-          via: [swapperZeroEx()],
+          via: [zeroEx({ settler: SETTLER })],
         },
         // Gnosis (100) runs neither 0x nor fynd.
         100,

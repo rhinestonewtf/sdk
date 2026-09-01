@@ -2,7 +2,7 @@ import { base } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 import { accountA } from '../../test/consts'
 import { toSession } from '../modules/validators/smart-sessions/resolve'
-import { fynd, rhinestoneSwap, swapperZeroEx, zeroEx } from '../smart-sessions'
+import { fynd, rhinestoneSwap, zeroEx } from '../smart-sessions'
 import { adaptTransaction } from './account'
 
 const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as const
@@ -75,8 +75,10 @@ describe('quoter pin derived from a session venue scope', () => {
     expect(pin.include.sort()).toEqual(['0x', 'fynd'])
   })
 
-  test('the Swapper pinned to a 0x route still pins 0x', () => {
-    expect(pinFor([swapperZeroEx()])).toEqual({ include: ['0x'] })
+  test('a 0x venue pins 0x whichever shape fills it', () => {
+    // zeroEx() authorises the direct call and the Swapper-wrapped one; the pin
+    // names the venue, not the call shape.
+    expect(pinFor([zeroEx({ settler: SETTLER })])).toEqual({ include: ['0x'] })
   })
 
   test('a bare Swapper scope pins NOTHING — any venue may fill it', () => {

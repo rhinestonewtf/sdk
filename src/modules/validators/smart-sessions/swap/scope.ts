@@ -214,9 +214,8 @@ export function resolveSwapScope(
 /**
  * Collapse actions that different venues both authorise.
  *
- * `zeroEx()` covers the Swapper-wrapped shape as well as the direct one, so
- * listing it alongside `swapperZeroEx()` yields the same (target, selector)
- * twice. Those map to one on-chain action id, and the resolver rejects
+ * Every aggregator venue covers the Swapper-wrapped shape as well as its direct
+ * one, so listing two of them yields the same (target, selector) twice. Those map to one on-chain action id, and the resolver rejects
  * duplicates — reasonably, since two entries would silently overwrite each
  * other's policies. Identical entries are safe to collapse; genuinely
  * conflicting ones still throw, because picking a winner would silently
