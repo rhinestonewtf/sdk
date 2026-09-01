@@ -16,9 +16,12 @@ export const MULTI_FACTOR_VALIDATOR_ADDRESS: Address =
 export const MULTI_FACTOR_VALIDATOR_V2_ADDRESS: Address =
   '0x0000007261E4E2F1a892A58fd0708c9321e76020'
 
+// Multi-factor validates a factor through `validateSignatureWithData`, handing
+// back the blob stored for that slot, so the slot holds the sub-validator's
+// stateless configuration rather than its install data.
 export type AtomicValidatorResolver = (
   definition: MultiFactorValidatorDefinition['validators'][number],
-) => ResolvedModule
+) => { readonly module: ResolvedModule; readonly statelessData: Hex }
 
 export function encodeValidatorId(id: number | Hex): Hex {
   return pad(typeof id === 'number' ? toHex(id) : id, { size: 12 })
@@ -29,13 +32,13 @@ export function resolveMultiFactorValidator(
   resolveAtomic: AtomicValidatorResolver,
 ): ResolvedModule {
   const validators = definition.validators.map((validator) => {
-    const module = resolveAtomic(validator)
+    const { module, statelessData } = resolveAtomic(validator)
     return {
       packedValidatorAndId: concat([
         encodeValidatorId(validator.publicId),
         module.address,
       ]),
-      data: module.initData,
+      data: statelessData,
     }
   })
   return {

@@ -25,6 +25,27 @@ function moduleAddress(definition: AtomicValidatorDefinition) {
     : OWNABLE_VALIDATOR_ADDRESS
 }
 
+/**
+ * The configuration `OwnableValidator.validateSignatureWithData` expects: the
+ * threshold followed by the sorted, uniquified owner list. Byte-identical to
+ * the validator's install data, which is why the same encoder produces both.
+ */
+export function encodeOwnableStatelessData(input: {
+  readonly owners: readonly `0x${string}`[]
+  readonly threshold: number
+}): Hex {
+  return encodeAbiParameters(
+    [
+      { name: 'threshold', type: 'uint256' },
+      { name: 'owners', type: 'address[]' },
+    ],
+    [
+      BigInt(input.threshold),
+      input.owners.map((owner) => owner.toLowerCase() as `0x${string}`).sort(),
+    ],
+  )
+}
+
 export function resolveOwnableAddresses(input: {
   readonly owners: readonly `0x${string}`[]
   readonly threshold: number
@@ -33,27 +54,14 @@ export function resolveOwnableAddresses(input: {
   return {
     kind: 'validator',
     address: input.address ?? OWNABLE_VALIDATOR_ADDRESS,
-    initData: encodeAbiParameters(
-      [
-        { name: 'threshold', type: 'uint256' },
-        { name: 'owners', type: 'address[]' },
-      ],
-      [
-        BigInt(input.threshold),
-        input.owners
-          .map((owner) => owner.toLowerCase() as `0x${string}`)
-          .sort(),
-      ],
-    ),
+    initData: encodeOwnableStatelessData(input),
     deInitData: '0x',
     additionalContext: '0x',
   }
 }
 
-export function resolveOwnableValidator(
-  definition: AtomicValidatorDefinition,
-): ResolvedModule {
-  const owners = definition.owners
+function ownableDefinitionOwners(definition: AtomicValidatorDefinition) {
+  return definition.owners
     .map((owner) => {
       if (owner.kind === 'webauthn') {
         throw new Error('Ownable validator contains a WebAuthn owner')
@@ -61,10 +69,24 @@ export function resolveOwnableValidator(
       return owner.account.address.toLowerCase() as `0x${string}`
     })
     .sort()
+}
+
+export function resolveOwnableValidator(
+  definition: AtomicValidatorDefinition,
+): ResolvedModule {
   return resolveOwnableAddresses({
-    owners,
+    owners: ownableDefinitionOwners(definition),
     threshold: definition.threshold,
     address: moduleAddress(definition),
+  })
+}
+
+export function resolveOwnableStatelessData(
+  definition: AtomicValidatorDefinition,
+): Hex {
+  return encodeOwnableStatelessData({
+    owners: ownableDefinitionOwners(definition),
+    threshold: definition.threshold,
   })
 }
 

@@ -65,12 +65,12 @@ generator there with `SDK_VECTORS_OUT` pointing at this checkout's baseline.
 promise with generated configurations (fast-check): which caller-visible
 differences must never move a derived address, and which must.
 
-Invariant: the order owners, recovery guardians, and multi-factor factor members
-are listed in; reordering modules across kinds while each kind keeps its relative
-order; spelling out a default (`threshold: 1`, `sessions: { enabled: false }`,
-`modules: []`); address and passkey public key casing and the uncompressed point
-prefix; the chain the address is requested for and whether the account is
-deployed; repeated derivation, derivation order across accounts, and host
+Invariant: the order owners, recovery guardians, multi-factor factor members, and
+the credentials of a passkey factor are listed in; reordering modules across
+kinds while each kind keeps its relative order; spelling out a default
+(`threshold: 1`, `sessions: { enabled: false }`, `modules: []`); address and
+passkey public key casing and the uncompressed point prefix; the chain the
+address is requested for and whether the account is deployed; repeated derivation, derivation order across accounts, and host
 collation. Derivation never mutates the caller's configuration.
 
 Sensitive by design, and asserted as such: owner set membership, threshold,
@@ -84,10 +84,7 @@ address through; the legacy v0 factory args keep their owner-order sensitivity,
 and the `address` `experimental_getV0InitData` reports comes from the current
 derivation path rather than from those factory args, so the two describe
 different accounts (reconstruction is unaffected — passing the result back as
-`initData` re-derives the address from `factoryData`); and a multi-credential
-passkey factor nested in a multi-factor owner set is
-still installed in caller order, because the salt search only runs for a
-top-level passkey owner.
+`initData` re-derives the address from `factoryData`).
 
 Properties run on a fixed seed so a counterexample reproduces on any host.
 `SDK_PROPERTY_SEED` and `SDK_PROPERTY_RUNS` override the seed and run count for

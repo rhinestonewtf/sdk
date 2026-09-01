@@ -10,6 +10,7 @@ import {
   encodeWebauthnValidatorContribution,
   generateWebauthnCredentialId,
   parseWebauthnSignature,
+  WEBAUTHN_STATELESS_ACCOUNT,
 } from './webauthn'
 
 const validator = {
@@ -286,6 +287,81 @@ describe('validator contribution codecs', () => {
         contributions: [value, { ...value, ownerId: 'b' }],
       }),
     ).toThrow('exactly one')
+  })
+
+  test('carries a passkey factor as the assertions its validator decodes', () => {
+    const publicKey = `0x${'44'.repeat(64)}` as Hex
+    const factorContribution = encodeValidatorContribution(
+      {
+        kind: 'ordered-threshold',
+        validator,
+        ownerOrder: ['passkey'],
+        threshold: 1,
+        recoveryEncoding: 'ethereum',
+        webauthn: {
+          account: WEBAUTHN_STATELESS_ACCOUNT,
+          usePrecompile: false,
+          format: 'stateless',
+          credentials: [{ ownerId: 'passkey', publicKey }],
+        },
+      },
+      [
+        {
+          kind: 'webauthn',
+          ownerId: 'passkey',
+          publicKey,
+          signature: `0x${'22'.repeat(64)}`,
+          authenticatorData: '0x1234',
+          clientDataJSON: '{"type":"webauthn.get","challenge":"value"}',
+          challengeIndex: 0,
+          typeIndex: 0,
+          userVerificationRequired: false,
+        },
+      ],
+    )
+    const [factors] = decodeAbiParameters(
+      [
+        {
+          type: 'tuple[]',
+          components: [{ type: 'bytes32' }, { type: 'bytes' }],
+        },
+      ],
+      encodeValidatorContribution(
+        {
+          kind: 'nested-threshold',
+          validator,
+          factorOrder: ['passkey'],
+          threshold: 1,
+        },
+        [
+          {
+            kind: 'factor',
+            factorId: 'passkey',
+            publicId: 1,
+            validator: account,
+            contribution: factorContribution,
+          },
+        ],
+      ),
+    )
+    const [assertions] = decodeAbiParameters(
+      [
+        {
+          type: 'tuple[]',
+          components: [
+            { type: 'bytes' },
+            { type: 'string' },
+            { type: 'uint256' },
+            { type: 'uint256' },
+            { type: 'uint256' },
+            { type: 'uint256' },
+          ],
+        },
+      ],
+      factors[0][1],
+    )
+    expect(assertions).toHaveLength(1)
+    expect(assertions[0][0]).toBe('0x1234')
   })
 
   test('normalizes MFA ids and preserves configured factor order', () => {

@@ -1,7 +1,7 @@
 import { type Address, decodeFunctionData, parseAbi } from 'viem'
 import { base } from 'viem/chains'
 import { describe, expect, test, vi } from 'vitest'
-import { accountA } from '../../test/consts'
+import { accountA, passkeyAccount } from '../../test/consts'
 import { RhinestoneSDK } from '..'
 import { resolveCalls } from '../calls/resolve'
 import { toEvmChainReference } from '../chains/caip2'
@@ -10,6 +10,10 @@ import {
   MULTI_FACTOR_VALIDATOR_ADDRESS,
   MULTI_FACTOR_VALIDATOR_V2_ADDRESS,
 } from '../modules/validators/multi-factor'
+import {
+  encodeWebauthnStatelessData,
+  WEBAUTHN_VALIDATOR_ADDRESS,
+} from '../modules/validators/webauthn'
 import {
   changeThreshold,
   disable,
@@ -138,6 +142,33 @@ describe('MFA actions', () => {
       expectModuleArgument(call.data, expected)
     },
   )
+
+  test('re-sets a passkey factor with the data its validator decodes', () => {
+    const call = setSubValidator(1, {
+      type: 'passkey',
+      accounts: [passkeyAccount],
+    })
+    if (!call.data) throw new Error('Expected management calldata')
+    const decoded = decodeFunctionData({
+      abi: managementActionAbi,
+      data: call.data,
+    })
+    if (decoded.functionName !== 'setValidator') {
+      throw new Error('Expected setValidator')
+    }
+    expect(decoded.args[0].toLowerCase()).toBe(WEBAUTHN_VALIDATOR_ADDRESS)
+    expect(decoded.args[2]).toBe(
+      encodeWebauthnStatelessData({
+        credentials: [
+          {
+            pubKey: passkeyAccount.publicKey,
+            authenticatorId: passkeyAccount.id,
+          },
+        ],
+        threshold: 1,
+      }),
+    )
+  })
 
   test.each(moduleCases)(
     'targets the $name module for management calls',

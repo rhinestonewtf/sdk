@@ -21,9 +21,17 @@ import {
   OWNABLE_V0_VALIDATOR_ADDRESS,
   resolveOwnableValidator,
 } from './ownable'
-import { resolveAtomicValidator, resolveValidator } from './resolve'
-import type { AtomicValidatorDefinition } from './types'
 import {
+  resolveAtomicValidator,
+  resolveAtomicValidatorStatelessData,
+  resolveValidator,
+} from './resolve'
+import type {
+  AtomicValidatorDefinition,
+  MultiFactorValidatorDefinition,
+} from './types'
+import {
+  generateWebauthnCredentialId,
   parseWebauthnPublicKey,
   resolveWebauthnCredentials,
   resolveWebauthnValidator,
@@ -91,6 +99,89 @@ describe('validator resolution', () => {
     )
     expect(module.address).toBe(MULTI_FACTOR_VALIDATOR_V2_ADDRESS)
     expect(module.initData.startsWith('0x01')).toBe(true)
+  })
+
+  test('gives each MFA factor the stateless data its validator decodes', () => {
+    const definition = validator({
+      type: 'multi-factor',
+      threshold: 2,
+      validators: [
+        { type: 'ecdsa', accounts: [accountA, accountB], threshold: 2 },
+        { type: 'passkey', accounts: [passkeyAccount] },
+        { type: 'ens', owners: [{ account: accountC }] },
+      ],
+    }) as MultiFactorValidatorDefinition
+    const initData = resolveValidator(definition).initData
+    expect(initData.slice(0, 4)).toBe('0x02')
+    const [factors] = decodeAbiParameters(
+      [
+        {
+          type: 'tuple[]',
+          components: [
+            { name: 'packedValidatorAndId', type: 'bytes32' },
+            { name: 'data', type: 'bytes' },
+          ],
+        },
+      ],
+      `0x${initData.slice(4)}`,
+    )
+    const [ecdsa, passkey, ens] = factors.map((factor) => factor.data)
+
+    // Ownable's stateless data is its install data, so ECDSA-only MFA accounts
+    // keep their bytes.
+    expect(ecdsa).toBe(
+      resolveAtomicValidator(definition.validators[0]).initData,
+    )
+    expect([passkey, ens]).not.toContain(
+      resolveAtomicValidator(definition.validators[1]).initData,
+    )
+
+    const owners = (data: `0x${string}`) =>
+      decodeAbiParameters(
+        [
+          { name: 'threshold', type: 'uint256' },
+          { name: 'owners', type: 'address[]' },
+        ],
+        data,
+      )
+    expect(owners(ecdsa)).toEqual([2n, [accountB.address, accountA.address]])
+    expect(owners(ens)).toEqual([1n, [accountC.address]])
+
+    const [context, account] = decodeAbiParameters(
+      [
+        {
+          name: 'context',
+          type: 'tuple',
+          components: [
+            { name: 'usePrecompile', type: 'bool' },
+            { name: 'threshold', type: 'uint256' },
+            { name: 'credentialIds', type: 'bytes32[]' },
+            {
+              name: 'credentialData',
+              type: 'tuple[]',
+              components: [
+                { name: 'pubKeyX', type: 'uint256' },
+                { name: 'pubKeyY', type: 'uint256' },
+                { name: 'requireUV', type: 'bool' },
+              ],
+            },
+          ],
+        },
+        { name: 'account', type: 'address' },
+      ],
+      passkey,
+    )
+    expect(account).toBe('0x0000000000000000000000000000000000000000')
+    expect(context.threshold).toBe(1n)
+    expect(context.credentialIds).toEqual(
+      context.credentialData.map((credential) =>
+        generateWebauthnCredentialId(
+          credential.pubKeyX,
+          credential.pubKeyY,
+          account,
+        ),
+      ),
+    )
   })
 
   test('selects default MFA modules and exposes signing capabilities', () => {
@@ -304,6 +395,12 @@ describe('validator resolution', () => {
       const base = validator({ type: 'ecdsa', accounts: [accountA] })
       expect(() =>
         resolveAtomicValidator({ ...base, kind } as AtomicValidatorDefinition),
+      ).toThrow('requires feature input')
+      expect(() =>
+        resolveAtomicValidatorStatelessData({
+          ...base,
+          kind,
+        } as AtomicValidatorDefinition),
       ).toThrow('requires feature input')
     },
   )
