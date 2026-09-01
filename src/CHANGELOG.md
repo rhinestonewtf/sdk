@@ -1,5 +1,15 @@
 # @rhinestone/sdk
 
+## 2.5.0
+
+### Minor Changes
+
+- b0bd0d7: Expose Eco solver-network delivery metadata through the public `BridgeFill` type. Built-in Smart Session settlement-layer permissions remain limited to legacy Standard ECO until route-aware solver-network authorization is available.
+
+### Patch Changes
+
+- 17423a8: Fix multi-factor owner sets with a passkey or ENS factor, which previously failed every signature with `InvalidSignature()`. Such factors are now configured and signed in the format the sub-validator's stateless validation path requires. Their derived addresses change, and the order passkey credentials are listed in inside a factor no longer affects the address; ECDSA-only multi-factor accounts are unchanged. An already-deployed account is repaired by re-setting the offending factor with `mfa.setSubValidator`. Note that a nested ENS factor does not enforce owner expiry, because the validator's stateless path deliberately skips that check.
+
 ## 2.4.0
 
 ### Minor Changes
