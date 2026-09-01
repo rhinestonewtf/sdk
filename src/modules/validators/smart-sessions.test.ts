@@ -1,5 +1,6 @@
 import {
   type Address,
+  decodeAbiParameters,
   encodeAbiParameters,
   encodePacked,
   type Hex,
@@ -11,9 +12,10 @@ import {
 import { base } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 import { accountA, accountB } from '../../../test/consts'
-import type { Session } from '../../types'
+import type { ArgPolicyExpression, Session } from '../../types'
 import type { ResolvedSessionSignerSet } from './smart-sessions'
 import {
+  ARG_POLICY_ADDRESS,
   buildMockSignature,
   DUMMY_PRECLAIMOP_SELECTOR,
   DUMMY_PRECLAIMOP_TARGET,
@@ -55,6 +57,55 @@ const sessionWithAction: Session = {
 }
 
 const dummySig = `0x${'00'.repeat(65)}` as Hex
+
+const argPolicyActionConfigAbi = [
+  {
+    name: 'ActionConfig',
+    type: 'tuple',
+    components: [
+      { name: 'valueLimitPerUse', type: 'uint256' },
+      {
+        name: 'paramRules',
+        type: 'tuple',
+        components: [
+          { name: 'rootNodeIndex', type: 'uint8' },
+          {
+            name: 'rules',
+            type: 'tuple[]',
+            components: [
+              { name: 'condition', type: 'uint8' },
+              { name: 'offset', type: 'uint64' },
+              { name: 'isLimited', type: 'bool' },
+              { name: 'ref', type: 'bytes32' },
+              {
+                name: 'usage',
+                type: 'tuple',
+                components: [
+                  { name: 'limit', type: 'uint256' },
+                  { name: 'used', type: 'uint256' },
+                ],
+              },
+            ],
+          },
+          { name: 'packedNodes', type: 'uint256[]' },
+        ],
+      },
+    ],
+  },
+] as const
+
+function decodeArgPolicyInitData(initData: Hex) {
+  return decodeAbiParameters(argPolicyActionConfigAbi, initData)[0]
+}
+
+function unpackNode(node: bigint) {
+  return {
+    nodeType: Number(node & 0x3n),
+    ruleIndex: Number((node >> 2n) & 0xffn),
+    leftChild: Number((node >> 10n) & 0xffn),
+    rightChild: Number((node >> 18n) & 0xffn),
+  }
+}
 
 // ---------------------------------------------------------------------------
 // A. Policy encoding
@@ -133,6 +184,61 @@ describe('getPolicyData', () => {
     })
     expect(result.policy).toBe(UNIVERSAL_ACTION_POLICY_ADDRESS)
     expect(result.initData.length).toBeGreaterThan(2)
+  })
+
+  test('arg-policy encodes post-order OR nodes and cumulative limits', () => {
+    const rule = (referenceValue: bigint): ArgPolicyExpression => ({
+      type: 'rule',
+      rule: {
+        condition: 'lessThanOrEqual',
+        calldataOffset: 32n,
+        referenceValue,
+        usageLimit: referenceValue,
+      },
+    })
+    const result = getPolicyData({
+      type: 'arg-policy',
+      valueLimitPerUse: 0n,
+      expression: { type: 'or', left: rule(100n), right: rule(200n) },
+    })
+
+    expect(result.policy).toBe(ARG_POLICY_ADDRESS)
+    const decoded = decodeArgPolicyInitData(result.initData)
+    expect(decoded.paramRules.rootNodeIndex).toBe(2)
+    expect(decoded.paramRules.rules).toHaveLength(2)
+    expect(decoded.paramRules.rules[1].isLimited).toBe(true)
+    expect(decoded.paramRules.rules[1].usage.limit).toBe(200n)
+    expect(unpackNode(decoded.paramRules.packedNodes[0])).toMatchObject({
+      nodeType: 0,
+      ruleIndex: 0,
+    })
+    expect(unpackNode(decoded.paramRules.packedNodes[1])).toMatchObject({
+      nodeType: 0,
+      ruleIndex: 1,
+    })
+    expect(unpackNode(decoded.paramRules.packedNodes[2])).toMatchObject({
+      nodeType: 3,
+      leftChild: 0,
+      rightChild: 1,
+    })
+  })
+
+  test('rejects policy trees beyond their on-chain limits', () => {
+    const leaf = (referenceValue: bigint): ArgPolicyExpression => ({
+      type: 'rule',
+      rule: {
+        condition: 'equal',
+        calldataOffset: 0n,
+        referenceValue,
+      },
+    })
+    let expression = leaf(0n)
+    for (let index = 1; index < 129; index++) {
+      expression = { type: 'and', left: leaf(BigInt(index)), right: expression }
+    }
+    expect(() => getPolicyData({ type: 'arg-policy', expression })).toThrow(
+      'max is 128',
+    )
   })
 })
 

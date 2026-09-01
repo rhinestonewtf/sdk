@@ -96,6 +96,18 @@ type AuxiliaryFunds = {
   [chainId: number]: Record<Address, bigint>
 }
 
+type SwapQuoter =
+  | '1inch'
+  | '0x'
+  | 'velora'
+  | 'kyberswap'
+  | 'fynd'
+  | 'fynd-hosted'
+  | 'bebop'
+  | 'relay'
+
+type SwapQuoterFilter = { include: SwapQuoter[] } | { exclude: SwapQuoter[] }
+
 interface IntentOptions {
   topupCompact: boolean
   feeToken?: Address | SupportedTokenSymbol
@@ -103,6 +115,11 @@ interface IntentOptions {
   protocolFees?: ProtocolFeeRate
   sponsorSettings?: SponsorSettings
   settlementLayers?: SettlementLayer[]
+  /**
+   * Restrict swap routing to specific quoters. An empty include list means no
+   * quoter is allowed and intentionally fails the request closed.
+   */
+  quoters?: SwapQuoterFilter
   signatureMode?: SignatureMode
   auxiliaryFunds?: AuxiliaryFunds
   /**
@@ -556,6 +573,8 @@ export type {
   SignedIntentOp,
   SplitIntentsInput,
   SplitIntentsResult,
+  SwapQuoter,
+  SwapQuoterFilter,
   SupportedChain,
   TokenConfig,
   TokenRequirements,

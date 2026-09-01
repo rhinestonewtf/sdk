@@ -23,6 +23,7 @@ import type {
   AppFeeRate,
   ProtocolFeeRate,
   SettlementLayer,
+  SwapQuoterFilter,
 } from '../orchestrator/types'
 import type {
   CalldataInput,
@@ -96,6 +97,7 @@ async function sendTransaction(
     sponsored,
     eip7702InitSignature,
     settlementLayers,
+    quoters,
     sourceAssets,
     feeAsset,
     appFees,
@@ -116,6 +118,7 @@ async function sendTransaction(
     sponsored,
     eip7702InitSignature,
     settlementLayers,
+    quoters,
     sourceAssets,
     feeAsset,
     appFees,
@@ -157,6 +160,7 @@ async function sendTransactionInternal(
     sponsored?: Sponsorship
     eip7702InitSignature?: Hex
     settlementLayers?: SettlementLayer[]
+    quoters?: SwapQuoterFilter
     sourceAssets?: SourceAssetInput
     lockFunds?: boolean
     feeAsset?: Address | TokenSymbol
@@ -200,6 +204,7 @@ async function sendTransactionInternal(
       options.appFees,
       options.customDeadline,
       options.protocolFees,
+      options.quoters,
     )
   }
 }
@@ -257,6 +262,7 @@ async function sendTransactionAsIntent(
   appFees?: AppFeeRate,
   customDeadline?: number,
   protocolFees?: ProtocolFeeRate,
+  quoters?: SwapQuoterFilter,
 ) {
   const prepared = await prepareTransactionAsIntent(
     config,
@@ -279,6 +285,7 @@ async function sendTransactionAsIntent(
     appFees,
     customDeadline,
     protocolFees,
+    quoters,
   )
   if (!prepared) {
     throw new OrderPathRequiredForIntentsError()
