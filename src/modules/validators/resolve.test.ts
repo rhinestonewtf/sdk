@@ -9,6 +9,7 @@ import {
   passkeyAccount,
 } from '../../../test/consts'
 import { withoutHostCollation } from '../../../test/utils/locale'
+import { wrapKernelMessageHash } from '../../accounts/kernel-signing'
 import { resolveStandaloneAccountConfig } from '../../config/resolve'
 import {
   buildQuorumSigningTree,
@@ -198,19 +199,36 @@ describe('validator resolution', () => {
         root: publicTree.root,
       }),
     )
+    const applicationHash = `0x${'33'.repeat(32)}` as const
     expect(
       getQuorumErc1271SignableHash({
         validator: moduleAddress,
         chainId: 1,
         account: accountA.address,
-        hash: `0x${'33'.repeat(32)}`,
+        hash: applicationHash,
       }),
     ).toBe(
       getQuorumSignableHash({
         validator: moduleAddress,
         chainId: 1,
         account: accountA.address,
-        hash: `0x${'33'.repeat(32)}`,
+        hash: applicationHash,
+      }),
+    )
+    expect(
+      getQuorumErc1271SignableHash({
+        validator: moduleAddress,
+        chainId: 1,
+        account: accountA.address,
+        accountType: 'kernel',
+        hash: applicationHash,
+      }),
+    ).toBe(
+      getQuorumSignableHash({
+        validator: moduleAddress,
+        chainId: 1,
+        account: accountA.address,
+        hash: wrapKernelMessageHash(applicationHash, accountA.address),
       }),
     )
     const publicOwners = definition.owners.map((owner) => {

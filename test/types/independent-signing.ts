@@ -35,6 +35,13 @@ const erc1271Hash = getQuorumErc1271SignableHash({
   account: accountA.address,
   hash: `0x${'11'.repeat(32)}`,
 })
+const kernelErc1271Hash = getQuorumErc1271SignableHash({
+  validator: quorumConfig.module,
+  chainId: 1,
+  account: accountA.address,
+  accountType: 'kernel',
+  hash: `0x${'11'.repeat(32)}`,
+})
 const tree = buildQuorumSigningTree([
   { account: accountA.address, digest: erc1271Hash },
   { account: accountA.address, digest: `0x${'22'.repeat(32)}` },
@@ -78,6 +85,7 @@ const assembledTransaction: Promise<SignedTransactionData> =
 
 void quorumConfig
 void erc1271Hash
+void kernelErc1271Hash
 void rootHash
 void regularSignature
 void merkleSignature

@@ -8,7 +8,6 @@ import { encodeValidatorId } from '../../modules/validators/multi-factor'
 import {
   buildQuorumMerkleTree,
   getQuorumMerkleRootSignableHash,
-  getQuorumSignableHash,
 } from '../../modules/validators/quorum'
 import {
   createAccountSigningContext,
@@ -18,6 +17,7 @@ import {
   type SigningContext,
 } from '../../signing/context'
 import { executeSigningPlan } from '../../signing/execute'
+import { resolveAccountValidatorSignableHash } from '../../signing/hash'
 import {
   assembleIndependentIntentArtifact,
   type IndependentOwnerDescriptor,
@@ -405,11 +405,11 @@ function buildIntentPlanInput<CompatibilityConfig>(
       ? buildQuorumMerkleTree(
           prepared.signing.origins.map((origin) => ({
             account: context.account.address,
-            digest: getQuorumSignableHashForIntent(
+            digest: resolveAccountValidatorSignableHash({
+              hash: origin.id,
+              chain: origin.chain,
               context,
-              origin.id,
-              origin.chain.id,
-            ),
+            }),
           })),
         )
       : undefined
@@ -421,13 +421,13 @@ function buildIntentPlanInput<CompatibilityConfig>(
     : undefined
   if (quorumMerkle && quorumRootHash) {
     const firstOrigin = prepared.signing.origins[0]
-    const route = resolveAccountTypedDataSigning({
-      typedData: firstOrigin.typedData,
-      chain: firstOrigin.chain,
-      context,
-      validationHash: quorumRootHash,
-      skipQuorumBinding: true,
-    })
+    const route: AccountTypedDataSigningRoute = {
+      material: { kind: 'message', message: { raw: quorumRootHash } },
+      payloadKind: 'message',
+      ecdsaInvocation: 'ecdsa-sign-message',
+      webauthnInvocation: 'webauthn-sign-hash',
+      erc7739: { kind: 'none' },
+    }
     payloads[firstOrigin.id] = route.material
     stages.push(
       quorumMerkleSigningStage({
@@ -564,19 +564,6 @@ function quorumMerkleSigningStage(input: {
       erc6492: { kind: 'none' },
     })),
   }
-}
-
-function getQuorumSignableHashForIntent(
-  context: SigningContext,
-  hash: Hex,
-  chainId: number,
-): Hex {
-  return getQuorumSignableHash({
-    validator: context.validatorCapabilities.compatibilityKey.moduleAddress,
-    chainId,
-    account: context.account.address,
-    hash,
-  })
 }
 
 function signingStage(input: {

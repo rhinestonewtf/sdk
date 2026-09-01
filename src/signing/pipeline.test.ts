@@ -4,10 +4,11 @@ import type {
   AccountAdapter,
   AccountSignatureEnvelopeInput,
 } from '../accounts/adapter'
-import { wrapKernelMessageHash } from '../accounts/adapters/kernel'
 import { K1_DEFAULT_VALIDATOR_ADDRESS } from '../accounts/adapters/startale'
 import { EoaSigningNotSupportedError } from '../accounts/error'
+import { wrapKernelMessageHash } from '../accounts/kernel-signing'
 import type { AccountDefinition } from '../accounts/types'
+import { getQuorumSignableHash } from '../modules/validators/quorum'
 import type { SigningContext } from './context'
 import {
   type AuthorizationListPlanInput,
@@ -406,6 +407,52 @@ describe('direct rewritten signing pipelines', () => {
       material: { kind: 'message' },
       payloadKind: 'message',
       ecdsaInvocation: 'ecdsa-sign-message',
+    })
+
+    const kernelQuorumContext: SigningContext = {
+      ...context,
+      account: { definition: kernelDefinition, address: account },
+      validator: {
+        ...context.validator,
+        kind: 'quorum',
+        thresholdWeight: 1n,
+      },
+      validatorCapabilities: {
+        ...context.validatorCapabilities,
+        compatibilityKey: {
+          ...context.validatorCapabilities.compatibilityKey,
+          validatorKind: 'quorum',
+        },
+      },
+    }
+    const kernelQuorum = resolveAccountTypedDataSigning({
+      typedData,
+      chain,
+      context: kernelQuorumContext,
+    })
+    const expectedKernelQuorumHash = getQuorumSignableHash({
+      validator,
+      chainId: chain.id,
+      account,
+      hash: wrapKernelMessageHash(payload, account),
+    })
+    expect(kernelQuorum.material).toEqual({
+      kind: 'message',
+      message: { raw: expectedKernelQuorumHash },
+    })
+    expect(kernelQuorum.material).not.toEqual({
+      kind: 'message',
+      message: {
+        raw: wrapKernelMessageHash(
+          getQuorumSignableHash({
+            validator,
+            chainId: chain.id,
+            account,
+            hash: payload,
+          }),
+          account,
+        ),
+      },
     })
   })
 

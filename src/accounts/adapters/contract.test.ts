@@ -19,6 +19,7 @@ import type { ResolvedModule } from '../../modules/types'
 import type { ResolvedValidatorDefinition } from '../../modules/validators/types'
 import { createAccountConstruction } from '../construction'
 import { ModuleInstallationNotSupportedError } from '../error'
+import { wrapKernelMessageHash } from '../kernel-signing'
 import type {
   AccountConstruction,
   AccountKind,
@@ -26,11 +27,7 @@ import type {
 } from '../types'
 import { createEoaAdapter } from './eoa'
 import { createHcaAdapter } from './hca'
-import {
-  createKernelAdapter,
-  kernelInstallData,
-  wrapKernelMessageHash,
-} from './kernel'
+import { createKernelAdapter, kernelInstallData } from './kernel'
 import { createNexusAdapter, nexusMaterial } from './nexus'
 import { createSafeAdapter, safeV0FactoryMaterial } from './safe'
 import {

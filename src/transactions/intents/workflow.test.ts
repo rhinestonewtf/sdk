@@ -10,10 +10,16 @@ import type {
   AccountRuntimePort,
   AccountSignatureEnvelopeInput,
 } from '../../accounts/adapter'
+import { wrapKernelMessageHash } from '../../accounts/kernel-signing'
 import type { AccountConstruction } from '../../accounts/types'
 import { toEvmChainReference } from '../../chains/caip2'
 import type { OrchestratorQuote } from '../../clients/orchestrator/types'
 import { defineValidator } from '../../modules/validators/definition'
+import {
+  buildQuorumMerkleTree,
+  getQuorumMerkleRootSignableHash,
+  getQuorumSignableHash,
+} from '../../modules/validators/quorum'
 import { toSession } from '../../modules/validators/smart-sessions/resolve'
 import { createAccountSigningContext } from '../../signing/context'
 import { buildIntentSigningInput, prepareIntent } from './prepare'
@@ -349,6 +355,82 @@ describe('intent workflow', () => {
     }
     expect(ownerSignature.origin).toHaveLength(2)
     expect(ownerSignature.origin[0]).toBe(ownerSignature.origin[1])
+  })
+
+  test('signs Kernel quorum Merkle leaves with account wrapping before validator binding', async () => {
+    const quorumValidator = '0x0000000000000000000000000000000000000042'
+    const baseRuntime = runtime()
+    const kernelAccount = {
+      kind: 'kernel' as const,
+      version: { source: 'explicit' as const, value: '3.3' as const },
+      salt: { source: 'explicit' as const, value: '0x' as const },
+    }
+    const quorumRuntime: AccountRuntime = {
+      ...baseRuntime,
+      construction: {
+        ...baseRuntime.construction,
+        account: kernelAccount,
+        owner: defineValidator({
+          type: 'quorum',
+          module: quorumValidator,
+          thresholdWeight: 1n,
+          owners: [{ account, weight: 1n }],
+        }),
+      },
+      identity: { definition: kernelAccount, address },
+    }
+    const secondOrigin = {
+      ...quote().signData.origin[0],
+      domain: { chainId: 10, verifyingContract: address },
+      message: { value: '2' },
+    }
+    const workflow = context({
+      account: { forChain: vi.fn(async () => quorumRuntime) },
+      quoteClient: {
+        createQuote: vi.fn(async () => ({
+          traceId: 'trace-kernel-merkle',
+          routes: [
+            {
+              ...quote(),
+              signData: {
+                ...quote().signData,
+                origin: [quote().signData.origin[0], secondOrigin],
+              },
+            },
+          ],
+        })),
+      },
+    })
+    const prepared = await prepareIntent(workflow, input)
+    const tree = buildQuorumMerkleTree(
+      prepared.signing.origins.map((origin) => ({
+        account: address,
+        digest: getQuorumSignableHash({
+          validator: quorumValidator,
+          chainId: origin.chain.id,
+          account: address,
+          hash: wrapKernelMessageHash(origin.id, address),
+        }),
+      })),
+    )
+    const expectedRootHash = getQuorumMerkleRootSignableHash({
+      validator: quorumValidator,
+      root: tree.root,
+    })
+
+    const signed = await signIntent(workflow, prepared)
+
+    expect(signed.originSignatures).toHaveLength(2)
+    expect(workflow.signerInvoker.invoke).toHaveBeenCalledOnce()
+    expect(vi.mocked(workflow.signerInvoker.invoke).mock.calls[0]?.[1]).toEqual(
+      {
+        kind: 'ecdsa-sign-hash',
+        hash: expectedRootHash,
+      },
+    )
+    expect(expectedRootHash).not.toBe(
+      wrapKernelMessageHash(expectedRootHash, address),
+    )
   })
 
   test('uses an explicit owner selection for preparation and signing', async () => {

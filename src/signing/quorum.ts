@@ -1,4 +1,6 @@
 import type { Address, Hex } from 'viem'
+import { wrapKernelMessageHash } from '../accounts/kernel-signing'
+import type { AccountType } from '../accounts/types'
 import {
   buildQuorumMerkleTree,
   encodeQuorumMerkleEnvelope,
@@ -51,8 +53,18 @@ export function getQuorumErc1271SignableHash(input: {
   account: Address
   /** Application hash passed to the smart account's ERC-1271 entry point. */
   hash: Hex
+  /** Smart account implementation, when it transforms ERC-1271 hashes. */
+  accountType?: AccountType
 }): Hex {
-  return getQuorumSignableHash(input)
+  return getQuorumSignableHash({
+    validator: input.validator,
+    chainId: input.chainId,
+    account: input.account,
+    hash:
+      input.accountType === 'kernel'
+        ? wrapKernelMessageHash(input.hash, input.account)
+        : input.hash,
+  })
 }
 
 /** Build account-bound Merkle leaves and proofs for a Quorum signing batch. */
