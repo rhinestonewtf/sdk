@@ -293,6 +293,10 @@ export interface Session {
   erc7739Policies: ResolvedERC7739Policies
   actions: readonly ResolvedAction[]
   claimPolicies: readonly Permit2ClaimPolicy[]
+  /** The venue scope this session was built from, carried through resolution so
+   *  a caller can derive the matching quoter pin at transact time. Metadata
+   *  only — it is not part of the permission id. */
+  swap?: SwapScopeInput
 }
 
 export interface SessionData {

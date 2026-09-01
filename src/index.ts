@@ -55,6 +55,8 @@ export type {
   SignData,
   SplitIntentsInput,
   SplitIntentsResult,
+  SwapQuoter,
+  SwapQuoterFilter,
   TokenRequirements,
   WrapRequired,
 } from './clients/orchestrator/public'

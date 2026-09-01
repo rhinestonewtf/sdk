@@ -291,6 +291,7 @@ export function toSession(
     erc7739Policies: data.erc7739Policies,
     actions: data.actions,
     claimPolicies: [...(definition.claimPolicies ?? []), ...expandedClaims],
+    ...(definition.swap ? { swap: definition.swap } : {}),
   }
 }
 

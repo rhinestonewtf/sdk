@@ -21,6 +21,8 @@ import type {
   ProtocolFeeRate,
   SerializedIntentInput,
   SettlementLayerFilter,
+  SwapQuoter,
+  SwapQuoterFilter,
 } from '../clients/orchestrator/public'
 import type { SwapVenueFor } from '../modules/validators/smart-sessions/swap/scope'
 
@@ -769,6 +771,9 @@ interface Session {
   erc7739Policies: ResolvedERC7739Policies
   actions: readonly ResolvedAction[]
   claimPolicies: readonly Permit2ClaimPolicy[]
+  /** The venue scope this session was built from. Metadata only — it lets the
+   *  SDK derive the matching quoter pin when transacting with the session. */
+  swap?: SwapScope
 }
 
 interface ModuleInput {
@@ -1070,6 +1075,17 @@ interface BaseTransaction {
    */
   protocolFees?: ProtocolFeeRate
   settlementLayers?: SettlementLayerFilter
+  /**
+   * Restricts which swap venues may serve this transaction's swaps. Use it to
+   * keep a swap on the venue an on-chain smart-session policy is scoped to —
+   * the orchestrator otherwise picks the venue after the session is signed, and
+   * a route through a venue the session does not permit is rejected on-chain.
+   * Omit for any venue the chain supports. An EMPTY filter is not the same as
+   * omitting it: `{ include: [] }` (or an exclude covering every venue) means no
+   * venue may serve the swap, and the request fails rather than falling back to
+   * an unconstrained route.
+   */
+  quoters?: SwapQuoterFilter
   auxiliaryFunds?: AuxiliaryFunds
   experimental_accountOverride?: {
     setupOps?: {
@@ -1201,4 +1217,6 @@ export type {
   ApiKeyAuth,
   JwtAuth,
   AuthConfig,
+  SwapQuoter,
+  SwapQuoterFilter,
 }
