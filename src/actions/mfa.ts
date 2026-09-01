@@ -1,6 +1,7 @@
 import { type Address, encodeFunctionData, type Hex, padHex, toHex } from 'viem'
 import type {
   CalldataInput,
+  ENSValidatorConfig,
   LazyCallInput,
   OwnableValidatorConfig,
   WebauthnValidatorConfig,
@@ -22,7 +23,10 @@ import {
   resolveModuleUninstallation,
 } from './runtime'
 
-type MfaFactor = OwnableValidatorConfig | WebauthnValidatorConfig
+type MfaFactor =
+  | OwnableValidatorConfig
+  | ENSValidatorConfig
+  | WebauthnValidatorConfig
 
 function factorDefinition(validator: MfaFactor) {
   return defineValidator(
@@ -70,7 +74,7 @@ function multiFactorModule(
  * @returns Calls to enable multi-factor authentication
  */
 function enable(
-  validators: (OwnableValidatorConfig | WebauthnValidatorConfig | null)[],
+  validators: (MfaFactor | null)[],
   threshold = 1,
   moduleAddress?: Address,
 ): LazyCallInput {
@@ -134,7 +138,7 @@ function disable(moduleAddress?: Address): LazyCallInput {
  */
 function setSubValidator(
   id: Hex | number,
-  validator: OwnableValidatorConfig | WebauthnValidatorConfig,
+  validator: MfaFactor,
   moduleAddress: Address = MULTI_FACTOR_VALIDATOR_ADDRESS,
 ): CalldataInput {
   const validatorId = padHex(toHex(id), { size: 12 })
@@ -182,7 +186,7 @@ function setSubValidator(
  */
 function removeSubValidator(
   id: Hex | number,
-  validator: OwnableValidatorConfig | WebauthnValidatorConfig,
+  validator: MfaFactor,
   moduleAddress: Address = MULTI_FACTOR_VALIDATOR_ADDRESS,
 ): CalldataInput {
   const validatorId = padHex(toHex(id), { size: 12 })

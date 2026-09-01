@@ -1,4 +1,9 @@
-import { type Address, decodeFunctionData, parseAbi } from 'viem'
+import {
+  type Address,
+  decodeAbiParameters,
+  decodeFunctionData,
+  parseAbi,
+} from 'viem'
 import { base } from 'viem/chains'
 import { describe, expect, test, vi } from 'vitest'
 import { accountA, passkeyAccount } from '../../test/consts'
@@ -6,6 +11,7 @@ import { RhinestoneSDK } from '..'
 import { resolveCalls } from '../calls/resolve'
 import { toEvmChainReference } from '../chains/caip2'
 import type { CallInput, OwnableValidatorConfig } from '../config/account'
+import { ENS_HCA_MODULE } from '../modules/validators/ens'
 import {
   MULTI_FACTOR_VALIDATOR_ADDRESS,
   MULTI_FACTOR_VALIDATOR_V2_ADDRESS,
@@ -168,6 +174,31 @@ describe('MFA actions', () => {
         threshold: 1,
       }),
     )
+  })
+
+  test('re-sets an ENS factor with the data its validator decodes', () => {
+    const call = setSubValidator(1, {
+      type: 'ens',
+      owners: [{ account: accountA, expiration: new Date('2030-01-01') }],
+    })
+    if (!call.data) throw new Error('Expected management calldata')
+    const decoded = decodeFunctionData({
+      abi: managementActionAbi,
+      data: call.data,
+    })
+    if (decoded.functionName !== 'setValidator') {
+      throw new Error('Expected setValidator')
+    }
+    expect(decoded.args[0]).toBe(ENS_HCA_MODULE)
+    expect(
+      decodeAbiParameters(
+        [
+          { name: 'threshold', type: 'uint256' },
+          { name: 'owners', type: 'address[]' },
+        ],
+        decoded.args[2],
+      ),
+    ).toEqual([1n, [accountA.address]])
   })
 
   test.each(moduleCases)(
