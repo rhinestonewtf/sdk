@@ -1,5 +1,5 @@
 ---
-'@rhinestone/sdk': major
+'@rhinestone/sdk': minor
 ---
 
 Restrict a smart session to swapping one token for another through named venues. `SessionDefinition` gains `swap`, which compiles to a scoped approve plus one scoped action per venue and drops the wildcard intent-execution fallback, so the session key can only run those calls.
