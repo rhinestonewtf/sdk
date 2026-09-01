@@ -31,7 +31,6 @@ const USDT0: Address = '0xB8CE59FC3717ada4C02eaDF9682A9e934F625ebb'
 const USDC: Address = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'
 const ACCOUNT: Address = '0x1111111111111111111111111111111111111111'
 const SETTLER: Address = '0x7F2194E8d4D5B5F889b17aeCe891F89Da74F5384'
-const ATTACKER: Address = '0xbadbadbadbadbadbadbadbadbadbadbadbadbad0'
 const PLASMA = 9745
 const TYCHO_PLASMA: Address = '0x8f9b3b0451efff0ae8100428aee35fa3cbc0b769'
 
