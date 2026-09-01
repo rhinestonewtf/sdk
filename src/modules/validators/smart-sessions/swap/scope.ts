@@ -141,18 +141,12 @@ export function resolveSwapScope(
     if (venue.id === 'rhinestone') return scopeRhinestone(venue, ctx)
     if (venue.id === 'fynd') return scopeFynd(ctx)
 
-    // A 0x venue may authorise two distinct call shapes. Compose them here
-    // rather than inside either venue module, so neither has to import the
-    // other. `shape` defaults to 'both' in the builder; a venue object written
-    // by hand (untyped JS) gets the same default.
-    const shape = venue.shape ?? 'both'
-    const parts: VenueScoping[] = []
-    if (shape === 'both' || shape === 'direct') {
-      parts.push(scopeZeroEx(venue, ctx))
-    }
-    if (shape === 'both' || shape === 'wrapped') {
-      parts.push(scopeRhinestone({ id: 'rhinestone', route: 'zeroEx' }, ctx))
-    }
+    // A 0x venue authorises two distinct call shapes. Composed here rather than
+    // inside either venue module, so neither has to import the other.
+    const parts: VenueScoping[] = [
+      scopeZeroEx(venue, ctx),
+      scopeRhinestone({ id: 'rhinestone', route: 'zeroEx' }, ctx),
+    ]
     return {
       approveSpenders: parts.flatMap((p) => [...p.approveSpenders]),
       actions: parts.flatMap((p) => [...p.actions]),

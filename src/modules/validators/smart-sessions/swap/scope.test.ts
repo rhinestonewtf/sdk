@@ -139,18 +139,6 @@ describe('resolveSwapScope — 0x pinned settler', () => {
     expect(encoded).toContain(ZEROX_ALLOWANCE_HOLDER.toLowerCase().slice(2))
     expect(encoded).not.toContain(SETTLER.toLowerCase().slice(2))
   })
-
-  test('the direct shape alone keeps a single approve spender', () => {
-    const { permissions } = resolveSwapScope(
-      scope({ via: [zeroEx({ settler: SETTLER, shape: 'direct' })] }),
-      PLASMA,
-    )
-    const policy = resolvePermissions(permissions)[0].policies![0]
-    if (policy.type !== 'universal-action') throw new Error('wrong type')
-    expect(policy.rules[0].referenceValue).toBe(
-      ZEROX_ALLOWANCE_HOLDER.toLowerCase(),
-    )
-  })
 })
 
 describe('resolveSwapScope — 0x anySettler', () => {
@@ -254,29 +242,34 @@ describe('resolveSwapScope — the cumulative cap', () => {
 describe('resolveSwapScope — multi-venue and validation', () => {
   test('merges one approve with an allowlist across venue spenders', () => {
     const { permissions, actions } = resolveSwapScope(
-      scope({ via: [fynd(), zeroEx({ settler: SETTLER, shape: 'direct' })] }),
+      scope({ via: [fynd(), zeroEx({ settler: SETTLER })] }),
       PLASMA,
     )
     expect(permissions).toHaveLength(1)
-    expect(actions).toHaveLength(2)
+    // fynd's router, 0x direct, and the Swapper's exact-in/exact-out pair.
+    expect(actions).toHaveLength(4)
     // Two distinct spenders force the anyOf/OR path, i.e. arg-policy.
     const resolved = resolvePermissions(permissions)
     expect(resolved[0].policies![0].type).toBe('arg-policy')
   })
 
-  test('deduplicates spenders so one venue pair does not emit a pointless OR', () => {
-    const { permissions } = resolveSwapScope(
+  test('naming a venue twice does not duplicate its spenders', () => {
+    const once = resolveSwapScope(
+      scope({ via: [zeroEx({ settler: SETTLER })] }),
+      PLASMA,
+    )
+    const twice = resolveSwapScope(
       scope({
-        via: [
-          zeroEx({ settler: SETTLER, shape: 'direct' }),
-          zeroEx({ settler: SETTLER, shape: 'direct' }),
-        ],
+        via: [zeroEx({ settler: SETTLER }), zeroEx({ settler: SETTLER })],
       }),
       PLASMA,
     )
-    // Both route through the same AllowanceHolder.
-    const resolved = resolvePermissions(permissions)
-    expect(resolved[0].policies![0].type).toBe('universal-action')
+    // 0x spans two spenders on its own — the AllowanceHolder for the direct
+    // pull, the proxy for the wrapped one — so the OR is real, not pointless.
+    // Repeating the venue must not grow it.
+    expect(JSON.stringify(twice.permissions)).toBe(
+      JSON.stringify(once.permissions),
+    )
   })
 
   test('two venues authorising the same call collapse instead of colliding', () => {
@@ -430,7 +423,7 @@ describe('swap scope through toSession', () => {
       owners: { type: 'ecdsa', accounts: [accountA] },
       swap: {
         ...swap,
-        via: [fynd(), zeroEx({ settler: SETTLER, shape: 'direct' })],
+        via: [fynd(), zeroEx({ settler: SETTLER })],
       },
     })
     const targets = getSessionData(session).actions.map((a) =>
@@ -438,7 +431,12 @@ describe('swap scope through toSession', () => {
     )
     expect(targets).toContain(TYCHO_PLASMA.toLowerCase())
     expect(targets).toContain(ZEROX_ALLOWANCE_HOLDER.toLowerCase())
-    expect(new Set(targets).size).toBe(targets.length)
+    // The Swapper carries exact-in and exact-out on one address, so the action
+    // key is (target, selector) — a repeated target is not a collision.
+    const keys = getSessionData(session).actions.map(
+      (a) => `${a.actionTarget.toLowerCase()}|${a.actionTargetSelector}`,
+    )
+    expect(new Set(keys).size).toBe(keys.length)
   })
 })
 
