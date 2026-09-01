@@ -15,6 +15,7 @@ import {
 } from '../../../src/modules/validators/smart-sessions/swap/zero-ex'
 import {
   getSessionData,
+  swapperZeroEx,
   toSession,
   zeroEx,
 } from '../../../src/smart-sessions/index'
@@ -177,10 +178,10 @@ describe
           sell: { token: PLASMA_USDT0, maxTotal: SESSION_CAP },
           buy: { token: usdc },
           to: address,
-          // No `via`: defaults to the Rhinestone Swapper, which is the route the
-          // orchestrator actually emits for same-chain smart-account swaps.
-          // Scoping 0x's AllowanceHolder here fails with InvalidSignature()
-          // because the account never makes that call.
+          // Swapper-routed AND the calls[] tail pinned to 0x. This is the
+          // strongest available scoping: the account may only call the Swapper,
+          // and the Swapper may only route through 0x's AllowanceHolder.
+          via: [swapperZeroEx()],
         },
       })
 
@@ -558,5 +559,66 @@ describe
       const usdcAfter = await erc20Balance(usdc, address)
       log('USDC after', usdcAfter)
       expect(usdcAfter).toBeGreaterThanOrEqual(buyTarget)
+    })
+  })
+
+/**
+ * Does the ARG policy bind, or only the (target, selector) allowlist?
+ *
+ * The earlier recipient test asked for a plain token transfer, so it was
+ * rejected for having no matching action at all — it never reached the argument
+ * rules. This asks for a genuine Swapper swap whose ONLY deviation is the
+ * recipient argument: same target, same selector, same tokens, amount under
+ * cap. If it is refused, the UniversalActionPolicy rule on `recipient`@160 is
+ * doing the work.
+ */
+describe
+  .runIf(enabled)
+  .sequential('plasma swap arg-policy binding (RHI-6286)', () => {
+    test('a Swapper swap delivering to an unpinned recipient is refused', async () => {
+      const owner = ownerAccount()
+      const account = await createSwapAccount(owner)
+      const address = await account.getAddress()
+      const usdc = plasmaUsdc()
+
+      const outsiderBefore = await erc20Balance(usdc, owner.address)
+      const outsiderUsdcTarget = outsiderBefore + BUY_DELTA
+      log('outsider USDC before', outsiderBefore)
+
+      const sessionKey = privateKeyToAccount(generatePrivateKey())
+      const session: Session = toSession({
+        chain: plasma,
+        owners: { type: 'ecdsa', accounts: [sessionKey] },
+        swap: {
+          sell: { token: PLASMA_USDT0, maxTotal: SESSION_CAP },
+          buy: { token: usdc },
+          // Pinned to the ACCOUNT...
+          to: address,
+        },
+      })
+
+      const execution = await executeIntent({
+        account,
+        label: 'plasma-swap/arg-policy-recipient',
+        transaction: await withEnableData(account, session, {
+          chain: plasma,
+          // ...but the swap is asked to deliver USDC to the owner EOA instead.
+          // Everything else — target, selector, tokens, amount — is compliant.
+          tokenRequests: [{ address: usdc, amount: outsiderUsdcTarget }],
+          recipient: owner.address,
+          sourceAssets: { [plasma.id]: [PLASMA_USDT0] },
+          sponsored: true,
+          signers: { type: 'session' as const, session },
+        }),
+      })
+
+      logPlannedOps(execution)
+      log('arg-policy recipient phase', execution.phase)
+      const err = (execution as { error?: { message?: string } }).error
+      if (err) log('arg-policy recipient error', err.message)
+
+      const leaked = (await erc20Balance(usdc, owner.address)) - outsiderBefore
+      log('USDC leaked to outsider', leaked)
+      expect(leaked).toBe(0n)
     })
   })

@@ -13,6 +13,21 @@ import type {
  * decided in exactly one place.
  */
 
+/**
+ * Pin a calldata word to an exact numeric value.
+ *
+ * Used for ABI *shape* words — array pointers, lengths, element offsets. Pinning
+ * those is what makes pinning anything inside a dynamic tail sound: without
+ * them a caller can re-lay-out the encoding so a fixed offset lands on a
+ * different word, and the rule silently validates the wrong bytes.
+ */
+export function pinValue(
+  calldataOffset: bigint,
+  referenceValue: bigint,
+): UniversalActionPolicyParamRule {
+  return { condition: 'equal', calldataOffset, referenceValue }
+}
+
 /** Pin a calldata word to an exact address. */
 export function pin(
   calldataOffset: bigint,

@@ -38,6 +38,10 @@ import {
   readSessionNonce,
 } from '../modules/validators/smart-sessions/state'
 import { fynd } from '../modules/validators/smart-sessions/swap/fynd'
+import {
+  rhinestoneSwap,
+  swapperZeroEx,
+} from '../modules/validators/smart-sessions/swap/rhinestone'
 import type { SwapVenueFor } from '../modules/validators/smart-sessions/swap/scope'
 import type {
   ZeroExAnySettlerOptions,
@@ -52,6 +56,7 @@ import type {
   Session as DomainSession,
   SessionDefinition as DomainSessionDefinition,
   FyndVenue,
+  RhinestoneSwapVenue,
   SessionDetails,
   SwapVenue,
   ZeroExVenue,
@@ -135,12 +140,15 @@ export {
   // Venue-scoped swap sessions (RHI-6286)
   zeroEx,
   fynd,
+  rhinestoneSwap,
+  swapperZeroEx,
   resolveZeroExSettler,
 }
 export type {
   ChainDigest,
   SessionDetails,
   FyndVenue,
+  RhinestoneSwapVenue,
   SwapVenue,
   SwapVenueFor,
   ZeroExAnySettlerOptions,

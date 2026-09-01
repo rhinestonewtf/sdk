@@ -90,6 +90,11 @@ export interface FyndVenue {
 export interface RhinestoneSwapVenue {
   readonly id: 'rhinestone'
   readonly maxSpend?: bigint
+  /**
+   * Pin which aggregator the Swapper's `calls[]` tail may route through. Omit
+   * to leave the route unconstrained (bounded only by the sell cap).
+   */
+  readonly route?: 'zeroEx'
 }
 
 export type SwapVenue = RhinestoneSwapVenue | ZeroExVenue | FyndVenue

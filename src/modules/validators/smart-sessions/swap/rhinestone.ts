@@ -5,7 +5,8 @@ import type {
   UniversalActionPolicyParamRule,
 } from '../types'
 import type { VenueContext, VenueScoping } from './rules'
-import { cumulativeCap, pin, swapAction } from './rules'
+import { cumulativeCap, pin, pinValue, swapAction } from './rules'
+import { ZEROX_ALLOWANCE_HOLDER, ZEROX_CHAIN_IDS } from './zero-ex'
 
 /**
  * The Rhinestone Swapper — the route the orchestrator actually uses for
@@ -122,6 +123,69 @@ export function swapperAddresses(environment: 'production' | 'development'): {
 }
 
 /**
+ * Byte offsets of the `calls[]` ABI *shape* words, measured in the Swapper's
+ * calldata past the selector. Identical for `swapExactIn` and `swapExactOut`
+ * because both have the same eight-word head.
+ *
+ * Pinning a target inside a dynamic array is only sound if the layout is also
+ * pinned: a compromised session key controls the encoding and could otherwise
+ * relocate elements so a fixed offset reads an innocuous word. Pinning the array
+ * pointer, the length, and each element pointer fixes every position, making the
+ * target offsets exact.
+ *
+ * Derived from live Plasma calldata and reproduced by
+ * `zeroExRouteRules` in the test suite:
+ *   @224 array pointer  = 256   (tail begins right after the head)
+ *   @256 length         = 2     (approve + aggregator call)
+ *   @288 elem[0] pointer= 64    (element table is 2 words)
+ *   @320 elem[1] pointer= 288   (64 + elem[0] size: 4 words + a 68-byte approve)
+ *   @352 calls[0].target        (the sell-token approve)
+ *   @576 calls[1].target        (the aggregator)
+ *
+ * `calls[1].data` — the variable-length aggregator blob — is LAST in the
+ * encoding, so its length shifts nothing that is pinned. That is what makes
+ * these offsets stable across quotes rather than coincidental.
+ */
+const CALLS_POINTER_OFFSET = 224n
+const CALLS_LENGTH_OFFSET = 256n
+const CALLS_ELEM0_POINTER_OFFSET = 288n
+const CALLS_ELEM1_POINTER_OFFSET = 320n
+const CALLS_ELEM0_TARGET_OFFSET = 352n
+const CALLS_ELEM1_TARGET_OFFSET = 576n
+
+const CALLS_POINTER = 256n
+const CALLS_LENGTH = 2n
+const CALLS_ELEM0_POINTER = 64n
+const CALLS_ELEM1_POINTER = 288n
+
+/**
+ * Pin the two-call `approve + aggregator` route inside the Swapper's `calls[]`.
+ *
+ * Without this the tail is unconstrained: the Swapper only requires that the
+ * recipient nets `minAmountOut`, and `minAmountOut` may be zero, so a
+ * compromised key could hand the pulled input to any address and satisfy the
+ * contract. Constraining every call target to a real aggregator removes the
+ * place those funds could go.
+ *
+ * Fails closed. A route that deviates from this shape — a different call count,
+ * an added permit or approval reset — reverts rather than slipping through, so
+ * the cost of the pin is availability, not safety.
+ */
+function routeRules(
+  sellToken: Address,
+  aggregator: Address,
+): UniversalActionPolicyParamRule[] {
+  return [
+    pinValue(CALLS_POINTER_OFFSET, CALLS_POINTER),
+    pinValue(CALLS_LENGTH_OFFSET, CALLS_LENGTH),
+    pinValue(CALLS_ELEM0_POINTER_OFFSET, CALLS_ELEM0_POINTER),
+    pinValue(CALLS_ELEM1_POINTER_OFFSET, CALLS_ELEM1_POINTER),
+    pin(CALLS_ELEM0_TARGET_OFFSET, sellToken),
+    pin(CALLS_ELEM1_TARGET_OFFSET, aggregator),
+  ]
+}
+
+/**
  * Route swaps through the Rhinestone Swapper — the default, and the only venue
  * that matches what the orchestrator emits for same-chain smart-account swaps.
  *
@@ -137,8 +201,37 @@ export function rhinestoneSwap(
   }
 }
 
-export function scopeRhinestone(ctx: VenueContext): VenueScoping {
+/**
+ * Route swaps through the Swapper AND require the aggregator inside `calls[]`
+ * to be 0x.
+ *
+ * Distinct from {@link zeroEx}, which scopes a DIRECT `AllowanceHolder.exec`
+ * call by the account. That shape is not what the orchestrator emits for
+ * same-chain smart-account swaps — it wraps the aggregator behind the Swapper —
+ * so use this one for intent-routed swaps and `zeroEx()` only where the account
+ * calls the router itself.
+ */
+export function swapperZeroEx(
+  options: { maxSpend?: bigint } = {},
+): RhinestoneSwapVenue {
+  return {
+    id: 'rhinestone',
+    route: 'zeroEx',
+    ...(options.maxSpend !== undefined ? { maxSpend: options.maxSpend } : {}),
+  }
+}
+
+export function scopeRhinestone(
+  venue: RhinestoneSwapVenue,
+  ctx: VenueContext,
+): VenueScoping {
   const { swapper, proxy } = swapperAddresses(ctx.environment)
+  if (venue.route === 'zeroEx' && !ZEROX_CHAIN_IDS.includes(ctx.chainId as 1)) {
+    throw new Error(
+      `0x is not available on chain ${ctx.chainId}. ` +
+        `Supported: ${ZEROX_CHAIN_IDS.join(', ')}.`,
+    )
+  }
 
   const rulesFor = (
     offsets: Record<string, bigint>,
@@ -151,6 +244,9 @@ export function scopeRhinestone(ctx: VenueContext): VenueScoping {
     ]
     if (ctx.cap !== undefined) {
       rules.push(cumulativeCap(offsets[sellAmountParam], ctx.cap))
+    }
+    if (venue.route === 'zeroEx') {
+      rules.push(...routeRules(ctx.sellToken, ZEROX_ALLOWANCE_HOLDER))
     }
     return rules
   }

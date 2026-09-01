@@ -136,7 +136,7 @@ export function resolveSwapScope(
       recipient: scope.to,
       cap: venue.maxSpend ?? scope.sell.maxTotal,
     }
-    if (venue.id === 'rhinestone') return scopeRhinestone(ctx)
+    if (venue.id === 'rhinestone') return scopeRhinestone(venue, ctx)
     if (venue.id === '0x') return scopeZeroEx(venue, ctx)
     return scopeFynd(ctx)
   })

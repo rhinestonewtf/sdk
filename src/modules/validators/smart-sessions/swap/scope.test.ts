@@ -14,7 +14,11 @@ import type {
   UniversalActionPolicyParamRule,
 } from '../types'
 import { FYND_SWAP_SELECTOR, fynd, tychoRouterAbi } from './fynd'
-import { SWAP_EXACT_IN_SELECTOR, SWAP_EXACT_OUT_SELECTOR } from './rhinestone'
+import {
+  SWAP_EXACT_IN_SELECTOR,
+  SWAP_EXACT_OUT_SELECTOR,
+  swapperZeroEx,
+} from './rhinestone'
 import { resolveSwapScope } from './scope'
 import {
   ALLOWANCE_HOLDER_EXEC_SELECTOR,
@@ -428,5 +432,129 @@ describe('venue ABIs derive the on-chain selectors', () => {
       target: 96n,
     })
     expect(offsets.data).toBeUndefined()
+  })
+})
+
+describe('resolveSwapScope — Rhinestone Swapper', () => {
+  const swapper: Address = '0x40CE38e0cbB8ec54a601256E4FacfED5679bccD0'
+  const proxy: Address = '0x5afCe415B4370E5EfD8B9BE784d21C331bEAb965'
+
+  test('is the default when no venue is named', () => {
+    const { actions } = resolveSwapScope(
+      { sell: { token: USDT0 }, buy: { token: USDC }, to: ACCOUNT },
+      PLASMA,
+    )
+    expect(actions.map((a) => a.target)).toEqual([swapper, swapper])
+    expect(actions.map((a) => a.selector)).toEqual([
+      SWAP_EXACT_IN_SELECTOR,
+      SWAP_EXACT_OUT_SELECTOR,
+    ])
+  })
+
+  test('approves the proxy, never the Swapper or a router', () => {
+    const { permissions } = resolveSwapScope(
+      { sell: { token: USDT0 }, buy: { token: USDC }, to: ACCOUNT },
+      PLASMA,
+    )
+    const policy = resolvePermissions(permissions)[0].policies![0]
+    if (policy.type !== 'universal-action') throw new Error('wrong type')
+    expect(policy.rules[0].referenceValue).toBe(proxy.toLowerCase())
+  })
+
+  test('pins tokens, recipient and the cap on both selectors', () => {
+    const { actions } = resolveSwapScope(
+      {
+        sell: { token: USDT0, maxTotal: 500n },
+        buy: { token: USDC },
+        to: ACCOUNT,
+      },
+      PLASMA,
+    )
+    for (const action of actions) {
+      const rules = rulesOf(action)
+      expect(ruleAt(rules, 0n)?.referenceValue).toBe(USDT0) // tokenIn
+      expect(ruleAt(rules, 64n)?.referenceValue).toBe(USDC) // tokenOut
+      expect(ruleAt(rules, 160n)?.referenceValue).toBe(ACCOUNT) // recipient
+      // amountIn (exact-in) and amountInMax (exact-out) share offset 32.
+      expect(ruleAt(rules, 32n)?.usageLimit).toBe(500n)
+    }
+  })
+
+  test('leaves the calls[] route unpinned by default', () => {
+    const rules = rulesOf(
+      resolveSwapScope(
+        { sell: { token: USDT0 }, buy: { token: USDC }, to: ACCOUNT },
+        PLASMA,
+      ).actions[0],
+    )
+    for (const offset of [224n, 256n, 288n, 320n, 352n, 576n]) {
+      expect(ruleAt(rules, offset)).toBeUndefined()
+    }
+  })
+})
+
+// Pinning a target inside a dynamic array is only sound if the LAYOUT is pinned
+// too — otherwise a compromised key re-encodes so a fixed offset reads a
+// different word. These assert the shape words are pinned alongside the targets.
+describe('resolveSwapScope — swapperZeroEx route pinning', () => {
+  const scoped = () =>
+    resolveSwapScope(
+      {
+        sell: { token: USDT0, maxTotal: 500n },
+        buy: { token: USDC },
+        to: ACCOUNT,
+        via: [swapperZeroEx()],
+      },
+      PLASMA,
+    )
+
+  test('pins the array pointer, length and both element pointers', () => {
+    const rules = rulesOf(scoped().actions[0])
+    expect(ruleAt(rules, 224n)?.referenceValue).toBe(256n) // calls -> ptr
+    expect(ruleAt(rules, 256n)?.referenceValue).toBe(2n) // length
+    expect(ruleAt(rules, 288n)?.referenceValue).toBe(64n) // elem[0] ptr
+    expect(ruleAt(rules, 320n)?.referenceValue).toBe(288n) // elem[1] ptr
+  })
+
+  test('pins calls[0] to the sell token and calls[1] to 0x', () => {
+    const rules = rulesOf(scoped().actions[0])
+    expect(ruleAt(rules, 352n)?.referenceValue).toBe(USDT0)
+    expect(ruleAt(rules, 576n)?.referenceValue).toBe(ZEROX_ALLOWANCE_HOLDER)
+  })
+
+  test('applies the same route pins to the exact-out selector', () => {
+    const rules = rulesOf(scoped().actions[1])
+    expect(ruleAt(rules, 256n)?.referenceValue).toBe(2n)
+    expect(ruleAt(rules, 576n)?.referenceValue).toBe(ZEROX_ALLOWANCE_HOLDER)
+  })
+
+  test('stays within the 16-rule UniversalActionPolicy ceiling', () => {
+    for (const action of scoped().actions) {
+      expect(rulesOf(action).length).toBeLessThanOrEqual(16)
+    }
+  })
+
+  test('rejects a chain where 0x is not a quoter', () => {
+    expect(() =>
+      resolveSwapScope(
+        {
+          sell: { token: USDT0 },
+          buy: { token: USDC },
+          to: ACCOUNT,
+          via: [swapperZeroEx()],
+        },
+        // Gnosis (100) runs neither 0x nor fynd.
+        100,
+      ),
+    ).toThrow(/0x is not available/)
+  })
+
+  test('the unrouted Swapper venue still works on a non-0x chain', () => {
+    expect(() =>
+      resolveSwapScope(
+        { sell: { token: USDT0 }, buy: { token: USDC }, to: ACCOUNT },
+        100,
+      ),
+    ).not.toThrow()
   })
 })
