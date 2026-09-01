@@ -161,6 +161,16 @@ const CALLS_ELEM1_POINTER_OFFSET = 320n
 const CALLS_ELEM0_TARGET_OFFSET = 352n
 const CALLS_ELEM1_TARGET_OFFSET = 576n
 
+const CALLS_ELEM0_VALUE_OFFSET = 384n
+const CALLS_ELEM0_DATA_POINTER_OFFSET = 416n
+const CALLS_ELEM0_DATA_LENGTH_OFFSET = 448n
+/** The `spender` argument of `calls[0]`'s `approve`, past its 4-byte selector. */
+const CALLS_ELEM0_SPENDER_OFFSET = 484n
+
+const CALLS_ELEM0_DATA_POINTER = 96n
+/** `approve(address,uint256)` — selector + two words. */
+const APPROVE_CALLDATA_LENGTH = 68n
+
 const CALLS_POINTER = 256n
 const CALLS_LENGTH = 2n
 const CALLS_ELEM0_POINTER = 64n
@@ -190,6 +200,14 @@ function routeRules(
     pinValue(CALLS_ELEM1_POINTER_OFFSET, CALLS_ELEM1_POINTER),
     pin(CALLS_ELEM0_TARGET_OFFSET, sellToken),
     pin(CALLS_ELEM1_TARGET_OFFSET, aggregator),
+    // Pinning calls[0]'s target alone still lets it be any call to the sell
+    // token — `transfer(attacker, amountIn)` as easily as an approve. Fixing
+    // its length and the address it names leaves the aggregator as the only
+    // party the pulled input can reach.
+    pinValue(CALLS_ELEM0_VALUE_OFFSET, 0n),
+    pinValue(CALLS_ELEM0_DATA_POINTER_OFFSET, CALLS_ELEM0_DATA_POINTER),
+    pinValue(CALLS_ELEM0_DATA_LENGTH_OFFSET, APPROVE_CALLDATA_LENGTH),
+    pin(CALLS_ELEM0_SPENDER_OFFSET, aggregator),
   ]
 }
 

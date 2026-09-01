@@ -213,6 +213,15 @@ export function scopeZeroEx(
   venue: ZeroExVenue,
   ctx: VenueContext,
 ): VenueScoping {
+  // The union type rejects this at compile time, but a plain-JS caller or an
+  // `as any` reaches here with neither, and the rules below would then pin only
+  // the sell token — an unbounded AllowanceHolder path.
+  if (venue.settler === undefined && !venue.anySettler) {
+    throw new Error(
+      'zeroEx() requires either a pinned settler or anySettler + maxSpend: ' +
+        'with neither, nothing bounds the operator, target or amount',
+    )
+  }
   if (venue.anySettler && ctx.cap === undefined) {
     throw new Error(
       'zeroEx({ anySettler: true }) requires maxSpend: with the Settler ' +
