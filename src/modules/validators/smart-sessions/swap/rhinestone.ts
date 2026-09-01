@@ -166,6 +166,15 @@ const CALLS_ELEM1_TARGET_OFFSET = 576n
 const CALLS_ELEM0_VALUE_OFFSET = 384n
 const CALLS_ELEM1_VALUE_OFFSET = 608n
 const NESTED_EXEC_TOKEN_OFFSET = 740n
+/**
+ * The nested fynd call: `swap(amountIn, tokenIn, tokenOut, minOut, receiver)`.
+ * Verified against production calldata — the receiver is the Swapper itself,
+ * which collects the output and forwards it to the scope's recipient, so that
+ * is what gets pinned rather than the end recipient.
+ */
+const NESTED_FYND_TOKEN_IN_OFFSET = 740n
+const NESTED_FYND_TOKEN_OUT_OFFSET = 772n
+const NESTED_FYND_RECEIVER_OFFSET = 836n
 const CALLS_ELEM1_DATA_POINTER_OFFSET = 640n
 /** Head words of the `AllowanceHolder.exec` nested in `calls[1].data`. */
 const NESTED_EXEC_OPERATOR_OFFSET = 708n
@@ -220,7 +229,20 @@ function routeRules(
   sellToken: Address,
   aggregator: Address,
   settler?: Address,
+  /** Set for the fynd route: pins the nested swap's tokens and receiver. */
+  fyndNested?: { buyToken: Address; swapper: Address },
 ): UniversalActionPolicyParamRule[] {
+  const nestedFynd: UniversalActionPolicyParamRule[] = fyndNested
+    ? [
+        // Pinning calls[1].target to the Tycho router still leaves the swap it
+        // performs free to name any tokens and any receiver — so the output
+        // could land anywhere while the outer Swapper pins still hold.
+        pinValue(CALLS_ELEM1_DATA_POINTER_OFFSET, CALLS_ELEM1_DATA_POINTER),
+        pin(NESTED_FYND_TOKEN_IN_OFFSET, sellToken),
+        pin(NESTED_FYND_TOKEN_OUT_OFFSET, fyndNested.buyToken),
+        pin(NESTED_FYND_RECEIVER_OFFSET, fyndNested.swapper),
+      ]
+    : []
   const nested: UniversalActionPolicyParamRule[] = settler
     ? [
         // Pinning calls[1]'s target to the AllowanceHolder still leaves the
@@ -235,6 +257,7 @@ function routeRules(
     : []
   return [
     ...nested,
+    ...nestedFynd,
     pinValue(CALLS_POINTER_OFFSET, CALLS_POINTER),
     pinValue(CALLS_LENGTH_OFFSET, CALLS_LENGTH),
     pinValue(CALLS_ELEM0_POINTER_OFFSET, CALLS_ELEM0_POINTER),
@@ -311,6 +334,9 @@ export function scopeRhinestone(
           ctx.sellToken,
           routeAggregator,
           venue.route === 'zeroEx' ? venue.settler : undefined,
+          venue.route === 'fynd'
+            ? { buyToken: ctx.buyToken, swapper }
+            : undefined,
         ),
       )
     }
@@ -325,6 +351,7 @@ export function scopeRhinestone(
         ? ZEROX_ALLOWANCE_HOLDER
         : FYND_ROUTERS[ctx.chainId as FyndChainId],
       route === 'zeroEx' ? venue.settler : undefined,
+      route === 'fynd' ? { buyToken: ctx.buyToken, swapper } : undefined,
     ),
   )
 

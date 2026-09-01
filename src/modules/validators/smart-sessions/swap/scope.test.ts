@@ -283,6 +283,26 @@ describe('resolveSwapScope — the cumulative cap', () => {
   })
 })
 
+describe('the wrapped route pins the aggregator call it forwards', () => {
+  test('fynd: the nested swap cannot retarget its tokens or receiver', () => {
+    // Pinning calls[1].target to the Tycho router still leaves the swap it
+    // performs free to name any tokens and send the output anywhere. Offsets
+    // verified against production calldata.
+    const { actions } = resolveSwapScope(scope({ via: [fynd()] }), PLASMA)
+    const wrapped = actions.filter(
+      (a) => a.target.toLowerCase() === SWAPPER_PLASMA.toLowerCase(),
+    )
+    expect(wrapped.length).toBeGreaterThan(0)
+    for (const action of wrapped) {
+      const rules = rulesOf(action)
+      expect(ruleAt(rules, 740n)?.referenceValue).toBe(USDT0) // tokenIn
+      expect(ruleAt(rules, 772n)?.referenceValue).toBe(USDC) // tokenOut
+      // The Swapper collects the output and forwards it to the scope recipient.
+      expect(ruleAt(rules, 836n)?.referenceValue).toBe(SWAPPER_PLASMA)
+    }
+  })
+})
+
 describe('multi-venue keeps the Swapper tail pinned', () => {
   test('two aggregators pin the tail to EITHER, never to neither', () => {
     // Sharing one Swapper action by dropping its route pins would authorise a
