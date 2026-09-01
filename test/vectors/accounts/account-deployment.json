@@ -41,9 +41,14 @@
     },
     {
       "id": "kernel-multi-factor",
-      "address": "0x3DEa352bb92E9d1f3a28fd66e36710554376fAB4",
+      "address": "0x23bDE6c87FbE2D600eA5ee80014C23d621C7330c",
       "factory": "0xd703aae79538628d27099b8c4f621be4ccd142d5",
-      "factoryDataHash": "0x91386e4feb9753c580b542713b8e4d9f8d1e38ec2f53d34af6bc02eb3c89e58a"
+      "factoryDataHash": "0x7de0b32d4546028d96b2fef37cf676f8ca011449427f99c65331bd5da93bba82",
+      "deliberateChange": {
+        "sinceSha": "afb934d220e1638c849ab5b716e72153cfa54dbe",
+        "bump": "patch",
+        "reason": "multi-factor factor slots hold the sub-validator stateless configuration, so a nested passkey factor is configured (and ordered) the way its stateless validation path requires"
+      }
     },
     {
       "id": "kernel-passkey-single",
@@ -157,27 +162,47 @@
     },
     {
       "id": "nexus-multi-factor",
-      "address": "0x8bdf768B73988Ba4B10DE74f65a3E52Cddc780E0",
+      "address": "0x7953332B34329A9B3D6789a546Dc804475732D01",
       "factory": "0x0000000099d5576c73a3b190dabeeaa0f128ce6b",
-      "factoryDataHash": "0xaf4e9f86adfa9af78ad8398df49f756283ee973a0b6c6d331867f2b38fbad7c3"
+      "factoryDataHash": "0x8b180ee8314a9615379be54aa420937afc15cd1cf0a2db1da127033095849e3b",
+      "deliberateChange": {
+        "sinceSha": "afb934d220e1638c849ab5b716e72153cfa54dbe",
+        "bump": "patch",
+        "reason": "multi-factor factor slots hold the sub-validator stateless configuration, so a nested passkey factor is configured (and ordered) the way its stateless validation path requires"
+      }
     },
     {
       "id": "nexus-multi-factor-ecdsa-ens",
-      "address": "0x3Da8246511eb3218531687153e2247AE66Be679d",
+      "address": "0xFcA9c26D01F969cA03b0195BD153f48b177aCFCb",
       "factory": "0x0000000099d5576c73a3b190dabeeaa0f128ce6b",
-      "factoryDataHash": "0xdbf049fbd821984af4e5c36eaffb7d7396d4199a4881c0292f940e33d9d8edc5"
+      "factoryDataHash": "0x883384f7b7af5398e8460dcb572f1d0c203b011fe2055f16a94dd49aae37cd39",
+      "deliberateChange": {
+        "sinceSha": "afb934d220e1638c849ab5b716e72153cfa54dbe",
+        "bump": "patch",
+        "reason": "multi-factor factor slots hold the sub-validator stateless configuration, so a nested ENS factor is configured the way its stateless validation path requires"
+      }
     },
     {
       "id": "nexus-multi-factor-module-override",
-      "address": "0x150E73e7511E5d69046Eb37C69f9b10b5f6F0B6f",
+      "address": "0x1E32e14ce34a18b4abd8603512215a177715aaaa",
       "factory": "0x0000000099d5576c73a3b190dabeeaa0f128ce6b",
-      "factoryDataHash": "0x6c712ffc62fe28816b04ba33fcb3cc5f76765759e091b5300e4f2c63a37dce7c"
+      "factoryDataHash": "0x1cfe2fddeae328aa0495c8bd11c484896ce14149b1ef105b161e3656739cd891",
+      "deliberateChange": {
+        "sinceSha": "afb934d220e1638c849ab5b716e72153cfa54dbe",
+        "bump": "patch",
+        "reason": "multi-factor factor slots hold the sub-validator stateless configuration, so a nested passkey factor is configured (and ordered) the way its stateless validation path requires"
+      }
     },
     {
       "id": "nexus-multi-factor-threshold-2",
-      "address": "0xc692A5228840ddc31cd3B6A4a5Fce0f284914276",
+      "address": "0x9b6F54C7B64F3c6AC19595d54C6723e2E3357B6c",
       "factory": "0x0000000099d5576c73a3b190dabeeaa0f128ce6b",
-      "factoryDataHash": "0x483b3ddeccc40bddd0a68747522b4a20463b4492b48b3cd89bf1a53656e05d24"
+      "factoryDataHash": "0x7fd98bc1f4e0d0ce2066d3c33e5437698d6d5de2ac3010f84374b6b43fe6f237",
+      "deliberateChange": {
+        "sinceSha": "afb934d220e1638c849ab5b716e72153cfa54dbe",
+        "bump": "patch",
+        "reason": "multi-factor factor slots hold the sub-validator stateless configuration, so a nested passkey factor is configured (and ordered) the way its stateless validation path requires"
+      }
     },
     {
       "id": "nexus-passkey-module-override",
@@ -341,9 +366,14 @@
     },
     {
       "id": "safe-multi-factor",
-      "address": "0xbd352153856c2aF987D8CfAE3e74c286B8aff76F",
+      "address": "0x8c8FB88455C63AAc5A50053AB8D400488bCEE749",
       "factory": "0x4e1dcf7ad4e460cfd30791ccc4f9c8a4f820ec67",
-      "factoryDataHash": "0x821981c1c35057219a3b974755960aa274c12ecd907600a633ee1335af34a360"
+      "factoryDataHash": "0xcdf5a05700ac396510f160893c68495e113b0fdeb5da268f51c966665323766e",
+      "deliberateChange": {
+        "sinceSha": "afb934d220e1638c849ab5b716e72153cfa54dbe",
+        "bump": "patch",
+        "reason": "multi-factor factor slots hold the sub-validator stateless configuration, so a nested passkey factor is configured (and ordered) the way its stateless validation path requires"
+      }
     },
     {
       "id": "safe-nonce",
@@ -404,9 +434,14 @@
     },
     {
       "id": "startale-multi-factor",
-      "address": "0xbdbcd5d746d385205db5aa3424fe17ed1cbf2703",
+      "address": "0xb054f4797f2b998157388307ea30622449360795",
       "factory": "0x0000003b3e7b530b4f981ae80d9350392defef90",
-      "factoryDataHash": "0x025537e67eaf059689071c877f504ee23873dd6708333dba4cf374eca65efc34"
+      "factoryDataHash": "0x135700ffe5408b799828478da57311427753c7ff5fd2155a9f6ca09168dcc929",
+      "deliberateChange": {
+        "sinceSha": "afb934d220e1638c849ab5b716e72153cfa54dbe",
+        "bump": "patch",
+        "reason": "multi-factor factor slots hold the sub-validator stateless configuration, so a nested passkey factor is configured (and ordered) the way its stateless validation path requires"
+      }
     },
     {
       "id": "startale-passkey-single",
@@ -445,9 +480,14 @@
     },
     {
       "id": "v0-safe-multi-factor",
-      "address": "0xbd352153856c2aF987D8CfAE3e74c286B8aff76F",
+      "address": "0x8c8FB88455C63AAc5A50053AB8D400488bCEE749",
       "factory": "0x4e1dcf7ad4e460cfd30791ccc4f9c8a4f820ec67",
-      "factoryDataHash": "0x697ed601643b2708bdd0c7338703976fa111bd52d89bedad0a4403c60af2670b"
+      "factoryDataHash": "0x927eb7070a2cfe72dc1e93b0011d286632abddfb81cedbf463a461dc0085c5fa",
+      "deliberateChange": {
+        "sinceSha": "afb934d220e1638c849ab5b716e72153cfa54dbe",
+        "bump": "patch",
+        "reason": "multi-factor factor slots hold the sub-validator stateless configuration, so a nested passkey factor is configured (and ordered) the way its stateless validation path requires"
+      }
     },
     {
       "id": "v0-safe-passkey-single",

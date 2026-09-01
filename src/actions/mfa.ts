@@ -1,13 +1,18 @@
 import { type Address, encodeFunctionData, type Hex, padHex, toHex } from 'viem'
 import type {
   CalldataInput,
+  ENSValidatorConfig,
   LazyCallInput,
   OwnableValidatorConfig,
   WebauthnValidatorConfig,
 } from '../config/account'
 import { defineValidator } from '../modules/validators/definition'
 import { MULTI_FACTOR_VALIDATOR_ADDRESS } from '../modules/validators/multi-factor'
-import { resolveValidator } from '../modules/validators/resolve'
+import {
+  resolveAtomicValidator,
+  resolveAtomicValidatorStatelessData,
+  resolveValidator,
+} from '../modules/validators/resolve'
 import type {
   AtomicValidatorDefinition,
   AtomicValidatorInput,
@@ -18,10 +23,19 @@ import {
   resolveModuleUninstallation,
 } from './runtime'
 
-type MfaFactor = OwnableValidatorConfig | WebauthnValidatorConfig
+type MfaFactor =
+  | OwnableValidatorConfig
+  | ENSValidatorConfig
+  | WebauthnValidatorConfig
+
+function factorDefinition(validator: MfaFactor) {
+  return defineValidator(
+    validator as AtomicValidatorInput,
+  ) as AtomicValidatorDefinition
+}
 
 function factorModule(validator: MfaFactor) {
-  return resolveValidator(defineValidator(validator as AtomicValidatorInput))
+  return resolveValidator(factorDefinition(validator))
 }
 
 function multiFactorModule(
@@ -60,7 +74,7 @@ function multiFactorModule(
  * @returns Calls to enable multi-factor authentication
  */
 function enable(
-  validators: (OwnableValidatorConfig | WebauthnValidatorConfig | null)[],
+  validators: (MfaFactor | null)[],
   threshold = 1,
   moduleAddress?: Address,
 ): LazyCallInput {
@@ -124,11 +138,11 @@ function disable(moduleAddress?: Address): LazyCallInput {
  */
 function setSubValidator(
   id: Hex | number,
-  validator: OwnableValidatorConfig | WebauthnValidatorConfig,
+  validator: MfaFactor,
   moduleAddress: Address = MULTI_FACTOR_VALIDATOR_ADDRESS,
 ): CalldataInput {
   const validatorId = padHex(toHex(id), { size: 12 })
-  const validatorModule = factorModule(validator)
+  const definition = factorDefinition(validator)
   return {
     to: moduleAddress,
     value: 0n,
@@ -154,7 +168,11 @@ function setSubValidator(
         },
       ],
       functionName: 'setValidator',
-      args: [validatorModule.address, validatorId, validatorModule.initData],
+      args: [
+        resolveAtomicValidator(definition).address,
+        validatorId,
+        resolveAtomicValidatorStatelessData(definition),
+      ],
     }),
   }
 }
@@ -168,7 +186,7 @@ function setSubValidator(
  */
 function removeSubValidator(
   id: Hex | number,
-  validator: OwnableValidatorConfig | WebauthnValidatorConfig,
+  validator: MfaFactor,
   moduleAddress: Address = MULTI_FACTOR_VALIDATOR_ADDRESS,
 ): CalldataInput {
   const validatorId = padHex(toHex(id), { size: 12 })

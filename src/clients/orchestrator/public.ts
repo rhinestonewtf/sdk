@@ -285,9 +285,13 @@ interface SignData {
   targetExecution?: TypedDataDefinition
 }
 
-// Per-intent tracking handle for layers that hand off to a third-party bridge
+/**
+ * Per-intent tracking handle for settlement layers that hand delivery off to
+ * a third-party bridge or solver network.
+ */
 type BridgeFill =
   | { type: 'OFT'; destinationChainId: number }
+  | { type: 'ECO'; destinationChainId: number; intentHash: Hex }
   | { type: 'RELAY'; destinationChainId: number; requestId: string }
   | { type: 'NEAR'; destinationChainId: number; depositAddress: Address }
   | { type: 'RHINO'; destinationChainId: number; commitmentId: string }

@@ -30,8 +30,28 @@ export type WireIntentRequestInternal = WireIntentRequest & {
   readonly options?: { readonly dryRun?: boolean }
 }
 export type WireSplitRequest = JsonRequest<'getSplit'>
-export type WireQuoteResponse = Folded<JsonResponse<'createQuote'>>
-export type WireQuote = WireQuoteResponse['routes'][number]
+type GeneratedWireQuoteResponse = Folded<JsonResponse<'createQuote'>>
+type GeneratedWireQuote = GeneratedWireQuoteResponse['routes'][number]
+type EcoBridgeFill = {
+  readonly destinationChainId: number
+  readonly fillExpirationPeriod?: number
+  readonly fillStatusTimeout: number
+  readonly type: 'ECO'
+  readonly intentHash: string
+}
+
+// The ECO solver-network variant is already part of the orchestrator feature
+// branch but not yet in the pinned, published OpenAPI document. Keep the HTTP
+// boundary truthful during that rollout; the next generated-wire sync will add
+// the structurally identical variant to GeneratedWireQuote.
+export type WireQuote = Omit<GeneratedWireQuote, 'bridgeFill'> & {
+  readonly bridgeFill?:
+    | NonNullable<GeneratedWireQuote['bridgeFill']>
+    | EcoBridgeFill
+}
+export type WireQuoteResponse = Omit<GeneratedWireQuoteResponse, 'routes'> & {
+  readonly routes: readonly WireQuote[]
+}
 export type WirePortfolioResponse = Folded<JsonResponse<'getPortfolio'>>
 export type WireIntentStatusResponse = Folded<JsonResponse<'getIntent'>>
 export type WireSplitResponse = Folded<JsonResponse<'getSplit'>>

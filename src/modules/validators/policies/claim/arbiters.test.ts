@@ -25,10 +25,12 @@ describe('getArbitersForSettlementLayers', () => {
     expect(ecoOnly.length).toBeLessThan(any.length)
   })
 
-  test('single ECO layer resolves to at least one ecoArbiter address', () => {
-    const addrs = getArbitersForSettlementLayers(['ECO'])
-    expect(addrs).toBeDefined()
-    expect(addrs!.length).toBeGreaterThan(0)
+  test('ECO preserves production Standard ECO arbiters and excludes the generic IntentExecutor adapter', () => {
+    // source: shared-configs generated production address book
+    expect(getArbitersForSettlementLayers(['ECO'])).toEqual([
+      '0x2e7627CCfAe4eDb336eEb5a70f08415B0F1a2b8C',
+      '0xA212A6ACCC8db0e4cdf4394D0A851c70Fc27A8F0',
+    ])
   })
 
   test('ACROSS layer resolves to BOTH the 7579 and multicall arbiter impls', () => {
@@ -58,11 +60,12 @@ describe('getArbitersForSettlementLayers', () => {
     expect(new Set(lower).size).toBe(lower.length)
   })
 
-  test('dev contracts produce a different (or equal) set vs mainnet', () => {
-    const mainnet = getArbitersForSettlementLayers(['ECO'], false)
-    const dev = getArbitersForSettlementLayers(['ECO'], true)
-    expect(mainnet).toBeDefined()
-    expect(dev).toBeDefined()
+  test('ECO preserves development Standard ECO arbiters and excludes the generic IntentExecutor adapter', () => {
+    // source: shared-configs generated development address book
+    expect(getArbitersForSettlementLayers(['ECO'], true)).toEqual([
+      '0x1BeBAfb3D05d84A5Bfd94800c88d1342f755d8AB',
+      '0x8A061029AE4c5Cf69b5368119B3b0C80B31F55fE',
+    ])
   })
 
   test('duplicate layers do not produce duplicate addresses', () => {
