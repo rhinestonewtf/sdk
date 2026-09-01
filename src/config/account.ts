@@ -522,8 +522,9 @@ type SpendingLimitField<TFn extends AbiFunction> =
     ? { spendingLimit?: { token: Address; amount: bigint } }
     : { spendingLimit?: never }
 
-type ValueLimitField<TFn extends AbiFunction> =
-  IsPayable<TFn> extends true ? { valueLimit?: bigint } : { valueLimit?: never }
+type ValueLimitField<TFn extends AbiFunction> = IsPayable<TFn> extends true
+  ? { valueLimit?: bigint }
+  : { valueLimit?: never }
 
 type PermissionFunctionConfig<TFn extends AbiFunction> = {
   /** `valueLimitPerUse` embedded in universal/arg-policy `ActionConfig`. */
@@ -630,16 +631,16 @@ type SessionSigning =
  *
  * Which venue to name depends on who calls the aggregator. For orchestrator-
  * routed swaps the account calls the Rhinestone Swapper and the aggregator sits
- * inside its route, so use the default or . `zeroEx()` and
- * `fynd()` scope a DIRECT router call by the account, which is a different
- * shape — naming them for an intent-routed swap rejects the swap it was meant
- * to authorise.
+ * inside its route. `zeroEx()` and `fynd()` authorise BOTH that wrapped shape
+ * and a DIRECT router call by the account, because which one the orchestrator
+ * emits depends on the swap's direction and the winning quoter — decided after
+ * the session is signed.
  *
  * What a swap scope bounds: the ops runnable, the tokens, the recipient, and
  * total sell-side spend. What it does not bound on its own is the QUALITY of
  * the swap — `minAmountOut` is not pinned, so an unrouted scope can spend up to
- * the cap and receive little or nothing. Pin the route (when
- * that matters.
+ * the cap and receive little or nothing. Name a venue rather than taking the
+ * unrouted default when that matters.
  *
  * `chain` is what narrows `via`: the same `swap` block naming `fynd()` compiles
  * on Plasma and fails to compile on Optimism, where no TychoRouter is deployed.
