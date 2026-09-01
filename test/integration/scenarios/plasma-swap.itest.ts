@@ -769,3 +769,77 @@ describe
       })
     }
   })
+
+/**
+ * The shape the deposit service actually sends.
+ *
+ * `deposit-service-processor` builds its intents as
+ *   sourceAssets:  [{ chain, address, amount? }]   (bounded source debit)
+ *   tokenRequests: [{ address: target.token }]     (NO amount -> max-out)
+ * i.e. an exact-INPUT swap, whereas every other test here asks for a fixed
+ * output. The orchestrator's wrap gate keys off direction, and 0x is not in
+ * SURPLUS_ELIGIBLE_QUOTERS, so this shape may take the DIRECT router path
+ * rather than the Swapper — which would mean a Swapper-only session is scoped
+ * for the wrong shape in production.
+ *
+ * Uses a dual-venue session so it succeeds either way; the logged ops say which
+ * path the orchestrator actually chose.
+ */
+describe
+  .runIf(enabled)
+  .sequential('plasma deposit-service intent shape (RHI-6286)', () => {
+    test('max-out exact-input swap: which path does the orchestrator take?', async () => {
+      const owner = ownerAccount()
+      const account = await createSwapAccount(owner)
+      const address = await account.getAddress()
+      const usdc = plasmaUsdc()
+      const settler = await resolveZeroExSettler(plasmaClient())
+
+      const usdcBefore = await erc20Balance(usdc, address)
+      const usdtBefore = await erc20Balance(PLASMA_USDT0, address)
+      log('USDT0 before', usdtBefore)
+
+      const sessionKey = privateKeyToAccount(generatePrivateKey())
+      const session: Session = toSession({
+        chain: plasma,
+        owners: { type: 'ecdsa', accounts: [sessionKey] },
+        swap: {
+          sell: { token: PLASMA_USDT0, maxTotal: SESSION_CAP },
+          buy: { token: usdc },
+          to: address,
+          // Both shapes authorised: Swapper-wrapped AND direct 0x.
+          via: [swapperZeroEx(), zeroEx({ settler })],
+        },
+      })
+      logAuthorisedActions(session)
+
+      const execution = await executeIntent({
+        account,
+        label: 'plasma-swap/deposit-service-shape',
+        transaction: await withEnableData(account, session, {
+          // Deposit-service shape: bounded source debit, max-out target.
+          // Omitting `tokenRequests.amount` is what selects exact-INPUT, which
+          // is what routes 0x directly instead of through the Swapper.
+          sourceChains: [plasma],
+          targetChain: plasma,
+          sourceAssets: [
+            { chain: plasma, address: PLASMA_USDT0, amount: 10_000n },
+          ],
+          tokenRequests: [{ address: usdc }],
+          sponsored: true,
+          signers: { type: 'session' as const, session },
+          // biome-ignore lint/suspicious/noExplicitAny: same-chain expressed via the cross-chain shape, as the deposit service does
+        } as any),
+      })
+
+      logPlannedOps(execution)
+      log('deposit-shape phase', execution.phase)
+      const err = (execution as { error?: { message?: string } }).error
+      if (err) log('deposit-shape error', err.message)
+      log('USDC delta', (await erc20Balance(usdc, address)) - usdcBefore)
+      log(
+        'USDT0 delta',
+        usdtBefore - (await erc20Balance(PLASMA_USDT0, address)),
+      )
+    })
+  })
