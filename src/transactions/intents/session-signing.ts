@@ -24,9 +24,11 @@ import {
 } from '../../modules/validators/smart-sessions/policies/claim'
 import type { ResolvedSessionSignerSet } from '../../modules/validators/smart-sessions/types'
 import type {
+  AtomicValidatorDefinition,
   ResolvedValidatorDefinition,
   ValidatorContributionCodec,
 } from '../../modules/validators/types'
+import { webauthnStatelessCodecContext } from '../../modules/validators/webauthn'
 import type { SigningContext } from '../../signing/context'
 import { getAccountSignatureEnvelope } from '../../signing/context'
 import type { IntentSigningPlanCreationInput } from '../../signing/intent-plans/types'
@@ -387,7 +389,7 @@ function sessionOwnerSigning(
             id: factor.id,
             publicId: factor.publicId,
             validator: resolveAtomicValidator(factor).address,
-            codec: withWebauthnContext(
+            codec: withFactorWebauthnContext(
               requireAtomicSignerCodec(
                 getValidatorCapabilities(
                   factor,
@@ -397,8 +399,7 @@ function sessionOwnerSigning(
                   false,
                 ).contributionCodec,
               ),
-              factor.kind === 'passkey',
-              account,
+              factor,
             ),
           })),
         }
@@ -507,6 +508,18 @@ function withWebauthnContext(
       format: 'current',
     },
   }
+}
+
+function withFactorWebauthnContext(
+  codec: Extract<
+    ValidatorContributionCodec,
+    { readonly kind: 'ordered-threshold' }
+  >,
+  factor: AtomicValidatorDefinition,
+) {
+  return factor.kind === 'passkey'
+    ? { ...codec, webauthn: webauthnStatelessCodecContext(factor) }
+    : codec
 }
 
 function sessionAccountEnvelope(

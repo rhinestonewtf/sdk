@@ -3,7 +3,10 @@ import type { AccountRuntime } from '../../accounts/adapter'
 import { encodeMultiFactorContribution } from '../../modules/validators/multi-factor'
 import { encodeOwnableMockSignature } from '../../modules/validators/ownable'
 import { resolveValidator } from '../../modules/validators/resolve'
-import { WEBAUTHN_MOCK_SIGNATURE } from '../../modules/validators/webauthn'
+import {
+  WEBAUTHN_MOCK_SIGNATURE,
+  webauthnStatelessMockSignature,
+} from '../../modules/validators/webauthn'
 import type { SigningContext } from '../../signing/context'
 
 export function getUserOperationStubSignature(
@@ -26,7 +29,7 @@ export function getUserOperationStubSignature(
         validator: resolveValidator(validator).address,
         contribution:
           validator.kind === 'passkey'
-            ? WEBAUTHN_MOCK_SIGNATURE
+            ? webauthnStatelessMockSignature()
             : encodeOwnableMockSignature(validator.owners.length),
       })),
     })

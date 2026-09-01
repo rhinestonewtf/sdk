@@ -10,6 +10,7 @@ import type {
   ValidatorContributionCodec,
   ValidatorSigningPurpose,
 } from '../modules/validators/types'
+import { webauthnStatelessCodecContext } from '../modules/validators/webauthn'
 import { signingTopology } from './plan'
 import type {
   ArtifactAssemblyPlan,
@@ -153,11 +154,7 @@ export function getSigningValidatorFactors(
         factor.kind === 'passkey'
           ? {
               ...normalizedCodec,
-              webauthn: {
-                account: context.account.address,
-                usePrecompile: false,
-                format: 'current' as const,
-              },
+              webauthn: webauthnStatelessCodecContext(factor),
             }
           : normalizedCodec,
     }
