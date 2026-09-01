@@ -1,6 +1,10 @@
 import { type Abi, type Address, toFunctionSelector } from 'viem'
 import { namedParamOffsets } from '../../permissions'
-import type { UniversalActionPolicyParamRule, ZeroExVenue } from '../types'
+import type {
+  UniversalActionPolicyParamRule,
+  ZeroExShape,
+  ZeroExVenue,
+} from '../types'
 import type { VenueContext, VenueScoping } from './rules'
 import { cumulativeCap, pin, swapAction } from './rules'
 
@@ -136,6 +140,13 @@ export async function resolveZeroExSettler(
 export interface ZeroExPinnedOptions {
   /** The Settler to pin. Get the current one with {@link resolveZeroExSettler}. */
   settler: Address
+  /**
+   * Which call shape to authorise. Defaults to `'both'`, which is almost always
+   * what you want — the orchestrator picks the shape from the intent's
+   * direction and the winning quoter, neither of which the session author
+   * controls. Narrow only when you know the shape and want it enforced.
+   */
+  shape?: ZeroExShape
   anySettler?: never
   maxSpend?: never
 }
@@ -156,11 +167,19 @@ export interface ZeroExAnySettlerOptions {
   anySettler: true
   /** Cumulative cap on sell-token spend across every swap in this session. */
   maxSpend: bigint
+  /** See {@link ZeroExPinnedOptions.shape}. Defaults to `'both'`. */
+  shape?: ZeroExShape
   settler?: never
 }
 
 /**
- * Scope a session to 0x swaps.
+ * Scope a session to 0x swaps, in whichever shape the orchestrator produces.
+ *
+ * By default this authorises BOTH the direct `AllowanceHolder.exec` call and
+ * the Swapper-wrapped one, because which of the two the account makes depends
+ * on the intent's direction and the winning quoter — decisions the session
+ * author does not make and cannot see at session-creation time. Authorising one
+ * shape is how a session rejects the swap it was created for.
  *
  * Takes either a pinned `settler` or `anySettler` + `maxSpend`. There is
  * deliberately no zero-argument form: a bundled Settler constant would be stale
@@ -171,6 +190,7 @@ export function zeroEx(
 ): ZeroExVenue {
   return {
     id: '0x',
+    shape: options.shape ?? 'both',
     ...(options.settler !== undefined ? { settler: options.settler } : {}),
     ...(options.anySettler ? { anySettler: true } : {}),
     ...(options.maxSpend !== undefined ? { maxSpend: options.maxSpend } : {}),
@@ -202,7 +222,7 @@ export function scopeZeroEx(
     rules.push(cumulativeCap(EXEC.amount, ctx.cap))
   }
   return {
-    approveSpender: ZEROX_ALLOWANCE_HOLDER,
+    approveSpenders: [ZEROX_ALLOWANCE_HOLDER],
     actions: [
       swapAction(ZEROX_ALLOWANCE_HOLDER, ALLOWANCE_HOLDER_EXEC_SELECTOR, rules),
     ],

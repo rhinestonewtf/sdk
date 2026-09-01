@@ -85,8 +85,13 @@ export function swapAction(
 
 /** What a venue module returns for one configured venue. */
 export interface VenueScoping {
-  /** ERC-20 spender the session may approve the sell token to. */
-  readonly approveSpender: Address
+  /**
+   * ERC-20 spenders the session may approve the sell token to. Plural because a
+   * venue reachable by more than one call shape has a different allowance
+   * target per shape — 0x direct pulls via its AllowanceHolder, the same swap
+   * wrapped pulls via the Swapper's proxy.
+   */
+  readonly approveSpenders: readonly Address[]
   /**
    * One or more scoped actions. Plural because a venue may expose several
    * entrypoints that are all legitimate for the same scope — the Rhinestone

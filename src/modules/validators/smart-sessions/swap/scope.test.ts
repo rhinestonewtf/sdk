@@ -115,9 +115,25 @@ describe('resolveSwapScope — 0x pinned settler', () => {
     expect(ruleAt(rules, 228n)?.referenceValue).toBe(USDC) // buyToken
   })
 
-  test('approve spender is the AllowanceHolder, not the settler', () => {
+  test('approves the AllowanceHolder for the direct shape, never the settler', () => {
+    // Default `shape: 'both'` also authorises the wrapped shape, whose spender
+    // is the Swapper proxy — so this is an allowlist, not a single pin.
     const actions = resolvePermissions(pinned().permissions)
     const policy = actions[0].policies![0]
+    expect(policy.type).toBe('arg-policy')
+    const encoded = JSON.stringify(policy, (_k, v) =>
+      typeof v === 'bigint' ? v.toString() : v,
+    ).toLowerCase()
+    expect(encoded).toContain(ZEROX_ALLOWANCE_HOLDER.toLowerCase().slice(2))
+    expect(encoded).not.toContain(SETTLER.toLowerCase().slice(2))
+  })
+
+  test('the direct shape alone keeps a single approve spender', () => {
+    const { permissions } = resolveSwapScope(
+      scope({ via: [zeroEx({ settler: SETTLER, shape: 'direct' })] }),
+      PLASMA,
+    )
+    const policy = resolvePermissions(permissions)[0].policies![0]
     if (policy.type !== 'universal-action') throw new Error('wrong type')
     expect(policy.rules[0].referenceValue).toBe(
       ZEROX_ALLOWANCE_HOLDER.toLowerCase(),
@@ -226,7 +242,7 @@ describe('resolveSwapScope — the cumulative cap', () => {
 describe('resolveSwapScope — multi-venue and validation', () => {
   test('merges one approve with an allowlist across venue spenders', () => {
     const { permissions, actions } = resolveSwapScope(
-      scope({ via: [fynd(), zeroEx({ settler: SETTLER })] }),
+      scope({ via: [fynd(), zeroEx({ settler: SETTLER, shape: 'direct' })] }),
       PLASMA,
     )
     expect(permissions).toHaveLength(1)
@@ -239,13 +255,39 @@ describe('resolveSwapScope — multi-venue and validation', () => {
   test('deduplicates spenders so one venue pair does not emit a pointless OR', () => {
     const { permissions } = resolveSwapScope(
       scope({
-        via: [zeroEx({ settler: SETTLER }), zeroEx({ settler: ATTACKER })],
+        via: [
+          zeroEx({ settler: SETTLER, shape: 'direct' }),
+          zeroEx({ settler: SETTLER, shape: 'direct' }),
+        ],
       }),
       PLASMA,
     )
     // Both route through the same AllowanceHolder.
     const resolved = resolvePermissions(permissions)
     expect(resolved[0].policies![0].type).toBe('universal-action')
+  })
+
+  test('two venues authorising the same call collapse instead of colliding', () => {
+    // `zeroEx()` covers the wrapped shape too, so this overlaps swapperZeroEx().
+    const { actions } = resolveSwapScope(
+      scope({ via: [zeroEx({ settler: SETTLER }), swapperZeroEx()] }),
+      PLASMA,
+    )
+    const keys = actions.map((a) => `${a.target}|${a.selector}`)
+    expect(new Set(keys).size).toBe(keys.length)
+  })
+
+  test('conflicting policies on the same call are rejected, not silently merged', () => {
+    expect(() =>
+      resolveSwapScope(
+        scope({
+          sell: { token: USDT0, maxTotal: 1000n },
+          // Different caps produce different rules for the same Swapper call.
+          via: [zeroEx({ settler: SETTLER }), swapperZeroEx({ maxSpend: 5n })],
+        }),
+        PLASMA,
+      ),
+    ).toThrow(/Conflicting swap actions/)
   })
 
   test('rejects an empty venue list', () => {
@@ -374,7 +416,10 @@ describe('swap scope through toSession', () => {
     const session = toSession({
       chain: plasma,
       owners: { type: 'ecdsa', accounts: [accountA] },
-      swap: { ...swap, via: [fynd(), zeroEx({ settler: SETTLER })] },
+      swap: {
+        ...swap,
+        via: [fynd(), zeroEx({ settler: SETTLER, shape: 'direct' })],
+      },
     })
     const targets = getSessionData(session).actions.map((a) =>
       a.actionTarget.toLowerCase(),

@@ -112,7 +112,7 @@ export function scopeFynd(ctx: VenueContext): VenueScoping {
     rules.push(cumulativeCap(OFFSETS.amountIn, ctx.cap))
   }
   return {
-    approveSpender: router,
+    approveSpenders: [router],
     actions: [swapAction(router, FYND_SWAP_SELECTOR, rules)],
   }
 }

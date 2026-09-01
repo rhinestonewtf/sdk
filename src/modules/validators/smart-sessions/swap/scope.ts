@@ -74,7 +74,9 @@ function approvePermission(
   scopings: VenueScoping[],
 ): Permission {
   const spenders = [
-    ...new Set(scopings.map((s) => s.approveSpender.toLowerCase())),
+    ...new Set(
+      scopings.flatMap((s) => s.approveSpenders.map((a) => a.toLowerCase())),
+    ),
   ].map((s) => s as Address)
   return {
     abi: erc20ApproveAbi as unknown as Abi,
@@ -137,12 +139,66 @@ export function resolveSwapScope(
       cap: venue.maxSpend ?? scope.sell.maxTotal,
     }
     if (venue.id === 'rhinestone') return scopeRhinestone(venue, ctx)
-    if (venue.id === '0x') return scopeZeroEx(venue, ctx)
-    return scopeFynd(ctx)
+    if (venue.id === 'fynd') return scopeFynd(ctx)
+
+    // A 0x venue may authorise two distinct call shapes. Compose them here
+    // rather than inside either venue module, so neither has to import the
+    // other. `shape` defaults to 'both' in the builder; a venue object written
+    // by hand (untyped JS) gets the same default.
+    const shape = venue.shape ?? 'both'
+    const parts: VenueScoping[] = []
+    if (shape === 'both' || shape === 'direct') {
+      parts.push(scopeZeroEx(venue, ctx))
+    }
+    if (shape === 'both' || shape === 'wrapped') {
+      parts.push(scopeRhinestone({ id: 'rhinestone', route: 'zeroEx' }, ctx))
+    }
+    return {
+      approveSpenders: parts.flatMap((p) => [...p.approveSpenders]),
+      actions: parts.flatMap((p) => [...p.actions]),
+    }
   })
 
   return {
     permissions: [approvePermission(scope, scopings)],
-    actions: scopings.flatMap((s) => [...s.actions]),
+    actions: dedupeActions(scopings.flatMap((s) => [...s.actions])),
   }
+}
+
+/**
+ * Collapse actions that different venues both authorise.
+ *
+ * `zeroEx()` covers the Swapper-wrapped shape as well as the direct one, so
+ * listing it alongside `swapperZeroEx()` yields the same (target, selector)
+ * twice. Those map to one on-chain action id, and the resolver rejects
+ * duplicates — reasonably, since two entries would silently overwrite each
+ * other's policies. Identical entries are safe to collapse; genuinely
+ * conflicting ones still throw, because picking a winner would silently
+ * loosen or tighten a rule the caller wrote.
+ */
+function dedupeActions(actions: ScopedAction[]): ScopedAction[] {
+  const byKey = new Map<string, ScopedAction>()
+  for (const action of actions) {
+    const key = `${action.target.toLowerCase()}|${action.selector.toLowerCase()}`
+    const existing = byKey.get(key)
+    if (!existing) {
+      byKey.set(key, action)
+      continue
+    }
+    if (
+      JSON.stringify(existing, replaceBigInt) !==
+      JSON.stringify(action, replaceBigInt)
+    ) {
+      throw new Error(
+        `Conflicting swap actions for ${action.target} ${action.selector}: ` +
+          'two venues authorise the same call with different policies. Give ' +
+          'them the same cap, or list only one.',
+      )
+    }
+  }
+  return [...byKey.values()]
+}
+
+function replaceBigInt(_key: string, value: unknown) {
+  return typeof value === 'bigint' ? value.toString() : value
 }

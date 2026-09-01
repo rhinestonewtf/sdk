@@ -71,11 +71,23 @@ export type SessionPolicy =
  * construct these literally — router addresses, selectors and calldata offsets
  * are resolved from the venue id inside `swap-venues.ts`.
  */
+/**
+ * Which of 0x's two reachable call shapes the session authorises.
+ *
+ * The orchestrator decides this, not the caller: an exact-input swap reaches 0x
+ * directly, while an exact-output one is wrapped in the Rhinestone Swapper with
+ * 0x nested in its route. Authorising only one is how a session ends up
+ * rejecting the very swap it was created for, so the default is BOTH.
+ */
+export type ZeroExShape = 'both' | 'direct' | 'wrapped'
+
 export interface ZeroExVenue {
   readonly id: '0x'
   readonly settler?: Address
   readonly anySettler?: boolean
   readonly maxSpend?: bigint
+  /** Defaults to `'both'`. Narrow only when the call shape is known. */
+  readonly shape?: ZeroExShape
 }
 
 export interface FyndVenue {

@@ -262,7 +262,7 @@ export function scopeRhinestone(
   return {
     // The account approves the proxy, never the Swapper and never a router —
     // one fixed spender per chain, whichever aggregator ends up filling.
-    approveSpender: proxy,
+    approveSpenders: [proxy],
     actions: [
       swapAction(
         swapper,

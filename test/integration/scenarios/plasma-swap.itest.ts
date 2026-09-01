@@ -179,10 +179,10 @@ describe
           sell: { token: PLASMA_USDT0, maxTotal: SESSION_CAP },
           buy: { token: usdc },
           to: address,
-          // Swapper-routed AND the calls[] tail pinned to 0x. This is the
-          // strongest available scoping: the account may only call the Swapper,
-          // and the Swapper may only route through 0x's AllowanceHolder.
-          via: [swapperZeroEx()],
+          // One venue, both shapes. This same session covers the direct
+          // AllowanceHolder call the deposit-service shape produces AND the
+          // Swapper-wrapped call a fixed-output intent produces.
+          via: [zeroEx({ settler })],
         },
       })
 
@@ -807,8 +807,10 @@ describe
           sell: { token: PLASMA_USDT0, maxTotal: SESSION_CAP },
           buy: { token: usdc },
           to: address,
-          // Both shapes authorised: Swapper-wrapped AND direct 0x.
-          via: [swapperZeroEx(), zeroEx({ settler })],
+          // A plain zeroEx() now authorises BOTH shapes by default, which is
+          // the whole point: the caller cannot know which one the orchestrator
+          // will emit. No `shape` narrowing, no second venue.
+          via: [zeroEx({ settler })],
         },
       })
       logAuthorisedActions(session)
