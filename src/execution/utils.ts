@@ -633,6 +633,7 @@ async function signTypedDataWithSession<
         salt,
       },
     },
+    session.owners,
     (signature) => {
       const erc7739Signature = wrapTypedDataSignature({
         domain: parameters.domain as TypedDataDomain,

@@ -5,15 +5,22 @@ import {
 } from '../accounts'
 import {
   getMultiFactorValidator,
+  getStatelessValidatorData,
   getValidator,
   MULTI_FACTOR_VALIDATOR_ADDRESS,
 } from '../modules/validators/core'
 import type {
   CalldataInput,
+  ENSValidatorConfig,
   LazyCallInput,
   OwnableValidatorConfig,
   WebauthnValidatorConfig,
 } from '../types'
+
+type MfaFactor =
+  | OwnableValidatorConfig
+  | ENSValidatorConfig
+  | WebauthnValidatorConfig
 
 /**
  * Enable multi-factor authentication
@@ -22,7 +29,7 @@ import type {
  * @returns Calls to enable multi-factor authentication
  */
 function enable(
-  validators: (OwnableValidatorConfig | WebauthnValidatorConfig | null)[],
+  validators: (MfaFactor | null)[],
   threshold = 1,
 ): LazyCallInput {
   const module = getMultiFactorValidator(threshold, validators)
@@ -80,7 +87,7 @@ function disable(): LazyCallInput {
  */
 function setSubValidator(
   id: Hex | number,
-  validator: OwnableValidatorConfig | WebauthnValidatorConfig,
+  validator: MfaFactor,
 ): CalldataInput {
   const validatorId = padHex(toHex(id), { size: 12 })
   const validatorModule = getValidator(validator)
@@ -109,7 +116,11 @@ function setSubValidator(
         },
       ],
       functionName: 'setValidator',
-      args: [validatorModule.address, validatorId, validatorModule.initData],
+      args: [
+        validatorModule.address,
+        validatorId,
+        getStatelessValidatorData(validator),
+      ],
     }),
   }
 }
@@ -122,7 +133,7 @@ function setSubValidator(
  */
 function removeSubValidator(
   id: Hex | number,
-  validator: OwnableValidatorConfig | WebauthnValidatorConfig,
+  validator: MfaFactor,
 ): CalldataInput {
   const validatorId = padHex(toHex(id), { size: 12 })
   const validatorModule = getValidator(validator)

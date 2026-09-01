@@ -190,6 +190,66 @@ describe('Accounts: Nexus', () => {
       expect(address).toEqual('0x68484B775e4a2828A50C7404ce8530f146d5598e')
     })
 
+    test('multi-factor passkey addresses deliberately match v2 on 1.2.1', () => {
+      // Correct stateless factor data moves the old threshold-1/2 addresses
+      // 0x8bdf… and 0xc692…; those counterfactual paths could not validate.
+      const owners = {
+        type: 'multi-factor',
+        validators: [
+          { type: 'ecdsa', accounts: [accountA] },
+          { type: 'passkey', accounts: [passkeyAccount] },
+        ],
+      } as const
+
+      expect(
+        getAddress({
+          owners,
+          account: { type: 'nexus', version: '1.2.1' },
+        }),
+      ).toEqual('0x7953332B34329A9B3D6789a546Dc804475732D01')
+      expect(
+        getAddress({
+          owners: { ...owners, threshold: 2 },
+          account: { type: 'nexus', version: '1.2.1' },
+        }),
+      ).toEqual('0x9b6F54C7B64F3c6AC19595d54C6723e2E3357B6c')
+    })
+
+    test('multi-factor ENS address deliberately matches v2 on 1.2.1', () => {
+      // Stateless ENS data moves the old root-data vector from 0x3Da8….
+      expect(
+        getAddress({
+          owners: {
+            type: 'multi-factor',
+            validators: [
+              { type: 'ecdsa', accounts: [accountA] },
+              {
+                type: 'ens',
+                accounts: [accountB],
+                ownerExpirations: [],
+              },
+            ],
+          },
+          account: { type: 'nexus', version: '1.2.1' },
+        }),
+      ).toEqual('0xFcA9c26D01F969cA03b0195BD153f48b177aCFCb')
+    })
+
+    test('ECDSA-only multi-factor address remains unchanged on 1.2.1', () => {
+      expect(
+        getAddress({
+          owners: {
+            type: 'multi-factor',
+            validators: [
+              { type: 'ecdsa', accounts: [accountA] },
+              { type: 'ecdsa', accounts: [accountB] },
+            ],
+          },
+          account: { type: 'nexus', version: '1.2.1' },
+        }),
+      ).toEqual('0x25cfCd65c6CE081Ca5F537C4C33e2e279F66d976')
+    })
+
     test('Existing account (1.2.1 factory)', () => {
       // A persisted 1.2.1 { factory, factoryData } must recompute the same
       // counterfactual address as the direct config, i.e. against the 1.2.1
