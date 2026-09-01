@@ -136,6 +136,21 @@ describe('resolveSwapScope — 0x pinned settler', () => {
     expect(ruleAt(rules, 128n)?.referenceValue).toBe(160n)
   })
 
+  test('the wrapped half pins the exec it forwards, not just calls[1].target', () => {
+    // Pinning calls[1].target to the AllowanceHolder still leaves the exec it
+    // forwards free to name any operator/target — which is where the pulled
+    // input would go. zeroEx() already knows the Settler, so the wrapped half
+    // pins it rather than dropping it.
+    const swapperAction = pinned().actions.find(
+      (a) => a.target.toLowerCase() === SWAPPER_PLASMA.toLowerCase(),
+    )!
+    expect(swapperAction).toBeDefined()
+    const rules = rulesOf(swapperAction)
+    expect(ruleAt(rules, 708n)?.referenceValue).toBe(SETTLER) // exec operator
+    expect(ruleAt(rules, 804n)?.referenceValue).toBe(SETTLER) // exec target
+    expect(ruleAt(rules, 740n)?.referenceValue).toBe(USDT0) // exec sell token
+  })
+
   test('approves the AllowanceHolder for the direct shape, never the settler', () => {
     // Default `shape: 'both'` also authorises the wrapped shape, whose spender
     // is the Swapper proxy — so this is an allowlist, not a single pin.

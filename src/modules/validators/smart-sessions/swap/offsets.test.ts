@@ -89,6 +89,24 @@ describe('Swapper calls[] offsets match real encoded calldata', () => {
   })
 })
 
+describe('the nested exec inside calls[1] is at a fixed position too', () => {
+  test('calls[1] carries an exec whose head words are addressable', () => {
+    // calls[1] starts at 576; +32 value, +64 data pointer, +96 length, and the
+    // blob itself at 704 — so exec's own head begins at 708, past its selector.
+    expect(BigInt(wordAt(swapperCalldata, 608n))).toBe(0n) // calls[1].value
+    expect(BigInt(wordAt(swapperCalldata, 640n))).toBe(96n) // calls[1].data ptr
+    expect(asAddress(wordAt(swapperCalldata, 708n)).toLowerCase()).toBe(
+      SETTLER.toLowerCase(),
+    ) // nested exec operator
+    expect(asAddress(wordAt(swapperCalldata, 740n)).toLowerCase()).toBe(
+      SELL.toLowerCase(),
+    ) // nested exec token
+    expect(asAddress(wordAt(swapperCalldata, 804n)).toLowerCase()).toBe(
+      SETTLER.toLowerCase(),
+    ) // nested exec target
+  })
+})
+
 describe('AllowanceHolder.exec offsets match real encoded calldata', () => {
   test('the head words are where the policy reads them', () => {
     expect(asAddress(wordAt(execCalldata, 0n)).toLowerCase()).toBe(

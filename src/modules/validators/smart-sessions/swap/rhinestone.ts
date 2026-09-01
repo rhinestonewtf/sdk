@@ -162,6 +162,14 @@ const CALLS_ELEM1_POINTER_OFFSET = 320n
 const CALLS_ELEM0_TARGET_OFFSET = 352n
 const CALLS_ELEM1_TARGET_OFFSET = 576n
 
+const CALLS_ELEM1_VALUE_OFFSET = 608n
+const CALLS_ELEM1_DATA_POINTER_OFFSET = 640n
+/** Head words of the `AllowanceHolder.exec` nested in `calls[1].data`. */
+const NESTED_EXEC_OPERATOR_OFFSET = 708n
+const NESTED_EXEC_TOKEN_OFFSET = 740n
+const NESTED_EXEC_TARGET_OFFSET = 804n
+const CALLS_ELEM1_DATA_POINTER = 96n
+
 const CALLS_ELEM0_VALUE_OFFSET = 384n
 const CALLS_ELEM0_DATA_POINTER_OFFSET = 416n
 const CALLS_ELEM0_DATA_LENGTH_OFFSET = 448n
@@ -193,8 +201,22 @@ const CALLS_ELEM1_POINTER = 288n
 function routeRules(
   sellToken: Address,
   aggregator: Address,
+  settler?: Address,
 ): UniversalActionPolicyParamRule[] {
+  const nested: UniversalActionPolicyParamRule[] = settler
+    ? [
+        // Pinning calls[1]'s target to the AllowanceHolder still leaves the
+        // exec it forwards free to name any operator and target, which is where
+        // the pulled input would go. Pin those too when the Settler is known.
+        pinValue(CALLS_ELEM1_VALUE_OFFSET, 0n),
+        pinValue(CALLS_ELEM1_DATA_POINTER_OFFSET, CALLS_ELEM1_DATA_POINTER),
+        pin(NESTED_EXEC_OPERATOR_OFFSET, settler),
+        pin(NESTED_EXEC_TOKEN_OFFSET, sellToken),
+        pin(NESTED_EXEC_TARGET_OFFSET, settler),
+      ]
+    : []
   return [
+    ...nested,
     pinValue(CALLS_POINTER_OFFSET, CALLS_POINTER),
     pinValue(CALLS_LENGTH_OFFSET, CALLS_LENGTH),
     pinValue(CALLS_ELEM0_POINTER_OFFSET, CALLS_ELEM0_POINTER),
@@ -256,11 +278,12 @@ export function swapperFynd(
 }
 
 export function swapperZeroEx(
-  options: { maxSpend?: bigint } = {},
+  options: { maxSpend?: bigint; settler?: Address } = {},
 ): RhinestoneSwapVenue {
   return {
     id: 'rhinestone',
     route: 'zeroEx',
+    ...(options.settler !== undefined ? { settler: options.settler } : {}),
     ...(options.maxSpend !== undefined ? { maxSpend: options.maxSpend } : {}),
   }
 }
@@ -303,7 +326,13 @@ export function scopeRhinestone(
       rules.push(cumulativeCap(offsets[sellAmountParam], ctx.cap))
     }
     if (routeAggregator !== undefined) {
-      rules.push(...routeRules(ctx.sellToken, routeAggregator))
+      rules.push(
+        ...routeRules(
+          ctx.sellToken,
+          routeAggregator,
+          venue.route === 'zeroEx' ? venue.settler : undefined,
+        ),
+      )
     }
     return rules
   }

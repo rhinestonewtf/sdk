@@ -95,6 +95,11 @@ export interface RhinestoneSwapVenue {
    * to leave the route unconstrained (bounded only by the sell cap).
    */
   readonly route?: 'zeroEx' | 'fynd'
+  /**
+   * 0x's Settler, when known. Pins the nested `AllowanceHolder.exec` inside
+   * `calls[1].data`; without it that call's operator/target stay free.
+   */
+  readonly settler?: Address
 }
 
 export type SwapVenue = RhinestoneSwapVenue | ZeroExVenue | FyndVenue
