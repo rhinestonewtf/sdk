@@ -148,7 +148,6 @@ describe('resolveSwapScope — 0x pinned settler', () => {
     const rules = rulesOf(swapperAction)
     expect(ruleAt(rules, 708n)?.referenceValue).toBe(SETTLER) // exec operator
     expect(ruleAt(rules, 804n)?.referenceValue).toBe(SETTLER) // exec target
-    expect(ruleAt(rules, 740n)?.referenceValue).toBe(USDT0) // exec sell token
   })
 
   test('approves the AllowanceHolder for the direct shape, never the settler', () => {
@@ -261,6 +260,32 @@ describe('resolveSwapScope — the cumulative cap', () => {
     )
     expect(ruleAt(rulesOf(actions[0]), 0n)?.usageLimit).toBe(0n)
   })
+})
+
+describe('every scope fits the on-chain rule ceiling', () => {
+  // UniversalActionPolicy reverts above 16 rules, and the resolver throws at
+  // build time — but only for the exact venue combination under test. Adding a
+  // pin is cheap and the ceiling is invisible until something overflows, so
+  // sweep the combinations rather than trusting the ones that happen to be
+  // covered elsewhere.
+  const combos = [
+    ['fynd', () => [fynd()]],
+    ['0x pinned', () => [zeroEx({ settler: SETTLER })]],
+    ['0x anySettler', () => [zeroEx({ anySettler: true, maxSpend: 500n })]],
+    ['swapper', () => [rhinestoneSwap()]],
+    ['swapper+0x', () => [swapperZeroEx()]],
+    ['fynd+0x', () => [fynd(), zeroEx({ settler: SETTLER })]],
+    ['fynd+swapper', () => [fynd(), rhinestoneSwap()]],
+  ] as const
+
+  for (const [name, via] of combos) {
+    test(`${name} stays within 16 rules per action`, () => {
+      const { actions } = resolveSwapScope(scope({ via: via() }), PLASMA)
+      for (const action of actions) {
+        expect(rulesOf(action).length).toBeLessThanOrEqual(16)
+      }
+    })
+  }
 })
 
 describe('resolveSwapScope — multi-venue and validation', () => {

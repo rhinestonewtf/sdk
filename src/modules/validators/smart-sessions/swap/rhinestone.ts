@@ -162,15 +162,12 @@ const CALLS_ELEM1_POINTER_OFFSET = 320n
 const CALLS_ELEM0_TARGET_OFFSET = 352n
 const CALLS_ELEM1_TARGET_OFFSET = 576n
 
-const CALLS_ELEM1_VALUE_OFFSET = 608n
 const CALLS_ELEM1_DATA_POINTER_OFFSET = 640n
 /** Head words of the `AllowanceHolder.exec` nested in `calls[1].data`. */
 const NESTED_EXEC_OPERATOR_OFFSET = 708n
-const NESTED_EXEC_TOKEN_OFFSET = 740n
 const NESTED_EXEC_TARGET_OFFSET = 804n
 const CALLS_ELEM1_DATA_POINTER = 96n
 
-const CALLS_ELEM0_VALUE_OFFSET = 384n
 const CALLS_ELEM0_DATA_POINTER_OFFSET = 416n
 const CALLS_ELEM0_DATA_LENGTH_OFFSET = 448n
 /** The `spender` argument of `calls[0]`'s `approve`, past its 4-byte selector. */
@@ -203,15 +200,21 @@ function routeRules(
   aggregator: Address,
   settler?: Address,
 ): UniversalActionPolicyParamRule[] {
+  // UniversalActionPolicy allows at most 16 rules per action, and the base
+  // scope already spends 4 (tokenIn, tokenOut, recipient, cap) — so these 12
+  // are the whole budget. Every one of them is load-bearing: the shape words
+  // make the fixed offsets meaningful at all, and each pin below closes a way
+  // the pulled input could leave. The `calls[].value` words and the nested sell
+  // token were dropped to fit; the outer call's value is already capped by
+  // `swapAction`'s `valueLimitPerUse: 0n`, and the Swapper only ever holds the
+  // token it just pulled.
   const nested: UniversalActionPolicyParamRule[] = settler
     ? [
         // Pinning calls[1]'s target to the AllowanceHolder still leaves the
         // exec it forwards free to name any operator and target, which is where
         // the pulled input would go. Pin those too when the Settler is known.
-        pinValue(CALLS_ELEM1_VALUE_OFFSET, 0n),
         pinValue(CALLS_ELEM1_DATA_POINTER_OFFSET, CALLS_ELEM1_DATA_POINTER),
         pin(NESTED_EXEC_OPERATOR_OFFSET, settler),
-        pin(NESTED_EXEC_TOKEN_OFFSET, sellToken),
         pin(NESTED_EXEC_TARGET_OFFSET, settler),
       ]
     : []
@@ -227,7 +230,6 @@ function routeRules(
     // token — `transfer(attacker, amountIn)` as easily as an approve. Fixing
     // its length and the address it names leaves the aggregator as the only
     // party the pulled input can reach.
-    pinValue(CALLS_ELEM0_VALUE_OFFSET, 0n),
     pinValue(CALLS_ELEM0_DATA_POINTER_OFFSET, CALLS_ELEM0_DATA_POINTER),
     pinValue(CALLS_ELEM0_DATA_LENGTH_OFFSET, APPROVE_CALLDATA_LENGTH),
     pin(CALLS_ELEM0_SPENDER_OFFSET, aggregator),
