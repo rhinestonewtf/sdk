@@ -1,10 +1,16 @@
-import { decodeAbiParameters, type Hex } from 'viem'
+import {
+  decodeAbiParameters,
+  encodeAbiParameters,
+  type Hex,
+  zeroAddress,
+} from 'viem'
 import { describe, expect, test } from 'vitest'
 import { withoutHostCollation } from '../../../test/utils/locale'
 import {
   generateCredentialId,
   packSignature,
   packSignatureV0,
+  packStatelessSignature,
   parsePublicKey,
   parseSignature,
   type WebAuthnSignature,
@@ -145,6 +151,118 @@ describe('Passkeys', () => {
         ),
       )
       expect(credIds).toEqual([low, high])
+    })
+  })
+
+  describe('Pack Stateless Signature', () => {
+    const accounts = [
+      { publicKey: `0x${'01'.repeat(32)}${'02'.repeat(32)}` as Hex },
+      { publicKey: `0x${'03'.repeat(32)}${'04'.repeat(32)}` as Hex },
+      { publicKey: `0x${'05'.repeat(32)}${'06'.repeat(32)}` as Hex },
+    ]
+    const webAuthns: WebAuthnSignature[] = [
+      {
+        authenticatorData: '0x01',
+        clientDataJSON: 'first',
+        challengeIndex: 1n,
+        typeIndex: 1n,
+        r: 1n,
+        s: 1n,
+      },
+      {
+        authenticatorData: '0x02',
+        clientDataJSON: 'second',
+        challengeIndex: 2n,
+        typeIndex: 2n,
+        r: 2n,
+        s: 2n,
+      },
+      {
+        authenticatorData: '0x03',
+        clientDataJSON: 'third',
+        challengeIndex: 3n,
+        typeIndex: 3n,
+        r: 3n,
+        s: 3n,
+      },
+    ]
+    const credentialId = ({ publicKey }: { publicKey: Hex }) => {
+      const { x, y } = parsePublicKey(publicKey)
+      return generateCredentialId(x, y, zeroAddress)
+    }
+    const canonicalAccounts = [...accounts].sort((a, b) =>
+      credentialId(a) < credentialId(b) ? -1 : 1,
+    )
+    const signatureFor = (account: (typeof accounts)[number]) =>
+      webAuthns[accounts.indexOf(account)]
+    const tupleAbi = [
+      {
+        type: 'tuple[]',
+        components: [
+          { type: 'bytes', name: 'authenticatorData' },
+          { type: 'string', name: 'clientDataJSON' },
+          { type: 'uint256', name: 'challengeIndex' },
+          { type: 'uint256', name: 'typeIndex' },
+          { type: 'uint256', name: 'r' },
+          { type: 'uint256', name: 's' },
+        ],
+      },
+    ] as const
+
+    test('uses an assertion-only ABI', () => {
+      const packed = packStatelessSignature(accounts, accounts, webAuthns)
+      expect(packed).toEqual(
+        encodeAbiParameters(tupleAbi, [canonicalAccounts.map(signatureFor)]),
+      )
+    })
+
+    test('orders credentials by their zero-address IDs', () => {
+      const packed = packStatelessSignature(accounts, accounts, webAuthns)
+      const [packedWebAuthns] = decodeAbiParameters(tupleAbi, packed)
+      expect(packedWebAuthns.map(({ r }) => r)).toEqual(
+        canonicalAccounts.map(signatureFor).map(({ r }) => r),
+      )
+    })
+
+    test('accepts lowest-prefix signer subsets', () => {
+      const signers = canonicalAccounts.slice(0, 2)
+      expect(() =>
+        packStatelessSignature(
+          signers,
+          [...accounts].reverse(),
+          signers.map(signatureFor),
+        ),
+      ).not.toThrow()
+    })
+
+    test('rejects non-prefix and gapped signer subsets', () => {
+      expect(() =>
+        packStatelessSignature([canonicalAccounts[1]], accounts, [
+          signatureFor(canonicalAccounts[1]),
+        ]),
+      ).toThrow('partial signer set must be the lowest-ordered credentials')
+      expect(() =>
+        packStatelessSignature(
+          [canonicalAccounts[0], canonicalAccounts[2]],
+          accounts,
+          [
+            signatureFor(canonicalAccounts[0]),
+            signatureFor(canonicalAccounts[2]),
+          ],
+        ),
+      ).toThrow('partial signer set must be the lowest-ordered credentials')
+    })
+
+    test('is independent of caller order', () => {
+      const signers = canonicalAccounts.slice(0, 2)
+      const packed = packStatelessSignature(
+        [...signers].reverse(),
+        [...accounts].reverse(),
+        [...signers].reverse().map(signatureFor),
+      )
+      expect(packed).toEqual(
+        packStatelessSignature(signers, accounts, signers.map(signatureFor)),
+      )
     })
   })
 

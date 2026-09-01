@@ -467,7 +467,7 @@ async function getEip1271Signature(
 
   signers = signers ?? convertOwnerSetToSignerSet(config.owners!)
   const signFn = (hash: Hex) =>
-    signMessage(signers, chain, address, hash, false)
+    signMessage(signers, config.owners!, chain, address, hash, false)
   const account = getAccountProvider(config)
   const address = getAddress(config)
   switch (account.type) {
@@ -524,7 +524,7 @@ async function getEmissarySignature(
   const address = getAddress(config)
 
   const signFn = (hash: Hex) =>
-    signMessage(signers, chain, address, hash, false)
+    signMessage(signers, config.owners!, chain, address, hash, false)
   const signature = await signFn(hash)
   return transformSignature(signature)
 }
@@ -539,6 +539,7 @@ async function getTypedDataPackedSignature<
   chain: Chain,
   validator: ValidatorConfig,
   parameters: HashTypedDataParameters<typedData, primaryType>,
+  configuredOwners: OwnerSet = config.owners!,
   transformSignature: (signature: Hex) => Hex = (signature) => signature,
 ): Promise<Hex> {
   if (config.account?.type === 'eoa') {
@@ -549,7 +550,7 @@ async function getTypedDataPackedSignature<
   signers = signers ?? convertOwnerSetToSignerSet(config.owners!)
   const signFn = (
     parameters: HashTypedDataParameters<typedData, primaryType>,
-  ) => signTypedData(signers, chain, address, parameters)
+  ) => signTypedData(signers, configuredOwners, chain, address, parameters)
   const account = getAccountProvider(config)
   switch (account.type) {
     case 'safe': {
@@ -575,7 +576,7 @@ async function getTypedDataPackedSignature<
     case 'kernel': {
       const address = getAddress(config)
       const signMessageFn = (hash: Hex) =>
-        signMessage(signers, chain, address, hash, false)
+        signMessage(signers, configuredOwners, chain, address, hash, false)
       const signature = await signMessageFn(
         wrapKernelMessageHash(hashTypedData(parameters), address),
       )
@@ -854,7 +855,8 @@ async function getSmartAccount(
   const address = getAddress(config)
   const ownerValidator = getOwnerValidator(config)
   const signers: SignerSet = convertOwnerSetToSignerSet(config.owners)
-  const signFn = (hash: Hex) => signMessage(signers, chain, address, hash, true)
+  const signFn = (hash: Hex) =>
+    signMessage(signers, config.owners!, chain, address, hash, true)
   switch (account.type) {
     case 'safe': {
       return getSafeSmartAccount(
@@ -924,7 +926,8 @@ async function getGuardianSmartAccount(
     type: 'guardians',
     guardians: accounts,
   }
-  const signFn = (hash: Hex) => signMessage(signers, chain, address, hash, true)
+  const signFn = (hash: Hex) =>
+    signMessage(signers, guardians, chain, address, hash, true)
 
   const account = getAccountProvider(config)
   switch (account.type) {

@@ -30,6 +30,7 @@ import {
   generateCredentialId,
   packSignature as packPasskeySignature,
   packSignatureV0 as packPasskeySignatureV0,
+  packStatelessSignature as packStatelessPasskeySignature,
   parsePublicKey,
   parseSignature,
 } from './passkeys'
@@ -124,29 +125,67 @@ type SigningFunctions<T> = {
 
 async function signWithMultiFactorAuth<T>(
   signers: SignerSet & { type: 'owner'; kind: 'multi-factor' },
+  configuredOwners: OwnerSet & { type: 'multi-factor' },
   chain: Chain,
   address: Address,
   params: T,
   isUserOpHash: boolean,
   signMain: (
     signers: SignerSet,
+    configuredOwners: OwnerSet,
     chain: Chain,
     address: Address,
     params: T,
     isUserOpHash: boolean,
+    statelessPasskey?: boolean,
   ) => Promise<Hex>,
 ): Promise<Hex> {
+  const configuredValidators = signers.validators.map((validator) => {
+    const configuredValidator =
+      configuredOwners.validators[Number(BigInt(validator.id))]
+    if (!configuredValidator) {
+      throw new Error(`Unknown multi-factor validator ID ${validator.id}`)
+    }
+    if (
+      validator.type !== configuredValidator.type &&
+      !(validator.type === 'ecdsa' && configuredValidator.type === 'ens')
+    ) {
+      throw new Error(
+        `Multi-factor validator ID ${validator.id} has wrong type`,
+      )
+    }
+    return configuredValidator
+  })
   const signatures = await Promise.all(
-    signers.validators.map(async (validator) => {
-      if (validator === null) {
-        return '0x'
-      }
-      const validatorSigners: SignerSet = convertOwnerSetToSignerSet(validator)
-      return signMain(validatorSigners, chain, address, params, isUserOpHash)
+    signers.validators.map((validator, index) => {
+      const configuredValidator = configuredValidators[index]
+      const validatorSigners: SignerSet =
+        validator.type === 'passkey'
+          ? {
+              type: 'owner',
+              kind: 'passkey',
+              accounts: validator.accounts,
+              module: getValidator(configuredValidator).address,
+            }
+          : {
+              type: 'owner',
+              kind: 'ecdsa',
+              accounts: validator.accounts,
+              module: getValidator(configuredValidator).address,
+            }
+      return signMain(
+        validatorSigners,
+        configuredValidator,
+        chain,
+        address,
+        params,
+        isUserOpHash,
+        configuredValidator.type === 'passkey',
+      )
     }),
   )
 
-  const data = encodeAbiParameters(
+  return encodeAbiParameters(
     [
       {
         components: [
@@ -162,21 +201,15 @@ async function signWithMultiFactorAuth<T>(
       },
     ],
     [
-      signers.validators.map((validator, index) => {
-        const validatorModule = getValidator(validator)
-        return {
-          packedValidatorAndId: concat([
-            pad(toHex(validator.id), {
-              size: 12,
-            }),
-            validatorModule.address,
-          ]),
-          data: signatures[index],
-        }
-      }),
+      signers.validators.map((validator, index) => ({
+        packedValidatorAndId: concat([
+          pad(toHex(validator.id), { size: 12 }),
+          getValidator(configuredValidators[index]).address,
+        ]),
+        data: signatures[index],
+      })),
     ],
   )
-  return data
 }
 
 async function signWithSession(
@@ -186,6 +219,7 @@ async function signWithSession(
   hash: Hex,
   signMain: (
     signers: SignerSet,
+    configuredOwners: OwnerSet,
     chain: Chain,
     address: Address,
     hash: Hex,
@@ -202,6 +236,7 @@ async function signWithSession(
       })
   const validatorSignature = await signMain(
     sessionSigners,
+    signers.session.owners,
     chain,
     address,
     signedHash,
@@ -225,6 +260,7 @@ async function signWithGuardians<T>(
 
 async function signWithOwners<T>(
   signers: SignerSet & { type: 'owner' },
+  configuredOwners: OwnerSet,
   chain: Chain,
   address: Address,
   params: T,
@@ -232,11 +268,14 @@ async function signWithOwners<T>(
   isUserOpHash: boolean,
   signMain: (
     signers: SignerSet,
+    configuredOwners: OwnerSet,
     chain: Chain,
     address: Address,
     params: T,
     isUserOpHash: boolean,
+    statelessPasskey?: boolean,
   ) => Promise<Hex>,
+  statelessPasskey = false,
 ): Promise<Hex> {
   async function signEcdsWithChain(
     account: Account,
@@ -303,14 +342,28 @@ async function signWithOwners<T>(
           s,
         }
       })
+      if (statelessPasskey) {
+        if (configuredOwners.type !== 'passkey') {
+          throw new Error('Passkey factor configuration is missing')
+        }
+        return packStatelessPasskeySignature(
+          signers.accounts,
+          configuredOwners.accounts,
+          webAuthns,
+        )
+      }
       if (signers.module?.toLowerCase() === WEBAUTHN_V0_VALIDATOR_ADDRESS) {
         return packPasskeySignatureV0(webAuthns[0], usePrecompile)
       }
       return packPasskeySignature(credIds, usePrecompile, webAuthns)
     }
     case 'multi-factor': {
+      if (configuredOwners.type !== 'multi-factor') {
+        throw new Error('Multi-factor owner configuration is missing')
+      }
       return signWithMultiFactorAuth(
         signers,
+        configuredOwners,
         chain,
         address,
         params,

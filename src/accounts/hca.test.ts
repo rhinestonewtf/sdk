@@ -86,6 +86,25 @@ describe('Accounts: HCA', () => {
       ).toThrow(AccountConfigurationNotSupportedError)
     })
 
+    test('multi-factor owners throw', () => {
+      expect(() =>
+        getDeployArgs({
+          account: { type: 'hca' },
+          owners: {
+            type: 'multi-factor',
+            validators: [
+              {
+                type: 'ens',
+                accounts: [accountA],
+                ownerExpirations: [Number(maxUint48)],
+              },
+              { type: 'ecdsa', accounts: [accountB] },
+            ],
+          },
+        }),
+      ).toThrow(AccountConfigurationNotSupportedError)
+    })
+
     test('recovery throws', () => {
       expect(() =>
         getDeployArgs({

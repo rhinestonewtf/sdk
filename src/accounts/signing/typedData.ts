@@ -7,7 +7,7 @@ import type {
   TypedData,
 } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
-import type { SignerSet } from '../../types'
+import type { OwnerSet, SignerSet } from '../../types'
 import { SigningNotSupportedForAccountError } from '../error'
 import {
   type SigningFunctions,
@@ -20,9 +20,12 @@ async function sign<
   primaryType extends keyof typedData | 'EIP712Domain' = keyof typedData,
 >(
   signers: SignerSet,
+  configuredOwners: OwnerSet,
   chain: Chain,
   address: Address,
   parameters: HashTypedDataParameters<typedData, primaryType>,
+  _isUserOpHash = false,
+  statelessPasskey = false,
 ): Promise<Hex> {
   const signingFunctions: SigningFunctions<
     HashTypedDataParameters<typedData, primaryType>
@@ -35,12 +38,14 @@ async function sign<
     case 'owner': {
       return signWithOwners(
         signers,
+        configuredOwners,
         chain,
         address,
         parameters,
         signingFunctions,
         false,
         sign,
+        statelessPasskey,
       )
     }
     case 'guardians': {

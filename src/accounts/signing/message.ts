@@ -9,7 +9,7 @@ import {
 } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
 import type { ResolvedSessionSignerSet } from '../../modules/validators/smart-sessions'
-import type { SignerSet } from '../../types'
+import type { OwnerSet, SignerSet } from '../../types'
 import { SigningNotSupportedForAccountError } from '../error'
 import {
   type SigningFunctions,
@@ -22,10 +22,12 @@ type InternalSignerSet = SignerSet | ResolvedSessionSignerSet
 
 async function sign(
   signers: InternalSignerSet,
+  configuredOwners: OwnerSet,
   chain: Chain,
   address: Address,
   hash: Hex,
   isUserOpHash: boolean,
+  statelessPasskey = false,
 ): Promise<Hex> {
   const signingFunctions: SigningFunctions<Hex> = {
     signEcdsa: (account, hash, updateV) => signEcdsa(account, hash, updateV),
@@ -36,12 +38,14 @@ async function sign(
     case 'owner': {
       return signWithOwners(
         signers,
+        configuredOwners,
         chain,
         address,
         hash,
         signingFunctions,
         isUserOpHash,
         sign,
+        statelessPasskey,
       )
     }
     case 'experimental_session': {
