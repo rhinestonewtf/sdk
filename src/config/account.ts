@@ -640,15 +640,20 @@ type SessionSigning =
  * the cap and receive little or nothing. Pin the route (`swapperZeroEx()`) when
  * that matters.
  *
+ * `chain` is what narrows `via`: the same `swap` block naming `fynd()` compiles
+ * on Plasma and fails to compile on Optimism, where no TychoRouter is deployed.
+ * Token addresses are per-chain too, so it is never inferrable.
+ *
  * @example
  * ```ts
  * const session = await sdk.createSession({
+ *   chain: plasma,
  *   owners: { type: 'ecdsa', accounts: [sessionKey] },
  *   swap: {
  *     sell: { token: usdc, maxTotal: parseUnits('1000', 6) },
- *     buy: { token: usdt },
+ *     buy: { token: usdt0 },
  *     to: account.address,
- *     via: [swapperZeroEx()],
+ *     via: [zeroEx({ settler })],
  *   },
  * })
  * ```
