@@ -86,6 +86,14 @@ describe('Swapper calls[] offsets match real encoded calldata', () => {
     expect(asAddress(wordAt(swapperCalldata, 484n)).toLowerCase()).toBe(
       ZEROX_ALLOWANCE_HOLDER.toLowerCase(),
     ) // the approved spender
+    // The word at 480 straddles the selector and the spender's leading bytes,
+    // which is what distinguishes approve() from a same-shaped transfer().
+    expect(wordAt(swapperCalldata, 480n).toLowerCase()).toBe(
+      `0x095ea7b3${'00'.repeat(12)}${ZEROX_ALLOWANCE_HOLDER.slice(
+        2,
+        34,
+      ).toLowerCase()}`,
+    )
   })
 })
 

@@ -1,4 +1,4 @@
-import type { Address } from 'viem'
+import type { Address, Hex } from 'viem'
 import type {
   ArgPolicyExpression,
   ScopedAction,
@@ -25,6 +25,14 @@ import type {
 export function pinValue(
   calldataOffset: bigint,
   referenceValue: bigint,
+): UniversalActionPolicyParamRule {
+  return { condition: 'equal', calldataOffset, referenceValue }
+}
+
+/** Pin a calldata word to an exact 32-byte value. */
+export function pinWord(
+  calldataOffset: bigint,
+  referenceValue: Hex,
 ): UniversalActionPolicyParamRule {
   return { condition: 'equal', calldataOffset, referenceValue }
 }

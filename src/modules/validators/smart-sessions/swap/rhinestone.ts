@@ -1,4 +1,4 @@
-import { type Abi, type Address, toFunctionSelector } from 'viem'
+import { type Abi, type Address, type Hex, toFunctionSelector } from 'viem'
 import { namedParamOffsets } from '../../permissions'
 import type {
   RhinestoneSwapVenue,
@@ -6,7 +6,7 @@ import type {
 } from '../types'
 import { FYND_CHAIN_IDS, FYND_ROUTERS, type FyndChainId } from './fynd'
 import type { VenueContext, VenueScoping } from './rules'
-import { cumulativeCap, pin, pinValue, swapAction } from './rules'
+import { cumulativeCap, pin, pinValue, pinWord, swapAction } from './rules'
 import { ZEROX_ALLOWANCE_HOLDER, ZEROX_CHAIN_IDS } from './zero-ex'
 
 /**
@@ -173,6 +173,23 @@ const CALLS_ELEM1_DATA_POINTER = 96n
 
 const CALLS_ELEM0_DATA_POINTER_OFFSET = 416n
 const CALLS_ELEM0_DATA_LENGTH_OFFSET = 448n
+/**
+ * The word straddling `calls[0].data`'s selector and the high bytes of its
+ * first argument. Pinning the spender alone leaves the selector free, so the
+ * same word layout also satisfies `transfer(aggregator, amount)` — which sends
+ * the pulled input to the aggregator instead of approving it, and with
+ * `minAmountOut` free to be zero the Swapper does not object.
+ */
+const CALLS_ELEM0_DATA_HEAD_OFFSET = 480n
+const ERC20_APPROVE_SELECTOR = '095ea7b3'
+
+/** `approve` selector followed by the leading 28 bytes of the spender word. */
+function approveHeadWord(spender: Address): Hex {
+  return `0x${ERC20_APPROVE_SELECTOR}${'00'.repeat(12)}${spender
+    .slice(2, 34)
+    .toLowerCase()}` as Hex
+}
+
 /** The `spender` argument of `calls[0]`'s `approve`, past its 4-byte selector. */
 const CALLS_ELEM0_SPENDER_OFFSET = 484n
 
@@ -230,6 +247,7 @@ function routeRules(
     pinValue(CALLS_ELEM0_VALUE_OFFSET, 0n),
     pinValue(CALLS_ELEM0_DATA_POINTER_OFFSET, CALLS_ELEM0_DATA_POINTER),
     pinValue(CALLS_ELEM0_DATA_LENGTH_OFFSET, APPROVE_CALLDATA_LENGTH),
+    pinWord(CALLS_ELEM0_DATA_HEAD_OFFSET, approveHeadWord(aggregator)),
     pin(CALLS_ELEM0_SPENDER_OFFSET, aggregator),
   ]
 }

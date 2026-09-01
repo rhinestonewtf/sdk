@@ -52,9 +52,18 @@ function pinForChains(
       { session: session(via) },
     ]),
   )
+  // Every chain in the map is a source of this intent, so all of them are
+  // genuinely in play — a session map may carry chains the intent never signs
+  // on, and those are excluded from the derivation on purpose.
+  const chains = Object.keys(viaByChain).map((id) => ({ id: Number(id) }))
   const intent = adaptTransaction(
     { account: {} } as never,
-    { chain: base, calls: [], signers: { type: 'session', sessions } } as never,
+    {
+      targetChain: chains[0],
+      sourceChains: chains,
+      calls: [],
+      signers: { type: 'session', sessions },
+    } as never,
   ) as { options?: { quoters?: unknown } }
   return intent.options?.quoters
 }
@@ -143,6 +152,25 @@ describe('quoter pin derived from a session venue scope', () => {
         10: [rhinestoneSwap()],
       }),
     ).toEqual({ include: ['0x'] })
+  })
+
+  test('a session for a chain the intent never touches does not veto the pin', () => {
+    // A per-chain session map is reusable. `prepareIntentSessions` only selects
+    // the intent's own chains, so an unrelated entry must not intersect to
+    // nothing and fail a quote it would never have signed.
+    const sessions = {
+      8453: { session: session([zeroEx({ settler: SETTLER })]) },
+      10: { session: session([fynd()]) },
+    }
+    const intent = adaptTransaction(
+      { account: {} } as never,
+      {
+        chain: base,
+        calls: [],
+        signers: { type: 'session', sessions },
+      } as never,
+    ) as { options?: { quoters?: unknown } }
+    expect(intent.options?.quoters).toEqual({ include: ['0x'] })
   })
 
   test('a session with no swap scope sends no pin', () => {

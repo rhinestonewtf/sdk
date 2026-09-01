@@ -941,6 +941,7 @@ function venuesForSession(
       // The Swapper routes through whichever aggregator wins unless the scope
       // pinned one, so an unpinned Swapper venue admits any quoter.
       if (venue.route === 'zeroEx') quoters.add('0x')
+      else if (venue.route === 'fynd') quoters.add('fynd')
       else return null
     } else return null
   }
@@ -949,12 +950,22 @@ function venuesForSession(
 
 function quoterPinFromSession(
   signers: SignerSet | undefined,
+  /**
+   * Chains this intent can actually touch. A per-chain session map is reusable
+   * and may carry chains the intent never signs on; `prepareIntentSessions`
+   * selects only the intent's own chains, so intersecting the rest would let an
+   * unrelated entry veto a venue and fail the quote for nothing.
+   */
+  chainIds: readonly number[],
 ): SwapQuoterFilter | undefined {
   if (signers?.type !== 'session') return undefined
+  const relevant = new Set(chainIds)
   const sessions =
     'session' in signers
       ? [signers.session]
-      : Object.values(signers.sessions ?? {}).map((s) => s.session)
+      : Object.entries(signers.sessions ?? {})
+          .filter(([chainId]) => relevant.has(Number(chainId)))
+          .map(([, s]) => s.session)
 
   let pinned: Set<SwapQuoter> | null = null
   for (const session of sessions) {
@@ -1067,7 +1078,11 @@ export function adaptTransaction(
       // An explicit pin wins; otherwise derive it from the session's venue scope.
       ...(() => {
         const quoters =
-          transaction.quoters ?? quoterPinFromSession(transaction.signers)
+          transaction.quoters ??
+          quoterPinFromSession(transaction.signers, [
+            ...(destinationChainId === undefined ? [] : [destinationChainId]),
+            ...(evmSources?.map(({ id }) => id) ?? []),
+          ])
         return quoters ? { quoters } : {}
       })(),
       ...(transaction.auxiliaryFunds
