@@ -114,6 +114,28 @@ type SettlementLayerFilter =
   | { include: CrossChainSettlementLayer[] }
   | { exclude: CrossChainSettlementLayer[] }
 
+// Swap venues the orchestrator can source a route from. Defined locally for the
+// same reason as the settlement layers above: a closed capability union, where
+// adding a venue is a real code change rather than a config read.
+type SwapQuoter =
+  | '1inch'
+  | '0x'
+  | 'velora'
+  | 'kyberswap'
+  | 'fynd'
+  | 'fynd-hosted'
+  | 'bebop'
+  | 'relay'
+
+// Restricts which venues may serve the intent's swaps. Use it to keep a swap on
+// the venue an on-chain smart-session policy is scoped to — the orchestrator
+// otherwise picks the venue after the session is signed, and a route through a
+// venue the session does not permit is rejected on-chain.
+//
+// Omit for "any venue the chain supports". An EMPTY allow-list means "no venue"
+// and fails closed, exactly as an empty settlement-layer filter does.
+type SwapQuoterFilter = { include: SwapQuoter[] } | { exclude: SwapQuoter[] }
+
 const SIG_MODE_EMISSARY = 0
 const SIG_MODE_ERC1271 = 1
 const SIG_MODE_EMISSARY_ERC1271 = 2
@@ -146,6 +168,7 @@ interface IntentOptions {
   customDeadline?: number
   sponsorSettings?: SponsorSettings
   settlementLayers?: SettlementLayerFilter
+  quoters?: SwapQuoterFilter
   signatureMode?: SignatureMode
   auxiliaryFunds?: AuxiliaryFunds
 }
@@ -488,6 +511,8 @@ export type {
   SupportedChain,
   SettlementLayer,
   SettlementLayerFilter,
+  SwapQuoter,
+  SwapQuoterFilter,
   SignatureMode,
   IntentInput,
   SerializedIntentInput,

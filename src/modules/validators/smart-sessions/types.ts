@@ -66,6 +66,74 @@ export type SessionPolicy =
   | { readonly type: 'value-limit'; readonly limit: bigint }
   | { readonly type: 'intent-execution' }
 
+/**
+ * A swap venue, produced by the `zeroEx()` / `fynd()` builders. Callers never
+ * construct these literally — router addresses, selectors and calldata offsets
+ * are resolved from the venue id inside `swap-venues.ts`.
+ */
+export interface ZeroExVenue {
+  readonly id: '0x'
+  readonly settler?: Address
+  readonly anySettler?: boolean
+  readonly maxSpend?: bigint
+}
+
+export interface FyndVenue {
+  readonly id: 'fynd'
+  readonly maxSpend?: bigint
+}
+
+/**
+ * The Rhinestone Swapper — aggregator-agnostic, and the route the orchestrator
+ * actually uses for same-chain smart-account swaps.
+ */
+export interface RhinestoneSwapVenue {
+  readonly id: 'rhinestone'
+  readonly maxSpend?: bigint
+}
+
+/**
+ * The Swapper venue with its route pinned — composed by `resolveSwapScope`, and
+ * deliberately NOT part of {@link SwapVenue}.
+ *
+ * A caller who could hand-write `{ id: 'rhinestone', route: 'zeroEx' }` would
+ * get the wrapped 0x scoping while skipping `zeroEx()`'s options union, which
+ * is what forces either a Settler or `anySettler` + `maxSpend`. The nested exec
+ * would then be pinned by nothing at all. So the routed shape is reachable only
+ * by naming a venue, never by writing one.
+ */
+export interface RoutedRhinestoneSwapVenue extends RhinestoneSwapVenue {
+  /** Pin which aggregator the Swapper's `calls[]` tail may route through. */
+  readonly route?: 'zeroEx' | 'fynd'
+  /**
+   * Several aggregators authorised for the same wrapped call. The tail is
+   * pinned to any ONE of them rather than left free, which is what keeps a
+   * multi-venue session no broader than the venues it names.
+   */
+  readonly routes?: readonly ('zeroEx' | 'fynd')[]
+  /**
+   * 0x's Settler, when known. Pins the nested `AllowanceHolder.exec` inside
+   * `calls[1].data`; without it that call's operator/target stay free.
+   */
+  readonly settler?: Address
+}
+
+export type SwapVenue = RhinestoneSwapVenue | ZeroExVenue | FyndVenue
+
+/** Loose (chain-unaware) swap scope. The public config type narrows `via` by chain. */
+export interface SwapScopeInput {
+  readonly sell: { readonly token: Address; readonly maxTotal?: bigint }
+  readonly buy: { readonly token: Address }
+  /** Swap output recipient — pinned, so a compromised key cannot redirect output. */
+  readonly to: Address
+  /**
+   * Venues this session may route through. Defaults to the Rhinestone Swapper,
+   * which covers whichever aggregator the orchestrator picks. Name aggregators
+   * explicitly only for flows where the account calls a router directly.
+   */
+  readonly via?: readonly SwapVenue[]
+}
+
 export interface FallbackAction {
   readonly policies?: SessionPolicy[]
 }
@@ -184,6 +252,22 @@ export interface SessionDefinition {
   crossChainPermits?: CrossChainPermissionInput[]
   signing?: SessionSigning
   policyAddresses?: SessionPolicyAddresses
+  // Drops the wildcard intent-execution fallback so the session's explicit
+  // permissions are the ONLY ops it can run — any other (target, selector)
+  // reverts instead of passing via the global intent-execution target whitelist.
+  // Required to make a session provably restricted, e.g. to a specific swap
+  // aggregator (RHI-6286). Requires at least one permission or action.
+  restrictToActions?: boolean
+  /**
+   * Venue-scoped swap permissions. Compiles to a merged approve plus one scoped
+   * swap action per venue, and implies `restrictToActions`.
+   */
+  swap?: SwapScopeInput
+  // Raw scoped actions (target + selector + policies) for calls that can't be
+  // addressed by the ABI-name `permissions` sugar — e.g. a fynd swap scoped by
+  // its raw selector with no ABI (RHI-6286). ScopedAction only (never a fallback
+  // action) so a raw entry can't map back to the wildcard fallback target.
+  actions?: ScopedAction[]
 }
 
 export interface ResolvedPolicy {
@@ -218,6 +302,10 @@ export interface Session {
   erc7739Policies: ResolvedERC7739Policies
   actions: readonly ResolvedAction[]
   claimPolicies: readonly Permit2ClaimPolicy[]
+  /** The venue scope this session was built from, carried through resolution so
+   *  a caller can derive the matching quoter pin at transact time. Metadata
+   *  only — it is not part of the permission id. */
+  swap?: SwapScopeInput
 }
 
 export interface SessionData {

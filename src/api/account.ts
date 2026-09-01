@@ -29,6 +29,8 @@ import type {
   Session,
   SignerSet,
   SourceAssetInput,
+  SwapQuoter,
+  SwapQuoterFilter,
   Transaction,
   UserOperationTransaction,
 } from '../config/account'
@@ -901,6 +903,117 @@ function destinationChainReference(
 // Public `Transaction` -> internal `IntentInput`. Owned here because the facade
 // is the only translation point between the compatibility surface and the
 // intent workflow.
+/**
+ * Derives the quoter pin a venue-scoped session implies.
+ *
+ * A session created with `swap: { via: [...] }` already names the venues it will
+ * authorise on-chain, but the orchestrator picks the venue *after* the session is
+ * signed. Sending the matching pin closes that gap, and deriving it here means a
+ * caller states the venue once — stating it twice and keeping the two in sync by
+ * hand is the drift this is meant to prevent.
+ *
+ * Returns undefined (no pin) when the scope cannot imply one: a bare Rhinestone
+ * Swapper venue is aggregator-agnostic, so any quoter may legitimately fill it,
+ * and pinning would reject routes the session actually permits.
+ *
+ * Across a per-chain session set the pin is the INTERSECTION, not the union.
+ * `options.quoters` is one global filter with no chain dimension, so a venue is
+ * only safe to allow if every session would accept it — unioning a 0x-only and
+ * a fynd-only session would permit fynd everywhere and be rejected on-chain by
+ * the first. An empty intersection means no single venue satisfies every
+ * session, which is unservable rather than unconstrained — it yields an empty
+ * filter so the request fails at quote time, instead of no filter, which would
+ * hand the orchestrator back the free choice the pin exists to take away.
+ */
+function venuesForSession(
+  session:
+    | { swap?: { via?: readonly { id: string; route?: string }[] } }
+    | undefined,
+): Set<SwapQuoter> | null {
+  const via = session?.swap?.via
+  // No venue list means the scope defaults to the Swapper — unconstrained.
+  if (!via?.length) return null
+  const quoters = new Set<SwapQuoter>()
+  for (const venue of via) {
+    if (venue.id === '0x') quoters.add('0x')
+    else if (venue.id === 'fynd') quoters.add('fynd')
+    else if (venue.id === 'rhinestone') {
+      // The Swapper routes through whichever aggregator wins unless the scope
+      // pinned one, so an unpinned Swapper venue admits any quoter.
+      if (venue.route === 'zeroEx') quoters.add('0x')
+      else if (venue.route === 'fynd') quoters.add('fynd')
+      else return null
+    } else return null
+  }
+  return quoters
+}
+
+function quoterPinFromSession(
+  signers: SignerSet | undefined,
+  /**
+   * Chains this intent can actually touch. A per-chain session map is reusable
+   * and may carry chains the intent never signs on; `prepareIntentSessions`
+   * selects only the intent's own chains, so intersecting the rest would let an
+   * unrelated entry veto a venue and fail the quote for nothing.
+   */
+  chainIds: readonly number[],
+): SwapQuoterFilter | undefined {
+  if (signers?.type !== 'session') return undefined
+  const relevant = new Set(chainIds)
+  const sessions =
+    'session' in signers
+      ? [signers.session]
+      : Object.entries(signers.sessions ?? {})
+          .filter(([chainId]) => relevant.has(Number(chainId)))
+          .map(([, s]) => s.session)
+
+  let pinned: Set<SwapQuoter> | null = null
+  for (const session of sessions) {
+    const venues = venuesForSession(session)
+    // An unconstrained session admits every venue, so it narrows nothing.
+    if (!venues) continue
+    if (!pinned) {
+      pinned = venues
+      continue
+    }
+    const narrowed = new Set<SwapQuoter>()
+    for (const quoter of pinned) {
+      if (venues.has(quoter)) narrowed.add(quoter)
+    }
+    pinned = narrowed
+  }
+  // Null means nothing constrained anything — genuinely unpinned. An empty set
+  // is the opposite: the sessions conflict, so no venue is safe and the empty
+  // filter fails the request closed.
+  if (!pinned) return undefined
+  return { include: [...pinned] }
+}
+
+/**
+ * Combine an explicit `quoters` filter with the one a venue-scoped session
+ * implies.
+ *
+ * An explicit filter cannot WIDEN the session: the venues it names are what the
+ * on-chain policy will accept, so allowing a caller to replace the derived pin
+ * would route outside them and be rejected at execution — or, where the scope
+ * left the tail open, spend inside a venue the session was never meant to
+ * authorise. With no session scope there is nothing to narrow against and the
+ * explicit filter stands on its own.
+ */
+function narrowQuoterPin(
+  derived: SwapQuoterFilter | undefined,
+  explicit: SwapQuoterFilter | undefined,
+): SwapQuoterFilter | undefined {
+  if (!explicit) return derived
+  if (!derived || !('include' in derived)) return explicit
+  const allowed = new Set(derived.include)
+  const narrowed =
+    'include' in explicit
+      ? explicit.include.filter((quoter) => allowed.has(quoter))
+      : derived.include.filter((quoter) => !explicit.exclude.includes(quoter))
+  return { include: narrowed }
+}
+
 export function adaptTransaction(
   context: AccountInvocationContext<Compat>,
   transaction: Transaction,
@@ -987,6 +1100,14 @@ export function adaptTransaction(
       ...(transaction.settlementLayers
         ? { settlementLayers: transaction.settlementLayers }
         : {}),
+      ...(() => {
+        const derived = quoterPinFromSession(transaction.signers, [
+          ...(destinationChainId === undefined ? [] : [destinationChainId]),
+          ...(evmSources?.map(({ id }) => id) ?? []),
+        ])
+        const quoters = narrowQuoterPin(derived, transaction.quoters)
+        return quoters ? { quoters } : {}
+      })(),
       ...(transaction.auxiliaryFunds
         ? { auxiliaryFunds: transaction.auxiliaryFunds }
         : {}),

@@ -1,4 +1,5 @@
 import {
+  type Abi,
   type AbiFunction,
   type AbiParameter,
   type Hex,
@@ -24,6 +25,96 @@ function isStaticAbiType(type: string): boolean {
     return n >= 1 && n <= 32
   }
   return false
+}
+
+/** Split `T[k]` / `T[]` into element type and length (`''` when unbounded). */
+const ARRAY_SUFFIX = /^(.*)\[(\d*)\]$/
+
+function withType(param: AbiParameter, type: string): AbiParameter {
+  return { ...param, type } as AbiParameter
+}
+
+function tupleComponents(param: AbiParameter): readonly AbiParameter[] {
+  return (param as { components?: readonly AbiParameter[] }).components ?? []
+}
+
+/**
+ * True when the param is encoded as a 32-byte offset pointer in the head rather
+ * than inline. Mirrors the ABI spec: `bytes`, `string`, unbounded arrays, and
+ * any tuple/fixed-array transitively containing one of those.
+ */
+function isDynamicAbiParam(param: AbiParameter): boolean {
+  const { type } = param
+  if (type === 'bytes' || type === 'string') return true
+  const array = ARRAY_SUFFIX.exec(type)
+  if (array) {
+    const [, elementType, length] = array
+    if (length === '') return true
+    return isDynamicAbiParam(withType(param, elementType))
+  }
+  if (type === 'tuple') return tupleComponents(param).some(isDynamicAbiParam)
+  return false
+}
+
+/**
+ * Bytes this param occupies in the calldata HEAD.
+ *
+ * Not always 32: a static tuple is flattened inline (one word per leaf) and a
+ * fixed-size static array occupies `length` words. Computing offsets as
+ * `paramIndex * 32` silently mis-addresses every param that follows one of
+ * those — e.g. `f(uint256[3] a, address b)` would point at word 1 instead of
+ * word 3 and compare against array data, producing a policy that passes or
+ * fails for reasons unrelated to `b`.
+ */
+function headSize(param: AbiParameter): number {
+  if (isDynamicAbiParam(param)) return 32
+  const array = ARRAY_SUFFIX.exec(param.type)
+  if (array) {
+    const [, elementType, length] = array
+    return Number.parseInt(length, 10) * headSize(withType(param, elementType))
+  }
+  if (param.type === 'tuple') {
+    return tupleComponents(param).reduce((sum, c) => sum + headSize(c), 0)
+  }
+  return 32
+}
+
+/** Byte offset of `inputs[index]` within the calldata head (past the selector). */
+function headOffset(inputs: readonly AbiParameter[], index: number): bigint {
+  let offset = 0
+  for (let i = 0; i < index; i++) offset += headSize(inputs[i])
+  return BigInt(offset)
+}
+
+/**
+ * Calldata head offset of every named top-level parameter of `functionName`.
+ *
+ * Lets callers that build raw param rules (the swap venues) address arguments by
+ * name instead of hardcoding byte offsets — the offsets then follow the ABI
+ * automatically, and a signature change surfaces as a missing key rather than a
+ * rule silently pointing at the wrong word.
+ *
+ * Only single-word static params are included; anything dynamic or multi-word
+ * cannot be compared by a 32-byte reference value and is omitted.
+ */
+export function namedParamOffsets(
+  abi: Abi,
+  functionName: string,
+): Record<string, bigint> {
+  const entry = abi.find(
+    (item): item is AbiFunction =>
+      item.type === 'function' && item.name === functionName,
+  )
+  if (!entry) {
+    throw new Error(`Function "${functionName}" not found in ABI`)
+  }
+  const offsets: Record<string, bigint> = {}
+  entry.inputs.forEach((param, index) => {
+    if (param.name && isStaticAbiType(param.type)) {
+      offsets[param.name] = headOffset(entry.inputs, index)
+    }
+  })
+  return offsets
 }
 
 function toReferenceValue(value: unknown, abiType: string): Hex | bigint {
@@ -87,11 +178,14 @@ interface NormalizedConstraint {
   paramName: string
   calldataOffset: bigint
   abiType: string
-  /** undefined → `anyOf` form, otherwise single-condition form */
+  /** Set only for the single-condition form; undefined for `anyOf`/`min`+`max` */
   condition?: UniversalActionPolicyParamCondition
   value?: unknown
   usageLimit?: bigint
   anyOf?: readonly unknown[]
+  /** Set as a pair for the inclusive-bounds form. */
+  min?: unknown
+  max?: unknown
 }
 
 type RawParamConstraint = {
@@ -99,6 +193,8 @@ type RawParamConstraint = {
   value?: unknown
   usageLimit?: bigint
   anyOf?: readonly unknown[]
+  min?: unknown
+  max?: unknown
 }
 
 type RawFunctionConfig = {
@@ -248,7 +344,25 @@ function resolvePermission(permission: Permission): ScopedAction[] {
             )
           }
 
-          const calldataOffset = BigInt(paramIndex) * 32n
+          const calldataOffset = headOffset(abiEntry.inputs, paramIndex)
+
+          if (rule.min !== undefined || rule.max !== undefined) {
+            if (rule.min === undefined || rule.max === undefined) {
+              throw new Error(
+                `Parameter "${paramName}" needs both "min" and "max" — ` +
+                  'provide the other bound, or use a single ' +
+                  '{ condition, value } comparison.',
+              )
+            }
+            return {
+              paramName,
+              calldataOffset,
+              abiType: param.type,
+              min: rule.min,
+              max: rule.max,
+              usageLimit: rule.usageLimit,
+            }
+          }
 
           if (rule.anyOf !== undefined) {
             if (rule.anyOf.length === 0) {
@@ -275,7 +389,11 @@ function resolvePermission(permission: Permission): ScopedAction[] {
         },
       )
 
-      const usesArgPolicy = normalized.some((n) => n.anyOf !== undefined)
+      // Both `anyOf` (OR chain) and `min`/`max` (AND of two rules on ONE param)
+      // need more than the flat one-rule-per-param shape UniActionPolicy offers.
+      const usesArgPolicy = normalized.some(
+        (n) => n.anyOf !== undefined || n.min !== undefined,
+      )
 
       // UniActionPolicy/ArgPolicy reject `msg.value > valueLimitPerUse`, so a
       // default of 0 would block any non-zero msg.value before the standalone
@@ -298,6 +416,49 @@ function resolvePermission(permission: Permission): ScopedAction[] {
               },
             }))
             return leaves.length === 1 ? leaves[0] : orChain(leaves)
+          }
+          if (n.min !== undefined) {
+            // Inclusive bounds as AND(x >= min, x <= max). Deliberately NOT the
+            // policy's own `inRange` condition: that packs two uint128 bounds
+            // into one bytes32 `ref`, which this SDK has no verified encoding
+            // for. Two comparisons are exactly equivalent and use primitives
+            // already covered by tests.
+            //
+            // `usageLimit` rides on the lower-bound leaf only — putting it on
+            // both would double-count every call against the cumulative cap.
+            const minRef = toReferenceValue(n.min, n.abiType)
+            const maxRef = toReferenceValue(n.max, n.abiType)
+            if (
+              typeof minRef === 'bigint' &&
+              typeof maxRef === 'bigint' &&
+              minRef > maxRef
+            ) {
+              throw new Error(
+                `Parameter "${n.paramName}" has min (${minRef}) greater than ` +
+                  `max (${maxRef}) — no value can satisfy this rule.`,
+              )
+            }
+            return andChain([
+              {
+                type: 'rule',
+                rule: {
+                  condition: 'greaterThanOrEqual',
+                  calldataOffset: n.calldataOffset,
+                  referenceValue: minRef,
+                  ...(n.usageLimit !== undefined
+                    ? { usageLimit: n.usageLimit }
+                    : {}),
+                },
+              },
+              {
+                type: 'rule',
+                rule: {
+                  condition: 'lessThanOrEqual',
+                  calldataOffset: n.calldataOffset,
+                  referenceValue: maxRef,
+                },
+              },
+            ])
           }
           return {
             type: 'rule',

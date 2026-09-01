@@ -1,4 +1,4 @@
-import type { Abi, Address } from 'viem'
+import type { Abi, Address, Chain } from 'viem'
 import { materializeRpcReader } from '../clients/rpc/compatibility'
 import type {
   ProviderConfig,
@@ -37,19 +37,37 @@ import {
   readSessionEnabled,
   readSessionNonce,
 } from '../modules/validators/smart-sessions/state'
+import { fynd } from '../modules/validators/smart-sessions/swap/fynd'
+import { rhinestoneSwap } from '../modules/validators/smart-sessions/swap/rhinestone'
+import type { SwapVenueFor } from '../modules/validators/smart-sessions/swap/scope'
+import type {
+  ZeroExAnySettlerOptions,
+  ZeroExPinnedOptions,
+} from '../modules/validators/smart-sessions/swap/zero-ex'
+import {
+  resolveZeroExSettler,
+  zeroEx,
+} from '../modules/validators/smart-sessions/swap/zero-ex'
 import type {
   ChainDigest,
   Session as DomainSession,
   SessionDefinition as DomainSessionDefinition,
+  FyndVenue,
+  RhinestoneSwapVenue,
   SessionDetails,
+  SwapVenue,
+  ZeroExVenue,
 } from '../modules/validators/smart-sessions/types'
 
 function environment(useDevContracts: boolean | undefined) {
   return useDevContracts === true ? 'development' : 'production'
 }
 
-function toSession<const TAbis extends readonly Abi[]>(
-  definition: SessionDefinition<TAbis>,
+function toSession<
+  const TAbis extends readonly Abi[],
+  const TChain extends Chain,
+>(
+  definition: SessionDefinition<TAbis, TChain>,
   options: { useDevContracts?: boolean } = {},
 ): Session {
   return resolveSession(definition as DomainSessionDefinition, {
@@ -97,24 +115,39 @@ async function isSessionEnabled(
   })
 }
 
+export type {
+  ChainDigest,
+  FyndVenue,
+  RhinestoneSwapVenue,
+  SessionDetails,
+  SwapVenue,
+  SwapVenueFor,
+  ZeroExAnySettlerOptions,
+  ZeroExPinnedOptions,
+  ZeroExVenue,
+}
 export {
-  toSession,
+  ARG_POLICY_ADDRESS,
+  fynd,
+  getPermissionId,
+  getSessionData,
+  getSessionDetails,
+  INTENT_EXECUTION_POLICY_ADDRESS,
+  isSessionEnabled,
+  resolveZeroExSettler,
+  rhinestoneSwap,
   SMART_SESSION_EMISSARY_ADDRESS,
   SMART_SESSION_EMISSARY_ADDRESS_DEV,
   SMART_SESSIONS_FALLBACK_TARGET_FLAG,
   SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
-  getPermissionId,
-  getSessionData,
-  getSessionDetails,
-  isSessionEnabled,
-  toCrossChainPermissionInput,
   SPENDING_LIMITS_POLICY_ADDRESS,
-  TIME_FRAME_POLICY_ADDRESS,
   SUDO_POLICY_ADDRESS,
+  TIME_FRAME_POLICY_ADDRESS,
+  toCrossChainPermissionInput,
+  toSession,
   UNIVERSAL_ACTION_POLICY_ADDRESS,
-  ARG_POLICY_ADDRESS,
   USAGE_LIMIT_POLICY_ADDRESS,
   VALUE_LIMIT_POLICY_ADDRESS,
-  INTENT_EXECUTION_POLICY_ADDRESS,
+  // Venue-scoped swap sessions (RHI-6286)
+  zeroEx,
 }
-export type { ChainDigest, SessionDetails }
