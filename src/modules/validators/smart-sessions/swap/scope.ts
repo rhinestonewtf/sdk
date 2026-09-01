@@ -126,26 +126,60 @@ export function resolveSwapScope(
     )
   }
 
-  const scopings = via.map((venue) => {
+  const ctxFor = (venue: { maxSpend?: bigint }) => ({
+    chainId,
+    environment,
+    sellToken: scope.sell.token,
+    buyToken: scope.buy.token,
+    recipient: scope.to,
     // A venue-level cap wins over the scope-level one: `anySettler` demands its
     // own `maxSpend` precisely because that venue needs a tighter bound than the
     // session as a whole might carry.
-    const ctx = {
-      chainId,
-      environment,
-      sellToken: scope.sell.token,
-      buyToken: scope.buy.token,
-      recipient: scope.to,
-      cap: venue.maxSpend ?? scope.sell.maxTotal,
-    }
-    if (venue.id === 'rhinestone') return scopeRhinestone(venue, ctx)
-    if (venue.id === 'fynd') return scopeFynd(ctx)
+    cap: venue.maxSpend ?? scope.sell.maxTotal,
+  })
 
-    // A 0x venue authorises two distinct call shapes. Composed here rather than
-    // inside either venue module, so neither has to import the other.
+  // Every aggregator venue is reachable two ways and the orchestrator picks:
+  // it wraps a route in the Swapper only when the Swapper can capture surplus,
+  // which depends on the direction AND the winning quoter, and that eligibility
+  // is orchestrator-side config that changes without the session knowing. So
+  // each venue authorises its direct call AND the wrapped one; authorising a
+  // single shape is how a session rejects the swap it was created for.
+  //
+  // The wrapped shape pins which aggregator may sit in the Swapper's `calls[]`.
+  // Two venues pinning DIFFERENT aggregators cannot share one Swapper action —
+  // so with more than one aggregator authorised the tail is left unpinned,
+  // which is the honest reading: either aggregator may fill it. The swap stays
+  // bound by the Swapper's own top-level tokenIn/tokenOut/recipient pins and
+  // the sell cap either way.
+  const routes = new Set(
+    via.flatMap((venue) =>
+      venue.id === 'fynd'
+        ? ['fynd' as const]
+        : venue.id === '0x'
+          ? ['zeroEx' as const]
+          : [],
+    ),
+  )
+  // A bare `rhinestoneSwap()` authorises any aggregator in the tail, so pinning
+  // it for the others would both contradict that venue and collide with it on
+  // the same Swapper action.
+  const anyAggregatorAllowed = via.some(
+    (venue) => venue.id === 'rhinestone' && venue.route === undefined,
+  )
+  const sharedRoute =
+    routes.size === 1 && !anyAggregatorAllowed ? [...routes][0] : undefined
+  const wrappedVenue = (): RhinestoneSwapVenue =>
+    sharedRoute
+      ? { id: 'rhinestone', route: sharedRoute }
+      : { id: 'rhinestone' }
+
+  const scopings = via.map((venue): VenueScoping => {
+    const ctx = ctxFor(venue)
+    if (venue.id === 'rhinestone') return scopeRhinestone(venue, ctx)
+
     const parts: VenueScoping[] = [
-      scopeZeroEx(venue, ctx),
-      scopeRhinestone({ id: 'rhinestone', route: 'zeroEx' }, ctx),
+      venue.id === 'fynd' ? scopeFynd(ctx) : scopeZeroEx(venue, ctx),
+      scopeRhinestone(wrappedVenue(), ctx),
     ]
     return {
       approveSpenders: parts.flatMap((p) => [...p.approveSpenders]),

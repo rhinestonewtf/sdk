@@ -4,6 +4,7 @@ import type {
   RhinestoneSwapVenue,
   UniversalActionPolicyParamRule,
 } from '../types'
+import { FYND_CHAIN_IDS, FYND_ROUTERS, type FyndChainId } from './fynd'
 import type { VenueContext, VenueScoping } from './rules'
 import { cumulativeCap, pin, pinValue, swapAction } from './rules'
 import { ZEROX_ALLOWANCE_HOLDER, ZEROX_CHAIN_IDS } from './zero-ex'
@@ -237,6 +238,23 @@ export function rhinestoneSwap(
  * so use this one for intent-routed swaps and `zeroEx()` only where the account
  * calls the router itself.
  */
+/**
+ * Route swaps through the Swapper AND require the aggregator inside `calls[]`
+ * to be fynd's Tycho router.
+ *
+ * The counterpart to {@link swapperZeroEx}. Distinct from {@link rhinestoneSwap},
+ * which leaves the tail unconstrained so any aggregator may fill it.
+ */
+export function swapperFynd(
+  options: { maxSpend?: bigint } = {},
+): RhinestoneSwapVenue {
+  return {
+    id: 'rhinestone',
+    route: 'fynd',
+    ...(options.maxSpend !== undefined ? { maxSpend: options.maxSpend } : {}),
+  }
+}
+
 export function swapperZeroEx(
   options: { maxSpend?: bigint } = {},
 ): RhinestoneSwapVenue {
@@ -258,6 +276,19 @@ export function scopeRhinestone(
         `Supported: ${ZEROX_CHAIN_IDS.join(', ')}.`,
     )
   }
+  if (venue.route === 'fynd' && !FYND_CHAIN_IDS.includes(ctx.chainId as 1)) {
+    throw new Error(
+      `fynd is not available on chain ${ctx.chainId}. ` +
+        `Supported: ${FYND_CHAIN_IDS.join(', ')}.`,
+    )
+  }
+  // Which router the pinned tail must call. Undefined route = unconstrained.
+  const routeAggregator =
+    venue.route === 'zeroEx'
+      ? ZEROX_ALLOWANCE_HOLDER
+      : venue.route === 'fynd'
+        ? FYND_ROUTERS[ctx.chainId as FyndChainId]
+        : undefined
 
   const rulesFor = (
     offsets: Record<string, bigint>,
@@ -271,8 +302,8 @@ export function scopeRhinestone(
     if (ctx.cap !== undefined) {
       rules.push(cumulativeCap(offsets[sellAmountParam], ctx.cap))
     }
-    if (venue.route === 'zeroEx') {
-      rules.push(...routeRules(ctx.sellToken, ZEROX_ALLOWANCE_HOLDER))
+    if (routeAggregator !== undefined) {
+      rules.push(...routeRules(ctx.sellToken, routeAggregator))
     }
     return rules
   }

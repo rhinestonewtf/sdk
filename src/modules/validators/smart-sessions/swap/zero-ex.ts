@@ -1,9 +1,6 @@
 import { type Abi, type Address, toFunctionSelector } from 'viem'
 import { namedParamOffsets } from '../../permissions'
-import type {
-  UniversalActionPolicyParamRule,
-  ZeroExVenue,
-} from '../types'
+import type { UniversalActionPolicyParamRule, ZeroExVenue } from '../types'
 import type { VenueContext, VenueScoping } from './rules'
 import { cumulativeCap, pin, pinValue, swapAction } from './rules'
 

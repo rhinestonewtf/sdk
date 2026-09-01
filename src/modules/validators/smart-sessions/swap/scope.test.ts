@@ -56,6 +56,8 @@ function rulesOf(action: ScopedAction): UniversalActionPolicyParamRule[] {
   return [...policy.rules]
 }
 
+const SWAPPER_PLASMA = swapperAddresses('production').swapper
+
 function ruleAt(
   rules: UniversalActionPolicyParamRule[],
   offset: bigint,
@@ -66,21 +68,28 @@ function ruleAt(
 describe('resolveSwapScope — fynd', () => {
   test('targets the chain TychoRouter and pins both tokens plus recipient', () => {
     const { actions } = resolveSwapScope(scope(), PLASMA)
-    expect(actions).toHaveLength(1)
-    expect(actions[0].target.toLowerCase()).toBe(TYCHO_PLASMA)
-    expect(actions[0].selector).toBe('0xce25e49e')
-    const rules = rulesOf(actions[0])
+    // The direct router call, plus the Swapper's exact-in/exact-out pair —
+    // fynd's exact-input routes are the ones the orchestrator wraps.
+    expect(actions).toHaveLength(3)
+    const direct = actions.find((a) => a.target.toLowerCase() === TYCHO_PLASMA)!
+    expect(direct).toBeDefined()
+    expect(direct.selector).toBe('0xce25e49e')
+    const rules = rulesOf(direct)
     expect(ruleAt(rules, 32n)?.referenceValue).toBe(USDT0) // tokenIn
     expect(ruleAt(rules, 64n)?.referenceValue).toBe(USDC) // tokenOut
     expect(ruleAt(rules, 128n)?.referenceValue).toBe(ACCOUNT) // receiver
   })
 
-  test('approve spender is the router itself, not an allowance holder', () => {
+  test('approves the router for the direct pull and the proxy for the wrapped one', () => {
+    // Never an allowance holder: fynd pulls through its own router directly,
+    // and through the Swapper's proxy when the route is wrapped.
     const { permissions } = resolveSwapScope(scope(), PLASMA)
-    const actions = resolvePermissions(permissions)
-    const policy = actions[0].policies![0]
-    if (policy.type !== 'universal-action') throw new Error('wrong type')
-    expect(policy.rules[0].referenceValue).toBe(TYCHO_PLASMA)
+    const policy = resolvePermissions(permissions)[0].policies![0]
+    const encoded = JSON.stringify(policy, (_k, v) =>
+      typeof v === 'bigint' ? v.toString() : v,
+    ).toLowerCase()
+    expect(encoded).toContain(TYCHO_PLASMA.slice(2))
+    expect(encoded).not.toContain(ZEROX_ALLOWANCE_HOLDER.toLowerCase().slice(2))
   })
 
   test('throws on a chain where fynd is not deployed', () => {
@@ -361,14 +370,18 @@ describe('swap scope through toSession', () => {
     expect(fallback).toBeUndefined()
   })
 
-  test('authorises exactly the approve, the swap, and the dummy pre-claim', () => {
+  test('authorises exactly the approve, the swaps, and the dummy pre-claim', () => {
     const targets = getSessionData(build())
       .actions.map((a) => a.actionTarget.toLowerCase())
       .sort()
+    // The Swapper appears twice — exact-in and exact-out are separate actions
+    // on one address.
     expect(targets).toEqual(
       [
         USDT0.toLowerCase(),
         TYCHO_PLASMA.toLowerCase(),
+        SWAPPER_PLASMA.toLowerCase(),
+        SWAPPER_PLASMA.toLowerCase(),
         DUMMY_PRECLAIMOP_TARGET.toLowerCase(),
       ].sort(),
     )

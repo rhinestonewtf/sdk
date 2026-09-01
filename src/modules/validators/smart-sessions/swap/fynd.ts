@@ -25,7 +25,7 @@ export type FyndChainId = (typeof FYND_CHAIN_IDS)[number]
  * listed only when the router is whitelisted in `IntentExecutionPolicy`, since a
  * quoter enabled without a whitelisted target produces quotes that revert.
  */
-const FYND_ROUTERS: Record<FyndChainId, Address> = {
+export const FYND_ROUTERS: Record<FyndChainId, Address> = {
   1: '0xda892c989d07a18b5dd3f392d949f00df15c5736',
   56: '0x99748cbd931cb367dad265c5b2b4bd306d448e99',
   130: '0x764bc67b1036b00bc91221e988261f971a1c7ce4',
