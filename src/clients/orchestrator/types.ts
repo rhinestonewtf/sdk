@@ -52,6 +52,10 @@ export interface OrchestratorIntentOptions {
   readonly settlementLayers?:
     | { readonly include: readonly string[] }
     | { readonly exclude: readonly string[] }
+  /** Restricts which swap venues may serve this intent's swaps. */
+  readonly quoters?:
+    | { readonly include: readonly string[] }
+    | { readonly exclude: readonly string[] }
   readonly signatureMode?: number
   readonly auxiliaryFunds?: Readonly<
     Record<number, Readonly<Record<Address, bigint>>>

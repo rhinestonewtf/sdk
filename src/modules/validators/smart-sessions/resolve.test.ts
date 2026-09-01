@@ -9,7 +9,7 @@ import {
   toCrossChainPermissionInput,
 } from './cross-chain-permits'
 import { buildSmartSessionMockSignature } from './mock-signature'
-import { toSession } from './resolve'
+import { SMART_SESSIONS_FALLBACK_TARGET_FLAG, toSession } from './resolve'
 
 describe('Smart Sessions core', () => {
   test('matches the exact sudo session vector', () => {
@@ -133,5 +133,73 @@ describe('Smart Sessions core', () => {
         },
       ),
     )
+  })
+})
+
+// A restricted session's guardrails: each one exists to stop the wildcard
+// fallback being reintroduced, or to stop two entries silently colliding on one
+// on-chain action id.
+describe('restricted session guards', () => {
+  const owners = { type: 'ecdsa' as const, accounts: [accountA] }
+  const TOKEN = '0xB8CE59FC3717ada4C02eaDF9682A9e934F625ebb' as const
+
+  test('rejects a raw action with no target/selector — it maps to the fallback', () => {
+    expect(() =>
+      toSession({
+        chain: base,
+        owners,
+        // biome-ignore lint/suspicious/noExplicitAny: exercising the runtime guard
+        actions: [{ policies: [{ type: 'sudo' }] } as any],
+        restrictToActions: true,
+      }),
+    ).toThrow(/must be scoped \(target \+ selector\)/)
+  })
+
+  test('rejects a raw action aimed at the fallback sentinel', () => {
+    expect(() =>
+      toSession({
+        chain: base,
+        owners,
+        actions: [
+          {
+            target: SMART_SESSIONS_FALLBACK_TARGET_FLAG,
+            selector: '0x12345678',
+            policies: [{ type: 'sudo' }],
+          },
+        ],
+        restrictToActions: true,
+      }),
+    ).toThrow(/must not target the fallback sentinel/)
+  })
+
+  test('rejects a restricted session with nothing to authorise', () => {
+    // Without this guard the session would silently fall back to sudo.
+    expect(() =>
+      toSession({ chain: base, owners, restrictToActions: true }),
+    ).toThrow(/at least one permission or action/)
+  })
+
+  test('rejects two actions colliding on one (target, selector)', () => {
+    // Both map to the same on-chain action id, so one would overwrite the
+    // other's policies without warning.
+    expect(() =>
+      toSession({
+        chain: base,
+        owners,
+        actions: [
+          {
+            target: TOKEN,
+            selector: '0x095ea7b3',
+            policies: [{ type: 'sudo' }],
+          },
+          {
+            target: TOKEN,
+            selector: '0x095ea7b3',
+            policies: [{ type: 'value-limit', limit: 1n }],
+          },
+        ],
+        restrictToActions: true,
+      }),
+    ).toThrow(/Duplicate scoped action/)
   })
 })

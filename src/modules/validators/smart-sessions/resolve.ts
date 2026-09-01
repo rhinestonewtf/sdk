@@ -18,8 +18,10 @@ import {
 } from './policies/claim'
 import { encodeSessionPolicy } from './policies/encode'
 import { resolveSessionSigning } from './signing'
+import { resolveSwapScope } from './swap/scope'
 import type {
   ResolvedAction,
+  ScopedAction,
   Session,
   SessionAction,
   SessionData,
@@ -67,20 +69,88 @@ export function resolveSessionData(
     actionTarget: SMART_SESSIONS_FALLBACK_TARGET_FLAG,
     actionPolicies: [{ policy: addresses.sudo, initData: '0x' }],
   }
-  const userActions = definition.permissions?.length
-    ? resolvePermissions(definition.permissions)
-    : []
+  // `swap` is sugar over permissions + actions: it compiles to one merged
+  // approve plus one scoped swap action per venue, then rides the same
+  // resolution path. Venue routers, selectors and calldata offsets stay inside
+  // swap-venues.ts so they never reach the public surface (RHI-6286).
+  const swapScope = definition.swap
+    ? resolveSwapScope(definition.swap, definition.chain.id, environment)
+    : undefined
+  // Declaring `swap` IS the restriction — a swap-scoped session that still
+  // carried the wildcard fallback would let the session key call anything the
+  // global intent-execution whitelist allows, which is the opposite of what the
+  // caller asked for. `restrictToActions` stays as the explicit spelling for
+  // sessions scoped by hand.
+  const restricted =
+    definition.restrictToActions === true || swapScope !== undefined
+  const permissions = [
+    ...(definition.permissions ?? []),
+    ...(swapScope?.permissions ?? []),
+  ]
+  const userActions = permissions.length ? resolvePermissions(permissions) : []
+  // Raw scoped actions (target + selector + policies) for calls that can't be
+  // addressed by the ABI-name `permissions` sugar — e.g. a fynd swap scoped by
+  // its raw selector with no ABI (RHI-6286).
+  const rawActions = [
+    ...(definition.actions ?? []),
+    ...(swapScope?.actions ?? []),
+  ]
+  // A restricted session drops the fallback action, which is also where a
+  // cross-chain permit's spending-limit / time-frame guardrails live — so a
+  // restricted session combined with a permit would keep claim signing but lose
+  // maxAmount/deadline enforcement. These are different authorization surfaces;
+  // reject the combination rather than silently drop the guardrails.
+  if (
+    restricted &&
+    (definition.crossChainPermits?.length || definition.claimPolicies?.length)
+  ) {
+    throw new Error(
+      'restrictToActions is incompatible with crossChainPermits/claimPolicies: ' +
+        'dropping the fallback also drops the permit guardrails (spending/time ' +
+        'limits). Use a restricted scoped-action session or a permit session, ' +
+        'not both.',
+    )
+  }
+  // Guard raw actions from reintroducing the wildcard: reject one without
+  // target+selector (would map to the fallback flags), or one that targets the
+  // fallback sentinel outright — either would re-add the wildcard action that
+  // restrictToActions drops.
+  for (const a of rawActions) {
+    if (!('target' in a) || !('selector' in a)) {
+      throw new Error(
+        'definition.actions entries must be scoped (target + selector); a ' +
+          'fallback-shaped action would map to the wildcard fallback target',
+      )
+    }
+    if (
+      a.target.toLowerCase() ===
+      SMART_SESSIONS_FALLBACK_TARGET_FLAG.toLowerCase()
+    ) {
+      throw new Error(
+        'definition.actions must not target the fallback sentinel ' +
+          `(${SMART_SESSIONS_FALLBACK_TARGET_FLAG}) — it reintroduces the wildcard action`,
+      )
+    }
+  }
   const expandedPermits = (definition.crossChainPermits ?? []).map((input) =>
     expandCrossChainPermit(resolveCrossChainPermission(input), environment),
   )
   const permitFallbackPolicies = expandedPermits.flatMap(
     ({ fallbackPolicies }) => fallbackPolicies,
   )
+  // The wildcard intent-execution fallback. Dropped for a restricted session so
+  // the explicit permissions are the ONLY authorized ops — a non-listed selector
+  // then reverts instead of escaping via the global intent-execution target
+  // whitelist (RHI-6286).
+  const fallbackAction: SessionAction = {
+    policies: [{ type: 'intent-execution' }, ...permitFallbackPolicies],
+  }
   const injectedActions: SessionAction[] = [
     // Native-wrap `deposit()` is only permitted when the caller supplies the
     // chain's wrapped-native token (e.g. via `RhinestoneSDK.createSession`,
-    // which resolves it from `/chains`).
-    ...(options.wrappedNativeToken
+    // which resolves it from `/chains`). Dropped for a restricted session so it
+    // can't add an unrequested sudo action beyond the caller's permissions.
+    ...(options.wrappedNativeToken && !restricted
       ? [
           {
             target: options.wrappedNativeToken,
@@ -94,18 +164,52 @@ export function resolveSessionData(
           },
         ]
       : []),
-    {
-      policies: [{ type: 'intent-execution' }, ...permitFallbackPolicies],
-    },
+    ...(restricted ? [] : [fallbackAction]),
     {
       target: DUMMY_PRECLAIMOP_TARGET,
       selector: DUMMY_PRECLAIMOP_SELECTOR,
-      policies: [{ type: 'sudo' }],
+      // The real pre-claim op carries no value, so cap it for a restricted
+      // session rather than granting sudo, which would let this injected action
+      // send native value to the dummy target.
+      //
+      // 1 wei, NOT 0: `ValueLimitPolicy.initializeWithMultiplexer` does
+      // `require(valueLimit != 0)`, so a zero limit reverts while the policy is
+      // being installed. That made every restricted session impossible to
+      // enable — the revert surfaces as `InvalidSignature()` from the emissary,
+      // which reads as a signature problem rather than a policy-init one.
+      // 1 wei is the smallest limit that installs, and the op carries no value.
+      policies: restricted
+        ? [{ type: 'value-limit', limit: 1n }]
+        : [{ type: 'sudo' }],
     },
   ]
+  if (restricted && !userActions.length && !rawActions.length) {
+    throw new Error(
+      'restrictToActions drops the fallback, so the session must supply at ' +
+        'least one permission or action — none were given',
+    )
+  }
+  // Raw actions bypass resolvePermissions' duplicate guard, so a raw action that
+  // collides with an ABI permission (or another raw action) on the same
+  // (target, selector) would map to the same on-chain action id and silently
+  // overwrite policy config — reject it instead.
+  const scoped = [...userActions, ...rawActions].filter(
+    (a): a is ScopedAction => 'target' in a && 'selector' in a,
+  )
+  const seen = new Set<string>()
+  for (const a of scoped) {
+    const key = `${a.target.toLowerCase()}:${a.selector.toLowerCase()}`
+    if (seen.has(key)) {
+      throw new Error(
+        `Duplicate scoped action for (${a.target}, ${a.selector}) — permissions ` +
+          'and actions share one on-chain action id; merge them into a single entry',
+      )
+    }
+    seen.add(key)
+  }
   const actions =
-    userActions.length || permitFallbackPolicies.length
-      ? [...userActions, ...injectedActions].map(
+    userActions.length || rawActions.length || permitFallbackPolicies.length
+      ? [...userActions, ...rawActions, ...injectedActions].map(
           (action): ResolvedAction => ({
             actionTargetSelector:
               'selector' in action
@@ -130,8 +234,13 @@ export function resolveSessionData(
       resolvePermit2ClaimPolicy(policy),
     ),
   }))
+  // A restricted session must not leave an open ERC-1271 signing surface: with
+  // signing defaulting to unrestricted, a session key limited to swap/approve
+  // could still sign e.g. a Permit2 approval off-chain and move funds. Default it
+  // to `disabled` when restricting; the caller can still opt into a signing policy.
   const erc7739Policies = resolveSessionSigning({
-    signing: definition.signing,
+    signing:
+      definition.signing ?? (restricted ? { mode: 'disabled' } : undefined),
     environment,
     addresses,
   })
@@ -164,7 +273,17 @@ export function toSession(
   return {
     chain: definition.chain,
     owners: definition.owners,
-    hasExplicitPermissions: Boolean(definition.permissions?.length),
+    // Drives `verifyExecutions`, which selects the signature mode: false lets an
+    // already-enabled session sign in pure ERC-1271 mode, and that mode never
+    // reaches the emissary's `verifyExecution` — so the action policies are
+    // never consulted. `swap` compiles to actions, so it MUST count here, or a
+    // swap-only session would silently stop being action-checked the moment it
+    // is enabled.
+    hasExplicitPermissions: Boolean(
+      definition.permissions?.length ||
+        definition.actions?.length ||
+        definition.swap,
+    ),
     permissionId: getPermissionIdFromData(data),
     sessionValidator: data.sessionValidator,
     sessionValidatorInitData: data.sessionValidatorInitData,
@@ -172,6 +291,7 @@ export function toSession(
     erc7739Policies: data.erc7739Policies,
     actions: data.actions,
     claimPolicies: [...(definition.claimPolicies ?? []), ...expandedClaims],
+    ...(definition.swap ? { swap: definition.swap } : {}),
   }
 }
 

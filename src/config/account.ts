@@ -21,7 +21,10 @@ import type {
   ProtocolFeeRate,
   SerializedIntentInput,
   SettlementLayerFilter,
+  SwapQuoter,
+  SwapQuoterFilter,
 } from '../clients/orchestrator/public'
+import type { SwapVenueFor } from '../modules/validators/smart-sessions/swap/scope'
 
 // Module type discriminator relocated verbatim from the legacy
 // `src/modules/common.ts` to preserve the exact published declaration closure.
@@ -414,19 +417,25 @@ type GetFunction<TAbi extends Abi, TName extends string> = Extract<
  * `value` in a param constraint. Dynamic types resolve to `never` so the
  * compiler prevents rules on params the on-chain policy cannot compare.
  */
-type AbiTypeToValue<T extends string> = T extends 'address'
-  ? Address
-  : T extends 'bool'
-    ? boolean
-    : T extends `uint${string}`
-      ? bigint
-      : T extends `int${string}`
+type AbiTypeToValue<T extends string> = T extends `${string}[${string}]`
+  ? // Arrays (fixed or dynamic) occupy more than one word or live behind an
+    // offset pointer, so a single 32-byte `ref` comparison cannot address them.
+    // Checked FIRST: `uint256[]` would otherwise match `uint${string}` and be
+    // typed `bigint`, compiling fine and only failing at runtime.
+    never
+  : T extends 'address'
+    ? Address
+    : T extends 'bool'
+      ? boolean
+      : T extends `uint${string}`
         ? bigint
-        : T extends `bytes${infer N}`
-          ? N extends ''
-            ? never
-            : Hex
-          : never
+        : T extends `int${string}`
+          ? bigint
+          : T extends `bytes${infer N}`
+            ? N extends ''
+              ? never
+              : Hex
+            : never
 
 type ParamValue<
   TFn extends AbiFunction,
@@ -438,16 +447,40 @@ type NamedInputs<TFn extends AbiFunction> = Extract<
   { name: string }
 >
 
-// A constraint on a single named parameter. Two shapes:
+/**
+ * Conditions expressible with a single reference value. `inRange` is excluded
+ * deliberately: it needs two bounds packed into one 32-byte `ref`, which this
+ * shape cannot express — use the `{ min, max }` form below instead.
+ */
+type SingleValueCondition = Exclude<
+  UniversalActionPolicyParamCondition,
+  'inRange'
+>
+
+// A constraint on a single named parameter. Three shapes:
 //   - { condition, value, usageLimit? } : single comparison (AND-conjunctive,
 //     emits universal-action when every param uses this form)
+//   - { min, max }                       : inclusive bounds — compiles to
+//     AND(greaterThanOrEqual, lessThanOrEqual), forces arg-policy
 //   - { anyOf: [v1, v2, ...] }           : OR of EQUAL rules (allowlist) —
 //     forces the function to emit arg-policy
 type ParamConstraint<TValue> =
   | {
-      condition: UniversalActionPolicyParamCondition
+      condition: SingleValueCondition
       value: TValue
       usageLimit?: bigint
+      min?: never
+      max?: never
+      anyOf?: never
+    }
+  | {
+      /** Inclusive lower bound. Pairs with `max`. */
+      min: TValue
+      /** Inclusive upper bound. Pairs with `min`. */
+      max: TValue
+      usageLimit?: bigint
+      condition?: never
+      value?: never
       anyOf?: never
     }
   | {
@@ -455,6 +488,8 @@ type ParamConstraint<TValue> =
       condition?: never
       value?: never
       usageLimit?: never
+      min?: never
+      max?: never
     }
 
 // Compile-time gates for sugar fields that only make sense on certain ABIs.
@@ -582,8 +617,87 @@ type SessionSigning =
       validUntil?: Date
     }
 
-interface SessionDefinition<TAbis extends readonly Abi[] = readonly Abi[]> {
-  chain: Chain
+/**
+ * Restrict a session to swapping one token for another through named venues.
+ *
+ * The only ops such a session can run are: approve the sell token to a listed
+ * venue's spender, and call that venue's swap entrypoint with the sell token,
+ * buy token and recipient pinned. Declaring `swap` implies `restrictToActions`,
+ * so the wildcard intent-execution fallback is dropped.
+ *
+ * Venues are named, not addressed — `via: [fynd()]`, not a router address. Every
+ * router, selector and calldata offset lives inside the SDK, so callers need no
+ * knowledge of how the swap is encoded on-chain.
+ *
+ * Which venue to name depends on who calls the aggregator. For orchestrator-
+ * routed swaps the account calls the Rhinestone Swapper and the aggregator sits
+ * inside its route. `zeroEx()` and `fynd()` authorise BOTH that wrapped shape
+ * and a DIRECT router call by the account, because which one the orchestrator
+ * emits depends on the swap's direction and the winning quoter — decided after
+ * the session is signed.
+ *
+ * What a swap scope bounds: the ops runnable, the tokens, the recipient, and
+ * total sell-side spend. What it does not bound on its own is the QUALITY of
+ * the swap — `minAmountOut` is not pinned, so an unrouted scope can spend up to
+ * the cap and receive little or nothing. Name a venue rather than taking the
+ * unrouted default when that matters.
+ *
+ * `chain` is what narrows `via`: the same `swap` block naming `fynd()` compiles
+ * on Plasma and fails to compile on Optimism, where no TychoRouter is deployed.
+ * Token addresses are per-chain too, so it is never inferrable.
+ *
+ * @example
+ * ```ts
+ * const session = await sdk.createSession({
+ *   chain: plasma,
+ *   owners: { type: 'ecdsa', accounts: [sessionKey] },
+ *   swap: {
+ *     sell: { token: usdc, maxTotal: parseUnits('1000', 6) },
+ *     buy: { token: usdt0 },
+ *     to: account.address,
+ *     via: [zeroEx({ settler })],
+ *   },
+ * })
+ * ```
+ */
+interface SwapScope<TChainId extends number = number> {
+  sell: {
+    token: Address
+    /**
+     * Cumulative cap on total sell-token spend across the whole session —
+     * enforced both as a spending-limit on the approve and as an accumulating
+     * bound on each swap's own amount, so a pre-existing allowance cannot be
+     * used to exceed it. Omit for no cap.
+     */
+    maxTotal?: bigint
+  }
+  buy: { token: Address }
+  /**
+   * Swap output recipient, normally the account itself. Pinned on-chain as an
+   * argument rule, so a swap delivering elsewhere is rejected — verified live
+   * against the production orchestrator.
+   */
+  to: Address
+  /**
+   * Venues this session may route through. Defaults to the Rhinestone Swapper,
+   * which is the route the orchestrator emits for same-chain smart-account
+   * swaps and covers whichever aggregator wins the quote. Name aggregators
+   * explicitly only for flows where the account calls a router directly.
+   */
+  via?: readonly SwapVenueFor<TChainId>[]
+}
+
+interface SessionDefinition<
+  TAbis extends readonly Abi[] = readonly Abi[],
+  TChain extends Chain = Chain,
+> {
+  chain: TChain
+  /**
+   * Venue-scoped swap permissions. See {@link SwapScope}. Implies
+   * `restrictToActions`, and is mutually exclusive with
+   * `crossChainPermits`/`claimPolicies`.
+   */
+  swap?: SwapScope<TChain['id']>
   owners: OwnerSet
   permissions?: readonly [...PermissionsForAbis<TAbis>]
   claimPolicies?: readonly Permit2ClaimPolicy[]
@@ -594,6 +708,19 @@ interface SessionDefinition<TAbis extends readonly Abi[] = readonly Abi[]> {
    * See {@link CrossChainPermissionInput}.
    */
   crossChainPermits?: readonly CrossChainPermissionInput[]
+  /**
+   * Raw scoped actions (target + selector + policies) for calls that can't be
+   * addressed by the ABI-name `permissions` sugar. Scoped actions only.
+   */
+  actions?: readonly ScopedAction[]
+  /**
+   * Drop the wildcard intent-execution fallback so the session's explicit
+   * permissions/actions are the ONLY ops it can run — any other (target,
+   * selector) reverts. Requires at least one permission or action, and is
+   * mutually exclusive with `crossChainPermits`/`claimPolicies` (which rely on
+   * the fallback for their guardrails).
+   */
+  restrictToActions?: boolean
   /**
    * Configure ERC-1271 signing. Omission is unrestricted for backwards
    * compatibility; use `disabled` to remove signing capability explicitly.
@@ -644,6 +771,9 @@ interface Session {
   erc7739Policies: ResolvedERC7739Policies
   actions: readonly ResolvedAction[]
   claimPolicies: readonly Permit2ClaimPolicy[]
+  /** The venue scope this session was built from. Metadata only — it lets the
+   *  SDK derive the matching quoter pin when transacting with the session. */
+  swap?: SwapScope
 }
 
 interface ModuleInput {
@@ -945,6 +1075,17 @@ interface BaseTransaction {
    */
   protocolFees?: ProtocolFeeRate
   settlementLayers?: SettlementLayerFilter
+  /**
+   * Restricts which swap venues may serve this transaction's swaps. Use it to
+   * keep a swap on the venue an on-chain smart-session policy is scoped to —
+   * the orchestrator otherwise picks the venue after the session is signed, and
+   * a route through a venue the session does not permit is rejected on-chain.
+   * Omit for any venue the chain supports. An EMPTY filter is not the same as
+   * omitting it: `{ include: [] }` (or an exclude covering every venue) means no
+   * venue may serve the swap, and the request fails rather than falling back to
+   * an unconstrained route.
+   */
+  quoters?: SwapQuoterFilter
   auxiliaryFunds?: AuxiliaryFunds
   experimental_accountOverride?: {
     setupOps?: {
@@ -1001,78 +1142,81 @@ interface UserOperationTransaction {
 type Transaction = SameChainTransaction | CrossChainTransaction
 
 export type {
-  AccountType,
-  SafeAccount,
-  NexusAccount,
-  KernelAccount,
-  StartaleAccount,
-  HcaAccount,
-  EoaAccount,
-  RhinestoneAccountConfig,
-  RhinestoneSDKConfig,
-  RhinestoneConfig,
   AccountProviderConfig,
-  ProviderConfig,
+  AccountType,
+  Action,
+  ApiKeyAuth,
+  ArgPolicyExpression,
+  AuthConfig,
   BundlerConfig,
-  PaymasterConfig,
-  Transaction,
-  UserOperationTransaction,
-  TokenSymbol,
-  CalldataInput,
-  LazyCallInput,
-  CallInput,
-  SourceCallProvidedFunds,
-  SourceCallInput,
-  CallResolveContext,
   Call,
-  Sponsorship,
-  TokenRequest,
-  TokenRequests,
+  CalldataInput,
+  CallInput,
+  CallResolveContext,
+  ChainSessionConfig,
+  CrossChainPermissionInput,
+  CrossChainPermit,
+  CrossChainSettlementLayer,
+  ENSValidatorConfig,
+  EoaAccount,
+  FallbackAction,
+  FromLeg,
+  GuardiansSignerSet,
+  HcaAccount,
+  JwtAuth,
+  KernelAccount,
+  LazyCallInput,
+  ModuleInput,
+  ModuleType,
+  MultiFactorValidatorConfig,
+  NexusAccount,
   NonEvmTokenRequest,
   NonEvmTokenRequests,
-  SourceAssetInput,
-  OwnerSet,
   OwnableValidatorConfig,
-  ENSValidatorConfig,
-  WebauthnValidatorConfig,
-  MultiFactorValidatorConfig,
-  SignerSet,
-  GuardiansSignerSet,
-  Recovery,
-  ChainSessionConfig,
-  SingleSessionSignerSet,
-  PerChainSessionSignerSet,
-  SessionSignerSet,
-  SessionDefinition,
-  SessionSigning,
-  SessionSigningContent,
-  SessionInput,
-  SessionEnableData,
-  Session,
-  ModuleType,
-  ModuleInput,
-  Action,
-  ScopedAction,
-  FallbackAction,
-  Permission,
-  PermissionsForAbis,
-  PermissionFunctionConfig,
+  OwnerSet,
   ParamConstraint,
+  PaymasterConfig,
+  PerChainSessionSignerSet,
+  Permission,
+  PermissionFunctionConfig,
+  PermissionsForAbis,
+  Permit2ClaimPolicy,
+  Policy,
+  ProviderConfig,
+  Recovery,
   ResolvedAction,
   ResolvedERC7739Content,
   ResolvedERC7739Policies,
   ResolvedPolicy,
-  Policy,
-  Permit2ClaimPolicy,
-  CrossChainPermit,
-  CrossChainPermissionInput,
-  FromLeg,
-  ToLeg,
-  CrossChainSettlementLayer,
-  UniversalActionPolicyParamCondition,
-  ArgPolicyExpression,
+  RhinestoneAccountConfig,
+  RhinestoneConfig,
+  RhinestoneSDKConfig,
+  SafeAccount,
+  ScopedAction,
+  Session,
+  SessionDefinition,
+  SessionEnableData,
+  SessionInput,
   SessionPolicyAddresses,
-  ApiKeyAuth,
-  JwtAuth,
-  AuthConfig,
+  SessionSignerSet,
+  SessionSigning,
+  SessionSigningContent,
+  SignerSet,
+  SingleSessionSignerSet,
+  SourceAssetInput,
+  SourceCallInput,
+  SourceCallProvidedFunds,
+  Sponsorship,
+  StartaleAccount,
+  SwapQuoter,
+  SwapQuoterFilter,
+  SwapScope,
+  TokenRequest,
+  TokenRequests,
+  TokenSymbol,
+  ToLeg,
+  Transaction,
+  UniversalActionPolicyParamCondition,
+  UserOperationTransaction,
+  WebauthnValidatorConfig,
 }
