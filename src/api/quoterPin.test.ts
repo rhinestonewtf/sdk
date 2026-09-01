@@ -111,14 +111,15 @@ describe('quoter pin derived from a session venue scope', () => {
     ).toEqual({ include: ['0x'] })
   })
 
-  test('per-chain sessions that DISAGREE send no pin at all', () => {
+  test('per-chain sessions that DISAGREE fail closed rather than unpinned', () => {
     // `options.quoters` is one global filter with no chain dimension, so the
     // union would permit fynd on the 0x-only chain and be rejected on-chain
-    // there. No venue satisfies both and no global filter can say "0x here,
-    // fynd there", so there is nothing safe to send.
+    // there. No venue satisfies both, so the request is unservable — an empty
+    // filter says that, where omitting it would hand the orchestrator back the
+    // free choice the pin exists to take away.
     expect(
       pinForChains({ 8453: [zeroEx({ settler: SETTLER })], 10: [fynd()] }),
-    ).toBeUndefined()
+    ).toEqual({ include: [] })
   })
 
   test('per-chain sessions narrow to the venues every one of them permits', () => {

@@ -140,6 +140,17 @@ describe('mapIntentRequestToWire — quoter pin', () => {
     expect(wire.options?.quoters).toEqual({ exclude: ['fynd', 'relay'] })
   })
 
+  test('carries an EMPTY filter through instead of dropping it', () => {
+    // An empty filter is how conflicting per-chain session scopes say "no venue
+    // can serve this". Dropping it here would turn a fail-closed request back
+    // into an unconstrained one — the exact outcome the pin exists to prevent.
+    const wire = mapIntentRequestToWire({
+      ...(base as object),
+      options: { quoters: { include: [] } },
+    } as never) as { options?: { quoters?: unknown } }
+    expect(wire.options?.quoters).toEqual({ include: [] })
+  })
+
   test('omits it entirely when unset, rather than sending an empty filter', () => {
     // An empty filter means "no venue" server-side and fails closed, so an
     // absent pin must not become one.

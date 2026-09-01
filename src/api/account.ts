@@ -920,8 +920,10 @@ function destinationChainReference(
  * `options.quoters` is one global filter with no chain dimension, so a venue is
  * only safe to allow if every session would accept it — unioning a 0x-only and
  * a fynd-only session would permit fynd everywhere and be rejected on-chain by
- * the first. An empty intersection means no single venue satisfies them all,
- * which no global filter can express, so that yields no pin.
+ * the first. An empty intersection means no single venue satisfies every
+ * session, which is unservable rather than unconstrained — it yields an empty
+ * filter so the request fails at quote time, instead of no filter, which would
+ * hand the orchestrator back the free choice the pin exists to take away.
  */
 function venuesForSession(
   session:
@@ -969,7 +971,10 @@ function quoterPinFromSession(
     }
     pinned = narrowed
   }
-  if (!pinned?.size) return undefined
+  // Null means nothing constrained anything — genuinely unpinned. An empty set
+  // is the opposite: the sessions conflict, so no venue is safe and the empty
+  // filter fails the request closed.
+  if (!pinned) return undefined
   return { include: [...pinned] }
 }
 
