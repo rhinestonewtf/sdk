@@ -45,9 +45,14 @@ import {
   getSmartAccount,
   getTypedDataPackedSignature,
   is7702,
+  packEip1271Signature,
   toErc6492Signature,
 } from '../accounts'
-import { convertOwnerSetToSignerSet } from '../accounts/signing/common'
+import { wrapMessageHash as wrapKernelMessageHash } from '../accounts/kernel'
+import {
+  convertOwnerSetToSignerSet,
+  signQuorumHash,
+} from '../accounts/signing/common'
 import { K1_DEFAULT_VALIDATOR_ADDRESS } from '../accounts/startale'
 import {
   createTransport,
@@ -74,6 +79,12 @@ import {
 } from '../modules/validators/core'
 import type { Permit2ClaimMessage } from '../modules/validators/policies/claim/permit2'
 import { buildPermit2ClaimPolicyCalldata } from '../modules/validators/policies/claim/permit2'
+import {
+  buildQuorumMerkleTree,
+  encodeQuorumMerkleSignature,
+  getQuorumMerkleRootSignableHash,
+  getQuorumSignableHash,
+} from '../modules/validators/quorum'
 import type { ResolvedSessionSignerSet } from '../modules/validators/smart-sessions'
 import {
   type Execution,
@@ -1119,6 +1130,15 @@ async function signIntent(
   const ownerValidator = getOwnerValidator(config)
   const isRoot = validator.address === ownerValidator.address
 
+  if (
+    isRoot &&
+    config.owners?.type === 'quorum' &&
+    origin.length > 1 &&
+    (!signers || (signers.type === 'owner' && signers.kind === 'quorum'))
+  ) {
+    return signQuorumIntentOrigins(config, origin, validator, isRoot, signers)
+  }
+
   const originSignatures: OriginSignature[] = []
   for (const typedData of origin) {
     const chain = getChainById(typedData.domain?.chainId as number)
@@ -1159,6 +1179,65 @@ async function signIntent(
   return {
     originSignatures,
     destinationSignature,
+  }
+}
+
+async function signQuorumIntentOrigins(
+  config: RhinestoneConfig,
+  origins: TypedDataDefinition[],
+  validator: Module,
+  isRoot: boolean,
+  signers: SignerSet | undefined,
+) {
+  if (config.owners?.type !== 'quorum') {
+    throw new Error('Quorum owner configuration is missing')
+  }
+  const address = getAddress(config)
+  const account = getAccountProvider(config)
+  const chains = origins.map((typedData) =>
+    getChainById(typedData.domain?.chainId as number),
+  )
+  const quorumSigners = signers ?? convertOwnerSetToSignerSet(config.owners)
+  if (quorumSigners.type !== 'owner' || quorumSigners.kind !== 'quorum') {
+    throw new Error('Quorum owners require quorum signers')
+  }
+  const tree = buildQuorumMerkleTree(
+    origins.map((typedData, index) => {
+      const hash = hashTypedData(typedData)
+      const accountHash =
+        account.type === 'kernel' ? wrapKernelMessageHash(hash, address) : hash
+      return {
+        account: address,
+        digest: getQuorumSignableHash({
+          validator: validator.address,
+          chainId: chains[index].id,
+          account: address,
+          hash: accountHash,
+        }),
+      }
+    }),
+  )
+  const signatures = await signQuorumHash(
+    quorumSigners,
+    config.owners,
+    undefined,
+    getQuorumMerkleRootSignableHash({
+      validator: validator.address,
+      root: tree.root,
+    }),
+  )
+  const originSignatures = await Promise.all(
+    tree.operations.map((operation) =>
+      packEip1271Signature(
+        config,
+        encodeQuorumMerkleSignature({ operation, signatures }),
+        { address: validator.address, isRoot },
+      ),
+    ),
+  )
+  return {
+    originSignatures,
+    destinationSignature: originSignatures.at(-1) as Hex,
   }
 }
 
@@ -1622,7 +1701,7 @@ async function getValidatorAccount(
   // Owners
   const withOwner = signers.type === 'owner' ? signers : null
   if (withOwner) {
-    return getSmartAccount(config, publicClient, chain)
+    return getSmartAccount(config, publicClient, chain, withOwner)
   }
 
   const withGuardians = signers.type === 'guardians' ? signers : null
@@ -1649,6 +1728,9 @@ function getValidator(
     // ECDSA
     if (withOwner.kind === 'ecdsa') {
       // Use the configured owner validator (e.g., ENS) rather than forcing Ownable
+      return getOwnerValidator(config)
+    }
+    if (withOwner.kind === 'quorum') {
       return getOwnerValidator(config)
     }
     // Passkeys (WebAuthn)

@@ -1,4 +1,4 @@
-import { type Hex, zeroAddress } from 'viem'
+import { type Hex, type PublicClient, zeroAddress } from 'viem'
 import { base } from 'viem/chains'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { accountA } from '../../test/consts'
@@ -13,7 +13,11 @@ import type {
   SessionSignerSet,
   SignerSet,
 } from '../types'
-import { getTargetExecutionSignature, signIntent } from './utils'
+import {
+  getTargetExecutionSignature,
+  getValidatorAccount,
+  signIntent,
+} from './utils'
 
 const {
   MOCK_EMISSARY,
@@ -23,7 +27,10 @@ const {
   MOCK_VALIDATOR,
   mockGetEmissarySignature,
   mockGetEip1271Signature,
+  mockGetSmartAccount,
   mockIsSessionEnabled,
+  mockPackEip1271Signature,
+  mockSignQuorumHash,
   MOCK_TYPED_DATA,
 } = vi.hoisted(() => {
   const MOCK_ACCOUNT = '0x1111111111111111111111111111111111111111'
@@ -34,7 +41,12 @@ const {
 
   const mockGetEmissarySignature = vi.fn().mockResolvedValue(MOCK_EMISSARY)
   const mockGetEip1271Signature = vi.fn().mockResolvedValue(MOCK_EIP1271)
+  const mockGetSmartAccount = vi.fn().mockResolvedValue({})
   const mockIsSessionEnabled = vi.fn().mockResolvedValue(true)
+  const mockPackEip1271Signature = vi.fn(
+    async (_config, signature) => signature,
+  )
+  const mockSignQuorumHash = vi.fn().mockResolvedValue('0xab')
 
   const MOCK_TYPED_DATA = {
     domain: {
@@ -58,7 +70,10 @@ const {
     MOCK_VALIDATOR: MOCK_VALIDATOR as `0x${string}`,
     mockGetEmissarySignature,
     mockGetEip1271Signature,
+    mockGetSmartAccount,
     mockIsSessionEnabled,
+    mockPackEip1271Signature,
+    mockSignQuorumHash,
     MOCK_TYPED_DATA,
   }
 })
@@ -71,12 +86,13 @@ vi.mock('../accounts', () => ({
   getAddress: vi.fn().mockReturnValue(MOCK_ACCOUNT),
   getEmissarySignature: mockGetEmissarySignature,
   getEip1271Signature: mockGetEip1271Signature,
-  getSmartAccount: vi.fn(),
+  getSmartAccount: mockGetSmartAccount,
   getEip712Domain: vi.fn(),
-  getAccountProvider: vi.fn(),
+  getAccountProvider: vi.fn().mockReturnValue({ type: 'safe' }),
   getInitCode: vi.fn(),
   getGuardianSmartAccount: vi.fn(),
   getTypedDataPackedSignature: vi.fn(),
+  packEip1271Signature: mockPackEip1271Signature,
   toErc6492Signature: vi.fn(),
   is7702: vi.fn().mockReturnValue(false),
   getEip7702InitCall: vi.fn(),
@@ -87,6 +103,7 @@ vi.mock('../accounts', () => ({
 
 vi.mock('../accounts/signing/common', () => ({
   convertOwnerSetToSignerSet: vi.fn(),
+  signQuorumHash: mockSignQuorumHash,
 }))
 
 vi.mock('../accounts/startale', () => ({
@@ -241,6 +258,30 @@ beforeEach(() => {
   mockGetEmissarySignature.mockResolvedValue(MOCK_EMISSARY)
   mockGetEip1271Signature.mockResolvedValue(MOCK_EIP1271)
   mockIsSessionEnabled.mockResolvedValue(true)
+  mockPackEip1271Signature.mockImplementation(
+    async (_config, signature) => signature,
+  )
+  mockSignQuorumHash.mockResolvedValue('0xab')
+})
+
+describe('getValidatorAccount', () => {
+  test('threads selected quorum owners into UserOperation signing', async () => {
+    const quorumSigners: SignerSet = {
+      type: 'owner',
+      kind: 'quorum',
+      accounts: [accountA],
+    }
+    const publicClient = {} as PublicClient
+
+    await getValidatorAccount(config, quorumSigners, publicClient, base)
+
+    expect(mockGetSmartAccount).toHaveBeenCalledWith(
+      config,
+      publicClient,
+      base,
+      quorumSigners,
+    )
+  })
 })
 
 describe('getTargetExecutionSignature', () => {
@@ -375,6 +416,41 @@ describe('signIntent with owner signers', () => {
     expect(mockGetEip1271Signature).toHaveBeenCalled()
     expect(mockGetEmissarySignature).not.toHaveBeenCalled()
     expect(originSignatures).toHaveLength(1)
+  })
+})
+
+describe('signIntent with quorum owners', () => {
+  test('signs one Merkle root and emits a proof envelope per origin', async () => {
+    const quorumConfig: RhinestoneConfig = {
+      ...config,
+      owners: {
+        type: 'quorum',
+        module: MOCK_VALIDATOR,
+        owners: [{ account: accountA, weight: 1n }],
+        thresholdWeight: 1n,
+      },
+    }
+    const quorumSigners: SignerSet = {
+      type: 'owner',
+      kind: 'quorum',
+      accounts: [accountA],
+    }
+
+    const { originSignatures, destinationSignature } = await signIntent(
+      quorumConfig,
+      makeIntentOp(['INTENT_EXECUTOR', 'INTENT_EXECUTOR']),
+      base,
+      quorumSigners,
+    )
+
+    expect(mockSignQuorumHash).toHaveBeenCalledTimes(1)
+    expect(originSignatures).toHaveLength(2)
+    expect(
+      originSignatures.every((signature) => signature.endsWith('ab')),
+    ).toBe(true)
+    expect(mockPackEip1271Signature).toHaveBeenCalledTimes(2)
+    expect(destinationSignature).toBe(originSignatures[1])
+    expect(mockGetEip1271Signature).not.toHaveBeenCalled()
   })
 })
 

@@ -29,6 +29,7 @@ import type {
 
 import { MODULE_TYPE_ID_VALIDATOR, type Module } from '../common'
 import { compareHexValues } from './ordering'
+import { getQuorumMockSignature, getQuorumValidator } from './quorum'
 
 const SMART_SESSION_EMISSARY_ADDRESS_DEV: Address =
   '0x60731de80d78548875f8a67c4fec2a8660194e0c'
@@ -103,6 +104,8 @@ function getMockSignature(ownerSet: OwnerSet): Hex {
       const signatures = owners.map(() => ECDSA_MOCK_SIGNATURE as Hex)
       return concat(signatures)
     }
+    case 'quorum':
+      return getQuorumMockSignature(ownerSet)
     case 'passkey':
       return WEBAUTHN_MOCK_SIGNATURE
     case 'multi-factor': {
@@ -158,6 +161,8 @@ function getValidator(owners: OwnerSet) {
         owners.accounts.map((account) => account.address),
         owners.module,
       )
+    case 'quorum':
+      return getQuorumValidator(owners)
     case 'ens':
       // ENS validation is baked into the HCA account implementation, so the
       // module address is fixed (no override).

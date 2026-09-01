@@ -27,6 +27,7 @@ import type { Module } from '../modules/common'
 import { isValidatorInitialized } from '../modules/read'
 import { getOwnerValidator } from '../modules/validators'
 import { getSocialRecoveryValidator } from '../modules/validators/core'
+import { getQuorumSignableHash } from '../modules/validators/quorum'
 import type { ResolvedSessionSignerSet } from '../modules/validators/smart-sessions'
 import type {
   AccountProviderConfig,
@@ -466,46 +467,65 @@ async function getEip1271Signature(
   }
 
   signers = signers ?? convertOwnerSetToSignerSet(config.owners!)
-  const signFn = (hash: Hex) =>
-    signMessage(signers, config.owners!, chain, address, hash, false)
   const account = getAccountProvider(config)
   const address = getAddress(config)
+  const accountHash =
+    account.type === 'kernel' ? wrapKernelMessageHash(hash, address) : hash
+  const signableHash =
+    config.owners?.type === 'quorum' &&
+    signers.type === 'owner' &&
+    signers.kind === 'quorum' &&
+    validator.address.toLowerCase() === config.owners.module.toLowerCase()
+      ? getQuorumSignableHash({
+          validator: config.owners.module,
+          chainId: chain.id,
+          account: address,
+          hash: accountHash,
+        })
+      : accountHash
+  const signature = await signMessage(
+    signers,
+    config.owners!,
+    chain,
+    address,
+    signableHash,
+    false,
+  )
+  return await packEip1271Signature(
+    config,
+    signature,
+    validator,
+    transformSignature,
+  )
+}
+
+async function packEip1271Signature(
+  config: RhinestoneConfig,
+  signature: Hex,
+  validator: ValidatorConfig,
+  transformSignature: (signature: Hex) => Hex = (signature) => signature,
+): Promise<Hex> {
+  const account = getAccountProvider(config)
   switch (account.type) {
-    case 'safe': {
-      const signature = await signFn(hash)
+    case 'safe':
       return packSafeSignature(signature, validator, transformSignature)
-    }
-    case 'nexus': {
-      const signature = await signFn(hash)
-      const defaultValidatorAddress = getNexusDefaultValidatorAddress(
-        account.version,
-      )
+    case 'nexus':
       return packNexusSignature(
         signature,
         validator,
         transformSignature,
-        defaultValidatorAddress,
+        getNexusDefaultValidatorAddress(account.version),
       )
-    }
-    case 'passport': {
-      const signature = await signFn(hash)
+    case 'passport':
       return packPassportSignature(signature, validator, transformSignature)
-    }
-    case 'kernel': {
-      const signature = await signFn(wrapKernelMessageHash(hash, address))
+    case 'kernel':
       return packKernelSignature(signature, validator, transformSignature)
-    }
-    case 'startale': {
-      const signature = await signFn(hash)
+    case 'startale':
       return packStartaleSignature(signature, validator, transformSignature)
-    }
-    case 'hca': {
-      const signature = await signFn(hash)
+    case 'hca':
       return packHcaSignature(signature, validator, transformSignature)
-    }
-    default: {
+    default:
       throw new Error(`Unsupported account type: ${(account as any).type}`)
-    }
   }
 }
 
@@ -544,6 +564,21 @@ async function getTypedDataPackedSignature<
 ): Promise<Hex> {
   if (config.account?.type === 'eoa') {
     throw new EoaSigningNotSupportedError('packed signatures')
+  }
+
+  if (
+    configuredOwners.type === 'quorum' &&
+    config.owners?.type === 'quorum' &&
+    validator.address.toLowerCase() === config.owners.module.toLowerCase()
+  ) {
+    return getEip1271Signature(
+      config,
+      signers,
+      chain,
+      validator,
+      hashTypedData(parameters),
+      transformSignature,
+    )
   }
 
   const address = getAddress(config)
@@ -841,6 +876,7 @@ async function getSmartAccount(
   config: RhinestoneConfig,
   client: PublicClient,
   chain: Chain,
+  selectedSigners?: SignerSet & { type: 'owner' },
 ) {
   // EOA accounts don't need smart account functionality
   if (config.account?.type === 'eoa') {
@@ -854,7 +890,7 @@ async function getSmartAccount(
   const account = getAccountProvider(config)
   const address = getAddress(config)
   const ownerValidator = getOwnerValidator(config)
-  const signers: SignerSet = convertOwnerSetToSignerSet(config.owners)
+  const signers = selectedSigners ?? convertOwnerSetToSignerSet(config.owners)
   const signFn = (hash: Hex) =>
     signMessage(signers, config.owners!, chain, address, hash, true)
   switch (account.type) {
@@ -1017,6 +1053,7 @@ export {
   getSmartAccount,
   getGuardianSmartAccount,
   getEip1271Signature,
+  packEip1271Signature,
   getEmissarySignature,
   getTypedDataPackedSignature,
   // Errors

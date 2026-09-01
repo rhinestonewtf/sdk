@@ -74,6 +74,7 @@ import {
   signEnableSession as signEnableSessionInternal,
   WEBAUTHN_VALIDATOR_ADDRESS,
 } from './modules'
+import { getQuorumValidator } from './modules/validators/quorum'
 import {
   isSessionEnabled as isSessionEnabledInternal,
   type SessionDetails,
@@ -115,6 +116,8 @@ import type {
   Permit2ClaimPolicy,
   Policy,
   ProviderConfig,
+  QuorumOwner,
+  QuorumValidatorConfig,
   Recovery,
   RhinestoneAccountConfig,
   RhinestoneConfig,
@@ -227,6 +230,9 @@ async function createRhinestoneAccount(
   // Validate that owners field is provided for non-EOA accounts
   if (config.account?.type !== 'eoa' && !config.owners) {
     throw new OwnersFieldRequiredError()
+  }
+  if (config.owners?.type === 'quorum') {
+    getQuorumValidator(config.owners)
   }
 
   /**
@@ -478,6 +484,9 @@ async function createRhinestoneAccount(
    * @returns Account owners
    */
   function getOwners(chain: Chain) {
+    if (config.owners?.type === 'quorum') {
+      throw new Error('getOwners is not supported for Quorum validators')
+    }
     const accountType = getAccountProvider(config).type
     const account = getAddress()
     // For HCA, the module lives behind the factory (custom factories define
@@ -684,6 +693,8 @@ export type {
   PreparedTransactionData,
   PreparedUserOperationData,
   ProviderConfig,
+  QuorumOwner,
+  QuorumValidatorConfig,
   Recovery,
   RhinestoneAccount,
   RhinestoneAccountConfig,
