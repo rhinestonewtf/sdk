@@ -70,6 +70,11 @@ export type SignerInvocation =
       readonly message: { readonly raw: Hex }
     }
   | {
+      readonly kind: 'ecdsa-sign-hash'
+      readonly chain?: EvmChainReference
+      readonly hash: Hex
+    }
+  | {
       readonly kind: 'ecdsa-sign-typed-data'
       readonly chain?: EvmChainReference
       readonly typedData: TypedDataDefinition
@@ -309,6 +314,10 @@ export interface ArtifactAssemblyPlan {
       { readonly kind: 'ordered-threshold' }
     >
   }[]
+  readonly quorumMerkleProof?: {
+    readonly root: Hex
+    readonly proof: readonly Hex[]
+  }
   readonly erc7739:
     | { readonly kind: 'none' }
     | {

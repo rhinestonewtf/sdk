@@ -54,6 +54,13 @@ const limits = [
     ignore: viem,
   },
   {
+    name: '@rhinestone/sdk/signing/quorum',
+    path: `${packageRoot}/signing/quorum.js`,
+    limit: '2 kB',
+    import: '*',
+    ignore: viem,
+  },
+  {
     name: '@rhinestone/sdk/actions/smart-sessions',
     path: `${packageRoot}/actions/smart-sessions.js`,
     limit: '27 kB',

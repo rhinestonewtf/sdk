@@ -41,6 +41,26 @@ function defineAtomicValidator(
         ),
         threshold: input.threshold ?? 1,
       }
+    case 'quorum': {
+      const owners = input.owners.map(
+        (owner, index): ValidatorOwner => ({
+          kind: 'ecdsa',
+          id: ownerId(index),
+          signerId: ecdsaSignerId(owner.account),
+          account: owner.account,
+          weight: owner.weight,
+        }),
+      )
+      return {
+        kind: 'quorum',
+        id,
+        publicId,
+        module: { source: 'explicit', address: input.module },
+        owners,
+        threshold: owners.length,
+        thresholdWeight: input.thresholdWeight,
+      }
+    }
     case 'ens':
       return {
         kind: 'ens',

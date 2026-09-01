@@ -9,7 +9,7 @@ import {
   zeroHash,
 } from 'viem'
 import type { AccountRuntime } from '../accounts/adapter'
-import { wrapKernelMessageHash } from '../accounts/adapters/kernel'
+import { wrapKernelMessageHash } from '../accounts/kernel-signing'
 import type { EvmChainReference } from '../chains/types'
 import { defineValidator } from '../modules/validators/definition'
 import { getPermissionId } from '../modules/validators/smart-sessions/digest'
@@ -21,6 +21,7 @@ import {
   getAccountSignatureRoute,
   getSigningValidatorCodec,
 } from '../signing/context'
+import { resolveAccountValidatorSignableHash } from '../signing/hash'
 import { signAccountMessage } from '../signing/message'
 import { createValidatorSigningTasks, signingTopology } from '../signing/plan'
 import {
@@ -71,15 +72,18 @@ export async function signRuntimeMessage(
     input.selection?.signerIds,
   )
   const payload = hashMessage(input.message)
-  const accountHash =
-    input.runtime.construction.account.kind === 'kernel'
-      ? wrapKernelMessageHash(payload, context.account.address)
-      : payload
   const signingMaterial =
-    input.runtime.construction.account.kind === 'kernel'
+    input.runtime.construction.account.kind === 'kernel' ||
+    context.validator.kind === 'quorum'
       ? {
           kind: 'message' as const,
-          message: { raw: accountHash },
+          message: {
+            raw: resolveAccountValidatorSignableHash({
+              hash: payload,
+              chain: input.chain,
+              context,
+            }),
+          },
         }
       : undefined
   const route = getAccountSignatureRoute(input.runtime, context)

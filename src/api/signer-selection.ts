@@ -110,6 +110,19 @@ function adaptOwnerSelection(
         signerIds,
       }
     }
+    case 'quorum': {
+      const signerIds = signers.accounts.map(ecdsaSignerId)
+      if (!account.owners || account.owners.kind !== 'quorum') {
+        throw new Error(
+          'Quorum signer selection requires configured quorum owners',
+        )
+      }
+      return {
+        kind: 'owner',
+        validator: replaceValidatorAccounts(account.owners, signers.accounts),
+        signerIds,
+      }
+    }
     case 'passkey': {
       const signerIds = signers.accounts.map(webauthnSignerId)
       return {

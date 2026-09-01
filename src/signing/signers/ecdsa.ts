@@ -14,6 +14,7 @@ export async function invokeEcdsaSigner(input: {
     {
       readonly kind:
         | 'ecdsa-sign-message'
+        | 'ecdsa-sign-hash'
         | 'ecdsa-sign-typed-data'
         | 'sign-authorization'
     }
@@ -37,6 +38,15 @@ export async function invokeEcdsaSigner(input: {
       return {
         kind: 'ecdsa-signature',
         signature: normalizeRecovery(signature),
+      }
+    }
+    case 'ecdsa-sign-hash': {
+      if (!account.sign) throw new Error('Account does not support sign')
+      return {
+        kind: 'ecdsa-signature',
+        signature: normalizeRecovery(
+          await account.sign({ hash: input.invocation.hash }),
+        ),
       }
     }
     case 'ecdsa-sign-typed-data': {
