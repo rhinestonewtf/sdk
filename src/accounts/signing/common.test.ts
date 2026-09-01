@@ -2,7 +2,7 @@ import { decodeAbiParameters, type Hex } from 'viem'
 import { toWebAuthnAccount } from 'viem/account-abstraction'
 import { mainnet } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
-import { accountA, passkeyAccount } from '../../../test/consts'
+import { accountA, accountB, passkeyAccount } from '../../../test/consts'
 import {
   ENS_HCA_MODULE,
   OWNABLE_VALIDATOR_ADDRESS,
@@ -126,6 +126,54 @@ const signedPasskeyAccountB = {
     signature: `0x${'33'.repeat(64)}` as Hex,
   }),
 } as typeof passkeyAccountB
+
+describe('quorum signing', () => {
+  const module = '0x0000000000000000000000000000000000000042' as const
+  const configuredOwners: OwnerSet = {
+    type: 'quorum',
+    module,
+    owners: [
+      { account: accountA, weight: 1n },
+      { account: accountB, weight: 2n },
+    ],
+    thresholdWeight: 2n,
+  }
+
+  test('raw-signs a threshold-satisfying subset and packs a regular envelope', async () => {
+    const signature = await signMessage(
+      {
+        type: 'owner',
+        kind: 'quorum',
+        accounts: [accountB],
+      },
+      configuredOwners,
+      mainnet,
+      accountA.address,
+      `0x${'44'.repeat(32)}`,
+      false,
+    )
+
+    expect(signature.startsWith(`0x00${accountB.address.slice(2)}`)).toBe(true)
+    expect(signature.slice(44, 48)).toBe('0041')
+  })
+
+  test('rejects an underweight selected subset', async () => {
+    await expect(
+      signMessage(
+        {
+          type: 'owner',
+          kind: 'quorum',
+          accounts: [accountA],
+        },
+        configuredOwners,
+        mainnet,
+        accountA.address,
+        `0x${'44'.repeat(32)}`,
+        false,
+      ),
+    ).rejects.toThrow('Insufficient validator contribution weight')
+  })
+})
 
 describe('multi-factor signing', () => {
   const configuredOwners: OwnerSet = {

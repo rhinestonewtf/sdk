@@ -79,6 +79,25 @@ interface OwnableValidatorConfig {
   module?: Address
 }
 
+/** One Quorum Signer owner and its non-zero voting weight. */
+interface QuorumOwner {
+  /** Viem account used to sign this owner's raw operation digest. */
+  account: Account
+  /** Weight contributed by a valid signature from this owner. */
+  weight: bigint
+}
+
+/** Configure a weighted Quorum Signer validator deployed at `module`. */
+interface QuorumValidatorConfig {
+  type: 'quorum'
+  /** Weighted EOA or EIP-1271 owners. The SDK can sign configured EOA accounts. */
+  owners: QuorumOwner[]
+  /** Minimum combined owner weight required to authorize an operation. */
+  thresholdWeight: bigint
+  /** Deployed Quorum Signer validator address shared by the account's chains. */
+  module: Address
+}
+
 interface ENSValidatorConfig {
   type: 'ens'
   accounts: Account[]
@@ -136,6 +155,7 @@ type PaymasterConfig =
 
 type OwnerSet =
   | OwnableValidatorConfig
+  | QuorumValidatorConfig
   | ENSValidatorConfig
   | WebauthnValidatorConfig
   | MultiFactorValidatorConfig
@@ -460,6 +480,11 @@ type OwnerSignerSet =
     }
   | {
       type: 'owner'
+      kind: 'quorum'
+      accounts: Account[]
+    }
+  | {
+      type: 'owner'
       kind: 'passkey'
       accounts: WebAuthnAccount[]
       module?: Address
@@ -623,6 +648,8 @@ export type {
   Permit2ClaimPolicy,
   Policy,
   ProviderConfig,
+  QuorumOwner,
+  QuorumValidatorConfig,
   ScopedAction,
   Recovery,
   RhinestoneAccountConfig,

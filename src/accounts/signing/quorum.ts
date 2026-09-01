@@ -1,0 +1,119 @@
+import type { Address, Hex } from 'viem'
+import {
+  buildQuorumMerkleTree,
+  encodeQuorumMerkleSignature as encodeMerkleSignature,
+  encodeQuorumOwnerSignatures as encodeOwnerSignatures,
+  encodeQuorumErc1271Signature as encodeRegularSignature,
+  getQuorumMerkleRootSignableHash,
+  getQuorumSignableHash,
+  type QuorumMerkleOperation,
+} from '../../modules/validators/quorum'
+import type { AccountType } from '../../types'
+import { wrapMessageHash as wrapKernelMessageHash } from '../kernel'
+
+/** One Quorum Signer owner used to assemble a weighted signature. */
+export interface QuorumSigningOwner {
+  /** Stable owner identifier used to associate an independently collected signature. */
+  ownerId: string
+  /** EOA or EIP-1271 signer address configured in the Quorum validator. */
+  signer: Address
+  /** Weight contributed when this owner's signature validates. */
+  weight: bigint
+}
+
+/** One independently collected signature over a Quorum signing digest. */
+export interface QuorumOwnerSignature {
+  /** Identifier matching one configured {@link QuorumSigningOwner}. */
+  ownerId: string
+  /** Raw ECDSA or EIP-1271 signature bytes. */
+  signature: Hex
+}
+
+/** Account-bound operation included in a Quorum Merkle signing batch. */
+export interface QuorumMerkleSigningOperation {
+  /** Smart account that will validate this operation. */
+  account: Address
+  /** Validator-specific operation digest placed in the account-bound Merkle leaf. */
+  digest: Hex
+}
+
+/** Merkle root and one proof-bearing result for every input operation. */
+export interface QuorumMerkleSigningTree {
+  /** Shared root signed by the owner quorum. */
+  root: Hex
+  /** Proofs in the same order as the input operations. */
+  operations: readonly QuorumMerkleOperation[]
+}
+
+/** Bind an ERC-1271 application hash to one Quorum validator, chain, and account. */
+export function getQuorumErc1271SignableHash(input: {
+  /** Deployed Quorum Signer validator address. */
+  validator: Address
+  /** Chain on which ERC-1271 validation will execute. */
+  chainId: number
+  /** Smart account that will call the validator. */
+  account: Address
+  /** Application hash passed to the smart account's ERC-1271 entry point. */
+  hash: Hex
+  /** Smart account implementation, when it transforms ERC-1271 hashes. */
+  accountType?: AccountType
+}): Hex {
+  return getQuorumSignableHash({
+    validator: input.validator,
+    chainId: input.chainId,
+    account: input.account,
+    hash:
+      input.accountType === 'kernel'
+        ? wrapKernelMessageHash(input.hash, input.account)
+        : input.hash,
+  })
+}
+
+/** Build account-bound Merkle leaves and proofs for a Quorum signing batch. */
+export function buildQuorumSigningTree(
+  operations: readonly QuorumMerkleSigningOperation[],
+): QuorumMerkleSigningTree {
+  return buildQuorumMerkleTree(operations)
+}
+
+/** Derive the chain-agnostic EIP-712 digest owners sign for a Quorum Merkle root. */
+export function getQuorumSigningTreeHash(input: {
+  /** Deployed Quorum Signer validator address shared by the target chains. */
+  validator: Address
+  /** Root returned by {@link buildQuorumSigningTree}. */
+  root: Hex
+}): Hex {
+  return getQuorumMerkleRootSignableHash(input)
+}
+
+/** Pack weighted owner signatures without selecting a regular or Merkle envelope. */
+export function encodeQuorumOwnerSignatures(input: {
+  /** Complete configured owner policy, including weights. */
+  owners: readonly QuorumSigningOwner[]
+  /** Minimum aggregate weight required by the validator. */
+  thresholdWeight: bigint
+  /** Independently collected signatures over one common Quorum digest. */
+  signatures: readonly QuorumOwnerSignature[]
+}): Hex {
+  return encodeOwnerSignatures(input)
+}
+
+/** Pack a regular ERC-1271 Quorum signature for one operation digest. */
+export function encodeQuorumErc1271Signature(input: {
+  /** Weighted owner entries returned by {@link encodeQuorumOwnerSignatures}. */
+  signatures: Hex
+}): Hex {
+  return encodeRegularSignature(input)
+}
+
+/** Pack one operation's Merkle proof and shared weighted owner signatures. */
+export function encodeQuorumMerkleSignature(input: {
+  /** Operation result returned by {@link buildQuorumSigningTree}. */
+  operation: QuorumMerkleOperation
+  /** Weighted owner entries returned by {@link encodeQuorumOwnerSignatures}. */
+  signatures: Hex
+}): Hex {
+  return encodeMerkleSignature(input)
+}
+
+export type { QuorumMerkleOperation }

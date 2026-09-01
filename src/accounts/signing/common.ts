@@ -9,6 +9,7 @@ import {
   encodePacked,
   type Hex,
   hashMessage,
+  hexToBytes,
   pad,
   padHex,
   toHex,
@@ -21,6 +22,13 @@ import {
   OWNABLE_VALIDATOR_ADDRESS,
   WEBAUTHN_V0_VALIDATOR_ADDRESS,
 } from '../../modules/validators/core'
+import {
+  encodeQuorumErc1271Signature,
+  encodeQuorumOwnerSignatures,
+  getQuorumConfigOwners,
+  getQuorumSignableHash,
+  getQuorumValidator,
+} from '../../modules/validators/quorum'
 import {
   packSignature as packSmartSessionSignature,
   type ResolvedSessionSignerSet,
@@ -43,6 +51,13 @@ function convertOwnerSetToSignerSet(owners: OwnerSet): SignerSet {
         kind: 'ecdsa',
         accounts: owners.accounts,
         module: owners.module ?? OWNABLE_VALIDATOR_ADDRESS,
+      }
+    }
+    case 'quorum': {
+      return {
+        type: 'owner',
+        kind: 'quorum',
+        accounts: owners.owners.map(({ account }) => account),
       }
     }
     case 'ens': {
@@ -234,12 +249,21 @@ async function signWithSession(
     : hashMessage({
         raw: encodePacked(['bytes32', 'bytes32'], [padHex(address), hash]),
       })
+  const validatorHash =
+    signers.session.owners.type === 'quorum'
+      ? getQuorumSignableHash({
+          validator: signers.session.owners.module,
+          chainId: chain.id,
+          account: address,
+          hash: signedHash,
+        })
+      : signedHash
   const validatorSignature = await signMain(
     sessionSigners,
     signers.session.owners,
     chain,
     address,
-    signedHash,
+    validatorHash,
     false,
   )
   return packSmartSessionSignature(signers, validatorSignature)
@@ -256,6 +280,69 @@ async function signWithGuardians<T>(
     ),
   )
   return concat(signatures)
+}
+
+async function selectAccountChain(account: Account, chain: Chain) {
+  const transport = account.client?.transport
+  if (!transport) return
+  const walletClient = createWalletClient({
+    chain,
+    transport: custom(transport),
+    account,
+  })
+  await walletClient.switchChain({ id: chain.id })
+}
+
+async function signQuorumHash(
+  signers: SignerSet & { type: 'owner'; kind: 'quorum' },
+  configuredOwners: OwnerSet & { type: 'quorum' },
+  chain: Chain | undefined,
+  hash: Hex,
+): Promise<Hex> {
+  getQuorumValidator(configuredOwners)
+  const configured = new Map(
+    configuredOwners.owners.map(({ account, weight }) => [
+      account.address.toLowerCase(),
+      weight,
+    ]),
+  )
+  const selected = new Set<string>()
+  let selectedWeight = 0n
+  for (const account of signers.accounts) {
+    const ownerId = account.address.toLowerCase()
+    const weight = configured.get(ownerId)
+    if (weight === undefined) {
+      throw new Error(`Unknown validator owner ${ownerId}`)
+    }
+    if (selected.has(ownerId)) {
+      throw new Error(`Duplicate validator owner ${ownerId}`)
+    }
+    selected.add(ownerId)
+    selectedWeight += weight
+  }
+  if (selectedWeight < configuredOwners.thresholdWeight) {
+    throw new Error(
+      `Insufficient validator contribution weight: required ${configuredOwners.thresholdWeight}, received ${selectedWeight}`,
+    )
+  }
+
+  const signatures = await Promise.all(
+    signers.accounts.map(async (account) => {
+      if (chain) await selectAccountChain(account, chain)
+      if (!account.sign) {
+        throw new Error('Account does not support raw hash signing')
+      }
+      return {
+        ownerId: account.address.toLowerCase(),
+        signature: normalizeRecovery(await account.sign({ hash })),
+      }
+    }),
+  )
+  return encodeQuorumOwnerSignatures({
+    owners: getQuorumConfigOwners(configuredOwners),
+    thresholdWeight: configuredOwners.thresholdWeight,
+    signatures,
+  })
 }
 
 async function signWithOwners<T>(
@@ -283,24 +370,31 @@ async function signWithOwners<T>(
     updateV: boolean,
     chain: Chain,
   ): Promise<Hex> {
-    const client = account.client
-    const transport = client?.transport
-    if (transport) {
-      // Switch chain
-      const walletClient = createWalletClient({
-        chain,
-        transport: custom(transport),
-        account,
-      })
-      await walletClient.switchChain({
-        id: chain.id,
-      })
-    }
-    // Sign
+    await selectAccountChain(account, chain)
     return signingFunctions.signEcdsa(account, params, updateV)
   }
 
+  if (configuredOwners.type === 'quorum' && signers.kind !== 'quorum') {
+    throw new Error('Quorum owners require quorum signers')
+  }
+  if (configuredOwners.type !== 'quorum' && signers.kind === 'quorum') {
+    throw new Error('Quorum signers require quorum owners')
+  }
+
   switch (signers.kind) {
+    case 'quorum': {
+      if (configuredOwners.type !== 'quorum' || typeof params !== 'string') {
+        throw new Error('Quorum signing requires a raw hash')
+      }
+      return encodeQuorumErc1271Signature({
+        signatures: await signQuorumHash(
+          signers,
+          configuredOwners,
+          chain,
+          params as Hex,
+        ),
+      })
+    }
     case 'ecdsa': {
       // Ownable validator uses `v` value to determine which validation mode to use
       // ENS validator (based on Ownable) also uses the same signature format
@@ -377,9 +471,16 @@ async function signWithOwners<T>(
   }
 }
 
+function normalizeRecovery(signature: Hex): Hex {
+  const bytes = hexToBytes(signature)
+  if (bytes.length !== 65 || bytes[64] >= 27) return signature
+  return concat([signature.slice(0, -2) as Hex, toHex(bytes[64] + 27)])
+}
+
 export {
   convertOwnerSetToSignerSet,
   signWithMultiFactorAuth,
+  signQuorumHash,
   signWithSession,
   signWithGuardians,
   signWithOwners,
