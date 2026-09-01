@@ -1021,3 +1021,357 @@ describe('resolvePermission sugar fields', () => {
     )
   })
 })
+
+// The on-chain policy reads calldata[4+offset : 4+offset+32]. Anything that
+// makes a preceding param occupy more (or fewer) than one head word shifts every
+// later param. `paramIndex * 32` got these wrong silently — the rule still
+// compiled and still evaluated, just against unrelated bytes.
+describe('resolvePermission — calldata head offsets', () => {
+  function offsetOf(abi: readonly unknown[], fn: string, param: string) {
+    const actions = resolvePermission({
+      // biome-ignore lint/suspicious/noExplicitAny: local ad-hoc ABIs
+      abi: abi as any,
+      address: USDC,
+      functions: {
+        [fn]: { params: { [param]: { condition: 'equal', value: RECIPIENT } } },
+      },
+    })
+    const policy = actions[0].policies![0]
+    if (policy.type !== 'universal-action') throw new Error('wrong type')
+    return policy.rules[0].calldataOffset
+  }
+
+  const fn = (inputs: readonly unknown[]) =>
+    [
+      {
+        type: 'function',
+        name: 'f',
+        inputs,
+        outputs: [],
+        stateMutability: 'nonpayable',
+      },
+    ] as const
+
+  test('single-word static params are unchanged (regression guard)', () => {
+    expect(
+      offsetOf(
+        fn([
+          { name: 'a', type: 'uint256' },
+          { name: 'b', type: 'address' },
+        ]),
+        'f',
+        'b',
+      ),
+    ).toBe(32n)
+  })
+
+  test('fixed-size static array preceding occupies its full length', () => {
+    // uint256[3] = 3 words inline, so `b` sits at word 3, not word 1.
+    expect(
+      offsetOf(
+        fn([
+          { name: 'a', type: 'uint256[3]' },
+          { name: 'b', type: 'address' },
+        ]),
+        'f',
+        'b',
+      ),
+    ).toBe(96n)
+  })
+
+  test('static tuple preceding is flattened inline', () => {
+    expect(
+      offsetOf(
+        fn([
+          {
+            name: 'a',
+            type: 'tuple',
+            components: [
+              { name: 'x', type: 'uint256' },
+              { name: 'y', type: 'uint256' },
+            ],
+          },
+          { name: 'b', type: 'address' },
+        ]),
+        'f',
+        'b',
+      ),
+    ).toBe(64n)
+  })
+
+  test('nested static tuples flatten transitively', () => {
+    expect(
+      offsetOf(
+        fn([
+          {
+            name: 'a',
+            type: 'tuple',
+            components: [
+              { name: 'x', type: 'uint256' },
+              {
+                name: 'inner',
+                type: 'tuple',
+                components: [
+                  { name: 'p', type: 'uint256' },
+                  { name: 'q', type: 'bool' },
+                ],
+              },
+            ],
+          },
+          { name: 'b', type: 'address' },
+        ]),
+        'f',
+        'b',
+      ),
+    ).toBe(96n)
+  })
+
+  test('fixed-size array of static tuples multiplies the flattened size', () => {
+    // (uint256,uint256)[2] = 2 * 2 words = 4 words.
+    expect(
+      offsetOf(
+        fn([
+          {
+            name: 'a',
+            type: 'tuple[2]',
+            components: [
+              { name: 'x', type: 'uint256' },
+              { name: 'y', type: 'uint256' },
+            ],
+          },
+          { name: 'b', type: 'address' },
+        ]),
+        'f',
+        'b',
+      ),
+    ).toBe(128n)
+  })
+
+  test('dynamic params preceding still occupy exactly one pointer word', () => {
+    for (const type of ['bytes', 'string', 'uint256[]', 'address[]']) {
+      expect(
+        offsetOf(
+          fn([
+            { name: 'a', type },
+            { name: 'b', type: 'address' },
+          ]),
+          'f',
+          'b',
+        ),
+      ).toBe(32n)
+    }
+  })
+
+  test('a tuple containing a dynamic member is a pointer, not flattened', () => {
+    // (uint256, bytes) is dynamic overall → one pointer word, NOT two words.
+    expect(
+      offsetOf(
+        fn([
+          {
+            name: 'a',
+            type: 'tuple',
+            components: [
+              { name: 'x', type: 'uint256' },
+              { name: 'blob', type: 'bytes' },
+            ],
+          },
+          { name: 'b', type: 'address' },
+        ]),
+        'f',
+        'b',
+      ),
+    ).toBe(32n)
+  })
+
+  test('a fixed array of dynamic tuples is a pointer, not flattened', () => {
+    expect(
+      offsetOf(
+        fn([
+          {
+            name: 'a',
+            type: 'tuple[2]',
+            components: [
+              { name: 'x', type: 'uint256' },
+              { name: 'blob', type: 'bytes' },
+            ],
+          },
+          { name: 'b', type: 'address' },
+        ]),
+        'f',
+        'b',
+      ),
+    ).toBe(32n)
+  })
+
+  test('offsets accumulate across a mixed run of preceding params', () => {
+    // uint256(1) + bytes-pointer(1) + uint256[2](2) + tuple(uint,bool)(2) = 6 words
+    expect(
+      offsetOf(
+        fn([
+          { name: 'a', type: 'uint256' },
+          { name: 'b', type: 'bytes' },
+          { name: 'c', type: 'uint256[2]' },
+          {
+            name: 'd',
+            type: 'tuple',
+            components: [
+              { name: 'x', type: 'uint256' },
+              { name: 'y', type: 'bool' },
+            ],
+          },
+          { name: 'e', type: 'address' },
+        ]),
+        'f',
+        'e',
+      ),
+    ).toBe(192n)
+  })
+
+  test('the multi-word param itself is still rejected, not mis-scoped', () => {
+    expect(() =>
+      offsetOf(fn([{ name: 'a', type: 'uint256[3]' }]), 'f', 'a'),
+    ).toThrow(/dynamic type/)
+  })
+})
+
+describe('resolvePermission — inclusive { min, max } bounds', () => {
+  const boundedAbi = [
+    {
+      type: 'function',
+      name: 'stake',
+      inputs: [{ name: 'amount', type: 'uint256' }],
+      outputs: [],
+      stateMutability: 'nonpayable',
+    },
+  ] as const
+
+  test('compiles to AND(>= min, <= max) on one offset', () => {
+    const actions = resolvePermission({
+      abi: boundedAbi,
+      address: USDC,
+      functions: { stake: { params: { amount: { min: 10n, max: 100n } } } },
+    })
+    const policy = actions[0].policies![0]
+    // Two rules on a single param cannot be expressed by the flat
+    // universal-action shape, so this must escalate to arg-policy.
+    expect(policy.type).toBe('arg-policy')
+    if (policy.type !== 'arg-policy') throw new Error('wrong type')
+    const expr = policy.expression
+    if (expr.type !== 'and') throw new Error('expected AND')
+    if (expr.left.type !== 'rule' || expr.right.type !== 'rule') {
+      throw new Error('expected rule leaves')
+    }
+    expect(expr.left.rule).toMatchObject({
+      condition: 'greaterThanOrEqual',
+      calldataOffset: 0n,
+      referenceValue: 10n,
+    })
+    expect(expr.right.rule).toMatchObject({
+      condition: 'lessThanOrEqual',
+      calldataOffset: 0n,
+      referenceValue: 100n,
+    })
+  })
+
+  test('min === max degenerates to an exact-value window, not an error', () => {
+    const actions = resolvePermission({
+      abi: boundedAbi,
+      address: USDC,
+      functions: { stake: { params: { amount: { min: 42n, max: 42n } } } },
+    })
+    expect(actions[0].policies![0].type).toBe('arg-policy')
+  })
+
+  test('zero-width lower bound of 0 is honoured, not treated as absent', () => {
+    const actions = resolvePermission({
+      abi: boundedAbi,
+      address: USDC,
+      functions: { stake: { params: { amount: { min: 0n, max: 5n } } } },
+    })
+    const policy = actions[0].policies![0]
+    if (policy.type !== 'arg-policy') throw new Error('wrong type')
+    const expr = policy.expression
+    if (expr.type !== 'and' || expr.left.type !== 'rule') {
+      throw new Error('expected AND of rules')
+    }
+    expect(expr.left.rule.referenceValue).toBe(0n)
+  })
+
+  test('usageLimit rides on exactly one leaf, so calls are not double-counted', () => {
+    const actions = resolvePermission({
+      abi: boundedAbi,
+      address: USDC,
+      functions: {
+        stake: { params: { amount: { min: 1n, max: 10n, usageLimit: 50n } } },
+      },
+    })
+    const policy = actions[0].policies![0]
+    if (policy.type !== 'arg-policy') throw new Error('wrong type')
+    const expr = policy.expression
+    if (expr.type !== 'and') throw new Error('expected AND')
+    if (expr.left.type !== 'rule' || expr.right.type !== 'rule') {
+      throw new Error('expected rule leaves')
+    }
+    expect(expr.left.rule.usageLimit).toBe(50n)
+    expect(expr.right.rule.usageLimit).toBeUndefined()
+  })
+
+  test('throws when min > max — no value could ever satisfy it', () => {
+    expect(() =>
+      resolvePermission({
+        abi: boundedAbi,
+        address: USDC,
+        functions: { stake: { params: { amount: { min: 100n, max: 10n } } } },
+      }),
+    ).toThrow(/greater than/)
+  })
+
+  test('throws when only one bound is supplied', () => {
+    for (const partial of [{ min: 1n }, { max: 1n }]) {
+      expect(() =>
+        resolvePermission({
+          abi: boundedAbi,
+          address: USDC,
+          // Half-open bounds are a compile error; this exercises the runtime
+          // backstop for callers arriving without type safety (plain JS, JSON).
+          functions: { stake: { params: { amount: partial } } },
+        }),
+      ).toThrow(/both "min" and "max"/)
+    }
+  })
+
+  test('mixing bounds with a plain condition on another param still ANDs', () => {
+    const actions = resolvePermission({
+      abi: erc20Abi,
+      address: USDC,
+      functions: {
+        transfer: {
+          params: {
+            recipient: { condition: 'equal', value: RECIPIENT },
+            amount: { min: 1n, max: 1000n },
+          },
+        },
+      },
+    })
+    const policy = actions[0].policies![0]
+    expect(policy.type).toBe('arg-policy')
+  })
+
+  test('bounds on an address param compare the padded word', () => {
+    const actions = resolvePermission({
+      abi: erc20Abi,
+      address: USDC,
+      functions: {
+        transfer: {
+          params: {
+            recipient: {
+              min: '0x0000000000000000000000000000000000000001',
+              max: '0xffffffffffffffffffffffffffffffffffffffff',
+            },
+          },
+        },
+      },
+    })
+    expect(actions[0].policies![0].type).toBe('arg-policy')
+  })
+})

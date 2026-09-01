@@ -414,19 +414,25 @@ type GetFunction<TAbi extends Abi, TName extends string> = Extract<
  * `value` in a param constraint. Dynamic types resolve to `never` so the
  * compiler prevents rules on params the on-chain policy cannot compare.
  */
-type AbiTypeToValue<T extends string> = T extends 'address'
-  ? Address
-  : T extends 'bool'
-    ? boolean
-    : T extends `uint${string}`
-      ? bigint
-      : T extends `int${string}`
+type AbiTypeToValue<T extends string> = T extends `${string}[${string}]`
+  ? // Arrays (fixed or dynamic) occupy more than one word or live behind an
+    // offset pointer, so a single 32-byte `ref` comparison cannot address them.
+    // Checked FIRST: `uint256[]` would otherwise match `uint${string}` and be
+    // typed `bigint`, compiling fine and only failing at runtime.
+    never
+  : T extends 'address'
+    ? Address
+    : T extends 'bool'
+      ? boolean
+      : T extends `uint${string}`
         ? bigint
-        : T extends `bytes${infer N}`
-          ? N extends ''
-            ? never
-            : Hex
-          : never
+        : T extends `int${string}`
+          ? bigint
+          : T extends `bytes${infer N}`
+            ? N extends ''
+              ? never
+              : Hex
+            : never
 
 type ParamValue<
   TFn extends AbiFunction,
@@ -438,16 +444,40 @@ type NamedInputs<TFn extends AbiFunction> = Extract<
   { name: string }
 >
 
-// A constraint on a single named parameter. Two shapes:
+/**
+ * Conditions expressible with a single reference value. `inRange` is excluded
+ * deliberately: it needs two bounds packed into one 32-byte `ref`, which this
+ * shape cannot express — use the `{ min, max }` form below instead.
+ */
+type SingleValueCondition = Exclude<
+  UniversalActionPolicyParamCondition,
+  'inRange'
+>
+
+// A constraint on a single named parameter. Three shapes:
 //   - { condition, value, usageLimit? } : single comparison (AND-conjunctive,
 //     emits universal-action when every param uses this form)
+//   - { min, max }                       : inclusive bounds — compiles to
+//     AND(greaterThanOrEqual, lessThanOrEqual), forces arg-policy
 //   - { anyOf: [v1, v2, ...] }           : OR of EQUAL rules (allowlist) —
 //     forces the function to emit arg-policy
 type ParamConstraint<TValue> =
   | {
-      condition: UniversalActionPolicyParamCondition
+      condition: SingleValueCondition
       value: TValue
       usageLimit?: bigint
+      min?: never
+      max?: never
+      anyOf?: never
+    }
+  | {
+      /** Inclusive lower bound. Pairs with `max`. */
+      min: TValue
+      /** Inclusive upper bound. Pairs with `min`. */
+      max: TValue
+      usageLimit?: bigint
+      condition?: never
+      value?: never
       anyOf?: never
     }
   | {
@@ -455,6 +485,8 @@ type ParamConstraint<TValue> =
       condition?: never
       value?: never
       usageLimit?: never
+      min?: never
+      max?: never
     }
 
 // Compile-time gates for sugar fields that only make sense on certain ABIs.
