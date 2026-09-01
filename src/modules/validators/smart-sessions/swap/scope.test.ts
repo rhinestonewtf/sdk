@@ -118,6 +118,15 @@ describe('resolveSwapScope — 0x pinned settler', () => {
     expect(ruleAt(rules, 228n)?.referenceValue).toBe(USDC) // buyToken
   })
 
+  test('pins the exec.data pointer, without which 196/228 read decoys', () => {
+    // 196/228 are the recipient and buy token only while `data` starts at the
+    // canonical tail. Leave that pointer free and a session key can aim `data`
+    // elsewhere, put matching decoy words at 196/228 for the policy to read, and
+    // have the Settler decode a different recipient from the real payload.
+    const rules = rulesOf(pinned().actions[0])
+    expect(ruleAt(rules, 128n)?.referenceValue).toBe(160n)
+  })
+
   test('approves the AllowanceHolder for the direct shape, never the settler', () => {
     // Default `shape: 'both'` also authorises the wrapped shape, whose spender
     // is the Swapper proxy — so this is an allowlist, not a single pin.

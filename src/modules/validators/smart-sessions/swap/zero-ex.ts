@@ -6,7 +6,7 @@ import type {
   ZeroExVenue,
 } from '../types'
 import type { VenueContext, VenueScoping } from './rules'
-import { cumulativeCap, pin, swapAction } from './rules'
+import { cumulativeCap, pin, pinValue, swapAction } from './rules'
 
 /**
  * 0x — Swap API v2, AllowanceHolder flow.
@@ -70,6 +70,18 @@ const EXEC = namedParamOffsets(allowanceHolderAbi as unknown as Abi, 'exec')
  * word), +4 for the inner selector = 196 for `recipient`, +32 = 228 for
  * `buyToken`. Re-derive against a live 0x exec if 0x revs the Settler ABI.
  */
+/**
+ * `exec`'s `data` head word, and the canonical tail it must point at.
+ *
+ * The Settler offsets below are derived from `data` starting at 192, which only
+ * holds while this pointer says 160. Unpinned, a session key can aim `data`
+ * elsewhere and leave matching decoy words at 196/228 for the policy to read
+ * while the Settler decodes a different recipient. `rhinestone.ts` pins the
+ * equivalent `calls[]` shape words for the same reason.
+ */
+const EXEC_DATA_POINTER_OFFSET = 128n
+const EXEC_DATA_POINTER = 160n
+
 const SETTLER_RECIPIENT_OFFSET = 196n
 const SETTLER_BUY_TOKEN_OFFSET = 228n
 
@@ -215,6 +227,8 @@ export function scopeZeroEx(
   if (venue.settler !== undefined) {
     rules.push(pin(EXEC.operator, venue.settler))
     rules.push(pin(EXEC.target, venue.settler))
+    // Before any offset inside `exec.data` can be trusted.
+    rules.push(pinValue(EXEC_DATA_POINTER_OFFSET, EXEC_DATA_POINTER))
     rules.push(pin(SETTLER_BUY_TOKEN_OFFSET, ctx.buyToken))
     rules.push(pin(SETTLER_RECIPIENT_OFFSET, ctx.recipient))
   }
