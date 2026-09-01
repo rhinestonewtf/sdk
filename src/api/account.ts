@@ -29,6 +29,8 @@ import type {
   Session,
   SignerSet,
   SourceAssetInput,
+  SwapQuoter,
+  SwapQuoterFilter,
   Transaction,
   UserOperationTransaction,
 } from '../config/account'
@@ -901,6 +903,47 @@ function destinationChainReference(
 // Public `Transaction` -> internal `IntentInput`. Owned here because the facade
 // is the only translation point between the compatibility surface and the
 // intent workflow.
+/**
+ * Derives the quoter pin a venue-scoped session implies.
+ *
+ * A session created with `swap: { via: [...] }` already names the venues it will
+ * authorise on-chain, but the orchestrator picks the venue *after* the session is
+ * signed. Sending the matching pin closes that gap, and deriving it here means a
+ * caller states the venue once — stating it twice and keeping the two in sync by
+ * hand is the drift this is meant to prevent.
+ *
+ * Returns undefined (no pin) when the scope cannot imply one: a bare Rhinestone
+ * Swapper venue is aggregator-agnostic, so any quoter may legitimately fill it,
+ * and pinning would reject routes the session actually permits.
+ */
+function quoterPinFromSession(
+  signers: SignerSet | undefined,
+): SwapQuoterFilter | undefined {
+  if (signers?.type !== 'session') return undefined
+  const sessions =
+    'session' in signers
+      ? [signers.session]
+      : Object.values(signers.sessions ?? {}).map((s) => s.session)
+
+  const quoters = new Set<SwapQuoter>()
+  for (const session of sessions) {
+    const via = session?.swap?.via
+    // No venue list means the scope defaults to the Swapper — unconstrained.
+    if (!via?.length) return undefined
+    for (const venue of via) {
+      if (venue.id === '0x') quoters.add('0x')
+      else if (venue.id === 'fynd') quoters.add('fynd')
+      else if (venue.id === 'rhinestone') {
+        // The Swapper routes through whichever aggregator wins unless the scope
+        // pinned one, so an unpinned Swapper venue admits any quoter.
+        if (venue.route === 'zeroEx') quoters.add('0x')
+        else return undefined
+      } else return undefined
+    }
+  }
+  return quoters.size ? { include: [...quoters] } : undefined
+}
+
 export function adaptTransaction(
   context: AccountInvocationContext<Compat>,
   transaction: Transaction,
@@ -987,6 +1030,12 @@ export function adaptTransaction(
       ...(transaction.settlementLayers
         ? { settlementLayers: transaction.settlementLayers }
         : {}),
+      // An explicit pin wins; otherwise derive it from the session's venue scope.
+      ...(() => {
+        const quoters =
+          transaction.quoters ?? quoterPinFromSession(transaction.signers)
+        return quoters ? { quoters } : {}
+      })(),
       ...(transaction.auxiliaryFunds
         ? { auxiliaryFunds: transaction.auxiliaryFunds }
         : {}),

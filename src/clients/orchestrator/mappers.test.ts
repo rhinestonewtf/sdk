@@ -1,6 +1,6 @@
 import type { SignedAuthorization } from 'viem'
 import { describe, expect, test } from 'vitest'
-import { mapSignedIntentToWire } from './mappers'
+import { mapIntentRequestToWire, mapSignedIntentToWire } from './mappers'
 import type { OrchestratorSignedIntent } from './types'
 
 const address = '0x0000000000000000000000000000000000000001' as const
@@ -110,5 +110,42 @@ describe('mapSignedIntentToWire', () => {
         signedIntent({ sponsor: [authorization(chainId)] }),
       ),
     ).toThrow(new Error(`Invalid EIP-7702 authorization chain ID: ${chainId}`))
+  })
+})
+
+describe('mapIntentRequestToWire — quoter pin', () => {
+  const base = {
+    account: { address, accountType: 'ERC7579' },
+    destinationChainId: 8453,
+    tokenRequests: [],
+    options: {},
+  } as never
+
+  // A venue pin only protects a scoped session if it actually leaves the SDK.
+  // The mapper enumerates most options explicitly, so a new one silently
+  // vanishing here is the failure this guards.
+  test('carries options.quoters through to the wire request', () => {
+    const wire = mapIntentRequestToWire({
+      ...(base as object),
+      options: { quoters: { include: ['0x'] } },
+    } as never) as { options?: { quoters?: unknown } }
+    expect(wire.options?.quoters).toEqual({ include: ['0x'] })
+  })
+
+  test('carries an exclude filter through unchanged', () => {
+    const wire = mapIntentRequestToWire({
+      ...(base as object),
+      options: { quoters: { exclude: ['fynd', 'relay'] } },
+    } as never) as { options?: { quoters?: unknown } }
+    expect(wire.options?.quoters).toEqual({ exclude: ['fynd', 'relay'] })
+  })
+
+  test('omits it entirely when unset, rather than sending an empty filter', () => {
+    // An empty filter means "no venue" server-side and fails closed, so an
+    // absent pin must not become one.
+    const wire = mapIntentRequestToWire(base) as {
+      options?: { quoters?: unknown }
+    }
+    expect(wire.options?.quoters).toBeUndefined()
   })
 })
