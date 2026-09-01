@@ -72,6 +72,13 @@ export interface ProjectWorkflows {
   readonly getIntentStatus: (intentId: string) => Promise<IntentStatus>
   readonly splitIntents: OrchestratorPort['splitIntents']
   readonly getAppFeeBalances: () => Promise<OrchestratorAppFeeBalances>
+  /**
+   * Note: this port takes the chain-unaware `SessionDefinition`, so `swap.via`
+   * is not narrowed to the chain's venues here the way `toSession` narrows it.
+   * `SwapVenueFor` falls back to allowing every venue when the chain id isn't
+   * statically known, and `resolveSwapScope` rejects an undeployed venue at
+   * runtime.
+   */
   readonly createSession: (definition: SessionDefinition) => Promise<Session>
 }
 

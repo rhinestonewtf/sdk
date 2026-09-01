@@ -1,5 +1,12 @@
 import type { Abi, Address } from 'viem'
-import type { Permission, ScopedAction, SwapScopeInput } from '../types'
+import type {
+  FyndVenue,
+  Permission,
+  ScopedAction,
+  SwapScopeInput,
+  SwapVenue,
+  ZeroExVenue,
+} from '../types'
 import { type FyndChainId, scopeFynd } from './fynd'
 import type { VenueScoping } from './rules'
 import { scopeZeroEx, type ZeroExChainId } from './zero-ex'
@@ -22,9 +29,16 @@ import { scopeZeroEx, type ZeroExChainId } from './zero-ex'
  * Narrows `swap.via` by the session's chain id, so naming a venue that is not
  * deployed there is a compile error rather than a revert at swap time.
  */
-export type SwapVenueFor<TChainId extends number> =
-  | (TChainId extends ZeroExChainId ? import('../types').ZeroExVenue : never)
-  | (TChainId extends FyndChainId ? import('../types').FyndVenue : never)
+export type SwapVenueFor<TChainId extends number> = number extends TChainId
+  ? // The chain id isn't statically known (e.g. a `Chain`-typed variable, or an
+    // entry point that doesn't thread the chain generic). Narrowing to the
+    // per-chain venues would collapse the union to `never` and reject every
+    // venue, so fall back to allowing all of them — `resolveSwapScope` still
+    // rejects an undeployed venue at runtime.
+    SwapVenue
+  :
+      | (TChainId extends ZeroExChainId ? ZeroExVenue : never)
+      | (TChainId extends FyndChainId ? FyndVenue : never)
 
 export interface ResolvedSwapScope {
   readonly permissions: Permission[]
