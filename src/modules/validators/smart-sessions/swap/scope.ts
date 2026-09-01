@@ -2,12 +2,14 @@ import type { Abi, Address } from 'viem'
 import type {
   FyndVenue,
   Permission,
+  RhinestoneSwapVenue,
   ScopedAction,
   SwapScopeInput,
   SwapVenue,
   ZeroExVenue,
 } from '../types'
 import { type FyndChainId, scopeFynd } from './fynd'
+import { rhinestoneSwap, scopeRhinestone } from './rhinestone'
 import type { VenueScoping } from './rules'
 import { scopeZeroEx, type ZeroExChainId } from './zero-ex'
 
@@ -36,7 +38,9 @@ export type SwapVenueFor<TChainId extends number> = number extends TChainId
     // venue, so fall back to allowing all of them — `resolveSwapScope` still
     // rejects an undeployed venue at runtime.
     SwapVenue
-  :
+  : // The Swapper is CREATE2-deployed at one address on every chain, so it is
+    // never chain-gated.
+      | RhinestoneSwapVenue
       | (TChainId extends ZeroExChainId ? ZeroExVenue : never)
       | (TChainId extends FyndChainId ? FyndVenue : never)
 
@@ -103,8 +107,13 @@ function approvePermission(
 export function resolveSwapScope(
   scope: SwapScopeInput,
   chainId: number,
+  environment: 'production' | 'development' = 'production',
 ): ResolvedSwapScope {
-  if (scope.via.length === 0) {
+  // Default to the Swapper: it is the route the orchestrator emits for
+  // same-chain smart-account swaps, so a caller who just says "let this key
+  // swap A for B" gets a scope that actually matches the resulting ops.
+  const via = scope.via ?? [rhinestoneSwap()]
+  if (via.length === 0) {
     throw new Error(
       'swap.via must list at least one venue — an empty list would authorise nothing',
     )
@@ -115,22 +124,25 @@ export function resolveSwapScope(
     )
   }
 
-  const scopings = scope.via.map((venue) => {
+  const scopings = via.map((venue) => {
     // A venue-level cap wins over the scope-level one: `anySettler` demands its
     // own `maxSpend` precisely because that venue needs a tighter bound than the
     // session as a whole might carry.
     const ctx = {
       chainId,
+      environment,
       sellToken: scope.sell.token,
       buyToken: scope.buy.token,
       recipient: scope.to,
       cap: venue.maxSpend ?? scope.sell.maxTotal,
     }
-    return venue.id === '0x' ? scopeZeroEx(venue, ctx) : scopeFynd(ctx)
+    if (venue.id === 'rhinestone') return scopeRhinestone(ctx)
+    if (venue.id === '0x') return scopeZeroEx(venue, ctx)
+    return scopeFynd(ctx)
   })
 
   return {
     permissions: [approvePermission(scope, scopings)],
-    actions: scopings.map((s) => s.action),
+    actions: scopings.flatMap((s) => [...s.actions]),
   }
 }

@@ -1,0 +1,175 @@
+import { type Abi, type Address, toFunctionSelector } from 'viem'
+import { namedParamOffsets } from '../../permissions'
+import type {
+  RhinestoneSwapVenue,
+  UniversalActionPolicyParamRule,
+} from '../types'
+import type { VenueContext, VenueScoping } from './rules'
+import { cumulativeCap, pin, swapAction } from './rules'
+
+/**
+ * The Rhinestone Swapper — the route the orchestrator actually uses for
+ * same-chain smart-account swaps, and the right layer to scope a session at.
+ *
+ * Scoping an aggregator directly (see `zero-ex.ts`, `fynd.ts`) describes a call
+ * the account does not make on this route: the orchestrator wraps whichever
+ * quoter wins behind its own Swapper, so a session scoped to 0x's
+ * AllowanceHolder rejects its own intended swap with `InvalidSignature()`.
+ * Verified live on Plasma — the account's sell token moves to the Swapper, and
+ * the aggregator never appears in the account's ops.
+ *
+ * Scoping here is also strictly better:
+ *   - aggregator-agnostic, so whichever quoter wins is irrelevant
+ *   - no 0x Settler rotation problem, because this contract is ours
+ *   - one approve target per chain (the proxy) instead of one per venue
+ *   - the fields we care about are typed head args on a contract we control,
+ *     with the aggregator route demoted to an opaque `calls[]` tail
+ *
+ * What the Swapper guarantees (verified in compact-utils/src/swapper):
+ * at most `amountIn` of `tokenIn` is pulled, once, from `msg.sender`; the
+ * recipient's measured balance delta must be >= `minAmountOut` or it reverts;
+ * every refund and sweep goes to `msg.sender`. So a bounded `amountIn` plus a
+ * pinned `tokenIn`/`tokenOut`/`recipient` is a complete bound on the account's
+ * exposure, regardless of what the `calls[]` tail does.
+ */
+
+/**
+ * Both entrypoints share a head layout, which is what lets one venue cover
+ * both: `tokenIn`@0, sell amount@32, `tokenOut`@64, `recipient`@160. The sell
+ * amount is `amountIn` for exact-in and `amountInMax` for exact-out — in both
+ * cases the ceiling on what leaves the account, which is exactly what to cap.
+ */
+export const swapperAbi = [
+  {
+    type: 'function',
+    name: 'swapExactIn',
+    stateMutability: 'payable',
+    inputs: [
+      { name: 'tokenIn', type: 'address' },
+      { name: 'amountIn', type: 'uint256' },
+      { name: 'tokenOut', type: 'address' },
+      { name: 'minAmountOut', type: 'uint256' },
+      { name: 'quotedAmountOut', type: 'uint256' },
+      { name: 'recipient', type: 'address' },
+      { name: 'orderRef', type: 'uint256' },
+      {
+        name: 'calls',
+        type: 'tuple[]',
+        components: [
+          { name: 'target', type: 'address' },
+          { name: 'value', type: 'uint256' },
+          { name: 'data', type: 'bytes' },
+        ],
+      },
+    ],
+    outputs: [{ name: 'amountOut', type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'swapExactOut',
+    stateMutability: 'payable',
+    inputs: [
+      { name: 'tokenIn', type: 'address' },
+      { name: 'amountInMax', type: 'uint256' },
+      { name: 'tokenOut', type: 'address' },
+      { name: 'amountOut', type: 'uint256' },
+      { name: 'quotedAmountIn', type: 'uint256' },
+      { name: 'recipient', type: 'address' },
+      { name: 'orderRef', type: 'uint256' },
+      {
+        name: 'calls',
+        type: 'tuple[]',
+        components: [
+          { name: 'target', type: 'address' },
+          { name: 'value', type: 'uint256' },
+          { name: 'data', type: 'bytes' },
+        ],
+      },
+    ],
+    outputs: [{ name: 'amountSpent', type: 'uint256' }],
+  },
+] as const satisfies Abi
+
+export const SWAP_EXACT_IN_SELECTOR = toFunctionSelector(swapperAbi[0])
+export const SWAP_EXACT_OUT_SELECTOR = toFunctionSelector(swapperAbi[1])
+
+const EXACT_IN = namedParamOffsets(swapperAbi as unknown as Abi, 'swapExactIn')
+const EXACT_OUT = namedParamOffsets(
+  swapperAbi as unknown as Abi,
+  'swapExactOut',
+)
+
+/**
+ * Deployed via CREATE2, so one address covers every chain. The proxy is
+ * `new`'d in the Swapper's constructor and the binding is immutable both ways,
+ * so a Swapper redeploy also changes the proxy — verify both together.
+ *
+ * Confirmed on Plasma: `Swapper.PROXY()` returns the proxy below.
+ */
+const SWAPPER_PRODUCTION: Address = '0x40CE38e0cbB8ec54a601256E4FacfED5679bccD0'
+const PROXY_PRODUCTION: Address = '0x5afCe415B4370E5EfD8B9BE784d21C331bEAb965'
+const SWAPPER_DEVELOPMENT: Address =
+  '0x8206052a213AA7cafB18ec7898e8D1D421C02100'
+const PROXY_DEVELOPMENT: Address = '0x21416a06e81fe115a5c8bf554b2b01383bd9b9f3'
+
+export function swapperAddresses(environment: 'production' | 'development'): {
+  swapper: Address
+  proxy: Address
+} {
+  return environment === 'development'
+    ? { swapper: SWAPPER_DEVELOPMENT, proxy: PROXY_DEVELOPMENT }
+    : { swapper: SWAPPER_PRODUCTION, proxy: PROXY_PRODUCTION }
+}
+
+/**
+ * Route swaps through the Rhinestone Swapper — the default, and the only venue
+ * that matches what the orchestrator emits for same-chain smart-account swaps.
+ *
+ * Takes no addresses and no aggregator: which quoter fills the swap is the
+ * orchestrator's decision, and this scoping holds whichever one wins.
+ */
+export function rhinestoneSwap(
+  options: { maxSpend?: bigint } = {},
+): RhinestoneSwapVenue {
+  return {
+    id: 'rhinestone',
+    ...(options.maxSpend !== undefined ? { maxSpend: options.maxSpend } : {}),
+  }
+}
+
+export function scopeRhinestone(ctx: VenueContext): VenueScoping {
+  const { swapper, proxy } = swapperAddresses(ctx.environment)
+
+  const rulesFor = (
+    offsets: Record<string, bigint>,
+    sellAmountParam: string,
+  ): UniversalActionPolicyParamRule[] => {
+    const rules = [
+      pin(offsets.tokenIn, ctx.sellToken),
+      pin(offsets.tokenOut, ctx.buyToken),
+      pin(offsets.recipient, ctx.recipient),
+    ]
+    if (ctx.cap !== undefined) {
+      rules.push(cumulativeCap(offsets[sellAmountParam], ctx.cap))
+    }
+    return rules
+  }
+
+  return {
+    // The account approves the proxy, never the Swapper and never a router —
+    // one fixed spender per chain, whichever aggregator ends up filling.
+    approveSpender: proxy,
+    actions: [
+      swapAction(
+        swapper,
+        SWAP_EXACT_IN_SELECTOR,
+        rulesFor(EXACT_IN, 'amountIn'),
+      ),
+      swapAction(
+        swapper,
+        SWAP_EXACT_OUT_SELECTOR,
+        rulesFor(EXACT_OUT, 'amountInMax'),
+      ),
+    ],
+  }
+}

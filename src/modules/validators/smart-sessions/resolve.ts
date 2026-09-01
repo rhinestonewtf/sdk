@@ -74,7 +74,7 @@ export function resolveSessionData(
   // resolution path. Venue routers, selectors and calldata offsets stay inside
   // swap-venues.ts so they never reach the public surface (RHI-6286).
   const swapScope = definition.swap
-    ? resolveSwapScope(definition.swap, definition.chain.id)
+    ? resolveSwapScope(definition.swap, definition.chain.id, environment)
     : undefined
   // Declaring `swap` IS the restriction — a swap-scoped session that still
   // carried the wildcard fallback would let the session key call anything the
@@ -168,11 +168,18 @@ export function resolveSessionData(
     {
       target: DUMMY_PRECLAIMOP_TARGET,
       selector: DUMMY_PRECLAIMOP_SELECTOR,
-      // The real pre-claim op carries no value; cap it at 0 for a restricted
-      // session so this injected action can't be used to send native value to
-      // the dummy target (a plain sudo would allow it).
+      // The real pre-claim op carries no value, so cap it for a restricted
+      // session rather than granting sudo, which would let this injected action
+      // send native value to the dummy target.
+      //
+      // 1 wei, NOT 0: `ValueLimitPolicy.initializeWithMultiplexer` does
+      // `require(valueLimit != 0)`, so a zero limit reverts while the policy is
+      // being installed. That made every restricted session impossible to
+      // enable — the revert surfaces as `InvalidSignature()` from the emissary,
+      // which reads as a signature problem rather than a policy-init one.
+      // 1 wei is the smallest limit that installs, and the op carries no value.
       policies: restricted
-        ? [{ type: 'value-limit', limit: 0n }]
+        ? [{ type: 'value-limit', limit: 1n }]
         : [{ type: 'sudo' }],
     },
   ]
@@ -266,8 +273,16 @@ export function toSession(
   return {
     chain: definition.chain,
     owners: definition.owners,
+    // Drives `verifyExecutions`, which selects the signature mode: false lets an
+    // already-enabled session sign in pure ERC-1271 mode, and that mode never
+    // reaches the emissary's `verifyExecution` — so the action policies are
+    // never consulted. `swap` compiles to actions, so it MUST count here, or a
+    // swap-only session would silently stop being action-checked the moment it
+    // is enabled.
     hasExplicitPermissions: Boolean(
-      definition.permissions?.length || definition.actions?.length,
+      definition.permissions?.length ||
+        definition.actions?.length ||
+        definition.swap,
     ),
     permissionId: getPermissionIdFromData(data),
     sessionValidator: data.sessionValidator,

@@ -657,8 +657,13 @@ interface SwapScope<TChainId extends number = number> {
    * compromised session key cannot redirect the output elsewhere.
    */
   to: Address
-  /** Venues this session may route through. At least one. */
-  via: readonly SwapVenueFor<TChainId>[]
+  /**
+   * Venues this session may route through. Defaults to the Rhinestone Swapper,
+   * which is the route the orchestrator emits for same-chain smart-account
+   * swaps and covers whichever aggregator wins the quote. Name aggregators
+   * explicitly only for flows where the account calls a router directly.
+   */
+  via?: readonly SwapVenueFor<TChainId>[]
 }
 
 interface SessionDefinition<

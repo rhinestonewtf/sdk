@@ -42,8 +42,15 @@ import { executeIntent, expectOutcome } from '../framework/runner'
 
 const PLASMA_USDT0: Address = '0xB8CE59FC3717ada4C02eaDF9682A9e934F625ebb'
 
-// Amount to swap. Small on purpose: this spends real funds.
-const SWAP_AMOUNT = 100_000n // 0.1 USDT0 (6dp)
+// How much NEW USDC each run must acquire. `tokenRequests` names a target
+// balance, not a delta: request an amount the account already holds and the
+// orchestrator answers ALREADY_FUNDED and plans no swap at all. So every
+// request is computed as `current balance + this`, which keeps the scenario
+// re-runnable and — critically — keeps the adversarial test honest, since a
+// short-circuited plan would pass a spend assertion without spending anything.
+const BUY_DELTA = 5_000n // 0.005 USDC (6dp)
+// Sell-side balance the account must already hold. Small on purpose: real funds.
+const MIN_SELL_BALANCE = 10_000n // 0.01 USDT0 (6dp)
 // Cumulative session cap. Above the swap amount so one swap fits, low enough
 // that a bug cannot drain the funded account.
 const SESSION_CAP = 1_000_000n // 1 USDT0
@@ -145,11 +152,16 @@ describe
       const usdc = plasmaUsdc()
       log('plasma USDC', usdc)
 
+      const usdcBefore = await erc20Balance(usdc, address)
+      const buyTarget = usdcBefore + BUY_DELTA
+      log('USDC before', usdcBefore)
+      log('requesting USDC target', buyTarget)
+
       const balance = await erc20Balance(PLASMA_USDT0, address)
       log('USDT0 balance', `${formatUnits(balance, 6)} (raw ${balance})`)
-      if (balance < SWAP_AMOUNT) {
+      if (balance < MIN_SELL_BALANCE) {
         throw new Error(
-          `Fund ${address} with at least ${formatUnits(SWAP_AMOUNT, 6)} USDT0 ` +
+          `Fund ${address} with at least ${formatUnits(MIN_SELL_BALANCE, 6)} USDT0 ` +
             'on Plasma, then re-run with the same PLASMA_SWAP_PRIVATE_KEY. ' +
             'The address is derived from that key, so it is stable across runs.',
         )
@@ -165,7 +177,10 @@ describe
           sell: { token: PLASMA_USDT0, maxTotal: SESSION_CAP },
           buy: { token: usdc },
           to: address,
-          via: [zeroEx({ settler })],
+          // No `via`: defaults to the Rhinestone Swapper, which is the route the
+          // orchestrator actually emits for same-chain smart-account swaps.
+          // Scoping 0x's AllowanceHolder here fails with InvalidSignature()
+          // because the account never makes that call.
         },
       })
 
@@ -180,15 +195,31 @@ describe
         label: 'plasma-swap/0x/usdt0-to-usdc',
         transaction: await withEnableData(account, session, {
           chain: plasma,
-          tokenRequests: [{ address: usdc, amount: SWAP_AMOUNT }],
+          tokenRequests: [{ address: usdc, amount: buyTarget }],
           sourceAssets: { [plasma.id]: [PLASMA_USDT0] },
-          signers: { session },
+          // Sponsored so the orchestrator's fee / gas-refund plumbing ops
+          // (an extra approve plus `callbackAllowMaxAmount`) are not charged to
+          // the account. Those ops are authorised by the wildcard
+          // intent-execution fallback, which a restricted session drops — so a
+          // scoped session can only execute an intent whose op set contains
+          // nothing but its own authorised calls.
+          sponsored: true,
+          signers: { type: 'session' as const, session },
         }),
       })
 
+      logPlannedOps(execution)
       log('execution phase', execution.phase)
       if (execution.phase !== 'success') {
-        log('execution detail', execution)
+        const err = (execution as { error?: unknown }).error as
+          | { code?: string; message?: string; details?: unknown }
+          | undefined
+        log('error code', err?.code)
+        log('error message', err?.message)
+        log(
+          'error details',
+          JSON.stringify(err?.details ?? null)?.slice(0, 2500),
+        )
       }
       expectOutcome(execution, { kind: 'success' })
 
@@ -197,9 +228,52 @@ describe
         'USDC balance after',
         `${formatUnits(usdcAfter, 6)} (raw ${usdcAfter})`,
       )
-      expect(usdcAfter).toBeGreaterThan(0n)
+      expect(usdcAfter).toBeGreaterThanOrEqual(buyTarget)
     })
   })
+
+/**
+ * The ops the orchestrator actually planned. A restricted session executes only
+ * ops whose (target, selector) it lists, so this is the other half of the
+ * comparison — without it a rejection tells you nothing about WHICH op was
+ * unauthorised.
+ */
+function logPlannedOps(execution: unknown) {
+  const signData = (
+    execution as { prepared?: { quotes?: { best?: { signData?: unknown } } } }
+  )?.prepared?.quotes?.best?.signData as Record<string, unknown> | undefined
+  log('signData keys', signData ? Object.keys(signData) : 'none')
+  const collect = (v: unknown): { to: string; data: string }[] => {
+    const entries = Array.isArray(v) ? v : v ? [v] : []
+    return entries.flatMap(
+      (e) =>
+        ((e as { message?: { op?: { ops?: unknown[] } } })?.message?.op
+          ?.ops as { to: string; data: string }[]) ?? [],
+    )
+  }
+  for (const key of Object.keys(signData ?? {})) {
+    const found = collect(signData?.[key])
+    if (found.length) {
+      log(
+        `signData.${key} ops`,
+        found.map((o) => ({ to: o.to, selector: o.data?.slice(0, 10) })),
+      )
+    }
+  }
+  const ops = collect(signData?.origin)
+  if (!ops?.length) {
+    log('planned ops', 'none found on the quote')
+    return
+  }
+  log(
+    'planned ops',
+    ops.map((o) => ({ to: o.to, selector: o.data?.slice(0, 10) })),
+  )
+  // Full calldata is long but is what pinpoints an argument-pin mismatch.
+  if (process.env.SDK_ITEST_DEBUG === 'true') {
+    for (const [i, o] of ops.entries()) log(`op[${i}] data`, o.data)
+  }
+}
 
 function logAuthorisedActions(session: Session) {
   log(
@@ -211,12 +285,9 @@ function logAuthorisedActions(session: Session) {
   )
 }
 
-async function withEnableData(
-  account: RhinestoneAccount,
-  session: Session,
-  // biome-ignore lint/suspicious/noExplicitAny: transaction shape varies by route
-  transaction: any,
-) {
+async function withEnableData<
+  T extends { signers: { type: 'session'; session: Session } },
+>(account: RhinestoneAccount, session: Session, transaction: T) {
   const details = await account.getSessionDetails([session])
   const enableSignature = await account.signEnableSession(details)
   return {
@@ -231,3 +302,261 @@ async function withEnableData(
     },
   }
 }
+
+/**
+ * Adversarial: does the session's cumulative cap actually bound spend?
+ *
+ * The happy-path run settled through Rhinestone's Swapper on the filler side,
+ * with the account's sell token leaving via the claim/compact path rather than
+ * through a scoped action. That path does not go through `checkAction`, and
+ * `restrictToActions` drops the fallback where the spending-limit guardrails
+ * live — so the cap may bound nothing on this route. This asserts it does.
+ */
+describe
+  .runIf(enabled)
+  .sequential('plasma swap session boundaries (RHI-6286)', () => {
+    test('a swap needing more than the session cap is rejected', async () => {
+      const owner = ownerAccount()
+      const account = await createSwapAccount(owner)
+      const address = await account.getAddress()
+      const usdc = plasmaUsdc()
+      const settler = await resolveZeroExSettler(plasmaClient())
+
+      const before = await erc20Balance(PLASMA_USDT0, address)
+      const usdcBefore = await erc20Balance(usdc, address)
+      // Two false-pass traps to avoid here. Request at-or-below the current
+      // balance and the orchestrator answers ALREADY_FUNDED, planning nothing.
+      // Request more than the account can fund and it fails for insufficient
+      // balance. Either way the spend assertion passes without the cap ever
+      // being consulted. So: a small delta the account can comfortably afford,
+      // with a cap far below its cost.
+      const buyTarget = usdcBefore + BUY_DELTA
+      log('USDT0 before', before)
+      log('requesting USDC target', `${buyTarget} (holds ${usdcBefore})`)
+
+      // A cap far below what the swap costs (the happy path spent ~25_069).
+      const TINY_CAP = 1_000n // 0.001 USDT0
+      const sessionKey = privateKeyToAccount(generatePrivateKey())
+      const session: Session = toSession({
+        chain: plasma,
+        owners: { type: 'ecdsa', accounts: [sessionKey] },
+        swap: {
+          sell: { token: PLASMA_USDT0, maxTotal: TINY_CAP },
+          buy: { token: usdc },
+          to: address,
+          via: [zeroEx({ settler })],
+        },
+      })
+      log('session cap', TINY_CAP)
+
+      const execution = await executeIntent({
+        account,
+        label: 'plasma-swap/overspend',
+        transaction: await withEnableData(account, session, {
+          chain: plasma,
+          tokenRequests: [{ address: usdc, amount: buyTarget }],
+          sourceAssets: { [plasma.id]: [PLASMA_USDT0] },
+          signers: { type: 'session' as const, session },
+        }),
+      })
+
+      log('overspend execution phase', execution.phase)
+      log(
+        'overspend execution detail',
+        JSON.stringify(
+          execution,
+          (_k, v) => (typeof v === 'bigint' ? v.toString() : v),
+          2,
+        )?.slice(0, 4000),
+      )
+      if (execution.phase === 'success') {
+        log('OVERSPEND SUCCEEDED — cap not enforced on this route', execution)
+      }
+
+      const after = await erc20Balance(PLASMA_USDT0, address)
+      const spent = before - after
+      log('USDT0 after', after)
+      log('spent vs cap', `${spent} spent, cap was ${TINY_CAP}`)
+
+      // The whole point of the cap. If this fails, the session is unbounded on
+      // the claim/compact route and the scoping is cosmetic there.
+      expect(spent).toBeLessThanOrEqual(TINY_CAP)
+    })
+  })
+
+/**
+ * Adversarial: can a swap-scoped session send funds to someone other than the
+ * account? The session pins `to: account.address`, so this must be refused.
+ *
+ * Uses the OWNER EOA as the third party rather than a random address: it is
+ * outside the session's pinned recipient, so it is a genuine test, but anything
+ * that does leak is still recoverable by the operator.
+ */
+describe
+  .runIf(enabled)
+  .sequential('plasma swap session recipient binding (RHI-6286)', () => {
+    test('cannot deliver funds to an unpinned recipient', async () => {
+      const owner = ownerAccount()
+      const account = await createSwapAccount(owner)
+      const address = await account.getAddress()
+      const usdc = plasmaUsdc()
+      const settler = await resolveZeroExSettler(plasmaClient())
+
+      const before = await erc20Balance(PLASMA_USDT0, address)
+      const outsiderBefore = await erc20Balance(PLASMA_USDT0, owner.address)
+      log('account USDT0 before', before)
+      log('outsider USDT0 before', outsiderBefore)
+
+      const sessionKey = privateKeyToAccount(generatePrivateKey())
+      const session: Session = toSession({
+        chain: plasma,
+        owners: { type: 'ecdsa', accounts: [sessionKey] },
+        swap: {
+          sell: { token: PLASMA_USDT0, maxTotal: SESSION_CAP },
+          buy: { token: usdc },
+          // The session says output must come back to the account.
+          to: address,
+          via: [zeroEx({ settler })],
+        },
+      })
+
+      const execution = await executeIntent({
+        account,
+        label: 'plasma-swap/wrong-recipient',
+        transaction: await withEnableData(account, session, {
+          chain: plasma,
+          // ...but the intent asks for the SELL token, delivered elsewhere.
+          // Nothing about this is a USDT0 -> USDC swap to the account.
+          tokenRequests: [{ address: PLASMA_USDT0, amount: 10_000n }],
+          recipient: owner.address,
+          sourceAssets: { [plasma.id]: [PLASMA_USDT0] },
+          signers: { type: 'session' as const, session },
+        }),
+      })
+
+      log('wrong-recipient phase', execution.phase)
+      const outsiderAfter = await erc20Balance(PLASMA_USDT0, owner.address)
+      const leaked = outsiderAfter - outsiderBefore
+      log('leaked to outsider', leaked)
+      if (leaked > 0n) {
+        log('SESSION DID NOT BIND RECIPIENT', {
+          leaked,
+          detail: JSON.stringify(execution, (_k, v) =>
+            typeof v === 'bigint' ? v.toString() : v,
+          )?.slice(0, 1500),
+        })
+      }
+      expect(leaked).toBe(0n)
+    })
+  })
+
+/**
+ * Control experiment: is the session in the validation path at all?
+ *
+ * Same intent as the recipient test, but the session is NEVER enabled and no
+ * enableData is attached. If this still executes, the session is not being
+ * validated and the earlier violations say nothing about session enforcement —
+ * they would just mean the SDK signed with something else.
+ */
+describe
+  .runIf(enabled)
+  .sequential('plasma session is actually in the path (RHI-6286)', () => {
+    test('an unenabled session with no enableData cannot execute', async () => {
+      const owner = ownerAccount()
+      const account = await createSwapAccount(owner)
+      const address = await account.getAddress()
+      const usdc = plasmaUsdc()
+      const settler = await resolveZeroExSettler(plasmaClient())
+
+      const outsiderBefore = await erc20Balance(PLASMA_USDT0, owner.address)
+
+      const sessionKey = privateKeyToAccount(generatePrivateKey())
+      const session: Session = toSession({
+        chain: plasma,
+        owners: { type: 'ecdsa', accounts: [sessionKey] },
+        swap: {
+          sell: { token: PLASMA_USDT0, maxTotal: SESSION_CAP },
+          buy: { token: usdc },
+          to: address,
+          via: [zeroEx({ settler })],
+        },
+      })
+      log('session enabled?', await account.isSessionEnabled(session))
+
+      const execution = await executeIntent({
+        account,
+        label: 'plasma-swap/unenabled-session',
+        // NOTE: no withEnableData wrapper — deliberately unenabled.
+        transaction: {
+          chain: plasma,
+          tokenRequests: [{ address: PLASMA_USDT0, amount: 10_000n }],
+          recipient: owner.address,
+          sourceAssets: { [plasma.id]: [PLASMA_USDT0] },
+          signers: { type: 'session' as const, session },
+        },
+      })
+
+      log('unenabled-session phase', execution.phase)
+      const leaked =
+        (await erc20Balance(PLASMA_USDT0, owner.address)) - outsiderBefore
+      log('leaked with unenabled session', leaked)
+      if (leaked > 0n) {
+        log('SESSION NOT IN VALIDATION PATH — unenabled session executed', {
+          leaked,
+        })
+      }
+      expect(leaked).toBe(0n)
+    })
+  })
+
+/**
+ * Control: the SAME sponsored swap, but with a session that KEEPS the wildcard
+ * intent-execution fallback (no `swap`, no `restrictToActions`).
+ *
+ * Separates "the action set doesn't match" from "a restricted session cannot
+ * satisfy this path at all". The restricted run's ops were all individually
+ * authorised — pinned spender, pinned tokens, pinned recipient, amount under
+ * cap — and still failed. If this unrestricted twin succeeds on identical ops,
+ * the restriction itself is the blocker.
+ */
+describe
+  .runIf(enabled)
+  .sequential('plasma unrestricted session control (RHI-6286)', () => {
+    test('an unrestricted session executes the same sponsored swap', async () => {
+      const owner = ownerAccount()
+      const account = await createSwapAccount(owner)
+      const address = await account.getAddress()
+      const usdc = plasmaUsdc()
+
+      const usdcBefore = await erc20Balance(usdc, address)
+      const buyTarget = usdcBefore + BUY_DELTA
+      log('USDC before', usdcBefore)
+
+      const sessionKey = privateKeyToAccount(generatePrivateKey())
+      // No `swap`, no `restrictToActions` — keeps the intent-execution fallback.
+      const session: Session = toSession({
+        chain: plasma,
+        owners: { type: 'ecdsa', accounts: [sessionKey] },
+      })
+
+      const execution = await executeIntent({
+        account,
+        label: 'plasma-swap/unrestricted-control',
+        transaction: await withEnableData(account, session, {
+          chain: plasma,
+          tokenRequests: [{ address: usdc, amount: buyTarget }],
+          sourceAssets: { [plasma.id]: [PLASMA_USDT0] },
+          sponsored: true,
+          signers: { type: 'session' as const, session },
+        }),
+      })
+
+      log('unrestricted control phase', execution.phase)
+      const err = (execution as { error?: { message?: string } }).error
+      if (err) log('unrestricted control error', err.message)
+
+      const usdcAfter = await erc20Balance(usdc, address)
+      log('USDC after', usdcAfter)
+      expect(usdcAfter).toBeGreaterThanOrEqual(buyTarget)
+    })
+  })

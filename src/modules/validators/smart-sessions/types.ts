@@ -83,7 +83,16 @@ export interface FyndVenue {
   readonly maxSpend?: bigint
 }
 
-export type SwapVenue = ZeroExVenue | FyndVenue
+/**
+ * The Rhinestone Swapper — aggregator-agnostic, and the route the orchestrator
+ * actually uses for same-chain smart-account swaps.
+ */
+export interface RhinestoneSwapVenue {
+  readonly id: 'rhinestone'
+  readonly maxSpend?: bigint
+}
+
+export type SwapVenue = RhinestoneSwapVenue | ZeroExVenue | FyndVenue
 
 /** Loose (chain-unaware) swap scope. The public config type narrows `via` by chain. */
 export interface SwapScopeInput {
@@ -91,7 +100,12 @@ export interface SwapScopeInput {
   readonly buy: { readonly token: Address }
   /** Swap output recipient — pinned, so a compromised key cannot redirect output. */
   readonly to: Address
-  readonly via: readonly SwapVenue[]
+  /**
+   * Venues this session may route through. Defaults to the Rhinestone Swapper,
+   * which covers whichever aggregator the orchestrator picks. Name aggregators
+   * explicitly only for flows where the account calls a router directly.
+   */
+  readonly via?: readonly SwapVenue[]
 }
 
 export interface FallbackAction {

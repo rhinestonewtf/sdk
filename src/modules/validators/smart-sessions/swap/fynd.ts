@@ -113,6 +113,6 @@ export function scopeFynd(ctx: VenueContext): VenueScoping {
   }
   return {
     approveSpender: router,
-    action: swapAction(router, FYND_SWAP_SELECTOR, rules),
+    actions: [swapAction(router, FYND_SWAP_SELECTOR, rules)],
   }
 }

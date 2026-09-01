@@ -203,10 +203,8 @@ export function scopeZeroEx(
   }
   return {
     approveSpender: ZEROX_ALLOWANCE_HOLDER,
-    action: swapAction(
-      ZEROX_ALLOWANCE_HOLDER,
-      ALLOWANCE_HOLDER_EXEC_SELECTOR,
-      rules,
-    ),
+    actions: [
+      swapAction(ZEROX_ALLOWANCE_HOLDER, ALLOWANCE_HOLDER_EXEC_SELECTOR, rules),
+    ],
   }
 }

@@ -14,6 +14,7 @@ import type {
   UniversalActionPolicyParamRule,
 } from '../types'
 import { FYND_SWAP_SELECTOR, fynd, tychoRouterAbi } from './fynd'
+import { SWAP_EXACT_IN_SELECTOR, SWAP_EXACT_OUT_SELECTOR } from './rhinestone'
 import { resolveSwapScope } from './scope'
 import {
   ALLOWANCE_HOLDER_EXEC_SELECTOR,

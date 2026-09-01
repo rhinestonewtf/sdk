@@ -72,12 +72,20 @@ export function swapAction(
 export interface VenueScoping {
   /** ERC-20 spender the session may approve the sell token to. */
   readonly approveSpender: Address
-  readonly action: ScopedAction
+  /**
+   * One or more scoped actions. Plural because a venue may expose several
+   * entrypoints that are all legitimate for the same scope — the Rhinestone
+   * Swapper has separate exact-in and exact-out selectors, and which one the
+   * orchestrator picks is its choice, not the caller's.
+   */
+  readonly actions: readonly ScopedAction[]
 }
 
 /** Everything a venue needs to know about the swap being scoped. */
 export interface VenueContext {
   readonly chainId: number
+  /** Selects the Swapper/proxy deployment pair. */
+  readonly environment: 'production' | 'development'
   readonly sellToken: Address
   readonly buyToken: Address
   readonly recipient: Address
