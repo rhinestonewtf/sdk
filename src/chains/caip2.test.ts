@@ -9,6 +9,13 @@ import {
   parseCaip2,
   toEvmChainReference,
 } from './caip2'
+import {
+  hyperCorePerp,
+  hyperCoreSpot,
+  solanaMainnet,
+  stellarMainnet,
+  tronMainnet,
+} from './non-evm'
 
 describe('CAIP-2', () => {
   test.each([
@@ -16,6 +23,7 @@ describe('CAIP-2', () => {
     [8453, 'eip155:8453'],
     [792703809, 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp'],
     [728126428, 'tron:mainnet'],
+    [1500148, 'stellar:pubnet'],
     [1337, 'hypercore:mainnet'],
     [1337001, 'hypercore:spot'],
     [1337002, 'hypercore:perp'],
@@ -49,6 +57,40 @@ describe('CAIP-2', () => {
       // `toEvmChainReference` has to let through rather than reject.
       expect(toEvmChainReference(id).caip2).toBe(caip2)
     }
+  })
+
+  // Stellar recipients are `G…` accounts while its token addresses are `C…`
+  // Soroban contracts, so nothing here may lean on a single address shape. The
+  // one thing the SDK must get right is that the chain is genuinely non-EVM:
+  // `isNonEvmChainId` is what routes a bare strkey recipient through unchanged
+  // instead of demanding a hex `Address`.
+  test('treats Stellar as a non-EVM destination', () => {
+    const reference = parseCaip2('stellar:pubnet')
+    expect(reference.kind).toBe('non-evm')
+    expect(reference).toMatchObject({
+      namespace: 'stellar',
+      reference: 'pubnet',
+    })
+    expect(isNonEvmChainId(1500148)).toBe(true)
+    expect(isEvmCaip2('stellar:pubnet')).toBe(false)
+    expect(() => toEvmChainReference(1500148)).toThrow('not EVM-compatible')
+  })
+
+  // A descriptor is only as good as its wire-table entry: without one,
+  // `parseCaip2(chain.caip2)` throws and `targetChain: <descriptor>` fails at
+  // the first hop, while the descriptor itself still typechecks. Generic over
+  // the exported set so the next chain cannot ship half-wired.
+  test.each([
+    ['solanaMainnet', solanaMainnet],
+    ['tronMainnet', tronMainnet],
+    ['stellarMainnet', stellarMainnet],
+    ['hyperCoreSpot', hyperCoreSpot],
+    ['hyperCorePerp', hyperCorePerp],
+  ])('addresses the destination %s names', (_name, chain) => {
+    expect(isCaip2(chain.caip2)).toBe(true)
+    expect(formatCaip2(chainIdFromReference(parseCaip2(chain.caip2)))).toBe(
+      chain.caip2,
+    )
   })
 
   test('rejects malformed and unknown values', () => {

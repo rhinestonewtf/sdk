@@ -25,6 +25,7 @@ import {
   type SignedIntentData,
   type SignedTransactionData,
   type SignerSet,
+  stellarMainnet,
   type Transaction,
   tronMainnet,
   type UserOperationResult,
@@ -134,6 +135,22 @@ const crossChainNonEvmWithDeadline = {
   customDeadline: 9_999_999_999,
 } as const satisfies Transaction
 
+// Stellar is the case where recipient and token addresses are different
+// shapes in the same namespace: a `G…` account receives an asset named by its
+// `C…` Soroban contract. Neither is hex, so this only compiles while both
+// fields stay widened past viem's `Address`.
+const stellarDelivery = {
+  sourceChains: [mainnet],
+  targetChain: stellarMainnet,
+  tokenRequests: [
+    {
+      address: 'CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75',
+      amount: 1_000_000n,
+    },
+  ],
+  recipient: 'GA2227KIWUQ4WBKNLR53PUFJFX6G5ERZQFMAQWS3FBERXB7QNUEOLCMO',
+} as const satisfies Transaction
+
 // RHI-5510: the delivery venue is the destination, so a caller addresses it by
 // picking a chain. There is no venue field to forget, and no way to express a
 // HyperCore delivery without stating which account it credits — both venues
@@ -215,6 +232,7 @@ void sameChainTransaction
 void registryFreeMfaConfig
 void crossChainWithDeadline
 void crossChainNonEvmWithDeadline
+void stellarDelivery
 void hyperCoreSpotDelivery
 void hyperCorePerpDelivery
 void sponsorLimitKey

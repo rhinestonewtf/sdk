@@ -28,6 +28,7 @@ const NON_EVM_CHAINS = [
     caip2: 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
     nonEvm: true,
   },
+  { id: 1500148, caip2: 'stellar:pubnet', nonEvm: true },
 ] as const satisfies ReadonlyArray<{
   id: number
   caip2: string
@@ -125,7 +126,7 @@ export function isEvmCaip2(value: string): value is `eip155:${number}` {
   return evmPattern.test(value)
 }
 
-// True when a numeric chain id is genuinely non-EVM (Solana / Tron). Every
+// True when a numeric chain id is genuinely non-EVM (Solana / Tron / Stellar). Every
 // HyperCore id is EVM-settled, so this is `false` for all of them even though
 // their wire ids are in the non-`eip155` `hypercore:` namespace.
 export function isNonEvmChainId(chainId: number): boolean {

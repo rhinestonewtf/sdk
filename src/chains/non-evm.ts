@@ -1,5 +1,6 @@
 // Public destination chain descriptors for destinations that aren't a plain
-// viem `Chain`: the non-EVM chains (Solana, Tron) plus HyperCore (an EVM-settled
+// viem `Chain`: the non-EVM chains (Solana, Tron, Stellar) plus HyperCore (an
+// EVM-settled
 // virtual L1). Mirrors the minimal shape of viem's `Chain` (name,
 // nativeCurrency) so callers can pass them anywhere a destination chain is
 // expected — `targetChain: solanaMainnet` reads the same as `targetChain:
@@ -15,6 +16,7 @@ import type { Chain } from 'viem'
 type EvmCaip2ChainId = `eip155:${number}`
 type SolanaCaip2ChainId = `solana:${string}`
 type TronCaip2ChainId = `tron:${string}`
+type StellarCaip2ChainId = `stellar:${string}`
 // One id per HyperCore delivery venue — the venue is the destination, not a
 // flag on the token request (RHI-5510).
 type HyperCoreCaip2ChainId = 'hypercore:spot' | 'hypercore:perp'
@@ -22,6 +24,7 @@ type Caip2ChainId =
   | EvmCaip2ChainId
   | SolanaCaip2ChainId
   | TronCaip2ChainId
+  | StellarCaip2ChainId
   | HyperCoreCaip2ChainId
 
 interface NativeCurrency {
@@ -30,19 +33,20 @@ interface NativeCurrency {
   readonly decimals: number
 }
 
-// Non-EVM (Solana base58 / Tron T-prefix) addresses don't satisfy viem's
-// `Address` template literal. Typed as bare `string` since the shape is
-// chain-namespace specific; the orchestrator validates the format against
-// the destination's CAIP-2 namespace.
+// Non-EVM (Solana base58 / Tron T-prefix / Stellar base32 strkey) addresses
+// don't satisfy viem's `Address` template literal. Typed as bare `string` since
+// the shape is chain-namespace specific; the orchestrator validates the format
+// against the destination's CAIP-2 namespace.
 type NonEvmAddress = string
 
 interface NonEvmChain {
   readonly name: string
   readonly caip2: Caip2ChainId
-  // 'svm' (Solana) / 'tvm' (Tron) are non-EVM VMs; 'hypercore' is an EVM-settled
-  // virtual L1. All three are solver-mediated destinations with no user-signed
-  // destination session.
-  readonly kind: 'svm' | 'tvm' | 'hypercore'
+  // 'svm' (Solana) / 'tvm' (Tron) / 'stellar' are non-EVM VMs; 'hypercore' is an
+  // EVM-settled virtual L1. All are solver-mediated destinations with no
+  // user-signed destination session. Names match the `vmType` the chain facts
+  // publish, so a chain's descriptor and its registry entry read the same.
+  readonly kind: 'svm' | 'tvm' | 'stellar' | 'hypercore'
   readonly nativeCurrency: NativeCurrency
   readonly testnet?: boolean
 }
@@ -61,6 +65,16 @@ const tronMainnet: NonEvmChain = {
   caip2: 'tron:mainnet',
   kind: 'tvm',
   nativeCurrency: { name: 'Tron', symbol: 'TRX', decimals: 6 },
+}
+
+// Stellar addresses classic assets through Soroban contracts, so a token
+// request carries the asset's Stellar Asset Contract (a `C…` strkey) while the
+// recipient is an account (`G…`) — two different shapes in the same namespace.
+const stellarMainnet: NonEvmChain = {
+  name: 'Stellar',
+  caip2: 'stellar:pubnet',
+  kind: 'stellar',
+  nativeCurrency: { name: 'Lumen', symbol: 'XLM', decimals: 7 },
 }
 
 // A HyperCore deposit credits one of two accounts that are not
@@ -85,4 +99,10 @@ const hyperCorePerp: NonEvmChain = {
 }
 
 export type { DestinationChain, NativeCurrency, NonEvmAddress, NonEvmChain }
-export { hyperCorePerp, hyperCoreSpot, solanaMainnet, tronMainnet }
+export {
+  hyperCorePerp,
+  hyperCoreSpot,
+  solanaMainnet,
+  stellarMainnet,
+  tronMainnet,
+}
