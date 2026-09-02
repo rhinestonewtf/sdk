@@ -206,9 +206,7 @@ function mapQuoteFromWire(value: WireQuote): OrchestratorQuote {
             value.tokenRequirements,
           ),
         }),
-    ...(value.bridgeFill === undefined
-      ? {}
-      : { bridgeFill: mapBridgeFillFromWire(value.bridgeFill) }),
+    ...mapBridgeFillFromWire(value.bridgeFill),
   }
 }
 
@@ -249,50 +247,75 @@ function mapTokenRequirementsFromWire(
   ) as TokenRequirements
 }
 
-function mapBridgeFillFromWire(
-  value: NonNullable<WireQuote['bridgeFill']>,
-): BridgeFill {
+// A bridge fill is a delivery-tracking handle, not part of what the user signs,
+// so a type this SDK version predates must not fail the whole quote. Returning
+// a key-or-nothing spread leaves an unknown layer as an untracked route, the
+// same shape a layer that publishes no handle already produces.
+function mapBridgeFillFromWire(value: WireQuote['bridgeFill']): {
+  bridgeFill?: BridgeFill
+} {
+  if (value === undefined) return {}
   switch (value.type) {
     case 'OFT':
       return {
-        type: 'OFT',
-        destinationChainId: value.destinationChainId,
+        bridgeFill: {
+          type: 'OFT',
+          destinationChainId: value.destinationChainId,
+        },
       }
     case 'ECO':
       return {
-        type: 'ECO',
-        destinationChainId: value.destinationChainId,
-        intentHash: value.intentHash as Hex,
+        bridgeFill: {
+          type: 'ECO',
+          destinationChainId: value.destinationChainId,
+          intentHash: value.intentHash as Hex,
+        },
       }
     case 'RELAY':
       return {
-        type: 'RELAY',
-        destinationChainId: value.destinationChainId,
-        requestId: value.requestId,
+        bridgeFill: {
+          type: 'RELAY',
+          destinationChainId: value.destinationChainId,
+          requestId: value.requestId,
+        },
       }
     case 'NEAR':
       return {
-        type: 'NEAR',
-        destinationChainId: value.destinationChainId,
-        depositAddress: value.depositAddress as Address,
+        bridgeFill: {
+          type: 'NEAR',
+          destinationChainId: value.destinationChainId,
+          depositAddress: value.depositAddress as Address,
+        },
       }
     case 'RHINO':
       return {
-        type: 'RHINO',
-        destinationChainId: value.destinationChainId,
-        commitmentId: value.commitmentId,
+        bridgeFill: {
+          type: 'RHINO',
+          destinationChainId: value.destinationChainId,
+          commitmentId: value.commitmentId,
+        },
       }
     case 'CCTP':
       return {
-        type: 'CCTP',
-        destinationChainId: value.destinationChainId,
-        sourceDomainId: value.sourceDomainId,
-        destinationDomainId: value.destinationDomainId,
+        bridgeFill: {
+          type: 'CCTP',
+          destinationChainId: value.destinationChainId,
+          sourceDomainId: value.sourceDomainId,
+          destinationDomainId: value.destinationDomainId,
+        },
+      }
+    case 'LZ':
+      return {
+        bridgeFill: {
+          type: 'LZ',
+          destinationChainId: value.destinationChainId,
+          quoteId: value.quoteId,
+          dstChainKey: value.dstChainKey,
+          routeTypes: [...value.routeTypes],
+        },
       }
     default:
-      throw new Error(
-        `Unsupported bridge fill type from orchestrator: ${String((value as { readonly type?: unknown }).type)}`,
-      )
+      return {}
   }
 }
 
