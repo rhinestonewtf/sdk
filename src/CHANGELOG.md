@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.15.0
+
+### Minor Changes
+
+- e86ef1c: Add weighted Quorum Signer configuration, signing flows, and headless signing helpers.
+
 ## 1.14.0
 
 ### Minor Changes
