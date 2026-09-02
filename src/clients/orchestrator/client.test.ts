@@ -252,6 +252,87 @@ describe('orchestrator client', () => {
     expect(extension).toHaveBeenCalledWith(serializedIntentInput)
   })
 
+  test('maps the LZ handle and keeps a route the SDK predates untracked', async () => {
+    const route = (
+      intentId: string,
+      settlementLayer: string,
+      bridgeFill: unknown,
+    ) => ({
+      intentId,
+      expiresAt: 1,
+      estimatedFillTime: { seconds: 2 },
+      settlementLayer,
+      signData: {
+        origin: [],
+        destination: {
+          domain: {},
+          types: {},
+          primaryType: 'Test',
+          message: {},
+        },
+      },
+      cost: {
+        input: [],
+        output: [],
+        fees: {
+          total: { usd: 0 },
+          breakdown: {
+            gas: { usd: 0, sponsored: false },
+            bridge: { usd: 0, sponsored: false },
+            swap: { usd: 0, sponsored: false },
+            app: { usd: 0, sponsored: false },
+            protocol: { usd: 0, sponsored: false },
+            sponsorSurcharge: { usd: 0, sponsored: false },
+          },
+        },
+      },
+      bridgeFill,
+    })
+    const client = createOrchestratorClient({
+      url: 'https://orchestrator.example',
+      auth: createOrchestratorAuth({ kind: 'api-key', apiKey: 'secret' }),
+      fetch: async () =>
+        Response.json({
+          routes: [
+            route('intent-lz', 'LZ', {
+              type: 'LZ',
+              destinationChainId: 8453,
+              quoteId: 'quote-1',
+              dstChainKey: 'base',
+              routeTypes: ['STARGATE_V2_TAXI', 'CCTP_V2'],
+              fillExpirationPeriod: 60,
+              fillStatusTimeout: 30,
+            }),
+            route('intent-future', 'FUTURE', {
+              type: 'FUTURE',
+              destinationChainId: 8453,
+              someHandle: 'handle-1',
+              fillStatusTimeout: 30,
+            }),
+          ],
+        }),
+    })
+
+    const result = await client.createQuote({
+      account: { address, accountType: 'ERC7579' },
+      destinationChainId: 8453,
+      destinationExecutions: [],
+      tokenRequests: [],
+      options: {},
+    })
+
+    expect(result.routes[0]?.bridgeFill).toEqual({
+      type: 'LZ',
+      destinationChainId: 8453,
+      quoteId: 'quote-1',
+      dstChainKey: 'base',
+      routeTypes: ['STARGATE_V2_TAXI', 'CCTP_V2'],
+    })
+    // An unknown layer costs the tracking handle, never the quote.
+    expect(result.routes[1]?.intentId).toBe('intent-future')
+    expect(result.routes[1]).not.toHaveProperty('bridgeFill')
+  })
+
   test('maps error envelope metadata', async () => {
     const client = createOrchestratorClient({
       url: 'https://orchestrator.example',

@@ -20,6 +20,7 @@ type CrossChainSettlementLayer =
   | 'NEAR'
   | 'RHINO'
   | 'CCTP'
+  | 'LZ'
 
 type SupportedTokenSymbol = 'ETH' | 'WETH' | 'USDC' | 'USDT' | 'USDT0'
 type SupportedToken = SupportedTokenSymbol | Address
@@ -323,6 +324,13 @@ type BridgeFill =
       destinationChainId: number
       sourceDomainId: number
       destinationDomainId: number
+    }
+  | {
+      type: 'LZ'
+      destinationChainId: number
+      quoteId: string
+      dstChainKey: string
+      routeTypes: string[]
     }
 
 interface Quote {

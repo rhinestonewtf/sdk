@@ -40,14 +40,25 @@ type EcoBridgeFill = {
   readonly intentHash: string
 }
 
-// The ECO solver-network variant is already part of the orchestrator feature
-// branch but not yet in the pinned, published OpenAPI document. Keep the HTTP
-// boundary truthful during that rollout; the next generated-wire sync will add
-// the structurally identical variant to GeneratedWireQuote.
+type LzBridgeFill = {
+  readonly destinationChainId: number
+  readonly fillExpirationPeriod?: number
+  readonly fillStatusTimeout: number
+  readonly type: 'LZ'
+  readonly quoteId: string
+  readonly dstChainKey: string
+  readonly routeTypes: readonly string[]
+}
+
+// The ECO and LZ variants are already served by the orchestrator but not yet in
+// the pinned, published OpenAPI document. Keep the HTTP boundary truthful during
+// that rollout; the next generated-wire sync will add the structurally identical
+// variants to GeneratedWireQuote.
 export type WireQuote = Omit<GeneratedWireQuote, 'bridgeFill'> & {
   readonly bridgeFill?:
     | NonNullable<GeneratedWireQuote['bridgeFill']>
     | EcoBridgeFill
+    | LzBridgeFill
 }
 export type WireQuoteResponse = Omit<GeneratedWireQuoteResponse, 'routes'> & {
   readonly routes: readonly WireQuote[]
