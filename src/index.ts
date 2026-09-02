@@ -3,6 +3,7 @@ import {
   hyperCorePerp,
   hyperCoreSpot,
   solanaMainnet,
+  stellarMainnet,
   tronMainnet,
 } from './chains/non-evm'
 import {
@@ -15,10 +16,11 @@ import { WEBAUTHN_VALIDATOR_ADDRESS } from './modules/validators/webauthn'
 
 export {
   RhinestoneSDK,
-  // Non-viem destination chain descriptors (Solana, Tron, HyperCore)
+  // Non-viem destination chain descriptors (Solana, Tron, Stellar, HyperCore)
   hyperCorePerp,
   hyperCoreSpot,
   solanaMainnet,
+  stellarMainnet,
   tronMainnet,
   // Validator addresses
   OWNABLE_VALIDATOR_ADDRESS,
