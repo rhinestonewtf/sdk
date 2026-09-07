@@ -171,7 +171,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@rhinestone/shared-configs": "2.11.1",
+    "@rhinestone/shared-configs": "2.15.0",
     "solady": "^0.1.26"
   },
   "peerDependencies": {
