@@ -1,4 +1,4 @@
-import { type Address, type Hex, size, slice } from 'viem'
+import { type Address, type Hex, size, slice, zeroAddress } from 'viem'
 import { describe, expect, test } from 'vitest'
 import {
   addressToBytes32,
@@ -59,6 +59,18 @@ describe('settlement-layer encoders — base header', () => {
     expect(BigInt(slice(header, 21, 53))).toBe(123n)
     expect(slice(header, 53, 54)).toBe('0x01') // one gas token
     expect(slice(header, 54, 74).toLowerCase()).toBe(GAS_TOKEN.toLowerCase())
+  })
+
+  // `IntentExecutorConfigLib.initializeBase` reverts `InvalidConfigData` on a
+  // zero gas token, so encoding one produces initData that can only fail at
+  // install — refuse it at the call instead.
+  test('refuses a zero gas token', () => {
+    expect(() =>
+      encodeIntentExecutorBaseHeader({
+        intentExecutor: IE,
+        gasTokens: [GAS_TOKEN, zeroAddress],
+      }),
+    ).toThrow('gasToken must not be the zero address')
   })
 
   test('empty gas tokens → 54 bytes, count 0', () => {
@@ -166,6 +178,18 @@ describe('settlement-layer encoders — policy initData', () => {
     expect(Number(BigInt(slice(initData, header + 33, header + 35)))).toBe(
       size(cctp),
     )
+  })
+
+  // The tail is read by cursor, so a short layerId shifts the configLen and
+  // every later layer with it — the blob stays well-formed and installs as
+  // something else entirely.
+  test('refuses a layerId that is not 32 bytes', () => {
+    expect(() =>
+      encodeIntentExecutorPolicyInitData({
+        base,
+        layers: [{ layerId: slice(CCTP_LAYER_ID, 0, 31), config: cctp }],
+      }),
+    ).toThrow('layerId must be 32 bytes, got 31')
   })
 
   test('static initData = header · config (no wrapper)', () => {

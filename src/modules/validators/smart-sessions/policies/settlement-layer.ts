@@ -20,6 +20,15 @@ function assertWidth(value: Hex, bytes: number, label: string): Hex {
   return value
 }
 
+// The gas-token whitelist rejects the zero address on-chain (it is the sentinel
+// for "no entry"), so an initData carrying one reverts at install.
+function assertNonZero(token: Address): Address {
+  if (token === zeroAddress) {
+    throw new Error('gasToken must not be the zero address')
+  }
+  return token
+}
+
 // IntentExecutor settlement-layer policy (smart-sessions-v2 #46 / PR #54): an
 // EIP-1271 policy that gates the settlement signature the StandaloneIntentExecutor
 // requests, dispatching each inner call to a stateless per-layer adapter ACL
@@ -54,7 +63,8 @@ export interface IntentExecutorBaseConfig {
   readonly flags?: number
   // Cap on the gas-refund exchange rate; 0 = uncapped.
   readonly maxExchangeRate?: bigint
-  // Gas tokens permitted for the refund; each must be non-zero.
+  // Gas tokens permitted for the refund; each must be non-zero (the contract
+  // reverts on a zero entry, so this encoder does too).
   readonly gasTokens?: Address[]
 }
 
@@ -67,7 +77,7 @@ export function encodeIntentExecutorBaseHeader(
     toHex(config.flags ?? 0, { size: 1 }),
     toHex(config.maxExchangeRate ?? 0n, { size: 32 }),
     toHex(gasTokens.length, { size: 1 }),
-    ...gasTokens.map((t) => assertWidth(t, 20, 'gasToken')),
+    ...gasTokens.map((t) => assertNonZero(assertWidth(t, 20, 'gasToken'))),
   ])
 }
 
@@ -158,7 +168,7 @@ export function encodeIntentExecutorPolicyInitData(input: {
   const tail = concat([
     toHex(input.layers.length, { size: 1 }),
     ...input.layers.flatMap((l) => [
-      l.layerId,
+      assertWidth(l.layerId, 32, 'layerId'),
       toHex(size(l.config), { size: 2 }),
       l.config,
     ]),

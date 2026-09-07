@@ -135,9 +135,18 @@ export function resolveSessionData(
   // the 1271 list a strict AND rather than letting sudo pass everything. A
   // route-gating 1271 policy (settlement-layer) and Permit2 claim policies gate
   // different routes on this shared AND-list, so the caller must not combine them
-  // (defineSpendSession guards this); doing so yields a session that cannot
-  // settle rather than a bypass.
+  // (experimental_defineSpendSession guards it too, ahead of this); combining
+  // them yields a session that cannot settle rather than a bypass, so it is
+  // refused here as well — a SessionDefinition can be built by hand.
   const extraErc1271 = definition.erc1271Policies ?? []
+  if (extraErc1271.length && claimPolicies.length) {
+    throw new Error(
+      'erc1271Policies and Permit2 claim policies cannot be combined: they gate ' +
+        'different settlement routes on one AND-list, so no signature satisfies ' +
+        'both. Use claimPolicies/permits for the Permit2 route, or ' +
+        'erc1271Policies for the IntentExecutor route.',
+    )
+  }
   let erc1271Policies: { policy: Address; initData: Hex }[] =
     extraErc1271.length
       ? [...extraErc1271]

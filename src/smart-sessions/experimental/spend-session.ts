@@ -136,7 +136,8 @@ function assertLayersEnforceable(input: DefineSpendSessionInput): void {
     const cap = LAYER_CAPABILITIES[layer]
     if (!cap.availableToday) {
       throw new Error(
-        `Settlement layer "${layer}" is not yet supported by defineSpendSession ` +
+        `Settlement layer "${layer}" is not yet supported by ` +
+          `experimental_defineSpendSession ` +
           `(needs the IntentExecutor settlement-layer policy; see RHI-6242). ` +
           `Supported today: ${ARBITER_LAYERS.join(', ')}.`,
       )
@@ -316,6 +317,12 @@ export function experimental_defineSpendSession(
     throw new Error(
       'spend.recipients must be non-empty; omit it to allow any recipient ' +
         '(same-chain) or bind to the account (cross-chain)',
+    )
+  }
+  if (input.spend.target && input.spend.target.chains.length === 0) {
+    throw new Error(
+      'spend.target.chains must be non-empty; omit target entirely for a ' +
+        'same-chain spend',
     )
   }
   assertLayersEnforceable(input)

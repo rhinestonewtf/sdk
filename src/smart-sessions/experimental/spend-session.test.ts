@@ -429,6 +429,23 @@ describe('experimental_defineSpendSession — layer refusal & validation', () =>
     ).toThrow(/non-empty/)
   })
 
+  // An empty chains array read as "same-chain", which silently ignored the
+  // rest of `target` — the destination tokens and the settlement layers with
+  // it. Say so instead of building a session the caller did not describe.
+  test('empty target.chains throws (must omit target for same-chain)', () => {
+    expect(() =>
+      experimental_defineSpendSession({
+        chain: base,
+        owners: OWNER,
+        spend: {
+          tokens: [{ token: USDC, maxAmount: 1n }],
+          recipients: [RECIPIENT],
+          target: { chains: [], tokens: [{ chain: base, token: USDC }] },
+        },
+      }),
+    ).toThrow(/target.chains must be non-empty/)
+  })
+
   test('the old way (no singleUse) still scopes but has no burn op', () => {
     const { session, buildBurnOp } = experimental_defineSpendSession({
       chain: base,
