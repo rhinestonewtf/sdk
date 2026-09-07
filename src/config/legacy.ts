@@ -8,6 +8,7 @@ export interface LegacySdkConfigSnapshot<AuthProvider> {
   readonly paymaster: SdkConstructionInput['paymaster']
   readonly useDevContracts: SdkConstructionInput['useDevContracts']
   readonly headers: SdkConstructionInput['headers']
+  readonly hyperliquid: SdkConstructionInput['hyperliquid']
 }
 
 export type LegacyAccountConfig<AuthProvider> = AccountConstructionInput & {
@@ -18,6 +19,7 @@ export type LegacyAccountConfig<AuthProvider> = AccountConstructionInput & {
   paymaster?: SdkConstructionInput['paymaster']
   useDevContracts?: SdkConstructionInput['useDevContracts']
   headers?: SdkConstructionInput['headers']
+  hyperliquid?: SdkConstructionInput['hyperliquid']
 }
 
 export function captureLegacySdkConfig<AuthProvider>(
@@ -32,6 +34,7 @@ export function captureLegacySdkConfig<AuthProvider>(
     paymaster: input.paymaster,
     useDevContracts: input.useDevContracts,
     headers: input.headers,
+    hyperliquid: input.hyperliquid,
   }
 }
 
@@ -48,5 +51,6 @@ export function createLegacyAccountConfig<AuthProvider>(
     paymaster: sdk.paymaster,
     useDevContracts: sdk.useDevContracts,
     headers: sdk.headers,
+    hyperliquid: sdk.hyperliquid,
   }
 }

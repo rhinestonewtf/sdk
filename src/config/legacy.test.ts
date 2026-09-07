@@ -74,6 +74,7 @@ describe('legacy account config compatibility', () => {
       'paymaster',
       'useDevContracts',
       'headers',
+      'hyperliquid',
     ])
     expect(Object.keys(compatibilityConfig)).toEqual(
       Object.keys(publicAccount.config),
@@ -91,6 +92,7 @@ describe('legacy account config compatibility', () => {
       paymaster: undefined,
       useDevContracts: undefined,
       headers: undefined,
+      hyperliquid: undefined,
     })
 
     accountInput.owners = { type: 'ecdsa', accounts: [accountB] }

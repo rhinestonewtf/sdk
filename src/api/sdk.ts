@@ -38,6 +38,7 @@ class RhinestoneSDK {
   private paymaster
   private useDevContracts
   private headers
+  private hyperliquid
 
   /**
    * Create a Rhinestone SDK instance.
@@ -51,6 +52,7 @@ class RhinestoneSDK {
     this.endpointUrl = input.endpointUrl
     this.useDevContracts = input.useDevContracts
     this.headers = input.headers
+    this.hyperliquid = input.hyperliquid
     this.#sdk = composeSdk(input)
     this.authProvider = this.#sdk.snapshot.authProvider
   }

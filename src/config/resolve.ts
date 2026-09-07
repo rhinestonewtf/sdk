@@ -297,7 +297,9 @@ function materializeSdkInvocationConfig<AuthProvider>(
     ...(bundler ? { bundler } : {}),
     ...(paymaster ? { paymaster } : {}),
     headers: compatibility.headers ?? emptyHeaders,
-    ...(sdk.hyperliquid ? { hyperliquid: sdk.hyperliquid } : {}),
+    ...(compatibility.hyperliquid
+      ? { hyperliquid: compatibility.hyperliquid }
+      : {}),
   }
 }
 
