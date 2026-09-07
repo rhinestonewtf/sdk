@@ -918,7 +918,31 @@ export interface operations {
                  * @example 1633493192
                  */
                 timestamp?: number
+                /**
+                 * @description Why the operation failed (present only when FAILED)
+                 * @example BRIDGE_TIMEOUT
+                 */
+                failureReason?: string
+                /**
+                 * @description This operation's transaction spends the account's own tokens. Absent means it moves none of them (a destination fill, or a tokenless intent). Read it together with the operation status: a FAILED intent none of whose debiting operations reached COMPLETED never took the account's funds. Per-operation rather than per-intent because a multi-origin intent has several claims and they can differ.
+                 * @example true
+                 * @enum {boolean}
+                 */
+                debitsAccount?: true
               }[]
+            }[]
+            /** @description Bridge refunds observed for this intent — a settlement layer returned the funds to the account instead of delivering them. Not operations: Rhinestone neither built nor broadcast these transactions, and a refund never makes the intent succeed. Omitted when none are known, which is every delivered intent and also a failed one whose refund we have not (or not yet) observed — so its absence is not evidence that funds were kept. */
+            refunds?: {
+              /**
+               * @description Chain the refund landed on
+               * @example 42161
+               */
+              chain: number
+              /**
+               * @description Refund transaction hash, in the chain-native form (EVM hex, Solana base58, Tron hex) — interpret it against `chain`.
+               * @example 0x00ab46cc4d1e4b5d5f6a9a2b1c0d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d
+               */
+              txHash: string
             }[]
             /** @description Extended intent details, returned only when `full=true` */
             details?: {
@@ -962,6 +986,7 @@ export interface operations {
                 | 'NEAR'
                 | 'RHINO'
                 | 'CCTP'
+                | 'LZ'
                 | null
               /** @description Source (claim) legs */
               source: {
@@ -973,7 +998,7 @@ export interface operations {
                 /** @description All tokens moved on this leg */
                 tokens: {
                   /**
-                   * @description Token address
+                   * @description Token address, in the format its chain uses (EVM hex, non-EVM base58)
                    * @example 0x0b2c639c533813f4aa9d7837caf62653d097ff85
                    */
                   token: string
@@ -1020,7 +1045,7 @@ export interface operations {
                 /** @description All tokens moved on this leg */
                 tokens: {
                   /**
-                   * @description Token address
+                   * @description Token address, in the format its chain uses (EVM hex, non-EVM base58)
                    * @example 0x0b2c639c533813f4aa9d7837caf62653d097ff85
                    */
                   token: string
@@ -1086,7 +1111,7 @@ export interface operations {
                  */
                 data: string
               }[]
-              /** @description Cost summary from the recorded fee sponsorship. Amounts are raw base units; omitted when no sponsorship row exists. */
+              /** @description Cost summary from the recorded fee sponsorship. Amounts are integer micro-USD; omitted when no sponsorship row exists. */
               cost: {
                 /**
                  * @description Whether gas/fees were sponsored for this intent
@@ -1094,15 +1119,20 @@ export interface operations {
                  */
                 sponsored: boolean
                 /**
-                 * @description Sponsored value in fee-token base units
+                 * @description Sponsored value actually charged, in integer micro-USD (1 USD = 1,000,000 units). Once the intent executes this is reconciled from the receipt (planned gas replaced by executed), so it matches the sponsorship balance and the usage/billing reads rather than the amount reserved at quote time.
                  * @example 210000
                  */
                 sponsoredValue?: string
                 /**
-                 * @description Protocol fee in fee-token base units
+                 * @description Rhinestone-owed slice of the sponsor charge, in integer micro-USD (1 USD = 1,000,000 units): the sponsor surcharge plus a sponsored protocol fee (`sponsorSettings.protocolFees`) where one applies.
                  * @example 10000
                  */
                 protocolFee?: string
+                /**
+                 * @description Rhinestone's surcharge on the sponsored relayer coverage, in integer micro-USD — the pure surcharge slice of `protocolFee` and reconciled with it, as `sponsorSurcharge` on a quote. Omitted where the charge was recorded without the split, which is never inferred by subtraction.
+                 * @example 10000
+                 */
+                sponsorSurcharge?: string
               }
             }
           }
@@ -2475,10 +2505,10 @@ export interface operations {
                 }
             )[]
             /**
-             * @description Destination (target chain) signature
+             * @description Destination (target chain) signature. Omit only when the route carried no `signData.destination`.
              * @example 0x...
              */
-            destination: string
+            destination?: string
             /**
              * @description Target execution signature (smart sessions only; omit for EOA)
              * @example 0x...
@@ -3068,7 +3098,16 @@ export interface operations {
            *     }
            */
           settlementLayers?:
-            | ('ACROSS' | 'ECO' | 'RELAY' | 'OFT' | 'NEAR' | 'RHINO' | 'CCTP')[]
+            | (
+                | 'ACROSS'
+                | 'ECO'
+                | 'RELAY'
+                | 'OFT'
+                | 'NEAR'
+                | 'RHINO'
+                | 'CCTP'
+                | 'LZ'
+              )[]
             | {
                 include: (
                   | 'ACROSS'
@@ -3078,6 +3117,7 @@ export interface operations {
                   | 'NEAR'
                   | 'RHINO'
                   | 'CCTP'
+                  | 'LZ'
                 )[]
               }
             | {
@@ -3089,6 +3129,7 @@ export interface operations {
                   | 'NEAR'
                   | 'RHINO'
                   | 'CCTP'
+                  | 'LZ'
                 )[]
               }
         }
@@ -3655,6 +3696,8 @@ export interface operations {
                   | 'WMON'
                   | 'S'
                   | 'WS'
+                  | 'OKB'
+                  | 'WOKB'
                   | 'HYPE'
                   | 'WHYPE'
                   | 'USDG'
@@ -3663,6 +3706,7 @@ export interface operations {
                   | 'AVAX'
                   | 'WAVAX'
                   | 'MockUSD'
+                  | 'XLM'
                   | 'ensUSDC'
                   | 'TRX'
                   | 'WTRX'
@@ -3697,6 +3741,8 @@ export interface operations {
                     | 'WMON'
                     | 'S'
                     | 'WS'
+                    | 'OKB'
+                    | 'WOKB'
                     | 'HYPE'
                     | 'WHYPE'
                     | 'USDG'
@@ -3705,6 +3751,7 @@ export interface operations {
                     | 'AVAX'
                     | 'WAVAX'
                     | 'MockUSD'
+                    | 'XLM'
                     | 'ensUSDC'
                     | 'TRX'
                     | 'WTRX'
@@ -3746,6 +3793,8 @@ export interface operations {
                     | 'WMON'
                     | 'S'
                     | 'WS'
+                    | 'OKB'
+                    | 'WOKB'
                     | 'HYPE'
                     | 'WHYPE'
                     | 'USDG'
@@ -3754,6 +3803,7 @@ export interface operations {
                     | 'AVAX'
                     | 'WAVAX'
                     | 'MockUSD'
+                    | 'XLM'
                     | 'ensUSDC'
                     | 'TRX'
                     | 'WTRX'
@@ -3788,6 +3838,8 @@ export interface operations {
                       | 'WMON'
                       | 'S'
                       | 'WS'
+                      | 'OKB'
+                      | 'WOKB'
                       | 'HYPE'
                       | 'WHYPE'
                       | 'USDG'
@@ -3796,6 +3848,7 @@ export interface operations {
                       | 'AVAX'
                       | 'WAVAX'
                       | 'MockUSD'
+                      | 'XLM'
                       | 'ensUSDC'
                       | 'TRX'
                       | 'WTRX'
@@ -3877,6 +3930,7 @@ export interface operations {
                   | 'NEAR'
                   | 'RHINO'
                   | 'CCTP'
+                  | 'LZ'
                 )[]
               | {
                   include: (
@@ -3887,6 +3941,7 @@ export interface operations {
                     | 'NEAR'
                     | 'RHINO'
                     | 'CCTP'
+                    | 'LZ'
                   )[]
                 }
               | {
@@ -3898,6 +3953,50 @@ export interface operations {
                     | 'NEAR'
                     | 'RHINO'
                     | 'CCTP'
+                    | 'LZ'
+                  )[]
+                }
+            /**
+             * @description Which swap quoters the orchestrator may source swap routes from. `{ include: [...] }` (allow-list) or `{ exclude: [...] }` (deny-list, inverted against the full quoter set); a bare array means `include`. Use this to keep a swap on the venue a smart-session policy is scoped to. Default unset = every quoter the chain supports.
+             * @example {
+             *       "include": [
+             *         "0x"
+             *       ]
+             *     }
+             */
+            quoters?:
+              | (
+                  | '1inch'
+                  | '0x'
+                  | 'velora'
+                  | 'kyberswap'
+                  | 'fynd'
+                  | 'fynd-hosted'
+                  | 'bebop'
+                  | 'relay'
+                )[]
+              | {
+                  include: (
+                    | '1inch'
+                    | '0x'
+                    | 'velora'
+                    | 'kyberswap'
+                    | 'fynd'
+                    | 'fynd-hosted'
+                    | 'bebop'
+                    | 'relay'
+                  )[]
+                }
+              | {
+                  exclude: (
+                    | '1inch'
+                    | '0x'
+                    | 'velora'
+                    | 'kyberswap'
+                    | 'fynd'
+                    | 'fynd-hosted'
+                    | 'bebop'
+                    | 'relay'
                   )[]
                 }
             /**
@@ -3996,6 +4095,286 @@ export interface operations {
              * @example 1893456000
              */
             customDeadline?: number
+            hyperCore?: {
+              /**
+               * @description The Hyperliquid action to authorise. An action that needs collateral (opening a position) must be paired with `tokenRequests` that deliver it; one that does not (a reduce-only close, a cancel, a leverage change) rides a tokenless intent.
+               *
+               *     One action per intent: an agent authorises exactly one, and registering a second evicts the first, so an intent submitted while another is in flight for the same account is refused.
+               */
+              action:
+                | {
+                    /** @enum {string} */
+                    type: 'order'
+                    orders: {
+                      /**
+                       * @description Asset index. Perps use the index in the `meta` universe; spot uses `10000 + index` from `spotMeta`. This is an INDEX, not a ticker — resolve it from the info endpoint, and note that an index built against the wrong universe places a valid order in the wrong market.
+                       * @example 0
+                       */
+                      a: number
+                      /**
+                       * @description Buy (`true`) or sell (`false`).
+                       * @example true
+                       */
+                      b: boolean
+                      /**
+                       * @description Limit price. Must satisfy Hyperliquid's tick rules — at most 5 significant figures and at most `6 - szDecimals` decimals for a perp — and is refused there, not here.
+                       *
+                       *     This price is fixed when you sign, and an intent that bridges to HyperCore takes ~30s to deliver. Price it to still cross after that move, or the order is refused with your funds already delivered.
+                       * @example 64250.5
+                       */
+                      p: string
+                      /**
+                       * @description Size in units of the asset, to at most the asset's `szDecimals`. Hyperliquid refuses an order worth under ~$10.
+                       * @example 0.0002
+                       */
+                      s: string
+                      /**
+                       * @description Reduce-only. `true` is how a position is CLOSED — pair it with a tokenless intent, since closing needs no delivered collateral.
+                       * @example false
+                       */
+                      r: boolean
+                      /** @description Either `{ limit: { tif } }` or `{ trigger: { isMarket, triggerPx, tpsl } }`. */
+                      t:
+                        | {
+                            limit: {
+                              /**
+                               * @description Time in force. `Ioc` fills what it can and cancels the rest, which is how a market order is expressed here — there is no market order type. `Alo` is post-only. `Gtc` rests on the book.
+                               *
+                               *     Prefer `Ioc` for anything an intent delivers funds for: a resting order leaves the account holding USDC and no position, and the agent that could have cancelled it is already spent.
+                               * @example Ioc
+                               * @enum {string}
+                               */
+                              tif: 'Alo' | 'Ioc' | 'Gtc'
+                            }
+                          }
+                        | {
+                            trigger: {
+                              isMarket: boolean
+                              triggerPx: string
+                              /**
+                               * @description Take-profit or stop-loss.
+                               * @example sl
+                               * @enum {string}
+                               */
+                              tpsl: 'tp' | 'sl'
+                            }
+                          }
+                      /**
+                       * @description Optional client order id — 128-bit hex. Your handle on the order afterwards: the exchange echoes it back, so it is the only way to correlate a fill with the intent that placed it without polling by asset.
+                       * @example 0x1234567890abcdef1234567890abcdef
+                       */
+                      c?: string
+                    }[]
+                    /**
+                     * @description `na` for a plain order. The TP/SL groupings attach the orders as a bracket around a position.
+                     * @example na
+                     * @enum {string}
+                     */
+                    grouping: 'na' | 'normalTpsl' | 'positionTpsl'
+                    builder?: {
+                      /** @description Address receiving the builder fee. */
+                      b: string
+                      /**
+                       * @description Builder fee in TENTHS of a basis point — `10` is 1bp of order notional.
+                       * @example 10
+                       */
+                      f: number
+                    }
+                  }
+                | {
+                    /** @enum {string} */
+                    type: 'cancel'
+                    cancels: {
+                      /** @description Asset index. */
+                      a: number
+                      /** @description Order id. */
+                      o: number
+                    }[]
+                    /** @description Fast cancel. */
+                    f?: boolean
+                  }
+                | {
+                    /** @enum {string} */
+                    type: 'cancelByCloid'
+                    cancels: {
+                      asset: number
+                      /**
+                       * @description Optional client order id — 128-bit hex. Your handle on the order afterwards: the exchange echoes it back, so it is the only way to correlate a fill with the intent that placed it without polling by asset.
+                       * @example 0x1234567890abcdef1234567890abcdef
+                       */
+                      cloid: string
+                    }[]
+                    f?: boolean
+                  }
+                | {
+                    /** @enum {string} */
+                    type: 'modify'
+                    oid: number | string
+                    order: {
+                      /**
+                       * @description Asset index. Perps use the index in the `meta` universe; spot uses `10000 + index` from `spotMeta`. This is an INDEX, not a ticker — resolve it from the info endpoint, and note that an index built against the wrong universe places a valid order in the wrong market.
+                       * @example 0
+                       */
+                      a: number
+                      /**
+                       * @description Buy (`true`) or sell (`false`).
+                       * @example true
+                       */
+                      b: boolean
+                      /**
+                       * @description Limit price. Must satisfy Hyperliquid's tick rules — at most 5 significant figures and at most `6 - szDecimals` decimals for a perp — and is refused there, not here.
+                       *
+                       *     This price is fixed when you sign, and an intent that bridges to HyperCore takes ~30s to deliver. Price it to still cross after that move, or the order is refused with your funds already delivered.
+                       * @example 64250.5
+                       */
+                      p: string
+                      /**
+                       * @description Size in units of the asset, to at most the asset's `szDecimals`. Hyperliquid refuses an order worth under ~$10.
+                       * @example 0.0002
+                       */
+                      s: string
+                      /**
+                       * @description Reduce-only. `true` is how a position is CLOSED — pair it with a tokenless intent, since closing needs no delivered collateral.
+                       * @example false
+                       */
+                      r: boolean
+                      /** @description Either `{ limit: { tif } }` or `{ trigger: { isMarket, triggerPx, tpsl } }`. */
+                      t:
+                        | {
+                            limit: {
+                              /**
+                               * @description Time in force. `Ioc` fills what it can and cancels the rest, which is how a market order is expressed here — there is no market order type. `Alo` is post-only. `Gtc` rests on the book.
+                               *
+                               *     Prefer `Ioc` for anything an intent delivers funds for: a resting order leaves the account holding USDC and no position, and the agent that could have cancelled it is already spent.
+                               * @example Ioc
+                               * @enum {string}
+                               */
+                              tif: 'Alo' | 'Ioc' | 'Gtc'
+                            }
+                          }
+                        | {
+                            trigger: {
+                              isMarket: boolean
+                              triggerPx: string
+                              /**
+                               * @description Take-profit or stop-loss.
+                               * @example sl
+                               * @enum {string}
+                               */
+                              tpsl: 'tp' | 'sl'
+                            }
+                          }
+                      /**
+                       * @description Optional client order id — 128-bit hex. Your handle on the order afterwards: the exchange echoes it back, so it is the only way to correlate a fill with the intent that placed it without polling by asset.
+                       * @example 0x1234567890abcdef1234567890abcdef
+                       */
+                      c?: string
+                    }
+                    /**
+                     * @description Place the replacement even if the cancel failed. Omit it entirely for the default — Hyperliquid rejects an action hashed with `a: false`, so `false` is not a legal value.
+                     * @enum {boolean}
+                     */
+                    a?: true
+                  }
+                | {
+                    /** @enum {string} */
+                    type: 'batchModify'
+                    modifies: {
+                      oid: number | string
+                      order: {
+                        /**
+                         * @description Asset index. Perps use the index in the `meta` universe; spot uses `10000 + index` from `spotMeta`. This is an INDEX, not a ticker — resolve it from the info endpoint, and note that an index built against the wrong universe places a valid order in the wrong market.
+                         * @example 0
+                         */
+                        a: number
+                        /**
+                         * @description Buy (`true`) or sell (`false`).
+                         * @example true
+                         */
+                        b: boolean
+                        /**
+                         * @description Limit price. Must satisfy Hyperliquid's tick rules — at most 5 significant figures and at most `6 - szDecimals` decimals for a perp — and is refused there, not here.
+                         *
+                         *     This price is fixed when you sign, and an intent that bridges to HyperCore takes ~30s to deliver. Price it to still cross after that move, or the order is refused with your funds already delivered.
+                         * @example 64250.5
+                         */
+                        p: string
+                        /**
+                         * @description Size in units of the asset, to at most the asset's `szDecimals`. Hyperliquid refuses an order worth under ~$10.
+                         * @example 0.0002
+                         */
+                        s: string
+                        /**
+                         * @description Reduce-only. `true` is how a position is CLOSED — pair it with a tokenless intent, since closing needs no delivered collateral.
+                         * @example false
+                         */
+                        r: boolean
+                        /** @description Either `{ limit: { tif } }` or `{ trigger: { isMarket, triggerPx, tpsl } }`. */
+                        t:
+                          | {
+                              limit: {
+                                /**
+                                 * @description Time in force. `Ioc` fills what it can and cancels the rest, which is how a market order is expressed here — there is no market order type. `Alo` is post-only. `Gtc` rests on the book.
+                                 *
+                                 *     Prefer `Ioc` for anything an intent delivers funds for: a resting order leaves the account holding USDC and no position, and the agent that could have cancelled it is already spent.
+                                 * @example Ioc
+                                 * @enum {string}
+                                 */
+                                tif: 'Alo' | 'Ioc' | 'Gtc'
+                              }
+                            }
+                          | {
+                              trigger: {
+                                isMarket: boolean
+                                triggerPx: string
+                                /**
+                                 * @description Take-profit or stop-loss.
+                                 * @example sl
+                                 * @enum {string}
+                                 */
+                                tpsl: 'tp' | 'sl'
+                              }
+                            }
+                        /**
+                         * @description Optional client order id — 128-bit hex. Your handle on the order afterwards: the exchange echoes it back, so it is the only way to correlate a fill with the intent that placed it without polling by asset.
+                         * @example 0x1234567890abcdef1234567890abcdef
+                         */
+                        c?: string
+                      }
+                    }[]
+                    /**
+                     * @description Place the replacement even if the cancel failed. Omit it entirely for the default — Hyperliquid rejects an action hashed with `a: false`, so `false` is not a legal value.
+                     * @enum {boolean}
+                     */
+                    a?: true
+                  }
+                | {
+                    /** @enum {string} */
+                    type: 'updateLeverage'
+                    asset: number
+                    /**
+                     * @description Cross margin (`true`) or isolated (`false`).
+                     * @example true
+                     */
+                    isCross: boolean
+                    /**
+                     * @description New leverage, capped by the asset's own maximum. Set it BEFORE the intent that opens the position: leverage applied afterwards does not resize an existing one.
+                     * @example 5
+                     */
+                    leverage: number
+                  }
+                | {
+                    /** @enum {string} */
+                    type: 'updateIsolatedMargin'
+                    asset: number
+                    isBuy: boolean
+                    /**
+                     * @description Margin to add (positive) or remove (negative), in USDC with 6 decimals — `1000000` is 1 USD.
+                     * @example 1000000
+                     */
+                    ntli: number
+                  }
+            }
           }
         }
       }
@@ -4040,37 +4419,56 @@ export interface operations {
                 | 'NEAR'
                 | 'RHINO'
                 | 'CCTP'
+                | 'LZ'
               /** @description EIP-712 sign payloads the client submits back on `POST /intents` */
               signData: {
-                /** @description Typed data payloads for the origin legs, in submission order. Sign each entry and submit the signatures in matching order via `signatures.origin`. */
-                origin: {
-                  /** @description EIP-712 domain separator fields */
-                  domain: {
-                    name?: string
-                    version?: string
-                    chainId?: number
-                    verifyingContract?: string
-                    salt?: string
-                  }
-                  /** @description EIP-712 type definitions keyed by type name */
-                  types: {
-                    [key: string]: {
-                      name: string
-                      type: string
-                    }[]
-                  }
-                  /**
-                   * @description Name of the top-level type to sign
-                   * @example PermitBatchWitnessTransferFrom
-                   */
-                  primaryType: string
-                  /** @description Message values keyed by field name. uint256 fields are encoded as decimal strings on the wire and re-coerced to bigint client-side before signing. */
-                  message: {
-                    [key: string]: unknown
-                  }
-                }[]
-                /** @description Typed data for the destination leg */
-                destination: {
+                /** @description Payloads for the origin legs, in submission order. Sign each entry and submit the signatures in matching order via `signatures.origin`. Discriminate on `kind`: `eip712` is signed as typed data, `personalSign` as a message. */
+                origin: (
+                  | {
+                      /** @description EIP-712 domain separator fields */
+                      domain: {
+                        name?: string
+                        version?: string
+                        chainId?: number
+                        verifyingContract?: string
+                        salt?: string
+                      }
+                      /** @description EIP-712 type definitions keyed by type name */
+                      types: {
+                        [key: string]: {
+                          name: string
+                          type: string
+                        }[]
+                      }
+                      /**
+                       * @description Name of the top-level type to sign
+                       * @example PermitBatchWitnessTransferFrom
+                       */
+                      primaryType: string
+                      /** @description Message values keyed by field name. uint256 fields are encoded as decimal strings on the wire and re-coerced to bigint client-side before signing. */
+                      message: {
+                        [key: string]: unknown
+                      }
+                      /** @enum {string} */
+                      kind: 'eip712'
+                    }
+                  | {
+                      /** @enum {string} */
+                      kind: 'personalSign'
+                      /**
+                       * @description Sign these characters as UTF-8 TEXT — viem `signMessage({ message })`, never `{ raw }`. Signing the decoded bytes yields a well-formed signature that the chain rejects.
+                       * @example a3f2c1d4e5b6a7980f1e2d3c4b5a69788796a5b4c3d2e1f0a1b2c3d4e5f60718
+                       */
+                      message: string
+                      /**
+                       * @description Solana slot after which this payload is dead. Much shorter than the route `expiresAt` — about 24 seconds — and it is the binding one. Re-quote when it passes.
+                       * @example 370123456
+                       */
+                      expiresAtSlot: string
+                    }
+                )[]
+                /** @description Typed data for the destination leg. Absent when a third-party bridge performs the delivery and there is nothing for the user to sign there. */
+                destination?: {
                   /** @description EIP-712 domain separator fields */
                   domain: {
                     name?: string
@@ -4129,26 +4527,26 @@ export interface operations {
                 /** @description Tokens debited from the user, coalesced by (chainId, tokenAddress) */
                 input: {
                   /**
-                   * @description Chain where this token leg settles
+                   * @description Chain where this token leg settles (CAIP-2, any namespace)
                    * @example eip155:8453
                    */
                   chainId: string
                   /**
-                   * @description ERC-20 contract address for this token
+                   * @description Contract address of the debited token (EVM 0x or non-EVM base58)
                    * @example 0xaf88d065e77c8cc2239327c5edb3a432268e5831
                    */
                   tokenAddress: string
                   /**
-                   * @description Token symbol. `null` when the internal token registry has no entry for this address.
+                   * @description Token symbol, from the internal token registry or, for a token it has no entry for, read on-chain while planning. `null` when neither resolved one.
                    * @example USDC
                    */
                   symbol: string | null
                   /**
-                   * @description Token decimals. `null` when the internal token registry has no entry for this address.
+                   * @description Token decimals, from the internal token registry or, for a token it has no entry for, read on-chain while planning. `null` when neither resolved one.
                    * @example 6
                    */
                   decimals: number | null
-                  /** @description Unit price in USD. `null` when the price oracle has no data for this token. */
+                  /** @description Unit price in USD. `null` when neither the price oracle nor this quote priced the token. */
                   price: {
                     /**
                      * @description Unit price in USD
@@ -4176,16 +4574,16 @@ export interface operations {
                    */
                   tokenAddress: string
                   /**
-                   * @description Token symbol. `null` when the internal token registry has no entry for this address.
+                   * @description Token symbol, from the internal token registry or, for a token it has no entry for, read on-chain while planning. `null` when neither resolved one.
                    * @example USDC
                    */
                   symbol: string | null
                   /**
-                   * @description Token decimals. `null` when the internal token registry has no entry for this address.
+                   * @description Token decimals, from the internal token registry or, for a token it has no entry for, read on-chain while planning. `null` when neither resolved one.
                    * @example 6
                    */
                   decimals: number | null
-                  /** @description Unit price in USD. `null` when the price oracle has no data for this token. */
+                  /** @description Unit price in USD. `null` when neither the price oracle nor this quote priced the token. */
                   price: {
                     /**
                      * @description Unit price in USD
@@ -4336,7 +4734,7 @@ export interface operations {
                       }
                 }
               }
-              /** @description Provider handle for resolving the destination-chain delivery transaction when settlement hands off to a third-party bridge (RHINO, RELAY, NEAR, CCTP, OFT). Absent when the orchestrator settles end-to-end (e.g. ACROSS, ECO). */
+              /** @description Provider handle for resolving the destination-chain delivery transaction when settlement hands off to a third-party bridge (ECO, RHINO, RELAY, NEAR, CCTP, OFT). Absent when the orchestrator settles end-to-end (e.g. ACROSS). */
               bridgeFill?:
                 | {
                     /** @description Destination chain ID for the bridge fill */
@@ -4350,6 +4748,38 @@ export interface operations {
                      * @enum {string}
                      */
                     type: 'OFT'
+                  }
+                | {
+                    /** @description Destination chain ID for the bridge fill */
+                    destinationChainId: number
+                    /** @description Optional bridge-specific fill deadline duration, in seconds. Preserved on stored quote reload so checksum validation uses the same bridgeFill payload that was signed at quote time. */
+                    fillExpirationPeriod?: number
+                    /** @description Fill-tracker watch window, in seconds. The orchestrator owns this timeout; the fill-tracker reads it here to decide when a bridge fill has timed out. */
+                    fillStatusTimeout: number
+                    /**
+                     * @description Across spoke-pool deposit. Names a deposit to watch for a refund, not a delivery — an ACROSS intent is filled by our own relayer and tracked as an ordinary fill.
+                     * @enum {string}
+                     */
+                    type: 'ACROSS'
+                    /** @description The Across deposit id our claim opens on the origin chain, as a decimal uint256. Derived as keccak(arbiter | sponsor | nonce). */
+                    depositId: string
+                  }
+                | {
+                    /** @description Destination chain ID for the bridge fill */
+                    destinationChainId: number
+                    /** @description Optional bridge-specific fill deadline duration, in seconds. Preserved on stored quote reload so checksum validation uses the same bridgeFill payload that was signed at quote time. */
+                    fillExpirationPeriod?: number
+                    /** @description Fill-tracker watch window, in seconds. The orchestrator owns this timeout; the fill-tracker reads it here to decide when a bridge fill has timed out. */
+                    fillStatusTimeout: number
+                    /**
+                     * @description Eco solver-network delivery
+                     * @enum {string}
+                     */
+                    type: 'ECO'
+                    /** @description Eco Portal intent hash. Use against Eco's intent status API to resolve the destination delivery transaction. */
+                    intentHash: string
+                    /** @description Eco's own id for the delivery chain, present only where it differs from `destinationChainId` (non-EVM destinations). Eco's status API reports fulfilment against this id. */
+                    providerDestinationChainId?: number
                   }
                 | {
                     /** @description Destination chain ID for the bridge fill */
@@ -4412,6 +4842,25 @@ export interface operations {
                     sourceDomainId: number
                     /** @description Circle CCTP destination domain ID. */
                     destinationDomainId: number
+                  }
+                | {
+                    /** @description Destination chain ID for the bridge fill */
+                    destinationChainId: number
+                    /** @description Optional bridge-specific fill deadline duration, in seconds. Preserved on stored quote reload so checksum validation uses the same bridgeFill payload that was signed at quote time. */
+                    fillExpirationPeriod?: number
+                    /** @description Fill-tracker watch window, in seconds. The orchestrator owns this timeout; the fill-tracker reads it here to decide when a bridge fill has timed out. */
+                    fillStatusTimeout: number
+                    /**
+                     * @description LayerZero Value Transfer
+                     * @enum {string}
+                     */
+                    type: 'LZ'
+                    /** @description LayerZero quote ID. Use against LayerZero's transfer status API to track the destination-chain fill. */
+                    quoteId: string
+                    /** @description LayerZero's own chain key for the destination (e.g. `base`). Its status response names chains by key rather than id. */
+                    dstChainKey: string
+                    /** @description Protocols the quote routed through (e.g. STARGATE_V2_TAXI, CCTP_V2). One transfer can span several. */
+                    routeTypes: string[]
                   }
             }[]
           }
@@ -4854,6 +5303,7 @@ export interface operations {
                     | 'NEAR'
                     | 'RHINO'
                     | 'CCTP'
+                    | 'LZ'
                   )[]
                 }
               | {
@@ -4865,6 +5315,7 @@ export interface operations {
                     | 'NEAR'
                     | 'RHINO'
                     | 'CCTP'
+                    | 'LZ'
                   )[]
                 }
             /**
@@ -4950,6 +5401,7 @@ export interface operations {
                 | 'NEAR'
                 | 'RHINO'
                 | 'CCTP'
+                | 'LZ'
               /**
                * @description `exact` for formula-priced layers; `approximated` for solver-market layers estimated from a typical-fee table.
                * @example exact
@@ -4965,26 +5417,26 @@ export interface operations {
               /** @description A single (chain, token) leg with amount, price, and metadata */
               input: {
                 /**
-                 * @description Chain where this token leg settles
+                 * @description Chain where this token leg settles (CAIP-2, any namespace)
                  * @example eip155:8453
                  */
                 chainId: string
                 /**
-                 * @description ERC-20 contract address for this token
+                 * @description Contract address of the debited token (EVM 0x or non-EVM base58)
                  * @example 0xaf88d065e77c8cc2239327c5edb3a432268e5831
                  */
                 tokenAddress: string
                 /**
-                 * @description Token symbol. `null` when the internal token registry has no entry for this address.
+                 * @description Token symbol, from the internal token registry or, for a token it has no entry for, read on-chain while planning. `null` when neither resolved one.
                  * @example USDC
                  */
                 symbol: string | null
                 /**
-                 * @description Token decimals. `null` when the internal token registry has no entry for this address.
+                 * @description Token decimals, from the internal token registry or, for a token it has no entry for, read on-chain while planning. `null` when neither resolved one.
                  * @example 6
                  */
                 decimals: number | null
-                /** @description Unit price in USD. `null` when the price oracle has no data for this token. */
+                /** @description Unit price in USD. `null` when neither the price oracle nor this quote priced the token. */
                 price: {
                   /**
                    * @description Unit price in USD
@@ -5012,16 +5464,16 @@ export interface operations {
                  */
                 tokenAddress: string
                 /**
-                 * @description Token symbol. `null` when the internal token registry has no entry for this address.
+                 * @description Token symbol, from the internal token registry or, for a token it has no entry for, read on-chain while planning. `null` when neither resolved one.
                  * @example USDC
                  */
                 symbol: string | null
                 /**
-                 * @description Token decimals. `null` when the internal token registry has no entry for this address.
+                 * @description Token decimals, from the internal token registry or, for a token it has no entry for, read on-chain while planning. `null` when neither resolved one.
                  * @example 6
                  */
                 decimals: number | null
-                /** @description Unit price in USD. `null` when the price oracle has no data for this token. */
+                /** @description Unit price in USD. `null` when neither the price oracle nor this quote priced the token. */
                 price: {
                   /**
                    * @description Unit price in USD
