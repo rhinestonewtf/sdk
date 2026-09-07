@@ -91,11 +91,14 @@ in the public `rhinestonewtf/openapi` repo, so no auth is needed.
 
 ### Pin and auto-sync
 
-The pin makes regeneration deterministic: because `openapi/main` auto-updates on
-every orchestrator API change, generating against it live would break *every*
-open SDK PR the moment upstream moves. Pinning means the per-PR CI check
-(`Verify wire types match the published OpenAPI spec`) regenerates against a
-fixed SHA and only ever reflects intentional bumps.
+The pin makes regeneration deterministic: `openapi/main` moves whenever the
+rolling spec PR the orchestrator opens there is merged, so generating against it
+live would break *every* open SDK PR the moment upstream moves. Pinning means the
+per-PR CI check (`Verify wire types match the published OpenAPI spec`)
+regenerates against a fixed SHA and only ever reflects intentional bumps.
+
+A new orchestrator field is therefore **two merges** from being usable here: the
+spec PR in `rhinestonewtf/openapi`, then the sync PR below.
 
 The pin is advanced by the [`Sync wire types`](../.github/workflows/sync-wire-types.yaml)
 workflow (hourly cron + `workflow_dispatch`), the *only* thing that changes

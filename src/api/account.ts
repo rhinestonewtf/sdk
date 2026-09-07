@@ -1111,6 +1111,7 @@ export function adaptTransaction(
       ...(transaction.auxiliaryFunds
         ? { auxiliaryFunds: transaction.auxiliaryFunds }
         : {}),
+      ...(transaction.hyperCore ? { hyperCore: transaction.hyperCore } : {}),
     },
     ...(transaction.sourceCalls
       ? {

@@ -8,6 +8,7 @@ import type {
   BridgeFill,
   ChainOperation,
   Cost,
+  HyperCoreAction,
   IntentStatus,
   SerializedIntentInput,
   SettlementLayer,
@@ -60,6 +61,8 @@ export interface OrchestratorIntentOptions {
   readonly auxiliaryFunds?: Readonly<
     Record<number, Readonly<Record<Address, bigint>>>
   >
+  /** A Hyperliquid L1 action to authorise alongside this intent. */
+  readonly hyperCore?: { readonly action: HyperCoreAction }
 }
 
 export interface OrchestratorIntentRequest {

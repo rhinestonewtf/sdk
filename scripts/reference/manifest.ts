@@ -66,6 +66,13 @@ const util = (symbol: string, experimental = false): SymbolEntry => ({
   experimental,
 })
 
+const hyperCore = (symbol: string): SymbolEntry => ({
+  kind: 'symbol',
+  symbol,
+  source: './hypercore',
+  callStyle: 'function',
+})
+
 export const manifest: Group[] = [
   {
     kind: 'group',
@@ -263,6 +270,18 @@ export const manifest: Group[] = [
           action('disableSession', './actions/smart-sessions'),
         ],
       },
+    ],
+  },
+  {
+    kind: 'group',
+    group: 'HyperCore',
+    items: [
+      hyperCore('openPerp'),
+      hyperCore('closePerp'),
+      hyperCore('getPerpMarket'),
+      hyperCore('getPerpMarkets'),
+      hyperCore('getPerpPosition'),
+      hyperCore('getPerpPositions'),
     ],
   },
   {

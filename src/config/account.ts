@@ -18,6 +18,7 @@ import type { NonEvmAddress, NonEvmChain } from '../chains/non-evm'
 import type {
   AppFeeRate,
   AuxiliaryFunds,
+  HyperCoreOptions,
   ProtocolFeeRate,
   SerializedIntentInput,
   SettlementLayerFilter,
@@ -1112,6 +1113,16 @@ interface BaseTransaction {
    */
   quoters?: SwapQuoterFilter
   auxiliaryFunds?: AuxiliaryFunds
+  /**
+   * A HyperCore action to authorise as part of this transaction, for a
+   * `hyperCorePerp` or `hyperCoreSpot` destination. Build it with the helpers
+   * in `@rhinestone/sdk/hypercore` rather than by hand.
+   *
+   * An action that needs collateral must be paired with `tokenRequests` that
+   * deliver it; one that does not (a reduce-only close, a cancel, a leverage
+   * change) rides a transaction that requests no tokens.
+   */
+  hyperCore?: HyperCoreOptions
   experimental_accountOverride?: {
     setupOps?: {
       to: Address

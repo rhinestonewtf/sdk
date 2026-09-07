@@ -39,6 +39,7 @@ Docs: https://docs.rhinestone.dev/smart-wallet
 - `/src/transactions` - Intent and UserOperation workflows (`intents/`, `user-operations/`)
 - `/src/clients` - Ports and adapters for the orchestrator, RPC, bundler, and paymaster
 - `/src/actions` - Atomic account actions (ECDSA, passkeys, smart-sessions)
+- `/src/hypercore` - HyperCore order builders and Hyperliquid market reads (`@rhinestone/sdk/hypercore`)
 - `/src/errors`, `/src/utils`, `/src/smart-sessions` - Published compatibility barrels
 - `/src/jwt-server` - Server-side JWT signer (Express + Web handlers)
 - `/test` - Unit helpers, type tests, and live integration tests

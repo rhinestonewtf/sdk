@@ -2,7 +2,11 @@ import { privateKeyToAccount } from 'viem/accounts'
 import { mainnet, optimism } from 'viem/chains'
 import { describe, expect, test, vi } from 'vitest'
 import { toEvmChainReference } from '../chains/caip2'
-import type { SerializedIntentInput } from '../clients/orchestrator/public'
+import { hyperCorePerp } from '../chains/non-evm'
+import type {
+  HyperCoreOrderAction,
+  SerializedIntentInput,
+} from '../clients/orchestrator/public'
 import type { LegacyAccountConfig } from '../config/legacy'
 import { resolveAccountConfig, resolveSdkConfig } from '../config/resolve'
 import type { AccountInvocationContext } from '../config/resolved'
@@ -581,6 +585,45 @@ describe('account boundary adapters', () => {
       }),
     )
     expect(submitUserOperation).toHaveBeenCalledOnce()
+  })
+
+  // The orchestrator reads the action from `options.hyperCore`, and the agent
+  // that may place the order is derived from its bytes — so a field-by-field
+  // rebuild that forgets it here quotes an intent that authorises nothing.
+  test('carries a HyperCore action into the intent options', () => {
+    const action: HyperCoreOrderAction = {
+      type: 'order',
+      orders: [
+        {
+          a: 0,
+          b: true,
+          p: '64572',
+          s: '0.00155',
+          r: false,
+          t: { limit: { tif: 'Ioc' } },
+        },
+      ],
+      grouping: 'na',
+    }
+
+    const transaction = adaptTransaction(invocationContext(), {
+      sourceChains: [mainnet],
+      targetChain: hyperCorePerp,
+      hyperCore: { action },
+    })
+
+    expect(transaction.options?.hyperCore).toEqual({ action })
+  })
+
+  test('leaves hyperCore off the options when the transaction sets none', () => {
+    const transaction = adaptTransaction(invocationContext(), {
+      chain: mainnet,
+      calls: [],
+    })
+
+    expect(transaction.options && 'hyperCore' in transaction.options).toBe(
+      false,
+    )
   })
 
   test('projects smart-account recipients instead of dropping them', () => {
