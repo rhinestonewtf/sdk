@@ -456,8 +456,8 @@ describe('direct rewritten signing pipelines', () => {
     })
   })
 
-  test('refuses a chain-agnostic payload where the chain is bound into the hash', () => {
-    // `MultiChainOps` is one signature over legs on several chains, and a
+  test('refuses a multi-chain payload where the chain is bound into the hash', () => {
+    // `MultiChainOps` can be one signature over legs on several chains, and a
     // quorum validator hashes `chain.id` into what the signer signs. Signing it
     // against the leg being resolved yields a signature that validates there
     // and fails on the rest — on chain, after the user has approved.
@@ -482,7 +482,7 @@ describe('direct rewritten signing pipelines', () => {
         typedData,
         chain,
         context: quorumContext,
-        chainAgnostic: true,
+        spansMultipleChains: true,
       }),
     ).toThrow(/quorum validator/u)
 
@@ -492,9 +492,20 @@ describe('direct rewritten signing pipelines', () => {
         typedData,
         chain,
         context,
-        chainAgnostic: true,
+        spansMultipleChains: true,
       }),
     ).toBeDefined()
+
+    // And so are same-chain legs under quorum: a chainless domain does not mean
+    // the leaves span chains, and one chain-bound hash covers all of them.
+    expect(
+      resolveAccountTypedDataSigning({
+        typedData,
+        chain,
+        context: quorumContext,
+        spansMultipleChains: false,
+      }),
+    ).toMatchObject({ payloadKind: 'message' })
 
     // And a per-leg payload still signs under quorum.
     expect(

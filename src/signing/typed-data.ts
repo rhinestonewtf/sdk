@@ -62,11 +62,11 @@ export function resolveAccountTypedDataSigning(input: {
    */
   readonly validationHash?: Hex
   /**
-   * Set when one signature over this payload has to validate on several chains
-   * (a `MultiChainOps` set). `chain` is then only the leg being resolved, not
-   * the reach of the signature.
+   * Set when one signature over this payload has to validate on more than one
+   * chain (a `MultiChainOps` set whose leaves span chains). `chain` is then
+   * only the leg being resolved, not the reach of the signature.
    */
-  readonly chainAgnostic?: boolean
+  readonly spansMultipleChains?: boolean
 }): AccountTypedDataSigningRoute {
   const payload = input.validationHash ?? hashTypedData(input.typedData)
   const accountKind = input.context.account.definition.kind
@@ -79,19 +79,20 @@ export function resolveAccountTypedDataSigning(input: {
   // A quorum validator hashes the chain id into what the signer signs, and
   // Startale's K1 route puts it in the ERC-7739 verifier domain. Either one
   // yields a signature that validates on `input.chain` and nowhere else, so a
-  // payload meant to cover every leg must be refused here — while the caller
-  // is still preparing, not after the user has approved a bundle whose later
-  // legs cannot execute. Kernel's wrapping is address-only and stays fine.
+  // payload whose legs are spread across chains must be refused here — while
+  // the caller is still preparing, not after the user has approved a bundle
+  // whose later legs cannot execute. Same-chain legs are unaffected, and
+  // Kernel's wrapping is address-only, so it stays fine either way.
   if (
-    input.chainAgnostic &&
+    input.spansMultipleChains &&
     (input.context.validator.kind === 'quorum' || startaleK1)
   ) {
     throw new Error(
-      `Cannot sign a chain-agnostic intent payload with ${
+      `Cannot sign a multi-chain intent payload with ${
         input.context.validator.kind === 'quorum'
           ? 'a quorum validator'
           : "Startale's K1 validator"
-      }: it binds the chain id into the signed hash, so the signature would validate only on chain ${input.chain.id} and fail on the intent's other legs`,
+      }: it binds the chain id into the signed hash, so the signature would validate only on chain ${input.chain.id} and fail on the intent's legs on other chains`,
     )
   }
   const messagePayload = requiresRawHash

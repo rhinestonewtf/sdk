@@ -44,7 +44,7 @@ import type {
   SigningPayloadRegistry,
   SigningTaskTemplate,
 } from '../../signing/types'
-import { isChainAgnosticPayload } from './origin-chain'
+import { signatureSpansMultipleChains } from './origin-chain'
 import type { PreparedIntent } from './types'
 
 export function createIntentSessionSignerInvoker<CompatibilityConfig>(
@@ -94,7 +94,7 @@ export function buildSessionIntentPlanInput<CompatibilityConfig>(
     // session's identity, so one signature cannot stand for legs on other
     // chains. Refuse while preparing rather than sign a bundle whose later legs
     // cannot execute.
-    if (isChainAgnosticPayload(origin.typedData)) {
+    if (signatureSpansMultipleChains(origin.typedData)) {
       throw new Error(
         'Cannot sign a chain-agnostic intent payload with a smart session: a session is enabled per chain, so the signature would validate only on the leg it was resolved against',
       )

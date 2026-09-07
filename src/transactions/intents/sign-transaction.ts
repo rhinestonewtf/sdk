@@ -45,7 +45,7 @@ import type {
   SigningPayloadRegistry,
   SigningTaskTemplate,
 } from '../../signing/types'
-import { isChainAgnosticPayload } from './origin-chain'
+import { signatureSpansMultipleChains } from './origin-chain'
 import {
   buildSessionIntentPlanInput,
   createIntentSessionSignerInvoker,
@@ -409,7 +409,7 @@ function buildIntentPlanInput<CompatibilityConfig>(
     context.validator.kind === 'quorum' &&
     prepared.signing.origins.length > 1 &&
     !prepared.signing.origins.some(({ typedData }) =>
-      isChainAgnosticPayload(typedData),
+      signatureSpansMultipleChains(typedData),
     )
       ? buildQuorumMerkleTree(
           prepared.signing.origins.map((origin) => ({
@@ -454,7 +454,7 @@ function buildIntentPlanInput<CompatibilityConfig>(
         chain: origin.chain,
         context,
         validationHash: origin.id,
-        chainAgnostic: isChainAgnosticPayload(origin.typedData),
+        spansMultipleChains: signatureSpansMultipleChains(origin.typedData),
       })
       payloads[origin.id] = route.material
       stages.push(

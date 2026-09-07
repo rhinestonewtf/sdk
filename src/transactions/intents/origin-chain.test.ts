@@ -2,8 +2,8 @@ import type { TypedDataDefinition } from 'viem'
 import { describe, expect, test } from 'vitest'
 import {
   accountChainIdFromOrigins,
-  isChainAgnosticPayload,
   originChainId,
+  signatureSpansMultipleChains,
 } from './origin-chain'
 
 const verifyingContract = '0x0000000000000000000000000000000000000001' as const
@@ -108,16 +108,49 @@ describe('origin payload chain', () => {
     ).toBe(10)
   })
 
-  test('recognises which payloads one signature has to span', () => {
-    expect(isChainAgnosticPayload(multiChainOps)).toBe(true)
-    expect(isChainAgnosticPayload(singleChainOps)).toBe(false)
-    expect(isChainAgnosticPayload(withDomainChainId(null))).toBe(true)
+  test('recognises how many chains one signature has to reach', () => {
+    expect(signatureSpansMultipleChains(multiChainOps)).toBe(true)
+    expect(signatureSpansMultipleChains(singleChainOps)).toBe(false)
     expect(
-      isChainAgnosticPayload({
+      signatureSpansMultipleChains({
         ...multiChainOps,
         domain: undefined,
       } as unknown as TypedDataDefinition),
     ).toBe(true)
+  })
+
+  test('does not call same-chain legs multi-chain', () => {
+    // `MultiChainOps` does not require its leaves to be on different chains:
+    // same-chain legs with distinct nonces are a valid set, and are how a
+    // bundle splits its destination ops across blocks. The domain is chainless
+    // either way, so the domain alone cannot answer this — and a chain-bound
+    // wrapper validates on every leg of a same-chain set.
+    expect(
+      signatureSpansMultipleChains(
+        withMessage({
+          account: verifyingContract,
+          ops: [
+            { chainId: 8453n, nonce: 1n },
+            { chainId: 8453n, nonce: 2n },
+          ],
+        }),
+      ),
+    ).toBe(false)
+    expect(
+      signatureSpansMultipleChains(withMessage({ ops: [{ chainId: 1n }] })),
+    ).toBe(false)
+    // A payload naming no chain at all reaches nothing, and `originChainId`
+    // refuses it separately — this must not report a span it cannot support.
+    expect(signatureSpansMultipleChains(withMessage({ ops: [] }))).toBe(false)
+    expect(signatureSpansMultipleChains(withMessage({ ops: 'nope' }))).toBe(
+      false,
+    )
+    // An unreadable leaf drops out rather than counting as its own chain.
+    expect(
+      signatureSpansMultipleChains(
+        withMessage({ ops: [{ chainId: 1n }, { chainId: null }] }),
+      ),
+    ).toBe(false)
   })
 
   test('rejects a quote with no origin payloads', () => {

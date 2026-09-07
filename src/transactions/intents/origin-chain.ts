@@ -22,6 +22,24 @@ function readChainId(value: unknown): number | undefined {
   return Number.isFinite(chainId) ? chainId : undefined
 }
 
+function domainChainId(typedData: TypedDataDefinition): unknown {
+  const { chainId } = typedData.domain ?? {}
+  return chainId === null ? undefined : chainId
+}
+
+function leafChainIds(typedData: TypedDataDefinition): number[] {
+  const ops = (typedData.message as { ops?: unknown } | undefined)?.ops
+  if (!Array.isArray(ops)) return []
+  const chainIds: number[] = []
+  for (const leaf of ops) {
+    const chainId = readChainId(
+      (leaf as { chainId?: unknown } | undefined)?.chainId,
+    )
+    if (chainId !== undefined) chainIds.push(chainId)
+  }
+  return chainIds
+}
+
 /**
  * The chain an origin payload is signed for.
  *
@@ -30,8 +48,8 @@ function readChainId(value: unknown): number | undefined {
  * failure lands after the user has already approved the intent.
  */
 export function originChainId(typedData: TypedDataDefinition): number {
-  const fromDomain = typedData.domain?.chainId
-  if (fromDomain !== undefined && fromDomain !== null) {
+  const fromDomain = domainChainId(typedData)
+  if (fromDomain !== undefined) {
     const chainId = readChainId(fromDomain)
     if (chainId === undefined) {
       throw new Error(
@@ -41,10 +59,7 @@ export function originChainId(typedData: TypedDataDefinition): number {
     return chainId
   }
 
-  const ops = (typedData.message as { ops?: unknown } | undefined)?.ops
-  const fromLeaf = Array.isArray(ops)
-    ? readChainId((ops[0] as { chainId?: unknown } | undefined)?.chainId)
-    : undefined
+  const [fromLeaf] = leafChainIds(typedData)
   if (fromLeaf !== undefined) return fromLeaf
 
   throw new Error(
@@ -69,17 +84,23 @@ export function accountChainIdFromOrigins(
 }
 
 /**
- * True when the payload's chain is not bound into the signature — a
- * `MultiChainOps` set, which one signature has to satisfy on every leg.
+ * True when one signature over this payload has to validate on more than one
+ * chain.
  *
- * Callers that wrap the digest with anything chain-specific must refuse such a
- * payload rather than sign it against the leg they happen to be resolving: the
- * resulting signature validates on that chain and fails on the rest, on chain,
- * after the user has approved.
+ * An absent domain chainId is not the test on its own: `MultiChainOps` does not
+ * require its leaves to be on DIFFERENT chains, and same-chain legs with
+ * distinct nonces are a valid set — that is how a bundle splits its destination
+ * ops across blocks. Such a payload is chainless in the domain yet every leg
+ * runs on one chain, so a chain-bound wrapper still validates on all of them.
+ *
+ * Callers that wrap the digest with anything chain-specific must refuse only
+ * the genuinely multi-chain case, where signing against the leg being resolved
+ * gives a signature that fails on the rest — on chain, after the user has
+ * approved.
  */
-export function isChainAgnosticPayload(
+export function signatureSpansMultipleChains(
   typedData: TypedDataDefinition,
 ): boolean {
-  const { chainId } = typedData.domain ?? {}
-  return chainId === undefined || chainId === null
+  if (domainChainId(typedData) !== undefined) return false
+  return new Set(leafChainIds(typedData)).size > 1
 }
