@@ -1,6 +1,7 @@
 import type { Account, Address } from 'viem'
 import type { AccountInitData, AccountInput } from '../accounts/types'
 import type { SerializedIntentInput } from '../clients/orchestrator/public'
+import type { HyperliquidConfig } from '../hypercore/market'
 import type { ModuleInput } from '../modules/types'
 import type { ValidatorInput } from '../modules/validators/types'
 
@@ -39,6 +40,7 @@ interface SdkConstructionInputBase {
   endpointUrl?: string
   useDevContracts?: boolean
   headers?: Record<string, string>
+  hyperliquid?: HyperliquidConfig
 }
 
 export type SdkConstructionInput = SdkConstructionInputBase &

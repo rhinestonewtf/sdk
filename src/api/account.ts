@@ -14,6 +14,7 @@ import { getChainById, getChainReference } from '../chains/catalog'
 import type { DestinationChain } from '../chains/non-evm'
 import { normalizeTokenAddress, validateTokenAddresses } from '../chains/tokens'
 import type {
+  HyperCoreAction,
   OriginSignature,
   Portfolio,
   Quote,
@@ -47,6 +48,7 @@ import {
   MismatchedOwnerSignaturesError,
   QuoteNotInPreparedTransactionError,
 } from '../errors/execution'
+import { resolveHyperCoreAction } from '../hypercore/resolve'
 import {
   ecdsaSignerId,
   webauthnSignerId,
@@ -544,9 +546,16 @@ export function createAccountFacade(
     },
     async prepareTransaction(transaction) {
       const ctx = context('prepare-intent')
+      // Before the quote, not after: the quote's `signData` registers an agent
+      // derived from the action's bytes, so the action has to be concrete here.
+      const hyperCoreAction = await resolveHyperCoreAction({
+        options: transaction.hyperCore,
+        account: account.getAddress(),
+        ...(ctx.sdk.hyperliquid ? { hyperliquid: ctx.sdk.hyperliquid } : {}),
+      })
       const prepared = await workflowsFor(ctx).prepareIntent(
         ctx,
-        adaptTransaction(ctx, transaction),
+        adaptTransaction(ctx, transaction, hyperCoreAction),
       )
       return toPreparedTransactionData(prepared, transaction, preparedIntents)
     },
@@ -1017,6 +1026,7 @@ function narrowQuoterPin(
 export function adaptTransaction(
   context: AccountInvocationContext<Compat>,
   transaction: Transaction,
+  hyperCoreAction?: HyperCoreAction,
 ): IntentInput {
   const destination =
     'chain' in transaction
@@ -1111,7 +1121,7 @@ export function adaptTransaction(
       ...(transaction.auxiliaryFunds
         ? { auxiliaryFunds: transaction.auxiliaryFunds }
         : {}),
-      ...(transaction.hyperCore ? { hyperCore: transaction.hyperCore } : {}),
+      ...(hyperCoreAction ? { hyperCore: { action: hyperCoreAction } } : {}),
     },
     ...(transaction.sourceCalls
       ? {

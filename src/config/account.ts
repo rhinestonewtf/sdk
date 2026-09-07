@@ -18,13 +18,18 @@ import type { NonEvmAddress, NonEvmChain } from '../chains/non-evm'
 import type {
   AppFeeRate,
   AuxiliaryFunds,
-  HyperCoreOptions,
   ProtocolFeeRate,
   SerializedIntentInput,
   SettlementLayerFilter,
   SwapQuoter,
   SwapQuoterFilter,
 } from '../clients/orchestrator/public'
+import type { HyperliquidConfig } from '../hypercore/market'
+import type {
+  ClosePerpRequest,
+  HyperCoreOptions,
+  OpenPerpRequest,
+} from '../hypercore/types'
 import type { SwapVenueFor } from '../modules/validators/smart-sessions/swap/scope'
 
 // Module type discriminator relocated verbatim from the legacy
@@ -867,6 +872,12 @@ interface RhinestoneSDKConfigBase {
   bundler?: BundlerConfig
   paymaster?: PaymasterConfig
   /**
+   * Where and how to reach Hyperliquid, for the reads that resolve a
+   * `hyperCore` transaction option and back `getPerpMarket` and friends.
+   * Defaults to Hyperliquid mainnet over the global `fetch`.
+   */
+  hyperliquid?: HyperliquidConfig
+  /**
    * @internal
    * Optional orchestrator URL override for internal testing - do not use
    */
@@ -1114,13 +1125,13 @@ interface BaseTransaction {
   quoters?: SwapQuoterFilter
   auxiliaryFunds?: AuxiliaryFunds
   /**
-   * A HyperCore action to authorise as part of this transaction, for a
-   * `hyperCorePerp` or `hyperCoreSpot` destination. Build it with the helpers
-   * in `@rhinestone/sdk/hypercore` rather than by hand.
+   * What this transaction does on HyperCore, for a `hyperCorePerp` or
+   * `hyperCoreSpot` destination: `openPerp`, `closePerp`, or a raw `action`.
    *
-   * An action that needs collateral must be paired with `tokenRequests` that
-   * deliver it; one that does not (a reduce-only close, a cancel, a leverage
-   * change) rides a transaction that requests no tokens.
+   * `openPerp` and `closePerp` are resolved while the transaction is prepared —
+   * the asset index, the price and size grids, and the mark to price against
+   * are read from Hyperliquid then, because the action has to be concrete
+   * before the quote commits to it.
    */
   hyperCore?: HyperCoreOptions
   experimental_accountOverride?: {
@@ -1249,6 +1260,10 @@ export type {
   SwapQuoter,
   SwapQuoterFilter,
   SwapScope,
+  ClosePerpRequest,
+  HyperCoreOptions,
+  HyperliquidConfig,
+  OpenPerpRequest,
   TokenRequest,
   TokenRequests,
   TokenSymbol,

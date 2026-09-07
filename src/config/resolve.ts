@@ -240,6 +240,7 @@ export function resolveSdkConfig(
     ...(bundler ? { bundler } : {}),
     ...(paymaster ? { paymaster } : {}),
     headers: input.headers ?? emptyHeaders,
+    ...(input.hyperliquid ? { hyperliquid: input.hyperliquid } : {}),
   }
 }
 
@@ -296,6 +297,7 @@ function materializeSdkInvocationConfig<AuthProvider>(
     ...(bundler ? { bundler } : {}),
     ...(paymaster ? { paymaster } : {}),
     headers: compatibility.headers ?? emptyHeaders,
+    ...(sdk.hyperliquid ? { hyperliquid: sdk.hyperliquid } : {}),
   }
 }
 

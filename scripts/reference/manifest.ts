@@ -276,8 +276,6 @@ export const manifest: Group[] = [
     kind: 'group',
     group: 'HyperCore',
     items: [
-      hyperCore('openPerp'),
-      hyperCore('closePerp'),
       hyperCore('getPerpMarket'),
       hyperCore('getPerpMarkets'),
       hyperCore('getPerpPosition'),

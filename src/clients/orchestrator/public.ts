@@ -290,28 +290,6 @@ type HyperCoreAction =
   | HyperCoreUpdateLeverageAction
   | HyperCoreUpdateIsolatedMarginAction
 
-/**
- * A HyperCore action to authorise as part of an intent.
- *
- * Committed to when the intent is quoted, not when it executes: the agent that
- * authorises the action is derived from the action's own bytes, and the
- * signature covers a registration carrying that agent's address. Nothing about
- * the action can be chosen later — the price included.
- *
- * One action per intent. An agent authorises exactly one, and registering a
- * second evicts the first, so an intent submitted while another is in flight
- * for the same account is refused.
- */
-interface HyperCoreOptions {
-  /**
-   * The action to authorise. One that needs collateral (opening a position)
-   * must be paired with `tokenRequests` that deliver it; one that does not (a
-   * reduce-only close, a cancel, a leverage change) rides an intent that
-   * requests no tokens.
-   */
-  action: HyperCoreAction
-}
-
 const SIG_MODE_EMISSARY = 0
 const SIG_MODE_ERC1271 = 1
 const SIG_MODE_EMISSARY_ERC1271 = 2
@@ -347,7 +325,15 @@ interface IntentOptions {
   quoters?: SwapQuoterFilter
   signatureMode?: SignatureMode
   auxiliaryFunds?: AuxiliaryFunds
-  hyperCore?: HyperCoreOptions
+  /**
+   * The HyperCore action this intent authorises, already concrete.
+   *
+   * Committed to when the intent is quoted, not when it executes: the agent
+   * that authorises the action is derived from the action's own bytes, and the
+   * signature covers a registration carrying that agent's address. Nothing
+   * about it can be chosen later — the price included.
+   */
+  hyperCore?: { action: HyperCoreAction }
 }
 
 interface AppFeeRate {
@@ -698,7 +684,6 @@ export type {
   SwapQuoter,
   SwapQuoterFilter,
   HyperCoreAction,
-  HyperCoreOptions,
   HyperCoreOrder,
   HyperCoreOrderType,
   HyperCoreTimeInForce,
