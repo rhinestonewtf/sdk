@@ -45,6 +45,7 @@ import type {
   SigningPayloadRegistry,
   SigningTaskTemplate,
 } from '../../signing/types'
+import { signatureSpansMultipleChains } from './origin-chain'
 import {
   buildSessionIntentPlanInput,
   createIntentSessionSignerInvoker,
@@ -400,8 +401,16 @@ function buildIntentPlanInput<CompatibilityConfig>(
 ): IntentSigningPlanCreationInput {
   const payloads: Record<Hex, SigningPayloadRegistry[Hex]> = {}
   const stages: IntentSigningStageInput[] = []
+  // A chain-agnostic origin is deliberately excluded: every leaf here is hashed
+  // with its own chain id, so it would be bound to the leg the payload happens
+  // to name. Routing it down the plain branch instead reaches the one refusal
+  // in `resolveAccountTypedDataSigning`.
   const quorumMerkle =
-    context.validator.kind === 'quorum' && prepared.signing.origins.length > 1
+    context.validator.kind === 'quorum' &&
+    prepared.signing.origins.length > 1 &&
+    !prepared.signing.origins.some(({ typedData }) =>
+      signatureSpansMultipleChains(typedData),
+    )
       ? buildQuorumMerkleTree(
           prepared.signing.origins.map((origin) => ({
             account: context.account.address,
@@ -445,6 +454,7 @@ function buildIntentPlanInput<CompatibilityConfig>(
         chain: origin.chain,
         context,
         validationHash: origin.id,
+        spansMultipleChains: signatureSpansMultipleChains(origin.typedData),
       })
       payloads[origin.id] = route.material
       stages.push(

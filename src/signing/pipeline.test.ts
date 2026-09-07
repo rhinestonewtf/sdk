@@ -456,6 +456,67 @@ describe('direct rewritten signing pipelines', () => {
     })
   })
 
+  test('refuses a multi-chain payload where the chain is bound into the hash', () => {
+    // `MultiChainOps` can be one signature over legs on several chains, and a
+    // quorum validator hashes `chain.id` into what the signer signs. Signing it
+    // against the leg being resolved yields a signature that validates there
+    // and fails on the rest — on chain, after the user has approved.
+    const context = signingContext()
+    if (context.validator.kind === 'multi-factor') {
+      throw new Error('Expected atomic validator')
+    }
+    const quorumContext: SigningContext = {
+      ...context,
+      validator: { ...context.validator, kind: 'quorum', thresholdWeight: 1n },
+      validatorCapabilities: {
+        ...context.validatorCapabilities,
+        compatibilityKey: {
+          ...context.validatorCapabilities.compatibilityKey,
+          validatorKind: 'quorum',
+        },
+      },
+    }
+
+    expect(() =>
+      resolveAccountTypedDataSigning({
+        typedData,
+        chain,
+        context: quorumContext,
+        spansMultipleChains: true,
+      }),
+    ).toThrow(/quorum validator/u)
+
+    // The same payload is fine wherever nothing chain-specific wraps it.
+    expect(
+      resolveAccountTypedDataSigning({
+        typedData,
+        chain,
+        context,
+        spansMultipleChains: true,
+      }),
+    ).toBeDefined()
+
+    // And so are same-chain legs under quorum: a chainless domain does not mean
+    // the leaves span chains, and one chain-bound hash covers all of them.
+    expect(
+      resolveAccountTypedDataSigning({
+        typedData,
+        chain,
+        context: quorumContext,
+        spansMultipleChains: false,
+      }),
+    ).toMatchObject({ payloadKind: 'message' })
+
+    // And a per-leg payload still signs under quorum.
+    expect(
+      resolveAccountTypedDataSigning({
+        typedData,
+        chain,
+        context: quorumContext,
+      }),
+    ).toMatchObject({ payloadKind: 'message' })
+  })
+
   test('supports direct typed-data and deployless typed-data routes', async () => {
     const context = signingContext()
     const direct = await signAccountTypedData({
