@@ -90,6 +90,49 @@ describe('account instance surface', () => {
       account.signMessage('hello', mainnet, signers),
     ).rejects.toThrow(SignerNotSupportedError)
   })
+
+  // The declarative `hyperCore` option is resolved inside `prepareTransaction`
+  // and nowhere else, because the quote's `signData` registers an agent derived
+  // from the action's bytes — so the action has to be concrete before the quote,
+  // and this is the seam that makes it so.
+  test('resolves a HyperCore option against Hyperliquid before quoting', async () => {
+    // The stub is the synchronisation point: the quote that follows never
+    // completes offline, and waiting on it would only measure a retry budget.
+    let sawRead: (body: unknown) => void = () => {}
+    const read = new Promise((resolve) => {
+      sawRead = resolve
+    })
+    const sdk = new RhinestoneSDK({
+      apiKey: 'offline',
+      hyperliquid: {
+        fetch: async (_url, init) => {
+          sawRead(JSON.parse(String(init?.body ?? '{}')))
+          return new Response(
+            JSON.stringify([
+              { universe: [{ name: 'BTC', szDecimals: 5, maxLeverage: 40 }] },
+              [{ markPx: '64250.5' }],
+            ]),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          )
+        },
+      },
+    })
+    const account = await sdk.createAccount({
+      owners: { type: 'ecdsa', accounts: [owner] },
+    })
+
+    account
+      .prepareTransaction({
+        sourceChains: [mainnet],
+        targetChain: hyperCorePerp,
+        hyperCore: {
+          openPerp: { asset: 'BTC', direction: 'long', notionalUsd: 100 },
+        },
+      })
+      .catch(() => {})
+
+    expect(await read).toEqual({ type: 'metaAndAssetCtxs' })
+  })
 })
 
 describe('account config compatibility snapshot', () => {
@@ -606,16 +649,24 @@ describe('account boundary adapters', () => {
       grouping: 'na',
     }
 
-    const transaction = adaptTransaction(invocationContext(), {
-      sourceChains: [mainnet],
-      targetChain: hyperCorePerp,
-      hyperCore: { action },
-    })
+    // `prepareTransaction` resolves the declarative form; by this point the
+    // action is already concrete and arrives as its own argument.
+    const transaction = adaptTransaction(
+      invocationContext(),
+      {
+        sourceChains: [mainnet],
+        targetChain: hyperCorePerp,
+        hyperCore: {
+          openPerp: { asset: 'BTC', direction: 'long', notionalUsd: 100 },
+        },
+      },
+      action,
+    )
 
     expect(transaction.options?.hyperCore).toEqual({ action })
   })
 
-  test('leaves hyperCore off the options when the transaction sets none', () => {
+  test('leaves hyperCore off the options when nothing resolved', () => {
     const transaction = adaptTransaction(invocationContext(), {
       chain: mainnet,
       calls: [],

@@ -718,6 +718,9 @@ describe('account invocation materialization', () => {
     }
     compatibility.headers = { replacement: 'true' }
     compatibility.endpointUrl = 'https://replacement-orchestrator.test'
+    compatibility.hyperliquid = {
+      apiUrl: 'https://replacement-hyperliquid.test',
+    }
     compatibility.useDevContracts = true
     compatibility.owners = {
       type: 'ecdsa',
@@ -746,6 +749,10 @@ describe('account invocation materialization', () => {
         urls: compatibility.provider.urls,
       },
       headers: compatibility.headers,
+      // Read off the compatibility object like every other SDK-scoped option,
+      // not off the instance it was captured from — otherwise a per-account
+      // replacement is typed but silently ignored.
+      hyperliquid: compatibility.hyperliquid,
     })
     expect(context.account.profile).toBe('current-v2')
     expect(

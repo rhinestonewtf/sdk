@@ -1,4 +1,4 @@
-export type { HyperCoreInfoOptions, PerpMarket, PerpPosition } from './market'
+export type { HyperliquidConfig, PerpMarket, PerpPosition } from './market'
 // biome-ignore lint/performance/noBarrelFile: published hypercore subpath
 export {
   getPerpMarket,
@@ -6,5 +6,8 @@ export {
   getPerpPosition,
   getPerpPositions,
 } from './market'
-export type { ClosePerpParams, OpenPerpParams } from './orders'
-export { closePerp, openPerp } from './orders'
+export type {
+  ClosePerpRequest,
+  HyperCoreOptions,
+  OpenPerpRequest,
+} from './types'

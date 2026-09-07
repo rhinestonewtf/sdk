@@ -60,13 +60,15 @@ enforced by `scripts/architecture/check.ts`:
   paymaster. Domain and workflow code imports only the stable `port.ts`,
   `types.ts`, `errors.ts`, and `public.ts` boundaries; concrete clients are
   injected at `api/compose.ts`.
-- **`hypercore/`** — a published subpath (`@rhinestone/sdk/hypercore`) that
-  builds the Hyperliquid actions an intent carries in `hyperCore.action`. The
-  builders name an asset by ticker and read Hyperliquid's public `info` endpoint
-  themselves for the index, grids and mark an order needs; that read is the only
-  place the SDK talks to a service other than Rhinestone's own, and it takes an
-  injectable `fetch` rather than a composed client because nothing else in the
-  SDK depends on it.
+- **`hypercore/`** — the Hyperliquid half of a HyperCore transaction.
+  `resolve.ts` turns the declarative `hyperCore.openPerp` / `hyperCore.closePerp`
+  on a transaction into the concrete action the orchestrator quotes against;
+  `orders.ts` is the pure order arithmetic it calls, and `market.ts` the reads it
+  needs. Those reads are the only place the SDK talks to a service other than
+  Rhinestone's own; they take an injectable `fetch` (the `hyperliquid` SDK config
+  block) rather than a composed client because nothing else in the SDK depends on
+  them. `index.ts` publishes only the reads, at
+  `@rhinestone/sdk/hypercore`.
 - **`actions/`, `errors/`, `utils/`, `smart-sessions/`, `jwt-server/`** —
   published subpath surfaces. `actions/` are standalone builders; the rest are
   compatibility barrels re-exporting owning symbols, except `jwt-server/`, a
@@ -145,3 +147,8 @@ authorizes a single `execute` per UserOperation, so the calls from
 | Bundler / paymaster / RPC | ERC-4337 preparation and submission     | `clients/bundler/`, `clients/paymaster/`, `clients/rpc/` (viem peer) |
 | JWT backend             | Mints short-lived auth tokens (JWT mode)  | `jwt-server/`                |
 | Hyperliquid `info`      | Perp market metadata and open positions   | HTTP (`hypercore/market.ts`) |
+
+`prepareTransaction` is the one execution path that reaches Hyperliquid, and
+only when the transaction carries a `hyperCore` option that needs resolving. It
+happens before the quote because the quote's `signData` registers an agent
+derived from the action's bytes, so the action cannot be completed afterwards.

@@ -1,18 +1,13 @@
 import { base, hyperEvm } from 'viem/chains'
 import type { WireQuoteRequest } from '../../src/clients/orchestrator/wire'
 import type { PerpMarket, PerpPosition } from '../../src/hypercore/index'
-import {
-  closePerp,
-  getPerpMarkets,
-  getPerpPosition,
-  openPerp,
-} from '../../src/hypercore/index'
+import { getPerpMarkets, getPerpPosition } from '../../src/hypercore/index'
 import type {
   HyperCoreAction,
-  HyperCoreOrderAction,
+  RhinestoneAccountConfig,
   Transaction,
 } from '../../src/index'
-import { hyperCorePerp } from '../../src/index'
+import { hyperCorePerp, RhinestoneSDK } from '../../src/index'
 
 type AssignableTo<Narrow, Wide> = [Narrow] extends [Wide] ? true : never
 
@@ -30,30 +25,7 @@ const actionMatchesWire: AssignableTo<HyperCoreAction, WireHyperCoreAction> =
 
 const account = '0x1111111111111111111111111111111111111111' as const
 
-// One await, and the asset is named once — there is no market or position
-// object for a caller to fetch, hold, or pair with the wrong asset.
-const opened: Promise<HyperCoreOrderAction> = openPerp({
-  asset: 'BTC',
-  direction: 'long',
-  notionalUsd: 100,
-})
-
-const closed: Promise<HyperCoreOrderAction> = closePerp({
-  asset: 'BTC',
-  account,
-})
-
-// Sizing an open is one or the other, never both and never neither.
-// @ts-expect-error — `notionalUsd` and `size` are mutually exclusive
-openPerp({ asset: 'BTC', direction: 'long', notionalUsd: 100, size: '0.001' })
-// @ts-expect-error — one of them is required
-openPerp({ asset: 'BTC', direction: 'long' })
-
-// The reads are still reachable for what they are actually for.
-const markets: Promise<PerpMarket[]> = getPerpMarkets()
-const position: Promise<PerpPosition | null> = getPerpPosition(account, 'BTC')
-
-// An action that delivers its own collateral.
+// Open: declarative, and the collateral rides the same transaction.
 const openTransaction: Transaction = {
   sourceChains: [base],
   targetChain: hyperCorePerp,
@@ -63,93 +35,85 @@ const openTransaction: Transaction = {
       amount: 25000000n,
     },
   ],
-  hyperCore: { action: await opened },
+  hyperCore: {
+    openPerp: { asset: 'BTC', direction: 'long', notionalUsd: 100 },
+  },
 }
 
-// A close needs none, so it rides a transaction that requests no tokens — but
+// Close: no tokens, no account address — `prepareTransaction` knows both. It
 // still names a source chain, since HyperCore hosts no account of its own.
 const closeTransaction: Transaction = {
   sourceChains: [hyperEvm],
   targetChain: hyperCorePerp,
-  hyperCore: { action: await closed },
+  hyperCore: { closePerp: { asset: 'BTC' } },
 }
 
-// Every action variant is expressible without the builders, and the `type`
-// discriminant narrows to exactly one of them.
-const rawActions: HyperCoreAction[] = [
-  {
-    type: 'order',
-    orders: [
-      {
-        a: 0,
-        b: true,
-        p: '64572',
-        s: '0.00155',
-        r: false,
-        t: { limit: { tif: 'Ioc' } },
-        c: '0x1234567890abcdef1234567890abcdef',
-      },
-    ],
-    grouping: 'na',
-    builder: { b: '0x0000000000000000000000000000000000000002', f: 10 },
+// The escape hatch, for the action types the two above do not cover.
+const rawTransaction: Transaction = {
+  sourceChains: [hyperEvm],
+  targetChain: hyperCorePerp,
+  hyperCore: {
+    action: { type: 'updateLeverage', asset: 0, isCross: true, leverage: 5 },
   },
-  { type: 'cancel', cancels: [{ a: 0, o: 1 }] },
-  {
-    type: 'cancelByCloid',
-    cancels: [{ asset: 0, cloid: '0x1234567890abcdef1234567890abcdef' }],
+}
+
+// Exactly one of the three, never two.
+const bothForms: Transaction = {
+  sourceChains: [hyperEvm],
+  targetChain: hyperCorePerp,
+  hyperCore: {
+    openPerp: { asset: 'BTC', direction: 'long', notionalUsd: 100 },
+    // @ts-expect-error — `openPerp`, `closePerp` and `action` are exclusive
+    closePerp: { asset: 'BTC' },
   },
-  {
-    type: 'modify',
-    oid: 1,
-    order: {
-      a: 0,
-      b: false,
-      p: '64000',
-      s: '0.001',
-      r: true,
-      t: { trigger: { isMarket: true, triggerPx: '63000', tpsl: 'sl' } },
+}
+
+// Sizing an open is one or the other, never both and never neither.
+const bothSizes: Transaction = {
+  sourceChains: [base],
+  targetChain: hyperCorePerp,
+  hyperCore: {
+    openPerp: {
+      asset: 'BTC',
+      direction: 'long',
+      notionalUsd: 100,
+      // @ts-expect-error — `notionalUsd` and `size` are mutually exclusive
+      size: '0.001',
     },
-    a: true,
   },
-  {
-    type: 'batchModify',
-    modifies: [
-      {
-        oid: '0x1234567890abcdef1234567890abcdef',
-        order: {
-          a: 0,
-          b: true,
-          p: '64000',
-          s: '0.001',
-          r: false,
-          t: { limit: { tif: 'Gtc' } },
-        },
-      },
-    ],
-  },
-  { type: 'updateLeverage', asset: 0, isCross: true, leverage: 5 },
-  { type: 'updateIsolatedMargin', asset: 0, isBuy: true, ntli: 1000000 },
-]
-
-const noFalseAdditionalFlag: HyperCoreAction = {
-  type: 'modify',
-  oid: 1,
-  order: {
-    a: 0,
-    b: true,
-    p: '64000',
-    s: '0.001',
-    r: false,
-    t: { limit: { tif: 'Ioc' } },
-  },
-  // @ts-expect-error — `a: false` is not a legal value; omit it for the default
-  a: false,
 }
+
+const noSize: Transaction = {
+  sourceChains: [base],
+  targetChain: hyperCorePerp,
+  hyperCore: {
+    // @ts-expect-error — one of `notionalUsd` or `size` is required
+    openPerp: { asset: 'BTC', direction: 'long' },
+  },
+}
+
+// Where the reads reach Hyperliquid is SDK config, not a per-call argument.
+const configured: RhinestoneAccountConfig & { hyperliquid?: unknown } = {
+  account: { type: 'nexus', version: '1.2.0' },
+  owners: { type: 'ecdsa', accounts: [] },
+}
+const sdk = new RhinestoneSDK({
+  apiKey: 'test',
+  hyperliquid: { apiUrl: 'https://api.hyperliquid-testnet.xyz' },
+})
+
+// The reads stay reachable for what they are actually for.
+const markets: Promise<PerpMarket[]> = getPerpMarkets()
+const position: Promise<PerpPosition | null> = getPerpPosition(account, 'BTC')
 
 void actionMatchesWire
 void openTransaction
+void closeTransaction
+void rawTransaction
+void bothForms
+void bothSizes
+void noSize
+void configured
+void sdk
 void markets
 void position
-void closeTransaction
-void rawActions
-void noFalseAdditionalFlag

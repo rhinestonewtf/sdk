@@ -2,9 +2,10 @@
 // needs and cannot be derived: the asset INDEX an order carries, the size
 // precision it must round to, and the mark to price against.
 //
-// `openPerp` and `closePerp` do these reads themselves. What is exported here is
-// for the questions a caller asks BEFORE building an order: which markets exist,
-// what leverage one allows, whether there is a position to close at all.
+// `prepareTransaction` does these reads itself when a transaction carries
+// `hyperCore.openPerp` or `hyperCore.closePerp`. What is exported here is for the
+// questions a caller asks BEFORE sending one: which markets exist, what leverage
+// one allows, whether there is a position to close at all.
 
 import type { Address } from 'viem'
 import { HyperCoreInfoRequestError, UnknownPerpAssetError } from './errors'
@@ -17,8 +18,14 @@ type FetchPort = (
   init?: RequestInit,
 ) => Promise<Response>
 
-/** Where and how to reach Hyperliquid's info endpoint. */
-interface HyperCoreInfoOptions {
+/**
+ * Where and how to reach Hyperliquid.
+ *
+ * Set it on the SDK config to point every read at a different endpoint — a
+ * testnet, or a proxy of your own — or to supply a `fetch` with your own
+ * timeout, retry or instrumentation policy.
+ */
+interface HyperliquidConfig {
   /** Base API URL. Defaults to Hyperliquid mainnet. */
   apiUrl?: string
   /** Fetch implementation. Defaults to the global one. */
@@ -83,7 +90,7 @@ interface ClearinghouseState {
 
 async function readInfo<T>(
   body: unknown,
-  options: HyperCoreInfoOptions | undefined,
+  options: HyperliquidConfig | undefined,
 ): Promise<T> {
   const url = `${options?.apiUrl ?? HYPERLIQUID_API_URL}/info`
   const request = options?.fetch ?? globalThis.fetch
@@ -114,7 +121,7 @@ async function readInfo<T>(
  * @see {@link getPerpMarket}
  */
 async function getPerpMarkets(
-  options?: HyperCoreInfoOptions,
+  options?: HyperliquidConfig,
 ): Promise<PerpMarket[]> {
   const [meta, contexts] = await readInfo<MetaAndAssetCtxs>(
     { type: 'metaAndAssetCtxs' },
@@ -135,9 +142,9 @@ async function getPerpMarkets(
 /**
  * Read one Hyperliquid perpetual market by ticker.
  *
- * {@link openPerp} does this read itself, so reach for this when you need the
- * market's own facts — its mark to quote a size against, or its `maxLeverage`
- * before offering one.
+ * A transaction carrying `hyperCore.openPerp` does this read itself, so reach
+ * for this when you need the market's own facts — its mark to quote a size
+ * against, or its `maxLeverage` before offering one.
  *
  * @param asset ticker as Hyperliquid names it — the coin alone, e.g. `BTC`
  * @param options where to reach Hyperliquid's info endpoint
@@ -146,11 +153,11 @@ async function getPerpMarkets(
  * @example
  * const market = await getPerpMarket('BTC')
  * const maxNotional = Number(market.markPx) * market.maxLeverage
- * @see {@link openPerp}
+ * @see {@link getPerpMarkets}
  */
 async function getPerpMarket(
   asset: string,
-  options?: HyperCoreInfoOptions,
+  options?: HyperliquidConfig,
 ): Promise<PerpMarket> {
   const markets = await getPerpMarkets(options)
   const market = markets.find((entry) => entry.asset === asset)
@@ -169,7 +176,7 @@ async function getPerpMarket(
  */
 async function getPerpPositions(
   account: Address,
-  options?: HyperCoreInfoOptions,
+  options?: HyperliquidConfig,
 ): Promise<PerpPosition[]> {
   const state = await readInfo<ClearinghouseState>(
     { type: 'clearinghouseState', user: account },
@@ -192,8 +199,9 @@ async function getPerpPositions(
 /**
  * Read an account's open position on one Hyperliquid perpetual market.
  *
- * {@link closePerp} does this read itself and throws when there is nothing to
- * close, so this is the check to make before offering a close at all.
+ * A transaction carrying `hyperCore.closePerp` does this read itself and is
+ * rejected when there is nothing to close, so this is the check to make before
+ * offering a close at all.
  *
  * @param account the account holding the position
  * @param asset ticker as Hyperliquid names it, e.g. `BTC`
@@ -204,16 +212,16 @@ async function getPerpPositions(
  * if (position) {
  *   // offer a close
  * }
- * @see {@link closePerp}
+ * @see {@link getPerpPositions}
  */
 async function getPerpPosition(
   account: Address,
   asset: string,
-  options?: HyperCoreInfoOptions,
+  options?: HyperliquidConfig,
 ): Promise<PerpPosition | null> {
   const positions = await getPerpPositions(account, options)
   return positions.find((position) => position.asset === asset) ?? null
 }
 
 export { getPerpMarket, getPerpMarkets, getPerpPosition, getPerpPositions }
-export type { HyperCoreInfoOptions, PerpMarket, PerpPosition }
+export type { HyperliquidConfig, PerpMarket, PerpPosition }
