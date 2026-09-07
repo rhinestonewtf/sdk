@@ -49,6 +49,7 @@ export function mapIntentRequestToWire(
     options: {
       ...input.options,
       settlementLayers: mapSettlementLayers(input.options.settlementLayers),
+      quoters: mapQuoters(input.options.quoters),
       signatureMode: input.options.signatureMode as
         | NonNullable<WireQuoteRequest['options']>['signatureMode']
         | undefined,
@@ -372,6 +373,14 @@ function mapSettlementLayers(
 ): NonNullable<WireQuoteRequest['options']>['settlementLayers'] {
   // Keep the legacy public string arrays while checking the rest of the wire shape.
   return input as NonNullable<WireQuoteRequest['options']>['settlementLayers']
+}
+
+function mapQuoters(
+  input: OrchestratorIntentRequest['options']['quoters'],
+): NonNullable<WireQuoteRequest['options']>['quoters'] {
+  // Same widening as `mapSettlementLayers`: the port keeps `string[]` so it does
+  // not depend on the venue enum, and the wire narrows it.
+  return input as NonNullable<WireQuoteRequest['options']>['quoters']
 }
 
 function mapChainRecord<T>(

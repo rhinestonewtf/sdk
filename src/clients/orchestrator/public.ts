@@ -137,6 +137,159 @@ type SwapQuoter =
 // and fails closed, exactly as an empty settlement-layer filter does.
 type SwapQuoterFilter = { include: SwapQuoter[] } | { exclude: SwapQuoter[] }
 
+// ---------------------------------------------------------------------------
+// HyperCore actions
+//
+// A pass-through of Hyperliquid's own L1 action shapes, spelled out rather than
+// typed `unknown`, because the bytes ARE the authorisation: the agent allowed to
+// place the order is recovered from a signature over the encoded action, so a
+// misspelled or extra field forges an agent that can authorise nothing. The
+// orchestrator rejects an unknown key for the same reason.
+//
+// Single-letter keys are Hyperliquid's, not ours.
+// ---------------------------------------------------------------------------
+
+/**
+ * Time in force.
+ *
+ * `Ioc` fills what it can and cancels the rest, which is how a market order is
+ * expressed here — Hyperliquid has no market order type. `Alo` is post-only,
+ * `Gtc` rests on the book.
+ *
+ * Prefer `Ioc` for an order whose collateral the intent delivers: a resting
+ * order leaves the account holding USDC and no position, and the agent that
+ * could have cancelled it authorised the order and nothing else.
+ */
+type HyperCoreTimeInForce = 'Alo' | 'Ioc' | 'Gtc'
+
+/** A plain limit order. */
+interface HyperCoreLimitOrderType {
+  limit: { tif: HyperCoreTimeInForce }
+}
+
+/** A take-profit or stop-loss order, triggered at `triggerPx`. */
+interface HyperCoreTriggerOrderType {
+  trigger: {
+    isMarket: boolean
+    /** Trigger price, as a plain decimal string. */
+    triggerPx: string
+    /** Take-profit or stop-loss. */
+    tpsl: 'tp' | 'sl'
+  }
+}
+
+type HyperCoreOrderType = HyperCoreLimitOrderType | HyperCoreTriggerOrderType
+
+/** One order, in Hyperliquid's wire shape. */
+interface HyperCoreOrder {
+  /**
+   * Asset index — an index, not a ticker. Perps use the position in the `meta`
+   * universe, spot uses `10000 + index` from `spotMeta`; an index resolved
+   * against the wrong universe places a valid order in the wrong market.
+   */
+  a: number
+  /** Buy (`true`) or sell (`false`). */
+  b: boolean
+  /**
+   * Limit price, as a plain decimal string. At most 5 significant figures and
+   * at most `6 - szDecimals` decimals for a perp; Hyperliquid refuses the rest.
+   *
+   * The price is fixed when you sign, and an intent that bridges collateral to
+   * HyperCore takes ~30s to deliver, so price it to still cross after that
+   * move — otherwise the order is refused with the funds already delivered.
+   */
+  p: string
+  /** Size in units of the asset, to at most the asset's `szDecimals`. */
+  s: string
+  /**
+   * Reduce-only. `true` is how a position is closed — pair it with an intent
+   * that requests no tokens, since closing needs no delivered collateral.
+   */
+  r: boolean
+  t: HyperCoreOrderType
+  /**
+   * Optional client order id — 128-bit hex. The exchange echoes it back, so it
+   * is the handle that correlates a fill with the intent that placed it.
+   */
+  c?: Hex
+}
+
+/** Place one or more orders. */
+interface HyperCoreOrderAction {
+  type: 'order'
+  orders: HyperCoreOrder[]
+  /** `na` for a plain order; the TP/SL groupings bracket a position. */
+  grouping: 'na' | 'normalTpsl' | 'positionTpsl'
+  /** Builder fee recipient and rate, in tenths of a basis point. */
+  builder?: { b: Address; f: number }
+}
+
+/** Cancel resting orders by order id. */
+interface HyperCoreCancelAction {
+  type: 'cancel'
+  cancels: { a: number; o: number }[]
+  f?: boolean
+}
+
+/** Cancel resting orders by client order id. */
+interface HyperCoreCancelByCloidAction {
+  type: 'cancelByCloid'
+  cancels: { asset: number; cloid: Hex }[]
+  f?: boolean
+}
+
+/** Replace a resting order. */
+interface HyperCoreModifyAction {
+  type: 'modify'
+  oid: number | string
+  order: HyperCoreOrder
+  /**
+   * Place the replacement even if the cancel failed. Omit it for the default —
+   * Hyperliquid rejects an action encoded with `a: false`, so there is no false
+   * value to pass.
+   */
+  a?: true
+}
+
+/** Replace several resting orders. */
+interface HyperCoreBatchModifyAction {
+  type: 'batchModify'
+  modifies: { oid: number | string; order: HyperCoreOrder }[]
+  a?: true
+}
+
+/** Switch an asset between cross and isolated margin, and set its leverage. */
+interface HyperCoreUpdateLeverageAction {
+  type: 'updateLeverage'
+  asset: number
+  /** Cross margin (`true`) or isolated (`false`). */
+  isCross: boolean
+  /**
+   * New leverage, capped by the asset's own maximum. Set it before the intent
+   * that opens the position — applied afterwards it does not resize one.
+   */
+  leverage: number
+}
+
+/** Add or remove isolated margin on an open position. */
+interface HyperCoreUpdateIsolatedMarginAction {
+  type: 'updateIsolatedMargin'
+  asset: number
+  isBuy: boolean
+  /** Margin to add (positive) or remove (negative), in USDC with 6 decimals. */
+  ntli: number
+}
+
+/** A Hyperliquid L1 action, passed through as Hyperliquid defines it. */
+type HyperCoreAction =
+  | HyperCoreOrderAction
+  | HyperCoreCancelAction
+  | HyperCoreCancelByCloidAction
+  | HyperCoreModifyAction
+  | HyperCoreBatchModifyAction
+  | HyperCoreUpdateLeverageAction
+  | HyperCoreUpdateIsolatedMarginAction
+
 const SIG_MODE_EMISSARY = 0
 const SIG_MODE_ERC1271 = 1
 const SIG_MODE_EMISSARY_ERC1271 = 2
@@ -172,6 +325,15 @@ interface IntentOptions {
   quoters?: SwapQuoterFilter
   signatureMode?: SignatureMode
   auxiliaryFunds?: AuxiliaryFunds
+  /**
+   * The HyperCore action this intent authorises, already concrete.
+   *
+   * Committed to when the intent is quoted, not when it executes: the agent
+   * that authorises the action is derived from the action's own bytes, and the
+   * signature covers a registration carrying that agent's address. Nothing
+   * about it can be chosen later — the price included.
+   */
+  hyperCore?: { action: HyperCoreAction }
 }
 
 interface AppFeeRate {
@@ -521,6 +683,17 @@ export type {
   SettlementLayerFilter,
   SwapQuoter,
   SwapQuoterFilter,
+  HyperCoreAction,
+  HyperCoreOrder,
+  HyperCoreOrderType,
+  HyperCoreTimeInForce,
+  HyperCoreOrderAction,
+  HyperCoreCancelAction,
+  HyperCoreCancelByCloidAction,
+  HyperCoreModifyAction,
+  HyperCoreBatchModifyAction,
+  HyperCoreUpdateLeverageAction,
+  HyperCoreUpdateIsolatedMarginAction,
   SignatureMode,
   IntentInput,
   SerializedIntentInput,

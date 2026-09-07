@@ -2,7 +2,11 @@ import { privateKeyToAccount } from 'viem/accounts'
 import { mainnet, optimism } from 'viem/chains'
 import { describe, expect, test, vi } from 'vitest'
 import { toEvmChainReference } from '../chains/caip2'
-import type { SerializedIntentInput } from '../clients/orchestrator/public'
+import { hyperCorePerp } from '../chains/non-evm'
+import type {
+  HyperCoreOrderAction,
+  SerializedIntentInput,
+} from '../clients/orchestrator/public'
 import type { LegacyAccountConfig } from '../config/legacy'
 import { resolveAccountConfig, resolveSdkConfig } from '../config/resolve'
 import type { AccountInvocationContext } from '../config/resolved'
@@ -85,6 +89,49 @@ describe('account instance surface', () => {
     await expect(
       account.signMessage('hello', mainnet, signers),
     ).rejects.toThrow(SignerNotSupportedError)
+  })
+
+  // The declarative `hyperCore` option is resolved inside `prepareTransaction`
+  // and nowhere else, because the quote's `signData` registers an agent derived
+  // from the action's bytes — so the action has to be concrete before the quote,
+  // and this is the seam that makes it so.
+  test('resolves a HyperCore option against Hyperliquid before quoting', async () => {
+    // The stub is the synchronisation point: the quote that follows never
+    // completes offline, and waiting on it would only measure a retry budget.
+    let sawRead: (body: unknown) => void = () => {}
+    const read = new Promise((resolve) => {
+      sawRead = resolve
+    })
+    const sdk = new RhinestoneSDK({
+      apiKey: 'offline',
+      hyperliquid: {
+        fetch: async (_url, init) => {
+          sawRead(JSON.parse(String(init?.body ?? '{}')))
+          return new Response(
+            JSON.stringify([
+              { universe: [{ name: 'BTC', szDecimals: 5, maxLeverage: 40 }] },
+              [{ markPx: '64250.5' }],
+            ]),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          )
+        },
+      },
+    })
+    const account = await sdk.createAccount({
+      owners: { type: 'ecdsa', accounts: [owner] },
+    })
+
+    account
+      .prepareTransaction({
+        sourceChains: [mainnet],
+        targetChain: hyperCorePerp,
+        hyperCore: {
+          openPerp: { asset: 'BTC', direction: 'long', notionalUsd: 100 },
+        },
+      })
+      .catch(() => {})
+
+    expect(await read).toEqual({ type: 'metaAndAssetCtxs' })
   })
 })
 
@@ -581,6 +628,53 @@ describe('account boundary adapters', () => {
       }),
     )
     expect(submitUserOperation).toHaveBeenCalledOnce()
+  })
+
+  // The orchestrator reads the action from `options.hyperCore`, and the agent
+  // that may place the order is derived from its bytes — so a field-by-field
+  // rebuild that forgets it here quotes an intent that authorises nothing.
+  test('carries a HyperCore action into the intent options', () => {
+    const action: HyperCoreOrderAction = {
+      type: 'order',
+      orders: [
+        {
+          a: 0,
+          b: true,
+          p: '64572',
+          s: '0.00155',
+          r: false,
+          t: { limit: { tif: 'Ioc' } },
+        },
+      ],
+      grouping: 'na',
+    }
+
+    // `prepareTransaction` resolves the declarative form; by this point the
+    // action is already concrete and arrives as its own argument.
+    const transaction = adaptTransaction(
+      invocationContext(),
+      {
+        sourceChains: [mainnet],
+        targetChain: hyperCorePerp,
+        hyperCore: {
+          openPerp: { asset: 'BTC', direction: 'long', notionalUsd: 100 },
+        },
+      },
+      action,
+    )
+
+    expect(transaction.options?.hyperCore).toEqual({ action })
+  })
+
+  test('leaves hyperCore off the options when nothing resolved', () => {
+    const transaction = adaptTransaction(invocationContext(), {
+      chain: mainnet,
+      calls: [],
+    })
+
+    expect(transaction.options && 'hyperCore' in transaction.options).toBe(
+      false,
+    )
   })
 
   test('projects smart-account recipients instead of dropping them', () => {

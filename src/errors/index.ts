@@ -49,6 +49,14 @@ import {
   ValidationError,
 } from '../clients/orchestrator/errors'
 import {
+  HyperCoreError,
+  HyperCoreInfoRequestError,
+  isHyperCoreError,
+  NoOpenPerpPositionError,
+  PerpOrderTooSmallError,
+  UnknownPerpAssetError,
+} from '../hypercore/errors'
+import {
   Eip7702InitSignatureRequiredError,
   ExecutionError,
   IndependentSigningNotSupportedError,
@@ -129,4 +137,11 @@ export {
   // Registry (SDK-local validation)
   UnsupportedChainError,
   UnsupportedTokenError,
+  // HyperCore (SDK-local validation, and Hyperliquid's info endpoint)
+  isHyperCoreError,
+  HyperCoreError,
+  HyperCoreInfoRequestError,
+  NoOpenPerpPositionError,
+  PerpOrderTooSmallError,
+  UnknownPerpAssetError,
 }

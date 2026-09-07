@@ -15,6 +15,7 @@ import type { IntentSigningInput } from '../../signing/intent-plans/types'
 import { signingTopology } from '../../signing/plan'
 import { projectIntentAccount } from './account'
 import { normalizeIntentQuote } from './normalize'
+import { originChainId } from './origin-chain'
 import { selectIntentQuote } from './quotes'
 import { buildIntentRequest } from './request'
 import { prepareIntentSessions } from './sessions'
@@ -217,7 +218,7 @@ export function buildIntentSigningInput(
         }
   const origins = quote.signData.origin.map((typedData, index) => ({
     id: hashTypedData(typedData),
-    chain: toEvmChainReference(Number(typedData.domain?.chainId)),
+    chain: toEvmChainReference(originChainId(typedData)),
     role: 'origin' as const,
     typedData,
     usage: 'intent-origin' as const,

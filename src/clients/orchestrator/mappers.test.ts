@@ -160,3 +160,49 @@ describe('mapIntentRequestToWire — quoter pin', () => {
     expect(wire.options?.quoters).toBeUndefined()
   })
 })
+
+describe('mapIntentRequestToWire — HyperCore action', () => {
+  const base = {
+    account: { address, accountType: 'ERC7579' },
+    destinationChainId: 1337002,
+    tokenRequests: [],
+    options: {},
+  } as never
+
+  const action = {
+    type: 'order',
+    orders: [
+      {
+        a: 0,
+        b: true,
+        p: '64572',
+        s: '0.00155',
+        r: false,
+        t: { limit: { tif: 'Ioc' } },
+      },
+    ],
+    grouping: 'na',
+  }
+
+  // The agent authorising the action is derived from these bytes, so the mapper
+  // reaching in to normalise or reorder anything would forge a different agent
+  // than the one the caller's signature registers.
+  test('carries the action to the wire byte for byte', () => {
+    const wire = mapIntentRequestToWire({
+      ...(base as object),
+      options: { hyperCore: { action } },
+    } as never) as { options?: { hyperCore?: unknown } }
+
+    expect(wire.options?.hyperCore).toEqual({ action })
+    expect(JSON.stringify(wire.options?.hyperCore)).toBe(
+      JSON.stringify({ action }),
+    )
+  })
+
+  test('omits it entirely when unset', () => {
+    const wire = mapIntentRequestToWire(base) as {
+      options?: { hyperCore?: unknown }
+    }
+    expect(wire.options?.hyperCore).toBeUndefined()
+  })
+})

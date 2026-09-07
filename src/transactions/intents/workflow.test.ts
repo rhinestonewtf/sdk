@@ -462,6 +462,47 @@ describe('intent workflow', () => {
     )
   })
 
+  test('signs a chain-agnostic multi-leg origin payload', () => {
+    // `MultiChainOps` is one signature over every IntentExecutor leg, so its
+    // domain carries no chainId and the quote carries ONE origin entry for a
+    // bundle of several legs. Deriving the chain from the domain gave
+    // `Invalid chain id: NaN` and failed the intent after the user's approval.
+    const intentQuote = quote()
+    const multiChainOps = {
+      domain: {
+        name: 'IntentExecutor',
+        version: 'v0.0.1',
+        verifyingContract: address,
+      },
+      types: {
+        MultiChainOps: [
+          { name: 'account', type: 'address' },
+          { name: 'ops', type: 'ChainOps[]' },
+        ],
+        ChainOps: [
+          { name: 'chainId', type: 'uint256' },
+          { name: 'nonce', type: 'uint256' },
+        ],
+      },
+      primaryType: 'MultiChainOps',
+      message: {
+        account: address,
+        ops: [
+          { chainId: 1n, nonce: 1n },
+          { chainId: 8453n, nonce: 2n },
+        ],
+      },
+    } as const
+
+    const signing = buildIntentSigningInput(runtime(), {
+      ...intentQuote,
+      signData: { ...intentQuote.signData, origin: [multiChainOps] },
+    })
+
+    expect(signing.origins).toHaveLength(1)
+    expect(signing.origins[0].chain.id).toBe(1)
+  })
+
   test('does not sign an ordinary target execution payload', () => {
     const intentQuote = quote()
     const targetExecution = {

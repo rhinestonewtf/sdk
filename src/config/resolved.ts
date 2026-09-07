@@ -1,6 +1,7 @@
 import type { Account, Address } from 'viem'
 import type { AccountDefinition, AccountInitData } from '../accounts/types'
 import type { SerializedIntentInput } from '../clients/orchestrator/public'
+import type { HyperliquidConfig } from '../hypercore/market'
 import type { ConfiguredModule } from '../modules/types'
 import type { ResolvedValidatorDefinition } from '../modules/validators/types'
 
@@ -55,6 +56,7 @@ export interface ResolvedSdkConfig {
   readonly bundler?: ResolvedServiceEndpoint
   readonly paymaster?: ResolvedServiceEndpoint
   readonly headers: Readonly<Record<string, string>>
+  readonly hyperliquid?: HyperliquidConfig
 }
 
 export type ResolvedAddressSelection<Profile extends string> =
