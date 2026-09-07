@@ -29,6 +29,7 @@ const publishedBarrels = new Set([
   'src/index.ts',
   'src/actions/index.ts',
   'src/errors/index.ts',
+  'src/hypercore/index.ts',
   'src/jwt-server/index.ts',
   'src/smart-sessions/index.ts',
   'src/utils/index.ts',

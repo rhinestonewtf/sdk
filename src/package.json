@@ -51,6 +51,10 @@
       "types": "./dist/src/actions/smart-sessions.d.ts",
       "import": "./dist/src/actions/smart-sessions.js"
     },
+    "./hypercore": {
+      "types": "./dist/src/hypercore/index.d.ts",
+      "import": "./dist/src/hypercore/index.js"
+    },
     "./errors": {
       "types": "./dist/src/errors/index.d.ts",
       "import": "./dist/src/errors/index.js"

@@ -60,6 +60,11 @@ enforced by `scripts/architecture/check.ts`:
   paymaster. Domain and workflow code imports only the stable `port.ts`,
   `types.ts`, `errors.ts`, and `public.ts` boundaries; concrete clients are
   injected at `api/compose.ts`.
+- **`hypercore/`** — a published subpath (`@rhinestone/sdk/hypercore`) that
+  builds the Hyperliquid actions an intent carries in `hyperCore.action`. The
+  order builders are pure; the market reads are the only place the SDK talks to
+  a service other than Rhinestone's own, and they take an injectable `fetch`
+  rather than a composed client because nothing else in the SDK depends on them.
 - **`actions/`, `errors/`, `utils/`, `smart-sessions/`, `jwt-server/`** —
   published subpath surfaces. `actions/` are standalone builders; the rest are
   compatibility barrels re-exporting owning symbols, except `jwt-server/`, a
@@ -137,3 +142,4 @@ authorizes a single `execute` per UserOperation, so the calls from
 | Relayer market          | Cross-chain settlement (Across/Relay/Eco) | via orchestrator             |
 | Bundler / paymaster / RPC | ERC-4337 preparation and submission     | `clients/bundler/`, `clients/paymaster/`, `clients/rpc/` (viem peer) |
 | JWT backend             | Mints short-lived auth tokens (JWT mode)  | `jwt-server/`                |
+| Hyperliquid `info`      | Perp market metadata and open positions   | HTTP (`hypercore/market.ts`) |
