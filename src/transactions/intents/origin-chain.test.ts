@@ -35,22 +35,58 @@ const multiChainOps = {
   },
 } as const satisfies TypedDataDefinition
 
+function withMessage(message: unknown): TypedDataDefinition {
+  return { ...multiChainOps, message } as unknown as TypedDataDefinition
+}
+
+function withDomainChainId(chainId: unknown): TypedDataDefinition {
+  return {
+    ...singleChainOps,
+    domain: { ...singleChainOps.domain, chainId },
+  } as unknown as TypedDataDefinition
+}
+
 describe('origin payload chain', () => {
   test('reads the domain chainId of a per-leg payload', () => {
     expect(originChainId(singleChainOps)).toBe(8453)
+  })
+
+  test('reads a domain chainId that arrives unnormalized', () => {
+    // `normalizeIntentTypedData` widens uints to bigint, but a caller building
+    // its own SignData hands over whatever the wire gave it.
+    expect(originChainId(withDomainChainId('10'))).toBe(10)
+    expect(originChainId(withDomainChainId(42161n))).toBe(42161)
   })
 
   test('reads the first ChainOps leaf when the domain names no chain', () => {
     expect(originChainId(multiChainOps)).toBe(42161)
   })
 
-  test('names the payload rather than yielding NaN when no chain is present', () => {
-    expect(() =>
-      originChainId({
-        ...multiChainOps,
-        message: { account: verifyingContract, ops: [] },
-      }),
-    ).toThrow(/names no chain/u)
+  test.each([
+    ['not a number', 'abc'],
+    ['an object', { id: 1 }],
+    ['NaN itself', Number.NaN],
+  ])('refuses a domain chainId that is %s', (_label, chainId) => {
+    expect(() => originChainId(withDomainChainId(chainId))).toThrow(
+      /unreadable domain chainId/u,
+    )
+  })
+
+  test.each([
+    ['no ops at all', { account: verifyingContract }],
+    ['ops that are not an array', { ops: 'MultiChainOps' }],
+    ['an empty ops array', { ops: [] }],
+    ['a null leaf', { ops: [null] }],
+    ['a leaf with no chainId', { ops: [{ nonce: 1n }] }],
+    ['a leaf whose chainId is unreadable', { ops: [{ chainId: 'abc' }] }],
+  ])('names the payload rather than yielding NaN for %s', (_label, message) => {
+    expect(() => originChainId(withMessage(message))).toThrow(/names no chain/u)
+  })
+
+  test('names the payload when it carries no message', () => {
+    expect(() => originChainId(withMessage(undefined))).toThrow(
+      /names no chain/u,
+    )
   })
 
   test('resolves the account chain from a multi-leg quote', () => {
@@ -60,6 +96,12 @@ describe('origin payload chain', () => {
     // after the user had approved it.
     expect(accountChainIdFromOrigins([multiChainOps])).toBe(42161)
     expect(accountChainIdFromOrigins([singleChainOps])).toBe(8453)
+  })
+
+  test('takes the last origin of a per-leg quote', () => {
+    expect(
+      accountChainIdFromOrigins([singleChainOps, withDomainChainId(10)]),
+    ).toBe(10)
   })
 
   test('rejects a quote with no origin payloads', () => {

@@ -10,23 +10,16 @@ import type { TypedDataDefinition } from 'viem'
 // resolving a signer; the first is taken because the leaves are in signed order
 // and the choice has to be deterministic.
 
-type ChainOpsLeaf = { chainId: bigint | number | string }
-
-function isChainOpsLeaf(value: unknown): value is ChainOpsLeaf {
-  if (typeof value !== 'object' || value === null) return false
-  const { chainId } = value as { chainId?: unknown }
-  return (
-    typeof chainId === 'bigint' ||
-    typeof chainId === 'number' ||
-    typeof chainId === 'string'
-  )
-}
-
-function firstLeafChainId(typedData: TypedDataDefinition): number | undefined {
-  const ops = (typedData.message as { ops?: unknown } | undefined)?.ops
-  if (!Array.isArray(ops)) return undefined
-  const [first] = ops
-  return isChainOpsLeaf(first) ? Number(first.chainId) : undefined
+function readChainId(value: unknown): number | undefined {
+  if (
+    typeof value !== 'bigint' &&
+    typeof value !== 'number' &&
+    typeof value !== 'string'
+  ) {
+    return undefined
+  }
+  const chainId = Number(value)
+  return Number.isFinite(chainId) ? chainId : undefined
 }
 
 /**
@@ -39,8 +32,8 @@ function firstLeafChainId(typedData: TypedDataDefinition): number | undefined {
 export function originChainId(typedData: TypedDataDefinition): number {
   const fromDomain = typedData.domain?.chainId
   if (fromDomain !== undefined && fromDomain !== null) {
-    const chainId = Number(fromDomain)
-    if (!Number.isFinite(chainId)) {
+    const chainId = readChainId(fromDomain)
+    if (chainId === undefined) {
       throw new Error(
         `Intent origin payload has an unreadable domain chainId: ${String(fromDomain)}`,
       )
@@ -48,8 +41,11 @@ export function originChainId(typedData: TypedDataDefinition): number {
     return chainId
   }
 
-  const fromLeaf = firstLeafChainId(typedData)
-  if (fromLeaf !== undefined && Number.isFinite(fromLeaf)) return fromLeaf
+  const ops = (typedData.message as { ops?: unknown } | undefined)?.ops
+  const fromLeaf = Array.isArray(ops)
+    ? readChainId((ops[0] as { chainId?: unknown } | undefined)?.chainId)
+    : undefined
+  if (fromLeaf !== undefined) return fromLeaf
 
   throw new Error(
     `Intent origin payload "${String(typedData.primaryType)}" names no chain: it carries neither a domain chainId nor a ChainOps leaf to read one from`,
