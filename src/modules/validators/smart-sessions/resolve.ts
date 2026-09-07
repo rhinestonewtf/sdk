@@ -207,15 +207,24 @@ export function toSession(
       ? { wrappedNativeToken: options.wrappedNativeToken }
       : {}),
   })
-  const expandedClaims = (definition.crossChainPermits ?? []).map(
-    (input) =>
-      expandCrossChainPermit(resolveCrossChainPermission(input), environment)
-        .claim,
+  const expanded = (definition.crossChainPermits ?? []).map((input) =>
+    expandCrossChainPermit(resolveCrossChainPermission(input), environment),
   )
+  const expandedClaims = expanded.map(({ claim }) => claim)
   return {
     chain: definition.chain,
     owners: definition.owners,
-    hasExplicitPermissions: Boolean(definition.permissions?.length),
+    // Whether this session has policies that only run on the ACTION surface,
+    // which is what decides `verifyExecutions` downstream: an enabled session
+    // without them drops to plain ERC-1271 (mode 1), where `checkAction` never
+    // fires. A cross-chain permit's `maxAmount` is exactly such a policy — it
+    // is expanded into a spending-limit on the fallback action, and unlike the
+    // permit deadline it has no counterpart on the claim policy — so a session
+    // carrying one must keep verify-execution mode, or the cap it advertises
+    // stops being enforced from the second use on.
+    hasExplicitPermissions:
+      Boolean(definition.permissions?.length) ||
+      expanded.some(({ fallbackPolicies }) => fallbackPolicies.length > 0),
     permissionId: getPermissionIdFromData(data),
     sessionValidator: data.sessionValidator,
     sessionValidatorInitData: data.sessionValidatorInitData,

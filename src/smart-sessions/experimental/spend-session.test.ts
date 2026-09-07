@@ -192,6 +192,35 @@ describe('experimental_defineSpendSession — cross-chain scoping', () => {
     expect(session.claimPolicies[0].type).toBe('permit2')
   })
 
+  // `hasExplicitPermissions` is what keeps an ENABLED session in
+  // verify-execution mode. A cross-chain `maxAmount` becomes a spending-limit
+  // on the action surface and has no counterpart on the claim policy (unlike
+  // the deadline, which the claim policy carries), so with the flag false the
+  // cap this helper advertises stops being enforced from the second use on.
+  test('a cross-chain amount cap keeps the session in verify-execution mode', () => {
+    const { session } = experimental_defineSpendSession({
+      chain: base,
+      owners: OWNER,
+      spend: {
+        tokens: [{ token: USDC, maxAmount: 1_000_000n }],
+        recipients: [RECIPIENT],
+        target: arbTarget(['ACROSS']),
+      },
+    })
+    expect(session.hasExplicitPermissions).toBe(true)
+  })
+
+  test('a cross-chain spend with nothing to enforce on-chain does not', () => {
+    const { session } = experimental_defineSpendSession({
+      chain: base,
+      owners: OWNER,
+      spend: { tokens: [{ token: USDC }], target: arbTarget(['ACROSS']) },
+    })
+    // No amount cap and no window, so the claim policy is the whole story and
+    // there is no action policy that mode 1 would skip.
+    expect(session.hasExplicitPermissions).toBe(false)
+  })
+
   test('the settlement-layer arbiter is bound as the claim policy spender', () => {
     const { session } = experimental_defineSpendSession({
       chain: base,
