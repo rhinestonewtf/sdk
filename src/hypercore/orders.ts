@@ -1,25 +1,29 @@
 // Builders for the two HyperCore actions an intent usually carries: open a perp
-// position, and close one. Pure — the market data they price against is an
-// argument, read separately with `getPerpMarket` / `getPerpPosition`.
+// position, and close one. Both name the asset by TICKER and resolve everything
+// else themselves, because everything else is Hyperliquid's wire format rather
+// than anything a caller decided: the asset INDEX an order carries, the tick and
+// size grids a price and size must land on, and a limit priced far enough
+// through the book to still cross when the intent delivers ~30s later.
 //
-// What they absorb is Hyperliquid's order arithmetic: the asset index an order
-// carries instead of a ticker, the tick and size grids a price and size must
-// land on, and a limit priced far enough through the book to still cross when
-// the intent delivers ~30s later. Anything past a marketable IOC — a resting
-// limit, a bracket, a trigger — is expressible directly as a `HyperCoreAction`,
-// which is fully typed.
+// Anything past a marketable IOC — a resting limit, a bracket, a trigger — is
+// expressible directly as a `HyperCoreAction`, which is fully typed.
 
-import type { Hex } from 'viem'
+import type { Address, Hex } from 'viem'
 import type {
   HyperCoreOrder,
   HyperCoreOrderAction,
 } from '../clients/orchestrator/public'
 import {
   HyperCoreError,
-  MismatchedPerpAssetError,
+  NoOpenPerpPositionError,
   PerpOrderTooSmallError,
 } from './errors'
-import type { PerpMarket, PerpPosition } from './market'
+import {
+  getPerpMarket,
+  getPerpPosition,
+  type HyperCoreInfoOptions,
+  type PerpMarket,
+} from './market'
 
 /** How far through the mark a marketable limit is placed, when not given. */
 const DEFAULT_SLIPPAGE_BPS = 50
@@ -59,8 +63,8 @@ type PerpOrderSize =
     }
 
 type OpenPerpParams = PerpOrderSize & {
-  /** The market to trade, from {@link getPerpMarket}. */
-  market: PerpMarket
+  /** Ticker as Hyperliquid names it — the coin alone, e.g. `BTC`. */
+  asset: string
   direction: 'long' | 'short'
   /**
    * How far through the mark to place the limit, in basis points. Defaults to
@@ -77,10 +81,10 @@ type OpenPerpParams = PerpOrderSize & {
 }
 
 type ClosePerpParams = {
-  /** The market the position is on, from {@link getPerpMarket}. */
-  market: PerpMarket
-  /** The position to close, from {@link getPerpPosition}. */
-  position: PerpPosition
+  /** Ticker as Hyperliquid names it — the coin alone, e.g. `BTC`. */
+  asset: string
+  /** The account holding the position — the smart account the intent funds. */
+  account: Address
   /** Close only part of the position, in units of the asset. */
   size?: string
   /** How far through the mark to place the limit, in basis points. */
@@ -98,28 +102,38 @@ type ClosePerpParams = {
  * margin — an open needs collateral, and the order is placed only once that
  * collateral has landed.
  *
- * @param params the market, direction, and size to open
+ * Reads the market from Hyperliquid to resolve the asset index and price the
+ * order, so build the action immediately before quoting: the limit comes from a
+ * mark read now and is fixed once the intent is signed.
+ *
+ * @param params the asset, direction, and size to open
+ * @param options where to reach Hyperliquid's info endpoint
  * @returns the action to pass as `hyperCore.action` on a transaction
+ * @throws {UnknownPerpAssetError} if no tradeable market carries that ticker
  * @throws {PerpOrderTooSmallError} if the order is under Hyperliquid's $10 minimum
  * @example
- * const market = await getPerpMarket('BTC')
- *
  * const prepared = await account.prepareTransaction({
  *   sourceChains: [base],
  *   targetChain: hyperCorePerp,
  *   tokenRequests: [{ address: usdc, amount: parseUnits('25', 6) }],
  *   hyperCore: {
- *     action: openPerp({ market, direction: 'long', notionalUsd: 100 }),
+ *     action: await openPerp({
+ *       asset: 'BTC',
+ *       direction: 'long',
+ *       notionalUsd: 100,
+ *     }),
  *   },
  * })
  * const result = await account.submitTransaction(
  *   await account.signTransaction(prepared),
  * )
  * @see {@link closePerp}
- * @see {@link getPerpMarket}
  */
-function openPerp(params: OpenPerpParams): HyperCoreOrderAction {
-  const { market } = params
+async function openPerp(
+  params: OpenPerpParams,
+  options?: HyperCoreInfoOptions,
+): Promise<HyperCoreOrderAction> {
+  const market = await getPerpMarket(params.asset, options)
   const mark = markPrice(market)
   const size =
     params.size === undefined ? params.notionalUsd / mark : Number(params.size)
@@ -137,24 +151,23 @@ function openPerp(params: OpenPerpParams): HyperCoreOrderAction {
 /**
  * Build a HyperCore action that closes a perpetual position.
  *
- * A reduce-only marketable IOC in the direction that flattens the position,
- * sized from the position itself. Closing frees margin rather than consuming
- * it, so it rides a transaction with no `tokenRequests` at all — but still
- * needs a `sourceChains` entry, since HyperCore is a delivery venue and hosts
- * no account of its own.
+ * A reduce-only marketable IOC in the direction that flattens the position and
+ * sized from the position itself, which it reads from Hyperliquid along with
+ * the market. Closing frees margin rather than consuming it, so it rides a
+ * transaction with no `tokenRequests` at all — but still names a `sourceChains`
+ * entry, since HyperCore is a delivery venue and hosts no account of its own.
  *
- * @param params the market and the position to close
+ * @param params the asset and the account whose position to close
+ * @param options where to reach Hyperliquid's info endpoint
  * @returns the action to pass as `hyperCore.action` on a transaction
- * @throws {MismatchedPerpAssetError} if the market and position are different assets
+ * @throws {NoOpenPerpPositionError} if the account holds no position on that asset
  * @example
- * const market = await getPerpMarket('BTC')
- * const position = await getPerpPosition(account.getAddress(), 'BTC')
- * if (!position) return
- *
  * const prepared = await account.prepareTransaction({
  *   sourceChains: [hyperEvm],
  *   targetChain: hyperCorePerp,
- *   hyperCore: { action: closePerp({ market, position }) },
+ *   hyperCore: {
+ *     action: await closePerp({ asset: 'BTC', account: account.getAddress() }),
+ *   },
  * })
  * const result = await account.submitTransaction(
  *   await account.signTransaction(prepared),
@@ -162,17 +175,24 @@ function openPerp(params: OpenPerpParams): HyperCoreOrderAction {
  * @see {@link openPerp}
  * @see {@link getPerpPosition}
  */
-function closePerp(params: ClosePerpParams): HyperCoreOrderAction {
-  const { market, position } = params
-  if (market.asset !== position.asset) {
-    throw new MismatchedPerpAssetError(market.asset, position.asset)
+async function closePerp(
+  params: ClosePerpParams,
+  options?: HyperCoreInfoOptions,
+): Promise<HyperCoreOrderAction> {
+  const [market, position] = await Promise.all([
+    getPerpMarket(params.asset, options),
+    getPerpPosition(params.account, params.asset, options),
+  ])
+  if (!position) {
+    throw new NoOpenPerpPositionError(params.asset, params.account)
   }
+
   const held = Number(position.size)
   const open = Math.abs(held)
   const size = params.size === undefined ? open : Number(params.size)
   if (size > open) {
     throw new HyperCoreError(
-      `Cannot close ${size} ${market.asset} against an open position of ${open}. Hyperliquid rejects a reduce-only order larger than the position it reduces.`,
+      `Cannot close ${size} ${params.asset} against an open position of ${open}. Hyperliquid rejects a reduce-only order larger than the position it reduces.`,
     )
   }
   return orderAction({

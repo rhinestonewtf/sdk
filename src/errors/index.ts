@@ -52,7 +52,7 @@ import {
   HyperCoreError,
   HyperCoreInfoRequestError,
   isHyperCoreError,
-  MismatchedPerpAssetError,
+  NoOpenPerpPositionError,
   PerpOrderTooSmallError,
   UnknownPerpAssetError,
 } from '../hypercore/errors'
@@ -141,7 +141,7 @@ export {
   isHyperCoreError,
   HyperCoreError,
   HyperCoreInfoRequestError,
-  MismatchedPerpAssetError,
+  NoOpenPerpPositionError,
   PerpOrderTooSmallError,
   UnknownPerpAssetError,
 }

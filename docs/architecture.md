@@ -62,9 +62,11 @@ enforced by `scripts/architecture/check.ts`:
   injected at `api/compose.ts`.
 - **`hypercore/`** — a published subpath (`@rhinestone/sdk/hypercore`) that
   builds the Hyperliquid actions an intent carries in `hyperCore.action`. The
-  order builders are pure; the market reads are the only place the SDK talks to
-  a service other than Rhinestone's own, and they take an injectable `fetch`
-  rather than a composed client because nothing else in the SDK depends on them.
+  builders name an asset by ticker and read Hyperliquid's public `info` endpoint
+  themselves for the index, grids and mark an order needs; that read is the only
+  place the SDK talks to a service other than Rhinestone's own, and it takes an
+  injectable `fetch` rather than a composed client because nothing else in the
+  SDK depends on it.
 - **`actions/`, `errors/`, `utils/`, `smart-sessions/`, `jwt-server/`** —
   published subpath surfaces. `actions/` are standalone builders; the rest are
   compatibility barrels re-exporting owning symbols, except `jwt-server/`, a

@@ -46,17 +46,17 @@ export class PerpOrderTooSmallError extends HyperCoreError {
   }
 }
 
-/** `closePerp` was given a market and a position for different assets. */
-export class MismatchedPerpAssetError extends HyperCoreError {
-  readonly marketAsset: string
-  readonly positionAsset: string
+/** There is nothing to close: the account holds no position on that asset. */
+export class NoOpenPerpPositionError extends HyperCoreError {
+  readonly asset: string
+  readonly account: string
 
-  constructor(marketAsset: string, positionAsset: string) {
+  constructor(asset: string, account: string) {
     super(
-      `Cannot close a ${positionAsset} position against the ${marketAsset} market. Pass the market for the position's own asset — an order carries the market's asset index, so a mismatch trades the wrong coin.`,
+      `${account} holds no open ${asset} position to close. Check with \`getPerpPosition\` before offering a close — a reduce-only order against nothing is rejected by the exchange.`,
     )
-    this.marketAsset = marketAsset
-    this.positionAsset = positionAsset
+    this.asset = asset
+    this.account = account
   }
 }
 
