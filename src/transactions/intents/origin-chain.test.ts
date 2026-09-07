@@ -1,6 +1,10 @@
 import type { TypedDataDefinition } from 'viem'
 import { describe, expect, test } from 'vitest'
-import { accountChainIdFromOrigins, originChainId } from './origin-chain'
+import {
+  accountChainIdFromOrigins,
+  isChainAgnosticPayload,
+  originChainId,
+} from './origin-chain'
 
 const verifyingContract = '0x0000000000000000000000000000000000000001' as const
 
@@ -102,6 +106,18 @@ describe('origin payload chain', () => {
     expect(
       accountChainIdFromOrigins([singleChainOps, withDomainChainId(10)]),
     ).toBe(10)
+  })
+
+  test('recognises which payloads one signature has to span', () => {
+    expect(isChainAgnosticPayload(multiChainOps)).toBe(true)
+    expect(isChainAgnosticPayload(singleChainOps)).toBe(false)
+    expect(isChainAgnosticPayload(withDomainChainId(null))).toBe(true)
+    expect(
+      isChainAgnosticPayload({
+        ...multiChainOps,
+        domain: undefined,
+      } as unknown as TypedDataDefinition),
+    ).toBe(true)
   })
 
   test('rejects a quote with no origin payloads', () => {

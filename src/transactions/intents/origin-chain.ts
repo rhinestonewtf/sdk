@@ -67,3 +67,19 @@ export function accountChainIdFromOrigins(
   if (!last) throw new Error('Intent quote has no origin payloads')
   return originChainId(last)
 }
+
+/**
+ * True when the payload's chain is not bound into the signature — a
+ * `MultiChainOps` set, which one signature has to satisfy on every leg.
+ *
+ * Callers that wrap the digest with anything chain-specific must refuse such a
+ * payload rather than sign it against the leg they happen to be resolving: the
+ * resulting signature validates on that chain and fails on the rest, on chain,
+ * after the user has approved.
+ */
+export function isChainAgnosticPayload(
+  typedData: TypedDataDefinition,
+): boolean {
+  const { chainId } = typedData.domain ?? {}
+  return chainId === undefined || chainId === null
+}
