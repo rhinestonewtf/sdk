@@ -68,6 +68,13 @@ const limits = [
     ignore: viem,
   },
   {
+    name: '@rhinestone/sdk/hypercore',
+    path: `${packageRoot}/hypercore/index.js`,
+    limit: '2 kB',
+    import: '*',
+    ignore: viem,
+  },
+  {
     name: '@rhinestone/sdk/errors',
     path: `${packageRoot}/errors/index.js`,
     limit: '20 kB',
