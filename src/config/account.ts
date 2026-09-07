@@ -686,10 +686,27 @@ type SessionSigning =
  * ```
  */
 /**
- * Cumulative cap on total sell-token spend across the whole session — enforced
- * both as a spending-limit on the approve and as an accumulating bound on each
- * swap's own amount, so a pre-existing allowance cannot be used to exceed it.
+ * Cumulative cap on sell-token spend, enforced on two surfaces so a
+ * pre-existing allowance cannot be used to exceed it: as a spending-limit on
+ * the approve, and as an accumulating bound on each swap's own sell amount.
  * Omit for no cap.
+ *
+ * With a single `sell.token` it is what it reads as: one lifetime cap on that
+ * token. With `sell.tokens` it is a cap PER SURFACE, not one budget shared
+ * across everything, because neither surface can express a shared counter:
+ *
+ * - approve — one permission per token, each carrying its own `maxTotal`
+ *   spending limit. A permission's `address` IS the token, so N tokens are N
+ *   counters, and the approve surface therefore admits up to N × `maxTotal`.
+ * - swap — one accumulating counter per authorised call shape, shared by every
+ *   token (with several sell tokens the token pins sit in one action's
+ *   alternatives). Distinct venues are distinct actions, so each carries its
+ *   own counter.
+ *
+ * So `maxTotal` bounds any one token's approvals and any one call shape's swap
+ * volume; it is not a single ceiling on the session's total spend. Size it as
+ * the per-token bound you are willing to grant, and treat the aggregate as
+ * that times the number of tokens.
  */
 type SwapSellCap = { maxTotal?: bigint }
 
@@ -705,7 +722,10 @@ interface SwapScope<TChainId extends number = number> {
    */
   sell:
     | ({ token: Address; tokens?: never } & SwapSellCap)
-    | ({ tokens: readonly [Address, ...Address[]]; token?: never } & SwapSellCap)
+    | ({
+        tokens: readonly [Address, ...Address[]]
+        token?: never
+      } & SwapSellCap)
   buy: { token: Address }
   /**
    * Swap output recipient, normally the account itself. Pinned on-chain as an

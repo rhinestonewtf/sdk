@@ -897,8 +897,13 @@ describe('resolveSwapScope — several sell tokens', () => {
     expect(one.permissions).toHaveLength(1)
   })
 
+  // The type makes this unreachable for a TypeScript caller (`tokens` is a
+  // non-empty tuple), so the cast is the only way to reach the runtime guard —
+  // which still has to hold for JavaScript callers.
   test('refuses an empty token list rather than authorising nothing', () => {
-    expect(() => scopeFor({ tokens: [] })).toThrow(/at least one token/)
+    expect(() =>
+      scopeFor({ tokens: [] as unknown as [Address, ...Address[]] }),
+    ).toThrow(/at least one token/)
   })
 
   test('refuses a repeated token', () => {
