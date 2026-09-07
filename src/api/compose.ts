@@ -67,6 +67,7 @@ import type {
   SignerInvocationPort,
   SigningCheckpointPort,
 } from '../signing/types'
+import { accountChainIdFromOrigins } from '../transactions/intents/origin-chain'
 import {
   buildIntentSigningInput,
   prepareIntent,
@@ -800,10 +801,9 @@ async function reconstructPreparedIntent<CompatibilityConfig>(
   },
   dependencies: CoreDependencies,
 ): Promise<PreparedIntent<CompatibilityConfig>> {
-  const originChainId = Number(
-    input.quote.signData.origin.at(-1)?.domain?.chainId,
+  const accountChain = toEvmChainReference(
+    accountChainIdFromOrigins(input.quote.signData.origin),
   )
-  const accountChain = toEvmChainReference(originChainId)
   const runtime = await createAccountRuntimePort(
     context.account,
     dependencies,
@@ -859,8 +859,9 @@ async function signIntentFromSignData<CompatibilityConfig>(
   },
   dependencies: CoreDependencies,
 ) {
-  const originChainId = Number(input.signData.origin.at(-1)?.domain?.chainId)
-  const accountChain = toEvmChainReference(originChainId)
+  const accountChain = toEvmChainReference(
+    accountChainIdFromOrigins(input.signData.origin),
+  )
   const runtime = await createAccountRuntimePort(
     context.account,
     dependencies,
