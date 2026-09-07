@@ -139,7 +139,7 @@ export interface SwapScopeInput {
         readonly maxTotal?: bigint
       }
     | {
-        readonly tokens: readonly Address[]
+        readonly tokens: readonly [Address, ...Address[]]
         readonly token?: never
         readonly maxTotal?: bigint
       }

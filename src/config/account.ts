@@ -705,7 +705,7 @@ interface SwapScope<TChainId extends number = number> {
    */
   sell:
     | ({ token: Address; tokens?: never } & SwapSellCap)
-    | ({ tokens: readonly Address[]; token?: never } & SwapSellCap)
+    | ({ tokens: readonly [Address, ...Address[]]; token?: never } & SwapSellCap)
   buy: { token: Address }
   /**
    * Swap output recipient, normally the account itself. Pinned on-chain as an

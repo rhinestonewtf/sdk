@@ -315,14 +315,6 @@ export function scopeRhinestone(
         `Supported: ${FYND_CHAIN_IDS.join(', ')}.`,
     )
   }
-  // Which router the pinned tail must call. Undefined route = unconstrained.
-  const routeAggregator =
-    venue.route === 'zeroEx'
-      ? ZEROX_ALLOWANCE_HOLDER
-      : venue.route === 'fynd'
-        ? FYND_ROUTERS[ctx.chainId as FyndChainId]
-        : undefined
-
   const multiSell = sellPinsGoInAlternatives(ctx)
 
   /** Route pins for one (sell token, aggregator) pair. */
