@@ -229,6 +229,7 @@ function orderAction(input: {
   if (!reduceOnly && notional < MIN_ORDER_VALUE_USD) {
     throw new PerpOrderTooSmallError(
       market.asset,
+      s,
       Math.round(notional * 100) / 100,
       MIN_ORDER_VALUE_USD,
     )

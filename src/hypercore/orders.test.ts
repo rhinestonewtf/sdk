@@ -150,6 +150,16 @@ describe('openPerp', () => {
     ).toThrow(PerpOrderTooSmallError)
   })
 
+  // Flooring the size means a notional barely over the minimum can land under
+  // it, so the message reports the size it actually built rather than the
+  // number the caller passed — otherwise it reads as an off-by-nothing lie.
+  test('reports the rounded size that fell short, not the request', () => {
+    // 10 / 64250.5 floors to 0.00015 at five decimals, which is $9.64.
+    expect(() =>
+      openPerp({ market: BTC, direction: 'long', notionalUsd: 10 }),
+    ).toThrow(/0\.00015 is worth \$9\.64/)
+  })
+
   test('rejects a size that rounds away to nothing', () => {
     expect(() =>
       openPerp({ market: BTC, direction: 'long', size: '0.000001' }),

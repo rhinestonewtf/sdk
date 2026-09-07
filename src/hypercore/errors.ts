@@ -27,13 +27,20 @@ export class UnknownPerpAssetError extends HyperCoreError {
  * only after the funds have landed on HyperCore.
  */
 export class PerpOrderTooSmallError extends HyperCoreError {
+  readonly size: string
   readonly notionalUsd: number
   readonly minimumUsd: number
 
-  constructor(asset: string, notionalUsd: number, minimumUsd: number) {
+  constructor(
+    asset: string,
+    size: string,
+    notionalUsd: number,
+    minimumUsd: number,
+  ) {
     super(
-      `A ${asset} order of $${notionalUsd} is below Hyperliquid's $${minimumUsd} minimum order value. Raise the size, or the order is refused after the collateral has already been delivered.`,
+      `A ${asset} order of ${size} is worth $${notionalUsd}, below Hyperliquid's $${minimumUsd} minimum order value. Ask for more: a size is floored to the asset's precision, so a request only just over the minimum can land under it.`,
     )
+    this.size = size
     this.notionalUsd = notionalUsd
     this.minimumUsd = minimumUsd
   }
