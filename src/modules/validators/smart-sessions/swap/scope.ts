@@ -64,11 +64,13 @@ const erc20ApproveAbi = [
 ] as const satisfies Abi
 
 /**
- * One approve permission covering every venue's spender.
+ * The approve permission for ONE sell token, covering every venue's spender.
  *
- * Merged rather than one-per-venue because all venues pull the same sell token;
- * a single action with a spender allowlist is cheaper to install and keeps the
- * spending-limit a single shared counter instead of one budget per venue.
+ * One per token, not one per venue: every venue pulls the same token, so a
+ * single action with a spender allowlist is cheaper to install and keeps the
+ * spending limit a shared counter rather than a budget per venue. Several sell
+ * tokens mean several of these — the permission's `address` IS the token, so it
+ * cannot be merged further.
  */
 function approvePermission(
   sellToken: Address,

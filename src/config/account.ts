@@ -548,9 +548,8 @@ type SpendingLimitField<TFn extends AbiFunction> =
     ? { spendingLimit?: { token: Address; amount: bigint } }
     : { spendingLimit?: never }
 
-type ValueLimitField<TFn extends AbiFunction> = IsPayable<TFn> extends true
-  ? { valueLimit?: bigint }
-  : { valueLimit?: never }
+type ValueLimitField<TFn extends AbiFunction> =
+  IsPayable<TFn> extends true ? { valueLimit?: bigint } : { valueLimit?: never }
 
 type PermissionFunctionConfig<TFn extends AbiFunction> = {
   /** `valueLimitPerUse` embedded in universal/arg-policy `ActionConfig`. */
@@ -686,17 +685,27 @@ type SessionSigning =
  * })
  * ```
  */
+/**
+ * Cumulative cap on total sell-token spend across the whole session — enforced
+ * both as a spending-limit on the approve and as an accumulating bound on each
+ * swap's own amount, so a pre-existing allowance cannot be used to exceed it.
+ * Omit for no cap.
+ */
+type SwapSellCap = { maxTotal?: bigint }
+
 interface SwapScope<TChainId extends number = number> {
-  sell: {
-    token: Address
-    /**
-     * Cumulative cap on total sell-token spend across the whole session —
-     * enforced both as a spending-limit on the approve and as an accumulating
-     * bound on each swap's own amount, so a pre-existing allowance cannot be
-     * used to exceed it. Omit for no cap.
-     */
-    maxTotal?: bigint
-  }
+  /**
+   * The token this session may spend, or `tokens` for several — one session
+   * then serves an account that may receive any of a set, which is the case
+   * when the sender chooses what arrives.
+   *
+   * A single `token` is not `tokens` of length one: it keeps the rule shape and
+   * policy type it has always produced, so sessions already signed against it
+   * are unaffected.
+   */
+  sell:
+    | ({ token: Address; tokens?: never } & SwapSellCap)
+    | ({ tokens: readonly Address[]; token?: never } & SwapSellCap)
   buy: { token: Address }
   /**
    * Swap output recipient, normally the account itself. Pinned on-chain as an
@@ -1201,6 +1210,7 @@ export type {
   CallInput,
   CallResolveContext,
   ChainSessionConfig,
+  ClosePerpRequest,
   CrossChainPermissionInput,
   CrossChainPermit,
   CrossChainSettlementLayer,
@@ -1210,6 +1220,8 @@ export type {
   FromLeg,
   GuardiansSignerSet,
   HcaAccount,
+  HyperCoreOptions,
+  HyperliquidConfig,
   JwtAuth,
   KernelAccount,
   LazyCallInput,
@@ -1219,6 +1231,7 @@ export type {
   NexusAccount,
   NonEvmTokenRequest,
   NonEvmTokenRequests,
+  OpenPerpRequest,
   OwnableValidatorConfig,
   OwnerSet,
   ParamConstraint,
@@ -1260,10 +1273,6 @@ export type {
   SwapQuoter,
   SwapQuoterFilter,
   SwapScope,
-  ClosePerpRequest,
-  HyperCoreOptions,
-  HyperliquidConfig,
-  OpenPerpRequest,
   TokenRequest,
   TokenRequests,
   TokenSymbol,

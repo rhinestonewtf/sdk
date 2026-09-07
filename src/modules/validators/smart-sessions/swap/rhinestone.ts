@@ -356,12 +356,10 @@ export function scopeRhinestone(
     if (ctx.cap !== undefined) {
       rules.push(cumulativeCap(offsets[sellAmountParam], ctx.cap))
     }
-    if (
-      !multiSell &&
-      venue.routes === undefined &&
-      routeAggregator !== undefined
-    ) {
-      rules.push(...routeRulesFor(ctx.sellTokens[0], venue.route as 'zeroEx'))
+    // Narrowed on `venue.route` itself rather than on `routeAggregator`, so
+    // the type follows the check instead of being asserted past it.
+    if (!multiSell && venue.routes === undefined && venue.route !== undefined) {
+      rules.push(...routeRulesFor(ctx.sellTokens[0], venue.route))
     }
     return rules
   }
@@ -387,8 +385,10 @@ export function scopeRhinestone(
       // Unchanged: no branches at all unless several routes were named.
       return venue.routes === undefined
         ? []
-        : routes.map((route) =>
-            routeRulesFor(ctx.sellTokens[0], route as 'zeroEx'),
+        : routes.flatMap((route) =>
+            route === undefined
+              ? []
+              : [routeRulesFor(ctx.sellTokens[0], route)],
           )
     }
 
