@@ -1,5 +1,26 @@
 # @rhinestone/sdk
 
+## 2.10.0
+
+### Minor Changes
+
+- 4e2591d: Support HyperCore trading from an intent. A transaction to `hyperCorePerp` or `hyperCoreSpot` now takes a `hyperCore.action`, and a new `@rhinestone/sdk/hypercore` subpath builds it.
+
+  - `hyperCore: { openPerp: { asset, direction, notionalUsd } }` opens a perpetual position. `prepareTransaction` resolves it against Hyperliquid — the asset index, the mark, and the price and size grids — and builds a marketable IOC.
+  - `hyperCore: { closePerp: { asset } }` closes one, reduce-only and sized from the account's open position, which it reads for you.
+  - `hyperCore: { action }` passes a Hyperliquid L1 action through verbatim. `HyperCoreAction` types all seven — `order`, `cancel`, `cancelByCloid`, `modify`, `batchModify`, `updateLeverage`, `updateIsolatedMargin`.
+  - `getPerpMarket`, `getPerpMarkets`, `getPerpPosition`, and `getPerpPositions` on `@rhinestone/sdk/hypercore` read Hyperliquid's public info endpoint, for the questions asked before sending a transaction: which markets exist, what leverage one allows, whether there is a position to close.
+  - `hyperliquid: { apiUrl, fetch }` on the SDK config points every one of those reads somewhere else.
+  - `HyperCoreError`, `UnknownPerpAssetError`, `PerpOrderTooSmallError`, `NoOpenPerpPositionError`, and `HyperCoreInfoRequestError` are exported from `/errors` with an `isHyperCoreError` guard.
+
+  An action that needs collateral pairs with `tokenRequests` that deliver it; a close, cancel, or leverage change rides a transaction that requests no tokens.
+
+### Patch Changes
+
+- 9ea61e3: Accept a chain-agnostic origin payload, so an intent whose legs are covered by one signature can be signed.
+
+  The orchestrator can serve a multi-leg IntentExecutor bundle as a single `MultiChainOps` payload: the contract verifies it with `_hashTypedDataSansChainId`, so the EIP-712 domain deliberately carries no `chainId` and each leg's chain lives in its own `ChainOps` leaf. Reading the chain off the domain therefore produced `Invalid chain id: NaN` and failed the intent — on this path, after the user had already approved it. The chain now falls back to the leaves, and a payload naming no chain at all throws with the payload's type instead of coercing to `NaN`.
+
 ## 2.9.0
 
 ### Minor Changes
