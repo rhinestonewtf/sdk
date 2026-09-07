@@ -906,6 +906,24 @@ describe('resolveSwapScope — several sell tokens', () => {
     ).toThrow(/at least one token/)
   })
 
+  // Unreachable for a TypeScript caller (the union forbids it) but reachable
+  // from a deserialized scope, and either resolution silently changes what the
+  // session may spend.
+  test('refuses a scope naming both token and tokens', () => {
+    expect(() =>
+      scopeFor({
+        token: USDC,
+        tokens: [USDC, USDT0],
+      } as unknown as { tokens: [Address, ...Address[]] }),
+    ).toThrow(/mutually exclusive/)
+  })
+
+  test('refuses a scope naming neither', () => {
+    expect(() =>
+      scopeFor({} as unknown as { tokens: [Address, ...Address[]] }),
+    ).toThrow(/must name a token/)
+  })
+
   test('refuses a repeated token', () => {
     expect(() => scopeFor({ tokens: [USDC, USDC] })).toThrow(/repeats/)
   })

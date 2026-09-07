@@ -127,9 +127,23 @@ export function resolveSwapScope(
   // One shape from here down. `token` and `tokens` are the same thing to
   // everything downstream except rule placement, which `sellPinsGoInAlternatives`
   // decides from the length.
-  const sellTokens: readonly Address[] = scope.sell.tokens ?? [
-    scope.sell.token as Address,
-  ]
+  //
+  // Both present is refused rather than resolved. The type makes it impossible
+  // for a TypeScript caller, but a deserialized scope can carry both, and
+  // preferring either one silently widens or narrows what the session may
+  // spend. Neither present is refused for the same reason: it would otherwise
+  // reach the checks below as `[undefined]`.
+  const { token, tokens } = scope.sell
+  if (token !== undefined && tokens !== undefined) {
+    throw new Error(
+      'swap.sell names both token and tokens — they are mutually exclusive, so ' +
+        'which tokens the session may spend is ambiguous. Pass one.',
+    )
+  }
+  if (token === undefined && tokens === undefined) {
+    throw new Error('swap.sell must name a token or a non-empty tokens list')
+  }
+  const sellTokens: readonly Address[] = tokens ?? [token as Address]
   if (sellTokens.length === 0) {
     throw new Error(
       'swap.sell.tokens must name at least one token — an empty list would authorise nothing',

@@ -548,8 +548,9 @@ type SpendingLimitField<TFn extends AbiFunction> =
     ? { spendingLimit?: { token: Address; amount: bigint } }
     : { spendingLimit?: never }
 
-type ValueLimitField<TFn extends AbiFunction> =
-  IsPayable<TFn> extends true ? { valueLimit?: bigint } : { valueLimit?: never }
+type ValueLimitField<TFn extends AbiFunction> = IsPayable<TFn> extends true
+  ? { valueLimit?: bigint }
+  : { valueLimit?: never }
 
 type PermissionFunctionConfig<TFn extends AbiFunction> = {
   /** `valueLimitPerUse` embedded in universal/arg-policy `ActionConfig`. */
