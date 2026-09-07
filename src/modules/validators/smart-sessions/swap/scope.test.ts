@@ -33,6 +33,7 @@ import {
 
 const USDT0: Address = '0xB8CE59FC3717ada4C02eaDF9682A9e934F625ebb'
 const USDC: Address = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'
+const DAI: Address = '0x6B175474E89094C44Da98b954EedeAC495271d0F'
 const ACCOUNT: Address = '0x1111111111111111111111111111111111111111'
 const SETTLER: Address = '0x7F2194E8d4D5B5F889b17aeCe891F89Da74F5384'
 const PLASMA = 9745
@@ -280,6 +281,66 @@ describe('resolveSwapScope — the cumulative cap', () => {
       PLASMA,
     )
     expect(ruleAt(rulesOf(actions[0]), 0n)?.usageLimit).toBe(0n)
+  })
+})
+
+describe('several sell tokens on a direct aggregator call', () => {
+  // The tokenIn pin is the one word that differs between sell tokens, so it
+  // moves into the action's OR alternatives. Asserted on the DIRECT router
+  // call, where the offset is the aggregator's own tokenIn — the Swapper-wrapped
+  // shape is covered above.
+  test('fynd: both sell tokens are authorised at the router tokenIn slot', () => {
+    const { actions } = resolveSwapScope(
+      scope({ sell: { tokens: [USDT0, DAI] }, via: [fynd()] }),
+      PLASMA,
+    )
+    const direct = actions.find(
+      (a) => a.target.toLowerCase() === TYCHO_PLASMA,
+    ) as ScopedAction
+    const pinned = rulesOf(direct)
+      .filter((r) => r.calldataOffset === 32n)
+      .map((r) => String(r.referenceValue).toLowerCase())
+
+    expect(pinned).toContain(USDT0.toLowerCase())
+    expect(pinned).toContain(DAI.toLowerCase())
+    // tokenOut and receiver stay in the AND part: they do not vary per token.
+    expect(ruleAt(rulesOf(direct), 64n)?.referenceValue).toBe(USDC)
+  })
+
+  test('zeroEx: both sell tokens are authorised at the AllowanceHolder token slot', () => {
+    const { actions } = resolveSwapScope(
+      scope({
+        sell: { tokens: [USDT0, DAI] },
+        via: [zeroEx({ settler: SETTLER })],
+      }),
+      PLASMA,
+    )
+    const direct = actions.find(
+      (a) =>
+        a.target.toLowerCase() === ZEROX_ALLOWANCE_HOLDER.toLowerCase() &&
+        a.selector === ALLOWANCE_HOLDER_EXEC_SELECTOR,
+    ) as ScopedAction
+    // exec(operator, token, amount, target, data): token is the second word.
+    const pinned = rulesOf(direct)
+      .filter((r) => r.calldataOffset === 32n)
+      .map((r) => String(r.referenceValue).toLowerCase())
+
+    expect(pinned).toContain(USDT0.toLowerCase())
+    expect(pinned).toContain(DAI.toLowerCase())
+  })
+
+  // Neither a pinned Settler nor anySettler leaves the operator, target and
+  // amount all unbounded on the AllowanceHolder path. The union forbids it;
+  // a plain-JS caller reaches it.
+  test('zeroEx: refuses a venue with neither a settler nor anySettler', () => {
+    expect(() =>
+      resolveSwapScope(
+        scope({
+          via: [{ route: 'zeroEx' } as unknown as ReturnType<typeof zeroEx>],
+        }),
+        PLASMA,
+      ),
+    ).toThrow(/pinned settler or anySettler/)
   })
 })
 
@@ -837,8 +898,6 @@ describe('venue maxSpend', () => {
 })
 
 describe('resolveSwapScope — several sell tokens', () => {
-  const DAI: Address = '0x6B175474E89094C44Da98b954EedeAC495271d0F'
-
   const scopeFor = (sell: SwapScopeInput['sell']) =>
     resolveSwapScope(
       { sell, buy: { token: USDT0 }, to: ACCOUNT, via: [rhinestoneSwap()] },
