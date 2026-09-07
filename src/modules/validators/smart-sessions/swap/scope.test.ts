@@ -835,3 +835,77 @@ describe('venue maxSpend', () => {
     expect(ruleAt(rulesOf(actions[0]), 32n)?.usageLimit).toBe(7n)
   })
 })
+
+describe('resolveSwapScope — several sell tokens', () => {
+  const DAI: Address = '0x6B175474E89094C44Da98b954EedeAC495271d0F'
+
+  const scopeFor = (sell: SwapScopeInput['sell']) =>
+    resolveSwapScope(
+      { sell, buy: { token: USDT0 }, to: ACCOUNT, via: [rhinestoneSwap()] },
+      PLASMA,
+    )
+
+  // The reason this feature exists: a deposit address takes whatever the
+  // depositor sends, so a session pinned to one sell token refuses every other.
+  test('authorises each token with its own approve action', () => {
+    const scoped = scopeFor({ tokens: [USDC, DAI] })
+
+    const approveAddresses = scoped.permissions.map((p) =>
+      (p.address as Address).toLowerCase(),
+    )
+
+    expect(approveAddresses).toEqual([USDC.toLowerCase(), DAI.toLowerCase()])
+  })
+
+  // One on-chain action id cannot carry two policies, so the swap entrypoints
+  // stay single actions and the tokens become OR branches inside them.
+  test('keeps one action per swap entrypoint, not one per token', () => {
+    const one = scopeFor({ token: USDC })
+    const two = scopeFor({ tokens: [USDC, DAI] })
+
+    const entrypoints = (r: typeof one) =>
+      r.actions.filter((a) => 'target' in a && a.target === SWAPPER_PLASMA)
+        .length
+
+    expect(entrypoints(two)).toBe(entrypoints(one))
+  })
+
+  // ArgPolicy is the one whose on-chain evaluator handles OR nodes;
+  // UniversalActionPolicy compares a word against a single constant, so it
+  // cannot express "either of these tokens".
+  test('uses the policy that can evaluate an OR', () => {
+    const two = scopeFor({ tokens: [USDC, DAI] })
+
+    const swapAction = two.actions.find(
+      (a) => 'target' in a && a.target === SWAPPER_PLASMA,
+    )
+
+    expect(swapAction?.policies?.[0]?.type).toBe('arg-policy')
+  })
+
+  // A single token is not a list of one: it must keep the exact shape and
+  // policy type it has always produced, or every already-signed swap session
+  // becomes a HashMismatch.
+  test('leaves the single-token shape untouched', () => {
+    const one = scopeFor({ token: USDC })
+
+    const swapAction = one.actions.find(
+      (a) => 'target' in a && a.target === SWAPPER_PLASMA,
+    )
+
+    expect(swapAction?.policies?.[0]?.type).toBe('universal-action')
+    expect(one.permissions).toHaveLength(1)
+  })
+
+  test('refuses an empty token list rather than authorising nothing', () => {
+    expect(() => scopeFor({ tokens: [] })).toThrow(/at least one token/)
+  })
+
+  test('refuses a repeated token', () => {
+    expect(() => scopeFor({ tokens: [USDC, USDC] })).toThrow(/repeats/)
+  })
+
+  test('refuses a sell token that is also the buy token', () => {
+    expect(() => scopeFor({ tokens: [USDC, USDT0] })).toThrow(/same address/)
+  })
+})

@@ -71,7 +71,8 @@ const erc20ApproveAbi = [
  * spending-limit a single shared counter instead of one budget per venue.
  */
 function approvePermission(
-  scope: SwapScopeInput,
+  sellToken: Address,
+  maxTotal: bigint | undefined,
   scopings: VenueScoping[],
 ): Permission {
   const spenders = [
@@ -81,14 +82,14 @@ function approvePermission(
   ].map((s) => s as Address)
   return {
     abi: erc20ApproveAbi as unknown as Abi,
-    address: scope.sell.token,
+    address: sellToken,
     functions: {
       approve: {
-        ...(scope.sell.maxTotal !== undefined
+        ...(maxTotal !== undefined
           ? {
               spendingLimit: {
-                token: scope.sell.token,
-                amount: scope.sell.maxTotal,
+                token: sellToken,
+                amount: maxTotal,
               },
             }
           : {}),
@@ -121,16 +122,36 @@ export function resolveSwapScope(
       'swap.via must list at least one venue — an empty list would authorise nothing',
     )
   }
-  if (scope.sell.token.toLowerCase() === scope.buy.token.toLowerCase()) {
+  // One shape from here down. `token` and `tokens` are the same thing to
+  // everything downstream except rule placement, which `sellPinsGoInAlternatives`
+  // decides from the length.
+  const sellTokens: readonly Address[] = scope.sell.tokens ?? [
+    scope.sell.token as Address,
+  ]
+  if (sellTokens.length === 0) {
     throw new Error(
-      `swap.sell.token and swap.buy.token are the same address (${scope.sell.token})`,
+      'swap.sell.tokens must name at least one token — an empty list would authorise nothing',
+    )
+  }
+  const duplicate = sellTokens
+    .map((t) => t.toLowerCase())
+    .find((t, i, all) => all.indexOf(t) !== i)
+  if (duplicate) {
+    throw new Error(`swap.sell.tokens repeats ${duplicate}`)
+  }
+  const sameAsBuy = sellTokens.find(
+    (t) => t.toLowerCase() === scope.buy.token.toLowerCase(),
+  )
+  if (sameAsBuy) {
+    throw new Error(
+      `swap.sell and swap.buy.token are the same address (${sameAsBuy})`,
     )
   }
 
   const ctxFor = (venue: { maxSpend?: bigint }) => ({
     chainId,
     environment,
-    sellToken: scope.sell.token,
+    sellTokens,
     buyToken: scope.buy.token,
     recipient: scope.to,
     // A venue-level cap wins over the scope-level one: `anySettler` demands its
@@ -209,7 +230,12 @@ export function resolveSwapScope(
   })
 
   return {
-    permissions: [approvePermission(scope, scopings)],
+    // One permission per sell token: distinct addresses are distinct on-chain
+    // action ids, so they carry their own policies without conflicting. A single
+    // merged permission cannot express two tokens — its `address` IS the token.
+    permissions: sellTokens.map((token) =>
+      approvePermission(token, scope.sell.maxTotal, scopings),
+    ),
     actions: dedupeActions(scopings.flatMap((s) => [...s.actions])),
   }
 }

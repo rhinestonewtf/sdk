@@ -122,7 +122,27 @@ export type SwapVenue = RhinestoneSwapVenue | ZeroExVenue | FyndVenue
 
 /** Loose (chain-unaware) swap scope. The public config type narrows `via` by chain. */
 export interface SwapScopeInput {
-  readonly sell: { readonly token: Address; readonly maxTotal?: bigint }
+  /**
+   * The token(s) this session may spend. `tokens` authorises several — the sell
+   * pins become an OR across them, so one session serves an account that can
+   * receive any of a set (a deposit address, for instance, where the depositor
+   * chooses what arrives).
+   *
+   * A single `token` is NOT `tokens` of length one: it keeps the exact rule
+   * shape and policy type it has always produced, so the digest of every
+   * session already signed against it is unchanged.
+   */
+  readonly sell:
+    | {
+        readonly token: Address
+        readonly tokens?: never
+        readonly maxTotal?: bigint
+      }
+    | {
+        readonly tokens: readonly Address[]
+        readonly token?: never
+        readonly maxTotal?: bigint
+      }
   readonly buy: { readonly token: Address }
   /** Swap output recipient — pinned, so a compromised key cannot redirect output. */
   readonly to: Address
