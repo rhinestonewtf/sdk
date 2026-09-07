@@ -2,9 +2,9 @@
 // needs and cannot be derived: the asset INDEX an order carries, the size
 // precision it must round to, and the mark to price against.
 //
-// Separate from the order builders on purpose. The mark is a snapshot, and the
-// limit price built from it is fixed when the intent is signed, so the read is
-// the caller's to place and to repeat.
+// `openPerp` and `closePerp` do these reads themselves. What is exported here is
+// for the questions a caller asks BEFORE building an order: which markets exist,
+// what leverage one allows, whether there is a position to close at all.
 
 import type { Address } from 'viem'
 import { HyperCoreInfoRequestError, UnknownPerpAssetError } from './errors'
@@ -135,10 +135,9 @@ async function getPerpMarkets(
 /**
  * Read one Hyperliquid perpetual market by ticker.
  *
- * The result is what {@link openPerp} and {@link closePerp} price and size
- * against, so read it immediately before building the action: `markPx` is a
- * snapshot, and the limit price derived from it is fixed once the intent is
- * signed.
+ * {@link openPerp} does this read itself, so reach for this when you need the
+ * market's own facts — its mark to quote a size against, or its `maxLeverage`
+ * before offering one.
  *
  * @param asset ticker as Hyperliquid names it — the coin alone, e.g. `BTC`
  * @param options where to reach Hyperliquid's info endpoint
@@ -146,6 +145,7 @@ async function getPerpMarkets(
  * @throws {UnknownPerpAssetError} if no tradeable market carries that ticker
  * @example
  * const market = await getPerpMarket('BTC')
+ * const maxNotional = Number(market.markPx) * market.maxLeverage
  * @see {@link openPerp}
  */
 async function getPerpMarket(
@@ -192,6 +192,9 @@ async function getPerpPositions(
 /**
  * Read an account's open position on one Hyperliquid perpetual market.
  *
+ * {@link closePerp} does this read itself and throws when there is nothing to
+ * close, so this is the check to make before offering a close at all.
+ *
  * @param account the account holding the position
  * @param asset ticker as Hyperliquid names it, e.g. `BTC`
  * @param options where to reach Hyperliquid's info endpoint
@@ -199,7 +202,7 @@ async function getPerpPositions(
  * @example
  * const position = await getPerpPosition(account.getAddress(), 'BTC')
  * if (position) {
- *   const action = closePerp({ market, position })
+ *   // offer a close
  * }
  * @see {@link closePerp}
  */

@@ -1,7 +1,12 @@
 import { base, hyperEvm } from 'viem/chains'
 import type { WireQuoteRequest } from '../../src/clients/orchestrator/wire'
 import type { PerpMarket, PerpPosition } from '../../src/hypercore/index'
-import { closePerp, openPerp } from '../../src/hypercore/index'
+import {
+  closePerp,
+  getPerpMarkets,
+  getPerpPosition,
+  openPerp,
+} from '../../src/hypercore/index'
 import type {
   HyperCoreAction,
   HyperCoreOrderAction,
@@ -23,34 +28,30 @@ type WireHyperCoreAction = NonNullable<
 const actionMatchesWire: AssignableTo<HyperCoreAction, WireHyperCoreAction> =
   true
 
-const market: PerpMarket = {
-  asset: 'BTC',
-  assetIndex: 0,
-  szDecimals: 5,
-  maxLeverage: 40,
-  markPx: '64250.5',
-}
+const account = '0x1111111111111111111111111111111111111111' as const
 
-const position: PerpPosition = {
+// One await, and the asset is named once — there is no market or position
+// object for a caller to fetch, hold, or pair with the wrong asset.
+const opened: Promise<HyperCoreOrderAction> = openPerp({
   asset: 'BTC',
-  size: '0.0013',
-  entryPx: '63000',
-  leverage: 5,
-}
-
-const opened: HyperCoreOrderAction = openPerp({
-  market,
   direction: 'long',
   notionalUsd: 100,
 })
 
-const closed: HyperCoreOrderAction = closePerp({ market, position })
+const closed: Promise<HyperCoreOrderAction> = closePerp({
+  asset: 'BTC',
+  account,
+})
 
 // Sizing an open is one or the other, never both and never neither.
 // @ts-expect-error — `notionalUsd` and `size` are mutually exclusive
-openPerp({ market, direction: 'long', notionalUsd: 100, size: '0.001' })
+openPerp({ asset: 'BTC', direction: 'long', notionalUsd: 100, size: '0.001' })
 // @ts-expect-error — one of them is required
-openPerp({ market, direction: 'long' })
+openPerp({ asset: 'BTC', direction: 'long' })
+
+// The reads are still reachable for what they are actually for.
+const markets: Promise<PerpMarket[]> = getPerpMarkets()
+const position: Promise<PerpPosition | null> = getPerpPosition(account, 'BTC')
 
 // An action that delivers its own collateral.
 const openTransaction: Transaction = {
@@ -62,7 +63,7 @@ const openTransaction: Transaction = {
       amount: 25000000n,
     },
   ],
-  hyperCore: { action: opened },
+  hyperCore: { action: await opened },
 }
 
 // A close needs none, so it rides a transaction that requests no tokens — but
@@ -70,7 +71,7 @@ const openTransaction: Transaction = {
 const closeTransaction: Transaction = {
   sourceChains: [hyperEvm],
   targetChain: hyperCorePerp,
-  hyperCore: { action: closed },
+  hyperCore: { action: await closed },
 }
 
 // Every action variant is expressible without the builders, and the `type`
@@ -147,6 +148,8 @@ const noFalseAdditionalFlag: HyperCoreAction = {
 
 void actionMatchesWire
 void openTransaction
+void markets
+void position
 void closeTransaction
 void rawActions
 void noFalseAdditionalFlag
