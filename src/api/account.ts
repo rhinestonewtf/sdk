@@ -318,7 +318,9 @@ export interface RhinestoneAccount {
   /**
    * Wait for a submitted transaction or user operation to execute onchain.
    * Polls the orchestrator until the intent reaches a terminal state; on failure
-   * an `IntentFailedError` is thrown.
+   * an `IntentFailedError` is thrown, whose `context` carries `operations` and,
+   * where a settlement layer returned the funds, `refunds` — a refunded intent
+   * is still a failed one, so that error is where the refund surfaces.
    * @param result The result returned by a submit/send call
    * @returns The per-chain operation status (for intents) or a UserOp receipt
    */

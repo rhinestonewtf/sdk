@@ -53,8 +53,17 @@ export async function waitForIntentStatus<CompatibilityConfig>(
     }
     if (!status.terminal) continue
     if (status.status === 'FAILED') {
+      // The refund rides the ERROR, because this is the only path it can take:
+      // a refunded intent is still `FAILED` — it did not do what was asked —
+      // so this throws and the caller never sees a returned status. Omitting
+      // it here would hide the refund from `waitForExecution` for the exact
+      // case the field exists to answer.
       throw new IntentFailedError({
-        context: { intentId, operations: status.operations },
+        context: {
+          intentId,
+          operations: status.operations,
+          ...(status.refunds ? { refunds: status.refunds } : {}),
+        },
       })
     }
     return status

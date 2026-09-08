@@ -356,4 +356,42 @@ describe('intent domain', () => {
     ).rejects.toBeInstanceOf(IntentFailedError)
     expect(sleep).toHaveBeenCalledWith(2_000)
   })
+
+  test('carries the refund on the failed-intent error, the only path it has', () => {
+    // A refunded intent is still FAILED, so `waitForIntentStatus` throws and no
+    // status is ever returned — the error context is the only place a
+    // `waitForExecution` caller can read the refund from.
+    const refund = {
+      chain: 8453,
+      txHash:
+        '0x8e483d74ff15e79f86e0c23e81444a5db5b2ce31c9ec28f84259dfc83f0bbc28',
+    }
+    const failing = (refunds?: readonly (typeof refund)[]) => ({
+      statusClient: {
+        getIntentStatus: vi.fn(async () => ({
+          traceId: 'trace',
+          intentId: 'intent',
+          status: 'FAILED' as const,
+          account: address,
+          operations: [],
+          ...(refunds ? { refunds } : {}),
+        })),
+      },
+      clock: {
+        now: vi.fn().mockReturnValueOnce(0).mockReturnValue(20_000),
+        sleep: vi.fn(async () => undefined),
+      },
+    })
+
+    return Promise.all([
+      waitForIntentStatus(failing([refund]), 'intent').catch((error) => {
+        expect(error.context.refunds).toEqual([refund])
+      }),
+      waitForIntentStatus(failing(), 'intent').catch((error) => {
+        // Absent, not `[]` — a failed intent we know of no refund for must not
+        // claim one came back.
+        expect('refunds' in error.context).toBe(false)
+      }),
+    ])
+  })
 })
