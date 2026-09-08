@@ -118,6 +118,8 @@ export interface IntentStatus {
   readonly status: IntentOpStatus['status']
   readonly account: Address
   readonly operations: readonly IntentOpStatus['operations'][number][]
+  /** Bridge refunds, if any are known. See {@link IntentOpStatus.refunds}. */
+  readonly refunds?: readonly NonNullable<IntentOpStatus['refunds']>[number][]
   readonly terminal: boolean
 }
 
@@ -187,4 +189,9 @@ export interface TransactionStatus {
   accountAddress: Address
   /** Per-chain operation status. One entry per chain. */
   operations: IntentOpStatus['operations']
+  /**
+   * Bridge refunds, if any are known. This is where a failed cross-chain
+   * transaction says the funds came back. See {@link IntentOpStatus.refunds}.
+   */
+  refunds?: IntentOpStatus['refunds']
 }

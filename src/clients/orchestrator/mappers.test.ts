@@ -1,6 +1,10 @@
 import type { SignedAuthorization } from 'viem'
 import { describe, expect, test } from 'vitest'
-import { mapIntentRequestToWire, mapSignedIntentToWire } from './mappers'
+import {
+  mapIntentRequestToWire,
+  mapIntentStatusFromWire,
+  mapSignedIntentToWire,
+} from './mappers'
 import type { OrchestratorSignedIntent } from './types'
 
 const address = '0x0000000000000000000000000000000000000001' as const
@@ -204,5 +208,46 @@ describe('mapIntentRequestToWire — HyperCore action', () => {
       options?: { hyperCore?: unknown }
     }
     expect(wire.options?.hyperCore).toBeUndefined()
+  })
+})
+
+describe('mapIntentStatusFromWire refunds', () => {
+  const REFUND_TX =
+    '0x8e483d74ff15e79f86e0c23e81444a5db5b2ce31c9ec28f84259dfc83f0bbc28'
+
+  const status = (refunds?: unknown) => ({
+    traceId: 'trace-1',
+    status: 'FAILED',
+    accountAddress: address,
+    operations: [
+      { chain: 8453, items: [{ status: 'COMPLETED', txHash: '0xaa' }] },
+    ],
+    ...(refunds === undefined ? {} : { refunds }),
+  })
+
+  test('surfaces the refund transaction and chain', () => {
+    const mapped = mapIntentStatusFromWire(
+      'intent-1',
+      status([{ chain: 8453, txHash: REFUND_TX }]),
+    )
+    expect(mapped.refunds).toEqual([{ chain: 8453, txHash: REFUND_TX }])
+  })
+
+  test('leaves refunds absent when the orchestrator reports none', () => {
+    // Not `[]`. The key is omitted when no refund is KNOWN, which is a
+    // different fact from "there was none" — defaulting here would tell a
+    // caller reconciling a failed intent that the funds were kept.
+    const mapped = mapIntentStatusFromWire('intent-1', status())
+    expect('refunds' in mapped).toBe(false)
+  })
+
+  test('parses a CAIP-2 refund chain the way an operation chain is parsed', () => {
+    // `chain` is a number on today's wire, but it goes through the same helper
+    // as `operations[].chain`, so the two cannot diverge if that changes.
+    const mapped = mapIntentStatusFromWire(
+      'intent-1',
+      status([{ chain: 'eip155:42161', txHash: REFUND_TX }]),
+    )
+    expect(mapped.refunds).toEqual([{ chain: 42161, txHash: REFUND_TX }])
   })
 })
