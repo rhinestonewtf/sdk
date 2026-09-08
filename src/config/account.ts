@@ -720,6 +720,12 @@ interface SwapScope<TChainId extends number = number> {
    * A single `token` is not `tokens` of length one: it keeps the rule shape and
    * policy type it has always produced, so sessions already signed against it
    * are unaffected.
+   *
+   * Several tokens are authorised as alternatives, so the rules grow with
+   * tokens x named venues and the policy has a hard ceiling of 128. Three
+   * tokens across two named aggregators encodes; four does not, and fails when
+   * the session is built rather than silently dropping anything. Name fewer
+   * venues if you need more tokens.
    */
   sell:
     | ({ token: Address; tokens?: never } & SwapSellCap)

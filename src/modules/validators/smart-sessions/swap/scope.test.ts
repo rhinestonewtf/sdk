@@ -63,6 +63,53 @@ function flatten(
   throw new Error(`unexpected node in a swap policy: ${expression.type}`)
 }
 
+/**
+ * The OR branches of a swap policy, as separate rule lists.
+ *
+ * `flatten` deliberately loses which branch a rule belongs to, which is enough
+ * to assert a slot is pinned at all — and NOT enough to catch the failure that
+ * matters here: a constraint that should bind every branch ending up inside
+ * one, or a branch mixing two sell tokens. Those need the tree.
+ */
+function branchesOf(action: ScopedAction): {
+  shared: UniversalActionPolicyParamRule[]
+  branches: UniversalActionPolicyParamRule[][]
+} {
+  const policy = action.policies?.[0]
+  if (policy?.type !== 'arg-policy') {
+    return { shared: rulesOf(action), branches: [] }
+  }
+  const shared: UniversalActionPolicyParamRule[] = []
+  const branches: UniversalActionPolicyParamRule[][] = []
+  const collectOr = (node: ArgPolicyExpression): void => {
+    if (node.type === 'or') {
+      collectOr(node.left)
+      collectOr(node.right)
+      return
+    }
+    branches.push(flatten(node))
+  }
+  const walk = (node: ArgPolicyExpression): void => {
+    if (node.type === 'or') {
+      collectOr(node)
+      return
+    }
+    if (node.type === 'and') {
+      walk(node.left)
+      walk(node.right)
+      return
+    }
+    // A `not` node carries no rule of its own; swap policies never build
+    // one, and treating it as a rule would silently invert an assertion.
+    if (node.type !== 'rule') {
+      throw new Error(`unexpected node in a swap policy: ${node.type}`)
+    }
+    shared.push(node.rule)
+  }
+  walk(policy.expression)
+  return { shared, branches }
+}
+
 function rulesOf(action: ScopedAction): UniversalActionPolicyParamRule[] {
   const policy = action.policies?.[0]
   if (policy?.type === 'universal-action') return [...policy.rules]
@@ -927,6 +974,53 @@ describe('resolveSwapScope — several sell tokens', () => {
         .length
 
     expect(entrypoints(two)).toBe(entrypoints(one))
+  })
+
+  // The property the whole multi-sell shape rests on, and the one `flatten`
+  // cannot see: what binds EVERY branch must sit outside the OR, and each
+  // branch must name one token at every offset that mentions a sell token. A
+  // constraint trapped inside a branch is satisfiable by picking another.
+  test('keeps the shared constraints outside the OR, one token per branch', () => {
+    const two = scopeFor({ tokens: [USDC, DAI] })
+
+    const swapAction = two.actions.find(
+      (a) => 'target' in a && a.target === SWAPPER_PLASMA,
+    ) as ScopedAction
+    const { shared, branches } = branchesOf(swapAction)
+
+    // Buy token (64) and recipient (160) bind every branch, so they sit
+    // outside the OR rather than being repeated inside it.
+    const sharedOffsets = shared.map((r) => r.calldataOffset)
+    expect(sharedOffsets).toContain(64n)
+    expect(sharedOffsets).toContain(160n)
+    expect(branches.length).toBeGreaterThan(1)
+
+    // And no branch may name two different sell tokens at its own offsets.
+    for (const branch of branches) {
+      const named = new Set(
+        branch
+          .map((r) => String(r.referenceValue).toLowerCase())
+          .filter((v) => v === USDC.toLowerCase() || v === DAI.toLowerCase()),
+      )
+      expect(named.size).toBeLessThanOrEqual(1)
+    }
+  })
+
+  // The regression this pairs with: with the pin moved into the branches, an
+  // empty branch list leaves the sell token unconstrained — the session could
+  // sell anything the proxy is approved for. Refused instead.
+  test('refuses a routed venue with no routes rather than unpinning the token', () => {
+    expect(() =>
+      resolveSwapScope(
+        {
+          sell: { tokens: [USDC, DAI] },
+          buy: { token: USDT0 },
+          to: ACCOUNT,
+          via: [{ id: 'rhinestone', routes: [] } as never],
+        },
+        PLASMA,
+      ),
+    ).toThrow(/at least one aggregator/)
   })
 
   // ArgPolicy is the one whose on-chain evaluator handles OR nodes;

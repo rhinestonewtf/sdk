@@ -315,6 +315,18 @@ export function scopeRhinestone(
         `Supported: ${FYND_CHAIN_IDS.join(', ')}.`,
     )
   }
+  // An empty list authorises nothing, the same as `swap.via: []`, and it is
+  // worse than useless here: with several sell tokens the tokenIn pin has
+  // already moved out of the shared rules and into the branches, so an empty
+  // cross product leaves the sell token UNPINNED and the session able to sell
+  // anything the proxy is approved for.
+  if (venue.routes !== undefined && venue.routes.length === 0) {
+    throw new Error(
+      'rhinestoneSwap routes must list at least one aggregator — an empty ' +
+        'list would authorise nothing. Omit `routes` to leave the tail open.',
+    )
+  }
+
   const multiSell = sellPinsGoInAlternatives(ctx)
 
   /** Route pins for one (sell token, aggregator) pair. */
@@ -392,6 +404,22 @@ export function scopeRhinestone(
     )
   }
 
+  // The invariant behind moving the pin: whenever it leaves the shared rules,
+  // the branches must put it back. Checked rather than assumed — an empty
+  // alternatives list silently unpins the sell token, and the resulting scope
+  // looks well-formed.
+  const assertSellTokenPinned = (
+    alternatives: UniversalActionPolicyParamRule[][],
+  ): UniversalActionPolicyParamRule[][] => {
+    if (multiSell && alternatives.length === 0) {
+      throw new Error(
+        'internal: several sell tokens but no alternatives to pin them in — ' +
+          'the sell token would be unconstrained',
+      )
+    }
+    return alternatives
+  }
+
   return {
     // The account approves the proxy, never the Swapper and never a router —
     // one fixed spender per chain, whichever aggregator ends up filling.
@@ -401,13 +429,13 @@ export function scopeRhinestone(
         swapper,
         SWAP_EXACT_IN_SELECTOR,
         rulesFor(EXACT_IN, 'amountIn'),
-        alternativesFor(EXACT_IN),
+        assertSellTokenPinned(alternativesFor(EXACT_IN)),
       ),
       swapAction(
         swapper,
         SWAP_EXACT_OUT_SELECTOR,
         rulesFor(EXACT_OUT, 'amountInMax'),
-        alternativesFor(EXACT_OUT),
+        assertSellTokenPinned(alternativesFor(EXACT_OUT)),
       ),
     ],
   }
