@@ -57,6 +57,7 @@ export type {
   HyperCoreUpdateLeverageAction,
   IntentInput,
   IntentOpStatus,
+  IntentRefund,
   OperationStatus,
   OriginSignature,
   Portfolio,

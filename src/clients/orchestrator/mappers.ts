@@ -118,6 +118,10 @@ export function mapIntentStatusFromWire(
       readonly chain?: string | number
       readonly items?: readonly unknown[]
     }[]
+    readonly refunds?: readonly {
+      readonly chain?: string | number
+      readonly txHash: string
+    }[]
   }
   return {
     traceId: input.traceId ?? '',
@@ -134,6 +138,20 @@ export function mapIntentStatusFromWire(
             {}),
         }) as ChainOperation,
     ),
+    // Deliberately NOT `?? []`, unlike every field above it. The orchestrator
+    // omits the key when it knows of no refund, and that is not the same fact
+    // as "there were none" — a refund is recorded only where a settlement layer
+    // evidences it with a transaction. Defaulting would turn "we don't know"
+    // into "the funds were kept", which is the one reading the wire contract
+    // exists to prevent.
+    ...(input.refunds
+      ? {
+          refunds: input.refunds.map((refund) => ({
+            chain: parseChainValue(refund.chain),
+            txHash: refund.txHash,
+          })),
+        }
+      : {}),
   }
 }
 

@@ -653,6 +653,24 @@ interface SplitIntentsResult {
 }
 
 /**
+ * A settlement layer returned the intent's funds to the account instead of
+ * delivering them.
+ *
+ * Not an operation: Rhinestone neither built nor broadcast this transaction,
+ * and a refund never makes the intent succeed — a refunded intent stays
+ * `FAILED`, because it did not do what was asked.
+ */
+interface IntentRefund {
+  /** Chain the refund landed on. */
+  chain: number
+  /**
+   * The refund transaction, in the chain's native form (EVM hex, Solana
+   * base58, Tron hex). Interpret it against `chain`.
+   */
+  txHash: string
+}
+
+/**
  * Full intent status as returned by the orchestrator (blanc API version).
  *
  * One operation per chain involved in the intent. The SDK flattens the
@@ -667,6 +685,16 @@ interface IntentOpStatus {
   accountAddress: Address
   /** Per-chain operation status. One entry per chain. */
   operations: ChainOperation[]
+  /**
+   * Bridge refunds observed for this intent.
+   *
+   * Undefined means no refund is KNOWN — never that the funds were kept. A
+   * refund is recorded only where a settlement layer evidences it with a
+   * transaction, so presence is a fact and absence is not a claim. Read it
+   * with the operations: a `FAILED` intent whose debiting operation never
+   * completed did not take the funds in the first place.
+   */
+  refunds?: IntentRefund[]
 }
 
 export type {
@@ -712,6 +740,7 @@ export type {
   IntentSubmitRequestInternal,
   IntentSubmitResponse,
   IntentOpStatus,
+  IntentRefund,
   IntentOptions,
   SponsorSettings,
   SignedAuthorization,

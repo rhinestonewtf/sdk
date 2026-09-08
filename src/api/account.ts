@@ -816,6 +816,7 @@ export function createAccountFacade(
             status: status.status as TransactionStatus['status'],
             accountAddress: status.account,
             operations: status.operations as TransactionStatus['operations'],
+            ...(status.refunds ? { refunds: [...status.refunds] } : {}),
           }))
       }
       const ctx = context('wait-for-execution')
