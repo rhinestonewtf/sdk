@@ -2,7 +2,12 @@ import { type Abi, type Address, toFunctionSelector } from 'viem'
 import { namedParamOffsets } from '../../permissions'
 import type { FyndVenue, UniversalActionPolicyParamRule } from '../types'
 import type { VenueContext, VenueScoping } from './rules'
-import { cumulativeCap, pin, swapAction } from './rules'
+import {
+  cumulativeCap,
+  pin,
+  sellPinsGoInAlternatives,
+  swapAction,
+} from './rules'
 
 /**
  * fynd — Rhinestone's self-hosted Tycho aggregator.
@@ -103,16 +108,23 @@ export function scopeFynd(ctx: VenueContext): VenueScoping {
         `Supported: ${FYND_CHAIN_IDS.join(', ')}.`,
     )
   }
+  const multiSell = sellPinsGoInAlternatives(ctx)
   const rules: UniversalActionPolicyParamRule[] = [
-    pin(OFFSETS.tokenIn, ctx.sellToken),
+    // One token keeps its pin here, which is what preserves the historical
+    // rule order, policy type and digest.
+    ...(multiSell ? [] : [pin(OFFSETS.tokenIn, ctx.sellTokens[0])]),
     pin(OFFSETS.tokenOut, ctx.buyToken),
     pin(OFFSETS.receiver, ctx.recipient),
   ]
   if (ctx.cap !== undefined) {
     rules.push(cumulativeCap(OFFSETS.amountIn, ctx.cap))
   }
+  // Several tokens become an OR over the one word that differs between them.
+  const sellAlternatives = multiSell
+    ? ctx.sellTokens.map((token) => [pin(OFFSETS.tokenIn, token)])
+    : []
   return {
     approveSpenders: [router],
-    actions: [swapAction(router, FYND_SWAP_SELECTOR, rules)],
+    actions: [swapAction(router, FYND_SWAP_SELECTOR, rules, sellAlternatives)],
   }
 }

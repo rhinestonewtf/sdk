@@ -33,6 +33,7 @@ import {
 
 const USDT0: Address = '0xB8CE59FC3717ada4C02eaDF9682A9e934F625ebb'
 const USDC: Address = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'
+const DAI: Address = '0x6B175474E89094C44Da98b954EedeAC495271d0F'
 const ACCOUNT: Address = '0x1111111111111111111111111111111111111111'
 const SETTLER: Address = '0x7F2194E8d4D5B5F889b17aeCe891F89Da74F5384'
 const PLASMA = 9745
@@ -60,6 +61,53 @@ function flatten(
     return [...flatten(expression.left), ...flatten(expression.right)]
   }
   throw new Error(`unexpected node in a swap policy: ${expression.type}`)
+}
+
+/**
+ * The OR branches of a swap policy, as separate rule lists.
+ *
+ * `flatten` deliberately loses which branch a rule belongs to, which is enough
+ * to assert a slot is pinned at all — and NOT enough to catch the failure that
+ * matters here: a constraint that should bind every branch ending up inside
+ * one, or a branch mixing two sell tokens. Those need the tree.
+ */
+function branchesOf(action: ScopedAction): {
+  shared: UniversalActionPolicyParamRule[]
+  branches: UniversalActionPolicyParamRule[][]
+} {
+  const policy = action.policies?.[0]
+  if (policy?.type !== 'arg-policy') {
+    return { shared: rulesOf(action), branches: [] }
+  }
+  const shared: UniversalActionPolicyParamRule[] = []
+  const branches: UniversalActionPolicyParamRule[][] = []
+  const collectOr = (node: ArgPolicyExpression): void => {
+    if (node.type === 'or') {
+      collectOr(node.left)
+      collectOr(node.right)
+      return
+    }
+    branches.push(flatten(node))
+  }
+  const walk = (node: ArgPolicyExpression): void => {
+    if (node.type === 'or') {
+      collectOr(node)
+      return
+    }
+    if (node.type === 'and') {
+      walk(node.left)
+      walk(node.right)
+      return
+    }
+    // A `not` node carries no rule of its own; swap policies never build
+    // one, and treating it as a rule would silently invert an assertion.
+    if (node.type !== 'rule') {
+      throw new Error(`unexpected node in a swap policy: ${node.type}`)
+    }
+    shared.push(node.rule)
+  }
+  walk(policy.expression)
+  return { shared, branches }
 }
 
 function rulesOf(action: ScopedAction): UniversalActionPolicyParamRule[] {
@@ -280,6 +328,66 @@ describe('resolveSwapScope — the cumulative cap', () => {
       PLASMA,
     )
     expect(ruleAt(rulesOf(actions[0]), 0n)?.usageLimit).toBe(0n)
+  })
+})
+
+describe('several sell tokens on a direct aggregator call', () => {
+  // The tokenIn pin is the one word that differs between sell tokens, so it
+  // moves into the action's OR alternatives. Asserted on the DIRECT router
+  // call, where the offset is the aggregator's own tokenIn — the Swapper-wrapped
+  // shape is covered above.
+  test('fynd: both sell tokens are authorised at the router tokenIn slot', () => {
+    const { actions } = resolveSwapScope(
+      scope({ sell: { tokens: [USDT0, DAI] }, via: [fynd()] }),
+      PLASMA,
+    )
+    const direct = actions.find(
+      (a) => a.target.toLowerCase() === TYCHO_PLASMA,
+    ) as ScopedAction
+    const pinned = rulesOf(direct)
+      .filter((r) => r.calldataOffset === 32n)
+      .map((r) => String(r.referenceValue).toLowerCase())
+
+    expect(pinned).toContain(USDT0.toLowerCase())
+    expect(pinned).toContain(DAI.toLowerCase())
+    // tokenOut and receiver stay in the AND part: they do not vary per token.
+    expect(ruleAt(rulesOf(direct), 64n)?.referenceValue).toBe(USDC)
+  })
+
+  test('zeroEx: both sell tokens are authorised at the AllowanceHolder token slot', () => {
+    const { actions } = resolveSwapScope(
+      scope({
+        sell: { tokens: [USDT0, DAI] },
+        via: [zeroEx({ settler: SETTLER })],
+      }),
+      PLASMA,
+    )
+    const direct = actions.find(
+      (a) =>
+        a.target.toLowerCase() === ZEROX_ALLOWANCE_HOLDER.toLowerCase() &&
+        a.selector === ALLOWANCE_HOLDER_EXEC_SELECTOR,
+    ) as ScopedAction
+    // exec(operator, token, amount, target, data): token is the second word.
+    const pinned = rulesOf(direct)
+      .filter((r) => r.calldataOffset === 32n)
+      .map((r) => String(r.referenceValue).toLowerCase())
+
+    expect(pinned).toContain(USDT0.toLowerCase())
+    expect(pinned).toContain(DAI.toLowerCase())
+  })
+
+  // Neither a pinned Settler nor anySettler leaves the operator, target and
+  // amount all unbounded on the AllowanceHolder path. The union forbids it;
+  // a plain-JS caller reaches it.
+  test('zeroEx: refuses a venue with neither a settler nor anySettler', () => {
+    expect(() =>
+      resolveSwapScope(
+        scope({
+          via: [{ route: 'zeroEx' } as unknown as ReturnType<typeof zeroEx>],
+        }),
+        PLASMA,
+      ),
+    ).toThrow(/pinned settler or anySettler/)
   })
 })
 
@@ -833,5 +941,147 @@ describe('venue maxSpend', () => {
       PLASMA,
     )
     expect(ruleAt(rulesOf(actions[0]), 32n)?.usageLimit).toBe(7n)
+  })
+})
+
+describe('resolveSwapScope — several sell tokens', () => {
+  const scopeFor = (sell: SwapScopeInput['sell']) =>
+    resolveSwapScope(
+      { sell, buy: { token: USDT0 }, to: ACCOUNT, via: [rhinestoneSwap()] },
+      PLASMA,
+    )
+
+  // The reason this feature exists: a deposit address takes whatever the
+  // depositor sends, so a session pinned to one sell token refuses every other.
+  test('authorises each token with its own approve action', () => {
+    const scoped = scopeFor({ tokens: [USDC, DAI] })
+
+    const approveAddresses = scoped.permissions.map((p) =>
+      (p.address as Address).toLowerCase(),
+    )
+
+    expect(approveAddresses).toEqual([USDC.toLowerCase(), DAI.toLowerCase()])
+  })
+
+  // One on-chain action id cannot carry two policies, so the swap entrypoints
+  // stay single actions and the tokens become OR branches inside them.
+  test('keeps one action per swap entrypoint, not one per token', () => {
+    const one = scopeFor({ token: USDC })
+    const two = scopeFor({ tokens: [USDC, DAI] })
+
+    const entrypoints = (r: typeof one) =>
+      r.actions.filter((a) => 'target' in a && a.target === SWAPPER_PLASMA)
+        .length
+
+    expect(entrypoints(two)).toBe(entrypoints(one))
+  })
+
+  // The property the whole multi-sell shape rests on, and the one `flatten`
+  // cannot see: what binds EVERY branch must sit outside the OR, and each
+  // branch must name one token at every offset that mentions a sell token. A
+  // constraint trapped inside a branch is satisfiable by picking another.
+  test('keeps the shared constraints outside the OR, one token per branch', () => {
+    const two = scopeFor({ tokens: [USDC, DAI] })
+
+    const swapAction = two.actions.find(
+      (a) => 'target' in a && a.target === SWAPPER_PLASMA,
+    ) as ScopedAction
+    const { shared, branches } = branchesOf(swapAction)
+
+    // Buy token (64) and recipient (160) bind every branch, so they sit
+    // outside the OR rather than being repeated inside it.
+    const sharedOffsets = shared.map((r) => r.calldataOffset)
+    expect(sharedOffsets).toContain(64n)
+    expect(sharedOffsets).toContain(160n)
+    expect(branches.length).toBeGreaterThan(1)
+
+    // And no branch may name two different sell tokens at its own offsets.
+    for (const branch of branches) {
+      const named = new Set(
+        branch
+          .map((r) => String(r.referenceValue).toLowerCase())
+          .filter((v) => v === USDC.toLowerCase() || v === DAI.toLowerCase()),
+      )
+      expect(named.size).toBeLessThanOrEqual(1)
+    }
+  })
+
+  // The regression this pairs with: with the pin moved into the branches, an
+  // empty branch list leaves the sell token unconstrained — the session could
+  // sell anything the proxy is approved for. Refused instead.
+  test('refuses a routed venue with no routes rather than unpinning the token', () => {
+    expect(() =>
+      resolveSwapScope(
+        {
+          sell: { tokens: [USDC, DAI] },
+          buy: { token: USDT0 },
+          to: ACCOUNT,
+          via: [{ id: 'rhinestone', routes: [] } as never],
+        },
+        PLASMA,
+      ),
+    ).toThrow(/at least one aggregator/)
+  })
+
+  // ArgPolicy is the one whose on-chain evaluator handles OR nodes;
+  // UniversalActionPolicy compares a word against a single constant, so it
+  // cannot express "either of these tokens".
+  test('uses the policy that can evaluate an OR', () => {
+    const two = scopeFor({ tokens: [USDC, DAI] })
+
+    const swapAction = two.actions.find(
+      (a) => 'target' in a && a.target === SWAPPER_PLASMA,
+    )
+
+    expect(swapAction?.policies?.[0]?.type).toBe('arg-policy')
+  })
+
+  // A single token is not a list of one: it must keep the exact shape and
+  // policy type it has always produced, or every already-signed swap session
+  // becomes a HashMismatch.
+  test('leaves the single-token shape untouched', () => {
+    const one = scopeFor({ token: USDC })
+
+    const swapAction = one.actions.find(
+      (a) => 'target' in a && a.target === SWAPPER_PLASMA,
+    )
+
+    expect(swapAction?.policies?.[0]?.type).toBe('universal-action')
+    expect(one.permissions).toHaveLength(1)
+  })
+
+  // The type makes this unreachable for a TypeScript caller (`tokens` is a
+  // non-empty tuple), so the cast is the only way to reach the runtime guard —
+  // which still has to hold for JavaScript callers.
+  test('refuses an empty token list rather than authorising nothing', () => {
+    expect(() =>
+      scopeFor({ tokens: [] as unknown as [Address, ...Address[]] }),
+    ).toThrow(/at least one token/)
+  })
+
+  // Unreachable for a TypeScript caller (the union forbids it) but reachable
+  // from a deserialized scope, and either resolution silently changes what the
+  // session may spend.
+  test('refuses a scope naming both token and tokens', () => {
+    expect(() =>
+      scopeFor({
+        token: USDC,
+        tokens: [USDC, USDT0],
+      } as unknown as { tokens: [Address, ...Address[]] }),
+    ).toThrow(/mutually exclusive/)
+  })
+
+  test('refuses a scope naming neither', () => {
+    expect(() =>
+      scopeFor({} as unknown as { tokens: [Address, ...Address[]] }),
+    ).toThrow(/must name a token/)
+  })
+
+  test('refuses a repeated token', () => {
+    expect(() => scopeFor({ tokens: [USDC, USDC] })).toThrow(/repeats/)
+  })
+
+  test('refuses a sell token that is also the buy token', () => {
+    expect(() => scopeFor({ tokens: [USDC, USDT0] })).toThrow(/same address/)
   })
 })

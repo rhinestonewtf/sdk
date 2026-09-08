@@ -2,7 +2,13 @@ import { type Abi, type Address, toFunctionSelector } from 'viem'
 import { namedParamOffsets } from '../../permissions'
 import type { UniversalActionPolicyParamRule, ZeroExVenue } from '../types'
 import type { VenueContext, VenueScoping } from './rules'
-import { cumulativeCap, pin, pinValue, swapAction } from './rules'
+import {
+  cumulativeCap,
+  pin,
+  pinValue,
+  sellPinsGoInAlternatives,
+  swapAction,
+} from './rules'
 
 /**
  * 0x — Swap API v2, AllowanceHolder flow.
@@ -217,8 +223,10 @@ export function scopeZeroEx(
   }
   // Pinned from the scope, never from venue options — the sell token is a
   // scope-level guarantee and must not depend on the caller restating it.
+  const multiSell = sellPinsGoInAlternatives(ctx)
   const rules: UniversalActionPolicyParamRule[] = [
-    pin(EXEC.token, ctx.sellToken),
+    // One token keeps its pin here, preserving the historical digest.
+    ...(multiSell ? [] : [pin(EXEC.token, ctx.sellTokens[0])]),
   ]
   if (venue.settler !== undefined) {
     rules.push(pin(EXEC.operator, venue.settler))
@@ -231,10 +239,18 @@ export function scopeZeroEx(
   if (ctx.cap !== undefined) {
     rules.push(cumulativeCap(EXEC.amount, ctx.cap))
   }
+  const sellAlternatives = multiSell
+    ? ctx.sellTokens.map((token) => [pin(EXEC.token, token)])
+    : []
   return {
     approveSpenders: [ZEROX_ALLOWANCE_HOLDER],
     actions: [
-      swapAction(ZEROX_ALLOWANCE_HOLDER, ALLOWANCE_HOLDER_EXEC_SELECTOR, rules),
+      swapAction(
+        ZEROX_ALLOWANCE_HOLDER,
+        ALLOWANCE_HOLDER_EXEC_SELECTOR,
+        rules,
+        sellAlternatives,
+      ),
     ],
   }
 }
