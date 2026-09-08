@@ -210,6 +210,22 @@ describe('experimental_defineSpendSession — cross-chain scoping', () => {
     expect(session.hasExplicitPermissions).toBe(true)
   })
 
+  // The deadline is already enforced via the claim policy's `permitDeadline`,
+  // so it must not flip an already-enabled session into verify-execution mode.
+  test('a cross-chain window alone does not force verify-execution mode', () => {
+    const { session } = experimental_defineSpendSession({
+      chain: base,
+      owners: OWNER,
+      spend: {
+        tokens: [{ token: USDC }],
+        recipients: [RECIPIENT],
+        validUntil: new Date(Date.now() + 86_400_000),
+        target: arbTarget(['ACROSS']),
+      },
+    })
+    expect(session.hasExplicitPermissions).toBe(false)
+  })
+
   test('a cross-chain spend with nothing to enforce on-chain does not', () => {
     const { session } = experimental_defineSpendSession({
       chain: base,

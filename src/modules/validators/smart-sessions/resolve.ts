@@ -224,7 +224,9 @@ export function toSession(
     // stops being enforced from the second use on.
     hasExplicitPermissions:
       Boolean(definition.permissions?.length) ||
-      expanded.some(({ fallbackPolicies }) => fallbackPolicies.length > 0),
+      expanded.some(({ fallbackPolicies }) =>
+        fallbackPolicies.some((policy) => policy.type === 'spending-limits'),
+      ),
     permissionId: getPermissionIdFromData(data),
     sessionValidator: data.sessionValidator,
     sessionValidatorInitData: data.sessionValidatorInitData,
