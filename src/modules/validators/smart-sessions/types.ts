@@ -169,6 +169,10 @@ export interface SessionDefinition {
   // must carry the matching burn op (see buildOneTimeUseBurnOp) in its
   // `preClaimExecutions`.
   oneTimeUse?: OneTimeUseSessionConfig
+  // Pre-encoded ERC-1271 policy entries to install on the session's 1271 surface
+  // (e.g. an IntentExecutor settlement-layer policy). Enforcing 1271 policies drop
+  // the default sudo entry, so the 1271 list stays a strict AND.
+  erc1271Policies?: ResolvedPolicy[]
 }
 
 export interface OneTimeUseSessionConfig {

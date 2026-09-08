@@ -130,9 +130,27 @@ export function resolveSessionData(
       resolvePermit2ClaimPolicy(policy),
     ),
   }))
-  let erc1271Policies: { policy: Address; initData: Hex }[] = [
-    { policy: addresses.sudo, initData: '0x' },
-  ]
+  // Extra pre-encoded 1271 policies (e.g. an IntentExecutor settlement-layer
+  // policy). They are enforcing, so they replace the default sudo entry to keep
+  // the 1271 list a strict AND rather than letting sudo pass everything. A
+  // route-gating 1271 policy (settlement-layer) and Permit2 claim policies gate
+  // different routes on this shared AND-list, so the caller must not combine them
+  // (experimental_defineSpendSession guards it too, ahead of this); combining
+  // them yields a session that cannot settle rather than a bypass, so it is
+  // refused here as well — a SessionDefinition can be built by hand.
+  const extraErc1271 = definition.erc1271Policies ?? []
+  if (extraErc1271.length && claimPolicies.length) {
+    throw new Error(
+      'erc1271Policies and Permit2 claim policies cannot be combined: they gate ' +
+        'different settlement routes on one AND-list, so no signature satisfies ' +
+        'both. Use claimPolicies/permits for the Permit2 route, or ' +
+        'erc1271Policies for the IntentExecutor route.',
+    )
+  }
+  let erc1271Policies: { policy: Address; initData: Hex }[] =
+    extraErc1271.length
+      ? [...extraErc1271]
+      : [{ policy: addresses.sudo, initData: '0x' }]
   if (definition.oneTimeUse) {
     if (!addresses.oneTimeUseId) {
       throw new Error(
@@ -160,7 +178,7 @@ export function resolveSessionData(
     // once-policy bounds HOW MANY TIMES), so the claim policies move here from
     // `claimPolicies`. A permit2 one-time-use session must therefore supply a claim
     // policy; an executor-only session may have none.
-    erc1271Policies = [...claimPolicies, once]
+    erc1271Policies = [...claimPolicies, ...extraErc1271, once]
     claimPolicies = []
   }
   return {
@@ -189,15 +207,26 @@ export function toSession(
       ? { wrappedNativeToken: options.wrappedNativeToken }
       : {}),
   })
-  const expandedClaims = (definition.crossChainPermits ?? []).map(
-    (input) =>
-      expandCrossChainPermit(resolveCrossChainPermission(input), environment)
-        .claim,
+  const expanded = (definition.crossChainPermits ?? []).map((input) =>
+    expandCrossChainPermit(resolveCrossChainPermission(input), environment),
   )
+  const expandedClaims = expanded.map(({ claim }) => claim)
   return {
     chain: definition.chain,
     owners: definition.owners,
-    hasExplicitPermissions: Boolean(definition.permissions?.length),
+    // Whether this session has policies that only run on the ACTION surface,
+    // which is what decides `verifyExecutions` downstream: an enabled session
+    // without them drops to plain ERC-1271 (mode 1), where `checkAction` never
+    // fires. A cross-chain permit's `maxAmount` is exactly such a policy — it
+    // is expanded into a spending-limit on the fallback action, and unlike the
+    // permit deadline it has no counterpart on the claim policy — so a session
+    // carrying one must keep verify-execution mode, or the cap it advertises
+    // stops being enforced from the second use on.
+    hasExplicitPermissions:
+      Boolean(definition.permissions?.length) ||
+      expanded.some(({ fallbackPolicies }) =>
+        fallbackPolicies.some((policy) => policy.type === 'spending-limits'),
+      ),
     permissionId: getPermissionIdFromData(data),
     sessionValidator: data.sessionValidator,
     sessionValidatorInitData: data.sessionValidatorInitData,

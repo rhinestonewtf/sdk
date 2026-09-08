@@ -561,6 +561,13 @@ interface SessionDefinition<TAbis extends readonly Abi[] = readonly Abi[]> {
    * partner).
    */
   oneTimeUse?: { id: bigint }
+  /**
+   * Pre-encoded ERC-1271 policy entries to install on the session's 1271 surface
+   * (e.g. an IntentExecutor settlement-layer policy — see
+   * `intentExecutorPolicyEntry`). Enforcing entries replace the default sudo
+   * entry so the 1271 list stays a strict AND. Experimental.
+   */
+  erc1271Policies?: readonly { policy: Address; initData: Hex }[]
 }
 
 type SessionInput<TAbis extends readonly Abi[] = readonly Abi[]> = Omit<

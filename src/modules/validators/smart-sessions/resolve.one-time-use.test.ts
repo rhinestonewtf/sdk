@@ -44,6 +44,20 @@ describe('resolveSessionData — one-time-use session', () => {
     expect(data.claimPolicies).toHaveLength(0)
   })
 
+  // Both surfaces are the same AND-list, and each policy only recognises its
+  // own digest shape, so no signature can satisfy both. The builder refuses the
+  // combination, but a SessionDefinition can be written by hand.
+  test('refuses a 1271 policy combined with a Permit2 claim policy', () => {
+    expect(() =>
+      resolveSessionData({
+        chain: base,
+        owners,
+        claimPolicies: [{ type: 'permit2' }],
+        erc1271Policies: [{ policy: POLICY, initData: '0x' }],
+      }),
+    ).toThrow('cannot be combined')
+  })
+
   test('leaves a normal session untouched (sudo-only 1271 list, no once-policy on actions)', () => {
     const data = resolveSessionData({ chain: base, owners })
     expect(data.erc7739Policies.erc1271Policies).toHaveLength(1)
