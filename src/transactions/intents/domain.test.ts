@@ -384,9 +384,14 @@ describe('intent domain', () => {
         failureReason,
       })),
     })
-    expect(classified.operations.map((op) => op.failureReason)).toEqual([
-      ...reasons,
-    ])
+    // Narrowed rather than indexed: `ChainOperation` is discriminated on
+    // `status`, and `failureReason` exists only on the FAILED member — which is
+    // itself part of what this pins.
+    expect(
+      classified.operations.map((op) =>
+        op.status === 'FAILED' ? op.failureReason : undefined,
+      ),
+    ).toEqual([...reasons])
   })
 
   test('carries the refund on the failed-intent error, the only path it has', () => {
