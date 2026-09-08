@@ -19,6 +19,7 @@ export function toPublicTransactionStatus(
     status: status.status,
     accountAddress: status.account,
     operations: [...status.operations],
+    ...(status.refunds ? { refunds: [...status.refunds] } : {}),
   }
 }
 

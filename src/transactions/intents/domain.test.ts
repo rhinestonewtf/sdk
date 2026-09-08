@@ -280,6 +280,28 @@ describe('intent domain', () => {
     ).toBe(false)
   })
 
+  test('classifies a bridge refund through, and leaves it absent when unknown', () => {
+    const failed = {
+      traceId: '',
+      intentId: 'intent',
+      status: 'FAILED',
+      account: address,
+      operations: [],
+    } as const
+    const refund = {
+      chain: 8453,
+      txHash:
+        '0x8e483d74ff15e79f86e0c23e81444a5db5b2ce31c9ec28f84259dfc83f0bbc28',
+    }
+
+    expect(
+      classifyIntentStatus({ ...failed, refunds: [refund] }).refunds,
+    ).toEqual([refund])
+    // Absent, not `[]` — the distinction the field rests on: presence is a
+    // fact, absence is not a claim that the funds were kept.
+    expect('refunds' in classifyIntentStatus(failed)).toBe(false)
+  })
+
   test('classifies retry delays and terminal failures', async () => {
     const rateLimit = (retryAfter?: string) =>
       new RateLimitedError({
@@ -333,5 +355,80 @@ describe('intent domain', () => {
       ),
     ).rejects.toBeInstanceOf(IntentFailedError)
     expect(sleep).toHaveBeenCalledWith(2_000)
+  })
+
+  test('accepts every failure reason the orchestrator serialises', () => {
+    // Not a runtime assertion so much as a compile-time one: each literal has
+    // to be assignable to the public `FailureReason`, so a union narrower than
+    // the wire fails the build here rather than forcing consumers to cast.
+    // Mirrors the orchestrator's enum minus `NONE`, which it filters out before
+    // serialising. `BRIDGE_REFUNDED` is the one this PR makes consumers want:
+    // it is the per-operation half of `refunds`.
+    const reasons = [
+      'EXPIRED',
+      'REVERTED',
+      'RELAYER_FAILURE',
+      'DISPATCH_FAILED',
+      'BRIDGE_TIMEOUT',
+      'BRIDGE_REFUNDED',
+    ] as const
+
+    const classified = classifyIntentStatus({
+      traceId: '',
+      intentId: 'intent',
+      status: 'FAILED',
+      account: address,
+      operations: reasons.map((failureReason, i) => ({
+        chain: i + 1,
+        status: 'FAILED' as const,
+        failureReason,
+      })),
+    })
+    // Narrowed rather than indexed: `ChainOperation` is discriminated on
+    // `status`, and `failureReason` exists only on the FAILED member — which is
+    // itself part of what this pins.
+    expect(
+      classified.operations.map((op) =>
+        op.status === 'FAILED' ? op.failureReason : undefined,
+      ),
+    ).toEqual([...reasons])
+  })
+
+  test('carries the refund on the failed-intent error, the only path it has', () => {
+    // A refunded intent is still FAILED, so `waitForIntentStatus` throws and no
+    // status is ever returned — the error context is the only place a
+    // `waitForExecution` caller can read the refund from.
+    const refund = {
+      chain: 8453,
+      txHash:
+        '0x8e483d74ff15e79f86e0c23e81444a5db5b2ce31c9ec28f84259dfc83f0bbc28',
+    }
+    const failing = (refunds?: readonly (typeof refund)[]) => ({
+      statusClient: {
+        getIntentStatus: vi.fn(async () => ({
+          traceId: 'trace',
+          intentId: 'intent',
+          status: 'FAILED' as const,
+          account: address,
+          operations: [],
+          ...(refunds ? { refunds } : {}),
+        })),
+      },
+      clock: {
+        now: vi.fn().mockReturnValueOnce(0).mockReturnValue(20_000),
+        sleep: vi.fn(async () => undefined),
+      },
+    })
+
+    return Promise.all([
+      waitForIntentStatus(failing([refund]), 'intent').catch((error) => {
+        expect(error.context.refunds).toEqual([refund])
+      }),
+      waitForIntentStatus(failing(), 'intent').catch((error) => {
+        // Absent, not `[]` — a failed intent we know of no refund for must not
+        // claim one came back.
+        expect('refunds' in error.context).toBe(false)
+      }),
+    ])
   })
 })

@@ -69,9 +69,26 @@ type OperationStatus = 'PENDING' | 'COMPLETED' | 'FAILED'
  *
  * - `EXPIRED`          – the operation deadline passed without completion
  * - `REVERTED`         – the on-chain transaction reverted
- * - `RELAYER_FAILURE`  – the relayer could not submit the transaction
+ * - `RELAYER_FAILURE`  – the relayer reported failure, or none was available
+ * - `DISPATCH_FAILED`  – the orchestrator could not get the action to the
+ *                        relayer market at all, so no relayer ever saw it
+ * - `BRIDGE_TIMEOUT`   – the bridge neither delivered nor resolved in time
+ * - `BRIDGE_REFUNDED`  – the bridge returned the funds instead of delivering;
+ *                        pair it with `refunds` on the status for the
+ *                        transaction that returned them
+ *
+ * The orchestrator's own enum additionally has `NONE`, which it filters out
+ * before serialising, so it is deliberately not here. Closed rather than
+ * widened to `string` for the same reason as the settlement layers above: a
+ * new reason is a real code change, and consumers branch on these.
  */
-type FailureReason = 'EXPIRED' | 'REVERTED' | 'RELAYER_FAILURE'
+type FailureReason =
+  | 'EXPIRED'
+  | 'REVERTED'
+  | 'RELAYER_FAILURE'
+  | 'DISPATCH_FAILED'
+  | 'BRIDGE_TIMEOUT'
+  | 'BRIDGE_REFUNDED'
 
 /**
  * One operation per chain involved in the intent.
@@ -653,6 +670,24 @@ interface SplitIntentsResult {
 }
 
 /**
+ * A settlement layer returned the intent's funds to the account instead of
+ * delivering them.
+ *
+ * Not an operation: Rhinestone neither built nor broadcast this transaction,
+ * and a refund never makes the intent succeed — a refunded intent stays
+ * `FAILED`, because it did not do what was asked.
+ */
+interface IntentRefund {
+  /** Chain the refund landed on. */
+  chain: number
+  /**
+   * The refund transaction, in the chain's native form (EVM hex, Solana
+   * base58, Tron hex). Interpret it against `chain`.
+   */
+  txHash: string
+}
+
+/**
  * Full intent status as returned by the orchestrator (blanc API version).
  *
  * One operation per chain involved in the intent. The SDK flattens the
@@ -667,6 +702,16 @@ interface IntentOpStatus {
   accountAddress: Address
   /** Per-chain operation status. One entry per chain. */
   operations: ChainOperation[]
+  /**
+   * Bridge refunds observed for this intent.
+   *
+   * Undefined means no refund is KNOWN — never that the funds were kept. A
+   * refund is recorded only where a settlement layer evidences it with a
+   * transaction, so presence is a fact and absence is not a claim. Read it
+   * with the operations: a `FAILED` intent whose debiting operation never
+   * completed did not take the funds in the first place.
+   */
+  refunds?: IntentRefund[]
 }
 
 export type {
@@ -712,6 +757,7 @@ export type {
   IntentSubmitRequestInternal,
   IntentSubmitResponse,
   IntentOpStatus,
+  IntentRefund,
   IntentOptions,
   SponsorSettings,
   SignedAuthorization,
