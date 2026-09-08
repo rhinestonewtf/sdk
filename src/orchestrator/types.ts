@@ -510,6 +510,28 @@ interface SplitIntentsResult {
   intents: Record<Address, bigint>[]
 }
 
+/**
+ * A settlement layer returned the intent's funds to the account instead of
+ * delivering them.
+ *
+ * Not a claim: Rhinestone neither built nor broadcast this transaction, and a
+ * refund never makes the intent succeed — a refunded intent stays `FAILED`,
+ * because it did not do what was asked.
+ *
+ * `chain` rather than the `chainId` its neighbours here use, because the field
+ * is served verbatim on both orchestrator API versions and a second spelling
+ * would be a second shape to keep in step.
+ */
+interface IntentRefund {
+  /** Chain the refund landed on. */
+  chain: number
+  /**
+   * The refund transaction, in the chain's native form (EVM hex, Solana
+   * base58, Tron hex). Interpret it against `chain`.
+   */
+  txHash: string
+}
+
 interface IntentOpStatus {
   status: IntentStatus
   claims: Claim[]
@@ -517,6 +539,18 @@ interface IntentOpStatus {
   userAddress: Address
   fillTimestamp?: number
   fillTransactionHash?: Hex
+  /**
+   * Bridge refunds observed for this intent.
+   *
+   * Undefined means no refund is KNOWN — never that the funds were kept. A
+   * refund is recorded only where a settlement layer evidences it with a
+   * transaction, so presence is a fact and absence is not a claim.
+   *
+   * Typed only: `getIntentOpStatus` returns the response body as-is, so the
+   * value has always arrived once the orchestrator sends it. This is what
+   * lets a caller read it without a cast.
+   */
+  refunds?: IntentRefund[]
 }
 
 interface PortfolioTokenChainResponse {
@@ -560,6 +594,7 @@ export type {
   IntentOpElement,
   IntentOpElementMandate,
   IntentOpStatus,
+  IntentRefund,
   IntentResult,
   IntentRoute,
   MappedChainTokenAccessList,
