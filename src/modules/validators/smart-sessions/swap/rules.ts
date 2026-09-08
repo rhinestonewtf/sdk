@@ -162,9 +162,28 @@ export interface VenueContext {
   readonly chainId: number
   /** Selects the Swapper/proxy deployment pair. */
   readonly environment: 'production' | 'development'
-  readonly sellToken: Address
+  /**
+   * Every token this session may spend, in the caller's order. Length 1 is the
+   * historical single-token case and MUST keep producing the historical rule
+   * shape — see `sellPinsGoInAlternatives`.
+   */
+  readonly sellTokens: readonly Address[]
   readonly buyToken: Address
   readonly recipient: Address
   /** Cumulative sell-token cap, or undefined for no cap. */
   readonly cap: bigint | undefined
+}
+
+/**
+ * Whether the sell-token pins belong in the action's OR branches rather than
+ * its shared rules.
+ *
+ * Only when there is more than one. With a single token the pin stays where it
+ * has always been, which keeps the rule list, the chosen policy type and
+ * therefore the session digest byte-identical to what callers have already
+ * signed. Moving it unconditionally would be a HashMismatch for every existing
+ * swap session.
+ */
+export function sellPinsGoInAlternatives(ctx: VenueContext): boolean {
+  return ctx.sellTokens.length > 1
 }

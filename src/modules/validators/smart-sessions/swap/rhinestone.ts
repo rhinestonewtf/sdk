@@ -7,7 +7,14 @@ import type {
 } from '../types'
 import { FYND_CHAIN_IDS, FYND_ROUTERS, type FyndChainId } from './fynd'
 import type { VenueContext, VenueScoping } from './rules'
-import { cumulativeCap, pin, pinValue, pinWord, swapAction } from './rules'
+import {
+  cumulativeCap,
+  pin,
+  pinValue,
+  pinWord,
+  sellPinsGoInAlternatives,
+  swapAction,
+} from './rules'
 import { ZEROX_ALLOWANCE_HOLDER, ZEROX_CHAIN_IDS } from './zero-ex'
 
 /**
@@ -308,52 +315,110 @@ export function scopeRhinestone(
         `Supported: ${FYND_CHAIN_IDS.join(', ')}.`,
     )
   }
-  // Which router the pinned tail must call. Undefined route = unconstrained.
-  const routeAggregator =
-    venue.route === 'zeroEx'
-      ? ZEROX_ALLOWANCE_HOLDER
-      : venue.route === 'fynd'
-        ? FYND_ROUTERS[ctx.chainId as FyndChainId]
-        : undefined
+  // An empty list authorises nothing, the same as `swap.via: []`, and it is
+  // worse than useless here: with several sell tokens the tokenIn pin has
+  // already moved out of the shared rules and into the branches, so an empty
+  // cross product leaves the sell token UNPINNED and the session able to sell
+  // anything the proxy is approved for.
+  if (venue.routes !== undefined && venue.routes.length === 0) {
+    throw new Error(
+      'rhinestoneSwap routes must list at least one aggregator — an empty ' +
+        'list would authorise nothing. Omit `routes` to leave the tail open.',
+    )
+  }
+
+  const multiSell = sellPinsGoInAlternatives(ctx)
+
+  /** Route pins for one (sell token, aggregator) pair. */
+  const routeRulesFor = (
+    sellToken: Address,
+    route: 'zeroEx' | 'fynd',
+  ): UniversalActionPolicyParamRule[] =>
+    routeRules(
+      sellToken,
+      route === 'zeroEx'
+        ? ZEROX_ALLOWANCE_HOLDER
+        : FYND_ROUTERS[ctx.chainId as FyndChainId],
+      route === 'zeroEx' ? venue.settler : undefined,
+      route === 'fynd' ? { buyToken: ctx.buyToken, swapper } : undefined,
+    )
 
   const rulesFor = (
     offsets: Record<string, bigint>,
     sellAmountParam: string,
   ): UniversalActionPolicyParamRule[] => {
     const rules = [
-      pin(offsets.tokenIn, ctx.sellToken),
+      // With one token the pin stays here, which is what keeps the rule order,
+      // the chosen policy type and the digest identical to what callers have
+      // already signed. With several it moves into the OR below, because the
+      // wrapped route mentions the sell token at more than one offset and a
+      // branch has to agree with itself.
+      ...(multiSell ? [] : [pin(offsets.tokenIn, ctx.sellTokens[0])]),
       pin(offsets.tokenOut, ctx.buyToken),
       pin(offsets.recipient, ctx.recipient),
     ]
     if (ctx.cap !== undefined) {
       rules.push(cumulativeCap(offsets[sellAmountParam], ctx.cap))
     }
-    if (venue.routes === undefined && routeAggregator !== undefined) {
-      rules.push(
-        ...routeRules(
-          ctx.sellToken,
-          routeAggregator,
-          venue.route === 'zeroEx' ? venue.settler : undefined,
-          venue.route === 'fynd'
-            ? { buyToken: ctx.buyToken, swapper }
-            : undefined,
-        ),
-      )
+    // Narrowed on `venue.route` itself rather than on `routeAggregator`, so
+    // the type follows the check instead of being asserted past it.
+    if (!multiSell && venue.routes === undefined && venue.route !== undefined) {
+      rules.push(...routeRulesFor(ctx.sellTokens[0], venue.route))
     }
     return rules
   }
 
-  /** One rule set per authorised aggregator; the policy requires any one. */
-  const routeAlternatives = (venue.routes ?? []).map((route) =>
-    routeRules(
-      ctx.sellToken,
-      route === 'zeroEx'
-        ? ZEROX_ALLOWANCE_HOLDER
-        : FYND_ROUTERS[ctx.chainId as FyndChainId],
-      route === 'zeroEx' ? venue.settler : undefined,
-      route === 'fynd' ? { buyToken: ctx.buyToken, swapper } : undefined,
-    ),
-  )
+  /**
+   * The OR branches. Each must be self-consistent: every offset that names the
+   * sell token has to name the SAME one, so a branch is a (token, route) pair
+   * rather than a token pin and a route pin chosen independently.
+   *
+   * Single token, several routes -> today's per-route alternatives, unchanged.
+   * Several tokens -> the cross product, which is what lets one session serve
+   * an account that may receive any of a set of tokens.
+   */
+  const alternativesFor = (
+    offsets: Record<string, bigint>,
+  ): UniversalActionPolicyParamRule[][] => {
+    const routes: ('zeroEx' | 'fynd' | undefined)[] =
+      venue.routes !== undefined
+        ? [...venue.routes]
+        : [venue.route === undefined ? undefined : venue.route]
+
+    if (!multiSell) {
+      // Unchanged: no branches at all unless several routes were named.
+      return venue.routes === undefined
+        ? []
+        : routes.flatMap((route) =>
+            route === undefined
+              ? []
+              : [routeRulesFor(ctx.sellTokens[0], route)],
+          )
+    }
+
+    return ctx.sellTokens.flatMap((token) =>
+      routes.map((route) => [
+        pin(offsets.tokenIn, token),
+        ...(route === undefined ? [] : routeRulesFor(token, route)),
+      ]),
+    )
+  }
+
+  // The invariant behind moving the pin: whenever it leaves the shared rules,
+  // the branches must put it back. Checked rather than assumed — an empty
+  // alternatives list silently unpins the sell token, and the resulting scope
+  // looks well-formed.
+  const assertSellTokenPinned = (
+    alternatives: UniversalActionPolicyParamRule[][],
+  ): UniversalActionPolicyParamRule[][] => {
+    if (multiSell && alternatives.length === 0) {
+      throw new Error(
+        'internal: several sell tokens but no alternatives to pin them in — ' +
+          'the sell token would be unconstrained',
+      )
+    }
+    return alternatives
+  }
 
   return {
     // The account approves the proxy, never the Swapper and never a router —
@@ -364,13 +429,13 @@ export function scopeRhinestone(
         swapper,
         SWAP_EXACT_IN_SELECTOR,
         rulesFor(EXACT_IN, 'amountIn'),
-        routeAlternatives,
+        assertSellTokenPinned(alternativesFor(EXACT_IN)),
       ),
       swapAction(
         swapper,
         SWAP_EXACT_OUT_SELECTOR,
         rulesFor(EXACT_OUT, 'amountInMax'),
-        routeAlternatives,
+        assertSellTokenPinned(alternativesFor(EXACT_OUT)),
       ),
     ],
   }

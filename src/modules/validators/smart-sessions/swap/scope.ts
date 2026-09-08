@@ -64,14 +64,17 @@ const erc20ApproveAbi = [
 ] as const satisfies Abi
 
 /**
- * One approve permission covering every venue's spender.
+ * The approve permission for ONE sell token, covering every venue's spender.
  *
- * Merged rather than one-per-venue because all venues pull the same sell token;
- * a single action with a spender allowlist is cheaper to install and keeps the
- * spending-limit a single shared counter instead of one budget per venue.
+ * One per token, not one per venue: every venue pulls the same token, so a
+ * single action with a spender allowlist is cheaper to install and keeps the
+ * spending limit a shared counter rather than a budget per venue. Several sell
+ * tokens mean several of these — the permission's `address` IS the token, so it
+ * cannot be merged further.
  */
 function approvePermission(
-  scope: SwapScopeInput,
+  sellToken: Address,
+  maxTotal: bigint | undefined,
   scopings: VenueScoping[],
 ): Permission {
   const spenders = [
@@ -81,14 +84,14 @@ function approvePermission(
   ].map((s) => s as Address)
   return {
     abi: erc20ApproveAbi as unknown as Abi,
-    address: scope.sell.token,
+    address: sellToken,
     functions: {
       approve: {
-        ...(scope.sell.maxTotal !== undefined
+        ...(maxTotal !== undefined
           ? {
               spendingLimit: {
-                token: scope.sell.token,
-                amount: scope.sell.maxTotal,
+                token: sellToken,
+                amount: maxTotal,
               },
             }
           : {}),
@@ -121,16 +124,50 @@ export function resolveSwapScope(
       'swap.via must list at least one venue — an empty list would authorise nothing',
     )
   }
-  if (scope.sell.token.toLowerCase() === scope.buy.token.toLowerCase()) {
+  // One shape from here down. `token` and `tokens` are the same thing to
+  // everything downstream except rule placement, which `sellPinsGoInAlternatives`
+  // decides from the length.
+  //
+  // Both present is refused rather than resolved. The type makes it impossible
+  // for a TypeScript caller, but a deserialized scope can carry both, and
+  // preferring either one silently widens or narrows what the session may
+  // spend. Neither present is refused for the same reason: it would otherwise
+  // reach the checks below as `[undefined]`.
+  const { token, tokens } = scope.sell
+  if (token !== undefined && tokens !== undefined) {
     throw new Error(
-      `swap.sell.token and swap.buy.token are the same address (${scope.sell.token})`,
+      'swap.sell names both token and tokens — they are mutually exclusive, so ' +
+        'which tokens the session may spend is ambiguous. Pass one.',
+    )
+  }
+  if (token === undefined && tokens === undefined) {
+    throw new Error('swap.sell must name a token or a non-empty tokens list')
+  }
+  const sellTokens: readonly Address[] = tokens ?? [token as Address]
+  if (sellTokens.length === 0) {
+    throw new Error(
+      'swap.sell.tokens must name at least one token — an empty list would authorise nothing',
+    )
+  }
+  const duplicate = sellTokens
+    .map((t) => t.toLowerCase())
+    .find((t, i, all) => all.indexOf(t) !== i)
+  if (duplicate) {
+    throw new Error(`swap.sell.tokens repeats ${duplicate}`)
+  }
+  const sameAsBuy = sellTokens.find(
+    (t) => t.toLowerCase() === scope.buy.token.toLowerCase(),
+  )
+  if (sameAsBuy) {
+    throw new Error(
+      `swap.sell and swap.buy.token are the same address (${sameAsBuy})`,
     )
   }
 
   const ctxFor = (venue: { maxSpend?: bigint }) => ({
     chainId,
     environment,
-    sellToken: scope.sell.token,
+    sellTokens,
     buyToken: scope.buy.token,
     recipient: scope.to,
     // A venue-level cap wins over the scope-level one: `anySettler` demands its
@@ -209,7 +246,12 @@ export function resolveSwapScope(
   })
 
   return {
-    permissions: [approvePermission(scope, scopings)],
+    // One permission per sell token: distinct addresses are distinct on-chain
+    // action ids, so they carry their own policies without conflicting. A single
+    // merged permission cannot express two tokens — its `address` IS the token.
+    permissions: sellTokens.map((token) =>
+      approvePermission(token, scope.sell.maxTotal, scopings),
+    ),
     actions: dedupeActions(scopings.flatMap((s) => [...s.actions])),
   }
 }
