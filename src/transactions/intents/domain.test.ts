@@ -280,6 +280,28 @@ describe('intent domain', () => {
     ).toBe(false)
   })
 
+  test('classifies a bridge refund through, and leaves it absent when unknown', () => {
+    const failed = {
+      traceId: '',
+      intentId: 'intent',
+      status: 'FAILED',
+      account: address,
+      operations: [],
+    } as const
+    const refund = {
+      chain: 8453,
+      txHash:
+        '0x8e483d74ff15e79f86e0c23e81444a5db5b2ce31c9ec28f84259dfc83f0bbc28',
+    }
+
+    expect(
+      classifyIntentStatus({ ...failed, refunds: [refund] }).refunds,
+    ).toEqual([refund])
+    // Absent, not `[]` — the distinction the field rests on: presence is a
+    // fact, absence is not a claim that the funds were kept.
+    expect('refunds' in classifyIntentStatus(failed)).toBe(false)
+  })
+
   test('classifies retry delays and terminal failures', async () => {
     const rateLimit = (retryAfter?: string) =>
       new RateLimitedError({

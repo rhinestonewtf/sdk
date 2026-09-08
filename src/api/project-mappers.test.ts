@@ -31,6 +31,29 @@ describe('SDK project boundary adapters', () => {
     })
   })
 
+  test('carries a bridge refund onto the public shape, and omits it when absent', () => {
+    const failed = {
+      traceId: 'trace-status',
+      intentId: 'intent-1',
+      status: 'FAILED',
+      account: address,
+      operations: [],
+      terminal: true,
+    } as const
+    const refund = {
+      chain: 8453,
+      txHash:
+        '0x8e483d74ff15e79f86e0c23e81444a5db5b2ce31c9ec28f84259dfc83f0bbc28',
+    }
+
+    expect(
+      toPublicTransactionStatus({ ...failed, refunds: [refund] }).refunds,
+    ).toEqual([refund])
+    // Absent, not `[]`: the orchestrator omits the key when it knows of no
+    // refund, and that is not the same fact as "there was none".
+    expect('refunds' in toPublicTransactionStatus(failed)).toBe(false)
+  })
+
   test('maps public split requests with and without settlement filters', () => {
     expect(
       toOrchestratorSplitRequest({
