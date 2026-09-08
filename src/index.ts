@@ -92,6 +92,7 @@ import {
   type IntentInput,
   type IntentOp,
   type IntentOpStatus,
+  type IntentRefund,
   type Portfolio,
   type SettlementLayer,
   type SignedIntentOp,
@@ -679,6 +680,7 @@ export type {
   IntentInput,
   IntentOp,
   IntentOpStatus,
+  IntentRefund,
   IntentRoute,
   // Multi-chain permit2 types
   MultiChainPermit2Config,
