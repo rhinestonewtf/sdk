@@ -69,9 +69,26 @@ type OperationStatus = 'PENDING' | 'COMPLETED' | 'FAILED'
  *
  * - `EXPIRED`          – the operation deadline passed without completion
  * - `REVERTED`         – the on-chain transaction reverted
- * - `RELAYER_FAILURE`  – the relayer could not submit the transaction
+ * - `RELAYER_FAILURE`  – the relayer reported failure, or none was available
+ * - `DISPATCH_FAILED`  – the orchestrator could not get the action to the
+ *                        relayer market at all, so no relayer ever saw it
+ * - `BRIDGE_TIMEOUT`   – the bridge neither delivered nor resolved in time
+ * - `BRIDGE_REFUNDED`  – the bridge returned the funds instead of delivering;
+ *                        pair it with `refunds` on the status for the
+ *                        transaction that returned them
+ *
+ * The orchestrator's own enum additionally has `NONE`, which it filters out
+ * before serialising, so it is deliberately not here. Closed rather than
+ * widened to `string` for the same reason as the settlement layers above: a
+ * new reason is a real code change, and consumers branch on these.
  */
-type FailureReason = 'EXPIRED' | 'REVERTED' | 'RELAYER_FAILURE'
+type FailureReason =
+  | 'EXPIRED'
+  | 'REVERTED'
+  | 'RELAYER_FAILURE'
+  | 'DISPATCH_FAILED'
+  | 'BRIDGE_TIMEOUT'
+  | 'BRIDGE_REFUNDED'
 
 /**
  * One operation per chain involved in the intent.

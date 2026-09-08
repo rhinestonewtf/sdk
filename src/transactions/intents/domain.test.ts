@@ -357,6 +357,38 @@ describe('intent domain', () => {
     expect(sleep).toHaveBeenCalledWith(2_000)
   })
 
+  test('accepts every failure reason the orchestrator serialises', () => {
+    // Not a runtime assertion so much as a compile-time one: each literal has
+    // to be assignable to the public `FailureReason`, so a union narrower than
+    // the wire fails the build here rather than forcing consumers to cast.
+    // Mirrors the orchestrator's enum minus `NONE`, which it filters out before
+    // serialising. `BRIDGE_REFUNDED` is the one this PR makes consumers want:
+    // it is the per-operation half of `refunds`.
+    const reasons = [
+      'EXPIRED',
+      'REVERTED',
+      'RELAYER_FAILURE',
+      'DISPATCH_FAILED',
+      'BRIDGE_TIMEOUT',
+      'BRIDGE_REFUNDED',
+    ] as const
+
+    const classified = classifyIntentStatus({
+      traceId: '',
+      intentId: 'intent',
+      status: 'FAILED',
+      account: address,
+      operations: reasons.map((failureReason, i) => ({
+        chain: i + 1,
+        status: 'FAILED' as const,
+        failureReason,
+      })),
+    })
+    expect(classified.operations.map((op) => op.failureReason)).toEqual([
+      ...reasons,
+    ])
+  })
+
   test('carries the refund on the failed-intent error, the only path it has', () => {
     // A refunded intent is still FAILED, so `waitForIntentStatus` throws and no
     // status is ever returned — the error context is the only place a
