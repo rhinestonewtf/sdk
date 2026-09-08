@@ -37,7 +37,11 @@ import {
   readSessionEnabled,
   readSessionNonce,
 } from '../modules/validators/smart-sessions/state'
-import { fynd } from '../modules/validators/smart-sessions/swap/fynd'
+import type { FyndChainId } from '../modules/validators/smart-sessions/swap/fynd'
+import {
+  FYND_CHAIN_IDS,
+  fynd,
+} from '../modules/validators/smart-sessions/swap/fynd'
 import { rhinestoneSwap } from '../modules/validators/smart-sessions/swap/rhinestone'
 import type { SwapVenueFor } from '../modules/validators/smart-sessions/swap/scope'
 import type {
@@ -117,6 +121,7 @@ async function isSessionEnabled(
 
 export type {
   ChainDigest,
+  FyndChainId,
   FyndVenue,
   RhinestoneSwapVenue,
   SessionDetails,
@@ -128,6 +133,7 @@ export type {
 }
 export {
   ARG_POLICY_ADDRESS,
+  FYND_CHAIN_IDS,
   fynd,
   getPermissionId,
   getSessionData,
