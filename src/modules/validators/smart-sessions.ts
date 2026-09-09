@@ -56,6 +56,7 @@ import {
   SMART_SESSION_EMISSARY_ADDRESS,
   SMART_SESSION_EMISSARY_ADDRESS_DEV,
 } from './core'
+import { compareHexValues } from './ordering'
 import {
   encodePermit2ClaimPolicyInitData,
   PERMIT2_CLAIM_POLICY_ADDRESS,
@@ -787,17 +788,23 @@ function getSessionData(
         ].map((action) => resolveActionData(action, false))
       : actions
 
+  const claimPolicies =
+    session.claimPolicies?.map((policy) => ({
+      policy: PERMIT2_CLAIM_POLICY_ADDRESS,
+      initData: encodePermit2ClaimPolicyInitData(policy),
+    })) ?? []
+
   return {
     sessionValidator: validator.address,
-    salt: restricted ? getRestrictedSessionSalt(saltActions) : zeroHash,
+    salt: restricted
+      ? session.saltMode === 'strict'
+        ? getStrictSessionSalt(saltActions, erc7739Data, claimPolicies)
+        : getRestrictedSessionSalt(saltActions)
+      : zeroHash,
     sessionValidatorInitData: validator.initData,
     erc7739Policies: erc7739Data,
     actions,
-    claimPolicies:
-      session.claimPolicies?.map((policy) => ({
-        policy: PERMIT2_CLAIM_POLICY_ADDRESS,
-        initData: encodePermit2ClaimPolicyInitData(policy),
-      })) ?? [],
+    claimPolicies,
   }
 }
 
@@ -821,6 +828,93 @@ function resolveActionData(
       },
     ],
   }
+}
+
+const STRICT_SALT_POLICY_COMPONENTS = [
+  { name: 'policy', type: 'address' },
+  { name: 'initData', type: 'bytes' },
+] as const
+
+/**
+ * Salt covering everything `_enablePolicies` writes under the permissionId.
+ *
+ * `getRestrictedSessionSalt` hashes actions only, so two restricted sessions
+ * differing just by `signing` share a permissionId and union on enable. This
+ * mirrors the 2.x derivation exactly, so the same session built on either major
+ * lands on the same permissionId — provided the policy addresses match too.
+ *
+ * Actions are sorted by (target, selector): on-chain they are keyed by action
+ * id, so the same set listed in a different order is the same authorisation.
+ */
+function getStrictSessionSalt(
+  actions: readonly ActionData[],
+  erc7739Policies: {
+    allowedERC7739Content: readonly {
+      appDomainSeparator: Hex
+      contentNames: readonly string[]
+    }[]
+    erc1271Policies: readonly { policy: Address; initData: Hex }[]
+  },
+  claimPolicies: readonly { policy: Address; initData: Hex }[],
+): Hex {
+  const sorted = [...actions]
+    .sort(
+      (a, b) =>
+        compareHexValues(a.actionTarget, b.actionTarget) ||
+        compareHexValues(a.actionTargetSelector, b.actionTargetSelector),
+    )
+    .map((action) => ({
+      actionTargetSelector: action.actionTargetSelector,
+      actionTarget: action.actionTarget,
+      actionPolicies: action.actionPolicies.map((policy) => ({ ...policy })),
+    }))
+
+  return keccak256(
+    encodeAbiParameters(
+      [
+        {
+          name: 'actions',
+          type: 'tuple[]',
+          components: [
+            { name: 'actionTargetSelector', type: 'bytes4' },
+            { name: 'actionTarget', type: 'address' },
+            {
+              name: 'actionPolicies',
+              type: 'tuple[]',
+              components: STRICT_SALT_POLICY_COMPONENTS,
+            },
+          ],
+        },
+        {
+          name: 'erc1271Policies',
+          type: 'tuple[]',
+          components: STRICT_SALT_POLICY_COMPONENTS,
+        },
+        {
+          name: 'allowedERC7739Content',
+          type: 'tuple[]',
+          components: [
+            { name: 'appDomainSeparator', type: 'bytes32' },
+            { name: 'contentNames', type: 'string[]' },
+          ],
+        },
+        {
+          name: 'claimPolicies',
+          type: 'tuple[]',
+          components: STRICT_SALT_POLICY_COMPONENTS,
+        },
+      ],
+      [
+        sorted,
+        erc7739Policies.erc1271Policies.map((policy) => ({ ...policy })),
+        erc7739Policies.allowedERC7739Content.map((content) => ({
+          appDomainSeparator: content.appDomainSeparator,
+          contentNames: [...content.contentNames],
+        })),
+        claimPolicies.map((policy) => ({ ...policy })),
+      ] as never,
+    ),
+  )
 }
 
 function getRestrictedSessionSalt(actions: readonly ActionData[]): Hex {
@@ -1236,9 +1330,11 @@ export {
   getEnableSessionCall,
   getPermissionId,
   getPolicyData,
+  getRestrictedSessionSalt,
   getSessionData,
   getSessionDetails,
   getSmartSessionValidator,
+  getStrictSessionSalt,
   INTENT_EXECUTION_POLICY_ADDRESS,
   isSessionEnabled,
   packSignature,

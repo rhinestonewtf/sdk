@@ -1,3 +1,4 @@
+import { zeroHash } from 'viem'
 import { base, optimism } from 'viem/chains'
 import { describe, expect, test, vi } from 'vitest'
 import { accountA } from '../../../../../test/consts'
@@ -6,8 +7,11 @@ import {
   ARG_POLICY_ADDRESS,
   DUMMY_PRECLAIMOP_SELECTOR,
   getPermissionId,
+  getRestrictedSessionSalt,
   getSessionData,
+  getStrictSessionSalt,
   SMART_SESSIONS_FALLBACK_TARGET_FLAG,
+  SUDO_POLICY_ADDRESS,
   VALUE_LIMIT_POLICY_ADDRESS,
 } from '../../smart-sessions'
 import { fynd } from './fynd'
@@ -230,5 +234,93 @@ describe('restricted v1 sessions', () => {
         ],
       }),
     ).toThrow('cannot use claimPolicies')
+  })
+})
+
+describe('saltMode', () => {
+  const scoped = (extra?: Partial<Session>): Session => ({
+    chain: base,
+    owners: { type: 'ecdsa', accounts: [accountA] },
+    restrictToActions: true,
+    actions: [
+      { target: SELL, selector: '0xa9059cbb', policies: [{ type: 'sudo' }] },
+      {
+        target: BUY,
+        selector: '0x12345678',
+        policies: [{ type: 'value-limit', limit: 5n }],
+      },
+    ],
+    ...extra,
+  })
+
+  // Frozen derivations: a change here strands every already-signed session.
+  const V1_SALT =
+    '0x08060e7ab6e41dfa09c11798c60d867716c8a5fa1308f6ac6c55d8bff0a70cab'
+  const STRICT_SALT =
+    '0xd30be60c8217a07e1dd8b97153810e0b637940b8db29162f63d1bc644675f146'
+
+  test("default and explicit 'v1' keep the actions-only salt byte-for-byte", () => {
+    expect(getSessionData(scoped()).salt).toBe(V1_SALT)
+    expect(getSessionData(scoped({ saltMode: 'v1' })).salt).toBe(V1_SALT)
+  })
+
+  test("'strict' lands on a different salt and permissionId", () => {
+    expect(getSessionData(scoped({ saltMode: 'strict' })).salt).toBe(
+      STRICT_SALT,
+    )
+    expect(getPermissionId(scoped({ saltMode: 'strict' }))).not.toBe(
+      getPermissionId(scoped()),
+    )
+  })
+
+  test("'strict' covers signing and claim config the v1 salt cannot see", () => {
+    const { actions } = getSessionData(scoped())
+    // the v1 salt is a function of the actions alone — any two sessions that
+    // agree on actions collide on the same permissionId and union on enable
+    expect(getRestrictedSessionSalt(actions)).toBe(V1_SALT)
+
+    const noSigning = { allowedERC7739Content: [], erc1271Policies: [] }
+    const baseline = getStrictSessionSalt(actions, noSigning, [])
+    expect(
+      getStrictSessionSalt(
+        actions,
+        {
+          allowedERC7739Content: [],
+          erc1271Policies: [{ policy: SUDO_POLICY_ADDRESS, initData: '0x' }],
+        },
+        [],
+      ),
+    ).not.toBe(baseline)
+    expect(
+      getStrictSessionSalt(
+        actions,
+        {
+          allowedERC7739Content: [
+            { appDomainSeparator: zeroHash, contentNames: [''] },
+          ],
+          erc1271Policies: [],
+        },
+        [],
+      ),
+    ).not.toBe(baseline)
+    expect(
+      getStrictSessionSalt(actions, noSigning, [
+        { policy: SUDO_POLICY_ADDRESS, initData: '0x' },
+      ]),
+    ).not.toBe(baseline)
+  })
+
+  test("'strict' is independent of action listing order; 'v1' is not", () => {
+    const reversed = scoped({ actions: [...scoped().actions!].reverse() })
+    expect(getSessionData({ ...reversed, saltMode: 'strict' }).salt).toBe(
+      STRICT_SALT,
+    )
+    expect(getSessionData(reversed).salt).not.toBe(V1_SALT)
+  })
+
+  test('unrestricted sessions stay on zeroHash in both modes', () => {
+    const open = scoped({ restrictToActions: false })
+    expect(getSessionData({ ...open, saltMode: 'strict' }).salt).toBe(zeroHash)
+    expect(getSessionData({ ...open, saltMode: 'v1' }).salt).toBe(zeroHash)
   })
 })
