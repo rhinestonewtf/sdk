@@ -255,6 +255,26 @@ describe('resolveSwapScope — 0x anySettler', () => {
     expect(ruleAt(rulesOf(actions[0]), 64n)?.usageLimit).toBe(1000n)
   })
 
+  test('a pinned Settler accepts a cap without giving up its pins', () => {
+    const rules = rulesOf(
+      resolveSwapScope(
+        scope({ via: [zeroEx({ settler: SETTLER, maxSpend: 750n })] }),
+        PLASMA,
+      ).actions[0],
+    )
+    expect(ruleAt(rules, 0n)?.referenceValue).toBe(SETTLER) // operator
+    expect(ruleAt(rules, 96n)?.referenceValue).toBe(SETTLER) // target
+    expect(ruleAt(rules, 64n)?.usageLimit).toBe(750n)
+  })
+
+  test('a pinned Settler with no cap leaves the amount unbounded', () => {
+    const rules = rulesOf(
+      resolveSwapScope(scope({ via: [zeroEx({ settler: SETTLER })] }), PLASMA)
+        .actions[0],
+    )
+    expect(ruleAt(rules, 64n)).toBeUndefined()
+  })
+
   test('leaves operator/target free but still pins the sell token', () => {
     // token@32 and amount@64 are consumed by AllowanceHolder itself, so they
     // remain meaningful even when the callee is unconstrained.

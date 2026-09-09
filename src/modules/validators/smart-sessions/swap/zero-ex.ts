@@ -155,7 +155,12 @@ export interface ZeroExPinnedOptions {
   /** The Settler to pin. Get the current one with {@link resolveZeroExSettler}. */
   settler: Address
   anySettler?: never
-  maxSpend?: never
+  /**
+   * Optional cumulative sell-token cap. Not needed to bound a compromised
+   * session key — the pinned Settler already does that — so omit it unless a
+   * spend ceiling is wanted for its own sake.
+   */
+  maxSpend?: bigint
 }
 
 /**
