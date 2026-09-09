@@ -68,20 +68,31 @@ describe('swap scope resolution', () => {
     ).toBe(true)
   })
 
+  // The AllowanceHolder `exec` amount sits at calldata offset 64. A venue cap
+  // lands there as a cumulative limit and OVERRIDES the scope-level
+  // `sell.maxTotal`, which is the whole point of allowing one beside a pin.
+  const execAmountLimit = (via: ReturnType<typeof zeroEx>) => {
+    const resolved = resolveSwapScope(swap([via]), base.id)
+    const exec = resolved.actions.find(
+      (action) => action.selector === ALLOWANCE_HOLDER_EXEC_SELECTOR,
+    )
+    const rules = (exec?.policies ?? []).flatMap(
+      (policy) => (policy as { rules?: unknown[] }).rules ?? [],
+    ) as { calldataOffset: bigint; usageLimit?: bigint }[]
+    return rules.find((rule) => rule.calldataOffset === 64n)?.usageLimit
+  }
+
   // A pin already bounds a compromised session key, so a cap is not required
   // here — but it stays available for callers who want a ceiling of their own.
   // The type used to forbid the combination outright.
-  test('a pinned Settler accepts an optional cap', () => {
-    const resolved = resolveSwapScope(
-      swap([zeroEx({ settler: SETTLER, maxSpend: 750n })]),
-      base.id,
+  test('a pinned Settler accepts a cap, which wins over sell.maxTotal', () => {
+    expect(execAmountLimit(zeroEx({ settler: SETTLER, maxSpend: 750n }))).toBe(
+      750n,
     )
-    expect(resolved.actions).toHaveLength(4)
-    expect(
-      resolved.actions.some((action) =>
-        action.policies?.some((policy) => policy.type === 'arg-policy'),
-      ),
-    ).toBe(true)
+  })
+
+  test('a pinned Settler with no cap falls back to sell.maxTotal', () => {
+    expect(execAmountLimit(zeroEx({ settler: SETTLER }))).toBe(1_000n)
   })
 
   test('multiple venues keep shared wrapped routes pinned with ArgPolicy', () => {
