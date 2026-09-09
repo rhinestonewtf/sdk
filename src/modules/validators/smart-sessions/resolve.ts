@@ -7,6 +7,7 @@ import {
   zeroHash,
 } from 'viem'
 import { defineValidator } from '../definition'
+import { compareHexValues } from '../ordering'
 import { resolvePermissions } from '../permissions'
 import {
   encodePermit2ClaimPolicyInitData,
@@ -299,10 +300,13 @@ function restrictedSessionSalt(session: {
   claimPolicies: readonly ResolvedPolicy[]
 }): Hex {
   const actions = [...session.actions]
-    .sort((a, b) =>
-      `${a.actionTarget}:${a.actionTargetSelector}`.localeCompare(
-        `${b.actionTarget}:${b.actionTargetSelector}`,
-      ),
+    // By value, never host collation: `localeCompare` orders `0xaa…` after
+    // `0xb1…` on Danish-family locales, which would make the salt — and so the
+    // permissionId — depend on where it was derived.
+    .sort(
+      (a, b) =>
+        compareHexValues(a.actionTarget, b.actionTarget) ||
+        compareHexValues(a.actionTargetSelector, b.actionTargetSelector),
     )
     .map((action) => ({
       actionTargetSelector: action.actionTargetSelector,
