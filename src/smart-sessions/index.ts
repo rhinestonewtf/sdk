@@ -50,6 +50,7 @@ import type {
 } from '../modules/validators/smart-sessions/swap/zero-ex'
 import {
   resolveZeroExSettler,
+  ZEROX_CHAIN_IDS,
   zeroEx,
 } from '../modules/validators/smart-sessions/swap/zero-ex'
 import type {
@@ -155,5 +156,6 @@ export {
   USAGE_LIMIT_POLICY_ADDRESS,
   VALUE_LIMIT_POLICY_ADDRESS,
   // Venue-scoped swap sessions (RHI-6286)
+  ZEROX_CHAIN_IDS,
   zeroEx,
 }
