@@ -179,6 +179,39 @@ describe('restricted session guards', () => {
     ).toThrow(/at least one permission or action/)
   })
 
+  // The permissionId comes from the validator, its init data and the salt — not
+  // from the actions. On-chain `enable` ADDS to the policy list rather than
+  // replacing it, so two restricted sessions sharing a permissionId would union:
+  // the first session's actions stay authorised and the second's restriction
+  // buys nothing. Salting by the action set keeps them apart.
+  const restricted = (selector: `0x${string}`) =>
+    toSession({
+      chain: base,
+      owners,
+      actions: [{ target: TOKEN, selector, policies: [{ type: 'sudo' }] }],
+      restrictToActions: true,
+    })
+
+  test('gives restricted sessions with different actions different permissionIds', () => {
+    expect(restricted('0x095ea7b3').permissionId).not.toBe(
+      restricted('0xa9059cbb').permissionId,
+    )
+  })
+
+  test('salts a restricted session by its actions', () => {
+    expect(restricted('0x095ea7b3').salt).not.toBe(
+      '0x0000000000000000000000000000000000000000000000000000000000000000',
+    )
+  })
+
+  // Unrestricted sessions keep the zero salt their stored signatures cover —
+  // the pinned sudo vector above is the other half of this guarantee.
+  test('leaves an unrestricted session on the zero salt', () => {
+    expect(toSession({ chain: base, owners }).salt).toBe(
+      '0x0000000000000000000000000000000000000000000000000000000000000000',
+    )
+  })
+
   test('rejects two actions colliding on one (target, selector)', () => {
     // Both map to the same on-chain action id, so one would overwrite the
     // other's policies without warning.

@@ -1,4 +1,11 @@
-import { type Address, type Hex, toFunctionSelector, zeroHash } from 'viem'
+import {
+  type Address,
+  encodeAbiParameters,
+  type Hex,
+  keccak256,
+  toFunctionSelector,
+  zeroHash,
+} from 'viem'
 import { defineValidator } from '../definition'
 import { resolvePermissions } from '../permissions'
 import {
@@ -247,11 +254,51 @@ export function resolveSessionData(
   return {
     sessionValidator: validator.address,
     sessionValidatorInitData: validator.initData,
-    salt: zeroHash,
+    salt: restricted ? restrictedSessionSalt(actions) : zeroHash,
     erc7739Policies,
     actions,
     claimPolicies,
   }
+}
+
+/**
+ * Bind a restricted session's permissionId to the actions it authorises.
+ *
+ * The permissionId is derived from the validator, its init data and this salt —
+ * not from the actions. With a constant salt every session for the same signer
+ * shares one permissionId, and `enable` on-chain ADDS to the policy list rather
+ * than replacing it (`ConfigLibV2.enable`). So enabling a restricted session
+ * beside an existing one for that signer unions the two: the earlier session's
+ * actions stay authorised and the restriction silently buys nothing.
+ *
+ * Salting by the action set gives each distinct restriction its own
+ * permissionId, so it cannot merge into another. Unrestricted sessions keep
+ * `zeroHash`, which is what their stored signatures already cover.
+ */
+function restrictedSessionSalt(actions: readonly ResolvedAction[]): Hex {
+  return keccak256(
+    encodeAbiParameters(
+      [
+        {
+          name: 'actions',
+          type: 'tuple[]',
+          components: [
+            { name: 'actionTargetSelector', type: 'bytes4' },
+            { name: 'actionTarget', type: 'address' },
+            {
+              name: 'actionPolicies',
+              type: 'tuple[]',
+              components: [
+                { name: 'policy', type: 'address' },
+                { name: 'initData', type: 'bytes' },
+              ],
+            },
+          ],
+        },
+      ],
+      [actions as never],
+    ),
+  )
 }
 
 export function toSession(
