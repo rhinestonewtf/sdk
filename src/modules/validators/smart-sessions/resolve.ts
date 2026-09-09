@@ -28,6 +28,8 @@ import { resolveSessionSigning } from './signing'
 import { resolveSwapScope } from './swap/scope'
 import type {
   ResolvedAction,
+  ResolvedERC7739Policies,
+  ResolvedPolicy,
   ScopedAction,
   Session,
   SessionAction,
@@ -254,28 +256,60 @@ export function resolveSessionData(
   return {
     sessionValidator: validator.address,
     sessionValidatorInitData: validator.initData,
-    salt: restricted ? restrictedSessionSalt(actions) : zeroHash,
+    salt: restricted
+      ? restrictedSessionSalt({ actions, erc7739Policies, claimPolicies })
+      : zeroHash,
     erc7739Policies,
     actions,
     claimPolicies,
   }
 }
 
+const POLICY_COMPONENTS = [
+  { name: 'policy', type: 'address' },
+  { name: 'initData', type: 'bytes' },
+] as const
+
 /**
- * Bind a restricted session's permissionId to the actions it authorises.
+ * Bind a restricted session's permissionId to everything it authorises.
  *
- * The permissionId is derived from the validator, its init data and this salt —
- * not from the actions. With a constant salt every session for the same signer
- * shares one permissionId, and `enable` on-chain ADDS to the policy list rather
- * than replacing it (`ConfigLibV2.enable`). So enabling a restricted session
- * beside an existing one for that signer unions the two: the earlier session's
- * actions stay authorised and the restriction silently buys nothing.
+ * The permissionId derives from the validator, its init data and this salt —
+ * not from the permissions. With a constant salt every session for the same
+ * signer shares one permissionId, and `enable` on-chain ADDS to each list
+ * rather than replacing it (`ConfigLibV2.enable`). So enabling a restricted
+ * session beside an existing one for that signer unions the two: the earlier
+ * session's permissions stay authorised and the restriction silently buys
+ * nothing.
  *
- * Salting by the action set gives each distinct restriction its own
- * permissionId, so it cannot merge into another. Unrestricted sessions keep
- * `zeroHash`, which is what their stored signatures already cover.
+ * Every field `_enablePolicies` writes under the permissionId has to be in
+ * here, or that field alone can still collide — actions, the ERC-1271 policies
+ * and 7739 content behind them, and the claim policies.
+ *
+ * Actions are sorted by (target, selector) so the salt is a function of the
+ * authorised SET: on-chain they are keyed by action id, so listing the same
+ * ones in a different order is the same authorisation and must not change the
+ * permissionId.
+ *
+ * Unrestricted sessions keep `zeroHash`, which is what their stored signatures
+ * already cover.
  */
-function restrictedSessionSalt(actions: readonly ResolvedAction[]): Hex {
+function restrictedSessionSalt(session: {
+  actions: readonly ResolvedAction[]
+  erc7739Policies: ResolvedERC7739Policies
+  claimPolicies: readonly ResolvedPolicy[]
+}): Hex {
+  const actions = [...session.actions]
+    .sort((a, b) =>
+      `${a.actionTarget}:${a.actionTargetSelector}`.localeCompare(
+        `${b.actionTarget}:${b.actionTargetSelector}`,
+      ),
+    )
+    .map((action) => ({
+      actionTargetSelector: action.actionTargetSelector,
+      actionTarget: action.actionTarget,
+      actionPolicies: action.actionPolicies.map((policy) => ({ ...policy })),
+    }))
+
   return keccak256(
     encodeAbiParameters(
       [
@@ -288,15 +322,40 @@ function restrictedSessionSalt(actions: readonly ResolvedAction[]): Hex {
             {
               name: 'actionPolicies',
               type: 'tuple[]',
-              components: [
-                { name: 'policy', type: 'address' },
-                { name: 'initData', type: 'bytes' },
-              ],
+              components: POLICY_COMPONENTS,
             },
           ],
         },
+        {
+          name: 'erc1271Policies',
+          type: 'tuple[]',
+          components: POLICY_COMPONENTS,
+        },
+        {
+          name: 'allowedERC7739Content',
+          type: 'tuple[]',
+          components: [
+            { name: 'appDomainSeparator', type: 'bytes32' },
+            { name: 'contentNames', type: 'string[]' },
+          ],
+        },
+        {
+          name: 'claimPolicies',
+          type: 'tuple[]',
+          components: POLICY_COMPONENTS,
+        },
       ],
-      [actions as never],
+      [
+        actions,
+        session.erc7739Policies.erc1271Policies.map((policy) => ({
+          ...policy,
+        })),
+        session.erc7739Policies.allowedERC7739Content.map((content) => ({
+          appDomainSeparator: content.appDomainSeparator,
+          contentNames: [...content.contentNames],
+        })),
+        session.claimPolicies.map((policy) => ({ ...policy })),
+      ],
     ),
   )
 }

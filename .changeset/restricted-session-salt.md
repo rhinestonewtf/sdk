@@ -1,5 +1,5 @@
 ---
-'@rhinestone/sdk': minor
+'@rhinestone/sdk': major
 ---
 
 Salt a restricted session's permissionId by the actions it authorises.

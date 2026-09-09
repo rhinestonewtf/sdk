@@ -198,6 +198,48 @@ describe('restricted session guards', () => {
     )
   })
 
+  // Every field `_enablePolicies` writes under the permissionId has to be in the
+  // salt, or that field alone still collides. Signing config lands in
+  // `erc7739Policies`, enabled under the same permissionId as the actions.
+  test('separates restricted sessions that differ only by signing', () => {
+    const withSigning = (mode: 'disabled' | 'unrestricted') =>
+      toSession({
+        chain: base,
+        owners,
+        actions: [
+          {
+            target: TOKEN,
+            selector: '0x095ea7b3',
+            policies: [{ type: 'sudo' }],
+          },
+        ],
+        restrictToActions: true,
+        signing: { mode },
+      }).permissionId
+
+    expect(withSigning('disabled')).not.toBe(withSigning('unrestricted'))
+  })
+
+  // On-chain, actions are keyed by action id, so the same set listed in a
+  // different order is the same authorisation and must not move the id.
+  test('is independent of the order actions are listed in', () => {
+    const ordered = (selectors: `0x${string}`[]) =>
+      toSession({
+        chain: base,
+        owners,
+        actions: selectors.map((selector) => ({
+          target: TOKEN,
+          selector,
+          policies: [{ type: 'sudo' as const }],
+        })),
+        restrictToActions: true,
+      }).permissionId
+
+    expect(ordered(['0x095ea7b3', '0xa9059cbb'])).toBe(
+      ordered(['0xa9059cbb', '0x095ea7b3']),
+    )
+  })
+
   test('salts a restricted session by its actions', () => {
     expect(restricted('0x095ea7b3').salt).not.toBe(
       '0x0000000000000000000000000000000000000000000000000000000000000000',
