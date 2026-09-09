@@ -231,6 +231,26 @@ describe('resolveSwapScope — 0x pinned settler', () => {
     expect(encoded).toContain(ZEROX_ALLOWANCE_HOLDER.toLowerCase().slice(2))
     expect(encoded).not.toContain(SETTLER.toLowerCase().slice(2))
   })
+
+  test('a pinned Settler accepts a cap without giving up its pins', () => {
+    const rules = rulesOf(
+      resolveSwapScope(
+        scope({ via: [zeroEx({ settler: SETTLER, maxSpend: 750n })] }),
+        PLASMA,
+      ).actions[0],
+    )
+    expect(ruleAt(rules, 0n)?.referenceValue).toBe(SETTLER) // operator
+    expect(ruleAt(rules, 96n)?.referenceValue).toBe(SETTLER) // target
+    expect(ruleAt(rules, 64n)?.usageLimit).toBe(750n)
+  })
+
+  test('a pinned Settler with no cap leaves the amount unbounded', () => {
+    const rules = rulesOf(
+      resolveSwapScope(scope({ via: [zeroEx({ settler: SETTLER })] }), PLASMA)
+        .actions[0],
+    )
+    expect(ruleAt(rules, 64n)).toBeUndefined()
+  })
 })
 
 describe('resolveSwapScope — 0x anySettler', () => {
@@ -253,26 +273,6 @@ describe('resolveSwapScope — 0x anySettler', () => {
       PLASMA,
     )
     expect(ruleAt(rulesOf(actions[0]), 64n)?.usageLimit).toBe(1000n)
-  })
-
-  test('a pinned Settler accepts a cap without giving up its pins', () => {
-    const rules = rulesOf(
-      resolveSwapScope(
-        scope({ via: [zeroEx({ settler: SETTLER, maxSpend: 750n })] }),
-        PLASMA,
-      ).actions[0],
-    )
-    expect(ruleAt(rules, 0n)?.referenceValue).toBe(SETTLER) // operator
-    expect(ruleAt(rules, 96n)?.referenceValue).toBe(SETTLER) // target
-    expect(ruleAt(rules, 64n)?.usageLimit).toBe(750n)
-  })
-
-  test('a pinned Settler with no cap leaves the amount unbounded', () => {
-    const rules = rulesOf(
-      resolveSwapScope(scope({ via: [zeroEx({ settler: SETTLER })] }), PLASMA)
-        .actions[0],
-    )
-    expect(ruleAt(rules, 64n)).toBeUndefined()
   })
 
   test('leaves operator/target free but still pins the sell token', () => {
