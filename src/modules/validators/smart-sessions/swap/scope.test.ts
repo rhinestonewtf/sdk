@@ -68,6 +68,22 @@ describe('swap scope resolution', () => {
     ).toBe(true)
   })
 
+  // A pin already bounds a compromised session key, so a cap is not required
+  // here — but it stays available for callers who want a ceiling of their own.
+  // The type used to forbid the combination outright.
+  test('a pinned Settler accepts an optional cap', () => {
+    const resolved = resolveSwapScope(
+      swap([zeroEx({ settler: SETTLER, maxSpend: 750n })]),
+      base.id,
+    )
+    expect(resolved.actions).toHaveLength(4)
+    expect(
+      resolved.actions.some((action) =>
+        action.policies?.some((policy) => policy.type === 'arg-policy'),
+      ),
+    ).toBe(true)
+  })
+
   test('multiple venues keep shared wrapped routes pinned with ArgPolicy', () => {
     const resolved = resolveSwapScope(
       {

@@ -10,6 +10,7 @@ import {
   resolveZeroExSettler,
   rhinestoneSwap,
   toSession,
+  ZEROX_CHAIN_IDS,
   zeroEx,
 } from '../modules/validators/smart-sessions'
 import type { LazyCallInput, SessionInput } from '../types'
@@ -85,5 +86,6 @@ export {
   resolveZeroExSettler,
   rhinestoneSwap,
   toSession,
+  ZEROX_CHAIN_IDS,
   zeroEx,
 }
