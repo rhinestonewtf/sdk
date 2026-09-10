@@ -217,9 +217,19 @@ export function resolveSessionData(
     }
     seen.add(key)
   }
+  // Only the permission-derived actions: a raw action is passed through in the
+  // order it was given, on both majors, so reordering one would invent a
+  // difference rather than remove one.
+  const v1CompatibleActions =
+    definition.saltMode === 'v1'
+      ? userActions.map((action) => ({
+          ...action,
+          policies: v1PolicyOrder(action.policies),
+        }))
+      : userActions
   const actions =
     userActions.length || rawActions.length || permitFallbackPolicies.length
-      ? [...userActions, ...rawActions, ...injectedActions].map(
+      ? [...v1CompatibleActions, ...rawActions, ...injectedActions].map(
           (action): ResolvedAction => ({
             actionTargetSelector:
               'selector' in action
@@ -229,10 +239,7 @@ export function resolveSessionData(
               'target' in action
                 ? action.target
                 : SMART_SESSIONS_FALLBACK_TARGET_FLAG,
-            actionPolicies: (definition.saltMode === 'v1'
-              ? v1PolicyOrder(action.policies)
-              : action.policies
-            )?.map((policy) =>
+            actionPolicies: action.policies?.map((policy) =>
               encodeSessionPolicy(policy, environment, addresses),
             ) ?? [{ policy: addresses.sudo, initData: '0x' }],
           }),
@@ -310,7 +317,9 @@ function sessionSalt(
  * and diverge with one, which is what makes this worth doing rather than
  * documenting.
  *
- * Stable: only the params policy moves, and anything else keeps its position.
+ * Stable in the sense that matters: the params policy moves to the front and
+ * everything else keeps its order relative to the rest, though its index
+ * shifts.
  */
 const PARAMS_POLICY_TYPES = new Set(['arg-policy', 'universal-action'])
 

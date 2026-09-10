@@ -247,6 +247,37 @@ describe('restricted session guards', () => {
     expect([firstV1, secondV1]).toEqual([secondDefault, firstDefault])
   })
 
+  // 1.x passes a raw action's policies through in the order given, so the
+  // reordering must not reach them: it exists to undo this SDK's own sugar
+  // expansion, and applying it to a hand-written action would invent a
+  // difference rather than remove one.
+  test("'v1' leaves a raw action's policy order alone", () => {
+    const policies = [
+      { type: 'spending-limits', limits: [{ token: TOKEN, amount: 1n }] },
+      { type: 'usage-limit', limit: 2n },
+      {
+        type: 'universal-action',
+        valueLimitPerUse: 0n,
+        rules: [
+          { condition: 'equal', calldataOffset: 0n, referenceValue: TOKEN },
+        ],
+      },
+    ] as const
+
+    const built = (saltMode?: 'v1') =>
+      toSession({
+        chain: base,
+        owners,
+        actions: [{ target: TOKEN, selector: '0x095ea7b3', policies }],
+        restrictToActions: true,
+        ...(saltMode ? { saltMode } : {}),
+      })
+
+    expect(built('v1').actions[0].actionPolicies).toEqual(
+      built().actions[0].actionPolicies,
+    )
+  })
+
   // `'v1'` reproduces the 1.x derivation so a session built there can be rebuilt
   // here. It hashes the actions alone, in build order — deliberately NOT the
   // canonical ordering `'strict'` uses, because matching is the point.
