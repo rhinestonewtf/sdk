@@ -322,15 +322,16 @@ interface SessionInput {
   /**
    * How a restricted session's salt is derived, which decides its permissionId.
    *
-   * - `'v1'` (default) hashes the actions alone. Two restricted sessions with
-   *   the same actions but a different `signing` config therefore share a
-   *   permissionId, and on-chain `enable` ADDS to the policy list rather than
-   *   replacing it — so the narrower session unions with the broader one and
-   *   buys nothing.
+   * - `'v1'` (default) hashes the actions alone.
    * - `'strict'` hashes every field enabled under the permissionId (actions,
    *   ERC-1271 policies, 7739 content, claim policies) with actions in a
-   *   canonical order. Matches the 2.x derivation, so a session built here and
-   *   one rebuilt there agree.
+   *   canonical order.
+   *
+   * A restricted session here throws on `claimPolicies` and has its 1271/7739
+   * config forced empty, so those extra fields are always empty and the two
+   * modes differ only by action ordering. `'strict'` exists for parity with
+   * 2.x, where the same derivation covers fields that ARE reachable — it is
+   * what lets a session built here be rebuilt there.
    *
    * Opt-in: changing it moves the permissionId and digest, so an existing
    * session's stored signature no longer covers it.

@@ -7,11 +7,8 @@ import {
   ARG_POLICY_ADDRESS,
   DUMMY_PRECLAIMOP_SELECTOR,
   getPermissionId,
-  getRestrictedSessionSalt,
   getSessionData,
-  getStrictSessionSalt,
   SMART_SESSIONS_FALLBACK_TARGET_FLAG,
-  SUDO_POLICY_ADDRESS,
   VALUE_LIMIT_POLICY_ADDRESS,
 } from '../../smart-sessions'
 import { fynd } from './fynd'
@@ -273,43 +270,11 @@ describe('saltMode', () => {
     )
   })
 
-  test("'strict' covers signing and claim config the v1 salt cannot see", () => {
-    const { actions } = getSessionData(scoped())
-    // the v1 salt is a function of the actions alone — any two sessions that
-    // agree on actions collide on the same permissionId and union on enable
-    expect(getRestrictedSessionSalt(actions)).toBe(V1_SALT)
-
-    const noSigning = { allowedERC7739Content: [], erc1271Policies: [] }
-    const baseline = getStrictSessionSalt(actions, noSigning, [])
-    expect(
-      getStrictSessionSalt(
-        actions,
-        {
-          allowedERC7739Content: [],
-          erc1271Policies: [{ policy: SUDO_POLICY_ADDRESS, initData: '0x' }],
-        },
-        [],
-      ),
-    ).not.toBe(baseline)
-    expect(
-      getStrictSessionSalt(
-        actions,
-        {
-          allowedERC7739Content: [
-            { appDomainSeparator: zeroHash, contentNames: [''] },
-          ],
-          erc1271Policies: [],
-        },
-        [],
-      ),
-    ).not.toBe(baseline)
-    expect(
-      getStrictSessionSalt(actions, noSigning, [
-        { policy: SUDO_POLICY_ADDRESS, initData: '0x' },
-      ]),
-    ).not.toBe(baseline)
-  })
-
+  // v1 cannot reach the fields 'strict' adds: a restricted session throws on
+  // claimPolicies and has its 1271/7739 config forced empty. So here the two
+  // modes differ only by canonical action ordering. The wider coverage exists
+  // for parity with 2.x, where those fields ARE reachable — it is what lets a
+  // session built here be rebuilt there.
   test("'strict' is independent of action listing order; 'v1' is not", () => {
     const reversed = scoped({ actions: [...scoped().actions!].reverse() })
     expect(getSessionData({ ...reversed, saltMode: 'strict' }).salt).toBe(
