@@ -229,7 +229,10 @@ export function resolveSessionData(
               'target' in action
                 ? action.target
                 : SMART_SESSIONS_FALLBACK_TARGET_FLAG,
-            actionPolicies: action.policies?.map((policy) =>
+            actionPolicies: (definition.saltMode === 'v1'
+              ? v1PolicyOrder(action.policies)
+              : action.policies
+            )?.map((policy) =>
               encodeSessionPolicy(policy, environment, addresses),
             ) ?? [{ policy: addresses.sudo, initData: '0x' }],
           }),
@@ -295,6 +298,36 @@ function sessionSalt(
   return mode === 'v1'
     ? v1RestrictedSalt(session.actions)
     : strictSessionSalt(session)
+}
+
+/**
+ * The order 1.x puts an action's policies in.
+ *
+ * 1.x builds an approve action as `[arg policy, spending limits]`; here the
+ * `spendingLimit` sugar expands before `params` compiles, so the pair comes
+ * out reversed. Policies are hashed in their array order, so a 1.x session
+ * only reproduces here if the order does too — the digests agree without a cap
+ * and diverge with one, which is what makes this worth doing rather than
+ * documenting.
+ *
+ * Stable: only the params policy moves, and anything else keeps its position.
+ */
+const PARAMS_POLICY_TYPES = new Set(['arg-policy', 'universal-action'])
+
+function v1PolicyOrder<T extends { readonly type: string }>(
+  policies: readonly T[] | undefined,
+): readonly T[] | undefined {
+  if (!policies) return policies
+  const fromParams = policies.filter((policy) =>
+    PARAMS_POLICY_TYPES.has(policy.type),
+  )
+  if (fromParams.length === 0 || fromParams.length === policies.length) {
+    return policies
+  }
+  return [
+    ...fromParams,
+    ...policies.filter((policy) => !PARAMS_POLICY_TYPES.has(policy.type)),
+  ]
 }
 
 /**
