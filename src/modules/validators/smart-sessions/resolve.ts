@@ -1,5 +1,13 @@
-import { type Address, type Hex, toFunctionSelector, zeroHash } from 'viem'
+import {
+  type Address,
+  encodeAbiParameters,
+  type Hex,
+  keccak256,
+  toFunctionSelector,
+  zeroHash,
+} from 'viem'
 import { defineValidator } from '../definition'
+import { compareHexValues } from '../ordering'
 import { resolvePermissions } from '../permissions'
 import {
   encodePermit2ClaimPolicyInitData,
@@ -21,6 +29,8 @@ import { resolveSessionSigning } from './signing'
 import { resolveSwapScope } from './swap/scope'
 import type {
   ResolvedAction,
+  ResolvedERC7739Policies,
+  ResolvedPolicy,
   ScopedAction,
   Session,
   SessionAction,
@@ -247,11 +257,174 @@ export function resolveSessionData(
   return {
     sessionValidator: validator.address,
     sessionValidatorInitData: validator.initData,
-    salt: zeroHash,
+    salt: sessionSalt(definition.saltMode, restricted, {
+      actions,
+      erc7739Policies,
+      claimPolicies,
+    }),
     erc7739Policies,
     actions,
     claimPolicies,
   }
+}
+
+const POLICY_COMPONENTS = [
+  { name: 'policy', type: 'address' },
+  { name: 'initData', type: 'bytes' },
+] as const
+
+/**
+ * Pick the salt for a session, defaulting to the historical `zeroHash`.
+ *
+ * Unrestricted sessions are always `zeroHash`: there is only one shape of them,
+ * so two for the same signer are the same session and sharing a permissionId is
+ * correct. Restricted ones can differ, which is what makes a salt necessary.
+ */
+function sessionSalt(
+  mode: 'none' | 'v1' | 'strict' | undefined,
+  restricted: boolean,
+  session: {
+    actions: readonly ResolvedAction[]
+    erc7739Policies: ResolvedERC7739Policies
+    claimPolicies: readonly ResolvedPolicy[]
+  },
+): Hex {
+  if (!restricted || mode === undefined || mode === 'none') {
+    return zeroHash
+  }
+  return mode === 'v1'
+    ? v1RestrictedSalt(session.actions)
+    : strictSessionSalt(session)
+}
+
+/**
+ * The 1.x derivation: the actions alone, in the order they were built.
+ *
+ * Reproduced rather than improved. It exists so a session built on 1.x can be
+ * rebuilt here byte for byte — sorting or widening it would defeat that.
+ */
+function v1RestrictedSalt(actions: readonly ResolvedAction[]): Hex {
+  return keccak256(
+    encodeAbiParameters(
+      [
+        {
+          name: 'actions',
+          type: 'tuple[]',
+          components: [
+            { name: 'actionTargetSelector', type: 'bytes4' },
+            { name: 'actionTarget', type: 'address' },
+            {
+              name: 'actionPolicies',
+              type: 'tuple[]',
+              components: POLICY_COMPONENTS,
+            },
+          ],
+        },
+      ],
+      [
+        actions.map((action) => ({
+          actionTargetSelector: action.actionTargetSelector,
+          actionTarget: action.actionTarget,
+          actionPolicies: action.actionPolicies.map((policy) => ({
+            ...policy,
+          })),
+        })),
+      ],
+    ),
+  )
+}
+
+/**
+ * Bind a restricted session's permissionId to everything it authorises.
+ *
+ * The permissionId derives from the validator, its init data and this salt —
+ * not from the permissions. With a constant salt every session for the same
+ * signer shares one permissionId, and `enable` on-chain ADDS to each list
+ * rather than replacing it (`ConfigLibV2.enable`). So enabling a restricted
+ * session beside an existing one for that signer unions the two: the earlier
+ * session's permissions stay authorised and the restriction silently buys
+ * nothing.
+ *
+ * Every field `_enablePolicies` writes under the permissionId has to be in
+ * here, or that field alone can still collide — actions, the ERC-1271 policies
+ * and 7739 content behind them, and the claim policies.
+ *
+ * Actions are sorted by (target, selector) so the salt is a function of the
+ * authorised SET: on-chain they are keyed by action id, so listing the same
+ * ones in a different order is the same authorisation and must not change the
+ * permissionId.
+ *
+ * Unrestricted sessions keep `zeroHash`, which is what their stored signatures
+ * already cover.
+ */
+function strictSessionSalt(session: {
+  actions: readonly ResolvedAction[]
+  erc7739Policies: ResolvedERC7739Policies
+  claimPolicies: readonly ResolvedPolicy[]
+}): Hex {
+  const actions = [...session.actions]
+    // By value, never host collation: `localeCompare` orders `0xaa…` after
+    // `0xb1…` on Danish-family locales, which would make the salt — and so the
+    // permissionId — depend on where it was derived.
+    .sort(
+      (a, b) =>
+        compareHexValues(a.actionTarget, b.actionTarget) ||
+        compareHexValues(a.actionTargetSelector, b.actionTargetSelector),
+    )
+    .map((action) => ({
+      actionTargetSelector: action.actionTargetSelector,
+      actionTarget: action.actionTarget,
+      actionPolicies: action.actionPolicies.map((policy) => ({ ...policy })),
+    }))
+
+  return keccak256(
+    encodeAbiParameters(
+      [
+        {
+          name: 'actions',
+          type: 'tuple[]',
+          components: [
+            { name: 'actionTargetSelector', type: 'bytes4' },
+            { name: 'actionTarget', type: 'address' },
+            {
+              name: 'actionPolicies',
+              type: 'tuple[]',
+              components: POLICY_COMPONENTS,
+            },
+          ],
+        },
+        {
+          name: 'erc1271Policies',
+          type: 'tuple[]',
+          components: POLICY_COMPONENTS,
+        },
+        {
+          name: 'allowedERC7739Content',
+          type: 'tuple[]',
+          components: [
+            { name: 'appDomainSeparator', type: 'bytes32' },
+            { name: 'contentNames', type: 'string[]' },
+          ],
+        },
+        {
+          name: 'claimPolicies',
+          type: 'tuple[]',
+          components: POLICY_COMPONENTS,
+        },
+      ],
+      [
+        actions,
+        session.erc7739Policies.erc1271Policies.map((policy) => ({
+          ...policy,
+        })),
+        session.erc7739Policies.allowedERC7739Content.map((content) => ({
+          appDomainSeparator: content.appDomainSeparator,
+          contentNames: [...content.contentNames],
+        })),
+        session.claimPolicies.map((policy) => ({ ...policy })),
+      ],
+    ),
+  )
 }
 
 export function toSession(

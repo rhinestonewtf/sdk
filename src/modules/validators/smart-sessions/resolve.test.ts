@@ -1,5 +1,5 @@
 import fc from 'fast-check'
-import { size } from 'viem'
+import { size, zeroHash } from 'viem'
 import { base } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 import { accountA } from '../../../../test/consts'
@@ -177,6 +177,129 @@ describe('restricted session guards', () => {
     expect(() =>
       toSession({ chain: base, owners, restrictToActions: true }),
     ).toThrow(/at least one permission or action/)
+  })
+
+  // The whole point of the option: leaving it off must reproduce what stored
+  // signatures already cover, or every restricted session ever registered breaks.
+  test('leaves the salt alone unless a mode is asked for', () => {
+    const built = (saltMode?: 'none' | 'v1' | 'strict') =>
+      toSession({
+        chain: base,
+        owners,
+        actions: [
+          {
+            target: TOKEN,
+            selector: '0x095ea7b3',
+            policies: [{ type: 'sudo' }],
+          },
+        ],
+        restrictToActions: true,
+        ...(saltMode ? { saltMode } : {}),
+      }).salt
+
+    expect(built()).toBe(zeroHash)
+    expect(built('none')).toBe(zeroHash)
+    expect(built('strict')).not.toBe(zeroHash)
+  })
+
+  // `'v1'` reproduces the 1.x derivation so a session built there can be rebuilt
+  // here. It hashes the actions alone, in build order — deliberately NOT the
+  // canonical ordering `'strict'` uses, because matching is the point.
+  test("'v1' and 'strict' are different derivations", () => {
+    const built = (saltMode: 'v1' | 'strict') =>
+      toSession({
+        chain: base,
+        owners,
+        actions: [
+          {
+            target: TOKEN,
+            selector: '0x095ea7b3',
+            policies: [{ type: 'sudo' }],
+          },
+        ],
+        restrictToActions: true,
+        saltMode,
+      }).salt
+
+    expect(built('v1')).not.toBe(built('strict'))
+    expect(built('v1')).not.toBe(zeroHash)
+  })
+
+  // The permissionId comes from the validator, its init data and the salt — not
+  // from the actions. On-chain `enable` ADDS to the policy list rather than
+  // replacing it, so two restricted sessions sharing a permissionId would union:
+  // the first session's actions stay authorised and the second's restriction
+  // buys nothing. Salting by the action set keeps them apart.
+  const restricted = (selector: `0x${string}`) =>
+    toSession({
+      chain: base,
+      owners,
+      actions: [{ target: TOKEN, selector, policies: [{ type: 'sudo' }] }],
+      restrictToActions: true,
+      saltMode: 'strict',
+    })
+
+  test('gives restricted sessions with different actions different permissionIds', () => {
+    expect(restricted('0x095ea7b3').permissionId).not.toBe(
+      restricted('0xa9059cbb').permissionId,
+    )
+  })
+
+  // Every field `_enablePolicies` writes under the permissionId has to be in the
+  // salt, or that field alone still collides. Signing config lands in
+  // `erc7739Policies`, enabled under the same permissionId as the actions.
+  test('separates restricted sessions that differ only by signing', () => {
+    const withSigning = (mode: 'disabled' | 'unrestricted') =>
+      toSession({
+        chain: base,
+        owners,
+        actions: [
+          {
+            target: TOKEN,
+            selector: '0x095ea7b3',
+            policies: [{ type: 'sudo' }],
+          },
+        ],
+        restrictToActions: true,
+        saltMode: 'strict',
+        signing: { mode },
+      }).permissionId
+
+    expect(withSigning('disabled')).not.toBe(withSigning('unrestricted'))
+  })
+
+  // On-chain, actions are keyed by action id, so the same set listed in a
+  // different order is the same authorisation and must not move the id.
+  test('is independent of the order actions are listed in', () => {
+    const ordered = (selectors: `0x${string}`[]) =>
+      toSession({
+        chain: base,
+        owners,
+        actions: selectors.map((selector) => ({
+          target: TOKEN,
+          selector,
+          policies: [{ type: 'sudo' as const }],
+        })),
+        restrictToActions: true,
+        saltMode: 'strict',
+      }).permissionId
+
+    expect(ordered(['0x095ea7b3', '0xa9059cbb'])).toBe(
+      ordered(['0xa9059cbb', '0x095ea7b3']),
+    )
+  })
+
+  test('salts a restricted session by its actions', () => {
+    expect(restricted('0x095ea7b3').salt).not.toBe(zeroHash)
+  })
+
+  // Unrestricted sessions keep the zero salt their stored signatures cover —
+  // the pinned sudo vector above is the other half of this guarantee.
+  test('leaves an unrestricted session on the zero salt', () => {
+    expect(toSession({ chain: base, owners }).salt).toBe(zeroHash)
+    expect(toSession({ chain: base, owners, saltMode: 'strict' }).salt).toBe(
+      zeroHash,
+    )
   })
 
   test('rejects two actions colliding on one (target, selector)', () => {

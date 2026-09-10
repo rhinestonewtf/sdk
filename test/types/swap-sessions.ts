@@ -87,3 +87,22 @@ onPlasma({ sell, to: ACCOUNT, via: [fynd()] })
 
 // @ts-expect-error a swap scope must name a sell token.
 onPlasma({ buy, to: ACCOUNT, via: [fynd()] })
+
+// `saltMode` has to be reachable on the PUBLIC definition, not just the
+// module-local one: `toSession` here takes `SessionDefinition` from
+// `src/config/account.ts`, so adding the field only to the resolver's own type
+// leaves integrators unable to pass it without a cast — the opt-in would exist
+// but be unusable on the documented path.
+const saltedSession = toSession({
+  chain: base,
+  owners,
+  actions: [
+    { target: ACCOUNT, selector: '0x095ea7b3', policies: [{ type: 'sudo' }] },
+  ],
+  restrictToActions: true,
+  saltMode: 'strict',
+})
+saltedSession.salt satisfies `0x${string}`
+
+// @ts-expect-error - only the three documented modes
+toSession({ chain: base, owners, restrictToActions: true, saltMode: 'v3' })

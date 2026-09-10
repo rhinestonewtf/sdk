@@ -794,6 +794,29 @@ interface SessionDefinition<
    * has sessions enabled against them.
    */
   policyAddresses?: SessionPolicyAddresses
+  /**
+   * How a restricted session's salt is derived, which decides its permissionId.
+   *
+   * The permissionId is `keccak(validator, initData, salt)` — the actions are
+   * not in it. On-chain, `enable` ADDS to the policy list rather than replacing
+   * it, so two sessions for one signer that share a permissionId union: the
+   * earlier one's actions stay authorised and the later restriction buys
+   * nothing.
+   *
+   * - `'none'` (default) leaves the salt at `zeroHash`, which is what stored
+   *   signatures already cover. Restricted sessions for one signer therefore
+   *   share a permissionId.
+   * - `'v1'` hashes the actions in build order, matching the 1.x derivation, so
+   *   a session built there can be rebuilt here.
+   * - `'strict'` hashes every field enabled under the permissionId — actions,
+   *   ERC-1271 policies, ERC-7739 content and claim policies — with actions
+   *   ordered by value.
+   *
+   * Opt-in: anything other than `'none'` moves the permissionId and digest, so
+   * an existing session's stored signature no longer covers it. Unrestricted
+   * sessions stay on `zeroHash` in every mode.
+   */
+  saltMode?: 'none' | 'v1' | 'strict'
 }
 
 type SessionInput<TAbis extends readonly Abi[] = readonly Abi[]> = Omit<
