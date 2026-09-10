@@ -2,8 +2,9 @@
 '@rhinestone/sdk': minor
 ---
 
-Deprecate `saltMode`; it is now ignored. The salt always hashes the actions
-alone, which is what it did by default.
+Deprecate `saltMode`; it is now ignored. A restricted session's salt always
+hashes the actions alone, which is what it did by default; an unrestricted one
+stays on `zeroHash`.
 
 `'v1'` only ever named that default. `'strict'` was meant to let a session
 built here be rebuilt on 2.x, but the majors also pin different policy

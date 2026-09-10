@@ -320,8 +320,9 @@ interface SessionInput {
   /** Restrict this session to swaps matching the declared tokens and recipient. */
   swap?: SwapScope
   /**
-   * @deprecated Ignored. The salt always hashes the actions alone, which is
-   * what it did by default and what stored signatures cover.
+   * @deprecated Ignored. A restricted session's salt always hashes the actions
+   * alone — what it did by default, and what stored signatures cover. An
+   * unrestricted session stays on `zeroHash` as before.
    *
    * `'v1'` only ever named that default. `'strict'` was meant to let a
    * session built here be rebuilt on 2.x, but the majors also pin different
