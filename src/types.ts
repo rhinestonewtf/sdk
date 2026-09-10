@@ -319,6 +319,21 @@ interface SessionInput {
   restrictToActions?: boolean
   /** Restrict this session to swaps matching the declared tokens and recipient. */
   swap?: SwapScope
+  /**
+   * @deprecated Ignored. The salt always hashes the actions alone, which is
+   * what it did by default and what stored signatures cover.
+   *
+   * `'v1'` only ever named that default. `'strict'` was meant to let a
+   * session built here be rebuilt on 2.x, but the majors also pin different
+   * policy addresses, so matching the salt left the digest different anyway —
+   * and a session built with it matched neither shape the deposit service
+   * rebuilds, failing every deposit for that account. Reproducing a 1.x
+   * session is handled on the 2.x side, which is the side doing the rebuild.
+   *
+   * Kept in the type rather than removed because this major line cannot take
+   * a breaking release: 2.0.0 belongs to the next one. It goes away there.
+   */
+  saltMode?: 'v1' | 'strict'
 }
 
 interface Session extends SessionInput {

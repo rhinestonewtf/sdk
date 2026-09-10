@@ -265,6 +265,14 @@ describe('restricted session salt', () => {
     expect(getSessionData(reversed).salt).not.toBe(V1_SALT)
   })
 
+  // `saltMode` still type-checks so a 1.18.0 caller keeps compiling, but it
+  // no longer selects anything: 'strict' produced a session neither shape the
+  // deposit service builds could rebuild.
+  test('ignores saltMode whatever it is set to', () => {
+    expect(getSessionData(scoped({ saltMode: 'v1' })).salt).toBe(V1_SALT)
+    expect(getSessionData(scoped({ saltMode: 'strict' })).salt).toBe(V1_SALT)
+  })
+
   test('stays on zeroHash when the session is unrestricted', () => {
     expect(getSessionData(scoped({ restrictToActions: false })).salt).toBe(
       zeroHash,

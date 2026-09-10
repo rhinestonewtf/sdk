@@ -2,19 +2,15 @@
 '@rhinestone/sdk': minor
 ---
 
-Remove `saltMode`.
+Deprecate `saltMode`; it is now ignored. The salt always hashes the actions
+alone, which is what it did by default.
 
-It was added in 1.18.0 on a premise that does not hold. `'v1'` was already the
-default — an alias for the actions-only hash this SDK has always produced — and
-`'strict'` was meant to let a session built here be rebuilt on 2.x, which it
-cannot do: the two majors also pin different policy addresses, so aligning the
-salt closes one of two gaps and the digest still differs.
+`'v1'` only ever named that default. `'strict'` was meant to let a session
+built here be rebuilt on 2.x, but the majors also pin different policy
+addresses, so matching the salt still left the digest different — and a
+session built with it matched neither shape the deposit service rebuilds,
+failing every deposit for that account. Anything set to `'strict'` now
+produces a session that can be rebuilt.
 
-Worse than useless in practice. A restricted session built with `'strict'`
-matches neither shape the deposit service rebuilds — not 2.x, whose policy
-addresses differ, and not the 1.x shape, which derives the salt the default
-way. Every deposit for such an account would fail.
-
-Nothing is affected that did not set it: `'v1'` was a no-op, the default
-derivation is unchanged and pinned by test, and cross-major reproduction is
-handled where it belongs, on the 2.x side, which rebuilds a session built here.
+The option stays in the type so 1.18.0 callers keep compiling; it is removed
+in the next major.
