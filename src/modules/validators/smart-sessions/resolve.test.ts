@@ -1,5 +1,5 @@
 import fc from 'fast-check'
-import { size } from 'viem'
+import { size, zeroHash } from 'viem'
 import { base } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 import { accountA } from '../../../../test/consts'
@@ -10,9 +10,6 @@ import {
 } from './cross-chain-permits'
 import { buildSmartSessionMockSignature } from './mock-signature'
 import { SMART_SESSIONS_FALLBACK_TARGET_FLAG, toSession } from './resolve'
-
-const ZERO_SALT =
-  '0x0000000000000000000000000000000000000000000000000000000000000000'
 
 describe('Smart Sessions core', () => {
   test('matches the exact sudo session vector', () => {
@@ -200,9 +197,9 @@ describe('restricted session guards', () => {
         ...(saltMode ? { saltMode } : {}),
       }).salt
 
-    expect(built()).toBe(ZERO_SALT)
-    expect(built('none')).toBe(ZERO_SALT)
-    expect(built('strict')).not.toBe(ZERO_SALT)
+    expect(built()).toBe(zeroHash)
+    expect(built('none')).toBe(zeroHash)
+    expect(built('strict')).not.toBe(zeroHash)
   })
 
   // `'v1'` reproduces the 1.x derivation so a session built there can be rebuilt
@@ -225,7 +222,7 @@ describe('restricted session guards', () => {
       }).salt
 
     expect(built('v1')).not.toBe(built('strict'))
-    expect(built('v1')).not.toBe(ZERO_SALT)
+    expect(built('v1')).not.toBe(zeroHash)
   })
 
   // The permissionId comes from the validator, its init data and the salt — not
@@ -293,15 +290,15 @@ describe('restricted session guards', () => {
   })
 
   test('salts a restricted session by its actions', () => {
-    expect(restricted('0x095ea7b3').salt).not.toBe(ZERO_SALT)
+    expect(restricted('0x095ea7b3').salt).not.toBe(zeroHash)
   })
 
   // Unrestricted sessions keep the zero salt their stored signatures cover —
   // the pinned sudo vector above is the other half of this guarantee.
   test('leaves an unrestricted session on the zero salt', () => {
-    expect(toSession({ chain: base, owners }).salt).toBe(ZERO_SALT)
+    expect(toSession({ chain: base, owners }).salt).toBe(zeroHash)
     expect(toSession({ chain: base, owners, saltMode: 'strict' }).salt).toBe(
-      ZERO_SALT,
+      zeroHash,
     )
   })
 

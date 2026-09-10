@@ -274,29 +274,6 @@ const POLICY_COMPONENTS = [
 ] as const
 
 /**
- * Bind a restricted session's permissionId to everything it authorises.
- *
- * The permissionId derives from the validator, its init data and this salt —
- * not from the permissions. With a constant salt every session for the same
- * signer shares one permissionId, and `enable` on-chain ADDS to each list
- * rather than replacing it (`ConfigLibV2.enable`). So enabling a restricted
- * session beside an existing one for that signer unions the two: the earlier
- * session's permissions stay authorised and the restriction silently buys
- * nothing.
- *
- * Every field `_enablePolicies` writes under the permissionId has to be in
- * here, or that field alone can still collide — actions, the ERC-1271 policies
- * and 7739 content behind them, and the claim policies.
- *
- * Actions are sorted by (target, selector) so the salt is a function of the
- * authorised SET: on-chain they are keyed by action id, so listing the same
- * ones in a different order is the same authorisation and must not change the
- * permissionId.
- *
- * Unrestricted sessions keep `zeroHash`, which is what their stored signatures
- * already cover.
- */
-/**
  * Pick the salt for a session, defaulting to the historical `zeroHash`.
  *
  * Unrestricted sessions are always `zeroHash`: there is only one shape of them,
@@ -357,6 +334,29 @@ function v1RestrictedSalt(actions: readonly ResolvedAction[]): Hex {
   )
 }
 
+/**
+ * Bind a restricted session's permissionId to everything it authorises.
+ *
+ * The permissionId derives from the validator, its init data and this salt —
+ * not from the permissions. With a constant salt every session for the same
+ * signer shares one permissionId, and `enable` on-chain ADDS to each list
+ * rather than replacing it (`ConfigLibV2.enable`). So enabling a restricted
+ * session beside an existing one for that signer unions the two: the earlier
+ * session's permissions stay authorised and the restriction silently buys
+ * nothing.
+ *
+ * Every field `_enablePolicies` writes under the permissionId has to be in
+ * here, or that field alone can still collide — actions, the ERC-1271 policies
+ * and 7739 content behind them, and the claim policies.
+ *
+ * Actions are sorted by (target, selector) so the salt is a function of the
+ * authorised SET: on-chain they are keyed by action id, so listing the same
+ * ones in a different order is the same authorisation and must not change the
+ * permissionId.
+ *
+ * Unrestricted sessions keep `zeroHash`, which is what their stored signatures
+ * already cover.
+ */
 function strictSessionSalt(session: {
   actions: readonly ResolvedAction[]
   erc7739Policies: ResolvedERC7739Policies
