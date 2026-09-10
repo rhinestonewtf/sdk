@@ -319,6 +319,24 @@ interface SessionInput {
   restrictToActions?: boolean
   /** Restrict this session to swaps matching the declared tokens and recipient. */
   swap?: SwapScope
+  /**
+   * How a restricted session's salt is derived, which decides its permissionId.
+   *
+   * - `'v1'` (default) hashes the actions alone.
+   * - `'strict'` hashes every field enabled under the permissionId (actions,
+   *   ERC-1271 policies, 7739 content, claim policies) with actions in a
+   *   canonical order.
+   *
+   * A restricted session here throws on `claimPolicies` and has its 1271/7739
+   * config forced empty, so those extra fields are always empty and the two
+   * modes differ only by action ordering. `'strict'` exists for parity with
+   * 2.x, where the same derivation covers fields that ARE reachable — it is
+   * what lets a session built here be rebuilt there.
+   *
+   * Opt-in: changing it moves the permissionId and digest, so an existing
+   * session's stored signature no longer covers it.
+   */
+  saltMode?: 'v1' | 'strict'
 }
 
 interface Session extends SessionInput {

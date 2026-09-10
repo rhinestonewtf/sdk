@@ -1,3 +1,4 @@
+import { zeroHash } from 'viem'
 import { base, optimism } from 'viem/chains'
 import { describe, expect, test, vi } from 'vitest'
 import { accountA } from '../../../../../test/consts'
@@ -230,5 +231,61 @@ describe('restricted v1 sessions', () => {
         ],
       }),
     ).toThrow('cannot use claimPolicies')
+  })
+})
+
+describe('saltMode', () => {
+  const scoped = (extra?: Partial<Session>): Session => ({
+    chain: base,
+    owners: { type: 'ecdsa', accounts: [accountA] },
+    restrictToActions: true,
+    actions: [
+      { target: SELL, selector: '0xa9059cbb', policies: [{ type: 'sudo' }] },
+      {
+        target: BUY,
+        selector: '0x12345678',
+        policies: [{ type: 'value-limit', limit: 5n }],
+      },
+    ],
+    ...extra,
+  })
+
+  // Frozen derivations: a change here strands every already-signed session.
+  const V1_SALT =
+    '0x08060e7ab6e41dfa09c11798c60d867716c8a5fa1308f6ac6c55d8bff0a70cab'
+  const STRICT_SALT =
+    '0xd30be60c8217a07e1dd8b97153810e0b637940b8db29162f63d1bc644675f146'
+
+  test("default and explicit 'v1' keep the actions-only salt byte-for-byte", () => {
+    expect(getSessionData(scoped()).salt).toBe(V1_SALT)
+    expect(getSessionData(scoped({ saltMode: 'v1' })).salt).toBe(V1_SALT)
+  })
+
+  test("'strict' lands on a different salt and permissionId", () => {
+    expect(getSessionData(scoped({ saltMode: 'strict' })).salt).toBe(
+      STRICT_SALT,
+    )
+    expect(getPermissionId(scoped({ saltMode: 'strict' }))).not.toBe(
+      getPermissionId(scoped()),
+    )
+  })
+
+  // v1 cannot reach the fields 'strict' adds: a restricted session throws on
+  // claimPolicies and has its 1271/7739 config forced empty. So here the two
+  // modes differ only by canonical action ordering. The wider coverage exists
+  // for parity with 2.x, where those fields ARE reachable — it is what lets a
+  // session built here be rebuilt there.
+  test("'strict' is independent of action listing order; 'v1' is not", () => {
+    const reversed = scoped({ actions: [...scoped().actions!].reverse() })
+    expect(getSessionData({ ...reversed, saltMode: 'strict' }).salt).toBe(
+      STRICT_SALT,
+    )
+    expect(getSessionData(reversed).salt).not.toBe(V1_SALT)
+  })
+
+  test('unrestricted sessions stay on zeroHash in both modes', () => {
+    const open = scoped({ restrictToActions: false })
+    expect(getSessionData({ ...open, saltMode: 'strict' }).salt).toBe(zeroHash)
+    expect(getSessionData({ ...open, saltMode: 'v1' }).salt).toBe(zeroHash)
   })
 })
