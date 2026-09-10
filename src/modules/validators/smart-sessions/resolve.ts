@@ -245,6 +245,22 @@ export function resolveSessionData(
           }),
         )
       : [sudoAction]
+  // 1.x salts a swap-scoped session over its PRODUCTION venues even when built
+  // for dev, so the salt — and the permissionId with it — does not move between
+  // environments. Reproducing one means reproducing that, and the cheapest
+  // faithful way is to resolve the same definition again at production and salt
+  // over those actions. The session itself keeps its dev venues; only the salt
+  // changes. Terminates: the recursive call resolves at production, where this
+  // is skipped.
+  const v1SaltActions =
+    definition.saltMode === 'v1' &&
+    environment === 'development' &&
+    definition.swap !== undefined
+      ? resolveSessionData(definition, {
+          ...options,
+          environment: 'production',
+        }).actions
+      : undefined
   const claimPolicies = [
     ...(definition.claimPolicies ?? []),
     ...expandedPermits.map(({ claim }) => claim),
@@ -268,7 +284,7 @@ export function resolveSessionData(
     sessionValidator: validator.address,
     sessionValidatorInitData: validator.initData,
     salt: sessionSalt(definition.saltMode, restricted, {
-      actions,
+      actions: v1SaltActions ?? actions,
       erc7739Policies,
       claimPolicies,
     }),
