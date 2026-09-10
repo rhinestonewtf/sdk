@@ -807,9 +807,10 @@ interface SessionDefinition<
    *   signatures already cover. Restricted sessions for one signer therefore
    *   share a permissionId.
    * - `'v1'` reproduces a session the 1.x SDK built: the salt hashes the
-   *   actions in build order, and an action's policies are emitted in 1.x's
-   *   order rather than this one's. Both are digest inputs, so rebuilding a
-   *   1.x session here needs both.
+   *   actions in build order, and a permission-derived action's policies are
+   *   emitted in 1.x's order rather than this one's. Both are digest inputs.
+   *   A raw `actions` entry is left in the order you gave it, which is what
+   *   1.x does with one too.
    * - `'strict'` hashes every field enabled under the permissionId — actions,
    *   ERC-1271 policies, ERC-7739 content and claim policies — with actions
    *   ordered by value.

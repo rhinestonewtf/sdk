@@ -10,6 +10,7 @@ import {
 } from './cross-chain-permits'
 import { buildSmartSessionMockSignature } from './mock-signature'
 import { SMART_SESSIONS_FALLBACK_TARGET_FLAG, toSession } from './resolve'
+import type { SessionPolicy } from './types'
 
 describe('Smart Sessions core', () => {
   test('matches the exact sudo session vector', () => {
@@ -262,7 +263,7 @@ describe('restricted session guards', () => {
           { condition: 'equal', calldataOffset: 0n, referenceValue: TOKEN },
         ],
       },
-    ] as const
+    ] satisfies SessionPolicy[]
 
     const built = (saltMode?: 'v1') =>
       toSession({
