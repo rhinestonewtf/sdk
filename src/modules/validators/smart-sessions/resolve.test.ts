@@ -10,6 +10,7 @@ import {
 } from './cross-chain-permits'
 import { buildSmartSessionMockSignature } from './mock-signature'
 import { SMART_SESSIONS_FALLBACK_TARGET_FLAG, toSession } from './resolve'
+import type { SessionPolicy } from './types'
 
 describe('Smart Sessions core', () => {
   test('matches the exact sudo session vector', () => {
@@ -200,6 +201,82 @@ describe('restricted session guards', () => {
     expect(built()).toBe(zeroHash)
     expect(built('none')).toBe(zeroHash)
     expect(built('strict')).not.toBe(zeroHash)
+  })
+
+  // Reproducing 1.x is not only about the salt. 1.x builds an approve action as
+  // [arg policy, spending limits]; the `spendingLimit` sugar expands before
+  // `params` here, so without this the pair comes out reversed and the digest
+  // diverges — but ONLY once a cap exists, which is why an uncapped fixture
+  // cannot catch it. Measured against a session built by a real 1.18.0.
+  test("'v1' emits an action's policies in the order 1.x does", () => {
+    const built = (saltMode?: 'v1') =>
+      toSession({
+        chain: base,
+        owners,
+        permissions: [
+          {
+            abi: [
+              {
+                type: 'function',
+                name: 'approve',
+                stateMutability: 'nonpayable',
+                inputs: [
+                  { name: 'spender', type: 'address' },
+                  { name: 'amount', type: 'uint256' },
+                ],
+                outputs: [{ type: 'bool' }],
+              },
+            ],
+            address: TOKEN,
+            functions: {
+              approve: {
+                spendingLimit: { token: TOKEN, amount: 5_000_000n },
+                params: { spender: { condition: 'equal', value: TOKEN } },
+              },
+            },
+          },
+        ],
+        restrictToActions: true,
+        ...(saltMode ? { saltMode } : {}),
+      }).actions[0].actionPolicies.map((entry) => entry.policy)
+
+    const [firstDefault, secondDefault] = built()
+    const [firstV1, secondV1] = built('v1')
+
+    // Same two policies, opposite order — and the default is untouched, so no
+    // existing digest moves.
+    expect([firstV1, secondV1]).toEqual([secondDefault, firstDefault])
+  })
+
+  // 1.x passes a raw action's policies through in the order given, so the
+  // reordering must not reach them: it exists to undo this SDK's own sugar
+  // expansion, and applying it to a hand-written action would invent a
+  // difference rather than remove one.
+  test("'v1' leaves a raw action's policy order alone", () => {
+    const policies = [
+      { type: 'spending-limits', limits: [{ token: TOKEN, amount: 1n }] },
+      { type: 'usage-limit', limit: 2n },
+      {
+        type: 'universal-action',
+        valueLimitPerUse: 0n,
+        rules: [
+          { condition: 'equal', calldataOffset: 0n, referenceValue: TOKEN },
+        ],
+      },
+    ] satisfies SessionPolicy[]
+
+    const built = (saltMode?: 'v1') =>
+      toSession({
+        chain: base,
+        owners,
+        actions: [{ target: TOKEN, selector: '0x095ea7b3', policies }],
+        restrictToActions: true,
+        ...(saltMode ? { saltMode } : {}),
+      })
+
+    expect(built('v1').actions[0].actionPolicies).toEqual(
+      built().actions[0].actionPolicies,
+    )
   })
 
   // `'v1'` reproduces the 1.x derivation so a session built there can be rebuilt
