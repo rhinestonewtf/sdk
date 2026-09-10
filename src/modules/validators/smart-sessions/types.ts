@@ -279,6 +279,28 @@ export interface SessionDefinition {
   // aggregator (RHI-6286). Requires at least one permission or action.
   restrictToActions?: boolean
   /**
+   * How a restricted session's salt is derived, which decides its permissionId.
+   *
+   * The permissionId is `keccak(validator, initData, salt)` — the actions are
+   * not in it. On-chain, `enable` ADDS to the policy list rather than replacing
+   * it, so two sessions for one signer that share a permissionId union: the
+   * earlier one's actions stay authorised and the later restriction buys
+   * nothing.
+   *
+   * - `'none'` (default) leaves the salt at `zeroHash`, which is what stored
+   *   signatures already cover. Restricted sessions for one signer therefore
+   *   share a permissionId.
+   * - `'v1'` hashes the actions, matching the 1.x derivation. Use it to
+   *   reproduce a session built there.
+   * - `'strict'` hashes every field enabled under the permissionId — actions,
+   *   ERC-1271 policies, ERC-7739 content and claim policies — with actions in
+   *   a canonical order.
+   *
+   * Opt-in: anything other than `'none'` moves the permissionId and digest, so
+   * an existing session's stored signature no longer covers it.
+   */
+  saltMode?: 'none' | 'v1' | 'strict'
+  /**
    * Venue-scoped swap permissions. Compiles to a merged approve plus one scoped
    * swap action per venue, and implies `restrictToActions`.
    */

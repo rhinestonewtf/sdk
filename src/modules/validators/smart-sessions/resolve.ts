@@ -257,9 +257,11 @@ export function resolveSessionData(
   return {
     sessionValidator: validator.address,
     sessionValidatorInitData: validator.initData,
-    salt: restricted
-      ? restrictedSessionSalt({ actions, erc7739Policies, claimPolicies })
-      : zeroHash,
+    salt: sessionSalt(definition.saltMode, restricted, {
+      actions,
+      erc7739Policies,
+      claimPolicies,
+    }),
     erc7739Policies,
     actions,
     claimPolicies,
@@ -294,7 +296,68 @@ const POLICY_COMPONENTS = [
  * Unrestricted sessions keep `zeroHash`, which is what their stored signatures
  * already cover.
  */
-function restrictedSessionSalt(session: {
+/**
+ * Pick the salt for a session, defaulting to the historical `zeroHash`.
+ *
+ * Unrestricted sessions are always `zeroHash`: there is only one shape of them,
+ * so two for the same signer are the same session and sharing a permissionId is
+ * correct. Restricted ones can differ, which is what makes a salt necessary.
+ */
+function sessionSalt(
+  mode: 'none' | 'v1' | 'strict' | undefined,
+  restricted: boolean,
+  session: {
+    actions: readonly ResolvedAction[]
+    erc7739Policies: ResolvedERC7739Policies
+    claimPolicies: readonly ResolvedPolicy[]
+  },
+): Hex {
+  if (!restricted || mode === undefined || mode === 'none') {
+    return zeroHash
+  }
+  return mode === 'v1'
+    ? v1RestrictedSalt(session.actions)
+    : strictSessionSalt(session)
+}
+
+/**
+ * The 1.x derivation: the actions alone, in the order they were built.
+ *
+ * Reproduced rather than improved. It exists so a session built on 1.x can be
+ * rebuilt here byte for byte — sorting or widening it would defeat that.
+ */
+function v1RestrictedSalt(actions: readonly ResolvedAction[]): Hex {
+  return keccak256(
+    encodeAbiParameters(
+      [
+        {
+          name: 'actions',
+          type: 'tuple[]',
+          components: [
+            { name: 'actionTargetSelector', type: 'bytes4' },
+            { name: 'actionTarget', type: 'address' },
+            {
+              name: 'actionPolicies',
+              type: 'tuple[]',
+              components: POLICY_COMPONENTS,
+            },
+          ],
+        },
+      ],
+      [
+        actions.map((action) => ({
+          actionTargetSelector: action.actionTargetSelector,
+          actionTarget: action.actionTarget,
+          actionPolicies: action.actionPolicies.map((policy) => ({
+            ...policy,
+          })),
+        })),
+      ],
+    ),
+  )
+}
+
+function strictSessionSalt(session: {
   actions: readonly ResolvedAction[]
   erc7739Policies: ResolvedERC7739Policies
   claimPolicies: readonly ResolvedPolicy[]

@@ -1,11 +1,15 @@
 ---
-'@rhinestone/sdk': major
+'@rhinestone/sdk': minor
 ---
 
-Salt a restricted session's permissionId by the actions it authorises.
+Add `saltMode` to opt a restricted session's permissionId into a salt.
 
-**This moves the digest and permissionId of every restricted (`restrictToActions` / `swap`-scoped) session.** Stored signatures for existing scoped sessions no longer cover the session they were collected for. Unrestricted sessions keep the zero salt and are byte-identical — their digests, permissionIds and stored signatures are unaffected.
+Additive and off by default: without it the salt stays `zeroHash`, so every existing session's digest, permissionId and stored signature are unchanged.
 
-The permissionId derives from the validator, its init data and the salt — not from the actions. With a constant salt, every session for the same signer shared one permissionId, and on-chain `enable` ADDS to the policy list rather than replacing it (`ConfigLibV2.enable`). So enabling a restricted session beside an existing one for that signer unioned the two: the earlier session's actions stayed authorised and the restriction silently bought nothing. A caller could believe a key was limited to, say, one swap venue while a previously enabled wildcard action remained usable.
+A session's permissionId is `keccak(sessionValidator, sessionValidatorInitData, salt)` — the actions are not in it. On-chain, `enable` ADDS to the policy list rather than replacing it (`ConfigLibV2.enable`), so two restricted sessions for one signer that share a permissionId union: the earlier session's actions stay authorised and the later restriction buys nothing, with no error. A caller can believe a key is limited to one swap venue while a previously enabled wildcard action is still live.
 
-Salting by the action set gives each distinct restriction its own permissionId, so it cannot merge into another. This restores the behaviour `1.x` has (`getRestrictedSessionSalt`), which `2.x` dropped.
+- `'none'` (default) — `zeroHash`, today's behaviour.
+- `'v1'` — hashes the actions in build order, matching the 1.x derivation, so a session built on 1.x can be rebuilt here.
+- `'strict'` — hashes every field enabled under the permissionId (actions, ERC-1271 policies, ERC-7739 content, claim policies), actions in canonical order.
+
+Unrestricted sessions stay on `zeroHash` in every mode: there is only one shape of them, so two for the same signer are the same session and sharing a permissionId is correct.
