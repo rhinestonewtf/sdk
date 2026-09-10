@@ -290,8 +290,10 @@ export interface SessionDefinition {
    * - `'none'` (default) leaves the salt at `zeroHash`, which is what stored
    *   signatures already cover. Restricted sessions for one signer therefore
    *   share a permissionId.
-   * - `'v1'` hashes the actions, matching the 1.x derivation. Use it to
-   *   reproduce a session built there.
+   * - `'v1'` reproduces a session the 1.x SDK built: the salt hashes the
+   *   actions in build order, and a permission-derived action's policies are
+   *   emitted in 1.x's order rather than this one's. Both are digest inputs.
+   *   A raw `actions` entry keeps the order you gave it, as it does on 1.x.
    * - `'strict'` hashes every field enabled under the permissionId — actions,
    *   ERC-1271 policies, ERC-7739 content and claim policies — with actions in
    *   a canonical order.

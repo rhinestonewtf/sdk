@@ -1105,3 +1105,30 @@ describe('resolveSwapScope — several sell tokens', () => {
     expect(() => scopeFor({ tokens: [USDC, USDT0] })).toThrow(/same address/)
   })
 })
+
+describe("saltMode 'v1' across environments", () => {
+  const SELL = '0x2d661C89D812261039AF9764eceaAee884f5F67F' as Address
+  const BUY = '0xB8CE59FC3717ada4C02eaDF9682A9e934F625ebb' as Address
+  const TO = '0x6e82374c4e39b766a892e215e67fa17202cd0e58' as Address
+
+  const salt = (environment: 'production' | 'development') =>
+    getSessionData(
+      toSession(
+        {
+          chain: { id: 9745 } as Chain,
+          owners: { type: 'ecdsa', accounts: [accountA] },
+          saltMode: 'v1',
+          swap: { sell: { token: SELL }, buy: { token: BUY }, to: TO },
+        } as never,
+        { environment },
+      ),
+    ).salt
+
+  // 1.x salts a swap-scoped session over its production venues whatever it was
+  // built for, so the permissionId does not move between environments. A dev
+  // session that salted over dev venues could not be rebuilt from a 1.x
+  // registration, which is the whole purpose of this mode.
+  test('salts over production venues even when built for dev', () => {
+    expect(salt('development')).toBe(salt('production'))
+  })
+})

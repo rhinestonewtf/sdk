@@ -217,9 +217,19 @@ export function resolveSessionData(
     }
     seen.add(key)
   }
+  // Only the permission-derived actions: a raw action is passed through in the
+  // order it was given, on both majors, so reordering one would invent a
+  // difference rather than remove one.
+  const v1CompatibleActions =
+    definition.saltMode === 'v1'
+      ? userActions.map((action) => ({
+          ...action,
+          policies: v1PolicyOrder(action.policies),
+        }))
+      : userActions
   const actions =
     userActions.length || rawActions.length || permitFallbackPolicies.length
-      ? [...userActions, ...rawActions, ...injectedActions].map(
+      ? [...v1CompatibleActions, ...rawActions, ...injectedActions].map(
           (action): ResolvedAction => ({
             actionTargetSelector:
               'selector' in action
@@ -235,6 +245,22 @@ export function resolveSessionData(
           }),
         )
       : [sudoAction]
+  // 1.x salts a swap-scoped session over its PRODUCTION venues even when built
+  // for dev, so the salt — and the permissionId with it — does not move between
+  // environments. Reproducing one means reproducing that, and the cheapest
+  // faithful way is to resolve the same definition again at production and salt
+  // over those actions. The session itself keeps its dev venues; only the salt
+  // changes. Terminates: the recursive call resolves at production, where this
+  // is skipped.
+  const v1SaltActions =
+    definition.saltMode === 'v1' &&
+    environment === 'development' &&
+    definition.swap !== undefined
+      ? resolveSessionData(definition, {
+          ...options,
+          environment: 'production',
+        }).actions
+      : undefined
   const claimPolicies = [
     ...(definition.claimPolicies ?? []),
     ...expandedPermits.map(({ claim }) => claim),
@@ -258,7 +284,7 @@ export function resolveSessionData(
     sessionValidator: validator.address,
     sessionValidatorInitData: validator.initData,
     salt: sessionSalt(definition.saltMode, restricted, {
-      actions,
+      actions: v1SaltActions ?? actions,
       erc7739Policies,
       claimPolicies,
     }),
@@ -295,6 +321,38 @@ function sessionSalt(
   return mode === 'v1'
     ? v1RestrictedSalt(session.actions)
     : strictSessionSalt(session)
+}
+
+/**
+ * The order 1.x puts an action's policies in.
+ *
+ * 1.x builds an approve action as `[arg policy, spending limits]`; here the
+ * `spendingLimit` sugar expands before `params` compiles, so the pair comes
+ * out reversed. Policies are hashed in their array order, so a 1.x session
+ * only reproduces here if the order does too — the digests agree without a cap
+ * and diverge with one, which is what makes this worth doing rather than
+ * documenting.
+ *
+ * Stable in the sense that matters: the params policy moves to the front and
+ * everything else keeps its order relative to the rest, though its index
+ * shifts.
+ */
+const PARAMS_POLICY_TYPES = new Set(['arg-policy', 'universal-action'])
+
+function v1PolicyOrder<T extends { readonly type: string }>(
+  policies: readonly T[] | undefined,
+): readonly T[] | undefined {
+  if (!policies) return policies
+  const fromParams = policies.filter((policy) =>
+    PARAMS_POLICY_TYPES.has(policy.type),
+  )
+  if (fromParams.length === 0 || fromParams.length === policies.length) {
+    return policies
+  }
+  return [
+    ...fromParams,
+    ...policies.filter((policy) => !PARAMS_POLICY_TYPES.has(policy.type)),
+  ]
 }
 
 /**
