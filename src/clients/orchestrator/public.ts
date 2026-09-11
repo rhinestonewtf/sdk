@@ -688,6 +688,32 @@ interface IntentRefund {
 }
 
 /**
+ * What became of the HyperCore action an intent carried.
+ *
+ * A refused action leaves the intent `FAILED` with every operation
+ * `COMPLETED`: the onchain half succeeded and Hyperliquid's answer is what
+ * failed, so the operations cannot say whether sending it again is safe.
+ *
+ * - `pending`  – no result yet
+ * - `accepted` – Hyperliquid accepted the action
+ * - `refused`  – Hyperliquid refused the action, so it was not placed; with
+ *                several actions, `reason` says which were accepted before it
+ * - `partial`  – some orders were placed; check the account before retrying,
+ *                or the placed orders are sent twice
+ * - `error`    – no definite answer; check the account before retrying
+ * - `unknown`  – no definite answer; check the account before retrying
+ */
+interface IntentHyperCoreResult {
+  outcome: 'pending' | 'accepted' | 'refused' | 'error' | 'unknown' | 'partial'
+  /**
+   * Why the action did not simply succeed. Present on `refused`, `error`,
+   * `unknown` and `partial`. With several actions it says which action failed
+   * and which were accepted.
+   */
+  reason?: string
+}
+
+/**
  * Full intent status as returned by the orchestrator (blanc API version).
  *
  * One operation per chain involved in the intent. The SDK flattens the
@@ -712,6 +738,13 @@ interface IntentOpStatus {
    * completed did not take the funds in the first place.
    */
   refunds?: IntentRefund[]
+  /**
+   * What became of the HyperCore action this intent carried; absent when it
+   * carried none. A refused action leaves the intent `FAILED` with every
+   * operation `COMPLETED`, so this is what says why, and whether a retry is
+   * safe.
+   */
+  hyperCore?: IntentHyperCoreResult
 }
 
 export type {
@@ -758,6 +791,7 @@ export type {
   IntentSubmitResponse,
   IntentOpStatus,
   IntentRefund,
+  IntentHyperCoreResult,
   IntentOptions,
   SponsorSettings,
   SignedAuthorization,

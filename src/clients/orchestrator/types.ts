@@ -9,6 +9,7 @@ import type {
   ChainOperation,
   Cost,
   HyperCoreAction,
+  IntentHyperCoreResult,
   IntentRefund,
   IntentStatus,
   SerializedIntentInput,
@@ -138,6 +139,7 @@ export interface OrchestratorIntentStatus {
   readonly account: Address
   readonly operations: readonly ChainOperation[]
   readonly refunds?: readonly IntentRefund[]
+  readonly hyperCore?: IntentHyperCoreResult
 }
 
 export interface OrchestratorPortfolioRequest {

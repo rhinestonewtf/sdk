@@ -21,6 +21,7 @@ export function classifyIntentStatus(
     // Spread so an unknown refund state stays an absent key rather than
     // becoming `undefined` — the distinction the whole field rests on.
     ...(status.refunds ? { refunds: status.refunds } : {}),
+    ...(status.hyperCore ? { hyperCore: status.hyperCore } : {}),
     terminal: status.status === 'COMPLETED' || status.status === 'FAILED',
   }
 }

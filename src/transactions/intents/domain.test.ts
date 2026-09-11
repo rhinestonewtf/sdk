@@ -302,6 +302,25 @@ describe('intent domain', () => {
     expect('refunds' in classifyIntentStatus(failed)).toBe(false)
   })
 
+  test('classifies a HyperCore outcome through, and leaves it absent when none was carried', () => {
+    const failed = {
+      traceId: '',
+      intentId: 'intent',
+      status: 'FAILED',
+      account: address,
+      operations: [],
+    } as const
+    const hyperCore = {
+      outcome: 'refused',
+      reason: 'Insufficient margin.',
+    } as const
+
+    expect(classifyIntentStatus({ ...failed, hyperCore }).hyperCore).toEqual(
+      hyperCore,
+    )
+    expect('hyperCore' in classifyIntentStatus(failed)).toBe(false)
+  })
+
   test('classifies retry delays and terminal failures', async () => {
     const rateLimit = (retryAfter?: string) =>
       new RateLimitedError({
@@ -430,5 +449,58 @@ describe('intent domain', () => {
         expect('refunds' in error.context).toBe(false)
       }),
     ])
+  })
+
+  test('carries the HyperCore outcome on the failed-intent error while every operation completed', async () => {
+    // The onchain half succeeded, so the operations cannot say whether a
+    // re-send is safe: only `hyperCore` tells a partial from a refusal.
+    const failing = (hyperCore?: {
+      readonly outcome: 'partial' | 'refused'
+      readonly reason: string
+    }) => ({
+      statusClient: {
+        getIntentStatus: vi.fn(async () => ({
+          traceId: 'trace',
+          intentId: 'intent',
+          status: 'FAILED' as const,
+          account: address,
+          operations: [
+            {
+              chain: 8453,
+              status: 'COMPLETED' as const,
+              txHash: '0xaa' as const,
+              timestamp: 1,
+            },
+          ],
+          ...(hyperCore ? { hyperCore } : {}),
+        })),
+      },
+      clock: {
+        now: vi.fn().mockReturnValueOnce(0).mockReturnValue(20_000),
+        sleep: vi.fn(async () => undefined),
+      },
+    })
+    const partial = {
+      outcome: 'partial',
+      reason: 'action 0 accepted; action 1 refused: Insufficient margin.',
+    } as const
+    const refused = {
+      outcome: 'refused',
+      reason: 'Insufficient margin.',
+    } as const
+
+    for (const hyperCore of [partial, refused]) {
+      await expect(
+        waitForIntentStatus(failing(hyperCore), 'intent'),
+      ).rejects.toMatchObject({
+        context: { operations: [{ status: 'COMPLETED' }], hyperCore },
+      })
+    }
+
+    const error = await waitForIntentStatus(failing(), 'intent').catch(
+      (caught) => caught,
+    )
+    expect(error).toBeInstanceOf(IntentFailedError)
+    expect('hyperCore' in error.context).toBe(false)
   })
 })

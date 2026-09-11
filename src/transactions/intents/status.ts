@@ -53,16 +53,19 @@ export async function waitForIntentStatus<CompatibilityConfig>(
     }
     if (!status.terminal) continue
     if (status.status === 'FAILED') {
-      // The refund rides the ERROR, because this is the only path it can take:
-      // a refunded intent is still `FAILED` — it did not do what was asked —
+      // The refund and the HyperCore outcome ride the ERROR, because this is
+      // the only path they can take: a refunded intent, or one whose HyperCore
+      // action was refused, is still `FAILED` — it did not do what was asked —
       // so this throws and the caller never sees a returned status. Omitting
-      // it here would hide the refund from `waitForExecution` for the exact
-      // case the field exists to answer.
+      // them here would hide both from `waitForExecution` for the exact cases
+      // the fields exist to answer; a refused trade's operations all read
+      // COMPLETED, so nothing else says whether a retry is safe.
       throw new IntentFailedError({
         context: {
           intentId,
           operations: status.operations,
           ...(status.refunds ? { refunds: status.refunds } : {}),
+          ...(status.hyperCore ? { hyperCore: status.hyperCore } : {}),
         },
       })
     }
