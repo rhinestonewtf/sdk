@@ -17,7 +17,7 @@ import type { OrchestratorPort } from './port'
 import type { OrchestratorIntentSubmissionContext } from './types'
 import type { WireChainsResponse } from './wire'
 
-const SDK_VERSION = '2.15.1'
+const SDK_VERSION = '2.16.0'
 const API_VERSION = '2026-04.blanc'
 
 export interface OrchestratorClientOptions {
