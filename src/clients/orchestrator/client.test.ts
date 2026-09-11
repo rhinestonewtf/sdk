@@ -199,6 +199,7 @@ describe('orchestrator client', () => {
           Authorization: 'Bearer access',
           'X-Intent-Extension': 'Bearer extension',
         })
+        expect(init?.headers).not.toHaveProperty('x-api-key')
         expect(JSON.parse(String(init?.body))).toMatchObject({
           authorizations: {
             sponsor: [{ chainId: 'eip155:8453' }],
