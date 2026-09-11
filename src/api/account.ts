@@ -320,7 +320,10 @@ export interface RhinestoneAccount {
    * Polls the orchestrator until the intent reaches a terminal state; on failure
    * an `IntentFailedError` is thrown, whose `context` carries `operations` and,
    * where a settlement layer returned the funds, `refunds` — a refunded intent
-   * is still a failed one, so that error is where the refund surfaces.
+   * is still a failed one, so that error is where the refund surfaces. An
+   * intent that carried a HyperCore action also carries `hyperCore` there,
+   * which tells a refused trade (safe to retry) from a partial one (check the
+   * account first).
    * @param result The result returned by a submit/send call
    * @returns The per-chain operation status (for intents) or a UserOp receipt
    */
@@ -819,6 +822,7 @@ export function createAccountFacade(
             accountAddress: status.account,
             operations: status.operations as TransactionStatus['operations'],
             ...(status.refunds ? { refunds: [...status.refunds] } : {}),
+            ...(status.hyperCore ? { hyperCore: status.hyperCore } : {}),
           }))
       }
       const ctx = context('wait-for-execution')

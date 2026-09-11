@@ -54,6 +54,26 @@ describe('SDK project boundary adapters', () => {
     expect('refunds' in toPublicTransactionStatus(failed)).toBe(false)
   })
 
+  test('carries the HyperCore outcome onto the public shape, and omits it when absent', () => {
+    const failed = {
+      traceId: 'trace-status',
+      intentId: 'intent-1',
+      status: 'FAILED',
+      account: address,
+      operations: [],
+      terminal: true,
+    } as const
+    const hyperCore = {
+      outcome: 'partial',
+      reason: 'action 0 accepted; action 1 refused: Insufficient margin.',
+    } as const
+
+    expect(
+      toPublicTransactionStatus({ ...failed, hyperCore }).hyperCore,
+    ).toEqual(hyperCore)
+    expect('hyperCore' in toPublicTransactionStatus(failed)).toBe(false)
+  })
+
   test('maps public split requests with and without settlement filters', () => {
     expect(
       toOrchestratorSplitRequest({

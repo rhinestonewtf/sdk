@@ -20,6 +20,7 @@ export function toPublicTransactionStatus(
     accountAddress: status.account,
     operations: [...status.operations],
     ...(status.refunds ? { refunds: [...status.refunds] } : {}),
+    ...(status.hyperCore ? { hyperCore: status.hyperCore } : {}),
   }
 }
 

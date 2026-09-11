@@ -120,6 +120,11 @@ export interface IntentStatus {
   readonly operations: readonly IntentOpStatus['operations'][number][]
   /** Bridge refunds, if any are known. See {@link IntentOpStatus.refunds}. */
   readonly refunds?: readonly NonNullable<IntentOpStatus['refunds']>[number][]
+  /**
+   * The HyperCore action's outcome, if the intent carried one. See
+   * {@link IntentOpStatus.hyperCore}.
+   */
+  readonly hyperCore?: NonNullable<IntentOpStatus['hyperCore']>
   readonly terminal: boolean
 }
 
@@ -194,4 +199,10 @@ export interface TransactionStatus {
    * transaction says the funds came back. See {@link IntentOpStatus.refunds}.
    */
   refunds?: IntentOpStatus['refunds']
+  /**
+   * The HyperCore action's outcome, if the transaction carried one. This is
+   * what tells a refused trade from a partial one when every operation
+   * completed. See {@link IntentOpStatus.hyperCore}.
+   */
+  hyperCore?: IntentOpStatus['hyperCore']
 }

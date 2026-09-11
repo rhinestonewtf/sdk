@@ -251,3 +251,57 @@ describe('mapIntentStatusFromWire refunds', () => {
     expect(mapped.refunds).toEqual([{ chain: 42161, txHash: REFUND_TX }])
   })
 })
+
+describe('mapIntentStatusFromWire hyperCore', () => {
+  const status = (hyperCore?: unknown) => ({
+    traceId: 'trace-1',
+    status: 'FAILED',
+    accountAddress: address,
+    operations: [
+      { chain: 8453, items: [{ status: 'COMPLETED', txHash: '0xaa' }] },
+    ],
+    ...(hyperCore === undefined ? {} : { hyperCore }),
+  })
+
+  test('surfaces the outcome and its reason', () => {
+    const mapped = mapIntentStatusFromWire(
+      'intent-1',
+      status({ outcome: 'refused', reason: 'Insufficient margin.' }),
+    )
+    expect(mapped.hyperCore).toEqual({
+      outcome: 'refused',
+      reason: 'Insufficient margin.',
+    })
+  })
+
+  test('surfaces an outcome that carries no reason', () => {
+    const mapped = mapIntentStatusFromWire(
+      'intent-1',
+      status({ outcome: 'accepted' }),
+    )
+    expect(mapped.hyperCore).toEqual({ outcome: 'accepted' })
+  })
+
+  test('leaves hyperCore absent when the intent carried no action', () => {
+    const mapped = mapIntentStatusFromWire('intent-1', status())
+    expect('hyperCore' in mapped).toBe(false)
+  })
+
+  test('keeps a partial outcome distinct from a refused one', () => {
+    // A partial placed orders and must not be re-sent; a refusal placed none
+    // and is safe to retry. Both arrive with every operation COMPLETED.
+    const partial = mapIntentStatusFromWire(
+      'intent-1',
+      status({
+        outcome: 'partial',
+        reason: 'action 0 accepted; action 1 refused: Insufficient margin.',
+      }),
+    )
+    const refused = mapIntentStatusFromWire(
+      'intent-1',
+      status({ outcome: 'refused', reason: 'Insufficient margin.' }),
+    )
+    expect(partial.hyperCore?.outcome).toBe('partial')
+    expect(refused.hyperCore?.outcome).toBe('refused')
+  })
+})
