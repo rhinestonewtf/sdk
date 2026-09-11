@@ -122,6 +122,7 @@ export function mapIntentStatusFromWire(
       readonly chain?: string | number
       readonly txHash: string
     }[]
+    readonly hyperCore?: OrchestratorIntentStatus['hyperCore']
   }
   return {
     traceId: input.traceId ?? '',
@@ -150,6 +151,16 @@ export function mapIntentStatusFromWire(
             chain: parseChainValue(refund.chain),
             txHash: refund.txHash,
           })),
+        }
+      : {}),
+    ...(input.hyperCore
+      ? {
+          hyperCore: {
+            outcome: input.hyperCore.outcome,
+            ...(input.hyperCore.reason === undefined
+              ? {}
+              : { reason: input.hyperCore.reason }),
+          },
         }
       : {}),
   }

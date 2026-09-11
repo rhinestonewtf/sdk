@@ -55,6 +55,7 @@ export type {
   HyperCoreTimeInForce,
   HyperCoreUpdateIsolatedMarginAction,
   HyperCoreUpdateLeverageAction,
+  IntentHyperCoreResult,
   IntentInput,
   IntentOpStatus,
   IntentRefund,
