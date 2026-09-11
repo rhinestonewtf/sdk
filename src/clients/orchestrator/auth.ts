@@ -26,7 +26,6 @@ export function createOrchestratorAuth(
       : auth.accessToken
   const headers = async (): Promise<Record<string, string>> => ({
     Authorization: `Bearer ${await accessToken()}`,
-    'x-api-key': 'jwt',
   })
   return {
     getHeaders: headers,
