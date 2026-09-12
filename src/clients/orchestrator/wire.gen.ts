@@ -929,6 +929,60 @@ export interface operations {
                  * @enum {boolean}
                  */
                 debitsAccount?: true
+                /** @description Blanc only. Present only on operations the CALLER earned: the allocation's stamped `counterparty`, or — before conversion stamps one — the operation's canonical receipt sender, is one of the caller's registered `scopes.relayer.fillAddresses`. Holding the relayer scope is not sufficient, because `/intents/:id` is nonce-only and scope alone would disclose another relayer's counterparties, amounts and settlement dates off a guessed intent id. Everything else fails closed. Amounts are micro-USD. */
+                allocation?: {
+                  /**
+                   * @description Sponsor-covered gas planned for this operation (micro-USD)
+                   * @example 100
+                   */
+                  plannedGasMicroUsd: string
+                  /**
+                   * @description Fixed non-gas compensation (micro-USD); nonzero only on FILL allocations
+                   * @example 0
+                   */
+                  fixedCompensationMicroUsd: string
+                  /**
+                   * @description Receipt-derived actual gas (micro-USD); null means the planned fallback applies
+                   * @example 80
+                   */
+                  executedGasMicroUsd: string | null
+                  /**
+                   * @description fixedCompensation + (executedGas ?? plannedGas), in micro-USD
+                   * @example 80
+                   */
+                  payableMicroUsd: string
+                  /** @description Canonical earner, stamped from the receipt sender this allocation reconciled to; null until earned */
+                  counterparty: string | null
+                  /**
+                   * @description Pinned POST (PATH-fallback) native-token USD price the gas micro-USD was valued at, as a decimal string; null when no price snapshot exists
+                   * @example 2000
+                   */
+                  nativeTokenPriceUsd: string | null
+                  /** @description Canonical receipt evidence; txHash/timestamp already sit on the item */
+                  receipt: {
+                    /** @description Block hash */
+                    blockHash: string | null
+                    /** @description Block number */
+                    blockNumber: string
+                    /** @description Gas used */
+                    gasUsed: string | null
+                    /** @description Effective gas price (wei) */
+                    effectiveGasPriceWei: string | null
+                    /** @description L1 fee (wei), OP-stack chains only */
+                    l1FeeWei: string | null
+                    /** @description Blob fee (wei) */
+                    blobFeeWei: string | null
+                  } | null
+                  /** @description Treasury settlement of this allocation; null until settled. Destinations, references, and operator fields are never exposed. */
+                  payment: {
+                    /** @enum {string} */
+                    kind: 'PAYMENT' | 'ADJUSTMENT'
+                    /** Format: date-time */
+                    effectiveDate: string
+                    /** Format: date-time */
+                    createdAt: string
+                  } | null
+                }
               }[]
             }[]
             /** @description Bridge refunds observed for this intent — a settlement layer returned the funds to the account instead of delivering them. Not operations: Rhinestone neither built nor broadcast these transactions, and a refund never makes the intent succeed. Omitted when none are known, which is every delivered intent and also a failed one whose refund we have not (or not yet) observed — so its absence is not evidence that funds were kept. */
@@ -944,6 +998,29 @@ export interface operations {
                */
               txHash: string
             }[]
+            /**
+             * @description What Hyperliquid did with this intent's `options.hyperCore` action, and the only record of it — the action is the one leg of an intent that is not a transaction. Omitted for every intent that carried none.
+             *
+             *     It DECIDES `status` rather than annotating it: an intent whose action was refused reports FAILED even though every operation completed, because the delivery landed and the trade did not. The funds are in the account's own HyperCore balance either way, so a refusal is recoverable by trading again — it is not a loss.
+             */
+            hyperCore?: {
+              /**
+               * @description `pending` while the action is still owed — the POST runs after the fill transaction commits, so this is normal for a few seconds after delivery. `accepted` means Hyperliquid took it; an order filled for less than asked is accepted, simply for less. `refused` is the exchange declining a well-formed action — an `Ioc` that no longer crossed by the time the bridge delivered is the expected one — and `error` is it never answering before the intent expired.
+               *
+               *     `unknown` means a delivery attempt got no response at all, so the action MAY have been applied and only its answer lost. `partial` means some orders of one batch were placed and others rejected — an `order` action carries up to 100 and each is matched independently.
+               *
+               *     Every non-`accepted` terminal value reports the intent as FAILED, because reporting success on a maybe is the failure this field exists to prevent. Do NOT re-send a `partial` batch as-is: the orders that filled would open a second time. Check the account on Hyperliquid for `partial` and `unknown` alike — it holds the per-order record, and the funds are in its own HyperCore balance whatever happened.
+               * @example accepted
+               * @enum {string}
+               */
+              outcome:
+                | 'pending'
+                | 'accepted'
+                | 'refused'
+                | 'error'
+                | 'unknown'
+                | 'partial'
+            }
             /** @description Extended intent details, returned only when `full=true` */
             details?: {
               /**
@@ -1119,12 +1196,12 @@ export interface operations {
                  */
                 sponsored: boolean
                 /**
-                 * @description Sponsored value actually charged, in integer micro-USD (1 USD = 1,000,000 units). Once the intent executes this is reconciled from the receipt (planned gas replaced by executed), so it matches the sponsorship balance and the usage/billing reads rather than the amount reserved at quote time.
+                 * @description Sponsored value actually charged, in integer micro-USD (1 USD = 1,000,000 units). Once the intent executes this is reconciled from the receipt (planned gas replaced by executed), so it matches the sponsorship balance and the usage/billing reads rather than the amount reserved at quote time. On an allocation-backed intent this is the sum of its per-operation allocations, which is where reconciliation writes executed gas.
                  * @example 210000
                  */
                 sponsoredValue?: string
                 /**
-                 * @description Rhinestone-owed slice of the sponsor charge, in integer micro-USD (1 USD = 1,000,000 units): the sponsor surcharge plus a sponsored protocol fee (`sponsorSettings.protocolFees`) where one applies.
+                 * @description Rhinestone-owed slice of the sponsor charge, in integer micro-USD (1 USD = 1,000,000 units): the sponsor surcharge plus a sponsored protocol fee (`sponsorSettings.protocolFees`) where one applies. Charged on allocation-backed intents too — the allocation ledger carries the relayer liability only.
                  * @example 10000
                  */
                 protocolFee?: string
@@ -4096,12 +4173,8 @@ export interface operations {
              */
             customDeadline?: number
             hyperCore?: {
-              /**
-               * @description The Hyperliquid action to authorise. An action that needs collateral (opening a position) must be paired with `tokenRequests` that deliver it; one that does not (a reduce-only close, a cancel, a leverage change) rides a tokenless intent.
-               *
-               *     One action per intent: an agent authorises exactly one, and registering a second evicts the first, so an intent submitted while another is in flight for the same account is refused.
-               */
-              action:
+              /** @description A single Hyperliquid action to authorise. Shorthand for a one-element `actions`; give one or the other, not both. */
+              action?:
                 | {
                     /** @enum {string} */
                     type: 'order'
@@ -4374,6 +4447,387 @@ export interface operations {
                      */
                     ntli: number
                   }
+                | {
+                    /** @enum {string} */
+                    type: 'twapOrder'
+                    twap: {
+                      /**
+                       * @description Asset index, as for an order.
+                       * @example 0
+                       */
+                      a: number
+                      /**
+                       * @description Buy (`true`) or sell (`false`).
+                       * @example true
+                       */
+                      b: boolean
+                      /**
+                       * @description Total size to work, in units of the asset.
+                       * @example 0.01
+                       */
+                      s: string
+                      /**
+                       * @description Reduce-only.
+                       * @example false
+                       */
+                      r: boolean
+                      /**
+                       * @description Duration in MINUTES. Hyperliquid enforces its own bounds and refuses a duration outside them ("Invalid TWAP duration"), so none are imposed here.
+                       * @example 30
+                       */
+                      m: number
+                      /**
+                       * @description Randomize the timing of the sub-orders rather than spacing them evenly.
+                       * @example true
+                       */
+                      t: boolean
+                    }
+                  }
+                | {
+                    /** @enum {string} */
+                    type: 'twapCancel'
+                    /**
+                     * @description Asset index of the running TWAP.
+                     * @example 0
+                     */
+                    a: number
+                    /**
+                     * @description The TWAP id, which Hyperliquid returns when it accepts the `twapOrder` and is not echoed on the intent. Read it back from the exchange — the agent that placed the TWAP authorised only that one action, so cancelling is a second intent.
+                     * @example 12345
+                     */
+                    t: number
+                  }
+              /**
+               * @description The Hyperliquid actions to authorise, IN ORDER. Each gets its own agent in its own API-wallet slot, registered ONE PER BLOCK, and they are sent to the exchange in the order given once every agent is live — the first refusal stops the rest, so a later action never runs against a state an earlier one failed to reach.
+               *
+               *     Order is what makes this more than a batch: `updateLeverage` has to land before the order it applies to, since leverage applied afterwards does not resize an open position. So opening a leveraged position is `[updateLeverage, order]` in ONE intent rather than two.
+               *
+               *     Capped at three, which is Hyperliquid's: an account has three NAMED API-wallet slots and the unnamed one belongs to the account holder. More than one action requires `tokenRequests`: HyperCore accepts a single agent registration per block, so each rides a dispatch stage of its own and an intent that delivers nothing has only the one. An action that needs collateral must be paired with `tokenRequests` anyway; one that does not (a reduce-only close, a cancel, a leverage change) rides a tokenless intent, one at a time.
+               */
+              actions?: (
+                | {
+                    /** @enum {string} */
+                    type: 'order'
+                    orders: {
+                      /**
+                       * @description Asset index. Perps use the index in the `meta` universe; spot uses `10000 + index` from `spotMeta`. This is an INDEX, not a ticker — resolve it from the info endpoint, and note that an index built against the wrong universe places a valid order in the wrong market.
+                       * @example 0
+                       */
+                      a: number
+                      /**
+                       * @description Buy (`true`) or sell (`false`).
+                       * @example true
+                       */
+                      b: boolean
+                      /**
+                       * @description Limit price. Must satisfy Hyperliquid's tick rules — at most 5 significant figures and at most `6 - szDecimals` decimals for a perp — and is refused there, not here.
+                       *
+                       *     This price is fixed when you sign, and an intent that bridges to HyperCore takes ~30s to deliver. Price it to still cross after that move, or the order is refused with your funds already delivered.
+                       * @example 64250.5
+                       */
+                      p: string
+                      /**
+                       * @description Size in units of the asset, to at most the asset's `szDecimals`. Hyperliquid refuses an order worth under ~$10.
+                       * @example 0.0002
+                       */
+                      s: string
+                      /**
+                       * @description Reduce-only. `true` is how a position is CLOSED — pair it with a tokenless intent, since closing needs no delivered collateral.
+                       * @example false
+                       */
+                      r: boolean
+                      /** @description Either `{ limit: { tif } }` or `{ trigger: { isMarket, triggerPx, tpsl } }`. */
+                      t:
+                        | {
+                            limit: {
+                              /**
+                               * @description Time in force. `Ioc` fills what it can and cancels the rest, which is how a market order is expressed here — there is no market order type. `Alo` is post-only. `Gtc` rests on the book.
+                               *
+                               *     Prefer `Ioc` for anything an intent delivers funds for: a resting order leaves the account holding USDC and no position, and the agent that could have cancelled it is already spent.
+                               * @example Ioc
+                               * @enum {string}
+                               */
+                              tif: 'Alo' | 'Ioc' | 'Gtc'
+                            }
+                          }
+                        | {
+                            trigger: {
+                              isMarket: boolean
+                              triggerPx: string
+                              /**
+                               * @description Take-profit or stop-loss.
+                               * @example sl
+                               * @enum {string}
+                               */
+                              tpsl: 'tp' | 'sl'
+                            }
+                          }
+                      /**
+                       * @description Optional client order id — 128-bit hex. Your handle on the order afterwards: the exchange echoes it back, so it is the only way to correlate a fill with the intent that placed it without polling by asset.
+                       * @example 0x1234567890abcdef1234567890abcdef
+                       */
+                      c?: string
+                    }[]
+                    /**
+                     * @description `na` for a plain order. The TP/SL groupings attach the orders as a bracket around a position.
+                     * @example na
+                     * @enum {string}
+                     */
+                    grouping: 'na' | 'normalTpsl' | 'positionTpsl'
+                    builder?: {
+                      /** @description Address receiving the builder fee. */
+                      b: string
+                      /**
+                       * @description Builder fee in TENTHS of a basis point — `10` is 1bp of order notional.
+                       * @example 10
+                       */
+                      f: number
+                    }
+                  }
+                | {
+                    /** @enum {string} */
+                    type: 'cancel'
+                    cancels: {
+                      /** @description Asset index. */
+                      a: number
+                      /** @description Order id. */
+                      o: number
+                    }[]
+                    /** @description Fast cancel. */
+                    f?: boolean
+                  }
+                | {
+                    /** @enum {string} */
+                    type: 'cancelByCloid'
+                    cancels: {
+                      asset: number
+                      /**
+                       * @description Optional client order id — 128-bit hex. Your handle on the order afterwards: the exchange echoes it back, so it is the only way to correlate a fill with the intent that placed it without polling by asset.
+                       * @example 0x1234567890abcdef1234567890abcdef
+                       */
+                      cloid: string
+                    }[]
+                    f?: boolean
+                  }
+                | {
+                    /** @enum {string} */
+                    type: 'modify'
+                    oid: number | string
+                    order: {
+                      /**
+                       * @description Asset index. Perps use the index in the `meta` universe; spot uses `10000 + index` from `spotMeta`. This is an INDEX, not a ticker — resolve it from the info endpoint, and note that an index built against the wrong universe places a valid order in the wrong market.
+                       * @example 0
+                       */
+                      a: number
+                      /**
+                       * @description Buy (`true`) or sell (`false`).
+                       * @example true
+                       */
+                      b: boolean
+                      /**
+                       * @description Limit price. Must satisfy Hyperliquid's tick rules — at most 5 significant figures and at most `6 - szDecimals` decimals for a perp — and is refused there, not here.
+                       *
+                       *     This price is fixed when you sign, and an intent that bridges to HyperCore takes ~30s to deliver. Price it to still cross after that move, or the order is refused with your funds already delivered.
+                       * @example 64250.5
+                       */
+                      p: string
+                      /**
+                       * @description Size in units of the asset, to at most the asset's `szDecimals`. Hyperliquid refuses an order worth under ~$10.
+                       * @example 0.0002
+                       */
+                      s: string
+                      /**
+                       * @description Reduce-only. `true` is how a position is CLOSED — pair it with a tokenless intent, since closing needs no delivered collateral.
+                       * @example false
+                       */
+                      r: boolean
+                      /** @description Either `{ limit: { tif } }` or `{ trigger: { isMarket, triggerPx, tpsl } }`. */
+                      t:
+                        | {
+                            limit: {
+                              /**
+                               * @description Time in force. `Ioc` fills what it can and cancels the rest, which is how a market order is expressed here — there is no market order type. `Alo` is post-only. `Gtc` rests on the book.
+                               *
+                               *     Prefer `Ioc` for anything an intent delivers funds for: a resting order leaves the account holding USDC and no position, and the agent that could have cancelled it is already spent.
+                               * @example Ioc
+                               * @enum {string}
+                               */
+                              tif: 'Alo' | 'Ioc' | 'Gtc'
+                            }
+                          }
+                        | {
+                            trigger: {
+                              isMarket: boolean
+                              triggerPx: string
+                              /**
+                               * @description Take-profit or stop-loss.
+                               * @example sl
+                               * @enum {string}
+                               */
+                              tpsl: 'tp' | 'sl'
+                            }
+                          }
+                      /**
+                       * @description Optional client order id — 128-bit hex. Your handle on the order afterwards: the exchange echoes it back, so it is the only way to correlate a fill with the intent that placed it without polling by asset.
+                       * @example 0x1234567890abcdef1234567890abcdef
+                       */
+                      c?: string
+                    }
+                    /**
+                     * @description Place the replacement even if the cancel failed. Omit it entirely for the default — Hyperliquid rejects an action hashed with `a: false`, so `false` is not a legal value.
+                     * @enum {boolean}
+                     */
+                    a?: true
+                  }
+                | {
+                    /** @enum {string} */
+                    type: 'batchModify'
+                    modifies: {
+                      oid: number | string
+                      order: {
+                        /**
+                         * @description Asset index. Perps use the index in the `meta` universe; spot uses `10000 + index` from `spotMeta`. This is an INDEX, not a ticker — resolve it from the info endpoint, and note that an index built against the wrong universe places a valid order in the wrong market.
+                         * @example 0
+                         */
+                        a: number
+                        /**
+                         * @description Buy (`true`) or sell (`false`).
+                         * @example true
+                         */
+                        b: boolean
+                        /**
+                         * @description Limit price. Must satisfy Hyperliquid's tick rules — at most 5 significant figures and at most `6 - szDecimals` decimals for a perp — and is refused there, not here.
+                         *
+                         *     This price is fixed when you sign, and an intent that bridges to HyperCore takes ~30s to deliver. Price it to still cross after that move, or the order is refused with your funds already delivered.
+                         * @example 64250.5
+                         */
+                        p: string
+                        /**
+                         * @description Size in units of the asset, to at most the asset's `szDecimals`. Hyperliquid refuses an order worth under ~$10.
+                         * @example 0.0002
+                         */
+                        s: string
+                        /**
+                         * @description Reduce-only. `true` is how a position is CLOSED — pair it with a tokenless intent, since closing needs no delivered collateral.
+                         * @example false
+                         */
+                        r: boolean
+                        /** @description Either `{ limit: { tif } }` or `{ trigger: { isMarket, triggerPx, tpsl } }`. */
+                        t:
+                          | {
+                              limit: {
+                                /**
+                                 * @description Time in force. `Ioc` fills what it can and cancels the rest, which is how a market order is expressed here — there is no market order type. `Alo` is post-only. `Gtc` rests on the book.
+                                 *
+                                 *     Prefer `Ioc` for anything an intent delivers funds for: a resting order leaves the account holding USDC and no position, and the agent that could have cancelled it is already spent.
+                                 * @example Ioc
+                                 * @enum {string}
+                                 */
+                                tif: 'Alo' | 'Ioc' | 'Gtc'
+                              }
+                            }
+                          | {
+                              trigger: {
+                                isMarket: boolean
+                                triggerPx: string
+                                /**
+                                 * @description Take-profit or stop-loss.
+                                 * @example sl
+                                 * @enum {string}
+                                 */
+                                tpsl: 'tp' | 'sl'
+                              }
+                            }
+                        /**
+                         * @description Optional client order id — 128-bit hex. Your handle on the order afterwards: the exchange echoes it back, so it is the only way to correlate a fill with the intent that placed it without polling by asset.
+                         * @example 0x1234567890abcdef1234567890abcdef
+                         */
+                        c?: string
+                      }
+                    }[]
+                    /**
+                     * @description Place the replacement even if the cancel failed. Omit it entirely for the default — Hyperliquid rejects an action hashed with `a: false`, so `false` is not a legal value.
+                     * @enum {boolean}
+                     */
+                    a?: true
+                  }
+                | {
+                    /** @enum {string} */
+                    type: 'updateLeverage'
+                    asset: number
+                    /**
+                     * @description Cross margin (`true`) or isolated (`false`).
+                     * @example true
+                     */
+                    isCross: boolean
+                    /**
+                     * @description New leverage, capped by the asset's own maximum. Set it BEFORE the intent that opens the position: leverage applied afterwards does not resize an existing one.
+                     * @example 5
+                     */
+                    leverage: number
+                  }
+                | {
+                    /** @enum {string} */
+                    type: 'updateIsolatedMargin'
+                    asset: number
+                    isBuy: boolean
+                    /**
+                     * @description Margin to add (positive) or remove (negative), in USDC with 6 decimals — `1000000` is 1 USD.
+                     * @example 1000000
+                     */
+                    ntli: number
+                  }
+                | {
+                    /** @enum {string} */
+                    type: 'twapOrder'
+                    twap: {
+                      /**
+                       * @description Asset index, as for an order.
+                       * @example 0
+                       */
+                      a: number
+                      /**
+                       * @description Buy (`true`) or sell (`false`).
+                       * @example true
+                       */
+                      b: boolean
+                      /**
+                       * @description Total size to work, in units of the asset.
+                       * @example 0.01
+                       */
+                      s: string
+                      /**
+                       * @description Reduce-only.
+                       * @example false
+                       */
+                      r: boolean
+                      /**
+                       * @description Duration in MINUTES. Hyperliquid enforces its own bounds and refuses a duration outside them ("Invalid TWAP duration"), so none are imposed here.
+                       * @example 30
+                       */
+                      m: number
+                      /**
+                       * @description Randomize the timing of the sub-orders rather than spacing them evenly.
+                       * @example true
+                       */
+                      t: boolean
+                    }
+                  }
+                | {
+                    /** @enum {string} */
+                    type: 'twapCancel'
+                    /**
+                     * @description Asset index of the running TWAP.
+                     * @example 0
+                     */
+                    a: number
+                    /**
+                     * @description The TWAP id, which Hyperliquid returns when it accepts the `twapOrder` and is not echoed on the intent. Read it back from the exchange — the agent that placed the TWAP authorised only that one action, so cancelling is a second intent.
+                     * @example 12345
+                     */
+                    t: number
+                  }
+              )[]
             }
           }
         }
