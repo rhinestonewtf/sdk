@@ -1,4 +1,5 @@
 import type {
+  Account,
   Address,
   Chain,
   HashTypedDataParameters,
@@ -9,17 +10,21 @@ import type {
   TypedDataDefinition,
 } from 'viem'
 import type { UserOperationReceipt } from 'viem/account-abstraction'
+import { asSwigNamespace, locateSwig } from '../accounts/solana/address'
 import { formatCaip2, parseCaip2, toEvmChainReference } from '../chains/caip2'
 import { getChainById, getChainReference } from '../chains/catalog'
 import {
   type DestinationChain,
   type SolanaAddress,
+  type SolanaChain,
   solanaAddress,
 } from '../chains/non-evm'
 import { normalizeTokenAddress, validateTokenAddresses } from '../chains/tokens'
 import type {
+  Eip712OriginSignData,
   HyperCoreAction,
   OriginSignature,
+  OriginSignData,
   Portfolio,
   Quote,
   SignData,
@@ -52,10 +57,12 @@ import {
 import type { AccountInvocationContext } from '../config/resolved'
 import {
   AccountVmNotConfiguredError,
+  ManagedSolanaAccountNotSupportedError,
   UnsupportedAccountCapabilityError,
 } from '../errors/capability'
 import {
   IndependentSigningNotSupportedError,
+  InvalidSolanaTransactionArtifactError,
   MismatchedOwnerSignaturesError,
   QuoteNotInPreparedTransactionError,
 } from '../errors/execution'
@@ -79,6 +86,10 @@ import {
   projectCompatibleQuote,
 } from '../transactions/intents/compatibility'
 import { normalizeIntentQuote } from '../transactions/intents/normalize'
+import {
+  type SolanaTransferInput,
+  solanaChainId,
+} from '../transactions/intents/solana'
 import type {
   IntentInput,
   PreparedIntent,
@@ -86,6 +97,7 @@ import type {
   QuoteSelection,
   SignedIntent,
   SignedTransactionData,
+  SolanaExecutionMetadata,
   TransactionResult,
   TransactionStatus,
 } from '../transactions/intents/types'
@@ -185,8 +197,8 @@ export interface ManagedTransactionAccount<
     preparedTransaction: PreparedTransactionData,
     options?: QuoteSelection,
   ): {
-    origin: TypedDataDefinition[]
-    destination: TypedDataDefinition
+    origin: OriginSignData[]
+    destination?: TypedDataDefinition
     targetExecution?: TypedDataDefinition
   }
   /**
@@ -458,16 +470,33 @@ export type RhinestoneAccount<
       ? ManagedTransactionAccount<C>
       : Readonly<Record<never, never>>)
 
+function cloneArtifactValue<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map(cloneArtifactValue) as T
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [
+        key,
+        cloneArtifactValue(item),
+      ]),
+    ) as T
+  }
+  return value
+}
+
 function toPublicQuote(quote: OrchestratorQuote): Quote {
   const compatible = projectCompatibleQuote(quote)
-  return {
+  return cloneArtifactValue({
     intentId: compatible.intentId,
     expiresAt: compatible.expiresAt,
     estimatedFillTime: compatible.estimatedFillTime,
     settlementLayer: compatible.settlementLayer,
     signData: {
       origin: [...compatible.signData.origin],
-      destination: compatible.signData.destination,
+      ...(compatible.signData.destination
+        ? { destination: compatible.signData.destination }
+        : {}),
       ...(compatible.signData.targetExecution
         ? { targetExecution: compatible.signData.targetExecution }
         : {}),
@@ -477,7 +506,7 @@ function toPublicQuote(quote: OrchestratorQuote): Quote {
       ? { tokenRequirements: compatible.tokenRequirements }
       : {}),
     ...(compatible.bridgeFill ? { bridgeFill: compatible.bridgeFill } : {}),
-  }
+  })
 }
 
 function toPreparedTransactionData(
@@ -496,6 +525,36 @@ function toPreparedTransactionData(
   }
   cache.set(data, prepared)
   return data
+}
+
+function toPreparedSolanaTransactionData(
+  prepared: import('../transactions/intents/solana').PreparedSolanaIntent,
+  transaction: Transaction,
+): PreparedTransactionData {
+  const input = prepared.input
+  return {
+    quotes: {
+      traceId: prepared.traceId,
+      best: toPublicQuote(prepared.quote),
+      all: prepared.quotes.map(toPublicQuote),
+    },
+    execution: {
+      kind: 'solana',
+      namespace: input.namespace,
+      endpoint: input.endpoint,
+      chain: solanaChainId(input.chain),
+      caip2: input.chain.caip2,
+      accountAddress: input.accountAddress,
+      accountType: input.accountType,
+      authority: input.authority,
+      swigAddress: input.swigAddress,
+      walletAddress: input.walletAddress,
+      recipient: input.recipient,
+      mint: input.mint,
+    },
+    intentInput: projectCompatibleIntentInput(prepared.request),
+    transaction,
+  }
 }
 
 function selectedPublicQuote(
@@ -552,8 +611,12 @@ function toSignedTransactionData(
     quote: toPublicQuote(signed.prepared.quote),
     originSignatures:
       signed.originSignatures as SignedTransactionData['originSignatures'],
-    destinationSignature: signed.destinationSignature,
-    targetExecutionSignature: signed.targetSignature,
+    ...(signed.destinationSignature
+      ? { destinationSignature: signed.destinationSignature }
+      : {}),
+    ...(signed.targetSignature
+      ? { targetExecutionSignature: signed.targetSignature }
+      : {}),
   }
   cache.set(data, signed)
   return data
@@ -585,6 +648,136 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
   const workflowsFor = (
     ctx: AccountInvocationContext<LegacyAccountConfig<unknown>>,
   ) => composition.createAccount(ctx).workflows
+  const hasManagedSolana = Boolean(
+    publicConfig.solana && 'owner' in publicConfig.solana,
+  )
+  const capturedSolanaContext = hasManagedSolana
+    ? context('get-address')
+    : undefined
+  const capturedSolanaIdentity = capturedSolanaContext
+    ? workflowsFor(capturedSolanaContext).getAddress(
+        capturedSolanaContext,
+        referenceChain(),
+      )
+    : undefined
+  const capturedSolanaEndpoint = capturedSolanaContext?.sdk.orchestratorUrl
+  const capturedSolanaAccountType = capturedSolanaContext
+    ? capturedSolanaContext.account.account.kind === 'eoa'
+      ? 'EOA'
+      : capturedSolanaContext.account.account.kind === 'hca'
+        ? 'GENERIC'
+        : 'ERC7579'
+    : undefined
+
+  const solanaOwner = (): Account => {
+    const branch = publicConfig.solana
+    if (!branch || !('owner' in branch) || !branch.owner) {
+      throw new UnsupportedAccountCapabilityError(
+        'A managed Solana source is not configured on this account.',
+        { vm: 'solana' },
+      )
+    }
+    return branch.owner.account
+  }
+
+  const solanaTransfer = (
+    ctx: AccountInvocationContext<Compat>,
+    transaction: Transaction,
+  ): SolanaTransferInput => {
+    assertSupportedTransaction(transaction, publicConfig)
+    if (
+      ctx.sdk.environment !== 'development' ||
+      ctx.sdk.orchestratorUrl !== capturedSolanaEndpoint
+    ) {
+      throw new ManagedSolanaAccountNotSupportedError(
+        'Managed Solana execution remains bound to the development environment and endpoint captured when the account was created.',
+      )
+    }
+    if (!isSolanaOrigin(transaction)) {
+      throw new InvalidSolanaTransactionArtifactError(
+        'the transaction is not a same-chain Solana transfer',
+      )
+    }
+    const request = transaction.tokenRequests[0]
+    const accountAddress = capturedSolanaIdentity
+    if (!accountAddress || !capturedSolanaAccountType) {
+      throw new UnsupportedAccountCapabilityError(
+        'A managed Solana source is not configured on this account.',
+        { vm: 'solana' },
+      )
+    }
+    const location = locateSwig(asSwigNamespace('dev-v1'), accountAddress)
+    return {
+      chain: transaction.chain,
+      mint: request.address,
+      ...(request.amount === undefined ? {} : { amount: request.amount }),
+      recipient: transaction.recipient,
+      accountAddress,
+      accountType: capturedSolanaAccountType,
+      authority: solanaOwner().address,
+      walletAddress: location.wallet,
+      swigAddress: location.swig,
+      namespace: 'dev-v1',
+      endpoint: ctx.sdk.orchestratorUrl,
+      ...(transaction.appFees ? { appFees: transaction.appFees } : {}),
+      ...(transaction.protocolFees
+        ? { protocolFees: transaction.protocolFees }
+        : {}),
+    }
+  }
+
+  const assertSolanaMetadata = (
+    actual: SolanaExecutionMetadata | undefined,
+    expected: SolanaTransferInput,
+  ) => {
+    const expectedMetadata: SolanaExecutionMetadata = {
+      kind: 'solana',
+      namespace: expected.namespace,
+      endpoint: expected.endpoint,
+      chain: solanaChainId(expected.chain),
+      caip2: expected.chain.caip2,
+      accountAddress: expected.accountAddress,
+      accountType: expected.accountType,
+      authority: expected.authority,
+      swigAddress: expected.swigAddress,
+      walletAddress: expected.walletAddress,
+      recipient: expected.recipient,
+      mint: expected.mint,
+    }
+    const expectedEntries = Object.entries(expectedMetadata)
+    if (
+      !actual ||
+      Object.keys(actual).length !== expectedEntries.length ||
+      expectedEntries.some(
+        ([key, value]) =>
+          (actual as unknown as Record<string, unknown>)[key] !== value,
+      )
+    ) {
+      throw new InvalidSolanaTransactionArtifactError(
+        'the execution binding does not match this account, environment, chain, recipient, or mint',
+      )
+    }
+  }
+
+  const resolveSolanaPrepared = (
+    ctx: AccountInvocationContext<Compat>,
+    prepared: PreparedTransactionData,
+    intentId?: string,
+    explicitQuote?: Quote,
+  ) => {
+    const transfer = solanaTransfer(ctx, prepared.transaction)
+    assertSolanaMetadata(prepared.execution, transfer)
+    const quote = explicitQuote ?? selectedPublicQuote(prepared, intentId)
+    return workflowsFor(ctx).reconstructSolanaIntent({
+      traceId: prepared.quotes.traceId,
+      transfer,
+      intentInput: prepared.intentInput,
+      quote: normalizeIntentQuote(quote as OrchestratorQuote),
+      quotes: prepared.quotes.all.map((candidate) =>
+        normalizeIntentQuote(candidate as OrchestratorQuote),
+      ),
+    })
+  }
 
   const resolvePrepared = (
     ctx: AccountInvocationContext<Compat>,
@@ -630,7 +823,31 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
     },
     async prepareTransaction(transaction) {
       const ctx = context('prepare-intent')
-      const normalized = normalizeTransaction(transaction, publicConfig)
+      const initiallyNormalized = normalizeTransaction(
+        transaction,
+        publicConfig,
+      )
+      const normalized =
+        'targetChain' in initiallyNormalized &&
+        initiallyNormalized.targetChain !== undefined &&
+        'kind' in initiallyNormalized.targetChain &&
+        initiallyNormalized.targetChain.kind === 'svm' &&
+        initiallyNormalized.recipient === undefined &&
+        capturedSolanaIdentity
+          ? (Object.freeze({
+              ...initiallyNormalized,
+              recipient: locateSwig(
+                asSwigNamespace('dev-v1'),
+                capturedSolanaIdentity,
+              ).wallet,
+            }) as Transaction)
+          : initiallyNormalized
+      if (isSolanaOrigin(normalized)) {
+        const prepared = await workflowsFor(ctx).prepareSolanaIntent(
+          solanaTransfer(ctx, normalized),
+        )
+        return toPreparedSolanaTransactionData(prepared, normalized)
+      }
       // Before the quote, not after: the quote's `signData` registers an agent
       // derived from the action's bytes, so the action has to be concrete here.
       const hyperCoreAction = await resolveHyperCoreAction({
@@ -665,10 +882,17 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
     getTransactionMessages(preparedTransaction, options) {
       assertSupportedTransaction(preparedTransaction.transaction, publicConfig)
       const quote = selectedPublicQuote(preparedTransaction, options?.intentId)
-      assertSupportedSignData(quote.signData)
+      if (!isSolanaOrigin(preparedTransaction.transaction)) {
+        assertSupportedSignData(quote.signData)
+      } else {
+        const ctx = context('get-intent-messages')
+        resolveSolanaPrepared(ctx, preparedTransaction, options?.intentId)
+      }
       return {
         origin: [...quote.signData.origin],
-        destination: quote.signData.destination,
+        ...(quote.signData.destination
+          ? { destination: quote.signData.destination }
+          : {}),
         ...(quote.signData.targetExecution
           ? { targetExecution: quote.signData.targetExecution }
           : {}),
@@ -680,6 +904,27 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
     ): Promise<SignedTransactionData | OwnerSignature> => {
       const ctx = context('sign-intent')
       const workflows = workflowsFor(ctx)
+      if (isSolanaOrigin(preparedTransaction.transaction)) {
+        if (options && 'owner' in options) {
+          throw new IndependentSigningNotSupportedError({
+            context: { vm: 'solana' },
+          })
+        }
+        const prepared = resolveSolanaPrepared(
+          ctx,
+          preparedTransaction,
+          options?.intentId,
+        )
+        const signed = await workflows.signSolanaIntent({
+          prepared,
+          owner: solanaOwner(),
+        })
+        return {
+          ...preparedTransaction,
+          quote: toPublicQuote(signed.prepared.quote),
+          originSignatures: [signed.signature],
+        }
+      }
       if (options && 'owner' in options) {
         // Independent owner signing is unsupported for smart-session intents;
         // reject before resolving sessions (which would issue an RPC read),
@@ -709,6 +954,11 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
       return toSignedTransactionData(preparedTransaction, intent, signedIntents)
     }) as unknown as ManagedEvmAccount<C>['signTransaction'],
     async assembleTransaction(preparedTransaction, signatures) {
+      if (isSolanaOrigin(preparedTransaction.transaction)) {
+        throw new IndependentSigningNotSupportedError({
+          context: { vm: 'solana' },
+        })
+      }
       const ctx = context('assemble-intent')
       const workflows = workflowsFor(ctx)
       const intentIds = [...new Set(signatures.map(({ intentId }) => intentId))]
@@ -729,6 +979,12 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
     },
     async signAuthorizations(preparedTransaction) {
       assertSupportedTransaction(preparedTransaction.transaction, publicConfig)
+      if (isSolanaOrigin(preparedTransaction.transaction)) {
+        throw new UnsupportedAccountCapabilityError(
+          'EIP-7702 authorizations are unavailable for Solana-origin transactions.',
+          { vm: 'solana' },
+        )
+      }
       const ctx = context('sign-authorizations')
       const intentInput = adaptTransaction(ctx, preparedTransaction.transaction)
       const chains = authorizationChains(intentInput)
@@ -787,9 +1043,47 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
     },
     async submitTransaction(signedTransaction, options) {
       assertSupportedTransaction(signedTransaction.transaction, publicConfig)
-      assertSupportedSignData(signedTransaction.quote.signData)
       const ctx = context('submit-intent')
       const workflows = workflowsFor(ctx)
+      if (isSolanaOrigin(signedTransaction.transaction)) {
+        if (options && Object.keys(options).length > 0) {
+          throw new UnsupportedAccountCapabilityError(
+            'Solana submission does not accept EVM authorizations or dry-run options.',
+            { vm: 'solana' },
+          )
+        }
+        if (
+          signedTransaction.originSignatures.length !== 1 ||
+          typeof signedTransaction.originSignatures[0] !== 'string' ||
+          signedTransaction.destinationSignature !== undefined ||
+          signedTransaction.targetExecutionSignature !== undefined
+        ) {
+          throw new InvalidSolanaTransactionArtifactError(
+            'submission requires exactly one raw origin signature and no destination or target signature',
+            { intentId: signedTransaction.quote.intentId },
+          )
+        }
+        const prepared = resolveSolanaPrepared(
+          ctx,
+          signedTransaction,
+          signedTransaction.quote.intentId,
+          signedTransaction.quote,
+        )
+        const submitted = await workflows.submitSolanaIntent({
+          prepared,
+          signature: signedTransaction.originSignatures[0],
+        })
+        return {
+          type: 'intent',
+          id: submitted.intentId,
+          traceId: submitted.traceId,
+          ...(submitted.sourceChains
+            ? { sourceChains: [...submitted.sourceChains] }
+            : {}),
+          targetChain: submitted.targetChain,
+        }
+      }
+      assertSupportedSignData(signedTransaction.quote.signData)
       // Fast path for the same-instance signed object; otherwise (cross-instance
       // replay or caller-tampered signatures) rebuild from the public shape.
       const cached = signedIntents.get(signedTransaction)
@@ -950,6 +1244,10 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
           publicConfig.solana.address
         ) {
           return publicConfig.solana.address
+        }
+        if (capturedSolanaIdentity) {
+          return locateSwig(asSwigNamespace('dev-v1'), capturedSolanaIdentity)
+            .wallet
         }
         throw new AccountVmNotConfiguredError('solana')
       }
@@ -1137,7 +1435,12 @@ function quoterPinFromSession(
  * authorise. With no session scope there is nothing to narrow against and the
  * explicit filter stands on its own.
  */
-function assertSupportedSignData(signData: SignData): void {
+function assertSupportedSignData(
+  signData: SignData,
+): asserts signData is SignData & {
+  origin: Eip712OriginSignData[]
+  destination: TypedDataDefinition
+} {
   const payloads = [
     ...signData.origin,
     signData.destination,
@@ -1147,6 +1450,8 @@ function assertSupportedSignData(signData: SignData): void {
     if (
       !payload ||
       typeof payload !== 'object' ||
+      ((payload as { kind?: unknown }).kind !== undefined &&
+        (payload as { kind?: unknown }).kind !== 'eip712') ||
       typeof (payload as { primaryType?: unknown }).primaryType !== 'string' ||
       !(payload as { domain?: unknown }).domain ||
       typeof (payload as { types?: unknown }).types !== 'object' ||
@@ -1157,6 +1462,123 @@ function assertSupportedSignData(signData: SignData): void {
         { capability: 'intent-signing' },
       )
     }
+  }
+}
+
+function isSolanaOrigin(
+  transaction: Transaction,
+): transaction is Extract<Transaction, { chain: SolanaChain }> {
+  return (
+    'chain' in transaction &&
+    typeof transaction.chain === 'object' &&
+    transaction.chain !== null &&
+    'kind' in transaction.chain &&
+    transaction.chain.kind === 'svm'
+  )
+}
+
+function assertSolanaObjectKeys(
+  value: unknown,
+  allowed: readonly string[],
+  label: string,
+): asserts value is Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new UnsupportedAccountCapabilityError(
+      `Managed Solana ${label} must be an object.`,
+      { vm: 'solana', field: label },
+    )
+  }
+  const unsupported = Object.keys(value).find((key) => !allowed.includes(key))
+  if (unsupported) {
+    throw new UnsupportedAccountCapabilityError(
+      `Solana-origin transfers do not support \`${label}.${unsupported}\`.`,
+      { vm: 'solana', field: `${label}.${unsupported}` },
+    )
+  }
+}
+
+function assertSupportedSolanaTransaction(
+  input: Record<string, unknown>,
+  config: Readonly<RhinestoneAccountConfig>,
+): void {
+  const allowed = new Set([
+    'chain',
+    'tokenRequests',
+    'recipient',
+    'sponsored',
+    'appFees',
+    'protocolFees',
+  ])
+  const unsupported = Object.keys(input).find((key) => !allowed.has(key))
+  if (unsupported) {
+    throw new UnsupportedAccountCapabilityError(
+      `Solana-origin transfers do not support \`${unsupported}\`.`,
+      { vm: 'solana', field: unsupported },
+    )
+  }
+  if (!config.solana || !('owner' in config.solana)) {
+    throw new UnsupportedAccountCapabilityError(
+      'A managed Solana source is required for Solana-origin transfers.',
+      { vm: 'solana' },
+    )
+  }
+  solanaChainId(input.chain as SolanaChain)
+  if (input.sponsored !== undefined && input.sponsored !== false) {
+    throw new UnsupportedAccountCapabilityError(
+      'Managed Solana transfers are not sponsorable; omit `sponsored` or set it to false.',
+      { vm: 'solana' },
+    )
+  }
+  if (!Array.isArray(input.tokenRequests) || input.tokenRequests.length !== 1) {
+    throw new UnsupportedAccountCapabilityError(
+      'Managed Solana transfers require exactly one SPL token request.',
+      { vm: 'solana' },
+    )
+  }
+  const request = input.tokenRequests[0]
+  assertSolanaObjectKeys(request, ['address', 'amount'], 'tokenRequests[0]')
+  if (typeof request.address !== 'string') {
+    throw new UnsupportedAccountCapabilityError(
+      'Managed Solana transfers require one valid SPL mint address.',
+      { vm: 'solana' },
+    )
+  }
+  try {
+    solanaAddress(request.address)
+  } catch {
+    throw new UnsupportedAccountCapabilityError(
+      'Managed Solana transfers require one valid SPL mint address.',
+      { vm: 'solana' },
+    )
+  }
+  if (
+    request.amount !== undefined &&
+    (typeof request.amount !== 'bigint' || request.amount <= 0n)
+  ) {
+    throw new UnsupportedAccountCapabilityError(
+      'A Solana token amount must be a positive bigint when provided.',
+      { vm: 'solana' },
+    )
+  }
+  if (input.appFees !== undefined) {
+    assertSolanaObjectKeys(input.appFees, ['feeBps'], 'appFees')
+  }
+  if (input.protocolFees !== undefined) {
+    assertSolanaObjectKeys(input.protocolFees, ['feeBps'], 'protocolFees')
+  }
+  if (typeof input.recipient !== 'string') {
+    throw new UnsupportedAccountCapabilityError(
+      'Managed Solana transfers require an explicit recipient wallet.',
+      { vm: 'solana' },
+    )
+  }
+  try {
+    solanaAddress(input.recipient)
+  } catch {
+    throw new UnsupportedAccountCapabilityError(
+      'Managed Solana transfers require a valid recipient wallet.',
+      { vm: 'solana' },
+    )
   }
 }
 
@@ -1176,10 +1598,8 @@ function assertSupportedTransaction(
   if (hasChain && typeof input.chain === 'object' && input.chain !== null) {
     const chain = input.chain as Record<string, unknown>
     if (chain.kind === 'svm') {
-      throw new UnsupportedAccountCapabilityError(
-        'Solana-origin execution is not supported yet. Use a managed EVM source for token delivery to Solana.',
-        { vm: 'solana' },
-      )
+      assertSupportedSolanaTransaction(input, config)
+      return
     }
   }
   if (hasTarget && typeof input.targetChain === 'object' && input.targetChain) {
@@ -1319,6 +1739,20 @@ export function normalizeTransaction(
   config: Readonly<RhinestoneAccountConfig>,
 ): Transaction {
   assertSupportedTransaction(transaction, config)
+  if (isSolanaOrigin(transaction)) {
+    const request = transaction.tokenRequests[0]
+    return Object.freeze({
+      ...transaction,
+      chain: Object.freeze({ ...transaction.chain }),
+      tokenRequests: [Object.freeze({ ...request })],
+      ...(transaction.appFees
+        ? { appFees: Object.freeze({ ...transaction.appFees }) }
+        : {}),
+      ...(transaction.protocolFees
+        ? { protocolFees: Object.freeze({ ...transaction.protocolFees }) }
+        : {}),
+    }) as Transaction
+  }
   if (
     'targetChain' in transaction &&
     transaction.targetChain !== undefined &&

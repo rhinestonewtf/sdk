@@ -1,10 +1,26 @@
 import {
   type BridgeFill,
+  type ChainOperation,
+  type Eip712OriginSignData,
   type EvmAccountConfig,
+  type OriginSignData,
+  type PersonalSignOriginSignData,
   RhinestoneSDK,
+  type SameChainSolanaTransaction,
+  type SignData,
+  type SolanaExecutionMetadata,
   solanaAddress,
+  solanaDevnet,
   solanaMainnet,
 } from '@rhinestone/sdk'
+import {
+  InvalidSolanaTransactionArtifactError,
+  isInvalidSolanaTransactionArtifactError,
+  isSolanaAccountNotCreated,
+  isSolanaQuoteExpiredError,
+  type SolanaAccountNotCreatedError,
+  SolanaQuoteExpiredError,
+} from '@rhinestone/sdk/errors'
 import type { Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { mainnet } from 'viem/chains'
@@ -20,6 +36,12 @@ const ecoBridgeFill = {
   intentHash: `0x${'11'.repeat(32)}`,
 } as const satisfies BridgeFill
 const ecoIntentHash: Hex | undefined = readEcoIntentHash(ecoBridgeFill)
+const solanaOperation = {
+  chain: 792703810,
+  status: 'COMPLETED',
+  txHash: '5VERv8NM8A8f8hG1rjzAygzYwGwjBQD5rKpH8u8x2QfP',
+  timestamp: 1_700_000_000,
+} satisfies ChainOperation
 
 const owner = privateKeyToAccount(
   '0x0000000000000000000000000000000000000000000000000000000000000001',
@@ -28,6 +50,10 @@ const evm = {
   owners: { type: 'ecdsa', accounts: [owner] },
 } satisfies EvmAccountConfig
 const solana = solanaAddress('11111111111111111111111111111111')
+const solanaMint = solanaAddress('4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU')
+const solanaRecipient = solanaAddress(
+  'Vote111111111111111111111111111111111111111',
+)
 const sdk = new RhinestoneSDK({ apiKey: 'contract' })
 
 async function useCurrentAccountApi() {
@@ -50,5 +76,49 @@ async function useCurrentAccountApi() {
   account.getAddress()
 }
 
+async function useManagedSolanaApi() {
+  const devSdk = new RhinestoneSDK({
+    apiKey: 'contract',
+    useDevContracts: true,
+  })
+  const account = await devSdk.createAccount({
+    evm,
+    solana: { owner: { type: 'ecdsa', account: owner } },
+  })
+  const transaction = {
+    chain: solanaDevnet,
+    tokenRequests: [{ address: solanaMint, amount: 1n }],
+    recipient: solanaRecipient,
+  } satisfies SameChainSolanaTransaction
+  const prepared = await account.prepareTransaction(transaction)
+  const metadata: SolanaExecutionMetadata | undefined = prepared.execution
+  const signData: OriginSignData[] = prepared.quotes.best.signData.origin
+  const personal: PersonalSignOriginSignData = {
+    kind: 'personalSign',
+    message: '11'.repeat(32),
+    expiresAtSlot: '123456',
+  }
+  const solanaSignData = { origin: [personal] } satisfies SignData
+  const eip712 = null as unknown as Eip712OriginSignData
+
+  void metadata
+  void signData
+  void personal
+  void solanaSignData
+  void eip712
+}
+
+const invalidArtifact = new InvalidSolanaTransactionArtifactError('fixture')
+const expired = new SolanaQuoteExpiredError('intent-id')
+declare const uncreated: SolanaAccountNotCreatedError
+const recognizedErrors: boolean[] = [
+  isInvalidSolanaTransactionArtifactError(invalidArtifact),
+  isSolanaQuoteExpiredError(expired),
+  isSolanaAccountNotCreated(uncreated),
+]
+
 void ecoIntentHash
+void solanaOperation
 void useCurrentAccountApi
+void useManagedSolanaApi
+void recognizedErrors

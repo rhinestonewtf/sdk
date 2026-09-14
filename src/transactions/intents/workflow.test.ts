@@ -54,8 +54,9 @@ const testPasskey = {
   signTypedData: vi.fn(async () => passkeyResult),
 } as unknown as WebAuthnAccount
 
-function quote(): OrchestratorQuote {
+function quote() {
   const typedData = {
+    kind: 'eip712',
     domain: { chainId: 1, verifyingContract: address },
     types: { Test: [{ name: 'value', type: 'uint256' }] },
     primaryType: 'Test',
@@ -82,7 +83,7 @@ function quote(): OrchestratorQuote {
         },
       },
     },
-  }
+  } satisfies OrchestratorQuote
 }
 
 function runtime(): AccountRuntime {
@@ -469,6 +470,7 @@ describe('intent workflow', () => {
     // `Invalid chain id: NaN` and failed the intent after the user's approval.
     const intentQuote = quote()
     const multiChainOps = {
+      kind: 'eip712',
       domain: {
         name: 'IntentExecutor',
         version: 'v0.0.1',
@@ -506,9 +508,9 @@ describe('intent workflow', () => {
   test('does not sign an ordinary target execution payload', () => {
     const intentQuote = quote()
     const targetExecution = {
-      ...intentQuote.signData.destination,
+      ...intentQuote.signData.destination!,
       domain: {
-        ...intentQuote.signData.destination.domain,
+        ...intentQuote.signData.destination!.domain,
         chainId: 421614,
       },
     }

@@ -30,6 +30,11 @@ import type {
   SigningTranscript,
 } from '../signing/types'
 import type {
+  PreparedSolanaIntent,
+  SignedSolanaIntent,
+  SolanaTransferInput,
+} from '../transactions/intents/solana'
+import type {
   IntentInput,
   IntentSessionSelection,
   IntentStatus,
@@ -132,6 +137,21 @@ export interface AccountWorkflows<CompatibilityConfig = unknown> {
     context: AccountInvocationContext<CompatibilityConfig>,
     input: IntentInput<CompatibilityConfig>,
   ) => Promise<PreparedIntent<CompatibilityConfig>>
+  readonly prepareSolanaIntent: (
+    input: SolanaTransferInput,
+  ) => Promise<PreparedSolanaIntent>
+  readonly reconstructSolanaIntent: (
+    input: Parameters<
+      typeof import('../transactions/intents/solana').reconstructSolanaIntent
+    >[0],
+  ) => PreparedSolanaIntent
+  readonly signSolanaIntent: (input: {
+    readonly prepared: PreparedSolanaIntent
+    readonly owner: import('viem').Account
+  }) => Promise<SignedSolanaIntent>
+  readonly submitSolanaIntent: (
+    input: SignedSolanaIntent,
+  ) => Promise<SubmittedIntent>
   readonly signIntent: (
     context: AccountInvocationContext<CompatibilityConfig>,
     input: PreparedIntent<CompatibilityConfig>,

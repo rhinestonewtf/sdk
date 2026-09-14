@@ -1,13 +1,139 @@
 import { describe, expect, test } from 'vitest'
 import {
+  ConflictError,
   InsufficientSponsorBalanceError,
   isInsufficientSponsorBalance,
+  isSolanaAccountNotCreated,
   isSponsorError,
   isSponsorLimitExceeded,
   parseErrorEnvelope,
+  SolanaAccountNotCreatedError,
   SponsorLimitExceededError,
   UnprocessableContentError,
+  ValidationError,
 } from './errors'
+
+describe('parseErrorEnvelope Solana account errors', () => {
+  test('maps structured missing-account details and preserves validation metadata', () => {
+    const error = parseErrorEnvelope(
+      {
+        code: 'VALIDATION_ERROR',
+        message: 'No Swig at SwigAddress1 for this account yet',
+        traceId: 'trace-solana-account',
+        details: [
+          {
+            message: 'No Swig at SwigAddress1 for this account yet',
+            context: {
+              domain: 'planning',
+              code: 'SOLANA_ACCOUNT_NOT_CREATED',
+              swigAddress: 'SwigAddress1',
+              chainId: 792703810,
+            },
+          },
+        ],
+      },
+      400,
+    )
+
+    expect(error).toBeInstanceOf(SolanaAccountNotCreatedError)
+    expect(error).toBeInstanceOf(ValidationError)
+    expect(error.code).toBe('VALIDATION_ERROR')
+    expect(error.statusCode).toBe(400)
+    expect(error.traceId).toBe('trace-solana-account')
+    expect(isSolanaAccountNotCreated(error)).toBe(true)
+    expect(error).toMatchObject({
+      swigAddress: 'SwigAddress1',
+      chainId: 792703810,
+      issues: [
+        {
+          context: {
+            domain: 'planning',
+            code: 'SOLANA_ACCOUNT_NOT_CREATED',
+            swigAddress: 'SwigAddress1',
+            chainId: 792703810,
+          },
+        },
+      ],
+    })
+  })
+
+  test.each([
+    [{ code: 'SOLANA_ACCOUNT_NOT_CREATED' }],
+    [{ code: 'SOLANA_ACCOUNT_NOT_CREATED', swigAddress: '' }],
+    [
+      {
+        code: 'SOLANA_ACCOUNT_NOT_CREATED',
+        swigAddress: 'SwigAddress1',
+        chainId: '792703810',
+      },
+    ],
+  ])('keeps malformed missing-account details generic', (context) => {
+    const error = parseErrorEnvelope(
+      {
+        code: 'VALIDATION_ERROR',
+        message: 'Invalid request',
+        traceId: 'trace-generic',
+        details: [{ message: 'Invalid request', context }],
+      },
+      400,
+    )
+
+    expect(error.constructor).toBe(ValidationError)
+    expect(isSolanaAccountNotCreated(error)).toBe(false)
+    expect((error as ValidationError).issues[0]?.context).toEqual(context)
+  })
+})
+
+describe('parseErrorEnvelope signature context', () => {
+  test.each(['SIGNATURE_EXPIRED', 'SIGNATURE_INVALID'])(
+    'preserves %s validation context',
+    (code) => {
+      const error = parseErrorEnvelope(
+        {
+          code: 'VALIDATION_ERROR',
+          message: 'Re-quote and sign again.',
+          traceId: 'trace-signature',
+          details: [{ message: 'signature refused', context: { code } }],
+        },
+        400,
+      )
+
+      expect(error).toBeInstanceOf(ValidationError)
+      expect((error as ValidationError).issues).toEqual([
+        { message: 'signature refused', context: { code } },
+      ])
+    },
+  )
+
+  test('preserves SIGNATURE_REUSED conflict context and outer metadata', () => {
+    const error = parseErrorEnvelope(
+      {
+        code: 'CONFLICT',
+        message: 'Re-quote and sign again.',
+        traceId: 'trace-reused',
+        details: [
+          {
+            message: 'Replay counter already spent',
+            context: { code: 'SIGNATURE_REUSED', counter: '7' },
+          },
+        ],
+      },
+      409,
+    )
+
+    expect(error).toBeInstanceOf(ConflictError)
+    expect(error).toMatchObject({
+      code: 'CONFLICT',
+      statusCode: 409,
+      traceId: 'trace-reused',
+      details: [
+        {
+          context: { code: 'SIGNATURE_REUSED', counter: '7' },
+        },
+      ],
+    })
+  })
+})
 
 describe('parseErrorEnvelope sponsor errors', () => {
   test('maps sponsor limit failures to a typed compatible error', () => {

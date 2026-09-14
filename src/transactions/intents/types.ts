@@ -1,6 +1,7 @@
 import type { Address, Hex, SignedAuthorization } from 'viem'
 import type { AccountRuntimePort } from '../../accounts/adapter'
 import type { UnresolvedCall } from '../../calls/types'
+import type { SolanaAddress } from '../../chains/non-evm'
 import type { ChainReference, EvmChainReference } from '../../chains/types'
 import type {
   IntentQuotePort,
@@ -97,7 +98,7 @@ export interface PreparedIntent<CompatibilityConfig = unknown> {
 export interface SignedIntent<CompatibilityConfig = unknown> {
   readonly prepared: PreparedIntent<CompatibilityConfig>
   readonly originSignatures: readonly OrchestratorOriginSignature[]
-  readonly destinationSignature: Hex
+  readonly destinationSignature?: Hex
   readonly targetSignature?: Hex
   readonly transcript: SigningTranscript
   readonly authorizations?: readonly SignedAuthorization[]
@@ -162,8 +163,25 @@ export interface PreparedQuotes {
   all: Quote[]
 }
 
+export interface SolanaExecutionMetadata {
+  kind: 'solana'
+  namespace: 'dev-v1'
+  endpoint: string
+  chain: number
+  caip2: string
+  accountAddress: Address
+  accountType: 'GENERIC' | 'ERC7579' | 'EOA'
+  authority: Address
+  swigAddress: SolanaAddress
+  walletAddress: SolanaAddress
+  recipient: SolanaAddress
+  mint: SolanaAddress
+}
+
 export interface PreparedTransactionData {
   quotes: PreparedQuotes
+  /** Present for a managed Solana origin and used to validate persisted data. */
+  execution?: SolanaExecutionMetadata
   /** Canonical serialized intent input; the shape a sponsorship digest covers. */
   // Deliberately narrowed from the `unknown` this field used to carry. Prepared
   // data produced by `prepareTransaction` and passed straight back to
@@ -181,8 +199,8 @@ export interface QuoteSelection {
 export interface SignedTransactionData extends PreparedTransactionData {
   quote: Quote
   originSignatures: OriginSignature[]
-  destinationSignature: Hex
-  targetExecutionSignature: Hex | undefined
+  destinationSignature?: Hex
+  targetExecutionSignature?: Hex
 }
 
 export interface TransactionStatus {

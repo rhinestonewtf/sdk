@@ -83,6 +83,7 @@ describe('intent domain', () => {
 
   test('normalizes compatible quote typed data before signing', () => {
     const typedData = {
+      kind: 'eip712',
       domain: {},
       types: { Test: [{ name: 'value', type: 'uint256' }] },
       primaryType: 'Test',
@@ -116,7 +117,7 @@ describe('intent domain', () => {
     })
 
     expect(normalized.signData.origin[0]?.message).toEqual({ value: 7n })
-    expect(normalized.signData.destination.message).toEqual({ value: 7n })
+    expect(normalized.signData.destination?.message).toEqual({ value: 7n })
     expect(normalized.signData.targetExecution?.message).toEqual({ value: 7n })
   })
 

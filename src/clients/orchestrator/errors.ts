@@ -118,6 +118,27 @@ class ValidationError extends OrchestratorError {
   }
 }
 
+/**
+ * The EVM-derived Solana account has not been created on the requested cluster.
+ * Create and authority-verify `swigAddress` before preparing another transfer.
+ */
+class SolanaAccountNotCreatedError extends ValidationError {
+  readonly swigAddress: string
+  readonly chainId?: number
+
+  constructor(
+    params: BaseErrorParams & {
+      issues?: ValidationIssue[]
+      swigAddress: string
+      chainId?: number
+    },
+  ) {
+    super(params)
+    this.swigAddress = params.swigAddress
+    this.chainId = params.chainId
+  }
+}
+
 class InsufficientLiquidityError extends OrchestratorError {
   readonly availableIntents: Record<string, bigint>[]
   readonly unfillable: Record<string, bigint>
@@ -179,8 +200,11 @@ class KeyScopeDeniedError extends ForbiddenError {
 }
 
 class ConflictError extends OrchestratorError {
-  constructor(params: BaseErrorParams) {
+  readonly details: ErrorDetail[]
+
+  constructor(params: BaseErrorParams & { details?: ErrorDetail[] }) {
     super({ ...params, code: 'CONFLICT' })
+    this.details = params.details ?? []
   }
 }
 
@@ -560,6 +584,39 @@ function parseSponsorError(
   }
 }
 
+function parseSolanaAccountNotCreatedError(
+  base: BaseErrorParams,
+  issues: ValidationIssue[],
+): SolanaAccountNotCreatedError | undefined {
+  const context = issues.find(
+    (issue) => issue.context?.code === 'SOLANA_ACCOUNT_NOT_CREATED',
+  )?.context
+  if (
+    !context ||
+    typeof context.swigAddress !== 'string' ||
+    context.swigAddress.length === 0
+  ) {
+    return undefined
+  }
+
+  const chainId = context.chainId
+  if (
+    chainId !== undefined &&
+    (typeof chainId !== 'number' ||
+      !Number.isSafeInteger(chainId) ||
+      chainId < 0)
+  ) {
+    return undefined
+  }
+
+  return new SolanaAccountNotCreatedError({
+    ...base,
+    issues,
+    swigAddress: context.swigAddress,
+    ...(chainId === undefined ? {} : { chainId }),
+  })
+}
+
 function parseErrorEnvelope(
   envelope: ErrorEnvelope,
   statusCode: number,
@@ -573,10 +630,11 @@ function parseErrorEnvelope(
 
   switch (envelope.code) {
     case 'VALIDATION_ERROR': {
-      const issues = Array.isArray(envelope.details)
-        ? (envelope.details as ValidationIssue[])
-        : []
-      return new ValidationError({ ...base, issues })
+      const issues = parseErrorDetails(envelope.details)
+      return (
+        parseSolanaAccountNotCreatedError(base, issues) ??
+        new ValidationError({ ...base, issues })
+      )
     }
     case 'INSUFFICIENT_LIQUIDITY': {
       const details = (envelope.details ?? {}) as {
@@ -614,7 +672,10 @@ function parseErrorEnvelope(
       })
     }
     case 'CONFLICT':
-      return new ConflictError(base)
+      return new ConflictError({
+        ...base,
+        details: parseErrorDetails(envelope.details),
+      })
     case 'UNPROCESSABLE_CONTENT': {
       const details = parseErrorDetails(envelope.details)
       return (
@@ -654,6 +715,12 @@ function isRateLimited(error: unknown): error is RateLimitedError {
 
 function isValidationError(error: unknown): error is ValidationError {
   return error instanceof ValidationError
+}
+
+function isSolanaAccountNotCreated(
+  error: unknown,
+): error is SolanaAccountNotCreatedError {
+  return error instanceof SolanaAccountNotCreatedError
 }
 
 function isAuthError(
@@ -785,6 +852,7 @@ export {
   isConnectionError,
   isAuthError,
   isValidationError,
+  isSolanaAccountNotCreated,
   isRateLimited,
   isSimulationFailed,
   isSponsorLimitExceeded,
@@ -792,6 +860,7 @@ export {
   isSponsorError,
   OrchestratorError,
   ValidationError,
+  SolanaAccountNotCreatedError,
   InsufficientLiquidityError,
   SponsorLimitExceededError,
   InsufficientSponsorBalanceError,

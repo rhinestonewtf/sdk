@@ -38,62 +38,109 @@ function signedIntent(
 }
 
 describe('mapSupportedSignData', () => {
-  const typedData = {
-    kind: 'eip712',
+  const untaggedTypedData = {
     domain: { chainId: 1, verifyingContract: address },
     types: { Test: [{ name: 'value', type: 'uint256' }] },
     primaryType: 'Test',
     message: { value: '1' },
   }
+  const taggedTypedData = { kind: 'eip712', ...untaggedTypedData } as const
+  const personalSign = {
+    kind: 'personalSign',
+    message: 'ab'.repeat(32),
+    expiresAtSlot: '370123456',
+  } as const
 
-  test('accepts supported EIP-712 payloads', () => {
+  test('accepts tagged EIP-712 origins and untagged destinations', () => {
     expect(
-      mapSupportedSignData({ origin: [typedData], destination: typedData }),
-    ).toMatchObject({ origin: [typedData], destination: typedData })
+      mapSupportedSignData({
+        origin: [taggedTypedData],
+        destination: untaggedTypedData,
+      }),
+    ).toEqual({
+      origin: [taggedTypedData],
+      destination: untaggedTypedData,
+    })
   })
 
-  test('rejects personal-sign payloads before intent normalization', () => {
+  test('normalizes legacy untagged EIP-712 origins', () => {
+    expect(mapSupportedSignData({ origin: [untaggedTypedData] })).toEqual({
+      origin: [{ kind: 'eip712', ...untaggedTypedData }],
+    })
+  })
+
+  test('accepts a personal-sign origin without destination data', () => {
+    expect(mapSupportedSignData({ origin: [personalSign] })).toEqual({
+      origin: [personalSign],
+    })
+  })
+
+  test.each([
+    [{ kind: 'personalSign', message: 'payload', expiresAtSlot: '1' }],
+    [{ kind: 'personalSign', message: 'ab'.repeat(32), expiresAtSlot: 1 }],
+    [{ kind: 'personalSign', message: 'ab'.repeat(32), expiresAtSlot: '1.5' }],
+  ])('rejects malformed personal-sign payloads', (origin) => {
+    expect(() => mapSupportedSignData({ origin: [origin] })).toThrow(
+      /invalid personal-sign origin payload/,
+    )
+  })
+
+  test('rejects tags on destination EIP-712 data', () => {
     expect(() =>
       mapSupportedSignData({
-        origin: [{ kind: 'personalSign', message: 'payload' }],
-        destination: typedData,
+        origin: [taggedTypedData],
+        destination: taggedTypedData,
       }),
-    ).toThrow(/Only EIP-712/)
+    ).toThrow(/untagged EIP-712 destination/)
   })
 
-  test('drops unsupported routes without poisoning supported quotes', () => {
-    const route = (intentId: string, signData: unknown) => ({
-      intentId,
+  test('fails the quote response on an unsupported scheme instead of dropping the route', () => {
+    const route = {
+      intentId: 'unsupported',
       expiresAt: 1,
       estimatedFillTime: { seconds: 1 },
       settlementLayer: 'SAME_CHAIN',
-      signData,
+      signData: { origin: [{ kind: 'unknown' }] },
       cost: {
         input: [],
         output: [],
-        fees: {
-          total: { usd: 0 },
-          breakdown: {},
-        },
+        fees: { total: { usd: 0 }, breakdown: {} },
       },
-    })
+    }
+
+    expect(() =>
+      mapQuoteResponseFromWire({ traceId: 'trace', routes: [route] } as never),
+    ).toThrow(/unsupported origin signing scheme: unknown/)
+  })
+
+  test('preserves non-EVM cost token references', () => {
+    const mint = '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU'
+    const route = {
+      intentId: 'solana',
+      expiresAt: 1,
+      estimatedFillTime: { seconds: 1 },
+      settlementLayer: 'SAME_CHAIN',
+      signData: { origin: [personalSign] },
+      cost: {
+        input: [
+          {
+            chainId: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1',
+            tokenAddress: mint,
+            symbol: 'USDC',
+            decimals: 6,
+            price: { usd: 1 },
+            amount: '100000',
+          },
+        ],
+        output: [],
+        fees: { total: { usd: 0 }, breakdown: {} },
+      },
+    }
 
     expect(
-      mapQuoteResponseFromWire({
-        traceId: 'trace',
-        routes: [
-          route('bridge-delivery', { origin: [typedData] }),
-          route('personal-sign', {
-            origin: [{ kind: 'personalSign', message: 'payload' }],
-            destination: typedData,
-          }),
-          route('supported', { origin: [typedData], destination: typedData }),
-        ],
-      } as never),
-    ).toMatchObject({
-      traceId: 'trace',
-      routes: [{ intentId: 'supported' }],
-    })
+      mapQuoteResponseFromWire({ traceId: 'trace', routes: [route] } as never)
+        .routes[0]?.cost.input[0]?.tokenAddress,
+    ).toBe(mint)
   })
 })
 
@@ -159,6 +206,19 @@ describe('mapSignedIntentToWire', () => {
     expect(mapSignedIntentToWire(signedIntent())).not.toHaveProperty(
       'authorizations',
     )
+  })
+
+  test('omits a missing destination signature instead of sending a placeholder', () => {
+    const result = mapSignedIntentToWire({
+      intentId: 'solana-intent',
+      signatures: { origin: ['0x03'] },
+    })
+
+    expect(result).toEqual({
+      intentId: 'solana-intent',
+      signatures: { origin: ['0x03'] },
+    })
+    expect(result.signatures).not.toHaveProperty('destination')
   })
 
   test.each([
@@ -270,6 +330,30 @@ describe('mapIntentRequestToWire — HyperCore action', () => {
       options?: { hyperCore?: unknown }
     }
     expect(wire.options?.hyperCore).toBeUndefined()
+  })
+})
+
+describe('mapIntentStatusFromWire native transaction references', () => {
+  test('preserves a Solana transaction signature exactly', () => {
+    const signature =
+      '5KtPn1LGuxhFiKZ9xVLYBu9A2yBqX6gB4XzYGVxV9Dszgvn6YxrY3JQSMNJ4e6d7S5kJqY2LxA2nCE4BrVQCLH5m'
+    const mapped = mapIntentStatusFromWire('intent-1', {
+      traceId: 'trace-1',
+      status: 'COMPLETED',
+      accountAddress: address,
+      operations: [
+        {
+          chain: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1',
+          items: [{ status: 'COMPLETED', txHash: signature, timestamp: 1 }],
+        },
+      ],
+    })
+
+    expect(mapped.operations[0]).toMatchObject({
+      chain: 792703810,
+      status: 'COMPLETED',
+      txHash: signature,
+    })
   })
 })
 

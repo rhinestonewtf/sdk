@@ -927,15 +927,12 @@ interface EvmReceiverAccountConfig {
   initData?: never
 }
 
-/** Owner identity accepted by the future managed Solana account integration. */
-type SolanaOwner =
-  | { type: 'ecdsa'; account: Account }
-  | { type: 'passkey'; account: WebAuthnAccount }
+/** ECDSA authority for a development managed Solana account. */
+type SolanaOwner = { type: 'ecdsa'; account: Account }
 
-/** Future managed Solana configuration. Construction is not enabled yet. */
+/** Development managed Solana account paired with a managed EVM identity. */
 interface SolanaManagedAccountConfig {
   owner: SolanaOwner
-  nonce?: bigint
   address?: never
 }
 
@@ -943,7 +940,6 @@ interface SolanaManagedAccountConfig {
 interface SolanaReceiverAccountConfig {
   address: SolanaAddress
   owner?: never
-  nonce?: never
 }
 
 type EvmAccountEntry = EvmAccountConfig | EvmReceiverAccountConfig
@@ -953,8 +949,15 @@ type SolanaAccountConfig =
 
 /** Independent EVM and Solana account entries. At least one VM is required. */
 type RhinestoneAccountConfig =
-  | Readonly<{ evm: EvmAccountEntry; solana?: SolanaAccountConfig }>
-  | Readonly<{ evm?: EvmAccountEntry; solana: SolanaAccountConfig }>
+  | Readonly<{ evm: EvmAccountConfig; solana?: SolanaAccountConfig }>
+  | Readonly<{
+      evm: EvmReceiverAccountConfig
+      solana?: SolanaReceiverAccountConfig
+    }>
+  | Readonly<{
+      evm?: EvmAccountEntry
+      solana: SolanaReceiverAccountConfig
+    }>
 
 interface ApiKeyAuth {
   mode: 'apiKey'
@@ -1285,21 +1288,32 @@ interface CrossChainNonEvmTransaction extends BaseTransaction {
   recipient?: NonEvmAddress
 }
 
-/** Transfer-only Solana request. Managed Solana execution is not enabled yet. */
-interface SameChainSolanaTransaction
-  extends Omit<BaseTransaction, 'calls' | 'sponsored'> {
+/** One same-chain SPL transfer from a development managed Solana account. */
+interface SameChainSolanaTransaction {
   chain: SolanaChain
-  targetChain?: never
-  sourceChains?: never
   tokenRequests: [
     | { address: SolanaAddress; amount: bigint }
     | { address: SolanaAddress; amount?: undefined },
   ]
-  recipient?: SolanaAddress
+  recipient: SolanaAddress
+  appFees?: AppFeeRate
+  protocolFees?: ProtocolFeeRate
   sponsored?: false
+  targetChain?: never
+  sourceChains?: never
   calls?: never
   instructions?: never
+  sourceCalls?: never
+  sourceAssets?: never
+  signers?: never
+  gasLimit?: never
   customDeadline?: never
+  eip7702InitSignature?: never
+  settlementLayers?: never
+  quoters?: never
+  auxiliaryFunds?: never
+  hyperCore?: never
+  experimental_accountOverride?: never
 }
 
 interface CrossChainSolanaTransaction extends Omit<BaseTransaction, 'calls'> {
@@ -1334,18 +1348,22 @@ type RequiredAccountBranch<
   Vm extends 'evm' | 'solana',
 > = [C] extends [Readonly<Record<Vm, infer Branch>>] ? Branch : never
 
-/** Transactions available from the account's definitely managed source VM. */
-type AccountTransaction<C extends RhinestoneAccountConfig> = [
+type ManagedEvmTransactions<C extends RhinestoneAccountConfig> = [
   RequiredAccountBranch<C, 'evm'>,
-] extends [never]
-  ? [RequiredAccountBranch<C, 'solana'>] extends [never]
-    ? never
-    : [RequiredAccountBranch<C, 'solana'>] extends [SolanaManagedAccountConfig]
-      ? SameChainSolanaTransaction
-      : never
-  : [RequiredAccountBranch<C, 'evm'>] extends [EvmAccountConfig]
-    ? SameChainTransaction | CrossChainTransaction
-    : never
+] extends [EvmAccountConfig]
+  ? SameChainTransaction | CrossChainTransaction
+  : never
+
+type ManagedSolanaTransactions<C extends RhinestoneAccountConfig> = [
+  RequiredAccountBranch<C, 'solana'>,
+] extends [SolanaManagedAccountConfig]
+  ? SameChainSolanaTransaction
+  : never
+
+/** Transactions available from every definitely managed source VM. */
+type AccountTransaction<C extends RhinestoneAccountConfig> =
+  | ManagedEvmTransactions<C>
+  | ManagedSolanaTransactions<C>
 
 export type {
   AccountProviderConfig,

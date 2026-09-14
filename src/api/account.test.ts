@@ -2,7 +2,12 @@ import { privateKeyToAccount } from 'viem/accounts'
 import { mainnet, optimism } from 'viem/chains'
 import { describe, expect, test, vi } from 'vitest'
 import { parseCaip2, toEvmChainReference } from '../chains/caip2'
-import { hyperCorePerp, solanaAddress, solanaMainnet } from '../chains/non-evm'
+import {
+  hyperCorePerp,
+  solanaAddress,
+  solanaDevnet,
+  solanaMainnet,
+} from '../chains/non-evm'
 import type {
   HyperCoreOrderAction,
   SerializedIntentInput,
@@ -10,8 +15,12 @@ import type {
 import type { LegacyAccountConfig } from '../config/legacy'
 import { resolveAccountConfig, resolveSdkConfig } from '../config/resolve'
 import type { AccountInvocationContext } from '../config/resolved'
-import { UnsupportedAccountCapabilityError } from '../errors/capability'
 import {
+  ManagedSolanaAccountNotSupportedError,
+  UnsupportedAccountCapabilityError,
+} from '../errors/capability'
+import {
+  InvalidSolanaTransactionArtifactError,
   QuoteNotInPreparedTransactionError,
   SignerNotSupportedError,
 } from '../errors/execution'
@@ -19,6 +28,10 @@ import type { EvmAccountConfig, RhinestoneAccountConfig } from '../index'
 import { RhinestoneSDK } from '../index'
 import { ecdsaSignerId } from '../modules/validators/signer-id'
 import { SOCIAL_RECOVERY_VALIDATOR_ADDRESS } from '../modules/validators/social-recovery'
+import {
+  buildSolanaIntentRequest,
+  reconstructSolanaIntent,
+} from '../transactions/intents/solana'
 import type {
   PreparedTransactionData,
   SignedTransactionData,
@@ -140,6 +153,582 @@ describe('account instance surface', () => {
       .catch(() => {})
 
     expect(await read).toEqual({ type: 'metaAndAssetCtxs' })
+  })
+})
+
+describe('managed Solana account construction', () => {
+  test('derives a stable development wallet offline beside the managed EVM account', async () => {
+    const fetch = vi.fn()
+    vi.stubGlobal('fetch', fetch)
+    try {
+      const sdk = new RhinestoneSDK({
+        apiKey: 'offline',
+        endpointUrl: 'https://dev.v1.orchestrator.rhinestone.dev',
+        useDevContracts: true,
+      })
+      const config = {
+        evm: { owners: { type: 'ecdsa' as const, accounts: [owner] } },
+        solana: { owner: { type: 'ecdsa' as const, account: owner } },
+      }
+      const first = await sdk.createAccount(config)
+      const second = await sdk.createAccount(config)
+
+      expect(first.getAddress('solana')).toBe(second.getAddress('solana'))
+      expect(() => solanaAddress(first.getAddress('solana'))).not.toThrow()
+      expect(first.getAddress('evm')).toMatch(/^0x[0-9a-fA-F]{40}$/u)
+      expect(fetch).not.toHaveBeenCalled()
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  test('rejects production, Solana-only, and widened unsupported owners', async () => {
+    const managed = {
+      owner: { type: 'ecdsa' as const, account: owner },
+    }
+    await expect(
+      new RhinestoneSDK({ apiKey: 'offline' }).createAccount({
+        evm: { owners: { type: 'ecdsa', accounts: [owner] } },
+        solana: managed,
+      }),
+    ).rejects.toThrow(/useDevContracts/)
+    await expect(
+      new RhinestoneSDK({
+        apiKey: 'offline',
+        useDevContracts: true,
+      }).createAccount({
+        evm: { owners: { type: 'ecdsa', accounts: [owner] } },
+        solana: managed,
+      }),
+    ).rejects.toThrow(/dev\.v1\.orchestrator\.rhinestone\.dev/)
+    await expect(
+      new RhinestoneSDK({
+        apiKey: 'offline',
+        endpointUrl: 'https://v1.orchestrator.rhinestone.dev',
+        useDevContracts: true,
+      }).createAccount({
+        evm: { owners: { type: 'ecdsa', accounts: [owner] } },
+        solana: managed,
+      }),
+    ).rejects.toThrow(/dev\.v1\.orchestrator\.rhinestone\.dev/)
+    await expect(
+      new RhinestoneSDK({
+        apiKey: 'offline',
+        endpointUrl: 'https://dev.v1.orchestrator.rhinestone.dev',
+        useDevContracts: true,
+      }).createAccount({ solana: managed } as never),
+    ).rejects.toThrow(/paired with a managed EVM/)
+    await expect(
+      new RhinestoneSDK({
+        apiKey: 'offline',
+        useDevContracts: true,
+      }).createAccount({
+        evm: { owners: { type: 'ecdsa', accounts: [owner] } },
+        solana: { owner: { type: 'passkey', account: {} }, nonce: 1n },
+      } as never),
+    ).rejects.toThrow(/unknown managed Solana field `nonce`/)
+  })
+})
+
+describe('managed Solana account facade', () => {
+  const mint = solanaAddress('4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU')
+  const recipient = solanaAddress('11111111111111111111111111111112')
+  const message = 'ab'.repeat(32)
+
+  function quote(intentId: string) {
+    const costEntry = {
+      chainId: 792703810,
+      tokenAddress: mint,
+      symbol: 'USDC',
+      decimals: 6,
+      price: { usd: 1 },
+      amount: 100n,
+    }
+    return {
+      intentId,
+      expiresAt: 2_000_000_000,
+      estimatedFillTime: { seconds: 1 },
+      settlementLayer: 'SAME_CHAIN' as const,
+      signData: {
+        origin: [
+          { kind: 'personalSign' as const, message, expiresAtSlot: '123' },
+        ],
+      },
+      cost: {
+        input: [costEntry],
+        output: [costEntry],
+        fees: {
+          total: { usd: 0 },
+          breakdown: {
+            gas: { usd: 0, sponsored: false },
+            bridge: { usd: 0, sponsored: false },
+            swap: { usd: 0, sponsored: false },
+            app: { usd: 0, sponsored: false },
+            protocol: { usd: 0, sponsored: false },
+            sponsorSurcharge: { usd: 0, sponsored: false },
+          },
+        },
+      },
+    }
+  }
+
+  function fixture() {
+    const compatibilityConfig: LegacyAccountConfig<unknown> = {
+      owners: { type: 'ecdsa', accounts: [owner] },
+      useDevContracts: true,
+    }
+    const best = quote('best')
+    const alternate = quote('alternate')
+    const prepareSolanaIntent = vi.fn(async (input) => {
+      const request = buildSolanaIntentRequest(input)
+      return {
+        traceId: 'prepare-trace',
+        input,
+        request,
+        quote: best,
+        quotes: [best, alternate],
+      }
+    })
+    const reconstruct = vi.fn(reconstructSolanaIntent)
+    const signSolanaIntent = vi.fn(async ({ prepared, owner: signer }) => ({
+      prepared,
+      signature: await signer.signMessage({ message }),
+    }))
+    const submitSolanaIntent = vi.fn(async ({ prepared }) => ({
+      type: 'intent' as const,
+      traceId: 'submit-trace',
+      intentId: prepared.quote.intentId,
+      sourceChains: [792703810],
+      targetChain: 792703810,
+    }))
+    const waitForIntentStatus = vi.fn(async (_context, intentId: string) => ({
+      traceId: `status-${intentId}`,
+      intentId,
+      status: 'COMPLETED' as const,
+      account: owner.address,
+      operations: [],
+    }))
+    const getAddress = vi.fn(() => owner.address)
+    const getEligibleEvmSourceChains = vi.fn(async () => {
+      throw new Error('catalog must not be read')
+    })
+    const workflows = {
+      getAddress,
+      getEligibleEvmSourceChains,
+      prepareSolanaIntent,
+      reconstructSolanaIntent: reconstruct,
+      signSolanaIntent,
+      submitSolanaIntent,
+      waitForIntentStatus,
+    }
+    const facade = createAccountFacade(
+      compatibilityConfig,
+      {
+        evm: compatibilityConfig as EvmAccountConfig,
+        solana: { owner: { type: 'ecdsa', account: owner } },
+      },
+      {
+        config: resolveSdkConfig({ apiKey: 'offline', useDevContracts: true }),
+        project: {} as never,
+        createAccount: (context) => ({
+          context,
+          workflows: workflows as never,
+        }),
+      },
+    )
+    return {
+      facade,
+      workflows,
+      best,
+      alternate,
+      recipient: facade.getAddress('solana'),
+    }
+  }
+
+  function transaction() {
+    return {
+      chain: solanaDevnet,
+      tokenRequests: [{ address: mint, amount: 100n }] as [
+        { address: typeof mint; amount: bigint },
+      ],
+      recipient,
+      sponsored: false as const,
+    }
+  }
+
+  test('dispatches prepare, messages, sign, submit, and status entirely through the Solana workflow', async () => {
+    const { facade, workflows } = fixture()
+    const prepared = await facade.prepareTransaction(transaction())
+
+    expect(workflows.prepareSolanaIntent).toHaveBeenCalledOnce()
+    expect(workflows.getEligibleEvmSourceChains).not.toHaveBeenCalled()
+    expect(facade.getTransactionMessages(prepared)).toEqual({
+      origin: [{ kind: 'personalSign', message, expiresAtSlot: '123' }],
+    })
+    const signed = await facade.signTransaction(prepared)
+    expect(workflows.signSolanaIntent).toHaveBeenCalledOnce()
+    const submitted = await facade.submitTransaction(signed)
+    expect(submitted).toEqual({
+      type: 'intent',
+      id: 'best',
+      traceId: 'submit-trace',
+      sourceChains: [792703810],
+      targetChain: 792703810,
+    })
+    await expect(facade.waitForExecution(submitted)).resolves.toMatchObject({
+      traceId: 'status-best',
+      status: 'COMPLETED',
+    })
+    expect(workflows.waitForIntentStatus).toHaveBeenCalledWith(
+      expect.objectContaining({ method: 'wait-for-execution' }),
+      'best',
+    )
+  })
+
+  test('defaults an existing EVM-origin Solana delivery to the managed wallet without mutating the request', async () => {
+    const { facade, workflows, recipient: managedWallet } = fixture()
+    const request = {
+      sourceChains: [mainnet],
+      targetChain: solanaDevnet,
+      tokenRequests: [{ address: mint, amount: 100n }],
+    }
+    const evmQuote = quoteFixture('evm')
+    const prepareIntent = vi.fn(async (_context, input) => ({
+      traceId: 'evm-trace',
+      input,
+      request: serializedIntentInput,
+      quote: evmQuote,
+      quotes: [evmQuote],
+      signing: {} as never,
+      accountChain: toEvmChainReference(mainnet.id),
+    }))
+    Object.assign(workflows, { prepareIntent })
+
+    const prepared = await facade.prepareTransaction(request)
+
+    expect(request).not.toHaveProperty('recipient')
+    expect(prepared.transaction).toMatchObject({ recipient: managedWallet })
+    expect(prepareIntent.mock.calls[0]?.[1]).toMatchObject({
+      recipient: { address: managedWallet },
+    })
+    expect(workflows.prepareSolanaIntent).not.toHaveBeenCalled()
+    expect(workflows.getEligibleEvmSourceChains).not.toHaveBeenCalled()
+  })
+
+  test('selects an alternate quote consistently for messages, signing, and submission', async () => {
+    const { facade, workflows } = fixture()
+    const prepared = await facade.prepareTransaction(transaction())
+
+    expect(
+      facade.getTransactionMessages(prepared, { intentId: 'alternate' }),
+    ).toEqual({
+      origin: [{ kind: 'personalSign', message, expiresAtSlot: '123' }],
+    })
+    const signed = await facade.signTransaction(prepared, {
+      intentId: 'alternate',
+    })
+    expect(signed.quote.intentId).toBe('alternate')
+    await expect(facade.submitTransaction(signed)).resolves.toMatchObject({
+      id: 'alternate',
+    })
+    expect(
+      workflows.signSolanaIntent.mock.calls[0]?.[0].prepared.quote.intentId,
+    ).toBe('alternate')
+    expect(
+      workflows.submitSolanaIntent.mock.calls[0]?.[0].prepared.quote.intentId,
+    ).toBe('alternate')
+  })
+
+  test('snapshots the request before asynchronous preparation', async () => {
+    const { facade, workflows } = fixture()
+    let release = () => {}
+    const paused = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    workflows.prepareSolanaIntent.mockImplementationOnce(async (input) => {
+      await paused
+      const request = buildSolanaIntentRequest(input)
+      return {
+        traceId: 'prepare-trace',
+        input,
+        request,
+        quote: quote('best'),
+        quotes: [quote('best')],
+      }
+    })
+    const request = {
+      ...transaction(),
+      appFees: { feeBps: 25 },
+      protocolFees: { feeBps: 50 },
+    }
+    const preparing = facade.prepareTransaction(request)
+    request.tokenRequests[0]!.amount = 999n
+    request.recipient = solanaAddress('11111111111111111111111111111113')
+    request.appFees.feeBps = 75
+    request.protocolFees.feeBps = 100
+    release()
+
+    const prepared = await preparing
+    expect(prepared.transaction).toMatchObject({
+      recipient,
+      tokenRequests: [{ address: mint, amount: 100n }],
+      appFees: { feeBps: 25 },
+      protocolFees: { feeBps: 50 },
+    })
+    expect(workflows.prepareSolanaIntent.mock.calls[0]?.[0]).toMatchObject({
+      recipient,
+      mint,
+      amount: 100n,
+      appFees: { feeBps: 25 },
+      protocolFees: { feeBps: 50 },
+    })
+  })
+
+  test.each([
+    ['calls', []],
+    ['sourceChains', [mainnet]],
+    ['targetChain', mainnet],
+    ['sourceAssets', { [mainnet.id]: [owner.address] }],
+    ['signers', { type: 'owner', accounts: [owner] }],
+    ['hyperCore', {}],
+    ['gasLimit', 1n],
+    ['nonce', 1n],
+  ])(
+    'rejects widened `%s` before quote, sign, or submit effects',
+    async (field, value) => {
+      const { facade, workflows } = fixture()
+      const widened = { ...transaction(), [field]: value }
+
+      await expect(facade.prepareTransaction(widened as never)).rejects.toThrow(
+        UnsupportedAccountCapabilityError,
+      )
+      expect(workflows.prepareSolanaIntent).not.toHaveBeenCalled()
+
+      const clean = await facade.prepareTransaction(transaction())
+      const prepared = { ...clean, transaction: widened }
+      await expect(facade.signTransaction(prepared as never)).rejects.toThrow(
+        UnsupportedAccountCapabilityError,
+      )
+      expect(workflows.signSolanaIntent).not.toHaveBeenCalled()
+
+      const signature = await owner.signMessage({ message })
+      await expect(
+        facade.submitTransaction({
+          ...prepared,
+          quote: clean.quotes.best,
+          originSignatures: [signature],
+        } as never),
+      ).rejects.toThrow(UnsupportedAccountCapabilityError)
+      expect(workflows.submitSolanaIntent).not.toHaveBeenCalled()
+    },
+  )
+
+  test.each([
+    [
+      'token request',
+      { tokenRequests: [{ address: mint, amount: 100n, memo: 'x' }] },
+    ],
+    ['app fee', { appFees: { feeBps: 25, recipient: owner.address } }],
+    ['protocol fee', { protocolFees: { feeBps: 25, sponsor: true } }],
+  ])(
+    'rejects unknown nested %s fields before effects',
+    async (_name, patch) => {
+      const { facade, workflows } = fixture()
+
+      await expect(
+        facade.prepareTransaction({ ...transaction(), ...patch } as never),
+      ).rejects.toThrow(UnsupportedAccountCapabilityError)
+      expect(workflows.prepareSolanaIntent).not.toHaveBeenCalled()
+    },
+  )
+
+  test('rejects owner-only, assembly, authorization, and EVM submission options before effects', async () => {
+    const { facade, workflows } = fixture()
+    const prepared = await facade.prepareTransaction(transaction())
+
+    await expect(
+      facade.signTransaction(prepared, { owner } as never),
+    ).rejects.toThrow(/Independent owner signing/)
+    await expect(facade.assembleTransaction(prepared, [])).rejects.toThrow(
+      /Independent owner signing/,
+    )
+    await expect(facade.signAuthorizations(prepared)).rejects.toThrow(
+      /unavailable for Solana-origin/,
+    )
+    const signed = await facade.signTransaction(prepared)
+    await expect(
+      facade.submitTransaction(signed, { authorizations: [] }),
+    ).rejects.toThrow(/does not accept EVM authorizations/)
+    await expect(
+      facade.submitTransaction(signed, { internal_dryRun: true } as never),
+    ).rejects.toThrow(/does not accept EVM authorizations/)
+    await expect(
+      facade.submitTransaction(signed, { internal_dryRun: false } as never),
+    ).rejects.toThrow(/does not accept EVM authorizations/)
+    await expect(
+      facade.submitTransaction(signed, { futureOption: false } as never),
+    ).rejects.toThrow(/does not accept EVM authorizations/)
+    expect(workflows.submitSolanaIntent).not.toHaveBeenCalled()
+  })
+
+  test.each([
+    { originSignatures: [] },
+    { originSignatures: ['0x12', '0x34'] },
+    { destinationSignature: '0x12' },
+    { targetExecutionSignature: '0x12' },
+  ])(
+    'rejects extra or misplaced signatures before submission %#',
+    async (patch) => {
+      const { facade, workflows } = fixture()
+      const signed = await facade.signTransaction(
+        await facade.prepareTransaction(transaction()),
+      )
+
+      await expect(
+        facade.submitTransaction({ ...signed, ...patch } as never),
+      ).rejects.toThrow(InvalidSolanaTransactionArtifactError)
+      expect(workflows.submitSolanaIntent).not.toHaveBeenCalled()
+    },
+  )
+
+  test.each([
+    [
+      'environment',
+      (prepared: PreparedTransactionData) => ({
+        ...prepared,
+        execution: {
+          ...prepared.execution!,
+          endpoint: 'https://other.example',
+        },
+      }),
+    ],
+    [
+      'account',
+      (prepared: PreparedTransactionData) => ({
+        ...prepared,
+        execution: { ...prepared.execution!, accountAddress: guardian.address },
+      }),
+    ],
+    [
+      'recipient',
+      (prepared: PreparedTransactionData) => ({
+        ...prepared,
+        transaction: {
+          ...prepared.transaction,
+          recipient: solanaAddress('11111111111111111111111111111113'),
+        } as never,
+      }),
+    ],
+    [
+      'mint',
+      (prepared: PreparedTransactionData) => ({
+        ...prepared,
+        transaction: {
+          ...prepared.transaction,
+          tokenRequests: [
+            {
+              address: solanaAddress('11111111111111111111111111111113'),
+              amount: 100n,
+            },
+          ],
+        } as never,
+      }),
+    ],
+  ])(
+    'rejects %s binding tampering for cached prepared artifacts',
+    async (_name, tamper) => {
+      const { facade, workflows } = fixture()
+      const prepared = tamper(await facade.prepareTransaction(transaction()))
+
+      expect(() => facade.getTransactionMessages(prepared)).toThrow(
+        InvalidSolanaTransactionArtifactError,
+      )
+      await expect(facade.signTransaction(prepared)).rejects.toThrow(
+        InvalidSolanaTransactionArtifactError,
+      )
+      expect(workflows.signSolanaIntent).not.toHaveBeenCalled()
+    },
+  )
+
+  test('rejects tampering on same-instance prepared and signed artifacts despite warm caches', async () => {
+    const { facade, workflows } = fixture()
+    const prepared = await facade.prepareTransaction(transaction())
+    ;(prepared.quotes.best as { expiresAt: number }).expiresAt = 1
+    await expect(facade.signTransaction(prepared)).rejects.toThrow(
+      InvalidSolanaTransactionArtifactError,
+    )
+    expect(workflows.signSolanaIntent).not.toHaveBeenCalled()
+
+    const signedWithChangedQuote = await facade.signTransaction(
+      await facade.prepareTransaction(transaction()),
+    )
+    ;(signedWithChangedQuote.quote as { expiresAt: number }).expiresAt = 1
+    await expect(
+      facade.submitTransaction(signedWithChangedQuote),
+    ).rejects.toThrow(InvalidSolanaTransactionArtifactError)
+
+    const signedWithChangedBinding = await facade.signTransaction(
+      await facade.prepareTransaction(transaction()),
+    )
+    ;(signedWithChangedBinding.execution as { endpoint: string }).endpoint =
+      'https://other.example'
+    await expect(
+      facade.submitTransaction(signedWithChangedBinding),
+    ).rejects.toThrow(InvalidSolanaTransactionArtifactError)
+    expect(workflows.submitSolanaIntent).not.toHaveBeenCalled()
+  })
+
+  test('retains the captured EVM account type when live compatibility fields mutate', async () => {
+    const { facade, workflows } = fixture()
+    ;(facade.config.evm as LegacyAccountConfig<unknown>).account = {
+      type: 'hca',
+    }
+
+    await facade.prepareTransaction(transaction())
+    expect(workflows.prepareSolanaIntent).toHaveBeenCalledWith(
+      expect.objectContaining({ accountType: 'ERC7579' }),
+    )
+  })
+
+  test('rejects a live config mutation that would leave the captured development endpoint', async () => {
+    const { facade, workflows } = fixture()
+    ;(facade.config.evm as LegacyAccountConfig<unknown>).useDevContracts = false
+
+    await expect(facade.prepareTransaction(transaction())).rejects.toThrow(
+      ManagedSolanaAccountNotSupportedError,
+    )
+    expect(workflows.prepareSolanaIntent).not.toHaveBeenCalled()
+  })
+
+  test('rejects quote and intent-input tampering across facade instances before signing or submission', async () => {
+    const first = fixture()
+    const second = fixture()
+    const prepared = await first.facade.prepareTransaction(transaction())
+    const changedQuote = {
+      ...prepared,
+      quotes: {
+        ...prepared.quotes,
+        best: { ...prepared.quotes.best, expiresAt: 1 },
+      },
+    }
+    await expect(second.facade.signTransaction(changedQuote)).rejects.toThrow(
+      InvalidSolanaTransactionArtifactError,
+    )
+
+    const signed = await second.facade.signTransaction(prepared)
+    const changedInput = {
+      ...signed,
+      intentInput: {
+        ...signed.intentInput,
+        recipient: {
+          address: solanaAddress('11111111111111111111111111111113'),
+        },
+      },
+    }
+    await expect(first.facade.submitTransaction(changedInput)).rejects.toThrow(
+      InvalidSolanaTransactionArtifactError,
+    )
+    expect(first.workflows.submitSolanaIntent).not.toHaveBeenCalled()
   })
 })
 
@@ -608,6 +1197,7 @@ describe('account boundary adapters', () => {
       accounts: [selected],
     }
     const typedData = {
+      kind: 'eip712',
       domain: { chainId: 1 },
       types: { Test: [{ name: 'value', type: 'uint256' }] },
       primaryType: 'Test',

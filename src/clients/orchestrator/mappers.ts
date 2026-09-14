@@ -17,6 +17,7 @@ import type {
   ChainOperation,
   Cost,
   CostTokenEntry,
+  OriginSignData,
   SignData,
   TokenRequirements,
 } from './public'
@@ -81,19 +82,7 @@ export function mapQuoteResponseFromWire(
   const input = value as WireQuoteResponse
   return {
     traceId: input.traceId ?? '',
-    routes: (input.routes ?? []).flatMap((route) => {
-      try {
-        return [mapQuoteFromWire(route)]
-      } catch (error) {
-        if (
-          error instanceof ValidationError &&
-          error.message.includes('Only EIP-712 intent signing data')
-        ) {
-          return []
-        }
-        throw error
-      }
-    }),
+    routes: (input.routes ?? []).map(mapQuoteFromWire),
   }
 }
 
@@ -102,7 +91,15 @@ export function mapSignedIntentToWire(
 ): WireIntentRequestInternal {
   return serializeBigInts({
     intentId: input.intentId,
-    signatures: input.signatures,
+    signatures: {
+      origin: input.signatures.origin,
+      ...(input.signatures.destination === undefined
+        ? {}
+        : { destination: input.signatures.destination }),
+      ...(input.signatures.targetExecution === undefined
+        ? {}
+        : { targetExecution: input.signatures.targetExecution }),
+    },
     ...(input.authorizations
       ? {
           authorizations: {
@@ -240,47 +237,98 @@ export function mapSplitResultFromWire(
   }
 }
 
-function supportedTypedData(value: unknown): TypedDataDefinition {
-  const input = value as {
-    kind?: unknown
-    domain?: unknown
-    types?: unknown
-    primaryType?: unknown
-    message?: unknown
+function malformedSignData(message: string): never {
+  throw new ValidationError({ message })
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function supportedTypedData(
+  value: unknown,
+  options: { tagged: boolean },
+): TypedDataDefinition {
+  if (!isObject(value)) {
+    return malformedSignData(
+      'The orchestrator returned malformed EIP-712 intent signing data.',
+    )
   }
   if (
-    !input ||
-    typeof input !== 'object' ||
-    (input.kind !== undefined && input.kind !== 'eip712') ||
-    !input.domain ||
-    typeof input.types !== 'object' ||
-    typeof input.primaryType !== 'string' ||
-    typeof input.message !== 'object'
+    (options.tagged && value.kind !== 'eip712') ||
+    (!options.tagged && value.kind !== undefined) ||
+    !isObject(value.domain) ||
+    !isObject(value.types) ||
+    typeof value.primaryType !== 'string' ||
+    !isObject(value.message)
   ) {
-    throw new ValidationError({
-      message: 'Only EIP-712 intent signing data is supported by this SDK.',
-    })
+    return malformedSignData(
+      options.tagged
+        ? 'The orchestrator returned an invalid EIP-712 origin signing payload.'
+        : 'The orchestrator returned an invalid untagged EIP-712 destination signing payload.',
+    )
   }
-  return input as TypedDataDefinition
+  return value as TypedDataDefinition
+}
+
+function supportedOriginSignData(value: unknown): OriginSignData {
+  if (!isObject(value)) {
+    return malformedSignData(
+      'The orchestrator returned malformed origin intent signing data.',
+    )
+  }
+
+  if (value.kind === 'personalSign') {
+    if (
+      typeof value.message !== 'string' ||
+      !/^[0-9a-fA-F]{64}$/u.test(value.message) ||
+      typeof value.expiresAtSlot !== 'string' ||
+      !/^\d+$/u.test(value.expiresAtSlot)
+    ) {
+      return malformedSignData(
+        'The orchestrator returned an invalid personal-sign origin payload; expected a 64-character hex message and decimal expiresAtSlot.',
+      )
+    }
+    return {
+      kind: 'personalSign',
+      message: value.message,
+      expiresAtSlot: value.expiresAtSlot,
+    }
+  }
+
+  if (value.kind === undefined || value.kind === 'eip712') {
+    const typedData = supportedTypedData(
+      value.kind === undefined ? { ...value, kind: 'eip712' } : value,
+      { tagged: true },
+    )
+    return typedData as OriginSignData
+  }
+
+  return malformedSignData(
+    `The orchestrator returned an unsupported origin signing scheme: ${String(value.kind)}.`,
+  )
 }
 
 export function mapSupportedSignData(value: unknown): SignData {
-  const input = value as {
-    origin?: unknown
-    destination?: unknown
-    targetExecution?: unknown
-  }
-  if (!input || typeof input !== 'object' || !Array.isArray(input.origin)) {
-    throw new ValidationError({
-      message: 'The orchestrator returned malformed intent signing data.',
-    })
+  if (!isObject(value) || !Array.isArray(value.origin)) {
+    return malformedSignData(
+      'The orchestrator returned malformed intent signing data.',
+    )
   }
   return {
-    origin: input.origin.map(supportedTypedData),
-    destination: supportedTypedData(input.destination),
-    ...(input.targetExecution === undefined
+    origin: value.origin.map(supportedOriginSignData),
+    ...(value.destination === undefined
       ? {}
-      : { targetExecution: supportedTypedData(input.targetExecution) }),
+      : {
+          destination: supportedTypedData(value.destination, { tagged: false }),
+        }),
+    ...(value.targetExecution === undefined
+      ? {}
+      : {
+          targetExecution: supportedTypedData(value.targetExecution, {
+            tagged: false,
+          }),
+        }),
   }
 }
 
@@ -316,7 +364,7 @@ function mapCostTokenFromWire(
 ): CostTokenEntry {
   return {
     chainId: parseChainValue(value.chainId),
-    tokenAddress: value.tokenAddress as Address,
+    tokenAddress: value.tokenAddress,
     symbol: value.symbol,
     decimals: value.decimals,
     price: value.price,
