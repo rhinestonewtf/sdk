@@ -1,23 +1,26 @@
 # Rhinestone SDK
 
-> End-to-end chain abstraction and modularity toolkit
+> Self-custodial wallets and multichain relaying, in one TypeScript SDK
 
-Rhinestone is a vertically integrated smart wallet and crosschain liquidity platform. The SDK provides a unified interface for deploying and managing self-custodial smart accounts, powered by an intent-based transaction infrastructure that enables seamless crosschain execution without bridging or gas tokens.
+Rhinestone is self-custodial stablecoin infrastructure for fintechs. This SDK covers two of its products:
 
-The platform combines modular [smart account tooling](https://docs.rhinestone.dev/smart-wallet/core/create-account) with an intent engine ([Warp](https://docs.rhinestone.dev/home/introduction/rhinestone-intents)) that aggregates settlement layers through a unified relayer market. This handles routing, token liquidity, and crosschain orchestration across all [supported chains](https://docs.rhinestone.dev/home/resources/supported-chains).
+- **Wallets** — deploy and manage self-custodial smart accounts with passkeys, session keys and any signer.
+- **Relaying** — send sponsored, multichain transactions from one signature. Routing, swaps and settlement across a unified relayer market are handled underneath, on every [supported chain](https://docs.rhinestone.dev/home/resources/supported-chains).
+
+Deposits have their own integration: see the [docs](https://docs.rhinestone.dev/deposits/overview).
 
 [Documentation](https://docs.rhinestone.dev)
 
 ## Features
 
 
-- **Crosschain Transactions** - Execute transactions on any target chain using assets from any source chain. The orchestrator handles routing and settlement. [Learn more](https://docs.rhinestone.dev/smart-wallet/chain-abstraction/multi-chain-intent)
+- **Multichain Transactions** - Execute transactions on any target chain using assets from any source chain. The orchestrator handles routing and settlement. [Learn more](https://docs.rhinestone.dev/smart-wallet/chain-abstraction/multi-chain-intent)
 
 - **Swaps** - Token exchanges via solver-based swaps or injected DEX aggregator swaps, integrated into crosschain transaction execution. [Learn more](https://docs.rhinestone.dev/smart-wallet/chain-abstraction/swaps)
 
 - **Passkeys** - WebAuthn-based authentication for smart accounts, replacing seed phrases with device biometrics. [Learn more](https://docs.rhinestone.dev/smart-wallet/core/passkeys)
 
-- **Smart Sessions** - Onchain permissions system for scoped transaction automation, enabling one-click UX and server-side execution with granular policies. [Learn more](https://docs.rhinestone.dev/smart-wallet/smart-sessions/overview)
+- **Session Keys** - Onchain permissions system for scoped transaction automation, enabling one-click UX and server-side execution with granular policies. [Learn more](https://docs.rhinestone.dev/smart-wallet/smart-sessions/overview)
 
 - **Gas Sponsorship** - Subsidize gas, bridge, and swap fees for users by depositing USDC on Base. Applies across all supported chains. [Learn more](https://docs.rhinestone.dev/smart-wallet/gas-sponsorship/overview)
 
