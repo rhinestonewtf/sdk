@@ -23,11 +23,15 @@ run separately through `tsconfig.type-tests.json`. Run one unit file with
 `bun run test -- path/to/file.test.ts`.
 
 Cross-VM coverage pairs public type fixtures with runtime tests. Type fixtures
-prove capability visibility, explicit VM address selection, nonempty source
-lists, and native Solana token/address shapes. Runtime tests repeat these checks
-for widened or reconstructed values, verify managed Solana fails before effects,
-and exercise automatic EVM source selection with a fake chain catalog. Solana
-mainnet transfers are never executed by the offline suite.
+prove composite EVM-plus-Solana capability visibility, explicit VM address
+selection, the single-SPL-transfer shape, forbidden EVM/cross-chain fields,
+tagged `personalSign` payloads, optional destination signatures, persisted
+Solana execution metadata, and chain-native references. Runtime tests repeat
+these checks for widened or reconstructed values, derive the development Swig
+offline, reject production or non-precreated managed Solana accounts, validate
+opaque quote artifacts before signing/submission, and exercise automatic EVM
+source selection with a fake chain catalog. Offline tests never execute a Solana
+mainnet transfer.
 
 The pure-core gate requires 95% statements, lines, and functions and 90%
 branches. Contract-only files are excluded. The architecture check rejects

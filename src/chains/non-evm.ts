@@ -95,6 +95,14 @@ const solanaMainnet = {
   nativeCurrency: { name: 'Solana', symbol: 'SOL', decimals: 9 },
 } satisfies SolanaChain
 
+const solanaDevnet = {
+  name: 'Solana Devnet',
+  caip2: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1',
+  kind: 'svm',
+  nativeCurrency: { name: 'Solana', symbol: 'SOL', decimals: 9 },
+  testnet: true,
+} satisfies SolanaChain
+
 const tronMainnet = {
   name: 'Tron',
   caip2: 'tron:mainnet',
@@ -148,6 +156,7 @@ export {
   hyperCorePerp,
   hyperCoreSpot,
   solanaAddress,
+  solanaDevnet,
   solanaMainnet,
   stellarMainnet,
   tronMainnet,

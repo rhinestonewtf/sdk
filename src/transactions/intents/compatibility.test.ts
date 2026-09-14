@@ -38,6 +38,7 @@ describe('intent compatibility projections', () => {
 
   test('projects only quote sign data back to its public wire shape', () => {
     const typedData = {
+      kind: 'eip712',
       domain: { chainId: 1, verifyingContract: address },
       types: {
         Root: [
@@ -83,12 +84,12 @@ describe('intent compatibility projections', () => {
 
     const projected = projectCompatibleQuote(quote)
 
-    expect(projected.signData.destination.message).toEqual({
+    expect(projected.signData.destination?.message).toEqual({
       count: '2',
       items: [{ delta: '-1' }],
     })
     expect(projected.cost.input[0]?.amount).toBe(7n)
-    expect(quote.signData.destination.message).toEqual({
+    expect(quote.signData.destination?.message).toEqual({
       count: 2n,
       items: [{ delta: -1n }],
     })

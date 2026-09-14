@@ -1,4 +1,4 @@
-import { type Address, isAddress } from 'viem'
+import { type Account, type Address, isAddress } from 'viem'
 import { type SolanaAddress, solanaAddress } from '../chains/non-evm'
 import type {
   EvmAccountConfig,
@@ -90,6 +90,7 @@ export function attachAccount<const C extends RhinestoneAccountConfig>(
 
   let evmReceiver: Address | undefined
   let managedEvm: EvmAccountConfig | undefined
+  let managedSolanaOwner: Account | undefined
   let solanaReceiver: SolanaAddress | undefined
 
   if (input.evm !== undefined) {
@@ -123,9 +124,34 @@ export function attachAccount<const C extends RhinestoneAccountConfig>(
         )
       }
     } else {
-      exactKeys(solana, ['owner', 'nonce'], 'managed Solana')
-      throw new ManagedSolanaAccountNotSupportedError()
+      exactKeys(solana, ['owner'], 'managed Solana')
+      const owner = record(solana.owner, 'managed Solana owner')
+      exactKeys(owner, ['type', 'account'], 'managed Solana owner')
+      if (
+        owner.type !== 'ecdsa' ||
+        !owner.account ||
+        typeof owner.account !== 'object' ||
+        typeof (owner.account as { address?: unknown }).address !== 'string' ||
+        !isAddress((owner.account as { address: string }).address)
+      ) {
+        throw new ManagedSolanaAccountNotSupportedError(
+          "Managed Solana requires `{ owner: { type: 'ecdsa', account } }` with a valid viem ECDSA account.",
+        )
+      }
+      managedSolanaOwner = owner.account as Account
     }
+  }
+
+  if (managedSolanaOwner && !managedEvm) {
+    throw new ManagedSolanaAccountNotSupportedError(
+      'Managed Solana must be paired with a managed EVM account whose derived address is the Swig identity.',
+    )
+  }
+  if (
+    managedSolanaOwner &&
+    sdk.composition.config.environment !== 'development'
+  ) {
+    throw new ManagedSolanaAccountNotSupportedError()
   }
 
   const captured = Object.freeze({ ...config }) as Readonly<C>
@@ -155,6 +181,16 @@ export function attachAccount<const C extends RhinestoneAccountConfig>(
   const managedCaptured = Object.freeze({
     ...config,
     evm: compatibilityConfig,
+    ...(managedSolanaOwner
+      ? {
+          solana: Object.freeze({
+            owner: Object.freeze({
+              type: 'ecdsa' as const,
+              account: managedSolanaOwner,
+            }),
+          }),
+        }
+      : {}),
   }) as Readonly<C>
   return createAccountFacade(
     compatibilityConfig,

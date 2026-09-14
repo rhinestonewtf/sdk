@@ -8,6 +8,8 @@ import {
   toEvmChainReference,
 } from '../../chains/caip2'
 import type { EvmChainReference } from '../../chains/types'
+import type { Eip712OriginSignData } from '../../clients/orchestrator/public'
+import type { OrchestratorQuote } from '../../clients/orchestrator/types'
 import { defineValidator } from '../../modules/validators/definition'
 import { ecdsaSignerId } from '../../modules/validators/signer-id'
 import type { ResolvedSessionSignerSet } from '../../modules/validators/smart-sessions/types'
@@ -181,6 +183,25 @@ async function resolveSourceCalls<CompatibilityConfig>(
   return { calls, providedFunds }
 }
 
+function assertEvmQuoteSigningData(
+  quote: OrchestratorQuote,
+): asserts quote is OrchestratorQuote & {
+  signData: {
+    origin: Eip712OriginSignData[]
+    destination: import('viem').TypedDataDefinition
+    targetExecution?: import('viem').TypedDataDefinition
+  }
+} {
+  if (
+    !quote.signData.destination ||
+    quote.signData.origin.some(({ kind }) => kind !== 'eip712')
+  ) {
+    throw new Error(
+      'EVM intent signing requires EIP-712 origin and destination payloads',
+    )
+  }
+}
+
 export function buildIntentSigningInput(
   runtime: AccountRuntime,
   quote: PreparedIntent['quote'],
@@ -189,6 +210,7 @@ export function buildIntentSigningInput(
   ownerValidator?: import('../../modules/validators/types').ResolvedValidatorDefinition,
   selectedSignerIds?: readonly string[],
 ): IntentSigningInput {
+  assertEvmQuoteSigningData(quote)
   const sessionTopology = sessions
     ? signingTopology(
         defineValidator(
@@ -216,7 +238,9 @@ export function buildIntentSigningInput(
             threshold: 1,
           },
         }
-  const origins = quote.signData.origin.map((typedData, index) => ({
+  const originTypedData = quote.signData
+    .origin as readonly Eip712OriginSignData[]
+  const origins = originTypedData.map((typedData, index) => ({
     id: hashTypedData(typedData),
     chain: toEvmChainReference(originChainId(typedData)),
     role: 'origin' as const,

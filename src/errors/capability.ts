@@ -19,11 +19,12 @@ class InvalidAccountConfigError extends AccountCapabilityError {
   }
 }
 
-/** Thrown when managed Solana capability is requested before it is available. */
+/** Thrown when managed Solana capability is requested outside development. */
 class ManagedSolanaAccountNotSupportedError extends AccountCapabilityError {
-  constructor() {
+  constructor(message?: string) {
     super(
-      'Managed Solana accounts are not supported yet. Configure an address-only Solana receiver with `{ address: solanaAddress(value) }`.',
+      message ??
+        'Managed Solana accounts are available only when `useDevContracts: true`. Production has no enabled Swig namespace; use an address-only Solana receiver instead.',
       { vm: 'solana' },
     )
     this.name = 'ManagedSolanaAccountNotSupportedError'

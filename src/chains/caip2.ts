@@ -28,6 +28,11 @@ const NON_EVM_CHAINS = [
     caip2: 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
     nonEvm: true,
   },
+  {
+    id: 792703810,
+    caip2: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1',
+    nonEvm: true,
+  },
   { id: 1500148, caip2: 'stellar:pubnet', nonEvm: true },
 ] as const satisfies ReadonlyArray<{
   id: number
