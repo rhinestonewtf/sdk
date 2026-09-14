@@ -73,13 +73,13 @@ class RhinestoneSDK {
    * })
    *
    * const account = await sdk.createAccount({
-   *   owners: { type: 'ecdsa', accounts: [owner] },
+   *   evm: { owners: { type: 'ecdsa', accounts: [owner] } },
    * })
    * ```
    */
-  async createAccount(
-    config: RhinestoneAccountConfig,
-  ): Promise<RhinestoneAccount> {
+  async createAccount<const C extends RhinestoneAccountConfig>(
+    config: C,
+  ): Promise<RhinestoneAccount<C>> {
     return attachAccount(this.#sdk, config)
   }
 

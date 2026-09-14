@@ -33,8 +33,10 @@ describe.sequential('SDK integration preclaim-ops', () => {
   test('injects the session-enable op before user source calls', async () => {
     const sdk = createIntegrationSDK()
     const account = await sdk.createAccount({
-      owners: { type: 'ecdsa', accounts: [createOwner()] },
-      sessions: { enabled: true },
+      evm: {
+        owners: { type: 'ecdsa', accounts: [createOwner()] },
+        sessions: { enabled: true },
+      },
     })
     const session = createScopedSession({
       chain: sourceChain,
@@ -46,7 +48,7 @@ describe.sequential('SDK integration preclaim-ops', () => {
       label: 'preclaim/dummy-ordering',
       mode: 'sign',
       transaction: await withEnableData(account, session, {
-        sourceChains: [sourceChain],
+        sourceChains: [sourceChain] as [typeof sourceChain],
         targetChain,
         sponsored: true,
         calls: [createNoopCall()],
@@ -74,7 +76,9 @@ describe.sequential('SDK integration preclaim-ops', () => {
   test('attaches no preclaim ops to a plain owner intent', async () => {
     const sdk = createIntegrationSDK()
     const account = await sdk.createAccount({
-      owners: { type: 'ecdsa', accounts: [createOwner()] },
+      evm: {
+        owners: { type: 'ecdsa', accounts: [createOwner()] },
+      },
     })
 
     const execution = await executeIntent({
@@ -82,7 +86,7 @@ describe.sequential('SDK integration preclaim-ops', () => {
       label: 'preclaim/none',
       mode: 'sign',
       transaction: {
-        sourceChains: [sourceChain],
+        sourceChains: [sourceChain] as [typeof sourceChain],
         targetChain,
         sponsored: true,
         calls: [createNoopCall()],
@@ -102,9 +106,13 @@ describe.sequential('SDK integration preclaim-ops', () => {
   test('executes a user source call on-chain', async () => {
     const sdk = createIntegrationSDK()
     const account = await sdk.createAccount({
-      owners: { type: 'ecdsa', accounts: [createOwner()] },
+      evm: {
+        owners: { type: 'ecdsa', accounts: [createOwner()] },
+      },
     })
-    await ensureFunded(account.getAddress(), sourceChain, { usdc: 1_000_000n })
+    await ensureFunded(account.getAddress('evm'), sourceChain, {
+      usdc: 1_000_000n,
+    })
     await waitForOrchestratorUsdc(account, sourceChain, 1_000_000n)
 
     const recipient = createOwner().address
@@ -118,7 +126,7 @@ describe.sequential('SDK integration preclaim-ops', () => {
       account,
       label: 'preclaim/execute',
       transaction: {
-        sourceChains: [sourceChain],
+        sourceChains: [sourceChain] as [typeof sourceChain],
         targetChain,
         sponsored: true,
         calls: [],

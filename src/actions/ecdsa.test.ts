@@ -124,9 +124,11 @@ describe('ECDSA Actions', () => {
   describe('Install Ownable Validator', async () => {
     const rhinestone = new RhinestoneSDK({ apiKey: 'test' })
     const rhinestoneAccount = await rhinestone.createAccount({
-      owners: {
-        type: 'passkey',
-        accounts: [passkeyAccount],
+      evm: {
+        owners: {
+          type: 'passkey',
+          accounts: [passkeyAccount],
+        },
       },
     })
 
@@ -201,9 +203,11 @@ describe('ECDSA Actions', () => {
   describe('Enable on an account already configured with ECDSA', async () => {
     const rhinestone = new RhinestoneSDK({ apiKey: 'test' })
     const rhinestoneAccount = await rhinestone.createAccount({
-      owners: {
-        type: 'ecdsa',
-        accounts: [accountA],
+      evm: {
+        owners: {
+          type: 'ecdsa',
+          accounts: [accountA],
+        },
       },
     })
 
@@ -224,9 +228,11 @@ describe('ECDSA Actions', () => {
   describe('Uninstall Ownable Validator', async () => {
     const rhinestone = new RhinestoneSDK({ apiKey: 'test' })
     const rhinestoneAccount = await rhinestone.createAccount({
-      owners: {
-        type: 'ecdsa',
-        accounts: [accountA],
+      evm: {
+        owners: {
+          type: 'ecdsa',
+          accounts: [accountA],
+        },
       },
     })
 

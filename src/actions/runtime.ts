@@ -25,7 +25,9 @@ import { readSessionNonce } from '../modules/validators/smart-sessions/state'
 import type { Session as DomainSession } from '../modules/validators/smart-sessions/types'
 
 function actionContext(context: CallResolveContext) {
-  const resolved = resolveStandaloneAccountConfig(context.config, 'current-v2')
+  const candidate = context.config as unknown as { evm?: unknown }
+  const config = candidate.evm ?? context.config
+  const resolved = resolveStandaloneAccountConfig(config as never, 'current-v2')
   assertAccountOwnersConfigured(resolved)
   const module =
     resolved.sessions.module.source === 'explicit'

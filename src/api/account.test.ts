@@ -2,7 +2,7 @@ import { privateKeyToAccount } from 'viem/accounts'
 import { mainnet, optimism } from 'viem/chains'
 import { describe, expect, test, vi } from 'vitest'
 import { toEvmChainReference } from '../chains/caip2'
-import { hyperCorePerp } from '../chains/non-evm'
+import { hyperCorePerp, solanaAddress, solanaMainnet } from '../chains/non-evm'
 import type {
   HyperCoreOrderAction,
   SerializedIntentInput,
@@ -14,7 +14,7 @@ import {
   QuoteNotInPreparedTransactionError,
   SignerNotSupportedError,
 } from '../errors/execution'
-import type { RhinestoneAccountConfig } from '../index'
+import type { EvmAccountConfig, RhinestoneAccountConfig } from '../index'
 import { RhinestoneSDK } from '../index'
 import { ecdsaSignerId } from '../modules/validators/signer-id'
 import { SOCIAL_RECOVERY_VALIDATOR_ADDRESS } from '../modules/validators/social-recovery'
@@ -26,6 +26,7 @@ import {
   adaptTransaction,
   authorizationChains,
   createAccountFacade,
+  normalizeTransaction,
 } from './account'
 import type { CoreComposition } from './compose-types'
 import type { AdaptedSignerSelection } from './signer-selection'
@@ -59,9 +60,11 @@ describe('account instance surface', () => {
   test('exposes sendUserOperation and no sendTransaction convenience method', async () => {
     const sdk = new RhinestoneSDK({ apiKey: 'offline' })
     const account = await sdk.createAccount({
-      owners: {
-        type: 'ecdsa',
-        accounts: [owner],
+      evm: {
+        owners: {
+          type: 'ecdsa',
+          accounts: [owner],
+        },
       },
     })
 
@@ -72,8 +75,10 @@ describe('account instance surface', () => {
   test('rejects guardians on the intent and ERC-1271 paths', async () => {
     const sdk = new RhinestoneSDK({ apiKey: 'offline' })
     const account = await sdk.createAccount({
-      owners: { type: 'ecdsa', accounts: [owner] },
-      recovery: { guardians: [guardian] },
+      evm: {
+        owners: { type: 'ecdsa', accounts: [owner] },
+        recovery: { guardians: [guardian] },
+      },
     })
     const signers = { type: 'guardians' as const, guardians: [guardian] }
 
@@ -118,7 +123,9 @@ describe('account instance surface', () => {
       },
     })
     const account = await sdk.createAccount({
-      owners: { type: 'ecdsa', accounts: [owner] },
+      evm: {
+        owners: { type: 'ecdsa', accounts: [owner] },
+      },
     })
 
     account
@@ -138,101 +145,106 @@ describe('account instance surface', () => {
 describe('account config compatibility snapshot', () => {
   test('retains account-config keys, nested aliasing, and auth exposure', async () => {
     const sdk = new RhinestoneSDK({ apiKey: 'offline' })
-    const owners: RhinestoneAccountConfig['owners'] = {
+    const owners: EvmAccountConfig['owners'] = {
       type: 'ecdsa',
       accounts: [owner],
     }
-    const provider: RhinestoneAccountConfig['account'] = {
+    const provider: EvmAccountConfig['account'] = {
       type: 'nexus',
       version: '1.2.0',
     }
-    const input: RhinestoneAccountConfig = { account: provider, owners }
-    const account = await sdk.createAccount(input)
+    const input: EvmAccountConfig = { account: provider, owners }
+    const account = await sdk.createAccount({ evm: input })
 
     // Account-config keys survive by value.
-    expect(account.config.account).toEqual(provider)
-    expect(account.config.owners).toEqual(owners)
+    expect(account.config.evm.account).toEqual(provider)
+    expect(account.config.evm.owners).toEqual(owners)
 
     // Shallow copy: nested references are aliased, so later method calls (which
     // re-read the live config) observe post-construction mutations to them.
-    expect(account.config.owners).toBe(owners)
-    expect(account.config.account).toBe(provider)
+    expect(account.config.evm.owners).toBe(owners)
+    expect(account.config.evm.account).toBe(provider)
 
-    // SDK-scoped auth is exposed on the account config snapshot.
-    expect('_authProvider' in account.config).toBe(true)
+    expect(Object.isFrozen(account.config)).toBe(true)
+  })
+})
+
+describe('cross-VM transaction validation', () => {
+  const solana = solanaAddress('11111111111111111111111111111111')
+  const config = {
+    evm: { owners: { type: 'ecdsa' as const, accounts: [owner] } },
+    solana: { address: solana },
+  } satisfies RhinestoneAccountConfig
+
+  test('defaults Solana delivery to the configured receiver', () => {
+    const normalized = normalizeTransaction(
+      {
+        sourceChains: [mainnet],
+        targetChain: solanaMainnet,
+        tokenRequests: [{ address: solana, amount: 1n }],
+        sponsored: true,
+      },
+      config,
+    )
+    expect(normalized.recipient).toBe(solana)
+    expect(normalized.sponsored).toBe(true)
   })
 
-  test('rebuilds configured clients from live SDK compatibility fields', async () => {
-    const requests: { url: string; headers: Headers }[] = []
-    const fetch = vi.fn(
-      async (input: string | URL | Request, init?: RequestInit) => {
-        const url = input instanceof Request ? input.url : input.toString()
-        const headers = new Headers(
-          input instanceof Request ? input.headers : init?.headers,
-        )
-        requests.push({ url, headers })
-        if (url.includes('/portfolio')) {
-          return new Response(JSON.stringify({ portfolio: [] }), {
-            headers: { 'Content-Type': 'application/json' },
-          })
-        }
-        if (url.includes('/chains')) {
-          return new Response(
-            JSON.stringify({
-              'eip155:1': {
-                name: 'Ethereum',
-                testnet: false,
-                supportedTokens: 'all',
-              },
-            }),
-            { headers: { 'Content-Type': 'application/json' } },
-          )
-        }
-        const body = JSON.parse(String(init?.body)) as { id: number }
-        return new Response(
-          JSON.stringify({ jsonrpc: '2.0', id: body.id, result: '0x' }),
-          { headers: { 'Content-Type': 'application/json' } },
-        )
-      },
-    )
-    vi.stubGlobal('fetch', fetch)
-    try {
-      const sdk = new RhinestoneSDK({
-        apiKey: 'offline',
-        provider: {
-          type: 'custom',
-          urls: { 1: 'https://provider-one.test' },
-        },
-      })
-      const account = await sdk.createAccount({
-        owners: { type: 'ecdsa', accounts: [owner] },
-      })
-      const live = account.config as unknown as LegacyAccountConfig<unknown>
+  test.each([
+    { sourceChains: [], targetChain: mainnet, calls: [] },
+    { sourceChains: [mainnet, mainnet], targetChain: mainnet, calls: [] },
+    {
+      sourceChains: [{ id: 1, kind: 'svm', caip2: 'solana:forged' }],
+      targetChain: mainnet,
+      calls: [],
+    },
+    { sourceChains: [{ id: 1500148 }], targetChain: mainnet, calls: [] },
+    { sourceChains: [mainnet], targetChain: solanaMainnet },
+    {
+      sourceChains: [mainnet],
+      targetChain: solanaMainnet,
+      tokenRequests: [{ address: solana, amount: 0n }],
+    },
+    {
+      sourceChains: [mainnet],
+      targetChain: solanaMainnet,
+      tokenRequests: [{ address: solana, amount: 1n }],
+      instructions: [],
+    },
+    {
+      sourceChains: [mainnet],
+      targetChain: mainnet,
+      recipient: recipientAddress,
+      calls: [{ to: recipientAddress }],
+    },
+  ])('rejects unsupported dynamic transaction %#', (transaction) => {
+    expect(() => normalizeTransaction(transaction as never, config)).toThrow()
+  })
 
-      await account.isDeployed(mainnet)
-      live.provider = {
-        type: 'custom',
-        urls: { 1: 'https://provider-two.test' },
-      }
-      await account.isDeployed(mainnet)
+  test('rejects a synthetic non-EVM ID disguised as a viem destination', () => {
+    expect(() =>
+      normalizeTransaction(
+        {
+          sourceChains: [mainnet],
+          targetChain: { ...mainnet, id: 1500148 },
+          calls: [],
+        } as never,
+        config,
+      ),
+    ).toThrow(/eip155 chain ID/)
+  })
 
-      live.endpointUrl = 'https://orchestrator-two.test/base'
-      live.headers = { 'x-live-config': 'true' }
-      await account.getPortfolio()
-
-      expect(requests.map(({ url }) => url)).toEqual(
-        expect.arrayContaining([
-          'https://provider-one.test/',
-          'https://provider-two.test/',
-        ]),
-      )
-      const orchestratorRequest = requests.find(({ url }) =>
-        url.startsWith('https://orchestrator-two.test/base/accounts/'),
-      )
-      expect(orchestratorRequest?.headers.get('x-live-config')).toBe('true')
-    } finally {
-      vi.unstubAllGlobals()
-    }
+  test('rejects a forged non-EVM descriptor', () => {
+    expect(() =>
+      normalizeTransaction(
+        {
+          sourceChains: [mainnet],
+          targetChain: { ...solanaMainnet, caip2: 'tron:mainnet' },
+          tokenRequests: [{ address: solana, amount: 1n }],
+        } as never,
+        config,
+      ),
+    ).toThrow(/mismatched VM/)
   })
 })
 
@@ -315,14 +327,18 @@ describe('account boundary adapters', () => {
       prepareUserOperation,
       sendUserOperation,
     }
-    const facade = createAccountFacade(compatibilityConfig, {
-      config: sdk,
-      project: {} as never,
-      createAccount: (context) => ({
-        context,
-        workflows: workflows as never,
-      }),
-    } satisfies CoreComposition<LegacyAccountConfig<unknown>>)
+    const facade = createAccountFacade(
+      compatibilityConfig,
+      { evm: compatibilityConfig as EvmAccountConfig },
+      {
+        config: sdk,
+        project: {} as never,
+        createAccount: (context) => ({
+          context,
+          workflows: workflows as never,
+        }),
+      } satisfies CoreComposition<LegacyAccountConfig<unknown>>,
+    )
     const selected = privateKeyToAccount(`0x${'03'.repeat(32)}`)
     const signers = {
       type: 'owner' as const,
@@ -415,7 +431,9 @@ describe('account boundary adapters', () => {
   test('rejects an intent id that is not in the prepared transaction', async () => {
     const sdk = new RhinestoneSDK({ apiKey: 'offline' })
     const account = await sdk.createAccount({
-      owners: { type: 'ecdsa', accounts: [owner] },
+      evm: {
+        owners: { type: 'ecdsa', accounts: [owner] },
+      },
     })
     const quote = {
       intentId: 'best',
@@ -475,14 +493,18 @@ describe('account boundary adapters', () => {
       intentId: signed.prepared.quote.intentId,
       targetChain: 1,
     }))
-    const facade = createAccountFacade(compatibilityConfig, {
-      config: sdk,
-      project: {} as never,
-      createAccount: (context) => ({
-        context,
-        workflows: { reconstructPreparedIntent, submitIntent } as never,
-      }),
-    })
+    const facade = createAccountFacade(
+      compatibilityConfig,
+      { evm: compatibilityConfig as EvmAccountConfig },
+      {
+        config: sdk,
+        project: {} as never,
+        createAccount: (context) => ({
+          context,
+          workflows: { reconstructPreparedIntent, submitIntent } as never,
+        }),
+      },
+    )
     const best = quoteFixture('best')
     const alternate = quoteFixture('alternate')
     const signed = {
@@ -577,20 +599,24 @@ describe('account boundary adapters', () => {
       chain: signed.prepared.input.chain,
       hash: submittedHash,
     }))
-    const facade = createAccountFacade(compatibilityConfig, {
-      config: sdk,
-      project: {} as never,
-      createAccount: (context) => ({
-        context,
-        workflows: {
-          prepareUserOperation,
-          reconstructPreparedUserOperation,
-          signUserOperation,
-          reconstructSignedUserOperation,
-          submitUserOperation,
-        } as never,
-      }),
-    })
+    const facade = createAccountFacade(
+      compatibilityConfig,
+      { evm: compatibilityConfig as EvmAccountConfig },
+      {
+        config: sdk,
+        project: {} as never,
+        createAccount: (context) => ({
+          context,
+          workflows: {
+            prepareUserOperation,
+            reconstructPreparedUserOperation,
+            signUserOperation,
+            reconstructSignedUserOperation,
+            submitUserOperation,
+          } as never,
+        }),
+      },
+    )
     const prepared = await facade.prepareUserOperation({
       chain: mainnet,
       calls: [],
@@ -707,11 +733,11 @@ describe('account boundary adapters', () => {
   })
 
   test('carries recipient recovery config into setup and address derivation', () => {
-    const base: RhinestoneAccountConfig = {
+    const base: EvmAccountConfig = {
       account: { type: 'nexus', version: '1.2.0' },
       owners: { type: 'ecdsa', accounts: [owner] },
     }
-    const project = (recipient: RhinestoneAccountConfig) =>
+    const project = (recipient: EvmAccountConfig) =>
       adaptTransaction(invocationContext(), {
         chain: mainnet,
         calls: [],

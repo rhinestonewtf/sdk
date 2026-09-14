@@ -2,12 +2,7 @@ import type { Chain } from 'viem/chains'
 import { describe, test } from 'vitest'
 import { disableSession } from '../../../src/actions/smart-sessions'
 import { SimulationFailedError } from '../../../src/errors/index'
-import type {
-  RhinestoneAccount,
-  Session,
-  SignerSet,
-  Transaction,
-} from '../../../src/index'
+import type { RhinestoneAccount, Session, SignerSet } from '../../../src/index'
 import { sourceChain, targetChain } from '../config/chains'
 import { createIntegrationSDK } from '../config/environment'
 import {
@@ -34,7 +29,9 @@ import {
 
 type ChainMode = 'same' | 'cross'
 type Scope = 'unscoped' | 'scoped-single' | 'scoped-multi'
-type SessionTransaction = Transaction & {
+type SessionTransaction = Parameters<
+  RhinestoneAccount['prepareTransaction']
+>[0] & {
   signers: Extract<SignerSet, { session: Session }>
 }
 
@@ -189,8 +186,10 @@ async function expectScopedCallRejected(
 
 function createSessionAccount() {
   return createIntegrationSDK().createAccount({
-    owners: { type: 'ecdsa', accounts: [createOwner()] },
-    sessions: { enabled: true },
+    evm: {
+      owners: { type: 'ecdsa', accounts: [createOwner()] },
+      sessions: { enabled: true },
+    },
   })
 }
 

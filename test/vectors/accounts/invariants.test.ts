@@ -8,7 +8,7 @@ import { describe, expect, test } from 'vitest'
 import type { EvmChainReference } from '../../../src/chains/types'
 import { createStaticAccountRuntime } from '../../../src/config/account-runtime'
 import { resolveStandaloneAccountConfig } from '../../../src/config/resolve'
-import { type RhinestoneAccountConfig, RhinestoneSDK } from '../../../src/index'
+import { type EvmAccountConfig, RhinestoneSDK } from '../../../src/index'
 import type { ModuleInput } from '../../../src/modules/types'
 import { compareHexValues } from '../../../src/modules/validators/ordering'
 import type { OwnerSet } from '../../../src/modules/validators/types'
@@ -56,7 +56,7 @@ function failure(error: unknown): string {
 }
 
 function deriveStatic(
-  config: RhinestoneAccountConfig,
+  config: EvmAccountConfig,
   options: { chain?: EvmChainReference; deployed?: boolean } = {},
 ): Outcome {
   try {
@@ -78,11 +78,11 @@ function deriveStatic(
   }
 }
 
-async function derivePublic(config: RhinestoneAccountConfig): Promise<Outcome> {
+async function derivePublic(config: EvmAccountConfig): Promise<Outcome> {
   let address: string
   try {
-    const account = await sdk.createAccount(config)
-    address = lower(account.getAddress())
+    const account = await sdk.createAccount({ evm: config })
+    address = lower(account.getAddress('evm'))
     try {
       const initData = account.getInitData()
       return {
@@ -99,7 +99,7 @@ async function derivePublic(config: RhinestoneAccountConfig): Promise<Outcome> {
   }
 }
 
-function deriveV0(config: RhinestoneAccountConfig): Outcome {
+function deriveV0(config: EvmAccountConfig): Outcome {
   try {
     const initData = experimental_getV0InitData(config)
     return {
@@ -126,7 +126,7 @@ function replaceOpaque(_key: string, value: unknown): unknown {
 }
 
 // `Account` holds functions, so `structuredClone` cannot snapshot a config.
-function serializeConfig(config: RhinestoneAccountConfig): string {
+function serializeConfig(config: EvmAccountConfig): string {
   return JSON.stringify(config, replaceOpaque)
 }
 
@@ -284,7 +284,7 @@ const MODULE_POOL: readonly ModuleInput[] = [
   { type: 'executor', address: '0x00000000000000000000000000000000000000d6' },
 ]
 
-type AccountConfig = NonNullable<RhinestoneAccountConfig['account']>
+type AccountConfig = NonNullable<EvmAccountConfig['account']>
 
 const safeAccountArbitrary: fc.Arbitrary<AccountConfig> = fc
   .record({
@@ -454,7 +454,7 @@ const modulesArbitrary = fc.uniqueArray(fc.constantFrom(...MODULE_POOL), {
   selector: (module) => module.address,
 })
 
-const configArbitrary: fc.Arbitrary<RhinestoneAccountConfig> = fc
+const configArbitrary: fc.Arbitrary<EvmAccountConfig> = fc
   .record({
     account: accountArbitrary,
     owners: ownersArbitrary,
@@ -475,7 +475,7 @@ const configArbitrary: fc.Arbitrary<RhinestoneAccountConfig> = fc
       guardians,
       recoveryThreshold,
       modules,
-    }): RhinestoneAccountConfig => {
+    }): EvmAccountConfig => {
       // HCA installs nothing and only accepts ENS owners; an EOA account needs
       // the EOA it adopts. Every other shape is generated freely.
       if (account.type === 'hca') {
@@ -755,9 +755,7 @@ describe('derivation is invariant under chain, deployment and repetition', () =>
 
 type Mutation = {
   readonly name: string
-  readonly apply: (
-    config: RhinestoneAccountConfig,
-  ) => RhinestoneAccountConfig | undefined
+  readonly apply: (config: EvmAccountConfig) => EvmAccountConfig | undefined
 }
 
 function replaceOwnerAccounts(
@@ -920,7 +918,7 @@ describe('derivation is sensitive to the configuration it is given', () => {
         const mutated = mutation.apply(config)
         fc.pre(mutated !== undefined)
         const baseline = deriveStatic(config)
-        const changed = deriveStatic(mutated as RhinestoneAccountConfig)
+        const changed = deriveStatic(mutated as EvmAccountConfig)
         fc.pre(derived(baseline) && derived(changed))
         expect(changed, mutation.name).not.toEqual(baseline)
       }),

@@ -76,7 +76,9 @@ async function accountConfig() {
   const sdk = new RhinestoneSDK({ apiKey: 'test' })
   return (
     await sdk.createAccount({
-      owners: { type: 'ecdsa', accounts: [accountA] },
+      evm: {
+        owners: { type: 'ecdsa', accounts: [accountA] },
+      },
     })
   ).config
 }

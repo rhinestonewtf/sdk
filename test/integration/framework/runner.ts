@@ -2,7 +2,6 @@ import type {
   PreparedTransactionData,
   RhinestoneAccount,
   SignedTransactionData,
-  Transaction,
   TransactionResult,
 } from '../../../src/index'
 
@@ -56,7 +55,7 @@ export async function executeIntent({
   transformSigned,
 }: {
   account: RhinestoneAccount
-  transaction: Transaction
+  transaction: Parameters<RhinestoneAccount['prepareTransaction']>[0]
   label?: string
   signAuthorizations?: boolean
   mode?: ExecutionMode
