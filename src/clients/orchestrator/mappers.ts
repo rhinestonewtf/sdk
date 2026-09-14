@@ -1,4 +1,9 @@
-import type { Address, Hex, SignedAuthorization } from 'viem'
+import type {
+  Address,
+  Hex,
+  SignedAuthorization,
+  TypedDataDefinition,
+} from 'viem'
 import {
   chainIdFromReference,
   formatCaip2,
@@ -6,11 +11,13 @@ import {
   isNonEvmChainId,
   parseCaip2,
 } from '../../chains/caip2'
+import { ValidationError } from './errors'
 import type {
   BridgeFill,
   ChainOperation,
   Cost,
   CostTokenEntry,
+  SignData,
   TokenRequirements,
 } from './public'
 import { serializeBigInts } from './serialization'
@@ -74,7 +81,19 @@ export function mapQuoteResponseFromWire(
   const input = value as WireQuoteResponse
   return {
     traceId: input.traceId ?? '',
-    routes: (input.routes ?? []).map(mapQuoteFromWire),
+    routes: (input.routes ?? []).flatMap((route) => {
+      try {
+        return [mapQuoteFromWire(route)]
+      } catch (error) {
+        if (
+          error instanceof ValidationError &&
+          error.message.includes('Only EIP-712 intent signing data')
+        ) {
+          return []
+        }
+        throw error
+      }
+    }),
   }
 }
 
@@ -221,13 +240,57 @@ export function mapSplitResultFromWire(
   }
 }
 
+function supportedTypedData(value: unknown): TypedDataDefinition {
+  const input = value as {
+    kind?: unknown
+    domain?: unknown
+    types?: unknown
+    primaryType?: unknown
+    message?: unknown
+  }
+  if (
+    !input ||
+    typeof input !== 'object' ||
+    (input.kind !== undefined && input.kind !== 'eip712') ||
+    !input.domain ||
+    typeof input.types !== 'object' ||
+    typeof input.primaryType !== 'string' ||
+    typeof input.message !== 'object'
+  ) {
+    throw new ValidationError({
+      message: 'Only EIP-712 intent signing data is supported by this SDK.',
+    })
+  }
+  return input as TypedDataDefinition
+}
+
+export function mapSupportedSignData(value: unknown): SignData {
+  const input = value as {
+    origin?: unknown
+    destination?: unknown
+    targetExecution?: unknown
+  }
+  if (!input || typeof input !== 'object' || !Array.isArray(input.origin)) {
+    throw new ValidationError({
+      message: 'The orchestrator returned malformed intent signing data.',
+    })
+  }
+  return {
+    origin: input.origin.map(supportedTypedData),
+    destination: supportedTypedData(input.destination),
+    ...(input.targetExecution === undefined
+      ? {}
+      : { targetExecution: supportedTypedData(input.targetExecution) }),
+  }
+}
+
 function mapQuoteFromWire(value: WireQuote): OrchestratorQuote {
   return {
     intentId: value.intentId,
     expiresAt: value.expiresAt,
     estimatedFillTime: value.estimatedFillTime,
     settlementLayer: value.settlementLayer,
-    signData: value.signData as unknown as OrchestratorQuote['signData'],
+    signData: mapSupportedSignData(value.signData),
     cost: mapCostFromWire(value.cost),
     ...(value.tokenRequirements === undefined
       ? {}

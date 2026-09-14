@@ -83,6 +83,9 @@ export interface ProjectWorkflows {
 }
 
 export interface AccountWorkflows<CompatibilityConfig = unknown> {
+  readonly getEligibleEvmSourceChains: (
+    destination: ChainReference,
+  ) => Promise<readonly EvmChainReference[]>
   readonly getAddress: (
     context: AccountInvocationContext<CompatibilityConfig>,
     chain: import('../chains/types').EvmChainReference,

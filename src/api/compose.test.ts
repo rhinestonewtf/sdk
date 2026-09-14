@@ -2,7 +2,7 @@ import { type Account, encodeAbiParameters, erc20Abi, type Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { arbitrum, base as baseChain } from 'viem/chains'
 import { describe, expect, test, vi } from 'vitest'
-import { toEvmChainReference } from '../chains/caip2'
+import { parseCaip2, toEvmChainReference } from '../chains/caip2'
 import { ChainCatalog } from '../clients/orchestrator/chain-catalog'
 import type { OrchestratorPort } from '../clients/orchestrator/port'
 import type { RpcReadPort } from '../clients/rpc/port'
@@ -139,6 +139,56 @@ function fixture() {
 }
 
 describe('internal core composition', () => {
+  test('selects only real EVM sources in the destination network class', async () => {
+    const base = fixture()
+    const getChainCatalog = vi.fn(
+      async () =>
+        new ChainCatalog({
+          1: catalogChain('Ethereum', false),
+          11155111: catalogChain('Sepolia', true),
+          792703809: catalogChain('Solana', false),
+          999: catalogChain('Unknown EVM', false),
+        }),
+    )
+    const dependencies = {
+      ...base.dependencies,
+      orchestrator: { ...base.orchestrator, getChainCatalog },
+    }
+    const workflows = createCoreComposition(
+      base.context.sdk,
+      dependencies,
+    ).createAccount(base.context).workflows
+
+    await expect(
+      workflows.getEligibleEvmSourceChains(toEvmChainReference(1)),
+    ).resolves.toEqual([toEvmChainReference(1), toEvmChainReference(999)])
+    await expect(
+      workflows.getEligibleEvmSourceChains(parseCaip2('hypercore:spot')),
+    ).resolves.toEqual([toEvmChainReference(1), toEvmChainReference(999)])
+    expect(getChainCatalog).toHaveBeenCalledTimes(2)
+  })
+
+  test('fails closed when destination metadata is unavailable', async () => {
+    const base = fixture()
+    const dependencies = {
+      ...base.dependencies,
+      orchestrator: {
+        ...base.orchestrator,
+        getChainCatalog: vi.fn(
+          async () => new ChainCatalog({ 1: catalogChain('Ethereum', false) }),
+        ),
+      },
+    }
+    const workflows = createCoreComposition(
+      base.context.sdk,
+      dependencies,
+    ).createAccount(base.context).workflows
+
+    await expect(
+      workflows.getEligibleEvmSourceChains(toEvmChainReference(8453)),
+    ).rejects.toThrow(/missing from the orchestrator chain catalog/)
+  })
+
   test('runs an intent through real account and signing implementations', async () => {
     const { composition, context, orchestrator } = fixture()
     const workflows = composition.createAccount(context).workflows

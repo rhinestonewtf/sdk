@@ -1,4 +1,4 @@
-import type { Address, HashTypedDataParameters, Hex } from 'viem'
+import type { Address, Chain, HashTypedDataParameters, Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { mainnet } from 'viem/chains'
 import * as ecdsaActions from '../../src/actions/ecdsa'
@@ -10,6 +10,7 @@ import type { SponsorLimitKey } from '../../src/errors/index'
 import * as errors from '../../src/errors/index'
 import {
   type BridgeFill,
+  type EvmAccountConfig,
   hyperCorePerp,
   hyperCoreSpot,
   MULTI_FACTOR_VALIDATOR_V2_ADDRESS,
@@ -25,6 +26,8 @@ import {
   type SignedIntentData,
   type SignedTransactionData,
   type SignerSet,
+  solanaAddress,
+  solanaMainnet,
   stellarMainnet,
   type Transaction,
   tronMainnet,
@@ -40,7 +43,7 @@ const recipient = '0x0000000000000000000000000000000000000001'
 const accountConfig = {
   account: { type: 'safe', version: '1.4.1', adapter: '2.0.0' },
   owners: { type: 'ecdsa', accounts: [owner], threshold: 1 },
-} satisfies RhinestoneAccountConfig
+} satisfies EvmAccountConfig
 
 const registryFreeMfaConfig = {
   owners: {
@@ -48,7 +51,7 @@ const registryFreeMfaConfig = {
     module: MULTI_FACTOR_VALIDATOR_V2_ADDRESS,
     validators: [{ type: 'ecdsa', accounts: [owner] }],
   },
-} satisfies RhinestoneAccountConfig
+} satisfies EvmAccountConfig
 
 new RhinestoneSDK({ apiKey: 'legacy-api-key' })
 new RhinestoneSDK({
@@ -116,6 +119,14 @@ const transaction = {
   signers: ownerSigners,
 } satisfies Transaction
 
+const dynamicSourceChains: Chain[] = [mainnet]
+const dynamicSourceTransaction = {
+  sourceChains: dynamicSourceChains,
+  targetChain: mainnet,
+  calls: [],
+} satisfies Transaction
+void dynamicSourceTransaction
+
 const sameChainTransaction = {
   chain: mainnet,
   calls: [],
@@ -126,12 +137,14 @@ const crossChainWithDeadline = {
   sourceChains: [mainnet],
   targetChain: mainnet,
   calls: [],
+  // @ts-expect-error custom deadlines are same-chain only
   customDeadline: 9_999_999_999,
 } as const satisfies Transaction
 
 const crossChainNonEvmWithDeadline = {
   sourceChains: [mainnet],
   targetChain: tronMainnet,
+  // @ts-expect-error custom deadlines are same-chain only
   customDeadline: 9_999_999_999,
 } as const satisfies Transaction
 
@@ -254,3 +267,63 @@ void jwtServer
 void passkeySigning
 void smartSessions
 void utils
+
+async function crossVmAccountSurface() {
+  const sdk = new RhinestoneSDK({ apiKey: 'types' })
+  const solana = solanaAddress('11111111111111111111111111111111')
+  const managed = await sdk.createAccount({
+    evm: accountConfig,
+    solana: { address: solana },
+  })
+  const evmAddress: Address = managed.getAddress('evm')
+  const nativeSolana: typeof solana = managed.getAddress('solana')
+  managed.prepareTransaction({
+    sourceChains: [mainnet],
+    targetChain: solanaMainnet,
+    tokenRequests: [{ address: solana, amount: 1n }],
+  })
+
+  const receiver = await sdk.createAccount({ solana: { address: solana } })
+  receiver.getAddress('solana')
+  // @ts-expect-error Solana destinations require branded Solana addresses
+  managed.prepareTransaction({
+    sourceChains: [mainnet],
+    targetChain: solanaMainnet,
+    tokenRequests: [
+      {
+        address: recipient,
+        amount: 1n,
+      },
+    ],
+  })
+  managed.prepareTransaction({
+    // @ts-expect-error managed EVM accounts cannot originate on Solana
+    chain: solanaMainnet,
+    tokenRequests: [{ address: solana, amount: 1n }],
+  })
+  // @ts-expect-error receiver-only accounts cannot prepare transactions
+  receiver.prepareTransaction({})
+  // @ts-expect-error EVM is not configured
+  receiver.getAddress('evm')
+  // @ts-expect-error VM selection is required
+  managed.getAddress()
+  // @ts-expect-error legacy flat account configuration was removed
+  sdk.createAccount(accountConfig)
+  // @ts-expect-error at least one VM is required
+  sdk.createAccount({})
+
+  declareWidenedConfig(sdk)
+  void evmAddress
+  void nativeSolana
+}
+void crossVmAccountSurface
+
+async function declareWidenedConfig(sdk: RhinestoneSDK) {
+  const config = null as unknown as RhinestoneAccountConfig
+  const widened = await sdk.createAccount(config)
+  const maybeEvm: Address | undefined = widened.getAddress('evm')
+  // @ts-expect-error a widened config does not prove a managed source
+  widened.prepareTransaction({})
+  void maybeEvm
+}
+void declareWidenedConfig

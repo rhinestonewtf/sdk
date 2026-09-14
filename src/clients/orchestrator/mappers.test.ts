@@ -3,7 +3,9 @@ import { describe, expect, test } from 'vitest'
 import {
   mapIntentRequestToWire,
   mapIntentStatusFromWire,
+  mapQuoteResponseFromWire,
   mapSignedIntentToWire,
+  mapSupportedSignData,
 } from './mappers'
 import type { OrchestratorSignedIntent } from './types'
 
@@ -34,6 +36,66 @@ function signedIntent(
     dryRun: true,
   }
 }
+
+describe('mapSupportedSignData', () => {
+  const typedData = {
+    kind: 'eip712',
+    domain: { chainId: 1, verifyingContract: address },
+    types: { Test: [{ name: 'value', type: 'uint256' }] },
+    primaryType: 'Test',
+    message: { value: '1' },
+  }
+
+  test('accepts supported EIP-712 payloads', () => {
+    expect(
+      mapSupportedSignData({ origin: [typedData], destination: typedData }),
+    ).toMatchObject({ origin: [typedData], destination: typedData })
+  })
+
+  test('rejects personal-sign payloads before intent normalization', () => {
+    expect(() =>
+      mapSupportedSignData({
+        origin: [{ kind: 'personalSign', message: 'payload' }],
+        destination: typedData,
+      }),
+    ).toThrow(/Only EIP-712/)
+  })
+
+  test('drops unsupported routes without poisoning supported quotes', () => {
+    const route = (intentId: string, signData: unknown) => ({
+      intentId,
+      expiresAt: 1,
+      estimatedFillTime: { seconds: 1 },
+      settlementLayer: 'SAME_CHAIN',
+      signData,
+      cost: {
+        input: [],
+        output: [],
+        fees: {
+          total: { usd: 0 },
+          breakdown: {},
+        },
+      },
+    })
+
+    expect(
+      mapQuoteResponseFromWire({
+        traceId: 'trace',
+        routes: [
+          route('bridge-delivery', { origin: [typedData] }),
+          route('personal-sign', {
+            origin: [{ kind: 'personalSign', message: 'payload' }],
+            destination: typedData,
+          }),
+          route('supported', { origin: [typedData], destination: typedData }),
+        ],
+      } as never),
+    ).toMatchObject({
+      traceId: 'trace',
+      routes: [{ intentId: 'supported' }],
+    })
+  })
+})
 
 describe('mapSignedIntentToWire', () => {
   test('maps concrete and any-chain sponsor and recipient authorizations', () => {
