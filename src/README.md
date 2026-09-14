@@ -2,9 +2,12 @@
 
 > Self-custodial wallets and multichain relaying, in one TypeScript SDK
 
-Rhinestone is a vertically integrated smart wallet and crosschain liquidity platform. The SDK provides a unified interface for deploying and managing self-custodial smart accounts, powered by an intent-based transaction infrastructure that enables seamless crosschain execution without bridging or gas tokens.
+Rhinestone is self-custodial stablecoin infrastructure for fintechs. This SDK covers two of its products:
 
-The platform combines modular [smart account tooling](https://docs.rhinestone.dev/smart-wallet/core/create-account) with an intent engine ([Warp](https://docs.rhinestone.dev/home/introduction/rhinestone-intents)) that aggregates settlement layers through a unified relayer market. This handles routing, token liquidity, and crosschain orchestration across all [supported chains](https://docs.rhinestone.dev/home/resources/supported-chains).
+- **Wallets** — deploy and manage self-custodial smart accounts with passkeys, session keys and any signer.
+- **Relaying** — send sponsored, multichain transactions from one signature. Routing, swaps and settlement across a unified relayer market are handled underneath, on every [supported chain](https://docs.rhinestone.dev/home/resources/supported-chains).
+
+Deposits have their own integration: see the [docs](https://docs.rhinestone.dev/deposits/overview).
 
 [Documentation](https://docs.rhinestone.dev)
 
