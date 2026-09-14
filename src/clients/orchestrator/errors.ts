@@ -1,4 +1,5 @@
 import type { Address, Hex } from 'viem'
+import { chainIdFromCaip2 } from '../../chains/caip2'
 
 type ErrorCode =
   | 'VALIDATION_ERROR'
@@ -121,6 +122,9 @@ class ValidationError extends OrchestratorError {
 /**
  * The EVM-derived Solana account has not been created on the requested cluster.
  * Create and authority-verify `swigAddress` before preparing another transfer.
+ *
+ * `chainId` is the SDK's numeric id for the cluster, and is absent when the
+ * response carries no usable chain id.
  */
 class SolanaAccountNotCreatedError extends ValidationError {
   readonly swigAddress: string
@@ -584,6 +588,23 @@ function parseSponsorError(
   }
 }
 
+/**
+ * Normalize `context.chainId` to the SDK's numeric chain ids. The error
+ * boundary lowers it to CAIP-2 (`solana:EtWTRAB…`); older orchestrators send a
+ * number. Anything else — including a chain this SDK version has no id for —
+ * yields `undefined`, which drops the chain hint without losing the error
+ * identity; the raw value stays readable on `issues[].context`.
+ */
+function parseContextChainId(value: unknown): number | undefined {
+  if (typeof value === 'string') {
+    return chainIdFromCaip2(value)
+  }
+  if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0) {
+    return value
+  }
+  return undefined
+}
+
 function parseSolanaAccountNotCreatedError(
   base: BaseErrorParams,
   issues: ValidationIssue[],
@@ -599,15 +620,7 @@ function parseSolanaAccountNotCreatedError(
     return undefined
   }
 
-  const chainId = context.chainId
-  if (
-    chainId !== undefined &&
-    (typeof chainId !== 'number' ||
-      !Number.isSafeInteger(chainId) ||
-      chainId < 0)
-  ) {
-    return undefined
-  }
+  const chainId = parseContextChainId(context.chainId)
 
   return new SolanaAccountNotCreatedError({
     ...base,

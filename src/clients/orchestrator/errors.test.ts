@@ -57,17 +57,68 @@ describe('parseErrorEnvelope Solana account errors', () => {
     })
   })
 
+  test('maps the CAIP-2 chain id the live error boundary returns', () => {
+    const error = parseErrorEnvelope(
+      {
+        code: 'VALIDATION_ERROR',
+        message: 'No Swig at SwigAddress1 for this account yet',
+        traceId: 'trace-solana-caip2',
+        details: [
+          {
+            message: 'No Swig at SwigAddress1 for this account yet',
+            context: {
+              domain: 'planning',
+              code: 'SOLANA_ACCOUNT_NOT_CREATED',
+              swigAddress: 'SwigAddress1',
+              chainId: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1',
+            },
+          },
+        ],
+      },
+      400,
+    )
+
+    expect(isSolanaAccountNotCreated(error)).toBe(true)
+    expect(error).toMatchObject({
+      swigAddress: 'SwigAddress1',
+      chainId: 792703810,
+    })
+  })
+
+  test.each([
+    ['792703810'],
+    ['solana:UnknownClusterGenesisHash11111111'],
+    [-1],
+    [1.5],
+    [null],
+  ])('recognizes the error but drops an unusable chain id %p', (chainId) => {
+    const context = {
+      code: 'SOLANA_ACCOUNT_NOT_CREATED',
+      swigAddress: 'SwigAddress1',
+      chainId,
+    }
+    const error = parseErrorEnvelope(
+      {
+        code: 'VALIDATION_ERROR',
+        message: 'No Swig at SwigAddress1 for this account yet',
+        traceId: 'trace-solana-chain',
+        details: [{ message: 'no swig', context }],
+      },
+      400,
+    )
+
+    expect(isSolanaAccountNotCreated(error)).toBe(true)
+    expect(error).toMatchObject({ swigAddress: 'SwigAddress1' })
+    expect((error as SolanaAccountNotCreatedError).chainId).toBeUndefined()
+    expect((error as SolanaAccountNotCreatedError).issues[0]?.context).toEqual(
+      context,
+    )
+  })
+
   test.each([
     [{ code: 'SOLANA_ACCOUNT_NOT_CREATED' }],
     [{ code: 'SOLANA_ACCOUNT_NOT_CREATED', swigAddress: '' }],
-    [
-      {
-        code: 'SOLANA_ACCOUNT_NOT_CREATED',
-        swigAddress: 'SwigAddress1',
-        chainId: '792703810',
-      },
-    ],
-  ])('keeps malformed missing-account details generic', (context) => {
+  ])('keeps details without a Swig address generic', (context) => {
     const error = parseErrorEnvelope(
       {
         code: 'VALIDATION_ERROR',
