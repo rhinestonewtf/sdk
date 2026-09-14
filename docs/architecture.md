@@ -101,7 +101,8 @@ may narrow but never widen that set.
 A Solana **destination** is delivery-only and funded from EVM sources. The
 recipient resolves in order: an explicit `recipient`, the configured address-only
 receiver, then the managed branch's derived Swig wallet; delivery is refused
-before quoting when none exists, and so are destination calls or instructions.
+before quoting when none exists, and so are destination calls, instructions or
+HyperCore actions.
 The destination hosts no account runtime, so preparation runs the ordinary EVM
 cross-chain path with the account hosted on the last EVM source and the
 destination signature reusing the last origin one. Whether the destination wallet

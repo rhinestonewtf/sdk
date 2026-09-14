@@ -1665,10 +1665,25 @@ function assertSupportedTransaction(
           )
         }
       }
-      if (typeof input.recipient === 'string') solanaAddress(input.recipient)
-      if (input.calls !== undefined || input.instructions !== undefined) {
+      // Anything other than a Solana address string would slip past both
+      // recipient defaults and then be dropped downstream, quoting a delivery
+      // with no receiver at all.
+      if (input.recipient !== undefined) {
+        if (typeof input.recipient !== 'string') {
+          throw new UnsupportedAccountCapabilityError(
+            'A Solana delivery recipient must be a Solana address.',
+            { vm: 'solana' },
+          )
+        }
+        solanaAddress(input.recipient)
+      }
+      if (
+        input.calls !== undefined ||
+        input.instructions !== undefined ||
+        input.hyperCore !== undefined
+      ) {
         throw new UnsupportedAccountCapabilityError(
-          'Solana destinations support token delivery only; calls and custom instructions are unavailable.',
+          'Solana destinations support token delivery only; calls, custom instructions and HyperCore actions are unavailable.',
           { vm: 'solana' },
         )
       }

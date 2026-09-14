@@ -151,6 +151,11 @@ const forbiddenDeliveryRecipient: Transaction = {
   ...deliveryTransaction,
   recipient: owner.address,
 }
+// @ts-expect-error a HyperCore action needs a HyperCore destination
+const forbiddenDeliveryHyperCore: Transaction = {
+  ...deliveryTransaction,
+  hyperCore: { closePerp: { asset: 'ETH' } },
+}
 
 const executionError: Error = new InvalidSolanaTransactionArtifactError(
   'fixture',
@@ -173,6 +178,7 @@ void forbiddenSources
 void forbiddenDestination
 void forbiddenAuthorization
 void forbiddenDeliveryCalls
+void forbiddenDeliveryHyperCore
 void forbiddenDeliveryInstructions
 void forbiddenDeliveryRecipient
 void invalidArtifact

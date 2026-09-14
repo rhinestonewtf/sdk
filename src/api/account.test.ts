@@ -932,7 +932,25 @@ describe('cross-VM transaction validation', () => {
         tokenRequests: [{ address: solana, amount: 1n }],
         instructions: [],
       },
-      /custom instructions are unavailable/,
+      /custom instructions and HyperCore actions are unavailable/,
+    ],
+    [
+      {
+        sourceChains: [mainnet],
+        targetChain: solanaMainnet,
+        tokenRequests: [{ address: solana, amount: 1n }],
+        hyperCore: { closePerp: { asset: 'ETH' } },
+      },
+      /custom instructions and HyperCore actions are unavailable/,
+    ],
+    [
+      {
+        sourceChains: [mainnet],
+        targetChain: solanaMainnet,
+        tokenRequests: [{ address: solana, amount: 1n }],
+        recipient: null,
+      },
+      /recipient must be a Solana address/,
     ],
     [
       {
@@ -1158,12 +1176,11 @@ describe('EVM → Solana delivery', () => {
     const waitForIntentStatus = vi.fn(async () => ({
       traceId: 'status-trace',
       intentId: 'best',
-      status: 'FAILED' as const,
+      status: 'COMPLETED' as const,
       account: owner.address,
       operations: [
         { chain: 792703809, status: 'COMPLETED' as const, txHash: signature },
       ],
-      refunds: [{ chain: mainnet.id, txHash: `0x${'cd'.repeat(32)}` }],
     }))
     const facade = createAccountFacade(
       compatibilityConfig,
@@ -1252,7 +1269,7 @@ describe('EVM → Solana delivery', () => {
     ).toThrow(AccountVmNotConfiguredError)
   })
 
-  test('surfaces the Solana fill and the EVM refund with native references', async () => {
+  test('surfaces the Solana fill with a native transaction reference', async () => {
     const { facade } = fixture()
 
     const status = await facade.waitForExecution({
@@ -1263,13 +1280,9 @@ describe('EVM → Solana delivery', () => {
       targetChain: 792703809,
     })
 
+    // The base58 signature must survive the facade as-is: it is not a hex hash.
     expect(status.operations).toEqual([
       { chain: 792703809, status: 'COMPLETED', txHash: signature },
-    ])
-    // A refunded intent is a failed one; the refund is what tells it from an
-    // intent whose funds were kept.
-    expect(status.refunds).toEqual([
-      { chain: mainnet.id, txHash: `0x${'cd'.repeat(32)}` },
     ])
   })
 })

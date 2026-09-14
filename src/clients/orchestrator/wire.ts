@@ -32,35 +32,7 @@ export type WireIntentRequestInternal = WireIntentRequest & {
 export type WireSplitRequest = JsonRequest<'getSplit'>
 type GeneratedWireQuoteResponse = Folded<JsonResponse<'createQuote'>>
 type GeneratedWireQuote = GeneratedWireQuoteResponse['routes'][number]
-type EcoBridgeFill = {
-  readonly destinationChainId: number
-  readonly fillExpirationPeriod?: number
-  readonly fillStatusTimeout: number
-  readonly type: 'ECO'
-  readonly intentHash: string
-  readonly providerDestinationChainId?: number
-}
-
-type LzBridgeFill = {
-  readonly destinationChainId: number
-  readonly fillExpirationPeriod?: number
-  readonly fillStatusTimeout: number
-  readonly type: 'LZ'
-  readonly quoteId: string
-  readonly dstChainKey: string
-  readonly routeTypes: readonly string[]
-}
-
-// The ECO and LZ variants are already served by the orchestrator but not yet in
-// the pinned, published OpenAPI document. Keep the HTTP boundary truthful during
-// that rollout; the next generated-wire sync will add the structurally identical
-// variants to GeneratedWireQuote.
-export type WireQuote = Omit<GeneratedWireQuote, 'bridgeFill'> & {
-  readonly bridgeFill?:
-    | NonNullable<GeneratedWireQuote['bridgeFill']>
-    | EcoBridgeFill
-    | LzBridgeFill
-}
+export type WireQuote = GeneratedWireQuote
 export type WireQuoteResponse = Omit<GeneratedWireQuoteResponse, 'routes'> & {
   readonly routes: readonly WireQuote[]
 }

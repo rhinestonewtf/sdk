@@ -1324,6 +1324,7 @@ interface CrossChainSolanaTransaction extends Omit<BaseTransaction, 'calls'> {
   recipient?: SolanaAddress
   calls?: never
   instructions?: never
+  hyperCore?: never
 }
 
 type CrossChainTransaction =
