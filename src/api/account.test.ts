@@ -163,6 +163,7 @@ describe('managed Solana account construction', () => {
     try {
       const sdk = new RhinestoneSDK({
         apiKey: 'offline',
+        endpointUrl: 'https://dev.v1.orchestrator.rhinestone.dev',
         useDevContracts: true,
       })
       const config = {
@@ -194,6 +195,26 @@ describe('managed Solana account construction', () => {
     await expect(
       new RhinestoneSDK({
         apiKey: 'offline',
+        useDevContracts: true,
+      }).createAccount({
+        evm: { owners: { type: 'ecdsa', accounts: [owner] } },
+        solana: managed,
+      }),
+    ).rejects.toThrow(/dev\.v1\.orchestrator\.rhinestone\.dev/)
+    await expect(
+      new RhinestoneSDK({
+        apiKey: 'offline',
+        endpointUrl: 'https://v1.orchestrator.rhinestone.dev',
+        useDevContracts: true,
+      }).createAccount({
+        evm: { owners: { type: 'ecdsa', accounts: [owner] } },
+        solana: managed,
+      }),
+    ).rejects.toThrow(/dev\.v1\.orchestrator\.rhinestone\.dev/)
+    await expect(
+      new RhinestoneSDK({
+        apiKey: 'offline',
+        endpointUrl: 'https://dev.v1.orchestrator.rhinestone.dev',
         useDevContracts: true,
       }).createAccount({ solana: managed } as never),
     ).rejects.toThrow(/paired with a managed EVM/)

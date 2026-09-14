@@ -47,6 +47,8 @@ export function composeSdk(input: SdkConstructionInput): SdkComposition {
 }
 
 const ACCOUNT_KEYS = ['evm', 'solana']
+const MANAGED_SOLANA_ORCHESTRATOR_URL =
+  'https://dev.v1.orchestrator.rhinestone.dev'
 const EVM_KEYS = [
   'account',
   'owners',
@@ -152,6 +154,15 @@ export function attachAccount<const C extends RhinestoneAccountConfig>(
     sdk.composition.config.environment !== 'development'
   ) {
     throw new ManagedSolanaAccountNotSupportedError()
+  }
+  if (
+    managedSolanaOwner &&
+    sdk.composition.config.orchestratorUrl.replace(/\/+$/u, '') !==
+      MANAGED_SOLANA_ORCHESTRATOR_URL
+  ) {
+    throw new ManagedSolanaAccountNotSupportedError(
+      `Managed Solana requires \`endpointUrl: '${MANAGED_SOLANA_ORCHESTRATOR_URL}'\` in addition to \`useDevContracts: true\`.`,
+    )
   }
 
   const captured = Object.freeze({ ...config }) as Readonly<C>
