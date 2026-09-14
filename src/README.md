@@ -127,14 +127,13 @@ Create a smart account:
 import { RhinestoneSDK } from '@rhinestone/sdk'
 
 const rhinestone = new RhinestoneSDK({ apiKey: 'your-api-key' })
-const account = await rhinestone.createAccount({
-  evm: {
-    owners: {
-      type: 'ecdsa',
-      accounts: [signer],
-    },
+const evmConfig = {
+  owners: {
+    type: 'ecdsa' as const,
+    accounts: [signer],
   },
-})
+}
+const account = await rhinestone.createAccount({ evm: evmConfig })
 
 const address = account.getAddress('evm')
 ```
@@ -145,7 +144,7 @@ Add an address-only Solana destination when you need to receive tokens there:
 import { solanaAddress } from '@rhinestone/sdk'
 
 const crossVmAccount = await rhinestone.createAccount({
-  evm: account.config.evm,
+  evm: evmConfig,
   solana: { address: solanaAddress(existingSolanaAddress) },
 })
 ```

@@ -103,7 +103,7 @@ describe('Passkeys Actions', () => {
             authenticatorId: passkeyAccount.id,
           }),
         ],
-        rhinestoneAccount.config,
+        rhinestoneAccount.config.evm,
         base,
         accountAddress,
       )
@@ -131,7 +131,7 @@ describe('Passkeys Actions', () => {
     test('', async () => {
       const calls = await resolveCallInputs(
         [disablePasskeys()],
-        rhinestoneAccount.config,
+        rhinestoneAccount.config.evm,
         base,
         accountAddress,
       )

@@ -8,6 +8,73 @@ const accountA = privateKeyToAccount(`0x${'11'.repeat(32)}`)
 const accountB = privateKeyToAccount(`0x${'22'.repeat(32)}`)
 
 describe('legacy account config compatibility', () => {
+  test('matches the public shallow merge, enumerable keys, and references', async () => {
+    const owners = { type: 'ecdsa' as const, accounts: [accountA] }
+    const modules: NonNullable<AccountConstructionInput['modules']> = []
+    const sessions = { enabled: true }
+    const accountInput = { owners, modules, sessions }
+    const provider = { type: 'custom' as const, urls: { 1: 'https://rpc' } }
+    const headers = { 'x-test': 'value' }
+    const sdkInput = {
+      apiKey: 'legacy-secret',
+      auth: { mode: 'apiKey' as const, apiKey: 'current-secret' },
+      endpointUrl: 'https://orchestrator.test',
+      provider,
+      headers,
+      useDevContracts: true,
+    }
+
+    const sdk = new RhinestoneSDK(sdkInput)
+    const publicAccount = await sdk.createAccount({ evm: accountInput })
+    const publicConfig = publicAccount.config.evm
+    const authProvider = Reflect.get(publicConfig, '_authProvider')
+    expect(authProvider).toBeDefined()
+
+    const compatibilityConfig = createLegacyAccountConfig(
+      accountInput,
+      captureLegacySdkConfig(sdkInput, authProvider),
+    )
+
+    expect(Object.keys(compatibilityConfig)).toEqual(Object.keys(publicConfig))
+    expect(compatibilityConfig).toEqual(publicConfig)
+    expect(compatibilityConfig.owners).toBe(owners)
+    expect(compatibilityConfig.modules).toBe(modules)
+    expect(compatibilityConfig.sessions).toBe(sessions)
+    expect(compatibilityConfig.provider).toBe(provider)
+    expect(compatibilityConfig.headers).toBe(headers)
+    expect(compatibilityConfig._authProvider).toBe(authProvider)
+    expect(compatibilityConfig).not.toHaveProperty('apiKey')
+    expect(compatibilityConfig).not.toHaveProperty('auth')
+  })
+
+  test('retains undefined SDK fields as enumerable compatibility keys', async () => {
+    const sdkInput = { apiKey: 'test' } satisfies SdkConstructionInput
+    const accountInput = {
+      owners: { type: 'ecdsa' as const, accounts: [accountA] },
+    }
+    const sdk = new RhinestoneSDK(sdkInput)
+    const publicAccount = await sdk.createAccount({ evm: accountInput })
+    const publicConfig = publicAccount.config.evm
+    const authProvider = Reflect.get(publicConfig, '_authProvider')
+    const compatibilityConfig = createLegacyAccountConfig(
+      accountInput,
+      captureLegacySdkConfig(sdkInput, authProvider),
+    )
+
+    expect(Object.keys(compatibilityConfig)).toEqual([
+      'owners',
+      '_authProvider',
+      'endpointUrl',
+      'provider',
+      'bundler',
+      'paymaster',
+      'useDevContracts',
+      'headers',
+      'hyperliquid',
+    ])
+    expect(Object.keys(compatibilityConfig)).toEqual(Object.keys(publicConfig))
+  })
+
   test('keeps nested aliases live but detaches top-level input replacement', () => {
     const owners = { type: 'ecdsa' as const, accounts: [accountA] }
     const accountInput: AccountConstructionInput = { owners }

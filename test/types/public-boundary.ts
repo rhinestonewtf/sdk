@@ -1,4 +1,4 @@
-import type { Address, HashTypedDataParameters, Hex } from 'viem'
+import type { Address, Chain, HashTypedDataParameters, Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { mainnet } from 'viem/chains'
 import * as ecdsaActions from '../../src/actions/ecdsa'
@@ -118,6 +118,14 @@ const transaction = {
   recipient: accountConfig,
   signers: ownerSigners,
 } satisfies Transaction
+
+const dynamicSourceChains: Chain[] = [mainnet]
+const dynamicSourceTransaction = {
+  sourceChains: dynamicSourceChains,
+  targetChain: mainnet,
+  calls: [],
+} satisfies Transaction
+void dynamicSourceTransaction
 
 const sameChainTransaction = {
   chain: mainnet,

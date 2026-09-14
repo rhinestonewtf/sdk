@@ -146,7 +146,7 @@ describe('internal core composition', () => {
         new ChainCatalog({
           1: catalogChain('Ethereum', false),
           11155111: catalogChain('Sepolia', true),
-          1500148: catalogChain('Solana', false),
+          792703809: catalogChain('Solana', false),
           999: catalogChain('Unknown EVM', false),
         }),
     )

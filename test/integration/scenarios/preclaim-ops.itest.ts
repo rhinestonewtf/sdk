@@ -48,7 +48,7 @@ describe.sequential('SDK integration preclaim-ops', () => {
       label: 'preclaim/dummy-ordering',
       mode: 'sign',
       transaction: await withEnableData(account, session, {
-        sourceChains: [sourceChain] as [typeof sourceChain],
+        sourceChains: [sourceChain],
         targetChain,
         sponsored: true,
         calls: [createNoopCall()],
@@ -86,7 +86,7 @@ describe.sequential('SDK integration preclaim-ops', () => {
       label: 'preclaim/none',
       mode: 'sign',
       transaction: {
-        sourceChains: [sourceChain] as [typeof sourceChain],
+        sourceChains: [sourceChain],
         targetChain,
         sponsored: true,
         calls: [createNoopCall()],
@@ -126,7 +126,7 @@ describe.sequential('SDK integration preclaim-ops', () => {
       account,
       label: 'preclaim/execute',
       transaction: {
-        sourceChains: [sourceChain] as [typeof sourceChain],
+        sourceChains: [sourceChain],
         targetChain,
         sponsored: true,
         calls: [],

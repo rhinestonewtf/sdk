@@ -1,7 +1,7 @@
 import { privateKeyToAccount } from 'viem/accounts'
 import { mainnet, optimism } from 'viem/chains'
 import { describe, expect, test, vi } from 'vitest'
-import { toEvmChainReference } from '../chains/caip2'
+import { parseCaip2, toEvmChainReference } from '../chains/caip2'
 import { hyperCorePerp, solanaAddress, solanaMainnet } from '../chains/non-evm'
 import type {
   HyperCoreOrderAction,
@@ -10,6 +10,7 @@ import type {
 import type { LegacyAccountConfig } from '../config/legacy'
 import { resolveAccountConfig, resolveSdkConfig } from '../config/resolve'
 import type { AccountInvocationContext } from '../config/resolved'
+import { UnsupportedAccountCapabilityError } from '../errors/capability'
 import {
   QuoteNotInPreparedTransactionError,
   SignerNotSupportedError,
@@ -167,6 +168,79 @@ describe('account config compatibility snapshot', () => {
 
     expect(Object.isFrozen(account.config)).toBe(true)
   })
+
+  test('rebuilds configured clients from live SDK compatibility fields', async () => {
+    const requests: { url: string; headers: Headers }[] = []
+    const fetch = vi.fn(
+      async (input: string | URL | Request, init?: RequestInit) => {
+        const url = input instanceof Request ? input.url : input.toString()
+        const headers = new Headers(
+          input instanceof Request ? input.headers : init?.headers,
+        )
+        requests.push({ url, headers })
+        if (url.includes('/portfolio')) {
+          return new Response(JSON.stringify({ portfolio: [] }), {
+            headers: { 'Content-Type': 'application/json' },
+          })
+        }
+        if (url.includes('/chains')) {
+          return new Response(
+            JSON.stringify({
+              'eip155:1': {
+                name: 'Ethereum',
+                testnet: false,
+                supportedTokens: 'all',
+              },
+            }),
+            { headers: { 'Content-Type': 'application/json' } },
+          )
+        }
+        const body = JSON.parse(String(init?.body)) as { id: number }
+        return new Response(
+          JSON.stringify({ jsonrpc: '2.0', id: body.id, result: '0x' }),
+          { headers: { 'Content-Type': 'application/json' } },
+        )
+      },
+    )
+    vi.stubGlobal('fetch', fetch)
+    try {
+      const sdk = new RhinestoneSDK({
+        apiKey: 'offline',
+        provider: {
+          type: 'custom',
+          urls: { 1: 'https://provider-one.test' },
+        },
+      })
+      const account = await sdk.createAccount({
+        evm: { owners: { type: 'ecdsa', accounts: [owner] } },
+      })
+      const live = account.config.evm as LegacyAccountConfig<unknown>
+
+      await account.isDeployed(mainnet)
+      live.provider = {
+        type: 'custom',
+        urls: { 1: 'https://provider-two.test' },
+      }
+      await account.isDeployed(mainnet)
+
+      live.endpointUrl = 'https://orchestrator-two.test/base'
+      live.headers = { 'x-live-config': 'true' }
+      await account.getPortfolio()
+
+      expect(requests.map(({ url }) => url)).toEqual(
+        expect.arrayContaining([
+          'https://provider-one.test/',
+          'https://provider-two.test/',
+        ]),
+      )
+      const orchestratorRequest = requests.find(({ url }) =>
+        url.startsWith('https://orchestrator-two.test/base/accounts/'),
+      )
+      expect(orchestratorRequest?.headers.get('x-live-config')).toBe('true')
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
 })
 
 describe('cross-VM transaction validation', () => {
@@ -191,34 +265,60 @@ describe('cross-VM transaction validation', () => {
   })
 
   test.each([
-    { sourceChains: [], targetChain: mainnet, calls: [] },
-    { sourceChains: [mainnet, mainnet], targetChain: mainnet, calls: [] },
-    {
-      sourceChains: [{ id: 1, kind: 'svm', caip2: 'solana:forged' }],
-      targetChain: mainnet,
-      calls: [],
-    },
-    { sourceChains: [{ id: 1500148 }], targetChain: mainnet, calls: [] },
-    { sourceChains: [mainnet], targetChain: solanaMainnet },
-    {
-      sourceChains: [mainnet],
-      targetChain: solanaMainnet,
-      tokenRequests: [{ address: solana, amount: 0n }],
-    },
-    {
-      sourceChains: [mainnet],
-      targetChain: solanaMainnet,
-      tokenRequests: [{ address: solana, amount: 1n }],
-      instructions: [],
-    },
-    {
-      sourceChains: [mainnet],
-      targetChain: mainnet,
-      recipient: recipientAddress,
-      calls: [{ to: recipientAddress }],
-    },
-  ])('rejects unsupported dynamic transaction %#', (transaction) => {
-    expect(() => normalizeTransaction(transaction as never, config)).toThrow()
+    [
+      { sourceChains: [], targetChain: mainnet, calls: [] },
+      /at least one managed source/,
+    ],
+    [
+      { sourceChains: [mainnet, mainnet], targetChain: mainnet, calls: [] },
+      /duplicate chains/,
+    ],
+    [
+      {
+        sourceChains: [{ id: 1, kind: 'svm', caip2: 'solana:forged' }],
+        targetChain: mainnet,
+        calls: [],
+      },
+      /Only viem EVM chains/,
+    ],
+    [
+      { sourceChains: [{ id: 1500148 }], targetChain: mainnet, calls: [] },
+      /Only viem EVM chains/,
+    ],
+    [
+      { sourceChains: [mainnet], targetChain: solanaMainnet },
+      /at least one token request/,
+    ],
+    [
+      {
+        sourceChains: [mainnet],
+        targetChain: solanaMainnet,
+        tokenRequests: [{ address: solana, amount: 0n }],
+      },
+      /amounts must be positive/,
+    ],
+    [
+      {
+        sourceChains: [mainnet],
+        targetChain: solanaMainnet,
+        tokenRequests: [{ address: solana, amount: 1n }],
+        instructions: [],
+      },
+      /custom instructions are unavailable/,
+    ],
+    [
+      {
+        sourceChains: [mainnet],
+        targetChain: mainnet,
+        recipient: recipientAddress,
+        calls: [{ to: recipientAddress }],
+      },
+      /recipient cannot execute destination calls/,
+    ],
+  ])('rejects unsupported dynamic transaction %#', (transaction, message) => {
+    expect(() => normalizeTransaction(transaction as never, config)).toThrow(
+      message,
+    )
   })
 
   test('rejects a synthetic non-EVM ID disguised as a viem destination', () => {
@@ -234,6 +334,34 @@ describe('cross-VM transaction validation', () => {
     ).toThrow(/eip155 chain ID/)
   })
 
+  test.each([
+    {
+      sourceChains: [mainnet],
+      targetChain: { ...mainnet, id: -1 },
+      calls: [],
+    },
+    {
+      sourceChains: [{ ...mainnet, id: -1 }],
+      targetChain: mainnet,
+      calls: [],
+    },
+  ])('wraps invalid chain IDs in a capability error', (transaction) => {
+    expect(() => normalizeTransaction(transaction as never, config)).toThrow(
+      UnsupportedAccountCapabilityError,
+    )
+    expect(() => normalizeTransaction(transaction as never, config)).toThrow(
+      /Only viem EVM chains|eip155 chain ID/,
+    )
+  })
+
+  test('reports non-EVM origins without calling them Solana', () => {
+    expect(() =>
+      adaptTransaction(invocationContext(), {
+        chain: { id: 728126428, kind: 'tvm', caip2: 'tron:mainnet' },
+      } as never),
+    ).toThrow(/Non-EVM origin execution/)
+  })
+
   test('rejects a forged non-EVM descriptor', () => {
     expect(() =>
       normalizeTransaction(
@@ -245,6 +373,136 @@ describe('cross-VM transaction validation', () => {
         config,
       ),
     ).toThrow(/mismatched VM/)
+  })
+})
+
+describe('prepareTransaction automatic source selection', () => {
+  function fixture(eligibleChainIds: readonly number[] = [mainnet.id]) {
+    const compatibilityConfig: LegacyAccountConfig<unknown> = {
+      owners: { type: 'ecdsa', accounts: [owner] },
+    }
+    const quote = quoteFixture('best')
+    const getEligibleEvmSourceChains = vi.fn(async () =>
+      eligibleChainIds.map(toEvmChainReference),
+    )
+    const prepareIntent = vi.fn(async (_context, input) => ({
+      traceId: 'trace',
+      input,
+      request: serializedIntentInput,
+      quote,
+      quotes: [quote],
+      signing: {} as never,
+      accountChain: toEvmChainReference(mainnet.id),
+    }))
+    const facade = createAccountFacade(
+      compatibilityConfig,
+      {
+        evm: compatibilityConfig as EvmAccountConfig,
+        solana: { address: solanaAddress('11111111111111111111111111111111') },
+      },
+      {
+        config: resolveSdkConfig({ apiKey: 'offline' }),
+        project: {} as never,
+        createAccount: (context) => ({
+          context,
+          workflows: {
+            getAddress: vi.fn(() => owner.address),
+            getEligibleEvmSourceChains,
+            prepareIntent,
+          } as never,
+        }),
+      },
+    )
+    return { facade, getEligibleEvmSourceChains, prepareIntent }
+  }
+
+  test('resolves and propagates automatic EVM sources for Solana delivery', async () => {
+    const { facade, getEligibleEvmSourceChains, prepareIntent } = fixture([
+      mainnet.id,
+      optimism.id,
+    ])
+    const solana = solanaAddress('11111111111111111111111111111111')
+
+    await facade.prepareTransaction({
+      targetChain: solanaMainnet,
+      tokenRequests: [{ address: solana, amount: 1n }],
+    })
+
+    expect(getEligibleEvmSourceChains).toHaveBeenCalledWith(
+      parseCaip2(solanaMainnet.caip2),
+    )
+    expect(prepareIntent.mock.calls[0]?.[1]).toMatchObject({
+      destination: parseCaip2(solanaMainnet.caip2),
+      sourceChains: [
+        toEvmChainReference(mainnet.id),
+        toEvmChainReference(optimism.id),
+      ],
+      accountAccessList: { chainIds: [mainnet.id, optimism.id] },
+    })
+  })
+
+  test.each([
+    {
+      sourceChains: [mainnet],
+      targetChain: optimism,
+      calls: [],
+    },
+    { chain: mainnet, calls: [] },
+  ])(
+    'does not read the catalog for explicit or same-chain sources',
+    async (transaction) => {
+      const { facade, getEligibleEvmSourceChains } = fixture()
+
+      await facade.prepareTransaction(transaction)
+
+      expect(getEligibleEvmSourceChains).not.toHaveBeenCalled()
+    },
+  )
+
+  test('fails before quoting when no automatic source is eligible', async () => {
+    const { facade, prepareIntent } = fixture([])
+    const solana = solanaAddress('11111111111111111111111111111111')
+
+    await expect(
+      facade.prepareTransaction({
+        targetChain: solanaMainnet,
+        tokenRequests: [{ address: solana, amount: 1n }],
+      }),
+    ).rejects.toThrow(/No managed EVM source chains are eligible/)
+    expect(prepareIntent).not.toHaveBeenCalled()
+  })
+
+  test('propagates catalog read failures before quoting', async () => {
+    const { facade, getEligibleEvmSourceChains, prepareIntent } = fixture()
+    getEligibleEvmSourceChains.mockRejectedValueOnce(
+      new Error('catalog unavailable'),
+    )
+    const solana = solanaAddress('11111111111111111111111111111111')
+
+    await expect(
+      facade.prepareTransaction({
+        targetChain: solanaMainnet,
+        tokenRequests: [{ address: solana, amount: 1n }],
+      }),
+    ).rejects.toThrow(/catalog unavailable/)
+    expect(prepareIntent).not.toHaveBeenCalled()
+  })
+
+  test('rejects source assets outside the automatic source scope', async () => {
+    const { facade, getEligibleEvmSourceChains, prepareIntent } = fixture([
+      mainnet.id,
+    ])
+    const solana = solanaAddress('11111111111111111111111111111111')
+
+    await expect(
+      facade.prepareTransaction({
+        targetChain: solanaMainnet,
+        tokenRequests: [{ address: solana, amount: 1n }],
+        sourceAssets: { [optimism.id]: [recipientAddress] },
+      }),
+    ).rejects.toThrow(/outside the eligible source scope/)
+    expect(getEligibleEvmSourceChains).toHaveBeenCalledOnce()
+    expect(prepareIntent).not.toHaveBeenCalled()
   })
 })
 
@@ -474,6 +732,32 @@ describe('account boundary adapters', () => {
     expect(() =>
       account.getTransactionMessages(prepared, { intentId: 'missing' }),
     ).toThrowError(QuoteNotInPreparedTransactionError)
+  })
+
+  test('rejects unsupported signing data asynchronously', async () => {
+    const account = await new RhinestoneSDK({
+      apiKey: 'offline',
+    }).createAccount({
+      evm: { owners: { type: 'ecdsa', accounts: [owner] } },
+    })
+    const quote = {
+      ...quoteFixture('unsupported'),
+      signData: {
+        origin: [{ kind: 'personalSign', message: 'payload' }],
+        destination: quoteFixture('destination').signData.destination,
+      },
+    }
+    const prepared = {
+      quotes: { traceId: 'trace', best: quote, all: [quote] },
+      intentInput: serializedIntentInput,
+      transaction: { chain: mainnet, calls: [] },
+    } as never
+
+    let signing: Promise<unknown> | undefined
+    expect(() => {
+      signing = account.signTransaction(prepared)
+    }).not.toThrow()
+    await expect(signing).rejects.toThrow(/Only EIP-712/)
   })
 
   test('preserves the selected quote when submitting uncached signed data', async () => {

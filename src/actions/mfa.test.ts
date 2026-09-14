@@ -80,7 +80,7 @@ async function accountConfig() {
         owners: { type: 'ecdsa', accounts: [accountA] },
       },
     })
-  ).config
+  ).config.evm
 }
 
 const factor: OwnableValidatorConfig = {

@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest'
 import {
   mapIntentRequestToWire,
   mapIntentStatusFromWire,
+  mapQuoteResponseFromWire,
   mapSignedIntentToWire,
   mapSupportedSignData,
 } from './mappers'
@@ -58,6 +59,41 @@ describe('mapSupportedSignData', () => {
         destination: typedData,
       }),
     ).toThrow(/Only EIP-712/)
+  })
+
+  test('drops unsupported routes without poisoning supported quotes', () => {
+    const route = (intentId: string, signData: unknown) => ({
+      intentId,
+      expiresAt: 1,
+      estimatedFillTime: { seconds: 1 },
+      settlementLayer: 'SAME_CHAIN',
+      signData,
+      cost: {
+        input: [],
+        output: [],
+        fees: {
+          total: { usd: 0 },
+          breakdown: {},
+        },
+      },
+    })
+
+    expect(
+      mapQuoteResponseFromWire({
+        traceId: 'trace',
+        routes: [
+          route('bridge-delivery', { origin: [typedData] }),
+          route('personal-sign', {
+            origin: [{ kind: 'personalSign', message: 'payload' }],
+            destination: typedData,
+          }),
+          route('supported', { origin: [typedData], destination: typedData }),
+        ],
+      } as never),
+    ).toMatchObject({
+      traceId: 'trace',
+      routes: [{ intentId: 'supported' }],
+    })
   })
 })
 

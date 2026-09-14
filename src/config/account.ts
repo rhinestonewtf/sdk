@@ -1270,7 +1270,7 @@ interface SameChainTransaction extends BaseTransaction {
 }
 
 interface CrossChainEvmTransaction extends BaseTransaction {
-  sourceChains?: readonly [Chain, ...Chain[]]
+  sourceChains?: readonly Chain[]
   targetChain: Chain
   tokenRequests?: TokenRequests
   recipient?: EvmAccountConfig | Address
@@ -1279,7 +1279,7 @@ interface CrossChainEvmTransaction extends BaseTransaction {
 // Legacy non-EVM destinations keep their namespace-specific string values.
 // Managed recipient execution remains EVM-only.
 interface CrossChainNonEvmTransaction extends BaseTransaction {
-  sourceChains?: readonly [Chain, ...Chain[]]
+  sourceChains?: readonly Chain[]
   targetChain: Exclude<NonEvmChain, SolanaChain>
   tokenRequests?: NonEvmTokenRequests
   recipient?: NonEvmAddress
@@ -1303,7 +1303,7 @@ interface SameChainSolanaTransaction
 }
 
 interface CrossChainSolanaTransaction extends Omit<BaseTransaction, 'calls'> {
-  sourceChains?: readonly [Chain, ...Chain[]]
+  sourceChains?: readonly Chain[]
   targetChain: SolanaChain
   tokenRequests: NonEvmTokenRequests &
     readonly { address: SolanaAddress; amount?: bigint }[]

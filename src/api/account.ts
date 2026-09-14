@@ -164,11 +164,23 @@ export interface RhinestoneAccountBase<
 export interface ManagedTransactionAccount<
   _C extends RhinestoneAccountConfig = DefaultAccountConfig,
 > {
-  /** Prepare an intent transaction for signing. */
+  /**
+   * Prepare an intent transaction for signing.
+   * @param transaction Transaction to prepare
+   * @returns The prepared transaction data
+   * @see {@link signTransaction} to sign the prepared transaction
+   * @see {@link submitTransaction} to submit the signed transaction
+   */
   prepareTransaction(
     transaction: AccountTransaction<_C>,
   ): Promise<PreparedTransactionData>
-  /** Return the EIP-712 messages for a prepared transaction. */
+  /**
+   * Get the typed-data messages to sign for a prepared transaction.
+   * @param preparedTransaction Prepared transaction data
+   * @param options Optional override; pass `{ intentId }` to inspect a specific quote from `preparedTransaction.quotes.all`
+   * @returns The origin, destination, and (when required) target-execution typed-data messages
+   * @see {@link prepareTransaction} to prepare the transaction data for signing
+   */
   getTransactionMessages(
     preparedTransaction: PreparedTransactionData,
     options?: QuoteSelection,
@@ -177,26 +189,65 @@ export interface ManagedTransactionAccount<
     destination: TypedDataDefinition
     targetExecution?: TypedDataDefinition
   }
-  /** Sign as one owner for later independent assembly. */
+  /**
+   * Sign a prepared transaction as one configured owner. The returned signature
+   * can be serialized and shared with the party coordinating submission.
+   * @param preparedTransaction Prepared transaction data
+   * @param options Owner account, optional quote, and multi-factor validator ID
+   * @returns This owner's signature contribution
+   * @see {@link prepareTransaction} to prepare the transaction data for signing
+   * @see {@link assembleTransaction} to combine independent owner signatures
+   */
   signTransaction(
     preparedTransaction: PreparedTransactionData,
     options: SignAsOwnerOptions,
   ): Promise<OwnerSignature>
-  /** Sign a prepared transaction with its configured signers. */
+  /**
+   * Sign a prepared transaction with the transaction's configured signers.
+   * @param preparedTransaction Prepared transaction data
+   * @param options Optional override; pass `{ intentId }` to sign a specific quote from `preparedTransaction.quotes.all`
+   * @returns The signed transaction data
+   * @see {@link prepareTransaction} to prepare the transaction data for signing
+   * @see {@link submitTransaction} to submit the signed transaction
+   */
   signTransaction(
     preparedTransaction: PreparedTransactionData,
     options?: QuoteSelection,
   ): Promise<SignedTransactionData>
-  /** Assemble independently collected owner signatures. */
+  /**
+   * Assemble independently collected owner signatures into a signed transaction.
+   * Signatures are deduplicated and ordered according to the configured owner set.
+   * Account thresholds are read from the local configuration; an explicit
+   * transaction signer set determines active MFA IDs and contributing owners.
+   * Callers must keep these synchronized with onchain owner and threshold changes.
+   * @param preparedTransaction The prepared transaction every owner signed
+   * @param signatures Owner signatures returned by `signTransaction` with an `owner` option
+   * @returns Signed transaction data ready for submission
+   * @see {@link signTransaction} to create each owner signature
+   * @see {@link submitTransaction} to submit the result
+   */
   assembleTransaction(
     preparedTransaction: PreparedTransactionData,
     signatures: OwnerSignature[],
   ): Promise<SignedTransactionData>
-  /** Sign required EIP-7702 authorizations. */
+  /**
+   * Sign the EIP-7702 authorizations required for a transaction.
+   * @param preparedTransaction Prepared transaction data
+   * @returns The signed authorization list
+   * @see {@link prepareTransaction} to prepare the transaction data for signing
+   */
   signAuthorizations(
     preparedTransaction: PreparedTransactionData,
   ): Promise<SignedAuthorizationList>
-  /** Submit a signed intent transaction. */
+  /**
+   * Submit a signed transaction.
+   * @param signedTransaction Signed transaction data
+   * @param options Optional submission options (e.g. EIP-7702 `authorizations`)
+   * @returns The transaction result (an intent ID)
+   * @see {@link signTransaction} to sign the transaction data
+   * @see {@link signAuthorizations} to sign the required EIP-7702 authorizations
+   * @see {@link waitForExecution} to wait for the transaction to execute onchain
+   */
   submitTransaction(
     signedTransaction: SignedTransactionData,
     options?: SubmitTransactionOptions,
@@ -339,8 +390,10 @@ export interface ManagedEvmAccount<
   waitForExecution(result: TransactionResult): Promise<TransactionStatus>
   waitForExecution(result: UserOperationResult): Promise<UserOperationReceipt>
   /**
-   * Get the account address.
-   * @returns The smart account address
+   * Get the native address for a configured VM.
+   * @param vm Configured VM to read
+   * @returns The account or receiver address in that VM's native format
+   * @throws AccountVmNotConfiguredError when a widened input names an absent VM
    */
   getAddress<const Vm extends ConfiguredVm<C>>(
     vm: Vm,
@@ -621,7 +674,7 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
           : {}),
       }
     },
-    signTransaction: ((
+    signTransaction: (async (
       preparedTransaction: PreparedTransactionData,
       options?: QuoteSelection | SignAsOwnerOptions,
     ): Promise<SignedTransactionData | OwnerSignature> => {
@@ -632,24 +685,28 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
         // reject before resolving sessions (which would issue an RPC read),
         // matching the legacy fast-fail.
         if (preparedTransaction.transaction.signers?.type === 'session') {
-          return Promise.reject(new IndependentSigningNotSupportedError())
+          throw new IndependentSigningNotSupportedError()
         }
         const signerId = signerIdForOwner(options.owner)
-        return resolvePrepared(ctx, preparedTransaction, options.intentId).then(
-          (internal) =>
-            workflows.signIntentAsOwner(ctx, internal, {
-              signerId,
-              ...(options.validatorId === undefined
-                ? {}
-                : { validatorId: options.validatorId }),
-            }) as unknown as Promise<OwnerSignature>,
+        const internal = await resolvePrepared(
+          ctx,
+          preparedTransaction,
+          options.intentId,
         )
+        return workflows.signIntentAsOwner(ctx, internal, {
+          signerId,
+          ...(options.validatorId === undefined
+            ? {}
+            : { validatorId: options.validatorId }),
+        }) as unknown as Promise<OwnerSignature>
       }
-      return resolvePrepared(ctx, preparedTransaction, options?.intentId)
-        .then((internal) => workflows.signIntent(ctx, internal))
-        .then(({ intent }) =>
-          toSignedTransactionData(preparedTransaction, intent, signedIntents),
-        )
+      const internal = await resolvePrepared(
+        ctx,
+        preparedTransaction,
+        options?.intentId,
+      )
+      const { intent } = await workflows.signIntent(ctx, internal)
+      return toSignedTransactionData(preparedTransaction, intent, signedIntents)
     }) as unknown as ManagedEvmAccount<C>['signTransaction'],
     async assembleTransaction(preparedTransaction, signatures) {
       const ctx = context('assemble-intent')
@@ -1131,6 +1188,7 @@ function assertSupportedTransaction(
       !('kind' in target || 'caip2' in target) &&
       (typeof target.id !== 'number' ||
         !Number.isSafeInteger(target.id) ||
+        target.id < 0 ||
         !formatCaip2(target.id).startsWith('eip155:'))
     ) {
       throw new UnsupportedAccountCapabilityError(
@@ -1216,6 +1274,7 @@ function assertSupportedTransaction(
       return (
         typeof source.id !== 'number' ||
         !Number.isSafeInteger(source.id) ||
+        source.id < 0 ||
         Object.hasOwn(source, 'kind') ||
         Object.hasOwn(source, 'caip2') ||
         !formatCaip2(source.id).startsWith('eip155:')
@@ -1294,8 +1353,8 @@ export function adaptTransaction(
 ): IntentInput {
   if ('chain' in transaction && 'kind' in transaction.chain) {
     throw new UnsupportedAccountCapabilityError(
-      'Solana-origin execution is not supported yet.',
-      { vm: 'solana' },
+      'Non-EVM origin execution is not supported yet. Use a viem EVM chain as the managed source.',
+      { vm: transaction.chain.kind },
     )
   }
   const destination =

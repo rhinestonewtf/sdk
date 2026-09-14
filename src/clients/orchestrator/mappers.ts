@@ -81,7 +81,19 @@ export function mapQuoteResponseFromWire(
   const input = value as WireQuoteResponse
   return {
     traceId: input.traceId ?? '',
-    routes: (input.routes ?? []).map(mapQuoteFromWire),
+    routes: (input.routes ?? []).flatMap((route) => {
+      try {
+        return [mapQuoteFromWire(route)]
+      } catch (error) {
+        if (
+          error instanceof ValidationError &&
+          error.message.includes('Only EIP-712 intent signing data')
+        ) {
+          return []
+        }
+        throw error
+      }
+    }),
   }
 }
 

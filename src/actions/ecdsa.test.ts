@@ -135,7 +135,7 @@ describe('ECDSA Actions', () => {
     test('1/1 Owners', async () => {
       const calls = await resolveCallInputs(
         [enableEcdsa([MOCK_OWNER_A])],
-        rhinestoneAccount.config,
+        rhinestoneAccount.config.evm,
         base,
         accountAddress,
       )
@@ -151,7 +151,7 @@ describe('ECDSA Actions', () => {
     test('1/N Owners', async () => {
       const calls = await resolveCallInputs(
         [enableEcdsa([MOCK_OWNER_A, MOCK_OWNER_B])],
-        rhinestoneAccount.config,
+        rhinestoneAccount.config.evm,
         base,
         accountAddress,
       )
@@ -167,7 +167,7 @@ describe('ECDSA Actions', () => {
     test('M/N Owners', async () => {
       const calls = await resolveCallInputs(
         [enableEcdsa([MOCK_OWNER_A, MOCK_OWNER_B, MOCK_OWNER_C], 2)],
-        rhinestoneAccount.config,
+        rhinestoneAccount.config.evm,
         base,
         accountAddress,
       )
@@ -189,7 +189,7 @@ describe('ECDSA Actions', () => {
       await expect(
         resolveCallInputs(
           [enableEcdsa([MOCK_OWNER_A])],
-          rhinestoneAccount.config,
+          rhinestoneAccount.config.evm,
           base,
           accountAddress,
         ),
@@ -216,7 +216,7 @@ describe('ECDSA Actions', () => {
       await expect(
         resolveCallInputs(
           [enableEcdsa([MOCK_OWNER_A])],
-          rhinestoneAccount.config,
+          rhinestoneAccount.config.evm,
           base,
           accountAddress,
         ),
@@ -239,7 +239,7 @@ describe('ECDSA Actions', () => {
     test('', async () => {
       const calls = await resolveCallInputs(
         [disableEcdsa()],
-        rhinestoneAccount.config,
+        rhinestoneAccount.config.evm,
         base,
         accountAddress,
       )
