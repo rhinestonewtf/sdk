@@ -270,6 +270,10 @@ describe('cross-VM transaction validation', () => {
       /at least one managed source/,
     ],
     [
+      { sourceChains: null, targetChain: mainnet, calls: [] },
+      /must be an array/,
+    ],
+    [
       { sourceChains: [mainnet, mainnet], targetChain: mainnet, calls: [] },
       /duplicate chains/,
     ],

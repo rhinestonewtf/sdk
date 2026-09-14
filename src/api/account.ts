@@ -1257,7 +1257,12 @@ function assertSupportedTransaction(
       }
     }
   }
-  if (Array.isArray(input.sourceChains)) {
+  if (input.sourceChains !== undefined) {
+    if (!Array.isArray(input.sourceChains)) {
+      throw new UnsupportedAccountCapabilityError(
+        '`sourceChains` must be an array of managed source chains.',
+      )
+    }
     if (input.sourceChains.length === 0) {
       throw new UnsupportedAccountCapabilityError(
         '`sourceChains` must contain at least one managed source.',
