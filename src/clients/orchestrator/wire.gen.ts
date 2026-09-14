@@ -458,8 +458,6 @@ export interface operations {
       header: {
         /** @description API version. Required; pinned to this document. */
         'x-api-version': '2026-04.blanc'
-        /** @description API key. */
-        'x-api-key': string
       }
       path?: never
       cookie?: never
@@ -858,8 +856,6 @@ export interface operations {
       header: {
         /** @description API version. Required; pinned to this document. */
         'x-api-version': '2026-04.blanc'
-        /** @description API key. */
-        'x-api-key': string
       }
       path: {
         /** @description Unique identifier of the intent operation */
@@ -1034,7 +1030,7 @@ export interface operations {
                */
               nonce: string
               /**
-               * @description Destination recipient account
+               * @description Destination recipient account, in the destination chain's own address format
                * @example 0x3672e268a79bd4acc5ee646bdda652547c7a435c
                */
               recipient: string
@@ -1695,8 +1691,6 @@ export interface operations {
       header: {
         /** @description API version. Required; pinned to this document. */
         'x-api-version': '2026-04.blanc'
-        /** @description API key. */
-        'x-api-key': string
       }
       path: {
         accountAddress: string
@@ -2111,8 +2105,6 @@ export interface operations {
       header: {
         /** @description API version. Required; pinned to this document. */
         'x-api-version': '2026-04.blanc'
-        /** @description API key. */
-        'x-api-key': string
       }
       path?: never
       cookie?: never
@@ -2555,8 +2547,6 @@ export interface operations {
       header: {
         /** @description API version. Required; pinned to this document. */
         'x-api-version': '2026-04.blanc'
-        /** @description API key. */
-        'x-api-key': string
       }
       path?: never
       cookie?: never
@@ -3143,8 +3133,6 @@ export interface operations {
       header: {
         /** @description API version. Required; pinned to this document. */
         'x-api-version': '2026-04.blanc'
-        /** @description API key. */
-        'x-api-key': string
       }
       path?: never
       cookie?: never
@@ -3627,8 +3615,6 @@ export interface operations {
       header: {
         /** @description API version. Required; pinned to this document. */
         'x-api-version': '2026-04.blanc'
-        /** @description API key. */
-        'x-api-key': string
       }
       path?: never
       cookie?: never
@@ -3785,6 +3771,7 @@ export interface operations {
                   | 'MockUSD'
                   | 'XLM'
                   | 'ensUSDC'
+                  | 'ensUSDC2'
                   | 'TRX'
                   | 'WTRX'
                   | 'SOL'
@@ -3795,7 +3782,7 @@ export interface operations {
              * @description Tokens keyed by CAIP-2 chain ID.
              * @example {
              *       "eip155:8453": [
-             *         "USDC"
+             *         "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
              *       ]
              *     }
              */
@@ -3830,6 +3817,7 @@ export interface operations {
                     | 'MockUSD'
                     | 'XLM'
                     | 'ensUSDC'
+                    | 'ensUSDC2'
                     | 'TRX'
                     | 'WTRX'
                     | 'SOL'
@@ -3841,7 +3829,7 @@ export interface operations {
              * @description Per-token maximum input amounts keyed by CAIP-2 chain ID.
              * @example {
              *       "eip155:8453": {
-             *         "USDC": "1000000"
+             *         "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913": "1000000"
              *       }
              *     }
              */
@@ -3882,6 +3870,7 @@ export interface operations {
                     | 'MockUSD'
                     | 'XLM'
                     | 'ensUSDC'
+                    | 'ensUSDC2'
                     | 'TRX'
                     | 'WTRX'
                     | 'SOL'
@@ -3892,7 +3881,7 @@ export interface operations {
                * @description Tokens keyed by CAIP-2 chain ID.
                * @example {
                *       "eip155:8453": [
-               *         "USDC"
+               *         "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
                *       ]
                *     }
                */
@@ -3927,6 +3916,7 @@ export interface operations {
                       | 'MockUSD'
                       | 'XLM'
                       | 'ensUSDC'
+                      | 'ensUSDC2'
                       | 'TRX'
                       | 'WTRX'
                       | 'SOL'
@@ -4498,11 +4488,11 @@ export interface operations {
                     t: number
                   }
               /**
-               * @description The Hyperliquid actions to authorise, IN ORDER. Each gets its own agent in its own API-wallet slot, registered ONE PER BLOCK, and they are sent to the exchange in the order given once every agent is live — the first refusal stops the rest, so a later action never runs against a state an earlier one failed to reach.
+               * @description The Hyperliquid actions to authorise, IN ORDER. Each gets its own agent in its own API-wallet slot, registered ONE AT A TIME and some seconds apart, and they are sent to the exchange in the order given once every agent is live — the first refusal stops the rest, so a later action never runs against a state an earlier one failed to reach.
                *
                *     Order is what makes this more than a batch: `updateLeverage` has to land before the order it applies to, since leverage applied afterwards does not resize an open position. So opening a leveraged position is `[updateLeverage, order]` in ONE intent rather than two.
                *
-               *     Capped at three, which is Hyperliquid's: an account has three NAMED API-wallet slots and the unnamed one belongs to the account holder. More than one action requires `tokenRequests`: HyperCore accepts a single agent registration per block, so each rides a dispatch stage of its own and an intent that delivers nothing has only the one. An action that needs collateral must be paired with `tokenRequests` anyway; one that does not (a reduce-only close, a cancel, a leverage change) rides a tokenless intent, one at a time.
+               *     Capped at three, which is Hyperliquid's: an account has three NAMED API-wallet slots and the unnamed one belongs to the account holder. More than one action requires `tokenRequests`: HyperCore refuses a registration while the eviction the previous one queued is still pending, so each rides a dispatch stage of its own, released a few seconds after the one before it landed, and an intent that delivers nothing has only the one. An action that needs collateral must be paired with `tokenRequests` anyway; one that does not (a reduce-only close, a cancel, a leverage change) rides a tokenless intent, one at a time — a few seconds after the previous intent's last registration, or it is refused as `HYPERCORE_TRADE_IN_FLIGHT`.
                */
               actions?: (
                 | {
@@ -5679,8 +5669,6 @@ export interface operations {
       header: {
         /** @description API version. Required; pinned to this document. */
         'x-api-version': '2026-04.blanc'
-        /** @description API key. */
-        'x-api-key': string
       }
       path?: never
       cookie?: never
@@ -6414,8 +6402,6 @@ export interface operations {
       header: {
         /** @description API version. Required; pinned to this document. */
         'x-api-version': '2026-04.blanc'
-        /** @description API key. */
-        'x-api-key': string
       }
       path?: never
       cookie?: never
@@ -6793,8 +6779,6 @@ export interface operations {
       header: {
         /** @description API version. Required; pinned to this document. */
         'x-api-version': '2026-04.blanc'
-        /** @description API key. */
-        'x-api-key': string
       }
       path?: never
       cookie?: never
@@ -7296,8 +7280,6 @@ export interface operations {
       header: {
         /** @description API version. Required; pinned to this document. */
         'x-api-version': '2026-04.blanc'
-        /** @description API key. */
-        'x-api-key': string
       }
       path?: never
       cookie?: never
@@ -7804,8 +7786,6 @@ export interface operations {
       header: {
         /** @description API version. Required; pinned to this document. */
         'x-api-version': '2026-04.blanc'
-        /** @description API key. */
-        'x-api-key': string
       }
       path?: never
       cookie?: never
@@ -8306,8 +8286,6 @@ export interface operations {
       header: {
         /** @description API version. Required; pinned to this document. */
         'x-api-version': '2026-04.blanc'
-        /** @description API key. */
-        'x-api-key': string
       }
       path: {
         nonce: string
