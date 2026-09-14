@@ -12,7 +12,7 @@ import type {
 } from '../../accounts/adapter'
 import { wrapKernelMessageHash } from '../../accounts/kernel-signing'
 import type { AccountConstruction } from '../../accounts/types'
-import { toEvmChainReference } from '../../chains/caip2'
+import { parseCaip2, toEvmChainReference } from '../../chains/caip2'
 import type { OrchestratorQuote } from '../../clients/orchestrator/types'
 import { defineValidator } from '../../modules/validators/definition'
 import {
@@ -27,7 +27,7 @@ import { sendIntent } from './send'
 import { buildSessionIntentPlanInput } from './session-signing'
 import { signIntent, signIntentAsOwner } from './sign-transaction'
 import { submitIntent } from './submit'
-import type { IntentWorkflowContext } from './types'
+import type { IntentInput, IntentWorkflowContext } from './types'
 
 const chain = toEvmChainReference(1)
 const account = privateKeyToAccount(
@@ -280,6 +280,71 @@ describe('intent workflow', () => {
 
     expect(prepared.request.account.mockSignatures?.['1']).toMatch(/^0x/u)
     expect(prepared.request.account.mockSignatures?.['1337001']).toBeUndefined()
+  })
+
+  // EVM → Solana delivery: the destination hosts no account runtime and takes
+  // no executions, so preparation runs the EVM cross-chain path end to end with
+  // the account hosted on a source chain.
+  describe('Solana destination delivery', () => {
+    const mint = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
+    const recipient = 'EEnKdeMRGrhKq1Z2rkRubkrkTxCZigLZ5QgUYqAMvPnU'
+    const delivery = {
+      destination: parseCaip2('solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp'),
+      sourceChains: [toEvmChainReference(base.id), chain],
+      calls: [],
+      tokenRequests: [{ token: mint, amount: 50_000n }],
+      recipient: { address: recipient },
+    } satisfies IntentInput<{ marker: boolean }>
+
+    test('hosts the account on the last EVM source and requests no destination execution', async () => {
+      const workflow = context()
+
+      const prepared = await prepareIntent(workflow, delivery)
+
+      expect(workflow.account.forChain).toHaveBeenCalledWith(chain)
+      expect(prepared.accountChain).toEqual(chain)
+      expect(prepared.request.destinationChainId).toBe(792703809)
+      expect(prepared.request.destinationExecutions).toEqual([])
+      // Base58 is case-sensitive; a normalized mint or recipient delivers
+      // somewhere else entirely.
+      expect(prepared.request.tokenRequests).toEqual([
+        { tokenAddress: mint, amount: 50_000n },
+      ])
+      expect(prepared.request.recipient).toEqual({ address: recipient })
+    })
+
+    test('signs the destination by reusing the last origin signature', async () => {
+      const prepared = await prepareIntent(context(), delivery)
+
+      expect(prepared.signing.origins).toHaveLength(1)
+      expect(prepared.signing.origins[0]?.chain).toEqual(chain)
+      // No EVM destination chain means no separate destination payload to sign.
+      expect(prepared.signing.destination).toMatchObject({
+        mode: 'reuse-origin',
+        originArtifactId: 'origin-0',
+      })
+      expect(prepared.signing.target).toBeUndefined()
+    })
+
+    test('rejects destination calls before quoting', async () => {
+      const workflow = context()
+
+      await expect(
+        prepareIntent(workflow, {
+          ...delivery,
+          calls: [{ target: address, value: 1n, data: '0x' }],
+        }),
+      ).rejects.toThrow(
+        'Destination calls are not supported for solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
+      )
+      expect(workflow.quoteClient.createQuote).not.toHaveBeenCalled()
+    })
+
+    test('requires an EVM source chain to host the account', async () => {
+      await expect(
+        prepareIntent(context(), { ...delivery, sourceChains: [] }),
+      ).rejects.toThrow(/requires at least one EVM source chain/u)
+    })
   })
 
   test('signs through the shared plan executor', async () => {

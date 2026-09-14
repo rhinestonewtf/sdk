@@ -92,6 +92,20 @@ function readEcoIntentHash(bridgeFill: BridgeFill): Hex | undefined {
 }
 const narrowedEcoIntentHash: Hex | undefined = readEcoIntentHash(ecoBridgeFill)
 
+// A Solana delivery is tracked with Eco's own id for the destination chain.
+const solanaDeliveryBridgeFill = {
+  type: 'ECO',
+  destinationChainId: 792703809,
+  providerDestinationChainId: 1399811149,
+  intentHash: `0x${'22'.repeat(32)}`,
+} as const satisfies BridgeFill
+const providerDestinationChainId: number | undefined =
+  quote.bridgeFill?.type === 'ECO'
+    ? quote.bridgeFill.providerDestinationChainId
+    : undefined
+void solanaDeliveryBridgeFill
+void providerDestinationChainId
+
 const signingContent: SessionSigningContent = {
   domain: { name: 'Example', chainId: mainnet.id },
   types: { Example: [{ name: 'value', type: 'uint256' }] },

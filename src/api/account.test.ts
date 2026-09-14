@@ -16,6 +16,7 @@ import type { LegacyAccountConfig } from '../config/legacy'
 import { resolveAccountConfig, resolveSdkConfig } from '../config/resolve'
 import type { AccountInvocationContext } from '../config/resolved'
 import {
+  AccountVmNotConfiguredError,
   ManagedSolanaAccountNotSupportedError,
   UnsupportedAccountCapabilityError,
 } from '../errors/capability'
@@ -385,35 +386,69 @@ describe('managed Solana account facade', () => {
     )
   })
 
-  test('defaults an existing EVM-origin Solana delivery to the managed wallet without mutating the request', async () => {
-    const { facade, workflows, recipient: managedWallet } = fixture()
-    const request = {
-      sourceChains: [mainnet],
-      targetChain: solanaDevnet,
-      tokenRequests: [{ address: mint, amount: 100n }],
-    }
-    const evmQuote = quoteFixture('evm')
-    const prepareIntent = vi.fn(async (_context, input) => ({
-      traceId: 'evm-trace',
-      input,
-      request: serializedIntentInput,
-      quote: evmQuote,
-      quotes: [evmQuote],
-      signing: {} as never,
-      accountChain: toEvmChainReference(mainnet.id),
-    }))
-    Object.assign(workflows, { prepareIntent })
+  test.each([solanaMainnet, solanaDevnet])(
+    'defaults an existing EVM-origin Solana delivery to the managed wallet without mutating the request ($caip2)',
+    async (targetChain) => {
+      const { facade, workflows, recipient: managedWallet } = fixture()
+      const request = {
+        sourceChains: [mainnet],
+        targetChain,
+        tokenRequests: [{ address: mint, amount: 100n }],
+      }
+      const evmQuote = quoteFixture('evm')
+      const prepareIntent = vi.fn(async (_context, input) => ({
+        traceId: 'evm-trace',
+        input,
+        request: serializedIntentInput,
+        quote: evmQuote,
+        quotes: [evmQuote],
+        signing: {} as never,
+        accountChain: toEvmChainReference(mainnet.id),
+      }))
+      Object.assign(workflows, { prepareIntent })
 
-    const prepared = await facade.prepareTransaction(request)
+      const prepared = await facade.prepareTransaction(request)
 
-    expect(request).not.toHaveProperty('recipient')
-    expect(prepared.transaction).toMatchObject({ recipient: managedWallet })
-    expect(prepareIntent.mock.calls[0]?.[1]).toMatchObject({
-      recipient: { address: managedWallet },
-    })
-    expect(workflows.prepareSolanaIntent).not.toHaveBeenCalled()
-    expect(workflows.getEligibleEvmSourceChains).not.toHaveBeenCalled()
-  })
+      expect(request).not.toHaveProperty('recipient')
+      expect(prepared.transaction).toMatchObject({ recipient: managedWallet })
+      expect(prepareIntent.mock.calls[0]?.[1]).toMatchObject({
+        recipient: { address: managedWallet },
+      })
+      expect(workflows.prepareSolanaIntent).not.toHaveBeenCalled()
+      expect(workflows.getEligibleEvmSourceChains).not.toHaveBeenCalled()
+    },
+  )
+
+  test.each([solanaMainnet, solanaDevnet])(
+    'lets an explicit recipient win over the managed wallet on $caip2',
+    async (targetChain) => {
+      const { facade, workflows, recipient: managedWallet } = fixture()
+      const evmQuote = quoteFixture('evm')
+      const prepareIntent = vi.fn(async (_context, input) => ({
+        traceId: 'evm-trace',
+        input,
+        request: serializedIntentInput,
+        quote: evmQuote,
+        quotes: [evmQuote],
+        signing: {} as never,
+        accountChain: toEvmChainReference(mainnet.id),
+      }))
+      Object.assign(workflows, { prepareIntent })
+
+      await facade.prepareTransaction({
+        sourceChains: [mainnet],
+        targetChain,
+        tokenRequests: [{ address: mint, amount: 100n }],
+        recipient,
+      })
+
+      expect(prepareIntent.mock.calls[0]?.[1]).toMatchObject({
+        destination: parseCaip2(targetChain.caip2),
+        recipient: { address: recipient },
+      })
+      expect(recipient).not.toBe(managedWallet)
+    },
+  )
 
   test('selects an alternate quote consistently for messages, signing, and submission', async () => {
     const { facade, workflows } = fixture()
@@ -1096,6 +1131,146 @@ describe('prepareTransaction automatic source selection', () => {
     ).rejects.toThrow(/outside the eligible source scope/)
     expect(getEligibleEvmSourceChains).toHaveBeenCalledOnce()
     expect(prepareIntent).not.toHaveBeenCalled()
+  })
+})
+
+describe('EVM → Solana delivery', () => {
+  const mint = solanaAddress('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v')
+  const receiver = solanaAddress('EEnKdeMRGrhKq1Z2rkRubkrkTxCZigLZ5QgUYqAMvPnU')
+  const explicitRecipient = solanaAddress('11111111111111111111111111111112')
+  const signature =
+    '5KtPn1LGuxhFiKZ9xVLYBu9A2yBqX6gB4XzYGVxV9Dszgvn6YxrY3JQSMNJ4e6d7S5kJqY2LxA2nCE4BrVQCLH5m'
+
+  function fixture() {
+    const compatibilityConfig: LegacyAccountConfig<unknown> = {
+      owners: { type: 'ecdsa', accounts: [owner] },
+    }
+    const quote = quoteFixture('best')
+    const prepareIntent = vi.fn(async (_context, input) => ({
+      traceId: 'trace',
+      input,
+      request: serializedIntentInput,
+      quote,
+      quotes: [quote],
+      signing: {} as never,
+      accountChain: toEvmChainReference(mainnet.id),
+    }))
+    const waitForIntentStatus = vi.fn(async () => ({
+      traceId: 'status-trace',
+      intentId: 'best',
+      status: 'FAILED' as const,
+      account: owner.address,
+      operations: [
+        { chain: 792703809, status: 'COMPLETED' as const, txHash: signature },
+      ],
+      refunds: [{ chain: mainnet.id, txHash: `0x${'cd'.repeat(32)}` }],
+    }))
+    const facade = createAccountFacade(
+      compatibilityConfig,
+      {
+        evm: compatibilityConfig as EvmAccountConfig,
+        solana: { address: receiver },
+      },
+      {
+        config: resolveSdkConfig({ apiKey: 'offline' }),
+        project: {} as never,
+        createAccount: (context) => ({
+          context,
+          workflows: {
+            getAddress: vi.fn(() => owner.address),
+            prepareIntent,
+            waitForIntentStatus,
+          } as never,
+        }),
+      },
+    )
+    return { facade, prepareIntent, waitForIntentStatus }
+  }
+
+  test('carries the base58 mint, configured receiver, and fee modes into the request', async () => {
+    const { facade, prepareIntent } = fixture()
+
+    const prepared = await facade.prepareTransaction({
+      sourceChains: [mainnet, optimism],
+      targetChain: solanaMainnet,
+      tokenRequests: [{ address: mint, amount: 50_000n }],
+      sponsored: true,
+      appFees: { feeBps: 25 },
+      protocolFees: { feeBps: 50 },
+    })
+
+    expect(prepareIntent.mock.calls[0]?.[1]).toMatchObject({
+      destination: parseCaip2(solanaMainnet.caip2),
+      sourceChains: [
+        toEvmChainReference(mainnet.id),
+        toEvmChainReference(optimism.id),
+      ],
+      calls: [],
+      // Base58 is case-sensitive; the facade must not normalize either string.
+      tokenRequests: [{ token: mint, amount: 50_000n }],
+      recipient: { address: receiver },
+      options: {
+        appFees: { feeBps: 25 },
+        protocolFees: { feeBps: 50 },
+        sponsorSettings: {
+          gas: true,
+          bridgeFees: true,
+          swapFees: true,
+          protocolFees: true,
+        },
+      },
+    })
+    // `execution` is Solana-ORIGIN metadata; a delivery carries none.
+    expect(prepared).not.toHaveProperty('execution')
+  })
+
+  test('lets an explicit recipient win over the configured receiver', async () => {
+    const { facade, prepareIntent } = fixture()
+
+    await facade.prepareTransaction({
+      sourceChains: [mainnet],
+      targetChain: solanaDevnet,
+      tokenRequests: [{ address: mint, amount: 1n }],
+      recipient: explicitRecipient,
+    })
+
+    expect(prepareIntent.mock.calls[0]?.[1]).toMatchObject({
+      recipient: { address: explicitRecipient },
+    })
+  })
+
+  test('refuses delivery with neither an explicit recipient nor a Solana branch', () => {
+    expect(() =>
+      normalizeTransaction(
+        {
+          sourceChains: [mainnet],
+          targetChain: solanaMainnet,
+          tokenRequests: [{ address: mint, amount: 1n }],
+        } as never,
+        { evm: { owners: { type: 'ecdsa', accounts: [owner] } } },
+      ),
+    ).toThrow(AccountVmNotConfiguredError)
+  })
+
+  test('surfaces the Solana fill and the EVM refund with native references', async () => {
+    const { facade } = fixture()
+
+    const status = await facade.waitForExecution({
+      type: 'intent',
+      id: 'best',
+      traceId: 'trace',
+      sourceChains: [mainnet.id],
+      targetChain: 792703809,
+    })
+
+    expect(status.operations).toEqual([
+      { chain: 792703809, status: 'COMPLETED', txHash: signature },
+    ])
+    // A refunded intent is a failed one; the refund is what tells it from an
+    // intent whose funds were kept.
+    expect(status.refunds).toEqual([
+      { chain: mainnet.id, txHash: `0x${'cd'.repeat(32)}` },
+    ])
   })
 })
 

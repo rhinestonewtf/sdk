@@ -38,6 +38,7 @@ type EcoBridgeFill = {
   readonly fillStatusTimeout: number
   readonly type: 'ECO'
   readonly intentHash: string
+  readonly providerDestinationChainId?: number
 }
 
 type LzBridgeFill = {

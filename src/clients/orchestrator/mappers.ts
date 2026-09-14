@@ -410,6 +410,11 @@ function mapBridgeFillFromWire(value: WireQuote['bridgeFill']): {
           type: 'ECO',
           destinationChainId: value.destinationChainId,
           intentHash: value.intentHash as Hex,
+          ...(value.providerDestinationChainId !== undefined
+            ? {
+                providerDestinationChainId: value.providerDestinationChainId,
+              }
+            : {}),
         },
       }
     case 'RELAY':

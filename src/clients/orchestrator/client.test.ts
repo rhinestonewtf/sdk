@@ -177,6 +177,9 @@ describe('orchestrator client', () => {
       destinationChainId: 42161,
       intentHash: `0x${'22'.repeat(32)}`,
     })
+    expect(result.routes[1]?.bridgeFill).not.toHaveProperty(
+      'providerDestinationChainId',
+    )
     expect(fetch).toHaveBeenCalledWith(
       'https://orchestrator.example/quotes',
       expect.objectContaining({
@@ -332,6 +335,93 @@ describe('orchestrator client', () => {
     // An unknown layer costs the tracking handle, never the quote.
     expect(result.routes[1]?.intentId).toBe('intent-future')
     expect(result.routes[1]).not.toHaveProperty('bridgeFill')
+  })
+
+  test('keeps native identifiers for a Solana-destination delivery', async () => {
+    const solanaMint = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
+    const client = createOrchestratorClient({
+      url: 'https://orchestrator.example',
+      auth: createOrchestratorAuth({ kind: 'api-key', apiKey: 'secret' }),
+      fetch: async () =>
+        Response.json({
+          routes: [
+            {
+              intentId: 'intent-solana',
+              expiresAt: 1,
+              estimatedFillTime: { seconds: 2 },
+              settlementLayer: 'ECO',
+              signData: {
+                origin: [],
+                destination: {
+                  domain: {},
+                  types: {},
+                  primaryType: 'Test',
+                  message: {},
+                },
+              },
+              cost: {
+                input: [],
+                output: [
+                  {
+                    chainId: 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
+                    tokenAddress: solanaMint,
+                    symbol: 'USDC',
+                    decimals: 6,
+                    price: { usd: 1 },
+                    amount: '50000',
+                  },
+                ],
+                fees: {
+                  total: { usd: 0 },
+                  breakdown: {
+                    gas: { usd: 0, sponsored: false },
+                    bridge: { usd: 0, sponsored: false },
+                    swap: { usd: 0, sponsored: false },
+                    app: { usd: 0, sponsored: false },
+                    protocol: { usd: 0, sponsored: false },
+                    sponsorSurcharge: { usd: 0, sponsored: false },
+                  },
+                },
+              },
+              bridgeFill: {
+                type: 'ECO',
+                destinationChainId: 792703809,
+                providerDestinationChainId: 1399811149,
+                intentHash: `0x${'35'.repeat(32)}`,
+                fillExpirationPeriod: 1169,
+                fillStatusTimeout: 14400,
+              },
+            },
+          ],
+        }),
+    })
+
+    const result = await client.createQuote({
+      account: { address, accountType: 'ERC7579' },
+      destinationChainId: 792703809,
+      destinationExecutions: [],
+      tokenRequests: [{ tokenAddress: solanaMint, amount: 50000n }],
+      options: {},
+    })
+
+    // The provider's own id for the delivery chain is the only handle that
+    // resolves a Solana fill with Eco, so it must survive the mapper.
+    expect(result.routes[0]?.bridgeFill).toEqual({
+      type: 'ECO',
+      destinationChainId: 792703809,
+      providerDestinationChainId: 1399811149,
+      intentHash: `0x${'35'.repeat(32)}`,
+    })
+    expect(result.routes[0]?.cost.output).toEqual([
+      {
+        chainId: 792703809,
+        tokenAddress: solanaMint,
+        symbol: 'USDC',
+        decimals: 6,
+        price: { usd: 1 },
+        amount: 50000n,
+      },
+    ])
   })
 
   test('maps error envelope metadata', async () => {
