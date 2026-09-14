@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 2.16.1
+
+### Patch Changes
+
+- f21abe2: Stop sending the placeholder `x-api-key: jwt` header alongside the bearer credential in `experimental_jwt` auth mode. Requests now present only the access token, which every Rhinestone orchestrator environment accepts.
+
 ## 2.16.0
 
 ### Minor Changes
