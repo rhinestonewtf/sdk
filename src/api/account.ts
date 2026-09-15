@@ -2074,6 +2074,12 @@ export function adaptTransaction(
                     bridgeFees: transaction.sponsored.bridging,
                     swapFees: transaction.sponsored.swaps,
                     protocolFees: transaction.sponsored.protocolFees ?? false,
+                    // Omitted rather than sent false when unset: the field
+                    // rides the server-signature surface, so a key that is
+                    // present-but-false is not the same bytes as absent.
+                    ...(transaction.sponsored.swapValue
+                      ? { swapValue: true }
+                      : {}),
                   },
           }
         : {}),

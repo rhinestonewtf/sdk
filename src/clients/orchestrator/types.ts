@@ -52,6 +52,9 @@ export interface OrchestratorIntentOptions {
     readonly bridgeFees: boolean
     readonly swapFees: boolean
     readonly protocolFees?: boolean
+    /** Par same-chain swaps: the sponsor pays the market shortfall so the user
+     *  trades 1:1. Sent only when explicitly requested. */
+    readonly swapValue?: boolean
   }
   readonly settlementLayers?:
     | { readonly include: readonly string[] }

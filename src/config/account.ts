@@ -1195,6 +1195,21 @@ type Sponsorship =
        * `sponsored: true` shorthand enables it along with the other categories.
        */
       protocolFees?: boolean
+      /**
+       * Pay the market shortfall on an eligible same-chain swap so the user
+       * trades at par — they contribute the 1:1 amount and the sponsor covers
+       * the difference between that and what the swap actually costs.
+       *
+       * Distinct from `swaps`, which waives a fee Rhinestone charges. This one
+       * is the exchange rate itself, so it moves real tokens rather than
+       * forgiving a line item.
+       *
+       * Object form ONLY, and deliberately absent from the `sponsored: true`
+       * shorthand: par is an explicit opt-in, not something "sponsor
+       * everything" should imply. Also requires the feature to be enabled for
+       * your client server-side, so setting it is a request, not a guarantee.
+       */
+      swapValue?: boolean
     }
 
 interface BaseTransaction {
