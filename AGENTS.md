@@ -69,6 +69,8 @@ Where to open PRs:
 
 After a changeset reaches `main`, a successful `@dev` publish opens one `main` → `release` promotion PR; pushes to `release` and `v1` run their production release workflows.
 
+Merging the promotion PR publishes nothing. It opens a changesets `Release` PR, and merging THAT publishes `@latest`, which cannot be undone. Use the `release-promotion` skill.
+
 ## Patterns
 
 - Use viem types for addresses, chains, and hex values
