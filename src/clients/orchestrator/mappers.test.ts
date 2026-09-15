@@ -287,6 +287,42 @@ describe('mapIntentRequestToWire — quoter pin', () => {
   })
 })
 
+describe('mapIntentRequestToWire — Solana destination', () => {
+  // Base58 is case-sensitive: any lowercasing or checksumming of a mint or a
+  // recipient on the way to the wire delivers to a different account.
+  const mint = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
+  const recipient = 'EEnKdeMRGrhKq1Z2rkRubkrkTxCZigLZ5QgUYqAMvPnU'
+
+  const request = {
+    account: { address, accountType: 'ERC7579' },
+    destinationChainId: 792703809,
+    destinationExecutions: [],
+    tokenRequests: [{ tokenAddress: mint, amount: 50000n }],
+    recipient: { address: recipient },
+    accountAccessList: { chainIds: [8453] },
+    options: {},
+  } as never
+
+  test('sends the CAIP-2 destination and passes base58 references through verbatim', () => {
+    const wire = mapIntentRequestToWire(request) as unknown as {
+      destinationChainId: string
+      tokenRequests: readonly { tokenAddress: string; amount: string }[]
+      recipient?: Record<string, unknown>
+      accountAccessList?: unknown
+    }
+
+    expect(wire.destinationChainId).toBe(
+      'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
+    )
+    expect(wire.tokenRequests).toEqual([
+      { tokenAddress: mint, amount: '50000' },
+    ])
+    // A non-EVM recipient carries no account type or setup ops to project.
+    expect(wire.recipient).toEqual({ address: recipient })
+    expect(wire.accountAccessList).toEqual({ chainIds: ['eip155:8453'] })
+  })
+})
+
 describe('mapIntentRequestToWire — HyperCore action', () => {
   const base = {
     account: { address, accountType: 'ERC7579' },

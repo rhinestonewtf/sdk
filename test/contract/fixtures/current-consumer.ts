@@ -36,6 +36,12 @@ const ecoBridgeFill = {
   intentHash: `0x${'11'.repeat(32)}`,
 } as const satisfies BridgeFill
 const ecoIntentHash: Hex | undefined = readEcoIntentHash(ecoBridgeFill)
+const solanaDeliveryBridgeFill = {
+  type: 'ECO',
+  destinationChainId: 792703809,
+  providerDestinationChainId: 1399811149,
+  intentHash: `0x${'22'.repeat(32)}`,
+} as const satisfies BridgeFill
 const solanaOperation = {
   chain: 792703810,
   status: 'COMPLETED',
@@ -65,6 +71,15 @@ async function useCurrentAccountApi() {
     targetChain: solanaMainnet,
     tokenRequests: [{ address: solana, amount: 1n }],
   })
+
+  const delivery = await account.prepareTransaction({
+    targetChain: solanaMainnet,
+    tokenRequests: [{ address: solanaMint, amount: 1n }],
+    recipient: solanaRecipient,
+    sponsored: true,
+  })
+  const deliveryFill: BridgeFill | undefined = delivery.quotes.best.bridgeFill
+  void deliveryFill
 
   const receiver = await sdk.createAccount({ solana: { address: solana } })
   receiver.getAddress('solana')
@@ -118,6 +133,7 @@ const recognizedErrors: boolean[] = [
 ]
 
 void ecoIntentHash
+void solanaDeliveryBridgeFill
 void solanaOperation
 void useCurrentAccountApi
 void useManagedSolanaApi

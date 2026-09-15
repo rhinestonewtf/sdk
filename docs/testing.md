@@ -30,8 +30,12 @@ Solana execution metadata, and chain-native references. Runtime tests repeat
 these checks for widened or reconstructed values, derive the development Swig
 offline, reject production or non-precreated managed Solana accounts, validate
 opaque quote artifacts before signing/submission, and exercise automatic EVM
-source selection with a fake chain catalog. Offline tests never execute a Solana
-mainnet transfer.
+source selection with a fake chain catalog. EVM → Solana delivery is covered at
+the client, workflow and facade layers: the recipient resolution order on both
+clusters, base58 mints and recipients passed through unnormalized, refused
+destination execution, the provider's own destination chain id on `bridgeFill`,
+and chain-native completion and refund references. Offline tests never execute a
+Solana mainnet transfer.
 
 The pure-core gate requires 95% statements, lines, and functions and 90%
 branches. Contract-only files are excluded. The architecture check rejects

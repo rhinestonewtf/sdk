@@ -20,6 +20,7 @@ import {
   type SolanaExecutionMetadata,
   solanaAddress,
   solanaDevnet,
+  type Transaction,
 } from '../../src/index'
 
 const owner = privateKeyToAccount(`0x${'11'.repeat(32)}`)
@@ -54,6 +55,19 @@ const solanaTransaction = {
   recipient,
   sponsored: false,
 } satisfies SameChainSolanaTransaction
+const deliveryTransaction = {
+  sourceChains: [mainnet],
+  targetChain: solanaDevnet,
+  tokenRequests: [{ address: mint, amount: 1n }],
+  recipient,
+  sponsored: true,
+} satisfies Transaction
+// Both the recipient and the EVM sources are optional: the account's own Solana
+// wallet and the eligible catalog chains stand in for them.
+const defaultedDelivery = {
+  targetChain: solanaDevnet,
+  tokenRequests: [{ address: mint }],
+} satisfies Transaction
 
 const metadata: SolanaExecutionMetadata = {
   kind: 'solana',
@@ -80,6 +94,8 @@ async function compositeCapabilitySurface() {
   const evmAddress: Address = account.getAddress('evm')
   const solanaAddressValue: typeof recipient = account.getAddress('solana')
   account.prepareTransaction(solanaTransaction)
+  account.prepareTransaction(deliveryTransaction)
+  account.prepareTransaction(defaultedDelivery)
   account.prepareTransaction({ chain: mainnet, calls: [] })
 
   const messages = account.getTransactionMessages(
@@ -120,6 +136,27 @@ const forbiddenAuthorization = {
   eip7702InitSignature: '0x12' as Hex,
 } satisfies SameChainSolanaTransaction
 
+// @ts-expect-error Solana destinations take delivery only, never calls
+const forbiddenDeliveryCalls: Transaction = {
+  ...deliveryTransaction,
+  calls: [],
+}
+const forbiddenDeliveryInstructions: Transaction = {
+  ...deliveryTransaction,
+  // @ts-expect-error Solana destinations take delivery only, never instructions
+  instructions: [],
+}
+// @ts-expect-error a Solana delivery recipient is a base58 wallet, not an EVM address
+const forbiddenDeliveryRecipient: Transaction = {
+  ...deliveryTransaction,
+  recipient: owner.address,
+}
+// @ts-expect-error a HyperCore action needs a HyperCore destination
+const forbiddenDeliveryHyperCore: Transaction = {
+  ...deliveryTransaction,
+  hyperCore: { closePerp: { asset: 'ETH' } },
+}
+
 const executionError: Error = new InvalidSolanaTransactionArtifactError(
   'fixture',
 )
@@ -140,6 +177,10 @@ void forbiddenSponsorship
 void forbiddenSources
 void forbiddenDestination
 void forbiddenAuthorization
+void forbiddenDeliveryCalls
+void forbiddenDeliveryHyperCore
+void forbiddenDeliveryInstructions
+void forbiddenDeliveryRecipient
 void invalidArtifact
 void expired
 void uncreated

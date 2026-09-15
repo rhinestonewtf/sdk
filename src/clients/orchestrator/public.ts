@@ -514,7 +514,17 @@ interface SignData {
  */
 type BridgeFill =
   | { type: 'OFT'; destinationChainId: number }
-  | { type: 'ECO'; destinationChainId: number; intentHash: Hex }
+  | {
+      type: 'ECO'
+      destinationChainId: number
+      intentHash: Hex
+      /**
+       * Eco's own id for the delivery chain, present only where it differs from
+       * ours — i.e. non-EVM destinations such as Solana. Use it, not
+       * `destinationChainId`, when resolving the fill against Eco's status API.
+       */
+      providerDestinationChainId?: number
+    }
   | { type: 'RELAY'; destinationChainId: number; requestId: string }
   | { type: 'NEAR'; destinationChainId: number; depositAddress: Address }
   | { type: 'RHINO'; destinationChainId: number; commitmentId: string }
