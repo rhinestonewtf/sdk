@@ -207,6 +207,14 @@ const sponsoredGasUnits: string | undefined =
 const sponsoredTokenAmount: string | undefined =
   sponsorshipBody.tokenRequests[0].amount
 const preparedIntentInput: SerializedIntentInput = prepared.intentInput
+// A Solana-origin binding is narrowed on `kind`, which keeps the base58 and hex
+// recipients apart.
+const preparedRecipient: string | undefined =
+  prepared.execution === undefined
+    ? undefined
+    : prepared.execution.kind === 'solana'
+      ? prepared.execution.recipient
+      : prepared.execution.destinationToken
 
 new RhinestoneSDK({
   auth: {
@@ -271,6 +279,7 @@ void sponsoredCallValue
 void sponsoredGasUnits
 void sponsoredTokenAmount
 void preparedIntentInput
+void preparedRecipient
 void actions
 void ecdsaActions
 void mfaActions

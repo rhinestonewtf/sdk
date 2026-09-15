@@ -1,6 +1,6 @@
 import type { Address, Hex, TypedDataDefinition } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
-import { mainnet } from 'viem/chains'
+import { base, mainnet } from 'viem/chains'
 import {
   InvalidSolanaTransactionArtifactError,
   isInvalidSolanaTransactionArtifactError,
@@ -11,12 +11,14 @@ import {
 } from '../../src/errors/index'
 import {
   type ChainOperation,
+  type CrossChainSolanaOriginTransaction,
   type Eip712OriginSignData,
   type OriginSignData,
   type PersonalSignOriginSignData,
   RhinestoneSDK,
   type SameChainSolanaTransaction,
   type SignData,
+  type SolanaCrossChainExecutionMetadata,
   type SolanaExecutionMetadata,
   solanaAddress,
   solanaDevnet,
@@ -69,6 +71,22 @@ const defaultedDelivery = {
   tokenRequests: [{ address: mint }],
 } satisfies Transaction
 
+const usdcOnBase = '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913' as const
+const deliveryFromSolana = {
+  sourceChains: [solanaDevnet],
+  sourceTokens: [{ address: mint }],
+  targetChain: base,
+  tokenRequests: [{ address: usdcOnBase, amount: 1n }],
+} satisfies CrossChainSolanaOriginTransaction
+// The delivery recipient and amount are both optional: the account's own EVM
+// identity receives the whole balance of the named mint.
+const maxOutFromSolana = {
+  sourceChains: [solanaDevnet],
+  sourceTokens: [{ address: mint }],
+  targetChain: base,
+  tokenRequests: [{ address: usdcOnBase }],
+} satisfies CrossChainSolanaOriginTransaction
+
 const metadata: SolanaExecutionMetadata = {
   kind: 'solana',
   namespace: 'dev-v1',
@@ -84,6 +102,23 @@ const metadata: SolanaExecutionMetadata = {
   mint,
 }
 
+const crossChainMetadata: SolanaCrossChainExecutionMetadata = {
+  kind: 'solana-cross-chain',
+  namespace: 'dev-v1',
+  endpoint: 'https://orchestrator.example',
+  chain: 792703810,
+  caip2: solanaDevnet.caip2,
+  accountAddress: owner.address,
+  accountType: 'ERC7579',
+  authority: owner.address,
+  swigAddress: recipient,
+  walletAddress: recipient,
+  mint,
+  destinationChain: base.id,
+  destinationToken: usdcOnBase,
+  recipient: owner.address,
+}
+
 async function compositeCapabilitySurface() {
   const sdk = new RhinestoneSDK({ apiKey: 'types', useDevContracts: true })
   const account = await sdk.createAccount({
@@ -94,6 +129,16 @@ async function compositeCapabilitySurface() {
   const evmAddress: Address = account.getAddress('evm')
   const solanaAddressValue: typeof recipient = account.getAddress('solana')
   account.prepareTransaction(solanaTransaction)
+  account.prepareTransaction(deliveryFromSolana)
+  account.prepareTransaction(maxOutFromSolana)
+  // The same request written inline, which is how integrators write it.
+  account.prepareTransaction({
+    sourceChains: [solanaDevnet],
+    sourceTokens: [{ address: mint }],
+    targetChain: base,
+    tokenRequests: [{ address: usdcOnBase }],
+    recipient: owner.address,
+  })
   account.prepareTransaction(deliveryTransaction)
   account.prepareTransaction(defaultedDelivery)
   account.prepareTransaction({ chain: mainnet, calls: [] })
@@ -157,6 +202,37 @@ const forbiddenDeliveryHyperCore: Transaction = {
   hyperCore: { closePerp: { asset: 'ETH' } },
 }
 
+const forbiddenDeliveryFromSolanaCalls = {
+  ...deliveryFromSolana,
+  // @ts-expect-error a Solana-origin delivery carries no destination calls
+  calls: [],
+} satisfies CrossChainSolanaOriginTransaction
+const forbiddenDeliveryFromSolanaInstructions = {
+  ...deliveryFromSolana,
+  // @ts-expect-error a Solana-origin delivery carries no instructions
+  instructions: [],
+} satisfies CrossChainSolanaOriginTransaction
+const forbiddenDeliveryFromSolanaHyperCore = {
+  ...deliveryFromSolana,
+  // @ts-expect-error a HyperCore action needs a HyperCore destination
+  hyperCore: { closePerp: { asset: 'ETH' } },
+} satisfies CrossChainSolanaOriginTransaction
+const forbiddenDeliveryFromSolanaSponsorship = {
+  ...deliveryFromSolana,
+  // @ts-expect-error Solana-origin spends are not sponsorable
+  sponsored: true,
+} satisfies CrossChainSolanaOriginTransaction
+const forbiddenDeliveryFromSolanaRecipient = {
+  ...deliveryFromSolana,
+  // @ts-expect-error the delivery lands on EVM, so the recipient is hex
+  recipient,
+} satisfies CrossChainSolanaOriginTransaction
+const forbiddenDeliveryFromSolanaTarget = {
+  ...deliveryFromSolana,
+  // @ts-expect-error a Solana-origin delivery targets an EVM chain
+  targetChain: solanaDevnet,
+} satisfies CrossChainSolanaOriginTransaction
+
 const executionError: Error = new InvalidSolanaTransactionArtifactError(
   'fixture',
 )
@@ -172,6 +248,13 @@ void originPayloads
 void solanaSignData
 void nativeOperation
 void metadata
+void crossChainMetadata
+void forbiddenDeliveryFromSolanaCalls
+void forbiddenDeliveryFromSolanaHyperCore
+void forbiddenDeliveryFromSolanaInstructions
+void forbiddenDeliveryFromSolanaRecipient
+void forbiddenDeliveryFromSolanaSponsorship
+void forbiddenDeliveryFromSolanaTarget
 void forbiddenCalls
 void forbiddenSponsorship
 void forbiddenSources

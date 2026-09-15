@@ -9,6 +9,7 @@ import type {
   TypedData,
   TypedDataDefinition,
 } from 'viem'
+import { isAddress } from 'viem'
 import type { UserOperationReceipt } from 'viem/account-abstraction'
 import { asSwigNamespace, locateSwig } from '../accounts/solana/address'
 import { formatCaip2, parseCaip2, toEvmChainReference } from '../chains/caip2'
@@ -36,6 +37,7 @@ import type {
 import type {
   AccountTransaction,
   CallInput,
+  CrossChainSolanaOriginTransaction,
   EvmAccountConfig,
   RhinestoneAccountConfig,
   Session,
@@ -97,7 +99,6 @@ import type {
   QuoteSelection,
   SignedIntent,
   SignedTransactionData,
-  SolanaExecutionMetadata,
   TransactionResult,
   TransactionStatus,
 } from '../transactions/intents/types'
@@ -527,31 +528,44 @@ function toPreparedTransactionData(
   return data
 }
 
+function solanaMetadata(
+  input: SolanaTransferInput,
+): NonNullable<PreparedTransactionData['execution']> {
+  const binding = {
+    namespace: input.namespace,
+    endpoint: input.endpoint,
+    chain: solanaChainId(input.chain),
+    caip2: input.chain.caip2,
+    accountAddress: input.accountAddress,
+    accountType: input.accountType,
+    authority: input.authority,
+    swigAddress: input.swigAddress,
+    walletAddress: input.walletAddress,
+    mint: input.mint,
+  }
+  const delivery = input.delivery
+  return delivery.kind === 'cross-chain'
+    ? {
+        kind: 'solana-cross-chain',
+        ...binding,
+        destinationChain: delivery.chainId,
+        destinationToken: delivery.token,
+        recipient: delivery.recipient,
+      }
+    : { kind: 'solana', ...binding, recipient: delivery.recipient }
+}
+
 function toPreparedSolanaTransactionData(
   prepared: import('../transactions/intents/solana').PreparedSolanaIntent,
   transaction: Transaction,
 ): PreparedTransactionData {
-  const input = prepared.input
   return {
     quotes: {
       traceId: prepared.traceId,
       best: toPublicQuote(prepared.quote),
       all: prepared.quotes.map(toPublicQuote),
     },
-    execution: {
-      kind: 'solana',
-      namespace: input.namespace,
-      endpoint: input.endpoint,
-      chain: solanaChainId(input.chain),
-      caip2: input.chain.caip2,
-      accountAddress: input.accountAddress,
-      accountType: input.accountType,
-      authority: input.authority,
-      swigAddress: input.swigAddress,
-      walletAddress: input.walletAddress,
-      recipient: input.recipient,
-      mint: input.mint,
-    },
+    execution: solanaMetadata(prepared.input),
     intentInput: projectCompatibleIntentInput(prepared.request),
     transaction,
   }
@@ -695,10 +709,9 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
     }
     if (!isSolanaOrigin(transaction)) {
       throw new InvalidSolanaTransactionArtifactError(
-        'the transaction is not a same-chain Solana transfer',
+        'the transaction is not a Solana-origin transfer',
       )
     }
-    const request = transaction.tokenRequests[0]
     const accountAddress = capturedSolanaIdentity
     if (!accountAddress || !capturedSolanaAccountType) {
       throw new UnsupportedAccountCapabilityError(
@@ -706,12 +719,10 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
         { vm: 'solana' },
       )
     }
+    const request = transaction.tokenRequests[0]
     const location = locateSwig(asSwigNamespace('dev-v1'), accountAddress)
-    return {
-      chain: transaction.chain,
-      mint: request.address,
+    const common = {
       ...(request.amount === undefined ? {} : { amount: request.amount }),
-      recipient: transaction.recipient,
       accountAddress,
       accountType: capturedSolanaAccountType,
       authority: solanaOwner().address,
@@ -723,28 +734,35 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
       ...(transaction.protocolFees
         ? { protocolFees: transaction.protocolFees }
         : {}),
+    } satisfies Partial<SolanaTransferInput>
+    if (isCrossChainSolanaOrigin(transaction)) {
+      return {
+        ...common,
+        chain: transaction.sourceChains[0],
+        mint: transaction.sourceTokens[0].address,
+        delivery: {
+          kind: 'cross-chain',
+          chainId: transaction.targetChain.id,
+          token: transaction.tokenRequests[0].address,
+          // Resolved here rather than in `normalizeTransaction` so the prepare
+          // and reconstruct paths agree on the same recipient.
+          recipient: transaction.recipient ?? accountAddress,
+        },
+      }
+    }
+    return {
+      ...common,
+      chain: transaction.chain,
+      mint: transaction.tokenRequests[0].address,
+      delivery: { kind: 'same-chain', recipient: transaction.recipient },
     }
   }
 
   const assertSolanaMetadata = (
-    actual: SolanaExecutionMetadata | undefined,
+    actual: PreparedTransactionData['execution'],
     expected: SolanaTransferInput,
   ) => {
-    const expectedMetadata: SolanaExecutionMetadata = {
-      kind: 'solana',
-      namespace: expected.namespace,
-      endpoint: expected.endpoint,
-      chain: solanaChainId(expected.chain),
-      caip2: expected.chain.caip2,
-      accountAddress: expected.accountAddress,
-      accountType: expected.accountType,
-      authority: expected.authority,
-      swigAddress: expected.swigAddress,
-      walletAddress: expected.walletAddress,
-      recipient: expected.recipient,
-      mint: expected.mint,
-    }
-    const expectedEntries = Object.entries(expectedMetadata)
+    const expectedEntries = Object.entries(solanaMetadata(expected))
     if (
       !actual ||
       Object.keys(actual).length !== expectedEntries.length ||
@@ -1465,7 +1483,7 @@ function assertSupportedSignData(
   }
 }
 
-function isSolanaOrigin(
+function isSameChainSolanaOrigin(
   transaction: Transaction,
 ): transaction is Extract<Transaction, { chain: SolanaChain }> {
   return (
@@ -1474,6 +1492,30 @@ function isSolanaOrigin(
     transaction.chain !== null &&
     'kind' in transaction.chain &&
     transaction.chain.kind === 'svm'
+  )
+}
+
+function isCrossChainSolanaOrigin(
+  transaction: Transaction,
+): transaction is CrossChainSolanaOriginTransaction {
+  const source = (transaction as { sourceChains?: readonly unknown[] })
+    .sourceChains?.[0]
+  return (
+    typeof source === 'object' &&
+    source !== null &&
+    'kind' in source &&
+    (source as { kind?: unknown }).kind === 'svm'
+  )
+}
+
+function isSolanaOrigin(
+  transaction: Transaction,
+): transaction is
+  | Extract<Transaction, { chain: SolanaChain }>
+  | CrossChainSolanaOriginTransaction {
+  return (
+    isSameChainSolanaOrigin(transaction) ||
+    isCrossChainSolanaOrigin(transaction)
   )
 }
 
@@ -1582,11 +1624,128 @@ function assertSupportedSolanaTransaction(
   }
 }
 
+function assertSupportedSolanaOriginDelivery(
+  input: Record<string, unknown>,
+  config: Readonly<RhinestoneAccountConfig>,
+): void {
+  const allowed = new Set([
+    'sourceChains',
+    'sourceTokens',
+    'targetChain',
+    'tokenRequests',
+    'recipient',
+    'sponsored',
+    'appFees',
+    'protocolFees',
+  ])
+  const unsupported = Object.keys(input).find((key) => !allowed.has(key))
+  if (unsupported) {
+    throw new UnsupportedAccountCapabilityError(
+      `Solana-origin transfers do not support \`${unsupported}\`.`,
+      { vm: 'solana', field: unsupported },
+    )
+  }
+  if (!config.solana || !('owner' in config.solana)) {
+    throw new UnsupportedAccountCapabilityError(
+      'A managed Solana source is required for Solana-origin transfers.',
+      { vm: 'solana' },
+    )
+  }
+  const sources = input.sourceChains as readonly unknown[]
+  if (sources.length !== 1) {
+    throw new UnsupportedAccountCapabilityError(
+      'A Solana-origin delivery spends exactly one Solana cluster.',
+      { vm: 'solana', field: 'sourceChains' },
+    )
+  }
+  solanaChainId(sources[0] as SolanaChain)
+  if (!Array.isArray(input.sourceTokens) || input.sourceTokens.length !== 1) {
+    throw new UnsupportedAccountCapabilityError(
+      'A Solana-origin delivery requires exactly one source SPL mint.',
+      { vm: 'solana', field: 'sourceTokens' },
+    )
+  }
+  const sourceToken = input.sourceTokens[0]
+  assertSolanaObjectKeys(sourceToken, ['address'], 'sourceTokens[0]')
+  try {
+    solanaAddress(sourceToken.address as string)
+  } catch {
+    throw new UnsupportedAccountCapabilityError(
+      'A Solana-origin delivery requires one valid SPL mint address.',
+      { vm: 'solana', field: 'sourceTokens[0].address' },
+    )
+  }
+  const target = input.targetChain as Record<string, unknown> | undefined
+  if (
+    !target ||
+    typeof target !== 'object' ||
+    'kind' in target ||
+    'caip2' in target ||
+    typeof target.id !== 'number' ||
+    !Number.isSafeInteger(target.id) ||
+    target.id < 0 ||
+    !formatCaip2(target.id).startsWith('eip155:')
+  ) {
+    throw new UnsupportedAccountCapabilityError(
+      'A Solana-origin delivery requires a viem EVM destination chain.',
+      { vm: 'solana', field: 'targetChain' },
+    )
+  }
+  if (!Array.isArray(input.tokenRequests) || input.tokenRequests.length !== 1) {
+    throw new UnsupportedAccountCapabilityError(
+      'A Solana-origin delivery requires exactly one destination token request.',
+      { vm: 'solana', field: 'tokenRequests' },
+    )
+  }
+  const request = input.tokenRequests[0]
+  assertSolanaObjectKeys(request, ['address', 'amount'], 'tokenRequests[0]')
+  if (typeof request.address !== 'string' || !isAddress(request.address)) {
+    throw new UnsupportedAccountCapabilityError(
+      'A Solana-origin delivery requires an EVM destination token address.',
+      { vm: 'solana', field: 'tokenRequests[0].address' },
+    )
+  }
+  if (
+    request.amount !== undefined &&
+    (typeof request.amount !== 'bigint' || request.amount <= 0n)
+  ) {
+    throw new UnsupportedAccountCapabilityError(
+      'A delivery amount must be a positive bigint when provided.',
+      { vm: 'solana', field: 'tokenRequests[0].amount' },
+    )
+  }
+  if (
+    input.recipient !== undefined &&
+    (typeof input.recipient !== 'string' || !isAddress(input.recipient))
+  ) {
+    throw new UnsupportedAccountCapabilityError(
+      'A Solana-origin delivery recipient must be an EVM address.',
+      { vm: 'solana', field: 'recipient' },
+    )
+  }
+  if (input.sponsored !== undefined && input.sponsored !== false) {
+    throw new UnsupportedAccountCapabilityError(
+      'Managed Solana transfers are not sponsorable; omit `sponsored` or set it to false.',
+      { vm: 'solana' },
+    )
+  }
+  if (input.appFees !== undefined) {
+    assertSolanaObjectKeys(input.appFees, ['feeBps'], 'appFees')
+  }
+  if (input.protocolFees !== undefined) {
+    assertSolanaObjectKeys(input.protocolFees, ['feeBps'], 'protocolFees')
+  }
+}
+
 function assertSupportedTransaction(
   transaction: Transaction,
   config: Readonly<RhinestoneAccountConfig>,
 ): void {
   const input = transaction as unknown as Record<string, unknown>
+  if (isCrossChainSolanaOrigin(transaction)) {
+    assertSupportedSolanaOriginDelivery(input, config)
+    return
+  }
   const hasChain = Object.hasOwn(input, 'chain') && input.chain !== undefined
   const hasTarget =
     Object.hasOwn(input, 'targetChain') && input.targetChain !== undefined
@@ -1754,7 +1913,27 @@ export function normalizeTransaction(
   config: Readonly<RhinestoneAccountConfig>,
 ): Transaction {
   assertSupportedTransaction(transaction, config)
-  if (isSolanaOrigin(transaction)) {
+  if (isCrossChainSolanaOrigin(transaction)) {
+    return Object.freeze({
+      ...transaction,
+      sourceChains: [
+        Object.freeze({ ...transaction.sourceChains[0] }),
+      ] as const,
+      sourceTokens: [
+        Object.freeze({ ...transaction.sourceTokens[0] }),
+      ] as const,
+      tokenRequests: [
+        Object.freeze({ ...transaction.tokenRequests[0] }),
+      ] as const,
+      ...(transaction.appFees
+        ? { appFees: Object.freeze({ ...transaction.appFees }) }
+        : {}),
+      ...(transaction.protocolFees
+        ? { protocolFees: Object.freeze({ ...transaction.protocolFees }) }
+        : {}),
+    }) as Transaction
+  }
+  if (isSameChainSolanaOrigin(transaction)) {
     const request = transaction.tokenRequests[0]
     return Object.freeze({
       ...transaction,
@@ -1805,10 +1984,16 @@ export function adaptTransaction(
   hyperCoreAction?: HyperCoreAction,
   automaticSourceChainIds?: readonly number[],
 ): IntentInput {
-  if ('chain' in transaction && 'kind' in transaction.chain) {
+  const nonEvmOrigin =
+    'chain' in transaction && transaction.chain && 'kind' in transaction.chain
+      ? transaction.chain.kind
+      : (
+          transaction as { sourceChains?: readonly (Chain | SolanaChain)[] }
+        ).sourceChains?.find((chain) => 'kind' in chain)?.kind
+  if (nonEvmOrigin) {
     throw new UnsupportedAccountCapabilityError(
       'Non-EVM origin execution is not supported yet. Use a viem EVM chain as the managed source.',
-      { vm: transaction.chain.kind },
+      { vm: nonEvmOrigin },
     )
   }
   const destination =
@@ -1823,7 +2008,7 @@ export function adaptTransaction(
     'chain' in transaction
       ? [getChainReference((transaction.chain as Chain).id)]
       : (transaction.sourceChains?.map((chain) =>
-          getChainReference(chain.id),
+          getChainReference((chain as Chain).id),
         ) ?? automaticSourceChainIds?.map(getChainReference))
   const evmSources = sourceChains?.flatMap((chain) =>
     chain.kind === 'evm' ? [chain] : [],

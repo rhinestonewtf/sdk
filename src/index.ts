@@ -105,6 +105,7 @@ export type {
   CrossChainPermissionInput,
   CrossChainPermit,
   CrossChainSettlementLayer,
+  CrossChainSolanaOriginTransaction,
   EvmAccountConfig,
   EvmAccountEntry,
   EvmReceiverAccountConfig,
@@ -160,6 +161,7 @@ export type {
   PreparedTransactionData,
   QuoteSelection,
   SignedTransactionData,
+  SolanaCrossChainExecutionMetadata,
   SolanaExecutionMetadata,
   TransactionResult,
 } from './transactions/intents/types'

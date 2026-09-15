@@ -91,8 +91,9 @@ transaction stack and does not create or verify the account. Production has no
 enabled Swig namespace.
 
 A managed Solana origin accepts one same-chain SPL transfer with an explicit
-recipient. Native SOL, sponsorship, EVM calls, cross-chain fields, independent
-owner-signature assembly, and EIP-7702 authorizations are rejected. Address-only
+recipient, or one cross-chain delivery to an EVM chain. Native SOL, sponsorship,
+EVM calls, independent owner-signature assembly, and EIP-7702 authorizations are
+rejected in both directions. Address-only
 Solana branches remain receiver-only. For automatic EVM cross-chain sources,
 the composition reads the orchestrator chain catalog and sends only real
 `eip155:` chains matching the destination's network class; source-asset filters
@@ -111,6 +112,20 @@ it, and a settlement layer can refuse a route that would have to create one.
 Where the delivering provider names the destination chain differently from us,
 that id is published on `quote.bridgeFill` as an opaque passthrough for the
 provider's status API; it never enters CAIP-2 formatting or chain comparisons.
+
+A Solana **origin** can also fund a delivery on an EVM chain. The source cluster
+and the SPL mint to spend are both named explicitly — the route spends exactly
+one source token, and the access list carries only `chainTokens`, because the
+orchestrator unions it with `chainIds` and naming the cluster alone re-expands
+the scope to every registry token on it. The delivery recipient is an explicit
+EVM address or the account's own EVM identity, resolved before the quote so the
+authorization binds to it. Authorization stays the Solana model: one
+`personalSign` origin payload, no destination signature, and the same
+slot-bounded window, so a second prepared-but-unsubmitted spend invalidates the
+first. The quoted cost legs stay in their own namespaces — a Solana chain and
+base58 mint on the input, an `eip155:` chain and hex token on the output. The
+settlement layer is whatever the orchestrator picked; the SDK only requires that
+it is not same-chain.
 
 ## Execution paths
 
