@@ -256,7 +256,7 @@ describe('orchestrator client', () => {
     expect(extension).toHaveBeenCalledWith(serializedIntentInput)
   })
 
-  test('maps the LZ handle and keeps a route the SDK predates untracked', async () => {
+  test('maps the LZ handle and CAIP-2 destination chains, and keeps a handle the SDK cannot read untracked', async () => {
     const route = (
       intentId: string,
       settlementLayer: string,
@@ -313,6 +313,21 @@ describe('orchestrator client', () => {
               someHandle: 'handle-1',
               fillStatusTimeout: 30,
             }),
+            route('intent-evm-caip2', 'RELAY', {
+              type: 'RELAY',
+              destinationChainId: 'eip155:8453',
+              requestId: 'request-1',
+            }),
+            route('intent-solana-caip2', 'RELAY', {
+              type: 'RELAY',
+              destinationChainId: 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
+              requestId: 'request-2',
+            }),
+            route('intent-bad-chain', 'RELAY', {
+              type: 'RELAY',
+              destinationChainId: 'unknown:chain',
+              requestId: 'request-3',
+            }),
           ],
         }),
     })
@@ -335,6 +350,18 @@ describe('orchestrator client', () => {
     // An unknown layer costs the tracking handle, never the quote.
     expect(result.routes[1]?.intentId).toBe('intent-future')
     expect(result.routes[1]).not.toHaveProperty('bridgeFill')
+    expect(result.routes[2]?.bridgeFill).toEqual({
+      type: 'RELAY',
+      destinationChainId: 8453,
+      requestId: 'request-1',
+    })
+    expect(result.routes[3]?.bridgeFill).toEqual({
+      type: 'RELAY',
+      destinationChainId: 792703809,
+      requestId: 'request-2',
+    })
+    expect(result.routes[4]?.intentId).toBe('intent-bad-chain')
+    expect(result.routes[4]).not.toHaveProperty('bridgeFill')
   })
 
   test('keeps native identifiers for a Solana-destination delivery', async () => {

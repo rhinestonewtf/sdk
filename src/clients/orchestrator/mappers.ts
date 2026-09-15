@@ -396,19 +396,27 @@ function mapBridgeFillFromWire(value: WireQuote['bridgeFill']): {
   bridgeFill?: BridgeFill
 } {
   if (value === undefined) return {}
+  let destinationChainId: number
+  try {
+    destinationChainId = parseChainValue(
+      value.destinationChainId as string | number,
+    )
+  } catch {
+    return {}
+  }
   switch (value.type) {
     case 'OFT':
       return {
         bridgeFill: {
           type: 'OFT',
-          destinationChainId: value.destinationChainId,
+          destinationChainId,
         },
       }
     case 'ECO':
       return {
         bridgeFill: {
           type: 'ECO',
-          destinationChainId: value.destinationChainId,
+          destinationChainId,
           intentHash: value.intentHash as Hex,
           ...(value.providerDestinationChainId !== undefined
             ? {
@@ -421,7 +429,7 @@ function mapBridgeFillFromWire(value: WireQuote['bridgeFill']): {
       return {
         bridgeFill: {
           type: 'RELAY',
-          destinationChainId: value.destinationChainId,
+          destinationChainId,
           requestId: value.requestId,
         },
       }
@@ -429,7 +437,7 @@ function mapBridgeFillFromWire(value: WireQuote['bridgeFill']): {
       return {
         bridgeFill: {
           type: 'NEAR',
-          destinationChainId: value.destinationChainId,
+          destinationChainId,
           depositAddress: value.depositAddress as Address,
         },
       }
@@ -437,7 +445,7 @@ function mapBridgeFillFromWire(value: WireQuote['bridgeFill']): {
       return {
         bridgeFill: {
           type: 'RHINO',
-          destinationChainId: value.destinationChainId,
+          destinationChainId,
           commitmentId: value.commitmentId,
         },
       }
@@ -445,7 +453,7 @@ function mapBridgeFillFromWire(value: WireQuote['bridgeFill']): {
       return {
         bridgeFill: {
           type: 'CCTP',
-          destinationChainId: value.destinationChainId,
+          destinationChainId,
           sourceDomainId: value.sourceDomainId,
           destinationDomainId: value.destinationDomainId,
         },
@@ -454,7 +462,7 @@ function mapBridgeFillFromWire(value: WireQuote['bridgeFill']): {
       return {
         bridgeFill: {
           type: 'LZ',
-          destinationChainId: value.destinationChainId,
+          destinationChainId,
           quoteId: value.quoteId,
           dstChainKey: value.dstChainKey,
           routeTypes: [...value.routeTypes],
