@@ -12,6 +12,7 @@ import type {
   IntentHyperCoreResult,
   IntentRefund,
   IntentStatus,
+  OriginSignData,
   SerializedIntentInput,
   SettlementLayer,
   TokenRequirements,
@@ -90,8 +91,8 @@ export interface OrchestratorQuote {
   readonly estimatedFillTime: { readonly seconds: number }
   readonly settlementLayer: SettlementLayer
   readonly signData: {
-    readonly origin: readonly TypedDataDefinition[]
-    readonly destination: TypedDataDefinition
+    readonly origin: readonly OriginSignData[]
+    readonly destination?: TypedDataDefinition
     readonly targetExecution?: TypedDataDefinition
   }
   readonly cost: Cost
@@ -112,7 +113,7 @@ export interface OrchestratorSignedIntent {
   readonly intentId: string
   readonly signatures: {
     readonly origin: readonly OrchestratorOriginSignature[]
-    readonly destination: Hex
+    readonly destination?: Hex
     readonly targetExecution?: Hex
   }
   readonly authorizations?: {

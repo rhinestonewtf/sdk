@@ -105,8 +105,11 @@ type ChainOperation =
   | {
       chain: number
       status: 'COMPLETED'
-      /** Transaction hash of the confirmed on-chain transaction. */
-      txHash: Hex
+      /**
+       * Transaction reference in the chain's native form. Interpret it against
+       * `chain` (for example, EVM hex or a Solana base58 signature).
+       */
+      txHash: string
       /** UNIX epoch seconds when the on-chain transaction was confirmed. */
       timestamp: number
     }
@@ -451,7 +454,8 @@ type Price = { usd: number } | null
 
 interface CostTokenEntry {
   chainId: number
-  tokenAddress: Address
+  /** Token reference in the chain's native address format. */
+  tokenAddress: string
   symbol: string | null
   decimals: number | null
   price: Price
@@ -482,9 +486,25 @@ interface EstimatedFillTime {
   seconds: number
 }
 
+/** Tagged EIP-712 payload for an origin leg. */
+type Eip712OriginSignData = TypedDataDefinition & { kind: 'eip712' }
+
+/** UTF-8 message payload for a personal-sign origin leg. */
+interface PersonalSignOriginSignData {
+  kind: 'personalSign'
+  /** Exact message characters to sign; this is not raw decoded data. */
+  message: string
+  /** Decimal Solana slot after which the payload is no longer valid. */
+  expiresAtSlot: string
+}
+
+/** Signing payload for an origin leg. */
+type OriginSignData = Eip712OriginSignData | PersonalSignOriginSignData
+
 interface SignData {
-  origin: TypedDataDefinition[]
-  destination: TypedDataDefinition
+  origin: OriginSignData[]
+  /** Untagged EIP-712 payload; absent when there is no destination signature. */
+  destination?: TypedDataDefinition
   targetExecution?: TypedDataDefinition
 }
 
@@ -494,7 +514,17 @@ interface SignData {
  */
 type BridgeFill =
   | { type: 'OFT'; destinationChainId: number }
-  | { type: 'ECO'; destinationChainId: number; intentHash: Hex }
+  | {
+      type: 'ECO'
+      destinationChainId: number
+      intentHash: Hex
+      /**
+       * Eco's own id for the delivery chain, present only where it differs from
+       * ours — i.e. non-EVM destinations such as Solana. Use it, not
+       * `destinationChainId`, when resolving the fill against Eco's status API.
+       */
+      providerDestinationChainId?: number
+    }
   | { type: 'RELAY'; destinationChainId: number; requestId: string }
   | { type: 'NEAR'; destinationChainId: number; depositAddress: Address }
   | { type: 'RHINO'; destinationChainId: number; commitmentId: string }
@@ -543,7 +573,7 @@ interface IntentSubmitRequest {
   intentId: string
   signatures: {
     origin: OriginSignature[]
-    destination: Hex
+    destination?: Hex
     targetExecution?: Hex
   }
   authorizations?: {
@@ -785,6 +815,9 @@ export type {
   Price,
   UsdAmount,
   EstimatedFillTime,
+  Eip712OriginSignData,
+  PersonalSignOriginSignData,
+  OriginSignData,
   SignData,
   IntentSubmitRequest,
   IntentSubmitRequestInternal,

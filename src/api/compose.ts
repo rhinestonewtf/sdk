@@ -1,9 +1,18 @@
-import { type Address, type Hex, isAddressEqual } from 'viem'
+import {
+  type Address,
+  type Hex,
+  isAddressEqual,
+  type TypedDataDefinition,
+} from 'viem'
 import type { AccountRuntime, AccountRuntimePort } from '../accounts/adapter'
 import { createAccountConstruction } from '../accounts/construction'
 import { FactoryArgsNotAvailableError } from '../accounts/error'
 import { createAccountAdapter } from '../accounts/registry'
-import { toEvmChainReference } from '../chains/caip2'
+import {
+  chainIdFromCaip2,
+  formatCaip2,
+  toEvmChainReference,
+} from '../chains/caip2'
 import { getChainById } from '../chains/catalog'
 import { createBundlerClient } from '../clients/bundler/client'
 import { createConfiguredOrchestratorClient } from '../clients/orchestrator/client'
@@ -18,6 +27,7 @@ import type {
   ResolvedAccountConfig,
   ResolvedSdkConfig,
 } from '../config/resolved'
+import { UnsupportedAccountCapabilityError } from '../errors/capability'
 import { getIntentExecutorModule } from '../modules/intent-executor'
 import {
   readInstalledModules,
@@ -79,6 +89,12 @@ import {
   signIntent,
   signIntentAsOwner,
 } from '../transactions/intents/sign-transaction'
+import {
+  prepareSolanaIntent,
+  reconstructSolanaIntent,
+  signSolanaIntent,
+  submitSolanaIntent,
+} from '../transactions/intents/solana'
 import { splitIntents } from '../transactions/intents/split'
 import {
   getIntentStatus,
@@ -218,6 +234,30 @@ function createAccountComposition<CompatibilityConfig>(
   dependencies: CoreDependencies,
 ): AccountComposition<CompatibilityConfig> {
   const workflows: AccountWorkflows<CompatibilityConfig> = {
+    getEligibleEvmSourceChains: async (destination) => {
+      const catalog = await dependencies.orchestrator.getChainCatalog()
+      const isHyperCore = destination.caip2.startsWith('hypercore:')
+      const destinationId = chainIdFromCaip2(destination.caip2)
+      const destinationInfo =
+        destinationId === undefined
+          ? undefined
+          : catalog.getChainInfo(destinationId)
+      if (!isHyperCore && !destinationInfo) {
+        throw new UnsupportedAccountCapabilityError(
+          `Destination chain ${destination.caip2} is missing from the orchestrator chain catalog.`,
+          { destination: destination.caip2 },
+        )
+      }
+      const testnet = isHyperCore ? false : destinationInfo?.testnet
+      return catalog
+        .getSupportedChainIds()
+        .filter(
+          (chainId) =>
+            formatCaip2(chainId).startsWith('eip155:') &&
+            catalog.isTestnet(chainId) === testnet,
+        )
+        .map(toEvmChainReference)
+    },
     getAddress: (context, chain) =>
       createStaticAccountRuntime(context.account, chain, false).identity
         .address,
@@ -277,6 +317,27 @@ function createAccountComposition<CompatibilityConfig>(
       signEip7702Authorizations(context.account, input, dependencies),
     prepareIntent: (context, input) =>
       prepareIntent(intentContext(context, dependencies), input),
+    prepareSolanaIntent: (input) =>
+      prepareSolanaIntent(
+        {
+          quoteClient: dependencies.orchestrator,
+          submissionClient: dependencies.orchestrator,
+          now: dependencies.clock.now,
+        },
+        input,
+      ),
+    reconstructSolanaIntent,
+    signSolanaIntent: (input) =>
+      signSolanaIntent({ ...input, now: dependencies.clock.now }),
+    submitSolanaIntent: (input) =>
+      submitSolanaIntent(
+        {
+          quoteClient: dependencies.orchestrator,
+          submissionClient: dependencies.orchestrator,
+          now: dependencies.clock.now,
+        },
+        input,
+      ),
     signIntent: async (context, input) => {
       const ownerSelection =
         input.input.signers?.kind === 'owner' ? input.input.signers : undefined
@@ -532,13 +593,28 @@ async function isAccountDeployed(
   return code !== undefined && code !== '0x'
 }
 
+function evmOrigins(
+  signData: PreparedIntent['quote']['signData'],
+): TypedDataDefinition[] {
+  if (
+    !signData.destination ||
+    signData.origin.some(({ kind }) => kind !== 'eip712')
+  ) {
+    throw new UnsupportedAccountCapabilityError(
+      'EVM intent signing requires EIP-712 origin and destination payloads.',
+    )
+  }
+  return [...signData.origin] as unknown as TypedDataDefinition[]
+}
+
 function intentMessages<CompatibilityConfig>(
   prepared: PreparedIntent<CompatibilityConfig>,
 ): IntentMessages {
   const { signData } = prepared.quote
+  const origin = evmOrigins(signData)
   return {
-    origin: [...signData.origin],
-    destination: signData.destination,
+    origin,
+    destination: signData.destination!,
     ...(signData.targetExecution
       ? { targetExecution: signData.targetExecution }
       : {}),
@@ -802,7 +878,7 @@ async function reconstructPreparedIntent<CompatibilityConfig>(
   dependencies: CoreDependencies,
 ): Promise<PreparedIntent<CompatibilityConfig>> {
   const accountChain = toEvmChainReference(
-    accountChainIdFromOrigins(input.quote.signData.origin),
+    accountChainIdFromOrigins(evmOrigins(input.quote.signData)),
   )
   const runtime = await createAccountRuntimePort(
     context.account,
@@ -884,7 +960,10 @@ async function signIntentFromSignData<CompatibilityConfig>(
     input.targetChain.kind === 'evm' ? input.targetChain : undefined
   const quote = {
     signData: {
-      origin: [...input.signData.origin],
+      origin: input.signData.origin.map((origin) => ({
+        ...origin,
+        kind: 'eip712' as const,
+      })),
       destination: input.signData.destination,
       ...(input.signData.targetExecution
         ? { targetExecution: input.signData.targetExecution }
@@ -927,6 +1006,11 @@ async function signIntentFromSignData<CompatibilityConfig>(
     ),
     prepared,
   )
+  if (!signed.destinationSignature) {
+    throw new UnsupportedAccountCapabilityError(
+      'EVM intent signing did not produce a destination signature.',
+    )
+  }
   return {
     originSignatures: signed.originSignatures,
     destinationSignature: signed.destinationSignature,

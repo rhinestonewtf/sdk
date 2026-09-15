@@ -2,12 +2,14 @@ import { type Account, encodeAbiParameters, erc20Abi, type Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { arbitrum, base as baseChain } from 'viem/chains'
 import { describe, expect, test, vi } from 'vitest'
-import { toEvmChainReference } from '../chains/caip2'
+import { parseCaip2, toEvmChainReference } from '../chains/caip2'
+import { solanaAddress, solanaDevnet } from '../chains/non-evm'
 import { ChainCatalog } from '../clients/orchestrator/chain-catalog'
 import type { OrchestratorPort } from '../clients/orchestrator/port'
 import type { RpcReadPort } from '../clients/rpc/port'
 import { resolveAccountConfig, resolveSdkConfig } from '../config/resolve'
 import type { AccountInvocationContext } from '../config/resolved'
+import { SolanaQuoteExpiredError } from '../errors/execution'
 import { K1_DEFAULT_VALIDATOR_ADDRESS } from '../modules/validators/k1'
 import { getSessionDetails } from '../modules/validators/smart-sessions/authorization'
 import { toSession } from '../modules/validators/smart-sessions/resolve'
@@ -40,6 +42,7 @@ function fixture() {
   const orchestrator: OrchestratorPort = {
     createQuote: vi.fn(async (request) => {
       const typedData = {
+        kind: 'eip712' as const,
         domain: {
           chainId: 1,
           verifyingContract: request.account.address,
@@ -139,6 +142,56 @@ function fixture() {
 }
 
 describe('internal core composition', () => {
+  test('selects only real EVM sources in the destination network class', async () => {
+    const base = fixture()
+    const getChainCatalog = vi.fn(
+      async () =>
+        new ChainCatalog({
+          1: catalogChain('Ethereum', false),
+          11155111: catalogChain('Sepolia', true),
+          792703809: catalogChain('Solana', false),
+          999: catalogChain('Unknown EVM', false),
+        }),
+    )
+    const dependencies = {
+      ...base.dependencies,
+      orchestrator: { ...base.orchestrator, getChainCatalog },
+    }
+    const workflows = createCoreComposition(
+      base.context.sdk,
+      dependencies,
+    ).createAccount(base.context).workflows
+
+    await expect(
+      workflows.getEligibleEvmSourceChains(toEvmChainReference(1)),
+    ).resolves.toEqual([toEvmChainReference(1), toEvmChainReference(999)])
+    await expect(
+      workflows.getEligibleEvmSourceChains(parseCaip2('hypercore:spot')),
+    ).resolves.toEqual([toEvmChainReference(1), toEvmChainReference(999)])
+    expect(getChainCatalog).toHaveBeenCalledTimes(2)
+  })
+
+  test('fails closed when destination metadata is unavailable', async () => {
+    const base = fixture()
+    const dependencies = {
+      ...base.dependencies,
+      orchestrator: {
+        ...base.orchestrator,
+        getChainCatalog: vi.fn(
+          async () => new ChainCatalog({ 1: catalogChain('Ethereum', false) }),
+        ),
+      },
+    }
+    const workflows = createCoreComposition(
+      base.context.sdk,
+      dependencies,
+    ).createAccount(base.context).workflows
+
+    await expect(
+      workflows.getEligibleEvmSourceChains(toEvmChainReference(8453)),
+    ).rejects.toThrow(/missing from the orchestrator chain catalog/)
+  })
+
   test('runs an intent through real account and signing implementations', async () => {
     const { composition, context, orchestrator } = fixture()
     const workflows = composition.createAccount(context).workflows
@@ -158,6 +211,125 @@ describe('internal core composition', () => {
       intentId: 'intent-1',
     })
     expect(orchestrator.createQuote).toHaveBeenCalledOnce()
+  })
+
+  test('runs the managed Solana workflow without RPC or catalog reads and enforces expiry before effects', async () => {
+    const base = fixture()
+    const mint = solanaAddress('4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU')
+    const recipient = solanaAddress('11111111111111111111111111111112')
+    const walletAddress = solanaAddress(
+      'DfBX7Po1bmnXt4GuEF3Eg5UYUHAjs9m5n8nbb9WUqgw2',
+    )
+    const message = 'ab'.repeat(32)
+    const costEntry = {
+      chainId: 792703810,
+      tokenAddress: mint,
+      symbol: 'USDC',
+      decimals: 6,
+      price: { usd: 1 },
+      amount: 100n,
+    }
+    const createQuote = vi.fn(async () => ({
+      traceId: 'solana-prepare',
+      routes: [
+        {
+          intentId: 'solana-intent',
+          expiresAt: 2_000_000_000,
+          estimatedFillTime: { seconds: 1 },
+          settlementLayer: 'SAME_CHAIN' as const,
+          signData: {
+            origin: [
+              {
+                kind: 'personalSign' as const,
+                message,
+                expiresAtSlot: '123',
+              },
+            ],
+          },
+          cost: {
+            input: [costEntry],
+            output: [costEntry],
+            fees: {
+              total: { usd: 0 },
+              breakdown: {
+                gas: { usd: 0, sponsored: false },
+                bridge: { usd: 0, sponsored: false },
+                swap: { usd: 0, sponsored: false },
+                app: { usd: 0, sponsored: false },
+                protocol: { usd: 0, sponsored: false },
+                sponsorSurcharge: { usd: 0, sponsored: false },
+              },
+            },
+          },
+        },
+      ],
+    }))
+    const submitIntent = vi.fn(async () => ({
+      traceId: 'solana-submit',
+      intentId: 'solana-intent',
+    }))
+    const getChainCatalog = vi.fn(base.orchestrator.getChainCatalog)
+    const forChain = vi.fn(base.dependencies.rpc.forChain)
+    let now = 1_900_000_000_000
+    const dependencies = {
+      ...base.dependencies,
+      orchestrator: {
+        ...base.orchestrator,
+        createQuote,
+        submitIntent,
+        getChainCatalog,
+      },
+      rpc: { forChain },
+      clock: { ...base.dependencies.clock, now: () => now },
+    }
+    const workflows = createCoreComposition(
+      base.context.sdk,
+      dependencies,
+    ).createAccount(base.context).workflows
+    const transfer = {
+      chain: solanaDevnet,
+      mint,
+      amount: 100n,
+      delivery: { kind: 'same-chain' as const, recipient },
+      accountAddress: target,
+      accountType: 'ERC7579' as const,
+      authority: owner.address,
+      walletAddress,
+      swigAddress: solanaAddress(
+        '9fTE4gQnweN345EGzy6jnXNFW8VryvZ8QwLZqgBubmMs',
+      ),
+      namespace: 'dev-v1' as const,
+      endpoint: 'https://dev.example',
+    }
+    const prepared = await workflows.prepareSolanaIntent(transfer)
+    const signMessage = vi.fn(owner.signMessage)
+    const signed = await workflows.signSolanaIntent({
+      prepared,
+      owner: { ...owner, signMessage },
+    })
+    await expect(workflows.submitSolanaIntent(signed)).resolves.toMatchObject({
+      intentId: 'solana-intent',
+      targetChain: 792703810,
+    })
+    expect(createQuote).toHaveBeenCalledOnce()
+    expect(submitIntent).toHaveBeenCalledOnce()
+    expect(forChain).not.toHaveBeenCalled()
+    expect(getChainCatalog).not.toHaveBeenCalled()
+
+    now = 2_000_000_000_000
+    signMessage.mockClear()
+    submitIntent.mockClear()
+    await expect(
+      workflows.signSolanaIntent({
+        prepared,
+        owner: { ...owner, signMessage },
+      }),
+    ).rejects.toThrow(SolanaQuoteExpiredError)
+    await expect(workflows.submitSolanaIntent(signed)).rejects.toThrow(
+      SolanaQuoteExpiredError,
+    )
+    expect(signMessage).not.toHaveBeenCalled()
+    expect(submitIntent).not.toHaveBeenCalled()
   })
 
   test('runs a UserOperation and project/account queries', async () => {

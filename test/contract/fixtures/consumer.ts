@@ -1,7 +1,6 @@
 import {
   type AccountProviderConfig,
   type CallInput,
-  type RhinestoneAccountConfig,
   RhinestoneSDK,
   type Transaction,
 } from '@rhinestone/sdk'
@@ -15,12 +14,7 @@ import * as jwtServer from '@rhinestone/sdk/jwt-server'
 import * as passkeySigning from '@rhinestone/sdk/signing/passkeys'
 import * as smartSessions from '@rhinestone/sdk/smart-sessions'
 import * as utils from '@rhinestone/sdk/utils'
-import { privateKeyToAccount } from 'viem/accounts'
 import { mainnet } from 'viem/chains'
-
-const owner = privateKeyToAccount(
-  '0x0000000000000000000000000000000000000000000000000000000000000001',
-)
 
 const legacySdk = new RhinestoneSDK({ apiKey: 'legacy-api-key' })
 const apiKeySdk = new RhinestoneSDK({
@@ -39,19 +33,6 @@ const accountProviders: AccountProviderConfig[] = [
   { type: 'eoa' },
 ]
 
-const accountConfig: RhinestoneAccountConfig = {
-  account: accountProviders[0],
-  owners: { type: 'ecdsa', accounts: [owner] },
-}
-
-const registryFreeMfaConfig: RhinestoneAccountConfig = {
-  owners: {
-    type: 'multi-factor',
-    module: '0x0000007261E4E2F1a892A58fd0708c9321e76020',
-    validators: [{ type: 'ecdsa', accounts: [owner] }],
-  },
-}
-
 const lazyCall: CallInput = {
   async resolve({ accountAddress, chain, config }) {
     void accountAddress
@@ -67,11 +48,11 @@ const transaction: Transaction = {
   calls: [lazyCall],
 }
 
-void legacySdk.createAccount(accountConfig)
-void apiKeySdk.createAccount(accountConfig)
-void jwtSdk.createAccount(accountConfig)
+void accountProviders
+void legacySdk
+void apiKeySdk
+void jwtSdk
 void transaction
-void registryFreeMfaConfig
 void actions
 void ecdsaActions
 void mfaActions

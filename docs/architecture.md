@@ -74,6 +74,59 @@ enforced by `scripts/architecture/check.ts`:
   compatibility barrels re-exporting owning symbols, except `jwt-server/`, a
   separate server-side bounded context with optional `jose`/`express` peers.
 
+## Cross-VM account boundary
+
+The public account configuration is composite: EVM and Solana entries are
+independent managed or address-only branches. `api/accounts.ts` validates and
+shallow-freezes that outer boundary, then passes only a managed EVM branch into
+the existing resolution and adapter stack. Receiver-only handles bypass account
+resolution and expose only native address access.
+
+Managed Solana is development-only and must be paired with a managed EVM
+account. The EVM account address deterministically selects the `dev-v1` Swig;
+the Swig must already exist and have its ECDSA authority verified on the target
+cluster. The SDK derives the Swig and wallet addresses offline with the small
+`@noble/curves` and `@scure/base` primitives; it imports no Solana RPC or
+transaction stack and does not create or verify the account. Production has no
+enabled Swig namespace.
+
+A managed Solana origin accepts one same-chain SPL transfer with an explicit
+recipient, or one cross-chain delivery to an EVM chain. Native SOL, sponsorship,
+EVM calls, independent owner-signature assembly, and EIP-7702 authorizations are
+rejected in both directions. Address-only
+Solana branches remain receiver-only. For automatic EVM cross-chain sources,
+the composition reads the orchestrator chain catalog and sends only real
+`eip155:` chains matching the destination's network class; source-asset filters
+may narrow but never widen that set.
+
+A Solana **destination** is delivery-only and funded from EVM sources. The
+recipient resolves in order: an explicit `recipient`, the configured address-only
+receiver, then the managed branch's derived Swig wallet; delivery is refused
+before quoting when none exists, and so are destination calls, instructions or
+HyperCore actions.
+The destination hosts no account runtime, so preparation runs the ordinary EVM
+cross-chain path with the account hosted on the last EVM source and the
+destination signature reusing the last origin one. Whether the destination wallet
+and its token account exist is an operator prerequisite — the SDK does not probe
+it, and a settlement layer can refuse a route that would have to create one.
+Where the delivering provider names the destination chain differently from us,
+that id is published on `quote.bridgeFill` as an opaque passthrough for the
+provider's status API; it never enters CAIP-2 formatting or chain comparisons.
+
+A Solana **origin** can also fund a delivery on an EVM chain. The source cluster
+and the SPL mint to spend are both named explicitly — the route spends exactly
+one source token, and the access list carries only `chainTokens`, because the
+orchestrator unions it with `chainIds` and naming the cluster alone re-expands
+the scope to every registry token on it. The delivery recipient is an explicit
+EVM address or the account's own EVM identity, resolved before the quote so the
+authorization binds to it. Authorization stays the Solana model: one
+`personalSign` origin payload, no destination signature, and the same
+slot-bounded window, so a second prepared-but-unsubmitted spend invalidates the
+first. The quoted cost legs stay in their own namespaces — a Solana chain and
+base58 mint on the input, an `eip155:` chain and hex token on the output. The
+settlement layer is whatever the orchestrator picked; the SDK only requires that
+it is not same-chain.
+
 ## Execution paths
 
 The account exposes two ways to execute, both ending at `waitForExecution`.
@@ -85,12 +138,15 @@ the relayer market; the SDK signs and submits.
 
 1. `prepareTransaction(tx)` — SDK requests a quote from the orchestrator and
    returns `PreparedTransactionData`.
-2. `getTransactionMessages(...)` — typed-data messages to sign (optional; for
-   headless signing).
-3. `signTransaction(...)` — signs the origin/destination/target-execution typed
-   data with the account's validator. Multisig owners can instead call
+2. `getTransactionMessages(...)` — returns tagged origin payloads. EVM origins
+   use EIP-712; managed Solana origins use one `personalSign` message with a
+   short slot deadline. Destination typed data is optional because same-chain
+   Solana has no destination signature.
+3. `signTransaction(...)` — signs the required origin, destination, and
+   target-execution payloads. EVM multisig owners can instead call
    `signTransaction(prepared, { owner })` independently and combine their
-   contributions with `assembleTransaction(...)`.
+   contributions with `assembleTransaction(...)`; managed Solana does not
+   support this path.
 4. `submitTransaction(...)` — posts the signed intent; returns a
    `TransactionResult` (an intent id).
 5. `waitForExecution(result)` — polls the orchestrator until the intent reaches
@@ -106,6 +162,19 @@ Headless ERC-1271 integrations can import the same primitives from
 Merkle signing tree, derive its EIP-712 root hash, pack weighted owner
 signatures, and finally encode either a regular or proof-bearing validator
 signature.
+
+## Orchestrator trust boundary
+
+The SDK structurally validates managed Solana quotes, their signing payloads,
+and persisted execution metadata before signing or submission. Chain operation
+and refund transaction references remain chain-native strings: EVM hex, Solana
+base58, or another namespace's native form. Consumers must interpret them using
+the accompanying chain ID rather than assuming an EVM hash.
+
+The Solana personal-sign digest is an opaque orchestrator commitment. The SDK
+cannot reconstruct or independently prove the recipient or instructions hidden
+behind it; its local checks establish consistency with the prepared request and
+captured account metadata, not the contents of unseen instructions.
 
 ```mermaid
 sequenceDiagram

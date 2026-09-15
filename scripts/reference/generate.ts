@@ -7,7 +7,7 @@
 // tab into the docs repo's docs.json.
 //
 // Run: bun run scripts/reference/generate.ts
-// Output dir: $SDK_REF_OUT (default: ../../../docs/sdk-reference)
+// Output dir: $SDK_REF_OUT (default: ../../../docs/wallets/custom-signer/sdk-reference)
 
 import {
   existsSync,
@@ -20,12 +20,19 @@ import {
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { manifest, type Node, type SymbolEntry } from './manifest'
+import {
+  collectReferencePages,
+  type NavGroup,
+  patchReferenceNavigation,
+  syncGeneratedInventories,
+} from './navigation'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const TYPEDOC_JSON = join(HERE, 'typedoc.json.out')
-const OUT_DIR =
-  process.env.SDK_REF_OUT ?? resolve(HERE, '../../../docs/sdk-reference')
-const NAV_BASE = 'sdk-reference'
+const DOCS_ROOT = resolve(HERE, '../../../docs')
+const NAV_BASE =
+  process.env.SDK_REF_NAV_BASE ?? 'wallets/custom-signer/sdk-reference'
+const OUT_DIR = process.env.SDK_REF_OUT ?? join(DOCS_ROOT, NAV_BASE)
 
 // When set, the render exits non-zero on any coverage problem (an unresolved
 // manifest symbol or a public export missing from the manifest) instead of
@@ -575,8 +582,6 @@ function stripMd(s: string): string {
 // Walk manifest: assign page paths, render, collect nav
 // ---------------------------------------------------------------------------
 
-type NavGroup = { group: string; pages: (string | NavGroup)[] }
-
 function build(nodes: Node[], trail: string[]): (string | NavGroup)[] {
   const pages: (string | NavGroup)[] = []
   for (const node of nodes) {
@@ -606,46 +611,62 @@ function build(nodes: Node[], trail: string[]): (string | NavGroup)[] {
   return pages
 }
 
-// The reference is nested as a single collapsible group at the bottom of the
-// host tab's pages, rather than its own top-level tab.
-const SECTION_NAME = 'SDK Reference'
-const HOST_TAB = process.env.SDK_REF_TAB ?? 'Wallet'
-const DOCS_JSON =
-  process.env.SDK_REF_DOCS_JSON ?? resolve(HERE, '../../../docs/docs.json')
+// The reference is nested as a single collapsible group at the bottom of its
+// configured navigation container.
+const SECTION_NAME = process.env.SDK_REF_SECTION_NAME ?? 'SDK reference'
+const HOST_TAB = process.env.SDK_REF_TAB ?? 'Wallets'
+const HOST_MENU_ITEM = process.env.SDK_REF_MENU_ITEM ?? 'Custom signer'
+const DOCS_JSON = process.env.SDK_REF_DOCS_JSON ?? join(DOCS_ROOT, 'docs.json')
+const OWNERSHIP_JSON =
+  process.env.SDK_REF_OWNERSHIP_JSON ??
+  join(DOCS_ROOT, 'unified-docs/ownership.json')
+const PATHS_FIXTURE =
+  process.env.SDK_REF_PATHS_FIXTURE ??
+  join(DOCS_ROOT, 'scripts/fixtures/sdk-reference-paths.json')
+const DEFAULT_OWNER = process.env.SDK_REF_DEFAULT_OWNER ?? 'RHI-7109'
 
-function patchDocsJson(pages: (string | NavGroup)[]) {
+function patchDocsJson(pages: (string | NavGroup)[]): boolean {
   if (!existsSync(DOCS_JSON)) {
     console.error(`! docs.json not found at ${DOCS_JSON}; skipping nav patch`)
-    return
+    return false
   }
   const docs = JSON.parse(readFileSync(DOCS_JSON, 'utf8'))
-  const tabs = docs.navigation?.tabs
-  if (!Array.isArray(tabs)) {
-    console.error('! docs.json has no navigation.tabs; skipping nav patch')
-    return
-  }
-  // Drop any standalone "SDK Reference" tab from earlier runs.
-  const stale = tabs.findIndex((t: any) => t.tab === SECTION_NAME)
-  if (stale >= 0) tabs.splice(stale, 1)
-
-  const host = tabs.find((t: any) => t.tab === HOST_TAB)
-  if (!host || !Array.isArray(host.pages)) {
-    console.error(
-      `! "${HOST_TAB}" tab (with a pages array) not found; skipping nav patch`,
-    )
-    return
-  }
-  const section: NavGroup = { group: SECTION_NAME, pages }
-  const existing = host.pages.findIndex(
-    (p: any) => typeof p === 'object' && p.group === SECTION_NAME,
-  )
-  if (existing >= 0) {
-    host.pages[existing] = section
-  } else {
-    host.pages.push(section)
-  }
+  patchReferenceNavigation(docs, pages, {
+    tab: HOST_TAB,
+    menuItem: HOST_MENU_ITEM || undefined,
+    section: SECTION_NAME,
+  })
   writeFileSync(DOCS_JSON, `${JSON.stringify(docs, null, 2)}\n`)
-  console.info(`Patched "${SECTION_NAME}" group into "${HOST_TAB}" tab`)
+  const target = HOST_MENU_ITEM
+    ? `"${HOST_MENU_ITEM}" in "${HOST_TAB}"`
+    : `"${HOST_TAB}" tab`
+  console.info(`Patched "${SECTION_NAME}" group into ${target}`)
+  return true
+}
+
+function syncDocsInventories(pages: (string | NavGroup)[]) {
+  const ownershipExists = existsSync(OWNERSHIP_JSON)
+  const fixtureExists = existsSync(PATHS_FIXTURE)
+  if (!ownershipExists && !fixtureExists) return
+  if (!ownershipExists || !fixtureExists) {
+    throw new Error(
+      'SDK reference ownership and path fixture must either both exist or both be absent',
+    )
+  }
+
+  const result = syncGeneratedInventories(
+    JSON.parse(readFileSync(OWNERSHIP_JSON, 'utf8')),
+    JSON.parse(readFileSync(PATHS_FIXTURE, 'utf8')),
+    collectReferencePages(pages),
+    NAV_BASE,
+    DEFAULT_OWNER,
+  )
+  writeFileSync(
+    OWNERSHIP_JSON,
+    `${JSON.stringify(result.ownership, null, 2)}\n`,
+  )
+  writeFileSync(PATHS_FIXTURE, `${JSON.stringify(result.fixture, null, 2)}\n`)
+  console.info('Synchronized SDK reference ownership and path inventories')
 }
 
 // Hand-written pages that live alongside the generated ones and must survive
@@ -729,7 +750,7 @@ function main() {
   cleanGenerated()
 
   const navPages = build(manifest as Node[], [NAV_BASE])
-  patchDocsJson(navPages)
+  if (patchDocsJson(navPages)) syncDocsInventories(navPages)
   const missing = warnMissingCoverage()
 
   console.info(`Generated ${countPages(navPages)} pages under ${OUT_DIR}`)

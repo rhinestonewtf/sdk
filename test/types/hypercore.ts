@@ -3,8 +3,8 @@ import type { WireQuoteRequest } from '../../src/clients/orchestrator/wire'
 import type { PerpMarket, PerpPosition } from '../../src/hypercore/index'
 import { getPerpMarkets, getPerpPosition } from '../../src/hypercore/index'
 import type {
+  EvmAccountConfig,
   HyperCoreAction,
-  RhinestoneAccountConfig,
   Transaction,
 } from '../../src/index'
 import { hyperCorePerp, RhinestoneSDK } from '../../src/index'
@@ -93,7 +93,7 @@ const noSize: Transaction = {
 }
 
 // Where the reads reach Hyperliquid is SDK config, not a per-call argument.
-const configured: RhinestoneAccountConfig & { hyperliquid?: unknown } = {
+const configured: EvmAccountConfig & { hyperliquid?: unknown } = {
   account: { type: 'nexus', version: '1.2.0' },
   owners: { type: 'ecdsa', accounts: [] },
 }

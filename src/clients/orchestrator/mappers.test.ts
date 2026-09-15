@@ -3,7 +3,9 @@ import { describe, expect, test } from 'vitest'
 import {
   mapIntentRequestToWire,
   mapIntentStatusFromWire,
+  mapQuoteResponseFromWire,
   mapSignedIntentToWire,
+  mapSupportedSignData,
 } from './mappers'
 import type { OrchestratorSignedIntent } from './types'
 
@@ -34,6 +36,113 @@ function signedIntent(
     dryRun: true,
   }
 }
+
+describe('mapSupportedSignData', () => {
+  const untaggedTypedData = {
+    domain: { chainId: 1, verifyingContract: address },
+    types: { Test: [{ name: 'value', type: 'uint256' }] },
+    primaryType: 'Test',
+    message: { value: '1' },
+  }
+  const taggedTypedData = { kind: 'eip712', ...untaggedTypedData } as const
+  const personalSign = {
+    kind: 'personalSign',
+    message: 'ab'.repeat(32),
+    expiresAtSlot: '370123456',
+  } as const
+
+  test('accepts tagged EIP-712 origins and untagged destinations', () => {
+    expect(
+      mapSupportedSignData({
+        origin: [taggedTypedData],
+        destination: untaggedTypedData,
+      }),
+    ).toEqual({
+      origin: [taggedTypedData],
+      destination: untaggedTypedData,
+    })
+  })
+
+  test('normalizes legacy untagged EIP-712 origins', () => {
+    expect(mapSupportedSignData({ origin: [untaggedTypedData] })).toEqual({
+      origin: [{ kind: 'eip712', ...untaggedTypedData }],
+    })
+  })
+
+  test('accepts a personal-sign origin without destination data', () => {
+    expect(mapSupportedSignData({ origin: [personalSign] })).toEqual({
+      origin: [personalSign],
+    })
+  })
+
+  test.each([
+    [{ kind: 'personalSign', message: 'payload', expiresAtSlot: '1' }],
+    [{ kind: 'personalSign', message: 'ab'.repeat(32), expiresAtSlot: 1 }],
+    [{ kind: 'personalSign', message: 'ab'.repeat(32), expiresAtSlot: '1.5' }],
+  ])('rejects malformed personal-sign payloads', (origin) => {
+    expect(() => mapSupportedSignData({ origin: [origin] })).toThrow(
+      /invalid personal-sign origin payload/,
+    )
+  })
+
+  test('rejects tags on destination EIP-712 data', () => {
+    expect(() =>
+      mapSupportedSignData({
+        origin: [taggedTypedData],
+        destination: taggedTypedData,
+      }),
+    ).toThrow(/untagged EIP-712 destination/)
+  })
+
+  test('fails the quote response on an unsupported scheme instead of dropping the route', () => {
+    const route = {
+      intentId: 'unsupported',
+      expiresAt: 1,
+      estimatedFillTime: { seconds: 1 },
+      settlementLayer: 'SAME_CHAIN',
+      signData: { origin: [{ kind: 'unknown' }] },
+      cost: {
+        input: [],
+        output: [],
+        fees: { total: { usd: 0 }, breakdown: {} },
+      },
+    }
+
+    expect(() =>
+      mapQuoteResponseFromWire({ traceId: 'trace', routes: [route] } as never),
+    ).toThrow(/unsupported origin signing scheme: unknown/)
+  })
+
+  test('preserves non-EVM cost token references', () => {
+    const mint = '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU'
+    const route = {
+      intentId: 'solana',
+      expiresAt: 1,
+      estimatedFillTime: { seconds: 1 },
+      settlementLayer: 'SAME_CHAIN',
+      signData: { origin: [personalSign] },
+      cost: {
+        input: [
+          {
+            chainId: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1',
+            tokenAddress: mint,
+            symbol: 'USDC',
+            decimals: 6,
+            price: { usd: 1 },
+            amount: '100000',
+          },
+        ],
+        output: [],
+        fees: { total: { usd: 0 }, breakdown: {} },
+      },
+    }
+
+    expect(
+      mapQuoteResponseFromWire({ traceId: 'trace', routes: [route] } as never)
+        .routes[0]?.cost.input[0]?.tokenAddress,
+    ).toBe(mint)
+  })
+})
 
 describe('mapSignedIntentToWire', () => {
   test('maps concrete and any-chain sponsor and recipient authorizations', () => {
@@ -97,6 +206,19 @@ describe('mapSignedIntentToWire', () => {
     expect(mapSignedIntentToWire(signedIntent())).not.toHaveProperty(
       'authorizations',
     )
+  })
+
+  test('omits a missing destination signature instead of sending a placeholder', () => {
+    const result = mapSignedIntentToWire({
+      intentId: 'solana-intent',
+      signatures: { origin: ['0x03'] },
+    })
+
+    expect(result).toEqual({
+      intentId: 'solana-intent',
+      signatures: { origin: ['0x03'] },
+    })
+    expect(result.signatures).not.toHaveProperty('destination')
   })
 
   test.each([
@@ -165,6 +287,42 @@ describe('mapIntentRequestToWire — quoter pin', () => {
   })
 })
 
+describe('mapIntentRequestToWire — Solana destination', () => {
+  // Base58 is case-sensitive: any lowercasing or checksumming of a mint or a
+  // recipient on the way to the wire delivers to a different account.
+  const mint = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
+  const recipient = 'EEnKdeMRGrhKq1Z2rkRubkrkTxCZigLZ5QgUYqAMvPnU'
+
+  const request = {
+    account: { address, accountType: 'ERC7579' },
+    destinationChainId: 792703809,
+    destinationExecutions: [],
+    tokenRequests: [{ tokenAddress: mint, amount: 50000n }],
+    recipient: { address: recipient },
+    accountAccessList: { chainIds: [8453] },
+    options: {},
+  } as never
+
+  test('sends the CAIP-2 destination and passes base58 references through verbatim', () => {
+    const wire = mapIntentRequestToWire(request) as unknown as {
+      destinationChainId: string
+      tokenRequests: readonly { tokenAddress: string; amount: string }[]
+      recipient?: Record<string, unknown>
+      accountAccessList?: unknown
+    }
+
+    expect(wire.destinationChainId).toBe(
+      'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
+    )
+    expect(wire.tokenRequests).toEqual([
+      { tokenAddress: mint, amount: '50000' },
+    ])
+    // A non-EVM recipient carries no account type or setup ops to project.
+    expect(wire.recipient).toEqual({ address: recipient })
+    expect(wire.accountAccessList).toEqual({ chainIds: ['eip155:8453'] })
+  })
+})
+
 describe('mapIntentRequestToWire — HyperCore action', () => {
   const base = {
     account: { address, accountType: 'ERC7579' },
@@ -208,6 +366,30 @@ describe('mapIntentRequestToWire — HyperCore action', () => {
       options?: { hyperCore?: unknown }
     }
     expect(wire.options?.hyperCore).toBeUndefined()
+  })
+})
+
+describe('mapIntentStatusFromWire native transaction references', () => {
+  test('preserves a Solana transaction signature exactly', () => {
+    const signature =
+      '5KtPn1LGuxhFiKZ9xVLYBu9A2yBqX6gB4XzYGVxV9Dszgvn6YxrY3JQSMNJ4e6d7S5kJqY2LxA2nCE4BrVQCLH5m'
+    const mapped = mapIntentStatusFromWire('intent-1', {
+      traceId: 'trace-1',
+      status: 'COMPLETED',
+      accountAddress: address,
+      operations: [
+        {
+          chain: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1',
+          items: [{ status: 'COMPLETED', txHash: signature, timestamp: 1 }],
+        },
+      ],
+    })
+
+    expect(mapped.operations[0]).toMatchObject({
+      chain: 792703810,
+      status: 'COMPLETED',
+      txHash: signature,
+    })
   })
 })
 

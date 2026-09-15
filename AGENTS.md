@@ -25,7 +25,7 @@ Docs: https://docs.rhinestone.dev/smart-wallet
 - Language: TypeScript (strict mode)
 - Testing: Vitest
 - Linting: Biome
-- Dependencies: viem (peer), jose and express (optional peers for `jwt-server`); the published package has no runtime dependencies
+- Dependencies: viem (peer), @noble/curves and @scure/base (runtime), jose and express (optional peers for `jwt-server`)
 
 ## Structure
 
@@ -68,6 +68,8 @@ Where to open PRs:
 - **v1 fixes** → target `v1`
 
 After a changeset reaches `main`, a successful `@dev` publish opens one `main` → `release` promotion PR; pushes to `release` and `v1` run their production release workflows.
+
+Merging the promotion PR publishes nothing. It opens a changesets `Release` PR, and merging THAT publishes `@latest`, which cannot be undone. Use the `release-promotion` skill.
 
 ## Patterns
 

@@ -124,16 +124,18 @@ describe('ECDSA Actions', () => {
   describe('Install Ownable Validator', async () => {
     const rhinestone = new RhinestoneSDK({ apiKey: 'test' })
     const rhinestoneAccount = await rhinestone.createAccount({
-      owners: {
-        type: 'passkey',
-        accounts: [passkeyAccount],
+      evm: {
+        owners: {
+          type: 'passkey',
+          accounts: [passkeyAccount],
+        },
       },
     })
 
     test('1/1 Owners', async () => {
       const calls = await resolveCallInputs(
         [enableEcdsa([MOCK_OWNER_A])],
-        rhinestoneAccount.config,
+        rhinestoneAccount.config.evm,
         base,
         accountAddress,
       )
@@ -149,7 +151,7 @@ describe('ECDSA Actions', () => {
     test('1/N Owners', async () => {
       const calls = await resolveCallInputs(
         [enableEcdsa([MOCK_OWNER_A, MOCK_OWNER_B])],
-        rhinestoneAccount.config,
+        rhinestoneAccount.config.evm,
         base,
         accountAddress,
       )
@@ -165,7 +167,7 @@ describe('ECDSA Actions', () => {
     test('M/N Owners', async () => {
       const calls = await resolveCallInputs(
         [enableEcdsa([MOCK_OWNER_A, MOCK_OWNER_B, MOCK_OWNER_C], 2)],
-        rhinestoneAccount.config,
+        rhinestoneAccount.config.evm,
         base,
         accountAddress,
       )
@@ -187,7 +189,7 @@ describe('ECDSA Actions', () => {
       await expect(
         resolveCallInputs(
           [enableEcdsa([MOCK_OWNER_A])],
-          rhinestoneAccount.config,
+          rhinestoneAccount.config.evm,
           base,
           accountAddress,
         ),
@@ -201,9 +203,11 @@ describe('ECDSA Actions', () => {
   describe('Enable on an account already configured with ECDSA', async () => {
     const rhinestone = new RhinestoneSDK({ apiKey: 'test' })
     const rhinestoneAccount = await rhinestone.createAccount({
-      owners: {
-        type: 'ecdsa',
-        accounts: [accountA],
+      evm: {
+        owners: {
+          type: 'ecdsa',
+          accounts: [accountA],
+        },
       },
     })
 
@@ -212,7 +216,7 @@ describe('ECDSA Actions', () => {
       await expect(
         resolveCallInputs(
           [enableEcdsa([MOCK_OWNER_A])],
-          rhinestoneAccount.config,
+          rhinestoneAccount.config.evm,
           base,
           accountAddress,
         ),
@@ -224,16 +228,18 @@ describe('ECDSA Actions', () => {
   describe('Uninstall Ownable Validator', async () => {
     const rhinestone = new RhinestoneSDK({ apiKey: 'test' })
     const rhinestoneAccount = await rhinestone.createAccount({
-      owners: {
-        type: 'ecdsa',
-        accounts: [accountA],
+      evm: {
+        owners: {
+          type: 'ecdsa',
+          accounts: [accountA],
+        },
       },
     })
 
     test('', async () => {
       const calls = await resolveCallInputs(
         [disableEcdsa()],
-        rhinestoneAccount.config,
+        rhinestoneAccount.config.evm,
         base,
         accountAddress,
       )

@@ -83,6 +83,7 @@ describe('intent domain', () => {
 
   test('normalizes compatible quote typed data before signing', () => {
     const typedData = {
+      kind: 'eip712',
       domain: {},
       types: { Test: [{ name: 'value', type: 'uint256' }] },
       primaryType: 'Test',
@@ -116,7 +117,7 @@ describe('intent domain', () => {
     })
 
     expect(normalized.signData.origin[0]?.message).toEqual({ value: 7n })
-    expect(normalized.signData.destination.message).toEqual({ value: 7n })
+    expect(normalized.signData.destination?.message).toEqual({ value: 7n })
     expect(normalized.signData.targetExecution?.message).toEqual({ value: 7n })
   })
 
@@ -449,6 +450,57 @@ describe('intent domain', () => {
         expect('refunds' in error.context).toBe(false)
       }),
     ])
+  })
+
+  test('keeps native Solana and EVM references on the failed-intent error', async () => {
+    // A Solana-destination delivery that is refunded: the fill reference is a
+    // base58 signature on a Solana chain id and the refund is an EVM hash, and
+    // neither may be coerced to the other's shape on the way out.
+    const signature =
+      '5KtPn1LGuxhFiKZ9xVLYBu9A2yBqX6gB4XzYGVxV9Dszgvn6YxrY3JQSMNJ4e6d7S5kJqY2LxA2nCE4BrVQCLH5m'
+    const refund = {
+      chain: 8453,
+      txHash:
+        '0x8e483d74ff15e79f86e0c23e81444a5db5b2ce31c9ec28f84259dfc83f0bbc28',
+    } as const
+
+    const error = await waitForIntentStatus(
+      {
+        statusClient: {
+          getIntentStatus: vi.fn(async () => ({
+            traceId: 'trace',
+            intentId: 'intent',
+            status: 'FAILED' as const,
+            account: address,
+            operations: [
+              {
+                chain: 792703809,
+                status: 'FAILED' as const,
+                failureReason: 'BRIDGE_REFUNDED' as const,
+                txHash: signature,
+              },
+            ],
+            refunds: [refund],
+          })),
+        },
+        clock: {
+          now: vi.fn().mockReturnValueOnce(0).mockReturnValue(20_000),
+          sleep: vi.fn(async () => undefined),
+        },
+      },
+      'intent',
+    ).catch((caught) => caught)
+
+    expect(error).toBeInstanceOf(IntentFailedError)
+    expect(error.context.operations).toEqual([
+      {
+        chain: 792703809,
+        status: 'FAILED',
+        failureReason: 'BRIDGE_REFUNDED',
+        txHash: signature,
+      },
+    ])
+    expect(error.context.refunds).toEqual([refund])
   })
 
   test('carries the HyperCore outcome on the failed-intent error while every operation completed', async () => {

@@ -97,6 +97,9 @@ export function corruptTail(hex: Hex, bytes: number): Hex {
 export function tamperExecutionSignatures(
   signed: SignedTransactionData,
 ): SignedTransactionData {
+  if (!signed.destinationSignature) {
+    throw new Error('Expected an EVM destination signature')
+  }
   return {
     ...signed,
     originSignatures: signed.originSignatures.map((signature) =>

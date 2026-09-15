@@ -12,6 +12,7 @@ import {
 import {
   hyperCorePerp,
   hyperCoreSpot,
+  solanaDevnet,
   solanaMainnet,
   stellarMainnet,
   tronMainnet,
@@ -22,6 +23,7 @@ describe('CAIP-2', () => {
     [1, 'eip155:1'],
     [8453, 'eip155:8453'],
     [792703809, 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp'],
+    [792703810, 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1'],
     [728126428, 'tron:mainnet'],
     [1500148, 'stellar:pubnet'],
     [1337, 'hypercore:mainnet'],
@@ -82,6 +84,7 @@ describe('CAIP-2', () => {
   // the exported set so the next chain cannot ship half-wired.
   test.each([
     ['solanaMainnet', solanaMainnet],
+    ['solanaDevnet', solanaDevnet],
     ['tronMainnet', tronMainnet],
     ['stellarMainnet', stellarMainnet],
     ['hyperCoreSpot', hyperCoreSpot],
@@ -104,6 +107,7 @@ describe('CAIP-2', () => {
       'Invalid chain id',
     )
     expect(() => toEvmChainReference(792703809)).toThrow('not EVM-compatible')
+    expect(() => toEvmChainReference(792703810)).toThrow('not EVM-compatible')
   })
 
   test('materializes EVM references and rejects invalid non-EVM references', () => {

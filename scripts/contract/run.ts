@@ -1,4 +1,11 @@
-import { cpSync, mkdirSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs'
+import {
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 import { generateApiCompatibilityReport } from './api-compat.ts'
@@ -28,6 +35,10 @@ const consumerFixturePath = join(
 const currentConsumerFixturePath = join(
   repositoryRoot,
   'test/contract/fixtures/current-consumer.ts',
+)
+const legacyConsumerFixturePath = join(
+  repositoryRoot,
+  'test/contract/fixtures/legacy-consumer.ts',
 )
 const assignabilityFixturePath = join(
   repositoryRoot,
@@ -196,6 +207,25 @@ function compileConsumer(
   )
 }
 
+function bundleBrowserConsumer(consumerDirectory: string): void {
+  const entry = join(consumerDirectory, 'browser-entry.ts')
+  writeFileSync(
+    entry,
+    `import { RhinestoneSDK, solanaAddress } from '@rhinestone/sdk'\nconst address = solanaAddress('11111111111111111111111111111111')\nvoid new RhinestoneSDK({ apiKey: 'browser' }).createAccount({ solana: { address } })\n`,
+  )
+  runCommand(
+    join(repositoryRoot, 'node_modules/.bin/esbuild'),
+    [
+      entry,
+      '--bundle',
+      '--platform=browser',
+      '--format=esm',
+      `--outfile=${join(consumerDirectory, 'browser-bundle.js')}`,
+    ],
+    { cwd: consumerDirectory },
+  )
+}
+
 function validateMetadata(packageDirectory: string): void {
   runCommand('bunx', ['publint', packageDirectory], { cwd: repositoryRoot })
 }
@@ -280,8 +310,10 @@ async function main(): Promise<void> {
       includeOptionalPeers: true,
     })
     compileConsumer(baseConsumers.full)
+    compileConsumer(baseConsumers.full, legacyConsumerFixturePath)
     compileConsumer(currentConsumers.full)
     compileConsumer(currentConsumers.full, currentConsumerFixturePath)
+    bundleBrowserConsumer(currentConsumers.full)
 
     const compatibilityConsumer = join(
       temporaryDirectory,

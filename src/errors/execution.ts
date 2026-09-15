@@ -91,6 +91,28 @@ class QuoteNotInPreparedTransactionError extends ExecutionError {
   }
 }
 
+/** Thrown when a Solana quote's approximate signing deadline has passed. */
+class SolanaQuoteExpiredError extends ExecutionError {
+  constructor(intentId: string) {
+    super({
+      message: `Solana intent ${intentId} has expired. Re-prepare the transaction and sign the new quote; do not retry an uncertain prior submission without checking its status.`,
+      context: { intentId },
+      errorType: 'SolanaQuoteExpired',
+    })
+  }
+}
+
+/** Thrown when persisted Solana lifecycle data is incomplete or inconsistent. */
+class InvalidSolanaTransactionArtifactError extends ExecutionError {
+  constructor(message: string, context?: Readonly<Record<string, unknown>>) {
+    super({
+      message: `Invalid Solana transaction artifact: ${message}`,
+      context,
+      errorType: 'InvalidSolanaTransactionArtifact',
+    })
+  }
+}
+
 class InvalidSourceCallsError extends ExecutionError {
   constructor(params?: {
     chainId?: number
@@ -216,18 +238,34 @@ function isExecutionError(error: Error): error is ExecutionError {
   return error instanceof ExecutionError
 }
 
+function isSolanaQuoteExpiredError(
+  error: unknown,
+): error is SolanaQuoteExpiredError {
+  return error instanceof SolanaQuoteExpiredError
+}
+
+function isInvalidSolanaTransactionArtifactError(
+  error: unknown,
+): error is InvalidSolanaTransactionArtifactError {
+  return error instanceof InvalidSolanaTransactionArtifactError
+}
+
 export {
   isExecutionError,
+  isInvalidSolanaTransactionArtifactError,
+  isSolanaQuoteExpiredError,
   ExecutionError,
   Eip7702InitSignatureRequiredError,
   IndependentSigningNotSupportedError,
   InsufficientOwnerSignaturesError,
   IntentFailedError,
   InvalidOwnerSigningOptionsError,
+  InvalidSolanaTransactionArtifactError,
   InvalidSourceCallsError,
   MismatchedOwnerSignaturesError,
   OrderPathRequiredForIntentsError,
   QuoteNotInPreparedTransactionError,
   SignerNotSupportedError,
+  SolanaQuoteExpiredError,
   UnknownOwnerError,
 }
