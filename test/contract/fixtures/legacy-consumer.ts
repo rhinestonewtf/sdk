@@ -40,19 +40,15 @@ const accountProviders: AccountProviderConfig[] = [
 ]
 
 const accountConfig: RhinestoneAccountConfig = {
-  evm: {
-    account: accountProviders[0],
-    owners: { type: 'ecdsa', accounts: [owner] },
-  },
+  account: accountProviders[0],
+  owners: { type: 'ecdsa', accounts: [owner] },
 }
 
 const registryFreeMfaConfig: RhinestoneAccountConfig = {
-  evm: {
-    owners: {
-      type: 'multi-factor',
-      module: '0x0000007261E4E2F1a892A58fd0708c9321e76020',
-      validators: [{ type: 'ecdsa', accounts: [owner] }],
-    },
+  owners: {
+    type: 'multi-factor',
+    module: '0x0000007261E4E2F1a892A58fd0708c9321e76020',
+    validators: [{ type: 'ecdsa', accounts: [owner] }],
   },
 }
 
