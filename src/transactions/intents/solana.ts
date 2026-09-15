@@ -3,9 +3,11 @@ import {
   type Address,
   type Hex,
   hexToBytes,
+  isAddress,
   isAddressEqual,
   recoverMessageAddress,
 } from 'viem'
+import { formatCaip2 } from '../../chains/caip2'
 import type { SolanaAddress, SolanaChain } from '../../chains/non-evm'
 import {
   solanaAddress,
@@ -40,11 +42,25 @@ const SOLANA_MAINNET_CAIP2 = 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp'
 const SOLANA_DEVNET_CAIP2 = 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1'
 const NATIVE_SOL_SENTINEL = '11111111111111111111111111111111'
 
+/**
+ * Where a Solana-origin spend lands. The two arms are exclusive on purpose:
+ * every validation site has to state which direction it is checking, so a
+ * same-chain rule cannot silently apply to a cross-chain quote.
+ */
+export type SolanaDelivery =
+  | { readonly kind: 'same-chain'; readonly recipient: SolanaAddress }
+  | {
+      readonly kind: 'cross-chain'
+      readonly chainId: number
+      readonly token: Address
+      readonly recipient: Address
+    }
+
 export interface SolanaTransferInput {
   readonly chain: SolanaChain
   readonly mint: SolanaAddress
   readonly amount?: bigint
-  readonly recipient: SolanaAddress
+  readonly delivery: SolanaDelivery
   readonly accountAddress: Address
   readonly accountType: 'GENERIC' | 'ERC7579' | 'EOA'
   readonly authority: Address
@@ -128,15 +144,9 @@ export function buildSolanaIntentRequest(
     )
   }
   const mint = solanaAddress(input.mint)
-  const recipient = solanaAddress(input.recipient)
   if (mint === NATIVE_SOL_SENTINEL) {
     throw new InvalidSolanaTransactionArtifactError(
       'native SOL transfers are not supported; provide an SPL mint',
-    )
-  }
-  if (recipient === input.walletAddress) {
-    throw new InvalidSolanaTransactionArtifactError(
-      'the recipient must differ from the managed Solana wallet',
     )
   }
   if (
@@ -149,31 +159,73 @@ export function buildSolanaIntentRequest(
   }
   validateFee('appFees', input.appFees)
   validateFee('protocolFees', input.protocolFees)
-  return {
-    destinationChainId: chainId,
+  const amount =
+    input.amount === undefined ? {} : ({ amount: input.amount } as const)
+  const common = {
     destinationExecutions: [],
-    tokenRequests: [
-      {
-        tokenAddress: mint,
-        ...(input.amount === undefined ? {} : { amount: input.amount }),
-      },
-    ],
     account: { address: input.accountAddress, accountType: input.accountType },
-    recipient: { address: recipient },
-    accountAccessList: { chainIds: [chainId] },
     options: {
       signatureMode: 1,
       ...(input.appFees ? { appFees: input.appFees } : {}),
       ...(input.protocolFees ? { protocolFees: input.protocolFees } : {}),
     },
+  } satisfies Partial<OrchestratorIntentRequest>
+  const delivery = input.delivery
+  if (delivery.kind === 'cross-chain') {
+    if (
+      !Number.isSafeInteger(delivery.chainId) ||
+      delivery.chainId < 0 ||
+      !formatCaip2(delivery.chainId).startsWith('eip155:')
+    ) {
+      throw new InvalidSolanaTransactionArtifactError(
+        'the delivery chain must be an EVM chain',
+      )
+    }
+    if (!isAddress(delivery.token) || !isAddress(delivery.recipient)) {
+      throw new InvalidSolanaTransactionArtifactError(
+        'the delivery token and recipient must be EVM addresses',
+      )
+    }
+    return {
+      ...common,
+      destinationChainId: delivery.chainId,
+      tokenRequests: [{ tokenAddress: delivery.token, ...amount }],
+      recipient: { address: delivery.recipient },
+      // `chainIds` and `chainTokens` are unioned by the orchestrator, so naming
+      // the cluster as well would re-expand the source scope to every registry
+      // token on it and defeat the explicit source mint.
+      accountAccessList: { chainTokens: { [chainId]: [mint] } },
+    }
+  }
+  const recipient = solanaAddress(delivery.recipient)
+  if (recipient === input.walletAddress) {
+    throw new InvalidSolanaTransactionArtifactError(
+      'the recipient must differ from the managed Solana wallet',
+    )
+  }
+  return {
+    ...common,
+    destinationChainId: chainId,
+    tokenRequests: [{ tokenAddress: mint, ...amount }],
+    recipient: { address: recipient },
+    accountAccessList: { chainIds: [chainId] },
   }
 }
 
-function personalPayload(quote: OrchestratorQuote): PersonalSignOriginSignData {
+function personalPayload(
+  quote: OrchestratorQuote,
+  delivery: SolanaDelivery['kind'],
+): PersonalSignOriginSignData {
   const origin = quote.signData.origin[0]
+  // Not a `=== 'RELAY'` whitelist: the same corridor is planned on other
+  // settlement layers, and any of them authorizes the spend identically.
+  const layerMismatch =
+    delivery === 'same-chain'
+      ? quote.settlementLayer !== 'SAME_CHAIN'
+      : quote.settlementLayer === 'SAME_CHAIN'
   if (
     !quote.intentId ||
-    quote.settlementLayer !== 'SAME_CHAIN' ||
+    layerMismatch ||
     quote.signData.origin.length !== 1 ||
     origin?.kind !== 'personalSign' ||
     !/^[0-9a-fA-F]{64}$/u.test(origin.message) ||
@@ -182,7 +234,9 @@ function personalPayload(quote: OrchestratorQuote): PersonalSignOriginSignData {
     quote.signData.targetExecution !== undefined
   ) {
     throw new InvalidSolanaTransactionArtifactError(
-      'the quote must be SAME_CHAIN with exactly one personal-sign origin and no destination or target signature',
+      delivery === 'same-chain'
+        ? 'the quote must be SAME_CHAIN with exactly one personal-sign origin and no destination or target signature'
+        : 'the quote must be a cross-chain route with exactly one personal-sign origin and no destination or target signature',
       { intentId: quote.intentId },
     )
   }
@@ -190,21 +244,42 @@ function personalPayload(quote: OrchestratorQuote): PersonalSignOriginSignData {
 }
 
 function validateQuote(quote: OrchestratorQuote, input: SolanaTransferInput) {
-  personalPayload(quote)
+  personalPayload(quote, input.delivery.kind)
   const chainId = solanaChainId(input.chain)
   if (quote.cost.input.length !== 1 || quote.cost.output.length !== 1) {
     throw new InvalidSolanaTransactionArtifactError(
-      'quote costs must include exactly one Solana input and output entry',
+      'quote costs must include exactly one input and one output entry',
       { intentId: quote.intentId },
     )
   }
-  for (const entry of [...quote.cost.input, ...quote.cost.output]) {
-    if (entry.chainId !== chainId || entry.tokenAddress !== input.mint) {
+  const source = quote.cost.input[0]!
+  if (source.chainId !== chainId || source.tokenAddress !== input.mint) {
+    throw new InvalidSolanaTransactionArtifactError(
+      'the quote input cost must reference the requested Solana chain and mint',
+      { intentId: quote.intentId },
+    )
+  }
+  const output = quote.cost.output[0]!
+  const delivery = input.delivery
+  if (delivery.kind === 'same-chain') {
+    if (output.chainId !== chainId || output.tokenAddress !== input.mint) {
       throw new InvalidSolanaTransactionArtifactError(
-        'quote costs must reference only the requested Solana chain and mint',
+        'the quote output cost must reference the requested Solana chain and mint',
         { intentId: quote.intentId },
       )
     }
+    return
+  }
+  // The orchestrator lowercases EVM addresses; base58 mints stay exact.
+  if (
+    output.chainId !== delivery.chainId ||
+    typeof output.tokenAddress !== 'string' ||
+    output.tokenAddress.toLowerCase() !== delivery.token.toLowerCase()
+  ) {
+    throw new InvalidSolanaTransactionArtifactError(
+      'the quote output cost must reference the requested delivery chain and token',
+      { intentId: quote.intentId },
+    )
   }
 }
 
@@ -296,7 +371,10 @@ export async function signSolanaIntent(input: {
   readonly now: () => number
 }): Promise<SignedSolanaIntent> {
   assertSolanaNotExpired(input.now(), input.prepared.quote)
-  const payload = personalPayload(input.prepared.quote)
+  const payload = personalPayload(
+    input.prepared.quote,
+    input.prepared.input.delivery.kind,
+  )
   if (!input.owner.signMessage) {
     throw new InvalidSolanaTransactionArtifactError(
       'the configured authority cannot sign messages; provide a viem account with signMessage for headless signing',
@@ -353,7 +431,8 @@ export async function submitSolanaIntent(
   signed: SignedSolanaIntent,
 ) {
   assertSolanaNotExpired(context.now(), signed.prepared.quote)
-  const payload = personalPayload(signed.prepared.quote)
+  const delivery = signed.prepared.input.delivery
+  const payload = personalPayload(signed.prepared.quote, delivery.kind)
   await validateSolanaSignature(
     signed.prepared.input.authority,
     payload,
@@ -374,6 +453,9 @@ export async function submitSolanaIntent(
     traceId: response.traceId,
     intentId: response.intentId,
     sourceChains: [solanaChainId(signed.prepared.input.chain)],
-    targetChain: solanaChainId(signed.prepared.input.chain),
+    targetChain:
+      delivery.kind === 'cross-chain'
+        ? delivery.chainId
+        : solanaChainId(signed.prepared.input.chain),
   }
 }

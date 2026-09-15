@@ -290,7 +290,7 @@ describe('internal core composition', () => {
       chain: solanaDevnet,
       mint,
       amount: 100n,
-      recipient,
+      delivery: { kind: 'same-chain' as const, recipient },
       accountAddress: target,
       accountType: 'ERC7579' as const,
       authority: owner.address,

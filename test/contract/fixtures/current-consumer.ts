@@ -1,6 +1,7 @@
 import {
   type BridgeFill,
   type ChainOperation,
+  type CrossChainSolanaOriginTransaction,
   type Eip712OriginSignData,
   type EvmAccountConfig,
   type OriginSignData,
@@ -8,6 +9,7 @@ import {
   RhinestoneSDK,
   type SameChainSolanaTransaction,
   type SignData,
+  type SolanaCrossChainExecutionMetadata,
   type SolanaExecutionMetadata,
   solanaAddress,
   solanaDevnet,
@@ -23,7 +25,7 @@ import {
 } from '@rhinestone/sdk/errors'
 import type { Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
-import { mainnet } from 'viem/chains'
+import { base, mainnet } from 'viem/chains'
 
 function readEcoIntentHash(bridgeFill: BridgeFill): Hex | undefined {
   if (bridgeFill.type !== 'ECO') return undefined
@@ -106,7 +108,19 @@ async function useManagedSolanaApi() {
     recipient: solanaRecipient,
   } satisfies SameChainSolanaTransaction
   const prepared = await account.prepareTransaction(transaction)
-  const metadata: SolanaExecutionMetadata | undefined = prepared.execution
+  const metadata: SolanaExecutionMetadata | undefined =
+    prepared.execution?.kind === 'solana' ? prepared.execution : undefined
+  const delivery = {
+    sourceChains: [solanaDevnet],
+    sourceTokens: [{ address: solanaMint }],
+    targetChain: base,
+    tokenRequests: [{ address: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913' }],
+  } satisfies CrossChainSolanaOriginTransaction
+  const preparedDelivery = await account.prepareTransaction(delivery)
+  const deliveryMetadata: SolanaCrossChainExecutionMetadata | undefined =
+    preparedDelivery.execution?.kind === 'solana-cross-chain'
+      ? preparedDelivery.execution
+      : undefined
   const signData: OriginSignData[] = prepared.quotes.best.signData.origin
   const personal: PersonalSignOriginSignData = {
     kind: 'personalSign',
@@ -117,6 +131,7 @@ async function useManagedSolanaApi() {
   const eip712 = null as unknown as Eip712OriginSignData
 
   void metadata
+  void deliveryMetadata
   void signData
   void personal
   void solanaSignData

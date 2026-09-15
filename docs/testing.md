@@ -34,8 +34,11 @@ source selection with a fake chain catalog. EVM → Solana delivery is covered a
 the client, workflow and facade layers: the recipient resolution order on both
 clusters, base58 mints and recipients passed through unnormalized, refused
 destination execution, the provider's own destination chain id on `bridgeFill`,
-and chain-native completion and refund references. Offline tests never execute a
-Solana mainnet transfer.
+and chain-native completion and refund references. Solana → EVM delivery is
+covered the same way: the source-narrowing access list on the wire, a
+vendor-settled route with its delivery handle, mixed-namespace cost legs,
+recipient defaulting to the account's own EVM identity, and the shapes refused
+before quoting. Offline tests never execute a Solana mainnet transfer.
 
 The pure-core gate requires 95% statements, lines, and functions and 90%
 branches. Contract-only files are excluded. The architecture check rejects

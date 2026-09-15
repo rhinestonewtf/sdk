@@ -163,6 +163,7 @@ export interface PreparedQuotes {
   all: Quote[]
 }
 
+/** Binds a prepared same-chain Solana transfer to the account that prepared it. */
 export interface SolanaExecutionMetadata {
   kind: 'solana'
   namespace: 'dev-v1'
@@ -178,10 +179,34 @@ export interface SolanaExecutionMetadata {
   mint: SolanaAddress
 }
 
+/**
+ * Binds a prepared Solana-origin cross-chain delivery to the account that
+ * prepared it, including the EVM chain, token and recipient it delivers to.
+ */
+export interface SolanaCrossChainExecutionMetadata {
+  kind: 'solana-cross-chain'
+  namespace: 'dev-v1'
+  endpoint: string
+  chain: number
+  caip2: string
+  accountAddress: Address
+  accountType: 'GENERIC' | 'ERC7579' | 'EOA'
+  authority: Address
+  swigAddress: SolanaAddress
+  walletAddress: SolanaAddress
+  mint: SolanaAddress
+  destinationChain: number
+  destinationToken: Address
+  recipient: Address
+}
+
 export interface PreparedTransactionData {
   quotes: PreparedQuotes
-  /** Present for a managed Solana origin and used to validate persisted data. */
-  execution?: SolanaExecutionMetadata
+  /**
+   * Present for a managed Solana origin and used to validate persisted data.
+   * Narrow on `kind` to read the direction-specific fields.
+   */
+  execution?: SolanaExecutionMetadata | SolanaCrossChainExecutionMetadata
   /** Canonical serialized intent input; the shape a sponsorship digest covers. */
   // Deliberately narrowed from the `unknown` this field used to carry. Prepared
   // data produced by `prepareTransaction` and passed straight back to

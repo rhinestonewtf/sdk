@@ -30,6 +30,11 @@ const wallet = solanaAddress('DfBX7Po1bmnXt4GuEF3Eg5UYUHAjs9m5n8nbb9WUqgw2')
 const swig = solanaAddress('9fTE4gQnweN345EGzy6jnXNFW8VryvZ8QwLZqgBubmMs')
 const message = 'ab'.repeat(32)
 
+const destinationToken = '0x036cbd53842c5426634e7929541ec2318f3dcf7e' as const
+const destinationRecipient =
+  '0xabc82222eaa155331bac89b87c20a584a8e05add' as const
+const baseSepoliaId = 84532
+
 function transfer(
   overrides: Partial<SolanaTransferInput> = {},
 ): SolanaTransferInput {
@@ -37,7 +42,7 @@ function transfer(
     chain: solanaDevnet,
     mint,
     amount: 100_000n,
-    recipient,
+    delivery: { kind: 'same-chain', recipient },
     accountAddress: '0x29b406a587dd2a8ba87b9431262ee4fe732f5f0b',
     accountType: 'ERC7579',
     authority: owner.address,
@@ -196,7 +201,31 @@ describe('managed Solana intent workflow', () => {
     transfer({ amount: 0n }),
     transfer({ amount: 1 as never }),
     transfer({ mint: solanaAddress('11111111111111111111111111111111') }),
-    transfer({ recipient: wallet }),
+    transfer({ delivery: { kind: 'same-chain', recipient: wallet } }),
+    transfer({
+      delivery: {
+        kind: 'cross-chain',
+        chainId: 792703810,
+        token: destinationToken,
+        recipient: destinationRecipient,
+      },
+    }),
+    transfer({
+      delivery: {
+        kind: 'cross-chain',
+        chainId: baseSepoliaId,
+        token: 'not-an-address' as never,
+        recipient: destinationRecipient,
+      },
+    }),
+    transfer({
+      delivery: {
+        kind: 'cross-chain',
+        chainId: baseSepoliaId,
+        token: destinationToken,
+        recipient: recipient as never,
+      },
+    }),
     transfer({ namespace: 'other' as 'dev-v1' }),
     transfer({ appFees: { feeBps: -1 } }),
     transfer({ appFees: { feeBps: 1.5 } }),
@@ -350,5 +379,227 @@ describe('managed Solana intent workflow', () => {
     expect(() =>
       assertSolanaNotExpired(0, quote({ expiresAt: Number.NaN })),
     ).toThrow(SolanaQuoteExpiredError)
+  })
+})
+
+describe('Solana-origin cross-chain delivery', () => {
+  const delivery = {
+    kind: 'cross-chain',
+    chainId: baseSepoliaId,
+    token: destinationToken,
+    recipient: destinationRecipient,
+  } as const
+
+  function crossChainTransfer(
+    overrides: Partial<SolanaTransferInput> = {},
+  ): SolanaTransferInput {
+    return transfer({ delivery, ...overrides })
+  }
+
+  function crossChainQuote(
+    overrides: Partial<OrchestratorQuote> = {},
+  ): OrchestratorQuote {
+    const base = quote()
+    return {
+      ...base,
+      settlementLayer: 'RELAY',
+      bridgeFill: {
+        type: 'RELAY',
+        requestId: `0x${'ab'.repeat(32)}`,
+        destinationChainId: baseSepoliaId,
+      },
+      cost: {
+        ...base.cost,
+        output: [
+          {
+            chainId: baseSepoliaId,
+            // The orchestrator lowercases EVM token addresses.
+            tokenAddress: destinationToken,
+            symbol: 'USDC',
+            decimals: 6,
+            price: { usd: 1 },
+            amount: 99_500n,
+          },
+        ],
+      },
+      ...overrides,
+    }
+  }
+
+  test('targets the EVM destination and narrows the source to the named mint', () => {
+    expect(
+      buildSolanaIntentRequest(
+        crossChainTransfer({
+          appFees: { feeBps: 10 },
+          protocolFees: { feeBps: 5 },
+        }),
+      ),
+    ).toEqual({
+      account: {
+        address: '0x29b406a587dd2a8ba87b9431262ee4fe732f5f0b',
+        accountType: 'ERC7579',
+      },
+      destinationChainId: baseSepoliaId,
+      destinationExecutions: [],
+      tokenRequests: [{ tokenAddress: destinationToken, amount: 100_000n }],
+      recipient: { address: destinationRecipient },
+      // `chainIds` would union with this and re-expand the source scope.
+      accountAccessList: { chainTokens: { 792703810: [mint] } },
+      options: {
+        signatureMode: 1,
+        appFees: { feeBps: 10 },
+        protocolFees: { feeBps: 5 },
+      },
+    })
+  })
+
+  test('spends the whole balance when no delivery amount is given', () => {
+    expect(
+      buildSolanaIntentRequest(crossChainTransfer({ amount: undefined })),
+    ).toMatchObject({
+      tokenRequests: [{ tokenAddress: destinationToken }],
+    })
+  })
+
+  test('accepts a vendor-settled route and reports the EVM target chain', async () => {
+    const fixture = context(crossChainQuote())
+    const prepared = await prepareSolanaIntent(
+      fixture.workflow,
+      crossChainTransfer(),
+    )
+
+    expect(prepared.quote.bridgeFill).toMatchObject({
+      type: 'RELAY',
+      requestId: `0x${'ab'.repeat(32)}`,
+    })
+    const signed = await signSolanaIntent({
+      prepared,
+      owner,
+      now: fixture.workflow.now,
+    })
+    const submitted = await submitSolanaIntent(fixture.workflow, signed)
+    expect(submitted).toMatchObject({
+      sourceChains: [792703810],
+      targetChain: baseSepoliaId,
+    })
+  })
+
+  test('accepts a settlement layer the corridor has not moved to yet', async () => {
+    const fixture = context(crossChainQuote({ settlementLayer: 'CCTP' }))
+    await expect(
+      prepareSolanaIntent(fixture.workflow, crossChainTransfer()),
+    ).resolves.toMatchObject({ quote: { settlementLayer: 'CCTP' } })
+  })
+
+  test('matches the delivered token case-insensitively', async () => {
+    const fixture = context(
+      crossChainQuote({
+        cost: {
+          ...crossChainQuote().cost,
+          output: [
+            {
+              ...crossChainQuote().cost.output[0]!,
+              tokenAddress: destinationToken.toUpperCase(),
+            },
+          ],
+        },
+      }),
+    )
+    await expect(
+      prepareSolanaIntent(fixture.workflow, crossChainTransfer()),
+    ).resolves.toBeDefined()
+  })
+
+  test.each([
+    [
+      'a same-chain settlement layer',
+      crossChainQuote({ settlementLayer: 'SAME_CHAIN' }),
+    ],
+    [
+      'a destination signature',
+      crossChainQuote({
+        signData: {
+          origin: [{ kind: 'personalSign', message, expiresAtSlot: '1' }],
+          destination: {
+            domain: {},
+            types: {},
+            primaryType: 'Test',
+            message: {},
+          },
+        },
+      }),
+    ],
+    [
+      'a target-execution signature',
+      crossChainQuote({
+        signData: {
+          origin: [{ kind: 'personalSign', message, expiresAtSlot: '1' }],
+          targetExecution: {
+            domain: {},
+            types: {},
+            primaryType: 'Test',
+            message: {},
+          },
+        },
+      }),
+    ],
+    [
+      'an input leg on the wrong chain',
+      crossChainQuote({
+        cost: {
+          ...crossChainQuote().cost,
+          input: [{ ...crossChainQuote().cost.input[0]!, chainId: 792703809 }],
+        },
+      }),
+    ],
+    [
+      'an input leg naming another mint',
+      crossChainQuote({
+        cost: {
+          ...crossChainQuote().cost,
+          input: [
+            {
+              ...crossChainQuote().cost.input[0]!,
+              tokenAddress: solanaAddress('11111111111111111111111111111112'),
+            },
+          ],
+        },
+      }),
+    ],
+    [
+      'an output leg on the wrong chain',
+      crossChainQuote({
+        cost: {
+          ...crossChainQuote().cost,
+          output: [{ ...crossChainQuote().cost.output[0]!, chainId: 1 }],
+        },
+      }),
+    ],
+    [
+      'an output leg naming another token',
+      crossChainQuote({
+        cost: {
+          ...crossChainQuote().cost,
+          output: [
+            {
+              ...crossChainQuote().cost.output[0]!,
+              tokenAddress: '0x0000000000000000000000000000000000000001',
+            },
+          ],
+        },
+      }),
+    ],
+  ])('rejects a quote with %s', async (_name, candidate) => {
+    const fixture = context(candidate)
+    await expect(
+      prepareSolanaIntent(fixture.workflow, crossChainTransfer()),
+    ).rejects.toThrow(InvalidSolanaTransactionArtifactError)
+  })
+
+  test('rejects a same-chain quote for a same-chain transfer only', async () => {
+    const fixture = context(crossChainQuote())
+    await expect(
+      prepareSolanaIntent(fixture.workflow, transfer()),
+    ).rejects.toThrow(InvalidSolanaTransactionArtifactError)
   })
 })

@@ -1316,6 +1316,41 @@ interface SameChainSolanaTransaction {
   experimental_accountOverride?: never
 }
 
+/**
+ * One cross-chain delivery funded from a development managed Solana account:
+ * spend an SPL mint on a Solana cluster, receive a token on an EVM chain.
+ *
+ * The source cluster and mint are named explicitly — the route spends exactly
+ * one source token, and the account cannot pick between several holdings on
+ * your behalf. Omit `tokenRequests[0].amount` to spend the whole balance of
+ * that mint, and omit `recipient` to deliver to the account's own EVM address.
+ */
+interface CrossChainSolanaOriginTransaction {
+  sourceChains: readonly [SolanaChain]
+  /** The SPL mint to spend. Exactly one; the route spends one source token. */
+  sourceTokens: readonly [{ address: SolanaAddress }]
+  targetChain: Chain
+  tokenRequests: readonly [{ address: Address; amount?: bigint }]
+  recipient?: Address
+  appFees?: AppFeeRate
+  protocolFees?: ProtocolFeeRate
+  sponsored?: false
+  chain?: never
+  calls?: never
+  instructions?: never
+  sourceCalls?: never
+  sourceAssets?: never
+  signers?: never
+  gasLimit?: never
+  customDeadline?: never
+  eip7702InitSignature?: never
+  settlementLayers?: never
+  quoters?: never
+  auxiliaryFunds?: never
+  hyperCore?: never
+  experimental_accountOverride?: never
+}
+
 interface CrossChainSolanaTransaction extends Omit<BaseTransaction, 'calls'> {
   sourceChains?: readonly Chain[]
   targetChain: SolanaChain
@@ -1342,6 +1377,7 @@ interface UserOperationTransaction {
 type Transaction =
   | SameChainTransaction
   | SameChainSolanaTransaction
+  | CrossChainSolanaOriginTransaction
   | CrossChainTransaction
 
 type RequiredAccountBranch<
@@ -1358,7 +1394,7 @@ type ManagedEvmTransactions<C extends RhinestoneAccountConfig> = [
 type ManagedSolanaTransactions<C extends RhinestoneAccountConfig> = [
   RequiredAccountBranch<C, 'solana'>,
 ] extends [SolanaManagedAccountConfig]
-  ? SameChainSolanaTransaction
+  ? SameChainSolanaTransaction | CrossChainSolanaOriginTransaction
   : never
 
 /** Transactions available from every definitely managed source VM. */
@@ -1454,6 +1490,7 @@ export type {
   TokenRequests,
   TokenSymbol,
   ToLeg,
+  CrossChainSolanaOriginTransaction,
   CrossChainSolanaTransaction,
   SameChainSolanaTransaction,
   Transaction,
