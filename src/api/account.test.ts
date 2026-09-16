@@ -2220,7 +2220,7 @@ describe('account boundary adapters', () => {
     expect(transaction.options?.sponsorSettings?.protocolFees).toBe(false)
   })
 
-  test('maps sponsored.swapValue onto sponsorSettings (RHI-7053)', () => {
+  test('maps sponsored.swapValue onto sponsorSettings (RHI-7257)', () => {
     const transaction = adaptTransaction(invocationContext(), {
       chain: mainnet,
       calls: [],
@@ -2241,7 +2241,7 @@ describe('account boundary adapters', () => {
     })
   })
 
-  test('omits swapValue entirely when it is not asked for (RHI-7053)', () => {
+  test('omits swapValue entirely when it is not asked for (RHI-7257)', () => {
     // Absent, not false. The field rides the server-signature surface, so a
     // present-but-false key is different canonical bytes from an absent one —
     // which breaks sponsored quotes across a rolling deploy.
@@ -2254,7 +2254,7 @@ describe('account boundary adapters', () => {
     expect(transaction.options?.sponsorSettings).not.toHaveProperty('swapValue')
   })
 
-  test('boolean sponsored: true does NOT imply swapValue (RHI-7053)', () => {
+  test('boolean sponsored: true does NOT imply swapValue (RHI-7257)', () => {
     // Par moves real tokens out of the integrator's balance at the exchange
     // rate, not a fee we chose to waive. "Sponsor everything" must not opt into
     // it silently.
