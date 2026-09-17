@@ -358,4 +358,31 @@ describe('parseErrorEnvelope sponsor errors', () => {
       code: 'UNSUPPORTED_DESTINATION_INSTRUCTIONS',
     })
   })
+
+  test('surfaces an unsupported sponsorship refusal with its named categories', () => {
+    const error = parseErrorEnvelope(
+      {
+        code: 'UNPROCESSABLE_CONTENT',
+        message: 'Unsupported sponsor settings',
+        traceId: 'trace-sponsor-settings',
+        details: [
+          {
+            message: 'Unsupported sponsor settings',
+            context: {
+              code: 'UNSUPPORTED_SPONSOR_SETTINGS',
+              unsupportedCategories: ['swapFees', 'bridgeFees'],
+            },
+          },
+        ],
+      },
+      422,
+    )
+
+    expect(error.constructor).toBe(UnprocessableContentError)
+    expect(isSponsorError(error)).toBe(false)
+    expect((error as UnprocessableContentError).details[0]?.context).toEqual({
+      code: 'UNSUPPORTED_SPONSOR_SETTINGS',
+      unsupportedCategories: ['swapFees', 'bridgeFees'],
+    })
+  })
 })

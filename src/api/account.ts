@@ -33,6 +33,7 @@ import type {
 } from '../clients/orchestrator/public'
 import type {
   OrchestratorAccountAccessList,
+  OrchestratorIntentOptions,
   OrchestratorQuote,
 } from '../clients/orchestrator/types'
 import type {
@@ -46,6 +47,7 @@ import type {
   SignerSet,
   SolanaManagedAccountConfig,
   SourceAssetInput,
+  Sponsorship,
   SwapQuoter,
   SwapQuoterFilter,
   Transaction,
@@ -747,6 +749,10 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
       ...(transaction.protocolFees
         ? { protocolFees: transaction.protocolFees }
         : {}),
+      ...(() => {
+        const sponsorSettings = toSponsorSettings(transaction.sponsored)
+        return sponsorSettings ? { sponsorSettings } : {}
+      })(),
     } satisfies Partial<SolanaTransferInput>
     if (isCrossChainSolanaOrigin(transaction)) {
       return {
@@ -1617,12 +1623,6 @@ function assertSupportedSolanaTransaction(
     )
   }
   solanaChainId(input.chain as SolanaChain)
-  if (input.sponsored !== undefined && input.sponsored !== false) {
-    throw new UnsupportedAccountCapabilityError(
-      'Managed Solana transfers are not sponsorable; omit `sponsored` or set it to false.',
-      { vm: 'solana' },
-    )
-  }
   if (runsInstructions) {
     // Shape and limits are enforced by the normalizer, which also produces the
     // canonical form `normalizeTransaction` stores.
@@ -1784,12 +1784,6 @@ function assertSupportedSolanaOriginDelivery(
     throw new UnsupportedAccountCapabilityError(
       'A Solana-origin delivery recipient must be an EVM address.',
       { vm: 'solana', field: 'recipient' },
-    )
-  }
-  if (input.sponsored !== undefined && input.sponsored !== false) {
-    throw new UnsupportedAccountCapabilityError(
-      'Managed Solana transfers are not sponsorable; omit `sponsored` or set it to false.',
-      { vm: 'solana' },
     )
   }
   if (input.appFees !== undefined) {
@@ -1971,6 +1965,13 @@ function assertSupportedTransaction(
   }
 }
 
+function freezeSponsorship(sponsored: Sponsorship | undefined): {
+  sponsored?: Sponsorship
+} {
+  if (sponsored === undefined || typeof sponsored === 'boolean') return {}
+  return { sponsored: Object.freeze({ ...sponsored }) }
+}
+
 export function normalizeTransaction(
   transaction: Transaction,
   config: Readonly<RhinestoneAccountConfig>,
@@ -1994,6 +1995,7 @@ export function normalizeTransaction(
       ...(transaction.protocolFees
         ? { protocolFees: Object.freeze({ ...transaction.protocolFees }) }
         : {}),
+      ...freezeSponsorship(transaction.sponsored),
     }) as Transaction
   }
   if (isSolanaInstructionExecution(transaction)) {
@@ -2006,6 +2008,7 @@ export function normalizeTransaction(
       chain: Object.freeze({ ...transaction.chain }),
       instructions: normalizeSolanaInstructions(transaction.instructions),
       ...(lookupTables ? { addressLookupTables: lookupTables } : {}),
+      ...freezeSponsorship(transaction.sponsored),
     }) as Transaction
   }
   if (isSameChainSolanaOrigin(transaction)) {
@@ -2020,6 +2023,7 @@ export function normalizeTransaction(
       ...(transaction.protocolFees
         ? { protocolFees: Object.freeze({ ...transaction.protocolFees }) }
         : {}),
+      ...freezeSponsorship(transaction.sponsored),
     }) as Transaction
   }
   if (
@@ -2051,6 +2055,34 @@ function narrowQuoterPin(
       ? explicit.include.filter((quoter) => allowed.has(quoter))
       : derived.include.filter((quoter) => !explicit.exclude.includes(quoter))
   return { include: narrowed }
+}
+
+/**
+ * Translates the public `sponsored` input into the wire's `sponsorSettings`.
+ * Shared by both VMs so the two cannot drift.
+ */
+function toSponsorSettings(
+  sponsored: Sponsorship | undefined,
+): OrchestratorIntentOptions['sponsorSettings'] {
+  if (!sponsored) return undefined
+  if (typeof sponsored === 'boolean') {
+    return {
+      gas: sponsored,
+      bridgeFees: sponsored,
+      swapFees: sponsored,
+      protocolFees: sponsored,
+    }
+  }
+  return {
+    gas: sponsored.gas,
+    bridgeFees: sponsored.bridging,
+    swapFees: sponsored.swaps,
+    protocolFees: sponsored.protocolFees ?? false,
+    // Omitted rather than sent false when unset: the field rides the
+    // server-signature surface, so a key that is present-but-false is not the
+    // same bytes as absent.
+    ...(sponsored.swapValue ? { swapValue: true } : {}),
+  }
 }
 
 export function adaptTransaction(
@@ -2134,30 +2166,10 @@ export function adaptTransaction(
       ...('chain' in transaction && transaction.customDeadline !== undefined
         ? { customDeadline: transaction.customDeadline }
         : {}),
-      ...(transaction.sponsored
-        ? {
-            sponsorSettings:
-              typeof transaction.sponsored === 'boolean'
-                ? {
-                    gas: transaction.sponsored,
-                    bridgeFees: transaction.sponsored,
-                    swapFees: transaction.sponsored,
-                    protocolFees: transaction.sponsored,
-                  }
-                : {
-                    gas: transaction.sponsored.gas,
-                    bridgeFees: transaction.sponsored.bridging,
-                    swapFees: transaction.sponsored.swaps,
-                    protocolFees: transaction.sponsored.protocolFees ?? false,
-                    // Omitted rather than sent false when unset: the field
-                    // rides the server-signature surface, so a key that is
-                    // present-but-false is not the same bytes as absent.
-                    ...(transaction.sponsored.swapValue
-                      ? { swapValue: true }
-                      : {}),
-                  },
-          }
-        : {}),
+      ...(() => {
+        const sponsorSettings = toSponsorSettings(transaction.sponsored)
+        return sponsorSettings ? { sponsorSettings } : {}
+      })(),
       ...(transaction.settlementLayers
         ? { settlementLayers: transaction.settlementLayers }
         : {}),
