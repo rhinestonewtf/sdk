@@ -53,6 +53,12 @@ export function mapIntentRequestToWire(
     destinationExecutions: input.destinationExecutions,
     tokenRequests: input.tokenRequests,
     recipient: input.recipient,
+    ...(input.destinationInstructions
+      ? { destinationInstructions: input.destinationInstructions }
+      : {}),
+    ...(input.addressLookupTableAddresses
+      ? { addressLookupTableAddresses: input.addressLookupTableAddresses }
+      : {}),
     accountAccessList: mapAccessList(input.accountAccessList),
     options: {
       ...input.options,

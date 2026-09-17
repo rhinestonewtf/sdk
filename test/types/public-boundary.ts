@@ -214,7 +214,9 @@ const preparedRecipient: string | undefined =
     ? undefined
     : prepared.execution.kind === 'solana'
       ? prepared.execution.recipient
-      : prepared.execution.destinationToken
+      : prepared.execution.kind === 'solana-cross-chain'
+        ? prepared.execution.destinationToken
+        : prepared.execution.walletAddress
 
 new RhinestoneSDK({
   auth: {

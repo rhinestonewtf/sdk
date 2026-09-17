@@ -73,6 +73,16 @@ export interface OrchestratorIntentOptions {
   readonly hyperCore?: { readonly action: HyperCoreAction }
 }
 
+export interface OrchestratorSolanaInstruction {
+  readonly programId: string
+  readonly accounts: readonly {
+    readonly pubkey: string
+    readonly isSigner: boolean
+    readonly isWritable: boolean
+  }[]
+  readonly data: string
+}
+
 export interface OrchestratorIntentRequest {
   readonly account: OrchestratorAccount
   readonly destinationChainId: number
@@ -83,6 +93,10 @@ export interface OrchestratorIntentRequest {
     readonly amount?: bigint
   }[]
   readonly recipient?: OrchestratorAccount
+  /** Solana instructions run out of the account's own wallet on a Solana destination. */
+  readonly destinationInstructions?: readonly OrchestratorSolanaInstruction[]
+  /** Address lookup tables the `destinationInstructions` resolve accounts through, base58. */
+  readonly addressLookupTableAddresses?: readonly string[]
   readonly accountAccessList?: OrchestratorAccountAccessList
   readonly options: OrchestratorIntentOptions
   readonly preClaimExecutions?: Readonly<

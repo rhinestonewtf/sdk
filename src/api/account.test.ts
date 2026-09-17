@@ -511,9 +511,12 @@ describe('managed Solana account facade', () => {
       protocolFees: { feeBps: 50 },
     })
     expect(workflows.prepareSolanaIntent.mock.calls[0]?.[0]).toMatchObject({
-      delivery: { kind: 'same-chain', recipient },
-      mint,
-      amount: 100n,
+      action: {
+        kind: 'transfer',
+        mint,
+        amount: 100n,
+        delivery: { kind: 'same-chain', recipient },
+      },
       appFees: { feeBps: 25 },
       protocolFees: { feeBps: 50 },
     })
@@ -765,6 +768,111 @@ describe('managed Solana account facade', () => {
     )
     expect(first.workflows.submitSolanaIntent).not.toHaveBeenCalled()
   })
+
+  describe('instruction execution', () => {
+    const program = solanaAddress('JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4')
+
+    function instructionTransaction() {
+      return {
+        chain: solanaDevnet,
+        instructions: [
+          {
+            programId: { toBase58: () => program },
+            keys: [
+              {
+                pubkey: { toBase58: () => mint },
+                isSigner: false,
+                isWritable: true,
+              },
+            ],
+            data: new Uint8Array([1, 2, 3]),
+          },
+        ],
+      }
+    }
+
+    test('routes instructions to the Solana workflow in the canonical wire shape', async () => {
+      const { facade, workflows } = fixture()
+      const prepared = await facade.prepareTransaction(instructionTransaction())
+
+      const normalized = [
+        {
+          programId: program,
+          accounts: [{ pubkey: mint, isSigner: false, isWritable: true }],
+          data: 'AQID',
+        },
+      ]
+      expect(prepared.transaction).toMatchObject({ instructions: normalized })
+      expect(workflows.prepareSolanaIntent.mock.calls[0]?.[0]).toMatchObject({
+        action: { kind: 'instructions', instructions: normalized },
+      })
+      expect(prepared.execution).toEqual({
+        kind: 'solana-instructions',
+        namespace: 'dev-v1',
+        endpoint: expect.any(String),
+        chain: 792703810,
+        caip2: solanaDevnet.caip2,
+        accountAddress: owner.address,
+        accountType: 'ERC7579',
+        authority: owner.address,
+        swigAddress: expect.any(String),
+        walletAddress: expect.any(String),
+      })
+      expect(prepared.intentInput).toMatchObject({
+        tokenRequests: [],
+        destinationInstructions: normalized,
+      })
+      expect(prepared.intentInput).not.toHaveProperty('recipient')
+    })
+
+    test.each([
+      ['a recipient', { recipient }],
+      ['token requests', { tokenRequests: [{ address: mint, amount: 1n }] }],
+      ['EVM calls', { calls: [] }],
+      ['app fees', { appFees: { feeBps: 10 } }],
+      ['protocol fees', { protocolFees: { feeBps: 10 } }],
+      ['sponsorship', { sponsored: true }],
+    ])('refuses instructions combined with %s', async (_name, patch) => {
+      const { facade, workflows } = fixture()
+
+      await expect(
+        facade.prepareTransaction({
+          ...instructionTransaction(),
+          ...patch,
+        } as never),
+      ).rejects.toThrow(UnsupportedAccountCapabilityError)
+      expect(workflows.prepareSolanaIntent).not.toHaveBeenCalled()
+    })
+
+    test('refuses malformed instructions and lookup tables before quoting', async () => {
+      const { facade, workflows } = fixture()
+
+      await expect(
+        facade.prepareTransaction({
+          chain: solanaDevnet,
+          instructions: [],
+        } as never),
+      ).rejects.toThrow(InvalidSolanaTransactionArtifactError)
+      await expect(
+        facade.prepareTransaction({
+          ...instructionTransaction(),
+          addressLookupTables: ['not-base58'],
+        } as never),
+      ).rejects.toThrow(InvalidSolanaTransactionArtifactError)
+      expect(workflows.prepareSolanaIntent).not.toHaveBeenCalled()
+    })
+
+    test('refuses lookup tables without instructions', async () => {
+      const { facade } = fixture()
+
+      await expect(
+        facade.prepareTransaction({
+          ...transaction(),
+          addressLookupTables: [mint],
+        } as never),
+      ).rejects.toThrow(UnsupportedAccountCapabilityError)
+    })
+  })
 })
 
 describe('managed Solana cross-chain delivery facade', () => {
@@ -917,14 +1025,17 @@ describe('managed Solana cross-chain delivery facade', () => {
     expect(workflows.getEligibleEvmSourceChains).not.toHaveBeenCalled()
     expect(workflows.prepareSolanaIntent.mock.calls[0]?.[0]).toMatchObject({
       chain: solanaDevnet,
-      mint,
-      amount: 100n,
-      delivery: {
-        kind: 'cross-chain',
-        chainId: optimism.id,
-        token: destinationToken,
-        // Defaulted to the account's own EVM identity.
-        recipient: owner.address,
+      action: {
+        kind: 'transfer',
+        mint,
+        amount: 100n,
+        delivery: {
+          kind: 'cross-chain',
+          chainId: optimism.id,
+          token: destinationToken,
+          // Defaulted to the account's own EVM identity.
+          recipient: owner.address,
+        },
       },
     })
     expect(prepared.execution).toMatchObject({
@@ -983,7 +1094,7 @@ describe('managed Solana cross-chain delivery facade', () => {
     expect(Object.isFrozen(request)).toBe(false)
     expect(prepared.execution).toMatchObject({ recipient: guardian.address })
     expect(workflows.prepareSolanaIntent.mock.calls[0]?.[0]).toMatchObject({
-      delivery: { recipient: guardian.address },
+      action: { delivery: { recipient: guardian.address } },
     })
   })
 

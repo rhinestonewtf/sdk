@@ -46,8 +46,12 @@ export type {
   HyperCoreChain,
   NonEvmAddress,
   NonEvmChain,
+  SolanaAccountMeta,
   SolanaAddress,
   SolanaChain,
+  SolanaInstruction,
+  SolanaInstructionInput,
+  SolanaProgramInstruction,
   StellarChain,
   TronChain,
 } from './chains/non-evm'
@@ -130,6 +134,7 @@ export type {
   QuorumValidatorConfig,
   Recovery,
   RhinestoneAccountConfig,
+  SameChainSolanaInstructionsTransaction,
   SameChainSolanaTransaction,
   Session,
   SessionDefinition,
@@ -163,6 +168,7 @@ export type {
   SignedTransactionData,
   SolanaCrossChainExecutionMetadata,
   SolanaExecutionMetadata,
+  SolanaInstructionsExecutionMetadata,
   TransactionResult,
 } from './transactions/intents/types'
 export type {
