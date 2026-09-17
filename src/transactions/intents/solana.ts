@@ -29,6 +29,7 @@ import type {
   SerializedIntentInput,
 } from '../../clients/orchestrator/public'
 import type {
+  OrchestratorIntentOptions,
   OrchestratorIntentRequest,
   OrchestratorQuote,
 } from '../../clients/orchestrator/types'
@@ -94,6 +95,7 @@ export interface SolanaTransferInput {
   readonly endpoint: string
   readonly appFees?: AppFeeRate
   readonly protocolFees?: ProtocolFeeRate
+  readonly sponsorSettings?: OrchestratorIntentOptions['sponsorSettings']
 }
 
 export interface PreparedSolanaIntent {
@@ -177,6 +179,9 @@ export function buildSolanaIntentRequest(
     signatureMode: 1,
     ...(input.appFees ? { appFees: input.appFees } : {}),
     ...(input.protocolFees ? { protocolFees: input.protocolFees } : {}),
+    ...(input.sponsorSettings
+      ? { sponsorSettings: input.sponsorSettings }
+      : {}),
   }
   if (input.action.kind === 'instructions') {
     if (input.appFees || input.protocolFees) {
@@ -527,7 +532,7 @@ export async function submitSolanaIntent(
     },
     {
       intentInput: projectCompatibleIntentInput(signed.prepared.request),
-      sponsored: false,
+      sponsored: Boolean(signed.prepared.request.options.sponsorSettings),
     },
   )
   return {

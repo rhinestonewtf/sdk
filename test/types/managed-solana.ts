@@ -203,10 +203,13 @@ const forbiddenCalls = {
   // @ts-expect-error Solana-origin transfers cannot carry EVM calls
   calls: [],
 } satisfies SameChainSolanaTransaction
-const forbiddenSponsorship = {
+const sponsoredTransfer = {
   ...solanaTransaction,
-  // @ts-expect-error managed Solana transfers are not sponsorable
   sponsored: true,
+} satisfies SameChainSolanaTransaction
+const sponsoredTransferCategories = {
+  ...solanaTransaction,
+  sponsored: { gas: true, bridging: false, swaps: false, protocolFees: true },
 } satisfies SameChainSolanaTransaction
 const forbiddenSources = {
   ...solanaTransaction,
@@ -260,10 +263,13 @@ const forbiddenDeliveryFromSolanaHyperCore = {
   // @ts-expect-error a HyperCore action needs a HyperCore destination
   hyperCore: { closePerp: { asset: 'ETH' } },
 } satisfies CrossChainSolanaOriginTransaction
-const forbiddenDeliveryFromSolanaSponsorship = {
+const sponsoredDeliveryFromSolana = {
   ...deliveryFromSolana,
-  // @ts-expect-error Solana-origin spends are not sponsorable
   sponsored: true,
+} satisfies CrossChainSolanaOriginTransaction
+const sponsoredDeliveryFromSolanaCategories = {
+  ...deliveryFromSolana,
+  sponsored: { gas: true, bridging: true, swaps: false },
 } satisfies CrossChainSolanaOriginTransaction
 const forbiddenDeliveryFromSolanaRecipient = {
   ...deliveryFromSolana,
@@ -296,10 +302,13 @@ const forbiddenInstructionFees = {
   // @ts-expect-error a tokenless spend has no value leg to charge fees on
   appFees: { feeBps: 10 },
 } satisfies SameChainSolanaInstructionsTransaction
-const forbiddenInstructionSponsorship = {
+const sponsoredInstructions = {
   ...instructionTransaction,
-  // @ts-expect-error managed Solana transactions are not sponsorable
   sponsored: true,
+} satisfies SameChainSolanaInstructionsTransaction
+const sponsoredInstructionCategories = {
+  ...instructionTransaction,
+  sponsored: { gas: true, bridging: false, swaps: false },
 } satisfies SameChainSolanaInstructionsTransaction
 const forbiddenTransferInstructions = {
   ...solanaTransaction,
@@ -338,7 +347,8 @@ void forbiddenInstructionRecipient
 void forbiddenInstructionTokens
 void forbiddenInstructionCalls
 void forbiddenInstructionFees
-void forbiddenInstructionSponsorship
+void sponsoredInstructions
+void sponsoredInstructionCategories
 void forbiddenTransferInstructions
 void forbiddenTransferLookupTables
 void forbiddenDeliveryLookupTables
@@ -346,10 +356,12 @@ void forbiddenDeliveryFromSolanaCalls
 void forbiddenDeliveryFromSolanaHyperCore
 void forbiddenDeliveryFromSolanaInstructions
 void forbiddenDeliveryFromSolanaRecipient
-void forbiddenDeliveryFromSolanaSponsorship
+void sponsoredDeliveryFromSolana
+void sponsoredDeliveryFromSolanaCategories
 void forbiddenDeliveryFromSolanaTarget
 void forbiddenCalls
-void forbiddenSponsorship
+void sponsoredTransfer
+void sponsoredTransferCategories
 void forbiddenSources
 void forbiddenDestination
 void forbiddenAuthorization

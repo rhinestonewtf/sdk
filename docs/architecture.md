@@ -92,8 +92,11 @@ enabled Swig namespace.
 
 A managed Solana origin accepts one same-chain SPL transfer with an explicit
 recipient, one same-chain instruction execution, or one cross-chain delivery to
-an EVM chain. Native SOL, sponsorship, EVM calls, independent owner-signature
-assembly, and EIP-7702 authorizations are rejected in every direction.
+an EVM chain. `sponsored` is translated with the same helper EVM uses and passed
+through for the orchestrator to decide on: it serves the categories a Solana
+route can bill and refuses the rest by name. Native SOL, EVM calls, independent
+owner-signature assembly, and EIP-7702 authorizations are rejected in every
+direction.
 Address-only
 Solana branches remain receiver-only. For automatic EVM cross-chain sources,
 the composition reads the orchestrator chain catalog and sends only real

@@ -400,6 +400,101 @@ describe('managed Solana intent workflow', () => {
   })
 })
 
+describe('sponsored Solana intents', () => {
+  const sponsorSettings = {
+    gas: true,
+    bridgeFees: false,
+    swapFees: false,
+    protocolFees: true,
+  } as const
+
+  test('carries the requested sponsorship on the quote options', () => {
+    expect(
+      buildSolanaIntentRequest(transfer({ sponsorSettings })),
+    ).toMatchObject({ options: { signatureMode: 1, sponsorSettings } })
+  })
+
+  test('leaves the options untouched when nothing is sponsored', () => {
+    expect(buildSolanaIntentRequest(transfer()).options).toEqual({
+      signatureMode: 1,
+    })
+  })
+
+  test('reports the sponsorship on submit', async () => {
+    const fixture = context()
+    const prepared = await prepareSolanaIntent(
+      fixture.workflow,
+      transfer({ sponsorSettings }),
+    )
+    const signed = await signSolanaIntent({
+      prepared,
+      owner,
+      now: fixture.workflow.now,
+    })
+    await submitSolanaIntent(fixture.workflow, signed)
+
+    expect(fixture.submitIntent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ sponsored: true }),
+    )
+  })
+
+  test('reports no sponsorship for an unsponsored intent', async () => {
+    const fixture = context()
+    const prepared = await prepareSolanaIntent(fixture.workflow, transfer())
+    const signed = await signSolanaIntent({
+      prepared,
+      owner,
+      now: fixture.workflow.now,
+    })
+    await submitSolanaIntent(fixture.workflow, signed)
+
+    expect(fixture.submitIntent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ sponsored: false }),
+    )
+  })
+
+  test('rejects a restored transaction whose sponsorship changed', async () => {
+    const fixture = context()
+    const prepared = await prepareSolanaIntent(
+      fixture.workflow,
+      transfer({ sponsorSettings }),
+    )
+    const intentInput = projectCompatibleIntentInput(prepared.request)
+
+    expect(() =>
+      reconstructSolanaIntent({
+        traceId: prepared.traceId,
+        transfer: transfer({ sponsorSettings }),
+        intentInput,
+        quote: prepared.quote,
+        quotes: prepared.quotes,
+      }),
+    ).not.toThrow()
+    expect(() =>
+      reconstructSolanaIntent({
+        traceId: prepared.traceId,
+        transfer: transfer({
+          sponsorSettings: { ...sponsorSettings, protocolFees: false },
+        }),
+        intentInput,
+        quote: prepared.quote,
+        quotes: prepared.quotes,
+      }),
+    ).toThrow(/canonical intent input/)
+    expect(() =>
+      reconstructSolanaIntent({
+        traceId: prepared.traceId,
+        transfer: transfer(),
+        intentInput,
+        quote: prepared.quote,
+        quotes: prepared.quotes,
+      }),
+    ).toThrow(/canonical intent input/)
+  })
+})
+
 describe('Solana-origin cross-chain delivery', () => {
   const delivery = {
     kind: 'cross-chain',
@@ -469,6 +564,18 @@ describe('Solana-origin cross-chain delivery', () => {
         protocolFees: { feeBps: 5 },
       },
     })
+  })
+
+  test('carries sponsorship on a delivery', () => {
+    const sponsorSettings = {
+      gas: true,
+      bridgeFees: true,
+      swapFees: false,
+      protocolFees: false,
+    } as const
+    expect(
+      buildSolanaIntentRequest(crossChainTransfer({ sponsorSettings })),
+    ).toMatchObject({ options: { signatureMode: 1, sponsorSettings } })
   })
 
   test('spends the whole balance when no delivery amount is given', () => {
@@ -674,6 +781,18 @@ describe('same-chain Solana instruction execution', () => {
       accountAccessList: { chainIds: [792703810] },
       options: { signatureMode: 1 },
     })
+  })
+
+  test('carries sponsorship on a tokenless execution', () => {
+    const sponsorSettings = {
+      gas: true,
+      bridgeFees: false,
+      swapFees: false,
+      protocolFees: false,
+    } as const
+    expect(
+      buildSolanaIntentRequest(execution({ sponsorSettings })),
+    ).toMatchObject({ options: { signatureMode: 1, sponsorSettings } })
   })
 
   test('omits the lookup tables when there are none', () => {

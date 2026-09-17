@@ -716,6 +716,48 @@ describe('managed Solana account facade', () => {
     expect(workflows.submitSolanaIntent).not.toHaveBeenCalled()
   })
 
+  test('translates sponsorship exactly as an EVM transaction does', async () => {
+    const { facade, workflows } = fixture()
+    const sponsored = {
+      gas: true,
+      bridging: false,
+      swaps: false,
+      protocolFees: true,
+    } as const
+    await facade.prepareTransaction({ ...transaction(), sponsored })
+
+    const sponsorSettings =
+      workflows.prepareSolanaIntent.mock.calls[0]?.[0].sponsorSettings
+    expect(sponsorSettings).toEqual(
+      adaptTransaction(invocationContext(), {
+        chain: optimism,
+        calls: [],
+        sponsored,
+      }).options?.sponsorSettings,
+    )
+    // Rides the sponsorship-signature surface, so absent is not false.
+    expect(sponsorSettings).not.toHaveProperty('swapValue')
+  })
+
+  test('omits sponsorship entirely when none is asked for', async () => {
+    const { facade, workflows } = fixture()
+    await facade.prepareTransaction(transaction())
+
+    expect(workflows.prepareSolanaIntent.mock.calls[0]?.[0]).not.toHaveProperty(
+      'sponsorSettings',
+    )
+  })
+
+  test('freezes the sponsorship it prepared against', async () => {
+    const { facade } = fixture()
+    const prepared = await facade.prepareTransaction({
+      ...transaction(),
+      sponsored: { gas: true, bridging: false, swaps: false },
+    })
+
+    expect(Object.isFrozen(prepared.transaction.sponsored)).toBe(true)
+  })
+
   test('retains the captured EVM account type when live compatibility fields mutate', async () => {
     const { facade, workflows } = fixture()
     ;(facade.config.evm as LegacyAccountConfig<unknown>).account = {
@@ -825,13 +867,29 @@ describe('managed Solana account facade', () => {
       expect(prepared.intentInput).not.toHaveProperty('recipient')
     })
 
+    test('accepts sponsorship on a tokenless execution', async () => {
+      const { facade, workflows } = fixture()
+      await facade.prepareTransaction({
+        ...instructionTransaction(),
+        sponsored: { gas: true, bridging: false, swaps: false },
+      } as never)
+
+      expect(workflows.prepareSolanaIntent.mock.calls[0]?.[0]).toMatchObject({
+        sponsorSettings: {
+          gas: true,
+          bridgeFees: false,
+          swapFees: false,
+          protocolFees: false,
+        },
+      })
+    })
+
     test.each([
       ['a recipient', { recipient }],
       ['token requests', { tokenRequests: [{ address: mint, amount: 1n }] }],
       ['EVM calls', { calls: [] }],
       ['app fees', { appFees: { feeBps: 10 } }],
       ['protocol fees', { protocolFees: { feeBps: 10 } }],
-      ['sponsorship', { sponsored: true }],
     ])('refuses instructions combined with %s', async (_name, patch) => {
       const { facade, workflows } = fixture()
 
@@ -1082,6 +1140,19 @@ describe('managed Solana cross-chain delivery facade', () => {
     })
   })
 
+  test('sponsors a delivery the way an EVM transaction does', async () => {
+    const { facade, workflows } = fixture()
+    await facade.prepareTransaction({ ...transaction(), sponsored: true })
+
+    expect(workflows.prepareSolanaIntent.mock.calls[0]?.[0]).toMatchObject({
+      sponsorSettings: adaptTransaction(invocationContext(), {
+        chain: optimism,
+        calls: [],
+        sponsored: true,
+      }).options?.sponsorSettings,
+    })
+  })
+
   test('prefers an explicit recipient and does not mutate the caller request', async () => {
     const { facade, workflows } = fixture()
     const request = {
@@ -1102,7 +1173,6 @@ describe('managed Solana cross-chain delivery facade', () => {
     ['calls', { calls: [] }],
     ['instructions', { instructions: [] }],
     ['hyperCore', { hyperCore: { closePerp: { asset: 'ETH' } } }],
-    ['sponsorship', { sponsored: true }],
     ['a settlement layer filter', { settlementLayers: { include: ['RELAY'] } }],
     ['two source clusters', { sourceChains: [solanaDevnet, solanaMainnet] }],
     [

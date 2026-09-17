@@ -1314,7 +1314,12 @@ interface SameChainSolanaTransaction {
   recipient: SolanaAddress
   appFees?: AppFeeRate
   protocolFees?: ProtocolFeeRate
-  sponsored?: false
+  /**
+   * Requested sponsorship, in the same shape an EVM transaction takes. Which
+   * categories a Solana route actually bills is the orchestrator's decision —
+   * it serves what it can cover and refuses the rest by name.
+   */
+  sponsored?: Sponsorship
   targetChain?: never
   sourceChains?: never
   calls?: never
@@ -1351,7 +1356,12 @@ interface CrossChainSolanaOriginTransaction {
   recipient?: Address
   appFees?: AppFeeRate
   protocolFees?: ProtocolFeeRate
-  sponsored?: false
+  /**
+   * Requested sponsorship, in the same shape an EVM transaction takes. Which
+   * categories a Solana route actually bills is the orchestrator's decision —
+   * it serves what it can cover and refuses the rest by name.
+   */
+  sponsored?: Sponsorship
   chain?: never
   calls?: never
   instructions?: never
@@ -1398,7 +1408,12 @@ interface SameChainSolanaInstructionsTransaction {
    * orchestrator's `addressLookupTableAddresses`.
    */
   addressLookupTables?: readonly string[]
-  sponsored?: false
+  /**
+   * Requested sponsorship, in the same shape an EVM transaction takes. Which
+   * categories a Solana route actually bills is the orchestrator's decision —
+   * it serves what it can cover and refuses the rest by name.
+   */
+  sponsored?: Sponsorship
   tokenRequests?: never
   recipient?: never
   appFees?: never
