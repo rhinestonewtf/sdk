@@ -1,10 +1,12 @@
 import { privateKeyToAccount } from 'viem/accounts'
 import { describe, expect, test, vi } from 'vitest'
+import type { SolanaAddress } from '../../chains/non-evm'
 import {
   solanaAddress,
   solanaDevnet,
   solanaMainnet,
 } from '../../chains/non-evm'
+import { parseErrorEnvelope } from '../../clients/orchestrator/errors'
 import type { OrchestratorQuote } from '../../clients/orchestrator/types'
 import {
   InvalidSolanaTransactionArtifactError,
@@ -16,6 +18,8 @@ import {
   buildSolanaIntentRequest,
   prepareSolanaIntent,
   reconstructSolanaIntent,
+  type SolanaAction,
+  type SolanaDelivery,
   type SolanaTransferInput,
   signSolanaIntent,
   solanaChainId,
@@ -35,14 +39,28 @@ const destinationRecipient =
   '0xabc82222eaa155331bac89b87c20a584a8e05add' as const
 const baseSepoliaId = 84532
 
-function transfer(
-  overrides: Partial<SolanaTransferInput> = {},
-): SolanaTransferInput {
+type TransferOverrides = Omit<Partial<SolanaTransferInput>, 'action'> & {
+  mint?: SolanaAddress
+  amount?: bigint
+  delivery?: SolanaDelivery
+}
+
+function transfer(overrides: TransferOverrides = {}): SolanaTransferInput {
+  const {
+    mint: mintOverride,
+    delivery,
+    amount: _amount,
+    ...binding
+  } = overrides
+  const amount = 'amount' in overrides ? overrides.amount : 100_000n
   return {
     chain: solanaDevnet,
-    mint,
-    amount: 100_000n,
-    delivery: { kind: 'same-chain', recipient },
+    action: {
+      kind: 'transfer',
+      mint: mintOverride ?? mint,
+      ...(amount === undefined ? {} : { amount }),
+      delivery: delivery ?? { kind: 'same-chain', recipient },
+    },
     accountAddress: '0x29b406a587dd2a8ba87b9431262ee4fe732f5f0b',
     accountType: 'ERC7579',
     authority: owner.address,
@@ -50,7 +68,7 @@ function transfer(
     swigAddress: swig,
     namespace: 'dev-v1',
     endpoint: 'https://dev.example',
-    ...overrides,
+    ...binding,
   }
 }
 
@@ -391,7 +409,7 @@ describe('Solana-origin cross-chain delivery', () => {
   } as const
 
   function crossChainTransfer(
-    overrides: Partial<SolanaTransferInput> = {},
+    overrides: TransferOverrides = {},
   ): SolanaTransferInput {
     return transfer({ delivery, ...overrides })
   }
@@ -601,5 +619,199 @@ describe('Solana-origin cross-chain delivery', () => {
     await expect(
       prepareSolanaIntent(fixture.workflow, transfer()),
     ).rejects.toThrow(InvalidSolanaTransactionArtifactError)
+  })
+})
+
+describe('same-chain Solana instruction execution', () => {
+  const program = solanaAddress('JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4')
+  const lookupTable = solanaAddress(
+    'GAQFGfFMdW95AdrXoBsWmCoiqHiWfYCKYvvmkNAbDwZ4',
+  )
+  const instruction = {
+    programId: program,
+    accounts: [{ pubkey: wallet, isSigner: true, isWritable: true }],
+    data: 'AQID',
+  }
+
+  function execution(
+    overrides: Omit<Partial<SolanaTransferInput>, 'action'> = {},
+    action: Partial<Extract<SolanaAction, { kind: 'instructions' }>> = {},
+  ): SolanaTransferInput {
+    const { action: _action, ...binding } = transfer()
+    return {
+      ...binding,
+      action: { kind: 'instructions', instructions: [instruction], ...action },
+      ...overrides,
+    }
+  }
+
+  function instructionQuote(
+    overrides: Partial<OrchestratorQuote> = {},
+  ): OrchestratorQuote {
+    const base = quote()
+    return {
+      ...base,
+      cost: { ...base.cost, input: [], output: [] },
+      ...overrides,
+    }
+  }
+
+  test('builds a tokenless, recipientless request', () => {
+    expect(
+      buildSolanaIntentRequest(
+        execution({}, { addressLookupTables: [lookupTable] }),
+      ),
+    ).toEqual({
+      account: {
+        address: '0x29b406a587dd2a8ba87b9431262ee4fe732f5f0b',
+        accountType: 'ERC7579',
+      },
+      destinationChainId: 792703810,
+      destinationExecutions: [],
+      tokenRequests: [],
+      destinationInstructions: [instruction],
+      addressLookupTableAddresses: [lookupTable],
+      accountAccessList: { chainIds: [792703810] },
+      options: { signatureMode: 1 },
+    })
+  })
+
+  test('omits the lookup tables when there are none', () => {
+    const request = buildSolanaIntentRequest(execution())
+    expect(request).not.toHaveProperty('addressLookupTableAddresses')
+    expect(request).not.toHaveProperty('recipient')
+  })
+
+  test('normalizes web3.js instructions into the request', () => {
+    const request = buildSolanaIntentRequest(
+      execution(
+        {},
+        {
+          instructions: [
+            {
+              programId: { toBase58: () => program },
+              keys: [
+                {
+                  pubkey: { toBase58: () => wallet },
+                  isSigner: true,
+                  isWritable: false,
+                },
+              ],
+              data: new Uint8Array([1, 2, 3]),
+            },
+          ] as never,
+        },
+      ),
+    )
+    expect(request.destinationInstructions).toEqual([
+      {
+        programId: program,
+        accounts: [{ pubkey: wallet, isSigner: true, isWritable: false }],
+        data: 'AQID',
+      },
+    ])
+  })
+
+  test.each([
+    ['no instructions', execution({}, { instructions: [] })],
+    ['app fees on a tokenless spend', execution({ appFees: { feeBps: 10 } })],
+    [
+      'protocol fees on a tokenless spend',
+      execution({ protocolFees: { feeBps: 10 } }),
+    ],
+    [
+      'lookup tables that are not base58',
+      execution({}, { addressLookupTables: ['not-base58'] }),
+    ],
+  ])('refuses %s before quoting', (_name, input) => {
+    expect(() => buildSolanaIntentRequest(input)).toThrow(
+      InvalidSolanaTransactionArtifactError,
+    )
+  })
+
+  test('accepts a same-chain quote whose cost legs stay on the cluster', async () => {
+    const fixture = context(instructionQuote())
+    const prepared = await prepareSolanaIntent(fixture.workflow, execution())
+    expect(prepared.request.tokenRequests).toEqual([])
+    expect(prepared.quote.intentId).toBe('solana-intent')
+  })
+
+  test('rejects a quote with a cost leg off the requested cluster', async () => {
+    const offCluster = quote()
+    const fixture = context(
+      instructionQuote({
+        cost: { ...offCluster.cost, input: offCluster.cost.input, output: [] },
+      }),
+    )
+    await expect(
+      prepareSolanaIntent(
+        fixture.workflow,
+        execution({ chain: solanaMainnet }),
+      ),
+    ).rejects.toThrow(InvalidSolanaTransactionArtifactError)
+  })
+
+  test('survives a JSON round trip and rejects an altered instruction', async () => {
+    const fixture = context(instructionQuote())
+    const input = execution()
+    const prepared = await prepareSolanaIntent(fixture.workflow, input)
+    const restored = JSON.parse(
+      JSON.stringify({
+        traceId: prepared.traceId,
+        intentInput: projectCompatibleIntentInput(prepared.request),
+      }),
+    )
+    expect(() =>
+      reconstructSolanaIntent({
+        traceId: restored.traceId,
+        transfer: input,
+        intentInput: restored.intentInput,
+        quote: prepared.quote,
+        quotes: prepared.quotes,
+      }),
+    ).not.toThrow()
+    expect(() =>
+      reconstructSolanaIntent({
+        traceId: restored.traceId,
+        transfer: execution(
+          {},
+          {
+            instructions: [{ ...instruction, data: 'AQIE' }],
+          },
+        ),
+        intentInput: restored.intentInput,
+        quote: prepared.quote,
+        quotes: prepared.quotes,
+      }),
+    ).toThrow(/canonical intent input/)
+  })
+
+  test('surfaces the orchestrator refusal while no route serves instructions', async () => {
+    const refusal = parseErrorEnvelope(
+      {
+        code: 'UNPROCESSABLE_CONTENT',
+        message: 'No strategy can serve destinationInstructions',
+        traceId: 'trace-instructions',
+        details: [
+          {
+            message: 'No strategy can serve destinationInstructions',
+            context: { code: 'UNSUPPORTED_DESTINATION_INSTRUCTIONS' },
+          },
+        ],
+      },
+      422,
+    )
+    const workflow = {
+      quoteClient: {
+        createQuote: vi.fn(async () => {
+          throw refusal
+        }),
+      },
+      submissionClient: { submitIntent: vi.fn() },
+      now: () => 1_900_000_000_000,
+    }
+    await expect(
+      prepareSolanaIntent(workflow as never, execution()),
+    ).rejects.toBe(refusal)
   })
 })

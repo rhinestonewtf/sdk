@@ -65,6 +65,50 @@ interface HyperCoreChain extends NonEvmChainBase {
 type NonEvmChain = SolanaChain | TronChain | StellarChain | HyperCoreChain
 type DestinationChain = Chain | NonEvmChain
 
+/** One account referenced by a Solana instruction. */
+interface SolanaAccountMeta {
+  /** Account address, base58. */
+  pubkey: string
+  /** Whether the instruction requires this account to sign. */
+  isSigner: boolean
+  /** Whether the instruction writes to this account. */
+  isWritable: boolean
+}
+
+/**
+ * A Solana instruction in the JSON shape Jupiter's `/swap-instructions`
+ * returns, which is also what `@solana/web3.js` serializes to.
+ */
+interface SolanaInstruction {
+  /** Program to invoke, base58. */
+  programId: string
+  /** Accounts the instruction reads or writes, in the order the program expects. */
+  accounts: readonly SolanaAccountMeta[]
+  /** Instruction data, base64. */
+  data: string
+}
+
+/**
+ * A `@solana/web3.js` `TransactionInstruction`, accepted structurally so the
+ * SDK takes on no Solana runtime dependency.
+ */
+interface SolanaProgramInstruction {
+  programId: string | { toBase58(): string }
+  keys: readonly {
+    pubkey: string | { toBase58(): string }
+    isSigner: boolean
+    isWritable: boolean
+  }[]
+  data: Uint8Array
+}
+
+/**
+ * An instruction as Solana tooling produces it: the wire JSON shape or a
+ * `@solana/web3.js` instruction object. `@solana/kit` instructions are not
+ * accepted — convert them to either form first.
+ */
+type SolanaInstructionInput = SolanaInstruction | SolanaProgramInstruction
+
 const BASE58_ALPHABET =
   '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
 
@@ -147,8 +191,12 @@ export type {
   NativeCurrency,
   NonEvmAddress,
   NonEvmChain,
+  SolanaAccountMeta,
   SolanaAddress,
   SolanaChain,
+  SolanaInstruction,
+  SolanaInstructionInput,
+  SolanaProgramInstruction,
   StellarChain,
   TronChain,
 }

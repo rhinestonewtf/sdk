@@ -288,9 +288,12 @@ describe('internal core composition', () => {
     ).createAccount(base.context).workflows
     const transfer = {
       chain: solanaDevnet,
-      mint,
-      amount: 100n,
-      delivery: { kind: 'same-chain' as const, recipient },
+      action: {
+        kind: 'transfer' as const,
+        mint,
+        amount: 100n,
+        delivery: { kind: 'same-chain' as const, recipient },
+      },
       accountAddress: target,
       accountType: 'ERC7579' as const,
       authority: owner.address,

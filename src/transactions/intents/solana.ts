@@ -8,7 +8,11 @@ import {
   recoverMessageAddress,
 } from 'viem'
 import { formatCaip2 } from '../../chains/caip2'
-import type { SolanaAddress, SolanaChain } from '../../chains/non-evm'
+import type {
+  SolanaAddress,
+  SolanaChain,
+  SolanaInstruction,
+} from '../../chains/non-evm'
 import {
   solanaAddress,
   solanaDevnet,
@@ -35,6 +39,10 @@ import {
 import { normalizeRecovery } from '../../signing/signers/ecdsa'
 import { projectCompatibleIntentInput } from './compatibility'
 import { normalizeIntentQuote } from './normalize'
+import {
+  normalizeSolanaAddressLookupTables,
+  normalizeSolanaInstructions,
+} from './solana-instructions'
 
 const SOLANA_MAINNET_ID = 792703809
 const SOLANA_DEVNET_ID = 792703810
@@ -56,11 +64,27 @@ export type SolanaDelivery =
       readonly recipient: Address
     }
 
+/**
+ * What a Solana-origin intent does: move one SPL mint, or run caller-supplied
+ * instructions out of the account's own wallet. The arms are exclusive — an
+ * instruction execution is tokenless and names no recipient.
+ */
+export type SolanaAction =
+  | {
+      readonly kind: 'transfer'
+      readonly mint: SolanaAddress
+      readonly amount?: bigint
+      readonly delivery: SolanaDelivery
+    }
+  | {
+      readonly kind: 'instructions'
+      readonly instructions: readonly SolanaInstruction[]
+      readonly addressLookupTables?: readonly string[]
+    }
+
 export interface SolanaTransferInput {
   readonly chain: SolanaChain
-  readonly mint: SolanaAddress
-  readonly amount?: bigint
-  readonly delivery: SolanaDelivery
+  readonly action: SolanaAction
   readonly accountAddress: Address
   readonly accountType: 'GENERIC' | 'ERC7579' | 'EOA'
   readonly authority: Address
@@ -143,34 +167,65 @@ export function buildSolanaIntentRequest(
       'the managed account namespace must be dev-v1',
     )
   }
-  const mint = solanaAddress(input.mint)
+  validateFee('appFees', input.appFees)
+  validateFee('protocolFees', input.protocolFees)
+  const account = {
+    address: input.accountAddress,
+    accountType: input.accountType,
+  }
+  const options = {
+    signatureMode: 1,
+    ...(input.appFees ? { appFees: input.appFees } : {}),
+    ...(input.protocolFees ? { protocolFees: input.protocolFees } : {}),
+  }
+  if (input.action.kind === 'instructions') {
+    if (input.appFees || input.protocolFees) {
+      throw new InvalidSolanaTransactionArtifactError(
+        'a Solana instruction execution carries no value leg to charge fees on',
+      )
+    }
+    const lookupTables = normalizeSolanaAddressLookupTables(
+      input.action.addressLookupTables,
+    )
+    return {
+      destinationExecutions: [],
+      account,
+      options,
+      destinationChainId: chainId,
+      // Tokenless: the instructions move whatever they move, and the payee is
+      // encoded inside them, so the request names neither token nor recipient.
+      tokenRequests: [],
+      destinationInstructions: normalizeSolanaInstructions(
+        input.action.instructions,
+      ),
+      ...(lookupTables ? { addressLookupTableAddresses: lookupTables } : {}),
+      accountAccessList: { chainIds: [chainId] },
+    }
+  }
+  const mint = solanaAddress(input.action.mint)
   if (mint === NATIVE_SOL_SENTINEL) {
     throw new InvalidSolanaTransactionArtifactError(
       'native SOL transfers are not supported; provide an SPL mint',
     )
   }
   if (
-    input.amount !== undefined &&
-    (typeof input.amount !== 'bigint' || input.amount <= 0n)
+    input.action.amount !== undefined &&
+    (typeof input.action.amount !== 'bigint' || input.action.amount <= 0n)
   ) {
     throw new InvalidSolanaTransactionArtifactError(
       'the token amount must be a positive bigint when provided',
     )
   }
-  validateFee('appFees', input.appFees)
-  validateFee('protocolFees', input.protocolFees)
   const amount =
-    input.amount === undefined ? {} : ({ amount: input.amount } as const)
+    input.action.amount === undefined
+      ? {}
+      : ({ amount: input.action.amount } as const)
   const common = {
     destinationExecutions: [],
-    account: { address: input.accountAddress, accountType: input.accountType },
-    options: {
-      signatureMode: 1,
-      ...(input.appFees ? { appFees: input.appFees } : {}),
-      ...(input.protocolFees ? { protocolFees: input.protocolFees } : {}),
-    },
+    account,
+    options,
   } satisfies Partial<OrchestratorIntentRequest>
-  const delivery = input.delivery
+  const delivery = input.action.delivery
   if (delivery.kind === 'cross-chain') {
     if (
       !Number.isSafeInteger(delivery.chainId) ||
@@ -212,6 +267,12 @@ export function buildSolanaIntentRequest(
   }
 }
 
+function deliveryKind(input: SolanaTransferInput): SolanaDelivery['kind'] {
+  return input.action.kind === 'instructions'
+    ? 'same-chain'
+    : input.action.delivery.kind
+}
+
 function personalPayload(
   quote: OrchestratorQuote,
   delivery: SolanaDelivery['kind'],
@@ -244,8 +305,23 @@ function personalPayload(
 }
 
 function validateQuote(quote: OrchestratorQuote, input: SolanaTransferInput) {
-  personalPayload(quote, input.delivery.kind)
+  personalPayload(quote, deliveryKind(input))
   const chainId = solanaChainId(input.chain)
+  if (input.action.kind === 'instructions') {
+    // The serving route decides how many cost legs an instruction execution
+    // has, so only their chain is asserted: anything off the requested cluster
+    // is not this intent.
+    const offChain = [...quote.cost.input, ...quote.cost.output].some(
+      (leg) => leg.chainId !== chainId,
+    )
+    if (offChain) {
+      throw new InvalidSolanaTransactionArtifactError(
+        'every quote cost must reference the requested Solana chain',
+        { intentId: quote.intentId },
+      )
+    }
+    return
+  }
   if (quote.cost.input.length !== 1 || quote.cost.output.length !== 1) {
     throw new InvalidSolanaTransactionArtifactError(
       'quote costs must include exactly one input and one output entry',
@@ -253,16 +329,19 @@ function validateQuote(quote: OrchestratorQuote, input: SolanaTransferInput) {
     )
   }
   const source = quote.cost.input[0]!
-  if (source.chainId !== chainId || source.tokenAddress !== input.mint) {
+  if (source.chainId !== chainId || source.tokenAddress !== input.action.mint) {
     throw new InvalidSolanaTransactionArtifactError(
       'the quote input cost must reference the requested Solana chain and mint',
       { intentId: quote.intentId },
     )
   }
   const output = quote.cost.output[0]!
-  const delivery = input.delivery
+  const delivery = input.action.delivery
   if (delivery.kind === 'same-chain') {
-    if (output.chainId !== chainId || output.tokenAddress !== input.mint) {
+    if (
+      output.chainId !== chainId ||
+      output.tokenAddress !== input.action.mint
+    ) {
       throw new InvalidSolanaTransactionArtifactError(
         'the quote output cost must reference the requested Solana chain and mint',
         { intentId: quote.intentId },
@@ -373,7 +452,7 @@ export async function signSolanaIntent(input: {
   assertSolanaNotExpired(input.now(), input.prepared.quote)
   const payload = personalPayload(
     input.prepared.quote,
-    input.prepared.input.delivery.kind,
+    deliveryKind(input.prepared.input),
   )
   if (!input.owner.signMessage) {
     throw new InvalidSolanaTransactionArtifactError(
@@ -431,8 +510,11 @@ export async function submitSolanaIntent(
   signed: SignedSolanaIntent,
 ) {
   assertSolanaNotExpired(context.now(), signed.prepared.quote)
-  const delivery = signed.prepared.input.delivery
-  const payload = personalPayload(signed.prepared.quote, delivery.kind)
+  const action = signed.prepared.input.action
+  const payload = personalPayload(
+    signed.prepared.quote,
+    deliveryKind(signed.prepared.input),
+  )
   await validateSolanaSignature(
     signed.prepared.input.authority,
     payload,
@@ -454,8 +536,8 @@ export async function submitSolanaIntent(
     intentId: response.intentId,
     sourceChains: [solanaChainId(signed.prepared.input.chain)],
     targetChain:
-      delivery.kind === 'cross-chain'
-        ? delivery.chainId
+      action.kind === 'transfer' && action.delivery.kind === 'cross-chain'
+        ? action.delivery.chainId
         : solanaChainId(signed.prepared.input.chain),
   }
 }

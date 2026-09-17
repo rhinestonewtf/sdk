@@ -321,6 +321,41 @@ describe('mapIntentRequestToWire — Solana destination', () => {
     expect(wire.recipient).toEqual({ address: recipient })
     expect(wire.accountAccessList).toEqual({ chainIds: ['eip155:8453'] })
   })
+
+  // Instruction bytes and account order decide what the wallet executes, so the
+  // mapper must not touch them.
+  test('carries Solana instructions and lookup tables through verbatim', () => {
+    const destinationInstructions = [
+      {
+        programId: mint,
+        accounts: [
+          { pubkey: recipient, isSigner: true, isWritable: false },
+          { pubkey: mint, isSigner: false, isWritable: true },
+        ],
+        data: 'AQID',
+      },
+    ]
+    const wire = mapIntentRequestToWire({
+      ...(request as object),
+      tokenRequests: [],
+      recipient: undefined,
+      destinationInstructions,
+      addressLookupTableAddresses: [recipient],
+    } as never) as unknown as Record<string, unknown>
+
+    expect(wire.destinationInstructions).toEqual(destinationInstructions)
+    expect(wire.addressLookupTableAddresses).toEqual([recipient])
+  })
+
+  test('omits the instruction fields on a transfer', () => {
+    const wire = mapIntentRequestToWire(request) as unknown as Record<
+      string,
+      unknown
+    >
+
+    expect(wire).not.toHaveProperty('destinationInstructions')
+    expect(wire).not.toHaveProperty('addressLookupTableAddresses')
+  })
 })
 
 describe('mapIntentRequestToWire — HyperCore action', () => {

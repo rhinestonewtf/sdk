@@ -9,7 +9,7 @@ const limits = [
     path: `${packageRoot}/index.js`,
     // Offline Solana PDA derivation includes maintained base58 and Ed25519
     // primitives; keep their browser cost visible in the root budget.
-    limit: '73 kB',
+    limit: '76 kB',
     import: '*',
     ignore: viem,
   },

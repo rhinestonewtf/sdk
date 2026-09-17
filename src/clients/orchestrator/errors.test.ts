@@ -335,4 +335,27 @@ describe('parseErrorEnvelope sponsor errors', () => {
     expect(error.constructor).toBe(UnprocessableContentError)
     expect(isSponsorError(error)).toBe(false)
   })
+
+  test('surfaces the unsupported-instruction refusal with its code and message', () => {
+    const error = parseErrorEnvelope(
+      {
+        code: 'UNPROCESSABLE_CONTENT',
+        message: 'No strategy can serve destinationInstructions',
+        traceId: 'trace-instructions',
+        details: [
+          {
+            message: 'No strategy can serve destinationInstructions',
+            context: { code: 'UNSUPPORTED_DESTINATION_INSTRUCTIONS' },
+          },
+        ],
+      },
+      422,
+    )
+
+    expect(error.constructor).toBe(UnprocessableContentError)
+    expect(error.message).toBe('No strategy can serve destinationInstructions')
+    expect((error as UnprocessableContentError).details[0]?.context).toEqual({
+      code: 'UNSUPPORTED_DESTINATION_INSTRUCTIONS',
+    })
+  })
 })

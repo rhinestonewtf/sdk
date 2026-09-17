@@ -91,9 +91,10 @@ transaction stack and does not create or verify the account. Production has no
 enabled Swig namespace.
 
 A managed Solana origin accepts one same-chain SPL transfer with an explicit
-recipient, or one cross-chain delivery to an EVM chain. Native SOL, sponsorship,
-EVM calls, independent owner-signature assembly, and EIP-7702 authorizations are
-rejected in both directions. Address-only
+recipient, one same-chain instruction execution, or one cross-chain delivery to
+an EVM chain. Native SOL, sponsorship, EVM calls, independent owner-signature
+assembly, and EIP-7702 authorizations are rejected in every direction.
+Address-only
 Solana branches remain receiver-only. For automatic EVM cross-chain sources,
 the composition reads the orchestrator chain catalog and sends only real
 `eip155:` chains matching the destination's network class; source-asset filters
@@ -104,6 +105,22 @@ recipient resolves in order: an explicit `recipient`, the configured address-onl
 receiver, then the managed branch's derived Swig wallet; delivery is refused
 before quoting when none exists, and so are destination calls, instructions or
 HyperCore actions.
+
+A same-chain instruction execution runs caller-supplied Solana instructions out
+of the account's own Swig wallet, so it is tokenless and names no recipient: the
+payee is encoded inside the instructions. Instructions are accepted either wire-
+shaped (base58 program and accounts, base64 data — what Jupiter
+`/swap-instructions` returns) or as `@solana/web3.js` instruction objects, and
+are normalized to the wire shape in `normalizeTransaction`, so a prepared
+transaction stays JSON-round-trippable and its reconstruction compares the same
+canonical intent input. Order, account metadata, signer flags and data bytes are
+preserved verbatim. The published request limits (32 instructions, 64 accounts
+each, 1232 bytes of data in total, 8 address lookup tables) are mirrored locally
+so an oversized request fails before a round trip. The request carries
+`tokenRequests: []`, `destinationInstructions`, and
+`addressLookupTableAddresses` only when non-empty. No orchestrator route serves
+instructions yet, so a well-formed request is refused with
+`UNSUPPORTED_DESTINATION_INSTRUCTIONS`; the SDK surfaces that refusal unchanged.
 The destination hosts no account runtime, so preparation runs the ordinary EVM
 cross-chain path with the account hosted on the last EVM source and the
 destination signature reusing the last origin one. Whether the destination wallet

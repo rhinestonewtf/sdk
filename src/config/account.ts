@@ -19,6 +19,7 @@ import type {
   NonEvmChain,
   SolanaAddress,
   SolanaChain,
+  SolanaInstructionInput,
 } from '../chains/non-evm'
 import type {
   AppFeeRate,
@@ -1318,6 +1319,7 @@ interface SameChainSolanaTransaction {
   sourceChains?: never
   calls?: never
   instructions?: never
+  addressLookupTables?: never
   sourceCalls?: never
   sourceAssets?: never
   signers?: never
@@ -1353,6 +1355,7 @@ interface CrossChainSolanaOriginTransaction {
   chain?: never
   calls?: never
   instructions?: never
+  addressLookupTables?: never
   sourceCalls?: never
   sourceAssets?: never
   signers?: never
@@ -1374,7 +1377,46 @@ interface CrossChainSolanaTransaction extends Omit<BaseTransaction, 'calls'> {
   recipient?: SolanaAddress
   calls?: never
   instructions?: never
+  addressLookupTables?: never
   hyperCore?: never
+}
+
+/**
+ * Solana instructions run out of a development managed Solana account's own
+ * wallet, on the cluster the account holds them on.
+ *
+ * The wallet executes the instructions, so the transaction names no recipient
+ * and no token request: a payee is encoded inside the instructions themselves.
+ */
+interface SameChainSolanaInstructionsTransaction {
+  chain: SolanaChain
+  /** The instructions to run, in order. Between 1 and 32. */
+  instructions: readonly SolanaInstructionInput[]
+  /**
+   * Address lookup tables the instructions resolve accounts through, base58,
+   * as Jupiter's `/swap-instructions` returns them. At most 8. Sent as the
+   * orchestrator's `addressLookupTableAddresses`.
+   */
+  addressLookupTables?: readonly string[]
+  sponsored?: false
+  tokenRequests?: never
+  recipient?: never
+  appFees?: never
+  protocolFees?: never
+  targetChain?: never
+  sourceChains?: never
+  calls?: never
+  sourceCalls?: never
+  sourceAssets?: never
+  signers?: never
+  gasLimit?: never
+  customDeadline?: never
+  eip7702InitSignature?: never
+  settlementLayers?: never
+  quoters?: never
+  auxiliaryFunds?: never
+  hyperCore?: never
+  experimental_accountOverride?: never
 }
 
 type CrossChainTransaction =
@@ -1392,6 +1434,7 @@ interface UserOperationTransaction {
 type Transaction =
   | SameChainTransaction
   | SameChainSolanaTransaction
+  | SameChainSolanaInstructionsTransaction
   | CrossChainSolanaOriginTransaction
   | CrossChainTransaction
 
@@ -1409,7 +1452,10 @@ type ManagedEvmTransactions<C extends RhinestoneAccountConfig> = [
 type ManagedSolanaTransactions<C extends RhinestoneAccountConfig> = [
   RequiredAccountBranch<C, 'solana'>,
 ] extends [SolanaManagedAccountConfig]
-  ? SameChainSolanaTransaction | CrossChainSolanaOriginTransaction
+  ?
+      | SameChainSolanaTransaction
+      | SameChainSolanaInstructionsTransaction
+      | CrossChainSolanaOriginTransaction
   : never
 
 /** Transactions available from every definitely managed source VM. */
@@ -1507,6 +1553,7 @@ export type {
   ToLeg,
   CrossChainSolanaOriginTransaction,
   CrossChainSolanaTransaction,
+  SameChainSolanaInstructionsTransaction,
   SameChainSolanaTransaction,
   Transaction,
   UniversalActionPolicyParamCondition,

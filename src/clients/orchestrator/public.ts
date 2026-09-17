@@ -403,6 +403,20 @@ interface PortfolioToken {
 
 type Portfolio = PortfolioToken[]
 
+/** A Solana instruction as the orchestrator's quote request carries it. */
+interface SolanaWireInstruction {
+  /** Program to invoke, base58. */
+  programId: string
+  /** Accounts the instruction reads or writes, in the order the program expects. */
+  accounts: {
+    pubkey: string
+    isSigner: boolean
+    isWritable: boolean
+  }[]
+  /** Instruction data, base64. */
+  data: string
+}
+
 interface IntentInput {
   account: Account
   destinationChainId: number
@@ -413,6 +427,10 @@ interface IntentInput {
     amount?: bigint
   }[]
   recipient?: Account
+  /** Solana instructions run out of the account's own wallet on a Solana destination. */
+  destinationInstructions?: SolanaWireInstruction[]
+  /** Address lookup tables the `destinationInstructions` resolve accounts through, base58. */
+  addressLookupTableAddresses?: string[]
   accountAccessList?: AccountAccessList
   options: IntentOptions
   preClaimExecutions?: Record<number, Execution[]>
@@ -839,6 +857,7 @@ export type {
   Portfolio,
   PortfolioToken,
   Execution,
+  SolanaWireInstruction,
   AccountAccessList,
   MappedChainTokenAccessList,
   UnmappedChainTokenAccessList,

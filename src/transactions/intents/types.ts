@@ -200,13 +200,34 @@ export interface SolanaCrossChainExecutionMetadata {
   recipient: Address
 }
 
+/**
+ * Binds a prepared same-chain Solana instruction execution to the account that
+ * prepared it. The instructions themselves are covered by the canonical
+ * serialized intent input, not repeated here.
+ */
+export interface SolanaInstructionsExecutionMetadata {
+  kind: 'solana-instructions'
+  namespace: 'dev-v1'
+  endpoint: string
+  chain: number
+  caip2: string
+  accountAddress: Address
+  accountType: 'GENERIC' | 'ERC7579' | 'EOA'
+  authority: Address
+  swigAddress: SolanaAddress
+  walletAddress: SolanaAddress
+}
+
 export interface PreparedTransactionData {
   quotes: PreparedQuotes
   /**
    * Present for a managed Solana origin and used to validate persisted data.
    * Narrow on `kind` to read the direction-specific fields.
    */
-  execution?: SolanaExecutionMetadata | SolanaCrossChainExecutionMetadata
+  execution?:
+    | SolanaExecutionMetadata
+    | SolanaCrossChainExecutionMetadata
+    | SolanaInstructionsExecutionMetadata
   /** Canonical serialized intent input; the shape a sponsorship digest covers. */
   // Deliberately narrowed from the `unknown` this field used to carry. Prepared
   // data produced by `prepareTransaction` and passed straight back to

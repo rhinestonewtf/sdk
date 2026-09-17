@@ -16,10 +16,12 @@ import {
   type OriginSignData,
   type PersonalSignOriginSignData,
   RhinestoneSDK,
+  type SameChainSolanaInstructionsTransaction,
   type SameChainSolanaTransaction,
   type SignData,
   type SolanaCrossChainExecutionMetadata,
   type SolanaExecutionMetadata,
+  type SolanaInstructionsExecutionMetadata,
   solanaAddress,
   solanaDevnet,
   type Transaction,
@@ -71,6 +73,33 @@ const defaultedDelivery = {
   tokenRequests: [{ address: mint }],
 } satisfies Transaction
 
+// The wire JSON shape, assignable straight from a Jupiter `/swap-instructions`
+// response without branding every address first.
+const jupiterInstruction: {
+  programId: string
+  accounts: { pubkey: string; isSigner: boolean; isWritable: boolean }[]
+  data: string
+} = {
+  programId: 'JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4',
+  accounts: [{ pubkey: mint, isSigner: false, isWritable: true }],
+  data: 'AQID',
+}
+const instructionTransaction = {
+  chain: solanaDevnet,
+  instructions: [
+    jupiterInstruction,
+    // A `@solana/web3.js` instruction, accepted structurally.
+    {
+      programId: { toBase58: () => mint },
+      keys: [
+        { pubkey: { toBase58: () => mint }, isSigner: true, isWritable: true },
+      ],
+      data: new Uint8Array([1, 2, 3]),
+    },
+  ],
+  addressLookupTables: ['GAQFGfFMdW95AdrXoBsWmCoiqHiWfYCKYvvmkNAbDwZ4'],
+} satisfies SameChainSolanaInstructionsTransaction
+
 const usdcOnBase = '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913' as const
 const deliveryFromSolana = {
   sourceChains: [solanaDevnet],
@@ -102,6 +131,19 @@ const metadata: SolanaExecutionMetadata = {
   mint,
 }
 
+const instructionsMetadata: SolanaInstructionsExecutionMetadata = {
+  kind: 'solana-instructions',
+  namespace: 'dev-v1',
+  endpoint: 'https://orchestrator.example',
+  chain: 792703810,
+  caip2: solanaDevnet.caip2,
+  accountAddress: owner.address,
+  accountType: 'ERC7579',
+  authority: owner.address,
+  swigAddress: recipient,
+  walletAddress: recipient,
+}
+
 const crossChainMetadata: SolanaCrossChainExecutionMetadata = {
   kind: 'solana-cross-chain',
   namespace: 'dev-v1',
@@ -129,6 +171,7 @@ async function compositeCapabilitySurface() {
   const evmAddress: Address = account.getAddress('evm')
   const solanaAddressValue: typeof recipient = account.getAddress('solana')
   account.prepareTransaction(solanaTransaction)
+  account.prepareTransaction(instructionTransaction)
   account.prepareTransaction(deliveryFromSolana)
   account.prepareTransaction(maxOutFromSolana)
   // The same request written inline, which is how integrators write it.
@@ -186,9 +229,9 @@ const forbiddenDeliveryCalls: Transaction = {
   ...deliveryTransaction,
   calls: [],
 }
+// @ts-expect-error Solana destinations take delivery only, never instructions
 const forbiddenDeliveryInstructions: Transaction = {
   ...deliveryTransaction,
-  // @ts-expect-error Solana destinations take delivery only, never instructions
   instructions: [],
 }
 // @ts-expect-error a Solana delivery recipient is a base58 wallet, not an EVM address
@@ -233,6 +276,47 @@ const forbiddenDeliveryFromSolanaTarget = {
   targetChain: solanaDevnet,
 } satisfies CrossChainSolanaOriginTransaction
 
+const forbiddenInstructionRecipient = {
+  ...instructionTransaction,
+  // @ts-expect-error an instruction execution encodes its payee in the instructions
+  recipient,
+} satisfies SameChainSolanaInstructionsTransaction
+const forbiddenInstructionTokens = {
+  ...instructionTransaction,
+  // @ts-expect-error an instruction execution is tokenless
+  tokenRequests: [{ address: mint, amount: 1n }],
+} satisfies SameChainSolanaInstructionsTransaction
+const forbiddenInstructionCalls = {
+  ...instructionTransaction,
+  // @ts-expect-error Solana instructions cannot be mixed with EVM calls
+  calls: [],
+} satisfies SameChainSolanaInstructionsTransaction
+const forbiddenInstructionFees = {
+  ...instructionTransaction,
+  // @ts-expect-error a tokenless spend has no value leg to charge fees on
+  appFees: { feeBps: 10 },
+} satisfies SameChainSolanaInstructionsTransaction
+const forbiddenInstructionSponsorship = {
+  ...instructionTransaction,
+  // @ts-expect-error managed Solana transactions are not sponsorable
+  sponsored: true,
+} satisfies SameChainSolanaInstructionsTransaction
+const forbiddenTransferInstructions = {
+  ...solanaTransaction,
+  // @ts-expect-error a transfer carries no instructions
+  instructions: [jupiterInstruction],
+} satisfies SameChainSolanaTransaction
+const forbiddenTransferLookupTables = {
+  ...solanaTransaction,
+  // @ts-expect-error address lookup tables require instructions
+  addressLookupTables: [mint],
+} satisfies SameChainSolanaTransaction
+// @ts-expect-error a Solana destination runs no instructions
+const forbiddenDeliveryLookupTables: Transaction = {
+  ...deliveryTransaction,
+  addressLookupTables: [mint],
+}
+
 const executionError: Error = new InvalidSolanaTransactionArtifactError(
   'fixture',
 )
@@ -249,6 +333,15 @@ void solanaSignData
 void nativeOperation
 void metadata
 void crossChainMetadata
+void instructionsMetadata
+void forbiddenInstructionRecipient
+void forbiddenInstructionTokens
+void forbiddenInstructionCalls
+void forbiddenInstructionFees
+void forbiddenInstructionSponsorship
+void forbiddenTransferInstructions
+void forbiddenTransferLookupTables
+void forbiddenDeliveryLookupTables
 void forbiddenDeliveryFromSolanaCalls
 void forbiddenDeliveryFromSolanaHyperCore
 void forbiddenDeliveryFromSolanaInstructions

@@ -18,6 +18,7 @@ import {
   type DestinationChain,
   type SolanaAddress,
   type SolanaChain,
+  type SolanaInstructionInput,
   solanaAddress,
 } from '../chains/non-evm'
 import { normalizeTokenAddress, validateTokenAddresses } from '../chains/tokens'
@@ -40,6 +41,7 @@ import type {
   CrossChainSolanaOriginTransaction,
   EvmAccountConfig,
   RhinestoneAccountConfig,
+  SameChainSolanaInstructionsTransaction,
   Session,
   SignerSet,
   SolanaManagedAccountConfig,
@@ -92,6 +94,10 @@ import {
   type SolanaTransferInput,
   solanaChainId,
 } from '../transactions/intents/solana'
+import {
+  normalizeSolanaAddressLookupTables,
+  normalizeSolanaInstructions,
+} from '../transactions/intents/solana-instructions'
 import type {
   IntentInput,
   PreparedIntent,
@@ -541,18 +547,27 @@ function solanaMetadata(
     authority: input.authority,
     swigAddress: input.swigAddress,
     walletAddress: input.walletAddress,
-    mint: input.mint,
   }
-  const delivery = input.delivery
+  const action = input.action
+  if (action.kind === 'instructions') {
+    return { kind: 'solana-instructions', ...binding }
+  }
+  const delivery = action.delivery
   return delivery.kind === 'cross-chain'
     ? {
         kind: 'solana-cross-chain',
         ...binding,
+        mint: action.mint,
         destinationChain: delivery.chainId,
         destinationToken: delivery.token,
         recipient: delivery.recipient,
       }
-    : { kind: 'solana', ...binding, recipient: delivery.recipient }
+    : {
+        kind: 'solana',
+        ...binding,
+        mint: action.mint,
+        recipient: delivery.recipient,
+      }
 }
 
 function toPreparedSolanaTransactionData(
@@ -719,10 +734,8 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
         { vm: 'solana' },
       )
     }
-    const request = transaction.tokenRequests[0]
     const location = locateSwig(asSwigNamespace('dev-v1'), accountAddress)
     const common = {
-      ...(request.amount === undefined ? {} : { amount: request.amount }),
       accountAddress,
       accountType: capturedSolanaAccountType,
       authority: solanaOwner().address,
@@ -739,22 +752,47 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
       return {
         ...common,
         chain: transaction.sourceChains[0],
-        mint: transaction.sourceTokens[0].address,
-        delivery: {
-          kind: 'cross-chain',
-          chainId: transaction.targetChain.id,
-          token: transaction.tokenRequests[0].address,
-          // Resolved here rather than in `normalizeTransaction` so the prepare
-          // and reconstruct paths agree on the same recipient.
-          recipient: transaction.recipient ?? accountAddress,
+        action: {
+          kind: 'transfer',
+          mint: transaction.sourceTokens[0].address,
+          ...(transaction.tokenRequests[0].amount === undefined
+            ? {}
+            : { amount: transaction.tokenRequests[0].amount }),
+          delivery: {
+            kind: 'cross-chain',
+            chainId: transaction.targetChain.id,
+            token: transaction.tokenRequests[0].address,
+            // Resolved here rather than in `normalizeTransaction` so the
+            // prepare and reconstruct paths agree on the same recipient.
+            recipient: transaction.recipient ?? accountAddress,
+          },
+        },
+      }
+    }
+    if (isSolanaInstructionExecution(transaction)) {
+      return {
+        ...common,
+        chain: transaction.chain,
+        action: {
+          kind: 'instructions',
+          instructions: normalizeSolanaInstructions(transaction.instructions),
+          ...(transaction.addressLookupTables
+            ? { addressLookupTables: transaction.addressLookupTables }
+            : {}),
         },
       }
     }
     return {
       ...common,
       chain: transaction.chain,
-      mint: transaction.tokenRequests[0].address,
-      delivery: { kind: 'same-chain', recipient: transaction.recipient },
+      action: {
+        kind: 'transfer',
+        mint: transaction.tokenRequests[0].address,
+        ...(transaction.tokenRequests[0].amount === undefined
+          ? {}
+          : { amount: transaction.tokenRequests[0].amount }),
+        delivery: { kind: 'same-chain', recipient: transaction.recipient },
+      },
     }
   }
 
@@ -1508,6 +1546,15 @@ function isCrossChainSolanaOrigin(
   )
 }
 
+function isSolanaInstructionExecution(
+  transaction: Transaction,
+): transaction is SameChainSolanaInstructionsTransaction {
+  return (
+    isSameChainSolanaOrigin(transaction) &&
+    (transaction as { instructions?: unknown }).instructions !== undefined
+  )
+}
+
 function isSolanaOrigin(
   transaction: Transaction,
 ): transaction is
@@ -1543,14 +1590,19 @@ function assertSupportedSolanaTransaction(
   input: Record<string, unknown>,
   config: Readonly<RhinestoneAccountConfig>,
 ): void {
-  const allowed = new Set([
-    'chain',
-    'tokenRequests',
-    'recipient',
-    'sponsored',
-    'appFees',
-    'protocolFees',
-  ])
+  const runsInstructions = input.instructions !== undefined
+  const allowed = new Set(
+    runsInstructions
+      ? ['chain', 'instructions', 'addressLookupTables', 'sponsored']
+      : [
+          'chain',
+          'tokenRequests',
+          'recipient',
+          'sponsored',
+          'appFees',
+          'protocolFees',
+        ],
+  )
   const unsupported = Object.keys(input).find((key) => !allowed.has(key))
   if (unsupported) {
     throw new UnsupportedAccountCapabilityError(
@@ -1570,6 +1622,17 @@ function assertSupportedSolanaTransaction(
       'Managed Solana transfers are not sponsorable; omit `sponsored` or set it to false.',
       { vm: 'solana' },
     )
+  }
+  if (runsInstructions) {
+    // Shape and limits are enforced by the normalizer, which also produces the
+    // canonical form `normalizeTransaction` stores.
+    normalizeSolanaInstructions(
+      input.instructions as readonly SolanaInstructionInput[],
+    )
+    normalizeSolanaAddressLookupTables(
+      input.addressLookupTables as readonly string[] | undefined,
+    )
+    return
   }
   if (!Array.isArray(input.tokenRequests) || input.tokenRequests.length !== 1) {
     throw new UnsupportedAccountCapabilityError(
@@ -1931,6 +1994,18 @@ export function normalizeTransaction(
       ...(transaction.protocolFees
         ? { protocolFees: Object.freeze({ ...transaction.protocolFees }) }
         : {}),
+    }) as Transaction
+  }
+  if (isSolanaInstructionExecution(transaction)) {
+    const lookupTables = normalizeSolanaAddressLookupTables(
+      transaction.addressLookupTables,
+    )
+    const { addressLookupTables: _tables, ...rest } = transaction
+    return Object.freeze({
+      ...rest,
+      chain: Object.freeze({ ...transaction.chain }),
+      instructions: normalizeSolanaInstructions(transaction.instructions),
+      ...(lookupTables ? { addressLookupTables: lookupTables } : {}),
     }) as Transaction
   }
   if (isSameChainSolanaOrigin(transaction)) {
