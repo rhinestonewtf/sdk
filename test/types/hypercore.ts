@@ -11,9 +11,13 @@ import { hyperCorePerp, RhinestoneSDK } from '../../src/index'
 
 type AssignableTo<Narrow, Wide> = [Narrow] extends [Wide] ? true : never
 
+type WireHyperCoreDestination = Extract<
+  WireQuoteRequest['destination'],
+  { vm: 'hypercore' }
+>
 type WireHyperCoreAction = NonNullable<
-  NonNullable<WireQuoteRequest['options']>['hyperCore']
->['action']
+  NonNullable<WireHyperCoreDestination['execution']>['actions']
+>[number]
 
 // `HyperCoreAction` is hand-written for its documentation and its `Hex`/`Address`
 // field types, so nothing makes it track the generated wire shape except this.

@@ -1,4 +1,4 @@
-import type { Address, Hex, TypedDataDefinition } from 'viem'
+import type { Address, Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { base, mainnet } from 'viem/chains'
 import {
@@ -10,15 +10,12 @@ import {
   SolanaQuoteExpiredError,
 } from '../../src/errors/index'
 import {
-  type ChainOperation,
   type CrossChainSolanaOriginTransaction,
-  type Eip712OriginSignData,
-  type OriginSignData,
-  type PersonalSignOriginSignData,
+  type IntentOperationGroup,
   RhinestoneSDK,
   type SameChainSolanaInstructionsTransaction,
   type SameChainSolanaTransaction,
-  type SignData,
+  type SigningRequest,
   type SolanaCrossChainExecutionMetadata,
   type SolanaExecutionMetadata,
   type SolanaInstructionsExecutionMetadata,
@@ -31,28 +28,64 @@ const owner = privateKeyToAccount(`0x${'11'.repeat(32)}`)
 const mint = solanaAddress('4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU')
 const recipient = solanaAddress('Vote111111111111111111111111111111111111111')
 
-const personalSignPayload = {
-  kind: 'personalSign',
-  message: '11'.repeat(32),
-  expiresAtSlot: '123456',
-} satisfies PersonalSignOriginSignData
-const eip712Payload = {
-  kind: 'eip712',
-  domain: { name: 'Intent' },
-  types: { Intent: [{ name: 'value', type: 'uint256' }] },
-  primaryType: 'Intent',
-  message: { value: 1n },
-} satisfies Eip712OriginSignData
-const originPayloads: OriginSignData[] = [personalSignPayload, eip712Payload]
-const solanaSignData = {
-  origin: [personalSignPayload],
-} satisfies SignData
+// A Solana spend is one personal-sign request, disclosing the Swig wallet it
+// spends from and the slot window it stays valid for.
+const solanaSpendRequest = {
+  account: {
+    vm: 'svm',
+    wallet: 'DfBX7Po1bmnXt4GuEF3Eg5UYUHAjs9m5n8nbb9WUqgw2',
+    swigAccount: '9fTE4gQnweN345EGzy6jnXNFW8VryvZ8QwLZqgBubmMs',
+  },
+  authority: {
+    kind: 'swigRole',
+    roleId: 1,
+    authority: { kind: 'secp256k1', address: owner.address },
+  },
+  scope: {
+    vm: 'svm',
+    action: 'spend',
+    accounts: [
+      {
+        chainId: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1',
+        address: 'DfBX7Po1bmnXt4GuEF3Eg5UYUHAjs9m5n8nbb9WUqgw2',
+      },
+    ],
+    instructions: [],
+    addressLookupTables: [],
+    feePayer: { kind: 'role', role: 'relayer' },
+    slotWindow: { from: '100', to: '200' },
+  },
+  chainIds: ['solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1'],
+  purpose: 'originAuthorization',
+  validity: [
+    {
+      kind: 'svmSlot',
+      chainId: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1',
+      expiresAtSlot: '123456',
+    },
+  ],
+  payload: {
+    kind: 'personalSign',
+    message: { encoding: 'utf8', value: '11'.repeat(32) },
+  },
+} satisfies SigningRequest
+const solanaSigningRequests: SigningRequest[] = [solanaSpendRequest]
+// A Solana signature is base58 and case-sensitive; the group keeps it verbatim.
 const nativeOperation = {
-  chain: 792703810,
-  status: 'COMPLETED',
-  txHash: '5VERv8NM8A8f8hG1rjzAygzYwGwjBQD5rKpH8u8x2QfP',
-  timestamp: 1_700_000_000,
-} satisfies ChainOperation
+  chainId: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1',
+  items: [
+    {
+      type: 'FILL',
+      status: 'COMPLETED',
+      transaction: {
+        vm: 'svm',
+        chainId: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1',
+        signature: '5VERv8NM8A8f8hG1rjzAygzYwGwjBQD5rKpH8u8x2QfP',
+      },
+      timestamp: 1_700_000_000,
+    },
+  ],
+} satisfies IntentOperationGroup
 const solanaTransaction = {
   chain: solanaDevnet,
   tokenRequests: [{ address: mint, amount: 1n }],
@@ -189,13 +222,16 @@ async function compositeCapabilitySurface() {
   const messages = account.getTransactionMessages(
     null as unknown as Parameters<typeof account.getTransactionMessages>[0],
   )
-  const origins: OriginSignData[] = messages.origin
-  const destination: TypedDataDefinition | undefined = messages.destination
+  // Ordered requests, not role-keyed payloads: position is the identity of the
+  // authorisation, and a proof is submitted per entry in this order.
+  const requests: SigningRequest[] = messages
+  const firstPurpose: SigningRequest['purpose'] | undefined =
+    messages[0]?.purpose
 
   void evmAddress
   void solanaAddressValue
-  void origins
-  void destination
+  void requests
+  void firstPurpose
 }
 
 const forbiddenCalls = {
@@ -337,8 +373,7 @@ const expired: boolean = isSolanaQuoteExpiredError(expiredError)
 const uncreated: boolean = isSolanaAccountNotCreated(uncreatedError)
 
 void compositeCapabilitySurface
-void originPayloads
-void solanaSignData
+void solanaSigningRequests
 void nativeOperation
 void metadata
 void crossChainMetadata

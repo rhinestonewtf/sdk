@@ -1,5 +1,11 @@
 import { privateKeyToAccount } from 'viem/accounts'
 import { describe, expect, test, vi } from 'vitest'
+import {
+  quote as caucasusQuote,
+  costEntry,
+  emptyCost,
+  personalSignRequest,
+} from '../../../test/utils/caucasus'
 import type { SolanaAddress } from '../../chains/non-evm'
 import {
   solanaAddress,
@@ -7,12 +13,20 @@ import {
   solanaMainnet,
 } from '../../chains/non-evm'
 import { parseErrorEnvelope } from '../../clients/orchestrator/errors'
-import type { OrchestratorQuote } from '../../clients/orchestrator/types'
+import { projectCompatibleIntentInput } from '../../clients/orchestrator/normalized'
+import type {
+  IntentAccountView,
+  QuotePlan,
+  SigningRequest,
+} from '../../clients/orchestrator/public'
+import type {
+  OrchestratorIntentRequest,
+  OrchestratorQuote,
+} from '../../clients/orchestrator/types'
 import {
   InvalidSolanaTransactionArtifactError,
   SolanaQuoteExpiredError,
 } from '../../errors/execution'
-import { projectCompatibleIntentInput } from './compatibility'
 import {
   assertSolanaNotExpired,
   buildSolanaIntentRequest,
@@ -28,16 +42,21 @@ import {
 } from './solana'
 
 const owner = privateKeyToAccount(`0x${'12'.repeat(32)}`)
+const other = privateKeyToAccount(`0x${'13'.repeat(32)}`)
 const mint = solanaAddress('4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU')
 const recipient = solanaAddress('11111111111111111111111111111112')
 const wallet = solanaAddress('DfBX7Po1bmnXt4GuEF3Eg5UYUHAjs9m5n8nbb9WUqgw2')
 const swig = solanaAddress('9fTE4gQnweN345EGzy6jnXNFW8VryvZ8QwLZqgBubmMs')
 const message = 'ab'.repeat(32)
 
+const accountAddress = '0x29b406a587dd2a8ba87b9431262ee4fe732f5f0b' as const
 const destinationToken = '0x036cbd53842c5426634e7929541ec2318f3dcf7e' as const
 const destinationRecipient =
   '0xabc82222eaa155331bac89b87c20a584a8e05add' as const
 const baseSepoliaId = 84532
+const BASE_SEPOLIA = 'eip155:84532'
+const DEVNET = 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1'
+const MAINNET = 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp'
 
 type TransferOverrides = Omit<Partial<SolanaTransferInput>, 'action'> & {
   mint?: SolanaAddress
@@ -61,7 +80,7 @@ function transfer(overrides: TransferOverrides = {}): SolanaTransferInput {
       ...(amount === undefined ? {} : { amount }),
       delivery: delivery ?? { kind: 'same-chain', recipient },
     },
-    accountAddress: '0x29b406a587dd2a8ba87b9431262ee4fe732f5f0b',
+    accountAddress,
     accountType: 'ERC7579',
     authority: owner.address,
     walletAddress: wallet,
@@ -72,48 +91,55 @@ function transfer(overrides: TransferOverrides = {}): SolanaTransferInput {
   }
 }
 
+const swigView: IntentAccountView = {
+  wallet,
+  swigAccount: swig,
+  authority: { kind: 'secp256k1', address: owner.address },
+}
+
+function svmPlan(chainId: string): QuotePlan {
+  const leg = { vm: 'svm' as const, chainId, account: swigView }
+  return { source: [leg], destination: leg, deployments: [] }
+}
+
+/** The one spend authorization a Solana-origin quote carries. */
+function spendRequest(overrides: Partial<SigningRequest> = {}): SigningRequest {
+  return {
+    ...personalSignRequest({
+      chainId: DEVNET,
+      wallet,
+      swigAccount: swig,
+      authority: owner.address,
+      message,
+      expiresAtSlot: '123456789',
+    }),
+    ...overrides,
+  }
+}
+
+function splCost(chainId: string, tokenAddress: string, amount: bigint) {
+  return {
+    ...costEntry({ chainId, tokenAddress, amount }),
+    symbol: 'USDC',
+    decimals: 6,
+    price: { usd: 1 },
+  }
+}
+
 function quote(overrides: Partial<OrchestratorQuote> = {}): OrchestratorQuote {
   return {
-    intentId: 'solana-intent',
-    expiresAt: 2_000_000_000,
-    estimatedFillTime: { seconds: 2 },
-    settlementLayer: 'SAME_CHAIN',
-    signData: {
-      origin: [{ kind: 'personalSign', message, expiresAtSlot: '123456789' }],
-    },
-    cost: {
-      input: [
-        {
-          chainId: 792703810,
-          tokenAddress: mint,
-          symbol: 'USDC',
-          decimals: 6,
-          price: { usd: 1 },
-          amount: 100_100n,
-        },
-      ],
-      output: [
-        {
-          chainId: 792703810,
-          tokenAddress: mint,
-          symbol: 'USDC',
-          decimals: 6,
-          price: { usd: 1 },
-          amount: 100_000n,
-        },
-      ],
-      fees: {
-        total: { usd: 0.0001 },
-        breakdown: {
-          gas: { usd: 0.0001, sponsored: false },
-          bridge: { usd: 0, sponsored: false },
-          swap: { usd: 0, sponsored: false },
-          app: { usd: 0, sponsored: false },
-          protocol: { usd: 0, sponsored: false },
-          sponsorSurcharge: { usd: 0, sponsored: false },
-        },
+    ...caucasusQuote({
+      intentId: 'solana-intent',
+      expiresAt: 2_000_000_000,
+      signingRequests: [spendRequest()],
+      cost: {
+        ...emptyCost(),
+        input: [splCost(DEVNET, mint, 100_100n)],
+        output: [splCost(DEVNET, mint, 100_000n)],
       },
-    },
+    }),
+    plan: svmPlan(DEVNET),
+    estimatedFillTime: { seconds: 2 },
     ...overrides,
   }
 }
@@ -145,9 +171,32 @@ describe('managed Solana intent workflow', () => {
 
     expect(fixture.createQuote).toHaveBeenCalledWith({
       account: {
-        address: '0x29b406a587dd2a8ba87b9431262ee4fe732f5f0b',
-        accountType: 'ERC7579',
+        evm: { type: 'erc7579', address: accountAddress, signatureMode: 1 },
+        // No `initData`: the Swig has to exist already.
+        svm: {
+          type: 'swig',
+          address: wallet,
+          authorization: { kind: 'secp256k1', address: owner.address },
+        },
       },
+      destination: {
+        vm: 'svm',
+        chainId: DEVNET,
+        recipient: { address: recipient },
+        tokenRequests: [{ tokenAddress: mint, amount: 100_000n }],
+      },
+      source: {
+        selection: {
+          chains: { only: [DEVNET] },
+          tokens: { only: [mint] },
+          perChain: { [DEVNET]: { tokens: { only: [mint] } } },
+        },
+      },
+    })
+    // The sponsorship projection keeps its numeric chain ids and its original
+    // field names across the wire migration.
+    expect(prepared.normalized).toEqual({
+      account: { address: accountAddress, accountType: 'ERC7579' },
       destinationChainId: 792703810,
       destinationExecutions: [],
       tokenRequests: [{ tokenAddress: mint, amount: 100_000n }],
@@ -168,16 +217,18 @@ describe('managed Solana intent workflow', () => {
       now: fixture.workflow.now,
     })
 
+    // The 64 characters are signed as text: opaque to the SDK, despite looking
+    // like hex.
     expect(signMessage).toHaveBeenCalledWith({ message })
     expect(signed.signature).toMatch(/^0x[0-9a-f]{130}$/u)
     const submitted = await submitSolanaIntent(fixture.workflow, signed)
     expect(fixture.submitIntent).toHaveBeenCalledWith(
       {
         intentId: 'solana-intent',
-        signatures: { origin: [signed.signature] },
+        proofs: [{ kind: 'personalSign', signature: signed.signature }],
       },
       {
-        intentInput: projectCompatibleIntentInput(prepared.request),
+        intentInput: projectCompatibleIntentInput(prepared.normalized),
         sponsored: false,
       },
     )
@@ -192,7 +243,7 @@ describe('managed Solana intent workflow', () => {
     ).rejects.toThrow(SolanaQuoteExpiredError)
 
     const malformed = context(
-      quote({ settlementLayer: 'ACROSS', signData: { origin: [] } }),
+      quote({ settlementLayer: 'ACROSS', signingRequests: [] }),
     )
     await expect(
       prepareSolanaIntent(malformed.workflow, transfer()),
@@ -205,7 +256,7 @@ describe('managed Solana intent workflow', () => {
         traceId: fresh.traceId,
         transfer: transfer(),
         intentInput: {
-          ...projectCompatibleIntentInput(fresh.request),
+          ...projectCompatibleIntentInput(fresh.normalized),
           recipient: { address: wallet },
         },
         quote: fresh.quote,
@@ -257,18 +308,26 @@ describe('managed Solana intent workflow', () => {
 
   test('supports mainnet identity and max-out with valid fee requests', () => {
     expect(solanaChainId(solanaMainnet)).toBe(792703809)
-    expect(
-      buildSolanaIntentRequest(
-        transfer({
-          chain: solanaMainnet,
-          amount: undefined,
-          appFees: { feeBps: 1 },
-          protocolFees: { feeBps: 2 },
-        }),
-      ),
-    ).toMatchObject({
+    const built = buildSolanaIntentRequest(
+      transfer({
+        chain: solanaMainnet,
+        amount: undefined,
+        appFees: { feeBps: 1 },
+        protocolFees: { feeBps: 2 },
+      }),
+    )
+    expect(built.request).toMatchObject({
+      destination: {
+        chainId: MAINNET,
+        tokenRequests: [{ tokenAddress: mint }],
+      },
+      source: { selection: { chains: { only: [MAINNET] } } },
+      options: { appFees: { feeBps: 1 }, protocolFees: { feeBps: 2 } },
+    })
+    // No `amount` at all: a max-out spends the whole balance.
+    expect(built.normalized.tokenRequests).toEqual([{ tokenAddress: mint }])
+    expect(built.normalized).toMatchObject({
       destinationChainId: 792703809,
-      tokenRequests: [{ tokenAddress: mint }],
       options: {
         signatureMode: 1,
         appFees: { feeBps: 1 },
@@ -284,48 +343,199 @@ describe('managed Solana intent workflow', () => {
   })
 
   test.each([
-    quote({ intentId: '' }),
-    quote({ signData: { origin: [] } }),
-    quote({
-      signData: {
-        origin: [
-          { kind: 'personalSign', message: 'short', expiresAtSlot: '1' },
+    ['no intent id', quote({ intentId: '' }), /must carry an intent id/],
+    [
+      'no signing request',
+      quote({ signingRequests: [] }),
+      /exactly one signing request/,
+    ],
+    // Position is a signing request's identity, so a second one is a different
+    // authorization set, not a duplicate to ignore.
+    [
+      'a second signing request',
+      quote({ signingRequests: [spendRequest(), spendRequest()] }),
+      /exactly one signing request/,
+    ],
+    [
+      'a payload that is not a personal sign',
+      quote({
+        signingRequests: [
+          spendRequest({ payload: { kind: 'webauthn', challenge: message } }),
         ],
-      },
-    }),
-    quote({
-      signData: {
-        origin: [
-          { kind: 'personalSign', message, expiresAtSlot: 'not-a-slot' },
+      }),
+      /UTF-8 personal-sign spend authorization/,
+    ],
+    [
+      'a short digest',
+      quote({
+        signingRequests: [
+          spendRequest({
+            payload: {
+              kind: 'personalSign',
+              message: { encoding: 'utf8', value: 'short' },
+            },
+          }),
         ],
-      },
-    }),
-    quote({
-      signData: {
-        origin: [{ kind: 'personalSign', message, expiresAtSlot: '1' }],
-        destination: {
-          domain: {},
-          types: {},
-          primaryType: 'Test',
-          message: {},
+      }),
+      /64-character opaque payload/,
+    ],
+    [
+      'a digest that is not hexadecimal',
+      quote({
+        signingRequests: [
+          spendRequest({
+            payload: {
+              kind: 'personalSign',
+              message: { encoding: 'utf8', value: 'zz'.repeat(32) },
+            },
+          }),
+        ],
+      }),
+      /64-character opaque payload/,
+    ],
+    // The Swig wallet holds the assets; the state account is a different
+    // address, and signing for it would authorize nothing.
+    [
+      'another Swig wallet',
+      quote({
+        signingRequests: [
+          spendRequest({
+            account: { vm: 'svm', wallet: recipient, swigAccount: swig },
+          }),
+        ],
+      }),
+      /configured Swig wallet and state account/,
+    ],
+    [
+      'the state account in the wallet slot',
+      quote({
+        signingRequests: [
+          spendRequest({
+            account: { vm: 'svm', wallet: swig, swigAccount: swig },
+          }),
+        ],
+      }),
+      /configured Swig wallet and state account/,
+    ],
+    [
+      'another Swig state account',
+      quote({
+        signingRequests: [
+          spendRequest({
+            account: { vm: 'svm', wallet, swigAccount: recipient },
+          }),
+        ],
+      }),
+      /configured Swig wallet and state account/,
+    ],
+    [
+      'an EVM account slot',
+      quote({
+        signingRequests: [
+          spendRequest({ account: { vm: 'evm', address: accountAddress } }),
+        ],
+      }),
+      /configured Swig wallet and state account/,
+    ],
+    [
+      'another authority',
+      quote({
+        signingRequests: [
+          spendRequest({
+            authority: {
+              kind: 'swigRole',
+              roleId: 1,
+              authority: { kind: 'secp256k1', address: other.address },
+            },
+          }),
+        ],
+      }),
+      /configured Solana authority/,
+    ],
+    [
+      'an authority the SDK cannot sign for',
+      quote({
+        signingRequests: [
+          spendRequest({
+            authority: { kind: 'account', vm: 'evm', address: owner.address },
+          }),
+        ],
+      }),
+      /configured Solana authority/,
+    ],
+    [
+      'a scope that is not a Solana spend',
+      quote({
+        signingRequests: [
+          spendRequest({
+            scope: { vm: 'evm', action: 'claim', accounts: [] },
+          }),
+        ],
+      }),
+      /authorize a Solana spend/,
+    ],
+    [
+      'no slot window',
+      quote({
+        signingRequests: [
+          spendRequest({
+            validity: [{ kind: 'timestamp', expiresAt: 2_000_000_000 }],
+          }),
+        ],
+      }),
+      /decimal Solana slot window/,
+    ],
+    [
+      'a slot that is not decimal',
+      quote({
+        signingRequests: [
+          personalSignRequest({
+            chainId: DEVNET,
+            wallet,
+            swigAccount: swig,
+            authority: owner.address,
+            message,
+            expiresAtSlot: 'not-a-slot',
+          }),
+        ],
+      }),
+      /decimal Solana slot window/,
+    ],
+    [
+      'no input cost',
+      quote({ cost: { ...quote().cost, input: [] } }),
+      /exactly one input and one output/,
+    ],
+    [
+      'an output cost on another cluster',
+      quote({
+        cost: {
+          ...quote().cost,
+          output: [splCost(MAINNET, mint, 100_000n)],
         },
-      },
-    }),
-    quote({ cost: { ...quote().cost, input: [] } }),
-    quote({
-      cost: {
-        ...quote().cost,
-        output: quote().cost.output.map((entry) => ({
-          ...entry,
-          chainId: 792703809,
-        })),
-      },
-    }),
-  ])('rejects incoherent quote %#', async (candidate) => {
+      }),
+      /output cost must reference the requested Solana chain/,
+    ],
+  ])('rejects a quote with %s', async (_name, candidate, reason) => {
     const fixture = context(candidate)
     await expect(
       prepareSolanaIntent(fixture.workflow, transfer()),
-    ).rejects.toThrow(InvalidSolanaTransactionArtifactError)
+    ).rejects.toThrow(reason)
+  })
+
+  test('accepts a bare secp256k1 authority on the spend', async () => {
+    const fixture = context(
+      quote({
+        signingRequests: [
+          spendRequest({
+            authority: { kind: 'secp256k1', address: owner.address },
+          }),
+        ],
+      }),
+    )
+    await expect(
+      prepareSolanaIntent(fixture.workflow, transfer()),
+    ).resolves.toMatchObject({ quote: { intentId: 'solana-intent' } })
   })
 
   test('rejects an empty quote response', async () => {
@@ -336,13 +546,51 @@ describe('managed Solana intent workflow', () => {
     ).rejects.toThrow(/returned no quote/)
   })
 
+  test('surfaces the orchestrator refusal when the Swig does not exist', async () => {
+    // Caucasus takes no Swig `initData`, so a missing Swig is a refusal the
+    // caller has to resolve, never a deployment the SDK requests.
+    const refusal = parseErrorEnvelope(
+      {
+        code: 'VALIDATION_ERROR',
+        message: 'Solana account not created',
+        traceId: 'trace-swig',
+        details: [
+          {
+            message: 'Solana account not created',
+            context: {
+              code: 'SOLANA_ACCOUNT_NOT_CREATED',
+              swigAddress: swig,
+              chainId: DEVNET,
+            },
+          },
+        ],
+      },
+      422,
+    )
+    const workflow = {
+      quoteClient: {
+        createQuote: vi.fn(async () => {
+          throw refusal
+        }),
+      },
+      submissionClient: { submitIntent: vi.fn() },
+      now: () => 1_900_000_000_000,
+    }
+    await expect(
+      prepareSolanaIntent(workflow as never, transfer()),
+    ).rejects.toBe(refusal)
+    expect(
+      buildSolanaIntentRequest(transfer()).request.account.svm,
+    ).not.toHaveProperty('initData')
+  })
+
   test('reconstructs valid plain data and rejects missing or changed quotes', async () => {
     const fixture = context()
     const prepared = await prepareSolanaIntent(fixture.workflow, transfer())
     const plain = {
       traceId: prepared.traceId,
       transfer: transfer(),
-      intentInput: projectCompatibleIntentInput(prepared.request),
+      intentInput: projectCompatibleIntentInput(prepared.normalized),
       quote: prepared.quote,
       quotes: prepared.quotes,
     }
@@ -356,11 +604,32 @@ describe('managed Solana intent workflow', () => {
         quote: { ...prepared.quote, expiresAt: prepared.quote.expiresAt + 1 },
       }),
     ).toThrow(/selected quote/)
+    // A prepared spend is good for one slot window, so a re-quoted window is a
+    // different authorization rather than a refresh of this one.
+    expect(() =>
+      reconstructSolanaIntent({
+        ...plain,
+        quote: {
+          ...prepared.quote,
+          signingRequests: [
+            personalSignRequest({
+              chainId: DEVNET,
+              wallet,
+              swigAccount: swig,
+              authority: owner.address,
+              message,
+              expiresAtSlot: '223456789',
+            }),
+          ],
+        },
+      }),
+    ).toThrow(/selected quote/)
   })
 
   test('rejects missing, malformed, unrecoverable, and wrong-authority signatures', async () => {
     const fixture = context()
     const prepared = await prepareSolanaIntent(fixture.workflow, transfer())
+    const payload = { message }
     await expect(
       signSolanaIntent({
         prepared,
@@ -369,27 +638,14 @@ describe('managed Solana intent workflow', () => {
       }),
     ).rejects.toThrow(/cannot sign messages/)
     await expect(
-      validateSolanaSignature(
-        owner.address,
-        prepared.quote.signData.origin[0] as never,
-        '0x12',
-      ),
+      validateSolanaSignature(owner.address, payload, '0x12'),
     ).rejects.toThrow(/65-byte/)
     await expect(
-      validateSolanaSignature(
-        owner.address,
-        prepared.quote.signData.origin[0] as never,
-        `0x${'ff'.repeat(65)}`,
-      ),
+      validateSolanaSignature(owner.address, payload, `0x${'ff'.repeat(65)}`),
     ).rejects.toThrow(/not recoverable/)
-    const other = privateKeyToAccount(`0x${'13'.repeat(32)}`)
     const signature = await owner.signMessage({ message })
     await expect(
-      validateSolanaSignature(
-        other.address,
-        prepared.quote.signData.origin[0] as never,
-        signature,
-      ),
+      validateSolanaSignature(other.address, payload, signature),
     ).rejects.toThrow(/configured Solana authority/)
   })
 
@@ -409,15 +665,18 @@ describe('sponsored Solana intents', () => {
   } as const
 
   test('carries the requested sponsorship on the quote options', () => {
-    expect(
-      buildSolanaIntentRequest(transfer({ sponsorSettings })),
-    ).toMatchObject({ options: { signatureMode: 1, sponsorSettings } })
+    const built = buildSolanaIntentRequest(transfer({ sponsorSettings }))
+    expect(built.request.options).toEqual({ sponsorship: sponsorSettings })
+    expect(built.normalized.options).toEqual({
+      signatureMode: 1,
+      sponsorSettings,
+    })
   })
 
   test('leaves the options untouched when nothing is sponsored', () => {
-    expect(buildSolanaIntentRequest(transfer()).options).toEqual({
-      signatureMode: 1,
-    })
+    const built = buildSolanaIntentRequest(transfer())
+    expect(built.request).not.toHaveProperty('options')
+    expect(built.normalized.options).toEqual({ signatureMode: 1 })
   })
 
   test('reports the sponsorship on submit', async () => {
@@ -461,7 +720,7 @@ describe('sponsored Solana intents', () => {
       fixture.workflow,
       transfer({ sponsorSettings }),
     )
-    const intentInput = projectCompatibleIntentInput(prepared.request)
+    const intentInput = projectCompatibleIntentInput(prepared.normalized)
 
     expect(() =>
       reconstructSolanaIntent({
@@ -519,21 +778,13 @@ describe('Solana-origin cross-chain delivery', () => {
       bridgeFill: {
         type: 'RELAY',
         requestId: `0x${'ab'.repeat(32)}`,
-        destinationChainId: baseSepoliaId,
+        destinationChainId: BASE_SEPOLIA,
+        fillStatusTimeout: 60_000,
       },
       cost: {
         ...base.cost,
-        output: [
-          {
-            chainId: baseSepoliaId,
-            // The orchestrator lowercases EVM token addresses.
-            tokenAddress: destinationToken,
-            symbol: 'USDC',
-            decimals: 6,
-            price: { usd: 1 },
-            amount: 99_500n,
-          },
-        ],
+        // The orchestrator lowercases EVM token addresses.
+        output: [splCost(BASE_SEPOLIA, destinationToken, 99_500n)],
       },
       ...overrides,
     }
@@ -548,20 +799,45 @@ describe('Solana-origin cross-chain delivery', () => {
         }),
       ),
     ).toEqual({
-      account: {
-        address: '0x29b406a587dd2a8ba87b9431262ee4fe732f5f0b',
-        accountType: 'ERC7579',
+      request: {
+        account: {
+          evm: { type: 'erc7579', address: accountAddress, signatureMode: 1 },
+          svm: {
+            type: 'swig',
+            address: wallet,
+            authorization: { kind: 'secp256k1', address: owner.address },
+          },
+        },
+        destination: {
+          vm: 'evm',
+          chainId: BASE_SEPOLIA,
+          recipient: { address: destinationRecipient },
+          tokenRequests: [{ tokenAddress: destinationToken, amount: 100_000n }],
+        },
+        // Naming the cluster without the mint would re-expand the source scope
+        // to every registry token on it.
+        source: {
+          selection: {
+            chains: { only: [DEVNET] },
+            tokens: { only: [mint] },
+            perChain: { [DEVNET]: { tokens: { only: [mint] } } },
+          },
+        },
+        options: { appFees: { feeBps: 10 }, protocolFees: { feeBps: 5 } },
       },
-      destinationChainId: baseSepoliaId,
-      destinationExecutions: [],
-      tokenRequests: [{ tokenAddress: destinationToken, amount: 100_000n }],
-      recipient: { address: destinationRecipient },
-      // `chainIds` would union with this and re-expand the source scope.
-      accountAccessList: { chainTokens: { 792703810: [mint] } },
-      options: {
-        signatureMode: 1,
-        appFees: { feeBps: 10 },
-        protocolFees: { feeBps: 5 },
+      normalized: {
+        account: { address: accountAddress, accountType: 'ERC7579' },
+        destinationChainId: baseSepoliaId,
+        destinationExecutions: [],
+        tokenRequests: [{ tokenAddress: destinationToken, amount: 100_000n }],
+        recipient: { address: destinationRecipient },
+        // `chainIds` would union with this and re-expand the source scope.
+        accountAccessList: { chainTokens: { 792703810: [mint] } },
+        options: {
+          signatureMode: 1,
+          appFees: { feeBps: 10 },
+          protocolFees: { feeBps: 5 },
+        },
       },
     })
   })
@@ -573,16 +849,21 @@ describe('Solana-origin cross-chain delivery', () => {
       swapFees: false,
       protocolFees: false,
     } as const
-    expect(
-      buildSolanaIntentRequest(crossChainTransfer({ sponsorSettings })),
-    ).toMatchObject({ options: { signatureMode: 1, sponsorSettings } })
+    const built = buildSolanaIntentRequest(
+      crossChainTransfer({ sponsorSettings }),
+    )
+    expect(built.request.options).toEqual({ sponsorship: sponsorSettings })
+    expect(built.normalized.options).toMatchObject({ sponsorSettings })
   })
 
   test('spends the whole balance when no delivery amount is given', () => {
     expect(
       buildSolanaIntentRequest(crossChainTransfer({ amount: undefined })),
     ).toMatchObject({
-      tokenRequests: [{ tokenAddress: destinationToken }],
+      request: {
+        destination: { tokenRequests: [{ tokenAddress: destinationToken }] },
+      },
+      normalized: { tokenRequests: [{ tokenAddress: destinationToken }] },
     })
   })
 
@@ -596,6 +877,8 @@ describe('Solana-origin cross-chain delivery', () => {
     expect(prepared.quote.bridgeFill).toMatchObject({
       type: 'RELAY',
       requestId: `0x${'ab'.repeat(32)}`,
+      destinationChainId: BASE_SEPOLIA,
+      fillStatusTimeout: 60_000,
     })
     const signed = await signSolanaIntent({
       prepared,
@@ -622,17 +905,14 @@ describe('Solana-origin cross-chain delivery', () => {
         cost: {
           ...crossChainQuote().cost,
           output: [
-            {
-              ...crossChainQuote().cost.output[0]!,
-              tokenAddress: destinationToken.toUpperCase(),
-            },
+            splCost(BASE_SEPOLIA, destinationToken.toUpperCase(), 99_500n),
           ],
         },
       }),
     )
     await expect(
       prepareSolanaIntent(fixture.workflow, crossChainTransfer()),
-    ).resolves.toBeDefined()
+    ).resolves.toMatchObject({ quote: { intentId: 'solana-intent' } })
   })
 
   test.each([
@@ -640,32 +920,12 @@ describe('Solana-origin cross-chain delivery', () => {
       'a same-chain settlement layer',
       crossChainQuote({ settlementLayer: 'SAME_CHAIN' }),
     ],
+    // A destination fill is authorized by the solver, not by this spend, so a
+    // second signing request is not this intent.
     [
-      'a destination signature',
+      'a destination signing request',
       crossChainQuote({
-        signData: {
-          origin: [{ kind: 'personalSign', message, expiresAtSlot: '1' }],
-          destination: {
-            domain: {},
-            types: {},
-            primaryType: 'Test',
-            message: {},
-          },
-        },
-      }),
-    ],
-    [
-      'a target-execution signature',
-      crossChainQuote({
-        signData: {
-          origin: [{ kind: 'personalSign', message, expiresAtSlot: '1' }],
-          targetExecution: {
-            domain: {},
-            types: {},
-            primaryType: 'Test',
-            message: {},
-          },
-        },
+        signingRequests: [spendRequest(), spendRequest()],
       }),
     ],
     [
@@ -673,7 +933,7 @@ describe('Solana-origin cross-chain delivery', () => {
       crossChainQuote({
         cost: {
           ...crossChainQuote().cost,
-          input: [{ ...crossChainQuote().cost.input[0]!, chainId: 792703809 }],
+          input: [splCost(MAINNET, mint, 100_100n)],
         },
       }),
     ],
@@ -683,10 +943,11 @@ describe('Solana-origin cross-chain delivery', () => {
         cost: {
           ...crossChainQuote().cost,
           input: [
-            {
-              ...crossChainQuote().cost.input[0]!,
-              tokenAddress: solanaAddress('11111111111111111111111111111112'),
-            },
+            splCost(
+              DEVNET,
+              solanaAddress('11111111111111111111111111111112'),
+              100_100n,
+            ),
           ],
         },
       }),
@@ -696,7 +957,7 @@ describe('Solana-origin cross-chain delivery', () => {
       crossChainQuote({
         cost: {
           ...crossChainQuote().cost,
-          output: [{ ...crossChainQuote().cost.output[0]!, chainId: 1 }],
+          output: [splCost('eip155:1', destinationToken, 99_500n)],
         },
       }),
     ],
@@ -706,10 +967,11 @@ describe('Solana-origin cross-chain delivery', () => {
         cost: {
           ...crossChainQuote().cost,
           output: [
-            {
-              ...crossChainQuote().cost.output[0]!,
-              tokenAddress: '0x0000000000000000000000000000000000000001',
-            },
+            splCost(
+              BASE_SEPOLIA,
+              '0x0000000000000000000000000000000000000001',
+              99_500n,
+            ),
           ],
         },
       }),
@@ -752,6 +1014,14 @@ describe('same-chain Solana instruction execution', () => {
     }
   }
 
+  function svmExecution(request: OrchestratorIntentRequest) {
+    const destination = request.destination
+    if (destination.vm !== 'svm') {
+      throw new Error('Expected an SVM destination')
+    }
+    return destination.execution
+  }
+
   function instructionQuote(
     overrides: Partial<OrchestratorQuote> = {},
   ): OrchestratorQuote {
@@ -769,17 +1039,38 @@ describe('same-chain Solana instruction execution', () => {
         execution({}, { addressLookupTables: [lookupTable] }),
       ),
     ).toEqual({
-      account: {
-        address: '0x29b406a587dd2a8ba87b9431262ee4fe732f5f0b',
-        accountType: 'ERC7579',
+      request: {
+        account: {
+          evm: { type: 'erc7579', address: accountAddress, signatureMode: 1 },
+          svm: {
+            type: 'swig',
+            address: wallet,
+            authorization: { kind: 'secp256k1', address: owner.address },
+          },
+        },
+        destination: {
+          vm: 'svm',
+          chainId: DEVNET,
+          tokenRequests: [],
+          execution: {
+            instructions: [instruction],
+            addressLookupTables: [lookupTable],
+          },
+        },
+        // The instructions move whatever they move, so the source stays open
+        // on the cluster instead of acquiring a funding mint.
+        source: { selection: { chains: { only: [DEVNET] }, tokens: 'all' } },
       },
-      destinationChainId: 792703810,
-      destinationExecutions: [],
-      tokenRequests: [],
-      destinationInstructions: [instruction],
-      addressLookupTableAddresses: [lookupTable],
-      accountAccessList: { chainIds: [792703810] },
-      options: { signatureMode: 1 },
+      normalized: {
+        account: { address: accountAddress, accountType: 'ERC7579' },
+        destinationChainId: 792703810,
+        destinationExecutions: [],
+        tokenRequests: [],
+        destinationInstructions: [instruction],
+        addressLookupTableAddresses: [lookupTable],
+        accountAccessList: { chainIds: [792703810] },
+        options: { signatureMode: 1 },
+      },
     })
   })
 
@@ -790,19 +1081,21 @@ describe('same-chain Solana instruction execution', () => {
       swapFees: false,
       protocolFees: false,
     } as const
-    expect(
-      buildSolanaIntentRequest(execution({ sponsorSettings })),
-    ).toMatchObject({ options: { signatureMode: 1, sponsorSettings } })
+    const built = buildSolanaIntentRequest(execution({ sponsorSettings }))
+    expect(built.request.options).toEqual({ sponsorship: sponsorSettings })
+    expect(built.normalized.options).toMatchObject({ sponsorSettings })
   })
 
   test('omits the lookup tables when there are none', () => {
-    const request = buildSolanaIntentRequest(execution())
-    expect(request).not.toHaveProperty('addressLookupTableAddresses')
-    expect(request).not.toHaveProperty('recipient')
+    const { request, normalized } = buildSolanaIntentRequest(execution())
+    expect(svmExecution(request)).not.toHaveProperty('addressLookupTables')
+    expect(request.destination).not.toHaveProperty('recipient')
+    expect(normalized).not.toHaveProperty('addressLookupTableAddresses')
+    expect(normalized).not.toHaveProperty('recipient')
   })
 
   test('normalizes web3.js instructions into the request', () => {
-    const request = buildSolanaIntentRequest(
+    const { request, normalized } = buildSolanaIntentRequest(
       execution(
         {},
         {
@@ -822,13 +1115,15 @@ describe('same-chain Solana instruction execution', () => {
         },
       ),
     )
-    expect(request.destinationInstructions).toEqual([
+    const wire = [
       {
         programId: program,
         accounts: [{ pubkey: wallet, isSigner: true, isWritable: false }],
         data: 'AQID',
       },
-    ])
+    ]
+    expect(svmExecution(request)).toMatchObject({ instructions: wire })
+    expect(normalized.destinationInstructions).toEqual(wire)
   })
 
   test.each([
@@ -851,7 +1146,7 @@ describe('same-chain Solana instruction execution', () => {
   test('accepts a same-chain quote whose cost legs stay on the cluster', async () => {
     const fixture = context(instructionQuote())
     const prepared = await prepareSolanaIntent(fixture.workflow, execution())
-    expect(prepared.request.tokenRequests).toEqual([])
+    expect(prepared.request.destination.tokenRequests).toEqual([])
     expect(prepared.quote.intentId).toBe('solana-intent')
   })
 
@@ -877,7 +1172,7 @@ describe('same-chain Solana instruction execution', () => {
     const restored = JSON.parse(
       JSON.stringify({
         traceId: prepared.traceId,
-        intentInput: projectCompatibleIntentInput(prepared.request),
+        intentInput: projectCompatibleIntentInput(prepared.normalized),
       }),
     )
     expect(() =>

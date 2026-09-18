@@ -11,9 +11,13 @@ const maximumErrorBackoffMs = 10_000
 export async function getIntentStatus<CompatibilityConfig>(
   context: Pick<IntentWorkflowContext<CompatibilityConfig>, 'statusClient'>,
   intentId: string,
+  options?: { readonly full?: boolean },
 ): Promise<IntentStatus> {
   return classifyIntentStatus(
-    await context.statusClient.getIntentStatus(intentId),
+    await context.statusClient.getIntentStatus(
+      intentId,
+      options?.full ? { full: true } : undefined,
+    ),
   )
 }
 
@@ -53,19 +57,18 @@ export async function waitForIntentStatus<CompatibilityConfig>(
     }
     if (!status.terminal) continue
     if (status.status === 'FAILED') {
-      // The refund and the HyperCore outcome ride the ERROR, because this is
-      // the only path they can take: a refunded intent, or one whose HyperCore
-      // action was refused, is still `FAILED` — it did not do what was asked —
-      // so this throws and the caller never sees a returned status. Omitting
-      // them here would hide both from `waitForExecution` for the exact cases
-      // the fields exist to answer; a refused trade's operations all read
-      // COMPLETED, so nothing else says whether a retry is safe.
+      // The refunds ride the ERROR, because this is the only path they can
+      // take: a refunded intent, or one whose HyperCore action was refused, is
+      // still `FAILED` — it did not do what was asked — so this throws and the
+      // caller never sees a returned status. Omitting them would hide the
+      // refund from `waitForExecution` for the exact case the field exists to
+      // answer; a refused trade's onchain operations all read COMPLETED, and
+      // the EXECUTION item in `operations` is what says whether a retry is safe.
       throw new IntentFailedError({
         context: {
           intentId,
           operations: status.operations,
           ...(status.refunds ? { refunds: status.refunds } : {}),
-          ...(status.hyperCore ? { hyperCore: status.hyperCore } : {}),
         },
       })
     }

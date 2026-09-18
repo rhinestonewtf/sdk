@@ -234,6 +234,80 @@ class IndependentSigningNotSupportedError extends ExecutionError {
   }
 }
 
+class InvalidPreparedTransactionError extends ExecutionError {
+  constructor(params?: {
+    context?: any
+    errorType?: string
+    traceId?: string
+  }) {
+    super({
+      message:
+        'This prepared transaction was created for an earlier orchestrator wire version and cannot be signed or submitted. Reconcile the original submission, then prepare the transaction again.',
+      ...params,
+    })
+  }
+}
+
+class UnsupportedSigningRequestError extends ExecutionError {
+  constructor(params: {
+    index: number
+    payloadKind: string
+    context?: any
+    errorType?: string
+    traceId?: string
+  }) {
+    super({
+      message: `The quote asks for a \`${params.payloadKind}\` signature at request ${params.index}, which this SDK version cannot produce. Upgrade the SDK, or change the intent so the route does not require it.`,
+      context: {
+        requestIndex: params.index,
+        payloadKind: params.payloadKind,
+        ...params.context,
+      },
+      ...(params.errorType ? { errorType: params.errorType } : {}),
+      ...(params.traceId ? { traceId: params.traceId } : {}),
+    })
+  }
+}
+
+class IncompleteIntentProofsError extends ExecutionError {
+  constructor(params: {
+    intentId: string
+    missing: readonly number[]
+    context?: any
+    errorType?: string
+    traceId?: string
+  }) {
+    super({
+      message: `Intent ${params.intentId} is missing proofs for signing request${
+        params.missing.length === 1 ? '' : 's'
+      } ${params.missing.join(', ')}. Every request in \`quote.signingRequests\` needs its own proof before the transaction can be submitted.`,
+      context: {
+        intentId: params.intentId,
+        missing: [...params.missing],
+        ...params.context,
+      },
+      ...(params.errorType ? { errorType: params.errorType } : {}),
+      ...(params.traceId ? { traceId: params.traceId } : {}),
+    })
+  }
+}
+
+class MismatchedIntentProofError extends ExecutionError {
+  constructor(params?: {
+    message?: string
+    context?: any
+    errorType?: string
+    traceId?: string
+  }) {
+    super({
+      message:
+        params?.message ??
+        'A supplied proof does not belong to this prepared transaction. Contributions are bound to the intent, the exact ordered request set, and the request index they answer.',
+      ...params,
+    })
+  }
+}
+
 function isExecutionError(error: Error): error is ExecutionError {
   return error instanceof ExecutionError
 }
@@ -256,16 +330,20 @@ export {
   isSolanaQuoteExpiredError,
   ExecutionError,
   Eip7702InitSignatureRequiredError,
+  IncompleteIntentProofsError,
   IndependentSigningNotSupportedError,
   InsufficientOwnerSignaturesError,
   IntentFailedError,
   InvalidOwnerSigningOptionsError,
+  InvalidPreparedTransactionError,
   InvalidSolanaTransactionArtifactError,
   InvalidSourceCallsError,
+  MismatchedIntentProofError,
   MismatchedOwnerSignaturesError,
   OrderPathRequiredForIntentsError,
   QuoteNotInPreparedTransactionError,
   SignerNotSupportedError,
   SolanaQuoteExpiredError,
   UnknownOwnerError,
+  UnsupportedSigningRequestError,
 }

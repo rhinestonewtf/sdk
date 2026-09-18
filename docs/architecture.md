@@ -95,7 +95,7 @@ recipient, one same-chain instruction execution, or one cross-chain delivery to
 an EVM chain. `sponsored` is translated with the same helper EVM uses and passed
 through for the orchestrator to decide on: it serves the categories a Solana
 route can bill and refuses the rest by name. Native SOL, EVM calls, independent
-owner-signature assembly, and EIP-7702 authorizations are rejected in every
+owner-signature assembly, and EIP-7702 delegations are rejected in every
 direction.
 Address-only
 Solana branches remain receiver-only. For automatic EVM cross-chain sources,
@@ -125,8 +125,10 @@ so an oversized request fails before a round trip. The request carries
 instructions yet, so a well-formed request is refused with
 `UNSUPPORTED_DESTINATION_INSTRUCTIONS`; the SDK surfaces that refusal unchanged.
 The destination hosts no account runtime, so preparation runs the ordinary EVM
-cross-chain path with the account hosted on the last EVM source and the
-destination signature reusing the last origin one. Whether the destination wallet
+cross-chain path with the account hosted on the last EVM source. The
+destination authorization is its own signing request; where its payload,
+account and authority match an earlier slot exactly, the same bytes satisfy
+both — but it stays a distinct slot with its own proof. Whether the destination wallet
 and its token account exist is an operator prerequisite — the SDK does not probe
 it, and a settlement layer can refuse a route that would have to create one.
 Where the delivering provider names the destination chain differently from us,
@@ -135,14 +137,14 @@ provider's status API; it never enters CAIP-2 formatting or chain comparisons.
 
 A Solana **origin** can also fund a delivery on an EVM chain. The source cluster
 and the SPL mint to spend are both named explicitly — the route spends exactly
-one source token, and the access list carries only `chainTokens`, because the
-orchestrator unions it with `chainIds` and naming the cluster alone re-expands
-the scope to every registry token on it. The delivery recipient is an explicit
+one source token, and `source.selection` pins the cluster and narrows it to that
+single mint with `perChain`, because a chain selector alone would open every
+registry token on it. The delivery recipient is an explicit
 EVM address or the account's own EVM identity, resolved before the quote so the
-authorization binds to it. Authorization stays the Solana model: one
-`personalSign` origin payload, no destination signature, and the same
-slot-bounded window, so a second prepared-but-unsubmitted spend invalidates the
-first. The quoted cost legs stay in their own namespaces — a Solana chain and
+authorization binds to it. Authorization stays the Solana model: exactly one `personalSign` signing
+request, disclosing the Swig wallet and state account it spends from, and the
+same slot-bounded window, so a second prepared-but-unsubmitted spend invalidates
+the first. The quoted cost legs stay in their own namespaces — a Solana chain and
 base58 mint on the input, an `eip155:` chain and hex token on the output. The
 settlement layer is whatever the orchestrator picked; the SDK only requires that
 it is not same-chain.
@@ -158,19 +160,27 @@ the relayer market; the SDK signs and submits.
 
 1. `prepareTransaction(tx)` — SDK requests a quote from the orchestrator and
    returns `PreparedTransactionData`.
-2. `getTransactionMessages(...)` — returns tagged origin payloads. EVM origins
-   use EIP-712; managed Solana origins use one `personalSign` message with a
-   short slot deadline. Destination typed data is optional because same-chain
-   Solana has no destination signature.
-3. `signTransaction(...)` — signs the required origin, destination, and
-   target-execution payloads. EVM multisig owners can instead call
-   `signTransaction(prepared, { owner })` independently and combine their
-   contributions with `assembleTransaction(...)`; managed Solana does not
-   support this path.
-4. `submitTransaction(...)` — posts the signed intent; returns a
-   `TransactionResult` (an intent id).
+2. `getTransactionMessages(...)` — returns the quote's **ordered** signing
+   requests. Each names the account, the authority, the scope it authorizes and
+   the payload to sign: EIP-712 for EVM authorizations, one `personalSign`
+   message with a short slot deadline for a managed Solana origin, an EIP-7702
+   authorization tuple for a requested delegation. Position is the identity of
+   an authorization — two requests can carry the same payload and still be two
+   distinct slots.
+3. `signTransaction(...)` — returns one proof per signing request, in that order,
+   including any EIP-7702 delegation the quote asked for. EVM multisig owners
+   can instead call `signTransaction(prepared, { owner })` independently and
+   combine their contributions with `assembleTransaction(...)`, optionally
+   folding in externally collected `proofs`; managed Solana does not support
+   this path.
+4. `submitTransaction(...)` — posts the intent id and the complete proof vector;
+   returns a `TransactionResult` (an intent id). It acquires no signatures and
+   reads no mutable nonce state.
 5. `waitForExecution(result)` — polls the orchestrator until the intent reaches
-   a terminal state; throws `IntentFailedError` on failure.
+   a terminal state; throws `IntentFailedError` on failure. Status groups every
+   operation by the chain it ran on, so a chain carrying both a claim and a fill
+   reports both. `getIntentStatus(id, { full: true })` additionally returns the
+   recorded detail block; polling stays lean by default.
 
 Weighted Quorum Signer accounts collapse multi-origin intent signing into one
 chain-agnostic EIP-712 `WeightedMerkleRoot` signature. Each origin receives an
@@ -186,10 +196,21 @@ signature.
 ## Orchestrator trust boundary
 
 The SDK structurally validates managed Solana quotes, their signing payloads,
-and persisted execution metadata before signing or submission. Chain operation
-and refund transaction references remain chain-native strings: EVM hex, Solana
-base58, or another namespace's native form. Consumers must interpret them using
-the accompanying chain ID rather than assuming an EVM hash.
+and persisted execution metadata before signing or submission. It narrows every
+signing request at the wire boundary: an authority, scope or payload kind it does
+not recognise is refused rather than signed as a familiar one.
+
+Transaction references are tagged with the VM that produced them, so an EVM hash,
+a Solana signature and a Tron id are distinguishable rather than all being read
+as `txHash`. Intents recorded before the chain registry knew a chain keep a
+numeric `chainId` and a `vm: 'unknown'` reference — an honest gap, not a chain
+identity to invent.
+
+`clients/orchestrator/normalized.ts` is deliberately not the wire. It is the
+SDK's sponsorship projection, keeping its numeric chain ids and original field
+names across API versions because integrator JWT policies digest it; both it and
+the Caucasus request are built from the same resolved transaction so they cannot
+drift.
 
 The Solana personal-sign digest is an opaque orchestrator commitment. The SDK
 cannot reconstruct or independently prove the recipient or instructions hidden
@@ -239,5 +260,5 @@ authorizes a single `execute` per UserOperation, so the calls from
 
 `prepareTransaction` is the one execution path that reaches Hyperliquid, and
 only when the transaction carries a `hyperCore` option that needs resolving. It
-happens before the quote because the quote's `signData` registers an agent
+happens before the quote because the quote's signing requests register an agent
 derived from the action's bytes, so the action cannot be completed afterwards.

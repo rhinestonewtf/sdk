@@ -5,7 +5,6 @@ import type {
   HashTypedDataParameters,
   Hex,
   SignableMessage,
-  SignedAuthorizationList,
   TypedData,
   TypedDataDefinition,
 } from 'viem'
@@ -23,19 +22,18 @@ import {
 } from '../chains/non-evm'
 import { normalizeTokenAddress, validateTokenAddresses } from '../chains/tokens'
 import type {
-  Eip712OriginSignData,
+  NormalizedAccessList,
+  NormalizedIntentOptions,
+} from '../clients/orchestrator/normalized'
+import { projectCompatibleIntentInput } from '../clients/orchestrator/normalized'
+import type {
   HyperCoreAction,
-  OriginSignature,
-  OriginSignData,
   Portfolio,
   Quote,
-  SignData,
+  SigningProof,
+  SigningRequest,
 } from '../clients/orchestrator/public'
-import type {
-  OrchestratorAccountAccessList,
-  OrchestratorIntentOptions,
-  OrchestratorQuote,
-} from '../clients/orchestrator/types'
+import type { OrchestratorQuote } from '../clients/orchestrator/types'
 import type {
   AccountTransaction,
   CallInput,
@@ -84,14 +82,17 @@ import type {
   SignAsOwnerOptions,
 } from '../signing/types'
 import {
+  asIntentRecipient,
   projectIntentAccount,
   projectIntentRecipient,
 } from '../transactions/intents/account'
 import {
-  projectCompatibleIntentInput,
   projectCompatibleQuote,
+  projectPreparedBinding,
+  restorePreparedBinding,
 } from '../transactions/intents/compatibility'
 import { normalizeIntentQuote } from '../transactions/intents/normalize'
+import { assertSupportedSigningRequests } from '../transactions/intents/prepare'
 import {
   type SolanaTransferInput,
   solanaChainId,
@@ -101,6 +102,7 @@ import {
   normalizeSolanaInstructions,
 } from '../transactions/intents/solana-instructions'
 import type {
+  IndexedProofContribution,
   IntentInput,
   PreparedIntent,
   PreparedTransactionData,
@@ -117,13 +119,13 @@ import type {
   UserOperationResult,
 } from '../transactions/user-operations/types'
 import type { CoreComposition } from './compose-types'
+import { toPublicTransactionStatus } from './project-mappers'
 import {
   adaptSignerSelection,
   adaptUserOperationSignerSelection,
 } from './signer-selection'
 
 interface SubmitTransactionOptions {
-  authorizations?: SignedAuthorizationList
   /**
    * When `true`, the orchestrator validates the intent without executing it
    * onchain. Internal use only; the `internal_` prefix marks it as not part
@@ -133,9 +135,8 @@ interface SubmitTransactionOptions {
 }
 
 export interface SignedIntentData {
-  originSignatures: OriginSignature[]
-  destinationSignature: Hex
-  targetExecutionSignature: Hex | undefined
+  /** One proof per signing request, in the requested order. */
+  proofs: SigningProof[]
 }
 
 type Compat = LegacyAccountConfig<unknown>
@@ -196,20 +197,16 @@ export interface ManagedTransactionAccount<
     transaction: AccountTransaction<_C>,
   ): Promise<PreparedTransactionData>
   /**
-   * Get the typed-data messages to sign for a prepared transaction.
+   * Get the authorisations a prepared transaction needs, in order.
    * @param preparedTransaction Prepared transaction data
    * @param options Optional override; pass `{ intentId }` to inspect a specific quote from `preparedTransaction.quotes.all`
-   * @returns The origin, destination, and (when required) target-execution typed-data messages
+   * @returns The quote's ordered signing requests; proofs are submitted in the same order
    * @see {@link prepareTransaction} to prepare the transaction data for signing
    */
   getTransactionMessages(
     preparedTransaction: PreparedTransactionData,
     options?: QuoteSelection,
-  ): {
-    origin: OriginSignData[]
-    destination?: TypedDataDefinition
-    targetExecution?: TypedDataDefinition
-  }
+  ): SigningRequest[]
   /**
    * Sign a prepared transaction as one configured owner. The returned signature
    * can be serialized and shared with the party coordinating submission.
@@ -250,23 +247,29 @@ export interface ManagedTransactionAccount<
   assembleTransaction(
     preparedTransaction: PreparedTransactionData,
     signatures: OwnerSignature[],
+    options?: { proofs?: IndexedProofContribution[] },
   ): Promise<SignedTransactionData>
   /**
-   * Sign the EIP-7702 authorizations required for a transaction.
+   * Sign the EIP-7702 delegations a prepared transaction's quote asks for.
+   *
+   * Advanced: `signTransaction` already collects these, so a normal caller
+   * never needs this. Use it when the delegation signer is a different party
+   * from the account owners, and pass the result to `assembleTransaction`.
    * @param preparedTransaction Prepared transaction data
-   * @returns The signed authorization list
-   * @see {@link prepareTransaction} to prepare the transaction data for signing
+   * @param options Optional override; pass `{ intentId }` to target a specific quote
+   * @returns Delegation proofs bound to the quote and their request slots
+   * @see {@link assembleTransaction} to combine them with owner signatures
    */
   signAuthorizations(
     preparedTransaction: PreparedTransactionData,
-  ): Promise<SignedAuthorizationList>
+    options?: QuoteSelection,
+  ): Promise<IndexedProofContribution[]>
   /**
    * Submit a signed transaction.
    * @param signedTransaction Signed transaction data
-   * @param options Optional submission options (e.g. EIP-7702 `authorizations`)
+   * @param options Optional submission options
    * @returns The transaction result (an intent ID)
    * @see {@link signTransaction} to sign the transaction data
-   * @see {@link signAuthorizations} to sign the required EIP-7702 authorizations
    * @see {@link waitForExecution} to wait for the transaction to execute onchain
    */
   submitTransaction(
@@ -344,15 +347,15 @@ export interface ManagedEvmAccount<
   /**
    * Sign an orchestrator intent operation. Used by headless flows that prepare
    * the intent outside the SDK but still need the SDK-owned smart-session
-   * signature packing and target-execution signature routing.
-   * @param signData Sign data returned by the orchestrator (origin/destination/targetExecution typed data)
+   * signature packing and authorisation routing.
+   * @param signingRequests The quote's ordered signing requests
    * @param targetChain Chain where the destination execution runs
    * @param signers Signers to use, or `undefined` for the account default
-   * @returns The intent signatures, ready for submission
+   * @returns The proofs, in the same order, ready for submission
    * @see {@link signTransaction} for the canonical signing path
    */
   signIntent(
-    signData: SignData,
+    signingRequests: SigningRequest[],
     targetChain: DestinationChain,
     signers?: SignerSet,
   ): Promise<SignedIntentData>
@@ -498,24 +501,16 @@ function toPublicQuote(quote: OrchestratorQuote): Quote {
   const compatible = projectCompatibleQuote(quote)
   return cloneArtifactValue({
     intentId: compatible.intentId,
+    purpose: compatible.purpose,
     expiresAt: compatible.expiresAt,
     estimatedFillTime: compatible.estimatedFillTime,
     settlementLayer: compatible.settlementLayer,
-    signData: {
-      origin: [...compatible.signData.origin],
-      ...(compatible.signData.destination
-        ? { destination: compatible.signData.destination }
-        : {}),
-      ...(compatible.signData.targetExecution
-        ? { targetExecution: compatible.signData.targetExecution }
-        : {}),
-    },
+    plan: compatible.plan,
     cost: compatible.cost,
-    ...(compatible.tokenRequirements
-      ? { tokenRequirements: compatible.tokenRequirements }
-      : {}),
+    requirements: [...compatible.requirements],
+    signingRequests: [...compatible.signingRequests],
     ...(compatible.bridgeFill ? { bridgeFill: compatible.bridgeFill } : {}),
-  })
+  }) as Quote
 }
 
 function toPreparedTransactionData(
@@ -529,7 +524,8 @@ function toPreparedTransactionData(
       best: toPublicQuote(prepared.quote),
       all: prepared.quotes.map(toPublicQuote),
     },
-    intentInput: projectCompatibleIntentInput(prepared.request),
+    intentInput: projectCompatibleIntentInput(prepared.normalized),
+    request: projectPreparedBinding(prepared.request),
     transaction,
   }
   cache.set(data, prepared)
@@ -583,7 +579,8 @@ function toPreparedSolanaTransactionData(
       all: prepared.quotes.map(toPublicQuote),
     },
     execution: solanaMetadata(prepared.input),
-    intentInput: projectCompatibleIntentInput(prepared.request),
+    intentInput: projectCompatibleIntentInput(prepared.normalized),
+    request: projectPreparedBinding(prepared.request),
     transaction,
   }
 }
@@ -615,19 +612,19 @@ function reconstructInput(
   const quote = normalizeIntentQuote(selected as OrchestratorQuote)
   return {
     traceId: prepared.quotes.traceId,
+    normalized:
+      prepared.intentInput as unknown as PreparedIntent<Compat>['normalized'],
     quote,
     quotes: prepared.quotes.all.map((candidate) =>
       candidate.intentId === quote.intentId
         ? quote
         : normalizeIntentQuote(candidate as OrchestratorQuote),
     ),
-    // The public prepared data only carries the serialized request, so the
-    // reconstructed request holds decimal strings where the internal type
-    // declares bigints. Sound because submission only re-serializes it (a no-op
-    // on strings, keeping the sponsorship digest stable) and reads
-    // `options.sponsorSettings`.
-    request:
-      prepared.intentInput as unknown as PreparedIntent<Compat>['request'],
+    // The persisted Caucasus request, not a reconstruction from `intentInput`:
+    // that projection is lossy about account capability and signing state, and
+    // an artifact from an earlier wire version is refused here rather than
+    // silently reinterpreted.
+    request: restorePreparedBinding(prepared.request),
     intentInput: adaptTransaction(context, prepared.transaction),
   }
 }
@@ -640,14 +637,7 @@ function toSignedTransactionData(
   const data: SignedTransactionData = {
     ...prepared,
     quote: toPublicQuote(signed.prepared.quote),
-    originSignatures:
-      signed.originSignatures as SignedTransactionData['originSignatures'],
-    ...(signed.destinationSignature
-      ? { destinationSignature: signed.destinationSignature }
-      : {}),
-    ...(signed.targetSignature
-      ? { targetExecutionSignature: signed.targetSignature }
-      : {}),
+    proofs: [...signed.proofs],
   }
   cache.set(data, signed)
   return data
@@ -847,7 +837,13 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
     intentId?: string,
   ): Promise<PreparedIntent<Compat>> => {
     assertSupportedTransaction(prepared.transaction, publicConfig)
-    assertSupportedSignData(selectedPublicQuote(prepared, intentId).signData)
+    if (!isSolanaOrigin(prepared.transaction)) {
+      // Before any account state is read: a quote this SDK cannot sign should
+      // not cost an RPC round trip first.
+      assertSupportedSigningRequests(
+        selectedPublicQuote(prepared, intentId).signingRequests,
+      )
+    }
     const cached = preparedIntents.get(prepared)
     if (cached && !intentId) return Promise.resolve(cached)
     return workflowsFor(ctx).reconstructPreparedIntent(
@@ -910,7 +906,7 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
         )
         return toPreparedSolanaTransactionData(prepared, normalized)
       }
-      // Before the quote, not after: the quote's `signData` registers an agent
+      // Before the quote, not after: the quote's signing requests register an agent
       // derived from the action's bytes, so the action has to be concrete here.
       const hyperCoreAction = await resolveHyperCoreAction({
         options: normalized.hyperCore,
@@ -944,21 +940,11 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
     getTransactionMessages(preparedTransaction, options) {
       assertSupportedTransaction(preparedTransaction.transaction, publicConfig)
       const quote = selectedPublicQuote(preparedTransaction, options?.intentId)
-      if (!isSolanaOrigin(preparedTransaction.transaction)) {
-        assertSupportedSignData(quote.signData)
-      } else {
+      if (isSolanaOrigin(preparedTransaction.transaction)) {
         const ctx = context('get-intent-messages')
         resolveSolanaPrepared(ctx, preparedTransaction, options?.intentId)
       }
-      return {
-        origin: [...quote.signData.origin],
-        ...(quote.signData.destination
-          ? { destination: quote.signData.destination }
-          : {}),
-        ...(quote.signData.targetExecution
-          ? { targetExecution: quote.signData.targetExecution }
-          : {}),
-      }
+      return [...quote.signingRequests]
     },
     signTransaction: (async (
       preparedTransaction: PreparedTransactionData,
@@ -984,7 +970,7 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
         return {
           ...preparedTransaction,
           quote: toPublicQuote(signed.prepared.quote),
-          originSignatures: [signed.signature],
+          proofs: [{ kind: 'personalSign', signature: signed.signature }],
         }
       }
       if (options && 'owner' in options) {
@@ -1015,7 +1001,7 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
       const { intent } = await workflows.signIntent(ctx, internal)
       return toSignedTransactionData(preparedTransaction, intent, signedIntents)
     }) as unknown as ManagedEvmAccount<C>['signTransaction'],
-    async assembleTransaction(preparedTransaction, signatures) {
+    async assembleTransaction(preparedTransaction, signatures, options) {
       if (isSolanaOrigin(preparedTransaction.transaction)) {
         throw new IndependentSigningNotSupportedError({
           context: { vm: 'solana' },
@@ -1036,10 +1022,11 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
         ctx,
         internal,
         signatures as unknown as Parameters<typeof workflows.assembleIntent>[2],
+        options?.proofs ? { proofs: options.proofs } : undefined,
       )
       return toSignedTransactionData(preparedTransaction, signed, signedIntents)
     },
-    async signAuthorizations(preparedTransaction) {
+    async signAuthorizations(preparedTransaction, options) {
       assertSupportedTransaction(preparedTransaction.transaction, publicConfig)
       if (isSolanaOrigin(preparedTransaction.transaction)) {
         throw new UnsupportedAccountCapabilityError(
@@ -1048,15 +1035,12 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
         )
       }
       const ctx = context('sign-authorizations')
-      const intentInput = adaptTransaction(ctx, preparedTransaction.transaction)
-      const chains = authorizationChains(intentInput)
-      const result = await workflowsFor(ctx).signAuthorizations(ctx, {
-        chains,
-        ...(intentInput.eip7702InitSignature
-          ? { eip7702InitSignature: intentInput.eip7702InitSignature }
-          : {}),
-      })
-      return result.authorizations as SignedAuthorizationList
+      const internal = await resolvePrepared(
+        ctx,
+        preparedTransaction,
+        options?.intentId,
+      )
+      return workflowsFor(ctx).signRequestedDelegations(ctx, internal)
     },
     async signMessage(message, chain, signers) {
       const ctx = context('sign-message')
@@ -1080,28 +1064,16 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
       })
       return result.signature
     },
-    async signIntent(signData, targetChain, signers) {
-      assertSupportedSignData(signData)
+    async signIntent(signingRequests, targetChain, signers) {
       const ctx = context('sign-intent')
-      const result = await workflowsFor(ctx).signIntentFromSignData(ctx, {
-        signData: {
-          origin: signData.origin,
-          destination: signData.destination,
-          ...(signData.targetExecution
-            ? { targetExecution: signData.targetExecution }
-            : {}),
-        },
+      const result = await workflowsFor(ctx).signIntentFromRequests(ctx, {
+        signingRequests,
         targetChain: destinationChainReference(targetChain),
         ...(signers
           ? { signers: adaptSignerSelection(ctx.account, signers) }
           : {}),
       })
-      return {
-        originSignatures:
-          result.originSignatures as SignedIntentData['originSignatures'],
-        destinationSignature: result.destinationSignature,
-        targetExecutionSignature: result.targetExecutionSignature,
-      }
+      return { proofs: [...result.proofs] }
     },
     async submitTransaction(signedTransaction, options) {
       assertSupportedTransaction(signedTransaction.transaction, publicConfig)
@@ -1110,18 +1082,17 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
       if (isSolanaOrigin(signedTransaction.transaction)) {
         if (options && Object.keys(options).length > 0) {
           throw new UnsupportedAccountCapabilityError(
-            'Solana submission does not accept EVM authorizations or dry-run options.',
+            'Solana submission does not accept submission options.',
             { vm: 'solana' },
           )
         }
+        const solanaProof = signedTransaction.proofs[0]
         if (
-          signedTransaction.originSignatures.length !== 1 ||
-          typeof signedTransaction.originSignatures[0] !== 'string' ||
-          signedTransaction.destinationSignature !== undefined ||
-          signedTransaction.targetExecutionSignature !== undefined
+          signedTransaction.proofs.length !== 1 ||
+          solanaProof?.kind !== 'personalSign'
         ) {
           throw new InvalidSolanaTransactionArtifactError(
-            'submission requires exactly one raw origin signature and no destination or target signature',
+            'submission requires exactly one personal-sign spend proof',
             { intentId: signedTransaction.quote.intentId },
           )
         }
@@ -1133,7 +1104,7 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
         )
         const submitted = await workflows.submitSolanaIntent({
           prepared,
-          signature: signedTransaction.originSignatures[0],
+          signature: solanaProof.signature,
         })
         return {
           type: 'intent',
@@ -1145,9 +1116,8 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
           targetChain: submitted.targetChain,
         }
       }
-      assertSupportedSignData(signedTransaction.quote.signData)
       // Fast path for the same-instance signed object; otherwise (cross-instance
-      // replay or caller-tampered signatures) rebuild from the public shape.
+      // replay or caller-tampered proofs) rebuild from the public shape.
       const cached = signedIntents.get(signedTransaction)
       const base: SignedIntent<Compat> = cached ?? {
         prepared: await resolvePrepared(
@@ -1155,19 +1125,11 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
           signedTransaction,
           signedTransaction.quote.intentId,
         ),
-        originSignatures:
-          signedTransaction.originSignatures as SignedIntent<Compat>['originSignatures'],
-        destinationSignature: signedTransaction.destinationSignature,
-        ...(signedTransaction.targetExecutionSignature
-          ? { targetSignature: signedTransaction.targetExecutionSignature }
-          : {}),
+        proofs: signedTransaction.proofs,
         transcript: { planKind: 'intent-full', payloadId: '0x', stages: [] },
       }
       const signed: SignedIntent<Compat> = {
         ...base,
-        ...(options?.authorizations
-          ? { authorizations: options.authorizations }
-          : {}),
         ...(options?.internal_dryRun ? { dryRun: true } : {}),
       }
       const submitted = await workflows.submitIntent(ctx, signed)
@@ -1280,14 +1242,7 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
         const ctx = context('wait-for-execution')
         return workflowsFor(ctx)
           .waitForIntentStatus(ctx, result.id)
-          .then((status) => ({
-            traceId: status.traceId,
-            status: status.status as TransactionStatus['status'],
-            accountAddress: status.account,
-            operations: status.operations as TransactionStatus['operations'],
-            ...(status.refunds ? { refunds: [...status.refunds] } : {}),
-            ...(status.hyperCore ? { hyperCore: status.hyperCore } : {}),
-          }))
+          .then(toPublicTransactionStatus)
       }
       const ctx = context('wait-for-execution')
       return workflowsFor(ctx)
@@ -1497,36 +1452,6 @@ function quoterPinFromSession(
  * authorise. With no session scope there is nothing to narrow against and the
  * explicit filter stands on its own.
  */
-function assertSupportedSignData(
-  signData: SignData,
-): asserts signData is SignData & {
-  origin: Eip712OriginSignData[]
-  destination: TypedDataDefinition
-} {
-  const payloads = [
-    ...signData.origin,
-    signData.destination,
-    ...(signData.targetExecution ? [signData.targetExecution] : []),
-  ] as unknown[]
-  for (const payload of payloads) {
-    if (
-      !payload ||
-      typeof payload !== 'object' ||
-      ((payload as { kind?: unknown }).kind !== undefined &&
-        (payload as { kind?: unknown }).kind !== 'eip712') ||
-      typeof (payload as { primaryType?: unknown }).primaryType !== 'string' ||
-      !(payload as { domain?: unknown }).domain ||
-      typeof (payload as { types?: unknown }).types !== 'object' ||
-      typeof (payload as { message?: unknown }).message !== 'object'
-    ) {
-      throw new UnsupportedAccountCapabilityError(
-        'Only EIP-712 intent signing data is supported by this account.',
-        { capability: 'intent-signing' },
-      )
-    }
-  }
-}
-
 function isSameChainSolanaOrigin(
   transaction: Transaction,
 ): transaction is Extract<Transaction, { chain: SolanaChain }> {
@@ -2063,7 +1988,7 @@ function narrowQuoterPin(
  */
 function toSponsorSettings(
   sponsored: Sponsorship | undefined,
-): OrchestratorIntentOptions['sponsorSettings'] {
+): NormalizedIntentOptions['sponsorSettings'] {
   if (!sponsored) return undefined
   if (typeof sponsored === 'boolean') {
     return {
@@ -2232,7 +2157,7 @@ function adaptRecipient(
     | undefined,
 ): NonNullable<IntentInput['recipient']> {
   if (typeof recipient === 'string') {
-    return projectIntentRecipient(recipient, destination)
+    return projectIntentRecipient(recipient)
   }
   if (destination.kind !== 'evm') {
     throw new Error('Smart-account recipients require an EVM destination')
@@ -2241,11 +2166,13 @@ function adaptRecipient(
     context.sdk,
     toAccountConstructionInput(recipient),
   )
-  return projectIntentAccount({
-    runtime: createStaticAccountRuntime(resolved, destination, false),
-    ...(setupOverride ? { setupOverride } : {}),
-    ...(eip7702InitSignature ? { eip7702InitSignature } : {}),
-  })
+  return asIntentRecipient(
+    projectIntentAccount({
+      runtime: createStaticAccountRuntime(resolved, destination, false),
+      ...(setupOverride ? { setupOverride } : {}),
+      ...(eip7702InitSignature ? { eip7702InitSignature } : {}),
+    }),
+  )
 }
 
 function toAccountConstructionInput(
@@ -2260,18 +2187,6 @@ function toAccountConstructionInput(
     ...(config.modules ? { modules: config.modules } : {}),
     ...(config.initData ? { initData: config.initData } : {}),
   }
-}
-
-export function authorizationChains(
-  input: IntentInput,
-): readonly IntentInput['destination'][] {
-  const chains = [...(input.sourceChains ?? []), input.destination]
-  const seen = new Set<string>()
-  return chains.filter((chain) => {
-    if (seen.has(chain.caip2)) return false
-    seen.add(chain.caip2)
-    return true
-  })
 }
 
 function adaptCall(call: CallInput, chainId: number | undefined) {
@@ -2354,7 +2269,7 @@ function adaptSessionSelection(
 function adaptSourceAssets(
   sourceAssets: SourceAssetInput | undefined,
   chainIds: readonly number[] | undefined,
-): OrchestratorAccountAccessList | undefined {
+): NormalizedAccessList | undefined {
   if (!sourceAssets) return chainIds ? { chainIds } : undefined
   const eligible = chainIds ? new Set(chainIds) : undefined
   const assertEligible = (chainId: number) => {

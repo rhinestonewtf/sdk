@@ -22,10 +22,10 @@ import {
   type SerializedIntentInput,
   type SessionSigning,
   type SessionSigningContent,
-  type SignData,
   type SignedIntentData,
   type SignedTransactionData,
   type SignerSet,
+  type SigningRequest,
   solanaAddress,
   solanaMainnet,
   stellarMainnet,
@@ -75,29 +75,34 @@ new RhinestoneSDK({
 declare const account: RhinestoneAccount
 declare const prepared: PreparedTransactionData
 declare const quote: Quote
-declare const signData: SignData
+declare const signingRequests: SigningRequest[]
 declare const typedData: HashTypedDataParameters
 declare const sessionSigners: Extract<SignerSet, { type: 'session' }>
 
+// Chain references on a quote are CAIP-2, including a bridge fill's.
 const ecoBridgeFill = {
   type: 'ECO',
-  destinationChainId: mainnet.id,
+  destinationChainId: `eip155:${mainnet.id}`,
   intentHash: `0x${'11'.repeat(32)}`,
+  fillStatusTimeout: 30,
 } as const satisfies BridgeFill
-const ecoIntentHash: Hex = ecoBridgeFill.intentHash
+const ecoIntentHash: string = ecoBridgeFill.intentHash
 
-function readEcoIntentHash(bridgeFill: BridgeFill): Hex | undefined {
+function readEcoIntentHash(bridgeFill: BridgeFill): string | undefined {
   if (bridgeFill.type !== 'ECO') return undefined
   return bridgeFill.intentHash
 }
-const narrowedEcoIntentHash: Hex | undefined = readEcoIntentHash(ecoBridgeFill)
+const narrowedEcoIntentHash: string | undefined =
+  readEcoIntentHash(ecoBridgeFill)
 
-// A Solana delivery is tracked with Eco's own id for the destination chain.
+// A Solana delivery is tracked with Eco's own id for the destination chain,
+// which is opaque provider metadata beside the public CAIP-2 identifier.
 const solanaDeliveryBridgeFill = {
   type: 'ECO',
-  destinationChainId: 792703809,
+  destinationChainId: 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
   providerDestinationChainId: 1399811149,
   intentHash: `0x${'22'.repeat(32)}`,
+  fillStatusTimeout: 14400,
 } as const satisfies BridgeFill
 const providerDestinationChainId: number | undefined =
   quote.bridgeFill?.type === 'ECO'
@@ -249,7 +254,7 @@ const typedDataSignature: Promise<Hex> = account.signTypedData(
   ownerSigners,
 )
 const intentSignature: Promise<SignedIntentData> = account.signIntent(
-  signData,
+  signingRequests,
   mainnet,
   sessionSigners,
 )

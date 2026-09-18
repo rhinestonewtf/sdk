@@ -1,8 +1,10 @@
 import type { Hex } from 'viem'
+import type { SigningProof } from '../../clients/orchestrator/public'
 import {
   IndependentSigningNotSupportedError,
   InvalidOwnerSigningOptionsError,
   UnknownOwnerError,
+  UnsupportedSigningRequestError,
 } from '../../errors/execution'
 import { encodeValidatorId } from '../../modules/validators/multi-factor'
 import {
@@ -29,8 +31,8 @@ import {
   projectIndependentSigning,
 } from '../../signing/intent-plans/plan'
 import type {
-  IntentSigningPayload,
   IntentSigningPlanCreationInput,
+  IntentSigningRequest,
   IntentSigningStageInput,
 } from '../../signing/intent-plans/types'
 import { createValidatorSigningTasks } from '../../signing/plan'
@@ -41,16 +43,19 @@ import {
 import type {
   ArtifactAssemblyPlan,
   RawSignerResult,
+  SignatureUsage,
   SigningArtifact,
   SigningPayloadRegistry,
   SigningTaskTemplate,
 } from '../../signing/types'
 import { signatureSpansMultipleChains } from './origin-chain'
+import { assembleProofVector, requestSetId } from './proofs'
 import {
   buildSessionIntentPlanInput,
   createIntentSessionSignerInvoker,
 } from './session-signing'
 import type {
+  IndexedProofContribution,
   IntentWorkflowContext,
   PreparedIntent,
   SignedIntent,
@@ -88,15 +93,75 @@ export async function signIntent<CompatibilityConfig>(
   ) as Readonly<Record<string, SigningArtifact>>
   return {
     prepared,
-    originSignatures: prepared.signing.origins.map((_origin, index) =>
-      requireOriginSignature(outputs[`origin-${index}`]),
-    ),
-    destinationSignature: requireHex(outputs.destination, 'destination'),
-    ...(prepared.signing.target
-      ? { targetSignature: requireHex(outputs.target, 'target') }
-      : {}),
+    proofs: await collectOrderedProofs(context, prepared, outputs),
     transcript,
   }
+}
+
+/**
+ * Builds the proof vector in quote order, one entry per signing request.
+ *
+ * Delegation proofs are collected here rather than by a separate caller step:
+ * a quote that asks for one is not signed without it, and there is no order to
+ * reconstruct later from a bag of authorisations.
+ */
+async function collectOrderedProofs<CompatibilityConfig>(
+  context: IntentWorkflowContext<CompatibilityConfig>,
+  prepared: PreparedIntent<CompatibilityConfig>,
+  outputs: Readonly<Record<string, SigningArtifact>>,
+): Promise<readonly SigningProof[]> {
+  const proofs: SigningProof[] = []
+  for (const request of prepared.signing.requests) {
+    switch (request.kind) {
+      case 'eip712':
+        proofs.push(eip712Proof(outputs[request.artifactId], request.index))
+        break
+      case 'eip7702': {
+        const authorization = await context.signDelegation({
+          chainId: request.chainId,
+          contract: request.contract,
+        })
+        proofs.push({
+          kind: 'eip7702',
+          nonce: authorization.nonce,
+          signature: {
+            r: authorization.r,
+            s: authorization.s,
+            yParity: (authorization.yParity ?? 0) === 1 ? 1 : 0,
+          },
+        })
+        break
+      }
+      default:
+        throw new UnsupportedSigningRequestError({
+          index: request.index,
+          payloadKind:
+            request.kind === 'unsupported' ? request.payloadKind : request.kind,
+        })
+    }
+  }
+  return proofs
+}
+
+function eip712Proof(
+  artifact: SigningArtifact | undefined,
+  index: number,
+): SigningProof {
+  if (typeof artifact === 'string') {
+    return { kind: 'eip712', signature: artifact }
+  }
+  // A session origin carries both encodings of the one message in one proof;
+  // the halves are never swapped, and they are never split across two slots.
+  if (artifact && 'preClaimSig' in artifact) {
+    return {
+      kind: 'eip712',
+      signature: {
+        preClaim: artifact.preClaimSig,
+        notarizedClaim: artifact.notarizedClaimSig,
+      },
+    }
+  }
+  throw new Error(`Intent proof for signing request ${index} is missing`)
 }
 
 export async function signIntentAsOwner<CompatibilityConfig>(
@@ -125,7 +190,7 @@ export async function signIntentAsOwner<CompatibilityConfig>(
     assembleStage: () => ({}),
   })
   const quorumRootStage =
-    signing.validator.kind === 'quorum' && prepared.signing.origins.length > 1
+    signing.validator.kind === 'quorum' && independentSlots(prepared).length > 1
       ? transcript.stages.find(
           ({ stage: materialized }) =>
             materialized.stageId === 'quorum-origins',
@@ -136,12 +201,12 @@ export async function signIntentAsOwner<CompatibilityConfig>(
         taskId.includes(owner.ownerId),
       )?.[1]
     : undefined
-  const origin = prepared.signing.origins.map((_payload, index) => {
+  const slots = independentSlots(prepared).map((request) => {
     const stage = quorumRootStage
       ? undefined
       : transcript.stages.find(
           ({ stage: materialized }) =>
-            materialized.stageId === `origin-${index}`,
+            materialized.stageId === request.artifactId,
         )
     const result =
       quorumRootResult ??
@@ -150,19 +215,19 @@ export async function signIntentAsOwner<CompatibilityConfig>(
             taskId.includes(owner.ownerId),
           )?.[1]
         : undefined)
-    return independentOriginResult(owner, result)
+    return independentSlotResult(owner, result)
   })
   const signature =
     owner.kind === 'ecdsa'
       ? ({
           kind: 'ecdsa' as const,
           signer: owner.identity,
-          origin: origin as readonly Hex[],
+          slots: slots as readonly Hex[],
         } as const)
       : {
           kind: 'passkey' as const,
           publicKey: owner.identity,
-          origin: origin as readonly {
+          slots: slots as readonly {
             readonly webauthn: {
               readonly authenticatorData: Hex
               readonly challengeIndex: number
@@ -187,6 +252,7 @@ export async function assembleIntent<CompatibilityConfig>(
   context: IntentWorkflowContext<CompatibilityConfig>,
   prepared: PreparedIntent<CompatibilityConfig>,
   signatures: readonly IndependentOwnerSignature[],
+  options?: { readonly proofs?: readonly IndexedProofContribution[] },
 ): Promise<SignedIntent<CompatibilityConfig>> {
   const { signing, planInput } = await createIndependentSigningInput(
     context,
@@ -194,20 +260,23 @@ export async function assembleIntent<CompatibilityConfig>(
   )
   const plan = createIntentSigningPlan(planInput)
   const owners = independentOwners(signing)
+  const slots = independentSlots(prepared)
   const assembled = Object.fromEntries(
-    prepared.signing.origins.map((_payload, index) => {
+    slots.map((request, slotIndex) => {
       const artifact = plan.stages
         .flatMap(({ artifacts }) => artifacts)
-        .find(({ id }) => id === `origin-${index}`)
+        .find(({ id }) => id === request.artifactId)
       if (!artifact) {
-        throw new Error(`Intent origin-${index} assembly route is missing`)
+        throw new Error(
+          `Intent ${request.artifactId} assembly route is missing`,
+        )
       }
       return [
-        artifact.id,
+        request.artifactId,
         assembleIndependentIntentArtifact({
           intentId: prepared.quote.intentId,
-          originIndex: index,
-          originCount: prepared.signing.origins.length,
+          slotIndex,
+          slotCount: slots.length,
           signatures,
           owners,
           artifact,
@@ -216,31 +285,45 @@ export async function assembleIntent<CompatibilityConfig>(
       ]
     }),
   )
-  if (prepared.signing.target) {
-    throw new IndependentSigningNotSupportedError()
-  }
-  const destination = prepared.signing.destination
-  if (!destination || destination.mode !== 'reuse-origin') {
-    throw new IndependentSigningNotSupportedError()
-  }
-  const destinationSignature = assembled[destination.originArtifactId]
-  if (!destinationSignature) {
-    throw new Error('Intent destination signature is missing')
+  const local = new Map<number, SigningProof>()
+  for (const request of prepared.signing.requests) {
+    if (request.kind !== 'eip712') continue
+    const source = request.reuse?.artifactId ?? request.artifactId
+    const signature = assembled[source]
+    // Anything the owners could not produce — a target execution payload, a
+    // requested delegation — has to arrive as an indexed contribution instead
+    // of being quietly dropped from the vector.
+    if (!signature) continue
+    local.set(request.index, { kind: 'eip712', signature })
   }
   return {
     prepared,
-    originSignatures: prepared.signing.origins.map((_origin, index) => {
-      const signature = assembled[`origin-${index}`]
-      if (!signature) throw new Error(`Intent origin-${index} is missing`)
-      return signature
+    proofs: assembleProofVector({
+      intentId: prepared.quote.intentId,
+      requestSetId: requestSetId(prepared.quote.signingRequests),
+      requests: prepared.signing.requests,
+      local,
+      ...(options?.proofs ? { contributions: options.proofs } : {}),
     }),
-    destinationSignature,
     transcript: {
       planKind: 'intent-full',
       payloadId: plan.payload.id,
       stages: [],
     },
   }
+}
+
+/**
+ * The request slots an independent owner signs, in order. Reused slots are not
+ * among them: they are satisfied by the signature of the slot they reuse.
+ */
+function independentSlots<CompatibilityConfig>(
+  prepared: PreparedIntent<CompatibilityConfig>,
+): readonly Extract<IntentSigningRequest, { kind: 'eip712' }>[] {
+  return prepared.signing.requests.filter(
+    (request): request is Extract<IntentSigningRequest, { kind: 'eip712' }> =>
+      request.kind === 'eip712' && request.exposedForIndependentSigning,
+  )
 }
 
 async function createIndependentSigningInput<CompatibilityConfig>(
@@ -370,7 +453,7 @@ function independentOwner(
   }
 }
 
-function independentOriginResult(
+function independentSlotResult(
   owner: IndependentOwnerDescriptor,
   result: RawSignerResult | undefined,
 ) {
@@ -405,18 +488,26 @@ function buildIntentPlanInput<CompatibilityConfig>(
   // with its own chain id, so it would be bound to the leg the payload happens
   // to name. Routing it down the plain branch instead reaches the one refusal
   // in `resolveAccountTypedDataSigning`.
+  const signable = prepared.signing.requests.filter(
+    (request): request is Extract<IntentSigningRequest, { kind: 'eip712' }> =>
+      request.kind === 'eip712' && !request.reuse,
+  )
+  const reused = prepared.signing.requests.filter(
+    (request): request is Extract<IntentSigningRequest, { kind: 'eip712' }> =>
+      request.kind === 'eip712' && Boolean(request.reuse),
+  )
   const quorumMerkle =
     context.validator.kind === 'quorum' &&
-    prepared.signing.origins.length > 1 &&
-    !prepared.signing.origins.some(({ typedData }) =>
-      signatureSpansMultipleChains(typedData),
+    signable.length > 1 &&
+    !signable.some(({ payload }) =>
+      signatureSpansMultipleChains(payload.typedData),
     )
       ? buildQuorumMerkleTree(
-          prepared.signing.origins.map((origin) => ({
+          signable.map(({ payload }) => ({
             account: context.account.address,
             digest: resolveAccountValidatorSignableHash({
-              hash: origin.id,
-              chain: origin.chain,
+              hash: payload.id,
+              chain: payload.chain,
               context,
             }),
           })),
@@ -429,7 +520,7 @@ function buildIntentPlanInput<CompatibilityConfig>(
       })
     : undefined
   if (quorumMerkle && quorumRootHash) {
-    const firstOrigin = prepared.signing.origins[0]
+    const first = signable[0]!
     const route: AccountTypedDataSigningRoute = {
       material: { kind: 'message', message: { raw: quorumRootHash } },
       payloadKind: 'message',
@@ -437,95 +528,81 @@ function buildIntentPlanInput<CompatibilityConfig>(
       webauthnInvocation: 'webauthn-sign-hash',
       erc7739: { kind: 'none' },
     }
-    payloads[firstOrigin.id] = route.material
+    payloads[first.payload.id] = route.material
     stages.push(
       quorumMerkleSigningStage({
-        origins: prepared.signing.origins,
-        payloadId: firstOrigin.id,
+        requests: signable,
+        payloadId: first.payload.id,
         context,
         route,
         proofs: quorumMerkle.operations,
       }),
     )
   } else {
-    for (const [index, origin] of prepared.signing.origins.entries()) {
+    for (const request of signable) {
       const route = resolveAccountTypedDataSigning({
-        typedData: origin.typedData,
-        chain: origin.chain,
+        typedData: request.payload.typedData,
+        chain: request.payload.chain,
         context,
-        validationHash: origin.id,
-        spansMultipleChains: signatureSpansMultipleChains(origin.typedData),
+        validationHash: request.payload.id,
+        spansMultipleChains: signatureSpansMultipleChains(
+          request.payload.typedData,
+        ),
       })
-      payloads[origin.id] = route.material
+      payloads[request.payload.id] = route.material
       stages.push(
         signingStage({
-          id: `origin-${index}`,
-          payloadId: origin.id,
-          chain: origin.chain,
-          usage: 'intent-origin',
+          id: request.artifactId,
+          payloadId: request.payload.id,
+          chain: request.payload.chain,
+          usage: request.payload.usage,
           context,
           route,
         }),
       )
     }
   }
-  const lastOriginIndex = prepared.signing.origins.length - 1
-  stages.push({
-    id: 'destination',
-    checkpoint: { kind: 'none', id: 'destination:none' },
-    priorOutputs: [
-      {
-        stageId: quorumMerkle ? 'quorum-origins' : `origin-${lastOriginIndex}`,
-        outputId: `origin-${lastOriginIndex}`,
-        selection: 'whole',
-      },
-    ],
-    tasks: [],
-    schedule: [],
-    artifacts: [
-      {
-        id: 'destination',
-        usage: 'intent-destination',
-        input: {
-          kind: 'reuse-artifact',
-          stageId: quorumMerkle
-            ? 'quorum-origins'
-            : `origin-${lastOriginIndex}`,
-          artifactId: `origin-${lastOriginIndex}`,
-          selection: 'whole',
+  for (const request of reused) {
+    const reuse = request.reuse!
+    const stageId = quorumMerkle ? 'quorum-origins' : reuse.artifactId
+    stages.push({
+      id: request.artifactId,
+      checkpoint: { kind: 'none', id: `${request.artifactId}:none` },
+      priorOutputs: [
+        {
+          stageId,
+          outputId: reuse.artifactId,
+          selection: reuse.selection,
         },
-        validatorCodec: { kind: 'none' },
-        erc7739: { kind: 'none' },
-        accountEnvelope: { kind: 'none' },
-        erc6492: { kind: 'none' },
-      },
-    ],
-  })
-  if (prepared.signing.target) {
-    const target = prepared.signing.target
-    const route = resolveAccountTypedDataSigning({
-      typedData: target.typedData,
-      chain: target.chain,
-      context,
-      validationHash: target.id,
+      ],
+      tasks: [],
+      schedule: [],
+      artifacts: [
+        {
+          id: request.artifactId,
+          usage: request.payload.usage,
+          input: {
+            kind: 'reuse-artifact',
+            stageId,
+            artifactId: reuse.artifactId,
+            selection: reuse.selection,
+          },
+          validatorCodec: { kind: 'none' },
+          erc7739: { kind: 'none' },
+          accountEnvelope: { kind: 'none' },
+          erc6492: { kind: 'none' },
+        },
+      ],
     })
-    payloads[target.id] = route.material
-    stages.push(
-      signingStage({
-        id: 'target',
-        payloadId: target.id,
-        chain: target.chain,
-        usage: 'intent-target',
-        context,
-        route,
-      }),
-    )
   }
   return { intent: prepared.signing, stages, payloads }
 }
 
 function quorumMerkleSigningStage(input: {
-  readonly origins: readonly IntentSigningPayload[]
+  readonly requests: readonly Extract<
+    IntentSigningRequest,
+    { kind: 'eip712' }
+  >[]
   readonly payloadId: Hex
   readonly context: SigningContext
   readonly route: AccountTypedDataSigningRoute
@@ -563,9 +640,9 @@ function quorumMerkleSigningStage(input: {
         taskIds: tasks.map(({ id }) => id),
       },
     ],
-    artifacts: input.origins.map((_, index) => ({
-      id: `origin-${index}`,
-      usage: 'intent-origin',
+    artifacts: input.requests.map((request, index) => ({
+      id: request.artifactId,
+      usage: request.payload.usage,
       input: { kind: 'task-results', taskIds: tasks.map(({ id }) => id) },
       validatorCodec,
       quorumMerkleProof: input.proofs[index],
@@ -580,7 +657,7 @@ function signingStage(input: {
   readonly id: string
   readonly payloadId: Hex
   readonly chain: import('../../chains/types').EvmChainReference
-  readonly usage: 'intent-origin' | 'intent-target'
+  readonly usage: SignatureUsage
   readonly context: SigningContext
   readonly route: AccountTypedDataSigningRoute
   readonly quorumMerkleProof?: {
@@ -691,16 +768,4 @@ function eoaTask(input: {
       payload: { source: 'plan-payload', payloadId: input.payloadId },
     },
   ]
-}
-
-function requireOriginSignature(value: SigningArtifact | undefined) {
-  if (typeof value === 'string') return value
-  if (value && 'preClaimSig' in value) return value
-  throw new Error('Intent origin signature is missing')
-}
-
-function requireHex(value: SigningArtifact | undefined, role: string): Hex {
-  if (typeof value !== 'string')
-    throw new Error(`Intent ${role} signature is missing`)
-  return value
 }

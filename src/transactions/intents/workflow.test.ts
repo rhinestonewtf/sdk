@@ -1,9 +1,14 @@
-import type { TypedDataDefinition } from 'viem'
+import type { Hex, TypedDataDefinition } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
 import { privateKeyToAccount } from 'viem/accounts'
 import { arbitrum, base, mainnet } from 'viem/chains'
 import { describe, expect, test, vi } from 'vitest'
 import { passkeyAccount } from '../../../test/consts'
+import {
+  quote as caucasusQuote,
+  delegationRequest,
+  eip712Request,
+} from '../../../test/utils/caucasus'
 import type {
   AccountAdapter,
   AccountRuntime,
@@ -13,7 +18,11 @@ import type {
 import { wrapKernelMessageHash } from '../../accounts/kernel-signing'
 import type { AccountConstruction } from '../../accounts/types'
 import { parseCaip2, toEvmChainReference } from '../../chains/caip2'
-import type { OrchestratorQuote } from '../../clients/orchestrator/types'
+import type { SigningProof } from '../../clients/orchestrator/public'
+import type {
+  OrchestratorIntentRequest,
+  OrchestratorQuote,
+} from '../../clients/orchestrator/types'
 import { defineValidator } from '../../modules/validators/definition'
 import {
   buildQuorumMerkleTree,
@@ -22,6 +31,10 @@ import {
 } from '../../modules/validators/quorum'
 import { toSession } from '../../modules/validators/smart-sessions/resolve'
 import { createAccountSigningContext } from '../../signing/context'
+import type {
+  IntentSigningInput,
+  IntentSigningRequest,
+} from '../../signing/intent-plans/types'
 import { buildIntentSigningInput, prepareIntent } from './prepare'
 import { sendIntent } from './send'
 import { buildSessionIntentPlanInput } from './session-signing'
@@ -54,36 +67,74 @@ const testPasskey = {
   signTypedData: vi.fn(async () => passkeyResult),
 } as unknown as WebAuthnAccount
 
-function quote() {
-  const typedData = {
-    kind: 'eip712',
-    domain: { chainId: 1, verifyingContract: address },
+// Numeric fields arrive as JSON strings and are normalized to bigints before
+// hashing, so anything reaching `hashTypedData` directly has to pass bigints.
+function intentTypedData(
+  chainId: number,
+  value: string | bigint = '1',
+): TypedDataDefinition {
+  return {
+    domain: { chainId, verifyingContract: address },
     types: { Test: [{ name: 'value', type: 'uint256' }] },
     primaryType: 'Test',
-    message: { value: '1' },
-  } as const
-  return {
-    intentId: 'intent-1',
-    expiresAt: 1,
-    estimatedFillTime: { seconds: 1 },
-    settlementLayer: 'SAME_CHAIN',
-    signData: { origin: [typedData], destination: typedData },
-    cost: {
-      input: [],
-      output: [],
-      fees: {
-        total: { usd: 0 },
-        breakdown: {
-          gas: { usd: 0, sponsored: false },
-          bridge: { usd: 0, sponsored: false },
-          swap: { usd: 0, sponsored: false },
-          app: { usd: 0, sponsored: false },
-          protocol: { usd: 0, sponsored: false },
-          sponsorSurcharge: { usd: 0, sponsored: false },
-        },
-      },
-    },
-  } satisfies OrchestratorQuote
+    message: { value },
+  } as unknown as TypedDataDefinition
+}
+
+function originRequest(chainId = 1, value: string | bigint = '1') {
+  return eip712Request({ chainId, typedData: intentTypedData(chainId, value) })
+}
+
+// A same-chain intent authorises the claim and the fill with the same payload,
+// which is how the destination slot comes to reuse the origin signature.
+function destinationRequest(chainId = 1, value: string | bigint = '1') {
+  return eip712Request({
+    chainId,
+    purpose: 'destinationAuthorization',
+    typedData: intentTypedData(chainId, value),
+  })
+}
+
+function quote(
+  overrides: Parameters<typeof caucasusQuote>[0] = {},
+): OrchestratorQuote {
+  return caucasusQuote({
+    signingRequests: [originRequest(), destinationRequest()],
+    ...overrides,
+  })
+}
+
+function eip712Slot(
+  signing: IntentSigningInput,
+  index: number,
+): Extract<IntentSigningRequest, { kind: 'eip712' }> {
+  const request = signing.requests[index]
+  if (request?.kind !== 'eip712') {
+    throw new Error(`Signing request ${index} is not an EIP-712 request`)
+  }
+  return request
+}
+
+function hexProof(proof: SigningProof | undefined): Hex {
+  if (proof?.kind !== 'eip712' || typeof proof.signature !== 'string') {
+    throw new Error('Expected a single EIP-712 signature')
+  }
+  return proof.signature
+}
+
+function claimPairProof(proof: SigningProof | undefined) {
+  if (proof?.kind !== 'eip712' || typeof proof.signature === 'string') {
+    throw new Error('Expected a Smart Session claim pair')
+  }
+  return proof.signature
+}
+
+function smartAccount(request: OrchestratorIntentRequest) {
+  const evm = request.account.evm
+  if (evm?.type !== 'erc7579') {
+    throw new Error('Expected an ERC-7579 account on the request')
+  }
+  return evm
 }
 
 function runtime(): AccountRuntime {
@@ -161,6 +212,17 @@ function context(
     },
     checkpoints: { read: vi.fn(async () => []) },
     signAuthorizations: vi.fn(async () => []),
+    signDelegation: vi.fn(
+      async () =>
+        ({
+          address,
+          chainId: 1,
+          nonce: 0,
+          r: `0x${'22'.repeat(32)}`,
+          s: `0x${'33'.repeat(32)}`,
+          yParity: 0,
+        }) as const,
+    ),
     clock: {
       now: () => 0,
       sleep: vi.fn(async () => undefined),
@@ -200,17 +262,37 @@ describe('intent workflow', () => {
     expect(lazy).toHaveBeenCalledOnce()
     expect(prepared.request).toMatchObject({
       account: {
-        address,
-        setupOps: [{ to: address, data: '0x1234' }],
+        evm: {
+          type: 'erc7579',
+          address,
+          initData: { setupOps: [{ to: address, data: '0x1234' }] },
+        },
       },
+      destination: {
+        chainId: 'eip155:1',
+        execution: { calls: [{ to: address, value: 2n, data: '0x12' }] },
+      },
+      source: {
+        executions: [
+          {
+            chainId: 'eip155:1',
+            calls: [{ to: address, value: 3n, data: '0x34' }],
+          },
+        ],
+        auxiliaryFunds: { 'eip155:1': { [address]: 4n } },
+      },
+    })
+    // The sponsorship projection keeps its own spelling and its numeric chain
+    // ids, so a sponsorship digest survives the wire migration.
+    expect(prepared.normalized).toMatchObject({
+      account: { address, setupOps: [{ to: address, data: '0x1234' }] },
       destinationExecutions: [{ to: address, value: 2n, data: '0x12' }],
       preClaimExecutions: {
         1: [{ to: address, value: 3n, data: '0x34' }],
       },
       options: { auxiliaryFunds: { 1: { [address]: 4n } } },
     })
-    expect(prepared.signing.origins).toHaveLength(1)
-    expect(prepared.signing.origins[0]?.typedData.message).toEqual({
+    expect(eip712Slot(prepared.signing, 0).payload.typedData.message).toEqual({
       value: 1n,
     })
   })
@@ -278,8 +360,10 @@ describe('intent workflow', () => {
       },
     })
 
-    expect(prepared.request.account.mockSignatures?.['1']).toMatch(/^0x/u)
-    expect(prepared.request.account.mockSignatures?.['1337001']).toBeUndefined()
+    const mockSignatures = smartAccount(prepared.request).simulation
+      ?.mockSignaturesByChain
+    expect(mockSignatures?.['eip155:1']).toMatch(/^0x/u)
+    expect(mockSignatures?.['eip155:1337001']).toBeUndefined()
   })
 
   // EVM → Solana delivery: the destination hosts no account runtime and takes
@@ -293,7 +377,7 @@ describe('intent workflow', () => {
       sourceChains: [toEvmChainReference(base.id), chain],
       calls: [],
       tokenRequests: [{ token: mint, amount: 50_000n }],
-      recipient: { address: recipient },
+      recipient: { kind: 'bare', address: recipient },
     } satisfies IntentInput<{ marker: boolean }>
 
     test('hosts the account on the last EVM source and requests no destination execution', async () => {
@@ -303,27 +387,42 @@ describe('intent workflow', () => {
 
       expect(workflow.account.forChain).toHaveBeenCalledWith(chain)
       expect(prepared.accountChain).toEqual(chain)
-      expect(prepared.request.destinationChainId).toBe(792703809)
-      expect(prepared.request.destinationExecutions).toEqual([])
       // Base58 is case-sensitive; a normalized mint or recipient delivers
       // somewhere else entirely.
-      expect(prepared.request.tokenRequests).toEqual([
-        { tokenAddress: mint, amount: 50_000n },
-      ])
-      expect(prepared.request.recipient).toEqual({ address: recipient })
+      expect(prepared.request.destination).toEqual({
+        vm: 'svm',
+        chainId: 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
+        recipient: { address: recipient },
+        tokenRequests: [{ tokenAddress: mint, amount: 50_000n }],
+      })
+      expect(prepared.normalized).toMatchObject({
+        destinationChainId: 792703809,
+        destinationExecutions: [],
+        tokenRequests: [{ tokenAddress: mint, amount: 50_000n }],
+        recipient: { address: recipient },
+      })
     })
 
     test('signs the destination by reusing the last origin signature', async () => {
       const prepared = await prepareIntent(context(), delivery)
 
-      expect(prepared.signing.origins).toHaveLength(1)
-      expect(prepared.signing.origins[0]?.chain).toEqual(chain)
-      // No EVM destination chain means no separate destination payload to sign.
-      expect(prepared.signing.destination).toMatchObject({
-        mode: 'reuse-origin',
-        originArtifactId: 'origin-0',
+      const origin = eip712Slot(prepared.signing, 0)
+      expect(origin.purpose).toBe('originAuthorization')
+      expect(origin.payload.chain).toEqual(chain)
+      expect(origin.reuse).toBeUndefined()
+      // No EVM destination chain means no separate destination payload to sign:
+      // the slot is still its own authorization, satisfied by the origin's bytes.
+      const destination = eip712Slot(prepared.signing, 1)
+      expect(destination.purpose).toBe('destinationAuthorization')
+      expect(destination.reuse).toEqual({
+        artifactId: origin.artifactId,
+        selection: 'whole',
       })
-      expect(prepared.signing.target).toBeUndefined()
+      expect(
+        prepared.signing.requests.some(
+          ({ purpose }) => purpose === 'targetExecutionAuthorization',
+        ),
+      ).toBe(false)
     })
 
     test('rejects destination calls before quoting', async () => {
@@ -352,8 +451,14 @@ describe('intent workflow', () => {
     const prepared = await prepareIntent(workflow, input)
     const signed = await signIntent(workflow, prepared)
 
-    expect(signed.originSignatures).toHaveLength(1)
-    expect(signed.destinationSignature).toBe(signed.originSignatures[0])
+    // One proof per signing request, in the quoted order; the destination slot
+    // is satisfied by the origin's signature rather than signed again.
+    expect(signed.proofs).toHaveLength(2)
+    expect(eip712Slot(prepared.signing, 1).reuse).toEqual({
+      artifactId: 'request-0',
+      selection: 'whole',
+    })
+    expect(signed.proofs[1]).toEqual(signed.proofs[0])
     expect(signed.transcript.planKind).toBe('intent-full')
     expect(workflow.signerInvoker.invoke).toHaveBeenCalledOnce()
   })
@@ -373,24 +478,19 @@ describe('intent workflow', () => {
         }),
       },
     }
-    const secondOrigin = {
-      ...quote().signData.origin[0],
-      domain: { chainId: 10, verifyingContract: address },
-      message: { value: '2' },
-    }
     const workflow = context({
       account: { forChain: vi.fn(async () => quorumRuntime) },
       quoteClient: {
         createQuote: vi.fn(async () => ({
           traceId: 'trace-merkle',
           routes: [
-            {
-              ...quote(),
-              signData: {
-                ...quote().signData,
-                origin: [quote().signData.origin[0], secondOrigin],
-              },
-            },
+            quote({
+              signingRequests: [
+                originRequest(),
+                originRequest(10, '2'),
+                destinationRequest(),
+              ],
+            }),
           ],
         })),
       },
@@ -399,19 +499,20 @@ describe('intent workflow', () => {
     const signed = await signIntent(workflow, prepared)
 
     expect(workflow.signerInvoker.invoke).toHaveBeenCalledOnce()
-    expect(signed.originSignatures).toHaveLength(2)
-    const [firstSignature, secondSignature] = signed.originSignatures
-    if (
-      typeof firstSignature !== 'string' ||
-      typeof secondSignature !== 'string'
-    ) {
-      throw new Error('Expected Quorum Merkle signatures')
-    }
+    expect(signed.proofs).toHaveLength(3)
+    const firstSignature = hexProof(signed.proofs[0])
+    const secondSignature = hexProof(signed.proofs[1])
     expect(firstSignature).not.toBe(secondSignature)
     expect(firstSignature).toMatch(/^0x01/u)
     expect(firstSignature.slice(4, 68)).toBe(secondSignature.slice(4, 68))
     expect(secondSignature).toMatch(/^0x01/u)
-    expect(signed.destinationSignature).toBe(secondSignature)
+    // Reuse follows payload identity, not position: this destination authorizes
+    // the same payload as the first origin, so it carries the same bytes.
+    expect(eip712Slot(prepared.signing, 2).reuse).toEqual({
+      artifactId: 'request-0',
+      selection: 'whole',
+    })
+    expect(hexProof(signed.proofs[2])).toBe(firstSignature)
 
     const ownerSignature = await signIntentAsOwner(workflow, prepared, {
       signerId: `ecdsa:${account.address.toLowerCase()}`,
@@ -419,8 +520,8 @@ describe('intent workflow', () => {
     if (ownerSignature.kind !== 'ecdsa') {
       throw new Error('Expected independent ECDSA signature')
     }
-    expect(ownerSignature.origin).toHaveLength(2)
-    expect(ownerSignature.origin[0]).toBe(ownerSignature.origin[1])
+    expect(ownerSignature.slots).toHaveLength(2)
+    expect(ownerSignature.slots[0]).toBe(ownerSignature.slots[1])
   })
 
   test('signs Kernel quorum Merkle leaves with account wrapping before validator binding', async () => {
@@ -445,37 +546,36 @@ describe('intent workflow', () => {
       },
       identity: { definition: kernelAccount, address },
     }
-    const secondOrigin = {
-      ...quote().signData.origin[0],
-      domain: { chainId: 10, verifyingContract: address },
-      message: { value: '2' },
-    }
     const workflow = context({
       account: { forChain: vi.fn(async () => quorumRuntime) },
       quoteClient: {
         createQuote: vi.fn(async () => ({
           traceId: 'trace-kernel-merkle',
           routes: [
-            {
-              ...quote(),
-              signData: {
-                ...quote().signData,
-                origin: [quote().signData.origin[0], secondOrigin],
-              },
-            },
+            quote({
+              signingRequests: [
+                originRequest(),
+                originRequest(10, '2'),
+                destinationRequest(),
+              ],
+            }),
           ],
         })),
       },
     })
     const prepared = await prepareIntent(workflow, input)
+    const leaves = [
+      eip712Slot(prepared.signing, 0),
+      eip712Slot(prepared.signing, 1),
+    ]
     const tree = buildQuorumMerkleTree(
-      prepared.signing.origins.map((origin) => ({
+      leaves.map(({ payload }) => ({
         account: address,
         digest: getQuorumSignableHash({
           validator: quorumValidator,
-          chainId: origin.chain.id,
+          chainId: payload.chain.id,
           account: address,
-          hash: wrapKernelMessageHash(origin.id, address),
+          hash: wrapKernelMessageHash(payload.id, address),
         }),
       })),
     )
@@ -486,7 +586,7 @@ describe('intent workflow', () => {
 
     const signed = await signIntent(workflow, prepared)
 
-    expect(signed.originSignatures).toHaveLength(2)
+    expect(signed.proofs).toHaveLength(3)
     expect(workflow.signerInvoker.invoke).toHaveBeenCalledOnce()
     expect(vi.mocked(workflow.signerInvoker.invoke).mock.calls[0]?.[1]).toEqual(
       {
@@ -530,12 +630,10 @@ describe('intent workflow', () => {
 
   test('signs a chain-agnostic multi-leg origin payload', () => {
     // `MultiChainOps` is one signature over every IntentExecutor leg, so its
-    // domain carries no chainId and the quote carries ONE origin entry for a
+    // domain carries no chainId and the quote carries ONE origin request for a
     // bundle of several legs. Deriving the chain from the domain gave
     // `Invalid chain id: NaN` and failed the intent after the user's approval.
-    const intentQuote = quote()
     const multiChainOps = {
-      kind: 'eip712',
       domain: {
         name: 'IntentExecutor',
         version: 'v0.0.1',
@@ -559,38 +657,49 @@ describe('intent workflow', () => {
           { chainId: 8453n, nonce: 2n },
         ],
       },
-    } as const
+    } as unknown as TypedDataDefinition
 
-    const signing = buildIntentSigningInput(runtime(), {
-      ...intentQuote,
-      signData: { ...intentQuote.signData, origin: [multiChainOps] },
-    })
+    const signing = buildIntentSigningInput(
+      runtime(),
+      quote({
+        signingRequests: [
+          eip712Request({ chainId: 1, typedData: multiChainOps }),
+        ],
+      }),
+    )
 
-    expect(signing.origins).toHaveLength(1)
-    expect(signing.origins[0].chain.id).toBe(1)
+    expect(signing.requests).toHaveLength(1)
+    expect(eip712Slot(signing, 0).payload.chain.id).toBe(1)
   })
 
-  test('does not sign an ordinary target execution payload', () => {
-    const intentQuote = quote()
-    const targetExecution = {
-      ...intentQuote.signData.destination!,
-      domain: {
-        ...intentQuote.signData.destination!.domain,
-        chainId: 421614,
-      },
-    }
-
+  // Caucasus makes a target execution an explicit request slot: the SDK no
+  // longer decides locally whether to sign one, it signs exactly what the quote
+  // asks for. What survives is that it is never an owner-signable payload.
+  test('signs a target execution payload only when the quote asks for one', () => {
     expect(
-      buildIntentSigningInput(
-        runtime(),
-        {
-          ...intentQuote,
-          signData: { ...intentQuote.signData, targetExecution },
-        },
-        undefined,
-        toEvmChainReference(421614),
-      ).target,
-    ).toBeUndefined()
+      buildIntentSigningInput(runtime(), quote()).requests.some(
+        ({ purpose }) => purpose === 'targetExecutionAuthorization',
+      ),
+    ).toBe(false)
+
+    const signing = buildIntentSigningInput(
+      runtime(),
+      quote({
+        signingRequests: [
+          originRequest(1, 1n),
+          eip712Request({
+            chainId: 421614,
+            purpose: 'targetExecutionAuthorization',
+            typedData: intentTypedData(421614, 1n),
+          }),
+        ],
+      }),
+    )
+    const target = eip712Slot(signing, 1)
+
+    expect(target.payload.usage).toBe('intent-target')
+    expect(target.payload.chain.id).toBe(421614)
+    expect(target.exposedForIndependentSigning).toBe(false)
   })
 
   test('freezes and signs a fresh Smart Session route per chain', async () => {
@@ -622,20 +731,29 @@ describe('intent workflow', () => {
     })
     const signed = await signIntent(workflow, prepared)
 
-    expect(prepared.request.options.signatureMode).toBe(5)
-    expect(prepared.request.account.mockSignatures?.['1']).toMatch(/^0x/u)
-    expect(prepared.request.preClaimExecutions?.[1]?.[0]).toMatchObject({
-      value: 0n,
+    expect(smartAccount(prepared.request).signatureMode).toBe(5)
+    expect(
+      smartAccount(prepared.request).simulation?.mockSignaturesByChain?.[
+        'eip155:1'
+      ],
+    ).toMatch(/^0x/u)
+    expect(prepared.request.source?.executions).toMatchObject([
+      { chainId: 'eip155:1', calls: [{ value: 0n }] },
+    ])
+    // A session origin carries both encodings of the one message in one proof.
+    const originProof = claimPairProof(signed.proofs[0])
+    expect(originProof.preClaim).toMatch(/^0x01/u)
+    expect(originProof.notarizedClaim).toMatch(/^0x/u)
+    // The destination reuses the pre-claim half of that pair, never the pair.
+    expect(eip712Slot(prepared.signing, 1).reuse).toEqual({
+      artifactId: 'request-0',
+      selection: 'pre-claim',
     })
-    const originSignature = signed.originSignatures[0]
-    expect(typeof originSignature).toBe('object')
-    if (typeof originSignature !== 'object') {
-      throw new Error('Expected a Smart Session signature pair')
-    }
-    expect(originSignature.preClaimSig).toMatch(/^0x01/u)
-    expect(originSignature.notarizedClaimSig).toMatch(/^0x/u)
-    expect(signed.destinationSignature).toMatch(/^0x01/u)
-    expect(read).toHaveBeenCalledTimes(3)
+    expect(hexProof(signed.proofs[1])).toMatch(/^0x01/u)
+    // Session state is read again when signing rather than carried over from
+    // preparation. The reused destination slot runs no ceremony of its own, so
+    // it reads nothing.
+    expect(read).toHaveBeenCalledTimes(2)
   })
 
   test('uses each prepared stage chain for a shorthand cross-chain session', () => {
@@ -663,22 +781,38 @@ describe('intent workflow', () => {
     })
     const prepared = {
       signing: {
-        origins: [
+        requests: [
           {
-            id: `0x${'22'.repeat(32)}`,
-            chain: source,
-            typedData: typedData(source.id),
+            kind: 'eip712',
+            index: 0,
+            purpose: 'originAuthorization',
+            artifactId: 'request-0',
+            signatureFormat: 'account',
+            payload: {
+              id: `0x${'22'.repeat(32)}`,
+              chain: source,
+              typedData: typedData(source.id),
+              usage: 'intent-origin',
+            },
+            shape: 'hex',
+            exposedForIndependentSigning: false,
+          },
+          {
+            kind: 'eip712',
+            index: 1,
+            purpose: 'destinationAuthorization',
+            artifactId: 'request-1',
+            signatureFormat: 'account',
+            payload: {
+              id: `0x${'33'.repeat(32)}`,
+              chain: destination,
+              typedData: typedData(destination.id),
+              usage: 'intent-destination',
+            },
+            shape: 'hex',
+            exposedForIndependentSigning: false,
           },
         ],
-        destination: {
-          mode: 'sign',
-          artifactId: 'destination',
-          payload: {
-            id: `0x${'33'.repeat(32)}`,
-            chain: destination,
-            typedData: typedData(destination.id),
-          },
-        },
       },
       resolvedSessions: {
         [source.id]: selected,
@@ -693,7 +827,7 @@ describe('intent workflow', () => {
     })
 
     const plan = buildSessionIntentPlanInput(prepared, signing)
-    const destinationStage = plan.stages.find(({ id }) => id === 'destination')
+    const destinationStage = plan.stages.find(({ id }) => id === 'request-1')
 
     expect(destinationStage?.tasks).not.toHaveLength(0)
     expect(
@@ -739,7 +873,7 @@ describe('intent workflow', () => {
 
     const signed = await signIntent(workflow, prepared)
 
-    expect(signed.originSignatures[0]).toMatch(/^0x00/u)
+    expect(hexProof(signed.proofs[0])).toMatch(/^0x00/u)
     expect(prepared.signing.effectiveSelection.signerIds).toHaveLength(2)
     expect(
       Object.keys(signed.transcript.stages[0]?.results ?? {}),
@@ -772,7 +906,7 @@ describe('intent workflow', () => {
 
     const signed = await signIntent(workflow, prepared)
 
-    expect(signed.originSignatures[0]).toMatch(/^0x00/u)
+    expect(hexProof(signed.proofs[0])).toMatch(/^0x00/u)
     expect(
       Object.values(signed.transcript.stages[0]?.results ?? {})[0],
     ).toMatchObject({ kind: 'webauthn-assertion' })
@@ -792,7 +926,7 @@ describe('intent workflow', () => {
       targetChain: 1,
     })
     expect(workflow.submissionClient.submitIntent).toHaveBeenCalledWith(
-      expect.objectContaining({ intentId: 'intent-1' }),
+      { intentId: 'intent-1', proofs: signed.proofs },
       expect.objectContaining({
         intentInput: expect.objectContaining({
           destinationExecutions: [expect.objectContaining({ value: '1' })],
@@ -810,32 +944,54 @@ describe('intent workflow', () => {
     })
   })
 
-  test('signs and submits EIP-7702 authorizations in the send workflow', async () => {
+  // A quote that needs an EIP-7702 delegation asks for it as its own request
+  // slot, so the authorization is signed in place and submitted in the proof
+  // vector rather than collected into a separate authorization bag.
+  test('signs a requested EIP-7702 delegation into the proof vector', async () => {
     const authorization = {
       address,
       chainId: 1,
-      nonce: 0,
+      nonce: 7,
       r: `0x${'22'.repeat(32)}`,
       s: `0x${'33'.repeat(32)}`,
       yParity: 0,
     } as const
-    const signAuthorizations = vi.fn(async () => [authorization])
-    const workflow = context({ signAuthorizations })
-
-    await sendIntent(workflow, {
-      ...input,
-      eip7702InitSignature: signature,
+    const signDelegation = vi.fn(async () => authorization)
+    const workflow = context({
+      signDelegation,
+      quoteClient: {
+        createQuote: vi.fn(async () => ({
+          traceId: 'trace-7702',
+          routes: [
+            quote({
+              signingRequests: [
+                originRequest(),
+                delegationRequest({ chainId: 1, contract: address }),
+              ],
+            }),
+          ],
+        })),
+      },
     })
 
-    expect(signAuthorizations).toHaveBeenCalledWith({
-      chains: [chain],
-      eip7702InitSignature: signature,
+    await sendIntent(workflow, { ...input, eip7702InitSignature: signature })
+
+    expect(signDelegation).toHaveBeenCalledWith({
+      chainId: 1,
+      contract: address,
     })
-    expect(workflow.submissionClient.submitIntent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        authorizations: { sponsor: [authorization] },
-      }),
-      expect.anything(),
-    )
+    const [submitted] =
+      vi.mocked(workflow.submissionClient.submitIntent).mock.calls[0] ?? []
+    expect(submitted?.proofs).toHaveLength(2)
+    expect(submitted?.proofs[0]).toMatchObject({ kind: 'eip712' })
+    expect(submitted?.proofs[1]).toEqual({
+      kind: 'eip7702',
+      nonce: 7,
+      signature: {
+        r: authorization.r,
+        s: authorization.s,
+        yParity: 0,
+      },
+    })
   })
 })

@@ -2,6 +2,7 @@ import fc from 'fast-check'
 import { describe, expect, test } from 'vitest'
 import {
   chainIdFromReference,
+  chainVm,
   formatCaip2,
   isCaip2,
   isEvmCaip2,
@@ -134,5 +135,33 @@ describe('CAIP-2', () => {
         expect(chainIdFromReference(parseCaip2(caip2))).toBe(chainId)
       }),
     )
+  })
+})
+
+// The execution environment of a chain is NOT `ChainReference.kind`: HyperCore
+// is EVM-settled and so reads as `kind: 'evm'`, while its destination shape and
+// its evidence are its own.
+describe('chainVm', () => {
+  test.each([
+    ['eip155:8453', 'evm'],
+    ['solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp', 'svm'],
+    ['tron:mainnet', 'tvm'],
+    ['stellar:pubnet', 'stellar'],
+    ['hypercore:mainnet', 'hypercore'],
+    ['hypercore:spot', 'hypercore'],
+    ['hypercore:perp', 'hypercore'],
+  ] as const)('reads %s as %s', (caip2, vm) => {
+    expect(chainVm(parseCaip2(caip2))).toBe(vm)
+  })
+
+  test('refuses a namespace it does not classify', () => {
+    expect(() =>
+      chainVm({
+        kind: 'non-evm',
+        namespace: 'cosmos',
+        reference: 'hub',
+        caip2: 'cosmos:hub',
+      }),
+    ).toThrow('Unsupported chain namespace')
   })
 })

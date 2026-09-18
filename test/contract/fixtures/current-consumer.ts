@@ -1,14 +1,12 @@
 import {
   type BridgeFill,
-  type ChainOperation,
   type CrossChainSolanaOriginTransaction,
-  type Eip712OriginSignData,
   type EvmAccountConfig,
-  type OriginSignData,
-  type PersonalSignOriginSignData,
+  type IntentOperationGroup,
   RhinestoneSDK,
   type SameChainSolanaTransaction,
-  type SignData,
+  type SigningProof,
+  type SigningRequest,
   type SolanaCrossChainExecutionMetadata,
   type SolanaExecutionMetadata,
   solanaAddress,
@@ -23,33 +21,43 @@ import {
   type SolanaAccountNotCreatedError,
   SolanaQuoteExpiredError,
 } from '@rhinestone/sdk/errors'
-import type { Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { base, mainnet } from 'viem/chains'
 
-function readEcoIntentHash(bridgeFill: BridgeFill): Hex | undefined {
+function readEcoIntentHash(bridgeFill: BridgeFill): string | undefined {
   if (bridgeFill.type !== 'ECO') return undefined
   return bridgeFill.intentHash
 }
 
 const ecoBridgeFill = {
   type: 'ECO',
-  destinationChainId: mainnet.id,
+  destinationChainId: `eip155:${mainnet.id}`,
   intentHash: `0x${'11'.repeat(32)}`,
+  fillStatusTimeout: 30,
 } as const satisfies BridgeFill
-const ecoIntentHash: Hex | undefined = readEcoIntentHash(ecoBridgeFill)
+const ecoIntentHash: string | undefined = readEcoIntentHash(ecoBridgeFill)
 const solanaDeliveryBridgeFill = {
   type: 'ECO',
-  destinationChainId: 792703809,
+  destinationChainId: 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
   providerDestinationChainId: 1399811149,
   intentHash: `0x${'22'.repeat(32)}`,
+  fillStatusTimeout: 14400,
 } as const satisfies BridgeFill
 const solanaOperation = {
-  chain: 792703810,
-  status: 'COMPLETED',
-  txHash: '5VERv8NM8A8f8hG1rjzAygzYwGwjBQD5rKpH8u8x2QfP',
-  timestamp: 1_700_000_000,
-} satisfies ChainOperation
+  chainId: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1',
+  items: [
+    {
+      type: 'FILL',
+      status: 'COMPLETED',
+      transaction: {
+        vm: 'svm',
+        chainId: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1',
+        signature: '5VERv8NM8A8f8hG1rjzAygzYwGwjBQD5rKpH8u8x2QfP',
+      },
+      timestamp: 1_700_000_000,
+    },
+  ],
+} satisfies IntentOperationGroup
 
 const owner = privateKeyToAccount(
   '0x0000000000000000000000000000000000000000000000000000000000000001',
@@ -121,21 +129,17 @@ async function useManagedSolanaApi() {
     preparedDelivery.execution?.kind === 'solana-cross-chain'
       ? preparedDelivery.execution
       : undefined
-  const signData: OriginSignData[] = prepared.quotes.best.signData.origin
-  const personal: PersonalSignOriginSignData = {
-    kind: 'personalSign',
-    message: '11'.repeat(32),
-    expiresAtSlot: '123456',
-  }
-  const solanaSignData = { origin: [personal] } satisfies SignData
-  const eip712 = null as unknown as Eip712OriginSignData
+  const signingRequests: SigningRequest[] = prepared.quotes.best.signingRequests
+  const purposes = signingRequests.map(({ purpose }) => purpose)
+  const signed = await account.signTransaction(prepared)
+  // One proof per request, in the same order.
+  const proofs: SigningProof[] = signed.proofs
 
   void metadata
   void deliveryMetadata
-  void signData
-  void personal
-  void solanaSignData
-  void eip712
+  void signingRequests
+  void purposes
+  void proofs
 }
 
 const invalidArtifact = new InvalidSolanaTransactionArtifactError('fixture')

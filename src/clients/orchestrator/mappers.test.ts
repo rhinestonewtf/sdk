@@ -1,331 +1,343 @@
-import type { SignedAuthorization } from 'viem'
 import { describe, expect, test } from 'vitest'
 import {
   mapIntentRequestToWire,
   mapIntentStatusFromWire,
   mapQuoteResponseFromWire,
   mapSignedIntentToWire,
-  mapSupportedSignData,
+  mapSigningRequestFromWire,
 } from './mappers'
-import type { OrchestratorSignedIntent } from './types'
+import type {
+  OrchestratorIntentRequest,
+  OrchestratorSignedIntent,
+} from './types'
 
 const address = '0x0000000000000000000000000000000000000001' as const
+const BASE = 'eip155:8453'
+const SOLANA = 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp'
 
-function authorization(chainId: number): SignedAuthorization {
+const typedData = {
+  domain: { chainId: 1, verifyingContract: address },
+  types: { Test: [{ name: 'value', type: 'uint256' }] },
+  primaryType: 'Test',
+  message: { value: '1' },
+}
+
+function signingRequest(payload: unknown) {
   return {
-    chainId,
-    address,
-    nonce: 7,
-    yParity: 1,
-    r: '0x01',
-    s: '0x02',
+    account: { vm: 'evm', address },
+    authority: { kind: 'account', vm: 'evm', address },
+    scope: { vm: 'evm', action: 'claim', accounts: [] },
+    chainIds: [BASE],
+    purpose: 'originAuthorization',
+    validity: [],
+    payload,
   }
 }
 
-function signedIntent(
-  authorizations?: OrchestratorSignedIntent['authorizations'],
-): OrchestratorSignedIntent {
+function route(overrides: Record<string, unknown> = {}) {
   return {
     intentId: 'intent-1',
-    signatures: {
-      origin: ['0x03', { preClaimSig: '0x04', notarizedClaimSig: '0x05' }],
-      destination: '0x06',
-      targetExecution: '0x07',
+    purpose: 'execution',
+    expiresAt: 1,
+    estimatedFillTime: { seconds: 1 },
+    settlementLayer: 'SAME_CHAIN',
+    plan: { source: [], destination: {}, deployments: [] },
+    cost: {
+      input: [],
+      output: [],
+      fees: { total: { usd: 0 }, breakdown: {} },
     },
-    ...(authorizations ? { authorizations } : {}),
-    dryRun: true,
+    requirements: [],
+    signingRequests: [
+      signingRequest({ kind: 'eip712', typedData, signatureFormat: 'account' }),
+    ],
+    ...overrides,
   }
 }
 
-describe('mapSupportedSignData', () => {
-  const untaggedTypedData = {
-    domain: { chainId: 1, verifyingContract: address },
-    types: { Test: [{ name: 'value', type: 'uint256' }] },
-    primaryType: 'Test',
-    message: { value: '1' },
-  }
-  const taggedTypedData = { kind: 'eip712', ...untaggedTypedData } as const
-  const personalSign = {
-    kind: 'personalSign',
-    message: 'ab'.repeat(32),
-    expiresAtSlot: '370123456',
-  } as const
+describe('mapQuoteResponseFromWire', () => {
+  test('parses the quoted outcome', () => {
+    const mapped = mapQuoteResponseFromWire({
+      status: 'quoted',
+      traceId: 'trace',
+      routes: [route()],
+    } as never)
 
-  test('accepts tagged EIP-712 origins and untagged destinations', () => {
-    expect(
-      mapSupportedSignData({
-        origin: [taggedTypedData],
-        destination: untaggedTypedData,
-      }),
-    ).toEqual({
-      origin: [taggedTypedData],
-      destination: untaggedTypedData,
+    expect(mapped.traceId).toBe('trace')
+    expect(mapped.routes).toHaveLength(1)
+    expect(mapped.routes[0]?.signingRequests[0]?.payload).toEqual({
+      kind: 'eip712',
+      typedData,
+      signatureFormat: 'account',
     })
   })
 
-  test('normalizes legacy untagged EIP-712 origins', () => {
-    expect(mapSupportedSignData({ origin: [untaggedTypedData] })).toEqual({
-      origin: [{ kind: 'eip712', ...untaggedTypedData }],
-    })
-  })
-
-  test('accepts a personal-sign origin without destination data', () => {
-    expect(mapSupportedSignData({ origin: [personalSign] })).toEqual({
-      origin: [personalSign],
-    })
-  })
-
-  test.each([
-    [{ kind: 'personalSign', message: 'payload', expiresAtSlot: '1' }],
-    [{ kind: 'personalSign', message: 'ab'.repeat(32), expiresAtSlot: 1 }],
-    [{ kind: 'personalSign', message: 'ab'.repeat(32), expiresAtSlot: '1.5' }],
-  ])('rejects malformed personal-sign payloads', (origin) => {
-    expect(() => mapSupportedSignData({ origin: [origin] })).toThrow(
-      /invalid personal-sign origin payload/,
-    )
-  })
-
-  test('rejects tags on destination EIP-712 data', () => {
+  // A reserved future outcome carries no routes. Reading it as an empty success
+  // would report "no route available" for a quote the orchestrator did answer.
+  test('refuses an outcome it does not recognise instead of reading it as empty', () => {
     expect(() =>
-      mapSupportedSignData({
-        origin: [taggedTypedData],
-        destination: taggedTypedData,
-      }),
-    ).toThrow(/untagged EIP-712 destination/)
+      mapQuoteResponseFromWire({ status: 'deferred', routes: [] } as never),
+    ).toThrow(/unsupported quote outcome: deferred/)
   })
 
-  test('fails the quote response on an unsupported scheme instead of dropping the route', () => {
-    const route = {
-      intentId: 'unsupported',
-      expiresAt: 1,
-      estimatedFillTime: { seconds: 1 },
-      settlementLayer: 'SAME_CHAIN',
-      signData: { origin: [{ kind: 'unknown' }] },
-      cost: {
-        input: [],
-        output: [],
-        fees: { total: { usd: 0 }, breakdown: {} },
-      },
-    }
-
-    expect(() =>
-      mapQuoteResponseFromWire({ traceId: 'trace', routes: [route] } as never),
-    ).toThrow(/unsupported origin signing scheme: unknown/)
-  })
-
-  test('preserves non-EVM cost token references', () => {
-    const mint = '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU'
-    const route = {
-      intentId: 'solana',
-      expiresAt: 1,
-      estimatedFillTime: { seconds: 1 },
-      settlementLayer: 'SAME_CHAIN',
-      signData: { origin: [personalSign] },
-      cost: {
-        input: [
-          {
-            chainId: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1',
-            tokenAddress: mint,
-            symbol: 'USDC',
-            decimals: 6,
-            price: { usd: 1 },
-            amount: '100000',
+  test('converts requirement and cost amounts to bigint', () => {
+    const mapped = mapQuoteResponseFromWire({
+      status: 'quoted',
+      routes: [
+        route({
+          requirements: [
+            {
+              kind: 'erc20Approval',
+              vm: 'evm',
+              chainId: BASE,
+              account: { address, type: 'erc7579' },
+              tokenAddress: address,
+              amount: '1000',
+              spender: address,
+            },
+          ],
+          cost: {
+            input: [
+              {
+                chainId: SOLANA,
+                tokenAddress: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+                symbol: 'USDC',
+                decimals: 6,
+                price: { usd: 1 },
+                amount: '100000',
+              },
+            ],
+            output: [],
+            fees: { total: { usd: 0 }, breakdown: {} },
           },
-        ],
-        output: [],
-        fees: { total: { usd: 0 }, breakdown: {} },
-      },
-    }
+        }),
+      ],
+    } as never)
 
+    expect(mapped.routes[0]?.requirements[0]?.amount).toBe(1000n)
+    const cost = mapped.routes[0]?.cost.input[0]
+    // Native identity survives: a CAIP-2 chain and a case-sensitive base58 mint.
+    expect(cost?.chainId).toBe(SOLANA)
+    expect(cost?.tokenAddress).toBe(
+      'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+    )
+    expect(cost?.amount).toBe(100000n)
+  })
+
+  test('drops an unknown bridge fill without failing the quote', () => {
+    const mapped = mapQuoteResponseFromWire({
+      status: 'quoted',
+      routes: [
+        route({ bridgeFill: { type: 'FUTURE', destinationChainId: BASE } }),
+      ],
+    } as never)
+    expect(mapped.routes[0]?.bridgeFill).toBeUndefined()
+  })
+
+  test('keeps a bridge fill chain reference as CAIP-2', () => {
+    const mapped = mapQuoteResponseFromWire({
+      status: 'quoted',
+      routes: [
+        route({
+          bridgeFill: {
+            type: 'RELAY',
+            destinationChainId: BASE,
+            fillStatusTimeout: 30,
+            requestId: 'req-1',
+          },
+        }),
+      ],
+    } as never)
+    expect(mapped.routes[0]?.bridgeFill).toMatchObject({
+      type: 'RELAY',
+      destinationChainId: BASE,
+      requestId: 'req-1',
+    })
+  })
+})
+
+describe('mapSigningRequestFromWire', () => {
+  test('accepts every supported payload kind', () => {
     expect(
-      mapQuoteResponseFromWire({ traceId: 'trace', routes: [route] } as never)
-        .routes[0]?.cost.input[0]?.tokenAddress,
-    ).toBe(mint)
+      mapSigningRequestFromWire(
+        signingRequest({
+          kind: 'personalSign',
+          message: { encoding: 'utf8', value: 'ab'.repeat(32) },
+        }),
+      ).payload.kind,
+    ).toBe('personalSign')
+    expect(
+      mapSigningRequestFromWire(
+        signingRequest({
+          kind: 'eip7702',
+          authorization: { chainId: 8453, address },
+        }),
+      ).payload.kind,
+    ).toBe('eip7702')
+    expect(
+      mapSigningRequestFromWire(
+        signingRequest({ kind: 'webauthn', challenge: '0xaa' }),
+      ).payload.kind,
+    ).toBe('webauthn')
+  })
+
+  // Narrowing an unknown variant onto a familiar one would sign something other
+  // than what the request describes.
+  test.each([
+    [
+      'payload kind',
+      signingRequest({ kind: 'blsAggregate' }),
+      /unsupported signing payload kind: blsAggregate/,
+    ],
+    [
+      'authority',
+      {
+        ...signingRequest({ kind: 'webauthn', challenge: '0x' }),
+        authority: { kind: 'schnorr' },
+      },
+      /unsupported authority: schnorr/,
+    ],
+    [
+      'account vm',
+      {
+        ...signingRequest({ kind: 'webauthn', challenge: '0x' }),
+        account: { vm: 'mvm', address },
+      },
+      /unsupported account: mvm/,
+    ],
+    [
+      'scope vm',
+      {
+        ...signingRequest({ kind: 'webauthn', challenge: '0x' }),
+        scope: { vm: 'mvm' },
+      },
+      /unsupported scope: mvm/,
+    ],
+    [
+      'purpose',
+      {
+        ...signingRequest({ kind: 'webauthn', challenge: '0x' }),
+        purpose: 'refundAuthorization',
+      },
+      /unsupported purpose: refundAuthorization/,
+    ],
+  ])('refuses an unsupported %s', (_name, value, matcher) => {
+    expect(() => mapSigningRequestFromWire(value as never)).toThrow(matcher)
+  })
+
+  test('refuses a malformed EIP-712 payload', () => {
+    expect(() =>
+      mapSigningRequestFromWire(
+        signingRequest({
+          kind: 'eip712',
+          typedData: { domain: {}, types: {}, primaryType: 1, message: {} },
+          signatureFormat: 'account',
+        }),
+      ),
+    ).toThrow(/invalid EIP-712 signing payload/)
+  })
+
+  test('refuses an EIP-712 payload with an unknown signature format', () => {
+    expect(() =>
+      mapSigningRequestFromWire(
+        signingRequest({ kind: 'eip712', typedData, signatureFormat: 'bls' }),
+      ),
+    ).toThrow(/invalid EIP-712 signing payload/)
   })
 })
 
 describe('mapSignedIntentToWire', () => {
-  test('maps concrete and any-chain sponsor and recipient authorizations', () => {
-    const result = mapSignedIntentToWire(
-      signedIntent({
-        sponsor: [authorization(8453), authorization(0)],
-        recipient: [authorization(10), authorization(0)],
-      }),
-    )
+  const signed: OrchestratorSignedIntent = {
+    intentId: 'intent-1',
+    proofs: [
+      { kind: 'eip712', signature: '0x03' },
+      {
+        kind: 'eip712',
+        signature: { preClaim: '0x04', notarizedClaim: '0x05' },
+      },
+      {
+        kind: 'eip7702',
+        nonce: 7,
+        signature: { r: '0x01', s: '0x02', yParity: 1 },
+      },
+    ],
+  }
 
-    expect(result).toEqual({
+  test('sends the intent id and the ordered proofs, and nothing else', () => {
+    expect(mapSignedIntentToWire(signed)).toEqual({
       intentId: 'intent-1',
-      signatures: {
-        origin: ['0x03', { preClaimSig: '0x04', notarizedClaimSig: '0x05' }],
-        destination: '0x06',
-        targetExecution: '0x07',
-      },
-      authorizations: {
-        sponsor: [
-          {
-            chainId: 'eip155:8453',
-            address,
-            nonce: 7,
-            yParity: 1,
-            r: '0x01',
-            s: '0x02',
-          },
-          {
-            chainId: 0,
-            address,
-            nonce: 7,
-            yParity: 1,
-            r: '0x01',
-            s: '0x02',
-          },
-        ],
-        recipient: [
-          {
-            chainId: 'eip155:10',
-            address,
-            nonce: 7,
-            yParity: 1,
-            r: '0x01',
-            s: '0x02',
-          },
-          {
-            chainId: 0,
-            address,
-            nonce: 7,
-            yParity: 1,
-            r: '0x01',
-            s: '0x02',
-          },
-        ],
-      },
-      options: { dryRun: true },
+      proofs: signed.proofs,
     })
   })
 
-  test('keeps omitted authorizations omitted', () => {
-    expect(mapSignedIntentToWire(signedIntent())).not.toHaveProperty(
-      'authorizations',
-    )
+  test('preserves proof order', () => {
+    const wire = mapSignedIntentToWire(signed)
+    expect(wire.proofs.map(({ kind }) => kind)).toEqual([
+      'eip712',
+      'eip712',
+      'eip7702',
+    ])
   })
 
-  test('omits a missing destination signature instead of sending a placeholder', () => {
-    const result = mapSignedIntentToWire({
-      intentId: 'solana-intent',
-      signatures: { origin: ['0x03'] },
+  test('sends the dry-run option only when requested', () => {
+    expect(mapSignedIntentToWire(signed)).not.toHaveProperty('options')
+    expect(mapSignedIntentToWire({ ...signed, dryRun: true }).options).toEqual({
+      dryRun: true,
     })
-
-    expect(result).toEqual({
-      intentId: 'solana-intent',
-      signatures: { origin: ['0x03'] },
-    })
-    expect(result.signatures).not.toHaveProperty('destination')
-  })
-
-  test.each([
-    ['negative', -1],
-    ['fractional', 1.5],
-    ['unsafe', Number.MAX_SAFE_INTEGER + 1],
-    ['HyperCore L1', 1337],
-    ['HyperCore spot', 1337001],
-    ['HyperCore perp', 1337002],
-    ['Tron', 728126428],
-    ['Solana', 792703809],
-  ])('rejects %s authorization chain IDs', (_name, chainId) => {
-    expect(() =>
-      mapSignedIntentToWire(
-        signedIntent({ sponsor: [authorization(chainId)] }),
-      ),
-    ).toThrow(new Error(`Invalid EIP-7702 authorization chain ID: ${chainId}`))
   })
 })
 
-describe('mapIntentRequestToWire — quoter pin', () => {
-  const base = {
-    account: { address, accountType: 'ERC7579' },
-    destinationChainId: 8453,
-    tokenRequests: [],
-    options: {},
-  } as never
+describe('mapIntentRequestToWire', () => {
+  const base: OrchestratorIntentRequest = {
+    account: { evm: { type: 'erc7579', address, signatureMode: 1 } },
+    destination: {
+      vm: 'evm',
+      chainId: BASE,
+      tokenRequests: [{ tokenAddress: address, amount: 1_000_000n }],
+    },
+  }
 
-  // A venue pin only protects a scoped session if it actually leaves the SDK.
-  // The mapper enumerates most options explicitly, so a new one silently
-  // vanishing here is the failure this guards.
-  test('carries options.quoters through to the wire request', () => {
-    const wire = mapIntentRequestToWire({
-      ...(base as object),
-      options: { quoters: { include: ['0x'] } },
-    } as never) as { options?: { quoters?: unknown } }
-    expect(wire.options?.quoters).toEqual({ include: ['0x'] })
+  test('serializes bigints and keeps the native envelope shape', () => {
+    const wire = mapIntentRequestToWire(base) as unknown as Record<
+      string,
+      never
+    >
+    expect(wire).toEqual({
+      account: { evm: { type: 'erc7579', address, signatureMode: 1 } },
+      destination: {
+        vm: 'evm',
+        chainId: BASE,
+        tokenRequests: [{ tokenAddress: address, amount: '1000000' }],
+      },
+    })
   })
 
-  test('carries an exclude filter through unchanged', () => {
-    const wire = mapIntentRequestToWire({
-      ...(base as object),
-      options: { quoters: { exclude: ['fynd', 'relay'] } },
-    } as never) as { options?: { quoters?: unknown } }
-    expect(wire.options?.quoters).toEqual({ exclude: ['fynd', 'relay'] })
+  test('omits source and options when the request carries none', () => {
+    const wire = mapIntentRequestToWire(base) as unknown as Record<
+      string,
+      unknown
+    >
+    expect(wire).not.toHaveProperty('source')
+    expect(wire).not.toHaveProperty('options')
   })
 
-  test('carries an EMPTY filter through instead of dropping it', () => {
+  test('carries a quoter pin through, including an empty fail-closed filter', () => {
     // An empty filter is how conflicting per-chain session scopes say "no venue
     // can serve this". Dropping it here would turn a fail-closed request back
-    // into an unconstrained one — the exact outcome the pin exists to prevent.
+    // into an unconstrained one.
     const wire = mapIntentRequestToWire({
-      ...(base as object),
+      ...base,
       options: { quoters: { include: [] } },
-    } as never) as { options?: { quoters?: unknown } }
+    }) as { options?: { quoters?: unknown } }
     expect(wire.options?.quoters).toEqual({ include: [] })
   })
 
-  test('omits it entirely when unset, rather than sending an empty filter', () => {
-    // An empty filter means "no venue" server-side and fails closed, so an
-    // absent pin must not become one.
-    const wire = mapIntentRequestToWire(base) as {
-      options?: { quoters?: unknown }
-    }
-    expect(wire.options?.quoters).toBeUndefined()
-  })
-})
-
-describe('mapIntentRequestToWire — Solana destination', () => {
-  // Base58 is case-sensitive: any lowercasing or checksumming of a mint or a
-  // recipient on the way to the wire delivers to a different account.
-  const mint = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
-  const recipient = 'EEnKdeMRGrhKq1Z2rkRubkrkTxCZigLZ5QgUYqAMvPnU'
-
-  const request = {
-    account: { address, accountType: 'ERC7579' },
-    destinationChainId: 792703809,
-    destinationExecutions: [],
-    tokenRequests: [{ tokenAddress: mint, amount: 50000n }],
-    recipient: { address: recipient },
-    accountAccessList: { chainIds: [8453] },
-    options: {},
-  } as never
-
-  test('sends the CAIP-2 destination and passes base58 references through verbatim', () => {
-    const wire = mapIntentRequestToWire(request) as unknown as {
-      destinationChainId: string
-      tokenRequests: readonly { tokenAddress: string; amount: string }[]
-      recipient?: Record<string, unknown>
-      accountAccessList?: unknown
-    }
-
-    expect(wire.destinationChainId).toBe(
-      'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
-    )
-    expect(wire.tokenRequests).toEqual([
-      { tokenAddress: mint, amount: '50000' },
-    ])
-    // A non-EVM recipient carries no account type or setup ops to project.
-    expect(wire.recipient).toEqual({ address: recipient })
-    expect(wire.accountAccessList).toEqual({ chainIds: ['eip155:8453'] })
-  })
-
   // Instruction bytes and account order decide what the wallet executes, so the
-  // mapper must not touch them.
+  // mapper must not touch them; base58 is case-sensitive.
   test('carries Solana instructions and lookup tables through verbatim', () => {
-    const destinationInstructions = [
+    const mint = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
+    const recipient = 'EEnKdeMRGrhKq1Z2rkRubkrkTxCZigLZ5QgUYqAMvPnU'
+    const instructions = [
       {
         programId: mint,
         accounts: [
@@ -336,189 +348,258 @@ describe('mapIntentRequestToWire — Solana destination', () => {
       },
     ]
     const wire = mapIntentRequestToWire({
-      ...(request as object),
-      tokenRequests: [],
-      recipient: undefined,
-      destinationInstructions,
-      addressLookupTableAddresses: [recipient],
-    } as never) as unknown as Record<string, unknown>
-
-    expect(wire.destinationInstructions).toEqual(destinationInstructions)
-    expect(wire.addressLookupTableAddresses).toEqual([recipient])
-  })
-
-  test('omits the instruction fields on a transfer', () => {
-    const wire = mapIntentRequestToWire(request) as unknown as Record<
-      string,
-      unknown
-    >
-
-    expect(wire).not.toHaveProperty('destinationInstructions')
-    expect(wire).not.toHaveProperty('addressLookupTableAddresses')
-  })
-})
-
-describe('mapIntentRequestToWire — HyperCore action', () => {
-  const base = {
-    account: { address, accountType: 'ERC7579' },
-    destinationChainId: 1337002,
-    tokenRequests: [],
-    options: {},
-  } as never
-
-  const action = {
-    type: 'order',
-    orders: [
-      {
-        a: 0,
-        b: true,
-        p: '64572',
-        s: '0.00155',
-        r: false,
-        t: { limit: { tif: 'Ioc' } },
+      ...base,
+      destination: {
+        vm: 'svm',
+        chainId: SOLANA,
+        tokenRequests: [],
+        execution: { instructions, addressLookupTables: [recipient] },
       },
-    ],
-    grouping: 'na',
-  }
+    }) as unknown as { destination: Record<string, unknown> }
 
-  // The agent authorising the action is derived from these bytes, so the mapper
-  // reaching in to normalise or reorder anything would forge a different agent
-  // than the one the caller's signature registers.
-  test('carries the action to the wire byte for byte', () => {
-    const wire = mapIntentRequestToWire({
-      ...(base as object),
-      options: { hyperCore: { action } },
-    } as never) as { options?: { hyperCore?: unknown } }
-
-    expect(wire.options?.hyperCore).toEqual({ action })
-    expect(JSON.stringify(wire.options?.hyperCore)).toBe(
-      JSON.stringify({ action }),
-    )
+    expect(wire.destination.execution).toEqual({
+      instructions,
+      addressLookupTables: [recipient],
+    })
   })
 
-  test('omits it entirely when unset', () => {
-    const wire = mapIntentRequestToWire(base) as {
-      options?: { hyperCore?: unknown }
-    }
-    expect(wire.options?.hyperCore).toBeUndefined()
-  })
-})
-
-describe('mapIntentStatusFromWire native transaction references', () => {
-  test('preserves a Solana transaction signature exactly', () => {
-    const signature =
-      '5KtPn1LGuxhFiKZ9xVLYBu9A2yBqX6gB4XzYGVxV9Dszgvn6YxrY3JQSMNJ4e6d7S5kJqY2LxA2nCE4BrVQCLH5m'
-    const mapped = mapIntentStatusFromWire('intent-1', {
-      traceId: 'trace-1',
-      status: 'COMPLETED',
-      accountAddress: address,
-      operations: [
+  // The agent authorising a HyperCore action is derived from these bytes, so
+  // normalising or reordering anything would forge a different agent.
+  test('carries HyperCore actions to the wire byte for byte', () => {
+    const action = {
+      type: 'order' as const,
+      orders: [
         {
-          chain: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1',
-          items: [{ status: 'COMPLETED', txHash: signature, timestamp: 1 }],
+          a: 0,
+          b: true,
+          p: '64572',
+          s: '0.00155',
+          r: false,
+          t: { limit: { tif: 'Ioc' as const } },
         },
       ],
-    })
+      grouping: 'na' as const,
+    }
+    const wire = mapIntentRequestToWire({
+      ...base,
+      destination: {
+        vm: 'hypercore',
+        chainId: 'hypercore:perp',
+        tokenRequests: [],
+        execution: { actions: [action] },
+      },
+    }) as unknown as { destination: { execution?: { actions?: unknown } } }
 
-    expect(mapped.operations[0]).toMatchObject({
-      chain: 792703810,
-      status: 'COMPLETED',
-      txHash: signature,
-    })
+    expect(JSON.stringify(wire.destination.execution?.actions)).toBe(
+      JSON.stringify([action]),
+    )
   })
 })
 
-describe('mapIntentStatusFromWire refunds', () => {
-  const REFUND_TX =
-    '0x8e483d74ff15e79f86e0c23e81444a5db5b2ce31c9ec28f84259dfc83f0bbc28'
+describe('mapIntentStatusFromWire', () => {
+  const evmTx = {
+    vm: 'evm',
+    chainId: BASE,
+    txHash:
+      '0x8e483d74ff15e79f86e0c23e81444a5db5b2ce31c9ec28f84259dfc83f0bbc28',
+  }
 
-  const status = (refunds?: unknown) => ({
+  const status = (overrides: Record<string, unknown> = {}) => ({
     traceId: 'trace-1',
-    status: 'FAILED',
-    accountAddress: address,
+    intentId: 'intent-1',
+    purpose: 'execution',
+    status: 'COMPLETED',
     operations: [
-      { chain: 8453, items: [{ status: 'COMPLETED', txHash: '0xaa' }] },
+      {
+        chainId: BASE,
+        items: [
+          {
+            type: 'CLAIM',
+            status: 'COMPLETED',
+            transaction: evmTx,
+            debitsAccount: true,
+          },
+          { type: 'FILL', status: 'COMPLETED', transaction: evmTx },
+        ],
+      },
     ],
-    ...(refunds === undefined ? {} : { refunds }),
+    refunds: [],
+    ...overrides,
   })
 
-  test('surfaces the refund transaction and chain', () => {
-    const mapped = mapIntentStatusFromWire(
-      'intent-1',
-      status([{ chain: 8453, txHash: REFUND_TX }]),
-    )
-    expect(mapped.refunds).toEqual([{ chain: 8453, txHash: REFUND_TX }])
-  })
-
-  test('leaves refunds absent when the orchestrator reports none', () => {
-    // Not `[]`. The key is omitted when no refund is KNOWN, which is a
-    // different fact from "there was none" — defaulting here would tell a
-    // caller reconciling a failed intent that the funds were kept.
+  // Caucasus reports every item; a chain can carry a claim and a fill, and
+  // flattening to one entry would hide which of them debited the account.
+  test('keeps every item in a chain group', () => {
     const mapped = mapIntentStatusFromWire('intent-1', status())
-    expect('refunds' in mapped).toBe(false)
-  })
-
-  test('parses a CAIP-2 refund chain the way an operation chain is parsed', () => {
-    // `chain` is a number on today's wire, but it goes through the same helper
-    // as `operations[].chain`, so the two cannot diverge if that changes.
-    const mapped = mapIntentStatusFromWire(
-      'intent-1',
-      status([{ chain: 'eip155:42161', txHash: REFUND_TX }]),
-    )
-    expect(mapped.refunds).toEqual([{ chain: 42161, txHash: REFUND_TX }])
-  })
-})
-
-describe('mapIntentStatusFromWire hyperCore', () => {
-  const status = (hyperCore?: unknown) => ({
-    traceId: 'trace-1',
-    status: 'FAILED',
-    accountAddress: address,
-    operations: [
-      { chain: 8453, items: [{ status: 'COMPLETED', txHash: '0xaa' }] },
-    ],
-    ...(hyperCore === undefined ? {} : { hyperCore }),
-  })
-
-  test('surfaces the outcome and its reason', () => {
-    const mapped = mapIntentStatusFromWire(
-      'intent-1',
-      status({ outcome: 'refused', reason: 'Insufficient margin.' }),
-    )
-    expect(mapped.hyperCore).toEqual({
-      outcome: 'refused',
-      reason: 'Insufficient margin.',
+    expect(mapped.operations).toHaveLength(1)
+    expect(mapped.operations[0]?.items).toHaveLength(2)
+    expect(mapped.operations[0]?.items[0]).toMatchObject({
+      type: 'CLAIM',
+      debitsAccount: true,
     })
   })
 
-  test('surfaces an outcome that carries no reason', () => {
+  test('preserves native transaction identity per VM', () => {
+    const signature =
+      '5KtPn1LGuxhFiKZ9xVLYBu9A2yBqX6gB4XzYGVxV9Dszgvn6YxrY3JQSMNJ4e6d7S5kJqY2LxA2nCE4BrVQCLH5m'
     const mapped = mapIntentStatusFromWire(
-      'intent-1',
-      status({ outcome: 'accepted' }),
-    )
-    expect(mapped.hyperCore).toEqual({ outcome: 'accepted' })
-  })
-
-  test('leaves hyperCore absent when the intent carried no action', () => {
-    const mapped = mapIntentStatusFromWire('intent-1', status())
-    expect('hyperCore' in mapped).toBe(false)
-  })
-
-  test('keeps a partial outcome distinct from a refused one', () => {
-    // A partial placed orders and must not be re-sent; a refusal placed none
-    // and is safe to retry. Both arrive with every operation COMPLETED.
-    const partial = mapIntentStatusFromWire(
       'intent-1',
       status({
-        outcome: 'partial',
-        reason: 'action 0 accepted; action 1 refused: Insufficient margin.',
+        operations: [
+          {
+            chainId: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1',
+            items: [
+              {
+                type: 'FILL',
+                status: 'COMPLETED',
+                transaction: {
+                  vm: 'svm',
+                  chainId: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1',
+                  signature,
+                },
+              },
+            ],
+          },
+        ],
       }),
     )
-    const refused = mapIntentStatusFromWire(
+    expect(mapped.operations[0]?.items[0]).toMatchObject({
+      transaction: { vm: 'svm', signature },
+    })
+  })
+
+  // An intent recorded before the registry knew a chain keeps its numeric id.
+  // Inventing a CAIP-2 identity, or dropping the record, loses the only
+  // evidence the transaction happened.
+  test('preserves a historical numeric chain and its unknown-VM transaction', () => {
+    const mapped = mapIntentStatusFromWire(
       'intent-1',
-      status({ outcome: 'refused', reason: 'Insufficient margin.' }),
+      status({
+        operations: [
+          {
+            chainId: 424242,
+            items: [
+              {
+                type: 'CLAIM',
+                status: 'COMPLETED',
+                transaction: { vm: 'unknown', chainId: 424242, id: 'tx-1' },
+              },
+            ],
+          },
+        ],
+      }),
     )
-    expect(partial.hyperCore?.outcome).toBe('partial')
-    expect(refused.hyperCore?.outcome).toBe('refused')
+    expect(mapped.operations[0]?.chainId).toBe(424242)
+    expect(mapped.operations[0]?.items[0]).toMatchObject({
+      transaction: { vm: 'unknown', chainId: 424242, id: 'tx-1' },
+    })
+  })
+
+  // Not a transaction: nothing was broadcast, so it has a result rather than a
+  // hash, and it sits alongside the settlement transaction rather than
+  // replacing a top-level field.
+  test('keeps a HyperCore execution as an operation item with its outcome', () => {
+    const mapped = mapIntentStatusFromWire(
+      'intent-1',
+      status({
+        status: 'FAILED',
+        operations: [
+          {
+            chainId: 'hypercore:perp',
+            items: [
+              {
+                type: 'EXECUTION',
+                status: 'FAILED',
+                result: {
+                  vm: 'hypercore',
+                  outcome: 'partial',
+                  reason: 'action 0 accepted; action 1 refused',
+                },
+              },
+            ],
+          },
+        ],
+      }),
+    )
+    expect(mapped.operations[0]?.items[0]).toMatchObject({
+      type: 'EXECUTION',
+      result: { outcome: 'partial' },
+    })
+    expect(mapped).not.toHaveProperty('hyperCore')
+  })
+
+  test('leaves accounts absent rather than fabricating a zero address', () => {
+    const mapped = mapIntentStatusFromWire('intent-1', status())
+    expect('accounts' in mapped).toBe(false)
+  })
+
+  test('surfaces native per-VM accounts when the record has them', () => {
+    const mapped = mapIntentStatusFromWire(
+      'intent-1',
+      status({
+        accounts: [
+          {
+            vm: 'evm',
+            chainId: BASE,
+            account: { address, type: 'erc7579', deployed: true },
+          },
+        ],
+      }),
+    )
+    expect(mapped.accounts).toEqual([
+      {
+        vm: 'evm',
+        chainId: BASE,
+        account: { address, type: 'erc7579', deployed: true },
+      },
+    ])
+  })
+
+  test('keeps a known-empty refund list distinct from an absent one', () => {
+    // `[]` means none were observed; absence means the record does not say.
+    expect(mapIntentStatusFromWire('intent-1', status()).refunds).toEqual([])
+    const noKey = status()
+    delete (noKey as { refunds?: unknown }).refunds
+    expect('refunds' in mapIntentStatusFromWire('intent-1', noKey)).toBe(false)
+  })
+
+  test('surfaces refund transactions in their native form', () => {
+    const mapped = mapIntentStatusFromWire(
+      'intent-1',
+      status({ status: 'FAILED', refunds: [{ transaction: evmTx }] }),
+    )
+    expect(mapped.refunds).toEqual([{ transaction: evmTx }])
+  })
+
+  test('omits details unless the response carries them', () => {
+    expect('details' in mapIntentStatusFromWire('intent-1', status())).toBe(
+      false,
+    )
+  })
+
+  test('converts recorded amounts in full details to bigint', () => {
+    const leg = {
+      chainId: BASE,
+      tokens: [{ token: address, symbol: 'USDC', decimals: 6, amount: '500' }],
+      status: 'COMPLETED',
+    }
+    const mapped = mapIntentStatusFromWire(
+      'intent-1',
+      status({
+        details: {
+          nonce: '1',
+          createdAt: 1,
+          latencyMs: 2,
+          settlementLayer: 'SAME_CHAIN',
+          source: [leg],
+          destination: leg,
+          cost: { sponsored: true, sponsoredValue: '42' },
+        },
+      }),
+    )
+    expect(mapped.details?.source[0]?.tokens[0]?.amount).toBe(500n)
+    expect(mapped.details?.cost.sponsoredValue).toBe(42n)
+    // Absent recorded facts stay absent rather than becoming empty arrays.
+    expect(mapped.details).not.toHaveProperty('executions')
   })
 })

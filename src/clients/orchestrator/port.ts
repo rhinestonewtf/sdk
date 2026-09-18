@@ -26,9 +26,15 @@ export interface IntentSubmissionPort {
   ) => Promise<OrchestratorIntentSubmission>
 }
 
+export interface IntentStatusReadOptions {
+  /** Ask for the recorded detail block. Off by default, so polling stays lean. */
+  readonly full?: boolean
+}
+
 export interface IntentStatusPort {
   readonly getIntentStatus: (
     intentId: string,
+    options?: IntentStatusReadOptions,
   ) => Promise<OrchestratorIntentStatus>
 }
 

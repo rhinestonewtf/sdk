@@ -114,6 +114,32 @@ export function toEvmChainReference(chainId: number): EvmChainReference {
   }
 }
 
+/** The VM a chain actually executes under, as Caucasus tags a destination. */
+export type ChainVm = 'evm' | 'svm' | 'tvm' | 'stellar' | 'hypercore'
+
+/**
+ * The execution environment of a chain, which is NOT `ChainReference.kind`:
+ * HyperCore is EVM-*settled* and so reads as `kind: 'evm'`, while its own
+ * destination shape and evidence are `hypercore`.
+ */
+export function chainVm(chain: ChainReference): ChainVm {
+  const namespace = chain.caip2.slice(0, chain.caip2.indexOf(':'))
+  switch (namespace) {
+    case 'hypercore':
+      return 'hypercore'
+    case 'solana':
+      return 'svm'
+    case 'tron':
+      return 'tvm'
+    case 'stellar':
+      return 'stellar'
+    case 'eip155':
+      return 'evm'
+    default:
+      throw new Error(`Unsupported chain namespace: ${chain.caip2}`)
+  }
+}
+
 export function chainIdFromReference(chain: ChainReference): number {
   if (chain.kind === 'evm') return chain.id
   const id = chainIdFromCaip2(chain.caip2)
