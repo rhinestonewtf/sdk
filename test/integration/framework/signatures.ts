@@ -1,5 +1,5 @@
 import type { Hex } from 'viem'
-import type { OriginSignature } from '../../../src/clients/orchestrator/public'
+import type { SigningProof } from '../../../src/clients/orchestrator/public'
 import {
   SIG_MODE_EMISSARY_EXECUTION_ERC1271,
   SIG_MODE_ERC1271,
@@ -15,21 +15,28 @@ export function readSignatureMode(
   return prepared.intentInput.options.signatureMode
 }
 
-// Single hex => ERC-1271 path; { preClaimSig, notarizedClaimSig } => the dual
+// Single hex => ERC-1271 path; { preClaim, notarizedClaim } => the dual
 // emissary+1271 path used by sessions with verifyExecutions.
 export type OriginSignatureShape = 'single' | 'dual'
 
-function isDual(signature: OriginSignature): signature is {
-  notarizedClaimSig: `0x${string}`
-  preClaimSig: `0x${string}`
-} {
+type Eip712Proof = Extract<SigningProof, { kind: 'eip712' }>
+
+function eip712Proofs(signed: SignedTransactionData): Eip712Proof[] {
+  return signed.proofs.filter(
+    (proof): proof is Eip712Proof => proof.kind === 'eip712',
+  )
+}
+
+function isDual(
+  signature: Eip712Proof['signature'],
+): signature is { preClaim: Hex; notarizedClaim: Hex } {
   return typeof signature === 'object' && signature !== null
 }
 
 export function classifyOriginSignature(
-  signature: OriginSignature,
+  proof: Eip712Proof,
 ): OriginSignatureShape {
-  return isDual(signature) ? 'dual' : 'single'
+  return isDual(proof.signature) ? 'dual' : 'single'
 }
 
 export function expectSignatureMode(
@@ -42,21 +49,26 @@ export function expectSignatureMode(
   }
 }
 
-// Asserts every origin signature has the same shape, and that the shape matches
-// the prepared signatureMode (mode/bytes consistency — the PR #476 invariant).
+// Asserts every claim proof has the same shape, and that the shape matches the
+// prepared signatureMode (mode/bytes consistency — the PR #476 invariant).
 export function expectOriginSignatures(
   signed: SignedTransactionData,
   expected: OriginSignatureShape,
 ): void {
-  const signatures = signed.originSignatures
-  if (signatures.length === 0) {
-    throw new Error('Expected at least one origin signature, got none')
+  const proofs = eip712Proofs(signed).filter(
+    (_proof, index) =>
+      signed.quote.signingRequests[index]?.purpose === 'originAuthorization',
+  )
+  if (proofs.length === 0) {
+    throw new Error(
+      'Expected at least one origin authorization proof, got none',
+    )
   }
-  for (const [index, signature] of signatures.entries()) {
-    const shape = classifyOriginSignature(signature)
+  for (const [index, proof] of proofs.entries()) {
+    const shape = classifyOriginSignature(proof)
     if (shape !== expected) {
       throw new Error(
-        `Expected origin signature #${index} to be ${expected}, got ${shape}`,
+        `Expected origin proof #${index} to be ${expected}, got ${shape}`,
       )
     }
   }
@@ -72,7 +84,9 @@ export function expectModeMatchesBytes(
   signed: SignedTransactionData,
 ): void {
   const mode = readSignatureMode(prepared)
-  const shape = classifyOriginSignature(signed.originSignatures[0])
+  const first = eip712Proofs(signed)[0]
+  if (!first) throw new Error('Expected at least one EIP-712 proof')
+  const shape = classifyOriginSignature(first)
   const impliedMode =
     shape === 'dual' ? SIG_MODE_EMISSARY_EXECUTION_ERC1271 : SIG_MODE_ERC1271
   expectOriginSignatures(signed, shape)
@@ -85,25 +99,32 @@ export function expectModeMatchesBytes(
 }
 
 // Overwrite the trailing `bytes` of a hex signature with 0xff. The emissary
-// preClaimSig ends in the validator's ECDSA signature, so corrupting the last
-// 65 bytes guarantees on-chain verifyExecution fails.
+// preClaim signature ends in the validator's ECDSA signature, so corrupting the
+// last 65 bytes guarantees on-chain verifyExecution fails.
 export function corruptTail(hex: Hex, bytes: number): Hex {
   const tailHex = 'ff'.repeat(bytes)
   return `${hex.slice(0, hex.length - tailHex.length)}${tailHex}` as Hex
 }
 
-// Tampers with the execution-signature bytes of a signed (dual-sig) intent so
-// the orchestrator's simulation must reject it.
+// Tampers with the execution-signature bytes of a signed intent so the
+// orchestrator's simulation must reject it. Proof ORDER is preserved: the
+// vector still answers the same requests, it just answers them wrongly.
 export function tamperExecutionSignatures(
   signed: SignedTransactionData,
 ): SignedTransactionData {
   return {
     ...signed,
-    originSignatures: signed.originSignatures.map((signature) =>
-      isDual(signature)
-        ? { ...signature, preClaimSig: corruptTail(signature.preClaimSig, 65) }
-        : corruptTail(signature, 65),
-    ),
-    destinationSignature: corruptTail(signed.destinationSignature, 65),
+    proofs: signed.proofs.map((proof) => {
+      if (proof.kind !== 'eip712') return proof
+      return {
+        ...proof,
+        signature: isDual(proof.signature)
+          ? {
+              ...proof.signature,
+              preClaim: corruptTail(proof.signature.preClaim, 65),
+            }
+          : corruptTail(proof.signature, 65),
+      }
+    }),
   }
 }

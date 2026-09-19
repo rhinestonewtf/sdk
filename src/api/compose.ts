@@ -1,12 +1,23 @@
-import { type Address, type Hex, isAddressEqual } from 'viem'
+import {
+  type Address,
+  type Hex,
+  isAddressEqual,
+  type SignedAuthorization,
+  type TypedDataDefinition,
+} from 'viem'
 import type { AccountRuntime, AccountRuntimePort } from '../accounts/adapter'
 import { createAccountConstruction } from '../accounts/construction'
 import { FactoryArgsNotAvailableError } from '../accounts/error'
 import { createAccountAdapter } from '../accounts/registry'
-import { toEvmChainReference } from '../chains/caip2'
+import {
+  chainIdFromCaip2,
+  formatCaip2,
+  toEvmChainReference,
+} from '../chains/caip2'
 import { getChainById } from '../chains/catalog'
 import { createBundlerClient } from '../clients/bundler/client'
 import { createConfiguredOrchestratorClient } from '../clients/orchestrator/client'
+import type { SigningRequest } from '../clients/orchestrator/public'
 import { createPaymasterClient } from '../clients/paymaster/client'
 import { createRpcPort } from '../clients/rpc/client'
 import {
@@ -18,6 +29,7 @@ import type {
   ResolvedAccountConfig,
   ResolvedSdkConfig,
 } from '../config/resolved'
+import { UnsupportedAccountCapabilityError } from '../errors/capability'
 import { getIntentExecutorModule } from '../modules/intent-executor'
 import {
   readInstalledModules,
@@ -53,6 +65,7 @@ import {
   createNexusEip7702InitTypedData,
   signAuthorizationList,
   signNexusEip7702Init,
+  signRequestedDelegations as signRequestedDelegationList,
 } from '../signing/eip7702'
 import { createValidatorSigningTasks, signingTopology } from '../signing/plan'
 import {
@@ -72,6 +85,7 @@ import {
   buildIntentSigningInput,
   prepareIntent,
 } from '../transactions/intents/prepare'
+import { requestSetId } from '../transactions/intents/proofs'
 import { sendIntent } from '../transactions/intents/send'
 import { prepareIntentSessions } from '../transactions/intents/sessions'
 import {
@@ -79,6 +93,12 @@ import {
   signIntent,
   signIntentAsOwner,
 } from '../transactions/intents/sign-transaction'
+import {
+  prepareSolanaIntent,
+  reconstructSolanaIntent,
+  signSolanaIntent,
+  submitSolanaIntent,
+} from '../transactions/intents/solana'
 import { splitIntents } from '../transactions/intents/split'
 import {
   getIntentStatus,
@@ -86,6 +106,7 @@ import {
 } from '../transactions/intents/status'
 import { submitIntent } from '../transactions/intents/submit'
 import type {
+  IndexedProofContribution,
   IntentInput,
   IntentSessionSelection,
   IntentWorkflowContext,
@@ -148,8 +169,12 @@ export function createCoreComposition<CompatibilityConfig = unknown>(
     dependencies,
 ): CoreComposition<CompatibilityConfig> {
   const project: ProjectWorkflows = {
-    getIntentStatus: (intentId) =>
-      getIntentStatus({ statusClient: dependencies.orchestrator }, intentId),
+    getIntentStatus: (intentId, options) =>
+      getIntentStatus(
+        { statusClient: dependencies.orchestrator },
+        intentId,
+        options,
+      ),
     splitIntents: (input) => splitIntents(dependencies.orchestrator, input),
     getAppFeeBalances: () => getAppFeeBalances(dependencies.orchestrator),
     createSession: (definition) =>
@@ -218,6 +243,30 @@ function createAccountComposition<CompatibilityConfig>(
   dependencies: CoreDependencies,
 ): AccountComposition<CompatibilityConfig> {
   const workflows: AccountWorkflows<CompatibilityConfig> = {
+    getEligibleEvmSourceChains: async (destination) => {
+      const catalog = await dependencies.orchestrator.getChainCatalog()
+      const isHyperCore = destination.caip2.startsWith('hypercore:')
+      const destinationId = chainIdFromCaip2(destination.caip2)
+      const destinationInfo =
+        destinationId === undefined
+          ? undefined
+          : catalog.getChainInfo(destinationId)
+      if (!isHyperCore && !destinationInfo) {
+        throw new UnsupportedAccountCapabilityError(
+          `Destination chain ${destination.caip2} is missing from the orchestrator chain catalog.`,
+          { destination: destination.caip2 },
+        )
+      }
+      const testnet = isHyperCore ? false : destinationInfo?.testnet
+      return catalog
+        .getSupportedChainIds()
+        .filter(
+          (chainId) =>
+            formatCaip2(chainId).startsWith('eip155:') &&
+            catalog.isTestnet(chainId) === testnet,
+        )
+        .map(toEvmChainReference)
+    },
     getAddress: (context, chain) =>
       createStaticAccountRuntime(context.account, chain, false).identity
         .address,
@@ -277,6 +326,27 @@ function createAccountComposition<CompatibilityConfig>(
       signEip7702Authorizations(context.account, input, dependencies),
     prepareIntent: (context, input) =>
       prepareIntent(intentContext(context, dependencies), input),
+    prepareSolanaIntent: (input) =>
+      prepareSolanaIntent(
+        {
+          quoteClient: dependencies.orchestrator,
+          submissionClient: dependencies.orchestrator,
+          now: dependencies.clock.now,
+        },
+        input,
+      ),
+    reconstructSolanaIntent,
+    signSolanaIntent: (input) =>
+      signSolanaIntent({ ...input, now: dependencies.clock.now }),
+    submitSolanaIntent: (input) =>
+      submitSolanaIntent(
+        {
+          quoteClient: dependencies.orchestrator,
+          submissionClient: dependencies.orchestrator,
+          now: dependencies.clock.now,
+        },
+        input,
+      ),
     signIntent: async (context, input) => {
       const ownerSelection =
         input.input.signers?.kind === 'owner' ? input.input.signers : undefined
@@ -295,8 +365,13 @@ function createAccountComposition<CompatibilityConfig>(
         selection,
       )
     },
-    assembleIntent: (context, input, signatures) =>
-      assembleIntent(intentContext(context, dependencies), input, signatures),
+    assembleIntent: (context, input, signatures, options) =>
+      assembleIntent(
+        intentContext(context, dependencies),
+        input,
+        signatures,
+        options,
+      ),
     submitIntent: (context, input) =>
       submitIntent(intentContext(context, dependencies), input),
     sendIntent: (context, input) =>
@@ -355,8 +430,10 @@ function createAccountComposition<CompatibilityConfig>(
     getTransactionMessages: (prepared) => intentMessages(prepared),
     reconstructPreparedIntent: (context, input) =>
       reconstructPreparedIntent(context, input, dependencies),
-    signIntentFromSignData: (context, input) =>
-      signIntentFromSignData(context, input, dependencies),
+    signIntentFromRequests: (context, input) =>
+      signIntentFromRequests(context, input, dependencies),
+    signRequestedDelegations: (context, prepared) =>
+      signRequestedDelegations(context, prepared, dependencies),
     getOwners: (context, chain) =>
       readOwners({
         rpc: dependencies.rpc.forChain(chain),
@@ -532,17 +609,37 @@ async function isAccountDeployed(
   return code !== undefined && code !== '0x'
 }
 
+/**
+ * The EIP-712 payloads that authorise the SOURCE side of a quote, in request
+ * order.
+ *
+ * Deliberately not every EIP-712 payload: the account runtime chain is read off
+ * the last of these, and a destination authorisation names the DELIVERY chain.
+ * For a HyperCore destination that is a venue id, which hosts no account and
+ * has no RPC, so widening this would reintroduce RHI-5510 on the reconstruction
+ * path.
+ */
+function evmOriginPayloads(
+  requests: readonly SigningRequest[],
+): TypedDataDefinition[] {
+  const payloads = requests.flatMap((request) =>
+    request.purpose === 'originAuthorization' &&
+    request.payload.kind === 'eip712'
+      ? [request.payload.typedData]
+      : [],
+  )
+  if (payloads.length === 0) {
+    throw new UnsupportedAccountCapabilityError(
+      'EVM intent signing requires at least one EIP-712 origin authorization.',
+    )
+  }
+  return payloads
+}
+
 function intentMessages<CompatibilityConfig>(
   prepared: PreparedIntent<CompatibilityConfig>,
 ): IntentMessages {
-  const { signData } = prepared.quote
-  return {
-    origin: [...signData.origin],
-    destination: signData.destination,
-    ...(signData.targetExecution
-      ? { targetExecution: signData.targetExecution }
-      : {}),
-  }
+  return [...prepared.quote.signingRequests]
 }
 
 const zeroAddress = '0x0000000000000000000000000000000000000000' as Address
@@ -797,12 +894,13 @@ async function reconstructPreparedIntent<CompatibilityConfig>(
     readonly quote: PreparedIntent<CompatibilityConfig>['quote']
     readonly quotes: PreparedIntent<CompatibilityConfig>['quotes']
     readonly request: PreparedIntent<CompatibilityConfig>['request']
+    readonly normalized: PreparedIntent<CompatibilityConfig>['normalized']
     readonly intentInput: IntentInput<CompatibilityConfig>
   },
   dependencies: CoreDependencies,
 ): Promise<PreparedIntent<CompatibilityConfig>> {
   const accountChain = toEvmChainReference(
-    accountChainIdFromOrigins(input.quote.signData.origin),
+    accountChainIdFromOrigins(evmOriginPayloads(input.quote.signingRequests)),
   )
   const runtime = await createAccountRuntimePort(
     context.account,
@@ -817,15 +915,10 @@ async function reconstructPreparedIntent<CompatibilityConfig>(
     })
     resolvedSessions = prepared?.byChain
   }
-  const destination =
-    input.intentInput.destination.kind === 'evm'
-      ? input.intentInput.destination
-      : undefined
   const signing = buildIntentSigningInput(
     runtime,
     input.quote,
     resolvedSessions,
-    destination,
     input.intentInput.signers?.kind === 'owner'
       ? input.intentInput.signers.validator
       : undefined,
@@ -837,6 +930,7 @@ async function reconstructPreparedIntent<CompatibilityConfig>(
     traceId: input.traceId,
     input: input.intentInput,
     request: input.request,
+    normalized: input.normalized,
     quote: input.quote,
     quotes: input.quotes,
     signing,
@@ -850,17 +944,17 @@ async function reconstructPreparedIntent<CompatibilityConfig>(
   }
 }
 
-async function signIntentFromSignData<CompatibilityConfig>(
+async function signIntentFromRequests<CompatibilityConfig>(
   context: AccountInvocationContext<CompatibilityConfig>,
   input: {
-    readonly signData: IntentMessages
+    readonly signingRequests: IntentMessages
     readonly targetChain: import('../chains/types').ChainReference
     readonly signers?: IntentInput<CompatibilityConfig>['signers']
   },
   dependencies: CoreDependencies,
 ) {
   const accountChain = toEvmChainReference(
-    accountChainIdFromOrigins(input.signData.origin),
+    accountChainIdFromOrigins(evmOriginPayloads(input.signingRequests)),
   )
   const runtime = await createAccountRuntimePort(
     context.account,
@@ -880,22 +974,13 @@ async function signIntentFromSignData<CompatibilityConfig>(
     })
     resolvedSessions = preparedSessions?.byChain
   }
-  const destination =
-    input.targetChain.kind === 'evm' ? input.targetChain : undefined
   const quote = {
-    signData: {
-      origin: [...input.signData.origin],
-      destination: input.signData.destination,
-      ...(input.signData.targetExecution
-        ? { targetExecution: input.signData.targetExecution }
-        : {}),
-    },
+    signingRequests: input.signingRequests,
   } as unknown as PreparedIntent<CompatibilityConfig>['quote']
   const signing = buildIntentSigningInput(
     runtime,
     quote,
     resolvedSessions,
-    destination,
     input.signers?.kind === 'owner' ? input.signers.validator : undefined,
     input.signers?.kind === 'owner' ? input.signers.signerIds : undefined,
   )
@@ -908,6 +993,7 @@ async function signIntentFromSignData<CompatibilityConfig>(
       ...(input.signers ? { signers: input.signers } : {}),
     },
     request: {} as PreparedIntent<CompatibilityConfig>['request'],
+    normalized: {} as PreparedIntent<CompatibilityConfig>['normalized'],
     quote,
     quotes: [quote],
     signing,
@@ -927,12 +1013,84 @@ async function signIntentFromSignData<CompatibilityConfig>(
     ),
     prepared,
   )
-  return {
-    originSignatures: signed.originSignatures,
-    destinationSignature: signed.destinationSignature,
-    targetExecutionSignature: signed.targetSignature,
-    transcript: signed.transcript,
+  return { proofs: signed.proofs, transcript: signed.transcript }
+}
+
+/**
+ * Signs the delegations a quote explicitly requested.
+ *
+ * The nonce is read here, at signing time, because it can move between quoting
+ * and signing. A delegation the quote asked for is always signed: skipping one
+ * because the code already looks delegated would submit a proof vector shorter
+ * than the request set.
+ */
+async function signDelegations(
+  account: ResolvedAccountConfig,
+  requests: readonly {
+    readonly chainId: number
+    readonly contract: Address
+  }[],
+  dependencies: CoreDependencies,
+): Promise<readonly SignedAuthorization[]> {
+  if (requests.length === 0) return []
+  if (!account.eoa) {
+    throw new UnsupportedAccountCapabilityError(
+      'This quote requires an EIP-7702 delegation, which needs an EOA-backed account.',
+    )
   }
+  const eoa = account.eoa
+  const delegations = await Promise.all(
+    requests.map(async (request) => {
+      const chain = toEvmChainReference(request.chainId)
+      const nonce = await dependencies.rpc
+        .forChain(chain)
+        .getTransactionCount({ chain }, eoa.address)
+      return { ...request, nonce: Number(nonce) }
+    }),
+  )
+  const { authorizations } = await signRequestedDelegationList({
+    planInput: {
+      signer: { id: ecdsaSignerId(eoa), kind: 'ecdsa' },
+      delegations,
+    },
+    signerInvoker: signerInvoker(account, dependencies),
+    checkpoints: { read: async () => [] },
+  })
+  return authorizations
+}
+
+/** Collects the quote's delegation proofs, bound to their request slots. */
+async function signRequestedDelegations<CompatibilityConfig>(
+  context: AccountInvocationContext<CompatibilityConfig>,
+  prepared: PreparedIntent<CompatibilityConfig>,
+  dependencies: CoreDependencies,
+): Promise<IndexedProofContribution[]> {
+  const requests = prepared.signing.requests.flatMap((request) =>
+    request.kind === 'eip7702' ? [request] : [],
+  )
+  const authorizations = await signDelegations(
+    context.account,
+    requests.map(({ chainId, contract }) => ({ chainId, contract })),
+    dependencies,
+  )
+  const setId = requestSetId(prepared.quote.signingRequests)
+  return requests.map((request, index) => {
+    const authorization = authorizations[index]!
+    return {
+      intentId: prepared.quote.intentId,
+      requestSetId: setId,
+      requestIndex: request.index,
+      proof: {
+        kind: 'eip7702' as const,
+        nonce: authorization.nonce,
+        signature: {
+          r: authorization.r,
+          s: authorization.s,
+          yParity: ((authorization.yParity ?? 0) === 1 ? 1 : 0) as 0 | 1,
+        },
+      },
+    }
+  })
 }
 
 function intentContext<CompatibilityConfig>(
@@ -951,6 +1109,19 @@ function intentContext<CompatibilityConfig>(
     signAuthorizations: async (input) =>
       (await signEip7702Authorizations(context.account, input, dependencies))
         .authorizations,
+    signDelegation: async (input) => {
+      const [authorization] = await signDelegations(
+        context.account,
+        [input],
+        dependencies,
+      )
+      if (!authorization) {
+        throw new Error(
+          `EIP-7702 delegation for chain ${input.chainId} was not signed`,
+        )
+      }
+      return authorization
+    },
     clock: dependencies.clock,
   }
 }

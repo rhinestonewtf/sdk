@@ -29,6 +29,8 @@
     "./src"
   ],
   "dependencies": {
+    "@noble/curves": "^1.9.1",
+    "@scure/base": "^1.2.6",
     "viem": "^2.55.0"
   },
   "devDependencies": {

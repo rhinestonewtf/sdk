@@ -12,7 +12,10 @@ import type {
   Session,
   SessionDefinition,
 } from '../modules/validators/smart-sessions/types'
-import type { TransactionStatus } from '../transactions/intents/types'
+import type {
+  IntentStatusOptions,
+  TransactionStatus,
+} from '../transactions/intents/types'
 import type { RhinestoneAccount } from './account'
 import { attachAccount, composeSdk, type SdkComposition } from './accounts'
 import {
@@ -73,24 +76,29 @@ class RhinestoneSDK {
    * })
    *
    * const account = await sdk.createAccount({
-   *   owners: { type: 'ecdsa', accounts: [owner] },
+   *   evm: { owners: { type: 'ecdsa', accounts: [owner] } },
    * })
    * ```
    */
-  async createAccount(
-    config: RhinestoneAccountConfig,
-  ): Promise<RhinestoneAccount> {
+  async createAccount<const C extends RhinestoneAccountConfig>(
+    config: C,
+  ): Promise<RhinestoneAccount<C>> {
     return attachAccount(this.#sdk, config)
   }
 
   /**
    * Get the current status of a submitted intent.
    * @param intentId The intent ID returned when the transaction was submitted
+   * @param options Pass `{ full: true }` to also get the recorded `details`
+   * block. Polling stays lean without it.
    * @returns The intent status
    */
-  getIntentStatus(intentId: string): Promise<TransactionStatus> {
+  getIntentStatus(
+    intentId: string,
+    options?: IntentStatusOptions,
+  ): Promise<TransactionStatus> {
     return this.#sdk.composition.project
-      .getIntentStatus(intentId)
+      .getIntentStatus(intentId, options)
       .then(toPublicTransactionStatus)
   }
 

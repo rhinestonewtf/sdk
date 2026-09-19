@@ -1,22 +1,25 @@
-import type { Address, Hex, SignedAuthorization } from 'viem'
+import type { Address } from 'viem'
 import {
   chainIdFromReference,
   formatCaip2,
-  isHyperCoreWireId,
-  isNonEvmChainId,
   parseCaip2,
 } from '../../chains/caip2'
+import { ValidationError } from './errors'
 import type {
   BridgeFill,
-  ChainOperation,
   Cost,
   CostTokenEntry,
-  TokenRequirements,
+  IntentDetails,
+  IntentOperationGroup,
+  IntentRequirement,
+  SigningProof,
+  SigningRequest,
 } from './public'
 import { serializeBigInts } from './serialization'
 import type {
   OrchestratorIntentRequest,
   OrchestratorIntentStatus,
+  OrchestratorIntentSubmission,
   OrchestratorPortfolio,
   OrchestratorQuote,
   OrchestratorQuoteResponse,
@@ -26,12 +29,13 @@ import type {
 } from './types'
 import type {
   WireIntentRequest,
-  WireIntentRequestInternal,
   WireIntentStatusResponse,
+  WireIntentSubmitResponse,
   WirePortfolioResponse,
   WireQuote,
   WireQuoteRequest,
   WireQuoteResponse,
+  WireSigningRequest,
   WireSplitRequest,
   WireSplitResponse,
 } from './wire'
@@ -41,154 +45,38 @@ export function mapIntentRequestToWire(
 ): WireQuoteRequest {
   return serializeBigInts({
     account: input.account,
-    destinationChainId: formatCaip2(input.destinationChainId),
-    destinationExecutions: input.destinationExecutions,
-    tokenRequests: input.tokenRequests,
-    recipient: input.recipient,
-    accountAccessList: mapAccessList(input.accountAccessList),
-    options: {
-      ...input.options,
-      settlementLayers: mapSettlementLayers(input.options.settlementLayers),
-      quoters: mapQuoters(input.options.quoters),
-      signatureMode: input.options.signatureMode as
-        | NonNullable<WireQuoteRequest['options']>['signatureMode']
-        | undefined,
-      ...(input.options.auxiliaryFunds
-        ? {
-            auxiliaryFunds: mapChainRecord(input.options.auxiliaryFunds),
-          }
-        : {}),
-    },
-    ...(input.destinationGasUnits === undefined
-      ? {}
-      : { destinationGasLimit: input.destinationGasUnits }),
-    ...(input.preClaimExecutions
-      ? { preClaimExecutions: mapChainRecord(input.preClaimExecutions) }
+    destination: input.destination,
+    ...(input.source ? { source: input.source } : {}),
+    ...(input.options
+      ? {
+          options: {
+            ...input.options,
+            settlementLayers: mapSettlementLayers(
+              input.options.settlementLayers,
+            ),
+            quoters: mapQuoters(input.options.quoters),
+          },
+        }
       : {}),
   })
-}
-
-export function mapQuoteResponseFromWire(
-  value: unknown,
-): OrchestratorQuoteResponse {
-  const input = value as WireQuoteResponse
-  return {
-    traceId: input.traceId ?? '',
-    routes: (input.routes ?? []).map(mapQuoteFromWire),
-  }
 }
 
 export function mapSignedIntentToWire(
   input: OrchestratorSignedIntent,
-): WireIntentRequestInternal {
+): WireIntentRequest {
   return serializeBigInts({
     intentId: input.intentId,
-    signatures: input.signatures,
-    ...(input.authorizations
-      ? {
-          authorizations: {
-            ...(input.authorizations.sponsor
-              ? {
-                  sponsor: input.authorizations.sponsor.map(
-                    mapAuthorizationToWire,
-                  ),
-                }
-              : {}),
-            ...(input.authorizations.recipient
-              ? {
-                  recipient: input.authorizations.recipient.map(
-                    mapAuthorizationToWire,
-                  ),
-                }
-              : {}),
-          },
-        }
-      : {}),
+    proofs: input.proofs,
     ...(input.dryRun ? { options: { dryRun: true } } : {}),
   })
 }
 
-export function mapIntentStatusFromWire(
+export function mapIntentSubmissionFromWire(
   intentId: string,
   value: unknown,
-): OrchestratorIntentStatus {
-  const input = value as WireIntentStatusResponse & {
-    readonly accountAddress?: Address
-    readonly operations?: readonly {
-      readonly chain?: string | number
-      readonly items?: readonly unknown[]
-    }[]
-    readonly refunds?: readonly {
-      readonly chain?: string | number
-      readonly txHash: string
-    }[]
-    readonly hyperCore?: OrchestratorIntentStatus['hyperCore']
-  }
-  return {
-    traceId: input.traceId ?? '',
-    intentId,
-    status: input.status,
-    account:
-      input.accountAddress ??
-      ('0x0000000000000000000000000000000000000000' as Address),
-    operations: (input.operations ?? []).map(
-      (operation) =>
-        ({
-          chain: parseChainValue(operation.chain),
-          ...((operation.items?.[0] as Record<string, unknown> | undefined) ??
-            {}),
-        }) as ChainOperation,
-    ),
-    // Deliberately NOT `?? []`, unlike every field above it. The orchestrator
-    // omits the key when it knows of no refund, and that is not the same fact
-    // as "there were none" — a refund is recorded only where a settlement layer
-    // evidences it with a transaction. Defaulting would turn "we don't know"
-    // into "the funds were kept", which is the one reading the wire contract
-    // exists to prevent.
-    ...(input.refunds
-      ? {
-          refunds: input.refunds.map((refund) => ({
-            chain: parseChainValue(refund.chain),
-            txHash: refund.txHash,
-          })),
-        }
-      : {}),
-    ...(input.hyperCore
-      ? {
-          hyperCore: {
-            outcome: input.hyperCore.outcome,
-            ...(input.hyperCore.reason === undefined
-              ? {}
-              : { reason: input.hyperCore.reason }),
-          },
-        }
-      : {}),
-  }
-}
-
-export function mapPortfolioFromWire(value: unknown): OrchestratorPortfolio {
-  const input = value as WirePortfolioResponse & {
-    readonly portfolio?: readonly {
-      readonly symbol: string
-      readonly chains: readonly {
-        readonly chainId: string | number
-        readonly address: Address
-        readonly decimals: number
-        readonly amount: string | number | bigint
-      }[]
-    }[]
-  }
-  return {
-    tokens: (input.portfolio ?? []).map((token) => ({
-      symbol: token.symbol,
-      chains: token.chains.map((chain) => ({
-        chain: parseChainValue(chain.chainId),
-        address: chain.address as Address,
-        decimals: chain.decimals,
-        amount: BigInt(chain.amount),
-      })),
-    })),
-  }
+): OrchestratorIntentSubmission {
+  const input = value as WireIntentSubmitResponse
+  return { traceId: input.traceId ?? '', intentId: input.intentId ?? intentId }
 }
 
 export function mapSplitRequestToWire(
@@ -221,21 +109,67 @@ export function mapSplitResultFromWire(
   }
 }
 
+export function mapPortfolioFromWire(value: unknown): OrchestratorPortfolio {
+  const input = value as WirePortfolioResponse & {
+    readonly portfolio?: readonly {
+      readonly symbol: string
+      readonly chains: readonly {
+        readonly chainId: string | number
+        readonly address: Address
+        readonly decimals: number
+        readonly amount: string | number | bigint
+      }[]
+    }[]
+  }
+  return {
+    tokens: (input.portfolio ?? []).map((token) => ({
+      symbol: token.symbol,
+      chains: token.chains.map((chain) => ({
+        chain: parseNumericChainId(chain.chainId),
+        address: chain.address as Address,
+        decimals: chain.decimals,
+        amount: BigInt(chain.amount),
+      })),
+    })),
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Quotes
+// ---------------------------------------------------------------------------
+
+export function mapQuoteResponseFromWire(
+  value: unknown,
+): OrchestratorQuoteResponse {
+  const input = value as WireQuoteResponse
+  // An outcome this SDK version does not know is refused rather than read as
+  // "no routes": a reserved future status carries no route array, and treating
+  // it as an empty success would report "no route available" for a quote the
+  // orchestrator did answer.
+  if (input.status !== 'quoted') {
+    throw new ValidationError({
+      message: `The orchestrator returned an unsupported quote outcome: ${String(
+        (input as { status?: unknown }).status,
+      )}.`,
+    })
+  }
+  return {
+    traceId: input.traceId ?? '',
+    routes: (input.routes ?? []).map(mapQuoteFromWire),
+  }
+}
+
 function mapQuoteFromWire(value: WireQuote): OrchestratorQuote {
   return {
     intentId: value.intentId,
+    purpose: value.purpose,
     expiresAt: value.expiresAt,
     estimatedFillTime: value.estimatedFillTime,
     settlementLayer: value.settlementLayer,
-    signData: value.signData as unknown as OrchestratorQuote['signData'],
+    plan: value.plan as OrchestratorQuote['plan'],
     cost: mapCostFromWire(value.cost),
-    ...(value.tokenRequirements === undefined
-      ? {}
-      : {
-          tokenRequirements: mapTokenRequirementsFromWire(
-            value.tokenRequirements,
-          ),
-        }),
+    requirements: value.requirements.map(mapRequirementFromWire),
+    signingRequests: value.signingRequests.map(mapSigningRequestFromWire),
     ...mapBridgeFillFromWire(value.bridgeFill),
   }
 }
@@ -252,8 +186,8 @@ function mapCostTokenFromWire(
   value: WireQuote['cost']['input'][number],
 ): CostTokenEntry {
   return {
-    chainId: parseChainValue(value.chainId),
-    tokenAddress: value.tokenAddress as Address,
+    chainId: value.chainId,
+    tokenAddress: value.tokenAddress,
     symbol: value.symbol,
     decimals: value.decimals,
     price: value.price,
@@ -261,20 +195,183 @@ function mapCostTokenFromWire(
   }
 }
 
-function mapTokenRequirementsFromWire(
-  value: NonNullable<WireQuote['tokenRequirements']>,
-): TokenRequirements {
-  return Object.fromEntries(
-    Object.entries(value).map(([chainId, tokens]) => [
-      parseChainValue(chainId),
-      Object.fromEntries(
-        Object.entries(tokens).map(([token, requirement]) => [
-          token,
-          { ...requirement, amount: BigInt(requirement.amount) },
-        ]),
-      ),
-    ]),
-  ) as TokenRequirements
+function mapRequirementFromWire(
+  value: WireQuote['requirements'][number],
+): IntentRequirement {
+  return {
+    ...value,
+    amount: BigInt(value.amount),
+  } as IntentRequirement
+}
+
+// ---------------------------------------------------------------------------
+// Signing requests
+//
+// This is the trust boundary: an unrecognised authority, scope or payload kind
+// must never be narrowed onto a familiar one, because the difference is what
+// the user is authorising. Everything else is disclosure and passes through.
+// ---------------------------------------------------------------------------
+
+const SIGNING_PURPOSES = new Set([
+  'originAuthorization',
+  'destinationAuthorization',
+  'targetExecutionAuthorization',
+  'delegationAuthorization',
+])
+
+function invalid(message: string): never {
+  throw new ValidationError({ message })
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+export function mapSigningRequestFromWire(
+  value: WireSigningRequest | unknown,
+): SigningRequest {
+  if (!isObject(value)) {
+    invalid('The orchestrator returned a malformed signing request.')
+  }
+  const account = value.account
+  if (
+    !isObject(account) ||
+    (account.vm !== 'evm' && account.vm !== 'svm') ||
+    (account.vm === 'evm' && typeof account.address !== 'string') ||
+    (account.vm === 'svm' &&
+      (typeof account.wallet !== 'string' ||
+        typeof account.swigAccount !== 'string'))
+  ) {
+    invalid(
+      `The orchestrator returned a signing request for an unsupported account: ${String(
+        (account as { vm?: unknown } | undefined)?.vm,
+      )}.`,
+    )
+  }
+  const authority = value.authority
+  if (
+    !isObject(authority) ||
+    (authority.kind !== 'secp256k1' &&
+      authority.kind !== 'account' &&
+      authority.kind !== 'swigRole')
+  ) {
+    invalid(
+      `The orchestrator returned a signing request with an unsupported authority: ${String(
+        (authority as { kind?: unknown } | undefined)?.kind,
+      )}.`,
+    )
+  }
+  const scope = value.scope
+  if (!isObject(scope) || (scope.vm !== 'evm' && scope.vm !== 'svm')) {
+    invalid(
+      `The orchestrator returned a signing request with an unsupported scope: ${String(
+        (scope as { vm?: unknown } | undefined)?.vm,
+      )}.`,
+    )
+  }
+  if (
+    typeof value.purpose !== 'string' ||
+    !SIGNING_PURPOSES.has(value.purpose)
+  ) {
+    invalid(
+      `The orchestrator returned a signing request with an unsupported purpose: ${String(
+        value.purpose,
+      )}.`,
+    )
+  }
+  if (!Array.isArray(value.chainIds) || !Array.isArray(value.validity)) {
+    invalid(
+      'The orchestrator returned a signing request without chain or validity context.',
+    )
+  }
+  return {
+    account,
+    authority,
+    scope,
+    chainIds: value.chainIds,
+    purpose: value.purpose,
+    validity: value.validity,
+    payload: mapSigningPayloadFromWire(value.payload),
+  } as SigningRequest
+}
+
+function mapSigningPayloadFromWire(value: unknown): SigningRequest['payload'] {
+  if (!isObject(value)) {
+    invalid('The orchestrator returned a signing request with no payload.')
+  }
+  switch (value.kind) {
+    case 'eip712': {
+      const typedData = value.typedData
+      if (
+        !isObject(typedData) ||
+        !isObject(typedData.domain) ||
+        !isObject(typedData.types) ||
+        typeof typedData.primaryType !== 'string' ||
+        !isObject(typedData.message) ||
+        (value.signatureFormat !== 'secp256k1' &&
+          value.signatureFormat !== 'account')
+      ) {
+        invalid('The orchestrator returned an invalid EIP-712 signing payload.')
+      }
+      return value as SigningRequest['payload']
+    }
+    case 'personalSign': {
+      const message = value.message
+      if (
+        !isObject(message) ||
+        message.encoding !== 'utf8' ||
+        typeof message.value !== 'string'
+      ) {
+        invalid(
+          'The orchestrator returned an invalid personal-sign signing payload.',
+        )
+      }
+      return value as SigningRequest['payload']
+    }
+    case 'eip7702': {
+      const authorization = value.authorization
+      if (
+        !isObject(authorization) ||
+        typeof authorization.chainId !== 'number' ||
+        typeof authorization.address !== 'string'
+      ) {
+        invalid(
+          'The orchestrator returned an invalid EIP-7702 signing payload.',
+        )
+      }
+      return value as SigningRequest['payload']
+    }
+    case 'webauthn':
+      if (typeof value.challenge !== 'string') {
+        invalid(
+          'The orchestrator returned an invalid WebAuthn signing payload.',
+        )
+      }
+      return value as SigningRequest['payload']
+    default:
+      return invalid(
+        `The orchestrator returned an unsupported signing payload kind: ${String(
+          value.kind,
+        )}.`,
+      )
+  }
+}
+
+/** Narrows a caller-supplied proof before it is sent. */
+export function assertSupportedProof(value: SigningProof): SigningProof {
+  switch (value.kind) {
+    case 'eip712':
+    case 'personalSign':
+    case 'eip7702':
+    case 'webauthn':
+      return value
+    default:
+      return invalid(
+        `Unsupported intent proof kind: ${String(
+          (value as { kind?: unknown }).kind,
+        )}.`,
+      )
+  }
 }
 
 // A bridge fill is a delivery-tracking handle, not part of what the user signs,
@@ -287,145 +384,106 @@ function mapBridgeFillFromWire(value: WireQuote['bridgeFill']): {
   if (value === undefined) return {}
   switch (value.type) {
     case 'OFT':
-      return {
-        bridgeFill: {
-          type: 'OFT',
-          destinationChainId: value.destinationChainId,
-        },
-      }
     case 'ECO':
-      return {
-        bridgeFill: {
-          type: 'ECO',
-          destinationChainId: value.destinationChainId,
-          intentHash: value.intentHash as Hex,
-        },
-      }
     case 'RELAY':
-      return {
-        bridgeFill: {
-          type: 'RELAY',
-          destinationChainId: value.destinationChainId,
-          requestId: value.requestId,
-        },
-      }
     case 'NEAR':
-      return {
-        bridgeFill: {
-          type: 'NEAR',
-          destinationChainId: value.destinationChainId,
-          depositAddress: value.depositAddress as Address,
-        },
-      }
     case 'RHINO':
-      return {
-        bridgeFill: {
-          type: 'RHINO',
-          destinationChainId: value.destinationChainId,
-          commitmentId: value.commitmentId,
-        },
-      }
     case 'CCTP':
-      return {
-        bridgeFill: {
-          type: 'CCTP',
-          destinationChainId: value.destinationChainId,
-          sourceDomainId: value.sourceDomainId,
-          destinationDomainId: value.destinationDomainId,
-        },
-      }
     case 'LZ':
-      return {
-        bridgeFill: {
-          type: 'LZ',
-          destinationChainId: value.destinationChainId,
-          quoteId: value.quoteId,
-          dstChainKey: value.dstChainKey,
-          routeTypes: [...value.routeTypes],
-        },
-      }
+      return { bridgeFill: value as BridgeFill }
     default:
       return {}
   }
 }
 
-type WireAuthorization = NonNullable<
-  NonNullable<WireIntentRequest['authorizations']>['sponsor']
->[number]
+// ---------------------------------------------------------------------------
+// Status
+// ---------------------------------------------------------------------------
 
-function mapAuthorizationToWire(
-  authorization: SignedAuthorization,
-): WireAuthorization {
+export function mapIntentStatusFromWire(
+  intentId: string,
+  value: unknown,
+): OrchestratorIntentStatus {
+  const input = value as WireIntentStatusResponse
   return {
-    chainId: mapAuthorizationChainIdToWire(authorization.chainId),
-    address: authorization.address,
-    nonce: authorization.nonce,
-    yParity: authorization.yParity ?? 0,
-    r: authorization.r,
-    s: authorization.s,
-  }
-}
-
-function mapAuthorizationChainIdToWire(
-  chainId: number,
-): 0 | `eip155:${number}` {
-  if (chainId === 0) return 0
-  if (
-    !Number.isSafeInteger(chainId) ||
-    chainId < 0 ||
-    isHyperCoreWireId(chainId) ||
-    isNonEvmChainId(chainId)
-  ) {
-    throw new Error(`Invalid EIP-7702 authorization chain ID: ${chainId}`)
-  }
-  return `eip155:${chainId}`
-}
-
-function mapAccessList(input: OrchestratorIntentRequest['accountAccessList']) {
-  if (!input) return undefined
-  return {
-    ...(input.chainIds ? { chainIds: input.chainIds.map(formatCaip2) } : {}),
-    ...(input.tokens ? { tokens: input.tokens } : {}),
-    ...(input.chainTokens
-      ? { chainTokens: mapChainRecord(input.chainTokens) }
+    traceId: input.traceId ?? '',
+    intentId: input.intentId ?? intentId,
+    purpose: input.purpose,
+    status: input.status,
+    // Absent stays absent: the record either identifies the accounts or it
+    // does not, and a fabricated zero address is not the same fact.
+    ...(input.accounts
+      ? { accounts: input.accounts as OrchestratorIntentStatus['accounts'] }
       : {}),
-    ...(input.chainTokenAmounts
-      ? { chainTokenAmounts: mapChainRecord(input.chainTokenAmounts) }
+    operations: (input.operations ?? []) as readonly IntentOperationGroup[],
+    ...(input.refunds
+      ? { refunds: input.refunds as OrchestratorIntentStatus['refunds'] }
+      : {}),
+    ...(input.details
+      ? { details: mapIntentDetailsFromWire(input.details) }
       : {}),
   }
 }
 
-function mapSettlementLayers(
-  input:
-    | OrchestratorIntentRequest['options']['settlementLayers']
-    | OrchestratorSplitRequest['settlementLayers'],
-): NonNullable<WireQuoteRequest['options']>['settlementLayers'] {
-  // Keep the legacy public string arrays while checking the rest of the wire shape.
-  return input as NonNullable<WireQuoteRequest['options']>['settlementLayers']
+function mapIntentDetailsFromWire(
+  value: NonNullable<NonNullable<WireIntentStatusResponse['details']>>,
+): IntentDetails {
+  type Leg = NonNullable<typeof value>['destination']
+  const leg = (entry: Leg) => ({
+    ...entry,
+    tokens: (entry?.tokens ?? []).map((token) => ({
+      ...token,
+      amount: BigInt(token.amount),
+    })),
+  })
+  return {
+    ...value,
+    source: value.source.map(leg),
+    destination: leg(value.destination),
+    cost: {
+      sponsored: value.cost.sponsored,
+      ...(value.cost.sponsoredValue === undefined
+        ? {}
+        : { sponsoredValue: BigInt(value.cost.sponsoredValue) }),
+      ...(value.cost.protocolFee === undefined
+        ? {}
+        : { protocolFee: BigInt(value.cost.protocolFee) }),
+      ...(value.cost.sponsorSurcharge === undefined
+        ? {}
+        : { sponsorSurcharge: BigInt(value.cost.sponsorSurcharge) }),
+    },
+  } as IntentDetails
 }
 
-function mapQuoters(
-  input: OrchestratorIntentRequest['options']['quoters'],
-): NonNullable<WireQuoteRequest['options']>['quoters'] {
-  // Same widening as `mapSettlementLayers`: the port keeps `string[]` so it does
-  // not depend on the venue enum, and the wire narrows it.
-  return input as NonNullable<WireQuoteRequest['options']>['quoters']
-}
-
-function mapChainRecord<T>(
-  input: Readonly<Record<number, T>>,
-): Readonly<Record<string, T>> {
-  return Object.fromEntries(
-    Object.entries(input).map(([chainId, value]) => [
-      formatCaip2(Number(chainId)),
-      value,
-    ]),
-  )
-}
-
-function parseChainValue(value: string | number | undefined): number {
+/**
+ * Numeric chain id for the endpoints whose SDK projection is still numeric
+ * (portfolio, splits). Wire-facing Caucasus metadata keeps its CAIP-2 string.
+ */
+function parseNumericChainId(value: string | number | undefined): number {
   if (typeof value === 'number') return value
   if (value === undefined) throw new Error('Orchestrator chain id is missing')
   if (/^\d+$/u.test(value)) return Number(value)
   return chainIdFromReference(parseCaip2(value))
+}
+
+type WireQuoteOptions = NonNullable<WireQuoteRequest['options']>
+
+// The port keeps settlement layers and quoters as plain strings so it does not
+// depend on the generated venue enums; the wire narrows them. Widening these
+// two fields, rather than casting the whole body, is what keeps a drifting
+// account/destination/source shape a typecheck error here.
+type VenueFilter =
+  | { readonly include: readonly string[] }
+  | { readonly exclude: readonly string[] }
+
+function mapSettlementLayers(
+  input: VenueFilter | undefined,
+): WireQuoteOptions['settlementLayers'] {
+  return input as WireQuoteOptions['settlementLayers']
+}
+
+function mapQuoters(
+  input: VenueFilter | undefined,
+): WireQuoteOptions['quoters'] {
+  return input as WireQuoteOptions['quoters']
 }

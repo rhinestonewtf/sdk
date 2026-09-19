@@ -188,12 +188,15 @@ describe('packed package contract', () => {
     expect(baseSha).toMatch(/^[0-9a-f]{40}$/)
   })
 
-  it('publishes without runtime dependencies', () => {
+  it('publishes only the explicit Solana derivation dependencies', () => {
     const currentManifest = readJson<PackageManifest>(
       join(currentPackageDirectory, 'package.json'),
     )
 
-    expect(Object.keys(currentManifest.dependencies ?? {})).toEqual([])
+    expect(currentManifest.dependencies).toEqual({
+      '@noble/curves': '^1.9.1',
+      '@scure/base': '^1.2.6',
+    })
   })
 
   it('preserves manifest entry points and package metadata', () => {

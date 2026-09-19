@@ -1,4 +1,4 @@
-import type { Address, HashTypedDataParameters, Hex } from 'viem'
+import type { Address, Chain, HashTypedDataParameters, Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { mainnet } from 'viem/chains'
 import * as ecdsaActions from '../../src/actions/ecdsa'
@@ -10,6 +10,7 @@ import type { SponsorLimitKey } from '../../src/errors/index'
 import * as errors from '../../src/errors/index'
 import {
   type BridgeFill,
+  type EvmAccountConfig,
   hyperCorePerp,
   hyperCoreSpot,
   MULTI_FACTOR_VALIDATOR_V2_ADDRESS,
@@ -21,10 +22,12 @@ import {
   type SerializedIntentInput,
   type SessionSigning,
   type SessionSigningContent,
-  type SignData,
   type SignedIntentData,
   type SignedTransactionData,
   type SignerSet,
+  type SigningRequest,
+  solanaAddress,
+  solanaMainnet,
   stellarMainnet,
   type Transaction,
   tronMainnet,
@@ -40,7 +43,7 @@ const recipient = '0x0000000000000000000000000000000000000001'
 const accountConfig = {
   account: { type: 'safe', version: '1.4.1', adapter: '2.0.0' },
   owners: { type: 'ecdsa', accounts: [owner], threshold: 1 },
-} satisfies RhinestoneAccountConfig
+} satisfies EvmAccountConfig
 
 const registryFreeMfaConfig = {
   owners: {
@@ -48,7 +51,7 @@ const registryFreeMfaConfig = {
     module: MULTI_FACTOR_VALIDATOR_V2_ADDRESS,
     validators: [{ type: 'ecdsa', accounts: [owner] }],
   },
-} satisfies RhinestoneAccountConfig
+} satisfies EvmAccountConfig
 
 new RhinestoneSDK({ apiKey: 'legacy-api-key' })
 new RhinestoneSDK({
@@ -72,22 +75,41 @@ new RhinestoneSDK({
 declare const account: RhinestoneAccount
 declare const prepared: PreparedTransactionData
 declare const quote: Quote
-declare const signData: SignData
+declare const signingRequests: SigningRequest[]
 declare const typedData: HashTypedDataParameters
 declare const sessionSigners: Extract<SignerSet, { type: 'session' }>
 
+// Chain references on a quote are CAIP-2, including a bridge fill's.
 const ecoBridgeFill = {
   type: 'ECO',
-  destinationChainId: mainnet.id,
+  destinationChainId: `eip155:${mainnet.id}`,
   intentHash: `0x${'11'.repeat(32)}`,
+  fillStatusTimeout: 30,
 } as const satisfies BridgeFill
-const ecoIntentHash: Hex = ecoBridgeFill.intentHash
+const ecoIntentHash: string = ecoBridgeFill.intentHash
 
-function readEcoIntentHash(bridgeFill: BridgeFill): Hex | undefined {
+function readEcoIntentHash(bridgeFill: BridgeFill): string | undefined {
   if (bridgeFill.type !== 'ECO') return undefined
   return bridgeFill.intentHash
 }
-const narrowedEcoIntentHash: Hex | undefined = readEcoIntentHash(ecoBridgeFill)
+const narrowedEcoIntentHash: string | undefined =
+  readEcoIntentHash(ecoBridgeFill)
+
+// A Solana delivery is tracked with Eco's own id for the destination chain,
+// which is opaque provider metadata beside the public CAIP-2 identifier.
+const solanaDeliveryBridgeFill = {
+  type: 'ECO',
+  destinationChainId: 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
+  providerDestinationChainId: 1399811149,
+  intentHash: `0x${'22'.repeat(32)}`,
+  fillStatusTimeout: 14400,
+} as const satisfies BridgeFill
+const providerDestinationChainId: number | undefined =
+  quote.bridgeFill?.type === 'ECO'
+    ? quote.bridgeFill.providerDestinationChainId
+    : undefined
+void solanaDeliveryBridgeFill
+void providerDestinationChainId
 
 const signingContent: SessionSigningContent = {
   domain: { name: 'Example', chainId: mainnet.id },
@@ -116,6 +138,14 @@ const transaction = {
   signers: ownerSigners,
 } satisfies Transaction
 
+const dynamicSourceChains: Chain[] = [mainnet]
+const dynamicSourceTransaction = {
+  sourceChains: dynamicSourceChains,
+  targetChain: mainnet,
+  calls: [],
+} satisfies Transaction
+void dynamicSourceTransaction
+
 const sameChainTransaction = {
   chain: mainnet,
   calls: [],
@@ -126,12 +156,14 @@ const crossChainWithDeadline = {
   sourceChains: [mainnet],
   targetChain: mainnet,
   calls: [],
+  // @ts-expect-error custom deadlines are same-chain only
   customDeadline: 9_999_999_999,
 } as const satisfies Transaction
 
 const crossChainNonEvmWithDeadline = {
   sourceChains: [mainnet],
   targetChain: tronMainnet,
+  // @ts-expect-error custom deadlines are same-chain only
   customDeadline: 9_999_999_999,
 } as const satisfies Transaction
 
@@ -180,6 +212,16 @@ const sponsoredGasUnits: string | undefined =
 const sponsoredTokenAmount: string | undefined =
   sponsorshipBody.tokenRequests[0].amount
 const preparedIntentInput: SerializedIntentInput = prepared.intentInput
+// A Solana-origin binding is narrowed on `kind`, which keeps the base58 and hex
+// recipients apart.
+const preparedRecipient: string | undefined =
+  prepared.execution === undefined
+    ? undefined
+    : prepared.execution.kind === 'solana'
+      ? prepared.execution.recipient
+      : prepared.execution.kind === 'solana-cross-chain'
+        ? prepared.execution.destinationToken
+        : prepared.execution.walletAddress
 
 new RhinestoneSDK({
   auth: {
@@ -212,7 +254,7 @@ const typedDataSignature: Promise<Hex> = account.signTypedData(
   ownerSigners,
 )
 const intentSignature: Promise<SignedIntentData> = account.signIntent(
-  signData,
+  signingRequests,
   mainnet,
   sessionSigners,
 )
@@ -244,6 +286,7 @@ void sponsoredCallValue
 void sponsoredGasUnits
 void sponsoredTokenAmount
 void preparedIntentInput
+void preparedRecipient
 void actions
 void ecdsaActions
 void mfaActions
@@ -254,3 +297,63 @@ void jwtServer
 void passkeySigning
 void smartSessions
 void utils
+
+async function crossVmAccountSurface() {
+  const sdk = new RhinestoneSDK({ apiKey: 'types' })
+  const solana = solanaAddress('11111111111111111111111111111111')
+  const managed = await sdk.createAccount({
+    evm: accountConfig,
+    solana: { address: solana },
+  })
+  const evmAddress: Address = managed.getAddress('evm')
+  const nativeSolana: typeof solana = managed.getAddress('solana')
+  managed.prepareTransaction({
+    sourceChains: [mainnet],
+    targetChain: solanaMainnet,
+    tokenRequests: [{ address: solana, amount: 1n }],
+  })
+
+  const receiver = await sdk.createAccount({ solana: { address: solana } })
+  receiver.getAddress('solana')
+  // @ts-expect-error Solana destinations require branded Solana addresses
+  managed.prepareTransaction({
+    sourceChains: [mainnet],
+    targetChain: solanaMainnet,
+    tokenRequests: [
+      {
+        address: recipient,
+        amount: 1n,
+      },
+    ],
+  })
+  managed.prepareTransaction({
+    // @ts-expect-error managed EVM accounts cannot originate on Solana
+    chain: solanaMainnet,
+    tokenRequests: [{ address: solana, amount: 1n }],
+  })
+  // @ts-expect-error receiver-only accounts cannot prepare transactions
+  receiver.prepareTransaction({})
+  // @ts-expect-error EVM is not configured
+  receiver.getAddress('evm')
+  // @ts-expect-error VM selection is required
+  managed.getAddress()
+  // @ts-expect-error legacy flat account configuration was removed
+  sdk.createAccount(accountConfig)
+  // @ts-expect-error at least one VM is required
+  sdk.createAccount({})
+
+  declareWidenedConfig(sdk)
+  void evmAddress
+  void nativeSolana
+}
+void crossVmAccountSurface
+
+async function declareWidenedConfig(sdk: RhinestoneSDK) {
+  const config = null as unknown as RhinestoneAccountConfig
+  const widened = await sdk.createAccount(config)
+  const maybeEvm: Address | undefined = widened.getAddress('evm')
+  // @ts-expect-error a widened config does not prove a managed source
+  widened.prepareTransaction({})
+  void maybeEvm
+}
+void declareWidenedConfig

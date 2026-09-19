@@ -7,6 +7,7 @@ import {
   type SignedAuthorization,
   type TypedDataDefinition,
 } from 'viem'
+import { toEvmChainReference } from '../chains/caip2'
 import type { ChainReference, EvmChainReference } from '../chains/types'
 import { executeSigningPlan } from './execute'
 import type {
@@ -209,6 +210,133 @@ export async function signAuthorizationList(input: {
       result.kind === 'signed-authorization' ? [result.authorization] : [],
     ),
   )
+  return { authorizations, transcript }
+}
+
+export interface RequestedDelegation {
+  readonly chainId: number
+  readonly contract: Address
+  readonly nonce: number
+}
+
+export interface RequestedDelegationPlanInput {
+  readonly signer: SignerReference
+  readonly delegations: readonly RequestedDelegation[]
+}
+
+/**
+ * Signs the delegations a quote explicitly asked for, in the order it asked.
+ *
+ * Unlike {@link createAuthorizationListPlan} this has no delegation-code
+ * condition and derives no chain set of its own: the quote named these
+ * authorisations, so producing fewer than it asked for submits an incomplete
+ * proof vector rather than a cheaper one.
+ */
+export function createRequestedDelegationPlan(
+  input: RequestedDelegationPlanInput,
+): { readonly plan: SigningPlan; readonly payloads: SigningPayloadRegistry } {
+  const payloads: Record<Hex, SigningPayloadRegistry[Hex]> = {}
+  const stages = input.delegations.map((delegation, index) => {
+    const payloadId = keccak256(
+      encodeAbiParameters(
+        [{ type: 'address' }, { type: 'uint256' }, { type: 'uint256' }],
+        [
+          delegation.contract,
+          BigInt(delegation.chainId),
+          BigInt(delegation.nonce),
+        ],
+      ),
+    )
+    payloads[payloadId] = {
+      kind: 'authorization',
+      authorization: {
+        contractAddress: delegation.contract,
+        chainId: delegation.chainId,
+        nonce: delegation.nonce,
+      },
+    }
+    const taskId = `delegation-${index}`
+    return {
+      id: `delegation-request-${index}`,
+      checkpoint: { kind: 'none' as const, id: `delegation-${index}:none` },
+      priorOutputs: [],
+      taskTemplates: [
+        {
+          id: taskId,
+          signer: input.signer,
+          role: 'authorization' as const,
+          chain: toEvmChainReference(delegation.chainId),
+          invocationKind: 'sign-authorization' as const,
+          payload: { source: 'plan-payload' as const, payloadId },
+          contribution: { kind: 'authorization' as const },
+        },
+      ],
+      schedule: [
+        {
+          id: `delegation-prompt-${index}`,
+          execution: 'serial' as const,
+          taskIds: [taskId],
+        },
+      ],
+      artifacts: [],
+    }
+  })
+  const plan: SigningPlan = {
+    version: 1,
+    kind: 'eip7702-authorization-list',
+    payload: {
+      kind: 'authorization',
+      id: keccak256(
+        encodeAbiParameters(
+          [{ type: 'address[]' }, { type: 'uint256[]' }],
+          [
+            input.delegations.map(({ contract }) => contract),
+            input.delegations.map(({ chainId }) => BigInt(chainId)),
+          ],
+        ),
+      ),
+    },
+    configuredTopology: emptyTopology,
+    effectiveSelection: emptySelection,
+    stages,
+    publicOutputs: stages.map((stage) => ({
+      id: `${stage.id}-result`,
+      source: { kind: 'task-result', taskId: stage.taskTemplates[0].id },
+      exposedForIndependentSigning: false,
+    })),
+  }
+  return { plan, payloads }
+}
+
+export async function signRequestedDelegations(input: {
+  readonly planInput: RequestedDelegationPlanInput
+  readonly signerInvoker: SignerInvocationPort
+  readonly checkpoints: SigningCheckpointPort
+}): Promise<{
+  readonly authorizations: readonly SignedAuthorization[]
+  readonly transcript: SigningTranscript
+}> {
+  const { plan, payloads } = createRequestedDelegationPlan(input.planInput)
+  const transcript = await executeSigningPlan({
+    plan,
+    payloads,
+    signerInvoker: input.signerInvoker,
+    checkpoints: input.checkpoints,
+    assembleStage: () => ({}),
+  })
+  const byTask = Object.assign(
+    {},
+    ...transcript.stages.map(({ results }) => results),
+  ) as Readonly<
+    Record<string, { kind: string; authorization?: SignedAuthorization }>
+  >
+  const authorizations = input.planInput.delegations.map((_, index) => {
+    const result = byTask[`delegation-${index}`]
+    if (result?.kind !== 'signed-authorization' || !result.authorization) {
+      throw new Error(`Requested delegation ${index} was not signed`)
+    }
+    return result.authorization
+  })
   return { authorizations, transcript }
 }
 

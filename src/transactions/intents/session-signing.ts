@@ -40,6 +40,7 @@ import { createSignerInvocationPort } from '../../signing/signers/registry'
 import type { ExternalSignerRegistry } from '../../signing/signers/types'
 import type {
   ArtifactAssemblyPlan,
+  SignatureUsage,
   SignerInvocationPort,
   SigningPayloadRegistry,
   SigningTaskTemplate,
@@ -89,99 +90,77 @@ export function buildSessionIntentPlanInput<CompatibilityConfig>(
 ): IntentSigningPlanCreationInput {
   const payloads: Record<Hex, SigningPayloadRegistry[Hex]> = {}
   const stages: IntentSigningPlanCreationInput['stages'][number][] = []
-  for (const [index, origin] of prepared.signing.origins.entries()) {
+  for (const request of prepared.signing.requests) {
+    if (request.kind !== 'eip712') continue
+    if (request.reuse) {
+      const { artifactId, selection } = request.reuse
+      stages.push({
+        id: request.artifactId,
+        checkpoint: { kind: 'none', id: `${request.artifactId}:none` },
+        priorOutputs: [
+          { stageId: artifactId, outputId: artifactId, selection },
+        ],
+        tasks: [],
+        schedule: [],
+        artifacts: [
+          {
+            id: request.artifactId,
+            usage: request.payload.usage,
+            input: {
+              kind: 'reuse-artifact',
+              stageId: artifactId,
+              artifactId,
+              selection,
+            },
+            validatorCodec: { kind: 'none' },
+            erc7739: { kind: 'none' },
+            accountEnvelope: { kind: 'none' },
+            erc6492: { kind: 'none' },
+          },
+        ],
+      })
+      continue
+    }
     // A smart session is enabled per chain and its signature carries that
     // session's identity, so one signature cannot stand for legs on other
     // chains. Refuse while preparing rather than sign a bundle whose later legs
     // cannot execute.
-    if (signatureSpansMultipleChains(origin.typedData)) {
+    if (signatureSpansMultipleChains(request.payload.typedData)) {
       throw new Error(
         'Cannot sign a chain-agnostic intent payload with a smart session: a session is enabled per chain, so the signature would validate only on the leg it was resolved against',
       )
     }
-    const session = requireSession(prepared, origin.chain.id)
+    const session = requireSession(prepared, request.payload.chain.id)
+    // The encoding a session signature needs depends on what it authorises:
+    // a claim is notarized (paired with its pre-claim form when executions are
+    // verified), while a fill or target execution is authorised pre-claim.
+    const output =
+      request.purpose === 'originAuthorization'
+        ? session.verifyExecutions
+          ? ('pair' as const)
+          : ('notarized' as const)
+        : request.purpose === 'destinationAuthorization'
+          ? session.verifyExecutions
+            ? ('pre-claim' as const)
+            : ('notarized' as const)
+          : ('pre-claim' as const)
     stages.push(
       buildSessionStage({
-        id: `origin-${index}`,
-        outputId: `origin-${index}`,
-        usage: 'intent-origin',
-        typedData: origin.typedData,
-        payloadId: origin.id,
-        chain: origin.chain,
+        id: request.artifactId,
+        outputId: request.artifactId,
+        usage: request.payload.usage,
+        typedData: request.payload.typedData,
+        payloadId: request.payload.id,
+        chain: request.payload.chain,
         session,
         environment: requireSessionEnvironment(prepared),
         context,
         payloads,
-        output: session.verifyExecutions ? 'pair' : 'notarized',
-      }),
-    )
-  }
-  const destination = prepared.signing.destination
-  if (destination?.mode === 'sign') {
-    const session = requireSession(prepared, destination.payload.chain.id)
-    stages.push(
-      buildSessionStage({
-        id: 'destination',
-        outputId: destination.artifactId,
-        usage: 'intent-destination',
-        typedData: destination.payload.typedData,
-        payloadId: destination.payload.id,
-        chain: destination.payload.chain,
-        session,
-        environment: requireSessionEnvironment(prepared),
-        context,
-        payloads,
-        output: session.verifyExecutions ? 'pre-claim' : 'notarized',
-        includeNotarized: session.verifyExecutions,
-      }),
-    )
-  } else if (destination) {
-    const stageId = destination.originArtifactId
-    stages.push({
-      id: 'destination',
-      checkpoint: { kind: 'none', id: 'destination:none' },
-      priorOutputs: [
-        {
-          stageId,
-          outputId: destination.originArtifactId,
-          selection: destination.selection,
-        },
-      ],
-      tasks: [],
-      schedule: [],
-      artifacts: [
-        {
-          id: destination.artifactId,
-          usage: 'intent-destination',
-          input: {
-            kind: 'reuse-artifact',
-            stageId,
-            artifactId: destination.originArtifactId,
-            selection: destination.selection,
-          },
-          validatorCodec: { kind: 'none' },
-          erc7739: { kind: 'none' },
-          accountEnvelope: { kind: 'none' },
-          erc6492: { kind: 'none' },
-        },
-      ],
-    })
-  }
-  if (prepared.signing.target) {
-    const target = prepared.signing.target
-    stages.push(
-      buildSessionStage({
-        id: 'target',
-        outputId: 'target',
-        usage: 'intent-target',
-        typedData: target.typedData,
-        payloadId: target.id,
-        chain: target.chain,
-        session: requireSession(prepared, target.chain.id),
-        environment: requireSessionEnvironment(prepared),
-        context,
-        payloads,
-        output: 'pre-claim',
+        output,
+        ...(request.purpose === 'destinationAuthorization' &&
+        session.verifyExecutions
+          ? { includeNotarized: true }
+          : {}),
       }),
     )
   }
@@ -191,7 +170,7 @@ export function buildSessionIntentPlanInput<CompatibilityConfig>(
 function buildSessionStage(input: {
   readonly id: string
   readonly outputId: string
-  readonly usage: 'intent-origin' | 'intent-destination' | 'intent-target'
+  readonly usage: SignatureUsage
   readonly typedData: TypedDataDefinition
   readonly payloadId: Hex
   readonly chain: import('../../chains/types').EvmChainReference

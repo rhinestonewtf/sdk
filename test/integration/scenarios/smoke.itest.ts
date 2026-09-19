@@ -28,7 +28,9 @@ describe.sequential('SDK integration smoke', () => {
     const sdk = createIntegrationSDK()
     const owner = createOwner()
     const account = await sdk.createAccount({
-      owners: { type: 'ecdsa', accounts: [owner] },
+      evm: {
+        owners: { type: 'ecdsa', accounts: [owner] },
+      },
     })
 
     await expectNotDeployed(account, sourceChain)
@@ -57,15 +59,17 @@ describe.sequential('SDK integration smoke', () => {
     const firstOwner = createOwner()
     const secondOwner = createOwner()
     const account = await sdk.createAccount({
-      account: { type: 'nexus' },
-      owners: {
-        type: 'multi-factor',
-        module: MULTI_FACTOR_VALIDATOR_V2_ADDRESS,
-        threshold: 2,
-        validators: [
-          { type: 'ecdsa', accounts: [firstOwner] },
-          { type: 'ecdsa', accounts: [secondOwner] },
-        ],
+      evm: {
+        account: { type: 'nexus' },
+        owners: {
+          type: 'multi-factor',
+          module: MULTI_FACTOR_VALIDATOR_V2_ADDRESS,
+          threshold: 2,
+          validators: [
+            { type: 'ecdsa', accounts: [firstOwner] },
+            { type: 'ecdsa', accounts: [secondOwner] },
+          ],
+        },
       },
     })
 
@@ -93,7 +97,9 @@ describe.sequential('SDK integration smoke', () => {
     const sdk = createIntegrationSDK()
     const owner = createOwner()
     const account = await sdk.createAccount({
-      owners: { type: 'ecdsa', accounts: [owner] },
+      evm: {
+        owners: { type: 'ecdsa', accounts: [owner] },
+      },
     })
 
     await expectNotDeployed(account, targetChain)
@@ -122,8 +128,10 @@ describe.sequential('SDK integration smoke', () => {
     const owner = createOwner()
     const sessionOwner = createOwner()
     const account = await sdk.createAccount({
-      owners: { type: 'ecdsa', accounts: [owner] },
-      sessions: { enabled: true },
+      evm: {
+        owners: { type: 'ecdsa', accounts: [owner] },
+        sessions: { enabled: true },
+      },
     })
     const session = createScopedSession({
       chain: sourceChain,
@@ -164,7 +172,9 @@ describe.sequential('SDK integration smoke', () => {
     const sdk = createIntegrationSDK()
     const owner = createOwner()
     const account = await sdk.createAccount({
-      owners: { type: 'ecdsa', accounts: [owner] },
+      evm: {
+        owners: { type: 'ecdsa', accounts: [owner] },
+      },
     })
 
     const execution = await executeIntent({
@@ -190,7 +200,9 @@ describe.sequential('SDK integration smoke', () => {
     const sdk = createIntegrationSDK()
     const owner = createOwner()
     const account = await sdk.createAccount({
-      owners: { type: 'ecdsa', accounts: [owner] },
+      evm: {
+        owners: { type: 'ecdsa', accounts: [owner] },
+      },
     })
 
     await expectNotDeployed(account, sourceChain)

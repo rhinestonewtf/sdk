@@ -1,5 +1,6 @@
 import { mainnet } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
+import type { IntentStatus } from '../transactions/intents/types'
 import {
   toOrchestratorSplitRequest,
   toPublicSplitResult,
@@ -7,71 +8,89 @@ import {
 } from './project-mappers'
 
 const address = '0x0000000000000000000000000000000000000001' as const
+const BASE = 'eip155:8453'
+
+const base = {
+  traceId: 'trace-status',
+  intentId: 'intent-1',
+  purpose: 'execution',
+  status: 'COMPLETED',
+  operations: [],
+  terminal: true,
+} as const satisfies IntentStatus
 
 describe('SDK project boundary adapters', () => {
-  test('maps internal intent status to the public accountAddress shape', () => {
-    expect(
-      toPublicTransactionStatus({
-        traceId: 'trace-status',
-        intentId: 'intent-1',
-        status: 'COMPLETED',
-        account: address,
-        operations: [
-          { chain: 1, status: 'COMPLETED', txHash: '0x12', timestamp: 1 },
-        ],
-        terminal: true,
-      }),
-    ).toEqual({
-      traceId: 'trace-status',
-      status: 'COMPLETED',
-      accountAddress: address,
+  test('carries grouped operations and native accounts onto the public shape', () => {
+    const status = toPublicTransactionStatus({
+      ...base,
+      accounts: [
+        { vm: 'evm', chainId: BASE, account: { address, type: 'erc7579' } },
+      ],
       operations: [
-        { chain: 1, status: 'COMPLETED', txHash: '0x12', timestamp: 1 },
+        {
+          chainId: BASE,
+          items: [
+            {
+              type: 'CLAIM',
+              status: 'COMPLETED',
+              transaction: { vm: 'evm', chainId: BASE, txHash: '0x12' },
+              timestamp: 1,
+            },
+          ],
+        },
       ],
     })
+
+    expect(status.purpose).toBe('execution')
+    expect(status.accounts).toHaveLength(1)
+    expect(status.operations[0]?.items[0]).toMatchObject({ type: 'CLAIM' })
+  })
+
+  test('omits accounts when the record does not identify them', () => {
+    expect('accounts' in toPublicTransactionStatus(base)).toBe(false)
   })
 
   test('carries a bridge refund onto the public shape, and omits it when absent', () => {
-    const failed = {
-      traceId: 'trace-status',
-      intentId: 'intent-1',
-      status: 'FAILED',
-      account: address,
-      operations: [],
-      terminal: true,
-    } as const
     const refund = {
-      chain: 8453,
-      txHash:
-        '0x8e483d74ff15e79f86e0c23e81444a5db5b2ce31c9ec28f84259dfc83f0bbc28',
-    }
+      transaction: {
+        vm: 'evm',
+        chainId: BASE,
+        txHash:
+          '0x8e483d74ff15e79f86e0c23e81444a5db5b2ce31c9ec28f84259dfc83f0bbc28',
+      },
+    } as const
 
     expect(
-      toPublicTransactionStatus({ ...failed, refunds: [refund] }).refunds,
+      toPublicTransactionStatus({
+        ...base,
+        status: 'FAILED',
+        refunds: [refund],
+      }).refunds,
     ).toEqual([refund])
-    // Absent, not `[]`: the orchestrator omits the key when it knows of no
-    // refund, and that is not the same fact as "there was none".
-    expect('refunds' in toPublicTransactionStatus(failed)).toBe(false)
+    // Absent, not `[]`: the orchestrator omits the key when the record does not
+    // speak to refunds, and that is not the same fact as "there was none".
+    expect('refunds' in toPublicTransactionStatus(base)).toBe(false)
   })
 
-  test('carries the HyperCore outcome onto the public shape, and omits it when absent', () => {
-    const failed = {
-      traceId: 'trace-status',
-      intentId: 'intent-1',
-      status: 'FAILED',
-      account: address,
-      operations: [],
-      terminal: true,
-    } as const
-    const hyperCore = {
-      outcome: 'partial',
-      reason: 'action 0 accepted; action 1 refused: Insufficient margin.',
-    } as const
+  test('carries recorded details only when they were requested', () => {
+    const details = {
+      nonce: '1',
+      createdAt: 1,
+      latencyMs: 2,
+      settlementLayer: 'SAME_CHAIN',
+      source: [],
+      destination: {
+        chainId: BASE,
+        tokens: [],
+        status: 'COMPLETED',
+      },
+      cost: { sponsored: false },
+    } as unknown as NonNullable<IntentStatus['details']>
 
-    expect(
-      toPublicTransactionStatus({ ...failed, hyperCore }).hyperCore,
-    ).toEqual(hyperCore)
-    expect('hyperCore' in toPublicTransactionStatus(failed)).toBe(false)
+    expect(toPublicTransactionStatus({ ...base, details }).details).toEqual(
+      details,
+    )
+    expect('details' in toPublicTransactionStatus(base)).toBe(false)
   })
 
   test('maps public split requests with and without settlement filters', () => {

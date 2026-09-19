@@ -365,22 +365,16 @@ export interface SigningPlan {
       readonly cardinality: 'one' | 'per-origin'
       readonly shape: 'hex' | 'session-claims'
     }[]
-    readonly destination?:
-      | {
-          readonly mode: 'sign'
-          readonly artifactId: string
-          readonly payloadId: Hex
-        }
-      | {
-          readonly mode: 'reuse-origin'
-          readonly artifactId: string
-          readonly originArtifactId: string
-          readonly selection: 'whole' | 'pre-claim'
-        }
-    readonly target?: {
+    /**
+     * Slots satisfied by an earlier slot's signature rather than their own
+     * ceremony. Recorded so the route can be checked, not so the count of
+     * authorisations can shrink.
+     */
+    readonly reuses?: readonly {
       readonly artifactId: string
-      readonly payloadId: Hex
-    }
+      readonly sourceArtifactId: string
+      readonly selection: 'whole' | 'pre-claim'
+    }[]
   }
   readonly stages: readonly SigningStagePlan[]
   readonly publicOutputs: readonly {

@@ -1,35 +1,51 @@
 import type {
+  Account,
   Address,
   Chain,
   HashTypedDataParameters,
   Hex,
   SignableMessage,
-  SignedAuthorizationList,
   TypedData,
   TypedDataDefinition,
 } from 'viem'
+import { isAddress } from 'viem'
 import type { UserOperationReceipt } from 'viem/account-abstraction'
-import { parseCaip2, toEvmChainReference } from '../chains/caip2'
+import { asSwigNamespace, locateSwig } from '../accounts/solana/address'
+import { formatCaip2, parseCaip2, toEvmChainReference } from '../chains/caip2'
 import { getChainById, getChainReference } from '../chains/catalog'
-import type { DestinationChain } from '../chains/non-evm'
+import {
+  type DestinationChain,
+  type SolanaAddress,
+  type SolanaChain,
+  type SolanaInstructionInput,
+  solanaAddress,
+} from '../chains/non-evm'
 import { normalizeTokenAddress, validateTokenAddresses } from '../chains/tokens'
 import type {
+  NormalizedAccessList,
+  NormalizedIntentOptions,
+} from '../clients/orchestrator/normalized'
+import { projectCompatibleIntentInput } from '../clients/orchestrator/normalized'
+import type {
   HyperCoreAction,
-  OriginSignature,
   Portfolio,
   Quote,
-  SignData,
+  SigningProof,
+  SigningRequest,
 } from '../clients/orchestrator/public'
+import type { OrchestratorQuote } from '../clients/orchestrator/types'
 import type {
-  OrchestratorAccountAccessList,
-  OrchestratorQuote,
-} from '../clients/orchestrator/types'
-import type {
+  AccountTransaction,
   CallInput,
+  CrossChainSolanaOriginTransaction,
+  EvmAccountConfig,
   RhinestoneAccountConfig,
+  SameChainSolanaInstructionsTransaction,
   Session,
   SignerSet,
+  SolanaManagedAccountConfig,
   SourceAssetInput,
+  Sponsorship,
   SwapQuoter,
   SwapQuoterFilter,
   Transaction,
@@ -44,7 +60,13 @@ import {
 } from '../config/resolve'
 import type { AccountInvocationContext } from '../config/resolved'
 import {
+  AccountVmNotConfiguredError,
+  ManagedSolanaAccountNotSupportedError,
+  UnsupportedAccountCapabilityError,
+} from '../errors/capability'
+import {
   IndependentSigningNotSupportedError,
+  InvalidSolanaTransactionArtifactError,
   MismatchedOwnerSignaturesError,
   QuoteNotInPreparedTransactionError,
 } from '../errors/execution'
@@ -60,15 +82,28 @@ import type {
   SignAsOwnerOptions,
 } from '../signing/types'
 import {
+  asIntentRecipient,
   projectIntentAccount,
   projectIntentRecipient,
 } from '../transactions/intents/account'
 import {
-  projectCompatibleIntentInput,
+  assertPreparedBinding,
   projectCompatibleQuote,
+  projectPreparedBinding,
+  restorePreparedBinding,
 } from '../transactions/intents/compatibility'
 import { normalizeIntentQuote } from '../transactions/intents/normalize'
+import { assertSupportedSigningRequests } from '../transactions/intents/prepare'
+import {
+  type SolanaTransferInput,
+  solanaChainId,
+} from '../transactions/intents/solana'
+import {
+  normalizeSolanaAddressLookupTables,
+  normalizeSolanaInstructions,
+} from '../transactions/intents/solana-instructions'
 import type {
+  IndexedProofContribution,
   IntentInput,
   PreparedIntent,
   PreparedTransactionData,
@@ -85,13 +120,13 @@ import type {
   UserOperationResult,
 } from '../transactions/user-operations/types'
 import type { CoreComposition } from './compose-types'
+import { toPublicTransactionStatus } from './project-mappers'
 import {
   adaptSignerSelection,
   adaptUserOperationSignerSelection,
 } from './signer-selection'
 
 interface SubmitTransactionOptions {
-  authorizations?: SignedAuthorizationList
   /**
    * When `true`, the orchestrator validates the intent without executing it
    * onchain. Internal use only; the `internal_` prefix marks it as not part
@@ -101,73 +136,78 @@ interface SubmitTransactionOptions {
 }
 
 export interface SignedIntentData {
-  originSignatures: OriginSignature[]
-  destinationSignature: Hex
-  targetExecutionSignature: Hex | undefined
+  /** One proof per signing request, in the requested order. */
+  proofs: SigningProof[]
 }
 
 type Compat = LegacyAccountConfig<unknown>
 
-/**
- * The account facade. Mirrors the published `RhinestoneAccount` surface, but
- * every method materializes a fresh invocation context from the retained
- * mutable compatibility config and delegates to the SDK-core composition.
- */
-export interface RhinestoneAccount {
-  /** The resolved account configuration. */
-  config: RhinestoneAccountConfig
+type AccountVm = 'evm' | 'solana'
+type DefaultAccountConfig = Readonly<{ evm: EvmAccountConfig }>
+type ConfiguredVm<C> = Extract<keyof C, AccountVm>
+type NativeAddress<Vm extends AccountVm> = Vm extends 'evm'
+  ? Address
+  : SolanaAddress
+type RequiredBranch<C, Vm extends AccountVm> = [C] extends [
+  Readonly<Record<Vm, infer Branch>>,
+]
+  ? Branch
+  : never
+type HasManagedEvm<C> = [RequiredBranch<C, 'evm'>] extends [never]
+  ? false
+  : [RequiredBranch<C, 'evm'>] extends [EvmAccountConfig]
+    ? true
+    : false
+type HasManagedSolana<C> = [RequiredBranch<C, 'solana'>] extends [never]
+  ? false
+  : [RequiredBranch<C, 'solana'>] extends [SolanaManagedAccountConfig]
+    ? true
+    : false
+
+/** Address access shared by every account handle. */
+export interface RhinestoneAccountBase<
+  C extends RhinestoneAccountConfig = DefaultAccountConfig,
+> {
+  /** Captured composite configuration. VM membership is shallowly immutable. */
+  config: Readonly<C>
   /**
-   * Deploy the account on a given chain.
-   * @param chain Chain to deploy the account on
-   * @param params Optional deployment parameters (sponsorship)
-   * @returns `true` once the deployment is submitted
+   * Get the native address for a configured VM.
+   * @param vm Configured VM to read
+   * @returns The account or receiver address in that VM's native format
+   * @throws AccountVmNotConfiguredError when a widened input names an absent VM
    */
-  deploy(chain: Chain, params?: { sponsored?: boolean }): Promise<boolean>
+  getAddress<const Vm extends ConfiguredVm<C>>(
+    vm: Vm,
+  ): C extends Readonly<Record<Vm, unknown>>
+    ? NativeAddress<Vm>
+    : NativeAddress<Vm> | undefined
+}
+
+/** Intent transaction lifecycle exposed by accounts with a managed source. */
+export interface ManagedTransactionAccount<
+  _C extends RhinestoneAccountConfig = DefaultAccountConfig,
+> {
   /**
-   * Check whether the account is deployed on a given chain.
-   * @param chain Chain to check
-   * @returns `true` if the account is deployed, `false` otherwise
-   */
-  isDeployed(chain: Chain): Promise<boolean>
-  /**
-   * Set up an existing account on a given chain by installing any missing modules.
-   * @param chain Chain to set the account up on
-   * @returns `true` once setup is submitted
-   */
-  setup(chain: Chain): Promise<boolean>
-  /**
-   * Get the account initialization data, used to deploy the account onchain.
-   * @returns The factory address and factory data
-   */
-  getInitData(): { factory: Address; factoryData: Hex }
-  /**
-   * Prepare and sign the EIP-7702 account initialization data.
-   * @returns The init data signature
-   */
-  signEip7702InitData(): Promise<Hex>
-  /**
-   * Prepare a transaction for signing.
+   * Prepare an intent transaction for signing.
    * @param transaction Transaction to prepare
    * @returns The prepared transaction data
    * @see {@link signTransaction} to sign the prepared transaction
    * @see {@link submitTransaction} to submit the signed transaction
    */
-  prepareTransaction(transaction: Transaction): Promise<PreparedTransactionData>
+  prepareTransaction(
+    transaction: AccountTransaction<_C>,
+  ): Promise<PreparedTransactionData>
   /**
-   * Get the typed-data messages to sign for a prepared transaction.
+   * Get the authorisations a prepared transaction needs, in order.
    * @param preparedTransaction Prepared transaction data
    * @param options Optional override; pass `{ intentId }` to inspect a specific quote from `preparedTransaction.quotes.all`
-   * @returns The origin, destination, and (when required) target-execution typed-data messages
+   * @returns The quote's ordered signing requests; proofs are submitted in the same order
    * @see {@link prepareTransaction} to prepare the transaction data for signing
    */
   getTransactionMessages(
     preparedTransaction: PreparedTransactionData,
     options?: QuoteSelection,
-  ): {
-    origin: TypedDataDefinition[]
-    destination: TypedDataDefinition
-    targetExecution?: TypedDataDefinition
-  }
+  ): SigningRequest[]
   /**
    * Sign a prepared transaction as one configured owner. The returned signature
    * can be serialized and shared with the party coordinating submission.
@@ -208,16 +248,74 @@ export interface RhinestoneAccount {
   assembleTransaction(
     preparedTransaction: PreparedTransactionData,
     signatures: OwnerSignature[],
+    options?: { proofs?: IndexedProofContribution[] },
   ): Promise<SignedTransactionData>
   /**
-   * Sign the EIP-7702 authorizations required for a transaction.
+   * Sign the EIP-7702 delegations a prepared transaction's quote asks for.
+   *
+   * Advanced: `signTransaction` already collects these, so a normal caller
+   * never needs this. Use it when the delegation signer is a different party
+   * from the account owners, and pass the result to `assembleTransaction`.
    * @param preparedTransaction Prepared transaction data
-   * @returns The signed authorization list
-   * @see {@link prepareTransaction} to prepare the transaction data for signing
+   * @param options Optional override; pass `{ intentId }` to target a specific quote
+   * @returns Delegation proofs bound to the quote and their request slots
+   * @see {@link assembleTransaction} to combine them with owner signatures
    */
   signAuthorizations(
     preparedTransaction: PreparedTransactionData,
-  ): Promise<SignedAuthorizationList>
+    options?: QuoteSelection,
+  ): Promise<IndexedProofContribution[]>
+  /**
+   * Submit a signed transaction.
+   * @param signedTransaction Signed transaction data
+   * @param options Optional submission options
+   * @returns The transaction result (an intent ID)
+   * @see {@link signTransaction} to sign the transaction data
+   * @see {@link waitForExecution} to wait for the transaction to execute onchain
+   */
+  submitTransaction(
+    signedTransaction: SignedTransactionData,
+    options?: SubmitTransactionOptions,
+  ): Promise<TransactionResult>
+  /** Wait for a submitted intent to reach a terminal state. */
+  waitForExecution(result: TransactionResult): Promise<TransactionStatus>
+}
+
+/** Full EVM management, signing, UserOperation and account-read capabilities. */
+export interface ManagedEvmAccount<
+  C extends RhinestoneAccountConfig = DefaultAccountConfig,
+> extends ManagedTransactionAccount<C> {
+  /** The captured composite account configuration. */
+  config: Readonly<C>
+  /**
+   * Deploy the account on a given chain.
+   * @param chain Chain to deploy the account on
+   * @param params Optional deployment parameters (sponsorship)
+   * @returns `true` once the deployment is submitted
+   */
+  deploy(chain: Chain, params?: { sponsored?: boolean }): Promise<boolean>
+  /**
+   * Check whether the account is deployed on a given chain.
+   * @param chain Chain to check
+   * @returns `true` if the account is deployed, `false` otherwise
+   */
+  isDeployed(chain: Chain): Promise<boolean>
+  /**
+   * Set up an existing account on a given chain by installing any missing modules.
+   * @param chain Chain to set the account up on
+   * @returns `true` once setup is submitted
+   */
+  setup(chain: Chain): Promise<boolean>
+  /**
+   * Get the account initialization data, used to deploy the account onchain.
+   * @returns The factory address and factory data
+   */
+  getInitData(): { factory: Address; factoryData: Hex }
+  /**
+   * Prepare and sign the EIP-7702 account initialization data.
+   * @returns The init data signature
+   */
+  signEip7702InitData(): Promise<Hex>
   /**
    * Sign a message (EIP-191).
    * @param message Message to sign
@@ -250,31 +348,18 @@ export interface RhinestoneAccount {
   /**
    * Sign an orchestrator intent operation. Used by headless flows that prepare
    * the intent outside the SDK but still need the SDK-owned smart-session
-   * signature packing and target-execution signature routing.
-   * @param signData Sign data returned by the orchestrator (origin/destination/targetExecution typed data)
+   * signature packing and authorisation routing.
+   * @param signingRequests The quote's ordered signing requests
    * @param targetChain Chain where the destination execution runs
    * @param signers Signers to use, or `undefined` for the account default
-   * @returns The intent signatures, ready for submission
+   * @returns The proofs, in the same order, ready for submission
    * @see {@link signTransaction} for the canonical signing path
    */
   signIntent(
-    signData: SignData,
+    signingRequests: SigningRequest[],
     targetChain: DestinationChain,
     signers?: SignerSet,
   ): Promise<SignedIntentData>
-  /**
-   * Submit a signed transaction.
-   * @param signedTransaction Signed transaction data
-   * @param options Optional submission options (e.g. EIP-7702 `authorizations`)
-   * @returns The transaction result (an intent ID)
-   * @see {@link signTransaction} to sign the transaction data
-   * @see {@link signAuthorizations} to sign the required EIP-7702 authorizations
-   * @see {@link waitForExecution} to wait for the transaction to execute onchain
-   */
-  submitTransaction(
-    signedTransaction: SignedTransactionData,
-    options?: SubmitTransactionOptions,
-  ): Promise<TransactionResult>
   /**
    * Prepare a user operation for signing.
    * @param transaction User operation to prepare
@@ -330,10 +415,16 @@ export interface RhinestoneAccount {
   waitForExecution(result: TransactionResult): Promise<TransactionStatus>
   waitForExecution(result: UserOperationResult): Promise<UserOperationReceipt>
   /**
-   * Get the account address.
-   * @returns The smart account address
+   * Get the native address for a configured VM.
+   * @param vm Configured VM to read
+   * @returns The account or receiver address in that VM's native format
+   * @throws AccountVmNotConfiguredError when a widened input names an absent VM
    */
-  getAddress(): Address
+  getAddress<const Vm extends ConfiguredVm<C>>(
+    vm: Vm,
+  ): C extends Readonly<Record<Vm, unknown>>
+    ? NativeAddress<Vm>
+    : NativeAddress<Vm> | undefined
   /**
    * Get the account portfolio (token balances across chains).
    * @param onTestnets Whether to query testnet balances (default is `false`)
@@ -382,26 +473,45 @@ export interface RhinestoneAccount {
   getExecutors(chain: Chain): Promise<Address[]>
 }
 
+/** Account handle whose methods reflect the definitely configured capabilities. */
+export type RhinestoneAccount<
+  C extends RhinestoneAccountConfig = DefaultAccountConfig,
+> = RhinestoneAccountBase<C> &
+  (HasManagedEvm<C> extends true
+    ? ManagedEvmAccount<C>
+    : HasManagedSolana<C> extends true
+      ? ManagedTransactionAccount<C>
+      : Readonly<Record<never, never>>)
+
+function cloneArtifactValue<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map(cloneArtifactValue) as T
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [
+        key,
+        cloneArtifactValue(item),
+      ]),
+    ) as T
+  }
+  return value
+}
+
 function toPublicQuote(quote: OrchestratorQuote): Quote {
   const compatible = projectCompatibleQuote(quote)
-  return {
+  return cloneArtifactValue({
     intentId: compatible.intentId,
+    purpose: compatible.purpose,
     expiresAt: compatible.expiresAt,
     estimatedFillTime: compatible.estimatedFillTime,
     settlementLayer: compatible.settlementLayer,
-    signData: {
-      origin: [...compatible.signData.origin],
-      destination: compatible.signData.destination,
-      ...(compatible.signData.targetExecution
-        ? { targetExecution: compatible.signData.targetExecution }
-        : {}),
-    },
+    plan: compatible.plan,
     cost: compatible.cost,
-    ...(compatible.tokenRequirements
-      ? { tokenRequirements: compatible.tokenRequirements }
-      : {}),
+    requirements: [...compatible.requirements],
+    signingRequests: [...compatible.signingRequests],
     ...(compatible.bridgeFill ? { bridgeFill: compatible.bridgeFill } : {}),
-  }
+  }) as Quote
 }
 
 function toPreparedTransactionData(
@@ -415,11 +525,65 @@ function toPreparedTransactionData(
       best: toPublicQuote(prepared.quote),
       all: prepared.quotes.map(toPublicQuote),
     },
-    intentInput: projectCompatibleIntentInput(prepared.request),
+    intentInput: projectCompatibleIntentInput(prepared.normalized),
+    request: projectPreparedBinding(prepared.request),
     transaction,
   }
   cache.set(data, prepared)
   return data
+}
+
+function solanaMetadata(
+  input: SolanaTransferInput,
+): NonNullable<PreparedTransactionData['execution']> {
+  const binding = {
+    namespace: input.namespace,
+    endpoint: input.endpoint,
+    chain: solanaChainId(input.chain),
+    caip2: input.chain.caip2,
+    accountAddress: input.accountAddress,
+    accountType: input.accountType,
+    authority: input.authority,
+    swigAddress: input.swigAddress,
+    walletAddress: input.walletAddress,
+  }
+  const action = input.action
+  if (action.kind === 'instructions') {
+    return { kind: 'solana-instructions', ...binding }
+  }
+  const delivery = action.delivery
+  return delivery.kind === 'cross-chain'
+    ? {
+        kind: 'solana-cross-chain',
+        ...binding,
+        mint: action.mint,
+        destinationChain: delivery.chainId,
+        destinationToken: delivery.token,
+        recipient: delivery.recipient,
+      }
+    : {
+        kind: 'solana',
+        ...binding,
+        mint: action.mint,
+        recipient: delivery.recipient,
+      }
+}
+
+function toPreparedSolanaTransactionData(
+  prepared: import('../transactions/intents/solana').PreparedSolanaIntent,
+  transaction: Transaction,
+): PreparedTransactionData {
+  return {
+    quotes: {
+      traceId: prepared.traceId,
+      best: toPublicQuote(prepared.quote),
+      all: prepared.quotes.map(toPublicQuote),
+    },
+    execution: solanaMetadata(prepared.input),
+    intentInput: projectCompatibleIntentInput(prepared.normalized),
+    request: projectPreparedBinding(prepared.request),
+    transaction,
+  }
 }
 
 function selectedPublicQuote(
@@ -449,19 +613,19 @@ function reconstructInput(
   const quote = normalizeIntentQuote(selected as OrchestratorQuote)
   return {
     traceId: prepared.quotes.traceId,
+    normalized:
+      prepared.intentInput as unknown as PreparedIntent<Compat>['normalized'],
     quote,
     quotes: prepared.quotes.all.map((candidate) =>
       candidate.intentId === quote.intentId
         ? quote
         : normalizeIntentQuote(candidate as OrchestratorQuote),
     ),
-    // The public prepared data only carries the serialized request, so the
-    // reconstructed request holds decimal strings where the internal type
-    // declares bigints. Sound because submission only re-serializes it (a no-op
-    // on strings, keeping the sponsorship digest stable) and reads
-    // `options.sponsorSettings`.
-    request:
-      prepared.intentInput as unknown as PreparedIntent<Compat>['request'],
+    // The persisted Caucasus request, not a reconstruction from `intentInput`:
+    // that projection is lossy about account capability and signing state, and
+    // an artifact from an earlier wire version is refused here rather than
+    // silently reinterpreted.
+    request: restorePreparedBinding(prepared.request),
     intentInput: adaptTransaction(context, prepared.transaction),
   }
 }
@@ -474,10 +638,7 @@ function toSignedTransactionData(
   const data: SignedTransactionData = {
     ...prepared,
     quote: toPublicQuote(signed.prepared.quote),
-    originSignatures:
-      signed.originSignatures as SignedTransactionData['originSignatures'],
-    destinationSignature: signed.destinationSignature,
-    targetExecutionSignature: signed.targetSignature,
+    proofs: [...signed.proofs],
   }
   cache.set(data, signed)
   return data
@@ -489,10 +650,11 @@ function referenceChain(): import('../chains/types').EvmChainReference {
   return toEvmChainReference(1)
 }
 
-export function createAccountFacade(
+export function createAccountFacade<C extends RhinestoneAccountConfig>(
   compatibilityConfig: LegacyAccountConfig<unknown>,
+  publicConfig: Readonly<C>,
   composition: CoreComposition<LegacyAccountConfig<unknown>>,
-): RhinestoneAccount {
+): ManagedEvmAccount<C> {
   // Intent identity caches are facade-scoped. Values crossing account/SDK
   // instances are reconstructed and validated by the receiving account.
   const preparedIntents = new WeakMap<object, PreparedIntent<Compat>>()
@@ -508,12 +670,183 @@ export function createAccountFacade(
   const workflowsFor = (
     ctx: AccountInvocationContext<LegacyAccountConfig<unknown>>,
   ) => composition.createAccount(ctx).workflows
+  const hasManagedSolana = Boolean(
+    publicConfig.solana && 'owner' in publicConfig.solana,
+  )
+  const capturedSolanaContext = hasManagedSolana
+    ? context('get-address')
+    : undefined
+  const capturedSolanaIdentity = capturedSolanaContext
+    ? workflowsFor(capturedSolanaContext).getAddress(
+        capturedSolanaContext,
+        referenceChain(),
+      )
+    : undefined
+  const capturedSolanaEndpoint = capturedSolanaContext?.sdk.orchestratorUrl
+  const capturedSolanaAccountType = capturedSolanaContext
+    ? capturedSolanaContext.account.account.kind === 'eoa'
+      ? 'EOA'
+      : capturedSolanaContext.account.account.kind === 'hca'
+        ? 'GENERIC'
+        : 'ERC7579'
+    : undefined
+
+  const solanaOwner = (): Account => {
+    const branch = publicConfig.solana
+    if (!branch || !('owner' in branch) || !branch.owner) {
+      throw new UnsupportedAccountCapabilityError(
+        'A managed Solana source is not configured on this account.',
+        { vm: 'solana' },
+      )
+    }
+    return branch.owner.account
+  }
+
+  const solanaTransfer = (
+    ctx: AccountInvocationContext<Compat>,
+    transaction: Transaction,
+  ): SolanaTransferInput => {
+    assertSupportedTransaction(transaction, publicConfig)
+    if (
+      ctx.sdk.environment !== 'development' ||
+      ctx.sdk.orchestratorUrl !== capturedSolanaEndpoint
+    ) {
+      throw new ManagedSolanaAccountNotSupportedError(
+        'Managed Solana execution remains bound to the development environment and endpoint captured when the account was created.',
+      )
+    }
+    if (!isSolanaOrigin(transaction)) {
+      throw new InvalidSolanaTransactionArtifactError(
+        'the transaction is not a Solana-origin transfer',
+      )
+    }
+    const accountAddress = capturedSolanaIdentity
+    if (!accountAddress || !capturedSolanaAccountType) {
+      throw new UnsupportedAccountCapabilityError(
+        'A managed Solana source is not configured on this account.',
+        { vm: 'solana' },
+      )
+    }
+    const location = locateSwig(asSwigNamespace('dev-v1'), accountAddress)
+    const common = {
+      accountAddress,
+      accountType: capturedSolanaAccountType,
+      authority: solanaOwner().address,
+      walletAddress: location.wallet,
+      swigAddress: location.swig,
+      namespace: 'dev-v1',
+      endpoint: ctx.sdk.orchestratorUrl,
+      ...(transaction.appFees ? { appFees: transaction.appFees } : {}),
+      ...(transaction.protocolFees
+        ? { protocolFees: transaction.protocolFees }
+        : {}),
+      ...(() => {
+        const sponsorSettings = toSponsorSettings(transaction.sponsored)
+        return sponsorSettings ? { sponsorSettings } : {}
+      })(),
+    } satisfies Partial<SolanaTransferInput>
+    if (isCrossChainSolanaOrigin(transaction)) {
+      return {
+        ...common,
+        chain: transaction.sourceChains[0],
+        action: {
+          kind: 'transfer',
+          mint: transaction.sourceTokens[0].address,
+          ...(transaction.tokenRequests[0].amount === undefined
+            ? {}
+            : { amount: transaction.tokenRequests[0].amount }),
+          delivery: {
+            kind: 'cross-chain',
+            chainId: transaction.targetChain.id,
+            token: transaction.tokenRequests[0].address,
+            // Resolved here rather than in `normalizeTransaction` so the
+            // prepare and reconstruct paths agree on the same recipient.
+            recipient: transaction.recipient ?? accountAddress,
+          },
+        },
+      }
+    }
+    if (isSolanaInstructionExecution(transaction)) {
+      return {
+        ...common,
+        chain: transaction.chain,
+        action: {
+          kind: 'instructions',
+          instructions: normalizeSolanaInstructions(transaction.instructions),
+          ...(transaction.addressLookupTables
+            ? { addressLookupTables: transaction.addressLookupTables }
+            : {}),
+        },
+      }
+    }
+    return {
+      ...common,
+      chain: transaction.chain,
+      action: {
+        kind: 'transfer',
+        mint: transaction.tokenRequests[0].address,
+        ...(transaction.tokenRequests[0].amount === undefined
+          ? {}
+          : { amount: transaction.tokenRequests[0].amount }),
+        delivery: { kind: 'same-chain', recipient: transaction.recipient },
+      },
+    }
+  }
+
+  const assertSolanaMetadata = (
+    actual: PreparedTransactionData['execution'],
+    expected: SolanaTransferInput,
+  ) => {
+    const expectedEntries = Object.entries(solanaMetadata(expected))
+    if (
+      !actual ||
+      Object.keys(actual).length !== expectedEntries.length ||
+      expectedEntries.some(
+        ([key, value]) =>
+          (actual as unknown as Record<string, unknown>)[key] !== value,
+      )
+    ) {
+      throw new InvalidSolanaTransactionArtifactError(
+        'the execution binding does not match this account, environment, chain, recipient, or mint',
+      )
+    }
+  }
+
+  const resolveSolanaPrepared = (
+    ctx: AccountInvocationContext<Compat>,
+    prepared: PreparedTransactionData,
+    intentId?: string,
+    explicitQuote?: Quote,
+  ) => {
+    assertPreparedBinding(prepared.request)
+    const transfer = solanaTransfer(ctx, prepared.transaction)
+    assertSolanaMetadata(prepared.execution, transfer)
+    const quote = explicitQuote ?? selectedPublicQuote(prepared, intentId)
+    return workflowsFor(ctx).reconstructSolanaIntent({
+      traceId: prepared.quotes.traceId,
+      transfer,
+      intentInput: prepared.intentInput,
+      quote: normalizeIntentQuote(quote as OrchestratorQuote),
+      quotes: prepared.quotes.all.map((candidate) =>
+        normalizeIntentQuote(candidate as OrchestratorQuote),
+      ),
+    })
+  }
 
   const resolvePrepared = (
     ctx: AccountInvocationContext<Compat>,
     prepared: PreparedTransactionData,
     intentId?: string,
   ): Promise<PreparedIntent<Compat>> => {
+    assertSupportedTransaction(prepared.transaction, publicConfig)
+    assertPreparedBinding(prepared.request)
+    if (!isSolanaOrigin(prepared.transaction)) {
+      // Before any account state is read: a quote this SDK cannot sign should
+      // not cost an RPC round trip first.
+      assertSupportedSigningRequests(
+        selectedPublicQuote(prepared, intentId).signingRequests,
+      )
+    }
     const cached = preparedIntents.get(prepared)
     if (cached && !intentId) return Promise.resolve(cached)
     return workflowsFor(ctx).reconstructPreparedIntent(
@@ -522,8 +855,8 @@ export function createAccountFacade(
     )
   }
 
-  const account: RhinestoneAccount = {
-    config: compatibilityConfig as unknown as RhinestoneAccountConfig,
+  const account: ManagedEvmAccount<C> = {
+    config: publicConfig,
     deploy(chain, params) {
       const ctx = context('deploy')
       return workflowsFor(ctx).deploy(ctx, toEvmChainReference(chain.id), {
@@ -551,60 +884,133 @@ export function createAccountFacade(
     },
     async prepareTransaction(transaction) {
       const ctx = context('prepare-intent')
-      // Before the quote, not after: the quote's `signData` registers an agent
+      const initiallyNormalized = normalizeTransaction(
+        transaction,
+        publicConfig,
+      )
+      const normalized =
+        'targetChain' in initiallyNormalized &&
+        initiallyNormalized.targetChain !== undefined &&
+        'kind' in initiallyNormalized.targetChain &&
+        initiallyNormalized.targetChain.kind === 'svm' &&
+        initiallyNormalized.recipient === undefined &&
+        capturedSolanaIdentity
+          ? (Object.freeze({
+              ...initiallyNormalized,
+              recipient: locateSwig(
+                asSwigNamespace('dev-v1'),
+                capturedSolanaIdentity,
+              ).wallet,
+            }) as Transaction)
+          : initiallyNormalized
+      if (isSolanaOrigin(normalized)) {
+        const prepared = await workflowsFor(ctx).prepareSolanaIntent(
+          solanaTransfer(ctx, normalized),
+        )
+        return toPreparedSolanaTransactionData(prepared, normalized)
+      }
+      // Before the quote, not after: the quote's signing requests register an agent
       // derived from the action's bytes, so the action has to be concrete here.
       const hyperCoreAction = await resolveHyperCoreAction({
-        options: transaction.hyperCore,
-        account: account.getAddress(),
+        options: normalized.hyperCore,
+        account: workflowsFor(ctx).getAddress(ctx, referenceChain()),
         ...(ctx.sdk.hyperliquid ? { hyperliquid: ctx.sdk.hyperliquid } : {}),
       })
+      const automaticSources =
+        'targetChain' in normalized &&
+        normalized.targetChain !== undefined &&
+        normalized.sourceChains === undefined
+          ? await workflowsFor(ctx).getEligibleEvmSourceChains(
+              destinationChainReference(normalized.targetChain),
+            )
+          : undefined
+      if (automaticSources && automaticSources.length === 0) {
+        throw new UnsupportedAccountCapabilityError(
+          'No managed EVM source chains are eligible for this destination.',
+        )
+      }
       const prepared = await workflowsFor(ctx).prepareIntent(
         ctx,
-        adaptTransaction(ctx, transaction, hyperCoreAction),
+        adaptTransaction(
+          ctx,
+          normalized,
+          hyperCoreAction,
+          automaticSources?.map(({ id }) => id),
+        ),
       )
-      return toPreparedTransactionData(prepared, transaction, preparedIntents)
+      return toPreparedTransactionData(prepared, normalized, preparedIntents)
     },
     getTransactionMessages(preparedTransaction, options) {
+      assertSupportedTransaction(preparedTransaction.transaction, publicConfig)
+      assertPreparedBinding(preparedTransaction.request)
       const quote = selectedPublicQuote(preparedTransaction, options?.intentId)
-      return {
-        origin: [...quote.signData.origin],
-        destination: quote.signData.destination,
-        ...(quote.signData.targetExecution
-          ? { targetExecution: quote.signData.targetExecution }
-          : {}),
+      if (isSolanaOrigin(preparedTransaction.transaction)) {
+        const ctx = context('get-intent-messages')
+        resolveSolanaPrepared(ctx, preparedTransaction, options?.intentId)
       }
+      return [...quote.signingRequests]
     },
-    signTransaction: ((
+    signTransaction: (async (
       preparedTransaction: PreparedTransactionData,
       options?: QuoteSelection | SignAsOwnerOptions,
     ): Promise<SignedTransactionData | OwnerSignature> => {
       const ctx = context('sign-intent')
       const workflows = workflowsFor(ctx)
+      if (isSolanaOrigin(preparedTransaction.transaction)) {
+        if (options && 'owner' in options) {
+          throw new IndependentSigningNotSupportedError({
+            context: { vm: 'solana' },
+          })
+        }
+        const prepared = resolveSolanaPrepared(
+          ctx,
+          preparedTransaction,
+          options?.intentId,
+        )
+        const signed = await workflows.signSolanaIntent({
+          prepared,
+          owner: solanaOwner(),
+        })
+        return {
+          ...preparedTransaction,
+          quote: toPublicQuote(signed.prepared.quote),
+          proofs: [{ kind: 'personalSign', signature: signed.signature }],
+        }
+      }
       if (options && 'owner' in options) {
         // Independent owner signing is unsupported for smart-session intents;
         // reject before resolving sessions (which would issue an RPC read),
         // matching the legacy fast-fail.
         if (preparedTransaction.transaction.signers?.type === 'session') {
-          return Promise.reject(new IndependentSigningNotSupportedError())
+          throw new IndependentSigningNotSupportedError()
         }
         const signerId = signerIdForOwner(options.owner)
-        return resolvePrepared(ctx, preparedTransaction, options.intentId).then(
-          (internal) =>
-            workflows.signIntentAsOwner(ctx, internal, {
-              signerId,
-              ...(options.validatorId === undefined
-                ? {}
-                : { validatorId: options.validatorId }),
-            }) as unknown as Promise<OwnerSignature>,
+        const internal = await resolvePrepared(
+          ctx,
+          preparedTransaction,
+          options.intentId,
         )
+        return workflows.signIntentAsOwner(ctx, internal, {
+          signerId,
+          ...(options.validatorId === undefined
+            ? {}
+            : { validatorId: options.validatorId }),
+        }) as unknown as Promise<OwnerSignature>
       }
-      return resolvePrepared(ctx, preparedTransaction, options?.intentId)
-        .then((internal) => workflows.signIntent(ctx, internal))
-        .then(({ intent }) =>
-          toSignedTransactionData(preparedTransaction, intent, signedIntents),
-        )
-    }) as unknown as RhinestoneAccount['signTransaction'],
-    async assembleTransaction(preparedTransaction, signatures) {
+      const internal = await resolvePrepared(
+        ctx,
+        preparedTransaction,
+        options?.intentId,
+      )
+      const { intent } = await workflows.signIntent(ctx, internal)
+      return toSignedTransactionData(preparedTransaction, intent, signedIntents)
+    }) as unknown as ManagedEvmAccount<C>['signTransaction'],
+    async assembleTransaction(preparedTransaction, signatures, options) {
+      if (isSolanaOrigin(preparedTransaction.transaction)) {
+        throw new IndependentSigningNotSupportedError({
+          context: { vm: 'solana' },
+        })
+      }
       const ctx = context('assemble-intent')
       const workflows = workflowsFor(ctx)
       const intentIds = [...new Set(signatures.map(({ intentId }) => intentId))]
@@ -620,20 +1026,25 @@ export function createAccountFacade(
         ctx,
         internal,
         signatures as unknown as Parameters<typeof workflows.assembleIntent>[2],
+        options?.proofs ? { proofs: options.proofs } : undefined,
       )
       return toSignedTransactionData(preparedTransaction, signed, signedIntents)
     },
-    async signAuthorizations(preparedTransaction) {
+    async signAuthorizations(preparedTransaction, options) {
+      assertSupportedTransaction(preparedTransaction.transaction, publicConfig)
+      if (isSolanaOrigin(preparedTransaction.transaction)) {
+        throw new UnsupportedAccountCapabilityError(
+          'EIP-7702 authorizations are unavailable for Solana-origin transactions.',
+          { vm: 'solana' },
+        )
+      }
       const ctx = context('sign-authorizations')
-      const intentInput = adaptTransaction(ctx, preparedTransaction.transaction)
-      const chains = authorizationChains(intentInput)
-      const result = await workflowsFor(ctx).signAuthorizations(ctx, {
-        chains,
-        ...(intentInput.eip7702InitSignature
-          ? { eip7702InitSignature: intentInput.eip7702InitSignature }
-          : {}),
-      })
-      return result.authorizations as SignedAuthorizationList
+      const internal = await resolvePrepared(
+        ctx,
+        preparedTransaction,
+        options?.intentId,
+      )
+      return workflowsFor(ctx).signRequestedDelegations(ctx, internal)
     },
     async signMessage(message, chain, signers) {
       const ctx = context('sign-message')
@@ -657,33 +1068,60 @@ export function createAccountFacade(
       })
       return result.signature
     },
-    async signIntent(signData, targetChain, signers) {
+    async signIntent(signingRequests, targetChain, signers) {
       const ctx = context('sign-intent')
-      const result = await workflowsFor(ctx).signIntentFromSignData(ctx, {
-        signData: {
-          origin: signData.origin,
-          destination: signData.destination,
-          ...(signData.targetExecution
-            ? { targetExecution: signData.targetExecution }
-            : {}),
-        },
+      const result = await workflowsFor(ctx).signIntentFromRequests(ctx, {
+        signingRequests,
         targetChain: destinationChainReference(targetChain),
         ...(signers
           ? { signers: adaptSignerSelection(ctx.account, signers) }
           : {}),
       })
-      return {
-        originSignatures:
-          result.originSignatures as SignedIntentData['originSignatures'],
-        destinationSignature: result.destinationSignature,
-        targetExecutionSignature: result.targetExecutionSignature,
-      }
+      return { proofs: [...result.proofs] }
     },
     async submitTransaction(signedTransaction, options) {
+      assertSupportedTransaction(signedTransaction.transaction, publicConfig)
       const ctx = context('submit-intent')
       const workflows = workflowsFor(ctx)
+      if (isSolanaOrigin(signedTransaction.transaction)) {
+        if (options && Object.keys(options).length > 0) {
+          throw new UnsupportedAccountCapabilityError(
+            'Solana submission does not accept submission options.',
+            { vm: 'solana' },
+          )
+        }
+        const solanaProof = signedTransaction.proofs[0]
+        if (
+          signedTransaction.proofs.length !== 1 ||
+          solanaProof?.kind !== 'personalSign'
+        ) {
+          throw new InvalidSolanaTransactionArtifactError(
+            'submission requires exactly one personal-sign spend proof',
+            { intentId: signedTransaction.quote.intentId },
+          )
+        }
+        const prepared = resolveSolanaPrepared(
+          ctx,
+          signedTransaction,
+          signedTransaction.quote.intentId,
+          signedTransaction.quote,
+        )
+        const submitted = await workflows.submitSolanaIntent({
+          prepared,
+          signature: solanaProof.signature,
+        })
+        return {
+          type: 'intent',
+          id: submitted.intentId,
+          traceId: submitted.traceId,
+          ...(submitted.sourceChains
+            ? { sourceChains: [...submitted.sourceChains] }
+            : {}),
+          targetChain: submitted.targetChain,
+        }
+      }
       // Fast path for the same-instance signed object; otherwise (cross-instance
-      // replay or caller-tampered signatures) rebuild from the public shape.
+      // replay or caller-tampered proofs) rebuild from the public shape.
       const cached = signedIntents.get(signedTransaction)
       const base: SignedIntent<Compat> = cached ?? {
         prepared: await resolvePrepared(
@@ -691,19 +1129,11 @@ export function createAccountFacade(
           signedTransaction,
           signedTransaction.quote.intentId,
         ),
-        originSignatures:
-          signedTransaction.originSignatures as SignedIntent<Compat>['originSignatures'],
-        destinationSignature: signedTransaction.destinationSignature,
-        ...(signedTransaction.targetExecutionSignature
-          ? { targetSignature: signedTransaction.targetExecutionSignature }
-          : {}),
+        proofs: signedTransaction.proofs,
         transcript: { planKind: 'intent-full', payloadId: '0x', stages: [] },
       }
       const signed: SignedIntent<Compat> = {
         ...base,
-        ...(options?.authorizations
-          ? { authorizations: options.authorizations }
-          : {}),
         ...(options?.internal_dryRun ? { dryRun: true } : {}),
       }
       const submitted = await workflows.submitIntent(ctx, signed)
@@ -816,14 +1246,7 @@ export function createAccountFacade(
         const ctx = context('wait-for-execution')
         return workflowsFor(ctx)
           .waitForIntentStatus(ctx, result.id)
-          .then((status) => ({
-            traceId: status.traceId,
-            status: status.status as TransactionStatus['status'],
-            accountAddress: status.account,
-            operations: status.operations as TransactionStatus['operations'],
-            ...(status.refunds ? { refunds: [...status.refunds] } : {}),
-            ...(status.hyperCore ? { hyperCore: status.hyperCore } : {}),
-          }))
+          .then(toPublicTransactionStatus)
       }
       const ctx = context('wait-for-execution')
       return workflowsFor(ctx)
@@ -833,11 +1256,28 @@ export function createAccountFacade(
           hash: result.hash,
         })
         .then((status) => status.receipt as UserOperationReceipt)
-    }) as unknown as RhinestoneAccount['waitForExecution'],
-    getAddress() {
+    }) as unknown as ManagedEvmAccount<C>['waitForExecution'],
+    getAddress: ((vm: AccountVm): Address | SolanaAddress => {
+      if (vm === 'solana') {
+        if (
+          publicConfig.solana &&
+          'address' in publicConfig.solana &&
+          publicConfig.solana.address
+        ) {
+          return publicConfig.solana.address
+        }
+        if (capturedSolanaIdentity) {
+          return locateSwig(asSwigNamespace('dev-v1'), capturedSolanaIdentity)
+            .wallet
+        }
+        throw new AccountVmNotConfiguredError('solana')
+      }
+      if (vm !== 'evm' || !publicConfig.evm) {
+        throw new AccountVmNotConfiguredError(String(vm))
+      }
       const ctx = context('get-address')
       return workflowsFor(ctx).getAddress(ctx, referenceChain())
-    },
+    }) as ManagedEvmAccount<C>['getAddress'],
     getPortfolio(onTestnets = false) {
       const ctx = context('get-portfolio')
       return workflowsFor(ctx)
@@ -1016,6 +1456,522 @@ function quoterPinFromSession(
  * authorise. With no session scope there is nothing to narrow against and the
  * explicit filter stands on its own.
  */
+function isSameChainSolanaOrigin(
+  transaction: Transaction,
+): transaction is Extract<Transaction, { chain: SolanaChain }> {
+  return (
+    'chain' in transaction &&
+    typeof transaction.chain === 'object' &&
+    transaction.chain !== null &&
+    'kind' in transaction.chain &&
+    transaction.chain.kind === 'svm'
+  )
+}
+
+function isCrossChainSolanaOrigin(
+  transaction: Transaction,
+): transaction is CrossChainSolanaOriginTransaction {
+  const source = (transaction as { sourceChains?: readonly unknown[] })
+    .sourceChains?.[0]
+  return (
+    typeof source === 'object' &&
+    source !== null &&
+    'kind' in source &&
+    (source as { kind?: unknown }).kind === 'svm'
+  )
+}
+
+function isSolanaInstructionExecution(
+  transaction: Transaction,
+): transaction is SameChainSolanaInstructionsTransaction {
+  return (
+    isSameChainSolanaOrigin(transaction) &&
+    (transaction as { instructions?: unknown }).instructions !== undefined
+  )
+}
+
+function isSolanaOrigin(
+  transaction: Transaction,
+): transaction is
+  | Extract<Transaction, { chain: SolanaChain }>
+  | CrossChainSolanaOriginTransaction {
+  return (
+    isSameChainSolanaOrigin(transaction) ||
+    isCrossChainSolanaOrigin(transaction)
+  )
+}
+
+function assertSolanaObjectKeys(
+  value: unknown,
+  allowed: readonly string[],
+  label: string,
+): asserts value is Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new UnsupportedAccountCapabilityError(
+      `Managed Solana ${label} must be an object.`,
+      { vm: 'solana', field: label },
+    )
+  }
+  const unsupported = Object.keys(value).find((key) => !allowed.includes(key))
+  if (unsupported) {
+    throw new UnsupportedAccountCapabilityError(
+      `Solana-origin transfers do not support \`${label}.${unsupported}\`.`,
+      { vm: 'solana', field: `${label}.${unsupported}` },
+    )
+  }
+}
+
+function assertSupportedSolanaTransaction(
+  input: Record<string, unknown>,
+  config: Readonly<RhinestoneAccountConfig>,
+): void {
+  const runsInstructions = input.instructions !== undefined
+  const allowed = new Set(
+    runsInstructions
+      ? ['chain', 'instructions', 'addressLookupTables', 'sponsored']
+      : [
+          'chain',
+          'tokenRequests',
+          'recipient',
+          'sponsored',
+          'appFees',
+          'protocolFees',
+        ],
+  )
+  const unsupported = Object.keys(input).find((key) => !allowed.has(key))
+  if (unsupported) {
+    throw new UnsupportedAccountCapabilityError(
+      `Solana-origin transfers do not support \`${unsupported}\`.`,
+      { vm: 'solana', field: unsupported },
+    )
+  }
+  if (!config.solana || !('owner' in config.solana)) {
+    throw new UnsupportedAccountCapabilityError(
+      'A managed Solana source is required for Solana-origin transfers.',
+      { vm: 'solana' },
+    )
+  }
+  solanaChainId(input.chain as SolanaChain)
+  if (runsInstructions) {
+    // Shape and limits are enforced by the normalizer, which also produces the
+    // canonical form `normalizeTransaction` stores.
+    normalizeSolanaInstructions(
+      input.instructions as readonly SolanaInstructionInput[],
+    )
+    normalizeSolanaAddressLookupTables(
+      input.addressLookupTables as readonly string[] | undefined,
+    )
+    return
+  }
+  if (!Array.isArray(input.tokenRequests) || input.tokenRequests.length !== 1) {
+    throw new UnsupportedAccountCapabilityError(
+      'Managed Solana transfers require exactly one SPL token request.',
+      { vm: 'solana' },
+    )
+  }
+  const request = input.tokenRequests[0]
+  assertSolanaObjectKeys(request, ['address', 'amount'], 'tokenRequests[0]')
+  if (typeof request.address !== 'string') {
+    throw new UnsupportedAccountCapabilityError(
+      'Managed Solana transfers require one valid SPL mint address.',
+      { vm: 'solana' },
+    )
+  }
+  try {
+    solanaAddress(request.address)
+  } catch {
+    throw new UnsupportedAccountCapabilityError(
+      'Managed Solana transfers require one valid SPL mint address.',
+      { vm: 'solana' },
+    )
+  }
+  if (
+    request.amount !== undefined &&
+    (typeof request.amount !== 'bigint' || request.amount <= 0n)
+  ) {
+    throw new UnsupportedAccountCapabilityError(
+      'A Solana token amount must be a positive bigint when provided.',
+      { vm: 'solana' },
+    )
+  }
+  if (input.appFees !== undefined) {
+    assertSolanaObjectKeys(input.appFees, ['feeBps'], 'appFees')
+  }
+  if (input.protocolFees !== undefined) {
+    assertSolanaObjectKeys(input.protocolFees, ['feeBps'], 'protocolFees')
+  }
+  if (typeof input.recipient !== 'string') {
+    throw new UnsupportedAccountCapabilityError(
+      'Managed Solana transfers require an explicit recipient wallet.',
+      { vm: 'solana' },
+    )
+  }
+  try {
+    solanaAddress(input.recipient)
+  } catch {
+    throw new UnsupportedAccountCapabilityError(
+      'Managed Solana transfers require a valid recipient wallet.',
+      { vm: 'solana' },
+    )
+  }
+}
+
+function assertSupportedSolanaOriginDelivery(
+  input: Record<string, unknown>,
+  config: Readonly<RhinestoneAccountConfig>,
+): void {
+  const allowed = new Set([
+    'sourceChains',
+    'sourceTokens',
+    'targetChain',
+    'tokenRequests',
+    'recipient',
+    'sponsored',
+    'appFees',
+    'protocolFees',
+  ])
+  const unsupported = Object.keys(input).find((key) => !allowed.has(key))
+  if (unsupported) {
+    throw new UnsupportedAccountCapabilityError(
+      `Solana-origin transfers do not support \`${unsupported}\`.`,
+      { vm: 'solana', field: unsupported },
+    )
+  }
+  if (!config.solana || !('owner' in config.solana)) {
+    throw new UnsupportedAccountCapabilityError(
+      'A managed Solana source is required for Solana-origin transfers.',
+      { vm: 'solana' },
+    )
+  }
+  const sources = input.sourceChains as readonly unknown[]
+  if (sources.length !== 1) {
+    throw new UnsupportedAccountCapabilityError(
+      'A Solana-origin delivery spends exactly one Solana cluster.',
+      { vm: 'solana', field: 'sourceChains' },
+    )
+  }
+  solanaChainId(sources[0] as SolanaChain)
+  if (!Array.isArray(input.sourceTokens) || input.sourceTokens.length !== 1) {
+    throw new UnsupportedAccountCapabilityError(
+      'A Solana-origin delivery requires exactly one source SPL mint.',
+      { vm: 'solana', field: 'sourceTokens' },
+    )
+  }
+  const sourceToken = input.sourceTokens[0]
+  assertSolanaObjectKeys(sourceToken, ['address'], 'sourceTokens[0]')
+  try {
+    solanaAddress(sourceToken.address as string)
+  } catch {
+    throw new UnsupportedAccountCapabilityError(
+      'A Solana-origin delivery requires one valid SPL mint address.',
+      { vm: 'solana', field: 'sourceTokens[0].address' },
+    )
+  }
+  const target = input.targetChain as Record<string, unknown> | undefined
+  if (
+    !target ||
+    typeof target !== 'object' ||
+    'kind' in target ||
+    'caip2' in target ||
+    typeof target.id !== 'number' ||
+    !Number.isSafeInteger(target.id) ||
+    target.id < 0 ||
+    !formatCaip2(target.id).startsWith('eip155:')
+  ) {
+    throw new UnsupportedAccountCapabilityError(
+      'A Solana-origin delivery requires a viem EVM destination chain.',
+      { vm: 'solana', field: 'targetChain' },
+    )
+  }
+  if (!Array.isArray(input.tokenRequests) || input.tokenRequests.length !== 1) {
+    throw new UnsupportedAccountCapabilityError(
+      'A Solana-origin delivery requires exactly one destination token request.',
+      { vm: 'solana', field: 'tokenRequests' },
+    )
+  }
+  const request = input.tokenRequests[0]
+  assertSolanaObjectKeys(request, ['address', 'amount'], 'tokenRequests[0]')
+  if (typeof request.address !== 'string' || !isAddress(request.address)) {
+    throw new UnsupportedAccountCapabilityError(
+      'A Solana-origin delivery requires an EVM destination token address.',
+      { vm: 'solana', field: 'tokenRequests[0].address' },
+    )
+  }
+  if (
+    request.amount !== undefined &&
+    (typeof request.amount !== 'bigint' || request.amount <= 0n)
+  ) {
+    throw new UnsupportedAccountCapabilityError(
+      'A delivery amount must be a positive bigint when provided.',
+      { vm: 'solana', field: 'tokenRequests[0].amount' },
+    )
+  }
+  if (
+    input.recipient !== undefined &&
+    (typeof input.recipient !== 'string' || !isAddress(input.recipient))
+  ) {
+    throw new UnsupportedAccountCapabilityError(
+      'A Solana-origin delivery recipient must be an EVM address.',
+      { vm: 'solana', field: 'recipient' },
+    )
+  }
+  if (input.appFees !== undefined) {
+    assertSolanaObjectKeys(input.appFees, ['feeBps'], 'appFees')
+  }
+  if (input.protocolFees !== undefined) {
+    assertSolanaObjectKeys(input.protocolFees, ['feeBps'], 'protocolFees')
+  }
+}
+
+function assertSupportedTransaction(
+  transaction: Transaction,
+  config: Readonly<RhinestoneAccountConfig>,
+): void {
+  const input = transaction as unknown as Record<string, unknown>
+  if (isCrossChainSolanaOrigin(transaction)) {
+    assertSupportedSolanaOriginDelivery(input, config)
+    return
+  }
+  const hasChain = Object.hasOwn(input, 'chain') && input.chain !== undefined
+  const hasTarget =
+    Object.hasOwn(input, 'targetChain') && input.targetChain !== undefined
+  if (hasChain === hasTarget) {
+    throw new UnsupportedAccountCapabilityError(
+      'A transaction must set exactly one of `chain` or `targetChain`.',
+    )
+  }
+  if (hasChain && typeof input.chain === 'object' && input.chain !== null) {
+    const chain = input.chain as Record<string, unknown>
+    if (chain.kind === 'svm') {
+      assertSupportedSolanaTransaction(input, config)
+      return
+    }
+  }
+  if (hasTarget && typeof input.targetChain === 'object' && input.targetChain) {
+    const target = input.targetChain as Record<string, unknown>
+    if (
+      !('kind' in target || 'caip2' in target) &&
+      (typeof target.id !== 'number' ||
+        !Number.isSafeInteger(target.id) ||
+        target.id < 0 ||
+        !formatCaip2(target.id).startsWith('eip155:'))
+    ) {
+      throw new UnsupportedAccountCapabilityError(
+        'A viem EVM destination must use an eip155 chain ID.',
+      )
+    }
+    if (
+      ('kind' in target || 'caip2' in target) &&
+      !(
+        (target.kind === 'svm' &&
+          typeof target.caip2 === 'string' &&
+          target.caip2.startsWith('solana:')) ||
+        (target.kind === 'tvm' &&
+          typeof target.caip2 === 'string' &&
+          target.caip2.startsWith('tron:')) ||
+        (target.kind === 'stellar' &&
+          typeof target.caip2 === 'string' &&
+          target.caip2.startsWith('stellar:')) ||
+        (target.kind === 'hypercore' &&
+          (target.caip2 === 'hypercore:spot' ||
+            target.caip2 === 'hypercore:perp'))
+      )
+    ) {
+      throw new UnsupportedAccountCapabilityError(
+        'The destination chain descriptor has mismatched VM and CAIP-2 fields.',
+      )
+    }
+    if (target.kind === 'svm') {
+      if (
+        !Array.isArray(input.tokenRequests) ||
+        input.tokenRequests.length === 0
+      ) {
+        throw new UnsupportedAccountCapabilityError(
+          'Solana destinations require at least one token request.',
+          { vm: 'solana' },
+        )
+      }
+      for (const request of input.tokenRequests as readonly {
+        address?: unknown
+        amount?: unknown
+      }[]) {
+        if (typeof request.address !== 'string') {
+          throw new UnsupportedAccountCapabilityError(
+            'Solana token requests require a Solana address.',
+          )
+        }
+        solanaAddress(request.address)
+        if (
+          request.amount !== undefined &&
+          (typeof request.amount !== 'bigint' || request.amount <= 0n)
+        ) {
+          throw new UnsupportedAccountCapabilityError(
+            'Solana token request amounts must be positive.',
+          )
+        }
+      }
+      // Anything other than a Solana address string would slip past both
+      // recipient defaults and then be dropped downstream, quoting a delivery
+      // with no receiver at all.
+      if (input.recipient !== undefined) {
+        if (typeof input.recipient !== 'string') {
+          throw new UnsupportedAccountCapabilityError(
+            'A Solana delivery recipient must be a Solana address.',
+            { vm: 'solana' },
+          )
+        }
+        solanaAddress(input.recipient)
+      }
+      if (
+        input.calls !== undefined ||
+        input.instructions !== undefined ||
+        input.hyperCore !== undefined
+      ) {
+        throw new UnsupportedAccountCapabilityError(
+          'Solana destinations support token delivery only; calls, custom instructions and HyperCore actions are unavailable.',
+          { vm: 'solana' },
+        )
+      }
+      if (input.recipient === undefined && !config.solana) {
+        throw new AccountVmNotConfiguredError('solana')
+      }
+    }
+  }
+  if (input.sourceChains !== undefined) {
+    if (!Array.isArray(input.sourceChains)) {
+      throw new UnsupportedAccountCapabilityError(
+        '`sourceChains` must be an array of managed source chains.',
+      )
+    }
+    if (input.sourceChains.length === 0) {
+      throw new UnsupportedAccountCapabilityError(
+        '`sourceChains` must contain at least one managed source.',
+      )
+    }
+    const ids = input.sourceChains.map((value) =>
+      typeof value === 'object' && value
+        ? (value as { id?: unknown }).id
+        : null,
+    )
+    const invalidSource = input.sourceChains.some((value) => {
+      if (!value || typeof value !== 'object') return true
+      const source = value as Record<string, unknown>
+      return (
+        typeof source.id !== 'number' ||
+        !Number.isSafeInteger(source.id) ||
+        source.id < 0 ||
+        Object.hasOwn(source, 'kind') ||
+        Object.hasOwn(source, 'caip2') ||
+        !formatCaip2(source.id).startsWith('eip155:')
+      )
+    })
+    if (invalidSource) {
+      throw new UnsupportedAccountCapabilityError(
+        'Only viem EVM chains from the managed EVM account can be used as sources.',
+      )
+    }
+    if (new Set(ids).size !== ids.length) {
+      throw new UnsupportedAccountCapabilityError(
+        '`sourceChains` cannot contain duplicate chains.',
+      )
+    }
+  }
+  const calls = input.calls
+  if (input.recipient !== undefined) {
+    if (Array.isArray(calls) && calls.length > 0) {
+      throw new UnsupportedAccountCapabilityError(
+        'An explicit delivery recipient cannot execute destination calls. Omit `recipient` to execute with the invoking managed EVM account.',
+      )
+    }
+    if (
+      !Array.isArray(input.tokenRequests) ||
+      input.tokenRequests.length === 0
+    ) {
+      throw new UnsupportedAccountCapabilityError(
+        'An explicit delivery recipient requires at least one token request.',
+      )
+    }
+  }
+}
+
+function freezeSponsorship(sponsored: Sponsorship | undefined): {
+  sponsored?: Sponsorship
+} {
+  if (sponsored === undefined || typeof sponsored === 'boolean') return {}
+  return { sponsored: Object.freeze({ ...sponsored }) }
+}
+
+export function normalizeTransaction(
+  transaction: Transaction,
+  config: Readonly<RhinestoneAccountConfig>,
+): Transaction {
+  assertSupportedTransaction(transaction, config)
+  if (isCrossChainSolanaOrigin(transaction)) {
+    return Object.freeze({
+      ...transaction,
+      sourceChains: [
+        Object.freeze({ ...transaction.sourceChains[0] }),
+      ] as const,
+      sourceTokens: [
+        Object.freeze({ ...transaction.sourceTokens[0] }),
+      ] as const,
+      tokenRequests: [
+        Object.freeze({ ...transaction.tokenRequests[0] }),
+      ] as const,
+      ...(transaction.appFees
+        ? { appFees: Object.freeze({ ...transaction.appFees }) }
+        : {}),
+      ...(transaction.protocolFees
+        ? { protocolFees: Object.freeze({ ...transaction.protocolFees }) }
+        : {}),
+      ...freezeSponsorship(transaction.sponsored),
+    }) as Transaction
+  }
+  if (isSolanaInstructionExecution(transaction)) {
+    const lookupTables = normalizeSolanaAddressLookupTables(
+      transaction.addressLookupTables,
+    )
+    const { addressLookupTables: _tables, ...rest } = transaction
+    return Object.freeze({
+      ...rest,
+      chain: Object.freeze({ ...transaction.chain }),
+      instructions: normalizeSolanaInstructions(transaction.instructions),
+      ...(lookupTables ? { addressLookupTables: lookupTables } : {}),
+      ...freezeSponsorship(transaction.sponsored),
+    }) as Transaction
+  }
+  if (isSameChainSolanaOrigin(transaction)) {
+    const request = transaction.tokenRequests[0]
+    return Object.freeze({
+      ...transaction,
+      chain: Object.freeze({ ...transaction.chain }),
+      tokenRequests: [Object.freeze({ ...request })],
+      ...(transaction.appFees
+        ? { appFees: Object.freeze({ ...transaction.appFees }) }
+        : {}),
+      ...(transaction.protocolFees
+        ? { protocolFees: Object.freeze({ ...transaction.protocolFees }) }
+        : {}),
+      ...freezeSponsorship(transaction.sponsored),
+    }) as Transaction
+  }
+  if (
+    'targetChain' in transaction &&
+    transaction.targetChain !== undefined &&
+    'kind' in transaction.targetChain &&
+    transaction.targetChain.kind === 'svm' &&
+    transaction.recipient === undefined &&
+    config.solana &&
+    'address' in config.solana
+  ) {
+    return Object.freeze({
+      ...transaction,
+      recipient: config.solana.address,
+    }) as Transaction
+  }
+  return Object.freeze({ ...transaction }) as Transaction
+}
+
 function narrowQuoterPin(
   derived: SwapQuoterFilter | undefined,
   explicit: SwapQuoterFilter | undefined,
@@ -1030,23 +1986,66 @@ function narrowQuoterPin(
   return { include: narrowed }
 }
 
+/**
+ * Translates the public `sponsored` input into the wire's `sponsorSettings`.
+ * Shared by both VMs so the two cannot drift.
+ */
+function toSponsorSettings(
+  sponsored: Sponsorship | undefined,
+): NormalizedIntentOptions['sponsorSettings'] {
+  if (!sponsored) return undefined
+  if (typeof sponsored === 'boolean') {
+    return {
+      gas: sponsored,
+      bridgeFees: sponsored,
+      swapFees: sponsored,
+      protocolFees: sponsored,
+    }
+  }
+  return {
+    gas: sponsored.gas,
+    bridgeFees: sponsored.bridging,
+    swapFees: sponsored.swaps,
+    protocolFees: sponsored.protocolFees ?? false,
+    // Omitted rather than sent false when unset: the field rides the
+    // server-signature surface, so a key that is present-but-false is not the
+    // same bytes as absent.
+    ...(sponsored.swapValue ? { swapValue: true } : {}),
+  }
+}
+
 export function adaptTransaction(
   context: AccountInvocationContext<Compat>,
   transaction: Transaction,
   hyperCoreAction?: HyperCoreAction,
+  automaticSourceChainIds?: readonly number[],
 ): IntentInput {
+  const nonEvmOrigin =
+    'chain' in transaction && transaction.chain && 'kind' in transaction.chain
+      ? transaction.chain.kind
+      : (
+          transaction as { sourceChains?: readonly (Chain | SolanaChain)[] }
+        ).sourceChains?.find((chain) => 'kind' in chain)?.kind
+  if (nonEvmOrigin) {
+    throw new UnsupportedAccountCapabilityError(
+      'Non-EVM origin execution is not supported yet. Use a viem EVM chain as the managed source.',
+      { vm: nonEvmOrigin },
+    )
+  }
   const destination =
     'chain' in transaction
-      ? getChainReference(transaction.chain.id)
-      : 'kind' in transaction.targetChain
+      ? getChainReference((transaction.chain as Chain).id)
+      : 'kind' in transaction.targetChain!
         ? parseCaip2(transaction.targetChain.caip2)
-        : getChainReference(transaction.targetChain.id)
+        : getChainReference(transaction.targetChain!.id)
   const destinationChainId =
     destination.kind === 'evm' ? destination.id : undefined
   const sourceChains =
     'chain' in transaction
-      ? [getChainReference(transaction.chain.id)]
-      : transaction.sourceChains?.map((chain) => getChainReference(chain.id))
+      ? [getChainReference((transaction.chain as Chain).id)]
+      : (transaction.sourceChains?.map((chain) =>
+          getChainReference((chain as Chain).id),
+        ) ?? automaticSourceChainIds?.map(getChainReference))
   const evmSources = sourceChains?.flatMap((chain) =>
     chain.kind === 'evm' ? [chain] : [],
   )
@@ -1096,24 +2095,10 @@ export function adaptTransaction(
       ...('chain' in transaction && transaction.customDeadline !== undefined
         ? { customDeadline: transaction.customDeadline }
         : {}),
-      ...(transaction.sponsored
-        ? {
-            sponsorSettings:
-              typeof transaction.sponsored === 'boolean'
-                ? {
-                    gas: transaction.sponsored,
-                    bridgeFees: transaction.sponsored,
-                    swapFees: transaction.sponsored,
-                    protocolFees: transaction.sponsored,
-                  }
-                : {
-                    gas: transaction.sponsored.gas,
-                    bridgeFees: transaction.sponsored.bridging,
-                    swapFees: transaction.sponsored.swaps,
-                    protocolFees: transaction.sponsored.protocolFees ?? false,
-                  },
-          }
-        : {}),
+      ...(() => {
+        const sponsorSettings = toSponsorSettings(transaction.sponsored)
+        return sponsorSettings ? { sponsorSettings } : {}
+      })(),
       ...(transaction.settlementLayers
         ? { settlementLayers: transaction.settlementLayers }
         : {}),
@@ -1168,7 +2153,7 @@ export function adaptTransaction(
 
 function adaptRecipient(
   context: AccountInvocationContext<Compat>,
-  recipient: RhinestoneAccountConfig | string,
+  recipient: EvmAccountConfig | string,
   destination: IntentInput['destination'],
   eip7702InitSignature: Hex | undefined,
   setupOverride:
@@ -1176,7 +2161,7 @@ function adaptRecipient(
     | undefined,
 ): NonNullable<IntentInput['recipient']> {
   if (typeof recipient === 'string') {
-    return projectIntentRecipient(recipient, destination)
+    return projectIntentRecipient(recipient)
   }
   if (destination.kind !== 'evm') {
     throw new Error('Smart-account recipients require an EVM destination')
@@ -1185,15 +2170,17 @@ function adaptRecipient(
     context.sdk,
     toAccountConstructionInput(recipient),
   )
-  return projectIntentAccount({
-    runtime: createStaticAccountRuntime(resolved, destination, false),
-    ...(setupOverride ? { setupOverride } : {}),
-    ...(eip7702InitSignature ? { eip7702InitSignature } : {}),
-  })
+  return asIntentRecipient(
+    projectIntentAccount({
+      runtime: createStaticAccountRuntime(resolved, destination, false),
+      ...(setupOverride ? { setupOverride } : {}),
+      ...(eip7702InitSignature ? { eip7702InitSignature } : {}),
+    }),
+  )
 }
 
 function toAccountConstructionInput(
-  config: RhinestoneAccountConfig,
+  config: EvmAccountConfig,
 ): AccountConstructionInput {
   return {
     ...(config.account ? { account: config.account } : {}),
@@ -1204,18 +2191,6 @@ function toAccountConstructionInput(
     ...(config.modules ? { modules: config.modules } : {}),
     ...(config.initData ? { initData: config.initData } : {}),
   }
-}
-
-export function authorizationChains(
-  input: IntentInput,
-): readonly IntentInput['destination'][] {
-  const chains = [...(input.sourceChains ?? []), input.destination]
-  const seen = new Set<string>()
-  return chains.filter((chain) => {
-    if (seen.has(chain.caip2)) return false
-    seen.add(chain.caip2)
-    return true
-  })
 }
 
 function adaptCall(call: CallInput, chainId: number | undefined) {
@@ -1274,8 +2249,14 @@ function adaptSessionSelection(
       chain.kind === 'evm' && chain.id !== undefined ? [chain.id] : [],
     ),
   )
-  if ('chain' in transaction) chainIds.add(transaction.chain.id)
-  if ('targetChain' in transaction && 'id' in transaction.targetChain) {
+  if ('chain' in transaction && !('kind' in transaction.chain)) {
+    chainIds.add(transaction.chain.id)
+  }
+  if (
+    'targetChain' in transaction &&
+    transaction.targetChain &&
+    'id' in transaction.targetChain
+  ) {
     chainIds.add(transaction.targetChain.id)
   }
   return Object.fromEntries(
@@ -1292,8 +2273,27 @@ function adaptSessionSelection(
 function adaptSourceAssets(
   sourceAssets: SourceAssetInput | undefined,
   chainIds: readonly number[] | undefined,
-): OrchestratorAccountAccessList | undefined {
+): NormalizedAccessList | undefined {
   if (!sourceAssets) return chainIds ? { chainIds } : undefined
+  // An explicit but empty selection fails closed, and it fails here: sent on,
+  // it is a wire-schema rejection naming fields the caller never wrote.
+  if (
+    (Array.isArray(sourceAssets) ? sourceAssets : Object.keys(sourceAssets))
+      .length === 0
+  ) {
+    throw new UnsupportedAccountCapabilityError(
+      '`sourceAssets` is empty, so the intent has nothing to spend from. Name at least one source asset, or omit `sourceAssets` to use every eligible source.',
+    )
+  }
+  const eligible = chainIds ? new Set(chainIds) : undefined
+  const assertEligible = (chainId: number) => {
+    if (eligible && !eligible.has(chainId)) {
+      throw new UnsupportedAccountCapabilityError(
+        `Source assets reference chain ${chainId}, which is outside the eligible source scope.`,
+        { chainId },
+      )
+    }
+  }
   if (Array.isArray(sourceAssets)) {
     if (sourceAssets.length > 0 && typeof sourceAssets[0] === 'object') {
       const chainTokens: Record<number, Address[]> = {}
@@ -1303,6 +2303,7 @@ function adaptSourceAssets(
         address: Address | string
         amount?: bigint
       }[]) {
+        assertEligible(item.chain.id)
         const token = normalizeTokenAddress(
           item.address,
           item.chain.id,
@@ -1328,7 +2329,14 @@ function adaptSourceAssets(
   }
   // ChainTokenMap: validate every per-chain list too, so symbols can't slip
   // through this input the way they can't through tokenRequests / ExactInputConfig.
-  for (const tokens of Object.values(sourceAssets)) {
+  for (const [chainId, tokens] of Object.entries(sourceAssets)) {
+    assertEligible(Number(chainId))
+    if (tokens.length === 0) {
+      throw new UnsupportedAccountCapabilityError(
+        `\`sourceAssets\` names chain ${chainId} with no tokens, so that chain has nothing to spend. Name at least one token, or drop the chain.`,
+        { chainId: Number(chainId) },
+      )
+    }
     validateTokenAddresses(tokens)
   }
   return { chainTokens: sourceAssets }

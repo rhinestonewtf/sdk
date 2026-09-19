@@ -33,8 +33,10 @@ describe.sequential('SDK integration preclaim-ops', () => {
   test('injects the session-enable op before user source calls', async () => {
     const sdk = createIntegrationSDK()
     const account = await sdk.createAccount({
-      owners: { type: 'ecdsa', accounts: [createOwner()] },
-      sessions: { enabled: true },
+      evm: {
+        owners: { type: 'ecdsa', accounts: [createOwner()] },
+        sessions: { enabled: true },
+      },
     })
     const session = createScopedSession({
       chain: sourceChain,
@@ -74,7 +76,9 @@ describe.sequential('SDK integration preclaim-ops', () => {
   test('attaches no preclaim ops to a plain owner intent', async () => {
     const sdk = createIntegrationSDK()
     const account = await sdk.createAccount({
-      owners: { type: 'ecdsa', accounts: [createOwner()] },
+      evm: {
+        owners: { type: 'ecdsa', accounts: [createOwner()] },
+      },
     })
 
     const execution = await executeIntent({
@@ -102,9 +106,13 @@ describe.sequential('SDK integration preclaim-ops', () => {
   test('executes a user source call on-chain', async () => {
     const sdk = createIntegrationSDK()
     const account = await sdk.createAccount({
-      owners: { type: 'ecdsa', accounts: [createOwner()] },
+      evm: {
+        owners: { type: 'ecdsa', accounts: [createOwner()] },
+      },
     })
-    await ensureFunded(account.getAddress(), sourceChain, { usdc: 1_000_000n })
+    await ensureFunded(account.getAddress('evm'), sourceChain, {
+      usdc: 1_000_000n,
+    })
     await waitForOrchestratorUsdc(account, sourceChain, 1_000_000n)
 
     const recipient = createOwner().address

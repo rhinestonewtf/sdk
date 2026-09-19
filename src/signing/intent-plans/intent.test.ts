@@ -124,41 +124,73 @@ function context(
   }
 }
 
+type Eip712Request = Extract<
+  IntentSigningInput['requests'][number],
+  { kind: 'eip712' }
+>
+
+function eip712(
+  request: IntentSigningInput['requests'][number],
+): Eip712Request {
+  if (request.kind !== 'eip712') throw new Error('Expected an EIP-712 request')
+  return request
+}
+
+/** Turns a reused slot into one that has to be signed in its own right. */
+function withoutReuse(
+  request: IntentSigningInput['requests'][number],
+): Eip712Request {
+  const { reuse: _reuse, ...rest } = eip712(request)
+  return rest
+}
+
 function ownerIntent(): IntentSigningInput {
   const data = typedData(chain.id)
+  const payload = { id: hashTypedData(data), chain, typedData: data }
   return {
     id: intentId,
     preparedSignatureMode: 'default',
     configuredTopology: topology,
     effectiveSelection: selection,
-    origins: [
+    requests: [
       {
-        id: hashTypedData(data),
-        chain,
-        role: 'origin',
-        typedData: data,
-        usage: 'intent-origin',
+        kind: 'eip712',
+        index: 0,
+        purpose: 'originAuthorization',
+        artifactId: 'request-0',
+        signatureFormat: 'account',
+        payload: { ...payload, usage: 'intent-origin' },
+        shape: 'hex',
+        exposedForIndependentSigning: true,
+      },
+      // The destination leg authorises the same payload under the same
+      // authority, so its slot is satisfiable by the origin signature — it is
+      // still its own slot in the proof vector.
+      {
+        kind: 'eip712',
+        index: 1,
+        purpose: 'destinationAuthorization',
+        artifactId: 'request-1',
+        signatureFormat: 'account',
+        payload: { ...payload, usage: 'intent-destination' },
+        shape: 'hex',
+        reuse: { artifactId: 'request-0', selection: 'whole' },
+        exposedForIndependentSigning: false,
       },
     ],
-    destination: {
-      mode: 'reuse-origin',
-      artifactId: 'destination',
-      originArtifactId: 'origin',
-      selection: 'whole',
-    },
     artifacts: [
       {
-        id: 'origin',
+        id: 'request-0',
         usage: 'intent-origin',
-        payloadId: hashTypedData(data),
-        cardinality: 'per-origin',
+        payloadId: payload.id,
+        cardinality: 'one',
         shape: 'hex',
         exposedForIndependentSigning: true,
       },
       {
-        id: 'destination',
+        id: 'request-1',
         usage: 'intent-destination',
-        payloadId: hashTypedData(data),
+        payloadId: payload.id,
         cardinality: 'one',
         shape: 'hex',
         exposedForIndependentSigning: false,
@@ -169,23 +201,24 @@ function ownerIntent(): IntentSigningInput {
 
 function ownerPlanInput(): IntentSigningPlanCreationInput {
   const intent = ownerIntent()
-  const payloadId = intent.origins[0].id
+  const request = eip712(intent.requests[0])
+  const payloadId = request.payload.id
   return {
     intent,
     payloads: {
       [payloadId]: {
         kind: 'typed-data',
-        typedData: intent.origins[0].typedData,
+        typedData: request.payload.typedData,
       },
     },
     stages: [
       {
-        id: 'origin',
-        checkpoint: { kind: 'none', id: 'origin-no-read' },
+        id: 'request-0',
+        checkpoint: { kind: 'none', id: 'request-0:none' },
         priorOutputs: [],
         tasks: [
           {
-            id: 'origin-owner',
+            id: 'request-0-owner',
             signer: { id: 'owner', kind: 'ecdsa' },
             role: 'owner',
             chain,
@@ -200,16 +233,16 @@ function ownerPlanInput(): IntentSigningPlanCreationInput {
         ],
         schedule: [
           {
-            id: 'origin-prompt',
+            id: 'request-0-prompt',
             execution: 'parallel',
-            taskIds: ['origin-owner'],
+            taskIds: ['request-0-owner'],
           },
         ],
         artifacts: [
           {
-            id: 'origin',
+            id: 'request-0',
             usage: 'intent-origin',
-            input: { kind: 'task-results', taskIds: ['origin-owner'] },
+            input: { kind: 'task-results', taskIds: ['request-0-owner'] },
             validatorCodec: codec,
             erc7739: { kind: 'none' },
             accountEnvelope: { kind: 'nexus', validator },
@@ -218,21 +251,21 @@ function ownerPlanInput(): IntentSigningPlanCreationInput {
         ],
       },
       {
-        id: 'destination',
-        checkpoint: { kind: 'none', id: 'destination-no-read' },
+        id: 'request-1',
+        checkpoint: { kind: 'none', id: 'request-1:none' },
         priorOutputs: [
-          { stageId: 'origin', outputId: 'origin', selection: 'whole' },
+          { stageId: 'request-0', outputId: 'request-0', selection: 'whole' },
         ],
         tasks: [],
         schedule: [],
         artifacts: [
           {
-            id: 'destination',
+            id: 'request-1',
             usage: 'intent-destination',
             input: {
               kind: 'reuse-artifact',
-              stageId: 'origin',
-              artifactId: 'origin',
+              stageId: 'request-0',
+              artifactId: 'request-0',
               selection: 'whole',
             },
             validatorCodec: { kind: 'none' },
@@ -255,20 +288,20 @@ describe('intent signing plans', () => {
       context: signingContext,
       checkpoints: { read: vi.fn() },
     })
-    const fullSignature = full.stages[0].outputs.origin
-    expect(full.stages[1].outputs.destination).toBe(fullSignature)
+    const fullSignature = full.stages[0].outputs['request-0']
+    expect(full.stages[1].outputs['request-1']).toBe(fullSignature)
 
     const artifact = createIntentSigningPlan(planInput).stages[0].artifacts[0]
     const independent = assembleIndependentIntentArtifact({
       intentId,
-      originIndex: 0,
-      originCount: 1,
+      slotIndex: 0,
+      slotCount: 1,
       signatures: [
         {
           intentId,
           kind: 'ecdsa',
           signer: owner,
-          origin: [`0x${'55'.repeat(64)}1f`],
+          slots: [`0x${'55'.repeat(64)}1f`],
         },
       ],
       owners: [{ ownerId: 'owner/a', identity: owner, kind: 'ecdsa' }],
@@ -347,21 +380,29 @@ describe('intent signing plans', () => {
         signerIds: ['owner', 'passkey'],
         threshold: 2,
       },
-      origins: [
+      requests: [
         {
-          id: payloadId,
-          chain,
-          role: 'origin',
-          typedData: data,
-          usage: 'intent-origin',
+          kind: 'eip712',
+          index: 0,
+          purpose: 'originAuthorization',
+          artifactId: 'request-0',
+          signatureFormat: 'account',
+          payload: {
+            id: payloadId,
+            chain,
+            typedData: data,
+            usage: 'intent-origin',
+          },
+          shape: 'hex',
+          exposedForIndependentSigning: true,
         },
       ],
       artifacts: [
         {
-          id: 'origin',
+          id: 'request-0',
           usage: 'intent-origin',
           payloadId,
-          cardinality: 'per-origin',
+          cardinality: 'one',
           shape: 'hex',
           exposedForIndependentSigning: true,
         },
@@ -372,7 +413,7 @@ describe('intent signing plans', () => {
       payloads: { [payloadId]: { kind: 'typed-data', typedData: data } },
       stages: [
         {
-          id: 'origin',
+          id: 'request-0',
           checkpoint: { kind: 'none', id: 'none' },
           priorOutputs: [],
           tasks: [
@@ -414,7 +455,7 @@ describe('intent signing plans', () => {
           ],
           artifacts: [
             {
-              id: 'origin',
+              id: 'request-0',
               usage: 'intent-origin',
               input: { kind: 'task-results', taskIds: ['ecdsa', 'passkey'] },
               validatorCodec: nestedCodec,
@@ -440,8 +481,8 @@ describe('intent signing plans', () => {
     const artifact = createIntentSigningPlan(planInput).stages[0].artifacts[0]
     const independent = assembleIndependentIntentArtifact({
       intentId,
-      originIndex: 0,
-      originCount: 1,
+      slotIndex: 0,
+      slotCount: 1,
       signatures: [
         {
           intentId,
@@ -450,7 +491,7 @@ describe('intent signing plans', () => {
           signature: {
             kind: 'ecdsa',
             signer: owner,
-            origin: [`0x${'55'.repeat(64)}1f`],
+            slots: [`0x${'55'.repeat(64)}1f`],
           },
         },
         {
@@ -460,7 +501,7 @@ describe('intent signing plans', () => {
           signature: {
             kind: 'passkey',
             publicKey: passkey,
-            origin: [{ webauthn: assertion, signature: passkeySignature }],
+            slots: [{ webauthn: assertion, signature: passkeySignature }],
           },
         },
       ],
@@ -483,25 +524,28 @@ describe('intent signing plans', () => {
       artifact,
       context: signingContext,
     })
-    expect(independent).toBe(full.stages[0].outputs.origin)
+    expect(independent).toBe(full.stages[0].outputs['request-0'])
   })
 
   test('projects atomic owner tasks without cloning assembly byte logic', () => {
     const plan = createIntentSigningPlan(ownerPlanInput())
     expect(plan.preparedIntent).toMatchObject({
       signatureMode: 'default',
-      destination: {
-        mode: 'reuse-origin',
-        artifactId: 'destination',
-      },
+      reuses: [
+        {
+          artifactId: 'request-1',
+          sourceArtifactId: 'request-0',
+          selection: 'whole',
+        },
+      ],
     })
     const projected = projectIndependentSigning(plan, ['owner'])
     expect(projected.plan.kind).toBe('intent-independent')
     expect(projected.plan.stages[0].artifacts).toEqual([])
     expect(projected.plan.publicOutputs).toEqual([
       {
-        id: 'origin-owner-contribution',
-        source: { kind: 'task-result', taskId: 'origin-owner' },
+        id: 'request-0-owner-contribution',
+        source: { kind: 'task-result', taskId: 'request-0-owner' },
         exposedForIndependentSigning: true,
       },
     ])
@@ -593,12 +637,12 @@ describe('intent signing plans', () => {
           ...stageInput,
           stagePlan: { ...stageInput.stagePlan, artifacts: [direct] },
           stage: {
-            stageId: 'origin',
+            stageId: 'request-0',
             facts: [],
             schedule: [],
             tasks: [
               {
-                id: 'origin-owner',
+                id: 'request-0-owner',
                 signer: { id: 'owner', kind: 'ecdsa' },
                 role: 'owner',
                 payload: { source: 'plan-payload', payloadId: intentId },
@@ -610,14 +654,14 @@ describe('intent signing plans', () => {
             ],
           },
           results: {
-            'origin-owner': {
+            'request-0-owner': {
               kind: 'ecdsa-signature',
               signature: rawSignature,
             },
           },
         },
         signingContext,
-      ).origin,
+      )['request-0'],
     ).toBe(rawSignature)
     expect(() =>
       assembleIntentStage(
@@ -650,48 +694,63 @@ describe('intent signing plans', () => {
 
   test('preserves dual-session reads and distinct notarized/pre-claim prompts', async () => {
     const originData = typedData(chain.id)
-    const targetData = typedData(destinationChain.id)
     const permissionId = `0x${'66'.repeat(32)}` as Hex
     const notarizedId = `0x${'77'.repeat(32)}` as Hex
     const preClaimId = hashTypedData(originData)
+    // The destination and target legs authorise the payload the origin leg
+    // already authorised, so both slots reuse its pre-claim half — reuse is
+    // only ever legitimate where the payload and the authority are identical.
+    const payload = { id: preClaimId, chain, typedData: originData }
     const intent: IntentSigningInput = {
       id: intentId,
       preparedSignatureMode: 'session-with-execution-verification',
       configuredTopology: topology,
       effectiveSelection: selection,
-      origins: [
+      requests: [
         {
-          id: preClaimId,
-          chain,
-          role: 'origin',
-          typedData: originData,
-          usage: 'intent-origin',
-        },
-      ],
-      destination: {
-        mode: 'reuse-origin',
-        artifactId: 'destination-pre-claim',
-        originArtifactId: 'origin-dual',
-        selection: 'pre-claim',
-      },
-      target: {
-        id: hashTypedData(targetData),
-        chain: destinationChain,
-        role: 'target',
-        typedData: targetData,
-        usage: 'intent-target',
-      },
-      artifacts: [
-        {
-          id: 'origin-dual',
-          usage: 'intent-origin',
-          payloadId: preClaimId,
-          cardinality: 'per-origin',
+          kind: 'eip712',
+          index: 0,
+          purpose: 'originAuthorization',
+          artifactId: 'request-0',
+          signatureFormat: 'account',
+          payload: { ...payload, usage: 'intent-origin' },
           shape: 'session-claims',
           exposedForIndependentSigning: false,
         },
         {
-          id: 'destination-pre-claim',
+          kind: 'eip712',
+          index: 1,
+          purpose: 'destinationAuthorization',
+          artifactId: 'request-1',
+          signatureFormat: 'account',
+          payload: { ...payload, usage: 'intent-destination' },
+          shape: 'hex',
+          reuse: { artifactId: 'request-0', selection: 'pre-claim' },
+          exposedForIndependentSigning: false,
+        },
+        {
+          kind: 'eip712',
+          index: 2,
+          purpose: 'targetExecutionAuthorization',
+          artifactId: 'request-2',
+          signatureFormat: 'account',
+          payload: { ...payload, usage: 'intent-target' },
+          shape: 'hex',
+          reuse: { artifactId: 'request-0', selection: 'pre-claim' },
+          exposedForIndependentSigning: false,
+        },
+      ],
+      artifacts: [
+        {
+          id: 'request-0',
+          usage: 'intent-origin',
+          payloadId: preClaimId,
+          cardinality: 'one',
+          shape: 'session-claims',
+          exposedForIndependentSigning: false,
+        },
+        {
+          id: 'request-1',
           usage: 'intent-destination',
           payloadId: preClaimId,
           cardinality: 'one',
@@ -699,9 +758,9 @@ describe('intent signing plans', () => {
           exposedForIndependentSigning: false,
         },
         {
-          id: 'target-pre-claim',
+          id: 'request-2',
           usage: 'intent-target',
-          payloadId: hashTypedData(targetData),
+          payloadId: preClaimId,
           cardinality: 'one',
           shape: 'hex',
           exposedForIndependentSigning: false,
@@ -716,7 +775,7 @@ describe('intent signing plans', () => {
     })
     const sessionStateCodec = {
       kind: 'smart-session-state' as const,
-      factId: 'origin-enabled',
+      factId: 'request-0-enabled',
       whenEnabled: sessionCodec('pre-claim'),
       whenDisabled: {
         kind: 'smart-session' as const,
@@ -749,10 +808,10 @@ describe('intent signing plans', () => {
       },
       stages: [
         {
-          id: 'origin',
+          id: 'request-0',
           checkpoint: {
             kind: 'session-enabled',
-            id: 'origin-enabled',
+            id: 'request-0-enabled',
             chain,
             account,
             permissionId,
@@ -793,7 +852,7 @@ describe('intent signing plans', () => {
           ],
           artifacts: [
             {
-              id: 'origin-notarized',
+              id: 'request-0:notarized',
               usage: 'intent-notarized-claim',
               input: { kind: 'task-results', taskIds: ['notarized'] },
               validatorCodec: sessionCodec('notarized'),
@@ -802,7 +861,7 @@ describe('intent signing plans', () => {
               erc6492: { kind: 'none' },
             },
             {
-              id: 'origin-pre-claim',
+              id: 'request-0:pre-claim',
               usage: 'intent-pre-claim',
               input: { kind: 'task-results', taskIds: ['pre-claim'] },
               validatorCodec: sessionStateCodec,
@@ -811,12 +870,12 @@ describe('intent signing plans', () => {
               erc6492: { kind: 'none' },
             },
             {
-              id: 'origin-dual',
+              id: 'request-0',
               usage: 'intent-origin',
               input: {
                 kind: 'session-claim-pair',
-                preClaimArtifactId: 'origin-pre-claim',
-                notarizedClaimArtifactId: 'origin-notarized',
+                preClaimArtifactId: 'request-0:pre-claim',
+                notarizedClaimArtifactId: 'request-0:notarized',
               },
               validatorCodec: { kind: 'none' },
               erc7739: { kind: 'none' },
@@ -825,7 +884,7 @@ describe('intent signing plans', () => {
             },
           ],
         },
-        ...(['destination', 'target'] as const).map((id) => ({
+        ...(['request-1', 'request-2'] as const).map((id) => ({
           id,
           checkpoint: {
             kind: 'session-enabled' as const,
@@ -836,8 +895,8 @@ describe('intent signing plans', () => {
           },
           priorOutputs: [
             {
-              stageId: 'origin',
-              outputId: 'origin-dual',
+              stageId: 'request-0',
+              outputId: 'request-0',
               selection: 'pre-claim' as const,
             },
           ],
@@ -845,15 +904,15 @@ describe('intent signing plans', () => {
           schedule: [],
           artifacts: [
             {
-              id: `${id}-pre-claim`,
+              id,
               usage:
-                id === 'target'
+                id === 'request-2'
                   ? ('intent-target' as const)
                   : ('intent-destination' as const),
               input: {
                 kind: 'reuse-artifact' as const,
-                stageId: 'origin',
-                artifactId: 'origin-dual',
+                stageId: 'request-0',
+                artifactId: 'request-0',
                 selection: 'pre-claim' as const,
               },
               validatorCodec: { kind: 'none' as const },
@@ -883,20 +942,20 @@ describe('intent signing plans', () => {
       },
     })
     expect(reads).toEqual([
-      'origin-enabled',
-      'destination-enabled',
-      'target-enabled',
+      'request-0-enabled',
+      'request-1-enabled',
+      'request-2-enabled',
     ])
     expect(invoke.mock.calls.map(([, invocation]) => invocation.kind)).toEqual([
       'ecdsa-sign-message',
       'ecdsa-sign-typed-data',
     ])
-    expect(transcript.stages[1].outputs['destination-pre-claim']).toBe(
-      (transcript.stages[0].outputs['origin-dual'] as { preClaimSig: Hex })
+    expect(transcript.stages[1].outputs['request-1']).toBe(
+      (transcript.stages[0].outputs['request-0'] as { preClaimSig: Hex })
         .preClaimSig,
     )
-    expect(transcript.stages[2].outputs['target-pre-claim']).toBe(
-      (transcript.stages[0].outputs['origin-dual'] as { preClaimSig: Hex })
+    expect(transcript.stages[2].outputs['request-2']).toBe(
+      (transcript.stages[0].outputs['request-0'] as { preClaimSig: Hex })
         .preClaimSig,
     )
     const fresh = await executeIntentSigning({
@@ -907,23 +966,23 @@ describe('intent signing plans', () => {
           {
             kind: 'session-enabled',
             id: checkpoint.id,
-            enabled: checkpoint.id !== 'origin-enabled',
+            enabled: checkpoint.id !== 'request-0-enabled',
           },
         ],
       },
     })
     expect(
-      (fresh.stages[0].outputs['origin-dual'] as { preClaimSig: Hex })
+      (fresh.stages[0].outputs['request-0'] as { preClaimSig: Hex })
         .preClaimSig,
     ).toMatch(/^0x01/)
   })
 
-  test('rejects a plan whose artifact cardinality contradicts prepared mode', () => {
+  test('rejects a plan whose artifact count contradicts prepared mode', () => {
     const input =
       ownerPlanInput() as DeepMutable<IntentSigningPlanCreationInput>
     input.intent.artifacts.length = 0
     expect(() => createIntentSigningPlan(input)).toThrow(
-      'requires 1 origin artifacts',
+      'requires 1 signed artifacts, received 0',
     )
   })
 
@@ -955,10 +1014,10 @@ describe('intent signing plans', () => {
         ...missingRoute,
         stages: missingRoute.stages.map((stage) => ({
           ...stage,
-          artifacts: stage.artifacts.filter(({ id }) => id !== 'destination'),
+          artifacts: stage.artifacts.filter(({ id }) => id !== 'request-1'),
         })),
       }),
-    ).toThrow('has no assembly route')
+    ).toThrow('Intent artifact request-1 has no assembly route')
 
     const missingRequirement = ownerPlanInput()
     expect(() =>
@@ -966,15 +1025,16 @@ describe('intent signing plans', () => {
         ...missingRequirement,
         intent: {
           ...missingRequirement.intent,
-          destination: {
-            mode: 'reuse-origin',
-            artifactId: 'unknown-destination',
-            originArtifactId: 'origin',
-            selection: 'whole',
-          },
+          requests: [
+            missingRequirement.intent.requests[0],
+            {
+              ...eip712(missingRequirement.intent.requests[1]),
+              artifactId: 'unknown-request',
+            },
+          ],
         },
       }),
-    ).toThrow('requirement is missing')
+    ).toThrow('request 1 has no artifact requirement')
 
     const incompatibleReuse = ownerPlanInput()
     expect(() =>
@@ -982,32 +1042,37 @@ describe('intent signing plans', () => {
         ...incompatibleReuse,
         intent: {
           ...incompatibleReuse.intent,
-          destination: {
-            ...incompatibleReuse.intent.destination,
-            mode: 'reuse-origin',
-            selection: 'pre-claim',
-          } as never,
+          requests: [
+            incompatibleReuse.intent.requests[0],
+            {
+              ...eip712(incompatibleReuse.intent.requests[1]),
+              reuse: {
+                artifactId: 'request-0',
+                selection: 'pre-claim' as const,
+              },
+            },
+          ],
         },
       }),
-    ).toThrow('reuse route is incompatible')
+    ).toThrow('request 1 reuse route is incompatible')
 
+    // A destination leg that is signed in its own right, rather than reusing
+    // the origin signature, is a valid plan.
     const signedDestination = ownerPlanInput()
-    const destinationPayload = signedDestination.intent.origins[0]
     expect(() =>
       createIntentSigningPlan({
         ...signedDestination,
         intent: {
           ...signedDestination.intent,
-          destination: {
-            mode: 'sign',
-            artifactId: 'destination',
-            payload: destinationPayload,
-          },
+          requests: [
+            signedDestination.intent.requests[0],
+            withoutReuse(signedDestination.intent.requests[1]),
+          ],
         },
         stages: signedDestination.stages.map((stage) => ({
           ...stage,
           artifacts: stage.artifacts.map((artifact) =>
-            artifact.id === 'destination'
+            artifact.id === 'request-1'
               ? {
                   ...artifact,
                   input: { kind: 'task-results' as const, taskIds: [] },
@@ -1018,57 +1083,83 @@ describe('intent signing plans', () => {
       }),
     ).not.toThrow()
 
+    // A slot that has to be signed cannot be satisfied by a reuse route.
+    const reusedWithoutReuse = ownerPlanInput()
+    expect(() =>
+      createIntentSigningPlan({
+        ...reusedWithoutReuse,
+        intent: {
+          ...reusedWithoutReuse.intent,
+          requests: [
+            reusedWithoutReuse.intent.requests[0],
+            withoutReuse(reusedWithoutReuse.intent.requests[1]),
+          ],
+        },
+      }),
+    ).toThrow('request 1 signing route is incompatible')
+
     const incompatibleDestination = ownerPlanInput()
+    const destinationRequest = withoutReuse(
+      incompatibleDestination.intent.requests[1],
+    )
     expect(() =>
       createIntentSigningPlan({
         ...incompatibleDestination,
         intent: {
           ...incompatibleDestination.intent,
-          destination: {
-            mode: 'sign',
-            artifactId: 'destination',
-            payload: {
-              ...incompatibleDestination.intent.origins[0],
-              id: `0x${'12'.repeat(32)}`,
-            },
-          },
-        },
-      }),
-    ).toThrow('signing route is incompatible')
-
-    const missingTarget = ownerPlanInput()
-    expect(() =>
-      createIntentSigningPlan({
-        ...missingTarget,
-        intent: {
-          ...missingTarget.intent,
-          target: missingTarget.intent.origins[0],
-        },
-      }),
-    ).toThrow('target requires exactly one artifact')
-
-    const duplicateTarget = ownerPlanInput()
-    const target = duplicateTarget.intent.origins[0]
-    expect(() =>
-      createIntentSigningPlan({
-        ...duplicateTarget,
-        intent: {
-          ...duplicateTarget.intent,
-          target,
-          artifacts: [
-            ...duplicateTarget.intent.artifacts,
+          requests: [
+            incompatibleDestination.intent.requests[0],
             {
-              id: 'target-a',
-              usage: 'intent-target',
-              payloadId: target.id,
-              cardinality: 'one',
+              ...destinationRequest,
+              payload: {
+                ...destinationRequest.payload,
+                id: `0x${'12'.repeat(32)}`,
+              },
+            },
+          ],
+        },
+        stages: incompatibleDestination.stages.map((stage) => ({
+          ...stage,
+          artifacts: stage.artifacts.map((artifact) =>
+            artifact.id === 'request-1'
+              ? {
+                  ...artifact,
+                  input: { kind: 'task-results' as const, taskIds: [] },
+                }
+              : artifact,
+          ),
+        })),
+      }),
+    ).toThrow('request 1 signing route is incompatible')
+
+    // A target execution authorisation is no longer a distinct field with its
+    // own cardinality rule: it is one more slot, held to the same route rules.
+    const missingTargetRoute = ownerPlanInput()
+    const targetPayload = eip712(missingTargetRoute.intent.requests[0]).payload
+    expect(() =>
+      createIntentSigningPlan({
+        ...missingTargetRoute,
+        intent: {
+          ...missingTargetRoute.intent,
+          requests: [
+            ...missingTargetRoute.intent.requests,
+            {
+              kind: 'eip712',
+              index: 2,
+              purpose: 'targetExecutionAuthorization',
+              artifactId: 'request-2',
+              signatureFormat: 'account',
+              payload: { ...targetPayload, usage: 'intent-target' },
               shape: 'hex',
               exposedForIndependentSigning: false,
             },
+          ],
+          artifacts: [
+            ...missingTargetRoute.intent.artifacts,
             {
-              id: 'target-b',
+              id: 'request-2',
               usage: 'intent-target',
-              payloadId: target.id,
+              payloadId: targetPayload.id,
               cardinality: 'one',
               shape: 'hex',
               exposedForIndependentSigning: false,
@@ -1076,13 +1167,13 @@ describe('intent signing plans', () => {
           ],
         },
       }),
-    ).toThrow('target requires exactly one artifact')
+    ).toThrow('Intent artifact request-2 has no assembly route')
 
     const wrongShape =
       ownerPlanInput() as DeepMutable<IntentSigningPlanCreationInput>
     wrongShape.intent.artifacts[0].shape = 'session-claims'
     expect(() => createIntentSigningPlan(wrongShape)).toThrow(
-      'requires hex origin artifacts',
+      'requires hex artifacts',
     )
   })
 
@@ -1094,7 +1185,7 @@ describe('intent signing plans', () => {
       intentId,
       kind: 'ecdsa' as const,
       signer: owner,
-      origin: [`0x${'55'.repeat(64)}1f` as Hex],
+      slots: [`0x${'55'.repeat(64)}1f` as Hex],
     }
     const assemble = (
       signatures: Parameters<
@@ -1106,8 +1197,8 @@ describe('intent signing plans', () => {
     ) =>
       assembleIndependentIntentArtifact({
         intentId,
-        originIndex: 0,
-        originCount: 1,
+        slotIndex: 0,
+        slotCount: 1,
         signatures,
         owners,
         artifact,
@@ -1117,7 +1208,7 @@ describe('intent signing plans', () => {
     expect(() => assemble([{ ...valid, intentId: 'other' }])).toThrowError(
       MismatchedOwnerSignaturesError,
     )
-    expect(() => assemble([{ ...valid, origin: [] }])).toThrowError(
+    expect(() => assemble([{ ...valid, slots: [] }])).toThrowError(
       MismatchedOwnerSignaturesError,
     )
     expect(() =>
@@ -1147,7 +1238,7 @@ describe('intent signing plans', () => {
             signature: {
               kind: 'ecdsa',
               signer: owner,
-              origin: valid.origin,
+              slots: valid.slots,
             },
           },
         ],
@@ -1179,8 +1270,8 @@ describe('intent signing plans', () => {
     expect(() =>
       assembleIndependentIntentArtifact({
         intentId,
-        originIndex: 0,
-        originCount: 1,
+        slotIndex: 0,
+        slotCount: 1,
         signatures: [valid],
         owners: [{ ownerId: 'owner/a', identity: owner, kind: 'ecdsa' }],
         artifact: { ...artifact, validatorCodec: { kind: 'none' } },
@@ -1215,8 +1306,8 @@ describe('intent signing plans', () => {
       expect(() =>
         assembleIndependentIntentArtifact({
           intentId,
-          originIndex: 0,
-          originCount: 1,
+          slotIndex: 0,
+          slotCount: 1,
           signatures: [valid],
           owners: [{ ownerId: 'owner/a', identity: owner, kind: 'ecdsa' }],
           artifact: { ...artifact, validatorCodec },
@@ -1228,8 +1319,8 @@ describe('intent signing plans', () => {
     expect(() =>
       assembleIndependentIntentArtifact({
         intentId,
-        originIndex: 0,
-        originCount: 1,
+        slotIndex: 0,
+        slotCount: 1,
         signatures: [valid],
         owners: [{ ownerId: 'owner/a', identity: owner, kind: 'ecdsa' }],
         artifact: {
@@ -1257,7 +1348,7 @@ describe('intent signing plans', () => {
       intentId,
       kind: 'ecdsa' as const,
       signer: owner,
-      origin: [`0x${'55'.repeat(64)}1f` as Hex],
+      slots: [`0x${'55'.repeat(64)}1f` as Hex],
     }
     const assemble = (
       artifactOverride: typeof artifact,
@@ -1268,8 +1359,8 @@ describe('intent signing plans', () => {
     ) =>
       assembleIndependentIntentArtifact({
         intentId,
-        originIndex: 0,
-        originCount: 1,
+        slotIndex: 0,
+        slotCount: 1,
         signatures,
         owners,
         artifact: artifactOverride,
@@ -1308,7 +1399,7 @@ describe('intent signing plans', () => {
       signature: {
         kind: 'ecdsa' as const,
         signer: owner,
-        origin: signature.origin,
+        slots: signature.slots,
       },
     }
     const factorOwner = {
