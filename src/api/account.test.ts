@@ -1,17 +1,32 @@
 import { privateKeyToAccount } from 'viem/accounts'
 import { mainnet, optimism } from 'viem/chains'
 import { describe, expect, test, vi } from 'vitest'
-import { parseCaip2, toEvmChainReference } from '../chains/caip2'
+import {
+  quote as caucasusQuote,
+  delegationRequest,
+  eip712Request,
+  personalSignRequest,
+  publicQuote,
+} from '../../test/utils/caucasus'
+import { asSwigNamespace, locateSwig } from '../accounts/solana/address'
+import { formatCaip2, parseCaip2, toEvmChainReference } from '../chains/caip2'
 import {
   hyperCorePerp,
   solanaAddress,
   solanaDevnet,
   solanaMainnet,
 } from '../chains/non-evm'
+import type { NormalizedIntentInput } from '../clients/orchestrator/normalized'
+import { projectCompatibleIntentInput } from '../clients/orchestrator/normalized'
 import type {
   HyperCoreOrderAction,
-  SerializedIntentInput,
+  Quote,
+  SigningRequest,
 } from '../clients/orchestrator/public'
+import type {
+  OrchestratorIntentRequest,
+  OrchestratorQuote,
+} from '../clients/orchestrator/types'
 import type { LegacyAccountConfig } from '../config/legacy'
 import { resolveAccountConfig, resolveSdkConfig } from '../config/resolve'
 import type { AccountInvocationContext } from '../config/resolved'
@@ -21,14 +36,18 @@ import {
   UnsupportedAccountCapabilityError,
 } from '../errors/capability'
 import {
+  InvalidPreparedTransactionError,
   InvalidSolanaTransactionArtifactError,
   QuoteNotInPreparedTransactionError,
   SignerNotSupportedError,
+  UnsupportedSigningRequestError,
 } from '../errors/execution'
 import type { EvmAccountConfig, RhinestoneAccountConfig } from '../index'
 import { RhinestoneSDK } from '../index'
 import { ecdsaSignerId } from '../modules/validators/signer-id'
 import { SOCIAL_RECOVERY_VALIDATOR_ADDRESS } from '../modules/validators/social-recovery'
+import type { IntentRecipientProjection } from '../transactions/intents/account'
+import { projectPreparedBinding } from '../transactions/intents/compatibility'
 import {
   buildSolanaIntentRequest,
   reconstructSolanaIntent,
@@ -39,7 +58,6 @@ import type {
 } from '../transactions/intents/types'
 import {
   adaptTransaction,
-  authorizationChains,
   createAccountFacade,
   normalizeTransaction,
 } from './account'
@@ -49,13 +67,32 @@ import type { AdaptedSignerSelection } from './signer-selection'
 const owner = privateKeyToAccount(`0x${'02'.repeat(32)}`)
 const guardian = privateKeyToAccount(`0x${'03'.repeat(32)}`)
 const recipientAddress = '0x0000000000000000000000000000000000000010' as const
-const serializedIntentInput = {
+const normalizedIntentInput = {
   account: { address: recipientAddress, accountType: 'ERC7579' },
   destinationChainId: mainnet.id,
   destinationExecutions: [],
   tokenRequests: [],
   options: {},
-} satisfies SerializedIntentInput
+} satisfies NormalizedIntentInput
+const serializedIntentInput = projectCompatibleIntentInput(
+  normalizedIntentInput,
+)
+// The Caucasus request a prepared artifact carries. Only its round trip through
+// `PreparedTransactionData.request` matters here, so it stays minimal.
+const intentRequest = {
+  account: { evm: { type: 'erc7579', address: recipientAddress } },
+  destination: {
+    vm: 'evm',
+    chainId: formatCaip2(mainnet.id),
+    tokenRequests: [],
+  },
+} satisfies OrchestratorIntentRequest
+const preparedRequest = projectPreparedBinding(intentRequest)
+
+/** Narrows a projected recipient to the configured-account arm. */
+function accountRecipient(recipient: IntentRecipientProjection | undefined) {
+  return recipient?.kind === 'account' ? recipient : undefined
+}
 
 function invocationContext(): AccountInvocationContext<
   LegacyAccountConfig<unknown>
@@ -112,9 +149,9 @@ describe('account instance surface', () => {
   })
 
   // The declarative `hyperCore` option is resolved inside `prepareTransaction`
-  // and nowhere else, because the quote's `signData` registers an agent derived
-  // from the action's bytes — so the action has to be concrete before the quote,
-  // and this is the seam that makes it so.
+  // and nowhere else, because the quote's signing requests register an agent
+  // derived from the action's bytes — so the action has to be concrete before
+  // the quote, and this is the seam that makes it so.
   test('resolves a HyperCore option against Hyperliquid before quoting', async () => {
     // The stub is the synchronisation point: the quote that follows never
     // completes offline, and waiting on it would only measure a retry budget.
@@ -235,10 +272,35 @@ describe('managed Solana account facade', () => {
   const mint = solanaAddress('4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU')
   const recipient = solanaAddress('11111111111111111111111111111112')
   const message = 'ab'.repeat(32)
+  // The Swig the facade derives for the managed account, which every signing
+  // request the quote carries has to name.
+  const swig = locateSwig(asSwigNamespace('dev-v1'), owner.address)
 
-  function quote(intentId: string) {
+  const swigLeg = {
+    vm: 'svm' as const,
+    chainId: solanaDevnet.caip2,
+    account: {
+      wallet: swig.wallet,
+      swigAccount: swig.swig,
+      authority: { kind: 'secp256k1' as const, address: owner.address },
+    },
+  }
+
+  /** The one spend authorization a Solana-origin quote asks for. */
+  function spendRequest(): SigningRequest {
+    return personalSignRequest({
+      chainId: solanaDevnet.caip2,
+      wallet: swig.wallet,
+      swigAccount: swig.swig,
+      authority: owner.address,
+      message,
+      expiresAtSlot: '123',
+    })
+  }
+
+  function quote(intentId: string): OrchestratorQuote {
     const costEntry = {
-      chainId: 792703810,
+      chainId: solanaDevnet.caip2,
       tokenAddress: mint,
       symbol: 'USDC',
       decimals: 6,
@@ -246,30 +308,28 @@ describe('managed Solana account facade', () => {
       amount: 100n,
     }
     return {
-      intentId,
-      expiresAt: 2_000_000_000,
-      estimatedFillTime: { seconds: 1 },
-      settlementLayer: 'SAME_CHAIN' as const,
-      signData: {
-        origin: [
-          { kind: 'personalSign' as const, message, expiresAtSlot: '123' },
-        ],
-      },
-      cost: {
-        input: [costEntry],
-        output: [costEntry],
-        fees: {
-          total: { usd: 0 },
-          breakdown: {
-            gas: { usd: 0, sponsored: false },
-            bridge: { usd: 0, sponsored: false },
-            swap: { usd: 0, sponsored: false },
-            app: { usd: 0, sponsored: false },
-            protocol: { usd: 0, sponsored: false },
-            sponsorSurcharge: { usd: 0, sponsored: false },
+      ...caucasusQuote({
+        intentId,
+        expiresAt: 2_000_000_000,
+        signingRequests: [spendRequest()],
+        cost: {
+          input: [costEntry],
+          output: [costEntry],
+          fees: {
+            total: { usd: 0 },
+            breakdown: {
+              gas: { usd: 0, sponsored: false },
+              bridge: { usd: 0, sponsored: false },
+              swap: { usd: 0, sponsored: false },
+              app: { usd: 0, sponsored: false },
+              protocol: { usd: 0, sponsored: false },
+              sponsorSurcharge: { usd: 0, sponsored: false },
+            },
           },
         },
-      },
+      }),
+      estimatedFillTime: { seconds: 1 },
+      plan: { source: [swigLeg], destination: swigLeg, deployments: [] },
     }
   }
 
@@ -280,16 +340,13 @@ describe('managed Solana account facade', () => {
     }
     const best = quote('best')
     const alternate = quote('alternate')
-    const prepareSolanaIntent = vi.fn(async (input) => {
-      const request = buildSolanaIntentRequest(input)
-      return {
-        traceId: 'prepare-trace',
-        input,
-        request,
-        quote: best,
-        quotes: [best, alternate],
-      }
-    })
+    const prepareSolanaIntent = vi.fn(async (input) => ({
+      traceId: 'prepare-trace',
+      input,
+      ...buildSolanaIntentRequest(input),
+      quote: best,
+      quotes: [best, alternate],
+    }))
     const reconstruct = vi.fn(reconstructSolanaIntent)
     const signSolanaIntent = vi.fn(async ({ prepared, owner: signer }) => ({
       prepared,
@@ -305,8 +362,8 @@ describe('managed Solana account facade', () => {
     const waitForIntentStatus = vi.fn(async (_context, intentId: string) => ({
       traceId: `status-${intentId}`,
       intentId,
+      purpose: 'execution' as const,
       status: 'COMPLETED' as const,
-      account: owner.address,
       operations: [],
     }))
     const getAddress = vi.fn(() => owner.address)
@@ -363,9 +420,7 @@ describe('managed Solana account facade', () => {
 
     expect(workflows.prepareSolanaIntent).toHaveBeenCalledOnce()
     expect(workflows.getEligibleEvmSourceChains).not.toHaveBeenCalled()
-    expect(facade.getTransactionMessages(prepared)).toEqual({
-      origin: [{ kind: 'personalSign', message, expiresAtSlot: '123' }],
-    })
+    expect(facade.getTransactionMessages(prepared)).toEqual([spendRequest()])
     const signed = await facade.signTransaction(prepared)
     expect(workflows.signSolanaIntent).toHaveBeenCalledOnce()
     const submitted = await facade.submitTransaction(signed)
@@ -399,7 +454,8 @@ describe('managed Solana account facade', () => {
       const prepareIntent = vi.fn(async (_context, input) => ({
         traceId: 'evm-trace',
         input,
-        request: serializedIntentInput,
+        request: intentRequest,
+        normalized: normalizedIntentInput,
         quote: evmQuote,
         quotes: [evmQuote],
         signing: {} as never,
@@ -427,7 +483,8 @@ describe('managed Solana account facade', () => {
       const prepareIntent = vi.fn(async (_context, input) => ({
         traceId: 'evm-trace',
         input,
-        request: serializedIntentInput,
+        request: intentRequest,
+        normalized: normalizedIntentInput,
         quote: evmQuote,
         quotes: [evmQuote],
         signing: {} as never,
@@ -456,9 +513,7 @@ describe('managed Solana account facade', () => {
 
     expect(
       facade.getTransactionMessages(prepared, { intentId: 'alternate' }),
-    ).toEqual({
-      origin: [{ kind: 'personalSign', message, expiresAtSlot: '123' }],
-    })
+    ).toEqual([spendRequest()])
     const signed = await facade.signTransaction(prepared, {
       intentId: 'alternate',
     })
@@ -482,11 +537,10 @@ describe('managed Solana account facade', () => {
     })
     workflows.prepareSolanaIntent.mockImplementationOnce(async (input) => {
       await paused
-      const request = buildSolanaIntentRequest(input)
       return {
         traceId: 'prepare-trace',
         input,
-        request,
+        ...buildSolanaIntentRequest(input),
         quote: quote('best'),
         quotes: [quote('best')],
       }
@@ -554,7 +608,7 @@ describe('managed Solana account facade', () => {
         facade.submitTransaction({
           ...prepared,
           quote: clean.quotes.best,
-          originSignatures: [signature],
+          proofs: [{ kind: 'personalSign', signature }],
         } as never),
       ).rejects.toThrow(UnsupportedAccountCapabilityError)
       expect(workflows.submitSolanaIntent).not.toHaveBeenCalled()
@@ -595,27 +649,39 @@ describe('managed Solana account facade', () => {
     )
     const signed = await facade.signTransaction(prepared)
     await expect(
-      facade.submitTransaction(signed, { authorizations: [] }),
-    ).rejects.toThrow(/does not accept EVM authorizations/)
+      facade.submitTransaction(signed, { internal_dryRun: true }),
+    ).rejects.toThrow(/does not accept submission options/)
     await expect(
-      facade.submitTransaction(signed, { internal_dryRun: true } as never),
-    ).rejects.toThrow(/does not accept EVM authorizations/)
-    await expect(
-      facade.submitTransaction(signed, { internal_dryRun: false } as never),
-    ).rejects.toThrow(/does not accept EVM authorizations/)
+      facade.submitTransaction(signed, { internal_dryRun: false }),
+    ).rejects.toThrow(/does not accept submission options/)
     await expect(
       facade.submitTransaction(signed, { futureOption: false } as never),
-    ).rejects.toThrow(/does not accept EVM authorizations/)
+    ).rejects.toThrow(/does not accept submission options/)
     expect(workflows.submitSolanaIntent).not.toHaveBeenCalled()
   })
 
+  // A Solana origin authorizes its spend with exactly one personal-sign proof:
+  // an empty, doubled, or EVM-shaped proof vector is refused before submission.
   test.each([
-    { originSignatures: [] },
-    { originSignatures: ['0x12', '0x34'] },
-    { destinationSignature: '0x12' },
-    { targetExecutionSignature: '0x12' },
+    { proofs: [] },
+    {
+      proofs: [
+        { kind: 'personalSign', signature: '0x12' },
+        { kind: 'personalSign', signature: '0x34' },
+      ],
+    },
+    { proofs: [{ kind: 'eip712', signature: '0x12' }] },
+    {
+      proofs: [
+        {
+          kind: 'eip7702',
+          nonce: 0,
+          signature: { r: '0x12', s: '0x34', yParity: 0 },
+        },
+      ],
+    },
   ])(
-    'rejects extra or misplaced signatures before submission %#',
+    'rejects extra or misplaced proofs before submission %#',
     async (patch) => {
       const { facade, workflows } = fixture()
       const signed = await facade.signTransaction(
@@ -687,6 +753,20 @@ describe('managed Solana account facade', () => {
       expect(workflows.signSolanaIntent).not.toHaveBeenCalled()
     },
   )
+
+  test('refuses a Solana prepared artifact from an earlier wire version', async () => {
+    const { facade, workflows } = fixture()
+    const prepared = await facade.prepareTransaction(transaction())
+    const { request: _binding, ...legacy } = prepared
+
+    expect(() =>
+      facade.getTransactionMessages(legacy as PreparedTransactionData),
+    ).toThrow(InvalidPreparedTransactionError)
+    await expect(
+      facade.signTransaction(legacy as PreparedTransactionData),
+    ).rejects.toThrow(InvalidPreparedTransactionError)
+    expect(workflows.signSolanaIntent).not.toHaveBeenCalled()
+  })
 
   test('rejects tampering on same-instance prepared and signed artifacts despite warm caches', async () => {
     const { facade, workflows } = fixture()
@@ -937,55 +1017,87 @@ describe('managed Solana cross-chain delivery facade', () => {
   const mint = solanaAddress('4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU')
   const destinationToken = '0x0b2c639c533813f4aa9d7837caf62653d097ff85'
   const message = 'ab'.repeat(32)
+  const swig = locateSwig(asSwigNamespace('dev-v1'), owner.address)
+  // The spend is authorised on the Solana cluster; the delivery lands on the
+  // EVM account, so the plan's two legs name different VMs.
+  const sourceLeg = {
+    vm: 'svm' as const,
+    chainId: solanaDevnet.caip2,
+    account: {
+      wallet: swig.wallet,
+      swigAccount: swig.swig,
+      authority: { kind: 'secp256k1' as const, address: owner.address },
+    },
+  }
+  const destinationLeg = {
+    vm: 'evm' as const,
+    chainId: formatCaip2(optimism.id),
+    account: { address: owner.address, type: 'erc7579' as const },
+  }
 
-  function quote(intentId: string) {
+  function spendRequest(): SigningRequest {
+    return personalSignRequest({
+      chainId: solanaDevnet.caip2,
+      wallet: swig.wallet,
+      swigAccount: swig.swig,
+      authority: owner.address,
+      message,
+      expiresAtSlot: '123',
+    })
+  }
+
+  function quote(intentId: string): OrchestratorQuote {
     return {
-      intentId,
-      expiresAt: 2_000_000_000,
-      estimatedFillTime: { seconds: 20 },
-      settlementLayer: 'RELAY' as const,
-      bridgeFill: {
-        type: 'RELAY' as const,
-        destinationChainId: optimism.id,
-        requestId: `0x${'ab'.repeat(32)}` as const,
-      },
-      signData: {
-        origin: [
-          { kind: 'personalSign' as const, message, expiresAtSlot: '123' },
-        ],
-      },
-      cost: {
-        input: [
-          {
-            chainId: 792703810,
-            tokenAddress: mint,
-            symbol: 'USDC',
-            decimals: 6,
-            price: { usd: 1 },
-            amount: 101n,
-          },
-        ],
-        output: [
-          {
-            chainId: optimism.id,
-            tokenAddress: destinationToken,
-            symbol: 'USDC',
-            decimals: 6,
-            price: { usd: 1 },
-            amount: 100n,
-          },
-        ],
-        fees: {
-          total: { usd: 0 },
-          breakdown: {
-            gas: { usd: 0, sponsored: false },
-            bridge: { usd: 0, sponsored: false },
-            swap: { usd: 0, sponsored: false },
-            app: { usd: 0, sponsored: false },
-            protocol: { usd: 0, sponsored: false },
-            sponsorSurcharge: { usd: 0, sponsored: false },
+      ...caucasusQuote({
+        intentId,
+        expiresAt: 2_000_000_000,
+        settlementLayer: 'RELAY',
+        signingRequests: [spendRequest()],
+        cost: {
+          input: [
+            {
+              chainId: solanaDevnet.caip2,
+              tokenAddress: mint,
+              symbol: 'USDC',
+              decimals: 6,
+              price: { usd: 1 },
+              amount: 101n,
+            },
+          ],
+          output: [
+            {
+              chainId: formatCaip2(optimism.id),
+              tokenAddress: destinationToken,
+              symbol: 'USDC',
+              decimals: 6,
+              price: { usd: 1 },
+              amount: 100n,
+            },
+          ],
+          fees: {
+            total: { usd: 0 },
+            breakdown: {
+              gas: { usd: 0, sponsored: false },
+              bridge: { usd: 0, sponsored: false },
+              swap: { usd: 0, sponsored: false },
+              app: { usd: 0, sponsored: false },
+              protocol: { usd: 0, sponsored: false },
+              sponsorSurcharge: { usd: 0, sponsored: false },
+            },
           },
         },
+      }),
+      estimatedFillTime: { seconds: 20 },
+      plan: {
+        source: [sourceLeg],
+        destination: destinationLeg,
+        deployments: [],
+      },
+      bridgeFill: {
+        type: 'RELAY',
+        destinationChainId: formatCaip2(optimism.id),
+        fillStatusTimeout: 60,
+        requestId: `0x${'ab'.repeat(32)}`,
       },
     }
   }
@@ -999,7 +1111,7 @@ describe('managed Solana cross-chain delivery facade', () => {
     const prepareSolanaIntent = vi.fn(async (input) => ({
       traceId: 'prepare-trace',
       input,
-      request: buildSolanaIntentRequest(input),
+      ...buildSolanaIntentRequest(input),
       quote: best,
       quotes: [best],
     }))
@@ -1017,22 +1129,32 @@ describe('managed Solana cross-chain delivery facade', () => {
     const waitForIntentStatus = vi.fn(async (_context, intentId: string) => ({
       traceId: `status-${intentId}`,
       intentId,
+      purpose: 'execution' as const,
       status: 'FAILED' as const,
-      account: owner.address,
       operations: [
         {
-          chain: 792703810,
-          status: 'COMPLETED' as const,
-          txHash: '5VERv8NM8A8f8hG1rjzAygzYwGwjBQD5rKpH8u8x2QfP',
-          timestamp: 1_700_000_000,
+          chainId: solanaDevnet.caip2,
+          items: [
+            {
+              type: 'CLAIM' as const,
+              status: 'COMPLETED' as const,
+              transaction: {
+                vm: 'svm' as const,
+                chainId: solanaDevnet.caip2,
+                signature: '5VERv8NM8A8f8hG1rjzAygzYwGwjBQD5rKpH8u8x2QfP',
+              },
+              timestamp: 1_700_000_000,
+            },
+          ],
         },
       ],
       refunds: [
         {
-          chain: 792703810,
-          tokenAddress: mint,
-          amount: 101n,
-          txHash: '3sP1t2VERv8NM8A8f8hG1rjzAygzYwGwjBQD5rKpH8u8',
+          transaction: {
+            vm: 'svm' as const,
+            chainId: solanaDevnet.caip2,
+            signature: '3sP1t2VERv8NM8A8f8hG1rjzAygzYwGwjBQD5rKpH8u8',
+          },
         },
       ],
     }))
@@ -1104,9 +1226,7 @@ describe('managed Solana cross-chain delivery facade', () => {
       destinationToken,
       recipient: owner.address,
     })
-    expect(facade.getTransactionMessages(prepared)).toEqual({
-      origin: [{ kind: 'personalSign', message, expiresAtSlot: '123' }],
-    })
+    expect(facade.getTransactionMessages(prepared)).toEqual([spendRequest()])
 
     const submitted = await facade.submitTransaction(
       await facade.signTransaction(prepared),
@@ -1132,11 +1252,25 @@ describe('managed Solana cross-chain delivery facade', () => {
       status: 'FAILED',
       operations: [
         {
-          chain: 792703810,
-          txHash: '5VERv8NM8A8f8hG1rjzAygzYwGwjBQD5rKpH8u8x2QfP',
+          chainId: solanaDevnet.caip2,
+          items: [
+            {
+              transaction: {
+                vm: 'svm',
+                signature: '5VERv8NM8A8f8hG1rjzAygzYwGwjBQD5rKpH8u8x2QfP',
+              },
+            },
+          ],
         },
       ],
-      refunds: [{ chain: 792703810, tokenAddress: mint }],
+      refunds: [
+        {
+          transaction: {
+            vm: 'svm',
+            signature: '3sP1t2VERv8NM8A8f8hG1rjzAygzYwGwjBQD5rKpH8u8',
+          },
+        },
+      ],
     })
   })
 
@@ -1226,8 +1360,8 @@ describe('managed Solana cross-chain delivery facade', () => {
     )
     const signed = await facade.signTransaction(prepared)
     await expect(
-      facade.submitTransaction(signed, { authorizations: [] }),
-    ).rejects.toThrow(/does not accept EVM authorizations/)
+      facade.submitTransaction(signed, { internal_dryRun: true }),
+    ).rejects.toThrow(/does not accept submission options/)
     expect(workflows.submitSolanaIntent).not.toHaveBeenCalled()
   })
 
@@ -1525,7 +1659,8 @@ describe('prepareTransaction automatic source selection', () => {
     const prepareIntent = vi.fn(async (_context, input) => ({
       traceId: 'trace',
       input,
-      request: serializedIntentInput,
+      request: intentRequest,
+      normalized: normalizedIntentInput,
       quote,
       quotes: [quote],
       signing: {} as never,
@@ -1641,6 +1776,64 @@ describe('prepareTransaction automatic source selection', () => {
     expect(getEligibleEvmSourceChains).toHaveBeenCalledOnce()
     expect(prepareIntent).not.toHaveBeenCalled()
   })
+
+  // A Blanc-era artifact has role-keyed `signData` and no request binding.
+  // It has to be refused with the typed error before anything reads its
+  // quotes, so the caller is told to prepare afresh rather than tripping over
+  // a missing field.
+  test('refuses a prepared artifact from an earlier wire version', async () => {
+    const { facade } = fixture()
+    const prepared = await facade.prepareTransaction({
+      sourceChains: [mainnet],
+      targetChain: mainnet,
+      calls: [],
+      tokenRequests: [{ address: recipientAddress, amount: 1n }],
+    })
+    const { signingRequests: _requests, ...withoutRequests } =
+      prepared.quotes.best
+    const { request: _binding, ...withoutBinding } = prepared
+    const legacy = {
+      ...withoutBinding,
+      quotes: {
+        ...prepared.quotes,
+        best: { ...withoutRequests, signData: { origin: [] } },
+      },
+    } as unknown as PreparedTransactionData
+
+    expect(() => facade.getTransactionMessages(legacy)).toThrow(
+      InvalidPreparedTransactionError,
+    )
+    await expect(facade.signTransaction(legacy)).rejects.toThrow(
+      InvalidPreparedTransactionError,
+    )
+    await expect(
+      facade.submitTransaction({
+        ...legacy,
+        quote: prepared.quotes.best,
+        proofs: [],
+      } as unknown as SignedTransactionData),
+    ).rejects.toThrow(InvalidPreparedTransactionError)
+  })
+
+  // Fails closed here, naming the caller's own input: sent on, an empty
+  // selection is a wire-schema rejection naming fields they never wrote.
+  test.each([
+    ['an empty list', [] as const],
+    ['an empty map', {} as const],
+    ['a chain with no tokens', { [mainnet.id]: [] } as const],
+  ])('rejects source assets given as %s', async (_label, sourceAssets) => {
+    const { facade, prepareIntent } = fixture([mainnet.id])
+    const solana = solanaAddress('11111111111111111111111111111111')
+
+    await expect(
+      facade.prepareTransaction({
+        targetChain: solanaMainnet,
+        tokenRequests: [{ address: solana, amount: 1n }],
+        sourceAssets: sourceAssets as never,
+      }),
+    ).rejects.toThrow(/sourceAssets/)
+    expect(prepareIntent).not.toHaveBeenCalled()
+  })
 })
 
 describe('EVM → Solana delivery', () => {
@@ -1658,7 +1851,8 @@ describe('EVM → Solana delivery', () => {
     const prepareIntent = vi.fn(async (_context, input) => ({
       traceId: 'trace',
       input,
-      request: serializedIntentInput,
+      request: intentRequest,
+      normalized: normalizedIntentInput,
       quote,
       quotes: [quote],
       signing: {} as never,
@@ -1810,14 +2004,12 @@ describe('account boundary adapters', () => {
         },
       }),
     )
-    const signIntentFromSignData = vi.fn(
+    const signIntentFromRequests = vi.fn(
       async (
         _context: unknown,
         _input: { signers?: AdaptedSignerSelection },
       ) => ({
-        originSignatures: [],
-        destinationSignature: '0x56' as const,
-        targetExecutionSignature: undefined,
+        proofs: [{ kind: 'eip712' as const, signature: '0x56' as const }],
         transcript: {
           planKind: 'intent-full' as const,
           payloadId: '0x' as const,
@@ -1835,7 +2027,7 @@ describe('account boundary adapters', () => {
       intentId: 'alternate',
       kind: 'ecdsa' as const,
       signer: owner.address,
-      origin: [],
+      slots: [],
     }))
     const prepareUserOperation = vi.fn(async (_context, input) => ({
       input,
@@ -1851,7 +2043,7 @@ describe('account boundary adapters', () => {
     const workflows = {
       signMessage,
       signTypedData,
-      signIntentFromSignData,
+      signIntentFromRequests,
       reconstructPreparedIntent,
       signIntentAsOwner,
       prepareUserOperation,
@@ -1886,7 +2078,7 @@ describe('account boundary adapters', () => {
     await facade.signMessage('hello', mainnet, signers)
     await facade.signTypedData(typedData, mainnet, signers)
     await facade.signIntent(
-      { origin: [typedData], destination: typedData },
+      [eip712Request({ chainId: mainnet.id })],
       mainnet,
       signers,
     )
@@ -1894,7 +2086,7 @@ describe('account boundary adapters', () => {
     for (const call of [
       signMessage.mock.calls[0]?.[1],
       signTypedData.mock.calls[0]?.[1],
-      signIntentFromSignData.mock.calls[0]?.[1],
+      signIntentFromRequests.mock.calls[0]?.[1],
     ]) {
       expect(call?.signers).toMatchObject({
         kind: 'owner',
@@ -1911,6 +2103,7 @@ describe('account boundary adapters', () => {
         all: [best, alternate],
       },
       intentInput: serializedIntentInput,
+      request: preparedRequest,
       transaction: { chain: mainnet, calls: [] },
     } satisfies PreparedTransactionData
     await facade.signTransaction(prepared, {
@@ -1966,39 +2159,11 @@ describe('account boundary adapters', () => {
         owners: { type: 'ecdsa', accounts: [owner] },
       },
     })
-    const quote = {
-      intentId: 'best',
-      expiresAt: 1,
-      estimatedFillTime: { seconds: 1 },
-      settlementLayer: 'SAME_CHAIN' as const,
-      signData: {
-        origin: [],
-        destination: {
-          domain: {},
-          types: {},
-          primaryType: 'Test',
-          message: {},
-        },
-      },
-      cost: {
-        input: [],
-        output: [],
-        fees: {
-          total: { usd: 0 },
-          breakdown: {
-            gas: { usd: 0, sponsored: false },
-            bridge: { usd: 0, sponsored: false },
-            swap: { usd: 0, sponsored: false },
-            app: { usd: 0, sponsored: false },
-            protocol: { usd: 0, sponsored: false },
-            sponsorSurcharge: { usd: 0, sponsored: false },
-          },
-        },
-      },
-    }
+    const quote = quoteFixture('best')
     const prepared = {
       quotes: { traceId: 'trace', best: quote, all: [quote] },
       intentInput: serializedIntentInput,
+      request: preparedRequest,
       transaction: { chain: mainnet, calls: [] },
     } satisfies PreparedTransactionData
 
@@ -2007,30 +2172,42 @@ describe('account boundary adapters', () => {
     ).toThrowError(QuoteNotInPreparedTransactionError)
   })
 
+  // A quote may ask for a payload this SDK cannot produce. The refusal belongs
+  // to the returned promise, not to the call, because `signTransaction` is
+  // async — but it lands before any account state is read.
   test('rejects unsupported signing data asynchronously', async () => {
     const account = await new RhinestoneSDK({
       apiKey: 'offline',
     }).createAccount({
       evm: { owners: { type: 'ecdsa', accounts: [owner] } },
     })
-    const quote = {
-      ...quoteFixture('unsupported'),
-      signData: {
-        origin: [{ kind: 'personalSign', message: 'payload' }],
-        destination: quoteFixture('destination').signData.destination,
-      },
-    }
+    const quote = publicQuote(
+      caucasusQuote({
+        intentId: 'unsupported',
+        signingRequests: [
+          eip712Request({ chainId: mainnet.id }),
+          {
+            ...eip712Request({
+              chainId: mainnet.id,
+              purpose: 'destinationAuthorization',
+            }),
+            payload: { kind: 'webauthn', challenge: '0x12' },
+          },
+        ],
+      }),
+    )
     const prepared = {
       quotes: { traceId: 'trace', best: quote, all: [quote] },
       intentInput: serializedIntentInput,
+      request: preparedRequest,
       transaction: { chain: mainnet, calls: [] },
-    } as never
+    } satisfies PreparedTransactionData
 
     let signing: Promise<unknown> | undefined
     expect(() => {
       signing = account.signTransaction(prepared)
     }).not.toThrow()
-    await expect(signing).rejects.toThrow(/Only EIP-712/)
+    await expect(signing).rejects.toThrow(UnsupportedSigningRequestError)
   })
 
   test('preserves the selected quote when submitting uncached signed data', async () => {
@@ -2067,11 +2244,10 @@ describe('account boundary adapters', () => {
     const signed = {
       quotes: { traceId: 'trace', best, all: [best, alternate] },
       intentInput: serializedIntentInput,
+      request: preparedRequest,
       transaction: { chain: mainnet, calls: [] },
       quote: alternate,
-      originSignatures: [],
-      destinationSignature: '0x12',
-      targetExecutionSignature: undefined,
+      proofs: [{ kind: 'eip712', signature: '0x12' }],
     } satisfies SignedTransactionData
 
     await expect(facade.submitTransaction(signed)).resolves.toMatchObject({
@@ -2271,22 +2447,21 @@ describe('account boundary adapters', () => {
     })
 
     expect(transaction.recipient).toMatchObject({
-      accountType: 'ERC7579',
+      kind: 'account',
+      accountKind: 'erc7579',
       setupOps: [expect.objectContaining({ to: expect.any(String) })],
     })
     expect(transaction.recipient?.address).not.toBe(recipientAddress)
 
+    // A bare address is a payee and nothing more: it gets no account kind and
+    // no setup ops, which on the wire would read as "this recipient executes".
     expect(
       adaptTransaction(invocationContext(), {
         chain: mainnet,
         calls: [],
         recipient: recipientAddress,
       }).recipient,
-    ).toEqual({
-      address: recipientAddress,
-      accountType: 'EOA',
-      setupOps: [],
-    })
+    ).toEqual({ kind: 'bare', address: recipientAddress })
   })
 
   test('carries recipient recovery config into setup and address derivation', () => {
@@ -2295,11 +2470,13 @@ describe('account boundary adapters', () => {
       owners: { type: 'ecdsa', accounts: [owner] },
     }
     const project = (recipient: EvmAccountConfig) =>
-      adaptTransaction(invocationContext(), {
-        chain: mainnet,
-        calls: [],
-        recipient,
-      }).recipient
+      accountRecipient(
+        adaptTransaction(invocationContext(), {
+          chain: mainnet,
+          calls: [],
+          recipient,
+        }).recipient,
+      )
 
     const plain = project(base)
     const withRecovery = project({
@@ -2315,17 +2492,83 @@ describe('account boundary adapters', () => {
     expect(withRecovery?.address).not.toBe(plain?.address)
   })
 
-  test('includes source and destination authorization chains once', () => {
-    const transaction = adaptTransaction(invocationContext(), {
-      sourceChains: [mainnet, optimism],
-      targetChain: optimism,
-      calls: [],
-    })
+  // Which chains an intent takes EIP-7702 delegations on is no longer derived
+  // from the transaction's source and destination chains: the quote names each
+  // delegation it needs, so the facade returns exactly those contributions,
+  // bound to the request slots they answer, and synthesises no chain list.
+  test('returns the delegations the selected quote asked for', async () => {
+    const compatibilityConfig: LegacyAccountConfig<unknown> = {
+      owners: { type: 'ecdsa', accounts: [owner] },
+    }
+    const delegated = publicQuote(
+      caucasusQuote({
+        intentId: 'best',
+        signingRequests: [
+          eip712Request({ chainId: mainnet.id }),
+          delegationRequest({
+            chainId: mainnet.id,
+            contract: guardian.address,
+          }),
+          delegationRequest({
+            chainId: optimism.id,
+            contract: guardian.address,
+          }),
+        ],
+      }),
+    )
+    const contributions = [1, 2].map((requestIndex) => ({
+      intentId: 'best',
+      requestSetId: `0x${'aa'.repeat(32)}` as const,
+      requestIndex,
+      proof: {
+        kind: 'eip7702' as const,
+        nonce: requestIndex,
+        signature: {
+          r: '0x12' as const,
+          s: '0x34' as const,
+          yParity: 0 as const,
+        },
+      },
+    }))
+    const signRequestedDelegations = vi.fn(async () => contributions)
+    const reconstructPreparedIntent = vi.fn(async (_context, input) => ({
+      ...input,
+      input: input.intentInput,
+      accountChain: toEvmChainReference(mainnet.id),
+      signing: {} as never,
+    }))
+    const facade = createAccountFacade(
+      compatibilityConfig,
+      { evm: compatibilityConfig as EvmAccountConfig },
+      {
+        config: resolveSdkConfig({ apiKey: 'offline' }),
+        project: {} as never,
+        createAccount: (context) => ({
+          context,
+          workflows: {
+            reconstructPreparedIntent,
+            signRequestedDelegations,
+          } as never,
+        }),
+      },
+    )
+    const prepared = {
+      quotes: { traceId: 'trace', best: delegated, all: [delegated] },
+      intentInput: serializedIntentInput,
+      request: preparedRequest,
+      transaction: {
+        sourceChains: [mainnet, optimism],
+        targetChain: optimism,
+        calls: [],
+      },
+    } satisfies PreparedTransactionData
 
-    expect(authorizationChains(transaction)).toEqual([
-      toEvmChainReference(mainnet.id),
-      toEvmChainReference(optimism.id),
-    ])
+    await expect(facade.signAuthorizations(prepared)).resolves.toEqual(
+      contributions,
+    )
+    expect(reconstructPreparedIntent.mock.calls[0]?.[1].quote.intentId).toBe(
+      'best',
+    )
   })
 
   test('forwards customDeadline for same-chain intents', () => {
@@ -2464,35 +2707,9 @@ describe('account boundary adapters', () => {
   })
 })
 
-function quoteFixture(intentId: string) {
-  return {
-    intentId,
-    expiresAt: 1,
-    estimatedFillTime: { seconds: 1 },
-    settlementLayer: 'SAME_CHAIN' as const,
-    signData: {
-      origin: [],
-      destination: {
-        domain: {},
-        types: {},
-        primaryType: 'Test',
-        message: {},
-      },
-    },
-    cost: {
-      input: [],
-      output: [],
-      fees: {
-        total: { usd: 0 },
-        breakdown: {
-          gas: { usd: 0, sponsored: false },
-          bridge: { usd: 0, sponsored: false },
-          swap: { usd: 0, sponsored: false },
-          app: { usd: 0, sponsored: false },
-          protocol: { usd: 0, sponsored: false },
-          sponsorSurcharge: { usd: 0, sponsored: false },
-        },
-      },
-    },
-  }
+// A same-chain EVM quote carrying the one origin authorization the account
+// signs. The chain has to be readable from the payload's domain: that is where
+// the signing account runtime is resolved from.
+function quoteFixture(intentId: string): Quote {
+  return publicQuote(caucasusQuote({ intentId, chainId: mainnet.id }))
 }

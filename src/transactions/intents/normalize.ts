@@ -1,5 +1,5 @@
 import type { TypedDataDefinition, TypedDataParameter } from 'viem'
-import type { OriginSignData } from '../../clients/orchestrator/public'
+import type { SigningRequest } from '../../clients/orchestrator/public'
 import type { OrchestratorQuote } from '../../clients/orchestrator/types'
 
 type TypedDataTypes = Record<string, readonly TypedDataParameter[]>
@@ -18,10 +18,18 @@ export function normalizeIntentTypedData(
   } as TypedDataDefinition
 }
 
-function normalizeOriginSignData(value: OriginSignData): OriginSignData {
-  return value.kind === 'personalSign'
-    ? { ...value }
-    : ({ ...normalizeIntentTypedData(value), kind: 'eip712' } as OriginSignData)
+// Normalizes the numeric values a JSON payload carries as strings into the
+// bigints viem hashes with. The typed-data digest is unchanged by this.
+function normalizeSigningRequest(request: SigningRequest): SigningRequest {
+  return request.payload.kind === 'eip712'
+    ? {
+        ...request,
+        payload: {
+          ...request.payload,
+          typedData: normalizeIntentTypedData(request.payload.typedData),
+        },
+      }
+    : request
 }
 
 export function normalizeIntentQuote(
@@ -29,19 +37,7 @@ export function normalizeIntentQuote(
 ): OrchestratorQuote {
   return {
     ...quote,
-    signData: {
-      origin: quote.signData.origin.map(normalizeOriginSignData),
-      ...(quote.signData.destination
-        ? { destination: normalizeIntentTypedData(quote.signData.destination) }
-        : {}),
-      ...(quote.signData.targetExecution
-        ? {
-            targetExecution: normalizeIntentTypedData(
-              quote.signData.targetExecution,
-            ),
-          }
-        : {}),
-    },
+    signingRequests: quote.signingRequests.map(normalizeSigningRequest),
   }
 }
 

@@ -1,5 +1,5 @@
 import { privateKeyToAccount } from 'viem/accounts'
-import { describe, expect, test } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 import { OwnersFieldRequiredError } from '../accounts/error'
 import { solanaAddress } from '../chains/non-evm'
 import {
@@ -11,6 +11,10 @@ import { RhinestoneSDK } from './sdk'
 
 const owner = privateKeyToAccount(`0x${'11'.repeat(32)}`)
 const receiver = solanaAddress('11111111111111111111111111111111')
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 describe('RhinestoneSDK', () => {
   test('rejects missing owners asynchronously during account creation', async () => {
@@ -62,6 +66,39 @@ describe('RhinestoneSDK', () => {
         solana: { owner: { type: 'ecdsa', account: owner } },
       }),
     ).rejects.toThrow(ManagedSolanaAccountNotSupportedError)
+  })
+
+  test('asks for the recorded detail block only when told to', async () => {
+    // Mirrors the server: the detail block comes back only for `?full=true`.
+    const fetch = vi.fn(async (url: string) =>
+      Response.json({
+        traceId: 'trace-1',
+        intentId: 'intent-1',
+        purpose: 'execution',
+        status: 'COMPLETED',
+        operations: [],
+        ...(url.includes('full=true')
+          ? {
+              details: {
+                source: [],
+                destination: { tokens: [] },
+                deployments: [],
+                cost: { sponsored: false },
+              },
+            }
+          : {}),
+      }),
+    )
+    vi.stubGlobal('fetch', fetch)
+    const sdk = new RhinestoneSDK({ apiKey: 'test' })
+
+    const lean = await sdk.getIntentStatus('intent-1')
+    expect(fetch.mock.calls[0]?.[0]).not.toContain('full=true')
+    expect(lean.details).toBeUndefined()
+
+    const full = await sdk.getIntentStatus('intent-1', { full: true })
+    expect(fetch.mock.calls[1]?.[0]).toContain('/intents/intent-1?full=true')
+    expect(full.details).toBeDefined()
   })
 
   test.each([

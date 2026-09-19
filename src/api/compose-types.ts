@@ -9,6 +9,10 @@ import type { ChainReference, EvmChainReference } from '../chains/types'
 import type { BundlerPort } from '../clients/bundler/port'
 import type { OrchestratorPort } from '../clients/orchestrator/port'
 import type {
+  SigningProof,
+  SigningRequest,
+} from '../clients/orchestrator/public'
+import type {
   OrchestratorAppFeeBalances,
   OrchestratorPortfolio,
 } from '../clients/orchestrator/types'
@@ -35,9 +39,11 @@ import type {
   SolanaTransferInput,
 } from '../transactions/intents/solana'
 import type {
+  IndexedProofContribution,
   IntentInput,
   IntentSessionSelection,
   IntentStatus,
+  IntentStatusOptions,
   PreparedIntent,
   SignedIntent,
   SubmittedIntent,
@@ -74,7 +80,10 @@ export type AccountDependencyResolver<CompatibilityConfig = unknown> = (
 ) => CoreDependencies
 
 export interface ProjectWorkflows {
-  readonly getIntentStatus: (intentId: string) => Promise<IntentStatus>
+  readonly getIntentStatus: (
+    intentId: string,
+    options?: IntentStatusOptions,
+  ) => Promise<IntentStatus>
   readonly splitIntents: OrchestratorPort['splitIntents']
   readonly getAppFeeBalances: () => Promise<OrchestratorAppFeeBalances>
   /**
@@ -171,6 +180,7 @@ export interface AccountWorkflows<CompatibilityConfig = unknown> {
     context: AccountInvocationContext<CompatibilityConfig>,
     input: PreparedIntent<CompatibilityConfig>,
     signatures: readonly IndependentOwnerSignature[],
+    options?: { readonly proofs?: readonly IndexedProofContribution[] },
   ) => Promise<SignedIntent<CompatibilityConfig>>
   readonly submitIntent: (
     context: AccountInvocationContext<CompatibilityConfig>,
@@ -258,22 +268,25 @@ export interface AccountWorkflows<CompatibilityConfig = unknown> {
       readonly quote: PreparedIntent<CompatibilityConfig>['quote']
       readonly quotes: PreparedIntent<CompatibilityConfig>['quotes']
       readonly request: PreparedIntent<CompatibilityConfig>['request']
+      readonly normalized: PreparedIntent<CompatibilityConfig>['normalized']
       readonly intentInput: IntentInput<CompatibilityConfig>
     },
   ) => Promise<PreparedIntent<CompatibilityConfig>>
-  readonly signIntentFromSignData: (
+  readonly signIntentFromRequests: (
     context: AccountInvocationContext<CompatibilityConfig>,
     input: {
-      readonly signData: IntentMessages
+      readonly signingRequests: IntentMessages
       readonly targetChain: ChainReference
       readonly signers?: OwnerSignerSelection | IntentSessionSelection
     },
   ) => Promise<{
-    readonly originSignatures: SignedIntent<CompatibilityConfig>['originSignatures']
-    readonly destinationSignature: Hex
-    readonly targetExecutionSignature: Hex | undefined
+    readonly proofs: readonly SigningProof[]
     readonly transcript: SigningTranscript
   }>
+  readonly signRequestedDelegations: (
+    context: AccountInvocationContext<CompatibilityConfig>,
+    prepared: PreparedIntent<CompatibilityConfig>,
+  ) => Promise<IndexedProofContribution[]>
   readonly getOwners: (
     context: AccountInvocationContext<CompatibilityConfig>,
     chain: EvmChainReference,
@@ -303,11 +316,8 @@ export interface AccountWorkflows<CompatibilityConfig = unknown> {
   ) => Promise<Hex>
 }
 
-export interface IntentMessages {
-  readonly origin: readonly TypedDataDefinition[]
-  readonly destination: TypedDataDefinition
-  readonly targetExecution?: TypedDataDefinition
-}
+/** A quote's ordered signing requests. */
+export type IntentMessages = readonly SigningRequest[]
 
 export interface AccountComposition<CompatibilityConfig = unknown> {
   readonly context: AccountInvocationContext<CompatibilityConfig>

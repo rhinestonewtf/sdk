@@ -11,8 +11,11 @@ type JsonRequest<Operation extends keyof operations> =
     ? Body
     : never
 
-type JsonResponse<Operation extends keyof operations> = NonNullable<
-  operations[Operation]['responses'] extends { 200: infer Ok }
+type JsonResponse<
+  Operation extends keyof operations,
+  Status extends number = 200,
+> = NonNullable<
+  operations[Operation]['responses'] extends Record<Status, infer Ok>
     ? Ok extends { content: { 'application/json': infer Body } }
       ? Body
       : never
@@ -25,19 +28,23 @@ type Folded<Body> = Body & { readonly traceId?: string }
 
 export type WireQuoteRequest = JsonRequest<'createQuote'>
 export type WireIntentRequest = JsonRequest<'createIntent'>
-// The orchestrator consumes this internal simulation flag outside the public schema.
-export type WireIntentRequestInternal = WireIntentRequest & {
-  readonly options?: { readonly dryRun?: boolean }
-}
 export type WireSplitRequest = JsonRequest<'getSplit'>
+
 type GeneratedWireQuoteResponse = Folded<JsonResponse<'createQuote'>>
-type GeneratedWireQuote = GeneratedWireQuoteResponse['routes'][number]
-export type WireQuote = GeneratedWireQuote
-export type WireQuoteResponse = Omit<GeneratedWireQuoteResponse, 'routes'> & {
-  readonly routes: readonly WireQuote[]
-}
+/** The successful arm. An unrecognised `status` is refused, never read as empty. */
+export type WireQuotedResponse = Extract<
+  GeneratedWireQuoteResponse,
+  { status: 'quoted' }
+>
+export type WireQuote = WireQuotedResponse['routes'][number]
+export type WireQuoteResponse = GeneratedWireQuoteResponse
+
+export type WireSigningRequest = WireQuote['signingRequests'][number]
+export type WireProof = WireIntentRequest['proofs'][number]
+
 export type WirePortfolioResponse = Folded<JsonResponse<'getPortfolio'>>
 export type WireIntentStatusResponse = Folded<JsonResponse<'getIntent'>>
+export type WireIntentSubmitResponse = Folded<JsonResponse<'createIntent', 201>>
 export type WireSplitResponse = Folded<JsonResponse<'getSplit'>>
 // The `/chains` catalog: a CAIP-2-keyed map of chain facts. Not folded — the
 // trace id (if present) is a non-CAIP-2 key the catalog parser skips.

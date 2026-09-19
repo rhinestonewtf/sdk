@@ -47,9 +47,9 @@ function wireOptionsFor(via: readonly unknown[] | undefined) {
     } as never,
   )
 
-  const request = buildIntentRequest({
+  const { request } = buildIntentRequest({
     transaction: intent,
-    account: { address: ACCOUNT, accountType: 'ERC7579' },
+    account: { kind: 'erc7579', address: ACCOUNT, setupOps: [] },
     calls: [],
     sourceCalls: {},
     providedFunds: {},

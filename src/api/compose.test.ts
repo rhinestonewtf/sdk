@@ -1,11 +1,24 @@
-import { type Account, encodeAbiParameters, erc20Abi, type Hex } from 'viem'
+import {
+  type Account,
+  encodeAbiParameters,
+  erc20Abi,
+  type Hex,
+  type TypedDataDefinition,
+} from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { arbitrum, base as baseChain } from 'viem/chains'
 import { describe, expect, test, vi } from 'vitest'
+import {
+  eip712Request,
+  personalSignRequest,
+  plan,
+  quote,
+} from '../../test/utils/caucasus'
 import { parseCaip2, toEvmChainReference } from '../chains/caip2'
 import { solanaAddress, solanaDevnet } from '../chains/non-evm'
 import { ChainCatalog } from '../clients/orchestrator/chain-catalog'
 import type { OrchestratorPort } from '../clients/orchestrator/port'
+import type { OrchestratorIntentRequest } from '../clients/orchestrator/types'
 import type { RpcReadPort } from '../clients/rpc/port'
 import { resolveAccountConfig, resolveSdkConfig } from '../config/resolve'
 import type { AccountInvocationContext } from '../config/resolved'
@@ -27,6 +40,30 @@ function catalogChain(name: string, testnet: boolean) {
   return { name, testnet, supportedTokens: 'all' as const }
 }
 
+// A same-chain quote: the claim and the fill are authorised by the same
+// payload, so the destination slot reuses the origin signature while staying
+// its own authorisation.
+function quoteFor(request: OrchestratorIntentRequest) {
+  const account = request.account.evm?.address ?? target
+  const typedData = {
+    domain: { chainId: 1, verifyingContract: account },
+    types: { Test: [{ name: 'value', type: 'uint256' }] },
+    primaryType: 'Test',
+    message: { value: '1' },
+  } as unknown as TypedDataDefinition
+  return quote({
+    signingRequests: [
+      eip712Request({ chainId: 1, account, typedData }),
+      eip712Request({
+        chainId: 1,
+        account,
+        purpose: 'destinationAuthorization',
+        typedData,
+      }),
+    ],
+  })
+}
+
 function fixture() {
   const sdk = resolveSdkConfig({ apiKey: 'test' })
   const account = resolveAccountConfig(sdk, {
@@ -40,45 +77,10 @@ function fixture() {
     compatibilityConfig: {},
   }
   const orchestrator: OrchestratorPort = {
-    createQuote: vi.fn(async (request) => {
-      const typedData = {
-        kind: 'eip712' as const,
-        domain: {
-          chainId: 1,
-          verifyingContract: request.account.address,
-        },
-        types: { Test: [{ name: 'value', type: 'uint256' }] },
-        primaryType: 'Test',
-        message: { value: '1' },
-      } as const
-      return {
-        traceId: 'trace-prepare',
-        routes: [
-          {
-            intentId: 'intent-1',
-            expiresAt: 1,
-            estimatedFillTime: { seconds: 1 },
-            settlementLayer: 'SAME_CHAIN' as const,
-            signData: { origin: [typedData], destination: typedData },
-            cost: {
-              input: [],
-              output: [],
-              fees: {
-                total: { usd: 0 },
-                breakdown: {
-                  gas: { usd: 0, sponsored: false },
-                  bridge: { usd: 0, sponsored: false },
-                  swap: { usd: 0, sponsored: false },
-                  app: { usd: 0, sponsored: false },
-                  protocol: { usd: 0, sponsored: false },
-                  sponsorSurcharge: { usd: 0, sponsored: false },
-                },
-              },
-            },
-          },
-        ],
-      }
-    }),
+    createQuote: vi.fn(async (request) => ({
+      traceId: 'trace-prepare',
+      routes: [quoteFor(request)],
+    })),
     submitIntent: vi.fn(async () => ({
       traceId: 'trace-submit',
       intentId: 'intent-1',
@@ -86,8 +88,8 @@ function fixture() {
     getIntentStatus: vi.fn(async (intentId) => ({
       traceId: 'trace-status',
       intentId,
+      purpose: 'execution' as const,
       status: 'COMPLETED' as const,
-      account: target,
       operations: [],
     })),
     splitIntents: vi.fn(async () => ({ traceId: 'trace-split', intents: [] })),
@@ -220,9 +222,13 @@ describe('internal core composition', () => {
     const walletAddress = solanaAddress(
       'DfBX7Po1bmnXt4GuEF3Eg5UYUHAjs9m5n8nbb9WUqgw2',
     )
+    const swigAddress = solanaAddress(
+      '9fTE4gQnweN345EGzy6jnXNFW8VryvZ8QwLZqgBubmMs',
+    )
     const message = 'ab'.repeat(32)
+    const devnet = 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1'
     const costEntry = {
-      chainId: 792703810,
+      chainId: devnet,
       tokenAddress: mint,
       symbol: 'USDC',
       decimals: 6,
@@ -233,34 +239,37 @@ describe('internal core composition', () => {
       traceId: 'solana-prepare',
       routes: [
         {
-          intentId: 'solana-intent',
-          expiresAt: 2_000_000_000,
-          estimatedFillTime: { seconds: 1 },
-          settlementLayer: 'SAME_CHAIN' as const,
-          signData: {
-            origin: [
-              {
-                kind: 'personalSign' as const,
+          ...quote({
+            intentId: 'solana-intent',
+            expiresAt: 2_000_000_000,
+            // A Solana origin authorises its spend with one opaque
+            // personal-sign payload naming the Swig wallet and its authority.
+            signingRequests: [
+              personalSignRequest({
+                chainId: devnet,
+                wallet: walletAddress,
+                swigAccount: swigAddress,
+                authority: owner.address,
                 message,
-                expiresAtSlot: '123',
-              },
+              }),
             ],
-          },
-          cost: {
-            input: [costEntry],
-            output: [costEntry],
-            fees: {
-              total: { usd: 0 },
-              breakdown: {
-                gas: { usd: 0, sponsored: false },
-                bridge: { usd: 0, sponsored: false },
-                swap: { usd: 0, sponsored: false },
-                app: { usd: 0, sponsored: false },
-                protocol: { usd: 0, sponsored: false },
-                sponsorSurcharge: { usd: 0, sponsored: false },
+            cost: {
+              input: [costEntry],
+              output: [costEntry],
+              fees: {
+                total: { usd: 0 },
+                breakdown: {
+                  gas: { usd: 0, sponsored: false },
+                  bridge: { usd: 0, sponsored: false },
+                  swap: { usd: 0, sponsored: false },
+                  app: { usd: 0, sponsored: false },
+                  protocol: { usd: 0, sponsored: false },
+                  sponsorSurcharge: { usd: 0, sponsored: false },
+                },
               },
             },
-          },
+          }),
+          plan: plan(devnet),
         },
       ],
     }))
@@ -298,9 +307,7 @@ describe('internal core composition', () => {
       accountType: 'ERC7579' as const,
       authority: owner.address,
       walletAddress,
-      swigAddress: solanaAddress(
-        '9fTE4gQnweN345EGzy6jnXNFW8VryvZ8QwLZqgBubmMs',
-      ),
+      swigAddress,
       namespace: 'dev-v1' as const,
       endpoint: 'https://dev.example',
     }
@@ -631,7 +638,11 @@ describe('internal core composition', () => {
       true,
     )
     expect(first.orchestrator.submitIntent).toHaveBeenCalledOnce()
-    expect(first.orchestrator.getIntentStatus).toHaveBeenCalledWith('intent-1')
+    // Polling stays lean: the recorded detail block is not asked for.
+    expect(first.orchestrator.getIntentStatus).toHaveBeenCalledWith(
+      'intent-1',
+      undefined,
+    )
 
     const second = fixture()
     const customSdk = resolveSdkConfig({
@@ -849,24 +860,39 @@ describe('internal core composition', () => {
     expect(base.dependencies.bundler.send).not.toHaveBeenCalled()
   })
 
-  test('signs raw SignData through the standalone signIntent path (no intent id)', async () => {
+  test('signs raw signing requests through the standalone signIntent path (no intent id)', async () => {
     const { composition, context } = fixture()
     const workflows = composition.createAccount(context).workflows
+    const account = workflows.getAddress(context, chain)
     const typedData = {
       domain: { chainId: 1, verifyingContract: target },
       types: { Test: [{ name: 'value', type: 'uint256' }] },
       primaryType: 'Test',
       message: { value: 1n },
-    } as const
+    } as unknown as TypedDataDefinition
 
-    const signed = await workflows.signIntentFromSignData(context, {
-      signData: { origin: [typedData], destination: typedData },
+    const signed = await workflows.signIntentFromRequests(context, {
+      signingRequests: [
+        eip712Request({ chainId: 1, account, typedData }),
+        eip712Request({
+          chainId: 1,
+          account,
+          purpose: 'destinationAuthorization',
+          typedData,
+        }),
+      ],
       targetChain: chain,
     })
 
-    expect(signed.originSignatures).toHaveLength(1)
-    expect(signed.originSignatures[0]).toMatch(/^0x/u)
-    expect(signed.destinationSignature).toMatch(/^0x/u)
+    // One proof per request, in the quoted order — the destination slot is its
+    // own authorisation even though the same bytes satisfy it.
+    expect(signed.proofs).toHaveLength(2)
+    for (const proof of signed.proofs) {
+      if (proof.kind !== 'eip712' || typeof proof.signature !== 'string') {
+        throw new Error('Expected one plain EIP-712 signature per request')
+      }
+      expect(proof.signature).toMatch(/^0x/u)
+    }
   })
 
   test('createSession resolves the wrapped-native token from the chain catalog', async () => {
