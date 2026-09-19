@@ -47,8 +47,18 @@ export function mapIntentRequestToWire(
     account: input.account,
     destination: input.destination,
     ...(input.source ? { source: input.source } : {}),
-    ...(input.options ? { options: input.options } : {}),
-  }) as WireQuoteRequest
+    ...(input.options
+      ? {
+          options: {
+            ...input.options,
+            settlementLayers: mapSettlementLayers(
+              input.options.settlementLayers,
+            ),
+            quoters: mapQuoters(input.options.quoters),
+          },
+        }
+      : {}),
+  })
 }
 
 export function mapSignedIntentToWire(
@@ -58,7 +68,7 @@ export function mapSignedIntentToWire(
     intentId: input.intentId,
     proofs: input.proofs,
     ...(input.dryRun ? { options: { dryRun: true } } : {}),
-  }) as WireIntentRequest
+  })
 }
 
 export function mapIntentSubmissionFromWire(
@@ -75,8 +85,8 @@ export function mapSplitRequestToWire(
   return serializeBigInts({
     chainId: formatCaip2(input.chainId),
     tokens: input.tokens,
-    settlementLayers: input.settlementLayers,
-  }) as WireSplitRequest
+    settlementLayers: mapSettlementLayers(input.settlementLayers),
+  })
 }
 
 export function mapSplitResultFromWire(
@@ -454,4 +464,26 @@ function parseNumericChainId(value: string | number | undefined): number {
   if (value === undefined) throw new Error('Orchestrator chain id is missing')
   if (/^\d+$/u.test(value)) return Number(value)
   return chainIdFromReference(parseCaip2(value))
+}
+
+type WireQuoteOptions = NonNullable<WireQuoteRequest['options']>
+
+// The port keeps settlement layers and quoters as plain strings so it does not
+// depend on the generated venue enums; the wire narrows them. Widening these
+// two fields, rather than casting the whole body, is what keeps a drifting
+// account/destination/source shape a typecheck error here.
+type VenueFilter =
+  | { readonly include: readonly string[] }
+  | { readonly exclude: readonly string[] }
+
+function mapSettlementLayers(
+  input: VenueFilter | undefined,
+): WireQuoteOptions['settlementLayers'] {
+  return input as WireQuoteOptions['settlementLayers']
+}
+
+function mapQuoters(
+  input: VenueFilter | undefined,
+): WireQuoteOptions['quoters'] {
+  return input as WireQuoteOptions['quoters']
 }

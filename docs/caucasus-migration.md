@@ -102,7 +102,12 @@ const { proofs } = await account.signIntent(signingRequests, targetChain, signer
 ```
 
 Independent owner signatures index the request slots they cover, so
-`IndependentOwnerSignature.origin` is now `slots`.
+`IndependentOwnerSignature.origin` is now `slots`. Every request the account
+itself has to authorize is a slot, not just the origins: an Across-settled
+route from a smart account also carries a target execution authorization, so
+the owner signs it and `assembleTransaction` expects it. One signing ceremony
+per distinct payload — a repeated payload is signed once and reused for the
+slots that ask for the same bytes.
 
 ## EIP-7702 delegations are collected automatically
 

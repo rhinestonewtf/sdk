@@ -36,6 +36,7 @@ import {
   UnsupportedAccountCapabilityError,
 } from '../errors/capability'
 import {
+  InvalidPreparedTransactionError,
   InvalidSolanaTransactionArtifactError,
   QuoteNotInPreparedTransactionError,
   SignerNotSupportedError,
@@ -752,6 +753,20 @@ describe('managed Solana account facade', () => {
       expect(workflows.signSolanaIntent).not.toHaveBeenCalled()
     },
   )
+
+  test('refuses a Solana prepared artifact from an earlier wire version', async () => {
+    const { facade, workflows } = fixture()
+    const prepared = await facade.prepareTransaction(transaction())
+    const { request: _binding, ...legacy } = prepared
+
+    expect(() =>
+      facade.getTransactionMessages(legacy as PreparedTransactionData),
+    ).toThrow(InvalidPreparedTransactionError)
+    await expect(
+      facade.signTransaction(legacy as PreparedTransactionData),
+    ).rejects.toThrow(InvalidPreparedTransactionError)
+    expect(workflows.signSolanaIntent).not.toHaveBeenCalled()
+  })
 
   test('rejects tampering on same-instance prepared and signed artifacts despite warm caches', async () => {
     const { facade, workflows } = fixture()
@@ -1759,6 +1774,64 @@ describe('prepareTransaction automatic source selection', () => {
       }),
     ).rejects.toThrow(/outside the eligible source scope/)
     expect(getEligibleEvmSourceChains).toHaveBeenCalledOnce()
+    expect(prepareIntent).not.toHaveBeenCalled()
+  })
+
+  // A Blanc-era artifact has role-keyed `signData` and no request binding.
+  // It has to be refused with the typed error before anything reads its
+  // quotes, so the caller is told to prepare afresh rather than tripping over
+  // a missing field.
+  test('refuses a prepared artifact from an earlier wire version', async () => {
+    const { facade } = fixture()
+    const prepared = await facade.prepareTransaction({
+      sourceChains: [mainnet],
+      targetChain: mainnet,
+      calls: [],
+      tokenRequests: [{ address: recipientAddress, amount: 1n }],
+    })
+    const { signingRequests: _requests, ...withoutRequests } =
+      prepared.quotes.best
+    const { request: _binding, ...withoutBinding } = prepared
+    const legacy = {
+      ...withoutBinding,
+      quotes: {
+        ...prepared.quotes,
+        best: { ...withoutRequests, signData: { origin: [] } },
+      },
+    } as unknown as PreparedTransactionData
+
+    expect(() => facade.getTransactionMessages(legacy)).toThrow(
+      InvalidPreparedTransactionError,
+    )
+    await expect(facade.signTransaction(legacy)).rejects.toThrow(
+      InvalidPreparedTransactionError,
+    )
+    await expect(
+      facade.submitTransaction({
+        ...legacy,
+        quote: prepared.quotes.best,
+        proofs: [],
+      } as unknown as SignedTransactionData),
+    ).rejects.toThrow(InvalidPreparedTransactionError)
+  })
+
+  // Fails closed here, naming the caller's own input: sent on, an empty
+  // selection is a wire-schema rejection naming fields they never wrote.
+  test.each([
+    ['an empty list', [] as const],
+    ['an empty map', {} as const],
+    ['a chain with no tokens', { [mainnet.id]: [] } as const],
+  ])('rejects source assets given as %s', async (_label, sourceAssets) => {
+    const { facade, prepareIntent } = fixture([mainnet.id])
+    const solana = solanaAddress('11111111111111111111111111111111')
+
+    await expect(
+      facade.prepareTransaction({
+        targetChain: solanaMainnet,
+        tokenRequests: [{ address: solana, amount: 1n }],
+        sourceAssets: sourceAssets as never,
+      }),
+    ).rejects.toThrow(/sourceAssets/)
     expect(prepareIntent).not.toHaveBeenCalled()
   })
 })

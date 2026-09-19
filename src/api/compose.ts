@@ -169,8 +169,12 @@ export function createCoreComposition<CompatibilityConfig = unknown>(
     dependencies,
 ): CoreComposition<CompatibilityConfig> {
   const project: ProjectWorkflows = {
-    getIntentStatus: (intentId) =>
-      getIntentStatus({ statusClient: dependencies.orchestrator }, intentId),
+    getIntentStatus: (intentId, options) =>
+      getIntentStatus(
+        { statusClient: dependencies.orchestrator },
+        intentId,
+        options,
+      ),
     splitIntents: (input) => splitIntents(dependencies.orchestrator, input),
     getAppFeeBalances: () => getAppFeeBalances(dependencies.orchestrator),
     createSession: (definition) =>

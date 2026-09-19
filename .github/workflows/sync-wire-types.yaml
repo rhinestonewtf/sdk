@@ -85,11 +85,20 @@ jobs:
         if: steps.drift.outputs.changed == 'true'
         env:
           NAME: ${{ steps.drift.outputs.name }}
+          LATEST: ${{ steps.drift.outputs.latest }}
         run: |
           set -euo pipefail
           SHA=$(sha256sum published.json | cut -d' ' -f1)
           mv published.json scripts/openapi/"${NAME}".json
-          jq --arg sha "$SHA" '.sha256 = $sha' scripts/openapi/provenance.json > provenance.tmp
+          # Provenance describes the bytes in the tree, so the source moves
+          # with the hash: leaving the orchestrator commit behind would
+          # attribute a published document to a revision it did not come from.
+          jq --arg sha "$SHA" --arg commit "$LATEST" \
+            '.sha256 = $sha
+             | .upstream = { repository: "https://github.com/rhinestonewtf/openapi", commit: $commit }
+             | .generatedBy = "rhinestonewtf/openapi: published orchestrator document"
+             | .note = "Synced from the public OpenAPI repo by the Sync wire types workflow."' \
+            scripts/openapi/provenance.json > provenance.tmp
           mv provenance.tmp scripts/openapi/provenance.json
           bun run generate:wire
           bun run typecheck

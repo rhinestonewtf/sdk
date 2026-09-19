@@ -43,14 +43,26 @@ export function projectPreparedBinding(
   }
 }
 
-export function restorePreparedBinding(
+/**
+ * Refuses a prepared payload from an earlier wire generation.
+ *
+ * Called before anything reads the artifact's quotes, so an older shape fails
+ * with this typed error rather than tripping over a missing field.
+ */
+export function assertPreparedBinding(
   binding: PreparedIntentBinding | undefined,
-): OrchestratorIntentRequest {
+): asserts binding is PreparedIntentBinding {
   if (!binding || binding.version !== PREPARED_REQUEST_VERSION) {
     throw new InvalidPreparedTransactionError({
       context: { version: binding?.version ?? null },
     })
   }
+}
+
+export function restorePreparedBinding(
+  binding: PreparedIntentBinding | undefined,
+): OrchestratorIntentRequest {
+  assertPreparedBinding(binding)
   return binding.request as OrchestratorIntentRequest
 }
 

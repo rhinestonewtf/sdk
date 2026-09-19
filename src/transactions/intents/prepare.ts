@@ -1,4 +1,10 @@
-import { type Hex, hashTypedData, keccak256, stringToHex } from 'viem'
+import {
+  type Address,
+  type Hex,
+  hashTypedData,
+  keccak256,
+  stringToHex,
+} from 'viem'
 import type { AccountRuntime } from '../../accounts/adapter'
 import { resolveCalls } from '../../calls/resolve'
 import type { Call } from '../../calls/types'
@@ -201,6 +207,7 @@ const PURPOSE_USAGE = {
 function classifyRequests(
   requests: readonly SigningRequest[],
   sessions: PreparedIntent['resolvedSessions'],
+  binding: SigningRequestBinding,
 ): readonly IntentSigningRequest[] {
   const signed: {
     readonly digest: Hex
@@ -210,6 +217,7 @@ function classifyRequests(
   }[] = []
   return requests.map((request, index): IntentSigningRequest => {
     const purpose = request.purpose
+    assertRequestIsOurs(request, index, binding)
     switch (request.payload.kind) {
       case 'eip712': {
         const typedData = request.payload.typedData
@@ -256,8 +264,11 @@ function classifyRequests(
                 },
               }
             : {}),
-          exposedForIndependentSigning:
-            !sessions && !match && purpose === 'originAuthorization',
+          // Every slot the owners have to sign themselves, which is every
+          // non-reused payload: a target execution authorization is as much
+          // theirs as an origin one, and dropping it here would leave the
+          // proof vector permanently short.
+          exposedForIndependentSigning: !sessions && !match,
         }
       }
       case 'eip7702':
@@ -284,6 +295,88 @@ function classifyRequests(
         }
     }
   })
+}
+
+/** The account and key this SDK can actually sign for. */
+interface SigningRequestBinding {
+  readonly address: Address
+  readonly eoa?: Address
+  readonly signsRawKey: boolean
+}
+
+function signingRequestBinding(runtime: AccountRuntime): SigningRequestBinding {
+  return {
+    address: runtime.identity.address,
+    ...(runtime.construction.eoa
+      ? { eoa: runtime.construction.eoa.address }
+      : {}),
+    // Only the EOA adapter passes the signer's bytes through untouched; every
+    // smart account wraps them in its validator envelope.
+    signsRawKey: runtime.identity.definition.kind === 'eoa',
+  }
+}
+
+function sameAddress(left: Address, right: Address): boolean {
+  return left.toLowerCase() === right.toLowerCase()
+}
+
+/**
+ * Refuses a signing request that is not this account's to answer.
+ *
+ * A quote can legitimately name another subject — a configured recipient that
+ * adopts EIP-7702 gets its own delegation request — and signing it with our
+ * key would produce a proof the orchestrator rejects at recovery, after the
+ * user has already been prompted.
+ */
+function assertRequestIsOurs(
+  request: SigningRequest,
+  index: number,
+  binding: SigningRequestBinding,
+): void {
+  const refuse = (reason: string) => {
+    throw new UnsupportedSigningRequestError({
+      index,
+      payloadKind: request.payload.kind,
+      reason,
+    })
+  }
+  if (request.payload.kind !== 'eip712' && request.payload.kind !== 'eip7702') {
+    return
+  }
+  if (request.account.vm !== 'evm') {
+    refuse(
+      `Signing request ${index} is for a ${request.account.vm} account, which this EVM account cannot sign for.`,
+    )
+    return
+  }
+  if (!sameAddress(request.account.address, binding.address)) {
+    refuse(
+      `Signing request ${index} names account ${request.account.address}, not ${binding.address}. This SDK only signs for its own account.`,
+    )
+  }
+  if (request.payload.kind === 'eip7702') {
+    if (
+      request.authority.kind !== 'secp256k1' ||
+      (binding.eoa && !sameAddress(request.authority.address, binding.eoa))
+    ) {
+      refuse(
+        `Signing request ${index} asks ${authorityLabel(request.authority)} for an EIP-7702 delegation; this account delegates with ${binding.eoa ?? 'no EOA'}.`,
+      )
+    }
+    return
+  }
+  const wantsRawKey = request.payload.signatureFormat === 'secp256k1'
+  if (wantsRawKey !== binding.signsRawKey) {
+    refuse(
+      `Signing request ${index} asks for a \`${request.payload.signatureFormat}\` signature, which this account does not produce.`,
+    )
+  }
+}
+
+function authorityLabel(authority: SigningRequest['authority']): string {
+  return authority.kind === 'swigRole'
+    ? `Swig role ${authority.roleId}`
+    : authority.address
 }
 
 /**
@@ -335,7 +428,11 @@ export function buildIntentSigningInput(
   selectedSignerIds?: readonly string[],
 ): IntentSigningInput {
   assertSupportedSigningRequests(quote.signingRequests)
-  const requests = classifyRequests(quote.signingRequests, sessions)
+  const requests = classifyRequests(
+    quote.signingRequests,
+    sessions,
+    signingRequestBinding(runtime),
+  )
   const sessionTopology = sessions
     ? signingTopology(
         defineValidator(

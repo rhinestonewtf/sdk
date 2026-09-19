@@ -189,8 +189,11 @@ export async function signIntentAsOwner<CompatibilityConfig>(
     signerInvoker: signing.signerInvoker,
     assembleStage: () => ({}),
   })
+  // Whether the plan packed the payloads into one Merkle ceremony is the
+  // plan's decision, not one to re-derive here: look for the stage it would
+  // have produced and fall back to the per-request stages when it did not.
   const quorumRootStage =
-    signing.validator.kind === 'quorum' && independentSlots(prepared).length > 1
+    signing.validator.kind === 'quorum'
       ? transcript.stages.find(
           ({ stage: materialized }) =>
             materialized.stageId === 'quorum-origins',

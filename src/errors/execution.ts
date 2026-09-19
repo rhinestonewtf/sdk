@@ -252,12 +252,16 @@ class UnsupportedSigningRequestError extends ExecutionError {
   constructor(params: {
     index: number
     payloadKind: string
+    /** Replaces the default message when the request is refused for a reason other than its payload kind. */
+    reason?: string
     context?: any
     errorType?: string
     traceId?: string
   }) {
     super({
-      message: `The quote asks for a \`${params.payloadKind}\` signature at request ${params.index}, which this SDK version cannot produce. Upgrade the SDK, or change the intent so the route does not require it.`,
+      message:
+        params.reason ??
+        `The quote asks for a \`${params.payloadKind}\` signature at request ${params.index}, which this SDK version cannot produce. Upgrade the SDK, or change the intent so the route does not require it.`,
       context: {
         requestIndex: params.index,
         payloadKind: params.payloadKind,

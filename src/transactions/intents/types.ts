@@ -275,6 +275,14 @@ export interface SignedTransactionData extends PreparedTransactionData {
   proofs: SigningProof[]
 }
 
+export interface IntentStatusOptions {
+  /**
+   * Ask the orchestrator for the recorded detail block. Off by default, so
+   * polling stays lean.
+   */
+  readonly full?: boolean
+}
+
 export interface TransactionStatus {
   /** OpenTelemetry trace ID for correlating the status response. */
   traceId: IntentOpStatus['traceId']

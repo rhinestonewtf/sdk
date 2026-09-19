@@ -87,6 +87,7 @@ import {
   projectIntentRecipient,
 } from '../transactions/intents/account'
 import {
+  assertPreparedBinding,
   projectCompatibleQuote,
   projectPreparedBinding,
   restorePreparedBinding,
@@ -817,6 +818,7 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
     intentId?: string,
     explicitQuote?: Quote,
   ) => {
+    assertPreparedBinding(prepared.request)
     const transfer = solanaTransfer(ctx, prepared.transaction)
     assertSolanaMetadata(prepared.execution, transfer)
     const quote = explicitQuote ?? selectedPublicQuote(prepared, intentId)
@@ -837,6 +839,7 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
     intentId?: string,
   ): Promise<PreparedIntent<Compat>> => {
     assertSupportedTransaction(prepared.transaction, publicConfig)
+    assertPreparedBinding(prepared.request)
     if (!isSolanaOrigin(prepared.transaction)) {
       // Before any account state is read: a quote this SDK cannot sign should
       // not cost an RPC round trip first.
@@ -939,6 +942,7 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
     },
     getTransactionMessages(preparedTransaction, options) {
       assertSupportedTransaction(preparedTransaction.transaction, publicConfig)
+      assertPreparedBinding(preparedTransaction.request)
       const quote = selectedPublicQuote(preparedTransaction, options?.intentId)
       if (isSolanaOrigin(preparedTransaction.transaction)) {
         const ctx = context('get-intent-messages')
@@ -2271,6 +2275,16 @@ function adaptSourceAssets(
   chainIds: readonly number[] | undefined,
 ): NormalizedAccessList | undefined {
   if (!sourceAssets) return chainIds ? { chainIds } : undefined
+  // An explicit but empty selection fails closed, and it fails here: sent on,
+  // it is a wire-schema rejection naming fields the caller never wrote.
+  if (
+    (Array.isArray(sourceAssets) ? sourceAssets : Object.keys(sourceAssets))
+      .length === 0
+  ) {
+    throw new UnsupportedAccountCapabilityError(
+      '`sourceAssets` is empty, so the intent has nothing to spend from. Name at least one source asset, or omit `sourceAssets` to use every eligible source.',
+    )
+  }
   const eligible = chainIds ? new Set(chainIds) : undefined
   const assertEligible = (chainId: number) => {
     if (eligible && !eligible.has(chainId)) {
@@ -2317,6 +2331,12 @@ function adaptSourceAssets(
   // through this input the way they can't through tokenRequests / ExactInputConfig.
   for (const [chainId, tokens] of Object.entries(sourceAssets)) {
     assertEligible(Number(chainId))
+    if (tokens.length === 0) {
+      throw new UnsupportedAccountCapabilityError(
+        `\`sourceAssets\` names chain ${chainId} with no tokens, so that chain has nothing to spend. Name at least one token, or drop the chain.`,
+        { chainId: Number(chainId) },
+      )
+    }
     validateTokenAddresses(tokens)
   }
   return { chainTokens: sourceAssets }

@@ -1,6 +1,10 @@
 import { IntentFailedError } from '../../errors/execution'
 import { classifyIntentStatus, getIntentRetryDelay } from './status-policy'
-import type { IntentStatus, IntentWorkflowContext } from './types'
+import type {
+  IntentStatus,
+  IntentStatusOptions,
+  IntentWorkflowContext,
+} from './types'
 
 const initialDelayMs = 500
 const slowAfterMs = 15_000
@@ -11,7 +15,7 @@ const maximumErrorBackoffMs = 10_000
 export async function getIntentStatus<CompatibilityConfig>(
   context: Pick<IntentWorkflowContext<CompatibilityConfig>, 'statusClient'>,
   intentId: string,
-  options?: { readonly full?: boolean },
+  options?: IntentStatusOptions,
 ): Promise<IntentStatus> {
   return classifyIntentStatus(
     await context.statusClient.getIntentStatus(

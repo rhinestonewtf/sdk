@@ -160,16 +160,18 @@ export type OrchestratorChainSelector =
   | { readonly only: readonly Caip2ChainId[] }
   | { readonly except: readonly Caip2ChainId[] }
 
-export type OrchestratorTokenSelector =
-  | 'all'
+export type OrchestratorTokenSelector = 'all' | OrchestratorTokenRestriction
+
+export type OrchestratorTokenRestriction =
   | { readonly only: readonly string[] }
   | { readonly except: readonly string[] }
 
 export interface OrchestratorSourceSelection {
   readonly chains: OrchestratorChainSelector
   readonly tokens: OrchestratorTokenSelector
+  /** Narrowing only: a per-chain entry always restricts, so it has no `'all'`. */
   readonly perChain?: Readonly<
-    Record<Caip2ChainId, { readonly tokens: OrchestratorTokenSelector }>
+    Record<Caip2ChainId, { readonly tokens: OrchestratorTokenRestriction }>
   >
 }
 

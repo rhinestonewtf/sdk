@@ -61,12 +61,14 @@ export function delegationRequest(input: {
   readonly chainId: number
   readonly contract: Address
   readonly account?: Address
+  /** The key asked to sign, when it is not the account's own. */
+  readonly authority?: Address
 }): SigningRequest {
   const caip2 = `eip155:${input.chainId}`
   const address = input.account ?? ACCOUNT
   return {
     account: { vm: 'evm', address },
-    authority: { kind: 'secp256k1', address },
+    authority: { kind: 'secp256k1', address: input.authority ?? address },
     scope: {
       vm: 'evm',
       action: 'delegation',

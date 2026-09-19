@@ -4,7 +4,7 @@
 
 Speak orchestrator API version `2026-09.caucasus`. Accounts, recipients, sources and destinations are now expressed in their own VM's terms, a quote states the authorizations it needs as an ordered list, and status reports every operation rather than one per chain. There is no compatibility mode: a prepared or signed transaction produced by an earlier release cannot be signed or submitted by this one, and refuses explicitly rather than being reinterpreted. Reconcile any in-flight submission first, then prepare it again.
 
-Transaction inputs are unchanged: `chain`, `sourceChains` / `targetChain`, `sourceAssets`, `calls`, `tokenRequests`, `recipient`, `sponsored` and the HyperCore helpers all keep their shape and meaning. What changed is everything the orchestrator hands back.
+Transaction inputs are unchanged: `chain`, `sourceChains` / `targetChain`, `sourceAssets`, `calls`, `tokenRequests`, `recipient`, `sponsored` and the HyperCore helpers all keep their shape and meaning. What changed is everything the orchestrator hands back. One input is stricter: an explicitly empty `sourceAssets` — `[]`, `{}`, or a chain listed with no tokens — now refuses, because it leaves the intent nothing to spend.
 
 ### Signing is an ordered list, not a set of roles
 

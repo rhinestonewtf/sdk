@@ -863,6 +863,7 @@ describe('internal core composition', () => {
   test('signs raw signing requests through the standalone signIntent path (no intent id)', async () => {
     const { composition, context } = fixture()
     const workflows = composition.createAccount(context).workflows
+    const account = workflows.getAddress(context, chain)
     const typedData = {
       domain: { chainId: 1, verifyingContract: target },
       types: { Test: [{ name: 'value', type: 'uint256' }] },
@@ -872,9 +873,10 @@ describe('internal core composition', () => {
 
     const signed = await workflows.signIntentFromRequests(context, {
       signingRequests: [
-        eip712Request({ chainId: 1, typedData }),
+        eip712Request({ chainId: 1, account, typedData }),
         eip712Request({
           chainId: 1,
+          account,
           purpose: 'destinationAuthorization',
           typedData,
         }),

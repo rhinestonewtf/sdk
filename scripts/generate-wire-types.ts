@@ -32,7 +32,6 @@ const OUT_PATH = fileURLToPath(
 // Module-relative, so generation does not depend on the caller's working
 // directory. Only a caller-supplied override resolves against `process.cwd()`.
 const SNAPSHOT_DIR = new URL('./openapi/', import.meta.url)
-const PROVENANCE_PATH = fileURLToPath(new URL('provenance.json', SNAPSHOT_DIR))
 
 interface Provenance {
   readonly apiVersion: string
@@ -43,12 +42,14 @@ interface Provenance {
 /**
  * Reads the provenance manifest and verifies the vendored snapshot against it.
  * Returns the snapshot's URL.
+ * @param directory Snapshot directory; defaults to the vendored one. Tests
+ * point it at a copy so they never rewrite the tracked artifact.
  */
-export function resolveVendoredSpec(): URL {
+export function resolveVendoredSpec(directory: URL = SNAPSHOT_DIR): URL {
   const provenance = JSON.parse(
-    readFileSync(PROVENANCE_PATH, 'utf8'),
+    readFileSync(fileURLToPath(new URL('provenance.json', directory)), 'utf8'),
   ) as Provenance
-  const artifactPath = fileURLToPath(new URL(provenance.artifact, SNAPSHOT_DIR))
+  const artifactPath = fileURLToPath(new URL(provenance.artifact, directory))
   const bytes = readFileSync(artifactPath)
 
   const actual = createHash('sha256').update(bytes).digest('hex')

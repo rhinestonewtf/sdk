@@ -38,7 +38,11 @@ import type {
 import { buildIntentSigningInput, prepareIntent } from './prepare'
 import { sendIntent } from './send'
 import { buildSessionIntentPlanInput } from './session-signing'
-import { signIntent, signIntentAsOwner } from './sign-transaction'
+import {
+  assembleIntent,
+  signIntent,
+  signIntentAsOwner,
+} from './sign-transaction'
 import { submitIntent } from './submit'
 import type { IntentInput, IntentWorkflowContext } from './types'
 
@@ -463,6 +467,73 @@ describe('intent workflow', () => {
     expect(workflow.signerInvoker.invoke).toHaveBeenCalledOnce()
   })
 
+  // Every Across route from a smart account carries a target execution
+  // authorization. The owners have to sign it themselves, so it is one of
+  // their slots and the assembled vector covers it.
+  test.each([
+    ['an ECDSA validator', undefined],
+    [
+      'a quorum validator',
+      defineValidator({
+        type: 'quorum' as const,
+        module: '0x0000000000000000000000000000000000000042' as const,
+        thresholdWeight: 1n,
+        owners: [{ account, weight: 1n }],
+      }),
+    ],
+  ])(
+    'signs and assembles a target execution slot with %s',
+    async (_label, owner) => {
+      const baseRuntime = runtime()
+      const accountRuntime: AccountRuntime = owner
+        ? {
+            ...baseRuntime,
+            construction: { ...baseRuntime.construction, owner },
+          }
+        : baseRuntime
+      const workflow = context({
+        account: { forChain: vi.fn(async () => accountRuntime) },
+        quoteClient: {
+          createQuote: vi.fn(async () => ({
+            traceId: 'trace-target',
+            routes: [
+              quote({
+                signingRequests: [
+                  originRequest(),
+                  eip712Request({
+                    chainId: 1,
+                    purpose: 'targetExecutionAuthorization',
+                    typedData: intentTypedData(1, '2'),
+                  }),
+                  destinationRequest(),
+                ],
+              }),
+            ],
+          })),
+        },
+      })
+      const prepared = await prepareIntent(workflow, input)
+
+      const ownerSignature = await signIntentAsOwner(workflow, prepared, {
+        signerId: `ecdsa:${account.address.toLowerCase()}`,
+      })
+      if (ownerSignature.kind !== 'ecdsa') {
+        throw new Error('Expected independent ECDSA signature')
+      }
+      expect(ownerSignature.slots).toHaveLength(2)
+
+      const assembled = await assembleIntent(workflow, prepared, [
+        ownerSignature,
+      ])
+      // Origin, target, and the destination reusing the origin's bytes.
+      expect(assembled.proofs).toHaveLength(3)
+      expect(hexProof(assembled.proofs[2])).toBe(hexProof(assembled.proofs[0]))
+      const target = eip712Slot(prepared.signing, 1)
+      expect(target.reuse).toBeUndefined()
+      expect(target.exposedForIndependentSigning).toBe(true)
+    },
+  )
+
   test('signs a multi-origin quorum once and emits per-origin Merkle proofs', async () => {
     const quorumValidator = '0x0000000000000000000000000000000000000042'
     const baseRuntime = runtime()
@@ -628,6 +699,55 @@ describe('intent workflow', () => {
     )
   })
 
+  // A quote can legitimately name another subject — a configured recipient
+  // that adopts EIP-7702 gets its own delegation request. Signing it with our
+  // key wastes a prompt and fails at the orchestrator's recovery instead.
+  test.each([
+    [
+      'an account this SDK does not control',
+      () =>
+        eip712Request({
+          chainId: 1,
+          account: '0x00000000000000000000000000000000000000ff',
+          typedData: intentTypedData(1),
+        }),
+      /names account 0x00000000000000000000000000000000000000ff/u,
+    ],
+    [
+      'a delegation for a key this account does not hold',
+      () =>
+        delegationRequest({
+          chainId: 1,
+          contract: '0x00000000000000000000000000000000000000aa',
+          account: address,
+          authority: '0x00000000000000000000000000000000000000bb',
+        }),
+      /EIP-7702 delegation/u,
+    ],
+    [
+      'a raw-key signature a smart account cannot produce',
+      () =>
+        eip712Request({
+          chainId: 1,
+          signatureFormat: 'secp256k1',
+          typedData: intentTypedData(1),
+        }),
+      /`secp256k1` signature/u,
+    ],
+  ])('refuses a signing request naming %s', (_label, request, message) => {
+    const base = runtime()
+    const eoaBacked: AccountRuntime = {
+      ...base,
+      construction: { ...base.construction, eoa: account },
+    }
+    expect(() =>
+      buildIntentSigningInput(
+        eoaBacked,
+        quote({ signingRequests: [request()] }),
+      ),
+    ).toThrow(message)
+  })
+
   test('signs a chain-agnostic multi-leg origin payload', () => {
     // `MultiChainOps` is one signature over every IntentExecutor leg, so its
     // domain carries no chainId and the quote carries ONE origin request for a
@@ -674,7 +794,7 @@ describe('intent workflow', () => {
 
   // Caucasus makes a target execution an explicit request slot: the SDK no
   // longer decides locally whether to sign one, it signs exactly what the quote
-  // asks for. What survives is that it is never an owner-signable payload.
+  // asks for.
   test('signs a target execution payload only when the quote asks for one', () => {
     expect(
       buildIntentSigningInput(runtime(), quote()).requests.some(
@@ -699,7 +819,8 @@ describe('intent workflow', () => {
 
     expect(target.payload.usage).toBe('intent-target')
     expect(target.payload.chain.id).toBe(421614)
-    expect(target.exposedForIndependentSigning).toBe(false)
+    // The owners have to sign it themselves, so it is one of their slots.
+    expect(target.exposedForIndependentSigning).toBe(true)
   })
 
   test('freezes and signs a fresh Smart Session route per chain', async () => {

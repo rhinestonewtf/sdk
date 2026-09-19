@@ -43,6 +43,7 @@ import type {
   IntentInput,
   IntentSessionSelection,
   IntentStatus,
+  IntentStatusOptions,
   PreparedIntent,
   SignedIntent,
   SubmittedIntent,
@@ -79,7 +80,10 @@ export type AccountDependencyResolver<CompatibilityConfig = unknown> = (
 ) => CoreDependencies
 
 export interface ProjectWorkflows {
-  readonly getIntentStatus: (intentId: string) => Promise<IntentStatus>
+  readonly getIntentStatus: (
+    intentId: string,
+    options?: IntentStatusOptions,
+  ) => Promise<IntentStatus>
   readonly splitIntents: OrchestratorPort['splitIntents']
   readonly getAppFeeBalances: () => Promise<OrchestratorAppFeeBalances>
   /**

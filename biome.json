@@ -9,7 +9,7 @@
       "!integration-test",
       "!.changeset",
       "!src/clients/orchestrator/wire.gen.ts",
-      "!scripts/openapi"
+      "!scripts/openapi/*.json"
     ]
   },
   "formatter": {
