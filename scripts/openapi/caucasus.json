@@ -600,8 +600,8 @@
                                       },
                                       "version": {
                                         "type": "string",
-                                        "description": "Implementation version, when planning read one",
-                                        "example": "1.0.0"
+                                        "description": "Raw trailing version token returned by ERC-7579 `accountId()`, when valid; preserved without normalization",
+                                        "example": "v1.0.0"
                                       }
                                     },
                                     "required": [
@@ -644,23 +644,51 @@
                                     "example": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
                                   },
                                   "authority": {
-                                    "type": "object",
-                                    "properties": {
-                                      "kind": {
-                                        "type": "string",
-                                        "enum": [
-                                          "secp256k1"
+                                    "discriminator": {
+                                      "propertyName": "kind"
+                                    },
+                                    "oneOf": [
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "kind": {
+                                            "type": "string",
+                                            "enum": [
+                                              "secp256k1"
+                                            ]
+                                          },
+                                          "address": {
+                                            "type": "string",
+                                            "description": "Authority the submitted signature must recover to",
+                                            "example": "0x579d5631f76126991c00fb8fe5467fa9d49e5f6a"
+                                          }
+                                        },
+                                        "required": [
+                                          "kind",
+                                          "address"
                                         ]
                                       },
-                                      "address": {
-                                        "type": "string",
-                                        "description": "Authority the submitted signature must recover to",
-                                        "example": "0x579d5631f76126991c00fb8fe5467fa9d49e5f6a"
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "kind": {
+                                            "type": "string",
+                                            "enum": [
+                                              "secp256r1"
+                                            ]
+                                          },
+                                          "publicKey": {
+                                            "type": "string",
+                                            "pattern": "^0x0[23][0-9a-fA-F]{64}$",
+                                            "description": "SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03",
+                                            "example": "0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296"
+                                          }
+                                        },
+                                        "required": [
+                                          "kind",
+                                          "publicKey"
+                                        ]
                                       }
-                                    },
-                                    "required": [
-                                      "kind",
-                                      "address"
                                     ],
                                     "description": "Authority configured on the Swig"
                                   }
@@ -2340,8 +2368,8 @@
                                           },
                                           "version": {
                                             "type": "string",
-                                            "description": "Implementation version, when planning read one",
-                                            "example": "1.0.0"
+                                            "description": "Raw trailing version token returned by ERC-7579 `accountId()`, when valid; preserved without normalization",
+                                            "example": "v1.0.0"
                                           }
                                         },
                                         "required": [
@@ -2384,23 +2412,51 @@
                                         "example": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
                                       },
                                       "authority": {
-                                        "type": "object",
-                                        "properties": {
-                                          "kind": {
-                                            "type": "string",
-                                            "enum": [
-                                              "secp256k1"
+                                        "discriminator": {
+                                          "propertyName": "kind"
+                                        },
+                                        "oneOf": [
+                                          {
+                                            "type": "object",
+                                            "properties": {
+                                              "kind": {
+                                                "type": "string",
+                                                "enum": [
+                                                  "secp256k1"
+                                                ]
+                                              },
+                                              "address": {
+                                                "type": "string",
+                                                "description": "Authority the submitted signature must recover to",
+                                                "example": "0x579d5631f76126991c00fb8fe5467fa9d49e5f6a"
+                                              }
+                                            },
+                                            "required": [
+                                              "kind",
+                                              "address"
                                             ]
                                           },
-                                          "address": {
-                                            "type": "string",
-                                            "description": "Authority the submitted signature must recover to",
-                                            "example": "0x579d5631f76126991c00fb8fe5467fa9d49e5f6a"
+                                          {
+                                            "type": "object",
+                                            "properties": {
+                                              "kind": {
+                                                "type": "string",
+                                                "enum": [
+                                                  "secp256r1"
+                                                ]
+                                              },
+                                              "publicKey": {
+                                                "type": "string",
+                                                "pattern": "^0x0[23][0-9a-fA-F]{64}$",
+                                                "description": "SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03",
+                                                "example": "0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296"
+                                              }
+                                            },
+                                            "required": [
+                                              "kind",
+                                              "publicKey"
+                                            ]
                                           }
-                                        },
-                                        "required": [
-                                          "kind",
-                                          "address"
                                         ],
                                         "description": "Authority configured on the Swig"
                                       }
@@ -3096,8 +3152,8 @@
                                             },
                                             "version": {
                                               "type": "string",
-                                              "description": "Implementation version, when planning read one",
-                                              "example": "1.0.0"
+                                              "description": "Raw trailing version token returned by ERC-7579 `accountId()`, when valid; preserved without normalization",
+                                              "example": "v1.0.0"
                                             }
                                           },
                                           "required": [
@@ -3140,23 +3196,51 @@
                                           "example": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
                                         },
                                         "authority": {
-                                          "type": "object",
-                                          "properties": {
-                                            "kind": {
-                                              "type": "string",
-                                              "enum": [
-                                                "secp256k1"
+                                          "discriminator": {
+                                            "propertyName": "kind"
+                                          },
+                                          "oneOf": [
+                                            {
+                                              "type": "object",
+                                              "properties": {
+                                                "kind": {
+                                                  "type": "string",
+                                                  "enum": [
+                                                    "secp256k1"
+                                                  ]
+                                                },
+                                                "address": {
+                                                  "type": "string",
+                                                  "description": "Authority the submitted signature must recover to",
+                                                  "example": "0x579d5631f76126991c00fb8fe5467fa9d49e5f6a"
+                                                }
+                                              },
+                                              "required": [
+                                                "kind",
+                                                "address"
                                               ]
                                             },
-                                            "address": {
-                                              "type": "string",
-                                              "description": "Authority the submitted signature must recover to",
-                                              "example": "0x579d5631f76126991c00fb8fe5467fa9d49e5f6a"
+                                            {
+                                              "type": "object",
+                                              "properties": {
+                                                "kind": {
+                                                  "type": "string",
+                                                  "enum": [
+                                                    "secp256r1"
+                                                  ]
+                                                },
+                                                "publicKey": {
+                                                  "type": "string",
+                                                  "pattern": "^0x0[23][0-9a-fA-F]{64}$",
+                                                  "description": "SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03",
+                                                  "example": "0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296"
+                                                }
+                                              },
+                                              "required": [
+                                                "kind",
+                                                "publicKey"
+                                              ]
                                             }
-                                          },
-                                          "required": [
-                                            "kind",
-                                            "address"
                                           ],
                                           "description": "Authority configured on the Swig"
                                         }
@@ -3836,22 +3920,28 @@
                               "properties": {
                                 "credentialId": {
                                   "type": "string",
-                                  "minLength": 1
+                                  "minLength": 1,
+                                  "description": "The credential the assertion was made with, as `PublicKeyCredential.id` (base64url) reports it"
                                 },
                                 "authenticatorData": {
                                   "type": "string",
-                                  "minLength": 1
+                                  "pattern": "^0x(?:[0-9a-fA-F]{2}){37,}$",
+                                  "description": "The authenticator data the authenticator returned, as 0x-prefixed hex. At least 37 bytes: RP id hash, flags and sign counter."
                                 },
                                 "clientDataJSON": {
                                   "type": "string",
-                                  "minLength": 1
+                                  "pattern": "^\\{[\\s\\S]*\\}$",
+                                  "description": "The client data exactly as the authenticator returned it, decoded as UTF-8 JSON text — not base64, not re-serialized. The signature covers its hash byte for byte.",
+                                  "example": "{\"type\":\"webauthn.get\",\"challenge\":\"o_LB1OW2p5gPHi08S1ppeIeWpbTD0uHwobLD1OX2Bxg\",\"origin\":\"https://app.example.com\"}"
                                 },
                                 "signature": {
                                   "type": "string",
-                                  "minLength": 1
+                                  "pattern": "^0x[0-9a-fA-F]{128}$",
+                                  "description": "The P-256 signature as 64-byte r‖s, 0x-prefixed hex — not the DER encoding the authenticator returns."
                                 },
                                 "userHandle": {
-                                  "type": "string"
+                                  "type": "string",
+                                  "description": "The user handle the authenticator returned with the assertion, when it returned one"
                                 }
                               },
                               "required": [
@@ -3868,7 +3958,7 @@
                             "assertion"
                           ],
                           "additionalProperties": false,
-                          "description": "Representable so enabling WebAuthn is not a second breaking change. Nothing emits the matching request, so every WebAuthn proof is refused today."
+                          "description": "Representable so enabling WebAuthn is not a second breaking change. Nothing emits the matching request yet, so every WebAuthn proof is refused for now."
                         }
                       ],
                       "description": "The proof answering one signing request. Its `kind` must match the request at the same index."
@@ -4394,8 +4484,8 @@
                                                     },
                                                     "version": {
                                                       "type": "string",
-                                                      "description": "Implementation version, when planning read one",
-                                                      "example": "1.0.0"
+                                                      "description": "Raw trailing version token returned by ERC-7579 `accountId()`, when valid; preserved without normalization",
+                                                      "example": "v1.0.0"
                                                     }
                                                   },
                                                   "required": [
@@ -4438,23 +4528,51 @@
                                                   "example": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
                                                 },
                                                 "authority": {
-                                                  "type": "object",
-                                                  "properties": {
-                                                    "kind": {
-                                                      "type": "string",
-                                                      "enum": [
-                                                        "secp256k1"
+                                                  "discriminator": {
+                                                    "propertyName": "kind"
+                                                  },
+                                                  "oneOf": [
+                                                    {
+                                                      "type": "object",
+                                                      "properties": {
+                                                        "kind": {
+                                                          "type": "string",
+                                                          "enum": [
+                                                            "secp256k1"
+                                                          ]
+                                                        },
+                                                        "address": {
+                                                          "type": "string",
+                                                          "description": "Authority the submitted signature must recover to",
+                                                          "example": "0x579d5631f76126991c00fb8fe5467fa9d49e5f6a"
+                                                        }
+                                                      },
+                                                      "required": [
+                                                        "kind",
+                                                        "address"
                                                       ]
                                                     },
-                                                    "address": {
-                                                      "type": "string",
-                                                      "description": "Authority the submitted signature must recover to",
-                                                      "example": "0x579d5631f76126991c00fb8fe5467fa9d49e5f6a"
+                                                    {
+                                                      "type": "object",
+                                                      "properties": {
+                                                        "kind": {
+                                                          "type": "string",
+                                                          "enum": [
+                                                            "secp256r1"
+                                                          ]
+                                                        },
+                                                        "publicKey": {
+                                                          "type": "string",
+                                                          "pattern": "^0x0[23][0-9a-fA-F]{64}$",
+                                                          "description": "SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03",
+                                                          "example": "0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296"
+                                                        }
+                                                      },
+                                                      "required": [
+                                                        "kind",
+                                                        "publicKey"
+                                                      ]
                                                     }
-                                                  },
-                                                  "required": [
-                                                    "kind",
-                                                    "address"
                                                   ],
                                                   "description": "Authority configured on the Swig"
                                                 }
@@ -4721,8 +4839,8 @@
                                                   },
                                                   "version": {
                                                     "type": "string",
-                                                    "description": "Implementation version, when planning read one",
-                                                    "example": "1.0.0"
+                                                    "description": "Raw trailing version token returned by ERC-7579 `accountId()`, when valid; preserved without normalization",
+                                                    "example": "v1.0.0"
                                                   }
                                                 },
                                                 "required": [
@@ -4765,23 +4883,51 @@
                                                 "example": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
                                               },
                                               "authority": {
-                                                "type": "object",
-                                                "properties": {
-                                                  "kind": {
-                                                    "type": "string",
-                                                    "enum": [
-                                                      "secp256k1"
+                                                "discriminator": {
+                                                  "propertyName": "kind"
+                                                },
+                                                "oneOf": [
+                                                  {
+                                                    "type": "object",
+                                                    "properties": {
+                                                      "kind": {
+                                                        "type": "string",
+                                                        "enum": [
+                                                          "secp256k1"
+                                                        ]
+                                                      },
+                                                      "address": {
+                                                        "type": "string",
+                                                        "description": "Authority the submitted signature must recover to",
+                                                        "example": "0x579d5631f76126991c00fb8fe5467fa9d49e5f6a"
+                                                      }
+                                                    },
+                                                    "required": [
+                                                      "kind",
+                                                      "address"
                                                     ]
                                                   },
-                                                  "address": {
-                                                    "type": "string",
-                                                    "description": "Authority the submitted signature must recover to",
-                                                    "example": "0x579d5631f76126991c00fb8fe5467fa9d49e5f6a"
+                                                  {
+                                                    "type": "object",
+                                                    "properties": {
+                                                      "kind": {
+                                                        "type": "string",
+                                                        "enum": [
+                                                          "secp256r1"
+                                                        ]
+                                                      },
+                                                      "publicKey": {
+                                                        "type": "string",
+                                                        "pattern": "^0x0[23][0-9a-fA-F]{64}$",
+                                                        "description": "SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03",
+                                                        "example": "0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296"
+                                                      }
+                                                    },
+                                                    "required": [
+                                                      "kind",
+                                                      "publicKey"
+                                                    ]
                                                   }
-                                                },
-                                                "required": [
-                                                  "kind",
-                                                  "address"
                                                 ],
                                                 "description": "Authority configured on the Swig"
                                               }
@@ -5048,8 +5194,8 @@
                                                     },
                                                     "version": {
                                                       "type": "string",
-                                                      "description": "Implementation version, when planning read one",
-                                                      "example": "1.0.0"
+                                                      "description": "Raw trailing version token returned by ERC-7579 `accountId()`, when valid; preserved without normalization",
+                                                      "example": "v1.0.0"
                                                     }
                                                   },
                                                   "required": [
@@ -5092,23 +5238,51 @@
                                                   "example": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
                                                 },
                                                 "authority": {
-                                                  "type": "object",
-                                                  "properties": {
-                                                    "kind": {
-                                                      "type": "string",
-                                                      "enum": [
-                                                        "secp256k1"
+                                                  "discriminator": {
+                                                    "propertyName": "kind"
+                                                  },
+                                                  "oneOf": [
+                                                    {
+                                                      "type": "object",
+                                                      "properties": {
+                                                        "kind": {
+                                                          "type": "string",
+                                                          "enum": [
+                                                            "secp256k1"
+                                                          ]
+                                                        },
+                                                        "address": {
+                                                          "type": "string",
+                                                          "description": "Authority the submitted signature must recover to",
+                                                          "example": "0x579d5631f76126991c00fb8fe5467fa9d49e5f6a"
+                                                        }
+                                                      },
+                                                      "required": [
+                                                        "kind",
+                                                        "address"
                                                       ]
                                                     },
-                                                    "address": {
-                                                      "type": "string",
-                                                      "description": "Authority the submitted signature must recover to",
-                                                      "example": "0x579d5631f76126991c00fb8fe5467fa9d49e5f6a"
+                                                    {
+                                                      "type": "object",
+                                                      "properties": {
+                                                        "kind": {
+                                                          "type": "string",
+                                                          "enum": [
+                                                            "secp256r1"
+                                                          ]
+                                                        },
+                                                        "publicKey": {
+                                                          "type": "string",
+                                                          "pattern": "^0x0[23][0-9a-fA-F]{64}$",
+                                                          "description": "SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03",
+                                                          "example": "0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296"
+                                                        }
+                                                      },
+                                                      "required": [
+                                                        "kind",
+                                                        "publicKey"
+                                                      ]
                                                     }
-                                                  },
-                                                  "required": [
-                                                    "kind",
-                                                    "address"
                                                   ],
                                                   "description": "Authority configured on the Swig"
                                                 }
@@ -5620,8 +5794,8 @@
                                                     },
                                                     "version": {
                                                       "type": "string",
-                                                      "description": "Implementation version, when planning read one",
-                                                      "example": "1.0.0"
+                                                      "description": "Raw trailing version token returned by ERC-7579 `accountId()`, when valid; preserved without normalization",
+                                                      "example": "v1.0.0"
                                                     }
                                                   },
                                                   "required": [
@@ -5664,23 +5838,51 @@
                                                   "example": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
                                                 },
                                                 "authority": {
-                                                  "type": "object",
-                                                  "properties": {
-                                                    "kind": {
-                                                      "type": "string",
-                                                      "enum": [
-                                                        "secp256k1"
+                                                  "discriminator": {
+                                                    "propertyName": "kind"
+                                                  },
+                                                  "oneOf": [
+                                                    {
+                                                      "type": "object",
+                                                      "properties": {
+                                                        "kind": {
+                                                          "type": "string",
+                                                          "enum": [
+                                                            "secp256k1"
+                                                          ]
+                                                        },
+                                                        "address": {
+                                                          "type": "string",
+                                                          "description": "Authority the submitted signature must recover to",
+                                                          "example": "0x579d5631f76126991c00fb8fe5467fa9d49e5f6a"
+                                                        }
+                                                      },
+                                                      "required": [
+                                                        "kind",
+                                                        "address"
                                                       ]
                                                     },
-                                                    "address": {
-                                                      "type": "string",
-                                                      "description": "Authority the submitted signature must recover to",
-                                                      "example": "0x579d5631f76126991c00fb8fe5467fa9d49e5f6a"
+                                                    {
+                                                      "type": "object",
+                                                      "properties": {
+                                                        "kind": {
+                                                          "type": "string",
+                                                          "enum": [
+                                                            "secp256r1"
+                                                          ]
+                                                        },
+                                                        "publicKey": {
+                                                          "type": "string",
+                                                          "pattern": "^0x0[23][0-9a-fA-F]{64}$",
+                                                          "description": "SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03",
+                                                          "example": "0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296"
+                                                        }
+                                                      },
+                                                      "required": [
+                                                        "kind",
+                                                        "publicKey"
+                                                      ]
                                                     }
-                                                  },
-                                                  "required": [
-                                                    "kind",
-                                                    "address"
                                                   ],
                                                   "description": "Authority configured on the Swig"
                                                 }
@@ -5804,8 +6006,8 @@
                                                     },
                                                     "version": {
                                                       "type": "string",
-                                                      "description": "Implementation version, when planning read one",
-                                                      "example": "1.0.0"
+                                                      "description": "Raw trailing version token returned by ERC-7579 `accountId()`, when valid; preserved without normalization",
+                                                      "example": "v1.0.0"
                                                     }
                                                   },
                                                   "required": [
@@ -5848,23 +6050,51 @@
                                                   "example": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
                                                 },
                                                 "authority": {
-                                                  "type": "object",
-                                                  "properties": {
-                                                    "kind": {
-                                                      "type": "string",
-                                                      "enum": [
-                                                        "secp256k1"
+                                                  "discriminator": {
+                                                    "propertyName": "kind"
+                                                  },
+                                                  "oneOf": [
+                                                    {
+                                                      "type": "object",
+                                                      "properties": {
+                                                        "kind": {
+                                                          "type": "string",
+                                                          "enum": [
+                                                            "secp256k1"
+                                                          ]
+                                                        },
+                                                        "address": {
+                                                          "type": "string",
+                                                          "description": "Authority the submitted signature must recover to",
+                                                          "example": "0x579d5631f76126991c00fb8fe5467fa9d49e5f6a"
+                                                        }
+                                                      },
+                                                      "required": [
+                                                        "kind",
+                                                        "address"
                                                       ]
                                                     },
-                                                    "address": {
-                                                      "type": "string",
-                                                      "description": "Authority the submitted signature must recover to",
-                                                      "example": "0x579d5631f76126991c00fb8fe5467fa9d49e5f6a"
+                                                    {
+                                                      "type": "object",
+                                                      "properties": {
+                                                        "kind": {
+                                                          "type": "string",
+                                                          "enum": [
+                                                            "secp256r1"
+                                                          ]
+                                                        },
+                                                        "publicKey": {
+                                                          "type": "string",
+                                                          "pattern": "^0x0[23][0-9a-fA-F]{64}$",
+                                                          "description": "SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03",
+                                                          "example": "0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296"
+                                                        }
+                                                      },
+                                                      "required": [
+                                                        "kind",
+                                                        "publicKey"
+                                                      ]
                                                     }
-                                                  },
-                                                  "required": [
-                                                    "kind",
-                                                    "address"
                                                   ],
                                                   "description": "Authority configured on the Swig"
                                                 }
@@ -6056,25 +6286,55 @@
                                               "example": 1
                                             },
                                             "authority": {
-                                              "type": "object",
-                                              "properties": {
-                                                "kind": {
-                                                  "type": "string",
-                                                  "enum": [
-                                                    "secp256k1"
-                                                  ]
-                                                },
-                                                "address": {
-                                                  "type": "string",
-                                                  "description": "Address the submitted signature must recover to",
-                                                  "example": "0x579d5631f76126991c00fb8fe5467fa9d49e5f6a"
-                                                }
+                                              "discriminator": {
+                                                "propertyName": "kind"
                                               },
-                                              "required": [
-                                                "kind",
-                                                "address"
+                                              "oneOf": [
+                                                {
+                                                  "type": "object",
+                                                  "properties": {
+                                                    "kind": {
+                                                      "type": "string",
+                                                      "enum": [
+                                                        "secp256k1"
+                                                      ]
+                                                    },
+                                                    "address": {
+                                                      "type": "string",
+                                                      "description": "Address the submitted signature must recover to",
+                                                      "example": "0x579d5631f76126991c00fb8fe5467fa9d49e5f6a"
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "kind",
+                                                    "address"
+                                                  ],
+                                                  "additionalProperties": false
+                                                },
+                                                {
+                                                  "type": "object",
+                                                  "properties": {
+                                                    "kind": {
+                                                      "type": "string",
+                                                      "enum": [
+                                                        "secp256r1"
+                                                      ]
+                                                    },
+                                                    "publicKey": {
+                                                      "type": "string",
+                                                      "pattern": "^0x0[23][0-9a-fA-F]{64}$",
+                                                      "description": "SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03",
+                                                      "example": "0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296"
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "kind",
+                                                    "publicKey"
+                                                  ],
+                                                  "additionalProperties": false,
+                                                  "description": "A passkey (WebAuthn) key, named by its public key: its signature recovers to no address."
+                                                }
                                               ],
-                                              "additionalProperties": false,
                                               "description": "The authority configured on that role"
                                             }
                                           },
@@ -6602,8 +6862,9 @@
                                             },
                                             "challenge": {
                                               "type": "string",
-                                              "description": "Challenge the authenticator signs, hex",
-                                              "example": "0xa3f2c1d4"
+                                              "pattern": "^0x[0-9a-fA-F]{64}$",
+                                              "description": "Challenge the authenticator signs: 32 bytes as 0x-prefixed hex. Pass the decoded bytes as the WebAuthn `challenge`, not the hex text.",
+                                              "example": "0xa3f2c1d4e5b6a7980f1e2d3c4b5a69788796a5b4c3d2e1f0a1b2c3d4e5f60718"
                                             }
                                           },
                                           "required": [
@@ -6611,7 +6872,7 @@
                                             "challenge"
                                           ],
                                           "additionalProperties": false,
-                                          "description": "Representable so enabling WebAuthn is not a second breaking change. Nothing emits it today."
+                                          "description": "Representable so enabling WebAuthn is not a second breaking change. Nothing emits it yet."
                                         }
                                       ],
                                       "description": "The native payload to sign"
@@ -7424,25 +7685,59 @@
                                 "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$",
                                 "description": "The asset-holding Swig wallet, not the Swig state account. Must be the wallet the orchestrator derives for the EVM account."
                               },
+                              "swigAccount": {
+                                "type": "string",
+                                "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$",
+                                "description": "The Swig state account holding the roles. Optional for an account paired with an EVM entry, whose Swig the orchestrator derives."
+                              },
                               "authorization": {
-                                "type": "object",
-                                "properties": {
-                                  "kind": {
-                                    "type": "string",
-                                    "enum": [
-                                      "secp256k1"
-                                    ]
-                                  },
-                                  "address": {
-                                    "type": "string",
-                                    "description": "EVM address the Swig root role recovers to"
-                                  }
+                                "discriminator": {
+                                  "propertyName": "kind"
                                 },
-                                "required": [
-                                  "kind",
-                                  "address"
+                                "oneOf": [
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "enum": [
+                                          "secp256k1"
+                                        ]
+                                      },
+                                      "address": {
+                                        "type": "string",
+                                        "description": "EVM address the Swig root role recovers to"
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "address"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "enum": [
+                                          "secp256r1"
+                                        ]
+                                      },
+                                      "publicKey": {
+                                        "type": "string",
+                                        "pattern": "^0x0[23][0-9a-fA-F]{64}$",
+                                        "description": "Passkey public key on the Swig root role: SEC1-compressed P-256, 33 bytes as 0x-prefixed hex",
+                                        "example": "0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296"
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "publicKey"
+                                    ],
+                                    "additionalProperties": false
+                                  }
                                 ],
-                                "additionalProperties": false,
                                 "description": "The authority this caller believes the Swig carries. Checked structurally only: the onchain root role stays the source of truth for who may spend."
                               }
                             },
