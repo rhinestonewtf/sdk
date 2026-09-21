@@ -76,11 +76,9 @@ async function accountConfig() {
   const sdk = new RhinestoneSDK({ apiKey: 'test' })
   return (
     await sdk.createAccount({
-      evm: {
-        owners: { type: 'ecdsa', accounts: [accountA] },
-      },
+      owners: { type: 'ecdsa', accounts: [accountA] },
     })
-  ).config.evm
+  ).config
 }
 
 const factor: OwnableValidatorConfig = {

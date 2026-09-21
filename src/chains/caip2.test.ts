@@ -2,7 +2,6 @@ import fc from 'fast-check'
 import { describe, expect, test } from 'vitest'
 import {
   chainIdFromReference,
-  chainVm,
   formatCaip2,
   isCaip2,
   isEvmCaip2,
@@ -13,7 +12,6 @@ import {
 import {
   hyperCorePerp,
   hyperCoreSpot,
-  solanaDevnet,
   solanaMainnet,
   stellarMainnet,
   tronMainnet,
@@ -24,7 +22,6 @@ describe('CAIP-2', () => {
     [1, 'eip155:1'],
     [8453, 'eip155:8453'],
     [792703809, 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp'],
-    [792703810, 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1'],
     [728126428, 'tron:mainnet'],
     [1500148, 'stellar:pubnet'],
     [1337, 'hypercore:mainnet'],
@@ -85,7 +82,6 @@ describe('CAIP-2', () => {
   // the exported set so the next chain cannot ship half-wired.
   test.each([
     ['solanaMainnet', solanaMainnet],
-    ['solanaDevnet', solanaDevnet],
     ['tronMainnet', tronMainnet],
     ['stellarMainnet', stellarMainnet],
     ['hyperCoreSpot', hyperCoreSpot],
@@ -108,7 +104,6 @@ describe('CAIP-2', () => {
       'Invalid chain id',
     )
     expect(() => toEvmChainReference(792703809)).toThrow('not EVM-compatible')
-    expect(() => toEvmChainReference(792703810)).toThrow('not EVM-compatible')
   })
 
   test('materializes EVM references and rejects invalid non-EVM references', () => {
@@ -135,33 +130,5 @@ describe('CAIP-2', () => {
         expect(chainIdFromReference(parseCaip2(caip2))).toBe(chainId)
       }),
     )
-  })
-})
-
-// The execution environment of a chain is NOT `ChainReference.kind`: HyperCore
-// is EVM-settled and so reads as `kind: 'evm'`, while its destination shape and
-// its evidence are its own.
-describe('chainVm', () => {
-  test.each([
-    ['eip155:8453', 'evm'],
-    ['solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp', 'svm'],
-    ['tron:mainnet', 'tvm'],
-    ['stellar:pubnet', 'stellar'],
-    ['hypercore:mainnet', 'hypercore'],
-    ['hypercore:spot', 'hypercore'],
-    ['hypercore:perp', 'hypercore'],
-  ] as const)('reads %s as %s', (caip2, vm) => {
-    expect(chainVm(parseCaip2(caip2))).toBe(vm)
-  })
-
-  test('refuses a namespace it does not classify', () => {
-    expect(() =>
-      chainVm({
-        kind: 'non-evm',
-        namespace: 'cosmos',
-        reference: 'hub',
-        caip2: 'cosmos:hub',
-      }),
-    ).toThrow('Unsupported chain namespace')
   })
 })

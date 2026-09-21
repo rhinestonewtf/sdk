@@ -25,7 +25,7 @@ Docs: https://docs.rhinestone.dev/smart-wallet
 - Language: TypeScript (strict mode)
 - Testing: Vitest
 - Linting: Biome
-- Dependencies: viem (peer), @noble/curves and @scure/base (runtime), jose and express (optional peers for `jwt-server`)
+- Dependencies: viem (peer), jose and express (optional peers for `jwt-server`); the published package has no runtime dependencies
 
 ## Structure
 
@@ -51,7 +51,6 @@ See [docs/architecture.md](docs/architecture.md) for how these fit together and 
 - [Architecture](docs/architecture.md) — layering and transaction flow
 - [Testing](docs/testing.md) — unit, type, and live integration tests
 - [Code generation](docs/codegen.md) — SDK Reference and orchestrator wire types
-- [Caucasus migration](docs/caucasus-migration.md) — what the `2026-09.caucasus` API version changed for consumers
 
 Keep these in sync with the code — update the relevant doc in the same PR as any change it covers.
 
@@ -89,4 +88,4 @@ Unit tests live next to source as `*.test.ts`; run a single file with `bun run t
 
 ## Code generation
 
-The SDK Reference (from JSDoc) and the orchestrator wire types (from the OpenAPI document) are both generated — don't hand-edit. Regenerate with `bun run generate:reference` and `bun run generate:wire`. The orchestrator document is vendored at `scripts/openapi/` with a provenance manifest; change the snapshot and its hash together. See [docs/codegen.md](docs/codegen.md). When writing the JSDoc that feeds the reference, use the `jsdoc` skill.
+The SDK Reference (from JSDoc) and the orchestrator wire types (from the OpenAPI spec) are both generated — don't hand-edit. Regenerate with `bun run generate:reference` and `bun run generate:wire`. See [docs/codegen.md](docs/codegen.md). When writing the JSDoc that feeds the reference, use the `jsdoc` skill.

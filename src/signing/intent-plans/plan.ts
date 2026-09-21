@@ -6,26 +6,23 @@ import type {
   SigningTranscript,
 } from '../types'
 import { assembleIntentStage } from './assemble'
-import {
-  eip712Requests,
-  type IndependentSigningProjection,
-  type IntentSigningPlanCreationInput,
+import type {
+  IndependentSigningProjection,
+  IntentSigningPlanCreationInput,
 } from './types'
 
 export function createIntentSigningPlan(
   input: IntentSigningPlanCreationInput,
 ): SigningPlan {
-  const reuses = eip712Requests(input.intent).flatMap((request) =>
-    request.reuse
-      ? [
-          {
-            artifactId: request.artifactId,
-            sourceArtifactId: request.reuse.artifactId,
-            selection: request.reuse.selection,
-          },
-        ]
-      : [],
-  )
+  const targetArtifact = input.intent.target
+    ? requireSingleArtifact(
+        input.intent.artifacts.filter(
+          ({ usage, payloadId }) =>
+            usage === 'intent-target' && payloadId === input.intent.target?.id,
+        ),
+        'target',
+      )
+    : undefined
   const plan: SigningPlan = {
     version: 1,
     kind: 'intent-full',
@@ -43,7 +40,26 @@ export function createIntentSigningPlan(
           shape,
         }),
       ),
-      ...(reuses.length > 0 ? { reuses } : {}),
+      ...(input.intent.destination
+        ? {
+            destination:
+              input.intent.destination.mode === 'sign'
+                ? {
+                    mode: 'sign' as const,
+                    artifactId: input.intent.destination.artifactId,
+                    payloadId: input.intent.destination.payload.id,
+                  }
+                : input.intent.destination,
+          }
+        : {}),
+      ...(targetArtifact
+        ? {
+            target: {
+              artifactId: targetArtifact.id,
+              payloadId: targetArtifact.payloadId,
+            },
+          }
+        : {}),
     },
     stages: input.stages.map((stage) => ({
       id: stage.id,
@@ -154,54 +170,57 @@ function assertIntentRoutes(
       throw new Error(`Intent artifact ${requirement.id} has no assembly route`)
     }
   }
-  for (const request of eip712Requests(input.intent)) {
-    const requirement = requirements.get(request.artifactId)
-    if (!requirement) {
-      throw new Error(
-        `Intent request ${request.index} has no artifact requirement`,
-      )
-    }
-    const route = artifacts.find(({ id }) => id === request.artifactId)
-    if (!route) {
-      throw new Error(`Intent request ${request.index} has no assembly route`)
-    }
-    if (!request.reuse) {
-      if (
-        requirement.payloadId !== request.payload.id ||
-        route.input.kind === 'reuse-artifact'
-      ) {
-        throw new Error(
-          `Intent request ${request.index} signing route is incompatible`,
-        )
-      }
-      continue
-    }
+  const destination = input.intent.destination
+  if (!destination) return
+  const requirement = requirements.get(destination.artifactId)
+  if (!requirement || requirement.usage !== 'intent-destination') {
+    throw new Error('Intent destination artifact requirement is missing')
+  }
+  const route = artifacts.find(({ id }) => id === destination.artifactId)
+  if (!route) throw new Error('Intent destination assembly route is missing')
+  if (destination.mode === 'sign') {
     if (
-      route.input.kind !== 'reuse-artifact' ||
-      route.input.artifactId !== request.reuse.artifactId ||
-      route.input.selection !== request.reuse.selection
+      requirement.payloadId !== destination.payload.id ||
+      route.input.kind !== 'task-results'
     ) {
-      throw new Error(
-        `Intent request ${request.index} reuse route is incompatible`,
-      )
+      throw new Error('Intent destination signing route is incompatible')
     }
+    return
+  }
+  if (
+    route.input.kind !== 'reuse-artifact' ||
+    route.input.artifactId !== destination.originArtifactId ||
+    route.input.selection !== destination.selection
+  ) {
+    throw new Error('Intent destination reuse route is incompatible')
   }
 }
 
+function requireSingleArtifact<Artifact>(
+  artifacts: readonly Artifact[],
+  role: string,
+): Artifact {
+  if (artifacts.length !== 1) {
+    throw new Error(`Intent ${role} requires exactly one artifact`)
+  }
+  return artifacts[0]
+}
+
 function assertPreparedMode(input: IntentSigningPlanCreationInput): void {
-  const signed = eip712Requests(input.intent).filter(({ reuse }) => !reuse)
-  const claimArtifacts = input.intent.artifacts.filter(
+  const originArtifacts = input.intent.artifacts.filter(
     ({ usage }) =>
-      usage === 'intent-pre-claim' || usage === 'intent-notarized-claim',
+      usage === 'intent-origin' ||
+      usage === 'intent-pre-claim' ||
+      usage === 'intent-notarized-claim',
   )
-  const expected = signed.length
-  const produced = input.intent.artifacts.length - claimArtifacts.length
-  if (produced < expected) {
+  const expectedPerOrigin = 1
+  const expected = input.intent.origins.length * expectedPerOrigin
+  if (originArtifacts.length !== expected) {
     throw new Error(
-      `Prepared signature mode requires ${expected} signed artifacts, received ${produced}`,
+      `Prepared signature mode requires ${expected} origin artifacts, received ${originArtifacts.length}`,
     )
   }
-  const invalidShape = input.intent.artifacts.some(({ shape }) =>
+  const invalidShape = originArtifacts.some(({ shape }) =>
     input.intent.preparedSignatureMode === 'default'
       ? shape !== 'hex'
       : !['hex', 'session-claims'].includes(shape),
@@ -212,7 +231,7 @@ function assertPreparedMode(input: IntentSigningPlanCreationInput): void {
         ? 'hex'
         : 'hex or session-claims'
     throw new Error(
-      `Prepared signature mode requires ${expectedShape} artifacts`,
+      `Prepared signature mode requires ${expectedShape} origin artifacts`,
     )
   }
 }

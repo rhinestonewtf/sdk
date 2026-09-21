@@ -7,7 +7,6 @@ import { type FetchPort, fetchOrchestratorJson } from './fetch'
 import {
   mapIntentRequestToWire,
   mapIntentStatusFromWire,
-  mapIntentSubmissionFromWire,
   mapPortfolioFromWire,
   mapQuoteResponseFromWire,
   mapSignedIntentToWire,
@@ -19,7 +18,7 @@ import type { OrchestratorIntentSubmissionContext } from './types'
 import type { WireChainsResponse } from './wire'
 
 const SDK_VERSION = '2.16.1'
-const API_VERSION = '2026-09.caucasus'
+const API_VERSION = '2026-04.blanc'
 
 export interface OrchestratorClientOptions {
   readonly url: string
@@ -76,24 +75,19 @@ export function createOrchestratorClient(
           body: mapIntentRequestToWire(input),
         }),
       ),
-    submitIntent: async (input, context) =>
-      mapIntentSubmissionFromWire(
-        input.intentId,
-        await request({
-          path: 'intents',
-          method: 'POST',
-          body: mapSignedIntentToWire(input),
-          ...(context ? { submitContext: context } : {}),
-        }),
-      ),
-    getIntentStatus: async (intentId, options) =>
+    submitIntent: async (input, context) => {
+      const value = (await request({
+        path: 'intents',
+        method: 'POST',
+        body: mapSignedIntentToWire(input),
+        ...(context ? { submitContext: context } : {}),
+      })) as { readonly traceId?: string; readonly intentId?: string }
+      return { traceId: value.traceId ?? '', intentId: value.intentId ?? '' }
+    },
+    getIntentStatus: async (intentId) =>
       mapIntentStatusFromWire(
         intentId,
-        await request({
-          path: `intents/${encodeURIComponent(intentId)}${
-            options?.full ? '?full=true' : ''
-          }`,
-        }),
+        await request({ path: `intents/${encodeURIComponent(intentId)}` }),
       ),
     splitIntents: async (input) =>
       mapSplitResultFromWire(

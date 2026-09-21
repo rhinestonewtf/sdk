@@ -10,9 +10,7 @@ describe.sequential('SDK integration failures', () => {
     const sdk = createIntegrationSDK()
     const owner = createOwner()
     const account = await sdk.createAccount({
-      evm: {
-        owners: { type: 'ecdsa', accounts: [owner] },
-      },
+      owners: { type: 'ecdsa', accounts: [owner] },
     })
 
     const execution = await executeIntent({

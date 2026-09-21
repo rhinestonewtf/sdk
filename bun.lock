@@ -4,8 +4,6 @@
   "workspaces": {
     "": {
       "dependencies": {
-        "@noble/curves": "^1.9.1",
-        "@scure/base": "^1.2.6",
         "viem": "^2.55.0",
       },
       "devDependencies": {
@@ -32,10 +30,6 @@
     "src": {
       "name": "@rhinestone/sdk",
       "version": "2.2.3",
-      "dependencies": {
-        "@noble/curves": "^1.9.1",
-        "@scure/base": "^1.2.6",
-      },
       "peerDependencies": {
         "express": ">=4",
         "jose": ">=5.0.0",

@@ -9,17 +9,6 @@ import type { NonEvmAddress } from '../../chains/non-evm'
 // SDK release.
 type SupportedChain = number
 
-/**
- * A CAIP-2 chain identifier, as the orchestrator spells it: `eip155:8453`,
- * `solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1`, `tron:mainnet`, `stellar:pubnet`,
- * or a HyperCore delivery venue (`hypercore:spot`, `hypercore:perp`).
- *
- * Caucasus addresses chains natively, so quote costs, plans, requirements,
- * signing context and status evidence all carry this rather than a number. The
- * SDK does not invent a numeric fallback — an unmappable chain stays readable.
- */
-type Caip2ChainId = string
-
 // Cross-chain settlement layers exposed for filtering. v2: defined locally (a
 // closed capability union) rather than read from shared-configs — adding a
 // layer is a real code change.
@@ -102,87 +91,31 @@ type FailureReason =
   | 'BRIDGE_REFUNDED'
 
 /**
- * A transaction, in the identity its own chain uses.
+ * One operation per chain involved in the intent.
  *
- * The `unknown` arm is the one place a numeric chain id survives: intents
- * recorded before the chain registry knew a chain cannot be given a CAIP-2
- * identity after the fact, and dropping the record would lose the only evidence
- * the transaction happened. Read it as "this ran, on the chain that number
- * used to mean".
+ * The orchestrator returns `items[]` per chain for future extensibility;
+ * the SDK flattens to one entry per chain for simpler DX.
  */
-type TransactionReference =
-  | { vm: 'evm'; chainId: Caip2ChainId; txHash: Hex }
-  | { vm: 'svm'; chainId: Caip2ChainId; signature: string }
-  | { vm: 'tvm'; chainId: Caip2ChainId; txId: string }
-  | { vm: 'stellar'; chainId: Caip2ChainId; txHash: string }
-  | { vm: 'unknown'; chainId: number; id: string }
-
-/** What a solver was paid for running one operation, where it is recorded. */
-interface IntentOperationAllocation {
-  plannedGasMicroUsd: string
-  fixedCompensationMicroUsd: string
-  executedGasMicroUsd: string
-  payableMicroUsd: string
-  counterparty: string
-  nativeTokenPriceUsd: string
-  receipt:
-    | {
-        vm: 'evm'
-        blockHash: Hex
-        blockNumber: string
-        gasUsed: string
-        effectiveGasPriceWei: string
-        l1FeeWei?: string
-        blobFeeWei?: string
-      }
-    | { vm: 'svm'; slot: string }
-  payment: {
-    kind: 'PAYMENT' | 'ADJUSTMENT'
-    effectiveDate: string
-    createdAt: string
-  }
-}
-
-/** An onchain step of the intent. */
-interface IntentOnchainOperation {
-  type: 'CLAIM' | 'FILL' | 'BRIDGE_FILL'
-  status: OperationStatus
-  /** Absent until the transaction is observed. */
-  transaction?: TransactionReference
-  /** UNIX epoch seconds the transaction was confirmed. */
-  timestamp?: number
-  /** Why it failed. Only meaningful when `status` is `FAILED`. */
-  failureReason?: FailureReason
-  /** Present only on the operation that debits the user's account. */
-  debitsAccount?: true
-  allocation?: IntentOperationAllocation
-}
-
-/**
- * An offchain execution the intent authorised — today, the HyperCore actions.
- * Not a transaction: nothing was broadcast, so it has a result rather than a
- * hash, and its settlement transaction is a separate onchain item.
- */
-interface IntentExecutionOperation {
-  type: 'EXECUTION'
-  status: OperationStatus
-  result: IntentHyperCoreResult
-}
-
-type IntentOperationItem = IntentOnchainOperation | IntentExecutionOperation
-
-/**
- * Every operation the intent produced on one chain.
- *
- * Caucasus reports all of them. A chain can carry several — a claim and a fill,
- * or a fill and the execution it settles — so this is a group, not a single
- * flattened entry.
- */
-interface IntentOperationGroup {
-  /** The chain, CAIP-2, or the number a pre-registry record was written with. */
-  chainId: Caip2ChainId | number
-  items: IntentOperationItem[]
-}
+type ChainOperation =
+  | {
+      /** Chain ID this operation belongs to. */
+      chain: number
+      status: 'PENDING'
+    }
+  | {
+      chain: number
+      status: 'COMPLETED'
+      /** Transaction hash of the confirmed on-chain transaction. */
+      txHash: Hex
+      /** UNIX epoch seconds when the on-chain transaction was confirmed. */
+      timestamp: number
+    }
+  | {
+      chain: number
+      status: 'FAILED'
+      /** Why the operation failed. */
+      failureReason: FailureReason
+    }
 
 interface Execution {
   to: Address
@@ -467,20 +400,6 @@ interface PortfolioToken {
 
 type Portfolio = PortfolioToken[]
 
-/** A Solana instruction as the orchestrator's quote request carries it. */
-interface SolanaWireInstruction {
-  /** Program to invoke, base58. */
-  programId: string
-  /** Accounts the instruction reads or writes, in the order the program expects. */
-  accounts: {
-    pubkey: string
-    isSigner: boolean
-    isWritable: boolean
-  }[]
-  /** Instruction data, base64. */
-  data: string
-}
-
 interface IntentInput {
   account: Account
   destinationChainId: number
@@ -491,10 +410,6 @@ interface IntentInput {
     amount?: bigint
   }[]
   recipient?: Account
-  /** Solana instructions run out of the account's own wallet on a Solana destination. */
-  destinationInstructions?: SolanaWireInstruction[]
-  /** Address lookup tables the `destinationInstructions` resolve accounts through, base58. */
-  addressLookupTableAddresses?: string[]
   accountAccessList?: AccountAccessList
   options: IntentOptions
   preClaimExecutions?: Record<number, Execution[]>
@@ -541,9 +456,8 @@ interface FeeCategory extends UsdAmount {
 type Price = { usd: number } | null
 
 interface CostTokenEntry {
-  chainId: Caip2ChainId
-  /** Token reference in the chain's native address format. */
-  tokenAddress: string
+  chainId: number
+  tokenAddress: Address
   symbol: string | null
   decimals: number | null
   price: Price
@@ -574,269 +488,44 @@ interface EstimatedFillTime {
   seconds: number
 }
 
-/** Which account a signing request authorises for. */
-type SigningRequestAccount =
-  | { vm: 'evm'; address: Address }
-  | { vm: 'svm'; wallet: string; swigAccount: string }
-
-/** Who must produce the signature. */
-type SigningAuthority =
-  | { kind: 'secp256k1'; address: Address }
-  | { kind: 'account'; vm: 'evm'; address: Address }
-  | {
-      kind: 'swigRole'
-      roleId: number
-      authority: { kind: 'secp256k1'; address: Address }
-    }
-
-/** What the signature permits, disclosed so it can be inspected before signing. */
-type SigningScope =
-  | {
-      vm: 'evm'
-      action: 'claim' | 'fill' | 'targetExecution' | 'delegation'
-      accounts: { chainId: Caip2ChainId; address: Address }[]
-      hyperCore?: {
-        action?: HyperCoreAction
-        nonce: number
-        agent: Address
-        slot: string
-      }
-    }
-  | {
-      vm: 'svm'
-      action: 'spend'
-      accounts: { chainId: Caip2ChainId; address: string }[]
-      /**
-       * The full instruction set the signature authorises — the caller's own
-       * instructions plus whatever the route added. Disclosed for inspection;
-       * the signed digest is opaque to the SDK, so this is not independent
-       * proof of what runs onchain.
-       */
-      instructions: SolanaWireInstruction[]
-      addressLookupTables: string[]
-      feePayer: { kind: 'role'; role: 'relayer' }
-      slotWindow: { from: string; to: string }
-    }
-
-/** How long the authorisation stays good for. */
-type SigningValidity =
-  | { kind: 'timestamp'; expiresAt: number }
-  | { kind: 'svmSlot'; chainId: Caip2ChainId; expiresAtSlot: string }
-
-/** The bytes to sign, and how. */
-type SigningPayload =
-  | {
-      kind: 'eip712'
-      typedData: TypedDataDefinition
-      /**
-       * `secp256k1` wants a raw key signature; `account` wants the account's
-       * own validator-encoded envelope.
-       */
-      signatureFormat: 'secp256k1' | 'account'
-    }
-  | {
-      kind: 'personalSign'
-      /** Sign these exact characters. Not hex to decode, whatever it looks like. */
-      message: { encoding: 'utf8'; value: string }
-    }
-  | { kind: 'eip7702'; authorization: { chainId: number; address: Address } }
-  | { kind: 'webauthn'; challenge: string }
-
-type SigningRequestPurpose =
-  | 'originAuthorization'
-  | 'destinationAuthorization'
-  | 'targetExecutionAuthorization'
-  | 'delegationAuthorization'
-
-/**
- * One authorisation the intent needs.
- *
- * A quote's `signingRequests` are ordered, and the submitted `proofs` must
- * match that order one-for-one. Two requests can carry the identical payload
- * and still be distinct authorisations — position is the identity, not content.
- */
-interface SigningRequest {
-  account: SigningRequestAccount
-  authority: SigningAuthority
-  scope: SigningScope
-  /** Every chain this one signature has to validate on. */
-  chainIds: Caip2ChainId[]
-  purpose: SigningRequestPurpose
-  validity: SigningValidity[]
-  payload: SigningPayload
+interface SignData {
+  origin: TypedDataDefinition[]
+  destination: TypedDataDefinition
+  targetExecution?: TypedDataDefinition
 }
-
-/** A WebAuthn assertion, as the orchestrator accepts it. */
-interface WebAuthnAssertion {
-  credentialId: string
-  authenticatorData: Hex
-  clientDataJSON: string
-  signature: Hex
-  userHandle?: string
-}
-
-/**
- * The answer to one {@link SigningRequest}, at the same index.
- *
- * A smart-session origin yields ONE `eip712` proof carrying both encodings,
- * not two proofs.
- */
-type SigningProof =
-  | {
-      kind: 'eip712'
-      signature: Hex | { preClaim: Hex; notarizedClaim: Hex }
-    }
-  | { kind: 'personalSign'; signature: Hex }
-  | {
-      kind: 'eip7702'
-      nonce: number
-      signature: { r: Hex; s: Hex; yParity: 0 | 1 }
-    }
-  | { kind: 'webauthn'; assertion: WebAuthnAssertion }
 
 /**
  * Per-intent tracking handle for settlement layers that hand delivery off to
  * a third-party bridge or solver network.
  */
-interface BridgeFillBase {
-  /** CAIP-2, like every other chain reference in a quote. */
-  destinationChainId: Caip2ChainId
-  fillExpirationPeriod?: number
-  fillStatusTimeout: number
-}
-
 type BridgeFill =
-  | ({ type: 'OFT' } & BridgeFillBase)
-  | ({
-      type: 'ECO'
-      intentHash: string
-      /**
-       * Eco's own id for the delivery chain, present only where it differs from
-       * ours — i.e. non-EVM destinations such as Solana. Opaque provider
-       * metadata: use it, not `destinationChainId`, when resolving the fill
-       * against Eco's status API.
-       */
-      providerDestinationChainId?: number
-      providerSourceChainId?: number
-    } & BridgeFillBase)
-  | ({ type: 'RELAY'; requestId: string } & BridgeFillBase)
-  | ({ type: 'NEAR'; depositAddress: string } & BridgeFillBase)
-  | ({ type: 'RHINO'; commitmentId: string } & BridgeFillBase)
-  | ({
+  | { type: 'OFT'; destinationChainId: number }
+  | { type: 'ECO'; destinationChainId: number; intentHash: Hex }
+  | { type: 'RELAY'; destinationChainId: number; requestId: string }
+  | { type: 'NEAR'; destinationChainId: number; depositAddress: Address }
+  | { type: 'RHINO'; destinationChainId: number; commitmentId: string }
+  | {
       type: 'CCTP'
+      destinationChainId: number
       sourceDomainId: number
       destinationDomainId: number
-    } & BridgeFillBase)
-  | ({
+    }
+  | {
       type: 'LZ'
+      destinationChainId: number
       quoteId: string
       dstChainKey: string
       routeTypes: string[]
-    } & BridgeFillBase)
-
-/** An account as a plan or status discloses it. */
-type IntentAccountView =
-  | {
-      address: Address
-      type: 'eoa' | 'erc7579'
-      deployed?: boolean
-      implementation?: { name: 'Safe' | 'Kernel' | 'Nexus'; version?: string }
-      delegation?: { contract: Address }
-    }
-  | {
-      wallet: string
-      swigAccount: string
-      authority: { kind: 'secp256k1'; address: Address }
-    }
-  | { address: string }
-
-/** An account on one chain, as the intent sees it. */
-interface IntentAccountSummary {
-  vm: 'evm' | 'svm' | 'tvm' | 'stellar' | 'hypercore'
-  chainId: Caip2ChainId
-  account: IntentAccountView
-}
-
-/** Calls or instructions a plan discloses, and who runs them. */
-type PlanExecution =
-  | {
-      vm: 'evm'
-      chainId: Caip2ChainId
-      executedBy?: { kind: 'account' | 'solver'; address: Address }
-      calls: Execution[]
-    }
-  | {
-      vm: 'svm'
-      chainId: Caip2ChainId
-      executedBy: { kind: 'account' | 'solver'; address: string }
-      instructions: SolanaWireInstruction[]
-      addressLookupTables: string[]
-    }
-  | {
-      vm: 'hypercore'
-      chainId: Caip2ChainId
-      actions?: { action?: HyperCoreAction; nonce: number; agent: Address }[]
-      /** The HyperEVM transaction that settles the actions. */
-      settlement: {
-        vm: 'evm'
-        chainId: Caip2ChainId
-        executedBy?: { kind: 'account' | 'solver'; address: Address }
-        calls: Execution[]
-      }
-    }
-
-interface PlanLeg {
-  vm: 'evm' | 'svm' | 'tvm' | 'stellar' | 'hypercore'
-  chainId: Caip2ChainId
-  account: IntentAccountView
-  execution?: PlanExecution
-}
-
-/** What the route resolved to: where it sources, where it delivers, what it deploys. */
-interface QuotePlan {
-  source: PlanLeg[]
-  destination: PlanLeg
-  deployments: Omit<PlanLeg, 'execution'>[]
-}
-
-/**
- * Something that must be true before the intent can execute, and is not yet.
- *
- * Disclosed, never performed: preparing a transaction does not approve or wrap
- * anything on the caller's behalf.
- */
-type IntentRequirement =
-  | {
-      kind: 'erc20Approval'
-      vm: 'evm' | 'svm' | 'tvm' | 'stellar' | 'hypercore'
-      chainId: Caip2ChainId
-      account: IntentAccountView
-      tokenAddress: string
-      amount: bigint
-      spender: string
-    }
-  | {
-      kind: 'wrapNative'
-      vm: 'evm' | 'svm' | 'tvm' | 'stellar' | 'hypercore'
-      chainId: Caip2ChainId
-      account: IntentAccountView
-      tokenAddress: string
-      amount: bigint
     }
 
 interface Quote {
   intentId: string
-  /** What the intent is for. Only execution intents exist today. */
-  purpose: 'execution'
   expiresAt: number
   estimatedFillTime: EstimatedFillTime
   settlementLayer: SettlementLayer
-  plan: QuotePlan
+  signData: SignData
   cost: Cost
-  /** Unresolved prerequisites. Empty when there are none. */
-  requirements: IntentRequirement[]
-  /** Ordered. The submitted proofs must line up with this array exactly. */
-  signingRequests: SigningRequest[]
+  tokenRequirements?: TokenRequirements
   bridgeFill?: BridgeFill
 }
 
@@ -845,10 +534,36 @@ interface QuoteResponse {
   routes: Quote[]
 }
 
+type OriginSignature = Hex | { notarizedClaimSig: Hex; preClaimSig: Hex }
+
+interface SignedAuthorization {
+  chainId: string
+  address: Address
+  nonce: number
+  yParity: number
+  r: Hex
+  s: Hex
+}
+
 interface IntentSubmitRequest {
   intentId: string
-  /** One per signing request, in the quoted order. */
-  proofs: SigningProof[]
+  signatures: {
+    origin: OriginSignature[]
+    destination: Hex
+    targetExecution?: Hex
+  }
+  authorizations?: {
+    sponsor?: SignedAuthorization[]
+    recipient?: SignedAuthorization[]
+  }
+}
+
+/**
+ * Internal augmentation of the submit request. Not part of the blanc public
+ * schema, but the orchestrator still reads `options.dryRun` from the raw body.
+ * Used by the SDK's `simulate` flag — never surfaced to consumers.
+ */
+interface IntentSubmitRequestInternal extends IntentSubmitRequest {
   options?: {
     dryRun?: boolean
   }
@@ -904,6 +619,23 @@ interface Delegation {
 
 type Delegations = Record<number, Delegation>
 
+interface WrapRequired {
+  type: 'wrap'
+  amount: bigint
+}
+
+interface ApprovalRequired {
+  type: 'approval'
+  amount: bigint
+  spender: Address
+}
+
+type TokenRequirements = {
+  [chainId: number]: {
+    [tokenAddress: Address]: ApprovalRequired | WrapRequired
+  }
+}
+
 interface TokenConfig {
   symbol: string
   address: Address
@@ -952,8 +684,13 @@ interface SplitIntentsResult {
  * `FAILED`, because it did not do what was asked.
  */
 interface IntentRefund {
-  /** The refund transaction, in its own chain's identity. */
-  transaction: TransactionReference
+  /** Chain the refund landed on. */
+  chain: number
+  /**
+   * The refund transaction, in the chain's native form (EVM hex, Solana
+   * base58, Tron hex). Interpret it against `chain`.
+   */
+  txHash: string
 }
 
 /**
@@ -982,87 +719,38 @@ interface IntentHyperCoreResult {
   reason?: string
 }
 
-/** One side of an intent's value movement, as the record has it. */
-interface IntentLeg {
-  chainId: Caip2ChainId | number
-  tokens: { token: string; symbol: string; decimals: number; amount: bigint }[]
-  transaction?: TransactionReference
-  timestamp?: number
-  status: OperationStatus
-}
-
 /**
- * The recorded facts about an intent, returned only when explicitly asked for
- * (`getIntentStatus(id, { full: true })`).
+ * Full intent status as returned by the orchestrator (blanc API version).
  *
- * These are what happened, not what was quoted. A field is absent when the
- * record does not hold it — Solana-origin intents recorded before their
- * instructions were persisted have no source `executions`, and that absence is
- * not reconstructed from a fresh quote.
- */
-interface IntentDetails {
-  nonce: string
-  recipient?:
-    | {
-        vm: 'evm' | 'svm' | 'tvm' | 'stellar' | 'hypercore'
-        chainId: Caip2ChainId
-        address: string
-      }
-    | { vm: 'unknown'; chainId: number; address: string }
-  createdAt: number
-  latencyMs: number
-  settlementLayer: SettlementLayer
-  source: IntentLeg[]
-  destination: IntentLeg
-  /**
-   * What actually ran. The destination `calls` may include orchestration the
-   * caller did not write, unlike a quote's caller-execution disclosure.
-   */
-  executions?: {
-    source: Extract<PlanExecution, { vm: 'evm' }>[]
-    destination: PlanExecution
-  }
-  deployments?: IntentAccountSummary[]
-  cost: {
-    sponsored: boolean
-    sponsoredValue?: bigint
-    protocolFee?: bigint
-    sponsorSurcharge?: bigint
-  }
-}
-
-/**
- * Full intent status as returned by the orchestrator.
- *
- * Operations are grouped by chain and every item is reported — a chain can
- * carry a claim and a fill, or a fill and the offchain execution it settles.
+ * One operation per chain involved in the intent. The SDK flattens the
+ * orchestrator's per-chain `items[]` to a single entry per chain.
  */
 interface IntentOpStatus {
   /** OpenTelemetry trace ID for correlating this orchestrator response. */
   traceId: string
-  /** What the intent is for. */
-  purpose: 'execution'
   /** High-level intent status. */
   status: IntentStatus
-  /**
-   * The accounts the intent used, per VM and chain. Absent where the record
-   * does not identify them — the SDK does not substitute a zero address.
-   */
-  accounts?: IntentAccountSummary[]
-  /** Every operation, grouped by the chain it ran on. */
-  operations: IntentOperationGroup[]
+  /** The smart-account address that owns this intent. */
+  accountAddress: Address
+  /** Per-chain operation status. One entry per chain. */
+  operations: ChainOperation[]
   /**
    * Bridge refunds observed for this intent.
    *
-   * An empty array means none were observed, which is not proof none
-   * occurred: a refund is recorded only where a settlement layer evidences it
-   * with a transaction. Read it with the operations — a `FAILED` intent whose
-   * debiting operation never completed did not take the funds in the first
-   * place.
+   * Undefined means no refund is KNOWN — never that the funds were kept. A
+   * refund is recorded only where a settlement layer evidences it with a
+   * transaction, so presence is a fact and absence is not a claim. Read it
+   * with the operations: a `FAILED` intent whose debiting operation never
+   * completed did not take the funds in the first place.
    */
   refunds?: IntentRefund[]
-  /** Present only when the status was requested with `{ full: true }`. */
-  details?: IntentDetails
+  /**
+   * What became of the HyperCore action this intent carried; absent when it
+   * carried none. A refused action leaves the intent `FAILED` with every
+   * operation `COMPLETED`, so this is what says why, and whether a retry is
+   * safe.
+   */
+  hyperCore?: IntentHyperCoreResult
 }
 
 export type {
@@ -1103,49 +791,32 @@ export type {
   Price,
   UsdAmount,
   EstimatedFillTime,
-  Caip2ChainId,
-  SigningRequest,
-  SigningRequestAccount,
-  SigningRequestPurpose,
-  SigningAuthority,
-  SigningScope,
-  SigningValidity,
-  SigningPayload,
-  SigningProof,
-  WebAuthnAssertion,
-  IntentAccountView,
-  IntentAccountSummary,
-  PlanExecution,
-  PlanLeg,
-  QuotePlan,
-  IntentRequirement,
+  SignData,
   IntentSubmitRequest,
+  IntentSubmitRequestInternal,
   IntentSubmitResponse,
   IntentOpStatus,
-  IntentDetails,
-  IntentLeg,
   IntentRefund,
   IntentHyperCoreResult,
   IntentOptions,
   SponsorSettings,
+  SignedAuthorization,
   SplitIntentsInput,
   SplitIntentsResult,
   Portfolio,
   PortfolioToken,
   Execution,
-  SolanaWireInstruction,
   AccountAccessList,
   MappedChainTokenAccessList,
   UnmappedChainTokenAccessList,
+  OriginSignature,
+  TokenRequirements,
+  WrapRequired,
+  ApprovalRequired,
   TypedDataDefinition,
   OperationStatus,
   FailureReason,
-  TransactionReference,
-  IntentOperationGroup,
-  IntentOperationItem,
-  IntentOnchainOperation,
-  IntentExecutionOperation,
-  IntentOperationAllocation,
+  ChainOperation,
   IntentStatus,
 }
 export {

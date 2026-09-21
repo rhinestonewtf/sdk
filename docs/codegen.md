@@ -85,57 +85,46 @@ variable to `main`. The rolling output branch defaults to
 
 ## Orchestrator wire types
 
-`src/clients/orchestrator/wire.gen.ts` is generated from the orchestrator's
-OpenAPI document for the API version the SDK speaks (`2026-09.caucasus`) with
-`openapi-typescript`.
+`src/clients/orchestrator/wire.gen.ts` is generated from the orchestrator's published
+OpenAPI spec (the `blanc` version) with `openapi-typescript`.
 
 ### Motivation
 
 The generated wire types are the single source of truth for the orchestrator's
 request/response shapes. The orchestrator mappers
 (`src/clients/orchestrator/mappers.ts`, via the `wire.ts` aliases) adapt them to
-the SDK's internal types — BigInt amounts, narrowed signing requests — at one
-boundary. When the wire shape drifts, regenerating turns the change into
+the SDK's internal types — BigInt amounts, numeric chain ids —
+at one boundary. When the wire shape drifts, regenerating turns the change into
 a **typecheck error at the adapter boundary** instead of a runtime surprise.
 
 ### How it works
 
 ```bash
-bun run generate:wire                            # default: the vendored snapshot
-bun run generate:wire ./path/to/caucasus.json    # local checkout
+bun run generate:wire                          # default: pinned spec
+bun run generate:wire ./path/to/blanc.json     # local checkout
 ORCH_OPENAPI_SPEC=<url|path> bun run generate:wire
 ```
 
-Source resolves as: CLI arg → `ORCH_OPENAPI_SPEC` env → the vendored snapshot.
-Only an override resolves against your working directory; the default is
-module-relative, so generation does not depend on where you ran it from.
+Spec source resolves as: CLI arg → `ORCH_OPENAPI_SPEC` env → pinned URL. The
+default targets the `openapi` commit pinned in
+`src/clients/orchestrator/.openapi-ref` — `orchestrator/blanc.json` at that SHA
+in the public `rhinestonewtf/openapi` repo, so no auth is needed.
 
-### The vendored document
+### Pin and auto-sync
 
-`2026-09.caucasus` is not in the orchestrator's published version set yet, so it
-is absent from the public `rhinestonewtf/openapi` repo. The generated document
-is therefore checked in at `scripts/openapi/caucasus.json`, with
-`scripts/openapi/provenance.json` recording the API version, the upstream
-repository and commit it was generated from, the artifact's SHA-256, and the
-command that produced it.
+The pin makes regeneration deterministic: `openapi/main` moves whenever the
+rolling spec PR the orchestrator opens there is merged, so generating against it
+live would break *every* open SDK PR the moment upstream moves. Pinning means the
+per-PR CI check (`Verify wire types match the published OpenAPI spec`)
+regenerates against a fixed SHA and only ever reflects intentional bumps.
 
-Both are verified before generating: a snapshot whose bytes or declared version
-disagree with the manifest fails loudly rather than producing plausible types
-against a document nobody reviewed. Change the snapshot and the manifest hash in
-the same commit.
+A new orchestrator field is therefore **two merges** from being usable here: the
+spec PR in `rhinestonewtf/openapi`, then the sync PR below.
 
-### Determinism and auto-sync
-
-Pinning the document makes regeneration deterministic: generating against a
-moving upstream would break *every* open SDK PR the moment it moved. The per-PR
-CI check (`Verify wire types match the pinned OpenAPI document`) regenerates and
-diffs, so `wire.gen.ts` only ever reflects an intentional change.
-
-The [`Sync wire types`](../.github/workflows/sync-wire-types.yaml) workflow
-(hourly cron + `workflow_dispatch`) is the *only* thing that changes
-`wire.gen.ts`. While Caucasus is unpublished it reports a clean no-op — it never
-falls back to an older version, and never points at a file that does not exist.
-Once the document is published it starts opening the rolling PR that swaps the
-source to the immutable public commit, regenerates and typechecks. A regen that
-fails typecheck (a breaking upstream change) fails the job without opening a PR,
-so open PRs keep building until a human adapts the boundary.
+The pin is advanced by the [`Sync wire types`](../.github/workflows/sync-wire-types.yaml)
+workflow (hourly cron + `workflow_dispatch`), the *only* thing that changes
+`wire.gen.ts`: it detects when `openapi/main` is ahead of the pin, bumps
+`.openapi-ref`, regenerates, typechecks, and opens/updates a rolling PR. A regen
+that fails typecheck (breaking upstream change) fails the job without opening a
+PR, so open PRs keep building until a human adapts the boundary. The pin is
+per-branch, so the v2 dev (`main`) and prod (`release`) lines can differ.

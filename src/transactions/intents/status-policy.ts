@@ -15,14 +15,13 @@ export function classifyIntentStatus(
   return {
     traceId: status.traceId,
     intentId: status.intentId,
-    purpose: status.purpose,
     status: status.status,
-    // Spread so an unknown value stays an absent key rather than becoming
-    // `undefined` — the distinction these fields rest on.
-    ...(status.accounts ? { accounts: [...status.accounts] } : {}),
-    operations: [...status.operations],
-    ...(status.refunds ? { refunds: [...status.refunds] } : {}),
-    ...(status.details ? { details: status.details } : {}),
+    account: status.account,
+    operations: status.operations,
+    // Spread so an unknown refund state stays an absent key rather than
+    // becoming `undefined` — the distinction the whole field rests on.
+    ...(status.refunds ? { refunds: status.refunds } : {}),
+    ...(status.hyperCore ? { hyperCore: status.hyperCore } : {}),
     terminal: status.status === 'COMPLETED' || status.status === 'FAILED',
   }
 }

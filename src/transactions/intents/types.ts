@@ -1,12 +1,7 @@
 import type { Address, Hex, SignedAuthorization } from 'viem'
 import type { AccountRuntimePort } from '../../accounts/adapter'
 import type { UnresolvedCall } from '../../calls/types'
-import type { SolanaAddress } from '../../chains/non-evm'
 import type { ChainReference, EvmChainReference } from '../../chains/types'
-import type {
-  NormalizedIntentInput,
-  NormalizedIntentOptions,
-} from '../../clients/orchestrator/normalized'
 import type {
   IntentQuotePort,
   IntentStatusPort,
@@ -14,12 +9,16 @@ import type {
 } from '../../clients/orchestrator/port'
 import type {
   IntentOpStatus,
+  OriginSignature,
   Quote,
   SerializedIntentInput,
-  SigningProof,
 } from '../../clients/orchestrator/public'
 import type {
+  OrchestratorAccount,
+  OrchestratorAccountAccessList,
+  OrchestratorIntentOptions,
   OrchestratorIntentRequest,
+  OrchestratorOriginSignature,
   OrchestratorQuote,
 } from '../../clients/orchestrator/types'
 import type { Transaction } from '../../config/account'
@@ -35,9 +34,6 @@ import type {
   SigningCheckpointPort,
   SigningTranscript,
 } from '../../signing/types'
-import type { IntentRecipientProjection } from './account'
-import type { PreparedIntentBinding } from './compatibility'
-import type { IntentSourcePolicy } from './source'
 
 export interface IntentTokenRequest {
   readonly token: Address | string
@@ -70,11 +66,11 @@ export interface IntentInput<CompatibilityConfig = unknown> {
   readonly sourceChains?: readonly EvmChainReference[]
   readonly calls: readonly UnresolvedCall<CompatibilityConfig>[]
   readonly tokenRequests: readonly IntentTokenRequest[]
-  readonly recipient?: IntentRecipientProjection
+  readonly recipient?: OrchestratorAccount
   readonly gasLimit?: bigint
   readonly eip7702InitSignature?: Hex
-  readonly accountAccessList?: IntentSourcePolicy
-  readonly options?: Omit<NormalizedIntentOptions, 'signatureMode'>
+  readonly accountAccessList?: OrchestratorAccountAccessList
+  readonly options?: Omit<OrchestratorIntentOptions, 'signatureMode'>
   readonly signatureMode?: number
   readonly sourceCalls?: Readonly<
     Record<number, readonly IntentSourceCall<CompatibilityConfig>[]>
@@ -89,10 +85,7 @@ export interface IntentInput<CompatibilityConfig = unknown> {
 export interface PreparedIntent<CompatibilityConfig = unknown> {
   readonly traceId: string
   readonly input: IntentInput<CompatibilityConfig>
-  /** The Caucasus request this quote answers. */
   readonly request: OrchestratorIntentRequest
-  /** The normalized sponsorship projection of the same transaction. */
-  readonly normalized: NormalizedIntentInput
   readonly quote: OrchestratorQuote
   readonly quotes: readonly OrchestratorQuote[]
   readonly signing: IntentSigningInput
@@ -103,25 +96,12 @@ export interface PreparedIntent<CompatibilityConfig = unknown> {
 
 export interface SignedIntent<CompatibilityConfig = unknown> {
   readonly prepared: PreparedIntent<CompatibilityConfig>
-  /** One proof per signing request, in the quoted order. */
-  readonly proofs: readonly SigningProof[]
+  readonly originSignatures: readonly OrchestratorOriginSignature[]
+  readonly destinationSignature: Hex
+  readonly targetSignature?: Hex
   readonly transcript: SigningTranscript
+  readonly authorizations?: readonly SignedAuthorization[]
   readonly dryRun?: boolean
-}
-
-/**
- * One externally produced proof, bound to the quote and the request slot it
- * answers.
- *
- * The fingerprint covers the whole ordered request set, so a contribution
- * collected against a different quote — or a re-quote of the same intent —
- * cannot be assembled into this one.
- */
-export interface IndexedProofContribution {
-  readonly intentId: string
-  readonly requestSetId: Hex
-  readonly requestIndex: number
-  readonly proof: SigningProof
 }
 
 export interface SubmittedIntent {
@@ -135,14 +115,16 @@ export interface SubmittedIntent {
 export interface IntentStatus {
   readonly traceId: string
   readonly intentId: string
-  readonly purpose: IntentOpStatus['purpose']
   readonly status: IntentOpStatus['status']
-  readonly accounts?: IntentOpStatus['accounts']
+  readonly account: Address
   readonly operations: readonly IntentOpStatus['operations'][number][]
   /** Bridge refunds, if any are known. See {@link IntentOpStatus.refunds}. */
-  readonly refunds?: IntentOpStatus['refunds']
-  /** Present only when the status was read with `{ full: true }`. */
-  readonly details?: IntentOpStatus['details']
+  readonly refunds?: readonly NonNullable<IntentOpStatus['refunds']>[number][]
+  /**
+   * The HyperCore action's outcome, if the intent carried one. See
+   * {@link IntentOpStatus.hyperCore}.
+   */
+  readonly hyperCore?: NonNullable<IntentOpStatus['hyperCore']>
   readonly terminal: boolean
 }
 
@@ -158,10 +140,6 @@ export interface IntentWorkflowContext<CompatibilityConfig = unknown> {
     readonly chains: readonly ChainReference[]
     readonly eip7702InitSignature: Hex
   }) => Promise<readonly SignedAuthorization[]>
-  readonly signDelegation: (input: {
-    readonly chainId: number
-    readonly contract: Address
-  }) => Promise<SignedAuthorization>
   readonly clock: {
     readonly now: () => number
     readonly sleep: (milliseconds: number) => Promise<void>
@@ -184,71 +162,8 @@ export interface PreparedQuotes {
   all: Quote[]
 }
 
-/** Binds a prepared same-chain Solana transfer to the account that prepared it. */
-export interface SolanaExecutionMetadata {
-  kind: 'solana'
-  namespace: 'dev-v1'
-  endpoint: string
-  chain: number
-  caip2: string
-  accountAddress: Address
-  accountType: 'GENERIC' | 'ERC7579' | 'EOA'
-  authority: Address
-  swigAddress: SolanaAddress
-  walletAddress: SolanaAddress
-  recipient: SolanaAddress
-  mint: SolanaAddress
-}
-
-/**
- * Binds a prepared Solana-origin cross-chain delivery to the account that
- * prepared it, including the EVM chain, token and recipient it delivers to.
- */
-export interface SolanaCrossChainExecutionMetadata {
-  kind: 'solana-cross-chain'
-  namespace: 'dev-v1'
-  endpoint: string
-  chain: number
-  caip2: string
-  accountAddress: Address
-  accountType: 'GENERIC' | 'ERC7579' | 'EOA'
-  authority: Address
-  swigAddress: SolanaAddress
-  walletAddress: SolanaAddress
-  mint: SolanaAddress
-  destinationChain: number
-  destinationToken: Address
-  recipient: Address
-}
-
-/**
- * Binds a prepared same-chain Solana instruction execution to the account that
- * prepared it. The instructions themselves are covered by the canonical
- * serialized intent input, not repeated here.
- */
-export interface SolanaInstructionsExecutionMetadata {
-  kind: 'solana-instructions'
-  namespace: 'dev-v1'
-  endpoint: string
-  chain: number
-  caip2: string
-  accountAddress: Address
-  accountType: 'GENERIC' | 'ERC7579' | 'EOA'
-  authority: Address
-  swigAddress: SolanaAddress
-  walletAddress: SolanaAddress
-}
-
 export interface PreparedTransactionData {
   quotes: PreparedQuotes
-  /**
-   * Present for a managed Solana origin and used to validate persisted data.
-   * Narrow on `kind` to read the direction-specific fields.
-   */
-  execution?:
-    | SolanaExecutionMetadata
-    | SolanaCrossChainExecutionMetadata
-    | SolanaInstructionsExecutionMetadata
   /** Canonical serialized intent input; the shape a sponsorship digest covers. */
   // Deliberately narrowed from the `unknown` this field used to carry. Prepared
   // data produced by `prepareTransaction` and passed straight back to
@@ -256,12 +171,6 @@ export interface PreparedTransactionData {
   // an earlier release — a mocked or persisted prepared object — needs an
   // annotation.
   intentInput: SerializedIntentInput
-  /**
-   * The Caucasus request this quote answers, versioned so a payload prepared
-   * under an earlier wire generation fails before signing rather than being
-   * reconstructed from the lossy `intentInput` projection.
-   */
-  request: PreparedIntentBinding
   transaction: Transaction
 }
 
@@ -271,37 +180,29 @@ export interface QuoteSelection {
 
 export interface SignedTransactionData extends PreparedTransactionData {
   quote: Quote
-  /** One proof per `quote.signingRequests` entry, in that order. */
-  proofs: SigningProof[]
-}
-
-export interface IntentStatusOptions {
-  /**
-   * Ask the orchestrator for the recorded detail block. Off by default, so
-   * polling stays lean.
-   */
-  readonly full?: boolean
+  originSignatures: OriginSignature[]
+  destinationSignature: Hex
+  targetExecutionSignature: Hex | undefined
 }
 
 export interface TransactionStatus {
   /** OpenTelemetry trace ID for correlating the status response. */
   traceId: IntentOpStatus['traceId']
-  /** What the intent is for. */
-  purpose: IntentOpStatus['purpose']
   /** High-level intent status. */
   status: IntentOpStatus['status']
-  /**
-   * The accounts the intent used, per VM and chain. Absent where the record
-   * does not identify them.
-   */
-  accounts?: IntentOpStatus['accounts']
-  /** Every operation, grouped by the chain it ran on. */
+  /** The account address that owns this intent. */
+  accountAddress: Address
+  /** Per-chain operation status. One entry per chain. */
   operations: IntentOpStatus['operations']
   /**
    * Bridge refunds, if any are known. This is where a failed cross-chain
    * transaction says the funds came back. See {@link IntentOpStatus.refunds}.
    */
   refunds?: IntentOpStatus['refunds']
-  /** Present only when requested with `{ full: true }`. */
-  details?: IntentOpStatus['details']
+  /**
+   * The HyperCore action's outcome, if the transaction carried one. This is
+   * what tells a refused trade from a partial one when every operation
+   * completed. See {@link IntentOpStatus.hyperCore}.
+   */
+  hyperCore?: IntentOpStatus['hyperCore']
 }

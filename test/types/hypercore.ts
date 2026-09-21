@@ -3,21 +3,17 @@ import type { WireQuoteRequest } from '../../src/clients/orchestrator/wire'
 import type { PerpMarket, PerpPosition } from '../../src/hypercore/index'
 import { getPerpMarkets, getPerpPosition } from '../../src/hypercore/index'
 import type {
-  EvmAccountConfig,
   HyperCoreAction,
+  RhinestoneAccountConfig,
   Transaction,
 } from '../../src/index'
 import { hyperCorePerp, RhinestoneSDK } from '../../src/index'
 
 type AssignableTo<Narrow, Wide> = [Narrow] extends [Wide] ? true : never
 
-type WireHyperCoreDestination = Extract<
-  WireQuoteRequest['destination'],
-  { vm: 'hypercore' }
->
 type WireHyperCoreAction = NonNullable<
-  NonNullable<WireHyperCoreDestination['execution']>['actions']
->[number]
+  NonNullable<WireQuoteRequest['options']>['hyperCore']
+>['action']
 
 // `HyperCoreAction` is hand-written for its documentation and its `Hex`/`Address`
 // field types, so nothing makes it track the generated wire shape except this.
@@ -97,7 +93,7 @@ const noSize: Transaction = {
 }
 
 // Where the reads reach Hyperliquid is SDK config, not a per-call argument.
-const configured: EvmAccountConfig & { hyperliquid?: unknown } = {
+const configured: RhinestoneAccountConfig & { hyperliquid?: unknown } = {
   account: { type: 'nexus', version: '1.2.0' },
   owners: { type: 'ecdsa', accounts: [] },
 }

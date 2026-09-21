@@ -1,5 +1,4 @@
 import type { Address, Hex } from 'viem'
-import { chainIdFromCaip2 } from '../../chains/caip2'
 
 type ErrorCode =
   | 'VALIDATION_ERROR'
@@ -119,30 +118,6 @@ class ValidationError extends OrchestratorError {
   }
 }
 
-/**
- * The EVM-derived Solana account has not been created on the requested cluster.
- * Create and authority-verify `swigAddress` before preparing another transfer.
- *
- * `chainId` is the SDK's numeric id for the cluster, and is absent when the
- * response carries no usable chain id.
- */
-class SolanaAccountNotCreatedError extends ValidationError {
-  readonly swigAddress: string
-  readonly chainId?: number
-
-  constructor(
-    params: BaseErrorParams & {
-      issues?: ValidationIssue[]
-      swigAddress: string
-      chainId?: number
-    },
-  ) {
-    super(params)
-    this.swigAddress = params.swigAddress
-    this.chainId = params.chainId
-  }
-}
-
 class InsufficientLiquidityError extends OrchestratorError {
   readonly availableIntents: Record<string, bigint>[]
   readonly unfillable: Record<string, bigint>
@@ -204,11 +179,8 @@ class KeyScopeDeniedError extends ForbiddenError {
 }
 
 class ConflictError extends OrchestratorError {
-  readonly details: ErrorDetail[]
-
-  constructor(params: BaseErrorParams & { details?: ErrorDetail[] }) {
+  constructor(params: BaseErrorParams) {
     super({ ...params, code: 'CONFLICT' })
-    this.details = params.details ?? []
   }
 }
 
@@ -588,48 +560,6 @@ function parseSponsorError(
   }
 }
 
-/**
- * Normalize `context.chainId` to the SDK's numeric chain ids. The error
- * boundary lowers it to CAIP-2 (`solana:EtWTRAB…`); older orchestrators send a
- * number. Anything else — including a chain this SDK version has no id for —
- * yields `undefined`, which drops the chain hint without losing the error
- * identity; the raw value stays readable on `issues[].context`.
- */
-function parseContextChainId(value: unknown): number | undefined {
-  if (typeof value === 'string') {
-    return chainIdFromCaip2(value)
-  }
-  if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0) {
-    return value
-  }
-  return undefined
-}
-
-function parseSolanaAccountNotCreatedError(
-  base: BaseErrorParams,
-  issues: ValidationIssue[],
-): SolanaAccountNotCreatedError | undefined {
-  const context = issues.find(
-    (issue) => issue.context?.code === 'SOLANA_ACCOUNT_NOT_CREATED',
-  )?.context
-  if (
-    !context ||
-    typeof context.swigAddress !== 'string' ||
-    context.swigAddress.length === 0
-  ) {
-    return undefined
-  }
-
-  const chainId = parseContextChainId(context.chainId)
-
-  return new SolanaAccountNotCreatedError({
-    ...base,
-    issues,
-    swigAddress: context.swigAddress,
-    ...(chainId === undefined ? {} : { chainId }),
-  })
-}
-
 function parseErrorEnvelope(
   envelope: ErrorEnvelope,
   statusCode: number,
@@ -643,11 +573,10 @@ function parseErrorEnvelope(
 
   switch (envelope.code) {
     case 'VALIDATION_ERROR': {
-      const issues = parseErrorDetails(envelope.details)
-      return (
-        parseSolanaAccountNotCreatedError(base, issues) ??
-        new ValidationError({ ...base, issues })
-      )
+      const issues = Array.isArray(envelope.details)
+        ? (envelope.details as ValidationIssue[])
+        : []
+      return new ValidationError({ ...base, issues })
     }
     case 'INSUFFICIENT_LIQUIDITY': {
       const details = (envelope.details ?? {}) as {
@@ -685,10 +614,7 @@ function parseErrorEnvelope(
       })
     }
     case 'CONFLICT':
-      return new ConflictError({
-        ...base,
-        details: parseErrorDetails(envelope.details),
-      })
+      return new ConflictError(base)
     case 'UNPROCESSABLE_CONTENT': {
       const details = parseErrorDetails(envelope.details)
       return (
@@ -728,12 +654,6 @@ function isRateLimited(error: unknown): error is RateLimitedError {
 
 function isValidationError(error: unknown): error is ValidationError {
   return error instanceof ValidationError
-}
-
-function isSolanaAccountNotCreated(
-  error: unknown,
-): error is SolanaAccountNotCreatedError {
-  return error instanceof SolanaAccountNotCreatedError
 }
 
 function isAuthError(
@@ -865,7 +785,6 @@ export {
   isConnectionError,
   isAuthError,
   isValidationError,
-  isSolanaAccountNotCreated,
   isRateLimited,
   isSimulationFailed,
   isSponsorLimitExceeded,
@@ -873,7 +792,6 @@ export {
   isSponsorError,
   OrchestratorError,
   ValidationError,
-  SolanaAccountNotCreatedError,
   InsufficientLiquidityError,
   SponsorLimitExceededError,
   InsufficientSponsorBalanceError,

@@ -1,5 +1,4 @@
 import type { TypedDataDefinition, TypedDataParameter } from 'viem'
-import type { SigningRequest } from '../../clients/orchestrator/public'
 import type { OrchestratorQuote } from '../../clients/orchestrator/types'
 
 type TypedDataTypes = Record<string, readonly TypedDataParameter[]>
@@ -18,26 +17,22 @@ export function normalizeIntentTypedData(
   } as TypedDataDefinition
 }
 
-// Normalizes the numeric values a JSON payload carries as strings into the
-// bigints viem hashes with. The typed-data digest is unchanged by this.
-function normalizeSigningRequest(request: SigningRequest): SigningRequest {
-  return request.payload.kind === 'eip712'
-    ? {
-        ...request,
-        payload: {
-          ...request.payload,
-          typedData: normalizeIntentTypedData(request.payload.typedData),
-        },
-      }
-    : request
-}
-
 export function normalizeIntentQuote(
   quote: OrchestratorQuote,
 ): OrchestratorQuote {
   return {
     ...quote,
-    signingRequests: quote.signingRequests.map(normalizeSigningRequest),
+    signData: {
+      origin: quote.signData.origin.map(normalizeIntentTypedData),
+      destination: normalizeIntentTypedData(quote.signData.destination),
+      ...(quote.signData.targetExecution
+        ? {
+            targetExecution: normalizeIntentTypedData(
+              quote.signData.targetExecution,
+            ),
+          }
+        : {}),
+    },
   }
 }
 
