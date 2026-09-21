@@ -1,5 +1,5 @@
 import { keccak256, toHex } from 'viem'
-import type { EvmAccountConfig } from '../../../src/index'
+import type { RhinestoneAccountConfig } from '../../../src/index'
 import {
   accountA,
   accountB,
@@ -21,7 +21,7 @@ export type VectorCase = {
    * args.
    */
   readonly pins: 'deployment' | 'address'
-  readonly config: EvmAccountConfig
+  readonly config: RhinestoneAccountConfig
   /** Builds `initData` from another case's derived deployment plan. */
   readonly pinnedFrom?: string
 }
@@ -49,26 +49,26 @@ const ENS_EXPIRATION = new Date('2030-01-01T00:00:00.000Z')
 const ecdsa = {
   type: 'ecdsa',
   accounts: [accountA],
-} as const satisfies EvmAccountConfig['owners']
+} as const satisfies RhinestoneAccountConfig['owners']
 const passkeySingle = {
   type: 'passkey',
   accounts: [passkeyAccount],
-} as const satisfies EvmAccountConfig['owners']
+} as const satisfies RhinestoneAccountConfig['owners']
 const passkeyMulti = {
   type: 'passkey',
   accounts: [passkeyA, passkeyB],
-} as const satisfies EvmAccountConfig['owners']
+} as const satisfies RhinestoneAccountConfig['owners']
 const multiFactor = {
   type: 'multi-factor',
   validators: [
     { type: 'ecdsa', accounts: [accountA] },
     { type: 'passkey', accounts: [passkeyAccount] },
   ],
-} as const satisfies EvmAccountConfig['owners']
+} as const satisfies RhinestoneAccountConfig['owners']
 const ensSingle = {
   type: 'ens',
   owners: [{ account: accountA }],
-} as const satisfies EvmAccountConfig['owners']
+} as const satisfies RhinestoneAccountConfig['owners']
 
 const validatorModule = {
   type: 'validator',
@@ -84,15 +84,15 @@ const customModules = [
   fallbackModule,
 ]
 
-function deployment(id: string, config: EvmAccountConfig): VectorCase {
+function deployment(id: string, config: RhinestoneAccountConfig): VectorCase {
   return { id, profile: 'current', pins: 'deployment', config }
 }
 
-function addressOnly(id: string, config: EvmAccountConfig): VectorCase {
+function addressOnly(id: string, config: RhinestoneAccountConfig): VectorCase {
   return { id, profile: 'current', pins: 'address', config }
 }
 
-function v0(id: string, config: EvmAccountConfig): VectorCase {
+function v0(id: string, config: RhinestoneAccountConfig): VectorCase {
   return { id, profile: 'v0', pins: 'deployment', config }
 }
 

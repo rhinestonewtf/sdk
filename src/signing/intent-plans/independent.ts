@@ -27,12 +27,12 @@ export type IndependentOwnerSignatureData =
   | {
       readonly kind: 'ecdsa'
       readonly signer: Address
-      readonly slots: readonly Hex[]
+      readonly origin: readonly Hex[]
     }
   | {
       readonly kind: 'passkey'
       readonly publicKey: Hex
-      readonly slots: readonly {
+      readonly origin: readonly {
         readonly webauthn: {
           readonly authenticatorData: Hex
           readonly challengeIndex?: number
@@ -55,8 +55,8 @@ export type IndependentOwnerSignature =
 
 export function assembleIndependentIntentArtifact(input: {
   readonly intentId: string
-  readonly slotIndex: number
-  readonly slotCount: number
+  readonly originIndex: number
+  readonly originCount: number
   readonly signatures: readonly IndependentOwnerSignature[]
   readonly owners: readonly IndependentOwnerDescriptor[]
   readonly artifact: ArtifactAssemblyPlan
@@ -96,8 +96,8 @@ export function assembleIndependentIntentArtifact(input: {
 
 function importOwnerContributions(input: {
   readonly intentId: string
-  readonly slotIndex: number
-  readonly slotCount: number
+  readonly originIndex: number
+  readonly originCount: number
   readonly signatures: readonly IndependentOwnerSignature[]
   readonly owners: readonly IndependentOwnerDescriptor[]
 }): readonly {
@@ -112,9 +112,9 @@ function importOwnerContributions(input: {
       })
     }
     const signature = value.kind === 'multi-factor' ? value.signature : value
-    if (signature.slots.length !== input.slotCount) {
+    if (signature.origin.length !== input.originCount) {
       throw new MismatchedOwnerSignaturesError({
-        context: { expectedSlotCount: input.slotCount },
+        context: { expectedOriginCount: input.originCount },
       })
     }
     const identity =
@@ -171,23 +171,24 @@ function importOwnerContributions(input: {
         ? {
             kind: 'ecdsa',
             ownerId: owner.ownerId,
-            signature: signature.slots[input.slotIndex],
+            signature: signature.origin[input.originIndex],
             encoding: 'validator-contribution',
           }
         : {
             kind: 'webauthn',
             ownerId: owner.ownerId,
             publicKey: signature.publicKey,
-            signature: signature.slots[input.slotIndex].signature,
+            signature: signature.origin[input.originIndex].signature,
             authenticatorData:
-              signature.slots[input.slotIndex].webauthn.authenticatorData,
+              signature.origin[input.originIndex].webauthn.authenticatorData,
             clientDataJSON:
-              signature.slots[input.slotIndex].webauthn.clientDataJSON,
+              signature.origin[input.originIndex].webauthn.clientDataJSON,
             challengeIndex:
-              signature.slots[input.slotIndex].webauthn.challengeIndex ?? 0,
-            typeIndex: signature.slots[input.slotIndex].webauthn.typeIndex ?? 0,
+              signature.origin[input.originIndex].webauthn.challengeIndex ?? 0,
+            typeIndex:
+              signature.origin[input.originIndex].webauthn.typeIndex ?? 0,
             userVerificationRequired:
-              signature.slots[input.slotIndex].webauthn
+              signature.origin[input.originIndex].webauthn
                 .userVerificationRequired ?? false,
           }
     return {

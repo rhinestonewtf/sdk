@@ -16,12 +16,11 @@ export function toPublicTransactionStatus(
 ): TransactionStatus {
   return {
     traceId: status.traceId,
-    purpose: status.purpose,
     status: status.status,
-    ...(status.accounts ? { accounts: [...status.accounts] } : {}),
+    accountAddress: status.account,
     operations: [...status.operations],
     ...(status.refunds ? { refunds: [...status.refunds] } : {}),
-    ...(status.details ? { details: status.details } : {}),
+    ...(status.hyperCore ? { hyperCore: status.hyperCore } : {}),
   }
 }
 

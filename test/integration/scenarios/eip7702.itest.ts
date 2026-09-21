@@ -12,11 +12,9 @@ describe.sequential('SDK integration eip7702', () => {
     const owner = createOwner()
     const eoa = createOwner()
     const account = await sdk.createAccount({
-      evm: {
-        account: { type: 'nexus' },
-        owners: { type: 'ecdsa', accounts: [owner] },
-        eoa,
-      },
+      account: { type: 'nexus' },
+      owners: { type: 'ecdsa', accounts: [owner] },
+      eoa,
     })
     const eip7702InitSignature = await account.signEip7702InitData()
 

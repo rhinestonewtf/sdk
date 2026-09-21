@@ -140,9 +140,7 @@ async function ecdsaRecovery(
 describe('Recovery Actions', () => {
   const rhinestone = new RhinestoneSDK({ apiKey: 'test' })
   const accountPromise = rhinestone.createAccount({
-    evm: {
-      owners: { type: 'ecdsa', accounts: [accountA] },
-    },
+    owners: { type: 'ecdsa', accounts: [accountA] },
   })
 
   beforeEach(() => {
@@ -154,13 +152,13 @@ describe('Recovery Actions', () => {
       const rhinestoneAccount = await accountPromise
       const calls = await resolveCallInputs(
         [enableRecovery([accountB], 1)],
-        rhinestoneAccount.config.evm,
+        rhinestoneAccount.config,
         base,
         accountAddress,
       )
       expect(calls).toHaveLength(1)
       // Module installation is executed by the account on itself.
-      expect(calls[0].to).toBe(rhinestoneAccount.getAddress('evm'))
+      expect(calls[0].to).toBe(rhinestoneAccount.getAddress())
       // Installs at the social recovery module address, threshold 1, one guardian.
       expect(calls[0].data).toContain(
         SOCIAL_RECOVERY_VALIDATOR_ADDRESS.slice(2),
@@ -176,7 +174,7 @@ describe('Recovery Actions', () => {
       // unless the guardian array is ascending and unique.
       const calls = await resolveCallInputs(
         [enableRecovery([accountD, accountB, accountC], 2)],
-        rhinestoneAccount.config.evm,
+        rhinestoneAccount.config,
         base,
         accountAddress,
       )
@@ -195,7 +193,7 @@ describe('Recovery Actions', () => {
       const rhinestoneAccount = await accountPromise
       ownershipIs([accountA.address.toLowerCase() as Address], 1)
 
-      const calls = await ecdsaRecovery(rhinestoneAccount.config.evm, {
+      const calls = await ecdsaRecovery(rhinestoneAccount.config, {
         accounts: [accountB],
         threshold: 1,
       })
@@ -212,17 +210,15 @@ describe('Recovery Actions', () => {
 
     test('reads and mutates the explicitly configured owner validator', async () => {
       const rhinestoneAccount = await rhinestone.createAccount({
-        evm: {
-          owners: {
-            type: 'ecdsa',
-            accounts: [accountA],
-            module: alternateOwnable,
-          },
+        owners: {
+          type: 'ecdsa',
+          accounts: [accountA],
+          module: alternateOwnable,
         },
       })
       ownershipIs([accountA.address.toLowerCase() as Address], 1)
 
-      const calls = await ecdsaRecovery(rhinestoneAccount.config.evm, {
+      const calls = await ecdsaRecovery(rhinestoneAccount.config, {
         accounts: [accountB],
       })
 
@@ -250,7 +246,7 @@ describe('Recovery Actions', () => {
       const rhinestoneAccount = await accountPromise
 
       await expect(
-        ecdsaRecovery(rhinestoneAccount.config.evm, {
+        ecdsaRecovery(rhinestoneAccount.config, {
           accounts: [accountB],
           module: alternateOwnable,
         }),
@@ -262,18 +258,16 @@ describe('Recovery Actions', () => {
 
     test('accepts a matching recovery owner validator', async () => {
       const rhinestoneAccount = await rhinestone.createAccount({
-        evm: {
-          owners: {
-            type: 'ecdsa',
-            accounts: [accountA],
-            module: alternateOwnable,
-          },
+        owners: {
+          type: 'ecdsa',
+          accounts: [accountA],
+          module: alternateOwnable,
         },
       })
       ownershipIs([accountA.address.toLowerCase() as Address], 1)
 
       await expect(
-        ecdsaRecovery(rhinestoneAccount.config.evm, {
+        ecdsaRecovery(rhinestoneAccount.config, {
           accounts: [accountA],
           module: alternateOwnable,
         }),
@@ -286,7 +280,7 @@ describe('Recovery Actions', () => {
       // the validator still has a single owner, so the add must come first.
       ownershipIs([accountA.address.toLowerCase() as Address], 1)
 
-      const calls = await ecdsaRecovery(rhinestoneAccount.config.evm, {
+      const calls = await ecdsaRecovery(rhinestoneAccount.config, {
         accounts: [accountA, accountB],
         threshold: 2,
       })
@@ -304,7 +298,7 @@ describe('Recovery Actions', () => {
       )
       ownershipIs([a, b, c], 2)
 
-      const calls = await ecdsaRecovery(rhinestoneAccount.config.evm, {
+      const calls = await ecdsaRecovery(rhinestoneAccount.config, {
         accounts: [accountB, accountD],
         threshold: 2,
       })
@@ -326,7 +320,7 @@ describe('Recovery Actions', () => {
       // A is the head and no owner is added before it is removed.
       ownershipIs([a, b], 1)
 
-      const calls = await ecdsaRecovery(rhinestoneAccount.config.evm, {
+      const calls = await ecdsaRecovery(rhinestoneAccount.config, {
         accounts: [accountB],
         threshold: 1,
       })
@@ -338,7 +332,7 @@ describe('Recovery Actions', () => {
       const rhinestoneAccount = await accountPromise
       ownershipIs([accountA.address.toLowerCase() as Address], 1)
 
-      const calls = await ecdsaRecovery(rhinestoneAccount.config.evm, {
+      const calls = await ecdsaRecovery(rhinestoneAccount.config, {
         accounts: [accountA],
         threshold: 1,
       })
@@ -354,7 +348,7 @@ describe('Recovery Actions', () => {
       ])
 
       await expect(
-        ecdsaRecovery(rhinestoneAccount.config.evm, { accounts: [accountB] }),
+        ecdsaRecovery(rhinestoneAccount.config, { accounts: [accountB] }),
       ).rejects.toThrow('Failed to read existing owners or threshold')
     })
   })
@@ -416,7 +410,7 @@ describe('Recovery Actions', () => {
       const calls = await recoverPasskeyOwnership({
         accountAddress,
         chain: base,
-        config: rhinestoneAccount.config.evm as never,
+        config: rhinestoneAccount.config as never,
         currentCredentials: [oldCredential],
         newOwners: { type: 'passkey', accounts: [passkeyAccountB] },
       })
@@ -436,12 +430,10 @@ describe('Recovery Actions', () => {
 
     test('reads and mutates the explicitly configured passkey validator', async () => {
       const rhinestoneAccount = await rhinestone.createAccount({
-        evm: {
-          owners: {
-            type: 'passkey',
-            accounts: [passkeyAccount],
-            module: alternateWebauthn,
-          },
+        owners: {
+          type: 'passkey',
+          accounts: [passkeyAccount],
+          module: alternateWebauthn,
         },
       })
       rpcReadContract.mockResolvedValueOnce(1n)
@@ -451,7 +443,7 @@ describe('Recovery Actions', () => {
       const calls = await recoverPasskeyOwnership({
         accountAddress,
         chain: base,
-        config: rhinestoneAccount.config.evm as never,
+        config: rhinestoneAccount.config as never,
         currentCredentials: [oldCredential],
         newOwners: { type: 'passkey', accounts: [passkeyAccountB] },
       })
@@ -476,12 +468,10 @@ describe('Recovery Actions', () => {
 
     test('rejects a passkey validator that differs from the account config', async () => {
       const rhinestoneAccount = await rhinestone.createAccount({
-        evm: {
-          owners: {
-            type: 'passkey',
-            accounts: [passkeyAccount],
-            module: alternateWebauthn,
-          },
+        owners: {
+          type: 'passkey',
+          accounts: [passkeyAccount],
+          module: alternateWebauthn,
         },
       })
 
@@ -489,7 +479,7 @@ describe('Recovery Actions', () => {
         recoverPasskeyOwnership({
           accountAddress,
           chain: base,
-          config: rhinestoneAccount.config.evm as never,
+          config: rhinestoneAccount.config as never,
           currentCredentials: [credentialOf(passkeyAccount)],
           newOwners: {
             type: 'passkey',
@@ -511,7 +501,7 @@ describe('Recovery Actions', () => {
       const calls = await recoverPasskeyOwnership({
         accountAddress,
         chain: base,
-        config: rhinestoneAccount.config.evm as never,
+        config: rhinestoneAccount.config as never,
         currentCredentials: [credentialOf(passkeyAccount)],
         newOwners: {
           type: 'passkey',
@@ -546,7 +536,7 @@ describe('Recovery Actions', () => {
       const calls = await recoverPasskeyOwnership({
         accountAddress,
         chain: base,
-        config: rhinestoneAccount.config.evm as never,
+        config: rhinestoneAccount.config as never,
         currentCredentials: [oldCredential],
         newOwners: { type: 'passkey', accounts: [prefixed] },
       })
@@ -573,7 +563,7 @@ describe('Recovery Actions', () => {
       const calls = await recoverPasskeyOwnership({
         accountAddress,
         chain: base,
-        config: rhinestoneAccount.config.evm as never,
+        config: rhinestoneAccount.config as never,
         currentCredentials: [kept, replaced],
         newOwners: {
           type: 'passkey',

@@ -2,7 +2,10 @@ import type { Account, Address, Hex } from 'viem'
 import { createAccountConstruction } from '../accounts/construction'
 import { getRhinestoneInitData, getV0InitData } from '../accounts/legacy'
 import { toViewOnlyAccount as createViewOnlyAccount } from '../accounts/wallet-account'
-import type { EvmAccountConfig, RhinestoneConfig } from '../config/account'
+import type {
+  RhinestoneAccountConfig,
+  RhinestoneConfig,
+} from '../config/account'
 import { resolveStandaloneAccountConfig } from '../config/resolve'
 import { assertAccountOwnersConfigured } from '../config/validate'
 import { toLegacyModuleSetup } from '../modules/legacy-core'
@@ -62,13 +65,13 @@ function standaloneConstruction(
  *   owners: { type: 'ecdsa', accounts: [owner] },
  * })
  *
- * const account = await sdk.createAccount({ evm: {
+ * const account = await sdk.createAccount({
  *   owners: { type: 'ecdsa', accounts: [owner] },
  *   initData,
- * }})
+ * })
  * ```
  */
-function experimental_getV0InitData(config: EvmAccountConfig): {
+function experimental_getV0InitData(config: RhinestoneAccountConfig): {
   address: Address
   factory: Address
   factoryData: Hex
@@ -93,13 +96,13 @@ function experimental_getV0InitData(config: EvmAccountConfig): {
  *   owners: { type: 'ecdsa', accounts: [owner] },
  * })
  *
- * const account = await sdk.createAccount({ evm: {
+ * const account = await sdk.createAccount({
  *   owners: { type: 'ecdsa', accounts: [owner] },
  *   initData,
- * }})
+ * })
  * ```
  */
-function experimental_getRhinestoneInitData(config: EvmAccountConfig):
+function experimental_getRhinestoneInitData(config: RhinestoneAccountConfig):
   | {
       address: Address
       factory: Address
@@ -132,9 +135,9 @@ function experimental_getRhinestoneInitData(config: EvmAccountConfig):
  * ```ts
  * import { toViewOnlyAccount } from '@rhinestone/sdk/utils'
  *
- * const account = await sdk.createAccount({ evm: {
+ * const account = await sdk.createAccount({
  *   owners: { type: 'ecdsa', accounts: [toViewOnlyAccount(userAddress)] },
- * }})
+ * })
  * ```
  */
 function toViewOnlyAccount(address: Address): Account {

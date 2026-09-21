@@ -15,11 +15,7 @@ export type SymbolEntry = {
   // Subpath export the symbol is reached through: '.', './actions/ecdsa', './utils', etc.
   source: string
   // Owning interface/class for instance methods.
-  container?:
-    | 'RhinestoneAccountBase'
-    | 'ManagedTransactionAccount'
-    | 'ManagedEvmAccount'
-    | 'RhinestoneSDK'
+  container?: 'RhinestoneAccount' | 'RhinestoneSDK'
   // How the symbol is reached, for the Import/Usage section.
   callStyle:
     | 'function'
@@ -41,25 +37,11 @@ export type Group = {
 
 export type Node = Group | SymbolEntry
 
-const transactionMethods = new Set([
-  'prepareTransaction',
-  'getTransactionMessages',
-  'signTransaction',
-  'assembleTransaction',
-  'signAuthorizations',
-  'submitTransaction',
-])
-
 const accountMethod = (symbol: string, experimental = false): SymbolEntry => ({
   kind: 'symbol',
   symbol,
   source: '.',
-  container:
-    symbol === 'getAddress'
-      ? 'RhinestoneAccountBase'
-      : transactionMethods.has(symbol)
-        ? 'ManagedTransactionAccount'
-        : 'ManagedEvmAccount',
+  container: 'RhinestoneAccount',
   callStyle: 'accountMethod',
   experimental,
 })
@@ -298,18 +280,6 @@ export const manifest: Group[] = [
       hyperCore('getPerpMarkets'),
       hyperCore('getPerpPosition'),
       hyperCore('getPerpPositions'),
-    ],
-  },
-  {
-    kind: 'group',
-    group: 'Chains',
-    items: [
-      {
-        kind: 'symbol',
-        symbol: 'solanaAddress',
-        source: '.',
-        callStyle: 'function',
-      },
     ],
   },
   {

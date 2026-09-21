@@ -8,8 +8,7 @@
       "!coverage",
       "!integration-test",
       "!.changeset",
-      "!src/clients/orchestrator/wire.gen.ts",
-      "!scripts/openapi/*.json"
+      "!src/clients/orchestrator/wire.gen.ts"
     ]
   },
   "formatter": {

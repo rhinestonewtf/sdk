@@ -127,31 +127,13 @@ Create a smart account:
 import { RhinestoneSDK } from '@rhinestone/sdk'
 
 const rhinestone = new RhinestoneSDK({ apiKey: 'your-api-key' })
-const evmConfig = {
+const account = await rhinestone.createAccount({
   owners: {
-    type: 'ecdsa' as const,
+    type: 'ecdsa',
     accounts: [signer],
   },
-}
-const account = await rhinestone.createAccount({ evm: evmConfig })
-
-const address = account.getAddress('evm')
-```
-
-Add an address-only Solana destination when you need to receive tokens there:
-
-```ts
-import { solanaAddress } from '@rhinestone/sdk'
-
-const crossVmAccount = await rhinestone.createAccount({
-  evm: evmConfig,
-  solana: { address: solanaAddress(existingSolanaAddress) },
 })
 ```
-
-Address-only entries cannot prepare, sign, or execute transactions. Managed
-Solana configuration is reserved for a future release and currently fails during
-account construction; Solana destinations are token-delivery only.
 
 Send a crosschain transaction:
 

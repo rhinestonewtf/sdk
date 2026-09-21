@@ -28,11 +28,6 @@ const NON_EVM_CHAINS = [
     caip2: 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
     nonEvm: true,
   },
-  {
-    id: 792703810,
-    caip2: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1',
-    nonEvm: true,
-  },
   { id: 1500148, caip2: 'stellar:pubnet', nonEvm: true },
 ] as const satisfies ReadonlyArray<{
   id: number
@@ -111,32 +106,6 @@ export function toEvmChainReference(chainId: number): EvmChainReference {
     kind: 'evm',
     id: chainId,
     caip2: caip2 as `eip155:${number}`,
-  }
-}
-
-/** The VM a chain actually executes under, as Caucasus tags a destination. */
-export type ChainVm = 'evm' | 'svm' | 'tvm' | 'stellar' | 'hypercore'
-
-/**
- * The execution environment of a chain, which is NOT `ChainReference.kind`:
- * HyperCore is EVM-*settled* and so reads as `kind: 'evm'`, while its own
- * destination shape and evidence are `hypercore`.
- */
-export function chainVm(chain: ChainReference): ChainVm {
-  const namespace = chain.caip2.slice(0, chain.caip2.indexOf(':'))
-  switch (namespace) {
-    case 'hypercore':
-      return 'hypercore'
-    case 'solana':
-      return 'svm'
-    case 'tron':
-      return 'tvm'
-    case 'stellar':
-      return 'stellar'
-    case 'eip155':
-      return 'evm'
-    default:
-      throw new Error(`Unsupported chain namespace: ${chain.caip2}`)
   }
 }
 

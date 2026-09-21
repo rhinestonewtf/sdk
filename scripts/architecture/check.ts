@@ -228,16 +228,9 @@ function edgeViolation(
     toLayer === 'clients' &&
     fromLayer !== 'clients' &&
     fromLayer !== 'api' &&
-    // `normalized.ts` joins the stable set: it is the SDK's own sponsorship
-    // projection, deliberately pinned across wire versions, and carries types
-    // plus one pure serializer rather than any transport.
-    ![
-      'port.ts',
-      'types.ts',
-      'errors.ts',
-      'public.ts',
-      'normalized.ts',
-    ].includes(clientFile(edge.to) ?? '') &&
+    !['port.ts', 'types.ts', 'errors.ts', 'public.ts'].includes(
+      clientFile(edge.to) ?? '',
+    ) &&
     !(
       edge.to === 'src/clients/rpc/compatibility.ts' &&
       (edge.from === 'src/actions/runtime.ts' ||

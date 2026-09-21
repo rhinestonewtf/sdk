@@ -7,11 +7,7 @@ const limits = [
   {
     name: '@rhinestone/sdk',
     path: `${packageRoot}/index.js`,
-    // Offline Solana PDA derivation includes maintained base58 and Ed25519
-    // primitives; keep their browser cost visible in the root budget.
-    // Caucasus adds runtime narrowing at the signing trust boundary and the
-    // source-selection builder, which is where the last ~1 kB went.
-    limit: '78 kB',
+    limit: '58 kB',
     import: '*',
     ignore: viem,
   },

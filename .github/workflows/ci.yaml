@@ -16,7 +16,7 @@ jobs:
       - name: Install the npm dependencies
         run: bun install --frozen-lockfile
 
-      - name: Verify wire types match the pinned OpenAPI document
+      - name: Verify wire types match the published OpenAPI spec
         run: |
           bun run generate:wire
           git diff --exit-code src/clients/orchestrator/wire.gen.ts

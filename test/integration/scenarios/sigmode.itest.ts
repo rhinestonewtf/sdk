@@ -28,9 +28,7 @@ describe.sequential('SDK integration sigmode', () => {
   test('emits ERC-1271 mode with single signatures for a non-session owner', async () => {
     const sdk = createIntegrationSDK()
     const account = await sdk.createAccount({
-      evm: {
-        owners: { type: 'ecdsa', accounts: [createOwner()] },
-      },
+      owners: { type: 'ecdsa', accounts: [createOwner()] },
     })
 
     const execution = await executeIntent({
@@ -57,10 +55,8 @@ describe.sequential('SDK integration sigmode', () => {
   test('emits hybrid execution mode with dual signatures for a fresh session', async () => {
     const sdk = createIntegrationSDK()
     const account = await sdk.createAccount({
-      evm: {
-        owners: { type: 'ecdsa', accounts: [createOwner()] },
-        sessions: { enabled: true },
-      },
+      owners: { type: 'ecdsa', accounts: [createOwner()] },
+      sessions: { enabled: true },
     })
     const session = createScopedSession({
       chain: sourceChain,
@@ -94,10 +90,8 @@ describe.sequential('SDK integration sigmode', () => {
   test('emits ERC-1271 mode with single signatures for an enabled session', async () => {
     const sdk = createIntegrationSDK()
     const account = await sdk.createAccount({
-      evm: {
-        owners: { type: 'ecdsa', accounts: [createOwner()] },
-        sessions: { enabled: true },
-      },
+      owners: { type: 'ecdsa', accounts: [createOwner()] },
+      sessions: { enabled: true },
     })
     const session = createUnscopedSession({
       chain: sourceChain,
@@ -143,10 +137,8 @@ describe.sequential('SDK integration sigmode', () => {
   test('rejects an intent whose execution signature was tampered with', async () => {
     const sdk = createIntegrationSDK()
     const account = await sdk.createAccount({
-      evm: {
-        owners: { type: 'ecdsa', accounts: [createOwner()] },
-        sessions: { enabled: true },
-      },
+      owners: { type: 'ecdsa', accounts: [createOwner()] },
+      sessions: { enabled: true },
     })
     const session = createScopedSession({
       chain: sourceChain,
