@@ -190,15 +190,62 @@ describe('orchestrator client', () => {
     )
   })
 
-  test('refreshes JWT auth and adds the intent extension only for sponsored submissions', async () => {
+  test('adds the intent extension to a JWT quote only when sponsored with a token getter', async () => {
+    const quoteHeaders = async (
+      sponsored: boolean,
+      getIntentExtensionToken?: () => Promise<string>,
+    ) => {
+      const fetch = vi.fn(
+        async (_url: string | URL | Request, _init?: RequestInit) =>
+          Response.json({ routes: [] }),
+      )
+      const client = createOrchestratorClient({
+        url: 'https://orchestrator.example',
+        auth: createOrchestratorAuth({
+          kind: 'jwt',
+          accessToken: 'access',
+          ...(getIntentExtensionToken ? { getIntentExtensionToken } : {}),
+        }),
+        fetch,
+      })
+      await client.createQuote(
+        {
+          account: { address, accountType: 'ERC7579' },
+          destinationChainId: 1,
+          destinationExecutions: [],
+          tokenRequests: [],
+          options: {},
+        },
+        { intentInput: serializedIntentInput, sponsored },
+      )
+      expect(fetch.mock.calls[0]?.[0]).toBe(
+        'https://orchestrator.example/quotes',
+      )
+      return fetch.mock.calls[0]?.[1]?.headers
+    }
+    const extension = vi.fn(async () => 'extension')
+
+    expect(await quoteHeaders(true, extension)).toMatchObject({
+      Authorization: 'Bearer access',
+      'X-Intent-Extension': 'Bearer extension',
+    })
+    expect(extension).toHaveBeenCalledWith(serializedIntentInput)
+    expect(await quoteHeaders(false, extension)).not.toHaveProperty(
+      'X-Intent-Extension',
+    )
+    expect(extension).toHaveBeenCalledOnce()
+    const withoutGetter = await quoteHeaders(true)
+    expect(withoutGetter).toMatchObject({ Authorization: 'Bearer access' })
+    expect(withoutGetter).not.toHaveProperty('X-Intent-Extension')
+  })
+
+  test('refreshes JWT auth and never sends the intent extension on submission', async () => {
     const accessToken = vi.fn(async () => 'access')
     const extension = vi.fn(async () => 'extension')
     const fetch = vi.fn(
       async (_url: string | URL | Request, init?: RequestInit) => {
-        expect(init?.headers).toMatchObject({
-          Authorization: 'Bearer access',
-          'X-Intent-Extension': 'Bearer extension',
-        })
+        expect(init?.headers).toMatchObject({ Authorization: 'Bearer access' })
+        expect(init?.headers).not.toHaveProperty('X-Intent-Extension')
         expect(init?.headers).not.toHaveProperty('x-api-key')
         expect(JSON.parse(String(init?.body))).toMatchObject({
           authorizations: {
@@ -219,38 +266,36 @@ describe('orchestrator client', () => {
       fetch,
     })
 
-    await client.submitIntent(
-      {
-        intentId: 'intent-1',
-        signatures: { origin: [], destination: '0x' },
-        authorizations: {
-          sponsor: [
-            {
-              chainId: 8453,
-              address,
-              nonce: 1,
-              yParity: 0,
-              r: '0x01',
-              s: '0x02',
-            },
-          ],
-          recipient: [
-            {
-              chainId: 0,
-              address,
-              nonce: 2,
-              yParity: 1,
-              r: '0x03',
-              s: '0x04',
-            },
-          ],
-        },
+    await client.submitIntent({
+      intentId: 'intent-1',
+      signatures: { origin: [], destination: '0x' },
+      authorizations: {
+        sponsor: [
+          {
+            chainId: 8453,
+            address,
+            nonce: 1,
+            yParity: 0,
+            r: '0x01',
+            s: '0x02',
+          },
+        ],
+        recipient: [
+          {
+            chainId: 0,
+            address,
+            nonce: 2,
+            yParity: 1,
+            r: '0x03',
+            s: '0x04',
+          },
+        ],
       },
-      { intentInput: serializedIntentInput, sponsored: true },
-    )
+    })
 
+    expect(fetch).toHaveBeenCalledOnce()
     expect(accessToken).toHaveBeenCalledOnce()
-    expect(extension).toHaveBeenCalledWith(serializedIntentInput)
+    expect(extension).not.toHaveBeenCalled()
   })
 
   test('maps the LZ handle and keeps a route the SDK predates untracked', async () => {

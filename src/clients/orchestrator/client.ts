@@ -14,7 +14,7 @@ import {
   mapSplitResultFromWire,
 } from './mappers'
 import type { OrchestratorPort } from './port'
-import type { OrchestratorIntentSubmissionContext } from './types'
+import type { OrchestratorQuoteContext } from './types'
 import type { WireChainsResponse } from './wire'
 
 const SDK_VERSION = '2.16.1'
@@ -35,12 +35,12 @@ export function createOrchestratorClient(
     readonly path: string
     readonly method?: 'GET' | 'POST'
     readonly body?: unknown
-    readonly submitContext?: OrchestratorIntentSubmissionContext
+    readonly quoteContext?: OrchestratorQuoteContext
   }): Promise<unknown> => {
-    const authHeaders = input.submitContext
-      ? await options.auth.getSubmitHeaders(
-          input.submitContext.intentInput,
-          input.submitContext.sponsored,
+    const authHeaders = input.quoteContext
+      ? await options.auth.getQuoteHeaders(
+          input.quoteContext.intentInput,
+          input.quoteContext.sponsored,
         )
       : await options.auth.getHeaders()
     return fetchOrchestratorJson({
@@ -67,20 +67,20 @@ export function createOrchestratorClient(
   let chainCatalogPromise: Promise<ChainCatalog> | undefined
 
   return {
-    createQuote: async (input) =>
+    createQuote: async (input, context) =>
       mapQuoteResponseFromWire(
         await request({
           path: 'quotes',
           method: 'POST',
           body: mapIntentRequestToWire(input),
+          ...(context ? { quoteContext: context } : {}),
         }),
       ),
-    submitIntent: async (input, context) => {
+    submitIntent: async (input) => {
       const value = (await request({
         path: 'intents',
         method: 'POST',
         body: mapSignedIntentToWire(input),
-        ...(context ? { submitContext: context } : {}),
       })) as { readonly traceId?: string; readonly intentId?: string }
       return { traceId: value.traceId ?? '', intentId: value.intentId ?? '' }
     },
