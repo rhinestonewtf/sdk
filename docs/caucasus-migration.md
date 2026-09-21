@@ -275,7 +275,7 @@ deliberately.
 
 | New error | Raised when |
 | --- | --- |
-| `UnsupportedSigningRequestError` | the quote asks for a payload this SDK cannot produce (a WebAuthn challenge, or a Solana spend on the EVM path). Raised before any account state is read. |
+| `UnsupportedSigningRequestError` | the quote asks for a payload this SDK cannot produce (a WebAuthn challenge or a Solana spend on the EVM path). Raised before any account state is read. |
 | `IncompleteIntentProofsError` | a proof vector is missing slots, which it names |
 | `MismatchedIntentProofError` | a contribution belongs to another intent, another request set, another slot, or duplicates one already filled |
 | `InvalidPreparedTransactionError` | a prepared transaction was built for an earlier wire version |
@@ -290,10 +290,10 @@ a CAIP-2 string.
   flows. A missing spending Swig still refuses with
   `SOLANA_ACCOUNT_NOT_CREATED`.
 - New estimate or intent-list methods.
-- WebAuthn signing requests and cross-VM destination execution. Both are
-  representable on the wire but unsupported: a quote asking for one fails with
-  an actionable error rather than being signed as something else. Existing EVM
-  passkey validators are unaffected — they still produce ordinary
-  account-encoded EIP-712 proofs.
+- WebAuthn signing requests outside a passkey-owned managed Solana origin, and
+  cross-VM destination execution. Both are representable on the wire but
+  unsupported: a quote asking for one fails with an actionable error rather
+  than being signed as something else. Existing EVM passkey validators are
+  unaffected — they still produce ordinary account-encoded EIP-712 proofs.
 - Solana same-chain instructions still have no serving route and are still
   refused with `UNSUPPORTED_DESTINATION_INSTRUCTIONS`.

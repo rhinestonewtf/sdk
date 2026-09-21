@@ -225,6 +225,35 @@ describe('mapSigningRequestFromWire', () => {
     expect(() => mapSigningRequestFromWire(value as never)).toThrow(matcher)
   })
 
+  test('accepts either Swig role authority and refuses any other', () => {
+    const swigRole = (authority: unknown) => ({
+      ...signingRequest({
+        kind: 'webauthn',
+        challenge: `0x${'aa'.repeat(32)}`,
+      }),
+      authority: { kind: 'swigRole', roleId: 1, authority },
+    })
+    const passkey = { kind: 'secp256r1', publicKey: `0x02${'11'.repeat(32)}` }
+
+    expect(mapSigningRequestFromWire(swigRole(passkey)).authority).toEqual({
+      kind: 'swigRole',
+      roleId: 1,
+      authority: passkey,
+    })
+    expect(
+      mapSigningRequestFromWire(swigRole({ kind: 'secp256k1', address }))
+        .authority,
+    ).toMatchObject({ authority: { kind: 'secp256k1', address } })
+    expect(() =>
+      mapSigningRequestFromWire(
+        swigRole({ kind: 'ed25519', publicKey: 'base58' }),
+      ),
+    ).toThrow(/unsupported Swig role authority: ed25519/)
+    expect(() =>
+      mapSigningRequestFromWire(swigRole({ kind: 'secp256r1' })),
+    ).toThrow(/unsupported Swig role authority: secp256r1/)
+  })
+
   test('refuses a malformed EIP-712 payload', () => {
     expect(() =>
       mapSigningRequestFromWire(

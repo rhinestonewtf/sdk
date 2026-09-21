@@ -156,7 +156,9 @@ export interface AccountWorkflows<CompatibilityConfig = unknown> {
   ) => PreparedSolanaIntent
   readonly signSolanaIntent: (input: {
     readonly prepared: PreparedSolanaIntent
-    readonly owner: import('viem').Account
+    readonly owner:
+      | import('viem').Account
+      | import('viem/account-abstraction').WebAuthnAccount
   }) => Promise<SignedSolanaIntent>
   readonly submitSolanaIntent: (
     input: SignedSolanaIntent,

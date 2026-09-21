@@ -928,8 +928,13 @@ interface EvmReceiverAccountConfig {
   initData?: never
 }
 
-/** ECDSA authority for a development managed Solana account. */
-type SolanaOwner = { type: 'ecdsa'; account: Account }
+/**
+ * Authority of a development managed Solana account: an ECDSA key, or a
+ * passkey registered as the Swig's secp256r1 authority.
+ */
+type SolanaOwner =
+  | { type: 'ecdsa'; account: Account }
+  | { type: 'passkey'; account: WebAuthnAccount }
 
 /** Development managed Solana account paired with a managed EVM identity. */
 interface SolanaManagedAccountConfig {

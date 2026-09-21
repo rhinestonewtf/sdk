@@ -388,10 +388,15 @@ function signerIdentity(request: SigningRequest): string {
     request.account.vm === 'evm'
       ? `evm:${request.account.address.toLowerCase()}`
       : `svm:${request.account.wallet}`
+  const signer = request.authority
   const authority =
-    request.authority.kind === 'swigRole'
-      ? `swigRole:${request.authority.roleId}:${request.authority.authority.address.toLowerCase()}`
-      : `${request.authority.kind}:${request.authority.address.toLowerCase()}`
+    signer.kind === 'swigRole'
+      ? `swigRole:${signer.roleId}:${(
+          signer.authority.kind === 'secp256k1'
+            ? signer.authority.address
+            : signer.authority.publicKey
+        ).toLowerCase()}`
+      : `${signer.kind}:${signer.address.toLowerCase()}`
   return `${account}|${authority}|${
     request.payload.kind === 'eip712' ? request.payload.signatureFormat : ''
   }`

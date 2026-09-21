@@ -1,12 +1,19 @@
+import { p256 } from '@noble/curves/nist'
+import { base64urlnopad } from '@scure/base'
 import {
   type Account,
   type Address,
+  bytesToHex,
+  concat,
   type Hex,
   hexToBytes,
   isAddress,
   isAddressEqual,
   recoverMessageAddress,
+  sha256,
+  stringToBytes,
 } from 'viem'
+import type { WebAuthnAccount } from 'viem/account-abstraction'
 import { formatCaip2 } from '../../chains/caip2'
 import type {
   SolanaAddress,
@@ -34,7 +41,10 @@ import type {
   AppFeeRate,
   ProtocolFeeRate,
   SerializedIntentInput,
+  SigningProof,
   SigningRequest,
+  SwigAuthority,
+  WebAuthnAssertion,
 } from '../../clients/orchestrator/public'
 import type {
   OrchestratorIntentRequest,
@@ -95,7 +105,7 @@ export interface SolanaTransferInput {
   readonly action: SolanaAction
   readonly accountAddress: Address
   readonly accountType: 'GENERIC' | 'ERC7579' | 'EOA'
-  readonly authority: Address
+  readonly authority: SwigAuthority
   readonly walletAddress: SolanaAddress
   readonly swigAddress: SolanaAddress
   readonly namespace: 'dev-v1'
@@ -114,9 +124,15 @@ export interface PreparedSolanaIntent {
   readonly quotes: readonly OrchestratorQuote[]
 }
 
+/** An ECDSA owner answers a spend with `personalSign`, a passkey with `webauthn`. */
+export type SolanaSpendProof = Extract<
+  SigningProof,
+  { kind: 'personalSign' | 'webauthn' }
+>
+
 export interface SignedSolanaIntent {
   readonly prepared: PreparedSolanaIntent
-  readonly signature: Hex
+  readonly proof: SolanaSpendProof
 }
 
 export interface SolanaWorkflowContext {
@@ -223,10 +239,7 @@ export function buildSolanaIntentRequest(
     svm: {
       type: 'swig' as const,
       address: input.walletAddress,
-      authorization: {
-        kind: 'secp256k1' as const,
-        address: input.authority,
-      },
+      authorization: input.authority,
     },
   }
 
@@ -384,14 +397,19 @@ function deliveryKind(input: SolanaTransferInput): SolanaDelivery['kind'] {
     : input.action.delivery.kind
 }
 
-interface SolanaSpendPayload {
+type SolanaSpendPayload = {
   readonly request: SigningRequest
-  /** The exact characters to sign. Opaque to the SDK, despite looking like hex. */
-  readonly message: string
   readonly expiresAtSlot: string
-}
+} & (
+  | {
+      readonly kind: 'personalSign'
+      /** The exact characters to sign. Opaque to the SDK, despite looking like hex. */
+      readonly message: string
+    }
+  | { readonly kind: 'webauthn'; readonly challenge: Hex }
+)
 
-function personalPayload(
+function spendPayload(
   quote: OrchestratorQuote,
   input: SolanaTransferInput,
   delivery: SolanaDelivery['kind'],
@@ -421,18 +439,37 @@ function personalPayload(
   if (quote.signingRequests.length !== 1 || !request) {
     refuse('the quote must carry exactly one signing request')
   }
-  if (
-    request!.payload.kind !== 'personalSign' ||
-    request!.payload.message.encoding !== 'utf8'
-  ) {
-    refuse('the quote must ask for a UTF-8 personal-sign spend authorization')
-  }
-  const payload = request!.payload as Extract<
-    SigningRequest['payload'],
-    { kind: 'personalSign' }
-  >
-  if (!/^[0-9a-fA-F]{64}$/u.test(payload.message.value)) {
-    refuse('the personal-sign message must be a 64-character opaque payload')
+  const expected = input.authority
+  let signed:
+    | { readonly kind: 'personalSign'; readonly message: string }
+    | { readonly kind: 'webauthn'; readonly challenge: Hex }
+  if (expected.kind === 'secp256r1') {
+    if (request!.payload.kind !== 'webauthn') {
+      refuse('the quote must ask for a WebAuthn spend authorization')
+    }
+    const { challenge } = request!.payload as Extract<
+      SigningRequest['payload'],
+      { kind: 'webauthn' }
+    >
+    if (!/^0x[0-9a-fA-F]{64}$/u.test(challenge)) {
+      refuse('the WebAuthn challenge must be 32 bytes of hex')
+    }
+    signed = { kind: 'webauthn', challenge: challenge as Hex }
+  } else {
+    if (
+      request!.payload.kind !== 'personalSign' ||
+      request!.payload.message.encoding !== 'utf8'
+    ) {
+      refuse('the quote must ask for a UTF-8 personal-sign spend authorization')
+    }
+    const payload = request!.payload as Extract<
+      SigningRequest['payload'],
+      { kind: 'personalSign' }
+    >
+    if (!/^[0-9a-fA-F]{64}$/u.test(payload.message.value)) {
+      refuse('the personal-sign message must be a 64-character opaque payload')
+    }
+    signed = { kind: 'personalSign', message: payload.message.value }
   }
   // The Swig wallet holds the assets; the state account is a different address
   // and signing for it would authorize nothing.
@@ -446,13 +483,14 @@ function personalPayload(
     )
   }
   const authority = request!.authority
-  const recovers =
-    authority.kind === 'swigRole'
-      ? authority.authority.address
-      : authority.kind === 'secp256k1'
-        ? authority.address
-        : undefined
-  if (!recovers || recovers.toLowerCase() !== input.authority.toLowerCase()) {
+  const role = authority.kind === 'swigRole' ? authority.authority : authority
+  const named =
+    expected.kind === 'secp256r1'
+      ? role.kind === 'secp256r1' &&
+        role.publicKey.toLowerCase() === expected.publicKey.toLowerCase()
+      : role.kind === 'secp256k1' &&
+        role.address.toLowerCase() === expected.address.toLowerCase()
+  if (!named) {
     refuse('the signing request must name the configured Solana authority')
   }
   const scope = request!.scope
@@ -468,13 +506,13 @@ function personalPayload(
   }
   return {
     request: request!,
-    message: payload.message.value,
     expiresAtSlot: slot!.expiresAtSlot,
+    ...signed,
   }
 }
 
 function validateQuote(quote: OrchestratorQuote, input: SolanaTransferInput) {
-  personalPayload(quote, input, deliveryKind(input))
+  spendPayload(quote, input, deliveryKind(input))
   const chainId = formatCaip2(solanaChainId(input.chain))
   if (input.action.kind === 'instructions') {
     // The serving route decides how many cost legs an instruction execution
@@ -618,30 +656,63 @@ export function assertSolanaNotExpired(
 
 export async function signSolanaIntent(input: {
   readonly prepared: PreparedSolanaIntent
-  readonly owner: Account
+  readonly owner: Account | WebAuthnAccount
   readonly now: () => number
 }): Promise<SignedSolanaIntent> {
   assertSolanaNotExpired(input.now(), input.prepared.quote)
-  const payload = personalPayload(
+  const payload = spendPayload(
     input.prepared.quote,
     input.prepared.input,
     deliveryKind(input.prepared.input),
   )
-  if (!input.owner.signMessage) {
-    throw new InvalidSolanaTransactionArtifactError(
+  const refuse = (reason: string): never => {
+    throw new InvalidSolanaTransactionArtifactError(reason, {
+      intentId: input.prepared.quote.intentId,
+    })
+  }
+  const authority = input.prepared.input.authority
+  if (authority.kind === 'secp256r1') {
+    if (input.owner.type !== 'webAuthn') {
+      refuse(
+        'the configured authority is a passkey; provide the viem WebAuthn account that owns it',
+      )
+    }
+    const owner = input.owner as WebAuthnAccount
+    const { challenge } = payload as Extract<
+      SolanaSpendPayload,
+      { kind: 'webauthn' }
+    >
+    const { signature, webauthn } = await owner.sign({ hash: challenge })
+    const assertion: WebAuthnAssertion = {
+      credentialId: owner.id,
+      authenticatorData: webauthn.authenticatorData,
+      // Passed through untouched: the orchestrator hashes these exact bytes.
+      clientDataJSON: webauthn.clientDataJSON,
+      signature,
+    }
+    validateSolanaWebAuthnAssertion(
+      authority.publicKey,
+      { challenge },
+      assertion,
+    )
+    return { prepared: input.prepared, proof: { kind: 'webauthn', assertion } }
+  }
+  const owner = input.owner as Account
+  if (input.owner.type === 'webAuthn' || !owner.signMessage) {
+    refuse(
       'the configured authority cannot sign messages; provide a viem account with signMessage for headless signing',
-      { intentId: input.prepared.quote.intentId },
     )
   }
-  const signature = normalizeRecovery(
-    await input.owner.signMessage({ message: payload.message }),
-  )
-  await validateSolanaSignature(
-    input.prepared.input.authority,
-    payload,
-    signature,
-  )
-  return { prepared: input.prepared, signature }
+  const { message } = payload as Extract<
+    SolanaSpendPayload,
+    { kind: 'personalSign' }
+  >
+  const signature = normalizeRecovery(await owner.signMessage!({ message }))
+  await validateSolanaSignature(authority.address, { message }, signature)
+  return {
+    prepared: input.prepared,
+    proof: { kind: 'personalSign', signature },
+  }
 }
 
 export async function validateSolanaSignature(
@@ -678,26 +749,120 @@ export async function validateSolanaSignature(
   }
 }
 
+/**
+ * Checks a passkey assertion the way the orchestrator will: the client data is
+ * a `webauthn.get` over this challenge, and the P-256 signature verifies over
+ * `authenticatorData ‖ sha256(clientDataJSON)` under the configured key.
+ */
+export function validateSolanaWebAuthnAssertion(
+  publicKey: Hex,
+  payload: { readonly challenge: Hex },
+  assertion: WebAuthnAssertion,
+): void {
+  const refuse = (reason: string): never => {
+    throw new InvalidSolanaTransactionArtifactError(reason)
+  }
+  if (
+    typeof assertion.credentialId !== 'string' ||
+    assertion.credentialId.length === 0
+  ) {
+    refuse('the passkey assertion must name its credential')
+  }
+  if (!/^0x(?:[0-9a-fA-F]{2}){37,}$/u.test(assertion.authenticatorData)) {
+    refuse('the passkey authenticator data must be at least 37 bytes of hex')
+  }
+  if (!/^0x[0-9a-fA-F]{128}$/u.test(assertion.signature)) {
+    refuse('the passkey signature must be a 64-byte r‖s P-256 signature')
+  }
+  let clientData: { type?: unknown; challenge?: unknown } | undefined
+  try {
+    clientData = /^\{[\s\S]*\}$/u.test(assertion.clientDataJSON)
+      ? JSON.parse(assertion.clientDataJSON)
+      : undefined
+  } catch {
+    clientData = undefined
+  }
+  if (clientData?.type !== 'webauthn.get') {
+    refuse('the passkey client data must be a webauthn.get assertion')
+  }
+  if (
+    clientData!.challenge !==
+    base64urlnopad.encode(hexToBytes(payload.challenge))
+  ) {
+    refuse('the passkey assertion does not sign the requested challenge')
+  }
+  const digest = sha256(
+    concat([
+      assertion.authenticatorData,
+      sha256(stringToBytes(assertion.clientDataJSON)),
+    ]),
+    'bytes',
+  )
+  let verified = false
+  try {
+    verified = p256.verify(
+      hexToBytes(assertion.signature),
+      digest,
+      hexToBytes(publicKey),
+      { format: 'compact' },
+    )
+  } catch {
+    verified = false
+  }
+  if (!verified) {
+    refuse(
+      'the passkey signature does not verify under the configured Solana authority',
+    )
+  }
+}
+
+/**
+ * SEC1-compresses a P-256 public key: the 64-byte x‖y a viem WebAuthn
+ * credential carries, or a 65-byte uncompressed or 33-byte compressed SEC1 key.
+ * Throws when the key is not a point on the curve.
+ */
+export function compressP256PublicKey(publicKey: Hex): Hex {
+  const bytes = hexToBytes(publicKey)
+  const sec1 =
+    bytes.length === 64 ? concat([new Uint8Array([4]), bytes]) : bytes
+  return bytesToHex(p256.ProjectivePoint.fromHex(sec1).toRawBytes(true))
+}
+
 export async function submitSolanaIntent(
   context: SolanaWorkflowContext,
   signed: SignedSolanaIntent,
 ) {
   assertSolanaNotExpired(context.now(), signed.prepared.quote)
   const action = signed.prepared.input.action
-  const payload = personalPayload(
+  const payload = spendPayload(
     signed.prepared.quote,
     signed.prepared.input,
     deliveryKind(signed.prepared.input),
   )
-  await validateSolanaSignature(
-    signed.prepared.input.authority,
-    payload,
-    signed.signature,
-  )
+  const authority = signed.prepared.input.authority
+  const proof = signed.proof
+  if (authority.kind === 'secp256r1' && proof.kind === 'webauthn') {
+    validateSolanaWebAuthnAssertion(
+      authority.publicKey,
+      payload as Extract<SolanaSpendPayload, { kind: 'webauthn' }>,
+      proof.assertion,
+    )
+  } else if (authority.kind === 'secp256k1' && proof.kind === 'personalSign') {
+    await validateSolanaSignature(
+      authority.address,
+      payload as Extract<SolanaSpendPayload, { kind: 'personalSign' }>,
+      proof.signature,
+    )
+  } else {
+    throw new InvalidSolanaTransactionArtifactError(
+      'the spend proof does not match the configured Solana authority',
+      { intentId: signed.prepared.quote.intentId },
+    )
+  }
   const response = await context.submissionClient.submitIntent(
     {
       intentId: signed.prepared.quote.intentId,
-      proofs: [{ kind: 'personalSign', signature: signed.signature }],
+      proofs: [proof],
     },
     {
       intentInput: projectCompatibleIntentInput(signed.prepared.normalized),

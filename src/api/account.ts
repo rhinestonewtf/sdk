@@ -1,5 +1,4 @@
 import type {
-  Account,
   Address,
   Chain,
   HashTypedDataParameters,
@@ -32,6 +31,7 @@ import type {
   Quote,
   SigningProof,
   SigningRequest,
+  SwigAuthority,
 } from '../clients/orchestrator/public'
 import type { OrchestratorQuote } from '../clients/orchestrator/types'
 import type {
@@ -44,6 +44,7 @@ import type {
   Session,
   SignerSet,
   SolanaManagedAccountConfig,
+  SolanaOwner,
   SourceAssetInput,
   Sponsorship,
   SwapQuoter,
@@ -95,6 +96,7 @@ import {
 import { normalizeIntentQuote } from '../transactions/intents/normalize'
 import { assertSupportedSigningRequests } from '../transactions/intents/prepare'
 import {
+  compressP256PublicKey,
   type SolanaTransferInput,
   solanaChainId,
 } from '../transactions/intents/solana'
@@ -543,7 +545,10 @@ function solanaMetadata(
     caip2: input.chain.caip2,
     accountAddress: input.accountAddress,
     accountType: input.accountType,
-    authority: input.authority,
+    authority:
+      input.authority.kind === 'secp256k1'
+        ? input.authority.address
+        : input.authority.publicKey,
     swigAddress: input.swigAddress,
     walletAddress: input.walletAddress,
   }
@@ -691,7 +696,7 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
         : 'ERC7579'
     : undefined
 
-  const solanaOwner = (): Account => {
+  const solanaOwner = (): SolanaOwner => {
     const branch = publicConfig.solana
     if (!branch || !('owner' in branch) || !branch.owner) {
       throw new UnsupportedAccountCapabilityError(
@@ -699,7 +704,17 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
         { vm: 'solana' },
       )
     }
-    return branch.owner.account
+    return branch.owner
+  }
+
+  const solanaAuthority = (): SwigAuthority => {
+    const owner = solanaOwner()
+    return owner.type === 'passkey'
+      ? {
+          kind: 'secp256r1',
+          publicKey: compressP256PublicKey(owner.account.publicKey),
+        }
+      : { kind: 'secp256k1', address: owner.account.address }
   }
 
   const solanaTransfer = (
@@ -731,7 +746,7 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
     const common = {
       accountAddress,
       accountType: capturedSolanaAccountType,
-      authority: solanaOwner().address,
+      authority: solanaAuthority(),
       walletAddress: location.wallet,
       swigAddress: location.swig,
       namespace: 'dev-v1',
@@ -969,12 +984,12 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
         )
         const signed = await workflows.signSolanaIntent({
           prepared,
-          owner: solanaOwner(),
+          owner: solanaOwner().account,
         })
         return {
           ...preparedTransaction,
           quote: toPublicQuote(signed.prepared.quote),
-          proofs: [{ kind: 'personalSign', signature: signed.signature }],
+          proofs: [signed.proof],
         }
       }
       if (options && 'owner' in options) {
@@ -1093,10 +1108,11 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
         const solanaProof = signedTransaction.proofs[0]
         if (
           signedTransaction.proofs.length !== 1 ||
-          solanaProof?.kind !== 'personalSign'
+          (solanaProof?.kind !== 'personalSign' &&
+            solanaProof?.kind !== 'webauthn')
         ) {
           throw new InvalidSolanaTransactionArtifactError(
-            'submission requires exactly one personal-sign spend proof',
+            'submission requires exactly one personal-sign or WebAuthn spend proof',
             { intentId: signedTransaction.quote.intentId },
           )
         }
@@ -1108,7 +1124,7 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
         )
         const submitted = await workflows.submitSolanaIntent({
           prepared,
-          signature: solanaProof.signature,
+          proof: solanaProof,
         })
         return {
           type: 'intent',

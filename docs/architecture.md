@@ -84,11 +84,13 @@ resolution and expose only native address access.
 
 Managed Solana is development-only and must be paired with a managed EVM
 account. The EVM account address deterministically selects the `dev-v1` Swig;
-the Swig must already exist and have its ECDSA authority verified on the target
-cluster. The SDK derives the Swig and wallet addresses offline with the small
-`@noble/curves` and `@scure/base` primitives; it imports no Solana RPC or
-transaction stack and does not create or verify the account. Production has no
-enabled Swig namespace.
+the Swig must already exist and carry the configured owner as its authority on
+the target cluster. The owner is an ECDSA key or a passkey; a passkey is named
+to the orchestrator by its SEC1-compressed P-256 key, and its assertion is
+verified locally before submission. The SDK derives the Swig and wallet
+addresses offline with the small `@noble/curves` and `@scure/base` primitives;
+it imports no Solana RPC or transaction stack and does not create or verify the
+account. Production has no enabled Swig namespace.
 
 A managed Solana origin accepts one same-chain SPL transfer with an explicit
 recipient, one same-chain instruction execution, or one cross-chain delivery to
@@ -141,10 +143,11 @@ one source token, and `source.selection` pins the cluster and narrows it to that
 single mint with `perChain`, because a chain selector alone would open every
 registry token on it. The delivery recipient is an explicit
 EVM address or the account's own EVM identity, resolved before the quote so the
-authorization binds to it. Authorization stays the Solana model: exactly one `personalSign` signing
-request, disclosing the Swig wallet and state account it spends from, and the
-same slot-bounded window, so a second prepared-but-unsubmitted spend invalidates
-the first. The quoted cost legs stay in their own namespaces — a Solana chain and
+authorization binds to it. Authorization stays the Solana model: exactly one
+signing request — `personalSign` for an ECDSA owner, `webauthn` for a passkey —
+disclosing the Swig wallet and state account it spends from, and the same
+slot-bounded window, so a second prepared-but-unsubmitted spend invalidates the
+first. The quoted cost legs stay in their own namespaces — a Solana chain and
 base58 mint on the input, an `eip155:` chain and hex token on the output. The
 settlement layer is whatever the orchestrator picked; the SDK only requires that
 it is not same-chain.
@@ -163,7 +166,8 @@ the relayer market; the SDK signs and submits.
 2. `getTransactionMessages(...)` — returns the quote's **ordered** signing
    requests. Each names the account, the authority, the scope it authorizes and
    the payload to sign: EIP-712 for EVM authorizations, one `personalSign`
-   message with a short slot deadline for a managed Solana origin, an EIP-7702
+   message (a `webauthn` challenge for a passkey owner) with a short slot
+   deadline for a managed Solana origin, an EIP-7702
    authorization tuple for a requested delegation. Position is the identity of
    an authorization — two requests can carry the same payload and still be two
    distinct slots.

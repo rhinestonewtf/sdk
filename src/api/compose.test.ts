@@ -305,7 +305,7 @@ describe('internal core composition', () => {
       },
       accountAddress: target,
       accountType: 'ERC7579' as const,
-      authority: owner.address,
+      authority: { kind: 'secp256k1' as const, address: owner.address },
       walletAddress,
       swigAddress,
       namespace: 'dev-v1' as const,

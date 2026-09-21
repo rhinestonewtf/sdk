@@ -261,6 +261,22 @@ export function mapSigningRequestFromWire(
       )}.`,
     )
   }
+  if (authority.kind === 'swigRole') {
+    const role = authority.authority
+    if (
+      !isObject(role) ||
+      !(
+        (role.kind === 'secp256k1' && typeof role.address === 'string') ||
+        (role.kind === 'secp256r1' && typeof role.publicKey === 'string')
+      )
+    ) {
+      invalid(
+        `The orchestrator returned a signing request with an unsupported Swig role authority: ${String(
+          (role as { kind?: unknown } | undefined)?.kind,
+        )}.`,
+      )
+    }
+  }
   const scope = value.scope
   if (!isObject(scope) || (scope.vm !== 'evm' && scope.vm !== 'svm')) {
     invalid(

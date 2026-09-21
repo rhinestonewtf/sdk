@@ -10,8 +10,10 @@ const limits = [
     // Offline Solana PDA derivation includes maintained base58 and Ed25519
     // primitives; keep their browser cost visible in the root budget.
     // Caucasus adds runtime narrowing at the signing trust boundary and the
-    // source-selection builder, which is where the last ~1 kB went.
-    limit: '78 kB',
+    // source-selection builder, which is where the last ~1 kB went. Passkey
+    // owners of managed Solana accounts add noble's P-256 (~7 kB), used to
+    // compress the key and verify an assertion before it is submitted.
+    limit: '85 kB',
     import: '*',
     ignore: viem,
   },

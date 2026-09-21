@@ -1,8 +1,9 @@
-import { type Account, type Address, isAddress } from 'viem'
+import { type Address, type Hex, isAddress } from 'viem'
 import { type SolanaAddress, solanaAddress } from '../chains/non-evm'
 import type {
   EvmAccountConfig,
   RhinestoneAccountConfig,
+  SolanaOwner,
 } from '../config/account'
 import type {
   AccountConstructionInput,
@@ -24,6 +25,7 @@ import {
   InvalidAccountConfigError,
   ManagedSolanaAccountNotSupportedError,
 } from '../errors/capability'
+import { compressP256PublicKey } from '../transactions/intents/solana'
 import {
   createAccountFacade,
   type RhinestoneAccount,
@@ -77,6 +79,35 @@ function exactKeys(
   }
 }
 
+function isEcdsaAccount(value: unknown): boolean {
+  return (
+    !!value &&
+    typeof value === 'object' &&
+    typeof (value as { address?: unknown }).address === 'string' &&
+    isAddress((value as { address: string }).address)
+  )
+}
+
+function isPasskeyAccount(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false
+  const account = value as Record<string, unknown>
+  if (
+    account.type !== 'webAuthn' ||
+    typeof account.id !== 'string' ||
+    account.id.length === 0 ||
+    typeof account.sign !== 'function' ||
+    typeof account.publicKey !== 'string'
+  ) {
+    return false
+  }
+  try {
+    compressP256PublicKey(account.publicKey as Hex)
+    return true
+  } catch {
+    return false
+  }
+}
+
 export function attachAccount<const C extends RhinestoneAccountConfig>(
   sdk: SdkComposition,
   config: C,
@@ -92,7 +123,7 @@ export function attachAccount<const C extends RhinestoneAccountConfig>(
 
   let evmReceiver: Address | undefined
   let managedEvm: EvmAccountConfig | undefined
-  let managedSolanaOwner: Account | undefined
+  let managedSolanaOwner: SolanaOwner | undefined
   let solanaReceiver: SolanaAddress | undefined
 
   if (input.evm !== undefined) {
@@ -129,18 +160,15 @@ export function attachAccount<const C extends RhinestoneAccountConfig>(
       exactKeys(solana, ['owner'], 'managed Solana')
       const owner = record(solana.owner, 'managed Solana owner')
       exactKeys(owner, ['type', 'account'], 'managed Solana owner')
-      if (
-        owner.type !== 'ecdsa' ||
-        !owner.account ||
-        typeof owner.account !== 'object' ||
-        typeof (owner.account as { address?: unknown }).address !== 'string' ||
-        !isAddress((owner.account as { address: string }).address)
-      ) {
+      if (owner.type === 'ecdsa' && isEcdsaAccount(owner.account)) {
+        managedSolanaOwner = owner as SolanaOwner
+      } else if (owner.type === 'passkey' && isPasskeyAccount(owner.account)) {
+        managedSolanaOwner = owner as SolanaOwner
+      } else {
         throw new ManagedSolanaAccountNotSupportedError(
-          "Managed Solana requires `{ owner: { type: 'ecdsa', account } }` with a valid viem ECDSA account.",
+          "Managed Solana requires `{ owner: { type: 'ecdsa', account } }` with a valid viem ECDSA account, or `{ owner: { type: 'passkey', account } }` with a viem WebAuthn account holding a P-256 public key.",
         )
       }
-      managedSolanaOwner = owner.account as Account
     }
   }
 
@@ -196,8 +224,8 @@ export function attachAccount<const C extends RhinestoneAccountConfig>(
       ? {
           solana: Object.freeze({
             owner: Object.freeze({
-              type: 'ecdsa' as const,
-              account: managedSolanaOwner,
+              type: managedSolanaOwner.type,
+              account: managedSolanaOwner.account,
             }),
           }),
         }

@@ -15,6 +15,7 @@ import type {
   SettlementLayer,
   SigningProof,
   SigningRequest,
+  SwigAuthority,
 } from './public'
 
 export interface OrchestratorExecution {
@@ -66,10 +67,7 @@ export interface OrchestratorSvmAccount {
   readonly type: 'swig'
   /** The asset-holding Swig wallet, not the Swig state account. */
   readonly address: string
-  readonly authorization: {
-    readonly kind: 'secp256k1'
-    readonly address: Address
-  }
+  readonly authorization: SwigAuthority
 }
 
 export interface OrchestratorIntentAccount {
