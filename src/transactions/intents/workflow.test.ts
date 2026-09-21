@@ -711,6 +711,34 @@ describe('intent workflow', () => {
     ).toMatchObject({ kind: 'webauthn-assertion' })
   })
 
+  test('quotes with the serialized intent input and whether sponsorship is requested', async () => {
+    const workflow = context()
+    const prepared = await prepareIntent(workflow, input)
+
+    expect(workflow.quoteClient.createQuote).toHaveBeenCalledWith(
+      prepared.request,
+      {
+        intentInput: expect.objectContaining({
+          destinationExecutions: [expect.objectContaining({ value: '1' })],
+        }),
+        sponsored: false,
+      },
+    )
+
+    const sponsored = context()
+    await prepareIntent(sponsored, {
+      ...input,
+      options: {
+        sponsorSettings: { gas: false, bridgeFees: false, swapFees: false },
+      },
+    })
+
+    expect(sponsored.quoteClient.createQuote).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ sponsored: true }),
+    )
+  })
+
   test('submits signed data with source and target metadata', async () => {
     const workflow = context()
     const prepared = await prepareIntent(workflow, input)
@@ -726,12 +754,6 @@ describe('intent workflow', () => {
     })
     expect(workflow.submissionClient.submitIntent).toHaveBeenCalledWith(
       expect.objectContaining({ intentId: 'intent-1' }),
-      expect.objectContaining({
-        intentInput: expect.objectContaining({
-          destinationExecutions: [expect.objectContaining({ value: '1' })],
-        }),
-        sponsored: false,
-      }),
     )
   })
 
@@ -768,7 +790,6 @@ describe('intent workflow', () => {
       expect.objectContaining({
         authorizations: { sponsor: [authorization] },
       }),
-      expect.anything(),
     )
   })
 })

@@ -918,7 +918,8 @@ interface JwtAuth {
   /** Static access token, or async getter for refreshable tokens. */
   accessToken: string | (() => Promise<string>)
   /**
-   * Called when submitting a sponsored intent. Receives the canonical
+   * Called when preparing a sponsored transaction, before it is quoted, so it
+   * runs for quotes that are never submitted. Receives the canonical
    * serialized intent input and must return a signed intent_extension_token
    * JWT whose sponsorship digest covers it.
    */

@@ -1,5 +1,4 @@
 import { chainIdFromReference } from '../../chains/caip2'
-import { projectCompatibleIntentInput } from './compatibility'
 import type {
   IntentWorkflowContext,
   SignedIntent,
@@ -10,26 +9,20 @@ export async function submitIntent<CompatibilityConfig>(
   context: IntentWorkflowContext<CompatibilityConfig>,
   signed: SignedIntent<CompatibilityConfig>,
 ): Promise<SubmittedIntent> {
-  const response = await context.submissionClient.submitIntent(
-    {
-      intentId: signed.prepared.quote.intentId,
-      signatures: {
-        origin: signed.originSignatures,
-        destination: signed.destinationSignature,
-        ...(signed.targetSignature
-          ? { targetExecution: signed.targetSignature }
-          : {}),
-      },
-      ...(signed.authorizations && signed.authorizations.length > 0
-        ? { authorizations: { sponsor: signed.authorizations } }
+  const response = await context.submissionClient.submitIntent({
+    intentId: signed.prepared.quote.intentId,
+    signatures: {
+      origin: signed.originSignatures,
+      destination: signed.destinationSignature,
+      ...(signed.targetSignature
+        ? { targetExecution: signed.targetSignature }
         : {}),
-      ...(signed.dryRun ? { dryRun: true } : {}),
     },
-    {
-      intentInput: projectCompatibleIntentInput(signed.prepared.request),
-      sponsored: Boolean(signed.prepared.request.options.sponsorSettings),
-    },
-  )
+    ...(signed.authorizations && signed.authorizations.length > 0
+      ? { authorizations: { sponsor: signed.authorizations } }
+      : {}),
+    ...(signed.dryRun ? { dryRun: true } : {}),
+  })
   return {
     type: 'intent',
     traceId: response.traceId,

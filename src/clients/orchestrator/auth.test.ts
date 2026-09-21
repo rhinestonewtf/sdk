@@ -12,11 +12,11 @@ const intentInput = {
 } satisfies SerializedIntentInput
 
 describe('orchestrator auth', () => {
-  test('sends the configured api key on requests and submissions', async () => {
+  test('sends the configured api key on requests and quotes', async () => {
     const auth = createOrchestratorAuth({ kind: 'api-key', apiKey: 'secret' })
 
     expect(await auth.getHeaders()).toEqual({ 'x-api-key': 'secret' })
-    expect(await auth.getSubmitHeaders(intentInput, true)).toEqual({
+    expect(await auth.getQuoteHeaders(intentInput, true)).toEqual({
       'x-api-key': 'secret',
     })
   })
@@ -28,12 +28,12 @@ describe('orchestrator auth', () => {
     })
 
     expect(await auth.getHeaders()).toEqual({ Authorization: 'Bearer access' })
-    expect(await auth.getSubmitHeaders(intentInput, false)).toEqual({
+    expect(await auth.getQuoteHeaders(intentInput, false)).toEqual({
       Authorization: 'Bearer access',
     })
   })
 
-  test('adds the intent extension only for sponsored submissions', async () => {
+  test('adds the intent extension only for sponsored quotes', async () => {
     const getIntentExtensionToken = vi.fn(async () => 'extension')
     const auth = createOrchestratorAuth({
       kind: 'jwt',
@@ -41,13 +41,13 @@ describe('orchestrator auth', () => {
       getIntentExtensionToken,
     })
 
-    expect(await auth.getSubmitHeaders(intentInput, true)).toEqual({
+    expect(await auth.getQuoteHeaders(intentInput, true)).toEqual({
       Authorization: 'Bearer access',
       'X-Intent-Extension': 'Bearer extension',
     })
     expect(getIntentExtensionToken).toHaveBeenCalledWith(intentInput)
 
-    expect(await auth.getSubmitHeaders(intentInput, false)).toEqual({
+    expect(await auth.getQuoteHeaders(intentInput, false)).toEqual({
       Authorization: 'Bearer access',
     })
     expect(getIntentExtensionToken).toHaveBeenCalledTimes(1)
@@ -59,7 +59,7 @@ describe('orchestrator auth', () => {
       accessToken: 'access',
     })
 
-    expect(await auth.getSubmitHeaders(intentInput, true)).toEqual({
+    expect(await auth.getQuoteHeaders(intentInput, true)).toEqual({
       Authorization: 'Bearer access',
     })
   })
