@@ -252,7 +252,7 @@ describe('managed Solana account construction', () => {
       { type: 'passkey', account: { ...passkey, id: '' } },
       {
         type: 'passkey',
-        account: { ...passkey, publicKey: `0x${'11'.repeat(64)}` },
+        account: { ...passkey, publicKey: `0x${'11'.repeat(63)}` },
       },
       { type: 'ecdsa', account: passkey },
     ]) {

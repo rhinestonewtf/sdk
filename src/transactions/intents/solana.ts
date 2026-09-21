@@ -1,17 +1,13 @@
-import { p256 } from '@noble/curves/nist'
 import { base64urlnopad } from '@scure/base'
 import {
   type Account,
   type Address,
   bytesToHex,
-  concat,
   type Hex,
   hexToBytes,
   isAddress,
   isAddressEqual,
   recoverMessageAddress,
-  sha256,
-  stringToBytes,
 } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
 import { formatCaip2 } from '../../chains/caip2'
@@ -690,11 +686,7 @@ export async function signSolanaIntent(input: {
       clientDataJSON: webauthn.clientDataJSON,
       signature,
     }
-    validateSolanaWebAuthnAssertion(
-      authority.publicKey,
-      { challenge },
-      assertion,
-    )
+    validateSolanaWebAuthnAssertion({ challenge }, assertion)
     return { prepared: input.prepared, proof: { kind: 'webauthn', assertion } }
   }
   const owner = input.owner as Account
@@ -750,37 +742,29 @@ export async function validateSolanaSignature(
 }
 
 /**
- * Checks a passkey assertion the way the orchestrator will: the client data is
- * a `webauthn.get` over this challenge, and the P-256 signature verifies over
- * `authenticatorData ‖ sha256(clientDataJSON)` under the configured key.
+ * Checks a passkey assertion's shape before it is submitted: the client data is
+ * a `webauthn.get` over this challenge, and the signature is 64-byte r‖s.
+ *
+ * The P-256 signature itself is deliberately not verified here. The
+ * orchestrator verifies it and normalises low-S before it records anything, so
+ * a bad one is refused with nothing spent, and verifying locally would cost the
+ * root bundle a P-256 implementation.
  */
 export function validateSolanaWebAuthnAssertion(
-  publicKey: Hex,
   payload: { readonly challenge: Hex },
   assertion: WebAuthnAssertion,
 ): void {
   const refuse = (reason: string): never => {
     throw new InvalidSolanaTransactionArtifactError(reason)
   }
-  if (
-    typeof assertion.credentialId !== 'string' ||
-    assertion.credentialId.length === 0
-  ) {
-    refuse('the passkey assertion must name its credential')
-  }
-  if (!/^0x(?:[0-9a-fA-F]{2}){37,}$/u.test(assertion.authenticatorData)) {
-    refuse('the passkey authenticator data must be at least 37 bytes of hex')
-  }
   if (!/^0x[0-9a-fA-F]{128}$/u.test(assertion.signature)) {
     refuse('the passkey signature must be a 64-byte r‖s P-256 signature')
   }
   let clientData: { type?: unknown; challenge?: unknown } | undefined
   try {
-    clientData = /^\{[\s\S]*\}$/u.test(assertion.clientDataJSON)
-      ? JSON.parse(assertion.clientDataJSON)
-      : undefined
+    clientData = JSON.parse(assertion.clientDataJSON)
   } catch {
-    clientData = undefined
+    refuse('the passkey client data must be JSON')
   }
   if (clientData?.type !== 'webauthn.get') {
     refuse('the passkey client data must be a webauthn.get assertion')
@@ -791,41 +775,32 @@ export function validateSolanaWebAuthnAssertion(
   ) {
     refuse('the passkey assertion does not sign the requested challenge')
   }
-  const digest = sha256(
-    concat([
-      assertion.authenticatorData,
-      sha256(stringToBytes(assertion.clientDataJSON)),
-    ]),
-    'bytes',
-  )
-  let verified = false
-  try {
-    verified = p256.verify(
-      hexToBytes(assertion.signature),
-      digest,
-      hexToBytes(publicKey),
-      { format: 'compact' },
-    )
-  } catch {
-    verified = false
-  }
-  if (!verified) {
-    refuse(
-      'the passkey signature does not verify under the configured Solana authority',
-    )
-  }
 }
 
 /**
  * SEC1-compresses a P-256 public key: the 64-byte x‖y a viem WebAuthn
- * credential carries, or a 65-byte uncompressed or 33-byte compressed SEC1 key.
- * Throws when the key is not a point on the curve.
+ * credential carries, or a 65-byte `0x04`-prefixed key. A 33-byte compressed
+ * key is returned unchanged. Only the shape is checked, not that the point lies
+ * on the curve.
  */
 export function compressP256PublicKey(publicKey: Hex): Hex {
   const bytes = hexToBytes(publicKey)
-  const sec1 =
-    bytes.length === 64 ? concat([new Uint8Array([4]), bytes]) : bytes
-  return bytesToHex(p256.ProjectivePoint.fromHex(sec1).toRawBytes(true))
+  if (bytes.length === 33 && (bytes[0] === 2 || bytes[0] === 3)) {
+    return publicKey
+  }
+  const point =
+    bytes.length === 64
+      ? bytes
+      : bytes.length === 65 && bytes[0] === 4
+        ? bytes.subarray(1)
+        : undefined
+  if (!point) {
+    throw new InvalidSolanaTransactionArtifactError(
+      'the passkey public key must be a 64-byte x‖y, 65-byte uncompressed or 33-byte compressed P-256 key',
+    )
+  }
+  const prefix = point[63]! % 2 === 0 ? 0x02 : 0x03
+  return bytesToHex(new Uint8Array([prefix, ...point.subarray(0, 32)]))
 }
 
 export async function submitSolanaIntent(
@@ -843,7 +818,6 @@ export async function submitSolanaIntent(
   const proof = signed.proof
   if (authority.kind === 'secp256r1' && proof.kind === 'webauthn') {
     validateSolanaWebAuthnAssertion(
-      authority.publicKey,
       payload as Extract<SolanaSpendPayload, { kind: 'webauthn' }>,
       proof.assertion,
     )

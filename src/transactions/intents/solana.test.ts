@@ -1288,14 +1288,28 @@ describe('passkey-owned managed Solana intents', () => {
     })
   })
 
-  test('compresses a WebAuthn public key and refuses one off the curve', () => {
-    expect(compressedPublicKey).toMatch(/^0x0[23][0-9a-f]{64}$/u)
+  test('compresses a WebAuthn public key by the parity of y', () => {
+    // Cross-checked against noble's own compression of the same key.
     expect(compressP256PublicKey(passkey.publicKey)).toBe(compressedPublicKey)
     expect(compressP256PublicKey(`0x04${passkey.publicKey.slice(2)}`)).toBe(
       compressedPublicKey,
     )
     expect(compressP256PublicKey(compressedPublicKey)).toBe(compressedPublicKey)
-    expect(() => compressP256PublicKey(`0x${'11'.repeat(64)}`)).toThrow()
+    const x = 'aa'.repeat(32)
+    expect(compressP256PublicKey(`0x${x}${'00'.repeat(31)}02`)).toBe(`0x02${x}`)
+    expect(compressP256PublicKey(`0x04${x}${'00'.repeat(31)}01`)).toBe(
+      `0x03${x}`,
+    )
+  })
+
+  test.each([
+    ['a truncated key', `0x${'11'.repeat(63)}`],
+    ['a 65-byte key without the 04 prefix', `0x05${'11'.repeat(64)}`],
+    ['a 33-byte key without a compressed prefix', `0x04${'11'.repeat(32)}`],
+  ] as const)('refuses %s', (_name, publicKey) => {
+    expect(() => compressP256PublicKey(publicKey)).toThrow(
+      InvalidSolanaTransactionArtifactError,
+    )
   })
 
   test('accepts a WebAuthn quote naming the configured key in any case', async () => {
@@ -1433,18 +1447,19 @@ describe('passkey-owned managed Solana intents', () => {
     expect(fixture.submitIntent).not.toHaveBeenCalled()
   })
 
-  test('validates an assertion the way the orchestrator will', async () => {
+  test('checks the assertion shape and leaves the signature to the orchestrator', async () => {
     const assertion = await signedProof()
-    const check =
-      (changes: Partial<WebAuthnAssertion>, publicKey = compressedPublicKey) =>
-      () =>
-        validateSolanaWebAuthnAssertion(
-          publicKey,
-          { challenge },
-          { ...assertion, ...changes },
-        )
+    const check = (changes: Partial<WebAuthnAssertion>) => () =>
+      validateSolanaWebAuthnAssertion(
+        { challenge },
+        { ...assertion, ...changes },
+      )
 
     expect(check({})).not.toThrow()
+    expect(check({ clientDataJSON: '{"type":' })).toThrow(
+      InvalidSolanaTransactionArtifactError,
+    )
+    expect(check({ clientDataJSON: '{"type":' })).toThrow(/must be JSON/)
     expect(
       check({
         clientDataJSON: assertion.clientDataJSON.replace(
@@ -1453,26 +1468,18 @@ describe('passkey-owned managed Solana intents', () => {
         ),
       }),
     ).toThrow(/webauthn\.get/)
-    // The signature covers the exact client data bytes, so equivalent JSON
-    // with different whitespace no longer verifies.
     expect(
       check({
-        clientDataJSON: JSON.stringify(
-          JSON.parse(assertion.clientDataJSON),
-          null,
-          1,
-        ),
+        clientDataJSON: JSON.stringify({
+          ...JSON.parse(assertion.clientDataJSON),
+          challenge: base64urlnopad.encode(hexToBytes(`0x${'00'.repeat(32)}`)),
+        }),
       }),
-    ).toThrow(/does not verify/)
+    ).toThrow(/does not sign the requested challenge/)
+    // DER is what the authenticator returns; the wire wants r‖s.
     expect(check({ signature: `0x30${'44'.repeat(70)}` })).toThrow(/64-byte/)
-    expect(check({ authenticatorData: '0x05' })).toThrow(/37 bytes/)
-    expect(check({ credentialId: '' })).toThrow(/name its credential/)
-    expect(
-      check(
-        {},
-        signingPasskey({ privateKey: `0x${'22'.repeat(32)}` })
-          .compressedPublicKey,
-      ),
-    ).toThrow(/does not verify/)
+    // A well-formed but wrong signature passes: the orchestrator verifies it
+    // before anything is recorded.
+    expect(check({ signature: `0x${'11'.repeat(64)}` })).not.toThrow()
   })
 })

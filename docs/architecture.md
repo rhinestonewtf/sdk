@@ -86,8 +86,8 @@ Managed Solana is development-only and must be paired with a managed EVM
 account. The EVM account address deterministically selects the `dev-v1` Swig;
 the Swig must already exist and carry the configured owner as its authority on
 the target cluster. The owner is an ECDSA key or a passkey; a passkey is named
-to the orchestrator by its SEC1-compressed P-256 key, and its assertion is
-verified locally before submission. The SDK derives the Swig and wallet
+to the orchestrator by its SEC1-compressed P-256 key. Its assertion's challenge
+and type are checked locally, but the orchestrator verifies the signature. The SDK derives the Swig and wallet
 addresses offline with the small `@noble/curves` and `@scure/base` primitives;
 it imports no Solana RPC or transaction stack and does not create or verify the
 account. Production has no enabled Swig namespace.
