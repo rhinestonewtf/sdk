@@ -1,7 +1,7 @@
 {
   "name": "@rhinestone/sdk",
   "version": "2.16.1",
-  "description": "Self-custodial wallets and multichain relaying for fintech apps",
+  "description": "Smart wallets and multichain transactions for your application",
   "author": {
     "name": "Rhinestone",
     "url": "https://rhinestone.dev"
@@ -15,7 +15,7 @@
     "passkeys",
     "session-keys",
     "multichain",
-    "relaying",
+    "transactions",
     "stablecoin",
     "erc-7579",
     "ethereum"

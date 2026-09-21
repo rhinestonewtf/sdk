@@ -1,11 +1,11 @@
 # Rhinestone SDK
 
-> Self-custodial wallets and multichain relaying, in one TypeScript SDK
+> Smart wallets and multichain transactions for your application
 
-Rhinestone is self-custodial stablecoin infrastructure for fintechs. This SDK covers two of its products:
+Rhinestone is self-custodial stablecoin infrastructure for fintechs. Give users an account they control, help them fund it, and move value across chains, tokens, and currencies through one integration. This SDK covers two of its products:
 
-- **Wallets** — deploy and manage self-custodial smart accounts with passkeys, session keys and any signer.
-- **Relaying** — send sponsored, multichain transactions from one signature. Routing, swaps and settlement across a unified relayer market are handled underneath, on every [supported chain](https://docs.rhinestone.dev/home/resources/supported-chains).
+- **Wallets** — smart wallets inside your application, approved with a passkey, with session keys and recovery.
+- **Transactions** — payments, swaps, and contract calls funded from any [supported chain](https://docs.rhinestone.dev/home/resources/supported-chains), with fees you can sponsor.
 
 Deposits have their own integration: see the [docs](https://docs.rhinestone.dev/deposits/overview).
 
@@ -22,7 +22,7 @@ Deposits have their own integration: see the [docs](https://docs.rhinestone.dev/
 
 - **Session Keys** - Onchain permissions system for scoped transaction automation, enabling one-click UX and server-side execution with granular policies. [Learn more](https://docs.rhinestone.dev/smart-wallet/smart-sessions/overview)
 
-- **Gas Sponsorship** - Subsidize gas, bridge, and swap fees for users by depositing USDC on Base. Applies across all supported chains. [Learn more](https://docs.rhinestone.dev/smart-wallet/gas-sponsorship/overview)
+- **Sponsorship** - Subsidize gas, bridge, and swap fees for users by depositing USDC on Base. Applies across all supported chains. [Learn more](https://docs.rhinestone.dev/smart-wallet/gas-sponsorship/overview)
 
 ## Installation
 
