@@ -36,13 +36,12 @@ function signedIntent(
   }
 }
 
-describe('mapIntentRequestToWire — par-swap sponsorship', () => {
-  test('preserves swapValue within the generated Blanc quote contract', () => {
+describe('mapIntentRequestToWire — swap sponsorship', () => {
+  test('uses swapFees within the generated Blanc quote contract', () => {
     const sponsorSettings = {
       gas: true,
       bridgeFees: false,
-      swapFees: false,
-      swapValue: true,
+      swapFees: true,
     } satisfies NonNullable<
       NonNullable<WireQuoteRequest['options']>['sponsorSettings']
     >
@@ -54,8 +53,9 @@ describe('mapIntentRequestToWire — par-swap sponsorship', () => {
       options: { sponsorSettings },
     })
 
-    expect(wire.options?.sponsorSettings?.swapValue).toBe(true)
+    expect(wire.options?.sponsorSettings?.swapFees).toBe(true)
     expect(wire.options?.sponsorSettings).toEqual(sponsorSettings)
+    expect(wire.options?.sponsorSettings).not.toHaveProperty('swapValue')
   })
 })
 

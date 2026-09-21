@@ -380,12 +380,6 @@ interface SponsorSettings {
   bridgeFees: boolean
   swapFees: boolean
   protocolFees?: boolean
-  /**
-   * Par same-chain swaps: the sponsor pays the market shortfall so the user
-   * trades 1:1. Present only when the caller asked for it — an absent key and
-   * `false` mean the same thing on the wire, and absence is what is signed.
-   */
-  swapValue?: boolean
 }
 
 interface PortfolioToken {
