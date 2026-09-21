@@ -3700,6 +3700,33 @@ export interface operations {
              */
             data: string
           }[]
+          /** @description Solana instructions to run, in order, out of the account's own wallet on a Solana destination — the Solana counterpart of `destinationExecutions`, which it cannot be combined with. The wallet executes them, so `recipient` must be omitted: a payee is encoded inside the instructions. No route serves them yet, so a request carrying them is refused with `UNSUPPORTED_DESTINATION_INSTRUCTIONS`. */
+          destinationInstructions?: {
+            /**
+             * @description Program to invoke, base58.
+             * @example TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
+             */
+            programId: string
+            /** @description Accounts the instruction reads or writes, in the order the program expects. */
+            accounts: {
+              /**
+               * @description Account address, base58.
+               * @example TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
+               */
+              pubkey: string
+              /** @description Whether the instruction requires this account to sign. */
+              isSigner: boolean
+              /** @description Whether the instruction writes to this account. */
+              isWritable: boolean
+            }[]
+            /**
+             * @description Instruction data, base64.
+             * @example CQ==
+             */
+            data: string
+          }[]
+          /** @description Address lookup tables the `destinationInstructions` resolve accounts through, base58, as Jupiter `/swap-instructions` returns them. Only with `destinationInstructions`. */
+          addressLookupTableAddresses?: string[]
           /**
            * @description Execution calls to perform before the claim on each origin chain, keyed by CAIP-2 chain ID. Max 10 ops per chain, max 5 chains.
            * @example {
@@ -3738,194 +3765,6 @@ export interface operations {
            * @example 100000
            */
           destinationGasLimit?: string
-          /** @description Account access list specifying which CAIP-2 chains and tokens an account may access */
-          accountAccessList?: {
-            chainIds?: string[]
-            tokens?: (
-              | string
-              | (
-                  | 'ETH'
-                  | 'USDC'
-                  | 'WETH'
-                  | 'USDT'
-                  | 'USDT0'
-                  | 'BNB'
-                  | 'WBNB'
-                  | 'XDAI'
-                  | 'WXDAI'
-                  | 'POL'
-                  | 'WPOL'
-                  | 'MON'
-                  | 'WMON'
-                  | 'S'
-                  | 'WS'
-                  | 'OKB'
-                  | 'WOKB'
-                  | 'HYPE'
-                  | 'WHYPE'
-                  | 'USDG'
-                  | 'XPL'
-                  | 'WXPL'
-                  | 'AVAX'
-                  | 'WAVAX'
-                  | 'MockUSD'
-                  | 'XLM'
-                  | 'ensUSDC'
-                  | 'ensUSDC2'
-                  | 'TRX'
-                  | 'WTRX'
-                  | 'SOL'
-                  | 'WSOL'
-                )
-            )[]
-            /**
-             * @description Tokens keyed by CAIP-2 chain ID.
-             * @example {
-             *       "eip155:8453": [
-             *         "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
-             *       ]
-             *     }
-             */
-            chainTokens?: {
-              [key: string]: (
-                | string
-                | (
-                    | 'ETH'
-                    | 'USDC'
-                    | 'WETH'
-                    | 'USDT'
-                    | 'USDT0'
-                    | 'BNB'
-                    | 'WBNB'
-                    | 'XDAI'
-                    | 'WXDAI'
-                    | 'POL'
-                    | 'WPOL'
-                    | 'MON'
-                    | 'WMON'
-                    | 'S'
-                    | 'WS'
-                    | 'OKB'
-                    | 'WOKB'
-                    | 'HYPE'
-                    | 'WHYPE'
-                    | 'USDG'
-                    | 'XPL'
-                    | 'WXPL'
-                    | 'AVAX'
-                    | 'WAVAX'
-                    | 'MockUSD'
-                    | 'XLM'
-                    | 'ensUSDC'
-                    | 'ensUSDC2'
-                    | 'TRX'
-                    | 'WTRX'
-                    | 'SOL'
-                    | 'WSOL'
-                  )
-              )[]
-            }
-            /**
-             * @description Per-token maximum input amounts keyed by CAIP-2 chain ID.
-             * @example {
-             *       "eip155:8453": {
-             *         "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913": "1000000"
-             *       }
-             *     }
-             */
-            chainTokenAmounts?: {
-              [key: string]: {
-                [key: string]: string
-              }
-            }
-            exclude?: {
-              chainIds?: string[]
-              tokens?: (
-                | string
-                | (
-                    | 'ETH'
-                    | 'USDC'
-                    | 'WETH'
-                    | 'USDT'
-                    | 'USDT0'
-                    | 'BNB'
-                    | 'WBNB'
-                    | 'XDAI'
-                    | 'WXDAI'
-                    | 'POL'
-                    | 'WPOL'
-                    | 'MON'
-                    | 'WMON'
-                    | 'S'
-                    | 'WS'
-                    | 'OKB'
-                    | 'WOKB'
-                    | 'HYPE'
-                    | 'WHYPE'
-                    | 'USDG'
-                    | 'XPL'
-                    | 'WXPL'
-                    | 'AVAX'
-                    | 'WAVAX'
-                    | 'MockUSD'
-                    | 'XLM'
-                    | 'ensUSDC'
-                    | 'ensUSDC2'
-                    | 'TRX'
-                    | 'WTRX'
-                    | 'SOL'
-                    | 'WSOL'
-                  )
-              )[]
-              /**
-               * @description Tokens keyed by CAIP-2 chain ID.
-               * @example {
-               *       "eip155:8453": [
-               *         "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
-               *       ]
-               *     }
-               */
-              chainTokens?: {
-                [key: string]: (
-                  | string
-                  | (
-                      | 'ETH'
-                      | 'USDC'
-                      | 'WETH'
-                      | 'USDT'
-                      | 'USDT0'
-                      | 'BNB'
-                      | 'WBNB'
-                      | 'XDAI'
-                      | 'WXDAI'
-                      | 'POL'
-                      | 'WPOL'
-                      | 'MON'
-                      | 'WMON'
-                      | 'S'
-                      | 'WS'
-                      | 'OKB'
-                      | 'WOKB'
-                      | 'HYPE'
-                      | 'WHYPE'
-                      | 'USDG'
-                      | 'XPL'
-                      | 'WXPL'
-                      | 'AVAX'
-                      | 'WAVAX'
-                      | 'MockUSD'
-                      | 'XLM'
-                      | 'ensUSDC'
-                      | 'ensUSDC2'
-                      | 'TRX'
-                      | 'WTRX'
-                      | 'SOL'
-                      | 'WSOL'
-                    )
-                )[]
-              }
-            }
-          }
           recipient?: {
             /**
              * @description Recipient address. Format depends on destination chain — 0x-hex for EVM destinations, base58 for Solana, T-address for Tron.
@@ -4091,6 +3930,8 @@ export interface operations {
                * @default false
                */
               swapFees?: boolean
+              /** @description Whether to sponsor the VALUE of an eligible same-chain swap, so the user trades at par: the user contributes the 1:1 amount and the sponsor pays whatever the market is short. Applies only to pairs where par is a meaningful rate (both sides USD-pegged) and only up to a configured per-swap ceiling; outside those bounds the route plans as an ordinary unsponsored swap. Distinct from `swapFees`, which waives a solver's commission. */
+              swapValue?: boolean
               /**
                * @description Whether to sponsor the Rhinestone protocol fee (`options.protocolFees`) for the intent. When `true`, the fee is charged to the integrator's sponsorship balance instead of carved from the user, without the sponsorship surcharge.
                * @default false
@@ -4820,6 +4661,194 @@ export interface operations {
               )[]
             }
           }
+          /** @description Account access list specifying which CAIP-2 chains and tokens an account may access */
+          accountAccessList?: {
+            chainIds?: string[]
+            tokens?: (
+              | string
+              | (
+                  | 'ETH'
+                  | 'USDC'
+                  | 'WETH'
+                  | 'USDT'
+                  | 'USDT0'
+                  | 'BNB'
+                  | 'WBNB'
+                  | 'XDAI'
+                  | 'WXDAI'
+                  | 'POL'
+                  | 'WPOL'
+                  | 'MON'
+                  | 'WMON'
+                  | 'S'
+                  | 'WS'
+                  | 'OKB'
+                  | 'WOKB'
+                  | 'HYPE'
+                  | 'WHYPE'
+                  | 'USDG'
+                  | 'XPL'
+                  | 'WXPL'
+                  | 'AVAX'
+                  | 'WAVAX'
+                  | 'MockUSD'
+                  | 'XLM'
+                  | 'ensUSDC'
+                  | 'ensUSDC2'
+                  | 'TRX'
+                  | 'WTRX'
+                  | 'SOL'
+                  | 'WSOL'
+                )
+            )[]
+            /**
+             * @description Tokens keyed by CAIP-2 chain ID.
+             * @example {
+             *       "eip155:8453": [
+             *         "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
+             *       ]
+             *     }
+             */
+            chainTokens?: {
+              [key: string]: (
+                | string
+                | (
+                    | 'ETH'
+                    | 'USDC'
+                    | 'WETH'
+                    | 'USDT'
+                    | 'USDT0'
+                    | 'BNB'
+                    | 'WBNB'
+                    | 'XDAI'
+                    | 'WXDAI'
+                    | 'POL'
+                    | 'WPOL'
+                    | 'MON'
+                    | 'WMON'
+                    | 'S'
+                    | 'WS'
+                    | 'OKB'
+                    | 'WOKB'
+                    | 'HYPE'
+                    | 'WHYPE'
+                    | 'USDG'
+                    | 'XPL'
+                    | 'WXPL'
+                    | 'AVAX'
+                    | 'WAVAX'
+                    | 'MockUSD'
+                    | 'XLM'
+                    | 'ensUSDC'
+                    | 'ensUSDC2'
+                    | 'TRX'
+                    | 'WTRX'
+                    | 'SOL'
+                    | 'WSOL'
+                  )
+              )[]
+            }
+            /**
+             * @description Per-token maximum input amounts keyed by CAIP-2 chain ID.
+             * @example {
+             *       "eip155:8453": {
+             *         "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913": "1000000"
+             *       }
+             *     }
+             */
+            chainTokenAmounts?: {
+              [key: string]: {
+                [key: string]: string
+              }
+            }
+            exclude?: {
+              chainIds?: string[]
+              tokens?: (
+                | string
+                | (
+                    | 'ETH'
+                    | 'USDC'
+                    | 'WETH'
+                    | 'USDT'
+                    | 'USDT0'
+                    | 'BNB'
+                    | 'WBNB'
+                    | 'XDAI'
+                    | 'WXDAI'
+                    | 'POL'
+                    | 'WPOL'
+                    | 'MON'
+                    | 'WMON'
+                    | 'S'
+                    | 'WS'
+                    | 'OKB'
+                    | 'WOKB'
+                    | 'HYPE'
+                    | 'WHYPE'
+                    | 'USDG'
+                    | 'XPL'
+                    | 'WXPL'
+                    | 'AVAX'
+                    | 'WAVAX'
+                    | 'MockUSD'
+                    | 'XLM'
+                    | 'ensUSDC'
+                    | 'ensUSDC2'
+                    | 'TRX'
+                    | 'WTRX'
+                    | 'SOL'
+                    | 'WSOL'
+                  )
+              )[]
+              /**
+               * @description Tokens keyed by CAIP-2 chain ID.
+               * @example {
+               *       "eip155:8453": [
+               *         "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
+               *       ]
+               *     }
+               */
+              chainTokens?: {
+                [key: string]: (
+                  | string
+                  | (
+                      | 'ETH'
+                      | 'USDC'
+                      | 'WETH'
+                      | 'USDT'
+                      | 'USDT0'
+                      | 'BNB'
+                      | 'WBNB'
+                      | 'XDAI'
+                      | 'WXDAI'
+                      | 'POL'
+                      | 'WPOL'
+                      | 'MON'
+                      | 'WMON'
+                      | 'S'
+                      | 'WS'
+                      | 'OKB'
+                      | 'WOKB'
+                      | 'HYPE'
+                      | 'WHYPE'
+                      | 'USDG'
+                      | 'XPL'
+                      | 'WXPL'
+                      | 'AVAX'
+                      | 'WAVAX'
+                      | 'MockUSD'
+                      | 'XLM'
+                      | 'ensUSDC'
+                      | 'ensUSDC2'
+                      | 'TRX'
+                      | 'WTRX'
+                      | 'SOL'
+                      | 'WSOL'
+                    )
+                )[]
+              }
+            }
+          }
         }
       }
     }
@@ -5224,6 +5253,8 @@ export interface operations {
                     intentHash: string
                     /** @description Eco's own id for the delivery chain, present only where it differs from `destinationChainId` (non-EVM destinations). Eco's status API reports fulfilment against this id. */
                     providerDestinationChainId?: number
+                    /** @description Eco's own id for the chain the reward was funded on, present only where it differs from the deposit chain (non-EVM origins). */
+                    providerSourceChainId?: number
                   }
                 | {
                     /** @description Destination chain ID for the bridge fill */
@@ -5252,7 +5283,7 @@ export interface operations {
                      * @enum {string}
                      */
                     type: 'NEAR'
-                    /** @description NEAR Intents deposit address. Track fill status via the NEAR Intents status API keyed on this address. */
+                    /** @description NEAR Intents deposit address on the origin chain, in its native form (EVM 0x or Solana base58). Track fill status via the NEAR Intents status API keyed on this address. */
                     depositAddress: string
                   }
                 | {
@@ -5683,12 +5714,12 @@ export interface operations {
            */
           direction: 'exactIn' | 'exactOut'
           /**
-           * @description Source chain id (CAIP-2, eip155)
+           * @description Source chain id (CAIP-2): EVM (`eip155:*`), or `solana:…` where this deployment spends from a Solana origin.
            * @example eip155:8453
            */
           sourceChainId: string
           /**
-           * @description Source token address
+           * @description Source token address — EVM `0x…`, or a Solana base58 mint.
            * @example 0x833589fcd6edb6e08f4c7c32d4f71b54bda02913
            */
           sourceToken: string
@@ -5761,7 +5792,7 @@ export interface operations {
                   )[]
                 }
             /**
-             * @description Which fee categories to treat as sponsored. Sponsored categories are absorbed by the sponsor and do not reduce the delivered amount.
+             * @description Which fee categories to treat as sponsored. Sponsored categories are absorbed by the sponsor and do not reduce the delivered amount. `swapValue` is NOT accepted here: the estimator prices swaps at market, so an estimate cannot yet reflect a par-sponsored swap and is rejected rather than returning a figure `POST /quotes` would not honour (RHI-7069).
              * @example {
              *       "gas": true,
              *       "bridgeFees": true,
@@ -5785,6 +5816,8 @@ export interface operations {
                * @default false
                */
               swapFees?: boolean
+              /** @description Whether to sponsor the VALUE of an eligible same-chain swap, so the user trades at par: the user contributes the 1:1 amount and the sponsor pays whatever the market is short. Applies only to pairs where par is a meaningful rate (both sides USD-pegged) and only up to a configured per-swap ceiling; outside those bounds the route plans as an ordinary unsponsored swap. Distinct from `swapFees`, which waives a solver's commission. */
+              swapValue?: boolean
               /**
                * @description Whether to sponsor the Rhinestone protocol fee (`options.protocolFees`) for the intent. When `true`, the fee is charged to the integrator's sponsorship balance instead of carved from the user, without the sponsorship surcharge.
                * @default false
@@ -6162,6 +6195,123 @@ export interface operations {
       }
       /** @description API key scope denied */
       403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+              }
+        }
+      }
+      /** @description Sponsorship or a request option refuses the route */
+      422: {
         headers: {
           [name: string]: unknown
         }

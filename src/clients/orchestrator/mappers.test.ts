@@ -6,6 +6,7 @@ import {
   mapSignedIntentToWire,
 } from './mappers'
 import type { OrchestratorSignedIntent } from './types'
+import type { WireQuoteRequest } from './wire'
 
 const address = '0x0000000000000000000000000000000000000001' as const
 
@@ -34,6 +35,29 @@ function signedIntent(
     dryRun: true,
   }
 }
+
+describe('mapIntentRequestToWire — par-swap sponsorship', () => {
+  test('preserves swapValue within the generated Blanc quote contract', () => {
+    const sponsorSettings = {
+      gas: true,
+      bridgeFees: false,
+      swapFees: false,
+      swapValue: true,
+    } satisfies NonNullable<
+      NonNullable<WireQuoteRequest['options']>['sponsorSettings']
+    >
+    const wire = mapIntentRequestToWire({
+      account: { address, accountType: 'ERC7579' },
+      destinationChainId: 8453,
+      destinationExecutions: [],
+      tokenRequests: [],
+      options: { sponsorSettings },
+    })
+
+    expect(wire.options?.sponsorSettings?.swapValue).toBe(true)
+    expect(wire.options?.sponsorSettings).toEqual(sponsorSettings)
+  })
+})
 
 describe('mapSignedIntentToWire', () => {
   test('maps concrete and any-chain sponsor and recipient authorizations', () => {
