@@ -74,20 +74,6 @@ enforced by `scripts/architecture/check.ts`:
   compatibility barrels re-exporting owning symbols, except `jwt-server/`, a
   separate server-side bounded context with optional `jose`/`express` peers.
 
-## Cross-VM account boundary
-
-The public account configuration is composite: EVM and Solana entries are
-independent managed or address-only branches. `api/accounts.ts` validates and
-shallow-freezes that outer boundary, then passes only a managed EVM branch into
-the existing resolution and adapter stack. Receiver-only handles bypass account
-resolution and expose only native address access.
-
-Managed Solana is deliberately a type-level future capability and construction
-fails before composition. Current intent execution remains EVM-origin. For
-automatic cross-chain sources, the composition reads the orchestrator chain
-catalog and sends only real `eip155:` chains matching the destination's network
-class; source-asset filters may narrow but never widen that set.
-
 ## Execution paths
 
 The account exposes two ways to execute, both ending at `waitForExecution`.

@@ -1,9 +1,4 @@
-import { type Address, isAddress } from 'viem'
-import { type SolanaAddress, solanaAddress } from '../chains/non-evm'
-import type {
-  EvmAccountConfig,
-  RhinestoneAccountConfig,
-} from '../config/account'
+import type { RhinestoneAccountConfig } from '../config/account'
 import type {
   AccountConstructionInput,
   SdkConstructionInput,
@@ -19,16 +14,7 @@ import {
   resolveSdkConfig,
 } from '../config/resolve'
 import { assertAccountOwnersConfigured } from '../config/validate'
-import {
-  AccountVmNotConfiguredError,
-  InvalidAccountConfigError,
-  ManagedSolanaAccountNotSupportedError,
-} from '../errors/capability'
-import {
-  createAccountFacade,
-  type RhinestoneAccount,
-  type RhinestoneAccountBase,
-} from './account'
+import { createAccountFacade, type RhinestoneAccount } from './account'
 import { createConfiguredCoreComposition } from './compose'
 import type { CoreComposition } from './compose-types'
 
@@ -46,103 +32,12 @@ export function composeSdk(input: SdkConstructionInput): SdkComposition {
   }
 }
 
-const ACCOUNT_KEYS = ['evm', 'solana']
-const EVM_KEYS = [
-  'account',
-  'owners',
-  'sessions',
-  'recovery',
-  'eoa',
-  'modules',
-  'initData',
-]
-
-function record(value: unknown, label: string): Record<string, unknown> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new InvalidAccountConfigError(`${label} must be an object`)
-  }
-  return value as Record<string, unknown>
-}
-
-function exactKeys(
-  value: Record<string, unknown>,
-  allowed: readonly string[],
-  label: string,
-): void {
-  const unknown = Object.keys(value).find((key) => !allowed.includes(key))
-  if (unknown) {
-    throw new InvalidAccountConfigError(`unknown ${label} field \`${unknown}\``)
-  }
-}
-
-export function attachAccount<const C extends RhinestoneAccountConfig>(
+export function attachAccount(
   sdk: SdkComposition,
-  config: C,
-): RhinestoneAccount<C> {
-  const input = record(config, 'account configuration')
-  exactKeys(input, ACCOUNT_KEYS, 'account')
-  if (
-    (!Object.hasOwn(input, 'evm') && !Object.hasOwn(input, 'solana')) ||
-    (input.evm === undefined && input.solana === undefined)
-  ) {
-    throw new InvalidAccountConfigError('at least one VM must be configured')
-  }
-
-  let evmReceiver: Address | undefined
-  let managedEvm: EvmAccountConfig | undefined
-  let solanaReceiver: SolanaAddress | undefined
-
-  if (input.evm !== undefined) {
-    const evm = record(input.evm, 'EVM configuration')
-    if (Object.hasOwn(evm, 'address')) {
-      exactKeys(evm, ['address'], 'EVM receiver')
-      if (typeof evm.address !== 'string' || !isAddress(evm.address)) {
-        throw new InvalidAccountConfigError('EVM receiver address is invalid')
-      }
-      evmReceiver = evm.address
-    } else {
-      exactKeys(evm, EVM_KEYS, 'managed EVM')
-      managedEvm = input.evm as EvmAccountConfig
-    }
-  }
-
-  if (input.solana !== undefined) {
-    const solana = record(input.solana, 'Solana configuration')
-    if (Object.hasOwn(solana, 'address')) {
-      exactKeys(solana, ['address'], 'Solana receiver')
-      if (typeof solana.address !== 'string') {
-        throw new InvalidAccountConfigError(
-          'Solana receiver address is invalid',
-        )
-      }
-      try {
-        solanaReceiver = solanaAddress(solana.address)
-      } catch {
-        throw new InvalidAccountConfigError(
-          'Solana receiver address is invalid',
-        )
-      }
-    } else {
-      exactKeys(solana, ['owner', 'nonce'], 'managed Solana')
-      throw new ManagedSolanaAccountNotSupportedError()
-    }
-  }
-
-  const captured = Object.freeze({ ...config }) as Readonly<C>
-  if (!managedEvm) {
-    const receiver: RhinestoneAccountBase<C> = {
-      config: captured,
-      getAddress(vm) {
-        if (vm === 'evm' && evmReceiver) return evmReceiver as never
-        if (vm === 'solana' && solanaReceiver) return solanaReceiver as never
-        throw new AccountVmNotConfiguredError(String(vm))
-      },
-    }
-    return Object.freeze(receiver) as RhinestoneAccount<C>
-  }
-
+  config: RhinestoneAccountConfig,
+): RhinestoneAccount {
   const compatibilityConfig = createLegacyAccountConfig(
-    managedEvm as AccountConstructionInput,
+    config as unknown as AccountConstructionInput,
     sdk.snapshot,
   )
   assertAccountOwnersConfigured(
@@ -152,13 +47,5 @@ export function attachAccount<const C extends RhinestoneAccountConfig>(
       'get-address',
     ).account,
   )
-  const managedCaptured = Object.freeze({
-    ...config,
-    evm: compatibilityConfig,
-  }) as Readonly<C>
-  return createAccountFacade(
-    compatibilityConfig,
-    managedCaptured,
-    sdk.composition,
-  )
+  return createAccountFacade(compatibilityConfig, sdk.composition)
 }

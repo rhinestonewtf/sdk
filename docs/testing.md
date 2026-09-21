@@ -22,13 +22,6 @@ the integration harness without executing live scenarios. Public type fixtures
 run separately through `tsconfig.type-tests.json`. Run one unit file with
 `bun run test -- path/to/file.test.ts`.
 
-Cross-VM coverage pairs public type fixtures with runtime tests. Type fixtures
-prove capability visibility, explicit VM address selection, nonempty source
-lists, and native Solana token/address shapes. Runtime tests repeat these checks
-for widened or reconstructed values, verify managed Solana fails before effects,
-and exercise automatic EVM source selection with a fake chain catalog. Solana
-mainnet transfers are never executed by the offline suite.
-
 The pure-core gate requires 95% statements, lines, and functions and 90%
 branches. Contract-only files are excluded. The architecture check rejects
 forbidden layer edges, concrete-client imports, published-barrel imports, and

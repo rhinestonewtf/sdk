@@ -17,10 +17,8 @@ describe.sequential('SDK integration account kinds', () => {
     test(`runs a sponsored same-chain intent on a fresh ${type} account`, async () => {
       const sdk = createIntegrationSDK()
       const account = await sdk.createAccount({
-        evm: {
-          account: { type },
-          owners: { type: 'ecdsa', accounts: [createOwner()] },
-        },
+        account: { type },
+        owners: { type: 'ecdsa', accounts: [createOwner()] },
       })
 
       await expectNotDeployed(account, sourceChain)
@@ -53,11 +51,9 @@ describe.sequential('SDK integration account kinds', () => {
   test('runs a sponsored same-chain intent on a fresh Nexus 7702 account', async () => {
     const sdk = createIntegrationSDK()
     const account = await sdk.createAccount({
-      evm: {
-        account: { type: 'nexus' },
-        owners: { type: 'ecdsa', accounts: [createOwner()] },
-        eoa: createOwner(),
-      },
+      account: { type: 'nexus' },
+      owners: { type: 'ecdsa', accounts: [createOwner()] },
+      eoa: createOwner(),
     })
     const eip7702InitSignature = await account.signEip7702InitData()
 

@@ -208,7 +208,7 @@ async function getPerpPositions(
  * @param options where to reach Hyperliquid's info endpoint
  * @returns the position, or `null` when the account has none open on that asset
  * @example
- * const position = await getPerpPosition(account.getAddress('evm'), 'BTC')
+ * const position = await getPerpPosition(account.getAddress(), 'BTC')
  * if (position) {
  *   // offer a close
  * }

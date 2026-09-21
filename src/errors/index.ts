@@ -57,14 +57,6 @@ import {
   UnknownPerpAssetError,
 } from '../hypercore/errors'
 import {
-  AccountCapabilityError,
-  AccountVmNotConfiguredError,
-  InvalidAccountConfigError,
-  isAccountCapabilityError,
-  ManagedSolanaAccountNotSupportedError,
-  UnsupportedAccountCapabilityError,
-} from './capability'
-import {
   Eip7702InitSignatureRequiredError,
   ExecutionError,
   IndependentSigningNotSupportedError,
@@ -100,13 +92,6 @@ export {
   PasskeyConfigurationNotInstallableError,
   SigningNotSupportedForAccountError,
   WalletClientNoConnectedAccountError,
-  // Account capabilities
-  isAccountCapabilityError,
-  AccountCapabilityError,
-  AccountVmNotConfiguredError,
-  InvalidAccountConfigError,
-  ManagedSolanaAccountNotSupportedError,
-  UnsupportedAccountCapabilityError,
   // Execution
   isExecutionError,
   ExecutionError,

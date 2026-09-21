@@ -3,11 +3,7 @@ import type { AccountRuntime, AccountRuntimePort } from '../accounts/adapter'
 import { createAccountConstruction } from '../accounts/construction'
 import { FactoryArgsNotAvailableError } from '../accounts/error'
 import { createAccountAdapter } from '../accounts/registry'
-import {
-  chainIdFromCaip2,
-  formatCaip2,
-  toEvmChainReference,
-} from '../chains/caip2'
+import { toEvmChainReference } from '../chains/caip2'
 import { getChainById } from '../chains/catalog'
 import { createBundlerClient } from '../clients/bundler/client'
 import { createConfiguredOrchestratorClient } from '../clients/orchestrator/client'
@@ -22,7 +18,6 @@ import type {
   ResolvedAccountConfig,
   ResolvedSdkConfig,
 } from '../config/resolved'
-import { UnsupportedAccountCapabilityError } from '../errors/capability'
 import { getIntentExecutorModule } from '../modules/intent-executor'
 import {
   readInstalledModules,
@@ -223,30 +218,6 @@ function createAccountComposition<CompatibilityConfig>(
   dependencies: CoreDependencies,
 ): AccountComposition<CompatibilityConfig> {
   const workflows: AccountWorkflows<CompatibilityConfig> = {
-    getEligibleEvmSourceChains: async (destination) => {
-      const catalog = await dependencies.orchestrator.getChainCatalog()
-      const isHyperCore = destination.caip2.startsWith('hypercore:')
-      const destinationId = chainIdFromCaip2(destination.caip2)
-      const destinationInfo =
-        destinationId === undefined
-          ? undefined
-          : catalog.getChainInfo(destinationId)
-      if (!isHyperCore && !destinationInfo) {
-        throw new UnsupportedAccountCapabilityError(
-          `Destination chain ${destination.caip2} is missing from the orchestrator chain catalog.`,
-          { destination: destination.caip2 },
-        )
-      }
-      const testnet = isHyperCore ? false : destinationInfo?.testnet
-      return catalog
-        .getSupportedChainIds()
-        .filter(
-          (chainId) =>
-            formatCaip2(chainId).startsWith('eip155:') &&
-            catalog.isTestnet(chainId) === testnet,
-        )
-        .map(toEvmChainReference)
-    },
     getAddress: (context, chain) =>
       createStaticAccountRuntime(context.account, chain, false).identity
         .address,

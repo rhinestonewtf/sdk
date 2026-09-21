@@ -121,11 +121,9 @@ function ownerAccount() {
 /** Nexus + ownable validator, sessions enabled — the deposit-service shape. */
 function createSwapAccount(owner: ReturnType<typeof privateKeyToAccount>) {
   return createIntegrationSDK().createAccount({
-    evm: {
-      account: { type: 'nexus' },
-      owners: { type: 'ecdsa', accounts: [owner] },
-      sessions: { enabled: true },
-    },
+    account: { type: 'nexus' },
+    owners: { type: 'ecdsa', accounts: [owner] },
+    sessions: { enabled: true },
   })
 }
 
@@ -139,7 +137,7 @@ describe
     test('scopes a session to a 0x USDT0 -> USDC swap and executes it', async () => {
       const owner = ownerAccount()
       const account = await createSwapAccount(owner)
-      const address = await account.getAddress('evm')
+      const address = await account.getAddress()
 
       log('account', address)
       log('owner', owner.address)
@@ -321,7 +319,7 @@ describe
     test('a swap needing more than the session cap is rejected', async () => {
       const owner = ownerAccount()
       const account = await createSwapAccount(owner)
-      const address = await account.getAddress('evm')
+      const address = await account.getAddress()
       const usdc = plasmaUsdc()
       const settler = await resolveZeroExSettler(plasmaClient())
 
@@ -401,7 +399,7 @@ describe
     test('cannot deliver funds to an unpinned recipient', async () => {
       const owner = ownerAccount()
       const account = await createSwapAccount(owner)
-      const address = await account.getAddress('evm')
+      const address = await account.getAddress()
       const usdc = plasmaUsdc()
       const settler = await resolveZeroExSettler(plasmaClient())
 
@@ -467,7 +465,7 @@ describe
     test('an unenabled session with no enableData cannot execute', async () => {
       const owner = ownerAccount()
       const account = await createSwapAccount(owner)
-      const address = await account.getAddress('evm')
+      const address = await account.getAddress()
       const usdc = plasmaUsdc()
       const settler = await resolveZeroExSettler(plasmaClient())
 
@@ -528,7 +526,7 @@ describe
     test('an unrestricted session executes the same sponsored swap', async () => {
       const owner = ownerAccount()
       const account = await createSwapAccount(owner)
-      const address = await account.getAddress('evm')
+      const address = await account.getAddress()
       const usdc = plasmaUsdc()
 
       const usdcBefore = await erc20Balance(usdc, address)
@@ -580,7 +578,7 @@ describe
     test('a Swapper swap delivering to an unpinned recipient is refused', async () => {
       const owner = ownerAccount()
       const account = await createSwapAccount(owner)
-      const address = await account.getAddress('evm')
+      const address = await account.getAddress()
       const usdc = plasmaUsdc()
 
       const outsiderBefore = await erc20Balance(usdc, owner.address)
@@ -732,7 +730,7 @@ describe
       test(`rejects when ${name}`, async () => {
         const owner = ownerAccount()
         const account = await createSwapAccount(owner)
-        const address = await account.getAddress('evm')
+        const address = await account.getAddress()
         const usdc = plasmaUsdc()
 
         const before = await erc20Balance(PLASMA_USDT0, address)
@@ -795,7 +793,7 @@ describe
     test('max-out exact-input swap: which path does the orchestrator take?', async () => {
       const owner = ownerAccount()
       const account = await createSwapAccount(owner)
-      const address = await account.getAddress('evm')
+      const address = await account.getAddress()
       const usdc = plasmaUsdc()
       const settler = await resolveZeroExSettler(plasmaClient())
 

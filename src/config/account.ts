@@ -14,12 +14,7 @@ import type {
 } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
 import type { AccountType } from '../accounts/types'
-import type {
-  NonEvmAddress,
-  NonEvmChain,
-  SolanaAddress,
-  SolanaChain,
-} from '../chains/non-evm'
+import type { NonEvmAddress, NonEvmChain } from '../chains/non-evm'
 import type {
   AppFeeRate,
   AuxiliaryFunds,
@@ -890,8 +885,7 @@ interface Recovery {
   threshold?: number
 }
 
-/** Managed EVM account configuration used by the existing EVM account engine. */
-interface EvmAccountConfig {
+interface RhinestoneAccountConfig {
   account?: AccountProviderConfig
   owners?: OwnerSet
   sessions?: {
@@ -912,49 +906,7 @@ interface EvmAccountConfig {
     | {
         address: Address
       }
-  address?: never
 }
-
-/** Address-only EVM destination without management or signing authority. */
-interface EvmReceiverAccountConfig {
-  address: Address
-  account?: never
-  owners?: never
-  sessions?: never
-  recovery?: never
-  eoa?: never
-  modules?: never
-  initData?: never
-}
-
-/** Owner identity accepted by the future managed Solana account integration. */
-type SolanaOwner =
-  | { type: 'ecdsa'; account: Account }
-  | { type: 'passkey'; account: WebAuthnAccount }
-
-/** Future managed Solana configuration. Construction is not enabled yet. */
-interface SolanaManagedAccountConfig {
-  owner: SolanaOwner
-  nonce?: bigint
-  address?: never
-}
-
-/** Address-only Solana destination without spending authority. */
-interface SolanaReceiverAccountConfig {
-  address: SolanaAddress
-  owner?: never
-  nonce?: never
-}
-
-type EvmAccountEntry = EvmAccountConfig | EvmReceiverAccountConfig
-type SolanaAccountConfig =
-  | SolanaManagedAccountConfig
-  | SolanaReceiverAccountConfig
-
-/** Independent EVM and Solana account entries. At least one VM is required. */
-type RhinestoneAccountConfig =
-  | Readonly<{ evm: EvmAccountEntry; solana?: SolanaAccountConfig }>
-  | Readonly<{ evm?: EvmAccountEntry; solana: SolanaAccountConfig }>
 
 interface ApiKeyAuth {
   mode: 'apiKey'
@@ -1014,8 +966,7 @@ type RhinestoneSDKConfig = RhinestoneSDKConfigBase &
       }
   )
 
-/** EVM invocation context used by existing call builders and helpers. */
-type RhinestoneConfig = EvmAccountConfig &
+type RhinestoneConfig = RhinestoneAccountConfig &
   Partial<RhinestoneSDKConfig> & {
     /** @internal Resolved auth provider — set by RhinestoneSDK, not by users. */
     _authProvider?: AuthProvider
@@ -1256,7 +1207,7 @@ interface BaseTransaction {
 interface SameChainTransaction extends BaseTransaction {
   chain: Chain
   tokenRequests?: TokenRequests
-  recipient?: EvmAccountConfig | Address
+  recipient?: RhinestoneAccountConfig | Address
   /**
    * Absolute unix timestamp (seconds) overriding the on-chain fill deadline
    * (default 2 min). Same-chain only — the field lives on this type precisely
@@ -1270,52 +1221,25 @@ interface SameChainTransaction extends BaseTransaction {
 }
 
 interface CrossChainEvmTransaction extends BaseTransaction {
-  sourceChains?: readonly Chain[]
+  sourceChains?: Chain[]
   targetChain: Chain
   tokenRequests?: TokenRequests
-  recipient?: EvmAccountConfig | Address
+  recipient?: RhinestoneAccountConfig | Address
 }
 
-// Legacy non-EVM destinations keep their namespace-specific string values.
-// Managed recipient execution remains EVM-only.
+// Non-EVM destinations (Solana, Tron). `recipient` and `tokenRequests`
+// take chain-namespace-specific addresses; `RhinestoneAccountConfig` (an
+// EVM smart account) is intentionally not accepted as a non-EVM recipient.
 interface CrossChainNonEvmTransaction extends BaseTransaction {
-  sourceChains?: readonly Chain[]
-  targetChain: Exclude<NonEvmChain, SolanaChain>
+  sourceChains?: Chain[]
+  targetChain: NonEvmChain
   tokenRequests?: NonEvmTokenRequests
   recipient?: NonEvmAddress
-}
-
-/** Transfer-only Solana request. Managed Solana execution is not enabled yet. */
-interface SameChainSolanaTransaction
-  extends Omit<BaseTransaction, 'calls' | 'sponsored'> {
-  chain: SolanaChain
-  targetChain?: never
-  sourceChains?: never
-  tokenRequests: [
-    | { address: SolanaAddress; amount: bigint }
-    | { address: SolanaAddress; amount?: undefined },
-  ]
-  recipient?: SolanaAddress
-  sponsored?: false
-  calls?: never
-  instructions?: never
-  customDeadline?: never
-}
-
-interface CrossChainSolanaTransaction extends Omit<BaseTransaction, 'calls'> {
-  sourceChains?: readonly Chain[]
-  targetChain: SolanaChain
-  tokenRequests: NonEvmTokenRequests &
-    readonly { address: SolanaAddress; amount?: bigint }[]
-  recipient?: SolanaAddress
-  calls?: never
-  instructions?: never
 }
 
 type CrossChainTransaction =
   | CrossChainEvmTransaction
   | CrossChainNonEvmTransaction
-  | CrossChainSolanaTransaction
 
 interface UserOperationTransaction {
   calls: CallInput[]
@@ -1324,32 +1248,10 @@ interface UserOperationTransaction {
   chain: Chain
 }
 
-type Transaction =
-  | SameChainTransaction
-  | SameChainSolanaTransaction
-  | CrossChainTransaction
-
-type RequiredAccountBranch<
-  C extends RhinestoneAccountConfig,
-  Vm extends 'evm' | 'solana',
-> = [C] extends [Readonly<Record<Vm, infer Branch>>] ? Branch : never
-
-/** Transactions available from the account's definitely managed source VM. */
-type AccountTransaction<C extends RhinestoneAccountConfig> = [
-  RequiredAccountBranch<C, 'evm'>,
-] extends [never]
-  ? [RequiredAccountBranch<C, 'solana'>] extends [never]
-    ? never
-    : [RequiredAccountBranch<C, 'solana'>] extends [SolanaManagedAccountConfig]
-      ? SameChainSolanaTransaction
-      : never
-  : [RequiredAccountBranch<C, 'evm'>] extends [EvmAccountConfig]
-    ? SameChainTransaction | CrossChainTransaction
-    : never
+type Transaction = SameChainTransaction | CrossChainTransaction
 
 export type {
   AccountProviderConfig,
-  AccountTransaction,
   AccountType,
   Action,
   ApiKeyAuth,
@@ -1367,9 +1269,6 @@ export type {
   CrossChainSettlementLayer,
   ENSValidatorConfig,
   EoaAccount,
-  EvmAccountConfig,
-  EvmAccountEntry,
-  EvmReceiverAccountConfig,
   FallbackAction,
   FromLeg,
   GuardiansSignerSet,
@@ -1418,10 +1317,6 @@ export type {
   SessionSigning,
   SessionSigningContent,
   SignerSet,
-  SolanaAccountConfig,
-  SolanaManagedAccountConfig,
-  SolanaOwner,
-  SolanaReceiverAccountConfig,
   SingleSessionSignerSet,
   SourceAssetInput,
   SourceCallInput,
@@ -1435,8 +1330,6 @@ export type {
   TokenRequests,
   TokenSymbol,
   ToLeg,
-  CrossChainSolanaTransaction,
-  SameChainSolanaTransaction,
   Transaction,
   UniversalActionPolicyParamCondition,
   UserOperationTransaction,

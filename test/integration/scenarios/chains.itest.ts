@@ -16,9 +16,7 @@ describe.sequential('SDK integration chain modes', () => {
     const sdk = createIntegrationSDK()
     const owner = createOwner()
     const account = await sdk.createAccount({
-      evm: {
-        owners: { type: 'ecdsa', accounts: [owner] },
-      },
+      owners: { type: 'ecdsa', accounts: [owner] },
     })
 
     await expectNotDeployed(account, sourceChain)
@@ -46,9 +44,7 @@ describe.sequential('SDK integration chain modes', () => {
     const sdk = createIntegrationSDK()
     const owner = createOwner()
     const account = await sdk.createAccount({
-      evm: {
-        owners: { type: 'ecdsa', accounts: [owner] },
-      },
+      owners: { type: 'ecdsa', accounts: [owner] },
     })
 
     await expectNotDeployed(account, targetChain)

@@ -2,7 +2,6 @@ import { RhinestoneSDK } from './api/sdk'
 import {
   hyperCorePerp,
   hyperCoreSpot,
-  solanaAddress,
   solanaMainnet,
   stellarMainnet,
   tronMainnet,
@@ -20,7 +19,6 @@ export {
   // Non-viem destination chain descriptors (Solana, Tron, Stellar, HyperCore)
   hyperCorePerp,
   hyperCoreSpot,
-  solanaAddress,
   solanaMainnet,
   stellarMainnet,
   tronMainnet,
@@ -32,22 +30,11 @@ export {
   SMART_SESSION_EMISSARY_ADDRESS,
 }
 
-export type {
-  ManagedEvmAccount,
-  ManagedTransactionAccount,
-  RhinestoneAccount,
-  RhinestoneAccountBase,
-  SignedIntentData,
-} from './api/account'
+export type { RhinestoneAccount, SignedIntentData } from './api/account'
 export type {
   DestinationChain,
-  HyperCoreChain,
   NonEvmAddress,
   NonEvmChain,
-  SolanaAddress,
-  SolanaChain,
-  StellarChain,
-  TronChain,
 } from './chains/non-evm'
 export type {
   AppFeeBalances,
@@ -90,7 +77,6 @@ export type {
 } from './clients/orchestrator/public'
 export type {
   AccountProviderConfig,
-  AccountTransaction,
   AccountType,
   BundlerConfig,
   Call,
@@ -100,9 +86,6 @@ export type {
   CrossChainPermissionInput,
   CrossChainPermit,
   CrossChainSettlementLayer,
-  EvmAccountConfig,
-  EvmAccountEntry,
-  EvmReceiverAccountConfig,
   FromLeg,
   GuardiansSignerSet,
   HyperCoreOptions,
@@ -129,10 +112,6 @@ export type {
   SessionSigning,
   SessionSigningContent,
   SignerSet,
-  SolanaAccountConfig,
-  SolanaManagedAccountConfig,
-  SolanaOwner,
-  SolanaReceiverAccountConfig,
   SourceCallInput,
   SourceCallProvidedFunds,
   SwapScope,
