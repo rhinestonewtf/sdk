@@ -29,6 +29,10 @@ const currentConsumerFixturePath = join(
   repositoryRoot,
   'test/contract/fixtures/current-consumer.ts',
 )
+const legacyConsumerFixturePath = join(
+  repositoryRoot,
+  'test/contract/fixtures/legacy-consumer.ts',
+)
 const assignabilityFixturePath = join(
   repositoryRoot,
   'test/contract/fixtures/assignability.ts',
@@ -280,7 +284,9 @@ async function main(): Promise<void> {
       includeOptionalPeers: true,
     })
     compileConsumer(baseConsumers.full)
+    compileConsumer(baseConsumers.full, legacyConsumerFixturePath)
     compileConsumer(currentConsumers.full)
+    compileConsumer(currentConsumers.full, legacyConsumerFixturePath)
     compileConsumer(currentConsumers.full, currentConsumerFixturePath)
 
     const compatibilityConsumer = join(

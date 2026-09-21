@@ -4,7 +4,7 @@ The repo generates two artifacts. Neither is hand-edited — regenerate instead.
 
 | Artifact            | Source                          | Output                          | Command              |
 | ------------------- | ------------------------------- | ------------------------------- | -------------------- |
-| SDK Reference (MDX) | JSDoc on public symbols         | `docs` repo `sdk-reference/`    | `bun run generate:reference` |
+| SDK Reference (MDX) | JSDoc on public symbols         | `docs` repo `wallets/custom-signer/sdk-reference/` | `bun run generate:reference` |
 | Orchestrator wire types | Orchestrator OpenAPI spec   | `src/clients/orchestrator/wire.gen.ts`  | `bun run generate:wire` |
 
 ## SDK Reference
@@ -21,8 +21,10 @@ to *write* those comments, use the `jsdoc` skill; this section is the pipeline.
 2. `generate:reference:render` — `scripts/reference/generate.ts` walks the curated
    `scripts/reference/manifest.ts`, looks up each symbol in that model, and
    renders one MDX page per symbol against a fixed template (Import / Usage /
-   Parameters / Returns / See also). It then patches the `SDK Reference` tab into
-   `docs/docs.json`.
+   Parameters / Returns / See also). It then patches the `SDK reference` group
+   under the Wallets → Custom signer menu in `docs/docs.json`. When the docs
+   checkout carries unified-docs inventories, it synchronizes their generated
+   page entries too.
 
 ```bash
 bun run generate:reference            # extract + render (run from the sdk repo root)
@@ -32,10 +34,23 @@ bun run generate:reference:render     # render MDX from existing JSON
 
 Output defaults to the sibling `docs` repo and can be overridden:
 
-| Var                 | Purpose                          | Default                  |
-| ------------------- | -------------------------------- | ------------------------ |
-| `SDK_REF_OUT`       | Output dir                       | `../docs/sdk-reference` |
-| `SDK_REF_DOCS_JSON` | `docs.json` to patch             | `../docs/docs.json`   |
+| Var | Purpose | Default |
+| --- | --- | --- |
+| `SDK_REF_OUT` | Output dir | `../docs/wallets/custom-signer/sdk-reference` |
+| `SDK_REF_NAV_BASE` | Doc-root-relative generated path | `wallets/custom-signer/sdk-reference` |
+| `SDK_REF_DOCS_JSON` | `docs.json` to patch | `../docs/docs.json` |
+| `SDK_REF_TAB` | Host navigation tab | `Wallets` |
+| `SDK_REF_MENU_ITEM` | Host menu item; set empty for legacy tab-level pages | `Custom signer` |
+| `SDK_REF_SECTION_NAME` | Generated navigation group | `SDK reference` |
+| `SDK_REF_OWNERSHIP_JSON` | Unified destination inventory | `../docs/unified-docs/ownership.json` |
+| `SDK_REF_PATHS_FIXTURE` | Generated relative-path fixture | `../docs/scripts/fixtures/sdk-reference-paths.json` |
+| `SDK_REF_DEFAULT_OWNER` | Owner for a generated page with no existing subtree metadata | `RHI-7109` |
+
+The two inventory files are optional only as a pair, which keeps generation
+compatible with docs branches predating the unified hierarchy. If present, the
+generator preserves non-generated destinations and existing page ownership.
+New pages inherit ownership from an unambiguous generated subtree, then fall
+back to `SDK_REF_DEFAULT_OWNER`. Existing per-page metadata always wins.
 
 ### Scope and content
 
@@ -58,9 +73,15 @@ symbols there.
 ### Committing
 
 The generated MDX is committed to the `docs` repo — Mintlify builds from repo
-content, so the pages must be present in git. Re-run `bun run generate:reference` with
-the `docs` repo checked out as a sibling and commit the result whenever the
-public API or its JSDoc changes.
+content, so the pages must be present in git. Re-run `bun run generate:reference`
+with the intended docs branch checked out as a sibling and commit the result
+whenever the public API or its JSDoc changes.
+
+Production releases currently target the docs integration branch configured by
+the `SDK_REFERENCE_DOCS_BASE_BRANCH` GitHub repository variable, defaulting to
+`integration/unified-wallet-docs`. After that branch merges at launch, set the
+variable to `main`. The rolling output branch defaults to
+`update/sdk-reference-unified`, separate from the pre-migration reference PR.
 
 ## Orchestrator wire types
 

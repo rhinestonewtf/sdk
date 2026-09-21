@@ -818,6 +818,27 @@ describe('account boundary adapters', () => {
     expect(transaction.options?.sponsorSettings?.protocolFees).toBe(false)
   })
 
+  test.each([
+    { swaps: true, swapValue: true },
+    { swaps: true, swapValue: false },
+    { swaps: false, swapValue: true },
+  ])('ignores withdrawn runtime swapValue input: %j', (legacy) => {
+    const sponsored = { gas: true, bridging: false, ...legacy }
+    const transaction = adaptTransaction(invocationContext(), {
+      chain: mainnet,
+      calls: [],
+      sponsored,
+    })
+
+    expect(transaction.options?.sponsorSettings).toEqual({
+      gas: true,
+      bridgeFees: false,
+      swapFees: legacy.swaps,
+      protocolFees: false,
+    })
+    expect(transaction.options?.sponsorSettings).not.toHaveProperty('swapValue')
+  })
+
   test('boolean sponsored: true enables protocolFees too (RHI-4904)', () => {
     const transaction = adaptTransaction(invocationContext(), {
       chain: mainnet,
