@@ -579,6 +579,14 @@ type SigningRequestAccount =
   | { vm: 'evm'; address: Address }
   | { vm: 'svm'; wallet: string; swigAccount: string }
 
+/**
+ * A Swig role's authority: an ECDSA key named by the address it recovers to, or
+ * a passkey named by its SEC1-compressed P-256 public key (33 bytes, hex).
+ */
+type SwigAuthority =
+  | { kind: 'secp256k1'; address: Address }
+  | { kind: 'secp256r1'; publicKey: Hex }
+
 /** Who must produce the signature. */
 type SigningAuthority =
   | { kind: 'secp256k1'; address: Address }
@@ -586,7 +594,7 @@ type SigningAuthority =
   | {
       kind: 'swigRole'
       roleId: number
-      authority: { kind: 'secp256k1'; address: Address }
+      authority: SwigAuthority
     }
 
 /** What the signature permits, disclosed so it can be inspected before signing. */
@@ -746,7 +754,7 @@ type IntentAccountView =
   | {
       wallet: string
       swigAccount: string
-      authority: { kind: 'secp256k1'; address: Address }
+      authority: SwigAuthority
     }
   | { address: string }
 
@@ -1108,6 +1116,7 @@ export type {
   SigningRequestAccount,
   SigningRequestPurpose,
   SigningAuthority,
+  SwigAuthority,
   SigningScope,
   SigningValidity,
   SigningPayload,

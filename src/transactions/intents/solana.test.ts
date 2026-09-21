@@ -1,3 +1,5 @@
+import { base64urlnopad } from '@scure/base'
+import { concat, type Hex, hexToBytes, sha256, stringToBytes } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { describe, expect, test, vi } from 'vitest'
 import {
@@ -6,6 +8,7 @@ import {
   emptyCost,
   personalSignRequest,
 } from '../../../test/utils/caucasus'
+import { signingPasskey } from '../../../test/utils/passkeys'
 import type { SolanaAddress } from '../../chains/non-evm'
 import {
   solanaAddress,
@@ -18,6 +21,7 @@ import type {
   IntentAccountView,
   QuotePlan,
   SigningRequest,
+  WebAuthnAssertion,
 } from '../../clients/orchestrator/public'
 import type {
   OrchestratorIntentRequest,
@@ -30,6 +34,7 @@ import {
 import {
   assertSolanaNotExpired,
   buildSolanaIntentRequest,
+  compressP256PublicKey,
   prepareSolanaIntent,
   reconstructSolanaIntent,
   type SolanaAction,
@@ -39,6 +44,7 @@ import {
   solanaChainId,
   submitSolanaIntent,
   validateSolanaSignature,
+  validateSolanaWebAuthnAssertion,
 } from './solana'
 
 const owner = privateKeyToAccount(`0x${'12'.repeat(32)}`)
@@ -82,7 +88,7 @@ function transfer(overrides: TransferOverrides = {}): SolanaTransferInput {
     },
     accountAddress,
     accountType: 'ERC7579',
-    authority: owner.address,
+    authority: { kind: 'secp256k1', address: owner.address },
     walletAddress: wallet,
     swigAddress: swig,
     namespace: 'dev-v1',
@@ -220,12 +226,15 @@ describe('managed Solana intent workflow', () => {
     // The 64 characters are signed as text: opaque to the SDK, despite looking
     // like hex.
     expect(signMessage).toHaveBeenCalledWith({ message })
-    expect(signed.signature).toMatch(/^0x[0-9a-f]{130}$/u)
+    expect(signed.proof).toEqual({
+      kind: 'personalSign',
+      signature: expect.stringMatching(/^0x[0-9a-f]{130}$/u),
+    })
     const submitted = await submitSolanaIntent(fixture.workflow, signed)
     expect(fixture.submitIntent).toHaveBeenCalledWith(
       {
         intentId: 'solana-intent',
-        proofs: [{ kind: 'personalSign', signature: signed.signature }],
+        proofs: [signed.proof],
       },
       {
         intentInput: projectCompatibleIntentInput(prepared.normalized),
@@ -1227,5 +1236,250 @@ describe('same-chain Solana instruction execution', () => {
     await expect(
       prepareSolanaIntent(workflow as never, execution()),
     ).rejects.toBe(refusal)
+  })
+})
+
+describe('passkey-owned managed Solana intents', () => {
+  const { account: passkey, compressedPublicKey } = signingPasskey()
+  const challenge = `0x${'a3'.repeat(32)}` as const
+  const now = () => 1_900_000_000_000
+
+  function passkeyTransfer(): SolanaTransferInput {
+    return transfer({
+      authority: { kind: 'secp256r1', publicKey: compressedPublicKey },
+    })
+  }
+
+  function passkeyRequest(
+    publicKey: Hex = compressedPublicKey,
+    overrides: Partial<SigningRequest> = {},
+  ): SigningRequest {
+    return spendRequest({
+      authority: {
+        kind: 'swigRole',
+        roleId: 1,
+        authority: { kind: 'secp256r1', publicKey },
+      },
+      payload: { kind: 'webauthn', challenge },
+      ...overrides,
+    })
+  }
+
+  function passkeyQuote(request = passkeyRequest()): OrchestratorQuote {
+    return quote({ signingRequests: [request] })
+  }
+
+  async function signedProof() {
+    const fixture = context(passkeyQuote())
+    const prepared = await prepareSolanaIntent(
+      fixture.workflow,
+      passkeyTransfer(),
+    )
+    const { proof } = await signSolanaIntent({ prepared, owner: passkey, now })
+    return (proof as Extract<typeof proof, { kind: 'webauthn' }>).assertion
+  }
+
+  test('sends the compressed passkey key as the Swig authorization', () => {
+    const { request } = buildSolanaIntentRequest(passkeyTransfer())
+    expect(request.account.svm).toEqual({
+      type: 'swig',
+      address: wallet,
+      authorization: { kind: 'secp256r1', publicKey: compressedPublicKey },
+    })
+  })
+
+  test('compresses a WebAuthn public key by the parity of y', () => {
+    // Cross-checked against noble's own compression of the same key.
+    expect(compressP256PublicKey(passkey.publicKey)).toBe(compressedPublicKey)
+    expect(compressP256PublicKey(`0x04${passkey.publicKey.slice(2)}`)).toBe(
+      compressedPublicKey,
+    )
+    expect(compressP256PublicKey(compressedPublicKey)).toBe(compressedPublicKey)
+    const x = 'aa'.repeat(32)
+    expect(compressP256PublicKey(`0x${x}${'00'.repeat(31)}02`)).toBe(`0x02${x}`)
+    expect(compressP256PublicKey(`0x04${x}${'00'.repeat(31)}01`)).toBe(
+      `0x03${x}`,
+    )
+  })
+
+  test.each([
+    ['a truncated key', `0x${'11'.repeat(63)}`],
+    ['a 65-byte key without the 04 prefix', `0x05${'11'.repeat(64)}`],
+    ['a 33-byte key without a compressed prefix', `0x04${'11'.repeat(32)}`],
+  ] as const)('refuses %s', (_name, publicKey) => {
+    expect(() => compressP256PublicKey(publicKey)).toThrow(
+      InvalidSolanaTransactionArtifactError,
+    )
+  })
+
+  test('accepts a WebAuthn quote naming the configured key in any case', async () => {
+    const upper = `0x${compressedPublicKey.slice(2).toUpperCase()}` as Hex
+    const prepared = await prepareSolanaIntent(
+      context(passkeyQuote(passkeyRequest(upper))).workflow,
+      passkeyTransfer(),
+    )
+    expect(prepared.quote.signingRequests[0]?.payload).toEqual({
+      kind: 'webauthn',
+      challenge,
+    })
+  })
+
+  test.each([
+    [
+      'another passkey',
+      passkeyQuote(
+        passkeyRequest(
+          signingPasskey({ privateKey: `0x${'22'.repeat(32)}` })
+            .compressedPublicKey,
+        ),
+      ),
+      /name the configured Solana authority/,
+    ],
+    [
+      'a secp256k1 role',
+      passkeyQuote(
+        passkeyRequest(compressedPublicKey, {
+          authority: {
+            kind: 'swigRole',
+            roleId: 1,
+            authority: { kind: 'secp256k1', address: owner.address },
+          },
+        }),
+      ),
+      /name the configured Solana authority/,
+    ],
+    ['a personal-sign payload', quote(), /WebAuthn spend authorization/],
+    [
+      'a short challenge',
+      passkeyQuote(
+        passkeyRequest(compressedPublicKey, {
+          payload: { kind: 'webauthn', challenge: '0xaa' },
+        }),
+      ),
+      /32 bytes/,
+    ],
+  ])('refuses %s for a passkey owner', async (_name, candidate, matcher) => {
+    await expect(
+      prepareSolanaIntent(context(candidate).workflow, passkeyTransfer()),
+    ).rejects.toThrow(matcher)
+  })
+
+  test('refuses a WebAuthn quote for an ECDSA owner', async () => {
+    await expect(
+      prepareSolanaIntent(context(passkeyQuote()).workflow, transfer()),
+    ).rejects.toThrow(/UTF-8 personal-sign spend authorization/)
+  })
+
+  test('signs the challenge with the passkey and submits the pinned encodings', async () => {
+    const fixture = context(passkeyQuote())
+    const prepared = await prepareSolanaIntent(
+      fixture.workflow,
+      passkeyTransfer(),
+    )
+    const sign = vi.fn(passkey.sign)
+    const signed = await signSolanaIntent({
+      prepared,
+      owner: { ...passkey, sign },
+      now,
+    })
+
+    expect(sign).toHaveBeenCalledWith({ hash: challenge })
+    expect(signed.proof).toEqual({
+      kind: 'webauthn',
+      assertion: {
+        credentialId: 'AQIDBA',
+        authenticatorData: concat([
+          sha256(stringToBytes('app.example')),
+          '0x0500000001',
+        ]),
+        // The raw text the authenticator returned, not base64 and not
+        // re-serialized.
+        clientDataJSON: JSON.stringify({
+          type: 'webauthn.get',
+          challenge: base64urlnopad.encode(hexToBytes(challenge)),
+          origin: 'https://app.example',
+          crossOrigin: false,
+        }),
+        // r‖s, not the DER the authenticator produced.
+        signature: expect.stringMatching(/^0x[0-9a-f]{128}$/u),
+      },
+    })
+    await submitSolanaIntent(fixture.workflow, signed)
+    expect(fixture.submitIntent).toHaveBeenCalledWith(
+      { intentId: 'solana-intent', proofs: [signed.proof] },
+      expect.anything(),
+    )
+  })
+
+  test('refuses an assertion over a different challenge before submitting', async () => {
+    const elsewhere = signingPasskey({
+      signs: (requested) => requested.map((byte) => byte ^ 1),
+    })
+    const fixture = context(passkeyQuote())
+    const prepared = await prepareSolanaIntent(
+      fixture.workflow,
+      passkeyTransfer(),
+    )
+    await expect(
+      signSolanaIntent({ prepared, owner: elsewhere.account, now }),
+    ).rejects.toThrow(/does not sign the requested challenge/)
+    expect(fixture.submitIntent).not.toHaveBeenCalled()
+  })
+
+  test('refuses an ECDSA signer and a personal-sign proof for a passkey owner', async () => {
+    const fixture = context(passkeyQuote())
+    const prepared = await prepareSolanaIntent(
+      fixture.workflow,
+      passkeyTransfer(),
+    )
+    await expect(signSolanaIntent({ prepared, owner, now })).rejects.toThrow(
+      /authority is a passkey/,
+    )
+    await expect(
+      submitSolanaIntent(fixture.workflow, {
+        prepared,
+        proof: {
+          kind: 'personalSign',
+          signature: await owner.signMessage({ message }),
+        },
+      }),
+    ).rejects.toThrow(/does not match the configured Solana authority/)
+    expect(fixture.submitIntent).not.toHaveBeenCalled()
+  })
+
+  test('checks the assertion shape and leaves the signature to the orchestrator', async () => {
+    const assertion = await signedProof()
+    const check = (changes: Partial<WebAuthnAssertion>) => () =>
+      validateSolanaWebAuthnAssertion(
+        { challenge },
+        { ...assertion, ...changes },
+      )
+
+    expect(check({})).not.toThrow()
+    expect(check({ clientDataJSON: '{"type":' })).toThrow(
+      InvalidSolanaTransactionArtifactError,
+    )
+    expect(check({ clientDataJSON: '{"type":' })).toThrow(/must be JSON/)
+    expect(
+      check({
+        clientDataJSON: assertion.clientDataJSON.replace(
+          'webauthn.get',
+          'webauthn.create',
+        ),
+      }),
+    ).toThrow(/webauthn\.get/)
+    expect(
+      check({
+        clientDataJSON: JSON.stringify({
+          ...JSON.parse(assertion.clientDataJSON),
+          challenge: base64urlnopad.encode(hexToBytes(`0x${'00'.repeat(32)}`)),
+        }),
+      }),
+    ).toThrow(/does not sign the requested challenge/)
+    // DER is what the authenticator returns; the wire wants r‖s.
+    expect(check({ signature: `0x30${'44'.repeat(70)}` })).toThrow(/64-byte/)
+    // A well-formed but wrong signature passes: the orchestrator verifies it
+    // before anything is recorded.
+    expect(check({ signature: `0x${'11'.repeat(64)}` })).not.toThrow()
   })
 })

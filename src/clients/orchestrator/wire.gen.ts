@@ -558,8 +558,8 @@ export interface operations {
                        */
                       name: 'Safe' | 'Kernel' | 'Nexus'
                       /**
-                       * @description Implementation version, when planning read one
-                       * @example 1.0.0
+                       * @description Raw trailing version token returned by ERC-7579 `accountId()`, when valid; preserved without normalization
+                       * @example v1.0.0
                        */
                       version?: string
                     }
@@ -584,15 +584,25 @@ export interface operations {
                      */
                     swigAccount: string
                     /** @description Authority configured on the Swig */
-                    authority: {
-                      /** @enum {string} */
-                      kind: 'secp256k1'
-                      /**
-                       * @description Authority the submitted signature must recover to
-                       * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                       */
-                      address: string
-                    }
+                    authority:
+                      | {
+                          /** @enum {string} */
+                          kind: 'secp256k1'
+                          /**
+                           * @description Authority the submitted signature must recover to
+                           * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                           */
+                          address: string
+                        }
+                      | {
+                          /** @enum {string} */
+                          kind: 'secp256r1'
+                          /**
+                           * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
+                           * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
+                           */
+                          publicKey: string
+                        }
                   }
                 | {
                     /**
@@ -1373,8 +1383,8 @@ export interface operations {
                          */
                         name: 'Safe' | 'Kernel' | 'Nexus'
                         /**
-                         * @description Implementation version, when planning read one
-                         * @example 1.0.0
+                         * @description Raw trailing version token returned by ERC-7579 `accountId()`, when valid; preserved without normalization
+                         * @example v1.0.0
                          */
                         version?: string
                       }
@@ -1399,15 +1409,25 @@ export interface operations {
                        */
                       swigAccount: string
                       /** @description Authority configured on the Swig */
-                      authority: {
-                        /** @enum {string} */
-                        kind: 'secp256k1'
-                        /**
-                         * @description Authority the submitted signature must recover to
-                         * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                         */
-                        address: string
-                      }
+                      authority:
+                        | {
+                            /** @enum {string} */
+                            kind: 'secp256k1'
+                            /**
+                             * @description Authority the submitted signature must recover to
+                             * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                             */
+                            address: string
+                          }
+                        | {
+                            /** @enum {string} */
+                            kind: 'secp256r1'
+                            /**
+                             * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
+                             * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
+                             */
+                            publicKey: string
+                          }
                     }
                   | {
                       /**
@@ -1760,8 +1780,8 @@ export interface operations {
                          */
                         name: 'Safe' | 'Kernel' | 'Nexus'
                         /**
-                         * @description Implementation version, when planning read one
-                         * @example 1.0.0
+                         * @description Raw trailing version token returned by ERC-7579 `accountId()`, when valid; preserved without normalization
+                         * @example v1.0.0
                          */
                         version?: string
                       }
@@ -1786,15 +1806,25 @@ export interface operations {
                        */
                       swigAccount: string
                       /** @description Authority configured on the Swig */
-                      authority: {
-                        /** @enum {string} */
-                        kind: 'secp256k1'
-                        /**
-                         * @description Authority the submitted signature must recover to
-                         * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                         */
-                        address: string
-                      }
+                      authority:
+                        | {
+                            /** @enum {string} */
+                            kind: 'secp256k1'
+                            /**
+                             * @description Authority the submitted signature must recover to
+                             * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                             */
+                            address: string
+                          }
+                        | {
+                            /** @enum {string} */
+                            kind: 'secp256r1'
+                            /**
+                             * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
+                             * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
+                             */
+                            publicKey: string
+                          }
                     }
                   | {
                       /**
@@ -2011,10 +2041,18 @@ export interface operations {
                 /** @enum {string} */
                 kind: 'webauthn'
                 assertion: {
+                  /** @description The credential the assertion was made with, as `PublicKeyCredential.id` (base64url) reports it */
                   credentialId: string
+                  /** @description The authenticator data the authenticator returned, as 0x-prefixed hex. At least 37 bytes: RP id hash, flags and sign counter. */
                   authenticatorData: string
+                  /**
+                   * @description The client data exactly as the authenticator returned it, decoded as UTF-8 JSON text — not base64, not re-serialized. The signature covers its hash byte for byte.
+                   * @example {"type":"webauthn.get","challenge":"o_LB1OW2p5gPHi08S1ppeIeWpbTD0uHwobLD1OX2Bxg","origin":"https://app.example.com"}
+                   */
                   clientDataJSON: string
+                  /** @description The P-256 signature as 64-byte r‖s, 0x-prefixed hex — not the DER encoding the authenticator returns. */
                   signature: string
+                  /** @description The user handle the authenticator returned with the assertion, when it returned one */
                   userHandle?: string
                 }
               }
@@ -2485,13 +2523,25 @@ export interface operations {
                   type: 'swig'
                   /** @description The asset-holding Swig wallet, not the Swig state account. Must be the wallet the orchestrator derives for the EVM account. */
                   address: string
+                  /** @description The Swig state account holding the roles. Optional for an account paired with an EVM entry, whose Swig the orchestrator derives. */
+                  swigAccount?: string
                   /** @description The authority this caller believes the Swig carries. Checked structurally only: the onchain root role stays the source of truth for who may spend. */
-                  authorization: {
-                    /** @enum {string} */
-                    kind: 'secp256k1'
-                    /** @description EVM address the Swig root role recovers to */
-                    address: string
-                  }
+                  authorization:
+                    | {
+                        /** @enum {string} */
+                        kind: 'secp256k1'
+                        /** @description EVM address the Swig root role recovers to */
+                        address: string
+                      }
+                    | {
+                        /** @enum {string} */
+                        kind: 'secp256r1'
+                        /**
+                         * @description Passkey public key on the Swig root role: SEC1-compressed P-256, 33 bytes as 0x-prefixed hex
+                         * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
+                         */
+                        publicKey: string
+                      }
                 }
           }
           /**
@@ -3792,8 +3842,8 @@ export interface operations {
                            */
                           name: 'Safe' | 'Kernel' | 'Nexus'
                           /**
-                           * @description Implementation version, when planning read one
-                           * @example 1.0.0
+                           * @description Raw trailing version token returned by ERC-7579 `accountId()`, when valid; preserved without normalization
+                           * @example v1.0.0
                            */
                           version?: string
                         }
@@ -3818,15 +3868,25 @@ export interface operations {
                          */
                         swigAccount: string
                         /** @description Authority configured on the Swig */
-                        authority: {
-                          /** @enum {string} */
-                          kind: 'secp256k1'
-                          /**
-                           * @description Authority the submitted signature must recover to
-                           * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                           */
-                          address: string
-                        }
+                        authority:
+                          | {
+                              /** @enum {string} */
+                              kind: 'secp256k1'
+                              /**
+                               * @description Authority the submitted signature must recover to
+                               * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                               */
+                              address: string
+                            }
+                          | {
+                              /** @enum {string} */
+                              kind: 'secp256r1'
+                              /**
+                               * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
+                               * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
+                               */
+                              publicKey: string
+                            }
                       }
                     | {
                         /**
@@ -3957,8 +4017,8 @@ export interface operations {
                            */
                           name: 'Safe' | 'Kernel' | 'Nexus'
                           /**
-                           * @description Implementation version, when planning read one
-                           * @example 1.0.0
+                           * @description Raw trailing version token returned by ERC-7579 `accountId()`, when valid; preserved without normalization
+                           * @example v1.0.0
                            */
                           version?: string
                         }
@@ -3983,15 +4043,25 @@ export interface operations {
                          */
                         swigAccount: string
                         /** @description Authority configured on the Swig */
-                        authority: {
-                          /** @enum {string} */
-                          kind: 'secp256k1'
-                          /**
-                           * @description Authority the submitted signature must recover to
-                           * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                           */
-                          address: string
-                        }
+                        authority:
+                          | {
+                              /** @enum {string} */
+                              kind: 'secp256k1'
+                              /**
+                               * @description Authority the submitted signature must recover to
+                               * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                               */
+                              address: string
+                            }
+                          | {
+                              /** @enum {string} */
+                              kind: 'secp256r1'
+                              /**
+                               * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
+                               * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
+                               */
+                              publicKey: string
+                            }
                       }
                     | {
                         /**
@@ -4122,8 +4192,8 @@ export interface operations {
                            */
                           name: 'Safe' | 'Kernel' | 'Nexus'
                           /**
-                           * @description Implementation version, when planning read one
-                           * @example 1.0.0
+                           * @description Raw trailing version token returned by ERC-7579 `accountId()`, when valid; preserved without normalization
+                           * @example v1.0.0
                            */
                           version?: string
                         }
@@ -4148,15 +4218,25 @@ export interface operations {
                          */
                         swigAccount: string
                         /** @description Authority configured on the Swig */
-                        authority: {
-                          /** @enum {string} */
-                          kind: 'secp256k1'
-                          /**
-                           * @description Authority the submitted signature must recover to
-                           * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                           */
-                          address: string
-                        }
+                        authority:
+                          | {
+                              /** @enum {string} */
+                              kind: 'secp256k1'
+                              /**
+                               * @description Authority the submitted signature must recover to
+                               * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                               */
+                              address: string
+                            }
+                          | {
+                              /** @enum {string} */
+                              kind: 'secp256r1'
+                              /**
+                               * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
+                               * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
+                               */
+                              publicKey: string
+                            }
                       }
                     | {
                         /**
@@ -4427,8 +4507,8 @@ export interface operations {
                              */
                             name: 'Safe' | 'Kernel' | 'Nexus'
                             /**
-                             * @description Implementation version, when planning read one
-                             * @example 1.0.0
+                             * @description Raw trailing version token returned by ERC-7579 `accountId()`, when valid; preserved without normalization
+                             * @example v1.0.0
                              */
                             version?: string
                           }
@@ -4453,15 +4533,25 @@ export interface operations {
                            */
                           swigAccount: string
                           /** @description Authority configured on the Swig */
-                          authority: {
-                            /** @enum {string} */
-                            kind: 'secp256k1'
-                            /**
-                             * @description Authority the submitted signature must recover to
-                             * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                             */
-                            address: string
-                          }
+                          authority:
+                            | {
+                                /** @enum {string} */
+                                kind: 'secp256k1'
+                                /**
+                                 * @description Authority the submitted signature must recover to
+                                 * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                                 */
+                                address: string
+                              }
+                            | {
+                                /** @enum {string} */
+                                kind: 'secp256r1'
+                                /**
+                                 * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
+                                 * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
+                                 */
+                                publicKey: string
+                              }
                         }
                       | {
                           /**
@@ -4529,8 +4619,8 @@ export interface operations {
                              */
                             name: 'Safe' | 'Kernel' | 'Nexus'
                             /**
-                             * @description Implementation version, when planning read one
-                             * @example 1.0.0
+                             * @description Raw trailing version token returned by ERC-7579 `accountId()`, when valid; preserved without normalization
+                             * @example v1.0.0
                              */
                             version?: string
                           }
@@ -4555,15 +4645,25 @@ export interface operations {
                            */
                           swigAccount: string
                           /** @description Authority configured on the Swig */
-                          authority: {
-                            /** @enum {string} */
-                            kind: 'secp256k1'
-                            /**
-                             * @description Authority the submitted signature must recover to
-                             * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                             */
-                            address: string
-                          }
+                          authority:
+                            | {
+                                /** @enum {string} */
+                                kind: 'secp256k1'
+                                /**
+                                 * @description Authority the submitted signature must recover to
+                                 * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                                 */
+                                address: string
+                              }
+                            | {
+                                /** @enum {string} */
+                                kind: 'secp256r1'
+                                /**
+                                 * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
+                                 * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
+                                 */
+                                publicKey: string
+                              }
                         }
                       | {
                           /**
@@ -4643,15 +4743,25 @@ export interface operations {
                        */
                       roleId: number
                       /** @description The authority configured on that role */
-                      authority: {
-                        /** @enum {string} */
-                        kind: 'secp256k1'
-                        /**
-                         * @description Address the submitted signature must recover to
-                         * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                         */
-                        address: string
-                      }
+                      authority:
+                        | {
+                            /** @enum {string} */
+                            kind: 'secp256k1'
+                            /**
+                             * @description Address the submitted signature must recover to
+                             * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                             */
+                            address: string
+                          }
+                        | {
+                            /** @enum {string} */
+                            kind: 'secp256r1'
+                            /**
+                             * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
+                             * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
+                             */
+                            publicKey: string
+                          }
                     }
                 /** @description What the signature authorizes. Always agrees with the payload; never a restatement of the route. */
                 scope:
@@ -4876,8 +4986,8 @@ export interface operations {
                       /** @enum {string} */
                       kind: 'webauthn'
                       /**
-                       * @description Challenge the authenticator signs, hex
-                       * @example 0xa3f2c1d4
+                       * @description Challenge the authenticator signs: 32 bytes as 0x-prefixed hex. Pass the decoded bytes as the WebAuthn `challenge`, not the hex text.
+                       * @example 0xa3f2c1d4e5b6a7980f1e2d3c4b5a69788796a5b4c3d2e1f0a1b2c3d4e5f60718
                        */
                       challenge: string
                     }

@@ -8,6 +8,7 @@ import {
   personalSignRequest,
   publicQuote,
 } from '../../test/utils/caucasus'
+import { signingPasskey } from '../../test/utils/passkeys'
 import { asSwigNamespace, locateSwig } from '../accounts/solana/address'
 import { formatCaip2, parseCaip2, toEvmChainReference } from '../chains/caip2'
 import {
@@ -51,6 +52,7 @@ import { projectPreparedBinding } from '../transactions/intents/compatibility'
 import {
   buildSolanaIntentRequest,
   reconstructSolanaIntent,
+  signSolanaIntent,
 } from '../transactions/intents/solana'
 import type {
   PreparedTransactionData,
@@ -220,6 +222,46 @@ describe('managed Solana account construction', () => {
     }
   })
 
+  test('accepts a passkey owner on the same Swig and refuses malformed ones', async () => {
+    const sdk = new RhinestoneSDK({
+      apiKey: 'offline',
+      endpointUrl: 'https://dev.v1.orchestrator.rhinestone.dev',
+      useDevContracts: true,
+    })
+    const evm = { owners: { type: 'ecdsa' as const, accounts: [owner] } }
+    const { account: passkey } = signingPasskey()
+    const passkeyOwned = await sdk.createAccount({
+      evm,
+      solana: { owner: { type: 'passkey', account: passkey } },
+    })
+    const ecdsaOwned = await sdk.createAccount({
+      evm,
+      solana: { owner: { type: 'ecdsa', account: owner } },
+    })
+
+    expect(passkeyOwned.config.solana).toEqual({
+      owner: { type: 'passkey', account: passkey },
+    })
+    // The Swig is derived from the EVM identity, whoever owns it.
+    expect(passkeyOwned.getAddress('solana')).toBe(
+      ecdsaOwned.getAddress('solana'),
+    )
+    for (const candidate of [
+      { type: 'passkey', account: owner },
+      { type: 'passkey', account: { ...passkey, type: 'local' } },
+      { type: 'passkey', account: { ...passkey, id: '' } },
+      {
+        type: 'passkey',
+        account: { ...passkey, publicKey: `0x${'11'.repeat(63)}` },
+      },
+      { type: 'ecdsa', account: passkey },
+    ]) {
+      await expect(
+        sdk.createAccount({ evm, solana: { owner: candidate } } as never),
+      ).rejects.toThrow(ManagedSolanaAccountNotSupportedError)
+    }
+  })
+
   test('rejects production, Solana-only, and widened unsupported owners', async () => {
     const managed = {
       owner: { type: 'ecdsa' as const, account: owner },
@@ -350,7 +392,10 @@ describe('managed Solana account facade', () => {
     const reconstruct = vi.fn(reconstructSolanaIntent)
     const signSolanaIntent = vi.fn(async ({ prepared, owner: signer }) => ({
       prepared,
-      signature: await signer.signMessage({ message }),
+      proof: {
+        kind: 'personalSign' as const,
+        signature: await signer.signMessage({ message }),
+      },
     }))
     const submitSolanaIntent = vi.fn(async ({ prepared }) => ({
       type: 'intent' as const,
@@ -506,6 +551,86 @@ describe('managed Solana account facade', () => {
       expect(recipient).not.toBe(managedWallet)
     },
   )
+
+  test('prepares, signs and submits for a passkey owner under its compressed key', async () => {
+    const { account: passkey, compressedPublicKey } = signingPasskey()
+    const request: SigningRequest = {
+      ...spendRequest(),
+      authority: {
+        kind: 'swigRole',
+        roleId: 1,
+        authority: { kind: 'secp256r1', publicKey: compressedPublicKey },
+      },
+      payload: { kind: 'webauthn', challenge: `0x${'a3'.repeat(32)}` },
+    }
+    const best = { ...quote('best'), signingRequests: [request] }
+    const compatibilityConfig: LegacyAccountConfig<unknown> = {
+      owners: { type: 'ecdsa', accounts: [owner] },
+      useDevContracts: true,
+    }
+    const workflows = {
+      getAddress: vi.fn(() => owner.address),
+      prepareSolanaIntent: vi.fn(async (input) => ({
+        traceId: 'prepare-trace',
+        input,
+        ...buildSolanaIntentRequest(input),
+        quote: best,
+        quotes: [best],
+      })),
+      reconstructSolanaIntent,
+      signSolanaIntent: vi.fn((input) =>
+        signSolanaIntent({ ...input, now: () => 1_900_000_000_000 }),
+      ),
+      submitSolanaIntent: vi.fn(async ({ prepared }) => ({
+        type: 'intent' as const,
+        traceId: 'submit-trace',
+        intentId: prepared.quote.intentId,
+        sourceChains: [792703810],
+        targetChain: 792703810,
+      })),
+    }
+    const facade = createAccountFacade(
+      compatibilityConfig,
+      {
+        evm: compatibilityConfig as EvmAccountConfig,
+        solana: { owner: { type: 'passkey', account: passkey } },
+      },
+      {
+        config: resolveSdkConfig({ apiKey: 'offline', useDevContracts: true }),
+        project: {} as never,
+        createAccount: (context) => ({
+          context,
+          workflows: workflows as never,
+        }),
+      },
+    )
+
+    const prepared = await facade.prepareTransaction(transaction())
+    const input = workflows.prepareSolanaIntent.mock.calls[0]?.[0]
+    expect(input?.authority).toEqual({
+      kind: 'secp256r1',
+      publicKey: compressedPublicKey,
+    })
+    expect(buildSolanaIntentRequest(input).request.account.svm).toMatchObject({
+      authorization: { kind: 'secp256r1', publicKey: compressedPublicKey },
+    })
+    expect(prepared.execution?.authority).toBe(compressedPublicKey)
+
+    const signed = await facade.signTransaction(prepared)
+    expect(workflows.signSolanaIntent.mock.calls[0]?.[0].owner).toBe(passkey)
+    expect(signed.proofs).toEqual([
+      {
+        kind: 'webauthn',
+        assertion: expect.objectContaining({ credentialId: 'AQIDBA' }),
+      },
+    ])
+    await expect(facade.submitTransaction(signed)).resolves.toMatchObject({
+      id: 'best',
+    })
+    expect(workflows.submitSolanaIntent.mock.calls[0]?.[0].proof).toBe(
+      signed.proofs[0],
+    )
+  })
 
   test('selects an alternate quote consistently for messages, signing, and submission', async () => {
     const { facade, workflows } = fixture()
@@ -1117,7 +1242,10 @@ describe('managed Solana cross-chain delivery facade', () => {
     }))
     const signSolanaIntent = vi.fn(async ({ prepared, owner: signer }) => ({
       prepared,
-      signature: await signer.signMessage({ message }),
+      proof: {
+        kind: 'personalSign' as const,
+        signature: await signer.signMessage({ message }),
+      },
     }))
     const submitSolanaIntent = vi.fn(async ({ prepared }) => ({
       type: 'intent' as const,

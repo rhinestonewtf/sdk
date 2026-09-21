@@ -193,7 +193,8 @@ export interface SolanaExecutionMetadata {
   caip2: string
   accountAddress: Address
   accountType: 'GENERIC' | 'ERC7579' | 'EOA'
-  authority: Address
+  /** The owner's address for an ECDSA owner; its compressed P-256 key for a passkey. */
+  authority: Address | Hex
   swigAddress: SolanaAddress
   walletAddress: SolanaAddress
   recipient: SolanaAddress
@@ -212,7 +213,8 @@ export interface SolanaCrossChainExecutionMetadata {
   caip2: string
   accountAddress: Address
   accountType: 'GENERIC' | 'ERC7579' | 'EOA'
-  authority: Address
+  /** The owner's address for an ECDSA owner; its compressed P-256 key for a passkey. */
+  authority: Address | Hex
   swigAddress: SolanaAddress
   walletAddress: SolanaAddress
   mint: SolanaAddress
@@ -234,7 +236,8 @@ export interface SolanaInstructionsExecutionMetadata {
   caip2: string
   accountAddress: Address
   accountType: 'GENERIC' | 'ERC7579' | 'EOA'
-  authority: Address
+  /** The owner's address for an ECDSA owner; its compressed P-256 key for a passkey. */
+  authority: Address | Hex
   swigAddress: SolanaAddress
   walletAddress: SolanaAddress
 }
