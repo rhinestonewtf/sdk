@@ -14,6 +14,7 @@ import type { ResolvedSessionSignerSet } from '../../modules/validators/smart-se
 import type { IntentSigningInput } from '../../signing/intent-plans/types'
 import { signingTopology } from '../../signing/plan'
 import { projectIntentAccount } from './account'
+import { projectCompatibleIntentInput } from './compatibility'
 import { normalizeIntentQuote } from './normalize'
 import { originChainId } from './origin-chain'
 import { selectIntentQuote } from './quotes'
@@ -58,7 +59,10 @@ export async function prepareIntent<CompatibilityConfig>(
     sourceCalls: mergeSourceCalls(sessions?.preClaimCalls, source.calls),
     providedFunds: source.providedFunds,
   })
-  const response = await context.quoteClient.createQuote(request)
+  const response = await context.quoteClient.createQuote(request, {
+    intentInput: projectCompatibleIntentInput(request),
+    sponsored: Boolean(request.options.sponsorSettings),
+  })
   const quote = normalizeIntentQuote(selectIntentQuote(response.routes))
   const quotes = response.routes.map((candidate) =>
     candidate.intentId === quote.intentId

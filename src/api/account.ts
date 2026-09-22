@@ -457,9 +457,8 @@ function reconstructInput(
     ),
     // The public prepared data only carries the serialized request, so the
     // reconstructed request holds decimal strings where the internal type
-    // declares bigints. Sound because submission only re-serializes it (a no-op
-    // on strings, keeping the sponsorship digest stable) and reads
-    // `options.sponsorSettings`.
+    // declares bigints. Sound because nothing after preparation reads it: the
+    // sponsorship digest was taken at quote time.
     request:
       prepared.intentInput as unknown as PreparedIntent<Compat>['request'],
     intentInput: adaptTransaction(context, prepared.transaction),

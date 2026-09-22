@@ -122,7 +122,7 @@ export interface OrchestratorSignedIntent {
   readonly dryRun?: boolean
 }
 
-export interface OrchestratorIntentSubmissionContext {
+export interface OrchestratorQuoteContext {
   readonly intentInput: SerializedIntentInput
   readonly sponsored: boolean
 }
