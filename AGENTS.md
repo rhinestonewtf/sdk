@@ -62,7 +62,7 @@ The SDK uses three release branches and one experimental branch:
 - `main` — dev releases for **v2** SDK (snapshots published under the `@dev` tag)
 - `release` — prod releases for **v2** SDK (published to `@latest`)
 - `v1` — prod releases for the legacy **v1** SDK
-- `solana` — experimental **v3 / Solana / Caucasus** development; no automatic publishing
+- `solana` — experimental **v3 / Solana / Caucasus** development (snapshots published under the shared `@dev` tag)
 
 Where to open PRs:
 
@@ -70,9 +70,9 @@ Where to open PRs:
 - **v1 fixes** → target `v1`
 - **v3 / Solana / Caucasus changes** → target `solana`
 
-Test experimental work from an explicit local checkout or a pinned snapshot version, not the moving `@dev` tag (which follows v2 `main`). Carry relevant v2 fixes to `solana` deliberately. Reintegration must explicitly undo the v3 rollback before incorporating later experimental changes: merging `solana` alone does not restore reverted commits already in `main`'s ancestry.
+Both `main` and `solana` publish snapshots to `@dev` after checks pass; the last publish wins. Pin a snapshot version or use an explicit local checkout when you need a specific SDK generation. Carry relevant v2 fixes to `solana` deliberately. Reintegration must explicitly undo the v3 rollback before incorporating later experimental changes: merging `solana` alone does not restore reverted commits already in `main`'s ancestry.
 
-After a changeset reaches `main`, a successful `@dev` publish opens one `main` → `release` promotion PR; pushes to `release` and `v1` run their production release workflows.
+After a changeset reaches `main`, a successful `@dev` publish opens one `main` → `release` promotion PR; `solana` never opens a promotion PR. Pushes to `release` and `v1` run their production release workflows.
 
 Merging the promotion PR publishes nothing. It opens a changesets `Release` PR, and merging THAT publishes `@latest`, which cannot be undone. Use the `release-promotion` skill.
 
