@@ -1,9 +1,12 @@
 import type {
+  IntentOperationGroup,
+  IntentOperationItem,
   PreparedTransactionData,
   RhinestoneAccount,
   SignedTransactionData,
   TransactionResult,
 } from '../../../src/index'
+import type { TransactionStatus } from '../../../src/transactions/intents/types'
 
 type ErrorPhase = 'prepare' | 'sign' | 'authorize' | 'submit' | 'execution'
 type ErrorClass = (new (...args: any[]) => Error) & { name: string }
@@ -15,7 +18,7 @@ type SuccessfulIntent = {
   prepared: PreparedTransactionData
   signed: SignedTransactionData
   result?: TransactionResult
-  status?: unknown
+  status?: TransactionStatus
 }
 
 // How far the pipeline runs:
@@ -250,20 +253,34 @@ function getErrorName(error: unknown): string {
   return error instanceof Error ? error.name : typeof error
 }
 
-export function getOperations(status: unknown) {
-  const operations = (status as { operations?: unknown[] })?.operations
-  return Array.isArray(operations) ? operations : []
+type Operation = IntentOperationItem & {
+  chainId: IntentOperationGroup['chainId']
+}
+
+export function getOperations(
+  status: TransactionStatus | undefined,
+): Operation[] {
+  return (
+    status?.operations.flatMap(({ chainId, items }) =>
+      items.map((item) => ({ ...item, chainId })),
+    ) ?? []
+  )
+}
+
+function normalizeChainId(chainId: IntentOperationGroup['chainId']): string {
+  return typeof chainId === 'number' ? `eip155:${chainId}` : chainId
 }
 
 export function expectCompletedOperation(
-  status: unknown,
-  chainId: number,
+  status: TransactionStatus | undefined,
+  chainId: IntentOperationGroup['chainId'],
 ): void {
   const operations = getOperations(status)
-  const found = operations.some((operation) => {
-    const op = operation as { chain?: number; status?: string }
-    return op.chain === chainId && op.status === 'COMPLETED'
-  })
+  const found = operations.some(
+    (operation) =>
+      normalizeChainId(operation.chainId) === normalizeChainId(chainId) &&
+      operation.status === 'COMPLETED',
+  )
   if (!found) {
     const observed = formatOperations(operations)
     throw new Error(
@@ -273,14 +290,14 @@ export function expectCompletedOperation(
 }
 
 export function expectNoOperationOnChain(
-  status: unknown,
-  chainId: number,
+  status: TransactionStatus | undefined,
+  chainId: IntentOperationGroup['chainId'],
 ): void {
   const operations = getOperations(status)
-  const found = operations.some((operation) => {
-    const op = operation as { chain?: number }
-    return op.chain === chainId
-  })
+  const found = operations.some(
+    (operation) =>
+      normalizeChainId(operation.chainId) === normalizeChainId(chainId),
+  )
   if (found) {
     const observed = formatOperations(operations)
     throw new Error(
@@ -289,12 +306,11 @@ export function expectNoOperationOnChain(
   }
 }
 
-export function expectNoFailedOperations(status: unknown): void {
+export function expectNoFailedOperations(
+  status: TransactionStatus | undefined,
+): void {
   const operations = getOperations(status)
-  const failed = operations.filter((operation) => {
-    const op = operation as { status?: string }
-    return op.status === 'FAILED'
-  })
+  const failed = operations.filter((operation) => operation.status === 'FAILED')
   if (failed.length > 0) {
     const observed = formatOperations(operations)
     throw new Error(
@@ -303,26 +319,10 @@ export function expectNoFailedOperations(status: unknown): void {
   }
 }
 
-function formatOperations(operations: unknown[]): string {
+function formatOperations(operations: Operation[]): string {
   if (operations.length === 0) return '  (none)'
   return operations
-    .map((operation) => {
-      const op = operation as {
-        chain?: unknown
-        status?: unknown
-        type?: unknown
-        txHash?: unknown
-      }
-      const parts = [
-        typeof op.chain === 'number' ? `chain=${op.chain}` : undefined,
-        typeof op.status === 'string' ? `status=${op.status}` : undefined,
-        typeof op.type === 'string' ? `type=${op.type}` : undefined,
-        typeof op.txHash === 'string' ? `tx=${op.txHash}` : undefined,
-      ]
-        .filter((part): part is string => Boolean(part))
-        .join(' ')
-      return `  - ${parts || '(unknown)'}`
-    })
+    .map((operation) => `  - ${summarizeOperation(operation)}`)
     .join('\n')
 }
 
@@ -480,23 +480,29 @@ function summarizeResult(
   return parts.length > 0 ? parts.join(' ') : undefined
 }
 
-function summarizeOperations(status: unknown): string[] {
-  return getOperations(status).map((operation) => {
-    const op = operation as {
-      chain?: unknown
-      status?: unknown
-      txHash?: unknown
-      type?: unknown
-    }
-    return [
-      typeof op.chain === 'number' ? `chain=${op.chain}` : undefined,
-      typeof op.status === 'string' ? `status=${op.status}` : undefined,
-      typeof op.type === 'string' ? `type=${op.type}` : undefined,
-      typeof op.txHash === 'string' ? `tx=${op.txHash}` : undefined,
-    ]
-      .filter((part): part is string => Boolean(part))
-      .join(' ')
-  })
+function summarizeOperations(status: TransactionStatus | undefined): string[] {
+  return getOperations(status).map(summarizeOperation)
+}
+
+function summarizeOperation(operation: Operation): string {
+  const parts = [
+    `chain=${operation.chainId}`,
+    `status=${operation.status}`,
+    `type=${operation.type}`,
+  ]
+  if ('transaction' in operation && operation.transaction) {
+    const transaction = operation.transaction
+    const id =
+      'txHash' in transaction
+        ? transaction.txHash
+        : 'signature' in transaction
+          ? transaction.signature
+          : 'txId' in transaction
+            ? transaction.txId
+            : transaction.id
+    parts.push(`tx=${id}`)
+  }
+  return parts.join(' ')
 }
 
 function extractUrls(value: unknown): string[] {
