@@ -211,10 +211,10 @@ and reusable fixtures. Configuration lives in `test/integration/config/`.
 
 ### GitHub Actions
 
-The Release workflow runs the smoke suite before a `main` snapshot publish and
-the full suite before a `release` production publish. Publishing is blocked on
-its result. The manual `Integration Tests` workflow remains available for
-ad-hoc runs. Both workflows serialize live runs through the
+The Release workflow runs the smoke suite before a `main` or `solana` snapshot
+publish to the shared `@dev` tag and the full suite before a `release` production
+publish. Publishing is blocked on its result. The manual `Integration Tests`
+workflow remains available for ad-hoc runs. Both workflows serialize live runs through the
 `live-integration-tests` concurrency group.
 
 For a manual run, choose `suite=smoke` or `suite=all` and `target=prod` or
