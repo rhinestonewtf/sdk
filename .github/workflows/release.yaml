@@ -14,12 +14,6 @@ on:
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
-env:
-  # Launch cutover: set this repository variable to `main` after the unified
-  # docs aggregate merges. The generated root is already the final main path.
-  SDK_REFERENCE_DOCS_BASE_BRANCH: ${{ vars.SDK_REFERENCE_DOCS_BASE_BRANCH || 'integration/unified-wallet-docs' }}
-  SDK_REFERENCE_DOCS_UPDATE_BRANCH: ${{ vars.SDK_REFERENCE_DOCS_UPDATE_BRANCH || 'update/sdk-reference-unified' }}
-
 jobs:
   release-mode:
     name: Resolve release mode
@@ -197,73 +191,3 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: gh pr edit ${{ steps.changesets.outputs.pullRequestNumber }} --add-label ship
-
-      # Regenerate the SDK reference and open/update a PR in the docs repo, but
-      # only when a real publish happened (not when the Release PR is merely
-      # opened/updated). Gated to `release` (v2 prod publishes to `@latest`);
-      # `main` only cuts `@dev` snapshots, and v1 publishes are excluded so they
-      # can't clobber the v2 reference the docs site tracks.
-      - name: Mint docs-repo token
-        if: steps.changesets.outputs.published == 'true' && github.ref == 'refs/heads/release'
-        id: docs-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        with:
-          app-id: ${{ secrets.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-          repositories: docs
-
-      - name: Checkout docs repo
-        if: steps.changesets.outputs.published == 'true' && github.ref == 'refs/heads/release'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: ${{ github.repository_owner }}/docs
-          ref: ${{ env.SDK_REFERENCE_DOCS_BASE_BRANCH }}
-          token: ${{ steps.docs-token.outputs.token }}
-          path: docs-repo
-
-      - name: Regenerate SDK reference into the docs checkout
-        if: steps.changesets.outputs.published == 'true' && github.ref == 'refs/heads/release'
-        env:
-          SDK_REF_OUT: ${{ github.workspace }}/docs-repo/wallets/custom-signer/sdk-reference
-          SDK_REF_DOCS_JSON: ${{ github.workspace }}/docs-repo/docs.json
-          SDK_REF_OWNERSHIP_JSON: ${{ github.workspace }}/docs-repo/unified-docs/ownership.json
-          SDK_REF_PATHS_FIXTURE: ${{ github.workspace }}/docs-repo/scripts/fixtures/sdk-reference-paths.json
-          SDK_REF_DEFAULT_OWNER: RHI-7109
-        run: bun run generate:reference
-
-      - name: Open or update docs PR
-        if: steps.changesets.outputs.published == 'true' && github.ref == 'refs/heads/release'
-        env:
-          DOCS_TOKEN: ${{ steps.docs-token.outputs.token }}
-          GH_TOKEN: ${{ steps.docs-token.outputs.token }}
-        run: |
-          set -euo pipefail
-          BRANCH="$SDK_REFERENCE_DOCS_UPDATE_BRANCH"
-          cd docs-repo
-          git checkout -B "$BRANCH"
-          git add \
-            wallets/custom-signer/sdk-reference \
-            docs.json \
-            unified-docs/ownership.json \
-            scripts/fixtures/sdk-reference-paths.json
-          if git diff --cached --quiet; then
-            echo "SDK reference unchanged; nothing to open."
-            exit 0
-          fi
-          git config user.name "rhinestone-automations[bot]"
-          git config user.email "rhinestone-automations[bot]@users.noreply.github.com"
-          git commit -m "chore(sdk-reference): sync from ${GITHUB_REPOSITORY}@${GITHUB_SHA}"
-          git push --force "https://x-access-token:${DOCS_TOKEN}@github.com/${GITHUB_REPOSITORY_OWNER}/docs.git" "$BRANCH"
-          BODY="Regenerated SDK reference from ${GITHUB_REPOSITORY}@${GITHUB_SHA}."
-          EXISTING_PR=$(gh pr list --repo "${GITHUB_REPOSITORY_OWNER}/docs" --base "$SDK_REFERENCE_DOCS_BASE_BRANCH" --head "$BRANCH" --state open --json number --jq '.[0].number')
-          if [ -n "$EXISTING_PR" ]; then
-            gh pr edit "$EXISTING_PR" --repo "${GITHUB_REPOSITORY_OWNER}/docs" --body "$BODY"
-          else
-            gh pr create \
-              --repo "${GITHUB_REPOSITORY_OWNER}/docs" \
-              --base "$SDK_REFERENCE_DOCS_BASE_BRANCH" \
-              --head "$BRANCH" \
-              --title "Sync SDK reference" \
-              --body "$BODY"
-          fi

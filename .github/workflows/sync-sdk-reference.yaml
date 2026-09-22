@@ -1,0 +1,168 @@
+name: Sync SDK reference
+
+on:
+  release:
+    types: [published]
+
+concurrency:
+  group: production-sdk-reference
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    name: Sync published SDK reference
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the published SDK commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+
+      - name: Qualify the automated v2 release event
+        id: release
+        run: bun run scripts/reference/sync.ts qualify-event
+
+      - name: Verify the immutable release source
+        if: steps.release.outputs.eligible == 'true'
+        env:
+          SDK_TAG: ${{ steps.release.outputs.tag }}
+          SDK_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          git fetch origin release --tags
+          bun run scripts/reference/sync.ts verify-source
+
+      - name: Confirm the publication is npm latest
+        if: steps.release.outputs.eligible == 'true'
+        id: initial-registry
+        env:
+          SDK_VERSION: ${{ steps.release.outputs.version }}
+        run: bun run scripts/reference/sync.ts check-registry
+
+      - name: Install SDK dependencies
+        if: steps.initial-registry.outputs.eligible == 'true'
+        run: bun install --frozen-lockfile
+
+      - name: Mint docs-repo token
+        if: steps.initial-registry.outputs.eligible == 'true'
+        id: docs-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: docs
+
+      - name: Check out docs main
+        if: steps.initial-registry.outputs.eligible == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: rhinestonewtf/docs
+          ref: main
+          token: ${{ steps.docs-token.outputs.token }}
+          path: docs-repo
+          persist-credentials: false
+
+      - name: Generate reference against launched docs
+        if: steps.initial-registry.outputs.eligible == 'true'
+        env:
+          SDK_REF_OUT: ${{ github.workspace }}/docs-repo/wallets/custom-signer/sdk-reference
+          SDK_REF_DOCS_JSON: ${{ github.workspace }}/docs-repo/docs.json
+        run: bun run generate:reference
+
+      - name: Stage managed docs changes
+        if: steps.initial-registry.outputs.eligible == 'true'
+        id: stage
+        env:
+          DOCS_DIRECTORY: ${{ github.workspace }}/docs-repo
+        run: bun run scripts/reference/sync.ts stage-docs
+
+      - name: Confirm the publication is still npm latest
+        if: steps.stage.outputs.changed == 'true'
+        id: final-registry
+        env:
+          SDK_VERSION: ${{ steps.release.outputs.version }}
+          REGISTRY_ATTEMPTS: '1'
+        run: bun run scripts/reference/sync.ts check-registry
+
+      - name: Commit, push, and open or update the rolling PR
+        if: steps.stage.outputs.changed == 'true' && steps.final-registry.outputs.eligible == 'true'
+        working-directory: docs-repo
+        env:
+          DOCS_TOKEN: ${{ steps.docs-token.outputs.token }}
+          GH_TOKEN: ${{ steps.docs-token.outputs.token }}
+          SDK_TAG: ${{ steps.release.outputs.tag }}
+          SDK_VERSION: ${{ steps.release.outputs.version }}
+          DESIRED_TREE: ${{ steps.stage.outputs.tree }}
+        run: |
+          set -euo pipefail
+          BRANCH='update/sdk-reference'
+          BASE='main'
+          REMOTE_REF="refs/heads/$BRANCH"
+          AUTH=$(printf 'x-access-token:%s' "$DOCS_TOKEN" | base64 -w0)
+          export GIT_CONFIG_COUNT=1
+          export GIT_CONFIG_KEY_0='http.https://github.com/.extraheader'
+          export GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $AUTH"
+
+          EXPECTED=''
+          if git fetch origin "+$REMOTE_REF:refs/remotes/origin/$BRANCH"; then
+            EXPECTED=$(git rev-parse "refs/remotes/origin/$BRANCH")
+          fi
+
+          EXISTING_PR=$(gh pr list \
+            --repo rhinestonewtf/docs \
+            --base "$BASE" \
+            --head "$BRANCH" \
+            --state open \
+            --json number,headRepositoryOwner,isCrossRepository \
+            --jq '[.[] | select(.headRepositoryOwner.login == "rhinestonewtf" and .isCrossRepository == false)][0].number // ""')
+
+          if [ -n "$EXPECTED" ] && [ "$(git rev-parse "$EXPECTED^{tree}")" = "$DESIRED_TREE" ] && [ -n "$EXISTING_PR" ]; then
+            echo 'Rolling PR already represents the desired docs tree.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          git config user.name 'rhinestone-automations[bot]'
+          git config user.email 'rhinestone-automations[bot]@users.noreply.github.com'
+          git commit -m "chore(sdk-reference): sync ${SDK_VERSION}"
+
+          if [ -n "$EXPECTED" ]; then
+            git push --force-with-lease="$REMOTE_REF:$EXPECTED" origin "HEAD:$REMOTE_REF"
+          else
+            git push --force-with-lease="$REMOTE_REF:" origin "HEAD:$REMOTE_REF"
+          fi
+
+          BODY=$(cat <<EOF
+          Regenerated the SDK reference from published version \`${SDK_VERSION}\`.
+
+          - SDK commit: \`${GITHUB_SHA}\`
+          - Source release: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${SDK_TAG}
+          - Docs sync run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          EOF
+          )
+
+          if [ -n "$EXISTING_PR" ]; then
+            gh pr edit "$EXISTING_PR" --repo rhinestonewtf/docs --body "$BODY"
+          elif ! gh pr create \
+            --repo rhinestonewtf/docs \
+            --base "$BASE" \
+            --head "$BRANCH" \
+            --title 'Sync SDK reference' \
+            --body "$BODY"; then
+            EXISTING_PR=$(gh pr list \
+              --repo rhinestonewtf/docs \
+              --base "$BASE" \
+              --head "$BRANCH" \
+              --state open \
+              --json number,headRepositoryOwner,isCrossRepository \
+              --jq '[.[] | select(.headRepositoryOwner.login == "rhinestonewtf" and .isCrossRepository == false)][0].number // ""')
+            test -n "$EXISTING_PR"
+            gh pr edit "$EXISTING_PR" --repo rhinestonewtf/docs --body "$BODY"
+          fi
