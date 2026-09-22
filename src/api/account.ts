@@ -43,7 +43,6 @@ import type {
   SameChainSolanaInstructionsTransaction,
   Session,
   SignerSet,
-  SolanaManagedAccountConfig,
   SolanaOwner,
   SolanaStandaloneAccountConfig,
   SourceAssetInput,
@@ -164,11 +163,9 @@ type HasManagedEvm<C> = [RequiredBranch<C, 'evm'>] extends [never]
   : [RequiredBranch<C, 'evm'>] extends [EvmAccountConfig]
     ? true
     : false
-type HasManagedSolana<C> = [RequiredBranch<C, 'solana'>] extends [never]
+type HasStandaloneSolana<C> = [RequiredBranch<C, 'solana'>] extends [never]
   ? false
-  : [RequiredBranch<C, 'solana'>] extends [
-        SolanaManagedAccountConfig | SolanaStandaloneAccountConfig,
-      ]
+  : [RequiredBranch<C, 'solana'>] extends [SolanaStandaloneAccountConfig]
     ? true
     : false
 
@@ -284,6 +281,57 @@ export interface ManagedTransactionAccount<
   submitTransaction(
     signedTransaction: SignedTransactionData,
     options?: SubmitTransactionOptions,
+  ): Promise<TransactionResult>
+  /** Wait for a submitted intent to reach a terminal state. */
+  waitForExecution(result: TransactionResult): Promise<TransactionStatus>
+}
+
+/**
+ * A development managed Solana account with no EVM account.
+ *
+ * It signs each Solana spend with its one owner, so it has no independent
+ * owner signing, assembly, EIP-7702 authorizations or submission options.
+ */
+export interface SolanaStandaloneAccount<
+  C extends RhinestoneAccountConfig = Readonly<{
+    solana: SolanaStandaloneAccountConfig
+  }>,
+> extends RhinestoneAccountBase<C> {
+  /**
+   * Prepare a Solana-origin transaction for signing.
+   * @param transaction Transaction to prepare
+   * @returns The prepared transaction data
+   */
+  prepareTransaction(
+    transaction: AccountTransaction<C>,
+  ): Promise<PreparedTransactionData>
+  /**
+   * Get the one spend authorisation a prepared transaction needs.
+   * @param preparedTransaction Prepared transaction data
+   * @param options Optional override; pass `{ intentId }` to inspect a specific quote from `preparedTransaction.quotes.all`
+   * @returns The quote's signing requests
+   */
+  getTransactionMessages(
+    preparedTransaction: PreparedTransactionData,
+    options?: QuoteSelection,
+  ): SigningRequest[]
+  /**
+   * Sign a prepared transaction with the account's owner.
+   * @param preparedTransaction Prepared transaction data
+   * @param options Optional override; pass `{ intentId }` to sign a specific quote from `preparedTransaction.quotes.all`
+   * @returns The signed transaction data
+   */
+  signTransaction(
+    preparedTransaction: PreparedTransactionData,
+    options?: QuoteSelection,
+  ): Promise<SignedTransactionData>
+  /**
+   * Submit a signed transaction.
+   * @param signedTransaction Signed transaction data
+   * @returns The transaction result (an intent ID)
+   */
+  submitTransaction(
+    signedTransaction: SignedTransactionData,
   ): Promise<TransactionResult>
   /** Wait for a submitted intent to reach a terminal state. */
   waitForExecution(result: TransactionResult): Promise<TransactionStatus>
@@ -487,8 +535,8 @@ export type RhinestoneAccount<
 > = RhinestoneAccountBase<C> &
   (HasManagedEvm<C> extends true
     ? ManagedEvmAccount<C>
-    : HasManagedSolana<C> extends true
-      ? ManagedTransactionAccount<C>
+    : HasStandaloneSolana<C> extends true
+      ? SolanaStandaloneAccount<C>
       : Readonly<Record<never, never>>)
 
 function cloneArtifactValue<T>(value: T): T {
@@ -899,7 +947,10 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
     async signAuthorizations(preparedTransaction, options) {
       assertSupportedTransaction(preparedTransaction.transaction, publicConfig)
       if (isSolanaOrigin(preparedTransaction.transaction)) {
-        refuseSolanaAuthorizations()
+        throw new UnsupportedAccountCapabilityError(
+          'EIP-7702 authorizations are unavailable for Solana-origin transactions.',
+          { vm: 'solana' },
+        )
       }
       const ctx = context('sign-authorizations')
       const internal = await resolvePrepared(
@@ -1173,13 +1224,6 @@ function refuseSolanaAssembly(): never {
   throw new IndependentSigningNotSupportedError({ context: { vm: 'solana' } })
 }
 
-function refuseSolanaAuthorizations(): never {
-  throw new UnsupportedAccountCapabilityError(
-    'EIP-7702 authorizations are unavailable for Solana-origin transactions.',
-    { vm: 'solana' },
-  )
-}
-
 function assertSolanaMetadata(
   actual: PreparedTransactionData['execution'],
   expected: SolanaTransferInput,
@@ -1414,7 +1458,7 @@ export function createSolanaAccountFacade<C extends RhinestoneAccountConfig>(
   source: SolanaSource,
   publicConfig: Readonly<C>,
   composition: CoreComposition<Compat>,
-): RhinestoneAccountBase<C> & ManagedTransactionAccount<C> {
+): SolanaStandaloneAccount<C> {
   const solana = createSolanaOrigin(source, publicConfig)
   const sdk = composition.config
   const workflows = composition.project.solana
@@ -1441,24 +1485,13 @@ export function createSolanaAccountFacade<C extends RhinestoneAccountConfig>(
           .signingRequests,
       ]
     },
-    signTransaction: ((
-      preparedTransaction: PreparedTransactionData,
-      options?: QuoteSelection | SignAsOwnerOptions,
-    ) =>
-      solana.sign(
-        sdk,
-        workflows,
-        preparedTransaction,
-        options,
-      )) as ManagedTransactionAccount<C>['signTransaction'],
-    async assembleTransaction() {
-      refuseSolanaAssembly()
-    },
-    async signAuthorizations() {
-      refuseSolanaAuthorizations()
-    },
-    submitTransaction: (signedTransaction, options) =>
-      solana.submit(sdk, workflows, signedTransaction, options),
+    signTransaction: (preparedTransaction, options) =>
+      solana.sign(sdk, workflows, preparedTransaction, options),
+    // Untyped callers passing options are refused rather than ignored.
+    submitTransaction: (
+      signedTransaction,
+      options?: SubmitTransactionOptions,
+    ) => solana.submit(sdk, workflows, signedTransaction, options),
     waitForExecution: (result) =>
       composition.project
         .waitForIntentStatus(result.id)

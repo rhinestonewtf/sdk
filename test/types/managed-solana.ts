@@ -19,6 +19,7 @@ import {
   type SolanaCrossChainExecutionMetadata,
   type SolanaExecutionMetadata,
   type SolanaInstructionsExecutionMetadata,
+  type SolanaStandaloneAccount,
   type SolanaStandaloneAccountConfig,
   type SolanaSwig,
   solanaAddress,
@@ -239,6 +240,23 @@ async function standaloneCapabilitySurface() {
   // @ts-expect-error EVM management is unavailable
   account.deploy(mainnet)
 
+  const handle: SolanaStandaloneAccount<{ solana: typeof standaloneConfig }> =
+    account
+  const prepared = await handle.prepareTransaction(solanaTransaction)
+  const requests: SigningRequest[] = handle.getTransactionMessages(prepared)
+  const signed = await handle.signTransaction(prepared, { intentId: 'id' })
+  const status = await handle.waitForExecution(
+    await handle.submitTransaction(signed),
+  )
+  // @ts-expect-error one owner signs every spend, so there is nothing to assemble
+  handle.assembleTransaction(prepared, [])
+  // @ts-expect-error a Solana spend asks for no EIP-7702 authorizations
+  handle.signAuthorizations(prepared)
+  // @ts-expect-error nor signs as one of several independent owners
+  handle.signTransaction(prepared, { owner })
+  // @ts-expect-error nor takes submission options
+  handle.submitTransaction(signed, { internal_dryRun: true })
+
   const paired = {
     evm: { owners: { type: 'ecdsa' as const, accounts: [owner] } },
     solana: standaloneConfig,
@@ -247,6 +265,8 @@ async function standaloneCapabilitySurface() {
   sdk.createAccount(paired)
 
   void wallet
+  void requests
+  void status
 }
 
 async function compositeCapabilitySurface() {

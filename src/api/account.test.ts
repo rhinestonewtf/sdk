@@ -1879,20 +1879,27 @@ describe('standalone managed Solana account facade', () => {
     expect(createAccount).not.toHaveBeenCalled()
   })
 
-  test('refuses independent signing, assembly, and authorizations', async () => {
+  test('has no assembly or authorizations, and refuses untyped owner signing and submission options', async () => {
     const { facade, solana } = fixture()
     const prepared = await facade.prepareTransaction(transfer())
 
+    expect('assembleTransaction' in facade).toBe(false)
+    expect('signAuthorizations' in facade).toBe(false)
     await expect(
       facade.signTransaction(prepared, { owner } as never),
     ).rejects.toThrow(/Independent owner signing/)
-    await expect(facade.assembleTransaction(prepared, [])).rejects.toThrow(
-      /Independent owner signing/,
-    )
-    await expect(facade.signAuthorizations(prepared)).rejects.toThrow(
-      /unavailable for Solana-origin/,
-    )
     expect(solana.signSolanaIntent).not.toHaveBeenCalled()
+
+    const signed = await facade.signTransaction(prepared)
+    await expect(
+      (
+        facade.submitTransaction as (
+          signed: unknown,
+          options: unknown,
+        ) => Promise<unknown>
+      )(signed, { internal_dryRun: true }),
+    ).rejects.toThrow(/does not accept submission options/)
+    expect(solana.submitSolanaIntent).not.toHaveBeenCalled()
   })
 })
 

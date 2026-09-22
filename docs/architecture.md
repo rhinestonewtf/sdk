@@ -81,10 +81,11 @@ independent managed or address-only branches. `api/accounts.ts` validates and
 shallow-freezes that outer boundary, then passes only a managed EVM branch into
 the existing resolution and adapter stack. Receiver-only handles bypass account
 resolution and expose only native address access. A managed Solana account with
-no EVM entry bypasses it too: `createSolanaAccountFacade` exposes only the intent
-lifecycle and reaches the Solana workflows and status polling through the
-project composition, because there is no EVM account to scope an account
-composition.
+no EVM entry bypasses it too: `createSolanaAccountFacade` returns a
+`SolanaStandaloneAccount`, typed with only what it supports (no assembly,
+authorizations, owner signing or submission options), and reaches the Solana
+workflows and status polling through the project composition, because there is
+no EVM account to scope an account composition.
 
 Managed Solana is development-only. Its Swig must already exist and carry the
 configured owner as its authority on the target cluster. Paired with a managed

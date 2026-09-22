@@ -40,6 +40,7 @@ export type {
   RhinestoneAccount,
   RhinestoneAccountBase,
   SignedIntentData,
+  SolanaStandaloneAccount,
 } from './api/account'
 export type {
   DestinationChain,
