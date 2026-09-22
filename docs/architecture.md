@@ -106,9 +106,10 @@ A managed Solana origin accepts one same-chain SPL transfer with an explicit
 recipient, one same-chain instruction execution, or one cross-chain delivery to
 an EVM chain. `sponsored` is translated with the same helper EVM uses and passed
 through for the orchestrator to decide on: it serves the categories a Solana
-route can bill and refuses the rest by name. Native SOL, EVM calls, independent
-owner-signature assembly, and EIP-7702 delegations are rejected in every
-direction.
+route can bill and refuses the rest by name. Native SOL, independent
+owner-signature assembly and `signAuthorizations` are rejected in every
+direction; EVM calls, and the EIP-7702 delegation they can need, only come with
+a delivery to an EVM chain.
 Address-only
 Solana branches remain receiver-only. For automatic EVM cross-chain sources,
 the composition reads the orchestrator chain catalog and sends only real
@@ -155,14 +156,28 @@ registry token on it. The delivery recipient is an explicit
 EVM address or the account's own EVM identity, resolved before the quote so the
 authorization binds to it; an account with no EVM entry has no identity to
 default to, so its delivery without a recipient is refused before quoting, in
-its type and at runtime. Authorization stays the Solana model: exactly one
-signing request — `personalSign` for an ECDSA owner, `webauthn` for a passkey —
+its type and at runtime. Authorization stays the Solana model: without
+destination calls, exactly one signing request — `personalSign` for an ECDSA
+owner, `webauthn` for a passkey —
 disclosing the Swig wallet and state account it spends from, and the same
 slot-bounded window, so a second prepared-but-unsubmitted spend invalidates the
 first. The quoted cost legs stay in their own namespaces — a Solana chain and
 base58 mint on the input, an `eip155:` chain and hex token on the output. The
 settlement layer is whatever the orchestrator picked; the SDK only requires that
 it is not same-chain.
+
+A paired account's delivery can also carry `calls`, which its EVM account runs
+on the delivery chain once the tokens land. They are resolved against that
+account before the quote, and the account entry then carries its setup ops and
+any EIP-7702 delegation; with no calls the request is unchanged. The request
+names no recipient, because the executing account receives the delivery, so an
+explicit `recipient` with calls is refused, as is an account with no EVM entry.
+The quote asks for the Swig spend first, then the EVM account's EIP-712
+authorization of the calls on the delivery chain, then any delegation there.
+Those EVM requests are signed first through the ordinary EVM signing path,
+because the spend's slot window is the one that runs out, and the proofs go out
+in request order. A replay rebuilds the resolved calls and account setup from
+the persisted `intentInput` instead of resolving them again.
 
 ## Execution paths
 

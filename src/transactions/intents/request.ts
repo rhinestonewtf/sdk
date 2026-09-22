@@ -260,7 +260,7 @@ function mapMockSignatures(
   )
 }
 
-function toExecution(call: Call): OrchestratorExecution {
+export function toExecution(call: Call): OrchestratorExecution {
   return { to: call.target, value: call.value, data: call.data }
 }
 

@@ -497,10 +497,12 @@ describe('managed Solana account facade', () => {
     const reconstruct = vi.fn(reconstructSolanaIntent)
     const signSolanaIntent = vi.fn(async ({ prepared, owner: signer }) => ({
       prepared,
-      proof: {
-        kind: 'personalSign' as const,
-        signature: await signer.signMessage({ message }),
-      },
+      proofs: [
+        {
+          kind: 'personalSign' as const,
+          signature: await signer.signMessage({ message }),
+        },
+      ],
     }))
     const submitSolanaIntent = vi.fn(async ({ prepared }) => ({
       type: 'intent' as const,
@@ -732,8 +734,8 @@ describe('managed Solana account facade', () => {
     await expect(facade.submitTransaction(signed)).resolves.toMatchObject({
       id: 'best',
     })
-    expect(workflows.submitSolanaIntent.mock.calls[0]?.[0].proof).toBe(
-      signed.proofs[0],
+    expect(workflows.submitSolanaIntent.mock.calls[0]?.[0].proofs).toEqual(
+      signed.proofs,
     )
   })
 
@@ -890,8 +892,9 @@ describe('managed Solana account facade', () => {
     expect(workflows.submitSolanaIntent).not.toHaveBeenCalled()
   })
 
-  // A Solana origin authorizes its spend with exactly one personal-sign proof:
-  // an empty, doubled, or EVM-shaped proof vector is refused before submission.
+  // A Solana origin authorizes its spend with a personal-sign proof first, and
+  // a plain delivery asks for nothing else: an empty, doubled, or EVM-shaped
+  // proof vector is refused before submission.
   test.each([
     { proofs: [] },
     {
@@ -1332,12 +1335,11 @@ describe('managed Solana cross-chain delivery facade', () => {
     }
   }
 
-  function fixture() {
+  function fixture(best = quote('best')) {
     const compatibilityConfig: LegacyAccountConfig<unknown> = {
       owners: { type: 'ecdsa', accounts: [owner] },
       useDevContracts: true,
     }
-    const best = quote('best')
     const prepareSolanaIntent = vi.fn(async (input) => ({
       traceId: 'prepare-trace',
       input,
@@ -1347,10 +1349,12 @@ describe('managed Solana cross-chain delivery facade', () => {
     }))
     const signSolanaIntent = vi.fn(async ({ prepared, owner: signer }) => ({
       prepared,
-      proof: {
-        kind: 'personalSign' as const,
-        signature: await signer.signMessage({ message }),
-      },
+      proofs: [
+        {
+          kind: 'personalSign' as const,
+          signature: await signer.signMessage({ message }),
+        },
+      ],
     }))
     const submitSolanaIntent = vi.fn(async ({ prepared }) => ({
       type: 'intent' as const,
@@ -1537,7 +1541,16 @@ describe('managed Solana cross-chain delivery facade', () => {
   })
 
   test.each([
-    ['calls', { calls: [] }],
+    ['source calls', { sourceCalls: {} }],
+    [
+      'calls with an explicit recipient',
+      { calls: [{ to: destinationToken }], recipient: guardian.address },
+    ],
+    ['a gas limit without calls', { gasLimit: 100_000n }],
+    [
+      'an EIP-7702 init signature without calls',
+      { calls: [], eip7702InitSignature: '0x12' },
+    ],
     ['instructions', { instructions: [] }],
     ['hyperCore', { hyperCore: { closePerp: { asset: 'ETH' } } }],
     ['a settlement layer filter', { settlementLayers: { include: ['RELAY'] } }],
@@ -1613,6 +1626,171 @@ describe('managed Solana cross-chain delivery facade', () => {
       InvalidSolanaTransactionArtifactError,
     )
     expect(workflows.signSolanaIntent).not.toHaveBeenCalled()
+  })
+
+  describe('with destination calls', () => {
+    const call = {
+      to: '0x00000000000000000000000000000000000000c1',
+      data: '0xabcdef',
+    } as const
+    const resolvedCall = { target: call.to, value: 0n, data: call.data }
+    const setupOp = {
+      to: '0x000000000000000000000000000000000000fac7',
+      data: '0xfac7',
+    } as const
+    const childRequest = eip712Request({
+      chainId: optimism.id,
+      account: owner.address,
+    })
+    const childProof = {
+      kind: 'eip712' as const,
+      signature: `0x${'11'.repeat(65)}` as const,
+    }
+
+    function callsFixture() {
+      const base = fixture({
+        ...quote('best'),
+        signingRequests: [spendRequest(), childRequest],
+      })
+      const resolveSolanaEvmDestination = vi.fn(async () => ({
+        calls: [resolvedCall],
+        account: {
+          kind: 'erc7579' as const,
+          address: owner.address,
+          setupOps: [setupOp],
+        },
+      }))
+      const signIntentFromRequests = vi.fn(async () => ({
+        proofs: [childProof],
+        transcript: {},
+      }))
+      Object.assign(base.workflows, {
+        resolveSolanaEvmDestination,
+        signIntentFromRequests,
+        signSolanaIntent: vi.fn(
+          (input: Parameters<typeof signSolanaIntent>[0]) =>
+            signSolanaIntent({ ...input, now: () => 1_900_000_000_000 }),
+        ),
+      })
+      return { ...base, resolveSolanaEvmDestination, signIntentFromRequests }
+    }
+
+    function callsTransaction() {
+      return { ...transaction(), calls: [call], gasLimit: 200_000n }
+    }
+
+    test('resolves the calls on the paired account and signs its requests before the spend', async () => {
+      const {
+        facade,
+        workflows,
+        resolveSolanaEvmDestination,
+        signIntentFromRequests,
+      } = callsFixture()
+      const prepared = await facade.prepareTransaction(callsTransaction())
+
+      expect(resolveSolanaEvmDestination).toHaveBeenCalledWith(
+        expect.anything(),
+        { chain: toEvmChainReference(optimism.id), calls: [resolvedCall] },
+      )
+      expect(workflows.prepareSolanaIntent.mock.calls[0]?.[0]).toMatchObject({
+        action: {
+          delivery: {
+            recipient: owner.address,
+            execution: {
+              calls: [resolvedCall],
+              gasLimit: 200_000n,
+              account: { setupOps: [setupOp] },
+            },
+          },
+        },
+      })
+      expect(prepared.request.request).toMatchObject({
+        account: { evm: { initData: { setupOps: [setupOp] } } },
+        destination: {
+          execution: {
+            calls: [{ to: call.to, value: '0', data: call.data }],
+            gasLimit: '200000',
+          },
+        },
+      })
+      expect(prepared.request.request).not.toHaveProperty(
+        'destination.recipient',
+      )
+
+      const signed = await facade.signTransaction(prepared)
+      expect(signIntentFromRequests).toHaveBeenCalledWith(expect.anything(), {
+        signingRequests: [childRequest],
+        targetChain: toEvmChainReference(optimism.id),
+      })
+      expect(signed.proofs).toEqual([
+        { kind: 'personalSign', signature: expect.any(String) },
+        childProof,
+      ])
+      await facade.submitTransaction(signed)
+      expect(workflows.submitSolanaIntent.mock.calls[0]?.[0].proofs).toEqual(
+        signed.proofs,
+      )
+      // Signing and submitting replay the prepared calls rather than resolving
+      // them again.
+      expect(resolveSolanaEvmDestination).toHaveBeenCalledOnce()
+    })
+
+    test('replays a prepared transaction on another instance from its canonical input', async () => {
+      const prepared = await callsFixture().facade.prepareTransaction(
+        callsTransaction(),
+      )
+      const other = callsFixture()
+
+      await expect(
+        other.facade.signTransaction(prepared),
+      ).resolves.toMatchObject({
+        proofs: [{ kind: 'personalSign' }, childProof],
+      })
+      expect(other.resolveSolanaEvmDestination).not.toHaveBeenCalled()
+
+      const {
+        calls: _calls,
+        gasLimit: _gasLimit,
+        ...withoutCalls
+      } = prepared.transaction as ReturnType<typeof callsTransaction>
+      for (const tampered of [
+        { ...prepared, transaction: withoutCalls as never },
+        {
+          ...prepared,
+          intentInput: { ...prepared.intentInput, destinationExecutions: [] },
+        },
+      ]) {
+        await expect(other.facade.signTransaction(tampered)).rejects.toThrow(
+          /canonical intent input/,
+        )
+      }
+    })
+
+    test('passes an EIP-7702 init signature to the destination resolution', async () => {
+      const { facade, resolveSolanaEvmDestination } = callsFixture()
+      const eip7702InitSignature = `0x${'22'.repeat(65)}` as const
+      await facade.prepareTransaction({
+        ...callsTransaction(),
+        eip7702InitSignature,
+      })
+
+      expect(resolveSolanaEvmDestination).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ eip7702InitSignature }),
+      )
+    })
+
+    test('refuses a proof vector missing the destination proof before submission', async () => {
+      const { facade, workflows } = callsFixture()
+      const signed = await facade.signTransaction(
+        await facade.prepareTransaction(callsTransaction()),
+      )
+
+      await expect(
+        facade.submitTransaction({ ...signed, proofs: [signed.proofs[0]!] }),
+      ).rejects.toThrow(InvalidSolanaTransactionArtifactError)
+      expect(workflows.submitSolanaIntent).not.toHaveBeenCalled()
+    })
   })
 })
 
@@ -1703,10 +1881,12 @@ describe('standalone managed Solana account facade', () => {
       reconstructSolanaIntent: vi.fn(reconstructSolanaIntent),
       signSolanaIntent: vi.fn(async ({ prepared, owner: signer }) => ({
         prepared,
-        proof: {
-          kind: 'personalSign' as const,
-          signature: await signer.signMessage({ message }),
-        },
+        proofs: [
+          {
+            kind: 'personalSign' as const,
+            signature: await signer.signMessage({ message }),
+          },
+        ],
       })),
       submitSolanaIntent: vi.fn(async ({ prepared }) => ({
         type: 'intent' as const,
@@ -1856,6 +2036,18 @@ describe('standalone managed Solana account facade', () => {
       destination: { vm: 'evm', recipient: { address: guardian.address } },
     })
     expect(prepared.request.request).not.toHaveProperty('account.evm')
+  })
+
+  test('refuses destination calls, which need an EVM account to run them', async () => {
+    const { facade, solana } = fixture()
+
+    await expect(
+      facade.prepareTransaction({
+        ...delivery(),
+        calls: [{ to: destinationToken, data: '0x' }],
+      } as never),
+    ).rejects.toThrow(/paired EVM account/)
+    expect(solana.prepareSolanaIntent).not.toHaveBeenCalled()
   })
 
   test.each([
@@ -2041,9 +2233,9 @@ describe('cross-VM transaction validation', () => {
       {
         sourceChains: [{ id: 1, kind: 'svm', caip2: 'solana:forged' }],
         targetChain: mainnet,
-        calls: [],
+        sourceAssets: [],
       },
-      /Solana-origin transfers do not support `calls`/,
+      /Solana-origin transfers do not support `sourceAssets`/,
     ],
     [
       {

@@ -12,7 +12,9 @@ const limits = [
     // Caucasus adds runtime narrowing at the signing trust boundary and the
     // source-selection builder, which is where the last ~1 kB went.
     // A standalone (Solana-only) managed account adds its own facade (~0.5 kB).
-    limit: '79 kB',
+    // EVM calls after a Solana-origin delivery add their request, signing and
+    // replay paths (~0.3 kB).
+    limit: '80 kB',
     import: '*',
     ignore: viem,
   },

@@ -36,6 +36,7 @@ import type {
 import type {
   PreparedSolanaIntent,
   SignedSolanaIntent,
+  SolanaEvmExecution,
   SolanaTransferInput,
 } from '../transactions/intents/solana'
 import type {
@@ -113,6 +114,10 @@ export interface SolanaWorkflows {
     readonly owner:
       | import('viem').Account
       | import('viem/account-abstraction').WebAuthnAccount
+    readonly signEvmRequests?: (
+      requests: readonly SigningRequest[],
+      chainId: number,
+    ) => Promise<readonly SigningProof[]>
   }) => Promise<SignedSolanaIntent>
   readonly submitSolanaIntent: (
     input: SignedSolanaIntent,
@@ -128,6 +133,18 @@ export interface AccountWorkflows<CompatibilityConfig = unknown>
     context: AccountInvocationContext<CompatibilityConfig>,
     chain: import('../chains/types').EvmChainReference,
   ) => import('viem').Address
+  /**
+   * Resolves the calls a Solana-origin delivery runs on arrival against the
+   * paired EVM account, and projects that account on the delivery chain.
+   */
+  readonly resolveSolanaEvmDestination: (
+    context: AccountInvocationContext<CompatibilityConfig>,
+    input: {
+      readonly chain: EvmChainReference
+      readonly calls: IntentInput<CompatibilityConfig>['calls']
+      readonly eip7702InitSignature?: Hex
+    },
+  ) => Promise<Omit<SolanaEvmExecution, 'gasLimit'>>
   readonly signMessage: (
     context: AccountInvocationContext<CompatibilityConfig>,
     input: {
