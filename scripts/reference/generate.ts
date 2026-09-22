@@ -3,8 +3,8 @@
 // Pipeline: `typedoc --json` emits a structured model of the public API; this
 // script walks the curated manifest, looks up each symbol in that model, and
 // renders one MDX page per symbol against a fixed viem-style template
-// (Import / Usage / Parameters / Returns), then patches the "SDK Reference"
-// tab into the docs repo's docs.json.
+// (Import / Usage / Parameters / Returns), then patches the nested
+// Wallets → Custom signer → SDK reference group in the docs repo's docs.json.
 //
 // Run: bun run scripts/reference/generate.ts
 // Output dir: $SDK_REF_OUT (default: ../../../docs/wallets/custom-signer/sdk-reference)
@@ -20,18 +20,12 @@ import {
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { manifest, type Node, type SymbolEntry } from './manifest'
-import {
-  collectReferencePages,
-  type NavGroup,
-  patchReferenceNavigation,
-  syncGeneratedInventories,
-} from './navigation'
+import { type NavGroup, patchReferenceNavigation } from './navigation'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const TYPEDOC_JSON = join(HERE, 'typedoc.json.out')
 const DOCS_ROOT = resolve(HERE, '../../../docs')
-const NAV_BASE =
-  process.env.SDK_REF_NAV_BASE ?? 'wallets/custom-signer/sdk-reference'
+const NAV_BASE = 'wallets/custom-signer/sdk-reference'
 const OUT_DIR = process.env.SDK_REF_OUT ?? join(DOCS_ROOT, NAV_BASE)
 
 // When set, the render exits non-zero on any coverage problem (an unresolved
@@ -611,62 +605,21 @@ function build(nodes: Node[], trail: string[]): (string | NavGroup)[] {
   return pages
 }
 
-// The reference is nested as a single collapsible group at the bottom of its
-// configured navigation container.
-const SECTION_NAME = process.env.SDK_REF_SECTION_NAME ?? 'SDK reference'
-const HOST_TAB = process.env.SDK_REF_TAB ?? 'Wallets'
-const HOST_MENU_ITEM = process.env.SDK_REF_MENU_ITEM ?? 'Custom signer'
+// Filesystem destinations remain configurable for isolated local and CI runs;
+// public routes and the navigation hierarchy are fixed.
 const DOCS_JSON = process.env.SDK_REF_DOCS_JSON ?? join(DOCS_ROOT, 'docs.json')
-const OWNERSHIP_JSON =
-  process.env.SDK_REF_OWNERSHIP_JSON ??
-  join(DOCS_ROOT, 'unified-docs/ownership.json')
-const PATHS_FIXTURE =
-  process.env.SDK_REF_PATHS_FIXTURE ??
-  join(DOCS_ROOT, 'scripts/fixtures/sdk-reference-paths.json')
-const DEFAULT_OWNER = process.env.SDK_REF_DEFAULT_OWNER ?? 'RHI-7109'
 
-function patchDocsJson(pages: (string | NavGroup)[]): boolean {
+function patchDocsJson(pages: (string | NavGroup)[]) {
   if (!existsSync(DOCS_JSON)) {
     console.error(`! docs.json not found at ${DOCS_JSON}; skipping nav patch`)
-    return false
+    return
   }
   const docs = JSON.parse(readFileSync(DOCS_JSON, 'utf8'))
-  patchReferenceNavigation(docs, pages, {
-    tab: HOST_TAB,
-    menuItem: HOST_MENU_ITEM || undefined,
-    section: SECTION_NAME,
-  })
+  patchReferenceNavigation(docs, pages)
   writeFileSync(DOCS_JSON, `${JSON.stringify(docs, null, 2)}\n`)
-  const target = HOST_MENU_ITEM
-    ? `"${HOST_MENU_ITEM}" in "${HOST_TAB}"`
-    : `"${HOST_TAB}" tab`
-  console.info(`Patched "${SECTION_NAME}" group into ${target}`)
-  return true
-}
-
-function syncDocsInventories(pages: (string | NavGroup)[]) {
-  const ownershipExists = existsSync(OWNERSHIP_JSON)
-  const fixtureExists = existsSync(PATHS_FIXTURE)
-  if (!ownershipExists && !fixtureExists) return
-  if (!ownershipExists || !fixtureExists) {
-    throw new Error(
-      'SDK reference ownership and path fixture must either both exist or both be absent',
-    )
-  }
-
-  const result = syncGeneratedInventories(
-    JSON.parse(readFileSync(OWNERSHIP_JSON, 'utf8')),
-    JSON.parse(readFileSync(PATHS_FIXTURE, 'utf8')),
-    collectReferencePages(pages),
-    NAV_BASE,
-    DEFAULT_OWNER,
+  console.info(
+    'Patched "SDK reference" group into "Custom signer" in "Wallets"',
   )
-  writeFileSync(
-    OWNERSHIP_JSON,
-    `${JSON.stringify(result.ownership, null, 2)}\n`,
-  )
-  writeFileSync(PATHS_FIXTURE, `${JSON.stringify(result.fixture, null, 2)}\n`)
-  console.info('Synchronized SDK reference ownership and path inventories')
 }
 
 // Hand-written pages that live alongside the generated ones and must survive
@@ -750,7 +703,7 @@ function main() {
   cleanGenerated()
 
   const navPages = build(manifest as Node[], [NAV_BASE])
-  if (patchDocsJson(navPages)) syncDocsInventories(navPages)
+  patchDocsJson(navPages)
   const missing = warnMissingCoverage()
 
   console.info(`Generated ${countPages(navPages)} pages under ${OUT_DIR}`)

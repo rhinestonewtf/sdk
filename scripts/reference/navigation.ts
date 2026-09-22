@@ -3,53 +3,47 @@ export type NavGroup = {
   pages: (string | NavGroup)[]
 }
 
-type NavigationTarget = {
-  tab: string
-  menuItem?: string
-  section: string
+const HOST_TAB = 'Wallets'
+const HOST_MENU_ITEM = 'Custom signer'
+const SECTION_NAME = 'SDK reference'
+
+function uniqueMatch<T>(
+  entries: T[],
+  matches: (entry: T) => boolean,
+  missingMessage: string,
+  duplicateMessage: string,
+): T {
+  const found = entries.filter(matches)
+  if (found.length === 0) throw new Error(missingMessage)
+  if (found.length > 1) throw new Error(duplicateMessage)
+  return found[0]
 }
 
-type OwnershipDestination = {
-  path: string
-  owner: string
-  collaborators: string[]
-  content: string
-  [key: string]: unknown
-}
-
-type OwnershipManifest = {
-  destinations: OwnershipDestination[]
-  [key: string]: unknown
-}
-
-type PathsFixture = {
-  paths: string[]
-  [key: string]: unknown
-}
-
-function sectionPages(docs: any, target: NavigationTarget): unknown[] {
-  const tabs = docs.navigation?.tabs
+function referenceSectionPages(docs: any): unknown[] {
+  const tabs = docs?.navigation?.tabs
   if (!Array.isArray(tabs)) {
-    throw new Error('docs.json has no navigation.tabs')
+    throw new Error('docs.json has no navigation.tabs array')
   }
 
-  const host = tabs.find((entry: any) => entry.tab === target.tab)
-  if (!host) throw new Error(`navigation tab "${target.tab}" not found`)
-
-  if (!target.menuItem) {
-    if (!Array.isArray(host.pages)) {
-      throw new Error(`navigation tab "${target.tab}" has no pages array`)
-    }
-    return host.pages
-  }
-
+  const host = uniqueMatch(
+    tabs,
+    (entry: any) => entry?.tab === HOST_TAB,
+    `navigation tab "${HOST_TAB}" not found`,
+    `duplicate navigation tab "${HOST_TAB}"`,
+  ) as any
   if (!Array.isArray(host.menu)) {
-    throw new Error(`navigation tab "${target.tab}" has no menu array`)
+    throw new Error(`navigation tab "${HOST_TAB}" has no menu array`)
   }
-  const item = host.menu.find((entry: any) => entry.item === target.menuItem)
-  if (!item || !Array.isArray(item.pages)) {
+
+  const item = uniqueMatch(
+    host.menu,
+    (entry: any) => entry?.item === HOST_MENU_ITEM,
+    `navigation menu item "${HOST_MENU_ITEM}" not found in tab "${HOST_TAB}"`,
+    `duplicate navigation menu item "${HOST_MENU_ITEM}" in tab "${HOST_TAB}"`,
+  ) as any
+  if (!Array.isArray(item.pages)) {
     throw new Error(
-      `navigation menu item "${target.menuItem}" not found in tab "${target.tab}"`,
+      `navigation menu item "${HOST_MENU_ITEM}" in tab "${HOST_TAB}" has no pages array`,
     )
   }
   return item.pages
@@ -58,117 +52,28 @@ function sectionPages(docs: any, target: NavigationTarget): unknown[] {
 export function patchReferenceNavigation(
   docs: any,
   pages: (string | NavGroup)[],
-  target: NavigationTarget,
 ): any {
-  const hostPages = sectionPages(docs, target)
+  const hostPages = referenceSectionPages(docs)
   const matches = hostPages.flatMap((entry, index) =>
     typeof entry === 'object' &&
     entry !== null &&
     'group' in entry &&
-    (entry as { group?: unknown }).group === target.section
+    (entry as { group?: unknown }).group === SECTION_NAME
       ? [index]
       : [],
   )
   if (matches.length > 1) {
-    throw new Error(`duplicate navigation group "${target.section}"`)
+    throw new Error(`duplicate navigation group "${SECTION_NAME}"`)
+  }
+  if (
+    matches.length === 1 &&
+    !Array.isArray((hostPages[matches[0]] as { pages?: unknown }).pages)
+  ) {
+    throw new Error(`navigation group "${SECTION_NAME}" has no pages array`)
   }
 
-  const section = { group: target.section, pages }
+  const section = { group: SECTION_NAME, pages }
   if (matches.length === 1) hostPages[matches[0]] = section
   else hostPages.push(section)
   return docs
-}
-
-export function collectReferencePages(pages: (string | NavGroup)[]): string[] {
-  return pages.flatMap((entry) =>
-    typeof entry === 'string' ? [entry] : collectReferencePages(entry.pages),
-  )
-}
-
-function inferredDestination(
-  path: string,
-  previous: OwnershipDestination[],
-  defaultOwner?: string,
-): OwnershipDestination {
-  const exact = previous.find((entry) => entry.path === path)
-  if (exact) return exact
-
-  const relatives = previous.map((entry) => ({
-    entry,
-    relative: entry.path.split('/sdk-reference/')[1] ?? '',
-  }))
-  let directory =
-    path.split('/sdk-reference/')[1]?.split('/').slice(0, -1) ?? []
-  while (directory.length) {
-    const prefix = `${directory.join('/')}/`
-    const candidates = relatives.filter(({ relative }) =>
-      relative.startsWith(prefix),
-    )
-    const owners = new Set(candidates.map(({ entry }) => entry.owner))
-    if (owners.size === 1) {
-      return {
-        path,
-        owner: candidates[0].entry.owner,
-        collaborators: [],
-        content: 'generated',
-      }
-    }
-    directory = directory.slice(0, -1)
-  }
-
-  if (defaultOwner) {
-    return {
-      path,
-      owner: defaultOwner,
-      collaborators: [],
-      content: 'generated',
-    }
-  }
-  throw new Error(
-    `no ownership metadata can be inferred for generated page: ${path}`,
-  )
-}
-
-export function syncGeneratedInventories(
-  ownership: OwnershipManifest,
-  fixture: PathsFixture,
-  generatedPaths: string[],
-  navBase: string,
-  defaultOwner?: string,
-): { ownership: OwnershipManifest; fixture: PathsFixture } {
-  if (!Array.isArray(ownership.destinations)) {
-    throw new Error('ownership manifest has no destinations array')
-  }
-  if (!Array.isArray(fixture.paths)) {
-    throw new Error('SDK reference fixture has no paths array')
-  }
-
-  const isManaged = ({ path, content }: OwnershipDestination) =>
-    content === 'generated' && path.startsWith(`${navBase}/`)
-  const previous = ownership.destinations.filter(isManaged)
-  const firstGenerated = ownership.destinations.findIndex(isManaged)
-  if (firstGenerated < 0) {
-    throw new Error('ownership manifest has no generated destinations')
-  }
-
-  const generated = generatedPaths.map((path) => {
-    if (!path.startsWith(`${navBase}/`)) {
-      throw new Error(`generated page is outside navigation base: ${path}`)
-    }
-    return inferredDestination(path, previous, defaultOwner)
-  })
-  const unrelated = ownership.destinations.filter(
-    (destination) => !isManaged(destination),
-  )
-  unrelated.splice(firstGenerated, 0, ...generated)
-
-  return {
-    ownership: { ...ownership, destinations: unrelated },
-    fixture: {
-      ...fixture,
-      paths: generatedPaths
-        .map((path) => path.slice(navBase.length + 1))
-        .sort(),
-    },
-  }
 }
