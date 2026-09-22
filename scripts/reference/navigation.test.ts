@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  type NavGroup,
-  patchReferenceNavigation,
-  syncGeneratedInventories,
-} from './navigation'
+import { type NavGroup, patchReferenceNavigation } from './navigation'
 
 const generated: NavGroup[] = [
   {
@@ -12,50 +8,54 @@ const generated: NavGroup[] = [
   },
 ]
 
-describe('patchReferenceNavigation', () => {
-  it('patches nested Wallets navigation without changing unrelated entries', () => {
-    const docs = {
-      navigation: {
-        tabs: [
-          { tab: 'Home', pages: ['home/introduction'] },
-          {
-            tab: 'Wallets',
-            menu: [
-              { item: 'Overview', pages: ['wallets/overview'] },
-              {
-                item: 'Custom signer',
-                pages: [
-                  'wallets/custom-signer/overview',
-                  { group: 'SDK reference', pages: ['stale'] },
-                  {
-                    group: 'Troubleshooting',
-                    pages: ['wallets/custom-signer/troubleshooting'],
-                  },
-                ],
-              },
-            ],
-          },
-        ],
-      },
-    }
+function launchedDocs(
+  pages: unknown[] = ['wallets/custom-signer/overview'],
+): any {
+  return {
+    $schema: 'https://mintlify.com/docs.json',
+    redirects: [{ source: '/old', destination: '/new' }],
+    navigation: {
+      tabs: [
+        { tab: 'Home', pages: ['home/introduction'] },
+        {
+          tab: 'Wallets',
+          menu: [
+            { item: 'Overview', pages: ['wallets/overview'] },
+            { item: 'Custom signer', pages },
+            { item: 'Other wallets', pages: ['wallets/other'] },
+          ],
+        },
+        { tab: 'API reference', pages: ['api-reference/index'] },
+      ],
+    },
+  }
+}
 
-    const once = patchReferenceNavigation(structuredClone(docs), generated, {
-      tab: 'Wallets',
-      menuItem: 'Custom signer',
-      section: 'SDK reference',
-    })
-    const twice = patchReferenceNavigation(structuredClone(once), generated, {
-      tab: 'Wallets',
-      menuItem: 'Custom signer',
-      section: 'SDK reference',
-    })
+describe('patchReferenceNavigation', () => {
+  it('replaces the nested section idempotently and preserves unrelated navigation', () => {
+    const docs = launchedDocs([
+      'wallets/custom-signer/overview',
+      { group: 'SDK reference', pages: ['stale'] },
+      {
+        group: 'Troubleshooting',
+        pages: ['wallets/custom-signer/troubleshooting'],
+      },
+    ])
+
+    const once = patchReferenceNavigation(structuredClone(docs), generated)
+    const twice = patchReferenceNavigation(structuredClone(once), generated)
 
     expect(twice).toEqual(once)
+    expect(once.$schema).toBe(docs.$schema)
+    expect(once.redirects).toEqual(docs.redirects)
     expect(once.navigation.tabs[0]).toEqual(docs.navigation.tabs[0])
-    expect(once.navigation.tabs[1].menu[0]).toEqual({
-      item: 'Overview',
-      pages: ['wallets/overview'],
-    })
+    expect(once.navigation.tabs[2]).toEqual(docs.navigation.tabs[2])
+    expect(once.navigation.tabs[1].menu[0]).toEqual(
+      docs.navigation.tabs[1].menu[0],
+    )
+    expect(once.navigation.tabs[1].menu[2]).toEqual(
+      docs.navigation.tabs[1].menu[2],
+    )
     expect(once.navigation.tabs[1].menu[1].pages).toEqual([
       'wallets/custom-signer/overview',
       { group: 'SDK reference', pages: generated },
@@ -66,184 +66,93 @@ describe('patchReferenceNavigation', () => {
     ])
   })
 
-  it('supports the explicit legacy tab shape', () => {
-    const docs = {
-      navigation: {
-        tabs: [
-          { tab: 'Wallet', pages: ['smart-wallet/introduction'] },
-          { tab: 'API Reference', pages: ['api-reference/index'] },
-        ],
-      },
-    }
-    const legacyPages = [
-      { group: 'Account', pages: ['sdk-reference/account/get-address'] },
-    ]
+  it('appends one nested section when it is absent', () => {
+    const docs = launchedDocs()
 
-    patchReferenceNavigation(docs, legacyPages, {
-      tab: 'Wallet',
-      section: 'SDK Reference',
-    })
+    patchReferenceNavigation(docs, generated)
+    patchReferenceNavigation(docs, generated)
 
-    expect(docs.navigation.tabs).toEqual([
-      {
-        tab: 'Wallet',
-        pages: [
-          'smart-wallet/introduction',
-          { group: 'SDK Reference', pages: legacyPages },
-        ],
-      },
-      { tab: 'API Reference', pages: ['api-reference/index'] },
+    expect(docs.navigation.tabs[1].menu[1].pages).toEqual([
+      'wallets/custom-signer/overview',
+      { group: 'SDK reference', pages: generated },
     ])
   })
 
-  it('fails when the configured target is missing or duplicated', () => {
-    expect(() =>
-      patchReferenceNavigation(
-        { navigation: { tabs: [{ tab: 'Wallets', menu: [] }] } },
-        generated,
-        {
-          tab: 'Wallets',
-          menuItem: 'Custom signer',
-          section: 'SDK reference',
+  it.each([
+    ['missing tabs array', {}, 'docs.json has no navigation.tabs array'],
+    [
+      'missing Wallets tab',
+      { navigation: { tabs: [{ tab: 'Home', pages: [] }] } },
+      'navigation tab "Wallets" not found',
+    ],
+    [
+      'duplicate Wallets tabs',
+      {
+        navigation: {
+          tabs: [
+            { tab: 'Wallets', menu: [] },
+            { tab: 'Wallets', menu: [] },
+          ],
         },
-      ),
-    ).toThrow('navigation menu item "Custom signer" not found')
-
-    expect(() =>
-      patchReferenceNavigation(
-        {
-          navigation: {
-            tabs: [
-              {
-                tab: 'Wallets',
-                menu: [
-                  {
-                    item: 'Custom signer',
-                    pages: [
-                      { group: 'SDK reference', pages: [] },
-                      { group: 'SDK reference', pages: [] },
-                    ],
-                  },
-                ],
-              },
-            ],
-          },
-        },
-        generated,
-        {
-          tab: 'Wallets',
-          menuItem: 'Custom signer',
-          section: 'SDK reference',
-        },
-      ),
-    ).toThrow('duplicate navigation group "SDK reference"')
-  })
-})
-
-describe('syncGeneratedInventories', () => {
-  it('preserves unrelated ownership and existing page metadata', () => {
-    const result = syncGeneratedInventories(
-      {
-        version: 1,
-        destinations: [
-          {
-            path: 'wallets/overview',
-            owner: 'RHI-7121',
-            collaborators: [],
-            content: 'authored',
-          },
-          {
-            path: 'api-reference/generated-operation',
-            owner: 'RHI-7000',
-            collaborators: [],
-            content: 'generated',
-          },
-          {
-            path: 'wallets/custom-signer/sdk-reference/account/get-address',
-            owner: 'RHI-7109',
-            collaborators: ['RHI-7134'],
-            content: 'generated',
-          },
-          {
-            path: 'transactions/overview',
-            owner: 'RHI-7121',
-            collaborators: [],
-            content: 'placeholder',
-          },
-        ],
       },
-      { version: 1, paths: ['stale'] },
-      [
-        'wallets/custom-signer/sdk-reference/account/get-address',
-        'wallets/custom-signer/sdk-reference/account/get-owners',
-        'wallets/custom-signer/sdk-reference/chains/solana-address',
-      ],
-      'wallets/custom-signer/sdk-reference',
-      'RHI-7109',
-    )
-
-    expect(result.ownership.destinations).toEqual([
+      'duplicate navigation tab "Wallets"',
+    ],
+    [
+      'legacy tab-level navigation',
+      { navigation: { tabs: [{ tab: 'Wallets', pages: [] }] } },
+      'navigation tab "Wallets" has no menu array',
+    ],
+    [
+      'missing Custom signer item',
+      { navigation: { tabs: [{ tab: 'Wallets', menu: [] }] } },
+      'navigation menu item "Custom signer" not found',
+    ],
+    [
+      'duplicate Custom signer items',
       {
-        path: 'wallets/overview',
-        owner: 'RHI-7121',
-        collaborators: [],
-        content: 'authored',
-      },
-      {
-        path: 'api-reference/generated-operation',
-        owner: 'RHI-7000',
-        collaborators: [],
-        content: 'generated',
-      },
-      {
-        path: 'wallets/custom-signer/sdk-reference/account/get-address',
-        owner: 'RHI-7109',
-        collaborators: ['RHI-7134'],
-        content: 'generated',
-      },
-      {
-        path: 'wallets/custom-signer/sdk-reference/account/get-owners',
-        owner: 'RHI-7109',
-        collaborators: [],
-        content: 'generated',
-      },
-      {
-        path: 'wallets/custom-signer/sdk-reference/chains/solana-address',
-        owner: 'RHI-7109',
-        collaborators: [],
-        content: 'generated',
-      },
-      {
-        path: 'transactions/overview',
-        owner: 'RHI-7121',
-        collaborators: [],
-        content: 'placeholder',
-      },
-    ])
-    expect(result.fixture.paths).toEqual([
-      'account/get-address',
-      'account/get-owners',
-      'chains/solana-address',
-    ])
-  })
-
-  it('fails instead of inventing ownership for a new subtree', () => {
-    expect(() =>
-      syncGeneratedInventories(
-        {
-          destinations: [
+        navigation: {
+          tabs: [
             {
-              path: 'wallets/custom-signer/sdk-reference/account/get-address',
-              owner: 'RHI-7109',
-              collaborators: [],
-              content: 'generated',
+              tab: 'Wallets',
+              menu: [
+                { item: 'Custom signer', pages: [] },
+                { item: 'Custom signer', pages: [] },
+              ],
             },
           ],
         },
-        { paths: [] },
-        ['wallets/custom-signer/sdk-reference/new-area/new-page'],
-        'wallets/custom-signer/sdk-reference',
-      ),
-    ).toThrow('no ownership metadata can be inferred')
+      },
+      'duplicate navigation menu item "Custom signer"',
+    ],
+    [
+      'missing Custom signer pages',
+      {
+        navigation: {
+          tabs: [{ tab: 'Wallets', menu: [{ item: 'Custom signer' }] }],
+        },
+      },
+      'navigation menu item "Custom signer" in tab "Wallets" has no pages array',
+    ],
+  ])('rejects %s', (_, docs, error) => {
+    expect(() => patchReferenceNavigation(docs, generated)).toThrow(error)
+  })
+
+  it('rejects a malformed SDK reference group', () => {
+    const docs = launchedDocs([{ group: 'SDK reference' }])
+
+    expect(() => patchReferenceNavigation(docs, generated)).toThrow(
+      'navigation group "SDK reference" has no pages array',
+    )
+  })
+
+  it('rejects duplicate SDK reference groups', () => {
+    const docs = launchedDocs([
+      { group: 'SDK reference', pages: [] },
+      { group: 'SDK reference', pages: [] },
+    ])
+
+    expect(() => patchReferenceNavigation(docs, generated)).toThrow(
+      'duplicate navigation group "SDK reference"',
+    )
   })
 })
