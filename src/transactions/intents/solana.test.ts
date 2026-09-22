@@ -91,8 +91,7 @@ function transfer(overrides: TransferOverrides = {}): SolanaTransferInput {
       ...(amount === undefined ? {} : { amount }),
       delivery: delivery ?? { kind: 'same-chain', recipient },
     },
-    accountAddress,
-    accountType: 'ERC7579',
+    accountAddress: wallet,
     authority: { kind: 'secp256k1', address: owner.address },
     walletAddress: wallet,
     swigAddress: swig,
@@ -176,17 +175,16 @@ function context(candidate = quote()) {
 }
 
 describe('managed Solana intent workflow', () => {
-  test('builds the narrow no-RPC quote and preserves backend costs', async () => {
+  test('builds the standalone Swig quote and preserves backend costs', async () => {
     const fixture = context()
     const prepared = await prepareSolanaIntent(fixture.workflow, transfer())
 
     expect(fixture.createQuote).toHaveBeenCalledWith({
       account: {
-        evm: { type: 'erc7579', address: accountAddress, signatureMode: 1 },
-        // No `initData`: the Swig has to exist already.
         svm: {
           type: 'swig',
           address: wallet,
+          swigAccount: swig,
           authorization: { kind: 'secp256k1', address: owner.address },
         },
       },
@@ -207,7 +205,7 @@ describe('managed Solana intent workflow', () => {
     // The sponsorship projection keeps its numeric chain ids and its original
     // field names across the wire migration.
     expect(prepared.normalized).toEqual({
-      account: { address: accountAddress, accountType: 'ERC7579' },
+      account: { address: wallet },
       destinationChainId: 792703810,
       destinationExecutions: [],
       tokenRequests: [{ tokenAddress: mint, amount: 100_000n }],
@@ -286,6 +284,7 @@ describe('managed Solana intent workflow', () => {
     expect(() =>
       reconstructSolanaIntent({
         traceId: fresh.traceId,
+        request: fresh.request,
         transfer: transfer(),
         intentInput: {
           ...projectCompatibleIntentInput(fresh.normalized),
@@ -294,7 +293,7 @@ describe('managed Solana intent workflow', () => {
         quote: fresh.quote,
         quotes: fresh.quotes,
       }),
-    ).toThrow(/canonical intent input/)
+    ).toThrow(/canonical intent input|persisted request/)
     expect(valid.submitIntent).not.toHaveBeenCalled()
   })
 
@@ -621,6 +620,7 @@ describe('managed Solana intent workflow', () => {
     const prepared = await prepareSolanaIntent(fixture.workflow, transfer())
     const plain = {
       traceId: prepared.traceId,
+      request: prepared.request,
       transfer: transfer(),
       intentInput: projectCompatibleIntentInput(prepared.normalized),
       quote: prepared.quote,
@@ -757,6 +757,7 @@ describe('sponsored Solana intents', () => {
     expect(() =>
       reconstructSolanaIntent({
         traceId: prepared.traceId,
+        request: prepared.request,
         transfer: transfer({ sponsorSettings }),
         intentInput,
         quote: prepared.quote,
@@ -766,6 +767,7 @@ describe('sponsored Solana intents', () => {
     expect(() =>
       reconstructSolanaIntent({
         traceId: prepared.traceId,
+        request: prepared.request,
         transfer: transfer({
           sponsorSettings: { ...sponsorSettings, protocolFees: false },
         }),
@@ -773,16 +775,17 @@ describe('sponsored Solana intents', () => {
         quote: prepared.quote,
         quotes: prepared.quotes,
       }),
-    ).toThrow(/canonical intent input/)
+    ).toThrow(/canonical intent input|persisted request/)
     expect(() =>
       reconstructSolanaIntent({
         traceId: prepared.traceId,
+        request: prepared.request,
         transfer: transfer(),
         intentInput,
         quote: prepared.quote,
         quotes: prepared.quotes,
       }),
-    ).toThrow(/canonical intent input/)
+    ).toThrow(/canonical intent input|persisted request/)
   })
 })
 
@@ -833,10 +836,10 @@ describe('Solana-origin cross-chain delivery', () => {
     ).toEqual({
       request: {
         account: {
-          evm: { type: 'erc7579', address: accountAddress, signatureMode: 1 },
           svm: {
             type: 'swig',
             address: wallet,
+            swigAccount: swig,
             authorization: { kind: 'secp256k1', address: owner.address },
           },
         },
@@ -858,7 +861,7 @@ describe('Solana-origin cross-chain delivery', () => {
         options: { appFees: { feeBps: 10 }, protocolFees: { feeBps: 5 } },
       },
       normalized: {
-        account: { address: accountAddress, accountType: 'ERC7579' },
+        account: { address: wallet },
         destinationChainId: baseSepoliaId,
         destinationExecutions: [],
         tokenRequests: [{ tokenAddress: destinationToken, amount: 100_000n }],
@@ -1058,6 +1061,8 @@ describe('Solana-origin cross-chain delivery', () => {
       execution: Partial<SolanaEvmExecution> = {},
     ): SolanaTransferInput {
       return transfer({
+        accountAddress,
+        accountType: 'ERC7579',
         delivery: {
           ...delivery,
           recipient: accountAddress,
@@ -1196,6 +1201,8 @@ describe('Solana-origin cross-chain delivery', () => {
       [
         'another recipient',
         transfer({
+          accountAddress,
+          accountType: 'ERC7579',
           delivery: {
             ...delivery,
             execution: {
@@ -1364,6 +1371,7 @@ describe('Solana-origin cross-chain delivery', () => {
       const prepared = await prepareSolanaIntent(fixture.workflow, executing())
       const plain = {
         traceId: prepared.traceId,
+        request: prepared.request,
         intentInput: JSON.parse(
           JSON.stringify(projectCompatibleIntentInput(prepared.normalized)),
         ),
@@ -1378,7 +1386,7 @@ describe('Solana-origin cross-chain delivery', () => {
           ...plain,
           transfer: executing({}, { calls: [{ ...call, data: '0xabcdee' }] }),
         }),
-      ).toThrow(/canonical intent input/)
+      ).toThrow(/canonical intent input|persisted request/)
     })
   })
 })
@@ -1433,10 +1441,10 @@ describe('same-chain Solana instruction execution', () => {
     ).toEqual({
       request: {
         account: {
-          evm: { type: 'erc7579', address: accountAddress, signatureMode: 1 },
           svm: {
             type: 'swig',
             address: wallet,
+            swigAccount: swig,
             authorization: { kind: 'secp256k1', address: owner.address },
           },
         },
@@ -1454,7 +1462,7 @@ describe('same-chain Solana instruction execution', () => {
         source: { selection: { chains: { only: [DEVNET] }, tokens: 'all' } },
       },
       normalized: {
-        account: { address: accountAddress, accountType: 'ERC7579' },
+        account: { address: wallet },
         destinationChainId: 792703810,
         destinationExecutions: [],
         tokenRequests: [],
@@ -1570,6 +1578,7 @@ describe('same-chain Solana instruction execution', () => {
     expect(() =>
       reconstructSolanaIntent({
         traceId: restored.traceId,
+        request: prepared.request,
         transfer: input,
         intentInput: restored.intentInput,
         quote: prepared.quote,
@@ -1579,6 +1588,7 @@ describe('same-chain Solana instruction execution', () => {
     expect(() =>
       reconstructSolanaIntent({
         traceId: restored.traceId,
+        request: prepared.request,
         transfer: execution(
           {},
           {
@@ -1589,7 +1599,7 @@ describe('same-chain Solana instruction execution', () => {
         quote: prepared.quote,
         quotes: prepared.quotes,
       }),
-    ).toThrow(/canonical intent input/)
+    ).toThrow(/canonical intent input|persisted request/)
   })
 
   test('surfaces the orchestrator refusal while no route serves instructions', async () => {
@@ -1669,6 +1679,7 @@ describe('passkey-owned managed Solana intents', () => {
     expect(request.account.svm).toEqual({
       type: 'swig',
       address: wallet,
+      swigAccount: swig,
       authorization: { kind: 'secp256r1', publicKey: compressedPublicKey },
     })
   })

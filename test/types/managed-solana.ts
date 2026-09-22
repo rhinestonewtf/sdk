@@ -158,8 +158,7 @@ const metadata: SolanaExecutionMetadata = {
   endpoint: 'https://orchestrator.example',
   chain: 792703810,
   caip2: solanaDevnet.caip2,
-  accountAddress: owner.address,
-  accountType: 'ERC7579',
+  accountAddress: recipient,
   authority: owner.address,
   swigAddress: recipient,
   walletAddress: recipient,
@@ -173,8 +172,7 @@ const instructionsMetadata: SolanaInstructionsExecutionMetadata = {
   endpoint: 'https://orchestrator.example',
   chain: 792703810,
   caip2: solanaDevnet.caip2,
-  accountAddress: owner.address,
-  accountType: 'ERC7579',
+  accountAddress: recipient,
   authority: owner.address,
   swigAddress: recipient,
   walletAddress: recipient,
@@ -186,8 +184,7 @@ const crossChainMetadata: SolanaCrossChainExecutionMetadata = {
   endpoint: 'https://orchestrator.example',
   chain: 792703810,
   caip2: solanaDevnet.caip2,
-  accountAddress: owner.address,
-  accountType: 'ERC7579',
+  accountAddress: recipient,
   authority: owner.address,
   swigAddress: recipient,
   walletAddress: recipient,
@@ -217,6 +214,11 @@ const standaloneConfig: SolanaStandaloneAccountConfig = {
   owner: { type: 'ecdsa', account: owner },
   swig,
 }
+// @ts-expect-error every managed Solana account must name its existing Swig
+const implicitConfig: SolanaStandaloneAccountConfig = {
+  owner: { type: 'ecdsa', account: owner },
+}
+void implicitConfig
 
 async function standaloneCapabilitySurface() {
   const sdk = new RhinestoneSDK({ apiKey: 'types', useDevContracts: true })
@@ -263,12 +265,26 @@ async function standaloneCapabilitySurface() {
   // @ts-expect-error nor takes submission options
   handle.submitTransaction(signed, { internal_dryRun: true })
 
-  const paired = {
+  const paired = await sdk.createAccount({
     evm: { owners: { type: 'ecdsa' as const, accounts: [owner] } },
     solana: standaloneConfig,
-  }
-  // @ts-expect-error a managed EVM account derives its Swig, so none is named
-  sdk.createAccount(paired)
+  })
+  paired.prepareTransaction(deliveryFromSolanaWithCalls)
+
+  const receiverPaired = await sdk.createAccount({
+    evm: { address: owner.address },
+    solana: standaloneConfig,
+  })
+  const receiverAddress: Address = receiverPaired.getAddress('evm')
+  receiverPaired.prepareTransaction(deliveryFromSolana)
+  receiverPaired.prepareTransaction({
+    ...deliveryFromSolana,
+    // @ts-expect-error an address-only receiver cannot execute destination calls
+    calls: [{ to: usdcOnBase, data: '0x' }],
+  })
+  // @ts-expect-error an address-only receiver cannot fund an EVM transaction
+  receiverPaired.prepareTransaction({ chain: mainnet, calls: [] })
+  void receiverAddress
 
   void wallet
   void requests
@@ -279,7 +295,7 @@ async function compositeCapabilitySurface() {
   const sdk = new RhinestoneSDK({ apiKey: 'types', useDevContracts: true })
   const account = await sdk.createAccount({
     evm: { owners: { type: 'ecdsa', accounts: [owner] } },
-    solana: { owner: { type: 'ecdsa', account: owner } },
+    solana: standaloneConfig,
   })
 
   const evmAddress: Address = account.getAddress('evm')

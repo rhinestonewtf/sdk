@@ -937,13 +937,16 @@ type SolanaOwner =
   | { type: 'passkey'; account: WebAuthnAccount }
 
 /**
- * Development managed Solana account paired with a managed EVM identity. The
- * EVM account's address selects the Swig.
+ * Development managed Solana account identified by an existing Swig.
+ *
+ * The wallet is independent from any EVM entry in the composite account. Save
+ * both Swig addresses when the account is provisioned and supply the matching
+ * private-key or passkey owner when attaching it.
  */
 interface SolanaManagedAccountConfig {
   owner: SolanaOwner
+  swig: SolanaSwig
   address?: never
-  swig?: never
 }
 
 /** A Swig that already exists, named by its two addresses. */
@@ -954,16 +957,8 @@ interface SolanaSwig {
   swigAccount: SolanaAddress
 }
 
-/**
- * Development managed Solana account with no EVM account, identified by the
- * Swig it names. It originates on Solana only, and a delivery to an EVM chain
- * needs an explicit `recipient`.
- */
-interface SolanaStandaloneAccountConfig {
-  owner: SolanaOwner
-  swig: SolanaSwig
-  address?: never
-}
+/** Backwards-compatible name for an explicitly identified managed Solana account. */
+type SolanaStandaloneAccountConfig = SolanaManagedAccountConfig
 
 /** Address-only Solana destination without spending authority. */
 interface SolanaReceiverAccountConfig {
@@ -975,24 +970,12 @@ interface SolanaReceiverAccountConfig {
 type EvmAccountEntry = EvmAccountConfig | EvmReceiverAccountConfig
 type SolanaAccountConfig =
   | SolanaManagedAccountConfig
-  | SolanaStandaloneAccountConfig
   | SolanaReceiverAccountConfig
 
 /** Independent EVM and Solana account entries. At least one VM is required. */
 type RhinestoneAccountConfig =
-  | Readonly<{
-      evm: EvmAccountConfig
-      solana?: SolanaManagedAccountConfig | SolanaReceiverAccountConfig
-    }>
-  | Readonly<{
-      evm: EvmReceiverAccountConfig
-      solana?: SolanaReceiverAccountConfig
-    }>
-  | Readonly<{
-      evm?: EvmAccountEntry
-      solana: SolanaReceiverAccountConfig
-    }>
-  | Readonly<{ evm?: never; solana: SolanaStandaloneAccountConfig }>
+  | Readonly<{ evm: EvmAccountEntry; solana?: SolanaAccountConfig }>
+  | Readonly<{ evm?: EvmAccountEntry; solana: SolanaAccountConfig }>
 
 interface ApiKeyAuth {
   mode: 'apiKey'
@@ -1499,24 +1482,31 @@ type ManagedEvmTransactions<C extends RhinestoneAccountConfig> = [
     ? SameChainTransaction | CrossChainTransaction
     : never
 
+type RestrictedSolanaDelivery = CrossChainSolanaOriginTransaction & {
+  calls?: never
+  gasLimit?: never
+  eip7702InitSignature?: never
+}
+
+type SolanaDeliveryFor<C extends RhinestoneAccountConfig> = [
+  RequiredAccountBranch<C, 'evm'>,
+] extends [never]
+  ? RestrictedSolanaDelivery & { recipient: Address }
+  : [RequiredAccountBranch<C, 'evm'>] extends [EvmAccountConfig]
+    ? CrossChainSolanaOriginTransaction
+    : [RequiredAccountBranch<C, 'evm'>] extends [EvmReceiverAccountConfig]
+      ? RestrictedSolanaDelivery
+      : RestrictedSolanaDelivery & { recipient: Address }
+
 type ManagedSolanaTransactions<C extends RhinestoneAccountConfig> = [
   RequiredAccountBranch<C, 'solana'>,
-] extends [SolanaManagedAccountConfig]
-  ?
-      | SameChainSolanaTransaction
-      | SameChainSolanaInstructionsTransaction
-      | CrossChainSolanaOriginTransaction
-  : [RequiredAccountBranch<C, 'solana'>] extends [SolanaStandaloneAccountConfig]
+] extends [never]
+  ? never
+  : [RequiredAccountBranch<C, 'solana'>] extends [SolanaManagedAccountConfig]
     ?
         | SameChainSolanaTransaction
         | SameChainSolanaInstructionsTransaction
-        // No EVM account for the delivery to default to, or to run calls.
-        | (CrossChainSolanaOriginTransaction & {
-            recipient: Address
-            calls?: never
-            gasLimit?: never
-            eip7702InitSignature?: never
-          })
+        | SolanaDeliveryFor<C>
     : never
 
 /** Transactions available from every definitely managed source VM. */

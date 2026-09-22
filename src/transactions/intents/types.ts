@@ -191,9 +191,9 @@ export interface SolanaExecutionMetadata {
   endpoint: string
   chain: number
   caip2: string
-  /** The paired EVM account, or the Swig wallet for an account with no EVM entry. */
+  /** The Swig wallet for a plain spend; the EVM executor for destination calls. */
   accountAddress: Address | SolanaAddress
-  /** Absent for an account with no EVM entry. */
+  /** Present only when this operation executes destination calls on EVM. */
   accountType?: 'GENERIC' | 'ERC7579' | 'EOA'
   /** The owner's address for an ECDSA owner; its compressed P-256 key for a passkey. */
   authority: Address | Hex
@@ -213,9 +213,9 @@ export interface SolanaCrossChainExecutionMetadata {
   endpoint: string
   chain: number
   caip2: string
-  /** The paired EVM account, or the Swig wallet for an account with no EVM entry. */
+  /** The Swig wallet for a plain spend; the EVM executor for destination calls. */
   accountAddress: Address | SolanaAddress
-  /** Absent for an account with no EVM entry. */
+  /** Present only when this operation executes destination calls on EVM. */
   accountType?: 'GENERIC' | 'ERC7579' | 'EOA'
   /** The owner's address for an ECDSA owner; its compressed P-256 key for a passkey. */
   authority: Address | Hex
@@ -238,9 +238,9 @@ export interface SolanaInstructionsExecutionMetadata {
   endpoint: string
   chain: number
   caip2: string
-  /** The paired EVM account, or the Swig wallet for an account with no EVM entry. */
+  /** The Swig wallet for a plain spend; the EVM executor for destination calls. */
   accountAddress: Address | SolanaAddress
-  /** Absent for an account with no EVM entry. */
+  /** Present only when this operation executes destination calls on EVM. */
   accountType?: 'GENERIC' | 'ERC7579' | 'EOA'
   /** The owner's address for an ECDSA owner; its compressed P-256 key for a passkey. */
   authority: Address | Hex

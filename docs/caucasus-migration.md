@@ -14,13 +14,47 @@ reconcile any in-flight submission first, then prepare it again.
   `calls`, `tokenRequests`, `recipient`, `gasLimit`, `appFees`, `protocolFees`,
   `customDeadline`, `settlementLayers`, `quoters`,
   `auxiliaryFunds`, and the HyperCore order helpers.
-- Account construction and address derivation.
 - `prepareTransaction` → `signTransaction` → `submitTransaction` →
   `waitForExecution`, and their `PENDING` / `COMPLETED` / `FAILED` semantics.
 - Other sponsorship categories. `PreparedTransactionData.intentInput` keeps
   their field names and numeric chain ids, so a JWT `getIntentExtensionToken`
   callback can continue evaluating them.
 - Preparation is still side-effect-free: it neither spends nor deploys.
+
+## Managed Solana accounts require explicit identity
+
+Every managed Solana branch now names the existing Swig it uses:
+
+```ts
+const solana = {
+  owner: { type: 'ecdsa' as const, account: solanaSigner },
+  swig: {
+    address: savedWalletAddress,
+    swigAccount: savedStateAddress,
+  },
+}
+
+await sdk.createAccount({ solana })
+await sdk.createAccount({ solana, evm: { address: evmReceiver } })
+await sdk.createAccount({ solana, evm: managedEvmConfig })
+```
+
+There is no EVM-derived fallback and account construction does not deploy or
+verify the Swig. Save both addresses during provisioning. The Solana owner may
+be an ECDSA account or WebAuthn account and may be shared with EVM, but the two
+VMs authorize independently.
+
+Plain Solana transfers, instructions, and deliveries use the standalone SVM
+request even when EVM is configured. Their normalized sponsorship account is
+now the Swig wallet, so review or reissue policies that granted sponsorship to
+the former EVM identity. EVM-origin operations are unchanged. Solana-to-EVM
+destination calls remain available only when the explicit Swig matches the
+backend-compatible Swig derived from the managed EVM account; unrelated pairs
+must omit calls and use plain delivery. Address-only EVM receivers provide a
+default recipient but cannot execute calls.
+
+Previously prepared paired plain-Solana artifacts do not get reinterpreted.
+Reconcile any possible submission, then prepare again with the explicit Swig.
 
 ## Swap sponsorship
 

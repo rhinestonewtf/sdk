@@ -108,7 +108,10 @@ async function useManagedSolanaApi() {
   })
   const account = await devSdk.createAccount({
     evm,
-    solana: { owner: { type: 'ecdsa', account: owner } },
+    solana: {
+      owner: { type: 'ecdsa', account: owner },
+      swig: { address: solanaRecipient, swigAccount: solanaMint },
+    },
   })
   const transaction = {
     chain: solanaDevnet,

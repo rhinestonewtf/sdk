@@ -186,19 +186,13 @@ export function attachAccount<const C extends RhinestoneAccountConfig>(
           "Managed Solana requires `{ owner: { type: 'ecdsa', account } }` with a valid viem ECDSA account, or `{ owner: { type: 'passkey', account } }` with a viem WebAuthn account holding a P-256 public key.",
         )
       }
-      if (solana.swig !== undefined) managedSolanaSwig = parseSwig(solana.swig)
+      if (solana.swig === undefined) {
+        throw new InvalidAccountConfigError(
+          'Managed Solana requires `swig: { address, swigAccount }` from the existing provisioned account; the SDK no longer derives it from an EVM account.',
+        )
+      }
+      managedSolanaSwig = parseSwig(solana.swig)
     }
-  }
-
-  if (managedSolanaSwig && input.evm !== undefined) {
-    throw new InvalidAccountConfigError(
-      '`solana.swig` is for an account with no `evm` entry',
-    )
-  }
-  if (managedSolanaOwner && !managedEvm && !managedSolanaSwig) {
-    throw new ManagedSolanaAccountNotSupportedError(
-      'Managed Solana requires a managed EVM account, whose address selects the Swig, or `swig: { address, swigAccount }`.',
-    )
   }
   if (
     managedSolanaOwner &&
@@ -216,31 +210,46 @@ export function attachAccount<const C extends RhinestoneAccountConfig>(
     )
   }
 
+  const capturedEvmReceiver = evmReceiver
+    ? Object.freeze({ address: evmReceiver })
+    : undefined
+  const capturedSolanaReceiver = solanaReceiver
+    ? Object.freeze({ address: solanaReceiver })
+    : undefined
   const capturedSolana =
     managedSolanaOwner &&
+    managedSolanaSwig &&
     Object.freeze({
       owner: Object.freeze({
         type: managedSolanaOwner.type,
         account: managedSolanaOwner.account,
       }),
-      ...(managedSolanaSwig
-        ? { swig: Object.freeze({ ...managedSolanaSwig }) }
-        : {}),
+      swig: Object.freeze({ ...managedSolanaSwig }),
     })
-  if (managedSolanaOwner && managedSolanaSwig) {
+  if (managedSolanaOwner && managedSolanaSwig && !managedEvm) {
+    const captured = Object.freeze({
+      ...config,
+      ...(capturedEvmReceiver ? { evm: capturedEvmReceiver } : {}),
+      solana: capturedSolana,
+    }) as Readonly<C>
     return createSolanaAccountFacade(
       {
         owner: managedSolanaOwner,
         walletAddress: managedSolanaSwig.address,
         swigAddress: managedSolanaSwig.swigAccount,
         endpoint: sdk.composition.config.orchestratorUrl,
+        ...(evmReceiver ? { evmRecipient: evmReceiver } : {}),
       },
-      Object.freeze({ ...config, solana: capturedSolana }) as Readonly<C>,
+      captured,
       sdk.composition,
     ) as RhinestoneAccount<C>
   }
 
-  const captured = Object.freeze({ ...config }) as Readonly<C>
+  const captured = Object.freeze({
+    ...config,
+    ...(capturedEvmReceiver ? { evm: capturedEvmReceiver } : {}),
+    ...(capturedSolanaReceiver ? { solana: capturedSolanaReceiver } : {}),
+  }) as Readonly<C>
   if (!managedEvm) {
     const receiver: RhinestoneAccountBase<C> = {
       config: captured,
