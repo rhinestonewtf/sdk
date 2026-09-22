@@ -583,8 +583,8 @@ export interface operations {
                      * @example EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
                      */
                     swigAccount: string
-                    /** @description Authority configured on the Swig */
-                    authority:
+                    /** @description Authority the submitted signature was verified against when the intent was accepted, as recorded. Absent on an intent record written before it was recorded; never inferred from the account or from current chain state. */
+                    authority?:
                       | {
                           /** @enum {string} */
                           kind: 'secp256k1'
@@ -1408,8 +1408,8 @@ export interface operations {
                        * @example EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
                        */
                       swigAccount: string
-                      /** @description Authority configured on the Swig */
-                      authority:
+                      /** @description Authority the submitted signature was verified against when the intent was accepted, as recorded. Absent on an intent record written before it was recorded; never inferred from the account or from current chain state. */
+                      authority?:
                         | {
                             /** @enum {string} */
                             kind: 'secp256k1'
@@ -1437,10 +1437,10 @@ export interface operations {
                       address: string
                     }
               }[]
-              /** @description Cost summary from the recorded fee sponsorship. Amounts are integer micro-USD; omitted when no sponsorship row exists. */
+              /** @description Intent sponsorship coverage and recorded accounting amounts. Coverage may be true when amounts are zero or omitted; amounts remain integer micro-USD and are omitted when no sponsorship row exists. */
               cost: {
                 /**
-                 * @description Whether gas/fees were sponsored for this intent
+                 * @description Whether the accepted EVM intent enabled any recognized sponsorship coverage. Independent of lifecycle and recorded charge; historical, Solana, and Safe records without readable coverage settings retain the accounting-derived value.
                  * @example true
                  */
                 sponsored: boolean
@@ -1805,8 +1805,8 @@ export interface operations {
                        * @example EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
                        */
                       swigAccount: string
-                      /** @description Authority configured on the Swig */
-                      authority:
+                      /** @description Authority the submitted signature was verified against when the intent was accepted, as recorded. Absent on an intent record written before it was recorded; never inferred from the account or from current chain state. */
+                      authority?:
                         | {
                             /** @enum {string} */
                             kind: 'secp256k1'
@@ -1850,7 +1850,7 @@ export interface operations {
               /** @description Absent where no single truthful value exists: no value leg, or a multi-token delivery no one cell can describe. Never a zero-value placeholder. */
               value?: {
                 /**
-                 * @description `output` where the fill recorded a delivery, `input` where the spend is the only fact the record persisted (a same-chain intent records no delivery, so for a swap this is what went in, not what came back).
+                 * @description `output` where the fill records planned delivery, including same-chain outputs; `input` where source spend is the only retained fact, including historical same-chain rows without output accounting.
                  * @example output
                  * @enum {string}
                  */
@@ -2387,7 +2387,7 @@ export interface operations {
       content: {
         'application/json': {
           /**
-           * @description The account this intent spends from and delivers to, per VM. A quote needs a configured `evm` entry: a receiver cannot fund one.
+           * @description The account this intent spends from and delivers to, per VM. A quote needs a configured `evm` entry, or for a Solana-only account a `swig` `svm` entry and no `evm` entry: a receiver cannot fund one.
            * @example {
            *       "evm": {
            *         "type": "eoa",
@@ -2521,9 +2521,9 @@ export interface operations {
               | {
                   /** @enum {string} */
                   type: 'swig'
-                  /** @description The asset-holding Swig wallet, not the Swig state account. Must be the wallet the orchestrator derives for the EVM account. */
+                  /** @description The asset-holding Swig wallet, not the Swig state account. Must be the wallet the orchestrator derives for the EVM account or, for a Solana-only account, the wallet of `swigAccount`. */
                   address: string
-                  /** @description The Swig state account holding the roles. Optional for an account paired with an EVM entry, whose Swig the orchestrator derives. */
+                  /** @description The Swig state account holding the roles. Required for a Solana-only account (no `evm` entry); optional for an account paired with an EVM entry, whose Swig the orchestrator derives. */
                   swigAccount?: string
                   /** @description The authority this caller believes the Swig carries. Checked structurally only: the onchain root role stays the source of truth for who may spend. */
                   authorization:
@@ -2694,12 +2694,10 @@ export interface operations {
                */
               bridgeFees?: boolean
               /**
-               * @description Whether to sponsor swap fees for the intent
+               * @description Whether to sponsor swap fees for the intent. For an integrator enabled for it, this also sponsors the VALUE of an eligible same-chain swap, so the user trades at par: the user contributes the 1:1 amount and the sponsor pays whatever the market is short. That applies only to pairs where par is a meaningful rate (both sides USD-pegged) and only up to a configured per-swap ceiling; outside those bounds the swap is priced at market.
                * @default false
                */
               swapFees?: boolean
-              /** @description Whether to sponsor the VALUE of an eligible same-chain swap, so the user trades at par: the user contributes the 1:1 amount and the sponsor pays whatever the market is short. Applies only to pairs where par is a meaningful rate (both sides USD-pegged) and only up to a configured per-swap ceiling; outside those bounds the route plans as an ordinary unsponsored swap. Distinct from `swapFees`, which waives a solver's commission. */
-              swapValue?: boolean
               /**
                * @description Whether to sponsor the Rhinestone protocol fee (`options.protocolFees`) for the intent. When `true`, the fee is charged to the integrator's sponsorship balance instead of carved from the user, without the sponsorship surcharge.
                * @default false
@@ -2826,7 +2824,7 @@ export interface operations {
                   tokenAddress: string
                   /**
                    * Format: uint256
-                   * @description The amount of the requested token (in the smallest unit). Omit for max-out. IMPORTANT: for a self-send with no `destinationExecutions`, any balance of this token already held on the destination chain is CREDITED against the request, so this behaves as a target final balance and an already-satisfied request delivers nothing. The credit only applies when that destination balance is in scope as a source — pinning `sourceAssets` or `sourceChains` away from the destination chain excludes it, and then this amount is delivered in full on top of whatever is already there. Same-chain intents always have the destination balance in scope, so they always credit.
+                   * @description Amount must be a non-negative decimal integer string in smallest units
                    * @example 1000000
                    */
                   amount?: string
@@ -2842,8 +2840,8 @@ export interface operations {
                     to: string
                     /**
                      * Format: uint256
-                     * @description Amount of ETH (in wei) sent in the execution
-                     * @example 0
+                     * @description Amount must be a non-negative decimal integer string in smallest units
+                     * @example 1000000
                      */
                     value: string
                     /**
@@ -2892,7 +2890,7 @@ export interface operations {
                   tokenAddress: string
                   /**
                    * Format: uint256
-                   * @description The amount of the requested token (in the smallest unit). Omit for max-out. IMPORTANT: for a self-send with no `destinationExecutions`, any balance of this token already held on the destination chain is CREDITED against the request, so this behaves as a target final balance and an already-satisfied request delivers nothing. The credit only applies when that destination balance is in scope as a source — pinning `sourceAssets` or `sourceChains` away from the destination chain excludes it, and then this amount is delivered in full on top of whatever is already there. Same-chain intents always have the destination balance in scope, so they always credit.
+                   * @description Amount must be a non-negative decimal integer string in smallest units
                    * @example 1000000
                    */
                   amount?: string
@@ -2953,7 +2951,7 @@ export interface operations {
                   tokenAddress: string
                   /**
                    * Format: uint256
-                   * @description The amount of the requested token (in the smallest unit). Omit for max-out. IMPORTANT: for a self-send with no `destinationExecutions`, any balance of this token already held on the destination chain is CREDITED against the request, so this behaves as a target final balance and an already-satisfied request delivers nothing. The credit only applies when that destination balance is in scope as a source — pinning `sourceAssets` or `sourceChains` away from the destination chain excludes it, and then this amount is delivered in full on top of whatever is already there. Same-chain intents always have the destination balance in scope, so they always credit.
+                   * @description Amount must be a non-negative decimal integer string in smallest units
                    * @example 1000000
                    */
                   amount?: string
@@ -2985,7 +2983,7 @@ export interface operations {
                   tokenAddress: string
                   /**
                    * Format: uint256
-                   * @description The amount of the requested token (in the smallest unit). Omit for max-out. IMPORTANT: for a self-send with no `destinationExecutions`, any balance of this token already held on the destination chain is CREDITED against the request, so this behaves as a target final balance and an already-satisfied request delivers nothing. The credit only applies when that destination balance is in scope as a source — pinning `sourceAssets` or `sourceChains` away from the destination chain excludes it, and then this amount is delivered in full on top of whatever is already there. Same-chain intents always have the destination balance in scope, so they always credit.
+                   * @description Amount must be a non-negative decimal integer string in smallest units
                    * @example 1000000
                    */
                   amount?: string
@@ -3085,7 +3083,7 @@ export interface operations {
                   tokenAddress: string
                   /**
                    * Format: uint256
-                   * @description The amount of the requested token (in the smallest unit). Omit for max-out. IMPORTANT: for a self-send with no `destinationExecutions`, any balance of this token already held on the destination chain is CREDITED against the request, so this behaves as a target final balance and an already-satisfied request delivers nothing. The credit only applies when that destination balance is in scope as a source — pinning `sourceAssets` or `sourceChains` away from the destination chain excludes it, and then this amount is delivered in full on top of whatever is already there. Same-chain intents always have the destination balance in scope, so they always credit.
+                   * @description Amount must be a non-negative decimal integer string in smallest units
                    * @example 1000000
                    */
                   amount?: string
@@ -3428,8 +3426,8 @@ export interface operations {
                       to: string
                       /**
                        * Format: uint256
-                       * @description Amount of ETH (in wei) sent in the execution
-                       * @example 0
+                       * @description Amount must be a non-negative decimal integer string in smallest units
+                       * @example 1000000
                        */
                       value: string
                       /**
@@ -3694,6 +3692,7 @@ export interface operations {
               /**
                * Format: uint256
                * @description Most this (chain, token) may contribute, in the token's smallest unit.
+               * @example 1000000
                */
               maxAmount: string
             }[]
@@ -3727,8 +3726,8 @@ export interface operations {
                 to: string
                 /**
                  * Format: uint256
-                 * @description Amount of ETH (in wei) sent in the execution
-                 * @example 0
+                 * @description Amount must be a non-negative decimal integer string in smallest units
+                 * @example 1000000
                  */
                 value: string
                 /**
@@ -3867,8 +3866,8 @@ export interface operations {
                          * @example EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
                          */
                         swigAccount: string
-                        /** @description Authority configured on the Swig */
-                        authority:
+                        /** @description Authority the submitted signature was verified against when the intent was accepted, as recorded. Absent on an intent record written before it was recorded; never inferred from the account or from current chain state. */
+                        authority?:
                           | {
                               /** @enum {string} */
                               kind: 'secp256k1'
@@ -4042,8 +4041,8 @@ export interface operations {
                          * @example EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
                          */
                         swigAccount: string
-                        /** @description Authority configured on the Swig */
-                        authority:
+                        /** @description Authority the submitted signature was verified against when the intent was accepted, as recorded. Absent on an intent record written before it was recorded; never inferred from the account or from current chain state. */
+                        authority?:
                           | {
                               /** @enum {string} */
                               kind: 'secp256k1'
@@ -4217,8 +4216,8 @@ export interface operations {
                          * @example EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
                          */
                         swigAccount: string
-                        /** @description Authority configured on the Swig */
-                        authority:
+                        /** @description Authority the submitted signature was verified against when the intent was accepted, as recorded. Absent on an intent record written before it was recorded; never inferred from the account or from current chain state. */
+                        authority?:
                           | {
                               /** @enum {string} */
                               kind: 'secp256k1'
@@ -4532,8 +4531,8 @@ export interface operations {
                            * @example EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
                            */
                           swigAccount: string
-                          /** @description Authority configured on the Swig */
-                          authority:
+                          /** @description Authority the submitted signature was verified against when the intent was accepted, as recorded. Absent on an intent record written before it was recorded; never inferred from the account or from current chain state. */
+                          authority?:
                             | {
                                 /** @enum {string} */
                                 kind: 'secp256k1'
@@ -4644,8 +4643,8 @@ export interface operations {
                            * @example EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
                            */
                           swigAccount: string
-                          /** @description Authority configured on the Swig */
-                          authority:
+                          /** @description Authority the submitted signature was verified against when the intent was accepted, as recorded. Absent on an intent record written before it was recorded; never inferred from the account or from current chain state. */
+                          authority?:
                             | {
                                 /** @enum {string} */
                                 kind: 'secp256k1'
@@ -5441,7 +5440,7 @@ export interface operations {
               feeBps: number
             }
             /**
-             * @description Which fee categories to treat as sponsored. Sponsored categories are absorbed by the sponsor and do not reduce the delivered amount. `swapValue` is NOT accepted: the estimator prices swaps at market, so an estimate cannot yet reflect a par-sponsored swap and is rejected rather than returning a figure `POST /quotes` would not honour (RHI-7069).
+             * @description Which fee categories to treat as sponsored. Sponsored categories are absorbed by the sponsor and do not reduce the delivered amount. The estimator prices every swap at market, so a same-chain swap `POST /quotes` sponsors to par under `swapFees` is estimated below what it delivers (RHI-7069).
              * @example {
              *       "gas": true,
              *       "bridgeFees": true,
@@ -5461,12 +5460,10 @@ export interface operations {
                */
               bridgeFees?: boolean
               /**
-               * @description Whether to sponsor swap fees for the intent
+               * @description Whether to sponsor swap fees for the intent. For an integrator enabled for it, this also sponsors the VALUE of an eligible same-chain swap, so the user trades at par: the user contributes the 1:1 amount and the sponsor pays whatever the market is short. That applies only to pairs where par is a meaningful rate (both sides USD-pegged) and only up to a configured per-swap ceiling; outside those bounds the swap is priced at market.
                * @default false
                */
               swapFees?: boolean
-              /** @description Whether to sponsor the VALUE of an eligible same-chain swap, so the user trades at par: the user contributes the 1:1 amount and the sponsor pays whatever the market is short. Applies only to pairs where par is a meaningful rate (both sides USD-pegged) and only up to a configured per-swap ceiling; outside those bounds the route plans as an ordinary unsponsored swap. Distinct from `swapFees`, which waives a solver's commission. */
-              swapValue?: boolean
               /**
                * @description Whether to sponsor the Rhinestone protocol fee (`options.protocolFees`) for the intent. When `true`, the fee is charged to the integrator's sponsorship balance instead of carved from the user, without the sponsorship surcharge.
                * @default false

@@ -47,7 +47,6 @@ export interface NormalizedIntentOptions {
     readonly bridgeFees: boolean
     readonly swapFees: boolean
     readonly protocolFees?: boolean
-    readonly swapValue?: boolean
   }
   readonly settlementLayers?:
     | { readonly include: readonly string[] }

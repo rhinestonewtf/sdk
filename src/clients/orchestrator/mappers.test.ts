@@ -55,6 +55,29 @@ function route(overrides: Record<string, unknown> = {}) {
   }
 }
 
+describe('mapIntentRequestToWire — swap sponsorship', () => {
+  test('uses swapFees within the generated Caucasus quote contract', () => {
+    const sponsorship = {
+      gas: true,
+      bridgeFees: false,
+      swapFees: true,
+    } as const
+    const wire = mapIntentRequestToWire({
+      account: {},
+      destination: {
+        vm: 'evm',
+        chainId: BASE,
+        tokenRequests: [],
+      },
+      options: { sponsorship },
+    })
+
+    expect(wire.options?.sponsorship?.swapFees).toBe(true)
+    expect(wire.options?.sponsorship).toEqual(sponsorship)
+    expect(wire.options?.sponsorship).not.toHaveProperty('swapValue')
+  })
+})
+
 describe('mapQuoteResponseFromWire', () => {
   test('parses the quoted outcome', () => {
     const mapped = mapQuoteResponseFromWire({
@@ -122,6 +145,68 @@ describe('mapQuoteResponseFromWire', () => {
       'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
     )
     expect(cost?.amount).toBe(100000n)
+  })
+
+  test('preserves optional Swig authority across plan and requirement disclosures', () => {
+    const wallet = '9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM'
+    const swigAccount = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
+    const passkey = `0x02${'11'.repeat(32)}`
+    const withoutAuthority = { wallet, swigAccount }
+    const mapped = mapQuoteResponseFromWire({
+      status: 'quoted',
+      traceId: 'trace',
+      routes: [
+        route({
+          plan: {
+            source: [{ vm: 'svm', chainId: SOLANA, account: withoutAuthority }],
+            destination: {
+              vm: 'svm',
+              chainId: SOLANA,
+              account: {
+                wallet,
+                swigAccount,
+                authority: { kind: 'secp256k1', address },
+              },
+            },
+            deployments: [
+              {
+                vm: 'svm',
+                chainId: SOLANA,
+                account: {
+                  wallet,
+                  swigAccount,
+                  authority: { kind: 'secp256r1', publicKey: passkey },
+                },
+              },
+            ],
+          },
+          requirements: [
+            {
+              kind: 'wrapNative',
+              vm: 'svm',
+              chainId: SOLANA,
+              account: withoutAuthority,
+              tokenAddress: 'So11111111111111111111111111111111111111112',
+              amount: '1',
+            },
+          ],
+        }),
+      ],
+    } as never)
+
+    const plan = mapped.routes[0]?.plan
+    expect(plan?.source[0]?.account).not.toHaveProperty('authority')
+    expect(plan?.destination.account).toHaveProperty('authority', {
+      kind: 'secp256k1',
+      address,
+    })
+    expect(plan?.deployments[0]?.account).toHaveProperty('authority', {
+      kind: 'secp256r1',
+      publicKey: passkey,
+    })
+    expect(mapped.routes[0]?.requirements[0]?.account).not.toHaveProperty(
+      'authority',
+    )
   })
 
   test('drops an unknown bridge fill without failing the quote', () => {
@@ -252,6 +337,9 @@ describe('mapSigningRequestFromWire', () => {
     expect(() =>
       mapSigningRequestFromWire(swigRole({ kind: 'secp256r1' })),
     ).toThrow(/unsupported Swig role authority: secp256r1/)
+    expect(() => mapSigningRequestFromWire(swigRole(undefined))).toThrow(
+      /unsupported Swig role authority: undefined/,
+    )
   })
 
   test('refuses a malformed EIP-712 payload', () => {
@@ -563,6 +651,9 @@ describe('mapIntentStatusFromWire', () => {
   })
 
   test('surfaces native per-VM accounts when the record has them', () => {
+    const wallet = '9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM'
+    const swigAccount = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
+    const publicKey = `0x02${'11'.repeat(32)}`
     const mapped = mapIntentStatusFromWire(
       'intent-1',
       status({
@@ -572,16 +663,46 @@ describe('mapIntentStatusFromWire', () => {
             chainId: BASE,
             account: { address, type: 'erc7579', deployed: true },
           },
+          {
+            vm: 'svm',
+            chainId: SOLANA,
+            account: { wallet, swigAccount },
+          },
+          {
+            vm: 'svm',
+            chainId: SOLANA,
+            account: {
+              wallet,
+              swigAccount,
+              authority: { kind: 'secp256k1', address },
+            },
+          },
+          {
+            vm: 'svm',
+            chainId: SOLANA,
+            account: {
+              wallet,
+              swigAccount,
+              authority: { kind: 'secp256r1', publicKey },
+            },
+          },
         ],
       }),
     )
-    expect(mapped.accounts).toEqual([
-      {
-        vm: 'evm',
-        chainId: BASE,
-        account: { address, type: 'erc7579', deployed: true },
-      },
-    ])
+    expect(mapped.accounts?.[0]).toEqual({
+      vm: 'evm',
+      chainId: BASE,
+      account: { address, type: 'erc7579', deployed: true },
+    })
+    expect(mapped.accounts?.[1]?.account).not.toHaveProperty('authority')
+    expect(mapped.accounts?.[2]?.account).toHaveProperty('authority', {
+      kind: 'secp256k1',
+      address,
+    })
+    expect(mapped.accounts?.[3]?.account).toHaveProperty('authority', {
+      kind: 'secp256r1',
+      publicKey,
+    })
   })
 
   test('keeps a known-empty refund list distinct from an absent one', () => {
@@ -603,6 +724,42 @@ describe('mapIntentStatusFromWire', () => {
   test('omits details unless the response carries them', () => {
     expect('details' in mapIntentStatusFromWire('intent-1', status())).toBe(
       false,
+    )
+  })
+
+  test('preserves absent Swig authority in full-detail deployments', () => {
+    const account = {
+      wallet: '9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM',
+      swigAccount: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+    }
+    const leg = {
+      chainId: SOLANA,
+      tokens: [],
+      status: 'COMPLETED',
+    }
+    const mapped = mapIntentStatusFromWire(
+      'intent-1',
+      status({
+        details: {
+          nonce: '1',
+          createdAt: 1,
+          latencyMs: 2,
+          settlementLayer: 'SAME_CHAIN',
+          source: [leg],
+          destination: leg,
+          deployments: [{ vm: 'svm', chainId: SOLANA, account }],
+          cost: { sponsored: false },
+        },
+      }),
+    )
+
+    expect(mapped.details?.deployments?.[0]).toMatchObject({
+      vm: 'svm',
+      chainId: SOLANA,
+      account: { wallet: account.wallet, swigAccount: account.swigAccount },
+    })
+    expect(mapped.details?.deployments?.[0]?.account).not.toHaveProperty(
+      'authority',
     )
   })
 

@@ -201,7 +201,6 @@ export interface OrchestratorSponsorship {
   readonly gas?: boolean
   readonly bridgeFees?: boolean
   readonly swapFees?: boolean
-  readonly swapValue?: boolean
   readonly protocolFees?: boolean
 }
 

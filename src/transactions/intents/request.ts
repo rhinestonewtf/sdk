@@ -240,7 +240,6 @@ function toSponsorship(
         readonly bridgeFees: boolean
         readonly swapFees: boolean
         readonly protocolFees?: boolean
-        readonly swapValue?: boolean
       }
     | undefined,
 ): OrchestratorSponsorship | undefined {

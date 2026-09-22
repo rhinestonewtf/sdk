@@ -1,8 +1,8 @@
 # Migrating to `2026-09.caucasus`
 
 The SDK now speaks orchestrator API version `2026-09.caucasus`. This is a
-breaking change to everything the orchestrator hands back, and to how a
-transaction is signed. It is **not** a change to how you describe a transaction.
+breaking change to everything the orchestrator hands back, to how a transaction
+is signed, and to the obsolete `sponsored.swapValue` option.
 
 There is no compatibility mode. A prepared or signed transaction produced by an
 earlier release fails explicitly on this one rather than being reinterpreted —
@@ -11,16 +11,32 @@ reconcile any in-flight submission first, then prepare it again.
 ## What did not change
 
 - Transaction inputs: `chain`, `sourceChains` / `targetChain`, `sourceAssets`,
-  `calls`, `tokenRequests`, `recipient`, `gasLimit`, `sponsored`, `appFees`,
-  `protocolFees`, `customDeadline`, `settlementLayers`, `quoters`,
+  `calls`, `tokenRequests`, `recipient`, `gasLimit`, `appFees`, `protocolFees`,
+  `customDeadline`, `settlementLayers`, `quoters`,
   `auxiliaryFunds`, and the HyperCore order helpers.
 - Account construction and address derivation.
 - `prepareTransaction` → `signTransaction` → `submitTransaction` →
   `waitForExecution`, and their `PENDING` / `COMPLETED` / `FAILED` semantics.
-- Sponsorship. `PreparedTransactionData.intentInput` keeps its shape, its field
-  names and its numeric chain ids, so a JWT `getIntentExtensionToken` callback
-  receives exactly what it received before and existing policies keep working.
+- Other sponsorship categories. `PreparedTransactionData.intentInput` keeps
+  their field names and numeric chain ids, so a JWT `getIntentExtensionToken`
+  callback can continue evaluating them.
 - Preparation is still side-effect-free: it neither spends nor deploys.
+
+## Swap sponsorship
+
+The separate `sponsored.swapValue` option is removed. Use `sponsored.swaps` for
+swap sponsorship:
+
+```ts
+await account.prepareTransaction({
+  // ...
+  sponsored: { gas: true, bridging: true, swaps: true },
+})
+```
+
+For enabled integrators and eligible same-chain stablecoin pairs, the
+orchestrator can also sponsor the market shortfall under `swaps`. There is no
+separate client-side switch for par-swap value sponsorship.
 
 ## Signing: ordered requests and ordered proofs
 
@@ -200,6 +216,35 @@ Requirements are **disclosed, never performed**. Preparing a transaction does
 not approve or wrap anything on your behalf.
 
 `TokenRequirements`, `ApprovalRequired` and `WrapRequired` are removed.
+
+### Swig authority is optional recorded evidence
+
+A Swig account summary always identifies its asset-holding `wallet` and
+`swigAccount`, but its `authority` is absent when the historical intent record
+has no authority evidence. This applies wherever summaries are disclosed,
+including status accounts, full-detail deployments, quote plans, and
+requirements.
+
+Guard the field before discriminating the authority kind:
+
+```ts
+const account = status.accounts?.find(
+  ({ vm, account }) => vm === 'svm' && 'swigAccount' in account,
+)?.account
+
+if (account && 'swigAccount' in account && account.authority) {
+  if (account.authority.kind === 'secp256k1') {
+    account.authority.address
+  } else {
+    account.authority.publicKey
+  }
+}
+```
+
+Do not infer a missing value from an EVM identity or current chain state.
+Account summaries disclose recorded facts; they do not authorize signing.
+`SigningRequest.authority` and caller-supplied Swig `authorization` remain
+required.
 
 ## Status reports every operation
 

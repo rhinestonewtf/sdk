@@ -54,6 +54,50 @@ describe('vendored OpenAPI provenance', () => {
     expect(manifest.upstream.commit).toMatch(/^[0-9a-f]{40}$/u)
   })
 
+  test('keeps read authority optional and signing authorization required', () => {
+    const document = JSON.parse(originalArtifact.toString('utf8'))
+    const objects: Record<string, unknown>[] = []
+    const visit = (value: unknown): void => {
+      if (Array.isArray(value)) {
+        for (const entry of value) visit(entry)
+        return
+      }
+      if (typeof value !== 'object' || value === null) return
+      objects.push(value as Record<string, unknown>)
+      for (const entry of Object.values(value)) visit(entry)
+    }
+    visit(document)
+
+    const summaries = objects.filter(
+      ({ description }) =>
+        description === 'A Solana Swig account resolved on one chain',
+    )
+    expect(summaries).toHaveLength(8)
+    for (const summary of summaries) {
+      expect(summary.required).toEqual(['wallet', 'swigAccount'])
+      const authority = (
+        summary.properties as Record<string, Record<string, unknown>>
+      ).authority
+      expect(
+        (authority.oneOf as { properties: { kind: { enum: string[] } } }[]).map(
+          (variant) => variant.properties.kind.enum[0],
+        ),
+      ).toEqual(['secp256k1', 'secp256r1'])
+    }
+
+    const signingRole = objects.find(
+      ({ description }) =>
+        description ===
+        'A selected Swig role, plus the authority it carries. Reports the role this quote used; it does not claim to be the only role that could authorize the spend.',
+    )
+    expect(signingRole?.required).toContain('authority')
+
+    const callerAccount = objects.find(
+      ({ description }) => description === 'An existing Swig account',
+    )
+    expect(callerAccount?.required).toContain('authorization')
+  })
+
   test('resolves to the vendored artifact', () => {
     expect(resolveVendoredSpec().pathname).toContain(
       'scripts/openapi/caucasus.json',
