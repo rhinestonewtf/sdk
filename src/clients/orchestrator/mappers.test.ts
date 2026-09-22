@@ -55,6 +55,29 @@ function route(overrides: Record<string, unknown> = {}) {
   }
 }
 
+describe('mapIntentRequestToWire — swap sponsorship', () => {
+  test('uses swapFees within the generated Caucasus quote contract', () => {
+    const sponsorship = {
+      gas: true,
+      bridgeFees: false,
+      swapFees: true,
+    } as const
+    const wire = mapIntentRequestToWire({
+      account: {},
+      destination: {
+        vm: 'evm',
+        chainId: BASE,
+        tokenRequests: [],
+      },
+      options: { sponsorship },
+    })
+
+    expect(wire.options?.sponsorship?.swapFees).toBe(true)
+    expect(wire.options?.sponsorship).toEqual(sponsorship)
+    expect(wire.options?.sponsorship).not.toHaveProperty('swapValue')
+  })
+})
+
 describe('mapQuoteResponseFromWire', () => {
   test('parses the quoted outcome', () => {
     const mapped = mapQuoteResponseFromWire({

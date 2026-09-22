@@ -2283,10 +2283,6 @@ function toSponsorSettings(
     bridgeFees: sponsored.bridging,
     swapFees: sponsored.swaps,
     protocolFees: sponsored.protocolFees ?? false,
-    // Omitted rather than sent false when unset: the field rides the
-    // server-signature surface, so a key that is present-but-false is not the
-    // same bytes as absent.
-    ...(sponsored.swapValue ? { swapValue: true } : {}),
   }
 }
 
