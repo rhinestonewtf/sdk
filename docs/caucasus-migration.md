@@ -201,6 +201,35 @@ not approve or wrap anything on your behalf.
 
 `TokenRequirements`, `ApprovalRequired` and `WrapRequired` are removed.
 
+### Swig authority is optional recorded evidence
+
+A Swig account summary always identifies its asset-holding `wallet` and
+`swigAccount`, but its `authority` is absent when the historical intent record
+has no authority evidence. This applies wherever summaries are disclosed,
+including status accounts, full-detail deployments, quote plans, and
+requirements.
+
+Guard the field before discriminating the authority kind:
+
+```ts
+const account = status.accounts?.find(
+  ({ vm, account }) => vm === 'svm' && 'swigAccount' in account,
+)?.account
+
+if (account && 'swigAccount' in account && account.authority) {
+  if (account.authority.kind === 'secp256k1') {
+    account.authority.address
+  } else {
+    account.authority.publicKey
+  }
+}
+```
+
+Do not infer a missing value from an EVM identity or current chain state.
+Account summaries disclose recorded facts; they do not authorize signing.
+`SigningRequest.authority` and caller-supplied Swig `authorization` remain
+required.
+
 ## Status reports every operation
 
 `operations` is grouped by chain, with every item inside:

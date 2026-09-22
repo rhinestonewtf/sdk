@@ -754,7 +754,8 @@ type IntentAccountView =
   | {
       wallet: string
       swigAccount: string
-      authority: SwigAuthority
+      /** Missing when authority evidence is unavailable; absence does not permit signing. */
+      authority?: SwigAuthority
     }
   | { address: string }
 
