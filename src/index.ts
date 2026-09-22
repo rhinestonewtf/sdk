@@ -160,6 +160,8 @@ export type {
   SolanaManagedAccountConfig,
   SolanaOwner,
   SolanaReceiverAccountConfig,
+  SolanaStandaloneAccountConfig,
+  SolanaSwig,
   SourceCallInput,
   SourceCallProvidedFunds,
   SwapScope,

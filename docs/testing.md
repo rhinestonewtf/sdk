@@ -38,7 +38,11 @@ and chain-native completion and refund references. Solana → EVM delivery is
 covered the same way: the source-narrowing access list on the wire, a
 vendor-settled route with its delivery handle, mixed-namespace cost legs,
 recipient defaulting to the account's own EVM identity, and the shapes refused
-before quoting. Offline tests never execute a Solana mainnet transfer.
+before quoting. A standalone managed Solana account, which names its Swig, is
+covered from its type fixture to the facade: a wallet that is not the state
+account's PDA refused, a request with no `evm` entry, metadata bound to the
+wallet across instances, and a delivery without a recipient refused. Offline
+tests never execute a Solana mainnet transfer.
 
 The pure-core gate requires 95% statements, lines, and functions and 90%
 branches. Contract-only files are excluded. The architecture check rejects

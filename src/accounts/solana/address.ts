@@ -145,6 +145,14 @@ function swigId(namespace: SwigNamespace, evmAccount: Address): Uint8Array {
   )
 }
 
+/** The asset-holding wallet PDA of a Swig state account. */
+function locateSwigWallet(swig: SolanaAddress): ProgramAddress {
+  return findProgramAddress(
+    [SWIG_WALLET_SEED, decodeAddress(swig)],
+    SWIG_PROGRAM_ADDRESS,
+  )
+}
+
 function locateSwig(
   namespace: SwigNamespace,
   evmAccount: Address,
@@ -152,10 +160,7 @@ function locateSwig(
   const normalizedAccount = evmAccount.toLowerCase() as Address
   const id = swigId(namespace, normalizedAccount)
   const swig = findProgramAddress([SWIG_SEED, id], SWIG_PROGRAM_ADDRESS)
-  const wallet = findProgramAddress(
-    [SWIG_WALLET_SEED, decodeAddress(swig.address)],
-    SWIG_PROGRAM_ADDRESS,
-  )
+  const wallet = locateSwigWallet(swig.address)
 
   return {
     namespace,
@@ -175,4 +180,5 @@ export {
   createProgramAddress,
   findProgramAddress,
   locateSwig,
+  locateSwigWallet,
 }

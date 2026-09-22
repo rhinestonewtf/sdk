@@ -133,6 +133,7 @@ import type {
   CoreDependencies,
   IntentMessages,
   ProjectWorkflows,
+  SolanaWorkflows,
 } from './compose-types'
 import { signRuntimeMessage, signRuntimeTypedData } from './direct-signing'
 import { getAppFeeBalances } from './queries/app-fees'
@@ -183,6 +184,15 @@ export function createCoreComposition<CompatibilityConfig = unknown>(
         environment: config.environment,
         definition,
       }),
+    solana: solanaWorkflows(dependencies),
+    waitForIntentStatus: (intentId) =>
+      waitForIntentStatus(
+        {
+          statusClient: dependencies.orchestrator,
+          clock: dependencies.clock,
+        },
+        intentId,
+      ),
   }
   return {
     config,
@@ -235,6 +245,21 @@ function createConfiguredDependencies(
           )
         }),
     },
+  }
+}
+
+function solanaWorkflows(dependencies: CoreDependencies): SolanaWorkflows {
+  const context = {
+    quoteClient: dependencies.orchestrator,
+    submissionClient: dependencies.orchestrator,
+    now: dependencies.clock.now,
+  }
+  return {
+    prepareSolanaIntent: (input) => prepareSolanaIntent(context, input),
+    reconstructSolanaIntent,
+    signSolanaIntent: (input) =>
+      signSolanaIntent({ ...input, now: dependencies.clock.now }),
+    submitSolanaIntent: (input) => submitSolanaIntent(context, input),
   }
 }
 
@@ -326,27 +351,7 @@ function createAccountComposition<CompatibilityConfig>(
       signEip7702Authorizations(context.account, input, dependencies),
     prepareIntent: (context, input) =>
       prepareIntent(intentContext(context, dependencies), input),
-    prepareSolanaIntent: (input) =>
-      prepareSolanaIntent(
-        {
-          quoteClient: dependencies.orchestrator,
-          submissionClient: dependencies.orchestrator,
-          now: dependencies.clock.now,
-        },
-        input,
-      ),
-    reconstructSolanaIntent,
-    signSolanaIntent: (input) =>
-      signSolanaIntent({ ...input, now: dependencies.clock.now }),
-    submitSolanaIntent: (input) =>
-      submitSolanaIntent(
-        {
-          quoteClient: dependencies.orchestrator,
-          submissionClient: dependencies.orchestrator,
-          now: dependencies.clock.now,
-        },
-        input,
-      ),
+    ...solanaWorkflows(dependencies),
     signIntent: async (context, input) => {
       const ownerSelection =
         input.input.signers?.kind === 'owner' ? input.input.signers : undefined

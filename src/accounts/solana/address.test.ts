@@ -7,6 +7,7 @@ import {
   createProgramAddress,
   findProgramAddress,
   locateSwig,
+  locateSwigWallet,
   SWIG_PROGRAM_ADDRESS,
 } from './address'
 
@@ -47,6 +48,10 @@ describe('offline Swig address derivation', () => {
     })
     expect(base58.decode(location.swig)).toHaveLength(32)
     expect(base58.decode(location.wallet)).toHaveLength(32)
+    expect(locateSwigWallet(solanaAddress(expected.swig))).toEqual({
+      address: expected.wallet,
+      bump: expected.walletBump,
+    })
   })
 
   test('normalizes EVM address case before hashing', () => {

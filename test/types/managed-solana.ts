@@ -19,6 +19,8 @@ import {
   type SolanaCrossChainExecutionMetadata,
   type SolanaExecutionMetadata,
   type SolanaInstructionsExecutionMetadata,
+  type SolanaStandaloneAccountConfig,
+  type SolanaSwig,
   solanaAddress,
   solanaDevnet,
   type Transaction,
@@ -192,6 +194,59 @@ const crossChainMetadata: SolanaCrossChainExecutionMetadata = {
   destinationChain: base.id,
   destinationToken: usdcOnBase,
   recipient: owner.address,
+}
+
+// An account with no EVM entry is bound by its wallet, with no EVM account type.
+const standaloneMetadata: SolanaExecutionMetadata = {
+  kind: 'solana',
+  namespace: 'dev-v1',
+  endpoint: 'https://orchestrator.example',
+  chain: 792703810,
+  caip2: solanaDevnet.caip2,
+  accountAddress: recipient,
+  authority: owner.address,
+  swigAddress: mint,
+  walletAddress: recipient,
+  recipient,
+  mint,
+}
+
+const swig = { address: recipient, swigAccount: mint } satisfies SolanaSwig
+const standaloneConfig: SolanaStandaloneAccountConfig = {
+  owner: { type: 'ecdsa', account: owner },
+  swig,
+}
+
+async function standaloneCapabilitySurface() {
+  const sdk = new RhinestoneSDK({ apiKey: 'types', useDevContracts: true })
+  const account = await sdk.createAccount({ solana: standaloneConfig })
+
+  const wallet: typeof recipient = account.getAddress('solana')
+  account.prepareTransaction(solanaTransaction)
+  account.prepareTransaction(instructionTransaction)
+  account.prepareTransaction({
+    ...deliveryFromSolana,
+    recipient: owner.address,
+  })
+  // @ts-expect-error with no EVM account to default to, the delivery names its recipient
+  account.prepareTransaction(deliveryFromSolana)
+  // @ts-expect-error an account with no EVM entry cannot run EVM calls
+  account.prepareTransaction({ chain: mainnet, calls: [] })
+  // @ts-expect-error nor fund a delivery from EVM sources
+  account.prepareTransaction(deliveryTransaction)
+  // @ts-expect-error EVM is not configured
+  account.getAddress('evm')
+  // @ts-expect-error EVM management is unavailable
+  account.deploy(mainnet)
+
+  const paired = {
+    evm: { owners: { type: 'ecdsa' as const, accounts: [owner] } },
+    solana: standaloneConfig,
+  }
+  // @ts-expect-error a managed EVM account derives its Swig, so none is named
+  sdk.createAccount(paired)
+
+  void wallet
 }
 
 async function compositeCapabilitySurface() {
@@ -373,6 +428,8 @@ const expired: boolean = isSolanaQuoteExpiredError(expiredError)
 const uncreated: boolean = isSolanaAccountNotCreated(uncreatedError)
 
 void compositeCapabilitySurface
+void standaloneCapabilitySurface
+void standaloneMetadata
 void solanaSigningRequests
 void nativeOperation
 void metadata

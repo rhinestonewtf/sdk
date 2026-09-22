@@ -67,6 +67,11 @@ export interface OrchestratorSvmAccount {
   readonly type: 'swig'
   /** The asset-holding Swig wallet, not the Swig state account. */
   readonly address: string
+  /**
+   * The Swig state account. Sent only without an `evm` entry: a paired
+   * account's Swig is derived from its EVM address.
+   */
+  readonly swigAccount?: string
   readonly authorization: SwigAuthority
 }
 

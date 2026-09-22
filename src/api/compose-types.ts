@@ -94,9 +94,33 @@ export interface ProjectWorkflows {
    * runtime.
    */
   readonly createSession: (definition: SessionDefinition) => Promise<Session>
+  /** For a managed Solana account with no EVM account to scope a composition. */
+  readonly solana: SolanaWorkflows
+  readonly waitForIntentStatus: (intentId: string) => Promise<IntentStatus>
 }
 
-export interface AccountWorkflows<CompatibilityConfig = unknown> {
+export interface SolanaWorkflows {
+  readonly prepareSolanaIntent: (
+    input: SolanaTransferInput,
+  ) => Promise<PreparedSolanaIntent>
+  readonly reconstructSolanaIntent: (
+    input: Parameters<
+      typeof import('../transactions/intents/solana').reconstructSolanaIntent
+    >[0],
+  ) => PreparedSolanaIntent
+  readonly signSolanaIntent: (input: {
+    readonly prepared: PreparedSolanaIntent
+    readonly owner:
+      | import('viem').Account
+      | import('viem/account-abstraction').WebAuthnAccount
+  }) => Promise<SignedSolanaIntent>
+  readonly submitSolanaIntent: (
+    input: SignedSolanaIntent,
+  ) => Promise<SubmittedIntent>
+}
+
+export interface AccountWorkflows<CompatibilityConfig = unknown>
+  extends SolanaWorkflows {
   readonly getEligibleEvmSourceChains: (
     destination: ChainReference,
   ) => Promise<readonly EvmChainReference[]>
@@ -146,23 +170,6 @@ export interface AccountWorkflows<CompatibilityConfig = unknown> {
     context: AccountInvocationContext<CompatibilityConfig>,
     input: IntentInput<CompatibilityConfig>,
   ) => Promise<PreparedIntent<CompatibilityConfig>>
-  readonly prepareSolanaIntent: (
-    input: SolanaTransferInput,
-  ) => Promise<PreparedSolanaIntent>
-  readonly reconstructSolanaIntent: (
-    input: Parameters<
-      typeof import('../transactions/intents/solana').reconstructSolanaIntent
-    >[0],
-  ) => PreparedSolanaIntent
-  readonly signSolanaIntent: (input: {
-    readonly prepared: PreparedSolanaIntent
-    readonly owner:
-      | import('viem').Account
-      | import('viem/account-abstraction').WebAuthnAccount
-  }) => Promise<SignedSolanaIntent>
-  readonly submitSolanaIntent: (
-    input: SignedSolanaIntent,
-  ) => Promise<SubmittedIntent>
   readonly signIntent: (
     context: AccountInvocationContext<CompatibilityConfig>,
     input: PreparedIntent<CompatibilityConfig>,

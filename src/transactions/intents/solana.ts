@@ -99,8 +99,12 @@ export type SolanaAction =
 export interface SolanaTransferInput {
   readonly chain: SolanaChain
   readonly action: SolanaAction
-  readonly accountAddress: Address
-  readonly accountType: 'GENERIC' | 'ERC7579' | 'EOA'
+  /**
+   * The paired EVM account the Swig is derived from, or the Swig wallet for an
+   * account with no EVM entry — which alone has no `accountType`.
+   */
+  readonly accountAddress: Address | SolanaAddress
+  readonly accountType?: 'GENERIC' | 'ERC7579' | 'EOA'
   readonly authority: SwigAuthority
   readonly walletAddress: SolanaAddress
   readonly swigAddress: SolanaAddress
@@ -205,7 +209,7 @@ export function buildSolanaIntentRequest(
   validateFee('protocolFees', input.protocolFees)
   const normalizedAccount = {
     address: input.accountAddress,
-    accountType: input.accountType,
+    ...(input.accountType ? { accountType: input.accountType } : {}),
   }
   const normalizedOptions: NormalizedIntentOptions = {
     signatureMode: 1,
@@ -221,23 +225,25 @@ export function buildSolanaIntentRequest(
     ...(input.protocolFees ? { protocolFees: input.protocolFees } : {}),
     ...(sponsorship ? { sponsorship } : {}),
   }
-  // The Swig is named explicitly, and its EVM identity travels with it: the
-  // backend still binds a managed Solana wallet to the EVM account. No
-  // `initData` — a missing Swig is a refusal, not a deployment request.
-  const account = {
-    evm: {
-      type: (input.accountType === 'EOA' ? 'eoa' : 'erc7579') as
-        | 'eoa'
-        | 'erc7579',
-      address: input.accountAddress,
-      signatureMode: 1,
-    },
-    svm: {
-      type: 'swig' as const,
-      address: input.walletAddress,
-      authorization: input.authority,
-    },
+  // No `initData` — a missing Swig is a refusal, not a deployment request.
+  const svm = {
+    type: 'swig' as const,
+    address: input.walletAddress,
+    authorization: input.authority,
   }
+  // A paired account's EVM identity travels with its Swig, which the backend
+  // derives from it. A standalone account names its state account instead, and
+  // the backend checks the wallet is that account's PDA.
+  const account: OrchestratorIntentRequest['account'] = input.accountType
+    ? {
+        evm: {
+          type: input.accountType === 'EOA' ? 'eoa' : 'erc7579',
+          address: input.accountAddress as Address,
+          signatureMode: 1,
+        },
+        svm,
+      }
+    : { svm: { ...svm, swigAccount: input.swigAddress } }
 
   if (input.action.kind === 'instructions') {
     if (input.appFees || input.protocolFees) {

@@ -213,6 +213,22 @@ describe('managed Solana intent workflow', () => {
     expect(prepared.quote.cost.input[0]?.amount).toBe(100_100n)
   })
 
+  test('names the Swig state account instead of an EVM entry for a standalone account', () => {
+    const { request, normalized } = buildSolanaIntentRequest(
+      transfer({ accountAddress: wallet, accountType: undefined }),
+    )
+
+    expect(request.account).toEqual({
+      svm: {
+        type: 'swig',
+        address: wallet,
+        swigAccount: swig,
+        authorization: { kind: 'secp256k1', address: owner.address },
+      },
+    })
+    expect(normalized.account).toEqual({ address: wallet })
+  })
+
   test('signs the exact digest text and submits one recoverable origin signature', async () => {
     const fixture = context()
     const prepared = await prepareSolanaIntent(fixture.workflow, transfer())

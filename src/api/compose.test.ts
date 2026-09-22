@@ -215,132 +215,140 @@ describe('internal core composition', () => {
     expect(orchestrator.createQuote).toHaveBeenCalledOnce()
   })
 
-  test('runs the managed Solana workflow without RPC or catalog reads and enforces expiry before effects', async () => {
-    const base = fixture()
-    const mint = solanaAddress('4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU')
-    const recipient = solanaAddress('11111111111111111111111111111112')
-    const walletAddress = solanaAddress(
-      'DfBX7Po1bmnXt4GuEF3Eg5UYUHAjs9m5n8nbb9WUqgw2',
-    )
-    const swigAddress = solanaAddress(
-      '9fTE4gQnweN345EGzy6jnXNFW8VryvZ8QwLZqgBubmMs',
-    )
-    const message = 'ab'.repeat(32)
-    const devnet = 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1'
-    const costEntry = {
-      chainId: devnet,
-      tokenAddress: mint,
-      symbol: 'USDC',
-      decimals: 6,
-      price: { usd: 1 },
-      amount: 100n,
-    }
-    const createQuote = vi.fn(async () => ({
-      traceId: 'solana-prepare',
-      routes: [
-        {
-          ...quote({
-            intentId: 'solana-intent',
-            expiresAt: 2_000_000_000,
-            // A Solana origin authorises its spend with one opaque
-            // personal-sign payload naming the Swig wallet and its authority.
-            signingRequests: [
-              personalSignRequest({
-                chainId: devnet,
-                wallet: walletAddress,
-                swigAccount: swigAddress,
-                authority: owner.address,
-                message,
-              }),
-            ],
-            cost: {
-              input: [costEntry],
-              output: [costEntry],
-              fees: {
-                total: { usd: 0 },
-                breakdown: {
-                  gas: { usd: 0, sponsored: false },
-                  bridge: { usd: 0, sponsored: false },
-                  swap: { usd: 0, sponsored: false },
-                  app: { usd: 0, sponsored: false },
-                  protocol: { usd: 0, sponsored: false },
-                  sponsorSurcharge: { usd: 0, sponsored: false },
+  // A standalone Solana account has no EVM account to scope a composition, so
+  // it reaches the same workflows through the project.
+  test.each(['account', 'project'] as const)(
+    'runs the managed Solana workflow from the %s scope without RPC or catalog reads and enforces expiry before effects',
+    async (scope) => {
+      const base = fixture()
+      const mint = solanaAddress('4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU')
+      const recipient = solanaAddress('11111111111111111111111111111112')
+      const walletAddress = solanaAddress(
+        'DfBX7Po1bmnXt4GuEF3Eg5UYUHAjs9m5n8nbb9WUqgw2',
+      )
+      const swigAddress = solanaAddress(
+        '9fTE4gQnweN345EGzy6jnXNFW8VryvZ8QwLZqgBubmMs',
+      )
+      const message = 'ab'.repeat(32)
+      const devnet = 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1'
+      const costEntry = {
+        chainId: devnet,
+        tokenAddress: mint,
+        symbol: 'USDC',
+        decimals: 6,
+        price: { usd: 1 },
+        amount: 100n,
+      }
+      const createQuote = vi.fn(async () => ({
+        traceId: 'solana-prepare',
+        routes: [
+          {
+            ...quote({
+              intentId: 'solana-intent',
+              expiresAt: 2_000_000_000,
+              // A Solana origin authorises its spend with one opaque
+              // personal-sign payload naming the Swig wallet and its authority.
+              signingRequests: [
+                personalSignRequest({
+                  chainId: devnet,
+                  wallet: walletAddress,
+                  swigAccount: swigAddress,
+                  authority: owner.address,
+                  message,
+                }),
+              ],
+              cost: {
+                input: [costEntry],
+                output: [costEntry],
+                fees: {
+                  total: { usd: 0 },
+                  breakdown: {
+                    gas: { usd: 0, sponsored: false },
+                    bridge: { usd: 0, sponsored: false },
+                    swap: { usd: 0, sponsored: false },
+                    app: { usd: 0, sponsored: false },
+                    protocol: { usd: 0, sponsored: false },
+                    sponsorSurcharge: { usd: 0, sponsored: false },
+                  },
                 },
               },
-            },
-          }),
-          plan: plan(devnet),
+            }),
+            plan: plan(devnet),
+          },
+        ],
+      }))
+      const submitIntent = vi.fn(async () => ({
+        traceId: 'solana-submit',
+        intentId: 'solana-intent',
+      }))
+      const getChainCatalog = vi.fn(base.orchestrator.getChainCatalog)
+      const forChain = vi.fn(base.dependencies.rpc.forChain)
+      let now = 1_900_000_000_000
+      const dependencies = {
+        ...base.dependencies,
+        orchestrator: {
+          ...base.orchestrator,
+          createQuote,
+          submitIntent,
+          getChainCatalog,
         },
-      ],
-    }))
-    const submitIntent = vi.fn(async () => ({
-      traceId: 'solana-submit',
-      intentId: 'solana-intent',
-    }))
-    const getChainCatalog = vi.fn(base.orchestrator.getChainCatalog)
-    const forChain = vi.fn(base.dependencies.rpc.forChain)
-    let now = 1_900_000_000_000
-    const dependencies = {
-      ...base.dependencies,
-      orchestrator: {
-        ...base.orchestrator,
-        createQuote,
-        submitIntent,
-        getChainCatalog,
-      },
-      rpc: { forChain },
-      clock: { ...base.dependencies.clock, now: () => now },
-    }
-    const workflows = createCoreComposition(
-      base.context.sdk,
-      dependencies,
-    ).createAccount(base.context).workflows
-    const transfer = {
-      chain: solanaDevnet,
-      action: {
-        kind: 'transfer' as const,
-        mint,
-        amount: 100n,
-        delivery: { kind: 'same-chain' as const, recipient },
-      },
-      accountAddress: target,
-      accountType: 'ERC7579' as const,
-      authority: { kind: 'secp256k1' as const, address: owner.address },
-      walletAddress,
-      swigAddress,
-      namespace: 'dev-v1' as const,
-      endpoint: 'https://dev.example',
-    }
-    const prepared = await workflows.prepareSolanaIntent(transfer)
-    const signMessage = vi.fn(owner.signMessage)
-    const signed = await workflows.signSolanaIntent({
-      prepared,
-      owner: { ...owner, signMessage },
-    })
-    await expect(workflows.submitSolanaIntent(signed)).resolves.toMatchObject({
-      intentId: 'solana-intent',
-      targetChain: 792703810,
-    })
-    expect(createQuote).toHaveBeenCalledOnce()
-    expect(submitIntent).toHaveBeenCalledOnce()
-    expect(forChain).not.toHaveBeenCalled()
-    expect(getChainCatalog).not.toHaveBeenCalled()
-
-    now = 2_000_000_000_000
-    signMessage.mockClear()
-    submitIntent.mockClear()
-    await expect(
-      workflows.signSolanaIntent({
+        rpc: { forChain },
+        clock: { ...base.dependencies.clock, now: () => now },
+      }
+      const composition = createCoreComposition(base.context.sdk, dependencies)
+      const workflows =
+        scope === 'account'
+          ? composition.createAccount(base.context).workflows
+          : composition.project.solana
+      const transfer = {
+        chain: solanaDevnet,
+        action: {
+          kind: 'transfer' as const,
+          mint,
+          amount: 100n,
+          delivery: { kind: 'same-chain' as const, recipient },
+        },
+        accountAddress: target,
+        accountType: 'ERC7579' as const,
+        authority: { kind: 'secp256k1' as const, address: owner.address },
+        walletAddress,
+        swigAddress,
+        namespace: 'dev-v1' as const,
+        endpoint: 'https://dev.example',
+      }
+      const prepared = await workflows.prepareSolanaIntent(transfer)
+      const signMessage = vi.fn(owner.signMessage)
+      const signed = await workflows.signSolanaIntent({
         prepared,
         owner: { ...owner, signMessage },
-      }),
-    ).rejects.toThrow(SolanaQuoteExpiredError)
-    await expect(workflows.submitSolanaIntent(signed)).rejects.toThrow(
-      SolanaQuoteExpiredError,
-    )
-    expect(signMessage).not.toHaveBeenCalled()
-    expect(submitIntent).not.toHaveBeenCalled()
-  })
+      })
+      await expect(workflows.submitSolanaIntent(signed)).resolves.toMatchObject(
+        {
+          intentId: 'solana-intent',
+          targetChain: 792703810,
+        },
+      )
+      expect(createQuote).toHaveBeenCalledOnce()
+      expect(submitIntent).toHaveBeenCalledOnce()
+      expect(forChain).not.toHaveBeenCalled()
+      expect(getChainCatalog).not.toHaveBeenCalled()
+
+      now = 2_000_000_000_000
+      signMessage.mockClear()
+      submitIntent.mockClear()
+      await expect(
+        workflows.signSolanaIntent({
+          prepared,
+          owner: { ...owner, signMessage },
+        }),
+      ).rejects.toThrow(SolanaQuoteExpiredError)
+      await expect(workflows.submitSolanaIntent(signed)).rejects.toThrow(
+        SolanaQuoteExpiredError,
+      )
+      expect(signMessage).not.toHaveBeenCalled()
+      expect(submitIntent).not.toHaveBeenCalled()
+    },
+  )
 
   test('runs a UserOperation and project/account queries', async () => {
     const { composition, context } = fixture()
@@ -357,6 +365,9 @@ describe('internal core composition', () => {
       withdrawableUsd: 1,
       pendingUsd: 2,
     })
+    await expect(
+      composition.project.waitForIntentStatus('intent-1'),
+    ).resolves.toMatchObject({ intentId: 'intent-1', status: 'COMPLETED' })
     await expect(workflows.getPortfolio(context)).resolves.toEqual({
       tokens: [],
     })

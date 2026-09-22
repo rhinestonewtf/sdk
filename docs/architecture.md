@@ -80,12 +80,21 @@ The public account configuration is composite: EVM and Solana entries are
 independent managed or address-only branches. `api/accounts.ts` validates and
 shallow-freezes that outer boundary, then passes only a managed EVM branch into
 the existing resolution and adapter stack. Receiver-only handles bypass account
-resolution and expose only native address access.
+resolution and expose only native address access. A managed Solana account with
+no EVM entry bypasses it too: `createSolanaAccountFacade` exposes only the intent
+lifecycle and reaches the Solana workflows and status polling through the
+project composition, because there is no EVM account to scope an account
+composition.
 
-Managed Solana is development-only and must be paired with a managed EVM
-account. The EVM account address deterministically selects the `dev-v1` Swig;
-the Swig must already exist and carry the configured owner as its authority on
-the target cluster. The owner is an ECDSA key or a passkey; a passkey is named
+Managed Solana is development-only. Its Swig must already exist and carry the
+configured owner as its authority on the target cluster. Paired with a managed
+EVM account, the EVM account address deterministically selects the `dev-v1`
+Swig, and the request carries the EVM entry beside it. Standing alone, the
+config names the Swig (`swig: { address, swigAccount }`); the SDK refuses a
+wallet that is not the state account's PDA, and a `swig` beside any `evm` entry.
+That account is addressed and bound by its wallet, its request carries no `evm`
+entry but names `svm.swigAccount`, and its persisted metadata has no
+`accountType`. The owner is an ECDSA key or a passkey; a passkey is named
 to the orchestrator by its SEC1-compressed P-256 key. Its assertion's challenge
 and type are checked locally, but the orchestrator verifies the signature. The SDK derives the Swig and wallet
 addresses offline with the small `@noble/curves` and `@scure/base` primitives;
@@ -143,7 +152,9 @@ one source token, and `source.selection` pins the cluster and narrows it to that
 single mint with `perChain`, because a chain selector alone would open every
 registry token on it. The delivery recipient is an explicit
 EVM address or the account's own EVM identity, resolved before the quote so the
-authorization binds to it. Authorization stays the Solana model: exactly one
+authorization binds to it; an account with no EVM entry has no identity to
+default to, so its delivery without a recipient is refused before quoting, in
+its type and at runtime. Authorization stays the Solana model: exactly one
 signing request — `personalSign` for an ECDSA owner, `webauthn` for a passkey —
 disclosing the Swig wallet and state account it spends from, and the same
 slot-bounded window, so a second prepared-but-unsubmitted spend invalidates the
