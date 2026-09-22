@@ -11,7 +11,8 @@ const limits = [
     // primitives; keep their browser cost visible in the root budget.
     // Caucasus adds runtime narrowing at the signing trust boundary and the
     // source-selection builder, which is where the last ~1 kB went.
-    limit: '78 kB',
+    // A standalone (Solana-only) managed account adds its own facade (~0.5 kB).
+    limit: '79 kB',
     import: '*',
     ignore: viem,
   },
