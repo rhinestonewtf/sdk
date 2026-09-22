@@ -5,6 +5,8 @@ import { describe, expect, test, vi } from 'vitest'
 import {
   quote as caucasusQuote,
   costEntry,
+  delegationRequest,
+  eip712Request,
   emptyCost,
   personalSignRequest,
 } from '../../../test/utils/caucasus'
@@ -20,6 +22,7 @@ import { projectCompatibleIntentInput } from '../../clients/orchestrator/normali
 import type {
   IntentAccountView,
   QuotePlan,
+  SigningProof,
   SigningRequest,
   WebAuthnAssertion,
 } from '../../clients/orchestrator/public'
@@ -31,6 +34,7 @@ import {
   InvalidSolanaTransactionArtifactError,
   SolanaQuoteExpiredError,
 } from '../../errors/execution'
+import type { IntentAccountProjection } from './account'
 import {
   assertSolanaNotExpired,
   buildSolanaIntentRequest,
@@ -39,6 +43,7 @@ import {
   reconstructSolanaIntent,
   type SolanaAction,
   type SolanaDelivery,
+  type SolanaEvmExecution,
   type SolanaTransferInput,
   signSolanaIntent,
   solanaChainId,
@@ -242,15 +247,17 @@ describe('managed Solana intent workflow', () => {
     // The 64 characters are signed as text: opaque to the SDK, despite looking
     // like hex.
     expect(signMessage).toHaveBeenCalledWith({ message })
-    expect(signed.proof).toEqual({
-      kind: 'personalSign',
-      signature: expect.stringMatching(/^0x[0-9a-f]{130}$/u),
-    })
+    expect(signed.proofs).toEqual([
+      {
+        kind: 'personalSign',
+        signature: expect.stringMatching(/^0x[0-9a-f]{130}$/u),
+      },
+    ])
     const submitted = await submitSolanaIntent(fixture.workflow, signed)
     expect(fixture.submitIntent).toHaveBeenCalledWith(
       {
         intentId: 'solana-intent',
-        proofs: [signed.proof],
+        proofs: signed.proofs,
       },
       {
         intentInput: projectCompatibleIntentInput(prepared.normalized),
@@ -1014,6 +1021,366 @@ describe('Solana-origin cross-chain delivery', () => {
       prepareSolanaIntent(fixture.workflow, transfer()),
     ).rejects.toThrow(InvalidSolanaTransactionArtifactError)
   })
+
+  describe('with destination calls', () => {
+    const call = {
+      target: '0x00000000000000000000000000000000000000c1',
+      value: 0n,
+      data: '0xabcdef',
+    } as const
+    const wireCall = { to: call.target, value: 0n, data: call.data }
+    const factoryOp = {
+      to: '0x000000000000000000000000000000000000fac7',
+      data: '0xfac7',
+    } as const
+    const delegationContract = `0x${'77'.repeat(20)}` as const
+    const childRequest = eip712Request({
+      chainId: baseSepoliaId,
+      account: accountAddress,
+    })
+    const delegation = delegationRequest({
+      chainId: baseSepoliaId,
+      contract: delegationContract,
+      account: accountAddress,
+    })
+    const childProof = {
+      kind: 'eip712',
+      signature: `0x${'11'.repeat(65)}`,
+    } as const satisfies SigningProof
+    const delegationProof = {
+      kind: 'eip7702',
+      nonce: 3,
+      signature: { r: '0x12', s: '0x34', yParity: 1 },
+    } as const satisfies SigningProof
+
+    function executing(
+      account: Partial<IntentAccountProjection> = {},
+      execution: Partial<SolanaEvmExecution> = {},
+    ): SolanaTransferInput {
+      return transfer({
+        delivery: {
+          ...delivery,
+          recipient: accountAddress,
+          execution: {
+            calls: [call],
+            gasLimit: 200_000n,
+            account: {
+              kind: 'erc7579',
+              address: accountAddress,
+              setupOps: [],
+              ...account,
+            },
+            ...execution,
+          },
+        },
+      })
+    }
+
+    function executingQuote(
+      signingRequests: readonly SigningRequest[] = [
+        spendRequest(),
+        childRequest,
+      ],
+    ): OrchestratorQuote {
+      return crossChainQuote({ signingRequests: [...signingRequests] })
+    }
+
+    test('runs the calls on a deployed paired account, with no recipient beside it', () => {
+      expect(buildSolanaIntentRequest(executing())).toEqual({
+        request: {
+          account: {
+            evm: { type: 'erc7579', address: accountAddress, signatureMode: 1 },
+            svm: {
+              type: 'swig',
+              address: wallet,
+              authorization: { kind: 'secp256k1', address: owner.address },
+            },
+          },
+          destination: {
+            vm: 'evm',
+            chainId: BASE_SEPOLIA,
+            tokenRequests: [
+              { tokenAddress: destinationToken, amount: 100_000n },
+            ],
+            execution: { calls: [wireCall], gasLimit: 200_000n },
+          },
+          source: {
+            selection: {
+              chains: { only: [DEVNET] },
+              tokens: { only: [mint] },
+              perChain: { [DEVNET]: { tokens: { only: [mint] } } },
+            },
+          },
+        },
+        normalized: {
+          account: {
+            address: accountAddress,
+            accountType: 'ERC7579',
+            setupOps: [],
+          },
+          destinationChainId: baseSepoliaId,
+          destinationExecutions: [wireCall],
+          destinationGasUnits: 200_000n,
+          tokenRequests: [{ tokenAddress: destinationToken, amount: 100_000n }],
+          accountAccessList: { chainTokens: { 792703810: [mint] } },
+          options: { signatureMode: 1 },
+        },
+      })
+    })
+
+    test('sends an undeployed account’s setup ops with the calls', () => {
+      const { request, normalized } = buildSolanaIntentRequest(
+        executing({ setupOps: [factoryOp] }),
+      )
+      expect(request.account.evm).toEqual({
+        type: 'erc7579',
+        address: accountAddress,
+        initData: { setupOps: [factoryOp] },
+        signatureMode: 1,
+      })
+      expect(normalized.account).toEqual({
+        address: accountAddress,
+        accountType: 'ERC7579',
+        setupOps: [factoryOp],
+      })
+    })
+
+    test('names an EIP-7702 account’s delegation and answers its delegation request', async () => {
+      const input = executing({
+        setupOps: [{ to: accountAddress, data: '0x1234' }],
+        delegationContract,
+      })
+      const { request, normalized } = buildSolanaIntentRequest(input)
+      expect(request.account.evm).toEqual({
+        type: 'erc7579',
+        address: accountAddress,
+        initData: { setupOps: [{ to: accountAddress, data: '0x1234' }] },
+        signatureMode: 1,
+        delegations: { default: { contract: delegationContract } },
+      })
+      expect(normalized.account.delegations).toEqual({
+        0: { contract: delegationContract },
+      })
+
+      const fixture = context(
+        executingQuote([spendRequest(), childRequest, delegation]),
+      )
+      const prepared = await prepareSolanaIntent(fixture.workflow, input)
+      const signed = await signSolanaIntent({
+        prepared,
+        owner,
+        signEvmRequests: async () => [childProof, delegationProof],
+        now: fixture.workflow.now,
+      })
+      await submitSolanaIntent(fixture.workflow, signed)
+      expect(fixture.submitIntent).toHaveBeenCalledWith(
+        {
+          intentId: 'solana-intent',
+          proofs: [signed.proofs[0], childProof, delegationProof],
+        },
+        expect.anything(),
+      )
+    })
+
+    test('refuses calls for an account with no EVM entry', () => {
+      expect(() =>
+        buildSolanaIntentRequest({
+          ...executing(),
+          accountAddress: wallet,
+          accountType: undefined,
+        }),
+      ).toThrow(/need a paired EVM account/)
+    })
+
+    test.each([
+      [
+        'another recipient',
+        transfer({
+          delivery: {
+            ...delivery,
+            execution: {
+              calls: [call],
+              account: {
+                kind: 'erc7579',
+                address: accountAddress,
+                setupOps: [],
+              },
+            },
+          },
+        }),
+        /must also receive the delivery/,
+      ],
+      [
+        'another account',
+        executing({ address: destinationRecipient }),
+        /must also receive the delivery/,
+      ],
+      ['no calls', executing({}, { calls: [] }), /at least one call/],
+    ])('refuses an execution with %s', (_name, input, reason) => {
+      expect(() => buildSolanaIntentRequest(input)).toThrow(reason)
+    })
+
+    test('signs the destination requests before the spend and submits them after it', async () => {
+      const fixture = context(executingQuote())
+      const prepared = await prepareSolanaIntent(fixture.workflow, executing())
+      const order: string[] = []
+      const signEvmRequests = vi.fn(async () => {
+        order.push('evm')
+        return [childProof]
+      })
+      const signMessage = vi.fn(
+        async (input: Parameters<typeof owner.signMessage>[0]) => {
+          order.push('spend')
+          return owner.signMessage(input)
+        },
+      )
+      const signed = await signSolanaIntent({
+        prepared,
+        owner: { ...owner, signMessage },
+        signEvmRequests,
+        now: fixture.workflow.now,
+      })
+
+      // The Swig payload's slot window is the one that runs out.
+      expect(order).toEqual(['evm', 'spend'])
+      expect(signEvmRequests).toHaveBeenCalledWith(
+        [childRequest],
+        baseSepoliaId,
+      )
+      expect(signed.proofs).toEqual([
+        { kind: 'personalSign', signature: expect.any(String) },
+        childProof,
+      ])
+      await expect(
+        submitSolanaIntent(fixture.workflow, {
+          prepared,
+          proofs: [signed.proofs[0]],
+        }),
+      ).rejects.toThrow(/answer each EVM signing request/)
+      await submitSolanaIntent(fixture.workflow, signed)
+      expect(fixture.submitIntent).toHaveBeenCalledOnce()
+      expect(fixture.submitIntent).toHaveBeenCalledWith(
+        { intentId: 'solana-intent', proofs: signed.proofs },
+        expect.anything(),
+      )
+    })
+
+    test.each([
+      ['no proof', []],
+      [
+        'a session pair',
+        [
+          {
+            kind: 'eip712',
+            signature: { preClaim: '0x12', notarizedClaim: '0x34' },
+          },
+        ],
+      ],
+      ['a delegation in the authorization slot', [delegationProof]],
+    ])(
+      'refuses %s for the destination request before the spend is signed',
+      async (_name, proofs) => {
+        const fixture = context(executingQuote())
+        const prepared = await prepareSolanaIntent(
+          fixture.workflow,
+          executing(),
+        )
+        const signMessage = vi.fn(owner.signMessage)
+        await expect(
+          signSolanaIntent({
+            prepared,
+            owner: { ...owner, signMessage },
+            signEvmRequests: async () => proofs as never,
+            now: fixture.workflow.now,
+          }),
+        ).rejects.toThrow(/answer each EVM signing request/)
+        expect(signMessage).not.toHaveBeenCalled()
+      },
+    )
+
+    test('refuses to sign destination requests without the paired account', async () => {
+      const fixture = context(executingQuote())
+      const prepared = await prepareSolanaIntent(fixture.workflow, executing())
+      await expect(
+        signSolanaIntent({ prepared, owner, now: fixture.workflow.now }),
+      ).rejects.toThrow(/paired EVM account to sign them/)
+    })
+
+    test.each([
+      ['only the spend', [spendRequest()], /EIP-712 authorization/],
+      [
+        'a destination request on another chain',
+        [
+          spendRequest(),
+          eip712Request({ chainId: 1, account: accountAddress }),
+        ],
+        /paired EVM account on the delivery chain/,
+      ],
+      [
+        'a destination request for another account',
+        [
+          spendRequest(),
+          eip712Request({
+            chainId: baseSepoliaId,
+            account: destinationRecipient,
+          }),
+        ],
+        /paired EVM account on the delivery chain/,
+      ],
+      [
+        'a delegation on another chain',
+        [
+          spendRequest(),
+          childRequest,
+          delegationRequest({
+            chainId: 1,
+            contract: delegationContract,
+            account: accountAddress,
+          }),
+        ],
+        /paired EVM account on the delivery chain/,
+      ],
+      [
+        'a second Swig spend',
+        [spendRequest(), childRequest, spendRequest()],
+        /paired EVM account on the delivery chain/,
+      ],
+    ])('rejects a quote with %s', async (_name, signingRequests, reason) => {
+      const fixture = context(executingQuote(signingRequests))
+      await expect(
+        prepareSolanaIntent(fixture.workflow, executing()),
+      ).rejects.toThrow(reason)
+    })
+
+    test('rejects destination requests on a quote for a plain delivery', async () => {
+      const fixture = context(executingQuote())
+      await expect(
+        prepareSolanaIntent(fixture.workflow, crossChainTransfer()),
+      ).rejects.toThrow(/exactly one signing request/)
+    })
+
+    test('reconstructs from the canonical input and refuses changed calls', async () => {
+      const fixture = context(executingQuote())
+      const prepared = await prepareSolanaIntent(fixture.workflow, executing())
+      const plain = {
+        traceId: prepared.traceId,
+        intentInput: JSON.parse(
+          JSON.stringify(projectCompatibleIntentInput(prepared.normalized)),
+        ),
+        quote: prepared.quote,
+        quotes: prepared.quotes,
+      }
+      expect(() =>
+        reconstructSolanaIntent({ ...plain, transfer: executing() }),
+      ).not.toThrow()
+      expect(() =>
+        reconstructSolanaIntent({
+          ...plain,
+          transfer: executing({}, { calls: [{ ...call, data: '0xabcdee' }] }),
+        }),
+      ).toThrow(/canonical intent input/)
+    })
+  })
 })
 
 describe('same-chain Solana instruction execution', () => {
@@ -1291,7 +1658,9 @@ describe('passkey-owned managed Solana intents', () => {
       fixture.workflow,
       passkeyTransfer(),
     )
-    const { proof } = await signSolanaIntent({ prepared, owner: passkey, now })
+    const {
+      proofs: [proof],
+    } = await signSolanaIntent({ prepared, owner: passkey, now })
     return (proof as Extract<typeof proof, { kind: 'webauthn' }>).assertion
   }
 
@@ -1400,7 +1769,7 @@ describe('passkey-owned managed Solana intents', () => {
     })
 
     expect(sign).toHaveBeenCalledWith({ hash: challenge })
-    expect(signed.proof).toEqual({
+    expect(signed.proofs[0]).toEqual({
       kind: 'webauthn',
       assertion: {
         credentialId: 'AQIDBA',
@@ -1422,7 +1791,7 @@ describe('passkey-owned managed Solana intents', () => {
     })
     await submitSolanaIntent(fixture.workflow, signed)
     expect(fixture.submitIntent).toHaveBeenCalledWith(
-      { intentId: 'solana-intent', proofs: [signed.proof] },
+      { intentId: 'solana-intent', proofs: signed.proofs },
       expect.anything(),
     )
   })
@@ -1454,10 +1823,12 @@ describe('passkey-owned managed Solana intents', () => {
     await expect(
       submitSolanaIntent(fixture.workflow, {
         prepared,
-        proof: {
-          kind: 'personalSign',
-          signature: await owner.signMessage({ message }),
-        },
+        proofs: [
+          {
+            kind: 'personalSign',
+            signature: await owner.signMessage({ message }),
+          },
+        ],
       }),
     ).rejects.toThrow(/does not match the configured Solana authority/)
     expect(fixture.submitIntent).not.toHaveBeenCalled()

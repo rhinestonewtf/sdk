@@ -291,9 +291,10 @@ a CAIP-2 string.
   `SOLANA_ACCOUNT_NOT_CREATED`.
 - New estimate or intent-list methods.
 - WebAuthn signing requests outside a passkey-owned managed Solana origin, and
-  cross-VM destination execution. Both are representable on the wire but
-  unsupported: a quote asking for one fails with an actionable error rather
-  than being signed as something else. Existing EVM passkey validators are
-  unaffected — they still produce ordinary account-encoded EIP-712 proofs.
+  cross-VM destination execution other than EVM `calls` after a Solana → EVM
+  delivery. Both are representable on the wire but unsupported: a quote asking
+  for one fails with an actionable error rather than being signed as something
+  else. Existing EVM passkey validators are unaffected — they still produce
+  ordinary account-encoded EIP-712 proofs.
 - Solana same-chain instructions still have no serving route and are still
   refused with `UNSUPPORTED_DESTINATION_INSTRUCTIONS`.

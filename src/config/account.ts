@@ -1381,6 +1381,9 @@ interface SameChainSolanaTransaction {
  * your behalf. Omit `tokenRequests[0].amount` to spend the whole balance of
  * that mint, and omit `recipient` to deliver to the account's own EVM address.
  * An account with no EVM entry has none, so it must name a `recipient`.
+ *
+ * `calls` run on the account's own EVM account once the delivery lands, which
+ * needs an EVM entry and no explicit `recipient`.
  */
 interface CrossChainSolanaOriginTransaction {
   sourceChains: readonly [SolanaChain]
@@ -1389,6 +1392,19 @@ interface CrossChainSolanaOriginTransaction {
   targetChain: Chain
   tokenRequests: readonly [{ address: Address; amount?: bigint }]
   recipient?: Address
+  /**
+   * Calls the account's EVM account runs on `targetChain` after the delivery
+   * lands, in order. The quote then also asks the EVM account to sign them,
+   * and to sign any EIP-7702 delegation it needs there.
+   */
+  calls?: CallInput[]
+  /** Gas limit for `calls` on `targetChain`. */
+  gasLimit?: bigint
+  /**
+   * The init signature an EIP-7702 account needs to run `calls`, from
+   * `signEip7702InitData()`.
+   */
+  eip7702InitSignature?: Hex
   appFees?: AppFeeRate
   protocolFees?: ProtocolFeeRate
   /**
@@ -1398,15 +1414,12 @@ interface CrossChainSolanaOriginTransaction {
    */
   sponsored?: Sponsorship
   chain?: never
-  calls?: never
   instructions?: never
   addressLookupTables?: never
   sourceCalls?: never
   sourceAssets?: never
   signers?: never
-  gasLimit?: never
   customDeadline?: never
-  eip7702InitSignature?: never
   settlementLayers?: never
   quoters?: never
   auxiliaryFunds?: never
@@ -1512,8 +1525,13 @@ type ManagedSolanaTransactions<C extends RhinestoneAccountConfig> = [
     ?
         | SameChainSolanaTransaction
         | SameChainSolanaInstructionsTransaction
-        // No EVM account for the delivery to default to.
-        | (CrossChainSolanaOriginTransaction & { recipient: Address })
+        // No EVM account for the delivery to default to, or to run calls.
+        | (CrossChainSolanaOriginTransaction & {
+            recipient: Address
+            calls?: never
+            gasLimit?: never
+            eip7702InitSignature?: never
+          })
     : never
 
 /** Transactions available from every definitely managed source VM. */

@@ -52,6 +52,6 @@ The one exception is deliberate: an intent recorded before the chain registry kn
 
 ### Not in this release
 
-Self-service Swig creation, deployment-only quotes and automatic re-quote flows are still unavailable; a missing spending Swig still refuses with `SOLANA_ACCOUNT_NOT_CREATED`. There are no new estimate or intent-list methods. WebAuthn signing requests and cross-VM destination execution are represented on the wire but not supported — a quote asking for one fails with an actionable error rather than being signed as something else.
+Self-service Swig creation, deployment-only quotes and automatic re-quote flows are still unavailable; a missing spending Swig still refuses with `SOLANA_ACCOUNT_NOT_CREATED`. There are no new estimate or intent-list methods. WebAuthn signing requests outside a passkey-owned Solana account, and cross-VM destination execution other than EVM calls after a Solana → EVM delivery, are represented on the wire but not supported — a quote asking for one fails with an actionable error rather than being signed as something else.
 
 See [docs/caucasus-migration.md](https://github.com/rhinestonewtf/sdk/blob/main/docs/caucasus-migration.md) for the type-by-type inventory.

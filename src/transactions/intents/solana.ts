@@ -7,9 +7,11 @@ import {
   hexToBytes,
   isAddress,
   isAddressEqual,
+  isHex,
   recoverMessageAddress,
 } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
+import type { Call } from '../../calls/types'
 import { formatCaip2 } from '../../chains/caip2'
 import type {
   SolanaAddress,
@@ -52,7 +54,9 @@ import {
   SolanaQuoteExpiredError,
 } from '../../errors/execution'
 import { normalizeRecovery } from '../../signing/signers/ecdsa'
+import { type IntentAccountProjection, toWireEvmAccount } from './account'
 import { normalizeIntentQuote } from './normalize'
+import { toExecution } from './request'
 import {
   normalizeSolanaAddressLookupTables,
   normalizeSolanaInstructions,
@@ -76,7 +80,19 @@ export type SolanaDelivery =
       readonly chainId: number
       readonly token: Address
       readonly recipient: Address
+      readonly execution?: SolanaEvmExecution
     }
+
+/**
+ * Calls the paired EVM account runs on the delivery chain once the tokens
+ * arrive, resolved against that account before the quote.
+ */
+export interface SolanaEvmExecution {
+  readonly calls: readonly Call[]
+  readonly gasLimit?: bigint
+  /** The paired account on the delivery chain, with the setup it needs first. */
+  readonly account: IntentAccountProjection
+}
 
 /**
  * What a Solana-origin intent does: move one SPL mint, or run caller-supplied
@@ -132,7 +148,11 @@ export type SolanaSpendProof = Extract<
 
 export interface SignedSolanaIntent {
   readonly prepared: PreparedSolanaIntent
-  readonly proof: SolanaSpendProof
+  /**
+   * One per signing request, in order: the Swig spend, then the EVM
+   * authorizations of any destination execution.
+   */
+  readonly proofs: readonly [SolanaSpendProof, ...SigningProof[]]
 }
 
 export interface SolanaWorkflowContext {
@@ -195,6 +215,22 @@ function toSponsorship(
   return settings ? { ...settings } : undefined
 }
 
+type ExecutingDelivery = Extract<SolanaDelivery, { kind: 'cross-chain' }> & {
+  readonly execution: SolanaEvmExecution
+}
+
+/** The delivery, when the paired EVM account runs calls on its arrival. */
+function executingDelivery(
+  input: SolanaTransferInput,
+): ExecutingDelivery | undefined {
+  const { action } = input
+  return action.kind === 'transfer' &&
+    action.delivery.kind === 'cross-chain' &&
+    action.delivery.execution
+    ? (action.delivery as ExecutingDelivery)
+    : undefined
+}
+
 export function buildSolanaIntentRequest(
   input: SolanaTransferInput,
 ): BuiltSolanaIntentRequest {
@@ -207,9 +243,44 @@ export function buildSolanaIntentRequest(
   }
   validateFee('appFees', input.appFees)
   validateFee('protocolFees', input.protocolFees)
+  const executing = executingDelivery(input)
+  const execution = executing?.execution
+  if (execution) {
+    if (!input.accountType) {
+      throw new InvalidSolanaTransactionArtifactError(
+        'destination calls need a paired EVM account to run them',
+      )
+    }
+    const executor = execution.account.address.toLowerCase()
+    if (
+      executor !== input.accountAddress.toLowerCase() ||
+      executor !== executing.recipient.toLowerCase()
+    ) {
+      throw new InvalidSolanaTransactionArtifactError(
+        'destination calls run on the paired EVM account, which must also receive the delivery',
+      )
+    }
+    if (execution.calls.length === 0) {
+      throw new InvalidSolanaTransactionArtifactError(
+        'a destination execution needs at least one call',
+      )
+    }
+  }
   const normalizedAccount = {
     address: input.accountAddress,
     ...(input.accountType ? { accountType: input.accountType } : {}),
+    ...(execution
+      ? {
+          setupOps: execution.account.setupOps,
+          ...(execution.account.delegationContract
+            ? {
+                delegations: {
+                  0: { contract: execution.account.delegationContract },
+                },
+              }
+            : {}),
+        }
+      : {}),
   }
   const normalizedOptions: NormalizedIntentOptions = {
     signatureMode: 1,
@@ -234,13 +305,19 @@ export function buildSolanaIntentRequest(
   // A paired account's EVM identity travels with its Swig, which the backend
   // derives from it. A standalone account names its state account instead, and
   // the backend checks the wallet is that account's PDA.
+  //
+  // Setup and delegations ride only with destination calls: those are what the
+  // account is deployed and delegated to run, and the orchestrator refuses them
+  // on a plain delivery.
   const account: OrchestratorIntentRequest['account'] = input.accountType
     ? {
-        evm: {
-          type: input.accountType === 'EOA' ? 'eoa' : 'erc7579',
-          address: input.accountAddress as Address,
-          signatureMode: 1,
-        },
+        evm: execution
+          ? toWireEvmAccount(execution.account, { signatureMode: 1 })
+          : {
+              type: input.accountType === 'EOA' ? 'eoa' : 'erc7579',
+              address: input.accountAddress as Address,
+              signatureMode: 1,
+            },
         svm,
       }
     : { svm: { ...svm, swigAccount: input.swigAddress } }
@@ -324,14 +401,31 @@ export function buildSolanaIntentRequest(
         'the delivery token and recipient must be EVM addresses',
       )
     }
+    const executions = execution?.calls.map(toExecution)
+    // The calls run on the paired account, which receives the delivery when no
+    // recipient is named. Naming it anyway would plan it as a second account,
+    // one the account entry's setup and delegations never reach.
+    const recipient = execution
+      ? {}
+      : { recipient: { address: delivery.recipient } }
     return {
       request: {
         account,
         destination: {
           vm: 'evm',
           chainId: formatCaip2(delivery.chainId),
-          recipient: { address: delivery.recipient },
+          ...recipient,
           tokenRequests: [{ tokenAddress: delivery.token, ...amount }],
+          ...(executions
+            ? {
+                execution: {
+                  calls: executions,
+                  ...(execution?.gasLimit === undefined
+                    ? {}
+                    : { gasLimit: execution.gasLimit }),
+                },
+              }
+            : {}),
         },
         // Pinned to the cluster and the one mint: naming the cluster without
         // the mint would re-expand the source scope to every registry token
@@ -346,12 +440,15 @@ export function buildSolanaIntentRequest(
         ...(Object.keys(options).length > 0 ? { options } : {}),
       },
       normalized: {
-        destinationExecutions: [],
+        destinationExecutions: executions ?? [],
+        ...(execution?.gasLimit === undefined
+          ? {}
+          : { destinationGasUnits: execution.gasLimit }),
         account: normalizedAccount,
         options: normalizedOptions,
         destinationChainId: delivery.chainId,
         tokenRequests: [{ tokenAddress: delivery.token, ...amount }],
-        recipient: { address: delivery.recipient },
+        ...recipient,
         accountAccessList: { chainTokens: { [chainId]: [mint] } },
       },
     }
@@ -438,7 +535,9 @@ function spendPayload(
         : 'the quote must be a cross-chain route',
     )
   }
-  if (quote.signingRequests.length !== 1 || !request) {
+  const executing = executingDelivery(input)
+  const destinationRequests = quote.signingRequests.slice(1)
+  if (!request || (!executing && destinationRequests.length > 0)) {
     refuse('the quote must carry exactly one signing request')
   }
   const expected = input.authority
@@ -505,6 +604,35 @@ function spendPayload(
   )
   if (!slot || !/^\d+$/u.test(slot.expiresAtSlot)) {
     refuse('the signing request must disclose a decimal Solana slot window')
+  }
+  if (executing) {
+    if (
+      !destinationRequests.some(
+        ({ purpose, payload }) =>
+          purpose === 'originAuthorization' && payload.kind === 'eip712',
+      )
+    ) {
+      refuse(
+        "the quote must ask for the destination calls' EIP-712 authorization",
+      )
+    }
+    for (const { account, payload } of destinationRequests) {
+      const chainId =
+        payload.kind === 'eip712'
+          ? Number(payload.typedData.domain?.chainId)
+          : payload.kind === 'eip7702'
+            ? payload.authorization.chainId
+            : undefined
+      if (
+        account.vm !== 'evm' ||
+        account.address.toLowerCase() !== input.accountAddress.toLowerCase() ||
+        chainId !== executing.chainId
+      ) {
+        refuse(
+          'each destination signing request must name the paired EVM account on the delivery chain',
+        )
+      }
+    }
   }
   return {
     request: request!,
@@ -656,9 +784,45 @@ export function assertSolanaNotExpired(
   }
 }
 
+/**
+ * Checks that a paired account's proofs answer the quote's EVM requests slot by
+ * slot. A `SingleChainOps` authorization is one hex signature, never a
+ * session's pair.
+ */
+function assertEvmProofs(
+  quote: OrchestratorQuote,
+  proofs: readonly SigningProof[],
+): void {
+  const requests = quote.signingRequests.slice(1)
+  const answered =
+    proofs.length === requests.length &&
+    requests.every(({ payload }, index) => {
+      const proof = proofs[index]!
+      return payload.kind === 'eip712'
+        ? proof.kind === 'eip712' &&
+            typeof proof.signature === 'string' &&
+            isHex(proof.signature)
+        : payload.kind === 'eip7702' && proof.kind === 'eip7702'
+    })
+  if (!answered) {
+    throw new InvalidSolanaTransactionArtifactError(
+      'the destination proofs must answer each EVM signing request in order',
+      { intentId: quote.intentId },
+    )
+  }
+}
+
 export async function signSolanaIntent(input: {
   readonly prepared: PreparedSolanaIntent
   readonly owner: Account | WebAuthnAccount
+  /**
+   * Signs a destination execution's EVM requests as the paired account,
+   * returning one proof per request in order.
+   */
+  readonly signEvmRequests?: (
+    requests: readonly SigningRequest[],
+    chainId: number,
+  ) => Promise<readonly SigningProof[]>
   readonly now: () => number
 }): Promise<SignedSolanaIntent> {
   assertSolanaNotExpired(input.now(), input.prepared.quote)
@@ -673,12 +837,36 @@ export async function signSolanaIntent(input: {
     })
   }
   const authority = input.prepared.input.authority
-  if (authority.kind === 'secp256r1') {
-    if (input.owner.type !== 'webAuthn') {
-      refuse(
-        'the configured authority is a passkey; provide the viem WebAuthn account that owns it',
-      )
+  // Checked before any EVM request is signed, so a wrong owner prompts nobody.
+  if (authority.kind === 'secp256r1' && input.owner.type !== 'webAuthn') {
+    refuse(
+      'the configured authority is a passkey; provide the viem WebAuthn account that owns it',
+    )
+  }
+  if (
+    authority.kind === 'secp256k1' &&
+    (input.owner.type === 'webAuthn' || !(input.owner as Account).signMessage)
+  ) {
+    refuse(
+      'the configured authority cannot sign messages; provide a viem account with signMessage for headless signing',
+    )
+  }
+  const executing = executingDelivery(input.prepared.input)
+  let evmProofs: readonly SigningProof[] = []
+  if (executing) {
+    if (!input.signEvmRequests) {
+      refuse('the destination calls need the paired EVM account to sign them')
     }
+    // Before the spend, whose payload stays valid for only a short slot window
+    // from the quote.
+    evmProofs = await input.signEvmRequests!(
+      input.prepared.quote.signingRequests.slice(1),
+      executing.chainId,
+    )
+    assertEvmProofs(input.prepared.quote, evmProofs)
+  }
+  let spend: SolanaSpendProof
+  if (authority.kind === 'secp256r1') {
     const owner = input.owner as WebAuthnAccount
     const { challenge } = payload as Extract<
       SolanaSpendPayload,
@@ -693,24 +881,19 @@ export async function signSolanaIntent(input: {
       signature,
     }
     validateSolanaWebAuthnAssertion({ challenge }, assertion)
-    return { prepared: input.prepared, proof: { kind: 'webauthn', assertion } }
-  }
-  const owner = input.owner as Account
-  if (input.owner.type === 'webAuthn' || !owner.signMessage) {
-    refuse(
-      'the configured authority cannot sign messages; provide a viem account with signMessage for headless signing',
+    spend = { kind: 'webauthn', assertion }
+  } else {
+    const { message } = payload as Extract<
+      SolanaSpendPayload,
+      { kind: 'personalSign' }
+    >
+    const signature = normalizeRecovery(
+      await (input.owner as Account).signMessage!({ message }),
     )
+    await validateSolanaSignature(authority.address, { message }, signature)
+    spend = { kind: 'personalSign', signature }
   }
-  const { message } = payload as Extract<
-    SolanaSpendPayload,
-    { kind: 'personalSign' }
-  >
-  const signature = normalizeRecovery(await owner.signMessage!({ message }))
-  await validateSolanaSignature(authority.address, { message }, signature)
-  return {
-    prepared: input.prepared,
-    proof: { kind: 'personalSign', signature },
-  }
+  return { prepared: input.prepared, proofs: [spend, ...evmProofs] }
 }
 
 export async function validateSolanaSignature(
@@ -821,7 +1004,7 @@ export async function submitSolanaIntent(
     deliveryKind(signed.prepared.input),
   )
   const authority = signed.prepared.input.authority
-  const proof = signed.proof
+  const [proof, ...evmProofs] = signed.proofs
   if (authority.kind === 'secp256r1' && proof.kind === 'webauthn') {
     validateSolanaWebAuthnAssertion(
       payload as Extract<SolanaSpendPayload, { kind: 'webauthn' }>,
@@ -839,10 +1022,11 @@ export async function submitSolanaIntent(
       { intentId: signed.prepared.quote.intentId },
     )
   }
+  assertEvmProofs(signed.prepared.quote, evmProofs)
   const response = await context.submissionClient.submitIntent(
     {
       intentId: signed.prepared.quote.intentId,
-      proofs: [proof],
+      proofs: [proof, ...evmProofs],
     },
     {
       intentInput: projectCompatibleIntentInput(signed.prepared.normalized),

@@ -9,6 +9,7 @@ import type { AccountRuntime, AccountRuntimePort } from '../accounts/adapter'
 import { createAccountConstruction } from '../accounts/construction'
 import { FactoryArgsNotAvailableError } from '../accounts/error'
 import { createAccountAdapter } from '../accounts/registry'
+import { resolveCalls } from '../calls/resolve'
 import {
   chainIdFromCaip2,
   formatCaip2,
@@ -80,6 +81,7 @@ import type {
   SignerInvocationPort,
   SigningCheckpointPort,
 } from '../signing/types'
+import { projectIntentAccount } from '../transactions/intents/account'
 import { accountChainIdFromOrigins } from '../transactions/intents/origin-chain'
 import {
   buildIntentSigningInput,
@@ -295,6 +297,26 @@ function createAccountComposition<CompatibilityConfig>(
     getAddress: (context, chain) =>
       createStaticAccountRuntime(context.account, chain, false).identity
         .address,
+    resolveSolanaEvmDestination: async (context, input) => {
+      const runtime = await createAccountRuntimePort(
+        context.account,
+        dependencies,
+      ).forChain(input.chain)
+      // Projected first: a 7702 account missing its init signature fails
+      // before any call resolver runs.
+      const account = projectIntentAccount({
+        runtime,
+        ...(input.eip7702InitSignature
+          ? { eip7702InitSignature: input.eip7702InitSignature }
+          : {}),
+      })
+      const calls = await resolveCalls(input.calls, {
+        account: runtime.identity.address,
+        chain: input.chain,
+        config: context.compatibilityConfig,
+      })
+      return { calls, account }
+    },
     signMessage: async (context, input) => {
       const account = createAccountRuntimePort(context.account, dependencies)
       const session =

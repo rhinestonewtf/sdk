@@ -100,6 +100,7 @@ import { normalizeIntentQuote } from '../transactions/intents/normalize'
 import { assertSupportedSigningRequests } from '../transactions/intents/prepare'
 import {
   compressP256PublicKey,
+  type SolanaEvmExecution,
   type SolanaTransferInput,
   solanaChainId,
 } from '../transactions/intents/solana'
@@ -831,7 +832,30 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
             }) as Transaction)
           : initiallyNormalized
       if (isSolanaOrigin(normalized)) {
-        return requireSolana().prepare(ctx.sdk, workflowsFor(ctx), normalized)
+        const origin = requireSolana()
+        const workflows = workflowsFor(ctx)
+        let execution: SolanaEvmExecution | undefined
+        if (isCrossChainSolanaOrigin(normalized) && normalized.calls?.length) {
+          const chainId = normalized.targetChain.id
+          const resolved = await workflows.resolveSolanaEvmDestination(ctx, {
+            chain: toEvmChainReference(chainId),
+            calls: normalized.calls.map((call) => adaptCall(call, chainId)),
+            ...(normalized.eip7702InitSignature
+              ? { eip7702InitSignature: normalized.eip7702InitSignature }
+              : {}),
+          })
+          // Lazy calls can resolve to none, which leaves a plain delivery.
+          execution =
+            resolved.calls.length > 0
+              ? {
+                  ...resolved,
+                  ...(normalized.gasLimit === undefined
+                    ? {}
+                    : { gasLimit: normalized.gasLimit }),
+                }
+              : undefined
+        }
+        return origin.prepare(ctx.sdk, workflows, normalized, execution)
       }
       // Before the quote, not after: the quote's signing requests register an agent
       // derived from the action's bytes, so the action has to be concrete here.
@@ -891,6 +915,13 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
           workflows,
           preparedTransaction,
           options,
+          async (signingRequests, chainId) =>
+            (
+              await workflows.signIntentFromRequests(ctx, {
+                signingRequests,
+                targetChain: toEvmChainReference(chainId),
+              })
+            ).proofs,
         )
       }
       if (options && 'owner' in options) {
@@ -1258,6 +1289,7 @@ function createSolanaOrigin(
   const transfer = (
     sdk: ResolvedSdkConfig,
     transaction: Transaction,
+    execution?: SolanaEvmExecution,
   ): SolanaTransferInput => {
     assertSupportedTransaction(transaction, publicConfig)
     if (
@@ -1318,6 +1350,7 @@ function createSolanaOrigin(
             chainId: transaction.targetChain.id,
             token: transaction.tokenRequests[0].address,
             recipient,
+            ...(execution ? { execution } : {}),
           },
         },
       }
@@ -1357,7 +1390,33 @@ function createSolanaOrigin(
     explicitQuote?: Quote,
   ) => {
     assertPreparedBinding(prepared.request)
-    const input = transfer(sdk, prepared.transaction)
+    // Read back from the canonical input rather than resolved again: resolving
+    // reads the chain and runs caller code, and a replay has to rebuild the
+    // request that was quoted.
+    const stored = prepared.intentInput
+    const execution: SolanaEvmExecution | undefined =
+      (prepared.transaction as { calls?: readonly unknown[] }).calls?.length &&
+      stored.destinationExecutions.length > 0
+        ? {
+            calls: stored.destinationExecutions.map(({ to, value, data }) => ({
+              target: to,
+              value: BigInt(value),
+              data,
+            })),
+            ...(stored.destinationGasUnits === undefined
+              ? {}
+              : { gasLimit: BigInt(stored.destinationGasUnits) }),
+            account: {
+              kind: stored.account.accountType === 'EOA' ? 'eoa' : 'erc7579',
+              address: stored.account.address as Address,
+              setupOps: stored.account.setupOps ?? [],
+              ...(stored.account.delegations?.[0]
+                ? { delegationContract: stored.account.delegations[0].contract }
+                : {}),
+            },
+          }
+        : undefined
+    const input = transfer(sdk, prepared.transaction, execution)
     assertSolanaMetadata(prepared.execution, input)
     const quote = explicitQuote ?? selectedPublicQuote(prepared, intentId)
     return workflows.reconstructSolanaIntent({
@@ -1378,9 +1437,10 @@ function createSolanaOrigin(
       sdk: ResolvedSdkConfig,
       workflows: SolanaWorkflows,
       transaction: Transaction,
+      execution?: SolanaEvmExecution,
     ): Promise<PreparedTransactionData> {
       const prepared = await workflows.prepareSolanaIntent(
-        transfer(sdk, transaction),
+        transfer(sdk, transaction, execution),
       )
       return toPreparedSolanaTransactionData(prepared, transaction)
     },
@@ -1389,6 +1449,9 @@ function createSolanaOrigin(
       workflows: SolanaWorkflows,
       preparedTransaction: PreparedTransactionData,
       options?: QuoteSelection | SignAsOwnerOptions,
+      signEvmRequests?: Parameters<
+        SolanaWorkflows['signSolanaIntent']
+      >[0]['signEvmRequests'],
     ): Promise<SignedTransactionData> {
       if (options && 'owner' in options) refuseSolanaAssembly()
       const prepared = resolve(
@@ -1400,11 +1463,12 @@ function createSolanaOrigin(
       const signed = await workflows.signSolanaIntent({
         prepared,
         owner: source.owner.account,
+        ...(signEvmRequests ? { signEvmRequests } : {}),
       })
       return {
         ...preparedTransaction,
         quote: toPublicQuote(signed.prepared.quote),
-        proofs: [signed.proof],
+        proofs: [...signed.proofs],
       }
     },
     async submit(
@@ -1419,13 +1483,15 @@ function createSolanaOrigin(
           { vm: 'solana' },
         )
       }
-      const proof = signedTransaction.proofs[0]
+      const [proof, ...evmProofs] = signedTransaction.proofs
       if (
-        signedTransaction.proofs.length !== 1 ||
-        (proof?.kind !== 'personalSign' && proof?.kind !== 'webauthn')
+        (proof?.kind !== 'personalSign' && proof?.kind !== 'webauthn') ||
+        signedTransaction.proofs.length !==
+          signedTransaction.quote.signingRequests.length ||
+        evmProofs.some(({ kind }) => kind !== 'eip712' && kind !== 'eip7702')
       ) {
         throw new InvalidSolanaTransactionArtifactError(
-          'submission requires exactly one personal-sign or WebAuthn spend proof',
+          'submission requires the personal-sign or WebAuthn spend proof, then an EIP-712 or EIP-7702 proof for each further signing request',
           { intentId: signedTransaction.quote.intentId },
         )
       }
@@ -1436,7 +1502,10 @@ function createSolanaOrigin(
         signedTransaction.quote.intentId,
         signedTransaction.quote,
       )
-      const submitted = await workflows.submitSolanaIntent({ prepared, proof })
+      const submitted = await workflows.submitSolanaIntent({
+        prepared,
+        proofs: [proof, ...evmProofs],
+      })
       return {
         type: 'intent',
         id: submitted.intentId,
@@ -1803,6 +1872,9 @@ function assertSupportedSolanaOriginDelivery(
     'targetChain',
     'tokenRequests',
     'recipient',
+    'calls',
+    'gasLimit',
+    'eip7702InitSignature',
     'sponsored',
     'appFees',
     'protocolFees',
@@ -1819,6 +1891,33 @@ function assertSupportedSolanaOriginDelivery(
       'A managed Solana source is required for Solana-origin transfers.',
       { vm: 'solana' },
     )
+  }
+  if (input.calls !== undefined && !Array.isArray(input.calls)) {
+    throw new UnsupportedAccountCapabilityError(
+      '`calls` must be an array of destination calls.',
+      { vm: 'solana', field: 'calls' },
+    )
+  }
+  const runsCalls = Array.isArray(input.calls) && input.calls.length > 0
+  if (runsCalls && !config.evm) {
+    throw new UnsupportedAccountCapabilityError(
+      'Destination calls run on the paired EVM account, which an account with no EVM entry does not have. Omit `calls`.',
+      { vm: 'solana', field: 'calls' },
+    )
+  }
+  if (runsCalls && input.recipient !== undefined) {
+    throw new UnsupportedAccountCapabilityError(
+      'An explicit delivery recipient cannot execute destination calls. Omit `recipient` to execute with the invoking managed EVM account.',
+      { vm: 'solana', field: 'recipient' },
+    )
+  }
+  for (const field of ['gasLimit', 'eip7702InitSignature']) {
+    if (input[field] !== undefined && !runsCalls) {
+      throw new UnsupportedAccountCapabilityError(
+        `\`${field}\` applies to destination \`calls\`, and this delivery has none.`,
+        { vm: 'solana', field },
+      )
+    }
   }
   const sources = input.sourceChains as readonly unknown[]
   if (sources.length !== 1) {

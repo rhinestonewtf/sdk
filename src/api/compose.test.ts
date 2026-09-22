@@ -9,6 +9,7 @@ import { privateKeyToAccount } from 'viem/accounts'
 import { arbitrum, base as baseChain } from 'viem/chains'
 import { describe, expect, test, vi } from 'vitest'
 import {
+  delegationRequest,
   eip712Request,
   personalSignRequest,
   plan,
@@ -22,7 +23,10 @@ import type { OrchestratorIntentRequest } from '../clients/orchestrator/types'
 import type { RpcReadPort } from '../clients/rpc/port'
 import { resolveAccountConfig, resolveSdkConfig } from '../config/resolve'
 import type { AccountInvocationContext } from '../config/resolved'
-import { SolanaQuoteExpiredError } from '../errors/execution'
+import {
+  Eip7702InitSignatureRequiredError,
+  SolanaQuoteExpiredError,
+} from '../errors/execution'
 import { K1_DEFAULT_VALIDATOR_ADDRESS } from '../modules/validators/k1'
 import { getSessionDetails } from '../modules/validators/smart-sessions/authorization'
 import { toSession } from '../modules/validators/smart-sessions/resolve'
@@ -904,6 +908,119 @@ describe('internal core composition', () => {
       }
       expect(proof.signature).toMatch(/^0x/u)
     }
+  })
+
+  describe('resolving a Solana-origin delivery’s destination calls', () => {
+    const destination = toEvmChainReference(baseChain.id)
+    const call = { target, value: 0n, data: '0xabcdef' as Hex }
+
+    test('resolves lazy calls against the account and carries its deployment setup', async () => {
+      const { composition, context } = fixture()
+      const workflows = composition.createAccount(context).workflows
+      const address = workflows.getAddress(context, destination)
+      const resolve = vi.fn(async () => call)
+
+      const resolved = await workflows.resolveSolanaEvmDestination(context, {
+        chain: destination,
+        calls: [call, { resolve }],
+      })
+
+      expect(resolve).toHaveBeenCalledWith({
+        account: address,
+        chain: destination,
+        config: {},
+      })
+      expect(resolved.calls).toEqual([call, call])
+      expect(resolved.account).toEqual({
+        kind: 'erc7579',
+        address,
+        setupOps: [
+          {
+            to: expect.stringMatching(/^0x[0-9a-fA-F]{40}$/u),
+            data: expect.stringMatching(/^0x[0-9a-f]+$/u),
+          },
+        ],
+      })
+    })
+
+    test('takes an EIP-7702 account’s init signature and names its delegation', async () => {
+      const base = fixture()
+      const context = {
+        ...base.context,
+        account: resolveAccountConfig(base.context.sdk, {
+          account: { type: 'nexus', version: '1.2.0' },
+          owners: { type: 'ecdsa', accounts: [owner] },
+          eoa: owner,
+        }),
+      }
+      const workflows = base.composition.createAccount(context).workflows
+
+      await expect(
+        workflows.resolveSolanaEvmDestination(context, {
+          chain: destination,
+          calls: [call],
+        }),
+      ).rejects.toThrow(Eip7702InitSignatureRequiredError)
+      const resolved = await workflows.resolveSolanaEvmDestination(context, {
+        chain: destination,
+        calls: [call],
+        eip7702InitSignature: `0x${'11'.repeat(65)}`,
+      })
+      expect(resolved.account).toEqual({
+        kind: 'erc7579',
+        address: owner.address,
+        setupOps: [
+          {
+            to: owner.address,
+            data: expect.stringMatching(/^0x[0-9a-f]+$/u),
+          },
+        ],
+        delegationContract: expect.stringMatching(/^0x[0-9a-fA-F]{40}$/u),
+      })
+    })
+
+    // The child's SingleChainOps is an origin authorization with no destination
+    // authorization beside it, followed by the delegation the child needs.
+    test('signs the child authorization and its delegation with no destination request', async () => {
+      const base = fixture()
+      const context = {
+        ...base.context,
+        account: resolveAccountConfig(base.context.sdk, {
+          account: { type: 'nexus', version: '1.2.0' },
+          owners: { type: 'ecdsa', accounts: [owner] },
+          eoa: owner,
+        }),
+      }
+      const workflows = base.composition.createAccount(context).workflows
+
+      const signed = await workflows.signIntentFromRequests(context, {
+        signingRequests: [
+          eip712Request({ chainId: baseChain.id, account: owner.address }),
+          delegationRequest({
+            chainId: baseChain.id,
+            contract: `0x${'77'.repeat(20)}`,
+            account: owner.address,
+          }),
+        ],
+        targetChain: destination,
+      })
+
+      expect(signed.proofs).toEqual([
+        {
+          kind: 'eip712',
+          signature: expect.stringMatching(/^0x[0-9a-f]+$/u),
+        },
+        {
+          kind: 'eip7702',
+          nonce: 0,
+          signature: {
+            r: expect.stringMatching(/^0x/u),
+            s: expect.stringMatching(/^0x/u),
+            yParity: expect.any(Number),
+          },
+        },
+      ])
+    })
   })
 
   test('createSession resolves the wrapped-native token from the chain catalog', async () => {

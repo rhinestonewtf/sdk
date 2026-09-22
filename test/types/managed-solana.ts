@@ -231,6 +231,12 @@ async function standaloneCapabilitySurface() {
   })
   // @ts-expect-error with no EVM account to default to, the delivery names its recipient
   account.prepareTransaction(deliveryFromSolana)
+  account.prepareTransaction({
+    ...deliveryFromSolana,
+    recipient: owner.address,
+    // @ts-expect-error nor an EVM account to run destination calls
+    calls: [{ to: usdcOnBase, data: '0x' }],
+  })
   // @ts-expect-error an account with no EVM entry cannot run EVM calls
   account.prepareTransaction({ chain: mainnet, calls: [] })
   // @ts-expect-error nor fund a delivery from EVM sources
@@ -282,6 +288,7 @@ async function compositeCapabilitySurface() {
   account.prepareTransaction(instructionTransaction)
   account.prepareTransaction(deliveryFromSolana)
   account.prepareTransaction(maxOutFromSolana)
+  account.prepareTransaction(deliveryFromSolanaWithCalls)
   // The same request written inline, which is how integrators write it.
   account.prepareTransaction({
     sourceChains: [solanaDevnet],
@@ -359,10 +366,12 @@ const forbiddenDeliveryHyperCore: Transaction = {
   hyperCore: { closePerp: { asset: 'ETH' } },
 }
 
-const forbiddenDeliveryFromSolanaCalls = {
+// Calls run on the account's own EVM account once the delivery lands.
+const deliveryFromSolanaWithCalls = {
   ...deliveryFromSolana,
-  // @ts-expect-error a Solana-origin delivery carries no destination calls
-  calls: [],
+  calls: [{ to: usdcOnBase, data: '0x' }],
+  gasLimit: 200_000n,
+  eip7702InitSignature: '0x12',
 } satisfies CrossChainSolanaOriginTransaction
 const forbiddenDeliveryFromSolanaInstructions = {
   ...deliveryFromSolana,
@@ -464,7 +473,7 @@ void sponsoredInstructionCategories
 void forbiddenTransferInstructions
 void forbiddenTransferLookupTables
 void forbiddenDeliveryLookupTables
-void forbiddenDeliveryFromSolanaCalls
+void deliveryFromSolanaWithCalls
 void forbiddenDeliveryFromSolanaHyperCore
 void forbiddenDeliveryFromSolanaInstructions
 void forbiddenDeliveryFromSolanaRecipient
