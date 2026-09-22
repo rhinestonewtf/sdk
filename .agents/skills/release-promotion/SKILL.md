@@ -16,8 +16,14 @@ Merging the first publishes nothing.
    - Wait for the checks, get the approval, then merge with a merge commit, as earlier promotions were.
 2. **Version PR (`changeset-release/release` → `release`).** Merging the promotion runs `changesets/action`, which
    opens or updates this PR with the version bump.
-3. **Publish.** Merging the version PR runs build, unit tests and the full integration suite. It then publishes `@latest`
-   over OIDC and opens the SDK-reference PR in `docs`. An npm publish cannot be undone.
+3. **Publish.** Merging the version PR runs build, unit tests and the full integration suite, then publishes `@latest`
+   over OIDC and creates the GitHub Release. An npm publish cannot be undone.
    - Confirm with `npm view @rhinestone/sdk dist-tags`.
+4. **Reference sync.** The GitHub Release triggers a separate `Sync SDK reference` run, which opens or updates the
+   reviewed docs-main PR from `update/sdk-reference`. Inspect this status separately from the package Release run.
+   A docs failure does not invalidate the npm publication: retry the docs-only run for a transient failure, or ship an
+   automation fix normally and confirm it on a later publish. Never republish an existing package version to repair docs.
 
-Both PRs need an approving review. Passing checks alone never unblock them.
+Both release PRs need an approving review. Passing checks alone never unblocks them. Recovery is confirmed only by a
+later production publish completing both the package run and the independent reference sync; do not trigger one while
+preparing or reviewing the automation change.

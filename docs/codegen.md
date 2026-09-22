@@ -79,11 +79,24 @@ Canonical generated MDX is committed to the `docs` repo because Mintlify builds
 from repository content. Local output overrides are for preview and validation;
 they do not publish production documentation automatically.
 
-Successful production v2 publishes generate reviewed docs update PRs. Dev
-snapshots, v1 publishes, and release-PR creation do not update the production
-reference. See
-the [release workflow](../.github/workflows/release.yaml) for the operational
-details.
+A successful production v2 publish creates a GitHub Release, which triggers the
+independent [`Sync SDK reference`](../.github/workflows/sync-sdk-reference.yaml)
+workflow. The workflow verifies the automated stable-v2 release, immutable tag
+commit, `release` ancestry, package version, and npm `latest` before generating.
+It checks npm again before writing so a delayed run cannot replace newer docs.
+
+Generation starts from fresh docs `main` and may stage only
+`wallets/custom-signer/sdk-reference/` and `docs.json`. The retired inventory
+files and launch-time branch variables are not part of this pipeline. Changed
+output opens or updates the automation-owned `update/sdk-reference` PR;
+unchanged output and superseded releases are successful no-ops. Dev snapshots,
+v1 publishes, prereleases, and release-PR creation never update the production
+reference.
+
+Package publication and docs synchronization have separate workflow statuses.
+A docs failure does not undo or fail an npm publication and must be repaired by
+retrying the docs-only run when appropriate or shipping an automation fix for a
+later release—never by republishing an existing version.
 
 ## Orchestrator wire types
 
