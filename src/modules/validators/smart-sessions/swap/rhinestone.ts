@@ -150,8 +150,7 @@ export function swapperAddresses(environment: 'production' | 'development'): {
  * pointer, the length, and each element pointer fixes every position, making the
  * target offsets exact.
  *
- * Derived from live Plasma calldata and reproduced by
- * `zeroExRouteRules` in the test suite:
+ * Derived from live Plasma calldata and reproduced by `offsets.test.ts`:
  *   @224 array pointer  = 256   (tail begins right after the head)
  *   @256 length         = 2     (approve + aggregator call)
  *   @288 elem[0] pointer= 64    (element table is 2 words)
@@ -174,14 +173,15 @@ const CALLS_ELEM0_VALUE_OFFSET = 384n
 const CALLS_ELEM1_VALUE_OFFSET = 608n
 const NESTED_EXEC_TOKEN_OFFSET = 740n
 /**
- * The nested fynd call: `swap(amountIn, tokenIn, tokenOut, minOut, receiver)`.
- * Verified against production calldata — the receiver is the Swapper itself,
- * which collects the output and forwards it to the scope's recipient, so that
- * is what gets pinned rather than the end recipient.
+ * The nested fynd call: `singleSwap(amountIn, tokenIn, tokenOut,
+ * expectedAmountOut, minAmountOut, receiver, ...)`, its head starting at 708.
+ * The receiver is the Swapper itself, which collects the output and forwards
+ * it to the scope's recipient, so that is what gets pinned rather than the end
+ * recipient.
  */
 const NESTED_FYND_TOKEN_IN_OFFSET = 740n
 const NESTED_FYND_TOKEN_OUT_OFFSET = 772n
-const NESTED_FYND_RECEIVER_OFFSET = 836n
+const NESTED_FYND_RECEIVER_OFFSET = 868n
 const CALLS_ELEM1_DATA_POINTER_OFFSET = 640n
 /** Head words of the `AllowanceHolder.exec` nested in `calls[1].data`. */
 const NESTED_EXEC_OPERATOR_OFFSET = 708n

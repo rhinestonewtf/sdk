@@ -57,7 +57,7 @@ plasmaVenues([zeroEx({ anySettler: true })])
 plasmaVenues([zeroEx({ settler: SETTLER, anySettler: true, maxSpend: 1n })])
 
 // @ts-expect-error venues come from the builders, not raw router addresses.
-plasmaVenues(['0x8f9b3b0451efff0ae8100428aee35fa3cbc0b769'])
+plasmaVenues(['0x0953c7e23b44259e5e5630e9b97c31d7278c4c85'])
 
 plasmaVenues([zeroEx({ anySettler: true, maxSpend: 1_000_000n })])
 
