@@ -98,7 +98,7 @@ export interface paths {
     put?: never
     /**
      * Create Intent
-     * @description Submits a quoted intent for execution. Takes the `intentId` from `POST /quotes` (`routes[].intentId`) plus signatures (origin, destination, optionally target-execution) and optional EIP-7702 authorizations.
+     * @description Submits a quoted intent for execution. Takes the `intentId` from `POST /quotes` (`routes[].intentId`) plus the proofs authorizing it: on `2026-09.caucasus` one ordered `proofs[]` answering the quote's `signingRequests[]` position by position; on earlier versions the role-keyed signatures (origin, destination, optionally target-execution) and optional EIP-7702 authorizations.
      */
     post: operations['createIntent']
     delete?: never
@@ -947,7 +947,7 @@ export interface operations {
                    * @example 80
                    */
                   payableMicroUsd: string
-                  /** @description Canonical earner, stamped from the receipt sender this allocation reconciled to; null until earned */
+                  /** @description Canonical earner, stamped from the receipt sender this allocation reconciled to, in the chain's own address format (EVM hex, Solana base58); null until earned */
                   counterparty: string | null
                   /**
                    * @description Pinned POST (PATH-fallback) native-token USD price the gas micro-USD was valued at, as a decimal string; null when no price snapshot exists
@@ -1184,6 +1184,50 @@ export interface operations {
                  */
                 data: string
               }[]
+              /** @description Caller-supplied Solana instructions and lookup tables committed to by the intent. Present on instruction-only Solana intents. */
+              solanaExecution?: {
+                /** @description The executor of the disclosed calls */
+                executedBy: {
+                  /**
+                   * @description Who runs the calls: the account itself, or a solver-operated contract running them on its behalf.
+                   * @example account
+                   * @enum {string}
+                   */
+                  kind: 'account' | 'solver'
+                  /**
+                   * @description Address of the executing contract or account
+                   * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                   */
+                  address: string
+                }
+                /** @description The caller's own instructions, in execution order */
+                instructions: {
+                  /**
+                   * @description Program to invoke, base58.
+                   * @example TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
+                   */
+                  programId: string
+                  /** @description Accounts the instruction reads or writes, in the order the program expects. */
+                  accounts: {
+                    /**
+                     * @description Account address, base58.
+                     * @example TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
+                     */
+                    pubkey: string
+                    /** @description Whether the instruction requires this account to sign. */
+                    isSigner: boolean
+                    /** @description Whether the instruction writes to this account. */
+                    isWritable: boolean
+                  }[]
+                  /**
+                   * @description Instruction data, base64.
+                   * @example CQ==
+                   */
+                  data: string
+                }[]
+                /** @description Address lookup tables the instructions resolve against */
+                addressLookupTables: string[]
+              }
               /** @description Cost summary from the recorded fee sponsorship. Amounts are integer micro-USD; omitted when no sponsorship row exists. */
               cost: {
                 /**
@@ -3700,7 +3744,7 @@ export interface operations {
              */
             data: string
           }[]
-          /** @description Solana instructions to run, in order, out of the account's own wallet on a Solana destination — the Solana counterpart of `destinationExecutions`, which it cannot be combined with. The wallet executes them, so `recipient` must be omitted: a payee is encoded inside the instructions. No route serves them yet, so a request carrying them is refused with `UNSUPPORTED_DESTINATION_INSTRUCTIONS`. */
+          /** @description Solana instructions to run, in order, out of the account's own Swig wallet on a Solana destination. They carry any transfers and payees, so omit `recipient` and `tokenRequests`; they cannot be combined with `destinationExecutions`. Unsponsored execution is paid from an eligible wallet SOL or SPL balance; `options.sponsorSettings.gas` bills the sponsor instead. */
           destinationInstructions?: {
             /**
              * @description Program to invoke, base58.
@@ -3926,12 +3970,10 @@ export interface operations {
                */
               bridgeFees?: boolean
               /**
-               * @description Whether to sponsor swap fees for the intent
+               * @description Whether to sponsor swap fees for the intent. For an integrator enabled for it, this also sponsors the VALUE of an eligible same-chain swap, so the user trades at par: the user contributes the 1:1 amount and the sponsor pays whatever the market is short. That applies only to pairs where par is a meaningful rate (both sides USD-pegged) and only up to a configured per-swap ceiling; outside those bounds the swap is priced at market.
                * @default false
                */
               swapFees?: boolean
-              /** @description Whether to sponsor the VALUE of an eligible same-chain swap, so the user trades at par: the user contributes the 1:1 amount and the sponsor pays whatever the market is short. Applies only to pairs where par is a meaningful rate (both sides USD-pegged) and only up to a configured per-swap ceiling; outside those bounds the route plans as an ordinary unsponsored swap. Distinct from `swapFees`, which waives a solver's commission. */
-              swapValue?: boolean
               /**
                * @description Whether to sponsor the Rhinestone protocol fee (`options.protocolFees`) for the intent. When `true`, the fee is charged to the integrator's sponsorship balance instead of carved from the user, without the sponsorship surcharge.
                * @default false
@@ -5163,6 +5205,53 @@ export interface operations {
                     }
                   }
                 }
+                /** @description Solana instruction execution only: the exact fixed wallet debit, or confirmation that the sponsor pays and the wallet has no execution debit. The wallet debit also appears in input. */
+                executionPayment?:
+                  | {
+                      /** @enum {string} */
+                      paidBy: 'wallet'
+                      /** @description A single (chain, token) leg with amount, price, and metadata */
+                      walletDebit: {
+                        /**
+                         * @description Chain where this token leg settles (CAIP-2, any namespace)
+                         * @example eip155:8453
+                         */
+                        chainId: string
+                        /**
+                         * @description Contract address of the debited token (EVM 0x or non-EVM base58)
+                         * @example 0xaf88d065e77c8cc2239327c5edb3a432268e5831
+                         */
+                        tokenAddress: string
+                        /**
+                         * @description Token symbol, from the internal token registry or, for a token it has no entry for, read on-chain while planning. `null` when neither resolved one.
+                         * @example USDC
+                         */
+                        symbol: string | null
+                        /**
+                         * @description Token decimals, from the internal token registry or, for a token it has no entry for, read on-chain while planning. `null` when neither resolved one.
+                         * @example 6
+                         */
+                        decimals: number | null
+                        /** @description Unit price in USD. `null` when neither the price oracle nor this quote priced the token. */
+                        price: {
+                          /**
+                           * @description Unit price in USD
+                           * @example 1
+                           */
+                          usd: number
+                        } | null
+                        /**
+                         * Format: uint256
+                         * @description Token amount in the token's smallest unit
+                         * @example 1050000
+                         */
+                        amount: string
+                      }
+                    }
+                  | {
+                      /** @enum {string} */
+                      paidBy: 'sponsor'
+                    }
               }
               /**
                * @description Pre-flight token operations the user must perform before submitting this route (approvals, wrapping). Emitted for EOA accounts only — smart accounts handle these internally.
@@ -5792,7 +5881,7 @@ export interface operations {
                   )[]
                 }
             /**
-             * @description Which fee categories to treat as sponsored. Sponsored categories are absorbed by the sponsor and do not reduce the delivered amount. `swapValue` is NOT accepted here: the estimator prices swaps at market, so an estimate cannot yet reflect a par-sponsored swap and is rejected rather than returning a figure `POST /quotes` would not honour (RHI-7069).
+             * @description Which fee categories to treat as sponsored. Sponsored categories are absorbed by the sponsor and do not reduce the delivered amount. The estimator prices every swap at market, so a same-chain swap `POST /quotes` sponsors to par under `swapFees` is estimated below what it delivers (RHI-7069).
              * @example {
              *       "gas": true,
              *       "bridgeFees": true,
@@ -5812,12 +5901,10 @@ export interface operations {
                */
               bridgeFees?: boolean
               /**
-               * @description Whether to sponsor swap fees for the intent
+               * @description Whether to sponsor swap fees for the intent. For an integrator enabled for it, this also sponsors the VALUE of an eligible same-chain swap, so the user trades at par: the user contributes the 1:1 amount and the sponsor pays whatever the market is short. That applies only to pairs where par is a meaningful rate (both sides USD-pegged) and only up to a configured per-swap ceiling; outside those bounds the swap is priced at market.
                * @default false
                */
               swapFees?: boolean
-              /** @description Whether to sponsor the VALUE of an eligible same-chain swap, so the user trades at par: the user contributes the 1:1 amount and the sponsor pays whatever the market is short. Applies only to pairs where par is a meaningful rate (both sides USD-pegged) and only up to a configured per-swap ceiling; outside those bounds the route plans as an ordinary unsponsored swap. Distinct from `swapFees`, which waives a solver's commission. */
-              swapValue?: boolean
               /**
                * @description Whether to sponsor the Rhinestone protocol fee (`options.protocolFees`) for the intent. When `true`, the fee is charged to the integrator's sponsorship balance instead of carved from the user, without the sponsorship surcharge.
                * @default false
