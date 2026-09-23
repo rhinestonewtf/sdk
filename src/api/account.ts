@@ -9,7 +9,11 @@ import type {
 } from 'viem'
 import { isAddress } from 'viem'
 import type { UserOperationReceipt } from 'viem/account-abstraction'
-import { asSwigNamespace, locateSwig } from '../accounts/solana/address'
+import {
+  asSwigNamespace,
+  locateSwig,
+  locateSwigWallet,
+} from '../accounts/solana/address'
 import { formatCaip2, parseCaip2, toEvmChainReference } from '../chains/caip2'
 import { getChainById, getChainReference } from '../chains/catalog'
 import {
@@ -743,8 +747,8 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
     return createSolanaOrigin(
       {
         owner: branch.owner,
-        walletAddress: branch.swig.address,
-        swigAddress: branch.swig.swigAccount,
+        walletAddress: locateSwigWallet(branch.swig).address,
+        swigAddress: branch.swig,
         endpoint: ctx.sdk.orchestratorUrl,
         evmRecipient: identity,
         evmExecution: {

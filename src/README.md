@@ -150,16 +150,14 @@ const crossVmAccount = await rhinestone.createAccount({
 ```
 
 Address-only entries cannot prepare, sign, or execute transactions. To use an
-existing development Swig, supply both saved addresses and its independent
-private-key or passkey owner:
+existing development Swig, supply its saved state-account address and its
+independent private-key or passkey owner; the wallet PDA is derived:
 
 ```ts
 const managedSolana = {
   owner: { type: 'ecdsa' as const, account: solanaSigner },
-  swig: {
-    address: solanaAddress(savedWalletAddress),
-    swigAccount: solanaAddress(savedStateAddress),
-  },
+  // Existing Swig state account; the wallet PDA is derived automatically.
+  swig: solanaAddress(savedStateAddress),
 }
 
 const solanaAccount = await rhinestone.createAccount({

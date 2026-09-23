@@ -88,9 +88,9 @@ EVM receiver may accompany that facade for address access and delivery defaults.
 
 Managed Solana is development-only. Its Swig must already exist and carry the
 configured owner as its authority on the target cluster. Every managed Solana
-config names it explicitly with `swig: { address, swigAccount }`; adding,
+config names its state account explicitly with `swig: stateAddress`; adding,
 removing, or replacing an EVM branch never selects another wallet. The SDK
-refuses a wallet that is not the state account's PDA. Plain transfers,
+derives the asset-holding wallet PDA from that state account. Plain transfers,
 instructions, and cross-chain deliveries name `svm.swigAccount`, carry no
 `account.evm`, bind sponsorship to the wallet, and persist no `accountType`.
 The owner is an independent ECDSA key or passkey; either credential may also be

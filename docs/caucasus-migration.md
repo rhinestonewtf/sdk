@@ -28,10 +28,8 @@ Every managed Solana branch now names the existing Swig it uses:
 ```ts
 const solana = {
   owner: { type: 'ecdsa' as const, account: solanaSigner },
-  swig: {
-    address: savedWalletAddress,
-    swigAccount: savedStateAddress,
-  },
+  // Existing Swig state account; the wallet PDA is derived automatically.
+  swig: savedStateAddress,
 }
 
 await sdk.createAccount({ solana })
@@ -40,7 +38,8 @@ await sdk.createAccount({ solana, evm: managedEvmConfig })
 ```
 
 There is no EVM-derived fallback and account construction does not deploy or
-verify the Swig. Save both addresses during provisioning. The Solana owner may
+verify the Swig. Save its state-account address during provisioning; the SDK
+derives the asset-holding wallet PDA. The Solana owner may
 be an ECDSA account or WebAuthn account and may be shared with EVM, but the two
 VMs authorize independently.
 

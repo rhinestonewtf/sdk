@@ -27,9 +27,9 @@ prove composite EVM-plus-Solana capability visibility, explicit VM address
 selection, the single-SPL-transfer shape, forbidden EVM/cross-chain fields,
 tagged `personalSign` payloads, optional destination signatures, persisted
 Solana execution metadata, and chain-native references. Runtime tests repeat
-these checks for widened or reconstructed values, validate explicit Swig
-wallet/state pairs offline, reject production or missing managed Solana
-accounts, validate exact persisted requests and opaque quote artifacts before
+these checks for widened or reconstructed values, validate explicit Swig state
+addresses and derive their wallet PDAs offline, reject production or missing
+managed Solana accounts, validate exact persisted requests and opaque quote artifacts before
 signing/submission, and exercise automatic EVM
 source selection with a fake chain catalog. EVM → Solana delivery is covered at
 the client, workflow and facade layers: the recipient resolution order on both
@@ -40,7 +40,7 @@ covered the same way: the source-narrowing access list on the wire, a
 vendor-settled route with its delivery handle, mixed-namespace cost legs,
 recipient defaulting to the account's own EVM identity, and the shapes refused
 before quoting. The same explicitly named Swig is covered alone, with an EVM
-receiver, and with managed EVM: invalid PDA pairs are refused; plain requests
+receiver, and with managed EVM: invalid state addresses are refused; plain requests
 carry no `evm` entry and bind metadata/sponsorship to the wallet; receivers
 cannot spend; unrelated managed pairs refuse destination calls before effects;
 and request tampering fails across instances. Offline tests never execute a

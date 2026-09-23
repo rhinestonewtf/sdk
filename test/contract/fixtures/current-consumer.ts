@@ -110,7 +110,7 @@ async function useManagedSolanaApi() {
     evm,
     solana: {
       owner: { type: 'ecdsa', account: owner },
-      swig: { address: solanaRecipient, swigAccount: solanaMint },
+      swig: solanaMint,
     },
   })
   const transaction = {

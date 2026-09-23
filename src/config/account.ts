@@ -945,16 +945,9 @@ type SolanaOwner =
  */
 interface SolanaManagedAccountConfig {
   owner: SolanaOwner
-  swig: SolanaSwig
+  /** Existing Swig state account. Its asset-holding wallet PDA is derived. */
+  swig: SolanaAddress
   address?: never
-}
-
-/** A Swig that already exists, named by its two addresses. */
-interface SolanaSwig {
-  /** The asset-holding Swig wallet, which is the account's Solana address. */
-  address: SolanaAddress
-  /** The Swig state account holding the roles. `address` must be its wallet. */
-  swigAccount: SolanaAddress
 }
 
 /** Backwards-compatible name for an explicitly identified managed Solana account. */
@@ -1590,7 +1583,6 @@ export type {
   SolanaOwner,
   SolanaReceiverAccountConfig,
   SolanaStandaloneAccountConfig,
-  SolanaSwig,
   SingleSessionSignerSet,
   SourceAssetInput,
   SourceCallInput,

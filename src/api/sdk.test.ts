@@ -13,7 +13,7 @@ import { RhinestoneSDK } from './sdk'
 const owner = privateKeyToAccount(`0x${'11'.repeat(32)}`)
 const receiver = solanaAddress('11111111111111111111111111111111')
 const location = locateSwig(asSwigNamespace('dev-v1'), owner.address)
-const swig = { address: location.wallet, swigAccount: location.swig }
+const swig = location.swig
 
 afterEach(() => {
   vi.unstubAllGlobals()

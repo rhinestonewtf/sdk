@@ -21,7 +21,6 @@ import {
   type SolanaInstructionsExecutionMetadata,
   type SolanaStandaloneAccount,
   type SolanaStandaloneAccountConfig,
-  type SolanaSwig,
   solanaAddress,
   solanaDevnet,
   type Transaction,
@@ -209,12 +208,12 @@ const standaloneMetadata: SolanaExecutionMetadata = {
   mint,
 }
 
-const swig = { address: recipient, swigAccount: mint } satisfies SolanaSwig
+const swig = mint
 const standaloneConfig: SolanaStandaloneAccountConfig = {
   owner: { type: 'ecdsa', account: owner },
   swig,
 }
-// @ts-expect-error every managed Solana account must name its existing Swig
+// @ts-expect-error every managed Solana account must name its existing Swig state account
 const implicitConfig: SolanaStandaloneAccountConfig = {
   owner: { type: 'ecdsa', account: owner },
 }

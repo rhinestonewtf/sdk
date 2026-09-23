@@ -5,7 +5,6 @@ import type {
   EvmAccountConfig,
   RhinestoneAccountConfig,
   SolanaOwner,
-  SolanaSwig,
 } from '../config/account'
 import type {
   AccountConstructionInput,
@@ -111,17 +110,23 @@ function isPasskeyAccount(value: unknown): boolean {
   }
 }
 
-function parseSwig(value: unknown): SolanaSwig {
-  const swig = record(value, 'managed Solana Swig')
-  exactKeys(swig, ['address', 'swigAccount'], 'managed Solana Swig')
+interface ParsedSolanaSwig {
+  readonly address: SolanaAddress
+  readonly swigAccount: SolanaAddress
+}
+
+function parseSwig(value: unknown): ParsedSolanaSwig {
   try {
-    const swigAccount = solanaAddress(swig.swigAccount as string)
-    const address = locateSwigWallet(swigAccount).address
-    if (swig.address === address) return { address, swigAccount }
-  } catch {}
-  throw new InvalidAccountConfigError(
-    '`swig.address` must be the wallet of the Solana address `swig.swigAccount`',
-  )
+    const swigAccount = solanaAddress(value as string)
+    return {
+      address: locateSwigWallet(swigAccount).address,
+      swigAccount,
+    }
+  } catch {
+    throw new InvalidAccountConfigError(
+      '`solana.swig` must be a valid Solana Swig state account address',
+    )
+  }
 }
 
 export function attachAccount<const C extends RhinestoneAccountConfig>(
@@ -140,7 +145,7 @@ export function attachAccount<const C extends RhinestoneAccountConfig>(
   let evmReceiver: Address | undefined
   let managedEvm: EvmAccountConfig | undefined
   let managedSolanaOwner: SolanaOwner | undefined
-  let managedSolanaSwig: SolanaSwig | undefined
+  let managedSolanaSwig: ParsedSolanaSwig | undefined
   let solanaReceiver: SolanaAddress | undefined
 
   if (input.evm !== undefined) {
@@ -188,7 +193,7 @@ export function attachAccount<const C extends RhinestoneAccountConfig>(
       }
       if (solana.swig === undefined) {
         throw new InvalidAccountConfigError(
-          'Managed Solana requires `swig: { address, swigAccount }` from the existing provisioned account; the SDK no longer derives it from an EVM account.',
+          'Managed Solana requires `swig` with the existing provisioned Swig state account address; the SDK no longer derives it from an EVM account.',
         )
       }
       managedSolanaSwig = parseSwig(solana.swig)
@@ -224,7 +229,7 @@ export function attachAccount<const C extends RhinestoneAccountConfig>(
         type: managedSolanaOwner.type,
         account: managedSolanaOwner.account,
       }),
-      swig: Object.freeze({ ...managedSolanaSwig }),
+      swig: managedSolanaSwig.swigAccount,
     })
   if (managedSolanaOwner && managedSolanaSwig && !managedEvm) {
     const captured = Object.freeze({
