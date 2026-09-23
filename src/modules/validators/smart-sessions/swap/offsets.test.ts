@@ -1,6 +1,7 @@
 import { type Address, encodeFunctionData, erc20Abi, slice } from 'viem'
 import { describe, expect, test } from 'vitest'
-import { swapperAbi } from './rhinestone'
+import { FYND_ROUTERS, tychoRouterAbi } from './fynd'
+import { swapperAbi, swapperAddresses } from './rhinestone'
 import { allowanceHolderAbi, ZEROX_ALLOWANCE_HOLDER } from './zero-ex'
 
 /**
@@ -112,6 +113,85 @@ describe('the nested exec inside calls[1] is at a fixed position too', () => {
     expect(asAddress(wordAt(swapperCalldata, 804n)).toLowerCase()).toBe(
       SETTLER.toLowerCase(),
     ) // nested exec target
+  })
+})
+
+describe('fynd singleSwap offsets match real encoded calldata', () => {
+  const router = FYND_ROUTERS[9745]
+  const swapper = swapperAddresses('production').swapper
+  const singleSwap = (receiver: Address) =>
+    encodeFunctionData({
+      abi: tychoRouterAbi,
+      functionName: 'singleSwap',
+      args: [
+        1000n,
+        SELL,
+        BUY,
+        990n,
+        980n,
+        receiver,
+        {
+          clientFeeBps: 0,
+          clientFeeReceiver: RECIPIENT,
+          maxClientContribution: 0n,
+          deadline: 0n,
+          clientSignature: '0x',
+        },
+        '0xdeadbeef',
+      ],
+    })
+
+  test('the direct call pins land on amountIn, the tokens and the receiver', () => {
+    const calldata = singleSwap(RECIPIENT)
+    expect(BigInt(wordAt(calldata, 0n))).toBe(1000n) // amountIn
+    expect(asAddress(wordAt(calldata, 32n)).toLowerCase()).toBe(
+      SELL.toLowerCase(),
+    ) // tokenIn
+    expect(asAddress(wordAt(calldata, 64n)).toLowerCase()).toBe(
+      BUY.toLowerCase(),
+    ) // tokenOut
+    expect(asAddress(wordAt(calldata, 160n)).toLowerCase()).toBe(
+      RECIPIENT.toLowerCase(),
+    ) // receiver
+  })
+
+  test('the swap nested in calls[1] has its tokens and receiver at 740/772/868', () => {
+    const wrapped = encodeFunctionData({
+      abi: swapperAbi,
+      functionName: 'swapExactIn',
+      args: [
+        SELL,
+        1000n,
+        BUY,
+        0n,
+        0n,
+        RECIPIENT,
+        0n,
+        [
+          {
+            target: SELL,
+            value: 0n,
+            data: encodeFunctionData({
+              abi: erc20Abi,
+              functionName: 'approve',
+              args: [router, 1000n],
+            }),
+          },
+          { target: router, value: 0n, data: singleSwap(swapper) },
+        ],
+      ],
+    })
+    expect(asAddress(wordAt(wrapped, 576n)).toLowerCase()).toBe(router)
+    expect(BigInt(wordAt(wrapped, 640n))).toBe(96n) // calls[1].data ptr
+    expect(asAddress(wordAt(wrapped, 740n)).toLowerCase()).toBe(
+      SELL.toLowerCase(),
+    ) // nested tokenIn
+    expect(asAddress(wordAt(wrapped, 772n)).toLowerCase()).toBe(
+      BUY.toLowerCase(),
+    ) // nested tokenOut
+    expect(asAddress(wordAt(wrapped, 868n)).toLowerCase()).toBe(
+      swapper.toLowerCase(),
+    ) // nested receiver
   })
 })
 
