@@ -535,10 +535,14 @@ describe('managed Solana account facade', () => {
     const getEligibleEvmSourceChains = vi.fn(async () => {
       throw new Error('catalog must not be read')
     })
+    const signIntentFromRequests = vi.fn(async () => {
+      throw new Error('EVM signing must not run')
+    })
     const workflows = {
       getAddress,
       getEligibleEvmSourceChains,
       prepareSolanaIntent,
+      signIntentFromRequests,
       reconstructSolanaIntent: reconstruct,
       signSolanaIntent,
       submitSolanaIntent,
@@ -588,6 +592,7 @@ describe('managed Solana account facade', () => {
     expect(facade.getTransactionMessages(prepared)).toEqual([spendRequest()])
     const signed = await facade.signTransaction(prepared)
     expect(workflows.signSolanaIntent).toHaveBeenCalledOnce()
+    expect(workflows.signIntentFromRequests).not.toHaveBeenCalled()
     const submitted = await facade.submitTransaction(signed)
     expect(submitted).toEqual({
       type: 'intent',
@@ -1433,6 +1438,9 @@ describe('managed Solana cross-chain delivery facade', () => {
       }),
       prepareSolanaIntent,
       reconstructSolanaIntent: vi.fn(reconstructSolanaIntent),
+      signIntentFromRequests: vi.fn(async () => {
+        throw new Error('EVM signing must not run')
+      }),
       signSolanaIntent,
       submitSolanaIntent,
       waitForIntentStatus,
@@ -1502,6 +1510,7 @@ describe('managed Solana cross-chain delivery facade', () => {
     const submitted = await facade.submitTransaction(
       await facade.signTransaction(prepared),
     )
+    expect(workflows.signIntentFromRequests).not.toHaveBeenCalled()
     expect(submitted).toEqual({
       type: 'intent',
       id: 'best',

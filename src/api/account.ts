@@ -1940,8 +1940,7 @@ function assertSupportedSolanaOriginDelivery(
   }
   const runsCalls = Array.isArray(input.calls) && input.calls.length > 0
   const hasManagedEvm =
-    !!config.evm &&
-    (!('address' in config.evm) || config.evm.address === undefined)
+    config.evm !== undefined && !Object.hasOwn(config.evm, 'address')
   if (runsCalls && !hasManagedEvm) {
     throw new UnsupportedAccountCapabilityError(
       'Destination calls require a managed EVM account; an address-only receiver can only receive a plain delivery. Omit `calls`.',
