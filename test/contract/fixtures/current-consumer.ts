@@ -67,6 +67,10 @@ const evm = {
 } satisfies EvmAccountConfig
 const solana = solanaAddress('11111111111111111111111111111111')
 const solanaMint = solanaAddress('4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU')
+// Existing dev-v1 Swig state account for `owner`; its wallet PDA is derived.
+const managedSolanaSwig = solanaAddress(
+  '2ej2RiZCart1JjMrjWxNmwMXDrHUZZ6HtwDHJ4CuC8aD',
+)
 const solanaRecipient = solanaAddress(
   'Vote111111111111111111111111111111111111111',
 )
@@ -110,7 +114,7 @@ async function useManagedSolanaApi() {
     evm,
     solana: {
       owner: { type: 'ecdsa', account: owner },
-      swig: solanaMint,
+      swig: managedSolanaSwig,
     },
   })
   const transaction = {

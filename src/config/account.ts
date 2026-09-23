@@ -940,8 +940,8 @@ type SolanaOwner =
  * Development managed Solana account identified by an existing Swig.
  *
  * The wallet is independent from any EVM entry in the composite account. Save
- * both Swig addresses when the account is provisioned and supply the matching
- * private-key or passkey owner when attaching it.
+ * the Swig state address when the account is provisioned and supply the matching
+ * private-key or passkey owner when attaching it; the wallet PDA is derived.
  */
 interface SolanaManagedAccountConfig {
   owner: SolanaOwner
