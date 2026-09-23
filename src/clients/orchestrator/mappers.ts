@@ -17,6 +17,7 @@ import type {
 } from './public'
 import { serializeBigInts } from './serialization'
 import type {
+  OrchestratorDeploymentCost,
   OrchestratorIntentRequest,
   OrchestratorIntentStatus,
   OrchestratorIntentSubmission,
@@ -160,9 +161,8 @@ export function mapQuoteResponseFromWire(
 }
 
 function mapQuoteFromWire(value: WireQuote): OrchestratorQuote {
-  return {
+  const route = {
     intentId: value.intentId,
-    purpose: value.purpose,
     expiresAt: value.expiresAt,
     estimatedFillTime: value.estimatedFillTime,
     settlementLayer: value.settlementLayer,
@@ -170,7 +170,43 @@ function mapQuoteFromWire(value: WireQuote): OrchestratorQuote {
     cost: mapCostFromWire(value.cost),
     requirements: value.requirements.map(mapRequirementFromWire),
     signingRequests: value.signingRequests.map(mapSigningRequestFromWire),
-    ...mapBridgeFillFromWire(value.bridgeFill),
+  }
+  switch (value.purpose) {
+    case 'execution':
+      return {
+        ...route,
+        purpose: 'execution',
+        ...mapBridgeFillFromWire(value.bridgeFill),
+      }
+    case 'deployment':
+      return {
+        ...route,
+        purpose: 'deployment',
+        deploymentCosts: value.deploymentCosts.map(mapDeploymentCostFromWire),
+      }
+    default:
+      return invalid(
+        `The orchestrator returned a route with an unsupported purpose: ${String(
+          (value as { purpose?: unknown }).purpose,
+        )}.`,
+      )
+  }
+}
+
+function mapDeploymentCostFromWire(
+  value: Extract<
+    WireQuote,
+    { purpose: 'deployment' }
+  >['deploymentCosts'][number],
+): OrchestratorDeploymentCost {
+  return {
+    vm: value.vm,
+    chainId: value.chainId as OrchestratorDeploymentCost['chainId'],
+    rent: {
+      amount: BigInt(value.rent.amount),
+      usd: value.rent.usd,
+      sponsored: value.rent.sponsored,
+    },
   }
 }
 
@@ -394,7 +430,9 @@ export function assertSupportedProof(value: SigningProof): SigningProof {
 // so a type this SDK version predates must not fail the whole quote. Returning
 // a key-or-nothing spread leaves an unknown layer as an untracked route, the
 // same shape a layer that publishes no handle already produces.
-function mapBridgeFillFromWire(value: WireQuote['bridgeFill']): {
+function mapBridgeFillFromWire(
+  value: Extract<WireQuote, { purpose: 'execution' }>['bridgeFill'],
+): {
   bridgeFill?: BridgeFill
 } {
   if (value === undefined) return {}

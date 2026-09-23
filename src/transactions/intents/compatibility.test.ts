@@ -6,7 +6,7 @@ import {
 } from '../../../test/utils/caucasus'
 import type { NormalizedIntentInput } from '../../clients/orchestrator/normalized'
 import { projectCompatibleIntentInput } from '../../clients/orchestrator/normalized'
-import type { OrchestratorQuote } from '../../clients/orchestrator/types'
+import type { OrchestratorExecutionQuote } from '../../clients/orchestrator/types'
 import {
   PREPARED_REQUEST_VERSION,
   projectCompatibleQuote,
@@ -57,7 +57,7 @@ describe('projectCompatibleQuote', () => {
     message: { count: 2n, items: [{ delta: -1n }] },
   } as never
 
-  const quote: OrchestratorQuote = {
+  const quote: OrchestratorExecutionQuote = {
     ...buildQuote({
       signingRequests: [eip712Request({ chainId: 1, typedData })],
     }),

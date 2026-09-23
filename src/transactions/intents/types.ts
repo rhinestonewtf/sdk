@@ -19,8 +19,8 @@ import type {
   SigningProof,
 } from '../../clients/orchestrator/public'
 import type {
+  OrchestratorExecutionQuote,
   OrchestratorIntentRequest,
-  OrchestratorQuote,
 } from '../../clients/orchestrator/types'
 import type { Transaction } from '../../config/account'
 import type {
@@ -93,8 +93,8 @@ export interface PreparedIntent<CompatibilityConfig = unknown> {
   readonly request: OrchestratorIntentRequest
   /** The normalized sponsorship projection of the same transaction. */
   readonly normalized: NormalizedIntentInput
-  readonly quote: OrchestratorQuote
-  readonly quotes: readonly OrchestratorQuote[]
+  readonly quote: OrchestratorExecutionQuote
+  readonly quotes: readonly OrchestratorExecutionQuote[]
   readonly signing: IntentSigningInput
   readonly accountChain: EvmChainReference
   readonly resolvedSessions?: Readonly<Record<number, ResolvedSessionSignerSet>>
@@ -295,7 +295,10 @@ export interface IntentStatusOptions {
 export interface TransactionStatus {
   /** OpenTelemetry trace ID for correlating the status response. */
   traceId: IntentOpStatus['traceId']
-  /** What the intent is for. */
+  /**
+   * What the intent is for: `execution` moves funds or runs calls,
+   * `deployment` only creates an account (such as a Solana Swig).
+   */
   purpose: IntentOpStatus['purpose']
   /** High-level intent status. */
   status: IntentOpStatus['status']

@@ -20,8 +20,8 @@ import type { AccountConstruction } from '../../accounts/types'
 import { parseCaip2, toEvmChainReference } from '../../chains/caip2'
 import type { SigningProof } from '../../clients/orchestrator/public'
 import type {
+  OrchestratorExecutionQuote,
   OrchestratorIntentRequest,
-  OrchestratorQuote,
 } from '../../clients/orchestrator/types'
 import { defineValidator } from '../../modules/validators/definition'
 import {
@@ -101,7 +101,7 @@ function destinationRequest(chainId = 1, value: string | bigint = '1') {
 
 function quote(
   overrides: Parameters<typeof caucasusQuote>[0] = {},
-): OrchestratorQuote {
+): OrchestratorExecutionQuote {
   return caucasusQuote({
     signingRequests: [originRequest(), destinationRequest()],
     ...overrides,

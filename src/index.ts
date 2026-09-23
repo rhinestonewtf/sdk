@@ -1,3 +1,4 @@
+import { createSolanaSwigId } from './accounts/solana/address'
 import { RhinestoneSDK } from './api/sdk'
 import {
   hyperCorePerp,
@@ -18,6 +19,8 @@ import { WEBAUTHN_VALIDATOR_ADDRESS } from './modules/validators/webauthn'
 
 export {
   RhinestoneSDK,
+  // Independent Solana Swig ids
+  createSolanaSwigId,
   // Non-viem destination chain descriptors (Solana, Tron, Stellar, HyperCore)
   hyperCorePerp,
   hyperCoreSpot,
@@ -40,6 +43,7 @@ export type {
   RhinestoneAccount,
   RhinestoneAccountBase,
   SignedIntentData,
+  SolanaDeployOptions,
   SolanaStandaloneAccount,
 } from './api/account'
 export type {

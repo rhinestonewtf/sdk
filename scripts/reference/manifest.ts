@@ -19,6 +19,7 @@ export type SymbolEntry = {
     | 'RhinestoneAccountBase'
     | 'ManagedTransactionAccount'
     | 'ManagedEvmAccount'
+    | 'SolanaStandaloneAccount'
     | 'RhinestoneSDK'
   // How the symbol is reached, for the Import/Usage section.
   callStyle:
@@ -149,6 +150,14 @@ export const manifest: Group[] = [
         group: 'Deployment',
         items: [
           accountMethod('deploy'),
+          {
+            kind: 'symbol',
+            symbol: 'deploy',
+            source: '.',
+            container: 'SolanaStandaloneAccount',
+            callStyle: 'accountMethod',
+            title: 'deploy (Solana)',
+          },
           accountMethod('isDeployed'),
           accountMethod('setup'),
           accountMethod('getInitData'),
@@ -307,6 +316,12 @@ export const manifest: Group[] = [
       {
         kind: 'symbol',
         symbol: 'solanaAddress',
+        source: '.',
+        callStyle: 'function',
+      },
+      {
+        kind: 'symbol',
+        symbol: 'createSolanaSwigId',
         source: '.',
         callStyle: 'function',
       },

@@ -221,6 +221,34 @@ class UnprocessableContentError extends OrchestratorError {
   }
 }
 
+/**
+ * The Swig a Solana account creation targets already exists on the requested
+ * cluster, so nothing was created.
+ *
+ * Never a success: the existing Swig's root authority is not verified to be
+ * the configured owner. Check it before sending funds to the wallet.
+ *
+ * Extends {@link UnprocessableContentError} and keeps its `code`. `chainId` is
+ * the SDK's numeric id for the cluster, and is absent when the response carries
+ * no usable chain id.
+ */
+class SolanaAccountAlreadyCreatedError extends UnprocessableContentError {
+  readonly swigAddress: string
+  readonly chainId?: number
+
+  constructor(
+    params: BaseErrorParams & {
+      details?: ErrorDetail[]
+      swigAddress: string
+      chainId?: number
+    },
+  ) {
+    super(params)
+    this.swigAddress = params.swigAddress
+    this.chainId = params.chainId
+  }
+}
+
 /** Per-client sponsorship cap a quote can breach. Mirrors the orchestrator's
  * `SponsorLimits` keys: per-intent gas, per-intent bridge fee, or the
  * per-intent aggregate. */
@@ -630,6 +658,32 @@ function parseSolanaAccountNotCreatedError(
   })
 }
 
+// `ACCOUNT_ALREADY_DEPLOYED` is shared with EVM setup-only intents; only a
+// refusal naming a Swig is the Solana one.
+function parseSolanaAccountAlreadyCreatedError(
+  base: BaseErrorParams,
+  details: ErrorDetail[],
+): SolanaAccountAlreadyCreatedError | undefined {
+  const context = details.find(
+    (detail) =>
+      detail.context?.code === 'ACCOUNT_ALREADY_DEPLOYED' &&
+      typeof detail.context.swig === 'string' &&
+      detail.context.swig.length > 0,
+  )?.context
+  if (!context) {
+    return undefined
+  }
+
+  const chainId = parseContextChainId(context.destinationChainId)
+
+  return new SolanaAccountAlreadyCreatedError({
+    ...base,
+    details,
+    swigAddress: context.swig as string,
+    ...(chainId === undefined ? {} : { chainId }),
+  })
+}
+
 function parseErrorEnvelope(
   envelope: ErrorEnvelope,
   statusCode: number,
@@ -693,6 +747,7 @@ function parseErrorEnvelope(
       const details = parseErrorDetails(envelope.details)
       return (
         parseSponsorError(base, details) ??
+        parseSolanaAccountAlreadyCreatedError(base, details) ??
         new UnprocessableContentError({ ...base, details })
       )
     }
@@ -734,6 +789,12 @@ function isSolanaAccountNotCreated(
   error: unknown,
 ): error is SolanaAccountNotCreatedError {
   return error instanceof SolanaAccountNotCreatedError
+}
+
+function isSolanaAccountAlreadyCreated(
+  error: unknown,
+): error is SolanaAccountAlreadyCreatedError {
+  return error instanceof SolanaAccountAlreadyCreatedError
 }
 
 function isAuthError(
@@ -866,6 +927,7 @@ export {
   isAuthError,
   isValidationError,
   isSolanaAccountNotCreated,
+  isSolanaAccountAlreadyCreated,
   isRateLimited,
   isSimulationFailed,
   isSponsorLimitExceeded,
@@ -874,6 +936,7 @@ export {
   OrchestratorError,
   ValidationError,
   SolanaAccountNotCreatedError,
+  SolanaAccountAlreadyCreatedError,
   InsufficientLiquidityError,
   SponsorLimitExceededError,
   InsufficientSponsorBalanceError,

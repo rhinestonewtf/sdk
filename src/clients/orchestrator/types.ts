@@ -60,8 +60,8 @@ export type OrchestratorEvmAccount =
   | OrchestratorEvmSmartAccount
 
 /**
- * A Swig the account already controls. Caucasus takes no Swig `initData`: an
- * account that has none is a refusal, not a deployment request (RHI-7360).
+ * A Swig the account controls, or, with `initData` on a request that delivers
+ * and executes nothing, the Swig that request creates.
  */
 export interface OrchestratorSvmAccount {
   readonly type: 'swig'
@@ -73,6 +73,18 @@ export interface OrchestratorSvmAccount {
    */
   readonly swigAccount?: string
   readonly authorization: SwigAuthority
+  readonly initData?: OrchestratorSwigInitData
+}
+
+/** What a Swig-creation request installs. */
+export interface OrchestratorSwigInitData {
+  /** The permanent root role. It must agree with `authorization`. */
+  readonly authority: {
+    readonly kind: 'secp256k1' | 'secp256r1'
+    readonly publicKey: Hex
+  }
+  /** The 32-byte Swig id. Required when the account has no `evm` entry. */
+  readonly id?: Hex
 }
 
 export interface OrchestratorIntentAccount {
@@ -225,7 +237,7 @@ export interface OrchestratorIntentRequest {
   readonly options?: OrchestratorIntentOptions
 }
 
-export interface OrchestratorQuote {
+export interface OrchestratorExecutionQuote {
   readonly intentId: string
   readonly purpose: 'execution'
   readonly expiresAt: number
@@ -237,6 +249,36 @@ export interface OrchestratorQuote {
   readonly signingRequests: readonly SigningRequest[]
   readonly bridgeFill?: BridgeFill
 }
+
+/** The rent one account initialization locks. */
+export interface OrchestratorDeploymentCost {
+  readonly vm: 'evm' | 'svm' | 'tvm' | 'stellar' | 'hypercore'
+  readonly chainId: Caip2ChainId
+  readonly rent: {
+    /** In the chain's native base unit (lamports on Solana). */
+    readonly amount: bigint
+    readonly usd: number
+    readonly sponsored: boolean
+  }
+}
+
+/** A route that only initializes an account: nothing to sign, nothing moved. */
+export interface OrchestratorDeploymentQuote {
+  readonly intentId: string
+  readonly purpose: 'deployment'
+  readonly expiresAt: number
+  readonly estimatedFillTime: { readonly seconds: number }
+  readonly settlementLayer: SettlementLayer
+  readonly plan: QuotePlan
+  readonly cost: Cost
+  readonly deploymentCosts: readonly OrchestratorDeploymentCost[]
+  readonly requirements: readonly IntentRequirement[]
+  readonly signingRequests: readonly SigningRequest[]
+}
+
+export type OrchestratorQuote =
+  | OrchestratorExecutionQuote
+  | OrchestratorDeploymentQuote
 
 export interface OrchestratorQuoteResponse {
   readonly traceId: string
@@ -263,7 +305,7 @@ export interface OrchestratorIntentSubmission {
 export interface OrchestratorIntentStatus {
   readonly traceId: string
   readonly intentId: string
-  readonly purpose: 'execution'
+  readonly purpose: 'execution' | 'deployment'
   readonly status: IntentStatus
   readonly accounts?: readonly IntentAccountSummary[]
   readonly operations: readonly IntentOperationGroup[]

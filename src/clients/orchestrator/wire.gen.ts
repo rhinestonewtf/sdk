@@ -506,11 +506,11 @@ export interface operations {
              */
             intentId: string
             /**
-             * @description What the intent was for. `execution` for every intent that exists today; a discriminator from the start so the deployment lifecycle can join without a second breaking change.
+             * @description What the intent was for: `execution` moves funds or runs calls; `deployment` only initializes an account, and has no value.
              * @example execution
              * @enum {string}
              */
-            purpose: 'execution'
+            purpose: 'execution' | 'deployment'
             /**
              * @description Overall intent status: PENDING, COMPLETED, or FAILED
              * @example COMPLETED
@@ -1445,7 +1445,7 @@ export interface operations {
                  */
                 sponsored: boolean
                 /**
-                 * @description Sponsored value actually charged, in integer micro-USD (1 USD = 1,000,000 units). Once the intent executes this is reconciled from the receipt (planned gas replaced by executed), so it matches the sponsorship balance and the usage/billing reads rather than the amount reserved at quote time. On an allocation-backed intent this is the sum of its per-operation allocations, which is where reconciliation writes executed gas.
+                 * @description Sponsored value actually charged, in integer micro-USD (1 USD = 1,000,000 units). Once the intent executes this is reconciled from the receipt (planned gas replaced by executed), so it matches the sponsorship balance and the usage/billing reads rather than the amount reserved at quote time. On an allocation-backed intent this is the sum of its per-operation allocations, which is where reconciliation writes executed gas. Includes Relay's subsidy of its own bridge fee, charged at par.
                  * @example 210000
                  */
                 sponsoredValue?: string
@@ -1455,7 +1455,7 @@ export interface operations {
                  */
                 protocolFee?: string
                 /**
-                 * @description Rhinestone's surcharge on the sponsored relayer coverage, in integer micro-USD — the pure surcharge slice of `protocolFee` and reconciled with it, as `sponsorSurcharge` on a quote. Omitted where the charge was recorded without the split, which is never inferred by subtraction.
+                 * @description Rhinestone's surcharge on the sponsored coverage, in integer micro-USD — the pure surcharge slice of `protocolFee` and reconciled with it, as `sponsorSurcharge` on a quote. Omitted where the charge was recorded without the split, which is never inferred by subtraction.
                  * @example 10000
                  */
                 sponsorSurcharge?: string
@@ -1732,7 +1732,7 @@ export interface operations {
                * @example execution
                * @enum {string}
                */
-              purpose: 'execution'
+              purpose: 'execution' | 'deployment'
               /**
                * @description Overall intent status: PENDING, COMPLETED, or FAILED
                * @example COMPLETED
@@ -2566,6 +2566,28 @@ export interface operations {
                          */
                         publicKey: string
                       }
+                  /** @description Creation data, accepted only on a request with no delivery, execution or recipient: such a request creates the Swig. */
+                  initData?: {
+                    /** @description The public key installed as the Swig root, with every permission. Taken as supplied and permanent: a wrong key strands the wallet. Must agree with `authorization`. */
+                    authority:
+                      | {
+                          /** @enum {string} */
+                          kind: 'secp256k1'
+                          /** @description SEC1 secp256k1 public key as 0x-prefixed hex: compressed (33 bytes, leading 02 or 03) or uncompressed (65 bytes, leading 04) */
+                          publicKey: string
+                        }
+                      | {
+                          /** @enum {string} */
+                          kind: 'secp256r1'
+                          /**
+                           * @description SEC1-compressed P-256 passkey point, 33 bytes as 0x-prefixed hex
+                           * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
+                           */
+                          publicKey: string
+                        }
+                    /** @description The 32-byte Swig id, 0x-prefixed hex. Required for a Solana-only account, whose `swigAccount` it must derive; refused for an account paired with an EVM entry, whose id the orchestrator derives. */
+                    id?: string
+                  }
                 }
           }
           /**
@@ -3804,1394 +3826,2655 @@ export interface operations {
              */
             status: 'quoted'
             /** @description Route candidates ranked by the orchestrator's internal scoring (cheaper + faster wins). The first entry is the recommended route — most clients should submit it without inspecting the rest. */
-            routes: {
-              /** @description Server-stored intent identifier. Pass back to `POST /intents` to submit. */
-              intentId: string
-              /**
-               * @description What this route is for. A discriminator from the start, so a route with another purpose can join without a second breaking change.
-               * @example execution
-               * @enum {string}
-               */
-              purpose: 'execution'
-              /**
-               * @description Quote expiry timestamp (Unix seconds). After this point, assume the quote is dead and re-quote.
-               * @example 1733493192
-               */
-              expiresAt: number
-              /** @description Estimated fill time for the route */
-              estimatedFillTime: {
-                /**
-                 * @description Typical end-to-end fill time for this route in seconds. Directional, not guaranteed.
-                 * @example 3
-                 */
-                seconds: number
-              }
-              /**
-               * @description Settlement layer selected for this route
-               * @example RELAY
-               * @enum {string}
-               */
-              settlementLayer:
-                | 'INTENT_EXECUTOR'
-                | 'SAME_CHAIN'
-                | 'ACROSS'
-                | 'ECO'
-                | 'RELAY'
-                | 'OFT'
-                | 'NEAR'
-                | 'RHINO'
-                | 'CCTP'
-                | 'LZ'
-              /** @description What the route does, resolved inline: where it spends, where it delivers, what it executes and who executes it, and the accounts it initializes. */
-              plan: {
-                /** @description One block per chain the route spends on, in the order the route reaches them. */
-                source: {
+            routes: (
+              | {
+                  /** @description Server-stored intent identifier. Pass back to `POST /intents` to submit. */
+                  intentId: string
                   /**
-                   * @description Public native execution environment of the chain. A HyperCore delivery venue is `hypercore`, never the HyperEVM chain it settles on.
-                   * @example evm
+                   * @description What this route is for: `execution` moves funds or runs calls, `deployment` only initializes an account.
+                   * @example execution
                    * @enum {string}
                    */
-                  vm: 'evm' | 'svm' | 'tvm' | 'stellar' | 'hypercore'
+                  purpose: 'execution'
                   /**
-                   * @description CAIP-2 chain id this account is resolved on
-                   * @example eip155:8453
+                   * @description Quote expiry timestamp (Unix seconds). After this point, assume the quote is dead and re-quote.
+                   * @example 1733493192
                    */
-                  chainId: string
-                  /** @description The account this block acts on, resolved for its VM: an EVM account, a Solana Swig, or a bare payee. */
-                  account:
-                    | {
-                        /**
-                         * @description Account address
-                         * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                         */
-                        address: string
-                        /**
-                         * @description Whether the account is an EOA or an ERC-7579 smart account
-                         * @example erc7579
-                         * @enum {string}
-                         */
-                        type: 'eoa' | 'erc7579'
-                        /**
-                         * @description Whether the account is deployed on this chain. Absent when planning read no account state for the chain — never defaulted, which would claim an undeployed account is deployed.
-                         * @example true
-                         */
-                        deployed?: boolean
-                        /** @description ERC-7579 implementation planning read on this chain. Absent for an EOA, and for a smart account whose implementation was not resolved. */
-                        implementation?: {
-                          /**
-                           * @description ERC-7579 account implementation
-                           * @example Nexus
-                           * @enum {string}
-                           */
-                          name: 'Safe' | 'Kernel' | 'Nexus'
-                          /**
-                           * @description Raw trailing version token returned by ERC-7579 `accountId()`, when valid; preserved without normalization
-                           * @example v1.0.0
-                           */
-                          version?: string
-                        }
-                        /** @description The EIP-7702 delegate this intent INSTALLS on this chain. Present only where the delegate is not yet in place — a delegation already in force is not reported here. */
-                        delegation?: {
-                          /**
-                           * @description Delegate contract this intent installs
-                           * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                           */
-                          contract: string
-                        }
-                      }
-                    | {
-                        /**
-                         * @description Asset-holding Swig wallet the intent spends from
-                         * @example 9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM
-                         */
-                        wallet: string
-                        /**
-                         * @description Swig state account holding the wallet authority configuration. Distinct from `wallet`, which is where the assets live.
-                         * @example EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
-                         */
-                        swigAccount: string
-                        /** @description Authority the submitted signature was verified against when the intent was accepted, as recorded. Absent on an intent record written before it was recorded; never inferred from the account or from current chain state. */
-                        authority?:
-                          | {
-                              /** @enum {string} */
-                              kind: 'secp256k1'
-                              /**
-                               * @description Authority the submitted signature must recover to
-                               * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                               */
-                              address: string
-                            }
-                          | {
-                              /** @enum {string} */
-                              kind: 'secp256r1'
-                              /**
-                               * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
-                               * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
-                               */
-                              publicKey: string
-                            }
-                      }
-                    | {
-                        /**
-                         * @description Address funds are delivered to, in the destination chain's own format
-                         * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                         */
-                        address: string
-                      }
-                  /** @description Present only where the route runs the caller's own calls on this block. */
-                  execution?:
-                    | {
-                        /** @description The executor of the disclosed calls */
-                        executedBy: {
-                          /**
-                           * @description Who runs the calls: the account itself, or a solver-operated contract running them on its behalf.
-                           * @example account
-                           * @enum {string}
-                           */
-                          kind: 'account' | 'solver'
-                          /**
-                           * @description Address of the executing contract or account
-                           * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                           */
-                          address: string
-                        }
-                        /** @description The caller's own calls, in execution order */
-                        calls: {
-                          /**
-                           * @description Target contract address for execution
-                           * @example 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
-                           */
-                          to: string
-                          /**
-                           * Format: uint256
-                           * @description Amount of ETH (in wei) sent in the execution
-                           * @example 0
-                           */
-                          value: string
-                          /**
-                           * @description Encoded function call data
-                           * @example 0xa9059cbb000000000000000000000000579d5631f76126991c00fb8fe5467fa9d49e5f6a00000000000000000000000000000000000000000000000000000000000f4240
-                           */
-                          data: string
-                        }[]
-                      }
-                    | {
-                        /** @description The executor of the disclosed calls */
-                        executedBy: {
-                          /**
-                           * @description Who runs the calls: the account itself, or a solver-operated contract running them on its behalf.
-                           * @example account
-                           * @enum {string}
-                           */
-                          kind: 'account' | 'solver'
-                          /**
-                           * @description Address of the executing contract or account
-                           * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                           */
-                          address: string
-                        }
-                        /** @description The caller's own instructions, in execution order */
-                        instructions: {
-                          /**
-                           * @description Program to invoke, base58.
-                           * @example TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
-                           */
-                          programId: string
-                          /** @description Accounts the instruction reads or writes, in the order the program expects. */
-                          accounts: {
-                            /**
-                             * @description Account address, base58.
-                             * @example TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
-                             */
-                            pubkey: string
-                            /** @description Whether the instruction requires this account to sign. */
-                            isSigner: boolean
-                            /** @description Whether the instruction writes to this account. */
-                            isWritable: boolean
-                          }[]
-                          /**
-                           * @description Instruction data, base64.
-                           * @example CQ==
-                           */
-                          data: string
-                        }[]
-                        /** @description Address lookup tables the instructions resolve against */
-                        addressLookupTables: string[]
-                      }
-                }[]
-                /** @description The single block the route delivers to, on the chain the caller named. */
-                destination: {
+                  expiresAt: number
+                  /** @description Estimated fill time for the route */
+                  estimatedFillTime: {
+                    /**
+                     * @description Typical end-to-end fill time for this route in seconds. Directional, not guaranteed.
+                     * @example 3
+                     */
+                    seconds: number
+                  }
                   /**
-                   * @description Public native execution environment of the chain. A HyperCore delivery venue is `hypercore`, never the HyperEVM chain it settles on.
-                   * @example evm
+                   * @description Settlement layer selected for this route
+                   * @example RELAY
                    * @enum {string}
                    */
-                  vm: 'evm' | 'svm' | 'tvm' | 'stellar' | 'hypercore'
-                  /**
-                   * @description CAIP-2 chain id this account is resolved on
-                   * @example eip155:8453
-                   */
-                  chainId: string
-                  /** @description The account this block acts on, resolved for its VM: an EVM account, a Solana Swig, or a bare payee. */
-                  account:
-                    | {
-                        /**
-                         * @description Account address
-                         * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                         */
-                        address: string
-                        /**
-                         * @description Whether the account is an EOA or an ERC-7579 smart account
-                         * @example erc7579
-                         * @enum {string}
-                         */
-                        type: 'eoa' | 'erc7579'
-                        /**
-                         * @description Whether the account is deployed on this chain. Absent when planning read no account state for the chain — never defaulted, which would claim an undeployed account is deployed.
-                         * @example true
-                         */
-                        deployed?: boolean
-                        /** @description ERC-7579 implementation planning read on this chain. Absent for an EOA, and for a smart account whose implementation was not resolved. */
-                        implementation?: {
-                          /**
-                           * @description ERC-7579 account implementation
-                           * @example Nexus
-                           * @enum {string}
-                           */
-                          name: 'Safe' | 'Kernel' | 'Nexus'
-                          /**
-                           * @description Raw trailing version token returned by ERC-7579 `accountId()`, when valid; preserved without normalization
-                           * @example v1.0.0
-                           */
-                          version?: string
-                        }
-                        /** @description The EIP-7702 delegate this intent INSTALLS on this chain. Present only where the delegate is not yet in place — a delegation already in force is not reported here. */
-                        delegation?: {
-                          /**
-                           * @description Delegate contract this intent installs
-                           * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                           */
-                          contract: string
-                        }
-                      }
-                    | {
-                        /**
-                         * @description Asset-holding Swig wallet the intent spends from
-                         * @example 9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM
-                         */
-                        wallet: string
-                        /**
-                         * @description Swig state account holding the wallet authority configuration. Distinct from `wallet`, which is where the assets live.
-                         * @example EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
-                         */
-                        swigAccount: string
-                        /** @description Authority the submitted signature was verified against when the intent was accepted, as recorded. Absent on an intent record written before it was recorded; never inferred from the account or from current chain state. */
-                        authority?:
-                          | {
-                              /** @enum {string} */
-                              kind: 'secp256k1'
-                              /**
-                               * @description Authority the submitted signature must recover to
-                               * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                               */
-                              address: string
-                            }
-                          | {
-                              /** @enum {string} */
-                              kind: 'secp256r1'
-                              /**
-                               * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
-                               * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
-                               */
-                              publicKey: string
-                            }
-                      }
-                    | {
-                        /**
-                         * @description Address funds are delivered to, in the destination chain's own format
-                         * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                         */
-                        address: string
-                      }
-                  /** @description Present only where the route runs the caller's own calls on this block. */
-                  execution?:
-                    | {
-                        /** @description The executor of the disclosed calls */
-                        executedBy: {
-                          /**
-                           * @description Who runs the calls: the account itself, or a solver-operated contract running them on its behalf.
-                           * @example account
-                           * @enum {string}
-                           */
-                          kind: 'account' | 'solver'
-                          /**
-                           * @description Address of the executing contract or account
-                           * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                           */
-                          address: string
-                        }
-                        /** @description The caller's own calls, in execution order */
-                        calls: {
-                          /**
-                           * @description Target contract address for execution
-                           * @example 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
-                           */
-                          to: string
-                          /**
-                           * Format: uint256
-                           * @description Amount of ETH (in wei) sent in the execution
-                           * @example 0
-                           */
-                          value: string
-                          /**
-                           * @description Encoded function call data
-                           * @example 0xa9059cbb000000000000000000000000579d5631f76126991c00fb8fe5467fa9d49e5f6a00000000000000000000000000000000000000000000000000000000000f4240
-                           */
-                          data: string
-                        }[]
-                      }
-                    | {
-                        /** @description The executor of the disclosed calls */
-                        executedBy: {
-                          /**
-                           * @description Who runs the calls: the account itself, or a solver-operated contract running them on its behalf.
-                           * @example account
-                           * @enum {string}
-                           */
-                          kind: 'account' | 'solver'
-                          /**
-                           * @description Address of the executing contract or account
-                           * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                           */
-                          address: string
-                        }
-                        /** @description The caller's own instructions, in execution order */
-                        instructions: {
-                          /**
-                           * @description Program to invoke, base58.
-                           * @example TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
-                           */
-                          programId: string
-                          /** @description Accounts the instruction reads or writes, in the order the program expects. */
-                          accounts: {
-                            /**
-                             * @description Account address, base58.
-                             * @example TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
-                             */
-                            pubkey: string
-                            /** @description Whether the instruction requires this account to sign. */
-                            isSigner: boolean
-                            /** @description Whether the instruction writes to this account. */
-                            isWritable: boolean
-                          }[]
-                          /**
-                           * @description Instruction data, base64.
-                           * @example CQ==
-                           */
-                          data: string
-                        }[]
-                        /** @description Address lookup tables the instructions resolve against */
-                        addressLookupTables: string[]
-                      }
-                }
-                /** @description Account initializations the route performs. Empty when it performs none. */
-                deployments: {
-                  /**
-                   * @description Public native execution environment of the chain. A HyperCore delivery venue is `hypercore`, never the HyperEVM chain it settles on.
-                   * @example evm
-                   * @enum {string}
-                   */
-                  vm: 'evm' | 'svm' | 'tvm' | 'stellar' | 'hypercore'
-                  /**
-                   * @description CAIP-2 chain id this account is resolved on
-                   * @example eip155:8453
-                   */
-                  chainId: string
-                  /** @description The account this block acts on, resolved for its VM: an EVM account, a Solana Swig, or a bare payee. */
-                  account:
-                    | {
-                        /**
-                         * @description Account address
-                         * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                         */
-                        address: string
-                        /**
-                         * @description Whether the account is an EOA or an ERC-7579 smart account
-                         * @example erc7579
-                         * @enum {string}
-                         */
-                        type: 'eoa' | 'erc7579'
-                        /**
-                         * @description Whether the account is deployed on this chain. Absent when planning read no account state for the chain — never defaulted, which would claim an undeployed account is deployed.
-                         * @example true
-                         */
-                        deployed?: boolean
-                        /** @description ERC-7579 implementation planning read on this chain. Absent for an EOA, and for a smart account whose implementation was not resolved. */
-                        implementation?: {
-                          /**
-                           * @description ERC-7579 account implementation
-                           * @example Nexus
-                           * @enum {string}
-                           */
-                          name: 'Safe' | 'Kernel' | 'Nexus'
-                          /**
-                           * @description Raw trailing version token returned by ERC-7579 `accountId()`, when valid; preserved without normalization
-                           * @example v1.0.0
-                           */
-                          version?: string
-                        }
-                        /** @description The EIP-7702 delegate this intent INSTALLS on this chain. Present only where the delegate is not yet in place — a delegation already in force is not reported here. */
-                        delegation?: {
-                          /**
-                           * @description Delegate contract this intent installs
-                           * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                           */
-                          contract: string
-                        }
-                      }
-                    | {
-                        /**
-                         * @description Asset-holding Swig wallet the intent spends from
-                         * @example 9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM
-                         */
-                        wallet: string
-                        /**
-                         * @description Swig state account holding the wallet authority configuration. Distinct from `wallet`, which is where the assets live.
-                         * @example EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
-                         */
-                        swigAccount: string
-                        /** @description Authority the submitted signature was verified against when the intent was accepted, as recorded. Absent on an intent record written before it was recorded; never inferred from the account or from current chain state. */
-                        authority?:
-                          | {
-                              /** @enum {string} */
-                              kind: 'secp256k1'
-                              /**
-                               * @description Authority the submitted signature must recover to
-                               * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                               */
-                              address: string
-                            }
-                          | {
-                              /** @enum {string} */
-                              kind: 'secp256r1'
-                              /**
-                               * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
-                               * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
-                               */
-                              publicKey: string
-                            }
-                      }
-                    | {
-                        /**
-                         * @description Address funds are delivered to, in the destination chain's own format
-                         * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                         */
-                        address: string
-                      }
-                }[]
-              }
-              /** @description Route cost: inputs, outputs, and fee breakdown */
-              cost: {
-                /** @description Tokens debited from the user, coalesced by (chainId, tokenAddress) */
-                input: {
-                  /**
-                   * @description Chain where this token leg settles (CAIP-2, any namespace)
-                   * @example eip155:8453
-                   */
-                  chainId: string
-                  /**
-                   * @description Contract address of the debited token (EVM 0x or non-EVM base58)
-                   * @example 0xaf88d065e77c8cc2239327c5edb3a432268e5831
-                   */
-                  tokenAddress: string
-                  /**
-                   * @description Token symbol, from the internal token registry or, for a token it has no entry for, read on-chain while planning. `null` when neither resolved one.
-                   * @example USDC
-                   */
-                  symbol: string | null
-                  /**
-                   * @description Token decimals, from the internal token registry or, for a token it has no entry for, read on-chain while planning. `null` when neither resolved one.
-                   * @example 6
-                   */
-                  decimals: number | null
-                  /** @description Unit price in USD. `null` when neither the price oracle nor this quote priced the token. */
-                  price: {
-                    /**
-                     * @description Unit price in USD
-                     * @example 1
-                     */
-                    usd: number
-                  } | null
-                  /**
-                   * Format: uint256
-                   * @description Token amount in the token's smallest unit
-                   * @example 1050000
-                   */
-                  amount: string
-                }[]
-                /** @description Tokens delivered to the recipient, coalesced by (chainId, tokenAddress) */
-                output: {
-                  /**
-                   * @description Chain where this token leg settles (CAIP-2, any namespace)
-                   * @example eip155:8453
-                   */
-                  chainId: string
-                  /**
-                   * @description Contract address of the delivered token (EVM 0x or non-EVM base58)
-                   * @example 0xaf88d065e77c8cc2239327c5edb3a432268e5831
-                   */
-                  tokenAddress: string
-                  /**
-                   * @description Token symbol, from the internal token registry or, for a token it has no entry for, read on-chain while planning. `null` when neither resolved one.
-                   * @example USDC
-                   */
-                  symbol: string | null
-                  /**
-                   * @description Token decimals, from the internal token registry or, for a token it has no entry for, read on-chain while planning. `null` when neither resolved one.
-                   * @example 6
-                   */
-                  decimals: number | null
-                  /** @description Unit price in USD. `null` when neither the price oracle nor this quote priced the token. */
-                  price: {
-                    /**
-                     * @description Unit price in USD
-                     * @example 1
-                     */
-                    usd: number
-                  } | null
-                  /**
-                   * Format: uint256
-                   * @description Token amount in the token's smallest unit
-                   * @example 1050000
-                   */
-                  amount: string
-                }[]
-                /** @description Aggregate route fees with per-category breakdown */
-                fees: {
-                  /** @description Full route cost in USD, regardless of who pays. Equal to `sum(breakdown.*.usd)` modulo rounding. */
-                  total: {
-                    /**
-                     * @description USD-denominated value
-                     * @example 0.029
-                     */
-                    usd: number
-                  }
-                  /** @description Per-category fee breakdown */
-                  breakdown: {
-                    /** @description Aggregate gas cost (destination fill, swap execution, origin gas) */
-                    gas: {
+                  settlementLayer:
+                    | 'INTENT_EXECUTOR'
+                    | 'SAME_CHAIN'
+                    | 'ACROSS'
+                    | 'ECO'
+                    | 'RELAY'
+                    | 'OFT'
+                    | 'NEAR'
+                    | 'RHINO'
+                    | 'CCTP'
+                    | 'LZ'
+                  /** @description What the route does, resolved inline: where it spends, where it delivers, what it executes and who executes it, and the accounts it initializes. */
+                  plan: {
+                    /** @description One block per chain the route spends on, in the order the route reaches them. */
+                    source: {
                       /**
-                       * @description Total cost of this category in USD, regardless of who pays.
-                       * @example 0.029
+                       * @description Public native execution environment of the chain. A HyperCore delivery venue is `hypercore`, never the HyperEVM chain it settles on.
+                       * @example evm
+                       * @enum {string}
                        */
-                      usd: number
+                      vm: 'evm' | 'svm' | 'tvm' | 'stellar' | 'hypercore'
                       /**
-                       * @description True when a sponsor absorbs some or all of this category. The user-vs-sponsor split is not surfaced.
-                       * @example false
+                       * @description CAIP-2 chain id this account is resolved on
+                       * @example eip155:8453
                        */
-                      sponsored: boolean
-                    }
-                    /** @description Aggregate settlement-layer bridge cost */
-                    bridge: {
-                      /**
-                       * @description Total cost of this category in USD, regardless of who pays.
-                       * @example 0.029
-                       */
-                      usd: number
-                      /**
-                       * @description True when a sponsor absorbs some or all of this category. The user-vs-sponsor split is not surfaced.
-                       * @example false
-                       */
-                      sponsored: boolean
-                    }
-                    /** @description Aggregate solver swap commission */
-                    swap: {
-                      /**
-                       * @description Total cost of this category in USD, regardless of who pays.
-                       * @example 0.029
-                       */
-                      usd: number
-                      /**
-                       * @description True when a sponsor absorbs some or all of this category. The user-vs-sponsor split is not surfaced.
-                       * @example false
-                       */
-                      sponsored: boolean
-                    }
-                    /** @description Aggregate integrator app fee */
-                    app: {
-                      /**
-                       * @description Total cost of this category in USD, regardless of who pays.
-                       * @example 0.029
-                       */
-                      usd: number
-                      /**
-                       * @description True when a sponsor absorbs some or all of this category. The user-vs-sponsor split is not surfaced.
-                       * @example false
-                       */
-                      sponsored: boolean
-                    }
-                    /** @description Rhinestone protocol fee (`options.protocolFees`). `sponsored: true` when the integrator sponsorship balance pays it instead of the user. */
-                    protocol: {
-                      /**
-                       * @description Total cost of this category in USD, regardless of who pays.
-                       * @example 0.029
-                       */
-                      usd: number
-                      /**
-                       * @description True when a sponsor absorbs some or all of this category. The user-vs-sponsor split is not surfaced.
-                       * @example false
-                       */
-                      sponsored: boolean
-                    }
-                    /** @description Rhinestone's surcharge on the sponsored relayer coverage, charged to the sponsor. 0 when the intent is not sponsored. Pure surcharge — a sponsored protocol fee is shown on `protocol`, never here. */
-                    sponsorSurcharge: {
-                      /**
-                       * @description Total cost of this category in USD, regardless of who pays.
-                       * @example 0.029
-                       */
-                      usd: number
-                      /**
-                       * @description True when a sponsor absorbs some or all of this category. The user-vs-sponsor split is not surfaced.
-                       * @example false
-                       */
-                      sponsored: boolean
-                    }
-                  }
-                }
-                /** @description Solana instruction execution only: the exact fixed wallet debit, or confirmation that the sponsor pays and the wallet has no execution debit. The wallet debit also appears in input. */
-                executionPayment?:
-                  | {
-                      /** @enum {string} */
-                      paidBy: 'wallet'
-                      /** @description A single (chain, token) leg with amount, price, and metadata */
-                      walletDebit: {
-                        /**
-                         * @description Chain where this token leg settles (CAIP-2, any namespace)
-                         * @example eip155:8453
-                         */
-                        chainId: string
-                        /**
-                         * @description Contract address of the debited token (EVM 0x or non-EVM base58)
-                         * @example 0xaf88d065e77c8cc2239327c5edb3a432268e5831
-                         */
-                        tokenAddress: string
-                        /**
-                         * @description Token symbol, from the internal token registry or, for a token it has no entry for, read on-chain while planning. `null` when neither resolved one.
-                         * @example USDC
-                         */
-                        symbol: string | null
-                        /**
-                         * @description Token decimals, from the internal token registry or, for a token it has no entry for, read on-chain while planning. `null` when neither resolved one.
-                         * @example 6
-                         */
-                        decimals: number | null
-                        /** @description Unit price in USD. `null` when neither the price oracle nor this quote priced the token. */
-                        price: {
-                          /**
-                           * @description Unit price in USD
-                           * @example 1
-                           */
-                          usd: number
-                        } | null
-                        /**
-                         * Format: uint256
-                         * @description Token amount in the token's smallest unit
-                         * @example 1050000
-                         */
-                        amount: string
-                      }
-                    }
-                  | {
-                      /** @enum {string} */
-                      paidBy: 'sponsor'
-                    }
-              }
-              /** @description Pre-flight operations the account must perform before this route can be claimed. Always present; empty when the route needs none. Emitted for EOA accounts only — smart accounts handle these internally. */
-              requirements: (
-                | {
-                    /** @enum {string} */
-                    kind: 'erc20Approval'
-                    /**
-                     * @description Public native execution environment of the chain. A HyperCore delivery venue is `hypercore`, never the HyperEVM chain it settles on.
-                     * @example evm
-                     * @enum {string}
-                     */
-                    vm: 'evm' | 'svm' | 'tvm' | 'stellar' | 'hypercore'
-                    /**
-                     * @description CAIP-2 chain id the requirement applies on
-                     * @example eip155:8453
-                     */
-                    chainId: string
-                    /** @description The account the requirement applies to */
-                    account:
-                      | {
-                          /**
-                           * @description Account address
-                           * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                           */
-                          address: string
-                          /**
-                           * @description Whether the account is an EOA or an ERC-7579 smart account
-                           * @example erc7579
-                           * @enum {string}
-                           */
-                          type: 'eoa' | 'erc7579'
-                          /**
-                           * @description Whether the account is deployed on this chain. Absent when planning read no account state for the chain — never defaulted, which would claim an undeployed account is deployed.
-                           * @example true
-                           */
-                          deployed?: boolean
-                          /** @description ERC-7579 implementation planning read on this chain. Absent for an EOA, and for a smart account whose implementation was not resolved. */
-                          implementation?: {
-                            /**
-                             * @description ERC-7579 account implementation
-                             * @example Nexus
-                             * @enum {string}
-                             */
-                            name: 'Safe' | 'Kernel' | 'Nexus'
-                            /**
-                             * @description Raw trailing version token returned by ERC-7579 `accountId()`, when valid; preserved without normalization
-                             * @example v1.0.0
-                             */
-                            version?: string
-                          }
-                          /** @description The EIP-7702 delegate this intent INSTALLS on this chain. Present only where the delegate is not yet in place — a delegation already in force is not reported here. */
-                          delegation?: {
-                            /**
-                             * @description Delegate contract this intent installs
-                             * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                             */
-                            contract: string
-                          }
-                        }
-                      | {
-                          /**
-                           * @description Asset-holding Swig wallet the intent spends from
-                           * @example 9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM
-                           */
-                          wallet: string
-                          /**
-                           * @description Swig state account holding the wallet authority configuration. Distinct from `wallet`, which is where the assets live.
-                           * @example EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
-                           */
-                          swigAccount: string
-                          /** @description Authority the submitted signature was verified against when the intent was accepted, as recorded. Absent on an intent record written before it was recorded; never inferred from the account or from current chain state. */
-                          authority?:
-                            | {
-                                /** @enum {string} */
-                                kind: 'secp256k1'
-                                /**
-                                 * @description Authority the submitted signature must recover to
-                                 * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                                 */
-                                address: string
-                              }
-                            | {
-                                /** @enum {string} */
-                                kind: 'secp256r1'
-                                /**
-                                 * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
-                                 * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
-                                 */
-                                publicKey: string
-                              }
-                        }
-                      | {
-                          /**
-                           * @description Address funds are delivered to, in the destination chain's own format
-                           * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                           */
-                          address: string
-                        }
-                    /**
-                     * @description Token the requirement applies to
-                     * @example 0x833589fcd6edb6e08f4c7c32d4f71b54bda02913
-                     */
-                    tokenAddress: string
-                    /**
-                     * Format: uint256
-                     * @description Minimum amount, in the token's smallest unit
-                     * @example 1000000
-                     */
-                    amount: string
-                    /**
-                     * @description Always the canonical Permit2 contract on this chain. The account approves Permit2; the settlement contract pulls funds via Permit2 at claim time.
-                     * @example 0x000000000022d473030f116ddee9f6b43ac78ba3
-                     */
-                    spender: string
-                  }
-                | {
-                    /** @enum {string} */
-                    kind: 'wrapNative'
-                    /**
-                     * @description Public native execution environment of the chain. A HyperCore delivery venue is `hypercore`, never the HyperEVM chain it settles on.
-                     * @example evm
-                     * @enum {string}
-                     */
-                    vm: 'evm' | 'svm' | 'tvm' | 'stellar' | 'hypercore'
-                    /**
-                     * @description CAIP-2 chain id the requirement applies on
-                     * @example eip155:8453
-                     */
-                    chainId: string
-                    /** @description The account the requirement applies to */
-                    account:
-                      | {
-                          /**
-                           * @description Account address
-                           * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                           */
-                          address: string
-                          /**
-                           * @description Whether the account is an EOA or an ERC-7579 smart account
-                           * @example erc7579
-                           * @enum {string}
-                           */
-                          type: 'eoa' | 'erc7579'
-                          /**
-                           * @description Whether the account is deployed on this chain. Absent when planning read no account state for the chain — never defaulted, which would claim an undeployed account is deployed.
-                           * @example true
-                           */
-                          deployed?: boolean
-                          /** @description ERC-7579 implementation planning read on this chain. Absent for an EOA, and for a smart account whose implementation was not resolved. */
-                          implementation?: {
-                            /**
-                             * @description ERC-7579 account implementation
-                             * @example Nexus
-                             * @enum {string}
-                             */
-                            name: 'Safe' | 'Kernel' | 'Nexus'
-                            /**
-                             * @description Raw trailing version token returned by ERC-7579 `accountId()`, when valid; preserved without normalization
-                             * @example v1.0.0
-                             */
-                            version?: string
-                          }
-                          /** @description The EIP-7702 delegate this intent INSTALLS on this chain. Present only where the delegate is not yet in place — a delegation already in force is not reported here. */
-                          delegation?: {
-                            /**
-                             * @description Delegate contract this intent installs
-                             * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                             */
-                            contract: string
-                          }
-                        }
-                      | {
-                          /**
-                           * @description Asset-holding Swig wallet the intent spends from
-                           * @example 9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM
-                           */
-                          wallet: string
-                          /**
-                           * @description Swig state account holding the wallet authority configuration. Distinct from `wallet`, which is where the assets live.
-                           * @example EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
-                           */
-                          swigAccount: string
-                          /** @description Authority the submitted signature was verified against when the intent was accepted, as recorded. Absent on an intent record written before it was recorded; never inferred from the account or from current chain state. */
-                          authority?:
-                            | {
-                                /** @enum {string} */
-                                kind: 'secp256k1'
-                                /**
-                                 * @description Authority the submitted signature must recover to
-                                 * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                                 */
-                                address: string
-                              }
-                            | {
-                                /** @enum {string} */
-                                kind: 'secp256r1'
-                                /**
-                                 * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
-                                 * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
-                                 */
-                                publicKey: string
-                              }
-                        }
-                      | {
-                          /**
-                           * @description Address funds are delivered to, in the destination chain's own format
-                           * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                           */
-                          address: string
-                        }
-                    /**
-                     * @description Token the requirement applies to
-                     * @example 0x833589fcd6edb6e08f4c7c32d4f71b54bda02913
-                     */
-                    tokenAddress: string
-                    /**
-                     * Format: uint256
-                     * @description Minimum amount, in the token's smallest unit
-                     * @example 1000000
-                     */
-                    amount: string
-                  }
-              )[]
-              /** @description Everything the caller must sign, in the order to answer it: the origin authorizations, the destination authorization, the target execution where one applies, then any EIP-7702 delegations. Each entry states its own account, authority, scope, chains, purpose and validity, so a new signing path joins the array rather than adding a field. */
-              signingRequests: {
-                /** @description The account this signature acts for, named inline per VM. Carries no per-chain observation, since one request can span chains. */
-                account:
-                  | {
-                      /** @enum {string} */
-                      vm: 'evm'
-                      /**
-                       * @description Account the signature authorizes
-                       * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                       */
-                      address: string
-                    }
-                  | {
-                      /** @enum {string} */
-                      vm: 'svm'
-                      /**
-                       * @description Asset-holding Swig wallet the spend debits
-                       * @example 9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM
-                       */
-                      wallet: string
-                      /**
-                       * @description Swig state account holding the authority configuration. Distinct from `wallet`, which is where the assets live.
-                       * @example EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
-                       */
-                      swigAccount: string
-                    }
-                /** @description What verifies the signature */
-                authority:
-                  | {
-                      /** @enum {string} */
-                      kind: 'secp256k1'
-                      /**
-                       * @description Address the submitted signature must recover to
-                       * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                       */
-                      address: string
-                    }
-                  | {
-                      /** @enum {string} */
-                      kind: 'account'
-                      /** @enum {string} */
-                      vm: 'evm'
-                      /**
-                       * @description Account that verifies the signature itself
-                       * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                       */
-                      address: string
-                    }
-                  | {
-                      /** @enum {string} */
-                      kind: 'swigRole'
-                      /**
-                       * @description Swig role the spend was authorized under
-                       * @example 1
-                       */
-                      roleId: number
-                      /** @description The authority configured on that role */
-                      authority:
+                      chainId: string
+                      /** @description The account this block acts on, resolved for its VM: an EVM account, a Solana Swig, or a bare payee. */
+                      account:
                         | {
-                            /** @enum {string} */
-                            kind: 'secp256k1'
                             /**
-                             * @description Address the submitted signature must recover to
+                             * @description Account address
+                             * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                             */
+                            address: string
+                            /**
+                             * @description Whether the account is an EOA or an ERC-7579 smart account
+                             * @example erc7579
+                             * @enum {string}
+                             */
+                            type: 'eoa' | 'erc7579'
+                            /**
+                             * @description Whether the account is deployed on this chain. Absent when planning read no account state for the chain — never defaulted, which would claim an undeployed account is deployed.
+                             * @example true
+                             */
+                            deployed?: boolean
+                            /** @description ERC-7579 implementation planning read on this chain. Absent for an EOA, and for a smart account whose implementation was not resolved. */
+                            implementation?: {
+                              /**
+                               * @description ERC-7579 account implementation
+                               * @example Nexus
+                               * @enum {string}
+                               */
+                              name: 'Safe' | 'Kernel' | 'Nexus'
+                              /**
+                               * @description Raw trailing version token returned by ERC-7579 `accountId()`, when valid; preserved without normalization
+                               * @example v1.0.0
+                               */
+                              version?: string
+                            }
+                            /** @description The EIP-7702 delegate this intent INSTALLS on this chain. Present only where the delegate is not yet in place — a delegation already in force is not reported here. */
+                            delegation?: {
+                              /**
+                               * @description Delegate contract this intent installs
+                               * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                               */
+                              contract: string
+                            }
+                          }
+                        | {
+                            /**
+                             * @description Asset-holding Swig wallet the intent spends from
+                             * @example 9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM
+                             */
+                            wallet: string
+                            /**
+                             * @description Swig state account holding the wallet authority configuration. Distinct from `wallet`, which is where the assets live.
+                             * @example EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
+                             */
+                            swigAccount: string
+                            /** @description Authority the submitted signature was verified against when the intent was accepted, as recorded. Absent on an intent record written before it was recorded; never inferred from the account or from current chain state. */
+                            authority?:
+                              | {
+                                  /** @enum {string} */
+                                  kind: 'secp256k1'
+                                  /**
+                                   * @description Authority the submitted signature must recover to
+                                   * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                                   */
+                                  address: string
+                                }
+                              | {
+                                  /** @enum {string} */
+                                  kind: 'secp256r1'
+                                  /**
+                                   * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
+                                   * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
+                                   */
+                                  publicKey: string
+                                }
+                          }
+                        | {
+                            /**
+                             * @description Address funds are delivered to, in the destination chain's own format
                              * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
                              */
                             address: string
                           }
+                      /** @description Present only where the route runs the caller's own calls on this block. */
+                      execution?:
                         | {
-                            /** @enum {string} */
-                            kind: 'secp256r1'
-                            /**
-                             * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
-                             * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
-                             */
-                            publicKey: string
+                            /** @description The executor of the disclosed calls */
+                            executedBy: {
+                              /**
+                               * @description Who runs the calls: the account itself, or a solver-operated contract running them on its behalf.
+                               * @example account
+                               * @enum {string}
+                               */
+                              kind: 'account' | 'solver'
+                              /**
+                               * @description Address of the executing contract or account
+                               * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                               */
+                              address: string
+                            }
+                            /** @description The caller's own calls, in execution order */
+                            calls: {
+                              /**
+                               * @description Target contract address for execution
+                               * @example 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
+                               */
+                              to: string
+                              /**
+                               * Format: uint256
+                               * @description Amount of ETH (in wei) sent in the execution
+                               * @example 0
+                               */
+                              value: string
+                              /**
+                               * @description Encoded function call data
+                               * @example 0xa9059cbb000000000000000000000000579d5631f76126991c00fb8fe5467fa9d49e5f6a00000000000000000000000000000000000000000000000000000000000f4240
+                               */
+                              data: string
+                            }[]
                           }
-                    }
-                /** @description What the signature authorizes. Always agrees with the payload; never a restatement of the route. */
-                scope:
-                  | {
-                      /** @enum {string} */
-                      vm: 'evm'
+                        | {
+                            /** @description The executor of the disclosed calls */
+                            executedBy: {
+                              /**
+                               * @description Who runs the calls: the account itself, or a solver-operated contract running them on its behalf.
+                               * @example account
+                               * @enum {string}
+                               */
+                              kind: 'account' | 'solver'
+                              /**
+                               * @description Address of the executing contract or account
+                               * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                               */
+                              address: string
+                            }
+                            /** @description The caller's own instructions, in execution order */
+                            instructions: {
+                              /**
+                               * @description Program to invoke, base58.
+                               * @example TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
+                               */
+                              programId: string
+                              /** @description Accounts the instruction reads or writes, in the order the program expects. */
+                              accounts: {
+                                /**
+                                 * @description Account address, base58.
+                                 * @example TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
+                                 */
+                                pubkey: string
+                                /** @description Whether the instruction requires this account to sign. */
+                                isSigner: boolean
+                                /** @description Whether the instruction writes to this account. */
+                                isWritable: boolean
+                              }[]
+                              /**
+                               * @description Instruction data, base64.
+                               * @example CQ==
+                               */
+                              data: string
+                            }[]
+                            /** @description Address lookup tables the instructions resolve against */
+                            addressLookupTables: string[]
+                          }
+                    }[]
+                    /** @description The single block the route delivers to, on the chain the caller named. */
+                    destination: {
                       /**
-                       * @description What the signature authorizes
-                       * @example claim
+                       * @description Public native execution environment of the chain. A HyperCore delivery venue is `hypercore`, never the HyperEVM chain it settles on.
+                       * @example evm
                        * @enum {string}
                        */
-                      action:
-                        | 'claim'
-                        | 'fill'
-                        | 'targetExecution'
-                        | 'delegation'
-                      /** @description The accounts and chains the action runs against */
-                      accounts: {
-                        /**
-                         * @description CAIP-2 chain id the account is authorized on
-                         * @example eip155:8453
-                         */
-                        chainId: string
-                        /**
-                         * @description Account address, in its own chain's format
-                         * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                         */
-                        address: string
-                      }[]
-                      /** @description Present only on a request that authorizes at least one HyperCore agent registration. Lists every registration the payload commits to, in registration (slot) order: one item for a per-leg payload, all of them for an aggregate `MultiChainOps` payload. Names what each registration commits to, which the payload itself carries only as CoreWriter calldata. Changing any action, their order, a nonce or an agent requires a fresh quote. */
-                      hyperCore?: {
-                        /** @description The canonical Hyperliquid action, exactly as the agent commits to it. Key order is part of the commitment — the agent address is recovered from a signature over its msgpack encoding — so it is served in the order it was signed in, not re-sorted. */
-                        action?: unknown
-                        /**
-                         * @description The nonce the action commits to
-                         * @example 1633493192000
-                         */
-                        nonce: number
-                        /** @description The agent this registration installs. It is derived from the action bytes above, so it authorises that action and nothing else. */
-                        agent: string
-                        /**
-                         * @description The named API-wallet slot the agent goes in. Registering evicts whatever the account had in that slot; the account's unnamed wallet is never used.
-                         * @example rh1
-                         */
-                        slot: string
-                      }[]
-                    }
-                  | {
-                      /** @enum {string} */
-                      vm: 'svm'
-                      /** @enum {string} */
-                      action: 'spend'
-                      /** @description The wallet the spend debits, on its chain */
-                      accounts: {
-                        /**
-                         * @description CAIP-2 chain id the account is authorized on
-                         * @example eip155:8453
-                         */
-                        chainId: string
-                        /**
-                         * @description Account address, in its own chain's format
-                         * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                         */
-                        address: string
-                      }[]
-                      /** @description The full instruction set this signature authorizes, in execution order, in the same shape a request carries instructions in. */
-                      instructions: {
-                        /**
-                         * @description Program to invoke, base58.
-                         * @example TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
-                         */
-                        programId: string
-                        /** @description Accounts the instruction reads or writes, in the order the program expects. */
-                        accounts: {
-                          /**
-                           * @description Account address, base58.
-                           * @example TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
-                           */
-                          pubkey: string
-                          /** @description Whether the instruction requires this account to sign. */
-                          isSigner: boolean
-                          /** @description Whether the instruction writes to this account. */
-                          isWritable: boolean
-                        }[]
-                        /**
-                         * @description Instruction data, base64.
-                         * @example CQ==
-                         */
-                        data: string
-                      }[]
-                      /** @description Address lookup tables the instructions resolve accounts through. The tables themselves are not inlined. */
-                      addressLookupTables: string[]
-                      /** @description Who pays the transaction fee, as a role rather than a key: the payload names no payer, and the relayer picks its own. */
-                      feePayer: {
-                        /** @enum {string} */
-                        kind: 'role'
-                        /** @enum {string} */
-                        role: 'relayer'
-                      }
-                      /** @description Slot range the spend is signable in */
-                      slotWindow: {
-                        /**
-                         * @description Slot the payload was pinned to
-                         * @example 370123456
-                         */
-                        from: string
-                        /**
-                         * @description Last slot it can be landed in
-                         * @example 370123516
-                         */
-                        to: string
-                      }
-                    }
-                /** @description The chains the payload is cryptographically BOUND to, CAIP-2, each listed once — a `MultiChainOps` payload with several legs on one chain still names it once. This is what was signed rather than what the route is about: a Permit2 payload binds to the chain it claims funds on, so a destination request repeats the chain of the origin payload it duplicates. */
-                chainIds: string[]
-                /**
-                 * @description What the signature is for
-                 * @example originAuthorization
-                 * @enum {string}
-                 */
-                purpose:
-                  | 'originAuthorization'
-                  | 'destinationAuthorization'
-                  | 'targetExecutionAuthorization'
-                  | 'delegationAuthorization'
-                /** @description Native deadlines that apply to this payload. Empty when it carries none — quote retention is a separate thing and is not a promise that a stale payload is submittable. */
-                validity: (
-                  | {
-                      /** @enum {string} */
-                      kind: 'timestamp'
+                      vm: 'evm' | 'svm' | 'tvm' | 'stellar' | 'hypercore'
                       /**
-                       * @description Unix seconds after which the payload is dead
-                       * @example 1733493192
+                       * @description CAIP-2 chain id this account is resolved on
+                       * @example eip155:8453
                        */
-                      expiresAt: number
+                      chainId: string
+                      /** @description The account this block acts on, resolved for its VM: an EVM account, a Solana Swig, or a bare payee. */
+                      account:
+                        | {
+                            /**
+                             * @description Account address
+                             * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                             */
+                            address: string
+                            /**
+                             * @description Whether the account is an EOA or an ERC-7579 smart account
+                             * @example erc7579
+                             * @enum {string}
+                             */
+                            type: 'eoa' | 'erc7579'
+                            /**
+                             * @description Whether the account is deployed on this chain. Absent when planning read no account state for the chain — never defaulted, which would claim an undeployed account is deployed.
+                             * @example true
+                             */
+                            deployed?: boolean
+                            /** @description ERC-7579 implementation planning read on this chain. Absent for an EOA, and for a smart account whose implementation was not resolved. */
+                            implementation?: {
+                              /**
+                               * @description ERC-7579 account implementation
+                               * @example Nexus
+                               * @enum {string}
+                               */
+                              name: 'Safe' | 'Kernel' | 'Nexus'
+                              /**
+                               * @description Raw trailing version token returned by ERC-7579 `accountId()`, when valid; preserved without normalization
+                               * @example v1.0.0
+                               */
+                              version?: string
+                            }
+                            /** @description The EIP-7702 delegate this intent INSTALLS on this chain. Present only where the delegate is not yet in place — a delegation already in force is not reported here. */
+                            delegation?: {
+                              /**
+                               * @description Delegate contract this intent installs
+                               * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                               */
+                              contract: string
+                            }
+                          }
+                        | {
+                            /**
+                             * @description Asset-holding Swig wallet the intent spends from
+                             * @example 9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM
+                             */
+                            wallet: string
+                            /**
+                             * @description Swig state account holding the wallet authority configuration. Distinct from `wallet`, which is where the assets live.
+                             * @example EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
+                             */
+                            swigAccount: string
+                            /** @description Authority the submitted signature was verified against when the intent was accepted, as recorded. Absent on an intent record written before it was recorded; never inferred from the account or from current chain state. */
+                            authority?:
+                              | {
+                                  /** @enum {string} */
+                                  kind: 'secp256k1'
+                                  /**
+                                   * @description Authority the submitted signature must recover to
+                                   * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                                   */
+                                  address: string
+                                }
+                              | {
+                                  /** @enum {string} */
+                                  kind: 'secp256r1'
+                                  /**
+                                   * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
+                                   * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
+                                   */
+                                  publicKey: string
+                                }
+                          }
+                        | {
+                            /**
+                             * @description Address funds are delivered to, in the destination chain's own format
+                             * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                             */
+                            address: string
+                          }
+                      /** @description Present only where the route runs the caller's own calls on this block. */
+                      execution?:
+                        | {
+                            /** @description The executor of the disclosed calls */
+                            executedBy: {
+                              /**
+                               * @description Who runs the calls: the account itself, or a solver-operated contract running them on its behalf.
+                               * @example account
+                               * @enum {string}
+                               */
+                              kind: 'account' | 'solver'
+                              /**
+                               * @description Address of the executing contract or account
+                               * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                               */
+                              address: string
+                            }
+                            /** @description The caller's own calls, in execution order */
+                            calls: {
+                              /**
+                               * @description Target contract address for execution
+                               * @example 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
+                               */
+                              to: string
+                              /**
+                               * Format: uint256
+                               * @description Amount of ETH (in wei) sent in the execution
+                               * @example 0
+                               */
+                              value: string
+                              /**
+                               * @description Encoded function call data
+                               * @example 0xa9059cbb000000000000000000000000579d5631f76126991c00fb8fe5467fa9d49e5f6a00000000000000000000000000000000000000000000000000000000000f4240
+                               */
+                              data: string
+                            }[]
+                          }
+                        | {
+                            /** @description The executor of the disclosed calls */
+                            executedBy: {
+                              /**
+                               * @description Who runs the calls: the account itself, or a solver-operated contract running them on its behalf.
+                               * @example account
+                               * @enum {string}
+                               */
+                              kind: 'account' | 'solver'
+                              /**
+                               * @description Address of the executing contract or account
+                               * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                               */
+                              address: string
+                            }
+                            /** @description The caller's own instructions, in execution order */
+                            instructions: {
+                              /**
+                               * @description Program to invoke, base58.
+                               * @example TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
+                               */
+                              programId: string
+                              /** @description Accounts the instruction reads or writes, in the order the program expects. */
+                              accounts: {
+                                /**
+                                 * @description Account address, base58.
+                                 * @example TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
+                                 */
+                                pubkey: string
+                                /** @description Whether the instruction requires this account to sign. */
+                                isSigner: boolean
+                                /** @description Whether the instruction writes to this account. */
+                                isWritable: boolean
+                              }[]
+                              /**
+                               * @description Instruction data, base64.
+                               * @example CQ==
+                               */
+                              data: string
+                            }[]
+                            /** @description Address lookup tables the instructions resolve against */
+                            addressLookupTables: string[]
+                          }
                     }
-                  | {
-                      /** @enum {string} */
-                      kind: 'svmSlot'
+                    /** @description Account initializations the route performs. Empty when it performs none. */
+                    deployments: {
                       /**
-                       * @description CAIP-2 chain id whose slots the deadline counts in
-                       * @example solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp
+                       * @description Public native execution environment of the chain. A HyperCore delivery venue is `hypercore`, never the HyperEVM chain it settles on.
+                       * @example evm
+                       * @enum {string}
+                       */
+                      vm: 'evm' | 'svm' | 'tvm' | 'stellar' | 'hypercore'
+                      /**
+                       * @description CAIP-2 chain id this account is resolved on
+                       * @example eip155:8453
+                       */
+                      chainId: string
+                      /** @description The account this block acts on, resolved for its VM: an EVM account, a Solana Swig, or a bare payee. */
+                      account:
+                        | {
+                            /**
+                             * @description Account address
+                             * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                             */
+                            address: string
+                            /**
+                             * @description Whether the account is an EOA or an ERC-7579 smart account
+                             * @example erc7579
+                             * @enum {string}
+                             */
+                            type: 'eoa' | 'erc7579'
+                            /**
+                             * @description Whether the account is deployed on this chain. Absent when planning read no account state for the chain — never defaulted, which would claim an undeployed account is deployed.
+                             * @example true
+                             */
+                            deployed?: boolean
+                            /** @description ERC-7579 implementation planning read on this chain. Absent for an EOA, and for a smart account whose implementation was not resolved. */
+                            implementation?: {
+                              /**
+                               * @description ERC-7579 account implementation
+                               * @example Nexus
+                               * @enum {string}
+                               */
+                              name: 'Safe' | 'Kernel' | 'Nexus'
+                              /**
+                               * @description Raw trailing version token returned by ERC-7579 `accountId()`, when valid; preserved without normalization
+                               * @example v1.0.0
+                               */
+                              version?: string
+                            }
+                            /** @description The EIP-7702 delegate this intent INSTALLS on this chain. Present only where the delegate is not yet in place — a delegation already in force is not reported here. */
+                            delegation?: {
+                              /**
+                               * @description Delegate contract this intent installs
+                               * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                               */
+                              contract: string
+                            }
+                          }
+                        | {
+                            /**
+                             * @description Asset-holding Swig wallet the intent spends from
+                             * @example 9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM
+                             */
+                            wallet: string
+                            /**
+                             * @description Swig state account holding the wallet authority configuration. Distinct from `wallet`, which is where the assets live.
+                             * @example EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
+                             */
+                            swigAccount: string
+                            /** @description Authority the submitted signature was verified against when the intent was accepted, as recorded. Absent on an intent record written before it was recorded; never inferred from the account or from current chain state. */
+                            authority?:
+                              | {
+                                  /** @enum {string} */
+                                  kind: 'secp256k1'
+                                  /**
+                                   * @description Authority the submitted signature must recover to
+                                   * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                                   */
+                                  address: string
+                                }
+                              | {
+                                  /** @enum {string} */
+                                  kind: 'secp256r1'
+                                  /**
+                                   * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
+                                   * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
+                                   */
+                                  publicKey: string
+                                }
+                          }
+                        | {
+                            /**
+                             * @description Address funds are delivered to, in the destination chain's own format
+                             * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                             */
+                            address: string
+                          }
+                    }[]
+                  }
+                  /** @description Route cost: inputs, outputs, and fee breakdown */
+                  cost: {
+                    /** @description Tokens debited from the user, coalesced by (chainId, tokenAddress) */
+                    input: {
+                      /**
+                       * @description Chain where this token leg settles (CAIP-2, any namespace)
+                       * @example eip155:8453
                        */
                       chainId: string
                       /**
-                       * @description Slot after which the payload is dead
-                       * @example 370123516
+                       * @description Contract address of the debited token (EVM 0x or non-EVM base58)
+                       * @example 0xaf88d065e77c8cc2239327c5edb3a432268e5831
                        */
-                      expiresAtSlot: string
-                    }
-                )[]
-                /** @description The native payload to sign */
-                payload:
-                  | {
-                      /** @enum {string} */
-                      kind: 'eip712'
-                      /** @description EIP-712 typed data definition ready for `signTypedData` */
-                      typedData: {
-                        /** @description EIP-712 domain separator fields */
-                        domain: {
-                          name?: string
-                          version?: string
-                          chainId?: number
-                          verifyingContract?: string
-                          salt?: string
+                      tokenAddress: string
+                      /**
+                       * @description Token symbol, from the internal token registry or, for a token it has no entry for, read on-chain while planning. `null` when neither resolved one.
+                       * @example USDC
+                       */
+                      symbol: string | null
+                      /**
+                       * @description Token decimals, from the internal token registry or, for a token it has no entry for, read on-chain while planning. `null` when neither resolved one.
+                       * @example 6
+                       */
+                      decimals: number | null
+                      /** @description Unit price in USD. `null` when neither the price oracle nor this quote priced the token. */
+                      price: {
+                        /**
+                         * @description Unit price in USD
+                         * @example 1
+                         */
+                        usd: number
+                      } | null
+                      /**
+                       * Format: uint256
+                       * @description Token amount in the token's smallest unit
+                       * @example 1050000
+                       */
+                      amount: string
+                    }[]
+                    /** @description Tokens delivered to the recipient, coalesced by (chainId, tokenAddress) */
+                    output: {
+                      /**
+                       * @description Chain where this token leg settles (CAIP-2, any namespace)
+                       * @example eip155:8453
+                       */
+                      chainId: string
+                      /**
+                       * @description Contract address of the delivered token (EVM 0x or non-EVM base58)
+                       * @example 0xaf88d065e77c8cc2239327c5edb3a432268e5831
+                       */
+                      tokenAddress: string
+                      /**
+                       * @description Token symbol, from the internal token registry or, for a token it has no entry for, read on-chain while planning. `null` when neither resolved one.
+                       * @example USDC
+                       */
+                      symbol: string | null
+                      /**
+                       * @description Token decimals, from the internal token registry or, for a token it has no entry for, read on-chain while planning. `null` when neither resolved one.
+                       * @example 6
+                       */
+                      decimals: number | null
+                      /** @description Unit price in USD. `null` when neither the price oracle nor this quote priced the token. */
+                      price: {
+                        /**
+                         * @description Unit price in USD
+                         * @example 1
+                         */
+                        usd: number
+                      } | null
+                      /**
+                       * Format: uint256
+                       * @description Token amount in the token's smallest unit
+                       * @example 1050000
+                       */
+                      amount: string
+                    }[]
+                    /** @description Aggregate route fees with per-category breakdown */
+                    fees: {
+                      /** @description Full route cost in USD, regardless of who pays. Equal to `sum(breakdown.*.usd)` modulo rounding. */
+                      total: {
+                        /**
+                         * @description USD-denominated value
+                         * @example 0.029
+                         */
+                        usd: number
+                      }
+                      /** @description Per-category fee breakdown */
+                      breakdown: {
+                        /** @description Aggregate gas cost (destination fill, swap execution, origin gas) */
+                        gas: {
+                          /**
+                           * @description Total cost of this category in USD, regardless of who pays.
+                           * @example 0.029
+                           */
+                          usd: number
+                          /**
+                           * @description True when a sponsor absorbs some or all of this category. The user-vs-sponsor split is not surfaced.
+                           * @example false
+                           */
+                          sponsored: boolean
                         }
-                        /** @description EIP-712 type definitions keyed by type name */
-                        types: {
-                          [key: string]: {
-                            name: string
-                            type: string
+                        /** @description Aggregate settlement-layer bridge cost */
+                        bridge: {
+                          /**
+                           * @description Total cost of this category in USD, regardless of who pays.
+                           * @example 0.029
+                           */
+                          usd: number
+                          /**
+                           * @description True when a sponsor absorbs some or all of this category. The user-vs-sponsor split is not surfaced.
+                           * @example false
+                           */
+                          sponsored: boolean
+                        }
+                        /** @description Aggregate solver swap commission */
+                        swap: {
+                          /**
+                           * @description Total cost of this category in USD, regardless of who pays.
+                           * @example 0.029
+                           */
+                          usd: number
+                          /**
+                           * @description True when a sponsor absorbs some or all of this category. The user-vs-sponsor split is not surfaced.
+                           * @example false
+                           */
+                          sponsored: boolean
+                        }
+                        /** @description Aggregate integrator app fee */
+                        app: {
+                          /**
+                           * @description Total cost of this category in USD, regardless of who pays.
+                           * @example 0.029
+                           */
+                          usd: number
+                          /**
+                           * @description True when a sponsor absorbs some or all of this category. The user-vs-sponsor split is not surfaced.
+                           * @example false
+                           */
+                          sponsored: boolean
+                        }
+                        /** @description Rhinestone protocol fee (`options.protocolFees`). `sponsored: true` when the integrator sponsorship balance pays it instead of the user. */
+                        protocol: {
+                          /**
+                           * @description Total cost of this category in USD, regardless of who pays.
+                           * @example 0.029
+                           */
+                          usd: number
+                          /**
+                           * @description True when a sponsor absorbs some or all of this category. The user-vs-sponsor split is not surfaced.
+                           * @example false
+                           */
+                          sponsored: boolean
+                        }
+                        /** @description Rhinestone's surcharge on the sponsored relayer coverage, charged to the sponsor. 0 when the intent is not sponsored. Pure surcharge — a sponsored protocol fee is shown on `protocol`, never here. */
+                        sponsorSurcharge: {
+                          /**
+                           * @description Total cost of this category in USD, regardless of who pays.
+                           * @example 0.029
+                           */
+                          usd: number
+                          /**
+                           * @description True when a sponsor absorbs some or all of this category. The user-vs-sponsor split is not surfaced.
+                           * @example false
+                           */
+                          sponsored: boolean
+                        }
+                      }
+                    }
+                    /** @description Solana instruction execution only: the exact fixed wallet debit, or confirmation that the sponsor pays and the wallet has no execution debit. The wallet debit also appears in input. */
+                    executionPayment?:
+                      | {
+                          /** @enum {string} */
+                          paidBy: 'wallet'
+                          /** @description A single (chain, token) leg with amount, price, and metadata */
+                          walletDebit: {
+                            /**
+                             * @description Chain where this token leg settles (CAIP-2, any namespace)
+                             * @example eip155:8453
+                             */
+                            chainId: string
+                            /**
+                             * @description Contract address of the debited token (EVM 0x or non-EVM base58)
+                             * @example 0xaf88d065e77c8cc2239327c5edb3a432268e5831
+                             */
+                            tokenAddress: string
+                            /**
+                             * @description Token symbol, from the internal token registry or, for a token it has no entry for, read on-chain while planning. `null` when neither resolved one.
+                             * @example USDC
+                             */
+                            symbol: string | null
+                            /**
+                             * @description Token decimals, from the internal token registry or, for a token it has no entry for, read on-chain while planning. `null` when neither resolved one.
+                             * @example 6
+                             */
+                            decimals: number | null
+                            /** @description Unit price in USD. `null` when neither the price oracle nor this quote priced the token. */
+                            price: {
+                              /**
+                               * @description Unit price in USD
+                               * @example 1
+                               */
+                              usd: number
+                            } | null
+                            /**
+                             * Format: uint256
+                             * @description Token amount in the token's smallest unit
+                             * @example 1050000
+                             */
+                            amount: string
+                          }
+                        }
+                      | {
+                          /** @enum {string} */
+                          paidBy: 'sponsor'
+                        }
+                  }
+                  /** @description Pre-flight operations the account must perform before this route can be claimed. Always present; empty when the route needs none. Emitted for EOA accounts only — smart accounts handle these internally. */
+                  requirements: (
+                    | {
+                        /** @enum {string} */
+                        kind: 'erc20Approval'
+                        /**
+                         * @description Public native execution environment of the chain. A HyperCore delivery venue is `hypercore`, never the HyperEVM chain it settles on.
+                         * @example evm
+                         * @enum {string}
+                         */
+                        vm: 'evm' | 'svm' | 'tvm' | 'stellar' | 'hypercore'
+                        /**
+                         * @description CAIP-2 chain id the requirement applies on
+                         * @example eip155:8453
+                         */
+                        chainId: string
+                        /** @description The account the requirement applies to */
+                        account:
+                          | {
+                              /**
+                               * @description Account address
+                               * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                               */
+                              address: string
+                              /**
+                               * @description Whether the account is an EOA or an ERC-7579 smart account
+                               * @example erc7579
+                               * @enum {string}
+                               */
+                              type: 'eoa' | 'erc7579'
+                              /**
+                               * @description Whether the account is deployed on this chain. Absent when planning read no account state for the chain — never defaulted, which would claim an undeployed account is deployed.
+                               * @example true
+                               */
+                              deployed?: boolean
+                              /** @description ERC-7579 implementation planning read on this chain. Absent for an EOA, and for a smart account whose implementation was not resolved. */
+                              implementation?: {
+                                /**
+                                 * @description ERC-7579 account implementation
+                                 * @example Nexus
+                                 * @enum {string}
+                                 */
+                                name: 'Safe' | 'Kernel' | 'Nexus'
+                                /**
+                                 * @description Raw trailing version token returned by ERC-7579 `accountId()`, when valid; preserved without normalization
+                                 * @example v1.0.0
+                                 */
+                                version?: string
+                              }
+                              /** @description The EIP-7702 delegate this intent INSTALLS on this chain. Present only where the delegate is not yet in place — a delegation already in force is not reported here. */
+                              delegation?: {
+                                /**
+                                 * @description Delegate contract this intent installs
+                                 * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                                 */
+                                contract: string
+                              }
+                            }
+                          | {
+                              /**
+                               * @description Asset-holding Swig wallet the intent spends from
+                               * @example 9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM
+                               */
+                              wallet: string
+                              /**
+                               * @description Swig state account holding the wallet authority configuration. Distinct from `wallet`, which is where the assets live.
+                               * @example EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
+                               */
+                              swigAccount: string
+                              /** @description Authority the submitted signature was verified against when the intent was accepted, as recorded. Absent on an intent record written before it was recorded; never inferred from the account or from current chain state. */
+                              authority?:
+                                | {
+                                    /** @enum {string} */
+                                    kind: 'secp256k1'
+                                    /**
+                                     * @description Authority the submitted signature must recover to
+                                     * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                                     */
+                                    address: string
+                                  }
+                                | {
+                                    /** @enum {string} */
+                                    kind: 'secp256r1'
+                                    /**
+                                     * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
+                                     * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
+                                     */
+                                    publicKey: string
+                                  }
+                            }
+                          | {
+                              /**
+                               * @description Address funds are delivered to, in the destination chain's own format
+                               * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                               */
+                              address: string
+                            }
+                        /**
+                         * @description Token the requirement applies to
+                         * @example 0x833589fcd6edb6e08f4c7c32d4f71b54bda02913
+                         */
+                        tokenAddress: string
+                        /**
+                         * Format: uint256
+                         * @description Minimum amount, in the token's smallest unit
+                         * @example 1000000
+                         */
+                        amount: string
+                        /**
+                         * @description Always the canonical Permit2 contract on this chain. The account approves Permit2; the settlement contract pulls funds via Permit2 at claim time.
+                         * @example 0x000000000022d473030f116ddee9f6b43ac78ba3
+                         */
+                        spender: string
+                      }
+                    | {
+                        /** @enum {string} */
+                        kind: 'wrapNative'
+                        /**
+                         * @description Public native execution environment of the chain. A HyperCore delivery venue is `hypercore`, never the HyperEVM chain it settles on.
+                         * @example evm
+                         * @enum {string}
+                         */
+                        vm: 'evm' | 'svm' | 'tvm' | 'stellar' | 'hypercore'
+                        /**
+                         * @description CAIP-2 chain id the requirement applies on
+                         * @example eip155:8453
+                         */
+                        chainId: string
+                        /** @description The account the requirement applies to */
+                        account:
+                          | {
+                              /**
+                               * @description Account address
+                               * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                               */
+                              address: string
+                              /**
+                               * @description Whether the account is an EOA or an ERC-7579 smart account
+                               * @example erc7579
+                               * @enum {string}
+                               */
+                              type: 'eoa' | 'erc7579'
+                              /**
+                               * @description Whether the account is deployed on this chain. Absent when planning read no account state for the chain — never defaulted, which would claim an undeployed account is deployed.
+                               * @example true
+                               */
+                              deployed?: boolean
+                              /** @description ERC-7579 implementation planning read on this chain. Absent for an EOA, and for a smart account whose implementation was not resolved. */
+                              implementation?: {
+                                /**
+                                 * @description ERC-7579 account implementation
+                                 * @example Nexus
+                                 * @enum {string}
+                                 */
+                                name: 'Safe' | 'Kernel' | 'Nexus'
+                                /**
+                                 * @description Raw trailing version token returned by ERC-7579 `accountId()`, when valid; preserved without normalization
+                                 * @example v1.0.0
+                                 */
+                                version?: string
+                              }
+                              /** @description The EIP-7702 delegate this intent INSTALLS on this chain. Present only where the delegate is not yet in place — a delegation already in force is not reported here. */
+                              delegation?: {
+                                /**
+                                 * @description Delegate contract this intent installs
+                                 * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                                 */
+                                contract: string
+                              }
+                            }
+                          | {
+                              /**
+                               * @description Asset-holding Swig wallet the intent spends from
+                               * @example 9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM
+                               */
+                              wallet: string
+                              /**
+                               * @description Swig state account holding the wallet authority configuration. Distinct from `wallet`, which is where the assets live.
+                               * @example EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
+                               */
+                              swigAccount: string
+                              /** @description Authority the submitted signature was verified against when the intent was accepted, as recorded. Absent on an intent record written before it was recorded; never inferred from the account or from current chain state. */
+                              authority?:
+                                | {
+                                    /** @enum {string} */
+                                    kind: 'secp256k1'
+                                    /**
+                                     * @description Authority the submitted signature must recover to
+                                     * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                                     */
+                                    address: string
+                                  }
+                                | {
+                                    /** @enum {string} */
+                                    kind: 'secp256r1'
+                                    /**
+                                     * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
+                                     * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
+                                     */
+                                    publicKey: string
+                                  }
+                            }
+                          | {
+                              /**
+                               * @description Address funds are delivered to, in the destination chain's own format
+                               * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                               */
+                              address: string
+                            }
+                        /**
+                         * @description Token the requirement applies to
+                         * @example 0x833589fcd6edb6e08f4c7c32d4f71b54bda02913
+                         */
+                        tokenAddress: string
+                        /**
+                         * Format: uint256
+                         * @description Minimum amount, in the token's smallest unit
+                         * @example 1000000
+                         */
+                        amount: string
+                      }
+                  )[]
+                  /** @description Everything the caller must sign, in the order to answer it: the origin authorizations, the destination authorization, the target execution where one applies, then any EIP-7702 delegations. Each entry states its own account, authority, scope, chains, purpose and validity, so a new signing path joins the array rather than adding a field. */
+                  signingRequests: {
+                    /** @description The account this signature acts for, named inline per VM. Carries no per-chain observation, since one request can span chains. */
+                    account:
+                      | {
+                          /** @enum {string} */
+                          vm: 'evm'
+                          /**
+                           * @description Account the signature authorizes
+                           * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                           */
+                          address: string
+                        }
+                      | {
+                          /** @enum {string} */
+                          vm: 'svm'
+                          /**
+                           * @description Asset-holding Swig wallet the spend debits
+                           * @example 9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM
+                           */
+                          wallet: string
+                          /**
+                           * @description Swig state account holding the authority configuration. Distinct from `wallet`, which is where the assets live.
+                           * @example EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
+                           */
+                          swigAccount: string
+                        }
+                    /** @description What verifies the signature */
+                    authority:
+                      | {
+                          /** @enum {string} */
+                          kind: 'secp256k1'
+                          /**
+                           * @description Address the submitted signature must recover to
+                           * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                           */
+                          address: string
+                        }
+                      | {
+                          /** @enum {string} */
+                          kind: 'account'
+                          /** @enum {string} */
+                          vm: 'evm'
+                          /**
+                           * @description Account that verifies the signature itself
+                           * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                           */
+                          address: string
+                        }
+                      | {
+                          /** @enum {string} */
+                          kind: 'swigRole'
+                          /**
+                           * @description Swig role the spend was authorized under
+                           * @example 1
+                           */
+                          roleId: number
+                          /** @description The authority configured on that role */
+                          authority:
+                            | {
+                                /** @enum {string} */
+                                kind: 'secp256k1'
+                                /**
+                                 * @description Address the submitted signature must recover to
+                                 * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                                 */
+                                address: string
+                              }
+                            | {
+                                /** @enum {string} */
+                                kind: 'secp256r1'
+                                /**
+                                 * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
+                                 * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
+                                 */
+                                publicKey: string
+                              }
+                        }
+                    /** @description What the signature authorizes. Always agrees with the payload; never a restatement of the route. */
+                    scope:
+                      | {
+                          /** @enum {string} */
+                          vm: 'evm'
+                          /**
+                           * @description What the signature authorizes
+                           * @example claim
+                           * @enum {string}
+                           */
+                          action:
+                            | 'claim'
+                            | 'fill'
+                            | 'targetExecution'
+                            | 'delegation'
+                          /** @description The accounts and chains the action runs against */
+                          accounts: {
+                            /**
+                             * @description CAIP-2 chain id the account is authorized on
+                             * @example eip155:8453
+                             */
+                            chainId: string
+                            /**
+                             * @description Account address, in its own chain's format
+                             * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                             */
+                            address: string
+                          }[]
+                          /** @description Present only on a request that authorizes at least one HyperCore agent registration. Lists every registration the payload commits to, in registration (slot) order: one item for a per-leg payload, all of them for an aggregate `MultiChainOps` payload. Names what each registration commits to, which the payload itself carries only as CoreWriter calldata. Changing any action, their order, a nonce or an agent requires a fresh quote. */
+                          hyperCore?: {
+                            /** @description The canonical Hyperliquid action, exactly as the agent commits to it. Key order is part of the commitment — the agent address is recovered from a signature over its msgpack encoding — so it is served in the order it was signed in, not re-sorted. */
+                            action?: unknown
+                            /**
+                             * @description The nonce the action commits to
+                             * @example 1633493192000
+                             */
+                            nonce: number
+                            /** @description The agent this registration installs. It is derived from the action bytes above, so it authorises that action and nothing else. */
+                            agent: string
+                            /**
+                             * @description The named API-wallet slot the agent goes in. Registering evicts whatever the account had in that slot; the account's unnamed wallet is never used.
+                             * @example rh1
+                             */
+                            slot: string
                           }[]
                         }
-                        /**
-                         * @description Name of the top-level type to sign
-                         * @example PermitBatchWitnessTransferFrom
-                         */
-                        primaryType: string
-                        /** @description Message values keyed by field name. uint256 fields are encoded as decimal strings on the wire and re-coerced to bigint client-side before signing. */
-                        message: {
-                          [key: string]: unknown
+                      | {
+                          /** @enum {string} */
+                          vm: 'svm'
+                          /** @enum {string} */
+                          action: 'spend'
+                          /** @description The wallet the spend debits, on its chain */
+                          accounts: {
+                            /**
+                             * @description CAIP-2 chain id the account is authorized on
+                             * @example eip155:8453
+                             */
+                            chainId: string
+                            /**
+                             * @description Account address, in its own chain's format
+                             * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                             */
+                            address: string
+                          }[]
+                          /** @description The full instruction set this signature authorizes, in execution order, in the same shape a request carries instructions in. */
+                          instructions: {
+                            /**
+                             * @description Program to invoke, base58.
+                             * @example TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
+                             */
+                            programId: string
+                            /** @description Accounts the instruction reads or writes, in the order the program expects. */
+                            accounts: {
+                              /**
+                               * @description Account address, base58.
+                               * @example TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
+                               */
+                              pubkey: string
+                              /** @description Whether the instruction requires this account to sign. */
+                              isSigner: boolean
+                              /** @description Whether the instruction writes to this account. */
+                              isWritable: boolean
+                            }[]
+                            /**
+                             * @description Instruction data, base64.
+                             * @example CQ==
+                             */
+                            data: string
+                          }[]
+                          /** @description Address lookup tables the instructions resolve accounts through. The tables themselves are not inlined. */
+                          addressLookupTables: string[]
+                          /** @description Who pays the transaction fee, as a role rather than a key: the payload names no payer, and the relayer picks its own. */
+                          feePayer: {
+                            /** @enum {string} */
+                            kind: 'role'
+                            /** @enum {string} */
+                            role: 'relayer'
+                          }
+                          /** @description Slot range the spend is signable in */
+                          slotWindow: {
+                            /**
+                             * @description Slot the payload was pinned to
+                             * @example 370123456
+                             */
+                            from: string
+                            /**
+                             * @description Last slot it can be landed in
+                             * @example 370123516
+                             */
+                            to: string
+                          }
                         }
+                    /** @description The chains the payload is cryptographically BOUND to, CAIP-2, each listed once — a `MultiChainOps` payload with several legs on one chain still names it once. This is what was signed rather than what the route is about: a Permit2 payload binds to the chain it claims funds on, so a destination request repeats the chain of the origin payload it duplicates. */
+                    chainIds: string[]
+                    /**
+                     * @description What the signature is for
+                     * @example originAuthorization
+                     * @enum {string}
+                     */
+                    purpose:
+                      | 'originAuthorization'
+                      | 'destinationAuthorization'
+                      | 'targetExecutionAuthorization'
+                      | 'delegationAuthorization'
+                    /** @description Native deadlines that apply to this payload. Empty when it carries none — quote retention is a separate thing and is not a promise that a stale payload is submittable. */
+                    validity: (
+                      | {
+                          /** @enum {string} */
+                          kind: 'timestamp'
+                          /**
+                           * @description Unix seconds after which the payload is dead
+                           * @example 1733493192
+                           */
+                          expiresAt: number
+                        }
+                      | {
+                          /** @enum {string} */
+                          kind: 'svmSlot'
+                          /**
+                           * @description CAIP-2 chain id whose slots the deadline counts in
+                           * @example solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp
+                           */
+                          chainId: string
+                          /**
+                           * @description Slot after which the payload is dead
+                           * @example 370123516
+                           */
+                          expiresAtSlot: string
+                        }
+                    )[]
+                    /** @description The native payload to sign */
+                    payload:
+                      | {
+                          /** @enum {string} */
+                          kind: 'eip712'
+                          /** @description EIP-712 typed data definition ready for `signTypedData` */
+                          typedData: {
+                            /** @description EIP-712 domain separator fields */
+                            domain: {
+                              name?: string
+                              version?: string
+                              chainId?: number
+                              verifyingContract?: string
+                              salt?: string
+                            }
+                            /** @description EIP-712 type definitions keyed by type name */
+                            types: {
+                              [key: string]: {
+                                name: string
+                                type: string
+                              }[]
+                            }
+                            /**
+                             * @description Name of the top-level type to sign
+                             * @example PermitBatchWitnessTransferFrom
+                             */
+                            primaryType: string
+                            /** @description Message values keyed by field name. uint256 fields are encoded as decimal strings on the wire and re-coerced to bigint client-side before signing. */
+                            message: {
+                              [key: string]: unknown
+                            }
+                          }
+                          /**
+                           * @description How the proof is encoded: raw 65-byte ECDSA for an EOA, or the account-native encoding for an ERC-7579 account, on which no length rule is imposed.
+                           * @example secp256k1
+                           * @enum {string}
+                           */
+                          signatureFormat: 'secp256k1' | 'account'
+                        }
+                      | {
+                          /** @enum {string} */
+                          kind: 'personalSign'
+                          message: {
+                            /** @enum {string} */
+                            encoding: 'utf8'
+                            /**
+                             * @description Sign these characters as UTF-8 TEXT — viem `signMessage({ message })`, never `{ raw }`. Signing the decoded bytes yields a well-formed signature the chain rejects.
+                             * @example a3f2c1d4e5b6a7980f1e2d3c4b5a69788796a5b4c3d2e1f0a1b2c3d4e5f60718
+                             */
+                            value: string
+                          }
+                        }
+                      | {
+                          /** @enum {string} */
+                          kind: 'eip7702'
+                          /** @description The delegation to authorize. Carries no nonce: the orchestrator observes no EOA nonces, and one read at quote time is stale by signing time — the signer supplies it with the proof. */
+                          authorization: {
+                            /**
+                             * @description Native chain value of the authorization tuple, not CAIP-2
+                             * @example 8453
+                             */
+                            chainId: number
+                            /**
+                             * @description Delegate contract the authorization installs
+                             * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                             */
+                            address: string
+                          }
+                        }
+                      | {
+                          /** @enum {string} */
+                          kind: 'webauthn'
+                          /**
+                           * @description Challenge the authenticator signs: 32 bytes as 0x-prefixed hex. Pass the decoded bytes as the WebAuthn `challenge`, not the hex text.
+                           * @example 0xa3f2c1d4e5b6a7980f1e2d3c4b5a69788796a5b4c3d2e1f0a1b2c3d4e5f60718
+                           */
+                          challenge: string
+                        }
+                  }[]
+                  /** @description Provider handle for resolving the destination-chain delivery transaction when settlement hands off to a third-party bridge (ECO, RHINO, RELAY, NEAR, CCTP, OFT). Absent when the orchestrator settles end-to-end (e.g. ACROSS). */
+                  bridgeFill?:
+                    | {
+                        /**
+                         * @description CAIP-2 chain id of the chain the bridge delivers to (e.g. `eip155:8453`, `solana:…`)
+                         * @example eip155:8453
+                         */
+                        destinationChainId: string
+                        /** @description Optional bridge-specific fill deadline duration, in seconds. Preserved on stored quote reload so checksum validation uses the same bridgeFill payload that was signed at quote time. */
+                        fillExpirationPeriod?: number
+                        /** @description Fill-tracker watch window, in seconds. The orchestrator owns this timeout; the fill-tracker reads it here to decide when a bridge fill has timed out. */
+                        fillStatusTimeout: number
+                        /**
+                         * @description LayerZero OFT
+                         * @enum {string}
+                         */
+                        type: 'OFT'
                       }
+                    | {
+                        /**
+                         * @description CAIP-2 chain id of the chain the bridge delivers to (e.g. `eip155:8453`, `solana:…`)
+                         * @example eip155:8453
+                         */
+                        destinationChainId: string
+                        /** @description Optional bridge-specific fill deadline duration, in seconds. Preserved on stored quote reload so checksum validation uses the same bridgeFill payload that was signed at quote time. */
+                        fillExpirationPeriod?: number
+                        /** @description Fill-tracker watch window, in seconds. The orchestrator owns this timeout; the fill-tracker reads it here to decide when a bridge fill has timed out. */
+                        fillStatusTimeout: number
+                        /**
+                         * @description Across spoke-pool deposit. Names a deposit to watch for a refund, not a delivery — an ACROSS intent is filled by our own relayer and tracked as an ordinary fill.
+                         * @enum {string}
+                         */
+                        type: 'ACROSS'
+                        /** @description The Across deposit id our claim opens on the origin chain, as a decimal uint256. Derived as keccak(arbiter | sponsor | nonce). */
+                        depositId: string
+                      }
+                    | {
+                        /**
+                         * @description CAIP-2 chain id of the chain the bridge delivers to (e.g. `eip155:8453`, `solana:…`)
+                         * @example eip155:8453
+                         */
+                        destinationChainId: string
+                        /** @description Optional bridge-specific fill deadline duration, in seconds. Preserved on stored quote reload so checksum validation uses the same bridgeFill payload that was signed at quote time. */
+                        fillExpirationPeriod?: number
+                        /** @description Fill-tracker watch window, in seconds. The orchestrator owns this timeout; the fill-tracker reads it here to decide when a bridge fill has timed out. */
+                        fillStatusTimeout: number
+                        /**
+                         * @description Eco solver-network delivery
+                         * @enum {string}
+                         */
+                        type: 'ECO'
+                        /** @description Eco v1 quote ID for detailed delivery and refund tracking. */
+                        quoteId?: string
+                        /** @description Eco Portal intent hash. Use against Eco's intent status API to resolve the destination delivery transaction. */
+                        intentHash: string
+                        /** @description Eco's own id for the delivery chain, present only where it differs from `destinationChainId` (non-EVM destinations). Eco's status API reports fulfilment against this id. */
+                        providerDestinationChainId?: number
+                        /** @description Eco's own id for the chain the reward was funded on, present only where it differs from the deposit chain (non-EVM origins). */
+                        providerSourceChainId?: number
+                      }
+                    | {
+                        /**
+                         * @description CAIP-2 chain id of the chain the bridge delivers to (e.g. `eip155:8453`, `solana:…`)
+                         * @example eip155:8453
+                         */
+                        destinationChainId: string
+                        /** @description Optional bridge-specific fill deadline duration, in seconds. Preserved on stored quote reload so checksum validation uses the same bridgeFill payload that was signed at quote time. */
+                        fillExpirationPeriod?: number
+                        /** @description Fill-tracker watch window, in seconds. The orchestrator owns this timeout; the fill-tracker reads it here to decide when a bridge fill has timed out. */
+                        fillStatusTimeout: number
+                        /**
+                         * @description Relay.link
+                         * @enum {string}
+                         */
+                        type: 'RELAY'
+                        /** @description Relay.link request ID. Use against Relay.link's status API to track the destination-chain fill. */
+                        requestId: string
+                      }
+                    | {
+                        /**
+                         * @description CAIP-2 chain id of the chain the bridge delivers to (e.g. `eip155:8453`, `solana:…`)
+                         * @example eip155:8453
+                         */
+                        destinationChainId: string
+                        /** @description Optional bridge-specific fill deadline duration, in seconds. Preserved on stored quote reload so checksum validation uses the same bridgeFill payload that was signed at quote time. */
+                        fillExpirationPeriod?: number
+                        /** @description Fill-tracker watch window, in seconds. The orchestrator owns this timeout; the fill-tracker reads it here to decide when a bridge fill has timed out. */
+                        fillStatusTimeout: number
+                        /**
+                         * @description NEAR Intents
+                         * @enum {string}
+                         */
+                        type: 'NEAR'
+                        /** @description NEAR Intents deposit address on the origin chain, in its native form (EVM 0x or Solana base58). Track fill status via the NEAR Intents status API keyed on this address. */
+                        depositAddress: string
+                      }
+                    | {
+                        /**
+                         * @description CAIP-2 chain id of the chain the bridge delivers to (e.g. `eip155:8453`, `solana:…`)
+                         * @example eip155:8453
+                         */
+                        destinationChainId: string
+                        /** @description Optional bridge-specific fill deadline duration, in seconds. Preserved on stored quote reload so checksum validation uses the same bridgeFill payload that was signed at quote time. */
+                        fillExpirationPeriod?: number
+                        /** @description Fill-tracker watch window, in seconds. The orchestrator owns this timeout; the fill-tracker reads it here to decide when a bridge fill has timed out. */
+                        fillStatusTimeout: number
+                        /**
+                         * @description Rhino.fi
+                         * @enum {string}
+                         */
+                        type: 'RHINO'
+                        /** @description Rhino.fi commitment ID. Use against Rhino.fi's status API to track the destination-chain fill. */
+                        commitmentId: string
+                      }
+                    | {
+                        /**
+                         * @description CAIP-2 chain id of the chain the bridge delivers to (e.g. `eip155:8453`, `solana:…`)
+                         * @example eip155:8453
+                         */
+                        destinationChainId: string
+                        /** @description Optional bridge-specific fill deadline duration, in seconds. Preserved on stored quote reload so checksum validation uses the same bridgeFill payload that was signed at quote time. */
+                        fillExpirationPeriod?: number
+                        /** @description Fill-tracker watch window, in seconds. The orchestrator owns this timeout; the fill-tracker reads it here to decide when a bridge fill has timed out. */
+                        fillStatusTimeout: number
+                        /**
+                         * @description Circle CCTP
+                         * @enum {string}
+                         */
+                        type: 'CCTP'
+                        /** @description Circle CCTP source domain ID — needed to fetch the attestation for the burn message on the source chain. */
+                        sourceDomainId: number
+                        /** @description Circle CCTP destination domain ID. */
+                        destinationDomainId: number
+                      }
+                    | {
+                        /**
+                         * @description CAIP-2 chain id of the chain the bridge delivers to (e.g. `eip155:8453`, `solana:…`)
+                         * @example eip155:8453
+                         */
+                        destinationChainId: string
+                        /** @description Optional bridge-specific fill deadline duration, in seconds. Preserved on stored quote reload so checksum validation uses the same bridgeFill payload that was signed at quote time. */
+                        fillExpirationPeriod?: number
+                        /** @description Fill-tracker watch window, in seconds. The orchestrator owns this timeout; the fill-tracker reads it here to decide when a bridge fill has timed out. */
+                        fillStatusTimeout: number
+                        /**
+                         * @description LayerZero Value Transfer
+                         * @enum {string}
+                         */
+                        type: 'LZ'
+                        /** @description LayerZero quote ID. Use against LayerZero's transfer status API to track the destination-chain fill. */
+                        quoteId: string
+                        /** @description LayerZero's own chain key for the destination (e.g. `base`). Its status response names chains by key rather than id. */
+                        dstChainKey: string
+                        /** @description Protocols the quote routed through (e.g. STARGATE_V2_TAXI, CCTP_V2). One transfer can span several. */
+                        routeTypes: string[]
+                      }
+                }
+              | {
+                  /** @description Server-stored intent identifier. Pass back to `POST /intents` to submit. */
+                  intentId: string
+                  /**
+                   * @description What this route is for: `execution` moves funds or runs calls, `deployment` only initializes an account.
+                   * @example deployment
+                   * @enum {string}
+                   */
+                  purpose: 'deployment'
+                  /**
+                   * @description Quote expiry timestamp (Unix seconds). After this point, assume the quote is dead and re-quote.
+                   * @example 1733493192
+                   */
+                  expiresAt: number
+                  /** @description Estimated fill time for the route */
+                  estimatedFillTime: {
+                    /**
+                     * @description Typical end-to-end fill time for this route in seconds. Directional, not guaranteed.
+                     * @example 3
+                     */
+                    seconds: number
+                  }
+                  /**
+                   * @description Settlement layer selected for this route
+                   * @example RELAY
+                   * @enum {string}
+                   */
+                  settlementLayer:
+                    | 'INTENT_EXECUTOR'
+                    | 'SAME_CHAIN'
+                    | 'ACROSS'
+                    | 'ECO'
+                    | 'RELAY'
+                    | 'OFT'
+                    | 'NEAR'
+                    | 'RHINO'
+                    | 'CCTP'
+                    | 'LZ'
+                  /** @description The account the route initializes, in `deployments`, and the chain it initializes it on. */
+                  plan: {
+                    /** @description One block per chain the route spends on, in the order the route reaches them. */
+                    source: {
                       /**
-                       * @description How the proof is encoded: raw 65-byte ECDSA for an EOA, or the account-native encoding for an ERC-7579 account, on which no length rule is imposed.
-                       * @example secp256k1
+                       * @description Public native execution environment of the chain. A HyperCore delivery venue is `hypercore`, never the HyperEVM chain it settles on.
+                       * @example evm
                        * @enum {string}
                        */
-                      signatureFormat: 'secp256k1' | 'account'
-                    }
-                  | {
-                      /** @enum {string} */
-                      kind: 'personalSign'
-                      message: {
-                        /** @enum {string} */
-                        encoding: 'utf8'
-                        /**
-                         * @description Sign these characters as UTF-8 TEXT — viem `signMessage({ message })`, never `{ raw }`. Signing the decoded bytes yields a well-formed signature the chain rejects.
-                         * @example a3f2c1d4e5b6a7980f1e2d3c4b5a69788796a5b4c3d2e1f0a1b2c3d4e5f60718
-                         */
-                        value: string
-                      }
-                    }
-                  | {
-                      /** @enum {string} */
-                      kind: 'eip7702'
-                      /** @description The delegation to authorize. Carries no nonce: the orchestrator observes no EOA nonces, and one read at quote time is stale by signing time — the signer supplies it with the proof. */
-                      authorization: {
-                        /**
-                         * @description Native chain value of the authorization tuple, not CAIP-2
-                         * @example 8453
-                         */
-                        chainId: number
-                        /**
-                         * @description Delegate contract the authorization installs
-                         * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                         */
-                        address: string
-                      }
-                    }
-                  | {
-                      /** @enum {string} */
-                      kind: 'webauthn'
+                      vm: 'evm' | 'svm' | 'tvm' | 'stellar' | 'hypercore'
                       /**
-                       * @description Challenge the authenticator signs: 32 bytes as 0x-prefixed hex. Pass the decoded bytes as the WebAuthn `challenge`, not the hex text.
-                       * @example 0xa3f2c1d4e5b6a7980f1e2d3c4b5a69788796a5b4c3d2e1f0a1b2c3d4e5f60718
+                       * @description CAIP-2 chain id this account is resolved on
+                       * @example eip155:8453
                        */
-                      challenge: string
+                      chainId: string
+                      /** @description The account this block acts on, resolved for its VM: an EVM account, a Solana Swig, or a bare payee. */
+                      account:
+                        | {
+                            /**
+                             * @description Account address
+                             * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                             */
+                            address: string
+                            /**
+                             * @description Whether the account is an EOA or an ERC-7579 smart account
+                             * @example erc7579
+                             * @enum {string}
+                             */
+                            type: 'eoa' | 'erc7579'
+                            /**
+                             * @description Whether the account is deployed on this chain. Absent when planning read no account state for the chain — never defaulted, which would claim an undeployed account is deployed.
+                             * @example true
+                             */
+                            deployed?: boolean
+                            /** @description ERC-7579 implementation planning read on this chain. Absent for an EOA, and for a smart account whose implementation was not resolved. */
+                            implementation?: {
+                              /**
+                               * @description ERC-7579 account implementation
+                               * @example Nexus
+                               * @enum {string}
+                               */
+                              name: 'Safe' | 'Kernel' | 'Nexus'
+                              /**
+                               * @description Raw trailing version token returned by ERC-7579 `accountId()`, when valid; preserved without normalization
+                               * @example v1.0.0
+                               */
+                              version?: string
+                            }
+                            /** @description The EIP-7702 delegate this intent INSTALLS on this chain. Present only where the delegate is not yet in place — a delegation already in force is not reported here. */
+                            delegation?: {
+                              /**
+                               * @description Delegate contract this intent installs
+                               * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                               */
+                              contract: string
+                            }
+                          }
+                        | {
+                            /**
+                             * @description Asset-holding Swig wallet the intent spends from
+                             * @example 9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM
+                             */
+                            wallet: string
+                            /**
+                             * @description Swig state account holding the wallet authority configuration. Distinct from `wallet`, which is where the assets live.
+                             * @example EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
+                             */
+                            swigAccount: string
+                            /** @description Authority the submitted signature was verified against when the intent was accepted, as recorded. Absent on an intent record written before it was recorded; never inferred from the account or from current chain state. */
+                            authority?:
+                              | {
+                                  /** @enum {string} */
+                                  kind: 'secp256k1'
+                                  /**
+                                   * @description Authority the submitted signature must recover to
+                                   * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                                   */
+                                  address: string
+                                }
+                              | {
+                                  /** @enum {string} */
+                                  kind: 'secp256r1'
+                                  /**
+                                   * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
+                                   * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
+                                   */
+                                  publicKey: string
+                                }
+                          }
+                        | {
+                            /**
+                             * @description Address funds are delivered to, in the destination chain's own format
+                             * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                             */
+                            address: string
+                          }
+                      /** @description Present only where the route runs the caller's own calls on this block. */
+                      execution?:
+                        | {
+                            /** @description The executor of the disclosed calls */
+                            executedBy: {
+                              /**
+                               * @description Who runs the calls: the account itself, or a solver-operated contract running them on its behalf.
+                               * @example account
+                               * @enum {string}
+                               */
+                              kind: 'account' | 'solver'
+                              /**
+                               * @description Address of the executing contract or account
+                               * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                               */
+                              address: string
+                            }
+                            /** @description The caller's own calls, in execution order */
+                            calls: {
+                              /**
+                               * @description Target contract address for execution
+                               * @example 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
+                               */
+                              to: string
+                              /**
+                               * Format: uint256
+                               * @description Amount of ETH (in wei) sent in the execution
+                               * @example 0
+                               */
+                              value: string
+                              /**
+                               * @description Encoded function call data
+                               * @example 0xa9059cbb000000000000000000000000579d5631f76126991c00fb8fe5467fa9d49e5f6a00000000000000000000000000000000000000000000000000000000000f4240
+                               */
+                              data: string
+                            }[]
+                          }
+                        | {
+                            /** @description The executor of the disclosed calls */
+                            executedBy: {
+                              /**
+                               * @description Who runs the calls: the account itself, or a solver-operated contract running them on its behalf.
+                               * @example account
+                               * @enum {string}
+                               */
+                              kind: 'account' | 'solver'
+                              /**
+                               * @description Address of the executing contract or account
+                               * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                               */
+                              address: string
+                            }
+                            /** @description The caller's own instructions, in execution order */
+                            instructions: {
+                              /**
+                               * @description Program to invoke, base58.
+                               * @example TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
+                               */
+                              programId: string
+                              /** @description Accounts the instruction reads or writes, in the order the program expects. */
+                              accounts: {
+                                /**
+                                 * @description Account address, base58.
+                                 * @example TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
+                                 */
+                                pubkey: string
+                                /** @description Whether the instruction requires this account to sign. */
+                                isSigner: boolean
+                                /** @description Whether the instruction writes to this account. */
+                                isWritable: boolean
+                              }[]
+                              /**
+                               * @description Instruction data, base64.
+                               * @example CQ==
+                               */
+                              data: string
+                            }[]
+                            /** @description Address lookup tables the instructions resolve against */
+                            addressLookupTables: string[]
+                          }
+                    }[]
+                    /** @description The single block the route delivers to, on the chain the caller named. */
+                    destination: {
+                      /**
+                       * @description Public native execution environment of the chain. A HyperCore delivery venue is `hypercore`, never the HyperEVM chain it settles on.
+                       * @example evm
+                       * @enum {string}
+                       */
+                      vm: 'evm' | 'svm' | 'tvm' | 'stellar' | 'hypercore'
+                      /**
+                       * @description CAIP-2 chain id this account is resolved on
+                       * @example eip155:8453
+                       */
+                      chainId: string
+                      /** @description The account this block acts on, resolved for its VM: an EVM account, a Solana Swig, or a bare payee. */
+                      account:
+                        | {
+                            /**
+                             * @description Account address
+                             * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                             */
+                            address: string
+                            /**
+                             * @description Whether the account is an EOA or an ERC-7579 smart account
+                             * @example erc7579
+                             * @enum {string}
+                             */
+                            type: 'eoa' | 'erc7579'
+                            /**
+                             * @description Whether the account is deployed on this chain. Absent when planning read no account state for the chain — never defaulted, which would claim an undeployed account is deployed.
+                             * @example true
+                             */
+                            deployed?: boolean
+                            /** @description ERC-7579 implementation planning read on this chain. Absent for an EOA, and for a smart account whose implementation was not resolved. */
+                            implementation?: {
+                              /**
+                               * @description ERC-7579 account implementation
+                               * @example Nexus
+                               * @enum {string}
+                               */
+                              name: 'Safe' | 'Kernel' | 'Nexus'
+                              /**
+                               * @description Raw trailing version token returned by ERC-7579 `accountId()`, when valid; preserved without normalization
+                               * @example v1.0.0
+                               */
+                              version?: string
+                            }
+                            /** @description The EIP-7702 delegate this intent INSTALLS on this chain. Present only where the delegate is not yet in place — a delegation already in force is not reported here. */
+                            delegation?: {
+                              /**
+                               * @description Delegate contract this intent installs
+                               * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                               */
+                              contract: string
+                            }
+                          }
+                        | {
+                            /**
+                             * @description Asset-holding Swig wallet the intent spends from
+                             * @example 9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM
+                             */
+                            wallet: string
+                            /**
+                             * @description Swig state account holding the wallet authority configuration. Distinct from `wallet`, which is where the assets live.
+                             * @example EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
+                             */
+                            swigAccount: string
+                            /** @description Authority the submitted signature was verified against when the intent was accepted, as recorded. Absent on an intent record written before it was recorded; never inferred from the account or from current chain state. */
+                            authority?:
+                              | {
+                                  /** @enum {string} */
+                                  kind: 'secp256k1'
+                                  /**
+                                   * @description Authority the submitted signature must recover to
+                                   * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                                   */
+                                  address: string
+                                }
+                              | {
+                                  /** @enum {string} */
+                                  kind: 'secp256r1'
+                                  /**
+                                   * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
+                                   * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
+                                   */
+                                  publicKey: string
+                                }
+                          }
+                        | {
+                            /**
+                             * @description Address funds are delivered to, in the destination chain's own format
+                             * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                             */
+                            address: string
+                          }
+                      /** @description Present only where the route runs the caller's own calls on this block. */
+                      execution?:
+                        | {
+                            /** @description The executor of the disclosed calls */
+                            executedBy: {
+                              /**
+                               * @description Who runs the calls: the account itself, or a solver-operated contract running them on its behalf.
+                               * @example account
+                               * @enum {string}
+                               */
+                              kind: 'account' | 'solver'
+                              /**
+                               * @description Address of the executing contract or account
+                               * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                               */
+                              address: string
+                            }
+                            /** @description The caller's own calls, in execution order */
+                            calls: {
+                              /**
+                               * @description Target contract address for execution
+                               * @example 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
+                               */
+                              to: string
+                              /**
+                               * Format: uint256
+                               * @description Amount of ETH (in wei) sent in the execution
+                               * @example 0
+                               */
+                              value: string
+                              /**
+                               * @description Encoded function call data
+                               * @example 0xa9059cbb000000000000000000000000579d5631f76126991c00fb8fe5467fa9d49e5f6a00000000000000000000000000000000000000000000000000000000000f4240
+                               */
+                              data: string
+                            }[]
+                          }
+                        | {
+                            /** @description The executor of the disclosed calls */
+                            executedBy: {
+                              /**
+                               * @description Who runs the calls: the account itself, or a solver-operated contract running them on its behalf.
+                               * @example account
+                               * @enum {string}
+                               */
+                              kind: 'account' | 'solver'
+                              /**
+                               * @description Address of the executing contract or account
+                               * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                               */
+                              address: string
+                            }
+                            /** @description The caller's own instructions, in execution order */
+                            instructions: {
+                              /**
+                               * @description Program to invoke, base58.
+                               * @example TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
+                               */
+                              programId: string
+                              /** @description Accounts the instruction reads or writes, in the order the program expects. */
+                              accounts: {
+                                /**
+                                 * @description Account address, base58.
+                                 * @example TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
+                                 */
+                                pubkey: string
+                                /** @description Whether the instruction requires this account to sign. */
+                                isSigner: boolean
+                                /** @description Whether the instruction writes to this account. */
+                                isWritable: boolean
+                              }[]
+                              /**
+                               * @description Instruction data, base64.
+                               * @example CQ==
+                               */
+                              data: string
+                            }[]
+                            /** @description Address lookup tables the instructions resolve against */
+                            addressLookupTables: string[]
+                          }
                     }
-              }[]
-              /** @description Provider handle for resolving the destination-chain delivery transaction when settlement hands off to a third-party bridge (ECO, RHINO, RELAY, NEAR, CCTP, OFT). Absent when the orchestrator settles end-to-end (e.g. ACROSS). */
-              bridgeFill?:
-                | {
+                    /** @description Account initializations the route performs. Empty when it performs none. */
+                    deployments: {
+                      /**
+                       * @description Public native execution environment of the chain. A HyperCore delivery venue is `hypercore`, never the HyperEVM chain it settles on.
+                       * @example evm
+                       * @enum {string}
+                       */
+                      vm: 'evm' | 'svm' | 'tvm' | 'stellar' | 'hypercore'
+                      /**
+                       * @description CAIP-2 chain id this account is resolved on
+                       * @example eip155:8453
+                       */
+                      chainId: string
+                      /** @description The account this block acts on, resolved for its VM: an EVM account, a Solana Swig, or a bare payee. */
+                      account:
+                        | {
+                            /**
+                             * @description Account address
+                             * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                             */
+                            address: string
+                            /**
+                             * @description Whether the account is an EOA or an ERC-7579 smart account
+                             * @example erc7579
+                             * @enum {string}
+                             */
+                            type: 'eoa' | 'erc7579'
+                            /**
+                             * @description Whether the account is deployed on this chain. Absent when planning read no account state for the chain — never defaulted, which would claim an undeployed account is deployed.
+                             * @example true
+                             */
+                            deployed?: boolean
+                            /** @description ERC-7579 implementation planning read on this chain. Absent for an EOA, and for a smart account whose implementation was not resolved. */
+                            implementation?: {
+                              /**
+                               * @description ERC-7579 account implementation
+                               * @example Nexus
+                               * @enum {string}
+                               */
+                              name: 'Safe' | 'Kernel' | 'Nexus'
+                              /**
+                               * @description Raw trailing version token returned by ERC-7579 `accountId()`, when valid; preserved without normalization
+                               * @example v1.0.0
+                               */
+                              version?: string
+                            }
+                            /** @description The EIP-7702 delegate this intent INSTALLS on this chain. Present only where the delegate is not yet in place — a delegation already in force is not reported here. */
+                            delegation?: {
+                              /**
+                               * @description Delegate contract this intent installs
+                               * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                               */
+                              contract: string
+                            }
+                          }
+                        | {
+                            /**
+                             * @description Asset-holding Swig wallet the intent spends from
+                             * @example 9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM
+                             */
+                            wallet: string
+                            /**
+                             * @description Swig state account holding the wallet authority configuration. Distinct from `wallet`, which is where the assets live.
+                             * @example EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
+                             */
+                            swigAccount: string
+                            /** @description Authority the submitted signature was verified against when the intent was accepted, as recorded. Absent on an intent record written before it was recorded; never inferred from the account or from current chain state. */
+                            authority?:
+                              | {
+                                  /** @enum {string} */
+                                  kind: 'secp256k1'
+                                  /**
+                                   * @description Authority the submitted signature must recover to
+                                   * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                                   */
+                                  address: string
+                                }
+                              | {
+                                  /** @enum {string} */
+                                  kind: 'secp256r1'
+                                  /**
+                                   * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
+                                   * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
+                                   */
+                                  publicKey: string
+                                }
+                          }
+                        | {
+                            /**
+                             * @description Address funds are delivered to, in the destination chain's own format
+                             * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                             */
+                            address: string
+                          }
+                    }[]
+                  }
+                  /** @description Route cost: inputs, outputs, and fee breakdown */
+                  cost: {
+                    /** @description Tokens debited from the user, coalesced by (chainId, tokenAddress) */
+                    input: {
+                      /**
+                       * @description Chain where this token leg settles (CAIP-2, any namespace)
+                       * @example eip155:8453
+                       */
+                      chainId: string
+                      /**
+                       * @description Contract address of the debited token (EVM 0x or non-EVM base58)
+                       * @example 0xaf88d065e77c8cc2239327c5edb3a432268e5831
+                       */
+                      tokenAddress: string
+                      /**
+                       * @description Token symbol, from the internal token registry or, for a token it has no entry for, read on-chain while planning. `null` when neither resolved one.
+                       * @example USDC
+                       */
+                      symbol: string | null
+                      /**
+                       * @description Token decimals, from the internal token registry or, for a token it has no entry for, read on-chain while planning. `null` when neither resolved one.
+                       * @example 6
+                       */
+                      decimals: number | null
+                      /** @description Unit price in USD. `null` when neither the price oracle nor this quote priced the token. */
+                      price: {
+                        /**
+                         * @description Unit price in USD
+                         * @example 1
+                         */
+                        usd: number
+                      } | null
+                      /**
+                       * Format: uint256
+                       * @description Token amount in the token's smallest unit
+                       * @example 1050000
+                       */
+                      amount: string
+                    }[]
+                    /** @description Tokens delivered to the recipient, coalesced by (chainId, tokenAddress) */
+                    output: {
+                      /**
+                       * @description Chain where this token leg settles (CAIP-2, any namespace)
+                       * @example eip155:8453
+                       */
+                      chainId: string
+                      /**
+                       * @description Contract address of the delivered token (EVM 0x or non-EVM base58)
+                       * @example 0xaf88d065e77c8cc2239327c5edb3a432268e5831
+                       */
+                      tokenAddress: string
+                      /**
+                       * @description Token symbol, from the internal token registry or, for a token it has no entry for, read on-chain while planning. `null` when neither resolved one.
+                       * @example USDC
+                       */
+                      symbol: string | null
+                      /**
+                       * @description Token decimals, from the internal token registry or, for a token it has no entry for, read on-chain while planning. `null` when neither resolved one.
+                       * @example 6
+                       */
+                      decimals: number | null
+                      /** @description Unit price in USD. `null` when neither the price oracle nor this quote priced the token. */
+                      price: {
+                        /**
+                         * @description Unit price in USD
+                         * @example 1
+                         */
+                        usd: number
+                      } | null
+                      /**
+                       * Format: uint256
+                       * @description Token amount in the token's smallest unit
+                       * @example 1050000
+                       */
+                      amount: string
+                    }[]
+                    /** @description Aggregate route fees with per-category breakdown */
+                    fees: {
+                      /** @description Full route cost in USD, regardless of who pays. Equal to `sum(breakdown.*.usd)` modulo rounding. */
+                      total: {
+                        /**
+                         * @description USD-denominated value
+                         * @example 0.029
+                         */
+                        usd: number
+                      }
+                      /** @description Per-category fee breakdown */
+                      breakdown: {
+                        /** @description Aggregate gas cost (destination fill, swap execution, origin gas) */
+                        gas: {
+                          /**
+                           * @description Total cost of this category in USD, regardless of who pays.
+                           * @example 0.029
+                           */
+                          usd: number
+                          /**
+                           * @description True when a sponsor absorbs some or all of this category. The user-vs-sponsor split is not surfaced.
+                           * @example false
+                           */
+                          sponsored: boolean
+                        }
+                        /** @description Aggregate settlement-layer bridge cost */
+                        bridge: {
+                          /**
+                           * @description Total cost of this category in USD, regardless of who pays.
+                           * @example 0.029
+                           */
+                          usd: number
+                          /**
+                           * @description True when a sponsor absorbs some or all of this category. The user-vs-sponsor split is not surfaced.
+                           * @example false
+                           */
+                          sponsored: boolean
+                        }
+                        /** @description Aggregate solver swap commission */
+                        swap: {
+                          /**
+                           * @description Total cost of this category in USD, regardless of who pays.
+                           * @example 0.029
+                           */
+                          usd: number
+                          /**
+                           * @description True when a sponsor absorbs some or all of this category. The user-vs-sponsor split is not surfaced.
+                           * @example false
+                           */
+                          sponsored: boolean
+                        }
+                        /** @description Aggregate integrator app fee */
+                        app: {
+                          /**
+                           * @description Total cost of this category in USD, regardless of who pays.
+                           * @example 0.029
+                           */
+                          usd: number
+                          /**
+                           * @description True when a sponsor absorbs some or all of this category. The user-vs-sponsor split is not surfaced.
+                           * @example false
+                           */
+                          sponsored: boolean
+                        }
+                        /** @description Rhinestone protocol fee (`options.protocolFees`). `sponsored: true` when the integrator sponsorship balance pays it instead of the user. */
+                        protocol: {
+                          /**
+                           * @description Total cost of this category in USD, regardless of who pays.
+                           * @example 0.029
+                           */
+                          usd: number
+                          /**
+                           * @description True when a sponsor absorbs some or all of this category. The user-vs-sponsor split is not surfaced.
+                           * @example false
+                           */
+                          sponsored: boolean
+                        }
+                        /** @description Rhinestone's surcharge on the sponsored relayer coverage, charged to the sponsor. 0 when the intent is not sponsored. Pure surcharge — a sponsored protocol fee is shown on `protocol`, never here. */
+                        sponsorSurcharge: {
+                          /**
+                           * @description Total cost of this category in USD, regardless of who pays.
+                           * @example 0.029
+                           */
+                          usd: number
+                          /**
+                           * @description True when a sponsor absorbs some or all of this category. The user-vs-sponsor split is not surfaced.
+                           * @example false
+                           */
+                          sponsored: boolean
+                        }
+                      }
+                    }
+                    /** @description Solana instruction execution only: the exact fixed wallet debit, or confirmation that the sponsor pays and the wallet has no execution debit. The wallet debit also appears in input. */
+                    executionPayment?:
+                      | {
+                          /** @enum {string} */
+                          paidBy: 'wallet'
+                          /** @description A single (chain, token) leg with amount, price, and metadata */
+                          walletDebit: {
+                            /**
+                             * @description Chain where this token leg settles (CAIP-2, any namespace)
+                             * @example eip155:8453
+                             */
+                            chainId: string
+                            /**
+                             * @description Contract address of the debited token (EVM 0x or non-EVM base58)
+                             * @example 0xaf88d065e77c8cc2239327c5edb3a432268e5831
+                             */
+                            tokenAddress: string
+                            /**
+                             * @description Token symbol, from the internal token registry or, for a token it has no entry for, read on-chain while planning. `null` when neither resolved one.
+                             * @example USDC
+                             */
+                            symbol: string | null
+                            /**
+                             * @description Token decimals, from the internal token registry or, for a token it has no entry for, read on-chain while planning. `null` when neither resolved one.
+                             * @example 6
+                             */
+                            decimals: number | null
+                            /** @description Unit price in USD. `null` when neither the price oracle nor this quote priced the token. */
+                            price: {
+                              /**
+                               * @description Unit price in USD
+                               * @example 1
+                               */
+                              usd: number
+                            } | null
+                            /**
+                             * Format: uint256
+                             * @description Token amount in the token's smallest unit
+                             * @example 1050000
+                             */
+                            amount: string
+                          }
+                        }
+                      | {
+                          /** @enum {string} */
+                          paidBy: 'sponsor'
+                        }
+                  }
+                  /** @description The rent each initialization locks, one entry each. */
+                  deploymentCosts: {
                     /**
-                     * @description CAIP-2 chain id of the chain the bridge delivers to (e.g. `eip155:8453`, `solana:…`)
-                     * @example eip155:8453
-                     */
-                    destinationChainId: string
-                    /** @description Optional bridge-specific fill deadline duration, in seconds. Preserved on stored quote reload so checksum validation uses the same bridgeFill payload that was signed at quote time. */
-                    fillExpirationPeriod?: number
-                    /** @description Fill-tracker watch window, in seconds. The orchestrator owns this timeout; the fill-tracker reads it here to decide when a bridge fill has timed out. */
-                    fillStatusTimeout: number
-                    /**
-                     * @description LayerZero OFT
+                     * @description Public native execution environment of the chain. A HyperCore delivery venue is `hypercore`, never the HyperEVM chain it settles on.
+                     * @example evm
                      * @enum {string}
                      */
-                    type: 'OFT'
-                  }
-                | {
+                    vm: 'evm' | 'svm' | 'tvm' | 'stellar' | 'hypercore'
                     /**
-                     * @description CAIP-2 chain id of the chain the bridge delivers to (e.g. `eip155:8453`, `solana:…`)
-                     * @example eip155:8453
+                     * @description CAIP-2 chain id the account is initialized on
+                     * @example solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1
                      */
-                    destinationChainId: string
-                    /** @description Optional bridge-specific fill deadline duration, in seconds. Preserved on stored quote reload so checksum validation uses the same bridgeFill payload that was signed at quote time. */
-                    fillExpirationPeriod?: number
-                    /** @description Fill-tracker watch window, in seconds. The orchestrator owns this timeout; the fill-tracker reads it here to decide when a bridge fill has timed out. */
-                    fillStatusTimeout: number
+                    chainId: string
+                    /** @description The rent the initialization locks */
+                    rent: {
+                      /**
+                       * Format: uint256
+                       * @description Rent locked in the new accounts, in the chain's native base unit (lamports on Solana)
+                       * @example 1869440
+                       */
+                      amount: string
+                      /** @description The rent in USD */
+                      usd: number
+                      /** @description True when the sponsor pays it rather than the user */
+                      sponsored: boolean
+                    }
+                  }[]
+                  /** @description Always empty: an initialization needs no pre-flight. */
+                  requirements: (
+                    | {
+                        /** @enum {string} */
+                        kind: 'erc20Approval'
+                        /**
+                         * @description Public native execution environment of the chain. A HyperCore delivery venue is `hypercore`, never the HyperEVM chain it settles on.
+                         * @example evm
+                         * @enum {string}
+                         */
+                        vm: 'evm' | 'svm' | 'tvm' | 'stellar' | 'hypercore'
+                        /**
+                         * @description CAIP-2 chain id the requirement applies on
+                         * @example eip155:8453
+                         */
+                        chainId: string
+                        /** @description The account the requirement applies to */
+                        account:
+                          | {
+                              /**
+                               * @description Account address
+                               * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                               */
+                              address: string
+                              /**
+                               * @description Whether the account is an EOA or an ERC-7579 smart account
+                               * @example erc7579
+                               * @enum {string}
+                               */
+                              type: 'eoa' | 'erc7579'
+                              /**
+                               * @description Whether the account is deployed on this chain. Absent when planning read no account state for the chain — never defaulted, which would claim an undeployed account is deployed.
+                               * @example true
+                               */
+                              deployed?: boolean
+                              /** @description ERC-7579 implementation planning read on this chain. Absent for an EOA, and for a smart account whose implementation was not resolved. */
+                              implementation?: {
+                                /**
+                                 * @description ERC-7579 account implementation
+                                 * @example Nexus
+                                 * @enum {string}
+                                 */
+                                name: 'Safe' | 'Kernel' | 'Nexus'
+                                /**
+                                 * @description Raw trailing version token returned by ERC-7579 `accountId()`, when valid; preserved without normalization
+                                 * @example v1.0.0
+                                 */
+                                version?: string
+                              }
+                              /** @description The EIP-7702 delegate this intent INSTALLS on this chain. Present only where the delegate is not yet in place — a delegation already in force is not reported here. */
+                              delegation?: {
+                                /**
+                                 * @description Delegate contract this intent installs
+                                 * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                                 */
+                                contract: string
+                              }
+                            }
+                          | {
+                              /**
+                               * @description Asset-holding Swig wallet the intent spends from
+                               * @example 9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM
+                               */
+                              wallet: string
+                              /**
+                               * @description Swig state account holding the wallet authority configuration. Distinct from `wallet`, which is where the assets live.
+                               * @example EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
+                               */
+                              swigAccount: string
+                              /** @description Authority the submitted signature was verified against when the intent was accepted, as recorded. Absent on an intent record written before it was recorded; never inferred from the account or from current chain state. */
+                              authority?:
+                                | {
+                                    /** @enum {string} */
+                                    kind: 'secp256k1'
+                                    /**
+                                     * @description Authority the submitted signature must recover to
+                                     * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                                     */
+                                    address: string
+                                  }
+                                | {
+                                    /** @enum {string} */
+                                    kind: 'secp256r1'
+                                    /**
+                                     * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
+                                     * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
+                                     */
+                                    publicKey: string
+                                  }
+                            }
+                          | {
+                              /**
+                               * @description Address funds are delivered to, in the destination chain's own format
+                               * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                               */
+                              address: string
+                            }
+                        /**
+                         * @description Token the requirement applies to
+                         * @example 0x833589fcd6edb6e08f4c7c32d4f71b54bda02913
+                         */
+                        tokenAddress: string
+                        /**
+                         * Format: uint256
+                         * @description Minimum amount, in the token's smallest unit
+                         * @example 1000000
+                         */
+                        amount: string
+                        /**
+                         * @description Always the canonical Permit2 contract on this chain. The account approves Permit2; the settlement contract pulls funds via Permit2 at claim time.
+                         * @example 0x000000000022d473030f116ddee9f6b43ac78ba3
+                         */
+                        spender: string
+                      }
+                    | {
+                        /** @enum {string} */
+                        kind: 'wrapNative'
+                        /**
+                         * @description Public native execution environment of the chain. A HyperCore delivery venue is `hypercore`, never the HyperEVM chain it settles on.
+                         * @example evm
+                         * @enum {string}
+                         */
+                        vm: 'evm' | 'svm' | 'tvm' | 'stellar' | 'hypercore'
+                        /**
+                         * @description CAIP-2 chain id the requirement applies on
+                         * @example eip155:8453
+                         */
+                        chainId: string
+                        /** @description The account the requirement applies to */
+                        account:
+                          | {
+                              /**
+                               * @description Account address
+                               * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                               */
+                              address: string
+                              /**
+                               * @description Whether the account is an EOA or an ERC-7579 smart account
+                               * @example erc7579
+                               * @enum {string}
+                               */
+                              type: 'eoa' | 'erc7579'
+                              /**
+                               * @description Whether the account is deployed on this chain. Absent when planning read no account state for the chain — never defaulted, which would claim an undeployed account is deployed.
+                               * @example true
+                               */
+                              deployed?: boolean
+                              /** @description ERC-7579 implementation planning read on this chain. Absent for an EOA, and for a smart account whose implementation was not resolved. */
+                              implementation?: {
+                                /**
+                                 * @description ERC-7579 account implementation
+                                 * @example Nexus
+                                 * @enum {string}
+                                 */
+                                name: 'Safe' | 'Kernel' | 'Nexus'
+                                /**
+                                 * @description Raw trailing version token returned by ERC-7579 `accountId()`, when valid; preserved without normalization
+                                 * @example v1.0.0
+                                 */
+                                version?: string
+                              }
+                              /** @description The EIP-7702 delegate this intent INSTALLS on this chain. Present only where the delegate is not yet in place — a delegation already in force is not reported here. */
+                              delegation?: {
+                                /**
+                                 * @description Delegate contract this intent installs
+                                 * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                                 */
+                                contract: string
+                              }
+                            }
+                          | {
+                              /**
+                               * @description Asset-holding Swig wallet the intent spends from
+                               * @example 9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM
+                               */
+                              wallet: string
+                              /**
+                               * @description Swig state account holding the wallet authority configuration. Distinct from `wallet`, which is where the assets live.
+                               * @example EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
+                               */
+                              swigAccount: string
+                              /** @description Authority the submitted signature was verified against when the intent was accepted, as recorded. Absent on an intent record written before it was recorded; never inferred from the account or from current chain state. */
+                              authority?:
+                                | {
+                                    /** @enum {string} */
+                                    kind: 'secp256k1'
+                                    /**
+                                     * @description Authority the submitted signature must recover to
+                                     * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                                     */
+                                    address: string
+                                  }
+                                | {
+                                    /** @enum {string} */
+                                    kind: 'secp256r1'
+                                    /**
+                                     * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
+                                     * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
+                                     */
+                                    publicKey: string
+                                  }
+                            }
+                          | {
+                              /**
+                               * @description Address funds are delivered to, in the destination chain's own format
+                               * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                               */
+                              address: string
+                            }
+                        /**
+                         * @description Token the requirement applies to
+                         * @example 0x833589fcd6edb6e08f4c7c32d4f71b54bda02913
+                         */
+                        tokenAddress: string
+                        /**
+                         * Format: uint256
+                         * @description Minimum amount, in the token's smallest unit
+                         * @example 1000000
+                         */
+                        amount: string
+                      }
+                  )[]
+                  /** @description Always empty: the initialization is sponsored and signed by nobody. Submit with `proofs: []`. */
+                  signingRequests: {
+                    /** @description The account this signature acts for, named inline per VM. Carries no per-chain observation, since one request can span chains. */
+                    account:
+                      | {
+                          /** @enum {string} */
+                          vm: 'evm'
+                          /**
+                           * @description Account the signature authorizes
+                           * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                           */
+                          address: string
+                        }
+                      | {
+                          /** @enum {string} */
+                          vm: 'svm'
+                          /**
+                           * @description Asset-holding Swig wallet the spend debits
+                           * @example 9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM
+                           */
+                          wallet: string
+                          /**
+                           * @description Swig state account holding the authority configuration. Distinct from `wallet`, which is where the assets live.
+                           * @example EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
+                           */
+                          swigAccount: string
+                        }
+                    /** @description What verifies the signature */
+                    authority:
+                      | {
+                          /** @enum {string} */
+                          kind: 'secp256k1'
+                          /**
+                           * @description Address the submitted signature must recover to
+                           * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                           */
+                          address: string
+                        }
+                      | {
+                          /** @enum {string} */
+                          kind: 'account'
+                          /** @enum {string} */
+                          vm: 'evm'
+                          /**
+                           * @description Account that verifies the signature itself
+                           * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                           */
+                          address: string
+                        }
+                      | {
+                          /** @enum {string} */
+                          kind: 'swigRole'
+                          /**
+                           * @description Swig role the spend was authorized under
+                           * @example 1
+                           */
+                          roleId: number
+                          /** @description The authority configured on that role */
+                          authority:
+                            | {
+                                /** @enum {string} */
+                                kind: 'secp256k1'
+                                /**
+                                 * @description Address the submitted signature must recover to
+                                 * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                                 */
+                                address: string
+                              }
+                            | {
+                                /** @enum {string} */
+                                kind: 'secp256r1'
+                                /**
+                                 * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
+                                 * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
+                                 */
+                                publicKey: string
+                              }
+                        }
+                    /** @description What the signature authorizes. Always agrees with the payload; never a restatement of the route. */
+                    scope:
+                      | {
+                          /** @enum {string} */
+                          vm: 'evm'
+                          /**
+                           * @description What the signature authorizes
+                           * @example claim
+                           * @enum {string}
+                           */
+                          action:
+                            | 'claim'
+                            | 'fill'
+                            | 'targetExecution'
+                            | 'delegation'
+                          /** @description The accounts and chains the action runs against */
+                          accounts: {
+                            /**
+                             * @description CAIP-2 chain id the account is authorized on
+                             * @example eip155:8453
+                             */
+                            chainId: string
+                            /**
+                             * @description Account address, in its own chain's format
+                             * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                             */
+                            address: string
+                          }[]
+                          /** @description Present only on a request that authorizes at least one HyperCore agent registration. Lists every registration the payload commits to, in registration (slot) order: one item for a per-leg payload, all of them for an aggregate `MultiChainOps` payload. Names what each registration commits to, which the payload itself carries only as CoreWriter calldata. Changing any action, their order, a nonce or an agent requires a fresh quote. */
+                          hyperCore?: {
+                            /** @description The canonical Hyperliquid action, exactly as the agent commits to it. Key order is part of the commitment — the agent address is recovered from a signature over its msgpack encoding — so it is served in the order it was signed in, not re-sorted. */
+                            action?: unknown
+                            /**
+                             * @description The nonce the action commits to
+                             * @example 1633493192000
+                             */
+                            nonce: number
+                            /** @description The agent this registration installs. It is derived from the action bytes above, so it authorises that action and nothing else. */
+                            agent: string
+                            /**
+                             * @description The named API-wallet slot the agent goes in. Registering evicts whatever the account had in that slot; the account's unnamed wallet is never used.
+                             * @example rh1
+                             */
+                            slot: string
+                          }[]
+                        }
+                      | {
+                          /** @enum {string} */
+                          vm: 'svm'
+                          /** @enum {string} */
+                          action: 'spend'
+                          /** @description The wallet the spend debits, on its chain */
+                          accounts: {
+                            /**
+                             * @description CAIP-2 chain id the account is authorized on
+                             * @example eip155:8453
+                             */
+                            chainId: string
+                            /**
+                             * @description Account address, in its own chain's format
+                             * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                             */
+                            address: string
+                          }[]
+                          /** @description The full instruction set this signature authorizes, in execution order, in the same shape a request carries instructions in. */
+                          instructions: {
+                            /**
+                             * @description Program to invoke, base58.
+                             * @example TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
+                             */
+                            programId: string
+                            /** @description Accounts the instruction reads or writes, in the order the program expects. */
+                            accounts: {
+                              /**
+                               * @description Account address, base58.
+                               * @example TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
+                               */
+                              pubkey: string
+                              /** @description Whether the instruction requires this account to sign. */
+                              isSigner: boolean
+                              /** @description Whether the instruction writes to this account. */
+                              isWritable: boolean
+                            }[]
+                            /**
+                             * @description Instruction data, base64.
+                             * @example CQ==
+                             */
+                            data: string
+                          }[]
+                          /** @description Address lookup tables the instructions resolve accounts through. The tables themselves are not inlined. */
+                          addressLookupTables: string[]
+                          /** @description Who pays the transaction fee, as a role rather than a key: the payload names no payer, and the relayer picks its own. */
+                          feePayer: {
+                            /** @enum {string} */
+                            kind: 'role'
+                            /** @enum {string} */
+                            role: 'relayer'
+                          }
+                          /** @description Slot range the spend is signable in */
+                          slotWindow: {
+                            /**
+                             * @description Slot the payload was pinned to
+                             * @example 370123456
+                             */
+                            from: string
+                            /**
+                             * @description Last slot it can be landed in
+                             * @example 370123516
+                             */
+                            to: string
+                          }
+                        }
+                    /** @description The chains the payload is cryptographically BOUND to, CAIP-2, each listed once — a `MultiChainOps` payload with several legs on one chain still names it once. This is what was signed rather than what the route is about: a Permit2 payload binds to the chain it claims funds on, so a destination request repeats the chain of the origin payload it duplicates. */
+                    chainIds: string[]
                     /**
-                     * @description Across spoke-pool deposit. Names a deposit to watch for a refund, not a delivery — an ACROSS intent is filled by our own relayer and tracked as an ordinary fill.
+                     * @description What the signature is for
+                     * @example originAuthorization
                      * @enum {string}
                      */
-                    type: 'ACROSS'
-                    /** @description The Across deposit id our claim opens on the origin chain, as a decimal uint256. Derived as keccak(arbiter | sponsor | nonce). */
-                    depositId: string
-                  }
-                | {
-                    /**
-                     * @description CAIP-2 chain id of the chain the bridge delivers to (e.g. `eip155:8453`, `solana:…`)
-                     * @example eip155:8453
-                     */
-                    destinationChainId: string
-                    /** @description Optional bridge-specific fill deadline duration, in seconds. Preserved on stored quote reload so checksum validation uses the same bridgeFill payload that was signed at quote time. */
-                    fillExpirationPeriod?: number
-                    /** @description Fill-tracker watch window, in seconds. The orchestrator owns this timeout; the fill-tracker reads it here to decide when a bridge fill has timed out. */
-                    fillStatusTimeout: number
-                    /**
-                     * @description Eco solver-network delivery
-                     * @enum {string}
-                     */
-                    type: 'ECO'
-                    /** @description Eco v1 quote ID for detailed delivery and refund tracking. */
-                    quoteId?: string
-                    /** @description Eco Portal intent hash. Use against Eco's intent status API to resolve the destination delivery transaction. */
-                    intentHash: string
-                    /** @description Eco's own id for the delivery chain, present only where it differs from `destinationChainId` (non-EVM destinations). Eco's status API reports fulfilment against this id. */
-                    providerDestinationChainId?: number
-                    /** @description Eco's own id for the chain the reward was funded on, present only where it differs from the deposit chain (non-EVM origins). */
-                    providerSourceChainId?: number
-                  }
-                | {
-                    /**
-                     * @description CAIP-2 chain id of the chain the bridge delivers to (e.g. `eip155:8453`, `solana:…`)
-                     * @example eip155:8453
-                     */
-                    destinationChainId: string
-                    /** @description Optional bridge-specific fill deadline duration, in seconds. Preserved on stored quote reload so checksum validation uses the same bridgeFill payload that was signed at quote time. */
-                    fillExpirationPeriod?: number
-                    /** @description Fill-tracker watch window, in seconds. The orchestrator owns this timeout; the fill-tracker reads it here to decide when a bridge fill has timed out. */
-                    fillStatusTimeout: number
-                    /**
-                     * @description Relay.link
-                     * @enum {string}
-                     */
-                    type: 'RELAY'
-                    /** @description Relay.link request ID. Use against Relay.link's status API to track the destination-chain fill. */
-                    requestId: string
-                  }
-                | {
-                    /**
-                     * @description CAIP-2 chain id of the chain the bridge delivers to (e.g. `eip155:8453`, `solana:…`)
-                     * @example eip155:8453
-                     */
-                    destinationChainId: string
-                    /** @description Optional bridge-specific fill deadline duration, in seconds. Preserved on stored quote reload so checksum validation uses the same bridgeFill payload that was signed at quote time. */
-                    fillExpirationPeriod?: number
-                    /** @description Fill-tracker watch window, in seconds. The orchestrator owns this timeout; the fill-tracker reads it here to decide when a bridge fill has timed out. */
-                    fillStatusTimeout: number
-                    /**
-                     * @description NEAR Intents
-                     * @enum {string}
-                     */
-                    type: 'NEAR'
-                    /** @description NEAR Intents deposit address on the origin chain, in its native form (EVM 0x or Solana base58). Track fill status via the NEAR Intents status API keyed on this address. */
-                    depositAddress: string
-                  }
-                | {
-                    /**
-                     * @description CAIP-2 chain id of the chain the bridge delivers to (e.g. `eip155:8453`, `solana:…`)
-                     * @example eip155:8453
-                     */
-                    destinationChainId: string
-                    /** @description Optional bridge-specific fill deadline duration, in seconds. Preserved on stored quote reload so checksum validation uses the same bridgeFill payload that was signed at quote time. */
-                    fillExpirationPeriod?: number
-                    /** @description Fill-tracker watch window, in seconds. The orchestrator owns this timeout; the fill-tracker reads it here to decide when a bridge fill has timed out. */
-                    fillStatusTimeout: number
-                    /**
-                     * @description Rhino.fi
-                     * @enum {string}
-                     */
-                    type: 'RHINO'
-                    /** @description Rhino.fi commitment ID. Use against Rhino.fi's status API to track the destination-chain fill. */
-                    commitmentId: string
-                  }
-                | {
-                    /**
-                     * @description CAIP-2 chain id of the chain the bridge delivers to (e.g. `eip155:8453`, `solana:…`)
-                     * @example eip155:8453
-                     */
-                    destinationChainId: string
-                    /** @description Optional bridge-specific fill deadline duration, in seconds. Preserved on stored quote reload so checksum validation uses the same bridgeFill payload that was signed at quote time. */
-                    fillExpirationPeriod?: number
-                    /** @description Fill-tracker watch window, in seconds. The orchestrator owns this timeout; the fill-tracker reads it here to decide when a bridge fill has timed out. */
-                    fillStatusTimeout: number
-                    /**
-                     * @description Circle CCTP
-                     * @enum {string}
-                     */
-                    type: 'CCTP'
-                    /** @description Circle CCTP source domain ID — needed to fetch the attestation for the burn message on the source chain. */
-                    sourceDomainId: number
-                    /** @description Circle CCTP destination domain ID. */
-                    destinationDomainId: number
-                  }
-                | {
-                    /**
-                     * @description CAIP-2 chain id of the chain the bridge delivers to (e.g. `eip155:8453`, `solana:…`)
-                     * @example eip155:8453
-                     */
-                    destinationChainId: string
-                    /** @description Optional bridge-specific fill deadline duration, in seconds. Preserved on stored quote reload so checksum validation uses the same bridgeFill payload that was signed at quote time. */
-                    fillExpirationPeriod?: number
-                    /** @description Fill-tracker watch window, in seconds. The orchestrator owns this timeout; the fill-tracker reads it here to decide when a bridge fill has timed out. */
-                    fillStatusTimeout: number
-                    /**
-                     * @description LayerZero Value Transfer
-                     * @enum {string}
-                     */
-                    type: 'LZ'
-                    /** @description LayerZero quote ID. Use against LayerZero's transfer status API to track the destination-chain fill. */
-                    quoteId: string
-                    /** @description LayerZero's own chain key for the destination (e.g. `base`). Its status response names chains by key rather than id. */
-                    dstChainKey: string
-                    /** @description Protocols the quote routed through (e.g. STARGATE_V2_TAXI, CCTP_V2). One transfer can span several. */
-                    routeTypes: string[]
-                  }
-            }[]
+                    purpose:
+                      | 'originAuthorization'
+                      | 'destinationAuthorization'
+                      | 'targetExecutionAuthorization'
+                      | 'delegationAuthorization'
+                    /** @description Native deadlines that apply to this payload. Empty when it carries none — quote retention is a separate thing and is not a promise that a stale payload is submittable. */
+                    validity: (
+                      | {
+                          /** @enum {string} */
+                          kind: 'timestamp'
+                          /**
+                           * @description Unix seconds after which the payload is dead
+                           * @example 1733493192
+                           */
+                          expiresAt: number
+                        }
+                      | {
+                          /** @enum {string} */
+                          kind: 'svmSlot'
+                          /**
+                           * @description CAIP-2 chain id whose slots the deadline counts in
+                           * @example solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp
+                           */
+                          chainId: string
+                          /**
+                           * @description Slot after which the payload is dead
+                           * @example 370123516
+                           */
+                          expiresAtSlot: string
+                        }
+                    )[]
+                    /** @description The native payload to sign */
+                    payload:
+                      | {
+                          /** @enum {string} */
+                          kind: 'eip712'
+                          /** @description EIP-712 typed data definition ready for `signTypedData` */
+                          typedData: {
+                            /** @description EIP-712 domain separator fields */
+                            domain: {
+                              name?: string
+                              version?: string
+                              chainId?: number
+                              verifyingContract?: string
+                              salt?: string
+                            }
+                            /** @description EIP-712 type definitions keyed by type name */
+                            types: {
+                              [key: string]: {
+                                name: string
+                                type: string
+                              }[]
+                            }
+                            /**
+                             * @description Name of the top-level type to sign
+                             * @example PermitBatchWitnessTransferFrom
+                             */
+                            primaryType: string
+                            /** @description Message values keyed by field name. uint256 fields are encoded as decimal strings on the wire and re-coerced to bigint client-side before signing. */
+                            message: {
+                              [key: string]: unknown
+                            }
+                          }
+                          /**
+                           * @description How the proof is encoded: raw 65-byte ECDSA for an EOA, or the account-native encoding for an ERC-7579 account, on which no length rule is imposed.
+                           * @example secp256k1
+                           * @enum {string}
+                           */
+                          signatureFormat: 'secp256k1' | 'account'
+                        }
+                      | {
+                          /** @enum {string} */
+                          kind: 'personalSign'
+                          message: {
+                            /** @enum {string} */
+                            encoding: 'utf8'
+                            /**
+                             * @description Sign these characters as UTF-8 TEXT — viem `signMessage({ message })`, never `{ raw }`. Signing the decoded bytes yields a well-formed signature the chain rejects.
+                             * @example a3f2c1d4e5b6a7980f1e2d3c4b5a69788796a5b4c3d2e1f0a1b2c3d4e5f60718
+                             */
+                            value: string
+                          }
+                        }
+                      | {
+                          /** @enum {string} */
+                          kind: 'eip7702'
+                          /** @description The delegation to authorize. Carries no nonce: the orchestrator observes no EOA nonces, and one read at quote time is stale by signing time — the signer supplies it with the proof. */
+                          authorization: {
+                            /**
+                             * @description Native chain value of the authorization tuple, not CAIP-2
+                             * @example 8453
+                             */
+                            chainId: number
+                            /**
+                             * @description Delegate contract the authorization installs
+                             * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                             */
+                            address: string
+                          }
+                        }
+                      | {
+                          /** @enum {string} */
+                          kind: 'webauthn'
+                          /**
+                           * @description Challenge the authenticator signs: 32 bytes as 0x-prefixed hex. Pass the decoded bytes as the WebAuthn `challenge`, not the hex text.
+                           * @example 0xa3f2c1d4e5b6a7980f1e2d3c4b5a69788796a5b4c3d2e1f0a1b2c3d4e5f60718
+                           */
+                          challenge: string
+                        }
+                  }[]
+                }
+            )[]
           }
         }
       }

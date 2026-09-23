@@ -4,13 +4,16 @@ import { base, mainnet } from 'viem/chains'
 import {
   InvalidSolanaTransactionArtifactError,
   isInvalidSolanaTransactionArtifactError,
+  isSolanaAccountAlreadyCreated,
   isSolanaAccountNotCreated,
   isSolanaQuoteExpiredError,
+  SolanaAccountAlreadyCreatedError,
   type SolanaAccountNotCreatedError,
   SolanaQuoteExpiredError,
 } from '../../src/errors/index'
 import {
   type CrossChainSolanaOriginTransaction,
+  createSolanaSwigId,
   type IntentOperationGroup,
   RhinestoneSDK,
   type SameChainSolanaInstructionsTransaction,
@@ -246,6 +249,17 @@ async function standaloneCapabilitySurface() {
   account.getAddress('evm')
   // @ts-expect-error EVM management is unavailable
   account.deploy(mainnet)
+  // The Swig itself is created with the id it was minted with.
+  const minted: { id: Hex; swig: typeof swig; wallet: typeof swig } =
+    createSolanaSwigId()
+  const created: boolean = await account.deploy(solanaDevnet, {
+    swigId: minted.id,
+  })
+  account.deploy(solanaDevnet)
+  // @ts-expect-error the Swig id is 0x-prefixed hex
+  account.deploy(solanaDevnet, { swigId: '07'.repeat(32) })
+  // @ts-expect-error creation is always sponsored
+  account.deploy(solanaDevnet, { sponsored: false })
 
   const handle: SolanaStandaloneAccount<{ solana: typeof standaloneConfig }> =
     account
@@ -276,6 +290,7 @@ async function standaloneCapabilitySurface() {
   })
   const receiverAddress: Address = receiverPaired.getAddress('evm')
   receiverPaired.prepareTransaction(deliveryFromSolana)
+  receiverPaired.deploy(solanaDevnet, { swigId: `0x${'07'.repeat(32)}` })
   receiverPaired.prepareTransaction({
     ...deliveryFromSolana,
     // @ts-expect-error an address-only receiver cannot execute destination calls
@@ -288,6 +303,7 @@ async function standaloneCapabilitySurface() {
   void wallet
   void requests
   void status
+  void created
 }
 
 async function compositeCapabilitySurface() {
@@ -315,6 +331,22 @@ async function compositeCapabilitySurface() {
   account.prepareTransaction(deliveryTransaction)
   account.prepareTransaction(defaultedDelivery)
   account.prepareTransaction({ chain: mainnet, calls: [] })
+  // One `deploy` for both VMs: an EVM chain deploys the smart account, a
+  // Solana cluster creates the Swig derived from it.
+  const evmDeployed: boolean = await account.deploy(mainnet, {
+    sponsored: true,
+  })
+  const swigCreated: boolean = await account.deploy(solanaDevnet)
+  account.deploy(solanaDevnet, { swigId: `0x${'07'.repeat(32)}` })
+  // @ts-expect-error the Solana cluster takes a Swig id, not EVM sponsorship
+  account.deploy(solanaDevnet, { sponsored: true })
+
+  const evmOnly = await sdk.createAccount({
+    evm: { owners: { type: 'ecdsa', accounts: [owner] } },
+  })
+  evmOnly.deploy(mainnet)
+  // @ts-expect-error an account with no managed Solana entry has no Swig to create
+  evmOnly.deploy(solanaDevnet)
 
   const messages = account.getTransactionMessages(
     null as unknown as Parameters<typeof account.getTransactionMessages>[0],
@@ -326,6 +358,8 @@ async function compositeCapabilitySurface() {
     messages[0]?.purpose
 
   void evmAddress
+  void evmDeployed
+  void swigCreated
   void solanaAddressValue
   void requests
   void firstPurpose
@@ -470,6 +504,20 @@ const invalidArtifact: boolean =
   isInvalidSolanaTransactionArtifactError(executionError)
 const expired: boolean = isSolanaQuoteExpiredError(expiredError)
 const uncreated: boolean = isSolanaAccountNotCreated(uncreatedError)
+declare const alreadyCreated: unknown
+const existingSwig: string | undefined =
+  alreadyCreated instanceof SolanaAccountAlreadyCreatedError
+    ? alreadyCreated.swigAddress
+    : undefined
+const existingCluster: number | undefined =
+  alreadyCreated instanceof SolanaAccountAlreadyCreatedError
+    ? alreadyCreated.chainId
+    : undefined
+type WaitedStatus = Awaited<
+  ReturnType<SolanaStandaloneAccount['waitForExecution']>
+>
+const existingRefusal: boolean = isSolanaAccountAlreadyCreated(alreadyCreated)
+const deploymentPurpose: WaitedStatus['purpose'] = 'deployment'
 
 void compositeCapabilitySurface
 void standaloneCapabilitySurface
@@ -508,3 +556,7 @@ void forbiddenDeliveryRecipient
 void invalidArtifact
 void expired
 void uncreated
+void existingSwig
+void existingCluster
+void deploymentPurpose
+void existingRefusal

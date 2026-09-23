@@ -1,6 +1,7 @@
 import {
   type BridgeFill,
   type CrossChainSolanaOriginTransaction,
+  createSolanaSwigId,
   type EvmAccountConfig,
   type IntentOperationGroup,
   RhinestoneSDK,
@@ -8,6 +9,7 @@ import {
   type SigningProof,
   type SigningRequest,
   type SolanaCrossChainExecutionMetadata,
+  type SolanaDeployOptions,
   type SolanaExecutionMetadata,
   solanaAddress,
   solanaDevnet,
@@ -16,8 +18,10 @@ import {
 import {
   InvalidSolanaTransactionArtifactError,
   isInvalidSolanaTransactionArtifactError,
+  isSolanaAccountAlreadyCreated,
   isSolanaAccountNotCreated,
   isSolanaQuoteExpiredError,
+  type SolanaAccountAlreadyCreatedError,
   type SolanaAccountNotCreatedError,
   SolanaQuoteExpiredError,
 } from '@rhinestone/sdk/errors'
@@ -138,6 +142,17 @@ async function useManagedSolanaApi() {
       : undefined
   const signingRequests: SigningRequest[] = prepared.quotes.best.signingRequests
   const purposes = signingRequests.map(({ purpose }) => purpose)
+  // The EVM-derived Swig needs no id; an independent one is created with its own.
+  const created: boolean = await account.deploy(solanaDevnet)
+  const independent = createSolanaSwigId()
+  const standalone = await devSdk.createAccount({
+    solana: {
+      owner: { type: 'ecdsa', account: owner },
+      swig: independent.swig,
+    },
+  })
+  const deployOptions: SolanaDeployOptions = { swigId: independent.id }
+  await standalone.deploy(solanaDevnet, deployOptions)
   const signed = await account.signTransaction(prepared)
   // One proof per request, in the same order.
   const proofs: SigningProof[] = signed.proofs
@@ -147,12 +162,15 @@ async function useManagedSolanaApi() {
   void signingRequests
   void purposes
   void proofs
+  void created
 }
 
 const invalidArtifact = new InvalidSolanaTransactionArtifactError('fixture')
 const expired = new SolanaQuoteExpiredError('intent-id')
 declare const uncreated: SolanaAccountNotCreatedError
+declare const alreadyCreated: SolanaAccountAlreadyCreatedError
 const recognizedErrors: boolean[] = [
+  isSolanaAccountAlreadyCreated(alreadyCreated),
   isInvalidSolanaTransactionArtifactError(invalidArtifact),
   isSolanaQuoteExpiredError(expired),
   isSolanaAccountNotCreated(uncreated),

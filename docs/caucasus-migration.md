@@ -39,7 +39,8 @@ await sdk.createAccount({ solana, evm: managedEvmConfig })
 
 There is no EVM-derived fallback and account construction does not deploy or
 verify the Swig. Save its state-account address during provisioning; the SDK
-derives the asset-holding wallet PDA. The Solana owner may
+derives the asset-holding wallet PDA. To create a Swig through the SDK, call
+`account.deploy(solanaDevnet)` — see [Creating the Swig](#creating-the-swig). The Solana owner may
 be an ECDSA account or WebAuthn account and may be shared with EVM, but the two
 VMs authorize independently.
 
@@ -54,6 +55,30 @@ default recipient but cannot execute calls.
 
 Previously prepared paired plain-Solana artifacts do not get reinterpreted.
 Reconcile any possible submission, then prepare again with the explicit Swig.
+
+### Creating the Swig
+
+`account.deploy(solanaChain, { swigId? })` creates the configured Swig as a
+sponsored deployment intent, installs the configured owner as its root, and
+resolves `true` once the intent completes. Nothing is signed; the integrator's
+gas sponsorship pays the rent and fees.
+
+```ts
+// An independent Swig: mint once, save `id` with `swig`.
+const { id, swig } = createSolanaSwigId()
+const account = await sdk.createAccount({ solana: { owner, swig } })
+await account.deploy(solanaDevnet, { swigId: id })
+
+// The Swig derived from a managed EVM account needs no id.
+await composite.deploy(solanaDevnet)
+```
+
+Creation is one-shot: a Swig created with the wrong owner permanently strands
+its wallet. A wrong or missing id, an ECDSA owner without `publicKey` (such as a
+JSON-RPC account), and non-development environments are refused before any
+request. A Swig that already exists throws `SolanaAccountAlreadyCreatedError`
+rather than returning `false`, because its authority is not verified. The
+EVM-chain `deploy(chain, { sponsored })` is unchanged.
 
 ## Swap sponsorship
 
@@ -330,6 +355,8 @@ Other changes:
   preserved, and `partial` still means "check the account before retrying".
 - `refunds` entries are `{ transaction }` rather than `{ chain, txHash }`. An
   empty array means none were observed, which is still not proof none occurred.
+- `purpose` is `'execution' | 'deployment'`: a Swig creation reads back as a
+  `deployment`. Handle both if you switch on it exhaustively.
 
 ### Opting into full detail
 
@@ -363,6 +390,7 @@ deliberately.
 | `IncompleteIntentProofsError` | a proof vector is missing slots, which it names |
 | `MismatchedIntentProofError` | a contribution belongs to another intent, another request set, another slot, or duplicates one already filled |
 | `InvalidPreparedTransactionError` | a prepared transaction was built for an earlier wire version |
+| `SolanaAccountAlreadyCreatedError` | `deploy(solanaChain)` targets a Swig that already exists; carries `swigAddress` and `chainId` |
 
 Existing error envelopes, codes, detail paths and trace ids are preserved,
 including the specialized missing-Swig refusal — which now carries its chain as
@@ -370,9 +398,9 @@ a CAIP-2 string.
 
 ## Not in this release
 
-- Self-service Swig creation, deployment-only quotes and automatic re-quote
-  flows. A missing spending Swig still refuses with
-  `SOLANA_ACCOUNT_NOT_CREATED`.
+- Creating the Swig inside the first spend, and automatic re-quote flows. A
+  missing spending Swig still refuses with `SOLANA_ACCOUNT_NOT_CREATED`; create
+  it first with `deploy(solanaChain)`.
 - New estimate or intent-list methods.
 - WebAuthn signing requests outside a passkey-owned managed Solana origin, and
   cross-VM destination execution other than EVM `calls` after a Solana → EVM

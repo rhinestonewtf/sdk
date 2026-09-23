@@ -1,3 +1,4 @@
+import { type Account, bytesToHex, type Hex, hexToBytes } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { mainnet, optimism } from 'viem/chains'
 import { describe, expect, test, vi } from 'vitest'
@@ -11,25 +12,38 @@ import {
   publicQuote,
 } from '../../test/utils/caucasus'
 import { signingPasskey } from '../../test/utils/passkeys'
-import { asSwigNamespace, locateSwig } from '../accounts/solana/address'
+import {
+  asSwigNamespace,
+  locateSwig,
+  locateSwigById,
+} from '../accounts/solana/address'
 import { formatCaip2, parseCaip2, toEvmChainReference } from '../chains/caip2'
+import type { SolanaAddress } from '../chains/non-evm'
 import {
   hyperCorePerp,
   solanaAddress,
   solanaDevnet,
   solanaMainnet,
 } from '../chains/non-evm'
+import {
+  parseErrorEnvelope,
+  SolanaAccountAlreadyCreatedError,
+} from '../clients/orchestrator/errors'
 import type { NormalizedIntentInput } from '../clients/orchestrator/normalized'
 import { projectCompatibleIntentInput } from '../clients/orchestrator/normalized'
 import type {
   HyperCoreOrderAction,
   Quote,
   SigningRequest,
+  SwigAuthority,
 } from '../clients/orchestrator/public'
 import type {
+  OrchestratorDeploymentQuote,
+  OrchestratorExecutionQuote,
   OrchestratorIntentRequest,
   OrchestratorQuote,
 } from '../clients/orchestrator/types'
+import type { SolanaManagedAccountConfig, SolanaOwner } from '../config/account'
 import type { LegacyAccountConfig } from '../config/legacy'
 import { resolveAccountConfig, resolveSdkConfig } from '../config/resolve'
 import type { AccountInvocationContext } from '../config/resolved'
@@ -39,6 +53,7 @@ import {
   UnsupportedAccountCapabilityError,
 } from '../errors/capability'
 import {
+  IntentFailedError,
   InvalidPreparedTransactionError,
   InvalidSolanaTransactionArtifactError,
   QuoteNotInPreparedTransactionError,
@@ -56,6 +71,12 @@ import {
   reconstructSolanaIntent,
   signSolanaIntent,
 } from '../transactions/intents/solana'
+import {
+  type PreparedSolanaDeployment,
+  prepareSolanaDeployment,
+  type SolanaDeploymentInput,
+  submitSolanaDeployment,
+} from '../transactions/intents/solana-deployment'
 import type {
   PreparedTransactionData,
   SignedTransactionData,
@@ -352,7 +373,9 @@ describe('managed Solana account construction', () => {
         ).toThrow(AccountVmNotConfiguredError)
         expect(typeof account.prepareTransaction).toBe('function')
         expect(typeof account.waitForExecution).toBe('function')
-        for (const evmOnly of ['deploy', 'signMessage', 'getPortfolio']) {
+        // `deploy` creates the Swig; the rest is EVM account management.
+        expect(typeof account.deploy).toBe('function')
+        for (const evmOnly of ['isDeployed', 'signMessage', 'getPortfolio']) {
           expect(evmOnly in account).toBe(false)
         }
         expect(account.config.solana).toEqual({ owner: ecdsaOwner, swig })
@@ -458,7 +481,7 @@ describe('managed Solana account facade', () => {
     })
   }
 
-  function quote(intentId: string): OrchestratorQuote {
+  function quote(intentId: string): OrchestratorExecutionQuote {
     const costEntry = {
       chainId: solanaDevnet.caip2,
       tokenAddress: mint,
@@ -1315,7 +1338,7 @@ describe('managed Solana cross-chain delivery facade', () => {
     })
   }
 
-  function quote(intentId: string): OrchestratorQuote {
+  function quote(intentId: string): OrchestratorExecutionQuote {
     return {
       ...caucasusQuote({
         intentId,
@@ -1894,7 +1917,9 @@ describe('standalone managed Solana account facade', () => {
     },
   }
 
-  function quote(intentId: 'same-chain' | 'cross-chain'): OrchestratorQuote {
+  function quote(
+    intentId: 'same-chain' | 'cross-chain',
+  ): OrchestratorExecutionQuote {
     const input = costEntry({
       chainId: solanaDevnet.caip2,
       tokenAddress: mint,
@@ -3489,3 +3514,373 @@ describe('account boundary adapters', () => {
 function quoteFixture(intentId: string): Quote {
   return publicQuote(caucasusQuote({ intentId, chainId: mainnet.id }))
 }
+
+describe('managed Solana Swig creation', () => {
+  const devSdk = resolveSdkConfig({
+    apiKey: 'offline',
+    endpointUrl: 'https://dev.v1.orchestrator.rhinestone.dev',
+    useDevContracts: true,
+  })
+  // An independently minted Swig: id = 32 × 0x07.
+  const independentId = `0x${'07'.repeat(32)}` as const
+  const independent = locateSwigById(hexToBytes(independentId))
+
+  function deploymentRoute(
+    target: { readonly swig: string; readonly wallet: string },
+    authority: SwigAuthority,
+  ): OrchestratorDeploymentQuote {
+    const leg = {
+      vm: 'svm' as const,
+      chainId: solanaDevnet.caip2,
+      account: { wallet: target.wallet, swigAccount: target.swig, authority },
+    }
+    return {
+      intentId: 'deployment-intent',
+      purpose: 'deployment',
+      expiresAt: 4_000_000_000,
+      estimatedFillTime: { seconds: 2 },
+      settlementLayer: 'SAME_CHAIN',
+      plan: { source: [], destination: leg, deployments: [leg] },
+      cost: emptyCost(),
+      deploymentCosts: [],
+      requirements: [],
+      signingRequests: [],
+    }
+  }
+
+  function ports(route: OrchestratorQuote) {
+    const createQuote = vi.fn(async (_request: OrchestratorIntentRequest) => ({
+      traceId: 'quote-trace',
+      routes: [route],
+    }))
+    const submitIntent = vi.fn(async (intent: { intentId: string }) => ({
+      traceId: 'submit-trace',
+      intentId: intent.intentId,
+    }))
+    const context = {
+      quoteClient: { createQuote },
+      submissionClient: { submitIntent },
+      now: Date.now,
+    }
+    return {
+      createQuote,
+      submitIntent,
+      prepareSolanaDeployment: vi.fn((input: SolanaDeploymentInput) =>
+        prepareSolanaDeployment(context, input),
+      ),
+      submitSolanaDeployment: vi.fn((prepared: PreparedSolanaDeployment) =>
+        submitSolanaDeployment(context, prepared),
+      ),
+    }
+  }
+
+  function completed(intentId: string) {
+    return {
+      traceId: `status-${intentId}`,
+      intentId,
+      purpose: 'deployment' as const,
+      status: 'COMPLETED' as const,
+      operations: [],
+      terminal: true,
+    }
+  }
+
+  function standalone(
+    options: {
+      readonly owner?: SolanaOwner
+      readonly authority?: SwigAuthority
+      readonly sdk?: ReturnType<typeof resolveSdkConfig>
+      readonly endpoint?: string
+      readonly route?: OrchestratorQuote
+    } = {},
+  ) {
+    const solanaOwner = options.owner ?? { type: 'ecdsa', account: owner }
+    const authority = options.authority ?? {
+      kind: 'secp256k1',
+      address: owner.address,
+    }
+    const sdk = options.sdk ?? devSdk
+    const workflows = ports(
+      options.route ?? deploymentRoute(independent, authority),
+    )
+    const waitForIntentStatus = vi.fn(async (intentId: string) =>
+      completed(intentId),
+    )
+    const facade = createSolanaAccountFacade(
+      {
+        owner: solanaOwner,
+        walletAddress: independent.wallet,
+        swigAddress: independent.swig,
+        endpoint: options.endpoint ?? sdk.orchestratorUrl,
+      },
+      { solana: { owner: solanaOwner, swig: independent.swig } },
+      {
+        config: sdk,
+        project: { solana: workflows, waitForIntentStatus } as never,
+        createAccount: () => {
+          throw new Error('a standalone Solana account has no EVM context')
+        },
+      },
+    )
+    return { facade, workflows, waitForIntentStatus }
+  }
+
+  test('creates an independent Swig with its saved id and the owner as root', async () => {
+    const { facade, workflows, waitForIntentStatus } = standalone()
+
+    await expect(
+      facade.deploy(solanaDevnet, { swigId: independentId }),
+    ).resolves.toBe(true)
+
+    expect(workflows.createQuote).toHaveBeenCalledOnce()
+    const request = workflows.createQuote.mock.calls[0]![0]
+    expect(request.account).toEqual({
+      svm: {
+        type: 'swig',
+        address: independent.wallet,
+        swigAccount: independent.swig,
+        authorization: { kind: 'secp256k1', address: owner.address },
+        initData: {
+          authority: { kind: 'secp256k1', publicKey: owner.publicKey },
+          id: independentId,
+        },
+      },
+    })
+    expect(request.options).toEqual({ sponsorship: { gas: true } })
+    expect(workflows.submitIntent).toHaveBeenCalledWith(
+      { intentId: 'deployment-intent', proofs: [] },
+      expect.objectContaining({ sponsored: true }),
+    )
+    expect(waitForIntentStatus).toHaveBeenCalledWith('deployment-intent')
+  })
+
+  test('installs a passkey owner under its compressed key', async () => {
+    const { account: passkey, compressedPublicKey } = signingPasskey()
+    const authority = {
+      kind: 'secp256r1' as const,
+      publicKey: compressedPublicKey,
+    }
+    const { facade, workflows } = standalone({
+      owner: { type: 'passkey', account: passkey },
+      authority,
+    })
+
+    await facade.deploy(solanaDevnet, { swigId: independentId })
+
+    expect(workflows.createQuote.mock.calls[0]![0].account.svm).toMatchObject({
+      authorization: authority,
+      initData: { authority, id: independentId },
+    })
+  })
+
+  test.each([
+    ['a missing id', undefined, /createSolanaSwigId\(\)/],
+    ['a malformed id', '0x1234', /32-byte Swig id/],
+    [
+      'an id deriving another Swig',
+      `0x${'08'.repeat(32)}`,
+      /does not derive the configured Swig/,
+    ],
+  ])(
+    'refuses %s before contacting the orchestrator',
+    async (_label, swigId, message) => {
+      const { facade, workflows } = standalone()
+      const refusal = facade.deploy(
+        solanaDevnet,
+        swigId === undefined ? undefined : { swigId: swigId as Hex },
+      )
+      await expect(refusal).rejects.toBeInstanceOf(
+        UnsupportedAccountCapabilityError,
+      )
+      await expect(refusal).rejects.toThrow(message)
+      expect(workflows.createQuote).not.toHaveBeenCalled()
+    },
+  )
+
+  test.each([
+    ['a production SDK', { sdk: resolveSdkConfig({ apiKey: 'offline' }) }],
+    ['another endpoint', { endpoint: 'https://other.example' }],
+  ])(
+    'refuses %s before contacting the orchestrator',
+    async (_label, options) => {
+      const { facade, workflows } = standalone(options)
+      await expect(
+        facade.deploy(solanaDevnet, { swigId: independentId }),
+      ).rejects.toBeInstanceOf(ManagedSolanaAccountNotSupportedError)
+      expect(workflows.createQuote).not.toHaveBeenCalled()
+    },
+  )
+
+  test('refuses a chain that is not canonical Solana', async () => {
+    const { facade, workflows } = standalone()
+    await expect(
+      facade.deploy(
+        { ...solanaDevnet, name: 'Solana Lookalike' },
+        { swigId: independentId },
+      ),
+    ).rejects.toBeInstanceOf(InvalidSolanaTransactionArtifactError)
+    expect(workflows.createQuote).not.toHaveBeenCalled()
+  })
+
+  test.each([
+    [
+      'exposes no public key',
+      { address: owner.address, type: 'json-rpc' } as unknown as Account,
+      /exposes none/,
+    ],
+    [
+      "carries another key's public key",
+      {
+        ...owner,
+        publicKey: privateKeyToAccount(`0x${'09'.repeat(32)}`).publicKey,
+      },
+      /does not belong to its `address`/,
+    ],
+  ])('refuses an ECDSA owner that %s', async (_label, account, message) => {
+    const { facade, workflows } = standalone({
+      owner: { type: 'ecdsa', account },
+    })
+    const refusal = facade.deploy(solanaDevnet, { swigId: independentId })
+    await expect(refusal).rejects.toBeInstanceOf(
+      UnsupportedAccountCapabilityError,
+    )
+    await expect(refusal).rejects.toThrow(message)
+    expect(workflows.createQuote).not.toHaveBeenCalled()
+  })
+
+  test('surfaces a failed deployment intent', async () => {
+    const { facade, waitForIntentStatus } = standalone()
+    waitForIntentStatus.mockRejectedValueOnce(
+      new IntentFailedError({ context: { intentId: 'deployment-intent' } }),
+    )
+    await expect(
+      facade.deploy(solanaDevnet, { swigId: independentId }),
+    ).rejects.toBeInstanceOf(IntentFailedError)
+  })
+
+  test('surfaces an existing Swig as the dedicated error, never as success', async () => {
+    const { facade, workflows } = standalone()
+    workflows.createQuote.mockRejectedValueOnce(
+      parseErrorEnvelope(
+        {
+          code: 'UNPROCESSABLE_CONTENT',
+          message: 'exists',
+          traceId: 'trace',
+          details: [
+            {
+              message: 'exists',
+              context: {
+                code: 'ACCOUNT_ALREADY_DEPLOYED',
+                destinationChainId: solanaDevnet.caip2,
+                swig: independent.swig,
+                wallet: independent.wallet,
+              },
+            },
+          ],
+        },
+        422,
+      ),
+    )
+    const refusal = facade.deploy(solanaDevnet, { swigId: independentId })
+    await expect(refusal).rejects.toBeInstanceOf(
+      SolanaAccountAlreadyCreatedError,
+    )
+    await expect(refusal).rejects.toMatchObject({
+      swigAddress: independent.swig,
+      chainId: 792703810,
+    })
+    expect(workflows.submitIntent).not.toHaveBeenCalled()
+  })
+
+  function composite(options: { readonly swig?: SolanaAddress | false } = {}) {
+    const compatibilityConfig: LegacyAccountConfig<unknown> = {
+      owners: { type: 'ecdsa', accounts: [owner] },
+      useDevContracts: true,
+    }
+    const swig = options.swig === undefined ? managedSwig : options.swig
+    const target = swig === independent.swig ? independent : managedSwigLocation
+    const solanaPorts = ports(
+      deploymentRoute(target, { kind: 'secp256k1', address: owner.address }),
+    )
+    const workflows = {
+      getAddress: vi.fn(() => owner.address),
+      deploy: vi.fn(async () => true),
+      waitForIntentStatus: vi.fn(async (_context, intentId: string) =>
+        completed(intentId),
+      ),
+      ...solanaPorts,
+    }
+    const facade = createAccountFacade(
+      compatibilityConfig,
+      {
+        evm: compatibilityConfig as EvmAccountConfig,
+        ...(swig
+          ? { solana: { owner: { type: 'ecdsa', account: owner }, swig } }
+          : {}),
+      } as { evm: EvmAccountConfig; solana?: SolanaManagedAccountConfig },
+      {
+        config: resolveSdkConfig({ apiKey: 'offline', useDevContracts: true }),
+        project: {} as never,
+        createAccount: (context) => ({
+          context,
+          workflows: workflows as never,
+        }),
+      },
+    )
+    return { facade, workflows }
+  }
+
+  test('creates the EVM-derived Swig of a composite account with no id', async () => {
+    const { facade, workflows } = composite()
+
+    await expect(facade.deploy(solanaDevnet)).resolves.toBe(true)
+
+    const request = workflows.createQuote.mock.calls[0]![0]
+    expect(request.account).not.toHaveProperty('evm')
+    expect(request.account.svm).toMatchObject({
+      swigAccount: managedSwig,
+      initData: { id: bytesToHex(managedSwigLocation.id) },
+    })
+    expect(workflows.waitForIntentStatus).toHaveBeenCalledWith(
+      expect.objectContaining({ method: 'deploy' }),
+      'deployment-intent',
+    )
+    expect(workflows.deploy).not.toHaveBeenCalled()
+  })
+
+  test('needs the saved id for an independent Swig on a composite account', async () => {
+    const { facade, workflows } = composite({ swig: independent.swig })
+
+    await expect(facade.deploy(solanaDevnet)).rejects.toThrow(
+      /createSolanaSwigId\(\)/,
+    )
+    expect(workflows.createQuote).not.toHaveBeenCalled()
+    await expect(
+      facade.deploy(solanaDevnet, { swigId: independentId }),
+    ).resolves.toBe(true)
+  })
+
+  test('keeps the EVM deployment path for an EVM chain', async () => {
+    const { facade, workflows } = composite()
+
+    await expect(facade.deploy(mainnet, { sponsored: true })).resolves.toBe(
+      true,
+    )
+    expect(workflows.deploy).toHaveBeenCalledWith(
+      expect.objectContaining({ method: 'deploy' }),
+      toEvmChainReference(mainnet.id),
+      { sponsored: true },
+    )
+    expect(workflows.createQuote).not.toHaveBeenCalled()
+  })
+
+  test('refuses a Solana deployment on an account with no managed Solana entry', async () => {
+    const { facade, workflows } = composite({ swig: false })
+
+    await expect(facade.deploy(solanaDevnet)).rejects.toBeInstanceOf(
+      UnsupportedAccountCapabilityError,
+    )
+    expect(workflows.createQuote).not.toHaveBeenCalled()
+    expect(workflows.deploy).not.toHaveBeenCalled()
+  })
+})

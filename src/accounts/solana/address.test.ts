@@ -1,12 +1,14 @@
 import { base58 } from '@scure/base'
-import { type Address, toHex } from 'viem'
+import { type Address, hexToBytes, toHex } from 'viem'
 import { describe, expect, test } from 'vitest'
 import { type SolanaAddress, solanaAddress } from '../../chains/non-evm'
 import {
   asSwigNamespace,
   createProgramAddress,
+  createSolanaSwigId,
   findProgramAddress,
   locateSwig,
+  locateSwigById,
   locateSwigWallet,
   SWIG_PROGRAM_ADDRESS,
 } from './address'
@@ -148,5 +150,43 @@ describe('offline Swig address derivation', () => {
         solanaAddress('11111111111111111111111111111111'),
       ),
     ).not.toThrow()
+  })
+})
+
+describe('Swig id derivation', () => {
+  // Derived independently with @swig-wallet/classic `findSwigPda`.
+  test('matches the Swig program derivation for an arbitrary id', () => {
+    expect(locateSwigById(new Uint8Array(32).fill(7))).toMatchObject({
+      swig: '3wm644fHe3ekULLCPov4vkDeVCJEaQmnCfn5k2HhMS4B',
+      wallet: 'C4PvoicLfj71bcjnvSWFKo3QeDP8AXJbUzZFQPvRf3xm',
+    })
+  })
+
+  test('derives the EVM-derived Swig from its id', () => {
+    const derived = locateSwig(asSwigNamespace('dev-v1'), EVM_ACCOUNT)
+    expect(locateSwigById(derived.id)).toEqual({
+      id: derived.id,
+      swig: derived.swig,
+      swigBump: derived.swigBump,
+      wallet: derived.wallet,
+      walletBump: derived.walletBump,
+    })
+  })
+
+  test.each([0, 31, 33])('rejects a %i-byte id', (length) => {
+    expect(() => locateSwigById(new Uint8Array(length))).toThrow(
+      'expected 32 bytes',
+    )
+  })
+
+  test('mints a random 32-byte id with the addresses it derives', () => {
+    const minted = createSolanaSwigId()
+    const id = hexToBytes(minted.id)
+    expect(id).toHaveLength(32)
+    expect(locateSwigById(id)).toMatchObject({
+      swig: minted.swig,
+      wallet: minted.wallet,
+    })
+    expect(createSolanaSwigId().id).not.toBe(minted.id)
   })
 })

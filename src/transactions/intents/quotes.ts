@@ -1,9 +1,7 @@
-import type { OrchestratorQuote } from '../../clients/orchestrator/types'
-
-export function selectIntentQuote(
-  quotes: readonly OrchestratorQuote[],
+export function selectIntentQuote<Q extends { readonly intentId: string }>(
+  quotes: readonly Q[],
   intentId?: string,
-): OrchestratorQuote {
+): Q {
   const quote = intentId
     ? quotes.find((candidate) => candidate.intentId === intentId)
     : quotes[0]

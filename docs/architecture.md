@@ -86,8 +86,9 @@ returns a `SolanaStandaloneAccount`, typed with only what it supports (no
 assembly, authorizations, owner signing or submission options). An address-only
 EVM receiver may accompany that facade for address access and delivery defaults.
 
-Managed Solana is development-only. Its Swig must already exist and carry the
-configured owner as its authority on the target cluster. Every managed Solana
+Managed Solana is development-only. Its Swig must exist and carry the
+configured owner as its authority on the target cluster before it can spend.
+Every managed Solana
 config names its state account explicitly with `swig: stateAddress`; adding,
 removing, or replacing an EVM branch never selects another wallet. The SDK
 derives the asset-holding wallet PDA from that state account. Plain transfers,
@@ -99,8 +100,24 @@ named to the orchestrator by its SEC1-compressed P-256 key. Its assertion's
 challenge and type are checked locally, but the orchestrator verifies the
 signature. The SDK derives only PDA relationships offline with the small
 `@noble/curves` and `@scure/base` primitives; it imports no Solana RPC or
-transaction stack and does not create or verify the account. Production has no
+transaction stack and does not verify the account onchain. Production has no
 enabled Swig namespace.
+
+`deploy(solanaChain, { swigId? })` creates the Swig through a sponsored
+deployment intent (`transactions/intents/solana-deployment.ts`), on both the
+standalone facade and a composite account with a managed Solana entry. It always
+sends the Solana-only shape — `svm.swigAccount` plus `initData: { authority, id }`
+and no `account.evm` — with a tokenless destination and `sponsorship: { gas: true }`.
+The id is computed for the Swig derived from the managed EVM account (`dev-v1`)
+and otherwise must be the caller's saved id from `createSolanaSwigId()`; an id that
+does not derive the configured Swig, a missing ECDSA `publicKey`, and a
+non-development environment are refused before any request. The root authority
+comes only from the configured owner. The quoted `purpose: 'deployment'` route
+must name exactly that Swig, wallet and authority on the requested cluster and
+ask for no signatures or requirements; it is submitted with `proofs: []` and
+awaited. An existing Swig (`ACCOUNT_ALREADY_DEPLOYED` naming a `swig`) surfaces as
+`SolanaAccountAlreadyCreatedError`, never as success. Execution paths refuse a
+deployment route at `normalizeIntentQuote`, and public quotes stay execution-only.
 
 A managed Solana origin accepts one same-chain SPL transfer with an explicit
 recipient, one same-chain instruction execution, or one cross-chain delivery to
