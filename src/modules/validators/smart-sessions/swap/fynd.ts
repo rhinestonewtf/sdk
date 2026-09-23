@@ -22,31 +22,31 @@ export const FYND_CHAIN_IDS = [1, 56, 130, 137, 8453, 9745, 42161] as const
 export type FyndChainId = (typeof FYND_CHAIN_IDS)[number]
 
 /**
- * TychoRouter per chain — the contract fynd's encoded fills target.
+ * TychoRouter V3 per chain — the contract fynd's encoded fills target.
  *
- * Mirrors `fynd.routers` in the orchestrator's quoters.jsonnet. A chain is
- * listed only when the router is whitelisted in `IntentExecutionPolicy`, since a
- * quoter enabled without a whitelisted target produces quotes that revert.
+ * Mirrors the first router of each chain's `fynd.routers` in yeet's
+ * `config/quoters.jsonnet`. A chain is listed only when the router is
+ * whitelisted in `IntentExecutionPolicy`, since a quoter enabled without a
+ * whitelisted target produces quotes that revert.
  */
 export const FYND_ROUTERS: Record<FyndChainId, Address> = {
-  1: '0xda892c989d07a18b5dd3f392d949f00df15c5736',
-  56: '0x99748cbd931cb367dad265c5b2b4bd306d448e99',
-  130: '0x764bc67b1036b00bc91221e988261f971a1c7ce4',
-  137: '0x7cb3e87095f6cf95982dc6f57445171a6d3b511c',
-  8453: '0x2d3524b9b5dae34b646614eebb1e038d403e4cac',
-  9745: '0x8f9b3b0451efff0ae8100428aee35fa3cbc0b769',
-  42161: '0xc1f838a5382bbb5729a0801c8ba73dfc861c4d34',
+  1: '0x1644d2477f809cc2c71bccfd6dc9497e3f83210d',
+  56: '0x7f3d12bbafb8955e51b3ab9588b34c8ad95bda4e',
+  130: '0xcba5574597ad00ea250fd106dab4fc7461949635',
+  137: '0xbd4e6011f03355c2a377fd9af939322a7d0a1bc1',
+  8453: '0xaba5b53b03eafad1c5fc8bd5fc765fc85bb3de67',
+  9745: '0x0953c7e23b44259e5e5630e9b97c31d7278c4c85',
+  42161: '0x924f147c50ea59f5180a26031a8b65b2aa1e81cd',
 }
 
 /**
- * TychoRouter `singleSwap`, the entrypoint fynd's encoded quotes call.
+ * TychoRouterV3 `singleSwap`, the entrypoint fynd's encoded quotes call.
  *
- * Only the argument TYPES determine the selector and the head layout, and those
- * are pinned by {@link FYND_SWAP_SELECTOR}'s assertion in the test suite. The
- * NAMES of the first five are corroborated by observed fynd calldata; the
- * trailing tuple's component names are our own labels and carry no guarantee —
- * we never address them, since a tuple containing `bytes` is dynamic and sits
- * behind a pointer.
+ * Names are upstream's (`TychoRouterV3.sol` and its `ClientFeeParams` struct,
+ * propeller-heads/tycho at tag 0.387.0); the types are pinned by
+ * {@link FYND_SWAP_SELECTOR}'s assertion in the test suite. We never address
+ * `clientFeeParams`: a tuple containing `bytes` is dynamic and sits behind a
+ * pointer.
  */
 export const tychoRouterAbi = [
   {
@@ -57,20 +57,21 @@ export const tychoRouterAbi = [
       { name: 'amountIn', type: 'uint256' },
       { name: 'tokenIn', type: 'address' },
       { name: 'tokenOut', type: 'address' },
+      { name: 'expectedAmountOut', type: 'uint256' },
       { name: 'minAmountOut', type: 'uint256' },
       { name: 'receiver', type: 'address' },
       {
-        name: 'permit',
+        name: 'clientFeeParams',
         type: 'tuple',
         components: [
-          { name: 'nonce', type: 'uint16' },
-          { name: 'token', type: 'address' },
-          { name: 'amount', type: 'uint256' },
+          { name: 'clientFeeBps', type: 'uint32' },
+          { name: 'clientFeeReceiver', type: 'address' },
+          { name: 'maxClientContribution', type: 'uint256' },
           { name: 'deadline', type: 'uint256' },
-          { name: 'signature', type: 'bytes' },
+          { name: 'clientSignature', type: 'bytes' },
         ],
       },
-      { name: 'swap', type: 'bytes' },
+      { name: 'swapData', type: 'bytes' },
     ],
     outputs: [{ name: 'amountOut', type: 'uint256' }],
   },
