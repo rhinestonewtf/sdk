@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 2.16.3
+
+### Patch Changes
+
+- e74dab1: Restore production SDK reference updates as an independent post-publication workflow.
+
 ## 2.16.2
 
 ### Patch Changes
