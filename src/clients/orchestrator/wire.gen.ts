@@ -2148,6 +2148,30 @@ export interface operations {
           }
         }
       }
+      /** @description The intent or its shared sponsorship authorization was already used. */
+      409: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': {
+            errors: {
+              /**
+               * @description Error message
+               * @example Invalid input
+               */
+              message: string
+              /** @description Additional error context */
+              context?: unknown
+            }[]
+            /**
+             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
+             * @example eb0ba4657f36364b33ec565c15f98368
+             */
+            traceId: string
+          }
+        }
+      }
       /** @description Server error */
       500: {
         headers: {
@@ -3504,15 +3528,19 @@ export interface operations {
                               | 'WOKB'
                               | 'HYPE'
                               | 'WHYPE'
+                              | 'RON'
+                              | 'WRON'
                               | 'USDG'
                               | 'XPL'
                               | 'WXPL'
                               | 'AVAX'
                               | 'WAVAX'
                               | 'MockUSD'
+                              | 'USDC_TEST'
                               | 'XLM'
                               | 'ensUSDC'
                               | 'ensUSDC2'
+                              | 'ensUSDC3'
                               | 'TRX'
                               | 'WTRX'
                               | 'SOL'
@@ -3543,15 +3571,19 @@ export interface operations {
                               | 'WOKB'
                               | 'HYPE'
                               | 'WHYPE'
+                              | 'RON'
+                              | 'WRON'
                               | 'USDG'
                               | 'XPL'
                               | 'WXPL'
                               | 'AVAX'
                               | 'WAVAX'
                               | 'MockUSD'
+                              | 'USDC_TEST'
                               | 'XLM'
                               | 'ensUSDC'
                               | 'ensUSDC2'
+                              | 'ensUSDC3'
                               | 'TRX'
                               | 'WTRX'
                               | 'SOL'
@@ -3587,15 +3619,19 @@ export interface operations {
                               | 'WOKB'
                               | 'HYPE'
                               | 'WHYPE'
+                              | 'RON'
+                              | 'WRON'
                               | 'USDG'
                               | 'XPL'
                               | 'WXPL'
                               | 'AVAX'
                               | 'WAVAX'
                               | 'MockUSD'
+                              | 'USDC_TEST'
                               | 'XLM'
                               | 'ensUSDC'
                               | 'ensUSDC2'
+                              | 'ensUSDC3'
                               | 'TRX'
                               | 'WTRX'
                               | 'SOL'
@@ -3626,15 +3662,19 @@ export interface operations {
                               | 'WOKB'
                               | 'HYPE'
                               | 'WHYPE'
+                              | 'RON'
+                              | 'WRON'
                               | 'USDG'
                               | 'XPL'
                               | 'WXPL'
                               | 'AVAX'
                               | 'WAVAX'
                               | 'MockUSD'
+                              | 'USDC_TEST'
                               | 'XLM'
                               | 'ensUSDC'
                               | 'ensUSDC2'
+                              | 'ensUSDC3'
                               | 'TRX'
                               | 'WTRX'
                               | 'SOL'
@@ -3675,15 +3715,19 @@ export interface operations {
                     | 'WOKB'
                     | 'HYPE'
                     | 'WHYPE'
+                    | 'RON'
+                    | 'WRON'
                     | 'USDG'
                     | 'XPL'
                     | 'WXPL'
                     | 'AVAX'
                     | 'WAVAX'
                     | 'MockUSD'
+                    | 'USDC_TEST'
                     | 'XLM'
                     | 'ensUSDC'
                     | 'ensUSDC2'
+                    | 'ensUSDC3'
                     | 'TRX'
                     | 'WTRX'
                     | 'SOL'
@@ -4790,7 +4834,7 @@ export interface operations {
                          */
                         address: string
                       }[]
-                      /** @description Present only on a request that authorizes a HyperCore agent registration. Names what that registration commits to, which the payload itself carries only as CoreWriter calldata. Changing the action, its order, its nonce or its agent requires a fresh quote. */
+                      /** @description Present only on a request that authorizes at least one HyperCore agent registration. Lists every registration the payload commits to, in registration (slot) order: one item for a per-leg payload, all of them for an aggregate `MultiChainOps` payload. Names what each registration commits to, which the payload itself carries only as CoreWriter calldata. Changing any action, their order, a nonce or an agent requires a fresh quote. */
                       hyperCore?: {
                         /** @description The canonical Hyperliquid action, exactly as the agent commits to it. Key order is part of the commitment — the agent address is recovered from a signature over its msgpack encoding — so it is served in the order it was signed in, not re-sorted. */
                         action?: unknown
@@ -4806,7 +4850,7 @@ export interface operations {
                          * @example rh1
                          */
                         slot: string
-                      }
+                      }[]
                     }
                   | {
                       /** @enum {string} */
@@ -4874,7 +4918,7 @@ export interface operations {
                         to: string
                       }
                     }
-                /** @description The chains the payload is cryptographically BOUND to, CAIP-2. This is what was signed rather than what the route is about: a Permit2 payload binds to the chain it claims funds on, so a destination request repeats the chain of the origin payload it duplicates. */
+                /** @description The chains the payload is cryptographically BOUND to, CAIP-2, each listed once — a `MultiChainOps` payload with several legs on one chain still names it once. This is what was signed rather than what the route is about: a Permit2 payload binds to the chain it claims funds on, so a destination request repeats the chain of the origin payload it duplicates. */
                 chainIds: string[]
                 /**
                  * @description What the signature is for
@@ -5042,6 +5086,8 @@ export interface operations {
                      * @enum {string}
                      */
                     type: 'ECO'
+                    /** @description Eco v1 quote ID for detailed delivery and refund tracking. */
+                    quoteId?: string
                     /** @description Eco Portal intent hash. Use against Eco's intent status API to resolve the destination delivery transaction. */
                     intentHash: string
                     /** @description Eco's own id for the delivery chain, present only where it differs from `destinationChainId` (non-EVM destinations). Eco's status API reports fulfilment against this id. */

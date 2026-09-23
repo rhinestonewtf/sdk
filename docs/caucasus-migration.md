@@ -98,6 +98,12 @@ for (const request of requests) {
 }
 ```
 
+An EVM request that authorizes HyperCore agent registrations discloses them as
+`scope.hyperCore`, a non-empty list in registration (slot) order: one on a
+per-leg request, all of them on an aggregate request. Each item names the
+action, nonce, agent, and slot, which the payload carries only as CoreWriter
+calldata.
+
 `signTransaction` returns one proof per request, in the same order, and
 `submitTransaction` sends exactly that:
 

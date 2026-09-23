@@ -591,18 +591,28 @@ type SigningAuthority =
       authority: SwigAuthority
     }
 
+/** One HyperCore agent registration a signing request authorizes. */
+type HyperCoreRegistrationScope = {
+  action?: HyperCoreAction
+  nonce: number
+  agent: Address
+  slot: string
+}
+
 /** What the signature permits, disclosed so it can be inspected before signing. */
 type SigningScope =
   | {
       vm: 'evm'
       action: 'claim' | 'fill' | 'targetExecution' | 'delegation'
       accounts: { chainId: Caip2ChainId; address: Address }[]
-      hyperCore?: {
-        action?: HyperCoreAction
-        nonce: number
-        agent: Address
-        slot: string
-      }
+      /**
+       * The HyperCore agent registrations the signature authorizes, which the
+       * payload itself carries only as CoreWriter calldata. Listed in
+       * registration (slot) order: one item on a per-leg request, every
+       * registration on an aggregate request. Absent when the request
+       * registers nothing.
+       */
+      hyperCore?: [HyperCoreRegistrationScope, ...HyperCoreRegistrationScope[]]
     }
   | {
       vm: 'svm'
