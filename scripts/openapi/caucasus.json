@@ -3708,6 +3708,46 @@
               }
             }
           },
+          "409": {
+            "description": "The intent or its shared sponsorship authorization was already used.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "message": {
+                            "type": "string",
+                            "description": "Error message",
+                            "example": "Invalid input"
+                          },
+                          "context": {
+                            "description": "Additional error context"
+                          }
+                        },
+                        "required": [
+                          "message"
+                        ]
+                      }
+                    },
+                    "traceId": {
+                      "type": "string",
+                      "description": "Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.",
+                      "example": "eb0ba4657f36364b33ec565c15f98368"
+                    }
+                  },
+                  "required": [
+                    "errors",
+                    "traceId"
+                  ]
+                }
+              }
+            }
+          },
           "500": {
             "description": "Server error",
             "content": {
@@ -6393,33 +6433,38 @@
                                               "description": "The accounts and chains the action runs against"
                                             },
                                             "hyperCore": {
-                                              "type": "object",
-                                              "properties": {
-                                                "action": {
-                                                  "description": "The canonical Hyperliquid action, exactly as the agent commits to it. Key order is part of the commitment — the agent address is recovered from a signature over its msgpack encoding — so it is served in the order it was signed in, not re-sorted."
+                                              "type": "array",
+                                              "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                  "action": {
+                                                    "description": "The canonical Hyperliquid action, exactly as the agent commits to it. Key order is part of the commitment — the agent address is recovered from a signature over its msgpack encoding — so it is served in the order it was signed in, not re-sorted."
+                                                  },
+                                                  "nonce": {
+                                                    "type": "number",
+                                                    "description": "The nonce the action commits to",
+                                                    "example": 1633493192000
+                                                  },
+                                                  "agent": {
+                                                    "type": "string",
+                                                    "description": "The agent this registration installs. It is derived from the action bytes above, so it authorises that action and nothing else."
+                                                  },
+                                                  "slot": {
+                                                    "type": "string",
+                                                    "description": "The named API-wallet slot the agent goes in. Registering evicts whatever the account had in that slot; the account's unnamed wallet is never used.",
+                                                    "example": "rh1"
+                                                  }
                                                 },
-                                                "nonce": {
-                                                  "type": "number",
-                                                  "description": "The nonce the action commits to",
-                                                  "example": 1633493192000
-                                                },
-                                                "agent": {
-                                                  "type": "string",
-                                                  "description": "The agent this registration installs. It is derived from the action bytes above, so it authorises that action and nothing else."
-                                                },
-                                                "slot": {
-                                                  "type": "string",
-                                                  "description": "The named API-wallet slot the agent goes in. Registering evicts whatever the account had in that slot; the account's unnamed wallet is never used.",
-                                                  "example": "rh1"
-                                                }
+                                                "required": [
+                                                  "nonce",
+                                                  "agent",
+                                                  "slot"
+                                                ],
+                                                "additionalProperties": false,
+                                                "description": "One HyperCore agent registration"
                                               },
-                                              "required": [
-                                                "nonce",
-                                                "agent",
-                                                "slot"
-                                              ],
-                                              "additionalProperties": false,
-                                              "description": "Present only on a request that authorizes a HyperCore agent registration. Names what that registration commits to, which the payload itself carries only as CoreWriter calldata. Changing the action, its order, its nonce or its agent requires a fresh quote."
+                                              "minItems": 1,
+                                              "description": "Present only on a request that authorizes at least one HyperCore agent registration. Lists every registration the payload commits to, in registration (slot) order: one item for a per-leg payload, all of them for an aggregate `MultiChainOps` payload. Names what each registration commits to, which the payload itself carries only as CoreWriter calldata. Changing any action, their order, a nonce or an agent requires a fresh quote."
                                             }
                                           },
                                           "required": [
@@ -6597,7 +6642,7 @@
                                         "type": "string",
                                         "pattern": "^(eip155|solana|tron|hypercore|stellar):[-_a-zA-Z0-9]{1,32}$"
                                       },
-                                      "description": "The chains the payload is cryptographically BOUND to, CAIP-2. This is what was signed rather than what the route is about: a Permit2 payload binds to the chain it claims funds on, so a destination request repeats the chain of the origin payload it duplicates."
+                                      "description": "The chains the payload is cryptographically BOUND to, CAIP-2, each listed once — a `MultiChainOps` payload with several legs on one chain still names it once. This is what was signed rather than what the route is about: a Permit2 payload binds to the chain it claims funds on, so a destination request repeats the chain of the origin payload it duplicates."
                                     },
                                     "purpose": {
                                       "type": "string",
@@ -6986,6 +7031,11 @@
                                           "ECO"
                                         ],
                                         "description": "Eco solver-network delivery"
+                                      },
+                                      "quoteId": {
+                                        "type": "string",
+                                        "pattern": "^quote:[0-9a-f-]{36}$",
+                                        "description": "Eco v1 quote ID for detailed delivery and refund tracking."
                                       },
                                       "intentHash": {
                                         "type": "string",
@@ -9800,15 +9850,19 @@
                                                 "WOKB",
                                                 "HYPE",
                                                 "WHYPE",
+                                                "RON",
+                                                "WRON",
                                                 "USDG",
                                                 "XPL",
                                                 "WXPL",
                                                 "AVAX",
                                                 "WAVAX",
                                                 "MockUSD",
+                                                "USDC_TEST",
                                                 "XLM",
                                                 "ensUSDC",
                                                 "ensUSDC2",
+                                                "ensUSDC3",
                                                 "TRX",
                                                 "WTRX",
                                                 "SOL",
@@ -9859,15 +9913,19 @@
                                                 "WOKB",
                                                 "HYPE",
                                                 "WHYPE",
+                                                "RON",
+                                                "WRON",
                                                 "USDG",
                                                 "XPL",
                                                 "WXPL",
                                                 "AVAX",
                                                 "WAVAX",
                                                 "MockUSD",
+                                                "USDC_TEST",
                                                 "XLM",
                                                 "ensUSDC",
                                                 "ensUSDC2",
+                                                "ensUSDC3",
                                                 "TRX",
                                                 "WTRX",
                                                 "SOL",
@@ -9935,15 +9993,19 @@
                                                   "WOKB",
                                                   "HYPE",
                                                   "WHYPE",
+                                                  "RON",
+                                                  "WRON",
                                                   "USDG",
                                                   "XPL",
                                                   "WXPL",
                                                   "AVAX",
                                                   "WAVAX",
                                                   "MockUSD",
+                                                  "USDC_TEST",
                                                   "XLM",
                                                   "ensUSDC",
                                                   "ensUSDC2",
+                                                  "ensUSDC3",
                                                   "TRX",
                                                   "WTRX",
                                                   "SOL",
@@ -9994,15 +10056,19 @@
                                                   "WOKB",
                                                   "HYPE",
                                                   "WHYPE",
+                                                  "RON",
+                                                  "WRON",
                                                   "USDG",
                                                   "XPL",
                                                   "WXPL",
                                                   "AVAX",
                                                   "WAVAX",
                                                   "MockUSD",
+                                                  "USDC_TEST",
                                                   "XLM",
                                                   "ensUSDC",
                                                   "ensUSDC2",
+                                                  "ensUSDC3",
                                                   "TRX",
                                                   "WTRX",
                                                   "SOL",
@@ -10075,15 +10141,19 @@
                                     "WOKB",
                                     "HYPE",
                                     "WHYPE",
+                                    "RON",
+                                    "WRON",
                                     "USDG",
                                     "XPL",
                                     "WXPL",
                                     "AVAX",
                                     "WAVAX",
                                     "MockUSD",
+                                    "USDC_TEST",
                                     "XLM",
                                     "ensUSDC",
                                     "ensUSDC2",
+                                    "ensUSDC3",
                                     "TRX",
                                     "WTRX",
                                     "SOL",

@@ -310,6 +310,47 @@ describe('mapSigningRequestFromWire', () => {
     expect(() => mapSigningRequestFromWire(value as never)).toThrow(matcher)
   })
 
+  test('passes HyperCore registrations through in slot order', () => {
+    const hyperCore = [
+      {
+        action: {
+          type: 'updateLeverage',
+          asset: 0,
+          isCross: true,
+          leverage: 5,
+        },
+        nonce: 1,
+        agent: '0x00000000000000000000000000000000000000a1',
+        slot: 'rh1',
+      },
+      {
+        nonce: 2,
+        agent: '0x00000000000000000000000000000000000000a2',
+        slot: 'rh2',
+      },
+    ]
+    const scope = {
+      vm: 'evm',
+      action: 'claim',
+      accounts: [{ chainId: BASE, address }],
+      hyperCore,
+    }
+    const payload = { kind: 'webauthn', challenge: '0xaa' }
+
+    const mapped = mapSigningRequestFromWire({
+      ...signingRequest(payload),
+      scope,
+    } as never)
+
+    expect(mapped.scope).toEqual(scope)
+    expect(
+      mapped.scope.vm === 'evm' && mapped.scope.hyperCore?.map((r) => r.slot),
+    ).toEqual(['rh1', 'rh2'])
+    expect(
+      mapSigningRequestFromWire(signingRequest(payload) as never).scope,
+    ).not.toHaveProperty('hyperCore')
+  })
+
   test('accepts either Swig role authority and refuses any other', () => {
     const swigRole = (authority: unknown) => ({
       ...signingRequest({
