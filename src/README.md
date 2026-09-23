@@ -149,9 +149,31 @@ const crossVmAccount = await rhinestone.createAccount({
 })
 ```
 
-Address-only entries cannot prepare, sign, or execute transactions. Managed
-Solana configuration is reserved for a future release and currently fails during
-account construction; Solana destinations are token-delivery only.
+Address-only entries cannot prepare, sign, or execute transactions. To use an
+existing development Swig, supply its saved state-account address and its
+independent private-key or passkey owner; the wallet PDA is derived:
+
+```ts
+const managedSolana = {
+  owner: { type: 'ecdsa' as const, account: solanaSigner },
+  // Existing Swig state account; the wallet PDA is derived automatically.
+  swig: solanaAddress(savedStateAddress),
+}
+
+const solanaAccount = await rhinestone.createAccount({
+  solana: managedSolana,
+  // Optional: a receiver address, or a separately managed EVM config.
+  evm: { address: evmReceiver },
+})
+```
+
+Adding or changing `evm` does not change the selected Swig. Plain Solana
+transfers, instructions, and deliveries use only the Solana owner. An EVM
+receiver can default a delivery recipient but cannot spend or execute calls.
+Solana-to-EVM destination calls require a managed EVM account whose existing
+backend-compatible pair matches the explicit Swig. Account construction does
+not create or verify a Swig; provisioning remains an operator step. Solana
+support remains development-only.
 
 Send a crosschain transaction:
 

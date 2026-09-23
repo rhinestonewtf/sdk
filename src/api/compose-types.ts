@@ -95,7 +95,7 @@ export interface ProjectWorkflows {
    * runtime.
    */
   readonly createSession: (definition: SessionDefinition) => Promise<Session>
-  /** For a managed Solana account with no EVM account to scope a composition. */
+  /** For a managed Solana account without managed EVM capabilities. */
   readonly solana: SolanaWorkflows
   readonly waitForIntentStatus: (intentId: string) => Promise<IntentStatus>
 }
@@ -134,8 +134,8 @@ export interface AccountWorkflows<CompatibilityConfig = unknown>
     chain: import('../chains/types').EvmChainReference,
   ) => import('viem').Address
   /**
-   * Resolves the calls a Solana-origin delivery runs on arrival against the
-   * paired EVM account, and projects that account on the delivery chain.
+   * Resolves compatible Solana-origin destination calls against the managed
+   * EVM account and projects that account on the delivery chain.
    */
   readonly resolveSolanaEvmDestination: (
     context: AccountInvocationContext<CompatibilityConfig>,

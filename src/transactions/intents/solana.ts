@@ -55,6 +55,7 @@ import {
 } from '../../errors/execution'
 import { normalizeRecovery } from '../../signing/signers/ecdsa'
 import { type IntentAccountProjection, toWireEvmAccount } from './account'
+import { projectPreparedBinding } from './compatibility'
 import { normalizeIntentQuote } from './normalize'
 import { toExecution } from './request'
 import {
@@ -116,8 +117,8 @@ export interface SolanaTransferInput {
   readonly chain: SolanaChain
   readonly action: SolanaAction
   /**
-   * The paired EVM account the Swig is derived from, or the Swig wallet for an
-   * account with no EVM entry — which alone has no `accountType`.
+   * The identity used by this operation: the Swig wallet for a plain spend, or
+   * the managed EVM executor for a delivery with destination calls.
    */
   readonly accountAddress: Address | SolanaAddress
   readonly accountType?: 'GENERIC' | 'ERC7579' | 'EOA'
@@ -266,22 +267,20 @@ export function buildSolanaIntentRequest(
       )
     }
   }
-  const normalizedAccount = {
-    address: input.accountAddress,
-    ...(input.accountType ? { accountType: input.accountType } : {}),
-    ...(execution
-      ? {
-          setupOps: execution.account.setupOps,
-          ...(execution.account.delegationContract
-            ? {
-                delegations: {
-                  0: { contract: execution.account.delegationContract },
-                },
-              }
-            : {}),
-        }
-      : {}),
-  }
+  const normalizedAccount = execution
+    ? {
+        address: input.accountAddress,
+        accountType: input.accountType!,
+        setupOps: execution.account.setupOps,
+        ...(execution.account.delegationContract
+          ? {
+              delegations: {
+                0: { contract: execution.account.delegationContract },
+              },
+            }
+          : {}),
+      }
+    : { address: input.walletAddress }
   const normalizedOptions: NormalizedIntentOptions = {
     signatureMode: 1,
     ...(input.appFees ? { appFees: input.appFees } : {}),
@@ -302,22 +301,11 @@ export function buildSolanaIntentRequest(
     address: input.walletAddress,
     authorization: input.authority,
   }
-  // A paired account's EVM identity travels with its Swig, which the backend
-  // derives from it. A standalone account names its state account instead, and
-  // the backend checks the wallet is that account's PDA.
-  //
-  // Setup and delegations ride only with destination calls: those are what the
-  // account is deployed and delegated to run, and the orchestrator refuses them
-  // on a plain delivery.
-  const account: OrchestratorIntentRequest['account'] = input.accountType
+  // Plain Solana operations always name the selected Swig directly. Only an
+  // actual destination execution uses the backend's paired EVM+SVM contract.
+  const account: OrchestratorIntentRequest['account'] = execution
     ? {
-        evm: execution
-          ? toWireEvmAccount(execution.account, { signatureMode: 1 })
-          : {
-              type: input.accountType === 'EOA' ? 'eoa' : 'erc7579',
-              address: input.accountAddress as Address,
-              signatureMode: 1,
-            },
+        evm: toWireEvmAccount(execution.account, { signatureMode: 1 }),
         svm,
       }
     : { svm: { ...svm, swigAccount: input.swigAddress } }
@@ -742,11 +730,21 @@ function stable(value: unknown): string {
 export function reconstructSolanaIntent(input: {
   readonly traceId: string
   readonly transfer: SolanaTransferInput
+  readonly request: OrchestratorIntentRequest
   readonly intentInput: SerializedIntentInput
   readonly quote: OrchestratorQuote
   readonly quotes: readonly OrchestratorQuote[]
 }): PreparedSolanaIntent {
   const { request, normalized } = buildSolanaIntentRequest(input.transfer)
+  if (
+    stable(projectPreparedBinding(request).request) !==
+    stable(projectPreparedBinding(input.request).request)
+  ) {
+    throw new InvalidSolanaTransactionArtifactError(
+      'the persisted request does not match the captured transaction',
+      { intentId: input.quote.intentId },
+    )
+  }
   if (
     stable(projectCompatibleIntentInput(normalized)) !==
     stable(input.intentInput)

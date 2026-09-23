@@ -68,8 +68,8 @@ export interface OrchestratorSvmAccount {
   /** The asset-holding Swig wallet, not the Swig state account. */
   readonly address: string
   /**
-   * The Swig state account. Sent only without an `evm` entry: a paired
-   * account's Swig is derived from its EVM address.
+   * The Swig state account. Plain Solana spends always send it; the existing
+   * paired EVM+SVM destination-execution contract derives it server-side.
    */
   readonly swigAccount?: string
   readonly authorization: SwigAuthority

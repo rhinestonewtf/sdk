@@ -9,7 +9,11 @@ import type {
 } from 'viem'
 import { isAddress } from 'viem'
 import type { UserOperationReceipt } from 'viem/account-abstraction'
-import { asSwigNamespace, locateSwig } from '../accounts/solana/address'
+import {
+  asSwigNamespace,
+  locateSwig,
+  locateSwigWallet,
+} from '../accounts/solana/address'
 import { formatCaip2, parseCaip2, toEvmChainReference } from '../chains/caip2'
 import { getChainById, getChainReference } from '../chains/catalog'
 import {
@@ -43,6 +47,7 @@ import type {
   SameChainSolanaInstructionsTransaction,
   Session,
   SignerSet,
+  SolanaManagedAccountConfig,
   SolanaOwner,
   SolanaStandaloneAccountConfig,
   SourceAssetInput,
@@ -164,9 +169,9 @@ type HasManagedEvm<C> = [RequiredBranch<C, 'evm'>] extends [never]
   : [RequiredBranch<C, 'evm'>] extends [EvmAccountConfig]
     ? true
     : false
-type HasStandaloneSolana<C> = [RequiredBranch<C, 'solana'>] extends [never]
+type HasManagedSolana<C> = [RequiredBranch<C, 'solana'>] extends [never]
   ? false
-  : [RequiredBranch<C, 'solana'>] extends [SolanaStandaloneAccountConfig]
+  : [RequiredBranch<C, 'solana'>] extends [SolanaManagedAccountConfig]
     ? true
     : false
 
@@ -288,10 +293,11 @@ export interface ManagedTransactionAccount<
 }
 
 /**
- * A development managed Solana account with no EVM account.
+ * A development managed Solana account without a managed EVM account.
  *
- * It signs each Solana spend with its one owner, so it has no independent
- * owner signing, assembly, EIP-7702 authorizations or submission options.
+ * It may carry an address-only EVM receiver for delivery defaults. It signs
+ * each Solana spend with its one owner, so it has no independent owner signing,
+ * assembly, EIP-7702 authorizations or submission options.
  */
 export interface SolanaStandaloneAccount<
   C extends RhinestoneAccountConfig = Readonly<{
@@ -536,7 +542,7 @@ export type RhinestoneAccount<
 > = RhinestoneAccountBase<C> &
   (HasManagedEvm<C> extends true
     ? ManagedEvmAccount<C>
-    : HasStandaloneSolana<C> extends true
+    : HasManagedSolana<C> extends true
       ? SolanaStandaloneAccount<C>
       : Readonly<Record<never, never>>)
 
@@ -737,15 +743,15 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
     if (!branch || !('owner' in branch) || !branch.owner) return undefined
     const ctx = context('get-address')
     const identity = workflowsFor(ctx).getAddress(ctx, referenceChain())
-    const location = locateSwig(asSwigNamespace('dev-v1'), identity)
     const kind = ctx.account.account.kind
     return createSolanaOrigin(
       {
         owner: branch.owner,
-        walletAddress: location.wallet,
-        swigAddress: location.swig,
+        walletAddress: locateSwigWallet(branch.swig).address,
+        swigAddress: branch.swig,
         endpoint: ctx.sdk.orchestratorUrl,
-        evm: {
+        evmRecipient: identity,
+        evmExecution: {
           address: identity,
           accountType:
             kind === 'eoa' ? 'EOA' : kind === 'hca' ? 'GENERIC' : 'ERC7579',
@@ -836,6 +842,7 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
         const workflows = workflowsFor(ctx)
         let execution: SolanaEvmExecution | undefined
         if (isCrossChainSolanaOrigin(normalized) && normalized.calls?.length) {
+          origin.assertDestinationCallsSupported()
           const chainId = normalized.targetChain.id
           const resolved = await workflows.resolveSolanaEvmDestination(ctx, {
             chain: toEvmChainReference(chainId),
@@ -1235,17 +1242,17 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
   return account
 }
 
-/**
- * The Swig a managed Solana account spends from. A paired account carries the
- * EVM account its Swig is derived from; a standalone one has none.
- */
+/** The explicitly selected Swig and optional local EVM composition. */
 export interface SolanaSource {
   readonly owner: SolanaOwner
   readonly walletAddress: SolanaAddress
   readonly swigAddress: SolanaAddress
   /** The orchestrator the account was created against. */
   readonly endpoint: string
-  readonly evm?: {
+  /** Address used only as the default recipient for plain EVM delivery. */
+  readonly evmRecipient?: Address
+  /** Managed EVM account available to execute destination calls. */
+  readonly evmExecution?: {
     readonly address: Address
     readonly accountType: 'GENERIC' | 'ERC7579' | 'EOA'
   }
@@ -1278,6 +1285,28 @@ function createSolanaOrigin(
   source: SolanaSource,
   publicConfig: Readonly<RhinestoneAccountConfig>,
 ) {
+  const assertDestinationCallsSupported = (): void => {
+    if (!source.evmExecution) {
+      throw new UnsupportedAccountCapabilityError(
+        'EVM destination calls require a managed EVM account; an address-only receiver can only receive a plain delivery. Omit `calls`.',
+        { vm: 'solana', field: 'calls' },
+      )
+    }
+    const compatible = locateSwig(
+      asSwigNamespace('dev-v1'),
+      source.evmExecution.address,
+    )
+    if (
+      compatible.wallet !== source.walletAddress ||
+      compatible.swig !== source.swigAddress
+    ) {
+      throw new UnsupportedAccountCapabilityError(
+        'This backend cannot execute EVM destination calls from the independently selected Swig. Omit `calls` to make a plain delivery.',
+        { vm: 'solana', field: 'calls' },
+      )
+    }
+  }
+
   const authority: SwigAuthority =
     source.owner.type === 'passkey'
       ? {
@@ -1305,11 +1334,12 @@ function createSolanaOrigin(
         'the transaction is not a Solana-origin transfer',
       )
     }
+    if (execution) assertDestinationCallsSupported()
     const common = {
-      ...(source.evm
+      ...(execution && source.evmExecution
         ? {
-            accountAddress: source.evm.address,
-            accountType: source.evm.accountType,
+            accountAddress: source.evmExecution.address,
+            accountType: source.evmExecution.accountType,
           }
         : { accountAddress: source.walletAddress }),
       authority,
@@ -1329,7 +1359,7 @@ function createSolanaOrigin(
     if (isCrossChainSolanaOrigin(transaction)) {
       // Resolved here rather than in `normalizeTransaction` so the prepare and
       // reconstruct paths agree on the same recipient.
-      const recipient = transaction.recipient ?? source.evm?.address
+      const recipient = transaction.recipient ?? source.evmRecipient
       if (!recipient) {
         throw new UnsupportedAccountCapabilityError(
           'A Solana-origin delivery from an account with no EVM entry needs an explicit EVM `recipient`.',
@@ -1393,6 +1423,12 @@ function createSolanaOrigin(
     // Read back from the canonical input rather than resolved again: resolving
     // reads the chain and runs caller code, and a replay has to rebuild the
     // request that was quoted.
+    if (
+      isCrossChainSolanaOrigin(prepared.transaction) &&
+      prepared.transaction.calls?.length
+    ) {
+      assertDestinationCallsSupported()
+    }
     const stored = prepared.intentInput
     const execution: SolanaEvmExecution | undefined =
       (prepared.transaction as { calls?: readonly unknown[] }).calls?.length &&
@@ -1422,6 +1458,7 @@ function createSolanaOrigin(
     return workflows.reconstructSolanaIntent({
       traceId: prepared.quotes.traceId,
       transfer: input,
+      request: restorePreparedBinding(prepared.request),
       intentInput: prepared.intentInput,
       quote: normalizeIntentQuote(quote as OrchestratorQuote),
       quotes: prepared.quotes.all.map((candidate) =>
@@ -1432,6 +1469,7 @@ function createSolanaOrigin(
 
   return {
     walletAddress: source.walletAddress,
+    assertDestinationCallsSupported,
     resolve,
     async prepare(
       sdk: ResolvedSdkConfig,
@@ -1520,8 +1558,9 @@ function createSolanaOrigin(
 }
 
 /**
- * The facade of a managed Solana account with no EVM account. It originates on
- * Solana only, so nothing it does needs an EVM account context.
+ * The restricted facade of a managed Solana account without managed EVM
+ * capabilities. An optional EVM receiver is used only for address access and
+ * plain-delivery defaults.
  */
 export function createSolanaAccountFacade<C extends RhinestoneAccountConfig>(
   source: SolanaSource,
@@ -1535,13 +1574,14 @@ export function createSolanaAccountFacade<C extends RhinestoneAccountConfig>(
     config: publicConfig,
     getAddress: ((vm: AccountVm) => {
       if (vm === 'solana') return source.walletAddress
+      if (vm === 'evm' && source.evmRecipient) return source.evmRecipient
       throw new AccountVmNotConfiguredError(String(vm))
     }) as RhinestoneAccountBase<C>['getAddress'],
     async prepareTransaction(transaction) {
       const normalized = normalizeTransaction(transaction, publicConfig)
       if (!isSolanaOrigin(normalized)) {
         throw new UnsupportedAccountCapabilityError(
-          'An account with no EVM entry can only originate on Solana.',
+          'An account without a managed EVM entry can only originate on Solana.',
           { vm: 'evm' },
         )
       }
@@ -1899,9 +1939,11 @@ function assertSupportedSolanaOriginDelivery(
     )
   }
   const runsCalls = Array.isArray(input.calls) && input.calls.length > 0
-  if (runsCalls && !config.evm) {
+  const hasManagedEvm =
+    config.evm !== undefined && !Object.hasOwn(config.evm, 'address')
+  if (runsCalls && !hasManagedEvm) {
     throw new UnsupportedAccountCapabilityError(
-      'Destination calls run on the paired EVM account, which an account with no EVM entry does not have. Omit `calls`.',
+      'Destination calls require a managed EVM account; an address-only receiver can only receive a plain delivery. Omit `calls`.',
       { vm: 'solana', field: 'calls' },
     )
   }

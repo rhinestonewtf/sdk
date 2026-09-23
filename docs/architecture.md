@@ -80,27 +80,27 @@ The public account configuration is composite: EVM and Solana entries are
 independent managed or address-only branches. `api/accounts.ts` validates and
 shallow-freezes that outer boundary, then passes only a managed EVM branch into
 the existing resolution and adapter stack. Receiver-only handles bypass account
-resolution and expose only native address access. A managed Solana account with
-no EVM entry bypasses it too: `createSolanaAccountFacade` returns a
-`SolanaStandaloneAccount`, typed with only what it supports (no assembly,
-authorizations, owner signing or submission options), and reaches the Solana
-workflows and status polling through the project composition, because there is
-no EVM account to scope an account composition.
+resolution and expose only native address access. A managed Solana account
+without managed EVM capabilities bypasses it too: `createSolanaAccountFacade`
+returns a `SolanaStandaloneAccount`, typed with only what it supports (no
+assembly, authorizations, owner signing or submission options). An address-only
+EVM receiver may accompany that facade for address access and delivery defaults.
 
 Managed Solana is development-only. Its Swig must already exist and carry the
-configured owner as its authority on the target cluster. Paired with a managed
-EVM account, the EVM account address deterministically selects the `dev-v1`
-Swig, and the request carries the EVM entry beside it. Standing alone, the
-config names the Swig (`swig: { address, swigAccount }`); the SDK refuses a
-wallet that is not the state account's PDA, and a `swig` beside any `evm` entry.
-That account is addressed and bound by its wallet, its request carries no `evm`
-entry but names `svm.swigAccount`, and its persisted metadata has no
-`accountType`. The owner is an ECDSA key or a passkey; a passkey is named
-to the orchestrator by its SEC1-compressed P-256 key. Its assertion's challenge
-and type are checked locally, but the orchestrator verifies the signature. The SDK derives the Swig and wallet
-addresses offline with the small `@noble/curves` and `@scure/base` primitives;
-it imports no Solana RPC or transaction stack and does not create or verify the
-account. Production has no enabled Swig namespace.
+configured owner as its authority on the target cluster. Every managed Solana
+config names its state account explicitly with `swig: stateAddress`; adding,
+removing, or replacing an EVM branch never selects another wallet. The SDK
+derives the asset-holding wallet PDA from that state account. Plain transfers,
+instructions, and cross-chain deliveries name `svm.swigAccount`, carry no
+`account.evm`, bind sponsorship to the wallet, and persist no `accountType`.
+The owner is an independent ECDSA key or passkey; either credential may also be
+used by EVM, but each VM retains its own authorization protocol. A passkey is
+named to the orchestrator by its SEC1-compressed P-256 key. Its assertion's
+challenge and type are checked locally, but the orchestrator verifies the
+signature. The SDK derives only PDA relationships offline with the small
+`@noble/curves` and `@scure/base` primitives; it imports no Solana RPC or
+transaction stack and does not create or verify the account. Production has no
+enabled Swig namespace.
 
 A managed Solana origin accepts one same-chain SPL transfer with an explicit
 recipient, one same-chain instruction execution, or one cross-chain delivery to
@@ -118,7 +118,7 @@ may narrow but never widen that set.
 
 A Solana **destination** is delivery-only and funded from EVM sources. The
 recipient resolves in order: an explicit `recipient`, the configured address-only
-receiver, then the managed branch's derived Swig wallet; delivery is refused
+receiver, then the managed branch's explicitly supplied Swig wallet; delivery is refused
 before quoting when none exists, and so are destination calls, instructions or
 HyperCore actions.
 
@@ -153,10 +153,10 @@ and the SPL mint to spend are both named explicitly — the route spends exactly
 one source token, and `source.selection` pins the cluster and narrows it to that
 single mint with `perChain`, because a chain selector alone would open every
 registry token on it. The delivery recipient is an explicit
-EVM address or the account's own EVM identity, resolved before the quote so the
-authorization binds to it; an account with no EVM entry has no identity to
-default to, so its delivery without a recipient is refused before quoting, in
-its type and at runtime. Authorization stays the Solana model: without
+EVM address or the configured managed EVM/receiver address, resolved before the
+quote so the authorization binds to it; an account with no EVM entry has no
+default, so its delivery without a recipient is refused before quoting, in its
+type and at runtime. Authorization stays the Solana model: without
 destination calls, exactly one signing request — `personalSign` for an ECDSA
 owner, `webauthn` for a passkey —
 disclosing the Swig wallet and state account it spends from, and the same
@@ -166,18 +166,22 @@ base58 mint on the input, an `eip155:` chain and hex token on the output. The
 settlement layer is whatever the orchestrator picked; the SDK only requires that
 it is not same-chain.
 
-A paired account's delivery can also carry `calls`, which its EVM account runs
-on the delivery chain once the tokens land. They are resolved against that
-account before the quote, and the account entry then carries its setup ops and
-any EIP-7702 delegation; with no calls the request is unchanged. The request
-names no recipient, because the executing account receives the delivery, so an
-explicit `recipient` with calls is refused, as is an account with no EVM entry.
+A delivery can carry `calls` only when the configured managed EVM account and
+explicit Swig match the backend's existing EVM-derived pair. The comparison is
+a capability check, never wallet selection; an unrelated pair is refused before
+lazy calls, setup reads, quoting, or signing and remains usable for plain
+delivery. Address-only EVM receivers cannot execute calls. Compatible calls are
+resolved against the managed EVM account before the quote, whose entry carries
+setup ops and any EIP-7702 delegation. The request names no recipient because
+the executing account receives the delivery, so an explicit `recipient` with
+calls is refused.
 The quote asks for the Swig spend first, then the EVM account's EIP-712
 authorization of the calls on the delivery chain, then any delegation there.
 Those EVM requests are signed first through the ordinary EVM signing path,
 because the spend's slot window is the one that runs out, and the proofs go out
 in request order. A replay rebuilds the resolved calls and account setup from
-the persisted `intentInput` instead of resolving them again.
+the persisted `intentInput` instead of resolving them again, and compares the
+rebuilt wire request with the exact persisted request before any signature.
 
 ## Execution paths
 

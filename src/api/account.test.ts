@@ -35,7 +35,6 @@ import { resolveAccountConfig, resolveSdkConfig } from '../config/resolve'
 import type { AccountInvocationContext } from '../config/resolved'
 import {
   AccountVmNotConfiguredError,
-  InvalidAccountConfigError,
   ManagedSolanaAccountNotSupportedError,
   UnsupportedAccountCapabilityError,
 } from '../errors/capability'
@@ -72,6 +71,8 @@ import type { AdaptedSignerSelection } from './signer-selection'
 
 const owner = privateKeyToAccount(`0x${'02'.repeat(32)}`)
 const guardian = privateKeyToAccount(`0x${'03'.repeat(32)}`)
+const managedSwigLocation = locateSwig(asSwigNamespace('dev-v1'), owner.address)
+const managedSwig = managedSwigLocation.swig
 const recipientAddress = '0x0000000000000000000000000000000000000010' as const
 const normalizedIntentInput = {
   account: { address: recipientAddress, accountType: 'ERC7579' },
@@ -212,7 +213,10 @@ describe('managed Solana account construction', () => {
       })
       const config = {
         evm: { owners: { type: 'ecdsa' as const, accounts: [owner] } },
-        solana: { owner: { type: 'ecdsa' as const, account: owner } },
+        solana: {
+          owner: { type: 'ecdsa' as const, account: owner },
+          swig: managedSwig,
+        },
       }
       const first = await sdk.createAccount(config)
       const second = await sdk.createAccount(config)
@@ -236,17 +240,21 @@ describe('managed Solana account construction', () => {
     const { account: passkey } = signingPasskey()
     const passkeyOwned = await sdk.createAccount({
       evm,
-      solana: { owner: { type: 'passkey', account: passkey } },
+      solana: {
+        owner: { type: 'passkey', account: passkey },
+        swig: managedSwig,
+      },
     })
     const ecdsaOwned = await sdk.createAccount({
       evm,
-      solana: { owner: { type: 'ecdsa', account: owner } },
+      solana: { owner: { type: 'ecdsa', account: owner }, swig: managedSwig },
     })
 
     expect(passkeyOwned.config.solana).toEqual({
       owner: { type: 'passkey', account: passkey },
+      swig: managedSwig,
     })
-    // The Swig is derived from the EVM identity, whoever owns it.
+    // The explicit Swig stays fixed regardless of which credential owns it.
     expect(passkeyOwned.getAddress('solana')).toBe(
       ecdsaOwned.getAddress('solana'),
     )
@@ -266,9 +274,10 @@ describe('managed Solana account construction', () => {
     }
   })
 
-  test('rejects production, a Solana-only account naming no Swig, and widened unsupported owners', async () => {
+  test('rejects production, a managed account naming no Swig, and widened unsupported owners', async () => {
     const managed = {
       owner: { type: 'ecdsa' as const, account: owner },
+      swig: managedSwig,
     }
     await expect(
       new RhinestoneSDK({ apiKey: 'offline' }).createAccount({
@@ -300,8 +309,10 @@ describe('managed Solana account construction', () => {
         apiKey: 'offline',
         endpointUrl: 'https://dev.v1.orchestrator.rhinestone.dev',
         useDevContracts: true,
-      }).createAccount({ solana: managed } as never),
-    ).rejects.toThrow(/a managed EVM account, whose address selects the Swig/)
+      }).createAccount({
+        solana: { owner: { type: 'ecdsa', account: owner } },
+      } as never),
+    ).rejects.toThrow(/requires `swig`/)
     await expect(
       new RhinestoneSDK({
         apiKey: 'offline',
@@ -314,10 +325,9 @@ describe('managed Solana account construction', () => {
   })
 
   describe('standing alone on the Swig it names', () => {
-    // Any existing Swig will do; the one derived for `guardian` is a real
-    // state account and wallet pair.
+    // Any existing Swig state account will do; its wallet PDA is derived.
     const location = locateSwig(asSwigNamespace('dev-v1'), guardian.address)
-    const swig = { address: location.wallet, swigAccount: location.swig }
+    const swig = location.swig
     const ecdsaOwner = { type: 'ecdsa' as const, account: owner }
     const devSdk = () =>
       new RhinestoneSDK({
@@ -334,7 +344,7 @@ describe('managed Solana account construction', () => {
           solana: { owner: ecdsaOwner, swig },
         })
 
-        expect(account.getAddress('solana')).toBe(swig.address)
+        expect(account.getAddress('solana')).toBe(location.wallet)
         expect(() =>
           (account as never as { getAddress(vm: string): string }).getAddress(
             'evm',
@@ -346,7 +356,6 @@ describe('managed Solana account construction', () => {
           expect(evmOnly in account).toBe(false)
         }
         expect(account.config.solana).toEqual({ owner: ecdsaOwner, swig })
-        expect(Object.isFrozen(account.config.solana.swig)).toBe(true)
         expect(fetch).not.toHaveBeenCalled()
       } finally {
         vi.unstubAllGlobals()
@@ -367,50 +376,54 @@ describe('managed Solana account construction', () => {
     })
 
     test.each([
-      ['swapped', { address: swig.swigAccount, swigAccount: swig.address }],
-      [
-        "another Swig's",
-        {
-          address: locateSwig(asSwigNamespace('dev-v1'), owner.address).wallet,
-          swigAccount: swig.swigAccount,
-        },
-      ],
-    ])(
-      'refuses a %s wallet that is not the Swig state account PDA',
-      async (_name, mismatched) => {
-        await expect(
-          devSdk().createAccount({
-            solana: { owner: ecdsaOwner, swig: mismatched },
-          }),
-        ).rejects.toThrow(
-          /must be the wallet of the Solana address `swig.swigAccount`/,
-        )
-      },
-    )
-
-    test.each([
-      ['a non-object', 'swig'],
-      ['a missing state account', { address: swig.address }],
-      ['a non-base58 wallet', { ...swig, address: 'not-base58' }],
-      ['an unknown field', { ...swig, bump: 255 }],
-    ])('refuses %s as the Swig', async (_name, malformed) => {
+      ['a non-address string', 'swig'],
+      ['an object', { swigAccount: swig }],
+      ['an EVM address', owner.address],
+    ])('refuses %s as the Swig state account', async (_name, malformed) => {
       await expect(
         devSdk().createAccount({
           solana: { owner: ecdsaOwner, swig: malformed },
         } as never),
-      ).rejects.toThrow(InvalidAccountConfigError)
+      ).rejects.toThrow(/Swig state account address/)
+    })
+
+    test('snapshots an EVM receiver without leaking managed capabilities through mutation', async () => {
+      const evm = { address: owner.address }
+      const account = await devSdk().createAccount({
+        evm,
+        solana: { owner: ecdsaOwner, swig },
+      })
+      evm.address = guardian.address
+
+      expect(account.getAddress('evm')).toBe(owner.address)
+      expect(Object.isFrozen(account.config.evm)).toBe(true)
+      await expect(
+        account.prepareTransaction({
+          sourceChains: [solanaDevnet],
+          sourceTokens: [{ address: location.wallet }],
+          targetChain: optimism,
+          tokenRequests: [{ address: recipientAddress, amount: 1n }],
+          calls: [{ to: recipientAddress }],
+        } as never),
+      ).rejects.toThrow(/managed EVM account/)
     })
 
     test.each([
       ['a managed', { owners: { type: 'ecdsa', accounts: [owner] } }],
       ['a receiver', { address: owner.address }],
-    ])('refuses the Swig beside %s EVM entry', async (_name, evm) => {
-      await expect(
-        devSdk().createAccount({
-          evm,
-          solana: { owner: ecdsaOwner, swig },
-        } as never),
-      ).rejects.toThrow(/is for an account with no `evm` entry/)
+    ])('keeps the explicit Swig beside %s EVM entry', async (_name, evm) => {
+      const account = await devSdk().createAccount({
+        evm,
+        solana: { owner: ecdsaOwner, swig },
+      } as never)
+
+      const getAddress = (
+        account as unknown as {
+          getAddress(vm: 'evm' | 'solana'): string
+        }
+      ).getAddress.bind(account)
+      expect(getAddress('solana')).toBe(location.wallet)
+      expect(getAddress('evm')).toMatch(/^0x[0-9a-fA-F]{40}$/u)
     })
   })
 })
@@ -522,10 +535,14 @@ describe('managed Solana account facade', () => {
     const getEligibleEvmSourceChains = vi.fn(async () => {
       throw new Error('catalog must not be read')
     })
+    const signIntentFromRequests = vi.fn(async () => {
+      throw new Error('EVM signing must not run')
+    })
     const workflows = {
       getAddress,
       getEligibleEvmSourceChains,
       prepareSolanaIntent,
+      signIntentFromRequests,
       reconstructSolanaIntent: reconstruct,
       signSolanaIntent,
       submitSolanaIntent,
@@ -535,7 +552,7 @@ describe('managed Solana account facade', () => {
       compatibilityConfig,
       {
         evm: compatibilityConfig as EvmAccountConfig,
-        solana: { owner: { type: 'ecdsa', account: owner } },
+        solana: { owner: { type: 'ecdsa', account: owner }, swig: managedSwig },
       },
       {
         config: resolveSdkConfig({ apiKey: 'offline', useDevContracts: true }),
@@ -575,6 +592,7 @@ describe('managed Solana account facade', () => {
     expect(facade.getTransactionMessages(prepared)).toEqual([spendRequest()])
     const signed = await facade.signTransaction(prepared)
     expect(workflows.signSolanaIntent).toHaveBeenCalledOnce()
+    expect(workflows.signIntentFromRequests).not.toHaveBeenCalled()
     const submitted = await facade.submitTransaction(signed)
     expect(submitted).toEqual({
       type: 'intent',
@@ -700,7 +718,10 @@ describe('managed Solana account facade', () => {
       compatibilityConfig,
       {
         evm: compatibilityConfig as EvmAccountConfig,
-        solana: { owner: { type: 'passkey', account: passkey } },
+        solana: {
+          owner: { type: 'passkey', account: passkey },
+          swig: managedSwig,
+        },
       },
       {
         config: resolveSdkConfig({ apiKey: 'offline', useDevContracts: true }),
@@ -1071,7 +1092,7 @@ describe('managed Solana account facade', () => {
     expect(Object.isFrozen(prepared.transaction.sponsored)).toBe(true)
   })
 
-  test('retains the captured EVM account type when live compatibility fields mutate', async () => {
+  test('keeps plain Solana requests independent when live EVM fields mutate', async () => {
     const { facade, workflows } = fixture()
     ;(facade.config.evm as LegacyAccountConfig<unknown>).account = {
       type: 'hca',
@@ -1079,7 +1100,10 @@ describe('managed Solana account facade', () => {
 
     await facade.prepareTransaction(transaction())
     expect(workflows.prepareSolanaIntent).toHaveBeenCalledWith(
-      expect.objectContaining({ accountType: 'ERC7579' }),
+      expect.objectContaining({ accountAddress: swig.wallet }),
+    )
+    expect(workflows.prepareSolanaIntent.mock.calls[0]?.[0]).not.toHaveProperty(
+      'accountType',
     )
   })
 
@@ -1120,6 +1144,19 @@ describe('managed Solana account facade', () => {
     }
     await expect(first.facade.submitTransaction(changedInput)).rejects.toThrow(
       InvalidSolanaTransactionArtifactError,
+    )
+    const changedRequest = {
+      ...prepared,
+      request: {
+        ...prepared.request,
+        request: {
+          ...(prepared.request.request as Record<string, unknown>),
+          account: { evm: { type: 'eoa', address: owner.address } },
+        },
+      },
+    }
+    await expect(second.facade.signTransaction(changedRequest)).rejects.toThrow(
+      /persisted request/,
     )
     expect(first.workflows.submitSolanaIntent).not.toHaveBeenCalled()
   })
@@ -1167,8 +1204,7 @@ describe('managed Solana account facade', () => {
         endpoint: expect.any(String),
         chain: 792703810,
         caip2: solanaDevnet.caip2,
-        accountAddress: owner.address,
-        accountType: 'ERC7579',
+        accountAddress: swig.wallet,
         authority: owner.address,
         swigAddress: expect.any(String),
         walletAddress: expect.any(String),
@@ -1335,7 +1371,7 @@ describe('managed Solana cross-chain delivery facade', () => {
     }
   }
 
-  function fixture(best = quote('best')) {
+  function fixture(best = quote('best'), explicitSwig = managedSwig) {
     const compatibilityConfig: LegacyAccountConfig<unknown> = {
       owners: { type: 'ecdsa', accounts: [owner] },
       useDevContracts: true,
@@ -1402,6 +1438,9 @@ describe('managed Solana cross-chain delivery facade', () => {
       }),
       prepareSolanaIntent,
       reconstructSolanaIntent: vi.fn(reconstructSolanaIntent),
+      signIntentFromRequests: vi.fn(async () => {
+        throw new Error('EVM signing must not run')
+      }),
       signSolanaIntent,
       submitSolanaIntent,
       waitForIntentStatus,
@@ -1410,7 +1449,10 @@ describe('managed Solana cross-chain delivery facade', () => {
       compatibilityConfig,
       {
         evm: compatibilityConfig as EvmAccountConfig,
-        solana: { owner: { type: 'ecdsa', account: owner } },
+        solana: {
+          owner: { type: 'ecdsa', account: owner },
+          swig: explicitSwig,
+        },
       },
       {
         config: resolveSdkConfig({ apiKey: 'offline', useDevContracts: true }),
@@ -1468,6 +1510,7 @@ describe('managed Solana cross-chain delivery facade', () => {
     const submitted = await facade.submitTransaction(
       await facade.signTransaction(prepared),
     )
+    expect(workflows.signIntentFromRequests).not.toHaveBeenCalled()
     expect(submitted).toEqual({
       type: 'intent',
       id: 'best',
@@ -1761,9 +1804,38 @@ describe('managed Solana cross-chain delivery facade', () => {
         },
       ]) {
         await expect(other.facade.signTransaction(tampered)).rejects.toThrow(
-          /canonical intent input/,
+          InvalidSolanaTransactionArtifactError,
         )
       }
+    })
+
+    test('refuses an independently selected Swig before destination-call effects', async () => {
+      const otherLocation = locateSwig(
+        asSwigNamespace('dev-v1'),
+        guardian.address,
+      )
+      const base = fixture(quote('best'), otherLocation.swig)
+      const resolveSolanaEvmDestination = vi.fn()
+      Object.assign(base.workflows, { resolveSolanaEvmDestination })
+
+      const prepared = await base.facade.prepareTransaction(transaction())
+      base.workflows.prepareSolanaIntent.mockClear()
+
+      await expect(
+        base.facade.prepareTransaction(callsTransaction()),
+      ).rejects.toThrow(/independently selected Swig/)
+      const replayWithCalls = {
+        ...prepared,
+        transaction: { ...prepared.transaction, calls: [call] } as never,
+      }
+      expect(() => base.facade.getTransactionMessages(replayWithCalls)).toThrow(
+        /independently selected Swig/,
+      )
+      await expect(
+        base.facade.signTransaction(replayWithCalls),
+      ).rejects.toThrow(/independently selected Swig/)
+      expect(resolveSolanaEvmDestination).not.toHaveBeenCalled()
+      expect(base.workflows.prepareSolanaIntent).not.toHaveBeenCalled()
     })
 
     test('passes an EIP-7702 init signature to the destination resolution', async () => {
@@ -1809,7 +1881,7 @@ describe('standalone managed Solana account facade', () => {
   const config = {
     solana: {
       owner: ecdsaOwner,
-      swig: { address: location.wallet, swigAccount: location.swig },
+      swig: location.swig,
     },
   }
   const swigLeg = {
@@ -1861,7 +1933,7 @@ describe('standalone managed Solana account facade', () => {
     }
   }
 
-  function fixture() {
+  function fixture(evmRecipient?: typeof owner.address) {
     const solana = {
       prepareSolanaIntent: vi.fn(async (input) => {
         const best = quote(
@@ -1912,8 +1984,14 @@ describe('standalone managed Solana account facade', () => {
         walletAddress: location.wallet,
         swigAddress: location.swig,
         endpoint: sdk.orchestratorUrl,
+        ...(evmRecipient ? { evmRecipient } : {}),
       },
-      config,
+      (evmRecipient
+        ? { ...config, evm: { address: evmRecipient } }
+        : config) as Readonly<{
+        solana: typeof config.solana
+        evm?: { address: typeof owner.address }
+      }>,
       {
         config: sdk,
         project: { solana, waitForIntentStatus } as never,
@@ -2038,6 +2116,18 @@ describe('standalone managed Solana account facade', () => {
     expect(prepared.request.request).not.toHaveProperty('account.evm')
   })
 
+  test('uses an EVM receiver as a plain-delivery default without adding it to the wire account', async () => {
+    const { facade } = fixture(guardian.address)
+    const prepared = await facade.prepareTransaction(delivery() as never)
+
+    expect(facade.getAddress('evm' as never)).toBe(guardian.address)
+    expect(prepared.execution).toMatchObject({
+      accountAddress: location.wallet,
+      recipient: guardian.address,
+    })
+    expect(prepared.request.request).not.toHaveProperty('account.evm')
+  })
+
   test('refuses destination calls, which need an EVM account to run them', async () => {
     const { facade, solana } = fixture()
 
@@ -2046,7 +2136,7 @@ describe('standalone managed Solana account facade', () => {
         ...delivery(),
         calls: [{ to: destinationToken, data: '0x' }],
       } as never),
-    ).rejects.toThrow(/paired EVM account/)
+    ).rejects.toThrow(/managed EVM account/)
     expect(solana.prepareSolanaIntent).not.toHaveBeenCalled()
   })
 

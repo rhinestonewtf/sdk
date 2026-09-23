@@ -1,6 +1,7 @@
 import { privateKeyToAccount } from 'viem/accounts'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { OwnersFieldRequiredError } from '../accounts/error'
+import { asSwigNamespace, locateSwig } from '../accounts/solana/address'
 import { solanaAddress } from '../chains/non-evm'
 import {
   AccountVmNotConfiguredError,
@@ -11,6 +12,8 @@ import { RhinestoneSDK } from './sdk'
 
 const owner = privateKeyToAccount(`0x${'11'.repeat(32)}`)
 const receiver = solanaAddress('11111111111111111111111111111111')
+const location = locateSwig(asSwigNamespace('dev-v1'), owner.address)
+const swig = location.swig
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -63,7 +66,7 @@ describe('RhinestoneSDK', () => {
     await expect(
       sdk.createAccount({
         evm: { account: { type: 'eoa' }, eoa: owner },
-        solana: { owner: { type: 'ecdsa', account: owner } },
+        solana: { owner: { type: 'ecdsa', account: owner }, swig },
       }),
     ).rejects.toThrow(ManagedSolanaAccountNotSupportedError)
   })
