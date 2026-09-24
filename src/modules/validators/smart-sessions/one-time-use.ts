@@ -1,4 +1,4 @@
-import { type Address, encodeFunctionData, type Hex, pad, toHex } from 'viem'
+import { type Address, concat, encodeFunctionData, type Hex, pad, toHex } from 'viem'
 
 // OneTimeUseIdPolicy (RHI-5798): a session pins an id it invents, and each
 // settlement burns that id through an injected pre-claim execution, so a session
@@ -42,20 +42,25 @@ function assertValidOneTimeUseId(id: bigint): void {
   }
 }
 
-// Encodes the pinned id as the policy's initData (a bytes32).
-export function encodeOneTimeUseIdInitData(id: bigint): Hex {
+// The policy's initData: a 32-byte id then a 32-byte deadline (unix seconds,
+// zero = never expires). Any other length reverts at session enable.
+export function encodeOneTimeUseIdInitData(id: bigint, deadline = 0n): Hex {
   assertValidOneTimeUseId(id)
-  return pad(toHex(id), { size: 32 })
+  if (deadline < 0n || deadline > (1n << 256n) - 1n) {
+    throw new Error('OneTimeUseId deadline must be a uint256')
+  }
+  return concat([pad(toHex(id), { size: 32 }), pad(toHex(deadline), { size: 32 })])
 }
 
 // The erc1271 policy entry to add to a session's erc7739Policies.erc1271Policies.
 export function oneTimeUseIdErc1271Policy(params: {
   policy: Address
   id: bigint
+  deadline?: bigint
 }): { readonly policy: Address; readonly initData: Hex } {
   return {
     policy: params.policy,
-    initData: encodeOneTimeUseIdInitData(params.id),
+    initData: encodeOneTimeUseIdInitData(params.id, params.deadline),
   }
 }
 

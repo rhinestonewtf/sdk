@@ -1,4 +1,4 @@
-import { pad, toHex } from 'viem'
+import { concat, pad, toHex } from 'viem'
 import { base } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 
@@ -13,7 +13,12 @@ import { resolveSessionData, toSession } from './resolve'
 describe('resolveSessionData — one-time-use session', () => {
   const POLICY = '0x00000000000000000000000000000000000000aa' as const
   const owners = { type: 'ecdsa' as const, accounts: [accountA] }
-  const onceEntry = { policy: POLICY, initData: pad(toHex(42n), { size: 32 }) }
+  // source: OneTimeUseIdPolicy init layout (smart-sessions-v2#56 @ 493fd86) —
+  // 32-byte id then 32-byte deadline; no deadline given, so it is zero.
+  const onceEntry = {
+    policy: POLICY,
+    initData: concat([pad(toHex(42n), { size: 32 }), pad(toHex(0n), { size: 32 })]),
+  }
 
   function oneTimeUseSession() {
     return resolveSessionData({

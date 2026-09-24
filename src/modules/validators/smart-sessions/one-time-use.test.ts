@@ -1,4 +1,4 @@
-import { decodeFunctionData, pad, toHex } from 'viem'
+import { decodeAbiParameters, decodeFunctionData, pad, toHex } from 'viem'
 import { describe, expect, test } from 'vitest'
 
 import {
@@ -10,21 +10,36 @@ import {
 
 const POLICY = '0x00000000000000000000000000000000000000aa' as const
 
+// source: OneTimeUseIdPolicy.initializeWithMultiplexer (smart-sessions-v2#56 @ 493fd86):
+// `initData.length != 64` reverts InvalidInitDataLength; id = initData[0:32],
+// deadline = initData[32:64], and a zero deadline never expires. A 32-byte
+// encoding reverts at session enable (reproduced on a mainnet fork, RHI-5798).
+const decodeInit = (hex: `0x${string}`) =>
+  decodeAbiParameters([{ type: 'uint256' }, { type: 'uint256' }], hex)
+
 describe('encodeOneTimeUseIdInitData', () => {
-  test('encodes the id as a bytes32', () => {
-    expect(encodeOneTimeUseIdInitData(42n)).toBe(pad(toHex(42n), { size: 32 }))
+  test('is exactly 64 bytes: id then deadline', () => {
+    const initData = encodeOneTimeUseIdInitData(42n, 1_900_000_000n)
+    expect((initData.length - 2) / 2).toBe(64)
+    expect(decodeInit(initData)).toEqual([42n, 1_900_000_000n])
+  })
+  test('defaults the deadline to zero (never expires)', () => {
+    expect(decodeInit(encodeOneTimeUseIdInitData(42n))).toEqual([42n, 0n])
   })
   test('rejects a zero id (policy treats 0 as "not configured")', () => {
     expect(() => encodeOneTimeUseIdInitData(0n)).toThrow()
   })
+  test('rejects a deadline outside uint256', () => {
+    expect(() => encodeOneTimeUseIdInitData(42n, -1n)).toThrow()
+    expect(() => encodeOneTimeUseIdInitData(42n, 1n << 256n)).toThrow()
+  })
 })
 
 describe('oneTimeUseIdErc1271Policy', () => {
-  test('produces a {policy, initData} entry pinning the id', () => {
-    expect(oneTimeUseIdErc1271Policy({ policy: POLICY, id: 7n })).toEqual({
-      policy: POLICY,
-      initData: pad(toHex(7n), { size: 32 }),
-    })
+  test('produces a {policy, initData} entry pinning the id and deadline', () => {
+    const entry = oneTimeUseIdErc1271Policy({ policy: POLICY, id: 7n, deadline: 99n })
+    expect(entry.policy).toBe(POLICY)
+    expect(decodeInit(entry.initData)).toEqual([7n, 99n])
   })
 })
 

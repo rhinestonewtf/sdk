@@ -324,6 +324,9 @@ export interface SessionDefinition {
 
 export interface OneTimeUseSessionConfig {
   readonly id: bigint
+  // Unix seconds after which the id can no longer be spent; omit or 0 for never.
+  // The policy rejects a deadline already in the past when the session is enabled.
+  readonly deadline?: bigint
 }
 
 export interface ResolvedPolicy {

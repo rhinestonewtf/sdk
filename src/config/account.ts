@@ -835,9 +835,10 @@ interface SessionDefinition<
    * carry the matching burn op ({@link buildOneTimeUseBurnOp}) in its
    * `preClaimExecutions`; a Permit2-route session must also supply a
    * `claimPolicies` entry (moved onto the 1271 surface as the digest-binding
-   * partner).
+   * partner). `deadline` (unix seconds, omit for never) bounds when the id can
+   * still be spent.
    */
-  oneTimeUse?: { id: bigint }
+  oneTimeUse?: { id: bigint; deadline?: bigint }
 }
 
 type SessionInput<TAbis extends readonly Abi[] = readonly Abi[]> = Omit<
