@@ -291,7 +291,9 @@ export function resolveSessionData(
     const once = oneTimeUseIdErc1271Policy({
       policy: addresses.oneTimeUseId,
       id: definition.oneTimeUse.id,
-      deadline: definition.oneTimeUse.deadline,
+      deadline:
+        definition.oneTimeUse.validUntil &&
+        BigInt(Math.floor(definition.oneTimeUse.validUntil.getTime() / 1000)),
     })
     // Install the once-policy on EVERY action: on the executor route the contract's
     // on-chain guard (a `consume` may only name the session's own id) runs via

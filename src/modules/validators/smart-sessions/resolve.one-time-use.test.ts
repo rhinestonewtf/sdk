@@ -50,11 +50,12 @@ describe('resolveSessionData — one-time-use session', () => {
     expect(data.claimPolicies).toHaveLength(0)
   })
 
-  test('carries a caller-set deadline into the once-policy on every surface', () => {
+  test('carries a caller-set validUntil into the once-policy on every surface, in seconds', () => {
     const data = resolveSessionData({
       chain: base,
       owners,
-      oneTimeUse: { id: 42n, deadline: 1_900_000_000n },
+      // source: 1_900_000_000 s = 2030-03-17T17:46:40Z (date -u -r 1900000000)
+      oneTimeUse: { id: 42n, validUntil: new Date('2030-03-17T17:46:40.999Z') },
       policyAddresses: { oneTimeUseId: POLICY },
     })
     const onceEntries = [
