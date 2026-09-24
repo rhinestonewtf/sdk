@@ -25,6 +25,7 @@ export type {
   SolanaManagedAccountConfig,
   SolanaOwner,
   SolanaReceiverAccountConfig,
+  SolanaSourceAsset,
   SolanaStandaloneAccountConfig,
 } from '../config/account'
 export type {

@@ -929,15 +929,15 @@ interface EvmReceiverAccountConfig {
 }
 
 /**
- * Authority of a development managed Solana account: an ECDSA key, or a
- * passkey registered as the Swig's secp256r1 authority.
+ * Authority of a managed Solana account: an ECDSA key, or a passkey registered
+ * as the Swig's secp256r1 authority.
  */
 type SolanaOwner =
   | { type: 'ecdsa'; account: Account }
   | { type: 'passkey'; account: WebAuthnAccount }
 
 /**
- * Development managed Solana account identified by its Swig.
+ * Managed Solana account identified by its Swig.
  *
  * The wallet is independent from any EVM entry in the composite account. Save
  * the Swig state address when the account is provisioned and supply the matching
@@ -1300,7 +1300,31 @@ interface CrossChainNonEvmTransaction extends BaseTransaction {
   recipient?: NonEvmAddress
 }
 
-/** One same-chain SPL transfer from a development managed Solana account. */
+/**
+ * The SPL mint a Solana-origin transaction spends, on one cluster, with an
+ * optional ceiling on how much of it the wallet may debit.
+ *
+ * The ceiling is the most the route may take from the wallet in that mint, not
+ * the amount delivered. With a destination amount the route is exact-out and
+ * must fit under it; without one the route spends the smaller of the balance
+ * and the ceiling. A quote whose source input exceeds the ceiling is refused
+ * before anything is signed.
+ */
+interface SolanaSourceAsset {
+  /** The cluster the mint is spent on. Must match the transaction's own cluster. */
+  chain: SolanaChain
+  /** The SPL mint. Native SOL is not supported. */
+  address: SolanaAddress
+  /** Most of this mint the wallet may debit, in base units. Omit for no ceiling. */
+  amount?: bigint
+}
+
+/**
+ * One same-chain SPL transfer from a managed Solana account.
+ *
+ * Omit `tokenRequests[0].amount` to send the whole balance of the mint, or cap
+ * what that spends with `sourceAssets`.
+ */
 interface SameChainSolanaTransaction {
   chain: SolanaChain
   tokenRequests: [
@@ -1308,6 +1332,12 @@ interface SameChainSolanaTransaction {
     | { address: SolanaAddress; amount?: undefined },
   ]
   recipient: SolanaAddress
+  /**
+   * Caps how much of the mint the wallet may debit. Names the same cluster and
+   * mint as the token request, with an `amount` no smaller than the one sent.
+   * Without an `amount` it is the same as omitting it.
+   */
+  sourceAssets?: readonly [SolanaSourceAsset]
   appFees?: AppFeeRate
   protocolFees?: ProtocolFeeRate
   /**
@@ -1322,7 +1352,6 @@ interface SameChainSolanaTransaction {
   instructions?: never
   addressLookupTables?: never
   sourceCalls?: never
-  sourceAssets?: never
   signers?: never
   gasLimit?: never
   customDeadline?: never
@@ -1335,22 +1364,27 @@ interface SameChainSolanaTransaction {
 }
 
 /**
- * One cross-chain delivery funded from a development managed Solana account:
- * spend an SPL mint on a Solana cluster, receive a token on an EVM chain.
+ * One cross-chain delivery funded from a managed Solana account: spend an SPL
+ * mint on a Solana cluster, receive a token on an EVM chain.
  *
  * The source cluster and mint are named explicitly — the route spends exactly
  * one source token, and the account cannot pick between several holdings on
  * your behalf. Omit `tokenRequests[0].amount` to spend the whole balance of
- * that mint, and omit `recipient` to deliver to the account's own EVM address.
- * An account with no EVM entry has none, so it must name a `recipient`.
+ * that mint, or up to `sourceAssets[0].amount` when it is set. Omit
+ * `recipient` to deliver to the account's own EVM address. An account with no
+ * EVM entry has none, so it must name a `recipient`.
  *
  * `calls` run on the account's own EVM account once the delivery lands, which
  * needs an EVM entry and no explicit `recipient`.
  */
 interface CrossChainSolanaOriginTransaction {
   sourceChains: readonly [SolanaChain]
-  /** The SPL mint to spend. Exactly one; the route spends one source token. */
-  sourceTokens: readonly [{ address: SolanaAddress }]
+  /**
+   * The SPL mint to spend, on the `sourceChains` cluster, and optionally the
+   * most of it the wallet may debit. Exactly one; the route spends one source
+   * token.
+   */
+  sourceAssets: readonly [SolanaSourceAsset]
   targetChain: Chain
   tokenRequests: readonly [{ address: Address; amount?: bigint }]
   recipient?: Address
@@ -1375,11 +1409,12 @@ interface CrossChainSolanaOriginTransaction {
    * it serves what it can cover and refuses the rest by name.
    */
   sponsored?: Sponsorship
+  /** Replaced by `sourceAssets: [{ chain, address, amount? }]`. */
+  sourceTokens?: never
   chain?: never
   instructions?: never
   addressLookupTables?: never
   sourceCalls?: never
-  sourceAssets?: never
   signers?: never
   customDeadline?: never
   settlementLayers?: never
@@ -1402,8 +1437,8 @@ interface CrossChainSolanaTransaction extends Omit<BaseTransaction, 'calls'> {
 }
 
 /**
- * Solana instructions run out of a development managed Solana account's own
- * wallet, on the cluster the account holds them on.
+ * Solana instructions run out of a managed Solana account's own wallet, on the
+ * cluster the account holds them on.
  *
  * The wallet executes the instructions, so the transaction names no recipient
  * and no token request: a payee is encoded inside the instructions themselves.
@@ -1583,6 +1618,7 @@ export type {
   SolanaManagedAccountConfig,
   SolanaOwner,
   SolanaReceiverAccountConfig,
+  SolanaSourceAsset,
   SolanaStandaloneAccountConfig,
   SingleSessionSignerSet,
   SourceAssetInput,

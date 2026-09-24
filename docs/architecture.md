@@ -90,7 +90,16 @@ returns a `SolanaStandaloneAccount`, typed with only what it supports (no
 assembly, authorizations, owner signing or submission options). An address-only
 EVM receiver may accompany that facade for address access and delivery defaults.
 
-Managed Solana is development-only. Its Swig must exist and carry the
+Managed Solana runs on two environment/endpoint pairs only: development with
+`https://dev.v1.orchestrator.rhinestone.dev`, and production with
+`https://v1.orchestrator.rhinestone.dev`. `api/accounts.ts` refuses any other
+pair at creation, and the facade captures the pair and re-checks it on every
+operation. Each environment derives EVM-paired Swigs under its own namespace
+(`MANAGED_SWIG_NAMESPACES` in `accounts/solana/address.ts`: `dev-v1`, `prod-v1`),
+a local mirror of that orchestrator's `SOLANA_SWIG_NAMESPACE` that must be kept
+in step with it; the namespace is also bound into the execution metadata. The
+SDK adds no per-environment refusals beyond that — whatever an environment
+cannot serve yet, its orchestrator refuses. Its Swig must exist and carry the
 configured owner as its authority on the target cluster before it can spend.
 Every managed Solana
 config names its state account explicitly with `swig: stateAddress`; adding,
@@ -104,8 +113,7 @@ named to the orchestrator by its SEC1-compressed P-256 key. Its assertion's
 challenge and type are checked locally, but the orchestrator verifies the
 signature. The SDK derives only PDA relationships offline with the small
 `@noble/curves` and `@scure/base` primitives; it imports no Solana RPC or
-transaction stack and does not verify the account onchain. Production has no
-enabled Swig namespace.
+transaction stack and does not verify the account onchain.
 
 `deploy` names its VM first: `deploy('evm', chain, { sponsored })` runs the EVM
 deployment, and `deploy('solana', solanaChain, { swigId })` creates the Swig
@@ -115,10 +123,11 @@ entry. The standalone facade types `swigId` as required, because without managed
 EVM the Swig is always independent. It always
 sends the Solana-only shape — `svm.swigAccount` plus `initData: { authority, id }`
 and no `account.evm` — with a tokenless destination and `sponsorship: { gas: true }`.
-The id is computed for the Swig derived from the managed EVM account (`dev-v1`)
-and otherwise must be the caller's saved id from `createSolanaSwigId()`; an id that
-does not derive the configured Swig, a missing ECDSA `publicKey`, and a
-non-development environment are refused before any request. The root authority
+The id is computed for the Swig derived from the managed EVM account under the
+environment's namespace, and otherwise must be the caller's saved id from
+`createSolanaSwigId()`; an id that does not derive the configured Swig, a missing
+ECDSA `publicKey`, and a changed environment or endpoint are refused before any
+request. The root authority
 comes only from the configured owner. The quoted `purpose: 'deployment'` route
 must name exactly that Swig, wallet and authority on the requested cluster and
 ask for no signatures or requirements; it is submitted with `proofs: []` and
@@ -174,10 +183,26 @@ that id is published on `quote.bridgeFill` as an opaque passthrough for the
 provider's status API; it never enters CAIP-2 formatting or chain comparisons.
 
 A Solana **origin** can also fund a delivery on an EVM chain. The source cluster
-and the SPL mint to spend are both named explicitly — the route spends exactly
-one source token, and `source.selection` pins the cluster and narrows it to that
-single mint with `perChain`, because a chain selector alone would open every
-registry token on it. The delivery recipient is an explicit
+(`sourceChains`) and the SPL mint to spend (`sourceAssets: [{ chain, address }]`)
+are both named explicitly — the route spends exactly one source token, and
+`source.selection` pins the cluster and narrows it to that single mint with
+`perChain`, because a chain selector alone would open every registry token on
+it.
+
+A Solana-origin transfer — the delivery, or a same-chain SPL transfer — can cap
+what the wallet debits with `sourceAssets[0].amount`, the EVM source-asset
+ceiling. It is distinct from the destination amount: with one the route is
+exact-out and must fit under the cap, without one it spends up to the cap. The
+cap adds exactly one `source.limits` entry on the pinned pair and never widens
+the selection, and the normalized access list names that pair by its cap alone
+(`chainTokenAmounts`), as an EVM capped entry does. Without an amount the
+request and intent input are byte-identical to an uncapped transfer. Every
+quote whose `cost.input` exceeds the cap is refused at prepare and again on
+reconstruction, so before signing and submission. That check trusts the quote's
+accounting; the orchestrator enforces the limit authoritatively. Instruction
+executions take no `sourceAssets`: the orchestrator refuses source limits with
+destination instructions. The cap is not repeated in the execution metadata;
+rebuilding `request` and `intentInput` from `transaction` covers it. The delivery recipient is an explicit
 EVM address or the configured managed EVM/receiver address, resolved before the
 quote so the authorization binds to it; an account with no EVM entry has no
 default, so its delivery without a recipient is refused before quoting, in its

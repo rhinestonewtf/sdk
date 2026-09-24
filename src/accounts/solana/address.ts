@@ -133,6 +133,25 @@ function asSwigNamespace(value: string): SwigNamespace {
   return value as SwigNamespace
 }
 
+/**
+ * The Swig namespace each environment's orchestrator derives EVM-paired Swigs
+ * under (its `SOLANA_SWIG_NAMESPACE`). A mismatch derives a different Swig than
+ * the backend expects, so these must track the deployed configuration.
+ */
+const MANAGED_SWIG_NAMESPACES = {
+  development: 'dev-v1',
+  production: 'prod-v1',
+} as const
+
+type ManagedSwigNamespace =
+  (typeof MANAGED_SWIG_NAMESPACES)[keyof typeof MANAGED_SWIG_NAMESPACES]
+
+function isManagedSwigNamespace(value: unknown): value is ManagedSwigNamespace {
+  return Object.values(MANAGED_SWIG_NAMESPACES).includes(
+    value as ManagedSwigNamespace,
+  )
+}
+
 function swigId(namespace: SwigNamespace, evmAccount: Address): Uint8Array {
   if (!isAddress(evmAccount, { strict: false })) {
     throw new TypeError(`Invalid EVM account address: ${evmAccount}`)
@@ -219,13 +238,21 @@ function createSolanaSwigId(): {
   return { id: bytesToHex(id), swig: location.swig, wallet: location.wallet }
 }
 
-export type { ProgramAddress, SwigIdLocation, SwigLocation, SwigNamespace }
+export type {
+  ManagedSwigNamespace,
+  ProgramAddress,
+  SwigIdLocation,
+  SwigLocation,
+  SwigNamespace,
+}
 export {
+  MANAGED_SWIG_NAMESPACES,
   SWIG_PROGRAM_ADDRESS,
   asSwigNamespace,
   createProgramAddress,
   createSolanaSwigId,
   findProgramAddress,
+  isManagedSwigNamespace,
   locateSwig,
   locateSwigById,
   locateSwigWallet,

@@ -43,7 +43,11 @@ import type {
   OrchestratorIntentRequest,
   OrchestratorQuote,
 } from '../clients/orchestrator/types'
-import type { SolanaManagedAccountConfig, SolanaOwner } from '../config/account'
+import type {
+  SolanaManagedAccountConfig,
+  SolanaOwner,
+  SolanaSourceAsset,
+} from '../config/account'
 import type { LegacyAccountConfig } from '../config/legacy'
 import { resolveAccountConfig, resolveSdkConfig } from '../config/resolve'
 import type { AccountInvocationContext } from '../config/resolved'
@@ -91,10 +95,13 @@ import {
 import type { CoreComposition } from './compose-types'
 import type { AdaptedSignerSelection } from './signer-selection'
 
+const DEV_ORCHESTRATOR_URL = 'https://dev.v1.orchestrator.rhinestone.dev'
+const PROD_ORCHESTRATOR_URL = 'https://v1.orchestrator.rhinestone.dev'
 const owner = privateKeyToAccount(`0x${'02'.repeat(32)}`)
 const guardian = privateKeyToAccount(`0x${'03'.repeat(32)}`)
 const managedSwigLocation = locateSwig(asSwigNamespace('dev-v1'), owner.address)
 const managedSwig = managedSwigLocation.swig
+const prodSwigLocation = locateSwig(asSwigNamespace('prod-v1'), owner.address)
 const recipientAddress = '0x0000000000000000000000000000000000000010' as const
 const normalizedIntentInput = {
   account: { address: recipientAddress, accountType: 'ERC7579' },
@@ -230,7 +237,7 @@ describe('managed Solana account construction', () => {
     try {
       const sdk = new RhinestoneSDK({
         apiKey: 'offline',
-        endpointUrl: 'https://dev.v1.orchestrator.rhinestone.dev',
+        endpointUrl: DEV_ORCHESTRATOR_URL,
         useDevContracts: true,
       })
       const config = {
@@ -255,7 +262,7 @@ describe('managed Solana account construction', () => {
   test('accepts a passkey owner on the same Swig and refuses malformed ones', async () => {
     const sdk = new RhinestoneSDK({
       apiKey: 'offline',
-      endpointUrl: 'https://dev.v1.orchestrator.rhinestone.dev',
+      endpointUrl: DEV_ORCHESTRATOR_URL,
       useDevContracts: true,
     })
     const evm = { owners: { type: 'ecdsa' as const, accounts: [owner] } }
@@ -296,40 +303,68 @@ describe('managed Solana account construction', () => {
     }
   })
 
-  test('rejects production, a managed account naming no Swig, and widened unsupported owners', async () => {
-    const managed = {
-      owner: { type: 'ecdsa' as const, account: owner },
-      swig: managedSwig,
+  test.each([
+    ['development on the dev endpoint', DEV_ORCHESTRATOR_URL, true],
+    ['development on the dev endpoint/', `${DEV_ORCHESTRATOR_URL}/`, true],
+    ['production on the default endpoint', undefined, false],
+    ['production on the prod endpoint/', `${PROD_ORCHESTRATOR_URL}/`, false],
+  ])('accepts %s', async (_name, endpointUrl, useDevContracts) => {
+    const account = await new RhinestoneSDK({
+      apiKey: 'offline',
+      ...(endpointUrl ? { endpointUrl } : {}),
+      useDevContracts,
+    }).createAccount({
+      evm: { owners: { type: 'ecdsa', accounts: [owner] } },
+      solana: {
+        owner: { type: 'ecdsa', account: owner },
+        swig: managedSwig,
+      },
+    })
+    expect(account.getAddress('solana')).toBe(managedSwigLocation.wallet)
+  })
+
+  test.each([
+    ['development on the prod endpoint', PROD_ORCHESTRATOR_URL, true],
+    ['development on the default endpoint', undefined, true],
+    ['production on the dev endpoint', DEV_ORCHESTRATOR_URL, false],
+    ['development on a custom endpoint', 'https://orchestrator.example', true],
+    ['production on a custom endpoint', 'https://orchestrator.example', false],
+  ])('refuses %s', async (_name, endpointUrl, useDevContracts) => {
+    const sdk = new RhinestoneSDK({
+      apiKey: 'offline',
+      ...(endpointUrl ? { endpointUrl } : {}),
+      useDevContracts,
+    })
+    for (const config of [
+      {
+        evm: { owners: { type: 'ecdsa' as const, accounts: [owner] } },
+        solana: {
+          owner: { type: 'ecdsa' as const, account: owner },
+          swig: managedSwig,
+        },
+      },
+      {
+        solana: {
+          owner: { type: 'ecdsa' as const, account: owner },
+          swig: managedSwig,
+        },
+      },
+    ]) {
+      const refusal = sdk.createAccount(config)
+      await expect(refusal).rejects.toBeInstanceOf(
+        ManagedSolanaAccountNotSupportedError,
+      )
+      await expect(refusal).rejects.toThrow(
+        /v1\.orchestrator\.rhinestone\.dev.*dev\.v1\.orchestrator\.rhinestone\.dev/,
+      )
     }
-    await expect(
-      new RhinestoneSDK({ apiKey: 'offline' }).createAccount({
-        evm: { owners: { type: 'ecdsa', accounts: [owner] } },
-        solana: managed,
-      }),
-    ).rejects.toThrow(/useDevContracts/)
+  })
+
+  test('rejects a managed account naming no Swig, and widened unsupported owners', async () => {
     await expect(
       new RhinestoneSDK({
         apiKey: 'offline',
-        useDevContracts: true,
-      }).createAccount({
-        evm: { owners: { type: 'ecdsa', accounts: [owner] } },
-        solana: managed,
-      }),
-    ).rejects.toThrow(/dev\.v1\.orchestrator\.rhinestone\.dev/)
-    await expect(
-      new RhinestoneSDK({
-        apiKey: 'offline',
-        endpointUrl: 'https://v1.orchestrator.rhinestone.dev',
-        useDevContracts: true,
-      }).createAccount({
-        evm: { owners: { type: 'ecdsa', accounts: [owner] } },
-        solana: managed,
-      }),
-    ).rejects.toThrow(/dev\.v1\.orchestrator\.rhinestone\.dev/)
-    await expect(
-      new RhinestoneSDK({
-        apiKey: 'offline',
-        endpointUrl: 'https://dev.v1.orchestrator.rhinestone.dev',
+        endpointUrl: DEV_ORCHESTRATOR_URL,
         useDevContracts: true,
       }).createAccount({
         solana: { owner: { type: 'ecdsa', account: owner } },
@@ -354,7 +389,7 @@ describe('managed Solana account construction', () => {
     const devSdk = () =>
       new RhinestoneSDK({
         apiKey: 'offline',
-        endpointUrl: 'https://dev.v1.orchestrator.rhinestone.dev',
+        endpointUrl: DEV_ORCHESTRATOR_URL,
         useDevContracts: true,
       })
 
@@ -386,19 +421,6 @@ describe('managed Solana account construction', () => {
       }
     })
 
-    test('stays development-only', async () => {
-      const config = { solana: { owner: ecdsaOwner, swig } }
-      await expect(
-        new RhinestoneSDK({ apiKey: 'offline' }).createAccount(config),
-      ).rejects.toThrow(/useDevContracts/)
-      await expect(
-        new RhinestoneSDK({
-          apiKey: 'offline',
-          useDevContracts: true,
-        }).createAccount(config),
-      ).rejects.toThrow(/dev\.v1\.orchestrator\.rhinestone\.dev/)
-    })
-
     test.each([
       ['a non-address string', 'swig'],
       ['an object', { swigAccount: swig }],
@@ -424,7 +446,7 @@ describe('managed Solana account construction', () => {
       await expect(
         account.prepareTransaction({
           sourceChains: [solanaDevnet],
-          sourceTokens: [{ address: location.wallet }],
+          sourceAssets: [{ chain: solanaDevnet, address: location.wallet }],
           targetChain: optimism,
           tokenRequests: [{ address: recipientAddress, amount: 1n }],
           calls: [{ to: recipientAddress }],
@@ -520,6 +542,7 @@ describe('managed Solana account facade', () => {
   function fixture() {
     const compatibilityConfig: LegacyAccountConfig<unknown> = {
       owners: { type: 'ecdsa', accounts: [owner] },
+      endpointUrl: DEV_ORCHESTRATOR_URL,
       useDevContracts: true,
     }
     const best = quote('best')
@@ -579,7 +602,11 @@ describe('managed Solana account facade', () => {
         solana: { owner: { type: 'ecdsa', account: owner }, swig: managedSwig },
       },
       {
-        config: resolveSdkConfig({ apiKey: 'offline', useDevContracts: true }),
+        config: resolveSdkConfig({
+          apiKey: 'offline',
+          endpointUrl: DEV_ORCHESTRATOR_URL,
+          useDevContracts: true,
+        }),
         project: {} as never,
         createAccount: (context) => ({
           context,
@@ -715,6 +742,7 @@ describe('managed Solana account facade', () => {
     const best = { ...quote('best'), signingRequests: [request] }
     const compatibilityConfig: LegacyAccountConfig<unknown> = {
       owners: { type: 'ecdsa', accounts: [owner] },
+      endpointUrl: DEV_ORCHESTRATOR_URL,
       useDevContracts: true,
     }
     const workflows = {
@@ -748,7 +776,11 @@ describe('managed Solana account facade', () => {
         },
       },
       {
-        config: resolveSdkConfig({ apiKey: 'offline', useDevContracts: true }),
+        config: resolveSdkConfig({
+          apiKey: 'offline',
+          endpointUrl: DEV_ORCHESTRATOR_URL,
+          useDevContracts: true,
+        }),
         project: {} as never,
         createAccount: (context) => ({
           context,
@@ -910,6 +942,99 @@ describe('managed Solana account facade', () => {
       expect(workflows.prepareSolanaIntent).not.toHaveBeenCalled()
     },
   )
+
+  describe('with a source amount cap', () => {
+    const cappedAsset = (amount?: bigint, overrides: object = {}) => ({
+      sourceAssets: [
+        {
+          chain: solanaDevnet,
+          address: mint,
+          ...(amount === undefined ? {} : { amount }),
+          ...overrides,
+        },
+      ] as [SolanaSourceAsset],
+    })
+
+    test('caps the transfer with one limit and keeps it through signing', async () => {
+      const { facade, workflows } = fixture()
+      const prepared = await facade.prepareTransaction({
+        ...transaction(),
+        ...cappedAsset(100n),
+      })
+
+      expect(workflows.prepareSolanaIntent.mock.calls[0]?.[0]).toMatchObject({
+        action: { amount: 100n, sourceLimit: 100n },
+      })
+      expect(prepared.request.request).toMatchObject({
+        source: {
+          limits: [
+            {
+              chainId: solanaDevnet.caip2,
+              tokenAddress: mint,
+              maxAmount: '100',
+            },
+          ],
+        },
+      })
+      expect(prepared.intentInput.accountAccessList).toEqual({
+        chainTokenAmounts: { 792703810: { [mint]: '100' } },
+      })
+      await facade.submitTransaction(await facade.signTransaction(prepared))
+      expect(workflows.submitSolanaIntent).toHaveBeenCalledOnce()
+    })
+
+    test('treats a source asset without an amount as no source asset', async () => {
+      const { facade } = fixture()
+      const plain = await facade.prepareTransaction(transaction())
+      const named = await facade.prepareTransaction({
+        ...transaction(),
+        ...cappedAsset(),
+      })
+
+      expect(named.request).toEqual(plain.request)
+      expect(named.intentInput).toEqual(plain.intentInput)
+      expect(named.execution).toEqual(plain.execution)
+    })
+
+    test.each([
+      ['a token amount above the cap', cappedAsset(99n), /exceeds/],
+      [
+        'another mint',
+        cappedAsset(100n, {
+          address: solanaAddress('11111111111111111111111111111113'),
+        }),
+        /mint the transfer sends/,
+      ],
+      [
+        'another cluster',
+        cappedAsset(100n, { chain: solanaMainnet }),
+        /cluster the transaction spends from/,
+      ],
+      ['a zero cap', cappedAsset(0n), /positive bigint/],
+      [
+        'two source assets',
+        {
+          sourceAssets: [
+            { chain: solanaDevnet, address: mint },
+            { chain: solanaDevnet, address: mint },
+          ],
+        },
+        /exactly one source asset/,
+      ],
+    ])('refuses %s before quoting', async (_name, patch, reason) => {
+      const { facade, workflows } = fixture()
+      const refusal = facade.prepareTransaction({
+        ...transaction(),
+        ...patch,
+      } as never)
+
+      await expect(refusal).rejects.toBeInstanceOf(
+        UnsupportedAccountCapabilityError,
+      )
+      await expect(refusal).rejects.toThrow(reason)
+      expect(workflows.prepareSolanaIntent).not.toHaveBeenCalled()
+    })
+  })
 
   test('rejects owner-only, assembly, authorization, and EVM submission options before effects', async () => {
     const { facade, workflows } = fixture()
@@ -1263,6 +1388,10 @@ describe('managed Solana account facade', () => {
       ['EVM calls', { calls: [] }],
       ['app fees', { appFees: { feeBps: 10 } }],
       ['protocol fees', { protocolFees: { feeBps: 10 } }],
+      [
+        'a source asset',
+        { sourceAssets: [{ chain: solanaDevnet, address: mint, amount: 1n }] },
+      ],
     ])('refuses instructions combined with %s', async (_name, patch) => {
       const { facade, workflows } = fixture()
 
@@ -1328,24 +1457,36 @@ describe('managed Solana cross-chain delivery facade', () => {
     account: { address: owner.address, type: 'erc7579' as const },
   }
 
-  function spendRequest(): SigningRequest {
+  function spendRequest(
+    location: {
+      readonly wallet: SolanaAddress
+      readonly swig: SolanaAddress
+    } = swig,
+  ): SigningRequest {
     return personalSignRequest({
       chainId: solanaDevnet.caip2,
-      wallet: swig.wallet,
-      swigAccount: swig.swig,
+      wallet: location.wallet,
+      swigAccount: location.swig,
       authority: owner.address,
       message,
       expiresAtSlot: '123',
     })
   }
 
-  function quote(intentId: string): OrchestratorExecutionQuote {
+  function quote(
+    intentId: string,
+    location: {
+      readonly wallet: SolanaAddress
+      readonly swig: SolanaAddress
+    } = swig,
+    input = 101n,
+  ): OrchestratorExecutionQuote {
     return {
       ...caucasusQuote({
         intentId,
         expiresAt: 2_000_000_000,
         settlementLayer: 'RELAY',
-        signingRequests: [spendRequest()],
+        signingRequests: [spendRequest(location)],
         cost: {
           input: [
             {
@@ -1354,7 +1495,7 @@ describe('managed Solana cross-chain delivery facade', () => {
               symbol: 'USDC',
               decimals: 6,
               price: { usd: 1 },
-              amount: 101n,
+              amount: input,
             },
           ],
           output: [
@@ -1395,10 +1536,21 @@ describe('managed Solana cross-chain delivery facade', () => {
     }
   }
 
-  function fixture(best = quote('best'), explicitSwig = managedSwig) {
+  function fixture(
+    best = quote('best'),
+    explicitSwig = managedSwig,
+    environment: 'development' | 'production' = 'development',
+  ) {
+    const endpoint = {
+      endpointUrl:
+        environment === 'development'
+          ? DEV_ORCHESTRATOR_URL
+          : PROD_ORCHESTRATOR_URL,
+      useDevContracts: environment === 'development',
+    }
     const compatibilityConfig: LegacyAccountConfig<unknown> = {
       owners: { type: 'ecdsa', accounts: [owner] },
-      useDevContracts: true,
+      ...endpoint,
     }
     const prepareSolanaIntent = vi.fn(async (input) => ({
       traceId: 'prepare-trace',
@@ -1479,7 +1631,7 @@ describe('managed Solana cross-chain delivery facade', () => {
         },
       },
       {
-        config: resolveSdkConfig({ apiKey: 'offline', useDevContracts: true }),
+        config: resolveSdkConfig({ apiKey: 'offline', ...endpoint }),
         project: {} as never,
         createAccount: (context) => ({
           context,
@@ -1493,7 +1645,9 @@ describe('managed Solana cross-chain delivery facade', () => {
   function transaction() {
     return {
       sourceChains: [solanaDevnet] as [typeof solanaDevnet],
-      sourceTokens: [{ address: mint }] as [{ address: typeof mint }],
+      sourceAssets: [{ chain: solanaDevnet, address: mint }] as [
+        SolanaSourceAsset,
+      ],
       targetChain: optimism,
       tokenRequests: [{ address: destinationToken, amount: 100n }] as [
         { address: `0x${string}`; amount: bigint },
@@ -1624,8 +1778,15 @@ describe('managed Solana cross-chain delivery facade', () => {
     ['two source clusters', { sourceChains: [solanaDevnet, solanaMainnet] }],
     [
       'two source mints',
-      { sourceTokens: [{ address: mint }, { address: mint }] },
+      {
+        sourceAssets: [
+          { chain: solanaDevnet, address: mint },
+          { chain: solanaDevnet, address: mint },
+        ],
+      },
     ],
+    ['no source asset', { sourceAssets: [] }],
+    ['a missing source asset', { sourceAssets: undefined }],
     [
       'two delivery tokens',
       {
@@ -1636,8 +1797,51 @@ describe('managed Solana cross-chain delivery facade', () => {
       },
     ],
     [
-      'a base58 source mint amount',
-      { sourceTokens: [{ address: mint, amount: 1n }] },
+      'a zero source cap',
+      { sourceAssets: [{ chain: solanaDevnet, address: mint, amount: 0n }] },
+    ],
+    [
+      'a negative source cap',
+      { sourceAssets: [{ chain: solanaDevnet, address: mint, amount: -1n }] },
+    ],
+    [
+      'a numeric source cap',
+      { sourceAssets: [{ chain: solanaDevnet, address: mint, amount: 1 }] },
+    ],
+    [
+      'an extra source asset key',
+      {
+        sourceAssets: [
+          { chain: solanaDevnet, address: mint, amount: 1n, token: mint },
+        ],
+      },
+    ],
+    [
+      'a source asset on another cluster',
+      { sourceAssets: [{ chain: solanaMainnet, address: mint }] },
+    ],
+    [
+      'a source asset on a forged cluster',
+      {
+        sourceAssets: [
+          { chain: { ...solanaDevnet, name: 'Forged' }, address: mint },
+        ],
+      },
+    ],
+    [
+      'an invalid source mint',
+      { sourceAssets: [{ chain: solanaDevnet, address: 'not-a-mint' }] },
+    ],
+    [
+      'native SOL as the source',
+      {
+        sourceAssets: [
+          {
+            chain: solanaDevnet,
+            address: '11111111111111111111111111111111',
+          },
+        ],
+      },
     ],
     ['a non-EVM destination', { targetChain: solanaMainnet }],
     ['a base58 recipient', { recipient: mint }],
@@ -1714,11 +1918,18 @@ describe('managed Solana cross-chain delivery facade', () => {
       signature: `0x${'11'.repeat(65)}` as const,
     }
 
-    function callsFixture() {
-      const base = fixture({
-        ...quote('best'),
-        signingRequests: [spendRequest(), childRequest],
-      })
+    function callsFixture(
+      location: typeof swig = swig,
+      environment: 'development' | 'production' = 'development',
+    ) {
+      const base = fixture(
+        {
+          ...quote('best', location),
+          signingRequests: [spendRequest(location), childRequest],
+        },
+        location.swig,
+        environment,
+      )
       const resolveSolanaEvmDestination = vi.fn(async () => ({
         calls: [resolvedCall],
         account: {
@@ -1862,6 +2073,31 @@ describe('managed Solana cross-chain delivery facade', () => {
       expect(base.workflows.prepareSolanaIntent).not.toHaveBeenCalled()
     })
 
+    test('runs calls from the prod-v1 Swig of a production account', async () => {
+      const prodSwig = locateSwig(asSwigNamespace('prod-v1'), owner.address)
+      const { facade, workflows } = callsFixture(prodSwig, 'production')
+      const prepared = await facade.prepareTransaction(callsTransaction())
+
+      expect(prepared.execution).toMatchObject({
+        namespace: 'prod-v1',
+        swigAddress: prodSwig.swig,
+      })
+      await facade.submitTransaction(await facade.signTransaction(prepared))
+      expect(workflows.submitSolanaIntent).toHaveBeenCalledOnce()
+    })
+
+    test('refuses calls from the dev-v1 Swig on a production account', async () => {
+      const { facade, resolveSolanaEvmDestination } = callsFixture(
+        swig,
+        'production',
+      )
+
+      await expect(
+        facade.prepareTransaction(callsTransaction()),
+      ).rejects.toThrow(/independently selected Swig/)
+      expect(resolveSolanaEvmDestination).not.toHaveBeenCalled()
+    })
+
     test('passes an EIP-7702 init signature to the destination resolution', async () => {
       const { facade, resolveSolanaEvmDestination } = callsFixture()
       const eip7702InitSignature = `0x${'22'.repeat(65)}` as const
@@ -1888,6 +2124,234 @@ describe('managed Solana cross-chain delivery facade', () => {
       expect(workflows.submitSolanaIntent).not.toHaveBeenCalled()
     })
   })
+
+  describe('with a source amount cap', () => {
+    const cap = 101n
+    // `null` names no cap; `undefined` would take the default.
+    function cappedTransaction(amount: bigint | null = cap) {
+      return {
+        ...transaction(),
+        sourceAssets: [
+          {
+            chain: solanaDevnet,
+            address: mint,
+            ...(amount === null ? {} : { amount }),
+          },
+        ] as [SolanaSourceAsset],
+      }
+    }
+    // Persisted artifacts carry bigints; callers round-trip them losslessly.
+    function roundTrip<T>(value: T): T {
+      return JSON.parse(
+        JSON.stringify(value, (_key, item) =>
+          typeof item === 'bigint' ? { $bigint: item.toString() } : item,
+        ),
+        (_key, item) =>
+          item && typeof item === 'object' && '$bigint' in item
+            ? BigInt(item.$bigint)
+            : item,
+      )
+    }
+
+    test('sends the cap as one limit on the pinned pair and signs within it', async () => {
+      const { facade, workflows } = fixture()
+      const prepared = await facade.prepareTransaction(cappedTransaction())
+
+      expect(workflows.prepareSolanaIntent.mock.calls[0]?.[0]).toMatchObject({
+        action: { mint, amount: 100n, sourceLimit: cap },
+      })
+      expect(prepared.request.request).toMatchObject({
+        source: {
+          selection: { tokens: { only: [mint] } },
+          limits: [
+            {
+              chainId: solanaDevnet.caip2,
+              tokenAddress: mint,
+              maxAmount: '101',
+            },
+          ],
+        },
+      })
+      expect(prepared.intentInput.accountAccessList).toEqual({
+        chainTokenAmounts: { 792703810: { [mint]: '101' } },
+      })
+      expect(Object.isFrozen(prepared.transaction.sourceAssets?.[0])).toBe(true)
+
+      const other = fixture()
+      const signed = await other.facade.signTransaction(roundTrip(prepared))
+      await other.facade.submitTransaction(roundTrip(signed))
+      expect(other.workflows.submitSolanaIntent).toHaveBeenCalledOnce()
+    })
+
+    test('treats an absent cap exactly as before', async () => {
+      const { facade } = fixture()
+      const uncapped = await facade.prepareTransaction(transaction())
+      const noAmount = await facade.prepareTransaction(cappedTransaction(null))
+
+      expect(noAmount.request).toEqual(uncapped.request)
+      expect(noAmount.intentInput).toEqual(uncapped.intentInput)
+      expect(uncapped.request.request).not.toHaveProperty('source.limits')
+    })
+
+    test('refuses a quote debiting more than the cap before signing', async () => {
+      const { facade, workflows } = fixture(quote('best', swig, cap + 1n))
+      const prepared = await facade.prepareTransaction(cappedTransaction())
+
+      await expect(facade.signTransaction(prepared)).rejects.toThrow(
+        /exceeds the source amount cap/,
+      )
+      expect(workflows.signSolanaIntent).not.toHaveBeenCalled()
+    })
+
+    test.each([
+      [
+        'a raised cap in the transaction',
+        (prepared: PreparedTransactionData) => ({
+          ...prepared,
+          transaction: cappedTransaction(cap + 1n),
+        }),
+      ],
+      [
+        'a cap removed from the transaction',
+        (prepared: PreparedTransactionData) => ({
+          ...prepared,
+          transaction: cappedTransaction(null),
+        }),
+      ],
+      [
+        'a cap removed from the request',
+        (prepared: PreparedTransactionData) => {
+          const request = prepared.request.request as {
+            source: Record<string, unknown>
+          }
+          const { limits: _limits, ...source } = request.source
+          return {
+            ...prepared,
+            request: { ...prepared.request, request: { ...request, source } },
+          }
+        },
+      ],
+      [
+        'a cap changed in the intent input',
+        (prepared: PreparedTransactionData) => ({
+          ...prepared,
+          intentInput: {
+            ...prepared.intentInput,
+            accountAccessList: {
+              chainTokenAmounts: { 792703810: { [mint]: '1000' } },
+            },
+          },
+        }),
+      ],
+    ])('refuses %s on sign and submit', async (_name, tamper) => {
+      const { facade, workflows } = fixture()
+      const prepared = await facade.prepareTransaction(cappedTransaction())
+      const signed = await facade.signTransaction(prepared)
+      workflows.signSolanaIntent.mockClear()
+
+      await expect(
+        facade.signTransaction(tamper(prepared) as never),
+      ).rejects.toThrow(InvalidSolanaTransactionArtifactError)
+      await expect(
+        facade.submitTransaction({
+          ...signed,
+          ...tamper(signed),
+        } as SignedTransactionData),
+      ).rejects.toThrow(InvalidSolanaTransactionArtifactError)
+      expect(workflows.signSolanaIntent).not.toHaveBeenCalled()
+      expect(workflows.submitSolanaIntent).not.toHaveBeenCalled()
+    })
+
+    test('refuses a cap added to an uncapped artifact', async () => {
+      const { facade, workflows } = fixture()
+      const prepared = await facade.prepareTransaction(transaction())
+
+      await expect(
+        facade.signTransaction({
+          ...prepared,
+          transaction: cappedTransaction(),
+        }),
+      ).rejects.toThrow(/persisted request/)
+      expect(workflows.signSolanaIntent).not.toHaveBeenCalled()
+    })
+  })
+
+  test('refuses a leftover `sourceTokens`, pointing at `sourceAssets`', async () => {
+    const { facade, workflows } = fixture()
+    const { sourceAssets: _assets, ...rest } = transaction()
+    const legacy = { ...rest, sourceTokens: [{ address: mint }] }
+
+    const refusal = facade.prepareTransaction(legacy as never)
+    await expect(refusal).rejects.toBeInstanceOf(
+      UnsupportedAccountCapabilityError,
+    )
+    await expect(refusal).rejects.toThrow(
+      '`sourceTokens` was replaced by `sourceAssets: [{ chain, address, amount? }]`.',
+    )
+    // An artifact persisted with the old shape is refused, not reinterpreted.
+    const prepared = await facade.prepareTransaction(transaction())
+    const signed = await facade.signTransaction(prepared)
+    await expect(
+      facade.signTransaction({ ...prepared, transaction: legacy as never }),
+    ).rejects.toThrow(/`sourceTokens` was replaced/)
+    await expect(
+      facade.submitTransaction({ ...signed, transaction: legacy as never }),
+    ).rejects.toThrow(/`sourceTokens` was replaced/)
+    expect(workflows.submitSolanaIntent).not.toHaveBeenCalled()
+  })
+
+  describe('on production', () => {
+    const prodSwig = locateSwig(asSwigNamespace('prod-v1'), owner.address)
+
+    test('derives a different Swig from the same EVM account', () => {
+      expect(prodSwig.swig).not.toBe(swig.swig)
+      expect(prodSwig.wallet).not.toBe(swig.wallet)
+    })
+
+    test('prepares, signs and submits a capped delivery bound to prod-v1', async () => {
+      const { facade, workflows } = fixture(
+        quote('best', prodSwig),
+        prodSwig.swig,
+        'production',
+      )
+      const prepared = await facade.prepareTransaction({
+        ...transaction(),
+        sourceAssets: [
+          { chain: solanaDevnet, address: mint, amount: 101n },
+        ] as [SolanaSourceAsset],
+      })
+
+      expect(prepared.execution).toMatchObject({
+        kind: 'solana-cross-chain',
+        namespace: 'prod-v1',
+        endpoint: PROD_ORCHESTRATOR_URL,
+        swigAddress: prodSwig.swig,
+      })
+      await facade.submitTransaction(await facade.signTransaction(prepared))
+      expect(workflows.submitSolanaIntent).toHaveBeenCalledOnce()
+    })
+
+    test.each([
+      ['a production artifact on a development account', 'production'],
+      ['a development artifact on a production account', 'development'],
+    ] as const)('refuses %s', async (_name, from) => {
+      const to = from === 'production' ? 'development' : 'production'
+      // The same independently selected Swig on both, so only the environment
+      // differs.
+      const source = fixture(quote('best'), managedSwig, from)
+      const target = fixture(quote('best'), managedSwig, to)
+      const prepared = await source.facade.prepareTransaction(transaction())
+      const signed = await source.facade.signTransaction(prepared)
+
+      await expect(target.facade.signTransaction(prepared)).rejects.toThrow(
+        InvalidSolanaTransactionArtifactError,
+      )
+      await expect(target.facade.submitTransaction(signed)).rejects.toThrow(
+        InvalidSolanaTransactionArtifactError,
+      )
+      expect(target.workflows.submitSolanaIntent).not.toHaveBeenCalled()
+    })
+  })
 })
 
 describe('standalone managed Solana account facade', () => {
@@ -1898,7 +2362,7 @@ describe('standalone managed Solana account facade', () => {
   const location = locateSwig(asSwigNamespace('dev-v1'), guardian.address)
   const sdk = resolveSdkConfig({
     apiKey: 'offline',
-    endpointUrl: 'https://dev.v1.orchestrator.rhinestone.dev',
+    endpointUrl: DEV_ORCHESTRATOR_URL,
     useDevContracts: true,
   })
   const ecdsaOwner = { type: 'ecdsa' as const, account: owner }
@@ -1959,7 +2423,18 @@ describe('standalone managed Solana account facade', () => {
     }
   }
 
-  function fixture(evmRecipient?: typeof owner.address) {
+  const prodSdk = resolveSdkConfig({ apiKey: 'offline' })
+
+  function fixture(
+    evmRecipient?: typeof owner.address,
+    // What the account captured at creation, and what the SDK runs with now.
+    environments: {
+      readonly captured?: typeof sdk
+      readonly current?: typeof sdk
+    } = {},
+  ) {
+    const captured = environments.captured ?? sdk
+    const current = environments.current ?? captured
     const solana = {
       prepareSolanaIntent: vi.fn(async (input) => {
         const best = quote(
@@ -2009,7 +2484,8 @@ describe('standalone managed Solana account facade', () => {
         owner: ecdsaOwner,
         walletAddress: location.wallet,
         swigAddress: location.swig,
-        endpoint: sdk.orchestratorUrl,
+        environment: captured.environment,
+        endpoint: captured.orchestratorUrl,
         ...(evmRecipient ? { evmRecipient } : {}),
       },
       (evmRecipient
@@ -2019,7 +2495,7 @@ describe('standalone managed Solana account facade', () => {
         evm?: { address: typeof owner.address }
       }>,
       {
-        config: sdk,
+        config: current,
         project: { solana, waitForIntentStatus } as never,
         createAccount,
       },
@@ -2040,7 +2516,9 @@ describe('standalone managed Solana account facade', () => {
   function delivery() {
     return {
       sourceChains: [solanaDevnet] as [typeof solanaDevnet],
-      sourceTokens: [{ address: mint }] as [{ address: typeof mint }],
+      sourceAssets: [{ chain: solanaDevnet, address: mint }] as [
+        SolanaSourceAsset,
+      ],
       targetChain: optimism,
       tokenRequests: [{ address: destinationToken, amount: 100n }] as [
         { address: `0x${string}`; amount: bigint },
@@ -2209,6 +2687,78 @@ describe('standalone managed Solana account facade', () => {
     ).rejects.toThrow(/does not accept submission options/)
     expect(solana.submitSolanaIntent).not.toHaveBeenCalled()
   })
+  describe('on production', () => {
+    const program = solanaAddress('JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4')
+
+    test.each([
+      ['a same-chain transfer', () => transfer()],
+      [
+        'a capped same-chain transfer',
+        () => ({
+          ...transfer(),
+          sourceAssets: [
+            { chain: solanaDevnet, address: mint, amount: 100n },
+          ] as [SolanaSourceAsset],
+        }),
+      ],
+      [
+        'an instruction execution',
+        () => ({
+          chain: solanaDevnet,
+          instructions: [{ programId: program, accounts: [], data: 'AQID' }],
+        }),
+      ],
+      [
+        'a capped delivery',
+        () => ({
+          ...delivery(),
+          recipient: guardian.address,
+          sourceAssets: [
+            { chain: solanaDevnet, address: mint, amount: 100n },
+          ] as [SolanaSourceAsset],
+        }),
+      ],
+    ])('runs %s bound to prod-v1', async (_name, build) => {
+      const { facade, solana } = fixture(undefined, { captured: prodSdk })
+      const prepared = await facade.prepareTransaction(build() as never)
+
+      expect(solana.prepareSolanaIntent.mock.calls[0]?.[0]).toMatchObject({
+        namespace: 'prod-v1',
+        endpoint: PROD_ORCHESTRATOR_URL,
+      })
+      expect(prepared.execution).toMatchObject({
+        namespace: 'prod-v1',
+        endpoint: PROD_ORCHESTRATOR_URL,
+      })
+      await facade.submitTransaction(await facade.signTransaction(prepared))
+      expect(solana.submitSolanaIntent).toHaveBeenCalledOnce()
+    })
+
+    test.each([
+      ['production', { captured: sdk, current: prodSdk }],
+      ['development', { captured: prodSdk, current: sdk }],
+      [
+        'another endpoint',
+        {
+          captured: prodSdk,
+          current: resolveSdkConfig({
+            apiKey: 'offline',
+            endpointUrl: 'https://orchestrator.example',
+          }),
+        },
+      ],
+    ])(
+      'refuses an account whose SDK moved to %s before quoting',
+      async (_name, environments) => {
+        const { facade, solana } = fixture(undefined, environments)
+
+        await expect(
+          facade.prepareTransaction(transfer()),
+        ).rejects.toBeInstanceOf(ManagedSolanaAccountNotSupportedError)
+        expect(solana.prepareSolanaIntent).not.toHaveBeenCalled()
+      },
+    )
+  })
 })
 
 describe('account config compatibility snapshot', () => {
@@ -2349,14 +2899,14 @@ describe('cross-VM transaction validation', () => {
       {
         sourceChains: [{ id: 1, kind: 'svm', caip2: 'solana:forged' }],
         targetChain: mainnet,
-        sourceAssets: [],
+        sourceTokens: [],
       },
-      /Solana-origin transfers do not support `sourceAssets`/,
+      /`sourceTokens` was replaced by `sourceAssets/,
     ],
     [
       {
         sourceChains: [{ id: 1, kind: 'svm', caip2: 'solana:forged' }],
-        sourceTokens: [{ address: solana }],
+        sourceAssets: [{ chain: solanaMainnet, address: solana }],
         targetChain: mainnet,
         tokenRequests: [{ address: recipientAddress, amount: 1n }],
       },
@@ -3519,7 +4069,7 @@ function quoteFixture(intentId: string): Quote {
 describe('managed Solana Swig creation', () => {
   const devSdk = resolveSdkConfig({
     apiKey: 'offline',
-    endpointUrl: 'https://dev.v1.orchestrator.rhinestone.dev',
+    endpointUrl: DEV_ORCHESTRATOR_URL,
     useDevContracts: true,
   })
   // An independently minted Swig: id = 32 × 0x07.
@@ -3591,6 +4141,7 @@ describe('managed Solana Swig creation', () => {
       readonly owner?: SolanaOwner
       readonly authority?: SwigAuthority
       readonly sdk?: ReturnType<typeof resolveSdkConfig>
+      readonly environment?: 'development' | 'production'
       readonly endpoint?: string
       readonly route?: OrchestratorQuote
     } = {},
@@ -3612,7 +4163,8 @@ describe('managed Solana Swig creation', () => {
         owner: solanaOwner,
         walletAddress: independent.wallet,
         swigAddress: independent.swig,
-        endpoint: options.endpoint ?? sdk.orchestratorUrl,
+        environment: options.environment ?? 'development',
+        endpoint: options.endpoint ?? devSdk.orchestratorUrl,
       },
       { solana: { owner: solanaOwner, swig: independent.swig } },
       {
@@ -3700,8 +4252,33 @@ describe('managed Solana Swig creation', () => {
     },
   )
 
+  test('creates an independent Swig on a production account', async () => {
+    const { facade, workflows } = standalone({
+      sdk: resolveSdkConfig({ apiKey: 'offline' }),
+      environment: 'production',
+      endpoint: PROD_ORCHESTRATOR_URL,
+    })
+
+    await expect(
+      facade.deploy('solana', solanaDevnet, { swigId: independentId }),
+    ).resolves.toBe(true)
+    expect(workflows.prepareSolanaDeployment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        namespace: 'prod-v1',
+        endpoint: PROD_ORCHESTRATOR_URL,
+      }),
+    )
+  })
+
   test.each([
     ['a production SDK', { sdk: resolveSdkConfig({ apiKey: 'offline' }) }],
+    [
+      'a development SDK on a production account',
+      {
+        environment: 'production' as const,
+        endpoint: PROD_ORCHESTRATOR_URL,
+      },
+    ],
     ['another endpoint', { endpoint: 'https://other.example' }],
   ])(
     'refuses %s before contacting the orchestrator',
@@ -3831,13 +4408,29 @@ describe('managed Solana Swig creation', () => {
     expect(workflows.createQuote).not.toHaveBeenCalled()
   })
 
-  function composite(options: { readonly swig?: SolanaAddress | false } = {}) {
+  function composite(
+    options: {
+      readonly swig?: SolanaAddress | false
+      readonly environment?: 'development' | 'production'
+    } = {},
+  ) {
+    const production = options.environment === 'production'
+    const endpoint = {
+      endpointUrl: production ? PROD_ORCHESTRATOR_URL : DEV_ORCHESTRATOR_URL,
+      useDevContracts: !production,
+    }
     const compatibilityConfig: LegacyAccountConfig<unknown> = {
       owners: { type: 'ecdsa', accounts: [owner] },
-      useDevContracts: true,
+      ...endpoint,
     }
-    const swig = options.swig === undefined ? managedSwig : options.swig
-    const target = swig === independent.swig ? independent : managedSwigLocation
+    const derived = production ? prodSwigLocation : managedSwigLocation
+    const swig = options.swig === undefined ? derived.swig : options.swig
+    const target =
+      swig === independent.swig
+        ? independent
+        : swig === prodSwigLocation.swig
+          ? prodSwigLocation
+          : managedSwigLocation
     const solanaPorts = ports(
       deploymentRoute(target, { kind: 'secp256k1', address: owner.address }),
     )
@@ -3860,7 +4453,7 @@ describe('managed Solana Swig creation', () => {
           : {}),
       } as { evm: EvmAccountConfig; solana: SolanaManagedAccountConfig },
       {
-        config: resolveSdkConfig({ apiKey: 'offline', useDevContracts: true }),
+        config: resolveSdkConfig({ apiKey: 'offline', ...endpoint }),
         project: {} as never,
         createAccount: (context) => ({
           context,
@@ -3887,6 +4480,30 @@ describe('managed Solana Swig creation', () => {
       'deployment-intent',
     )
     expect(workflows.deploy).not.toHaveBeenCalled()
+  })
+
+  test('creates the prod-v1 Swig of a production composite account with no id', async () => {
+    const { facade, workflows } = composite({ environment: 'production' })
+
+    await expect(facade.deploy('solana', solanaDevnet)).resolves.toBe(true)
+
+    expect(prodSwigLocation.swig).not.toBe(managedSwig)
+    expect(workflows.createQuote.mock.calls[0]![0].account.svm).toMatchObject({
+      swigAccount: prodSwigLocation.swig,
+      initData: { id: bytesToHex(prodSwigLocation.id) },
+    })
+  })
+
+  test('needs the saved id for the dev-v1 Swig on a production account', async () => {
+    const { facade, workflows } = composite({
+      environment: 'production',
+      swig: managedSwig,
+    })
+
+    await expect(facade.deploy('solana', solanaDevnet)).rejects.toThrow(
+      /createSolanaSwigId\(\)/,
+    )
+    expect(workflows.createQuote).not.toHaveBeenCalled()
   })
 
   test('needs the saved id for an independent Swig on a composite account', async () => {

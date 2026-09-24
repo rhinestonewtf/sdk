@@ -106,8 +106,8 @@ needs its saved id.
 
 Creation is one-shot: a Swig created with the wrong owner permanently strands
 its wallet. A wrong or missing id, an ECDSA owner without `publicKey` (such as a
-JSON-RPC account), and non-development environments are refused before any
-request. A Swig that already exists resolves `true` without creating anything;
+JSON-RPC account), and an environment or endpoint other than the one the account
+was created against are refused before any request. A Swig that already exists resolves `true` without creating anything;
 its root authority is not verified, and a Swig whose root is not the configured
 owner cannot be spent by it.
 

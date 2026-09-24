@@ -30,6 +30,7 @@ import { compressP256PublicKey } from '../transactions/intents/solana'
 import {
   createAccountFacade,
   createSolanaAccountFacade,
+  isManagedSolanaEndpoint,
   type RhinestoneAccount,
   type RhinestoneAccountBase,
 } from './account'
@@ -51,8 +52,6 @@ export function composeSdk(input: SdkConstructionInput): SdkComposition {
 }
 
 const ACCOUNT_KEYS = ['evm', 'solana']
-const MANAGED_SOLANA_ORCHESTRATOR_URL =
-  'https://dev.v1.orchestrator.rhinestone.dev'
 const EVM_KEYS = [
   'account',
   'owners',
@@ -201,18 +200,12 @@ export function attachAccount<const C extends RhinestoneAccountConfig>(
   }
   if (
     managedSolanaOwner &&
-    sdk.composition.config.environment !== 'development'
+    !isManagedSolanaEndpoint(
+      sdk.composition.config.environment,
+      sdk.composition.config.orchestratorUrl,
+    )
   ) {
     throw new ManagedSolanaAccountNotSupportedError()
-  }
-  if (
-    managedSolanaOwner &&
-    sdk.composition.config.orchestratorUrl.replace(/\/+$/u, '') !==
-      MANAGED_SOLANA_ORCHESTRATOR_URL
-  ) {
-    throw new ManagedSolanaAccountNotSupportedError(
-      `Managed Solana requires \`endpointUrl: '${MANAGED_SOLANA_ORCHESTRATOR_URL}'\` in addition to \`useDevContracts: true\`.`,
-    )
   }
 
   const capturedEvmReceiver = evmReceiver
@@ -242,6 +235,7 @@ export function attachAccount<const C extends RhinestoneAccountConfig>(
         owner: managedSolanaOwner,
         walletAddress: managedSolanaSwig.address,
         swigAddress: managedSolanaSwig.swigAccount,
+        environment: sdk.composition.config.environment,
         endpoint: sdk.composition.config.orchestratorUrl,
         ...(evmReceiver ? { evmRecipient: evmReceiver } : {}),
       },

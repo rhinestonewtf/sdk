@@ -137,7 +137,7 @@ async function useManagedSolanaApi() {
     prepared.execution?.kind === 'solana' ? prepared.execution : undefined
   const delivery = {
     sourceChains: [solanaDevnet],
-    sourceTokens: [{ address: solanaMint }],
+    sourceAssets: [{ chain: solanaDevnet, address: solanaMint, amount: 1n }],
     targetChain: base,
     tokenRequests: [{ address: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913' }],
   } satisfies CrossChainSolanaOriginTransaction
