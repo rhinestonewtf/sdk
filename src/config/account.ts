@@ -826,7 +826,7 @@ interface SessionDefinition<
    *
    * Opt-in: anything other than `'none'` moves the permissionId and digest, so
    * an existing session's stored signature no longer covers it. Unrestricted
-   * sessions stay on `zeroHash` in every mode.
+   * sessions stay on `zeroHash` in every mode, except a `oneTimeUse` session.
    */
   saltMode?: 'none' | 'v1' | 'strict'
   /**
@@ -837,8 +837,9 @@ interface SessionDefinition<
    * `claimPolicies` entry (moved onto the 1271 surface as the digest-binding
    * partner). `validUntil` (omit for never) bounds when the id can still be
    * spent. Always salted as in `'strict'`, whatever `saltMode` says, so it never
-   * shares a permissionId with another session; `saltMode: 'v1'` and a
-   * `signing` validity window are rejected.
+   * shares a permissionId with another session. `saltMode: 'v1'` is rejected,
+   * as is a `signing` validity window alongside claim policies. Without claim
+   * policies the session keeps the signing surface it asked for.
    */
   oneTimeUse?: { id: bigint; validUntil?: Date }
 }

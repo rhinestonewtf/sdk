@@ -318,7 +318,9 @@ export interface SessionDefinition {
   // Pins a one-time-use id on the session (RHI-5798): the session settles at most
   // once per chain. Requires `policyAddresses.oneTimeUseId`, and each settlement
   // must carry the matching burn op (see buildOneTimeUseBurnOp) in its
-  // `preClaimExecutions`.
+  // `preClaimExecutions`. Always salted as in 'strict', whatever `saltMode` says;
+  // `saltMode: 'v1'` is rejected, as is a `signing` validity window alongside
+  // claim policies.
   oneTimeUse?: OneTimeUseSessionConfig
 }
 

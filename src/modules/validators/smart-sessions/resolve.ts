@@ -122,6 +122,13 @@ export function resolveSessionData(
         'not both.',
     )
   }
+  if (definition.oneTimeUse) {
+    if (definition.saltMode === 'v1') {
+      throw new Error(
+        "oneTimeUse cannot use saltMode 'v1': a 1.x session has no once-policy to reproduce",
+      )
+    }
+  }
   // Guard raw actions from reintroducing the wildcard: reject one without
   // target+selector (would map to the fallback flags), or one that targets the
   // fallback sentinel outright — either would re-add the wildcard action that
@@ -288,22 +295,6 @@ export function resolveSessionData(
         'oneTimeUse requires policyAddresses.oneTimeUseId (no canonical deployment yet)',
       )
     }
-    // The 1271 list is replaced below, which would silently drop a signing window.
-    const signing = definition.signing
-    if (
-      signing !== undefined &&
-      signing.mode !== 'disabled' &&
-      (signing.validAfter !== undefined || signing.validUntil !== undefined)
-    ) {
-      throw new Error(
-        'oneTimeUse cannot take a signing validity window; bound it with oneTimeUse.validUntil',
-      )
-    }
-    if (definition.saltMode === 'v1') {
-      throw new Error(
-        "oneTimeUse cannot use saltMode 'v1': a 1.x session has no once-policy to reproduce",
-      )
-    }
     const once = oneTimeUseIdErc1271Policy({
       policy: addresses.oneTimeUseId,
       id: definition.oneTimeUse.id,
@@ -316,8 +307,7 @@ export function resolveSessionData(
     // checkAction, once per execution, so a settler can't dodge it by composing the
     // batch out of some other permitted action. checkAction only fires in
     // verify-execution mode, which prepareIntentSessions forces for one-time-use
-    // sessions (see there). Replay of a burned id is additionally blocked on the
-    // 1271 surface below, which is consulted in every mode.
+    // sessions (see there).
     actions = actions.map((action) => ({
       ...action,
       actionPolicies: [...action.actionPolicies, once],
@@ -326,13 +316,26 @@ export function resolveSessionData(
     // settling proof only binds when the digest-binding Permit2 claim policy sits
     // on the SAME surface (the 1271 list is an AND: it bounds WHAT may settle, the
     // once-policy bounds HOW MANY TIMES), so the claim policies move here from
-    // `claimPolicies`. A permit2 one-time-use session must therefore supply a claim
-    // policy; an executor-only session may have none.
-    // Replace rather than append: leaving the permissive sudo entry on the 1271
-    // list would let the arbiter route fall through to it, so the once-policy
-    // would never bound the settlement.
-    erc1271Policies = [...claimPolicies, once]
-    claimPolicies = []
+    // `claimPolicies`. An executor-only session keeps the signing list it asked
+    // for: a lone once-policy there would approve a Permit2 transfer nominated by
+    // an executor-route consumeFor, with no claim policy bounding the spender.
+    if (claimPolicies.length > 0) {
+      const signing = definition.signing
+      if (
+        signing !== undefined &&
+        signing.mode !== 'disabled' &&
+        (signing.validAfter !== undefined || signing.validUntil !== undefined)
+      ) {
+        throw new Error(
+          'oneTimeUse with claim policies cannot take a signing validity window',
+        )
+      }
+      // Replace rather than append: leaving the permissive sudo entry on the 1271
+      // list would let the arbiter route fall through to it, so the once-policy
+      // would never bound the settlement.
+      erc1271Policies = [...claimPolicies, once]
+      claimPolicies = []
+    }
   }
   const enabledErc7739Policies = { ...erc7739Policies, erc1271Policies }
   return {
@@ -342,7 +345,7 @@ export function resolveSessionData(
     // session: enabling it would union with that session's policies.
     salt: sessionSalt(
       definition.oneTimeUse ? 'strict' : definition.saltMode,
-      restricted || definition.oneTimeUse !== undefined,
+      restricted || Boolean(definition.oneTimeUse),
       {
         actions: v1SaltActions ?? actions,
         erc7739Policies: enabledErc7739Policies,
@@ -363,20 +366,21 @@ const POLICY_COMPONENTS = [
 /**
  * Pick the salt for a session, defaulting to the historical `zeroHash`.
  *
- * Unrestricted sessions are always `zeroHash`: there is only one shape of them,
- * so two for the same signer are the same session and sharing a permissionId is
- * correct. Restricted ones can differ, which is what makes a salt necessary.
+ * Unsalted sessions are always `zeroHash`: an unrestricted session has only one
+ * shape, so two for the same signer are the same session and sharing a
+ * permissionId is correct. Restricted and one-time-use ones can differ, which is
+ * what makes a salt necessary.
  */
 function sessionSalt(
   mode: 'none' | 'v1' | 'strict' | undefined,
-  restricted: boolean,
+  salted: boolean,
   session: {
     actions: readonly ResolvedAction[]
     erc7739Policies: ResolvedERC7739Policies
     claimPolicies: readonly ResolvedPolicy[]
   },
 ): Hex {
-  if (!restricted || mode === undefined || mode === 'none') {
+  if (!salted || mode === undefined || mode === 'none') {
     return zeroHash
   }
   return mode === 'v1'
@@ -473,8 +477,8 @@ function v1RestrictedSalt(actions: readonly ResolvedAction[]): Hex {
  * ones in a different order is the same authorisation and must not change the
  * permissionId.
  *
- * Unrestricted sessions keep `zeroHash`, which is what their stored signatures
- * already cover.
+ * Unrestricted sessions other than one-time-use ones keep `zeroHash`, which is
+ * what their stored signatures already cover.
  */
 function strictSessionSalt(session: {
   actions: readonly ResolvedAction[]

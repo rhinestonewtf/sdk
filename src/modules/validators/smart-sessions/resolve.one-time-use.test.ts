@@ -1,4 +1,4 @@
-import { decodeAbiParameters } from 'viem'
+import { decodeAbiParameters, zeroHash } from 'viem'
 import { base } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 
@@ -54,6 +54,7 @@ describe('resolveSessionData — one-time-use session', () => {
     const data = resolveSessionData({
       chain: base,
       owners,
+      claimPolicies: [{ type: 'permit2' }],
       // source: 1_900_000_000 s = 2030-03-17T17:46:40Z (date -u -r 1900000000)
       oneTimeUse: { id: 42n, validUntil: new Date('2030-03-17T17:46:40.999Z') },
       policyAddresses: { oneTimeUseId: POLICY },
@@ -81,67 +82,145 @@ describe('resolveSessionData — one-time-use session', () => {
     }
   })
 
-  test('executor-only one-time-use drops sudo from the 1271 list, leaving only the once-policy', () => {
-    const data = resolveSessionData({
-      chain: base,
-      owners,
-      oneTimeUse: { id: 42n },
-      policyAddresses: { oneTimeUseId: POLICY },
-    })
-    // No claim policy → the 1271 list is exactly [once]; the permissive sudo
-    // entry is intentionally replaced so the arbiter route can't fall through it.
-    expect(data.erc7739Policies.erc1271Policies).toEqual([onceEntry])
-    expect(data.claimPolicies).toHaveLength(0)
-    // ...and the burn still bounds the executor route: once-policy on every action.
-    expect(data.actions.length).toBeGreaterThan(0)
-    for (const action of data.actions) {
-      expect(action.actionPolicies).toContainEqual(onceEntry)
-    }
-  })
+  test.each([
+    undefined,
+    { mode: 'disabled' },
+    { mode: 'unrestricted', validUntil: new Date('2030-01-01') },
+  ] as const)(
+    'an executor-only one-time-use session keeps the signing list it asked for (%o)',
+    (signing) => {
+      const resolve = (oneTimeUse?: { id: bigint }) =>
+        resolveSessionData({
+          chain: base,
+          owners,
+          ...(signing && { signing }),
+          ...(oneTimeUse && { oneTimeUse }),
+          policyAddresses: { oneTimeUseId: POLICY },
+        })
+      const data = resolve({ id: 42n })
+      expect(data.erc7739Policies.erc1271Policies).toEqual(
+        resolve().erc7739Policies.erc1271Policies,
+      )
+      expect(data.erc7739Policies.erc1271Policies).not.toContainEqual(onceEntry)
+      // The burn still bounds the executor route: once-policy on every action.
+      expect(data.actions.length).toBeGreaterThan(0)
+      for (const action of data.actions) {
+        expect(action.actionPolicies).toContainEqual(onceEntry)
+      }
+    },
+  )
 
-  const session = (
+  const sessionWith = (
     oneTimeUse: { id: bigint } | undefined,
-    spenders?: `0x${string}`[],
+    extra: {
+      spenders?: `0x${string}`[]
+      saltMode?: 'none' | 'strict'
+    } = {},
   ) =>
     toSession({
       chain: base,
       owners,
-      claimPolicies: [{ type: 'permit2', ...(spenders && { spenders }) }],
+      claimPolicies: [
+        {
+          type: 'permit2',
+          ...(extra.spenders && { spenders: extra.spenders }),
+        },
+      ],
       ...(oneTimeUse && { oneTimeUse }),
+      ...(extra.saltMode && { saltMode: extra.saltMode }),
       policyAddresses: { oneTimeUseId: POLICY },
     })
 
   test('two one-time-use sessions that differ only by id get different permissionIds', () => {
-    expect(session({ id: 42n }).permissionId).not.toBe(
-      session({ id: 43n }).permissionId,
+    expect(sessionWith({ id: 42n }).permissionId).toBe(
+      sessionWith({ id: 42n }).permissionId,
+    )
+    expect(sessionWith({ id: 42n }).permissionId).not.toBe(
+      sessionWith({ id: 43n }).permissionId,
     )
   })
 
   test('a one-time-use session never shares a permissionId with a plain session of the same owner', () => {
-    expect(session({ id: 42n }).permissionId).not.toBe(
-      session(undefined).permissionId,
+    expect(sessionWith({ id: 42n }).permissionId).not.toBe(
+      sessionWith(undefined).permissionId,
     )
   })
+
+  test.each([undefined, 'none', 'strict'] as const)(
+    'is salted as in strict whatever saltMode says (%s)',
+    (saltMode) => {
+      const salt = sessionWith({ id: 42n }, { saltMode }).salt
+      expect(salt).not.toBe(zeroHash)
+      expect(salt).toBe(sessionWith({ id: 42n }, { saltMode: 'strict' }).salt)
+    },
+  )
 
   test('the claim policy moved onto the 1271 list is part of the permissionId', () => {
     const a = '0x00000000000000000000000000000000000000b1' as const
     const b = '0x00000000000000000000000000000000000000b2' as const
-    expect(session({ id: 42n }, [a]).permissionId).not.toBe(
-      session({ id: 42n }, [b]).permissionId,
+    expect(sessionWith({ id: 42n }, { spenders: [a] }).permissionId).not.toBe(
+      sessionWith({ id: 42n }, { spenders: [b] }).permissionId,
     )
   })
 
-  test('rejects a signing validity window, which the replaced 1271 list would drop', () => {
-    expect(() =>
-      resolveSessionData({
-        chain: base,
-        owners,
-        oneTimeUse: { id: 42n },
-        signing: { mode: 'unrestricted', validUntil: new Date('2030-01-01') },
-        policyAddresses: { oneTimeUseId: POLICY },
-      }),
-    ).toThrow(/signing validity window/)
+  test('a null oneTimeUse leaves a plain session unsalted', () => {
+    const plain = resolveSessionData({
+      chain: base,
+      owners,
+      saltMode: 'strict',
+      oneTimeUse: null as any,
+    })
+    expect(plain.salt).toBe(zeroHash)
   })
+
+  test.each([
+    { mode: 'unrestricted', validUntil: new Date('2030-01-01') },
+    { mode: 'unrestricted', validAfter: new Date('2020-01-01') },
+    {
+      mode: 'scoped',
+      allowedContents: [
+        {
+          domain: { name: 'x' },
+          types: { M: [{ name: 'a', type: 'uint256' }] },
+          primaryType: 'M',
+        },
+      ],
+      validUntil: new Date('2030-01-01'),
+    },
+  ] as const)(
+    'rejects a signing validity window with claim policies, whose replaced 1271 list would drop it',
+    (signing) => {
+      expect(() =>
+        resolveSessionData({
+          chain: base,
+          owners,
+          claimPolicies: [{ type: 'permit2' }],
+          oneTimeUse: { id: 42n },
+          signing,
+          policyAddresses: { oneTimeUseId: POLICY },
+        }),
+      ).toThrow(/signing validity window/)
+    },
+  )
+
+  test.each([
+    { mode: 'unrestricted' },
+    { mode: 'unrestricted', validUntil: undefined },
+  ] as const)(
+    'accepts a signing mode without a validity window, with claim policies (%o)',
+    (signing) => {
+      expect(() =>
+        resolveSessionData({
+          chain: base,
+          owners,
+          claimPolicies: [{ type: 'permit2' }],
+          oneTimeUse: { id: 42n },
+          signing,
+          policyAddresses: { oneTimeUseId: POLICY },
+        }),
+      ).not.toThrow()
+    },
+  )
 
   test("rejects saltMode 'v1'", () => {
     expect(() =>
