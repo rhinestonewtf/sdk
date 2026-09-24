@@ -1690,7 +1690,7 @@ function createSolanaOrigin(
     options?: SolanaDeployOptions,
   ): Promise<true> => {
     assertCapturedEnvironment(sdk)
-    solanaChainId(chain)
+    const chainId = solanaChainId(chain)
     const input: SolanaDeploymentInput = {
       chain,
       walletAddress: source.walletAddress,
@@ -1709,7 +1709,8 @@ function createSolanaOrigin(
       // root is not verified; a foreign root only fails the owner's spends.
       if (
         isSolanaAccountAlreadyCreated(error) &&
-        error.swigAddress === source.swigAddress
+        error.swigAddress === source.swigAddress &&
+        error.chainId === chainId
       ) {
         return true
       }

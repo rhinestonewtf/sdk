@@ -119,7 +119,7 @@ comes only from the configured owner. The quoted `purpose: 'deployment'` route
 must name exactly that Swig, wallet and authority on the requested cluster and
 ask for no signatures or requirements; it is submitted with `proofs: []` and
 awaited. An existing Swig (`ACCOUNT_ALREADY_DEPLOYED` naming the configured
-`swig`) resolves `true` without submitting; its root is not verified, since the
+`swig` on the requested cluster) resolves `true` without submitting; its root is not verified, since the
 SDK has no Solana RPC. Execution paths refuse a
 deployment route at `normalizeIntentQuote`, and public quotes stay execution-only.
 

@@ -3763,7 +3763,10 @@ describe('managed Solana Swig creation', () => {
     ).rejects.toBeInstanceOf(IntentFailedError)
   })
 
-  function alreadyDeployed(swig: SolanaAddress) {
+  function alreadyDeployed(
+    swig: SolanaAddress,
+    destinationChainId: string | null = solanaDevnet.caip2,
+  ) {
     return parseErrorEnvelope(
       {
         code: 'UNPROCESSABLE_CONTENT',
@@ -3774,7 +3777,7 @@ describe('managed Solana Swig creation', () => {
             message: 'exists',
             context: {
               code: 'ACCOUNT_ALREADY_DEPLOYED',
-              destinationChainId: solanaDevnet.caip2,
+              ...(destinationChainId ? { destinationChainId } : {}),
               swig,
               wallet: independent.wallet,
             },
@@ -3797,9 +3800,19 @@ describe('managed Solana Swig creation', () => {
     expect(waitForIntentStatus).not.toHaveBeenCalled()
   })
 
-  test('rethrows an existing-Swig refusal naming another Swig', async () => {
+  test.each([
+    ['another Swig', alreadyDeployed(managedSwig)],
+    [
+      'another cluster',
+      alreadyDeployed(
+        independent.swig,
+        'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
+      ),
+    ],
+    ['no cluster', alreadyDeployed(independent.swig, null)],
+  ])('rethrows an existing-Swig refusal naming %s', async (_label, refusal) => {
     const { facade, workflows } = standalone()
-    workflows.createQuote.mockRejectedValueOnce(alreadyDeployed(managedSwig))
+    workflows.createQuote.mockRejectedValueOnce(refusal)
     await expect(
       facade.deploy('solana', solanaDevnet, { swigId: independentId }),
     ).rejects.toBeInstanceOf(SolanaAccountAlreadyCreatedError)
