@@ -103,9 +103,12 @@ signature. The SDK derives only PDA relationships offline with the small
 transaction stack and does not verify the account onchain. Production has no
 enabled Swig namespace.
 
-`deploy(solanaChain, { swigId? })` creates the Swig through a sponsored
-deployment intent (`transactions/intents/solana-deployment.ts`), on both the
-standalone facade and a composite account with a managed Solana entry. It always
+`deploy` names its VM first: `deploy('evm', chain, { sponsored })` runs the EVM
+deployment, and `deploy('solana', solanaChain, { swigId })` creates the Swig
+through a sponsored deployment intent (`transactions/intents/solana-deployment.ts`),
+on both the standalone facade and a composite account with a managed Solana
+entry. The standalone facade types `swigId` as required, because without managed
+EVM the Swig is always independent. It always
 sends the Solana-only shape — `svm.swigAccount` plus `initData: { authority, id }`
 and no `account.evm` — with a tokenless destination and `sponsorship: { gas: true }`.
 The id is computed for the Swig derived from the managed EVM account (`dev-v1`)
@@ -115,8 +118,9 @@ non-development environment are refused before any request. The root authority
 comes only from the configured owner. The quoted `purpose: 'deployment'` route
 must name exactly that Swig, wallet and authority on the requested cluster and
 ask for no signatures or requirements; it is submitted with `proofs: []` and
-awaited. An existing Swig (`ACCOUNT_ALREADY_DEPLOYED` naming a `swig`) surfaces as
-`SolanaAccountAlreadyCreatedError`, never as success. Execution paths refuse a
+awaited. An existing Swig (`ACCOUNT_ALREADY_DEPLOYED` naming the configured
+`swig`) resolves `true` without submitting; its root is not verified, since the
+SDK has no Solana RPC. Execution paths refuse a
 deployment route at `normalizeIntentQuote`, and public quotes stay execution-only.
 
 A managed Solana origin accepts one same-chain SPL transfer with an explicit

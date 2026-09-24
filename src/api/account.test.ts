@@ -3629,7 +3629,7 @@ describe('managed Solana Swig creation', () => {
     const { facade, workflows, waitForIntentStatus } = standalone()
 
     await expect(
-      facade.deploy(solanaDevnet, { swigId: independentId }),
+      facade.deploy('solana', solanaDevnet, { swigId: independentId }),
     ).resolves.toBe(true)
 
     expect(workflows.createQuote).toHaveBeenCalledOnce()
@@ -3665,7 +3665,7 @@ describe('managed Solana Swig creation', () => {
       authority,
     })
 
-    await facade.deploy(solanaDevnet, { swigId: independentId })
+    await facade.deploy('solana', solanaDevnet, { swigId: independentId })
 
     expect(workflows.createQuote.mock.calls[0]![0].account.svm).toMatchObject({
       authorization: authority,
@@ -3686,8 +3686,10 @@ describe('managed Solana Swig creation', () => {
     async (_label, swigId, message) => {
       const { facade, workflows } = standalone()
       const refusal = facade.deploy(
+        'solana',
         solanaDevnet,
-        swigId === undefined ? undefined : { swigId: swigId as Hex },
+        // Untyped callers can still omit the required id.
+        (swigId === undefined ? undefined : { swigId }) as { swigId: Hex },
       )
       await expect(refusal).rejects.toBeInstanceOf(
         UnsupportedAccountCapabilityError,
@@ -3705,7 +3707,7 @@ describe('managed Solana Swig creation', () => {
     async (_label, options) => {
       const { facade, workflows } = standalone(options)
       await expect(
-        facade.deploy(solanaDevnet, { swigId: independentId }),
+        facade.deploy('solana', solanaDevnet, { swigId: independentId }),
       ).rejects.toBeInstanceOf(ManagedSolanaAccountNotSupportedError)
       expect(workflows.createQuote).not.toHaveBeenCalled()
     },
@@ -3715,6 +3717,7 @@ describe('managed Solana Swig creation', () => {
     const { facade, workflows } = standalone()
     await expect(
       facade.deploy(
+        'solana',
         { ...solanaDevnet, name: 'Solana Lookalike' },
         { swigId: independentId },
       ),
@@ -3740,7 +3743,9 @@ describe('managed Solana Swig creation', () => {
     const { facade, workflows } = standalone({
       owner: { type: 'ecdsa', account },
     })
-    const refusal = facade.deploy(solanaDevnet, { swigId: independentId })
+    const refusal = facade.deploy('solana', solanaDevnet, {
+      swigId: independentId,
+    })
     await expect(refusal).rejects.toBeInstanceOf(
       UnsupportedAccountCapabilityError,
     )
@@ -3754,42 +3759,62 @@ describe('managed Solana Swig creation', () => {
       new IntentFailedError({ context: { intentId: 'deployment-intent' } }),
     )
     await expect(
-      facade.deploy(solanaDevnet, { swigId: independentId }),
+      facade.deploy('solana', solanaDevnet, { swigId: independentId }),
     ).rejects.toBeInstanceOf(IntentFailedError)
   })
 
-  test('surfaces an existing Swig as the dedicated error, never as success', async () => {
-    const { facade, workflows } = standalone()
-    workflows.createQuote.mockRejectedValueOnce(
-      parseErrorEnvelope(
-        {
-          code: 'UNPROCESSABLE_CONTENT',
-          message: 'exists',
-          traceId: 'trace',
-          details: [
-            {
-              message: 'exists',
-              context: {
-                code: 'ACCOUNT_ALREADY_DEPLOYED',
-                destinationChainId: solanaDevnet.caip2,
-                swig: independent.swig,
-                wallet: independent.wallet,
-              },
+  function alreadyDeployed(swig: SolanaAddress) {
+    return parseErrorEnvelope(
+      {
+        code: 'UNPROCESSABLE_CONTENT',
+        message: 'exists',
+        traceId: 'trace',
+        details: [
+          {
+            message: 'exists',
+            context: {
+              code: 'ACCOUNT_ALREADY_DEPLOYED',
+              destinationChainId: solanaDevnet.caip2,
+              swig,
+              wallet: independent.wallet,
             },
-          ],
-        },
-        422,
-      ),
+          },
+        ],
+      },
+      422,
     )
-    const refusal = facade.deploy(solanaDevnet, { swigId: independentId })
-    await expect(refusal).rejects.toBeInstanceOf(
-      SolanaAccountAlreadyCreatedError,
+  }
+
+  test('resolves true for a Swig that already exists without submitting', async () => {
+    const { facade, workflows, waitForIntentStatus } = standalone()
+    workflows.createQuote.mockRejectedValueOnce(
+      alreadyDeployed(independent.swig),
     )
-    await expect(refusal).rejects.toMatchObject({
-      swigAddress: independent.swig,
-      chainId: 792703810,
-    })
+    await expect(
+      facade.deploy('solana', solanaDevnet, { swigId: independentId }),
+    ).resolves.toBe(true)
     expect(workflows.submitIntent).not.toHaveBeenCalled()
+    expect(waitForIntentStatus).not.toHaveBeenCalled()
+  })
+
+  test('rethrows an existing-Swig refusal naming another Swig', async () => {
+    const { facade, workflows } = standalone()
+    workflows.createQuote.mockRejectedValueOnce(alreadyDeployed(managedSwig))
+    await expect(
+      facade.deploy('solana', solanaDevnet, { swigId: independentId }),
+    ).rejects.toBeInstanceOf(SolanaAccountAlreadyCreatedError)
+    expect(workflows.submitIntent).not.toHaveBeenCalled()
+  })
+
+  test('refuses an EVM deployment on a standalone Solana account', async () => {
+    const { facade, workflows } = standalone()
+    await expect(
+      (facade.deploy as (...args: unknown[]) => Promise<boolean>)(
+        'evm',
+        mainnet,
+      ),
+    ).rejects.toBeInstanceOf(UnsupportedAccountCapabilityError)
+    expect(workflows.createQuote).not.toHaveBeenCalled()
   })
 
   function composite(options: { readonly swig?: SolanaAddress | false } = {}) {
@@ -3810,6 +3835,8 @@ describe('managed Solana Swig creation', () => {
       ),
       ...solanaPorts,
     }
+    // Typed as managing Solana so the untyped `swig: false` case reaches the
+    // runtime refusal.
     const facade = createAccountFacade(
       compatibilityConfig,
       {
@@ -3817,7 +3844,7 @@ describe('managed Solana Swig creation', () => {
         ...(swig
           ? { solana: { owner: { type: 'ecdsa', account: owner }, swig } }
           : {}),
-      } as { evm: EvmAccountConfig; solana?: SolanaManagedAccountConfig },
+      } as { evm: EvmAccountConfig; solana: SolanaManagedAccountConfig },
       {
         config: resolveSdkConfig({ apiKey: 'offline', useDevContracts: true }),
         project: {} as never,
@@ -3833,7 +3860,7 @@ describe('managed Solana Swig creation', () => {
   test('creates the EVM-derived Swig of a composite account with no id', async () => {
     const { facade, workflows } = composite()
 
-    await expect(facade.deploy(solanaDevnet)).resolves.toBe(true)
+    await expect(facade.deploy('solana', solanaDevnet)).resolves.toBe(true)
 
     const request = workflows.createQuote.mock.calls[0]![0]
     expect(request.account).not.toHaveProperty('evm')
@@ -3851,21 +3878,21 @@ describe('managed Solana Swig creation', () => {
   test('needs the saved id for an independent Swig on a composite account', async () => {
     const { facade, workflows } = composite({ swig: independent.swig })
 
-    await expect(facade.deploy(solanaDevnet)).rejects.toThrow(
+    await expect(facade.deploy('solana', solanaDevnet)).rejects.toThrow(
       /createSolanaSwigId\(\)/,
     )
     expect(workflows.createQuote).not.toHaveBeenCalled()
     await expect(
-      facade.deploy(solanaDevnet, { swigId: independentId }),
+      facade.deploy('solana', solanaDevnet, { swigId: independentId }),
     ).resolves.toBe(true)
   })
 
   test('keeps the EVM deployment path for an EVM chain', async () => {
     const { facade, workflows } = composite()
 
-    await expect(facade.deploy(mainnet, { sponsored: true })).resolves.toBe(
-      true,
-    )
+    await expect(
+      facade.deploy('evm', mainnet, { sponsored: true }),
+    ).resolves.toBe(true)
     expect(workflows.deploy).toHaveBeenCalledWith(
       expect.objectContaining({ method: 'deploy' }),
       toEvmChainReference(mainnet.id),
@@ -3877,9 +3904,28 @@ describe('managed Solana Swig creation', () => {
   test('refuses a Solana deployment on an account with no managed Solana entry', async () => {
     const { facade, workflows } = composite({ swig: false })
 
-    await expect(facade.deploy(solanaDevnet)).rejects.toBeInstanceOf(
+    await expect(facade.deploy('solana', solanaDevnet)).rejects.toBeInstanceOf(
       UnsupportedAccountCapabilityError,
     )
+    expect(workflows.createQuote).not.toHaveBeenCalled()
+    expect(workflows.deploy).not.toHaveBeenCalled()
+  })
+
+  test.each([
+    [
+      'an EVM deployment of a Solana chain',
+      'evm',
+      UnsupportedAccountCapabilityError,
+    ],
+    ['an unknown VM', 'tron', AccountVmNotConfiguredError],
+  ])('refuses %s', async (_label, vm, error) => {
+    const { facade, workflows } = composite()
+    await expect(
+      (facade.deploy as (...args: unknown[]) => Promise<boolean>)(
+        vm,
+        solanaDevnet,
+      ),
+    ).rejects.toBeInstanceOf(error)
     expect(workflows.createQuote).not.toHaveBeenCalled()
     expect(workflows.deploy).not.toHaveBeenCalled()
   })

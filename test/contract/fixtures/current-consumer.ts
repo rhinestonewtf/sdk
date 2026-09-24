@@ -18,10 +18,8 @@ import {
 import {
   InvalidSolanaTransactionArtifactError,
   isInvalidSolanaTransactionArtifactError,
-  isSolanaAccountAlreadyCreated,
   isSolanaAccountNotCreated,
   isSolanaQuoteExpiredError,
-  type SolanaAccountAlreadyCreatedError,
   type SolanaAccountNotCreatedError,
   SolanaQuoteExpiredError,
 } from '@rhinestone/sdk/errors'
@@ -98,6 +96,10 @@ async function useCurrentAccountApi() {
   })
   const deliveryFill: BridgeFill | undefined = delivery.quotes.best.bridgeFill
   void deliveryFill
+  const deployed: boolean = await account.deploy('evm', mainnet, {
+    sponsored: true,
+  })
+  void deployed
 
   const receiver = await sdk.createAccount({ solana: { address: solana } })
   receiver.getAddress('solana')
@@ -143,7 +145,7 @@ async function useManagedSolanaApi() {
   const signingRequests: SigningRequest[] = prepared.quotes.best.signingRequests
   const purposes = signingRequests.map(({ purpose }) => purpose)
   // The EVM-derived Swig needs no id; an independent one is created with its own.
-  const created: boolean = await account.deploy(solanaDevnet)
+  const created: boolean = await account.deploy('solana', solanaDevnet)
   const independent = createSolanaSwigId()
   const standalone = await devSdk.createAccount({
     solana: {
@@ -151,8 +153,10 @@ async function useManagedSolanaApi() {
       swig: independent.swig,
     },
   })
-  const deployOptions: SolanaDeployOptions = { swigId: independent.id }
-  await standalone.deploy(solanaDevnet, deployOptions)
+  const deployOptions: Required<SolanaDeployOptions> = {
+    swigId: independent.id,
+  }
+  await standalone.deploy('solana', solanaDevnet, deployOptions)
   const signed = await account.signTransaction(prepared)
   // One proof per request, in the same order.
   const proofs: SigningProof[] = signed.proofs
@@ -168,9 +172,7 @@ async function useManagedSolanaApi() {
 const invalidArtifact = new InvalidSolanaTransactionArtifactError('fixture')
 const expired = new SolanaQuoteExpiredError('intent-id')
 declare const uncreated: SolanaAccountNotCreatedError
-declare const alreadyCreated: SolanaAccountAlreadyCreatedError
 const recognizedErrors: boolean[] = [
-  isSolanaAccountAlreadyCreated(alreadyCreated),
   isInvalidSolanaTransactionArtifactError(invalidArtifact),
   isSolanaQuoteExpiredError(expired),
   isSolanaAccountNotCreated(uncreated),

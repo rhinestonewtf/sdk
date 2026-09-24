@@ -223,10 +223,7 @@ class UnprocessableContentError extends OrchestratorError {
 
 /**
  * The Swig a Solana account creation targets already exists on the requested
- * cluster, so nothing was created.
- *
- * Never a success: the existing Swig's root authority is not verified to be
- * the configured owner. Check it before sending funds to the wallet.
+ * cluster. Internal: `deploy('solana', …)` resolves `true` on it.
  *
  * Extends {@link UnprocessableContentError} and keeps its `code`. `chainId` is
  * the SDK's numeric id for the cluster, and is absent when the response carries

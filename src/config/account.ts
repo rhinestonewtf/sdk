@@ -942,7 +942,7 @@ type SolanaOwner =
  * The wallet is independent from any EVM entry in the composite account. Save
  * the Swig state address when the account is provisioned and supply the matching
  * private-key or passkey owner when attaching it; the wallet PDA is derived.
- * A Swig that does not exist yet is created with `account.deploy(solanaChain)`.
+ * A Swig that does not exist yet is created with `account.deploy('solana', solanaChain)`.
  */
 interface SolanaManagedAccountConfig {
   owner: SolanaOwner

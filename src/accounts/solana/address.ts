@@ -194,7 +194,8 @@ function locateSwig(
  * account that is not tied to a managed EVM account.
  *
  * Persist `id` together with `swig`: configure the account with
- * `solana: { swig, owner }`, and pass the id to `account.deploy(solanaChain, { swigId: id })`
+ * `solana: { swig, owner }`, and pass the id to
+ * `account.deploy('solana', solanaChain, { swigId: id })`
  * to create it. The id cannot be recovered from the addresses, so a lost id
  * leaves the Swig uncreatable; mint a new one instead.
  *

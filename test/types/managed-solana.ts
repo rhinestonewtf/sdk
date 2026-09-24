@@ -4,10 +4,8 @@ import { base, mainnet } from 'viem/chains'
 import {
   InvalidSolanaTransactionArtifactError,
   isInvalidSolanaTransactionArtifactError,
-  isSolanaAccountAlreadyCreated,
   isSolanaAccountNotCreated,
   isSolanaQuoteExpiredError,
-  SolanaAccountAlreadyCreatedError,
   type SolanaAccountNotCreatedError,
   SolanaQuoteExpiredError,
 } from '../../src/errors/index'
@@ -248,18 +246,21 @@ async function standaloneCapabilitySurface() {
   // @ts-expect-error EVM is not configured
   account.getAddress('evm')
   // @ts-expect-error EVM management is unavailable
-  account.deploy(mainnet)
+  account.deploy('evm', mainnet)
   // The Swig itself is created with the id it was minted with.
   const minted: { id: Hex; swig: typeof swig; wallet: typeof swig } =
     createSolanaSwigId()
-  const created: boolean = await account.deploy(solanaDevnet, {
+  const created: boolean = await account.deploy('solana', solanaDevnet, {
     swigId: minted.id,
   })
-  account.deploy(solanaDevnet)
+  // @ts-expect-error without managed EVM the Swig is independent, so its id is required
+  account.deploy('solana', solanaDevnet)
   // @ts-expect-error the Swig id is 0x-prefixed hex
-  account.deploy(solanaDevnet, { swigId: '07'.repeat(32) })
+  account.deploy('solana', solanaDevnet, { swigId: '07'.repeat(32) })
   // @ts-expect-error creation is always sponsored
-  account.deploy(solanaDevnet, { sponsored: false })
+  account.deploy('solana', solanaDevnet, { sponsored: false })
+  // @ts-expect-error the VM is named first
+  account.deploy(solanaDevnet, { swigId: minted.id })
 
   const handle: SolanaStandaloneAccount<{ solana: typeof standaloneConfig }> =
     account
@@ -290,7 +291,9 @@ async function standaloneCapabilitySurface() {
   })
   const receiverAddress: Address = receiverPaired.getAddress('evm')
   receiverPaired.prepareTransaction(deliveryFromSolana)
-  receiverPaired.deploy(solanaDevnet, { swigId: `0x${'07'.repeat(32)}` })
+  receiverPaired.deploy('solana', solanaDevnet, {
+    swigId: `0x${'07'.repeat(32)}`,
+  })
   receiverPaired.prepareTransaction({
     ...deliveryFromSolana,
     // @ts-expect-error an address-only receiver cannot execute destination calls
@@ -331,22 +334,28 @@ async function compositeCapabilitySurface() {
   account.prepareTransaction(deliveryTransaction)
   account.prepareTransaction(defaultedDelivery)
   account.prepareTransaction({ chain: mainnet, calls: [] })
-  // One `deploy` for both VMs: an EVM chain deploys the smart account, a
-  // Solana cluster creates the Swig derived from it.
-  const evmDeployed: boolean = await account.deploy(mainnet, {
+  // `deploy` names its VM: EVM deploys the smart account, Solana creates the
+  // Swig, whose id the SDK computes when it is derived from the EVM account.
+  const evmDeployed: boolean = await account.deploy('evm', mainnet, {
     sponsored: true,
   })
-  const swigCreated: boolean = await account.deploy(solanaDevnet)
-  account.deploy(solanaDevnet, { swigId: `0x${'07'.repeat(32)}` })
+  const swigCreated: boolean = await account.deploy('solana', solanaDevnet)
+  account.deploy('solana', solanaDevnet, { swigId: `0x${'07'.repeat(32)}` })
   // @ts-expect-error the Solana cluster takes a Swig id, not EVM sponsorship
-  account.deploy(solanaDevnet, { sponsored: true })
+  account.deploy('solana', solanaDevnet, { sponsored: true })
+  // @ts-expect-error an EVM deployment takes an EVM chain
+  account.deploy('evm', solanaDevnet)
+  // @ts-expect-error a Swig is created on a Solana cluster
+  account.deploy('solana', mainnet)
+  // @ts-expect-error the VM is named first
+  account.deploy(mainnet)
 
   const evmOnly = await sdk.createAccount({
     evm: { owners: { type: 'ecdsa', accounts: [owner] } },
   })
-  evmOnly.deploy(mainnet)
+  evmOnly.deploy('evm', mainnet)
   // @ts-expect-error an account with no managed Solana entry has no Swig to create
-  evmOnly.deploy(solanaDevnet)
+  evmOnly.deploy('solana', solanaDevnet)
 
   const messages = account.getTransactionMessages(
     null as unknown as Parameters<typeof account.getTransactionMessages>[0],
@@ -504,19 +513,9 @@ const invalidArtifact: boolean =
   isInvalidSolanaTransactionArtifactError(executionError)
 const expired: boolean = isSolanaQuoteExpiredError(expiredError)
 const uncreated: boolean = isSolanaAccountNotCreated(uncreatedError)
-declare const alreadyCreated: unknown
-const existingSwig: string | undefined =
-  alreadyCreated instanceof SolanaAccountAlreadyCreatedError
-    ? alreadyCreated.swigAddress
-    : undefined
-const existingCluster: number | undefined =
-  alreadyCreated instanceof SolanaAccountAlreadyCreatedError
-    ? alreadyCreated.chainId
-    : undefined
 type WaitedStatus = Awaited<
   ReturnType<SolanaStandaloneAccount['waitForExecution']>
 >
-const existingRefusal: boolean = isSolanaAccountAlreadyCreated(alreadyCreated)
 const deploymentPurpose: WaitedStatus['purpose'] = 'deployment'
 
 void compositeCapabilitySurface
@@ -556,7 +555,4 @@ void forbiddenDeliveryRecipient
 void invalidArtifact
 void expired
 void uncreated
-void existingSwig
-void existingCluster
 void deploymentPurpose
-void existingRefusal
