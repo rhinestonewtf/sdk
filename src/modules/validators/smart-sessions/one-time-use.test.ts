@@ -1,4 +1,4 @@
-import { decodeAbiParameters, decodeFunctionData, pad, size, toHex } from 'viem'
+import { decodeAbiParameters, decodeFunctionData, size } from 'viem'
 import { describe, expect, test } from 'vitest'
 
 import {
