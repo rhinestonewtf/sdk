@@ -288,6 +288,22 @@ export function resolveSessionData(
         'oneTimeUse requires policyAddresses.oneTimeUseId (no canonical deployment yet)',
       )
     }
+    // The 1271 list is replaced below, which would silently drop a signing window.
+    const signing = definition.signing
+    if (
+      signing !== undefined &&
+      signing.mode !== 'disabled' &&
+      (signing.validAfter !== undefined || signing.validUntil !== undefined)
+    ) {
+      throw new Error(
+        'oneTimeUse cannot take a signing validity window; bound it with oneTimeUse.validUntil',
+      )
+    }
+    if (definition.saltMode === 'v1') {
+      throw new Error(
+        "oneTimeUse cannot use saltMode 'v1': a 1.x session has no once-policy to reproduce",
+      )
+    }
     const once = oneTimeUseIdErc1271Policy({
       policy: addresses.oneTimeUseId,
       id: definition.oneTimeUse.id,
@@ -318,15 +334,22 @@ export function resolveSessionData(
     erc1271Policies = [...claimPolicies, once]
     claimPolicies = []
   }
+  const enabledErc7739Policies = { ...erc7739Policies, erc1271Policies }
   return {
     sessionValidator: validator.address,
     sessionValidatorInitData: validator.initData,
-    salt: sessionSalt(definition.saltMode, restricted, {
-      actions: v1SaltActions ?? actions,
-      erc7739Policies,
-      claimPolicies,
-    }),
-    erc7739Policies: { ...erc7739Policies, erc1271Policies },
+    // A one-time-use session must never share a permissionId with another
+    // session: enabling it would union with that session's policies.
+    salt: sessionSalt(
+      definition.oneTimeUse ? 'strict' : definition.saltMode,
+      restricted || definition.oneTimeUse !== undefined,
+      {
+        actions: v1SaltActions ?? actions,
+        erc7739Policies: enabledErc7739Policies,
+        claimPolicies,
+      },
+    ),
+    erc7739Policies: enabledErc7739Policies,
     actions,
     claimPolicies,
   }

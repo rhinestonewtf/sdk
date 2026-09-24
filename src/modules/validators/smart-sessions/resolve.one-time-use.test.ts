@@ -99,22 +99,60 @@ describe('resolveSessionData — one-time-use session', () => {
     }
   })
 
-  test('permissionId is derived from validator+salt, not the pinned id (id is bound via the enable-signed config)', () => {
-    const session = (id: bigint) =>
-      toSession({
+  const session = (
+    oneTimeUse: { id: bigint } | undefined,
+    spenders?: `0x${string}`[],
+  ) =>
+    toSession({
+      chain: base,
+      owners,
+      claimPolicies: [{ type: 'permit2', ...(spenders && { spenders }) }],
+      ...(oneTimeUse && { oneTimeUse }),
+      policyAddresses: { oneTimeUseId: POLICY },
+    })
+
+  test('two one-time-use sessions that differ only by id get different permissionIds', () => {
+    expect(session({ id: 42n }).permissionId).not.toBe(
+      session({ id: 43n }).permissionId,
+    )
+  })
+
+  test('a one-time-use session never shares a permissionId with a plain session of the same owner', () => {
+    expect(session({ id: 42n }).permissionId).not.toBe(
+      session(undefined).permissionId,
+    )
+  })
+
+  test('the claim policy moved onto the 1271 list is part of the permissionId', () => {
+    const a = '0x00000000000000000000000000000000000000b1' as const
+    const b = '0x00000000000000000000000000000000000000b2' as const
+    expect(session({ id: 42n }, [a]).permissionId).not.toBe(
+      session({ id: 42n }, [b]).permissionId,
+    )
+  })
+
+  test('rejects a signing validity window, which the replaced 1271 list would drop', () => {
+    expect(() =>
+      resolveSessionData({
         chain: base,
         owners,
-        claimPolicies: [{ type: 'permit2' }],
-        oneTimeUse: { id },
+        oneTimeUse: { id: 42n },
+        signing: { mode: 'unrestricted', validUntil: new Date('2030-01-01') },
         policyAddresses: { oneTimeUseId: POLICY },
-      })
-    // Smart-sessions derives the permissionId from (sessionValidator, initData,
-    // salt) only — the pinned id lives in the once-policy initData, which the
-    // enable signature authorizes over the full session config, not the
-    // permissionId. So two one-time-use sessions differing ONLY by id share a
-    // permissionId (as any two same-owner sessions do, since salt is fixed to
-    // zeroHash) and can't be installed concurrently on the same account.
-    expect(session(42n).permissionId).toBe(session(43n).permissionId)
+      }),
+    ).toThrow(/signing validity window/)
+  })
+
+  test("rejects saltMode 'v1'", () => {
+    expect(() =>
+      resolveSessionData({
+        chain: base,
+        owners,
+        oneTimeUse: { id: 42n },
+        saltMode: 'v1',
+        policyAddresses: { oneTimeUseId: POLICY },
+      }),
+    ).toThrow(/saltMode 'v1'/)
   })
 
   test('throws when oneTimeUse is set without policyAddresses.oneTimeUseId', () => {

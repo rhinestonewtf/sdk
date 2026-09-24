@@ -836,7 +836,9 @@ interface SessionDefinition<
    * `preClaimExecutions`; a Permit2-route session must also supply a
    * `claimPolicies` entry (moved onto the 1271 surface as the digest-binding
    * partner). `validUntil` (omit for never) bounds when the id can still be
-   * spent.
+   * spent. Always salted as in `'strict'`, whatever `saltMode` says, so it never
+   * shares a permissionId with another session; `saltMode: 'v1'` and a
+   * `signing` validity window are rejected.
    */
   oneTimeUse?: { id: bigint; validUntil?: Date }
 }
