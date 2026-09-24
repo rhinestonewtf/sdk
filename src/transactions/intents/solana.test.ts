@@ -353,6 +353,7 @@ describe('managed Solana intent workflow', () => {
       },
     }),
     transfer({ namespace: 'other' as 'dev-v1' }),
+    transfer({ namespace: 'dev-v2' as 'dev-v1' }),
     transfer({ appFees: { feeBps: -1 } }),
     transfer({ appFees: { feeBps: 1.5 } }),
     transfer({ protocolFees: { feeBps: 10_001 } }),
@@ -361,6 +362,12 @@ describe('managed Solana intent workflow', () => {
     expect(() => buildSolanaIntentRequest(input)).toThrow(
       InvalidSolanaTransactionArtifactError,
     )
+  })
+
+  test('builds the same request under the production namespace', () => {
+    expect(
+      buildSolanaIntentRequest(transfer({ namespace: 'prod-v1' })),
+    ).toEqual(buildSolanaIntentRequest(transfer()))
   })
 
   test('supports mainnet identity and max-out with valid fee requests', () => {
@@ -1414,6 +1421,247 @@ describe('Solana-origin cross-chain delivery', () => {
         }),
       ).toThrow(/canonical intent input|persisted request/)
     })
+  })
+})
+
+describe('Solana source amount cap', () => {
+  // One wallet holding two separate 6-decimal deposits: 6 USDC + 4 USDC.
+  const balance = 10_000_000n
+  const cap = 4_000_000n
+  const delivery = {
+    kind: 'cross-chain',
+    chainId: baseSepoliaId,
+    token: destinationToken,
+    recipient: destinationRecipient,
+  } as const
+
+  function capped(
+    overrides: TransferOverrides & { sourceLimit?: bigint } = {},
+  ): SolanaTransferInput {
+    const { sourceLimit = cap, ...rest } = overrides
+    const base = transfer({ delivery, amount: undefined, ...rest })
+    return {
+      ...base,
+      action: { ...base.action, sourceLimit } as SolanaAction,
+    }
+  }
+
+  function cappedQuote(input: bigint, output = input - 5_000n) {
+    return quote({
+      settlementLayer: 'RELAY',
+      cost: {
+        ...emptyCost(),
+        input: [splCost(DEVNET, mint, input)],
+        output: [splCost(BASE_SEPOLIA, destinationToken, output)],
+      },
+    })
+  }
+
+  test('adds one limit to the pinned selection and names the pair by its cap', () => {
+    const { request, normalized } = buildSolanaIntentRequest(capped())
+
+    expect(request.source).toEqual({
+      selection: {
+        chains: { only: [DEVNET] },
+        tokens: { only: [mint] },
+        perChain: { [DEVNET]: { tokens: { only: [mint] } } },
+      },
+      limits: [{ chainId: DEVNET, tokenAddress: mint, maxAmount: cap }],
+    })
+    expect(normalized.accountAccessList).toEqual({
+      chainTokenAmounts: { 792703810: { [mint]: cap } },
+    })
+    expect(request.destination.tokenRequests).toEqual([
+      { tokenAddress: destinationToken },
+    ])
+  })
+
+  test('caps a same-chain transfer the same way', () => {
+    const { request, normalized } = buildSolanaIntentRequest(
+      capped({ delivery: { kind: 'same-chain', recipient }, amount: cap }),
+    )
+
+    expect(request.source).toEqual({
+      selection: {
+        chains: { only: [DEVNET] },
+        tokens: { only: [mint] },
+        perChain: { [DEVNET]: { tokens: { only: [mint] } } },
+      },
+      limits: [{ chainId: DEVNET, tokenAddress: mint, maxAmount: cap }],
+    })
+    expect(normalized.accountAccessList).toEqual({
+      chainTokenAmounts: { 792703810: { [mint]: cap } },
+    })
+  })
+
+  test.each([
+    ['a zero cap', capped({ sourceLimit: 0n })],
+    ['a negative cap', capped({ sourceLimit: -1n })],
+    ['a numeric cap', capped({ sourceLimit: 1 as never })],
+    [
+      'a same-chain amount above the cap',
+      capped({
+        delivery: { kind: 'same-chain', recipient },
+        amount: cap + 1n,
+      }),
+    ],
+  ])('refuses %s before quoting', (_name, input) => {
+    expect(() => buildSolanaIntentRequest(input)).toThrow(
+      InvalidSolanaTransactionArtifactError,
+    )
+    expect(() => buildSolanaIntentRequest(input)).toThrow(/source amount cap/)
+  })
+
+  test('accepts a same-chain amount equal to the cap', () => {
+    expect(() =>
+      buildSolanaIntentRequest(
+        capped({ delivery: { kind: 'same-chain', recipient }, amount: cap }),
+      ),
+    ).not.toThrow()
+  })
+
+  test('authorizes at most the cap on a max-out from a larger balance', async () => {
+    const fixture = context(cappedQuote(cap))
+    const prepared = await prepareSolanaIntent(fixture.workflow, capped())
+
+    const sent = fixture.createQuote.mock.calls[0] as unknown as [
+      OrchestratorIntentRequest,
+    ]
+    expect(sent[0].source?.limits).toEqual([
+      { chainId: DEVNET, tokenAddress: mint, maxAmount: cap },
+    ])
+    // The quote's spend still names a nonzero Swig role.
+    expect(prepared.quote.signingRequests[0]?.authority).toMatchObject({
+      kind: 'swigRole',
+      roleId: 1,
+    })
+    const signed = await signSolanaIntent({
+      prepared,
+      owner,
+      now: fixture.workflow.now,
+    })
+    await submitSolanaIntent(fixture.workflow, signed)
+    expect(fixture.submitIntent).toHaveBeenCalledOnce()
+  })
+
+  test.each([
+    ['the whole balance', capped(), balance],
+    ['one unit over the cap', capped(), cap + 1n],
+    ['an exact-out over the cap', capped({ amount: 3_990_000n }), cap + 10n],
+  ])('refuses a quote debiting %s', async (_name, input, debit) => {
+    const fixture = context(cappedQuote(debit))
+    await expect(prepareSolanaIntent(fixture.workflow, input)).rejects.toThrow(
+      /exceeds the source amount cap/,
+    )
+  })
+
+  test('refuses an over-cap route among the prepared quotes on reconstruction', async () => {
+    const fixture = context(cappedQuote(cap))
+    const prepared = await prepareSolanaIntent(fixture.workflow, capped())
+    const over = { ...cappedQuote(cap + 1n), intentId: 'over' }
+
+    expect(() =>
+      reconstructSolanaIntent({
+        traceId: prepared.traceId,
+        request: prepared.request,
+        transfer: capped(),
+        intentInput: projectCompatibleIntentInput(prepared.normalized),
+        quote: prepared.quote,
+        quotes: [...prepared.quotes, over],
+      }),
+    ).toThrow(/exceeds the source amount cap/)
+  })
+
+  test('survives a bigint-aware JSON round trip and refuses an altered cap', async () => {
+    const fixture = context(cappedQuote(cap))
+    const prepared = await prepareSolanaIntent(fixture.workflow, capped())
+    const replacer = (_key: string, value: unknown) =>
+      typeof value === 'bigint' ? { $bigint: value.toString() } : value
+    const reviver = (_key: string, value: unknown) =>
+      value && typeof value === 'object' && '$bigint' in value
+        ? BigInt((value as { $bigint: string }).$bigint)
+        : value
+    const restored = JSON.parse(
+      JSON.stringify(
+        {
+          request: prepared.request,
+          intentInput: projectCompatibleIntentInput(prepared.normalized),
+          quote: prepared.quote,
+          quotes: prepared.quotes,
+        },
+        replacer,
+      ),
+      reviver,
+    )
+    const reconstruct = (
+      patch: Partial<Parameters<typeof reconstructSolanaIntent>[0]> = {},
+    ) =>
+      reconstructSolanaIntent({
+        traceId: prepared.traceId,
+        transfer: capped(),
+        ...restored,
+        ...patch,
+      })
+
+    const replayed = reconstruct()
+    const signed = await signSolanaIntent({
+      prepared: replayed,
+      owner,
+      now: fixture.workflow.now,
+    })
+    await submitSolanaIntent(fixture.workflow, signed)
+    expect(fixture.submitIntent).toHaveBeenCalledOnce()
+
+    const { limits: _limits, ...uncappedSource } = restored.request.source
+    const uncapped = buildSolanaIntentRequest(
+      transfer({ delivery, amount: undefined }),
+    )
+    for (const [name, patch] of [
+      ['a raised cap', { transfer: capped({ sourceLimit: cap + 1n }) }],
+      [
+        'a cap removed from the transaction',
+        { transfer: transfer({ delivery, amount: undefined }) },
+      ],
+      [
+        'a cap removed from the request',
+        { request: { ...restored.request, source: uncappedSource } },
+      ],
+      [
+        'a cap raised in the request',
+        {
+          request: {
+            ...restored.request,
+            source: {
+              ...restored.request.source,
+              limits: [
+                { chainId: DEVNET, tokenAddress: mint, maxAmount: '4000001' },
+              ],
+            },
+          },
+        },
+      ],
+      [
+        'a cap removed from the intent input',
+        {
+          intentInput: projectCompatibleIntentInput(uncapped.normalized),
+        },
+      ],
+    ] as const) {
+      expect(() => reconstruct(patch as never), name).toThrow(
+        /persisted request|canonical intent input/,
+      )
+    }
+    const cappedAdded = buildSolanaIntentRequest(capped())
+    expect(() =>
+      reconstructSolanaIntent({
+        traceId: prepared.traceId,
+        transfer: transfer({ delivery, amount: undefined }),
+        request: cappedAdded.request,
+        intentInput: projectCompatibleIntentInput(uncapped.normalized),
+        quote: prepared.quote,
+        quotes: prepared.quotes,
+      }),
+    ).toThrow(/persisted request/)
   })
 })
 

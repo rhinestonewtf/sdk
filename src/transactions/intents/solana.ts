@@ -11,6 +11,10 @@ import {
   recoverMessageAddress,
 } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
+import {
+  isManagedSwigNamespace,
+  type ManagedSwigNamespace,
+} from '../../accounts/solana/address'
 import type { Call } from '../../calls/types'
 import { formatCaip2 } from '../../chains/caip2'
 import type {
@@ -67,7 +71,7 @@ const SOLANA_MAINNET_ID = 792703809
 const SOLANA_DEVNET_ID = 792703810
 const SOLANA_MAINNET_CAIP2 = 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp'
 const SOLANA_DEVNET_CAIP2 = 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1'
-const NATIVE_SOL_SENTINEL = '11111111111111111111111111111111'
+export const NATIVE_SOL_SENTINEL = '11111111111111111111111111111111'
 
 /**
  * Where a Solana-origin spend lands. The two arms are exclusive on purpose:
@@ -104,7 +108,10 @@ export type SolanaAction =
   | {
       readonly kind: 'transfer'
       readonly mint: SolanaAddress
+      /** The destination amount for a delivery; the sent amount same-chain. */
       readonly amount?: bigint
+      /** Most of `mint` the wallet may debit, in base units. */
+      readonly sourceLimit?: bigint
       readonly delivery: SolanaDelivery
     }
   | {
@@ -125,7 +132,7 @@ export interface SolanaTransferInput {
   readonly authority: SwigAuthority
   readonly walletAddress: SolanaAddress
   readonly swigAddress: SolanaAddress
-  readonly namespace: 'dev-v1'
+  readonly namespace: ManagedSwigNamespace
   readonly endpoint: string
   readonly appFees?: AppFeeRate
   readonly protocolFees?: ProtocolFeeRate
@@ -237,9 +244,9 @@ export function buildSolanaIntentRequest(
 ): BuiltSolanaIntentRequest {
   const chainId = solanaChainId(input.chain)
   const caip2 = formatCaip2(chainId)
-  if (input.namespace !== 'dev-v1') {
+  if (!isManagedSwigNamespace(input.namespace)) {
     throw new InvalidSolanaTransactionArtifactError(
-      'the managed account namespace must be dev-v1',
+      'the managed account namespace must be dev-v1 or prod-v1',
     )
   }
   validateFee('appFees', input.appFees)
@@ -369,11 +376,53 @@ export function buildSolanaIntentRequest(
       'the token amount must be a positive bigint when provided',
     )
   }
+  const sourceLimit = input.action.sourceLimit
+  if (
+    sourceLimit !== undefined &&
+    (typeof sourceLimit !== 'bigint' || sourceLimit <= 0n)
+  ) {
+    throw new InvalidSolanaTransactionArtifactError(
+      'the source amount cap must be a positive bigint when provided',
+    )
+  }
   const amount =
     input.action.amount === undefined
       ? {}
       : ({ amount: input.action.amount } as const)
   const delivery = input.action.delivery
+  if (
+    delivery.kind === 'same-chain' &&
+    sourceLimit !== undefined &&
+    input.action.amount !== undefined &&
+    input.action.amount > sourceLimit
+  ) {
+    throw new InvalidSolanaTransactionArtifactError(
+      'the token amount exceeds the source amount cap',
+    )
+  }
+  // Pinned to the cluster and the one mint: naming the cluster without the
+  // mint would re-expand the source scope to every registry token on it and
+  // defeat the explicit source asset. A cap only adds a limit on that pair; it
+  // never widens the selection.
+  const source = {
+    selection: {
+      chains: { only: [caip2] },
+      tokens: { only: [mint] },
+      perChain: { [caip2]: { tokens: { only: [mint] } } },
+    },
+    ...(sourceLimit === undefined
+      ? {}
+      : {
+          limits: [
+            { chainId: caip2, tokenAddress: mint, maxAmount: sourceLimit },
+          ],
+        }),
+  }
+  // A capped pair is named by its cap alone, as an EVM capped source asset is.
+  const cappedAccessList =
+    sourceLimit === undefined
+      ? undefined
+      : { chainTokenAmounts: { [chainId]: { [mint]: sourceLimit } } }
 
   if (delivery.kind === 'cross-chain') {
     if (
@@ -416,16 +465,7 @@ export function buildSolanaIntentRequest(
               }
             : {}),
         },
-        // Pinned to the cluster and the one mint: naming the cluster without
-        // the mint would re-expand the source scope to every registry token
-        // on it and defeat the explicit source asset.
-        source: {
-          selection: {
-            chains: { only: [caip2] },
-            tokens: { only: [mint] },
-            perChain: { [caip2]: { tokens: { only: [mint] } } },
-          },
-        },
+        source,
         ...(Object.keys(options).length > 0 ? { options } : {}),
       },
       normalized: {
@@ -438,7 +478,9 @@ export function buildSolanaIntentRequest(
         destinationChainId: delivery.chainId,
         tokenRequests: [{ tokenAddress: delivery.token, ...amount }],
         ...recipient,
-        accountAccessList: { chainTokens: { [chainId]: [mint] } },
+        accountAccessList: cappedAccessList ?? {
+          chainTokens: { [chainId]: [mint] },
+        },
       },
     }
   }
@@ -458,13 +500,7 @@ export function buildSolanaIntentRequest(
         recipient: { address: recipient },
         tokenRequests: [{ tokenAddress: mint, ...amount }],
       },
-      source: {
-        selection: {
-          chains: { only: [caip2] },
-          tokens: { only: [mint] },
-          perChain: { [caip2]: { tokens: { only: [mint] } } },
-        },
-      },
+      source,
       ...(Object.keys(options).length > 0 ? { options } : {}),
     },
     normalized: {
@@ -474,7 +510,7 @@ export function buildSolanaIntentRequest(
       destinationChainId: chainId,
       tokenRequests: [{ tokenAddress: mint, ...amount }],
       recipient: { address: recipient },
-      accountAccessList: { chainIds: [chainId] },
+      accountAccessList: cappedAccessList ?? { chainIds: [chainId] },
     },
   }
 }
@@ -661,6 +697,18 @@ function validateQuote(
   if (source.chainId !== chainId || source.tokenAddress !== input.action.mint) {
     throw new InvalidSolanaTransactionArtifactError(
       'the quote input cost must reference the requested Solana chain and mint',
+      { intentId: quote.intentId },
+    )
+  }
+  // Only as strong as the quote's accounting: a route that bills source fees
+  // outside `cost.input` is bounded by the orchestrator's own limit check.
+  const cap = input.action.sourceLimit
+  if (
+    cap !== undefined &&
+    (typeof source.amount !== 'bigint' || source.amount > cap)
+  ) {
+    throw new InvalidSolanaTransactionArtifactError(
+      'the quote input cost exceeds the source amount cap',
       { intentId: quote.intentId },
     )
   }

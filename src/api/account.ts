@@ -15,6 +15,7 @@ import {
   locateSwig,
   locateSwigById,
   locateSwigWallet,
+  MANAGED_SWIG_NAMESPACES,
 } from '../accounts/solana/address'
 import { formatCaip2, parseCaip2, toEvmChainReference } from '../chains/caip2'
 import { getChainById, getChainReference } from '../chains/catalog'
@@ -111,6 +112,7 @@ import { normalizeIntentQuote } from '../transactions/intents/normalize'
 import { assertSupportedSigningRequests } from '../transactions/intents/prepare'
 import {
   compressP256PublicKey,
+  NATIVE_SOL_SENTINEL,
   type SolanaEvmExecution,
   type SolanaTransferInput,
   solanaChainId,
@@ -304,7 +306,7 @@ export interface ManagedTransactionAccount<
 }
 
 /**
- * A development managed Solana account without a managed EVM account.
+ * A managed Solana account without a managed EVM account.
  *
  * It may carry an address-only EVM receiver for delivery defaults. It signs
  * each Solana spend with its one owner, so it has no independent owner signing,
@@ -379,7 +381,7 @@ export interface SolanaStandaloneAccount<
    * @returns `true` once the Swig exists
    * @throws IntentFailedError when the deployment intent fails
    * @throws UnsupportedAccountCapabilityError when the Swig id is missing or wrong, or an ECDSA owner exposes no public key
-   * @throws ManagedSolanaAccountNotSupportedError outside the development environment and endpoint the account was created against
+   * @throws ManagedSolanaAccountNotSupportedError outside the environment and endpoint the account was created against
    * @example
    * ```ts
    * import { createSolanaSwigId, solanaDevnet } from '@rhinestone/sdk/solana'
@@ -442,7 +444,7 @@ interface ManagedSolanaDeployment {
    * @returns `true` once the Swig exists
    * @throws IntentFailedError when the deployment intent fails
    * @throws UnsupportedAccountCapabilityError when the Swig id is missing or wrong, or an ECDSA owner exposes no public key
-   * @throws ManagedSolanaAccountNotSupportedError outside the development environment and endpoint the account was created against
+   * @throws ManagedSolanaAccountNotSupportedError outside the environment and endpoint the account was created against
    * @example
    * ```ts
    * await account.deploy('solana', solanaDevnet)
@@ -873,6 +875,7 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
         owner: branch.owner,
         walletAddress: locateSwigWallet(branch.swig).address,
         swigAddress: branch.swig,
+        environment: ctx.sdk.environment,
         endpoint: ctx.sdk.orchestratorUrl,
         evmRecipient: identity,
         evmExecution: {
@@ -1391,11 +1394,33 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
   return account
 }
 
+/**
+ * The orchestrator each environment serves managed Solana from. Any other
+ * environment/endpoint pair has no matching Swig namespace behind it.
+ */
+const MANAGED_SOLANA_ENDPOINTS = {
+  development: 'https://dev.v1.orchestrator.rhinestone.dev',
+  production: 'https://v1.orchestrator.rhinestone.dev',
+} as const satisfies Record<ResolvedSdkConfig['environment'], string>
+
+export function isManagedSolanaEndpoint(
+  environment: ResolvedSdkConfig['environment'],
+  orchestratorUrl: string,
+): boolean {
+  return (
+    Object.hasOwn(MANAGED_SOLANA_ENDPOINTS, environment) &&
+    orchestratorUrl.replace(/\/+$/u, '') ===
+      MANAGED_SOLANA_ENDPOINTS[environment]
+  )
+}
+
 /** The explicitly selected Swig and optional local EVM composition. */
 export interface SolanaSource {
   readonly owner: SolanaOwner
   readonly walletAddress: SolanaAddress
   readonly swigAddress: SolanaAddress
+  /** The environment the account was created in. */
+  readonly environment: ResolvedSdkConfig['environment']
   /** The orchestrator the account was created against. */
   readonly endpoint: string
   /** Address used only as the default recipient for plain EVM delivery. */
@@ -1434,6 +1459,7 @@ function createSolanaOrigin(
   source: SolanaSource,
   publicConfig: Readonly<RhinestoneAccountConfig>,
 ) {
+  const namespace = MANAGED_SWIG_NAMESPACES[source.environment]
   const assertDestinationCallsSupported = (): void => {
     if (!source.evmExecution) {
       throw new UnsupportedAccountCapabilityError(
@@ -1442,7 +1468,7 @@ function createSolanaOrigin(
       )
     }
     const compatible = locateSwig(
-      asSwigNamespace('dev-v1'),
+      asSwigNamespace(namespace),
       source.evmExecution.address,
     )
     if (
@@ -1487,7 +1513,7 @@ function createSolanaOrigin(
       authority,
       walletAddress: source.walletAddress,
       swigAddress: source.swigAddress,
-      namespace: 'dev-v1',
+      namespace,
       endpoint: sdk.orchestratorUrl,
       ...(transaction.appFees ? { appFees: transaction.appFees } : {}),
       ...(transaction.protocolFees
@@ -1508,15 +1534,19 @@ function createSolanaOrigin(
           { vm: 'solana', field: 'recipient' },
         )
       }
+      const sourceAsset = transaction.sourceAssets[0]
       return {
         ...common,
         chain: transaction.sourceChains[0],
         action: {
           kind: 'transfer',
-          mint: transaction.sourceTokens[0].address,
+          mint: sourceAsset.address,
           ...(transaction.tokenRequests[0].amount === undefined
             ? {}
             : { amount: transaction.tokenRequests[0].amount }),
+          ...(sourceAsset.amount === undefined
+            ? {}
+            : { sourceLimit: sourceAsset.amount }),
           delivery: {
             kind: 'cross-chain',
             chainId: transaction.targetChain.id,
@@ -1540,6 +1570,7 @@ function createSolanaOrigin(
         },
       }
     }
+    const sourceLimit = transaction.sourceAssets?.[0].amount
     return {
       ...common,
       chain: transaction.chain,
@@ -1549,6 +1580,7 @@ function createSolanaOrigin(
         ...(transaction.tokenRequests[0].amount === undefined
           ? {}
           : { amount: transaction.tokenRequests[0].amount }),
+        ...(sourceLimit === undefined ? {} : { sourceLimit }),
         delivery: { kind: 'same-chain', recipient: transaction.recipient },
       },
     }
@@ -1611,11 +1643,12 @@ function createSolanaOrigin(
 
   const assertCapturedEnvironment = (sdk: ResolvedSdkConfig): void => {
     if (
-      sdk.environment !== 'development' ||
-      sdk.orchestratorUrl !== source.endpoint
+      sdk.environment !== source.environment ||
+      sdk.orchestratorUrl !== source.endpoint ||
+      !isManagedSolanaEndpoint(sdk.environment, sdk.orchestratorUrl)
     ) {
       throw new ManagedSolanaAccountNotSupportedError(
-        'Managed Solana execution remains bound to the development environment and endpoint captured when the account was created.',
+        'Managed Solana execution remains bound to the environment and endpoint captured when the account was created.',
       )
     }
   }
@@ -1642,7 +1675,7 @@ function createSolanaOrigin(
     }
     if (source.evmExecution) {
       const derived = locateSwig(
-        asSwigNamespace('dev-v1'),
+        asSwigNamespace(namespace),
         source.evmExecution.address,
       )
       if (derived.swig === source.swigAddress) return bytesToHex(derived.id)
@@ -1698,7 +1731,7 @@ function createSolanaOrigin(
       authorization: authority,
       initAuthority: rootAuthority(),
       swigId: resolveSwigId(options?.swigId),
-      namespace: 'dev-v1',
+      namespace,
       endpoint: sdk.orchestratorUrl,
     }
     let prepared: PreparedSolanaDeployment
@@ -2078,6 +2111,74 @@ function assertSolanaObjectKeys(
   }
 }
 
+/**
+ * Checks the one source asset of a Solana-origin transfer: an SPL mint on
+ * `cluster`, with an optional positive ceiling.
+ */
+function assertSolanaSourceAsset(
+  sourceAssets: unknown,
+  cluster: SolanaChain,
+): { readonly address: SolanaAddress; readonly amount?: bigint } {
+  const refuse = (message: string, field: string): never => {
+    throw new UnsupportedAccountCapabilityError(message, {
+      vm: 'solana',
+      field,
+    })
+  }
+  if (!Array.isArray(sourceAssets) || sourceAssets.length !== 1) {
+    refuse(
+      'A Solana-origin transfer names exactly one source asset: `sourceAssets: [{ chain, address, amount? }]`.',
+      'sourceAssets',
+    )
+  }
+  const asset = (sourceAssets as unknown[])[0]
+  assertSolanaObjectKeys(
+    asset,
+    ['chain', 'address', 'amount'],
+    'sourceAssets[0]',
+  )
+  let chainId: number | undefined
+  try {
+    chainId = solanaChainId(asset.chain as SolanaChain)
+  } catch {
+    // Refused below with the field it concerns.
+  }
+  if (
+    chainId === undefined ||
+    (asset.chain as SolanaChain).caip2 !== cluster.caip2
+  ) {
+    refuse(
+      'The source asset must be on the Solana cluster the transaction spends from.',
+      'sourceAssets[0].chain',
+    )
+  }
+  let mint: SolanaAddress | undefined
+  try {
+    mint = solanaAddress(asset.address as string)
+  } catch {
+    // Refused below with the field it concerns.
+  }
+  if (mint === undefined || mint === NATIVE_SOL_SENTINEL) {
+    refuse(
+      'The source asset must be a valid SPL mint address; native SOL is not supported.',
+      'sourceAssets[0].address',
+    )
+  }
+  if (
+    asset.amount !== undefined &&
+    (typeof asset.amount !== 'bigint' || asset.amount <= 0n)
+  ) {
+    refuse(
+      'A source asset `amount` caps what the wallet may debit and must be a positive bigint when provided.',
+      'sourceAssets[0].amount',
+    )
+  }
+  return {
+    address: mint!,
+    ...(asset.amount === undefined ? {} : { amount: asset.amount as bigint }),
+  }
+}
+
 function assertSupportedSolanaTransaction(
   input: Record<string, unknown>,
   config: Readonly<RhinestoneAccountConfig>,
@@ -2090,6 +2191,7 @@ function assertSupportedSolanaTransaction(
           'chain',
           'tokenRequests',
           'recipient',
+          'sourceAssets',
           'sponsored',
           'appFees',
           'protocolFees',
@@ -2151,6 +2253,28 @@ function assertSupportedSolanaTransaction(
       { vm: 'solana' },
     )
   }
+  if (input.sourceAssets !== undefined) {
+    const asset = assertSolanaSourceAsset(
+      input.sourceAssets,
+      input.chain as SolanaChain,
+    )
+    if (asset.address !== request.address) {
+      throw new UnsupportedAccountCapabilityError(
+        'The source asset must be the mint the transfer sends.',
+        { vm: 'solana', field: 'sourceAssets[0].address' },
+      )
+    }
+    if (
+      asset.amount !== undefined &&
+      request.amount !== undefined &&
+      (request.amount as bigint) > asset.amount
+    ) {
+      throw new UnsupportedAccountCapabilityError(
+        'The token amount exceeds the source asset `amount` that caps it.',
+        { vm: 'solana', field: 'sourceAssets[0].amount' },
+      )
+    }
+  }
   if (input.appFees !== undefined) {
     assertSolanaObjectKeys(input.appFees, ['feeBps'], 'appFees')
   }
@@ -2177,9 +2301,15 @@ function assertSupportedSolanaOriginDelivery(
   input: Record<string, unknown>,
   config: Readonly<RhinestoneAccountConfig>,
 ): void {
+  if (Object.hasOwn(input, 'sourceTokens')) {
+    throw new UnsupportedAccountCapabilityError(
+      '`sourceTokens` was replaced by `sourceAssets: [{ chain, address, amount? }]`.',
+      { vm: 'solana', field: 'sourceTokens' },
+    )
+  }
   const allowed = new Set([
     'sourceChains',
-    'sourceTokens',
+    'sourceAssets',
     'targetChain',
     'tokenRequests',
     'recipient',
@@ -2240,22 +2370,7 @@ function assertSupportedSolanaOriginDelivery(
     )
   }
   solanaChainId(sources[0] as SolanaChain)
-  if (!Array.isArray(input.sourceTokens) || input.sourceTokens.length !== 1) {
-    throw new UnsupportedAccountCapabilityError(
-      'A Solana-origin delivery requires exactly one source SPL mint.',
-      { vm: 'solana', field: 'sourceTokens' },
-    )
-  }
-  const sourceToken = input.sourceTokens[0]
-  assertSolanaObjectKeys(sourceToken, ['address'], 'sourceTokens[0]')
-  try {
-    solanaAddress(sourceToken.address as string)
-  } catch {
-    throw new UnsupportedAccountCapabilityError(
-      'A Solana-origin delivery requires one valid SPL mint address.',
-      { vm: 'solana', field: 'sourceTokens[0].address' },
-    )
-  }
+  assertSolanaSourceAsset(input.sourceAssets, sources[0] as SolanaChain)
   const target = input.targetChain as Record<string, unknown> | undefined
   if (
     !target ||
@@ -2501,8 +2616,11 @@ export function normalizeTransaction(
       sourceChains: [
         Object.freeze({ ...transaction.sourceChains[0] }),
       ] as const,
-      sourceTokens: [
-        Object.freeze({ ...transaction.sourceTokens[0] }),
+      sourceAssets: [
+        Object.freeze({
+          ...transaction.sourceAssets[0],
+          chain: Object.freeze({ ...transaction.sourceAssets[0].chain }),
+        }),
       ] as const,
       tokenRequests: [
         Object.freeze({ ...transaction.tokenRequests[0] }),
@@ -2531,10 +2649,21 @@ export function normalizeTransaction(
   }
   if (isSameChainSolanaOrigin(transaction)) {
     const request = transaction.tokenRequests[0]
+    const asset = transaction.sourceAssets?.[0]
     return Object.freeze({
       ...transaction,
       chain: Object.freeze({ ...transaction.chain }),
       tokenRequests: [Object.freeze({ ...request })],
+      ...(asset
+        ? {
+            sourceAssets: [
+              Object.freeze({
+                ...asset,
+                chain: Object.freeze({ ...asset.chain }),
+              }),
+            ],
+          }
+        : {}),
       ...(transaction.appFees
         ? { appFees: Object.freeze({ ...transaction.appFees }) }
         : {}),
@@ -2667,7 +2796,8 @@ export function adaptTransaction(
     ...(transaction.sourceAssets || sourceChains
       ? {
           accountAccessList: adaptSourceAssets(
-            transaction.sourceAssets,
+            // Solana origins, whose source asset is a tuple, are refused above.
+            transaction.sourceAssets as SourceAssetInput | undefined,
             evmSources?.map(({ id }) => id),
           ),
         }

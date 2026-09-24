@@ -23,6 +23,7 @@ import {
   type SolanaCrossChainExecutionMetadata,
   type SolanaExecutionMetadata,
   type SolanaInstructionsExecutionMetadata,
+  type SolanaSourceAsset,
   type SolanaStandaloneAccount,
   type SolanaStandaloneAccountConfig,
   solanaAddress,
@@ -141,7 +142,7 @@ const instructionTransaction = {
 const usdcOnBase = '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913' as const
 const deliveryFromSolana = {
   sourceChains: [solanaDevnet],
-  sourceTokens: [{ address: mint }],
+  sourceAssets: [{ chain: solanaDevnet, address: mint }],
   targetChain: base,
   tokenRequests: [{ address: usdcOnBase, amount: 1n }],
 } satisfies CrossChainSolanaOriginTransaction
@@ -149,14 +150,53 @@ const deliveryFromSolana = {
 // identity receives the whole balance of the named mint.
 const maxOutFromSolana = {
   sourceChains: [solanaDevnet],
-  sourceTokens: [{ address: mint }],
+  sourceAssets: [{ chain: solanaDevnet, address: mint }],
   targetChain: base,
   tokenRequests: [{ address: usdcOnBase }],
+} satisfies CrossChainSolanaOriginTransaction
+// A ceiling on the source debit, with or without a destination amount.
+const sourceCap: SolanaSourceAsset = {
+  chain: solanaDevnet,
+  address: mint,
+  amount: 4_000_000n,
+}
+const cappedMaxOutFromSolana = {
+  ...maxOutFromSolana,
+  sourceAssets: [sourceCap],
+} satisfies CrossChainSolanaOriginTransaction
+const cappedTransfer = {
+  ...solanaTransaction,
+  sourceAssets: [sourceCap],
+} satisfies SameChainSolanaTransaction
+const uncappedSourceTransfer = {
+  ...solanaTransaction,
+  sourceAssets: [{ chain: solanaDevnet, address: mint }],
+} satisfies SameChainSolanaTransaction
+// @ts-expect-error a delivery names its source asset
+const missingSourceAsset: CrossChainSolanaOriginTransaction = {
+  sourceChains: [solanaDevnet],
+  targetChain: base,
+  tokenRequests: [{ address: usdcOnBase }],
+}
+const legacySourceTokens = {
+  ...maxOutFromSolana,
+  // @ts-expect-error `sourceTokens` was replaced by `sourceAssets`
+  sourceTokens: [{ address: mint }],
+} satisfies CrossChainSolanaOriginTransaction
+const twoSourceAssets = {
+  ...maxOutFromSolana,
+  // @ts-expect-error a delivery spends exactly one source asset
+  sourceAssets: [sourceCap, sourceCap],
+} satisfies CrossChainSolanaOriginTransaction
+const evmSourceAsset = {
+  ...maxOutFromSolana,
+  // @ts-expect-error a Solana source asset is on a Solana cluster
+  sourceAssets: [{ chain: base, address: mint }],
 } satisfies CrossChainSolanaOriginTransaction
 
 const metadata: SolanaExecutionMetadata = {
   kind: 'solana',
-  namespace: 'dev-v1',
+  namespace: 'prod-v1',
   endpoint: 'https://orchestrator.example',
   chain: 792703810,
   caip2: solanaDevnet.caip2,
@@ -328,11 +368,13 @@ async function compositeCapabilitySurface() {
   // The same request written inline, which is how integrators write it.
   account.prepareTransaction({
     sourceChains: [solanaDevnet],
-    sourceTokens: [{ address: mint }],
+    sourceAssets: [{ chain: solanaDevnet, address: mint, amount: 1n }],
     targetChain: base,
     tokenRequests: [{ address: usdcOnBase }],
     recipient: owner.address,
   })
+  account.prepareTransaction(cappedMaxOutFromSolana)
+  account.prepareTransaction(cappedTransfer)
   account.prepareTransaction(deliveryTransaction)
   account.prepareTransaction(defaultedDelivery)
   account.prepareTransaction({ chain: mainnet, calls: [] })
@@ -477,6 +519,11 @@ const forbiddenInstructionCalls = {
   // @ts-expect-error Solana instructions cannot be mixed with EVM calls
   calls: [],
 } satisfies SameChainSolanaInstructionsTransaction
+const forbiddenInstructionSourceAssets = {
+  ...instructionTransaction,
+  // @ts-expect-error the orchestrator refuses source limits on instructions
+  sourceAssets: [sourceCap],
+} satisfies SameChainSolanaInstructionsTransaction
 const forbiddenInstructionFees = {
   ...instructionTransaction,
   // @ts-expect-error a tokenless spend has no value leg to charge fees on
@@ -532,6 +579,12 @@ void forbiddenInstructionRecipient
 void forbiddenInstructionTokens
 void forbiddenInstructionCalls
 void forbiddenInstructionFees
+void forbiddenInstructionSourceAssets
+void uncappedSourceTransfer
+void missingSourceAsset
+void legacySourceTokens
+void twoSourceAssets
+void evmSourceAsset
 void sponsoredInstructions
 void sponsoredInstructionCategories
 void forbiddenTransferInstructions

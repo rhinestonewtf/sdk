@@ -187,7 +187,8 @@ export interface PreparedQuotes {
 /** Binds a prepared same-chain Solana transfer to the account that prepared it. */
 export interface SolanaExecutionMetadata {
   kind: 'solana'
-  namespace: 'dev-v1'
+  /** The Swig namespace of the environment the account was created in. */
+  namespace: 'dev-v1' | 'prod-v1'
   endpoint: string
   chain: number
   caip2: string
@@ -209,7 +210,8 @@ export interface SolanaExecutionMetadata {
  */
 export interface SolanaCrossChainExecutionMetadata {
   kind: 'solana-cross-chain'
-  namespace: 'dev-v1'
+  /** The Swig namespace of the environment the account was created in. */
+  namespace: 'dev-v1' | 'prod-v1'
   endpoint: string
   chain: number
   caip2: string
@@ -234,7 +236,8 @@ export interface SolanaCrossChainExecutionMetadata {
  */
 export interface SolanaInstructionsExecutionMetadata {
   kind: 'solana-instructions'
-  namespace: 'dev-v1'
+  /** The Swig namespace of the environment the account was created in. */
+  namespace: 'dev-v1' | 'prod-v1'
   endpoint: string
   chain: number
   caip2: string

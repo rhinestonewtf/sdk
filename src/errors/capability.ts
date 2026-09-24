@@ -19,12 +19,15 @@ class InvalidAccountConfigError extends AccountCapabilityError {
   }
 }
 
-/** Thrown when managed Solana capability is requested outside development. */
+/**
+ * Thrown when managed Solana capability is requested outside a supported
+ * environment and endpoint pair.
+ */
 class ManagedSolanaAccountNotSupportedError extends AccountCapabilityError {
   constructor(message?: string) {
     super(
       message ??
-        'Managed Solana accounts are available only when `useDevContracts: true`. Production has no enabled Swig namespace; use an address-only Solana receiver instead.',
+        "Managed Solana accounts are available only on production with the default endpoint `https://v1.orchestrator.rhinestone.dev`, or with `useDevContracts: true` and `endpointUrl: 'https://dev.v1.orchestrator.rhinestone.dev'`. Use an address-only Solana receiver elsewhere.",
       { vm: 'solana' },
     )
     this.name = 'ManagedSolanaAccountNotSupportedError'

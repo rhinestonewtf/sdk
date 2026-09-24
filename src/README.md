@@ -153,7 +153,7 @@ const crossVmAccount = await rhinestone.createAccount({
 ```
 
 Address-only entries cannot prepare, sign, or execute transactions. To use an
-existing development Swig, supply its saved state-account address and its
+existing Swig, supply its saved state-account address and its
 independent private-key or passkey owner; the wallet PDA is derived:
 
 ```ts
@@ -175,8 +175,26 @@ transfers, instructions, and deliveries use only the Solana owner. An EVM
 receiver can default a delivery recipient but cannot spend or execute calls.
 Solana-to-EVM destination calls require a managed EVM account whose existing
 backend-compatible pair matches the explicit Swig. Account construction does
-not create or verify a Swig; provisioning remains an operator step. Solana
-support remains development-only.
+not create or verify a Swig; provisioning remains an operator step. Managed
+Solana runs on production with the default endpoint, or with
+`useDevContracts: true` and
+`endpointUrl: 'https://dev.v1.orchestrator.rhinestone.dev'`.
+
+Deliver from Solana to EVM, capping what the Swig wallet may debit:
+
+```ts
+import { solanaDevnet } from '@rhinestone/sdk/solana'
+
+const prepared = await solanaAccount.prepareTransaction({
+  sourceChains: [solanaDevnet],
+  // `amount` is a ceiling on the source debit; omit it for no cap.
+  sourceAssets: [{ chain: solanaDevnet, address: splMint, amount: 4_000_000n }],
+  targetChain: baseSepolia,
+  // No destination amount: deliver as much as the capped debit buys.
+  tokenRequests: [{ address: usdc }],
+  recipient: evmReceiver,
+})
+```
 
 Send a crosschain transaction:
 

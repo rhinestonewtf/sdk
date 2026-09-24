@@ -62,7 +62,10 @@ describe('RhinestoneSDK', () => {
   })
 
   test('rejects managed Solana before composing a partial EVM account', async () => {
-    const sdk = new RhinestoneSDK({ apiKey: 'offline' })
+    const sdk = new RhinestoneSDK({
+      apiKey: 'offline',
+      endpointUrl: 'https://orchestrator.example',
+    })
     await expect(
       sdk.createAccount({
         evm: { account: { type: 'eoa' }, eoa: owner },

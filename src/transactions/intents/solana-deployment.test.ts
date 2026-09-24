@@ -193,7 +193,7 @@ describe('Solana Swig deployment request', () => {
     [
       'another namespace',
       { namespace: 'local-v1' as 'dev-v1' },
-      /namespace must be dev-v1/,
+      /namespace must be dev-v1 or prod-v1/,
     ],
   ])('refuses %s', (_label, overrides, message) => {
     expect(() =>
@@ -201,6 +201,12 @@ describe('Solana Swig deployment request', () => {
         ecdsaInput(overrides as Partial<SolanaDeploymentInput>),
       ),
     ).toThrow(message)
+  })
+
+  test('builds the same request under the production namespace', () => {
+    expect(
+      buildSolanaDeploymentRequest(ecdsaInput({ namespace: 'prod-v1' })),
+    ).toEqual(buildSolanaDeploymentRequest(ecdsaInput()))
   })
 
   test('refuses an installed passkey that is not the configured one', () => {

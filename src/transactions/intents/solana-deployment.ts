@@ -1,5 +1,9 @@
 import { type Hex, hexToBytes, isHex } from 'viem'
-import { locateSwigById } from '../../accounts/solana/address'
+import {
+  isManagedSwigNamespace,
+  locateSwigById,
+  type ManagedSwigNamespace,
+} from '../../accounts/solana/address'
 import { formatCaip2 } from '../../chains/caip2'
 import type { SolanaAddress, SolanaChain } from '../../chains/non-evm'
 import type { NormalizedIntentInput } from '../../clients/orchestrator/normalized'
@@ -30,7 +34,7 @@ export interface SolanaDeploymentInput {
   readonly initAuthority: OrchestratorSwigInitData['authority']
   /** The 32-byte id that derives `swigAddress`. */
   readonly swigId: Hex
-  readonly namespace: 'dev-v1'
+  readonly namespace: ManagedSwigNamespace
   readonly endpoint: string
 }
 
@@ -81,8 +85,8 @@ export function buildSolanaDeploymentRequest(input: SolanaDeploymentInput): {
 } {
   const chainId = solanaChainId(input.chain)
   const caip2 = formatCaip2(chainId)
-  if (input.namespace !== 'dev-v1') {
-    refuse('the managed account namespace must be dev-v1')
+  if (!isManagedSwigNamespace(input.namespace)) {
+    refuse('the managed account namespace must be dev-v1 or prod-v1')
   }
   if (!isHex(input.swigId) || hexToBytes(input.swigId).length !== 32) {
     refuse('the Swig id must be 32 bytes of hex')
