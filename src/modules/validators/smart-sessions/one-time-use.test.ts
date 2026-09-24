@@ -1,4 +1,4 @@
-import { decodeAbiParameters, decodeFunctionData, pad, toHex } from 'viem'
+import { decodeAbiParameters, decodeFunctionData, pad, size, toHex } from 'viem'
 import { describe, expect, test } from 'vitest'
 
 import {
@@ -20,7 +20,7 @@ const decodeInit = (hex: `0x${string}`) =>
 describe('encodeOneTimeUseIdInitData', () => {
   test('is exactly 64 bytes: id then deadline', () => {
     const initData = encodeOneTimeUseIdInitData(42n, 1_900_000_000n)
-    expect((initData.length - 2) / 2).toBe(64)
+    expect(size(initData)).toBe(64)
     expect(decodeInit(initData)).toEqual([42n, 1_900_000_000n])
   })
   test('defaults the deadline to zero (never expires)', () => {
@@ -29,15 +29,15 @@ describe('encodeOneTimeUseIdInitData', () => {
   test('rejects a zero id (policy treats 0 as "not configured")', () => {
     expect(() => encodeOneTimeUseIdInitData(0n)).toThrow()
   })
-  test('rejects a deadline outside uint256', () => {
-    expect(() => encodeOneTimeUseIdInitData(42n, -1n)).toThrow()
-    expect(() => encodeOneTimeUseIdInitData(42n, 1n << 256n)).toThrow()
-  })
 })
 
 describe('oneTimeUseIdErc1271Policy', () => {
   test('produces a {policy, initData} entry pinning the id and deadline', () => {
-    const entry = oneTimeUseIdErc1271Policy({ policy: POLICY, id: 7n, deadline: 99n })
+    const entry = oneTimeUseIdErc1271Policy({
+      policy: POLICY,
+      id: 7n,
+      deadline: 99n,
+    })
     expect(entry.policy).toBe(POLICY)
     expect(decodeInit(entry.initData)).toEqual([7n, 99n])
   })

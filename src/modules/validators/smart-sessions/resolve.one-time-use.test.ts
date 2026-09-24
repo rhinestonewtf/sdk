@@ -1,4 +1,4 @@
-import { concat, pad, toHex } from 'viem'
+import { decodeAbiParameters } from 'viem'
 import { base } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 
@@ -14,10 +14,11 @@ describe('resolveSessionData — one-time-use session', () => {
   const POLICY = '0x00000000000000000000000000000000000000aa' as const
   const owners = { type: 'ecdsa' as const, accounts: [accountA] }
   // source: OneTimeUseIdPolicy init layout (smart-sessions-v2#56 @ 493fd86) —
-  // 32-byte id then 32-byte deadline; no deadline given, so it is zero.
+  // word 0 is the id (42 = 0x2a), word 1 the deadline; none given, so zero.
   const onceEntry = {
     policy: POLICY,
-    initData: concat([pad(toHex(42n), { size: 32 }), pad(toHex(0n), { size: 32 })]),
+    initData:
+      '0x000000000000000000000000000000000000000000000000000000000000002a0000000000000000000000000000000000000000000000000000000000000000' as const,
   }
 
   function oneTimeUseSession() {
@@ -47,6 +48,28 @@ describe('resolveSessionData — one-time-use session', () => {
     expect(list[1]).toEqual(onceEntry)
     // the claim policy moved OFF the claim surface onto the 1271 surface
     expect(data.claimPolicies).toHaveLength(0)
+  })
+
+  test('carries a caller-set deadline into the once-policy on every surface', () => {
+    const data = resolveSessionData({
+      chain: base,
+      owners,
+      oneTimeUse: { id: 42n, deadline: 1_900_000_000n },
+      policyAddresses: { oneTimeUseId: POLICY },
+    })
+    const onceEntries = [
+      ...data.erc7739Policies.erc1271Policies,
+      ...data.actions.flatMap((action) => action.actionPolicies),
+    ].filter((entry) => entry.policy === POLICY)
+    expect(onceEntries.length).toBe(data.actions.length + 1)
+    for (const entry of onceEntries) {
+      expect(
+        decodeAbiParameters(
+          [{ type: 'uint256' }, { type: 'uint256' }],
+          entry.initData,
+        ),
+      ).toEqual([42n, 1_900_000_000n])
+    }
   })
 
   test('leaves a normal session untouched (sudo-only 1271 list, no once-policy on actions)', () => {

@@ -324,8 +324,9 @@ export interface SessionDefinition {
 
 export interface OneTimeUseSessionConfig {
   readonly id: bigint
-  // Unix seconds after which the id can no longer be spent; omit or 0 for never.
-  // The policy rejects a deadline already in the past when the session is enabled.
+  // Unix SECONDS (not milliseconds) after which the id can no longer be spent;
+  // omit or 0 for never. The policy rejects a deadline already in the past at
+  // session enable (OneTimeUseIdPolicy.initializeWithMultiplexer, DeadlineInPast).
   readonly deadline?: bigint
 }
 
