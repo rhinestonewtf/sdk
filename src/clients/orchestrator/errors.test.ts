@@ -3,10 +3,12 @@ import {
   ConflictError,
   InsufficientSponsorBalanceError,
   isInsufficientSponsorBalance,
+  isSolanaAccountAlreadyCreated,
   isSolanaAccountNotCreated,
   isSponsorError,
   isSponsorLimitExceeded,
   parseErrorEnvelope,
+  SolanaAccountAlreadyCreatedError,
   SolanaAccountNotCreatedError,
   SponsorLimitExceededError,
   UnprocessableContentError,
@@ -132,6 +134,108 @@ describe('parseErrorEnvelope Solana account errors', () => {
     expect(error.constructor).toBe(ValidationError)
     expect(isSolanaAccountNotCreated(error)).toBe(false)
     expect((error as ValidationError).issues[0]?.context).toEqual(context)
+  })
+})
+
+describe('parseErrorEnvelope Solana account creation refusals', () => {
+  const SWIG = '3wm644fHe3ekULLCPov4vkDeVCJEaQmnCfn5k2HhMS4B'
+
+  test('maps an existing Swig to the dedicated error', () => {
+    const context = {
+      domain: 'planning-gate',
+      code: 'ACCOUNT_ALREADY_DEPLOYED',
+      destinationChainId: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1',
+      swig: SWIG,
+      wallet: 'C4PvoicLfj71bcjnvSWFKo3QeDP8AXJbUzZFQPvRf3xm',
+    }
+    const error = parseErrorEnvelope(
+      {
+        code: 'UNPROCESSABLE_CONTENT',
+        message: `The account's Swig ${SWIG} already exists on this chain.`,
+        traceId: 'trace-swig-exists',
+        details: [{ message: 'already exists', context }],
+      },
+      422,
+    )
+
+    expect(error).toBeInstanceOf(SolanaAccountAlreadyCreatedError)
+    expect(isSolanaAccountAlreadyCreated(error)).toBe(true)
+    expect(error).toBeInstanceOf(UnprocessableContentError)
+    expect(error.code).toBe('UNPROCESSABLE_CONTENT')
+    expect(error).toMatchObject({
+      swigAddress: SWIG,
+      chainId: 792703810,
+      statusCode: 422,
+      traceId: 'trace-swig-exists',
+      details: [{ context }],
+    })
+  })
+
+  test('omits a chain id it cannot read', () => {
+    const error = parseErrorEnvelope(
+      {
+        code: 'UNPROCESSABLE_CONTENT',
+        message: 'exists',
+        traceId: 't',
+        details: [
+          {
+            message: 'exists',
+            context: { code: 'ACCOUNT_ALREADY_DEPLOYED', swig: SWIG },
+          },
+        ],
+      },
+      422,
+    )
+    expect(error).toBeInstanceOf(SolanaAccountAlreadyCreatedError)
+    expect((error as SolanaAccountAlreadyCreatedError).chainId).toBeUndefined()
+  })
+
+  // The same code refuses an EVM setup-only intent for a deployed account.
+  test.each([
+    [
+      {
+        code: 'ACCOUNT_ALREADY_DEPLOYED',
+        destinationChainId: 'eip155:8453',
+        account: '0x0000000000000000000000000000000000000001',
+        setupOpsCount: 1,
+      },
+    ],
+    [{ code: 'ACCOUNT_ALREADY_DEPLOYED', swig: '' }],
+  ])('keeps an EVM already-deployed refusal generic', (context) => {
+    const error = parseErrorEnvelope(
+      {
+        code: 'UNPROCESSABLE_CONTENT',
+        message: 'already deployed',
+        traceId: 't',
+        details: [{ message: 'already deployed', context }],
+      },
+      422,
+    )
+    expect(error.constructor).toBe(UnprocessableContentError)
+    expect(isSolanaAccountAlreadyCreated(error)).toBe(false)
+    expect((error as UnprocessableContentError).details[0]?.context).toEqual(
+      context,
+    )
+  })
+
+  test.each([
+    ['UNSUPPORTED_ACCOUNT_TYPE', 'account.svm'],
+    ['SPONSORSHIP_REQUIRED', 'options.sponsorship'],
+  ])('keeps the %s refusal code readable', (code, field) => {
+    const error = parseErrorEnvelope(
+      {
+        code: 'VALIDATION_ERROR',
+        message: 'refused',
+        traceId: 't',
+        details: [{ message: 'refused', context: { code, field } }],
+      },
+      400,
+    )
+    expect(error.constructor).toBe(ValidationError)
+    expect((error as ValidationError).issues[0]?.context).toMatchObject({
+      code,
+      field,
+    })
   })
 })
 

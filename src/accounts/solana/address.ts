@@ -1,6 +1,6 @@
 import { ed25519 } from '@noble/curves/ed25519'
 import { base58 } from '@scure/base'
-import { type Address, isAddress, sha256 } from 'viem'
+import { type Address, bytesToHex, type Hex, isAddress, sha256 } from 'viem'
 import { type SolanaAddress, solanaAddress } from '../../chains/non-evm'
 
 const textEncoder = new TextEncoder()
@@ -153,18 +153,22 @@ function locateSwigWallet(swig: SolanaAddress): ProgramAddress {
   )
 }
 
-function locateSwig(
-  namespace: SwigNamespace,
-  evmAccount: Address,
-): SwigLocation {
-  const normalizedAccount = evmAccount.toLowerCase() as Address
-  const id = swigId(namespace, normalizedAccount)
+type SwigIdLocation = {
+  readonly id: Uint8Array
+  readonly swig: SolanaAddress
+  readonly swigBump: number
+  readonly wallet: SolanaAddress
+  readonly walletBump: number
+}
+
+/** The Swig state account and wallet a 32-byte Swig id derives. */
+function locateSwigById(id: Uint8Array): SwigIdLocation {
+  if (id.length !== 32) {
+    throw new TypeError('Invalid Swig id: expected 32 bytes')
+  }
   const swig = findProgramAddress([SWIG_SEED, id], SWIG_PROGRAM_ADDRESS)
   const wallet = locateSwigWallet(swig.address)
-
   return {
-    namespace,
-    evmAccount: normalizedAccount,
     id,
     swig: swig.address,
     swigBump: swig.bump,
@@ -173,12 +177,56 @@ function locateSwig(
   }
 }
 
-export type { ProgramAddress, SwigLocation, SwigNamespace }
+function locateSwig(
+  namespace: SwigNamespace,
+  evmAccount: Address,
+): SwigLocation {
+  const normalizedAccount = evmAccount.toLowerCase() as Address
+  return {
+    namespace,
+    evmAccount: normalizedAccount,
+    ...locateSwigById(swigId(namespace, normalizedAccount)),
+  }
+}
+
+/**
+ * Mints a fresh, random Swig id and the addresses it derives, for a Solana
+ * account that is not tied to a managed EVM account.
+ *
+ * Persist `id` together with `swig`: configure the account with
+ * `solana: { swig, owner }`, and pass the id to
+ * `account.deploy('solana', solanaChain, { swigId: id })`
+ * to create it. The id cannot be recovered from the addresses, so a lost id
+ * leaves the Swig uncreatable; mint a new one instead.
+ *
+ * @returns The 32-byte Swig `id` as hex, the Swig state account `swig`, and
+ * the asset-holding `wallet` that receives funds.
+ * @example
+ * ```ts
+ * import { createSolanaSwigId } from '@rhinestone/sdk'
+ *
+ * const { id, swig, wallet } = createSolanaSwigId()
+ * // Save `id` and `swig`; fund `wallet` only after the Swig is created.
+ * ```
+ */
+function createSolanaSwigId(): {
+  readonly id: Hex
+  readonly swig: SolanaAddress
+  readonly wallet: SolanaAddress
+} {
+  const id = crypto.getRandomValues(new Uint8Array(32))
+  const location = locateSwigById(id)
+  return { id: bytesToHex(id), swig: location.swig, wallet: location.wallet }
+}
+
+export type { ProgramAddress, SwigIdLocation, SwigLocation, SwigNamespace }
 export {
   SWIG_PROGRAM_ADDRESS,
   asSwigNamespace,
   createProgramAddress,
+  createSolanaSwigId,
   findProgramAddress,
   locateSwig,
+  locateSwigById,
   locateSwigWallet,
 }

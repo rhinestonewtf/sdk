@@ -40,6 +40,10 @@ import type {
   SolanaTransferInput,
 } from '../transactions/intents/solana'
 import type {
+  PreparedSolanaDeployment,
+  SolanaDeploymentInput,
+} from '../transactions/intents/solana-deployment'
+import type {
   IndexedProofContribution,
   IntentInput,
   IntentSessionSelection,
@@ -121,6 +125,12 @@ export interface SolanaWorkflows {
   }) => Promise<SignedSolanaIntent>
   readonly submitSolanaIntent: (
     input: SignedSolanaIntent,
+  ) => Promise<SubmittedIntent>
+  readonly prepareSolanaDeployment: (
+    input: SolanaDeploymentInput,
+  ) => Promise<PreparedSolanaDeployment>
+  readonly submitSolanaDeployment: (
+    prepared: PreparedSolanaDeployment,
   ) => Promise<SubmittedIntent>
 }
 

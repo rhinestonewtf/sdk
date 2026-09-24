@@ -6,7 +6,7 @@ import type {
   SigningPayload,
   SigningRequest,
 } from '../../src/clients/orchestrator/public'
-import type { OrchestratorQuote } from '../../src/clients/orchestrator/types'
+import type { OrchestratorExecutionQuote } from '../../src/clients/orchestrator/types'
 
 const ACCOUNT = '0x0000000000000000000000000000000000000010' as Address
 
@@ -140,12 +140,12 @@ export function quote(
   input: {
     readonly intentId?: string
     readonly chainId?: number
-    readonly settlementLayer?: OrchestratorQuote['settlementLayer']
+    readonly settlementLayer?: OrchestratorExecutionQuote['settlementLayer']
     readonly signingRequests?: readonly SigningRequest[]
     readonly expiresAt?: number
-    readonly cost?: OrchestratorQuote['cost']
+    readonly cost?: OrchestratorExecutionQuote['cost']
   } = {},
-): OrchestratorQuote {
+): OrchestratorExecutionQuote {
   const chainId = input.chainId ?? 1
   const caip2 = `eip155:${chainId}`
   return {
@@ -161,7 +161,7 @@ export function quote(
   }
 }
 
-export function emptyCost(): OrchestratorQuote['cost'] {
+export function emptyCost(): OrchestratorExecutionQuote['cost'] {
   return {
     input: [],
     output: [],
@@ -194,7 +194,9 @@ export function costEntry(input: {
   }
 }
 
-export function publicQuote(value: OrchestratorQuote = quote()): Quote {
+export function publicQuote(
+  value: OrchestratorExecutionQuote = quote(),
+): Quote {
   return value as unknown as Quote
 }
 

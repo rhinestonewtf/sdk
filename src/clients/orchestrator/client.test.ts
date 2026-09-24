@@ -4,7 +4,11 @@ import { createOrchestratorClient } from './client'
 import type { RateLimitedError } from './errors'
 import type { FetchPort } from './fetch'
 import type { SerializedIntentInput } from './public'
-import type { OrchestratorIntentRequest } from './types'
+import type { OrchestratorIntentRequest, OrchestratorQuote } from './types'
+
+function bridgeFillOf(route: OrchestratorQuote | undefined) {
+  return route?.purpose === 'execution' ? route.bridgeFill : undefined
+}
 
 const address = '0x0000000000000000000000000000000000000001' as const
 const SOLANA = 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp'
@@ -253,7 +257,7 @@ describe('orchestrator client', () => {
       ]),
     ).createQuote(request)
 
-    expect(result.routes[0]?.bridgeFill).toMatchObject({
+    expect(bridgeFillOf(result.routes[0])).toMatchObject({
       type: 'LZ',
       destinationChainId: 'eip155:8453',
       quoteId: 'quote-1',
@@ -307,7 +311,7 @@ describe('orchestrator client', () => {
     // The provider's own id for the delivery chain is the only handle that
     // resolves a Solana fill with Eco, and it is opaque metadata — distinct
     // from the public CAIP-2 chain id beside it.
-    expect(result.routes[0]?.bridgeFill).toMatchObject({
+    expect(bridgeFillOf(result.routes[0])).toMatchObject({
       destinationChainId: SOLANA,
       providerDestinationChainId: 1399811149,
     })

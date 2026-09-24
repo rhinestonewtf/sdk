@@ -72,7 +72,7 @@ describe('vendored OpenAPI provenance', () => {
       ({ description }) =>
         description === 'A Solana Swig account resolved on one chain',
     )
-    expect(summaries).toHaveLength(8)
+    expect(summaries).toHaveLength(13)
     for (const summary of summaries) {
       expect(summary.required).toEqual(['wallet', 'swigAccount'])
       const authority = (
@@ -93,9 +93,12 @@ describe('vendored OpenAPI provenance', () => {
     expect(signingRole?.required).toContain('authority')
 
     const callerAccount = objects.find(
-      ({ description }) => description === 'An existing Swig account',
+      ({ description }) => description === 'A Swig account',
     )
     expect(callerAccount?.required).toContain('authorization')
+    // Creation data is optional: only a creation request carries it.
+    expect(callerAccount?.required).not.toContain('initData')
+    expect(callerAccount?.properties).toHaveProperty('initData')
   })
 
   test('resolves to the vendored artifact', () => {

@@ -7,11 +7,13 @@ import type {
   TypedData,
   TypedDataDefinition,
 } from 'viem'
-import { isAddress } from 'viem'
+import { bytesToHex, hexToBytes, isAddress, isAddressEqual } from 'viem'
 import type { UserOperationReceipt } from 'viem/account-abstraction'
+import { publicKeyToAddress } from 'viem/utils'
 import {
   asSwigNamespace,
   locateSwig,
+  locateSwigById,
   locateSwigWallet,
 } from '../accounts/solana/address'
 import { formatCaip2, parseCaip2, toEvmChainReference } from '../chains/caip2'
@@ -24,6 +26,7 @@ import {
   solanaAddress,
 } from '../chains/non-evm'
 import { normalizeTokenAddress, validateTokenAddresses } from '../chains/tokens'
+import { isSolanaAccountAlreadyCreated } from '../clients/orchestrator/errors'
 import type {
   NormalizedAccessList,
   NormalizedIntentOptions,
@@ -37,7 +40,10 @@ import type {
   SigningRequest,
   SwigAuthority,
 } from '../clients/orchestrator/public'
-import type { OrchestratorQuote } from '../clients/orchestrator/types'
+import type {
+  OrchestratorExecutionQuote,
+  OrchestratorSwigInitData,
+} from '../clients/orchestrator/types'
 import type {
   AccountTransaction,
   CallInput,
@@ -109,6 +115,10 @@ import {
   type SolanaTransferInput,
   solanaChainId,
 } from '../transactions/intents/solana'
+import type {
+  PreparedSolanaDeployment,
+  SolanaDeploymentInput,
+} from '../transactions/intents/solana-deployment'
 import {
   normalizeSolanaAddressLookupTables,
   normalizeSolanaInstructions,
@@ -116,6 +126,7 @@ import {
 import type {
   IndexedProofContribution,
   IntentInput,
+  IntentStatus,
   PreparedIntent,
   PreparedTransactionData,
   QuoteSelection,
@@ -342,6 +353,107 @@ export interface SolanaStandaloneAccount<
   ): Promise<TransactionResult>
   /** Wait for a submitted intent to reach a terminal state. */
   waitForExecution(result: TransactionResult): Promise<TransactionStatus>
+  /**
+   * Create the account's Swig on a Solana cluster and wait for it to complete.
+   *
+   * Creation runs as a sponsored deployment intent. Nothing is signed: the
+   * configured Solana owner is installed as the Swig's root authority.
+   *
+   * Creation is one-shot and cannot be repaired. The root authority is
+   * permanent, so a Swig created with the wrong owner permanently strands its
+   * wallet, including anything already sent to it. Each creation is billed to
+   * the integrator's gas sponsorship, which pays the rent and fees.
+   *
+   * Without a managed EVM account the Swig is always independent, so `swigId`,
+   * the id it was minted with by `createSolanaSwigId()`, is required. On an
+   * account that also manages EVM, the Swig derived from the EVM account needs
+   * no id; any other Swig still needs its saved one. An id that does not derive
+   * the configured `swig` is refused before anything is sent.
+   *
+   * A Swig that already exists resolves `true` without creating anything. Its
+   * root authority is not checked, and a Swig whose root is not the configured
+   * owner cannot be spent by it.
+   * @param vm `'solana'`
+   * @param chain Solana cluster to create the Swig on (`solanaDevnet` or `solanaMainnet`)
+   * @param options `swigId`, the 32-byte hex id saved with the configured `swig`; optional only for the Swig derived from a managed EVM account
+   * @returns `true` once the Swig exists
+   * @throws IntentFailedError when the deployment intent fails
+   * @throws UnsupportedAccountCapabilityError when the Swig id is missing or wrong, or an ECDSA owner exposes no public key
+   * @throws ManagedSolanaAccountNotSupportedError outside the development environment and endpoint the account was created against
+   * @example
+   * ```ts
+   * import { createSolanaSwigId, solanaDevnet } from '@rhinestone/sdk'
+   *
+   * // Once, when provisioning: save `id` and `swig` together.
+   * const { id, swig } = createSolanaSwigId()
+   *
+   * const account = await sdk.createAccount({
+   *   solana: { owner: { type: 'ecdsa', account: owner }, swig },
+   * })
+   * await account.deploy('solana', solanaDevnet, { swigId: id })
+   * ```
+   * @see {@link createSolanaSwigId} to mint an independent Swig
+   */
+  deploy(
+    vm: 'solana',
+    chain: SolanaChain,
+    options: Required<SolanaDeployOptions>,
+  ): Promise<boolean>
+}
+
+/** Options for creating a managed Solana account's Swig. */
+export interface SolanaDeployOptions {
+  /**
+   * The 32-byte Swig id, as 0x-prefixed hex, returned by `createSolanaSwigId()`
+   * together with the configured `swig`. Optional only on an account with a
+   * managed EVM account, and there only for the Swig derived from it.
+   */
+  swigId?: Hex
+}
+
+/**
+ * Swig creation on an account that manages both EVM and Solana, alongside its
+ * EVM `deploy`.
+ */
+interface ManagedSolanaDeployment {
+  /**
+   * Create the Swig of the account's managed Solana entry and wait for it to
+   * complete.
+   *
+   * Creation runs as a sponsored deployment intent. Nothing is signed: the
+   * configured Solana owner is installed as the Swig's root authority.
+   *
+   * Creation is one-shot and cannot be repaired. The root authority is
+   * permanent, so a Swig created with the wrong owner permanently strands its
+   * wallet, including anything already sent to it. Each creation is billed to
+   * the integrator's gas sponsorship, which pays the rent and fees.
+   *
+   * The Swig derived from the managed EVM account needs no id: the SDK computes
+   * it. Any other Swig needs the id it was minted with by `createSolanaSwigId()`,
+   * and a missing id, or one that does not derive the configured `swig`, is
+   * refused before anything is sent.
+   *
+   * A Swig that already exists resolves `true` without creating anything. Its
+   * root authority is not checked, and a Swig whose root is not the configured
+   * owner cannot be spent by it.
+   * @param vm `'solana'`
+   * @param chain Solana cluster to create the Swig on (`solanaDevnet` or `solanaMainnet`)
+   * @param options Optional `swigId`, the 32-byte hex id saved with the configured `swig`
+   * @returns `true` once the Swig exists
+   * @throws IntentFailedError when the deployment intent fails
+   * @throws UnsupportedAccountCapabilityError when the Swig id is missing or wrong, or an ECDSA owner exposes no public key
+   * @throws ManagedSolanaAccountNotSupportedError outside the development environment and endpoint the account was created against
+   * @example
+   * ```ts
+   * await account.deploy('solana', solanaDevnet)
+   * ```
+   * @see {@link createSolanaSwigId} to mint an independent Swig
+   */
+  deploy(
+    vm: 'solana',
+    chain: SolanaChain,
+    options?: SolanaDeployOptions,
+  ): Promise<boolean>
 }
 
 /** Full EVM management, signing, UserOperation and account-read capabilities. */
@@ -351,12 +463,21 @@ export interface ManagedEvmAccount<
   /** The captured composite account configuration. */
   config: Readonly<C>
   /**
-   * Deploy the account on a given chain.
+   * Deploy the EVM account on a given chain.
+   * @param vm `'evm'`
    * @param chain Chain to deploy the account on
    * @param params Optional deployment parameters (sponsorship)
-   * @returns `true` once the deployment is submitted
+   * @returns `true` once the deployment is submitted, `false` when the account is already deployed
+   * @example
+   * ```ts
+   * await account.deploy('evm', base, { sponsored: true })
+   * ```
    */
-  deploy(chain: Chain, params?: { sponsored?: boolean }): Promise<boolean>
+  deploy(
+    vm: 'evm',
+    chain: Chain,
+    params?: { sponsored?: boolean },
+  ): Promise<boolean>
   /**
    * Check whether the account is deployed on a given chain.
    * @param chain Chain to check
@@ -541,7 +662,10 @@ export type RhinestoneAccount<
   C extends RhinestoneAccountConfig = DefaultAccountConfig,
 > = RhinestoneAccountBase<C> &
   (HasManagedEvm<C> extends true
-    ? ManagedEvmAccount<C>
+    ? ManagedEvmAccount<C> &
+        (HasManagedSolana<C> extends true
+          ? ManagedSolanaDeployment
+          : Readonly<Record<never, never>>)
     : HasManagedSolana<C> extends true
       ? SolanaStandaloneAccount<C>
       : Readonly<Record<never, never>>)
@@ -561,7 +685,7 @@ function cloneArtifactValue<T>(value: T): T {
   return value
 }
 
-function toPublicQuote(quote: OrchestratorQuote): Quote {
+function toPublicQuote(quote: OrchestratorExecutionQuote): Quote {
   const compatible = projectCompatibleQuote(quote)
   return cloneArtifactValue({
     intentId: compatible.intentId,
@@ -678,7 +802,7 @@ function reconstructInput(
   >['workflows']['reconstructPreparedIntent']
 >[1] {
   const selected = selectedPublicQuote(prepared, intentId)
-  const quote = normalizeIntentQuote(selected as OrchestratorQuote)
+  const quote = normalizeIntentQuote(selected as OrchestratorExecutionQuote)
   return {
     traceId: prepared.quotes.traceId,
     normalized:
@@ -687,7 +811,7 @@ function reconstructInput(
     quotes: prepared.quotes.all.map((candidate) =>
       candidate.intentId === quote.intentId
         ? quote
-        : normalizeIntentQuote(candidate as OrchestratorQuote),
+        : normalizeIntentQuote(candidate as OrchestratorExecutionQuote),
     ),
     // The persisted Caucasus request, not a reconstruction from `intentInput`:
     // that projection is lossy about account capability and signing state, and
@@ -722,7 +846,7 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
   compatibilityConfig: LegacyAccountConfig<unknown>,
   publicConfig: Readonly<C>,
   composition: CoreComposition<LegacyAccountConfig<unknown>>,
-): ManagedEvmAccount<C> {
+): ManagedEvmAccount<C> & ManagedSolanaDeployment {
   // Intent identity caches are facade-scoped. Values crossing account/SDK
   // instances are reconstructed and validated by the receiving account.
   const preparedIntents = new WeakMap<object, PreparedIntent<Compat>>()
@@ -792,16 +916,41 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
     )
   }
 
-  const account: ManagedEvmAccount<C> = {
+  const account: ManagedEvmAccount<C> & ManagedSolanaDeployment = {
     config: publicConfig,
-    deploy(chain, params) {
+    deploy: (async (
+      vm: AccountVm,
+      chain: Chain | SolanaChain,
+      params?: { sponsored?: boolean } | SolanaDeployOptions,
+    ) => {
+      if (vm === 'solana') {
+        const solana = requireSolana()
+        const ctx = context('deploy')
+        const workflows = workflowsFor(ctx)
+        return solana.deploy(
+          ctx.sdk,
+          workflows,
+          (intentId) => workflows.waitForIntentStatus(ctx, intentId),
+          chain as SolanaChain,
+          params as SolanaDeployOptions | undefined,
+        )
+      }
+      if (vm !== 'evm') throw new AccountVmNotConfiguredError(String(vm))
+      if ((chain as { kind?: unknown }).kind === 'svm') {
+        throw new UnsupportedAccountCapabilityError(
+          "An EVM deployment needs an EVM chain; create a Swig with `deploy('solana', chain)`.",
+          { vm: 'evm' },
+        )
+      }
       const ctx = context('deploy')
-      return workflowsFor(ctx).deploy(ctx, toEvmChainReference(chain.id), {
-        ...(params?.sponsored !== undefined
-          ? { sponsored: params.sponsored }
-          : {}),
-      })
-    },
+      const sponsored = (params as { sponsored?: boolean } | undefined)
+        ?.sponsored
+      return workflowsFor(ctx).deploy(
+        ctx,
+        toEvmChainReference((chain as Chain).id),
+        { ...(sponsored !== undefined ? { sponsored } : {}) },
+      )
+    }) as ManagedEvmAccount<C>['deploy'] & ManagedSolanaDeployment['deploy'],
     isDeployed(chain) {
       const ctx = context('is-deployed')
       return workflowsFor(ctx).isDeployed(ctx, toEvmChainReference(chain.id))
@@ -1321,14 +1470,7 @@ function createSolanaOrigin(
     execution?: SolanaEvmExecution,
   ): SolanaTransferInput => {
     assertSupportedTransaction(transaction, publicConfig)
-    if (
-      sdk.environment !== 'development' ||
-      sdk.orchestratorUrl !== source.endpoint
-    ) {
-      throw new ManagedSolanaAccountNotSupportedError(
-        'Managed Solana execution remains bound to the development environment and endpoint captured when the account was created.',
-      )
-    }
+    assertCapturedEnvironment(sdk)
     if (!isSolanaOrigin(transaction)) {
       throw new InvalidSolanaTransactionArtifactError(
         'the transaction is not a Solana-origin transfer',
@@ -1460,16 +1602,130 @@ function createSolanaOrigin(
       transfer: input,
       request: restorePreparedBinding(prepared.request),
       intentInput: prepared.intentInput,
-      quote: normalizeIntentQuote(quote as OrchestratorQuote),
+      quote: normalizeIntentQuote(quote as OrchestratorExecutionQuote),
       quotes: prepared.quotes.all.map((candidate) =>
-        normalizeIntentQuote(candidate as OrchestratorQuote),
+        normalizeIntentQuote(candidate as OrchestratorExecutionQuote),
       ),
     })
+  }
+
+  const assertCapturedEnvironment = (sdk: ResolvedSdkConfig): void => {
+    if (
+      sdk.environment !== 'development' ||
+      sdk.orchestratorUrl !== source.endpoint
+    ) {
+      throw new ManagedSolanaAccountNotSupportedError(
+        'Managed Solana execution remains bound to the development environment and endpoint captured when the account was created.',
+      )
+    }
+  }
+
+  const resolveSwigId = (swigId: unknown): Hex => {
+    const refuse = (message: string): never => {
+      throw new UnsupportedAccountCapabilityError(message, {
+        vm: 'solana',
+        field: 'swigId',
+        swig: source.swigAddress,
+      })
+    }
+    if (swigId !== undefined) {
+      if (typeof swigId !== 'string' || !/^0x[0-9a-fA-F]{64}$/u.test(swigId)) {
+        refuse('`swigId` must be the 32-byte Swig id as 0x-prefixed hex.')
+      }
+      const id = (swigId as string).toLowerCase() as Hex
+      if (locateSwigById(hexToBytes(id)).swig !== source.swigAddress) {
+        refuse(
+          `\`swigId\` does not derive the configured Swig ${source.swigAddress}. Pass the id saved with that Swig.`,
+        )
+      }
+      return id
+    }
+    if (source.evmExecution) {
+      const derived = locateSwig(
+        asSwigNamespace('dev-v1'),
+        source.evmExecution.address,
+      )
+      if (derived.swig === source.swigAddress) return bytesToHex(derived.id)
+    }
+    return refuse(
+      `Creating the Swig ${source.swigAddress} needs the id it was minted with. Mint an independent Swig with \`createSolanaSwigId()\`, save its \`id\` with the \`swig\` address, and pass \`{ swigId: id }\` to \`deploy\`.`,
+    )
+  }
+
+  // The permanent root role, derived from the configured owner and never from
+  // caller input.
+  const rootAuthority = (): OrchestratorSwigInitData['authority'] => {
+    if (authority.kind === 'secp256r1') {
+      return { kind: 'secp256r1', publicKey: authority.publicKey }
+    }
+    const refuse = (message: string): never => {
+      throw new UnsupportedAccountCapabilityError(message, {
+        vm: 'solana',
+        field: 'owner',
+      })
+    }
+    const publicKey = (source.owner.account as { publicKey?: unknown })
+      .publicKey
+    if (
+      typeof publicKey !== 'string' ||
+      !/^0x04[0-9a-fA-F]{128}$/u.test(publicKey)
+    ) {
+      refuse(
+        "Creating a Swig installs the ECDSA owner's public key as its root, and this owner account exposes none. Configure the Solana owner with a viem local account (such as `privateKeyToAccount`), which carries `publicKey`.",
+      )
+    }
+    if (
+      !isAddressEqual(publicKeyToAddress(publicKey as Hex), authority.address)
+    ) {
+      refuse("The ECDSA owner's `publicKey` does not belong to its `address`.")
+    }
+    return { kind: 'secp256k1', publicKey: publicKey as Hex }
+  }
+
+  const deploy = async (
+    sdk: ResolvedSdkConfig,
+    workflows: SolanaWorkflows,
+    wait: (intentId: string) => Promise<IntentStatus>,
+    chain: SolanaChain,
+    options?: SolanaDeployOptions,
+  ): Promise<true> => {
+    assertCapturedEnvironment(sdk)
+    const chainId = solanaChainId(chain)
+    const input: SolanaDeploymentInput = {
+      chain,
+      walletAddress: source.walletAddress,
+      swigAddress: source.swigAddress,
+      authorization: authority,
+      initAuthority: rootAuthority(),
+      swigId: resolveSwigId(options?.swigId),
+      namespace: 'dev-v1',
+      endpoint: sdk.orchestratorUrl,
+    }
+    let prepared: PreparedSolanaDeployment
+    try {
+      prepared = await workflows.prepareSolanaDeployment(input)
+    } catch (error) {
+      // Idempotent: the Swig existing is the outcome the caller asked for. Its
+      // root is not verified; a foreign root only fails the owner's spends.
+      if (
+        isSolanaAccountAlreadyCreated(error) &&
+        error.swigAddress === source.swigAddress &&
+        error.chainId === chainId
+      ) {
+        return true
+      }
+      throw error
+    }
+    const submitted = await workflows.submitSolanaDeployment(prepared)
+    // Throws on a failed intent, so a resolved wait is a created Swig.
+    await wait(submitted.intentId)
+    return true
   }
 
   return {
     walletAddress: source.walletAddress,
     assertDestinationCallsSupported,
+    deploy,
     resolve,
     async prepare(
       sdk: ResolvedSdkConfig,
@@ -1605,6 +1861,21 @@ export function createSolanaAccountFacade<C extends RhinestoneAccountConfig>(
       composition.project
         .waitForIntentStatus(result.id)
         .then(toPublicTransactionStatus),
+    deploy: async (vm, chain, options) => {
+      if (vm !== 'solana') {
+        throw new UnsupportedAccountCapabilityError(
+          'An account without a managed EVM entry can only create its Swig.',
+          { vm: String(vm) },
+        )
+      }
+      return solana.deploy(
+        sdk,
+        workflows,
+        composition.project.waitForIntentStatus,
+        chain,
+        options,
+      )
+    },
   }
 }
 

@@ -43,8 +43,14 @@ before quoting. The same explicitly named Swig is covered alone, with an EVM
 receiver, and with managed EVM: invalid state addresses are refused; plain requests
 carry no `evm` entry and bind metadata/sponsorship to the wallet; receivers
 cannot spend; unrelated managed pairs refuse destination calls before effects;
-and request tampering fails across instances. Offline tests never execute a
-Solana mainnet transfer.
+and request tampering fails across instances. Swig creation is covered the same
+way: the exact Solana-only creation request for ECDSA and passkey owners, the
+deployment-route checks (purpose, Swig, wallet, authority, chain, costs, expiry)
+before a `proofs: []` submission, Swig id resolution and every pre-network
+refusal on the standalone and composite facades, VM routing of `deploy`, an
+existing Swig resolving `true` without a submission, and the
+`ACCOUNT_ALREADY_DEPLOYED` mapping that keeps EVM refusals generic. Live Swig creation is not covered
+offline. Offline tests never execute a Solana mainnet transfer.
 
 The pure-core gate requires 95% statements, lines, and functions and 90%
 branches. Contract-only files are excluded. The architecture check rejects

@@ -839,7 +839,7 @@ type IntentRequirement =
 
 interface Quote {
   intentId: string
-  /** What the intent is for. Only execution intents exist today. */
+  /** Always `execution`: account-creation routes are not exposed as quotes. */
   purpose: 'execution'
   expiresAt: number
   estimatedFillTime: EstimatedFillTime
@@ -1053,8 +1053,11 @@ interface IntentDetails {
 interface IntentOpStatus {
   /** OpenTelemetry trace ID for correlating this orchestrator response. */
   traceId: string
-  /** What the intent is for. */
-  purpose: 'execution'
+  /**
+   * What the intent is for: `execution` moves funds or runs calls,
+   * `deployment` only creates an account (such as a Solana Swig).
+   */
+  purpose: 'execution' | 'deployment'
   /** High-level intent status. */
   status: IntentStatus
   /**

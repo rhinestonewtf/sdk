@@ -937,15 +937,16 @@ type SolanaOwner =
   | { type: 'passkey'; account: WebAuthnAccount }
 
 /**
- * Development managed Solana account identified by an existing Swig.
+ * Development managed Solana account identified by its Swig.
  *
  * The wallet is independent from any EVM entry in the composite account. Save
  * the Swig state address when the account is provisioned and supply the matching
  * private-key or passkey owner when attaching it; the wallet PDA is derived.
+ * A Swig that does not exist yet is created with `account.deploy('solana', solanaChain)`.
  */
 interface SolanaManagedAccountConfig {
   owner: SolanaOwner
-  /** Existing Swig state account. Its asset-holding wallet PDA is derived. */
+  /** Swig state account. Its asset-holding wallet PDA is derived. */
   swig: SolanaAddress
   address?: never
 }

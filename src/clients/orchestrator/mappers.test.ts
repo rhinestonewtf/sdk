@@ -8,8 +8,13 @@ import {
 } from './mappers'
 import type {
   OrchestratorIntentRequest,
+  OrchestratorQuote,
   OrchestratorSignedIntent,
 } from './types'
+
+function bridgeFillOf(route: OrchestratorQuote | undefined) {
+  return route?.purpose === 'execution' ? route.bridgeFill : undefined
+}
 
 const address = '0x0000000000000000000000000000000000000001' as const
 const BASE = 'eip155:8453'
@@ -209,6 +214,60 @@ describe('mapQuoteResponseFromWire', () => {
     )
   })
 
+  test('maps a deployment route with its rent as bigint', () => {
+    const SWIG = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
+    const mapped = mapQuoteResponseFromWire({
+      status: 'quoted',
+      routes: [
+        route({
+          purpose: 'deployment',
+          signingRequests: [],
+          bridgeFill: { type: 'RELAY', destinationChainId: SOLANA },
+          deploymentCosts: [
+            {
+              vm: 'svm',
+              chainId: SOLANA,
+              rent: { amount: '1869440', usd: 0.3, sponsored: true },
+            },
+          ],
+          plan: {
+            source: [],
+            destination: {},
+            deployments: [
+              {
+                vm: 'svm',
+                chainId: SOLANA,
+                account: { wallet: SWIG, swigAccount: SWIG },
+              },
+            ],
+          },
+        }),
+      ],
+    } as never)
+    const deployment = mapped.routes[0]
+    expect(deployment?.purpose).toBe('deployment')
+    expect(deployment).not.toHaveProperty('bridgeFill')
+    expect(deployment).toMatchObject({
+      deploymentCosts: [
+        {
+          vm: 'svm',
+          chainId: SOLANA,
+          rent: { amount: 1869440n, usd: 0.3, sponsored: true },
+        },
+      ],
+      signingRequests: [],
+    })
+  })
+
+  test('refuses a route purpose it does not recognise', () => {
+    expect(() =>
+      mapQuoteResponseFromWire({
+        status: 'quoted',
+        routes: [route({ purpose: 'migration' })],
+      } as never),
+    ).toThrow(/unsupported purpose: migration/)
+  })
+
   test('drops an unknown bridge fill without failing the quote', () => {
     const mapped = mapQuoteResponseFromWire({
       status: 'quoted',
@@ -216,7 +275,8 @@ describe('mapQuoteResponseFromWire', () => {
         route({ bridgeFill: { type: 'FUTURE', destinationChainId: BASE } }),
       ],
     } as never)
-    expect(mapped.routes[0]?.bridgeFill).toBeUndefined()
+    expect(mapped.routes[0]?.purpose).toBe('execution')
+    expect(mapped.routes[0]).not.toHaveProperty('bridgeFill')
   })
 
   test('keeps a bridge fill chain reference as CAIP-2', () => {
@@ -233,7 +293,7 @@ describe('mapQuoteResponseFromWire', () => {
         }),
       ],
     } as never)
-    expect(mapped.routes[0]?.bridgeFill).toMatchObject({
+    expect(bridgeFillOf(mapped.routes[0])).toMatchObject({
       type: 'RELAY',
       destinationChainId: BASE,
       requestId: 'req-1',
@@ -583,6 +643,14 @@ describe('mapIntentStatusFromWire', () => {
     ],
     refunds: [],
     ...overrides,
+  })
+
+  test('reads a deployment intent as a deployment', () => {
+    const mapped = mapIntentStatusFromWire(
+      'intent-1',
+      status({ purpose: 'deployment', operations: [] }),
+    )
+    expect(mapped.purpose).toBe('deployment')
   })
 
   // Caucasus reports every item; a chain can carry a claim and a fill, and

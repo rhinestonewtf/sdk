@@ -17,7 +17,10 @@ import {
   solanaDevnet,
   solanaMainnet,
 } from '../../chains/non-evm'
-import { parseErrorEnvelope } from '../../clients/orchestrator/errors'
+import {
+  parseErrorEnvelope,
+  ValidationError,
+} from '../../clients/orchestrator/errors'
 import { projectCompatibleIntentInput } from '../../clients/orchestrator/normalized'
 import type {
   IntentAccountView,
@@ -27,8 +30,9 @@ import type {
   WebAuthnAssertion,
 } from '../../clients/orchestrator/public'
 import type {
+  OrchestratorDeploymentQuote,
+  OrchestratorExecutionQuote,
   OrchestratorIntentRequest,
-  OrchestratorQuote,
 } from '../../clients/orchestrator/types'
 import {
   InvalidSolanaTransactionArtifactError,
@@ -136,7 +140,9 @@ function splCost(chainId: string, tokenAddress: string, amount: bigint) {
   }
 }
 
-function quote(overrides: Partial<OrchestratorQuote> = {}): OrchestratorQuote {
+function quote(
+  overrides: Partial<OrchestratorExecutionQuote> = {},
+): OrchestratorExecutionQuote {
   return {
     ...caucasusQuote({
       intentId: 'solana-intent',
@@ -175,6 +181,26 @@ function context(candidate = quote()) {
 }
 
 describe('managed Solana intent workflow', () => {
+  // A creation route has no spend to sign; reading it as one would present a
+  // deployment as a transfer.
+  test('refuses a deployment route where a spend was quoted', async () => {
+    const deployment: OrchestratorDeploymentQuote = {
+      ...quote({ signingRequests: [] }),
+      purpose: 'deployment',
+      deploymentCosts: [],
+    }
+    const fixture = context()
+    fixture.createQuote.mockResolvedValueOnce({
+      traceId: 'quote-trace',
+      routes: [deployment as never],
+    })
+    const refusal = prepareSolanaIntent(fixture.workflow, transfer())
+    await expect(refusal).rejects.toBeInstanceOf(ValidationError)
+    await expect(refusal).rejects.toThrow(
+      /deployment route .* where an execution route/,
+    )
+  })
+
   test('builds the standalone Swig quote and preserves backend costs', async () => {
     const fixture = context()
     const prepared = await prepareSolanaIntent(fixture.workflow, transfer())
@@ -804,8 +830,8 @@ describe('Solana-origin cross-chain delivery', () => {
   }
 
   function crossChainQuote(
-    overrides: Partial<OrchestratorQuote> = {},
-  ): OrchestratorQuote {
+    overrides: Partial<OrchestratorExecutionQuote> = {},
+  ): OrchestratorExecutionQuote {
     const base = quote()
     return {
       ...base,
@@ -1086,7 +1112,7 @@ describe('Solana-origin cross-chain delivery', () => {
         spendRequest(),
         childRequest,
       ],
-    ): OrchestratorQuote {
+    ): OrchestratorExecutionQuote {
       return crossChainQuote({ signingRequests: [...signingRequests] })
     }
 
@@ -1423,8 +1449,8 @@ describe('same-chain Solana instruction execution', () => {
   }
 
   function instructionQuote(
-    overrides: Partial<OrchestratorQuote> = {},
-  ): OrchestratorQuote {
+    overrides: Partial<OrchestratorExecutionQuote> = {},
+  ): OrchestratorExecutionQuote {
     const base = quote()
     return {
       ...base,
@@ -1658,7 +1684,9 @@ describe('passkey-owned managed Solana intents', () => {
     })
   }
 
-  function passkeyQuote(request = passkeyRequest()): OrchestratorQuote {
+  function passkeyQuote(
+    request = passkeyRequest(),
+  ): OrchestratorExecutionQuote {
     return quote({ signingRequests: [request] })
   }
 

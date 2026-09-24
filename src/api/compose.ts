@@ -101,6 +101,10 @@ import {
   signSolanaIntent,
   submitSolanaIntent,
 } from '../transactions/intents/solana'
+import {
+  prepareSolanaDeployment,
+  submitSolanaDeployment,
+} from '../transactions/intents/solana-deployment'
 import { splitIntents } from '../transactions/intents/split'
 import {
   getIntentStatus,
@@ -262,6 +266,9 @@ function solanaWorkflows(dependencies: CoreDependencies): SolanaWorkflows {
     signSolanaIntent: (input) =>
       signSolanaIntent({ ...input, now: dependencies.clock.now }),
     submitSolanaIntent: (input) => submitSolanaIntent(context, input),
+    prepareSolanaDeployment: (input) => prepareSolanaDeployment(context, input),
+    submitSolanaDeployment: (prepared) =>
+      submitSolanaDeployment(context, prepared),
   }
 }
 

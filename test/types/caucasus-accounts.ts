@@ -35,6 +35,15 @@ type WireDestinationAccount = WireQuote['plan']['destination']['account']
 type WirePlanDeploymentAccount =
   WireQuote['plan']['deployments'][number]['account']
 type WireRequirementAccount = WireQuote['requirements'][number]['account']
+type WireQuoteRequest = operations['createQuote']['requestBody'] extends {
+  content: { 'application/json': infer Body }
+}
+  ? Body
+  : never
+type WireSvmAccount = Extract<
+  NonNullable<WireQuoteRequest['account']['svm']>,
+  { type: 'swig' }
+>
 
 const wallet = '9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM'
 const swigAccount = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
@@ -177,7 +186,29 @@ const missingCallerAuthorization: OrchestratorSvmAccount = {
   swigAccount,
 }
 
+// A Swig creation request's account is the wire's, `initData` included.
+const creation = {
+  type: 'swig',
+  address: wallet,
+  swigAccount,
+  authorization: { kind: 'secp256r1', publicKey: '0x02' },
+  initData: {
+    authority: { kind: 'secp256r1', publicKey: '0x02' },
+    id: `0x${'07'.repeat(32)}`,
+  },
+} satisfies OrchestratorSvmAccount
+const wireCreation: WireSvmAccount = creation
+
+const deploymentStatus = {
+  traceId: 'trace-2',
+  purpose: 'deployment',
+  status: 'COMPLETED',
+  operations: [],
+} satisfies IntentOpStatus
+
 void status
+void deploymentStatus
+void wireCreation
 void plan
 void wireIntentAccounts
 void wireDeploymentAccounts

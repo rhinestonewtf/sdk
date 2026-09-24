@@ -45,8 +45,8 @@ import type {
   WebAuthnAssertion,
 } from '../../clients/orchestrator/public'
 import type {
+  OrchestratorExecutionQuote,
   OrchestratorIntentRequest,
-  OrchestratorQuote,
   OrchestratorSponsorship,
 } from '../../clients/orchestrator/types'
 import {
@@ -137,8 +137,8 @@ export interface PreparedSolanaIntent {
   readonly input: SolanaTransferInput
   readonly request: OrchestratorIntentRequest
   readonly normalized: NormalizedIntentInput
-  readonly quote: OrchestratorQuote
-  readonly quotes: readonly OrchestratorQuote[]
+  readonly quote: OrchestratorExecutionQuote
+  readonly quotes: readonly OrchestratorExecutionQuote[]
 }
 
 /** An ECDSA owner answers a spend with `personalSign`, a passkey with `webauthn`. */
@@ -295,7 +295,8 @@ export function buildSolanaIntentRequest(
     ...(input.protocolFees ? { protocolFees: input.protocolFees } : {}),
     ...(sponsorship ? { sponsorship } : {}),
   }
-  // No `initData` — a missing Swig is a refusal, not a deployment request.
+  // No `initData`: a spend never creates the Swig. Creation is a separate,
+  // tokenless deployment request.
   const svm = {
     type: 'swig' as const,
     address: input.walletAddress,
@@ -497,7 +498,7 @@ type SolanaSpendPayload = {
 )
 
 function spendPayload(
-  quote: OrchestratorQuote,
+  quote: OrchestratorExecutionQuote,
   input: SolanaTransferInput,
   delivery: SolanaDelivery['kind'],
 ): SolanaSpendPayload {
@@ -629,7 +630,10 @@ function spendPayload(
   }
 }
 
-function validateQuote(quote: OrchestratorQuote, input: SolanaTransferInput) {
+function validateQuote(
+  quote: OrchestratorExecutionQuote,
+  input: SolanaTransferInput,
+) {
   spendPayload(quote, input, deliveryKind(input))
   const chainId = formatCaip2(solanaChainId(input.chain))
   if (input.action.kind === 'instructions') {
@@ -732,8 +736,8 @@ export function reconstructSolanaIntent(input: {
   readonly transfer: SolanaTransferInput
   readonly request: OrchestratorIntentRequest
   readonly intentInput: SerializedIntentInput
-  readonly quote: OrchestratorQuote
-  readonly quotes: readonly OrchestratorQuote[]
+  readonly quote: OrchestratorExecutionQuote
+  readonly quotes: readonly OrchestratorExecutionQuote[]
 }): PreparedSolanaIntent {
   const { request, normalized } = buildSolanaIntentRequest(input.transfer)
   if (
@@ -775,7 +779,7 @@ export function reconstructSolanaIntent(input: {
 
 export function assertSolanaNotExpired(
   now: number,
-  quote: OrchestratorQuote,
+  quote: Pick<OrchestratorExecutionQuote, 'intentId' | 'expiresAt'>,
 ): void {
   if (!Number.isFinite(quote.expiresAt) || now >= quote.expiresAt * 1000) {
     throw new SolanaQuoteExpiredError(quote.intentId)
@@ -788,7 +792,7 @@ export function assertSolanaNotExpired(
  * session's pair.
  */
 function assertEvmProofs(
-  quote: OrchestratorQuote,
+  quote: OrchestratorExecutionQuote,
   proofs: readonly SigningProof[],
 ): void {
   const requests = quote.signingRequests.slice(1)

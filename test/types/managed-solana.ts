@@ -11,6 +11,7 @@ import {
 } from '../../src/errors/index'
 import {
   type CrossChainSolanaOriginTransaction,
+  createSolanaSwigId,
   type IntentOperationGroup,
   RhinestoneSDK,
   type SameChainSolanaInstructionsTransaction,
@@ -245,7 +246,21 @@ async function standaloneCapabilitySurface() {
   // @ts-expect-error EVM is not configured
   account.getAddress('evm')
   // @ts-expect-error EVM management is unavailable
-  account.deploy(mainnet)
+  account.deploy('evm', mainnet)
+  // The Swig itself is created with the id it was minted with.
+  const minted: { id: Hex; swig: typeof swig; wallet: typeof swig } =
+    createSolanaSwigId()
+  const created: boolean = await account.deploy('solana', solanaDevnet, {
+    swigId: minted.id,
+  })
+  // @ts-expect-error without managed EVM the Swig is independent, so its id is required
+  account.deploy('solana', solanaDevnet)
+  // @ts-expect-error the Swig id is 0x-prefixed hex
+  account.deploy('solana', solanaDevnet, { swigId: '07'.repeat(32) })
+  // @ts-expect-error creation is always sponsored
+  account.deploy('solana', solanaDevnet, { sponsored: false })
+  // @ts-expect-error the VM is named first
+  account.deploy(solanaDevnet, { swigId: minted.id })
 
   const handle: SolanaStandaloneAccount<{ solana: typeof standaloneConfig }> =
     account
@@ -276,6 +291,9 @@ async function standaloneCapabilitySurface() {
   })
   const receiverAddress: Address = receiverPaired.getAddress('evm')
   receiverPaired.prepareTransaction(deliveryFromSolana)
+  receiverPaired.deploy('solana', solanaDevnet, {
+    swigId: `0x${'07'.repeat(32)}`,
+  })
   receiverPaired.prepareTransaction({
     ...deliveryFromSolana,
     // @ts-expect-error an address-only receiver cannot execute destination calls
@@ -288,6 +306,7 @@ async function standaloneCapabilitySurface() {
   void wallet
   void requests
   void status
+  void created
 }
 
 async function compositeCapabilitySurface() {
@@ -315,6 +334,28 @@ async function compositeCapabilitySurface() {
   account.prepareTransaction(deliveryTransaction)
   account.prepareTransaction(defaultedDelivery)
   account.prepareTransaction({ chain: mainnet, calls: [] })
+  // `deploy` names its VM: EVM deploys the smart account, Solana creates the
+  // Swig, whose id the SDK computes when it is derived from the EVM account.
+  const evmDeployed: boolean = await account.deploy('evm', mainnet, {
+    sponsored: true,
+  })
+  const swigCreated: boolean = await account.deploy('solana', solanaDevnet)
+  account.deploy('solana', solanaDevnet, { swigId: `0x${'07'.repeat(32)}` })
+  // @ts-expect-error the Solana cluster takes a Swig id, not EVM sponsorship
+  account.deploy('solana', solanaDevnet, { sponsored: true })
+  // @ts-expect-error an EVM deployment takes an EVM chain
+  account.deploy('evm', solanaDevnet)
+  // @ts-expect-error a Swig is created on a Solana cluster
+  account.deploy('solana', mainnet)
+  // @ts-expect-error the VM is named first
+  account.deploy(mainnet)
+
+  const evmOnly = await sdk.createAccount({
+    evm: { owners: { type: 'ecdsa', accounts: [owner] } },
+  })
+  evmOnly.deploy('evm', mainnet)
+  // @ts-expect-error an account with no managed Solana entry has no Swig to create
+  evmOnly.deploy('solana', solanaDevnet)
 
   const messages = account.getTransactionMessages(
     null as unknown as Parameters<typeof account.getTransactionMessages>[0],
@@ -326,6 +367,8 @@ async function compositeCapabilitySurface() {
     messages[0]?.purpose
 
   void evmAddress
+  void evmDeployed
+  void swigCreated
   void solanaAddressValue
   void requests
   void firstPurpose
@@ -470,6 +513,10 @@ const invalidArtifact: boolean =
   isInvalidSolanaTransactionArtifactError(executionError)
 const expired: boolean = isSolanaQuoteExpiredError(expiredError)
 const uncreated: boolean = isSolanaAccountNotCreated(uncreatedError)
+type WaitedStatus = Awaited<
+  ReturnType<SolanaStandaloneAccount['waitForExecution']>
+>
+const deploymentPurpose: WaitedStatus['purpose'] = 'deployment'
 
 void compositeCapabilitySurface
 void standaloneCapabilitySurface
@@ -508,3 +555,4 @@ void forbiddenDeliveryRecipient
 void invalidArtifact
 void expired
 void uncreated
+void deploymentPurpose

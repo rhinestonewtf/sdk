@@ -1,6 +1,10 @@
 import type { TypedDataDefinition, TypedDataParameter } from 'viem'
+import { ValidationError } from '../../clients/orchestrator/errors'
 import type { SigningRequest } from '../../clients/orchestrator/public'
-import type { OrchestratorQuote } from '../../clients/orchestrator/types'
+import type {
+  OrchestratorExecutionQuote,
+  OrchestratorQuote,
+} from '../../clients/orchestrator/types'
 
 type TypedDataTypes = Record<string, readonly TypedDataParameter[]>
 
@@ -32,9 +36,19 @@ function normalizeSigningRequest(request: SigningRequest): SigningRequest {
     : request
 }
 
+/**
+ * Normalizes an execution route. An account-creation route is refused: it
+ * carries no execution cost or signing requests, and reading it as one would
+ * present a deployment as a spend.
+ */
 export function normalizeIntentQuote(
   quote: OrchestratorQuote,
-): OrchestratorQuote {
+): OrchestratorExecutionQuote {
+  if (quote.purpose !== 'execution') {
+    throw new ValidationError({
+      message: `The orchestrator returned a ${String(quote.purpose)} route (${quote.intentId}) where an execution route was expected.`,
+    })
+  }
   return {
     ...quote,
     signingRequests: quote.signingRequests.map(normalizeSigningRequest),
