@@ -69,7 +69,11 @@ enforced by `scripts/architecture/check.ts`:
   block) rather than a composed client because nothing else in the SDK depends on
   them. `index.ts` publishes only the reads, at
   `@rhinestone/sdk/hypercore`.
-- **`actions/`, `errors/`, `utils/`, `smart-sessions/`, `jwt-server/`** —
+- **`solana/`, `evm/`** — the VM-specific published barrels. `solana/`
+  re-exports the Solana helpers, cluster descriptors and `Solana*` types;
+  `evm/` the EVM init-data and wallet helpers, validator addresses and `Evm*`
+  account types. The root `index.ts` keeps only VM-neutral surface.
+- **`actions/`, `errors/`, `smart-sessions/`, `jwt-server/`** —
   published subpath surfaces. `actions/` are standalone builders; the rest are
   compatibility barrels re-exporting owning symbols, except `jwt-server/`, a
   separate server-side bounded context with optional `jose`/`express` peers.

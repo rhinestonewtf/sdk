@@ -60,7 +60,8 @@ import {
   SignerNotSupportedError,
   UnsupportedSigningRequestError,
 } from '../errors/execution'
-import type { EvmAccountConfig, RhinestoneAccountConfig } from '../index'
+import type { EvmAccountConfig } from '../evm/index'
+import type { RhinestoneAccountConfig } from '../index'
 import { RhinestoneSDK } from '../index'
 import { ecdsaSignerId } from '../modules/validators/signer-id'
 import { SOCIAL_RECOVERY_VALIDATOR_ADDRESS } from '../modules/validators/social-recovery'

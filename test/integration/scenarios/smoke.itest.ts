@@ -1,6 +1,6 @@
 import { describe, test } from 'vitest'
 import { SimulationFailedError } from '../../../src/errors/index'
-import { MULTI_FACTOR_VALIDATOR_V2_ADDRESS } from '../../../src/index'
+import { MULTI_FACTOR_VALIDATOR_V2_ADDRESS } from '../../../src/evm/index'
 import { sourceChain, targetChain } from '../config/chains'
 import { createIntegrationSDK } from '../config/environment'
 import {

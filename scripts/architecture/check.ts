@@ -32,7 +32,8 @@ const publishedBarrels = new Set([
   'src/hypercore/index.ts',
   'src/jwt-server/index.ts',
   'src/smart-sessions/index.ts',
-  'src/utils/index.ts',
+  'src/evm/index.ts',
+  'src/solana/index.ts',
 ])
 
 const workflowLayers = new Set(['intents', 'user-operations'])
@@ -442,7 +443,7 @@ export function analyzeArchitecture(
         'src/api/account.ts',
         'src/calls/resolve.ts',
         'src/config/account.ts',
-        'src/utils/index.ts',
+        'src/evm/index.ts',
       ].includes(file)
     ) {
       violations.push({

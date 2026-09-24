@@ -40,7 +40,8 @@ Docs: https://docs.rhinestone.dev/smart-wallet
 - `/src/clients` - Ports and adapters for the orchestrator, RPC, bundler, and paymaster
 - `/src/actions` - Atomic account actions (ECDSA, passkeys, smart-sessions)
 - `/src/hypercore` - HyperCore order builders and Hyperliquid market reads (`@rhinestone/sdk/hypercore`)
-- `/src/errors`, `/src/utils`, `/src/smart-sessions` - Published compatibility barrels
+- `/src/solana`, `/src/evm` - VM-specific published barrels (`@rhinestone/sdk/solana`, `@rhinestone/sdk/evm`)
+- `/src/errors`, `/src/smart-sessions` - Published compatibility barrels
 - `/src/jwt-server` - Server-side JWT signer (Express + Web handlers)
 - `/test` - Unit helpers, type tests, and live integration tests
 
@@ -82,7 +83,7 @@ Merging the promotion PR publishes nothing. It opens a changesets `Release` PR, 
 - Ordering and case conversion must never depend on the host locale — sort hex values with `compareHexValues` and use the default `.sort()` comparator or `toLowerCase`/`toUpperCase` elsewhere; `check:architecture` rejects `localeCompare`, `toLocale*Case`, and `Intl.Collator` in `src/`
 - Placement of a new public method — `RhinestoneSDK` vs `RhinestoneAccount`: put it on **`RhinestoneSDK`** when its data is scoped to the API key's project/integrator and needs no account (auth-only orchestrator reads, e.g. `getIntentStatus`, `splitIntents`, `getAppFeeBalances`); put it on **`RhinestoneAccount`** only when it is genuinely account-scoped (needs the account address / owners / on-chain state, e.g. `getPortfolio`, signing). Exposing project-scoped data as an account method misleads callers into reading it as account-scoped.
 - Account implementations live in `/src/accounts/adapters/*.ts`
-- Public API is the union of the explicit exports from `src/index.ts` and the subpath exports in `src/package.json` (`/actions`, `/errors`, `/jwt-server`, `/smart-sessions`, etc.) — adding, renaming, or removing exports is a breaking change. Determine root exports from export declarations or the packed package; a symbol imported into `src/index.ts` only for use in a public signature is not itself a named export.
+- Public API is the union of the explicit exports from `src/index.ts` and the subpath exports in `src/package.json` (`/actions`, `/errors`, `/evm`, `/solana`, `/jwt-server`, `/smart-sessions`, etc.) — adding, renaming, or removing exports is a breaking change. Determine root exports from export declarations or the packed package; a symbol imported into `src/index.ts` only for use in a public signature is not itself a named export.
 - When changing the public surface (types, exports, account/action APIs, config, errors, defaults), use the `dx` skill to keep it safe and ergonomic to integrate
 - When writing or editing JSDoc on public symbols (it generates the published SDK Reference), use the `jsdoc` skill
 - The project uses `changeset` to manage releases. Create a changeset file for each fix or feature, and use the `changesets` skill when adding, editing, or reviewing SDK changelog wording. Any change that adds a public export, including a publicly thrown error, requires a minor changeset because patch changesets must preserve the exact export surface.

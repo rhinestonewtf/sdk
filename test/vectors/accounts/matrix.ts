@@ -1,5 +1,5 @@
 import { keccak256, toHex } from 'viem'
-import type { EvmAccountConfig } from '../../../src/index'
+import type { EvmAccountConfig } from '../../../src/evm/index'
 import {
   accountA,
   accountB,

@@ -1,6 +1,9 @@
 import { type Address, type Hex, keccak256 } from 'viem'
-import { type EvmAccountConfig, RhinestoneSDK } from '../../../src/index'
-import { experimental_getV0InitData } from '../../../src/utils/index'
+import {
+  type EvmAccountConfig,
+  experimental_getV0InitData,
+} from '../../../src/evm/index'
+import { RhinestoneSDK } from '../../../src/index'
 import { type VectorCase, vectorCaseById, vectorCases } from './matrix'
 
 export interface VectorRecord {

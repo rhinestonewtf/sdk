@@ -21,6 +21,28 @@ reconcile any in-flight submission first, then prepare it again.
   callback can continue evaluating them.
 - Preparation is still side-effect-free: it neither spends nor deploys.
 
+## VM-specific entry points
+
+Solana- and EVM-specific exports moved out of the package root into their own
+entry points. `@rhinestone/sdk/utils` is gone, and there are no root aliases.
+Errors, including the Solana errors and guards, stay in `@rhinestone/sdk/errors`.
+
+| Before | After |
+| --- | --- |
+| `solanaAddress`, `createSolanaSwigId`, `solanaMainnet`, `solanaDevnet` from `@rhinestone/sdk` | `@rhinestone/sdk/solana` |
+| `Solana*` types (`SolanaAddress`, `SolanaChain`, `SolanaAccountMeta`, `SolanaInstruction`, `SolanaInstructionInput`, `SolanaProgramInstruction`, `SolanaAccountConfig`, `SolanaManagedAccountConfig`, `SolanaStandaloneAccountConfig`, `SolanaReceiverAccountConfig`, `SolanaOwner`, `SolanaStandaloneAccount`, `SolanaDeployOptions`, `SameChainSolanaTransaction`, `SameChainSolanaInstructionsTransaction`, `CrossChainSolanaOriginTransaction`, `SolanaExecutionMetadata`, `SolanaInstructionsExecutionMetadata`, `SolanaCrossChainExecutionMetadata`) from `@rhinestone/sdk` | `@rhinestone/sdk/solana` |
+| Anything from `@rhinestone/sdk/utils` | `@rhinestone/sdk/evm` (same names) |
+| `OWNABLE_VALIDATOR_ADDRESS`, `WEBAUTHN_VALIDATOR_ADDRESS`, `MULTI_FACTOR_VALIDATOR_ADDRESS`, `MULTI_FACTOR_VALIDATOR_V2_ADDRESS`, `SMART_SESSION_EMISSARY_ADDRESS` from `@rhinestone/sdk` | `@rhinestone/sdk/evm` |
+| `EvmAccountConfig`, `EvmAccountEntry`, `EvmReceiverAccountConfig`, `ManagedEvmAccount` from `@rhinestone/sdk` | `@rhinestone/sdk/evm` |
+
+```ts
+import { RhinestoneSDK } from '@rhinestone/sdk'
+import { toViewOnlyAccount, type EvmAccountConfig } from '@rhinestone/sdk/evm'
+import { solanaAddress, solanaDevnet } from '@rhinestone/sdk/solana'
+```
+
+Behavior and types are unchanged; only the import paths move.
+
 ## Managed Solana accounts require explicit identity
 
 Every managed Solana branch now names the existing Swig it uses:

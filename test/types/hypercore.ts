@@ -1,12 +1,9 @@
 import { base, hyperEvm } from 'viem/chains'
 import type { WireQuoteRequest } from '../../src/clients/orchestrator/wire'
+import type { EvmAccountConfig } from '../../src/evm/index'
 import type { PerpMarket, PerpPosition } from '../../src/hypercore/index'
 import { getPerpMarkets, getPerpPosition } from '../../src/hypercore/index'
-import type {
-  EvmAccountConfig,
-  HyperCoreAction,
-  Transaction,
-} from '../../src/index'
+import type { HyperCoreAction, Transaction } from '../../src/index'
 import { hyperCorePerp, RhinestoneSDK } from '../../src/index'
 
 type AssignableTo<Narrow, Wide> = [Narrow] extends [Wide] ? true : never

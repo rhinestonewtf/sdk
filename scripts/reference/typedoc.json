@@ -9,7 +9,8 @@
     "../../src/actions/recovery.ts",
     "../../src/actions/smart-sessions.ts",
     "../../src/hypercore/index.ts",
-    "../../src/utils/index.ts",
+    "../../src/evm/index.ts",
+    "../../src/solana/index.ts",
     "../../src/smart-sessions/index.ts"
   ],
   "entryPointStrategy": "resolve",

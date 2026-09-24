@@ -8,12 +8,16 @@ import * as passkeyActions from '../../src/actions/passkeys'
 import * as sessionActions from '../../src/actions/smart-sessions'
 import type { SponsorLimitKey } from '../../src/errors/index'
 import * as errors from '../../src/errors/index'
+import * as evm from '../../src/evm/index'
+import {
+  type EvmAccountConfig,
+  MULTI_FACTOR_VALIDATOR_V2_ADDRESS,
+} from '../../src/evm/index'
+import type * as root from '../../src/index'
 import {
   type BridgeFill,
-  type EvmAccountConfig,
   hyperCorePerp,
   hyperCoreSpot,
-  MULTI_FACTOR_VALIDATOR_V2_ADDRESS,
   type PreparedTransactionData,
   type Quote,
   type RhinestoneAccount,
@@ -26,8 +30,6 @@ import {
   type SignedTransactionData,
   type SignerSet,
   type SigningRequest,
-  solanaAddress,
-  solanaMainnet,
   stellarMainnet,
   type Transaction,
   tronMainnet,
@@ -36,7 +38,8 @@ import {
 import * as jwtServer from '../../src/jwt-server/index'
 import * as passkeySigning from '../../src/signing/passkeys'
 import * as smartSessions from '../../src/smart-sessions/index'
-import * as utils from '../../src/utils/index'
+import * as solanaEntry from '../../src/solana/index'
+import { solanaAddress, solanaMainnet } from '../../src/solana/index'
 
 const owner = privateKeyToAccount(`0x${'11'.repeat(32)}`)
 const recipient = '0x0000000000000000000000000000000000000001'
@@ -296,7 +299,46 @@ void errors
 void jwtServer
 void passkeySigning
 void smartSessions
-void utils
+void evm
+
+// VM-specific surface lives only in `/solana` and `/evm`.
+void solanaEntry.createSolanaSwigId
+void solanaEntry.solanaDevnet
+void evm.OWNABLE_VALIDATOR_ADDRESS
+void evm.WEBAUTHN_VALIDATOR_ADDRESS
+void evm.MULTI_FACTOR_VALIDATOR_ADDRESS
+void evm.SMART_SESSION_EMISSARY_ADDRESS
+void evm.experimental_getRhinestoneInitData
+type MovedTypes = [
+  solanaEntry.SolanaAddress,
+  solanaEntry.SolanaChain,
+  solanaEntry.SolanaStandaloneAccount,
+  solanaEntry.SolanaDeployOptions,
+  solanaEntry.SolanaAccountConfig,
+  evm.EvmAccountEntry,
+  evm.EvmReceiverAccountConfig,
+  evm.ManagedEvmAccount,
+]
+type RootValue = keyof typeof root
+const rootWithoutSolanaAddress: RootValue = 'RhinestoneSDK'
+// @ts-expect-error Solana helpers are not exported from the root
+const rootSolanaAddress: RootValue = 'solanaAddress'
+// @ts-expect-error Solana chains are not exported from the root
+const rootSolanaMainnet: RootValue = 'solanaMainnet'
+// @ts-expect-error Swig id helper is not exported from the root
+const rootSwigId: RootValue = 'createSolanaSwigId'
+// @ts-expect-error validator constants are not exported from the root
+const rootOwnable: RootValue = 'OWNABLE_VALIDATOR_ADDRESS'
+// @ts-expect-error Solana types are not exported from the root
+type RootSolanaAddress = root.SolanaAddress
+// @ts-expect-error EVM account types are not exported from the root
+type RootEvmAccountConfig = root.EvmAccountConfig
+void rootWithoutSolanaAddress
+void rootSolanaAddress
+void rootSolanaMainnet
+void rootSwigId
+void rootOwnable
+export type { MovedTypes, RootEvmAccountConfig, RootSolanaAddress }
 
 async function crossVmAccountSurface() {
   const sdk = new RhinestoneSDK({ apiKey: 'types' })

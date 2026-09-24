@@ -1,62 +1,32 @@
-import { createSolanaSwigId } from './accounts/solana/address'
 import { RhinestoneSDK } from './api/sdk'
 import {
   hyperCorePerp,
   hyperCoreSpot,
-  solanaAddress,
-  solanaDevnet,
-  solanaMainnet,
   stellarMainnet,
   tronMainnet,
 } from './chains/non-evm'
-import {
-  MULTI_FACTOR_VALIDATOR_ADDRESS,
-  MULTI_FACTOR_VALIDATOR_V2_ADDRESS,
-} from './modules/validators/multi-factor'
-import { OWNABLE_VALIDATOR_ADDRESS } from './modules/validators/ownable'
-import { SMART_SESSION_EMISSARY_ADDRESS } from './modules/validators/smart-sessions/module'
-import { WEBAUTHN_VALIDATOR_ADDRESS } from './modules/validators/webauthn'
 
 export {
   RhinestoneSDK,
-  // Independent Solana Swig ids
-  createSolanaSwigId,
-  // Non-viem destination chain descriptors (Solana, Tron, Stellar, HyperCore)
+  // Non-viem destination chain descriptors (Tron, Stellar, HyperCore); Solana
+  // lives in `@rhinestone/sdk/solana`
   hyperCorePerp,
   hyperCoreSpot,
-  solanaAddress,
-  solanaDevnet,
-  solanaMainnet,
   stellarMainnet,
   tronMainnet,
-  // Validator addresses
-  OWNABLE_VALIDATOR_ADDRESS,
-  WEBAUTHN_VALIDATOR_ADDRESS,
-  MULTI_FACTOR_VALIDATOR_ADDRESS,
-  MULTI_FACTOR_VALIDATOR_V2_ADDRESS,
-  SMART_SESSION_EMISSARY_ADDRESS,
 }
 
 export type {
-  ManagedEvmAccount,
   ManagedTransactionAccount,
   RhinestoneAccount,
   RhinestoneAccountBase,
   SignedIntentData,
-  SolanaDeployOptions,
-  SolanaStandaloneAccount,
 } from './api/account'
 export type {
   DestinationChain,
   HyperCoreChain,
   NonEvmAddress,
   NonEvmChain,
-  SolanaAccountMeta,
-  SolanaAddress,
-  SolanaChain,
-  SolanaInstruction,
-  SolanaInstructionInput,
-  SolanaProgramInstruction,
   StellarChain,
   TronChain,
 } from './chains/non-evm'
@@ -129,10 +99,6 @@ export type {
   CrossChainPermissionInput,
   CrossChainPermit,
   CrossChainSettlementLayer,
-  CrossChainSolanaOriginTransaction,
-  EvmAccountConfig,
-  EvmAccountEntry,
-  EvmReceiverAccountConfig,
   FromLeg,
   GuardiansSignerSet,
   HyperCoreOptions,
@@ -154,18 +120,11 @@ export type {
   QuorumValidatorConfig,
   Recovery,
   RhinestoneAccountConfig,
-  SameChainSolanaInstructionsTransaction,
-  SameChainSolanaTransaction,
   Session,
   SessionDefinition,
   SessionSigning,
   SessionSigningContent,
   SignerSet,
-  SolanaAccountConfig,
-  SolanaManagedAccountConfig,
-  SolanaOwner,
-  SolanaReceiverAccountConfig,
-  SolanaStandaloneAccountConfig,
   SourceCallInput,
   SourceCallProvidedFunds,
   SwapScope,
@@ -187,9 +146,6 @@ export type {
   PreparedTransactionData,
   QuoteSelection,
   SignedTransactionData,
-  SolanaCrossChainExecutionMetadata,
-  SolanaExecutionMetadata,
-  SolanaInstructionsExecutionMetadata,
   TransactionResult,
 } from './transactions/intents/types'
 export type {

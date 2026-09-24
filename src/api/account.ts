@@ -382,7 +382,7 @@ export interface SolanaStandaloneAccount<
    * @throws ManagedSolanaAccountNotSupportedError outside the development environment and endpoint the account was created against
    * @example
    * ```ts
-   * import { createSolanaSwigId, solanaDevnet } from '@rhinestone/sdk'
+   * import { createSolanaSwigId, solanaDevnet } from '@rhinestone/sdk/solana'
    *
    * // Once, when provisioning: save `id` and `swig` together.
    * const { id, swig } = createSolanaSwigId()

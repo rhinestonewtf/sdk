@@ -13,7 +13,6 @@ import * as errors from '@rhinestone/sdk/errors'
 import * as jwtServer from '@rhinestone/sdk/jwt-server'
 import * as passkeySigning from '@rhinestone/sdk/signing/passkeys'
 import * as smartSessions from '@rhinestone/sdk/smart-sessions'
-import * as utils from '@rhinestone/sdk/utils'
 import { mainnet } from 'viem/chains'
 
 const legacySdk = new RhinestoneSDK({ apiKey: 'legacy-api-key' })
@@ -62,7 +61,6 @@ void errors
 void jwtServer
 void passkeySigning
 void smartSessions
-void utils
 
 // @ts-expect-error api-key auth requires an api key
 new RhinestoneSDK({ auth: { mode: 'apiKey' } })

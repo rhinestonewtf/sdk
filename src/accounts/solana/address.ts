@@ -203,7 +203,7 @@ function locateSwig(
  * the asset-holding `wallet` that receives funds.
  * @example
  * ```ts
- * import { createSolanaSwigId } from '@rhinestone/sdk'
+ * import { createSolanaSwigId } from '@rhinestone/sdk/solana'
  *
  * const { id, swig, wallet } = createSolanaSwigId()
  * // Save `id` and `swig`; fund `wallet` only after the Swig is created.

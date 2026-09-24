@@ -8,11 +8,14 @@ import { describe, expect, test } from 'vitest'
 import type { EvmChainReference } from '../../../src/chains/types'
 import { createStaticAccountRuntime } from '../../../src/config/account-runtime'
 import { resolveStandaloneAccountConfig } from '../../../src/config/resolve'
-import { type EvmAccountConfig, RhinestoneSDK } from '../../../src/index'
+import {
+  type EvmAccountConfig,
+  experimental_getV0InitData,
+} from '../../../src/evm/index'
+import { RhinestoneSDK } from '../../../src/index'
 import type { ModuleInput } from '../../../src/modules/types'
 import { compareHexValues } from '../../../src/modules/validators/ordering'
 import type { OwnerSet } from '../../../src/modules/validators/types'
-import { experimental_getV0InitData } from '../../../src/utils/index'
 import {
   accountA,
   accountB,
