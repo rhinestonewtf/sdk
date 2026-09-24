@@ -121,6 +121,9 @@ const signer = createJwtSigner({
 
 ## Quickstart
 
+Solana helpers and types live in `@rhinestone/sdk/solana`; EVM helpers,
+validator addresses and EVM account types live in `@rhinestone/sdk/evm`.
+
 Create a smart account:
 
 ```ts
@@ -141,7 +144,7 @@ const address = account.getAddress('evm')
 Add an address-only Solana destination when you need to receive tokens there:
 
 ```ts
-import { solanaAddress } from '@rhinestone/sdk'
+import { solanaAddress } from '@rhinestone/sdk/solana'
 
 const crossVmAccount = await rhinestone.createAccount({
   evm: evmConfig,

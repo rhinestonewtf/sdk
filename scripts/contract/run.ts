@@ -211,7 +211,7 @@ function bundleBrowserConsumer(consumerDirectory: string): void {
   const entry = join(consumerDirectory, 'browser-entry.ts')
   writeFileSync(
     entry,
-    `import { RhinestoneSDK, solanaAddress } from '@rhinestone/sdk'\nconst address = solanaAddress('11111111111111111111111111111111')\nvoid new RhinestoneSDK({ apiKey: 'browser' }).createAccount({ solana: { address } })\n`,
+    `import { RhinestoneSDK } from '@rhinestone/sdk'\nimport { solanaAddress } from '@rhinestone/sdk/solana'\nconst address = solanaAddress('11111111111111111111111111111111')\nvoid new RhinestoneSDK({ apiKey: 'browser' }).createAccount({ solana: { address } })\n`,
   )
   runCommand(
     join(repositoryRoot, 'node_modules/.bin/esbuild'),

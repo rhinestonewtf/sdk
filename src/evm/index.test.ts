@@ -9,7 +9,7 @@ import {
   toViewOnlyAccount,
 } from './index'
 
-describe('Utils', () => {
+describe('EVM', () => {
   test('experimental_getV0InitData accepts session-enabled safe config', () => {
     const baseConfig = {
       account: {

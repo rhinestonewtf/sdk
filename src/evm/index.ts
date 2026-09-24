@@ -7,6 +7,13 @@ import { resolveStandaloneAccountConfig } from '../config/resolve'
 import { assertAccountOwnersConfigured } from '../config/validate'
 import { toLegacyModuleSetup } from '../modules/legacy-core'
 import {
+  MULTI_FACTOR_VALIDATOR_ADDRESS,
+  MULTI_FACTOR_VALIDATOR_V2_ADDRESS,
+} from '../modules/validators/multi-factor'
+import { OWNABLE_VALIDATOR_ADDRESS } from '../modules/validators/ownable'
+import { SMART_SESSION_EMISSARY_ADDRESS } from '../modules/validators/smart-sessions/module'
+import { WEBAUTHN_VALIDATOR_ADDRESS } from '../modules/validators/webauthn'
+import {
   walletClientToAccount,
   wrapParaAccount,
 } from '../signing/signers/compatibility'
@@ -56,7 +63,7 @@ function standaloneConstruction(
  * @returns The account address, factory, factory data, and whether the intent executor is installed
  * @example
  * ```ts
- * import { experimental_getV0InitData } from '@rhinestone/sdk/utils'
+ * import { experimental_getV0InitData } from '@rhinestone/sdk/evm'
  *
  * const initData = experimental_getV0InitData({
  *   owners: { type: 'ecdsa', accounts: [owner] },
@@ -87,7 +94,7 @@ function experimental_getV0InitData(config: EvmAccountConfig): {
  * @returns The account address, plus factory data when the account is not yet deployed
  * @example
  * ```ts
- * import { experimental_getRhinestoneInitData } from '@rhinestone/sdk/utils'
+ * import { experimental_getRhinestoneInitData } from '@rhinestone/sdk/evm'
  *
  * const initData = experimental_getRhinestoneInitData({
  *   owners: { type: 'ecdsa', accounts: [owner] },
@@ -130,7 +137,7 @@ function experimental_getRhinestoneInitData(config: EvmAccountConfig):
  * @returns A viem account that can be read from but not signed with
  * @example
  * ```ts
- * import { toViewOnlyAccount } from '@rhinestone/sdk/utils'
+ * import { toViewOnlyAccount } from '@rhinestone/sdk/evm'
  *
  * const account = await sdk.createAccount({ evm: {
  *   owners: { type: 'ecdsa', accounts: [toViewOnlyAccount(userAddress)] },
@@ -157,4 +164,17 @@ export {
   toViewOnlyAccount,
   walletClientToAccount,
   wrapParaAccount,
+  // Validator addresses
+  OWNABLE_VALIDATOR_ADDRESS,
+  WEBAUTHN_VALIDATOR_ADDRESS,
+  MULTI_FACTOR_VALIDATOR_ADDRESS,
+  MULTI_FACTOR_VALIDATOR_V2_ADDRESS,
+  SMART_SESSION_EMISSARY_ADDRESS,
 }
+
+export type { ManagedEvmAccount } from '../api/account'
+export type {
+  EvmAccountConfig,
+  EvmAccountEntry,
+  EvmReceiverAccountConfig,
+} from '../config/account'

@@ -6,7 +6,7 @@ import {
   resolveAccountConfig,
   resolveSdkConfig,
 } from '../../../src/config/resolve'
-import { experimental_getModuleSetup } from '../../../src/utils/index'
+import { experimental_getModuleSetup } from '../../../src/evm/index'
 import vector from './account-deployment.json'
 import { deriveVectorRecord } from './derive'
 import { type VectorCase, vectorCases } from './matrix'

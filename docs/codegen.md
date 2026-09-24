@@ -54,7 +54,8 @@ back to `SDK_REF_DEFAULT_OWNER`. Existing per-page metadata always wins.
 
 ### Scope and content
 
-Hot path only: entry points, the account instance, actions, and utils. Types,
+Hot path only: entry points, the account instance, actions, and the
+`/solana` and `/evm` helpers. Types,
 errors, `jwt-server`, and the standalone `/smart-sessions` module are out of
 scope. Edit `manifest.ts` to change what is documented and how it is grouped —
 the mapping is **curated, not automatic**, so the generator warns when a public

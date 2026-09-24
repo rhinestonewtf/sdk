@@ -1,19 +1,9 @@
 import {
   type BridgeFill,
-  type CrossChainSolanaOriginTransaction,
-  createSolanaSwigId,
-  type EvmAccountConfig,
   type IntentOperationGroup,
   RhinestoneSDK,
-  type SameChainSolanaTransaction,
   type SigningProof,
   type SigningRequest,
-  type SolanaCrossChainExecutionMetadata,
-  type SolanaDeployOptions,
-  type SolanaExecutionMetadata,
-  solanaAddress,
-  solanaDevnet,
-  solanaMainnet,
 } from '@rhinestone/sdk'
 import {
   InvalidSolanaTransactionArtifactError,
@@ -23,6 +13,20 @@ import {
   type SolanaAccountNotCreatedError,
   SolanaQuoteExpiredError,
 } from '@rhinestone/sdk/errors'
+import type { EvmAccountConfig } from '@rhinestone/sdk/evm'
+import * as evmExports from '@rhinestone/sdk/evm'
+import * as solanaExports from '@rhinestone/sdk/solana'
+import {
+  type CrossChainSolanaOriginTransaction,
+  createSolanaSwigId,
+  type SameChainSolanaTransaction,
+  type SolanaCrossChainExecutionMetadata,
+  type SolanaDeployOptions,
+  type SolanaExecutionMetadata,
+  solanaAddress,
+  solanaDevnet,
+  solanaMainnet,
+} from '@rhinestone/sdk/solana'
 import { privateKeyToAccount } from 'viem/accounts'
 import { base, mainnet } from 'viem/chains'
 
@@ -184,3 +188,6 @@ void solanaOperation
 void useCurrentAccountApi
 void useManagedSolanaApi
 void recognizedErrors
+void evmExports.experimental_getRhinestoneInitData
+void evmExports.OWNABLE_VALIDATOR_ADDRESS
+void solanaExports.solanaAddress

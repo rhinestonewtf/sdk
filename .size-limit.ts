@@ -90,9 +90,17 @@ const limits = [
     ignore: viem,
   },
   {
-    name: '@rhinestone/sdk/utils',
-    path: `${packageRoot}/utils/index.js`,
+    name: '@rhinestone/sdk/evm',
+    path: `${packageRoot}/evm/index.js`,
     limit: '25 kB',
+    import: '*',
+    ignore: viem,
+  },
+  {
+    name: '@rhinestone/sdk/solana',
+    path: `${packageRoot}/solana/index.js`,
+    // Address validation and Swig id derivation carry base58 and Ed25519.
+    limit: '12 kB',
     import: '*',
     ignore: viem,
   },

@@ -10,13 +10,16 @@ import {
   SolanaQuoteExpiredError,
 } from '../../src/errors/index'
 import {
-  type CrossChainSolanaOriginTransaction,
-  createSolanaSwigId,
   type IntentOperationGroup,
   RhinestoneSDK,
+  type SigningRequest,
+  type Transaction,
+} from '../../src/index'
+import {
+  type CrossChainSolanaOriginTransaction,
+  createSolanaSwigId,
   type SameChainSolanaInstructionsTransaction,
   type SameChainSolanaTransaction,
-  type SigningRequest,
   type SolanaCrossChainExecutionMetadata,
   type SolanaExecutionMetadata,
   type SolanaInstructionsExecutionMetadata,
@@ -24,8 +27,7 @@ import {
   type SolanaStandaloneAccountConfig,
   solanaAddress,
   solanaDevnet,
-  type Transaction,
-} from '../../src/index'
+} from '../../src/solana/index'
 
 const owner = privateKeyToAccount(`0x${'11'.repeat(32)}`)
 const mint = solanaAddress('4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU')
