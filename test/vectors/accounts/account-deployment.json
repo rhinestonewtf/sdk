@@ -433,7 +433,7 @@
       "factoryDataHash": "0x7c9f074a6ec654084f91cd2f6a8cd84efa6337716f5921b8085c576c87fc6173",
       "deliberateChange": {
         "sinceSha": "afb934d220e1638c849ab5b716e72153cfa54dbe",
-        "bump": "major",
+        "bump": "minor",
         "reason": "Startale defaults to v1.0.1 (new implementation + factory); pin `version: '1.0.0'` for the previous address"
       }
     },
@@ -444,7 +444,7 @@
       "factoryDataHash": "0x135700ffe5408b799828478da57311427753c7ff5fd2155a9f6ca09168dcc929",
       "deliberateChange": {
         "sinceSha": "afb934d220e1638c849ab5b716e72153cfa54dbe",
-        "bump": "major",
+        "bump": "minor",
         "reason": "Startale defaults to v1.0.1 (new implementation + factory); pin `version: '1.0.0'` for the previous address; also multi-factor factor slots hold the sub-validator stateless configuration, so a nested passkey factor is configured (and ordered) the way its stateless validation path requires"
       }
     },
@@ -455,7 +455,7 @@
       "factoryDataHash": "0x8a9f6c7aa75df743aa30b2e2953a806c3fec530cbcab971e417010df679dc8b5",
       "deliberateChange": {
         "sinceSha": "afb934d220e1638c849ab5b716e72153cfa54dbe",
-        "bump": "major",
+        "bump": "minor",
         "reason": "Startale defaults to v1.0.1 (new implementation + factory); pin `version: '1.0.0'` for the previous address"
       }
     },
@@ -466,7 +466,7 @@
       "factoryDataHash": "0x546f81c39f96072b72b0f458615ae80f81f8f53d88ab1d4bd45c51003f9560e8",
       "deliberateChange": {
         "sinceSha": "afb934d220e1638c849ab5b716e72153cfa54dbe",
-        "bump": "major",
+        "bump": "minor",
         "reason": "Startale defaults to v1.0.1 (new implementation + factory); pin `version: '1.0.0'` for the previous address"
       }
     },
@@ -477,7 +477,7 @@
       "factoryDataHash": "0x90952b55a4a32b8cef7fc5a1f9538c720182d50b75bc3e5b418b6da16b44e9bb",
       "deliberateChange": {
         "sinceSha": "afb934d220e1638c849ab5b716e72153cfa54dbe",
-        "bump": "major",
+        "bump": "minor",
         "reason": "Startale defaults to v1.0.1 (new implementation + factory); pin `version: '1.0.0'` for the previous address"
       }
     },
