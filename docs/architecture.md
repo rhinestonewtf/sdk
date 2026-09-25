@@ -141,10 +141,14 @@ A managed Solana origin accepts one same-chain SPL transfer with an explicit
 recipient, one same-chain instruction execution, or one cross-chain delivery to
 an EVM chain. `sponsored` is translated with the same helper EVM uses and passed
 through for the orchestrator to decide on: it serves the categories a Solana
-route can bill and refuses the rest by name. Native SOL, independent
-owner-signature assembly and `signAuthorizations` are rejected in every
-direction; EVM calls, and the EIP-7702 delegation they can need, only come with
-a delivery to an EVM chain.
+route can bill and refuses the rest by name. A cross-chain delivery may spend
+native SOL (`11111111111111111111111111111111`) exactly like an SPL mint:
+pinned as the single source token and optionally capped, with the rent-exempt
+reserve, the spendable amount and SOL fee collection owned by the orchestrator.
+Same-chain native SOL is refused before quoting. Independent owner-signature
+assembly and `signAuthorizations` are rejected in every direction; EVM calls,
+and the EIP-7702 delegation they can need, only come with a delivery to an EVM
+chain.
 Address-only
 Solana branches remain receiver-only. For automatic EVM cross-chain sources,
 the composition reads the orchestrator chain catalog and sends only real

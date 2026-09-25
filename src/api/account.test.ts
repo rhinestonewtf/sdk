@@ -1039,6 +1039,68 @@ describe('managed Solana account facade', () => {
     })
   })
 
+  describe('with native SOL', () => {
+    const sol = solanaAddress('11111111111111111111111111111111')
+    const solAsset = { chain: solanaDevnet, address: sol }
+
+    test.each([
+      [
+        'the token request',
+        { tokenRequests: [{ address: sol, amount: 100n }] },
+        'tokenRequests[0].address',
+      ],
+      [
+        'the token request and the source asset',
+        {
+          tokenRequests: [{ address: sol, amount: 100n }],
+          sourceAssets: [{ ...solAsset, amount: 100n }],
+        },
+        'tokenRequests[0].address',
+      ],
+      [
+        'the source asset',
+        { sourceAssets: [{ ...solAsset, amount: 100n }] },
+        'sourceAssets[0].address',
+      ],
+    ])('refuses it as %s before quoting', async (_name, patch, field) => {
+      const { facade, workflows } = fixture()
+      const refusal = facade.prepareTransaction({
+        ...transaction(),
+        ...patch,
+      } as never)
+
+      await expect(refusal).rejects.toBeInstanceOf(
+        UnsupportedAccountCapabilityError,
+      )
+      await expect(refusal).rejects.toMatchObject({
+        message:
+          'A same-chain Solana transfer cannot send native SOL; name an SPL mint.',
+        context: { vm: 'solana', field },
+      })
+      expect(workflows.prepareSolanaIntent).not.toHaveBeenCalled()
+    })
+
+    test('refuses a persisted artifact that sends it', async () => {
+      const { facade, workflows } = fixture()
+      const prepared = await facade.prepareTransaction(transaction())
+      const signed = await facade.signTransaction(prepared)
+      workflows.signSolanaIntent.mockClear()
+      const persisted = {
+        ...prepared.transaction,
+        tokenRequests: [{ address: sol, amount: 100n }],
+      } as never
+
+      await expect(
+        facade.signTransaction({ ...prepared, transaction: persisted }),
+      ).rejects.toThrow(UnsupportedAccountCapabilityError)
+      await expect(
+        facade.submitTransaction({ ...signed, transaction: persisted }),
+      ).rejects.toThrow(UnsupportedAccountCapabilityError)
+      expect(workflows.signSolanaIntent).not.toHaveBeenCalled()
+      expect(workflows.submitSolanaIntent).not.toHaveBeenCalled()
+    })
+  })
+
   test('rejects owner-only, assembly, authorization, and EVM submission options before effects', async () => {
     const { facade, workflows } = fixture()
     const prepared = await facade.prepareTransaction(transaction())
@@ -1835,17 +1897,6 @@ describe('managed Solana cross-chain delivery facade', () => {
       'an invalid source mint',
       { sourceAssets: [{ chain: solanaDevnet, address: 'not-a-mint' }] },
     ],
-    [
-      'native SOL as the source',
-      {
-        sourceAssets: [
-          {
-            chain: solanaDevnet,
-            address: '11111111111111111111111111111111',
-          },
-        ],
-      },
-    ],
     ['a non-EVM destination', { targetChain: solanaMainnet }],
     ['a base58 recipient', { recipient: mint }],
     [
@@ -2275,6 +2326,78 @@ describe('managed Solana cross-chain delivery facade', () => {
           transaction: cappedTransaction(),
         }),
       ).rejects.toThrow(/persisted request/)
+      expect(workflows.signSolanaIntent).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('with a native SOL source', () => {
+    const sol = solanaAddress('11111111111111111111111111111111')
+    function solQuote(input = 101n): OrchestratorExecutionQuote {
+      const base = quote('best', swig, input)
+      return {
+        ...base,
+        cost: {
+          ...base.cost,
+          input: [
+            {
+              ...base.cost.input[0]!,
+              tokenAddress: sol,
+              symbol: 'SOL',
+              decimals: 9,
+            },
+          ],
+        },
+      }
+    }
+    function solTransaction(amount?: bigint) {
+      return {
+        ...transaction(),
+        sourceAssets: [
+          {
+            chain: solanaDevnet,
+            address: sol,
+            ...(amount === undefined ? {} : { amount }),
+          },
+        ] as [SolanaSourceAsset],
+      }
+    }
+
+    test.each([
+      ['uncapped', undefined],
+      ['capped', 101n],
+    ])('prepares, signs and submits it %s', async (_name, cap) => {
+      const { facade, workflows } = fixture(solQuote())
+      const prepared = await facade.prepareTransaction(solTransaction(cap))
+
+      expect(workflows.prepareSolanaIntent.mock.calls[0]?.[0]).toMatchObject({
+        action: {
+          kind: 'transfer',
+          mint: sol,
+          amount: 100n,
+          delivery: { kind: 'cross-chain', chainId: optimism.id },
+        },
+      })
+      expect(
+        workflows.prepareSolanaIntent.mock.calls[0]?.[0].action.sourceLimit,
+      ).toBe(cap)
+      expect(prepared.request.request).toMatchObject({
+        source: { selection: { tokens: { only: [sol] } } },
+      })
+      expect(prepared.execution).toMatchObject({
+        kind: 'solana-cross-chain',
+        mint: sol,
+      })
+      await facade.submitTransaction(await facade.signTransaction(prepared))
+      expect(workflows.submitSolanaIntent).toHaveBeenCalledOnce()
+    })
+
+    test('refuses a quote debiting more than the cap before signing', async () => {
+      const { facade, workflows } = fixture(solQuote(102n))
+      const prepared = await facade.prepareTransaction(solTransaction(101n))
+
+      await expect(facade.signTransaction(prepared)).rejects.toThrow(
+        /exceeds the source amount cap/,
+      )
       expect(workflows.signSolanaIntent).not.toHaveBeenCalled()
     })
   })

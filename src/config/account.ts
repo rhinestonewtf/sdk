@@ -1304,26 +1304,39 @@ interface CrossChainNonEvmTransaction extends BaseTransaction {
 }
 
 /**
- * The SPL mint a Solana-origin transaction spends, on one cluster, with an
+ * The Solana token a Solana-origin transaction spends, on one cluster, with an
  * optional ceiling on how much of it the wallet may debit.
  *
- * The ceiling is the most the route may take from the wallet in that mint, not
- * the amount delivered. With a destination amount the route is exact-out and
- * must fit under it; without one the route spends the smaller of the balance
- * and the ceiling. A quote whose source input exceeds the ceiling is refused
- * before anything is signed.
+ * The token is an SPL mint, or native SOL (`11111111111111111111111111111111`)
+ * for a cross-chain delivery only.
+ *
+ * The ceiling is the most the route may take from the wallet in that token,
+ * not the amount delivered. With a destination amount the route is exact-out
+ * and must fit under it; without one the route spends the smaller of the
+ * balance and the ceiling. A quote whose source input exceeds the ceiling is
+ * refused before anything is signed.
+ *
+ * @remarks
+ * For native SOL the wallet's rent-exempt reserve is never spendable, so
+ * spending the whole balance or a ceiling takes at most the lamports above it.
  */
 interface SolanaSourceAsset {
-  /** The cluster the mint is spent on. Must match the transaction's own cluster. */
+  /** The cluster the token is spent on. Must match the transaction's own cluster. */
   chain: SolanaChain
-  /** The SPL mint. Native SOL is not supported. */
+  /**
+   * The SPL mint, or `11111111111111111111111111111111` for native SOL on a
+   * cross-chain delivery. A same-chain transfer takes an SPL mint only.
+   */
   address: SolanaAddress
-  /** Most of this mint the wallet may debit, in base units. Omit for no ceiling. */
+  /** Most of this token the wallet may debit, in base units. Omit for no ceiling. */
   amount?: bigint
 }
 
 /**
  * One same-chain SPL transfer from a managed Solana account.
+ *
+ * Only SPL mints are supported; native SOL is refused before anything is
+ * quoted.
  *
  * Omit `tokenRequests[0].amount` to send the whole balance of the mint, or cap
  * what that spends with `sourceAssets`.
@@ -1368,12 +1381,12 @@ interface SameChainSolanaTransaction {
 
 /**
  * One cross-chain delivery funded from a managed Solana account: spend an SPL
- * mint on a Solana cluster, receive a token on an EVM chain.
+ * mint or native SOL on a Solana cluster, receive a token on an EVM chain.
  *
- * The source cluster and mint are named explicitly — the route spends exactly
+ * The source cluster and token are named explicitly — the route spends exactly
  * one source token, and the account cannot pick between several holdings on
  * your behalf. Omit `tokenRequests[0].amount` to spend the whole balance of
- * that mint, or up to `sourceAssets[0].amount` when it is set. Omit
+ * that token, or up to `sourceAssets[0].amount` when it is set. Omit
  * `recipient` to deliver to the account's own EVM address. An account with no
  * EVM entry has none, so it must name a `recipient`.
  *
@@ -1383,9 +1396,9 @@ interface SameChainSolanaTransaction {
 interface CrossChainSolanaOriginTransaction {
   sourceChains: readonly [SolanaChain]
   /**
-   * The SPL mint to spend, on the `sourceChains` cluster, and optionally the
-   * most of it the wallet may debit. Exactly one; the route spends one source
-   * token.
+   * The SPL mint or native SOL to spend, on the `sourceChains` cluster, and
+   * optionally the most of it the wallet may debit. Exactly one; the route
+   * spends one source token.
    */
   sourceAssets: readonly [SolanaSourceAsset]
   targetChain: Chain

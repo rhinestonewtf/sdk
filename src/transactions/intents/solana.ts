@@ -104,9 +104,10 @@ export interface SolanaEvmExecution {
 }
 
 /**
- * What a Solana-origin intent does: move one SPL mint, or run caller-supplied
- * instructions out of the account's own wallet. The arms are exclusive — an
- * instruction execution is tokenless and names no recipient.
+ * What a Solana-origin intent does: move one Solana token (an SPL mint, or
+ * native SOL cross-chain), or run caller-supplied instructions out of the
+ * account's own wallet. The arms are exclusive — an instruction execution is
+ * tokenless and names no recipient.
  */
 export type SolanaAction =
   | {
@@ -360,11 +361,6 @@ export function buildSolanaIntentRequest(
   }
 
   const mint = solanaAddress(input.action.mint)
-  if (mint === NATIVE_SOL_SENTINEL) {
-    throw new InvalidSolanaTransactionArtifactError(
-      'native SOL transfers are not supported; provide an SPL mint',
-    )
-  }
   if (
     input.action.amount !== undefined &&
     (typeof input.action.amount !== 'bigint' || input.action.amount <= 0n)
@@ -387,6 +383,11 @@ export function buildSolanaIntentRequest(
       ? {}
       : ({ amount: input.action.amount } as const)
   const delivery = input.action.delivery
+  if (delivery.kind === 'same-chain' && mint === NATIVE_SOL_SENTINEL) {
+    throw new InvalidSolanaTransactionArtifactError(
+      'native SOL cannot be sent same-chain; provide an SPL mint',
+    )
+  }
   if (
     delivery.kind === 'same-chain' &&
     sourceLimit !== undefined &&
@@ -399,7 +400,8 @@ export function buildSolanaIntentRequest(
   }
   // Pinned to the cluster and the one mint: naming the cluster without the
   // mint would re-expand the source scope to every registry token on it and
-  // defeat the explicit source asset. A cap only adds a limit on that pair; it
+  // defeat the explicit source asset. The orchestrator also admits native SOL
+  // only as the single pinned token. A cap only adds a limit on that pair; it
   // never widens the selection.
   const source = {
     selection: {

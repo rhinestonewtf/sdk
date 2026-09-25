@@ -164,6 +164,17 @@ const cappedMaxOutFromSolana = {
   ...maxOutFromSolana,
   sourceAssets: [sourceCap],
 } satisfies CrossChainSolanaOriginTransaction
+// Native SOL is named by the address the orchestrator's token registry uses.
+const nativeSolFromSolana = {
+  ...maxOutFromSolana,
+  sourceAssets: [
+    {
+      chain: solanaDevnet,
+      address: solanaAddress('11111111111111111111111111111111'),
+      amount: 1_000_000_000n,
+    },
+  ],
+} satisfies CrossChainSolanaOriginTransaction
 const cappedTransfer = {
   ...solanaTransaction,
   sourceAssets: [sourceCap],
@@ -374,6 +385,7 @@ async function compositeCapabilitySurface() {
     recipient: owner.address,
   })
   account.prepareTransaction(cappedMaxOutFromSolana)
+  account.prepareTransaction(nativeSolFromSolana)
   account.prepareTransaction(cappedTransfer)
   account.prepareTransaction(deliveryTransaction)
   account.prepareTransaction(defaultedDelivery)
