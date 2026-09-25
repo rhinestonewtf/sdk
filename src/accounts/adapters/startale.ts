@@ -22,6 +22,7 @@ import {
   selectedValue,
 } from '../deployment'
 import { encodeErc7579Calls } from '../erc7579-calls'
+import { AccountConfigurationNotSupportedError } from '../error'
 import type { AccountConstruction } from '../types'
 import {
   encodeAddressEnvelope,
@@ -34,15 +35,22 @@ export { K1_DEFAULT_VALIDATOR_ADDRESS }
 export function startaleEip712Domain(account: Address, chainId: number) {
   return {
     name: 'Startale',
-    version: '1.0.0',
+    version: '1.0.1',
     chainId,
     verifyingContract: account,
     salt: zeroHash,
   } as const
 }
+// Only Startale 1.0.1 is supported. It shares the bootstrap, K1 default
+// validator, and proxy creation code with 1.0.0 but uses a different
+// implementation, factory, and EIP-712 domain version.
 const STARTALE_IMPLEMENTATION_ADDRESS =
-  '0x000000b8f5f723a680d3d7ee624fe0bc84a6e05a' as const
+  '0x000006b2874cf8a9bbe24fa1c3a32225ae826951' as const
 const STARTALE_FACTORY_ADDRESS =
+  '0x00000be75c267efe9ddd7044d1f236959af4c15f' as const
+// Rejected rather than recomputed: its accounts derive against a different
+// implementation and sign against a different domain.
+const STARTALE_1_0_0_FACTORY_ADDRESS =
   '0x0000003b3e7b530b4f981ae80d9350392defef90' as const
 const STARTALE_BOOTSTRAP_ADDRESS =
   '0x000000552a5fae3db7a8f3917c435448f49ba6a9' as const
@@ -121,6 +129,15 @@ function startaleMaterial(input: AccountConstruction): DeploymentMaterial {
   let salt: Hex
   let initializationCallData: Hex
   if (input.initData && 'factory' in input.initData) {
+    if (
+      input.initData.factory.toLowerCase() === STARTALE_1_0_0_FACTORY_ADDRESS
+    ) {
+      throw new AccountConfigurationNotSupportedError(
+        "Startale v1.0.0 accounts are not supported; this SDK only supports Startale v1.0.1. Use @rhinestone/sdk v2 with `account: { type: 'startale', version: '1.0.0' }` for existing v1.0.0 accounts.",
+        'startale',
+        { context: { factory: input.initData.factory } },
+      )
+    }
     try {
       const decoded = decodeFunctionData({
         abi: parseAbi(['function createAccount(bytes,bytes32)']),

@@ -127,6 +127,18 @@ For enabled integrators and eligible same-chain stablecoin pairs, the
 orchestrator can also sponsor the market shortfall under `swaps`. There is no
 separate client-side switch for par-swap value sponsorship.
 
+## Startale accounts are v1.0.1 only
+
+Startale accounts deploy the v1.0.1 implementation and factory, so a config
+that derived a v1.0.0 address now derives a different one. Typed data is signed
+against the v1.0.1 EIP-712 domain.
+
+v1.0.0 is not supported. Passing `initData` with the v1.0.0 factory throws
+`AccountConfigurationNotSupportedError`. An address-only `initData` for a
+v1.0.0 account cannot be detected, and typed-data signatures from the K1
+validator will fail on-chain. Keep existing v1.0.0 accounts on v2 with
+`account: { type: 'startale', version: '1.0.0' }`.
+
 ## Signing: ordered requests and ordered proofs
 
 A quote used to hand back payloads keyed by role. It now hands back an **ordered
