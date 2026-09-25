@@ -1683,6 +1683,215 @@ describe('Solana source amount cap', () => {
   })
 })
 
+describe('native SOL Solana-origin delivery', () => {
+  const sol = solanaAddress('11111111111111111111111111111111')
+  const cap = 2_000_000_000n
+  const delivery = {
+    kind: 'cross-chain',
+    chainId: baseSepoliaId,
+    token: destinationToken,
+    recipient: destinationRecipient,
+  } as const
+
+  function solTransfer(
+    overrides: TransferOverrides & { sourceLimit?: bigint } = {},
+  ): SolanaTransferInput {
+    const { sourceLimit, ...rest } = overrides
+    const base = transfer({ delivery, mint: sol, amount: undefined, ...rest })
+    return sourceLimit === undefined
+      ? base
+      : { ...base, action: { ...base.action, sourceLimit } as SolanaAction }
+  }
+
+  function solQuote(input: bigint, tokenAddress: string = sol) {
+    return quote({
+      settlementLayer: 'RELAY',
+      cost: {
+        ...emptyCost(),
+        input: [
+          {
+            ...costEntry({ chainId: DEVNET, tokenAddress, amount: input }),
+            symbol: 'SOL',
+            decimals: 9,
+            price: { usd: 150 },
+          },
+        ],
+        output: [splCost(BASE_SEPOLIA, destinationToken, 299_000_000n)],
+      },
+    })
+  }
+
+  test('pins the source to SOL on the cluster with no limit when uncapped', () => {
+    const { request, normalized } = buildSolanaIntentRequest(solTransfer())
+
+    expect(request.source).toEqual({
+      selection: {
+        chains: { only: [DEVNET] },
+        tokens: { only: [sol] },
+        perChain: { [DEVNET]: { tokens: { only: [sol] } } },
+      },
+    })
+    expect(normalized.accountAccessList).toEqual({
+      chainTokens: { 792703810: [sol] },
+    })
+  })
+
+  test('adds exactly one limit on the SOL pair when capped', () => {
+    const { request, normalized } = buildSolanaIntentRequest(
+      solTransfer({ sourceLimit: cap }),
+    )
+
+    expect(request.source).toEqual({
+      selection: {
+        chains: { only: [DEVNET] },
+        tokens: { only: [sol] },
+        perChain: { [DEVNET]: { tokens: { only: [sol] } } },
+      },
+      limits: [{ chainId: DEVNET, tokenAddress: sol, maxAmount: cap }],
+    })
+    expect(normalized.accountAccessList).toEqual({
+      chainTokenAmounts: { 792703810: { [sol]: cap } },
+    })
+  })
+
+  test('authorizes at most the cap on a max-out and signs and submits', async () => {
+    const fixture = context(solQuote(cap))
+    const prepared = await prepareSolanaIntent(
+      fixture.workflow,
+      solTransfer({ sourceLimit: cap }),
+    )
+
+    const sent = fixture.createQuote.mock.calls[0] as unknown as [
+      OrchestratorIntentRequest,
+    ]
+    expect(sent[0].source?.limits).toEqual([
+      { chainId: DEVNET, tokenAddress: sol, maxAmount: cap },
+    ])
+    const signed = await signSolanaIntent({
+      prepared,
+      owner,
+      now: fixture.workflow.now,
+    })
+    await submitSolanaIntent(fixture.workflow, signed)
+    expect(fixture.submitIntent).toHaveBeenCalledOnce()
+  })
+
+  test.each([
+    ['more than the cap', solQuote(cap + 1n), /exceeds the source amount cap/],
+    [
+      'an SPL mint instead of SOL',
+      solQuote(cap, mint),
+      /requested Solana chain and mint/,
+    ],
+  ])('refuses a quote debiting %s', async (_name, candidate, reason) => {
+    const fixture = context(candidate)
+    await expect(
+      prepareSolanaIntent(fixture.workflow, solTransfer({ sourceLimit: cap })),
+    ).rejects.toThrow(reason)
+    expect(fixture.submitIntent).not.toHaveBeenCalled()
+  })
+
+  test('survives a bigint-aware JSON round trip and refuses an altered cap or mint', async () => {
+    const fixture = context(solQuote(cap))
+    const prepared = await prepareSolanaIntent(
+      fixture.workflow,
+      solTransfer({ sourceLimit: cap }),
+    )
+    const replacer = (_key: string, value: unknown) =>
+      typeof value === 'bigint' ? { $bigint: value.toString() } : value
+    const reviver = (_key: string, value: unknown) =>
+      value && typeof value === 'object' && '$bigint' in value
+        ? BigInt((value as { $bigint: string }).$bigint)
+        : value
+    const restored = JSON.parse(
+      JSON.stringify(
+        {
+          request: prepared.request,
+          intentInput: projectCompatibleIntentInput(prepared.normalized),
+          quote: prepared.quote,
+          quotes: prepared.quotes,
+        },
+        replacer,
+      ),
+      reviver,
+    )
+    const reconstruct = (transferInput: SolanaTransferInput) =>
+      reconstructSolanaIntent({
+        traceId: prepared.traceId,
+        transfer: transferInput,
+        ...restored,
+      })
+
+    const signed = await signSolanaIntent({
+      prepared: reconstruct(solTransfer({ sourceLimit: cap })),
+      owner,
+      now: fixture.workflow.now,
+    })
+    await submitSolanaIntent(fixture.workflow, signed)
+    expect(fixture.submitIntent).toHaveBeenCalledOnce()
+
+    expect(() => reconstruct(solTransfer({ sourceLimit: cap + 1n }))).toThrow(
+      /persisted request|canonical intent input/,
+    )
+    expect(() => reconstruct(solTransfer({ mint, sourceLimit: cap }))).toThrow(
+      /persisted request|canonical intent input/,
+    )
+  })
+
+  test('builds destination calls the same way as an SPL source', () => {
+    const executing = (source: SolanaAddress) =>
+      transfer({
+        mint: source,
+        accountAddress,
+        accountType: 'ERC7579',
+        delivery: {
+          ...delivery,
+          recipient: accountAddress,
+          execution: {
+            calls: [
+              {
+                target: '0x00000000000000000000000000000000000000c1',
+                value: 0n,
+                data: '0xabcdef',
+              },
+            ],
+            account: {
+              kind: 'erc7579',
+              address: accountAddress,
+              setupOps: [],
+            },
+          },
+        },
+      })
+    const serialize = (value: unknown) =>
+      JSON.stringify(value, (_key, item) =>
+        typeof item === 'bigint' ? item.toString() : item,
+      )
+
+    // Identical apart from the source token it names.
+    expect(serialize(buildSolanaIntentRequest(executing(sol)))).toBe(
+      serialize(buildSolanaIntentRequest(executing(mint))).replaceAll(
+        mint,
+        sol,
+      ),
+    )
+  })
+
+  test('refuses SOL same-chain, capped or not', () => {
+    for (const sourceLimit of [undefined, cap]) {
+      expect(() =>
+        buildSolanaIntentRequest(
+          solTransfer({
+            delivery: { kind: 'same-chain', recipient },
+            amount: 1n,
+            sourceLimit,
+          }),
+        ),
+      ).toThrow('native SOL cannot be sent same-chain; provide an SPL mint')
+    }
+  })
+})
+
 describe('same-chain Solana instruction execution', () => {
   const program = solanaAddress('JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4')
   const lookupTable = solanaAddress(

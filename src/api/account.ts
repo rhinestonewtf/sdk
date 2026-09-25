@@ -2111,13 +2111,18 @@ function assertSolanaObjectKeys(
   }
 }
 
+const SAME_CHAIN_NATIVE_SOL_MESSAGE =
+  'A same-chain Solana transfer cannot send native SOL; name an SPL mint.'
+
 /**
- * Checks the one source asset of a Solana-origin transfer: an SPL mint on
- * `cluster`, with an optional positive ceiling.
+ * Checks the one source asset of a Solana-origin transfer: an SPL mint, or
+ * native SOL for a cross-chain delivery, on `cluster`, with an optional
+ * positive ceiling.
  */
 function assertSolanaSourceAsset(
   sourceAssets: unknown,
   cluster: SolanaChain,
+  options: { readonly nativeSol: 'allow' | 'refuse' },
 ): { readonly address: SolanaAddress; readonly amount?: bigint } {
   const refuse = (message: string, field: string): never => {
     throw new UnsupportedAccountCapabilityError(message, {
@@ -2158,11 +2163,14 @@ function assertSolanaSourceAsset(
   } catch {
     // Refused below with the field it concerns.
   }
-  if (mint === undefined || mint === NATIVE_SOL_SENTINEL) {
+  if (mint === undefined) {
     refuse(
-      'The source asset must be a valid SPL mint address; native SOL is not supported.',
+      'The source asset must be a valid Solana token address.',
       'sourceAssets[0].address',
     )
+  }
+  if (options.nativeSol === 'refuse' && mint === NATIVE_SOL_SENTINEL) {
+    refuse(SAME_CHAIN_NATIVE_SOL_MESSAGE, 'sourceAssets[0].address')
   }
   if (
     asset.amount !== undefined &&
@@ -2244,6 +2252,12 @@ function assertSupportedSolanaTransaction(
       { vm: 'solana' },
     )
   }
+  if (request.address === NATIVE_SOL_SENTINEL) {
+    throw new UnsupportedAccountCapabilityError(SAME_CHAIN_NATIVE_SOL_MESSAGE, {
+      vm: 'solana',
+      field: 'tokenRequests[0].address',
+    })
+  }
   if (
     request.amount !== undefined &&
     (typeof request.amount !== 'bigint' || request.amount <= 0n)
@@ -2257,6 +2271,7 @@ function assertSupportedSolanaTransaction(
     const asset = assertSolanaSourceAsset(
       input.sourceAssets,
       input.chain as SolanaChain,
+      { nativeSol: 'refuse' },
     )
     if (asset.address !== request.address) {
       throw new UnsupportedAccountCapabilityError(
@@ -2370,7 +2385,9 @@ function assertSupportedSolanaOriginDelivery(
     )
   }
   solanaChainId(sources[0] as SolanaChain)
-  assertSolanaSourceAsset(input.sourceAssets, sources[0] as SolanaChain)
+  assertSolanaSourceAsset(input.sourceAssets, sources[0] as SolanaChain, {
+    nativeSol: 'allow',
+  })
   const target = input.targetChain as Record<string, unknown> | undefined
   if (
     !target ||
