@@ -34,11 +34,11 @@ const K1_DEFAULT_VALIDATOR_ADDRESS: Address =
 
 type StartaleVersion = NonNullable<StartaleAccount['version']>
 
-const DEFAULT_STARTALE_VERSION: StartaleVersion = '1.0.0'
+const DEFAULT_STARTALE_VERSION: StartaleVersion = '1.0.1'
 
-// 1.0.1 ships a new implementation + factory; the bootstrap, default validator,
-// and proxy creation code are unchanged from 1.0.0. Opt in with
-// `account.version = '1.0.1'`.
+// Current default (1.0.1): new implementation + factory, same bootstrap, default
+// validator, and proxy creation code as 1.0.0. `version: '1.0.0'` opts back into
+// the previous contracts so existing accounts keep their address.
 const STARTALE_DEPLOYMENTS: Record<
   StartaleVersion,
   { implementation: Address; factory: Address }
