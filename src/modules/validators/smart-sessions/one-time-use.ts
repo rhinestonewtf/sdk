@@ -1,5 +1,6 @@
 import {
   type Address,
+  concat,
   encodeAbiParameters,
   encodeFunctionData,
   type Hex,
@@ -54,14 +55,22 @@ function assertValidOneTimeUseId(id: bigint): void {
   }
 }
 
-// The policy's initData: abi.encode(id, deadline). The deadline is in unix
-// SECONDS; zero means never expires. Any other layout reverts at session enable.
-export function encodeOneTimeUseIdInitData(id: bigint, deadline = 0n): Hex {
+// The policy's initData: abi.encode(id, deadline), then optionally the raw
+// 20-byte wrapped-native address. The deadline is in unix SECONDS; zero means
+// never expires. With the address pinned, a Permit2 pre-claim may wrap the
+// account's native behind its burn; without it the policy refuses the wrap. Any
+// other layout reverts at session enable.
+export function encodeOneTimeUseIdInitData(
+  id: bigint,
+  deadline = 0n,
+  wrappedNative?: Address,
+): Hex {
   assertValidOneTimeUseId(id)
-  return encodeAbiParameters(
+  const pinned = encodeAbiParameters(
     [{ type: 'uint256' }, { type: 'uint256' }],
     [id, deadline],
   )
+  return wrappedNative ? concat([pinned, wrappedNative]) : pinned
 }
 
 // The erc1271 policy entry to add to a session's erc7739Policies.erc1271Policies.
@@ -69,10 +78,15 @@ export function oneTimeUseIdErc1271Policy(params: {
   policy: Address
   id: bigint
   deadline?: bigint
+  wrappedNative?: Address
 }): { readonly policy: Address; readonly initData: Hex } {
   return {
     policy: params.policy,
-    initData: encodeOneTimeUseIdInitData(params.id, params.deadline),
+    initData: encodeOneTimeUseIdInitData(
+      params.id,
+      params.deadline,
+      params.wrappedNative,
+    ),
   }
 }
 

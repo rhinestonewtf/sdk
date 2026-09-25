@@ -1,4 +1,4 @@
-import { decodeAbiParameters, zeroHash } from 'viem'
+import { concat, decodeAbiParameters, zeroHash } from 'viem'
 import { base } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 
@@ -73,6 +73,28 @@ describe('resolveSessionData — one-time-use session', () => {
           entry.initData,
         ),
       ).toEqual([42n, 1_900_000_000n])
+    }
+  })
+
+  test('pins the wrapped native on every surface when the caller supplies it', () => {
+    const WETH = '0x4200000000000000000000000000000000000006' as const
+    const data = resolveSessionData(
+      {
+        chain: base,
+        owners,
+        claimPolicies: [{ type: 'permit2', spenders: [ARBITER] }],
+        oneTimeUse: { id: 42n },
+        policyAddresses: { oneTimeUseId: POLICY },
+      },
+      { wrappedNativeToken: WETH },
+    )
+    const onceEntries = [
+      ...data.erc7739Policies.erc1271Policies,
+      ...data.actions.flatMap((action) => action.actionPolicies),
+    ].filter((entry) => entry.policy === POLICY)
+    expect(onceEntries.length).toBe(data.actions.length + 1)
+    for (const entry of onceEntries) {
+      expect(entry.initData).toBe(concat([onceEntry.initData, WETH]))
     }
   })
 
