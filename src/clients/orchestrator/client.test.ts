@@ -1,9 +1,11 @@
 import { describe, expect, test, vi } from 'vitest'
+import { UnsupportedSponsorshipApprovalError } from '../../errors/execution'
 import { createOrchestratorAuth } from './auth'
 import { createOrchestratorClient } from './client'
 import type { RateLimitedError } from './errors'
 import type { FetchPort } from './fetch'
 import type { SerializedIntentInput } from './public'
+import { projectSponsorshipApproval } from './sponsorship-approval'
 import type { OrchestratorIntentRequest, OrchestratorQuote } from './types'
 
 function bridgeFillOf(route: OrchestratorQuote | undefined) {
@@ -12,14 +14,6 @@ function bridgeFillOf(route: OrchestratorQuote | undefined) {
 
 const address = '0x0000000000000000000000000000000000000001' as const
 const SOLANA = 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp'
-const serializedIntentInput = {
-  account: { address, accountType: 'ERC7579' },
-  destinationChainId: 1,
-  destinationExecutions: [],
-  tokenRequests: [],
-  options: {},
-} satisfies SerializedIntentInput
-
 const fees = {
   total: { usd: 0 },
   breakdown: {
@@ -168,15 +162,13 @@ describe('orchestrator client', () => {
     )
   })
 
-  test('submits the intent id and ordered proofs, and nothing else', async () => {
+  test('submits the intent id and ordered proofs, and never the intent extension', async () => {
     const accessToken = vi.fn(async () => 'access')
     const extension = vi.fn(async () => 'extension')
     const fetch = vi.fn(
       async (_url: string | URL | Request, init?: RequestInit) => {
-        expect(init?.headers).toMatchObject({
-          Authorization: 'Bearer access',
-          'X-Intent-Extension': 'Bearer extension',
-        })
+        expect(init?.headers).toMatchObject({ Authorization: 'Bearer access' })
+        expect(init?.headers).not.toHaveProperty('X-Intent-Extension')
         expect(init?.headers).not.toHaveProperty('x-api-key')
         const body = JSON.parse(String(init?.body))
         expect(body).toEqual({
@@ -206,26 +198,151 @@ describe('orchestrator client', () => {
       fetch,
     })
 
-    const submitted = await jwtClient.submitIntent(
-      {
-        intentId: 'intent-1',
-        proofs: [
-          { kind: 'eip712', signature: '0xaa' },
-          {
-            kind: 'eip7702',
-            nonce: 3,
-            signature: { r: '0x01', s: '0x02', yParity: 1 },
-          },
-        ],
-      },
-      { intentInput: serializedIntentInput, sponsored: true },
-    )
+    const submitted = await jwtClient.submitIntent({
+      intentId: 'intent-1',
+      proofs: [
+        { kind: 'eip712', signature: '0xaa' },
+        {
+          kind: 'eip7702',
+          nonce: 3,
+          signature: { r: '0x01', s: '0x02', yParity: 1 },
+        },
+      ],
+    })
 
     expect(submitted.intentId).toBe('intent-1')
+    expect(fetch).toHaveBeenCalledOnce()
     expect(accessToken).toHaveBeenCalledOnce()
-    // The sponsorship callback still receives the normalized input, unchanged
-    // by the wire migration.
-    expect(extension).toHaveBeenCalledWith(serializedIntentInput)
+    expect(extension).not.toHaveBeenCalled()
+  })
+
+  describe('quote-time sponsorship approval', () => {
+    // Exactly what `projectSponsorshipApproval` derives from `request`.
+    const boundInput = {
+      account: { address, accountType: 'ERC7579', setupOps: [] },
+      destinationChainId: 10,
+      destinationExecutions: [{ to: address, value: '2', data: '0x' }],
+      tokenRequests: [],
+      accountAccessList: { chainTokenAmounts: { 1: { [address]: '4' } } },
+      options: { signatureMode: 1, auxiliaryFunds: { 1: { [address]: '3' } } },
+    } satisfies SerializedIntentInput
+
+    function jwtClient(getIntentExtensionToken?: () => Promise<string>) {
+      const fetch = vi.fn(
+        async (_url: string | URL | Request, _init?: RequestInit) =>
+          quoted([route()]),
+      )
+      const client = createOrchestratorClient({
+        url: 'https://orchestrator.example',
+        auth: createOrchestratorAuth({
+          kind: 'jwt',
+          accessToken: 'access',
+          ...(getIntentExtensionToken ? { getIntentExtensionToken } : {}),
+        }),
+        fetch,
+      })
+      return { client, fetch }
+    }
+
+    test('presents the grant with a sponsored quote, over the body it sends', async () => {
+      const extension = vi.fn(async () => 'extension')
+      const { client, fetch } = jwtClient(extension)
+
+      await client.createQuote(request, {
+        intentInput: boundInput,
+        sponsored: true,
+      })
+
+      expect(extension).toHaveBeenCalledOnce()
+      expect(extension).toHaveBeenCalledWith(boundInput)
+      const [url, init] = fetch.mock.calls[0]!
+      expect(url).toBe('https://orchestrator.example/quotes')
+      expect(init?.headers).toMatchObject({
+        Authorization: 'Bearer access',
+        'X-Intent-Extension': 'Bearer extension',
+      })
+      expect(
+        projectSponsorshipApproval(JSON.parse(String(init?.body))),
+      ).toEqual(boundInput)
+    })
+
+    test('neither checks nor presents a grant for an unsponsored quote or without a getter', async () => {
+      // A mismatching input proves the guard does not run on these paths.
+      const unbound = { ...boundInput, destinationChainId: 1 }
+      const extension = vi.fn(async () => 'extension')
+      const unsponsored = jwtClient(extension)
+      await unsponsored.client.createQuote(request, {
+        intentInput: unbound,
+        sponsored: false,
+      })
+      const withoutGetter = jwtClient()
+      await withoutGetter.client.createQuote(request, {
+        intentInput: unbound,
+        sponsored: true,
+      })
+      const apiKey = vi.fn(async () => quoted([route()]))
+      await client(apiKey).createQuote(request, {
+        intentInput: unbound,
+        sponsored: true,
+      })
+
+      expect(extension).not.toHaveBeenCalled()
+      for (const fetch of [unsponsored.fetch, withoutGetter.fetch]) {
+        expect(fetch).toHaveBeenCalledOnce()
+        expect(fetch.mock.calls[0]?.[1]?.headers).not.toHaveProperty(
+          'X-Intent-Extension',
+        )
+      }
+      expect(apiKey).toHaveBeenCalledOnce()
+    })
+
+    test.each([
+      [
+        'an approval input that differs from the body',
+        request,
+        { ...boundInput, destinationChainId: 1 },
+        { reason: 'mismatch', field: 'destinationChainId' },
+      ],
+      [
+        'a body the approval input cannot represent',
+        { ...request, options: { selectionStrategy: 'cheapest' } },
+        boundInput,
+        { reason: 'unsupported', field: 'options.selectionStrategy' },
+      ],
+    ] as const)(
+      'refuses %s before asking for a grant or quoting',
+      async (_label, body, intentInput, context) => {
+        const extension = vi.fn(async () => 'extension')
+        const { client, fetch } = jwtClient(extension)
+
+        const quote = client.createQuote(body as OrchestratorIntentRequest, {
+          intentInput,
+          sponsored: true,
+        })
+
+        await expect(quote).rejects.toBeInstanceOf(
+          UnsupportedSponsorshipApprovalError,
+        )
+        await expect(quote).rejects.toMatchObject({ context })
+        expect(extension).not.toHaveBeenCalled()
+        expect(fetch).not.toHaveBeenCalled()
+      },
+    )
+
+    test('stops on a denied grant without quoting', async () => {
+      const denied = new Error('denied')
+      const { client, fetch } = jwtClient(async () => {
+        throw denied
+      })
+
+      await expect(
+        client.createQuote(request, {
+          intentInput: boundInput,
+          sponsored: true,
+        }),
+      ).rejects.toBe(denied)
+      expect(fetch).not.toHaveBeenCalled()
+    })
   })
 
   test('maps the LZ handle and keeps a route the SDK predates untracked', async () => {

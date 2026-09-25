@@ -122,7 +122,8 @@ on both the standalone facade and a composite account with a managed Solana
 entry. The standalone facade types `swigId` as required, because without managed
 EVM the Swig is always independent. It always
 sends the Solana-only shape — `svm.swigAccount` plus `initData: { authority, id }`
-and no `account.evm` — with a tokenless destination and `sponsorship: { gas: true }`.
+and no `account.evm` — with a tokenless destination and
+`sponsorship: { gas: true, bridgeFees: false, swapFees: false }`.
 The id is computed for the Swig derived from the managed EVM account under the
 environment's namespace, and otherwise must be the caller's saved id from
 `createSolanaSwigId()`; an id that does not derive the configured Swig, a missing
@@ -297,6 +298,15 @@ names across API versions because integrator JWT policies digest it; both it and
 the Caucasus request are built from the same resolved transaction so they cannot
 drift.
 
+A JWT intent-scoped sponsorship grant is requested when a sponsored quote is
+prepared, never at submission. Before `getIntentExtensionToken` runs,
+`clients/orchestrator/client.ts` checks that the normalized input is exactly
+what `sponsorship-approval.ts` derives from the body it is about to send. That
+derivation is the contract the orchestrator recomputes to bind the grant
+([sponsorship approval](sponsorship-approval.md)). A request it cannot bind
+fails with `UnsupportedSponsorshipApprovalError` before anything is asked or
+quoted.
+
 The Solana personal-sign digest is an opaque orchestrator commitment. The SDK
 cannot reconstruct or independently prove the recipient or instructions hidden
 behind it; its local checks establish consistency with the prepared request and
@@ -308,7 +318,10 @@ sequenceDiagram
   participant Account as RhinestoneAccount
   participant Orch as Orchestrator API
   App->>Account: prepareTransaction(tx)
-  Account->>Orch: quote
+  opt sponsored, JWT with getIntentExtensionToken
+    Account->>App: getIntentExtensionToken(intentInput)
+  end
+  Account->>Orch: quote (+ X-Intent-Extension)
   Orch-->>Account: PreparedTransactionData
   App->>Account: signTransaction(...)
   App->>Account: submitTransaction(...)

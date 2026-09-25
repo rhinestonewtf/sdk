@@ -33,3 +33,18 @@ void swapFees
 prepared.intentInput.options?.sponsorSettings?.swapValue
 // @ts-expect-error withdrawn from serialized sponsorship inputs
 input.options?.sponsorSettings?.swapValue
+
+// Solana inputs name the paying Swig; EVM inputs have no `svm` entry.
+const swig = prepared.intentInput.account.svm
+if (swig) {
+  const wallet: string = swig.address
+  const stateAccount: string | undefined = swig.swigAccount
+  const authority: 'secp256k1' | 'secp256r1' = swig.authorization.kind
+  const installed: `0x${string}` | undefined = swig.initData?.id
+  void [wallet, stateAccount, authority, installed]
+  // @ts-expect-error the Swig entry is always a Swig
+  swig.type = 'erc7579'
+}
+// @ts-expect-error `svm` is optional
+const required: NonNullable<typeof swig> = prepared.intentInput.account.svm
+void required

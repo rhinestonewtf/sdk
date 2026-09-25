@@ -1,5 +1,6 @@
 import type { Address, Hex } from 'viem'
 import type {
+  Account,
   HyperCoreAction,
   SerializedIntentInput,
   SolanaWireInstruction,
@@ -17,7 +18,9 @@ import { serializeBigInts } from './serialization'
  * integrator's sponsorship policy and every issued grant, which the API version
  * bump has no business doing.
  *
- * It is a projection, not a second protocol: nothing sends it anywhere.
+ * It is a projection, not a second protocol: nothing sends it anywhere. It is
+ * also exactly what `projectSponsorshipApproval` derives from the Caucasus body
+ * a sponsored quote sends, which is how the orchestrator binds a grant to it.
  */
 export interface NormalizedIntentAccount {
   readonly address: Address | string
@@ -27,6 +30,8 @@ export interface NormalizedIntentAccount {
     Record<number, { readonly contract: Address }>
   >
   readonly mockSignatures?: Readonly<Record<`${number}`, Hex>>
+  /** The Caucasus `account.svm` entry, verbatim. Solana inputs only. */
+  readonly svm?: Readonly<NonNullable<Account['svm']>>
 }
 
 export interface NormalizedAccessList {

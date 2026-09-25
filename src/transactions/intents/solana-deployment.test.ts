@@ -3,12 +3,18 @@ import { privateKeyToAccount } from 'viem/accounts'
 import { describe, expect, test, vi } from 'vitest'
 import { quote as caucasusQuote, emptyCost } from '../../../test/utils/caucasus'
 import { solanaAddress, solanaDevnet } from '../../chains/non-evm'
-import { isSponsoredIntentInput } from '../../clients/orchestrator/normalized'
+import { mapIntentRequestToWire } from '../../clients/orchestrator/mappers'
+import {
+  isSponsoredIntentInput,
+  type NormalizedIntentInput,
+  projectCompatibleIntentInput,
+} from '../../clients/orchestrator/normalized'
 import type {
   IntentAccountView,
   QuotePlan,
   SwigAuthority,
 } from '../../clients/orchestrator/public'
+import { projectSponsorshipApproval } from '../../clients/orchestrator/sponsorship-approval'
 import type {
   OrchestratorDeploymentQuote,
   OrchestratorQuote,
@@ -23,6 +29,11 @@ import {
   type SolanaDeploymentInput,
   submitSolanaDeployment,
 } from './solana-deployment'
+
+/** The approval input as JSON, which is what the orchestrator recomputes. */
+function serialized(normalized: NormalizedIntentInput) {
+  return JSON.parse(JSON.stringify(projectCompatibleIntentInput(normalized)))
+}
 
 const owner = privateKeyToAccount(`0x${'12'.repeat(32)}`)
 const DEVNET = 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1'
@@ -138,25 +149,31 @@ describe('Solana Swig deployment request', () => {
       },
       destination: { vm: 'svm', chainId: DEVNET, tokenRequests: [] },
       source: { selection: { chains: { only: [DEVNET] }, tokens: 'all' } },
-      options: { sponsorship: { gas: true } },
+      // Explicit `false`s so the request says what the approval input does.
+      options: {
+        sponsorship: { gas: true, bridgeFees: false, swapFees: false },
+      },
     })
     expect(request.account).not.toHaveProperty('evm')
     expect(normalized).toEqual({
-      account: { address: wallet },
+      // Names the installed owner and the Swig id, exactly as requested.
+      account: { address: wallet, svm: request.account.svm },
       destinationChainId: 792703810,
       destinationExecutions: [],
       tokenRequests: [],
       accountAccessList: { chainIds: [792703810] },
       options: {
-        signatureMode: 1,
         sponsorSettings: { gas: true, bridgeFees: false, swapFees: false },
       },
     })
     expect(isSponsoredIntentInput(normalized)).toBe(true)
+    expect(projectSponsorshipApproval(mapIntentRequestToWire(request))).toEqual(
+      serialized(normalized),
+    )
   })
 
   test('installs the compressed passkey', () => {
-    const { request } = buildSolanaDeploymentRequest(passkeyInput())
+    const { request, normalized } = buildSolanaDeploymentRequest(passkeyInput())
     expect(request.account.svm).toMatchObject({
       authorization: { kind: 'secp256r1', publicKey: passkey },
       initData: {
@@ -164,6 +181,9 @@ describe('Solana Swig deployment request', () => {
         id: swigId,
       },
     })
+    expect(projectSponsorshipApproval(mapIntentRequestToWire(request))).toEqual(
+      serialized(normalized),
+    )
   })
 
   test.each([
@@ -230,7 +250,11 @@ describe('Solana Swig deployment quote', () => {
       fixture.workflow,
       ecdsaInput(),
     )
-    expect(fixture.createQuote).toHaveBeenCalledWith(prepared.request)
+    // The creation is always sponsored, so its approval rides on the quote.
+    expect(fixture.createQuote).toHaveBeenCalledWith(prepared.request, {
+      intentInput: projectCompatibleIntentInput(prepared.normalized),
+      sponsored: true,
+    })
     expect(prepared.quote.intentId).toBe('deployment-intent')
     expect(prepared.traceId).toBe('quote-trace')
   })
@@ -387,7 +411,7 @@ describe('Solana Swig deployment quote', () => {
 })
 
 describe('Solana Swig deployment submission', () => {
-  test('submits with no proofs, sponsored', async () => {
+  test('submits with no proofs and no second approval', async () => {
     const fixture = context()
     const prepared = await prepareSolanaDeployment(
       fixture.workflow,
@@ -395,16 +419,11 @@ describe('Solana Swig deployment submission', () => {
     )
     const submitted = await submitSolanaDeployment(fixture.workflow, prepared)
 
-    expect(fixture.submitIntent).toHaveBeenCalledWith(
-      { intentId: 'deployment-intent', proofs: [] },
-      {
-        intentInput: expect.objectContaining({
-          account: { address: wallet },
-          destinationChainId: 792703810,
-        }),
-        sponsored: true,
-      },
-    )
+    expect(fixture.submitIntent).toHaveBeenCalledWith({
+      intentId: 'deployment-intent',
+      proofs: [],
+    })
+    expect(fixture.submitIntent.mock.calls[0]).toHaveLength(1)
     expect(submitted).toEqual({
       type: 'intent',
       traceId: 'submit-trace',

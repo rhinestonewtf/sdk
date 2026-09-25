@@ -292,7 +292,8 @@ export interface OrchestratorSignedIntent {
   readonly dryRun?: boolean
 }
 
-export interface OrchestratorIntentSubmissionContext {
+/** What a quote asks the integrator to approve, when it asks for sponsorship. */
+export interface OrchestratorQuoteContext {
   readonly intentInput: SerializedIntentInput
   readonly sponsored: boolean
 }

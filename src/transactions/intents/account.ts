@@ -158,17 +158,24 @@ export function toNormalizedAccount(
 
 export function toNormalizedRecipient(
   recipient: IntentRecipientProjection,
+  destination: { readonly evmAddressed: boolean },
 ): NormalizedIntentAccount {
-  return recipient.kind === 'bare'
-    ? { address: recipient.address }
-    : toNormalizedAccount({
-        kind: recipient.accountKind,
-        address: recipient.address,
-        setupOps: recipient.setupOps,
-        ...(recipient.delegationContract
-          ? { delegationContract: recipient.delegationContract }
-          : {}),
-      })
+  if (recipient.kind === 'bare') {
+    // The released input spells an EVM-addressed payee as a setup-free EOA.
+    // The wire now sends it bare, but existing policies and digests were built
+    // against this spelling, so the approval input keeps it.
+    return destination.evmAddressed
+      ? { address: recipient.address, accountType: 'EOA', setupOps: [] }
+      : { address: recipient.address }
+  }
+  return toNormalizedAccount({
+    kind: recipient.accountKind,
+    address: recipient.address,
+    setupOps: recipient.setupOps,
+    ...(recipient.delegationContract
+      ? { delegationContract: recipient.delegationContract }
+      : {}),
+  })
 }
 
 function deploymentSetupOps(

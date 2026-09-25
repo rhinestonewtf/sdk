@@ -1,0 +1,2855 @@
+{
+  "schemaVersion": 1,
+  "digest": "sha256(RFC 8785 JCS(intentInput)), lowercase hex",
+  "provenance": {
+    "evmCalibration": {
+      "ref": "release",
+      "version": "2.16.4",
+      "commit": "d60e7fae",
+      "method": "Every EVM case was prepared on the released line with a JWT getIntentExtensionToken that recorded its argument: the cases.ts transactions through prepareTransaction, and evm-smart-session through buildIntentRequest with the same inputs. Each recorded approval input equals the case's intentInput.",
+      "cases": [
+        "evm-same-chain-transfer",
+        "evm-cross-chain-source-chains",
+        "evm-source-chains-token-list",
+        "evm-source-assets-per-chain",
+        "evm-source-assets-capped",
+        "evm-source-assets-mixed",
+        "evm-destination-calls-gas-limit",
+        "evm-undeployed-erc7579",
+        "evm-eoa",
+        "evm-eip7702",
+        "evm-pre-claim-auxiliary-funds",
+        "evm-fees-deadline-venues",
+        "evm-explicit-recipient",
+        "evm-smart-account-recipient",
+        "evm-hypercore-action",
+        "evm-to-solana",
+        "evm-to-tron",
+        "evm-smart-session"
+      ]
+    }
+  },
+  "cases": [
+    {
+      "id": "evm-same-chain-transfer",
+      "body": {
+        "account": {
+          "evm": {
+            "type": "erc7579",
+            "address": "0x00000000000000000000000000000000000000a0",
+            "signatureMode": 1
+          }
+        },
+        "destination": {
+          "vm": "evm",
+          "chainId": "eip155:8453",
+          "tokenRequests": [
+            {
+              "tokenAddress": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+              "amount": "1000000"
+            }
+          ],
+          "execution": {
+            "calls": [
+              {
+                "to": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+                "value": "0",
+                "data": "0xa9059cbb00000000000000000000000000000000000000000000000000000000000000b000000000000000000000000000000000000000000000000000000000000f4240"
+              }
+            ]
+          }
+        },
+        "source": {
+          "selection": {
+            "chains": {
+              "only": ["eip155:8453"]
+            },
+            "tokens": "all"
+          }
+        },
+        "options": {
+          "sponsorship": {
+            "gas": true,
+            "bridgeFees": true,
+            "swapFees": true,
+            "protocolFees": true
+          }
+        }
+      },
+      "intentInput": {
+        "account": {
+          "address": "0x00000000000000000000000000000000000000a0",
+          "accountType": "ERC7579",
+          "setupOps": []
+        },
+        "destinationChainId": 8453,
+        "destinationExecutions": [
+          {
+            "to": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+            "value": "0",
+            "data": "0xa9059cbb00000000000000000000000000000000000000000000000000000000000000b000000000000000000000000000000000000000000000000000000000000f4240"
+          }
+        ],
+        "tokenRequests": [
+          {
+            "tokenAddress": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+            "amount": "1000000"
+          }
+        ],
+        "accountAccessList": {
+          "chainIds": [8453]
+        },
+        "options": {
+          "sponsorSettings": {
+            "gas": true,
+            "bridgeFees": true,
+            "swapFees": true,
+            "protocolFees": true
+          },
+          "signatureMode": 1
+        }
+      },
+      "digest": "7935f489f5e99e5c2ef4a9d201527732bb6bfc0b3b2329fafff5e386f011e1e5"
+    },
+    {
+      "id": "evm-cross-chain-source-chains",
+      "body": {
+        "account": {
+          "evm": {
+            "type": "erc7579",
+            "address": "0x00000000000000000000000000000000000000a0",
+            "signatureMode": 1
+          }
+        },
+        "destination": {
+          "vm": "evm",
+          "chainId": "eip155:8453",
+          "tokenRequests": [
+            {
+              "tokenAddress": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+              "amount": "2000000"
+            }
+          ]
+        },
+        "source": {
+          "selection": {
+            "chains": {
+              "only": ["eip155:1", "eip155:42161"]
+            },
+            "tokens": "all"
+          }
+        },
+        "options": {
+          "sponsorship": {
+            "gas": true,
+            "bridgeFees": true,
+            "swapFees": false,
+            "protocolFees": false
+          }
+        }
+      },
+      "intentInput": {
+        "account": {
+          "address": "0x00000000000000000000000000000000000000a0",
+          "accountType": "ERC7579",
+          "setupOps": []
+        },
+        "destinationChainId": 8453,
+        "destinationExecutions": [],
+        "tokenRequests": [
+          {
+            "tokenAddress": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+            "amount": "2000000"
+          }
+        ],
+        "accountAccessList": {
+          "chainIds": [1, 42161]
+        },
+        "options": {
+          "sponsorSettings": {
+            "gas": true,
+            "bridgeFees": true,
+            "swapFees": false,
+            "protocolFees": false
+          },
+          "signatureMode": 1
+        }
+      },
+      "digest": "368f5cfa9205678ee4af4a576472303f7ffdeebad3c5a57be624c947a07a04e0"
+    },
+    {
+      "id": "evm-source-chains-token-list",
+      "body": {
+        "account": {
+          "evm": {
+            "type": "erc7579",
+            "address": "0x00000000000000000000000000000000000000a0",
+            "signatureMode": 1
+          }
+        },
+        "destination": {
+          "vm": "evm",
+          "chainId": "eip155:8453",
+          "tokenRequests": [
+            {
+              "tokenAddress": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+              "amount": "2000000"
+            }
+          ]
+        },
+        "source": {
+          "selection": {
+            "chains": {
+              "only": ["eip155:1", "eip155:42161"]
+            },
+            "tokens": {
+              "only": [
+                "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+                "0xaf88d065e77c8cc2239327c5edb3a432268e5831"
+              ]
+            }
+          }
+        },
+        "options": {
+          "sponsorship": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false,
+            "protocolFees": false
+          }
+        }
+      },
+      "intentInput": {
+        "account": {
+          "address": "0x00000000000000000000000000000000000000a0",
+          "accountType": "ERC7579",
+          "setupOps": []
+        },
+        "destinationChainId": 8453,
+        "destinationExecutions": [],
+        "tokenRequests": [
+          {
+            "tokenAddress": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+            "amount": "2000000"
+          }
+        ],
+        "accountAccessList": {
+          "chainIds": [1, 42161],
+          "tokens": [
+            "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "0xaf88d065e77c8cc2239327c5edb3a432268e5831"
+          ]
+        },
+        "options": {
+          "sponsorSettings": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false,
+            "protocolFees": false
+          },
+          "signatureMode": 1
+        }
+      },
+      "digest": "39f119648decbb929b88dbe6e9cc504f085037417ed0b53414cfc2c0e7029e43"
+    },
+    {
+      "id": "evm-source-assets-per-chain",
+      "body": {
+        "account": {
+          "evm": {
+            "type": "erc7579",
+            "address": "0x00000000000000000000000000000000000000a0",
+            "signatureMode": 1
+          }
+        },
+        "destination": {
+          "vm": "evm",
+          "chainId": "eip155:8453",
+          "tokenRequests": [
+            {
+              "tokenAddress": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+              "amount": "2000000"
+            }
+          ]
+        },
+        "source": {
+          "selection": {
+            "chains": {
+              "only": ["eip155:1", "eip155:42161"]
+            },
+            "tokens": {
+              "only": [
+                "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+                "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+                "0xaf88d065e77c8cc2239327c5edb3a432268e5831"
+              ]
+            },
+            "perChain": {
+              "eip155:1": {
+                "tokens": {
+                  "only": [
+                    "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+                    "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+                  ]
+                }
+              },
+              "eip155:42161": {
+                "tokens": {
+                  "only": ["0xaf88d065e77c8cc2239327c5edb3a432268e5831"]
+                }
+              }
+            }
+          }
+        },
+        "options": {
+          "sponsorship": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false,
+            "protocolFees": false
+          }
+        }
+      },
+      "intentInput": {
+        "account": {
+          "address": "0x00000000000000000000000000000000000000a0",
+          "accountType": "ERC7579",
+          "setupOps": []
+        },
+        "destinationChainId": 8453,
+        "destinationExecutions": [],
+        "tokenRequests": [
+          {
+            "tokenAddress": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+            "amount": "2000000"
+          }
+        ],
+        "accountAccessList": {
+          "chainTokens": {
+            "1": [
+              "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+              "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+            ],
+            "42161": ["0xaf88d065e77c8cc2239327c5edb3a432268e5831"]
+          }
+        },
+        "options": {
+          "sponsorSettings": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false,
+            "protocolFees": false
+          },
+          "signatureMode": 1
+        }
+      },
+      "digest": "c4c53c413389525c3005ad1ff6456156a66372886f0bc91d2060c492fd6dc532"
+    },
+    {
+      "id": "evm-source-assets-capped",
+      "body": {
+        "account": {
+          "evm": {
+            "type": "erc7579",
+            "address": "0x00000000000000000000000000000000000000a0",
+            "signatureMode": 1
+          }
+        },
+        "destination": {
+          "vm": "evm",
+          "chainId": "eip155:8453",
+          "tokenRequests": [
+            {
+              "tokenAddress": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+              "amount": "2000000"
+            }
+          ]
+        },
+        "source": {
+          "selection": {
+            "chains": {
+              "only": ["eip155:1"]
+            },
+            "tokens": {
+              "only": ["0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"]
+            },
+            "perChain": {
+              "eip155:1": {
+                "tokens": {
+                  "only": ["0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"]
+                }
+              }
+            }
+          },
+          "limits": [
+            {
+              "chainId": "eip155:1",
+              "tokenAddress": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+              "maxAmount": "5000000"
+            }
+          ]
+        },
+        "options": {
+          "sponsorship": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false,
+            "protocolFees": false
+          }
+        }
+      },
+      "intentInput": {
+        "account": {
+          "address": "0x00000000000000000000000000000000000000a0",
+          "accountType": "ERC7579",
+          "setupOps": []
+        },
+        "destinationChainId": 8453,
+        "destinationExecutions": [],
+        "tokenRequests": [
+          {
+            "tokenAddress": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+            "amount": "2000000"
+          }
+        ],
+        "accountAccessList": {
+          "chainTokenAmounts": {
+            "1": {
+              "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48": "5000000"
+            }
+          }
+        },
+        "options": {
+          "sponsorSettings": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false,
+            "protocolFees": false
+          },
+          "signatureMode": 1
+        }
+      },
+      "digest": "91c9004f4006d411c6f12f403c748f1cb2b2cda953892ef042e54f2909382a28"
+    },
+    {
+      "id": "evm-source-assets-mixed",
+      "body": {
+        "account": {
+          "evm": {
+            "type": "erc7579",
+            "address": "0x00000000000000000000000000000000000000a0",
+            "signatureMode": 1
+          }
+        },
+        "destination": {
+          "vm": "evm",
+          "chainId": "eip155:8453",
+          "tokenRequests": [
+            {
+              "tokenAddress": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+              "amount": "2000000"
+            }
+          ]
+        },
+        "source": {
+          "selection": {
+            "chains": {
+              "only": ["eip155:1", "eip155:42161"]
+            },
+            "tokens": {
+              "only": [
+                "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+                "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+                "0xaf88d065e77c8cc2239327c5edb3a432268e5831"
+              ]
+            },
+            "perChain": {
+              "eip155:1": {
+                "tokens": {
+                  "only": [
+                    "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+                    "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+                  ]
+                }
+              },
+              "eip155:42161": {
+                "tokens": {
+                  "only": ["0xaf88d065e77c8cc2239327c5edb3a432268e5831"]
+                }
+              }
+            }
+          },
+          "limits": [
+            {
+              "chainId": "eip155:1",
+              "tokenAddress": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+              "maxAmount": "1000000000000000000"
+            },
+            {
+              "chainId": "eip155:42161",
+              "tokenAddress": "0xaf88d065e77c8cc2239327c5edb3a432268e5831",
+              "maxAmount": "3000000"
+            }
+          ]
+        },
+        "options": {
+          "sponsorship": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false,
+            "protocolFees": false
+          }
+        }
+      },
+      "intentInput": {
+        "account": {
+          "address": "0x00000000000000000000000000000000000000a0",
+          "accountType": "ERC7579",
+          "setupOps": []
+        },
+        "destinationChainId": 8453,
+        "destinationExecutions": [],
+        "tokenRequests": [
+          {
+            "tokenAddress": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+            "amount": "2000000"
+          }
+        ],
+        "accountAccessList": {
+          "chainTokens": {
+            "1": ["0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"]
+          },
+          "chainTokenAmounts": {
+            "1": {
+              "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2": "1000000000000000000"
+            },
+            "42161": {
+              "0xaf88d065e77c8cc2239327c5edb3a432268e5831": "3000000"
+            }
+          }
+        },
+        "options": {
+          "sponsorSettings": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false,
+            "protocolFees": false
+          },
+          "signatureMode": 1
+        }
+      },
+      "digest": "ed0eb54b4464daee3d2ad2712d6b90c1e65003b59c28a68a3c662845a24f7a26"
+    },
+    {
+      "id": "evm-destination-calls-gas-limit",
+      "body": {
+        "account": {
+          "evm": {
+            "type": "erc7579",
+            "address": "0x00000000000000000000000000000000000000a0",
+            "signatureMode": 1
+          }
+        },
+        "destination": {
+          "vm": "evm",
+          "chainId": "eip155:8453",
+          "tokenRequests": [
+            {
+              "tokenAddress": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+              "amount": "1"
+            }
+          ],
+          "execution": {
+            "calls": [
+              {
+                "to": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+                "value": "0",
+                "data": "0xa9059cbb00000000000000000000000000000000000000000000000000000000000000b00000000000000000000000000000000000000000000000000000000000000001"
+              },
+              {
+                "to": "0x00000000000000000000000000000000000000b0",
+                "value": "7",
+                "data": "0x"
+              }
+            ],
+            "gasLimit": "300000"
+          }
+        },
+        "source": {
+          "selection": {
+            "chains": {
+              "only": ["eip155:1"]
+            },
+            "tokens": "all"
+          }
+        },
+        "options": {
+          "sponsorship": {
+            "gas": true,
+            "bridgeFees": true,
+            "swapFees": true,
+            "protocolFees": true
+          }
+        }
+      },
+      "intentInput": {
+        "account": {
+          "address": "0x00000000000000000000000000000000000000a0",
+          "accountType": "ERC7579",
+          "setupOps": []
+        },
+        "destinationChainId": 8453,
+        "destinationExecutions": [
+          {
+            "to": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+            "value": "0",
+            "data": "0xa9059cbb00000000000000000000000000000000000000000000000000000000000000b00000000000000000000000000000000000000000000000000000000000000001"
+          },
+          {
+            "to": "0x00000000000000000000000000000000000000b0",
+            "value": "7",
+            "data": "0x"
+          }
+        ],
+        "tokenRequests": [
+          {
+            "tokenAddress": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+            "amount": "1"
+          }
+        ],
+        "destinationGasUnits": "300000",
+        "accountAccessList": {
+          "chainIds": [1]
+        },
+        "options": {
+          "sponsorSettings": {
+            "gas": true,
+            "bridgeFees": true,
+            "swapFees": true,
+            "protocolFees": true
+          },
+          "signatureMode": 1
+        }
+      },
+      "digest": "ca4c43f3df1bd2f3141258841223075654f80680e3e4c56a8c81af983fc23839"
+    },
+    {
+      "id": "evm-undeployed-erc7579",
+      "body": {
+        "account": {
+          "evm": {
+            "type": "erc7579",
+            "address": "0xB88bADCB5451127Cc36157bE83E8687A6C69ACfb",
+            "initData": {
+              "setupOps": [
+                {
+                  "to": "0x0000000099d5576c73a3b190dabeeaa0f128ce6b",
+                  "data": "0xea6d13ac0000000000000000000000000000000000000000000000000000000000000040c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470000000000000000000000000000000000000000000000000000000000000034000000000000000000000000000000000006efb61d8c9546ff1b500de3f244ea7000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000002c441bede0300000000000000000000000000000000000000000000000000000000000000c0000000000000000000000000000000000000000000000000000000000000016000000000000000000000000000000000000000000000000000000000000001800000000000000000000000000000000000000000000000000000000000000220000000000000000000000000000000000000000000000000000000000000028000000000000000000000000000000000000000000000000000000000000002a000000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000010000000000000000000000005d5c99edf529335160ff180fa141dd4967fc00d200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000005ad9ce1f5035fd62ca96cef16adaaf000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+                }
+              ]
+            },
+            "signatureMode": 1
+          }
+        },
+        "destination": {
+          "vm": "evm",
+          "chainId": "eip155:8453",
+          "tokenRequests": [
+            {
+              "tokenAddress": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+              "amount": "1000000"
+            }
+          ]
+        },
+        "source": {
+          "selection": {
+            "chains": {
+              "only": ["eip155:1"]
+            },
+            "tokens": "all"
+          }
+        },
+        "options": {
+          "sponsorship": {
+            "gas": true,
+            "bridgeFees": true,
+            "swapFees": true,
+            "protocolFees": true
+          }
+        }
+      },
+      "intentInput": {
+        "account": {
+          "address": "0xB88bADCB5451127Cc36157bE83E8687A6C69ACfb",
+          "accountType": "ERC7579",
+          "setupOps": [
+            {
+              "to": "0x0000000099d5576c73a3b190dabeeaa0f128ce6b",
+              "data": "0xea6d13ac0000000000000000000000000000000000000000000000000000000000000040c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470000000000000000000000000000000000000000000000000000000000000034000000000000000000000000000000000006efb61d8c9546ff1b500de3f244ea7000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000002c441bede0300000000000000000000000000000000000000000000000000000000000000c0000000000000000000000000000000000000000000000000000000000000016000000000000000000000000000000000000000000000000000000000000001800000000000000000000000000000000000000000000000000000000000000220000000000000000000000000000000000000000000000000000000000000028000000000000000000000000000000000000000000000000000000000000002a000000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000010000000000000000000000005d5c99edf529335160ff180fa141dd4967fc00d200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000005ad9ce1f5035fd62ca96cef16adaaf000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+            }
+          ]
+        },
+        "destinationChainId": 8453,
+        "destinationExecutions": [],
+        "tokenRequests": [
+          {
+            "tokenAddress": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+            "amount": "1000000"
+          }
+        ],
+        "accountAccessList": {
+          "chainIds": [1]
+        },
+        "options": {
+          "sponsorSettings": {
+            "gas": true,
+            "bridgeFees": true,
+            "swapFees": true,
+            "protocolFees": true
+          },
+          "signatureMode": 1
+        }
+      },
+      "digest": "1502c2538c84cd2425b0a7af3ea91376ab7e07aee7b7bb640e4ce996ecef1fdb"
+    },
+    {
+      "id": "evm-eoa",
+      "body": {
+        "account": {
+          "evm": {
+            "type": "eoa",
+            "address": "0xa64C3a7dB2a92f47Bc3c0729563D8B1F351A62A4",
+            "signatureMode": 1
+          }
+        },
+        "destination": {
+          "vm": "evm",
+          "chainId": "eip155:8453",
+          "tokenRequests": [
+            {
+              "tokenAddress": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+              "amount": "1000000"
+            }
+          ]
+        },
+        "source": {
+          "selection": {
+            "chains": {
+              "only": ["eip155:1"]
+            },
+            "tokens": "all"
+          }
+        },
+        "options": {
+          "sponsorship": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false,
+            "protocolFees": false
+          }
+        }
+      },
+      "intentInput": {
+        "account": {
+          "address": "0xa64C3a7dB2a92f47Bc3c0729563D8B1F351A62A4",
+          "accountType": "EOA",
+          "setupOps": []
+        },
+        "destinationChainId": 8453,
+        "destinationExecutions": [],
+        "tokenRequests": [
+          {
+            "tokenAddress": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+            "amount": "1000000"
+          }
+        ],
+        "accountAccessList": {
+          "chainIds": [1]
+        },
+        "options": {
+          "sponsorSettings": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false,
+            "protocolFees": false
+          },
+          "signatureMode": 1
+        }
+      },
+      "digest": "aaf3529eb770f4d421e4b934a07da9d0fa1a438935d5382bd598adf86b9ea159"
+    },
+    {
+      "id": "evm-eip7702",
+      "body": {
+        "account": {
+          "evm": {
+            "type": "erc7579",
+            "address": "0xa64C3a7dB2a92f47Bc3c0729563D8B1F351A62A4",
+            "initData": {
+              "setupOps": [
+                {
+                  "to": "0xa64C3a7dB2a92f47Bc3c0729563D8B1F351A62A4",
+                  "data": "0x4b6a1419000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000003e1222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000006efb61d8c9546ff1b500de3f244ea7000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000002c441bede0300000000000000000000000000000000000000000000000000000000000000c0000000000000000000000000000000000000000000000000000000000000016000000000000000000000000000000000000000000000000000000000000001800000000000000000000000000000000000000000000000000000000000000220000000000000000000000000000000000000000000000000000000000000028000000000000000000000000000000000000000000000000000000000000002a000000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000010000000000000000000000005d5c99edf529335160ff180fa141dd4967fc00d200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000005ad9ce1f5035fd62ca96cef16adaaf00000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+                }
+              ]
+            },
+            "signatureMode": 1,
+            "delegations": {
+              "default": {
+                "contract": "0x000000000d41c0bf0063dba53343389cdb2c9c78"
+              }
+            }
+          }
+        },
+        "destination": {
+          "vm": "evm",
+          "chainId": "eip155:8453",
+          "tokenRequests": [],
+          "execution": {
+            "calls": [
+              {
+                "to": "0x00000000000000000000000000000000000000b0",
+                "value": "0",
+                "data": "0x"
+              }
+            ]
+          }
+        },
+        "source": {
+          "selection": {
+            "chains": {
+              "only": ["eip155:8453"]
+            },
+            "tokens": "all"
+          }
+        },
+        "options": {
+          "sponsorship": {
+            "gas": true,
+            "bridgeFees": true,
+            "swapFees": true,
+            "protocolFees": true
+          }
+        }
+      },
+      "intentInput": {
+        "account": {
+          "address": "0xa64C3a7dB2a92f47Bc3c0729563D8B1F351A62A4",
+          "accountType": "ERC7579",
+          "setupOps": [
+            {
+              "to": "0xa64C3a7dB2a92f47Bc3c0729563D8B1F351A62A4",
+              "data": "0x4b6a1419000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000003e1222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000006efb61d8c9546ff1b500de3f244ea7000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000002c441bede0300000000000000000000000000000000000000000000000000000000000000c0000000000000000000000000000000000000000000000000000000000000016000000000000000000000000000000000000000000000000000000000000001800000000000000000000000000000000000000000000000000000000000000220000000000000000000000000000000000000000000000000000000000000028000000000000000000000000000000000000000000000000000000000000002a000000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000010000000000000000000000005d5c99edf529335160ff180fa141dd4967fc00d200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000005ad9ce1f5035fd62ca96cef16adaaf00000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+            }
+          ],
+          "delegations": {
+            "0": {
+              "contract": "0x000000000d41c0bf0063dba53343389cdb2c9c78"
+            }
+          }
+        },
+        "destinationChainId": 8453,
+        "destinationExecutions": [
+          {
+            "to": "0x00000000000000000000000000000000000000b0",
+            "value": "0",
+            "data": "0x"
+          }
+        ],
+        "tokenRequests": [],
+        "accountAccessList": {
+          "chainIds": [8453]
+        },
+        "options": {
+          "sponsorSettings": {
+            "gas": true,
+            "bridgeFees": true,
+            "swapFees": true,
+            "protocolFees": true
+          },
+          "signatureMode": 1
+        }
+      },
+      "digest": "96783b010e7d078f69680c4b1fee0ec873f4d8ddf7c89cf12802a262c53e11a7"
+    },
+    {
+      "id": "evm-pre-claim-auxiliary-funds",
+      "body": {
+        "account": {
+          "evm": {
+            "type": "erc7579",
+            "address": "0x00000000000000000000000000000000000000a0",
+            "signatureMode": 1
+          }
+        },
+        "destination": {
+          "vm": "evm",
+          "chainId": "eip155:8453",
+          "tokenRequests": [
+            {
+              "tokenAddress": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+              "amount": "5000000"
+            }
+          ]
+        },
+        "source": {
+          "selection": {
+            "chains": {
+              "only": ["eip155:1"]
+            },
+            "tokens": "all"
+          },
+          "auxiliaryFunds": {
+            "eip155:1": {
+              "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48": "5000000"
+            }
+          },
+          "executions": [
+            {
+              "vm": "evm",
+              "chainId": "eip155:1",
+              "calls": [
+                {
+                  "to": "0x00000000000000000000000000000000000000b0",
+                  "value": "0",
+                  "data": "0x1234"
+                }
+              ]
+            }
+          ]
+        },
+        "options": {
+          "sponsorship": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false,
+            "protocolFees": false
+          }
+        }
+      },
+      "intentInput": {
+        "account": {
+          "address": "0x00000000000000000000000000000000000000a0",
+          "accountType": "ERC7579",
+          "setupOps": []
+        },
+        "destinationChainId": 8453,
+        "destinationExecutions": [],
+        "tokenRequests": [
+          {
+            "tokenAddress": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+            "amount": "5000000"
+          }
+        ],
+        "accountAccessList": {
+          "chainIds": [1]
+        },
+        "options": {
+          "sponsorSettings": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false,
+            "protocolFees": false
+          },
+          "auxiliaryFunds": {
+            "1": {
+              "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48": "5000000"
+            }
+          },
+          "signatureMode": 1
+        },
+        "preClaimExecutions": {
+          "1": [
+            {
+              "to": "0x00000000000000000000000000000000000000b0",
+              "value": "0",
+              "data": "0x1234"
+            }
+          ]
+        }
+      },
+      "digest": "e24b299b7085f56be162cbccee1c05e396c6e963d8f827d1b094a15d3e1bd0ae"
+    },
+    {
+      "id": "evm-fees-deadline-venues",
+      "body": {
+        "account": {
+          "evm": {
+            "type": "erc7579",
+            "address": "0x00000000000000000000000000000000000000a0",
+            "signatureMode": 1
+          }
+        },
+        "destination": {
+          "vm": "evm",
+          "chainId": "eip155:8453",
+          "tokenRequests": [],
+          "execution": {
+            "calls": [
+              {
+                "to": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+                "value": "0",
+                "data": "0xa9059cbb00000000000000000000000000000000000000000000000000000000000000b00000000000000000000000000000000000000000000000000000000000000001"
+              }
+            ]
+          }
+        },
+        "source": {
+          "selection": {
+            "chains": {
+              "only": ["eip155:8453"]
+            },
+            "tokens": "all"
+          }
+        },
+        "options": {
+          "appFees": {
+            "feeBps": 25
+          },
+          "protocolFees": {
+            "feeBps": 5
+          },
+          "customDeadline": 1900000000,
+          "sponsorship": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false,
+            "protocolFees": true
+          },
+          "settlementLayers": {
+            "include": ["SAME_CHAIN"]
+          },
+          "quoters": {
+            "exclude": ["ZEROX"]
+          }
+        }
+      },
+      "intentInput": {
+        "account": {
+          "address": "0x00000000000000000000000000000000000000a0",
+          "accountType": "ERC7579",
+          "setupOps": []
+        },
+        "destinationChainId": 8453,
+        "destinationExecutions": [
+          {
+            "to": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+            "value": "0",
+            "data": "0xa9059cbb00000000000000000000000000000000000000000000000000000000000000b00000000000000000000000000000000000000000000000000000000000000001"
+          }
+        ],
+        "tokenRequests": [],
+        "accountAccessList": {
+          "chainIds": [8453]
+        },
+        "options": {
+          "appFees": {
+            "feeBps": 25
+          },
+          "protocolFees": {
+            "feeBps": 5
+          },
+          "customDeadline": 1900000000,
+          "sponsorSettings": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false,
+            "protocolFees": true
+          },
+          "settlementLayers": {
+            "include": ["SAME_CHAIN"]
+          },
+          "quoters": {
+            "exclude": ["ZEROX"]
+          },
+          "signatureMode": 1
+        }
+      },
+      "digest": "3e4b1e9e2dec1cb7b6aac79614774ae6ef26145d38f27ef3cc4fbf5466073cc5"
+    },
+    {
+      "id": "evm-explicit-recipient",
+      "body": {
+        "account": {
+          "evm": {
+            "type": "erc7579",
+            "address": "0x00000000000000000000000000000000000000a0",
+            "signatureMode": 1
+          }
+        },
+        "destination": {
+          "vm": "evm",
+          "chainId": "eip155:8453",
+          "recipient": {
+            "address": "0x00000000000000000000000000000000000000b0"
+          },
+          "tokenRequests": [
+            {
+              "tokenAddress": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+              "amount": "1000000"
+            }
+          ]
+        },
+        "source": {
+          "selection": {
+            "chains": {
+              "only": ["eip155:1"]
+            },
+            "tokens": "all"
+          }
+        },
+        "options": {
+          "sponsorship": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false,
+            "protocolFees": false
+          }
+        }
+      },
+      "intentInput": {
+        "account": {
+          "address": "0x00000000000000000000000000000000000000a0",
+          "accountType": "ERC7579",
+          "setupOps": []
+        },
+        "destinationChainId": 8453,
+        "destinationExecutions": [],
+        "tokenRequests": [
+          {
+            "tokenAddress": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+            "amount": "1000000"
+          }
+        ],
+        "recipient": {
+          "address": "0x00000000000000000000000000000000000000b0",
+          "accountType": "EOA",
+          "setupOps": []
+        },
+        "accountAccessList": {
+          "chainIds": [1]
+        },
+        "options": {
+          "sponsorSettings": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false,
+            "protocolFees": false
+          },
+          "signatureMode": 1
+        }
+      },
+      "digest": "8b5168679235712d36157e8ecb154e81ca23a02cdd335383e104449e95ed584a"
+    },
+    {
+      "id": "evm-smart-account-recipient",
+      "body": {
+        "account": {
+          "evm": {
+            "type": "erc7579",
+            "address": "0x00000000000000000000000000000000000000a0",
+            "signatureMode": 1
+          }
+        },
+        "destination": {
+          "vm": "evm",
+          "chainId": "eip155:8453",
+          "recipient": {
+            "type": "erc7579",
+            "address": "0x00000000000000000000000000000000000000b0"
+          },
+          "tokenRequests": [
+            {
+              "tokenAddress": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+              "amount": "1000000"
+            }
+          ]
+        },
+        "source": {
+          "selection": {
+            "chains": {
+              "only": ["eip155:1"]
+            },
+            "tokens": "all"
+          }
+        },
+        "options": {
+          "sponsorship": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false,
+            "protocolFees": false
+          }
+        }
+      },
+      "intentInput": {
+        "account": {
+          "address": "0x00000000000000000000000000000000000000a0",
+          "accountType": "ERC7579",
+          "setupOps": []
+        },
+        "destinationChainId": 8453,
+        "destinationExecutions": [],
+        "tokenRequests": [
+          {
+            "tokenAddress": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+            "amount": "1000000"
+          }
+        ],
+        "recipient": {
+          "address": "0x00000000000000000000000000000000000000b0",
+          "accountType": "ERC7579",
+          "setupOps": []
+        },
+        "accountAccessList": {
+          "chainIds": [1]
+        },
+        "options": {
+          "sponsorSettings": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false,
+            "protocolFees": false
+          },
+          "signatureMode": 1
+        }
+      },
+      "digest": "5c795b1142345d7cc8b62c2308cc08d7a63673698fbc5a5a7ceca9f061a36a52"
+    },
+    {
+      "id": "evm-hypercore-action",
+      "body": {
+        "account": {
+          "evm": {
+            "type": "erc7579",
+            "address": "0x00000000000000000000000000000000000000a0",
+            "signatureMode": 1
+          }
+        },
+        "destination": {
+          "vm": "hypercore",
+          "chainId": "hypercore:perp",
+          "tokenRequests": [
+            {
+              "tokenAddress": "0x2000000000000000000000000000000000000000",
+              "amount": "10000000"
+            }
+          ],
+          "execution": {
+            "actions": [
+              {
+                "type": "order",
+                "orders": [
+                  {
+                    "a": 0,
+                    "b": true,
+                    "p": "65000",
+                    "s": "0.001",
+                    "r": false,
+                    "t": {
+                      "limit": {
+                        "tif": "Ioc"
+                      }
+                    }
+                  }
+                ],
+                "grouping": "na"
+              }
+            ]
+          }
+        },
+        "source": {
+          "selection": {
+            "chains": {
+              "only": ["eip155:42161"]
+            },
+            "tokens": "all"
+          }
+        },
+        "options": {
+          "sponsorship": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false,
+            "protocolFees": false
+          }
+        }
+      },
+      "intentInput": {
+        "account": {
+          "address": "0x00000000000000000000000000000000000000a0",
+          "accountType": "ERC7579",
+          "setupOps": []
+        },
+        "destinationChainId": 1337002,
+        "destinationExecutions": [],
+        "tokenRequests": [
+          {
+            "tokenAddress": "0x2000000000000000000000000000000000000000",
+            "amount": "10000000"
+          }
+        ],
+        "accountAccessList": {
+          "chainIds": [42161]
+        },
+        "options": {
+          "sponsorSettings": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false,
+            "protocolFees": false
+          },
+          "hyperCore": {
+            "action": {
+              "type": "order",
+              "orders": [
+                {
+                  "a": 0,
+                  "b": true,
+                  "p": "65000",
+                  "s": "0.001",
+                  "r": false,
+                  "t": {
+                    "limit": {
+                      "tif": "Ioc"
+                    }
+                  }
+                }
+              ],
+              "grouping": "na"
+            }
+          },
+          "signatureMode": 1
+        }
+      },
+      "digest": "dd2ec03115bb6ed5d46a6f2752c5ef62a57b60b7e1e8d7ce69cd561f346b4eb1"
+    },
+    {
+      "id": "evm-to-solana",
+      "body": {
+        "account": {
+          "evm": {
+            "type": "erc7579",
+            "address": "0x00000000000000000000000000000000000000a0",
+            "signatureMode": 1
+          }
+        },
+        "destination": {
+          "vm": "svm",
+          "chainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+          "recipient": {
+            "address": "DfBX7Po1bmnXt4GuEF3Eg5UYUHAjs9m5n8nbb9WUqgw2"
+          },
+          "tokenRequests": [
+            {
+              "tokenAddress": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "amount": "1000000"
+            }
+          ]
+        },
+        "source": {
+          "selection": {
+            "chains": {
+              "only": ["eip155:8453"]
+            },
+            "tokens": "all"
+          }
+        },
+        "options": {
+          "sponsorship": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false,
+            "protocolFees": false
+          }
+        }
+      },
+      "intentInput": {
+        "account": {
+          "address": "0x00000000000000000000000000000000000000a0",
+          "accountType": "ERC7579",
+          "setupOps": []
+        },
+        "destinationChainId": 792703809,
+        "destinationExecutions": [],
+        "tokenRequests": [
+          {
+            "tokenAddress": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+            "amount": "1000000"
+          }
+        ],
+        "recipient": {
+          "address": "DfBX7Po1bmnXt4GuEF3Eg5UYUHAjs9m5n8nbb9WUqgw2"
+        },
+        "accountAccessList": {
+          "chainIds": [8453]
+        },
+        "options": {
+          "sponsorSettings": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false,
+            "protocolFees": false
+          },
+          "signatureMode": 1
+        }
+      },
+      "digest": "c4cf7f04394c4361add43a0cb28635e0b06032bf0a02de5a03eed4aa9a6c154d"
+    },
+    {
+      "id": "evm-to-tron",
+      "body": {
+        "account": {
+          "evm": {
+            "type": "erc7579",
+            "address": "0x00000000000000000000000000000000000000a0",
+            "signatureMode": 1
+          }
+        },
+        "destination": {
+          "vm": "tvm",
+          "chainId": "tron:mainnet",
+          "recipient": {
+            "address": "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf"
+          },
+          "tokenRequests": [
+            {
+              "tokenAddress": "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t",
+              "amount": "1000000"
+            }
+          ]
+        },
+        "source": {
+          "selection": {
+            "chains": {
+              "only": ["eip155:8453"]
+            },
+            "tokens": "all"
+          }
+        },
+        "options": {
+          "sponsorship": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false,
+            "protocolFees": false
+          }
+        }
+      },
+      "intentInput": {
+        "account": {
+          "address": "0x00000000000000000000000000000000000000a0",
+          "accountType": "ERC7579",
+          "setupOps": []
+        },
+        "destinationChainId": 728126428,
+        "destinationExecutions": [],
+        "tokenRequests": [
+          {
+            "tokenAddress": "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t",
+            "amount": "1000000"
+          }
+        ],
+        "recipient": {
+          "address": "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf"
+        },
+        "accountAccessList": {
+          "chainIds": [8453]
+        },
+        "options": {
+          "sponsorSettings": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false,
+            "protocolFees": false
+          },
+          "signatureMode": 1
+        }
+      },
+      "digest": "8b504099052c845e6059111f4c6a25e82c31cc6924b1a39f871761cbe9d82632"
+    },
+    {
+      "id": "evm-smart-session",
+      "body": {
+        "account": {
+          "evm": {
+            "type": "erc7579",
+            "address": "0x00000000000000000000000000000000000000a0",
+            "signatureMode": 4,
+            "simulation": {
+              "mockSignaturesByChain": {
+                "eip155:1": "0x5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e",
+                "eip155:8453": "0x5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e"
+              }
+            }
+          }
+        },
+        "destination": {
+          "vm": "evm",
+          "chainId": "eip155:8453",
+          "tokenRequests": [
+            {
+              "tokenAddress": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+              "amount": "1000000"
+            }
+          ],
+          "execution": {
+            "calls": [
+              {
+                "to": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+                "value": "0",
+                "data": "0xa9059cbb"
+              }
+            ]
+          }
+        },
+        "source": {
+          "selection": {
+            "chains": {
+              "only": ["eip155:1"]
+            },
+            "tokens": "all"
+          }
+        },
+        "options": {
+          "sponsorship": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false
+          }
+        }
+      },
+      "intentInput": {
+        "account": {
+          "address": "0x00000000000000000000000000000000000000a0",
+          "accountType": "ERC7579",
+          "setupOps": [],
+          "mockSignatures": {
+            "1": "0x5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e",
+            "8453": "0x5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e"
+          }
+        },
+        "destinationChainId": 8453,
+        "destinationExecutions": [
+          {
+            "to": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+            "value": "0",
+            "data": "0xa9059cbb"
+          }
+        ],
+        "tokenRequests": [
+          {
+            "tokenAddress": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+            "amount": "1000000"
+          }
+        ],
+        "accountAccessList": {
+          "chainIds": [1]
+        },
+        "options": {
+          "sponsorSettings": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false
+          },
+          "signatureMode": 4
+        }
+      },
+      "digest": "97168522f0000382cb2ed5117c49dcf01b3615ea89be53143c0d7da8e7c05b39"
+    },
+    {
+      "id": "solana-same-chain",
+      "body": {
+        "account": {
+          "svm": {
+            "type": "swig",
+            "address": "C4PvoicLfj71bcjnvSWFKo3QeDP8AXJbUzZFQPvRf3xm",
+            "authorization": {
+              "kind": "secp256k1",
+              "address": "0x5d5c99EdF529335160FF180fA141Dd4967fc00D2"
+            },
+            "swigAccount": "3wm644fHe3ekULLCPov4vkDeVCJEaQmnCfn5k2HhMS4B"
+          }
+        },
+        "destination": {
+          "vm": "svm",
+          "chainId": "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
+          "recipient": {
+            "address": "11111111111111111111111111111112"
+          },
+          "tokenRequests": [
+            {
+              "tokenAddress": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+              "amount": "1000000"
+            }
+          ]
+        },
+        "source": {
+          "selection": {
+            "chains": {
+              "only": ["solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"]
+            },
+            "tokens": {
+              "only": ["4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"]
+            },
+            "perChain": {
+              "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1": {
+                "tokens": {
+                  "only": ["4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"]
+                }
+              }
+            }
+          }
+        },
+        "options": {
+          "sponsorship": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false
+          }
+        }
+      },
+      "intentInput": {
+        "destinationExecutions": [],
+        "account": {
+          "address": "C4PvoicLfj71bcjnvSWFKo3QeDP8AXJbUzZFQPvRf3xm",
+          "svm": {
+            "type": "swig",
+            "address": "C4PvoicLfj71bcjnvSWFKo3QeDP8AXJbUzZFQPvRf3xm",
+            "authorization": {
+              "kind": "secp256k1",
+              "address": "0x5d5c99EdF529335160FF180fA141Dd4967fc00D2"
+            },
+            "swigAccount": "3wm644fHe3ekULLCPov4vkDeVCJEaQmnCfn5k2HhMS4B"
+          }
+        },
+        "options": {
+          "sponsorSettings": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false
+          }
+        },
+        "destinationChainId": 792703810,
+        "tokenRequests": [
+          {
+            "tokenAddress": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+            "amount": "1000000"
+          }
+        ],
+        "recipient": {
+          "address": "11111111111111111111111111111112"
+        },
+        "accountAccessList": {
+          "chainTokens": {
+            "792703810": ["4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"]
+          }
+        }
+      },
+      "digest": "849377d79e722b14b916de7a195ae7d351fe4bb7ebb6dd106db82e748b3e4f2f"
+    },
+    {
+      "id": "solana-same-chain-capped",
+      "body": {
+        "account": {
+          "svm": {
+            "type": "swig",
+            "address": "C4PvoicLfj71bcjnvSWFKo3QeDP8AXJbUzZFQPvRf3xm",
+            "authorization": {
+              "kind": "secp256r1",
+              "publicKey": "0x023c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c"
+            },
+            "swigAccount": "3wm644fHe3ekULLCPov4vkDeVCJEaQmnCfn5k2HhMS4B"
+          }
+        },
+        "destination": {
+          "vm": "svm",
+          "chainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+          "recipient": {
+            "address": "11111111111111111111111111111112"
+          },
+          "tokenRequests": [
+            {
+              "tokenAddress": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+              "amount": "1000000"
+            }
+          ]
+        },
+        "source": {
+          "selection": {
+            "chains": {
+              "only": ["solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"]
+            },
+            "tokens": {
+              "only": ["4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"]
+            },
+            "perChain": {
+              "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": {
+                "tokens": {
+                  "only": ["4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"]
+                }
+              }
+            }
+          },
+          "limits": [
+            {
+              "chainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+              "tokenAddress": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+              "maxAmount": "1500000"
+            }
+          ]
+        },
+        "options": {
+          "sponsorship": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false
+          }
+        }
+      },
+      "intentInput": {
+        "destinationExecutions": [],
+        "account": {
+          "address": "C4PvoicLfj71bcjnvSWFKo3QeDP8AXJbUzZFQPvRf3xm",
+          "svm": {
+            "type": "swig",
+            "address": "C4PvoicLfj71bcjnvSWFKo3QeDP8AXJbUzZFQPvRf3xm",
+            "authorization": {
+              "kind": "secp256r1",
+              "publicKey": "0x023c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c"
+            },
+            "swigAccount": "3wm644fHe3ekULLCPov4vkDeVCJEaQmnCfn5k2HhMS4B"
+          }
+        },
+        "options": {
+          "sponsorSettings": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false
+          }
+        },
+        "destinationChainId": 792703809,
+        "tokenRequests": [
+          {
+            "tokenAddress": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+            "amount": "1000000"
+          }
+        ],
+        "recipient": {
+          "address": "11111111111111111111111111111112"
+        },
+        "accountAccessList": {
+          "chainTokenAmounts": {
+            "792703809": {
+              "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU": "1500000"
+            }
+          }
+        }
+      },
+      "digest": "935320f4d1e8210cf227a7e04c1daf8533476ab26f82477fb7b3199871fc247b"
+    },
+    {
+      "id": "solana-instructions",
+      "body": {
+        "account": {
+          "svm": {
+            "type": "swig",
+            "address": "C4PvoicLfj71bcjnvSWFKo3QeDP8AXJbUzZFQPvRf3xm",
+            "authorization": {
+              "kind": "secp256k1",
+              "address": "0x5d5c99EdF529335160FF180fA141Dd4967fc00D2"
+            },
+            "swigAccount": "3wm644fHe3ekULLCPov4vkDeVCJEaQmnCfn5k2HhMS4B"
+          }
+        },
+        "destination": {
+          "vm": "svm",
+          "chainId": "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
+          "tokenRequests": [],
+          "execution": {
+            "instructions": [
+              {
+                "programId": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+                "accounts": [
+                  {
+                    "pubkey": "C4PvoicLfj71bcjnvSWFKo3QeDP8AXJbUzZFQPvRf3xm",
+                    "isSigner": true,
+                    "isWritable": true
+                  }
+                ],
+                "data": "AQID"
+              }
+            ],
+            "addressLookupTables": ["11111111111111111111111111111112"]
+          }
+        },
+        "source": {
+          "selection": {
+            "chains": {
+              "only": ["solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"]
+            },
+            "tokens": "all"
+          }
+        },
+        "options": {
+          "sponsorship": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false
+          }
+        }
+      },
+      "intentInput": {
+        "destinationExecutions": [],
+        "account": {
+          "address": "C4PvoicLfj71bcjnvSWFKo3QeDP8AXJbUzZFQPvRf3xm",
+          "svm": {
+            "type": "swig",
+            "address": "C4PvoicLfj71bcjnvSWFKo3QeDP8AXJbUzZFQPvRf3xm",
+            "authorization": {
+              "kind": "secp256k1",
+              "address": "0x5d5c99EdF529335160FF180fA141Dd4967fc00D2"
+            },
+            "swigAccount": "3wm644fHe3ekULLCPov4vkDeVCJEaQmnCfn5k2HhMS4B"
+          }
+        },
+        "options": {
+          "sponsorSettings": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false
+          }
+        },
+        "destinationChainId": 792703810,
+        "tokenRequests": [],
+        "destinationInstructions": [
+          {
+            "programId": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+            "accounts": [
+              {
+                "pubkey": "C4PvoicLfj71bcjnvSWFKo3QeDP8AXJbUzZFQPvRf3xm",
+                "isSigner": true,
+                "isWritable": true
+              }
+            ],
+            "data": "AQID"
+          }
+        ],
+        "addressLookupTableAddresses": ["11111111111111111111111111111112"],
+        "accountAccessList": {
+          "chainIds": [792703810]
+        }
+      },
+      "digest": "7fbb7ff664777737cb43fc4f30237f2a1bb61d98401d447165c153428dbee4c3"
+    },
+    {
+      "id": "solana-to-evm",
+      "body": {
+        "account": {
+          "svm": {
+            "type": "swig",
+            "address": "C4PvoicLfj71bcjnvSWFKo3QeDP8AXJbUzZFQPvRf3xm",
+            "authorization": {
+              "kind": "secp256k1",
+              "address": "0x5d5c99EdF529335160FF180fA141Dd4967fc00D2"
+            },
+            "swigAccount": "3wm644fHe3ekULLCPov4vkDeVCJEaQmnCfn5k2HhMS4B"
+          }
+        },
+        "destination": {
+          "vm": "evm",
+          "chainId": "eip155:8453",
+          "recipient": {
+            "address": "0x00000000000000000000000000000000000000a0"
+          },
+          "tokenRequests": [
+            {
+              "tokenAddress": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+              "amount": "1000000"
+            }
+          ]
+        },
+        "source": {
+          "selection": {
+            "chains": {
+              "only": ["solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"]
+            },
+            "tokens": {
+              "only": ["4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"]
+            },
+            "perChain": {
+              "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1": {
+                "tokens": {
+                  "only": ["4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"]
+                }
+              }
+            }
+          },
+          "limits": [
+            {
+              "chainId": "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
+              "tokenAddress": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+              "maxAmount": "2000000"
+            }
+          ]
+        },
+        "options": {
+          "sponsorship": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false
+          }
+        }
+      },
+      "intentInput": {
+        "destinationExecutions": [],
+        "account": {
+          "address": "C4PvoicLfj71bcjnvSWFKo3QeDP8AXJbUzZFQPvRf3xm",
+          "svm": {
+            "type": "swig",
+            "address": "C4PvoicLfj71bcjnvSWFKo3QeDP8AXJbUzZFQPvRf3xm",
+            "authorization": {
+              "kind": "secp256k1",
+              "address": "0x5d5c99EdF529335160FF180fA141Dd4967fc00D2"
+            },
+            "swigAccount": "3wm644fHe3ekULLCPov4vkDeVCJEaQmnCfn5k2HhMS4B"
+          }
+        },
+        "options": {
+          "sponsorSettings": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false
+          }
+        },
+        "destinationChainId": 8453,
+        "tokenRequests": [
+          {
+            "tokenAddress": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+            "amount": "1000000"
+          }
+        ],
+        "recipient": {
+          "address": "0x00000000000000000000000000000000000000a0",
+          "accountType": "EOA",
+          "setupOps": []
+        },
+        "accountAccessList": {
+          "chainTokenAmounts": {
+            "792703810": {
+              "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU": "2000000"
+            }
+          }
+        }
+      },
+      "digest": "6e0f8396bba0d5a0153215c6a6a57683798046d31fd00526ae1cea9a94cf6212"
+    },
+    {
+      "id": "solana-to-evm-calls",
+      "body": {
+        "account": {
+          "evm": {
+            "type": "erc7579",
+            "address": "0x00000000000000000000000000000000000000a0",
+            "initData": {
+              "setupOps": [
+                {
+                  "to": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+                  "data": "0xfa"
+                }
+              ]
+            },
+            "signatureMode": 1
+          },
+          "svm": {
+            "type": "swig",
+            "address": "C4PvoicLfj71bcjnvSWFKo3QeDP8AXJbUzZFQPvRf3xm",
+            "authorization": {
+              "kind": "secp256k1",
+              "address": "0x5d5c99EdF529335160FF180fA141Dd4967fc00D2"
+            }
+          }
+        },
+        "destination": {
+          "vm": "evm",
+          "chainId": "eip155:8453",
+          "tokenRequests": [
+            {
+              "tokenAddress": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+              "amount": "1000000"
+            }
+          ],
+          "execution": {
+            "calls": [
+              {
+                "to": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+                "value": "0",
+                "data": "0xa9059cbb"
+              }
+            ],
+            "gasLimit": "200000"
+          }
+        },
+        "source": {
+          "selection": {
+            "chains": {
+              "only": ["solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"]
+            },
+            "tokens": {
+              "only": ["4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"]
+            },
+            "perChain": {
+              "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1": {
+                "tokens": {
+                  "only": ["4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"]
+                }
+              }
+            }
+          }
+        },
+        "options": {
+          "sponsorship": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false
+          }
+        }
+      },
+      "intentInput": {
+        "destinationExecutions": [
+          {
+            "to": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+            "value": "0",
+            "data": "0xa9059cbb"
+          }
+        ],
+        "destinationGasUnits": "200000",
+        "account": {
+          "address": "0x00000000000000000000000000000000000000a0",
+          "accountType": "ERC7579",
+          "setupOps": [
+            {
+              "to": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+              "data": "0xfa"
+            }
+          ],
+          "svm": {
+            "type": "swig",
+            "address": "C4PvoicLfj71bcjnvSWFKo3QeDP8AXJbUzZFQPvRf3xm",
+            "authorization": {
+              "kind": "secp256k1",
+              "address": "0x5d5c99EdF529335160FF180fA141Dd4967fc00D2"
+            }
+          }
+        },
+        "options": {
+          "signatureMode": 1,
+          "sponsorSettings": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false
+          }
+        },
+        "destinationChainId": 8453,
+        "tokenRequests": [
+          {
+            "tokenAddress": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+            "amount": "1000000"
+          }
+        ],
+        "accountAccessList": {
+          "chainTokens": {
+            "792703810": ["4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"]
+          }
+        }
+      },
+      "digest": "9b95c634b610bf82967ea5b1fc3ee22925ad55f369170ffd71b773508280d565"
+    },
+    {
+      "id": "swig-creation-secp256k1",
+      "body": {
+        "account": {
+          "svm": {
+            "type": "swig",
+            "address": "C4PvoicLfj71bcjnvSWFKo3QeDP8AXJbUzZFQPvRf3xm",
+            "swigAccount": "3wm644fHe3ekULLCPov4vkDeVCJEaQmnCfn5k2HhMS4B",
+            "authorization": {
+              "kind": "secp256k1",
+              "address": "0x5d5c99EdF529335160FF180fA141Dd4967fc00D2"
+            },
+            "initData": {
+              "authority": {
+                "kind": "secp256k1",
+                "publicKey": "0x04ab5d2e79cfd621b1b027ffb24e2453ed7fb571ba9a841ff0e2473466cabd168d240d1103860d4901da953cc7021d4d62f3f95691ac7cd434cbf9fc9e8b8d871d"
+              },
+              "id": "0x0707070707070707070707070707070707070707070707070707070707070707"
+            }
+          }
+        },
+        "destination": {
+          "vm": "svm",
+          "chainId": "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
+          "tokenRequests": []
+        },
+        "source": {
+          "selection": {
+            "chains": {
+              "only": ["solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"]
+            },
+            "tokens": "all"
+          }
+        },
+        "options": {
+          "sponsorship": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false
+          }
+        }
+      },
+      "intentInput": {
+        "account": {
+          "address": "C4PvoicLfj71bcjnvSWFKo3QeDP8AXJbUzZFQPvRf3xm",
+          "svm": {
+            "type": "swig",
+            "address": "C4PvoicLfj71bcjnvSWFKo3QeDP8AXJbUzZFQPvRf3xm",
+            "swigAccount": "3wm644fHe3ekULLCPov4vkDeVCJEaQmnCfn5k2HhMS4B",
+            "authorization": {
+              "kind": "secp256k1",
+              "address": "0x5d5c99EdF529335160FF180fA141Dd4967fc00D2"
+            },
+            "initData": {
+              "authority": {
+                "kind": "secp256k1",
+                "publicKey": "0x04ab5d2e79cfd621b1b027ffb24e2453ed7fb571ba9a841ff0e2473466cabd168d240d1103860d4901da953cc7021d4d62f3f95691ac7cd434cbf9fc9e8b8d871d"
+              },
+              "id": "0x0707070707070707070707070707070707070707070707070707070707070707"
+            }
+          }
+        },
+        "destinationChainId": 792703810,
+        "destinationExecutions": [],
+        "tokenRequests": [],
+        "accountAccessList": {
+          "chainIds": [792703810]
+        },
+        "options": {
+          "sponsorSettings": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false
+          }
+        }
+      },
+      "digest": "de1090bba63a1e92cad15bd892bd30f8a318ddfaa422659870b59b7e3043059e"
+    },
+    {
+      "id": "swig-creation-secp256r1",
+      "body": {
+        "account": {
+          "svm": {
+            "type": "swig",
+            "address": "C4PvoicLfj71bcjnvSWFKo3QeDP8AXJbUzZFQPvRf3xm",
+            "swigAccount": "3wm644fHe3ekULLCPov4vkDeVCJEaQmnCfn5k2HhMS4B",
+            "authorization": {
+              "kind": "secp256r1",
+              "publicKey": "0x023c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c"
+            },
+            "initData": {
+              "authority": {
+                "kind": "secp256r1",
+                "publicKey": "0x023c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c"
+              },
+              "id": "0x0707070707070707070707070707070707070707070707070707070707070707"
+            }
+          }
+        },
+        "destination": {
+          "vm": "svm",
+          "chainId": "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
+          "tokenRequests": []
+        },
+        "source": {
+          "selection": {
+            "chains": {
+              "only": ["solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"]
+            },
+            "tokens": "all"
+          }
+        },
+        "options": {
+          "sponsorship": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false
+          }
+        }
+      },
+      "intentInput": {
+        "account": {
+          "address": "C4PvoicLfj71bcjnvSWFKo3QeDP8AXJbUzZFQPvRf3xm",
+          "svm": {
+            "type": "swig",
+            "address": "C4PvoicLfj71bcjnvSWFKo3QeDP8AXJbUzZFQPvRf3xm",
+            "swigAccount": "3wm644fHe3ekULLCPov4vkDeVCJEaQmnCfn5k2HhMS4B",
+            "authorization": {
+              "kind": "secp256r1",
+              "publicKey": "0x023c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c"
+            },
+            "initData": {
+              "authority": {
+                "kind": "secp256r1",
+                "publicKey": "0x023c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c"
+              },
+              "id": "0x0707070707070707070707070707070707070707070707070707070707070707"
+            }
+          }
+        },
+        "destinationChainId": 792703810,
+        "destinationExecutions": [],
+        "tokenRequests": [],
+        "accountAccessList": {
+          "chainIds": [792703810]
+        },
+        "options": {
+          "sponsorSettings": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false
+          }
+        }
+      },
+      "digest": "f3a0082ea39cf47e90a223a77288a69abda37f4b3eb647aba13630043219f672"
+    }
+  ],
+  "refused": [
+    {
+      "id": "unknown-root-key",
+      "body": {
+        "account": {
+          "evm": {
+            "type": "erc7579",
+            "address": "0x00000000000000000000000000000000000000a0",
+            "signatureMode": 1
+          }
+        },
+        "destination": {
+          "vm": "evm",
+          "chainId": "eip155:8453",
+          "tokenRequests": [
+            {
+              "tokenAddress": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+              "amount": "1000000"
+            }
+          ],
+          "execution": {
+            "calls": [
+              {
+                "to": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+                "value": "0",
+                "data": "0xa9059cbb00000000000000000000000000000000000000000000000000000000000000b000000000000000000000000000000000000000000000000000000000000f4240"
+              }
+            ]
+          }
+        },
+        "source": {
+          "selection": {
+            "chains": {
+              "only": ["eip155:8453"]
+            },
+            "tokens": "all"
+          }
+        },
+        "options": {
+          "sponsorship": {
+            "gas": true,
+            "bridgeFees": true,
+            "swapFees": true,
+            "protocolFees": true
+          }
+        },
+        "metadata": {
+          "note": "x"
+        }
+      },
+      "reason": "unsupported",
+      "field": "metadata"
+    },
+    {
+      "id": "unknown-option",
+      "body": {
+        "account": {
+          "evm": {
+            "type": "erc7579",
+            "address": "0x00000000000000000000000000000000000000a0",
+            "signatureMode": 1
+          }
+        },
+        "destination": {
+          "vm": "evm",
+          "chainId": "eip155:8453",
+          "tokenRequests": [
+            {
+              "tokenAddress": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+              "amount": "1000000"
+            }
+          ],
+          "execution": {
+            "calls": [
+              {
+                "to": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+                "value": "0",
+                "data": "0xa9059cbb00000000000000000000000000000000000000000000000000000000000000b000000000000000000000000000000000000000000000000000000000000f4240"
+              }
+            ]
+          }
+        },
+        "source": {
+          "selection": {
+            "chains": {
+              "only": ["eip155:8453"]
+            },
+            "tokens": "all"
+          }
+        },
+        "options": {
+          "sponsorship": {
+            "gas": true,
+            "bridgeFees": true,
+            "swapFees": true,
+            "protocolFees": true
+          },
+          "dryRun": true
+        }
+      },
+      "reason": "unsupported",
+      "field": "options.dryRun"
+    },
+    {
+      "id": "selection-strategy",
+      "body": {
+        "account": {
+          "evm": {
+            "type": "erc7579",
+            "address": "0x00000000000000000000000000000000000000a0",
+            "signatureMode": 1
+          }
+        },
+        "destination": {
+          "vm": "evm",
+          "chainId": "eip155:8453",
+          "tokenRequests": [
+            {
+              "tokenAddress": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+              "amount": "2000000"
+            }
+          ]
+        },
+        "source": {
+          "selection": {
+            "chains": {
+              "only": ["eip155:1", "eip155:42161"]
+            },
+            "tokens": "all"
+          }
+        },
+        "options": {
+          "sponsorship": {
+            "gas": true,
+            "bridgeFees": true,
+            "swapFees": false,
+            "protocolFees": false
+          },
+          "selectionStrategy": "cheapest"
+        }
+      },
+      "reason": "unsupported",
+      "field": "options.selectionStrategy"
+    },
+    {
+      "id": "execution-tokens-received",
+      "body": {
+        "account": {
+          "evm": {
+            "type": "erc7579",
+            "address": "0x00000000000000000000000000000000000000a0",
+            "signatureMode": 1
+          }
+        },
+        "destination": {
+          "vm": "evm",
+          "chainId": "eip155:8453",
+          "tokenRequests": [
+            {
+              "tokenAddress": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+              "amount": "1"
+            }
+          ],
+          "execution": {
+            "calls": [
+              {
+                "to": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+                "value": "0",
+                "data": "0xa9059cbb00000000000000000000000000000000000000000000000000000000000000b00000000000000000000000000000000000000000000000000000000000000001"
+              },
+              {
+                "to": "0x00000000000000000000000000000000000000b0",
+                "value": "7",
+                "data": "0x"
+              }
+            ],
+            "gasLimit": "300000",
+            "executionTokensReceived": [
+              "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
+            ]
+          }
+        },
+        "source": {
+          "selection": {
+            "chains": {
+              "only": ["eip155:1"]
+            },
+            "tokens": "all"
+          }
+        },
+        "options": {
+          "sponsorship": {
+            "gas": true,
+            "bridgeFees": true,
+            "swapFees": true,
+            "protocolFees": true
+          }
+        }
+      },
+      "reason": "unsupported",
+      "field": "destination.execution.executionTokensReceived"
+    },
+    {
+      "id": "excluded-chains",
+      "body": {
+        "account": {
+          "evm": {
+            "type": "erc7579",
+            "address": "0x00000000000000000000000000000000000000a0",
+            "signatureMode": 1
+          }
+        },
+        "destination": {
+          "vm": "evm",
+          "chainId": "eip155:8453",
+          "tokenRequests": [
+            {
+              "tokenAddress": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+              "amount": "2000000"
+            }
+          ]
+        },
+        "source": {
+          "selection": {
+            "chains": {
+              "except": ["eip155:10"]
+            },
+            "tokens": "all"
+          }
+        },
+        "options": {
+          "sponsorship": {
+            "gas": true,
+            "bridgeFees": true,
+            "swapFees": false,
+            "protocolFees": false
+          }
+        }
+      },
+      "reason": "unsupported",
+      "field": "source.selection.chains.except"
+    },
+    {
+      "id": "excluded-tokens",
+      "body": {
+        "account": {
+          "evm": {
+            "type": "erc7579",
+            "address": "0x00000000000000000000000000000000000000a0",
+            "signatureMode": 1
+          }
+        },
+        "destination": {
+          "vm": "evm",
+          "chainId": "eip155:8453",
+          "tokenRequests": [
+            {
+              "tokenAddress": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+              "amount": "2000000"
+            }
+          ]
+        },
+        "source": {
+          "selection": {
+            "chains": {
+              "only": ["eip155:1", "eip155:42161"]
+            },
+            "tokens": {
+              "except": [
+                "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+                "0xaf88d065e77c8cc2239327c5edb3a432268e5831"
+              ]
+            }
+          }
+        },
+        "options": {
+          "sponsorship": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false,
+            "protocolFees": false
+          }
+        }
+      },
+      "reason": "unsupported",
+      "field": "source.selection.tokens.except"
+    },
+    {
+      "id": "limit-without-per-chain",
+      "body": {
+        "account": {
+          "evm": {
+            "type": "erc7579",
+            "address": "0x00000000000000000000000000000000000000a0",
+            "signatureMode": 1
+          }
+        },
+        "destination": {
+          "vm": "evm",
+          "chainId": "eip155:8453",
+          "tokenRequests": [
+            {
+              "tokenAddress": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+              "amount": "2000000"
+            }
+          ]
+        },
+        "source": {
+          "selection": {
+            "chains": {
+              "only": ["eip155:1", "eip155:42161"]
+            },
+            "tokens": "all"
+          },
+          "limits": [
+            {
+              "chainId": "eip155:1",
+              "tokenAddress": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+              "maxAmount": "1"
+            }
+          ]
+        },
+        "options": {
+          "sponsorship": {
+            "gas": true,
+            "bridgeFees": true,
+            "swapFees": false,
+            "protocolFees": false
+          }
+        }
+      },
+      "reason": "unsupported",
+      "field": "source.limits"
+    },
+    {
+      "id": "tokens-wider-than-per-chain",
+      "body": {
+        "account": {
+          "evm": {
+            "type": "erc7579",
+            "address": "0x00000000000000000000000000000000000000a0",
+            "signatureMode": 1
+          }
+        },
+        "destination": {
+          "vm": "evm",
+          "chainId": "eip155:8453",
+          "tokenRequests": [
+            {
+              "tokenAddress": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+              "amount": "2000000"
+            }
+          ]
+        },
+        "source": {
+          "selection": {
+            "chains": {
+              "only": ["eip155:1", "eip155:42161"]
+            },
+            "tokens": {
+              "only": [
+                "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+                "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+                "0xaf88d065e77c8cc2239327c5edb3a432268e5831",
+                "0x0000000000000000000000000000000000000001"
+              ]
+            },
+            "perChain": {
+              "eip155:1": {
+                "tokens": {
+                  "only": [
+                    "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+                    "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+                  ]
+                }
+              },
+              "eip155:42161": {
+                "tokens": {
+                  "only": ["0xaf88d065e77c8cc2239327c5edb3a432268e5831"]
+                }
+              }
+            }
+          }
+        },
+        "options": {
+          "sponsorship": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false,
+            "protocolFees": false
+          }
+        }
+      },
+      "reason": "unsupported",
+      "field": "source.selection.tokens"
+    },
+    {
+      "id": "per-chain-delegations",
+      "body": {
+        "account": {
+          "evm": {
+            "type": "erc7579",
+            "address": "0xa64C3a7dB2a92f47Bc3c0729563D8B1F351A62A4",
+            "initData": {
+              "setupOps": [
+                {
+                  "to": "0xa64C3a7dB2a92f47Bc3c0729563D8B1F351A62A4",
+                  "data": "0x4b6a1419000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000003e1222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000006efb61d8c9546ff1b500de3f244ea7000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000002c441bede0300000000000000000000000000000000000000000000000000000000000000c0000000000000000000000000000000000000000000000000000000000000016000000000000000000000000000000000000000000000000000000000000001800000000000000000000000000000000000000000000000000000000000000220000000000000000000000000000000000000000000000000000000000000028000000000000000000000000000000000000000000000000000000000000002a000000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000010000000000000000000000005d5c99edf529335160ff180fa141dd4967fc00d200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000005ad9ce1f5035fd62ca96cef16adaaf00000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+                }
+              ]
+            },
+            "signatureMode": 1,
+            "delegations": {
+              "chains": {
+                "eip155:8453": {
+                  "contract": "0x000000000d41c0bf0063dba53343389cdb2c9c78"
+                }
+              }
+            }
+          }
+        },
+        "destination": {
+          "vm": "evm",
+          "chainId": "eip155:8453",
+          "tokenRequests": [],
+          "execution": {
+            "calls": [
+              {
+                "to": "0x00000000000000000000000000000000000000b0",
+                "value": "0",
+                "data": "0x"
+              }
+            ]
+          }
+        },
+        "source": {
+          "selection": {
+            "chains": {
+              "only": ["eip155:8453"]
+            },
+            "tokens": "all"
+          }
+        },
+        "options": {
+          "sponsorship": {
+            "gas": true,
+            "bridgeFees": true,
+            "swapFees": true,
+            "protocolFees": true
+          }
+        }
+      },
+      "reason": "unsupported",
+      "field": "account.evm.delegations.chains"
+    },
+    {
+      "id": "chain-agnostic-mock-signature",
+      "body": {
+        "account": {
+          "evm": {
+            "type": "erc7579",
+            "address": "0x00000000000000000000000000000000000000a0",
+            "signatureMode": 4,
+            "simulation": {
+              "mockSignature": "0x5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e"
+            }
+          }
+        },
+        "destination": {
+          "vm": "evm",
+          "chainId": "eip155:8453",
+          "tokenRequests": [
+            {
+              "tokenAddress": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+              "amount": "1000000"
+            }
+          ],
+          "execution": {
+            "calls": [
+              {
+                "to": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+                "value": "0",
+                "data": "0xa9059cbb"
+              }
+            ]
+          }
+        },
+        "source": {
+          "selection": {
+            "chains": {
+              "only": ["eip155:1"]
+            },
+            "tokens": "all"
+          }
+        },
+        "options": {
+          "sponsorship": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false
+          }
+        }
+      },
+      "reason": "unsupported",
+      "field": "account.evm.simulation.mockSignature"
+    },
+    {
+      "id": "two-hypercore-actions",
+      "body": {
+        "account": {
+          "evm": {
+            "type": "erc7579",
+            "address": "0x00000000000000000000000000000000000000a0",
+            "signatureMode": 1
+          }
+        },
+        "destination": {
+          "vm": "hypercore",
+          "chainId": "hypercore:perp",
+          "tokenRequests": [
+            {
+              "tokenAddress": "0x2000000000000000000000000000000000000000",
+              "amount": "10000000"
+            }
+          ],
+          "execution": {
+            "actions": [
+              {
+                "type": "order",
+                "orders": [
+                  {
+                    "a": 0,
+                    "b": true,
+                    "p": "65000",
+                    "s": "0.001",
+                    "r": false,
+                    "t": {
+                      "limit": {
+                        "tif": "Ioc"
+                      }
+                    }
+                  }
+                ],
+                "grouping": "na"
+              },
+              {
+                "type": "order",
+                "orders": [
+                  {
+                    "a": 0,
+                    "b": true,
+                    "p": "65000",
+                    "s": "0.001",
+                    "r": false,
+                    "t": {
+                      "limit": {
+                        "tif": "Ioc"
+                      }
+                    }
+                  }
+                ],
+                "grouping": "na"
+              }
+            ]
+          }
+        },
+        "source": {
+          "selection": {
+            "chains": {
+              "only": ["eip155:42161"]
+            },
+            "tokens": "all"
+          }
+        },
+        "options": {
+          "sponsorship": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false,
+            "protocolFees": false
+          }
+        }
+      },
+      "reason": "unsupported",
+      "field": "destination.execution.actions"
+    },
+    {
+      "id": "unknown-caip2",
+      "body": {
+        "account": {
+          "evm": {
+            "type": "erc7579",
+            "address": "0x00000000000000000000000000000000000000a0",
+            "signatureMode": 1
+          }
+        },
+        "destination": {
+          "vm": "tvm",
+          "chainId": "tron:shasta",
+          "recipient": {
+            "address": "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf"
+          },
+          "tokenRequests": [
+            {
+              "tokenAddress": "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t",
+              "amount": "1000000"
+            }
+          ]
+        },
+        "source": {
+          "selection": {
+            "chains": {
+              "only": ["eip155:8453"]
+            },
+            "tokens": "all"
+          }
+        },
+        "options": {
+          "sponsorship": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false,
+            "protocolFees": false
+          }
+        }
+      },
+      "reason": "unsupported",
+      "field": "destination.chainId"
+    }
+  ]
+}

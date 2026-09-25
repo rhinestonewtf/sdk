@@ -414,6 +414,33 @@ record does not hold it — Solana-origin intents recorded before their
 instructions were persisted have no source `executions`, and that absence is not
 reconstructed from a fresh quote.
 
+## Sponsorship approval is requested at quote time
+
+In JWT mode, `getIntentExtensionToken` runs while a sponsored transaction is
+prepared, before it is quoted, and never at submission. Submitting a prepared
+transaction, including a restored one, never asks again. A denied or failing
+callback rejects `prepareTransaction` (or `deploy('solana', …)`) with nothing
+quoted and no unsponsored fallback. Calling prepare again is a new approval.
+
+The orchestrator binds the grant by recomputing the approval input from the
+quote request ([sponsorship approval](sponsorship-approval.md)).
+
+- **EVM.** The approval input is exactly what 2.16.x produced for the same
+  transaction, so existing policies keep working. A request that the Caucasus
+  body cannot express in that input fails with
+  `UnsupportedSponsorshipApprovalError` before the callback runs. One example
+  is a `sourceAssets` list that names the same token on one chain both with and
+  without an `amount`. Use project-wide sponsorship for such a request.
+- **Solana.** The input now names the paying Swig as `account.svm`: its wallet,
+  its authority and, for plain operations, its state account. A same-chain
+  transfer pins its mint in `accountAccessList`. An SVM-only input has no
+  `options.signatureMode`. A Swig creation also carries the installed root and
+  the Swig id in `account.svm.initData`. Review Solana sponsorship policies
+  against this shape.
+- **Restoring Solana artifacts.** A Solana transaction prepared by an earlier
+  snapshot fails restore with `InvalidSolanaTransactionArtifactError`. Prepare
+  it again.
+
 ## Persisted prepared transactions
 
 `PreparedTransactionData` gains a `request` field carrying the versioned wire
@@ -433,6 +460,7 @@ deliberately.
 | `IncompleteIntentProofsError` | a proof vector is missing slots, which it names |
 | `MismatchedIntentProofError` | a contribution belongs to another intent, another request set, another slot, or duplicates one already filled |
 | `InvalidPreparedTransactionError` | a prepared transaction was built for an earlier wire version |
+| `UnsupportedSponsorshipApprovalError` | intent-scoped sponsorship cannot bind the quote request exactly. Raised before `getIntentExtensionToken` runs. |
 
 Existing error envelopes, codes, detail paths and trace ids are preserved,
 including the specialized missing-Swig refusal — which now carries its chain as

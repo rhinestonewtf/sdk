@@ -904,6 +904,29 @@ interface Account {
   delegations?: Delegations
   /** Per-chain SSX mock signatures keyed by decimal chainId string. */
   mockSignatures?: Record<`${number}`, Hex>
+  /**
+   * The Swig that pays for a Solana-origin intent or that a Swig creation
+   * installs, exactly as the quote request names it. Present only on Solana
+   * inputs, so a sponsorship policy can bind the paying wallet and its key.
+   */
+  svm?: {
+    type: 'swig'
+    /** The asset-holding Swig wallet, base58. */
+    address: string
+    /**
+     * The Swig state account, base58. Absent when the request pairs the Swig
+     * with the account's EVM entry, which derives it.
+     */
+    swigAccount?: string
+    /** The Swig role that authorizes the spend. */
+    authorization: SwigAuthority
+    /** Present only on a Swig creation: the root role it installs and its id. */
+    initData?: {
+      authority: { kind: 'secp256k1' | 'secp256r1'; publicKey: Hex }
+      /** The 32-byte Swig id, lowercase hex. */
+      id?: Hex
+    }
+  }
 }
 
 type AccountWithContext = Omit<Account, 'delegations' | 'mockSignatures'> & {

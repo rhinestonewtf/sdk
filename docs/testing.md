@@ -89,6 +89,16 @@ To recalibrate against another ref, add a worktree of it, symlink
 `test/consts.ts` and `scripts/vectors/generate.ts` into it, and run the
 generator there with `SDK_VECTORS_OUT` pointing at this checkout's baseline.
 
+## Sponsorship approval vectors
+
+`test/vectors/sponsorship-approval/` pins the contract in
+[sponsorship-approval.md](sponsorship-approval.md). Every case is rebuilt from
+the SDK on each run: EVM cases through `prepareTransaction`, the others through
+the request builders. It must project to its recorded approval input and
+digest, and every refused body must be refused. The EVM cases are calibrated
+against the release recorded in `provenance`. To regenerate after an intended
+change, run `bun run scripts/vectors/sponsorship-approval.ts`.
+
 ## Derivation invariants
 
 `test/vectors/accounts/invariants.test.ts` guards the *shape* of the same

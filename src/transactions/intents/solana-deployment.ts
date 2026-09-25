@@ -99,38 +99,36 @@ export function buildSolanaDeploymentRequest(input: SolanaDeploymentInput): {
     refuse('the Swig id does not derive the configured Swig and wallet')
   }
   assertInitAuthority(input)
+  // The Solana-only shape: no `evm` entry, so the id is sent explicitly, even
+  // for the Swig the managed EVM account derives.
+  const svm = {
+    type: 'swig' as const,
+    address: input.walletAddress,
+    swigAccount: input.swigAddress,
+    authorization: input.authorization,
+    initData: {
+      authority: input.initAuthority,
+      id: input.swigId.toLowerCase() as Hex,
+    },
+  }
+  // Gas only: Solana routes refuse the other sponsorship categories. They are
+  // spelled out so the request says exactly what the approval input does.
+  const sponsorship = { gas: true, bridgeFees: false, swapFees: false }
   return {
     request: {
-      // The Solana-only shape: no `evm` entry, so the id is sent explicitly,
-      // even for the Swig the managed EVM account derives.
-      account: {
-        svm: {
-          type: 'swig',
-          address: input.walletAddress,
-          swigAccount: input.swigAddress,
-          authorization: input.authorization,
-          initData: {
-            authority: input.initAuthority,
-            id: input.swigId.toLowerCase() as Hex,
-          },
-        },
-      },
+      account: { svm },
       // No recipient, execution or token: that is what makes this a creation.
       destination: { vm: 'svm', chainId: caip2, tokenRequests: [] },
       source: { selection: { chains: { only: [caip2] }, tokens: 'all' } },
-      // Gas only: Solana routes refuse the other sponsorship categories.
-      options: { sponsorship: { gas: true } },
+      options: { sponsorship },
     },
     normalized: {
-      account: { address: input.walletAddress },
+      account: { address: input.walletAddress, svm },
       destinationChainId: chainId,
       destinationExecutions: [],
       tokenRequests: [],
       accountAccessList: { chainIds: [chainId] },
-      options: {
-        signatureMode: 1,
-        sponsorSettings: { gas: true, bridgeFees: false, swapFees: false },
-      },
+      options: { sponsorSettings: sponsorship },
     },
   }
 }
@@ -206,7 +204,10 @@ export async function prepareSolanaDeployment(
   input: SolanaDeploymentInput,
 ): Promise<PreparedSolanaDeployment> {
   const { request, normalized } = buildSolanaDeploymentRequest(input)
-  const response = await context.quoteClient.createQuote(request)
+  const response = await context.quoteClient.createQuote(request, {
+    intentInput: projectCompatibleIntentInput(normalized),
+    sponsored: true,
+  })
   if (response.routes.length === 0) {
     refuse('the orchestrator returned no quote')
   }
@@ -223,13 +224,10 @@ export async function submitSolanaDeployment(
   prepared: PreparedSolanaDeployment,
 ): Promise<SubmittedIntent> {
   assertSolanaNotExpired(context.now(), prepared.quote)
-  const response = await context.submissionClient.submitIntent(
-    { intentId: prepared.quote.intentId, proofs: [] },
-    {
-      intentInput: projectCompatibleIntentInput(prepared.normalized),
-      sponsored: true,
-    },
-  )
+  const response = await context.submissionClient.submitIntent({
+    intentId: prepared.quote.intentId,
+    proofs: [],
+  })
   const chainId = solanaChainId(prepared.input.chain)
   return {
     type: 'intent',

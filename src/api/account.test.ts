@@ -37,11 +37,14 @@ import type {
   SigningRequest,
   SwigAuthority,
 } from '../clients/orchestrator/public'
+import { serializeBigInts } from '../clients/orchestrator/serialization'
+import { projectSponsorshipApproval } from '../clients/orchestrator/sponsorship-approval'
 import type {
   OrchestratorDeploymentQuote,
   OrchestratorExecutionQuote,
   OrchestratorIntentRequest,
   OrchestratorQuote,
+  OrchestratorQuoteContext,
 } from '../clients/orchestrator/types'
 import type {
   SolanaManagedAccountConfig,
@@ -2546,7 +2549,15 @@ describe('standalone managed Solana account facade', () => {
         },
       }),
     })
-    expect(prepared.intentInput.account).toEqual({ address: location.wallet })
+    expect(prepared.intentInput.account).toEqual({
+      address: location.wallet,
+      svm: {
+        type: 'swig',
+        address: location.wallet,
+        swigAccount: location.swig,
+        authorization: { kind: 'secp256k1', address: owner.address },
+      },
+    })
 
     expect(facade.getTransactionMessages(prepared)).toEqual(
       prepared.quotes.best.signingRequests,
@@ -4100,10 +4111,15 @@ describe('managed Solana Swig creation', () => {
   }
 
   function ports(route: OrchestratorQuote) {
-    const createQuote = vi.fn(async (_request: OrchestratorIntentRequest) => ({
-      traceId: 'quote-trace',
-      routes: [route],
-    }))
+    const createQuote = vi.fn(
+      async (
+        _request: OrchestratorIntentRequest,
+        _context?: OrchestratorQuoteContext,
+      ) => ({
+        traceId: 'quote-trace',
+        routes: [route],
+      }),
+    )
     const submitIntent = vi.fn(async (intent: { intentId: string }) => ({
       traceId: 'submit-trace',
       intentId: intent.intentId,
@@ -4199,11 +4215,16 @@ describe('managed Solana Swig creation', () => {
         },
       },
     })
-    expect(request.options).toEqual({ sponsorship: { gas: true } })
-    expect(workflows.submitIntent).toHaveBeenCalledWith(
-      { intentId: 'deployment-intent', proofs: [] },
-      expect.objectContaining({ sponsored: true }),
-    )
+    expect(request.options).toEqual({
+      sponsorship: { gas: true, bridgeFees: false, swapFees: false },
+    })
+    expect(workflows.createQuote.mock.calls[0]![1]).toMatchObject({
+      sponsored: true,
+    })
+    expect(workflows.submitIntent).toHaveBeenCalledWith({
+      intentId: 'deployment-intent',
+      proofs: [],
+    })
     expect(waitForIntentStatus).toHaveBeenCalledWith('deployment-intent')
   })
 
@@ -4559,5 +4580,295 @@ describe('managed Solana Swig creation', () => {
     ).rejects.toBeInstanceOf(error)
     expect(workflows.createQuote).not.toHaveBeenCalled()
     expect(workflows.deploy).not.toHaveBeenCalled()
+  })
+})
+
+describe('quote-time sponsorship approval', () => {
+  const mint = solanaAddress('4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU')
+  const recipient = solanaAddress('11111111111111111111111111111112')
+  const message = 'cd'.repeat(32)
+  const independentId = `0x${'07'.repeat(32)}` as const
+  const swig = locateSwigById(hexToBytes(independentId))
+  const solana = {
+    owner: { type: 'ecdsa' as const, account: owner },
+    swig: swig.swig,
+  }
+  const leg = {
+    vm: 'svm' as const,
+    chainId: solanaDevnet.caip2,
+    account: {
+      wallet: swig.wallet,
+      swigAccount: swig.swig,
+      authority: { kind: 'secp256k1' as const, address: owner.address },
+    },
+  }
+
+  function spendRoute() {
+    const cost = costEntry({
+      chainId: solanaDevnet.caip2,
+      tokenAddress: mint,
+      amount: 100n,
+    })
+    return {
+      ...caucasusQuote({
+        intentId: 'spend',
+        expiresAt: 4_000_000_000,
+        signingRequests: [
+          personalSignRequest({
+            chainId: solanaDevnet.caip2,
+            wallet: swig.wallet,
+            swigAccount: swig.swig,
+            authority: owner.address,
+            message,
+          }),
+        ],
+        cost: { ...emptyCost(), input: [cost], output: [cost] },
+      }),
+      plan: { source: [leg], destination: leg, deployments: [] },
+    }
+  }
+
+  function deploymentRoute() {
+    return {
+      intentId: 'deployment',
+      purpose: 'deployment',
+      expiresAt: 4_000_000_000,
+      estimatedFillTime: { seconds: 2 },
+      settlementLayer: 'SAME_CHAIN',
+      plan: { source: [], destination: leg, deployments: [leg] },
+      cost: emptyCost(),
+      deploymentCosts: [],
+      requirements: [],
+      signingRequests: [],
+    }
+  }
+
+  /** An orchestrator that records what it is asked, in order. */
+  function orchestrator(route: unknown) {
+    const events: string[] = []
+    const quotes: { headers: Headers; body: unknown }[] = []
+    const submissions: Headers[] = []
+    const fetch = vi.fn(
+      async (input: string | URL | Request, init?: RequestInit) => {
+        const url = input instanceof Request ? input.url : input.toString()
+        const headers = new Headers(init?.headers)
+        if (url.endsWith('/quotes')) {
+          events.push('quote')
+          quotes.push({ headers, body: JSON.parse(String(init?.body)) })
+          return Response.json({
+            status: 'quoted',
+            routes: [serializeBigInts(route)],
+          })
+        }
+        if (url.endsWith('/intents')) {
+          events.push('submit')
+          submissions.push(headers)
+          const { intentId } = JSON.parse(String(init?.body))
+          return Response.json({ intentId }, { status: 201 })
+        }
+        const status = /\/intents\/([^/?]+)/u.exec(url)
+        if (status) {
+          return Response.json({
+            intentId: status[1],
+            purpose: 'deployment',
+            status: 'COMPLETED',
+            operations: [],
+          })
+        }
+        throw new Error(`Unexpected request: ${url}`)
+      },
+    )
+    return { fetch, events, quotes, submissions }
+  }
+
+  function sdk(getIntentExtensionToken: (input: unknown) => Promise<string>) {
+    return new RhinestoneSDK({
+      auth: {
+        mode: 'experimental_jwt',
+        accessToken: 'access',
+        getIntentExtensionToken,
+      },
+      endpointUrl: DEV_ORCHESTRATOR_URL,
+      useDevContracts: true,
+    })
+  }
+
+  function transfer() {
+    return {
+      chain: solanaDevnet,
+      tokenRequests: [{ address: mint, amount: 100n }] as [
+        { address: typeof mint; amount: bigint },
+      ],
+      recipient,
+      sponsored: { gas: true, bridging: false, swaps: false },
+    }
+  }
+
+  test('asks for approval once, before quoting, and submits without asking again', async () => {
+    const server = orchestrator(spendRoute())
+    vi.stubGlobal('fetch', server.fetch)
+    try {
+      const approvals: unknown[] = []
+      const getIntentExtensionToken = vi.fn(async (input: unknown) => {
+        server.events.push('approve')
+        approvals.push(input)
+        return 'extension'
+      })
+      const account = await sdk(getIntentExtensionToken).createAccount({
+        solana,
+      })
+
+      const prepared = await account.prepareTransaction(transfer())
+
+      expect(server.events).toEqual(['approve', 'quote'])
+      expect(approvals).toEqual([prepared.intentInput])
+      expect(server.quotes[0]?.headers.get('X-Intent-Extension')).toBe(
+        'Bearer extension',
+      )
+      expect(projectSponsorshipApproval(server.quotes[0]?.body)).toEqual(
+        JSON.parse(JSON.stringify(prepared.intentInput)),
+      )
+
+      await account.submitTransaction(await account.signTransaction(prepared))
+
+      expect(server.events).toEqual(['approve', 'quote', 'submit'])
+      expect(getIntentExtensionToken).toHaveBeenCalledOnce()
+      expect(server.submissions[0]?.has('X-Intent-Extension')).toBe(false)
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  test('submits a restored prepared transaction without asking again', async () => {
+    const server = orchestrator(spendRoute())
+    vi.stubGlobal('fetch', server.fetch)
+    try {
+      const getIntentExtensionToken = vi.fn(async () => 'extension')
+      const prepared = structuredClone(
+        await (
+          await sdk(getIntentExtensionToken).createAccount({ solana })
+        ).prepareTransaction(transfer()),
+      )
+      const restored = await sdk(getIntentExtensionToken).createAccount({
+        solana,
+      })
+
+      await restored.submitTransaction(await restored.signTransaction(prepared))
+
+      expect(getIntentExtensionToken).toHaveBeenCalledOnce()
+      expect(server.events).toEqual(['quote', 'submit'])
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  test('stops at a denied approval without quoting', async () => {
+    const server = orchestrator(spendRoute())
+    vi.stubGlobal('fetch', server.fetch)
+    try {
+      const denied = new Error('denied')
+      const account = await sdk(async () => {
+        throw denied
+      }).createAccount({ solana })
+
+      await expect(account.prepareTransaction(transfer())).rejects.toBe(denied)
+      expect(server.fetch).not.toHaveBeenCalled()
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  test('asks an EVM account for approval before quoting, and stops at a denial', async () => {
+    const requests: string[] = []
+    let quoted: { headers: Headers; body: unknown } | undefined
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const url = input instanceof Request ? input.url : input.toString()
+        const payload = init?.body ? JSON.parse(String(init.body)) : undefined
+        if (payload?.method === 'eth_getCode') {
+          return Response.json({ jsonrpc: '2.0', id: payload.id, result: '0x' })
+        }
+        requests.push(url)
+        quoted = { headers: new Headers(init?.headers), body: payload }
+        return Response.json(
+          { error: { code: 'INTERNAL_ERROR', message: 'stop' } },
+          { status: 500 },
+        )
+      }),
+    )
+    try {
+      const approvals: unknown[] = []
+      const evm = { owners: { type: 'ecdsa' as const, accounts: [owner] } }
+      const transaction = {
+        chain: mainnet,
+        calls: [{ to: recipientAddress, data: '0x' as const }],
+        sponsored: true,
+      }
+      const account = await sdk(async (input) => {
+        approvals.push(input)
+        requests.push('approve')
+        return 'extension'
+      }).createAccount({ evm })
+      await account.prepareTransaction(transaction).catch(() => {})
+
+      expect(requests).toEqual(['approve', `${DEV_ORCHESTRATOR_URL}/quotes`])
+      expect(quoted?.headers.get('X-Intent-Extension')).toBe('Bearer extension')
+      expect(projectSponsorshipApproval(quoted?.body)).toEqual(
+        JSON.parse(JSON.stringify(approvals[0])),
+      )
+
+      requests.length = 0
+      const denied = new Error('denied')
+      const refusing = await sdk(async () => {
+        throw denied
+      }).createAccount({ evm })
+      await expect(refusing.prepareTransaction(transaction)).rejects.toBe(
+        denied,
+      )
+      expect(requests).toEqual([])
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  test('asks for approval when a Swig creation is quoted', async () => {
+    const server = orchestrator(deploymentRoute())
+    vi.stubGlobal('fetch', server.fetch)
+    try {
+      const approvals: unknown[] = []
+      const account = await sdk(async (input) => {
+        server.events.push('approve')
+        approvals.push(input)
+        return 'extension'
+      }).createAccount({ solana })
+
+      await expect(
+        account.deploy('solana', solanaDevnet, { swigId: independentId }),
+      ).resolves.toBe(true)
+
+      expect(server.events).toEqual(['approve', 'quote', 'submit'])
+      expect(approvals[0]).toMatchObject({
+        account: {
+          address: swig.wallet,
+          svm: {
+            swigAccount: swig.swig,
+            initData: {
+              authority: { kind: 'secp256k1', publicKey: owner.publicKey },
+              id: independentId,
+            },
+          },
+        },
+        options: {
+          sponsorSettings: { gas: true, bridgeFees: false, swapFees: false },
+        },
+      })
+      expect(projectSponsorshipApproval(server.quotes[0]?.body)).toEqual(
+        approvals[0],
+      )
+      expect(server.submissions[0]?.has('X-Intent-Extension')).toBe(false)
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })
