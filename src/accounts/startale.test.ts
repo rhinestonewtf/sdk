@@ -17,10 +17,11 @@ const MOCK_MODULE_ADDRESS = '0x28de6501fa86f2e6cd0b33c3aabdaeb4a1b93f3f'
 
 describe('Accounts: Startale', () => {
   describe('Deploy Args', () => {
-    test('ECDSA owner (default/ownable)', () => {
+    test('ECDSA owner (ownable, 1.0.0)', () => {
       const result = getDeployArgs({
         account: {
           type: 'startale',
+          version: '1.0.0',
         },
         owners: {
           type: 'ecdsa',
@@ -51,10 +52,11 @@ describe('Accounts: Startale', () => {
       )
     })
 
-    test('ECDSA owner with K1 module override', () => {
+    test('ECDSA owner with K1 module override (1.0.0)', () => {
       const result = getDeployArgs({
         account: {
           type: 'startale',
+          version: '1.0.0',
         },
         owners: {
           type: 'ecdsa',
@@ -145,10 +147,11 @@ describe('Accounts: Startale', () => {
   })
 
   describe('Get Address', () => {
-    test('ECDSA owner (default/ownable)', () => {
+    test('ECDSA owner (ownable, 1.0.0)', () => {
       const address = getAddress({
         account: {
           type: 'startale',
+          version: '1.0.0',
         },
         owners: {
           type: 'ecdsa',
@@ -158,10 +161,11 @@ describe('Accounts: Startale', () => {
       expect(address).toEqual('0x8cdf27ccdec0ae54029a67b2edb5391e438aa023')
     })
 
-    test('ECDSA owner with K1 module override', () => {
+    test('ECDSA owner with K1 module override (1.0.0)', () => {
       const address = getAddress({
         account: {
           type: 'startale',
+          version: '1.0.0',
         },
         owners: {
           type: 'ecdsa',
@@ -217,8 +221,12 @@ describe('Accounts: Startale', () => {
     })
 
     // Expected addresses match the on-chain 1.0.1 factory's computeAccountAddress.
-    test('ECDSA owner (1.0.1)', () => {
+    test('ECDSA owner (1.0.1, default)', () => {
       const previous = getDeployArgs({
+        account: { type: 'startale', version: '1.0.0' },
+        owners: { type: 'ecdsa', accounts: [accountA] },
+      })
+      const byDefault = getDeployArgs({
         account: { type: 'startale' },
         owners: { type: 'ecdsa', accounts: [accountA] },
       })
@@ -233,6 +241,7 @@ describe('Accounts: Startale', () => {
       expect(deployArgs!.implementation).toEqual(
         '0x000006b2874cf8a9bbe24fa1c3a32225ae826951',
       )
+      expect(byDefault).toEqual(deployArgs)
       // Only the implementation + factory change; the bootstrap calldata doesn't.
       expect(deployArgs!.factoryData).toEqual(previous!.factoryData)
 
@@ -283,10 +292,34 @@ describe('Accounts: Startale', () => {
       expect(getAddress(fromInitData)).toEqual(direct)
       expect(getEip712Domain(fromInitData, base).version).toEqual('1.0.1')
     })
+
+    test('initData with 1.0.0 factory keeps 1.0.0 without a version', () => {
+      const config = {
+        account: { type: 'startale', version: '1.0.0' },
+        owners: { type: 'ecdsa', accounts: [accountA] },
+      } as const
+      const direct = getAddress(config)
+      const { factory, factoryData } = getDeployArgs(config)!
+
+      // A persisted 1.0.0 account restores against 1.0.0 even though the
+      // default is now 1.0.1.
+      const fromInitData = {
+        account: { type: 'startale' },
+        owners: { type: 'ecdsa', accounts: [accountA] },
+        initData: { address: direct, factory, factoryData },
+      } as const
+      expect(getDeployArgs(fromInitData)!.implementation).toEqual(
+        '0x000000b8f5f723a680d3d7ee624fe0bc84a6e05a',
+      )
+      expect(getAddress(fromInitData)).toEqual(
+        '0x8cdf27ccdec0ae54029a67b2edb5391e438aa023',
+      )
+      expect(getEip712Domain(fromInitData, base).version).toEqual('1.0.0')
+    })
   })
 
   describe('Get EIP-712 Domain', () => {
-    test('Defaults to 1.0.0', () => {
+    test('Defaults to 1.0.1', () => {
       const domain = getEip712Domain(
         {
           account: { type: 'startale' },
@@ -296,39 +329,41 @@ describe('Accounts: Startale', () => {
       )
       expect(domain).toEqual({
         name: 'Startale',
-        version: '1.0.0',
+        version: '1.0.1',
         chainId: base.id,
-        verifyingContract: '0x8cdf27ccdec0ae54029a67b2edb5391e438aa023',
+        verifyingContract: '0x63ade81e8e3aa4aed3094c4bf8a42bdfb60e4799',
         salt: '0x0000000000000000000000000000000000000000000000000000000000000000',
       })
     })
 
-    test('1.0.1', () => {
+    test('1.0.0', () => {
       const domain = getEip712Domain(
         {
-          account: { type: 'startale', version: '1.0.1' },
+          account: { type: 'startale', version: '1.0.0' },
           owners: { type: 'ecdsa', accounts: [accountA] },
         },
         base,
       )
-      expect(domain.version).toEqual('1.0.1')
+      expect(domain.version).toEqual('1.0.0')
       expect(domain.verifyingContract).toEqual(
-        '0x63ade81e8e3aa4aed3094c4bf8a42bdfb60e4799',
+        '0x8cdf27ccdec0ae54029a67b2edb5391e438aa023',
       )
     })
 
     test('Address-only initData uses the configured version', () => {
       const address = '0x229ca553b9863b0c8f2f03d4287cb8c73e2bede7'
-      const domain = getEip712Domain(
-        {
-          account: { type: 'startale', version: '1.0.1' },
-          owners: { type: 'ecdsa', accounts: [accountA] },
-          initData: { address },
-        },
-        base,
-      )
-      expect(domain.version).toEqual('1.0.1')
-      expect(domain.verifyingContract).toEqual(address)
+      const domain = (version?: '1.0.0' | '1.0.1') =>
+        getEip712Domain(
+          {
+            account: { type: 'startale', version },
+            owners: { type: 'ecdsa', accounts: [accountA] },
+            initData: { address },
+          },
+          base,
+        )
+      expect(domain().version).toEqual('1.0.1')
+      expect(domain('1.0.0').version).toEqual('1.0.0')
+      expect(domain('1.0.0').verifyingContract).toEqual(address)
     })
   })
 
