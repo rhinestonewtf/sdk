@@ -18,7 +18,10 @@ import { resolveStandaloneAccountConfig } from '../../config/resolve'
 import type { ResolvedModule } from '../../modules/types'
 import type { ResolvedValidatorDefinition } from '../../modules/validators/types'
 import { createAccountConstruction } from '../construction'
-import { ModuleInstallationNotSupportedError } from '../error'
+import {
+  AccountConfigurationNotSupportedError,
+  ModuleInstallationNotSupportedError,
+} from '../error'
 import { wrapKernelMessageHash } from '../kernel-signing'
 import type {
   AccountConstruction,
@@ -437,11 +440,48 @@ describe('account adapter contract', () => {
     ).toBe(accountB.address)
     expect(startaleEip712Domain(accountA.address, 1)).toEqual({
       name: 'Startale',
-      version: '1.0.0',
+      version: '1.0.1',
       chainId: 1,
       verifyingContract: accountA.address,
       salt: zeroHash,
     })
+  })
+
+  test('Startale deploys 1.0.1 and rejects 1.0.0 factory material', () => {
+    const input = construction(inputs.startale)
+    const adapter = createStartaleAdapter(input)
+    const plan = adapter.getDeploymentPlan(input)
+    expect(plan.factory).toBe('0x00000be75c267efe9ddd7044d1f236959af4c15f')
+    // Matches the 1.0.1 factory's on-chain computeAccountAddress.
+    expect(plan.address).toBe('0x63ade81e8e3aa4aed3094c4bf8a42bdfb60e4799')
+
+    const reconstructed = {
+      ...input,
+      initData: {
+        address: plan.address,
+        factory: plan.factory as `0x${string}`,
+        factoryData: plan.factoryData as `0x${string}`,
+        intentExecutorInstalled: true,
+      },
+    } satisfies AccountConstruction
+    expect(adapter.getIdentity(reconstructed).address).toBe(plan.address)
+
+    // Same bootstrap calldata, but deployed by the 1.0.0 factory.
+    const legacy = {
+      ...input,
+      initData: {
+        address: '0x8cdf27ccdec0ae54029a67b2edb5391e438aa023',
+        factory: '0x0000003B3E7b530b4f981aE80d9350392Defef90',
+        factoryData: plan.factoryData as `0x${string}`,
+        intentExecutorInstalled: true,
+      },
+    } satisfies AccountConstruction
+    expect(() => adapter.getIdentity(legacy)).toThrow(
+      AccountConfigurationNotSupportedError,
+    )
+    expect(() => adapter.getIdentity(legacy)).toThrow(
+      'Startale v1.0.0 accounts are not supported',
+    )
   })
 
   test('HCA derives the same address for multiple ENS owners on any host', () => {
