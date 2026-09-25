@@ -681,7 +681,9 @@ describe('intent workflow', () => {
         call.to.toLowerCase(),
       ),
     ).not.toContain('0x00000000000000000000000000000000000000aa')
-    expect(prepared.request.destinationExecutions?.length).toBe(input.calls.length)
+    expect(prepared.request.destinationExecutions?.length).toBe(
+      input.calls.length,
+    )
   })
 
   test('uses each prepared stage chain for a shorthand cross-chain session', () => {
