@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.20.0
+
+### Minor Changes
+
+- 57ffcd0: Add opt-in support for Startale v1.0.1 via `account: { type: 'startale', version: '1.0.1' }`. Startale v1.0.0 stays the default.
+
 ## 1.19.1
 
 ### Patch Changes
