@@ -3,6 +3,7 @@ import {
   encodeAbiParameters,
   encodeFunctionData,
   type Hex,
+  toFunctionSelector,
 } from 'viem'
 
 // OneTimeUseIdPolicy (RHI-5798): a session pins an id it invents, and each
@@ -29,6 +30,12 @@ export const oneTimeUseIdPolicyAbi = [
     outputs: [],
   },
 ] as const
+
+// source: smart-sessions-v2 src/policies/onetime/interfaces/IOneTimeUseIdPolicy.sol
+export const CONSUME_SELECTOR = toFunctionSelector('function consume(uint256)')
+export const CONSUME_FOR_SELECTOR = toFunctionSelector(
+  'function consumeFor(uint256,uint256)',
+)
 
 // Which burn call a settlement route needs. `permit2` (Across/Eco via the arbiter)
 // proves the burn with a witness; `executor` (IntentExecutor) needs none.

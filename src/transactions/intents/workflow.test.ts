@@ -668,6 +668,12 @@ describe('intent workflow', () => {
     // one-time-use session must stay in mode 5 so checkAction keeps running on
     // the executor route — otherwise the contract's action-surface guard is inert.
     expect(prepared.request.options.signatureMode).toBe(5)
+    // source: cast calldata "consumeFor(uint256,uint256)" 42 0
+    expect(prepared.request.preClaimExecutions?.[1]?.[0]).toMatchObject({
+      to: '0x00000000000000000000000000000000000000aa',
+      value: 0n,
+      data: '0x96301d72000000000000000000000000000000000000000000000000000000000000002a0000000000000000000000000000000000000000000000000000000000000000',
+    })
   })
 
   test('uses each prepared stage chain for a shorthand cross-chain session', () => {

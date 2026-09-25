@@ -16,7 +16,11 @@ import {
 import { resolveValidator } from '../resolve'
 import { resolveCrossChainPermission } from './cross-chain-permits'
 import { getPermissionIdFromData } from './digest'
-import { oneTimeUseIdErc1271Policy } from './one-time-use'
+import {
+  CONSUME_FOR_SELECTOR,
+  CONSUME_SELECTOR,
+  oneTimeUseIdErc1271Policy,
+} from './one-time-use'
 import {
   DEFAULT_POLICY_ADDRESSES,
   resolvePolicyAddresses,
@@ -282,9 +286,24 @@ export function resolveSessionData(
   // signing defaulting to unrestricted, a session key limited to swap/approve
   // could still sign e.g. a Permit2 approval off-chain and move funds. Default it
   // to `disabled` when restricting; the caller can still opt into a signing policy.
+  // Without claim policies a one-time-use session settles through its actions
+  // alone, and any 1271 signing surface would let its key settle through Permit2
+  // unbounded by the id.
+  const executorOnlyOneTimeUse =
+    Boolean(definition.oneTimeUse) && claimPolicies.length === 0
+  if (
+    executorOnlyOneTimeUse &&
+    definition.signing &&
+    definition.signing.mode !== 'disabled'
+  ) {
+    throw new Error(
+      'oneTimeUse without claim policies cannot sign; leave `signing` unset',
+    )
+  }
   const erc7739Policies = resolveSessionSigning({
     signing:
-      definition.signing ?? (restricted ? { mode: 'disabled' } : undefined),
+      definition.signing ??
+      (restricted || executorOnlyOneTimeUse ? { mode: 'disabled' } : undefined),
     environment,
     addresses,
   })
@@ -295,12 +314,24 @@ export function resolveSessionData(
         'oneTimeUse requires policyAddresses.oneTimeUseId (no canonical deployment yet)',
       )
     }
+    const validUntil = definition.oneTimeUse.validUntil
+    // A deadline that rounds to 0 would read as "never expires"; a past one only
+    // fails at enable, as an opaque signature error.
+    if (
+      validUntil !== undefined &&
+      !(
+        Number.isFinite(validUntil.getTime()) &&
+        validUntil.getTime() > Date.now()
+      )
+    ) {
+      throw new Error(
+        'oneTimeUse.validUntil must be a valid Date in the future',
+      )
+    }
     const once = oneTimeUseIdErc1271Policy({
       policy: addresses.oneTimeUseId,
       id: definition.oneTimeUse.id,
-      deadline:
-        definition.oneTimeUse.validUntil &&
-        BigInt(Math.floor(definition.oneTimeUse.validUntil.getTime() / 1000)),
+      deadline: validUntil && BigInt(Math.floor(validUntil.getTime() / 1000)),
     })
     // Install the once-policy on EVERY action: on the executor route the contract's
     // on-chain guard (a `consume` may only name the session's own id) runs via
@@ -308,10 +339,21 @@ export function resolveSessionData(
     // batch out of some other permitted action. checkAction only fires in
     // verify-execution mode, which prepareIntentSessions forces for one-time-use
     // sessions (see there).
-    actions = actions.map((action) => ({
-      ...action,
-      actionPolicies: [...action.actionPolicies, once],
-    }))
+    actions = [
+      ...actions.map((action) => ({
+        ...action,
+        actionPolicies: [...action.actionPolicies, once],
+      })),
+      // The burn itself, so every session shape can settle: checkAction pins it to
+      // this session's own id and requires it before any other execution.
+      ...[CONSUME_SELECTOR, CONSUME_FOR_SELECTOR].map(
+        (actionTargetSelector) => ({
+          actionTarget: addresses.oneTimeUseId as Address,
+          actionTargetSelector,
+          actionPolicies: [once],
+        }),
+      ),
+    ]
     // The Permit2/arbiter route enforces via the 1271 list. The once-policy's
     // settling proof only binds when the digest-binding Permit2 claim policy sits
     // on the SAME surface (the 1271 list is an AND: it bounds WHAT may settle, the
@@ -593,9 +635,16 @@ export function toSession(
     // flag tells getSessionData NOT to re-encode them onto the on-chain claim
     // (lockTag) surface — otherwise they'd settle on both surfaces.
     claimPolicies: [...(definition.claimPolicies ?? []), ...expandedClaims],
-    claimPoliciesEnforcedVia1271: Boolean(definition.oneTimeUse),
     ...(definition.swap ? { swap: definition.swap } : {}),
-    oneTimeUse: Boolean(definition.oneTimeUse),
+    ...(definition.oneTimeUse && {
+      claimPoliciesEnforcedVia1271:
+        (definition.claimPolicies?.length ?? 0) + expandedClaims.length > 0,
+      oneTimeUse: {
+        id: definition.oneTimeUse.id,
+        policy: resolvePolicyAddresses(definition.policyAddresses)
+          .oneTimeUseId as Address,
+      },
+    }),
   }
 }
 

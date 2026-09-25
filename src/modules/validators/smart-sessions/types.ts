@@ -315,12 +315,8 @@ export interface SessionDefinition {
   // its raw selector with no ABI (RHI-6286). ScopedAction only (never a fallback
   // action) so a raw entry can't map back to the wildcard fallback target.
   actions?: ScopedAction[]
-  // Pins a one-time-use id on the session (RHI-5798): the session settles at most
-  // once per chain. Requires `policyAddresses.oneTimeUseId`, and each settlement
-  // must carry the matching burn op (see buildOneTimeUseBurnOp) in its
-  // `preClaimExecutions`. Always salted as in 'strict', whatever `saltMode` says;
-  // `saltMode: 'v1'` is rejected, as is a `signing` validity window alongside
-  // claim policies.
+  // Pins a one-time-use id on the session (RHI-5798); see `SessionDefinition` in
+  // config/account.ts for the full contract.
   oneTimeUse?: OneTimeUseSessionConfig
 }
 
@@ -372,11 +368,9 @@ export interface Session {
   // onto the on-chain claim (lockTag) surface. They stay on the high-level
   // session so the permit2 settlement signature can still build their calldata.
   claimPoliciesEnforcedVia1271?: boolean
-  // A one-time-use session (RHI-5798). The executor route's on-chain guard runs
-  // via checkAction, which only fires in verify-execution mode, so this forces
-  // that mode in prepareIntentSessions even for an already-enabled session — see
-  // there for why dropping to plain ERC-1271 would make the guard inert.
-  oneTimeUse?: boolean
+  // A one-time-use session (RHI-5798): its id and policy, so every intent can
+  // carry the burn and run in verify-execution mode (see prepareIntentSessions).
+  oneTimeUse?: { readonly id: bigint; readonly policy: Address }
 }
 
 export interface SessionData {

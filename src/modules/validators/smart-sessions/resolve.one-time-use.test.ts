@@ -5,6 +5,7 @@ import { describe, expect, test } from 'vitest'
 import { accountA } from '../../../../test/consts'
 import { PERMIT2_CLAIM_POLICY_ADDRESS } from '../policies/claim/permit2'
 import { getSessionData } from './digest'
+import { CONSUME_FOR_SELECTOR, CONSUME_SELECTOR } from './one-time-use'
 import { resolveSessionData, toSession } from './resolve'
 
 // Kept out of resolve.test.ts because that file imports fast-check (declared in
@@ -82,33 +83,98 @@ describe('resolveSessionData — one-time-use session', () => {
     }
   })
 
+  test.each([undefined, { mode: 'disabled' }] as const)(
+    'an executor-only one-time-use session has no signing surface (%o)',
+    (signing) => {
+      const data = resolveSessionData({
+        chain: base,
+        owners,
+        ...(signing && { signing }),
+        oneTimeUse: { id: 42n },
+        policyAddresses: { oneTimeUseId: POLICY },
+      })
+      expect(data.erc7739Policies.erc1271Policies).toEqual([])
+      expect(data.erc7739Policies.allowedERC7739Content).toEqual([])
+    },
+  )
+
   test.each([
-    undefined,
-    { mode: 'disabled' },
+    { mode: 'unrestricted' },
     { mode: 'unrestricted', validUntil: new Date('2030-01-01') },
   ] as const)(
-    'an executor-only one-time-use session keeps the signing list it asked for (%o)',
+    'an executor-only one-time-use session rejects a signing mode (%o)',
     (signing) => {
-      const resolve = (oneTimeUse?: { id: bigint }) =>
+      expect(() =>
         resolveSessionData({
           chain: base,
           owners,
-          ...(signing && { signing }),
-          ...(oneTimeUse && { oneTimeUse }),
+          signing,
+          oneTimeUse: { id: 42n },
           policyAddresses: { oneTimeUseId: POLICY },
+        }),
+      ).toThrow(/cannot sign/)
+    },
+  )
+
+  test.each([
+    ['unrestricted', {}],
+    ['permit', { claimPolicies: [{ type: 'permit2' as const }] }],
+    [
+      'restricted, two actions',
+      {
+        restrictToActions: true,
+        actions: [
+          {
+            target: '0x00000000000000000000000000000000000000c1' as const,
+            selector: '0x11111111' as const,
+            policies: [{ type: 'sudo' as const }],
+          },
+          {
+            target: '0x00000000000000000000000000000000000000c2' as const,
+            selector: '0x22222222' as const,
+            policies: [{ type: 'sudo' as const }],
+          },
+        ],
+      },
+    ],
+  ])(
+    'authorises its own burn and bounds every action (%s)',
+    (_label, shape) => {
+      const data = resolveSessionData({
+        chain: base,
+        owners,
+        ...shape,
+        oneTimeUse: { id: 42n },
+        policyAddresses: { oneTimeUseId: POLICY },
+      })
+      for (const selector of [CONSUME_SELECTOR, CONSUME_FOR_SELECTOR]) {
+        expect(data.actions).toContainEqual({
+          actionTarget: POLICY,
+          actionTargetSelector: selector,
+          actionPolicies: [onceEntry],
         })
-      const data = resolve({ id: 42n })
-      expect(data.erc7739Policies.erc1271Policies).toEqual(
-        resolve().erc7739Policies.erc1271Policies,
-      )
-      expect(data.erc7739Policies.erc1271Policies).not.toContainEqual(onceEntry)
-      // The burn still bounds the executor route: once-policy on every action.
-      expect(data.actions.length).toBeGreaterThan(0)
+      }
+      expect(data.actions.length).toBeGreaterThan(2)
       for (const action of data.actions) {
         expect(action.actionPolicies).toContainEqual(onceEntry)
       }
     },
   )
+
+  test.each([
+    ['the epoch, which would encode "never expires"', new Date(0)],
+    ['a past date', new Date('2020-01-01')],
+    ['an invalid date', new Date('nope')],
+  ])('rejects validUntil at %s', (_label, validUntil) => {
+    expect(() =>
+      resolveSessionData({
+        chain: base,
+        owners,
+        oneTimeUse: { id: 42n, validUntil },
+        policyAddresses: { oneTimeUseId: POLICY },
+      }),
+    ).toThrow(/validUntil must be a valid Date in the future/)
+  })
 
   const sessionWith = (
     oneTimeUse: { id: bigint } | undefined,
@@ -252,8 +318,8 @@ describe('resolveSessionData — one-time-use session', () => {
     // that the erc1271-resident Permit2ClaimPolicy reads (RHI-5798).
     expect(session.claimPolicies).toHaveLength(1)
     expect(session.claimPoliciesEnforcedVia1271).toBe(true)
-    // Drives prepareIntentSessions to keep the session in verify-execution mode.
-    expect(session.oneTimeUse).toBe(true)
+    // Drives prepareIntentSessions: the burn it injects and the verify-execution mode.
+    expect(session.oneTimeUse).toEqual({ id: 42n, policy: POLICY })
     // ...but the on-chain claim (lockTag) surface stays empty — the policy is
     // enforced via the erc1271 list, so getSessionData must not re-encode it.
     expect(getSessionData(session).claimPolicies).toHaveLength(0)

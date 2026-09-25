@@ -831,15 +831,12 @@ interface SessionDefinition<
   saltMode?: 'none' | 'v1' | 'strict'
   /**
    * Pins a one-time-use id on the session (RHI-5798): the session settles at most
-   * once per chain. Requires `policyAddresses.oneTimeUseId`. Each settlement must
-   * carry the matching burn op ({@link buildOneTimeUseBurnOp}) in its
-   * `preClaimExecutions`; a Permit2-route session must also supply a
-   * `claimPolicies` entry (moved onto the 1271 surface as the digest-binding
-   * partner). `validUntil` (omit for never) bounds when the id can still be
-   * spent. Always salted as in `'strict'`, whatever `saltMode` says, so it never
-   * shares a permissionId with another session. `saltMode: 'v1'` is rejected,
-   * as is a `signing` validity window alongside claim policies. Without claim
-   * policies the session keeps the signing surface it asked for.
+   * once per chain. Requires `policyAddresses.oneTimeUseId`; use a fresh random id
+   * per session. Every intent the session signs burns the id first (injected by
+   * the SDK). A Permit2-route session must also supply `claimPolicies`; without
+   * them the session has no signing surface and a `signing` mode is rejected.
+   * `validUntil` (a future Date; omit for never) bounds when the id can be spent.
+   * Always salted as in `'strict'`; `saltMode: 'v1'` is rejected.
    */
   oneTimeUse?: { id: bigint; validUntil?: Date }
 }
@@ -884,6 +881,10 @@ interface Session {
   /** The venue scope this session was built from. Metadata only — it lets the
    *  SDK derive the matching quoter pin when transacting with the session. */
   swap?: SwapScope
+  /** Claim policies enforced via the ERC-1271 list, not the claim surface. */
+  claimPoliciesEnforcedVia1271?: boolean
+  /** A one-time-use session's id and policy; each intent burns the id. */
+  oneTimeUse?: { readonly id: bigint; readonly policy: Address }
 }
 
 interface ModuleInput {

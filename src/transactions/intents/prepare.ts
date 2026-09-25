@@ -56,7 +56,10 @@ export async function prepareIntent<CompatibilityConfig>(
       }),
       ...(sessions ? { mockSignatures: sessions.mockSignatures } : {}),
     },
-    calls,
+    calls:
+      sessions?.destinationBurn && calls.length > 0
+        ? [sessions.destinationBurn, ...calls]
+        : calls,
     sourceCalls: mergeSourceCalls(sessions?.preClaimCalls, source.calls),
     providedFunds: source.providedFunds,
   })
