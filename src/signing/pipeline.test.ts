@@ -102,6 +102,7 @@ const kernelDefinition: AccountDefinition = {
 
 const startaleDefinition: AccountDefinition = {
   kind: 'startale',
+  version: { source: 'default', profile: 'startale-current-version' },
   salt: { source: 'explicit', value: '0x' },
 }
 
@@ -346,20 +347,29 @@ describe('direct rewritten signing pipelines', () => {
       erc7739: { kind: 'none' },
     })
 
+    const startaleK1Context = (version: '1.0.0' | '1.0.1'): SigningContext => ({
+      ...context,
+      account: { definition: startaleDefinition, address: account },
+      accountCapabilities: {
+        ...context.accountCapabilities,
+        signatureEnvelope: {
+          kind: 'startale',
+          validator: K1_DEFAULT_VALIDATOR_ADDRESS,
+          version,
+        },
+      },
+      validatorCapabilities: {
+        ...context.validatorCapabilities,
+        compatibilityKey: {
+          ...context.validatorCapabilities.compatibilityKey,
+          moduleAddress: K1_DEFAULT_VALIDATOR_ADDRESS,
+        },
+      },
+    })
     const startaleK1 = resolveAccountTypedDataSigning({
       typedData,
       chain,
-      context: {
-        ...context,
-        account: { definition: startaleDefinition, address: account },
-        validatorCapabilities: {
-          ...context.validatorCapabilities,
-          compatibilityKey: {
-            ...context.validatorCapabilities.compatibilityKey,
-            moduleAddress: K1_DEFAULT_VALIDATOR_ADDRESS,
-          },
-        },
-      },
+      context: startaleK1Context('1.0.0'),
     })
     expect(startaleK1).toMatchObject({
       material: { kind: 'message' },
@@ -369,6 +379,15 @@ describe('direct rewritten signing pipelines', () => {
       erc7739: { kind: 'wrap-typed-data', typedData },
     })
     expect(startaleK1.material).not.toEqual(messageOnly.material)
+    // The ERC-7739 verifier domain carries the deployed version, so 1.0.1
+    // signs a different hash than 1.0.0.
+    expect(
+      resolveAccountTypedDataSigning({
+        typedData,
+        chain,
+        context: startaleK1Context('1.0.1'),
+      }).material,
+    ).not.toEqual(startaleK1.material)
 
     expect(
       resolveAccountTypedDataSigning({
