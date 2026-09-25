@@ -642,7 +642,12 @@ describe('intent workflow', () => {
     const session = toSession({
       chain: mainnet,
       owners: { type: 'ecdsa', accounts: [account] },
-      claimPolicies: [{ type: 'permit2' }],
+      claimPolicies: [
+        {
+          type: 'permit2',
+          spenders: ['0x00000000000000000000000000000000000000ab'],
+        },
+      ],
       oneTimeUse: { id: 42n },
       policyAddresses: {
         oneTimeUseId: '0x00000000000000000000000000000000000000aa',

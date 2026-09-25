@@ -273,15 +273,27 @@ export function resolveSessionData(
           environment: 'production',
         }).actions
       : undefined
-  let claimPolicies: { policy: Address; initData: Hex }[] = [
+  const rawClaimPolicies = [
     ...(definition.claimPolicies ?? []),
     ...expandedPermits.map(({ claim }) => claim),
-  ].map((policy) => ({
-    policy: PERMIT2_CLAIM_POLICY_ADDRESS,
-    initData: encodePermit2ClaimPolicyInitData(
-      resolvePermit2ClaimPolicy(policy),
-    ),
-  }))
+  ]
+  // The pre-claim entrypoint is permissionless and names its caller as the
+  // arbiter, so an unpinned arbiter lets the session key settle without burning.
+  if (
+    definition.oneTimeUse &&
+    rawClaimPolicies.some((claim) => !claim.spenders?.length)
+  ) {
+    throw new Error(
+      'oneTimeUse claim policies must pin their spenders (the Permit2 arbiter)',
+    )
+  }
+  let claimPolicies: { policy: Address; initData: Hex }[] =
+    rawClaimPolicies.map((policy) => ({
+      policy: PERMIT2_CLAIM_POLICY_ADDRESS,
+      initData: encodePermit2ClaimPolicyInitData(
+        resolvePermit2ClaimPolicy(policy),
+      ),
+    }))
   // A restricted session must not leave an open ERC-1271 signing surface: with
   // signing defaulting to unrestricted, a session key limited to swap/approve
   // could still sign e.g. a Permit2 approval off-chain and move funds. Default it

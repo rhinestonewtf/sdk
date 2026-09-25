@@ -13,6 +13,7 @@ import { resolveSessionData, toSession } from './resolve'
 // example-based tests for the OneTimeUseId wiring (RHI-5798).
 describe('resolveSessionData — one-time-use session', () => {
   const POLICY = '0x00000000000000000000000000000000000000aa' as const
+  const ARBITER = '0x00000000000000000000000000000000000000ab' as const
   const owners = { type: 'ecdsa' as const, accounts: [accountA] }
   // source: OneTimeUseIdPolicy init layout (smart-sessions-v2#56 @ 493fd86) —
   // word 0 is the id (42 = 0x2a), word 1 the deadline; none given, so zero.
@@ -26,7 +27,7 @@ describe('resolveSessionData — one-time-use session', () => {
     return resolveSessionData({
       chain: base,
       owners,
-      claimPolicies: [{ type: 'permit2' }],
+      claimPolicies: [{ type: 'permit2', spenders: [ARBITER] }],
       oneTimeUse: { id: 42n },
       policyAddresses: { oneTimeUseId: POLICY },
     })
@@ -55,7 +56,7 @@ describe('resolveSessionData — one-time-use session', () => {
     const data = resolveSessionData({
       chain: base,
       owners,
-      claimPolicies: [{ type: 'permit2' }],
+      claimPolicies: [{ type: 'permit2', spenders: [ARBITER] }],
       // source: 1_900_000_000 s = 2030-03-17T17:46:40Z (date -u -r 1900000000)
       oneTimeUse: { id: 42n, validUntil: new Date('2030-03-17T17:46:40.999Z') },
       policyAddresses: { oneTimeUseId: POLICY },
@@ -118,7 +119,10 @@ describe('resolveSessionData — one-time-use session', () => {
 
   test.each([
     ['unrestricted', {}],
-    ['permit', { claimPolicies: [{ type: 'permit2' as const }] }],
+    [
+      'permit',
+      { claimPolicies: [{ type: 'permit2' as const, spenders: [ARBITER] }] },
+    ],
     [
       'restricted, two actions',
       {
@@ -189,7 +193,7 @@ describe('resolveSessionData — one-time-use session', () => {
       claimPolicies: [
         {
           type: 'permit2',
-          ...(extra.spenders && { spenders: extra.spenders }),
+          spenders: extra.spenders ?? [ARBITER],
         },
       ],
       ...(oneTimeUse && { oneTimeUse }),
@@ -260,7 +264,7 @@ describe('resolveSessionData — one-time-use session', () => {
         resolveSessionData({
           chain: base,
           owners,
-          claimPolicies: [{ type: 'permit2' }],
+          claimPolicies: [{ type: 'permit2', spenders: [ARBITER] }],
           oneTimeUse: { id: 42n },
           signing,
           policyAddresses: { oneTimeUseId: POLICY },
@@ -279,7 +283,7 @@ describe('resolveSessionData — one-time-use session', () => {
         resolveSessionData({
           chain: base,
           owners,
-          claimPolicies: [{ type: 'permit2' }],
+          claimPolicies: [{ type: 'permit2', spenders: [ARBITER] }],
           oneTimeUse: { id: 42n },
           signing,
           policyAddresses: { oneTimeUseId: POLICY },
@@ -287,6 +291,18 @@ describe('resolveSessionData — one-time-use session', () => {
       ).not.toThrow()
     },
   )
+
+  test('rejects a claim policy that does not pin its spender (the Permit2 arbiter)', () => {
+    expect(() =>
+      resolveSessionData({
+        chain: base,
+        owners,
+        claimPolicies: [{ type: 'permit2' }],
+        oneTimeUse: { id: 42n },
+        policyAddresses: { oneTimeUseId: POLICY },
+      }),
+    ).toThrow(/must pin their spenders/)
+  })
 
   test("rejects saltMode 'v1'", () => {
     expect(() =>
@@ -310,7 +326,7 @@ describe('resolveSessionData — one-time-use session', () => {
     const session = toSession({
       chain: base,
       owners,
-      claimPolicies: [{ type: 'permit2' }],
+      claimPolicies: [{ type: 'permit2', spenders: [ARBITER] }],
       oneTimeUse: { id: 42n },
       policyAddresses: { oneTimeUseId: POLICY },
     })
