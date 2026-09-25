@@ -171,6 +171,7 @@ function resolveAccountDefinition(
     case 'startale':
       return {
         kind: 'startale',
+        version: selectValue(account.version, 'startale-current-version'),
         salt: selectValue(account.salt, 'startale-zero-salt'),
       }
     case 'hca':

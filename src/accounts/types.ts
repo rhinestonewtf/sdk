@@ -20,6 +20,8 @@ export type AccountType =
   | 'eoa'
   | 'hca'
 
+export type StartaleVersion = '1.0.0' | '1.0.1'
+
 export type AccountInput =
   | {
       type: 'safe'
@@ -37,7 +39,7 @@ export type AccountInput =
       version?: '3.3'
       salt?: Hex
     }
-  | { type: 'startale'; salt?: Hex }
+  | { type: 'startale'; version?: StartaleVersion; salt?: Hex }
   | { type: 'hca'; factory?: Address }
   | { type: 'eoa' }
 
@@ -70,6 +72,10 @@ export type AccountDefinition =
     }
   | {
       readonly kind: 'startale'
+      readonly version: AccountValueSelection<
+        StartaleVersion,
+        'startale-current-version'
+      >
       readonly salt: AccountValueSelection<Hex, 'startale-zero-salt'>
     }
   | {
@@ -130,7 +136,12 @@ export type AccountSignatureEnvelope =
       readonly validator: Address
       readonly isRoot: boolean
     }
-  | { readonly kind: 'startale'; readonly validator: Address }
+  | {
+      readonly kind: 'startale'
+      readonly validator: Address
+      // Resolved deployment version; selects the ERC-7739 verifier domain.
+      readonly version: StartaleVersion
+    }
   | { readonly kind: 'hca'; readonly validator: Address }
 
 export interface AccountCapabilities {

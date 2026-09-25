@@ -67,6 +67,7 @@ describe('passkey install selection', () => {
       },
       {
         kind: 'startale',
+        version: { source: 'default', profile: 'startale-current-version' },
         salt: { source: 'default', profile: 'startale-zero-salt' },
       },
     ] as const satisfies readonly AccountDefinition[]) {
