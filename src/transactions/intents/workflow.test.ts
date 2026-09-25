@@ -18,6 +18,7 @@ import type {
 import { wrapKernelMessageHash } from '../../accounts/kernel-signing'
 import type { AccountConstruction } from '../../accounts/types'
 import { parseCaip2, toEvmChainReference } from '../../chains/caip2'
+import { projectCompatibleIntentInput } from '../../clients/orchestrator/normalized'
 import type { SigningProof } from '../../clients/orchestrator/public'
 import type {
   OrchestratorExecutionQuote,
@@ -1046,14 +1047,45 @@ describe('intent workflow', () => {
       sourceChains: [1],
       targetChain: 1,
     })
-    expect(workflow.submissionClient.submitIntent).toHaveBeenCalledWith(
-      { intentId: 'intent-1', proofs: signed.proofs },
-      expect.objectContaining({
-        intentInput: expect.objectContaining({
-          destinationExecutions: [expect.objectContaining({ value: '1' })],
-        }),
+    // No approval context: the grant rode on the quote and is not asked for again.
+    expect(workflow.submissionClient.submitIntent).toHaveBeenCalledWith({
+      intentId: 'intent-1',
+      proofs: signed.proofs,
+    })
+    expect(
+      vi.mocked(workflow.submissionClient.submitIntent).mock.calls[0],
+    ).toHaveLength(1)
+  })
+
+  test('quotes with the serialized intent input and whether sponsorship is requested', async () => {
+    const workflow = context()
+    const prepared = await prepareIntent(workflow, input)
+
+    expect(workflow.quoteClient.createQuote).toHaveBeenCalledWith(
+      prepared.request,
+      {
+        intentInput: projectCompatibleIntentInput(prepared.normalized),
         sponsored: false,
-      }),
+      },
+    )
+    expect(
+      vi.mocked(workflow.quoteClient.createQuote).mock.calls[0]?.[1]
+        ?.intentInput,
+    ).toMatchObject({
+      destinationExecutions: [expect.objectContaining({ value: '1' })],
+    })
+
+    const sponsored = context()
+    await prepareIntent(sponsored, {
+      ...input,
+      options: {
+        sponsorSettings: { gas: false, bridgeFees: false, swapFees: false },
+      },
+    })
+
+    expect(sponsored.quoteClient.createQuote).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ sponsored: true }),
     )
   })
 

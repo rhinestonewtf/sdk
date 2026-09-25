@@ -312,6 +312,31 @@ class MismatchedIntentProofError extends ExecutionError {
   }
 }
 
+/**
+ * Intent-scoped sponsorship cannot bind this request: the approval input the
+ * integrator would sign is not exactly what the orchestrator can recompute
+ * from the quote request. Thrown before `getIntentExtensionToken` runs and
+ * before anything is quoted.
+ */
+class UnsupportedSponsorshipApprovalError extends ExecutionError {
+  constructor(params: {
+    reason: 'unsupported' | 'mismatch'
+    /** Path of the first field that cannot be bound, e.g. `options.selectionStrategy`. */
+    field?: string
+  }) {
+    super({
+      message: `Intent-scoped sponsorship cannot bind this request${
+        params.field ? ` (${params.field})` : ''
+      }: its approval input does not exactly describe the quote request. Remove the unsupported option, or use project-wide sponsorship for this transaction.`,
+      context: {
+        reason: params.reason,
+        ...(params.field ? { field: params.field } : {}),
+      },
+      errorType: 'UnsupportedSponsorshipApproval',
+    })
+  }
+}
+
 function isExecutionError(error: Error): error is ExecutionError {
   return error instanceof ExecutionError
 }
@@ -350,4 +375,5 @@ export {
   SolanaQuoteExpiredError,
   UnknownOwnerError,
   UnsupportedSigningRequestError,
+  UnsupportedSponsorshipApprovalError,
 }

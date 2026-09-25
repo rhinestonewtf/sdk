@@ -84,6 +84,7 @@ import {
   SignerNotSupportedError,
   SolanaQuoteExpiredError,
   UnknownOwnerError,
+  UnsupportedSponsorshipApprovalError,
 } from './execution'
 
 export type { ErrorDetail, SponsorLimitKey }
@@ -131,6 +132,7 @@ export {
   SignerNotSupportedError,
   SolanaQuoteExpiredError,
   UnknownOwnerError,
+  UnsupportedSponsorshipApprovalError,
   // Orchestrator
   isOrchestratorError,
   isRetryable,

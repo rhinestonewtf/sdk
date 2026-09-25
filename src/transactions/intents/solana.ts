@@ -58,7 +58,11 @@ import {
   SolanaQuoteExpiredError,
 } from '../../errors/execution'
 import { normalizeRecovery } from '../../signing/signers/ecdsa'
-import { type IntentAccountProjection, toWireEvmAccount } from './account'
+import {
+  type IntentAccountProjection,
+  toNormalizedAccount,
+  toWireEvmAccount,
+} from './account'
 import { projectPreparedBinding } from './compatibility'
 import { normalizeIntentQuote } from './normalize'
 import { toExecution } from './request'
@@ -274,22 +278,9 @@ export function buildSolanaIntentRequest(
       )
     }
   }
-  const normalizedAccount = execution
-    ? {
-        address: input.accountAddress,
-        accountType: input.accountType!,
-        setupOps: execution.account.setupOps,
-        ...(execution.account.delegationContract
-          ? {
-              delegations: {
-                0: { contract: execution.account.delegationContract },
-              },
-            }
-          : {}),
-      }
-    : { address: input.walletAddress }
   const normalizedOptions: NormalizedIntentOptions = {
-    signatureMode: 1,
+    // The SVM-only account has no signature mode; the paired EVM entry does.
+    ...(execution ? { signatureMode: 1 } : {}),
     ...(input.appFees ? { appFees: input.appFees } : {}),
     ...(input.protocolFees ? { protocolFees: input.protocolFees } : {}),
     ...(input.sponsorSettings
@@ -311,12 +302,18 @@ export function buildSolanaIntentRequest(
   }
   // Plain Solana operations always name the selected Swig directly. Only an
   // actual destination execution uses the backend's paired EVM+SVM contract.
+  const swig = execution ? svm : { ...svm, swigAccount: input.swigAddress }
   const account: OrchestratorIntentRequest['account'] = execution
     ? {
         evm: toWireEvmAccount(execution.account, { signatureMode: 1 }),
-        svm,
+        svm: swig,
       }
-    : { svm: { ...svm, swigAccount: input.swigAddress } }
+    : { svm: swig }
+  // Projected from the same entries the request sends, so the approval input
+  // names the paying Swig and its key exactly as the orchestrator receives it.
+  const normalizedAccount: NormalizedIntentInput['account'] = execution
+    ? { ...toNormalizedAccount(execution.account), svm: swig }
+    : { address: input.walletAddress, svm: swig }
 
   if (input.action.kind === 'instructions') {
     if (input.appFees || input.protocolFees) {
@@ -477,7 +474,16 @@ export function buildSolanaIntentRequest(
         options: normalizedOptions,
         destinationChainId: delivery.chainId,
         tokenRequests: [{ tokenAddress: delivery.token, ...amount }],
-        ...recipient,
+        // The EVM payee in the spelling the released EVM input uses.
+        ...(execution
+          ? {}
+          : {
+              recipient: {
+                address: delivery.recipient,
+                accountType: 'EOA' as const,
+                setupOps: [],
+              },
+            }),
         accountAccessList: cappedAccessList ?? {
           chainTokens: { [chainId]: [mint] },
         },
@@ -510,7 +516,9 @@ export function buildSolanaIntentRequest(
       destinationChainId: chainId,
       tokenRequests: [{ tokenAddress: mint, ...amount }],
       recipient: { address: recipient },
-      accountAccessList: cappedAccessList ?? { chainIds: [chainId] },
+      accountAccessList: cappedAccessList ?? {
+        chainTokens: { [chainId]: [mint] },
+      },
     },
   }
 }
@@ -744,7 +752,10 @@ export async function prepareSolanaIntent(
   input: SolanaTransferInput,
 ): Promise<PreparedSolanaIntent> {
   const { request, normalized } = buildSolanaIntentRequest(input)
-  const response = await context.quoteClient.createQuote(request)
+  const response = await context.quoteClient.createQuote(request, {
+    intentInput: projectCompatibleIntentInput(normalized),
+    sponsored: isSponsoredIntentInput(normalized),
+  })
   if (response.routes.length === 0) {
     throw new InvalidSolanaTransactionArtifactError(
       'the orchestrator returned no quote',
@@ -1073,16 +1084,10 @@ export async function submitSolanaIntent(
     )
   }
   assertEvmProofs(signed.prepared.quote, evmProofs)
-  const response = await context.submissionClient.submitIntent(
-    {
-      intentId: signed.prepared.quote.intentId,
-      proofs: [proof, ...evmProofs],
-    },
-    {
-      intentInput: projectCompatibleIntentInput(signed.prepared.normalized),
-      sponsored: isSponsoredIntentInput(signed.prepared.normalized),
-    },
-  )
+  const response = await context.submissionClient.submitIntent({
+    intentId: signed.prepared.quote.intentId,
+    proofs: [proof, ...evmProofs],
+  })
   return {
     type: 'intent' as const,
     traceId: response.traceId,

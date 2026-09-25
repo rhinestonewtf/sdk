@@ -205,8 +205,40 @@ describe('managed Solana intent workflow', () => {
     const fixture = context()
     const prepared = await prepareSolanaIntent(fixture.workflow, transfer())
 
-    expect(fixture.createQuote).toHaveBeenCalledWith({
+    expect(fixture.createQuote).toHaveBeenCalledWith(
+      {
+        account: {
+          svm: {
+            type: 'swig',
+            address: wallet,
+            swigAccount: swig,
+            authorization: { kind: 'secp256k1', address: owner.address },
+          },
+        },
+        destination: {
+          vm: 'svm',
+          chainId: DEVNET,
+          recipient: { address: recipient },
+          tokenRequests: [{ tokenAddress: mint, amount: 100_000n }],
+        },
+        source: {
+          selection: {
+            chains: { only: [DEVNET] },
+            tokens: { only: [mint] },
+            perChain: { [DEVNET]: { tokens: { only: [mint] } } },
+          },
+        },
+      },
+      {
+        intentInput: projectCompatibleIntentInput(prepared.normalized),
+        sponsored: false,
+      },
+    )
+    // The sponsorship projection keeps its numeric chain ids and its original
+    // field names, and names the paying Swig and the spent mint.
+    expect(prepared.normalized).toEqual({
       account: {
+        address: wallet,
         svm: {
           type: 'swig',
           address: wallet,
@@ -214,30 +246,12 @@ describe('managed Solana intent workflow', () => {
           authorization: { kind: 'secp256k1', address: owner.address },
         },
       },
-      destination: {
-        vm: 'svm',
-        chainId: DEVNET,
-        recipient: { address: recipient },
-        tokenRequests: [{ tokenAddress: mint, amount: 100_000n }],
-      },
-      source: {
-        selection: {
-          chains: { only: [DEVNET] },
-          tokens: { only: [mint] },
-          perChain: { [DEVNET]: { tokens: { only: [mint] } } },
-        },
-      },
-    })
-    // The sponsorship projection keeps its numeric chain ids and its original
-    // field names across the wire migration.
-    expect(prepared.normalized).toEqual({
-      account: { address: wallet },
       destinationChainId: 792703810,
       destinationExecutions: [],
       tokenRequests: [{ tokenAddress: mint, amount: 100_000n }],
       recipient: { address: recipient },
-      accountAccessList: { chainIds: [792703810] },
-      options: { signatureMode: 1 },
+      accountAccessList: { chainTokens: { 792703810: [mint] } },
+      options: {},
     })
     expect(prepared.quote.cost.input[0]?.amount).toBe(100_100n)
   })
@@ -255,7 +269,10 @@ describe('managed Solana intent workflow', () => {
         authorization: { kind: 'secp256k1', address: owner.address },
       },
     })
-    expect(normalized.account).toEqual({ address: wallet })
+    expect(normalized.account).toEqual({
+      address: wallet,
+      svm: request.account.svm,
+    })
   })
 
   test('signs the exact digest text and submits one recoverable origin signature', async () => {
@@ -278,16 +295,10 @@ describe('managed Solana intent workflow', () => {
       },
     ])
     const submitted = await submitSolanaIntent(fixture.workflow, signed)
-    expect(fixture.submitIntent).toHaveBeenCalledWith(
-      {
-        intentId: 'solana-intent',
-        proofs: signed.proofs,
-      },
-      {
-        intentInput: projectCompatibleIntentInput(prepared.normalized),
-        sponsored: false,
-      },
-    )
+    expect(fixture.submitIntent).toHaveBeenCalledWith({
+      intentId: 'solana-intent',
+      proofs: signed.proofs,
+    })
     expect(submitted.targetChain).toBe(792703810)
   })
 
@@ -393,11 +404,11 @@ describe('managed Solana intent workflow', () => {
     expect(built.normalized).toMatchObject({
       destinationChainId: 792703809,
       options: {
-        signatureMode: 1,
         appFees: { feeBps: 1 },
         protocolFees: { feeBps: 2 },
       },
     })
+    expect(built.normalized.options).not.toHaveProperty('signatureMode')
     expect(() =>
       solanaChainId({ ...solanaDevnet, caip2: 'solana:unknown' } as never),
     ).toThrow(/canonical Solana/)
@@ -732,48 +743,40 @@ describe('sponsored Solana intents', () => {
   test('carries the requested sponsorship on the quote options', () => {
     const built = buildSolanaIntentRequest(transfer({ sponsorSettings }))
     expect(built.request.options).toEqual({ sponsorship: sponsorSettings })
-    expect(built.normalized.options).toEqual({
-      signatureMode: 1,
-      sponsorSettings,
-    })
+    expect(built.normalized.options).toEqual({ sponsorSettings })
   })
 
   test('leaves the options untouched when nothing is sponsored', () => {
     const built = buildSolanaIntentRequest(transfer())
     expect(built.request).not.toHaveProperty('options')
-    expect(built.normalized.options).toEqual({ signatureMode: 1 })
+    expect(built.normalized.options).toEqual({})
   })
 
-  test('reports the sponsorship on submit', async () => {
+  test('asks for sponsorship approval with the quote and not on submit', async () => {
     const fixture = context()
     const prepared = await prepareSolanaIntent(
       fixture.workflow,
       transfer({ sponsorSettings }),
     )
+
+    expect(fixture.createQuote).toHaveBeenCalledWith(prepared.request, {
+      intentInput: projectCompatibleIntentInput(prepared.normalized),
+      sponsored: true,
+    })
     const signed = await signSolanaIntent({
       prepared,
       owner,
       now: fixture.workflow.now,
     })
     await submitSolanaIntent(fixture.workflow, signed)
-
-    expect(fixture.submitIntent).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ sponsored: true }),
-    )
+    expect(fixture.submitIntent.mock.calls[0]).toHaveLength(1)
   })
 
-  test('reports no sponsorship for an unsponsored intent', async () => {
+  test('quotes an unsponsored intent as unsponsored', async () => {
     const fixture = context()
-    const prepared = await prepareSolanaIntent(fixture.workflow, transfer())
-    const signed = await signSolanaIntent({
-      prepared,
-      owner,
-      now: fixture.workflow.now,
-    })
-    await submitSolanaIntent(fixture.workflow, signed)
+    await prepareSolanaIntent(fixture.workflow, transfer())
 
-    expect(fixture.submitIntent).toHaveBeenCalledWith(
+    expect(fixture.createQuote).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ sponsored: false }),
     )
@@ -894,15 +897,26 @@ describe('Solana-origin cross-chain delivery', () => {
         options: { appFees: { feeBps: 10 }, protocolFees: { feeBps: 5 } },
       },
       normalized: {
-        account: { address: wallet },
+        account: {
+          address: wallet,
+          svm: {
+            type: 'swig',
+            address: wallet,
+            swigAccount: swig,
+            authorization: { kind: 'secp256k1', address: owner.address },
+          },
+        },
         destinationChainId: baseSepoliaId,
         destinationExecutions: [],
         tokenRequests: [{ tokenAddress: destinationToken, amount: 100_000n }],
-        recipient: { address: destinationRecipient },
+        recipient: {
+          address: destinationRecipient,
+          accountType: 'EOA',
+          setupOps: [],
+        },
         // `chainIds` would union with this and re-expand the source scope.
         accountAccessList: { chainTokens: { 792703810: [mint] } },
         options: {
-          signatureMode: 1,
           appFees: { feeBps: 10 },
           protocolFees: { feeBps: 5 },
         },
@@ -1155,6 +1169,12 @@ describe('Solana-origin cross-chain delivery', () => {
             address: accountAddress,
             accountType: 'ERC7579',
             setupOps: [],
+            // The paying Swig, as the paired request names it.
+            svm: {
+              type: 'swig',
+              address: wallet,
+              authorization: { kind: 'secp256k1', address: owner.address },
+            },
           },
           destinationChainId: baseSepoliaId,
           destinationExecutions: [wireCall],
@@ -1180,6 +1200,7 @@ describe('Solana-origin cross-chain delivery', () => {
         address: accountAddress,
         accountType: 'ERC7579',
         setupOps: [factoryOp],
+        svm: request.account.svm,
       })
     })
 
@@ -1211,13 +1232,10 @@ describe('Solana-origin cross-chain delivery', () => {
         now: fixture.workflow.now,
       })
       await submitSolanaIntent(fixture.workflow, signed)
-      expect(fixture.submitIntent).toHaveBeenCalledWith(
-        {
-          intentId: 'solana-intent',
-          proofs: [signed.proofs[0], childProof, delegationProof],
-        },
-        expect.anything(),
-      )
+      expect(fixture.submitIntent).toHaveBeenCalledWith({
+        intentId: 'solana-intent',
+        proofs: [signed.proofs[0], childProof, delegationProof],
+      })
     })
 
     test('refuses calls for an account with no EVM entry', () => {
@@ -1299,10 +1317,10 @@ describe('Solana-origin cross-chain delivery', () => {
       ).rejects.toThrow(/answer each EVM signing request/)
       await submitSolanaIntent(fixture.workflow, signed)
       expect(fixture.submitIntent).toHaveBeenCalledOnce()
-      expect(fixture.submitIntent).toHaveBeenCalledWith(
-        { intentId: 'solana-intent', proofs: signed.proofs },
-        expect.anything(),
-      )
+      expect(fixture.submitIntent).toHaveBeenCalledWith({
+        intentId: 'solana-intent',
+        proofs: signed.proofs,
+      })
     })
 
     test.each([
@@ -1736,14 +1754,22 @@ describe('same-chain Solana instruction execution', () => {
         source: { selection: { chains: { only: [DEVNET] }, tokens: 'all' } },
       },
       normalized: {
-        account: { address: wallet },
+        account: {
+          address: wallet,
+          svm: {
+            type: 'swig',
+            address: wallet,
+            swigAccount: swig,
+            authorization: { kind: 'secp256k1', address: owner.address },
+          },
+        },
         destinationChainId: 792703810,
         destinationExecutions: [],
         tokenRequests: [],
         destinationInstructions: [instruction],
         addressLookupTableAddresses: [lookupTable],
         accountAccessList: { chainIds: [792703810] },
-        options: { signatureMode: 1 },
+        options: {},
       },
     })
   })
@@ -2077,10 +2103,10 @@ describe('passkey-owned managed Solana intents', () => {
       },
     })
     await submitSolanaIntent(fixture.workflow, signed)
-    expect(fixture.submitIntent).toHaveBeenCalledWith(
-      { intentId: 'solana-intent', proofs: signed.proofs },
-      expect.anything(),
-    )
+    expect(fixture.submitIntent).toHaveBeenCalledWith({
+      intentId: 'solana-intent',
+      proofs: signed.proofs,
+    })
   })
 
   test('refuses an assertion over a different challenge before submitting', async () => {

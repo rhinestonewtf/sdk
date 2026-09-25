@@ -130,7 +130,11 @@ export function buildIntentRequest<CompatibilityConfig>(input: {
       destinationExecutions: executions,
       tokenRequests,
       ...(transaction.recipient
-        ? { recipient: toNormalizedRecipient(transaction.recipient) }
+        ? {
+            recipient: toNormalizedRecipient(transaction.recipient, {
+              evmAddressed: vm === 'evm' || vm === 'hypercore',
+            }),
+          }
         : {}),
       ...(transaction.gasLimit === undefined
         ? {}

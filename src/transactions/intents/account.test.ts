@@ -118,14 +118,22 @@ describe('normalized projections', () => {
     ).toEqual({ 1: '0xaa' })
   })
 
-  test('projects a bare recipient as an address alone', () => {
-    expect(toNormalizedRecipient({ kind: 'bare', address: ACCOUNT })).toEqual({
+  test('keeps the released EOA spelling for a bare EVM-addressed recipient', () => {
+    const bare = { kind: 'bare', address: ACCOUNT } as const
+    expect(toNormalizedRecipient(bare, { evmAddressed: true })).toEqual({
+      address: ACCOUNT,
+      accountType: 'EOA',
+      setupOps: [],
+    })
+    expect(toNormalizedRecipient(bare, { evmAddressed: false })).toEqual({
       address: ACCOUNT,
     })
   })
 
   test('projects a configured recipient like an account', () => {
-    expect(toNormalizedRecipient(asIntentRecipient(smart))).toMatchObject({
+    expect(
+      toNormalizedRecipient(asIntentRecipient(smart), { evmAddressed: true }),
+    ).toMatchObject({
       address: ACCOUNT,
       accountType: 'ERC7579',
     })

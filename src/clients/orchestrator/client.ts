@@ -15,7 +15,8 @@ import {
   mapSplitResultFromWire,
 } from './mappers'
 import type { OrchestratorPort } from './port'
-import type { OrchestratorIntentSubmissionContext } from './types'
+import { assertSponsorshipApproval } from './sponsorship-approval'
+import type { OrchestratorQuoteContext } from './types'
 import type { WireChainsResponse } from './wire'
 
 const SDK_VERSION = '2.16.1'
@@ -36,12 +37,12 @@ export function createOrchestratorClient(
     readonly path: string
     readonly method?: 'GET' | 'POST'
     readonly body?: unknown
-    readonly submitContext?: OrchestratorIntentSubmissionContext
+    readonly quoteContext?: OrchestratorQuoteContext
   }): Promise<unknown> => {
-    const authHeaders = input.submitContext
-      ? await options.auth.getSubmitHeaders(
-          input.submitContext.intentInput,
-          input.submitContext.sponsored,
+    const authHeaders = input.quoteContext
+      ? await options.auth.getQuoteHeaders(
+          input.quoteContext.intentInput,
+          input.quoteContext.sponsored,
         )
       : await options.auth.getHeaders()
     return fetchOrchestratorJson({
@@ -68,22 +69,31 @@ export function createOrchestratorClient(
   let chainCatalogPromise: Promise<ChainCatalog> | undefined
 
   return {
-    createQuote: async (input) =>
-      mapQuoteResponseFromWire(
+    createQuote: async (input, context) => {
+      // One body object: the approval is checked against exactly the bytes
+      // that are sent, before the integrator is asked for a grant.
+      const body = mapIntentRequestToWire(input)
+      if (context && options.auth.requestsIntentExtension(context.sponsored)) {
+        assertSponsorshipApproval(body, context.intentInput)
+      }
+      return mapQuoteResponseFromWire(
         await request({
           path: 'quotes',
           method: 'POST',
-          body: mapIntentRequestToWire(input),
+          body,
+          ...(context ? { quoteContext: context } : {}),
         }),
-      ),
-    submitIntent: async (input, context) =>
+      )
+    },
+    // Never carries the intent extension: the grant was presented with the
+    // quote and is single-use, so the submission bills from the quoted fees.
+    submitIntent: async (input) =>
       mapIntentSubmissionFromWire(
         input.intentId,
         await request({
           path: 'intents',
           method: 'POST',
           body: mapSignedIntentToWire(input),
-          ...(context ? { submitContext: context } : {}),
         }),
       ),
     getIntentStatus: async (intentId, options) =>

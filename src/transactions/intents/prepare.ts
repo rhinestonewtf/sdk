@@ -10,6 +10,10 @@ import { resolveCalls } from '../../calls/resolve'
 import type { Call } from '../../calls/types'
 import { isHyperCoreWireId, toEvmChainReference } from '../../chains/caip2'
 import type { EvmChainReference } from '../../chains/types'
+import {
+  isSponsoredIntentInput,
+  projectCompatibleIntentInput,
+} from '../../clients/orchestrator/normalized'
 import type {
   SigningRequest,
   SigningRequestPurpose,
@@ -67,7 +71,10 @@ export async function prepareIntent<CompatibilityConfig>(
     sourceCalls: mergeSourceCalls(sessions?.preClaimCalls, source.calls),
     providedFunds: source.providedFunds,
   })
-  const response = await context.quoteClient.createQuote(request)
+  const response = await context.quoteClient.createQuote(request, {
+    intentInput: projectCompatibleIntentInput(normalized),
+    sponsored: isSponsoredIntentInput(normalized),
+  })
   const quote = normalizeIntentQuote(selectIntentQuote(response.routes))
   const quotes = response.routes.map((candidate) =>
     candidate.intentId === quote.intentId

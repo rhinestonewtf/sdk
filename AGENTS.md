@@ -53,6 +53,7 @@ See [docs/architecture.md](docs/architecture.md) for how these fit together and 
 - [Testing](docs/testing.md) — unit, type, and live integration tests
 - [Code generation](docs/codegen.md) — SDK Reference and orchestrator wire types
 - [Caucasus migration](docs/caucasus-migration.md) — what the `2026-09.caucasus` API version changed for consumers
+- [Sponsorship approval](docs/sponsorship-approval.md) — how an intent-scoped sponsorship grant binds the quote request, with golden vectors
 
 Keep these in sync with the code — update the relevant doc in the same PR as any change it covers.
 
