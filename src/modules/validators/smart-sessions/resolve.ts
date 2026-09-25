@@ -228,6 +228,18 @@ export function resolveSessionData(
       )
     }
     seen.add(key)
+    // The session's own burn actions are added below; a user action on the policy
+    // would share their action id.
+    if (
+      definition.oneTimeUse &&
+      definition.policyAddresses?.oneTimeUseId &&
+      a.target.toLowerCase() ===
+        definition.policyAddresses.oneTimeUseId.toLowerCase()
+    ) {
+      throw new Error(
+        'oneTimeUse sessions authorise their own burn; do not add an action on the policy',
+      )
+    }
   }
   // Only the permission-derived actions: a raw action is passed through in the
   // order it was given, on both majors, so reordering one would invent a

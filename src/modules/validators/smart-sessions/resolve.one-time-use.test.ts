@@ -304,6 +304,24 @@ describe('resolveSessionData — one-time-use session', () => {
     ).toThrow(/must pin their spenders/)
   })
 
+  test('rejects a user action on the policy, which would share the burn action id', () => {
+    expect(() =>
+      resolveSessionData({
+        chain: base,
+        owners,
+        actions: [
+          {
+            target: POLICY,
+            selector: '0x96301d72',
+            policies: [{ type: 'sudo' }],
+          },
+        ],
+        oneTimeUse: { id: 42n },
+        policyAddresses: { oneTimeUseId: POLICY },
+      }),
+    ).toThrow(/authorise their own burn/)
+  })
+
   test("rejects saltMode 'v1'", () => {
     expect(() =>
       resolveSessionData({

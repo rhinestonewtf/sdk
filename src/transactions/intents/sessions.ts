@@ -19,6 +19,9 @@ export interface PreparedIntentSessions {
   readonly preClaimCalls: Readonly<Record<number, readonly Call[]>>
   // The destination's burn, when a one-time-use session executes there.
   readonly destinationBurn?: Call
+  // The destination is also a source with a one-time-use session, so its burn is
+  // spent by that source's pre-claim.
+  readonly destinationBurnsAsSource?: boolean
 }
 
 export async function prepareIntentSessions<CompatibilityConfig>(input: {
@@ -61,7 +64,7 @@ export async function prepareIntentSessions<CompatibilityConfig>(input: {
       const verifyExecutions =
         !enabled.enabled ||
         selected.session.hasExplicitPermissions ||
-        selected.session.oneTimeUse !== undefined
+        Boolean(selected.session.oneTimeUse)
       return [
         chain.id,
         {
@@ -76,6 +79,16 @@ export async function prepareIntentSessions<CompatibilityConfig>(input: {
     }),
   )
   const byChain = Object.fromEntries(resolvedEntries)
+  // Burns ride the listed sources' pre-claim calls, so an unlisted source would
+  // settle without one (and the policy would refuse it).
+  if (
+    resolvedEntries.some(([, value]) => value.session.oneTimeUse) &&
+    !input.intent.sourceChains?.length
+  ) {
+    throw new Error(
+      'A oneTimeUse session needs the intent to list its sourceChains',
+    )
+  }
   const mockSignatures = Object.fromEntries(
     resolvedEntries.map(([chainId, resolved]) => [
       String(chainId),
@@ -121,12 +134,13 @@ export async function prepareIntentSessions<CompatibilityConfig>(input: {
       : undefined
   // A destination that is also a source already burns there; a second burn in the
   // same batch is refused.
+  const destinationBurnsAsSource =
+    input.intent.destination.kind === 'evm' &&
+    Boolean(preClaimCalls[input.intent.destination.id]?.length) &&
+    Boolean(destinationSession?.oneTimeUse)
   const destinationBurn =
     destinationSession &&
-    !(
-      input.intent.destination.kind === 'evm' &&
-      preClaimCalls[input.intent.destination.id]
-    ) &&
+    !destinationBurnsAsSource &&
     oneTimeUseBurnCall(destinationSession)
   return {
     signatureMode: resolvedEntries.some(([, value]) => value.verifyExecutions)
@@ -136,6 +150,7 @@ export async function prepareIntentSessions<CompatibilityConfig>(input: {
     mockSignatures,
     preClaimCalls,
     ...(destinationBurn && { destinationBurn }),
+    ...(destinationBurnsAsSource && { destinationBurnsAsSource }),
   }
 }
 

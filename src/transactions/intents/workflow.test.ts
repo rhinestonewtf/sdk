@@ -691,6 +691,78 @@ describe('intent workflow', () => {
     )
   })
 
+  describe('one-time-use destination burn', () => {
+    const POLICY = '0x00000000000000000000000000000000000000aa' as const
+    // source: cast calldata "consumeFor(uint256,uint256)" 42 0
+    const BURN =
+      '0x96301d72000000000000000000000000000000000000000000000000000000000000002a0000000000000000000000000000000000000000000000000000000000000000'
+    const baseChain = toEvmChainReference(base.id)
+    const sessionOn = (id: number) =>
+      toSession({
+        chain: id === base.id ? base : mainnet,
+        owners: { type: 'ecdsa', accounts: [account] },
+        oneTimeUse: { id: 42n },
+        policyAddresses: { oneTimeUseId: POLICY },
+      })
+    const enabledWorkflow = () =>
+      context({
+        checkpoints: {
+          read: vi.fn(async (checkpoint) => [
+            {
+              kind: 'session-enabled' as const,
+              id: checkpoint.id,
+              enabled: true,
+            },
+          ]),
+        },
+      })
+    const signers = {
+      kind: 'smart-session' as const,
+      byChain: {
+        [base.id]: { session: sessionOn(base.id) },
+        [mainnet.id]: { session: sessionOn(mainnet.id) },
+      },
+    }
+
+    test("leads a cross-chain destination's calls with the burn", async () => {
+      const prepared = await prepareIntent(enabledWorkflow(), {
+        ...input,
+        sourceChains: [baseChain],
+        signers,
+      })
+      const destination = prepared.request.destinationExecutions ?? []
+      expect(destination).toHaveLength(input.calls.length + 1)
+      expect(destination[0]).toMatchObject({ to: POLICY, data: BURN })
+    })
+
+    test('adds no destination burn when there are no destination calls', async () => {
+      const prepared = await prepareIntent(enabledWorkflow(), {
+        ...input,
+        calls: [],
+        sourceChains: [baseChain],
+        signers,
+      })
+      expect(prepared.request.destinationExecutions ?? []).toHaveLength(0)
+    })
+
+    test('rejects an intent that does not list its sources', async () => {
+      const { sourceChains: _omitted, ...withoutSources } = input
+      await expect(
+        prepareIntent(enabledWorkflow(), { ...withoutSources, signers }),
+      ).rejects.toThrow(/list its sourceChains/)
+    })
+
+    test('rejects destination calls on a chain that is also one of several sources', async () => {
+      await expect(
+        prepareIntent(enabledWorkflow(), {
+          ...input,
+          sourceChains: [baseChain, chain],
+          signers,
+        }),
+      ).rejects.toThrow(/also one of several sources/)
+    })
+  })
+
   test('uses each prepared stage chain for a shorthand cross-chain session', () => {
     const source = toEvmChainReference(base.id)
     const destination = toEvmChainReference(arbitrum.id)

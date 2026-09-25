@@ -4,7 +4,7 @@
 
 Add one-time-use session support (RHI-5798). `oneTimeUse: { id, validUntil? }` (requires `policyAddresses.oneTimeUseId`) makes a session settle at most once per chain:
 
-- Every intent the session signs burns the id first; the SDK injects the burn and forces verify-execution mode.
+- Every intent the SDK prepares for the session burns the id first on each chain it settles on (the policy refuses any settlement that does not), in verify-execution mode. Such intents must list `sourceChains` and cannot run destination calls on a chain that is also one of several sources.
 - The OneTimeUseIdPolicy guards every action and authorises only the session's own burn; with `claimPolicies` it also sits on the ERC-1271 list next to the Permit2 claim policy.
 - Its `claimPolicies` must each pin `spenders` (the Permit2 arbiter). Without `claimPolicies` the session has no signing surface, and a `signing` mode throws.
 - `validUntil` must be a future `Date`. The session is always salted as in `saltMode: 'strict'`; `saltMode: 'v1'` throws.

@@ -832,8 +832,10 @@ interface SessionDefinition<
   /**
    * Pins a one-time-use id on the session (RHI-5798): the session settles at most
    * once per chain. Requires `policyAddresses.oneTimeUseId`; use a fresh random id
-   * per session. Every intent the session signs burns the id first (injected by
-   * the SDK). A Permit2-route session must also supply `claimPolicies`, each
+   * per session. Every intent the SDK prepares for the session burns the id first
+   * on each chain it settles on; the policy refuses any settlement that does not.
+   * Intents must list `sourceChains`, and cannot run destination calls on a chain
+   * that is also one of several sources. A Permit2-route session must also supply `claimPolicies`, each
    * pinning its `spenders` (the arbiter); without them the session has no signing
    * surface and a `signing` mode is rejected.
    * `validUntil` (a future Date; omit for never) bounds when the id can be spent.
