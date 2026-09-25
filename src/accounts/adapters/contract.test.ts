@@ -444,61 +444,76 @@ describe('account adapter contract', () => {
     })
   })
 
-  test('Startale defaults to 1.0.0 and deploys the 1.0.1 contracts when pinned', () => {
+  test('Startale defaults to 1.0.1 and pins the previous contracts for 1.0.0', () => {
     const current = construction(inputs.startale)
-    const currentPlan =
-      createStartaleAdapter(current).getDeploymentPlan(current)
+    const currentAdapter = createStartaleAdapter(current)
+    const currentPlan = currentAdapter.getDeploymentPlan(current)
     expect(currentPlan.factory).toBe(
-      '0x0000003b3e7b530b4f981ae80d9350392defef90',
+      '0x00000be75c267efe9ddd7044d1f236959af4c15f',
     )
-    expect(
-      createStartaleAdapter(current).capabilities.signatureEnvelope,
-    ).toMatchObject({ kind: 'startale', version: '1.0.0' })
-
-    const pinned = construction({
-      account: { type: 'startale', version: '1.0.1' },
-      owners: ecdsa,
-    })
-    const adapter = createStartaleAdapter(pinned)
-    const plan = adapter.getDeploymentPlan(pinned)
-    expect(plan.factory).toBe('0x00000be75c267efe9ddd7044d1f236959af4c15f')
     // Matches the 1.0.1 factory's on-chain computeAccountAddress.
-    expect(plan.address).toBe('0x63ade81e8e3aa4aed3094c4bf8a42bdfb60e4799')
-    // Only the implementation + factory differ; the bootstrap is identical.
-    expect(plan.factoryData).toBe(currentPlan.factoryData)
-    expect(adapter.capabilities.signatureEnvelope).toMatchObject({
+    expect(currentPlan.address).toBe(
+      '0x63ade81e8e3aa4aed3094c4bf8a42bdfb60e4799',
+    )
+    expect(currentAdapter.capabilities.signatureEnvelope).toMatchObject({
       kind: 'startale',
       version: '1.0.1',
     })
 
-    // Persisted factory material pins 1.0.1 by its factory, even without an
-    // explicit version.
+    const explicit = construction({
+      account: { type: 'startale', version: '1.0.1' },
+      owners: ecdsa,
+    })
+    expect(createStartaleAdapter(explicit).getDeploymentPlan(explicit)).toEqual(
+      currentPlan,
+    )
+
+    const previous = construction({
+      account: { type: 'startale', version: '1.0.0' },
+      owners: ecdsa,
+    })
+    const previousAdapter = createStartaleAdapter(previous)
+    const previousPlan = previousAdapter.getDeploymentPlan(previous)
+    expect(previousPlan.factory).toBe(
+      '0x0000003b3e7b530b4f981ae80d9350392defef90',
+    )
+    expect(previousPlan.address).toBe(
+      '0x8cdf27ccdec0ae54029a67b2edb5391e438aa023',
+    )
+    // Only the implementation + factory differ; the bootstrap is identical.
+    expect(previousPlan.factoryData).toBe(currentPlan.factoryData)
+    expect(previousAdapter.capabilities.signatureEnvelope).toMatchObject({
+      version: '1.0.0',
+    })
+
+    // Persisted factory material pins its version by the factory, so a 1.0.0
+    // account keeps its address and domain without an explicit version.
     const reconstructed = {
       ...current,
       initData: {
-        address: plan.address,
-        factory: plan.factory as `0x${string}`,
-        factoryData: plan.factoryData as `0x${string}`,
+        address: previousPlan.address,
+        factory: previousPlan.factory as `0x${string}`,
+        factoryData: previousPlan.factoryData as `0x${string}`,
         intentExecutorInstalled: true,
       },
     } satisfies AccountConstruction
     const reconstructedAdapter = createStartaleAdapter(reconstructed)
     expect(reconstructedAdapter.getIdentity(reconstructed).address).toBe(
-      plan.address,
+      previousPlan.address,
     )
     expect(reconstructedAdapter.capabilities.signatureEnvelope).toMatchObject({
-      version: '1.0.1',
+      version: '1.0.0',
     })
 
     // Address-only material carries no factory, so the configured version
     // selects the domain.
-    const addressOnly = {
-      ...pinned,
-      initData: { address: plan.address },
-    } satisfies AccountConstruction
-    expect(
-      createStartaleAdapter(addressOnly).capabilities.signatureEnvelope,
-    ).toMatchObject({ version: '1.0.1' })
+    const addressOnly = (input: AccountConstruction) =>
+      createStartaleAdapter({
+        ...input,
+        initData: { address: previousPlan.address },
+      }).capabilities.signatureEnvelope
+    expect(addressOnly(current)).toMatchObject({ version: '1.0.1' })
+    expect(addressOnly(previous)).toMatchObject({ version: '1.0.0' })
   })
 
   test('HCA derives the same address for multiple ENS owners on any host', () => {

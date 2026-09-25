@@ -47,8 +47,9 @@ export function startaleEip712Domain(
   } as const
 }
 
-// 1.0.1 ships a new implementation + factory; the bootstrap, K1 default
-// validator, and proxy creation code are unchanged from 1.0.0.
+// Current default (1.0.1): new implementation + factory, same bootstrap, K1
+// default validator, and proxy creation code as 1.0.0. `version: '1.0.0'` opts
+// back into the previous contracts so existing accounts keep their address.
 const STARTALE_DEPLOYMENTS = {
   '1.0.0': {
     implementation: '0x000000b8f5f723a680d3d7ee624fe0bc84a6e05a',
@@ -63,7 +64,7 @@ const STARTALE_DEPLOYMENTS = {
   { implementation: Address; factory: Address }
 >
 const STARTALE_VERSION_DEFAULTS = {
-  'startale-current-version': '1.0.0',
+  'startale-current-version': '1.0.1',
 } as const satisfies Record<string, StartaleVersion>
 const STARTALE_BOOTSTRAP_ADDRESS =
   '0x000000552a5fae3db7a8f3917c435448f49ba6a9' as const
