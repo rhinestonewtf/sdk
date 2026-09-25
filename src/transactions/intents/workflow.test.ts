@@ -674,6 +674,14 @@ describe('intent workflow', () => {
       value: 0n,
       data: '0x96301d72000000000000000000000000000000000000000000000000000000000000002a0000000000000000000000000000000000000000000000000000000000000000',
     })
+    // Same-chain: the source's burn already leads the batch, so the destination
+    // calls must not carry a second one (the orchestrator refuses two).
+    expect(
+      (prepared.request.destinationExecutions ?? []).map((call) =>
+        call.to.toLowerCase(),
+      ),
+    ).not.toContain('0x00000000000000000000000000000000000000aa')
+    expect(prepared.request.destinationExecutions?.length).toBe(input.calls.length)
   })
 
   test('uses each prepared stage chain for a shorthand cross-chain session', () => {

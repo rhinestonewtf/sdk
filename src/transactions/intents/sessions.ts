@@ -119,8 +119,15 @@ export async function prepareIntentSessions<CompatibilityConfig>(input: {
     input.intent.destination.kind === 'evm'
       ? byChain[input.intent.destination.id]?.session
       : undefined
+  // A destination that is also a source already burns there; a second burn in the
+  // same batch is refused.
   const destinationBurn =
-    destinationSession && oneTimeUseBurnCall(destinationSession)
+    destinationSession &&
+    !(
+      input.intent.destination.kind === 'evm' &&
+      preClaimCalls[input.intent.destination.id]
+    ) &&
+    oneTimeUseBurnCall(destinationSession)
   return {
     signatureMode: resolvedEntries.some(([, value]) => value.verifyExecutions)
       ? 5
