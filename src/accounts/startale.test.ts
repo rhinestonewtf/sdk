@@ -1,12 +1,13 @@
 import type { Address } from 'viem'
+import { base } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
-
 import { accountA, accountB, passkeyAccount } from '../../test/consts'
 import { MODULE_TYPE_ID_VALIDATOR } from '../modules/common'
 import { AccountConfigurationNotSupportedError } from './error'
 import {
   getAddress,
   getDeployArgs,
+  getEip712Domain,
   getInstallData,
   K1_DEFAULT_VALIDATOR_ADDRESS,
   packSignature,
@@ -213,6 +214,121 @@ describe('Accounts: Startale', () => {
       })
 
       expect(address).toEqual(addressFromDeploy)
+    })
+
+    // Expected addresses match the on-chain 1.0.1 factory's computeAccountAddress.
+    test('ECDSA owner (1.0.1)', () => {
+      const previous = getDeployArgs({
+        account: { type: 'startale' },
+        owners: { type: 'ecdsa', accounts: [accountA] },
+      })
+      const deployArgs = getDeployArgs({
+        account: { type: 'startale', version: '1.0.1' },
+        owners: { type: 'ecdsa', accounts: [accountA] },
+      })
+      expect(deployArgs).not.toBeNull()
+      expect(deployArgs!.factory).toEqual(
+        '0x00000be75c267efe9ddd7044d1f236959af4c15f',
+      )
+      expect(deployArgs!.implementation).toEqual(
+        '0x000006b2874cf8a9bbe24fa1c3a32225ae826951',
+      )
+      // Only the implementation + factory change; the bootstrap calldata doesn't.
+      expect(deployArgs!.factoryData).toEqual(previous!.factoryData)
+
+      const address = getAddress({
+        account: { type: 'startale', version: '1.0.1' },
+        owners: { type: 'ecdsa', accounts: [accountA] },
+      })
+      expect(address).toEqual('0x63ade81e8e3aa4aed3094c4bf8a42bdfb60e4799')
+    })
+
+    test('ECDSA owner with K1 module override (1.0.1)', () => {
+      const address = getAddress({
+        account: { type: 'startale', version: '1.0.1' },
+        owners: {
+          type: 'ecdsa',
+          accounts: [accountA],
+          module: K1_DEFAULT_VALIDATOR_ADDRESS,
+        },
+      })
+      expect(address).toEqual('0x8bc2280c2a1bd7eeff6afda8fd6e80fe0f354011')
+    })
+
+    test('Passkey owner (1.0.1)', () => {
+      const address = getAddress({
+        account: { type: 'startale', version: '1.0.1' },
+        owners: { type: 'passkey', accounts: [passkeyAccount] },
+      })
+      expect(address).toEqual('0x81ee09ada0db875f570ebd9a7d3db841f1dd1848')
+    })
+
+    test('initData with 1.0.1 factory resolves the 1.0.1 implementation', () => {
+      const config = {
+        account: { type: 'startale', version: '1.0.1' },
+        owners: { type: 'ecdsa', accounts: [accountA] },
+      } as const
+      const direct = getAddress(config)
+      const { factory, factoryData } = getDeployArgs(config)!
+
+      // No version on the account: the factory alone pins 1.0.1.
+      const fromInitData = {
+        account: { type: 'startale' },
+        owners: { type: 'ecdsa', accounts: [accountA] },
+        initData: { address: direct, factory, factoryData },
+      } as const
+      expect(getDeployArgs(fromInitData)!.implementation).toEqual(
+        '0x000006b2874cf8a9bbe24fa1c3a32225ae826951',
+      )
+      expect(getAddress(fromInitData)).toEqual(direct)
+      expect(getEip712Domain(fromInitData, base).version).toEqual('1.0.1')
+    })
+  })
+
+  describe('Get EIP-712 Domain', () => {
+    test('Defaults to 1.0.0', () => {
+      const domain = getEip712Domain(
+        {
+          account: { type: 'startale' },
+          owners: { type: 'ecdsa', accounts: [accountA] },
+        },
+        base,
+      )
+      expect(domain).toEqual({
+        name: 'Startale',
+        version: '1.0.0',
+        chainId: base.id,
+        verifyingContract: '0x8cdf27ccdec0ae54029a67b2edb5391e438aa023',
+        salt: '0x0000000000000000000000000000000000000000000000000000000000000000',
+      })
+    })
+
+    test('1.0.1', () => {
+      const domain = getEip712Domain(
+        {
+          account: { type: 'startale', version: '1.0.1' },
+          owners: { type: 'ecdsa', accounts: [accountA] },
+        },
+        base,
+      )
+      expect(domain.version).toEqual('1.0.1')
+      expect(domain.verifyingContract).toEqual(
+        '0x63ade81e8e3aa4aed3094c4bf8a42bdfb60e4799',
+      )
+    })
+
+    test('Address-only initData uses the configured version', () => {
+      const address = '0x229ca553b9863b0c8f2f03d4287cb8c73e2bede7'
+      const domain = getEip712Domain(
+        {
+          account: { type: 'startale', version: '1.0.1' },
+          owners: { type: 'ecdsa', accounts: [accountA] },
+          initData: { address },
+        },
+        base,
+      )
+      expect(domain.version).toEqual('1.0.1')
+      expect(domain.verifyingContract).toEqual(address)
     })
   })
 

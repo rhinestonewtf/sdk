@@ -44,6 +44,7 @@ interface KernelAccount {
 
 interface StartaleAccount {
   type: 'startale'
+  version?: '1.0.0' | '1.0.1'
   salt?: Hex
 }
 
