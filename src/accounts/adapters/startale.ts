@@ -22,7 +22,7 @@ import {
   selectedValue,
 } from '../deployment'
 import { encodeErc7579Calls } from '../erc7579-calls'
-import type { AccountConstruction } from '../types'
+import type { AccountConstruction, StartaleVersion } from '../types'
 import {
   encodeAddressEnvelope,
   encodeInstallModule,
@@ -31,19 +31,40 @@ import {
 } from './shared'
 
 export { K1_DEFAULT_VALIDATOR_ADDRESS }
-export function startaleEip712Domain(account: Address, chainId: number) {
+
+// The contract's EIP-712 domain version equals its release version.
+export function startaleEip712Domain(
+  account: Address,
+  chainId: number,
+  version: StartaleVersion,
+) {
   return {
     name: 'Startale',
-    version: '1.0.0',
+    version,
     chainId,
     verifyingContract: account,
     salt: zeroHash,
   } as const
 }
-const STARTALE_IMPLEMENTATION_ADDRESS =
-  '0x000000b8f5f723a680d3d7ee624fe0bc84a6e05a' as const
-const STARTALE_FACTORY_ADDRESS =
-  '0x0000003b3e7b530b4f981ae80d9350392defef90' as const
+
+// 1.0.1 ships a new implementation + factory; the bootstrap, K1 default
+// validator, and proxy creation code are unchanged from 1.0.0.
+const STARTALE_DEPLOYMENTS = {
+  '1.0.0': {
+    implementation: '0x000000b8f5f723a680d3d7ee624fe0bc84a6e05a',
+    factory: '0x0000003b3e7b530b4f981ae80d9350392defef90',
+  },
+  '1.0.1': {
+    implementation: '0x000006b2874cf8a9bbe24fa1c3a32225ae826951',
+    factory: '0x00000be75c267efe9ddd7044d1f236959af4c15f',
+  },
+} as const satisfies Record<
+  StartaleVersion,
+  { implementation: Address; factory: Address }
+>
+const STARTALE_VERSION_DEFAULTS = {
+  'startale-current-version': '1.0.0',
+} as const satisfies Record<string, StartaleVersion>
 const STARTALE_BOOTSTRAP_ADDRESS =
   '0x000000552a5fae3db7a8f3917c435448f49ba6a9' as const
 const STARTALE_CREATION_CODE =
@@ -108,6 +129,23 @@ function startaleInitData(input: AccountConstruction): Hex {
   )
 }
 
+// A persisted `{ factory, factoryData }` pins the version by its factory, so it
+// recomputes against the implementation that factory deploys. Otherwise the
+// configured version applies (the only signal for address-only `initData`).
+function startaleVersion(input: AccountConstruction): StartaleVersion {
+  if (input.account.kind !== 'startale') {
+    throw new Error('Expected Startale account')
+  }
+  if (input.initData && 'factory' in input.initData) {
+    const factory = input.initData.factory.toLowerCase()
+    const pinned = (
+      Object.keys(STARTALE_DEPLOYMENTS) as StartaleVersion[]
+    ).find((version) => STARTALE_DEPLOYMENTS[version].factory === factory)
+    if (pinned) return pinned
+  }
+  return selectedValue(input.account.version, STARTALE_VERSION_DEFAULTS)
+}
+
 function startaleMaterial(input: AccountConstruction): DeploymentMaterial {
   if (input.account.kind !== 'startale') {
     throw new Error('Expected Startale account')
@@ -116,7 +154,8 @@ function startaleMaterial(input: AccountConstruction): DeploymentMaterial {
   if (input.initData && !('factory' in input.initData)) {
     return { address: input.initData.address }
   }
-  let factory: Address = STARTALE_FACTORY_ADDRESS
+  const deployment = STARTALE_DEPLOYMENTS[startaleVersion(input)]
+  let factory: Address = deployment.factory
   let factoryData: Hex
   let salt: Hex
   let initializationCallData: Hex
@@ -153,7 +192,7 @@ function startaleMaterial(input: AccountConstruction): DeploymentMaterial {
   }
   const accountInitData = encodeAbiParameters(
     [{ type: 'address' }, { type: 'bytes' }],
-    [STARTALE_IMPLEMENTATION_ADDRESS, initializationCallData],
+    [deployment.implementation, initializationCallData],
   )
   const hash = keccak256(
     encodePacked(
@@ -185,7 +224,11 @@ export function createStartaleAdapter(
       supportsEip7702Adoption: false,
       supportsSmartSessions: true,
       supportsOriginSignatureReuse: true,
-      signatureEnvelope: { kind: 'startale', validator },
+      signatureEnvelope: {
+        kind: 'startale',
+        validator,
+        version: startaleVersion(construction),
+      },
     },
     getIdentity: (input) => ({
       definition: input.account,

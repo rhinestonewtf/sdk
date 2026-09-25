@@ -462,6 +462,18 @@
       "factoryDataHash": "0x90952b55a4a32b8cef7fc5a1f9538c720182d50b75bc3e5b418b6da16b44e9bb"
     },
     {
+      "id": "startale-version-1-0-0",
+      "address": "0x8cdf27ccdec0ae54029a67b2edb5391e438aa023",
+      "factory": "0x0000003b3e7b530b4f981ae80d9350392defef90",
+      "factoryDataHash": "0x7c9f074a6ec654084f91cd2f6a8cd84efa6337716f5921b8085c576c87fc6173"
+    },
+    {
+      "id": "startale-version-1-0-1",
+      "address": "0x63ade81e8e3aa4aed3094c4bf8a42bdfb60e4799",
+      "factory": "0x00000be75c267efe9ddd7044d1f236959af4c15f",
+      "factoryDataHash": "0x7c9f074a6ec654084f91cd2f6a8cd84efa6337716f5921b8085c576c87fc6173"
+    },
+    {
       "id": "v0-safe-ecdsa",
       "address": "0x6903edC0Ef63Ee7B8F0605B11F16e2e85A8dF62F",
       "factory": "0x4e1dcf7ad4e460cfd30791ccc4f9c8a4f820ec67",
