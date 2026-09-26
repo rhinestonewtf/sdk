@@ -356,7 +356,6 @@ export function resolveSessionData(
       policy: addresses.oneTimeUseId,
       id: definition.oneTimeUse.id,
       deadline: validUntil && BigInt(Math.floor(validUntil.getTime() / 1000)),
-      wrappedNative: options.wrappedNativeToken,
     })
     // Install the once-policy on EVERY action: on the executor route the contract's
     // on-chain guard (a `consume` may only name the session's own id) runs via

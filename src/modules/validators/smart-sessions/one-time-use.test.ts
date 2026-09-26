@@ -1,4 +1,4 @@
-import { decodeAbiParameters, decodeFunctionData, size, slice } from 'viem'
+import { decodeAbiParameters, decodeFunctionData, size } from 'viem'
 import { describe, expect, test } from 'vitest'
 
 import {
@@ -25,13 +25,6 @@ describe('encodeOneTimeUseIdInitData', () => {
   })
   test('defaults the deadline to zero (never expires)', () => {
     expect(decodeInit(encodeOneTimeUseIdInitData(42n))).toEqual([42n, 0n])
-  })
-  test('appends the raw 20-byte wrapped-native address when given', () => {
-    const weth = '0x4200000000000000000000000000000000000006' as const
-    const initData = encodeOneTimeUseIdInitData(42n, 0n, weth)
-    expect(size(initData)).toBe(84)
-    expect(decodeInit(slice(initData, 0, 64))).toEqual([42n, 0n])
-    expect(slice(initData, 64)).toBe(weth)
   })
   test('rejects a zero id (policy treats 0 as "not configured")', () => {
     expect(() => encodeOneTimeUseIdInitData(0n)).toThrow()
