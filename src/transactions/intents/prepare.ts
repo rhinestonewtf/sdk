@@ -41,6 +41,18 @@ export async function prepareIntent<CompatibilityConfig>(
   })
   const ownerSelection =
     input.signers?.kind === 'owner' ? input.signers : undefined
+  // A one-time-use session settles once per chain. When the destination is also
+  // one of several sources, its pre-claim burn and the destination calls are not
+  // proven to share a transaction, so the calls could never settle.
+  if (
+    sessions?.destinationBurnsAsSource &&
+    calls.length > 0 &&
+    (input.sourceChains?.length ?? 0) > 1
+  ) {
+    throw new Error(
+      'A oneTimeUse session cannot run destination calls on a chain that is also one of several sources',
+    )
+  }
   const request = buildIntentRequest({
     transaction: sessions
       ? { ...input, signatureMode: sessions.signatureMode }
@@ -55,7 +67,10 @@ export async function prepareIntent<CompatibilityConfig>(
       }),
       ...(sessions ? { mockSignatures: sessions.mockSignatures } : {}),
     },
-    calls,
+    calls:
+      sessions?.destinationBurn && calls.length > 0
+        ? [sessions.destinationBurn, ...calls]
+        : calls,
     sourceCalls: mergeSourceCalls(sessions?.preClaimCalls, source.calls),
     providedFunds: source.providedFunds,
   })

@@ -4,6 +4,7 @@ import type { Call } from '../../calls/types'
 import { isHyperCoreWireId } from '../../chains/caip2'
 import type { EvmChainReference } from '../../chains/types'
 import { buildSmartSessionMockSignature } from '../../modules/validators/smart-sessions/mock-signature'
+import { buildOneTimeUseBurnOp } from '../../modules/validators/smart-sessions/one-time-use'
 import {
   DUMMY_PRECLAIMOP_SELECTOR,
   DUMMY_PRECLAIMOP_TARGET,
@@ -16,6 +17,11 @@ export interface PreparedIntentSessions {
   readonly byChain: Readonly<Record<number, ResolvedSessionSignerSet>>
   readonly mockSignatures: Readonly<Record<string, Hex>>
   readonly preClaimCalls: Readonly<Record<number, readonly Call[]>>
+  // The destination's burn, when a one-time-use session executes there.
+  readonly destinationBurn?: Call
+  // The destination is also a source with a one-time-use session, so its burn is
+  // spent by that source's pre-claim.
+  readonly destinationBurnsAsSource?: boolean
 }
 
 export async function prepareIntentSessions<CompatibilityConfig>(input: {
@@ -49,8 +55,15 @@ export async function prepareIntentSessions<CompatibilityConfig>(input: {
       if (enabled?.kind !== 'session-enabled') {
         throw new Error(`Session state for chain ${chain.id} is missing`)
       }
+      // A one-time-use session must never drop to plain ERC-1271 (mode 1): the
+      // policy burns the id when checkAction validates the burn, which only runs in
+      // verify-execution mode (mode 5), and it refuses ERC-1271 validation from the
+      // executor. An already-enabled, permission-less session would otherwise take
+      // mode 1 and could not settle — so force it.
       const verifyExecutions =
-        !enabled.enabled || selected.session.hasExplicitPermissions
+        !enabled.enabled ||
+        selected.session.hasExplicitPermissions ||
+        Boolean(selected.session.oneTimeUse)
       return [
         chain.id,
         {
@@ -65,6 +78,16 @@ export async function prepareIntentSessions<CompatibilityConfig>(input: {
     }),
   )
   const byChain = Object.fromEntries(resolvedEntries)
+  // Burns ride the listed sources' pre-claim calls, so an unlisted source would
+  // settle without one (and the policy would refuse it).
+  if (
+    resolvedEntries.some(([, value]) => value.session.oneTimeUse) &&
+    !input.intent.sourceChains?.length
+  ) {
+    throw new Error(
+      'A oneTimeUse session needs the intent to list its sourceChains',
+    )
+  }
   const mockSignatures = Object.fromEntries(
     resolvedEntries.map(([chainId, resolved]) => [
       String(chainId),
@@ -84,6 +107,10 @@ export async function prepareIntentSessions<CompatibilityConfig>(input: {
   const preClaimCalls = Object.fromEntries(
     (input.intent.sourceChains ?? []).flatMap((chain) => {
       const resolved = byChain[chain.id]
+      // The policy refuses any execution not preceded by the burn, so it rides
+      // first on every chain the session settles on (and replaces the dummy op).
+      const burn = resolved && oneTimeUseBurnCall(resolved.session)
+      if (burn) return [[chain.id, [burn]] as const]
       return resolved?.verifyExecutions && resolved.enableData
         ? [
             [
@@ -100,6 +127,20 @@ export async function prepareIntentSessions<CompatibilityConfig>(input: {
         : []
     }),
   )
+  const destinationSession =
+    input.intent.destination.kind === 'evm'
+      ? byChain[input.intent.destination.id]?.session
+      : undefined
+  // A destination that is also a source already burns there; a second burn in the
+  // same batch is refused.
+  const destinationBurnsAsSource =
+    input.intent.destination.kind === 'evm' &&
+    Boolean(preClaimCalls[input.intent.destination.id]?.length) &&
+    Boolean(destinationSession?.oneTimeUse)
+  const destinationBurn =
+    destinationSession &&
+    !destinationBurnsAsSource &&
+    oneTimeUseBurnCall(destinationSession)
   return {
     signatureMode: resolvedEntries.some(([, value]) => value.verifyExecutions)
       ? 5
@@ -107,7 +148,19 @@ export async function prepareIntentSessions<CompatibilityConfig>(input: {
     byChain,
     mockSignatures,
     preClaimCalls,
+    ...(destinationBurn && { destinationBurn }),
+    ...(destinationBurnsAsSource && { destinationBurnsAsSource }),
   }
+}
+
+// `consumeFor(id, 0)` settles either route: the orchestrator stamps the Permit2
+// nonce into it, and the executor route ignores the witness.
+function oneTimeUseBurnCall(
+  session: ResolvedSessionSignerSet['session'],
+): Call | undefined {
+  if (!session.oneTimeUse) return undefined
+  const op = buildOneTimeUseBurnOp({ ...session.oneTimeUse, route: 'permit2' })
+  return { target: op.to, value: op.value, data: op.data }
 }
 
 // Chains a smart-session intent needs an enabled session on: every source, plus

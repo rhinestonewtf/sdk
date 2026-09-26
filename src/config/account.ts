@@ -610,6 +610,9 @@ interface SessionPolicyAddresses {
   timeFrame?: Address
   usageLimit?: Address
   valueLimit?: Address
+  // Required when a session sets `oneTimeUse`; no default until the policy has a
+  // canonical deployment.
+  oneTimeUseId?: Address
 }
 
 /** An EIP-712 domain and canonical schema that a scoped session may sign. */
@@ -818,9 +821,22 @@ interface SessionDefinition<
    *
    * Opt-in: anything other than `'none'` moves the permissionId and digest, so
    * an existing session's stored signature no longer covers it. Unrestricted
-   * sessions stay on `zeroHash` in every mode.
+   * sessions stay on `zeroHash` in every mode, except a `oneTimeUse` session.
    */
   saltMode?: 'none' | 'v1' | 'strict'
+  /**
+   * Pins a one-time-use id on the session (RHI-5798): the session settles at most
+   * once per chain. Requires `policyAddresses.oneTimeUseId`; use a fresh random id
+   * per session. Every intent the SDK prepares for the session burns the id first
+   * on each chain it settles on; the policy refuses any settlement that does not.
+   * Intents must list `sourceChains`, and cannot run destination calls on a chain
+   * that is also one of several sources. A Permit2-route session must also supply `claimPolicies`, each
+   * pinning its `spenders` (the arbiter); without them the session has no signing
+   * surface and a `signing` mode is rejected.
+   * `validUntil` (a future Date; omit for never) bounds when the id can be spent.
+   * Always salted as in `'strict'`; `saltMode: 'v1'` is rejected.
+   */
+  oneTimeUse?: { id: bigint; validUntil?: Date }
 }
 
 type SessionInput<TAbis extends readonly Abi[] = readonly Abi[]> = Omit<
@@ -863,6 +879,10 @@ interface Session {
   /** The venue scope this session was built from. Metadata only — it lets the
    *  SDK derive the matching quoter pin when transacting with the session. */
   swap?: SwapScope
+  /** Claim policies enforced via the ERC-1271 list, not the claim surface. */
+  claimPoliciesEnforcedVia1271?: boolean
+  /** A one-time-use session's id and policy; each intent burns the id. */
+  oneTimeUse?: { readonly id: bigint; readonly policy: Address }
 }
 
 interface ModuleInput {
