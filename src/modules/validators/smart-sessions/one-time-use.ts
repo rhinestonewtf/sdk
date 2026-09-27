@@ -50,7 +50,7 @@ export interface OneTimeUseBurnOp {
 // The id must be a non-zero uint256 — the policy rejects zero ("not configured").
 function assertValidOneTimeUseId(id: bigint): void {
   if (id <= 0n || id > (1n << 256n) - 1n) {
-    throw new Error('OneTimeUseId id must be a non-zero uint256')
+    throw new Error('oneTimeUse.id must be a non-zero uint256')
   }
 }
 
@@ -81,6 +81,8 @@ export function oneTimeUseIdErc1271Policy(params: {
 //   - permit2 route:  `consumeFor(id, 0)` — a PLACEHOLDER witness. The witness
 //     must equal the settlement's Permit2 order nonce, which only the orchestrator
 //     knows, so it stamps the real nonce into this op before the mandate is signed.
+// Intent flows (`prepareIntentSessions`) always inject the permit2 form; the
+// orchestrator rewrites it to `consume(id)` off the Permit2 route.
 export function buildOneTimeUseBurnOp(params: {
   policy: Address
   id: bigint
