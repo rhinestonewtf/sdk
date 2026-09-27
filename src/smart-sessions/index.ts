@@ -18,6 +18,15 @@ import {
   SMART_SESSION_EMISSARY_ADDRESS,
   SMART_SESSION_EMISSARY_ADDRESS_DEV,
 } from '../modules/validators/smart-sessions/module'
+import type {
+  OneTimeUseBurnOp,
+  OneTimeUseSettlementRoute,
+} from '../modules/validators/smart-sessions/one-time-use'
+import {
+  buildOneTimeUseBurnOp,
+  encodeOneTimeUseIdInitData,
+  oneTimeUseIdErc1271Policy,
+} from '../modules/validators/smart-sessions/one-time-use'
 import {
   ARG_POLICY_ADDRESS,
   INTENT_EXECUTION_POLICY_ADDRESS,
@@ -158,4 +167,9 @@ export {
   // Venue-scoped swap sessions (RHI-6286)
   ZEROX_CHAIN_IDS,
   zeroEx,
+  // One-time-use sessions (RHI-5798)
+  buildOneTimeUseBurnOp,
+  encodeOneTimeUseIdInitData,
+  oneTimeUseIdErc1271Policy,
 }
+export type { OneTimeUseSettlementRoute, OneTimeUseBurnOp }

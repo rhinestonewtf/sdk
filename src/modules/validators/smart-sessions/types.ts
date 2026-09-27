@@ -197,6 +197,9 @@ export interface SessionPolicyAddresses {
   readonly timeFrame?: Address
   readonly usageLimit?: Address
   readonly valueLimit?: Address
+  // Required when a session sets `oneTimeUse`; no default until the policy has a
+  // canonical deployment.
+  readonly oneTimeUseId?: Address
 }
 
 export type CrossChainSettlementLayer = 'SAME_CHAIN' | 'ECO' | 'ACROSS'
@@ -312,6 +315,16 @@ export interface SessionDefinition {
   // its raw selector with no ABI (RHI-6286). ScopedAction only (never a fallback
   // action) so a raw entry can't map back to the wildcard fallback target.
   actions?: ScopedAction[]
+  // Pins a one-time-use id on the session (RHI-5798); see `SessionDefinition` in
+  // config/account.ts for the full contract.
+  oneTimeUse?: OneTimeUseSessionConfig
+}
+
+export interface OneTimeUseSessionConfig {
+  readonly id: bigint
+  // After this the id can no longer be spent; omit for never. The policy rejects
+  // a time already in the past at session enable (DeadlineInPast).
+  readonly validUntil?: Date
 }
 
 export interface ResolvedPolicy {
@@ -350,6 +363,14 @@ export interface Session {
    *  a caller can derive the matching quoter pin at transact time. Metadata
    *  only — it is not part of the permission id. */
   swap?: SwapScopeInput
+  // When true, `claimPolicies` are enforced via the ERC-1271 surface (already
+  // encoded into `erc7739Policies.erc1271Policies`) and must NOT be re-encoded
+  // onto the on-chain claim (lockTag) surface. They stay on the high-level
+  // session so the permit2 settlement signature can still build their calldata.
+  claimPoliciesEnforcedVia1271?: boolean
+  // A one-time-use session (RHI-5798): its id and policy, so every intent can
+  // carry the burn and run in verify-execution mode (see prepareIntentSessions).
+  oneTimeUse?: { readonly id: bigint; readonly policy: Address }
 }
 
 export interface SessionData {
