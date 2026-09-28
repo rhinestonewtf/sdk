@@ -52,6 +52,14 @@ export interface AccountTypedDataSigningRoute {
   readonly erc7739: ArtifactAssemblyPlan['erc7739']
 }
 
+function startaleEnvelopeVersion(context: SigningContext) {
+  const envelope = context.accountCapabilities.signatureEnvelope
+  if (envelope.kind !== 'startale') {
+    throw new Error('Expected Startale signature envelope')
+  }
+  return envelope.version
+}
+
 export function resolveAccountTypedDataSigning(input: {
   readonly typedData: TypedDataDefinition
   readonly chain: EvmChainReference
@@ -107,6 +115,7 @@ export function resolveAccountTypedDataSigning(input: {
           verifierDomain: startaleEip712Domain(
             input.context.account.address,
             input.chain.id,
+            startaleEnvelopeVersion(input.context),
           ),
         })
       : input.context.validatorCapabilities.supportsEip712

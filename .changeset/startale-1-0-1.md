@@ -2,4 +2,4 @@
 '@rhinestone/sdk': major
 ---
 
-Support only Startale v1.0.1. Startale accounts now deploy the v1.0.1 implementation and factory, which changes their counterfactual addresses, and sign typed data against the v1.0.1 EIP-712 domain. Restoring a v1.0.0 account from `initData` with the v1.0.0 `factory` throws `AccountConfigurationNotSupportedError`; keep existing v1.0.0 accounts on `@rhinestone/sdk` v2 with `account: { type: 'startale', version: '1.0.0' }`.
+Startale now defaults to v1.0.1, which deploys a new implementation and factory, changes the default counterfactual account address, and signs typed data against the v1.0.1 EIP-712 domain. Existing v1.0.0 accounts opt back in with `account: { type: 'startale', version: '1.0.0' }` to keep their address and domain — including accounts passed as address-only `initData`, whose typed-data signatures would otherwise target the v1.0.1 domain. Accounts restored from `initData` with a `factory` keep their version automatically.

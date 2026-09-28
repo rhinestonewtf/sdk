@@ -434,7 +434,7 @@
       "deliberateChange": {
         "sinceSha": "afb934d220e1638c849ab5b716e72153cfa54dbe",
         "bump": "major",
-        "reason": "Startale v1.0.1 (new implementation + factory) is the only supported Startale version"
+        "reason": "Startale defaults to v1.0.1 (new implementation + factory)"
       }
     },
     {
@@ -445,7 +445,7 @@
       "deliberateChange": {
         "sinceSha": "afb934d220e1638c849ab5b716e72153cfa54dbe",
         "bump": "major",
-        "reason": "Startale v1.0.1 (new implementation + factory) is the only supported Startale version; also multi-factor factor slots hold the sub-validator stateless configuration, so a nested passkey factor is configured (and ordered) the way its stateless validation path requires"
+        "reason": "Startale defaults to v1.0.1 (new implementation + factory); also multi-factor factor slots hold the sub-validator stateless configuration, so a nested passkey factor is configured (and ordered) the way its stateless validation path requires"
       }
     },
     {
@@ -456,8 +456,14 @@
       "deliberateChange": {
         "sinceSha": "afb934d220e1638c849ab5b716e72153cfa54dbe",
         "bump": "major",
-        "reason": "Startale v1.0.1 (new implementation + factory) is the only supported Startale version"
+        "reason": "Startale defaults to v1.0.1 (new implementation + factory)"
       }
+    },
+    {
+      "id": "startale-pinned-factory-1-0-0",
+      "address": "0x8cdf27ccdec0ae54029a67b2edb5391e438aa023",
+      "factory": "0x0000003b3e7b530b4f981ae80d9350392defef90",
+      "factoryDataHash": "0x7c9f074a6ec654084f91cd2f6a8cd84efa6337716f5921b8085c576c87fc6173"
     },
     {
       "id": "startale-salt",
@@ -467,7 +473,7 @@
       "deliberateChange": {
         "sinceSha": "afb934d220e1638c849ab5b716e72153cfa54dbe",
         "bump": "major",
-        "reason": "Startale v1.0.1 (new implementation + factory) is the only supported Startale version"
+        "reason": "Startale defaults to v1.0.1 (new implementation + factory)"
       }
     },
     {
@@ -478,8 +484,20 @@
       "deliberateChange": {
         "sinceSha": "afb934d220e1638c849ab5b716e72153cfa54dbe",
         "bump": "major",
-        "reason": "Startale v1.0.1 (new implementation + factory) is the only supported Startale version"
+        "reason": "Startale defaults to v1.0.1 (new implementation + factory)"
       }
+    },
+    {
+      "id": "startale-version-1-0-0",
+      "address": "0x8cdf27ccdec0ae54029a67b2edb5391e438aa023",
+      "factory": "0x0000003b3e7b530b4f981ae80d9350392defef90",
+      "factoryDataHash": "0x7c9f074a6ec654084f91cd2f6a8cd84efa6337716f5921b8085c576c87fc6173"
+    },
+    {
+      "id": "startale-version-1-0-1",
+      "address": "0x63ade81e8e3aa4aed3094c4bf8a42bdfb60e4799",
+      "factory": "0x00000be75c267efe9ddd7044d1f236959af4c15f",
+      "factoryDataHash": "0x7c9f074a6ec654084f91cd2f6a8cd84efa6337716f5921b8085c576c87fc6173"
     },
     {
       "id": "v0-safe-ecdsa",

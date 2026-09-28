@@ -221,6 +221,14 @@ const accountVariants: VectorCase[] = [
     account: { type: 'kernel', salt: keccak256(toHex('vector:salt')) },
     owners: ecdsa,
   }),
+  deployment('startale-version-1-0-0', {
+    account: { type: 'startale', version: '1.0.0' },
+    owners: ecdsa,
+  }),
+  deployment('startale-version-1-0-1', {
+    account: { type: 'startale', version: '1.0.1' },
+    owners: ecdsa,
+  }),
   deployment('startale-salt', {
     account: { type: 'startale', salt: keccak256(toHex('vector:salt')) },
     owners: ecdsa,
@@ -438,6 +446,14 @@ const pinnedAndAdoption: VectorCase[] = [
     pins: 'deployment',
     config: { account: { type: 'nexus' }, owners: ecdsa },
     pinnedFrom: 'nexus-ecdsa',
+  },
+  // Factory material pins the version, so no `version` still restores 1.0.0.
+  {
+    id: 'startale-pinned-factory-1-0-0',
+    profile: 'current',
+    pins: 'deployment',
+    config: { account: { type: 'startale' }, owners: ecdsa },
+    pinnedFrom: 'startale-version-1-0-0',
   },
   addressOnly('nexus-7702-ecdsa', {
     account: { type: 'nexus' },
