@@ -437,6 +437,20 @@ export function resolveSessionData(
       claimPolicies = []
     }
   }
+  // Enabling keeps one config per policy contract and action, so a second
+  // entry for the same policy would overwrite the first instead of ANDing.
+  for (const action of actions) {
+    const seen = new Set<string>()
+    for (const { policy } of action.actionPolicies) {
+      const key = policy.toLowerCase()
+      if (seen.has(key)) {
+        throw new Error(
+          `Action (${action.actionTarget}, ${action.actionTargetSelector}) carries policy ${policy} twice; the second config would overwrite the first on-chain`,
+        )
+      }
+      seen.add(key)
+    }
+  }
   const enabledErc7739Policies = { ...erc7739Policies, erc1271Policies }
   return {
     sessionValidator: validator.address,

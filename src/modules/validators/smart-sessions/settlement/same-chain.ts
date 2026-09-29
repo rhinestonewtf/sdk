@@ -1,10 +1,12 @@
 import {
+  type Abi,
   type Address,
   isAddressEqual,
   toFunctionSelector,
   zeroAddress,
 } from 'viem'
-import { swapperAddresses } from '../swap/rhinestone'
+import { namedParamOffsets } from '../../permissions'
+import { swapperAbi } from '../swap/rhinestone'
 import { cumulativeCap, pin, swapAction } from '../swap/rules'
 import { resolveSwapScope } from '../swap/scope'
 import type {
@@ -29,7 +31,46 @@ const NATIVE_SENTINEL = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE'
  * The Swapper's output bound, at the same head word in both entrypoints:
  * `minAmountOut` for `swapExactIn`, `amountOut` for `swapExactOut`.
  */
-const SWAPPER_OUTPUT_BOUND_OFFSET = 96n
+export const SWAPPER_OUTPUT_BOUND_OFFSET = namedParamOffsets(
+  swapperAbi as unknown as Abi,
+  'swapExactIn',
+).minAmountOut
+
+const UNIVERSAL_ACTION_MAX_RULES = 16
+
+/**
+ * Add a rule to an action's params policy. It must join the existing policy:
+ * the chain keeps one config per policy contract and action, so a second
+ * policy of the same kind would overwrite the first rather than AND with it.
+ */
+export function withRule(
+  policy: SessionPolicy,
+  rule: UniversalActionPolicyParamRule,
+): SessionPolicy {
+  if (policy.type === 'arg-policy') {
+    return {
+      ...policy,
+      expression: {
+        type: 'and',
+        left: policy.expression,
+        right: { type: 'rule', rule },
+      },
+    }
+  }
+  if (policy.type !== 'universal-action') return policy
+  if (policy.rules.length < UNIVERSAL_ACTION_MAX_RULES) {
+    return { ...policy, rules: [...policy.rules, rule] }
+  }
+  return {
+    type: 'arg-policy',
+    ...(policy.valueLimitPerUse === undefined
+      ? {}
+      : { valueLimitPerUse: policy.valueLimitPerUse }),
+    expression: [...policy.rules, rule]
+      .map((r): ArgPolicyExpression => ({ type: 'rule', rule: r }))
+      .reduceRight((right, left) => ({ type: 'and', left, right })),
+  }
+}
 
 export interface SameChainContext {
   readonly chainId: number
@@ -169,6 +210,13 @@ export function scopeSameChain(ctx: SameChainContext): SameChainScope {
       'crossChainPermits: a SAME_CHAIN_IE swap needs a positive `to.minAmount` to bound what the swap must deliver',
     )
   }
+  // The floor is a fixed amount, not a price: only against a capped input does
+  // maxAmount : minAmount bound the rate, and the cap brings oneTimeUse.
+  if (ctx.cap === undefined) {
+    throw new Error(
+      'crossChainPermits: a SAME_CHAIN_IE swap needs maxAmount; the floor bounds the rate only against a capped input',
+    )
+  }
   const swap = resolveSwapScope(
     {
       sell: {
@@ -181,17 +229,10 @@ export function scopeSameChain(ctx: SameChainContext): SameChainScope {
     ctx.chainId,
     ctx.environment,
   )
-  const swapper = swapperAddresses(ctx.environment).swapper
-  const floor: SessionPolicy = {
-    type: 'universal-action',
-    valueLimitPerUse: 0n,
-    rules: [
-      {
-        condition: 'greaterThanOrEqual',
-        calldataOffset: SWAPPER_OUTPUT_BOUND_OFFSET,
-        referenceValue: leg.minAmount,
-      },
-    ],
+  const floor: UniversalActionPolicyParamRule = {
+    condition: 'greaterThanOrEqual',
+    calldataOffset: SWAPPER_OUTPUT_BOUND_OFFSET,
+    referenceValue: leg.minAmount,
   }
   const date = (seconds: bigint) => new Date(Number(seconds) * 1000)
   const window = {
@@ -203,12 +244,15 @@ export function scopeSameChain(ctx: SameChainContext): SameChainScope {
       : { validUntil: date(ctx.validUntil) }),
   }
   return {
+    // The bare venue emits only Swapper entrypoints; the floor goes on every
+    // action so none can run without it.
     actions: swap.actions.map((action) =>
-      withTimeFrame(
-        isAddressEqual(action.target, swapper)
-          ? { ...action, policies: [...(action.policies ?? []), floor] }
-          : action,
-      ),
+      withTimeFrame({
+        ...action,
+        policies: (action.policies ?? []).map((policy) =>
+          withRule(policy, floor),
+        ),
+      }),
     ),
     permissions: swap.permissions.map((permission) => ({
       ...permission,

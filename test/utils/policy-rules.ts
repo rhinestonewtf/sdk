@@ -38,7 +38,13 @@ export function satisfiesRules(
         : e.type === 'and'
           ? expr(e.left) && expr(e.right)
           : expr(e.left) || expr(e.right)
-  return (action.policies ?? []).every((policy) =>
+  // The chain keeps one config per policy contract and action: a later policy of
+  // the same kind overwrites an earlier one instead of ANDing with it.
+  const policies = action.policies ?? []
+  const installed = policies.filter(
+    (policy, i) => !policies.slice(i + 1).some((p) => p.type === policy.type),
+  )
+  return installed.every((policy) =>
     policy.type === 'universal-action'
       ? policy.rules.every(rule)
       : policy.type === 'arg-policy'

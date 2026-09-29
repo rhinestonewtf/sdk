@@ -1,4 +1,5 @@
 import {
+  type Abi,
   type Address,
   encodeFunctionData,
   erc20Abi,
@@ -6,8 +7,13 @@ import {
 } from 'viem'
 import { describe, expect, test } from 'vitest'
 import { satisfiesRules as holds } from '../../../../../test/utils/policy-rules'
+import { namedParamOffsets } from '../../permissions'
 import { swapperAbi, swapperAddresses } from '../swap/rhinestone'
-import { scopeSameChain } from './same-chain'
+import {
+  SWAPPER_OUTPUT_BOUND_OFFSET,
+  scopeSameChain,
+  withRule,
+} from './same-chain'
 
 const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address
 const WETH = '0x4200000000000000000000000000000000000006' as Address
@@ -122,11 +128,30 @@ describe('scopeSameChain', () => {
     })
 
     const swapper = swapperAddresses('production').swapper
-    const swapCall = (fn: 'swapExactIn' | 'swapExactOut', bound: bigint) =>
+    const swapCall = (
+      fn: 'swapExactIn' | 'swapExactOut',
+      bound: bigint,
+      o: Partial<{
+        amount: bigint
+        tokenOut: Address
+        recipient: Address
+      }> = {},
+    ) =>
       encodeFunctionData({
         abi: swapperAbi,
         functionName: fn,
-        args: [USDC, 100n, WETH, bound, bound, OTHER, 0n, []],
+        // The quoted word (next to the bound) gets its own value, so a floor on
+        // the wrong word cannot pass.
+        args: [
+          USDC,
+          o.amount ?? 100n,
+          o.tokenOut ?? WETH,
+          bound,
+          10n ** 18n,
+          o.recipient ?? OTHER,
+          0n,
+          [],
+        ],
       })
 
     test.each(['swapExactIn', 'swapExactOut'] as const)(
@@ -142,6 +167,12 @@ describe('scopeSameChain', () => {
         expect(holds(action, swapCall(fn, 4n))).toBe(false)
         // The drain shape: accept nothing back and route the input away.
         expect(holds(action, swapCall(fn, 0n))).toBe(false)
+        // The floor joins the swap pins rather than replacing them.
+        expect(holds(action, swapCall(fn, 5n, { tokenOut: THIRD }))).toBe(false)
+        expect(holds(action, swapCall(fn, 5n, { recipient: THIRD }))).toBe(
+          false,
+        )
+        expect(holds(action, swapCall(fn, 5n, { amount: 101n }))).toBe(false)
       },
     )
 
@@ -185,6 +216,16 @@ describe('scopeSameChain', () => {
       'needs a concrete recipient',
     ],
     [
+      'a swap without maxAmount',
+      {
+        cap: undefined,
+        destinations: [
+          { chainId: 8453, token: WETH, recipient: OTHER, minAmount: 5n },
+        ],
+      },
+      'a SAME_CHAIN_IE swap needs maxAmount',
+    ],
+    [
       'a swap without to.minAmount',
       { destinations: [{ chainId: 8453, token: WETH, recipient: OTHER }] },
       'needs a positive `to.minAmount`',
@@ -215,5 +256,79 @@ describe('scopeSameChain', () => {
     ],
   ] as const)('refuses %s', (_, overrides, message) => {
     expect(() => scopeSameChain({ ...base, ...overrides })).toThrow(message)
+  })
+})
+
+describe('the Swapper output floor', () => {
+  test('sits at the same head word in both Swapper entrypoints', () => {
+    const offsets = (fn: string) =>
+      namedParamOffsets(swapperAbi as unknown as Abi, fn)
+    expect(SWAPPER_OUTPUT_BOUND_OFFSET).toBe(96n)
+    expect(offsets('swapExactOut').amountOut).toBe(SWAPPER_OUTPUT_BOUND_OFFSET)
+  })
+
+  test('every swap action targets the Swapper', () => {
+    const swapper = swapperAddresses('production').swapper
+    const { actions } = scopeSameChain({
+      ...base,
+      destinations: [
+        { chainId: 8453, token: WETH, recipient: OTHER, minAmount: 5n },
+      ],
+    })
+    expect(actions.length).toBeGreaterThan(0)
+    for (const action of actions) expect(action.target).toBe(swapper)
+  })
+
+  describe('withRule joins the existing params policy', () => {
+    const rule = {
+      condition: 'equal',
+      calldataOffset: 0n,
+      referenceValue: 1n,
+    } as const
+    const floor = {
+      condition: 'greaterThanOrEqual',
+      calldataOffset: 96n,
+      referenceValue: 5n,
+    } as const
+
+    test('appends to a universal-action policy', () => {
+      expect(
+        withRule({ type: 'universal-action', rules: [rule] }, floor),
+      ).toEqual({ type: 'universal-action', rules: [rule, floor] })
+    })
+
+    test('moves a full universal-action policy onto an arg-policy AND', () => {
+      const full = Array.from({ length: 16 }, () => rule)
+      const merged = withRule(
+        {
+          type: 'universal-action',
+          valueLimitPerUse: 0n,
+          rules: full as [typeof rule, ...(typeof rule)[]],
+        },
+        floor,
+      )
+      expect(merged).toMatchObject({ type: 'arg-policy', valueLimitPerUse: 0n })
+    })
+
+    test('ANDs onto an arg-policy expression', () => {
+      const expression = { type: 'rule', rule } as const
+      expect(withRule({ type: 'arg-policy', expression }, floor)).toEqual({
+        type: 'arg-policy',
+        expression: {
+          type: 'and',
+          left: expression,
+          right: { type: 'rule', rule: floor },
+        },
+      })
+    })
+
+    test('leaves other policies alone', () => {
+      const timeFrame = {
+        type: 'time-frame',
+        validAfter: 1,
+        validUntil: 2,
+      } as const
+      expect(withRule(timeFrame, floor)).toBe(timeFrame)
+    })
   })
 })

@@ -195,16 +195,30 @@ describe('settlement-scoped crossChainPermits', () => {
       expect(data.claimPolicies).toEqual([])
     })
 
-    test('a swap permit compiles through the swap scope with its floor', () => {
+    test('a swap permit compiles through the swap scope, one params policy per action', () => {
       const WETH = '0x4200000000000000000000000000000000000006' as Address
-      const data = resolveSessionData(
-        sameChain({
-          chain: base,
-          token: WETH,
-          recipient: OTHER,
-          minAmount: 5n,
-        }),
-      )
+      const def = sameChain({
+        chain: base,
+        token: WETH,
+        recipient: OTHER,
+        minAmount: 5n,
+      })
+      const permit = def.crossChainPermits?.[0]
+      const data = resolveSessionData({
+        ...def,
+        ...withOnce,
+        crossChainPermits: [
+          { ...permit, from: { chain: base, token: USDC, maxAmount: 100n } },
+        ],
+      })
+      // The floor joins the Swapper's params policy; a second copy of that
+      // policy would overwrite the pins on-chain.
+      for (const action of data.actions) {
+        const policies = action.actionPolicies.map((p) =>
+          p.policy.toLowerCase(),
+        )
+        expect(new Set(policies).size).toBe(policies.length)
+      }
       const targets = data.actions.map((a) => a.actionTarget.toLowerCase())
       expect(targets).toContain(USDC.toLowerCase())
       expect(targets).toContain(
@@ -302,6 +316,33 @@ describe('settlement-scoped crossChainPermits', () => {
         'maxFeeBps applies only to ECO',
       )
     })
+  })
+
+  test('refuses an action carrying the same policy twice', () => {
+    // Enabling keeps one config per policy and action, so the second would
+    // silently replace the first.
+    const rule = {
+      condition: 'equal',
+      calldataOffset: 0n,
+      referenceValue: 1n,
+    } as const
+    expect(() =>
+      resolveSessionData({
+        chain: base,
+        owners: { type: 'ecdsa', accounts: [accountA] },
+        restrictToActions: true,
+        actions: [
+          {
+            target: USDC,
+            selector: APPROVE,
+            policies: [
+              { type: 'universal-action', rules: [rule] },
+              { type: 'universal-action', rules: [rule] },
+            ],
+          },
+        ],
+      }),
+    ).toThrow('twice; the second config would overwrite the first on-chain')
   })
 
   test('refuses a permit naming two IntentExecutor layers', () => {
