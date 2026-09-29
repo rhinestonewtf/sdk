@@ -402,7 +402,7 @@ interface CrossChainPermissionInput {
    * Settlement layers this session is permitted to use. Omit (or pass
    * `[]`) to allow **any of the supported settlement layers** — the SDK
    * resolves to the union of every arbiter in its bundled allow-set. Pass
-   * a subset (e.g. `['ECO']`) to narrow.
+   * a subset (e.g. `['ACROSS']`) to narrow.
    *
    * `CCTP`, `OFT` and `ECO` are IntentExecutor layers: naming one scopes the
    * session to that layer's calls instead (see {@link CrossChainSettlementLayer}).

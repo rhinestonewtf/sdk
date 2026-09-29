@@ -13,6 +13,10 @@ import {
 } from 'viem'
 import { describe, expect, test } from 'vitest'
 import { satisfiesRules as holds } from '../../../../../test/utils/policy-rules'
+import type {
+  ArgPolicyExpression,
+  UniversalActionPolicyParamRule,
+} from '../types'
 import {
   ECO_PORTAL,
   ECO_PROVERS,
@@ -24,13 +28,15 @@ import {
   scopeEco,
 } from './eco'
 
-const USDC_BASE = ECO_STABLECOINS[8453][0].token
-const USDC_ARB = ECO_STABLECOINS[42161][0].token
-const USDT0_ARB = ECO_STABLECOINS[42161][1].token
-const USDC_OP = ECO_STABLECOINS[10][0].token
+const USDC_BASE = ECO_STABLECOINS[8453][0]
+const USDC_ARB = ECO_STABLECOINS[42161][0]
+const USDT0_ARB = ECO_STABLECOINS[42161][1]
+const USDC_OP = ECO_STABLECOINS[10][0]
 const ACCOUNT = '0x1111111111111111111111111111111111111111' as Address
 const OTHER = '0x2222222222222222222222222222222222222222' as Address
-const [HYPER_PROVER] = ECO_PROVERS
+const HYPER_PROVER = '0xec004Ab4870c4e177c66949329dCdb503CE41022' as Address
+const CCIP_PROVER = '0xceBB7cDDBA4734C7130BF114a37C2dA4C5f3c473' as Address
+const POLYMER_PROVER = '0xE3e4e6F284f1c8E17bafE4268EB98c36886B4d8B' as Address
 
 const routeAbi = [
   {
@@ -135,6 +141,7 @@ const base = {
   destinations: [{ chainId: 42161, token: USDC_ARB, recipient: ACCOUNT }],
   cap: 100n,
   maxFeeBps: 100,
+  validUntil: 1_900_000_000n,
   timeFrame: [],
 } as const
 
@@ -171,16 +178,17 @@ describe('publishAndFund offsets', () => {
 })
 
 describe('scopeEco', () => {
-  const action = scopeEco({ ...base, validUntil: 1_900_000_000n })
+  const action = scopeEco(base)
 
   test('admits the publish the orchestrator forwards', () => {
     expect(holds(action, publish())).toBe(true)
   })
 
-  test('admits every allowlisted prover', () => {
-    for (const prover of ECO_PROVERS) {
-      expect(holds(action, publish({ prover }))).toBe(true)
-    }
+  test('admits only provers deployed on both chains of the leg', () => {
+    // Base -> Arbitrum: Hyperlane and Polymer are on both; CCIP is not on Arbitrum.
+    expect(holds(action, publish({ prover: HYPER_PROVER }))).toBe(true)
+    expect(holds(action, publish({ prover: POLYMER_PROVER }))).toBe(true)
+    expect(holds(action, publish({ prover: CCIP_PROVER }))).toBe(false)
   })
 
   test.each([
@@ -319,21 +327,96 @@ describe('scopeEco', () => {
       { maxFeeBps: 1.5 },
       'maxFeeBps must be an integer',
     ],
+    ['a negative maxFeeBps', { maxFeeBps: -1 }, 'maxFeeBps must be an integer'],
+    ['no validUntil', { validUntil: undefined }, 'needs validUntil'],
     ['no account', { account: undefined }, 'needs `account`'],
     [
       'more than one source token',
       { sourceTokens: [USDC_BASE, OTHER] },
       'exactly one `from` token',
     ],
+    [
+      'a leg with no prover on both chains',
+      {
+        chainId: 2020,
+        target: ecoPortal(2020),
+        sourceTokens: [ECO_STABLECOINS[2020][0]],
+      },
+      'no Eco prover is deployed on both chain 2020 and chain 42161',
+    ],
   ] as const)('refuses %s', (_, overrides, message) => {
     expect(() => scopeEco({ ...base, ...overrides })).toThrow(message)
   })
 
+  test('a Ronin leg admits only the CCIP prover', () => {
+    const ronin = scopeEco({
+      ...base,
+      chainId: 2020,
+      target: ecoPortal(2020),
+      sourceTokens: [ECO_STABLECOINS[2020][0]],
+      destinations: [{ chainId: 8453, token: USDC_BASE, recipient: ACCOUNT }],
+    })
+    const toBase = (prover: Address) =>
+      publish({
+        destination: 8453n,
+        routeToken: USDC_BASE,
+        rewardToken: ECO_STABLECOINS[2020][0],
+        prover,
+      })
+    expect(holds(ronin, toBase(CCIP_PROVER))).toBe(true)
+    expect(holds(ronin, toBase(HYPER_PROVER))).toBe(false)
+  })
+
+  /** Every rule in an ArgPolicy expression, OR branches included. */
+  const rulesOf = (e: ArgPolicyExpression): UniversalActionPolicyParamRule[] =>
+    e.type === 'rule'
+      ? [e.rule]
+      : e.type === 'not'
+        ? rulesOf(e.child)
+        : [...rulesOf(e.left), ...rulesOf(e.right)]
+
+  const expression = (() => {
+    const policy = action.policies?.[0]
+    if (policy?.type !== 'arg-policy') throw new Error('expected an arg policy')
+    return policy.expression
+  })()
+
+  test('every pinned word refuses any other value', () => {
+    // Each equal rule must bind on its own: nudge its word and the publish
+    // must fail, whichever pin it is.
+    const pinned = rulesOf(expression).filter((r) => r.condition === 'equal')
+    expect(pinned.length).toBeGreaterThan(25)
+    for (const rule of pinned) {
+      const nudged = BigInt(rule.referenceValue) + 1n
+      expect(
+        holds(action, rewrite(rule.calldataOffset, nudged)),
+        `offset ${rule.calldataOffset}`,
+      ).toBe(false)
+    }
+  })
+
+  test('many destinations stay within ArgPolicy limits', () => {
+    const chains = [1, 10, 130, 137, 999, 9745, 42161] as const
+    const wide = scopeEco({
+      ...base,
+      destinations: chains.map((chainId) => ({
+        chainId,
+        token: ECO_STABLECOINS[chainId][0],
+        recipient: ACCOUNT,
+      })),
+    })
+    const policy = wide.policies?.[0]
+    if (policy?.type !== 'arg-policy') throw new Error('expected an arg policy')
+    expect(rulesOf(policy.expression).length).toBeLessThanOrEqual(128)
+  })
+
   test('every bundled address is valid', () => {
     expect(isAddress(ECO_PORTAL)).toBe(true)
-    for (const prover of ECO_PROVERS) expect(isAddress(prover)).toBe(true)
+    for (const prover of Object.keys(ECO_PROVERS)) {
+      expect(isAddress(prover)).toBe(true)
+    }
     for (const tokens of Object.values(ECO_STABLECOINS)) {
-      for (const { token } of tokens) expect(isAddress(token)).toBe(true)
+      for (const token of tokens) expect(isAddress(token)).toBe(true)
     }
   })
 })

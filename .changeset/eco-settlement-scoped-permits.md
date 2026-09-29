@@ -5,9 +5,11 @@
 Add `ECO` (Eco's solver network) as a settlement-scoped cross-chain permit layer (RHI-7826). `settlementLayers: ['ECO']` now means the live Eco Routes path and restricts the session to `token.approve(Portal)` and `Portal.publishAndFund` (the encoded-route overload) on Eco's Portal:
 
 - The route and reward are pinned to the one shape the orchestrator accepts: an ERC-20 reward and a single `transfer` delivery. Every pointer and length word is pinned, plus each `to` chain's Eco destination id, destination Portal, delivery token, the `transfer` selector and recipient, the reward creator (the account), the reward token, and a zero native amount on both sides.
-- The reward's prover must be one of Eco's verified provers (HyperProver, CCIPProver). An unlisted prover could attest a fill that never happened.
-- The key sets the delivery against the reward, so ECO requires `maxAmount` (hence `oneTimeUse`) and a new `maxFeeBps`: the reward is capped at `maxAmount`, and the route must deliver at least `maxAmount × (1 − maxFeeBps / 10000)`. With `validUntil`, the reward deadline is bounded by it.
-- Both legs must be USD stablecoins the SDK bundles for Eco's chains, and the recipient must be concrete (not `'any'`).
+- The reward's prover must be an Eco prover deployed on both chains of the leg (HyperProver, CCIPProver or PolymerProver, bundled per chain and checked on-chain). An unlisted prover could attest a fill that never happened; one with no code on the source chain would make `refund` revert. A leg with no shared prover throws.
+- The key sets the delivery against the reward, so ECO requires `maxAmount` (hence `oneTimeUse`) and a new `maxFeeBps`: the reward is capped at `maxAmount`, and the route must deliver at least `maxAmount × (1 − maxFeeBps / 10000)`. Set `maxAmount` close to the reward you expect to pay: a smaller reward still has to clear the floor computed from `maxAmount`, so it fails closed.
+- ECO requires `validUntil`, which bounds the reward deadline: an unfilled reward is refundable after its deadline, so without it a key could lock the funds indefinitely. It can still stay locked until `validUntil`.
+- Both legs must be bundled USD stablecoins with a concrete recipient (not `'any'`). The floor treats them 1:1, so a depeg between the two sides is borne on top of `maxFeeBps`.
 - `maxFeeBps` on any other layer throws.
+- On every settlement-scoped permit with `maxAmount`, the layer approve is capped at `maxAmount`, so no larger allowance outlives the session.
 
-**Behaviour change:** `'ECO'` no longer maps to the retired Standard Eco Permit2 arbiter. A permit that omits `settlementLayers` keeps the same arbiter allow-set (and digest) as before.
+**Breaking:** `'ECO'` no longer maps to the retired Standard Eco Permit2 arbiter. An installed session whose permit named `'ECO'` resolves to a different session (a `HashMismatch` against its stored signature), and `['SAME_CHAIN', 'ECO']` now throws, since a permit cannot mix Permit2 and IntentExecutor layers. A permit that omits `settlementLayers` keeps the same arbiter allow-set (and digest) as before.

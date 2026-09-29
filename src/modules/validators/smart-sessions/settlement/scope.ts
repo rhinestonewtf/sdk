@@ -97,8 +97,8 @@ export function resolveSettlementScope(
     )
   }
   const settlementLayers = [...new Set(layers.filter(isIntentExecutorLayer))]
-  // Each layer moves its own token (CCTP USDC, OFT USDT0), so one `from` leg
-  // could never satisfy two of them.
+  // Each layer pins its own token set and call shape, so one permit scopes one
+  // layer; a session that needs two uses two permits in two sessions.
   if (settlementLayers.length > 1) {
     throw new Error(
       'crossChainPermits: name one IntentExecutor layer per permit',
@@ -230,7 +230,21 @@ export function resolveSettlementScope(
   // callbackAllowMaxAmount) or one carrying an app fee (carve transfer) adds
   // calls this session does not authorise, so it cannot settle through it (v1).
   const approveActions = sourceTokens.map((token) =>
-    withTimeFrame(swapAction(token, APPROVE_SELECTOR, [pin(0n, target)])),
+    withTimeFrame(
+      swapAction(token, APPROVE_SELECTOR, [
+        pin(0n, target),
+        // No allowance beyond the cap outlives the session.
+        ...(cap === undefined
+          ? []
+          : [
+              {
+                condition: 'lessThanOrEqual' as const,
+                calldataOffset: 32n,
+                referenceValue: cap,
+              },
+            ]),
+      ]),
+    ),
   )
   return { actions: [layerAction, ...approveActions], settlementLayers }
 }

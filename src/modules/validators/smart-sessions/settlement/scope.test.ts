@@ -173,6 +173,7 @@ describe('settlement-scoped crossChainPermits', () => {
           to: { chain: arbitrum, token: USDC_ARB },
           settlementLayers: ['ECO'],
           maxFeeBps: 50,
+          validUntil: new Date(2_000_000_000_000),
           ...permit,
         },
         withOnce,
@@ -199,13 +200,15 @@ describe('settlement-scoped crossChainPermits', () => {
       )
       const action = resolved?.actions.find((a) => a.selector === APPROVE)
       if (!action) throw new Error('no approve action')
-      const approve = (spender: Address) =>
+      const approve = (spender: Address, amount = 100n) =>
         encodeFunctionData({
           abi: erc20Abi,
           functionName: 'approve',
-          args: [spender, 100n],
+          args: [spender, amount],
         })
       expect(satisfiesRules(action, approve(ECO_PORTAL))).toBe(true)
+      // maxAmount is 100: no larger allowance may outlive the session.
+      expect(satisfiesRules(action, approve(ECO_PORTAL, 101n))).toBe(false)
       expect(satisfiesRules(action, approve(OTHER))).toBe(false)
     })
 
