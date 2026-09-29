@@ -9,11 +9,12 @@ export interface SettlementContext {
   /** The permit's `from` tokens on this chain. */
   readonly sourceTokens: readonly Address[]
   /**
-   * One entry per `to` leg. `chainId` undefined means no destination pin;
-   * `recipient` undefined means the recipient is left open (`'any'`).
+   * One entry per `to` leg. `recipient` undefined means the recipient is left
+   * open (`'any'`).
    */
   readonly destinations: readonly {
-    readonly chainId?: number
+    readonly chainId: number
+    readonly token: Address
     readonly recipient?: Address
   }[]
   /** Cumulative cap on the amount the layer call moves. */

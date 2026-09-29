@@ -1,7 +1,14 @@
-import { type Address, encodeFunctionData, type Hex, pad } from 'viem'
+import {
+  type Address,
+  encodeFunctionData,
+  type Hex,
+  isAddress,
+  pad,
+} from 'viem'
 import { describe, expect, test } from 'vitest'
 import { satisfiesRules as holds } from '../../../../../test/utils/policy-rules'
 import {
+  CCTP_CHAINS,
   cctpTokenMessenger,
   DEPOSIT_FOR_BURN_WITH_HOOK_SELECTOR,
   scopeCctp,
@@ -39,6 +46,9 @@ function burn(
   })
 }
 
+const USDC_ARB = CCTP_CHAINS[42161].usdc
+const USDC_OP = CCTP_CHAINS[10].usdc
+
 const base = {
   chainId: 8453,
   target: cctpTokenMessenger(8453),
@@ -49,7 +59,7 @@ const base = {
 describe('scopeCctp', () => {
   const action = scopeCctp({
     ...base,
-    destinations: [{ chainId: 42161, recipient: ACCOUNT }],
+    destinations: [{ chainId: 42161, token: USDC_ARB, recipient: ACCOUNT }],
     cap: 100n,
   })
 
@@ -81,8 +91,8 @@ describe('scopeCctp', () => {
     const twoLegs = scopeCctp({
       ...base,
       destinations: [
-        { chainId: 42161, recipient: ACCOUNT },
-        { chainId: 10, recipient: OTHER },
+        { chainId: 42161, token: USDC_ARB, recipient: ACCOUNT },
+        { chainId: 10, token: USDC_OP, recipient: OTHER },
       ],
     })
     expect(holds(twoLegs, burn({ domain: 3, recipient: ACCOUNT }))).toBe(true)
@@ -90,11 +100,20 @@ describe('scopeCctp', () => {
     expect(holds(twoLegs, burn({ domain: 2, recipient: ACCOUNT }))).toBe(false)
   })
 
+  test('an open recipient still pins the destination', () => {
+    const open = scopeCctp({
+      ...base,
+      destinations: [{ chainId: 42161, token: USDC_ARB }],
+    })
+    expect(holds(open, burn({ recipient: OTHER }))).toBe(true)
+    expect(holds(open, burn({ domain: 6 }))).toBe(false)
+  })
+
   test('refuses a destination CCTP does not route to', () => {
     expect(() =>
       scopeCctp({
         ...base,
-        destinations: [{ chainId: 56, recipient: ACCOUNT }],
+        destinations: [{ chainId: 56, token: USDC_ARB, recipient: ACCOUNT }],
       }),
     ).toThrow('CCTP does not route to chain 56')
   })
@@ -104,8 +123,36 @@ describe('scopeCctp', () => {
       scopeCctp({
         ...base,
         sourceTokens: [USDC, OTHER],
-        destinations: [{ chainId: 42161, recipient: ACCOUNT }],
+        destinations: [{ chainId: 42161, token: USDC_ARB, recipient: ACCOUNT }],
       }),
     ).toThrow('exactly one `from` token')
+  })
+
+  test.each([
+    ['`from`', { sourceTokens: [OTHER] }, 'the `from` token on chain 8453'],
+    [
+      '`to`',
+      { destinations: [{ chainId: 42161, token: OTHER, recipient: ACCOUNT }] },
+      'the `to` token on chain 42161',
+    ],
+  ] as const)(
+    'refuses a %s token that is not USDC',
+    (_, overrides, message) => {
+      expect(() =>
+        scopeCctp({
+          ...base,
+          destinations: [
+            { chainId: 42161, token: USDC_ARB, recipient: ACCOUNT },
+          ],
+          ...overrides,
+        }),
+      ).toThrow(message)
+    },
+  )
+
+  test('every bundled USDC address is valid', () => {
+    for (const { usdc } of Object.values(CCTP_CHAINS)) {
+      expect(isAddress(usdc)).toBe(true)
+    }
   })
 })

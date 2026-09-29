@@ -4,7 +4,7 @@ import {
   erc20Abi,
   toFunctionSelector,
 } from 'viem'
-import { arbitrum, base, baseSepolia } from 'viem/chains'
+import { arbitrum, arbitrumSepolia, base, baseSepolia } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 import { accountA } from '../../../../../test/consts'
 import { satisfiesRules } from '../../../../../test/utils/policy-rules'
@@ -15,7 +15,7 @@ import {
   toSession,
 } from '../resolve'
 import type { CrossChainPermissionInput, SessionDefinition } from '../types'
-import { DEPOSIT_FOR_BURN_WITH_HOOK_SELECTOR } from './cctp'
+import { CCTP_CHAINS, DEPOSIT_FOR_BURN_WITH_HOOK_SELECTOR } from './cctp'
 import { resolveSettlementScope } from './scope'
 
 const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address
@@ -75,7 +75,10 @@ describe('settlement-scoped crossChainPermits', () => {
   test('uses the testnet TokenMessenger on a testnet chain', () => {
     const data = resolveSessionData(
       definition(
-        { from: { chain: baseSepolia, token: USDC } },
+        {
+          from: { chain: baseSepolia, token: CCTP_CHAINS[84532].usdc },
+          to: { chain: arbitrumSepolia, token: CCTP_CHAINS[421614].usdc },
+        },
         { chain: baseSepolia },
       ),
     )
@@ -151,6 +154,24 @@ describe('settlement-scoped crossChainPermits', () => {
         'cannot enable `signing`',
       ],
       [
+        'a destination token CCTP does not mint',
+        definition({ to: { chain: arbitrum, token: OTHER } }),
+        'CCTP moves only USDC; the `to` token on chain 42161',
+      ],
+      [
+        'two maxAmounts on one chain',
+        definition(
+          {
+            from: [
+              { chain: base, token: USDC, maxAmount: 1n },
+              { chain: base, token: OTHER, maxAmount: 1n },
+            ],
+          },
+          withOnce,
+        ),
+        'maxAmount on at most one `from` token per chain',
+      ],
+      [
         "recipient 'any' without allowRecipientNotAccount",
         definition({
           to: { chain: arbitrum, token: USDC_ARB, recipient: 'any' },
@@ -211,6 +232,31 @@ describe('settlement-scoped crossChainPermits', () => {
       ),
     ).not.toThrow()
   })
+
+  test("recipient 'any' is left open when allowRecipientNotAccount is set", () => {
+    expect(() =>
+      resolveSessionData(
+        definition({
+          to: { chain: arbitrum, token: USDC_ARB, recipient: 'any' },
+          allowRecipientNotAccount: true,
+        }),
+      ),
+    ).not.toThrow()
+  })
+
+  test('refuses two IntentExecutor-layer permits in one session', () => {
+    const def = definition()
+    const twice = {
+      ...def,
+      crossChainPermits: [
+        ...(def.crossChainPermits ?? []),
+        ...(def.crossChainPermits ?? []),
+      ],
+    } as SessionDefinition
+    expect(() => resolveSessionData(twice)).toThrow(
+      'at most one IntentExecutor-layer permit per session',
+    )
+  })
 })
 
 describe('resolveSettlementScope', () => {
@@ -261,5 +307,42 @@ describe('resolveSettlementScope', () => {
         validUntil: validUntil.getTime(),
       })
     }
+  })
+
+  test('a one-sided window leaves the other bound open', () => {
+    const [afterOnly] = scope({ validAfter: new Date(1_900_000_000_000) })
+    expect(afterOnly.policies).toContainEqual(
+      expect.objectContaining({
+        type: 'time-frame',
+        validAfter: 1_900_000_000_000,
+      }),
+    )
+    const [untilOnly] = scope({ validUntil: new Date(2_000_000_000_000) })
+    expect(untilOnly.policies).toContainEqual({
+      type: 'time-frame',
+      validAfter: 0,
+      validUntil: 2_000_000_000_000,
+    })
+  })
+
+  test('refuses a permit with no `from` legs', () => {
+    expect(() => scope({ from: undefined })).toThrow(
+      'no `from` token on chain 8453',
+    )
+  })
+
+  test('a raw permit without recipientIsAccount defaults to the account', () => {
+    const resolve = () =>
+      resolveSettlementScope(
+        [
+          {
+            from: [{ chain: base, token: USDC }],
+            to: [{ chain: arbitrum, token: USDC_ARB }],
+            settlementLayers: ['CCTP'],
+          },
+        ],
+        { chainId: base.id, account: undefined, oneTimeUse: false },
+      )
+    expect(resolve).toThrow('needs `account` on the session definition')
   })
 })

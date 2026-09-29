@@ -73,7 +73,7 @@ export function resolveSettlementScope(
       `crossChainPermits: ${permit2Layers.join(', ')} cannot share a permit with IntentExecutor layers`,
     )
   }
-  const settlementLayers = layers.filter(isIntentExecutorLayer)
+  const settlementLayers = [...new Set(layers.filter(isIntentExecutorLayer))]
 
   const fromLegs = (permit.from ?? []).filter(
     (leg) => leg.chain.id === options.chainId,
@@ -145,8 +145,9 @@ export function resolveSettlementScope(
       'crossChainPermits: fillDeadline applies only to Permit2 layers',
     )
   }
-  const destinations = permit.to.map(({ chain, recipient }) => ({
+  const destinations = permit.to.map(({ chain, token, recipient }) => ({
     chainId: chain.id,
+    token,
     recipient: resolveRecipient(recipient),
   }))
 
@@ -196,16 +197,11 @@ export function resolveSettlementScope(
   // Only the layer's own approve: an unsponsored intent (paymaster approve and
   // callbackAllowMaxAmount) or one carrying an app fee (carve transfer) adds
   // calls this session does not authorise, so it cannot settle through it (v1).
+  // One layer per permit today (CCTP), so the spender is a single pin; a second
+  // layer makes it an OR of spenders.
   const approveActions = sourceTokens.map((token) =>
     withTimeFrame(
-      layerTargets.length === 1
-        ? swapAction(token, APPROVE_SELECTOR, [pin(0n, layerTargets[0])])
-        : swapAction(
-            token,
-            APPROVE_SELECTOR,
-            [],
-            layerTargets.map((target) => [pin(0n, target)]),
-          ),
+      swapAction(token, APPROVE_SELECTOR, [pin(0n, layerTargets[0])]),
     ),
   )
   return { actions: [...layerActions, ...approveActions], settlementLayers }

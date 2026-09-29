@@ -118,16 +118,13 @@ export function swapAction(
       ? {
           type: 'arg-policy',
           valueLimitPerUse: 0n,
-          expression: ((): ArgPolicyExpression => {
-            const anyOf = usable
+          expression: {
+            type: 'and',
+            left: allOf(rules),
+            right: usable
               .map(allOf)
-              .reduce((left, right) => ({ type: 'or', left, right }))
-            // allOf([]) has no fold seed, so an action pinned only by its
-            // alternatives is the OR alone.
-            return rules.length > 0
-              ? { type: 'and', left: allOf(rules), right: anyOf }
-              : anyOf
-          })(),
+              .reduce((left, right) => ({ type: 'or', left, right })),
+          },
         }
       : rules.length <= UNIVERSAL_ACTION_MAX_RULES
         ? {

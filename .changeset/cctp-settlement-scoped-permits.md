@@ -4,6 +4,7 @@
 
 Add settlement-scoped cross-chain permits, starting with CCTP (RHI-7826). A `crossChainPermits` entry with `settlementLayers: ['CCTP']` compiles to argument-pinned actions instead of a Permit2 claim policy:
 
+- CCTP moves only native USDC, so the `from` token and every `to` token must be USDC on its chain (the SDK bundles the addresses), or the permit throws.
 - The session is restricted to `USDC.approve(TokenMessengerV2)` and `TokenMessengerV2.depositForBurnWithHook`, with the `from` token, each `to` chain's CCTP domain paired with its recipient, a zero `destinationCaller` and `maxAmount` (cumulative) pinned in the calldata. `validAfter`/`validUntil` apply to each action.
 - The recipient defaults to the account, so the session definition needs `account`. Another recipient, or `'any'`, requires `allowRecipientNotAccount`.
 - It must name its `to` chains (an unpinned domain lets a burn go where the recipient cannot mint). `maxAmount` requires `oneTimeUse`, so the cap is a true total. It cannot be combined with `SAME_CHAIN`, `ECO` or `ACROSS`, with another permit, with `claimPolicies`, with `fillDeadline`, or with a `signing` mode other than `disabled`.

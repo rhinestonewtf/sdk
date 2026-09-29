@@ -1,4 +1,10 @@
-import { type Abi, type Address, pad, toFunctionSelector } from 'viem'
+import {
+  type Abi,
+  type Address,
+  isAddressEqual,
+  pad,
+  toFunctionSelector,
+} from 'viem'
 import { namedParamOffsets } from '../../permissions'
 import {
   cumulativeCap,
@@ -23,27 +29,30 @@ const TOKEN_MESSENGER: Record<'mainnet' | 'testnet', Address> = {
 }
 
 /**
- * EVM chain id → CCTP domain. Domains are network-neutral (Base and Base
+ * EVM chains CCTP routes between: the chain's domain and its native USDC, the
+ * only token CCTP burns or mints. Domains are network-neutral (Base and Base
  * Sepolia are both 6). Solana (domain 5) is left out: its `mintRecipient` is
  * the recipient's ATA and the wallet sits in the dynamic `hookData`.
  */
-export const CCTP_DOMAINS: Readonly<Record<number, number>> = {
-  1: 0,
-  10: 2,
-  130: 10,
-  137: 7,
-  143: 15,
-  146: 13,
-  999: 19,
-  5042: 26,
-  8453: 6,
-  42161: 3,
-  43114: 1,
-  57073: 21,
-  84532: 6,
-  421614: 3,
-  11155111: 0,
-  11155420: 2,
+export const CCTP_CHAINS: Readonly<
+  Record<number, { readonly domain: number; readonly usdc: Address }>
+> = {
+  1: { domain: 0, usdc: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48' },
+  10: { domain: 2, usdc: '0x0b2c639c533813f4aa9d7837caf62653d097ff85' },
+  130: { domain: 10, usdc: '0x078d782b760474a361dda0af3839290b0ef57ad6' },
+  137: { domain: 7, usdc: '0x3c499c542cef5e3811e1192ce70d8cc03d5c3359' },
+  143: { domain: 15, usdc: '0x754704Bc059F8C67012fEd69BC8A327a5aafb603' },
+  146: { domain: 13, usdc: '0x29219dd400f2Bf60E5a23d13Be72B486D4038894' },
+  999: { domain: 19, usdc: '0xb88339CB7199b77E23DB6E890353E22632Ba630f' },
+  5042: { domain: 26, usdc: '0x3600000000000000000000000000000000000000' },
+  8453: { domain: 6, usdc: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' },
+  42161: { domain: 3, usdc: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831' },
+  43114: { domain: 1, usdc: '0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E' },
+  57073: { domain: 21, usdc: '0x2d270e6886d130d724215a266106e6832161eaed' },
+  84532: { domain: 6, usdc: '0x036CbD53842c5426634e7929541eC2318f3dCF7e' },
+  421614: { domain: 3, usdc: '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d' },
+  11155111: { domain: 0, usdc: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238' },
+  11155420: { domain: 2, usdc: '0x5fd84259d66Cd46123540766Be93DFE6D43130D7' },
 }
 
 export const tokenMessengerAbi = [
@@ -79,31 +88,40 @@ const CCTP_TESTNET_CHAIN_IDS: ReadonlySet<number> = new Set([
   84532, 421614, 11155111, 11155420,
 ])
 
+function cctpChain(chainId: number) {
+  const chain = CCTP_CHAINS[chainId]
+  if (chain === undefined) {
+    throw new Error(
+      `crossChainPermits: CCTP does not route to chain ${chainId}`,
+    )
+  }
+  return chain
+}
+
+/** CCTP moves only native USDC, so any other token names a route it cannot take. */
+function requireUsdc(chainId: number, token: Address, leg: 'from' | 'to') {
+  if (!isAddressEqual(token, cctpChain(chainId).usdc)) {
+    throw new Error(
+      `crossChainPermits: CCTP moves only USDC; the \`${leg}\` token on chain ${chainId} is ${token}`,
+    )
+  }
+}
+
 export function cctpTokenMessenger(chainId: number): Address {
-  cctpDomain(chainId)
+  cctpChain(chainId)
   return TOKEN_MESSENGER[
     CCTP_TESTNET_CHAIN_IDS.has(chainId) ? 'testnet' : 'mainnet'
   ]
 }
 
-export function cctpDomain(chainId: number): number {
-  const domain = CCTP_DOMAINS[chainId]
-  if (domain === undefined) {
-    throw new Error(
-      `crossChainPermits: CCTP does not route to chain ${chainId}`,
-    )
-  }
-  return domain
-}
-
 /** The burn call, pinned to the permit's token, destinations and cap. */
 export function scopeCctp(ctx: SettlementContext): ScopedAction {
-  cctpDomain(ctx.chainId)
   if (ctx.sourceTokens.length !== 1) {
     throw new Error(
       'crossChainPermits: CCTP burns one token (USDC) per chain; give exactly one `from` token on this chain',
     )
   }
+  requireUsdc(ctx.chainId, ctx.sourceTokens[0], 'from')
   const rules: UniversalActionPolicyParamRule[] = [
     pin(BURN.burnToken, ctx.sourceTokens[0]),
     // A non-zero destinationCaller restricts who may mint; the orchestrator
@@ -112,12 +130,10 @@ export function scopeCctp(ctx: SettlementContext): ScopedAction {
   ]
   if (ctx.cap !== undefined) rules.push(cumulativeCap(BURN.amount, ctx.cap))
   const legs = ctx.destinations.map((leg) => {
-    const legRules: UniversalActionPolicyParamRule[] = []
-    if (leg.chainId !== undefined) {
-      legRules.push(
-        pinValue(BURN.destinationDomain, BigInt(cctpDomain(leg.chainId))),
-      )
-    }
+    requireUsdc(leg.chainId, leg.token, 'to')
+    const legRules = [
+      pinValue(BURN.destinationDomain, BigInt(cctpChain(leg.chainId).domain)),
+    ]
     if (leg.recipient !== undefined) {
       legRules.push(pinWord(BURN.mintRecipient, pad(leg.recipient)))
     }
