@@ -12,18 +12,6 @@ import { cctpTokenMessenger, scopeCctp } from './cctp'
 import { oftAdapter, scopeOft } from './oft'
 import type { SettlementContext } from './types'
 
-/** Each layer's settlement contract on a chain and the scoped call it makes. */
-const LAYERS: Record<
-  IntentExecutorSettlementLayer,
-  {
-    readonly target: (chainId: number) => Address
-    readonly scope: (ctx: SettlementContext) => ScopedAction
-  }
-> = {
-  CCTP: { target: cctpTokenMessenger, scope: scopeCctp },
-  OFT: { target: oftAdapter, scope: scopeOft },
-}
-
 /**
  * Settlement-scoped cross-chain permits (RHI-7826).
  *
@@ -33,6 +21,23 @@ const LAYERS: Record<
  * is restricted: the wildcard fallback is dropped and only the layer's approve
  * and settlement call remain.
  */
+
+/** Each layer's settlement contract on a chain and the scoped call it makes. */
+const LAYERS: Record<
+  IntentExecutorSettlementLayer,
+  {
+    readonly target: (chainId: number) => Address
+    readonly scope: (ctx: SettlementContext) => ScopedAction
+    /**
+     * Each call costs the account a native messaging fee no pin can bound, so
+     * a reusable session could repeat dust sends until the balance is gone.
+     */
+    readonly requiresOneTimeUse?: true
+  }
+> = {
+  CCTP: { target: cctpTokenMessenger, scope: scopeCctp },
+  OFT: { target: oftAdapter, scope: scopeOft, requiresOneTimeUse: true },
+}
 
 export const INTENT_EXECUTOR_SETTLEMENT_LAYERS = [
   'CCTP',
@@ -195,6 +200,9 @@ export function resolveSettlementScope(
   })
 
   const [layer] = settlementLayers
+  if (LAYERS[layer].requiresOneTimeUse && !options.oneTimeUse) {
+    throw new Error(`crossChainPermits: an ${layer} permit requires oneTimeUse`)
+  }
   const target = LAYERS[layer].target(options.chainId)
   const layerAction = LAYERS[layer].scope({
     chainId: options.chainId,

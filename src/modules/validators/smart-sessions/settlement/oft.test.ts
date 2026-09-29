@@ -79,9 +79,10 @@ describe('OFT send offsets', () => {
       to: OTHER,
       amount: 7n,
       refund: ACCOUNT,
+      lzTokenFee: 9n,
     })
     expect(word(calldata, SEND.sendParamPointer)).toBe(0x80n)
-    expect(word(calldata, SEND.lzTokenFee)).toBe(0n)
+    expect(word(calldata, SEND.lzTokenFee)).toBe(9n)
     expect(word(calldata, SEND.refundAddress)).toBe(BigInt(ACCOUNT))
     expect(word(calldata, SEND.dstEid)).toBe(30383n)
     expect(word(calldata, SEND.to)).toBe(BigInt(OTHER))
@@ -124,9 +125,9 @@ describe('scopeOft', () => {
     expect(holds(action, send(overrides))).toBe(false)
   })
 
-  test('refuses a re-laid-out tuple that puts a decoy at the pinned offsets', () => {
-    // The real tuple moved one word further; the pinned offsets now read a
-    // copy of the canonical fields while the decoder follows the pointer.
+  test('refuses a send whose tuple pointer is not the canonical 0x80', () => {
+    // With the pointer free, the decoder could read a tuple placed elsewhere
+    // while the pinned offsets still hold canonical-looking words.
     const canonical = send()
     const args = slice(canonical, 4)
     const relaid = concat([

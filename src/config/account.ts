@@ -31,6 +31,7 @@ import type {
   OpenPerpRequest,
 } from '../hypercore/types'
 import type { SwapVenueFor } from '../modules/validators/smart-sessions/swap/scope'
+import type { IntentExecutorSettlementLayer } from '../modules/validators/smart-sessions/types'
 
 // Module type discriminator relocated verbatim from the legacy
 // `src/modules/common.ts` to preserve the exact published declaration closure.
@@ -892,7 +893,7 @@ interface Session {
   swap?: SwapScope
   /** The IntentExecutor layers a settlement-scoped permit restricted the session
    *  to. Metadata only — intents with the session are limited to them. */
-  settlementLayers?: readonly ('CCTP' | 'OFT')[]
+  settlementLayers?: readonly IntentExecutorSettlementLayer[]
   /** Claim policies enforced via the ERC-1271 list, not the claim surface. */
   claimPoliciesEnforcedVia1271?: boolean
   /** A one-time-use session's id and policy; each intent burns the id. */

@@ -121,7 +121,7 @@ describe('settlement-scoped crossChainPermits', () => {
         to: { chain: plasma, token: OFT_CHAINS[9745].token },
         settlementLayers: ['OFT'],
       },
-      { chain: arbitrum },
+      { chain: arbitrum, ...withOnce },
     )
     const data = resolveSessionData(oft)
     expect(
@@ -133,6 +133,35 @@ describe('settlement-scoped crossChainPermits', () => {
       [OFT_CHAINS[42161].token, APPROVE],
     ])
     expect(toSession(oft).settlementLayers).toEqual(['OFT'])
+    // Without oneTimeUse, repeated dust sends would each burn a LayerZero fee.
+    expect(() => resolveSessionData({ ...oft, oneTimeUse: undefined })).toThrow(
+      'an OFT permit requires oneTimeUse',
+    )
+  })
+
+  test('the OFT approve may only name the adapter', () => {
+    const resolved = resolveSettlementScope(
+      [
+        resolveCrossChainPermission({
+          from: { chain: arbitrum, token: OFT_CHAINS[42161].token },
+          to: { chain: plasma, token: OFT_CHAINS[9745].token },
+          settlementLayers: ['OFT'],
+        }),
+      ],
+      { chainId: arbitrum.id, account: ACCOUNT, oneTimeUse: true },
+    )
+    const action = resolved?.actions.find((a) => a.selector === APPROVE)
+    if (!action) throw new Error('no approve action')
+    const approve = (spender: Address) =>
+      encodeFunctionData({
+        abi: erc20Abi,
+        functionName: 'approve',
+        args: [spender, 100n],
+      })
+    expect(satisfiesRules(action, approve(OFT_CHAINS[42161].adapter))).toBe(
+      true,
+    )
+    expect(satisfiesRules(action, approve(OTHER))).toBe(false)
   })
 
   test('refuses a permit naming two IntentExecutor layers', () => {

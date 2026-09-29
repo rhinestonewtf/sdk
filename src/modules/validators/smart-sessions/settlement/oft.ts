@@ -27,7 +27,7 @@ import type { SettlementContext } from './types'
  * compose call on the destination.
  */
 
-/** EVM chains the USDT0 mesh routes between: its adapter, eid and token. */
+/** EVM chains the USDT0 mesh routes between: its adapter, eid and token (shared-configs `oft.json`). */
 export const OFT_CHAINS: Readonly<
   Record<
     number,
@@ -169,7 +169,7 @@ export function scopeOft(ctx: SettlementContext): ScopedAction {
     pinValue(SEND.extraOptionsLength, 0n),
     pinValue(SEND.composeMsgLength, 0n),
     pinValue(SEND.oftCmdLength, 0n),
-    // The fee is native only; any excess goes back to the refund address.
+    // The fee is native only.
     pinValue(SEND.lzTokenFee, 0n),
     pin(SEND.refundAddress, ctx.account),
     // A zero-amount send still costs the account the full LayerZero fee.
