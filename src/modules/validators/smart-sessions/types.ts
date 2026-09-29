@@ -202,7 +202,19 @@ export interface SessionPolicyAddresses {
   readonly oneTimeUseId?: Address
 }
 
-export type CrossChainSettlementLayer = 'SAME_CHAIN' | 'ECO' | 'ACROSS'
+/** Layers a permit settles through the Permit2 claim path (arbiter allowlist). */
+export type Permit2SettlementLayer = 'SAME_CHAIN' | 'ECO' | 'ACROSS'
+
+/**
+ * Layers the account settles by executing the bridge call itself. Naming one
+ * compiles the permit to scoped, argument-pinned actions and restricts the
+ * session to them.
+ */
+export type IntentExecutorSettlementLayer = 'CCTP'
+
+export type CrossChainSettlementLayer =
+  | Permit2SettlementLayer
+  | IntentExecutorSettlementLayer
 
 export interface CrossChainPermit {
   from?: { chain: Chain; token: Address; maxAmount?: bigint }[]
@@ -318,6 +330,9 @@ export interface SessionDefinition {
   // Pins a one-time-use id on the session (RHI-5798); see `SessionDefinition` in
   // config/account.ts for the full contract.
   oneTimeUse?: OneTimeUseSessionConfig
+  // The account the session is for. Required when an IntentExecutor-layer
+  // `crossChainPermits` entry pins its recipient to the account (the default).
+  account?: Address
 }
 
 export interface OneTimeUseSessionConfig {
@@ -363,6 +378,9 @@ export interface Session {
    *  a caller can derive the matching quoter pin at transact time. Metadata
    *  only — it is not part of the permission id. */
   swap?: SwapScopeInput
+  /** The IntentExecutor layers the session's permit was scoped to, so a caller
+   *  can restrict an intent to them. Metadata only, like `swap`. */
+  settlementLayers?: readonly IntentExecutorSettlementLayer[]
   // When true, `claimPolicies` are enforced via the ERC-1271 surface (already
   // encoded into `erc7739Policies.erc1271Policies`) and must NOT be re-encoded
   // onto the on-chain claim (lockTag) surface. They stay on the high-level

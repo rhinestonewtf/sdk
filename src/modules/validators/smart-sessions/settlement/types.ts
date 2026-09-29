@@ -1,0 +1,23 @@
+import type { Address } from 'viem'
+import type { SessionPolicy } from '../types'
+
+/** Everything a layer module needs to scope its settlement call on one chain. */
+export interface SettlementContext {
+  readonly chainId: number
+  /** The layer's settlement contract on this chain. */
+  readonly target: Address
+  /** The permit's `from` tokens on this chain. */
+  readonly sourceTokens: readonly Address[]
+  /**
+   * One entry per `to` leg. `chainId` undefined means no destination pin;
+   * `recipient` undefined means the recipient is left open (`'any'`).
+   */
+  readonly destinations: readonly {
+    readonly chainId?: number
+    readonly recipient?: Address
+  }[]
+  /** Cumulative cap on the amount the layer call moves. */
+  readonly cap?: bigint
+  /** The permit's validity window, installed on every scoped action. */
+  readonly timeFrame: readonly SessionPolicy[]
+}

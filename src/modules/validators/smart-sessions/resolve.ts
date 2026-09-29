@@ -30,6 +30,11 @@ import {
   resolvePermit2ClaimPolicy,
 } from './policies/claim'
 import { encodeSessionPolicy } from './policies/encode'
+import {
+  isIntentExecutorLayer,
+  isSettlementScopedPermit,
+  resolveSettlementScope,
+} from './settlement/scope'
 import { resolveSessionSigning } from './signing'
 import { resolveSwapScope } from './swap/scope'
 import type {
@@ -96,8 +101,21 @@ export function resolveSessionData(
   // global intent-execution whitelist allows, which is the opposite of what the
   // caller asked for. `restrictToActions` stays as the explicit spelling for
   // sessions scoped by hand.
+  const resolvedPermits = (definition.crossChainPermits ?? []).map(
+    resolveCrossChainPermission,
+  )
+  // A permit naming an IntentExecutor layer compiles to argument-pinned scoped
+  // actions, which only bind with the fallback gone — so it restricts too.
+  const settlementScope = resolveSettlementScope(resolvedPermits, {
+    chainId: definition.chain.id,
+    testnet: definition.chain.testnet === true,
+    account: definition.account,
+    oneTimeUse: Boolean(definition.oneTimeUse),
+  })
   const restricted =
-    definition.restrictToActions === true || swapScope !== undefined
+    definition.restrictToActions === true ||
+    swapScope !== undefined ||
+    settlementScope !== undefined
   const permissions = [
     ...(definition.permissions ?? []),
     ...(swapScope?.permissions ?? []),
@@ -109,15 +127,19 @@ export function resolveSessionData(
   const rawActions = [
     ...(definition.actions ?? []),
     ...(swapScope?.actions ?? []),
+    ...(settlementScope?.actions ?? []),
   ]
   // A restricted session drops the fallback action, which is also where a
   // cross-chain permit's spending-limit / time-frame guardrails live — so a
   // restricted session combined with a permit would keep claim signing but lose
   // maxAmount/deadline enforcement. These are different authorization surfaces;
   // reject the combination rather than silently drop the guardrails.
+  // A settlement-scoped permit carries its guardrails on its own actions, so it
+  // is the one permit shape a restricted session can hold.
   if (
     restricted &&
-    (definition.crossChainPermits?.length || definition.claimPolicies?.length)
+    ((definition.crossChainPermits?.length && settlementScope === undefined) ||
+      definition.claimPolicies?.length)
   ) {
     throw new Error(
       'restrictToActions is incompatible with crossChainPermits/claimPolicies: ' +
@@ -154,9 +176,9 @@ export function resolveSessionData(
       )
     }
   }
-  const expandedPermits = (definition.crossChainPermits ?? []).map((input) =>
-    expandCrossChainPermit(resolveCrossChainPermission(input), environment),
-  )
+  const expandedPermits = resolvedPermits
+    .filter((permit) => !isSettlementScopedPermit(permit))
+    .map((permit) => expandCrossChainPermit(permit, environment))
   const permitFallbackPolicies = expandedPermits.flatMap(
     ({ fallbackPolicies }) => fallbackPolicies,
   )
@@ -627,11 +649,21 @@ export function toSession(
       ? { wrappedNativeToken: options.wrappedNativeToken }
       : {}),
   })
-  const expandedClaims = (definition.crossChainPermits ?? []).map(
-    (input) =>
-      expandCrossChainPermit(resolveCrossChainPermission(input), environment)
-        .claim,
+  const resolvedPermits = (definition.crossChainPermits ?? []).map(
+    resolveCrossChainPermission,
   )
+  const scopedPermits = resolvedPermits.filter(isSettlementScopedPermit)
+  const expandedClaims = resolvedPermits
+    .filter((permit) => !isSettlementScopedPermit(permit))
+    .map((permit) => expandCrossChainPermit(permit, environment).claim)
+  const settlementLayers = [
+    ...new Set(
+      scopedPermits.flatMap(
+        (permit) =>
+          permit.settlementLayers?.filter(isIntentExecutorLayer) ?? [],
+      ),
+    ),
+  ]
   return {
     chain: definition.chain,
     owners: definition.owners,
@@ -644,7 +676,8 @@ export function toSession(
     hasExplicitPermissions: Boolean(
       definition.permissions?.length ||
         definition.actions?.length ||
-        definition.swap,
+        definition.swap ||
+        scopedPermits.length,
     ),
     permissionId: getPermissionIdFromData(data),
     sessionValidator: data.sessionValidator,
@@ -660,6 +693,7 @@ export function toSession(
     // (lockTag) surface — otherwise they'd settle on both surfaces.
     claimPolicies: [...(definition.claimPolicies ?? []), ...expandedClaims],
     ...(definition.swap ? { swap: definition.swap } : {}),
+    ...(settlementLayers.length ? { settlementLayers } : {}),
     ...(definition.oneTimeUse && {
       claimPoliciesEnforcedVia1271:
         (definition.claimPolicies?.length ?? 0) + expandedClaims.length > 0,
