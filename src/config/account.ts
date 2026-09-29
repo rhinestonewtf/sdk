@@ -276,16 +276,17 @@ interface Permit2ClaimPolicy {
 /**
  * Settlement layers supported by the cross-chain session abstraction.
  *
- * - `SAME_CHAIN`, `ACROSS` settle through Permit2: each maps to one or more
- *   arbiter addresses from the SDK's bundled allow-set.
- * - `CCTP` (USDC), `OFT` (USDT0) and `ECO` (USD stablecoins, Eco's solver
+ * - `SAME_CHAIN`, `ECO`, `ACROSS` settle through Permit2: each maps to one or
+ *   more arbiter addresses from the SDK's bundled allow-set (`ECO` is the
+ *   retired Standard Eco arbiter).
+ * - `CCTP` (USDC), `OFT` (USDT0) and `ECO_IE` (USD stablecoins, Eco's solver
  *   network) settle by the account executing the bridge call. Naming one makes
  *   the permit **settlement-scoped**: the session is restricted to that call
  *   and its approve, with the `from` token, the `to` chains and recipients,
  *   and `maxAmount` pinned in its calldata. Such a permit names exactly one of
  *   them, cannot be combined with the Permit2 layers, `maxAmount` requires
  *   `oneTimeUse`, and only sponsored intents without an app fee can settle
- *   through it. `ECO` also requires `maxAmount` and `maxFeeBps`.
+ *   through it. `ECO_IE` also requires `maxAmount`, `maxFeeBps` and `validUntil`.
  */
 type CrossChainSettlementLayer =
   | 'SAME_CHAIN'
@@ -293,6 +294,7 @@ type CrossChainSettlementLayer =
   | 'ACROSS'
   | 'CCTP'
   | 'OFT'
+  | 'ECO_IE'
 
 /**
  * A high-level permit that authorises a session key to move funds
@@ -338,12 +340,12 @@ interface CrossChainPermit {
    * `[]`) for any supported layer — the SDK resolves to the union of
    * every arbiter in its bundled allow-set.
    *
-   * `CCTP`, `OFT` and `ECO` are IntentExecutor layers: naming one scopes the
+   * `CCTP`, `OFT` and `ECO_IE` are IntentExecutor layers: naming one scopes the
    * session to that layer's calls instead (see {@link CrossChainSettlementLayer}).
    */
   settlementLayers?: CrossChainSettlementLayer[]
   /**
-   * `ECO` only: the most the solver may keep, in basis points of `maxAmount`.
+   * `ECO_IE` only: the most the solver may keep, in basis points of `maxAmount`.
    * The route must deliver at least `maxAmount × (1 − maxFeeBps / 10000)`.
    */
   maxFeeBps?: number
@@ -404,12 +406,12 @@ interface CrossChainPermissionInput {
    * resolves to the union of every arbiter in its bundled allow-set. Pass
    * a subset (e.g. `['ACROSS']`) to narrow.
    *
-   * `CCTP`, `OFT` and `ECO` are IntentExecutor layers: naming one scopes the
+   * `CCTP`, `OFT` and `ECO_IE` are IntentExecutor layers: naming one scopes the
    * session to that layer's calls instead (see {@link CrossChainSettlementLayer}).
    */
   settlementLayers?: CrossChainSettlementLayer[]
   /**
-   * `ECO` only: the most the solver may keep, in basis points of `maxAmount`.
+   * `ECO_IE` only: the most the solver may keep, in basis points of `maxAmount`.
    * The route must deliver at least `maxAmount × (1 − maxFeeBps / 10000)`.
    */
   maxFeeBps?: number

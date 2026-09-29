@@ -9,28 +9,22 @@ import type {
  * whitelists both arbiter impls so a session is permissioned for the 7579 and
  * multicall paths regardless of which one the orchestrator picks at intent time.
  *
- * `ECO` is an IntentExecutor layer now (solver-network route, scoped in the
- * session's actions), so it names no arbiter.
+ * `ECO` intentionally remains mapped to the legacy Standard ECO arbiters. The
+ * solver-network ECO route uses `intentExecutorAdapter`, but the current claim
+ * policy only inspects the outer origin mandate. Authorizing that generic
+ * adapter would also authorize unrelated IntentExecutor-backed routes without
+ * enforcing the encoded Eco destination, token, recipient, or deadline. Keep
+ * solver-network ECO blocked by this built-in permission until a route-aware
+ * policy is available.
  */
 const SETTLEMENT_LAYER_CONTRACT_KEYS: Record<
   Permit2SettlementLayer,
   readonly string[]
 > = {
   SAME_CHAIN: ['samechainArbiter'],
+  ECO: ['ecoArbiter'],
   ACROSS: ['across7579Arbiter', 'acrossMulticallArbiter'],
 }
-
-/**
- * The allow-set when a permit names no layers. It keeps the retired Standard
- * ECO arbiter, in its original position, so a permit that omits
- * `settlementLayers` resolves to the same claim policy — and digest — as before.
- */
-const DEFAULT_ARBITER_KEYS: readonly string[] = [
-  'samechainArbiter',
-  'ecoArbiter',
-  'across7579Arbiter',
-  'acrossMulticallArbiter',
-]
 
 /**
  * Bundled arbiter allow-set — the deployed arbiter addresses per key, per
@@ -94,13 +88,14 @@ export function getArbitersForSettlementLayers(
       throw new Error(`Settlement layer ${layer} has no Permit2 arbiter`)
     }
   }
-  const book = ARBITER_ADDRESSES[useDevContracts ? 'dev' : 'prod']
-  const keys =
+  const effectiveLayers = (
     !layers || layers.length === 0
-      ? DEFAULT_ARBITER_KEYS
-      : (layers as readonly Permit2SettlementLayer[]).flatMap(
-          (l) => SETTLEMENT_LAYER_CONTRACT_KEYS[l],
-        )
+      ? Object.keys(SETTLEMENT_LAYER_CONTRACT_KEYS)
+      : layers
+  ) as readonly Permit2SettlementLayer[]
+
+  const book = ARBITER_ADDRESSES[useDevContracts ? 'dev' : 'prod']
+  const keys = effectiveLayers.flatMap((l) => SETTLEMENT_LAYER_CONTRACT_KEYS[l])
   const seen = new Set<string>()
   const addresses: Address[] = []
 

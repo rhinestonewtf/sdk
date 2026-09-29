@@ -47,6 +47,36 @@ describe('settlement layer pin', () => {
     expect(layersFor(['CCTP'])).toEqual({ include: ['CCTP'] })
   })
 
+  test("an ECO_IE session limits the intent to the orchestrator's ECO", () => {
+    const eco = toSession({
+      chain: base,
+      owners: { type: 'ecdsa', accounts: [accountA] },
+      account: ACCOUNT,
+      oneTimeUse: { id: 7n },
+      policyAddresses: {
+        oneTimeUseId: '0x3333333333333333333333333333333333333333',
+      },
+      crossChainPermits: [
+        {
+          from: { chain: base, token: USDC, maxAmount: 100n },
+          to: { chain: arbitrum, token: USDC_ARB },
+          settlementLayers: ['ECO_IE'],
+          maxFeeBps: 50,
+          validUntil: new Date(2_000_000_000_000),
+        },
+      ],
+    } as never)
+    const intent = adaptTransaction(
+      { account: {} } as never,
+      {
+        chain: base,
+        calls: [],
+        signers: { type: 'session', session: eco },
+      } as never,
+    ) as { options?: { settlementLayers?: unknown } }
+    expect(intent.options?.settlementLayers).toEqual({ include: ['ECO'] })
+  })
+
   test('an explicit filter can only narrow the session', () => {
     expect(layersFor(['CCTP'], { include: ['CCTP', 'RELAY'] })).toEqual({
       include: ['CCTP'],

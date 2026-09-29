@@ -1051,9 +1051,14 @@ function settlementLayerPin(
     NonNullable<Transaction['settlementLayers']>,
     { include: unknown }
   >['include'][number]
+  // The session's layer names are the SDK's; the filter speaks the
+  // orchestrator's, where Eco's solver network is `ECO`.
+  const toFilter = (
+    layer: NonNullable<Session['settlementLayers']>[number],
+  ): Layer => (layer === 'ECO_IE' ? 'ECO' : layer)
   const scoped = sessions.flatMap((session) =>
     session.settlementLayers?.length
-      ? [new Set<Layer>(session.settlementLayers)]
+      ? [new Set<Layer>(session.settlementLayers.map(toFilter))]
       : [],
   )
   // An unscoped session admits every layer, so it narrows nothing.

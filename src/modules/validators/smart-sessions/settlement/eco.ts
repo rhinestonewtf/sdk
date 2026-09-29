@@ -105,6 +105,7 @@ export const PUBLISH = {
   allowPartial: 96n,
   routeLength: 128n,
   routeTuplePointer: 160n,
+  routeDeadline: 224n,
   routePortal: 256n,
   routeNativeAmount: 288n,
   routeTokensPointer: 320n,
@@ -241,6 +242,13 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
     {
       condition: 'lessThanOrEqual',
       calldataOffset: PUBLISH.rewardDeadline,
+      referenceValue: ctx.validUntil,
+    },
+    // The route deadline bounds when a solver may still fill; the session's
+    // window bounds the whole settlement, not just its refund.
+    {
+      condition: 'lessThanOrEqual',
+      calldataOffset: PUBLISH.routeDeadline,
       referenceValue: ctx.validUntil,
     },
   ]

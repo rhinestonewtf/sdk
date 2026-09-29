@@ -203,14 +203,14 @@ export interface SessionPolicyAddresses {
 }
 
 /** Layers a permit settles through the Permit2 claim path (arbiter allowlist). */
-export type Permit2SettlementLayer = 'SAME_CHAIN' | 'ACROSS'
+export type Permit2SettlementLayer = 'SAME_CHAIN' | 'ECO' | 'ACROSS'
 
 /**
  * Layers the account settles by executing the bridge call itself. Naming one
  * compiles the permit to scoped, argument-pinned actions and restricts the
  * session to them.
  */
-export type IntentExecutorSettlementLayer = 'CCTP' | 'OFT' | 'ECO'
+export type IntentExecutorSettlementLayer = 'CCTP' | 'OFT' | 'ECO_IE'
 
 export type CrossChainSettlementLayer =
   | Permit2SettlementLayer

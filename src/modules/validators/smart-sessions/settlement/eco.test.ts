@@ -71,6 +71,7 @@ type Overrides = Partial<{
   destination: bigint
   portal: Address
   routeNative: bigint
+  routeDeadline: bigint
   routeToken: Address
   delivered: bigint
   callTarget: Address
@@ -103,7 +104,7 @@ function publish(o: Overrides = {}): Hex {
   const route = encodeAbiParameters(routeAbi, [
     {
       salt: pad('0x42'),
-      deadline: 1_900_000_000n,
+      deadline: o.routeDeadline ?? 1_900_000_000n,
       portal: o.portal ?? ECO_PORTAL,
       nativeAmount: o.routeNative ?? 0n,
       tokens: [{ token, amount: delivered }],
@@ -153,6 +154,7 @@ describe('publishAndFund offsets', () => {
     expect(word(c, PUBLISH.rewardPointer)).toBe(0x300n)
     expect(word(c, PUBLISH.routeLength)).toBe(0x260n)
     expect(word(c, PUBLISH.routeTuplePointer)).toBe(0x20n)
+    expect(word(c, PUBLISH.routeDeadline)).toBe(1_900_000_000n)
     expect(word(c, PUBLISH.routePortal)).toBe(BigInt(ECO_PORTAL))
     expect(word(c, PUBLISH.routeTokensPointer)).toBe(0xc0n)
     expect(word(c, PUBLISH.routeCallsPointer)).toBe(0x120n)
@@ -223,6 +225,7 @@ describe('scopeEco', () => {
     ['reward over the cap', { reward: 101n }],
     ['reward native amount', { rewardNative: 1n }],
     ['deadline past validUntil', { deadline: 1_900_000_001n }],
+    ['route deadline past validUntil', { routeDeadline: 1_900_000_001n }],
     ['allowPartial', { allowPartial: true }],
     ['second call', { extraCall: true }],
     ['delivery under the floor', { delivered: 98n }],

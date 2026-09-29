@@ -38,13 +38,13 @@ const LAYERS: Record<
 > = {
   CCTP: { target: cctpTokenMessenger, scope: scopeCctp },
   OFT: { target: oftAdapter, scope: scopeOft, requiresOneTimeUse: true },
-  ECO: { target: ecoPortal, scope: scopeEco },
+  ECO_IE: { target: ecoPortal, scope: scopeEco },
 }
 
 export const INTENT_EXECUTOR_SETTLEMENT_LAYERS = [
   'CCTP',
   'OFT',
-  'ECO',
+  'ECO_IE',
 ] as const satisfies readonly IntentExecutorSettlementLayer[]
 
 export function isIntentExecutorLayer(
@@ -206,10 +206,10 @@ export function resolveSettlementScope(
   if (LAYERS[layer].requiresOneTimeUse && !options.oneTimeUse) {
     throw new Error(`crossChainPermits: an ${layer} permit requires oneTimeUse`)
   }
-  // Only ECO prices its delivery against the reward; elsewhere the field would
+  // Only ECO_IE prices its delivery against the reward; elsewhere the field would
   // be silently ignored.
-  if (permit.maxFeeBps !== undefined && layer !== 'ECO') {
-    throw new Error('crossChainPermits: maxFeeBps applies only to ECO')
+  if (permit.maxFeeBps !== undefined && layer !== 'ECO_IE') {
+    throw new Error('crossChainPermits: maxFeeBps applies only to ECO_IE')
   }
   const target = LAYERS[layer].target(options.chainId)
   const layerAction = LAYERS[layer].scope({

@@ -165,13 +165,13 @@ describe('settlement-scoped crossChainPermits', () => {
     expect(satisfiesRules(action, approve(OTHER))).toBe(false)
   })
 
-  describe('ECO', () => {
+  describe('ECO_IE', () => {
     const eco = (permit: Partial<CrossChainPermissionInput> = {}) =>
       definition(
         {
           from: { chain: base, token: USDC, maxAmount: 100n },
           to: { chain: arbitrum, token: USDC_ARB },
-          settlementLayers: ['ECO'],
+          settlementLayers: ['ECO_IE'],
           maxFeeBps: 50,
           validUntil: new Date(2_000_000_000_000),
           ...permit,
@@ -190,7 +190,7 @@ describe('settlement-scoped crossChainPermits', () => {
         [USDC, APPROVE],
       ])
       expect(data.claimPolicies).toEqual([])
-      expect(toSession(eco()).settlementLayers).toEqual(['ECO'])
+      expect(toSession(eco()).settlementLayers).toEqual(['ECO_IE'])
     })
 
     test('the approve may only name the Portal', () => {
@@ -239,17 +239,20 @@ describe('settlement-scoped crossChainPermits', () => {
     ).toThrow('name one IntentExecutor layer per permit')
   })
 
-  test('a Permit2-only permit keeps its current shape', () => {
-    const permit = definition({ settlementLayers: ['ACROSS'] })
-    const data = resolveSessionData(permit)
-    expect(data.claimPolicies).toHaveLength(1)
-    expect(
-      data.actions.some(
-        (a) => a.actionTarget === SMART_SESSIONS_FALLBACK_TARGET_FLAG,
-      ),
-    ).toBe(true)
-    expect(toSession(permit).settlementLayers).toBeUndefined()
-  })
+  test.each(['ACROSS', 'ECO', 'SAME_CHAIN'] as const)(
+    'a %s permit keeps its Permit2 shape',
+    (layer) => {
+      const permit = definition({ settlementLayers: [layer] })
+      const data = resolveSessionData(permit)
+      expect(data.claimPolicies).toHaveLength(1)
+      expect(
+        data.actions.some(
+          (a) => a.actionTarget === SMART_SESSIONS_FALLBACK_TARGET_FLAG,
+        ),
+      ).toBe(true)
+      expect(toSession(permit).settlementLayers).toBeUndefined()
+    },
+  )
 
   describe('refuses', () => {
     test.each([

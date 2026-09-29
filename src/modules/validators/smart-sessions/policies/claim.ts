@@ -19,7 +19,7 @@ export function expandCrossChainPermit(
   readonly fallbackPolicies: readonly SessionPolicy[]
 } {
   if (permit.maxFeeBps !== undefined) {
-    throw new Error('crossChainPermits: maxFeeBps applies only to ECO')
+    throw new Error('crossChainPermits: maxFeeBps applies only to ECO_IE')
   }
   const sourceTokens = permit.from?.length
     ? permit.from.map(({ chain, token }) => ({ chain, address: token }))
