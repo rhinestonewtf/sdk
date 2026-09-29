@@ -203,14 +203,14 @@ export interface SessionPolicyAddresses {
 }
 
 /** Layers a permit settles through the Permit2 claim path (arbiter allowlist). */
-export type Permit2SettlementLayer = 'SAME_CHAIN' | 'ECO' | 'ACROSS'
+export type Permit2SettlementLayer = 'SAME_CHAIN' | 'ACROSS'
 
 /**
  * Layers the account settles by executing the bridge call itself. Naming one
  * compiles the permit to scoped, argument-pinned actions and restricts the
  * session to them.
  */
-export type IntentExecutorSettlementLayer = 'CCTP' | 'OFT'
+export type IntentExecutorSettlementLayer = 'CCTP' | 'OFT' | 'ECO'
 
 export type CrossChainSettlementLayer =
   | Permit2SettlementLayer
@@ -224,6 +224,7 @@ export interface CrossChainPermit {
   fillDeadline?: { chain: Chain; min?: bigint; max?: bigint }[]
   recipientIsAccount?: boolean
   settlementLayers?: CrossChainSettlementLayer[]
+  maxFeeBps?: number
 }
 
 export interface FromLeg {
@@ -246,6 +247,7 @@ export interface CrossChainPermissionInput {
   fillDeadline?: { chain: Chain; min?: Date; max?: Date }[]
   allowRecipientNotAccount?: boolean
   settlementLayers?: CrossChainSettlementLayer[]
+  maxFeeBps?: number
 }
 
 export interface Permit2ClaimPolicy {

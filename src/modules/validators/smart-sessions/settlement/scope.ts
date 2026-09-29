@@ -9,6 +9,7 @@ import type {
   SessionPolicy,
 } from '../types'
 import { cctpTokenMessenger, scopeCctp } from './cctp'
+import { ecoPortal, scopeEco } from './eco'
 import { oftAdapter, scopeOft } from './oft'
 import type { SettlementContext } from './types'
 
@@ -37,11 +38,13 @@ const LAYERS: Record<
 > = {
   CCTP: { target: cctpTokenMessenger, scope: scopeCctp },
   OFT: { target: oftAdapter, scope: scopeOft, requiresOneTimeUse: true },
+  ECO: { target: ecoPortal, scope: scopeEco },
 }
 
 export const INTENT_EXECUTOR_SETTLEMENT_LAYERS = [
   'CCTP',
   'OFT',
+  'ECO',
 ] as const satisfies readonly IntentExecutorSettlementLayer[]
 
 export function isIntentExecutorLayer(
@@ -203,6 +206,11 @@ export function resolveSettlementScope(
   if (LAYERS[layer].requiresOneTimeUse && !options.oneTimeUse) {
     throw new Error(`crossChainPermits: an ${layer} permit requires oneTimeUse`)
   }
+  // Only ECO prices its delivery against the reward; elsewhere the field would
+  // be silently ignored.
+  if (permit.maxFeeBps !== undefined && layer !== 'ECO') {
+    throw new Error('crossChainPermits: maxFeeBps applies only to ECO')
+  }
   const target = LAYERS[layer].target(options.chainId)
   const layerAction = LAYERS[layer].scope({
     chainId: options.chainId,
@@ -212,6 +220,10 @@ export function resolveSettlementScope(
     destinations,
     cap,
     timeFrame,
+    ...(permit.maxFeeBps === undefined ? {} : { maxFeeBps: permit.maxFeeBps }),
+    ...(permit.validUntil === undefined
+      ? {}
+      : { validUntil: permit.validUntil }),
   })
 
   // Only the layer's own approve: an unsponsored intent (paymaster approve and

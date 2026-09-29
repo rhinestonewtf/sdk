@@ -22,6 +22,7 @@ export function satisfiesRules(
     const value = word(r.calldataOffset)
     if (r.condition === 'equal') return value === ref
     if (r.condition === 'greaterThan') return value > ref
+    if (r.condition === 'greaterThanOrEqual') return value >= ref
     if (r.condition === 'lessThanOrEqual')
       return (
         value <= ref &&

@@ -23,4 +23,8 @@ export interface SettlementContext {
   readonly cap?: bigint
   /** The permit's validity window, installed on every scoped action. */
   readonly timeFrame: readonly SessionPolicy[]
+  /** `ECO` only: the solver's maximum cut, in basis points of the cap. */
+  readonly maxFeeBps?: number
+  /** The permit's `validUntil`, in seconds. */
+  readonly validUntil?: bigint
 }

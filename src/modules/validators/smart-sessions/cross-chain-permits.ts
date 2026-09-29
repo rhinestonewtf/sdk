@@ -56,6 +56,7 @@ export function resolveCrossChainPermission(
     ...(input.settlementLayers
       ? { settlementLayers: input.settlementLayers }
       : {}),
+    ...(input.maxFeeBps === undefined ? {} : { maxFeeBps: input.maxFeeBps }),
   }
 }
 
@@ -87,5 +88,6 @@ export function toCrossChainPermissionInput(
     ...(permit.settlementLayers
       ? { settlementLayers: permit.settlementLayers }
       : {}),
+    ...(permit.maxFeeBps === undefined ? {} : { maxFeeBps: permit.maxFeeBps }),
   }
 }

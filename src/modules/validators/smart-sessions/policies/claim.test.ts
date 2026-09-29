@@ -40,15 +40,15 @@ describe('Smart Sessions claim policies', () => {
         to: [{ chain: arbitrum, token: destination, recipient }],
         validAfter: 100n,
         recipientIsAccount: true,
-        settlementLayers: ['ECO'],
+        settlementLayers: ['ACROSS'],
       },
       'development',
     )
     expect(afterOnly.claim).toMatchObject({
       // source: shared-configs generated development address book
       spenders: [
-        '0x1BeBAfb3D05d84A5Bfd94800c88d1342f755d8AB',
-        '0x8A061029AE4c5Cf69b5368119B3b0C80B31F55fE',
+        '0x1b19973F7a29E950ad4FaF8872745B6378005517',
+        '0x8343FBBA0526deC1c952A098057021027648bcf9',
       ],
       sourceTokens: [{ chain: base, address: source }],
       destinationTokens: [{ chain: arbitrum, address: destination }],
@@ -66,11 +66,8 @@ describe('Smart Sessions claim policies', () => {
     )
   })
 
-  test('keeps solver-network ECO blocked instead of authorizing the generic IntentExecutor adapter', () => {
-    const { claim } = expandCrossChainPermit(
-      { settlementLayers: ['ECO'] },
-      'production',
-    )
+  test('never authorizes the generic IntentExecutor adapter, even in the default allow-set', () => {
+    const { claim } = expandCrossChainPermit({}, 'production')
     // source: shared-configs generated production address book
     const intentExecutorAdapter =
       '0xa5DAC04a6cCF0eb19cE091b6B400Fc4FCD13Da1e' as const

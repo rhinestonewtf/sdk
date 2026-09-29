@@ -691,7 +691,7 @@ describe('crossChainPermits expansion', () => {
         {
           from: [{ chain: base, token: USDC }],
           to: [{ chain: base, token: USDC_ARB }],
-          settlementLayers: ['ECO'],
+          settlementLayers: ['ACROSS'],
         },
       ],
     })
@@ -798,7 +798,7 @@ describe('crossChainPermits expansion', () => {
     const session = toSession({
       chain: base,
       owners: { type: 'ecdsa', accounts: [accountA] },
-      crossChainPermits: [{ settlementLayers: ['ECO'] }],
+      crossChainPermits: [{ settlementLayers: ['ACROSS'] }],
     })
     const data = getSessionData(session)
     expect(data.claimPolicies).toHaveLength(1)
@@ -814,7 +814,7 @@ describe('crossChainPermits expansion', () => {
     const session = toSession({
       chain: base,
       owners: { type: 'ecdsa', accounts: [accountA] },
-      crossChainPermits: [{ settlementLayers: ['ECO'] }],
+      crossChainPermits: [{ settlementLayers: ['ACROSS'] }],
     })
     const withTokens = toSession({
       chain: base,
@@ -823,7 +823,7 @@ describe('crossChainPermits expansion', () => {
         {
           from: [{ chain: base, token: USDC }],
           to: [{ chain: base, token: USDC_ARB }],
-          settlementLayers: ['ECO'],
+          settlementLayers: ['ACROSS'],
         },
       ],
     })

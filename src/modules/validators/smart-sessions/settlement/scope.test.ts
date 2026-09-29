@@ -22,6 +22,7 @@ import {
 } from '../resolve'
 import type { CrossChainPermissionInput, SessionDefinition } from '../types'
 import { CCTP_CHAINS, DEPOSIT_FOR_BURN_WITH_HOOK_SELECTOR } from './cctp'
+import { ECO_PORTAL, PUBLISH_AND_FUND_SELECTOR } from './eco'
 import { OFT_CHAINS, OFT_SEND_SELECTOR } from './oft'
 import { resolveSettlementScope } from './scope'
 
@@ -162,6 +163,71 @@ describe('settlement-scoped crossChainPermits', () => {
       true,
     )
     expect(satisfiesRules(action, approve(OTHER))).toBe(false)
+  })
+
+  describe('ECO', () => {
+    const eco = (permit: Partial<CrossChainPermissionInput> = {}) =>
+      definition(
+        {
+          from: { chain: base, token: USDC, maxAmount: 100n },
+          to: { chain: arbitrum, token: USDC_ARB },
+          settlementLayers: ['ECO'],
+          maxFeeBps: 50,
+          ...permit,
+        },
+        withOnce,
+      )
+
+    test('restricts the session to the Portal publish and approve', () => {
+      const data = resolveSessionData(eco())
+      expect(
+        data.actions
+          .slice(0, 2)
+          .map((a) => [a.actionTarget, a.actionTargetSelector]),
+      ).toEqual([
+        [ECO_PORTAL, PUBLISH_AND_FUND_SELECTOR],
+        [USDC, APPROVE],
+      ])
+      expect(data.claimPolicies).toEqual([])
+      expect(toSession(eco()).settlementLayers).toEqual(['ECO'])
+    })
+
+    test('the approve may only name the Portal', () => {
+      const resolved = resolveSettlementScope(
+        [resolveCrossChainPermission(eco().crossChainPermits?.[0] ?? {})],
+        { chainId: base.id, account: ACCOUNT, oneTimeUse: true },
+      )
+      const action = resolved?.actions.find((a) => a.selector === APPROVE)
+      if (!action) throw new Error('no approve action')
+      const approve = (spender: Address) =>
+        encodeFunctionData({
+          abi: erc20Abi,
+          functionName: 'approve',
+          args: [spender, 100n],
+        })
+      expect(satisfiesRules(action, approve(ECO_PORTAL))).toBe(true)
+      expect(satisfiesRules(action, approve(OTHER))).toBe(false)
+    })
+
+    test('requires oneTimeUse, through its mandatory maxAmount', () => {
+      expect(() =>
+        resolveSessionData({ ...eco(), oneTimeUse: undefined }),
+      ).toThrow(
+        'maxAmount on an IntentExecutor-layer permit requires oneTimeUse',
+      )
+    })
+
+    test.each([
+      ['on CCTP', definition({ maxFeeBps: 50 })],
+      [
+        'on a Permit2 layer',
+        definition({ settlementLayers: ['ACROSS'], maxFeeBps: 50 }),
+      ],
+    ])('refuses maxFeeBps %s', (_, def) => {
+      expect(() => resolveSessionData(def)).toThrow(
+        'maxFeeBps applies only to ECO',
+      )
+    })
   })
 
   test('refuses a permit naming two IntentExecutor layers', () => {
