@@ -142,11 +142,13 @@ function requireStablecoin(
 ) {
   const tokens = ECO_STABLECOINS[chainId]
   if (tokens === undefined) {
-    throw new Error(`crossChainPermits: ECO does not route to chain ${chainId}`)
+    throw new Error(
+      `crossChainPermits: ECO_IE does not route to chain ${chainId}`,
+    )
   }
   if (!tokens.some((t) => isAddressEqual(t, token))) {
     throw new Error(
-      `crossChainPermits: ECO moves only USD stablecoins; the \`${leg}\` token on chain ${chainId} is ${token}`,
+      `crossChainPermits: ECO_IE moves only USD stablecoins; the \`${leg}\` token on chain ${chainId} is ${token}`,
     )
   }
 }
@@ -162,7 +164,9 @@ function proversBetween(source: number, destination: number): Address[] {
 
 export function ecoPortal(chainId: number): Address {
   if (ECO_STABLECOINS[chainId] === undefined) {
-    throw new Error(`crossChainPermits: ECO does not route to chain ${chainId}`)
+    throw new Error(
+      `crossChainPermits: ECO_IE does not route to chain ${chainId}`,
+    )
   }
   return ECO_PORTAL
 }
@@ -184,20 +188,20 @@ const anyOf = (branches: ArgPolicyExpression[]): ArgPolicyExpression =>
 export function scopeEco(ctx: SettlementContext): ScopedAction {
   if (ctx.sourceTokens.length !== 1) {
     throw new Error(
-      'crossChainPermits: ECO funds one reward token per chain; give exactly one `from` token on this chain',
+      'crossChainPermits: ECO_IE funds one reward token per chain; give exactly one `from` token on this chain',
     )
   }
   requireStablecoin(ctx.chainId, ctx.sourceTokens[0], 'from')
   if (!ctx.account) {
     throw new Error(
-      'crossChainPermits: ECO refunds an unfilled reward to the account, so the session definition needs `account`',
+      'crossChainPermits: ECO_IE refunds an unfilled reward to the account, so the session definition needs `account`',
     )
   }
   // The key sets the delivery against the reward; only a floor stops it from
   // paying a solver for next to nothing.
   if (ctx.cap === undefined || ctx.maxFeeBps === undefined) {
     throw new Error(
-      'crossChainPermits: ECO needs maxAmount and maxFeeBps to bound what a reward must deliver',
+      'crossChainPermits: ECO_IE needs maxAmount and maxFeeBps to bound what a reward must deliver',
     )
   }
   if (
@@ -213,11 +217,13 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
   // unbounded one would lock the reward for good.
   if (ctx.validUntil === undefined) {
     throw new Error(
-      'crossChainPermits: ECO needs validUntil to bound how long an unfilled reward can stay locked',
+      'crossChainPermits: ECO_IE needs validUntil to bound how long an unfilled reward can stay locked',
     )
   }
   const cap = ctx.cap
-  const floor = (cap * (BPS - BigInt(ctx.maxFeeBps))) / BPS
+  // Round up: a floor rounded down would let the solver keep more than maxFeeBps.
+  const feeBps = BigInt(ctx.maxFeeBps)
+  const floor = (cap * (BPS - feeBps) + BPS - 1n) / BPS
   const rules: UniversalActionPolicyParamRule[] = [
     pinValue(PUBLISH.routePointer, 0x80n),
     pinValue(PUBLISH.rewardPointer, 0x300n),
@@ -256,7 +262,7 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
     requireStablecoin(leg.chainId, leg.token, 'to')
     if (leg.recipient === undefined) {
       throw new Error(
-        "crossChainPermits: ECO needs a concrete recipient; 'any' cannot pin the route's transfer",
+        "crossChainPermits: ECO_IE needs a concrete recipient; 'any' cannot pin the route's transfer",
       )
     }
     const provers = proversBetween(ctx.chainId, leg.chainId)

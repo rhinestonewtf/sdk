@@ -265,6 +265,14 @@ describe('scopeEco', () => {
     expect(holds(action, publish({ callData }))).toBe(false)
   })
 
+  test('the floor rounds up, so the solver never keeps more than maxFeeBps', () => {
+    // 100 at 50 bps is a 99.5 floor: rounding down to 99 would let the solver
+    // keep 100 bps.
+    const tight = scopeEco({ ...base, maxFeeBps: 50 })
+    expect(holds(tight, publish({ delivered: 100n }))).toBe(true)
+    expect(holds(tight, publish({ delivered: 99n }))).toBe(false)
+  })
+
   test('the floor is maxAmount minus maxFeeBps, and the reward cap is cumulative', () => {
     // cap 100, 100 bps → floor 99
     expect(holds(action, publish({ delivered: 99n }))).toBe(true)
@@ -301,7 +309,7 @@ describe('scopeEco', () => {
     [
       'a chain Eco does not route to',
       { destinations: [{ chainId: 56, token: USDC_ARB, recipient: ACCOUNT }] },
-      'ECO does not route to chain 56',
+      'ECO_IE does not route to chain 56',
     ],
     [
       'a `from` token that is not a stablecoin',
