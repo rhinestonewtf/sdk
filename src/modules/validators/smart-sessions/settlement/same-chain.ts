@@ -246,14 +246,24 @@ export function scopeSameChain(ctx: SameChainContext): SameChainScope {
   return {
     // The bare venue emits only Swapper entrypoints; the floor goes on every
     // action so none can run without it.
-    actions: swap.actions.map((action) =>
-      withTimeFrame({
+    actions: swap.actions.map((action) => {
+      const policies = action.policies ?? []
+      // The floor rides on the params policy; an action without one would run
+      // unfloored.
+      if (
+        !policies.some(
+          (p) => p.type === 'universal-action' || p.type === 'arg-policy',
+        )
+      ) {
+        throw new Error(
+          'crossChainPermits: a SAME_CHAIN_IE swap action has no params policy to carry its floor',
+        )
+      }
+      return withTimeFrame({
         ...action,
-        policies: (action.policies ?? []).map((policy) =>
-          withRule(policy, floor),
-        ),
-      }),
-    ),
+        policies: policies.map((policy) => withRule(policy, floor)),
+      })
+    }),
     permissions: swap.permissions.map((permission) => ({
       ...permission,
       functions: Object.fromEntries(
