@@ -81,16 +81,18 @@ export function getArbitersForSettlementLayers(
   layers: readonly CrossChainSettlementLayer[] | undefined,
   useDevContracts?: boolean,
 ): Address[] | undefined {
-  // IntentExecutor layers settle without an arbiter, so they add no spender.
-  const effectiveLayers: readonly Permit2SettlementLayer[] =
+  // Fail closed: an empty result would leave the claim policy with no spender
+  // pin, which admits any arbiter. IntentExecutor layers never reach here.
+  for (const layer of layers ?? []) {
+    if (!(layer in SETTLEMENT_LAYER_CONTRACT_KEYS)) {
+      throw new Error(`Settlement layer ${layer} has no Permit2 arbiter`)
+    }
+  }
+  const effectiveLayers = (
     !layers || layers.length === 0
-      ? (Object.keys(
-          SETTLEMENT_LAYER_CONTRACT_KEYS,
-        ) as Permit2SettlementLayer[])
-      : layers.filter(
-          (layer): layer is Permit2SettlementLayer =>
-            layer in SETTLEMENT_LAYER_CONTRACT_KEYS,
-        )
+      ? Object.keys(SETTLEMENT_LAYER_CONTRACT_KEYS)
+      : layers
+  ) as readonly Permit2SettlementLayer[]
 
   const book = ARBITER_ADDRESSES[useDevContracts ? 'dev' : 'prod']
   const keys = effectiveLayers.flatMap((l) => SETTLEMENT_LAYER_CONTRACT_KEYS[l])

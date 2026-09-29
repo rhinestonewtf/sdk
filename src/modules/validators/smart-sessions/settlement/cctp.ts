@@ -74,8 +74,16 @@ const BURN = namedParamOffsets(
   'depositForBurnWithHook',
 )
 
-export function cctpTokenMessenger(testnet: boolean): Address {
-  return TOKEN_MESSENGER[testnet ? 'testnet' : 'mainnet']
+/** Keyed by chain id rather than `chain.testnet`, which a custom chain may omit. */
+const CCTP_TESTNET_CHAIN_IDS: ReadonlySet<number> = new Set([
+  84532, 421614, 11155111, 11155420,
+])
+
+export function cctpTokenMessenger(chainId: number): Address {
+  cctpDomain(chainId)
+  return TOKEN_MESSENGER[
+    CCTP_TESTNET_CHAIN_IDS.has(chainId) ? 'testnet' : 'mainnet'
+  ]
 }
 
 export function cctpDomain(chainId: number): number {

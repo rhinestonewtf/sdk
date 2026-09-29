@@ -40,7 +40,6 @@ const APPROVE_SELECTOR = toFunctionSelector('approve(address,uint256)')
 
 export interface SettlementScopeOptions {
   readonly chainId: number
-  readonly testnet: boolean
   readonly account: Address | undefined
   readonly oneTimeUse: boolean
 }
@@ -132,12 +131,24 @@ export function resolveSettlementScope(
     }
     return recipient
   }
-  const destinations = permit.to?.length
-    ? permit.to.map(({ chain, recipient }) => ({
-        chainId: chain.id,
-        recipient: resolveRecipient(recipient),
-      }))
-    : [{ recipient: resolveRecipient(undefined) }]
+  // Without a destination pin the key picks the domain, and a burn to a domain
+  // where the recipient cannot mint (e.g. Solana, whose recipient is an ATA)
+  // is lost.
+  if (!permit.to?.length) {
+    throw new Error(
+      'crossChainPermits: an IntentExecutor-layer permit must name its `to` chains',
+    )
+  }
+  // fillDeadline bounds a Permit2 claim; no IntentExecutor layer carries one.
+  if (permit.fillDeadline?.length) {
+    throw new Error(
+      'crossChainPermits: fillDeadline applies only to Permit2 layers',
+    )
+  }
+  const destinations = permit.to.map(({ chain, recipient }) => ({
+    chainId: chain.id,
+    recipient: resolveRecipient(recipient),
+  }))
 
   const timeFrame: SessionPolicy[] =
     permit.validAfter !== undefined || permit.validUntil !== undefined
@@ -165,7 +176,7 @@ export function resolveSettlementScope(
   for (const layer of settlementLayers) {
     switch (layer) {
       case 'CCTP': {
-        const target = cctpTokenMessenger(options.testnet)
+        const target = cctpTokenMessenger(options.chainId)
         layerTargets.push(target)
         layerActions.push(
           scopeCctp({

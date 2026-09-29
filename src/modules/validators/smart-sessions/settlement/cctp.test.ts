@@ -1,10 +1,6 @@
-import { type Address, encodeFunctionData, type Hex, pad, slice } from 'viem'
+import { type Address, encodeFunctionData, type Hex, pad } from 'viem'
 import { describe, expect, test } from 'vitest'
-import type {
-  ArgPolicyExpression,
-  ScopedAction,
-  UniversalActionPolicyParamRule,
-} from '../types'
+import { satisfiesRules as holds } from '../../../../../test/utils/policy-rules'
 import {
   cctpTokenMessenger,
   DEPOSIT_FOR_BURN_WITH_HOOK_SELECTOR,
@@ -17,38 +13,6 @@ const ACCOUNT = '0x1111111111111111111111111111111111111111' as Address
 const OTHER = '0x2222222222222222222222222222222222222222' as Address
 const FORWARD_HOOK =
   '0x636374702d666f72776172640000000000000000000000000000000000000000' as Hex
-
-/** Evaluates a scoped action's rules the way the on-chain policy reads them. */
-function holds(action: ScopedAction, calldata: Hex, observed = 0n): boolean {
-  const word = (offset: bigint) =>
-    BigInt(slice(calldata, 4 + Number(offset), 36 + Number(offset)))
-  const rule = (r: UniversalActionPolicyParamRule) => {
-    const ref = BigInt(r.referenceValue)
-    const value = word(r.calldataOffset)
-    if (r.condition === 'equal') return value === ref
-    if (r.condition === 'lessThanOrEqual')
-      return (
-        value <= ref &&
-        (r.usageLimit === undefined || observed + value <= r.usageLimit)
-      )
-    throw new Error(`unexpected condition ${r.condition}`)
-  }
-  const expr = (e: ArgPolicyExpression): boolean =>
-    e.type === 'rule'
-      ? rule(e.rule)
-      : e.type === 'not'
-        ? !expr(e.child)
-        : e.type === 'and'
-          ? expr(e.left) && expr(e.right)
-          : expr(e.left) || expr(e.right)
-  return (action.policies ?? []).every((policy) =>
-    policy.type === 'universal-action'
-      ? policy.rules.every(rule)
-      : policy.type === 'arg-policy'
-        ? expr(policy.expression)
-        : true,
-  )
-}
 
 function burn(
   overrides: Partial<{
@@ -77,7 +41,7 @@ function burn(
 
 const base = {
   chainId: 8453,
-  target: cctpTokenMessenger(false),
+  target: cctpTokenMessenger(8453),
   sourceTokens: [USDC],
   timeFrame: [],
 } as const

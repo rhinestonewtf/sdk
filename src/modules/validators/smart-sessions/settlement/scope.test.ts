@@ -1,7 +1,14 @@
-import { type Address, toFunctionSelector } from 'viem'
+import {
+  type Address,
+  encodeFunctionData,
+  erc20Abi,
+  toFunctionSelector,
+} from 'viem'
 import { arbitrum, base, baseSepolia } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 import { accountA } from '../../../../../test/consts'
+import { satisfiesRules } from '../../../../../test/utils/policy-rules'
+import { resolveCrossChainPermission } from '../cross-chain-permits'
 import {
   resolveSessionData,
   SMART_SESSIONS_FALLBACK_TARGET_FLAG,
@@ -9,6 +16,7 @@ import {
 } from '../resolve'
 import type { CrossChainPermissionInput, SessionDefinition } from '../types'
 import { DEPOSIT_FOR_BURN_WITH_HOOK_SELECTOR } from './cctp'
+import { resolveSettlementScope } from './scope'
 
 const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address
 const USDC_ARB = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831' as Address
@@ -126,6 +134,23 @@ describe('settlement-scoped crossChainPermits', () => {
         'needs `account` on the session definition',
       ],
       [
+        'a permit with no `to` chains',
+        definition({ to: undefined }),
+        'must name its `to` chains',
+      ],
+      [
+        'a fillDeadline',
+        definition({
+          fillDeadline: [{ chain: arbitrum, max: new Date(2e12) }],
+        }),
+        'fillDeadline applies only to Permit2 layers',
+      ],
+      [
+        'a signing surface',
+        definition({}, { signing: { mode: 'unrestricted' } }),
+        'cannot enable `signing`',
+      ],
+      [
         "recipient 'any' without allowRecipientNotAccount",
         definition({
           to: { chain: arbitrum, token: USDC_ARB, recipient: 'any' },
@@ -185,5 +210,56 @@ describe('settlement-scoped crossChainPermits', () => {
         }),
       ),
     ).not.toThrow()
+  })
+})
+
+describe('resolveSettlementScope', () => {
+  const scope = (permit: Partial<CrossChainPermissionInput> = {}) => {
+    const resolved = resolveSettlementScope(
+      [
+        resolveCrossChainPermission({
+          from: { chain: base, token: USDC },
+          to: { chain: arbitrum, token: USDC_ARB },
+          settlementLayers: ['CCTP'],
+          ...permit,
+        }),
+      ],
+      { chainId: base.id, account: ACCOUNT, oneTimeUse: false },
+    )
+    if (!resolved) throw new Error('expected a settlement scope')
+    return resolved.actions
+  }
+  const approve = (spender: Address) =>
+    encodeFunctionData({
+      abi: erc20Abi,
+      functionName: 'approve',
+      args: [spender, 100n],
+    })
+
+  test('the approve may only name the TokenMessenger', () => {
+    const action = scope().find((a) => a.selector === APPROVE)
+    if (!action) throw new Error('no approve action')
+    expect(action.target).toBe(USDC)
+    expect(
+      satisfiesRules(
+        action,
+        approve('0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d'),
+      ),
+    ).toBe(true)
+    expect(satisfiesRules(action, approve(OTHER))).toBe(false)
+  })
+
+  test('the validity window bounds every action', () => {
+    const validAfter = new Date(1_900_000_000_000)
+    const validUntil = new Date(2_000_000_000_000)
+    const actions = scope({ validAfter, validUntil })
+    expect(actions).toHaveLength(2)
+    for (const action of actions) {
+      expect(action.policies).toContainEqual({
+        type: 'time-frame',
+        validAfter: validAfter.getTime(),
+        validUntil: validUntil.getTime(),
+      })
+    }
   })
 })

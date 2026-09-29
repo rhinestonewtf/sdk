@@ -108,10 +108,20 @@ export function resolveSessionData(
   // actions, which only bind with the fallback gone — so it restricts too.
   const settlementScope = resolveSettlementScope(resolvedPermits, {
     chainId: definition.chain.id,
-    testnet: definition.chain.testnet === true,
     account: definition.account,
     oneTimeUse: Boolean(definition.oneTimeUse),
   })
+  // An ERC-1271 signing surface would let the key sign a Permit2 transfer that
+  // none of the calldata pins ever see.
+  if (
+    settlementScope !== undefined &&
+    definition.signing !== undefined &&
+    definition.signing.mode !== 'disabled'
+  ) {
+    throw new Error(
+      'crossChainPermits: an IntentExecutor-layer permit cannot enable `signing`',
+    )
+  }
   const restricted =
     definition.restrictToActions === true ||
     swapScope !== undefined ||
