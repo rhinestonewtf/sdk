@@ -5,12 +5,14 @@ import type {
   CrossChainPermit,
   CrossChainSettlementLayer,
   IntentExecutorSettlementLayer,
+  Permission,
   ScopedAction,
   SessionPolicy,
 } from '../types'
 import { cctpTokenMessenger, scopeCctp } from './cctp'
 import { ecoPortal, scopeEco } from './eco'
 import { oftAdapter, scopeOft } from './oft'
+import { scopeSameChain } from './same-chain'
 import type { SettlementContext } from './types'
 
 /**
@@ -24,8 +26,10 @@ import type { SettlementContext } from './types'
  */
 
 /** Each layer's settlement contract on a chain and the scoped call it makes. */
+// SAME_CHAIN_IE has no fixed target: it transfers the token itself or reuses the
+// swap scope, so it is resolved before this table.
 const LAYERS: Record<
-  IntentExecutorSettlementLayer,
+  Exclude<IntentExecutorSettlementLayer, 'SAME_CHAIN_IE'>,
   {
     readonly target: (chainId: number) => Address
     readonly scope: (ctx: SettlementContext) => ScopedAction
@@ -45,6 +49,7 @@ export const INTENT_EXECUTOR_SETTLEMENT_LAYERS = [
   'CCTP',
   'OFT',
   'ECO_IE',
+  'SAME_CHAIN_IE',
 ] as const satisfies readonly IntentExecutorSettlementLayer[]
 
 export function isIntentExecutorLayer(
@@ -63,12 +68,15 @@ const APPROVE_SELECTOR = toFunctionSelector('approve(address,uint256)')
 
 export interface SettlementScopeOptions {
   readonly chainId: number
+  readonly environment: 'production' | 'development'
   readonly account: Address | undefined
   readonly oneTimeUse: boolean
 }
 
 export interface ResolvedSettlementScope {
   readonly actions: ScopedAction[]
+  /** ABI-sugar permissions the layer adds (the SAME_CHAIN_IE swap's approve). */
+  readonly permissions: Permission[]
   readonly settlementLayers: IntentExecutorSettlementLayer[]
 }
 
@@ -175,11 +183,14 @@ export function resolveSettlementScope(
       'crossChainPermits: fillDeadline applies only to Permit2 layers',
     )
   }
-  const destinations = permit.to.map(({ chain, token, recipient }) => ({
-    chainId: chain.id,
-    token,
-    recipient: resolveRecipient(recipient),
-  }))
+  const destinations = permit.to.map(
+    ({ chain, token, recipient, minAmount }) => ({
+      chainId: chain.id,
+      token,
+      recipient: resolveRecipient(recipient),
+      ...(minAmount === undefined ? {} : { minAmount }),
+    }),
+  )
 
   const timeFrame: SessionPolicy[] =
     permit.validAfter !== undefined || permit.validUntil !== undefined
@@ -203,13 +214,39 @@ export function resolveSettlementScope(
   })
 
   const [layer] = settlementLayers
-  if (LAYERS[layer].requiresOneTimeUse && !options.oneTimeUse) {
-    throw new Error(`crossChainPermits: an ${layer} permit requires oneTimeUse`)
-  }
   // Only ECO_IE prices its delivery against the reward; elsewhere the field would
   // be silently ignored.
   if (permit.maxFeeBps !== undefined && layer !== 'ECO_IE') {
     throw new Error('crossChainPermits: maxFeeBps applies only to ECO_IE')
+  }
+  if (
+    layer !== 'SAME_CHAIN_IE' &&
+    permit.to?.some((leg) => leg.minAmount !== undefined)
+  ) {
+    throw new Error(
+      'crossChainPermits: `to.minAmount` applies only to a SAME_CHAIN_IE swap',
+    )
+  }
+  if (layer === 'SAME_CHAIN_IE') {
+    const sameChain = scopeSameChain({
+      chainId: options.chainId,
+      environment: options.environment,
+      account: options.account,
+      sourceTokens,
+      destinations,
+      cap,
+      timeFrame,
+      ...(permit.validAfter === undefined
+        ? {}
+        : { validAfter: permit.validAfter }),
+      ...(permit.validUntil === undefined
+        ? {}
+        : { validUntil: permit.validUntil }),
+    })
+    return { ...sameChain, settlementLayers }
+  }
+  if (LAYERS[layer].requiresOneTimeUse && !options.oneTimeUse) {
+    throw new Error(`crossChainPermits: an ${layer} permit requires oneTimeUse`)
   }
   const target = LAYERS[layer].target(options.chainId)
   const layerAction = LAYERS[layer].scope({
@@ -246,5 +283,9 @@ export function resolveSettlementScope(
       ]),
     ),
   )
-  return { actions: [layerAction, ...approveActions], settlementLayers }
+  return {
+    actions: [layerAction, ...approveActions],
+    permissions: [],
+    settlementLayers,
+  }
 }

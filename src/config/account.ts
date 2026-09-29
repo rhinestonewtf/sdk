@@ -279,8 +279,10 @@ interface Permit2ClaimPolicy {
  * - `SAME_CHAIN`, `ECO`, `ACROSS` settle through Permit2: each maps to one or
  *   more arbiter addresses from the SDK's bundled allow-set (`ECO` is the
  *   retired Standard Eco arbiter).
- * - `CCTP` (USDC), `OFT` (USDT0) and `ECO_IE` (USD stablecoins, Eco's solver
- *   network) settle by the account executing the bridge call. Naming one makes
+ * - `CCTP` (USDC), `OFT` (USDT0), `ECO_IE` (USD stablecoins, Eco's solver
+ *   network) and `SAME_CHAIN_IE` (a transfer, or a Rhinestone Swapper swap with
+ *   a `to.minAmount` floor, on the session's own chain) settle by the account
+ *   executing the call. Naming one makes
  *   the permit **settlement-scoped**: the session is restricted to that call
  *   and its approve, with the `from` token, the `to` chains and recipients,
  *   and `maxAmount` pinned in its calldata. Such a permit names exactly one of
@@ -295,6 +297,7 @@ type CrossChainSettlementLayer =
   | 'CCTP'
   | 'OFT'
   | 'ECO_IE'
+  | 'SAME_CHAIN_IE'
 
 /**
  * A high-level permit that authorises a session key to move funds
@@ -322,7 +325,7 @@ interface CrossChainPermit {
    * Omit for no destination-token restriction. Note `recipientIsAccount`
    * still constrains the destination recipient even when `to` is absent.
    */
-  to?: { chain: Chain; token: Address; recipient?: Address | 'any' }[]
+  to?: ToLeg[]
   /** Upper bound on the permit deadline (Permit2 deadline) — unix seconds */
   validUntil?: bigint
   /** Lower bound on the permit deadline — unix seconds */
@@ -340,7 +343,7 @@ interface CrossChainPermit {
    * `[]`) for any supported layer — the SDK resolves to the union of
    * every arbiter in its bundled allow-set.
    *
-   * `CCTP`, `OFT` and `ECO_IE` are IntentExecutor layers: naming one scopes the
+   * `CCTP`, `OFT`, `ECO_IE` and `SAME_CHAIN_IE` are IntentExecutor layers: naming one scopes the
    * session to that layer's calls instead (see {@link CrossChainSettlementLayer}).
    */
   settlementLayers?: CrossChainSettlementLayer[]
@@ -361,6 +364,11 @@ interface ToLeg {
   chain: Chain
   token: Address
   recipient?: Address | 'any'
+  /**
+   * `SAME_CHAIN_IE` swaps only: the least of `token` the swap must deliver.
+   * Required there, since the session key otherwise sets the swap's output bound.
+   */
+  minAmount?: bigint
 }
 
 /**
@@ -406,7 +414,7 @@ interface CrossChainPermissionInput {
    * resolves to the union of every arbiter in its bundled allow-set. Pass
    * a subset (e.g. `['ACROSS']`) to narrow.
    *
-   * `CCTP`, `OFT` and `ECO_IE` are IntentExecutor layers: naming one scopes the
+   * `CCTP`, `OFT`, `ECO_IE` and `SAME_CHAIN_IE` are IntentExecutor layers: naming one scopes the
    * session to that layer's calls instead (see {@link CrossChainSettlementLayer}).
    */
   settlementLayers?: CrossChainSettlementLayer[]
@@ -901,7 +909,8 @@ interface Session {
    *  SDK derive the matching quoter pin when transacting with the session. */
   swap?: SwapScope
   /** The IntentExecutor layers a settlement-scoped permit restricted the session
-   *  to. Metadata only — intents with the session are limited to them. */
+   *  to. Metadata only — intents with the session are limited to them
+   *  (`SAME_CHAIN_IE` adds no bridge filter). */
   settlementLayers?: readonly IntentExecutorSettlementLayer[]
   /** Claim policies enforced via the ERC-1271 list, not the claim surface. */
   claimPoliciesEnforcedVia1271?: boolean

@@ -210,7 +210,11 @@ export type Permit2SettlementLayer = 'SAME_CHAIN' | 'ECO' | 'ACROSS'
  * compiles the permit to scoped, argument-pinned actions and restricts the
  * session to them.
  */
-export type IntentExecutorSettlementLayer = 'CCTP' | 'OFT' | 'ECO_IE'
+export type IntentExecutorSettlementLayer =
+  | 'CCTP'
+  | 'OFT'
+  | 'ECO_IE'
+  | 'SAME_CHAIN_IE'
 
 export type CrossChainSettlementLayer =
   | Permit2SettlementLayer
@@ -218,7 +222,12 @@ export type CrossChainSettlementLayer =
 
 export interface CrossChainPermit {
   from?: { chain: Chain; token: Address; maxAmount?: bigint }[]
-  to?: { chain: Chain; token: Address; recipient?: Address | 'any' }[]
+  to?: {
+    chain: Chain
+    token: Address
+    recipient?: Address | 'any'
+    minAmount?: bigint
+  }[]
   validUntil?: bigint
   validAfter?: bigint
   fillDeadline?: { chain: Chain; min?: bigint; max?: bigint }[]
@@ -237,6 +246,7 @@ export interface ToLeg {
   chain: Chain
   token: Address
   recipient?: Address | 'any'
+  minAmount?: bigint
 }
 
 export interface CrossChainPermissionInput {

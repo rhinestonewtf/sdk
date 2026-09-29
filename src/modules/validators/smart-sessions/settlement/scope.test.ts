@@ -20,6 +20,7 @@ import {
   SMART_SESSIONS_FALLBACK_TARGET_FLAG,
   toSession,
 } from '../resolve'
+import { swapperAddresses } from '../swap/rhinestone'
 import type { CrossChainPermissionInput, SessionDefinition } from '../types'
 import { CCTP_CHAINS, DEPOSIT_FOR_BURN_WITH_HOOK_SELECTOR } from './cctp'
 import { ECO_PORTAL, PUBLISH_AND_FUND_SELECTOR } from './eco'
@@ -149,7 +150,12 @@ describe('settlement-scoped crossChainPermits', () => {
           settlementLayers: ['OFT'],
         }),
       ],
-      { chainId: arbitrum.id, account: ACCOUNT, oneTimeUse: true },
+      {
+        chainId: arbitrum.id,
+        environment: 'production',
+        account: ACCOUNT,
+        oneTimeUse: true,
+      },
     )
     const action = resolved?.actions.find((a) => a.selector === APPROVE)
     if (!action) throw new Error('no approve action')
@@ -163,6 +169,66 @@ describe('settlement-scoped crossChainPermits', () => {
       true,
     )
     expect(satisfiesRules(action, approve(OTHER))).toBe(false)
+  })
+
+  describe('SAME_CHAIN_IE', () => {
+    const sameChain = (to: CrossChainPermissionInput['to']) =>
+      definition({
+        to,
+        settlementLayers: ['SAME_CHAIN_IE'],
+        allowRecipientNotAccount: true,
+      })
+
+    test('a transfer permit restricts the session to that transfer', () => {
+      const data = resolveSessionData(
+        sameChain({ chain: base, token: USDC, recipient: OTHER }),
+      )
+      expect(data.actions[0]).toMatchObject({
+        actionTarget: USDC,
+        actionTargetSelector: toFunctionSelector('transfer(address,uint256)'),
+      })
+      expect(
+        data.actions.some(
+          (a) => a.actionTarget === SMART_SESSIONS_FALLBACK_TARGET_FLAG,
+        ),
+      ).toBe(false)
+      expect(data.claimPolicies).toEqual([])
+    })
+
+    test('a swap permit compiles through the swap scope with its floor', () => {
+      const WETH = '0x4200000000000000000000000000000000000006' as Address
+      const data = resolveSessionData(
+        sameChain({
+          chain: base,
+          token: WETH,
+          recipient: OTHER,
+          minAmount: 5n,
+        }),
+      )
+      const targets = data.actions.map((a) => a.actionTarget.toLowerCase())
+      expect(targets).toContain(USDC.toLowerCase())
+      expect(targets).toContain(
+        swapperAddresses('production').swapper.toLowerCase(),
+      )
+    })
+
+    test('refuses to.minAmount on another layer', () => {
+      expect(() =>
+        resolveSessionData(
+          definition({
+            to: { chain: arbitrum, token: USDC_ARB, minAmount: 1n },
+          }),
+        ),
+      ).toThrow('applies only to a SAME_CHAIN_IE swap')
+      expect(() =>
+        resolveSessionData(
+          definition({
+            to: { chain: arbitrum, token: USDC_ARB, minAmount: 1n },
+            settlementLayers: ['ACROSS'],
+          }),
+        ),
+      ).toThrow('applies only to a SAME_CHAIN_IE swap')
+    })
   })
 
   describe('ECO_IE', () => {
@@ -196,7 +262,12 @@ describe('settlement-scoped crossChainPermits', () => {
     test('the approve may only name the Portal', () => {
       const resolved = resolveSettlementScope(
         [resolveCrossChainPermission(eco().crossChainPermits?.[0] ?? {})],
-        { chainId: base.id, account: ACCOUNT, oneTimeUse: true },
+        {
+          chainId: base.id,
+          environment: 'production',
+          account: ACCOUNT,
+          oneTimeUse: true,
+        },
       )
       const action = resolved?.actions.find((a) => a.selector === APPROVE)
       if (!action) throw new Error('no approve action')
@@ -405,7 +476,12 @@ describe('resolveSettlementScope', () => {
           ...permit,
         }),
       ],
-      { chainId: base.id, account: ACCOUNT, oneTimeUse: false },
+      {
+        chainId: base.id,
+        environment: 'production',
+        account: ACCOUNT,
+        oneTimeUse: false,
+      },
     )
     if (!resolved) throw new Error('expected a settlement scope')
     return resolved.actions
@@ -476,7 +552,12 @@ describe('resolveSettlementScope', () => {
             settlementLayers: ['CCTP'],
           },
         ],
-        { chainId: base.id, account: undefined, oneTimeUse: false },
+        {
+          chainId: base.id,
+          environment: 'production',
+          account: undefined,
+          oneTimeUse: false,
+        },
       )
     expect(resolve).toThrow('needs `account` on the session definition')
   })

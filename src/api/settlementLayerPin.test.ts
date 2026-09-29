@@ -84,6 +84,36 @@ describe('settlement layer pin', () => {
     expect(layersFor(['CCTP'], { exclude: ['CCTP'] })).toEqual({ include: [] })
   })
 
+  test('a SAME_CHAIN_IE session adds no bridge filter', () => {
+    const sameChain = toSession({
+      chain: base,
+      owners: { type: 'ecdsa', accounts: [accountA] },
+      account: ACCOUNT,
+      crossChainPermits: [
+        {
+          from: { chain: base, token: USDC },
+          to: {
+            chain: base,
+            token: USDC,
+            recipient: '0x2222222222222222222222222222222222222222',
+          },
+          allowRecipientNotAccount: true,
+          settlementLayers: ['SAME_CHAIN_IE'],
+        },
+      ],
+    } as never)
+    expect(sameChain.settlementLayers).toEqual(['SAME_CHAIN_IE'])
+    const intent = adaptTransaction(
+      { account: {} } as never,
+      {
+        chain: base,
+        calls: [],
+        signers: { type: 'session', session: sameChain },
+      } as never,
+    ) as { options?: { settlementLayers?: unknown } }
+    expect(intent.options?.settlementLayers).toBeUndefined()
+  })
+
   test('a Permit2 permit leaves the filter to the caller', () => {
     expect(layersFor(['ACROSS'])).toBeUndefined()
     expect(layersFor(['ACROSS'], { exclude: ['RELAY'] })).toEqual({

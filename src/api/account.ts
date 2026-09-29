@@ -1052,15 +1052,17 @@ function settlementLayerPin(
     { include: unknown }
   >['include'][number]
   // The session's layer names are the SDK's; the filter speaks the
-  // orchestrator's, where Eco's solver network is `ECO`.
+  // orchestrator's, where Eco's solver network is `ECO`. SAME_CHAIN_IE takes
+  // no bridge, and the orchestrator refuses same-chain layers in the filter,
+  // so it narrows nothing; its session refuses cross-chain calls on-chain.
   const toFilter = (
     layer: NonNullable<Session['settlementLayers']>[number],
-  ): Layer => (layer === 'ECO_IE' ? 'ECO' : layer)
-  const scoped = sessions.flatMap((session) =>
-    session.settlementLayers?.length
-      ? [new Set<Layer>(session.settlementLayers.map(toFilter))]
-      : [],
-  )
+  ): Layer[] =>
+    layer === 'SAME_CHAIN_IE' ? [] : [layer === 'ECO_IE' ? 'ECO' : layer]
+  const scoped = sessions.flatMap((session) => {
+    const layers = session.settlementLayers?.flatMap(toFilter) ?? []
+    return layers.length ? [new Set<Layer>(layers)] : []
+  })
   // An unscoped session admits every layer, so it narrows nothing.
   if (scoped.length === 0) return explicit
   const derived = [...scoped[0]].filter((layer) =>

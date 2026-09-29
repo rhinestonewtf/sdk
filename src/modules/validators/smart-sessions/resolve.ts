@@ -108,6 +108,7 @@ export function resolveSessionData(
   // actions, which only bind with the fallback gone — so it restricts too.
   const settlementScope = resolveSettlementScope(resolvedPermits, {
     chainId: definition.chain.id,
+    environment,
     account: definition.account,
     oneTimeUse: Boolean(definition.oneTimeUse),
   })
@@ -129,6 +130,7 @@ export function resolveSessionData(
   const permissions = [
     ...(definition.permissions ?? []),
     ...(swapScope?.permissions ?? []),
+    ...(settlementScope?.permissions ?? []),
   ]
   const userActions = permissions.length ? resolvePermissions(permissions) : []
   // Raw scoped actions (target + selector + policies) for calls that can't be

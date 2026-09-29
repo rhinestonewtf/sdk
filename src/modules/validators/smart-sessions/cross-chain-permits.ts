@@ -26,6 +26,7 @@ export function resolveCrossChainPermission(
     chain: leg.chain,
     token: leg.token,
     ...(leg.recipient === undefined ? {} : { recipient: leg.recipient }),
+    ...(leg.minAmount === undefined ? {} : { minAmount: leg.minAmount }),
   }))
   const validUntil = input.validUntil ? seconds(input.validUntil) : undefined
   const validAfter = input.validAfter ? seconds(input.validAfter) : undefined
