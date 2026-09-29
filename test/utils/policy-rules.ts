@@ -21,6 +21,7 @@ export function satisfiesRules(
     const ref = BigInt(r.referenceValue)
     const value = word(r.calldataOffset)
     if (r.condition === 'equal') return value === ref
+    if (r.condition === 'greaterThan') return value > ref
     if (r.condition === 'lessThanOrEqual')
       return (
         value <= ref &&

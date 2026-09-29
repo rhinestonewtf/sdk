@@ -6,6 +6,8 @@ export interface SettlementContext {
   readonly chainId: number
   /** The layer's settlement contract on this chain. */
   readonly target: Address
+  /** The account the session is for, when the definition names it. */
+  readonly account?: Address
   /** The permit's `from` tokens on this chain. */
   readonly sourceTokens: readonly Address[]
   /**

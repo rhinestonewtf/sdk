@@ -9,6 +9,20 @@ import type {
   SessionPolicy,
 } from '../types'
 import { cctpTokenMessenger, scopeCctp } from './cctp'
+import { oftAdapter, scopeOft } from './oft'
+import type { SettlementContext } from './types'
+
+/** Each layer's settlement contract on a chain and the scoped call it makes. */
+const LAYERS: Record<
+  IntentExecutorSettlementLayer,
+  {
+    readonly target: (chainId: number) => Address
+    readonly scope: (ctx: SettlementContext) => ScopedAction
+  }
+> = {
+  CCTP: { target: cctpTokenMessenger, scope: scopeCctp },
+  OFT: { target: oftAdapter, scope: scopeOft },
+}
 
 /**
  * Settlement-scoped cross-chain permits (RHI-7826).
@@ -22,6 +36,7 @@ import { cctpTokenMessenger, scopeCctp } from './cctp'
 
 export const INTENT_EXECUTOR_SETTLEMENT_LAYERS = [
   'CCTP',
+  'OFT',
 ] as const satisfies readonly IntentExecutorSettlementLayer[]
 
 export function isIntentExecutorLayer(
@@ -74,6 +89,13 @@ export function resolveSettlementScope(
     )
   }
   const settlementLayers = [...new Set(layers.filter(isIntentExecutorLayer))]
+  // Each layer moves its own token (CCTP USDC, OFT USDT0), so one `from` leg
+  // could never satisfy two of them.
+  if (settlementLayers.length > 1) {
+    throw new Error(
+      'crossChainPermits: name one IntentExecutor layer per permit',
+    )
+  }
 
   const fromLegs = (permit.from ?? []).filter(
     (leg) => leg.chain.id === options.chainId,
@@ -172,37 +194,23 @@ export function resolveSettlementScope(
     policies: [...(action.policies ?? []), ...timeFrame],
   })
 
-  const layerTargets: Address[] = []
-  const layerActions: ScopedAction[] = []
-  for (const layer of settlementLayers) {
-    switch (layer) {
-      case 'CCTP': {
-        const target = cctpTokenMessenger(options.chainId)
-        layerTargets.push(target)
-        layerActions.push(
-          scopeCctp({
-            chainId: options.chainId,
-            target,
-            sourceTokens,
-            destinations,
-            cap,
-            timeFrame,
-          }),
-        )
-        break
-      }
-    }
-  }
+  const [layer] = settlementLayers
+  const target = LAYERS[layer].target(options.chainId)
+  const layerAction = LAYERS[layer].scope({
+    chainId: options.chainId,
+    target,
+    account: options.account,
+    sourceTokens,
+    destinations,
+    cap,
+    timeFrame,
+  })
 
   // Only the layer's own approve: an unsponsored intent (paymaster approve and
   // callbackAllowMaxAmount) or one carrying an app fee (carve transfer) adds
   // calls this session does not authorise, so it cannot settle through it (v1).
-  // One layer per permit today (CCTP), so the spender is a single pin; a second
-  // layer makes it an OR of spenders.
   const approveActions = sourceTokens.map((token) =>
-    withTimeFrame(
-      swapAction(token, APPROVE_SELECTOR, [pin(0n, layerTargets[0])]),
-    ),
+    withTimeFrame(swapAction(token, APPROVE_SELECTOR, [pin(0n, target)])),
   )
-  return { actions: [...layerActions, ...approveActions], settlementLayers }
+  return { actions: [layerAction, ...approveActions], settlementLayers }
 }

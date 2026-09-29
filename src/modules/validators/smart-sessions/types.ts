@@ -210,7 +210,7 @@ export type Permit2SettlementLayer = 'SAME_CHAIN' | 'ECO' | 'ACROSS'
  * compiles the permit to scoped, argument-pinned actions and restricts the
  * session to them.
  */
-export type IntentExecutorSettlementLayer = 'CCTP'
+export type IntentExecutorSettlementLayer = 'CCTP' | 'OFT'
 
 export type CrossChainSettlementLayer =
   | Permit2SettlementLayer

@@ -111,13 +111,18 @@ export function swapAction(
    * alternatives become an OR instead.
    */
   alternatives: UniversalActionPolicyParamRule[][] = [],
+  /**
+   * Native value each call may carry. Zero for every swap; a bridge that pays
+   * its messaging fee in `msg.value` (OFT) raises it.
+   */
+  valueLimitPerUse = 0n,
 ): ScopedAction {
   const usable = alternatives.filter((set) => set.length > 0)
   const policy: SessionPolicy =
     usable.length > 0
       ? {
           type: 'arg-policy',
-          valueLimitPerUse: 0n,
+          valueLimitPerUse,
           expression: {
             type: 'and',
             left: allOf(rules),
@@ -129,13 +134,13 @@ export function swapAction(
       : rules.length <= UNIVERSAL_ACTION_MAX_RULES
         ? {
             type: 'universal-action',
-            valueLimitPerUse: 0n,
+            valueLimitPerUse,
             rules: rules as [
               UniversalActionPolicyParamRule,
               ...UniversalActionPolicyParamRule[],
             ],
           }
-        : { type: 'arg-policy', valueLimitPerUse: 0n, expression: allOf(rules) }
+        : { type: 'arg-policy', valueLimitPerUse, expression: allOf(rules) }
   return { target, selector, policies: [policy] }
 }
 

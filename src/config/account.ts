@@ -277,15 +277,20 @@ interface Permit2ClaimPolicy {
  *
  * - `SAME_CHAIN`, `ECO`, `ACROSS` settle through Permit2: each maps to one or
  *   more arbiter addresses from the SDK's bundled allow-set.
- * - `CCTP` settles by the account executing the bridge call. Naming it makes
- *   the permit **settlement-scoped**: the session is restricted to that call
- *   and its approve, with the `from` token,
- *   the `to` chains and recipients, and `maxAmount` pinned in its calldata.
- *   Such a permit cannot be combined with the Permit2 layers, `maxAmount`
- *   requires `oneTimeUse`, and only sponsored intents without an app fee can
- *   settle through it.
+ * - `CCTP` (USDC) and `OFT` (USDT0) settle by the account executing the bridge
+ *   call. Naming one makes the permit **settlement-scoped**: the session is
+ *   restricted to that call and its approve, with the `from` token, the `to`
+ *   chains and recipients, and `maxAmount` pinned in its calldata. Such a
+ *   permit names exactly one of them, cannot be combined with the Permit2
+ *   layers, `maxAmount` requires `oneTimeUse`, and only sponsored intents
+ *   without an app fee can settle through it.
  */
-type CrossChainSettlementLayer = 'SAME_CHAIN' | 'ECO' | 'ACROSS' | 'CCTP'
+type CrossChainSettlementLayer =
+  | 'SAME_CHAIN'
+  | 'ECO'
+  | 'ACROSS'
+  | 'CCTP'
+  | 'OFT'
 
 /**
  * A high-level permit that authorises a session key to move funds
@@ -887,7 +892,7 @@ interface Session {
   swap?: SwapScope
   /** The IntentExecutor layers a settlement-scoped permit restricted the session
    *  to. Metadata only — intents with the session are limited to them. */
-  settlementLayers?: readonly 'CCTP'[]
+  settlementLayers?: readonly ('CCTP' | 'OFT')[]
   /** Claim policies enforced via the ERC-1271 list, not the claim surface. */
   claimPoliciesEnforcedVia1271?: boolean
   /** A one-time-use session's id and policy; each intent burns the id. */

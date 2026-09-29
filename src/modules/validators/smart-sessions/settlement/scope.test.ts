@@ -4,7 +4,13 @@ import {
   erc20Abi,
   toFunctionSelector,
 } from 'viem'
-import { arbitrum, arbitrumSepolia, base, baseSepolia } from 'viem/chains'
+import {
+  arbitrum,
+  arbitrumSepolia,
+  base,
+  baseSepolia,
+  plasma,
+} from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 import { accountA } from '../../../../../test/consts'
 import { satisfiesRules } from '../../../../../test/utils/policy-rules'
@@ -16,6 +22,7 @@ import {
 } from '../resolve'
 import type { CrossChainPermissionInput, SessionDefinition } from '../types'
 import { CCTP_CHAINS, DEPOSIT_FOR_BURN_WITH_HOOK_SELECTOR } from './cctp'
+import { OFT_CHAINS, OFT_SEND_SELECTOR } from './oft'
 import { resolveSettlementScope } from './scope'
 
 const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address
@@ -105,6 +112,33 @@ describe('settlement-scoped crossChainPermits', () => {
       (a) => a.actionTargetSelector === DEPOSIT_FOR_BURN_WITH_HOOK_SELECTOR,
     )
     expect(burn?.actionPolicies.map((p) => p.policy)).toContain(ONE_TIME_USE)
+  })
+
+  test('an OFT permit restricts the session to the adapter send and approve', () => {
+    const oft = definition(
+      {
+        from: { chain: arbitrum, token: OFT_CHAINS[42161].token },
+        to: { chain: plasma, token: OFT_CHAINS[9745].token },
+        settlementLayers: ['OFT'],
+      },
+      { chain: arbitrum },
+    )
+    const data = resolveSessionData(oft)
+    expect(
+      data.actions
+        .slice(0, 2)
+        .map((a) => [a.actionTarget, a.actionTargetSelector]),
+    ).toEqual([
+      [OFT_CHAINS[42161].adapter, OFT_SEND_SELECTOR],
+      [OFT_CHAINS[42161].token, APPROVE],
+    ])
+    expect(toSession(oft).settlementLayers).toEqual(['OFT'])
+  })
+
+  test('refuses a permit naming two IntentExecutor layers', () => {
+    expect(() =>
+      resolveSessionData(definition({ settlementLayers: ['CCTP', 'OFT'] })),
+    ).toThrow('name one IntentExecutor layer per permit')
   })
 
   test('a Permit2-only permit keeps its current shape', () => {
