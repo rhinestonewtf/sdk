@@ -751,6 +751,26 @@ interface SwapScope<TChainId extends number = number> {
    * explicitly only for flows where the account calls a router directly.
    */
   via?: readonly SwapVenueFor<TChainId>[]
+  /**
+   * Opt-in rate floor for a stable-to-stable swap (RHI-7883). The Swapper takes
+   * its output bound (`minAmountOut` / `amountOut`) from the caller and its
+   * `calls[]` route may call anything, so without this a session key can set
+   * that bound to zero and route the input away.
+   *
+   * On, every swap must deliver at least `ceil(maxTotal × (1 − slippage))` of
+   * the buy token (converted between the tokens' decimals), while the sell side
+   * stays capped cumulatively at `maxTotal` — so the worst rate is floor/cap.
+   * `true` means 100 bps; pass `{ maxSlippageBps }` to choose.
+   *
+   * Requires one sell token, `sell.maxTotal`, both tokens USD stablecoins in the
+   * orchestrator's chain catalog (so build with `sdk.createSession`, or pass
+   * `supportedTokens` to `toSession`), and the Rhinestone Swapper as the only
+   * venue — a direct aggregator call would bypass the floor.
+   *
+   * The floor is absolute, not proportional: a swap much smaller than
+   * `maxTotal` cannot meet it, so size `maxTotal` to the swap you intend.
+   */
+  stableFloor?: true | { maxSlippageBps: number }
 }
 
 interface SessionDefinition<

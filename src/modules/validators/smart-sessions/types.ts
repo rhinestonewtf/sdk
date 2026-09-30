@@ -152,6 +152,18 @@ export interface SwapScopeInput {
    * explicitly only for flows where the account calls a router directly.
    */
   readonly via?: readonly SwapVenue[]
+  /** Opt-in rate floor for a stable-to-stable swap. See `SwapScope.stableFloor`. */
+  readonly stableFloor?: StableSwapFloor
+}
+
+/** `true` for the default 100 bps slippage, or an explicit tolerance. */
+export type StableSwapFloor = true | { readonly maxSlippageBps: number }
+
+/** Token metadata from the orchestrator's chain catalog (`GET /chains`). */
+export interface SessionTokenInfo {
+  readonly address: string
+  readonly symbol: string
+  readonly decimals: number
 }
 
 export interface FallbackAction {

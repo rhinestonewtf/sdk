@@ -1,4 +1,10 @@
-import { type Account, encodeAbiParameters, erc20Abi, type Hex } from 'viem'
+import {
+  type Account,
+  type Address,
+  encodeAbiParameters,
+  erc20Abi,
+  type Hex,
+} from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { arbitrum, base as baseChain } from 'viem/chains'
 import { describe, expect, test, vi } from 'vitest'
@@ -764,5 +770,59 @@ describe('internal core composition', () => {
         owners: { type: 'ecdsa', accounts: [owner] },
       }),
     ).rejects.toThrow('no wrapped-native token')
+  })
+
+  test('createSession hands the catalog tokens to a stableFloor swap scope', async () => {
+    const usdc: Address = '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913'
+    const usdt: Address = '0xfde4c96c8593536e31f229ea8f37b2ada2699bb2'
+    const account: Address = '0x1111111111111111111111111111111111111111'
+    const withTokens = (
+      supportedTokens:
+        | 'all'
+        | { symbol: string; address: string; decimals: number }[],
+    ) => {
+      const base = fixture()
+      return createCoreComposition(base.context.sdk, {
+        ...base.dependencies,
+        orchestrator: {
+          ...base.orchestrator,
+          getChainCatalog: vi.fn(
+            async () =>
+              new ChainCatalog({
+                [baseChain.id]: {
+                  name: 'Base',
+                  testnet: false,
+                  supportedTokens,
+                  wrappedNativeToken: {
+                    symbol: 'WETH',
+                    address: '0x4200000000000000000000000000000000000006',
+                    decimals: 18,
+                  },
+                },
+              }),
+          ),
+        },
+      })
+    }
+    const definition = {
+      chain: baseChain,
+      owners: { type: 'ecdsa' as const, accounts: [owner] },
+      swap: {
+        sell: { token: usdc, maxTotal: 1_000_000n },
+        buy: { token: usdt },
+        to: account,
+        stableFloor: true as const,
+      },
+    }
+
+    await expect(
+      withTokens([
+        { symbol: 'USDC', address: usdc, decimals: 6 },
+        { symbol: 'USDT', address: usdt, decimals: 6 },
+      ]).project.createSession(definition),
+    ).resolves.toBeDefined()
+    await expect(
+      withTokens('all').project.createSession(definition),
+    ).rejects.toThrow('lists all tokens')
   })
 })

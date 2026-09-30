@@ -41,6 +41,7 @@ import type {
   SessionAction,
   SessionData,
   SessionDefinition,
+  SessionTokenInfo,
 } from './types'
 
 export const SMART_SESSIONS_FALLBACK_TARGET_FLAG: Address =
@@ -65,6 +66,9 @@ export interface ResolveSessionOptions {
   // The chain's wrapped-native token address. Provide it to permit the
   // native-wrap `deposit()` action; omit for a fully offline, pure build.
   readonly wrappedNativeToken?: Address
+  // The chain's catalog tokens. Required only by a `swap.stableFloor` scope,
+  // which reads stablecoin symbols and decimals from it.
+  readonly supportedTokens?: 'all' | readonly SessionTokenInfo[]
 }
 
 export function resolveSessionData(
@@ -89,7 +93,12 @@ export function resolveSessionData(
   // resolution path. Venue routers, selectors and calldata offsets stay inside
   // swap-venues.ts so they never reach the public surface (RHI-6286).
   const swapScope = definition.swap
-    ? resolveSwapScope(definition.swap, definition.chain.id, environment)
+    ? resolveSwapScope(
+        definition.swap,
+        definition.chain.id,
+        environment,
+        options.supportedTokens,
+      )
     : undefined
   // Declaring `swap` IS the restriction — a swap-scoped session that still
   // carried the wildcard fallback would let the session key call anything the
@@ -625,6 +634,9 @@ export function toSession(
     environment,
     ...(options.wrappedNativeToken
       ? { wrappedNativeToken: options.wrappedNativeToken }
+      : {}),
+    ...(options.supportedTokens
+      ? { supportedTokens: options.supportedTokens }
       : {}),
   })
   const expandedClaims = (definition.crossChainPermits ?? []).map(

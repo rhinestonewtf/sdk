@@ -5,6 +5,7 @@ import type {
   RhinestoneSwapVenue,
   RoutedRhinestoneSwapVenue,
   ScopedAction,
+  SessionTokenInfo,
   SwapScopeInput,
   SwapVenue,
   ZeroExVenue,
@@ -12,6 +13,7 @@ import type {
 import { type FyndChainId, scopeFynd } from './fynd'
 import { rhinestoneSwap, scopeRhinestone } from './rhinestone'
 import type { VenueScoping } from './rules'
+import { resolveStableFloor, stableFloorAmount } from './stable-floor'
 import { scopeZeroEx, type ZeroExChainId } from './zero-ex'
 
 /**
@@ -114,6 +116,7 @@ export function resolveSwapScope(
   scope: SwapScopeInput,
   chainId: number,
   environment: 'production' | 'development' = 'production',
+  supportedTokens?: 'all' | readonly SessionTokenInfo[],
 ): ResolvedSwapScope {
   // Default to the Swapper: it is the route the orchestrator emits for
   // same-chain smart-account swaps, so a caller who just says "let this key
@@ -164,17 +167,27 @@ export function resolveSwapScope(
     )
   }
 
-  const ctxFor = (venue: { maxSpend?: bigint }) => ({
-    chainId,
-    environment,
-    sellTokens,
-    buyToken: scope.buy.token,
-    recipient: scope.to,
+  const stableFloor = resolveStableFloor(scope, sellTokens, supportedTokens)
+
+  const ctxFor = (venue: { maxSpend?: bigint }) => {
     // A venue-level cap wins over the scope-level one: `anySettler` demands its
     // own `maxSpend` precisely because that venue needs a tighter bound than the
     // session as a whole might carry.
-    cap: venue.maxSpend ?? scope.sell.maxTotal,
-  })
+    const cap = venue.maxSpend ?? scope.sell.maxTotal
+    return {
+      chainId,
+      environment,
+      sellTokens,
+      buyToken: scope.buy.token,
+      recipient: scope.to,
+      cap,
+      // Derived from the cap this action enforces, so floor/cap stays the
+      // worst rate even under a venue-level `maxSpend`.
+      ...(stableFloor && cap !== undefined
+        ? { minOut: stableFloorAmount(cap, stableFloor) }
+        : {}),
+    }
+  }
 
   // Every aggregator venue is reachable two ways and the orchestrator picks:
   // it wraps a route in the Swapper only when the Swapper can capture surplus,
