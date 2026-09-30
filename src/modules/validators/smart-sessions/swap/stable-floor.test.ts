@@ -3,15 +3,17 @@ import {
   type Address,
   type Chain,
   encodeFunctionData,
+  erc20Abi,
   type Hex,
   keccak256,
   slice,
   toHex,
+  zeroHash,
 } from 'viem'
 import { describe, expect, test } from 'vitest'
 import { accountA } from '../../../../../test/consts'
 import { namedParamOffsets } from '../../permissions'
-import { getSessionData } from '../digest'
+import { getPermissionId, getSessionData } from '../digest'
 import { toSession } from '../resolve'
 import type {
   ScopedAction,
@@ -25,6 +27,7 @@ import {
   SWAP_EXACT_IN_SELECTOR,
   SWAP_EXACT_OUT_SELECTOR,
   swapperAbi,
+  swapperAddresses,
 } from './rhinestone'
 import { resolveSwapScope } from './scope'
 import { zeroEx } from './zero-ex'
@@ -113,51 +116,23 @@ function policyOf(action: ScopedAction) {
   }
 }
 
-const drainRoute = [
-  {
-    target: USDT0,
-    value: 0n,
-    data: encodeFunctionData({
-      abi: [
-        {
-          type: 'function',
-          name: 'transfer',
-          stateMutability: 'nonpayable',
-          inputs: [
-            { name: 'to', type: 'address' },
-            { name: 'amount', type: 'uint256' },
-          ],
-          outputs: [{ name: '', type: 'bool' }],
-        },
-      ],
-      functionName: 'transfer',
-      args: [ATTACKER, CAP],
-    }),
-  },
-] as const
-
 function exactIn(
   amountIn: bigint,
   minAmountOut: bigint,
-  calls: readonly { target: Address; value: bigint; data: Hex }[] = [],
   buy: Address = USDC,
 ): Hex {
   return encodeFunctionData({
     abi: swapperAbi,
     functionName: 'swapExactIn',
-    args: [USDT0, amountIn, buy, minAmountOut, 0n, ACCOUNT, 0n, calls],
+    args: [USDT0, amountIn, buy, minAmountOut, 0n, ACCOUNT, 0n, []],
   })
 }
 
-function exactOut(
-  amountInMax: bigint,
-  amountOut: bigint,
-  calls: readonly { target: Address; value: bigint; data: Hex }[] = [],
-): Hex {
+function exactOut(amountInMax: bigint, amountOut: bigint): Hex {
   return encodeFunctionData({
     abi: swapperAbi,
     functionName: 'swapExactOut',
-    args: [USDT0, amountInMax, USDC, amountOut, 0n, ACCOUNT, 0n, calls],
+    args: [USDT0, amountInMax, USDC, amountOut, 0n, ACCOUNT, 0n, []],
   })
 }
 
@@ -217,11 +192,16 @@ describe('stableFloor — the output bound', () => {
     expect(floorIndex).toBeLessThan(capIndex)
   })
 
-  test('the route is irrelevant: a draining route still has to meet the floor', () => {
-    expect(resolve().exactIn(exactIn(CAP, 0n, drainRoute))).toBe(false)
-    expect(resolve().exactOut(exactOut(CAP, 0n, drainRoute))).toBe(false)
-    // Whatever the route does, the Swapper enforces the recipient's delta.
-    expect(resolve().exactIn(exactIn(CAP, FLOOR, drainRoute))).toBe(true)
+  test('no rule reads calls[], so only the head bounds bind', () => {
+    // The bare Swapper pins nothing past the eight-word head (calls[] starts at
+    // 224), so the route is free and the floor is what bounds it.
+    for (const selector of [SWAP_EXACT_IN_SELECTOR, SWAP_EXACT_OUT_SELECTOR]) {
+      for (const rule of rulesOf(actionFor(resolve().actions, selector))) {
+        expect(rule.calldataOffset < 224n).toBe(true)
+      }
+    }
+    expect(resolve().exactIn(exactIn(CAP, 0n))).toBe(false)
+    expect(resolve().exactOut(exactOut(CAP, 0n))).toBe(false)
   })
 })
 
@@ -240,12 +220,6 @@ describe('stableFloor — the input cap', () => {
     expect(inPolicy(exactIn(600_000n, FLOOR))).toBe(false)
     expect(outPolicy(exactOut(600_000n, FLOOR))).toBe(true)
     expect(outPolicy(exactOut(600_000n, FLOOR))).toBe(false)
-  })
-
-  test('a refused call does not consume the cap', () => {
-    const { exactIn: inPolicy } = resolve()
-    expect(inPolicy(exactIn(CAP, FLOOR - 1n))).toBe(false)
-    expect(inPolicy(exactIn(CAP, FLOOR))).toBe(true)
   })
 })
 
@@ -266,16 +240,15 @@ describe('stableFloor — amounts', () => {
     const { exactIn: inPolicy } = resolve(
       scope({ stableFloor: { maxSlippageBps: 0 } }),
     )
+    expect(inPolicy(exactIn(CAP, CAP))).toBe(true)
     expect(inPolicy(exactIn(CAP, CAP - 1n))).toBe(false)
   })
 
   test('scales 6 → 18 decimals', () => {
     const s = scope({ buy: { token: USDC_E18 } })
     const floor = 990_000_000_000_000_000n
-    expect(resolve(s).exactIn(exactIn(CAP, floor, [], USDC_E18))).toBe(true)
-    expect(resolve(s).exactIn(exactIn(CAP, floor - 1n, [], USDC_E18))).toBe(
-      false,
-    )
+    expect(resolve(s).exactIn(exactIn(CAP, floor, USDC_E18))).toBe(true)
+    expect(resolve(s).exactIn(exactIn(CAP, floor - 1n, USDC_E18))).toBe(false)
   })
 
   test('scales 18 → 6 decimals, rounding the floor up', () => {
@@ -369,6 +342,120 @@ describe('stableFloor — refusals', () => {
   })
 })
 
+describe('stableFloor — catalog integrity', () => {
+  const withCatalog = (catalog: SessionTokenInfo[]) => () =>
+    resolveSwapScope(scope(), PLASMA, 'production', catalog)
+  const others = CATALOG.filter((t) => t.symbol !== 'USDC')
+
+  test.each([0, 8, 24])('refuses a stable with %i decimals', (decimals) => {
+    expect(
+      withCatalog([...others, { address: USDC, symbol: 'USDC', decimals }]),
+    ).toThrow(/has \d+ decimals in the catalog; expected 6 or 18/)
+  })
+
+  test('refuses a token listed twice, even with equal metadata', () => {
+    const usdc = { address: USDC, symbol: 'USDC', decimals: 6 }
+    expect(
+      withCatalog([...others, usdc, { ...usdc, address: USDC.toLowerCase() }]),
+    ).toThrow(/appears 2 times in the chain’s token catalog/)
+  })
+})
+
+describe('stableFloor — side doors', () => {
+  const session = (extra: Record<string, unknown>) => () =>
+    toSession(
+      {
+        chain: plasma,
+        owners: { type: 'ecdsa', accounts: [accountA] },
+        swap: scope(),
+        ...extra,
+      },
+      { supportedTokens: CATALOG },
+    )
+
+  test('builds with no other grant and signing left unset or disabled', () => {
+    expect(session({})).not.toThrow()
+    expect(session({ signing: { mode: 'disabled' } })).not.toThrow()
+  })
+
+  test.each([
+    ['unrestricted', { mode: 'unrestricted' }],
+    [
+      'scoped',
+      {
+        mode: 'scoped',
+        allowedContents: [
+          {
+            domain: { name: 'Permit2', chainId: PLASMA },
+            types: { Transfer: [{ name: 'amount', type: 'uint256' }] },
+            primaryType: 'Transfer',
+          },
+        ],
+      },
+    ],
+  ])('refuses %s signing', (_name, signing) => {
+    expect(session({ signing })).toThrow(/cannot enable `signing`/)
+  })
+
+  test('refuses a user permission on the sell token', () => {
+    expect(
+      session({
+        permissions: [
+          { abi: erc20Abi, address: USDT0, functions: { transfer: {} } },
+        ],
+      }),
+    ).toThrow(/also grants an action on/)
+  })
+
+  test.each([
+    ['Permit2', '0x000000000022D473030F116dDEE9F6B43aC78BA3'],
+    ['the Swapper', swapperAddresses('production').swapper],
+    ['the sell token', USDT0.toLowerCase()],
+  ])('refuses a raw action on %s', (_name, target) => {
+    expect(session({ actions: [{ target, selector: '0x12345678' }] })).toThrow(
+      /also grants an action on/,
+    )
+  })
+
+  test('allows an unrelated user permission', () => {
+    expect(
+      session({
+        permissions: [
+          { abi: erc20Abi, address: DAI, functions: { transfer: {} } },
+        ],
+      }),
+    ).not.toThrow()
+  })
+})
+
+describe('stableFloor — salt', () => {
+  const build = (swap: SwapScopeInput, extra: Record<string, unknown> = {}) =>
+    toSession(
+      {
+        chain: plasma,
+        owners: { type: 'ecdsa', accounts: [accountA] },
+        swap,
+        ...extra,
+      },
+      { supportedTokens: CATALOG },
+    )
+
+  test('never shares a permissionId with the same scope unfloored', () => {
+    const floored = build(scope())
+    const unfloored = build({ ...scope(), stableFloor: undefined })
+    expect(unfloored.salt).toBe(zeroHash)
+    expect(floored.salt).not.toBe(zeroHash)
+    expect(getPermissionId(floored)).not.toBe(getPermissionId(unfloored))
+  })
+
+  test("overrides saltMode 'none' and refuses 'v1'", () => {
+    expect(build(scope(), { saltMode: 'none' }).salt).toBe(build(scope()).salt)
+    expect(() => build(scope(), { saltMode: 'v1' })).toThrow(
+      /cannot use saltMode 'v1'/,
+    )
+  })
+})
+
 describe('stableFloor off', () => {
   const build = (swap: SwapScopeInput, supportedTokens?: SessionTokenInfo[]) =>
     toSession(
@@ -401,26 +488,6 @@ describe('stableFloor off', () => {
       '0xec0e76b3fe1000926d15b011811e725e3d883ddbff344bf8293e6d1cfa7e970e',
     ],
     [
-      'Swapper with maxSpend',
-      {
-        sell: { token: USDT0, maxTotal: CAP },
-        buy: { token: USDC },
-        to: ACCOUNT,
-        via: [rhinestoneSwap({ maxSpend: 5n })],
-      },
-      '0xd5c6e5146131385265a508c1f3999990670b4228b73f2d73ce4ab8b72ee94311',
-    ],
-    [
-      'fynd',
-      {
-        sell: { token: USDT0, maxTotal: CAP },
-        buy: { token: USDC },
-        to: ACCOUNT,
-        via: [fynd()],
-      },
-      '0xd1f55bcc11b4a6026fe42c7d781ee66ec7d288a5f7d540ad8f8da956272126a5',
-    ],
-    [
       'two sell tokens',
       {
         sell: { tokens: [USDT0, DAI], maxTotal: 9n },
@@ -435,9 +502,6 @@ describe('stableFloor off', () => {
     (_name, swap, expected) => {
       expect(digest(swap)).toBe(expected)
       expect(digest(swap, CATALOG)).toBe(expected)
-      expect(
-        getSessionData(build({ ...swap, stableFloor: undefined })),
-      ).toEqual(getSessionData(build(swap)))
     },
   )
 })

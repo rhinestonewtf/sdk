@@ -31,7 +31,9 @@ import {
 } from './policies/claim'
 import { encodeSessionPolicy } from './policies/encode'
 import { resolveSessionSigning } from './signing'
+import { swapperAddresses } from './swap/rhinestone'
 import { resolveSwapScope } from './swap/scope'
+import { assertStableFloorIsolated } from './swap/stable-floor'
 import type {
   ResolvedAction,
   ResolvedERC7739Policies,
@@ -100,6 +102,24 @@ export function resolveSessionData(
         options.supportedTokens,
       )
     : undefined
+  const stableFloor = definition.swap?.stableFloor !== undefined
+  if (stableFloor && definition.swap) {
+    assertStableFloorIsolated({
+      sellToken: (definition.swap.sell.token ??
+        definition.swap.sell.tokens?.[0]) as Address,
+      swapper: swapperAddresses(environment).swapper,
+      userTargets: [
+        ...(definition.permissions ?? []).map((p) => p.address),
+        ...(definition.actions ?? []).map((a) => a.target),
+      ],
+      signingMode: definition.signing?.mode,
+    })
+    if (definition.saltMode === 'v1') {
+      throw new Error(
+        "swap.stableFloor cannot use saltMode 'v1': it must not share a permissionId with an unfloored session",
+      )
+    }
+  }
   // Declaring `swap` IS the restriction — a swap-scoped session that still
   // carried the wildcard fallback would let the session key call anything the
   // global intent-execution whitelist allows, which is the opposite of what the
@@ -416,10 +436,11 @@ export function resolveSessionData(
   return {
     sessionValidator: validator.address,
     sessionValidatorInitData: validator.initData,
-    // A one-time-use session must never share a permissionId with another
-    // session: enabling it would union with that session's policies.
+    // A one-time-use or stable-floor session must never share a permissionId
+    // with another session: enabling it would union with that session's
+    // policies, and for a floor that means the unfloored swap actions.
     salt: sessionSalt(
-      definition.oneTimeUse ? 'strict' : definition.saltMode,
+      definition.oneTimeUse || stableFloor ? 'strict' : definition.saltMode,
       restricted || Boolean(definition.oneTimeUse),
       {
         actions: v1SaltActions ?? actions,

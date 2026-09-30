@@ -31,6 +31,7 @@ import type {
   OpenPerpRequest,
 } from '../hypercore/types'
 import type { SwapVenueFor } from '../modules/validators/smart-sessions/swap/scope'
+import type { StableSwapFloor } from '../modules/validators/smart-sessions/types'
 
 // Module type discriminator relocated verbatim from the legacy
 // `src/modules/common.ts` to preserve the exact published declaration closure.
@@ -757,20 +758,26 @@ interface SwapScope<TChainId extends number = number> {
    * `calls[]` route may call anything, so without this a session key can set
    * that bound to zero and route the input away.
    *
-   * On, every swap must deliver at least `ceil(maxTotal × (1 − slippage))` of
-   * the buy token (converted between the tokens' decimals), while the sell side
-   * stays capped cumulatively at `maxTotal` — so the worst rate is floor/cap.
-   * `true` means 100 bps; pass `{ maxSlippageBps }` to choose.
+   * On, every Swapper call must deliver at least
+   * `ceil(maxTotal × (1 − slippage))` of the buy token (converted between the
+   * tokens' decimals) while selling at most `maxTotal`, so no call executes
+   * below floor/cap. `true` means 100 bps; pass `{ maxSlippageBps }` to choose.
+   * Total sell is bounded by the approve's cumulative spending limit
+   * (`maxTotal`) plus any allowance to the Swapper proxy that existed before
+   * the session; exact-in and exact-out keep separate swap counters.
    *
    * Requires one sell token, `sell.maxTotal`, both tokens USD stablecoins in the
-   * orchestrator's chain catalog (so build with `sdk.createSession`, or pass
-   * `supportedTokens` to `toSession`), and the Rhinestone Swapper as the only
-   * venue — a direct aggregator call would bypass the floor.
+   * orchestrator's chain catalog (so create the session with
+   * `sdk.createSession`), and the Rhinestone Swapper as the only venue — a
+   * direct aggregator call would bypass the floor. It also refuses `signing`
+   * and any other action on the sell token, Permit2 or the Swapper, and salts
+   * the session so it never shares a permissionId with an unfloored one.
    *
    * The floor is absolute, not proportional: a swap much smaller than
-   * `maxTotal` cannot meet it, so size `maxTotal` to the swap you intend.
+   * `maxTotal` cannot meet it. In practice the session is single-use — after
+   * one full swap the remaining cap is below the floor.
    */
-  stableFloor?: true | { maxSlippageBps: number }
+  stableFloor?: StableSwapFloor
 }
 
 interface SessionDefinition<

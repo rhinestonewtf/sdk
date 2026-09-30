@@ -1,9 +1,12 @@
 import {
   type Account,
   type Address,
+  concat,
   encodeAbiParameters,
   erc20Abi,
   type Hex,
+  pad,
+  toHex,
 } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { arbitrum, base as baseChain } from 'viem/chains'
@@ -17,6 +20,7 @@ import type { AccountInvocationContext } from '../config/resolved'
 import { K1_DEFAULT_VALIDATOR_ADDRESS } from '../modules/validators/k1'
 import { getSessionDetails } from '../modules/validators/smart-sessions/authorization'
 import { toSession } from '../modules/validators/smart-sessions/resolve'
+import { SWAP_EXACT_IN_SELECTOR } from '../modules/validators/smart-sessions/swap/rhinestone'
 import { createCoreComposition } from './compose'
 import type { CoreDependencies } from './compose-types'
 
@@ -815,12 +819,19 @@ describe('internal core composition', () => {
       },
     }
 
-    await expect(
-      withTokens([
-        { symbol: 'USDC', address: usdc, decimals: 6 },
-        { symbol: 'USDT', address: usdt, decimals: 6 },
-      ]).project.createSession(definition),
-    ).resolves.toBeDefined()
+    const session = await withTokens([
+      { symbol: 'USDC', address: usdc, decimals: 6 },
+      { symbol: 'USDT', address: usdt, decimals: 6 },
+    ]).project.createSession(definition)
+    const exactIn = session.actions.find(
+      (action) => action.actionTargetSelector === SWAP_EXACT_IN_SELECTOR,
+    )
+    // The encoded rule (greaterThanOrEqual = 3, offset 96, not limited, 990000):
+    // 1_000_000 USDC less 100 bps, pinned on minAmountOut.
+    const floorRule = concat(
+      [3n, 96n, 0n, 990_000n].map((word) => pad(toHex(word))),
+    ).slice(2)
+    expect(exactIn?.actionPolicies[0]?.initData).toContain(floorRule)
     await expect(
       withTokens('all').project.createSession(definition),
     ).rejects.toThrow('lists all tokens')

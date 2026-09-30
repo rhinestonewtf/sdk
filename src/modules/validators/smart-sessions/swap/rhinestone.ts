@@ -359,8 +359,8 @@ export function scopeRhinestone(
       pin(offsets.tokenOut, ctx.buyToken),
       pin(offsets.recipient, ctx.recipient),
     ]
-    // Before the cap: ArgPolicy bumps a passing usage-limited rule even when
-    // its AND branch fails, so limited rules go last.
+    // Before the cap: usage-limited rules go last so the order stays safe if
+    // these rules ever land in an ArgPolicy AND branch.
     if (ctx.minOut !== undefined) {
       rules.push(atLeast(offsets[outputParam], ctx.minOut))
     }

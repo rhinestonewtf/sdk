@@ -159,7 +159,10 @@ export interface SwapScopeInput {
 /** `true` for the default 100 bps slippage, or an explicit tolerance. */
 export type StableSwapFloor = true | { readonly maxSlippageBps: number }
 
-/** Token metadata from the orchestrator's chain catalog (`GET /chains`). */
+/**
+ * Token metadata from the orchestrator's chain catalog (`GET /chains`). Mirrors
+ * `CatalogToken` because modules may not import from `clients/`.
+ */
 export interface SessionTokenInfo {
   readonly address: string
   readonly symbol: string
