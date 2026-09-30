@@ -365,7 +365,7 @@ interface ToLeg {
   token: Address
   recipient?: Address | 'any'
   /**
-   * `SAME_CHAIN_IE` swaps only: the least of `token` the swap must deliver.
+   * `SAME_CHAIN_IE` swaps only: the least amount of `token` the swap must deliver.
    * Required there (with `maxAmount`), since the session key otherwise sets the
    * swap's output bound; `maxAmount : minAmount` is the worst rate accepted.
    */
