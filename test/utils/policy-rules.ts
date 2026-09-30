@@ -20,14 +20,21 @@ export function satisfiesRules(
   const rule = (r: UniversalActionPolicyParamRule) => {
     const ref = BigInt(r.referenceValue)
     const value = word(r.calldataOffset)
-    if (r.condition === 'equal') return value === ref
-    if (r.condition === 'greaterThan') return value > ref
-    if (r.condition === 'lessThanOrEqual')
-      return (
-        value <= ref &&
-        (r.usageLimit === undefined || observed + value <= r.usageLimit)
-      )
-    throw new Error(`unexpected condition ${r.condition}`)
+    const holds =
+      r.condition === 'equal'
+        ? value === ref
+        : r.condition === 'greaterThan'
+          ? value > ref
+          : r.condition === 'lessThanOrEqual'
+            ? value <= ref
+            : undefined
+    if (holds === undefined) {
+      throw new Error(`unexpected condition ${r.condition}`)
+    }
+    // The policies count a limited rule under any condition.
+    return (
+      holds && (r.usageLimit === undefined || observed + value <= r.usageLimit)
+    )
   }
   const expr = (e: ArgPolicyExpression): boolean =>
     e.type === 'rule'
