@@ -14,6 +14,7 @@ import {
   swapAction,
 } from '../swap/rules'
 import type { ScopedAction, UniversalActionPolicyParamRule } from '../types'
+import { served } from './served'
 import type { SettlementCatalog, SettlementContext } from './types'
 
 /**
@@ -51,27 +52,16 @@ const BURN = namedParamOffsets(
 )
 
 /**
- * The chain's served CCTP block. Solana (domain 5) is never served here: its
- * `mintRecipient` is the recipient's ATA and the wallet sits in `hookData`.
+ * CCTP moves only native USDC, so any other token names a route it cannot take.
+ * Solana (domain 5) is never served: its `mintRecipient` is the recipient's ATA.
  */
-export function cctpChain(settlement: SettlementCatalog, chainId: number) {
-  const chain = settlement[chainId]?.cctp
-  if (chain === undefined) {
-    throw new Error(
-      `crossChainPermits: CCTP does not route to chain ${chainId}`,
-    )
-  }
-  return chain
-}
-
-/** CCTP moves only native USDC, so any other token names a route it cannot take. */
 function requireUsdc(
   settlement: SettlementCatalog,
   chainId: number,
   token: Address,
   leg: 'from' | 'to',
 ) {
-  if (!isAddressEqual(token, cctpChain(settlement, chainId).usdc)) {
+  if (!isAddressEqual(token, served(settlement, chainId, 'cctp').usdc)) {
     throw new Error(
       `crossChainPermits: CCTP moves only USDC; the \`${leg}\` token on chain ${chainId} is ${token}`,
     )
@@ -98,7 +88,7 @@ export function scopeCctp(ctx: SettlementContext): ScopedAction {
     const legRules = [
       pinValue(
         BURN.destinationDomain,
-        BigInt(cctpChain(ctx.settlement, leg.chainId).domain),
+        BigInt(served(ctx.settlement, leg.chainId, 'cctp').domain),
       ),
     ]
     if (leg.recipient !== undefined) {

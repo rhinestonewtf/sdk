@@ -42,10 +42,6 @@ import {
   SMART_SESSIONS_FALLBACK_TARGET_FLAG,
   SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
 } from '../modules/validators/smart-sessions/resolve'
-import type {
-  SettlementAddresses,
-  SettlementCatalog,
-} from '../modules/validators/smart-sessions/settlement/types'
 import {
   readSessionEnabled,
   readSessionNonce,
@@ -86,11 +82,10 @@ function toSession<
   const TChain extends Chain,
 >(
   definition: SessionDefinition<TAbis, TChain>,
-  options: { useDevContracts?: boolean; settlement?: SettlementCatalog } = {},
+  options: { useDevContracts?: boolean } = {},
 ): Session {
   return resolveSession(definition as DomainSessionDefinition, {
     environment: environment(options.useDevContracts),
-    ...(options.settlement ? { settlement: options.settlement } : {}),
   }) as Session
 }
 
@@ -140,8 +135,6 @@ export type {
   FyndVenue,
   RhinestoneSwapVenue,
   SessionDetails,
-  SettlementAddresses,
-  SettlementCatalog,
   SwapVenue,
   SwapVenueFor,
   ZeroExAnySettlerOptions,

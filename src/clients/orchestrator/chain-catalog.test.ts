@@ -27,8 +27,6 @@ describe('parseChains settlement', () => {
         stargateUsdc: { pool: A, token: B, eid: 30184 },
         cctp: { domain: 6, token: B, feeReceiver: A, feeless: true },
       },
-      swapper: { swapper: A, proxy: B },
-      fees: { appFeeCollector: A, paymaster: B },
     }
     expect(
       parse({ 'eip155:8453': chain(settlement) })[8453].settlement,
@@ -47,12 +45,12 @@ describe('parseChains settlement', () => {
           stargateUsdc: { pool: A, token: B },
           cctp: { domain: '6', token: B, feeReceiver: A },
         },
-        fees: { appFeeCollector: A, paymaster: B },
+        swapper: { swapper: A, proxy: B },
       }),
     })
+    // swapper is not a layer block the SDK reads, so it is not kept either.
     expect(parsed[8453].settlement).toEqual({
       lz: { multiCall: A, transferDelegate: B },
-      fees: { appFeeCollector: A, paymaster: B },
     })
   })
 
@@ -84,16 +82,30 @@ describe('parseChains settlement', () => {
   })
 })
 
+test('drops a mixed-case address with a bad checksum, keeps lowercase', () => {
+  const usdc = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
+  const badChecksum = '0x833589FCD6eDb6E08f4c7C32D4f71b54bdA02913'
+  const oft = (token: string) => ({ adapter: A, eid: 30184, token })
+  const parsed = parse({
+    'eip155:8453': chain({ oft: oft(badChecksum) }),
+    'eip155:10': chain({ oft: oft(usdc.toLowerCase()) }),
+    'eip155:1': chain({ oft: oft(usdc) }),
+  })
+  expect(parsed[8453].settlement).toBeUndefined()
+  expect(parsed[10].settlement?.oft?.token).toBe(usdc.toLowerCase())
+  expect(parsed[1].settlement?.oft?.token).toBe(usdc)
+})
+
 describe('ChainCatalog.getSettlementCatalog', () => {
   test('keys served blocks by chain id and omits chains without one', () => {
     const catalog = new ChainCatalog(
       parse({
-        'eip155:8453': chain({ swapper: { swapper: A, proxy: B } }),
+        'eip155:8453': chain({ oft: { adapter: A, eid: 30184, token: B } }),
         'eip155:10': chain(),
       }),
     )
     expect(catalog.getSettlementCatalog()).toEqual({
-      8453: { swapper: { swapper: A, proxy: B } },
+      8453: { oft: { adapter: A, eid: 30184, token: B } },
     })
   })
 })

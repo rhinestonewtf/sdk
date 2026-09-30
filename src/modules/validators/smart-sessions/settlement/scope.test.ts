@@ -32,6 +32,7 @@ import { PUBLISH_AND_FUND_SELECTOR } from './eco'
 import { LZ_EXECUTE_SELECTOR } from './lz'
 import { OFT_SEND_SELECTOR } from './oft'
 import { resolveSettlementScope } from './scope'
+import type { SettlementAddresses, SettlementCatalog } from './types'
 
 const withSettlement = (options: ResolveSessionOptions = {}) => ({
   settlement: SETTLEMENT_CATALOG,
@@ -379,6 +380,24 @@ describe('settlement-scoped crossChainPermits', () => {
         withOnce,
       )
 
+    test('the served prover order does not change the session', () => {
+      const reversed = (id: number): SettlementAddresses => ({
+        ...SETTLEMENT_CATALOG[id],
+        eco: {
+          ...SETTLEMENT_CATALOG[id].eco!,
+          provers: [...SETTLEMENT_CATALOG[id].eco!.provers].reverse(),
+        },
+      })
+      const settlement = {
+        ...SETTLEMENT_CATALOG,
+        [base.id]: reversed(base.id),
+        [arbitrum.id]: reversed(arbitrum.id),
+      }
+      // Base and Arbitrum share three provers, so the order is observable.
+      expect(SETTLEMENT_CATALOG[base.id].eco!.provers).toHaveLength(3)
+      expect(toSession(eco(), { settlement })).toEqual(toSession(eco()))
+    })
+
     test('restricts the session to the Portal publish and approve', () => {
       const data = resolveSessionData(eco())
       expect(
@@ -724,5 +743,142 @@ describe('resolveSettlementScope', () => {
         },
       )
     expect(resolve).toThrow('needs `account` on the session definition')
+  })
+})
+
+describe('each layer pins the source chain served addresses', () => {
+  const SRC = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' as Address
+  const SRC_2 = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa2' as Address
+  const DST = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' as Address
+  const DST_2 = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2' as Address
+
+  /** The fixture with the given blocks replaced, so source and destination differ. */
+  const withBlocks = (
+    blocks: Record<number, SettlementAddresses>,
+  ): SettlementCatalog => {
+    const out: Record<number, SettlementAddresses> = { ...SETTLEMENT_CATALOG }
+    for (const [id, block] of Object.entries(blocks)) {
+      out[Number(id)] = { ...SETTLEMENT_CATALOG[Number(id)], ...block }
+    }
+    return out
+  }
+  const resolve = (
+    permit: CrossChainPermissionInput,
+    chainId: number,
+    settlement: SettlementCatalog,
+  ) => {
+    const resolved = resolveSettlementScope(
+      [resolveCrossChainPermission(permit)],
+      {
+        chainId,
+        environment: 'production',
+        account: ACCOUNT,
+        oneTimeUse: true,
+        settlement,
+      },
+    )
+    if (!resolved) throw new Error('expected a settlement scope')
+    const approve = resolved.actions.find((a) => a.selector === APPROVE)
+    if (!approve) throw new Error('no approve action')
+    return { target: resolved.actions[0].target, approve }
+  }
+  const approves = (
+    action: Parameters<typeof satisfiesRules>[0],
+    spender: Address,
+  ) =>
+    satisfiesRules(
+      action,
+      encodeFunctionData({
+        abi: erc20Abi,
+        functionName: 'approve',
+        args: [spender, 100n],
+      }),
+    )
+
+  test('CCTP: the source TokenMessenger', () => {
+    const cctp = (id: number, tokenMessenger: Address) => ({
+      cctp: { ...SETTLEMENT_CATALOG[id].cctp!, tokenMessenger },
+    })
+    const { target, approve } = resolve(
+      {
+        from: { chain: base, token: USDC },
+        to: { chain: arbitrum, token: USDC_ARB },
+        settlementLayers: ['CCTP'],
+      },
+      base.id,
+      withBlocks({
+        [base.id]: cctp(base.id, SRC),
+        [arbitrum.id]: cctp(arbitrum.id, DST),
+      }),
+    )
+    expect(target).toBe(SRC)
+    expect(approves(approve, SRC)).toBe(true)
+    expect(approves(approve, DST)).toBe(false)
+  })
+
+  test('OFT: the source adapter', () => {
+    const oft = (id: number, adapter: Address) => ({
+      oft: { ...SETTLEMENT_CATALOG[id].oft!, adapter },
+    })
+    const { target, approve } = resolve(
+      {
+        from: { chain: arbitrum, token: OFT_ARB.token },
+        to: { chain: plasma, token: OFT_PLASMA.token },
+        settlementLayers: ['OFT'],
+      },
+      arbitrum.id,
+      withBlocks({
+        [arbitrum.id]: oft(arbitrum.id, SRC),
+        [plasma.id]: oft(plasma.id, DST),
+      }),
+    )
+    expect(target).toBe(SRC)
+    expect(approves(approve, SRC)).toBe(true)
+    expect(approves(approve, DST)).toBe(false)
+  })
+
+  test('ECO_IE: the source Portal', () => {
+    const eco = (id: number, portal: Address) => ({
+      eco: { ...SETTLEMENT_CATALOG[id].eco!, portal },
+    })
+    const { target, approve } = resolve(
+      {
+        from: { chain: base, token: USDC, maxAmount: 100n },
+        to: { chain: arbitrum, token: USDC_ARB },
+        settlementLayers: ['ECO_IE'],
+        maxFeeBps: 50,
+        validUntil: new Date(2_000_000_000_000),
+      },
+      base.id,
+      withBlocks({
+        [base.id]: eco(base.id, SRC),
+        [arbitrum.id]: eco(arbitrum.id, DST),
+      }),
+    )
+    expect(target).toBe(SRC)
+    expect(approves(approve, SRC)).toBe(true)
+    expect(approves(approve, DST)).toBe(false)
+  })
+
+  test('LZ: the source LZMultiCall and TransferDelegate', () => {
+    const lz = (id: number, multiCall: Address, transferDelegate: Address) => ({
+      lz: { ...SETTLEMENT_CATALOG[id].lz!, multiCall, transferDelegate },
+    })
+    const { target, approve } = resolve(
+      {
+        from: { chain: base, token: USDC, maxAmount: 100n },
+        to: { chain: arbitrum, token: USDC_ARB },
+        settlementLayers: ['LZ'],
+      },
+      base.id,
+      withBlocks({
+        [base.id]: lz(base.id, SRC, SRC_2),
+        [arbitrum.id]: lz(arbitrum.id, DST, DST_2),
+      }),
+    )
+    expect(target).toBe(SRC)
+    expect(approves(approve, SRC_2)).toBe(true)
+    expect(approves(approve, DST_2)).toBe(false)
+    expect(approves(approve, DST)).toBe(false)
   })
 })

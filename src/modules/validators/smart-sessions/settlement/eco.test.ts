@@ -422,6 +422,26 @@ describe('scopeEco', () => {
     expect(rulesOf(policy.expression).length).toBeLessThanOrEqual(128)
   })
 
+  test("pins the route to the destination chain's Portal", () => {
+    const SRC = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' as Address
+    const DST = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' as Address
+    const portal = (id: number, address: Address) => ({
+      ...SETTLEMENT_CATALOG[id],
+      eco: { ...SETTLEMENT_CATALOG[id].eco!, portal: address },
+    })
+    const distinct = scopeEco({
+      ...base,
+      target: SRC,
+      settlement: {
+        ...SETTLEMENT_CATALOG,
+        8453: portal(8453, SRC),
+        42161: portal(42161, DST),
+      },
+    })
+    expect(holds(distinct, publish({ portal: DST }))).toBe(true)
+    expect(holds(distinct, publish({ portal: SRC }))).toBe(false)
+  })
+
   test('a leg admits only the provers served on both of its chains', () => {
     // Base serves Hyper and CCIP (lowercased), Arbitrum CCIP and Polymer.
     const settlement = {

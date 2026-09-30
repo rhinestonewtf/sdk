@@ -91,7 +91,7 @@ const isObject = (value: unknown): value is Json =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
 const isAddr = (value: unknown): value is Address =>
-  typeof value === 'string' && isAddress(value, { strict: false })
+  typeof value === 'string' && isAddress(value)
 
 const isIndex = (value: unknown): value is number =>
   typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
@@ -99,14 +99,13 @@ const isIndex = (value: unknown): value is number =>
 const isAddrs = (value: unknown): value is Address[] =>
   Array.isArray(value) && value.length > 0 && value.every(isAddr)
 
-// A block is kept only when every field in it is well-formed: a layer the SDK
-// cannot pin in full is refused, not half-pinned.
+// Validates the untyped `settlement` field until wire.gen.ts is regenerated; a block with any invalid field is dropped.
 function parseSettlement(value: unknown): SettlementAddresses | undefined {
   if (!isObject(value)) return undefined
   const out: {
     -readonly [K in keyof SettlementAddresses]: SettlementAddresses[K]
   } = {}
-  const { cctp, oft, eco, lz, swapper, fees } = value
+  const { cctp, oft, eco, lz } = value
   if (
     isObject(cctp) &&
     isIndex(cctp.domain) &&
@@ -162,19 +161,6 @@ function parseSettlement(value: unknown): SettlementAddresses | undefined {
         : {}),
     }
   }
-  if (isObject(swapper) && isAddr(swapper.swapper) && isAddr(swapper.proxy)) {
-    out.swapper = { swapper: swapper.swapper, proxy: swapper.proxy }
-  }
-  if (
-    isObject(fees) &&
-    isAddr(fees.appFeeCollector) &&
-    isAddr(fees.paymaster)
-  ) {
-    out.fees = {
-      appFeeCollector: fees.appFeeCollector,
-      paymaster: fees.paymaster,
-    }
-  }
   return Object.keys(out).length > 0 ? out : undefined
 }
 
@@ -186,7 +172,6 @@ export function parseChains(json: WireChainsResponse): ChainInfoMap {
   for (const [key, entry] of Object.entries(json)) {
     const id = isCaip2(key) ? chainIdFromCaip2(key) : Number(key)
     if (id === undefined || !Number.isFinite(id)) continue
-    // Runtime guard until wire.gen.ts is regenerated from the openapi sync with `settlement`.
     const settlement = parseSettlement(
       (entry as { settlement?: unknown }).settlement,
     )

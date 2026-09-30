@@ -14,6 +14,7 @@ import {
   swapAction,
 } from '../swap/rules'
 import type { ScopedAction, UniversalActionPolicyParamRule } from '../types'
+import { served } from './served'
 import type { SettlementCatalog, SettlementContext } from './types'
 
 /**
@@ -78,14 +79,6 @@ export const SEND = {
   oftCmdLength: 416n,
 } as const
 
-export function oftChain(settlement: SettlementCatalog, chainId: number) {
-  const chain = settlement[chainId]?.oft
-  if (chain === undefined) {
-    throw new Error(`crossChainPermits: OFT does not route to chain ${chainId}`)
-  }
-  return chain
-}
-
 /** The mesh moves only USDT0, so any other token names a route it cannot take. */
 function requireUsdt0(
   settlement: SettlementCatalog,
@@ -93,7 +86,7 @@ function requireUsdt0(
   token: Address,
   leg: 'from' | 'to',
 ) {
-  if (!isAddressEqual(token, oftChain(settlement, chainId).token)) {
+  if (!isAddressEqual(token, served(settlement, chainId, 'oft').token)) {
     throw new Error(
       `crossChainPermits: OFT moves only USDT0; the \`${leg}\` token on chain ${chainId} is ${token}`,
     )
@@ -138,7 +131,10 @@ export function scopeOft(ctx: SettlementContext): ScopedAction {
   const legs = ctx.destinations.map((leg) => {
     requireUsdt0(ctx.settlement, leg.chainId, leg.token, 'to')
     const legRules = [
-      pinValue(SEND.dstEid, BigInt(oftChain(ctx.settlement, leg.chainId).eid)),
+      pinValue(
+        SEND.dstEid,
+        BigInt(served(ctx.settlement, leg.chainId, 'oft').eid),
+      ),
     ]
     if (leg.recipient !== undefined) {
       legRules.push(pinWord(SEND.to, pad(leg.recipient)))

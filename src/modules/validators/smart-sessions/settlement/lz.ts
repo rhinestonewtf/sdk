@@ -20,7 +20,8 @@ import type {
   UniversalActionPolicyParamRule,
 } from '../types'
 import { OFT_SEND_SELECTOR, SEND } from './oft'
-import type { SettlementCatalog, SettlementContext } from './types'
+import { served } from './served'
+import type { SettlementContext } from './types'
 
 /**
  * LZ — USDC over the LayerZero Value Transfer API. The orchestrator forwards the
@@ -130,16 +131,6 @@ interface Route {
   readonly limits: Rule[]
 }
 
-export function lzChain(settlement: SettlementCatalog, chainId: number) {
-  const chain = settlement[chainId]?.lz
-  if (chain === undefined) {
-    throw new Error(
-      `crossChainPermits: LZ does not route from chain ${chainId}`,
-    )
-  }
-  return chain
-}
-
 /** The execute call, pinned to the permit's destinations, recipients and cap. */
 export function scopeLz(ctx: SettlementContext): ScopedAction {
   if (ctx.sourceTokens.length !== 1) {
@@ -154,9 +145,9 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
     )
   }
   const [token] = ctx.sourceTokens
-  const source = lzChain(ctx.settlement, ctx.chainId)
+  const source = served(ctx.settlement, ctx.chainId, 'lz')
   const { multiCall, transferDelegate } = source
-  const served = (leg: Leg) => ctx.settlement[leg.chainId]?.lz
+  const servedLz = (leg: Leg) => ctx.settlement[leg.chainId]?.lz
   const cap = (offset: bigint) =>
     ctx.cap === undefined ? [] : [cumulativeCap(offset, ctx.cap)]
   const crossChain = (leg: Leg) => leg.chainId !== ctx.chainId
@@ -236,13 +227,13 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
       pinValue(s(0x1c0n), 0x01n << 248n),
     ]
     const reaches = (leg: Leg) =>
-      crossChain(leg) && served(leg)?.stargateUsdc !== undefined
+      crossChain(leg) && servedLz(leg)?.stargateUsdc !== undefined
     routes.push({
       rules,
       modes: [taxi, bus],
       reaches,
       leg: (leg) => {
-        const dst = served(leg)?.stargateUsdc
+        const dst = servedLz(leg)?.stargateUsdc
         if (!reaches(leg) || !dst || !isAddressEqual(leg.token, dst.token))
           return undefined
         return [
@@ -284,13 +275,13 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
       const b = args[calls.indexOf(burn)]
       const reaches = (leg: Leg) =>
         crossChain(leg) &&
-        served(leg)?.cctp !== undefined &&
-        (served(leg)?.cctp?.feeless === true) === feeless
+        servedLz(leg)?.cctp !== undefined &&
+        (servedLz(leg)?.cctp?.feeless === true) === feeless
       routes.push({
         rules,
         reaches,
         leg: (leg) => {
-          const dst = served(leg)?.cctp
+          const dst = servedLz(leg)?.cctp
           if (!reaches(leg) || !dst || !isAddressEqual(leg.token, dst.token))
             return undefined
           return [

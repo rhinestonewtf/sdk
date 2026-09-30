@@ -37,11 +37,6 @@ export interface SettlementAddresses {
       readonly feeless?: true
     }
   }
-  readonly swapper?: { readonly swapper: Address; readonly proxy: Address }
-  readonly fees?: {
-    readonly appFeeCollector: Address
-    readonly paymaster: Address
-  }
 }
 
 /** Served settlement addresses by chain id. */

@@ -14,6 +14,7 @@ import type {
   ScopedAction,
   UniversalActionPolicyParamRule,
 } from '../types'
+import { served } from './served'
 import type { SettlementCatalog, SettlementContext } from './types'
 
 /**
@@ -75,16 +76,6 @@ export const PUBLISH = {
 
 const BPS = 10_000n
 
-export function ecoChain(settlement: SettlementCatalog, chainId: number) {
-  const chain = settlement[chainId]?.eco
-  if (chain === undefined) {
-    throw new Error(
-      `crossChainPermits: ECO_IE does not route to chain ${chainId}`,
-    )
-  }
-  return chain
-}
-
 /**
  * The delivery floor compares reward and delivery in raw units 1:1, which only
  * holds between the served USD stablecoins (all 6 decimals).
@@ -96,7 +87,7 @@ function requireStablecoin(
   leg: 'from' | 'to',
 ) {
   if (
-    !ecoChain(settlement, chainId).stablecoins.some((t) =>
+    !served(settlement, chainId, 'eco').stablecoins.some((t) =>
       isAddressEqual(t, token),
     )
   ) {
@@ -116,10 +107,12 @@ export function proversBetween(
   source: number,
   destination: number,
 ): Address[] {
-  const there = ecoChain(settlement, destination).provers
-  return ecoChain(settlement, source).provers.filter((prover) =>
-    there.some((p) => isAddressEqual(p, prover)),
-  )
+  const there = served(settlement, destination, 'eco').provers
+  // Sorted so the policy, and so the permissionId, ignores the served order.
+  return served(settlement, source, 'eco')
+    .provers.filter((prover) => there.some((p) => isAddressEqual(p, prover)))
+    .map((prover) => prover.toLowerCase() as Address)
+    .sort()
 }
 
 /** The word holding `transfer`'s selector and the head of its recipient. */
@@ -224,7 +217,10 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
     }
     const legRules: UniversalActionPolicyParamRule[] = [
       pinValue(PUBLISH.destination, BigInt(leg.chainId)),
-      pin(PUBLISH.routePortal, ecoChain(ctx.settlement, leg.chainId).portal),
+      pin(
+        PUBLISH.routePortal,
+        served(ctx.settlement, leg.chainId, 'eco').portal,
+      ),
       pin(PUBLISH.routeToken, leg.token),
       pin(PUBLISH.callTarget, leg.token),
       pinWord(PUBLISH.callDataHead, transferHead(leg.recipient)),

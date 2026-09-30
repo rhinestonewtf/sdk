@@ -290,7 +290,9 @@ interface Permit2ClaimPolicy {
  *   them, cannot be combined with the Permit2 layers, `maxAmount` requires
  *   `oneTimeUse`, and only sponsored intents without an app fee can settle
  *   through it. `ECO_IE` also requires `maxAmount`, `maxFeeBps` and `validUntil`;
- *   `OFT` and `LZ` require `oneTimeUse`.
+ *   `OFT` and `LZ` require `oneTimeUse`. `CCTP`, `OFT`, `ECO_IE` and `LZ` pin
+ *   addresses the orchestrator serves on `GET /chains`, so create their
+ *   sessions with `sdk.createSession`.
  */
 type CrossChainSettlementLayer =
   | 'SAME_CHAIN'
@@ -798,7 +800,9 @@ interface SessionDefinition<
    * Cross-chain permits expanded by the SDK into matching
    * {@link Permit2ClaimPolicy} (claim-side) plus action-level
    * `SpendingLimitsPolicy` / `TimeFramePolicy` guardrails.
-   * See {@link CrossChainPermissionInput}.
+   * See {@link CrossChainPermissionInput}. A permit naming `CCTP`, `OFT`,
+   * `ECO_IE` or `LZ` needs `sdk.createSession`, which supplies the addresses
+   * it pins from the orchestrator's `GET /chains`.
    */
   crossChainPermits?: readonly CrossChainPermissionInput[]
   /**

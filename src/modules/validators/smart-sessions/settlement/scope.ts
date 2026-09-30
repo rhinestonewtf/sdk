@@ -9,11 +9,12 @@ import type {
   ScopedAction,
   SessionPolicy,
 } from '../types'
-import { cctpChain, scopeCctp } from './cctp'
-import { ecoChain, scopeEco } from './eco'
-import { lzChain, scopeLz } from './lz'
-import { oftChain, scopeOft } from './oft'
+import { scopeCctp } from './cctp'
+import { scopeEco } from './eco'
+import { scopeLz } from './lz'
+import { scopeOft } from './oft'
 import { scopeSameChain } from './same-chain'
+import { served } from './served'
 import type { SettlementCatalog, SettlementContext } from './types'
 
 /**
@@ -48,22 +49,23 @@ const LAYERS: Record<
 > = {
   CCTP: {
     target: (settlement, chainId) =>
-      cctpChain(settlement, chainId).tokenMessenger,
+      served(settlement, chainId, 'cctp').tokenMessenger,
     scope: scopeCctp,
   },
   OFT: {
-    target: (settlement, chainId) => oftChain(settlement, chainId).adapter,
+    target: (settlement, chainId) => served(settlement, chainId, 'oft').adapter,
     scope: scopeOft,
     requiresOneTimeUse: true,
   },
   ECO_IE: {
-    target: (settlement, chainId) => ecoChain(settlement, chainId).portal,
+    target: (settlement, chainId) => served(settlement, chainId, 'eco').portal,
     scope: scopeEco,
   },
   LZ: {
-    target: (settlement, chainId) => lzChain(settlement, chainId).multiCall,
+    target: (settlement, chainId) =>
+      served(settlement, chainId, 'lz').multiCall,
     spender: (settlement, chainId) =>
-      lzChain(settlement, chainId).transferDelegate,
+      served(settlement, chainId, 'lz').transferDelegate,
     scope: scopeLz,
     requiresOneTimeUse: true,
   },
@@ -277,7 +279,7 @@ export function resolveSettlementScope(
   const settlement = options.settlement
   if (settlement === undefined) {
     throw new Error(
-      "crossChainPermits: IntentExecutor-layer permits need the orchestrator's settlement addresses; create the session with sdk.createSession or pass options.settlement",
+      "crossChainPermits: IntentExecutor-layer permits need the orchestrator's settlement addresses; create the session with sdk.createSession",
     )
   }
   if (LAYERS[layer].requiresOneTimeUse && !options.oneTimeUse) {
