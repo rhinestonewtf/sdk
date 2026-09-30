@@ -4,7 +4,7 @@
 
 Speak orchestrator API version `2026-09.caucasus`. Accounts, recipients, sources and destinations are now expressed in their own VM's terms, a quote states the authorizations it needs as an ordered list, and status reports every operation rather than one per chain. There is no compatibility mode: a prepared or signed transaction produced by an earlier release cannot be signed or submitted by this one, and refuses explicitly rather than being reinterpreted. Reconcile any in-flight submission first, then prepare it again.
 
-Transaction inputs move to one `source` and one `destination` (see the singular source and destination entry). Everything the orchestrator hands back changed too, as below.
+Transaction inputs move to one `source` and one `destination` (see the singular source and destination entry). Everything the orchestrator hands back changed too.
 
 ### Signing is an ordered list, not a set of roles
 

@@ -290,11 +290,12 @@ function destination(value: Json | undefined): void {
         signatureMode: false,
       })
     }
-  } else if (
-    entry.recipient !== undefined ||
-    vm === 'tvm' ||
-    vm === 'stellar'
-  ) {
+  } else if (vm === 'svm') {
+    if (entry.recipient !== undefined) {
+      bareRecipient(entry.recipient, 'destination.recipient')
+    }
+  } else {
+    // tvm/stellar require a recipient.
     bareRecipient(entry.recipient, 'destination.recipient')
   }
   if (entry.execution === undefined) return

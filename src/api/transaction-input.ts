@@ -114,6 +114,9 @@ const EVM_SOURCE_FIELDS = [
 const SAME_CHAIN_NATIVE_SOL_MESSAGE =
   'A same-chain Solana transfer cannot send native SOL; name an SPL mint.'
 
+const unsupported = (field: string) =>
+  `Solana-origin transfers do not support \`${field}\`.`
+
 function refuse(message: string, field?: string, vm?: string): never {
   throw new UnsupportedAccountCapabilityError(message, {
     ...(vm ? { vm } : {}),
@@ -552,12 +555,6 @@ function normalizeEvmOrigin(
       'customDeadline',
     )
   }
-  if (input.customDeadline !== undefined && destinationKind !== 'evm') {
-    refuse(
-      '`customDeadline` applies to same-chain transactions only.',
-      'customDeadline',
-    )
-  }
 
   const solanaDefault =
     destinationKind === 'svm' &&
@@ -632,8 +629,6 @@ function normalizeSolanaOrigin(
 ): Transaction {
   const destination = input.destination as Fields
   const source = input.source as Fields | undefined
-  const unsupported = (field: string) =>
-    `Solana-origin transfers do not support \`${field}\`.`
   if (source !== undefined) {
     for (const key of ['auxiliaryFunds', 'calls']) {
       if (Object.hasOwn(source, key)) {
@@ -848,8 +843,6 @@ function normalizeSolanaDelivery(
 ): Transaction {
   const destination = input.destination as Fields
   const source = input.source as Fields
-  const unsupported = (field: string) =>
-    `Solana-origin transfers do not support \`${field}\`.`
   assertFields(
     input,
     [
@@ -992,8 +985,6 @@ function assertSolanaAuthorityChange(value: unknown): {
       `${field}.action`,
     )
   }
-  const unsupported = (at: string) =>
-    `Solana-origin transfers do not support \`${at}\`.`
   assertFields(
     change,
     change.action === 'add'

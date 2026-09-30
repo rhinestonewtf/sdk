@@ -53,9 +53,9 @@ function passkeyKey(passkey: WebAuthnAccount | Hex): SolanaAuthorityKey {
 /**
  * Add a passkey to a managed Solana account's Swig.
  *
- * Builds the `authority` of a `{ destination: { chain, authority } }` transaction, which then
- * runs through `prepareTransaction`, `signTransaction` and
- * `submitTransaction` like any other.
+ * Builds the `authority` of a `{ destination: { chain, authority } }`
+ * transaction, which then runs through `prepareTransaction`,
+ * `signTransaction` and `submitTransaction` like any other.
  *
  * Only the passkey's public key is used; it is SEC1-compressed and
  * lowercased. The configured owner signs the change, and the new role gets
@@ -113,9 +113,10 @@ function addPasskey(
 /**
  * Remove a passkey from a managed Solana account's Swig.
  *
- * Builds the `authority` of a `{ destination: { chain, authority } }` transaction.
- * The role carrying the key is removed. The root role never is, and neither is
- * the last role able to manage authorities; the orchestrator refuses both.
+ * Builds the `authority` of a `{ destination: { chain, authority } }`
+ * transaction. The role carrying the key is removed. The root role never
+ * is, and neither is the last role able to manage authorities; the
+ * orchestrator refuses both.
  * Removing the configured owner's own key leaves this account unable to sign.
  *
  * @param passkey The passkey to remove: a viem WebAuthn account, or its P-256
@@ -180,10 +181,10 @@ function ecdsaKey(key: LocalAccount | Hex): SolanaAuthorityKey {
 /**
  * Add a secp256k1 (ECDSA) key to a managed Solana account's Swig.
  *
- * Builds the `authority` of a `{ destination: { chain, authority } }` transaction, which then
- * runs through `prepareTransaction`, `signTransaction` and
- * `submitTransaction` like any other. The configured owner signs the change,
- * and the new role gets the next free role id.
+ * Builds the `authority` of a `{ destination: { chain, authority } }`
+ * transaction, which then runs through `prepareTransaction`,
+ * `signTransaction` and `submitTransaction` like any other. The configured
+ * owner signs the change, and the new role gets the next free role id.
  *
  * Only the public key is used; it is SEC1-compressed and lowercased. An
  * uncompressed key must lie on secp256k1. Pass the public key of the signer an
@@ -245,9 +246,10 @@ function addEcdsaKey(
 /**
  * Remove a secp256k1 (ECDSA) key from a managed Solana account's Swig.
  *
- * Builds the `authority` of a `{ destination: { chain, authority } }` transaction.
- * The role carrying the key is removed. The root role never is, and neither is
- * the last role able to manage authorities; the orchestrator refuses both.
+ * Builds the `authority` of a `{ destination: { chain, authority } }`
+ * transaction. The role carrying the key is removed. The root role never
+ * is, and neither is the last role able to manage authorities; the
+ * orchestrator refuses both.
  *
  * @param key The key to remove: a viem local account, or its secp256k1 public
  * key as 33-byte compressed, 65-byte uncompressed or 64-byte x‖y hex.
