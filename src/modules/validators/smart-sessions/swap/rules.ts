@@ -104,7 +104,7 @@ export function anyOf(branches: ArgPolicyExpression[]): ArgPolicyExpression {
  * pin to be dropped. Preferring the simpler policy keeps the common case on the
  * contract it has always used.
  */
-const UNIVERSAL_ACTION_MAX_RULES = 16
+export const UNIVERSAL_ACTION_MAX_RULES = 16
 
 export function swapAction(
   target: Address,

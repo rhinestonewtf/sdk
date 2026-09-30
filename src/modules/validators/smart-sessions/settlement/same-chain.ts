@@ -7,7 +7,12 @@ import {
 } from 'viem'
 import { namedParamOffsets } from '../../permissions'
 import { swapperAbi } from '../swap/rhinestone'
-import { cumulativeCap, pin, swapAction } from '../swap/rules'
+import {
+  cumulativeCap,
+  pin,
+  swapAction,
+  UNIVERSAL_ACTION_MAX_RULES,
+} from '../swap/rules'
 import { resolveSwapScope } from '../swap/scope'
 import type {
   ArgPolicyExpression,
@@ -35,8 +40,6 @@ export const SWAPPER_OUTPUT_BOUND_OFFSET = namedParamOffsets(
   swapperAbi as unknown as Abi,
   'swapExactIn',
 ).minAmountOut
-
-const UNIVERSAL_ACTION_MAX_RULES = 16
 
 /**
  * Add a rule to an action's params policy. It must join the existing policy:
