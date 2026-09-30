@@ -4,9 +4,9 @@
   "sha256": "0e1cdb4900e4a9523dca31dedd071b34249d416e77a1dc3c3abb45567854a931",
   "upstream": {
     "repository": "git@github.com:rhinestonewtf/orchestrator.git",
-    "commit": "ad2f70d5c04efa2d7468c09b3f5954658c23816c",
-    "ref": "feature/rhi-7923"
+    "commit": "c9161a6a793e68a367dc0ef03699b8e6c3e952a9",
+    "ref": "main"
   },
   "generatedBy": "orchestrator: run pnpm install --frozen-lockfile and pnpm prisma:generate, then pnpm exec ts-node scripts/generateOpenApi.ts --version 2026-09.caucasus --out-dir <dir>",
-  "note": "Pinned to the unmerged RHI-7923 dual-shape contract (legacy and singular Caucasus bodies); re-pin to the merged orchestrator main commit before release. Vendored because 2026-09.caucasus is not in the orchestrator's PUBLISHED_API_VERSIONS yet, so it is absent from the public rhinestonewtf/openapi repo."
+  "note": "Pinned to the merged RHI-7923 dual-shape contract (legacy and singular Caucasus bodies). Vendored because 2026-09.caucasus is not in the orchestrator's PUBLISHED_API_VERSIONS yet, so it is absent from the public rhinestonewtf/openapi repo."
 }
