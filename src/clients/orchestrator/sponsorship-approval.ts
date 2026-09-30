@@ -1,13 +1,16 @@
-import { chainIdFromCaip2 } from '../../chains/caip2'
 import { UnsupportedSponsorshipApprovalError } from '../../errors/execution'
 import type { SerializedIntentInput } from './public'
+import { serializeBigInts } from './serialization'
 
-// The sponsorship approval contract: the approval input an intent-scoped grant
-// commits to is a pure function of the Caucasus quote body, so the orchestrator
-// can recompute it from the request it received. This is that function. Any
-// field it cannot represent exactly is refused rather than approximated, and
-// the orchestrator must refuse the same set. docs/sponsorship-approval.md is
-// the published form of these rules.
+// The sponsorship approval contract `sdk-caucasus-singular-2026-09-v1`: the
+// approval input an intent-scoped grant commits to is the singular Caucasus
+// quote body itself, validated field by field. The orchestrator recomputes it
+// from the body it received, so any field outside this allowlist is refused
+// rather than hashed: a stripped extra field would let two different requests
+// share one grant. docs/sponsorship-approval.md is the published form.
+
+export const SPONSORSHIP_APPROVAL_CONTRACT =
+  'sdk-caucasus-singular-2026-09-v1' as const
 
 type Json = null | boolean | number | string | Json[] | JsonObject
 interface JsonObject {
@@ -47,159 +50,121 @@ function string(value: Json | undefined, field: string): string {
   return value
 }
 
-function chainId(value: Json | undefined, field: string): number {
-  const id = chainIdFromCaip2(string(value, field))
-  if (id === undefined) unsupported(field)
-  return id
+function optionalString(value: Json | undefined, field: string): void {
+  if (value !== undefined) string(value, field)
 }
 
-/** Re-keys a CAIP-2 map by decimal numeric chain id. */
-function byChainId(value: Json | undefined, field: string): JsonObject {
-  if (!isObject(value)) unsupported(field)
-  const result: JsonObject = {}
-  for (const [key, item] of Object.entries(value)) {
-    result[String(chainId(key, `${field}.${key}`))] = item
+const CAIP2 = /^(eip155|solana|tron|hypercore|stellar):[-_a-zA-Z0-9]{1,32}$/u
+
+function chainId(value: Json | undefined, field: string): void {
+  if (!CAIP2.test(string(value, field))) unsupported(field)
+}
+
+function calls(value: Json | undefined, field: string): void {
+  for (const [index, call] of array(value, field).entries()) {
+    const entry = object(call, `${field}.${index}`, ['to', 'value', 'data'])
+    string(entry.to, `${field}.${index}.to`)
+    string(entry.value, `${field}.${index}.value`)
+    string(entry.data, `${field}.${index}.data`)
   }
-  return result
 }
 
-function executions(value: Json | undefined, field: string): Json[] {
-  return array(value, field).map((call, index) => {
-    object(call, `${field}.${index}`, ['to', 'value', 'data'])
-    return call
-  })
+function evmExecution(value: Json | undefined, field: string): void {
+  const execution = object(value, field, ['calls', 'gasLimit'])
+  calls(execution.calls, `${field}.calls`)
+  optionalString(execution.gasLimit, `${field}.gasLimit`)
 }
 
-function setupOps(value: Json | undefined, field: string): Json[] {
-  return array(value, field).map((op, index) => {
-    object(op, `${field}.${index}`, ['to', 'data'])
-    return op
-  })
-}
-
-function delegations(value: Json | undefined, field: string): JsonObject {
+function delegations(value: Json | undefined, field: string): void {
   const entry = object(value, field, ['default', 'chains'])
-  // Per-chain delegations have no representation in the approval input, which
-  // only knows the chain-agnostic sentinel `0`.
-  if (entry.chains !== undefined) unsupported(`${field}.chains`)
-  if (entry.default === undefined) unsupported(`${field}.default`)
-  const contract = object(entry.default, `${field}.default`, ['contract'])
-  return {
-    0: { contract: string(contract.contract, `${field}.default.contract`) },
+  if (entry.default !== undefined) {
+    const target = object(entry.default, `${field}.default`, ['contract'])
+    string(target.contract, `${field}.default.contract`)
+  }
+  if (entry.chains !== undefined) {
+    if (!isObject(entry.chains)) unsupported(`${field}.chains`)
+    for (const [key, target] of Object.entries(entry.chains)) {
+      chainId(key, `${field}.chains.${key}`)
+      string(
+        object(target, `${field}.chains.${key}`, ['contract']).contract,
+        `${field}.chains.${key}.contract`,
+      )
+    }
   }
 }
 
-/** A typed EVM account or recipient, in the approval input's spelling. */
+/**
+ * A typed EVM account (`account.evm`) or recipient. Only the account carries a
+ * signature mode; a recipient never signs.
+ */
 function evmAccount(
-  value: JsonObject,
+  value: Json | undefined,
   field: string,
   options: { readonly signatureMode: boolean },
-): { readonly account: JsonObject; readonly signatureMode?: Json } {
+): void {
+  if (!isObject(value)) unsupported(field)
   const signature = options.signatureMode ? ['signatureMode'] : []
   const entry =
-    value.type === 'erc7579'
-      ? object(value, field, [
-          'type',
-          'address',
-          'initData',
-          'delegations',
-          'simulation',
-          ...signature,
-        ])
+    value.type === undefined && !options.signatureMode
+      ? object(value, field, ['address'])
       : value.type === 'eoa'
         ? object(value, field, ['type', 'address', 'delegations', ...signature])
-        : unsupported(`${field}.type`)
-  const account: JsonObject = {
-    address: string(entry.address, `${field}.address`),
-    accountType: entry.type === 'eoa' ? 'EOA' : 'ERC7579',
-    setupOps:
-      entry.initData === undefined
-        ? []
-        : setupOps(
-            object(entry.initData, `${field}.initData`, ['setupOps']).setupOps,
-            `${field}.initData.setupOps`,
-          ),
+        : value.type === 'erc7579'
+          ? object(value, field, [
+              'type',
+              'address',
+              'initData',
+              'delegations',
+              'simulation',
+              ...signature,
+            ])
+          : unsupported(`${field}.type`)
+  string(entry.address, `${field}.address`)
+  if (
+    entry.signatureMode !== undefined &&
+    typeof entry.signatureMode !== 'number' &&
+    typeof entry.signatureMode !== 'string'
+  ) {
+    unsupported(`${field}.signatureMode`)
+  }
+  if (entry.initData !== undefined) {
+    const init = object(entry.initData, `${field}.initData`, ['setupOps'])
+    for (const [index, op] of array(
+      init.setupOps,
+      `${field}.initData.setupOps`,
+    ).entries()) {
+      const setup = object(op, `${field}.initData.setupOps.${index}`, [
+        'to',
+        'data',
+      ])
+      string(setup.to, `${field}.initData.setupOps.${index}.to`)
+      string(setup.data, `${field}.initData.setupOps.${index}.data`)
+    }
   }
   if (entry.delegations !== undefined) {
-    account.delegations = delegations(entry.delegations, `${field}.delegations`)
+    delegations(entry.delegations, `${field}.delegations`)
   }
   if (entry.simulation !== undefined) {
     const simulation = object(entry.simulation, `${field}.simulation`, [
       'mockSignature',
       'mockSignaturesByChain',
     ])
-    if (simulation.mockSignature !== undefined) {
-      unsupported(`${field}.simulation.mockSignature`)
-    }
+    optionalString(
+      simulation.mockSignature,
+      `${field}.simulation.mockSignature`,
+    )
     if (simulation.mockSignaturesByChain !== undefined) {
-      account.mockSignatures = byChainId(
-        simulation.mockSignaturesByChain,
-        `${field}.simulation.mockSignaturesByChain`,
-      )
+      const byChain = simulation.mockSignaturesByChain
+      if (!isObject(byChain)) {
+        unsupported(`${field}.simulation.mockSignaturesByChain`)
+      }
+      for (const [key, signature] of Object.entries(byChain)) {
+        const at = `${field}.simulation.mockSignaturesByChain.${key}`
+        chainId(key, at)
+        string(signature, at)
+      }
     }
   }
-  return {
-    account,
-    ...(entry.signatureMode === undefined
-      ? {}
-      : { signatureMode: entry.signatureMode }),
-  }
-}
-
-function evmRecipient(value: Json | undefined, field: string): JsonObject {
-  if (!isObject(value)) unsupported(field)
-  // A bare payee keeps the setup-free EOA spelling the released input gave it,
-  // so it reads exactly like a typed `eoa` recipient with no delegations.
-  if (value.type === undefined) {
-    return {
-      ...bareRecipient(value, field),
-      accountType: 'EOA',
-      setupOps: [],
-    }
-  }
-  return evmAccount(value, field, { signatureMode: false }).account
-}
-
-function bareRecipient(value: Json | undefined, field: string): JsonObject {
-  return {
-    address: string(
-      object(value, field, ['address']).address,
-      `${field}.address`,
-    ),
-  }
-}
-
-function swigAccount(value: Json | undefined, field: string): JsonObject {
-  const entry = object(value, field, [
-    'type',
-    'address',
-    'swigAccount',
-    'authorization',
-    'initData',
-  ])
-  if (entry.type !== 'swig') unsupported(`${field}.type`)
-  string(entry.address, `${field}.address`)
-  if (entry.swigAccount !== undefined) {
-    string(entry.swigAccount, `${field}.swigAccount`)
-  }
-  swigAuthority(entry.authorization, `${field}.authorization`)
-  if (entry.initData !== undefined) {
-    const init = object(entry.initData, `${field}.initData`, [
-      'authority',
-      'id',
-    ])
-    const authority = object(init.authority, `${field}.initData.authority`, [
-      'kind',
-      'publicKey',
-    ])
-    if (authority.kind !== 'secp256k1' && authority.kind !== 'secp256r1') {
-      unsupported(`${field}.initData.authority.kind`)
-    }
-    string(authority.publicKey, `${field}.initData.authority.publicKey`)
-    if (init.id !== undefined) string(init.id, `${field}.initData.id`)
-  }
-  // Verbatim: the approval names the paying Swig exactly as the request does.
-  return entry
 }
 
 function swigAuthority(value: Json | undefined, field: string): void {
@@ -219,14 +184,36 @@ function swigAuthority(value: Json | undefined, field: string): void {
   }
 }
 
-/**
- * A Swig authority change, verbatim once validated: the grant binds the exact
- * mutation (action, key and permission) under `destinationAuthority`.
- */
-function swigAuthorityChange(
-  value: Json | undefined,
-  field: string,
-): JsonObject {
+function swigAccount(value: Json | undefined, field: string): void {
+  const entry = object(value, field, [
+    'type',
+    'address',
+    'swigAccount',
+    'authorization',
+    'initData',
+  ])
+  if (entry.type !== 'swig') unsupported(`${field}.type`)
+  string(entry.address, `${field}.address`)
+  optionalString(entry.swigAccount, `${field}.swigAccount`)
+  swigAuthority(entry.authorization, `${field}.authorization`)
+  if (entry.initData !== undefined) {
+    const init = object(entry.initData, `${field}.initData`, [
+      'authority',
+      'id',
+    ])
+    const authority = object(init.authority, `${field}.initData.authority`, [
+      'kind',
+      'publicKey',
+    ])
+    if (authority.kind !== 'secp256k1' && authority.kind !== 'secp256r1') {
+      unsupported(`${field}.initData.authority.kind`)
+    }
+    string(authority.publicKey, `${field}.initData.authority.publicKey`)
+    optionalString(init.id, `${field}.initData.id`)
+  }
+}
+
+function swigAuthorityChange(value: Json | undefined, field: string): void {
   if (!isObject(value)) unsupported(field)
   const change =
     value.action === 'add'
@@ -247,412 +234,224 @@ function swigAuthorityChange(
   ) {
     unsupported(`${field}.permission`)
   }
-  return change
 }
 
-interface ProjectedDestination {
-  readonly fields: JsonObject
-  readonly hyperCore?: JsonObject
-}
-
-function evmExecution(
-  value: Json | undefined,
-  field: string,
-  allowed: readonly string[],
-): JsonObject {
-  const execution = object(value, field, allowed)
-  const fields: JsonObject = {
-    destinationExecutions: executions(execution.calls, `${field}.calls`),
-  }
-  if (execution.gasLimit !== undefined) {
-    fields.destinationGasUnits = string(execution.gasLimit, `${field}.gasLimit`)
-  }
-  return fields
-}
-
-function destination(value: Json | undefined): ProjectedDestination {
-  if (!isObject(value)) unsupported('destination')
-  const common = (entry: JsonObject): JsonObject => ({
-    destinationChainId: chainId(entry.chainId, 'destination.chainId'),
-    destinationExecutions: [],
-    tokenRequests: array(entry.tokenRequests, 'destination.tokenRequests').map(
-      (request, index) => {
-        object(request, `destination.tokenRequests.${index}`, [
-          'tokenAddress',
-          'amount',
-        ])
-        return request
-      },
-    ),
-  })
-  switch (value.vm) {
-    case 'evm': {
-      const entry = object(value, 'destination', [
-        'vm',
-        'chainId',
-        'recipient',
-        'tokenRequests',
-        'execution',
-      ])
-      return {
-        fields: {
-          ...common(entry),
-          ...(entry.recipient === undefined
-            ? {}
-            : {
-                recipient: evmRecipient(
-                  entry.recipient,
-                  'destination.recipient',
-                ),
-              }),
-          ...(entry.execution === undefined
-            ? {}
-            : evmExecution(entry.execution, 'destination.execution', [
-                'calls',
-                'gasLimit',
-              ])),
-        },
-      }
-    }
-    case 'svm': {
-      const entry = object(value, 'destination', [
-        'vm',
-        'chainId',
-        'recipient',
-        'tokenRequests',
-        'execution',
-      ])
-      const fields = common(entry)
-      if (entry.recipient !== undefined) {
-        fields.recipient = bareRecipient(
-          entry.recipient,
-          'destination.recipient',
-        )
-      }
-      if (isObject(entry.execution) && 'authority' in entry.execution) {
-        const execution = object(entry.execution, 'destination.execution', [
-          'authority',
-        ])
-        fields.destinationAuthority = swigAuthorityChange(
-          execution.authority,
-          'destination.execution.authority',
-        )
-      } else if (entry.execution !== undefined) {
-        const execution = object(entry.execution, 'destination.execution', [
-          'instructions',
-          'addressLookupTables',
-        ])
-        fields.destinationInstructions = array(
-          execution.instructions,
-          'destination.execution.instructions',
-        )
-        if (execution.addressLookupTables !== undefined) {
-          fields.addressLookupTableAddresses = array(
-            execution.addressLookupTables,
-            'destination.execution.addressLookupTables',
-          )
-        }
-      }
-      return { fields }
-    }
-    case 'tvm':
-    case 'stellar': {
-      const entry = object(value, 'destination', [
-        'vm',
-        'chainId',
-        'recipient',
-        'tokenRequests',
-      ])
-      return {
-        fields: {
-          ...common(entry),
-          recipient: bareRecipient(entry.recipient, 'destination.recipient'),
-        },
-      }
-    }
-    case 'hypercore': {
-      const entry = object(value, 'destination', [
-        'vm',
-        'chainId',
-        'recipient',
-        'tokenRequests',
-        'execution',
-      ])
-      const fields = common(entry)
-      if (entry.recipient !== undefined) {
-        fields.recipient = evmRecipient(
-          entry.recipient,
-          'destination.recipient',
-        )
-      }
-      let hyperCore: JsonObject | undefined
-      if (entry.execution !== undefined) {
-        const execution = object(entry.execution, 'destination.execution', [
-          'actions',
-          'settlement',
-        ])
-        if (execution.actions !== undefined) {
-          const actions = array(
-            execution.actions,
-            'destination.execution.actions',
-          )
-          // The approval input carries a single `options.hyperCore.action`.
-          if (actions.length !== 1) {
-            unsupported('destination.execution.actions')
-          }
-          hyperCore = { action: actions[0]! }
-        }
-        if (execution.settlement !== undefined) {
-          Object.assign(
-            fields,
-            evmExecution(
-              execution.settlement,
-              'destination.execution.settlement',
-              ['calls', 'gasLimit'],
-            ),
-          )
-        }
-      }
-      return { fields, ...(hyperCore ? { hyperCore } : {}) }
-    }
-    default:
-      return unsupported('destination.vm')
-  }
-}
-
-function onlyList(
-  value: Json | undefined,
-  field: string,
-): string[] | undefined {
-  if (value === 'all') return undefined
-  const selector = object(value, field, ['only', 'except'])
-  if (selector.except !== undefined) unsupported(`${field}.except`)
-  return array(selector.only, `${field}.only`).map((item, index) =>
-    string(item, `${field}.only.${index}`),
-  )
-}
-
-function sameSet(left: readonly string[], right: readonly string[]): boolean {
-  const a = new Set(left)
-  const b = new Set(right)
-  return a.size === b.size && [...a].every((item) => b.has(item))
-}
-
-interface ProjectedSource {
-  readonly accountAccessList?: JsonObject
-  readonly auxiliaryFunds?: JsonObject
-  readonly preClaimExecutions?: JsonObject
-}
-
-function accessList(source: JsonObject): JsonObject | undefined {
-  const limits =
-    source.limits === undefined
-      ? []
-      : array(source.limits, 'source.limits').map((limit, index) => {
-          const entry = object(limit, `source.limits.${index}`, [
-            'chainId',
-            'tokenAddress',
-            'maxAmount',
-          ])
-          return {
-            chainId: string(entry.chainId, `source.limits.${index}.chainId`),
-            tokenAddress: string(
-              entry.tokenAddress,
-              `source.limits.${index}.tokenAddress`,
-            ),
-            maxAmount: string(
-              entry.maxAmount,
-              `source.limits.${index}.maxAmount`,
-            ),
-          }
-        })
-  if (source.selection === undefined) {
-    if (limits.length > 0) unsupported('source.limits')
-    return undefined
-  }
-  const selection = object(source.selection, 'source.selection', [
-    'chains',
-    'tokens',
-    'perChain',
-  ])
-  const chains = onlyList(selection.chains, 'source.selection.chains')
-  const tokens = onlyList(selection.tokens, 'source.selection.tokens')
-
-  if (selection.perChain === undefined) {
-    // A cap without a per-chain map has no approval-input spelling: a capped
-    // pair is always named in `chainTokenAmounts`.
-    if (limits.length > 0) unsupported('source.limits')
-    if (!chains && !tokens) return undefined
-    return {
-      ...(chains
-        ? {
-            chainIds: chains.map((chain, index) =>
-              chainId(chain, `source.selection.chains.only.${index}`),
-            ),
-          }
-        : {}),
-      ...(tokens ? { tokens } : {}),
-    }
-  }
-
-  const perChain = selection.perChain
-  if (!isObject(perChain)) unsupported('source.selection.perChain')
-  const lists = Object.entries(perChain).map(([caip2, entry]) => {
-    const field = `source.selection.perChain.${caip2}`
-    const list = onlyList(
-      object(entry, field, ['tokens']).tokens,
-      `${field}.tokens`,
-    )
-    if (!list) unsupported(`${field}.tokens`)
-    return { caip2, id: chainId(caip2, field), tokens: list }
-  })
-  // The per-chain map is the whole allowlist; the global selectors must say
-  // exactly the same thing or they would carry a constraint the input lacks.
-  if (
-    !chains ||
-    !sameSet(
-      chains,
-      lists.map(({ caip2 }) => caip2),
-    )
-  ) {
-    unsupported('source.selection.chains')
-  }
-  if (
-    !tokens ||
-    !sameSet(
-      tokens,
-      lists.flatMap((list) => list.tokens),
-    )
-  ) {
-    unsupported('source.selection.tokens')
-  }
-  const caps = new Map<string, string>()
-  for (const [index, limit] of limits.entries()) {
-    const key = `${limit.chainId}|${limit.tokenAddress}`
-    const listed = lists
-      .find(({ caip2 }) => caip2 === limit.chainId)
-      ?.tokens.includes(limit.tokenAddress)
-    if (!listed || caps.has(key)) unsupported(`source.limits.${index}`)
-    caps.set(key, limit.maxAmount)
-  }
-  const chainTokens: JsonObject = {}
-  const chainTokenAmounts: JsonObject = {}
-  for (const { caip2, id, tokens: list } of lists) {
-    const uncapped = list.filter((token) => !caps.has(`${caip2}|${token}`))
-    // An empty list is still a named chain; a fully capped one is named by its
-    // caps alone.
-    if (uncapped.length > 0 || list.length === 0) {
-      chainTokens[String(id)] = uncapped
-    }
-    for (const token of list) {
-      const cap = caps.get(`${caip2}|${token}`)
-      if (cap === undefined) continue
-      const amounts = (chainTokenAmounts[String(id)] ??= {}) as JsonObject
-      amounts[token] = cap
-    }
-  }
-  return {
-    ...(Object.keys(chainTokens).length > 0 ? { chainTokens } : {}),
-    ...(Object.keys(chainTokenAmounts).length > 0 ? { chainTokenAmounts } : {}),
-  }
-}
-
-function source(value: Json | undefined): ProjectedSource {
-  if (value === undefined) return {}
-  const entry = object(value, 'source', [
-    'selection',
-    'limits',
-    'auxiliaryFunds',
-    'executions',
-  ])
-  const list = accessList(entry)
-  const result: {
-    accountAccessList?: JsonObject
-    auxiliaryFunds?: JsonObject
-    preClaimExecutions?: JsonObject
-  } = list ? { accountAccessList: list } : {}
-  if (entry.auxiliaryFunds !== undefined) {
-    result.auxiliaryFunds = byChainId(
-      entry.auxiliaryFunds,
-      'source.auxiliaryFunds',
-    )
-  }
-  if (entry.executions !== undefined) {
-    const preClaim: JsonObject = {}
-    for (const [index, item] of array(
-      entry.executions,
-      'source.executions',
+function solanaInstructions(value: Json | undefined, field: string): void {
+  for (const [index, item] of array(value, field).entries()) {
+    const at = `${field}.${index}`
+    const instruction = object(item, at, ['programId', 'accounts', 'data'])
+    string(instruction.programId, `${at}.programId`)
+    string(instruction.data, `${at}.data`)
+    for (const [position, meta] of array(
+      instruction.accounts,
+      `${at}.accounts`,
     ).entries()) {
-      const field = `source.executions.${index}`
-      const execution = object(item, field, ['vm', 'chainId', 'calls'])
-      if (execution.vm !== 'evm') unsupported(`${field}.vm`)
-      const id = String(chainId(execution.chainId, `${field}.chainId`))
-      if (preClaim[id] !== undefined) unsupported(`${field}.chainId`)
-      preClaim[id] = executions(execution.calls, `${field}.calls`)
+      const where = `${at}.accounts.${position}`
+      const entry = object(meta, where, ['pubkey', 'isSigner', 'isWritable'])
+      string(entry.pubkey, `${where}.pubkey`)
+      if (typeof entry.isSigner !== 'boolean') unsupported(`${where}.isSigner`)
+      if (typeof entry.isWritable !== 'boolean') {
+        unsupported(`${where}.isWritable`)
+      }
     }
-    result.preClaimExecutions = preClaim
   }
-  return result
 }
 
-function options(value: Json | undefined): JsonObject {
-  if (value === undefined) return {}
+function bareRecipient(value: Json | undefined, field: string): void {
+  string(object(value, field, ['address']).address, `${field}.address`)
+}
+
+const DESTINATION_VMS = ['evm', 'svm', 'tvm', 'stellar', 'hypercore']
+
+function destination(value: Json | undefined): void {
+  if (!isObject(value)) unsupported('destination')
+  const vm = value.vm
+  if (typeof vm !== 'string' || !DESTINATION_VMS.includes(vm)) {
+    unsupported('destination.vm')
+  }
+  const executes = vm === 'evm' || vm === 'svm' || vm === 'hypercore'
+  const entry = object(value, 'destination', [
+    'vm',
+    'chainId',
+    'token',
+    'amount',
+    'recipient',
+    ...(executes ? ['execution'] : []),
+  ])
+  chainId(entry.chainId, 'destination.chainId')
+  optionalString(entry.token, 'destination.token')
+  optionalString(entry.amount, 'destination.amount')
+  if (entry.amount !== undefined && entry.token === undefined) {
+    unsupported('destination.amount')
+  }
+  if (vm === 'evm' || vm === 'hypercore') {
+    if (entry.recipient !== undefined) {
+      evmAccount(entry.recipient, 'destination.recipient', {
+        signatureMode: false,
+      })
+    }
+  } else if (vm === 'svm') {
+    if (entry.recipient !== undefined) {
+      bareRecipient(entry.recipient, 'destination.recipient')
+    }
+  } else {
+    // tvm/stellar require a recipient.
+    bareRecipient(entry.recipient, 'destination.recipient')
+  }
+  if (entry.execution === undefined) return
+  if (vm === 'evm') {
+    evmExecution(entry.execution, 'destination.execution')
+  } else if (vm === 'svm') {
+    if (isObject(entry.execution) && 'authority' in entry.execution) {
+      const execution = object(entry.execution, 'destination.execution', [
+        'authority',
+      ])
+      swigAuthorityChange(
+        execution.authority,
+        'destination.execution.authority',
+      )
+    } else {
+      const execution = object(entry.execution, 'destination.execution', [
+        'instructions',
+        'addressLookupTables',
+      ])
+      solanaInstructions(
+        execution.instructions,
+        'destination.execution.instructions',
+      )
+      if (execution.addressLookupTables !== undefined) {
+        for (const [index, table] of array(
+          execution.addressLookupTables,
+          'destination.execution.addressLookupTables',
+        ).entries()) {
+          string(table, `destination.execution.addressLookupTables.${index}`)
+        }
+      }
+    }
+  } else {
+    const execution = object(entry.execution, 'destination.execution', [
+      'actions',
+      'settlement',
+    ])
+    if (execution.actions !== undefined) {
+      const actions = array(execution.actions, 'destination.execution.actions')
+      if (actions.length !== 1 || !isObject(actions[0])) {
+        unsupported('destination.execution.actions')
+      }
+    }
+    if (execution.settlement !== undefined) {
+      evmExecution(execution.settlement, 'destination.execution.settlement')
+    }
+  }
+}
+
+function source(value: Json | undefined): void {
+  const entry = object(value, 'source', [
+    'vm',
+    'chainId',
+    'token',
+    'maxAmount',
+    'auxiliaryFunds',
+    'execution',
+  ])
+  if (entry.vm !== 'evm' && entry.vm !== 'svm') unsupported('source.vm')
+  chainId(entry.chainId, 'source.chainId')
+  string(entry.token, 'source.token')
+  optionalString(entry.maxAmount, 'source.maxAmount')
+  optionalString(entry.auxiliaryFunds, 'source.auxiliaryFunds')
+  if (entry.execution !== undefined) {
+    if (entry.vm !== 'evm') unsupported('source.execution')
+    calls(
+      object(entry.execution, 'source.execution', ['calls']).calls,
+      'source.execution.calls',
+    )
+  }
+}
+
+function venueFilter(value: Json | undefined, field: string): void {
+  const filter = object(value, field, ['include', 'exclude'])
+  const keys = Object.keys(filter)
+  if (keys.length !== 1) unsupported(field)
+  for (const [index, venue] of array(
+    filter[keys[0]!],
+    `${field}.${keys[0]}`,
+  ).entries()) {
+    string(venue, `${field}.${keys[0]}.${index}`)
+  }
+}
+
+function options(value: Json | undefined): void {
   const entry = object(value, 'options', [
     'appFees',
     'protocolFees',
     'customDeadline',
+    'settlementLayers',
+    'quoters',
     'sponsorship',
-    'settlementLayers',
-    'quoters',
   ])
-  const result: JsonObject = {}
-  for (const key of [
-    'appFees',
-    'protocolFees',
-    'customDeadline',
-    'settlementLayers',
-    'quoters',
-  ] as const) {
-    if (entry[key] !== undefined) result[key] = entry[key]
+  for (const key of ['appFees', 'protocolFees'] as const) {
+    if (entry[key] === undefined) continue
+    const fee = object(entry[key], `options.${key}`, ['feeBps'])
+    if (typeof fee.feeBps !== 'number') unsupported(`options.${key}.feeBps`)
   }
-  // Renamed, not reshaped: an explicit `false` category is kept.
+  if (
+    entry.customDeadline !== undefined &&
+    typeof entry.customDeadline !== 'number'
+  ) {
+    unsupported('options.customDeadline')
+  }
+  for (const key of ['settlementLayers', 'quoters'] as const) {
+    if (entry[key] !== undefined) venueFilter(entry[key], `options.${key}`)
+  }
   if (entry.sponsorship !== undefined) {
-    result.sponsorSettings = object(entry.sponsorship, 'options.sponsorship', [
+    const sponsorship = object(entry.sponsorship, 'options.sponsorship', [
       'gas',
       'bridgeFees',
       'swapFees',
       'protocolFees',
     ])
-  }
-  return result
-}
-
-function account(value: Json | undefined): {
-  readonly account: JsonObject
-  readonly signatureMode?: Json
-} {
-  const entry = object(value, 'account', ['evm', 'svm'])
-  const svm =
-    entry.svm === undefined ? undefined : swigAccount(entry.svm, 'account.svm')
-  if (entry.evm !== undefined) {
-    if (!isObject(entry.evm)) unsupported('account.evm')
-    const evm = evmAccount(entry.evm, 'account.evm', { signatureMode: true })
-    return {
-      account: { ...evm.account, ...(svm ? { svm } : {}) },
-      ...(evm.signatureMode === undefined
-        ? {}
-        : { signatureMode: evm.signatureMode }),
+    for (const [key, category] of Object.entries(sponsorship)) {
+      if (typeof category !== 'boolean') {
+        unsupported(`options.sponsorship.${key}`)
+      }
     }
   }
-  if (!svm) unsupported('account')
-  return { account: { address: svm.address as string, svm } }
+}
+
+function account(value: Json | undefined): void {
+  const entry = object(value, 'account', ['evm', 'svm'])
+  if (entry.evm === undefined && entry.svm === undefined) unsupported('account')
+  if (entry.evm !== undefined) {
+    evmAccount(entry.evm, 'account.evm', { signatureMode: true })
+  }
+  if (entry.svm !== undefined) swigAccount(entry.svm, 'account.svm')
 }
 
 /**
- * Derives the sponsorship approval input from a Caucasus `POST /quotes` body.
+ * The approval input of a singular Caucasus request, unvalidated: the body
+ * verbatim, versioned, with `source` omitted when absent and `options`
+ * defaulted to `{}`. {@link assertSponsorshipApproval} validates it against the
+ * contract before any grant is requested.
+ */
+export function toSponsorshipApprovalInput(
+  body: unknown,
+): SerializedIntentInput {
+  const root = toJson(body) as JsonObject
+  return {
+    contractVersion: SPONSORSHIP_APPROVAL_CONTRACT,
+    account: root.account,
+    ...(root.source === undefined ? {} : { source: root.source }),
+    destination: root.destination,
+    options: root.options ?? {},
+  } as unknown as SerializedIntentInput
+}
+
+/**
+ * Derives the sponsorship approval input from a singular Caucasus
+ * `POST /quotes` body, validating every field against the contract.
  *
- * Throws {@link UnsupportedSponsorshipApprovalError} on any field the approval
- * input cannot represent exactly.
+ * Throws {@link UnsupportedSponsorshipApprovalError} on any field outside the
+ * contract's allowlist, including a legacy-shaped body.
  */
 export function projectSponsorshipApproval(
   body: unknown,
@@ -660,31 +459,17 @@ export function projectSponsorshipApproval(
   // Projected from the JSON that is sent, so an `undefined` member or a value
   // `JSON.stringify` rewrites cannot make the two disagree.
   const json = toJson(body)
-  const root = object(json, '', ['account', 'destination', 'source', 'options'])
-  const projectedAccount = account(root.account)
-  const projectedDestination = destination(root.destination)
-  const projectedSource = source(root.source)
-  const projectedOptions = options(root.options)
-  if (projectedAccount.signatureMode !== undefined) {
-    projectedOptions.signatureMode = projectedAccount.signatureMode
-  }
-  if (projectedSource.auxiliaryFunds) {
-    projectedOptions.auxiliaryFunds = projectedSource.auxiliaryFunds
-  }
-  if (projectedDestination.hyperCore) {
-    projectedOptions.hyperCore = projectedDestination.hyperCore
-  }
-  return {
-    account: projectedAccount.account,
-    ...projectedDestination.fields,
-    ...(projectedSource.accountAccessList
-      ? { accountAccessList: projectedSource.accountAccessList }
-      : {}),
-    options: projectedOptions,
-    ...(projectedSource.preClaimExecutions
-      ? { preClaimExecutions: projectedSource.preClaimExecutions }
-      : {}),
-  } as unknown as SerializedIntentInput
+  const root = object(json, '', ['account', 'source', 'destination', 'options'])
+  account(root.account)
+  if (root.source !== undefined) source(root.source)
+  destination(root.destination)
+  if (root.options !== undefined) options(root.options)
+  return toSponsorshipApprovalInput(root)
+}
+
+/** Whether a sponsorship approval input asks for any sponsorship. */
+export function isSponsoredIntentInput(input: SerializedIntentInput): boolean {
+  return input.options.sponsorship !== undefined
 }
 
 /**
@@ -707,7 +492,7 @@ export function assertSponsorshipApproval(
 }
 
 function toJson(value: unknown): Json {
-  return JSON.parse(JSON.stringify(value)) as Json
+  return JSON.parse(JSON.stringify(serializeBigInts(value))) as Json
 }
 
 /** Path of the first value that differs, or `undefined` when equal. */

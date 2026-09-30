@@ -1,11 +1,12 @@
 {
   "apiVersion": "2026-09.caucasus",
   "artifact": "caucasus.json",
-  "sha256": "617177ba8fea41a0c10e48234dad5b36c9112fe243c31287fd2493608aa2e18a",
+  "sha256": "0e1cdb4900e4a9523dca31dedd071b34249d416e77a1dc3c3abb45567854a931",
   "upstream": {
     "repository": "git@github.com:rhinestonewtf/orchestrator.git",
-    "commit": "a2e0a89ba0074f544eb3f91cc681563b25a3a047"
+    "commit": "c9161a6a793e68a367dc0ef03699b8e6c3e952a9",
+    "ref": "main"
   },
-  "generatedBy": "orchestrator: run pnpm install --frozen-lockfile and pnpm prisma:generate; copy scripts/generateOpenApi.ts beside the original, alias SUPPORTED_API_VERSIONS as PUBLISHED_API_VERSIONS in that copy, then run pnpm exec ts-node scripts/<copy>.ts --out-dir <dir>",
-  "note": "Vendored because 2026-09.caucasus is not in the orchestrator's PUBLISHED_API_VERSIONS yet, so it is absent from the public rhinestonewtf/openapi repo. Replace this snapshot with the published URL source once RHI-7424 activates public publication."
+  "generatedBy": "orchestrator: run pnpm install --frozen-lockfile and pnpm prisma:generate, then pnpm exec ts-node scripts/generateOpenApi.ts --version 2026-09.caucasus --out-dir <dir>",
+  "note": "Pinned to the merged RHI-7923 dual-shape contract (legacy and singular Caucasus bodies). Vendored because 2026-09.caucasus is not in the orchestrator's PUBLISHED_API_VERSIONS yet, so it is absent from the public rhinestonewtf/openapi repo."
 }

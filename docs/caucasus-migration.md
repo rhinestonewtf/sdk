@@ -1,8 +1,10 @@
 # Migrating to `2026-09.caucasus`
 
 The SDK now speaks orchestrator API version `2026-09.caucasus`. This is a
-breaking change to everything the orchestrator hands back, to how a transaction
-is signed, and to the obsolete `sponsored.swapValue` option.
+breaking change to the transaction input (see
+[Singular source and destination](#singular-source-and-destination)), to
+everything the orchestrator hands back, to how a transaction is signed, to the
+sponsorship approval input, and to the obsolete `sponsored.swapValue` option.
 
 There is no compatibility mode. A prepared or signed transaction produced by an
 earlier release fails explicitly on this one rather than being reinterpreted —
@@ -10,16 +12,110 @@ reconcile any in-flight submission first, then prepare it again.
 
 ## What did not change
 
-- Transaction inputs: `chain`, `sourceChains` / `targetChain`, `sourceAssets`,
-  `calls`, `tokenRequests`, `recipient`, `gasLimit`, `appFees`, `protocolFees`,
-  `customDeadline`, `settlementLayers`, `quoters`,
-  `auxiliaryFunds`, and the HyperCore order helpers.
+- The transaction options `appFees`, `protocolFees`, `settlementLayers`,
+  `quoters`, `sponsored`, `signers`, `eip7702InitSignature`, and the HyperCore
+  order helpers.
 - `prepareTransaction` → `signTransaction` → `submitTransaction` →
   `waitForExecution`, and their `PENDING` / `COMPLETED` / `FAILED` semantics.
-- Other sponsorship categories. `PreparedTransactionData.intentInput` keeps
-  their field names and numeric chain ids, so a JWT `getIntentExtensionToken`
-  callback can continue evaluating them.
+- `TransactionResult`, quotes, signing and status.
 - Preparation is still side-effect-free: it neither spends nor deploys.
+
+## Singular source and destination
+
+A transaction now names one `destination` and, at most, one `source` that
+funds it. The SDK spends exactly that source: it no longer discovers source
+chains, picks between several, or reads the chain catalog.
+
+```ts
+await account.prepareTransaction({
+  source: { chain: arbitrum, token: usdcOnArbitrum, maxAmount: 5_000_000n },
+  destination: { chain: base, token: usdcOnBase, amount: 1_000_000n, calls },
+  sponsored: true,
+})
+```
+
+| Before | After |
+| --- | --- |
+| `chain` (same-chain) | `destination.chain`, with `source.chain` omitted |
+| `targetChain` | `destination.chain` |
+| `sourceChains: [chain]` | `source.chain`; several chains have no equivalent |
+| `sourceAssets` token list or chain → tokens map | `source.token`, one token on `source.chain` |
+| `sourceAssets: [{ chain, address, amount }]` | `source: { chain, token, maxAmount }` |
+| `tokenRequests: [{ address, amount }]` | `destination.token` and `destination.amount`; several tokens have no equivalent |
+| `recipient`, `calls`, `gasLimit` | `destination.recipient`, `destination.calls`, `destination.gasLimit` |
+| `hyperCore` | `destination.hyperCore`, on a HyperCore destination only |
+| `sourceCalls: { [chainId]: calls }` | `source.calls`, on the source chain only |
+| `auxiliaryFunds: { [chainId]: { [token]: amount } }` | `source.auxiliaryFunds`, one amount of `source.token` |
+| `instructions`, `addressLookupTables`, `authority` | `destination.instructions`, `destination.addressLookupTables`, `destination.authority` |
+
+The old top-level fields are refused by name with what replaced each, and any
+unknown key inside `source` or `destination` is refused too.
+
+The rules:
+
+- **Delivery.** `destination.token` with `amount` asks for exactly that
+  amount; `token` alone takes the most the source yields; neither delivers
+  nothing. `amount` without `token` is refused.
+- **Same-chain shorthand.** Omit `source.chain` to spend on
+  `destination.chain`. A cross-chain transaction names it: nothing else is
+  inferred. HyperCore, Tron and Stellar cannot fund, so a transaction to them
+  names an EVM `source.chain`.
+- **When a source is required.** A delivery needs a `source`, even when
+  sponsored, and so does any execution that is not gas-sponsored. Only a
+  gas-sponsored (`sponsored: true`, or `{ gas: true, … }`) execution that
+  delivers nothing, on an EVM chain or as a Solana instruction execution or
+  authority change, may omit it. The orchestrator decides what it covers and
+  the SDK never retries unsponsored.
+- **Source calls.** `source.calls` run on the source chain before the claim.
+  A call's `provides` must name `source.token`, and its amounts add to
+  `source.auxiliaryFunds`. Source calls that used to be dropped silently now
+  run, or are refused by the orchestrator.
+- **Smart sessions.** A session that needs enabling puts its enable call first
+  on the source, so a source-free transaction whose session is not yet enabled
+  is refused before quoting: name a `source`, or enable the session first.
+- **`customDeadline`** on a cross-chain transaction is now refused instead of
+  dropped, and `hyperCore` on a destination that is not HyperCore is refused.
+
+### Deployment and setup
+
+`deploy('evm', chain, { sponsored })` keeps working. A sponsored intent-path
+deployment spends nothing; an unsponsored one pays in a same-chain token it now
+needs named: `deploy('evm', chain, { source: { token } })`. Intent-path
+`setup(chain)` likewise takes `setup(chain, { source: { token } })`. Either
+refuses before any request without it. Deployments and setup that run as
+UserOperations are unchanged.
+
+### Solana
+
+| Transaction | Shape |
+| --- | --- |
+| Same-chain SPL transfer | `{ source: { token: mint, maxAmount? }, destination: { chain, token: mint, amount?, recipient } }` |
+| Solana → EVM delivery | `{ source: { chain: cluster, token, maxAmount? }, destination: { chain, token, amount?, recipient?, calls?, gasLimit? } }` |
+| Instructions | `{ destination: { chain, instructions, addressLookupTables? }, sponsored }`, or with `source: { token }` naming the fee token when unsponsored |
+| Authority change | `{ destination: { chain, authority } }`, also for `getAuthorityStatus` |
+
+`deploy('solana', …)` is unchanged. A Solana source takes no
+`auxiliaryFunds` or `calls`.
+
+### Approval input and policies
+
+`PreparedTransactionData.intentInput`, and the argument of JWT
+`getIntentExtensionToken`, is now the versioned
+`sdk-caucasus-singular-2026-09-v1` input: the quote body itself, with CAIP-2
+chain ids and chain-native strings
+([sponsorship approval](sponsorship-approval.md)). A sponsorship policy that
+reads `destinationChainId`, `destinationExecutions`, `tokenRequests` or numeric
+chain ids must be reviewed. `/jwt-server`'s `shouldSponsor` reads both the new
+input and the one older pinned SDKs send.
+
+### Exports
+
+Removed: `TokenRequest`, `NonEvmTokenRequest`, `NonEvmTokenRequests` and
+`AuxiliaryFunds` from `@rhinestone/sdk`, and `SolanaSourceAsset` from
+`@rhinestone/sdk/solana`. Added: `TransactionSource`, `TransactionDestination`,
+`EvmDeployOptions` and `EvmSetupOptions` from `@rhinestone/sdk`, and
+`SolanaTransactionSource` from `@rhinestone/sdk/solana`. `IntentInput` and
+`SerializedIntentInput` describe the new approval input.
 
 ## VM-specific entry points
 
@@ -113,7 +209,7 @@ owner cannot be spent by it.
 
 ### Managing Solana authorities
 
-`prepareTransaction({ chain, authority })` adds or removes a passkey or a
+`prepareTransaction({ destination: { chain, authority } })` adds or removes a passkey or a
 secp256k1 (ECDSA) key on the account's Swig. Build the change with
 `@rhinestone/sdk/solana`:
 
@@ -169,8 +265,10 @@ const account = await sdk.createAccount({
 await account.deploy('solana', solanaDevnet, { swigId })
 
 const enroll = {
-  chain: solanaDevnet,
-  authority: addEcdsaKey(recoveryPublicKey, { permission: 'manageAuthority' }),
+  destination: {
+    chain: solanaDevnet,
+    authority: addEcdsaKey(recoveryPublicKey, { permission: 'manageAuthority' }),
+  },
 }
 let { status } = await account.getAuthorityStatus(enroll)
 if (status === 'notApplied') {
@@ -223,8 +321,10 @@ const recovery = await sdk.createAccount({
   },
 })
 const added = await recovery.prepareTransaction({
-  chain: solanaDevnet,
-  authority: addPasskey(newPasskey, { permission: 'all' }),
+  destination: {
+    chain: solanaDevnet,
+    authority: addPasskey(newPasskey, { permission: 'all' }),
+  },
 })
 await recovery.waitForExecution(
   await recovery.submitTransaction(await recovery.signTransaction(added)),
@@ -558,18 +658,14 @@ quoted and no unsponsored fallback. Calling prepare again is a new approval.
 The orchestrator binds the grant by recomputing the approval input from the
 quote request ([sponsorship approval](sponsorship-approval.md)).
 
-- **EVM.** The approval input is exactly what 2.16.x produced for the same
-  transaction, so existing policies keep working. A request that the Caucasus
-  body cannot express in that input fails with
-  `UnsupportedSponsorshipApprovalError` before the callback runs. One example
-  is a `sourceAssets` list that names the same token on one chain both with and
-  without an `amount`. Use project-wide sponsorship for such a request.
-- **Solana.** The input now names the paying Swig as `account.svm`: its wallet,
-  its authority and, for plain operations, its state account. A same-chain
-  transfer pins its mint in `accountAccessList`. An SVM-only input has no
-  `options.signatureMode`. A Swig creation also carries the installed root and
-  the Swig id in `account.svm.initData`. Review Solana sponsorship policies
-  against this shape.
+- **The input changed.** It is the versioned
+  `sdk-caucasus-singular-2026-09-v1` input, the quote body itself; see
+  [Approval input and policies](#approval-input-and-policies). A request
+  outside its allowlist fails with `UnsupportedSponsorshipApprovalError` before
+  the callback runs; use project-wide sponsorship for such a request.
+- **Solana.** The input names the paying Swig as `account.svm`: its wallet,
+  its authority and, for plain operations, its state account. A Swig creation
+  also carries the installed root and the Swig id in `account.svm.initData`.
 - **Restoring Solana artifacts.** A Solana transaction prepared by an earlier
   snapshot fails restore with `InvalidSolanaTransactionArtifactError`. Prepare
   it again.
@@ -579,8 +675,11 @@ quote request ([sponsorship approval](sponsorship-approval.md)).
 `PreparedTransactionData` gains a `request` field carrying the versioned wire
 request. Treat it as opaque and persist it with the rest of the object.
 
-A payload prepared under an earlier wire version — or one missing `request` —
-fails with `InvalidPreparedTransactionError` before signing or submission. There
+A payload prepared under an earlier wire version, by an earlier SDK
+generation (including earlier `2026-09.caucasus` snapshots with the flat
+transaction shape), or one missing `request`, fails with
+`InvalidPreparedTransactionError` before signing or submission, and before its
+transaction is read. There
 is no runtime shim that converts an old artifact, and no automatic re-quote: the
 migration action is to reconcile the original submission and prepare afresh,
 deliberately.
@@ -592,7 +691,7 @@ deliberately.
 | `UnsupportedSigningRequestError` | the quote asks for a payload this SDK cannot produce (a WebAuthn challenge or a Solana spend on the EVM path). Raised before any account state is read. |
 | `IncompleteIntentProofsError` | a proof vector is missing slots, which it names |
 | `MismatchedIntentProofError` | a contribution belongs to another intent, another request set, another slot, or duplicates one already filled |
-| `InvalidPreparedTransactionError` | a prepared transaction was built for an earlier wire version |
+| `InvalidPreparedTransactionError` | a prepared transaction was built for an earlier wire version or SDK generation |
 | `UnsupportedSponsorshipApprovalError` | intent-scoped sponsorship cannot bind the quote request exactly. Raised before `getIntentExtensionToken` runs. |
 | `SolanaAuthorityChangeRefusedError` | the orchestrator refuses a Swig passkey add or remove against the Swig's current roles (`SWIG_AUTHORITY_CHANGE_REFUSED`). Carries `reason`, `swigAddress`, and `roleId`, `roleIds` or `permission` when sent. |
 

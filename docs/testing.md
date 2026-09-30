@@ -29,14 +29,16 @@ tagged `personalSign` payloads, optional destination signatures, persisted
 Solana execution metadata, and chain-native references. Runtime tests repeat
 these checks for widened or reconstructed values, validate explicit Swig state
 addresses and derive their wallet PDAs offline, reject production or missing
-managed Solana accounts, validate exact persisted requests and opaque quote artifacts before
-signing/submission, and exercise automatic EVM
-source selection with a fake chain catalog. EVM → Solana delivery is covered at
+managed Solana accounts, and validate exact persisted requests and opaque quote artifacts before
+signing/submission. `src/api/transaction-input.test.ts` covers every rule of
+the nested `{ source, destination }` input: obsolete fields refused by name,
+delivery modes, when a source is required, the same-chain shorthand, and the
+Solana-origin shapes. EVM → Solana delivery is covered at
 the client, workflow and facade layers: the recipient resolution order on both
 clusters, base58 mints and recipients passed through unnormalized, refused
 destination execution, the provider's own destination chain id on `bridgeFill`,
 and chain-native completion and refund references. Solana → EVM delivery is
-covered the same way: the source-narrowing access list on the wire, a
+covered the same way: the one named source on the wire, a
 vendor-settled route with its delivery handle, mixed-namespace cost legs,
 recipient defaulting to the account's own EVM identity, and the shapes refused
 before quoting. The same explicitly named Swig is covered alone, with an EVM
@@ -97,13 +99,18 @@ generator there with `SDK_VECTORS_OUT` pointing at this checkout's baseline.
 
 ## Sponsorship approval vectors
 
-`test/vectors/sponsorship-approval/` pins the contract in
+`test/vectors/sponsorship-approval-singular/` pins the current contract in
 [sponsorship-approval.md](sponsorship-approval.md). Every case is rebuilt from
-the SDK on each run: EVM cases through `prepareTransaction`, the others through
-the request builders. It must project to its recorded approval input and
-digest, and every refused body must be refused. The EVM cases are calibrated
-against the release recorded in `provenance`. To regenerate after an intended
-change, run `bun run scripts/vectors/sponsorship-approval.ts`.
+the SDK on each run: EVM cases through `prepareTransaction` (or `deploy`), the
+others through the request builders. It must project to its recorded approval
+input and digest, and every refused body must be refused. `provenance` records
+the orchestrator commit the vectors were last cross-checked against. To
+regenerate after an intended change, run
+`bun run scripts/vectors/sponsorship-approval.ts`.
+
+`test/vectors/sponsorship-approval/` holds the frozen legacy contract. Its
+bodies are projected through test-only `legacy-projection.ts`, and a hash guard
+fails on any change to `vectors.json`; nothing regenerates it.
 
 ## Derivation invariants
 

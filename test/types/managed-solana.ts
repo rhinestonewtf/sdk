@@ -36,7 +36,6 @@ import {
   type SolanaExecutionMetadata,
   type SolanaInstructionsExecutionMetadata,
   type SolanaPasskeyPermission,
-  type SolanaSourceAsset,
   type SolanaStandaloneAccount,
   type SolanaStandaloneAccountConfig,
   solanaAddress,
@@ -105,26 +104,17 @@ const nativeOperation = {
     },
   ],
 } satisfies IntentOperationGroup
+const usdcOnMainnet = '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913' as const
 const solanaTransaction = {
-  chain: solanaDevnet,
-  tokenRequests: [{ address: mint, amount: 1n }],
-  recipient,
+  source: { token: mint },
+  destination: { chain: solanaDevnet, token: mint, amount: 1n, recipient },
   sponsored: false,
 } satisfies SameChainSolanaTransaction
 const deliveryTransaction = {
-  sourceChains: [mainnet],
-  targetChain: solanaDevnet,
-  tokenRequests: [{ address: mint, amount: 1n }],
-  recipient,
+  source: { chain: mainnet, token: usdcOnMainnet },
+  destination: { chain: solanaDevnet, token: mint, amount: 1n, recipient },
   sponsored: true,
 } satisfies Transaction
-// Both the recipient and the EVM sources are optional: the account's own Solana
-// wallet and the eligible catalog chains stand in for them.
-const defaultedDelivery = {
-  targetChain: solanaDevnet,
-  tokenRequests: [{ address: mint }],
-} satisfies Transaction
-
 // The wire JSON shape, assignable straight from a Jupiter `/swap-instructions`
 // response without branding every address first.
 const jupiterInstruction: {
@@ -137,85 +127,76 @@ const jupiterInstruction: {
   data: 'AQID',
 }
 const instructionTransaction = {
-  chain: solanaDevnet,
-  instructions: [
-    jupiterInstruction,
-    // A `@solana/web3.js` instruction, accepted structurally.
-    {
-      programId: { toBase58: () => mint },
-      keys: [
-        { pubkey: { toBase58: () => mint }, isSigner: true, isWritable: true },
-      ],
-      data: new Uint8Array([1, 2, 3]),
-    },
-  ],
-  addressLookupTables: ['GAQFGfFMdW95AdrXoBsWmCoiqHiWfYCKYvvmkNAbDwZ4'],
+  destination: {
+    chain: solanaDevnet,
+    instructions: [
+      jupiterInstruction,
+      // A `@solana/web3.js` instruction, accepted structurally.
+      {
+        programId: { toBase58: () => mint },
+        keys: [
+          {
+            pubkey: { toBase58: () => mint },
+            isSigner: true,
+            isWritable: true,
+          },
+        ],
+        data: new Uint8Array([1, 2, 3]),
+      },
+    ],
+    addressLookupTables: ['GAQFGfFMdW95AdrXoBsWmCoiqHiWfYCKYvvmkNAbDwZ4'],
+  },
 } satisfies SameChainSolanaInstructionsTransaction
 
 const usdcOnBase = '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913' as const
 const deliveryFromSolana = {
-  sourceChains: [solanaDevnet],
-  sourceAssets: [{ chain: solanaDevnet, address: mint }],
-  targetChain: base,
-  tokenRequests: [{ address: usdcOnBase, amount: 1n }],
+  source: { chain: solanaDevnet, token: mint },
+  destination: { chain: base, token: usdcOnBase, amount: 1n },
 } satisfies CrossChainSolanaOriginTransaction
 // The delivery recipient and amount are both optional: the account's own EVM
 // identity receives the whole balance of the named mint.
 const maxOutFromSolana = {
-  sourceChains: [solanaDevnet],
-  sourceAssets: [{ chain: solanaDevnet, address: mint }],
-  targetChain: base,
-  tokenRequests: [{ address: usdcOnBase }],
+  source: { chain: solanaDevnet, token: mint },
+  destination: { chain: base, token: usdcOnBase },
 } satisfies CrossChainSolanaOriginTransaction
 // A ceiling on the source debit, with or without a destination amount.
-const sourceCap: SolanaSourceAsset = {
-  chain: solanaDevnet,
-  address: mint,
-  amount: 4_000_000n,
-}
 const cappedMaxOutFromSolana = {
   ...maxOutFromSolana,
-  sourceAssets: [sourceCap],
+  source: { ...maxOutFromSolana.source, maxAmount: 4_000_000n },
 } satisfies CrossChainSolanaOriginTransaction
 // Native SOL is named by the address the orchestrator's token registry uses.
 const nativeSolFromSolana = {
   ...maxOutFromSolana,
-  sourceAssets: [
-    {
-      chain: solanaDevnet,
-      address: solanaAddress('11111111111111111111111111111111'),
-      amount: 1_000_000_000n,
-    },
-  ],
+  source: {
+    chain: solanaDevnet,
+    token: solanaAddress('11111111111111111111111111111111'),
+    maxAmount: 1_000_000_000n,
+  },
 } satisfies CrossChainSolanaOriginTransaction
 const cappedTransfer = {
   ...solanaTransaction,
-  sourceAssets: [sourceCap],
+  source: { ...solanaTransaction.source, maxAmount: 4_000_000n },
 } satisfies SameChainSolanaTransaction
 const uncappedSourceTransfer = {
   ...solanaTransaction,
-  sourceAssets: [{ chain: solanaDevnet, address: mint }],
+  source: { chain: solanaDevnet, token: mint },
 } satisfies SameChainSolanaTransaction
-// @ts-expect-error a delivery names its source asset
+// @ts-expect-error a delivery names its source
 const missingSourceAsset: CrossChainSolanaOriginTransaction = {
-  sourceChains: [solanaDevnet],
-  targetChain: base,
-  tokenRequests: [{ address: usdcOnBase }],
+  destination: { chain: base, token: usdcOnBase },
 }
-const legacySourceTokens = {
-  ...maxOutFromSolana,
-  // @ts-expect-error `sourceTokens` was replaced by `sourceAssets`
-  sourceTokens: [{ address: mint }],
-} satisfies CrossChainSolanaOriginTransaction
-const twoSourceAssets = {
-  ...maxOutFromSolana,
-  // @ts-expect-error a delivery spends exactly one source asset
-  sourceAssets: [sourceCap, sourceCap],
+const legacySourceAssets = {
+  ...deliveryFromSolana,
+  // @ts-expect-error `sourceAssets` was replaced by `source`
+  sourceAssets: [{ chain: solanaDevnet, address: mint }],
 } satisfies CrossChainSolanaOriginTransaction
 const evmSourceAsset = {
   ...maxOutFromSolana,
-  // @ts-expect-error a Solana source asset is on a Solana cluster
-  sourceAssets: [{ chain: base, address: mint }],
+  source: {
+    // @ts-expect-error a Solana source chain is a Solana cluster
+    chain: base,
+    token: mint,
+  },
 } satisfies CrossChainSolanaOriginTransaction
 
 const metadata: SolanaExecutionMetadata = {
@@ -295,18 +276,24 @@ async function standaloneCapabilitySurface() {
   account.prepareTransaction(instructionTransaction)
   account.prepareTransaction({
     ...deliveryFromSolana,
-    recipient: owner.address,
+    destination: {
+      ...deliveryFromSolana.destination,
+      recipient: owner.address,
+    },
   })
   // @ts-expect-error with no EVM account to default to, the delivery names its recipient
   account.prepareTransaction(deliveryFromSolana)
   account.prepareTransaction({
     ...deliveryFromSolana,
-    recipient: owner.address,
-    // @ts-expect-error nor an EVM account to run destination calls
-    calls: [{ to: usdcOnBase, data: '0x' }],
+    destination: {
+      ...deliveryFromSolana.destination,
+      recipient: owner.address,
+      // @ts-expect-error nor an EVM account to run destination calls
+      calls: [{ to: usdcOnBase, data: '0x' }],
+    },
   })
   // @ts-expect-error an account with no EVM entry cannot run EVM calls
-  account.prepareTransaction({ chain: mainnet, calls: [] })
+  account.prepareTransaction({ destination: { chain: mainnet, calls: [] } })
   // @ts-expect-error nor fund a delivery from EVM sources
   account.prepareTransaction(deliveryTransaction)
   // @ts-expect-error EVM is not configured
@@ -329,8 +316,7 @@ async function standaloneCapabilitySurface() {
   account.deploy(solanaDevnet, { swigId: minted.id })
   account.prepareTransaction(authorityTransaction)
   account.prepareTransaction({
-    chain: solanaDevnet,
-    authority: removePasskey(passkeyKey),
+    destination: { chain: solanaDevnet, authority: removePasskey(passkeyKey) },
   })
   account.prepareTransaction(ecdsaTransaction)
   const authorityStatus: SolanaAuthorityStatus =
@@ -382,11 +368,16 @@ async function standaloneCapabilitySurface() {
   })
   receiverPaired.prepareTransaction({
     ...deliveryFromSolana,
-    // @ts-expect-error an address-only receiver cannot execute destination calls
-    calls: [{ to: usdcOnBase, data: '0x' }],
+    destination: {
+      ...deliveryFromSolana.destination,
+      // @ts-expect-error an address-only receiver cannot execute destination calls
+      calls: [{ to: usdcOnBase, data: '0x' }],
+    },
   })
-  // @ts-expect-error an address-only receiver cannot fund an EVM transaction
-  receiverPaired.prepareTransaction({ chain: mainnet, calls: [] })
+  receiverPaired.prepareTransaction({
+    // @ts-expect-error an address-only receiver cannot fund an EVM transaction
+    destination: { chain: mainnet, calls: [] },
+  })
   void receiverAddress
 
   void wallet
@@ -413,18 +404,14 @@ async function compositeCapabilitySurface() {
   account.prepareTransaction(deliveryFromSolanaWithCalls)
   // The same request written inline, which is how integrators write it.
   account.prepareTransaction({
-    sourceChains: [solanaDevnet],
-    sourceAssets: [{ chain: solanaDevnet, address: mint, amount: 1n }],
-    targetChain: base,
-    tokenRequests: [{ address: usdcOnBase }],
-    recipient: owner.address,
+    source: { chain: solanaDevnet, token: mint, maxAmount: 1n },
+    destination: { chain: base, token: usdcOnBase, recipient: owner.address },
   })
   account.prepareTransaction(cappedMaxOutFromSolana)
   account.prepareTransaction(nativeSolFromSolana)
   account.prepareTransaction(cappedTransfer)
   account.prepareTransaction(deliveryTransaction)
-  account.prepareTransaction(defaultedDelivery)
-  account.prepareTransaction({ chain: mainnet, calls: [] })
+  account.prepareTransaction({ destination: { chain: mainnet, calls: [] } })
   // `deploy` names its VM: EVM deploys the smart account, Solana creates the
   // Swig, whose id the SDK computes when it is derived from the EVM account.
   const evmDeployed: boolean = await account.deploy('evm', mainnet, {
@@ -467,8 +454,11 @@ async function compositeCapabilitySurface() {
 
 const forbiddenCalls = {
   ...solanaTransaction,
-  // @ts-expect-error Solana-origin transfers cannot carry EVM calls
-  calls: [],
+  destination: {
+    ...solanaTransaction.destination,
+    // @ts-expect-error Solana-origin transfers cannot carry EVM calls
+    calls: [],
+  },
 } satisfies SameChainSolanaTransaction
 const sponsoredTransfer = {
   ...solanaTransaction,
@@ -480,8 +470,11 @@ const sponsoredTransferCategories = {
 } satisfies SameChainSolanaTransaction
 const forbiddenSources = {
   ...solanaTransaction,
-  // @ts-expect-error same-chain Solana transfers cannot select EVM sources
-  sourceChains: [mainnet],
+  source: {
+    ...solanaTransaction.source,
+    // @ts-expect-error same-chain Solana transfers cannot select an EVM chain as source
+    chain: mainnet,
+  },
 } satisfies SameChainSolanaTransaction
 const forbiddenDestination = {
   ...solanaTransaction,
@@ -494,43 +487,55 @@ const forbiddenAuthorization = {
   eip7702InitSignature: '0x12' as Hex,
 } satisfies SameChainSolanaTransaction
 
-// @ts-expect-error Solana destinations take delivery only, never calls
 const forbiddenDeliveryCalls: Transaction = {
   ...deliveryTransaction,
-  calls: [],
+  // @ts-expect-error Solana destinations take delivery only, never calls
+  destination: { ...deliveryTransaction.destination, calls: [] },
 }
-// @ts-expect-error Solana destinations take delivery only, never instructions
 const forbiddenDeliveryInstructions: Transaction = {
   ...deliveryTransaction,
-  instructions: [],
+  // @ts-expect-error Solana destinations take delivery only, never instructions
+  destination: { ...deliveryTransaction.destination, instructions: [] },
 }
-// @ts-expect-error a Solana delivery recipient is a base58 wallet, not an EVM address
 const forbiddenDeliveryRecipient: Transaction = {
   ...deliveryTransaction,
-  recipient: owner.address,
+  // @ts-expect-error a Solana delivery recipient is base58, not an EVM address
+  destination: { ...deliveryTransaction.destination, recipient: owner.address },
 }
-// @ts-expect-error a HyperCore action needs a HyperCore destination
 const forbiddenDeliveryHyperCore: Transaction = {
   ...deliveryTransaction,
-  hyperCore: { closePerp: { asset: 'ETH' } },
+  // @ts-expect-error a HyperCore action needs a HyperCore destination
+  destination: {
+    ...deliveryTransaction.destination,
+    hyperCore: { closePerp: { asset: 'ETH' } },
+  },
 }
 
 // Calls run on the account's own EVM account once the delivery lands.
 const deliveryFromSolanaWithCalls = {
   ...deliveryFromSolana,
-  calls: [{ to: usdcOnBase, data: '0x' }],
-  gasLimit: 200_000n,
+  destination: {
+    ...deliveryFromSolana.destination,
+    calls: [{ to: usdcOnBase, data: '0x' }],
+    gasLimit: 200_000n,
+  },
   eip7702InitSignature: '0x12',
 } satisfies CrossChainSolanaOriginTransaction
 const forbiddenDeliveryFromSolanaInstructions = {
   ...deliveryFromSolana,
-  // @ts-expect-error a Solana-origin delivery carries no instructions
-  instructions: [],
+  destination: {
+    ...deliveryFromSolana.destination,
+    // @ts-expect-error a Solana-origin delivery carries no instructions
+    instructions: [],
+  },
 } satisfies CrossChainSolanaOriginTransaction
 const forbiddenDeliveryFromSolanaHyperCore = {
   ...deliveryFromSolana,
-  // @ts-expect-error a HyperCore action needs a HyperCore destination
-  hyperCore: { closePerp: { asset: 'ETH' } },
+  destination: {
+    ...deliveryFromSolana.destination,
+    // @ts-expect-error a HyperCore action needs a HyperCore destination
+    hyperCore: { closePerp: { asset: 'ETH' } },
+  },
 } satisfies CrossChainSolanaOriginTransaction
 const sponsoredDeliveryFromSolana = {
   ...deliveryFromSolana,
@@ -542,34 +547,52 @@ const sponsoredDeliveryFromSolanaCategories = {
 } satisfies CrossChainSolanaOriginTransaction
 const forbiddenDeliveryFromSolanaRecipient = {
   ...deliveryFromSolana,
-  // @ts-expect-error the delivery lands on EVM, so the recipient is hex
-  recipient,
+  destination: {
+    ...deliveryFromSolana.destination,
+    // @ts-expect-error the delivery lands on EVM, so the recipient is hex
+    recipient,
+  },
 } satisfies CrossChainSolanaOriginTransaction
 const forbiddenDeliveryFromSolanaTarget = {
   ...deliveryFromSolana,
-  // @ts-expect-error a Solana-origin delivery targets an EVM chain
-  targetChain: solanaDevnet,
+  destination: {
+    // @ts-expect-error a Solana-origin delivery targets an EVM chain
+    chain: solanaDevnet,
+    token: usdcOnBase,
+  },
 } satisfies CrossChainSolanaOriginTransaction
 
 const forbiddenInstructionRecipient = {
   ...instructionTransaction,
-  // @ts-expect-error an instruction execution encodes its payee in the instructions
-  recipient,
+  destination: {
+    ...instructionTransaction.destination,
+    // @ts-expect-error an instruction execution encodes its payee in the instructions
+    recipient,
+  },
 } satisfies SameChainSolanaInstructionsTransaction
 const forbiddenInstructionTokens = {
   ...instructionTransaction,
-  // @ts-expect-error an instruction execution is tokenless
-  tokenRequests: [{ address: mint, amount: 1n }],
+  destination: {
+    ...instructionTransaction.destination,
+    // @ts-expect-error an instruction execution is tokenless
+    token: mint,
+  },
 } satisfies SameChainSolanaInstructionsTransaction
 const forbiddenInstructionCalls = {
   ...instructionTransaction,
-  // @ts-expect-error Solana instructions cannot be mixed with EVM calls
-  calls: [],
+  destination: {
+    ...instructionTransaction.destination,
+    // @ts-expect-error Solana instructions cannot be mixed with EVM calls
+    calls: [],
+  },
 } satisfies SameChainSolanaInstructionsTransaction
-const forbiddenInstructionSourceAssets = {
+const forbiddenInstructionSourceMaxAmount = {
   ...instructionTransaction,
-  // @ts-expect-error the orchestrator refuses source limits on instructions
-  sourceAssets: [sourceCap],
+  source: {
+    token: mint,
+    // @ts-expect-error the orchestrator refuses source limits on instructions
+    maxAmount: 1_000_000n,
+  },
 } satisfies SameChainSolanaInstructionsTransaction
 const forbiddenInstructionFees = {
   ...instructionTransaction,
@@ -594,9 +617,9 @@ const forbiddenTransferLookupTables = {
   // @ts-expect-error address lookup tables require instructions
   addressLookupTables: [mint],
 } satisfies SameChainSolanaTransaction
-// @ts-expect-error a Solana destination runs no instructions
 const forbiddenDeliveryLookupTables: Transaction = {
   ...deliveryTransaction,
+  // @ts-expect-error a Solana destination runs no instructions
   addressLookupTables: [mint],
 }
 
@@ -604,14 +627,18 @@ const forbiddenDeliveryLookupTables: Transaction = {
 const passkeyKey = `0x02${'11'.repeat(32)}` as Hex
 const permission: SolanaPasskeyPermission = 'allButManageAuthority'
 const authorityTransaction = {
-  chain: solanaDevnet,
-  authority: addPasskey(passkeyKey, { permission }),
+  destination: {
+    chain: solanaDevnet,
+    authority: addPasskey(passkeyKey, { permission }),
+  },
 } satisfies SameChainSolanaAuthorityTransaction
 const literalAuthority = {
-  chain: solanaDevnet,
-  authority: {
-    action: 'remove',
-    key: { type: 'passkey', publicKey: passkeyKey },
+  destination: {
+    chain: solanaDevnet,
+    authority: {
+      action: 'remove',
+      key: { type: 'passkey', publicKey: passkeyKey },
+    },
   },
 } satisfies SameChainSolanaAuthorityTransaction
 const addChange: SolanaAuthorityChange = addPasskey(passkeyKey, {
@@ -627,16 +654,20 @@ addPasskey(passkeyKey, { permission: 'programAll' })
 // A secp256k1 key, from a local account or its public key; never an address.
 declare const localSigner: import('viem').LocalAccount
 const ecdsaTransaction = {
-  chain: solanaDevnet,
-  authority: addEcdsaKey(localSigner, { permission: 'manageAuthority' }),
+  destination: {
+    chain: solanaDevnet,
+    authority: addEcdsaKey(localSigner, { permission: 'manageAuthority' }),
+  },
 } satisfies SameChainSolanaAuthorityTransaction
 const ecdsaChange: SolanaAuthorityChange = removeEcdsaKey(passkeyKey)
 const literalEcdsa = {
-  chain: solanaDevnet,
-  authority: {
-    action: 'add',
-    key: { type: 'ecdsa', publicKey: passkeyKey },
-    permission: 'allButManageAuthority',
+  destination: {
+    chain: solanaDevnet,
+    authority: {
+      action: 'add',
+      key: { type: 'ecdsa', publicKey: passkeyKey },
+      permission: 'allButManageAuthority',
+    },
   },
 } satisfies SameChainSolanaAuthorityTransaction
 // @ts-expect-error adding an ECDSA key requires a permission
@@ -647,28 +678,39 @@ const deprecatedAlias: SolanaAuthorityPermission = permission
 // @ts-expect-error removing a passkey takes no permission
 removePasskey(passkeyKey, { permission: 'all' })
 const forbiddenRemovePermission = {
-  chain: solanaDevnet,
-  authority: {
-    action: 'remove',
-    key: { type: 'passkey', publicKey: passkeyKey },
-    // @ts-expect-error a removal carries no permission
-    permission: 'all',
+  destination: {
+    chain: solanaDevnet,
+    authority: {
+      action: 'remove',
+      key: { type: 'passkey', publicKey: passkeyKey },
+      // @ts-expect-error a removal carries no permission
+      permission: 'all',
+    },
   },
 } satisfies SameChainSolanaAuthorityTransaction
 const forbiddenAuthorityInstructions = {
   ...authorityTransaction,
-  // @ts-expect-error an authority change runs no caller instructions
-  instructions: [jupiterInstruction],
+  destination: {
+    ...authorityTransaction.destination,
+    // @ts-expect-error an authority change runs no caller instructions
+    instructions: [jupiterInstruction],
+  },
 } satisfies SameChainSolanaAuthorityTransaction
 const forbiddenInstructionAuthority = {
   ...instructionTransaction,
-  // @ts-expect-error nor does an instruction execution change authorities
-  authority: addChange,
+  destination: {
+    ...instructionTransaction.destination,
+    // @ts-expect-error nor does an instruction execution change authorities
+    authority: addChange,
+  },
 } satisfies SameChainSolanaInstructionsTransaction
 const forbiddenTransferAuthority = {
   ...solanaTransaction,
-  // @ts-expect-error nor does a transfer
-  authority: addChange,
+  destination: {
+    ...solanaTransaction.destination,
+    // @ts-expect-error nor does a transfer
+    authority: addChange,
+  },
 } satisfies SameChainSolanaTransaction
 const forbiddenAuthorityTokens = {
   ...authorityTransaction,
@@ -776,11 +818,10 @@ void forbiddenInstructionRecipient
 void forbiddenInstructionTokens
 void forbiddenInstructionCalls
 void forbiddenInstructionFees
-void forbiddenInstructionSourceAssets
+void forbiddenInstructionSourceMaxAmount
 void uncappedSourceTransfer
 void missingSourceAsset
-void legacySourceTokens
-void twoSourceAssets
+void legacySourceAssets
 void evmSourceAsset
 void sponsoredInstructions
 void sponsoredInstructionCategories

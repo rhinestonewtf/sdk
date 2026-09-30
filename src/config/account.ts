@@ -15,15 +15,16 @@ import type {
 import type { WebAuthnAccount } from 'viem/account-abstraction'
 import type { AccountType } from '../accounts/types'
 import type {
+  HyperCoreChain,
   NonEvmAddress,
-  NonEvmChain,
   SolanaAddress,
   SolanaChain,
   SolanaInstructionInput,
+  StellarChain,
+  TronChain,
 } from '../chains/non-evm'
 import type {
   AppFeeRate,
-  AuxiliaryFunds,
   ProtocolFeeRate,
   SerializedIntentInput,
   SettlementLayerFilter,
@@ -983,10 +984,11 @@ interface JwtAuth {
   accessToken: string | (() => Promise<string>)
   /**
    * Called when preparing a sponsored transaction, before it is quoted, so it
-   * runs for quotes that are never submitted. Receives the canonical
-   * serialized intent input and must return a signed intent_extension_token
+   * runs for quotes that are never submitted. Receives the approval input —
+   * the quote request under the `sdk-caucasus-singular-2026-09-v1` contract,
+   * with CAIP-2 chain ids — and must return a signed intent_extension_token
    * JWT whose sponsorship digest covers it. Submission never calls it again.
-   * A request whose intent input cannot bind the quote exactly fails with
+   * A request outside the contract fails with
    * `UnsupportedSponsorshipApprovalError` before this is called.
    */
   getIntentExtensionToken?: (
@@ -1076,50 +1078,6 @@ type SourceCallProvidedFunds = {
 type SourceCallInput = CallInput & {
   provides?: SourceCallProvidedFunds[]
 }
-
-interface TokenRequestWithAmount {
-  address: Address
-  amount: bigint
-}
-
-interface TokenRequestWithoutAmount {
-  address: Address
-  amount?: undefined
-}
-
-type TokenRequest = TokenRequestWithAmount | TokenRequestWithoutAmount
-
-type TokenRequests = [TokenRequestWithoutAmount] | TokenRequestWithAmount[]
-
-interface NonEvmTokenRequestWithAmount {
-  address: NonEvmAddress
-  amount: bigint
-}
-
-interface NonEvmTokenRequestWithoutAmount {
-  address: NonEvmAddress
-  amount?: undefined
-}
-
-type NonEvmTokenRequest =
-  | NonEvmTokenRequestWithAmount
-  | NonEvmTokenRequestWithoutAmount
-
-type NonEvmTokenRequests =
-  | [NonEvmTokenRequestWithoutAmount]
-  | NonEvmTokenRequestWithAmount[]
-
-export type SimpleTokenList = Address[]
-
-export type ChainTokenMap = Record<number, SimpleTokenList>
-
-export type ExactInputConfig = {
-  chain: Chain
-  address: Address
-  amount?: bigint
-}
-
-type SourceAssetInput = SimpleTokenList | ChainTokenMap | ExactInputConfig[]
 
 type OwnerSignerSet =
   | {
@@ -1213,26 +1171,183 @@ type Sponsorship =
       protocolFees?: boolean
     }
 
-interface BaseTransaction {
-  calls?: CallInput[]
+/**
+ * Top-level fields of the flat transaction shape, replaced by the nested
+ * `source` and `destination`. Each is refused by name at runtime too.
+ */
+interface ObsoleteTransactionFields {
+  /** Replaced by `destination.chain`; `source.chain` defaults to it. */
+  chain?: never
+  /** Replaced by `destination.chain`. */
+  targetChain?: never
+  /** Replaced by `source.chain`. A transaction spends from one source. */
+  sourceChains?: never
+  /** Replaced by `source.token` and `source.maxAmount`. */
+  sourceAssets?: never
+  /** Replaced by `source.token`. */
+  sourceTokens?: never
+  /** Replaced by `source.calls`, which run on the source chain. */
+  sourceCalls?: never
+  /** Replaced by `source.auxiliaryFunds`, in `source.token`. */
+  auxiliaryFunds?: never
+  /** Replaced by `destination.token` and `destination.amount`. */
+  tokenRequests?: never
+  /** Replaced by `destination.recipient`. */
+  recipient?: never
+  /** Replaced by `destination.calls`. */
+  calls?: never
+  /** Replaced by `destination.gasLimit`. */
+  gasLimit?: never
+  /** Replaced by `destination.hyperCore`. */
+  hyperCore?: never
+  /** Replaced by `destination.instructions`. */
+  instructions?: never
+  /** Replaced by `destination.addressLookupTables`. */
+  addressLookupTables?: never
+  /** Replaced by `destination.authority`. */
+  authority?: never
+}
+
+/**
+ * The one chain and token an EVM-origin transaction spends.
+ *
+ * Omit `chain` to spend on the destination chain; a cross-chain transaction
+ * names it. The token is an address on that chain — the SDK neither resolves
+ * symbols nor searches other chains or tokens for funds.
+ */
+interface TransactionSource {
+  /** The chain to spend on. Defaults to `destination.chain`. */
+  chain?: Chain
+  /** The token to spend, as an address on the source chain. */
+  token: Address
   /**
-   * Per-chain executions to run on the source side, before the claim.
-   * Keyed by chain ID (must be present in `sourceChains`, or equal the
-   * target chain for same-chain transactions). Bundled into the intent
-   * at routing time and covered by the user's mandate signature.
-   *
-   * Caveat: only executes if the orchestrator creates an element on the
-   * matching chain — i.e. when the intent actually moves tokens from
-   * that source. Sponsored / no-op fills with no source movement skip
-   * the source element entirely, and `sourceCalls` keyed on that chain
-   * are silently dropped.
+   * Most of `token` the route may take from the account's balance, in base
+   * units. Omit for no cap.
    */
-  sourceCalls?: Record<number, SourceCallInput[]>
-  gasLimit?: bigint
+  maxAmount?: bigint
+  /**
+   * Extra `token` balance, in base units, that the source can count on beyond
+   * what it holds, such as funds arriving before the claim. Positive when set.
+   */
+  auxiliaryFunds?: bigint
+  /**
+   * Calls to run on the source chain before the claim, covered by the user's
+   * signature. A call's `provides` must name `token`; those amounts add to
+   * `auxiliaryFunds`.
+   */
+  calls?: SourceCallInput[]
+}
+
+/** A {@link TransactionSource} that names its chain, as a cross-chain transaction must. */
+type CrossChainTransactionSource = TransactionSource & { chain: Chain }
+
+/**
+ * The token a delivery asks for: `token` alone takes everything the source
+ * yields, and `token` with `amount` asks for exactly that amount. Omit both for
+ * an execution that delivers nothing.
+ */
+type TransactionDelivery<Token extends string> =
+  | {
+      /** The token to receive, as an address on the destination chain. */
+      token: Token
+      /** Exact amount of `token` to receive, in base units. Omit to receive the most the source yields. */
+      amount?: bigint
+    }
+  | { token?: undefined; amount?: undefined }
+
+/** Destination-only fields that do not apply to a destination kind. */
+interface ForeignDestinationFields {
+  hyperCore?: never
+  instructions?: never
+  addressLookupTables?: never
+  authority?: never
+}
+
+/** Where an EVM transaction lands: a token, calls, or both, on an EVM chain. */
+type EvmTransactionDestination = TransactionDelivery<Address> &
+  ForeignDestinationFields & {
+    /** The EVM chain to deliver to and execute on. */
+    chain: Chain
+    /**
+     * Who receives `token`. Omit to deliver to the account itself; a
+     * recipient cannot run `calls`.
+     */
+    recipient?: EvmAccountConfig | Address
+    /** Calls the account runs on `chain` once the delivery lands, in order. */
+    calls?: CallInput[]
+    /** Gas limit for `calls`. */
+    gasLimit?: bigint
+  }
+
+/** A HyperCore venue: a delivery, a HyperCore action, and settlement calls. */
+type HyperCoreTransactionDestination = TransactionDelivery<NonEvmAddress> &
+  Omit<ForeignDestinationFields, 'hyperCore'> & {
+    /** `hyperCorePerp` or `hyperCoreSpot`. */
+    chain: HyperCoreChain
+    recipient?: EvmAccountConfig | Address
+    /** HyperEVM calls that settle the HyperCore action. */
+    calls?: CallInput[]
+    /** Gas limit for `calls`. */
+    gasLimit?: bigint
+    /**
+     * What this transaction does on HyperCore: `openPerp`, `closePerp`, or a
+     * raw `action`.
+     *
+     * `openPerp` and `closePerp` are resolved while the transaction is
+     * prepared — the asset index, the price and size grids, and the mark to
+     * price against are read from Hyperliquid then, because the action has to
+     * be concrete before the quote commits to it.
+     */
+    hyperCore?: HyperCoreOptions
+  }
+
+/** A Tron or Stellar delivery. The account holds no identity there, so it names a recipient. */
+interface NonEvmTransactionDestination extends ForeignDestinationFields {
+  chain: TronChain | StellarChain
+  /** The token to receive, in the chain's native address format. */
+  token: NonEvmAddress
+  /** Exact amount of `token` to receive, in base units. Omit to receive the most the source yields. */
+  amount?: bigint
+  /** Who receives `token`, in the chain's native address format. */
+  recipient: NonEvmAddress
+  calls?: never
+  gasLimit?: never
+}
+
+/** A delivery from EVM to Solana. */
+interface SolanaDeliveryTransactionDestination
+  extends ForeignDestinationFields {
+  chain: SolanaChain
+  /** The SPL mint (or native SOL) to receive. */
+  token: SolanaAddress
+  /** Exact amount of `token` to receive, in base units. Omit to receive the most the source yields. */
+  amount?: bigint
+  /** Who receives `token`. Defaults to the account's Solana address. */
+  recipient?: SolanaAddress
+  calls?: never
+  gasLimit?: never
+}
+
+/**
+ * Where an EVM-origin transaction lands. Narrow on `chain` for the fields each
+ * destination takes.
+ */
+type TransactionDestination =
+  | EvmTransactionDestination
+  | HyperCoreTransactionDestination
+  | NonEvmTransactionDestination
+  | SolanaDeliveryTransactionDestination
+
+/** Options every EVM-origin transaction takes. */
+interface EvmTransactionOptions extends ObsoleteTransactionFields {
   signers?: SignerSet
+  /**
+   * Requested sponsorship. A transaction that delivers nothing may omit
+   * `source` only when gas is sponsored; the orchestrator decides what it
+   * actually covers and refuses the rest.
+   */
   sponsored?: Sponsorship
   eip7702InitSignature?: Hex
-  sourceAssets?: SourceAssetInput
   appFees?: AppFeeRate
   /**
    * Rhinestone protocol fee rate in basis points of the input value (0–10000 =
@@ -1253,17 +1368,6 @@ interface BaseTransaction {
    * an unconstrained route.
    */
   quoters?: SwapQuoterFilter
-  auxiliaryFunds?: AuxiliaryFunds
-  /**
-   * What this transaction does on HyperCore, for a `hyperCorePerp` or
-   * `hyperCoreSpot` destination: `openPerp`, `closePerp`, or a raw `action`.
-   *
-   * `openPerp` and `closePerp` are resolved while the transaction is prepared —
-   * the asset index, the price and size grids, and the mark to price against
-   * are read from Hyperliquid then, because the action has to be concrete
-   * before the quote commits to it.
-   */
-  hyperCore?: HyperCoreOptions
   experimental_accountOverride?: {
     setupOps?: {
       to: Address
@@ -1272,15 +1376,20 @@ interface BaseTransaction {
   }
 }
 
-interface SameChainTransaction extends BaseTransaction {
-  chain: Chain
-  tokenRequests?: TokenRequests
-  recipient?: EvmAccountConfig | Address
+/**
+ * A transaction that lands on an EVM chain, funded from the managed EVM
+ * account.
+ *
+ * `source` is required for a delivery, and for any execution that is not
+ * gas-sponsored. Without `source.chain` it spends on the destination chain.
+ */
+interface EvmTransaction extends EvmTransactionOptions {
+  source?: TransactionSource
+  destination: EvmTransactionDestination
   /**
    * Absolute unix timestamp (seconds) overriding the on-chain fill deadline
-   * (default 2 min). Same-chain only — the field lives on this type precisely
-   * because the orchestrator honors it only on the same-chain (tokenless)
-   * route; cross-chain transactions cannot set it. Must be between
+   * (default 2 min). Same-chain only: a transaction whose `source.chain`
+   * differs from `destination.chain` is refused. Must be between
    * `now + 120s` and `now + 86400s` (24h); out-of-range values are rejected
    * by the orchestrator with a `400`. When honored, the quoted `expiresAt`
    * and the bundle claim/nonce expiry track this value automatically.
@@ -1288,28 +1397,33 @@ interface SameChainTransaction extends BaseTransaction {
   customDeadline?: number
 }
 
-interface CrossChainEvmTransaction extends BaseTransaction {
-  sourceChains?: readonly Chain[]
-  targetChain: Chain
-  tokenRequests?: TokenRequests
-  recipient?: EvmAccountConfig | Address
+/**
+ * A HyperCore action, delivery or both, funded from an EVM chain. HyperCore
+ * hosts no account, so the source names its chain.
+ */
+interface HyperCoreTransaction extends EvmTransactionOptions {
+  source: CrossChainTransactionSource
+  destination: HyperCoreTransactionDestination
+  customDeadline?: never
 }
 
-// Legacy non-EVM destinations keep their namespace-specific string values.
-// Managed recipient execution remains EVM-only.
-interface CrossChainNonEvmTransaction extends BaseTransaction {
-  sourceChains?: readonly Chain[]
-  targetChain: Exclude<NonEvmChain, SolanaChain>
-  tokenRequests?: NonEvmTokenRequests
-  recipient?: NonEvmAddress
+/** A delivery to Tron or Stellar, funded from an EVM chain. */
+interface CrossChainNonEvmTransaction extends EvmTransactionOptions {
+  source: CrossChainTransactionSource
+  destination: NonEvmTransactionDestination
+  customDeadline?: never
+}
+
+/** A delivery to Solana, funded from an EVM chain. */
+interface CrossChainSolanaTransaction extends EvmTransactionOptions {
+  source: CrossChainTransactionSource
+  destination: SolanaDeliveryTransactionDestination
+  customDeadline?: never
 }
 
 /**
  * The Solana token a Solana-origin transaction spends, on one cluster, with an
  * optional ceiling on how much of it the wallet may debit.
- *
- * The token is an SPL mint, or native SOL (`11111111111111111111111111111111`)
- * for a cross-chain delivery only.
  *
  * The ceiling is the most the route may take from the wallet in that token,
  * not the amount delivered. With a destination amount the route is exact-out
@@ -1321,182 +1435,138 @@ interface CrossChainNonEvmTransaction extends BaseTransaction {
  * For native SOL the wallet's rent-exempt reserve is never spendable, so
  * spending the whole balance or a ceiling takes at most the lamports above it.
  */
-interface SolanaSourceAsset {
-  /** The cluster the token is spent on. Must match the transaction's own cluster. */
-  chain: SolanaChain
+interface SolanaTransactionSource {
+  /** The cluster to spend on. Defaults to `destination.chain`. */
+  chain?: SolanaChain
   /**
-   * The SPL mint, or `11111111111111111111111111111111` for native SOL on a
-   * cross-chain delivery. A same-chain transfer takes an SPL mint only.
+   * The SPL mint, or `11111111111111111111111111111111` for native SOL where
+   * the transaction allows it.
    */
-  address: SolanaAddress
-  /** Most of this token the wallet may debit, in base units. Omit for no ceiling. */
-  amount?: bigint
+  token: SolanaAddress
+  /** Most of `token` the wallet may debit, in base units. Omit for no ceiling. */
+  maxAmount?: bigint
+  auxiliaryFunds?: never
+  calls?: never
 }
+
+/** Fields no Solana-origin transaction takes. */
+interface SolanaOriginExcludedFields extends ObsoleteTransactionFields {
+  signers?: never
+  customDeadline?: never
+  settlementLayers?: never
+  quoters?: never
+  experimental_accountOverride?: never
+}
+
+/**
+ * Requested sponsorship, in the same shape an EVM transaction takes. Which
+ * categories a Solana route actually bills is the orchestrator's decision — it
+ * serves what it can cover and refuses the rest by name.
+ */
+type SolanaSponsorship = Sponsorship
 
 /**
  * One same-chain SPL transfer from a managed Solana account.
  *
- * Only SPL mints are supported; native SOL is refused before anything is
- * quoted.
- *
- * Omit `tokenRequests[0].amount` to send the whole balance of the mint, or cap
- * what that spends with `sourceAssets`.
+ * `source.token` names the mint the transfer sends, which must be
+ * `destination.token`; only SPL mints are supported, and native SOL is refused
+ * before anything is quoted. Omit `destination.amount` to send the whole
+ * balance of the mint, or up to `source.maxAmount`.
  */
-interface SameChainSolanaTransaction {
-  chain: SolanaChain
-  tokenRequests: [
-    | { address: SolanaAddress; amount: bigint }
-    | { address: SolanaAddress; amount?: undefined },
-  ]
-  recipient: SolanaAddress
-  /**
-   * Caps how much of the mint the wallet may debit. Names the same cluster and
-   * mint as the token request, with an `amount` no smaller than the one sent.
-   * Without an `amount` it is the same as omitting it.
-   */
-  sourceAssets?: readonly [SolanaSourceAsset]
+interface SameChainSolanaTransaction extends SolanaOriginExcludedFields {
+  source: SolanaTransactionSource
+  destination: ForeignDestinationFields & {
+    chain: SolanaChain
+    /** The SPL mint to send, the same as `source.token`. */
+    token: SolanaAddress
+    /** Amount of the mint to send, in base units. Omit to send the whole balance. */
+    amount?: bigint
+    /** The Solana wallet that receives the mint. */
+    recipient: SolanaAddress
+    calls?: never
+    gasLimit?: never
+  }
   appFees?: AppFeeRate
   protocolFees?: ProtocolFeeRate
-  /**
-   * Requested sponsorship, in the same shape an EVM transaction takes. Which
-   * categories a Solana route actually bills is the orchestrator's decision —
-   * it serves what it can cover and refuses the rest by name.
-   */
-  sponsored?: Sponsorship
-  targetChain?: never
-  sourceChains?: never
-  calls?: never
-  instructions?: never
-  addressLookupTables?: never
-  authority?: never
-  sourceCalls?: never
-  signers?: never
-  gasLimit?: never
-  customDeadline?: never
+  sponsored?: SolanaSponsorship
   eip7702InitSignature?: never
-  settlementLayers?: never
-  quoters?: never
-  auxiliaryFunds?: never
-  hyperCore?: never
-  experimental_accountOverride?: never
 }
 
 /**
  * One cross-chain delivery funded from a managed Solana account: spend an SPL
  * mint or native SOL on a Solana cluster, receive a token on an EVM chain.
  *
- * The source cluster and token are named explicitly — the route spends exactly
- * one source token, and the account cannot pick between several holdings on
- * your behalf. Omit `tokenRequests[0].amount` to spend the whole balance of
- * that token, or up to `sourceAssets[0].amount` when it is set. Omit
- * `recipient` to deliver to the account's own EVM address. An account with no
- * EVM entry has none, so it must name a `recipient`.
+ * `source` names the cluster and token explicitly — the route spends exactly
+ * one source token. Omit `destination.amount` to spend the whole balance of
+ * that token, or up to `source.maxAmount`. Omit `destination.recipient` to
+ * deliver to the account's own EVM address. An account with no EVM entry has
+ * none, so it must name a recipient.
  *
- * `calls` run on the account's own EVM account once the delivery lands, which
- * needs an EVM entry and no explicit `recipient`.
+ * `destination.calls` run on the account's own EVM account once the delivery
+ * lands, which needs an EVM entry and no explicit recipient.
  */
-interface CrossChainSolanaOriginTransaction {
-  sourceChains: readonly [SolanaChain]
+interface CrossChainSolanaOriginTransaction extends SolanaOriginExcludedFields {
+  source: SolanaTransactionSource & { chain: SolanaChain }
+  destination: ForeignDestinationFields & {
+    /** The EVM chain to deliver to. */
+    chain: Chain
+    /** The token to receive, as an address on `chain`. */
+    token: Address
+    /** Exact amount of `token` to receive, in base units. Omit to receive the most the source yields. */
+    amount?: bigint
+    recipient?: Address
+    /**
+     * Calls the account's EVM account runs on `chain` after the delivery
+     * lands, in order. The quote then also asks the EVM account to sign them,
+     * and to sign any EIP-7702 delegation it needs there.
+     */
+    calls?: CallInput[]
+    /** Gas limit for `calls`. */
+    gasLimit?: bigint
+  }
   /**
-   * The SPL mint or native SOL to spend, on the `sourceChains` cluster, and
-   * optionally the most of it the wallet may debit. Exactly one; the route
-   * spends one source token.
-   */
-  sourceAssets: readonly [SolanaSourceAsset]
-  targetChain: Chain
-  tokenRequests: readonly [{ address: Address; amount?: bigint }]
-  recipient?: Address
-  /**
-   * Calls the account's EVM account runs on `targetChain` after the delivery
-   * lands, in order. The quote then also asks the EVM account to sign them,
-   * and to sign any EIP-7702 delegation it needs there.
-   */
-  calls?: CallInput[]
-  /** Gas limit for `calls` on `targetChain`. */
-  gasLimit?: bigint
-  /**
-   * The init signature an EIP-7702 account needs to run `calls`, from
-   * `signEip7702InitData()`.
+   * The init signature an EIP-7702 account needs to run `destination.calls`,
+   * from `signEip7702InitData()`.
    */
   eip7702InitSignature?: Hex
   appFees?: AppFeeRate
   protocolFees?: ProtocolFeeRate
-  /**
-   * Requested sponsorship, in the same shape an EVM transaction takes. Which
-   * categories a Solana route actually bills is the orchestrator's decision —
-   * it serves what it can cover and refuses the rest by name.
-   */
-  sponsored?: Sponsorship
-  /** Replaced by `sourceAssets: [{ chain, address, amount? }]`. */
-  sourceTokens?: never
-  chain?: never
-  instructions?: never
-  addressLookupTables?: never
-  authority?: never
-  sourceCalls?: never
-  signers?: never
-  customDeadline?: never
-  settlementLayers?: never
-  quoters?: never
-  auxiliaryFunds?: never
-  hyperCore?: never
-  experimental_accountOverride?: never
-}
-
-interface CrossChainSolanaTransaction extends Omit<BaseTransaction, 'calls'> {
-  sourceChains?: readonly Chain[]
-  targetChain: SolanaChain
-  tokenRequests: NonEvmTokenRequests &
-    readonly { address: SolanaAddress; amount?: bigint }[]
-  recipient?: SolanaAddress
-  calls?: never
-  instructions?: never
-  addressLookupTables?: never
-  hyperCore?: never
+  sponsored?: SolanaSponsorship
 }
 
 /**
  * Solana instructions run out of a managed Solana account's own wallet, on the
  * cluster the account holds them on.
  *
- * The wallet executes the instructions, so the transaction names no recipient
- * and no token request: a payee is encoded inside the instructions themselves.
+ * The wallet executes the instructions, so the destination names no token and
+ * no recipient: a payee is encoded inside the instructions themselves. A
+ * gas-sponsored execution needs no `source`; otherwise `source.token` names the
+ * SPL mint or native SOL the execution's charge is paid in.
  */
-interface SameChainSolanaInstructionsTransaction {
-  chain: SolanaChain
-  /** The instructions to run, in order. Between 1 and 32. */
-  instructions: readonly SolanaInstructionInput[]
-  /**
-   * Address lookup tables the instructions resolve accounts through, base58,
-   * as Jupiter's `/swap-instructions` returns them. At most 8. Sent as the
-   * orchestrator's `addressLookupTableAddresses`.
-   */
-  addressLookupTables?: readonly string[]
-  /**
-   * Requested sponsorship, in the same shape an EVM transaction takes. Which
-   * categories a Solana route actually bills is the orchestrator's decision —
-   * it serves what it can cover and refuses the rest by name.
-   */
-  sponsored?: Sponsorship
-  tokenRequests?: never
-  recipient?: never
-  authority?: never
+interface SameChainSolanaInstructionsTransaction
+  extends SolanaOriginExcludedFields {
+  source?: Omit<SolanaTransactionSource, 'maxAmount'> & { maxAmount?: never }
+  destination: {
+    chain: SolanaChain
+    /** The instructions to run, in order. Between 1 and 32. */
+    instructions: readonly SolanaInstructionInput[]
+    /**
+     * Address lookup tables the instructions resolve accounts through, base58,
+     * as Jupiter's `/swap-instructions` returns them. At most 8.
+     */
+    addressLookupTables?: readonly string[]
+    token?: never
+    amount?: never
+    recipient?: never
+    authority?: never
+    calls?: never
+    gasLimit?: never
+    hyperCore?: never
+  }
+  sponsored?: SolanaSponsorship
   appFees?: never
   protocolFees?: never
-  targetChain?: never
-  sourceChains?: never
-  calls?: never
-  sourceCalls?: never
-  sourceAssets?: never
-  signers?: never
-  gasLimit?: never
-  customDeadline?: never
   eip7702InitSignature?: never
-  settlementLayers?: never
-  quoters?: never
-  auxiliaryFunds?: never
-  hyperCore?: never
-  experimental_accountOverride?: never
 }
 
 /**
@@ -1576,8 +1646,9 @@ type SolanaAuthorityStatus =
  *
  * The configured owner signs the change, and must sit on a role holding `All`
  * or `ManageAuthority`. The change is always gas-sponsored and billed to the
- * integrator's sponsorship, like `deploy('solana', …)`; the sponsor also funds
- * the rent a new role locks, and a removal returns it to the wallet.
+ * integrator's sponsorship, like `deploy('solana', …)`, so it names no
+ * `source`; the sponsor also funds the rent a new role locks, and a removal
+ * returns it to the wallet.
  *
  * Granting `manageAuthority` or `all` hands over control of the wallet: either
  * can add a key with `all`.
@@ -1587,37 +1658,27 @@ type SolanaAuthorityStatus =
  * last role able to manage authorities — with
  * `SolanaAuthorityChangeRefusedError` from `@rhinestone/sdk/errors`.
  */
-interface SameChainSolanaAuthorityTransaction {
-  chain: SolanaChain
-  /** The change to make, from `addPasskey`, `addEcdsaKey`, `removePasskey` or `removeEcdsaKey`. */
-  authority: SolanaAuthorityChange
+interface SameChainSolanaAuthorityTransaction
+  extends SolanaOriginExcludedFields {
+  source?: never
+  destination: {
+    chain: SolanaChain
+    /** The change to make, from `addPasskey`, `addEcdsaKey`, `removePasskey` or `removeEcdsaKey`. */
+    authority: SolanaAuthorityChange
+    token?: never
+    amount?: never
+    recipient?: never
+    instructions?: never
+    addressLookupTables?: never
+    calls?: never
+    gasLimit?: never
+    hyperCore?: never
+  }
   sponsored?: never
-  tokenRequests?: never
-  recipient?: never
-  instructions?: never
-  addressLookupTables?: never
   appFees?: never
   protocolFees?: never
-  targetChain?: never
-  sourceChains?: never
-  calls?: never
-  sourceCalls?: never
-  sourceAssets?: never
-  signers?: never
-  gasLimit?: never
-  customDeadline?: never
   eip7702InitSignature?: never
-  settlementLayers?: never
-  quoters?: never
-  auxiliaryFunds?: never
-  hyperCore?: never
-  experimental_accountOverride?: never
 }
-
-type CrossChainTransaction =
-  | CrossChainEvmTransaction
-  | CrossChainNonEvmTransaction
-  | CrossChainSolanaTransaction
 
 interface UserOperationTransaction {
   calls: CallInput[]
@@ -1626,13 +1687,23 @@ interface UserOperationTransaction {
   chain: Chain
 }
 
+/** Transactions funded from a managed EVM account. */
+type EvmOriginTransaction =
+  | EvmTransaction
+  | HyperCoreTransaction
+  | CrossChainNonEvmTransaction
+  | CrossChainSolanaTransaction
+
+/**
+ * An intent transaction: a `destination` to reach, and the one `source` that
+ * funds it.
+ */
 type Transaction =
-  | SameChainTransaction
+  | EvmOriginTransaction
   | SameChainSolanaTransaction
   | SameChainSolanaInstructionsTransaction
   | SameChainSolanaAuthorityTransaction
   | CrossChainSolanaOriginTransaction
-  | CrossChainTransaction
 
 type RequiredAccountBranch<
   C extends RhinestoneAccountConfig,
@@ -1644,24 +1715,34 @@ type ManagedEvmTransactions<C extends RhinestoneAccountConfig> = [
 ] extends [never]
   ? never
   : [RequiredAccountBranch<C, 'evm'>] extends [EvmAccountConfig]
-    ? SameChainTransaction | CrossChainTransaction
+    ? EvmOriginTransaction
     : never
 
-type RestrictedSolanaDelivery = CrossChainSolanaOriginTransaction & {
-  calls?: never
-  gasLimit?: never
+type RestrictedSolanaDelivery = Omit<
+  CrossChainSolanaOriginTransaction,
+  'destination' | 'eip7702InitSignature'
+> & {
+  destination: Omit<
+    CrossChainSolanaOriginTransaction['destination'],
+    'calls' | 'gasLimit'
+  > & { calls?: never; gasLimit?: never }
   eip7702InitSignature?: never
 }
+
+type WithDeliveryRecipient<T extends { destination: object }> = Omit<
+  T,
+  'destination'
+> & { destination: T['destination'] & { recipient: Address } }
 
 type SolanaDeliveryFor<C extends RhinestoneAccountConfig> = [
   RequiredAccountBranch<C, 'evm'>,
 ] extends [never]
-  ? RestrictedSolanaDelivery & { recipient: Address }
+  ? WithDeliveryRecipient<RestrictedSolanaDelivery>
   : [RequiredAccountBranch<C, 'evm'>] extends [EvmAccountConfig]
     ? CrossChainSolanaOriginTransaction
     : [RequiredAccountBranch<C, 'evm'>] extends [EvmReceiverAccountConfig]
       ? RestrictedSolanaDelivery
-      : RestrictedSolanaDelivery & { recipient: Address }
+      : WithDeliveryRecipient<RestrictedSolanaDelivery>
 
 type ManagedSolanaTransactions<C extends RhinestoneAccountConfig> = [
   RequiredAccountBranch<C, 'solana'>,
@@ -1716,8 +1797,6 @@ export type {
   ModuleType,
   MultiFactorValidatorConfig,
   NexusAccount,
-  NonEvmTokenRequest,
-  NonEvmTokenRequests,
   OpenPerpRequest,
   OwnableValidatorConfig,
   OwnerSet,
@@ -1760,10 +1839,9 @@ export type {
   SolanaOwner,
   SolanaPasskeyPermission,
   SolanaReceiverAccountConfig,
-  SolanaSourceAsset,
+  SolanaTransactionSource,
   SolanaStandaloneAccountConfig,
   SingleSessionSignerSet,
-  SourceAssetInput,
   SourceCallInput,
   SourceCallProvidedFunds,
   Sponsorship,
@@ -1771,12 +1849,20 @@ export type {
   SwapQuoter,
   SwapQuoterFilter,
   SwapScope,
-  TokenRequest,
-  TokenRequests,
   TokenSymbol,
   ToLeg,
+  CrossChainNonEvmTransaction,
   CrossChainSolanaOriginTransaction,
   CrossChainSolanaTransaction,
+  EvmOriginTransaction,
+  EvmTransaction,
+  EvmTransactionDestination,
+  HyperCoreTransaction,
+  HyperCoreTransactionDestination,
+  NonEvmTransactionDestination,
+  SolanaDeliveryTransactionDestination,
+  TransactionDestination,
+  TransactionSource,
   SameChainSolanaAuthorityTransaction,
   SameChainSolanaInstructionsTransaction,
   SameChainSolanaTransaction,

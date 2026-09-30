@@ -34,7 +34,6 @@ type CrossChainSettlementLayer =
   | 'LZ'
 
 type SupportedTokenSymbol = 'ETH' | 'WETH' | 'USDC' | 'USDT' | 'USDT0'
-type SupportedToken = SupportedTokenSymbol | Address
 
 type AccountType = 'GENERIC' | 'ERC7579' | 'EOA'
 
@@ -53,24 +52,6 @@ type IntentStatus =
   | typeof INTENT_STATUS_PENDING
   | typeof INTENT_STATUS_COMPLETED
   | typeof INTENT_STATUS_FAILED
-
-type MappedChainTokenAccessList = {
-  chainTokens?: {
-    [chainId in SupportedChain]?: SupportedToken[]
-  }
-  chainTokenAmounts?: {
-    [chainId in SupportedChain]?: Partial<Record<SupportedToken, bigint>>
-  }
-}
-
-type UnmappedChainTokenAccessList = {
-  chainIds?: SupportedChain[]
-  tokens?: SupportedToken[]
-}
-
-type AccountAccessList =
-  | MappedChainTokenAccessList
-  | UnmappedChainTokenAccessList
 
 /** Per-operation status. */
 type OperationStatus = 'PENDING' | 'COMPLETED' | 'FAILED'
@@ -391,35 +372,6 @@ type SignatureMode =
   | typeof SIG_MODE_EMISSARY_EXECUTION_ERC1271
   | typeof SIG_MODE_ERC1271_EMISSARY_EXECUTION
 
-type AuxiliaryFunds = {
-  [chainId: number]: Record<Address, bigint>
-}
-
-interface IntentOptions {
-  appFees?: AppFeeRate
-  protocolFees?: ProtocolFeeRate
-  /**
-   * Absolute unix timestamp (seconds) overriding the on-chain fill deadline.
-   * Same-chain (tokenless) route only; ignored elsewhere. Bounds (`now + 120s`
-   * .. `now + 86400s`) are enforced by the orchestrator.
-   */
-  customDeadline?: number
-  sponsorSettings?: SponsorSettings
-  settlementLayers?: SettlementLayerFilter
-  quoters?: SwapQuoterFilter
-  signatureMode?: SignatureMode
-  auxiliaryFunds?: AuxiliaryFunds
-  /**
-   * The HyperCore action this intent authorises, already concrete.
-   *
-   * Committed to when the intent is quoted, not when it executes: the agent
-   * that authorises the action is derived from the action's own bytes, and the
-   * signature covers a registration carrying that agent's address. Nothing
-   * about it can be chosen later — the price included.
-   */
-  hyperCore?: { action: HyperCoreAction }
-}
-
 interface AppFeeRate {
   feeBps: number
 }
@@ -475,25 +427,160 @@ interface SolanaWireInstruction {
   data: string
 }
 
+/** The approval contract `intentInput` follows. */
+type SponsorshipApprovalContractVersion = 'sdk-caucasus-singular-2026-09-v1'
+
+/** A typed EVM account or recipient, as the quote request names it. */
+type IntentInputEvmAccount =
+  | {
+      type: 'eoa'
+      address: Address
+      signatureMode?: SignatureMode
+      delegations?: IntentInputDelegations
+    }
+  | {
+      type: 'erc7579'
+      address: Address
+      initData?: { setupOps: Pick<Execution, 'to' | 'data'>[] }
+      signatureMode?: SignatureMode
+      delegations?: IntentInputDelegations
+      simulation?: {
+        mockSignature?: Hex
+        /** Mock signatures keyed by CAIP-2 chain id. */
+        mockSignaturesByChain?: Record<Caip2ChainId, Hex>
+      }
+    }
+
+/** EIP-7702 delegations, chain-agnostic or keyed by CAIP-2 chain id. */
+interface IntentInputDelegations {
+  default?: { contract: Address }
+  chains?: Record<Caip2ChainId, { contract: Address }>
+}
+
+/** A Swig that pays for a Solana-origin intent, or that a Swig creation installs. */
+interface IntentInputSvmAccount {
+  type: 'swig'
+  /** The asset-holding Swig wallet, base58. */
+  address: string
+  /**
+   * The Swig state account, base58. Absent when the request pairs the Swig
+   * with the account's EVM entry, which derives it.
+   */
+  swigAccount?: string
+  /** The Swig role that authorizes the spend. */
+  authorization: SwigAuthority
+  /** Present only on a Swig creation: the root role it installs and its id. */
+  initData?: {
+    authority: { kind: 'secp256k1' | 'secp256r1'; publicKey: Hex }
+    /** The 32-byte Swig id, lowercase hex. */
+    id?: Hex
+  }
+}
+
+/** Calls an EVM or HyperEVM settlement runs, with an optional gas limit. */
+interface IntentInputExecution {
+  calls: Execution[]
+  gasLimit?: bigint
+}
+
+/**
+ * The destination of an {@link IntentInput}, discriminated by `vm`. `token`
+ * alone asks for everything the source yields, `token` with `amount` for
+ * exactly that amount, and neither for an execution that delivers nothing.
+ */
+type IntentInputDestination =
+  | {
+      vm: 'evm'
+      chainId: Caip2ChainId
+      token?: Address
+      amount?: bigint
+      recipient?:
+        | { address: Address }
+        | Omit<IntentInputEvmAccount, 'signatureMode'>
+      execution?: IntentInputExecution
+    }
+  | {
+      vm: 'svm'
+      chainId: Caip2ChainId
+      token?: string
+      amount?: bigint
+      recipient?: { address: string }
+      execution?:
+        | {
+            instructions: SolanaWireInstruction[]
+            addressLookupTables?: string[]
+          }
+        | { authority: SolanaAuthorityChangeRequest }
+    }
+  | {
+      vm: 'tvm' | 'stellar'
+      chainId: Caip2ChainId
+      token?: string
+      amount?: bigint
+      recipient: { address: string }
+    }
+  | {
+      vm: 'hypercore'
+      chainId: Caip2ChainId
+      token?: string
+      amount?: bigint
+      recipient?:
+        | { address: Address }
+        | Omit<IntentInputEvmAccount, 'signatureMode'>
+      execution?: {
+        /** Exactly one action. */
+        actions?: HyperCoreAction[]
+        settlement?: IntentInputExecution
+      }
+    }
+
+/**
+ * The one chain and token an {@link IntentInput} spends. `auxiliaryFunds` and
+ * `execution` are EVM-only.
+ */
+interface IntentInputSource {
+  vm: 'evm' | 'svm'
+  chainId: Caip2ChainId
+  token: string
+  /** Most of `token` the route may take from the observed balance. */
+  maxAmount?: bigint
+  /** Extra `token` balance the source calls make available. */
+  auxiliaryFunds?: bigint
+  /** Calls run on the source chain before the claim. */
+  execution?: { calls: Execution[] }
+}
+
+/** Request options an {@link IntentInput} binds. Explicit `false`s are kept. */
+interface IntentInputOptions {
+  appFees?: AppFeeRate
+  protocolFees?: ProtocolFeeRate
+  customDeadline?: number
+  settlementLayers?: SettlementLayerFilter
+  quoters?: SwapQuoterFilter
+  sponsorship?: {
+    gas?: boolean
+    bridgeFees?: boolean
+    swapFees?: boolean
+    protocolFees?: boolean
+  }
+}
+
+/**
+ * The sponsorship approval input: the quote request an intent-scoped grant
+ * commits to, under the `sdk-caucasus-singular-2026-09-v1` contract.
+ *
+ * It is the validated request body verbatim — CAIP-2 chain ids, chain-native
+ * token and account strings, and supplied spellings — with `source` omitted
+ * when the request names none and `options` defaulted to `{}`. The same-chain
+ * shorthand is already expanded, so a transaction that omits `source.chain`
+ * approves exactly like one that names the destination chain.
+ */
 interface IntentInput {
-  account: Account
-  destinationChainId: number
-  destinationExecutions: Execution[]
-  destinationGasUnits?: bigint
-  tokenRequests: {
-    tokenAddress: Address | NonEvmAddress
-    amount?: bigint
-  }[]
-  recipient?: Account
-  /** Solana instructions run out of the account's own wallet on a Solana destination. */
-  destinationInstructions?: SolanaWireInstruction[]
-  /** Address lookup tables the `destinationInstructions` resolve accounts through, base58. */
-  addressLookupTableAddresses?: string[]
-  /** The Swig authority change a Solana destination makes, as the request sends it. */
-  destinationAuthority?: SolanaAuthorityChangeRequest
-  accountAccessList?: AccountAccessList
-  options: IntentOptions
-  preClaimExecutions?: Record<number, Execution[]>
+  contractVersion: SponsorshipApprovalContractVersion
+  account: { evm?: IntentInputEvmAccount; svm?: IntentInputSvmAccount }
+  source?: IntentInputSource
+  destination: IntentInputDestination
+  options: IntentInputOptions
 }
 
 // Transport projection: `bigint` becomes a decimal string, every other type
@@ -514,8 +601,9 @@ type Serialized<T> = T extends bigint
  * This is the canonical form the SDK exposes as
  * `PreparedTransactionData.intentInput` and passes to a JWT auth
  * `getIntentExtensionToken` callback, and the form a sponsorship JWT's digest
- * commits to. Type a sponsorship endpoint's request body with it instead of
- * re-deriving the mapping locally.
+ * commits to: the lowercase hex SHA-256 of its RFC 8785 (JCS) encoding. Type a
+ * sponsorship endpoint's request body with it instead of re-deriving the
+ * mapping locally.
  *
  * Compile-time shape only: an untrusted request body still needs runtime
  * validation.
@@ -1186,7 +1274,6 @@ export type {
   AccountWithContext,
   AppFeeRate,
   ProtocolFeeRate,
-  AuxiliaryFunds,
   AppFeeBalances,
   TokenConfig,
   SupportedChain,
@@ -1207,7 +1294,11 @@ export type {
   HyperCoreUpdateIsolatedMarginAction,
   SignatureMode,
   IntentInput,
+  IntentInputDestination,
+  IntentInputOptions,
+  IntentInputSource,
   SerializedIntentInput,
+  SponsorshipApprovalContractVersion,
   BridgeFill,
   Quote,
   QuoteResponse,
@@ -1246,7 +1337,6 @@ export type {
   IntentLeg,
   IntentRefund,
   IntentHyperCoreResult,
-  IntentOptions,
   SponsorSettings,
   SplitIntentsInput,
   SplitIntentsResult,
@@ -1254,9 +1344,6 @@ export type {
   PortfolioToken,
   Execution,
   SolanaWireInstruction,
-  AccountAccessList,
-  MappedChainTokenAccessList,
-  UnmappedChainTokenAccessList,
   TypedDataDefinition,
   OperationStatus,
   FailureReason,

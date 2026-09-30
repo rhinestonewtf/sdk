@@ -1,14 +1,26 @@
+import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
-import { projectSponsorshipApproval } from '../../../src/clients/orchestrator/sponsorship-approval'
 import { UnsupportedSponsorshipApprovalError } from '../../../src/errors/execution'
 import { computeIntentInputDigest } from '../../../src/jwt-server/digest'
-import { deriveVectors } from './derive'
-import { refusedVectors } from './refused'
+import { projectSponsorshipApproval } from './legacy-projection'
 import vectors from './vectors.json'
 
-// The published sponsorship approval contract (docs/sponsorship-approval.md).
-// The orchestrator reimplements the projection against these same vectors.
-describe('sponsorship approval vectors', () => {
+// The frozen legacy sponsorship approval contract. The SDK no longer sends it,
+// but the orchestrator serves it to older pinned clients and copies this file
+// verbatim as its legacy fixture, so it must never change. The current
+// contract's vectors live in ../sponsorship-approval-singular.
+const LEGACY_VECTORS_SHA256 =
+  '3292c83e17d948cdc93602081aaa9e7b7a90da6c93de47793f2c468dc89a4f12'
+
+describe('legacy sponsorship approval vectors (frozen)', () => {
+  test('the vector file is byte-identical to the frozen contract', () => {
+    const bytes = readFileSync(new URL('./vectors.json', import.meta.url))
+    expect(createHash('sha256').update(bytes).digest('hex')).toBe(
+      LEGACY_VECTORS_SHA256,
+    )
+  })
+
   test.each(vectors.cases.map((vector) => [vector.id, vector] as const))(
     '%s: the body projects to the approval input and its digest',
     async (_id, vector) => {
@@ -34,26 +46,4 @@ describe('sponsorship approval vectors', () => {
       })
     },
   )
-
-  // Rebuilt from the SDK on every run, so a vector cannot drift from what a
-  // sponsored quote actually sends and what the integrator is asked to approve.
-  test('matches what the SDK sends and asks the integrator to approve', async () => {
-    const derived = await deriveVectors()
-    expect(
-      derived.map(({ id, body, intentInput }) => ({ id, body, intentInput })),
-    ).toEqual(
-      vectors.cases.map(({ id, body, intentInput }) => ({
-        id,
-        body,
-        intentInput,
-      })),
-    )
-    expect(
-      refusedVectors(
-        Object.fromEntries(derived.map(({ id, body }) => [id, body])),
-      ).map(({ id, body, field }) => ({ id, body, field })),
-    ).toEqual(
-      vectors.refused.map(({ id, body, field }) => ({ id, body, field })),
-    )
-  })
 })

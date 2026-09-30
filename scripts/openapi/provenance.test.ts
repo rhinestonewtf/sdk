@@ -101,6 +101,43 @@ describe('vendored OpenAPI provenance', () => {
     expect(callerAccount?.properties).toHaveProperty('initData')
   })
 
+  // The SDK sends only the singular branch; these are the fields it relies on.
+  test('carries the singular quote and estimate branches', () => {
+    const document = JSON.parse(originalArtifact.toString('utf8'))
+    const branches = (path: string) =>
+      document.paths[path].post.requestBody.content['application/json'].schema
+        .oneOf as {
+        properties: Record<string, Record<string, unknown>>
+      }[]
+    const singular = (path: string) =>
+      branches(path).find((branch) =>
+        (branch.properties.source?.required as string[] | undefined)?.includes(
+          'vm',
+        ),
+      )!
+
+    const quote = singular('/quotes')
+    expect(quote.properties.source?.required).toEqual([
+      'vm',
+      'chainId',
+      'token',
+    ])
+    for (const variant of quote.properties.destination?.oneOf as {
+      properties: Record<string, unknown>
+    }[]) {
+      expect(variant.properties).toHaveProperty('token')
+      expect(variant.properties).toHaveProperty('amount')
+      expect(variant.properties).not.toHaveProperty('tokenRequests')
+    }
+
+    const estimate = singular('/quotes/estimate')
+    expect(estimate.properties.source?.properties).toHaveProperty('amount')
+    expect(estimate.properties.destination?.properties).toHaveProperty('amount')
+    expect(estimate.properties.destination?.properties).not.toHaveProperty(
+      'tokenRequests',
+    )
+  })
+
   test('resolves to the vendored artifact', () => {
     expect(resolveVendoredSpec().pathname).toContain(
       'scripts/openapi/caucasus.json',

@@ -26,13 +26,13 @@ declare const prepared: PreparedTransactionData
 declare const input: SerializedIntentInput
 
 const swapFees: boolean | undefined =
-  prepared.intentInput.options?.sponsorSettings?.swapFees
+  prepared.intentInput.options?.sponsorship?.swapFees
 void swapFees
 
 // @ts-expect-error withdrawn from the prepared sponsorship contract
-prepared.intentInput.options?.sponsorSettings?.swapValue
+prepared.intentInput.options?.sponsorship?.swapValue
 // @ts-expect-error withdrawn from serialized sponsorship inputs
-input.options?.sponsorSettings?.swapValue
+input.options?.sponsorship?.swapValue
 
 // Solana inputs name the paying Swig; EVM inputs have no `svm` entry.
 const swig = prepared.intentInput.account.svm

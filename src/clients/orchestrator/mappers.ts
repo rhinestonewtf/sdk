@@ -37,13 +37,14 @@ import type {
   WireQuoteRequest,
   WireQuoteResponse,
   WireSigningRequest,
+  WireSingularQuoteRequest,
   WireSplitRequest,
   WireSplitResponse,
 } from './wire'
 
 export function mapIntentRequestToWire(
   input: OrchestratorIntentRequest,
-): WireQuoteRequest {
+): WireSingularQuoteRequest {
   return serializeBigInts({
     account: input.account,
     destination: input.destination,

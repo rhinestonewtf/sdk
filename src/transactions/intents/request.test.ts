@@ -1,6 +1,5 @@
 import type { Address } from 'viem'
 import { describe, expect, test } from 'vitest'
-import { projectCompatibleIntentInput } from '../../clients/orchestrator/normalized'
 import type { IntentAccountProjection } from './account'
 import { buildIntentRequest } from './request'
 import type { IntentInput } from './types'
@@ -10,7 +9,6 @@ const USDC = '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913' as Address
 const FACTORY = '0x0000000000000000000000000000000000000020' as Address
 const DELEGATE = '0x0000000000000000000000000000000000000030' as Address
 const BASE = 'eip155:8453'
-const SOLANA_CAIP2 = 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp'
 
 const smartAccount: IntentAccountProjection = {
   kind: 'erc7579',
@@ -23,14 +21,15 @@ const solanaChain = {
   kind: 'non-evm',
   namespace: 'solana',
   reference: '5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
-  caip2: SOLANA_CAIP2,
+  caip2: 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
 } as const
 
 function transaction(overrides: Partial<IntentInput> = {}): IntentInput {
   return {
     destination: evmChain,
     calls: [],
-    tokenRequests: [{ token: USDC, amount: 1_000_000n }],
+    token: USDC,
+    amount: 1_000_000n,
     ...overrides,
   }
 }
@@ -40,8 +39,8 @@ function build(input: Partial<Parameters<typeof buildIntentRequest>[0]> = {}) {
     transaction: transaction(),
     account: smartAccount,
     calls: [],
-    sourceCalls: {},
-    providedFunds: {},
+    sourceCalls: [],
+    providedFunds: 0n,
     ...input,
   })
 }
@@ -58,7 +57,6 @@ describe('buildIntentRequest — account', () => {
     })
   })
 
-  // A true EOA permits neither setup operations nor simulation stubs.
   test('sends a bare EOA without setup or simulation', () => {
     const { request } = build({
       account: { kind: 'eoa', address: ACCOUNT, setupOps: [] },
@@ -70,9 +68,6 @@ describe('buildIntentRequest — account', () => {
     })
   })
 
-  // An adopted 7702 account is ERC-7579 WITH delegations, not a stripped EOA:
-  // it still routes through its setup op and its signature is still validated
-  // by the account.
   test('keeps an adopted 7702 account ERC-7579 and adds a default delegation', () => {
     const { request } = build({
       account: { ...smartAccount, delegationContract: DELEGATE },
@@ -95,7 +90,7 @@ describe('buildIntentRequest — account', () => {
 })
 
 describe('buildIntentRequest — destination', () => {
-  test('nests chain, tokens and calls under an EVM destination', () => {
+  test('nests chain, token/amount and calls under an EVM destination (exact-out)', () => {
     const calls = [{ target: USDC, value: 0n, data: '0xabcd' as const }]
     const { request } = build({
       transaction: transaction({ gasLimit: 100_000n }),
@@ -104,7 +99,8 @@ describe('buildIntentRequest — destination', () => {
     expect(request.destination).toEqual({
       vm: 'evm',
       chainId: BASE,
-      tokenRequests: [{ tokenAddress: USDC, amount: 1_000_000n }],
+      token: USDC,
+      amount: 1_000_000n,
       execution: {
         calls: [{ to: USDC, value: 0n, data: '0xabcd' }],
         gasLimit: 100_000n,
@@ -112,10 +108,24 @@ describe('buildIntentRequest — destination', () => {
     })
   })
 
-  // An execution block with no calls is not the same request as a plain
-  // delivery, so it is omitted rather than sent empty.
   test('omits an empty execution block', () => {
     expect(build().request.destination).not.toHaveProperty('execution')
+  })
+
+  test('omits an amount for a max-out request', () => {
+    const { request } = build({
+      transaction: transaction({ amount: undefined }),
+    })
+    expect(request.destination).toMatchObject({ token: USDC })
+    expect(request.destination).not.toHaveProperty('amount')
+  })
+
+  test('sends no delivery fields for a token-less execution', () => {
+    const { request } = build({
+      transaction: transaction({ token: undefined, amount: undefined }),
+    })
+    expect(request.destination).not.toHaveProperty('token')
+    expect(request.destination).not.toHaveProperty('amount')
   })
 
   test('tags a Solana destination as svm', () => {
@@ -124,15 +134,17 @@ describe('buildIntentRequest — destination', () => {
     const { request } = build({
       transaction: transaction({
         destination: solanaChain,
-        tokenRequests: [{ token: mint, amount: 5n }],
+        token: mint,
+        amount: 5n,
         recipient: { kind: 'bare', address: recipient },
       }),
     })
     expect(request.destination).toEqual({
       vm: 'svm',
-      chainId: SOLANA_CAIP2,
+      chainId: solanaChain.caip2,
       recipient: { address: recipient },
-      tokenRequests: [{ tokenAddress: mint, amount: 5n }],
+      token: mint,
+      amount: 5n,
     })
   })
 
@@ -185,32 +197,23 @@ describe('buildIntentRequest — destination', () => {
     },
   )
 
-  test.each(['tron:mainnet', 'stellar:pubnet'] as const)(
-    'sends a %s delivery to its explicit recipient',
-    (caip2) => {
-      const { request } = build({
-        transaction: transaction({
-          destination: {
-            kind: 'non-evm',
-            namespace: caip2.split(':')[0]!,
-            reference: caip2.split(':')[1]!,
-            caip2,
-          },
-          recipient: { kind: 'bare', address: 'TRecipient' },
-        }),
-      })
-      expect(request.destination).toMatchObject({
-        chainId: caip2,
-        recipient: { address: 'TRecipient' },
-      })
-    },
-  )
-
-  test('omits an amount for a max-out request', () => {
+  test('sends a Tron delivery to its explicit recipient', () => {
+    const caip2 = 'tron:mainnet'
     const { request } = build({
-      transaction: transaction({ tokenRequests: [{ token: USDC }] }),
+      transaction: transaction({
+        destination: {
+          kind: 'non-evm',
+          namespace: 'tron',
+          reference: 'mainnet',
+          caip2,
+        },
+        recipient: { kind: 'bare', address: 'TRecipient' },
+      }),
     })
-    expect(request.destination.tokenRequests).toEqual([{ tokenAddress: USDC }])
+    expect(request.destination).toMatchObject({
+      chainId: caip2,
+      recipient: { address: 'TRecipient' },
+    })
   })
 
   // A bare address is a payee and nothing more: labelling it as an account
@@ -285,80 +288,96 @@ describe('buildIntentRequest — options', () => {
   })
 })
 
-describe('buildIntentRequest — normalized sponsorship input', () => {
-  // The normalized input is the shape a sponsorship JWT's digest commits to.
-  // It keeps its numeric chain ids and its original field names across the
-  // wire migration, or every issued grant stops matching.
-  test('keeps the historical field names and numeric chain ids', () => {
-    const { normalized } = build({
+describe('buildIntentRequest — source', () => {
+  const sourceChain = { kind: 'evm', id: 1, caip2: 'eip155:1' } as const
+
+  test('sends a single source chain and token', () => {
+    const { request } = build({
       transaction: transaction({
-        options: {
-          sponsorSettings: { gas: true, bridgeFees: true, swapFees: true },
-        },
-        accountAccessList: { chainIds: [8453] },
+        source: { chain: sourceChain, token: USDC },
       }),
     })
-
-    expect(projectCompatibleIntentInput(normalized)).toEqual({
-      account: {
-        address: ACCOUNT,
-        accountType: 'ERC7579',
-        setupOps: [{ to: FACTORY, data: '0xdeadbeef' }],
-        delegations: undefined,
-      },
-      destinationChainId: 8453,
-      destinationExecutions: [],
-      tokenRequests: [{ tokenAddress: USDC, amount: '1000000' }],
-      accountAccessList: { chainIds: [8453] },
-      options: {
-        sponsorSettings: { gas: true, bridgeFees: true, swapFees: true },
-        signatureMode: 1,
-      },
+    expect(request.source).toEqual({
+      vm: 'evm',
+      chainId: 'eip155:1',
+      token: USDC,
     })
   })
 
-  test('describes the same transaction in both views', () => {
-    const { request, normalized } = build({
-      transaction: transaction({ accountAccessList: { chainIds: [8453] } }),
+  test('sends no source for a source-free intent', () => {
+    expect(build().request).not.toHaveProperty('source')
+  })
+
+  test('carries maxAmount through', () => {
+    const { request } = build({
+      transaction: transaction({
+        source: { chain: sourceChain, token: USDC, maxAmount: 500n },
+      }),
     })
-    expect(normalized.destinationChainId).toBe(8453)
-    expect(request.destination.chainId).toBe(BASE)
-    expect(normalized.tokenRequests).toEqual(request.destination.tokenRequests)
+    expect(request.source?.maxAmount).toBe(500n)
+  })
+
+  test('folds call-provided funds into auxiliaryFunds', () => {
+    const { request } = build({
+      transaction: transaction({
+        source: { chain: sourceChain, token: USDC },
+      }),
+      providedFunds: 250n,
+    })
+    expect(request.source?.auxiliaryFunds).toBe(250n)
+  })
+
+  test('sums configured and call-provided auxiliary funds', () => {
+    const { request } = build({
+      transaction: transaction({
+        source: {
+          chain: sourceChain,
+          token: USDC,
+          auxiliaryFunds: 100n,
+        },
+      }),
+      providedFunds: 250n,
+    })
+    expect(request.source?.auxiliaryFunds).toBe(350n)
+  })
+
+  test('nests source calls under source.execution.calls', () => {
+    const { request } = build({
+      transaction: transaction({
+        source: { chain: sourceChain, token: USDC },
+      }),
+      sourceCalls: [{ target: USDC, value: 0n, data: '0x01' }],
+    })
+    expect(request.source?.execution).toEqual({
+      calls: [{ to: USDC, value: 0n, data: '0x01' }],
+    })
+  })
+
+  test('throws when source calls are resolved with no source chain', () => {
+    expect(() =>
+      build({
+        transaction: transaction(),
+        sourceCalls: [{ target: USDC, value: 0n, data: '0x01' }],
+      }),
+    ).toThrow(/Source calls need a source chain/)
   })
 })
 
-describe('buildIntentRequest — source', () => {
-  test('folds provided funds into auxiliary funds under source', () => {
-    const { request } = build({
-      providedFunds: { 8453: { [USDC]: 250n } },
-    })
-    expect(request.source?.auxiliaryFunds).toEqual({ [BASE]: { [USDC]: 250n } })
-  })
-
-  test('sums configured and call-provided auxiliary funds on the same token', () => {
+describe('buildIntentRequest — svm destination', () => {
+  test('sends an svm destination without a recipient account type', () => {
+    const mint = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
     const { request } = build({
       transaction: transaction({
-        options: { auxiliaryFunds: { 8453: { [USDC]: 100n } } },
+        destination: solanaChain,
+        token: mint,
+        amount: undefined,
+        recipient: undefined,
       }),
-      providedFunds: { 8453: { [USDC]: 250n } },
     })
-    expect(request.source?.auxiliaryFunds).toEqual({ [BASE]: { [USDC]: 350n } })
-  })
-
-  test('moves source calls to tagged source executions', () => {
-    const { request, normalized } = build({
-      sourceCalls: { 8453: [{ target: USDC, value: 0n, data: '0x01' }] },
-    })
-    expect(request.source?.executions).toEqual([
-      {
-        vm: 'evm',
-        chainId: BASE,
-        calls: [{ to: USDC, value: 0n, data: '0x01' }],
-      },
-    ])
-    // The normalized view keeps the name its digest was built with.
-    expect(normalized.preClaimExecutions).toEqual({
-      8453: [{ to: USDC, value: 0n, data: '0x01' }],
+    expect(request.destination).toEqual({
+      vm: 'svm',
+      chainId: solanaChain.caip2,
+      token: mint,
     })
   })
 })

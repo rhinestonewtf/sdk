@@ -6,9 +6,11 @@ import {
 } from '../../accounts/solana/address'
 import { formatCaip2 } from '../../chains/caip2'
 import type { SolanaAddress, SolanaChain } from '../../chains/non-evm'
-import type { NormalizedIntentInput } from '../../clients/orchestrator/normalized'
-import { projectCompatibleIntentInput } from '../../clients/orchestrator/normalized'
-import type { SwigAuthority } from '../../clients/orchestrator/public'
+import type {
+  SerializedIntentInput,
+  SwigAuthority,
+} from '../../clients/orchestrator/public'
+import { toSponsorshipApprovalInput } from '../../clients/orchestrator/sponsorship-approval'
 import type {
   OrchestratorDeploymentQuote,
   OrchestratorIntentRequest,
@@ -42,7 +44,7 @@ export interface PreparedSolanaDeployment {
   readonly traceId: string
   readonly input: SolanaDeploymentInput
   readonly request: OrchestratorIntentRequest
-  readonly normalized: NormalizedIntentInput
+  readonly intentInput: SerializedIntentInput
   readonly quote: OrchestratorDeploymentQuote
 }
 
@@ -81,7 +83,7 @@ function assertInitAuthority(input: SolanaDeploymentInput): void {
 
 export function buildSolanaDeploymentRequest(input: SolanaDeploymentInput): {
   readonly request: OrchestratorIntentRequest
-  readonly normalized: NormalizedIntentInput
+  readonly intentInput: SerializedIntentInput
 } {
   const chainId = solanaChainId(input.chain)
   const caip2 = formatCaip2(chainId)
@@ -114,23 +116,14 @@ export function buildSolanaDeploymentRequest(input: SolanaDeploymentInput): {
   // Gas only: Solana routes refuse the other sponsorship categories. They are
   // spelled out so the request says exactly what the approval input does.
   const sponsorship = { gas: true, bridgeFees: false, swapFees: false }
-  return {
-    request: {
-      account: { svm },
-      // No recipient, execution or token: that is what makes this a creation.
-      destination: { vm: 'svm', chainId: caip2, tokenRequests: [] },
-      source: { selection: { chains: { only: [caip2] }, tokens: 'all' } },
-      options: { sponsorship },
-    },
-    normalized: {
-      account: { address: input.walletAddress, svm },
-      destinationChainId: chainId,
-      destinationExecutions: [],
-      tokenRequests: [],
-      accountAccessList: { chainIds: [chainId] },
-      options: { sponsorSettings: sponsorship },
-    },
+  const request: OrchestratorIntentRequest = {
+    account: { svm },
+    // No source, recipient, execution or token: that is what makes this a
+    // creation, and the sponsor funds it.
+    destination: { vm: 'svm', chainId: caip2 },
+    options: { sponsorship },
   }
+  return { request, intentInput: toSponsorshipApprovalInput(request) }
 }
 
 function sameAuthority(
@@ -203,9 +196,9 @@ export async function prepareSolanaDeployment(
   context: SolanaWorkflowContext,
   input: SolanaDeploymentInput,
 ): Promise<PreparedSolanaDeployment> {
-  const { request, normalized } = buildSolanaDeploymentRequest(input)
+  const { request, intentInput } = buildSolanaDeploymentRequest(input)
   const response = await context.quoteClient.createQuote(request, {
-    intentInput: projectCompatibleIntentInput(normalized),
+    intentInput,
     sponsored: true,
   })
   if (response.routes.length === 0) {
@@ -216,7 +209,7 @@ export async function prepareSolanaDeployment(
   )
   const quote = quotes[0]!
   assertSolanaNotExpired(context.now(), quote)
-  return { traceId: response.traceId, input, request, normalized, quote }
+  return { traceId: response.traceId, input, request, intentInput, quote }
 }
 
 export async function submitSolanaDeployment(
@@ -233,7 +226,6 @@ export async function submitSolanaDeployment(
     type: 'intent',
     traceId: response.traceId,
     intentId: response.intentId,
-    sourceChains: [chainId],
     targetChain: chainId,
   }
 }

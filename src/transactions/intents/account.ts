@@ -1,6 +1,5 @@
 import type { Address, Hex } from 'viem'
 import type { AccountRuntime } from '../../accounts/adapter'
-import type { NormalizedIntentAccount } from '../../clients/orchestrator/normalized'
 import type {
   OrchestratorEvmAccount,
   OrchestratorEvmRecipient,
@@ -10,8 +9,7 @@ import { Eip7702InitSignatureRequiredError } from '../../errors/execution'
 /**
  * An account the way the SDK resolves it, before either wire shape is chosen.
  *
- * Caucasus and the normalized sponsorship input disagree about spelling but
- * not about facts, so both are projected from this rather than from each other.
+ * The request's account and recipient entries are both projected from this.
  */
 export interface IntentAccountProjection {
   readonly kind: 'eoa' | 'erc7579'
@@ -131,51 +129,6 @@ export function toWireRecipient(
     ...(setupOps.length > 0 ? { initData: { setupOps } } : {}),
     ...(delegations ? { delegations } : {}),
   }
-}
-
-/** The account as the normalized sponsorship input has always spelled it. */
-export function toNormalizedAccount(
-  projection: IntentAccountProjection,
-  extras?: {
-    readonly mockSignatures?: Readonly<Record<`${number}`, Hex>>
-  },
-): NormalizedIntentAccount {
-  return {
-    address: projection.address,
-    accountType: projection.kind === 'eoa' ? 'EOA' : 'ERC7579',
-    setupOps: projection.setupOps,
-    // The key is always present (undefined for non-7702 accounts, a chain-zero
-    // map for 7702). That is the shape existing sponsorship digests were
-    // computed over, so it survives the wire migration unchanged.
-    delegations: projection.delegationContract
-      ? { 0: { contract: projection.delegationContract } }
-      : undefined,
-    ...(extras?.mockSignatures
-      ? { mockSignatures: extras.mockSignatures }
-      : {}),
-  }
-}
-
-export function toNormalizedRecipient(
-  recipient: IntentRecipientProjection,
-  destination: { readonly evmAddressed: boolean },
-): NormalizedIntentAccount {
-  if (recipient.kind === 'bare') {
-    // The released input spells an EVM-addressed payee as a setup-free EOA.
-    // The wire now sends it bare, but existing policies and digests were built
-    // against this spelling, so the approval input keeps it.
-    return destination.evmAddressed
-      ? { address: recipient.address, accountType: 'EOA', setupOps: [] }
-      : { address: recipient.address }
-  }
-  return toNormalizedAccount({
-    kind: recipient.accountKind,
-    address: recipient.address,
-    setupOps: recipient.setupOps,
-    ...(recipient.delegationContract
-      ? { delegationContract: recipient.delegationContract }
-      : {}),
-  })
 }
 
 function deploymentSetupOps(

@@ -10,15 +10,16 @@ import { resolveCalls } from '../../calls/resolve'
 import type { Call } from '../../calls/types'
 import { isHyperCoreWireId, toEvmChainReference } from '../../chains/caip2'
 import type { EvmChainReference } from '../../chains/types'
-import {
-  isSponsoredIntentInput,
-  projectCompatibleIntentInput,
-} from '../../clients/orchestrator/normalized'
 import type {
   SigningRequest,
   SigningRequestPurpose,
 } from '../../clients/orchestrator/public'
-import { UnsupportedSigningRequestError } from '../../errors/execution'
+import { isSponsoredIntentInput } from '../../clients/orchestrator/sponsorship-approval'
+import { UnsupportedAccountCapabilityError } from '../../errors/capability'
+import {
+  InvalidSourceCallsError,
+  UnsupportedSigningRequestError,
+} from '../../errors/execution'
 import { defineValidator } from '../../modules/validators/definition'
 import { ecdsaSignerId } from '../../modules/validators/signer-id'
 import type { ResolvedSessionSignerSet } from '../../modules/validators/smart-sessions/types'
@@ -53,9 +54,16 @@ export async function prepareIntent<CompatibilityConfig>(
     runtime,
     context,
   })
+  const preClaimCalls = sessions?.preClaimCalls ?? []
+  if (preClaimCalls.length > 0 && !input.source) {
+    throw new UnsupportedAccountCapabilityError(
+      'Enabling the smart session runs a call on the source chain before the claim, and this transaction names no `source`. Add a `source`, or enable the session first.',
+      { field: 'source' },
+    )
+  }
   const ownerSelection =
     input.signers?.kind === 'owner' ? input.signers : undefined
-  const { request, normalized } = buildIntentRequest({
+  const { request, intentInput } = buildIntentRequest({
     transaction: sessions
       ? { ...input, signatureMode: sessions.signatureMode }
       : input,
@@ -68,12 +76,12 @@ export async function prepareIntent<CompatibilityConfig>(
     }),
     ...(sessions ? { mockSignatures: sessions.mockSignatures } : {}),
     calls,
-    sourceCalls: mergeSourceCalls(sessions?.preClaimCalls, source.calls),
+    sourceCalls: [...preClaimCalls, ...source.calls],
     providedFunds: source.providedFunds,
   })
   const response = await context.quoteClient.createQuote(request, {
-    intentInput: projectCompatibleIntentInput(normalized),
-    sponsored: isSponsoredIntentInput(normalized),
+    intentInput,
+    sponsored: isSponsoredIntentInput(intentInput),
   })
   const quote = normalizeIntentQuote(selectIntentQuote(response.routes))
   const quotes = response.routes.map((candidate) =>
@@ -85,7 +93,7 @@ export async function prepareIntent<CompatibilityConfig>(
     traceId: response.traceId,
     input,
     request,
-    normalized,
+    intentInput,
     quote,
     quotes,
     signing: buildIntentSigningInput(
@@ -125,13 +133,12 @@ function selectAccountChain<CompatibilityConfig>(
   ) {
     return input.destination
   }
-  const source = input.sourceChains?.at(-1)
-  if (!source) {
+  if (!input.source) {
     throw new Error(
-      `An intent to ${input.destination.caip2} requires at least one EVM source chain: the destination hosts no account runtime`,
+      `An intent to ${input.destination.caip2} requires an EVM source chain: the destination hosts no account runtime`,
     )
   }
-  return source
+  return input.source.chain
 }
 
 async function resolveDestinationCalls<CompatibilityConfig>(
@@ -159,39 +166,26 @@ async function resolveSourceCalls<CompatibilityConfig>(
   input: IntentInput<CompatibilityConfig>,
   runtime: AccountRuntime,
 ): Promise<{
-  readonly calls: Readonly<Record<number, readonly Call[]>>
-  readonly providedFunds: Readonly<
-    Record<number, Readonly<Record<`0x${string}`, bigint>>>
-  >
+  readonly calls: readonly Call[]
+  readonly providedFunds: bigint
 }> {
-  const allowed = new Map<number, EvmChainReference>(
-    (input.sourceChains ?? []).map((chain) => [chain.id, chain]),
+  const source = input.source
+  if (!source?.calls?.length) return { calls: [], providedFunds: 0n }
+  const calls = await resolveCalls(
+    source.calls.map(({ call }) => call),
+    {
+      account: runtime.identity.address,
+      chain: source.chain,
+      config: context.compatibilityConfig,
+    },
   )
-  if (input.destination.kind === 'evm') {
-    allowed.set(input.destination.id, input.destination)
-  }
-  const calls: Record<number, readonly Call[]> = {}
-  const providedFunds: Record<number, Record<`0x${string}`, bigint>> = {}
-  for (const [chainIdValue, sourceCalls] of Object.entries(
-    input.sourceCalls ?? {},
-  )) {
-    const chainId = Number(chainIdValue)
-    const chain = allowed.get(chainId)
-    if (!chain) throw new Error(`Invalid source calls chain ${chainId}`)
-    calls[chainId] = await resolveCalls(
-      sourceCalls.map(({ call }) => call),
-      {
-        account: runtime.identity.address,
-        chain,
-        config: context.compatibilityConfig,
-      },
-    )
-    for (const sourceCall of sourceCalls) {
-      for (const provided of sourceCall.provides ?? []) {
-        const balances = (providedFunds[chainId] ??= {})
-        balances[provided.token] =
-          (balances[provided.token] ?? 0n) + provided.amount
+  let providedFunds = 0n
+  for (const sourceCall of source.calls) {
+    for (const provided of sourceCall.provides ?? []) {
+      if (provided.token.toLowerCase() !== source.token.toLowerCase()) {
+        throw new InvalidSourceCallsError({ chainId: source.chain.id })
       }
+      providedFunds += provided.amount
     }
   }
   return { calls, providedFunds }
@@ -510,15 +504,4 @@ function requireSession(
   const session = Object.values(sessions)[0]
   if (!session) throw new Error('Intent session selection is empty')
   return session
-}
-
-function mergeSourceCalls(
-  first: Readonly<Record<number, readonly Call[]>> | undefined,
-  second: Readonly<Record<number, readonly Call[]>>,
-): Readonly<Record<number, readonly Call[]>> {
-  const result: Record<number, readonly Call[]> = { ...first }
-  for (const [chainId, calls] of Object.entries(second)) {
-    result[Number(chainId)] = [...(result[Number(chainId)] ?? []), ...calls]
-  }
-  return result
 }

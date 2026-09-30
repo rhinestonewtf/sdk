@@ -226,46 +226,44 @@ describe('intent domain', () => {
     expect(projectIntentRecipient(undefined)).toBeUndefined()
   })
 
-  test('builds token, recipient, gas, access-list, and source-call request data', () => {
-    const { request, normalized } = buildIntentRequest({
+  test('builds token, recipient, gas, and source-call request data', () => {
+    const { request, intentInput } = buildIntentRequest({
       transaction: {
         destination: chain,
+        source: { chain, token: address, auxiliaryFunds: 4n },
         calls: [],
-        tokenRequests: [{ token: address, amount: 2n }],
+        token: address,
+        amount: 2n,
         recipient: projectIntentRecipient(address),
         gasLimit: 3n,
-        accountAccessList: { chainIds: [1] },
-        options: { auxiliaryFunds: { 1: { [address]: 4n } } },
         signatureMode: 5,
       },
       account: { kind: 'erc7579', address, setupOps: [] },
       calls: [{ target: address, value: 1n, data: '0x' }],
-      sourceCalls: { 1: [{ target: address, value: 5n, data: '0x12' }] },
-      providedFunds: { 1: { [address]: 6n } },
+      sourceCalls: [{ target: address, value: 5n, data: '0x12' }],
+      providedFunds: 6n,
     })
     expect(request).toMatchObject({
       account: { evm: { signatureMode: 5 } },
       destination: {
         chainId: 'eip155:1',
         recipient: { address },
-        tokenRequests: [{ tokenAddress: address, amount: 2n }],
+        token: address,
+        amount: 2n,
         execution: { gasLimit: 3n },
       },
       // Configured and call-provided funds add up rather than shadow one
       // another; Caucasus addresses the chain natively.
       source: {
-        selection: { chains: { only: ['eip155:1'] } },
-        auxiliaryFunds: { 'eip155:1': { [address]: 10n } },
+        chainId: 'eip155:1',
+        auxiliaryFunds: 10n,
+        execution: { calls: [{ to: address, value: 5n, data: '0x12' }] },
       },
     })
-    // The sponsorship projection keeps the numeric chain ids and the field
-    // names an issued grant's digest was built with.
-    expect(normalized).toMatchObject({
-      destinationChainId: 1,
-      destinationGasUnits: 3n,
-      tokenRequests: [{ tokenAddress: address, amount: 2n }],
-      accountAccessList: { chainIds: [1] },
-      options: { signatureMode: 5, auxiliaryFunds: { 1: { [address]: 10n } } },
+    // The sponsorship approval input is a pure projection of the same body.
+    expect(intentInput).toMatchObject({
+      destination: { chainId: 'eip155:1' },
+      source: { chainId: 'eip155:1' },
     })
   })
 

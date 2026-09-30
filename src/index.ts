@@ -17,6 +17,8 @@ export {
 }
 
 export type {
+  EvmDeployOptions,
+  EvmSetupOptions,
   ManagedTransactionAccount,
   RhinestoneAccount,
   RhinestoneAccountBase,
@@ -33,7 +35,6 @@ export type {
 export type {
   AppFeeBalances,
   AppFeeRate,
-  AuxiliaryFunds,
   BridgeFill,
   Caip2ChainId,
   FailureReason,
@@ -104,8 +105,6 @@ export type {
   HyperCoreOptions,
   HyperliquidConfig,
   MultiFactorValidatorConfig,
-  NonEvmTokenRequest,
-  NonEvmTokenRequests,
   OpenPerpRequest,
   OwnableValidatorConfig,
   OwnerSet,
@@ -128,10 +127,11 @@ export type {
   SourceCallInput,
   SourceCallProvidedFunds,
   SwapScope,
-  TokenRequest,
   TokenSymbol,
   ToLeg,
   Transaction,
+  TransactionDestination,
+  TransactionSource,
   UniversalActionPolicyParamCondition,
   WebauthnValidatorConfig,
 } from './config/account'

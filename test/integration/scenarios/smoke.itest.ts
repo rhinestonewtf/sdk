@@ -22,6 +22,7 @@ import {
   expectNoOperationOnChain,
   expectOutcome,
 } from '../framework/runner'
+import { getTokenAddress } from '../framework/tokens'
 
 describe.sequential('SDK integration smoke', () => {
   test('runs a sponsored same-chain intent on a fresh default account', async () => {
@@ -39,9 +40,8 @@ describe.sequential('SDK integration smoke', () => {
       account,
       label: 'smoke/same-chain/fresh/sponsored',
       transaction: {
-        chain: sourceChain,
+        destination: { chain: sourceChain, calls: [createNoopCall()] },
         sponsored: true,
-        calls: [createNoopCall()],
       },
     })
 
@@ -79,9 +79,8 @@ describe.sequential('SDK integration smoke', () => {
       account,
       label: 'smoke/same-chain/fresh/registry-free-mfa',
       transaction: {
-        chain: sourceChain,
+        destination: { chain: sourceChain, calls: [createNoopCall()] },
         sponsored: true,
-        calls: [createNoopCall()],
       },
     })
 
@@ -108,10 +107,8 @@ describe.sequential('SDK integration smoke', () => {
       account,
       label: 'smoke/cross-chain/fresh/sponsored',
       transaction: {
-        sourceChains: [sourceChain],
-        targetChain,
+        destination: { chain: targetChain, calls: [createNoopCall()] },
         sponsored: true,
-        calls: [createNoopCall()],
       },
     })
 
@@ -146,9 +143,10 @@ describe.sequential('SDK integration smoke', () => {
       account,
       label: 'smoke/ssx/scoped-inline-enable',
       transaction: {
-        chain: sourceChain,
+        // Enabling runs a pre-claim call on the source, so the intent names one.
+        source: { token: getTokenAddress('USDC', sourceChain.id) },
+        destination: { chain: sourceChain, calls: [createNoopCall()] },
         sponsored: true,
-        calls: [createNoopCall()],
         signers: {
           type: 'session',
           session,
@@ -181,9 +179,11 @@ describe.sequential('SDK integration smoke', () => {
       account,
       label: 'smoke/simulation-failure/unfunded-usdc-transfer',
       transaction: {
-        chain: sourceChain,
+        destination: {
+          chain: sourceChain,
+          calls: [createUnfundedUsdcTransferCall(sourceChain)],
+        },
         sponsored: true,
-        calls: [createUnfundedUsdcTransferCall(sourceChain)],
       },
     })
 
@@ -211,9 +211,8 @@ describe.sequential('SDK integration smoke', () => {
       account,
       label: 'smoke/same-chain/deployed/deploy',
       transaction: {
-        chain: sourceChain,
+        destination: { chain: sourceChain, calls: [createNoopCall()] },
         sponsored: true,
-        calls: [createNoopCall()],
       },
     })
 
@@ -228,9 +227,8 @@ describe.sequential('SDK integration smoke', () => {
       account,
       label: 'smoke/same-chain/deployed/reuse',
       transaction: {
-        chain: sourceChain,
+        destination: { chain: sourceChain, calls: [createNoopCall()] },
         sponsored: true,
-        calls: [createNoopCall()],
       },
     })
 

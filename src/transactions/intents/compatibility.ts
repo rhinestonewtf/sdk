@@ -19,7 +19,7 @@ export function projectCompatibleQuote<
 }
 
 /** The wire generation a persisted request was built for. */
-export const PREPARED_REQUEST_VERSION = 'caucasus-1' as const
+export const PREPARED_REQUEST_VERSION = 'caucasus-singular-1' as const
 
 /**
  * The prepared Caucasus request, persisted alongside the public transaction.
@@ -44,10 +44,11 @@ export function projectPreparedBinding(
 }
 
 /**
- * Refuses a prepared payload from an earlier wire generation.
+ * Refuses a prepared payload from an earlier wire or SDK generation.
  *
- * Called before anything reads the artifact's quotes, so an older shape fails
- * with this typed error rather than tripping over a missing field.
+ * Called before anything reads the artifact's transaction or quotes, so an
+ * older shape fails with this typed error rather than being validated, or
+ * reinterpreted, against the current transaction model.
  */
 export function assertPreparedBinding(
   binding: PreparedIntentBinding | undefined,

@@ -4,8 +4,6 @@ import {
   asIntentRecipient,
   type IntentAccountProjection,
   projectIntentRecipient,
-  toNormalizedAccount,
-  toNormalizedRecipient,
   toWireEvmAccount,
   toWireRecipient,
 } from './account'
@@ -88,55 +86,6 @@ describe('toWireRecipient', () => {
     expect(
       toWireRecipient(asIntentRecipient({ ...smart, setupOps: [] })),
     ).toEqual({ type: 'erc7579', address: ACCOUNT })
-  })
-})
-
-describe('normalized projections', () => {
-  // The key is always present — `undefined` for a non-7702 account — because
-  // that is the shape existing sponsorship digests were computed over.
-  test('always carries the delegations key', () => {
-    expect(toNormalizedAccount(smart)).toEqual({
-      address: ACCOUNT,
-      accountType: 'ERC7579',
-      setupOps: [{ to: FACTORY, data: '0xdeadbeef' }],
-      delegations: undefined,
-    })
-    expect(
-      toNormalizedAccount({ ...smart, delegationContract: DELEGATE })
-        .delegations,
-    ).toEqual({ 0: { contract: DELEGATE } })
-  })
-
-  test('maps an EOA to its historical account type', () => {
-    expect(toNormalizedAccount(eoa).accountType).toBe('EOA')
-  })
-
-  test('carries session mock signatures keyed by decimal chain id', () => {
-    expect(
-      toNormalizedAccount(smart, { mockSignatures: { 1: '0xaa' } })
-        .mockSignatures,
-    ).toEqual({ 1: '0xaa' })
-  })
-
-  test('keeps the released EOA spelling for a bare EVM-addressed recipient', () => {
-    const bare = { kind: 'bare', address: ACCOUNT } as const
-    expect(toNormalizedRecipient(bare, { evmAddressed: true })).toEqual({
-      address: ACCOUNT,
-      accountType: 'EOA',
-      setupOps: [],
-    })
-    expect(toNormalizedRecipient(bare, { evmAddressed: false })).toEqual({
-      address: ACCOUNT,
-    })
-  })
-
-  test('projects a configured recipient like an account', () => {
-    expect(
-      toNormalizedRecipient(asIntentRecipient(smart), { evmAddressed: true }),
-    ).toMatchObject({
-      address: ACCOUNT,
-      accountType: 'ERC7579',
-    })
   })
 })
 

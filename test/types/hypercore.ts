@@ -25,71 +25,79 @@ const actionMatchesWire: AssignableTo<HyperCoreAction, WireHyperCoreAction> =
   true
 
 const account = '0x1111111111111111111111111111111111111111' as const
+const usdcOnBase = '0xb88339CB7199b77E23DB6E890353E22632Ba630f' as const
 
-// Open: declarative, and the collateral rides the same transaction.
+// Open: declarative, and the collateral rides the same transaction. The
+// source names its EVM chain explicitly — HyperCore hosts no account.
 const openTransaction: Transaction = {
-  sourceChains: [base],
-  targetChain: hyperCorePerp,
-  tokenRequests: [
-    {
-      address: '0xb88339CB7199b77E23DB6E890353E22632Ba630f',
-      amount: 25000000n,
+  source: { chain: base, token: usdcOnBase, maxAmount: 25000000n },
+  destination: {
+    chain: hyperCorePerp,
+    hyperCore: {
+      openPerp: { asset: 'BTC', direction: 'long', notionalUsd: 100 },
     },
-  ],
-  hyperCore: {
-    openPerp: { asset: 'BTC', direction: 'long', notionalUsd: 100 },
   },
 }
 
 // Close: no tokens, no account address — `prepareTransaction` knows both. It
 // still names a source chain, since HyperCore hosts no account of its own.
 const closeTransaction: Transaction = {
-  sourceChains: [hyperEvm],
-  targetChain: hyperCorePerp,
-  hyperCore: { closePerp: { asset: 'BTC' } },
+  source: { chain: hyperEvm, token: usdcOnBase },
+  destination: {
+    chain: hyperCorePerp,
+    hyperCore: { closePerp: { asset: 'BTC' } },
+  },
 }
 
 // The escape hatch, for the action types the two above do not cover.
 const rawTransaction: Transaction = {
-  sourceChains: [hyperEvm],
-  targetChain: hyperCorePerp,
-  hyperCore: {
-    action: { type: 'updateLeverage', asset: 0, isCross: true, leverage: 5 },
+  source: { chain: hyperEvm, token: usdcOnBase },
+  destination: {
+    chain: hyperCorePerp,
+    hyperCore: {
+      action: { type: 'updateLeverage', asset: 0, isCross: true, leverage: 5 },
+    },
   },
 }
 
 // Exactly one of the three, never two.
 const bothForms: Transaction = {
-  sourceChains: [hyperEvm],
-  targetChain: hyperCorePerp,
-  hyperCore: {
-    openPerp: { asset: 'BTC', direction: 'long', notionalUsd: 100 },
-    // @ts-expect-error — `openPerp`, `closePerp` and `action` are exclusive
-    closePerp: { asset: 'BTC' },
+  source: { chain: hyperEvm, token: usdcOnBase },
+  destination: {
+    chain: hyperCorePerp,
+    hyperCore: {
+      openPerp: { asset: 'BTC', direction: 'long', notionalUsd: 100 },
+      // @ts-expect-error — `openPerp`, `closePerp` and `action` are exclusive
+      closePerp: { asset: 'BTC' },
+    },
   },
 }
 
 // Sizing an open is one or the other, never both and never neither.
 const bothSizes: Transaction = {
-  sourceChains: [base],
-  targetChain: hyperCorePerp,
-  hyperCore: {
-    openPerp: {
-      asset: 'BTC',
-      direction: 'long',
-      notionalUsd: 100,
-      // @ts-expect-error — `notionalUsd` and `size` are mutually exclusive
-      size: '0.001',
+  source: { chain: base, token: usdcOnBase },
+  destination: {
+    chain: hyperCorePerp,
+    hyperCore: {
+      openPerp: {
+        asset: 'BTC',
+        direction: 'long',
+        notionalUsd: 100,
+        // @ts-expect-error — `notionalUsd` and `size` are mutually exclusive
+        size: '0.001',
+      },
     },
   },
 }
 
 const noSize: Transaction = {
-  sourceChains: [base],
-  targetChain: hyperCorePerp,
-  hyperCore: {
-    // @ts-expect-error — one of `notionalUsd` or `size` is required
-    openPerp: { asset: 'BTC', direction: 'long' },
+  source: { chain: base, token: usdcOnBase },
+  destination: {
+    chain: hyperCorePerp,
+    hyperCore: {
+      // @ts-expect-error — one of `notionalUsd` or `size` is required
+      openPerp: { asset: 'BTC', direction: 'long' },
+    },
   },
 }
 

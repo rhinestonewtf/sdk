@@ -18,19 +18,22 @@ import type {
 import { wrapKernelMessageHash } from '../../accounts/kernel-signing'
 import type { AccountConstruction } from '../../accounts/types'
 import { parseCaip2, toEvmChainReference } from '../../chains/caip2'
-import { projectCompatibleIntentInput } from '../../clients/orchestrator/normalized'
 import type { SigningProof } from '../../clients/orchestrator/public'
 import type {
   OrchestratorExecutionQuote,
   OrchestratorIntentRequest,
 } from '../../clients/orchestrator/types'
+import { UnsupportedAccountCapabilityError } from '../../errors/capability'
+import { InvalidSourceCallsError } from '../../errors/execution'
 import { defineValidator } from '../../modules/validators/definition'
 import {
   buildQuorumMerkleTree,
   getQuorumMerkleRootSignableHash,
   getQuorumSignableHash,
 } from '../../modules/validators/quorum'
+import { buildSmartSessionMockSignature } from '../../modules/validators/smart-sessions/mock-signature'
 import { toSession } from '../../modules/validators/smart-sessions/resolve'
+import type { SessionEnableData } from '../../modules/validators/smart-sessions/types'
 import { createAccountSigningContext } from '../../signing/context'
 import type {
   IntentSigningInput,
@@ -238,9 +241,8 @@ function context(
 
 const input = {
   destination: chain,
-  sourceChains: [chain],
+  source: { chain, token: address },
   calls: [{ target: address, value: 1n, data: '0x' as const }],
-  tokenRequests: [],
 }
 
 describe('intent workflow', () => {
@@ -254,8 +256,10 @@ describe('intent workflow', () => {
     const prepared = await prepareIntent(workflow, {
       ...input,
       calls: [{ resolve: lazy }],
-      sourceCalls: {
-        1: [
+      source: {
+        chain,
+        token: address,
+        calls: [
           {
             call: { target: address, value: 3n, data: '0x34' },
             provides: [{ token: address, amount: 4n }],
@@ -278,28 +282,170 @@ describe('intent workflow', () => {
         execution: { calls: [{ to: address, value: 2n, data: '0x12' }] },
       },
       source: {
-        executions: [
-          {
-            chainId: 'eip155:1',
-            calls: [{ to: address, value: 3n, data: '0x34' }],
-          },
-        ],
-        auxiliaryFunds: { 'eip155:1': { [address]: 4n } },
+        chainId: 'eip155:1',
+        execution: { calls: [{ to: address, value: 3n, data: '0x34' }] },
+        auxiliaryFunds: 4n,
       },
     })
-    // The sponsorship projection keeps its own spelling and its numeric chain
-    // ids, so a sponsorship digest survives the wire migration.
-    expect(prepared.normalized).toMatchObject({
-      account: { address, setupOps: [{ to: address, data: '0x1234' }] },
-      destinationExecutions: [{ to: address, value: 2n, data: '0x12' }],
-      preClaimExecutions: {
-        1: [{ to: address, value: 3n, data: '0x34' }],
-      },
-      options: { auxiliaryFunds: { 1: { [address]: 4n } } },
+    // The sponsorship approval input is a pure projection of the same body.
+    expect(prepared.intentInput).toMatchObject({
+      account: { evm: { address } },
+      destination: { chainId: 'eip155:1' },
+      source: { chainId: 'eip155:1', auxiliaryFunds: '4' },
     })
     expect(eip712Slot(prepared.signing, 0).payload.typedData.message).toEqual({
       value: 1n,
     })
+  })
+
+  test('runs the session-enable pre-claim call before the user source calls', async () => {
+    const session = toSession({
+      chain: mainnet,
+      owners: { type: 'ecdsa', accounts: [account] },
+    })
+    const read = vi.fn(async (checkpoint: { id: string }) => [
+      { kind: 'session-enabled' as const, id: checkpoint.id, enabled: false },
+    ])
+    const workflow = context({ checkpoints: { read } })
+
+    const prepared = await prepareIntent(workflow, {
+      ...input,
+      source: {
+        chain,
+        token: address,
+        calls: [{ call: { target: address, value: 9n, data: '0x99' } }],
+      },
+      signers: {
+        kind: 'smart-session',
+        byChain: {
+          1: {
+            session,
+            enableData: {
+              userSignature: signature,
+              hashesAndChainIds: [
+                { chainId: 1n, sessionDigest: `0x${'22'.repeat(32)}` },
+              ],
+              sessionToEnableIndex: 0,
+            },
+          },
+        },
+      },
+    })
+
+    expect(prepared.request.source?.execution?.calls).toMatchObject([
+      { data: expect.stringMatching(/^0x/u) },
+      { value: 9n, data: '0x99' },
+    ])
+  })
+
+  test('refuses a source-free intent whose session needs enabling, before quoting', async () => {
+    const session = toSession({
+      chain: mainnet,
+      owners: { type: 'ecdsa', accounts: [account] },
+    })
+    const read = vi.fn(async (checkpoint: { id: string }) => [
+      { kind: 'session-enabled' as const, id: checkpoint.id, enabled: false },
+    ])
+    const workflow = context({ checkpoints: { read } })
+
+    const error = await prepareIntent(workflow, {
+      destination: chain,
+      calls: [{ target: address, value: 1n, data: '0x' }],
+      signers: {
+        kind: 'smart-session',
+        byChain: {
+          1: {
+            session,
+            enableData: {
+              userSignature: signature,
+              hashesAndChainIds: [
+                { chainId: 1n, sessionDigest: `0x${'22'.repeat(32)}` },
+              ],
+              sessionToEnableIndex: 0,
+            },
+          },
+        },
+      },
+    }).catch((caught) => caught)
+
+    expect(error).toBeInstanceOf(UnsupportedAccountCapabilityError)
+    expect(error.context).toMatchObject({ field: 'source' })
+    expect(workflow.quoteClient.createQuote).not.toHaveBeenCalled()
+  })
+
+  test('refuses a source call that provides a foreign token', async () => {
+    const workflow = context()
+
+    await expect(
+      prepareIntent(workflow, {
+        ...input,
+        source: {
+          chain,
+          token: address,
+          calls: [
+            {
+              call: { target: address, value: 0n, data: '0x01' },
+              provides: [
+                {
+                  token: '0x00000000000000000000000000000000000abc',
+                  amount: 1n,
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    ).rejects.toBeInstanceOf(InvalidSourceCallsError)
+  })
+
+  test('sizes the smart-session mock signature for one chain, even when the session needs enabling on two', async () => {
+    const source = toEvmChainReference(1)
+    const destination = toEvmChainReference(arbitrum.id)
+    const sessionOn = (chainId: number) =>
+      toSession({
+        chain: chainId === 1 ? mainnet : arbitrum,
+        owners: { type: 'ecdsa', accounts: [account] },
+      })
+    const read = vi.fn(async (checkpoint: { id: string }) => [
+      { kind: 'session-enabled' as const, id: checkpoint.id, enabled: false },
+    ])
+    const workflow = context({ checkpoints: { read } })
+    const enableData: SessionEnableData = {
+      userSignature: signature,
+      hashesAndChainIds: [
+        { chainId: 1n, sessionDigest: `0x${'22'.repeat(32)}` },
+      ],
+      sessionToEnableIndex: 0,
+    }
+
+    const prepared = await prepareIntent(workflow, {
+      destination,
+      source: { chain: source, token: address },
+      calls: [{ target: address, value: 1n, data: '0x' }],
+      signers: {
+        kind: 'smart-session',
+        byChain: {
+          1: { session: sessionOn(1), enableData },
+          [arbitrum.id]: { session: sessionOn(arbitrum.id), enableData },
+        },
+      },
+    })
+
+    // buildSmartSessionMockSignature is always called with chainCount: 1, one
+    // call per touched chain, never with the intent's total chain count (here
+    // two: source and destination).
+    const expected = buildSmartSessionMockSignature({
+      session: sessionOn(1),
+      environment: 'production',
+      chainCount: 1,
+      targetChainId: 1,
+      shape: 'enable',
+    })
+    expect(
+      smartAccount(prepared.request).simulation?.mockSignaturesByChain?.[
+        'eip155:1'
+      ],
+    ).toBe(expected)
   })
 
   // HyperCore is EVM-ADDRESSED but virtual: no RPC, no accounts. Selecting it as
@@ -379,13 +525,14 @@ describe('intent workflow', () => {
     const recipient = 'EEnKdeMRGrhKq1Z2rkRubkrkTxCZigLZ5QgUYqAMvPnU'
     const delivery = {
       destination: parseCaip2('solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp'),
-      sourceChains: [toEvmChainReference(base.id), chain],
+      source: { chain, token: address },
       calls: [],
-      tokenRequests: [{ token: mint, amount: 50_000n }],
+      token: mint,
+      amount: 50_000n,
       recipient: { kind: 'bare', address: recipient },
     } satisfies IntentInput<{ marker: boolean }>
 
-    test('hosts the account on the last EVM source and requests no destination execution', async () => {
+    test('hosts the account on the EVM source and requests no destination execution', async () => {
       const workflow = context()
 
       const prepared = await prepareIntent(workflow, delivery)
@@ -398,13 +545,11 @@ describe('intent workflow', () => {
         vm: 'svm',
         chainId: 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
         recipient: { address: recipient },
-        tokenRequests: [{ tokenAddress: mint, amount: 50_000n }],
+        token: mint,
+        amount: 50_000n,
       })
-      expect(prepared.normalized).toMatchObject({
-        destinationChainId: 792703809,
-        destinationExecutions: [],
-        tokenRequests: [{ tokenAddress: mint, amount: 50_000n }],
-        recipient: { address: recipient },
+      expect(prepared.intentInput).toMatchObject({
+        destination: { chainId: 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp' },
       })
     })
 
@@ -446,8 +591,8 @@ describe('intent workflow', () => {
 
     test('requires an EVM source chain to host the account', async () => {
       await expect(
-        prepareIntent(context(), { ...delivery, sourceChains: [] }),
-      ).rejects.toThrow(/requires at least one EVM source chain/u)
+        prepareIntent(context(), { ...delivery, source: undefined }),
+      ).rejects.toThrow(/requires an EVM source chain/u)
     })
   })
 
@@ -859,9 +1004,10 @@ describe('intent workflow', () => {
         'eip155:1'
       ],
     ).toMatch(/^0x/u)
-    expect(prepared.request.source?.executions).toMatchObject([
-      { chainId: 'eip155:1', calls: [{ value: 0n }] },
-    ])
+    expect(prepared.request.source).toMatchObject({
+      chainId: 'eip155:1',
+      execution: { calls: [{ value: 0n }] },
+    })
     // A session origin carries both encodings of the one message in one proof.
     const originProof = claimPairProof(signed.proofs[0])
     expect(originProof.preClaim).toMatch(/^0x01/u)
@@ -1064,7 +1210,7 @@ describe('intent workflow', () => {
     expect(workflow.quoteClient.createQuote).toHaveBeenCalledWith(
       prepared.request,
       {
-        intentInput: projectCompatibleIntentInput(prepared.normalized),
+        intentInput: prepared.intentInput,
         sponsored: false,
       },
     )
@@ -1072,7 +1218,9 @@ describe('intent workflow', () => {
       vi.mocked(workflow.quoteClient.createQuote).mock.calls[0]?.[1]
         ?.intentInput,
     ).toMatchObject({
-      destinationExecutions: [expect.objectContaining({ value: '1' })],
+      destination: {
+        execution: { calls: [expect.objectContaining({ value: '1' })] },
+      },
     })
 
     const sponsored = context()

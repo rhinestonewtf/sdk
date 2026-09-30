@@ -28,14 +28,6 @@ import {
   solanaMainnet,
 } from '../../chains/non-evm'
 import type {
-  NormalizedIntentInput,
-  NormalizedIntentOptions,
-} from '../../clients/orchestrator/normalized'
-import {
-  isSponsoredIntentInput,
-  projectCompatibleIntentInput,
-} from '../../clients/orchestrator/normalized'
-import type {
   IntentQuotePort,
   IntentSubmissionPort,
 } from '../../clients/orchestrator/port'
@@ -52,6 +44,10 @@ import type {
   SwigAuthority,
   WebAuthnAssertion,
 } from '../../clients/orchestrator/public'
+import {
+  isSponsoredIntentInput,
+  toSponsorshipApprovalInput,
+} from '../../clients/orchestrator/sponsorship-approval'
 import type {
   OrchestratorExecutionQuote,
   OrchestratorIntentRequest,
@@ -62,11 +58,7 @@ import {
   SolanaQuoteExpiredError,
 } from '../../errors/execution'
 import { normalizeRecovery } from '../../signing/signers/ecdsa'
-import {
-  type IntentAccountProjection,
-  toNormalizedAccount,
-  toWireEvmAccount,
-} from './account'
+import { type IntentAccountProjection, toWireEvmAccount } from './account'
 import { projectPreparedBinding } from './compatibility'
 import { normalizeIntentQuote } from './normalize'
 import { toExecution } from './request'
@@ -127,6 +119,11 @@ export type SolanaAction =
       readonly kind: 'instructions'
       readonly instructions: readonly SolanaInstruction[]
       readonly addressLookupTables?: readonly string[]
+      /**
+       * The token an unsponsored execution pays its charge in, an SPL mint or
+       * native SOL. Absent on a sponsored, source-free execution.
+       */
+      readonly feeToken?: SolanaAddress
     }
   | { readonly kind: 'authority'; readonly change: SolanaAuthorityChangeInput }
 
@@ -177,14 +174,21 @@ export interface SolanaTransferInput {
   readonly endpoint: string
   readonly appFees?: AppFeeRate
   readonly protocolFees?: ProtocolFeeRate
-  readonly sponsorSettings?: NormalizedIntentOptions['sponsorSettings']
+  readonly sponsorSettings?: SolanaSponsorSettings
+}
+
+export interface SolanaSponsorSettings {
+  readonly gas: boolean
+  readonly bridgeFees: boolean
+  readonly swapFees: boolean
+  readonly protocolFees?: boolean
 }
 
 export interface PreparedSolanaIntent {
   readonly traceId: string
   readonly input: SolanaTransferInput
   readonly request: OrchestratorIntentRequest
-  readonly normalized: NormalizedIntentInput
+  readonly intentInput: SerializedIntentInput
   readonly quote: OrchestratorExecutionQuote
   readonly quotes: readonly OrchestratorExecutionQuote[]
 }
@@ -255,11 +259,15 @@ function validateFee(
 
 export interface BuiltSolanaIntentRequest {
   readonly request: OrchestratorIntentRequest
-  readonly normalized: NormalizedIntentInput
+  readonly intentInput: SerializedIntentInput
+}
+
+function built(request: OrchestratorIntentRequest): BuiltSolanaIntentRequest {
+  return { request, intentInput: toSponsorshipApprovalInput(request) }
 }
 
 function toSponsorship(
-  settings: NormalizedIntentOptions['sponsorSettings'],
+  settings: SolanaSponsorSettings | undefined,
 ): OrchestratorSponsorship | undefined {
   return settings ? { ...settings } : undefined
 }
@@ -315,15 +323,6 @@ export function buildSolanaIntentRequest(
       )
     }
   }
-  const normalizedOptions: NormalizedIntentOptions = {
-    // The SVM-only account has no signature mode; the paired EVM entry does.
-    ...(execution ? { signatureMode: 1 } : {}),
-    ...(input.appFees ? { appFees: input.appFees } : {}),
-    ...(input.protocolFees ? { protocolFees: input.protocolFees } : {}),
-    ...(input.sponsorSettings
-      ? { sponsorSettings: input.sponsorSettings }
-      : {}),
-  }
   const sponsorship = toSponsorship(input.sponsorSettings)
   const options = {
     ...(input.appFees ? { appFees: input.appFees } : {}),
@@ -346,19 +345,9 @@ export function buildSolanaIntentRequest(
         svm: swig,
       }
     : { svm: swig }
-  // Projected from the same entries the request sends, so the approval input
-  // names the paying Swig and its key exactly as the orchestrator receives it.
-  const normalizedAccount: NormalizedIntentInput['account'] = execution
-    ? { ...toNormalizedAccount(execution.account), svm: swig }
-    : { address: input.walletAddress, svm: swig }
 
   if (input.action.kind === 'authority') {
-    return buildAuthorityRequest(input, input.action.change, {
-      chainId,
-      caip2,
-      account,
-      normalizedAccount,
-    })
+    return buildAuthorityRequest(input, input.action.change, { caip2, account })
   }
 
   if (input.action.kind === 'instructions') {
@@ -371,38 +360,34 @@ export function buildSolanaIntentRequest(
       input.action.addressLookupTables,
     )
     const instructions = normalizeSolanaInstructions(input.action.instructions)
-    return {
-      request: {
-        account,
-        destination: {
-          vm: 'svm',
-          chainId: caip2,
-          // Tokenless: the instructions move whatever they move, and the payee
-          // is encoded inside them, so this names neither token nor recipient
-          // and acquires no funding mint.
-          tokenRequests: [],
-          execution: {
-            instructions,
-            ...(lookupTables ? { addressLookupTables: lookupTables } : {}),
-          },
-        },
-        source: {
-          selection: { chains: { only: [caip2] }, tokens: 'all' },
-        },
-        ...(Object.keys(options).length > 0 ? { options } : {}),
-      },
-      normalized: {
-        destinationExecutions: [],
-        account: normalizedAccount,
-        options: normalizedOptions,
-        destinationChainId: chainId,
-        tokenRequests: [],
-        destinationInstructions:
-          instructions as NormalizedIntentInput['destinationInstructions'],
-        ...(lookupTables ? { addressLookupTableAddresses: lookupTables } : {}),
-        accountAccessList: { chainIds: [chainId] },
-      },
+    const feeToken =
+      input.action.feeToken === undefined
+        ? undefined
+        : solanaAddress(input.action.feeToken)
+    if (!feeToken && input.sponsorSettings?.gas !== true) {
+      throw new InvalidSolanaTransactionArtifactError(
+        'an unsponsored Solana instruction execution names the token it pays in',
+      )
     }
+    return built({
+      account,
+      // Only an unsponsored execution names a source: the token its charge is
+      // drafted from.
+      ...(feeToken
+        ? { source: { vm: 'svm', chainId: caip2, token: feeToken } }
+        : {}),
+      destination: {
+        vm: 'svm',
+        chainId: caip2,
+        // Tokenless: the instructions move whatever they move, and the payee
+        // is encoded inside them, so this names neither token nor recipient.
+        execution: {
+          instructions,
+          ...(lookupTables ? { addressLookupTables: lookupTables } : {}),
+        },
+      },
+      ...(Object.keys(options).length > 0 ? { options } : {}),
+    })
   }
 
   const mint = solanaAddress(input.action.mint)
@@ -443,30 +428,14 @@ export function buildSolanaIntentRequest(
       'the token amount exceeds the source amount cap',
     )
   }
-  // Pinned to the cluster and the one mint: naming the cluster without the
-  // mint would re-expand the source scope to every registry token on it and
-  // defeat the explicit source asset. The orchestrator also admits native SOL
-  // only as the single pinned token. A cap only adds a limit on that pair; it
-  // never widens the selection.
+  // The one cluster and mint the wallet spends. The orchestrator admits native
+  // SOL only as the named source token; a cap bounds that token alone.
   const source = {
-    selection: {
-      chains: { only: [caip2] },
-      tokens: { only: [mint] },
-      perChain: { [caip2]: { tokens: { only: [mint] } } },
-    },
-    ...(sourceLimit === undefined
-      ? {}
-      : {
-          limits: [
-            { chainId: caip2, tokenAddress: mint, maxAmount: sourceLimit },
-          ],
-        }),
+    vm: 'svm' as const,
+    chainId: caip2,
+    token: mint,
+    ...(sourceLimit === undefined ? {} : { maxAmount: sourceLimit }),
   }
-  // A capped pair is named by its cap alone, as an EVM capped source asset is.
-  const cappedAccessList =
-    sourceLimit === undefined
-      ? undefined
-      : { chainTokenAmounts: { [chainId]: { [mint]: sourceLimit } } }
 
   if (delivery.kind === 'cross-chain') {
     if (
@@ -490,52 +459,28 @@ export function buildSolanaIntentRequest(
     const recipient = execution
       ? {}
       : { recipient: { address: delivery.recipient } }
-    return {
-      request: {
-        account,
-        destination: {
-          vm: 'evm',
-          chainId: formatCaip2(delivery.chainId),
-          ...recipient,
-          tokenRequests: [{ tokenAddress: delivery.token, ...amount }],
-          ...(executions
-            ? {
-                execution: {
-                  calls: executions,
-                  ...(execution?.gasLimit === undefined
-                    ? {}
-                    : { gasLimit: execution.gasLimit }),
-                },
-              }
-            : {}),
-        },
-        source,
-        ...(Object.keys(options).length > 0 ? { options } : {}),
-      },
-      normalized: {
-        destinationExecutions: executions ?? [],
-        ...(execution?.gasLimit === undefined
-          ? {}
-          : { destinationGasUnits: execution.gasLimit }),
-        account: normalizedAccount,
-        options: normalizedOptions,
-        destinationChainId: delivery.chainId,
-        tokenRequests: [{ tokenAddress: delivery.token, ...amount }],
-        // The EVM payee in the spelling the released EVM input uses.
-        ...(execution
-          ? {}
-          : {
-              recipient: {
-                address: delivery.recipient,
-                accountType: 'EOA' as const,
-                setupOps: [],
+    return built({
+      account,
+      source,
+      destination: {
+        vm: 'evm',
+        chainId: formatCaip2(delivery.chainId),
+        token: delivery.token,
+        ...amount,
+        ...recipient,
+        ...(executions
+          ? {
+              execution: {
+                calls: executions,
+                ...(execution?.gasLimit === undefined
+                  ? {}
+                  : { gasLimit: execution.gasLimit }),
               },
-            }),
-        accountAccessList: cappedAccessList ?? {
-          chainTokens: { [chainId]: [mint] },
-        },
+            }
+          : {}),
       },
-    }
+      ...(Object.keys(options).length > 0 ? { options } : {}),
+    })
   }
 
   const recipient = solanaAddress(delivery.recipient)
@@ -544,30 +489,18 @@ export function buildSolanaIntentRequest(
       'the recipient must differ from the managed Solana wallet',
     )
   }
-  return {
-    request: {
-      account,
-      destination: {
-        vm: 'svm',
-        chainId: caip2,
-        recipient: { address: recipient },
-        tokenRequests: [{ tokenAddress: mint, ...amount }],
-      },
-      source,
-      ...(Object.keys(options).length > 0 ? { options } : {}),
-    },
-    normalized: {
-      destinationExecutions: [],
-      account: normalizedAccount,
-      options: normalizedOptions,
-      destinationChainId: chainId,
-      tokenRequests: [{ tokenAddress: mint, ...amount }],
+  return built({
+    account,
+    source,
+    destination: {
+      vm: 'svm',
+      chainId: caip2,
+      token: mint,
+      ...amount,
       recipient: { address: recipient },
-      accountAccessList: cappedAccessList ?? {
-        chainTokens: { [chainId]: [mint] },
-      },
     },
-  }
+    ...(Object.keys(options).length > 0 ? { options } : {}),
+  })
 }
 
 function wireAuthorityChange(
@@ -583,10 +516,8 @@ function buildAuthorityRequest(
   input: SolanaTransferInput,
   change: SolanaAuthorityChangeInput,
   context: {
-    readonly chainId: number
     readonly caip2: ReturnType<typeof formatCaip2>
     readonly account: OrchestratorIntentRequest['account']
-    readonly normalizedAccount: NormalizedIntentInput['account']
   },
 ): BuiltSolanaIntentRequest {
   if (input.appFees || input.protocolFees) {
@@ -616,31 +547,17 @@ function buildAuthorityRequest(
       'a Swig authority change adds a compressed passkey or secp256k1 key with a permission, or removes one without',
     )
   }
-  const { chainId, caip2 } = context
-  const authority = wireAuthorityChange(change)
-  const sponsorSettings = { ...SOLANA_AUTHORITY_SPONSORSHIP }
-  return {
-    request: {
-      account: context.account,
-      destination: {
-        vm: 'svm',
-        chainId: caip2,
-        tokenRequests: [],
-        execution: { authority },
-      },
-      source: { selection: { chains: { only: [caip2] }, tokens: 'all' } },
-      options: { sponsorship: { ...sponsorSettings } },
+  // Source-free: the sponsor pays for the change, so nothing is drafted from
+  // the wallet.
+  return built({
+    account: context.account,
+    destination: {
+      vm: 'svm',
+      chainId: context.caip2,
+      execution: { authority: wireAuthorityChange(change) },
     },
-    normalized: {
-      account: context.normalizedAccount,
-      destinationChainId: chainId,
-      destinationExecutions: [],
-      tokenRequests: [],
-      destinationAuthority: authority,
-      accountAccessList: { chainIds: [chainId] },
-      options: { sponsorSettings },
-    },
-  }
+    options: { sponsorship: { ...SOLANA_AUTHORITY_SPONSORSHIP } },
+  })
 }
 
 function deliveryKind(input: SolanaTransferInput): SolanaDelivery['kind'] {
@@ -1030,10 +947,10 @@ export async function prepareSolanaIntent(
   context: SolanaWorkflowContext,
   input: SolanaTransferInput,
 ): Promise<PreparedSolanaIntent> {
-  const { request, normalized } = buildSolanaIntentRequest(input)
+  const { request, intentInput } = buildSolanaIntentRequest(input)
   const response = await context.quoteClient.createQuote(request, {
-    intentInput: projectCompatibleIntentInput(normalized),
-    sponsored: isSponsoredIntentInput(normalized),
+    intentInput,
+    sponsored: isSponsoredIntentInput(intentInput),
   })
   if (response.routes.length === 0) {
     throw new InvalidSolanaTransactionArtifactError(
@@ -1046,7 +963,7 @@ export async function prepareSolanaIntent(
     traceId: response.traceId,
     input,
     request,
-    normalized,
+    intentInput,
     quote: quotes[0]!,
     quotes,
   }
@@ -1077,7 +994,7 @@ export function reconstructSolanaIntent(input: {
   readonly quote: OrchestratorExecutionQuote
   readonly quotes: readonly OrchestratorExecutionQuote[]
 }): PreparedSolanaIntent {
-  const { request, normalized } = buildSolanaIntentRequest(input.transfer)
+  const { request, intentInput } = buildSolanaIntentRequest(input.transfer)
   if (
     stable(projectPreparedBinding(request).request) !==
     stable(projectPreparedBinding(input.request).request)
@@ -1087,10 +1004,7 @@ export function reconstructSolanaIntent(input: {
       { intentId: input.quote.intentId },
     )
   }
-  if (
-    stable(projectCompatibleIntentInput(normalized)) !==
-    stable(input.intentInput)
-  ) {
+  if (stable(intentInput) !== stable(input.intentInput)) {
     throw new InvalidSolanaTransactionArtifactError(
       'the canonical intent input does not match the captured transaction',
       { intentId: input.quote.intentId },
@@ -1109,7 +1023,7 @@ export function reconstructSolanaIntent(input: {
     traceId: input.traceId,
     input: input.transfer,
     request,
-    normalized,
+    intentInput,
     quote,
     quotes,
   }
@@ -1345,7 +1259,10 @@ export async function submitSolanaIntent(
     type: 'intent' as const,
     traceId: response.traceId,
     intentId: response.intentId,
-    sourceChains: [solanaChainId(signed.prepared.input.chain)],
+    ...(action.kind === 'authority' ||
+    (action.kind === 'instructions' && !action.feeToken)
+      ? {}
+      : { sourceChains: [solanaChainId(signed.prepared.input.chain)] }),
     targetChain:
       action.kind === 'transfer' && action.delivery.kind === 'cross-chain'
         ? action.delivery.chainId

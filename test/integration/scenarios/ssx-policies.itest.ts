@@ -169,9 +169,9 @@ async function sessionTransfer(
   const userSignature = await account.signEnableSession(sessionDetails)
 
   return {
-    chain: sourceChain,
+    source: { token: usdc },
+    destination: { chain: sourceChain, calls: [call] },
     sponsored: true as const,
-    calls: [call],
     signers: {
       type: 'session' as const,
       session,

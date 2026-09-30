@@ -4,17 +4,16 @@ import { describe, expect, test, vi } from 'vitest'
 import { quote as caucasusQuote, emptyCost } from '../../../test/utils/caucasus'
 import { solanaAddress, solanaDevnet } from '../../chains/non-evm'
 import { mapIntentRequestToWire } from '../../clients/orchestrator/mappers'
-import {
-  isSponsoredIntentInput,
-  type NormalizedIntentInput,
-  projectCompatibleIntentInput,
-} from '../../clients/orchestrator/normalized'
 import type {
   IntentAccountView,
   QuotePlan,
   SwigAuthority,
 } from '../../clients/orchestrator/public'
-import { projectSponsorshipApproval } from '../../clients/orchestrator/sponsorship-approval'
+import {
+  isSponsoredIntentInput,
+  projectSponsorshipApproval,
+  toSponsorshipApprovalInput,
+} from '../../clients/orchestrator/sponsorship-approval'
 import type {
   OrchestratorDeploymentQuote,
   OrchestratorQuote,
@@ -29,11 +28,6 @@ import {
   type SolanaDeploymentInput,
   submitSolanaDeployment,
 } from './solana-deployment'
-
-/** The approval input as JSON, which is what the orchestrator recomputes. */
-function serialized(normalized: NormalizedIntentInput) {
-  return JSON.parse(JSON.stringify(projectCompatibleIntentInput(normalized)))
-}
 
 const owner = privateKeyToAccount(`0x${'12'.repeat(32)}`)
 const DEVNET = 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1'
@@ -132,7 +126,7 @@ function context(
 
 describe('Solana Swig deployment request', () => {
   test('installs the ECDSA owner key in the Solana-only creation shape', () => {
-    const { request, normalized } = buildSolanaDeploymentRequest(ecdsaInput())
+    const { request, intentInput } = buildSolanaDeploymentRequest(ecdsaInput())
 
     expect(request).toEqual({
       account: {
@@ -147,33 +141,34 @@ describe('Solana Swig deployment request', () => {
           },
         },
       },
-      destination: { vm: 'svm', chainId: DEVNET, tokenRequests: [] },
-      source: { selection: { chains: { only: [DEVNET] }, tokens: 'all' } },
+      // Source-free: the sponsor funds the creation.
+      destination: { vm: 'svm', chainId: DEVNET },
       // Explicit `false`s so the request says what the approval input does.
       options: {
         sponsorship: { gas: true, bridgeFees: false, swapFees: false },
       },
     })
     expect(request.account).not.toHaveProperty('evm')
-    expect(normalized).toEqual({
+    expect(request).not.toHaveProperty('source')
+    expect(intentInput).toStrictEqual({
+      contractVersion: 'sdk-caucasus-singular-2026-09-v1',
       // Names the installed owner and the Swig id, exactly as requested.
-      account: { address: wallet, svm: request.account.svm },
-      destinationChainId: 792703810,
-      destinationExecutions: [],
-      tokenRequests: [],
-      accountAccessList: { chainIds: [792703810] },
+      account: { svm: request.account.svm },
+      destination: { vm: 'svm', chainId: DEVNET },
       options: {
-        sponsorSettings: { gas: true, bridgeFees: false, swapFees: false },
+        sponsorship: { gas: true, bridgeFees: false, swapFees: false },
       },
     })
-    expect(isSponsoredIntentInput(normalized)).toBe(true)
+    expect(isSponsoredIntentInput(intentInput)).toBe(true)
     expect(projectSponsorshipApproval(mapIntentRequestToWire(request))).toEqual(
-      serialized(normalized),
+      intentInput,
     )
   })
 
   test('installs the compressed passkey', () => {
-    const { request, normalized } = buildSolanaDeploymentRequest(passkeyInput())
+    const { request, intentInput } = buildSolanaDeploymentRequest(
+      passkeyInput(),
+    )
     expect(request.account.svm).toMatchObject({
       authorization: { kind: 'secp256r1', publicKey: passkey },
       initData: {
@@ -182,7 +177,7 @@ describe('Solana Swig deployment request', () => {
       },
     })
     expect(projectSponsorshipApproval(mapIntentRequestToWire(request))).toEqual(
-      serialized(normalized),
+      intentInput,
     )
   })
 
@@ -252,9 +247,12 @@ describe('Solana Swig deployment quote', () => {
     )
     // The creation is always sponsored, so its approval rides on the quote.
     expect(fixture.createQuote).toHaveBeenCalledWith(prepared.request, {
-      intentInput: projectCompatibleIntentInput(prepared.normalized),
+      intentInput: prepared.intentInput,
       sponsored: true,
     })
+    expect(prepared.intentInput).toStrictEqual(
+      toSponsorshipApprovalInput(prepared.request),
+    )
     expect(prepared.quote.intentId).toBe('deployment-intent')
     expect(prepared.traceId).toBe('quote-trace')
   })
@@ -428,7 +426,6 @@ describe('Solana Swig deployment submission', () => {
       type: 'intent',
       traceId: 'submit-trace',
       intentId: 'deployment-intent',
-      sourceChains: [792703810],
       targetChain: 792703810,
     })
   })

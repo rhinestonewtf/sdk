@@ -122,9 +122,7 @@ class InvalidSourceCallsError extends ExecutionError {
   }) {
     super({
       message:
-        params?.chainId !== undefined
-          ? `sourceCalls includes chainId ${params.chainId} which is not in sourceChains (or the target chain for same-chain transactions)`
-          : 'sourceCalls includes a chainId not in sourceChains (or the target chain for same-chain transactions)',
+        'A source call `provides` a token other than `source.token`. Source calls run on the source chain and can only make more of the source token available.',
       ...params,
     })
   }
@@ -242,7 +240,7 @@ class InvalidPreparedTransactionError extends ExecutionError {
   }) {
     super({
       message:
-        'This prepared transaction was created for an earlier orchestrator wire version and cannot be signed or submitted. Reconcile the original submission, then prepare the transaction again.',
+        'This prepared transaction was created by an earlier SDK generation or orchestrator wire version and cannot be signed or submitted. Reconcile the original submission, then prepare the transaction again.',
       ...params,
     })
   }

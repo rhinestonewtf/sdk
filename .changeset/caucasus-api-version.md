@@ -4,7 +4,7 @@
 
 Speak orchestrator API version `2026-09.caucasus`. Accounts, recipients, sources and destinations are now expressed in their own VM's terms, a quote states the authorizations it needs as an ordered list, and status reports every operation rather than one per chain. There is no compatibility mode: a prepared or signed transaction produced by an earlier release cannot be signed or submitted by this one, and refuses explicitly rather than being reinterpreted. Reconcile any in-flight submission first, then prepare it again.
 
-Transaction inputs are unchanged: `chain`, `sourceChains` / `targetChain`, `sourceAssets`, `calls`, `tokenRequests`, `recipient`, `sponsored` and the HyperCore helpers all keep their shape and meaning. What changed is everything the orchestrator hands back. One input is stricter: an explicitly empty `sourceAssets` — `[]`, `{}`, or a chain listed with no tokens — now refuses, because it leaves the intent nothing to spend.
+Transaction inputs move to one `source` and one `destination` (see the singular source and destination entry). Everything the orchestrator hands back changed too.
 
 ### Signing is an ordered list, not a set of roles
 
@@ -27,7 +27,7 @@ A quote asks for the delegations it needs as `delegationAuthorization` requests,
 
 ### Chains are CAIP-2
 
-Quote costs, plans, requirements, signing context, bridge fills and status evidence carry CAIP-2 strings (`eip155:8453`, `solana:…`, `hypercore:perp`) rather than numbers, so a chain the SDK has no number for stays readable. Numeric chain ids remain where they always were: your `Transaction` inputs, viem chain objects, the sponsorship callback, and inside signed EIP-712 and EIP-7702 payloads.
+Quote costs, plans, requirements, signing context, bridge fills and status evidence carry CAIP-2 strings (`eip155:8453`, `solana:…`, `hypercore:perp`) rather than numbers, so a chain the SDK has no number for stays readable. Numeric chain ids remain in viem chain objects, `TransactionResult`, and inside signed EIP-712 and EIP-7702 payloads.
 
 The one exception is deliberate: an intent recorded before the chain registry knew a chain keeps a numeric `chainId` and a `vm: 'unknown'` transaction reference. That is an honest gap in an old record, not a chain identity to invent.
 
@@ -46,9 +46,9 @@ The one exception is deliberate: an intent recorded before the chain registry kn
 
 `quote.plan` states where the route sources from, where it delivers and what it deploys. `quote.requirements` lists unresolved prerequisites — an approval or a wrap — which are disclosed and never performed on your behalf; preparing a transaction still spends and deploys nothing. `quote.tokenRequirements` is replaced by `requirements`, and `TokenRequirements`, `ApprovalRequired` and `WrapRequired` are removed.
 
-### Sponsorship is unchanged
+### Prepared transactions carry their request
 
-`PreparedTransactionData.intentInput` keeps its shape, its field names and its numeric chain ids, and a JWT `getIntentExtensionToken` callback receives exactly what it received before. Existing sponsorship policies and digests keep working. `PreparedTransactionData` gains a `request` field carrying the versioned wire request; treat it as opaque and persist it with the rest.
+`PreparedTransactionData` gains a `request` field carrying the versioned wire request; treat it as opaque and persist it with the rest. The sponsorship approval input changed; see the singular source and destination entry.
 
 ### Not in this release
 

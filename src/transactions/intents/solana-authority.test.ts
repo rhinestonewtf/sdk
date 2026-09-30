@@ -6,13 +6,15 @@ import { describe, expect, test, vi } from 'vitest'
 import { authorityQuote } from '../../../test/utils/caucasus'
 import { signingPasskey } from '../../../test/utils/passkeys'
 import { solanaAddress, solanaDevnet } from '../../chains/non-evm'
-import { projectCompatibleIntentInput } from '../../clients/orchestrator/normalized'
 import type {
   SigningPayload,
   SolanaAuthorityDisclosure,
   SwigAuthority,
 } from '../../clients/orchestrator/public'
-import { projectSponsorshipApproval } from '../../clients/orchestrator/sponsorship-approval'
+import {
+  projectSponsorshipApproval,
+  toSponsorshipApprovalInput,
+} from '../../clients/orchestrator/sponsorship-approval'
 import type { OrchestratorExecutionQuote } from '../../clients/orchestrator/types'
 import {
   InvalidSolanaTransactionArtifactError,
@@ -184,33 +186,31 @@ describe('Swig authority change requests', () => {
         swigAccount: swig,
         authorization: ecdsaOwner,
       }
-      const { request, normalized } = buildSolanaIntentRequest(
+      const { request, intentInput } = buildSolanaIntentRequest(
         authorityInput(change),
       )
+      // Source-free: the sponsor pays, so nothing is drafted from the wallet.
       expect(request).toStrictEqual({
         account: { svm },
         destination: {
           vm: 'svm',
           chainId: DEVNET,
-          tokenRequests: [],
           execution: { authority },
         },
-        source: { selection: { chains: { only: [DEVNET] }, tokens: 'all' } },
         options: { sponsorship: sponsorSettings },
       })
-      expect(normalized).toStrictEqual({
-        account: { address: wallet, svm },
-        destinationChainId: DEVNET_ID,
-        destinationExecutions: [],
-        tokenRequests: [],
-        destinationAuthority: authority,
-        accountAccessList: { chainIds: [DEVNET_ID] },
-        options: { sponsorSettings },
+      expect(intentInput).toStrictEqual({
+        contractVersion: 'sdk-caucasus-singular-2026-09-v1',
+        account: { svm },
+        destination: {
+          vm: 'svm',
+          chainId: DEVNET,
+          execution: { authority },
+        },
+        options: { sponsorship: sponsorSettings },
       })
       // The grant binds exactly what the orchestrator derives from the body.
-      expect(projectSponsorshipApproval(request)).toStrictEqual(
-        projectCompatibleIntentInput(normalized),
-      )
+      expect(projectSponsorshipApproval(request)).toStrictEqual(intentInput)
     },
   )
 
@@ -218,7 +218,7 @@ describe('Swig authority change requests', () => {
     ['add', addManager],
     ['remove', removeManager],
   ] as const)('names a secp256k1 key on an %s', (_name, change) => {
-    const { request, normalized } = buildSolanaIntentRequest(
+    const { request, intentInput } = buildSolanaIntentRequest(
       authorityInput(change),
     )
     const authority =
@@ -233,10 +233,12 @@ describe('Swig authority change requests', () => {
             key: { kind: 'secp256k1', publicKey: managerKey },
           }
     expect(request.destination).toMatchObject({ execution: { authority } })
-    expect(normalized.destinationAuthority).toStrictEqual(authority)
-    expect(projectSponsorshipApproval(request)).toStrictEqual(
-      projectCompatibleIntentInput(normalized),
-    )
+    expect(intentInput.destination).toStrictEqual({
+      vm: 'svm',
+      chainId: DEVNET,
+      execution: { authority },
+    })
+    expect(projectSponsorshipApproval(request)).toStrictEqual(intentInput)
   })
 
   test('names a passkey owner by its compressed key', () => {
@@ -335,9 +337,12 @@ describe('Swig authority change quotes', () => {
       authorityInput(),
     )
     expect(fixture.createQuote).toHaveBeenCalledWith(prepared.request, {
-      intentInput: projectCompatibleIntentInput(prepared.normalized),
+      intentInput: toSponsorshipApprovalInput(prepared.request),
       sponsored: true,
     })
+    expect(prepared.intentInput).toStrictEqual(
+      toSponsorshipApprovalInput(prepared.request),
+    )
     expect(prepared.quote.intentId).toBe('authority-intent')
   })
 
@@ -731,7 +736,7 @@ describe('Swig authority change binding', () => {
       traceId: value.traceId,
       transfer: value.input,
       request: value.request,
-      intentInput: projectCompatibleIntentInput(value.normalized),
+      intentInput: value.intentInput,
       quote: value.quote,
       quotes: value.quotes,
       ...overrides,
@@ -768,10 +773,11 @@ describe('Swig authority change binding', () => {
 
   test('refuses a tampered intent input', async () => {
     const value = await prepared()
-    const intentInput = structuredClone(
-      projectCompatibleIntentInput(value.normalized),
-    ) as Record<string, any>
-    intentInput.destinationAuthority.permission = 'all'
+    const intentInput = structuredClone(value.intentInput) as Record<
+      string,
+      any
+    >
+    intentInput.destination.execution.authority.permission = 'all'
     expect(() =>
       reconstructSolanaIntent(
         reconstructInput(value, { intentInput: intentInput as never }),
@@ -816,7 +822,6 @@ describe('signing and submitting a Swig authority change', () => {
       type: 'intent',
       traceId: 'submit-trace',
       intentId: 'authority-intent',
-      sourceChains: [DEVNET_ID],
       targetChain: DEVNET_ID,
     })
   })

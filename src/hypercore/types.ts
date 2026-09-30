@@ -19,7 +19,7 @@ type PerpOrderSize =
        *
        * This is the position's notional, not the collateral behind it — at 5x
        * leverage a $25 position needs $5 of margin, and it is the margin the
-       * transaction's `tokenRequests` deliver.
+       * transaction's `destination.token` and `destination.amount` deliver.
        */
       notionalUsd: number
       size?: never
@@ -70,9 +70,10 @@ interface ClosePerpRequest {
  * Hyperliquid L1 action passed through exactly as you wrote it, for the cases
  * the two above do not cover.
  *
- * An action that needs collateral (opening a position) must be paired with
- * `tokenRequests` that deliver it; one that does not (a close, a cancel, a
- * leverage change) rides a transaction that requests no tokens.
+ * An action that needs collateral (opening a position) must be paired with a
+ * `destination.token` and `destination.amount` that deliver it; one that does
+ * not (a close, a cancel, a leverage change) rides a transaction that delivers
+ * no token, and still names a `source` on an EVM chain to pay from.
  *
  * One per transaction, whichever form: an agent authorises exactly one action,
  * and registering a second evicts the first.

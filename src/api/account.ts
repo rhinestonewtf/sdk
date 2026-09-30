@@ -17,33 +17,19 @@ import {
   locateSwigWallet,
   MANAGED_SWIG_NAMESPACES,
 } from '../accounts/solana/address'
-import {
-  canonicalSecp256k1PublicKey,
-  isEvmAddressLength,
-} from '../accounts/solana/keys'
-import {
-  canonicalP256PublicKey,
-  compressP256PublicKey,
-} from '../accounts/solana/passkey'
-import { formatCaip2, parseCaip2, toEvmChainReference } from '../chains/caip2'
+import { compressP256PublicKey } from '../accounts/solana/passkey'
+import { parseCaip2, toEvmChainReference } from '../chains/caip2'
 import { getChainById, getChainReference } from '../chains/catalog'
-import {
-  type DestinationChain,
-  type SolanaAddress,
-  type SolanaChain,
-  type SolanaInstructionInput,
-  solanaAddress,
+import type {
+  DestinationChain,
+  SolanaAddress,
+  SolanaChain,
 } from '../chains/non-evm'
-import { normalizeTokenAddress, validateTokenAddresses } from '../chains/tokens'
+import { normalizeTokenAddress } from '../chains/tokens'
 import {
   isSolanaAccountAlreadyCreated,
   isSolanaAuthorityChangeRefused,
 } from '../clients/orchestrator/errors'
-import type {
-  NormalizedAccessList,
-  NormalizedIntentOptions,
-} from '../clients/orchestrator/normalized'
-import { projectCompatibleIntentInput } from '../clients/orchestrator/normalized'
 import type {
   HyperCoreAction,
   Portfolio,
@@ -59,18 +45,18 @@ import type {
 import type {
   AccountTransaction,
   CallInput,
-  CrossChainSolanaOriginTransaction,
   EvmAccountConfig,
+  EvmOriginTransaction,
+  EvmTransaction,
   RhinestoneAccountConfig,
   SameChainSolanaAuthorityTransaction,
-  SameChainSolanaInstructionsTransaction,
+  SameChainSolanaTransaction,
   Session,
   SignerSet,
   SolanaAuthorityStatus,
   SolanaManagedAccountConfig,
   SolanaOwner,
   SolanaStandaloneAccountConfig,
-  SourceAssetInput,
   Sponsorship,
   SwapQuoter,
   SwapQuoterFilter,
@@ -100,6 +86,7 @@ import {
   QuoteNotInPreparedTransactionError,
 } from '../errors/execution'
 import { resolveHyperCoreAction } from '../hypercore/resolve'
+import type { HyperCoreOptions } from '../hypercore/types'
 import {
   ecdsaSignerId,
   webauthnSignerId,
@@ -124,7 +111,6 @@ import {
 import { normalizeIntentQuote } from '../transactions/intents/normalize'
 import { assertSupportedSigningRequests } from '../transactions/intents/prepare'
 import {
-  NATIVE_SOL_SENTINEL,
   SOLANA_AUTHORITY_SPONSORSHIP,
   type SolanaEvmExecution,
   type SolanaTransferInput,
@@ -134,10 +120,7 @@ import type {
   PreparedSolanaDeployment,
   SolanaDeploymentInput,
 } from '../transactions/intents/solana-deployment'
-import {
-  normalizeSolanaAddressLookupTables,
-  normalizeSolanaInstructions,
-} from '../transactions/intents/solana-instructions'
+import { normalizeSolanaInstructions } from '../transactions/intents/solana-instructions'
 import type {
   IndexedProofContribution,
   IntentInput,
@@ -162,6 +145,14 @@ import {
   adaptSignerSelection,
   adaptUserOperationSignerSelection,
 } from './signer-selection'
+import {
+  isCrossChainSolanaOrigin,
+  isSolanaAuthorityChange,
+  isSolanaInstructionExecution,
+  isSolanaOrigin,
+  normalizeAuthorityChange,
+  normalizeTransaction,
+} from './transaction-input'
 
 interface SubmitTransactionOptions {
   /**
@@ -227,7 +218,7 @@ export interface ManagedTransactionAccount<
   /**
    * Prepare an intent transaction for signing.
    *
-   * On an account with a managed Solana entry, `{ chain, authority }` adds or
+   * On an account with a managed Solana entry, `{ destination: { chain, authority } }` adds or
    * removes a passkey or ECDSA key on its Swig (see `addPasskey` and
    * `addEcdsaKey`). That change is always gas-sponsored and billed to the
    * integrator's sponsorship.
@@ -338,7 +329,7 @@ export interface SolanaStandaloneAccount<
   /**
    * Prepare a Solana-origin transaction for signing.
    *
-   * `{ chain, authority }` adds or removes a passkey or ECDSA key on the
+   * `{ destination: { chain, authority } }` adds or removes a passkey or ECDSA key on the
    * account's Swig (see `addPasskey` and `addEcdsaKey`). That change is always
    * gas-sponsored and billed to the integrator's sponsorship.
    * @param transaction Transaction to prepare
@@ -392,7 +383,7 @@ export interface SolanaStandaloneAccount<
    * never used. `notApplied` says nothing about an intent still in flight:
    * settle the original with `waitForExecution` or `getIntentStatus` first,
    * and never resubmit a change that may have landed.
-   * @param transaction The `{ chain, authority }` change to check
+   * @param transaction The `{ destination: { chain, authority } }` change to check
    * @returns The change's status on the Swig
    * @throws SolanaAuthorityChangeRefusedError when the orchestrator refuses the change for any other reason, such as `acting_permission` or `root_role`
    * @throws SolanaAccountNotCreatedError when the Swig does not exist yet
@@ -402,8 +393,10 @@ export interface SolanaStandaloneAccount<
    * import { addEcdsaKey, solanaDevnet } from '@rhinestone/sdk/solana'
    *
    * const enroll = {
-   *   chain: solanaDevnet,
-   *   authority: addEcdsaKey(recoveryPublicKey, { permission: 'manageAuthority' }),
+   *   destination: {
+   *     chain: solanaDevnet,
+   *     authority: addEcdsaKey(recoveryPublicKey, { permission: 'manageAuthority' }),
+   *   },
    * }
    * const { status } = await account.getAuthorityStatus(enroll)
    * if (status === 'notApplied') {
@@ -461,6 +454,27 @@ export interface SolanaStandaloneAccount<
     chain: SolanaChain,
     options: Required<SolanaDeployOptions>,
   ): Promise<boolean>
+}
+
+/** Options for deploying a managed EVM account with `deploy('evm', …)`. */
+export interface EvmDeployOptions {
+  /** Sponsor the deployment. A sponsored intent deployment spends nothing. */
+  sponsored?: boolean
+  /**
+   * The token an unsponsored intent deployment pays in, as an address on the
+   * deployment chain. Required then; ignored when the deployment runs as a
+   * UserOperation.
+   */
+  source?: { token: Address }
+}
+
+/** Options for `setup`. */
+export interface EvmSetupOptions {
+  /**
+   * The token an intent-path setup pays in, as an address on the setup chain.
+   * Required then; ignored when setup runs as a UserOperation.
+   */
+  source?: { token: Address }
 }
 
 /** Options for creating a managed Solana account's Swig. */
@@ -531,7 +545,7 @@ interface ManagedSolanaDeployment {
    * never used. `notApplied` says nothing about an intent still in flight:
    * settle the original with `waitForExecution` or `getIntentStatus` first,
    * and never resubmit a change that may have landed.
-   * @param transaction The `{ chain, authority }` change to check
+   * @param transaction The `{ destination: { chain, authority } }` change to check
    * @returns The change's status on the Swig
    * @throws SolanaAuthorityChangeRefusedError when the orchestrator refuses the change for any other reason, such as `acting_permission` or `root_role`
    * @throws SolanaAccountNotCreatedError when the Swig does not exist yet
@@ -541,8 +555,10 @@ interface ManagedSolanaDeployment {
    * import { addEcdsaKey, solanaDevnet } from '@rhinestone/sdk/solana'
    *
    * const enroll = {
-   *   chain: solanaDevnet,
-   *   authority: addEcdsaKey(recoveryPublicKey, { permission: 'manageAuthority' }),
+   *   destination: {
+   *     chain: solanaDevnet,
+   *     authority: addEcdsaKey(recoveryPublicKey, { permission: 'manageAuthority' }),
+   *   },
    * }
    * const { status } = await account.getAuthorityStatus(enroll)
    * if (status === 'notApplied') {
@@ -564,20 +580,23 @@ export interface ManagedEvmAccount<
   config: Readonly<C>
   /**
    * Deploy the EVM account on a given chain.
+   *
+   * An account deployed through an intent pays for it on the same chain: a
+   * sponsored deployment spends nothing, and an unsponsored one spends
+   * `source.token`, which it then requires. A deployment that runs as a
+   * UserOperation takes neither.
    * @param vm `'evm'`
    * @param chain Chain to deploy the account on
-   * @param params Optional deployment parameters (sponsorship)
+   * @param params Optional sponsorship, and the token an unsponsored deployment pays in
    * @returns `true` once the deployment is submitted, `false` when the account is already deployed
+   * @throws UnsupportedAccountCapabilityError when an unsponsored intent deployment names no `source.token`
    * @example
    * ```ts
    * await account.deploy('evm', base, { sponsored: true })
+   * await account.deploy('evm', base, { source: { token: usdcOnBase } })
    * ```
    */
-  deploy(
-    vm: 'evm',
-    chain: Chain,
-    params?: { sponsored?: boolean },
-  ): Promise<boolean>
+  deploy(vm: 'evm', chain: Chain, params?: EvmDeployOptions): Promise<boolean>
   /**
    * Check whether the account is deployed on a given chain.
    * @param chain Chain to check
@@ -586,10 +605,20 @@ export interface ManagedEvmAccount<
   isDeployed(chain: Chain): Promise<boolean>
   /**
    * Set up an existing account on a given chain by installing any missing modules.
+   *
+   * Setup that runs as an intent pays for itself in `source.token` on the same
+   * chain, and requires it. Setup that installs the intent executor runs as a
+   * UserOperation and takes no source.
    * @param chain Chain to set the account up on
-   * @returns `true` once setup is submitted
+   * @param options The token an intent-path setup pays in
+   * @returns `true` once setup is submitted, `false` when nothing is missing
+   * @throws UnsupportedAccountCapabilityError when an intent-path setup names no `source.token`
+   * @example
+   * ```ts
+   * await account.setup(base, { source: { token: usdcOnBase } })
+   * ```
    */
-  setup(chain: Chain): Promise<boolean>
+  setup(chain: Chain, options?: EvmSetupOptions): Promise<boolean>
   /**
    * Get the account initialization data, used to deploy the account onchain.
    * @returns The factory address and factory data
@@ -812,7 +841,7 @@ function toPreparedTransactionData(
       best: toPublicQuote(prepared.quote),
       all: prepared.quotes.map(toPublicQuote),
     },
-    intentInput: projectCompatibleIntentInput(prepared.normalized),
+    intentInput: prepared.intentInput,
     request: projectPreparedBinding(prepared.request),
     transaction,
   }
@@ -884,7 +913,7 @@ function toPreparedSolanaTransactionData(
       all: prepared.quotes.map(toPublicQuote),
     },
     execution: solanaMetadata(prepared.input),
-    intentInput: projectCompatibleIntentInput(prepared.normalized),
+    intentInput: prepared.intentInput,
     request: projectPreparedBinding(prepared.request),
     transaction,
   }
@@ -917,8 +946,7 @@ function reconstructInput(
   const quote = normalizeIntentQuote(selected as OrchestratorExecutionQuote)
   return {
     traceId: prepared.quotes.traceId,
-    normalized:
-      prepared.intentInput as unknown as PreparedIntent<Compat>['normalized'],
+    approvalInput: prepared.intentInput,
     quote,
     quotes: prepared.quotes.all.map((candidate) =>
       candidate.intentId === quote.intentId
@@ -946,6 +974,41 @@ function toSignedTransactionData(
   }
   cache.set(data, signed)
   return data
+}
+
+/**
+ * Refuses an artifact from an earlier SDK or wire generation before its
+ * transaction is read, then validates the transaction against the current
+ * model.
+ */
+function assertPreparedArtifact(
+  prepared: PreparedTransactionData,
+  config: Readonly<RhinestoneAccountConfig>,
+): void {
+  assertPreparedBinding(prepared?.request)
+  normalizeTransaction(prepared.transaction, config)
+}
+
+/** The same-chain fee token an intent-path deployment or setup spends. */
+function setupSourceToken(
+  options: { readonly source?: { readonly token?: unknown } } | undefined,
+  chain: Chain,
+): { readonly sourceToken?: Address } {
+  const source = options?.source
+  if (source === undefined) return {}
+  if (
+    typeof source !== 'object' ||
+    source === null ||
+    Object.keys(source).some((key) => key !== 'token') ||
+    typeof source.token !== 'string' ||
+    !isAddress(source.token)
+  ) {
+    throw new UnsupportedAccountCapabilityError(
+      `\`source\` must be \`{ token }\`, a token address on ${chain.name ?? `chain ${chain.id}`} that pays for the setup.`,
+      { field: 'source.token', chainId: chain.id },
+    )
+  }
+  return { sourceToken: source.token }
 }
 
 function referenceChain(): import('../chains/types').EvmChainReference {
@@ -1012,8 +1075,7 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
     prepared: PreparedTransactionData,
     intentId?: string,
   ): Promise<PreparedIntent<Compat>> => {
-    assertSupportedTransaction(prepared.transaction, publicConfig)
-    assertPreparedBinding(prepared.request)
+    assertPreparedArtifact(prepared, publicConfig)
     if (!isSolanaOrigin(prepared.transaction)) {
       // Before any account state is read: a quote this SDK cannot sign should
       // not cost an RPC round trip first.
@@ -1034,7 +1096,7 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
     deploy: (async (
       vm: AccountVm,
       chain: Chain | SolanaChain,
-      params?: { sponsored?: boolean } | SolanaDeployOptions,
+      params?: EvmDeployOptions | SolanaDeployOptions,
     ) => {
       if (vm === 'solana') {
         const solana = requireSolana()
@@ -1056,12 +1118,16 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
         )
       }
       const ctx = context('deploy')
-      const sponsored = (params as { sponsored?: boolean } | undefined)
-        ?.sponsored
+      const options = params as EvmDeployOptions | undefined
       return workflowsFor(ctx).deploy(
         ctx,
         toEvmChainReference((chain as Chain).id),
-        { ...(sponsored !== undefined ? { sponsored } : {}) },
+        {
+          ...(options?.sponsored !== undefined
+            ? { sponsored: options.sponsored }
+            : {}),
+          ...setupSourceToken(options, chain as Chain),
+        },
       )
     }) as ManagedEvmAccount<C>['deploy'] & ManagedSolanaDeployment['deploy'],
     async getAuthorityStatus(transaction) {
@@ -1077,9 +1143,13 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
       const ctx = context('is-deployed')
       return workflowsFor(ctx).isDeployed(ctx, toEvmChainReference(chain.id))
     },
-    setup(chain) {
+    setup(chain, options) {
       const ctx = context('setup')
-      return workflowsFor(ctx).setup(ctx, toEvmChainReference(chain.id))
+      return workflowsFor(ctx).setup(
+        ctx,
+        toEvmChainReference(chain.id),
+        setupSourceToken(options, chain),
+      )
     },
     getInitData() {
       const ctx = context('get-init-data')
@@ -1096,28 +1166,36 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
         transaction,
         publicConfig,
       )
+      const target = (
+        initiallyNormalized as { destination: Record<string, unknown> }
+      ).destination
       const normalized =
-        'targetChain' in initiallyNormalized &&
-        initiallyNormalized.targetChain !== undefined &&
-        'kind' in initiallyNormalized.targetChain &&
-        initiallyNormalized.targetChain.kind === 'svm' &&
-        initiallyNormalized.recipient === undefined &&
+        !isSolanaOrigin(initiallyNormalized) &&
+        (target.chain as { kind?: unknown }).kind === 'svm' &&
+        target.recipient === undefined &&
         solana
           ? (Object.freeze({
               ...initiallyNormalized,
-              recipient: solana.walletAddress,
-            }) as Transaction)
+              destination: Object.freeze({
+                ...target,
+                recipient: solana.walletAddress,
+              }),
+            }) as unknown as Transaction)
           : initiallyNormalized
       if (isSolanaOrigin(normalized)) {
         const origin = requireSolana()
         const workflows = workflowsFor(ctx)
         let execution: SolanaEvmExecution | undefined
-        if (isCrossChainSolanaOrigin(normalized) && normalized.calls?.length) {
+        if (
+          isCrossChainSolanaOrigin(normalized) &&
+          normalized.destination.calls?.length
+        ) {
           origin.assertDestinationCallsSupported()
-          const chainId = normalized.targetChain.id
+          const { destination } = normalized
+          const chainId = destination.chain.id
           const resolved = await workflows.resolveSolanaEvmDestination(ctx, {
             chain: toEvmChainReference(chainId),
-            calls: normalized.calls.map((call) => adaptCall(call, chainId)),
+            calls: destination.calls!.map((call) => adaptCall(call, chainId)),
             ...(normalized.eip7702InitSignature
               ? { eip7702InitSignature: normalized.eip7702InitSignature }
               : {}),
@@ -1127,9 +1205,9 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
             resolved.calls.length > 0
               ? {
                   ...resolved,
-                  ...(normalized.gasLimit === undefined
+                  ...(destination.gasLimit === undefined
                     ? {}
-                    : { gasLimit: normalized.gasLimit }),
+                    : { gasLimit: destination.gasLimit }),
                 }
               : undefined
         }
@@ -1138,37 +1216,18 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
       // Before the quote, not after: the quote's signing requests register an agent
       // derived from the action's bytes, so the action has to be concrete here.
       const hyperCoreAction = await resolveHyperCoreAction({
-        options: normalized.hyperCore,
+        options: (target as { hyperCore?: HyperCoreOptions }).hyperCore,
         account: workflowsFor(ctx).getAddress(ctx, referenceChain()),
         ...(ctx.sdk.hyperliquid ? { hyperliquid: ctx.sdk.hyperliquid } : {}),
       })
-      const automaticSources =
-        'targetChain' in normalized &&
-        normalized.targetChain !== undefined &&
-        normalized.sourceChains === undefined
-          ? await workflowsFor(ctx).getEligibleEvmSourceChains(
-              destinationChainReference(normalized.targetChain),
-            )
-          : undefined
-      if (automaticSources && automaticSources.length === 0) {
-        throw new UnsupportedAccountCapabilityError(
-          'No managed EVM source chains are eligible for this destination.',
-        )
-      }
       const prepared = await workflowsFor(ctx).prepareIntent(
         ctx,
-        adaptTransaction(
-          ctx,
-          normalized,
-          hyperCoreAction,
-          automaticSources?.map(({ id }) => id),
-        ),
+        adaptTransaction(ctx, normalized, hyperCoreAction),
       )
       return toPreparedTransactionData(prepared, normalized, preparedIntents)
     },
     getTransactionMessages(preparedTransaction, options) {
-      assertSupportedTransaction(preparedTransaction.transaction, publicConfig)
-      assertPreparedBinding(preparedTransaction.request)
+      assertPreparedArtifact(preparedTransaction, publicConfig)
       const quote = selectedPublicQuote(preparedTransaction, options?.intentId)
       if (isSolanaOrigin(preparedTransaction.transaction)) {
         const ctx = context('get-intent-messages')
@@ -1185,6 +1244,7 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
       preparedTransaction: PreparedTransactionData,
       options?: QuoteSelection | SignAsOwnerOptions,
     ): Promise<SignedTransactionData | OwnerSignature> => {
+      assertPreparedArtifact(preparedTransaction, publicConfig)
       const ctx = context('sign-intent')
       const workflows = workflowsFor(ctx)
       if (isSolanaOrigin(preparedTransaction.transaction)) {
@@ -1231,6 +1291,7 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
       return toSignedTransactionData(preparedTransaction, intent, signedIntents)
     }) as unknown as ManagedEvmAccount<C>['signTransaction'],
     async assembleTransaction(preparedTransaction, signatures, options) {
+      assertPreparedArtifact(preparedTransaction, publicConfig)
       if (isSolanaOrigin(preparedTransaction.transaction)) {
         refuseSolanaAssembly()
       }
@@ -1254,7 +1315,7 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
       return toSignedTransactionData(preparedTransaction, signed, signedIntents)
     },
     async signAuthorizations(preparedTransaction, options) {
-      assertSupportedTransaction(preparedTransaction.transaction, publicConfig)
+      assertPreparedArtifact(preparedTransaction, publicConfig)
       if (isSolanaOrigin(preparedTransaction.transaction)) {
         throw new UnsupportedAccountCapabilityError(
           'EIP-7702 authorizations are unavailable for Solana-origin transactions.',
@@ -1303,7 +1364,7 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
       return { proofs: [...result.proofs] }
     },
     async submitTransaction(signedTransaction, options) {
-      assertSupportedTransaction(signedTransaction.transaction, publicConfig)
+      assertPreparedArtifact(signedTransaction, publicConfig)
       const ctx = context('submit-intent')
       const workflows = workflowsFor(ctx)
       if (isSolanaOrigin(signedTransaction.transaction)) {
@@ -1611,10 +1672,10 @@ function createSolanaOrigin(
 
   const transfer = (
     sdk: ResolvedSdkConfig,
-    transaction: Transaction,
+    candidate: Transaction,
     execution?: SolanaEvmExecution,
   ): SolanaTransferInput => {
-    assertSupportedTransaction(transaction, publicConfig)
+    const transaction = normalizeTransaction(candidate, publicConfig)
     assertCapturedEnvironment(sdk)
     if (!isSolanaOrigin(transaction)) {
       throw new InvalidSolanaTransactionArtifactError(
@@ -1625,9 +1686,9 @@ function createSolanaOrigin(
     if (isSolanaAuthorityChange(transaction)) {
       // Always sponsored and fee-free, and never through a paired EVM account:
       // the change is to this Swig alone.
-      const { action, key, permission } = transaction.authority
+      const { action, key, permission } = transaction.destination.authority
       return {
-        chain: transaction.chain,
+        chain: transaction.destination.chain,
         accountAddress: source.walletAddress,
         authority,
         walletAddress: source.walletAddress,
@@ -1646,6 +1707,10 @@ function createSolanaOrigin(
         },
       }
     }
+    const fees = transaction as {
+      appFees?: SolanaTransferInput['appFees']
+      protocolFees?: SolanaTransferInput['protocolFees']
+    }
     const common = {
       ...(execution && source.evmExecution
         ? {
@@ -1658,42 +1723,40 @@ function createSolanaOrigin(
       swigAddress: source.swigAddress,
       namespace,
       endpoint: sdk.orchestratorUrl,
-      ...(transaction.appFees ? { appFees: transaction.appFees } : {}),
-      ...(transaction.protocolFees
-        ? { protocolFees: transaction.protocolFees }
-        : {}),
+      ...(fees.appFees ? { appFees: fees.appFees } : {}),
+      ...(fees.protocolFees ? { protocolFees: fees.protocolFees } : {}),
       ...(() => {
         const sponsorSettings = toSponsorSettings(transaction.sponsored)
         return sponsorSettings ? { sponsorSettings } : {}
       })(),
     } satisfies Partial<SolanaTransferInput>
     if (isCrossChainSolanaOrigin(transaction)) {
+      const { destination } = transaction
       // Resolved here rather than in `normalizeTransaction` so the prepare and
       // reconstruct paths agree on the same recipient.
-      const recipient = transaction.recipient ?? source.evmRecipient
+      const recipient = destination.recipient ?? source.evmRecipient
       if (!recipient) {
         throw new UnsupportedAccountCapabilityError(
-          'A Solana-origin delivery from an account with no EVM entry needs an explicit EVM `recipient`.',
-          { vm: 'solana', field: 'recipient' },
+          'A Solana-origin delivery from an account with no EVM entry needs an explicit EVM `destination.recipient`.',
+          { vm: 'solana', field: 'destination.recipient' },
         )
       }
-      const sourceAsset = transaction.sourceAssets[0]
       return {
         ...common,
-        chain: transaction.sourceChains[0],
+        chain: transaction.source.chain,
         action: {
           kind: 'transfer',
-          mint: sourceAsset.address,
-          ...(transaction.tokenRequests[0].amount === undefined
+          mint: transaction.source.token,
+          ...(destination.amount === undefined
             ? {}
-            : { amount: transaction.tokenRequests[0].amount }),
-          ...(sourceAsset.amount === undefined
+            : { amount: destination.amount }),
+          ...(transaction.source.maxAmount === undefined
             ? {}
-            : { sourceLimit: sourceAsset.amount }),
+            : { sourceLimit: transaction.source.maxAmount }),
           delivery: {
             kind: 'cross-chain',
-            chainId: transaction.targetChain.id,
-            token: transaction.tokenRequests[0].address,
+            chainId: destination.chain.id,
+            token: destination.token,
             recipient,
             ...(execution ? { execution } : {}),
           },
@@ -1701,30 +1764,35 @@ function createSolanaOrigin(
       }
     }
     if (isSolanaInstructionExecution(transaction)) {
+      const { destination } = transaction
       return {
         ...common,
-        chain: transaction.chain,
+        chain: destination.chain,
         action: {
           kind: 'instructions',
-          instructions: normalizeSolanaInstructions(transaction.instructions),
-          ...(transaction.addressLookupTables
-            ? { addressLookupTables: transaction.addressLookupTables }
+          instructions: normalizeSolanaInstructions(destination.instructions),
+          ...(destination.addressLookupTables
+            ? { addressLookupTables: destination.addressLookupTables }
             : {}),
+          ...(transaction.source ? { feeToken: transaction.source.token } : {}),
         },
       }
     }
-    const sourceLimit = transaction.sourceAssets?.[0].amount
+    const { destination, source: spend } =
+      transaction as SameChainSolanaTransaction
     return {
       ...common,
-      chain: transaction.chain,
+      chain: destination.chain,
       action: {
         kind: 'transfer',
-        mint: transaction.tokenRequests[0].address,
-        ...(transaction.tokenRequests[0].amount === undefined
+        mint: destination.token,
+        ...(destination.amount === undefined
           ? {}
-          : { amount: transaction.tokenRequests[0].amount }),
-        ...(sourceLimit === undefined ? {} : { sourceLimit }),
-        delivery: { kind: 'same-chain', recipient: transaction.recipient },
+          : { amount: destination.amount }),
+        ...(spend.maxAmount === undefined
+          ? {}
+          : { sourceLimit: spend.maxAmount }),
+        delivery: { kind: 'same-chain', recipient: destination.recipient },
       },
     }
   }
@@ -1737,39 +1805,41 @@ function createSolanaOrigin(
     explicitQuote?: Quote,
   ) => {
     assertPreparedBinding(prepared.request)
+    const transaction = normalizeTransaction(prepared.transaction, publicConfig)
+    const destinationCalls = isCrossChainSolanaOrigin(transaction)
+      ? transaction.destination.calls
+      : undefined
     // Read back from the canonical input rather than resolved again: resolving
     // reads the chain and runs caller code, and a replay has to rebuild the
     // request that was quoted.
-    if (
-      isCrossChainSolanaOrigin(prepared.transaction) &&
-      prepared.transaction.calls?.length
-    ) {
-      assertDestinationCallsSupported()
-    }
+    if (destinationCalls?.length) assertDestinationCallsSupported()
     const stored = prepared.intentInput
+    const storedExecution =
+      stored.destination.vm === 'evm' ? stored.destination.execution : undefined
+    const evm = stored.account.evm
     const execution: SolanaEvmExecution | undefined =
-      (prepared.transaction as { calls?: readonly unknown[] }).calls?.length &&
-      stored.destinationExecutions.length > 0
+      destinationCalls?.length && storedExecution && evm
         ? {
-            calls: stored.destinationExecutions.map(({ to, value, data }) => ({
+            calls: storedExecution.calls.map(({ to, value, data }) => ({
               target: to,
               value: BigInt(value),
               data,
             })),
-            ...(stored.destinationGasUnits === undefined
+            ...(storedExecution.gasLimit === undefined
               ? {}
-              : { gasLimit: BigInt(stored.destinationGasUnits) }),
+              : { gasLimit: BigInt(storedExecution.gasLimit) }),
             account: {
-              kind: stored.account.accountType === 'EOA' ? 'eoa' : 'erc7579',
-              address: stored.account.address as Address,
-              setupOps: stored.account.setupOps ?? [],
-              ...(stored.account.delegations?.[0]
-                ? { delegationContract: stored.account.delegations[0].contract }
+              kind: evm.type,
+              address: evm.address,
+              setupOps:
+                evm.type === 'erc7579' ? (evm.initData?.setupOps ?? []) : [],
+              ...(evm.delegations?.default
+                ? { delegationContract: evm.delegations.default.contract }
                 : {}),
             },
           }
         : undefined
-    const input = transfer(sdk, prepared.transaction, execution)
+    const input = transfer(sdk, transaction, execution)
     assertSolanaMetadata(prepared.execution, input)
     const quote = explicitQuote ?? selectedPublicQuote(prepared, intentId)
     return workflows.reconstructSolanaIntent({
@@ -1903,7 +1973,7 @@ function createSolanaOrigin(
     workflows: SolanaWorkflows,
     transaction: SameChainSolanaAuthorityTransaction,
   ): Promise<SolanaAuthorityStatus> => {
-    const change = transaction.authority
+    const change = transaction.destination.authority
     try {
       await workflows.prepareSolanaIntent(transfer(sdk, transaction))
       return { status: 'notApplied' }
@@ -1989,6 +2059,7 @@ function createSolanaOrigin(
       signedTransaction: SignedTransactionData,
       options?: SubmitTransactionOptions,
     ): Promise<TransactionResult> {
+      assertPreparedBinding(signedTransaction.request)
       if (options && Object.keys(options).length > 0) {
         throw new UnsupportedAccountCapabilityError(
           'Solana submission does not accept submission options.',
@@ -2237,799 +2308,6 @@ function quoterPinFromSession(
  * authorise. With no session scope there is nothing to narrow against and the
  * explicit filter stands on its own.
  */
-function isSameChainSolanaOrigin(
-  transaction: Transaction,
-): transaction is Extract<Transaction, { chain: SolanaChain }> {
-  return (
-    'chain' in transaction &&
-    typeof transaction.chain === 'object' &&
-    transaction.chain !== null &&
-    'kind' in transaction.chain &&
-    transaction.chain.kind === 'svm'
-  )
-}
-
-function isCrossChainSolanaOrigin(
-  transaction: Transaction,
-): transaction is CrossChainSolanaOriginTransaction {
-  const source = (transaction as { sourceChains?: readonly unknown[] })
-    .sourceChains?.[0]
-  return (
-    typeof source === 'object' &&
-    source !== null &&
-    'kind' in source &&
-    (source as { kind?: unknown }).kind === 'svm'
-  )
-}
-
-function isSolanaInstructionExecution(
-  transaction: Transaction,
-): transaction is SameChainSolanaInstructionsTransaction {
-  return (
-    isSameChainSolanaOrigin(transaction) &&
-    (transaction as { instructions?: unknown }).instructions !== undefined
-  )
-}
-
-function isSolanaAuthorityChange(
-  transaction: Transaction,
-): transaction is SameChainSolanaAuthorityTransaction {
-  return (
-    isSameChainSolanaOrigin(transaction) &&
-    (transaction as { authority?: unknown }).authority !== undefined
-  )
-}
-
-function isSolanaOrigin(
-  transaction: Transaction,
-): transaction is
-  | Extract<Transaction, { chain: SolanaChain }>
-  | CrossChainSolanaOriginTransaction {
-  return (
-    isSameChainSolanaOrigin(transaction) ||
-    isCrossChainSolanaOrigin(transaction)
-  )
-}
-
-function assertSolanaObjectKeys(
-  value: unknown,
-  allowed: readonly string[],
-  label: string,
-): asserts value is Record<string, unknown> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new UnsupportedAccountCapabilityError(
-      `Managed Solana ${label} must be an object.`,
-      { vm: 'solana', field: label },
-    )
-  }
-  const unsupported = Object.keys(value).find((key) => !allowed.includes(key))
-  if (unsupported) {
-    throw new UnsupportedAccountCapabilityError(
-      `Solana-origin transfers do not support \`${label}.${unsupported}\`.`,
-      { vm: 'solana', field: `${label}.${unsupported}` },
-    )
-  }
-}
-
-const SAME_CHAIN_NATIVE_SOL_MESSAGE =
-  'A same-chain Solana transfer cannot send native SOL; name an SPL mint.'
-
-/**
- * Checks the one source asset of a Solana-origin transfer: an SPL mint, or
- * native SOL for a cross-chain delivery, on `cluster`, with an optional
- * positive ceiling.
- */
-function assertSolanaSourceAsset(
-  sourceAssets: unknown,
-  cluster: SolanaChain,
-  options: { readonly nativeSol: 'allow' | 'refuse' },
-): { readonly address: SolanaAddress; readonly amount?: bigint } {
-  const refuse = (message: string, field: string): never => {
-    throw new UnsupportedAccountCapabilityError(message, {
-      vm: 'solana',
-      field,
-    })
-  }
-  if (!Array.isArray(sourceAssets) || sourceAssets.length !== 1) {
-    refuse(
-      'A Solana-origin transfer names exactly one source asset: `sourceAssets: [{ chain, address, amount? }]`.',
-      'sourceAssets',
-    )
-  }
-  const asset = (sourceAssets as unknown[])[0]
-  assertSolanaObjectKeys(
-    asset,
-    ['chain', 'address', 'amount'],
-    'sourceAssets[0]',
-  )
-  let chainId: number | undefined
-  try {
-    chainId = solanaChainId(asset.chain as SolanaChain)
-  } catch {
-    // Refused below with the field it concerns.
-  }
-  if (
-    chainId === undefined ||
-    (asset.chain as SolanaChain).caip2 !== cluster.caip2
-  ) {
-    refuse(
-      'The source asset must be on the Solana cluster the transaction spends from.',
-      'sourceAssets[0].chain',
-    )
-  }
-  let mint: SolanaAddress | undefined
-  try {
-    mint = solanaAddress(asset.address as string)
-  } catch {
-    // Refused below with the field it concerns.
-  }
-  if (mint === undefined) {
-    refuse(
-      'The source asset must be a valid Solana token address.',
-      'sourceAssets[0].address',
-    )
-  }
-  if (options.nativeSol === 'refuse' && mint === NATIVE_SOL_SENTINEL) {
-    refuse(SAME_CHAIN_NATIVE_SOL_MESSAGE, 'sourceAssets[0].address')
-  }
-  if (
-    asset.amount !== undefined &&
-    (typeof asset.amount !== 'bigint' || asset.amount <= 0n)
-  ) {
-    refuse(
-      'A source asset `amount` caps what the wallet may debit and must be a positive bigint when provided.',
-      'sourceAssets[0].amount',
-    )
-  }
-  return {
-    address: mint!,
-    ...(asset.amount === undefined ? {} : { amount: asset.amount as bigint }),
-  }
-}
-
-/**
- * Checks an authority change's shape, and returns its key in canonical form.
- * A literal is held to the same rules the `addPasskey`, `addEcdsaKey`,
- * `removePasskey` and `removeEcdsaKey` builders apply.
- */
-function assertSolanaAuthorityChange(value: unknown): {
-  readonly keyType: 'passkey' | 'ecdsa'
-  readonly publicKey: Hex
-} {
-  const refuse = (message: string, field: string): never => {
-    throw new UnsupportedAccountCapabilityError(message, {
-      vm: 'solana',
-      field,
-    })
-  }
-  const builders =
-    '`addPasskey`, `addEcdsaKey`, `removePasskey` or `removeEcdsaKey`'
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    refuse(`\`authority\` must be a change from ${builders}.`, 'authority')
-  }
-  const change = value as Record<string, unknown>
-  if (change.action !== 'add' && change.action !== 'remove') {
-    refuse(
-      `\`authority.action\` must be 'add' or 'remove'; build it with ${builders}.`,
-      'authority.action',
-    )
-  }
-  assertSolanaObjectKeys(
-    change,
-    change.action === 'add'
-      ? ['action', 'key', 'permission']
-      : ['action', 'key'],
-    'authority',
-  )
-  if (
-    change.action === 'add' &&
-    change.permission !== 'all' &&
-    change.permission !== 'allButManageAuthority' &&
-    change.permission !== 'manageAuthority'
-  ) {
-    refuse(
-      "Adding a key needs `authority.permission`: 'all', 'allButManageAuthority' or 'manageAuthority'.",
-      'authority.permission',
-    )
-  }
-  assertSolanaObjectKeys(change.key, ['type', 'publicKey'], 'authority.key')
-  const key = change.key as Record<string, unknown>
-  if (key.type === 'passkey') {
-    const publicKey = canonicalP256PublicKey(key.publicKey)
-    if (!publicKey) {
-      refuse(
-        '`authority.key.publicKey` must be a P-256 public key as 64-byte x‖y, 65-byte uncompressed or 33-byte compressed hex.',
-        'authority.key.publicKey',
-      )
-    }
-    return { keyType: 'passkey', publicKey: publicKey! }
-  }
-  if (key.type === 'ecdsa') {
-    if (isEvmAddressLength(key.publicKey)) {
-      refuse(
-        '`authority.key.publicKey` is an EVM address, not a public key; pass the secp256k1 public key the address derives from.',
-        'authority.key.publicKey',
-      )
-    }
-    const publicKey = canonicalSecp256k1PublicKey(key.publicKey)
-    if (!publicKey) {
-      refuse(
-        '`authority.key.publicKey` must be a secp256k1 public key as 33-byte compressed, 65-byte uncompressed or 64-byte x‖y hex, on the secp256k1 curve.',
-        'authority.key.publicKey',
-      )
-    }
-    return { keyType: 'ecdsa', publicKey: publicKey! }
-  }
-  return refuse(
-    "`authority.key.type` must be 'passkey' or 'ecdsa'.",
-    'authority.key.type',
-  )
-}
-
-/**
- * The canonical form of a `getAuthorityStatus` argument, refusing anything
- * that is not a Solana authority change.
- */
-function normalizeAuthorityChange(
-  transaction: unknown,
-  config: Readonly<RhinestoneAccountConfig>,
-): SameChainSolanaAuthorityTransaction {
-  if (
-    !transaction ||
-    typeof transaction !== 'object' ||
-    !isSolanaAuthorityChange(transaction as Transaction)
-  ) {
-    throw new UnsupportedAccountCapabilityError(
-      '`getAuthorityStatus` takes a `{ chain, authority }` Solana authority change.',
-      { vm: 'solana', field: 'authority' },
-    )
-  }
-  return normalizeTransaction(
-    transaction as Transaction,
-    config,
-  ) as SameChainSolanaAuthorityTransaction
-}
-
-function assertSupportedSolanaTransaction(
-  input: Record<string, unknown>,
-  config: Readonly<RhinestoneAccountConfig>,
-): void {
-  const runsInstructions = input.instructions !== undefined
-  const changesAuthority = input.authority !== undefined
-  const allowed = new Set(
-    changesAuthority
-      ? ['chain', 'authority']
-      : runsInstructions
-        ? ['chain', 'instructions', 'addressLookupTables', 'sponsored']
-        : [
-            'chain',
-            'tokenRequests',
-            'recipient',
-            'sourceAssets',
-            'sponsored',
-            'appFees',
-            'protocolFees',
-          ],
-  )
-  const unsupported = Object.keys(input).find((key) => !allowed.has(key))
-  if (unsupported) {
-    throw new UnsupportedAccountCapabilityError(
-      `Solana-origin transfers do not support \`${unsupported}\`.`,
-      { vm: 'solana', field: unsupported },
-    )
-  }
-  if (!config.solana || !('owner' in config.solana)) {
-    throw new UnsupportedAccountCapabilityError(
-      'A managed Solana source is required for Solana-origin transfers.',
-      { vm: 'solana' },
-    )
-  }
-  solanaChainId(input.chain as SolanaChain)
-  if (changesAuthority) {
-    assertSolanaAuthorityChange(input.authority)
-    return
-  }
-  if (runsInstructions) {
-    // Shape and limits are enforced by the normalizer, which also produces the
-    // canonical form `normalizeTransaction` stores.
-    normalizeSolanaInstructions(
-      input.instructions as readonly SolanaInstructionInput[],
-    )
-    normalizeSolanaAddressLookupTables(
-      input.addressLookupTables as readonly string[] | undefined,
-    )
-    return
-  }
-  if (!Array.isArray(input.tokenRequests) || input.tokenRequests.length !== 1) {
-    throw new UnsupportedAccountCapabilityError(
-      'Managed Solana transfers require exactly one SPL token request.',
-      { vm: 'solana' },
-    )
-  }
-  const request = input.tokenRequests[0]
-  assertSolanaObjectKeys(request, ['address', 'amount'], 'tokenRequests[0]')
-  if (typeof request.address !== 'string') {
-    throw new UnsupportedAccountCapabilityError(
-      'Managed Solana transfers require one valid SPL mint address.',
-      { vm: 'solana' },
-    )
-  }
-  try {
-    solanaAddress(request.address)
-  } catch {
-    throw new UnsupportedAccountCapabilityError(
-      'Managed Solana transfers require one valid SPL mint address.',
-      { vm: 'solana' },
-    )
-  }
-  if (request.address === NATIVE_SOL_SENTINEL) {
-    throw new UnsupportedAccountCapabilityError(SAME_CHAIN_NATIVE_SOL_MESSAGE, {
-      vm: 'solana',
-      field: 'tokenRequests[0].address',
-    })
-  }
-  if (
-    request.amount !== undefined &&
-    (typeof request.amount !== 'bigint' || request.amount <= 0n)
-  ) {
-    throw new UnsupportedAccountCapabilityError(
-      'A Solana token amount must be a positive bigint when provided.',
-      { vm: 'solana' },
-    )
-  }
-  if (input.sourceAssets !== undefined) {
-    const asset = assertSolanaSourceAsset(
-      input.sourceAssets,
-      input.chain as SolanaChain,
-      { nativeSol: 'refuse' },
-    )
-    if (asset.address !== request.address) {
-      throw new UnsupportedAccountCapabilityError(
-        'The source asset must be the mint the transfer sends.',
-        { vm: 'solana', field: 'sourceAssets[0].address' },
-      )
-    }
-    if (
-      asset.amount !== undefined &&
-      request.amount !== undefined &&
-      (request.amount as bigint) > asset.amount
-    ) {
-      throw new UnsupportedAccountCapabilityError(
-        'The token amount exceeds the source asset `amount` that caps it.',
-        { vm: 'solana', field: 'sourceAssets[0].amount' },
-      )
-    }
-  }
-  if (input.appFees !== undefined) {
-    assertSolanaObjectKeys(input.appFees, ['feeBps'], 'appFees')
-  }
-  if (input.protocolFees !== undefined) {
-    assertSolanaObjectKeys(input.protocolFees, ['feeBps'], 'protocolFees')
-  }
-  if (typeof input.recipient !== 'string') {
-    throw new UnsupportedAccountCapabilityError(
-      'Managed Solana transfers require an explicit recipient wallet.',
-      { vm: 'solana' },
-    )
-  }
-  try {
-    solanaAddress(input.recipient)
-  } catch {
-    throw new UnsupportedAccountCapabilityError(
-      'Managed Solana transfers require a valid recipient wallet.',
-      { vm: 'solana' },
-    )
-  }
-}
-
-function assertSupportedSolanaOriginDelivery(
-  input: Record<string, unknown>,
-  config: Readonly<RhinestoneAccountConfig>,
-): void {
-  if (Object.hasOwn(input, 'sourceTokens')) {
-    throw new UnsupportedAccountCapabilityError(
-      '`sourceTokens` was replaced by `sourceAssets: [{ chain, address, amount? }]`.',
-      { vm: 'solana', field: 'sourceTokens' },
-    )
-  }
-  const allowed = new Set([
-    'sourceChains',
-    'sourceAssets',
-    'targetChain',
-    'tokenRequests',
-    'recipient',
-    'calls',
-    'gasLimit',
-    'eip7702InitSignature',
-    'sponsored',
-    'appFees',
-    'protocolFees',
-  ])
-  const unsupported = Object.keys(input).find((key) => !allowed.has(key))
-  if (unsupported) {
-    throw new UnsupportedAccountCapabilityError(
-      `Solana-origin transfers do not support \`${unsupported}\`.`,
-      { vm: 'solana', field: unsupported },
-    )
-  }
-  if (!config.solana || !('owner' in config.solana)) {
-    throw new UnsupportedAccountCapabilityError(
-      'A managed Solana source is required for Solana-origin transfers.',
-      { vm: 'solana' },
-    )
-  }
-  if (input.calls !== undefined && !Array.isArray(input.calls)) {
-    throw new UnsupportedAccountCapabilityError(
-      '`calls` must be an array of destination calls.',
-      { vm: 'solana', field: 'calls' },
-    )
-  }
-  const runsCalls = Array.isArray(input.calls) && input.calls.length > 0
-  const hasManagedEvm =
-    config.evm !== undefined && !Object.hasOwn(config.evm, 'address')
-  if (runsCalls && !hasManagedEvm) {
-    throw new UnsupportedAccountCapabilityError(
-      'Destination calls require a managed EVM account; an address-only receiver can only receive a plain delivery. Omit `calls`.',
-      { vm: 'solana', field: 'calls' },
-    )
-  }
-  if (runsCalls && input.recipient !== undefined) {
-    throw new UnsupportedAccountCapabilityError(
-      'An explicit delivery recipient cannot execute destination calls. Omit `recipient` to execute with the invoking managed EVM account.',
-      { vm: 'solana', field: 'recipient' },
-    )
-  }
-  for (const field of ['gasLimit', 'eip7702InitSignature']) {
-    if (input[field] !== undefined && !runsCalls) {
-      throw new UnsupportedAccountCapabilityError(
-        `\`${field}\` applies to destination \`calls\`, and this delivery has none.`,
-        { vm: 'solana', field },
-      )
-    }
-  }
-  const sources = input.sourceChains as readonly unknown[]
-  if (sources.length !== 1) {
-    throw new UnsupportedAccountCapabilityError(
-      'A Solana-origin delivery spends exactly one Solana cluster.',
-      { vm: 'solana', field: 'sourceChains' },
-    )
-  }
-  solanaChainId(sources[0] as SolanaChain)
-  assertSolanaSourceAsset(input.sourceAssets, sources[0] as SolanaChain, {
-    nativeSol: 'allow',
-  })
-  const target = input.targetChain as Record<string, unknown> | undefined
-  if (
-    !target ||
-    typeof target !== 'object' ||
-    'kind' in target ||
-    'caip2' in target ||
-    typeof target.id !== 'number' ||
-    !Number.isSafeInteger(target.id) ||
-    target.id < 0 ||
-    !formatCaip2(target.id).startsWith('eip155:')
-  ) {
-    throw new UnsupportedAccountCapabilityError(
-      'A Solana-origin delivery requires a viem EVM destination chain.',
-      { vm: 'solana', field: 'targetChain' },
-    )
-  }
-  if (!Array.isArray(input.tokenRequests) || input.tokenRequests.length !== 1) {
-    throw new UnsupportedAccountCapabilityError(
-      'A Solana-origin delivery requires exactly one destination token request.',
-      { vm: 'solana', field: 'tokenRequests' },
-    )
-  }
-  const request = input.tokenRequests[0]
-  assertSolanaObjectKeys(request, ['address', 'amount'], 'tokenRequests[0]')
-  if (typeof request.address !== 'string' || !isAddress(request.address)) {
-    throw new UnsupportedAccountCapabilityError(
-      'A Solana-origin delivery requires an EVM destination token address.',
-      { vm: 'solana', field: 'tokenRequests[0].address' },
-    )
-  }
-  if (
-    request.amount !== undefined &&
-    (typeof request.amount !== 'bigint' || request.amount <= 0n)
-  ) {
-    throw new UnsupportedAccountCapabilityError(
-      'A delivery amount must be a positive bigint when provided.',
-      { vm: 'solana', field: 'tokenRequests[0].amount' },
-    )
-  }
-  if (
-    input.recipient !== undefined &&
-    (typeof input.recipient !== 'string' || !isAddress(input.recipient))
-  ) {
-    throw new UnsupportedAccountCapabilityError(
-      'A Solana-origin delivery recipient must be an EVM address.',
-      { vm: 'solana', field: 'recipient' },
-    )
-  }
-  if (input.appFees !== undefined) {
-    assertSolanaObjectKeys(input.appFees, ['feeBps'], 'appFees')
-  }
-  if (input.protocolFees !== undefined) {
-    assertSolanaObjectKeys(input.protocolFees, ['feeBps'], 'protocolFees')
-  }
-}
-
-function assertSupportedTransaction(
-  transaction: Transaction,
-  config: Readonly<RhinestoneAccountConfig>,
-): void {
-  const input = transaction as unknown as Record<string, unknown>
-  if (isCrossChainSolanaOrigin(transaction)) {
-    assertSupportedSolanaOriginDelivery(input, config)
-    return
-  }
-  const hasChain = Object.hasOwn(input, 'chain') && input.chain !== undefined
-  const hasTarget =
-    Object.hasOwn(input, 'targetChain') && input.targetChain !== undefined
-  if (hasChain === hasTarget) {
-    throw new UnsupportedAccountCapabilityError(
-      'A transaction must set exactly one of `chain` or `targetChain`.',
-    )
-  }
-  if (hasChain && typeof input.chain === 'object' && input.chain !== null) {
-    const chain = input.chain as Record<string, unknown>
-    if (chain.kind === 'svm') {
-      assertSupportedSolanaTransaction(input, config)
-      return
-    }
-  }
-  if (hasTarget && typeof input.targetChain === 'object' && input.targetChain) {
-    const target = input.targetChain as Record<string, unknown>
-    if (
-      !('kind' in target || 'caip2' in target) &&
-      (typeof target.id !== 'number' ||
-        !Number.isSafeInteger(target.id) ||
-        target.id < 0 ||
-        !formatCaip2(target.id).startsWith('eip155:'))
-    ) {
-      throw new UnsupportedAccountCapabilityError(
-        'A viem EVM destination must use an eip155 chain ID.',
-      )
-    }
-    if (
-      ('kind' in target || 'caip2' in target) &&
-      !(
-        (target.kind === 'svm' &&
-          typeof target.caip2 === 'string' &&
-          target.caip2.startsWith('solana:')) ||
-        (target.kind === 'tvm' &&
-          typeof target.caip2 === 'string' &&
-          target.caip2.startsWith('tron:')) ||
-        (target.kind === 'stellar' &&
-          typeof target.caip2 === 'string' &&
-          target.caip2.startsWith('stellar:')) ||
-        (target.kind === 'hypercore' &&
-          (target.caip2 === 'hypercore:spot' ||
-            target.caip2 === 'hypercore:perp'))
-      )
-    ) {
-      throw new UnsupportedAccountCapabilityError(
-        'The destination chain descriptor has mismatched VM and CAIP-2 fields.',
-      )
-    }
-    if (target.kind === 'svm') {
-      if (
-        !Array.isArray(input.tokenRequests) ||
-        input.tokenRequests.length === 0
-      ) {
-        throw new UnsupportedAccountCapabilityError(
-          'Solana destinations require at least one token request.',
-          { vm: 'solana' },
-        )
-      }
-      for (const request of input.tokenRequests as readonly {
-        address?: unknown
-        amount?: unknown
-      }[]) {
-        if (typeof request.address !== 'string') {
-          throw new UnsupportedAccountCapabilityError(
-            'Solana token requests require a Solana address.',
-          )
-        }
-        solanaAddress(request.address)
-        if (
-          request.amount !== undefined &&
-          (typeof request.amount !== 'bigint' || request.amount <= 0n)
-        ) {
-          throw new UnsupportedAccountCapabilityError(
-            'Solana token request amounts must be positive.',
-          )
-        }
-      }
-      // Anything other than a Solana address string would slip past both
-      // recipient defaults and then be dropped downstream, quoting a delivery
-      // with no receiver at all.
-      if (input.recipient !== undefined) {
-        if (typeof input.recipient !== 'string') {
-          throw new UnsupportedAccountCapabilityError(
-            'A Solana delivery recipient must be a Solana address.',
-            { vm: 'solana' },
-          )
-        }
-        solanaAddress(input.recipient)
-      }
-      if (
-        input.calls !== undefined ||
-        input.instructions !== undefined ||
-        input.hyperCore !== undefined
-      ) {
-        throw new UnsupportedAccountCapabilityError(
-          'Solana destinations support token delivery only; calls, custom instructions and HyperCore actions are unavailable.',
-          { vm: 'solana' },
-        )
-      }
-      if (input.recipient === undefined && !config.solana) {
-        throw new AccountVmNotConfiguredError('solana')
-      }
-    }
-  }
-  if (input.sourceChains !== undefined) {
-    if (!Array.isArray(input.sourceChains)) {
-      throw new UnsupportedAccountCapabilityError(
-        '`sourceChains` must be an array of managed source chains.',
-      )
-    }
-    if (input.sourceChains.length === 0) {
-      throw new UnsupportedAccountCapabilityError(
-        '`sourceChains` must contain at least one managed source.',
-      )
-    }
-    const ids = input.sourceChains.map((value) =>
-      typeof value === 'object' && value
-        ? (value as { id?: unknown }).id
-        : null,
-    )
-    const invalidSource = input.sourceChains.some((value) => {
-      if (!value || typeof value !== 'object') return true
-      const source = value as Record<string, unknown>
-      return (
-        typeof source.id !== 'number' ||
-        !Number.isSafeInteger(source.id) ||
-        source.id < 0 ||
-        Object.hasOwn(source, 'kind') ||
-        Object.hasOwn(source, 'caip2') ||
-        !formatCaip2(source.id).startsWith('eip155:')
-      )
-    })
-    if (invalidSource) {
-      throw new UnsupportedAccountCapabilityError(
-        'Only viem EVM chains from the managed EVM account can be used as sources.',
-      )
-    }
-    if (new Set(ids).size !== ids.length) {
-      throw new UnsupportedAccountCapabilityError(
-        '`sourceChains` cannot contain duplicate chains.',
-      )
-    }
-  }
-  const calls = input.calls
-  if (input.recipient !== undefined) {
-    if (Array.isArray(calls) && calls.length > 0) {
-      throw new UnsupportedAccountCapabilityError(
-        'An explicit delivery recipient cannot execute destination calls. Omit `recipient` to execute with the invoking managed EVM account.',
-      )
-    }
-    if (
-      !Array.isArray(input.tokenRequests) ||
-      input.tokenRequests.length === 0
-    ) {
-      throw new UnsupportedAccountCapabilityError(
-        'An explicit delivery recipient requires at least one token request.',
-      )
-    }
-  }
-}
-
-function freezeSponsorship(sponsored: Sponsorship | undefined): {
-  sponsored?: Sponsorship
-} {
-  if (sponsored === undefined || typeof sponsored === 'boolean') return {}
-  return { sponsored: Object.freeze({ ...sponsored }) }
-}
-
-export function normalizeTransaction(
-  transaction: Transaction,
-  config: Readonly<RhinestoneAccountConfig>,
-): Transaction {
-  assertSupportedTransaction(transaction, config)
-  if (isCrossChainSolanaOrigin(transaction)) {
-    return Object.freeze({
-      ...transaction,
-      sourceChains: [
-        Object.freeze({ ...transaction.sourceChains[0] }),
-      ] as const,
-      sourceAssets: [
-        Object.freeze({
-          ...transaction.sourceAssets[0],
-          chain: Object.freeze({ ...transaction.sourceAssets[0].chain }),
-        }),
-      ] as const,
-      tokenRequests: [
-        Object.freeze({ ...transaction.tokenRequests[0] }),
-      ] as const,
-      ...(transaction.appFees
-        ? { appFees: Object.freeze({ ...transaction.appFees }) }
-        : {}),
-      ...(transaction.protocolFees
-        ? { protocolFees: Object.freeze({ ...transaction.protocolFees }) }
-        : {}),
-      ...freezeSponsorship(transaction.sponsored),
-    }) as Transaction
-  }
-  if (isSolanaAuthorityChange(transaction)) {
-    const { action, permission } = transaction.authority
-    const { keyType, publicKey } = assertSolanaAuthorityChange(
-      transaction.authority,
-    )
-    const key = Object.freeze({ type: keyType, publicKey })
-    return Object.freeze({
-      chain: Object.freeze({ ...transaction.chain }),
-      authority: Object.freeze(
-        action === 'add' ? { action, key, permission } : { action, key },
-      ),
-    }) as Transaction
-  }
-  if (isSolanaInstructionExecution(transaction)) {
-    const lookupTables = normalizeSolanaAddressLookupTables(
-      transaction.addressLookupTables,
-    )
-    const { addressLookupTables: _tables, ...rest } = transaction
-    return Object.freeze({
-      ...rest,
-      chain: Object.freeze({ ...transaction.chain }),
-      instructions: normalizeSolanaInstructions(transaction.instructions),
-      ...(lookupTables ? { addressLookupTables: lookupTables } : {}),
-      ...freezeSponsorship(transaction.sponsored),
-    }) as Transaction
-  }
-  if (isSameChainSolanaOrigin(transaction)) {
-    const request = transaction.tokenRequests[0]
-    const asset = transaction.sourceAssets?.[0]
-    return Object.freeze({
-      ...transaction,
-      chain: Object.freeze({ ...transaction.chain }),
-      tokenRequests: [Object.freeze({ ...request })],
-      ...(asset
-        ? {
-            sourceAssets: [
-              Object.freeze({
-                ...asset,
-                chain: Object.freeze({ ...asset.chain }),
-              }),
-            ],
-          }
-        : {}),
-      ...(transaction.appFees
-        ? { appFees: Object.freeze({ ...transaction.appFees }) }
-        : {}),
-      ...(transaction.protocolFees
-        ? { protocolFees: Object.freeze({ ...transaction.protocolFees }) }
-        : {}),
-      ...freezeSponsorship(transaction.sponsored),
-    }) as Transaction
-  }
-  if (
-    'targetChain' in transaction &&
-    transaction.targetChain !== undefined &&
-    'kind' in transaction.targetChain &&
-    transaction.targetChain.kind === 'svm' &&
-    transaction.recipient === undefined &&
-    config.solana &&
-    'address' in config.solana
-  ) {
-    return Object.freeze({
-      ...transaction,
-      recipient: config.solana.address,
-    }) as Transaction
-  }
-  return Object.freeze({ ...transaction }) as Transaction
-}
-
 function narrowQuoterPin(
   derived: SwapQuoterFilter | undefined,
   explicit: SwapQuoterFilter | undefined,
@@ -3050,7 +2328,7 @@ function narrowQuoterPin(
  */
 function toSponsorSettings(
   sponsored: Sponsorship | undefined,
-): NormalizedIntentOptions['sponsorSettings'] {
+): NonNullable<IntentInput['options']>['sponsorSettings'] {
   if (!sponsored) return undefined
   if (typeof sponsored === 'boolean') {
     return {
@@ -3072,84 +2350,95 @@ export function adaptTransaction(
   context: AccountInvocationContext<Compat>,
   transaction: Transaction,
   hyperCoreAction?: HyperCoreAction,
-  automaticSourceChainIds?: readonly number[],
 ): IntentInput {
-  const nonEvmOrigin =
-    'chain' in transaction && transaction.chain && 'kind' in transaction.chain
-      ? transaction.chain.kind
-      : (
-          transaction as { sourceChains?: readonly (Chain | SolanaChain)[] }
-        ).sourceChains?.find((chain) => 'kind' in chain)?.kind
-  if (nonEvmOrigin) {
+  if (isSolanaOrigin(transaction)) {
     throw new UnsupportedAccountCapabilityError(
-      'Non-EVM origin execution is not supported yet. Use a viem EVM chain as the managed source.',
-      { vm: nonEvmOrigin },
+      'Solana-origin transactions run through the managed Solana account.',
+      { vm: 'solana' },
     )
   }
+  const { source, destination: target } = transaction as EvmOriginTransaction
   const destination =
-    'chain' in transaction
-      ? getChainReference((transaction.chain as Chain).id)
-      : 'kind' in transaction.targetChain!
-        ? parseCaip2(transaction.targetChain.caip2)
-        : getChainReference(transaction.targetChain!.id)
+    'kind' in target.chain
+      ? parseCaip2(target.chain.caip2)
+      : getChainReference(target.chain.id)
   const destinationChainId =
     destination.kind === 'evm' ? destination.id : undefined
-  const sourceChains =
-    'chain' in transaction
-      ? [getChainReference((transaction.chain as Chain).id)]
-      : (transaction.sourceChains?.map((chain) =>
-          getChainReference((chain as Chain).id),
-        ) ?? automaticSourceChainIds?.map(getChainReference))
-  const evmSources = sourceChains?.flatMap((chain) =>
-    chain.kind === 'evm' ? [chain] : [],
-  )
+  const sourceChain = source?.chain
+    ? toEvmChainReference((source.chain as Chain).id)
+    : undefined
+  const evmTarget = target as {
+    calls?: CallInput[]
+    gasLimit?: bigint
+    recipient?: EvmAccountConfig | string
+    token?: string
+    amount?: bigint
+  }
   return {
     destination,
-    ...(evmSources ? { sourceChains: evmSources } : {}),
-    calls: (transaction.calls ?? []).map((call) =>
+    ...(source && sourceChain
+      ? {
+          source: {
+            chain: sourceChain,
+            token: source.token,
+            ...(source.maxAmount === undefined
+              ? {}
+              : { maxAmount: source.maxAmount }),
+            ...(source.auxiliaryFunds === undefined
+              ? {}
+              : { auxiliaryFunds: source.auxiliaryFunds }),
+            ...(source.calls
+              ? {
+                  calls: source.calls.map((call) => ({
+                    call: adaptCall(call, sourceChain.id),
+                    ...(call.provides ? { provides: call.provides } : {}),
+                  })),
+                }
+              : {}),
+          },
+        }
+      : {}),
+    calls: (evmTarget.calls ?? []).map((call) =>
       adaptCall(call, destinationChainId),
     ),
-    tokenRequests: (transaction.tokenRequests ?? []).map((request) => ({
-      token:
-        destinationChainId === undefined
-          ? request.address
-          : normalizeTokenAddress(request.address, destinationChainId, false),
-      ...(request.amount === undefined ? {} : { amount: request.amount }),
-    })),
-    ...(transaction.recipient
+    ...(evmTarget.token === undefined
+      ? {}
+      : {
+          token:
+            destinationChainId === undefined
+              ? evmTarget.token
+              : normalizeTokenAddress(
+                  evmTarget.token,
+                  destinationChainId,
+                  false,
+                ),
+        }),
+    ...(evmTarget.amount === undefined ? {} : { amount: evmTarget.amount }),
+    ...(evmTarget.recipient
       ? {
           recipient: adaptRecipient(
             context,
-            transaction.recipient,
+            evmTarget.recipient,
             destination,
             transaction.eip7702InitSignature,
             transaction.experimental_accountOverride?.setupOps,
           ),
         }
       : {}),
-    ...(transaction.gasLimit === undefined
+    ...(evmTarget.gasLimit === undefined
       ? {}
-      : { gasLimit: transaction.gasLimit }),
+      : { gasLimit: evmTarget.gasLimit }),
     ...(transaction.eip7702InitSignature
       ? { eip7702InitSignature: transaction.eip7702InitSignature }
-      : {}),
-    ...(transaction.sourceAssets || sourceChains
-      ? {
-          accountAccessList: adaptSourceAssets(
-            // Solana origins, whose source asset is a tuple, are refused above.
-            transaction.sourceAssets as SourceAssetInput | undefined,
-            evmSources?.map(({ id }) => id),
-          ),
-        }
       : {}),
     options: {
       ...(transaction.appFees ? { appFees: transaction.appFees } : {}),
       ...(transaction.protocolFees
         ? { protocolFees: transaction.protocolFees }
         : {}),
-      ...('chain' in transaction && transaction.customDeadline !== undefined
-        ? { customDeadline: transaction.customDeadline }
-        : {}),
+      ...((transaction as EvmTransaction).customDeadline === undefined
+        ? {}
+        : { customDeadline: (transaction as EvmTransaction).customDeadline }),
       ...(() => {
         const sponsorSettings = toSponsorSettings(transaction.sponsored)
         return sponsorSettings ? { sponsorSettings } : {}
@@ -3160,29 +2449,13 @@ export function adaptTransaction(
       ...(() => {
         const derived = quoterPinFromSession(transaction.signers, [
           ...(destinationChainId === undefined ? [] : [destinationChainId]),
-          ...(evmSources?.map(({ id }) => id) ?? []),
+          ...(sourceChain ? [sourceChain.id] : []),
         ])
         const quoters = narrowQuoterPin(derived, transaction.quoters)
         return quoters ? { quoters } : {}
       })(),
-      ...(transaction.auxiliaryFunds
-        ? { auxiliaryFunds: transaction.auxiliaryFunds }
-        : {}),
       ...(hyperCoreAction ? { hyperCore: { action: hyperCoreAction } } : {}),
     },
-    ...(transaction.sourceCalls
-      ? {
-          sourceCalls: Object.fromEntries(
-            Object.entries(transaction.sourceCalls).map(([chainId, calls]) => [
-              Number(chainId),
-              calls.map((call) => ({
-                call: adaptCall(call, Number(chainId)),
-                ...(call.provides ? { provides: call.provides } : {}),
-              })),
-            ]),
-          ),
-        }
-      : {}),
     ...(transaction.experimental_accountOverride?.setupOps
       ? {
           accountSetupOverride:
@@ -3195,10 +2468,12 @@ export function adaptTransaction(
             transaction.signers.type === 'session'
               ? {
                   kind: 'smart-session',
-                  byChain: adaptSessionSelection(
-                    transaction,
-                    sourceChains ?? [],
-                  ),
+                  byChain: adaptSessionSelection(transaction.signers, [
+                    ...(sourceChain ? [sourceChain.id] : []),
+                    ...(destinationChainId === undefined
+                      ? []
+                      : [destinationChainId]),
+                  ]),
                 }
               : adaptSignerSelection(context.account, transaction.signers),
         }
@@ -3286,11 +2561,9 @@ function normalizeCall(
 }
 
 function adaptSessionSelection(
-  transaction: Transaction,
-  chains: readonly { readonly kind: string; readonly id?: number }[],
+  signers: Extract<SignerSet, { type: 'session' }>,
+  chainIds: readonly number[],
 ) {
-  const signers = transaction.signers
-  if (!signers || signers.type !== 'session') return {}
   if ('sessions' in signers) {
     return Object.fromEntries(
       Object.entries(signers.sessions).map(([chainId, selection]) => [
@@ -3299,23 +2572,8 @@ function adaptSessionSelection(
       ]),
     )
   }
-  const chainIds = new Set(
-    chains.flatMap((chain) =>
-      chain.kind === 'evm' && chain.id !== undefined ? [chain.id] : [],
-    ),
-  )
-  if ('chain' in transaction && !('kind' in transaction.chain)) {
-    chainIds.add(transaction.chain.id)
-  }
-  if (
-    'targetChain' in transaction &&
-    transaction.targetChain &&
-    'id' in transaction.targetChain
-  ) {
-    chainIds.add(transaction.targetChain.id)
-  }
   return Object.fromEntries(
-    [...chainIds].map((chainId) => [
+    [...new Set(chainIds)].map((chainId) => [
       chainId,
       {
         session: signers.session,
@@ -3323,76 +2581,4 @@ function adaptSessionSelection(
       },
     ]),
   )
-}
-
-function adaptSourceAssets(
-  sourceAssets: SourceAssetInput | undefined,
-  chainIds: readonly number[] | undefined,
-): NormalizedAccessList | undefined {
-  if (!sourceAssets) return chainIds ? { chainIds } : undefined
-  // An explicit but empty selection fails closed, and it fails here: sent on,
-  // it is a wire-schema rejection naming fields the caller never wrote.
-  if (
-    (Array.isArray(sourceAssets) ? sourceAssets : Object.keys(sourceAssets))
-      .length === 0
-  ) {
-    throw new UnsupportedAccountCapabilityError(
-      '`sourceAssets` is empty, so the intent has nothing to spend from. Name at least one source asset, or omit `sourceAssets` to use every eligible source.',
-    )
-  }
-  const eligible = chainIds ? new Set(chainIds) : undefined
-  const assertEligible = (chainId: number) => {
-    if (eligible && !eligible.has(chainId)) {
-      throw new UnsupportedAccountCapabilityError(
-        `Source assets reference chain ${chainId}, which is outside the eligible source scope.`,
-        { chainId },
-      )
-    }
-  }
-  if (Array.isArray(sourceAssets)) {
-    if (sourceAssets.length > 0 && typeof sourceAssets[0] === 'object') {
-      const chainTokens: Record<number, Address[]> = {}
-      const chainTokenAmounts: Record<number, Record<Address, bigint>> = {}
-      for (const item of sourceAssets as {
-        chain: { id: number }
-        address: Address | string
-        amount?: bigint
-      }[]) {
-        assertEligible(item.chain.id)
-        const token = normalizeTokenAddress(
-          item.address,
-          item.chain.id,
-          false,
-        ) as Address
-        if (item.amount === undefined)
-          (chainTokens[item.chain.id] ??= []).push(token)
-        else (chainTokenAmounts[item.chain.id] ??= {})[token] = item.amount
-      }
-      return {
-        ...(Object.keys(chainTokens).length > 0 ? { chainTokens } : {}),
-        ...(Object.keys(chainTokenAmounts).length > 0
-          ? { chainTokenAmounts }
-          : {}),
-      }
-    }
-    const tokens = sourceAssets as string[]
-    validateTokenAddresses(tokens)
-    return {
-      ...(chainIds ? { chainIds } : {}),
-      tokens,
-    }
-  }
-  // ChainTokenMap: validate every per-chain list too, so symbols can't slip
-  // through this input the way they can't through tokenRequests / ExactInputConfig.
-  for (const [chainId, tokens] of Object.entries(sourceAssets)) {
-    assertEligible(Number(chainId))
-    if (tokens.length === 0) {
-      throw new UnsupportedAccountCapabilityError(
-        `\`sourceAssets\` names chain ${chainId} with no tokens, so that chain has nothing to spend. Name at least one token, or drop the chain.`,
-        { chainId: Number(chainId) },
-      )
-    }
-    validateTokenAddresses(tokens)
-  }
-  return { chainTokens: sourceAssets }
 }

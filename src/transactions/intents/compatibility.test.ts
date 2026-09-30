@@ -4,9 +4,8 @@ import {
   quote as buildQuote,
   eip712Request,
 } from '../../../test/utils/caucasus'
-import type { NormalizedIntentInput } from '../../clients/orchestrator/normalized'
-import { projectCompatibleIntentInput } from '../../clients/orchestrator/normalized'
 import type { OrchestratorExecutionQuote } from '../../clients/orchestrator/types'
+import { InvalidPreparedTransactionError } from '../../errors/execution'
 import {
   PREPARED_REQUEST_VERSION,
   projectCompatibleQuote,
@@ -15,33 +14,6 @@ import {
 } from './compatibility'
 
 const address = '0x0000000000000000000000000000000000000001' as Address
-
-describe('projectCompatibleIntentInput', () => {
-  test('projects normalized bigints as decimal strings without mutating the input', () => {
-    const input = {
-      account: { address },
-      destinationChainId: 1,
-      destinationExecutions: [{ to: address, value: 2n, data: '0x' as const }],
-      tokenRequests: [{ tokenAddress: address, amount: 3n }],
-      options: { auxiliaryFunds: { 1: { [address]: 4n } } },
-      preClaimExecutions: {
-        1: [{ to: address, value: 5n, data: '0x12' as const }],
-      },
-    } satisfies NormalizedIntentInput
-
-    expect(projectCompatibleIntentInput(input)).toEqual({
-      account: { address },
-      destinationChainId: 1,
-      destinationExecutions: [{ to: address, value: '2', data: '0x' }],
-      tokenRequests: [{ tokenAddress: address, amount: '3' }],
-      options: { auxiliaryFunds: { 1: { [address]: '4' } } },
-      preClaimExecutions: {
-        1: [{ to: address, value: '5', data: '0x12' }],
-      },
-    })
-    expect(input.destinationExecutions[0]?.value).toBe(2n)
-  })
-})
 
 describe('projectCompatibleQuote', () => {
   const typedData = {
@@ -117,15 +89,20 @@ describe('prepared request binding', () => {
     destination: {
       vm: 'evm' as const,
       chainId: 'eip155:1',
-      tokenRequests: [{ tokenAddress: address, amount: 9n }],
+      token: address,
+      amount: 9n,
     },
   }
+
+  test('binds the singular wire generation', () => {
+    expect(PREPARED_REQUEST_VERSION).toBe('caucasus-singular-1')
+  })
 
   test('round-trips the request through JSON with a version tag', () => {
     const binding = projectPreparedBinding(request)
     expect(binding.version).toBe(PREPARED_REQUEST_VERSION)
     const restored = restorePreparedBinding(JSON.parse(JSON.stringify(binding)))
-    expect(restored.destination.tokenRequests[0]?.amount).toBe('9')
+    expect(restored.destination.amount).toBe('9')
   })
 
   // A payload prepared under an earlier wire generation must fail explicitly.
@@ -133,9 +110,20 @@ describe('prepared request binding', () => {
   test.each([
     ['absent', undefined],
     ['from an older generation', { version: 'blanc-1', request: {} }],
+    // The pre-singular wire generation, refused by name.
+    [
+      'the legacy dual-shape generation',
+      { version: 'caucasus-1', request: {} },
+    ],
   ])('refuses a binding that is %s', (_name, binding) => {
     expect(() => restorePreparedBinding(binding as never)).toThrow(
-      /earlier orchestrator wire version/,
+      /earlier SDK generation or orchestrator wire version/,
     )
+  })
+
+  test('refuses the legacy dual-shape binding with InvalidPreparedTransactionError', () => {
+    expect(() =>
+      restorePreparedBinding({ version: 'caucasus-1', request: {} } as never),
+    ).toThrow(InvalidPreparedTransactionError)
   })
 })

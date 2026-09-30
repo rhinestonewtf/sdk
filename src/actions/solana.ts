@@ -53,9 +53,9 @@ function passkeyKey(passkey: WebAuthnAccount | Hex): SolanaAuthorityKey {
 /**
  * Add a passkey to a managed Solana account's Swig.
  *
- * Builds the `authority` of a `{ chain, authority }` transaction, which then
- * runs through `prepareTransaction`, `signTransaction` and
- * `submitTransaction` like any other.
+ * Builds the `authority` of a `{ destination: { chain, authority } }`
+ * transaction, which then runs through `prepareTransaction`,
+ * `signTransaction` and `submitTransaction` like any other.
  *
  * Only the passkey's public key is used; it is SEC1-compressed and
  * lowercased. The configured owner signs the change, and the new role gets
@@ -76,8 +76,10 @@ function passkeyKey(passkey: WebAuthnAccount | Hex): SolanaAuthorityKey {
  *
  * // Add a passkey that can spend but not manage authorities.
  * const added = await account.prepareTransaction({
- *   chain: solanaDevnet,
- *   authority: addPasskey(newPasskey, { permission: 'allButManageAuthority' }),
+ *   destination: {
+ *     chain: solanaDevnet,
+ *     authority: addPasskey(newPasskey, { permission: 'allButManageAuthority' }),
+ *   },
  * })
  * const signed = await account.signTransaction(added)
  * await account.waitForExecution(await account.submitTransaction(signed))
@@ -89,8 +91,10 @@ function passkeyKey(passkey: WebAuthnAccount | Hex): SolanaAuthorityKey {
  *
  * // Remove it again.
  * await account.prepareTransaction({
- *   chain: solanaDevnet,
- *   authority: removePasskey(newPasskey),
+ *   destination: {
+ *     chain: solanaDevnet,
+ *     authority: removePasskey(newPasskey),
+ *   },
  * })
  * ```
  */
@@ -109,9 +113,10 @@ function addPasskey(
 /**
  * Remove a passkey from a managed Solana account's Swig.
  *
- * Builds the `authority` of a `{ chain, authority }` transaction.
- * The role carrying the key is removed. The root role never is, and neither is
- * the last role able to manage authorities; the orchestrator refuses both.
+ * Builds the `authority` of a `{ destination: { chain, authority } }`
+ * transaction. The role carrying the key is removed. The root role never
+ * is, and neither is the last role able to manage authorities; the
+ * orchestrator refuses both.
  * Removing the configured owner's own key leaves this account unable to sign.
  *
  * @param passkey The passkey to remove: a viem WebAuthn account, or its P-256
@@ -124,8 +129,10 @@ function addPasskey(
  * import { removePasskey, solanaDevnet } from '@rhinestone/sdk/solana'
  *
  * const prepared = await account.prepareTransaction({
- *   chain: solanaDevnet,
- *   authority: removePasskey(oldPublicKey),
+ *   destination: {
+ *     chain: solanaDevnet,
+ *     authority: removePasskey(oldPublicKey),
+ *   },
  * })
  * ```
  */
@@ -174,10 +181,10 @@ function ecdsaKey(key: LocalAccount | Hex): SolanaAuthorityKey {
 /**
  * Add a secp256k1 (ECDSA) key to a managed Solana account's Swig.
  *
- * Builds the `authority` of a `{ chain, authority }` transaction, which then
- * runs through `prepareTransaction`, `signTransaction` and
- * `submitTransaction` like any other. The configured owner signs the change,
- * and the new role gets the next free role id.
+ * Builds the `authority` of a `{ destination: { chain, authority } }`
+ * transaction, which then runs through `prepareTransaction`,
+ * `signTransaction` and `submitTransaction` like any other. The configured
+ * owner signs the change, and the new role gets the next free role id.
  *
  * Only the public key is used; it is SEC1-compressed and lowercased. An
  * uncompressed key must lie on secp256k1. Pass the public key of the signer an
@@ -201,8 +208,10 @@ function ecdsaKey(key: LocalAccount | Hex): SolanaAuthorityKey {
  *
  * // The passkey-root account enrolls a recovery key that can only manage authorities.
  * const enroll = {
- *   chain: solanaDevnet,
- *   authority: addEcdsaKey(recoveryPublicKey, { permission: 'manageAuthority' }),
+ *   destination: {
+ *     chain: solanaDevnet,
+ *     authority: addEcdsaKey(recoveryPublicKey, { permission: 'manageAuthority' }),
+ *   },
  * }
  * const signed = await account.signTransaction(await account.prepareTransaction(enroll))
  * await account.waitForExecution(await account.submitTransaction(signed))
@@ -219,8 +228,10 @@ function ecdsaKey(key: LocalAccount | Hex): SolanaAuthorityKey {
  *   },
  * })
  * await recovery.prepareTransaction({
- *   chain: solanaDevnet,
- *   authority: addPasskey(newPasskey, { permission: 'all' }),
+ *   destination: {
+ *     chain: solanaDevnet,
+ *     authority: addPasskey(newPasskey, { permission: 'all' }),
+ *   },
  * })
  * ```
  */
@@ -235,9 +246,10 @@ function addEcdsaKey(
 /**
  * Remove a secp256k1 (ECDSA) key from a managed Solana account's Swig.
  *
- * Builds the `authority` of a `{ chain, authority }` transaction.
- * The role carrying the key is removed. The root role never is, and neither is
- * the last role able to manage authorities; the orchestrator refuses both.
+ * Builds the `authority` of a `{ destination: { chain, authority } }`
+ * transaction. The role carrying the key is removed. The root role never
+ * is, and neither is the last role able to manage authorities; the
+ * orchestrator refuses both.
  *
  * @param key The key to remove: a viem local account, or its secp256k1 public
  * key as 33-byte compressed, 65-byte uncompressed or 64-byte x‖y hex.
@@ -249,8 +261,10 @@ function addEcdsaKey(
  * import { removeEcdsaKey, solanaDevnet } from '@rhinestone/sdk/solana'
  *
  * const prepared = await account.prepareTransaction({
- *   chain: solanaDevnet,
- *   authority: removeEcdsaKey(recoveryPublicKey),
+ *   destination: {
+ *     chain: solanaDevnet,
+ *     authority: removeEcdsaKey(recoveryPublicKey),
+ *   },
  * })
  * ```
  */
