@@ -1,5 +1,6 @@
 import { type Address, type Hex, isAddress } from 'viem'
 import { locateSwigWallet } from '../accounts/solana/address'
+import { compressP256PublicKey } from '../accounts/solana/passkey'
 import { type SolanaAddress, solanaAddress } from '../chains/non-evm'
 import type {
   EvmAccountConfig,
@@ -26,7 +27,6 @@ import {
   InvalidAccountConfigError,
   ManagedSolanaAccountNotSupportedError,
 } from '../errors/capability'
-import { compressP256PublicKey } from '../transactions/intents/solana'
 import {
   createAccountFacade,
   createSolanaAccountFacade,

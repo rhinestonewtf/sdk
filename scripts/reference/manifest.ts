@@ -329,6 +329,18 @@ export const manifest: Group[] = [
         source: './solana',
         callStyle: 'function',
       },
+      {
+        kind: 'symbol',
+        symbol: 'addPasskey',
+        source: './solana',
+        callStyle: 'function',
+      },
+      {
+        kind: 'symbol',
+        symbol: 'removePasskey',
+        source: './solana',
+        callStyle: 'function',
+      },
     ],
   },
   {

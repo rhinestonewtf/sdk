@@ -50,7 +50,11 @@ before a `proofs: []` submission, Swig id resolution and every pre-network
 refusal on the standalone and composite facades, VM routing of `deploy`, an
 existing Swig resolving `true` without a submission, and the
 `ACCOUNT_ALREADY_DEPLOYED` mapping that keeps EVM refusals generic. Live Swig creation is not covered
-offline. Offline tests never execute a Solana mainnet transfer.
+offline. Swig passkey authority changes run through the real Solana workflow
+against a fake orchestrator: exact requests, a refusal per quote mutation,
+cross-instance tampering, signing and expiry, and the typed refusal. Live
+authority changes are not covered offline. Offline tests never execute a Solana
+mainnet transfer.
 
 The pure-core gate requires 95% statements, lines, and functions and 90%
 branches. Contract-only files are excluded. The architecture check rejects

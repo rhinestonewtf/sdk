@@ -17,6 +17,10 @@ import {
   locateSwigWallet,
   MANAGED_SWIG_NAMESPACES,
 } from '../accounts/solana/address'
+import {
+  canonicalP256PublicKey,
+  compressP256PublicKey,
+} from '../accounts/solana/passkey'
 import { formatCaip2, parseCaip2, toEvmChainReference } from '../chains/caip2'
 import { getChainById, getChainReference } from '../chains/catalog'
 import {
@@ -51,6 +55,7 @@ import type {
   CrossChainSolanaOriginTransaction,
   EvmAccountConfig,
   RhinestoneAccountConfig,
+  SameChainSolanaAuthorityTransaction,
   SameChainSolanaInstructionsTransaction,
   Session,
   SignerSet,
@@ -111,8 +116,8 @@ import {
 import { normalizeIntentQuote } from '../transactions/intents/normalize'
 import { assertSupportedSigningRequests } from '../transactions/intents/prepare'
 import {
-  compressP256PublicKey,
   NATIVE_SOL_SENTINEL,
+  SOLANA_AUTHORITY_SPONSORSHIP,
   type SolanaEvmExecution,
   type SolanaTransferInput,
   solanaChainId,
@@ -213,6 +218,10 @@ export interface ManagedTransactionAccount<
 > {
   /**
    * Prepare an intent transaction for signing.
+   *
+   * On an account with a managed Solana entry, `{ chain, authority }` adds or
+   * removes a passkey on its Swig (see `addPasskey`). That change is always
+   * gas-sponsored and billed to the integrator's sponsorship.
    * @param transaction Transaction to prepare
    * @returns The prepared transaction data
    * @see {@link signTransaction} to sign the prepared transaction
@@ -319,6 +328,10 @@ export interface SolanaStandaloneAccount<
 > extends RhinestoneAccountBase<C> {
   /**
    * Prepare a Solana-origin transaction for signing.
+   *
+   * `{ chain, authority }` adds or removes a passkey on the account's Swig
+   * (see `addPasskey`). That change is always gas-sponsored and billed to the
+   * integrator's sponsorship.
    * @param transaction Transaction to prepare
    * @returns The prepared transaction data
    */
@@ -744,6 +757,17 @@ function solanaMetadata(
   const action = input.action
   if (action.kind === 'instructions') {
     return { kind: 'solana-instructions', ...binding }
+  }
+  if (action.kind === 'authority') {
+    const { change } = action
+    return {
+      kind: 'solana-authority',
+      ...binding,
+      accountAddress: input.walletAddress,
+      action: change.action,
+      key: change.key,
+      ...(change.permission ? { permission: change.permission } : {}),
+    }
   }
   const delivery = action.delivery
   return delivery.kind === 'cross-chain'
@@ -1503,6 +1527,29 @@ function createSolanaOrigin(
       )
     }
     if (execution) assertDestinationCallsSupported()
+    if (isSolanaAuthorityChange(transaction)) {
+      // Always sponsored and fee-free, and never through a paired EVM account:
+      // the change is to this Swig alone.
+      const { action, key, permission } = transaction.authority
+      return {
+        chain: transaction.chain,
+        accountAddress: source.walletAddress,
+        authority,
+        walletAddress: source.walletAddress,
+        swigAddress: source.swigAddress,
+        namespace,
+        endpoint: sdk.orchestratorUrl,
+        sponsorSettings: { ...SOLANA_AUTHORITY_SPONSORSHIP },
+        action: {
+          kind: 'authority',
+          change: {
+            action,
+            key: key.publicKey,
+            ...(action === 'add' ? { permission } : {}),
+          },
+        },
+      }
+    }
     const common = {
       ...(execution && source.evmExecution
         ? {
@@ -2080,6 +2127,15 @@ function isSolanaInstructionExecution(
   )
 }
 
+function isSolanaAuthorityChange(
+  transaction: Transaction,
+): transaction is SameChainSolanaAuthorityTransaction {
+  return (
+    isSameChainSolanaOrigin(transaction) &&
+    (transaction as { authority?: unknown }).authority !== undefined
+  )
+}
+
 function isSolanaOrigin(
   transaction: Transaction,
 ): transaction is
@@ -2187,23 +2243,85 @@ function assertSolanaSourceAsset(
   }
 }
 
+/**
+ * Checks an authority change's shape, and returns its key in canonical form.
+ * A literal is held to the same rules `addPasskey` and `removePasskey` apply.
+ */
+function assertSolanaAuthorityChange(value: unknown): Hex {
+  const refuse = (message: string, field: string): never => {
+    throw new UnsupportedAccountCapabilityError(message, {
+      vm: 'solana',
+      field,
+    })
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    refuse(
+      '`authority` must be a change from `addPasskey` or `removePasskey`.',
+      'authority',
+    )
+  }
+  const change = value as Record<string, unknown>
+  if (change.action !== 'add' && change.action !== 'remove') {
+    refuse(
+      "`authority.action` must be 'add' or 'remove'; build it with `addPasskey` or `removePasskey`.",
+      'authority.action',
+    )
+  }
+  assertSolanaObjectKeys(
+    change,
+    change.action === 'add'
+      ? ['action', 'key', 'permission']
+      : ['action', 'key'],
+    'authority',
+  )
+  if (
+    change.action === 'add' &&
+    change.permission !== 'all' &&
+    change.permission !== 'allButManageAuthority'
+  ) {
+    refuse(
+      "Adding a passkey needs `authority.permission`: 'all' or 'allButManageAuthority'.",
+      'authority.permission',
+    )
+  }
+  assertSolanaObjectKeys(change.key, ['type', 'publicKey'], 'authority.key')
+  const key = change.key as Record<string, unknown>
+  if (key.type !== 'passkey') {
+    refuse(
+      "Only passkeys can be added or removed: `authority.key.type` must be 'passkey'.",
+      'authority.key.type',
+    )
+  }
+  const publicKey = canonicalP256PublicKey(key.publicKey)
+  if (!publicKey) {
+    refuse(
+      '`authority.key.publicKey` must be a P-256 public key as 64-byte x‖y, 65-byte uncompressed or 33-byte compressed hex.',
+      'authority.key.publicKey',
+    )
+  }
+  return publicKey!
+}
+
 function assertSupportedSolanaTransaction(
   input: Record<string, unknown>,
   config: Readonly<RhinestoneAccountConfig>,
 ): void {
   const runsInstructions = input.instructions !== undefined
+  const changesAuthority = input.authority !== undefined
   const allowed = new Set(
-    runsInstructions
-      ? ['chain', 'instructions', 'addressLookupTables', 'sponsored']
-      : [
-          'chain',
-          'tokenRequests',
-          'recipient',
-          'sourceAssets',
-          'sponsored',
-          'appFees',
-          'protocolFees',
-        ],
+    changesAuthority
+      ? ['chain', 'authority']
+      : runsInstructions
+        ? ['chain', 'instructions', 'addressLookupTables', 'sponsored']
+        : [
+            'chain',
+            'tokenRequests',
+            'recipient',
+            'sourceAssets',
+            'sponsored',
+            'appFees',
+            'protocolFees',
+          ],
   )
   const unsupported = Object.keys(input).find((key) => !allowed.has(key))
   if (unsupported) {
@@ -2219,6 +2337,10 @@ function assertSupportedSolanaTransaction(
     )
   }
   solanaChainId(input.chain as SolanaChain)
+  if (changesAuthority) {
+    assertSolanaAuthorityChange(input.authority)
+    return
+  }
   if (runsInstructions) {
     // Shape and limits are enforced by the normalizer, which also produces the
     // canonical form `normalizeTransaction` stores.
@@ -2649,6 +2771,19 @@ export function normalizeTransaction(
         ? { protocolFees: Object.freeze({ ...transaction.protocolFees }) }
         : {}),
       ...freezeSponsorship(transaction.sponsored),
+    }) as Transaction
+  }
+  if (isSolanaAuthorityChange(transaction)) {
+    const { action, permission } = transaction.authority
+    const key = Object.freeze({
+      type: 'passkey' as const,
+      publicKey: assertSolanaAuthorityChange(transaction.authority),
+    })
+    return Object.freeze({
+      chain: Object.freeze({ ...transaction.chain }),
+      authority: Object.freeze(
+        action === 'add' ? { action, key, permission } : { action, key },
+      ),
     }) as Transaction
   }
   if (isSolanaInstructionExecution(transaction)) {

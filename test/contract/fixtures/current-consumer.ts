@@ -9,20 +9,31 @@ import {
   InvalidSolanaTransactionArtifactError,
   isInvalidSolanaTransactionArtifactError,
   isSolanaAccountNotCreated,
+  isSolanaAuthorityChangeRefused,
   isSolanaQuoteExpiredError,
   type SolanaAccountNotCreatedError,
+  type SolanaAuthorityChangeRefusalReason,
+  type SolanaAuthorityChangeRefusedError,
   SolanaQuoteExpiredError,
 } from '@rhinestone/sdk/errors'
 import type { EvmAccountConfig } from '@rhinestone/sdk/evm'
 import * as evmExports from '@rhinestone/sdk/evm'
 import * as solanaExports from '@rhinestone/sdk/solana'
 import {
+  addPasskey,
   type CrossChainSolanaOriginTransaction,
   createSolanaSwigId,
+  removePasskey,
+  type SameChainSolanaAuthorityTransaction,
   type SameChainSolanaTransaction,
+  type SolanaAuthorityChange,
+  type SolanaAuthorityDisclosure,
+  type SolanaAuthorityExecutionMetadata,
+  type SolanaAuthorityKey,
   type SolanaCrossChainExecutionMetadata,
   type SolanaDeployOptions,
   type SolanaExecutionMetadata,
+  type SolanaPasskeyPermission,
   solanaAddress,
   solanaDevnet,
   solanaMainnet,
@@ -161,11 +172,32 @@ async function useManagedSolanaApi() {
     swigId: independent.id,
   }
   await standalone.deploy('solana', solanaDevnet, deployOptions)
+  const permission: SolanaPasskeyPermission = 'allButManageAuthority'
+  const passkey = `0x02${'11'.repeat(32)}` as const
+  const change: SolanaAuthorityChange = addPasskey(passkey, { permission })
+  const key: SolanaAuthorityKey = removePasskey(passkey).key
+  const authorityChange = {
+    chain: solanaDevnet,
+    authority: change,
+  } satisfies SameChainSolanaAuthorityTransaction
+  const preparedChange = await account.prepareTransaction(authorityChange)
+  const authorityMetadata: SolanaAuthorityExecutionMetadata | undefined =
+    preparedChange.execution?.kind === 'solana-authority'
+      ? preparedChange.execution
+      : undefined
+  const scope = preparedChange.quotes.best.signingRequests[0]?.scope
+  const disclosed: SolanaAuthorityDisclosure | undefined =
+    scope?.vm === 'svm' && scope.action === 'manageAuthority'
+      ? scope.authority
+      : undefined
   const signed = await account.signTransaction(prepared)
   // One proof per request, in the same order.
   const proofs: SigningProof[] = signed.proofs
 
   void metadata
+  void key
+  void authorityMetadata
+  void disclosed
   void deliveryMetadata
   void signingRequests
   void purposes
@@ -176,10 +208,14 @@ async function useManagedSolanaApi() {
 const invalidArtifact = new InvalidSolanaTransactionArtifactError('fixture')
 const expired = new SolanaQuoteExpiredError('intent-id')
 declare const uncreated: SolanaAccountNotCreatedError
+declare const refused: SolanaAuthorityChangeRefusedError
+const refusalReason: SolanaAuthorityChangeRefusalReason | undefined =
+  refused.reason
 const recognizedErrors: boolean[] = [
   isInvalidSolanaTransactionArtifactError(invalidArtifact),
   isSolanaQuoteExpiredError(expired),
   isSolanaAccountNotCreated(uncreated),
+  isSolanaAuthorityChangeRefused(refused),
 ]
 
 void ecoIntentHash
@@ -188,6 +224,7 @@ void solanaOperation
 void useCurrentAccountApi
 void useManagedSolanaApi
 void recognizedErrors
+void refusalReason
 void evmExports.experimental_getRhinestoneInitData
 void evmExports.OWNABLE_VALIDATOR_ADDRESS
 void solanaExports.solanaAddress

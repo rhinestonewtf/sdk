@@ -114,6 +114,62 @@ export function refusedVectors(
       }),
     },
     {
+      id: 'authority-unknown-field',
+      field: 'destination.execution.authority.roleId',
+      body: from('solana-authority-add', (body) => {
+        body.destination.execution.authority.roleId = 3
+      }),
+    },
+    {
+      id: 'authority-remove-permission',
+      field: 'destination.execution.authority.permission',
+      body: from('solana-authority-remove', (body) => {
+        body.destination.execution.authority.permission = 'all'
+      }),
+    },
+    {
+      id: 'authority-add-no-permission',
+      field: 'destination.execution.authority.permission',
+      body: from('solana-authority-add', (body) => {
+        delete body.destination.execution.authority.permission
+      }),
+    },
+    {
+      id: 'authority-unknown-permission',
+      field: 'destination.execution.authority.permission',
+      body: from('solana-authority-add', (body) => {
+        body.destination.execution.authority.permission = 'manageAuthority'
+      }),
+    },
+    {
+      id: 'authority-secp256k1-key',
+      field: 'destination.execution.authority.key.kind',
+      body: from('solana-authority-add', (body) => {
+        body.destination.execution.authority.key.kind = 'secp256k1'
+      }),
+    },
+    {
+      id: 'authority-key-extra-field',
+      field: 'destination.execution.authority.key.type',
+      body: from('solana-authority-remove', (body) => {
+        body.destination.execution.authority.key.type = 'passkey'
+      }),
+    },
+    {
+      id: 'authority-unknown-action',
+      field: 'destination.execution.authority.action',
+      body: from('solana-authority-remove', (body) => {
+        body.destination.execution.authority.action = 'replace'
+      }),
+    },
+    {
+      id: 'authority-beside-instructions',
+      field: 'destination.execution.instructions',
+      body: from('solana-authority-add', (body) => {
+        body.destination.execution.instructions = []
+      }),
+    },
+    {
       id: 'unknown-caip2',
       field: 'destination.chainId',
       body: from('evm-to-tron', (body) => {

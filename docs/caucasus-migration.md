@@ -111,6 +111,75 @@ was created against are refused before any request. A Swig that already exists r
 its root authority is not verified, and a Swig whose root is not the configured
 owner cannot be spent by it.
 
+### Managing Solana passkeys
+
+`prepareTransaction({ chain, authority })` adds or removes a passkey on the
+account's Swig. Build the change with `addPasskey` or `removePasskey` from
+`@rhinestone/sdk/solana`; they take a viem `WebAuthnAccount` or a P-256 public
+key in any encoding. The configured owner signs it with one prompt, and the
+change is always gas-sponsored, billed to the integrator's sponsorship like
+`deploy('solana', …)`. One change per transaction, and only passkeys.
+
+```ts
+import { addPasskey, removePasskey, solanaDevnet } from '@rhinestone/sdk/solana'
+
+// Add a passkey that can spend but not manage authorities.
+const add = await account.prepareTransaction({
+  chain: solanaDevnet,
+  authority: addPasskey(newPasskey, { permission: 'allButManageAuthority' }),
+})
+await account.waitForExecution(
+  await account.submitTransaction(await account.signTransaction(add)),
+)
+
+// The added passkey owns the same wallet when configured with the same `swig`.
+const delegate = await sdk.createAccount({
+  solana: { owner: { type: 'passkey', account: newPasskey }, swig },
+})
+await delegate.prepareTransaction({ chain: solanaDevnet, instructions })
+
+// Remove it again, from an owner whose role may manage authorities.
+await account.prepareTransaction({
+  chain: solanaDevnet,
+  authority: removePasskey(newPasskey),
+})
+```
+
+`permission` is `'all'` (can also add and remove passkeys) or
+`'allButManageAuthority'` (spends and runs instructions only). It is required
+on an add. The orchestrator refuses a change the Swig doesn't allow with
+`SolanaAuthorityChangeRefusedError`: a key already present, a missing key, the
+root role, an owner whose role can't manage authorities, or a removal that
+leaves no role able to manage them. Removing the configured owner's own key
+succeeds only while another manager remains, and leaves that owner unable to
+sign.
+
+Nothing is retried automatically. After an uncertain outcome (a failed or
+timed-out wait, or a network error on submit), prepare the same change again and
+read the refusal:
+
+```ts
+import { isSolanaAuthorityChangeRefused } from '@rhinestone/sdk/errors'
+
+try {
+  await account.prepareTransaction({ chain: solanaDevnet, authority: change })
+} catch (error) {
+  if (!isSolanaAuthorityChangeRefused(error)) throw error
+  const landed =
+    change.action === 'add'
+      ? error.reason === 'authority_exists' &&
+        error.permission === change.permission
+      : error.reason === 'authority_not_found'
+  // `authority_exists` with another or no permission is a conflict to resolve.
+}
+```
+
+The quote's slot window is short (about 24 seconds). A passkey prompt answered
+after it closes fails with `SolanaQuoteExpiredError`; prepare again.
+
+This needs an orchestrator that serves authority changes on caucasus, which is
+the development endpoint only for now.
+
 ## Swap sponsorship
 
 The separate `sponsored.swapValue` option is removed. Use `sponsored.swaps` for
@@ -462,6 +531,7 @@ deliberately.
 | `MismatchedIntentProofError` | a contribution belongs to another intent, another request set, another slot, or duplicates one already filled |
 | `InvalidPreparedTransactionError` | a prepared transaction was built for an earlier wire version |
 | `UnsupportedSponsorshipApprovalError` | intent-scoped sponsorship cannot bind the quote request exactly. Raised before `getIntentExtensionToken` runs. |
+| `SolanaAuthorityChangeRefusedError` | the orchestrator refuses a Swig passkey add or remove against the Swig's current roles (`SWIG_AUTHORITY_CHANGE_REFUSED`). Carries `reason`, `swigAddress`, and `roleId`, `roleIds` or `permission` when sent. |
 
 Existing error envelopes, codes, detail paths and trace ids are preserved,
 including the specialized missing-Swig refusal — which now carries its chain as
@@ -479,5 +549,3 @@ a CAIP-2 string.
   for one fails with an actionable error rather than being signed as something
   else. Existing EVM passkey validators are unaffected — they still produce
   ordinary account-encoded EIP-712 proofs.
-- Solana same-chain instructions still have no serving route and are still
-  refused with `UNSUPPORTED_DESTINATION_INSTRUCTIONS`.

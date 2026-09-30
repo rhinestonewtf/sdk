@@ -1181,7 +1181,7 @@ export interface operations {
                     data: string
                   }[]
                 }[]
-                /** @description What the intent runs at its destination, tagged with the destination's own execution environment. These include plumbing the route composes alongside the caller's own calls; they are what the intent runs, not a restatement of what was requested. */
+                /** @description What the intent runs at its destination, tagged with the destination's own execution environment. An EVM destination's calls include plumbing the route composes alongside the caller's own calls; they are what the intent runs, not a restatement of what was requested. A HyperCore destination is the exception: its `settlement` holds only the caller's own calls, exactly as the quote's `plan.destination` disclosed them. */
                 destination:
                   | (
                       | {
@@ -1274,13 +1274,51 @@ export interface operations {
                         }
                       | {
                           /** @enum {string} */
-                          vm: 'hypercore'
-                          /**
-                           * @description The venue the actions run at
-                           * @example hypercore:perp
-                           */
+                          vm: 'svm'
                           chainId: string
-                          /** @description The actions recorded for this intent, IN THE ORDER they are sent. Absent when the record carries none. */
+                          /** @description A change to the Swig's own authorities */
+                          authority: {
+                            /**
+                             * @description Whether the passkey is added or removed
+                             * @example add
+                             * @enum {string}
+                             */
+                            action: 'add' | 'remove'
+                            /** @description The passkey added or removed */
+                            key: {
+                              /** @enum {string} */
+                              kind: 'secp256r1'
+                              /**
+                               * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
+                               * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
+                               */
+                              publicKey: string
+                            }
+                            /**
+                             * @description The added passkey's permission, as requested. Absent on a removal.
+                             * @example allButManageAuthority
+                             * @enum {string}
+                             */
+                            permission?: 'all' | 'allButManageAuthority'
+                            /**
+                             * @description The Swig role id the added passkey gets, or the id of the role removed
+                             * @example 3
+                             */
+                            roleId: number
+                            rent: {
+                              /**
+                               * Format: uint256
+                               * @description Lamports of rent: locked in the Swig state account on an add, which the sponsor funds, or returned to the Swig wallet on a removal
+                               * @example 325120
+                               */
+                              amount: string
+                              /** @description The rent in USD */
+                              usd: number
+                            }
+                          }
+                        }
+                      | {
+                          /** @description The canonical actions, IN THE ORDER they are sent, each with its nonce and the agent that authorises it. Absent when the route carries none. */
                           actions?: {
                             /** @description The canonical Hyperliquid action, in the key order the agent address commits to */
                             action?: unknown
@@ -1290,13 +1328,13 @@ export interface operations {
                              */
                             nonce: number
                             /**
-                             * @description The agent that authorised it
+                             * @description The agent that authorises it
                              * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
                              */
                             agent: string
                           }[]
-                          /** @description The HyperEVM calls that delivered to the venue. Null when the record discloses none — a tokenless action delivers nothing. */
-                          settlement: {
+                          /** @description The caller's own HyperEVM calls, in execution order. Only calls the caller sent: the gas-refund allowance, the core deposit and the agent registrations the orchestrator composes are not disclosed here (the registrations are disclosed in the signing request's `scope.hyperCore`). Absent when the caller sent none, and on a record written before caller calls were attributed. */
+                          settlement?: {
                             /** @enum {string} */
                             vm: 'evm'
                             /**
@@ -1337,7 +1375,14 @@ export interface operations {
                                */
                               data: string
                             }[]
-                          } | null
+                          }
+                          /** @enum {string} */
+                          vm: 'hypercore'
+                          /**
+                           * @description The venue the actions run at
+                           * @example hypercore:perp
+                           */
+                          chainId: string
                         }
                     )
                   | null
@@ -2549,19 +2594,19 @@ export interface operations {
                   address: string
                   /** @description The Swig state account holding the roles. Required for a Solana-only account (no `evm` entry); optional for an account paired with an EVM entry, whose Swig the orchestrator derives. */
                   swigAccount?: string
-                  /** @description The authority this caller believes the Swig carries. Checked structurally only: the onchain root role stays the source of truth for who may spend. */
+                  /** @description The authority that signs this spend. On a Solana-only account it selects the one Swig role carrying this key, which must hold `All` or `AllButManageAuthority`; no match, several matches or another permission is refused. On an account paired with an EVM entry, the root role signs. */
                   authorization:
                     | {
                         /** @enum {string} */
                         kind: 'secp256k1'
-                        /** @description EVM address the Swig root role recovers to */
+                        /** @description EVM address the signing Swig role recovers to */
                         address: string
                       }
                     | {
                         /** @enum {string} */
                         kind: 'secp256r1'
                         /**
-                         * @description Passkey public key on the Swig root role: SEC1-compressed P-256, 33 bytes as 0x-prefixed hex
+                         * @description Passkey public key on the signing Swig role: SEC1-compressed P-256, 33 bytes as 0x-prefixed hex
                          * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
                          */
                         publicKey: string
@@ -2942,35 +2987,75 @@ export interface operations {
                   amount?: string
                   readonly balance?: unknown
                 }[]
-                execution?: {
-                  /** @description Solana instructions to run, in order, out of the account's own wallet. The wallet executes them, so `recipient` must be omitted: a payee is encoded inside the instructions. No route serves them yet, so a request carrying them is refused with `UNSUPPORTED_DESTINATION_INSTRUCTIONS`. */
-                  instructions: {
-                    /**
-                     * @description Program to invoke, base58.
-                     * @example TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
-                     */
-                    programId: string
-                    /** @description Accounts the instruction reads or writes, in the order the program expects. */
-                    accounts: {
-                      /**
-                       * @description Account address, base58.
-                       * @example TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
-                       */
-                      pubkey: string
-                      /** @description Whether the instruction requires this account to sign. */
-                      isSigner: boolean
-                      /** @description Whether the instruction writes to this account. */
-                      isWritable: boolean
-                    }[]
-                    /**
-                     * @description Instruction data, base64.
-                     * @example CQ==
-                     */
-                    data: string
-                  }[]
-                  /** @description Address lookup tables the instructions resolve accounts through, base58, as Jupiter `/swap-instructions` returns them. */
-                  addressLookupTables?: string[]
-                }
+                /** @description What the destination runs out of the account's Swig: caller `instructions`, or an `authority` change. Never both. */
+                execution?:
+                  | {
+                      /** @description Solana instructions to run, in order, out of the account's own wallet. The wallet executes them, so `recipient` must be omitted: a payee is encoded inside the instructions. No route serves them yet, so a request carrying them is refused with `UNSUPPORTED_DESTINATION_INSTRUCTIONS`. */
+                      instructions: {
+                        /**
+                         * @description Program to invoke, base58.
+                         * @example TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
+                         */
+                        programId: string
+                        /** @description Accounts the instruction reads or writes, in the order the program expects. */
+                        accounts: {
+                          /**
+                           * @description Account address, base58.
+                           * @example TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
+                           */
+                          pubkey: string
+                          /** @description Whether the instruction requires this account to sign. */
+                          isSigner: boolean
+                          /** @description Whether the instruction writes to this account. */
+                          isWritable: boolean
+                        }[]
+                        /**
+                         * @description Instruction data, base64.
+                         * @example CQ==
+                         */
+                        data: string
+                      }[]
+                      /** @description Address lookup tables the instructions resolve accounts through, base58, as Jupiter `/swap-instructions` returns them. */
+                      addressLookupTables?: string[]
+                    }
+                  | {
+                      /** @description Add a passkey to the account's existing Swig, or remove one by its key. Signed by the role `account.svm.authorization` names, which must hold `All` or `ManageAuthority`. The root role (id 0) is never removed. A removal that would leave no signable role holding `All` or `ManageAuthority` is refused, and so is adding a key already on the Swig. Solana-only accounts, sponsored (`options.sponsorship.gas`) only, and one change per intent. */
+                      authority:
+                        | {
+                            /** @enum {string} */
+                            action: 'add'
+                            /** @description The authority key. Only passkeys (`secp256r1`) can be added or removed. */
+                            key: {
+                              /** @enum {string} */
+                              kind: 'secp256r1'
+                              /**
+                               * @description The SEC1-compressed P-256 passkey public key, as 33 bytes of 0x-prefixed hex
+                               * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
+                               */
+                              publicKey: string
+                            }
+                            /**
+                             * @description What the added passkey may do. `all`: every action, including adding and removing the Swig's non-root authorities. `allButManageAuthority`: spend and execute, but never add or remove an authority. Required; there is no default.
+                             * @example allButManageAuthority
+                             * @enum {string}
+                             */
+                            permission: 'all' | 'allButManageAuthority'
+                          }
+                        | {
+                            /** @enum {string} */
+                            action: 'remove'
+                            /** @description The authority key. Only passkeys (`secp256r1`) can be added or removed. */
+                            key: {
+                              /** @enum {string} */
+                              kind: 'secp256r1'
+                              /**
+                               * @description The SEC1-compressed P-256 passkey public key, as 33 bytes of 0x-prefixed hex
+                               * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
+                               */
+                              publicKey: string
+                            }
+                          }
+                    }
               }
             | {
                 /** @enum {string} */
@@ -3707,7 +3792,7 @@ export interface operations {
                 }
               }
             }
-            /** @description Ceilings on the observed unlocked balance, per (chain, token). A limit outside the selection has no effect. */
+            /** @description Ceilings on the observed unlocked balance, per (chain, token). A limit outside the selection has no effect, except on a Solana origin, where any limit budgets the spend: the selection must resolve to exactly one (chain, token), exactly one limit must name it, and auxiliary funds are refused. */
             limits?: {
               /**
                * @description CAIP-2 chain identifier (e.g. `eip155:8453`, `solana:…`, `tron:…`, or a HyperCore delivery venue `hypercore:spot` / `hypercore:perp`)
@@ -3961,7 +4046,7 @@ export interface operations {
                              */
                             address: string
                           }
-                      /** @description Present only where the route runs the caller's own calls on this block. */
+                      /** @description Present only where the route runs the caller's own calls on this block — or, at a HyperCore venue, actions or caller settlement calls. */
                       execution?:
                         | {
                             /** @description The executor of the disclosed calls */
@@ -4040,6 +4125,122 @@ export interface operations {
                             }[]
                             /** @description Address lookup tables the instructions resolve against */
                             addressLookupTables: string[]
+                          }
+                        | {
+                            /** @description The executor of the disclosed calls */
+                            executedBy: {
+                              /**
+                               * @description Who runs the calls: the account itself, or a solver-operated contract running them on its behalf.
+                               * @example account
+                               * @enum {string}
+                               */
+                              kind: 'account' | 'solver'
+                              /**
+                               * @description Address of the executing contract or account
+                               * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                               */
+                              address: string
+                            }
+                            /** @description A change to the Swig's own authorities */
+                            authority: {
+                              /**
+                               * @description Whether the passkey is added or removed
+                               * @example add
+                               * @enum {string}
+                               */
+                              action: 'add' | 'remove'
+                              /** @description The passkey added or removed */
+                              key: {
+                                /** @enum {string} */
+                                kind: 'secp256r1'
+                                /**
+                                 * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
+                                 * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
+                                 */
+                                publicKey: string
+                              }
+                              /**
+                               * @description The added passkey's permission, as requested. Absent on a removal.
+                               * @example allButManageAuthority
+                               * @enum {string}
+                               */
+                              permission?: 'all' | 'allButManageAuthority'
+                              /**
+                               * @description The Swig role id the added passkey gets, or the id of the role removed
+                               * @example 3
+                               */
+                              roleId: number
+                              rent: {
+                                /**
+                                 * Format: uint256
+                                 * @description Lamports of rent: locked in the Swig state account on an add, which the sponsor funds, or returned to the Swig wallet on a removal
+                                 * @example 325120
+                                 */
+                                amount: string
+                                /** @description The rent in USD */
+                                usd: number
+                              }
+                            }
+                          }
+                        | {
+                            /** @description The canonical actions, IN THE ORDER they are sent, each with its nonce and the agent that authorises it. Absent when the route carries none. */
+                            actions?: {
+                              /** @description The canonical Hyperliquid action, in the key order the agent address commits to */
+                              action?: unknown
+                              /**
+                               * @description The nonce the action commits to
+                               * @example 1633493192000
+                               */
+                              nonce: number
+                              /**
+                               * @description The agent that authorises it
+                               * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                               */
+                              agent: string
+                            }[]
+                            /** @description The caller's own HyperEVM calls, in execution order. Only calls the caller sent: the gas-refund allowance, the core deposit and the agent registrations the orchestrator composes are not disclosed here (the registrations are disclosed in the signing request's `scope.hyperCore`). Absent when the caller sent none, and on a record written before caller calls were attributed. */
+                            settlement?: {
+                              /** @enum {string} */
+                              vm: 'evm'
+                              /**
+                               * @description CAIP-2 chain id the calls execute on
+                               * @example eip155:8453
+                               */
+                              chainId: string
+                              /** @description Absent where the chain is no longer in force, so the executing contract cannot be named. */
+                              executedBy?: {
+                                /**
+                                 * @description Who runs the calls: the account itself, or a solver-operated contract running them on its behalf.
+                                 * @example account
+                                 * @enum {string}
+                                 */
+                                kind: 'account' | 'solver'
+                                /**
+                                 * @description Address of the executing contract or account
+                                 * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                                 */
+                                address: string
+                              }
+                              /** @description The calls, in execution order */
+                              calls: {
+                                /**
+                                 * @description Target contract address for execution
+                                 * @example 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
+                                 */
+                                to: string
+                                /**
+                                 * Format: uint256
+                                 * @description Amount of ETH (in wei) sent in the execution
+                                 * @example 0
+                                 */
+                                value: string
+                                /**
+                                 * @description Encoded function call data
+                                 * @example 0xa9059cbb000000000000000000000000579d5631f76126991c00fb8fe5467fa9d49e5f6a00000000000000000000000000000000000000000000000000000000000f4240
+                                 */
+                                data: string
+                              }[]
+                            }
                           }
                     }[]
                     /** @description The single block the route delivers to, on the chain the caller named. */
@@ -4136,7 +4337,7 @@ export interface operations {
                              */
                             address: string
                           }
-                      /** @description Present only where the route runs the caller's own calls on this block. */
+                      /** @description Present only where the route runs the caller's own calls on this block — or, at a HyperCore venue, actions or caller settlement calls. */
                       execution?:
                         | {
                             /** @description The executor of the disclosed calls */
@@ -4215,6 +4416,122 @@ export interface operations {
                             }[]
                             /** @description Address lookup tables the instructions resolve against */
                             addressLookupTables: string[]
+                          }
+                        | {
+                            /** @description The executor of the disclosed calls */
+                            executedBy: {
+                              /**
+                               * @description Who runs the calls: the account itself, or a solver-operated contract running them on its behalf.
+                               * @example account
+                               * @enum {string}
+                               */
+                              kind: 'account' | 'solver'
+                              /**
+                               * @description Address of the executing contract or account
+                               * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                               */
+                              address: string
+                            }
+                            /** @description A change to the Swig's own authorities */
+                            authority: {
+                              /**
+                               * @description Whether the passkey is added or removed
+                               * @example add
+                               * @enum {string}
+                               */
+                              action: 'add' | 'remove'
+                              /** @description The passkey added or removed */
+                              key: {
+                                /** @enum {string} */
+                                kind: 'secp256r1'
+                                /**
+                                 * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
+                                 * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
+                                 */
+                                publicKey: string
+                              }
+                              /**
+                               * @description The added passkey's permission, as requested. Absent on a removal.
+                               * @example allButManageAuthority
+                               * @enum {string}
+                               */
+                              permission?: 'all' | 'allButManageAuthority'
+                              /**
+                               * @description The Swig role id the added passkey gets, or the id of the role removed
+                               * @example 3
+                               */
+                              roleId: number
+                              rent: {
+                                /**
+                                 * Format: uint256
+                                 * @description Lamports of rent: locked in the Swig state account on an add, which the sponsor funds, or returned to the Swig wallet on a removal
+                                 * @example 325120
+                                 */
+                                amount: string
+                                /** @description The rent in USD */
+                                usd: number
+                              }
+                            }
+                          }
+                        | {
+                            /** @description The canonical actions, IN THE ORDER they are sent, each with its nonce and the agent that authorises it. Absent when the route carries none. */
+                            actions?: {
+                              /** @description The canonical Hyperliquid action, in the key order the agent address commits to */
+                              action?: unknown
+                              /**
+                               * @description The nonce the action commits to
+                               * @example 1633493192000
+                               */
+                              nonce: number
+                              /**
+                               * @description The agent that authorises it
+                               * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                               */
+                              agent: string
+                            }[]
+                            /** @description The caller's own HyperEVM calls, in execution order. Only calls the caller sent: the gas-refund allowance, the core deposit and the agent registrations the orchestrator composes are not disclosed here (the registrations are disclosed in the signing request's `scope.hyperCore`). Absent when the caller sent none, and on a record written before caller calls were attributed. */
+                            settlement?: {
+                              /** @enum {string} */
+                              vm: 'evm'
+                              /**
+                               * @description CAIP-2 chain id the calls execute on
+                               * @example eip155:8453
+                               */
+                              chainId: string
+                              /** @description Absent where the chain is no longer in force, so the executing contract cannot be named. */
+                              executedBy?: {
+                                /**
+                                 * @description Who runs the calls: the account itself, or a solver-operated contract running them on its behalf.
+                                 * @example account
+                                 * @enum {string}
+                                 */
+                                kind: 'account' | 'solver'
+                                /**
+                                 * @description Address of the executing contract or account
+                                 * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                                 */
+                                address: string
+                              }
+                              /** @description The calls, in execution order */
+                              calls: {
+                                /**
+                                 * @description Target contract address for execution
+                                 * @example 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
+                                 */
+                                to: string
+                                /**
+                                 * Format: uint256
+                                 * @description Amount of ETH (in wei) sent in the execution
+                                 * @example 0
+                                 */
+                                value: string
+                                /**
+                                 * @description Encoded function call data
+                                 * @example 0xa9059cbb000000000000000000000000579d5631f76126991c00fb8fe5467fa9d49e5f6a00000000000000000000000000000000000000000000000000000000000f4240
+                                 */
+                                data: string
+                              }[]
+                            }
                           }
                     }
                     /** @description Account initializations the route performs. Empty when it performs none. */
@@ -4875,72 +5192,178 @@ export interface operations {
                             slot: string
                           }[]
                         }
-                      | {
-                          /** @enum {string} */
-                          vm: 'svm'
-                          /** @enum {string} */
-                          action: 'spend'
-                          /** @description The wallet the spend debits, on its chain */
-                          accounts: {
-                            /**
-                             * @description CAIP-2 chain id the account is authorized on
-                             * @example eip155:8453
-                             */
-                            chainId: string
-                            /**
-                             * @description Account address, in its own chain's format
-                             * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                             */
-                            address: string
-                          }[]
-                          /** @description The full instruction set this signature authorizes, in execution order, in the same shape a request carries instructions in. */
-                          instructions: {
-                            /**
-                             * @description Program to invoke, base58.
-                             * @example TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
-                             */
-                            programId: string
-                            /** @description Accounts the instruction reads or writes, in the order the program expects. */
-                            accounts: {
-                              /**
-                               * @description Account address, base58.
-                               * @example TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
-                               */
-                              pubkey: string
-                              /** @description Whether the instruction requires this account to sign. */
-                              isSigner: boolean
-                              /** @description Whether the instruction writes to this account. */
-                              isWritable: boolean
-                            }[]
-                            /**
-                             * @description Instruction data, base64.
-                             * @example CQ==
-                             */
-                            data: string
-                          }[]
-                          /** @description Address lookup tables the instructions resolve accounts through. The tables themselves are not inlined. */
-                          addressLookupTables: string[]
-                          /** @description Who pays the transaction fee, as a role rather than a key: the payload names no payer, and the relayer picks its own. */
-                          feePayer: {
-                            /** @enum {string} */
-                            kind: 'role'
-                            /** @enum {string} */
-                            role: 'relayer'
-                          }
-                          /** @description Slot range the spend is signable in */
-                          slotWindow: {
-                            /**
-                             * @description Slot the payload was pinned to
-                             * @example 370123456
-                             */
-                            from: string
-                            /**
-                             * @description Last slot it can be landed in
-                             * @example 370123516
-                             */
-                            to: string
-                          }
-                        }
+                      | (
+                          | {
+                              /** @enum {string} */
+                              vm: 'svm'
+                              /** @enum {string} */
+                              action: 'spend'
+                              /** @description The wallet the spend debits, on its chain */
+                              accounts: {
+                                /**
+                                 * @description CAIP-2 chain id the account is authorized on
+                                 * @example eip155:8453
+                                 */
+                                chainId: string
+                                /**
+                                 * @description Account address, in its own chain's format
+                                 * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                                 */
+                                address: string
+                              }[]
+                              /** @description The full instruction set this signature authorizes, in execution order, in the same shape a request carries instructions in. */
+                              instructions: {
+                                /**
+                                 * @description Program to invoke, base58.
+                                 * @example TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
+                                 */
+                                programId: string
+                                /** @description Accounts the instruction reads or writes, in the order the program expects. */
+                                accounts: {
+                                  /**
+                                   * @description Account address, base58.
+                                   * @example TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
+                                   */
+                                  pubkey: string
+                                  /** @description Whether the instruction requires this account to sign. */
+                                  isSigner: boolean
+                                  /** @description Whether the instruction writes to this account. */
+                                  isWritable: boolean
+                                }[]
+                                /**
+                                 * @description Instruction data, base64.
+                                 * @example CQ==
+                                 */
+                                data: string
+                              }[]
+                              /** @description Address lookup tables the instructions resolve accounts through. The tables themselves are not inlined. */
+                              addressLookupTables: string[]
+                              /** @description Who pays the transaction fee, as a role rather than a key: the payload names no payer, and the relayer picks its own. */
+                              feePayer: {
+                                /** @enum {string} */
+                                kind: 'role'
+                                /** @enum {string} */
+                                role: 'relayer'
+                              }
+                              /** @description Slot range the payload is signable in */
+                              slotWindow: {
+                                /**
+                                 * @description Slot the payload was pinned to
+                                 * @example 370123456
+                                 */
+                                from: string
+                                /**
+                                 * @description Last slot it can be landed in
+                                 * @example 370123516
+                                 */
+                                to: string
+                              }
+                            }
+                          | {
+                              /** @enum {string} */
+                              vm: 'svm'
+                              /** @enum {string} */
+                              action: 'manageAuthority'
+                              /** @description The Swig state account whose authorities change, on its chain */
+                              accounts: {
+                                /**
+                                 * @description CAIP-2 chain id the account is authorized on
+                                 * @example eip155:8453
+                                 */
+                                chainId: string
+                                /**
+                                 * @description Account address, in its own chain's format
+                                 * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                                 */
+                                address: string
+                              }[]
+                              /** @description The change this signature authorizes, exactly as the plan discloses it */
+                              authority: {
+                                /**
+                                 * @description Whether the passkey is added or removed
+                                 * @example add
+                                 * @enum {string}
+                                 */
+                                action: 'add' | 'remove'
+                                /** @description The passkey added or removed */
+                                key: {
+                                  /** @enum {string} */
+                                  kind: 'secp256r1'
+                                  /**
+                                   * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
+                                   * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
+                                   */
+                                  publicKey: string
+                                }
+                                /**
+                                 * @description The added passkey's permission, as requested. Absent on a removal.
+                                 * @example allButManageAuthority
+                                 * @enum {string}
+                                 */
+                                permission?: 'all' | 'allButManageAuthority'
+                                /**
+                                 * @description The Swig role id the added passkey gets, or the id of the role removed
+                                 * @example 3
+                                 */
+                                roleId: number
+                                rent: {
+                                  /**
+                                   * Format: uint256
+                                   * @description Lamports of rent: locked in the Swig state account on an add, which the sponsor funds, or returned to the Swig wallet on a removal
+                                   * @example 325120
+                                   */
+                                  amount: string
+                                  /** @description The rent in USD */
+                                  usd: number
+                                }
+                              }
+                              /** @description The sealed instructions this signature authorizes, in execution order: a passkey signer's secp256r1 precompile, then the Swig `AddAuthorityV1` or `RemoveAuthorityV1`, whose payer is a one-off key the relayer funds. */
+                              instructions: {
+                                /**
+                                 * @description Program to invoke, base58.
+                                 * @example TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
+                                 */
+                                programId: string
+                                /** @description Accounts the instruction reads or writes, in the order the program expects. */
+                                accounts: {
+                                  /**
+                                   * @description Account address, base58.
+                                   * @example TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
+                                   */
+                                  pubkey: string
+                                  /** @description Whether the instruction requires this account to sign. */
+                                  isSigner: boolean
+                                  /** @description Whether the instruction writes to this account. */
+                                  isWritable: boolean
+                                }[]
+                                /**
+                                 * @description Instruction data, base64.
+                                 * @example CQ==
+                                 */
+                                data: string
+                              }[]
+                              /** @description Who pays the transaction fee, as a role rather than a key: the payload names no payer, and the relayer picks its own. */
+                              feePayer: {
+                                /** @enum {string} */
+                                kind: 'role'
+                                /** @enum {string} */
+                                role: 'relayer'
+                              }
+                              /** @description Slot range the payload is signable in */
+                              slotWindow: {
+                                /**
+                                 * @description Slot the payload was pinned to
+                                 * @example 370123456
+                                 */
+                                from: string
+                                /**
+                                 * @description Last slot it can be landed in
+                                 * @example 370123516
+                                 */
+                                to: string
+                              }
+                            }
+                        )
                     /** @description The chains the payload is cryptographically BOUND to, CAIP-2, each listed once — a `MultiChainOps` payload with several legs on one chain still names it once. This is what was signed rather than what the route is about: a Permit2 payload binds to the chain it claims funds on, so a destination request repeats the chain of the origin payload it duplicates. */
                     chainIds: string[]
                     /**
@@ -5349,7 +5772,7 @@ export interface operations {
                              */
                             address: string
                           }
-                      /** @description Present only where the route runs the caller's own calls on this block. */
+                      /** @description Present only where the route runs the caller's own calls on this block — or, at a HyperCore venue, actions or caller settlement calls. */
                       execution?:
                         | {
                             /** @description The executor of the disclosed calls */
@@ -5428,6 +5851,122 @@ export interface operations {
                             }[]
                             /** @description Address lookup tables the instructions resolve against */
                             addressLookupTables: string[]
+                          }
+                        | {
+                            /** @description The executor of the disclosed calls */
+                            executedBy: {
+                              /**
+                               * @description Who runs the calls: the account itself, or a solver-operated contract running them on its behalf.
+                               * @example account
+                               * @enum {string}
+                               */
+                              kind: 'account' | 'solver'
+                              /**
+                               * @description Address of the executing contract or account
+                               * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                               */
+                              address: string
+                            }
+                            /** @description A change to the Swig's own authorities */
+                            authority: {
+                              /**
+                               * @description Whether the passkey is added or removed
+                               * @example add
+                               * @enum {string}
+                               */
+                              action: 'add' | 'remove'
+                              /** @description The passkey added or removed */
+                              key: {
+                                /** @enum {string} */
+                                kind: 'secp256r1'
+                                /**
+                                 * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
+                                 * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
+                                 */
+                                publicKey: string
+                              }
+                              /**
+                               * @description The added passkey's permission, as requested. Absent on a removal.
+                               * @example allButManageAuthority
+                               * @enum {string}
+                               */
+                              permission?: 'all' | 'allButManageAuthority'
+                              /**
+                               * @description The Swig role id the added passkey gets, or the id of the role removed
+                               * @example 3
+                               */
+                              roleId: number
+                              rent: {
+                                /**
+                                 * Format: uint256
+                                 * @description Lamports of rent: locked in the Swig state account on an add, which the sponsor funds, or returned to the Swig wallet on a removal
+                                 * @example 325120
+                                 */
+                                amount: string
+                                /** @description The rent in USD */
+                                usd: number
+                              }
+                            }
+                          }
+                        | {
+                            /** @description The canonical actions, IN THE ORDER they are sent, each with its nonce and the agent that authorises it. Absent when the route carries none. */
+                            actions?: {
+                              /** @description The canonical Hyperliquid action, in the key order the agent address commits to */
+                              action?: unknown
+                              /**
+                               * @description The nonce the action commits to
+                               * @example 1633493192000
+                               */
+                              nonce: number
+                              /**
+                               * @description The agent that authorises it
+                               * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                               */
+                              agent: string
+                            }[]
+                            /** @description The caller's own HyperEVM calls, in execution order. Only calls the caller sent: the gas-refund allowance, the core deposit and the agent registrations the orchestrator composes are not disclosed here (the registrations are disclosed in the signing request's `scope.hyperCore`). Absent when the caller sent none, and on a record written before caller calls were attributed. */
+                            settlement?: {
+                              /** @enum {string} */
+                              vm: 'evm'
+                              /**
+                               * @description CAIP-2 chain id the calls execute on
+                               * @example eip155:8453
+                               */
+                              chainId: string
+                              /** @description Absent where the chain is no longer in force, so the executing contract cannot be named. */
+                              executedBy?: {
+                                /**
+                                 * @description Who runs the calls: the account itself, or a solver-operated contract running them on its behalf.
+                                 * @example account
+                                 * @enum {string}
+                                 */
+                                kind: 'account' | 'solver'
+                                /**
+                                 * @description Address of the executing contract or account
+                                 * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                                 */
+                                address: string
+                              }
+                              /** @description The calls, in execution order */
+                              calls: {
+                                /**
+                                 * @description Target contract address for execution
+                                 * @example 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
+                                 */
+                                to: string
+                                /**
+                                 * Format: uint256
+                                 * @description Amount of ETH (in wei) sent in the execution
+                                 * @example 0
+                                 */
+                                value: string
+                                /**
+                                 * @description Encoded function call data
+                                 * @example 0xa9059cbb000000000000000000000000579d5631f76126991c00fb8fe5467fa9d49e5f6a00000000000000000000000000000000000000000000000000000000000f4240
+                                 */
+                                data: string
+                              }[]
+                            }
                           }
                     }[]
                     /** @description The single block the route delivers to, on the chain the caller named. */
@@ -5524,7 +6063,7 @@ export interface operations {
                              */
                             address: string
                           }
-                      /** @description Present only where the route runs the caller's own calls on this block. */
+                      /** @description Present only where the route runs the caller's own calls on this block — or, at a HyperCore venue, actions or caller settlement calls. */
                       execution?:
                         | {
                             /** @description The executor of the disclosed calls */
@@ -5603,6 +6142,122 @@ export interface operations {
                             }[]
                             /** @description Address lookup tables the instructions resolve against */
                             addressLookupTables: string[]
+                          }
+                        | {
+                            /** @description The executor of the disclosed calls */
+                            executedBy: {
+                              /**
+                               * @description Who runs the calls: the account itself, or a solver-operated contract running them on its behalf.
+                               * @example account
+                               * @enum {string}
+                               */
+                              kind: 'account' | 'solver'
+                              /**
+                               * @description Address of the executing contract or account
+                               * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                               */
+                              address: string
+                            }
+                            /** @description A change to the Swig's own authorities */
+                            authority: {
+                              /**
+                               * @description Whether the passkey is added or removed
+                               * @example add
+                               * @enum {string}
+                               */
+                              action: 'add' | 'remove'
+                              /** @description The passkey added or removed */
+                              key: {
+                                /** @enum {string} */
+                                kind: 'secp256r1'
+                                /**
+                                 * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
+                                 * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
+                                 */
+                                publicKey: string
+                              }
+                              /**
+                               * @description The added passkey's permission, as requested. Absent on a removal.
+                               * @example allButManageAuthority
+                               * @enum {string}
+                               */
+                              permission?: 'all' | 'allButManageAuthority'
+                              /**
+                               * @description The Swig role id the added passkey gets, or the id of the role removed
+                               * @example 3
+                               */
+                              roleId: number
+                              rent: {
+                                /**
+                                 * Format: uint256
+                                 * @description Lamports of rent: locked in the Swig state account on an add, which the sponsor funds, or returned to the Swig wallet on a removal
+                                 * @example 325120
+                                 */
+                                amount: string
+                                /** @description The rent in USD */
+                                usd: number
+                              }
+                            }
+                          }
+                        | {
+                            /** @description The canonical actions, IN THE ORDER they are sent, each with its nonce and the agent that authorises it. Absent when the route carries none. */
+                            actions?: {
+                              /** @description The canonical Hyperliquid action, in the key order the agent address commits to */
+                              action?: unknown
+                              /**
+                               * @description The nonce the action commits to
+                               * @example 1633493192000
+                               */
+                              nonce: number
+                              /**
+                               * @description The agent that authorises it
+                               * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                               */
+                              agent: string
+                            }[]
+                            /** @description The caller's own HyperEVM calls, in execution order. Only calls the caller sent: the gas-refund allowance, the core deposit and the agent registrations the orchestrator composes are not disclosed here (the registrations are disclosed in the signing request's `scope.hyperCore`). Absent when the caller sent none, and on a record written before caller calls were attributed. */
+                            settlement?: {
+                              /** @enum {string} */
+                              vm: 'evm'
+                              /**
+                               * @description CAIP-2 chain id the calls execute on
+                               * @example eip155:8453
+                               */
+                              chainId: string
+                              /** @description Absent where the chain is no longer in force, so the executing contract cannot be named. */
+                              executedBy?: {
+                                /**
+                                 * @description Who runs the calls: the account itself, or a solver-operated contract running them on its behalf.
+                                 * @example account
+                                 * @enum {string}
+                                 */
+                                kind: 'account' | 'solver'
+                                /**
+                                 * @description Address of the executing contract or account
+                                 * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                                 */
+                                address: string
+                              }
+                              /** @description The calls, in execution order */
+                              calls: {
+                                /**
+                                 * @description Target contract address for execution
+                                 * @example 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
+                                 */
+                                to: string
+                                /**
+                                 * Format: uint256
+                                 * @description Amount of ETH (in wei) sent in the execution
+                                 * @example 0
+                                 */
+                                value: string
+                                /**
+                                 * @description Encoded function call data
+                                 * @example 0xa9059cbb000000000000000000000000579d5631f76126991c00fb8fe5467fa9d49e5f6a00000000000000000000000000000000000000000000000000000000000f4240
+                                 */
+                                data: string
+                              }[]
+                            }
                           }
                     }
                     /** @description Account initializations the route performs. Empty when it performs none. */
@@ -6290,72 +6945,178 @@ export interface operations {
                             slot: string
                           }[]
                         }
-                      | {
-                          /** @enum {string} */
-                          vm: 'svm'
-                          /** @enum {string} */
-                          action: 'spend'
-                          /** @description The wallet the spend debits, on its chain */
-                          accounts: {
-                            /**
-                             * @description CAIP-2 chain id the account is authorized on
-                             * @example eip155:8453
-                             */
-                            chainId: string
-                            /**
-                             * @description Account address, in its own chain's format
-                             * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                             */
-                            address: string
-                          }[]
-                          /** @description The full instruction set this signature authorizes, in execution order, in the same shape a request carries instructions in. */
-                          instructions: {
-                            /**
-                             * @description Program to invoke, base58.
-                             * @example TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
-                             */
-                            programId: string
-                            /** @description Accounts the instruction reads or writes, in the order the program expects. */
-                            accounts: {
-                              /**
-                               * @description Account address, base58.
-                               * @example TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
-                               */
-                              pubkey: string
-                              /** @description Whether the instruction requires this account to sign. */
-                              isSigner: boolean
-                              /** @description Whether the instruction writes to this account. */
-                              isWritable: boolean
-                            }[]
-                            /**
-                             * @description Instruction data, base64.
-                             * @example CQ==
-                             */
-                            data: string
-                          }[]
-                          /** @description Address lookup tables the instructions resolve accounts through. The tables themselves are not inlined. */
-                          addressLookupTables: string[]
-                          /** @description Who pays the transaction fee, as a role rather than a key: the payload names no payer, and the relayer picks its own. */
-                          feePayer: {
-                            /** @enum {string} */
-                            kind: 'role'
-                            /** @enum {string} */
-                            role: 'relayer'
-                          }
-                          /** @description Slot range the spend is signable in */
-                          slotWindow: {
-                            /**
-                             * @description Slot the payload was pinned to
-                             * @example 370123456
-                             */
-                            from: string
-                            /**
-                             * @description Last slot it can be landed in
-                             * @example 370123516
-                             */
-                            to: string
-                          }
-                        }
+                      | (
+                          | {
+                              /** @enum {string} */
+                              vm: 'svm'
+                              /** @enum {string} */
+                              action: 'spend'
+                              /** @description The wallet the spend debits, on its chain */
+                              accounts: {
+                                /**
+                                 * @description CAIP-2 chain id the account is authorized on
+                                 * @example eip155:8453
+                                 */
+                                chainId: string
+                                /**
+                                 * @description Account address, in its own chain's format
+                                 * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                                 */
+                                address: string
+                              }[]
+                              /** @description The full instruction set this signature authorizes, in execution order, in the same shape a request carries instructions in. */
+                              instructions: {
+                                /**
+                                 * @description Program to invoke, base58.
+                                 * @example TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
+                                 */
+                                programId: string
+                                /** @description Accounts the instruction reads or writes, in the order the program expects. */
+                                accounts: {
+                                  /**
+                                   * @description Account address, base58.
+                                   * @example TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
+                                   */
+                                  pubkey: string
+                                  /** @description Whether the instruction requires this account to sign. */
+                                  isSigner: boolean
+                                  /** @description Whether the instruction writes to this account. */
+                                  isWritable: boolean
+                                }[]
+                                /**
+                                 * @description Instruction data, base64.
+                                 * @example CQ==
+                                 */
+                                data: string
+                              }[]
+                              /** @description Address lookup tables the instructions resolve accounts through. The tables themselves are not inlined. */
+                              addressLookupTables: string[]
+                              /** @description Who pays the transaction fee, as a role rather than a key: the payload names no payer, and the relayer picks its own. */
+                              feePayer: {
+                                /** @enum {string} */
+                                kind: 'role'
+                                /** @enum {string} */
+                                role: 'relayer'
+                              }
+                              /** @description Slot range the payload is signable in */
+                              slotWindow: {
+                                /**
+                                 * @description Slot the payload was pinned to
+                                 * @example 370123456
+                                 */
+                                from: string
+                                /**
+                                 * @description Last slot it can be landed in
+                                 * @example 370123516
+                                 */
+                                to: string
+                              }
+                            }
+                          | {
+                              /** @enum {string} */
+                              vm: 'svm'
+                              /** @enum {string} */
+                              action: 'manageAuthority'
+                              /** @description The Swig state account whose authorities change, on its chain */
+                              accounts: {
+                                /**
+                                 * @description CAIP-2 chain id the account is authorized on
+                                 * @example eip155:8453
+                                 */
+                                chainId: string
+                                /**
+                                 * @description Account address, in its own chain's format
+                                 * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                                 */
+                                address: string
+                              }[]
+                              /** @description The change this signature authorizes, exactly as the plan discloses it */
+                              authority: {
+                                /**
+                                 * @description Whether the passkey is added or removed
+                                 * @example add
+                                 * @enum {string}
+                                 */
+                                action: 'add' | 'remove'
+                                /** @description The passkey added or removed */
+                                key: {
+                                  /** @enum {string} */
+                                  kind: 'secp256r1'
+                                  /**
+                                   * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
+                                   * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
+                                   */
+                                  publicKey: string
+                                }
+                                /**
+                                 * @description The added passkey's permission, as requested. Absent on a removal.
+                                 * @example allButManageAuthority
+                                 * @enum {string}
+                                 */
+                                permission?: 'all' | 'allButManageAuthority'
+                                /**
+                                 * @description The Swig role id the added passkey gets, or the id of the role removed
+                                 * @example 3
+                                 */
+                                roleId: number
+                                rent: {
+                                  /**
+                                   * Format: uint256
+                                   * @description Lamports of rent: locked in the Swig state account on an add, which the sponsor funds, or returned to the Swig wallet on a removal
+                                   * @example 325120
+                                   */
+                                  amount: string
+                                  /** @description The rent in USD */
+                                  usd: number
+                                }
+                              }
+                              /** @description The sealed instructions this signature authorizes, in execution order: a passkey signer's secp256r1 precompile, then the Swig `AddAuthorityV1` or `RemoveAuthorityV1`, whose payer is a one-off key the relayer funds. */
+                              instructions: {
+                                /**
+                                 * @description Program to invoke, base58.
+                                 * @example TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
+                                 */
+                                programId: string
+                                /** @description Accounts the instruction reads or writes, in the order the program expects. */
+                                accounts: {
+                                  /**
+                                   * @description Account address, base58.
+                                   * @example TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
+                                   */
+                                  pubkey: string
+                                  /** @description Whether the instruction requires this account to sign. */
+                                  isSigner: boolean
+                                  /** @description Whether the instruction writes to this account. */
+                                  isWritable: boolean
+                                }[]
+                                /**
+                                 * @description Instruction data, base64.
+                                 * @example CQ==
+                                 */
+                                data: string
+                              }[]
+                              /** @description Who pays the transaction fee, as a role rather than a key: the payload names no payer, and the relayer picks its own. */
+                              feePayer: {
+                                /** @enum {string} */
+                                kind: 'role'
+                                /** @enum {string} */
+                                role: 'relayer'
+                              }
+                              /** @description Slot range the payload is signable in */
+                              slotWindow: {
+                                /**
+                                 * @description Slot the payload was pinned to
+                                 * @example 370123456
+                                 */
+                                from: string
+                                /**
+                                 * @description Last slot it can be landed in
+                                 * @example 370123516
+                                 */
+                                to: string
+                              }
+                            }
+                        )
                     /** @description The chains the payload is cryptographically BOUND to, CAIP-2, each listed once — a `MultiChainOps` payload with several legs on one chain still names it once. This is what was signed rather than what the route is about: a Permit2 payload binds to the chain it claims funds on, so a destination request repeats the chain of the origin payload it duplicates. */
                     chainIds: string[]
                     /**

@@ -1975,9 +1975,6 @@
                               "description": "The caller's own pre-claim calls, one block per origin chain that runs any"
                             },
                             "destination": {
-                              "discriminator": {
-                                "propertyName": "vm"
-                              },
                               "oneOf": [
                                 {
                                   "type": "object",
@@ -2171,15 +2168,105 @@
                                     "vm": {
                                       "type": "string",
                                       "enum": [
-                                        "hypercore"
+                                        "svm"
                                       ]
                                     },
                                     "chainId": {
                                       "type": "string",
-                                      "pattern": "^(eip155|solana|tron|hypercore|stellar):[-_a-zA-Z0-9]{1,32}$",
-                                      "description": "The venue the actions run at",
-                                      "example": "hypercore:perp"
+                                      "pattern": "^(eip155|solana|tron|hypercore|stellar):[-_a-zA-Z0-9]{1,32}$"
                                     },
+                                    "authority": {
+                                      "type": "object",
+                                      "properties": {
+                                        "action": {
+                                          "type": "string",
+                                          "enum": [
+                                            "add",
+                                            "remove"
+                                          ],
+                                          "description": "Whether the passkey is added or removed",
+                                          "example": "add"
+                                        },
+                                        "key": {
+                                          "type": "object",
+                                          "properties": {
+                                            "kind": {
+                                              "type": "string",
+                                              "enum": [
+                                                "secp256r1"
+                                              ]
+                                            },
+                                            "publicKey": {
+                                              "type": "string",
+                                              "pattern": "^0x0[23][0-9a-fA-F]{64}$",
+                                              "description": "SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03",
+                                              "example": "0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296"
+                                            }
+                                          },
+                                          "required": [
+                                            "kind",
+                                            "publicKey"
+                                          ],
+                                          "additionalProperties": false,
+                                          "description": "The passkey added or removed"
+                                        },
+                                        "permission": {
+                                          "type": "string",
+                                          "enum": [
+                                            "all",
+                                            "allButManageAuthority"
+                                          ],
+                                          "description": "The added passkey's permission, as requested. Absent on a removal.",
+                                          "example": "allButManageAuthority"
+                                        },
+                                        "roleId": {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "description": "The Swig role id the added passkey gets, or the id of the role removed",
+                                          "example": 3
+                                        },
+                                        "rent": {
+                                          "type": "object",
+                                          "properties": {
+                                            "amount": {
+                                              "type": "string",
+                                              "format": "uint256",
+                                              "description": "Lamports of rent: locked in the Swig state account on an add, which the sponsor funds, or returned to the Swig wallet on a removal",
+                                              "example": "325120"
+                                            },
+                                            "usd": {
+                                              "type": "number",
+                                              "description": "The rent in USD"
+                                            }
+                                          },
+                                          "required": [
+                                            "amount",
+                                            "usd"
+                                          ],
+                                          "additionalProperties": false
+                                        }
+                                      },
+                                      "required": [
+                                        "action",
+                                        "key",
+                                        "roleId",
+                                        "rent"
+                                      ],
+                                      "additionalProperties": false,
+                                      "description": "A change to the Swig's own authorities"
+                                    }
+                                  },
+                                  "required": [
+                                    "vm",
+                                    "chainId",
+                                    "authority"
+                                  ],
+                                  "additionalProperties": false,
+                                  "description": "A change to the Swig's own authorities"
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
                                     "actions": {
                                       "type": "array",
                                       "items": {
@@ -2196,16 +2283,17 @@
                                           "agent": {
                                             "type": "string",
                                             "minLength": 1,
-                                            "description": "The agent that authorised it",
+                                            "description": "The agent that authorises it",
                                             "example": "0x579d5631f76126991c00fb8fe5467fa9d49e5f6a"
                                           }
                                         },
                                         "required": [
                                           "nonce",
                                           "agent"
-                                        ]
+                                        ],
+                                        "description": "One HyperCore action and the agent it runs as"
                                       },
-                                      "description": "The actions recorded for this intent, IN THE ORDER they are sent. Absent when the record carries none."
+                                      "description": "The canonical actions, IN THE ORDER they are sent, each with its nonce and the agent that authorises it. Absent when the route carries none."
                                     },
                                     "settlement": {
                                       "type": "object",
@@ -2284,20 +2372,30 @@
                                         "chainId",
                                         "calls"
                                       ],
-                                      "description": "The HyperEVM calls that delivered to the venue. Null when the record discloses none — a tokenless action delivers nothing.",
-                                      "nullable": true
+                                      "description": "The caller's own HyperEVM calls, in execution order. Only calls the caller sent: the gas-refund allowance, the core deposit and the agent registrations the orchestrator composes are not disclosed here (the registrations are disclosed in the signing request's `scope.hyperCore`). Absent when the caller sent none, and on a record written before caller calls were attributed."
+                                    },
+                                    "vm": {
+                                      "type": "string",
+                                      "enum": [
+                                        "hypercore"
+                                      ]
+                                    },
+                                    "chainId": {
+                                      "type": "string",
+                                      "pattern": "^(eip155|solana|tron|hypercore|stellar):[-_a-zA-Z0-9]{1,32}$",
+                                      "description": "The venue the actions run at",
+                                      "example": "hypercore:perp"
                                     }
                                   },
                                   "required": [
                                     "vm",
-                                    "chainId",
-                                    "settlement"
+                                    "chainId"
                                   ],
                                   "description": "What the intent runs at a HyperCore venue, and to reach it"
                                 }
                               ],
                               "nullable": true,
-                              "description": "What the intent runs at its destination, tagged with the destination's own execution environment. These include plumbing the route composes alongside the caller's own calls; they are what the intent runs, not a restatement of what was requested."
+                              "description": "What the intent runs at its destination, tagged with the destination's own execution environment. An EVM destination's calls include plumbing the route composes alongside the caller's own calls; they are what the intent runs, not a restatement of what was requested. A HyperCore destination is the exception: its `settlement` holds only the caller's own calls, exactly as the quote's `plan.destination` disclosed them."
                             }
                           },
                           "required": [
@@ -4808,9 +4906,239 @@
                                                     "addressLookupTables"
                                                   ],
                                                   "description": "The caller's own Solana instructions on this block"
+                                                },
+                                                {
+                                                  "type": "object",
+                                                  "properties": {
+                                                    "executedBy": {
+                                                      "type": "object",
+                                                      "properties": {
+                                                        "kind": {
+                                                          "type": "string",
+                                                          "enum": [
+                                                            "account",
+                                                            "solver"
+                                                          ],
+                                                          "description": "Who runs the calls: the account itself, or a solver-operated contract running them on its behalf.",
+                                                          "example": "account"
+                                                        },
+                                                        "address": {
+                                                          "type": "string",
+                                                          "minLength": 1,
+                                                          "description": "Address of the executing contract or account",
+                                                          "example": "0x579d5631f76126991c00fb8fe5467fa9d49e5f6a"
+                                                        }
+                                                      },
+                                                      "required": [
+                                                        "kind",
+                                                        "address"
+                                                      ],
+                                                      "description": "The executor of the disclosed calls"
+                                                    },
+                                                    "authority": {
+                                                      "type": "object",
+                                                      "properties": {
+                                                        "action": {
+                                                          "type": "string",
+                                                          "enum": [
+                                                            "add",
+                                                            "remove"
+                                                          ],
+                                                          "description": "Whether the passkey is added or removed",
+                                                          "example": "add"
+                                                        },
+                                                        "key": {
+                                                          "type": "object",
+                                                          "properties": {
+                                                            "kind": {
+                                                              "type": "string",
+                                                              "enum": [
+                                                                "secp256r1"
+                                                              ]
+                                                            },
+                                                            "publicKey": {
+                                                              "type": "string",
+                                                              "pattern": "^0x0[23][0-9a-fA-F]{64}$",
+                                                              "description": "SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03",
+                                                              "example": "0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296"
+                                                            }
+                                                          },
+                                                          "required": [
+                                                            "kind",
+                                                            "publicKey"
+                                                          ],
+                                                          "additionalProperties": false,
+                                                          "description": "The passkey added or removed"
+                                                        },
+                                                        "permission": {
+                                                          "type": "string",
+                                                          "enum": [
+                                                            "all",
+                                                            "allButManageAuthority"
+                                                          ],
+                                                          "description": "The added passkey's permission, as requested. Absent on a removal.",
+                                                          "example": "allButManageAuthority"
+                                                        },
+                                                        "roleId": {
+                                                          "type": "integer",
+                                                          "minimum": 0,
+                                                          "description": "The Swig role id the added passkey gets, or the id of the role removed",
+                                                          "example": 3
+                                                        },
+                                                        "rent": {
+                                                          "type": "object",
+                                                          "properties": {
+                                                            "amount": {
+                                                              "type": "string",
+                                                              "format": "uint256",
+                                                              "description": "Lamports of rent: locked in the Swig state account on an add, which the sponsor funds, or returned to the Swig wallet on a removal",
+                                                              "example": "325120"
+                                                            },
+                                                            "usd": {
+                                                              "type": "number",
+                                                              "description": "The rent in USD"
+                                                            }
+                                                          },
+                                                          "required": [
+                                                            "amount",
+                                                            "usd"
+                                                          ],
+                                                          "additionalProperties": false
+                                                        }
+                                                      },
+                                                      "required": [
+                                                        "action",
+                                                        "key",
+                                                        "roleId",
+                                                        "rent"
+                                                      ],
+                                                      "additionalProperties": false,
+                                                      "description": "A change to the Swig's own authorities"
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "executedBy",
+                                                    "authority"
+                                                  ],
+                                                  "additionalProperties": false,
+                                                  "description": "An authority change on this Swig, run by the Swig state account itself"
+                                                },
+                                                {
+                                                  "type": "object",
+                                                  "properties": {
+                                                    "actions": {
+                                                      "type": "array",
+                                                      "items": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                          "action": {
+                                                            "description": "The canonical Hyperliquid action, in the key order the agent address commits to"
+                                                          },
+                                                          "nonce": {
+                                                            "type": "number",
+                                                            "description": "The nonce the action commits to",
+                                                            "example": 1633493192000
+                                                          },
+                                                          "agent": {
+                                                            "type": "string",
+                                                            "minLength": 1,
+                                                            "description": "The agent that authorises it",
+                                                            "example": "0x579d5631f76126991c00fb8fe5467fa9d49e5f6a"
+                                                          }
+                                                        },
+                                                        "required": [
+                                                          "nonce",
+                                                          "agent"
+                                                        ],
+                                                        "description": "One HyperCore action and the agent it runs as"
+                                                      },
+                                                      "description": "The canonical actions, IN THE ORDER they are sent, each with its nonce and the agent that authorises it. Absent when the route carries none."
+                                                    },
+                                                    "settlement": {
+                                                      "type": "object",
+                                                      "properties": {
+                                                        "vm": {
+                                                          "type": "string",
+                                                          "enum": [
+                                                            "evm"
+                                                          ]
+                                                        },
+                                                        "chainId": {
+                                                          "type": "string",
+                                                          "pattern": "^(eip155|solana|tron|hypercore|stellar):[-_a-zA-Z0-9]{1,32}$",
+                                                          "description": "CAIP-2 chain id the calls execute on",
+                                                          "example": "eip155:8453"
+                                                        },
+                                                        "executedBy": {
+                                                          "type": "object",
+                                                          "properties": {
+                                                            "kind": {
+                                                              "type": "string",
+                                                              "enum": [
+                                                                "account",
+                                                                "solver"
+                                                              ],
+                                                              "description": "Who runs the calls: the account itself, or a solver-operated contract running them on its behalf.",
+                                                              "example": "account"
+                                                            },
+                                                            "address": {
+                                                              "type": "string",
+                                                              "minLength": 1,
+                                                              "description": "Address of the executing contract or account",
+                                                              "example": "0x579d5631f76126991c00fb8fe5467fa9d49e5f6a"
+                                                            }
+                                                          },
+                                                          "required": [
+                                                            "kind",
+                                                            "address"
+                                                          ],
+                                                          "description": "Absent where the chain is no longer in force, so the executing contract cannot be named."
+                                                        },
+                                                        "calls": {
+                                                          "type": "array",
+                                                          "items": {
+                                                            "type": "object",
+                                                            "properties": {
+                                                              "to": {
+                                                                "type": "string",
+                                                                "description": "Target contract address for execution",
+                                                                "example": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+                                                              },
+                                                              "value": {
+                                                                "type": "string",
+                                                                "format": "uint256",
+                                                                "description": "Amount of ETH (in wei) sent in the execution",
+                                                                "example": "0"
+                                                              },
+                                                              "data": {
+                                                                "type": "string",
+                                                                "pattern": "^0x[a-fA-F0-9]*$",
+                                                                "description": "Encoded function call data",
+                                                                "example": "0xa9059cbb000000000000000000000000579d5631f76126991c00fb8fe5467fa9d49e5f6a00000000000000000000000000000000000000000000000000000000000f4240"
+                                                              }
+                                                            },
+                                                            "required": [
+                                                              "to",
+                                                              "value",
+                                                              "data"
+                                                            ]
+                                                          },
+                                                          "description": "The calls, in execution order"
+                                                        }
+                                                      },
+                                                      "required": [
+                                                        "vm",
+                                                        "chainId",
+                                                        "calls"
+                                                      ],
+                                                      "description": "The caller's own HyperEVM calls, in execution order. Only calls the caller sent: the gas-refund allowance, the core deposit and the agent registrations the orchestrator composes are not disclosed here (the registrations are disclosed in the signing request's `scope.hyperCore`). Absent when the caller sent none, and on a record written before caller calls were attributed."
+                                                    }
+                                                  },
+                                                  "additionalProperties": false,
+                                                  "description": "What the route runs at a HyperCore venue, and the caller's own calls that settle before it"
                                                 }
                                               ],
-                                              "description": "Present only where the route runs the caller's own calls on this block."
+                                              "description": "Present only where the route runs the caller's own calls on this block — or, at a HyperCore venue, actions or caller settlement calls."
                                             }
                                           },
                                           "required": [
@@ -5162,9 +5490,239 @@
                                                   "addressLookupTables"
                                                 ],
                                                 "description": "The caller's own Solana instructions on this block"
+                                              },
+                                              {
+                                                "type": "object",
+                                                "properties": {
+                                                  "executedBy": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                      "kind": {
+                                                        "type": "string",
+                                                        "enum": [
+                                                          "account",
+                                                          "solver"
+                                                        ],
+                                                        "description": "Who runs the calls: the account itself, or a solver-operated contract running them on its behalf.",
+                                                        "example": "account"
+                                                      },
+                                                      "address": {
+                                                        "type": "string",
+                                                        "minLength": 1,
+                                                        "description": "Address of the executing contract or account",
+                                                        "example": "0x579d5631f76126991c00fb8fe5467fa9d49e5f6a"
+                                                      }
+                                                    },
+                                                    "required": [
+                                                      "kind",
+                                                      "address"
+                                                    ],
+                                                    "description": "The executor of the disclosed calls"
+                                                  },
+                                                  "authority": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                      "action": {
+                                                        "type": "string",
+                                                        "enum": [
+                                                          "add",
+                                                          "remove"
+                                                        ],
+                                                        "description": "Whether the passkey is added or removed",
+                                                        "example": "add"
+                                                      },
+                                                      "key": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                          "kind": {
+                                                            "type": "string",
+                                                            "enum": [
+                                                              "secp256r1"
+                                                            ]
+                                                          },
+                                                          "publicKey": {
+                                                            "type": "string",
+                                                            "pattern": "^0x0[23][0-9a-fA-F]{64}$",
+                                                            "description": "SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03",
+                                                            "example": "0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296"
+                                                          }
+                                                        },
+                                                        "required": [
+                                                          "kind",
+                                                          "publicKey"
+                                                        ],
+                                                        "additionalProperties": false,
+                                                        "description": "The passkey added or removed"
+                                                      },
+                                                      "permission": {
+                                                        "type": "string",
+                                                        "enum": [
+                                                          "all",
+                                                          "allButManageAuthority"
+                                                        ],
+                                                        "description": "The added passkey's permission, as requested. Absent on a removal.",
+                                                        "example": "allButManageAuthority"
+                                                      },
+                                                      "roleId": {
+                                                        "type": "integer",
+                                                        "minimum": 0,
+                                                        "description": "The Swig role id the added passkey gets, or the id of the role removed",
+                                                        "example": 3
+                                                      },
+                                                      "rent": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                          "amount": {
+                                                            "type": "string",
+                                                            "format": "uint256",
+                                                            "description": "Lamports of rent: locked in the Swig state account on an add, which the sponsor funds, or returned to the Swig wallet on a removal",
+                                                            "example": "325120"
+                                                          },
+                                                          "usd": {
+                                                            "type": "number",
+                                                            "description": "The rent in USD"
+                                                          }
+                                                        },
+                                                        "required": [
+                                                          "amount",
+                                                          "usd"
+                                                        ],
+                                                        "additionalProperties": false
+                                                      }
+                                                    },
+                                                    "required": [
+                                                      "action",
+                                                      "key",
+                                                      "roleId",
+                                                      "rent"
+                                                    ],
+                                                    "additionalProperties": false,
+                                                    "description": "A change to the Swig's own authorities"
+                                                  }
+                                                },
+                                                "required": [
+                                                  "executedBy",
+                                                  "authority"
+                                                ],
+                                                "additionalProperties": false,
+                                                "description": "An authority change on this Swig, run by the Swig state account itself"
+                                              },
+                                              {
+                                                "type": "object",
+                                                "properties": {
+                                                  "actions": {
+                                                    "type": "array",
+                                                    "items": {
+                                                      "type": "object",
+                                                      "properties": {
+                                                        "action": {
+                                                          "description": "The canonical Hyperliquid action, in the key order the agent address commits to"
+                                                        },
+                                                        "nonce": {
+                                                          "type": "number",
+                                                          "description": "The nonce the action commits to",
+                                                          "example": 1633493192000
+                                                        },
+                                                        "agent": {
+                                                          "type": "string",
+                                                          "minLength": 1,
+                                                          "description": "The agent that authorises it",
+                                                          "example": "0x579d5631f76126991c00fb8fe5467fa9d49e5f6a"
+                                                        }
+                                                      },
+                                                      "required": [
+                                                        "nonce",
+                                                        "agent"
+                                                      ],
+                                                      "description": "One HyperCore action and the agent it runs as"
+                                                    },
+                                                    "description": "The canonical actions, IN THE ORDER they are sent, each with its nonce and the agent that authorises it. Absent when the route carries none."
+                                                  },
+                                                  "settlement": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                      "vm": {
+                                                        "type": "string",
+                                                        "enum": [
+                                                          "evm"
+                                                        ]
+                                                      },
+                                                      "chainId": {
+                                                        "type": "string",
+                                                        "pattern": "^(eip155|solana|tron|hypercore|stellar):[-_a-zA-Z0-9]{1,32}$",
+                                                        "description": "CAIP-2 chain id the calls execute on",
+                                                        "example": "eip155:8453"
+                                                      },
+                                                      "executedBy": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                          "kind": {
+                                                            "type": "string",
+                                                            "enum": [
+                                                              "account",
+                                                              "solver"
+                                                            ],
+                                                            "description": "Who runs the calls: the account itself, or a solver-operated contract running them on its behalf.",
+                                                            "example": "account"
+                                                          },
+                                                          "address": {
+                                                            "type": "string",
+                                                            "minLength": 1,
+                                                            "description": "Address of the executing contract or account",
+                                                            "example": "0x579d5631f76126991c00fb8fe5467fa9d49e5f6a"
+                                                          }
+                                                        },
+                                                        "required": [
+                                                          "kind",
+                                                          "address"
+                                                        ],
+                                                        "description": "Absent where the chain is no longer in force, so the executing contract cannot be named."
+                                                      },
+                                                      "calls": {
+                                                        "type": "array",
+                                                        "items": {
+                                                          "type": "object",
+                                                          "properties": {
+                                                            "to": {
+                                                              "type": "string",
+                                                              "description": "Target contract address for execution",
+                                                              "example": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+                                                            },
+                                                            "value": {
+                                                              "type": "string",
+                                                              "format": "uint256",
+                                                              "description": "Amount of ETH (in wei) sent in the execution",
+                                                              "example": "0"
+                                                            },
+                                                            "data": {
+                                                              "type": "string",
+                                                              "pattern": "^0x[a-fA-F0-9]*$",
+                                                              "description": "Encoded function call data",
+                                                              "example": "0xa9059cbb000000000000000000000000579d5631f76126991c00fb8fe5467fa9d49e5f6a00000000000000000000000000000000000000000000000000000000000f4240"
+                                                            }
+                                                          },
+                                                          "required": [
+                                                            "to",
+                                                            "value",
+                                                            "data"
+                                                          ]
+                                                        },
+                                                        "description": "The calls, in execution order"
+                                                      }
+                                                    },
+                                                    "required": [
+                                                      "vm",
+                                                      "chainId",
+                                                      "calls"
+                                                    ],
+                                                    "description": "The caller's own HyperEVM calls, in execution order. Only calls the caller sent: the gas-refund allowance, the core deposit and the agent registrations the orchestrator composes are not disclosed here (the registrations are disclosed in the signing request's `scope.hyperCore`). Absent when the caller sent none, and on a record written before caller calls were attributed."
+                                                  }
+                                                },
+                                                "additionalProperties": false,
+                                                "description": "What the route runs at a HyperCore venue, and the caller's own calls that settle before it"
                                               }
                                             ],
-                                            "description": "Present only where the route runs the caller's own calls on this block."
+                                            "description": "Present only where the route runs the caller's own calls on this block — or, at a HyperCore venue, actions or caller settlement calls."
                                           }
                                         },
                                         "required": [
@@ -6389,9 +6947,6 @@
                                           "description": "What verifies the signature"
                                         },
                                         "scope": {
-                                          "discriminator": {
-                                            "propertyName": "vm"
-                                          },
                                           "oneOf": [
                                             {
                                               "type": "object",
@@ -6483,162 +7038,400 @@
                                               "description": "An EVM scope names accounts, chains and action only — the calls the route runs are disclosed once, in the route's `plan`, so the two cannot disagree. The one exception is `hyperCore`, which names a commitment that exists nowhere else in a readable form."
                                             },
                                             {
-                                              "type": "object",
-                                              "properties": {
-                                                "vm": {
-                                                  "type": "string",
-                                                  "enum": [
-                                                    "svm"
-                                                  ]
-                                                },
-                                                "action": {
-                                                  "type": "string",
-                                                  "enum": [
-                                                    "spend"
-                                                  ]
-                                                },
-                                                "accounts": {
-                                                  "type": "array",
-                                                  "items": {
-                                                    "type": "object",
-                                                    "properties": {
-                                                      "chainId": {
-                                                        "type": "string",
-                                                        "pattern": "^(eip155|solana|tron|hypercore|stellar):[-_a-zA-Z0-9]{1,32}$",
-                                                        "description": "CAIP-2 chain id the account is authorized on",
-                                                        "example": "eip155:8453"
-                                                      },
-                                                      "address": {
-                                                        "type": "string",
-                                                        "minLength": 1,
-                                                        "description": "Account address, in its own chain's format",
-                                                        "example": "0x579d5631f76126991c00fb8fe5467fa9d49e5f6a"
-                                                      }
+                                              "discriminator": {
+                                                "propertyName": "action"
+                                              },
+                                              "oneOf": [
+                                                {
+                                                  "type": "object",
+                                                  "properties": {
+                                                    "vm": {
+                                                      "type": "string",
+                                                      "enum": [
+                                                        "svm"
+                                                      ]
                                                     },
-                                                    "required": [
-                                                      "chainId",
-                                                      "address"
-                                                    ],
-                                                    "additionalProperties": false
-                                                  },
-                                                  "description": "The wallet the spend debits, on its chain"
-                                                },
-                                                "instructions": {
-                                                  "type": "array",
-                                                  "items": {
-                                                    "type": "object",
-                                                    "properties": {
-                                                      "programId": {
-                                                        "type": "string",
-                                                        "description": "Program to invoke, base58.",
-                                                        "example": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+                                                    "action": {
+                                                      "type": "string",
+                                                      "enum": [
+                                                        "spend"
+                                                      ]
+                                                    },
+                                                    "accounts": {
+                                                      "type": "array",
+                                                      "items": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                          "chainId": {
+                                                            "type": "string",
+                                                            "pattern": "^(eip155|solana|tron|hypercore|stellar):[-_a-zA-Z0-9]{1,32}$",
+                                                            "description": "CAIP-2 chain id the account is authorized on",
+                                                            "example": "eip155:8453"
+                                                          },
+                                                          "address": {
+                                                            "type": "string",
+                                                            "minLength": 1,
+                                                            "description": "Account address, in its own chain's format",
+                                                            "example": "0x579d5631f76126991c00fb8fe5467fa9d49e5f6a"
+                                                          }
+                                                        },
+                                                        "required": [
+                                                          "chainId",
+                                                          "address"
+                                                        ],
+                                                        "additionalProperties": false
                                                       },
-                                                      "accounts": {
-                                                        "type": "array",
-                                                        "items": {
+                                                      "description": "The wallet the spend debits, on its chain"
+                                                    },
+                                                    "instructions": {
+                                                      "type": "array",
+                                                      "items": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                          "programId": {
+                                                            "type": "string",
+                                                            "description": "Program to invoke, base58.",
+                                                            "example": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+                                                          },
+                                                          "accounts": {
+                                                            "type": "array",
+                                                            "items": {
+                                                              "type": "object",
+                                                              "properties": {
+                                                                "pubkey": {
+                                                                  "type": "string",
+                                                                  "description": "Account address, base58.",
+                                                                  "example": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+                                                                },
+                                                                "isSigner": {
+                                                                  "type": "boolean",
+                                                                  "description": "Whether the instruction requires this account to sign."
+                                                                },
+                                                                "isWritable": {
+                                                                  "type": "boolean",
+                                                                  "description": "Whether the instruction writes to this account."
+                                                                }
+                                                              },
+                                                              "required": [
+                                                                "pubkey",
+                                                                "isSigner",
+                                                                "isWritable"
+                                                              ]
+                                                            },
+                                                            "maxItems": 64,
+                                                            "description": "Accounts the instruction reads or writes, in the order the program expects."
+                                                          },
+                                                          "data": {
+                                                            "type": "string",
+                                                            "description": "Instruction data, base64.",
+                                                            "example": "CQ=="
+                                                          }
+                                                        },
+                                                        "required": [
+                                                          "programId",
+                                                          "accounts",
+                                                          "data"
+                                                        ],
+                                                        "description": "A Solana instruction in the JSON shape `@solana/web3.js` and Jupiter `/swap-instructions` produce, so protocol output passes through unchanged."
+                                                      },
+                                                      "description": "The full instruction set this signature authorizes, in execution order, in the same shape a request carries instructions in."
+                                                    },
+                                                    "addressLookupTables": {
+                                                      "type": "array",
+                                                      "items": {
+                                                        "type": "string"
+                                                      },
+                                                      "description": "Address lookup tables the instructions resolve accounts through. The tables themselves are not inlined."
+                                                    },
+                                                    "feePayer": {
+                                                      "type": "object",
+                                                      "properties": {
+                                                        "kind": {
+                                                          "type": "string",
+                                                          "enum": [
+                                                            "role"
+                                                          ]
+                                                        },
+                                                        "role": {
+                                                          "type": "string",
+                                                          "enum": [
+                                                            "relayer"
+                                                          ]
+                                                        }
+                                                      },
+                                                      "required": [
+                                                        "kind",
+                                                        "role"
+                                                      ],
+                                                      "additionalProperties": false,
+                                                      "description": "Who pays the transaction fee, as a role rather than a key: the payload names no payer, and the relayer picks its own."
+                                                    },
+                                                    "slotWindow": {
+                                                      "type": "object",
+                                                      "properties": {
+                                                        "from": {
+                                                          "type": "string",
+                                                          "description": "Slot the payload was pinned to",
+                                                          "example": "370123456"
+                                                        },
+                                                        "to": {
+                                                          "type": "string",
+                                                          "description": "Last slot it can be landed in",
+                                                          "example": "370123516"
+                                                        }
+                                                      },
+                                                      "required": [
+                                                        "from",
+                                                        "to"
+                                                      ],
+                                                      "additionalProperties": false,
+                                                      "description": "Slot range the payload is signable in"
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "vm",
+                                                    "action",
+                                                    "accounts",
+                                                    "instructions",
+                                                    "addressLookupTables",
+                                                    "feePayer",
+                                                    "slotWindow"
+                                                  ],
+                                                  "additionalProperties": false,
+                                                  "description": "A Solana scope additionally discloses the instruction set, because the message itself is an opaque digest."
+                                                },
+                                                {
+                                                  "type": "object",
+                                                  "properties": {
+                                                    "vm": {
+                                                      "type": "string",
+                                                      "enum": [
+                                                        "svm"
+                                                      ]
+                                                    },
+                                                    "action": {
+                                                      "type": "string",
+                                                      "enum": [
+                                                        "manageAuthority"
+                                                      ]
+                                                    },
+                                                    "accounts": {
+                                                      "type": "array",
+                                                      "items": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                          "chainId": {
+                                                            "type": "string",
+                                                            "pattern": "^(eip155|solana|tron|hypercore|stellar):[-_a-zA-Z0-9]{1,32}$",
+                                                            "description": "CAIP-2 chain id the account is authorized on",
+                                                            "example": "eip155:8453"
+                                                          },
+                                                          "address": {
+                                                            "type": "string",
+                                                            "minLength": 1,
+                                                            "description": "Account address, in its own chain's format",
+                                                            "example": "0x579d5631f76126991c00fb8fe5467fa9d49e5f6a"
+                                                          }
+                                                        },
+                                                        "required": [
+                                                          "chainId",
+                                                          "address"
+                                                        ],
+                                                        "additionalProperties": false
+                                                      },
+                                                      "description": "The Swig state account whose authorities change, on its chain"
+                                                    },
+                                                    "authority": {
+                                                      "type": "object",
+                                                      "properties": {
+                                                        "action": {
+                                                          "type": "string",
+                                                          "enum": [
+                                                            "add",
+                                                            "remove"
+                                                          ],
+                                                          "description": "Whether the passkey is added or removed",
+                                                          "example": "add"
+                                                        },
+                                                        "key": {
                                                           "type": "object",
                                                           "properties": {
-                                                            "pubkey": {
+                                                            "kind": {
                                                               "type": "string",
-                                                              "description": "Account address, base58.",
-                                                              "example": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+                                                              "enum": [
+                                                                "secp256r1"
+                                                              ]
                                                             },
-                                                            "isSigner": {
-                                                              "type": "boolean",
-                                                              "description": "Whether the instruction requires this account to sign."
-                                                            },
-                                                            "isWritable": {
-                                                              "type": "boolean",
-                                                              "description": "Whether the instruction writes to this account."
+                                                            "publicKey": {
+                                                              "type": "string",
+                                                              "pattern": "^0x0[23][0-9a-fA-F]{64}$",
+                                                              "description": "SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03",
+                                                              "example": "0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296"
                                                             }
                                                           },
                                                           "required": [
-                                                            "pubkey",
-                                                            "isSigner",
-                                                            "isWritable"
+                                                            "kind",
+                                                            "publicKey"
+                                                          ],
+                                                          "additionalProperties": false,
+                                                          "description": "The passkey added or removed"
+                                                        },
+                                                        "permission": {
+                                                          "type": "string",
+                                                          "enum": [
+                                                            "all",
+                                                            "allButManageAuthority"
+                                                          ],
+                                                          "description": "The added passkey's permission, as requested. Absent on a removal.",
+                                                          "example": "allButManageAuthority"
+                                                        },
+                                                        "roleId": {
+                                                          "type": "integer",
+                                                          "minimum": 0,
+                                                          "description": "The Swig role id the added passkey gets, or the id of the role removed",
+                                                          "example": 3
+                                                        },
+                                                        "rent": {
+                                                          "type": "object",
+                                                          "properties": {
+                                                            "amount": {
+                                                              "type": "string",
+                                                              "format": "uint256",
+                                                              "description": "Lamports of rent: locked in the Swig state account on an add, which the sponsor funds, or returned to the Swig wallet on a removal",
+                                                              "example": "325120"
+                                                            },
+                                                            "usd": {
+                                                              "type": "number",
+                                                              "description": "The rent in USD"
+                                                            }
+                                                          },
+                                                          "required": [
+                                                            "amount",
+                                                            "usd"
+                                                          ],
+                                                          "additionalProperties": false
+                                                        }
+                                                      },
+                                                      "required": [
+                                                        "action",
+                                                        "key",
+                                                        "roleId",
+                                                        "rent"
+                                                      ],
+                                                      "additionalProperties": false,
+                                                      "description": "The change this signature authorizes, exactly as the plan discloses it"
+                                                    },
+                                                    "instructions": {
+                                                      "type": "array",
+                                                      "items": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                          "programId": {
+                                                            "type": "string",
+                                                            "description": "Program to invoke, base58.",
+                                                            "example": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+                                                          },
+                                                          "accounts": {
+                                                            "type": "array",
+                                                            "items": {
+                                                              "type": "object",
+                                                              "properties": {
+                                                                "pubkey": {
+                                                                  "type": "string",
+                                                                  "description": "Account address, base58.",
+                                                                  "example": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+                                                                },
+                                                                "isSigner": {
+                                                                  "type": "boolean",
+                                                                  "description": "Whether the instruction requires this account to sign."
+                                                                },
+                                                                "isWritable": {
+                                                                  "type": "boolean",
+                                                                  "description": "Whether the instruction writes to this account."
+                                                                }
+                                                              },
+                                                              "required": [
+                                                                "pubkey",
+                                                                "isSigner",
+                                                                "isWritable"
+                                                              ]
+                                                            },
+                                                            "maxItems": 64,
+                                                            "description": "Accounts the instruction reads or writes, in the order the program expects."
+                                                          },
+                                                          "data": {
+                                                            "type": "string",
+                                                            "description": "Instruction data, base64.",
+                                                            "example": "CQ=="
+                                                          }
+                                                        },
+                                                        "required": [
+                                                          "programId",
+                                                          "accounts",
+                                                          "data"
+                                                        ],
+                                                        "description": "A Solana instruction in the JSON shape `@solana/web3.js` and Jupiter `/swap-instructions` produce, so protocol output passes through unchanged."
+                                                      },
+                                                      "description": "The sealed instructions this signature authorizes, in execution order: a passkey signer's secp256r1 precompile, then the Swig `AddAuthorityV1` or `RemoveAuthorityV1`, whose payer is a one-off key the relayer funds."
+                                                    },
+                                                    "feePayer": {
+                                                      "type": "object",
+                                                      "properties": {
+                                                        "kind": {
+                                                          "type": "string",
+                                                          "enum": [
+                                                            "role"
                                                           ]
                                                         },
-                                                        "maxItems": 64,
-                                                        "description": "Accounts the instruction reads or writes, in the order the program expects."
+                                                        "role": {
+                                                          "type": "string",
+                                                          "enum": [
+                                                            "relayer"
+                                                          ]
+                                                        }
                                                       },
-                                                      "data": {
-                                                        "type": "string",
-                                                        "description": "Instruction data, base64.",
-                                                        "example": "CQ=="
-                                                      }
-                                                    },
-                                                    "required": [
-                                                      "programId",
-                                                      "accounts",
-                                                      "data"
-                                                    ],
-                                                    "description": "A Solana instruction in the JSON shape `@solana/web3.js` and Jupiter `/swap-instructions` produce, so protocol output passes through unchanged."
-                                                  },
-                                                  "description": "The full instruction set this signature authorizes, in execution order, in the same shape a request carries instructions in."
-                                                },
-                                                "addressLookupTables": {
-                                                  "type": "array",
-                                                  "items": {
-                                                    "type": "string"
-                                                  },
-                                                  "description": "Address lookup tables the instructions resolve accounts through. The tables themselves are not inlined."
-                                                },
-                                                "feePayer": {
-                                                  "type": "object",
-                                                  "properties": {
-                                                    "kind": {
-                                                      "type": "string",
-                                                      "enum": [
+                                                      "required": [
+                                                        "kind",
                                                         "role"
-                                                      ]
+                                                      ],
+                                                      "additionalProperties": false,
+                                                      "description": "Who pays the transaction fee, as a role rather than a key: the payload names no payer, and the relayer picks its own."
                                                     },
-                                                    "role": {
-                                                      "type": "string",
-                                                      "enum": [
-                                                        "relayer"
-                                                      ]
+                                                    "slotWindow": {
+                                                      "type": "object",
+                                                      "properties": {
+                                                        "from": {
+                                                          "type": "string",
+                                                          "description": "Slot the payload was pinned to",
+                                                          "example": "370123456"
+                                                        },
+                                                        "to": {
+                                                          "type": "string",
+                                                          "description": "Last slot it can be landed in",
+                                                          "example": "370123516"
+                                                        }
+                                                      },
+                                                      "required": [
+                                                        "from",
+                                                        "to"
+                                                      ],
+                                                      "additionalProperties": false,
+                                                      "description": "Slot range the payload is signable in"
                                                     }
                                                   },
                                                   "required": [
-                                                    "kind",
-                                                    "role"
+                                                    "vm",
+                                                    "action",
+                                                    "accounts",
+                                                    "authority",
+                                                    "instructions",
+                                                    "feePayer",
+                                                    "slotWindow"
                                                   ],
                                                   "additionalProperties": false,
-                                                  "description": "Who pays the transaction fee, as a role rather than a key: the payload names no payer, and the relayer picks its own."
-                                                },
-                                                "slotWindow": {
-                                                  "type": "object",
-                                                  "properties": {
-                                                    "from": {
-                                                      "type": "string",
-                                                      "description": "Slot the payload was pinned to",
-                                                      "example": "370123456"
-                                                    },
-                                                    "to": {
-                                                      "type": "string",
-                                                      "description": "Last slot it can be landed in",
-                                                      "example": "370123516"
-                                                    }
-                                                  },
-                                                  "required": [
-                                                    "from",
-                                                    "to"
-                                                  ],
-                                                  "additionalProperties": false,
-                                                  "description": "Slot range the spend is signable in"
+                                                  "description": "A Solana authority-change scope: the change itself, and the instructions the message commits to, since the message is an opaque digest."
                                                 }
-                                              },
-                                              "required": [
-                                                "vm",
-                                                "action",
-                                                "accounts",
-                                                "instructions",
-                                                "addressLookupTables",
-                                                "feePayer",
-                                                "slotWindow"
-                                              ],
-                                              "additionalProperties": false,
-                                              "description": "A Solana scope additionally discloses the instruction set, because the message itself is an opaque digest."
+                                              ]
                                             }
                                           ],
                                           "description": "What the signature authorizes. Always agrees with the payload; never a restatement of the route."
@@ -7700,9 +8493,239 @@
                                                     "addressLookupTables"
                                                   ],
                                                   "description": "The caller's own Solana instructions on this block"
+                                                },
+                                                {
+                                                  "type": "object",
+                                                  "properties": {
+                                                    "executedBy": {
+                                                      "type": "object",
+                                                      "properties": {
+                                                        "kind": {
+                                                          "type": "string",
+                                                          "enum": [
+                                                            "account",
+                                                            "solver"
+                                                          ],
+                                                          "description": "Who runs the calls: the account itself, or a solver-operated contract running them on its behalf.",
+                                                          "example": "account"
+                                                        },
+                                                        "address": {
+                                                          "type": "string",
+                                                          "minLength": 1,
+                                                          "description": "Address of the executing contract or account",
+                                                          "example": "0x579d5631f76126991c00fb8fe5467fa9d49e5f6a"
+                                                        }
+                                                      },
+                                                      "required": [
+                                                        "kind",
+                                                        "address"
+                                                      ],
+                                                      "description": "The executor of the disclosed calls"
+                                                    },
+                                                    "authority": {
+                                                      "type": "object",
+                                                      "properties": {
+                                                        "action": {
+                                                          "type": "string",
+                                                          "enum": [
+                                                            "add",
+                                                            "remove"
+                                                          ],
+                                                          "description": "Whether the passkey is added or removed",
+                                                          "example": "add"
+                                                        },
+                                                        "key": {
+                                                          "type": "object",
+                                                          "properties": {
+                                                            "kind": {
+                                                              "type": "string",
+                                                              "enum": [
+                                                                "secp256r1"
+                                                              ]
+                                                            },
+                                                            "publicKey": {
+                                                              "type": "string",
+                                                              "pattern": "^0x0[23][0-9a-fA-F]{64}$",
+                                                              "description": "SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03",
+                                                              "example": "0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296"
+                                                            }
+                                                          },
+                                                          "required": [
+                                                            "kind",
+                                                            "publicKey"
+                                                          ],
+                                                          "additionalProperties": false,
+                                                          "description": "The passkey added or removed"
+                                                        },
+                                                        "permission": {
+                                                          "type": "string",
+                                                          "enum": [
+                                                            "all",
+                                                            "allButManageAuthority"
+                                                          ],
+                                                          "description": "The added passkey's permission, as requested. Absent on a removal.",
+                                                          "example": "allButManageAuthority"
+                                                        },
+                                                        "roleId": {
+                                                          "type": "integer",
+                                                          "minimum": 0,
+                                                          "description": "The Swig role id the added passkey gets, or the id of the role removed",
+                                                          "example": 3
+                                                        },
+                                                        "rent": {
+                                                          "type": "object",
+                                                          "properties": {
+                                                            "amount": {
+                                                              "type": "string",
+                                                              "format": "uint256",
+                                                              "description": "Lamports of rent: locked in the Swig state account on an add, which the sponsor funds, or returned to the Swig wallet on a removal",
+                                                              "example": "325120"
+                                                            },
+                                                            "usd": {
+                                                              "type": "number",
+                                                              "description": "The rent in USD"
+                                                            }
+                                                          },
+                                                          "required": [
+                                                            "amount",
+                                                            "usd"
+                                                          ],
+                                                          "additionalProperties": false
+                                                        }
+                                                      },
+                                                      "required": [
+                                                        "action",
+                                                        "key",
+                                                        "roleId",
+                                                        "rent"
+                                                      ],
+                                                      "additionalProperties": false,
+                                                      "description": "A change to the Swig's own authorities"
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "executedBy",
+                                                    "authority"
+                                                  ],
+                                                  "additionalProperties": false,
+                                                  "description": "An authority change on this Swig, run by the Swig state account itself"
+                                                },
+                                                {
+                                                  "type": "object",
+                                                  "properties": {
+                                                    "actions": {
+                                                      "type": "array",
+                                                      "items": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                          "action": {
+                                                            "description": "The canonical Hyperliquid action, in the key order the agent address commits to"
+                                                          },
+                                                          "nonce": {
+                                                            "type": "number",
+                                                            "description": "The nonce the action commits to",
+                                                            "example": 1633493192000
+                                                          },
+                                                          "agent": {
+                                                            "type": "string",
+                                                            "minLength": 1,
+                                                            "description": "The agent that authorises it",
+                                                            "example": "0x579d5631f76126991c00fb8fe5467fa9d49e5f6a"
+                                                          }
+                                                        },
+                                                        "required": [
+                                                          "nonce",
+                                                          "agent"
+                                                        ],
+                                                        "description": "One HyperCore action and the agent it runs as"
+                                                      },
+                                                      "description": "The canonical actions, IN THE ORDER they are sent, each with its nonce and the agent that authorises it. Absent when the route carries none."
+                                                    },
+                                                    "settlement": {
+                                                      "type": "object",
+                                                      "properties": {
+                                                        "vm": {
+                                                          "type": "string",
+                                                          "enum": [
+                                                            "evm"
+                                                          ]
+                                                        },
+                                                        "chainId": {
+                                                          "type": "string",
+                                                          "pattern": "^(eip155|solana|tron|hypercore|stellar):[-_a-zA-Z0-9]{1,32}$",
+                                                          "description": "CAIP-2 chain id the calls execute on",
+                                                          "example": "eip155:8453"
+                                                        },
+                                                        "executedBy": {
+                                                          "type": "object",
+                                                          "properties": {
+                                                            "kind": {
+                                                              "type": "string",
+                                                              "enum": [
+                                                                "account",
+                                                                "solver"
+                                                              ],
+                                                              "description": "Who runs the calls: the account itself, or a solver-operated contract running them on its behalf.",
+                                                              "example": "account"
+                                                            },
+                                                            "address": {
+                                                              "type": "string",
+                                                              "minLength": 1,
+                                                              "description": "Address of the executing contract or account",
+                                                              "example": "0x579d5631f76126991c00fb8fe5467fa9d49e5f6a"
+                                                            }
+                                                          },
+                                                          "required": [
+                                                            "kind",
+                                                            "address"
+                                                          ],
+                                                          "description": "Absent where the chain is no longer in force, so the executing contract cannot be named."
+                                                        },
+                                                        "calls": {
+                                                          "type": "array",
+                                                          "items": {
+                                                            "type": "object",
+                                                            "properties": {
+                                                              "to": {
+                                                                "type": "string",
+                                                                "description": "Target contract address for execution",
+                                                                "example": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+                                                              },
+                                                              "value": {
+                                                                "type": "string",
+                                                                "format": "uint256",
+                                                                "description": "Amount of ETH (in wei) sent in the execution",
+                                                                "example": "0"
+                                                              },
+                                                              "data": {
+                                                                "type": "string",
+                                                                "pattern": "^0x[a-fA-F0-9]*$",
+                                                                "description": "Encoded function call data",
+                                                                "example": "0xa9059cbb000000000000000000000000579d5631f76126991c00fb8fe5467fa9d49e5f6a00000000000000000000000000000000000000000000000000000000000f4240"
+                                                              }
+                                                            },
+                                                            "required": [
+                                                              "to",
+                                                              "value",
+                                                              "data"
+                                                            ]
+                                                          },
+                                                          "description": "The calls, in execution order"
+                                                        }
+                                                      },
+                                                      "required": [
+                                                        "vm",
+                                                        "chainId",
+                                                        "calls"
+                                                      ],
+                                                      "description": "The caller's own HyperEVM calls, in execution order. Only calls the caller sent: the gas-refund allowance, the core deposit and the agent registrations the orchestrator composes are not disclosed here (the registrations are disclosed in the signing request's `scope.hyperCore`). Absent when the caller sent none, and on a record written before caller calls were attributed."
+                                                    }
+                                                  },
+                                                  "additionalProperties": false,
+                                                  "description": "What the route runs at a HyperCore venue, and the caller's own calls that settle before it"
                                                 }
                                               ],
-                                              "description": "Present only where the route runs the caller's own calls on this block."
+                                              "description": "Present only where the route runs the caller's own calls on this block — or, at a HyperCore venue, actions or caller settlement calls."
                                             }
                                           },
                                           "required": [
@@ -8054,9 +9077,239 @@
                                                   "addressLookupTables"
                                                 ],
                                                 "description": "The caller's own Solana instructions on this block"
+                                              },
+                                              {
+                                                "type": "object",
+                                                "properties": {
+                                                  "executedBy": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                      "kind": {
+                                                        "type": "string",
+                                                        "enum": [
+                                                          "account",
+                                                          "solver"
+                                                        ],
+                                                        "description": "Who runs the calls: the account itself, or a solver-operated contract running them on its behalf.",
+                                                        "example": "account"
+                                                      },
+                                                      "address": {
+                                                        "type": "string",
+                                                        "minLength": 1,
+                                                        "description": "Address of the executing contract or account",
+                                                        "example": "0x579d5631f76126991c00fb8fe5467fa9d49e5f6a"
+                                                      }
+                                                    },
+                                                    "required": [
+                                                      "kind",
+                                                      "address"
+                                                    ],
+                                                    "description": "The executor of the disclosed calls"
+                                                  },
+                                                  "authority": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                      "action": {
+                                                        "type": "string",
+                                                        "enum": [
+                                                          "add",
+                                                          "remove"
+                                                        ],
+                                                        "description": "Whether the passkey is added or removed",
+                                                        "example": "add"
+                                                      },
+                                                      "key": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                          "kind": {
+                                                            "type": "string",
+                                                            "enum": [
+                                                              "secp256r1"
+                                                            ]
+                                                          },
+                                                          "publicKey": {
+                                                            "type": "string",
+                                                            "pattern": "^0x0[23][0-9a-fA-F]{64}$",
+                                                            "description": "SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03",
+                                                            "example": "0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296"
+                                                          }
+                                                        },
+                                                        "required": [
+                                                          "kind",
+                                                          "publicKey"
+                                                        ],
+                                                        "additionalProperties": false,
+                                                        "description": "The passkey added or removed"
+                                                      },
+                                                      "permission": {
+                                                        "type": "string",
+                                                        "enum": [
+                                                          "all",
+                                                          "allButManageAuthority"
+                                                        ],
+                                                        "description": "The added passkey's permission, as requested. Absent on a removal.",
+                                                        "example": "allButManageAuthority"
+                                                      },
+                                                      "roleId": {
+                                                        "type": "integer",
+                                                        "minimum": 0,
+                                                        "description": "The Swig role id the added passkey gets, or the id of the role removed",
+                                                        "example": 3
+                                                      },
+                                                      "rent": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                          "amount": {
+                                                            "type": "string",
+                                                            "format": "uint256",
+                                                            "description": "Lamports of rent: locked in the Swig state account on an add, which the sponsor funds, or returned to the Swig wallet on a removal",
+                                                            "example": "325120"
+                                                          },
+                                                          "usd": {
+                                                            "type": "number",
+                                                            "description": "The rent in USD"
+                                                          }
+                                                        },
+                                                        "required": [
+                                                          "amount",
+                                                          "usd"
+                                                        ],
+                                                        "additionalProperties": false
+                                                      }
+                                                    },
+                                                    "required": [
+                                                      "action",
+                                                      "key",
+                                                      "roleId",
+                                                      "rent"
+                                                    ],
+                                                    "additionalProperties": false,
+                                                    "description": "A change to the Swig's own authorities"
+                                                  }
+                                                },
+                                                "required": [
+                                                  "executedBy",
+                                                  "authority"
+                                                ],
+                                                "additionalProperties": false,
+                                                "description": "An authority change on this Swig, run by the Swig state account itself"
+                                              },
+                                              {
+                                                "type": "object",
+                                                "properties": {
+                                                  "actions": {
+                                                    "type": "array",
+                                                    "items": {
+                                                      "type": "object",
+                                                      "properties": {
+                                                        "action": {
+                                                          "description": "The canonical Hyperliquid action, in the key order the agent address commits to"
+                                                        },
+                                                        "nonce": {
+                                                          "type": "number",
+                                                          "description": "The nonce the action commits to",
+                                                          "example": 1633493192000
+                                                        },
+                                                        "agent": {
+                                                          "type": "string",
+                                                          "minLength": 1,
+                                                          "description": "The agent that authorises it",
+                                                          "example": "0x579d5631f76126991c00fb8fe5467fa9d49e5f6a"
+                                                        }
+                                                      },
+                                                      "required": [
+                                                        "nonce",
+                                                        "agent"
+                                                      ],
+                                                      "description": "One HyperCore action and the agent it runs as"
+                                                    },
+                                                    "description": "The canonical actions, IN THE ORDER they are sent, each with its nonce and the agent that authorises it. Absent when the route carries none."
+                                                  },
+                                                  "settlement": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                      "vm": {
+                                                        "type": "string",
+                                                        "enum": [
+                                                          "evm"
+                                                        ]
+                                                      },
+                                                      "chainId": {
+                                                        "type": "string",
+                                                        "pattern": "^(eip155|solana|tron|hypercore|stellar):[-_a-zA-Z0-9]{1,32}$",
+                                                        "description": "CAIP-2 chain id the calls execute on",
+                                                        "example": "eip155:8453"
+                                                      },
+                                                      "executedBy": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                          "kind": {
+                                                            "type": "string",
+                                                            "enum": [
+                                                              "account",
+                                                              "solver"
+                                                            ],
+                                                            "description": "Who runs the calls: the account itself, or a solver-operated contract running them on its behalf.",
+                                                            "example": "account"
+                                                          },
+                                                          "address": {
+                                                            "type": "string",
+                                                            "minLength": 1,
+                                                            "description": "Address of the executing contract or account",
+                                                            "example": "0x579d5631f76126991c00fb8fe5467fa9d49e5f6a"
+                                                          }
+                                                        },
+                                                        "required": [
+                                                          "kind",
+                                                          "address"
+                                                        ],
+                                                        "description": "Absent where the chain is no longer in force, so the executing contract cannot be named."
+                                                      },
+                                                      "calls": {
+                                                        "type": "array",
+                                                        "items": {
+                                                          "type": "object",
+                                                          "properties": {
+                                                            "to": {
+                                                              "type": "string",
+                                                              "description": "Target contract address for execution",
+                                                              "example": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+                                                            },
+                                                            "value": {
+                                                              "type": "string",
+                                                              "format": "uint256",
+                                                              "description": "Amount of ETH (in wei) sent in the execution",
+                                                              "example": "0"
+                                                            },
+                                                            "data": {
+                                                              "type": "string",
+                                                              "pattern": "^0x[a-fA-F0-9]*$",
+                                                              "description": "Encoded function call data",
+                                                              "example": "0xa9059cbb000000000000000000000000579d5631f76126991c00fb8fe5467fa9d49e5f6a00000000000000000000000000000000000000000000000000000000000f4240"
+                                                            }
+                                                          },
+                                                          "required": [
+                                                            "to",
+                                                            "value",
+                                                            "data"
+                                                          ]
+                                                        },
+                                                        "description": "The calls, in execution order"
+                                                      }
+                                                    },
+                                                    "required": [
+                                                      "vm",
+                                                      "chainId",
+                                                      "calls"
+                                                    ],
+                                                    "description": "The caller's own HyperEVM calls, in execution order. Only calls the caller sent: the gas-refund allowance, the core deposit and the agent registrations the orchestrator composes are not disclosed here (the registrations are disclosed in the signing request's `scope.hyperCore`). Absent when the caller sent none, and on a record written before caller calls were attributed."
+                                                  }
+                                                },
+                                                "additionalProperties": false,
+                                                "description": "What the route runs at a HyperCore venue, and the caller's own calls that settle before it"
                                               }
                                             ],
-                                            "description": "Present only where the route runs the caller's own calls on this block."
+                                            "description": "Present only where the route runs the caller's own calls on this block — or, at a HyperCore venue, actions or caller settlement calls."
                                           }
                                         },
                                         "required": [
@@ -9340,9 +10593,6 @@
                                           "description": "What verifies the signature"
                                         },
                                         "scope": {
-                                          "discriminator": {
-                                            "propertyName": "vm"
-                                          },
                                           "oneOf": [
                                             {
                                               "type": "object",
@@ -9434,162 +10684,400 @@
                                               "description": "An EVM scope names accounts, chains and action only — the calls the route runs are disclosed once, in the route's `plan`, so the two cannot disagree. The one exception is `hyperCore`, which names a commitment that exists nowhere else in a readable form."
                                             },
                                             {
-                                              "type": "object",
-                                              "properties": {
-                                                "vm": {
-                                                  "type": "string",
-                                                  "enum": [
-                                                    "svm"
-                                                  ]
-                                                },
-                                                "action": {
-                                                  "type": "string",
-                                                  "enum": [
-                                                    "spend"
-                                                  ]
-                                                },
-                                                "accounts": {
-                                                  "type": "array",
-                                                  "items": {
-                                                    "type": "object",
-                                                    "properties": {
-                                                      "chainId": {
-                                                        "type": "string",
-                                                        "pattern": "^(eip155|solana|tron|hypercore|stellar):[-_a-zA-Z0-9]{1,32}$",
-                                                        "description": "CAIP-2 chain id the account is authorized on",
-                                                        "example": "eip155:8453"
-                                                      },
-                                                      "address": {
-                                                        "type": "string",
-                                                        "minLength": 1,
-                                                        "description": "Account address, in its own chain's format",
-                                                        "example": "0x579d5631f76126991c00fb8fe5467fa9d49e5f6a"
-                                                      }
+                                              "discriminator": {
+                                                "propertyName": "action"
+                                              },
+                                              "oneOf": [
+                                                {
+                                                  "type": "object",
+                                                  "properties": {
+                                                    "vm": {
+                                                      "type": "string",
+                                                      "enum": [
+                                                        "svm"
+                                                      ]
                                                     },
-                                                    "required": [
-                                                      "chainId",
-                                                      "address"
-                                                    ],
-                                                    "additionalProperties": false
-                                                  },
-                                                  "description": "The wallet the spend debits, on its chain"
-                                                },
-                                                "instructions": {
-                                                  "type": "array",
-                                                  "items": {
-                                                    "type": "object",
-                                                    "properties": {
-                                                      "programId": {
-                                                        "type": "string",
-                                                        "description": "Program to invoke, base58.",
-                                                        "example": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+                                                    "action": {
+                                                      "type": "string",
+                                                      "enum": [
+                                                        "spend"
+                                                      ]
+                                                    },
+                                                    "accounts": {
+                                                      "type": "array",
+                                                      "items": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                          "chainId": {
+                                                            "type": "string",
+                                                            "pattern": "^(eip155|solana|tron|hypercore|stellar):[-_a-zA-Z0-9]{1,32}$",
+                                                            "description": "CAIP-2 chain id the account is authorized on",
+                                                            "example": "eip155:8453"
+                                                          },
+                                                          "address": {
+                                                            "type": "string",
+                                                            "minLength": 1,
+                                                            "description": "Account address, in its own chain's format",
+                                                            "example": "0x579d5631f76126991c00fb8fe5467fa9d49e5f6a"
+                                                          }
+                                                        },
+                                                        "required": [
+                                                          "chainId",
+                                                          "address"
+                                                        ],
+                                                        "additionalProperties": false
                                                       },
-                                                      "accounts": {
-                                                        "type": "array",
-                                                        "items": {
+                                                      "description": "The wallet the spend debits, on its chain"
+                                                    },
+                                                    "instructions": {
+                                                      "type": "array",
+                                                      "items": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                          "programId": {
+                                                            "type": "string",
+                                                            "description": "Program to invoke, base58.",
+                                                            "example": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+                                                          },
+                                                          "accounts": {
+                                                            "type": "array",
+                                                            "items": {
+                                                              "type": "object",
+                                                              "properties": {
+                                                                "pubkey": {
+                                                                  "type": "string",
+                                                                  "description": "Account address, base58.",
+                                                                  "example": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+                                                                },
+                                                                "isSigner": {
+                                                                  "type": "boolean",
+                                                                  "description": "Whether the instruction requires this account to sign."
+                                                                },
+                                                                "isWritable": {
+                                                                  "type": "boolean",
+                                                                  "description": "Whether the instruction writes to this account."
+                                                                }
+                                                              },
+                                                              "required": [
+                                                                "pubkey",
+                                                                "isSigner",
+                                                                "isWritable"
+                                                              ]
+                                                            },
+                                                            "maxItems": 64,
+                                                            "description": "Accounts the instruction reads or writes, in the order the program expects."
+                                                          },
+                                                          "data": {
+                                                            "type": "string",
+                                                            "description": "Instruction data, base64.",
+                                                            "example": "CQ=="
+                                                          }
+                                                        },
+                                                        "required": [
+                                                          "programId",
+                                                          "accounts",
+                                                          "data"
+                                                        ],
+                                                        "description": "A Solana instruction in the JSON shape `@solana/web3.js` and Jupiter `/swap-instructions` produce, so protocol output passes through unchanged."
+                                                      },
+                                                      "description": "The full instruction set this signature authorizes, in execution order, in the same shape a request carries instructions in."
+                                                    },
+                                                    "addressLookupTables": {
+                                                      "type": "array",
+                                                      "items": {
+                                                        "type": "string"
+                                                      },
+                                                      "description": "Address lookup tables the instructions resolve accounts through. The tables themselves are not inlined."
+                                                    },
+                                                    "feePayer": {
+                                                      "type": "object",
+                                                      "properties": {
+                                                        "kind": {
+                                                          "type": "string",
+                                                          "enum": [
+                                                            "role"
+                                                          ]
+                                                        },
+                                                        "role": {
+                                                          "type": "string",
+                                                          "enum": [
+                                                            "relayer"
+                                                          ]
+                                                        }
+                                                      },
+                                                      "required": [
+                                                        "kind",
+                                                        "role"
+                                                      ],
+                                                      "additionalProperties": false,
+                                                      "description": "Who pays the transaction fee, as a role rather than a key: the payload names no payer, and the relayer picks its own."
+                                                    },
+                                                    "slotWindow": {
+                                                      "type": "object",
+                                                      "properties": {
+                                                        "from": {
+                                                          "type": "string",
+                                                          "description": "Slot the payload was pinned to",
+                                                          "example": "370123456"
+                                                        },
+                                                        "to": {
+                                                          "type": "string",
+                                                          "description": "Last slot it can be landed in",
+                                                          "example": "370123516"
+                                                        }
+                                                      },
+                                                      "required": [
+                                                        "from",
+                                                        "to"
+                                                      ],
+                                                      "additionalProperties": false,
+                                                      "description": "Slot range the payload is signable in"
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "vm",
+                                                    "action",
+                                                    "accounts",
+                                                    "instructions",
+                                                    "addressLookupTables",
+                                                    "feePayer",
+                                                    "slotWindow"
+                                                  ],
+                                                  "additionalProperties": false,
+                                                  "description": "A Solana scope additionally discloses the instruction set, because the message itself is an opaque digest."
+                                                },
+                                                {
+                                                  "type": "object",
+                                                  "properties": {
+                                                    "vm": {
+                                                      "type": "string",
+                                                      "enum": [
+                                                        "svm"
+                                                      ]
+                                                    },
+                                                    "action": {
+                                                      "type": "string",
+                                                      "enum": [
+                                                        "manageAuthority"
+                                                      ]
+                                                    },
+                                                    "accounts": {
+                                                      "type": "array",
+                                                      "items": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                          "chainId": {
+                                                            "type": "string",
+                                                            "pattern": "^(eip155|solana|tron|hypercore|stellar):[-_a-zA-Z0-9]{1,32}$",
+                                                            "description": "CAIP-2 chain id the account is authorized on",
+                                                            "example": "eip155:8453"
+                                                          },
+                                                          "address": {
+                                                            "type": "string",
+                                                            "minLength": 1,
+                                                            "description": "Account address, in its own chain's format",
+                                                            "example": "0x579d5631f76126991c00fb8fe5467fa9d49e5f6a"
+                                                          }
+                                                        },
+                                                        "required": [
+                                                          "chainId",
+                                                          "address"
+                                                        ],
+                                                        "additionalProperties": false
+                                                      },
+                                                      "description": "The Swig state account whose authorities change, on its chain"
+                                                    },
+                                                    "authority": {
+                                                      "type": "object",
+                                                      "properties": {
+                                                        "action": {
+                                                          "type": "string",
+                                                          "enum": [
+                                                            "add",
+                                                            "remove"
+                                                          ],
+                                                          "description": "Whether the passkey is added or removed",
+                                                          "example": "add"
+                                                        },
+                                                        "key": {
                                                           "type": "object",
                                                           "properties": {
-                                                            "pubkey": {
+                                                            "kind": {
                                                               "type": "string",
-                                                              "description": "Account address, base58.",
-                                                              "example": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+                                                              "enum": [
+                                                                "secp256r1"
+                                                              ]
                                                             },
-                                                            "isSigner": {
-                                                              "type": "boolean",
-                                                              "description": "Whether the instruction requires this account to sign."
-                                                            },
-                                                            "isWritable": {
-                                                              "type": "boolean",
-                                                              "description": "Whether the instruction writes to this account."
+                                                            "publicKey": {
+                                                              "type": "string",
+                                                              "pattern": "^0x0[23][0-9a-fA-F]{64}$",
+                                                              "description": "SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03",
+                                                              "example": "0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296"
                                                             }
                                                           },
                                                           "required": [
-                                                            "pubkey",
-                                                            "isSigner",
-                                                            "isWritable"
+                                                            "kind",
+                                                            "publicKey"
+                                                          ],
+                                                          "additionalProperties": false,
+                                                          "description": "The passkey added or removed"
+                                                        },
+                                                        "permission": {
+                                                          "type": "string",
+                                                          "enum": [
+                                                            "all",
+                                                            "allButManageAuthority"
+                                                          ],
+                                                          "description": "The added passkey's permission, as requested. Absent on a removal.",
+                                                          "example": "allButManageAuthority"
+                                                        },
+                                                        "roleId": {
+                                                          "type": "integer",
+                                                          "minimum": 0,
+                                                          "description": "The Swig role id the added passkey gets, or the id of the role removed",
+                                                          "example": 3
+                                                        },
+                                                        "rent": {
+                                                          "type": "object",
+                                                          "properties": {
+                                                            "amount": {
+                                                              "type": "string",
+                                                              "format": "uint256",
+                                                              "description": "Lamports of rent: locked in the Swig state account on an add, which the sponsor funds, or returned to the Swig wallet on a removal",
+                                                              "example": "325120"
+                                                            },
+                                                            "usd": {
+                                                              "type": "number",
+                                                              "description": "The rent in USD"
+                                                            }
+                                                          },
+                                                          "required": [
+                                                            "amount",
+                                                            "usd"
+                                                          ],
+                                                          "additionalProperties": false
+                                                        }
+                                                      },
+                                                      "required": [
+                                                        "action",
+                                                        "key",
+                                                        "roleId",
+                                                        "rent"
+                                                      ],
+                                                      "additionalProperties": false,
+                                                      "description": "The change this signature authorizes, exactly as the plan discloses it"
+                                                    },
+                                                    "instructions": {
+                                                      "type": "array",
+                                                      "items": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                          "programId": {
+                                                            "type": "string",
+                                                            "description": "Program to invoke, base58.",
+                                                            "example": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+                                                          },
+                                                          "accounts": {
+                                                            "type": "array",
+                                                            "items": {
+                                                              "type": "object",
+                                                              "properties": {
+                                                                "pubkey": {
+                                                                  "type": "string",
+                                                                  "description": "Account address, base58.",
+                                                                  "example": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+                                                                },
+                                                                "isSigner": {
+                                                                  "type": "boolean",
+                                                                  "description": "Whether the instruction requires this account to sign."
+                                                                },
+                                                                "isWritable": {
+                                                                  "type": "boolean",
+                                                                  "description": "Whether the instruction writes to this account."
+                                                                }
+                                                              },
+                                                              "required": [
+                                                                "pubkey",
+                                                                "isSigner",
+                                                                "isWritable"
+                                                              ]
+                                                            },
+                                                            "maxItems": 64,
+                                                            "description": "Accounts the instruction reads or writes, in the order the program expects."
+                                                          },
+                                                          "data": {
+                                                            "type": "string",
+                                                            "description": "Instruction data, base64.",
+                                                            "example": "CQ=="
+                                                          }
+                                                        },
+                                                        "required": [
+                                                          "programId",
+                                                          "accounts",
+                                                          "data"
+                                                        ],
+                                                        "description": "A Solana instruction in the JSON shape `@solana/web3.js` and Jupiter `/swap-instructions` produce, so protocol output passes through unchanged."
+                                                      },
+                                                      "description": "The sealed instructions this signature authorizes, in execution order: a passkey signer's secp256r1 precompile, then the Swig `AddAuthorityV1` or `RemoveAuthorityV1`, whose payer is a one-off key the relayer funds."
+                                                    },
+                                                    "feePayer": {
+                                                      "type": "object",
+                                                      "properties": {
+                                                        "kind": {
+                                                          "type": "string",
+                                                          "enum": [
+                                                            "role"
                                                           ]
                                                         },
-                                                        "maxItems": 64,
-                                                        "description": "Accounts the instruction reads or writes, in the order the program expects."
+                                                        "role": {
+                                                          "type": "string",
+                                                          "enum": [
+                                                            "relayer"
+                                                          ]
+                                                        }
                                                       },
-                                                      "data": {
-                                                        "type": "string",
-                                                        "description": "Instruction data, base64.",
-                                                        "example": "CQ=="
-                                                      }
-                                                    },
-                                                    "required": [
-                                                      "programId",
-                                                      "accounts",
-                                                      "data"
-                                                    ],
-                                                    "description": "A Solana instruction in the JSON shape `@solana/web3.js` and Jupiter `/swap-instructions` produce, so protocol output passes through unchanged."
-                                                  },
-                                                  "description": "The full instruction set this signature authorizes, in execution order, in the same shape a request carries instructions in."
-                                                },
-                                                "addressLookupTables": {
-                                                  "type": "array",
-                                                  "items": {
-                                                    "type": "string"
-                                                  },
-                                                  "description": "Address lookup tables the instructions resolve accounts through. The tables themselves are not inlined."
-                                                },
-                                                "feePayer": {
-                                                  "type": "object",
-                                                  "properties": {
-                                                    "kind": {
-                                                      "type": "string",
-                                                      "enum": [
+                                                      "required": [
+                                                        "kind",
                                                         "role"
-                                                      ]
+                                                      ],
+                                                      "additionalProperties": false,
+                                                      "description": "Who pays the transaction fee, as a role rather than a key: the payload names no payer, and the relayer picks its own."
                                                     },
-                                                    "role": {
-                                                      "type": "string",
-                                                      "enum": [
-                                                        "relayer"
-                                                      ]
+                                                    "slotWindow": {
+                                                      "type": "object",
+                                                      "properties": {
+                                                        "from": {
+                                                          "type": "string",
+                                                          "description": "Slot the payload was pinned to",
+                                                          "example": "370123456"
+                                                        },
+                                                        "to": {
+                                                          "type": "string",
+                                                          "description": "Last slot it can be landed in",
+                                                          "example": "370123516"
+                                                        }
+                                                      },
+                                                      "required": [
+                                                        "from",
+                                                        "to"
+                                                      ],
+                                                      "additionalProperties": false,
+                                                      "description": "Slot range the payload is signable in"
                                                     }
                                                   },
                                                   "required": [
-                                                    "kind",
-                                                    "role"
+                                                    "vm",
+                                                    "action",
+                                                    "accounts",
+                                                    "authority",
+                                                    "instructions",
+                                                    "feePayer",
+                                                    "slotWindow"
                                                   ],
                                                   "additionalProperties": false,
-                                                  "description": "Who pays the transaction fee, as a role rather than a key: the payload names no payer, and the relayer picks its own."
-                                                },
-                                                "slotWindow": {
-                                                  "type": "object",
-                                                  "properties": {
-                                                    "from": {
-                                                      "type": "string",
-                                                      "description": "Slot the payload was pinned to",
-                                                      "example": "370123456"
-                                                    },
-                                                    "to": {
-                                                      "type": "string",
-                                                      "description": "Last slot it can be landed in",
-                                                      "example": "370123516"
-                                                    }
-                                                  },
-                                                  "required": [
-                                                    "from",
-                                                    "to"
-                                                  ],
-                                                  "additionalProperties": false,
-                                                  "description": "Slot range the spend is signable in"
+                                                  "description": "A Solana authority-change scope: the change itself, and the instructions the message commits to, since the message is an opaque digest."
                                                 }
-                                              },
-                                              "required": [
-                                                "vm",
-                                                "action",
-                                                "accounts",
-                                                "instructions",
-                                                "addressLookupTables",
-                                                "feePayer",
-                                                "slotWindow"
-                                              ],
-                                              "additionalProperties": false,
-                                              "description": "A Solana scope additionally discloses the instruction set, because the message itself is an opaque digest."
+                                              ]
                                             }
                                           ],
                                           "description": "What the signature authorizes. Always agrees with the payload; never a restatement of the route."
@@ -10359,7 +11847,7 @@
                                       },
                                       "address": {
                                         "type": "string",
-                                        "description": "EVM address the Swig root role recovers to"
+                                        "description": "EVM address the signing Swig role recovers to"
                                       }
                                     },
                                     "required": [
@@ -10380,7 +11868,7 @@
                                       "publicKey": {
                                         "type": "string",
                                         "pattern": "^0x0[23][0-9a-fA-F]{64}$",
-                                        "description": "Passkey public key on the Swig root role: SEC1-compressed P-256, 33 bytes as 0x-prefixed hex",
+                                        "description": "Passkey public key on the signing Swig role: SEC1-compressed P-256, 33 bytes as 0x-prefixed hex",
                                         "example": "0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296"
                                       }
                                     },
@@ -10391,7 +11879,7 @@
                                     "additionalProperties": false
                                   }
                                 ],
-                                "description": "The authority this caller believes the Swig carries. Checked structurally only: the onchain root role stays the source of truth for who may spend."
+                                "description": "The authority that signs this spend. On a Solana-only account it selects the one Swig role carrying this key, which must hold `All` or `AllButManageAuthority`; no match, several matches or another permission is refused. On an account paired with an EVM entry, the root role signs."
                               },
                               "initData": {
                                 "type": "object",
@@ -11117,76 +12605,200 @@
                             "description": "Tokens requested on the destination chain, addressed as that VM addresses them. Note `amount` may be credited against a balance already held on the destination chain — see the field for exactly when."
                           },
                           "execution": {
-                            "type": "object",
-                            "properties": {
-                              "instructions": {
-                                "type": "array",
-                                "items": {
-                                  "type": "object",
-                                  "properties": {
-                                    "programId": {
-                                      "type": "string",
-                                      "description": "Program to invoke, base58.",
-                                      "example": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+                            "oneOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "instructions": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "programId": {
+                                          "type": "string",
+                                          "description": "Program to invoke, base58.",
+                                          "example": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+                                        },
+                                        "accounts": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "object",
+                                            "properties": {
+                                              "pubkey": {
+                                                "type": "string",
+                                                "description": "Account address, base58.",
+                                                "example": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+                                              },
+                                              "isSigner": {
+                                                "type": "boolean",
+                                                "description": "Whether the instruction requires this account to sign."
+                                              },
+                                              "isWritable": {
+                                                "type": "boolean",
+                                                "description": "Whether the instruction writes to this account."
+                                              }
+                                            },
+                                            "required": [
+                                              "pubkey",
+                                              "isSigner",
+                                              "isWritable"
+                                            ]
+                                          },
+                                          "maxItems": 64,
+                                          "description": "Accounts the instruction reads or writes, in the order the program expects."
+                                        },
+                                        "data": {
+                                          "type": "string",
+                                          "description": "Instruction data, base64.",
+                                          "example": "CQ=="
+                                        }
+                                      },
+                                      "required": [
+                                        "programId",
+                                        "accounts",
+                                        "data"
+                                      ],
+                                      "description": "A Solana instruction in the JSON shape `@solana/web3.js` and Jupiter `/swap-instructions` produce, so protocol output passes through unchanged."
                                     },
-                                    "accounts": {
-                                      "type": "array",
-                                      "items": {
+                                    "minItems": 1,
+                                    "maxItems": 32,
+                                    "description": "Solana instructions to run, in order, out of the account's own wallet. The wallet executes them, so `recipient` must be omitted: a payee is encoded inside the instructions. No route serves them yet, so a request carrying them is refused with `UNSUPPORTED_DESTINATION_INSTRUCTIONS`."
+                                  },
+                                  "addressLookupTables": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    },
+                                    "maxItems": 8,
+                                    "description": "Address lookup tables the instructions resolve accounts through, base58, as Jupiter `/swap-instructions` returns them."
+                                  }
+                                },
+                                "required": [
+                                  "instructions"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "authority": {
+                                    "discriminator": {
+                                      "propertyName": "action"
+                                    },
+                                    "oneOf": [
+                                      {
                                         "type": "object",
                                         "properties": {
-                                          "pubkey": {
+                                          "action": {
                                             "type": "string",
-                                            "description": "Account address, base58.",
-                                            "example": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+                                            "enum": [
+                                              "add"
+                                            ]
                                           },
-                                          "isSigner": {
-                                            "type": "boolean",
-                                            "description": "Whether the instruction requires this account to sign."
+                                          "key": {
+                                            "discriminator": {
+                                              "propertyName": "kind"
+                                            },
+                                            "oneOf": [
+                                              {
+                                                "type": "object",
+                                                "properties": {
+                                                  "kind": {
+                                                    "type": "string",
+                                                    "enum": [
+                                                      "secp256r1"
+                                                    ]
+                                                  },
+                                                  "publicKey": {
+                                                    "type": "string",
+                                                    "pattern": "^0x0[23][0-9a-fA-F]{64}$",
+                                                    "description": "The SEC1-compressed P-256 passkey public key, as 33 bytes of 0x-prefixed hex",
+                                                    "example": "0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296"
+                                                  }
+                                                },
+                                                "required": [
+                                                  "kind",
+                                                  "publicKey"
+                                                ],
+                                                "additionalProperties": false
+                                              }
+                                            ],
+                                            "description": "The authority key. Only passkeys (`secp256r1`) can be added or removed."
                                           },
-                                          "isWritable": {
-                                            "type": "boolean",
-                                            "description": "Whether the instruction writes to this account."
+                                          "permission": {
+                                            "type": "string",
+                                            "enum": [
+                                              "all",
+                                              "allButManageAuthority"
+                                            ],
+                                            "description": "What the added passkey may do. `all`: every action, including adding and removing the Swig's non-root authorities. `allButManageAuthority`: spend and execute, but never add or remove an authority. Required; there is no default.",
+                                            "example": "allButManageAuthority"
                                           }
                                         },
                                         "required": [
-                                          "pubkey",
-                                          "isSigner",
-                                          "isWritable"
-                                        ]
+                                          "action",
+                                          "key",
+                                          "permission"
+                                        ],
+                                        "additionalProperties": false
                                       },
-                                      "maxItems": 64,
-                                      "description": "Accounts the instruction reads or writes, in the order the program expects."
-                                    },
-                                    "data": {
-                                      "type": "string",
-                                      "description": "Instruction data, base64.",
-                                      "example": "CQ=="
-                                    }
-                                  },
-                                  "required": [
-                                    "programId",
-                                    "accounts",
-                                    "data"
-                                  ],
-                                  "description": "A Solana instruction in the JSON shape `@solana/web3.js` and Jupiter `/swap-instructions` produce, so protocol output passes through unchanged."
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "action": {
+                                            "type": "string",
+                                            "enum": [
+                                              "remove"
+                                            ]
+                                          },
+                                          "key": {
+                                            "discriminator": {
+                                              "propertyName": "kind"
+                                            },
+                                            "oneOf": [
+                                              {
+                                                "type": "object",
+                                                "properties": {
+                                                  "kind": {
+                                                    "type": "string",
+                                                    "enum": [
+                                                      "secp256r1"
+                                                    ]
+                                                  },
+                                                  "publicKey": {
+                                                    "type": "string",
+                                                    "pattern": "^0x0[23][0-9a-fA-F]{64}$",
+                                                    "description": "The SEC1-compressed P-256 passkey public key, as 33 bytes of 0x-prefixed hex",
+                                                    "example": "0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296"
+                                                  }
+                                                },
+                                                "required": [
+                                                  "kind",
+                                                  "publicKey"
+                                                ],
+                                                "additionalProperties": false
+                                              }
+                                            ],
+                                            "description": "The authority key. Only passkeys (`secp256r1`) can be added or removed."
+                                          }
+                                        },
+                                        "required": [
+                                          "action",
+                                          "key"
+                                        ],
+                                        "additionalProperties": false
+                                      }
+                                    ],
+                                    "description": "Add a passkey to the account's existing Swig, or remove one by its key. Signed by the role `account.svm.authorization` names, which must hold `All` or `ManageAuthority`. The root role (id 0) is never removed. A removal that would leave no signable role holding `All` or `ManageAuthority` is refused, and so is adding a key already on the Swig. Solana-only accounts, sponsored (`options.sponsorship.gas`) only, and one change per intent."
+                                  }
                                 },
-                                "minItems": 1,
-                                "maxItems": 32,
-                                "description": "Solana instructions to run, in order, out of the account's own wallet. The wallet executes them, so `recipient` must be omitted: a payee is encoded inside the instructions. No route serves them yet, so a request carrying them is refused with `UNSUPPORTED_DESTINATION_INSTRUCTIONS`."
-                              },
-                              "addressLookupTables": {
-                                "type": "array",
-                                "items": {
-                                  "type": "string"
-                                },
-                                "maxItems": 8,
-                                "description": "Address lookup tables the instructions resolve accounts through, base58, as Jupiter `/swap-instructions` returns them."
+                                "required": [
+                                  "authority"
+                                ],
+                                "additionalProperties": false
                               }
-                            },
-                            "required": [
-                              "instructions"
                             ],
-                            "additionalProperties": false
+                            "description": "What the destination runs out of the account's Swig: caller `instructions`, or an `authority` change. Never both."
                           }
                         },
                         "required": [
@@ -12854,7 +14466,7 @@
                             "maxAmount"
                           ]
                         },
-                        "description": "Ceilings on the observed unlocked balance, per (chain, token). A limit outside the selection has no effect."
+                        "description": "Ceilings on the observed unlocked balance, per (chain, token). A limit outside the selection has no effect, except on a Solana origin, where any limit budgets the spend: the selection must resolve to exactly one (chain, token), exactly one limit must name it, and auxiliary funds are refused."
                       },
                       "auxiliaryFunds": {
                         "type": "object",

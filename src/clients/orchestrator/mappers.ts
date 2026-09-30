@@ -322,6 +322,17 @@ export function mapSigningRequestFromWire(
     )
   }
   if (
+    scope.vm === 'svm' &&
+    scope.action !== 'spend' &&
+    scope.action !== 'manageAuthority'
+  ) {
+    invalid(
+      `The orchestrator returned a signing request with an unsupported Solana scope action: ${String(
+        scope.action,
+      )}.`,
+    )
+  }
+  if (
     typeof value.purpose !== 'string' ||
     !SIGNING_PURPOSES.has(value.purpose)
   ) {

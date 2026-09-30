@@ -4,6 +4,7 @@
  */
 // biome-ignore lint/performance/noBarrelFile: published solana subpath
 export { createSolanaSwigId } from '../accounts/solana/address'
+export { addPasskey, removePasskey } from '../actions/solana'
 export type {
   SolanaDeployOptions,
   SolanaStandaloneAccount,
@@ -17,18 +18,24 @@ export type {
   SolanaProgramInstruction,
 } from '../chains/non-evm'
 export { solanaAddress, solanaDevnet, solanaMainnet } from '../chains/non-evm'
+export type { SolanaAuthorityDisclosure } from '../clients/orchestrator/public'
 export type {
   CrossChainSolanaOriginTransaction,
+  SameChainSolanaAuthorityTransaction,
   SameChainSolanaInstructionsTransaction,
   SameChainSolanaTransaction,
   SolanaAccountConfig,
+  SolanaAuthorityChange,
+  SolanaAuthorityKey,
   SolanaManagedAccountConfig,
   SolanaOwner,
+  SolanaPasskeyPermission,
   SolanaReceiverAccountConfig,
   SolanaSourceAsset,
   SolanaStandaloneAccountConfig,
 } from '../config/account'
 export type {
+  SolanaAuthorityExecutionMetadata,
   SolanaCrossChainExecutionMetadata,
   SolanaExecutionMetadata,
   SolanaInstructionsExecutionMetadata,

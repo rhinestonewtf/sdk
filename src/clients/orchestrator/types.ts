@@ -15,6 +15,7 @@ import type {
   SettlementLayer,
   SigningProof,
   SigningRequest,
+  SolanaAuthorityChangeRequest,
   SwigAuthority,
 } from './public'
 
@@ -148,10 +149,12 @@ export type OrchestratorDestination =
       readonly chainId: Caip2ChainId
       readonly recipient?: { readonly address: string }
       readonly tokenRequests: readonly OrchestratorTokenRequest[]
-      readonly execution?: {
-        readonly instructions: readonly OrchestratorSolanaInstruction[]
-        readonly addressLookupTables?: readonly string[]
-      }
+      readonly execution?:
+        | {
+            readonly instructions: readonly OrchestratorSolanaInstruction[]
+            readonly addressLookupTables?: readonly string[]
+          }
+        | { readonly authority: Readonly<SolanaAuthorityChangeRequest> }
     }
   | {
       readonly vm: 'tvm' | 'stellar'

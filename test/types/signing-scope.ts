@@ -25,3 +25,27 @@ if (request.scope.vm === 'evm' && request.scope.hyperCore) {
 // @ts-expect-error — the orchestrator omits the field rather than sending [].
 const empty: EvmHyperCore = []
 void empty
+
+// Exhaustive over every scope the SDK narrows at the wire boundary.
+function describeScope(scope: SigningScope): string {
+  switch (scope.vm) {
+    case 'evm':
+      return scope.action
+    case 'svm':
+      switch (scope.action) {
+        case 'spend':
+          return `${scope.instructions.length} instructions`
+        case 'manageAuthority':
+          return `${scope.authority.action} role ${scope.authority.roleId}`
+        default: {
+          const unreachable: never = scope
+          return unreachable
+        }
+      }
+    default: {
+      const unreachable: never = scope
+      return unreachable
+    }
+  }
+}
+void describeScope

@@ -138,9 +138,10 @@ SDK has no Solana RPC. Execution paths refuse a
 deployment route at `normalizeIntentQuote`, and public quotes stay execution-only.
 
 A managed Solana origin accepts one same-chain SPL transfer with an explicit
-recipient, one same-chain instruction execution, or one cross-chain delivery to
-an EVM chain. `sponsored` is translated with the same helper EVM uses and passed
-through for the orchestrator to decide on: it serves the categories a Solana
+recipient, one same-chain instruction execution, one Swig authority change, or
+one cross-chain delivery to an EVM chain. `sponsored` is translated with the
+same helper EVM uses and passed through for the orchestrator to decide on: it
+serves the categories a Solana
 route can bill and refuses the rest by name. A cross-chain delivery may spend
 native SOL (`11111111111111111111111111111111`) exactly like an SPL mint:
 pinned as the single source token and optionally capped, with the rent-exempt
@@ -173,9 +174,51 @@ preserved verbatim. The published request limits (32 instructions, 64 accounts
 each, 1232 bytes of data in total, 8 address lookup tables) are mirrored locally
 so an oversized request fails before a round trip. The request carries
 `tokenRequests: []`, `destinationInstructions`, and
-`addressLookupTableAddresses` only when non-empty. No orchestrator route serves
-instructions yet, so a well-formed request is refused with
-`UNSUPPORTED_DESTINATION_INSTRUCTIONS`; the SDK surfaces that refusal unchanged.
+`addressLookupTableAddresses` only when non-empty. The orchestrator serves them on
+its Solana same-chain route (`SAME_CHAIN`); every other route refuses them with
+`UNSUPPORTED_DESTINATION_INSTRUCTIONS`, which the SDK surfaces unchanged.
+
+A **Swig authority change** adds a passkey to the account's Swig, or removes
+one, through the ordinary prepare → sign → submit → wait lifecycle:
+`{ chain, authority: addPasskey(passkey, { permission }) }` or
+`removePasskey(passkey)` (`actions/solana.ts`). It has its own field rather
+than riding `instructions`. The Swig authenticates the add or remove with its
+own separately signed payload, and the orchestrator seals the slot, the
+counter and the one-off payer, so a caller-written instruction couldn't express
+it. The builders compress any P-256 encoding (`accounts/solana/passkey.ts`),
+and `normalizeTransaction` canonicalizes a literal the same way, so the
+persisted transaction, the request, the intent input and the execution metadata
+(`kind: 'solana-authority'`, with `action`, `key` and, on an add, `permission`)
+name one lowercase compressed key.
+
+The request is Solana-only: `svm.swigAccount` with no `evm` and no `initData`,
+even on a composite account, and
+`destination.execution: { authority: { action, key: { kind: 'secp256r1', publicKey }, permission? } }`.
+It is tokenless and names no recipient, and it's always sent with
+`sponsorship: { gas: true, bridgeFees: false, swapFees: false }`, spelled out
+as a Swig creation spells it. There's no `sponsored` knob and fees are refused.
+The acting authority is always the configured owner, ECDSA or passkey. The SDK
+never picks another role, and leaves refusing self-removal or re-adding a
+present key to the orchestrator. Every quoted route must be a `SAME_CHAIN`
+route that moves nothing, with one `manageAuthority` signing request whose
+scope and plan disclose exactly the requested change; a spend scope on an
+authority quote is refused, and so is the reverse. Rebuilding from the persisted
+`transaction` refuses a tampered key, permission or action before signing and
+before submission.
+
+The orchestrator refuses a change the Swig as read doesn't allow with
+`SWIG_AUTHORITY_CHANGE_REFUSED`, typed as `SolanaAuthorityChangeRefusedError`.
+Nothing retries automatically. After an uncertain outcome the caller prepares
+the same change again: `authority_exists` with the same permission, or
+`authority_not_found` on a remove, is the answer that it already landed.
+
+Configuring the same `swig` with an added passkey as owner derives the same
+wallet, and its transfers, deliveries and instructions name that key in
+`authorization`. The orchestrator selects the one role carrying it, which must
+hold `All` or `AllButManageAuthority`. Configuration grants nothing: an owner
+that is not on the Swig is refused as `UNSUPPORTED_ACCOUNT_TYPE`, and
+`deploy('solana', …)` still resolves `true` on an existing Swig without
+checking which role the owner holds.
 The destination hosts no account runtime, so preparation runs the ordinary EVM
 cross-chain path with the account hosted on the last EVM source. The
 destination authorization is its own signing request; where its payload,
@@ -288,7 +331,8 @@ signature.
 The SDK structurally validates managed Solana quotes, their signing payloads,
 and persisted execution metadata before signing or submission. It narrows every
 signing request at the wire boundary: an authority, scope or payload kind it does
-not recognise is refused rather than signed as a familiar one.
+not recognise is refused rather than signed as a familiar one. That includes
+the Solana scope action (`spend` or `manageAuthority`).
 
 Transaction references are tagged with the VM that produced them, so an EVM hash,
 a Solana signature and a Tron id are distinguishable rather than all being read
