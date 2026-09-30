@@ -1,5 +1,6 @@
 import type { Address, Hex } from 'viem'
 import { chainIdFromCaip2 } from '../../chains/caip2'
+import type { SolanaAuthorityRolePermission } from './public'
 
 type ErrorCode =
   | 'VALIDATION_ERROR'
@@ -158,14 +159,13 @@ const SOLANA_AUTHORITY_CHANGE_REFUSAL_REASONS = [
  *
  * - `acting_permission` — the configured owner's role holds neither `All` nor
  *   `ManageAuthority`, so it cannot manage authorities.
- * - `authority_exists` — the passkey to add is already on the Swig, on
- *   `roleId`, with `permission` when readable.
- * - `authority_not_found` — no role carries the passkey to remove.
- * - `authority_ambiguous` — several roles (`roleIds`) carry the passkey to
- *   remove.
- * - `root_role` — the passkey to remove is the root role, which is permanent.
- * - `unsupported_authority` — the passkey to remove sits on a role that is not
- *   a plain passkey role.
+ * - `authority_exists` — the key to add is already on the Swig, on `roleId`,
+ *   with `permission` when readable.
+ * - `authority_not_found` — no role carries the key to remove.
+ * - `authority_ambiguous` — several roles (`roleIds`) carry the key to remove.
+ * - `root_role` — the key to remove is the root role, which is permanent.
+ * - `unsupported_authority` — the key to remove sits on a role that is not a
+ *   plain passkey or secp256k1 role, such as a session role.
  * - `lockout` — the removal would leave no signable role holding `All` or
  *   `ManageAuthority`.
  */
@@ -173,14 +173,14 @@ type SolanaAuthorityChangeRefusalReason =
   (typeof SOLANA_AUTHORITY_CHANGE_REFUSAL_REASONS)[number]
 
 /**
- * The orchestrator refused a Swig passkey add or remove against the Swig's
- * current roles. Nothing was signed or submitted.
+ * The orchestrator refused a Swig authority (passkey or secp256k1 key) add or
+ * remove against the Swig's current roles. Nothing was signed or submitted.
  *
- * After an uncertain outcome (a failed wait, a network error on submit),
- * prepare the same change again and read the refusal as the answer: an add
- * refused with `authority_exists` and the same `permission` already landed,
- * while a different or absent `permission` is a conflict to resolve; a remove
- * refused with `authority_not_found` already landed.
+ * After an uncertain outcome (a failed wait, a network error on submit), call
+ * `getAuthorityStatus` with the same change: it reads this refusal for you. An
+ * add refused with `authority_exists` and the same `permission` already
+ * landed, while a different or absent `permission` is a conflict to resolve; a
+ * remove refused with `authority_not_found` already landed.
  *
  * `reason` is absent when the orchestrator sent a reason this SDK version does
  * not know; the raw context stays readable on `issues[].context`.
@@ -194,7 +194,7 @@ class SolanaAuthorityChangeRefusedError extends ValidationError {
   /** Every role carrying the key, on `authority_ambiguous`. */
   readonly roleIds?: number[]
   /** The existing role's permission, on `authority_exists` when readable. */
-  readonly permission?: 'all' | 'allButManageAuthority'
+  readonly permission?: SolanaAuthorityRolePermission
 
   constructor(
     params: BaseErrorParams & {
@@ -203,7 +203,7 @@ class SolanaAuthorityChangeRefusedError extends ValidationError {
       swigAddress?: string
       roleId?: number
       roleIds?: number[]
-      permission?: 'all' | 'allButManageAuthority'
+      permission?: SolanaAuthorityRolePermission
     },
   ) {
     super(params)
@@ -752,6 +752,7 @@ function parseSolanaAuthorityChangeRefusedError(
   const permission = oneOf(context.permission, [
     'all',
     'allButManageAuthority',
+    'manageAuthority',
   ] as const)
   return new SolanaAuthorityChangeRefusedError({
     ...base,
@@ -900,7 +901,7 @@ function isSolanaAccountNotCreated(
   return error instanceof SolanaAccountNotCreatedError
 }
 
-/** Whether `error` is the orchestrator refusing a Swig passkey add or remove. */
+/** Whether `error` is the orchestrator refusing a Swig authority add or remove. */
 function isSolanaAuthorityChangeRefused(
   error: unknown,
 ): error is SolanaAuthorityChangeRefusedError {

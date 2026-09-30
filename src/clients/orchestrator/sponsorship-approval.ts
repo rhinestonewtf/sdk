@@ -235,12 +235,15 @@ function swigAuthorityChange(
         ? object(value, field, ['action', 'key'])
         : unsupported(`${field}.action`)
   const key = object(change.key, `${field}.key`, ['kind', 'publicKey'])
-  if (key.kind !== 'secp256r1') unsupported(`${field}.key.kind`)
+  if (key.kind !== 'secp256r1' && key.kind !== 'secp256k1') {
+    unsupported(`${field}.key.kind`)
+  }
   string(key.publicKey, `${field}.key.publicKey`)
   if (
     change.action === 'add' &&
     change.permission !== 'all' &&
-    change.permission !== 'allButManageAuthority'
+    change.permission !== 'allButManageAuthority' &&
+    change.permission !== 'manageAuthority'
   ) {
     unsupported(`${field}.permission`)
   }

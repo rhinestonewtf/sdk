@@ -18,9 +18,11 @@ import {
   type Transaction,
 } from '../../src/index'
 import {
+  addEcdsaKey,
   addPasskey,
   type CrossChainSolanaOriginTransaction,
   createSolanaSwigId,
+  removeEcdsaKey,
   removePasskey,
   type SameChainSolanaAuthorityTransaction,
   type SameChainSolanaInstructionsTransaction,
@@ -28,6 +30,8 @@ import {
   type SolanaAuthorityChange,
   type SolanaAuthorityDisclosure,
   type SolanaAuthorityExecutionMetadata,
+  type SolanaAuthorityPermission,
+  type SolanaAuthorityStatus,
   type SolanaCrossChainExecutionMetadata,
   type SolanaExecutionMetadata,
   type SolanaInstructionsExecutionMetadata,
@@ -328,6 +332,21 @@ async function standaloneCapabilitySurface() {
     chain: solanaDevnet,
     authority: removePasskey(passkeyKey),
   })
+  account.prepareTransaction(ecdsaTransaction)
+  const authorityStatus: SolanaAuthorityStatus =
+    await account.getAuthorityStatus(ecdsaTransaction)
+  if (authorityStatus.status === 'conflict') {
+    const conflictingRole: number = authorityStatus.roleId
+    const held: SolanaAuthorityPermission | undefined =
+      authorityStatus.permission
+    void conflictingRole
+    void held
+  } else if (authorityStatus.status === 'applied') {
+    const appliedRole: number | undefined = authorityStatus.roleId
+    void appliedRole
+  }
+  // @ts-expect-error only an authority change has a status
+  account.getAuthorityStatus(solanaTransaction)
 
   const handle: SolanaStandaloneAccount<{ solana: typeof standaloneConfig }> =
     account
@@ -388,6 +407,7 @@ async function compositeCapabilitySurface() {
   account.prepareTransaction(solanaTransaction)
   account.prepareTransaction(instructionTransaction)
   account.prepareTransaction(authorityTransaction)
+  await account.getAuthorityStatus(ecdsaTransaction)
   account.prepareTransaction(deliveryFromSolana)
   account.prepareTransaction(maxOutFromSolana)
   account.prepareTransaction(deliveryFromSolanaWithCalls)
@@ -599,8 +619,31 @@ const addChange: SolanaAuthorityChange = addPasskey(passkeyKey, {
 })
 // @ts-expect-error adding a passkey requires a permission
 addPasskey(passkeyKey)
-// @ts-expect-error nor takes any other permission
+// A passkey may also be a manage-only role.
 addPasskey(passkeyKey, { permission: 'manageAuthority' })
+// @ts-expect-error nor takes any other permission
+addPasskey(passkeyKey, { permission: 'programAll' })
+
+// A secp256k1 key, from a local account or its public key; never an address.
+declare const localSigner: import('viem').LocalAccount
+const ecdsaTransaction = {
+  chain: solanaDevnet,
+  authority: addEcdsaKey(localSigner, { permission: 'manageAuthority' }),
+} satisfies SameChainSolanaAuthorityTransaction
+const ecdsaChange: SolanaAuthorityChange = removeEcdsaKey(passkeyKey)
+const literalEcdsa = {
+  chain: solanaDevnet,
+  authority: {
+    action: 'add',
+    key: { type: 'ecdsa', publicKey: passkeyKey },
+    permission: 'allButManageAuthority',
+  },
+} satisfies SameChainSolanaAuthorityTransaction
+// @ts-expect-error adding an ECDSA key requires a permission
+addEcdsaKey(passkeyKey)
+// @ts-expect-error removing one takes no permission
+removeEcdsaKey(passkeyKey, { permission: 'all' })
+const deprecatedAlias: SolanaAuthorityPermission = permission
 // @ts-expect-error removing a passkey takes no permission
 removePasskey(passkeyKey, { permission: 'all' })
 const forbiddenRemovePermission = {
@@ -649,6 +692,7 @@ const authorityMetadata: SolanaAuthorityExecutionMetadata = {
   swigAddress: recipient,
   walletAddress: recipient,
   action: 'remove',
+  keyType: 'passkey',
   key: passkeyKey,
 }
 
@@ -709,6 +753,9 @@ const deploymentPurpose: WaitedStatus['purpose'] = 'deployment'
 
 void compositeCapabilitySurface
 void literalAuthority
+void ecdsaChange
+void literalEcdsa
+void deprecatedAlias
 void forbiddenRemovePermission
 void forbiddenAuthorityInstructions
 void forbiddenInstructionAuthority

@@ -50,9 +50,11 @@ before a `proofs: []` submission, Swig id resolution and every pre-network
 refusal on the standalone and composite facades, VM routing of `deploy`, an
 existing Swig resolving `true` without a submission, and the
 `ACCOUNT_ALREADY_DEPLOYED` mapping that keeps EVM refusals generic. Live Swig creation is not covered
-offline. Swig passkey authority changes run through the real Solana workflow
-against a fake orchestrator: exact requests, a refusal per quote mutation,
-cross-instance tampering, signing and expiry, and the typed refusal. Live
+offline. Swig authority changes (passkeys and secp256k1 keys) run through the
+real Solana workflow against a fake orchestrator with software signers: exact
+requests, a refusal per quote mutation including curve and permission swaps,
+cross-instance tampering, signing and expiry, an external `toAccount` manager
+signer, the typed refusal, and the `getAuthorityStatus` mapping. Live
 authority changes are not covered offline. Offline tests never execute a Solana
 mainnet transfer.
 

@@ -1279,29 +1279,42 @@ export interface operations {
                           /** @description A change to the Swig's own authorities */
                           authority: {
                             /**
-                             * @description Whether the passkey is added or removed
+                             * @description Whether the authority is added or removed
                              * @example add
                              * @enum {string}
                              */
                             action: 'add' | 'remove'
-                            /** @description The passkey added or removed */
-                            key: {
-                              /** @enum {string} */
-                              kind: 'secp256r1'
-                              /**
-                               * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
-                               * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
-                               */
-                              publicKey: string
-                            }
+                            /** @description The passkey or secp256k1 key added or removed */
+                            key:
+                              | {
+                                  /** @enum {string} */
+                                  kind: 'secp256r1'
+                                  /**
+                                   * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
+                                   * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
+                                   */
+                                  publicKey: string
+                                }
+                              | {
+                                  /** @enum {string} */
+                                  kind: 'secp256k1'
+                                  /**
+                                   * @description SEC1-compressed secp256k1 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03. Not an EVM address.
+                                   * @example 0x0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798
+                                   */
+                                  publicKey: string
+                                }
                             /**
-                             * @description The added passkey's permission, as requested. Absent on a removal.
+                             * @description The added authority's permission, as requested and installed. Absent on a removal.
                              * @example allButManageAuthority
                              * @enum {string}
                              */
-                            permission?: 'all' | 'allButManageAuthority'
+                            permission?:
+                              | 'all'
+                              | 'allButManageAuthority'
+                              | 'manageAuthority'
                             /**
-                             * @description The Swig role id the added passkey gets, or the id of the role removed
+                             * @description The Swig role id the added authority gets, or the id of the role removed
                              * @example 3
                              */
                             roleId: number
@@ -2594,7 +2607,7 @@ export interface operations {
                   address: string
                   /** @description The Swig state account holding the roles. Required for a Solana-only account (no `evm` entry); optional for an account paired with an EVM entry, whose Swig the orchestrator derives. */
                   swigAccount?: string
-                  /** @description The authority that signs this spend. On a Solana-only account it selects the one Swig role carrying this key, which must hold `All` or `AllButManageAuthority`; no match, several matches or another permission is refused. On an account paired with an EVM entry, the root role signs. */
+                  /** @description The authority that signs this request. On a Solana-only account it selects the one Swig role carrying this key, which must hold `All` or `AllButManageAuthority` for a spend, or `All` or `ManageAuthority` for an authority change; no match, several matches or another permission is refused, so a `ManageAuthority`-only role never spends. On an account paired with an EVM entry, the root role signs. */
                   authorization:
                     | {
                         /** @enum {string} */
@@ -3019,41 +3032,64 @@ export interface operations {
                       addressLookupTables?: string[]
                     }
                   | {
-                      /** @description Add a passkey to the account's existing Swig, or remove one by its key. Signed by the role `account.svm.authorization` names, which must hold `All` or `ManageAuthority`. The root role (id 0) is never removed. A removal that would leave no signable role holding `All` or `ManageAuthority` is refused, and so is adding a key already on the Swig. Solana-only accounts, sponsored (`options.sponsorship.gas`) only, and one change per intent. */
+                      /** @description Add a passkey or secp256k1 authority to the account's existing Swig, or remove a non-root one by its key. The added role holds exactly the requested permission, with no program permission added. Signed by the role `account.svm.authorization` names, which must hold `All` or `ManageAuthority`. The root role (id 0) is never removed. A removal that would leave no signable role holding `All` or `ManageAuthority` is refused, and so is adding a key already on the Swig. Solana-only accounts, sponsored (`options.sponsorship.gas`) only, and one change per intent. */
                       authority:
                         | {
                             /** @enum {string} */
                             action: 'add'
-                            /** @description The authority key. Only passkeys (`secp256r1`) can be added or removed. */
-                            key: {
-                              /** @enum {string} */
-                              kind: 'secp256r1'
-                              /**
-                               * @description The SEC1-compressed P-256 passkey public key, as 33 bytes of 0x-prefixed hex
-                               * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
-                               */
-                              publicKey: string
-                            }
+                            /** @description The authority key: a passkey (`secp256r1`) or a secp256k1 public key. Either must be SEC1-compressed and lie on its curve. */
+                            key:
+                              | {
+                                  /** @enum {string} */
+                                  kind: 'secp256r1'
+                                  /**
+                                   * @description The SEC1-compressed P-256 passkey public key, as 33 bytes of 0x-prefixed hex
+                                   * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
+                                   */
+                                  publicKey: string
+                                }
+                              | {
+                                  /** @enum {string} */
+                                  kind: 'secp256k1'
+                                  /**
+                                   * @description The SEC1-compressed secp256k1 public key, as 33 bytes of 0x-prefixed hex. Uncompressed keys are refused: compress them first. Never an EVM address.
+                                   * @example 0x0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798
+                                   */
+                                  publicKey: string
+                                }
                             /**
-                             * @description What the added passkey may do. `all`: every action, including adding and removing the Swig's non-root authorities. `allButManageAuthority`: spend and execute, but never add or remove an authority. Required; there is no default.
+                             * @description What the added authority may do, installed as exactly that one Swig action. `all`: every action, including adding and removing the Swig's non-root authorities. `allButManageAuthority`: spend and execute, but never add or remove an authority. `manageAuthority`: add and remove non-root authorities — including granting `all`, so effectively takeover power — but never spend or execute: the Swig program refuses every wallet-signed instruction it signs. Required; there is no default.
                              * @example allButManageAuthority
                              * @enum {string}
                              */
-                            permission: 'all' | 'allButManageAuthority'
+                            permission:
+                              | 'all'
+                              | 'allButManageAuthority'
+                              | 'manageAuthority'
                           }
                         | {
                             /** @enum {string} */
                             action: 'remove'
-                            /** @description The authority key. Only passkeys (`secp256r1`) can be added or removed. */
-                            key: {
-                              /** @enum {string} */
-                              kind: 'secp256r1'
-                              /**
-                               * @description The SEC1-compressed P-256 passkey public key, as 33 bytes of 0x-prefixed hex
-                               * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
-                               */
-                              publicKey: string
-                            }
+                            /** @description The authority key: a passkey (`secp256r1`) or a secp256k1 public key. Either must be SEC1-compressed and lie on its curve. */
+                            key:
+                              | {
+                                  /** @enum {string} */
+                                  kind: 'secp256r1'
+                                  /**
+                                   * @description The SEC1-compressed P-256 passkey public key, as 33 bytes of 0x-prefixed hex
+                                   * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
+                                   */
+                                  publicKey: string
+                                }
+                              | {
+                                  /** @enum {string} */
+                                  kind: 'secp256k1'
+                                  /**
+                                   * @description The SEC1-compressed secp256k1 public key, as 33 bytes of 0x-prefixed hex. Uncompressed keys are refused: compress them first. Never an EVM address.
+                                   * @example 0x0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798
+                                   */
+                                  publicKey: string
+                                }
                           }
                     }
               }
@@ -4144,29 +4180,42 @@ export interface operations {
                             /** @description A change to the Swig's own authorities */
                             authority: {
                               /**
-                               * @description Whether the passkey is added or removed
+                               * @description Whether the authority is added or removed
                                * @example add
                                * @enum {string}
                                */
                               action: 'add' | 'remove'
-                              /** @description The passkey added or removed */
-                              key: {
-                                /** @enum {string} */
-                                kind: 'secp256r1'
-                                /**
-                                 * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
-                                 * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
-                                 */
-                                publicKey: string
-                              }
+                              /** @description The passkey or secp256k1 key added or removed */
+                              key:
+                                | {
+                                    /** @enum {string} */
+                                    kind: 'secp256r1'
+                                    /**
+                                     * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
+                                     * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
+                                     */
+                                    publicKey: string
+                                  }
+                                | {
+                                    /** @enum {string} */
+                                    kind: 'secp256k1'
+                                    /**
+                                     * @description SEC1-compressed secp256k1 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03. Not an EVM address.
+                                     * @example 0x0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798
+                                     */
+                                    publicKey: string
+                                  }
                               /**
-                               * @description The added passkey's permission, as requested. Absent on a removal.
+                               * @description The added authority's permission, as requested and installed. Absent on a removal.
                                * @example allButManageAuthority
                                * @enum {string}
                                */
-                              permission?: 'all' | 'allButManageAuthority'
+                              permission?:
+                                | 'all'
+                                | 'allButManageAuthority'
+                                | 'manageAuthority'
                               /**
-                               * @description The Swig role id the added passkey gets, or the id of the role removed
+                               * @description The Swig role id the added authority gets, or the id of the role removed
                                * @example 3
                                */
                               roleId: number
@@ -4435,29 +4484,42 @@ export interface operations {
                             /** @description A change to the Swig's own authorities */
                             authority: {
                               /**
-                               * @description Whether the passkey is added or removed
+                               * @description Whether the authority is added or removed
                                * @example add
                                * @enum {string}
                                */
                               action: 'add' | 'remove'
-                              /** @description The passkey added or removed */
-                              key: {
-                                /** @enum {string} */
-                                kind: 'secp256r1'
-                                /**
-                                 * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
-                                 * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
-                                 */
-                                publicKey: string
-                              }
+                              /** @description The passkey or secp256k1 key added or removed */
+                              key:
+                                | {
+                                    /** @enum {string} */
+                                    kind: 'secp256r1'
+                                    /**
+                                     * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
+                                     * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
+                                     */
+                                    publicKey: string
+                                  }
+                                | {
+                                    /** @enum {string} */
+                                    kind: 'secp256k1'
+                                    /**
+                                     * @description SEC1-compressed secp256k1 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03. Not an EVM address.
+                                     * @example 0x0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798
+                                     */
+                                    publicKey: string
+                                  }
                               /**
-                               * @description The added passkey's permission, as requested. Absent on a removal.
+                               * @description The added authority's permission, as requested and installed. Absent on a removal.
                                * @example allButManageAuthority
                                * @enum {string}
                                */
-                              permission?: 'all' | 'allButManageAuthority'
+                              permission?:
+                                | 'all'
+                                | 'allButManageAuthority'
+                                | 'manageAuthority'
                               /**
-                               * @description The Swig role id the added passkey gets, or the id of the role removed
+                               * @description The Swig role id the added authority gets, or the id of the role removed
                                * @example 3
                                */
                               roleId: number
@@ -5280,29 +5342,42 @@ export interface operations {
                               /** @description The change this signature authorizes, exactly as the plan discloses it */
                               authority: {
                                 /**
-                                 * @description Whether the passkey is added or removed
+                                 * @description Whether the authority is added or removed
                                  * @example add
                                  * @enum {string}
                                  */
                                 action: 'add' | 'remove'
-                                /** @description The passkey added or removed */
-                                key: {
-                                  /** @enum {string} */
-                                  kind: 'secp256r1'
-                                  /**
-                                   * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
-                                   * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
-                                   */
-                                  publicKey: string
-                                }
+                                /** @description The passkey or secp256k1 key added or removed */
+                                key:
+                                  | {
+                                      /** @enum {string} */
+                                      kind: 'secp256r1'
+                                      /**
+                                       * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
+                                       * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
+                                       */
+                                      publicKey: string
+                                    }
+                                  | {
+                                      /** @enum {string} */
+                                      kind: 'secp256k1'
+                                      /**
+                                       * @description SEC1-compressed secp256k1 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03. Not an EVM address.
+                                       * @example 0x0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798
+                                       */
+                                      publicKey: string
+                                    }
                                 /**
-                                 * @description The added passkey's permission, as requested. Absent on a removal.
+                                 * @description The added authority's permission, as requested and installed. Absent on a removal.
                                  * @example allButManageAuthority
                                  * @enum {string}
                                  */
-                                permission?: 'all' | 'allButManageAuthority'
+                                permission?:
+                                  | 'all'
+                                  | 'allButManageAuthority'
+                                  | 'manageAuthority'
                                 /**
-                                 * @description The Swig role id the added passkey gets, or the id of the role removed
+                                 * @description The Swig role id the added authority gets, or the id of the role removed
                                  * @example 3
                                  */
                                 roleId: number
@@ -5870,29 +5945,42 @@ export interface operations {
                             /** @description A change to the Swig's own authorities */
                             authority: {
                               /**
-                               * @description Whether the passkey is added or removed
+                               * @description Whether the authority is added or removed
                                * @example add
                                * @enum {string}
                                */
                               action: 'add' | 'remove'
-                              /** @description The passkey added or removed */
-                              key: {
-                                /** @enum {string} */
-                                kind: 'secp256r1'
-                                /**
-                                 * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
-                                 * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
-                                 */
-                                publicKey: string
-                              }
+                              /** @description The passkey or secp256k1 key added or removed */
+                              key:
+                                | {
+                                    /** @enum {string} */
+                                    kind: 'secp256r1'
+                                    /**
+                                     * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
+                                     * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
+                                     */
+                                    publicKey: string
+                                  }
+                                | {
+                                    /** @enum {string} */
+                                    kind: 'secp256k1'
+                                    /**
+                                     * @description SEC1-compressed secp256k1 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03. Not an EVM address.
+                                     * @example 0x0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798
+                                     */
+                                    publicKey: string
+                                  }
                               /**
-                               * @description The added passkey's permission, as requested. Absent on a removal.
+                               * @description The added authority's permission, as requested and installed. Absent on a removal.
                                * @example allButManageAuthority
                                * @enum {string}
                                */
-                              permission?: 'all' | 'allButManageAuthority'
+                              permission?:
+                                | 'all'
+                                | 'allButManageAuthority'
+                                | 'manageAuthority'
                               /**
-                               * @description The Swig role id the added passkey gets, or the id of the role removed
+                               * @description The Swig role id the added authority gets, or the id of the role removed
                                * @example 3
                                */
                               roleId: number
@@ -6161,29 +6249,42 @@ export interface operations {
                             /** @description A change to the Swig's own authorities */
                             authority: {
                               /**
-                               * @description Whether the passkey is added or removed
+                               * @description Whether the authority is added or removed
                                * @example add
                                * @enum {string}
                                */
                               action: 'add' | 'remove'
-                              /** @description The passkey added or removed */
-                              key: {
-                                /** @enum {string} */
-                                kind: 'secp256r1'
-                                /**
-                                 * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
-                                 * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
-                                 */
-                                publicKey: string
-                              }
+                              /** @description The passkey or secp256k1 key added or removed */
+                              key:
+                                | {
+                                    /** @enum {string} */
+                                    kind: 'secp256r1'
+                                    /**
+                                     * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
+                                     * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
+                                     */
+                                    publicKey: string
+                                  }
+                                | {
+                                    /** @enum {string} */
+                                    kind: 'secp256k1'
+                                    /**
+                                     * @description SEC1-compressed secp256k1 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03. Not an EVM address.
+                                     * @example 0x0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798
+                                     */
+                                    publicKey: string
+                                  }
                               /**
-                               * @description The added passkey's permission, as requested. Absent on a removal.
+                               * @description The added authority's permission, as requested and installed. Absent on a removal.
                                * @example allButManageAuthority
                                * @enum {string}
                                */
-                              permission?: 'all' | 'allButManageAuthority'
+                              permission?:
+                                | 'all'
+                                | 'allButManageAuthority'
+                                | 'manageAuthority'
                               /**
-                               * @description The Swig role id the added passkey gets, or the id of the role removed
+                               * @description The Swig role id the added authority gets, or the id of the role removed
                                * @example 3
                                */
                               roleId: number
@@ -7033,29 +7134,42 @@ export interface operations {
                               /** @description The change this signature authorizes, exactly as the plan discloses it */
                               authority: {
                                 /**
-                                 * @description Whether the passkey is added or removed
+                                 * @description Whether the authority is added or removed
                                  * @example add
                                  * @enum {string}
                                  */
                                 action: 'add' | 'remove'
-                                /** @description The passkey added or removed */
-                                key: {
-                                  /** @enum {string} */
-                                  kind: 'secp256r1'
-                                  /**
-                                   * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
-                                   * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
-                                   */
-                                  publicKey: string
-                                }
+                                /** @description The passkey or secp256k1 key added or removed */
+                                key:
+                                  | {
+                                      /** @enum {string} */
+                                      kind: 'secp256r1'
+                                      /**
+                                       * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
+                                       * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
+                                       */
+                                      publicKey: string
+                                    }
+                                  | {
+                                      /** @enum {string} */
+                                      kind: 'secp256k1'
+                                      /**
+                                       * @description SEC1-compressed secp256k1 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03. Not an EVM address.
+                                       * @example 0x0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798
+                                       */
+                                      publicKey: string
+                                    }
                                 /**
-                                 * @description The added passkey's permission, as requested. Absent on a removal.
+                                 * @description The added authority's permission, as requested and installed. Absent on a removal.
                                  * @example allButManageAuthority
                                  * @enum {string}
                                  */
-                                permission?: 'all' | 'allButManageAuthority'
+                                permission?:
+                                  | 'all'
+                                  | 'allButManageAuthority'
+                                  | 'manageAuthority'
                                 /**
-                                 * @description The Swig role id the added passkey gets, or the id of the role removed
+                                 * @description The Swig role id the added authority gets, or the id of the role removed
                                  * @example 3
                                  */
                                 roleId: number

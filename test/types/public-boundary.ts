@@ -355,7 +355,15 @@ async function crossVmAccountSurface() {
     tokenRequests: [{ address: solana, amount: 1n }],
   })
 
+  // @ts-expect-error an address-only Solana entry has no Swig to check
+  managed.getAuthorityStatus
+  const evmOnly = await sdk.createAccount({ evm: accountConfig })
+  // @ts-expect-error nor has an EVM-only account
+  evmOnly.getAuthorityStatus
+
   const receiver = await sdk.createAccount({ solana: { address: solana } })
+  // @ts-expect-error nor has a receiver-only account
+  receiver.getAuthorityStatus
   receiver.getAddress('solana')
   // @ts-expect-error Solana destinations require branded Solana addresses
   managed.prepareTransaction({

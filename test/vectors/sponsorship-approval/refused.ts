@@ -138,14 +138,14 @@ export function refusedVectors(
       id: 'authority-unknown-permission',
       field: 'destination.execution.authority.permission',
       body: from('solana-authority-add', (body) => {
-        body.destination.execution.authority.permission = 'manageAuthority'
+        body.destination.execution.authority.permission = 'programAll'
       }),
     },
     {
-      id: 'authority-secp256k1-key',
+      id: 'authority-unknown-key-kind',
       field: 'destination.execution.authority.key.kind',
       body: from('solana-authority-add', (body) => {
-        body.destination.execution.authority.key.kind = 'secp256k1'
+        body.destination.execution.authority.key.kind = 'ed25519'
       }),
     },
     {

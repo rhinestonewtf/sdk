@@ -111,74 +111,137 @@ was created against are refused before any request. A Swig that already exists r
 its root authority is not verified, and a Swig whose root is not the configured
 owner cannot be spent by it.
 
-### Managing Solana passkeys
+### Managing Solana authorities
 
-`prepareTransaction({ chain, authority })` adds or removes a passkey on the
-account's Swig. Build the change with `addPasskey` or `removePasskey` from
-`@rhinestone/sdk/solana`; they take a viem `WebAuthnAccount` or a P-256 public
-key in any encoding. The configured owner signs it with one prompt, and the
-change is always gas-sponsored, billed to the integrator's sponsorship like
-`deploy('solana', …)`. One change per transaction, and only passkeys.
+`prepareTransaction({ chain, authority })` adds or removes a passkey or a
+secp256k1 (ECDSA) key on the account's Swig. Build the change with
+`@rhinestone/sdk/solana`:
+
+- `addPasskey` / `removePasskey` take a viem `WebAuthnAccount` or a P-256
+  public key in any encoding.
+- `addEcdsaKey` / `removeEcdsaKey` take a viem local account or a secp256k1
+  public key: 33-byte compressed, 65-byte uncompressed or 64-byte x‖y. An
+  uncompressed key must lie on secp256k1. An EVM address is never a key and is
+  refused, as is a WebAuthn account or an account that exposes no `publicKey`.
+  A compressed key from another curve can't be detected, so pass the public
+  key of the signer you will configure.
+
+The configured owner signs the change with one prompt. One change per
+transaction. The change is always gas-sponsored, billed to the integrator's
+sponsorship like `deploy('solana', …)`. The sponsor funds the rent a new role
+locks, and a removal returns that rent to the wallet. No fees or tokens move.
+
+`permission` is required on an add, with no default:
+
+| Permission | Spend and run instructions | Add and remove non-root authorities |
+| --- | --- | --- |
+| `all` | yes | yes |
+| `allButManageAuthority` | yes | no |
+| `manageAuthority` | no | yes |
+
+`manageAuthority` is not a limited right: it can add a key with `all`, so it is
+takeover power over the wallet. Grant it only to a signer you trust with the
+wallet.
+
+The orchestrator refuses a change the Swig doesn't allow with
+`SolanaAuthorityChangeRefusedError`. That covers a key already present, a
+missing key, the root role, an owner whose role can't manage authorities, a key
+on a role that is not a plain passkey or secp256k1 role, and a removal that
+leaves no role able to manage authorities. Removing the configured owner's own
+key succeeds only while another manager remains, and leaves that owner unable
+to sign.
+
+#### Enrolling a recovery key
+
+Deploying the Swig and enrolling a recovery key are separate transactions, with
+no atomicity between them. A wallet is ready only once `getAuthorityStatus`
+reports the enrollment `applied`; a derived address alone is not readiness.
+Resume against that status, and never redeploy or resubmit a change that
+landed:
 
 ```ts
-import { addPasskey, removePasskey, solanaDevnet } from '@rhinestone/sdk/solana'
+import { addEcdsaKey, solanaDevnet } from '@rhinestone/sdk/solana'
 
-// Add a passkey that can spend but not manage authorities.
-const add = await account.prepareTransaction({
+// The passkey is the Swig root.
+const account = await sdk.createAccount({
+  solana: { owner: { type: 'passkey', account: passkey }, swig },
+})
+await account.deploy('solana', solanaDevnet, { swigId })
+
+const enroll = {
   chain: solanaDevnet,
-  authority: addPasskey(newPasskey, { permission: 'allButManageAuthority' }),
-})
-await account.waitForExecution(
-  await account.submitTransaction(await account.signTransaction(add)),
-)
-
-// The added passkey owns the same wallet when configured with the same `swig`.
-const delegate = await sdk.createAccount({
-  solana: { owner: { type: 'passkey', account: newPasskey }, swig },
-})
-await delegate.prepareTransaction({ chain: solanaDevnet, instructions })
-
-// Remove it again, from an owner whose role may manage authorities.
-await account.prepareTransaction({
-  chain: solanaDevnet,
-  authority: removePasskey(newPasskey),
-})
-```
-
-`permission` is `'all'` (can also add and remove passkeys) or
-`'allButManageAuthority'` (spends and runs instructions only). It is required
-on an add. The orchestrator refuses a change the Swig doesn't allow with
-`SolanaAuthorityChangeRefusedError`: a key already present, a missing key, the
-root role, an owner whose role can't manage authorities, or a removal that
-leaves no role able to manage them. Removing the configured owner's own key
-succeeds only while another manager remains, and leaves that owner unable to
-sign.
-
-Nothing is retried automatically. After an uncertain outcome (a failed or
-timed-out wait, or a network error on submit), prepare the same change again and
-read the refusal:
-
-```ts
-import { isSolanaAuthorityChangeRefused } from '@rhinestone/sdk/errors'
-
-try {
-  await account.prepareTransaction({ chain: solanaDevnet, authority: change })
-} catch (error) {
-  if (!isSolanaAuthorityChangeRefused(error)) throw error
-  const landed =
-    change.action === 'add'
-      ? error.reason === 'authority_exists' &&
-        error.permission === change.permission
-      : error.reason === 'authority_not_found'
-  // `authority_exists` with another or no permission is a conflict to resolve.
+  authority: addEcdsaKey(recoveryPublicKey, { permission: 'manageAuthority' }),
+}
+let { status } = await account.getAuthorityStatus(enroll)
+if (status === 'notApplied') {
+  const signed = await account.signTransaction(
+    await account.prepareTransaction(enroll),
+  )
+  await account.waitForExecution(await account.submitTransaction(signed))
+  ;({ status } = await account.getAuthorityStatus(enroll))
+}
+if (status !== 'applied') {
+  // `conflict`: the key holds another permission. Surface it; never treat it as ready.
+  throw new Error(`recovery enrollment is ${status}`)
 }
 ```
 
-The quote's slot window is short (about 24 seconds). A passkey prompt answered
-after it closes fails with `SolanaQuoteExpiredError`; prepare again.
+`getAuthorityStatus` quotes the change, discards the quote, and reads the
+orchestrator's answer. It never signs or submits:
 
-This needs an orchestrator that serves authority changes on caucasus, which is
-the development endpoint only for now.
+- `applied`: an add holds exactly the requested permission (on `roleId`), or a
+  removed key is gone.
+- `notApplied`: the change is still to make.
+- `conflict`: an add's key sits on `roleId` with another permission, or one the
+  orchestrator could not read (`permission` absent).
+
+Any other refusal, a missing Swig and network errors are thrown. The quote needs
+a configured owner able to manage authorities. Under JWT auth, it mints one
+sponsorship grant that is never used. `notApplied` says nothing about an intent
+still in flight. After an uncertain outcome (a failed or timed-out wait, or a
+network error on submit), settle the original intent with `waitForExecution`
+or `getIntentStatus` first, then check. The orchestrator also refuses a second
+landing at submit.
+
+#### Acting through the recovery key
+
+An account configured with the manage-only key as its owner adds or removes
+authorities on the same Swig. Its signer can be external, such as a KMS or an
+enclave behind a viem `toAccount`, so the private key never enters the SDK:
+
+```ts
+import { toAccount } from 'viem/accounts'
+import { addPasskey, solanaDevnet } from '@rhinestone/sdk/solana'
+
+const recovery = await sdk.createAccount({
+  solana: {
+    owner: {
+      type: 'ecdsa',
+      account: toAccount({ address: recoveryAddress, signMessage, signTransaction, signTypedData }),
+    },
+    swig,
+  },
+})
+const added = await recovery.prepareTransaction({
+  chain: solanaDevnet,
+  authority: addPasskey(newPasskey, { permission: 'all' }),
+})
+await recovery.waitForExecution(
+  await recovery.submitTransaction(await recovery.signTransaction(added)),
+)
+```
+
+The added passkey then owns the same wallet when configured with the same
+`swig`. The manage-only account's own spends and instructions are refused by
+the orchestrator with a `ValidationError` (`UNSUPPORTED_ACCOUNT_TYPE`,
+`role_permission`) before anything is signed.
+
+The quote's slot window is short (about 24 seconds). A prompt answered after it
+closes fails with `SolanaQuoteExpiredError`; prepare again.
+
+This needs an orchestrator that accepts secp256k1 keys and `manageAuthority`
+on caucasus, which is the development endpoint only for now. An older one
+refuses them with a `ValidationError` before anything is signed.
 
 ## Swap sponsorship
 

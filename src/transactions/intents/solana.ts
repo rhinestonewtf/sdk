@@ -14,7 +14,7 @@ import {
   isManagedSwigNamespace,
   type ManagedSwigNamespace,
 } from '../../accounts/solana/address'
-import { isCompressedP256PublicKey } from '../../accounts/solana/passkey'
+import { isCompressedSec1PublicKey } from '../../accounts/solana/keys'
 import type { Call } from '../../calls/types'
 import { formatCaip2 } from '../../chains/caip2'
 import type {
@@ -47,6 +47,7 @@ import type {
   SigningRequest,
   SigningScope,
   SolanaAuthorityChangeRequest,
+  SolanaAuthorityKeyView,
   SwigAuthority,
   WebAuthnAssertion,
 } from '../../clients/orchestrator/public'
@@ -128,14 +129,33 @@ export type SolanaAction =
     }
   | { readonly kind: 'authority'; readonly change: SolanaAuthorityChangeInput }
 
+type SolanaAuthorityPermission = Extract<
+  SolanaAuthorityChangeRequest,
+  { action: 'add' }
+>['permission']
+
 /**
- * A Swig passkey add or remove. `key` is the compressed P-256 key in lowercase
- * hex; `permission` is present on an add only.
+ * A Swig authority add or remove. `key` is the compressed P-256 (`passkey`) or
+ * secp256k1 (`ecdsa`) key in lowercase hex; `permission` is present on an add
+ * only.
  */
 export interface SolanaAuthorityChangeInput {
   readonly action: 'add' | 'remove'
+  readonly keyType: 'passkey' | 'ecdsa'
   readonly key: Hex
-  readonly permission?: 'all' | 'allButManageAuthority'
+  readonly permission?: SolanaAuthorityPermission
+}
+
+const AUTHORITY_PERMISSIONS: readonly unknown[] = [
+  'all',
+  'allButManageAuthority',
+  'manageAuthority',
+] satisfies readonly SolanaAuthorityPermission[]
+
+function wireKeyKind(
+  keyType: SolanaAuthorityChangeInput['keyType'],
+): SolanaAuthorityKeyView['kind'] {
+  return keyType === 'ecdsa' ? 'secp256k1' : 'secp256r1'
 }
 
 /** The only sponsorship an authority change is quoted with: gas, spelled out. */
@@ -557,7 +577,7 @@ export function buildSolanaIntentRequest(
 function wireAuthorityChange(
   change: SolanaAuthorityChangeInput,
 ): SolanaAuthorityChangeRequest {
-  const key = { kind: 'secp256r1', publicKey: change.key } as const
+  const key = { kind: wireKeyKind(change.keyType), publicKey: change.key }
   return change.action === 'add'
     ? { action: 'add', key, permission: change.permission! }
     : { action: 'remove', key }
@@ -590,14 +610,14 @@ function buildAuthorityRequest(
   if (
     !change ||
     typeof change !== 'object' ||
-    !isCompressedP256PublicKey(change.key) ||
+    (change.keyType !== 'passkey' && change.keyType !== 'ecdsa') ||
+    !isCompressedSec1PublicKey(change.key) ||
     !(change.action === 'add'
-      ? change.permission === 'all' ||
-        change.permission === 'allButManageAuthority'
+      ? AUTHORITY_PERMISSIONS.includes(change.permission)
       : change.action === 'remove' && change.permission === undefined)
   ) {
     throw new InvalidSolanaTransactionArtifactError(
-      'a Swig authority change adds a compressed passkey key with a permission, or removes one without',
+      'a Swig authority change adds a compressed passkey or secp256k1 key with a permission, or removes one without',
     )
   }
   const { chainId, caip2 } = context
@@ -638,8 +658,8 @@ function isRoleId(value: unknown): value is number {
 }
 
 /**
- * Whether an orchestrator disclosure is the requested change: the same action
- * and key, the permission on an add only, and a role and rent it sized.
+ * Whether an orchestrator disclosure is the requested change: the same action,
+ * curve and key, the permission on an add only, and a role and rent it sized.
  */
 function disclosesChange(
   disclosure: unknown,
@@ -654,7 +674,7 @@ function disclosesChange(
   const sized = rent as { amount?: unknown; usd?: unknown } | undefined
   return (
     action === change.action &&
-    named?.kind === 'secp256r1' &&
+    named?.kind === wireKeyKind(change.keyType) &&
     typeof named.publicKey === 'string' &&
     named.publicKey.toLowerCase() === change.key &&
     permission === change.permission &&
