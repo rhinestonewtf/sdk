@@ -215,6 +215,7 @@ export type IntentExecutorSettlementLayer =
   | 'OFT'
   | 'ECO_IE'
   | 'SAME_CHAIN_IE'
+  | 'LZ'
 
 export type CrossChainSettlementLayer =
   | Permit2SettlementLayer

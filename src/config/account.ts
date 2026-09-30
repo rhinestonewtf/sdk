@@ -280,15 +280,17 @@ interface Permit2ClaimPolicy {
  *   more arbiter addresses from the SDK's bundled allow-set (`ECO` is the
  *   retired Standard Eco arbiter).
  * - `CCTP` (USDC), `OFT` (USDT0), `ECO_IE` (USD stablecoins, Eco's solver
- *   network) and `SAME_CHAIN_IE` (a transfer, or a Rhinestone Swapper swap with
- *   a `to.minAmount` floor, on the session's own chain) settle by the account
- *   executing the call. Naming one makes
+ *   network), `SAME_CHAIN_IE` (a transfer, or a Rhinestone Swapper swap with
+ *   a `to.minAmount` floor, on the session's own chain) and `LZ` (USDC through
+ *   the LayerZero Value Transfer API, over Stargate or CCTP) settle by the
+ *   account executing the call. Naming one makes
  *   the permit **settlement-scoped**: the session is restricted to that call
  *   and its approve, with the `from` token, the `to` chains and recipients,
  *   and `maxAmount` pinned in its calldata. Such a permit names exactly one of
  *   them, cannot be combined with the Permit2 layers, `maxAmount` requires
  *   `oneTimeUse`, and only sponsored intents without an app fee can settle
- *   through it. `ECO_IE` also requires `maxAmount`, `maxFeeBps` and `validUntil`.
+ *   through it. `ECO_IE` also requires `maxAmount`, `maxFeeBps` and `validUntil`;
+ *   `OFT` and `LZ` require `oneTimeUse`.
  */
 type CrossChainSettlementLayer =
   | 'SAME_CHAIN'
@@ -298,6 +300,7 @@ type CrossChainSettlementLayer =
   | 'OFT'
   | 'ECO_IE'
   | 'SAME_CHAIN_IE'
+  | 'LZ'
 
 /**
  * A high-level permit that authorises a session key to move funds
@@ -343,7 +346,7 @@ interface CrossChainPermit {
    * `[]`) for any supported layer — the SDK resolves to the union of
    * every arbiter in its bundled allow-set.
    *
-   * `CCTP`, `OFT`, `ECO_IE` and `SAME_CHAIN_IE` are IntentExecutor layers: naming one scopes the
+   * `CCTP`, `OFT`, `ECO_IE`, `SAME_CHAIN_IE` and `LZ` are IntentExecutor layers: naming one scopes the
    * session to that layer's calls instead (see {@link CrossChainSettlementLayer}).
    */
   settlementLayers?: CrossChainSettlementLayer[]
@@ -415,7 +418,7 @@ interface CrossChainPermissionInput {
    * resolves to the union of every arbiter in its bundled allow-set. Pass
    * a subset (e.g. `['ACROSS']`) to narrow.
    *
-   * `CCTP`, `OFT`, `ECO_IE` and `SAME_CHAIN_IE` are IntentExecutor layers: naming one scopes the
+   * `CCTP`, `OFT`, `ECO_IE`, `SAME_CHAIN_IE` and `LZ` are IntentExecutor layers: naming one scopes the
    * session to that layer's calls instead (see {@link CrossChainSettlementLayer}).
    */
   settlementLayers?: CrossChainSettlementLayer[]

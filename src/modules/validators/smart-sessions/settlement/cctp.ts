@@ -23,8 +23,11 @@ import type { SettlementContext } from './types'
  */
 
 /** Circle deploys TokenMessengerV2 at one address per network class. */
+export const CCTP_TOKEN_MESSENGER_MAINNET: Address =
+  '0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d'
+
 const TOKEN_MESSENGER: Record<'mainnet' | 'testnet', Address> = {
-  mainnet: '0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d',
+  mainnet: CCTP_TOKEN_MESSENGER_MAINNET,
   testnet: '0x8FE6B999Dc680CcFDD5Bf7EB0974218be2542DAA',
 }
 

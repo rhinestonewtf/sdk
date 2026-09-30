@@ -11,6 +11,7 @@ import type {
 } from '../types'
 import { cctpTokenMessenger, scopeCctp } from './cctp'
 import { ecoPortal, scopeEco } from './eco'
+import { lzMultiCall, lzTransferDelegate, scopeLz } from './lz'
 import { oftAdapter, scopeOft } from './oft'
 import { scopeSameChain } from './same-chain'
 import type { SettlementContext } from './types'
@@ -32,6 +33,8 @@ const LAYERS: Record<
   Exclude<IntentExecutorSettlementLayer, 'SAME_CHAIN_IE'>,
   {
     readonly target: (chainId: number) => Address
+    /** Who the account approves, when not the target (LZ's TransferDelegate). */
+    readonly spender?: (chainId: number) => Address
     readonly scope: (ctx: SettlementContext) => ScopedAction
     /**
      * Each call costs the account a native messaging fee no pin can bound, so
@@ -43,6 +46,12 @@ const LAYERS: Record<
   CCTP: { target: cctpTokenMessenger, scope: scopeCctp },
   OFT: { target: oftAdapter, scope: scopeOft, requiresOneTimeUse: true },
   ECO_IE: { target: ecoPortal, scope: scopeEco },
+  LZ: {
+    target: lzMultiCall,
+    spender: lzTransferDelegate,
+    scope: scopeLz,
+    requiresOneTimeUse: true,
+  },
 }
 
 export const INTENT_EXECUTOR_SETTLEMENT_LAYERS = [
@@ -50,6 +59,7 @@ export const INTENT_EXECUTOR_SETTLEMENT_LAYERS = [
   'OFT',
   'ECO_IE',
   'SAME_CHAIN_IE',
+  'LZ',
 ] as const satisfies readonly IntentExecutorSettlementLayer[]
 
 export function isIntentExecutorLayer(
@@ -249,6 +259,7 @@ export function resolveSettlementScope(
     throw new Error(`crossChainPermits: an ${layer} permit requires oneTimeUse`)
   }
   const target = LAYERS[layer].target(options.chainId)
+  const spender = LAYERS[layer].spender?.(options.chainId) ?? target
   const layerAction = LAYERS[layer].scope({
     chainId: options.chainId,
     target,
@@ -269,7 +280,7 @@ export function resolveSettlementScope(
   const approveActions = sourceTokens.map((token) =>
     withTimeFrame(
       swapAction(token, APPROVE_SELECTOR, [
-        pin(0n, target),
+        pin(0n, spender),
         // No allowance beyond the cap outlives the session.
         ...(cap === undefined
           ? []

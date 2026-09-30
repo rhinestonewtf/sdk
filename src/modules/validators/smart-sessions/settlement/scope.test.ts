@@ -24,6 +24,7 @@ import { swapperAddresses } from '../swap/rhinestone'
 import type { CrossChainPermissionInput, SessionDefinition } from '../types'
 import { CCTP_CHAINS, DEPOSIT_FOR_BURN_WITH_HOOK_SELECTOR } from './cctp'
 import { ECO_PORTAL, PUBLISH_AND_FUND_SELECTOR } from './eco'
+import { LZ_EXECUTE_SELECTOR, LZ_MULTICALL } from './lz'
 import { OFT_CHAINS, OFT_SEND_SELECTOR } from './oft'
 import { resolveSettlementScope } from './scope'
 
@@ -169,6 +170,57 @@ describe('settlement-scoped crossChainPermits', () => {
       true,
     )
     expect(satisfiesRules(action, approve(OTHER))).toBe(false)
+  })
+
+  test('an LZ permit restricts the session to execute and the TransferDelegate approve', () => {
+    const lz = definition({ settlementLayers: ['LZ'] }, withOnce)
+    const data = resolveSessionData(lz)
+    expect(
+      data.actions
+        .slice(0, 2)
+        .map((a) => [a.actionTarget, a.actionTargetSelector]),
+    ).toEqual([
+      [LZ_MULTICALL[base.id].multiCall, LZ_EXECUTE_SELECTOR],
+      [USDC, APPROVE],
+    ])
+    expect(toSession(lz).settlementLayers).toEqual(['LZ'])
+    // Each Stargate send burns a LayerZero fee, as OFT's does.
+    expect(() => resolveSessionData({ ...lz, oneTimeUse: undefined })).toThrow(
+      'an LZ permit requires oneTimeUse',
+    )
+  })
+
+  test('the LZ approve may only name the TransferDelegate', () => {
+    const resolved = resolveSettlementScope(
+      [
+        resolveCrossChainPermission({
+          from: { chain: base, token: USDC, maxAmount: 100n },
+          to: { chain: arbitrum, token: USDC_ARB },
+          settlementLayers: ['LZ'],
+        }),
+      ],
+      {
+        chainId: base.id,
+        environment: 'production',
+        account: ACCOUNT,
+        oneTimeUse: true,
+      },
+    )
+    const action = resolved?.actions.find((a) => a.selector === APPROVE)
+    if (!action) throw new Error('no approve action')
+    const approve = (spender: Address, amount = 100n) =>
+      encodeFunctionData({
+        abi: erc20Abi,
+        functionName: 'approve',
+        args: [spender, amount],
+      })
+    const delegate = LZ_MULTICALL[base.id].transferDelegate
+    expect(satisfiesRules(action, approve(delegate))).toBe(true)
+    expect(satisfiesRules(action, approve(delegate, 101n))).toBe(false)
+    // LZMultiCall runs whatever it is handed, so it must never hold an allowance.
+    expect(
+      satisfiesRules(action, approve(LZ_MULTICALL[base.id].multiCall)),
+    ).toBe(false)
   })
 
   describe('SAME_CHAIN_IE', () => {
