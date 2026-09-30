@@ -185,7 +185,7 @@ function batch(calls: readonly NestedCall[]): {
   readonly rules: Rule[]
   readonly args: At[]
 } {
-  const rules: Rule[] = []
+  const rules: Rule[] = [pinValue(0x40n, BigInt(calls.length))]
   const args: At[] = []
   let relative = BigInt(calls.length) * 32n
   calls.forEach((call, i) => {
@@ -295,16 +295,6 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
     length: 68,
     args: (at) => [pin(at(0n), spender)],
   })
-  /**
-   * One execute per route: the calls-length pin counts its own value against a
-   * limit of that value, so the burning transaction cannot repeat the route
-   * (each Stargate send costs a native fee no pin bounds).
-   */
-  const once = (calls: readonly NestedCall[]): Rule => ({
-    ...pinValue(0x40n, BigInt(calls.length)),
-    usageLimit: BigInt(calls.length),
-  })
-
   const routes: Route[] = []
   const stargate = STARGATE_USDC[ctx.chainId]
   if (stargate !== undefined && isAddressEqual(token, stargate.token)) {
@@ -364,7 +354,7 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
           ...recipient(s(SEND.to), leg),
         ]
       },
-      limits: [...cap(args[0](96n)), once(calls)],
+      limits: cap(args[0](96n)),
     })
   }
   const cctp = LZ_CCTP_CHAINS[ctx.chainId]
@@ -417,7 +407,6 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
           // The fee goes to LayerZero's receiver, so the key cannot keep it;
           // the ceiling bounds how much of the pull it can waste there.
           ...(feeless ? [] : [cumulativeCap(args[1](32n), maxFee)]),
-          once(calls),
         ],
       })
     }
@@ -451,7 +440,7 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
         allOf(route.rules),
         ...(route.modes ? [anyOf(route.modes.map(allOf))] : []),
         anyOf(pinned.map(allOf)),
-        allOf(route.limits),
+        ...(route.limits.length ? [allOf(route.limits)] : []),
       ].reduceRight((right, left) => ({ type: 'and', left, right })),
     ]
   })
@@ -471,7 +460,12 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
         valueLimitPerUse: maxUint256,
         expression: {
           type: 'and',
-          left: allOf([pinValue(0n, 0x40n)]),
+          // The calls pointer every route shares counts its own value against a
+          // limit of that value: one execute per session, whatever the route.
+          // The burning transaction admits every later op, so without it a
+          // stale TransferDelegate allowance could fund a second route, and a
+          // second Stargate send would pay another native fee.
+          left: allOf([{ ...pinValue(0n, 0x40n), usageLimit: 0x40n }]),
           right: anyOf(branches),
         },
       },

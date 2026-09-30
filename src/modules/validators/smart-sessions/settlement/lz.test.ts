@@ -250,20 +250,32 @@ describe('scopeLz', () => {
     expect(holds(uncapped, fee(LZ_CCTP_MAX_RELAY_FEE + 1n))).toBe(false)
   })
 
-  test('admits each route once per session, so a Stargate send cannot repeat', () => {
+  test.each([
+    ['taxi', () => execute(stargate('taxi', { amount: 1n }))],
+    ['cctp', () => execute(cctp({ pull: 1n, fee: 0n }))],
+  ])(
+    'admits one execute per session: after %s, no route runs again',
+    (_, first) => {
+      // Even with a stale TransferDelegate allowance to fund it, a second
+      // route would pull another maxAmount, and a second send another fee.
+      const usage: RuleUsage = new Map()
+      expect(holds(action, first(), usage)).toBe(true)
+      for (const again of [
+        execute(stargate('taxi', { amount: 1n })),
+        execute(stargate('bus', { amount: 1n })),
+        execute(cctp({ pull: 1n, fee: 0n })),
+      ]) {
+        expect(holds(action, again, usage)).toBe(false)
+      }
+    },
+  )
+
+  test('a refused execute does not use up the session', () => {
     const usage: RuleUsage = new Map()
-    expect(
-      holds(action, execute(stargate('taxi', { amount: 1n })), usage),
-    ).toBe(true)
-    expect(holds(action, execute(stargate('bus', { amount: 1n })), usage)).toBe(
+    expect(holds(action, execute(stargate('taxi', { to: OTHER })), usage)).toBe(
       false,
     )
-    expect(holds(action, execute(cctp({ pull: 1n, fee: 0n })), usage)).toBe(
-      true,
-    )
-    expect(holds(action, execute(cctp({ pull: 1n, fee: 0n })), usage)).toBe(
-      false,
-    )
+    expect(holds(action, execute(stargate('taxi')), usage)).toBe(true)
   })
 
   test('refuses a zero-amount Stargate send', () => {
