@@ -1,10 +1,10 @@
 {
   "apiVersion": "2026-09.caucasus",
   "artifact": "caucasus.json",
-  "sha256": "8de89051bd41bc7eed367947d94eae9b33ee07b303cb3c244e2261d94dcc3f32",
+  "sha256": "d8767703381e9dce8dfe6b1b63daac4dba9f06cbdb5537ebaef75ea011e7a2cc",
   "upstream": {
     "repository": "git@github.com:rhinestonewtf/orchestrator.git",
-    "commit": "a4b50f13755f963bb8de664cb4d2656b0d138f0e"
+    "commit": "ed4fa4620f6a29a9aa1921cf79acd5331e28033d"
   },
   "generatedBy": "orchestrator: run pnpm install --frozen-lockfile and pnpm prisma:generate; copy scripts/generateOpenApi.ts beside the original, alias SUPPORTED_API_VERSIONS as PUBLISHED_API_VERSIONS in that copy, then run pnpm exec ts-node scripts/<copy>.ts --out-dir <dir>",
   "note": "Vendored because 2026-09.caucasus is not in the orchestrator's PUBLISHED_API_VERSIONS yet, so it is absent from the public rhinestonewtf/openapi repo. Replace this snapshot with the published URL source once RHI-7424 activates public publication."

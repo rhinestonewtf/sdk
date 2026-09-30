@@ -32,6 +32,7 @@ import {
   isRetryable,
   isSimulationFailed,
   isSolanaAccountNotCreated,
+  isSolanaAuthorityChangeRefused,
   isSponsorError,
   isSponsorLimitExceeded,
   isValidationError,
@@ -44,6 +45,8 @@ import {
   SettlementQuoteError,
   SimulationFailedError,
   SolanaAccountNotCreatedError,
+  type SolanaAuthorityChangeRefusalReason,
+  SolanaAuthorityChangeRefusedError,
   SponsorLimitExceededError,
   type SponsorLimitKey,
   UnauthorizedError,
@@ -87,7 +90,7 @@ import {
   UnsupportedSponsorshipApprovalError,
 } from './execution'
 
-export type { ErrorDetail, SponsorLimitKey }
+export type { ErrorDetail, SolanaAuthorityChangeRefusalReason, SponsorLimitKey }
 
 export {
   // Account
@@ -141,6 +144,7 @@ export {
   isRateLimited,
   isSimulationFailed,
   isSolanaAccountNotCreated,
+  isSolanaAuthorityChangeRefused,
   isSponsorLimitExceeded,
   isInsufficientSponsorBalance,
   isSponsorError,
@@ -157,6 +161,7 @@ export {
   RelayerMarketUnavailableError,
   SimulationFailedError,
   SolanaAccountNotCreatedError,
+  SolanaAuthorityChangeRefusedError,
   SettlementExecutionError,
   SettlementQuoteError,
   SponsorLimitExceededError,

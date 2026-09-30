@@ -5,6 +5,8 @@ import type {
   QuotePlan,
   SigningPayload,
   SigningRequest,
+  SolanaAuthorityDisclosure,
+  SwigAuthority,
 } from '../../src/clients/orchestrator/public'
 import type { OrchestratorExecutionQuote } from '../../src/clients/orchestrator/types'
 
@@ -205,3 +207,77 @@ export function eip712Payload(request: SigningRequest): SigningPayload {
 }
 
 export const zeroHex = '0x' as Hex
+
+/**
+ * A well-formed Swig authority-change route: one `manageAuthority` request by
+ * the acting role, and a plan disclosing the same change, run by the state
+ * account.
+ */
+export function authorityQuote(input: {
+  readonly chainId: string
+  readonly wallet: string
+  readonly swigAccount: string
+  readonly acting: SwigAuthority
+  readonly disclosure: SolanaAuthorityDisclosure
+  readonly payload: SigningPayload
+  readonly roleId?: number
+  readonly intentId?: string
+  readonly expiresAt?: number
+}): OrchestratorExecutionQuote {
+  const request: SigningRequest = {
+    account: {
+      vm: 'svm',
+      wallet: input.wallet,
+      swigAccount: input.swigAccount,
+    },
+    authority: {
+      kind: 'swigRole',
+      roleId: input.roleId ?? 0,
+      authority: input.acting,
+    },
+    scope: {
+      vm: 'svm',
+      action: 'manageAuthority',
+      accounts: [{ chainId: input.chainId, address: input.swigAccount }],
+      authority: input.disclosure,
+      instructions: [],
+      feePayer: { kind: 'role', role: 'relayer' },
+      slotWindow: { from: '100', to: '200' },
+    },
+    chainIds: [input.chainId],
+    purpose: 'originAuthorization',
+    validity: [
+      { kind: 'svmSlot', chainId: input.chainId, expiresAtSlot: '200' },
+      { kind: 'timestamp', expiresAt: input.expiresAt ?? 2_000_000_000 },
+    ],
+    payload: input.payload,
+  }
+  return {
+    intentId: input.intentId ?? 'authority-intent',
+    purpose: 'execution',
+    expiresAt: input.expiresAt ?? 2_000_000_000,
+    estimatedFillTime: { seconds: 2 },
+    settlementLayer: 'SAME_CHAIN',
+    plan: {
+      source: [],
+      destination: {
+        vm: 'svm',
+        chainId: input.chainId,
+        account: {
+          wallet: input.wallet,
+          swigAccount: input.swigAccount,
+          authority: input.acting,
+        },
+        // As the wire sends it: the block, not the execution, names VM and chain.
+        execution: {
+          executedBy: { kind: 'account', address: input.swigAccount },
+          authority: structuredClone(input.disclosure),
+        } as unknown as NonNullable<QuotePlan['destination']['execution']>,
+      },
+      deployments: [],
+    },
+    cost: emptyCost(),
+    requirements: [],
+    signingRequests: [request],
+  }
+}

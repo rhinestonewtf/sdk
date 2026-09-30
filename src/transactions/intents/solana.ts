@@ -2,7 +2,6 @@ import { base64urlnopad } from '@scure/base'
 import {
   type Account,
   type Address,
-  bytesToHex,
   type Hex,
   hexToBytes,
   isAddress,
@@ -15,6 +14,7 @@ import {
   isManagedSwigNamespace,
   type ManagedSwigNamespace,
 } from '../../accounts/solana/address'
+import { isCompressedP256PublicKey } from '../../accounts/solana/passkey'
 import type { Call } from '../../calls/types'
 import { formatCaip2 } from '../../chains/caip2'
 import type {
@@ -45,6 +45,7 @@ import type {
   SerializedIntentInput,
   SigningProof,
   SigningRequest,
+  SigningScope,
   SwigAuthority,
   WebAuthnAssertion,
 } from '../../clients/orchestrator/public'
@@ -52,6 +53,7 @@ import type {
   OrchestratorExecutionQuote,
   OrchestratorIntentRequest,
   OrchestratorSponsorship,
+  OrchestratorSwigAuthorityChange,
 } from '../../clients/orchestrator/types'
 import {
   InvalidSolanaTransactionArtifactError,
@@ -124,6 +126,24 @@ export type SolanaAction =
       readonly instructions: readonly SolanaInstruction[]
       readonly addressLookupTables?: readonly string[]
     }
+  | { readonly kind: 'authority'; readonly change: SolanaAuthorityChangeInput }
+
+/**
+ * A Swig passkey add or remove. `key` is the compressed P-256 key in lowercase
+ * hex; `permission` is present on an add only.
+ */
+export interface SolanaAuthorityChangeInput {
+  readonly action: 'add' | 'remove'
+  readonly key: Hex
+  readonly permission?: 'all' | 'allButManageAuthority'
+}
+
+/** The only sponsorship an authority change is quoted with: gas, spelled out. */
+export const SOLANA_AUTHORITY_SPONSORSHIP = Object.freeze({
+  gas: true,
+  bridgeFees: false,
+  swapFees: false,
+})
 
 export interface SolanaTransferInput {
   readonly chain: SolanaChain
@@ -315,6 +335,15 @@ export function buildSolanaIntentRequest(
   const normalizedAccount: NormalizedIntentInput['account'] = execution
     ? { ...toNormalizedAccount(execution.account), svm: swig }
     : { address: input.walletAddress, svm: swig }
+
+  if (input.action.kind === 'authority') {
+    return buildAuthorityRequest(input, input.action.change, {
+      chainId,
+      caip2,
+      account,
+      normalizedAccount,
+    })
+  }
 
   if (input.action.kind === 'instructions') {
     if (input.appFees || input.protocolFees) {
@@ -525,10 +554,115 @@ export function buildSolanaIntentRequest(
   }
 }
 
+function wireAuthorityChange(
+  change: SolanaAuthorityChangeInput,
+): OrchestratorSwigAuthorityChange {
+  const key = { kind: 'secp256r1', publicKey: change.key } as const
+  return change.action === 'add'
+    ? { action: 'add', key, permission: change.permission! }
+    : { action: 'remove', key }
+}
+
+function buildAuthorityRequest(
+  input: SolanaTransferInput,
+  change: SolanaAuthorityChangeInput,
+  context: {
+    readonly chainId: number
+    readonly caip2: ReturnType<typeof formatCaip2>
+    readonly account: OrchestratorIntentRequest['account']
+    readonly normalizedAccount: NormalizedIntentInput['account']
+  },
+): BuiltSolanaIntentRequest {
+  if (input.appFees || input.protocolFees) {
+    throw new InvalidSolanaTransactionArtifactError(
+      'a Swig authority change carries no value leg to charge fees on',
+    )
+  }
+  if (
+    stable(input.sponsorSettings) !== stable(SOLANA_AUTHORITY_SPONSORSHIP) ||
+    input.accountType !== undefined ||
+    input.accountAddress !== input.walletAddress
+  ) {
+    throw new InvalidSolanaTransactionArtifactError(
+      'a Swig authority change is gas-sponsored and names only the Swig wallet',
+    )
+  }
+  if (
+    !change ||
+    typeof change !== 'object' ||
+    !isCompressedP256PublicKey(change.key) ||
+    !(change.action === 'add'
+      ? change.permission === 'all' ||
+        change.permission === 'allButManageAuthority'
+      : change.action === 'remove' && change.permission === undefined)
+  ) {
+    throw new InvalidSolanaTransactionArtifactError(
+      'a Swig authority change adds a compressed passkey key with a permission, or removes one without',
+    )
+  }
+  const { chainId, caip2 } = context
+  const authority = wireAuthorityChange(change)
+  const sponsorSettings = { ...SOLANA_AUTHORITY_SPONSORSHIP }
+  return {
+    request: {
+      account: context.account,
+      destination: {
+        vm: 'svm',
+        chainId: caip2,
+        tokenRequests: [],
+        execution: { authority },
+      },
+      source: { selection: { chains: { only: [caip2] }, tokens: 'all' } },
+      options: { sponsorship: { ...sponsorSettings } },
+    },
+    normalized: {
+      account: context.normalizedAccount,
+      destinationChainId: chainId,
+      destinationExecutions: [],
+      tokenRequests: [],
+      destinationAuthority: authority,
+      accountAccessList: { chainIds: [chainId] },
+      options: { sponsorSettings },
+    },
+  }
+}
+
 function deliveryKind(input: SolanaTransferInput): SolanaDelivery['kind'] {
-  return input.action.kind === 'instructions'
-    ? 'same-chain'
-    : input.action.delivery.kind
+  return input.action.kind === 'transfer'
+    ? input.action.delivery.kind
+    : 'same-chain'
+}
+
+function isRoleId(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+}
+
+/**
+ * Whether an orchestrator disclosure is the requested change: the same action
+ * and key, the permission on an add only, and a role and rent it sized.
+ */
+function disclosesChange(
+  disclosure: unknown,
+  change: SolanaAuthorityChangeInput,
+): boolean {
+  if (!disclosure || typeof disclosure !== 'object') return false
+  const { action, key, permission, roleId, rent } = disclosure as Record<
+    string,
+    unknown
+  >
+  const named = key as { kind?: unknown; publicKey?: unknown } | undefined
+  const sized = rent as { amount?: unknown; usd?: unknown } | undefined
+  return (
+    action === change.action &&
+    named?.kind === 'secp256r1' &&
+    typeof named.publicKey === 'string' &&
+    named.publicKey.toLowerCase() === change.key &&
+    permission === change.permission &&
+    isRoleId(roleId) &&
+    typeof sized?.amount === 'string' &&
+    /^\d+$/u.test(sized.amount) &&
+    typeof sized.usd === 'number'
+  )
 }
 
 type SolanaSpendPayload = {
@@ -575,13 +709,15 @@ function spendPayload(
   if (!request || (!executing && destinationRequests.length > 0)) {
     refuse('the quote must carry exactly one signing request')
   }
+  const changing = input.action.kind === 'authority'
+  const authorizes = changing ? 'authority change' : 'spend'
   const expected = input.authority
   let signed:
     | { readonly kind: 'personalSign'; readonly message: string }
     | { readonly kind: 'webauthn'; readonly challenge: Hex }
   if (expected.kind === 'secp256r1') {
     if (request!.payload.kind !== 'webauthn') {
-      refuse('the quote must ask for a WebAuthn spend authorization')
+      refuse(`the quote must ask for a WebAuthn ${authorizes} authorization`)
     }
     const { challenge } = request!.payload as Extract<
       SigningRequest['payload'],
@@ -596,7 +732,9 @@ function spendPayload(
       request!.payload.kind !== 'personalSign' ||
       request!.payload.message.encoding !== 'utf8'
     ) {
-      refuse('the quote must ask for a UTF-8 personal-sign spend authorization')
+      refuse(
+        `the quote must ask for a UTF-8 personal-sign ${authorizes} authorization`,
+      )
     }
     const payload = request!.payload as Extract<
       SigningRequest['payload'],
@@ -630,7 +768,38 @@ function spendPayload(
     refuse('the signing request must name the configured Solana authority')
   }
   const scope = request!.scope
-  if (scope.vm !== 'svm' || scope.action !== 'spend') {
+  if (input.action.kind === 'authority') {
+    if (scope.vm !== 'svm' || scope.action !== 'manageAuthority') {
+      refuse('the signing request must authorize a Swig authority change')
+    }
+    if (
+      request!.purpose !== 'originAuthorization' ||
+      authority.kind !== 'swigRole' ||
+      !isRoleId(authority.roleId)
+    ) {
+      refuse(
+        'the signing request must be an origin authorization by a Swig role',
+      )
+    }
+    const managed = scope as Extract<
+      SigningScope,
+      { action: 'manageAuthority' }
+    >
+    const chainId = formatCaip2(solanaChainId(input.chain))
+    if (
+      !Array.isArray(managed.accounts) ||
+      managed.accounts.length !== 1 ||
+      managed.accounts[0]?.chainId !== chainId ||
+      managed.accounts[0]?.address !== input.swigAddress
+    ) {
+      refuse(
+        'the signing scope must name the configured Swig state account on the requested cluster',
+      )
+    }
+    if (!disclosesChange(managed.authority, input.action.change)) {
+      refuse('the signing scope must disclose the requested authority change')
+    }
+  } else if (scope.vm !== 'svm' || scope.action !== 'spend') {
     refuse('the signing request must authorize a Solana spend')
   }
   const slot = request!.validity.find(
@@ -680,8 +849,12 @@ function validateQuote(
   quote: OrchestratorExecutionQuote,
   input: SolanaTransferInput,
 ) {
-  spendPayload(quote, input, deliveryKind(input))
+  const { request } = spendPayload(quote, input, deliveryKind(input))
   const chainId = formatCaip2(solanaChainId(input.chain))
+  if (input.action.kind === 'authority') {
+    validateAuthorityQuote(quote, input, request, chainId)
+    return
+  }
   if (input.action.kind === 'instructions') {
     // The serving route decides how many cost legs an instruction execution
     // has, so only their chain is asserted: anything off the requested cluster
@@ -747,6 +920,94 @@ function validateQuote(
       { intentId: quote.intentId },
     )
   }
+}
+
+/**
+ * An authority change moves no tokens and runs nothing else: the plan is the
+ * one Swig block, run by the state account, disclosing exactly the change the
+ * signing scope authorizes.
+ */
+function validateAuthorityQuote(
+  quote: OrchestratorExecutionQuote,
+  input: SolanaTransferInput,
+  request: SigningRequest,
+  chainId: string,
+) {
+  const refuse = (reason: string): never => {
+    throw new InvalidSolanaTransactionArtifactError(reason, {
+      intentId: quote.intentId,
+    })
+  }
+  const { plan } = quote
+  if (
+    plan.source.length !== 0 ||
+    plan.deployments.length !== 0 ||
+    quote.requirements.length !== 0 ||
+    quote.cost.input.length !== 0 ||
+    quote.cost.output.length !== 0 ||
+    quote.bridgeFill !== undefined
+  ) {
+    refuse(
+      'a Swig authority change quote must source, deploy, require and move nothing',
+    )
+  }
+  const destination = plan.destination
+  const account = destination.account as {
+    wallet?: unknown
+    swigAccount?: unknown
+    authority?: SwigAuthority
+  }
+  const role = (
+    request.authority as Extract<
+      SigningRequest['authority'],
+      { kind: 'swigRole' }
+    >
+  ).authority
+  const actingAuthority = account.authority
+  if (
+    destination.vm !== 'svm' ||
+    destination.chainId !== chainId ||
+    account.wallet !== input.walletAddress ||
+    account.swigAccount !== input.swigAddress ||
+    !actingAuthority ||
+    stable(lowercaseAuthority(actingAuthority)) !==
+      stable(lowercaseAuthority(role))
+  ) {
+    refuse(
+      'the quote plan must name the configured Swig wallet, state account and authority on the requested cluster',
+    )
+  }
+  const execution = destination.execution as
+    | {
+        executedBy?: { kind?: unknown; address?: unknown }
+        authority?: unknown
+      }
+    | undefined
+  const scope = request.scope as Extract<
+    SigningScope,
+    { action: 'manageAuthority' }
+  >
+  if (
+    execution?.executedBy?.kind !== 'account' ||
+    execution.executedBy.address !== input.swigAddress ||
+    stable(execution.authority) !== stable(scope.authority)
+  ) {
+    refuse(
+      'the quote plan must disclose the signed authority change, run by the Swig state account',
+    )
+  }
+}
+
+function lowercaseAuthority(authority: SwigAuthority): SwigAuthority {
+  return authority.kind === 'secp256r1'
+    ? {
+        kind: 'secp256r1',
+        publicKey: authority.publicKey.toLowerCase() as Hex,
+      }
+    : {
+        kind: 'secp256k1',
+        address: authority.address.toLowerCase() as Address,
+      }
 }
 
 export async function prepareSolanaIntent(
@@ -1027,32 +1288,6 @@ export function validateSolanaWebAuthnAssertion(
   ) {
     refuse('the passkey assertion does not sign the requested challenge')
   }
-}
-
-/**
- * SEC1-compresses a P-256 public key: the 64-byte x‖y a viem WebAuthn
- * credential carries, or a 65-byte `0x04`-prefixed key. A 33-byte compressed
- * key is returned unchanged. Only the shape is checked, not that the point lies
- * on the curve.
- */
-export function compressP256PublicKey(publicKey: Hex): Hex {
-  const bytes = hexToBytes(publicKey)
-  if (bytes.length === 33 && (bytes[0] === 2 || bytes[0] === 3)) {
-    return publicKey
-  }
-  const point =
-    bytes.length === 64
-      ? bytes
-      : bytes.length === 65 && bytes[0] === 4
-        ? bytes.subarray(1)
-        : undefined
-  if (!point) {
-    throw new InvalidSolanaTransactionArtifactError(
-      'the passkey public key must be a 64-byte x‖y, 65-byte uncompressed or 33-byte compressed P-256 key',
-    )
-  }
-  const prefix = point[63]! % 2 === 0 ? 0x02 : 0x03
-  return bytesToHex(new Uint8Array([prefix, ...point.subarray(0, 32)]))
 }
 
 export async function submitSolanaIntent(

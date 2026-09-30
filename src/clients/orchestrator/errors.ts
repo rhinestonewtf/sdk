@@ -143,6 +143,78 @@ class SolanaAccountNotCreatedError extends ValidationError {
   }
 }
 
+const SOLANA_AUTHORITY_CHANGE_REFUSAL_REASONS = [
+  'acting_permission',
+  'authority_exists',
+  'authority_not_found',
+  'authority_ambiguous',
+  'root_role',
+  'unsupported_authority',
+  'lockout',
+] as const
+
+/**
+ * Why the orchestrator refused a Swig authority change:
+ *
+ * - `acting_permission` — the configured owner's role holds neither `All` nor
+ *   `ManageAuthority`, so it cannot manage authorities.
+ * - `authority_exists` — the passkey to add is already on the Swig, on
+ *   `roleId`, with `permission` when readable.
+ * - `authority_not_found` — no role carries the passkey to remove.
+ * - `authority_ambiguous` — several roles (`roleIds`) carry the passkey to
+ *   remove.
+ * - `root_role` — the passkey to remove is the root role, which is permanent.
+ * - `unsupported_authority` — the passkey to remove sits on a role that is not
+ *   a plain passkey role.
+ * - `lockout` — the removal would leave no signable role holding `All` or
+ *   `ManageAuthority`.
+ */
+type SolanaAuthorityChangeRefusalReason =
+  (typeof SOLANA_AUTHORITY_CHANGE_REFUSAL_REASONS)[number]
+
+/**
+ * The orchestrator refused a Swig passkey add or remove against the Swig's
+ * current roles. Nothing was signed or submitted.
+ *
+ * After an uncertain outcome (a failed wait, a network error on submit),
+ * prepare the same change again and read the refusal as the answer: an add
+ * refused with `authority_exists` and the same `permission` already landed,
+ * while a different or absent `permission` is a conflict to resolve; a remove
+ * refused with `authority_not_found` already landed.
+ *
+ * `reason` is absent when the orchestrator sent a reason this SDK version does
+ * not know; the raw context stays readable on `issues[].context`.
+ */
+class SolanaAuthorityChangeRefusedError extends ValidationError {
+  readonly reason?: SolanaAuthorityChangeRefusalReason
+  /** The Swig state account the change targeted. */
+  readonly swigAddress?: string
+  /** The role the refusal names: the existing, acting or target role. */
+  readonly roleId?: number
+  /** Every role carrying the key, on `authority_ambiguous`. */
+  readonly roleIds?: number[]
+  /** The existing role's permission, on `authority_exists` when readable. */
+  readonly permission?: 'all' | 'allButManageAuthority'
+
+  constructor(
+    params: BaseErrorParams & {
+      issues?: ValidationIssue[]
+      reason?: SolanaAuthorityChangeRefusalReason
+      swigAddress?: string
+      roleId?: number
+      roleIds?: number[]
+      permission?: 'all' | 'allButManageAuthority'
+    },
+  ) {
+    super(params)
+    if (params.reason !== undefined) this.reason = params.reason
+    if (params.swigAddress !== undefined) this.swigAddress = params.swigAddress
+    if (params.roleId !== undefined) this.roleId = params.roleId
+    if (params.roleIds !== undefined) this.roleIds = params.roleIds
+    if (params.permission !== undefined) this.permission = params.permission
+  }
+}
+
 class InsufficientLiquidityError extends OrchestratorError {
   readonly availableIntents: Record<string, bigint>[]
   readonly unfillable: Record<string, bigint>
@@ -655,6 +727,45 @@ function parseSolanaAccountNotCreatedError(
   })
 }
 
+function roleIdValue(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : undefined
+}
+
+function parseSolanaAuthorityChangeRefusedError(
+  base: BaseErrorParams,
+  issues: ValidationIssue[],
+): SolanaAuthorityChangeRefusedError | undefined {
+  const context = issues.find(
+    (issue) => issue.context?.code === 'SWIG_AUTHORITY_CHANGE_REFUSED',
+  )?.context
+  if (!context) {
+    return undefined
+  }
+  const reason = oneOf(context.reason, SOLANA_AUTHORITY_CHANGE_REFUSAL_REASONS)
+  const swigAddress = stringValue(context.swig)
+  const roleId = roleIdValue(context.roleId)
+  const roleIds = Array.isArray(context.roleIds)
+    ? context.roleIds.map(roleIdValue)
+    : undefined
+  const permission = oneOf(context.permission, [
+    'all',
+    'allButManageAuthority',
+  ] as const)
+  return new SolanaAuthorityChangeRefusedError({
+    ...base,
+    issues,
+    ...(reason === undefined ? {} : { reason }),
+    ...(swigAddress ? { swigAddress } : {}),
+    ...(roleId === undefined ? {} : { roleId }),
+    ...(roleIds?.every((id) => id !== undefined)
+      ? { roleIds: roleIds as number[] }
+      : {}),
+    ...(permission === undefined ? {} : { permission }),
+  })
+}
+
 // `ACCOUNT_ALREADY_DEPLOYED` is shared with EVM setup-only intents; only a
 // refusal naming a Swig is the Solana one.
 function parseSolanaAccountAlreadyCreatedError(
@@ -696,6 +807,7 @@ function parseErrorEnvelope(
     case 'VALIDATION_ERROR': {
       const issues = parseErrorDetails(envelope.details)
       return (
+        parseSolanaAuthorityChangeRefusedError(base, issues) ??
         parseSolanaAccountNotCreatedError(base, issues) ??
         new ValidationError({ ...base, issues })
       )
@@ -786,6 +898,13 @@ function isSolanaAccountNotCreated(
   error: unknown,
 ): error is SolanaAccountNotCreatedError {
   return error instanceof SolanaAccountNotCreatedError
+}
+
+/** Whether `error` is the orchestrator refusing a Swig passkey add or remove. */
+function isSolanaAuthorityChangeRefused(
+  error: unknown,
+): error is SolanaAuthorityChangeRefusedError {
+  return error instanceof SolanaAuthorityChangeRefusedError
 }
 
 function isSolanaAccountAlreadyCreated(
@@ -913,6 +1032,7 @@ export type {
   SimulationFailureDetails,
   SimulationFailureSimulation,
   SimulationRetryHint,
+  SolanaAuthorityChangeRefusalReason,
   SponsorLimitKey,
   ValidationIssue,
 }
@@ -925,6 +1045,7 @@ export {
   isValidationError,
   isSolanaAccountNotCreated,
   isSolanaAccountAlreadyCreated,
+  isSolanaAuthorityChangeRefused,
   isRateLimited,
   isSimulationFailed,
   isSponsorLimitExceeded,
@@ -934,6 +1055,7 @@ export {
   ValidationError,
   SolanaAccountNotCreatedError,
   SolanaAccountAlreadyCreatedError,
+  SolanaAuthorityChangeRefusedError,
   InsufficientLiquidityError,
   SponsorLimitExceededError,
   InsufficientSponsorBalanceError,

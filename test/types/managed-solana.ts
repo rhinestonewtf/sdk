@@ -5,8 +5,10 @@ import {
   InvalidSolanaTransactionArtifactError,
   isInvalidSolanaTransactionArtifactError,
   isSolanaAccountNotCreated,
+  isSolanaAuthorityChangeRefused,
   isSolanaQuoteExpiredError,
   type SolanaAccountNotCreatedError,
+  type SolanaAuthorityChangeRefusalReason,
   SolanaQuoteExpiredError,
 } from '../../src/errors/index'
 import {
@@ -16,13 +18,20 @@ import {
   type Transaction,
 } from '../../src/index'
 import {
+  addPasskey,
   type CrossChainSolanaOriginTransaction,
   createSolanaSwigId,
+  removePasskey,
+  type SameChainSolanaAuthorityTransaction,
   type SameChainSolanaInstructionsTransaction,
   type SameChainSolanaTransaction,
+  type SolanaAuthorityChange,
+  type SolanaAuthorityDisclosure,
+  type SolanaAuthorityExecutionMetadata,
   type SolanaCrossChainExecutionMetadata,
   type SolanaExecutionMetadata,
   type SolanaInstructionsExecutionMetadata,
+  type SolanaPasskeyPermission,
   type SolanaSourceAsset,
   type SolanaStandaloneAccount,
   type SolanaStandaloneAccountConfig,
@@ -314,6 +323,11 @@ async function standaloneCapabilitySurface() {
   account.deploy('solana', solanaDevnet, { sponsored: false })
   // @ts-expect-error the VM is named first
   account.deploy(solanaDevnet, { swigId: minted.id })
+  account.prepareTransaction(authorityTransaction)
+  account.prepareTransaction({
+    chain: solanaDevnet,
+    authority: removePasskey(passkeyKey),
+  })
 
   const handle: SolanaStandaloneAccount<{ solana: typeof standaloneConfig }> =
     account
@@ -373,6 +387,7 @@ async function compositeCapabilitySurface() {
   const solanaAddressValue: typeof recipient = account.getAddress('solana')
   account.prepareTransaction(solanaTransaction)
   account.prepareTransaction(instructionTransaction)
+  account.prepareTransaction(authorityTransaction)
   account.prepareTransaction(deliveryFromSolana)
   account.prepareTransaction(maxOutFromSolana)
   account.prepareTransaction(deliveryFromSolanaWithCalls)
@@ -565,6 +580,119 @@ const forbiddenDeliveryLookupTables: Transaction = {
   addressLookupTables: [mint],
 }
 
+// A Swig passkey add or remove, built from a WebAuthn key or any P-256 encoding.
+const passkeyKey = `0x02${'11'.repeat(32)}` as Hex
+const permission: SolanaPasskeyPermission = 'allButManageAuthority'
+const authorityTransaction = {
+  chain: solanaDevnet,
+  authority: addPasskey(passkeyKey, { permission }),
+} satisfies SameChainSolanaAuthorityTransaction
+const literalAuthority = {
+  chain: solanaDevnet,
+  authority: {
+    action: 'remove',
+    key: { type: 'passkey', publicKey: passkeyKey },
+  },
+} satisfies SameChainSolanaAuthorityTransaction
+const addChange: SolanaAuthorityChange = addPasskey(passkeyKey, {
+  permission: 'all',
+})
+// @ts-expect-error adding a passkey requires a permission
+addPasskey(passkeyKey)
+// @ts-expect-error nor takes any other permission
+addPasskey(passkeyKey, { permission: 'manageAuthority' })
+// @ts-expect-error removing a passkey takes no permission
+removePasskey(passkeyKey, { permission: 'all' })
+const forbiddenRemovePermission = {
+  chain: solanaDevnet,
+  authority: {
+    action: 'remove',
+    key: { type: 'passkey', publicKey: passkeyKey },
+    // @ts-expect-error a removal carries no permission
+    permission: 'all',
+  },
+} satisfies SameChainSolanaAuthorityTransaction
+const forbiddenAuthorityInstructions = {
+  ...authorityTransaction,
+  // @ts-expect-error an authority change runs no caller instructions
+  instructions: [jupiterInstruction],
+} satisfies SameChainSolanaAuthorityTransaction
+const forbiddenInstructionAuthority = {
+  ...instructionTransaction,
+  // @ts-expect-error nor does an instruction execution change authorities
+  authority: addChange,
+} satisfies SameChainSolanaInstructionsTransaction
+const forbiddenTransferAuthority = {
+  ...solanaTransaction,
+  // @ts-expect-error nor does a transfer
+  authority: addChange,
+} satisfies SameChainSolanaTransaction
+const forbiddenAuthorityTokens = {
+  ...authorityTransaction,
+  // @ts-expect-error an authority change is tokenless
+  tokenRequests: [{ address: mint, amount: 1n }],
+} satisfies SameChainSolanaAuthorityTransaction
+const forbiddenAuthoritySponsorship = {
+  ...authorityTransaction,
+  // @ts-expect-error an authority change is always sponsored
+  sponsored: false,
+} satisfies SameChainSolanaAuthorityTransaction
+
+const authorityMetadata: SolanaAuthorityExecutionMetadata = {
+  kind: 'solana-authority',
+  namespace: 'dev-v1',
+  endpoint: 'https://orchestrator.example',
+  chain: 792703810,
+  caip2: solanaDevnet.caip2,
+  accountAddress: recipient,
+  authority: owner.address,
+  swigAddress: recipient,
+  walletAddress: recipient,
+  action: 'remove',
+  key: passkeyKey,
+}
+
+declare const preparedExecution: NonNullable<
+  Awaited<
+    ReturnType<SolanaStandaloneAccount['prepareTransaction']>
+  >['execution']
+>
+if (preparedExecution.kind === 'solana-authority') {
+  const changed: 'add' | 'remove' = preparedExecution.action
+  const key: Hex = preparedExecution.key
+  void changed
+  void key
+}
+
+declare const disclosure: SolanaAuthorityDisclosure
+const rentLamports: string = disclosure.rent.amount
+const addedRole: number = disclosure.roleId
+if (solanaSpendRequest.scope.action === 'spend') {
+  void solanaSpendRequest.scope.addressLookupTables
+}
+declare const anyRequest: SigningRequest
+if (
+  anyRequest.scope.vm === 'svm' &&
+  anyRequest.scope.action === 'manageAuthority'
+) {
+  const signed: SolanaAuthorityDisclosure = anyRequest.scope.authority
+  void signed
+}
+
+declare const refusal: unknown
+if (isSolanaAuthorityChangeRefused(refusal)) {
+  const reason: SolanaAuthorityChangeRefusalReason | undefined = refusal.reason
+  const roleId: number | undefined = refusal.roleId
+  const roleIds: number[] | undefined = refusal.roleIds
+  const existing: SolanaPasskeyPermission | undefined = refusal.permission
+  const swigAddress: string | undefined = refusal.swigAddress
+  void reason
+  void roleId
+  void roleIds
+  void existing
+  void swigAddress
+}
+
 const executionError: Error = new InvalidSolanaTransactionArtifactError(
   'fixture',
 )
@@ -580,6 +708,16 @@ type WaitedStatus = Awaited<
 const deploymentPurpose: WaitedStatus['purpose'] = 'deployment'
 
 void compositeCapabilitySurface
+void literalAuthority
+void forbiddenRemovePermission
+void forbiddenAuthorityInstructions
+void forbiddenInstructionAuthority
+void forbiddenTransferAuthority
+void forbiddenAuthorityTokens
+void forbiddenAuthoritySponsorship
+void authorityMetadata
+void rentLamports
+void addedRole
 void standaloneCapabilitySurface
 void standaloneMetadata
 void solanaSigningRequests

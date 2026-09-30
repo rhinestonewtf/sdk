@@ -141,6 +141,7 @@ const swig = locateSwigById(hexToBytes(SWIG_ID))
 const MINT = solanaAddress('4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU')
 const SOLANA_RECIPIENT = solanaAddress('11111111111111111111111111111112')
 const PASSKEY = `0x02${'3c'.repeat(32)}` as const
+const ADDED_PASSKEY = `0x03${'4d'.repeat(32)}` as const
 const k1 = { kind: 'secp256k1', address: owner.address } as const
 const r1 = { kind: 'secp256r1', publicKey: PASSKEY } as const
 const sponsorSettings = { gas: true, bridgeFees: false, swapFees: false }
@@ -262,6 +263,45 @@ function solanaCases(): DerivedVector[] {
                 },
               },
             },
+          },
+        }),
+      ),
+    ),
+    fromBuilder(
+      'solana-authority-add',
+      buildSolanaIntentRequest(
+        transfer({
+          action: {
+            kind: 'authority',
+            change: {
+              action: 'add',
+              key: ADDED_PASSKEY,
+              permission: 'allButManageAuthority',
+            },
+          },
+        }),
+      ),
+    ),
+    fromBuilder(
+      'solana-authority-add-passkey-owner',
+      buildSolanaIntentRequest(
+        transfer({
+          authority: r1,
+          action: {
+            kind: 'authority',
+            change: { action: 'add', key: ADDED_PASSKEY, permission: 'all' },
+          },
+        }),
+      ),
+    ),
+    fromBuilder(
+      'solana-authority-remove',
+      buildSolanaIntentRequest(
+        transfer({
+          authority: r1,
+          action: {
+            kind: 'authority',
+            change: { action: 'remove', key: ADDED_PASSKEY },
           },
         }),
       ),

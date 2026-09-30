@@ -108,6 +108,12 @@ Rules for each VM:
   - `recipient { address }` is copied as is.
   - `execution.instructions` becomes `destinationInstructions`.
   - `execution.addressLookupTables` becomes `addressLookupTableAddresses`.
+  - `execution.authority` becomes `destinationAuthority`, verbatim. When
+    present it must be the only key in `execution`. An add holds exactly
+    `action`, `key` and `permission` (`'all'` or `'allButManageAuthority'`),
+    and a remove exactly `action` and `key`. `key` holds exactly
+    `kind: 'secp256r1'` and a string `publicKey`. Anything else is refused at
+    the offending field, including `authority` beside `instructions`.
 - **`tvm` and `stellar`**
   - `recipient { address }` is required and copied as is.
   - Any `execution` is refused.
@@ -192,6 +198,9 @@ These change only the unreleased Solana input:
   and the input agree.
 - A paired Solana → EVM execution spells its executor with the EVM account
   entry's projection: the `accountType` comes from `evm.type`.
+- A Swig authority change carries `destinationAuthority` and an access list of
+  `{ chainIds: [cluster] }`. Like a creation, it spells out
+  `sponsorship: { gas: true, bridgeFees: false, swapFees: false }`.
 
 ## Vectors
 

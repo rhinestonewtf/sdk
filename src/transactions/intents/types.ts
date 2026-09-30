@@ -251,6 +251,30 @@ export interface SolanaInstructionsExecutionMetadata {
   walletAddress: SolanaAddress
 }
 
+/**
+ * Binds a prepared Swig passkey add or remove to the account that prepared it,
+ * and to the exact change: action, key and, on an add, permission.
+ */
+export interface SolanaAuthorityExecutionMetadata {
+  kind: 'solana-authority'
+  /** The Swig namespace of the environment the account was created in. */
+  namespace: 'dev-v1' | 'prod-v1'
+  endpoint: string
+  chain: number
+  caip2: string
+  /** Always the Swig wallet; an authority change never runs through EVM. */
+  accountAddress: Address | SolanaAddress
+  /** The owner's address for an ECDSA owner; its compressed P-256 key for a passkey. */
+  authority: Address | Hex
+  swigAddress: SolanaAddress
+  walletAddress: SolanaAddress
+  action: 'add' | 'remove'
+  /** The compressed P-256 key added or removed, lowercase hex. */
+  key: Hex
+  /** The added role's permission. Absent on a removal. */
+  permission?: 'all' | 'allButManageAuthority'
+}
+
 export interface PreparedTransactionData {
   quotes: PreparedQuotes
   /**
@@ -261,6 +285,7 @@ export interface PreparedTransactionData {
     | SolanaExecutionMetadata
     | SolanaCrossChainExecutionMetadata
     | SolanaInstructionsExecutionMetadata
+    | SolanaAuthorityExecutionMetadata
   /** Canonical serialized intent input; the shape a sponsorship digest covers. */
   // Deliberately narrowed from the `unknown` this field used to carry. Prepared
   // data produced by `prepareTransaction` and passed straight back to

@@ -1368,6 +1368,7 @@ interface SameChainSolanaTransaction {
   calls?: never
   instructions?: never
   addressLookupTables?: never
+  authority?: never
   sourceCalls?: never
   signers?: never
   gasLimit?: never
@@ -1431,6 +1432,7 @@ interface CrossChainSolanaOriginTransaction {
   chain?: never
   instructions?: never
   addressLookupTables?: never
+  authority?: never
   sourceCalls?: never
   signers?: never
   customDeadline?: never
@@ -1478,6 +1480,81 @@ interface SameChainSolanaInstructionsTransaction {
   sponsored?: Sponsorship
   tokenRequests?: never
   recipient?: never
+  authority?: never
+  appFees?: never
+  protocolFees?: never
+  targetChain?: never
+  sourceChains?: never
+  calls?: never
+  sourceCalls?: never
+  sourceAssets?: never
+  signers?: never
+  gasLimit?: never
+  customDeadline?: never
+  eip7702InitSignature?: never
+  settlementLayers?: never
+  quoters?: never
+  auxiliaryFunds?: never
+  hyperCore?: never
+  experimental_accountOverride?: never
+}
+
+/**
+ * What a Swig passkey role may do:
+ *
+ * - `all` — every action, including adding and removing the Swig's non-root
+ *   authorities.
+ * - `allButManageAuthority` — spend and run instructions, but never add or
+ *   remove an authority.
+ */
+type SolanaPasskeyPermission = 'all' | 'allButManageAuthority'
+
+/**
+ * A passkey on a Swig, named by its SEC1-compressed P-256 public key (33 bytes,
+ * lowercase hex). `addPasskey` and `removePasskey` build it from a viem
+ * WebAuthn account or any P-256 key encoding.
+ */
+interface SolanaAuthorityKey {
+  type: 'passkey'
+  publicKey: Hex
+}
+
+/**
+ * A change to a managed Solana account's Swig authorities: add a passkey with a
+ * permission, or remove one by its key. Build it with `addPasskey` or
+ * `removePasskey` from `@rhinestone/sdk/solana`.
+ */
+type SolanaAuthorityChange =
+  | {
+      action: 'add'
+      key: SolanaAuthorityKey
+      permission: SolanaPasskeyPermission
+    }
+  | { action: 'remove'; key: SolanaAuthorityKey; permission?: never }
+
+/**
+ * Adds or removes a passkey on a managed Solana account's Swig, on the cluster
+ * the Swig lives on. One change per transaction.
+ *
+ * The configured owner signs the change, and must sit on a role holding `All`
+ * or `ManageAuthority`. The change is always gas-sponsored and billed to the
+ * integrator's sponsorship, like `deploy('solana', …)`; the sponsor also funds
+ * the rent a new role locks.
+ *
+ * The orchestrator refuses a change the Swig's current roles do not allow —
+ * adding a key already present, removing a missing key, the root role, or the
+ * last role able to manage authorities — with
+ * `SolanaAuthorityChangeRefusedError` from `@rhinestone/sdk/errors`.
+ */
+interface SameChainSolanaAuthorityTransaction {
+  chain: SolanaChain
+  /** The change to make, from `addPasskey` or `removePasskey`. */
+  authority: SolanaAuthorityChange
+  sponsored?: never
+  tokenRequests?: never
+  recipient?: never
+  instructions?: never
+  addressLookupTables?: never
   appFees?: never
   protocolFees?: never
   targetChain?: never
@@ -1512,6 +1589,7 @@ type Transaction =
   | SameChainTransaction
   | SameChainSolanaTransaction
   | SameChainSolanaInstructionsTransaction
+  | SameChainSolanaAuthorityTransaction
   | CrossChainSolanaOriginTransaction
   | CrossChainTransaction
 
@@ -1552,6 +1630,7 @@ type ManagedSolanaTransactions<C extends RhinestoneAccountConfig> = [
     ?
         | SameChainSolanaTransaction
         | SameChainSolanaInstructionsTransaction
+        | SameChainSolanaAuthorityTransaction
         | SolanaDeliveryFor<C>
     : never
 
@@ -1632,8 +1711,11 @@ export type {
   SessionSigningContent,
   SignerSet,
   SolanaAccountConfig,
+  SolanaAuthorityChange,
+  SolanaAuthorityKey,
   SolanaManagedAccountConfig,
   SolanaOwner,
+  SolanaPasskeyPermission,
   SolanaReceiverAccountConfig,
   SolanaSourceAsset,
   SolanaStandaloneAccountConfig,
@@ -1652,6 +1734,7 @@ export type {
   ToLeg,
   CrossChainSolanaOriginTransaction,
   CrossChainSolanaTransaction,
+  SameChainSolanaAuthorityTransaction,
   SameChainSolanaInstructionsTransaction,
   SameChainSolanaTransaction,
   Transaction,

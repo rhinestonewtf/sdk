@@ -489,6 +489,8 @@ interface IntentInput {
   destinationInstructions?: SolanaWireInstruction[]
   /** Address lookup tables the `destinationInstructions` resolve accounts through, base58. */
   addressLookupTableAddresses?: string[]
+  /** The Swig authority change a Solana destination makes, as the request sends it. */
+  destinationAuthority?: SolanaAuthorityChangeRequest
   accountAccessList?: AccountAccessList
   options: IntentOptions
   preClaimExecutions?: Record<number, Execution[]>
@@ -591,6 +593,44 @@ type SigningAuthority =
       authority: SwigAuthority
     }
 
+/** A passkey a Swig authority change adds or removes, as the orchestrator names it. */
+interface SolanaAuthorityKeyView {
+  kind: 'secp256r1'
+  /** SEC1-compressed P-256 public key, 33 bytes of hex. */
+  publicKey: Hex
+}
+
+/**
+ * A Swig authority change as a quote request carries it: add a passkey with a
+ * permission, or remove one by its key.
+ */
+type SolanaAuthorityChangeRequest =
+  | {
+      action: 'add'
+      key: SolanaAuthorityKeyView
+      permission: 'all' | 'allButManageAuthority'
+    }
+  | { action: 'remove'; key: SolanaAuthorityKeyView }
+
+/**
+ * A Swig authority change as the quote sized it and the intent read reports it.
+ * The signing scope and the plan disclose the same object.
+ */
+interface SolanaAuthorityDisclosure {
+  action: 'add' | 'remove'
+  key: SolanaAuthorityKeyView
+  /** The added passkey's permission. Absent on a removal. */
+  permission?: 'all' | 'allButManageAuthority'
+  /** The role id the added passkey gets, or the id of the role removed. */
+  roleId: number
+  /**
+   * Rent for the role: locked in the Swig state account on an add (the sponsor
+   * funds it), returned to the Swig wallet on a removal. `amount` is lamports,
+   * as a decimal string.
+   */
+  rent: { amount: string; usd: number }
+}
+
 /** One HyperCore agent registration a signing request authorizes. */
 type HyperCoreRegistrationScope = {
   action?: HyperCoreAction
@@ -626,6 +666,21 @@ type SigningScope =
        */
       instructions: SolanaWireInstruction[]
       addressLookupTables: string[]
+      feePayer: { kind: 'role'; role: 'relayer' }
+      slotWindow: { from: string; to: string }
+    }
+  | {
+      vm: 'svm'
+      action: 'manageAuthority'
+      /** The Swig state account whose authorities change, on its chain. */
+      accounts: { chainId: Caip2ChainId; address: string }[]
+      /** The change the signature authorizes, exactly as the plan discloses it. */
+      authority: SolanaAuthorityDisclosure
+      /**
+       * The sealed instructions the signature authorizes: a passkey signer's
+       * secp256r1 precompile, then the Swig add or remove instruction.
+       */
+      instructions: SolanaWireInstruction[]
       feePayer: { kind: 'role'; role: 'relayer' }
       slotWindow: { from: string; to: string }
     }
@@ -784,6 +839,14 @@ type PlanExecution =
       executedBy: { kind: 'account' | 'solver'; address: string }
       instructions: SolanaWireInstruction[]
       addressLookupTables: string[]
+    }
+  | {
+      vm: 'svm'
+      chainId: Caip2ChainId
+      /** The Swig state account, which runs the change. Disclosed on the quote plan only. */
+      executedBy?: { kind: 'account'; address: string }
+      /** A change to the Swig's own authorities. */
+      authority: SolanaAuthorityDisclosure
     }
   | {
       vm: 'hypercore'
@@ -1148,6 +1211,9 @@ export type {
   SigningRequestPurpose,
   SigningAuthority,
   SwigAuthority,
+  SolanaAuthorityChangeRequest,
+  SolanaAuthorityDisclosure,
+  SolanaAuthorityKeyView,
   SigningScope,
   SigningValidity,
   SigningPayload,

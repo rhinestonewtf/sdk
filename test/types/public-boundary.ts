@@ -375,6 +375,14 @@ async function crossVmAccountSurface() {
   })
   // @ts-expect-error receiver-only accounts cannot prepare transactions
   receiver.prepareTransaction({})
+  // @ts-expect-error nor change a Swig's authorities
+  receiver.prepareTransaction({
+    chain: solanaMainnet,
+    authority: {
+      action: 'remove',
+      key: { type: 'passkey', publicKey: `0x02${'11'.repeat(32)}` },
+    },
+  })
   // @ts-expect-error EVM is not configured
   receiver.getAddress('evm')
   // @ts-expect-error VM selection is required

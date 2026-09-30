@@ -5,11 +5,13 @@ import {
   isInsufficientSponsorBalance,
   isSolanaAccountAlreadyCreated,
   isSolanaAccountNotCreated,
+  isSolanaAuthorityChangeRefused,
   isSponsorError,
   isSponsorLimitExceeded,
   parseErrorEnvelope,
   SolanaAccountAlreadyCreatedError,
   SolanaAccountNotCreatedError,
+  SolanaAuthorityChangeRefusedError,
   SponsorLimitExceededError,
   UnprocessableContentError,
   ValidationError,
@@ -487,6 +489,117 @@ describe('parseErrorEnvelope sponsor errors', () => {
     expect((error as UnprocessableContentError).details[0]?.context).toEqual({
       code: 'UNSUPPORTED_SPONSOR_SETTINGS',
       unsupportedCategories: ['swapFees', 'bridgeFees'],
+    })
+  })
+})
+
+describe('parseErrorEnvelope Swig authority change refusals', () => {
+  const swig = '9fTE4gQnweN345EGzy6jnXNFW8VryvZ8QwLZqgBubmMs'
+
+  function refusal(context: Record<string, unknown>) {
+    return parseErrorEnvelope(
+      {
+        code: 'VALIDATION_ERROR',
+        message: `Swig ${swig} refused the change`,
+        traceId: 'trace-authority',
+        details: [
+          {
+            message: `Swig ${swig} refused the change`,
+            context: {
+              ...context,
+              domain: 'strategy-gate',
+              code: 'SWIG_AUTHORITY_CHANGE_REFUSED',
+            },
+          },
+        ],
+      },
+      400,
+    )
+  }
+
+  test.each([
+    [{ reason: 'acting_permission', roleId: 1 }, { roleId: 1 }],
+    [
+      { reason: 'authority_exists', roleId: 3, permission: 'all' },
+      { roleId: 3, permission: 'all' },
+    ],
+    [{ reason: 'authority_exists', roleId: 3 }, { roleId: 3 }],
+    [{ reason: 'authority_not_found' }, {}],
+    [{ reason: 'authority_ambiguous', roleIds: [2, 4] }, { roleIds: [2, 4] }],
+    [{ reason: 'root_role', roleId: 0 }, { roleId: 0 }],
+    [{ reason: 'unsupported_authority', roleId: 5 }, { roleId: 5 }],
+    [{ reason: 'lockout', roleId: 1 }, { roleId: 1 }],
+  ])('types %o', (context, fields) => {
+    const error = refusal({ swig, ...context })
+    expect(error).toBeInstanceOf(SolanaAuthorityChangeRefusedError)
+    expect(error).toBeInstanceOf(ValidationError)
+    expect(isSolanaAuthorityChangeRefused(error)).toBe(true)
+    expect(error.code).toBe('VALIDATION_ERROR')
+    expect(error.statusCode).toBe(400)
+    const refused = error as SolanaAuthorityChangeRefusedError
+    expect({
+      reason: refused.reason,
+      swigAddress: refused.swigAddress,
+      roleId: refused.roleId,
+      roleIds: refused.roleIds,
+      permission: refused.permission,
+    }).toEqual({
+      reason: context.reason,
+      swigAddress: swig,
+      roleId: undefined,
+      roleIds: undefined,
+      permission: undefined,
+      ...fields,
+    })
+    expect(refused.issues[0]?.context).toMatchObject({ swig, ...context })
+  })
+
+  test('keeps the error identity for a reason this SDK does not know', () => {
+    const error = refusal({ swig, reason: 'future_reason' })
+    expect(isSolanaAuthorityChangeRefused(error)).toBe(true)
+    expect((error as SolanaAuthorityChangeRefusedError).reason).toBeUndefined()
+    expect(
+      (error as SolanaAuthorityChangeRefusedError).issues[0]?.context?.reason,
+    ).toBe('future_reason')
+  })
+
+  test('drops malformed context values', () => {
+    const error = refusal({
+      swig: 42,
+      reason: 'authority_exists',
+      roleId: -1,
+      roleIds: [1, 'two'],
+      permission: 'manageAuthority',
+    }) as SolanaAuthorityChangeRefusedError
+    expect(isSolanaAuthorityChangeRefused(error)).toBe(true)
+    expect(error.reason).toBe('authority_exists')
+    expect(error.swigAddress).toBeUndefined()
+    expect(error.roleId).toBeUndefined()
+    expect(error.roleIds).toBeUndefined()
+    expect(error.permission).toBeUndefined()
+  })
+
+  test.each([
+    ['SWIG_ROLE_CHANGED', { reason: 'target_changed' }],
+    ['SWIG_ROLE_CHANGED', { reason: 'state_changed' }],
+    ['SOLANA_SIMULATION_FAILED', {}],
+    ['SIGNATURE_INVALID', {}],
+    ['UNSUPPORTED_ACCOUNT_TYPE', { reason: 'role_not_found' }],
+  ])('leaves %s %o a readable validation error', (code, context) => {
+    const error = parseErrorEnvelope(
+      {
+        code: 'VALIDATION_ERROR',
+        message: 'refused',
+        traceId: 'trace',
+        details: [{ message: 'refused', context: { code, ...context } }],
+      },
+      400,
+    )
+    expect(error).toBeInstanceOf(ValidationError)
+    expect(isSolanaAuthorityChangeRefused(error)).toBe(false)
+    expect((error as ValidationError).issues[0]?.context).toEqual({
+      code,
+      ...context,
     })
   })
 })

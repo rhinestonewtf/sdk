@@ -219,6 +219,34 @@ function swigAuthority(value: Json | undefined, field: string): void {
   }
 }
 
+/**
+ * A Swig authority change, verbatim once validated: the grant binds the exact
+ * mutation (action, key and permission) under `destinationAuthority`.
+ */
+function swigAuthorityChange(
+  value: Json | undefined,
+  field: string,
+): JsonObject {
+  if (!isObject(value)) unsupported(field)
+  const change =
+    value.action === 'add'
+      ? object(value, field, ['action', 'key', 'permission'])
+      : value.action === 'remove'
+        ? object(value, field, ['action', 'key'])
+        : unsupported(`${field}.action`)
+  const key = object(change.key, `${field}.key`, ['kind', 'publicKey'])
+  if (key.kind !== 'secp256r1') unsupported(`${field}.key.kind`)
+  string(key.publicKey, `${field}.key.publicKey`)
+  if (
+    change.action === 'add' &&
+    change.permission !== 'all' &&
+    change.permission !== 'allButManageAuthority'
+  ) {
+    unsupported(`${field}.permission`)
+  }
+  return change
+}
+
 interface ProjectedDestination {
   readonly fields: JsonObject
   readonly hyperCore?: JsonObject
@@ -298,7 +326,15 @@ function destination(value: Json | undefined): ProjectedDestination {
           'destination.recipient',
         )
       }
-      if (entry.execution !== undefined) {
+      if (isObject(entry.execution) && 'authority' in entry.execution) {
+        const execution = object(entry.execution, 'destination.execution', [
+          'authority',
+        ])
+        fields.destinationAuthority = swigAuthorityChange(
+          execution.authority,
+          'destination.execution.authority',
+        )
+      } else if (entry.execution !== undefined) {
         const execution = object(entry.execution, 'destination.execution', [
           'instructions',
           'addressLookupTables',

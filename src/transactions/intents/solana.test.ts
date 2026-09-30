@@ -11,6 +11,7 @@ import {
   personalSignRequest,
 } from '../../../test/utils/caucasus'
 import { signingPasskey } from '../../../test/utils/passkeys'
+import { compressP256PublicKey } from '../../accounts/solana/passkey'
 import type { SolanaAddress } from '../../chains/non-evm'
 import {
   solanaAddress,
@@ -42,7 +43,6 @@ import type { IntentAccountProjection } from './account'
 import {
   assertSolanaNotExpired,
   buildSolanaIntentRequest,
-  compressP256PublicKey,
   prepareSolanaIntent,
   reconstructSolanaIntent,
   type SolanaAction,

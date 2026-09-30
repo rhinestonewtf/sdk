@@ -3,6 +3,7 @@ import type {
   Account,
   HyperCoreAction,
   SerializedIntentInput,
+  SolanaAuthorityChangeRequest,
   SolanaWireInstruction,
 } from './public'
 import { serializeBigInts } from './serialization'
@@ -82,6 +83,8 @@ export interface NormalizedIntentInput {
   readonly recipient?: NormalizedIntentAccount
   readonly destinationInstructions?: readonly SolanaWireInstruction[]
   readonly addressLookupTableAddresses?: readonly string[]
+  /** The Swig authority change a Solana destination makes, verbatim from the request. */
+  readonly destinationAuthority?: Readonly<SolanaAuthorityChangeRequest>
   readonly accountAccessList?: NormalizedAccessList
   readonly options: NormalizedIntentOptions
   readonly preClaimExecutions?: Readonly<

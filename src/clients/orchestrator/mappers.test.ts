@@ -443,6 +443,34 @@ describe('mapSigningRequestFromWire', () => {
     )
   })
 
+  test('accepts a Swig authority-change scope and refuses an unknown Solana action', () => {
+    const scope = {
+      vm: 'svm',
+      action: 'manageAuthority',
+      accounts: [{ chainId: SOLANA, address: 'Swig111' }],
+      authority: {
+        action: 'add',
+        key: { kind: 'secp256r1', publicKey: `0x02${'11'.repeat(32)}` },
+        permission: 'all',
+        roleId: 2,
+        rent: { amount: '325120', usd: 0.05 },
+      },
+      instructions: [],
+      feePayer: { kind: 'role', role: 'relayer' },
+      slotWindow: { from: '1', to: '2' },
+    }
+    const payload = { kind: 'webauthn', challenge: '0xaa' }
+    expect(
+      mapSigningRequestFromWire({ ...signingRequest(payload), scope }).scope,
+    ).toEqual(scope)
+    expect(() =>
+      mapSigningRequestFromWire({
+        ...signingRequest(payload),
+        scope: { ...scope, action: 'closeAccount' },
+      }),
+    ).toThrow(/unsupported Solana scope action: closeAccount/)
+  })
+
   test('refuses a malformed EIP-712 payload', () => {
     expect(() =>
       mapSigningRequestFromWire(
@@ -870,6 +898,36 @@ describe('mapIntentStatusFromWire', () => {
     expect(mapped.details?.deployments?.[0]?.account).not.toHaveProperty(
       'authority',
     )
+  })
+
+  test('passes a recorded Swig authority change through', () => {
+    const leg = { chainId: SOLANA, tokens: [], status: 'COMPLETED' }
+    const destination = {
+      vm: 'svm',
+      chainId: SOLANA,
+      authority: {
+        action: 'remove',
+        key: { kind: 'secp256r1', publicKey: `0x03${'22'.repeat(32)}` },
+        roleId: 4,
+        rent: { amount: '325120', usd: 0.05 },
+      },
+    }
+    const mapped = mapIntentStatusFromWire(
+      'intent-1',
+      status({
+        details: {
+          nonce: '1',
+          createdAt: 1,
+          latencyMs: 2,
+          settlementLayer: 'SAME_CHAIN',
+          source: [],
+          destination: leg,
+          executions: { source: [], destination },
+          cost: { sponsored: true },
+        },
+      }),
+    )
+    expect(mapped.details?.executions?.destination).toEqual(destination)
   })
 
   test('converts recorded amounts in full details to bigint', () => {
