@@ -1,4 +1,9 @@
-import { type Address, isAddressEqual, toFunctionSelector } from 'viem'
+import {
+  type Address,
+  type Hex,
+  isAddressEqual,
+  toFunctionSelector,
+} from 'viem'
 import { resolvePermissions } from '../../permissions'
 import { allOf, anyOf, cumulativeCap, pin } from '../swap/rules'
 import type {
@@ -7,6 +12,7 @@ import type {
   ScopedAction,
   SessionPolicy,
 } from '../types'
+import { withRule } from './same-chain'
 import type { SettlementAddresses, SettlementCatalog } from './types'
 
 /**
@@ -25,7 +31,15 @@ export const CALLBACK_ALLOW_MAX_AMOUNT_SELECTOR = toFunctionSelector(
 
 type Fees = NonNullable<SettlementAddresses['fees']>
 
-/** The chain's fee addresses, once every `from` token is a served USD stablecoin. */
+type ParamsPolicy = Extract<
+  SessionPolicy,
+  { type: 'universal-action' | 'arg-policy' }
+>
+
+const isParamsPolicy = (policy: SessionPolicy): policy is ParamsPolicy =>
+  policy.type === 'universal-action' || policy.type === 'arg-policy'
+
+/** The chain's fee addresses, once every `from` token is one the layers serve. */
 export function servedFees(
   settlement: SettlementCatalog | undefined,
   chainId: number,
@@ -42,8 +56,8 @@ export function servedFees(
       `crossChainPermits: the orchestrator serves no fee addresses on chain ${chainId}, so allowFees cannot be scoped there`,
     )
   }
-  // The cap is in 6-decimal USD units, so it only bounds a 6-decimal stablecoin;
-  // the layers' served stable sets are the SDK's list of those.
+  // The cap is a USD amount, so it only bounds the stablecoins the layers serve
+  // (all 6-decimal today); any other token would make it meaningless.
   const stables = [
     chain.cctp?.usdc,
     chain.oft?.token,
@@ -64,13 +78,19 @@ export function servedFees(
 /**
  * Turn the swap scope's approve permissions into raw actions, so the paymaster
  * approve can join them. The spending limit becomes a cumulative cap on the
- * swap branch: a shared limit would count the fee approves against the swap.
+ * swap's params policy: a shared limit would count the fee approves against it.
  */
-export function permissionsAsActions(
+export function swapApprovesAsActions(
   permissions: readonly Permission[],
-  cap: bigint,
+  cap: bigint | undefined,
 ): ScopedAction[] {
   if (permissions.length === 0) return []
+  // scopeSameChain refuses an uncapped swap first; this keeps the cap from being dropped.
+  if (cap === undefined) {
+    throw new Error(
+      'crossChainPermits: a SAME_CHAIN_IE swap with allowFees needs maxAmount',
+    )
+  }
   return resolvePermissions([...permissions]).map((action) => {
     if (!('target' in action) || action.selector !== APPROVE_SELECTOR) {
       throw new Error(
@@ -78,40 +98,78 @@ export function permissionsAsActions(
       )
     }
     const policies = action.policies ?? []
+    // Dropping the spending limit is only safe with a params policy to carry the cap.
+    if (!policies.some(isParamsPolicy)) {
+      throw new Error(
+        'crossChainPermits: a swap approve has no params policy to carry its cap',
+      )
+    }
     return {
       ...action,
       policies: policies
         .filter((policy) => policy.type !== 'spending-limits')
         .map((policy) =>
-          policy.type === 'universal-action' || policy.type === 'arg-policy'
-            ? asArgPolicy(policy, [cumulativeCap(32n, cap)])
+          isParamsPolicy(policy)
+            ? withRule(policy, cumulativeCap(32n, cap))
             : policy,
         ),
     }
   })
 }
 
-/** A params policy as one expression, with `extra` rules ANDed after it. */
-function asArgPolicy(
-  policy: Extract<SessionPolicy, { type: 'universal-action' | 'arg-policy' }>,
-  extra: Parameters<typeof allOf>[0] = [],
-): Extract<SessionPolicy, { type: 'arg-policy' }> {
-  const base =
-    policy.type === 'universal-action' ? allOf(policy.rules) : policy.expression
-  return {
-    type: 'arg-policy',
-    valueLimitPerUse: policy.valueLimitPerUse ?? 0n,
-    expression: extra.length
-      ? { type: 'and', left: base, right: allOf(extra) }
-      : base,
+/**
+ * Allow `branch` as a shape of the (target, selector) call: a new action when the
+ * layer makes no such call, else ORed into the layer's one params policy, since
+ * the chain keeps a single config per policy and action.
+ */
+function addFeeBranch(
+  actions: ScopedAction[],
+  target: Address,
+  selector: Hex,
+  branch: ArgPolicyExpression,
+  timeFrame: readonly SessionPolicy[],
+): void {
+  const index = actions.findIndex(
+    (a) => isAddressEqual(a.target, target) && a.selector === selector,
+  )
+  if (index === -1) {
+    actions.push({
+      target,
+      selector,
+      policies: [
+        { type: 'arg-policy', valueLimitPerUse: 0n, expression: branch },
+        ...timeFrame,
+      ],
+    })
+    return
+  }
+  const existing = actions[index]
+  const policies = existing.policies ?? []
+  const layer = policies.find(isParamsPolicy)
+  if (layer === undefined) {
+    throw new Error(
+      `crossChainPermits: the (${target}, ${selector}) action has no params policy for allowFees to join`,
+    )
+  }
+  const layerExpression =
+    layer.type === 'universal-action' ? allOf(layer.rules) : layer.expression
+  // The fee branch first: its pin fails fast for the layer's own call, and a
+  // fee call it admits never reaches (or counts against) the layer's cap.
+  actions[index] = {
+    ...existing,
+    policies: policies.map((p) =>
+      p === layer
+        ? {
+            type: 'arg-policy',
+            valueLimitPerUse: layer.valueLimitPerUse ?? 0n,
+            expression: anyOf([branch, layerExpression]),
+          }
+        : p,
+    ),
   }
 }
 
-/**
- * Add the fee calls to a scoped session. A call the layer already makes (its
- * approve, SAME_CHAIN_IE's transfer) gets the fee branch ORed into its one params
- * policy, since the chain keeps a single config per policy and action.
- */
+/** Add the fee calls to a scoped session. */
 export function withFeeActions(
   actions: readonly ScopedAction[],
   sourceTokens: readonly Address[],
@@ -121,79 +179,35 @@ export function withFeeActions(
   const out = [...actions]
   // Usage-limited rules go last: a passing limited rule counts even if its
   // branch then fails.
-  const add = (
-    target: Address,
-    selector: `0x${string}`,
-    branch: ArgPolicyExpression,
-  ) => {
-    const index = out.findIndex(
-      (a) => isAddressEqual(a.target, target) && a.selector === selector,
-    )
-    if (index === -1) {
-      out.push({
-        target,
-        selector,
-        policies: [
-          { type: 'arg-policy', valueLimitPerUse: 0n, expression: branch },
-          ...timeFrame,
-        ],
-      })
-      return
-    }
-    const existing = out[index]
-    const policies = existing.policies ?? []
-    const params = policies.findIndex(
-      (p) => p.type === 'universal-action' || p.type === 'arg-policy',
-    )
-    if (params === -1) {
-      throw new Error(
-        `crossChainPermits: the (${target}, ${selector}) action has no params policy for allowFees to join`,
-      )
-    }
-    const layer = asArgPolicy(
-      policies[params] as Extract<
-        SessionPolicy,
-        { type: 'universal-action' | 'arg-policy' }
-      >,
-    )
-    // The fee branch first: its pin fails fast for the layer's own call, and a
-    // fee call it admits never reaches (or counts against) the layer's cap.
-    out[index] = {
-      ...existing,
-      policies: policies.map((p, i) =>
-        i === params
-          ? { ...layer, expression: anyOf([branch, layer.expression]) }
-          : p,
-      ),
-    }
-  }
+  const cap = () => cumulativeCap(32n, SETTLEMENT_FEE_CAP)
   for (const token of sourceTokens) {
-    add(
+    addFeeBranch(
+      out,
       token,
       TRANSFER_SELECTOR,
-      allOf([
-        pin(0n, fees.appFeeCollector),
-        cumulativeCap(32n, SETTLEMENT_FEE_CAP),
-      ]),
+      allOf([pin(0n, fees.appFeeCollector), cap()]),
+      timeFrame,
     )
     // approve(paymaster, 0) passes too: tokens like USDT need the reset.
-    add(
+    addFeeBranch(
+      out,
       token,
       APPROVE_SELECTOR,
-      allOf([pin(0n, fees.paymaster), cumulativeCap(32n, SETTLEMENT_FEE_CAP)]),
+      allOf([pin(0n, fees.paymaster), cap()]),
+      timeFrame,
     )
   }
-  add(fees.paymaster, CALLBACK_ALLOW_MAX_AMOUNT_SELECTOR, {
-    type: 'and',
-    left: anyOf(
-      sourceTokens.map(
-        (token): ArgPolicyExpression => ({
-          type: 'rule',
-          rule: pin(0n, token),
-        }),
-      ),
-    ),
-    right: { type: 'rule', rule: cumulativeCap(32n, SETTLEMENT_FEE_CAP) },
-  })
+  // One cap rule after the OR, so every token draws on the same budget.
+  addFeeBranch(
+    out,
+    fees.paymaster,
+    CALLBACK_ALLOW_MAX_AMOUNT_SELECTOR,
+    {
+      type: 'and',
+      left: anyOf(sourceTokens.map((token) => allOf([pin(0n, token)]))),
+      right: allOf([cap()]),
+    },
+    timeFrame,
+  )
   return out
 }

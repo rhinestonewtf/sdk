@@ -11,7 +11,7 @@ import type {
 } from '../types'
 import { scopeCctp } from './cctp'
 import { scopeEco } from './eco'
-import { permissionsAsActions, servedFees, withFeeActions } from './fees'
+import { servedFees, swapApprovesAsActions, withFeeActions } from './fees'
 import { scopeLz } from './lz'
 import { scopeOft } from './oft'
 import { scopeSameChain } from './same-chain'
@@ -278,10 +278,10 @@ export function resolveSettlementScope(
     })
     if (fees === undefined) return { ...sameChain, settlementLayers }
     // A swap's approve is a permission; as a raw action the paymaster approve can
-    // join it. Only the swap shape has permissions, and it always carries a cap.
+    // join it. Only the swap shape has permissions.
     const actions = [
       ...sameChain.actions,
-      ...permissionsAsActions(sameChain.permissions, cap ?? 0n),
+      ...swapApprovesAsActions(sameChain.permissions, cap),
     ]
     return {
       actions: withFeeActions(actions, sourceTokens, fees, timeFrame),

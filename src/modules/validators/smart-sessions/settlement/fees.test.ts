@@ -1,34 +1,39 @@
 import {
   type Address,
+  type Chain,
+  decodeAbiParameters,
   encodeFunctionData,
   erc20Abi,
   type Hex,
+  maxUint256,
+  pad,
   parseAbi,
   toFunctionSelector,
 } from 'viem'
-import { arbitrum, base } from 'viem/chains'
+import { arbitrum, base, plasma } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 import { accountA } from '../../../../../test/consts'
-import {
-  type RuleUsage,
-  satisfiesRules,
-} from '../../../../../test/utils/policy-rules'
+import { satisfiesRules } from '../../../../../test/utils/policy-rules'
 import { SETTLEMENT_CATALOG } from '../../../../../test/utils/settlement-catalog'
 import { resolveCrossChainPermission } from '../cross-chain-permits'
+import { encodeSessionPolicy } from '../policies/encode'
 import { resolveSessionData, toSession } from '../resolve'
+import { swapperAddresses } from '../swap/rhinestone'
 import type {
   CrossChainPermissionInput,
+  FromLeg,
   Permission,
   ScopedAction,
   SessionDefinition,
 } from '../types'
 import {
   CALLBACK_ALLOW_MAX_AMOUNT_SELECTOR,
-  permissionsAsActions,
   SETTLEMENT_FEE_CAP,
   servedFees,
+  swapApprovesAsActions,
   withFeeActions,
 } from './fees'
+import { OFT_SEND_SELECTOR } from './oft'
 import { resolveSettlementScope } from './scope'
 import type { SettlementCatalog } from './types'
 
@@ -44,11 +49,14 @@ const PAYMASTER = '0x6666666666666666666666666666666666666666' as Address
 const TRANSFER = toFunctionSelector('transfer(address,uint256)')
 const APPROVE = toFunctionSelector('approve(address,uint256)')
 const CAP = SETTLEMENT_FEE_CAP
+const OFT_ARB = SETTLEMENT_CATALOG[arbitrum.id].oft!
+const OFT_PLASMA = SETTLEMENT_CATALOG[plasma.id].oft!
 
 const FEES = { appFeeCollector: COLLECTOR, paymaster: PAYMASTER }
 const WITH_FEES: SettlementCatalog = {
   ...SETTLEMENT_CATALOG,
   [base.id]: { ...SETTLEMENT_CATALOG[base.id], fees: FEES },
+  [arbitrum.id]: { ...SETTLEMENT_CATALOG[arbitrum.id], fees: FEES },
 }
 const VALID_UNTIL = new Date(2_000_000_000_000)
 
@@ -73,28 +81,81 @@ const callback = (token: Address, amount: bigint) =>
     args: [token, amount],
   })
 
-const LAYERS: Record<string, Partial<CrossChainPermissionInput>> = {
-  CCTP: { settlementLayers: ['CCTP'] },
-  LZ: { settlementLayers: ['LZ'] },
-  ECO_IE: { settlementLayers: ['ECO_IE'], maxFeeBps: 50 },
+/** Each run is a fresh session; calls within a run share its usage counters. */
+function expectRuns(action: ScopedAction, runs: [Hex, boolean][][]) {
+  for (const run of runs) {
+    const usage = new Map()
+    for (const [calldata, allowed] of run) {
+      expect(satisfiesRules(action, calldata, usage)).toBe(allowed)
+    }
+  }
+}
+
+interface Layer {
+  readonly chain: Chain
+  readonly token: Address
+  /** Who the layer's own approve names; undefined for the SAME_CHAIN_IE transfer. */
+  readonly spender?: Address
+  readonly permit: Partial<CrossChainPermissionInput>
+}
+
+const LAYERS: Record<string, Layer> = {
+  CCTP: {
+    chain: base,
+    token: USDC,
+    spender: SETTLEMENT_CATALOG[base.id].cctp!.tokenMessenger,
+    permit: { settlementLayers: ['CCTP'] },
+  },
+  OFT: {
+    chain: arbitrum,
+    token: OFT_ARB.token,
+    spender: OFT_ARB.adapter,
+    permit: {
+      settlementLayers: ['OFT'],
+      to: { chain: plasma, token: OFT_PLASMA.token },
+    },
+  },
+  LZ: {
+    chain: base,
+    token: USDC,
+    spender: SETTLEMENT_CATALOG[base.id].lz!.transferDelegate,
+    permit: { settlementLayers: ['LZ'] },
+  },
+  ECO_IE: {
+    chain: base,
+    token: USDC,
+    spender: SETTLEMENT_CATALOG[base.id].eco!.portal,
+    permit: { settlementLayers: ['ECO_IE'], maxFeeBps: 50 },
+  },
   'SAME_CHAIN_IE transfer': {
-    settlementLayers: ['SAME_CHAIN_IE'],
-    to: { chain: base, token: USDC, recipient: RECIPIENT },
-    allowRecipientNotAccount: true,
+    chain: base,
+    token: USDC,
+    permit: {
+      settlementLayers: ['SAME_CHAIN_IE'],
+      to: { chain: base, token: USDC, recipient: RECIPIENT },
+      allowRecipientNotAccount: true,
+    },
   },
   'SAME_CHAIN_IE swap': {
-    settlementLayers: ['SAME_CHAIN_IE'],
-    to: { chain: base, token: WETH, recipient: RECIPIENT, minAmount: 5n },
-    allowRecipientNotAccount: true,
+    chain: base,
+    token: USDC,
+    spender: swapperAddresses('production').proxy,
+    permit: {
+      settlementLayers: ['SAME_CHAIN_IE'],
+      to: { chain: base, token: WETH, recipient: RECIPIENT, minAmount: 5n },
+      allowRecipientNotAccount: true,
+    },
   },
 }
 
 const permit = (
-  extra: Partial<CrossChainPermissionInput>,
+  layer: Layer,
+  extra: Partial<CrossChainPermissionInput> = {},
 ): CrossChainPermissionInput => ({
-  from: { chain: base, token: USDC, maxAmount: 100n },
+  from: { chain: layer.chain, token: layer.token, maxAmount: 100n },
   to: { chain: arbitrum, token: USDC_ARB },
   validUntil: VALID_UNTIL,
+  ...layer.permit,
   ...extra,
 })
 
@@ -105,7 +166,7 @@ const scope = (
   const resolved = resolveSettlementScope(
     [resolveCrossChainPermission(input)],
     {
-      chainId: base.id,
+      chainId: (input.from as FromLeg).chain.id,
       environment: 'production',
       account: ACCOUNT,
       oneTimeUse: true,
@@ -117,7 +178,7 @@ const scope = (
 }
 
 const definition = (input: CrossChainPermissionInput): SessionDefinition => ({
-  chain: base,
+  chain: (input.from as FromLeg).chain,
   owners: { type: 'ecdsa', accounts: [accountA] },
   account: ACCOUNT,
   crossChainPermits: [input],
@@ -134,15 +195,20 @@ const find = (actions: readonly ScopedAction[], target: Address, sel: Hex) => {
   return action
 }
 
+const sharesAFeeCall = (a: ScopedAction, token: Address) =>
+  a.target.toLowerCase() === token.toLowerCase() &&
+  (a.selector === APPROVE || a.selector === TRANSFER)
+
 describe.each(Object.entries(LAYERS))('allowFees on %s', (_, layer) => {
-  const on = () => scope(permit({ ...layer, allowFees: true })).actions
+  const on = () => scope(permit(layer, { allowFees: true })).actions
+  const { token } = layer
 
   test('off leaves the session exactly as before', () => {
     const before = scope(permit(layer), SETTLEMENT_CATALOG)
-    expect(scope(permit({ ...layer, allowFees: false }))).toEqual(before)
+    expect(scope(permit(layer, { allowFees: false }))).toEqual(before)
     expect(scope(permit(layer))).toEqual(before)
     expect(
-      toSession(definition(permit({ ...layer, allowFees: false })), {
+      toSession(definition(permit(layer, { allowFees: false })), {
         settlement: WITH_FEES,
       }),
     ).toEqual(
@@ -150,62 +216,61 @@ describe.each(Object.entries(LAYERS))('allowFees on %s', (_, layer) => {
     )
   })
 
-  test('admits the fee transfer to the collector, capped cumulatively', () => {
-    const action = find(on(), USDC, TRANSFER)
-    expect(satisfiesRules(action, transfer(COLLECTOR, CAP), new Map())).toBe(
-      true,
-    )
-    expect(
-      satisfiesRules(action, transfer(COLLECTOR, CAP + 1n), new Map()),
-    ).toBe(false)
-    expect(satisfiesRules(action, transfer(STRANGER, 1n), new Map())).toBe(
-      false,
-    )
-    const usage: RuleUsage = new Map()
-    expect(satisfiesRules(action, transfer(COLLECTOR, 3_000_000n), usage)).toBe(
-      true,
-    )
-    expect(satisfiesRules(action, transfer(COLLECTOR, 3_000_000n), usage)).toBe(
-      false,
-    )
-    expect(satisfiesRules(action, transfer(COLLECTOR, 2_000_000n), usage)).toBe(
-      true,
-    )
+  test('the fee transfer names only the collector, 5 USD cumulative', () => {
+    expectRuns(find(on(), token, TRANSFER), [
+      [[transfer(COLLECTOR, CAP), true]],
+      [[transfer(COLLECTOR, CAP + 1n), false]],
+      [[transfer(STRANGER, 1n), false]],
+      [
+        [transfer(COLLECTOR, 3_000_000n), true],
+        [transfer(COLLECTOR, 3_000_000n), false],
+        [transfer(COLLECTOR, 2_000_000n), true],
+      ],
+    ])
   })
 
-  test('admits the paymaster approve, reset included, capped cumulatively', () => {
-    const action = find(on(), USDC, APPROVE)
-    const usage: RuleUsage = new Map()
-    expect(satisfiesRules(action, approve(PAYMASTER, 0n), usage)).toBe(true)
-    expect(satisfiesRules(action, approve(PAYMASTER, CAP), usage)).toBe(true)
-    expect(satisfiesRules(action, approve(PAYMASTER, 1n), usage)).toBe(false)
-    expect(
-      satisfiesRules(action, approve(PAYMASTER, CAP + 1n), new Map()),
-    ).toBe(false)
-    expect(satisfiesRules(action, approve(STRANGER, 1n), new Map())).toBe(false)
+  test('the paymaster approve, reset included, 5 USD cumulative', () => {
+    expectRuns(find(on(), token, APPROVE), [
+      [
+        [approve(PAYMASTER, 0n), true],
+        [approve(PAYMASTER, CAP), true],
+        [approve(PAYMASTER, 1n), false],
+      ],
+      [[approve(PAYMASTER, CAP + 1n), false]],
+      [[approve(STRANGER, 1n), false]],
+    ])
   })
 
-  test('admits the paymaster callback for the token, capped cumulatively', () => {
+  test('the paymaster callback names only the token, 5 USD cumulative', () => {
     const action = find(on(), PAYMASTER, CALLBACK_ALLOW_MAX_AMOUNT_SELECTOR)
     expect(action.policies).toContainEqual(
       expect.objectContaining({ type: 'arg-policy', valueLimitPerUse: 0n }),
     )
-    expect(satisfiesRules(action, callback(USDC, CAP), new Map())).toBe(true)
-    expect(satisfiesRules(action, callback(USDC, CAP + 1n), new Map())).toBe(
-      false,
-    )
-    expect(satisfiesRules(action, callback(WETH, 1n), new Map())).toBe(false)
-    const usage: RuleUsage = new Map()
-    expect(satisfiesRules(action, callback(USDC, 3_000_000n), usage)).toBe(true)
-    expect(satisfiesRules(action, callback(USDC, 3_000_000n), usage)).toBe(
-      false,
-    )
+    expectRuns(action, [
+      [[callback(token, CAP), true]],
+      [[callback(token, CAP + 1n), false]],
+      [[callback(WETH, 1n), false]],
+      [
+        [callback(token, 3_000_000n), true],
+        [callback(token, 3_000_000n), false],
+      ],
+    ])
+  })
+
+  test('calls the fees do not share are untouched', () => {
+    const fees = on()
+    const off = scope(permit(layer)).actions
+    for (const action of off) {
+      if (sharesAFeeCall(action, token)) {
+        find(fees, action.target, action.selector)
+      } else {
+        expect(find(fees, action.target, action.selector)).toEqual(action)
+      }
+    }
   })
 
   test('each action keeps one params policy and the window', () => {
-    const fees = on()
-    const off = scope(permit(layer)).actions
-    for (const action of fees) {
+    for (const action of on()) {
       const params = (action.policies ?? []).filter(
         (p) => p.type === 'universal-action' || p.type === 'arg-policy',
       )
@@ -216,21 +281,19 @@ describe.each(Object.entries(LAYERS))('allowFees on %s', (_, layer) => {
         validUntil: VALID_UNTIL.getTime(),
       })
     }
-    // Every layer action is still there; only the fee calls are new.
-    for (const action of off) find(fees, action.target, action.selector)
   })
 
   test('resolves with the once-policy on every action and no policy twice', () => {
     const data = resolveSessionData(
-      definition(permit({ ...layer, allowFees: true })),
+      definition(permit(layer, { allowFees: true })),
       { settlement: WITH_FEES },
     )
     const targets = data.actions.map((a) => [
       a.actionTarget.toLowerCase(),
       a.actionTargetSelector,
     ])
-    expect(targets).toContainEqual([USDC.toLowerCase(), TRANSFER])
-    expect(targets).toContainEqual([USDC.toLowerCase(), APPROVE])
+    expect(targets).toContainEqual([token.toLowerCase(), TRANSFER])
+    expect(targets).toContainEqual([token.toLowerCase(), APPROVE])
     expect(targets).toContainEqual([
       PAYMASTER.toLowerCase(),
       CALLBACK_ALLOW_MAX_AMOUNT_SELECTOR,
@@ -243,90 +306,155 @@ describe.each(Object.entries(LAYERS))('allowFees on %s', (_, layer) => {
   })
 })
 
-describe('allowFees merges into the layer call it shares', () => {
-  const layerApproves: [string, Address][] = [
-    ['CCTP', SETTLEMENT_CATALOG[base.id].cctp!.tokenMessenger],
-    ['LZ', SETTLEMENT_CATALOG[base.id].lz!.transferDelegate],
-    ['ECO_IE', SETTLEMENT_CATALOG[base.id].eco!.portal],
-  ]
-  test.each(layerApproves)(
-    '%s approve keeps its spender and cap',
-    (name, spender) => {
-      const action = find(
-        scope(permit({ ...LAYERS[name], allowFees: true })).actions,
-        USDC,
-        APPROVE,
-      )
-      expect(satisfiesRules(action, approve(spender, 100n), new Map())).toBe(
-        true,
-      )
-      expect(satisfiesRules(action, approve(spender, 101n), new Map())).toBe(
-        false,
-      )
-      const usage: RuleUsage = new Map()
-      // The fee approve neither draws from nor is drawn from by the layer's cap.
-      expect(satisfiesRules(action, approve(PAYMASTER, CAP), usage)).toBe(true)
-      expect(satisfiesRules(action, approve(spender, 60n), usage)).toBe(true)
-      expect(satisfiesRules(action, approve(spender, 60n), usage)).toBe(false)
-      expect(satisfiesRules(action, approve(spender, 40n), usage)).toBe(true)
-      expect(satisfiesRules(action, approve(PAYMASTER, 1n), usage)).toBe(false)
-      expect(satisfiesRules(action, approve(spender, CAP), new Map())).toBe(
-        false,
-      )
-    },
-  )
+const withSpender = Object.entries(LAYERS).filter(
+  (entry): entry is [string, Layer & { spender: Address }] =>
+    entry[1].spender !== undefined,
+)
 
-  test('SAME_CHAIN_IE transfer keeps its recipient and cap', () => {
-    const action = find(
-      scope(permit({ ...LAYERS['SAME_CHAIN_IE transfer'], allowFees: true }))
-        .actions,
-      USDC,
-      TRANSFER,
-    )
-    const usage: RuleUsage = new Map()
-    expect(satisfiesRules(action, transfer(COLLECTOR, CAP), usage)).toBe(true)
-    expect(satisfiesRules(action, transfer(RECIPIENT, 100n), usage)).toBe(true)
-    expect(satisfiesRules(action, transfer(RECIPIENT, 1n), usage)).toBe(false)
-    expect(satisfiesRules(action, transfer(COLLECTOR, 1n), usage)).toBe(false)
-    expect(satisfiesRules(action, transfer(RECIPIENT, 101n), new Map())).toBe(
-      false,
-    )
-    expect(satisfiesRules(action, transfer(STRANGER, 100n), new Map())).toBe(
-      false,
+describe('allowFees merges into the layer call it shares', () => {
+  test.each(withSpender)('%s approve keeps its spender and cap', (_, layer) => {
+    const { spender } = layer
+    expectRuns(
+      find(
+        scope(permit(layer, { allowFees: true })).actions,
+        layer.token,
+        APPROVE,
+      ),
+      [
+        [[approve(spender, 100n), true]],
+        [[approve(spender, 101n), false]],
+        [[approve(spender, CAP), false]],
+        // The fee approve neither draws from nor is drawn from by the layer's cap.
+        [
+          [approve(PAYMASTER, CAP), true],
+          [approve(spender, 60n), true],
+          [approve(spender, 60n), false],
+          [approve(spender, 40n), true],
+          [approve(PAYMASTER, 1n), false],
+        ],
+      ],
     )
   })
 
-  test('SAME_CHAIN_IE swap approve keeps its spender and cap without the shared spending limit', () => {
-    const input = permit({ ...LAYERS['SAME_CHAIN_IE swap'] })
+  test('SAME_CHAIN_IE transfer keeps its recipient and cap', () => {
+    expectRuns(
+      find(
+        scope(permit(LAYERS['SAME_CHAIN_IE transfer'], { allowFees: true }))
+          .actions,
+        USDC,
+        TRANSFER,
+      ),
+      [
+        [
+          [transfer(COLLECTOR, CAP), true],
+          [transfer(RECIPIENT, 100n), true],
+          [transfer(RECIPIENT, 1n), false],
+          [transfer(COLLECTOR, 1n), false],
+        ],
+        [[transfer(RECIPIENT, 101n), false]],
+        [[transfer(STRANGER, 100n), false]],
+      ],
+    )
+  })
+
+  test('the OFT send keeps its native fee allowance', () => {
+    const send = find(
+      scope(permit(LAYERS.OFT, { allowFees: true })).actions,
+      OFT_ARB.adapter,
+      OFT_SEND_SELECTOR,
+    )
+    expect(send.policies).toContainEqual(
+      expect.objectContaining({ valueLimitPerUse: maxUint256 }),
+    )
+  })
+
+  test('SAME_CHAIN_IE swap approve drops the shared spending limit for a raw action', () => {
+    const input = permit(LAYERS['SAME_CHAIN_IE swap'])
     const off = scope(input)
     expect(off.permissions).toHaveLength(1)
-    const spender = (
-      off.permissions[0].functions.approve as {
-        params: { spender: { value: Address } }
-      }
-    ).params.spender.value
     const on = scope({ ...input, allowFees: true })
     expect(on.permissions).toEqual([])
     const action = find(on.actions, USDC, APPROVE)
     expect(action.policies?.map((p) => p.type)).not.toContain('spending-limits')
-    const usage: RuleUsage = new Map()
-    expect(satisfiesRules(action, approve(PAYMASTER, CAP), usage)).toBe(true)
-    expect(satisfiesRules(action, approve(spender, 100n), usage)).toBe(true)
-    expect(satisfiesRules(action, approve(spender, 1n), usage)).toBe(false)
-    expect(satisfiesRules(action, approve(spender, 101n), new Map())).toBe(
-      false,
-    )
-    // The Swapper actions still carry the swap's floor and pins, unchanged.
-    expect(on.actions.slice(0, off.actions.length)).toEqual(off.actions)
   })
+
+  // ArgPolicy short-circuits left to right; the fee branch must come first so a
+  // layer call never reaches its limited rule, and a fee call never the layer's.
+  test.each([
+    ['CCTP approve', LAYERS.CCTP, APPROVE, PAYMASTER, LAYERS.CCTP.spender!],
+    ['OFT approve', LAYERS.OFT, APPROVE, PAYMASTER, LAYERS.OFT.spender!],
+    [
+      'SAME_CHAIN_IE transfer',
+      LAYERS['SAME_CHAIN_IE transfer'],
+      TRANSFER,
+      COLLECTOR,
+      RECIPIENT,
+    ],
+  ] as const)(
+    'the encoded %s puts the fee branch left of the layer branch',
+    (_, layer, selector, feePin, layerPin) => {
+      const action = find(
+        scope(permit(layer, { allowFees: true })).actions,
+        layer.token,
+        selector,
+      )
+      const policy = action.policies?.find((p) => p.type === 'arg-policy')
+      if (!policy) throw new Error('no arg-policy')
+      const { paramRules } = decodeArgPolicy(
+        encodeSessionPolicy(policy, 'production').initData,
+      )
+      const node = (index: number) => {
+        const packed = paramRules.packedNodes[index]
+        return {
+          type: Number(packed & 3n),
+          rule: Number((packed >> 2n) & 0xffn),
+          left: Number((packed >> 10n) & 0xffn),
+          right: Number((packed >> 18n) & 0xffn),
+        }
+      }
+      const refs = (index: number): Hex[] => {
+        const n = node(index)
+        if (n.type === 0) return [paramRules.rules[n.rule].ref]
+        if (n.type === 1) return refs(n.left)
+        return [...refs(n.left), ...refs(n.right)]
+      }
+      const root = node(paramRules.rootNodeIndex)
+      expect(root.type).toBe(3) // OR
+      const fee = node(root.left)
+      expect(fee.type).toBe(2) // AND(pin, cap)
+      const [pinNode, capNode] = [node(fee.left), node(fee.right)]
+      expect(paramRules.rules[pinNode.rule]).toMatchObject({
+        ref: pad(feePin).toLowerCase(),
+        isLimited: false,
+      })
+      expect(paramRules.rules[capNode.rule]).toMatchObject({
+        isLimited: true,
+        usage: { limit: CAP, used: 0n },
+      })
+      expect(refs(root.right)).toContain(pad(layerPin).toLowerCase())
+      expect(refs(root.right)).not.toContain(pad(feePin).toLowerCase())
+    },
+  )
+})
+
+test('without a validity window the fee calls carry no time-frame', () => {
+  const actions = scope(
+    permit(LAYERS.CCTP, { allowFees: true, validUntil: undefined }),
+  ).actions
+  for (const action of actions) {
+    expect(action.policies?.map((p) => p.type)).not.toContain('time-frame')
+  }
+  expectRuns(find(actions, USDC, TRANSFER), [
+    [[transfer(COLLECTOR, CAP), true]],
+    [[transfer(STRANGER, 1n), false]],
+  ])
 })
 
 describe('allowFees refuses', () => {
   test('a `from` token that is not a served USD stablecoin', () => {
     expect(() =>
       scope(
-        permit({
-          ...LAYERS['SAME_CHAIN_IE transfer'],
+        permit(LAYERS['SAME_CHAIN_IE transfer'], {
           from: { chain: base, token: WETH, maxAmount: 100n },
           to: { chain: base, token: WETH, recipient: RECIPIENT },
           allowFees: true,
@@ -335,14 +463,16 @@ describe('allowFees refuses', () => {
     ).toThrow('must be a served USD stablecoin')
   })
 
-  test.each(Object.keys(LAYERS))('%s on a chain with no fees block', (name) => {
-    expect(() =>
-      scope(permit({ ...LAYERS[name], allowFees: true }), SETTLEMENT_CATALOG),
-    ).toThrow('serves no fee addresses on chain 8453')
+  test('every layer on a chain with no fees block', () => {
+    for (const layer of Object.values(LAYERS)) {
+      expect(() =>
+        scope(permit(layer, { allowFees: true }), SETTLEMENT_CATALOG),
+      ).toThrow(`serves no fee addresses on chain ${layer.chain.id}`)
+    }
   })
 
   test('a SAME_CHAIN_IE permit without served settlement addresses', () => {
-    const input = permit({ ...LAYERS['SAME_CHAIN_IE transfer'] })
+    const input = permit(LAYERS['SAME_CHAIN_IE transfer'])
     expect(() => scope(input, null)).not.toThrow()
     expect(() => scope({ ...input, allowFees: true }, null)).toThrow(
       'create the session with sdk.createSession',
@@ -367,13 +497,19 @@ describe('allowFees refuses', () => {
   })
 })
 
-test('the paymaster callback pins any of several `from` tokens', () => {
+test('the paymaster callback pins any of several `from` tokens, one shared budget', () => {
   const [action] = withFeeActions([], [USDC, USDC_ARB], FEES, []).filter(
     (a) => a.selector === CALLBACK_ALLOW_MAX_AMOUNT_SELECTOR,
   )
-  expect(satisfiesRules(action, callback(USDC, 1n), new Map())).toBe(true)
-  expect(satisfiesRules(action, callback(USDC_ARB, 1n), new Map())).toBe(true)
-  expect(satisfiesRules(action, callback(WETH, 1n), new Map())).toBe(false)
+  expectRuns(action, [
+    [[callback(USDC, 1n), true]],
+    [[callback(USDC_ARB, 1n), true]],
+    [[callback(WETH, 1n), false]],
+    [
+      [callback(USDC, 3_000_000n), true],
+      [callback(USDC_ARB, 3_000_000n), false],
+    ],
+  ])
 })
 
 test('refuses to join an action with no params policy', () => {
@@ -382,25 +518,55 @@ test('refuses to join an action with no params policy', () => {
   ).toThrow('has no params policy for allowFees to join')
 })
 
-test('refuses a swap permission that is not an approve', () => {
-  expect(() =>
-    permissionsAsActions(
-      [
-        {
-          abi: erc20Abi,
-          address: USDC,
-          functions: {
-            transfer: { params: { recipient: { value: RECIPIENT } } },
-          },
-        } as unknown as Permission,
-      ],
-      100n,
-    ),
-  ).toThrow('expected only approve permissions')
+describe('swapApprovesAsActions refuses', () => {
+  const approvePermission = (params?: object) =>
+    ({
+      abi: erc20Abi,
+      address: USDC,
+      functions: {
+        approve: {
+          spendingLimit: { token: USDC, amount: 100n },
+          ...(params ? { params } : {}),
+        },
+      },
+    }) as unknown as Permission
+
+  test('a permission that is not an approve', () => {
+    expect(() =>
+      swapApprovesAsActions(
+        [
+          {
+            abi: erc20Abi,
+            address: USDC,
+            functions: {
+              transfer: { params: { recipient: { value: RECIPIENT } } },
+            },
+          } as unknown as Permission,
+        ],
+        100n,
+      ),
+    ).toThrow('expected only approve permissions')
+  })
+
+  test('an approve with no params policy to carry the cap', () => {
+    expect(() => swapApprovesAsActions([approvePermission()], 100n)).toThrow(
+      'no params policy to carry its cap',
+    )
+  })
+
+  test('an uncapped swap', () => {
+    const permission = approvePermission({
+      spender: { condition: 'equal', value: STRANGER },
+    })
+    expect(() => swapApprovesAsActions([permission], undefined)).toThrow(
+      'needs maxAmount',
+    )
+    expect(swapApprovesAsActions([], undefined)).toEqual([])
+  })
 })
 
 test('a token served by any one layer counts as a stablecoin', () => {
-  const USDT0 = SETTLEMENT_CATALOG[42161].oft!.token
+  const USDT0 = OFT_ARB.token
   const settlement = {
     1: { oft: { adapter: STRANGER, eid: 1, token: USDT0 }, fees: FEES },
   }
@@ -409,3 +575,42 @@ test('a token served by any one layer counts as a stablecoin', () => {
     'must be a served USD stablecoin',
   )
 })
+
+const argPolicyAbi = [
+  {
+    type: 'tuple',
+    components: [
+      { name: 'valueLimitPerUse', type: 'uint256' },
+      {
+        name: 'paramRules',
+        type: 'tuple',
+        components: [
+          { name: 'rootNodeIndex', type: 'uint8' },
+          {
+            name: 'rules',
+            type: 'tuple[]',
+            components: [
+              { name: 'condition', type: 'uint8' },
+              { name: 'offset', type: 'uint64' },
+              { name: 'isLimited', type: 'bool' },
+              { name: 'ref', type: 'bytes32' },
+              {
+                name: 'usage',
+                type: 'tuple',
+                components: [
+                  { name: 'limit', type: 'uint256' },
+                  { name: 'used', type: 'uint256' },
+                ],
+              },
+            ],
+          },
+          { name: 'packedNodes', type: 'uint256[]' },
+        ],
+      },
+    ],
+  },
+] as const
+
+function decodeArgPolicy(initData: Hex) {
+  return decodeAbiParameters(argPolicyAbi, initData)[0]
+}

@@ -361,12 +361,21 @@ interface CrossChainPermit {
   /**
    * IntentExecutor layers only: also let the session pay the intent's app fee
    * (and a user-paid protocol fee) to the orchestrator's fee collector, and
-   * approve and call its paymaster for unsponsored gas. Each of those calls is
-   * capped at 5 USD, cumulatively per `from` token, so every `from` token on the
-   * session's chain must be a 6-decimal USD stablecoin the orchestrator serves.
-   * The fee addresses come from the orchestrator's `GET /chains`, so create the
-   * session with `sdk.createSession`. Defaults to `false`: only sponsored intents
-   * without an app fee settle.
+   * approve and call its paymaster for unsponsored gas. Defaults to `false`:
+   * only sponsored intents without an app fee settle.
+   *
+   * - The collector transfer and the paymaster approve are each capped at 5 USD
+   *   cumulative per `from` token, so up to 10 USD per token including gas. The
+   *   paymaster callback has one 5 USD budget shared across tokens.
+   * - Every `from` token on the session's chain must be one the orchestrator
+   *   serves for these layers (USD stablecoins today).
+   * - The fee addresses come from the orchestrator's `GET /chains`, so create
+   *   the session with `sdk.createSession`.
+   * - The orchestrator sizes the paymaster approve and callback at the refund
+   *   ceiling (about 1.8x the gas estimate) and the fee transfer at the full
+   *   fee. An intent whose ceiling or fee exceeds the remaining cap (e.g.
+   *   Ethereum mainnet gas at high prices, an app fee over 5 USD, or a reusable
+   *   session that has used its budget) is refused: it fails closed.
    */
   allowFees?: boolean
 }
@@ -444,12 +453,21 @@ interface CrossChainPermissionInput {
   /**
    * IntentExecutor layers only: also let the session pay the intent's app fee
    * (and a user-paid protocol fee) to the orchestrator's fee collector, and
-   * approve and call its paymaster for unsponsored gas. Each of those calls is
-   * capped at 5 USD, cumulatively per `from` token, so every `from` token on the
-   * session's chain must be a 6-decimal USD stablecoin the orchestrator serves.
-   * The fee addresses come from the orchestrator's `GET /chains`, so create the
-   * session with `sdk.createSession`. Defaults to `false`: only sponsored intents
-   * without an app fee settle.
+   * approve and call its paymaster for unsponsored gas. Defaults to `false`:
+   * only sponsored intents without an app fee settle.
+   *
+   * - The collector transfer and the paymaster approve are each capped at 5 USD
+   *   cumulative per `from` token, so up to 10 USD per token including gas. The
+   *   paymaster callback has one 5 USD budget shared across tokens.
+   * - Every `from` token on the session's chain must be one the orchestrator
+   *   serves for these layers (USD stablecoins today).
+   * - The fee addresses come from the orchestrator's `GET /chains`, so create
+   *   the session with `sdk.createSession`.
+   * - The orchestrator sizes the paymaster approve and callback at the refund
+   *   ceiling (about 1.8x the gas estimate) and the fee transfer at the full
+   *   fee. An intent whose ceiling or fee exceeds the remaining cap (e.g.
+   *   Ethereum mainnet gas at high prices, an app fee over 5 USD, or a reusable
+   *   session that has used its budget) is refused: it fails closed.
    */
   allowFees?: boolean
 }
