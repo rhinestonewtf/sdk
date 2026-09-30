@@ -40,6 +40,7 @@ export function satisfiesRules(
     if (holds === undefined) {
       throw new Error(`unexpected condition ${r.condition}`)
     }
+    // The policies count a limited rule under any condition.
     if (!holds || r.usageLimit === undefined) return holds
     const used = usage ? (usage.get(r) ?? 0n) : (observed as bigint)
     if (used + value > r.usageLimit) return false

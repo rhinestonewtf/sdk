@@ -184,8 +184,9 @@ describe('scopeOft', () => {
     expect(holds(action, send({ amount: 0n }))).toBe(false)
   })
 
-  test('the cap is cumulative', () => {
-    expect(holds(action, send({ amount: 60n }), 50n)).toBe(false)
+  test('sends once per session, so the burning transaction cannot repeat the fee', () => {
+    // Any prior use of the one-shot pin refuses the send, whatever its amount.
+    expect(holds(action, send({ amount: 1n }), 1n)).toBe(false)
   })
 
   test('the send may carry the LayerZero fee in msg.value', () => {
